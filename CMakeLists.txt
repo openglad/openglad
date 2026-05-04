@@ -1340,6 +1340,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_view_funcs.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_picker_funcs.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_picker_network_client.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_local_transport_shadow_budget.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_stats_extended.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_stats_navigation.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_screen_funcs.cpp
@@ -1679,6 +1680,7 @@ if(NOT EMSCRIPTEN)
 
         og_add_test_group(og_test_picker_network FILES
             test_picker_network_client.cpp
+            test_local_transport_shadow_budget.cpp
         )
 
         og_add_test_group(og_test_menu_ui FILES

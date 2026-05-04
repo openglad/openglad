@@ -6,6 +6,7 @@
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/input_state.h>
+#include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/net_transport_inprocess.h>
 #include <openglad/gameplay/sim_emit.h>
 #include <openglad/gameplay/sim_event_log.h>
@@ -18,6 +19,7 @@
 #include <openglad/platform/game_session.h>
 
 #include <algorithm>
+#include <climits>
 #include <memory>
 #include <set>
 #include <string>
@@ -180,7 +182,8 @@ void apply_palette_id(screen& gameplay_screen, std::uint8_t palette_id)
 }
 
 void poll_local_transport_client(screen& gameplay_screen,
-                                 LocalTransportClient& client)
+                                 LocalTransportClient& client,
+                                 int budget)
 {
     if (!client.game_client)
         return;
@@ -191,16 +194,12 @@ void poll_local_transport_client(screen& gameplay_screen,
             client.drives_display ? "poll_display_client"
                                   : "poll_background_client"));
 
-    if (client.drives_display)
-    {
-        const float current_render_alpha =
-            client.game_client->render_interpolation_alpha(
-                gameplay_screen.render_interpolation_speed_factor());
-        client.game_client->poll_messages(current_render_alpha);
-        return;
-    }
-
-    client.game_client->poll_messages();
+    const float current_render_alpha =
+        client.drives_display
+            ? client.game_client->render_interpolation_alpha(
+                  gameplay_screen.render_interpolation_speed_factor())
+            : 1.0f;
+    client.game_client->poll_messages(current_render_alpha, budget);
 }
 
 void release_world_control_claims(GameWorld& world)
@@ -801,7 +800,7 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
         auto client_scope = session.activate();
         GameplayContextGuard client_gameplay_scope(&session.game_);
         for (auto& client : runtime->clients)
-            poll_local_transport_client(gameplay_screen, client);
+            poll_local_transport_client(gameplay_screen, client, INT_MAX);
     }
 
     session.local_transport_runtime_ = std::move(runtime);
@@ -966,7 +965,7 @@ void reset_network_host_transport_shadow(
         auto client_scope = session.activate();
         GameplayContextGuard client_gameplay_scope(&session.game_);
         for (auto& local_client : runtime->clients)
-            poll_local_transport_client(gameplay_screen, local_client);
+            poll_local_transport_client(gameplay_screen, local_client, INT_MAX);
     }
 
     session.local_transport_runtime_ = std::move(runtime);
@@ -1010,7 +1009,7 @@ void reset_network_client_transport_shadow(
     {
         auto client_scope = session.activate();
         GameplayContextGuard client_gameplay_scope(&session.game_);
-        poll_local_transport_client(gameplay_screen, runtime->clients.front());
+        poll_local_transport_client(gameplay_screen, runtime->clients.front(), INT_MAX);
     }
 
     session.local_transport_runtime_ = std::move(runtime);
@@ -1093,7 +1092,19 @@ void local_transport_shadow_finish_tick(GameSession& session)
         GameplayContextGuard client_gameplay_scope(&session.game_);
         for (auto& client : runtime->clients)
         {
-            poll_local_transport_client(*session.myscreen_, client);
+            poll_local_transport_client(
+                *session.myscreen_,
+                client,
+                og::sim::MAX_INBOUND_MESSAGES_PER_TICK);
+            if (client.game_client &&
+                client.game_client->messages_drained_last_call() >=
+                    og::sim::MAX_INBOUND_MESSAGES_PER_TICK)
+            {
+                og::runtime::emit_runtime_trace(
+                    og::runtime::make_runtime_trace_record(
+                        "local_transport_shadow",
+                        "shadow_inbound_overflow"));
+            }
             if (runtime->display_session_finished ||
                 session.myscreen_->world().end != 0)
             {

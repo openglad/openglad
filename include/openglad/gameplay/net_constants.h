@@ -19,5 +19,8 @@ inline constexpr std::uint64_t EXIT_PROMPT_TIMEOUT_MS = 15'000;
 inline constexpr std::uint64_t PAUSE_TIMEOUT_MS = 60'000;
 inline constexpr std::uint64_t PAUSE_RATE_LIMIT_MS = 5'000;
 inline constexpr std::size_t MAX_GRID_DIRTY_TILES = 64;
+inline constexpr int MAX_INBOUND_MESSAGES_PER_TICK = 64;
+inline constexpr int MAX_OUTBOUND_MESSAGES_PER_TICK = 32;
+inline constexpr std::uint32_t MAX_NETWORK_BUDGET_US_PER_TICK = 2000; // 2 ms (advisory, traced not enforced)
 
 } // namespace og::sim

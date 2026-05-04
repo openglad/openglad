@@ -129,6 +129,15 @@ public:
     [[nodiscard]] walker* player_control(std::size_t player_index) const noexcept;
 
     void poll_incoming_messages();
+    void poll_incoming_messages(int max_messages);
+    [[nodiscard]] int messages_drained_last_call() const noexcept
+    {
+        return messages_drained_last_call_;
+    }
+    [[nodiscard]] std::size_t pending_inbound_message_count() const noexcept
+    {
+        return pending_inbound_messages_.size();
+    }
     void send_initial_snapshot(
         PeerId peer_id,
         SnapshotCaptureMode capture_mode = SnapshotCaptureMode::Consume);
@@ -220,6 +229,8 @@ private:
     std::array<SimInputDebounce, MAX_PLAYERS> player_input_debounce_ = {};
     std::string special_names_[NUM_FAMILIES][NUM_SPECIALS] = {};
     std::vector<TypedReceivedMessage> last_polled_messages_;
+    std::deque<TypedReceivedMessage> pending_inbound_messages_;
+    int messages_drained_last_call_ = 0;
     std::optional<PendingExitPromptState> pending_exit_prompt_state_ =
         std::nullopt;
     std::optional<PendingPauseState> pending_pause_state_ = std::nullopt;

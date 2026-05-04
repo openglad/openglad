@@ -15,6 +15,8 @@
 
 #include <algorithm>
 #include <chrono>
+#include <climits>
+#include <cstddef>
 #include <format>
 #include <stdexcept>
 #include <unordered_set>
@@ -1343,10 +1345,21 @@ void GameServer::synchronize_transport_peers()
 
     for (const PeerId peer_id : removed_peers)
     {
-        if (typed_messages_include_peer(last_polled_messages_, peer_id))
+        const bool has_pending_for_peer = std::any_of(
+            pending_inbound_messages_.begin(),
+            pending_inbound_messages_.end(),
+            [peer_id](const og::sim::TypedReceivedMessage& message) {
+                return message.peer_id == peer_id;
+            });
+        if (typed_messages_include_peer(last_polled_messages_, peer_id) ||
+            has_pending_for_peer)
+        {
             insert_peer_id_sorted(pending_transport_disconnects_, peer_id);
+        }
         else
+        {
             handle_transport_disconnect(peer_id, false);
+        }
     }
 }
 
@@ -1360,9 +1373,33 @@ void GameServer::apply_transport_disconnects()
 
 void GameServer::poll_incoming_messages()
 {
+    poll_incoming_messages(INT_MAX);
+}
+
+void GameServer::poll_incoming_messages(int max_messages)
+{
     apply_transport_disconnects();
-    const ServerPollResult poll_result = poll_server_messages(transport_);
-    last_polled_messages_ = poll_result.messages;
+    ServerPollResult poll_result = poll_server_messages(transport_);
+
+    for (auto& message : poll_result.messages)
+        pending_inbound_messages_.push_back(std::move(message));
+    poll_result.messages.clear();
+
+    const std::size_t available = pending_inbound_messages_.size();
+    const std::size_t budget =
+        max_messages <= 0 ? 0u : static_cast<std::size_t>(max_messages);
+    const std::size_t to_drain = std::min(available, budget);
+
+    last_polled_messages_.clear();
+    last_polled_messages_.reserve(to_drain);
+    for (std::size_t i = 0; i < to_drain; ++i)
+    {
+        last_polled_messages_.push_back(
+            std::move(pending_inbound_messages_.front()));
+        pending_inbound_messages_.pop_front();
+    }
+    messages_drained_last_call_ = static_cast<int>(to_drain);
+
     for (const PeerId peer_id : poll_result.malformed_peers)
     {
         LogError("game_server_malformed_message peer={}\n", peer_id);

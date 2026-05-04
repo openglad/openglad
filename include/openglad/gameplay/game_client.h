@@ -6,6 +6,7 @@
 #include <array>
 #include <chrono>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <optional>
 #include <unordered_map>
@@ -38,6 +39,7 @@ public:
     void send_snapshot_hash_check();
     void poll_messages();
     void poll_messages(float current_render_alpha);
+    void poll_messages(float current_render_alpha, int max_messages);
     void set_control_mapping_callback(
         std::function<void(const std::array<std::uint32_t, MAX_PLAYERS>&,
                            GameWorld*)> callback);
@@ -130,6 +132,16 @@ public:
         return snapshot_hash_check_count_;
     }
 
+    [[nodiscard]] int messages_drained_last_call() const noexcept
+    {
+        return messages_drained_last_call_;
+    }
+
+    [[nodiscard]] std::size_t pending_inbound_message_count() const noexcept
+    {
+        return pending_inbound_messages_.size();
+    }
+
     [[nodiscard]] const SessionToken& session_token() const noexcept
     {
         return session_token_;
@@ -154,7 +166,8 @@ private:
     void apply_full_snapshot(const WorldSnapshot& snapshot, float prior_alpha);
     void apply_delta_snapshot(const WorldSnapshot& snapshot, float prior_alpha);
     void apply_initial_setup(const InitialSetupMessage& message);
-    void poll_messages_impl(float first_snapshot_prior_alpha);
+    void poll_messages_impl(float first_snapshot_prior_alpha,
+                            int max_messages);
     void reset_render_interpolation();
     void update_render_interpolation(const WorldSnapshot& snapshot,
                                      bool reset_history,
@@ -187,6 +200,8 @@ private:
     std::optional<WorldSnapshot> baseline_ = std::nullopt;
     std::optional<InitialSetupMessage> initial_setup_ = std::nullopt;
     std::vector<TypedReceivedMessage> last_polled_messages_;
+    std::deque<TypedReceivedMessage> pending_inbound_messages_;
+    int messages_drained_last_call_ = 0;
     std::vector<SimEventBatch> sim_event_batches_;
     std::vector<SimEventBatch> game_flow_event_batches_;
     std::array<std::uint32_t, MAX_PLAYERS> controlled_entity_ids_ = {};

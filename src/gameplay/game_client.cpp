@@ -7,6 +7,8 @@
 #include <openglad/gameplay/net_constants.h>
 
 #include <algorithm>
+#include <climits>
+#include <cstddef>
 #include <stdexcept>
 #include <utility>
 
@@ -291,12 +293,17 @@ namespace og::sim {
 
 void GameClient::poll_messages()
 {
-    poll_messages_impl(render_interpolation_alpha(1.0f));
+    poll_messages_impl(render_interpolation_alpha(1.0f), INT_MAX);
 }
 
 void GameClient::poll_messages(float current_render_alpha)
 {
-    poll_messages_impl(clamp_alpha(current_render_alpha));
+    poll_messages_impl(clamp_alpha(current_render_alpha), INT_MAX);
+}
+
+void GameClient::poll_messages(float current_render_alpha, int max_messages)
+{
+    poll_messages_impl(clamp_alpha(current_render_alpha), max_messages);
 }
 
 float GameClient::render_interpolation_alpha(float speed_factor) const
@@ -905,7 +912,8 @@ void GameClient::note_event_batch_gap(std::uint32_t expected,
              actual);
 }
 
-void GameClient::poll_messages_impl(float first_snapshot_prior_alpha)
+void GameClient::poll_messages_impl(float first_snapshot_prior_alpha,
+                                    int max_messages)
 {
     og::runtime::RuntimeTraceRecord start_trace =
         og::runtime::make_runtime_trace_record(
@@ -917,7 +925,7 @@ void GameClient::poll_messages_impl(float first_snapshot_prior_alpha)
     maybe_send_hello_if_needed();
     maybe_send_heartbeat_if_needed();
 
-    const ClientPollResult poll_result = poll_client_messages(transport_);
+    ClientPollResult poll_result = poll_client_messages(transport_);
     if (poll_result.malformed_server_message)
     {
         og::runtime::emit_runtime_trace(
@@ -926,8 +934,10 @@ void GameClient::poll_messages_impl(float first_snapshot_prior_alpha)
         LogError("game_client_malformed_message peer={}\n", server_peer_id_);
         transport_.disconnect(server_peer_id_);
         last_polled_messages_.clear();
+        pending_inbound_messages_.clear();
         sim_event_batches_.clear();
         game_flow_event_batches_.clear();
+        messages_drained_last_call_ = 0;
         update_transport_connection_state();
         return;
     }
@@ -936,14 +946,31 @@ void GameClient::poll_messages_impl(float first_snapshot_prior_alpha)
     maybe_send_hello_if_needed();
     maybe_send_heartbeat_if_needed();
 
+    for (auto& message : poll_result.messages)
+        pending_inbound_messages_.push_back(std::move(message));
+    poll_result.messages.clear();
+
+    const std::size_t available = pending_inbound_messages_.size();
+    const std::size_t budget =
+        max_messages <= 0 ? 0u : static_cast<std::size_t>(max_messages);
+    const std::size_t to_drain = std::min(available, budget);
+
     og::runtime::RuntimeTraceRecord polled_trace =
         og::runtime::make_runtime_trace_record(
             "game_client",
-            poll_result.messages.empty() ? "poll_messages_empty"
-                                         : "poll_messages_received");
+            to_drain == 0u ? "poll_messages_empty"
+                           : "poll_messages_received");
     og::runtime::emit_runtime_trace(std::move(polled_trace));
 
-    last_polled_messages_ = poll_result.messages;
+    last_polled_messages_.clear();
+    last_polled_messages_.reserve(to_drain);
+    for (std::size_t i = 0; i < to_drain; ++i)
+    {
+        last_polled_messages_.push_back(
+            std::move(pending_inbound_messages_.front()));
+        pending_inbound_messages_.pop_front();
+    }
+    messages_drained_last_call_ = static_cast<int>(to_drain);
     sim_event_batches_.clear();
     game_flow_event_batches_.clear();
 
