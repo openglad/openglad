@@ -291,6 +291,7 @@ set(OG_SIM_SOURCES
 )
 
 set(OG_DATA_SOURCES
+    ${SRC_DIR}/core/frame_rate_config.cpp
     ${SRC_DIR}/resources/gparser.cpp
     ${SRC_DIR}/resources/gloader.cpp
     ${SRC_DIR}/resources/level_file_io.cpp
@@ -1770,6 +1771,10 @@ if(NOT EMSCRIPTEN)
 
         og_add_test_group(og_test_mass_coverage FILES
             test_mass_coverage.cpp
+        )
+
+        og_add_unit_group(og_unit_core FILES
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_frame_rate_config.cpp
         )
 
         og_add_unit_group(og_unit_sim FILES

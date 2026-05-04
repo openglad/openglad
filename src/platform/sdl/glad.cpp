@@ -16,6 +16,7 @@
  */
 
 #include <openglad/core/frame_pacing.h>
+#include <openglad/core/frame_rate_config.h>
 #include <openglad/core/runtime_trace.h>
 #include <openglad/core/version.h>
 #include <openglad/gameplay/guy.h>
@@ -213,7 +214,6 @@ void bootstrap_runtime(int argc, char* argv[])
     init_input();
     load_player_control_settings_from_cfg(cfg);
     save_player_control_settings_to_cfg(cfg);
-    cfg.save_settings();
 
     // Sync overscan from config (must be after session creation since
     // overscan_percentage is now a macro backed by current_session).
@@ -222,6 +222,11 @@ void bootstrap_runtime(int argc, char* argv[])
     update_overscan_setting();
     cfg.apply_setting("graphics", "overscan_percentage",
         std::format("{:.0f}", 100 * og::runtime::current_session->overscan_percentage_));
+
+    const int fps = og::core::target_fps_from_cfg(cfg);
+    og::core::apply_target_fps_to_cfg(cfg, fps);
+    og::runtime::current_session->target_fps_ = fps;
+    cfg.save_settings();
 #if defined(__EMSCRIPTEN__) && !defined(TESTING)
     if (og::platform::web::should_skip_intro_for_tests())
         return;
