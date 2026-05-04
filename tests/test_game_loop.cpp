@@ -15,6 +15,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/input_state.h>
 #include <openglad/core/frame_pacing.h>
+#include <openglad/core/frame_rate_config.h>
 #include <openglad/interface/replay_runtime.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/platform/game_loop.h>
@@ -182,16 +183,12 @@ static bool load_minimal_game_loop_scenario(const char* save_name)
 
 static void expect_browser_wrapper_immediate_step_runs_one_tick(
     const char* save_name,
-    short timer_wait,
-    float speed_factor)
+    int fps)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;
     ASSERT_TRUE(game_screen != nullptr);
-    GameSpeedGuard speed_guard(speed_factor);
+    GameSpeedGuard speed_guard(1.0f);
     ASSERT_TRUE(load_minimal_game_loop_scenario(save_name));
-
-    game_screen->world().timer_wait =
-        static_cast<decltype(game_screen->world().timer_wait)>(timer_wait);
 
     const std::uint32_t tick_count_before = game_screen->world().tick_count_;
     const int framecount_before = game_screen->framecount;
@@ -199,7 +196,7 @@ static void expect_browser_wrapper_immediate_step_runs_one_tick(
 
     GameLoopFrameState st;
     const og::core::BrowserFramePacingResult pacing =
-        og::core::step_browser_frame_pacing(33u, 16u, timer_wait, speed_factor);
+        og::core::step_browser_frame_pacing(33u, 16u, fps);
     ASSERT_TRUE(pacing.should_run_frame);
 
     GameLoopDeps render_deps;
@@ -1607,65 +1604,68 @@ TEST(GameLoop, game_frame_with_result_uses_fixed_tick_ms_for_pacer_interval)
 
 TEST(GameLoopJitter, browser_wrapper_helper_uses_shared_rounded_interval)
 {
+    constexpr int kFps = 10;
+    const std::uint32_t expected_interval = og::core::target_frame_interval_ms(kFps);
+    EXPECT_EQ(100u, expected_interval);
+
     const og::core::BrowserFramePacingResult waiting =
-        og::core::step_browser_frame_pacing(0u, 16u, 6, 1.0f);
-    EXPECT_EQ(82u, waiting.target_interval_ms);
+        og::core::step_browser_frame_pacing(0u, 20u, kFps);
+    EXPECT_EQ(expected_interval, waiting.target_interval_ms);
     EXPECT_FALSE(waiting.should_run_frame);
     EXPECT_FALSE(waiting.should_present_frame);
-    EXPECT_EQ(16u, waiting.accumulated_after_add_ms);
-    EXPECT_EQ(16u, waiting.accumulated_after_step_ms);
+    EXPECT_EQ(20u, waiting.accumulated_after_add_ms);
+    EXPECT_EQ(20u, waiting.accumulated_after_step_ms);
 
     const og::core::BrowserFramePacingResult midpoint =
-        og::core::step_browser_frame_pacing(32u, 16u, 6, 1.0f);
-    EXPECT_EQ(82u, midpoint.target_interval_ms);
+        og::core::step_browser_frame_pacing(40u, 20u, kFps);
+    EXPECT_EQ(expected_interval, midpoint.target_interval_ms);
     EXPECT_FALSE(midpoint.should_run_frame);
     EXPECT_TRUE(midpoint.should_present_frame);
-    EXPECT_EQ(48u, midpoint.accumulated_after_add_ms);
-    EXPECT_EQ(48u, midpoint.accumulated_after_step_ms);
+    EXPECT_EQ(60u, midpoint.accumulated_after_add_ms);
+    EXPECT_EQ(60u, midpoint.accumulated_after_step_ms);
 
     const og::core::BrowserFramePacingResult ready =
-        og::core::step_browser_frame_pacing(66u, 16u, 6, 1.0f);
-    EXPECT_EQ(82u, ready.target_interval_ms);
+        og::core::step_browser_frame_pacing(80u, 20u, kFps);
+    EXPECT_EQ(expected_interval, ready.target_interval_ms);
     EXPECT_TRUE(ready.should_run_frame);
     EXPECT_FALSE(ready.should_present_frame);
-    EXPECT_EQ(82u, ready.accumulated_after_add_ms);
+    EXPECT_EQ(100u, ready.accumulated_after_add_ms);
     EXPECT_EQ(0u, ready.accumulated_after_step_ms);
 
     const og::core::BrowserFramePacingResult no_carry =
-        og::core::step_browser_frame_pacing(67u, 16u, 6, 1.0f);
+        og::core::step_browser_frame_pacing(85u, 20u, kFps);
     EXPECT_TRUE(no_carry.should_run_frame);
     EXPECT_FALSE(no_carry.should_present_frame);
-    EXPECT_EQ(83u, no_carry.accumulated_after_add_ms);
+    EXPECT_EQ(105u, no_carry.accumulated_after_add_ms);
     EXPECT_EQ(0u, no_carry.accumulated_after_step_ms);
-
-    const og::core::BrowserFramePacingResult clamped =
-        og::core::step_browser_frame_pacing(230u, 17u, 6, 1.0f);
-    EXPECT_TRUE(clamped.should_run_frame);
-    EXPECT_FALSE(clamped.should_present_frame);
-    EXPECT_EQ(0u, clamped.accumulated_after_step_ms);
 }
 
-TEST(GameLoopJitter, browser_wrapper_and_shared_render_interval_match)
+TEST(GameLoopJitter, browser_wrapper_target_interval_uses_target_fps)
 {
-    EXPECT_EQ(82u, og::core::browser_frame_target_interval_ms(6, 1.0f));
+    EXPECT_EQ(og::core::target_frame_interval_ms(10),
+              og::core::browser_frame_target_interval_ms(10));
 
-    const og::core::BrowserFramePacingResult browser_interval =
-        og::core::step_browser_frame_pacing(0u, 0u, 6, 1.0f);
-    EXPECT_EQ(82u, browser_interval.target_interval_ms);
-    EXPECT_FALSE(browser_interval.should_run_frame);
-    EXPECT_FALSE(browser_interval.should_present_frame);
-    EXPECT_EQ(0u, browser_interval.accumulated_after_add_ms);
-    EXPECT_EQ(0u, browser_interval.accumulated_after_step_ms);
-    EXPECT_FLOAT_EQ(82.0f, og::core::render_tick_interval_ms(6, 1.0f));
+    // Browser cannot present faster than the rAF floor (~16 ms), so even a
+    // very high target_fps clamps to the floor.
+    EXPECT_EQ(16u, og::core::browser_frame_target_interval_ms(120));
+    EXPECT_EQ(16u, og::core::browser_frame_target_interval_ms(240));
+
+    const og::core::BrowserFramePacingResult result =
+        og::core::step_browser_frame_pacing(0u, 0u, 10);
+    EXPECT_EQ(og::core::target_frame_interval_ms(10),
+              result.target_interval_ms);
+    EXPECT_FALSE(result.should_run_frame);
+    EXPECT_FALSE(result.should_present_frame);
+    EXPECT_EQ(0u, result.accumulated_after_add_ms);
+    EXPECT_EQ(0u, result.accumulated_after_step_ms);
 }
 
-TEST(GameLoopJitter, browser_wrapper_honors_zero_timer_wait_fast_mode)
+TEST(GameLoopJitter, browser_wrapper_honors_zero_fps_fast_mode)
 {
-    EXPECT_EQ(0u, og::core::browser_frame_target_interval_ms(0, 1.0f));
-    EXPECT_FLOAT_EQ(0.0f, og::core::render_tick_interval_ms(0, 1.0f));
+    EXPECT_EQ(0u, og::core::browser_frame_target_interval_ms(0));
 
     const og::core::BrowserFramePacingResult immediate =
-        og::core::step_browser_frame_pacing(33u, 16u, 0, 1.0f);
+        og::core::step_browser_frame_pacing(33u, 16u, 0);
     EXPECT_EQ(0u, immediate.target_interval_ms);
     EXPECT_TRUE(immediate.should_run_frame);
     EXPECT_FALSE(immediate.should_present_frame);
@@ -1673,20 +1673,18 @@ TEST(GameLoopJitter, browser_wrapper_honors_zero_timer_wait_fast_mode)
     EXPECT_EQ(0u, immediate.accumulated_after_step_ms);
 }
 
-TEST(GameLoopJitter, browser_wrapper_runs_one_tick_for_zero_timer_wait_fast_mode)
+TEST(GameLoopJitter, browser_wrapper_runs_one_tick_for_zero_fps_fast_mode)
 {
     expect_browser_wrapper_immediate_step_runs_one_tick(
-        "test_game_loop_browser_zero_timer_wait",
-        0,
-        1.0f);
+        "test_game_loop_browser_zero_fps",
+        0);
 }
 
-TEST(GameLoopJitter, browser_wrapper_runs_one_tick_for_zero_speed_factor_immediate_mode)
+TEST(GameLoopJitter, browser_wrapper_runs_one_tick_for_default_fps)
 {
     expect_browser_wrapper_immediate_step_runs_one_tick(
-        "test_game_loop_browser_zero_speed_factor",
-        6,
-        0.0f);
+        "test_game_loop_browser_default_fps",
+        og::core::kDefaultTargetFps);
 }
 
 TEST(GameLoopJitter, game_frame_pacer_uses_injected_now_ms)

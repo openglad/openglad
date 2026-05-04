@@ -1,4 +1,5 @@
 #include <openglad/core/frame_pacing.h>
+#include <openglad/core/frame_rate_config.h>
 #include <openglad/core/runtime_trace.h>
 #include <openglad/core/util.h>
 
@@ -11,28 +12,20 @@ float render_tick_interval_ms(short timer_wait, float speed_factor)
     return rounded_render_tick_interval_ms(timer_wait, speed_factor);
 }
 
-std::uint32_t browser_frame_target_interval_ms(
-    short timer_wait,
-    float speed_factor)
+std::uint32_t browser_frame_target_interval_ms(int fps)
 {
-    const float target_interval_ms =
-        render_tick_interval_ms(timer_wait, speed_factor);
-    if (target_interval_ms <= 0.0f)
+    if (fps <= 0)
         return 0u;
-
-    return std::max<std::uint32_t>(
-        16u, static_cast<std::uint32_t>(target_interval_ms));
+    return std::max<std::uint32_t>(16u, target_frame_interval_ms(fps));
 }
 
 BrowserFramePacingResult step_browser_frame_pacing(
     std::uint32_t accumulated_time_ms,
     std::uint32_t delta_ms,
-    short timer_wait,
-    float speed_factor)
+    int fps)
 {
     BrowserFramePacingResult result;
-    result.target_interval_ms =
-        browser_frame_target_interval_ms(timer_wait, speed_factor);
+    result.target_interval_ms = browser_frame_target_interval_ms(fps);
     if (result.target_interval_ms == 0u)
     {
         result.should_run_frame = true;

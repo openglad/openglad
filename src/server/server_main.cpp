@@ -1,4 +1,5 @@
 #include <openglad/core/constants.h>
+#include <openglad/core/frame_rate_config.h>
 #include <openglad/core/util.h>
 #include <openglad/gameplay/family_registries.h>
 #include <openglad/gameplay/game_server.h>
@@ -28,7 +29,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <format>
+#include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -71,6 +74,7 @@ struct ServerArgs {
     std::string host = "0.0.0.0";
     int port = kDefaultPort;
     int lobby_poll_ms = kDefaultLobbyPollMs;
+    std::optional<int> target_fps;
 };
 
 void request_shutdown(int)
@@ -86,7 +90,10 @@ void print_usage()
         "  --host <addr>         Listen address (default: 0.0.0.0)\n"
         "  --port <num>          Listen port (default: 12345)\n"
         "  --lobby-poll-ms <n>   Lobby poll interval in ms (default: 10)\n"
-        "  --help, -h            Show this help message\n");
+        "  --fps <n>             Target tick rate (clamped to [%d, %d])\n"
+        "  --help, -h            Show this help message\n",
+        og::core::kMinTargetFps,
+        og::core::kMaxTargetFps);
 }
 
 bool parse_int_arg(const char* text, int& out)
@@ -159,6 +166,23 @@ ParseArgsResult parse_args(int argc, char* argv[], ServerArgs& args)
             continue;
         }
 
+        if (arg == "--fps")
+        {
+            int fps = 0;
+            if (index + 1 >= argc ||
+                !parse_int_arg(argv[index + 1], fps) ||
+                fps <= 0)
+            {
+                std::fprintf(stderr,
+                             "--fps requires a positive integer\n");
+                print_usage();
+                return ParseArgsResult::InvalidUsage;
+            }
+            args.target_fps = fps;
+            ++index;
+            continue;
+        }
+
         if (arg == "--help" || arg == "-h")
         {
             print_usage();
@@ -225,6 +249,13 @@ int main(int argc, char* argv[])
         io_initialized = true;
 
         cfg.load_settings();
+        if (args.target_fps.has_value())
+        {
+            og::core::apply_target_fps_to_cfg(cfg, *args.target_fps);
+        }
+        const std::uint32_t frame_interval_ms =
+            og::core::target_frame_interval_ms(
+                og::core::target_fps_from_cfg(cfg));
         init_all_registries();
 
         og::runtime::SessionState& session = og::runtime::s_headless_session;
@@ -362,9 +393,7 @@ int main(int argc, char* argv[])
             const auto tick_start = std::chrono::steady_clock::now();
             game_server.step();
 
-            const int wait_ticks =
-                std::max<int>(level_data.world().timer_wait, 0);
-            if (wait_ticks == 0)
+            if (frame_interval_ms == 0u)
             {
                 std::this_thread::yield();
                 continue;
@@ -372,10 +401,7 @@ int main(int argc, char* argv[])
 
             const auto tick_deadline =
                 tick_start +
-                std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-                    std::chrono::duration<double, std::milli>(
-                        static_cast<double>(wait_ticks) *
-                        og::sim::TIMER_WAIT_TO_MS));
+                std::chrono::milliseconds(frame_interval_ms);
             std::this_thread::sleep_until(tick_deadline);
         }
 

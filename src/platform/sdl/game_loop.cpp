@@ -445,6 +445,10 @@ void run_browser_wrapper_frame(screen& s,
                                const GameLoopDeps& render_deps,
                                const GameLoopDeps& tick_deps)
 {
+    og::runtime::emit_runtime_trace(
+        og::runtime::make_runtime_trace_record(
+            "browser_pacing", "browser_frame_step"));
+
     GameLoopFrameState render_state = st;
     render_state.initialized = true;
     render_state.last_frame_time = current_time_ms;

@@ -54,3 +54,6 @@ check_help
 check_failure "unknown option" "Unknown argument:" --unknown-option
 check_failure "missing host value" "--host requires a value" --host
 check_failure "invalid port" "--port requires a positive integer" --port -1
+check_failure "missing fps value" "--fps requires a positive integer" --fps
+check_failure "invalid fps" "--fps requires a positive integer" --fps abc
+check_failure "non-positive fps" "--fps requires a positive integer" --fps 0
