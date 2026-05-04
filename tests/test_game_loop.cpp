@@ -595,6 +595,9 @@ TEST(GameLoop, game_frame_toggles_debug_hotkeys)
     GameLoopDeps deps;
     deps.enable_render = false;
     deps.enable_event_poll = true;
+    // Bypass the deadline pacer so the synthesized F11/F12 events get
+    // processed in a single call without waiting for the next deadline.
+    deps.enable_frame_timing = false;
     deps.poll_event = scripted_poll_adapter;
 
     EXPECT_EQ(GameFrameResult::Continue,
@@ -1412,71 +1415,79 @@ TEST(GameLoop, network_client_shadow_ends_session_after_connection_loss_timeout)
     game_screen->world().delete_objects();
 }
 
-TEST(GameLoop, game_frame_with_result_caps_accumulator_to_four_ticks_per_call)
+TEST(GameLoop, game_frame_with_result_runs_at_most_one_tick_per_call)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;
     ASSERT_TRUE(game_screen != nullptr);
     GameSpeedGuard speed(1.0f);
 
     ASSERT_TRUE(load_minimal_game_loop_scenario("test_game_loop_tick_cap"))
-        << "load_saved_game should succeed for tick-cap test";
+        << "load_saved_game should succeed for single-tick contract test";
 
-    GameLoopFrameState st;
-    st.initialized = true;
-    st.last_frame_time = SDL_GetTicks();
-    st.accumulated_time = og::sim::DEFAULT_SIM_TICK_MS * 6u;
-
+    // Inject a now_ms that has already advanced well past the deadline. The
+    // deadline pacer must still run exactly one tick — no catch-up bursts.
+    std::uint32_t fake_now = 10000u;
     int tick_count = 0;
+    GameLoopFrameState st;
     GameLoopDeps deps;
     deps.enable_render = false;
     deps.enable_event_poll = false;
     deps.fixed_tick_ms = og::sim::DEFAULT_SIM_TICK_MS;
+    deps.now_ms = [&fake_now]() { return fake_now; };
+    deps.sleep_ms = [](std::uint32_t) {};
     deps.after_act = [&tick_count](screen&) {
         ++tick_count;
     };
 
+    // First call configures the pacer; subsequent calls should never run
+    // more than one tick even when the clock has slipped multiple intervals.
+    // First call configures the pacer; this call should not yet tick.
     EXPECT_EQ(GameFrameResult::Continue,
               game_frame_with_result(*game_screen, st, deps));
-    EXPECT_EQ(4, tick_count);
-    EXPECT_EQ(0u, st.accumulated_time);
+    EXPECT_EQ(0, tick_count);
+
+    // Even after slipping six intervals worth of clock time, the next call
+    // must run exactly one sim tick — no burst catch-up.
+    fake_now += og::sim::DEFAULT_SIM_TICK_MS * 6u;
+    EXPECT_EQ(GameFrameResult::Continue,
+              game_frame_with_result(*game_screen, st, deps));
+    EXPECT_EQ(1, tick_count);
 
     game_screen->world().delete_objects();
 }
 
-TEST(GameLoop, game_frame_with_result_accumulates_input_without_ticking_when_interval_not_reached)
+TEST(GameLoop, game_frame_with_result_sleeps_when_deadline_not_reached)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;
     ASSERT_TRUE(game_screen != nullptr);
     GameSpeedGuard speed(1.0f);
     disablePlayerJoystick(0);
     ASSERT_TRUE(load_minimal_game_loop_scenario("test_game_loop_zero_tick"))
-        << "load_saved_game should succeed for zero-tick test";
+        << "load_saved_game should succeed for idle-deadline test";
 
-    SessionKeyStateGuard keystates;
-    KeyBindingGuard bind_yell(0, KEY_YELL, SDLK_y);
-    keystates.set(SDLK_y, true);
-    ctx().input = {};
-
-    GameLoopFrameState st;
-    st.initialized = true;
-    st.last_frame_time = SDL_GetTicks();
-    st.accumulated_time = 0;
-
+    // The pacer skips event/input polling on idle wakeups, so we no longer
+    // observe accumulated input here. Instead, verify that the call sleeps
+    // toward the next deadline without running a tick.
+    std::uint32_t fake_now = 5000u;
     int tick_count = 0;
+    std::vector<std::uint32_t> sleeps;
+    GameLoopFrameState st;
     GameLoopDeps deps;
     deps.enable_render = false;
     deps.enable_event_poll = false;
     deps.fixed_tick_ms = 1000;
+    deps.now_ms = [&fake_now]() { return fake_now; };
+    deps.sleep_ms = [&sleeps](std::uint32_t ms) { sleeps.push_back(ms); };
     deps.after_act = [&tick_count](screen&) {
         ++tick_count;
     };
 
+    // First call configures the pacer with deadline = 5000 + 1000 = 6000.
     EXPECT_EQ(GameFrameResult::Continue,
               game_frame_with_result(*game_screen, st, deps));
     EXPECT_EQ(0, tick_count);
-    EXPECT_TRUE(st.has_pending_input);
-    EXPECT_TRUE(st.pending_input.players[0].held[KEY_YELL]);
-    EXPECT_TRUE(st.pending_input.players[0].pressed[KEY_YELL]);
+    ASSERT_EQ(sleeps.size(), 1u);
+    EXPECT_EQ(sleeps[0], 1000u);
 
     game_screen->world().delete_objects();
 }
@@ -1512,37 +1523,42 @@ TEST(GameLoop, game_frame_with_result_leaves_external_timing_state_untouched)
     game_screen->world().delete_objects();
 }
 
-TEST(GameLoop, game_frame_with_result_runs_multiple_ticks_when_accumulator_has_multiple_intervals)
+TEST(GameLoop, game_frame_with_result_runs_one_tick_per_call_even_when_clock_slipped)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;
     ASSERT_TRUE(game_screen != nullptr);
     GameSpeedGuard speed(1.0f);
     ASSERT_TRUE(load_minimal_game_loop_scenario("test_game_loop_multi_tick"))
-        << "load_saved_game should succeed for multi-tick test";
+        << "load_saved_game should succeed for single-tick contract test";
 
-    GameLoopFrameState st;
-    st.initialized = true;
-    st.last_frame_time = SDL_GetTicks();
-    st.accumulated_time = og::sim::DEFAULT_SIM_TICK_MS * 2u;
-
+    std::uint32_t fake_now = 1000u;
     int tick_count = 0;
+    GameLoopFrameState st;
     GameLoopDeps deps;
     deps.enable_render = false;
     deps.enable_event_poll = false;
     deps.fixed_tick_ms = og::sim::DEFAULT_SIM_TICK_MS;
+    deps.now_ms = [&fake_now]() { return fake_now; };
+    deps.sleep_ms = [](std::uint32_t) {};
     deps.after_act = [&tick_count](screen&) {
         ++tick_count;
     };
 
+    // Configure pacer.
     EXPECT_EQ(GameFrameResult::Continue,
               game_frame_with_result(*game_screen, st, deps));
-    EXPECT_EQ(2, tick_count);
-    EXPECT_LT(st.accumulated_time, og::sim::DEFAULT_SIM_TICK_MS);
+    EXPECT_EQ(0, tick_count);
+
+    // Slip two full intervals; the next call must still run exactly one tick.
+    fake_now += og::sim::DEFAULT_SIM_TICK_MS * 2u;
+    EXPECT_EQ(GameFrameResult::Continue,
+              game_frame_with_result(*game_screen, st, deps));
+    EXPECT_EQ(1, tick_count);
 
     game_screen->world().delete_objects();
 }
 
-TEST(GameLoop, game_frame_with_result_uses_fixed_tick_ms_instead_of_timer_wait_when_requested)
+TEST(GameLoop, game_frame_with_result_uses_fixed_tick_ms_for_pacer_interval)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;
     ASSERT_TRUE(game_screen != nullptr);
@@ -1550,43 +1566,40 @@ TEST(GameLoop, game_frame_with_result_uses_fixed_tick_ms_instead_of_timer_wait_w
     ASSERT_TRUE(load_minimal_game_loop_scenario("test_game_loop_fixed_tick"))
         << "load_saved_game should succeed for fixed-tick test";
 
+    // With deps.fixed_tick_ms == DEFAULT_SIM_TICK_MS the pacer must wait
+    // exactly that many ms before firing the next sim tick, regardless of
+    // world.timer_wait or target_fps_.
     const signed char old_timer_wait = game_screen->world().timer_wait;
     game_screen->world().timer_wait = 10;
 
-    int derived_ticks = 0;
-    GameLoopFrameState derived_st;
-    derived_st.initialized = true;
-    derived_st.last_frame_time = SDL_GetTicks();
-    derived_st.accumulated_time = 100;
-
-    GameLoopDeps derived_deps;
-    derived_deps.enable_render = false;
-    derived_deps.enable_event_poll = false;
-    derived_deps.after_act = [&derived_ticks](screen&) {
-        ++derived_ticks;
+    std::uint32_t fake_now = 2000u;
+    int tick_count = 0;
+    std::vector<std::uint32_t> sleeps;
+    GameLoopFrameState st;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.fixed_tick_ms = og::sim::DEFAULT_SIM_TICK_MS;
+    deps.now_ms = [&fake_now]() { return fake_now; };
+    deps.sleep_ms = [&sleeps](std::uint32_t ms) { sleeps.push_back(ms); };
+    deps.after_act = [&tick_count](screen&) {
+        ++tick_count;
     };
 
+    // First call configures the pacer (deadline = now + DEFAULT_SIM_TICK_MS)
+    // and returns immediately with a sleep equal to the full interval.
     EXPECT_EQ(GameFrameResult::Continue,
-              game_frame_with_result(*game_screen, derived_st, derived_deps));
-    EXPECT_EQ(0, derived_ticks);
+              game_frame_with_result(*game_screen, st, deps));
+    EXPECT_EQ(0, tick_count);
+    ASSERT_EQ(sleeps.size(), 1u);
+    EXPECT_EQ(sleeps[0],
+              static_cast<std::uint32_t>(og::sim::DEFAULT_SIM_TICK_MS));
 
-    int fixed_ticks = 0;
-    GameLoopFrameState fixed_st;
-    fixed_st.initialized = true;
-    fixed_st.last_frame_time = SDL_GetTicks();
-    fixed_st.accumulated_time = 100;
-
-    GameLoopDeps fixed_deps;
-    fixed_deps.enable_render = false;
-    fixed_deps.enable_event_poll = false;
-    fixed_deps.fixed_tick_ms = og::sim::DEFAULT_SIM_TICK_MS;
-    fixed_deps.after_act = [&fixed_ticks](screen&) {
-        ++fixed_ticks;
-    };
-
+    // Advance the clock to exactly the deadline; one tick should run.
+    fake_now += og::sim::DEFAULT_SIM_TICK_MS;
     EXPECT_EQ(GameFrameResult::Continue,
-              game_frame_with_result(*game_screen, fixed_st, fixed_deps));
-    EXPECT_EQ(1, fixed_ticks);
+              game_frame_with_result(*game_screen, st, deps));
+    EXPECT_EQ(1, tick_count);
 
     game_screen->world().timer_wait = old_timer_wait;
     game_screen->world().delete_objects();
@@ -1676,7 +1689,7 @@ TEST(GameLoopJitter, browser_wrapper_runs_one_tick_for_zero_speed_factor_immedia
         0.0f);
 }
 
-TEST(GameLoopJitter, game_frame_accumulator_uses_injected_now_ms)
+TEST(GameLoopJitter, game_frame_pacer_uses_injected_now_ms)
 {
     screen* const game_screen = og::runtime::current_session->myscreen_;
     ASSERT_TRUE(game_screen != nullptr);
@@ -1685,12 +1698,9 @@ TEST(GameLoopJitter, game_frame_accumulator_uses_injected_now_ms)
         << "load_saved_game should succeed for injected clock test";
 
     GameLoopFrameState st;
-    st.initialized = true;
-    st.last_frame_time = 1000u;
-    st.accumulated_time = 0u;
-
-    std::uint32_t fake_now_ms = 1049u;
+    std::uint32_t fake_now_ms = 1000u;
     int tick_count = 0;
+    std::vector<std::uint32_t> sleeps;
     GameLoopDeps deps;
     deps.enable_render = false;
     deps.enable_event_poll = false;
@@ -1698,20 +1708,29 @@ TEST(GameLoopJitter, game_frame_accumulator_uses_injected_now_ms)
     deps.now_ms = [&fake_now_ms]() {
         return fake_now_ms;
     };
+    deps.sleep_ms = [&sleeps](std::uint32_t ms) { sleeps.push_back(ms); };
     deps.after_act = [&tick_count](screen&) {
         ++tick_count;
     };
 
+    // First call configures the pacer (deadline = 1050) and returns sleep.
     EXPECT_EQ(GameFrameResult::Continue,
               game_frame_with_result(*game_screen, st, deps));
     EXPECT_EQ(0, tick_count);
-    EXPECT_EQ(49u, st.accumulated_time);
+    ASSERT_EQ(sleeps.size(), 1u);
+    EXPECT_EQ(sleeps[0], 50u);
 
+    // One ms before deadline: still no tick.
+    fake_now_ms = 1049u;
+    EXPECT_EQ(GameFrameResult::Continue,
+              game_frame_with_result(*game_screen, st, deps));
+    EXPECT_EQ(0, tick_count);
+
+    // At deadline: exactly one tick.
     fake_now_ms = 1050u;
     EXPECT_EQ(GameFrameResult::Continue,
               game_frame_with_result(*game_screen, st, deps));
     EXPECT_EQ(1, tick_count);
-    EXPECT_EQ(0u, st.accumulated_time);
 
     game_screen->world().delete_objects();
 }
@@ -1736,14 +1755,14 @@ TEST(GameLoop, game_frame_with_result_processes_input_before_same_call_tick)
     view->control->set_yo_delay(0);
 
     GameLoopFrameState st;
-    st.initialized = true;
-    st.last_frame_time = SDL_GetTicks();
-    st.accumulated_time = og::sim::DEFAULT_SIM_TICK_MS;
 
     int yo_delay_after_act = -1;
     GameLoopDeps deps;
     deps.enable_render = false;
     deps.enable_event_poll = false;
+    // Bypass the deadline pacer so the call runs a sim tick immediately and
+    // exercises the input-before-tick contract.
+    deps.enable_frame_timing = false;
     deps.fixed_tick_ms = og::sim::DEFAULT_SIM_TICK_MS;
     deps.after_act = [&yo_delay_after_act, view](screen&) {
         yo_delay_after_act = view->control ? view->control->yo_delay() : -1;
@@ -1752,6 +1771,98 @@ TEST(GameLoop, game_frame_with_result_processes_input_before_same_call_tick)
     EXPECT_EQ(GameFrameResult::Continue,
               game_frame_with_result(*game_screen, st, deps));
     EXPECT_EQ(30, yo_delay_after_act);
+
+    game_screen->world().delete_objects();
+}
+
+TEST(GameLoop, single_tick_per_call)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    GameSpeedGuard speed(1.0f);
+    ASSERT_TRUE(load_minimal_game_loop_scenario("test_game_loop_single_tick"))
+        << "load_saved_game should succeed for single-tick contract test";
+
+    constexpr std::uint32_t interval_ms = 20u;
+    constexpr int kFrames = 100;
+
+    GameLoopFrameState st;
+    std::uint32_t fake_now = 1000u;
+    int tick_count = 0;
+    std::vector<std::uint32_t> sleeps;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.fixed_tick_ms = interval_ms;
+    deps.now_ms = [&fake_now]() { return fake_now; };
+    deps.sleep_ms = [&sleeps](std::uint32_t ms) { sleeps.push_back(ms); };
+    deps.after_act = [&tick_count](screen&) {
+        ++tick_count;
+    };
+
+    // Configure the pacer (deadline = fake_now + interval_ms). This call
+    // sleeps the full interval and does not tick.
+    EXPECT_EQ(GameFrameResult::Continue,
+              game_frame_with_result(*game_screen, st, deps));
+    EXPECT_EQ(0, tick_count);
+
+    // N=100 calls, each advancing the clock by exactly one interval. The
+    // pacer must fire exactly one tick per call — never more.
+    for (int i = 0; i < kFrames; ++i)
+    {
+        fake_now += interval_ms;
+        const int before = tick_count;
+        EXPECT_EQ(GameFrameResult::Continue,
+                  game_frame_with_result(*game_screen, st, deps));
+        EXPECT_EQ(tick_count - before, 1)
+            << "iteration " << i << " ran " << (tick_count - before)
+            << " ticks; expected exactly 1";
+    }
+    EXPECT_EQ(tick_count, kFrames);
+
+    game_screen->world().delete_objects();
+}
+
+TEST(GameLoop, idle_call_sleeps_remaining_interval)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    GameSpeedGuard speed(1.0f);
+    ASSERT_TRUE(load_minimal_game_loop_scenario("test_game_loop_idle_sleep"))
+        << "load_saved_game should succeed for idle-sleep test";
+
+    constexpr std::uint32_t interval_ms = 20u;
+
+    GameLoopFrameState st;
+    std::uint32_t fake_now = 5000u;
+    int tick_count = 0;
+    std::vector<std::uint32_t> sleeps;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.fixed_tick_ms = interval_ms;
+    deps.now_ms = [&fake_now]() { return fake_now; };
+    deps.sleep_ms = [&sleeps](std::uint32_t ms) { sleeps.push_back(ms); };
+    deps.after_act = [&tick_count](screen&) {
+        ++tick_count;
+    };
+
+    // Configure pacer; first call sleeps the full interval.
+    EXPECT_EQ(GameFrameResult::Continue,
+              game_frame_with_result(*game_screen, st, deps));
+    EXPECT_EQ(0, tick_count);
+    ASSERT_EQ(sleeps.size(), 1u);
+    EXPECT_EQ(sleeps[0], interval_ms);
+
+    // Advance the clock to interval_ms / 2 past the configured anchor (i.e.
+    // halfway to the deadline). The idle call must sleep exactly the
+    // remaining half-interval and must not run a tick.
+    fake_now += interval_ms / 2u;
+    EXPECT_EQ(GameFrameResult::Continue,
+              game_frame_with_result(*game_screen, st, deps));
+    EXPECT_EQ(0, tick_count);
+    ASSERT_EQ(sleeps.size(), 2u);
+    EXPECT_EQ(sleeps[1], interval_ms - (interval_ms / 2u));
 
     game_screen->world().delete_objects();
 }

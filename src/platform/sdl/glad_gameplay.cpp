@@ -252,10 +252,8 @@ void glad_main(Sint32 playermode)
     // For Emscripten, the unified main loop in main() handles game_frame() calls
     // via the state machine. We just need to initialize - don't start another loop.
 #else
-    while (!g_frame_state().done)
-    {
-        game_frame(*current_screen, g_frame_state());
-    }
+    og::runtime::run_native_game_loop(
+        *current_screen, g_frame_state(), GameLoopDeps{});
 
     if (og::runtime::current_game_session != nullptr)
         og::runtime::clear_local_transport_shadow(

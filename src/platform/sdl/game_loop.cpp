@@ -7,6 +7,7 @@
  */
 #include <openglad/platform/game_loop.h>
 #include <openglad/core/frame_pacing.h>
+#include <openglad/core/frame_rate_config.h>
 #include <openglad/core/runtime_trace.h>
 #include <openglad/core/util.h>
 #include <openglad/gameplay/net_constants.h>
@@ -52,8 +53,6 @@ static std::uint32_t default_now_ms()
 
 namespace
 {
-constexpr std::uint32_t kMaxTicksPerCall = 4;
-
 struct TickSchedule {
     std::uint32_t interval_ms = 0;
     bool caller_manages_timing = false;
@@ -71,6 +70,7 @@ GameFrameResult finish_done(GameLoopFrameState& st)
 
 TickSchedule compute_tick_schedule(const screen& s, const GameLoopDeps& deps)
 {
+    (void)s;
     if (!deps.enable_frame_timing)
     {
         og::runtime::emit_runtime_trace(
@@ -83,47 +83,56 @@ TickSchedule compute_tick_schedule(const screen& s, const GameLoopDeps& deps)
         };
     }
 
-    const float speed_factor = (og::runtime::current_session != nullptr)
-        ? og::runtime::current_session->g_game_speed_factor_
-        : 1.0f;
-    const float interval_ms = deps.fixed_tick_ms > 0
-        ? (speed_factor > 0.0f
-               ? static_cast<float>(deps.fixed_tick_ms) / speed_factor
-               : 0.0f)
-        : og::core::render_tick_interval_ms(
-            s.world().timer_wait, speed_factor);
-    if (interval_ms <= 0.0f)
+    const float raw_speed_factor =
+        (og::runtime::current_session != nullptr)
+            ? og::runtime::current_session->g_game_speed_factor_
+            : 1.0f;
+    const int target_fps = (og::runtime::current_session != nullptr)
+        ? og::runtime::current_session->target_fps_
+        : og::core::kDefaultTargetFps;
+    const std::uint32_t base_interval_ms = deps.fixed_tick_ms > 0
+        ? deps.fixed_tick_ms
+        : og::core::target_frame_interval_ms(target_fps);
+    std::uint32_t interval_ms;
+    if (raw_speed_factor <= 0.0f)
     {
-        og::runtime::emit_runtime_trace(
-            og::runtime::make_runtime_trace_record(
-                "game_loop", "schedule_immediate_tick"));
-        return {.interval_ms = 0, .caller_manages_timing = false, .immediate_tick = true};
+        // Legacy "max speed" hook used by integration tests via
+        // set_game_speed(0.0f). Run the pacer at the minimum interval so
+        // ticks fire as fast as the OS scheduler allows.
+        interval_ms = 1u;
+    }
+    else
+    {
+        const float speed_factor = std::max(0.01f, raw_speed_factor);
+        const float scaled_ms =
+            static_cast<float>(base_interval_ms) / speed_factor;
+        interval_ms = std::max<std::uint32_t>(
+            1u, static_cast<std::uint32_t>(std::lround(scaled_ms)));
     }
 
     og::runtime::emit_runtime_trace(
         og::runtime::make_runtime_trace_record(
             "game_loop",
             deps.fixed_tick_ms > 0 ? "schedule_fixed_interval"
-                                   : "schedule_timer_wait_interval"));
+                                   : "schedule_target_fps_interval"));
     return {
-        .interval_ms = std::max<std::uint32_t>(
-            1u, static_cast<std::uint32_t>(std::lround(interval_ms))),
+        .interval_ms = interval_ms,
         .caller_manages_timing = false,
         .immediate_tick = false,
     };
 }
 
-void reset_frame_timing(GameLoopFrameState& st, std::uint32_t current_time_ms)
-{
-    st.initialized = true;
-    st.last_frame_time = current_time_ms;
-    st.accumulated_time = 0;
-}
-
+// Legacy entry point retained for the browser wrapper (which sets
+// enable_frame_timing = false and relies on caller_manages_timing). The
+// desktop main loop bypasses this function and uses FrameDeadlinePacer
+// directly inside game_frame_with_result(). By contract this function
+// returns 0 or 1 — the multi-tick catch-up burst has been removed.
 std::uint32_t ticks_to_run_this_call(GameLoopFrameState& st,
                                      const TickSchedule& schedule,
                                      const GameLoopDeps& deps)
 {
+    (void)st;
+    (void)deps;
     if (schedule.caller_manages_timing)
     {
         og::runtime::emit_runtime_trace(
@@ -132,55 +141,10 @@ std::uint32_t ticks_to_run_this_call(GameLoopFrameState& st,
         return 1;
     }
 
-    const std::function<std::uint32_t()> now_ms =
-        deps.now_ms ? deps.now_ms
-                    : std::function<std::uint32_t()>(default_now_ms);
-    const std::uint32_t current_time_ms = now_ms();
-    if (schedule.immediate_tick)
-    {
-        reset_frame_timing(st, current_time_ms);
-        og::runtime::emit_runtime_trace(
-            og::runtime::make_runtime_trace_record(
-                "game_loop", "ticks_immediate"));
-        return 1;
-    }
-
-    if (!st.initialized)
-    {
-        st.initialized = true;
-        st.last_frame_time = current_time_ms;
-        st.accumulated_time = schedule.interval_ms;
-    }
-    else
-    {
-        st.accumulated_time += current_time_ms - st.last_frame_time;
-        st.last_frame_time = current_time_ms;
-    }
-
-    if (st.accumulated_time < schedule.interval_ms)
-    {
-        og::runtime::emit_runtime_trace(
-            og::runtime::make_runtime_trace_record(
-                "game_loop", "ticks_waiting_for_interval"));
-        return 0;
-    }
-
-    std::uint32_t ticks_to_run = st.accumulated_time / schedule.interval_ms;
-    if (ticks_to_run > kMaxTicksPerCall)
-    {
-        st.accumulated_time = 0;
-        og::runtime::emit_runtime_trace(
-            og::runtime::make_runtime_trace_record(
-                "game_loop", "ticks_clamped_to_cap"));
-        return kMaxTicksPerCall;
-    }
-
-    st.accumulated_time -= ticks_to_run * schedule.interval_ms;
     og::runtime::emit_runtime_trace(
         og::runtime::make_runtime_trace_record(
-            "game_loop",
-            ticks_to_run > 1u ? "ticks_multiple_ready" : "ticks_single_ready"));
-    return ticks_to_run;
+            "game_loop", "ticks_single_ready"));
+    return 1;
 }
 
 void latch_polled_input(GameLoopFrameState& st, const InputState& sampled_input)
@@ -328,6 +292,37 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
     if (gameplay_session == nullptr)
         return finish_done(st);
 
+    // Deadline pacer: gate event poll, input poll, tick, and render on the
+    // pacer's decision so each desktop frame consumes exactly the same
+    // wall-clock budget. enable_frame_timing == false (browser tick path)
+    // and enable_tick == false (browser render path) bypass the pacer.
+    bool render_this_frame = true;
+    const std::function<std::uint32_t()> now_ms_fn =
+        deps.now_ms ? deps.now_ms
+                    : std::function<std::uint32_t()>(default_now_ms);
+    if (deps.enable_tick && deps.enable_frame_timing)
+    {
+        const TickSchedule schedule = compute_tick_schedule(s, deps);
+        const std::uint32_t now = now_ms_fn();
+        if (st.pacer.interval_ms() != schedule.interval_ms)
+            st.pacer.configure(schedule.interval_ms, now);
+        const og::core::FrameDeadlineDecision decision = st.pacer.tick(now);
+        if (!decision.run_tick)
+        {
+            og::runtime::emit_runtime_trace(
+                og::runtime::make_runtime_trace_record(
+                    "game_loop", "desktop_loop_sleep_ms"));
+            const std::function<void(std::uint32_t)> sleep_fn =
+                deps.sleep_ms
+                    ? deps.sleep_ms
+                    : std::function<void(std::uint32_t)>(
+                          [](std::uint32_t ms) { SDL_Delay(ms); });
+            sleep_fn(decision.sleep_ms);
+            return GameFrameResult::Continue;
+        }
+        render_this_frame = decision.run_render;
+    }
+
     if (deps.enable_event_poll) {
         SDL_Event event;
         while (poll_event(&event))
@@ -385,8 +380,17 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
     std::uint32_t ticks_to_run = 0;
     if (deps.enable_tick)
     {
-        const TickSchedule schedule = compute_tick_schedule(s, deps);
-        ticks_to_run = ticks_to_run_this_call(st, schedule, deps);
+        if (deps.enable_frame_timing)
+        {
+            // Pacer already cleared decision.run_tick == true above; run
+            // exactly one sim tick per call. No catch-up bursts.
+            ticks_to_run = 1;
+        }
+        else
+        {
+            const TickSchedule schedule = compute_tick_schedule(s, deps);
+            ticks_to_run = ticks_to_run_this_call(st, schedule, deps);
+        }
     }
     else
     {
@@ -409,7 +413,7 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
         clear_pending_input(st);
 
 #ifndef TESTING
-    if (deps.enable_render) {
+    if (deps.enable_render && render_this_frame) {
         s.redraw();
 
         if (og::runtime::current_session->debug_draw_obmap_)
@@ -467,3 +471,15 @@ void run_browser_wrapper_frame(screen& s,
     st.last_frame_time = current_time_ms;
     st.accumulated_time = pacing.accumulated_after_step_ms;
 }
+
+namespace og::runtime {
+
+void run_native_game_loop(screen& s, GameLoopFrameState& st, const GameLoopDeps& deps)
+{
+    while (!st.done)
+    {
+        game_frame(s, st, deps);
+    }
+}
+
+} // namespace og::runtime

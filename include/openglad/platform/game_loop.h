@@ -27,6 +27,10 @@ struct GameLoopDeps {
     std::function<void(const SDL_Event&)> handle_event;
     std::function<void(screen&)> after_act;
     std::function<std::uint32_t()> now_ms;
+    // Called when the deadline pacer decides the caller should sleep until
+    // the next frame deadline. Defaults to SDL_Delay. Tests inject a no-op
+    // or capturing lambda to observe the sleep distribution without blocking.
+    std::function<void(std::uint32_t)> sleep_ms;
 
     // When non-zero, pins the sim tick interval in milliseconds
     // (for example og::sim::DEFAULT_SIM_TICK_MS). When zero, derive the
@@ -60,6 +64,16 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
 
 // Runs one frame of the main game loop. Returns true when the mission is done.
 bool game_frame(screen& s, GameLoopFrameState& st, const GameLoopDeps& deps = {});
+
+namespace og::runtime {
+
+// Drives the native main loop: repeatedly invokes game_frame() until the
+// frame state is marked done. The deadline pacer inside game_frame_with_result
+// is responsible for sleeping to the next frame deadline; this helper does
+// not call SDL_Delay itself.
+void run_native_game_loop(screen& s, GameLoopFrameState& st, const GameLoopDeps& deps = {});
+
+} // namespace og::runtime
 
 void run_browser_wrapper_frame(screen& s,
                                GameLoopFrameState& st,
