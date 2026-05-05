@@ -223,7 +223,7 @@ const FamilyDescriptor& describe_family_thief()
         .customize_weapon = nullptr,
         .on_ani_complete = nullptr,
         .on_melee_hit = nullptr,
-        .pix_filename = "thief.pix",
+        .pix_filename = "thief.png",
         .animation_type = FAMILY_ANIM_STANDARD,
         .ai_line_of_sight = 10,
         .description = "Thieves are fast, though  \n"

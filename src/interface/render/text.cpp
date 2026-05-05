@@ -64,7 +64,7 @@ text::text(const char * filename)
     if(!letters_big.valid())
         letters_big = read_pixie_file(TEXT_BIG);
 
-    std::string temp_filename = (filename && strlen(filename) >= 2) ? filename : "text.pix";
+    std::string temp_filename = (filename && strlen(filename) >= 2) ? filename : "text.png";
 
     if(temp_filename == TEXT_BIG)
         letters = &letters_big;

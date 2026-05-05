@@ -61,7 +61,7 @@ const FamilyDescriptor& describe_family_big_orc()
         .customize_weapon = nullptr,
         .on_ani_complete = nullptr,
         .on_melee_hit = nullptr,
-        .pix_filename = "orc2.pix",
+        .pix_filename = "orc2.png",
         .animation_type = FAMILY_ANIM_STANDARD,
         .ai_line_of_sight = 25,
         .description = "Orcs captains are stronger\n"

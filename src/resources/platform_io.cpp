@@ -23,7 +23,11 @@
 #include "physfsrwops.h"  // PhysFS SDL_RWops bridge
 #include <openglad/resources/zip_api.h>
 #include <openglad/resources/yaml_stream.h>
+#include <openglad/resources/pixie_data.h>
 #include <openglad/core/pixdefs.h>
+#include <cstring>
+
+bool write_pixie_png(const char* filepath, const PixieData& data);
 #include <format>
 #include <filesystem>
 #include <array>
@@ -399,129 +403,52 @@ void sync_filesystem()
 
 
 
-namespace {
-bool write_rwops_exact(SDL_RWops* rwops, const void* data, size_t size, size_t count)
-{
-    return rwops && SDL_RWwrite(rwops, data, size, count) == count;
-}
-} // namespace
-
 NewFileIoError create_new_map_pix_with_error(const std::string& filename, int w, int h)
 {
-	// File data in form:
-	// <# of frames>      1 byte
-	// <x size>                   1 byte
-	// <y size>                   1 byte
-	// <pixie data>               <x*y*frames> bytes
     if (w <= 0 || h <= 0 || w > 255 || h > 255)
     {
         return NewFileIoError::InvalidDimensions;
     }
-	
-	unsigned char c;
-	SDL_RWops* outfile = open_write_file(filename.c_str());
-	if(outfile == nullptr)
-        return NewFileIoError::OpenWriteFailed;
-    
-    c = 1;  // Frames
-	if(!write_rwops_exact(outfile, &c, 1, 1))
-    {
-        SDL_RWclose(outfile);
-        return NewFileIoError::WriteFailed;
-    }
-    c = static_cast<unsigned char>(w);  // x size
-	if(!write_rwops_exact(outfile, &c, 1, 1))
-    {
-        SDL_RWclose(outfile);
-        return NewFileIoError::WriteFailed;
-    }
-    c = static_cast<unsigned char>(h);  // y size
-	if(!write_rwops_exact(outfile, &c, 1, 1))
-    {
-        SDL_RWclose(outfile);
-        return NewFileIoError::WriteFailed;
-    }
-	
-	int size = w*h;
+
+    PixieData grid;
+    grid.frames = 1;
+    grid.w = static_cast<unsigned char>(w);
+    grid.h = static_cast<unsigned char>(h);
+    int size = w * h;
+    grid.data = std::make_unique<unsigned char[]>(static_cast<size_t>(size));
+
     static thread_local std::mt19937 grass_rng{std::random_device{}()};
     std::uniform_int_distribution<int> grass_dist(0, 3);
-	for(int i = 0; i < size; i++)
+    const unsigned char grass_tiles[] = {PIX_GRASS1, PIX_GRASS2, PIX_GRASS3, PIX_GRASS4};
+    for(int i = 0; i < size; i++)
     {
-        // Color
-        switch(grass_dist(grass_rng))
-        {
-            case 0:
-            c = PIX_GRASS1;
-            break;
-            case 1:
-            c = PIX_GRASS2;
-            break;
-            case 2:
-            c = PIX_GRASS3;
-            break;
-            case 3:
-            c = PIX_GRASS4;
-            break;
-        }
-        if(!write_rwops_exact(outfile, &c, 1, 1))
-        {
-            SDL_RWclose(outfile);
-            return NewFileIoError::WriteFailed;
-        }
+        grid.data[i] = grass_tiles[grass_dist(grass_rng)];
     }
-    
-    SDL_RWclose(outfile);
+
+    if (!write_pixie_png(filename.c_str(), grid))
+        return NewFileIoError::WriteFailed;
+
     return NewFileIoError::None;
 }
 
 NewFileIoError create_new_pix_with_error(const std::string& filename, int w, int h, unsigned char fill_color)
 {
-	// File data in form:
-	// <# of frames>      1 byte
-	// <x size>                   1 byte
-	// <y size>                   1 byte
-	// <pixie data>               <x*y*frames> bytes
     if (w <= 0 || h <= 0 || w > 255 || h > 255)
     {
         return NewFileIoError::InvalidDimensions;
     }
-	
-	unsigned char c;
-	SDL_RWops* outfile = open_write_file(filename.c_str());
-	if(outfile == nullptr)
-        return NewFileIoError::OpenWriteFailed;
-    
-    c = 1;  // Frames
-	if(!write_rwops_exact(outfile, &c, 1, 1))
-    {
-        SDL_RWclose(outfile);
+
+    PixieData grid;
+    grid.frames = 1;
+    grid.w = static_cast<unsigned char>(w);
+    grid.h = static_cast<unsigned char>(h);
+    int size = w * h;
+    grid.data = std::make_unique<unsigned char[]>(static_cast<size_t>(size));
+    memset(grid.data.get(), fill_color, static_cast<size_t>(size));
+
+    if (!write_pixie_png(filename.c_str(), grid))
         return NewFileIoError::WriteFailed;
-    }
-    c = static_cast<unsigned char>(w);  // x size
-	if(!write_rwops_exact(outfile, &c, 1, 1))
-    {
-        SDL_RWclose(outfile);
-        return NewFileIoError::WriteFailed;
-    }
-    c = static_cast<unsigned char>(h);  // y size
-	if(!write_rwops_exact(outfile, &c, 1, 1))
-    {
-        SDL_RWclose(outfile);
-        return NewFileIoError::WriteFailed;
-    }
-	
-	c = fill_color;  // Color
-	int size = w*h;
-	for(int i = 0; i < size; i++)
-    {
-        if(!write_rwops_exact(outfile, &c, 1, 1))
-        {
-            SDL_RWclose(outfile);
-            return NewFileIoError::WriteFailed;
-        }
-    }
-    
-    SDL_RWclose(outfile);
+
     return NewFileIoError::None;
 }
 

@@ -107,7 +107,7 @@ const FamilyDescriptor& describe_family_barbarian()
         .customize_weapon = nullptr,
         .on_ani_complete = nullptr,
         .on_melee_hit = nullptr,
-        .pix_filename = "barby.pix",
+        .pix_filename = "barby.png",
         .animation_type = FAMILY_ANIM_STANDARD,
         .ai_line_of_sight = 12,
         .description = "Barbarians are powerful   \n"

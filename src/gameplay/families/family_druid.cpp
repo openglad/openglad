@@ -195,7 +195,7 @@ const FamilyDescriptor& describe_family_druid()
         .customize_weapon = nullptr,
         .on_ani_complete = nullptr,
         .on_melee_hit = nullptr,
-        .pix_filename = "druid.pix",
+        .pix_filename = "druid.png",
         .animation_type = FAMILY_ANIM_STANDARD,
         .ai_line_of_sight = 10,
         .description = "Druids are the magicians  \n"

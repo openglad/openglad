@@ -190,10 +190,10 @@ static void picker_initialize_shared_menu_state()
     clear_allbuttons();
 
     // Set backdrops to nullptr
-    pks().backpics[0] = read_pixie_file("mainul.pix");
-    pks().backpics[1] = read_pixie_file("mainur.pix");
-    pks().backpics[2] = read_pixie_file("mainll.pix");
-    pks().backpics[3] = read_pixie_file("mainlr.pix");
+    pks().backpics[0] = read_pixie_file("mainul.png");
+    pks().backpics[1] = read_pixie_file("mainur.png");
+    pks().backpics[2] = read_pixie_file("mainll.png");
+    pks().backpics[3] = read_pixie_file("mainlr.png");
 
     pks().backdrops[0] = make_picker_pixie(pks().backpics[0]);
     pks().backdrops[0]->setxy(0, 0);
@@ -208,11 +208,11 @@ static void picker_initialize_shared_menu_state()
     og::runtime::current_session->myscreen_->clearbuffer();
 
     //main_title_logo_data = read_pixie_file("glad.pix");
-    pks().main_title_logo_data = read_pixie_file("title.pix"); // marbled gladiator title
+    pks().main_title_logo_data = read_pixie_file("title.png"); // marbled gladiator title
     pks().main_title_logo_pix = make_picker_pixie(pks().main_title_logo_data);
 
     //main_columns_data = read_pixie_file("mage.pix");
-    pks().main_columns_data = read_pixie_file("columns.pix");
+    pks().main_columns_data = read_pixie_file("columns.png");
     pks().main_columns_pix = make_picker_pixie(pks().main_columns_data);
 
     // Get the mouse, timer, & keyboard ..

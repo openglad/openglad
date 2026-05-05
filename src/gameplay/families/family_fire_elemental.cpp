@@ -124,7 +124,7 @@ const FamilyDescriptor& describe_family_fire_elemental()
         .customize_weapon = nullptr,
         .on_ani_complete = nullptr,
         .on_melee_hit = nullptr,
-        .pix_filename = "firelem.pix",
+        .pix_filename = "firelem.png",
         .animation_type = FAMILY_ANIM_STANDARD,
         .ai_line_of_sight = 10,
         .description = "Strong and quick, fire    \n"

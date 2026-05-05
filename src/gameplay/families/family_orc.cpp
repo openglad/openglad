@@ -160,7 +160,7 @@ const FamilyDescriptor& describe_family_orc()
         .customize_weapon = nullptr,
         .on_ani_complete = nullptr,
         .on_melee_hit = nullptr,
-        .pix_filename = "orc.pix",
+        .pix_filename = "orc.png",
         .animation_type = FAMILY_ANIM_STANDARD,
         .ai_line_of_sight = 20,
         .description = "Orcs are a basic 'grunt'; \n"

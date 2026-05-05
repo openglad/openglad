@@ -408,71 +408,71 @@ loader::loader(EntityFactory entity_factory)
 	static const EntityDef defs[] = {
 		// Weapon entities (BLOOD pix handled separately for gore toggle)
 		//                                                       hp  act         anim           step los  dmg freq
-		{Order::Weapon, FAMILY_KNIFE,             "knife.pix",    6, ACT_FIRE, anikni,          5,  7,  6, 0},
-		{Order::Weapon, FAMILY_ROCK,              "rock.pix",     4, ACT_FIRE, anirock,         5,  8,  4, 0},
-		{Order::Weapon, FAMILY_ARROW,             "arrow.pix",    5, ACT_FIRE, aniarrow,        8, 12,  5, 0},
-		{Order::Weapon, FAMILY_FIRE_ARROW,        "farrow.pix",   7, ACT_FIRE, aniarrow,        8, 12,  7, 0},
-		{Order::Weapon, FAMILY_FIREBALL,          "fire.pix",     8, ACT_FIRE, aniarrow,        6,  7, 10, 0},
-		{Order::Weapon, FAMILY_TREE,              "tree.pix",    50, ACT_SIT,  anitree,         0,  1,  0, 0},
-		{Order::Weapon, FAMILY_METEOR,            "meteor.pix",  12, ACT_FIRE, aniarrow,        7,  9, 12, 0},
-		{Order::Weapon, FAMILY_SPRINKLE,          "sparkle.pix",  1, ACT_FIRE, anikni,          6, 10,  1, 0},
+		{Order::Weapon, FAMILY_KNIFE,             "knife.png",    6, ACT_FIRE, anikni,          5,  7,  6, 0},
+		{Order::Weapon, FAMILY_ROCK,              "rock.png",     4, ACT_FIRE, anirock,         5,  8,  4, 0},
+		{Order::Weapon, FAMILY_ARROW,             "arrow.png",    5, ACT_FIRE, aniarrow,        8, 12,  5, 0},
+		{Order::Weapon, FAMILY_FIRE_ARROW,        "farrow.png",   7, ACT_FIRE, aniarrow,        8, 12,  7, 0},
+		{Order::Weapon, FAMILY_FIREBALL,          "fire.png",     8, ACT_FIRE, aniarrow,        6,  7, 10, 0},
+		{Order::Weapon, FAMILY_TREE,              "tree.png",    50, ACT_SIT,  anitree,         0,  1,  0, 0},
+		{Order::Weapon, FAMILY_METEOR,            "meteor.png",  12, ACT_FIRE, aniarrow,        7,  9, 12, 0},
+		{Order::Weapon, FAMILY_SPRINKLE,          "sparkle.png",  1, ACT_FIRE, anikni,          6, 10,  1, 0},
 		{Order::Weapon, FAMILY_BLOOD,             nullptr,        0, ACT_DIE,  aniblood,        0,  1,  0, 0},
-		{Order::Weapon, FAMILY_BONE,              "bone1.pix",    5, ACT_FIRE, anikni,          6,  6,  5, 0},
-		{Order::Weapon, FAMILY_BLOB,              "sl_ball.pix",  1, ACT_FIRE, aniblob1,        2, 11,  1, 2},
-		{Order::Weapon, FAMILY_LIGHTNING,         "lightnin.pix",60, ACT_FIRE, aniarrow,        9, 13,  6, 0},
-		{Order::Weapon, FAMILY_GLOW,              "clerglow.pix",50, ACT_SIT,  aniglowgrow,    0,   1,  0, 0},
-		{Order::Weapon, FAMILY_WAVE,              "wave.pix",    50, ACT_FIRE, aniarrow,        6,  3, 16, 0},
-		{Order::Weapon, FAMILY_WAVE2,             "wave2.pix",   50, ACT_RANDOM, aniarrow,      4,  4, 12, 0},
-		{Order::Weapon, FAMILY_WAVE3,             "wave3.pix",   50, ACT_FIRE, aniarrow,        3,  6, 10, 0},
-		{Order::Weapon, FAMILY_CIRCLE_PROTECTION, "wave2.pix",   50, ACT_SIT,  anifood,         1,110,  0, 0},
-		{Order::Weapon, FAMILY_HAMMER,            "hammer.pix",  10, ACT_FIRE, aniarrow,        6,  4,  9, 0},
-		{Order::Weapon, FAMILY_DOOR,              "door.pix",  5000, ACT_SIT,  anidoor,         0,  1,  0, 0},
-		{Order::Weapon, FAMILY_BOULDER,           "boulder1.pix",50, ACT_FIRE, aninone,        10,  9, 25, 0},
+		{Order::Weapon, FAMILY_BONE,              "bone1.png",    5, ACT_FIRE, anikni,          6,  6,  5, 0},
+		{Order::Weapon, FAMILY_BLOB,              "sl_ball.png",  1, ACT_FIRE, aniblob1,        2, 11,  1, 2},
+		{Order::Weapon, FAMILY_LIGHTNING,         "lightnin.png",60, ACT_FIRE, aniarrow,        9, 13,  6, 0},
+		{Order::Weapon, FAMILY_GLOW,              "clerglow.png",50, ACT_SIT,  aniglowgrow,    0,   1,  0, 0},
+		{Order::Weapon, FAMILY_WAVE,              "wave.png",    50, ACT_FIRE, aniarrow,        6,  3, 16, 0},
+		{Order::Weapon, FAMILY_WAVE2,             "wave2.png",   50, ACT_RANDOM, aniarrow,      4,  4, 12, 0},
+		{Order::Weapon, FAMILY_WAVE3,             "wave3.png",   50, ACT_FIRE, aniarrow,        3,  6, 10, 0},
+		{Order::Weapon, FAMILY_CIRCLE_PROTECTION, "wave2.png",   50, ACT_SIT,  anifood,         1,110,  0, 0},
+		{Order::Weapon, FAMILY_HAMMER,            "hammer.png",  10, ACT_FIRE, aniarrow,        6,  4,  9, 0},
+		{Order::Weapon, FAMILY_DOOR,              "door.png",  5000, ACT_SIT,  anidoor,         0,  1,  0, 0},
+		{Order::Weapon, FAMILY_BOULDER,           "boulder1.png",50, ACT_FIRE, aninone,        10,  9, 25, 0},
 
 		// Treasure entities (STAIN pix handled by gore toggle; data_copy entries have nullptr pix)
 		{Order::Treasure, FAMILY_STAIN,                nullptr,       0, ACT_CONTROL, aniblood, 0, 0, 0, 0},
-		{Order::Treasure, FAMILY_DRUMSTICK,            "food1.pix",  10, ACT_CONTROL, anifood,  5, 0, 0, 0},
-		{Order::Treasure, FAMILY_GOLD_BAR,             "bar1.pix", 1000, ACT_CONTROL, anifood,  0, 0, 0, 0},
+		{Order::Treasure, FAMILY_DRUMSTICK,            "food1.png",  10, ACT_CONTROL, anifood,  5, 0, 0, 0},
+		{Order::Treasure, FAMILY_GOLD_BAR,             "bar1.png", 1000, ACT_CONTROL, anifood,  0, 0, 0, 0},
 		{Order::Treasure, FAMILY_SILVER_BAR,           nullptr,     100, ACT_CONTROL, anifood,  0, 0, 0, 0},
-		{Order::Treasure, FAMILY_MAGIC_POTION,         "bottle.pix",  0, ACT_CONTROL, anifood,  0, 0, 0, 0},
+		{Order::Treasure, FAMILY_MAGIC_POTION,         "bottle.png",  0, ACT_CONTROL, anifood,  0, 0, 0, 0},
 		{Order::Treasure, FAMILY_INVIS_POTION,         nullptr,       0, ACT_CONTROL, anifood,  0, 0, 0, 0},
 		{Order::Treasure, FAMILY_INVULNERABLE_POTION,  nullptr,       0, ACT_CONTROL, anifood,  0, 0, 0, 0},
 		{Order::Treasure, FAMILY_FLIGHT_POTION,        nullptr,       0, ACT_CONTROL, anifood,  0, 0, 0, 0},
-		{Order::Treasure, FAMILY_EXIT,                 "16exit1.pix", 0, ACT_CONTROL, anifood,  0, 0, 0, 0},
-		{Order::Treasure, FAMILY_TELEPORTER,           "teleport.pix",0, ACT_CONTROL, anifood,  0, 0, 0, 0},
-		{Order::Treasure, FAMILY_LIFE_GEM,             "lifegem.pix", 0, ACT_CONTROL, anifood,  0, 0, 0, 0},
-		{Order::Treasure, FAMILY_KEY,                  "key.pix",     0, ACT_CONTROL, anifood,  0, 0, 0, 0},
+		{Order::Treasure, FAMILY_EXIT,                 "16exit1.png", 0, ACT_CONTROL, anifood,  0, 0, 0, 0},
+		{Order::Treasure, FAMILY_TELEPORTER,           "teleport.png",0, ACT_CONTROL, anifood,  0, 0, 0, 0},
+		{Order::Treasure, FAMILY_LIFE_GEM,             "lifegem.png", 0, ACT_CONTROL, anifood,  0, 0, 0, 0},
+		{Order::Treasure, FAMILY_KEY,                  "key.png",     0, ACT_CONTROL, anifood,  0, 0, 0, 0},
 		{Order::Treasure, FAMILY_SPEED_POTION,         nullptr,       0, ACT_CONTROL, anifood,  0, 0, 0, 0},
 
 		// Generator entities
-		{Order::Generator, FAMILY_TENT,      "tent.pix",    100, ACT_GENERATE, anitent,  0, 0, 0, 0},
-		{Order::Generator, FAMILY_TOWER,     "tower4.pix",    0, ACT_GENERATE, anitower, 0, 0, 0, 0},
-		{Order::Generator, FAMILY_BONES,     "bonepile.pix",  0, ACT_GENERATE, aninone,  0, 0, 2, 0},
-		{Order::Generator, FAMILY_TREEHOUSE, "bigtree.pix",   0, ACT_GENERATE, aninone,  0, 0, 0, 0},
+		{Order::Generator, FAMILY_TENT,      "tent.png",    100, ACT_GENERATE, anitent,  0, 0, 0, 0},
+		{Order::Generator, FAMILY_TOWER,     "tower4.png",    0, ACT_GENERATE, anitower, 0, 0, 0, 0},
+		{Order::Generator, FAMILY_BONES,     "bonepile.png",  0, ACT_GENERATE, aninone,  0, 0, 2, 0},
+		{Order::Generator, FAMILY_TREEHOUSE, "bigtree.png",   0, ACT_GENERATE, aninone,  0, 0, 0, 0},
 
 		// Special
-		{Order::Special, FAMILY_RESERVED_TEAM, "team.pix", 0, ACT_RANDOM, nullptr, 0, 0, 0, 0},
+		{Order::Special, FAMILY_RESERVED_TEAM, "team.png", 0, ACT_RANDOM, nullptr, 0, 0, 0, 0},
 
 		// FX entities
-		{Order::FX, FAMILY_EXPAND,       "expand8.pix",    0, ACT_RANDOM, aniexpand8,    0,  0,  0, 0},
-		{Order::FX, FAMILY_GHOST_SCARE,  "expand8.pix",    0, ACT_RANDOM, aniexpand8,    0,  0,  0, 0},
-		{Order::FX, FAMILY_BOMB,         "bomb1.pix",      0, ACT_RANDOM, anibomb1,      0,  0,  0, 0},
-		{Order::FX, FAMILY_EXPLOSION,    "boom1.pix",      0, ACT_RANDOM, aniexplosion1, 0,  0,  0, 0},
-		{Order::FX, FAMILY_FLASH,        "telflash.pix",   0, ACT_RANDOM, aniexpand8,    0,  0,  0, 0},
-		{Order::FX, FAMILY_MAGIC_SHIELD, "mshield.pix",  100, ACT_RANDOM, anikni,        0,  0, 10, 0},
-		{Order::FX, FAMILY_KNIFE_BACK,   "knife.pix",      0, ACT_RANDOM, anikni,        0,  0,  0, 0},
-		{Order::FX, FAMILY_CLOUD,        "cloud.pix",      0, ACT_RANDOM, anicloud,      4,  0, 20, 0},
-		{Order::FX, FAMILY_MARKER,       "marker.pix",     0, ACT_RANDOM, animarker,     0,  0,  0, 0},
-		{Order::FX, FAMILY_BOOMERANG,    "boomer.pix",    50, ACT_RANDOM, ani16,         0,  0,  8, 0},
-		{Order::FX, FAMILY_CHAIN,        "lightnin.pix",   0, ACT_RANDOM, aniarrow,     12, 15,  0, 0},
-		{Order::FX, FAMILY_DOOR_OPEN,    "door.pix",       0, ACT_RANDOM, anidooropen,   0,  0,  0, 0},
-		{Order::FX, FAMILY_HIT,          "hit.pix",        0, ACT_RANDOM, anihit,        0,  0,  0, 0},
+		{Order::FX, FAMILY_EXPAND,       "expand8.png",    0, ACT_RANDOM, aniexpand8,    0,  0,  0, 0},
+		{Order::FX, FAMILY_GHOST_SCARE,  "expand8.png",    0, ACT_RANDOM, aniexpand8,    0,  0,  0, 0},
+		{Order::FX, FAMILY_BOMB,         "bomb1.png",      0, ACT_RANDOM, anibomb1,      0,  0,  0, 0},
+		{Order::FX, FAMILY_EXPLOSION,    "boom1.png",      0, ACT_RANDOM, aniexplosion1, 0,  0,  0, 0},
+		{Order::FX, FAMILY_FLASH,        "telflash.png",   0, ACT_RANDOM, aniexpand8,    0,  0,  0, 0},
+		{Order::FX, FAMILY_MAGIC_SHIELD, "mshield.png",  100, ACT_RANDOM, anikni,        0,  0, 10, 0},
+		{Order::FX, FAMILY_KNIFE_BACK,   "knife.png",      0, ACT_RANDOM, anikni,        0,  0,  0, 0},
+		{Order::FX, FAMILY_CLOUD,        "cloud.png",      0, ACT_RANDOM, anicloud,      4,  0, 20, 0},
+		{Order::FX, FAMILY_MARKER,       "marker.png",     0, ACT_RANDOM, animarker,     0,  0,  0, 0},
+		{Order::FX, FAMILY_BOOMERANG,    "boomer.png",    50, ACT_RANDOM, ani16,         0,  0,  8, 0},
+		{Order::FX, FAMILY_CHAIN,        "lightnin.png",   0, ACT_RANDOM, aniarrow,     12, 15,  0, 0},
+		{Order::FX, FAMILY_DOOR_OPEN,    "door.png",       0, ACT_RANDOM, anidooropen,   0,  0,  0, 0},
+		{Order::FX, FAMILY_HIT,          "hit.png",        0, ACT_RANDOM, anihit,        0,  0,  0, 0},
 
 		// Button graphics (no gameplay properties)
-		{Order::Button1, FAMILY_NORMAL1, "normal1.pix",  0, ACT_RANDOM, nullptr, 0, 0, 0, 0},
-		{Order::Button1, FAMILY_PLUS,    "butplus.pix",  0, ACT_RANDOM, nullptr, 0, 0, 0, 0},
-		{Order::Button1, FAMILY_MINUS,   "butminus.pix", 0, ACT_RANDOM, nullptr, 0, 0, 0, 0},
-		{Order::Button1, FAMILY_WRENCH,  "wrench.pix",   0, ACT_RANDOM, nullptr, 0, 0, 0, 0},
+		{Order::Button1, FAMILY_NORMAL1, "normal1.png",  0, ACT_RANDOM, nullptr, 0, 0, 0, 0},
+		{Order::Button1, FAMILY_PLUS,    "butplus.png",  0, ACT_RANDOM, nullptr, 0, 0, 0, 0},
+		{Order::Button1, FAMILY_MINUS,   "butminus.png", 0, ACT_RANDOM, nullptr, 0, 0, 0, 0},
+		{Order::Button1, FAMILY_WRENCH,  "wrench.png",   0, ACT_RANDOM, nullptr, 0, 0, 0, 0},
 	};
 	// clang-format on
 
@@ -492,11 +492,11 @@ loader::loader(EntityFactory entity_factory)
 
 	// Gore toggle: BLOOD and STAIN use alternate graphics when gore is off
 	if (cfg.is_on("effects", "gore")) {
-		graphics[PIX(Order::Weapon, FAMILY_BLOOD)] = read_pixie_file("blood.pix");
-		graphics[PIX(Order::Treasure, FAMILY_STAIN)] = read_pixie_file("stain.pix");
+		graphics[PIX(Order::Weapon, FAMILY_BLOOD)] = read_pixie_file("blood.png");
+		graphics[PIX(Order::Treasure, FAMILY_STAIN)] = read_pixie_file("stain.png");
 	} else {
-		graphics[PIX(Order::Weapon, FAMILY_BLOOD)] = read_pixie_file("blood_friendly.pix");
-		graphics[PIX(Order::Treasure, FAMILY_STAIN)] = read_pixie_file("stain_friendly.pix");
+		graphics[PIX(Order::Weapon, FAMILY_BLOOD)] = read_pixie_file("blood_friendly.png");
+		graphics[PIX(Order::Treasure, FAMILY_STAIN)] = read_pixie_file("stain_friendly.png");
 	}
 
 	// Treasure items that share graphics via data_copy

@@ -193,7 +193,7 @@ CampaignEntry::CampaignEntry(const std::string& campaign_id, int levels_complete
         // TODO: Get rating from website
         rating = 0.0f;
         
-        std::string icon_file = "icon.pix";
+        std::string icon_file = "icon.png";
         icondata = read_pixie_file(icon_file.c_str());
         if(icondata.valid())
             icon = std::make_unique<pixie>(icondata);

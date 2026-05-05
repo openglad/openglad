@@ -120,7 +120,7 @@ struct FamilyDescriptor {
     void (*on_melee_hit)(walker* self, walker* target);    // called after successful melee attack
 
     // Graphics / loader data (replaces hardcoded gloader.cpp arrays)
-    const char* pix_filename;          // "monk.pix", "footman.pix", etc.
+    const char* pix_filename;          // "monk.png", "footman.png", etc.
     int animation_type;                // FamilyAnimationType enum
     int ai_line_of_sight;              // AI's understanding of ranged attack range
 

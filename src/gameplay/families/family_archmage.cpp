@@ -516,7 +516,7 @@ const FamilyDescriptor& describe_family_archmage()
         .customize_weapon = nullptr,
         .on_ani_complete = nullptr,
         .on_melee_hit = nullptr,
-        .pix_filename = "archmage.pix",
+        .pix_filename = "archmage.png",
         .animation_type = FAMILY_ANIM_MAGE,
         .ai_line_of_sight = 10,
         .description = "An Archmage takes the     \n"

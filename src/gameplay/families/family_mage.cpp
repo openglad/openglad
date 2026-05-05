@@ -309,7 +309,7 @@ const FamilyDescriptor& describe_family_mage()
         .customize_weapon = nullptr,
         .on_ani_complete = nullptr,
         .on_melee_hit = nullptr,
-        .pix_filename = "mage.pix",
+        .pix_filename = "mage.png",
         .animation_type = FAMILY_ANIM_MAGE,
         .ai_line_of_sight = 7,
         .description = "Mages are slow, can't     \n"
