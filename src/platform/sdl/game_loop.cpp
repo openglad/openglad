@@ -7,8 +7,8 @@
  */
 #include <openglad/platform/game_loop.h>
 #include <openglad/core/frame_pacing.h>
-#include <openglad/core/frame_rate_config.h>
 #include <openglad/core/runtime_trace.h>
+#include <openglad/core/sim_cadence.h>
 #include <openglad/core/util.h>
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/legacy/colors.h>
@@ -22,9 +22,6 @@
 #include <openglad/interface/replay_runtime.h>
 #include <openglad/platform/game_session.h>
 #include <openglad/platform/local_transport_shadow.h>
-
-#include <algorithm>
-#include <cmath>
 
 #ifdef TESTING
 void picker_testing_mark_frame_advance();
@@ -70,55 +67,27 @@ GameFrameResult finish_done(GameLoopFrameState& st)
 
 TickSchedule compute_tick_schedule(const screen& s, const GameLoopDeps& deps)
 {
-    (void)s;
-    if (!deps.enable_frame_timing)
-    {
-        og::runtime::emit_runtime_trace(
-            og::runtime::make_runtime_trace_record(
-                "game_loop", "schedule_external_timing"));
-        return {
-            .interval_ms = 0,
-            .caller_manages_timing = true,
-            .immediate_tick = true,
-        };
-    }
-
-    const float raw_speed_factor =
+    const float speed_factor =
         (og::runtime::current_session != nullptr)
             ? og::runtime::current_session->g_game_speed_factor_
             : 1.0f;
-    const int target_fps = (og::runtime::current_session != nullptr)
-        ? og::runtime::current_session->target_fps_
-        : og::core::kDefaultTargetFps;
-    const std::uint32_t base_interval_ms = deps.fixed_tick_ms > 0
-        ? deps.fixed_tick_ms
-        : og::core::target_frame_interval_ms(target_fps);
-    std::uint32_t interval_ms;
-    if (raw_speed_factor <= 0.0f)
-    {
-        // Legacy "max speed" hook used by integration tests via
-        // set_game_speed(0.0f). Run the pacer at the minimum interval so
-        // ticks fire as fast as the OS scheduler allows.
-        interval_ms = 1u;
-    }
-    else
-    {
-        const float speed_factor = std::max(0.01f, raw_speed_factor);
-        const float scaled_ms =
-            static_cast<float>(base_interval_ms) / speed_factor;
-        interval_ms = std::max<std::uint32_t>(
-            1u, static_cast<std::uint32_t>(std::lround(scaled_ms)));
-    }
+    const og::core::SimCadenceInputs inputs{
+        static_cast<short>(s.world().timer_wait),
+        speed_factor,
+        deps.fixed_tick_ms,
+        deps.enable_frame_timing,
+    };
+    const og::core::SimCadenceResult result =
+        og::core::compute_sim_interval_ms(inputs);
 
     og::runtime::emit_runtime_trace(
         og::runtime::make_runtime_trace_record(
-            "game_loop",
-            deps.fixed_tick_ms > 0 ? "schedule_fixed_interval"
-                                   : "schedule_target_fps_interval"));
+            "game_loop", result.trace_event));
+
     return {
-        .interval_ms = interval_ms,
-        .caller_manages_timing = false,
-        .immediate_tick = false,
+        .interval_ms = result.interval_ms,
+        .caller_manages_timing = result.caller_manages_timing,
+        .immediate_tick = result.immediate_tick,
     };
 }
 

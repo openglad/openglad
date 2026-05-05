@@ -34,7 +34,8 @@ struct GameLoopDeps {
 
     // When non-zero, pins the sim tick interval in milliseconds
     // (for example og::sim::DEFAULT_SIM_TICK_MS). When zero, derive the
-    // interval from world.timer_wait for backward compatibility.
+    // interval from world.timer_wait * TIMER_WAIT_TO_MS / g_game_speed_factor_
+    // (master-cadence default; restores the phase-12 contract).
     std::uint32_t fixed_tick_ms = 0;
 
     // Optional: allows tests to bypass expensive rendering even in non-TESTING builds.
