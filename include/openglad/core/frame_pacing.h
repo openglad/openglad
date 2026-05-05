@@ -17,6 +17,10 @@ struct BrowserFramePacingResult
 {
     std::uint32_t target_interval_ms = 0;
     bool should_run_frame = false;
+    // True on every browser callback that did not run a sim tick — i.e.
+    // equals !should_run_frame whenever sim_interval_ms > 0. Browser render
+    // is bounded by the host rAF (~16 ms), so presenting on every non-sim
+    // callback gives smoothest render fps without exceeding host rate.
     bool should_present_frame = false;
     std::uint32_t accumulated_after_add_ms = 0;
     std::uint32_t accumulated_after_step_ms = 0;
@@ -25,7 +29,7 @@ struct BrowserFramePacingResult
 BrowserFramePacingResult step_browser_frame_pacing(
     std::uint32_t accumulated_time_ms,
     std::uint32_t delta_ms,
-    int fps);
+    std::uint32_t sim_interval_ms);
 
 struct FrameDeadlineDecision
 {

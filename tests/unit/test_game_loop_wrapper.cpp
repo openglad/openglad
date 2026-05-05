@@ -110,7 +110,7 @@ TEST(GameLoopWrapper, browser_wrapper_emits_one_browser_frame_step_per_call)
     GameLoopDeps tick_deps = render_deps;
 
     const og::core::BrowserFramePacingResult pacing =
-        og::core::step_browser_frame_pacing(0u, 0u, 0);
+        og::core::step_browser_frame_pacing(0u, 0u, 0u);
     ASSERT_TRUE(pacing.should_run_frame);
 
     run_browser_wrapper_frame(s, st, 0u, pacing, render_deps, tick_deps);

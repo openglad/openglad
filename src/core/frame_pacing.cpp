@@ -22,33 +22,24 @@ std::uint32_t browser_frame_target_interval_ms(int fps)
 BrowserFramePacingResult step_browser_frame_pacing(
     std::uint32_t accumulated_time_ms,
     std::uint32_t delta_ms,
-    int fps)
+    std::uint32_t sim_interval_ms)
 {
     BrowserFramePacingResult result;
-    result.target_interval_ms = browser_frame_target_interval_ms(fps);
-    if (result.target_interval_ms == 0u)
+    result.target_interval_ms = sim_interval_ms;
+    result.accumulated_after_add_ms = accumulated_time_ms + delta_ms;
+    if (sim_interval_ms == 0u)
     {
         result.should_run_frame = true;
-        result.accumulated_after_add_ms = accumulated_time_ms + delta_ms;
+        result.should_present_frame = false;
         result.accumulated_after_step_ms = 0u;
         return result;
     }
 
-    result.accumulated_after_add_ms = accumulated_time_ms + delta_ms;
     result.should_run_frame =
-        result.target_interval_ms > 0u &&
-        result.accumulated_after_add_ms >= result.target_interval_ms;
-    const std::uint32_t presentation_threshold_ms =
-        std::max<std::uint32_t>(1u, (result.target_interval_ms + 1u) / 2u);
-    result.should_present_frame =
-        result.target_interval_ms > 0u &&
-        !result.should_run_frame &&
-        accumulated_time_ms < presentation_threshold_ms &&
-        result.accumulated_after_add_ms >= presentation_threshold_ms;
-    result.accumulated_after_step_ms = result.accumulated_after_add_ms;
-
-    if (result.should_run_frame)
-        result.accumulated_after_step_ms = 0u;
+        result.accumulated_after_add_ms >= sim_interval_ms;
+    result.should_present_frame = !result.should_run_frame;
+    result.accumulated_after_step_ms =
+        result.should_run_frame ? 0u : result.accumulated_after_add_ms;
 
     return result;
 }

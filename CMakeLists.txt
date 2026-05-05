@@ -1124,6 +1124,7 @@ if(NOT EMSCRIPTEN)
 
     set(HEADLESS_SERVER_RUNTIME_SOURCES
         ${SRC_DIR}/server/headless_server_runtime.cpp
+        ${SRC_DIR}/server/headless_tick_interval.cpp
         ${SRC_DIR}/platform/text/platform_headless.cpp
         ${SRC_DIR}/platform/text/walker_headless.cpp
         ${SRC_DIR}/interface/input/input_state.cpp
@@ -1850,6 +1851,7 @@ if(NOT EMSCRIPTEN)
         add_executable(og_unit_server
             ${CMAKE_SOURCE_DIR}/tests/unit/headless_unit_main.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_headless_server_runtime.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_headless_server_tick_interval.cpp
             ${CMAKE_SOURCE_DIR}/src/test_trace.cpp
             ${HEADLESS_SERVER_RUNTIME_SOURCES}
         )

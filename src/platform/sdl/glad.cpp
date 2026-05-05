@@ -312,12 +312,19 @@ static void emscripten_frame_wrapper() {
 				break;
 			{
 				const Uint32 current_time = SDL_GetTicks();
-				const int target_fps =
-					og::runtime::current_session->target_fps_;
+				std::uint32_t sim_interval = 0u;
+				if (current_screen != nullptr &&
+				    og::runtime::current_session->g_game_speed_factor_ > 0.0f)
+				{
+					const float scaled = og::core::rounded_render_tick_interval_ms(
+						current_screen->world().timer_wait,
+						og::runtime::current_session->g_game_speed_factor_);
+					sim_interval = std::max<std::uint32_t>(
+						1u, static_cast<std::uint32_t>(std::lround(scaled)));
+				}
 				og::core::BrowserFramePacingResult pacing;
 				if (!g_frame_state().initialized) {
-					pacing.target_interval_ms =
-						og::core::browser_frame_target_interval_ms(target_fps);
+					pacing.target_interval_ms = sim_interval;
 					pacing.should_run_frame = true;
 				} else {
 					const Uint32 delta =
@@ -325,7 +332,7 @@ static void emscripten_frame_wrapper() {
 					pacing = og::core::step_browser_frame_pacing(
 						g_frame_state().accumulated_time,
 						delta,
-						target_fps);
+						sim_interval);
 				}
 
 				og::runtime::emit_runtime_trace(

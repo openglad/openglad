@@ -20,6 +20,7 @@
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/server/headless_server_runtime.h>
+#include <openglad/server/headless_tick_interval.h>
 
 #include <algorithm>
 #include <atomic>
@@ -90,10 +91,8 @@ void print_usage()
         "  --host <addr>         Listen address (default: 0.0.0.0)\n"
         "  --port <num>          Listen port (default: 12345)\n"
         "  --lobby-poll-ms <n>   Lobby poll interval in ms (default: 10)\n"
-        "  --fps <n>             Target tick rate (clamped to [%d, %d])\n"
-        "  --help, -h            Show this help message\n",
-        og::core::kMinTargetFps,
-        og::core::kMaxTargetFps);
+        "  --fps <n>             Deprecated; no longer affects sim cadence (master semantics derived from world.timer_wait).\n"
+        "  --help, -h            Show this help message\n");
 }
 
 bool parse_int_arg(const char* text, int& out)
@@ -253,9 +252,9 @@ int main(int argc, char* argv[])
         {
             og::core::apply_target_fps_to_cfg(cfg, *args.target_fps);
         }
-        const std::uint32_t frame_interval_ms =
-            og::core::target_frame_interval_ms(
-                og::core::target_fps_from_cfg(cfg));
+        std::uint32_t frame_interval_ms =
+            og::server::compute_headless_tick_interval_ms(
+                og::sim::DEFAULT_TIMER_WAIT);
         init_all_registries();
 
         og::runtime::SessionState& session = og::runtime::s_headless_session;
@@ -388,17 +387,22 @@ int main(int argc, char* argv[])
                     destination);
             };
 
+        Log("headless_server_tick_interval_ms {}\n", frame_interval_ms);
+
         while (!g_shutdown_requested.load(std::memory_order_acquire))
         {
-            const auto tick_start = std::chrono::steady_clock::now();
-            game_server.step();
-
-            if (frame_interval_ms == 0u)
+            const std::uint32_t desired_interval =
+                og::server::compute_headless_tick_interval_ms(
+                    level_data.world().timer_wait);
+            if (desired_interval != frame_interval_ms)
             {
-                std::this_thread::yield();
-                continue;
+                frame_interval_ms = desired_interval;
+                Log("headless_server_tick_interval_ms {}\n",
+                    frame_interval_ms);
             }
 
+            const auto tick_start = std::chrono::steady_clock::now();
+            game_server.step();
             const auto tick_deadline =
                 tick_start +
                 std::chrono::milliseconds(frame_interval_ms);
