@@ -8,7 +8,7 @@
 
 namespace og::core {
 
-inline constexpr int kDefaultTargetFps = 72;
+inline constexpr int kDefaultTargetFps = 12;
 inline constexpr int kMinTargetFps = 10;
 inline constexpr int kMaxTargetFps = 240;
 

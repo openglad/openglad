@@ -195,8 +195,18 @@ static void expect_browser_wrapper_immediate_step_runs_one_tick(
     int tick_count = 0;
 
     GameLoopFrameState st;
+    // Pick an accumulator/delta that always crosses the browser pacer
+    // target interval so should_run_frame is true regardless of fps. For
+    // fps == 0 (fast-mode) the target interval is 0, so any (acc, delta)
+    // works.
+    const std::uint32_t target_interval =
+        og::core::browser_frame_target_interval_ms(fps);
+    const std::uint32_t delta = std::max<std::uint32_t>(16u, target_interval);
+    const std::uint32_t accumulated = target_interval > 0u
+        ? target_interval - 1u
+        : 33u;
     const og::core::BrowserFramePacingResult pacing =
-        og::core::step_browser_frame_pacing(33u, 16u, fps);
+        og::core::step_browser_frame_pacing(accumulated, delta, fps);
     ASSERT_TRUE(pacing.should_run_frame);
 
     GameLoopDeps render_deps;
