@@ -21,5 +21,10 @@ struct GameLoopFrameState {
     std::uint32_t accumulated_time = 0;
     bool has_pending_input = false;
     InputState pending_input = {};
-    og::core::FrameDeadlinePacer pacer;
+    // Two-pacer split: sim_pacer drives sim ticks at the master cadence
+    // (derived from world.timer_wait), while render_pacer drives the render
+    // path at the host's target_fps. They share the same now_ms source but
+    // are configured and ticked independently.
+    og::core::FrameDeadlinePacer sim_pacer;
+    og::core::FrameDeadlinePacer render_pacer;
 };

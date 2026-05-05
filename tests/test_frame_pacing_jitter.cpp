@@ -131,7 +131,7 @@ void run_jitter_drive_at_fps(int fps)
     // Pre-configure the pacer so its interval already matches the schedule
     // (avoiding the configure-and-sleep on the first call). The deadline
     // becomes fake_now + interval, which the loop hits exactly each iteration.
-    st.pacer.configure(interval, fake_now);
+    st.sim_pacer.configure(interval, fake_now);
 
     GameLoopDeps deps;
     deps.enable_render = false;

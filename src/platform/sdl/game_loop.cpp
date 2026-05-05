@@ -7,6 +7,7 @@
  */
 #include <openglad/platform/game_loop.h>
 #include <openglad/core/frame_pacing.h>
+#include <openglad/core/frame_rate_config.h>
 #include <openglad/core/runtime_trace.h>
 #include <openglad/core/sim_cadence.h>
 #include <openglad/core/util.h>
@@ -149,6 +150,16 @@ void clear_pending_input(GameLoopFrameState& st)
     st.pending_input = {};
 }
 
+std::uint32_t render_interval_ms_for_session()
+{
+    const int target_fps =
+        (og::runtime::current_session != nullptr)
+            ? og::runtime::current_session->target_fps_
+            : og::core::kDefaultTargetFps;
+    return std::max<std::uint32_t>(
+        1u, og::core::target_frame_interval_ms(target_fps));
+}
+
 og::runtime::GameSession* require_local_transport_session()
 {
     og::runtime::GameSession* const gameplay_session =
@@ -261,22 +272,36 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
     if (gameplay_session == nullptr)
         return finish_done(st);
 
-    // Deadline pacer: gate event poll, input poll, tick, and render on the
-    // pacer's decision so each desktop frame consumes exactly the same
-    // wall-clock budget. enable_frame_timing == false (browser tick path)
-    // and enable_tick == false (browser render path) bypass the pacer.
+    // Two-pacer split: sim_pacer gates event poll, input latching, and sim
+    // tick on the master cadence (world.timer_wait), while render_pacer gates
+    // the render path on target_fps. enable_frame_timing == false (browser
+    // tick path) and enable_tick == false (browser render path) bypass both.
     bool render_this_frame = true;
+    bool sim_tick_this_frame = true;
     const std::function<std::uint32_t()> now_ms_fn =
         deps.now_ms ? deps.now_ms
                     : std::function<std::uint32_t()>(default_now_ms);
     if (deps.enable_tick && deps.enable_frame_timing)
     {
         const TickSchedule schedule = compute_tick_schedule(s, deps);
+        const std::uint32_t sim_interval = schedule.interval_ms;
+        const std::uint32_t render_interval = render_interval_ms_for_session();
         const std::uint32_t now = now_ms_fn();
-        if (st.pacer.interval_ms() != schedule.interval_ms)
-            st.pacer.configure(schedule.interval_ms, now);
-        const og::core::FrameDeadlineDecision decision = st.pacer.tick(now);
-        if (!decision.run_tick)
+        if (st.sim_pacer.interval_ms() != sim_interval)
+            st.sim_pacer.configure(sim_interval, now);
+        if (deps.enable_render &&
+            st.render_pacer.interval_ms() != render_interval)
+            st.render_pacer.configure(render_interval, now);
+
+        const og::core::FrameDeadlineDecision sim_decision =
+            st.sim_pacer.tick(now);
+        const og::core::FrameDeadlineDecision render_decision =
+            deps.enable_render
+                ? st.render_pacer.tick(now)
+                : og::core::FrameDeadlineDecision{
+                      false, false, UINT32_MAX, 0u};
+
+        if (!sim_decision.run_tick && !render_decision.run_render)
         {
             og::runtime::emit_runtime_trace(
                 og::runtime::make_runtime_trace_record(
@@ -286,10 +311,11 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
                     ? deps.sleep_ms
                     : std::function<void(std::uint32_t)>(
                           [](std::uint32_t ms) { SDL_Delay(ms); });
-            sleep_fn(decision.sleep_ms);
+            sleep_fn(std::min(sim_decision.sleep_ms, render_decision.sleep_ms));
             return GameFrameResult::Continue;
         }
-        render_this_frame = decision.run_render;
+        sim_tick_this_frame = sim_decision.run_tick;
+        render_this_frame = render_decision.run_render;
     }
 
     if (deps.enable_event_poll) {
@@ -351,9 +377,9 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
     {
         if (deps.enable_frame_timing)
         {
-            // Pacer already cleared decision.run_tick == true above; run
-            // exactly one sim tick per call. No catch-up bursts.
-            ticks_to_run = 1;
+            // sim_pacer gates sim ticks independently of render_pacer; run
+            // exactly one sim tick per call only when sim_decision fired.
+            ticks_to_run = sim_tick_this_frame ? 1u : 0u;
         }
         else
         {
@@ -395,6 +421,9 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
         s.refresh();
     }
 #endif
+
+    if (deps.on_render && render_this_frame)
+        deps.on_render(s);
 
     if (s.world().end || st.done)
         return finish_done(st);

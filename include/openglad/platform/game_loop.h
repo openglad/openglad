@@ -45,6 +45,11 @@ struct GameLoopDeps {
     // When false, skip internal accumulator pacing and run at most one sim tick
     // per call. Used by multi-session demos that apply their own pacing.
     bool enable_frame_timing = true;
+
+    // Invoked once per call only when the render pacer's run_render is true.
+    // Default empty — production builds rely on the in-line redraw/refresh
+    // path; tests use this hook to observe render-pacer firing.
+    std::function<void(screen&)> on_render;
 };
 
 enum class GameFrameResult {
