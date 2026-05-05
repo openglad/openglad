@@ -194,6 +194,7 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scr)
 
 #include <openglad/resources/pixie_data.h>
 PixieData read_pixie_file(const char  * filename);
+bool write_pixie_png(const char* filepath, const PixieData& data);
 
 // Some stuff for palette
 struct rgb

@@ -215,6 +215,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/interface/sdl_context_services.cpp
     ${SRC_DIR}/interface/cheat_handler.cpp
     ${SRC_DIR}/interface/render/sdl_level_render.cpp
+    ${THIRD_PARTY_DIR}/lodepng/lodepng.cpp
 )
 
 set(GAME_SOURCES_NO_MAIN ${GAME_SOURCES})
@@ -366,6 +367,7 @@ set(OG_IO_SOURCES
     ${SRC_DIR}/resources/io/zip_api.cpp
     ${SRC_DIR}/resources/io/yaml_stream.cpp
     ${SRC_DIR}/resources/io/og_file.cpp
+    ${THIRD_PARTY_DIR}/lodepng/lodepng.cpp
 )
 
 set(OG_PLATFORM_SOURCES
@@ -609,6 +611,7 @@ set(OG_THIRD_PARTY_INCLUDE_DIRS
     ${THIRD_PARTY_DIR}/physfs/extras
     ${THIRD_PARTY_DIR}/physfs/zlib123
     ${THIRD_PARTY_DIR}/libzip
+    ${THIRD_PARTY_DIR}/lodepng
 )
 
 set(COMMON_DEFINITIONS
@@ -809,6 +812,7 @@ if(NOT EMSCRIPTEN)
         ${THIRD_PARTY_DIR}/physfs
         ${THIRD_PARTY_DIR}/physfs/extras
         ${THIRD_PARTY_DIR}/libzip
+        ${THIRD_PARTY_DIR}/lodepng
     )
     target_link_libraries(og_resources PUBLIC
         og_core
@@ -925,6 +929,8 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/resources/io/zip_api.cpp
         ${SRC_DIR}/resources/io/yaml_stream.cpp
         ${SRC_DIR}/resources/io/og_file.cpp
+        ${SRC_DIR}/resources/our_palette.cpp
+        ${THIRD_PARTY_DIR}/lodepng/lodepng.cpp
         # runtime (SDL-free subset)
         ${SRC_DIR}/platform/game_context.cpp
         ${SRC_DIR}/gameplay/gameplay_context.cpp
@@ -948,6 +954,7 @@ if(NOT EMSCRIPTEN)
         ${THIRD_PARTY_DIR}/physfs
         ${THIRD_PARTY_DIR}/physfs/extras
         ${THIRD_PARTY_DIR}/libzip
+        ${THIRD_PARTY_DIR}/lodepng
     )
     target_compile_definitions(openglad_text PRIVATE
         ${COMMON_DEFINITIONS}

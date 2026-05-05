@@ -12,13 +12,18 @@
 #include <openglad/resources/og_file.h>
 #include <openglad/core/util.h>
 #include <openglad/resources/pixie_data.h>
+#include <openglad/resources/our_palette.h>
 
 #include "physfs.h"
+#include "lodepng.h"
 
 #include <cstdio>
 #include <cstring>
 #include <memory>
+#include <sstream>
 #include <string>
+#include <unordered_map>
+#include <vector>
 
 // Path helpers (defined in platform_io.cpp, linked via og_io or text client)
 std::string get_user_path();
@@ -216,41 +221,191 @@ OgFilePtr og_open_write(const char* path, const char* file)
 } // namespace og::io
 
 // ---------------------------------------------------------------------------
-// read_pixie_file — SDL-free implementation
+// write_pixie_png — SDL-free indexed PNG writing via lodepng + OgFile
 // ---------------------------------------------------------------------------
-// Reads a .pix sprite file: 1-byte frames, 1-byte w, 1-byte h, then frame data.
-// This replaces the version formerly in src/render/graphlib.cpp.
+
+bool write_pixie_png(const char* filepath, const PixieData& data)
+{
+    if (!data.valid()) return false;
+
+    auto outfile = og::io::og_open_write(filepath);
+    if (!outfile) {
+        LogError("Failed to open for writing: {}\n", filepath);
+        return false;
+    }
+
+    const unsigned w = static_cast<unsigned>(data.w);
+    const unsigned h = static_cast<unsigned>(data.h) * static_cast<unsigned>(data.frames);
+
+    lodepng::State state;
+    state.info_raw.colortype = LCT_PALETTE;
+    state.info_raw.bitdepth = 8;
+    state.info_png.color.colortype = LCT_PALETTE;
+    state.info_png.color.bitdepth = 8;
+
+    for (unsigned i = 0; i < 256; ++i) {
+        const unsigned r6 = our_pal_lookup(static_cast<int>(i * 3));
+        const unsigned g6 = our_pal_lookup(static_cast<int>(i * 3 + 1));
+        const unsigned b6 = our_pal_lookup(static_cast<int>(i * 3 + 2));
+        const auto r8 = static_cast<unsigned char>((r6 * 255u) / 63u);
+        const auto g8 = static_cast<unsigned char>((g6 * 255u) / 63u);
+        const auto b8 = static_cast<unsigned char>((b6 * 255u) / 63u);
+        const auto a8 = static_cast<unsigned char>((i == 0) ? 0u : 255u);
+        lodepng_palette_add(&state.info_raw, r8, g8, b8, a8);
+        lodepng_palette_add(&state.info_png.color, r8, g8, b8, a8);
+    }
+
+    std::vector<unsigned char> png_bytes;
+    const unsigned err = lodepng::encode(png_bytes, data.data.get(), w, h, state);
+    if (err != 0) {
+        LogError("Failed to encode PNG: {}: {}\n", filepath, lodepng_error_text(err));
+        return false;
+    }
+
+    const std::size_t wrote = outfile->write(png_bytes.data(), 1, png_bytes.size());
+    if (wrote != png_bytes.size()) {
+        LogError("Failed to write PNG: {}\n", filepath);
+        return false;
+    }
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Sprite manifest — maps PNG filename to (frames, width, height)
+// ---------------------------------------------------------------------------
+struct SpriteInfo { int frames; int w; int h; };
+static std::unordered_map<std::string, SpriteInfo> s_sprite_manifest;
+static bool s_manifest_loaded = false;
+
+static void load_sprite_manifest()
+{
+    using namespace og::io;
+    if (s_manifest_loaded) return;
+    s_manifest_loaded = true;
+
+    auto infile = og_open_read("pix/", "sprite_manifest.txt");
+    if (!infile)
+        infile = og_open_read("sprite_manifest.txt");
+    if (!infile) {
+        LogWarn("No sprite_manifest.txt found; assuming 1 frame per PNG\n");
+        return;
+    }
+
+    // Read entire file
+    infile->seek(0, 2); // SEEK_END
+    auto file_size = infile->tell();
+    infile->seek(0, 0); // SEEK_SET
+    if (file_size <= 0) return;
+
+    std::string content(static_cast<std::size_t>(file_size), '\0');
+    infile->read(content.data(), 1, static_cast<std::size_t>(file_size));
+
+    std::istringstream iss(content);
+    std::string line;
+    while (std::getline(iss, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        std::istringstream lss(line);
+        std::string fname;
+        int frames, w, h;
+        if (lss >> fname >> frames >> w >> h) {
+            s_sprite_manifest[fname] = {frames, w, h};
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// read_pixie_file — SDL-free indexed PNG implementation
+// ---------------------------------------------------------------------------
+// Reads a PNG sprite file via lodepng. Each pixel value is a palette index.
+// Frame metadata comes from pix/sprite_manifest.txt.
 
 PixieData read_pixie_file(const char* filename)
 {
     using namespace og::io;
     PixieData result;
 
+    load_sprite_manifest();
+
     auto infile = og_open_read("pix/", filename);
     if (!infile)
         infile = og_open_read(filename);
     if (!infile) {
-        LogError("Cannot open pixie file: pix/{}\n", filename);
+        LogError("Cannot open sprite file: pix/{}\n", filename);
         return result;
     }
 
-    if (!og_read_exact(*infile, &result.frames, 1, 1) ||
-        !og_read_exact(*infile, &result.w, 1, 1) ||
-        !og_read_exact(*infile, &result.h, 1, 1))
+    // Read entire file into memory for lodepng
+    infile->seek(0, 2); // SEEK_END
+    auto file_size = infile->tell();
+    infile->seek(0, 0); // SEEK_SET
+    if (file_size <= 0) {
+        LogError("Empty sprite file: pix/{}\n", filename);
+        return result;
+    }
+
+    auto file_data = std::make_unique<unsigned char[]>(static_cast<std::size_t>(file_size));
+    if (infile->read(file_data.get(), 1, static_cast<std::size_t>(file_size))
+        != static_cast<std::size_t>(file_size))
     {
-        LogError("Failed to read pixie header: pix/{}\n", filename);
+        LogError("Failed to read sprite file: pix/{}\n", filename);
         return result;
     }
 
-    std::size_t size = result.w * result.h * result.frames;
-    result.data = std::make_unique<unsigned char[]>(size);
+    lodepng::State state;
+    state.decoder.color_convert = 0;
 
-    if (!og_read_exact(*infile, result.data.get(), 1, size))
-    {
-        LogError("Failed to read pixie payload: pix/{} ({} bytes)\n", filename, size);
-        result.free();
+    std::vector<unsigned char> pixels;
+    unsigned png_w = 0;
+    unsigned png_h = 0;
+    const unsigned decode_err = lodepng::decode(
+        pixels, png_w, png_h, state, file_data.get(), static_cast<std::size_t>(file_size));
+    if (decode_err != 0) {
+        LogError("Failed to decode PNG: pix/{}: {}\n", filename, lodepng_error_text(decode_err));
         return result;
     }
 
+    const auto colortype = state.info_png.color.colortype;
+    const auto bitdepth = state.info_png.color.bitdepth;
+    const bool indexed_8bit = (colortype == LCT_PALETTE && bitdepth == 8);
+    const bool legacy_grey_8bit = (colortype == LCT_GREY && bitdepth == 8);
+    if (!indexed_8bit && !legacy_grey_8bit) {
+        LogError("Sprite PNG must be indexed or legacy grayscale (8-bit): pix/{}\n", filename);
+        return result;
+    }
+
+    if (pixels.size() != static_cast<std::size_t>(png_w) * static_cast<std::size_t>(png_h)) {
+        LogError("Unexpected indexed PNG size for pix/{}\n", filename);
+        return result;
+    }
+
+    // Look up frame metadata from manifest
+    auto it = s_sprite_manifest.find(filename);
+    int frames = 1;
+    int frame_h = static_cast<int>(png_h);
+    if (it != s_sprite_manifest.end()) {
+        frames = it->second.frames;
+        frame_h = it->second.h;
+    }
+
+    if (png_w > 255 || frame_h > 255 || frames > 255) {
+        LogError("Sprite dimensions too large for PixieData: pix/{}\n", filename);
+        return result;
+    }
+
+    const auto expected_h = static_cast<unsigned>(frame_h) * static_cast<unsigned>(frames);
+    if (expected_h != png_h) {
+        LogError("Sprite manifest mismatch for pix/{}: expected total height {}, got {}\n",
+                 filename, expected_h, png_h);
+        return result;
+    }
+
+    result.frames = static_cast<unsigned char>(frames);
+    result.w = static_cast<unsigned char>(png_w);
+    result.h = static_cast<unsigned char>(frame_h);
+
+    std::size_t total_size = static_cast<std::size_t>(png_w) * static_cast<std::size_t>(frame_h)
+        * static_cast<std::size_t>(frames);
+    result.data = std::make_unique<unsigned char[]>(total_size);
+    std::memcpy(result.data.get(), pixels.data(), total_size);
     return result;
 }
