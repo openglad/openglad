@@ -748,13 +748,13 @@ TEST(LevelDataUnit, level_data_r14_lines_705_770_786_912_1069_1206_load_versions
         ASSERT_TRUE(data.grid_file == "grid");
     }
 
-    // v3, grid with .pix extension path + long line width skip/discard path.
+    // v3, grid with .png extension path + long line width skip/discard path.
     {
-        std::vector<unsigned char> bytes = make_payload_v3("ab.pix", 95);
+        std::vector<unsigned char> bytes = make_payload_v3("ab.png", 95);
         MemoryOgFile mem(bytes);
         LevelRuntimeData data(2, true);
         ASSERT_TRUE(load_scenario_version(mem, &data, 3) == 1);
-        ASSERT_TRUE(data.grid_file == "ab.pix");
+        ASSERT_TRUE(data.grid_file == "ab.png");
         ASSERT_TRUE(!data.description.empty());
     }
 

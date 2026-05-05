@@ -79,8 +79,8 @@ public:
 
 TEST_F(IoNewFileFixture, io_new_file_helpers_typed_success_paths)
 {
-    const auto pix_file = g_fixture.base / "new.pix";
-    const auto map_file = g_fixture.base / "map.pix";
+    const auto pix_file = g_fixture.base / "new.png";
+    const auto map_file = g_fixture.base / "map.png";
     const auto campaign_file = g_fixture.base / "campaign.yaml";
     const auto scen_file = g_fixture.base / "scen1.fss";
 
@@ -89,8 +89,8 @@ TEST_F(IoNewFileFixture, io_new_file_helpers_typed_success_paths)
     ASSERT_EQ(static_cast<int>(NewFileIoError::None), static_cast<int>(create_new_campaign_descriptor_with_error(campaign_file.string()))) << "create_new_campaign_descriptor_with_error should succeed";
     ASSERT_EQ(static_cast<int>(NewFileIoError::None), static_cast<int>(create_new_scen_file_with_error(scen_file.string(), "scen0001"))) << "create_new_scen_file_with_error should succeed";
 
-    ASSERT_TRUE(std::filesystem::exists(pix_file)) << "new.pix should exist";
-    ASSERT_TRUE(std::filesystem::exists(map_file)) << "map.pix should exist";
+    ASSERT_TRUE(std::filesystem::exists(pix_file)) << "new.png should exist";
+    ASSERT_TRUE(std::filesystem::exists(map_file)) << "map.png should exist";
     ASSERT_TRUE(std::filesystem::exists(campaign_file)) << "campaign.yaml should exist";
     ASSERT_TRUE(std::filesystem::exists(scen_file)) << "scen1.fss should exist";
 
@@ -105,7 +105,7 @@ TEST_F(IoNewFileFixture, io_new_file_helpers_typed_success_paths)
 
 TEST_F(IoNewFileFixture, io_new_file_helpers_typed_invalid_dimensions)
 {
-    const auto invalid_file = g_fixture.base / "invalid.pix";
+    const auto invalid_file = g_fixture.base / "invalid.png";
     ASSERT_EQ(static_cast<int>(NewFileIoError::InvalidDimensions), static_cast<int>(create_new_pix_with_error(invalid_file.string(), 0, 5, 1))) << "zero width should return InvalidDimensions";
     ASSERT_EQ(static_cast<int>(NewFileIoError::InvalidDimensions), static_cast<int>(create_new_map_pix_with_error(invalid_file.string(), 5, 0))) << "zero height should return InvalidDimensions";
     ASSERT_TRUE(!std::filesystem::exists(invalid_file)) << "invalid create should not write output file";
