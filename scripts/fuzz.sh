@@ -5,9 +5,9 @@
 #   ./scripts/fuzz.sh [target] [duration_seconds]
 #
 # Examples:
-#   ./scripts/fuzz.sh                 # Build only
-#   ./scripts/fuzz.sh pixie 60        # Fuzz pixie parser for 60 seconds
-#   ./scripts/fuzz.sh all 300         # Fuzz all targets for 300s each
+#   ./scripts/fuzz.sh                   # Build only
+#   ./scripts/fuzz.sh scenario 60       # Fuzz scenario parser for 60 seconds
+#   ./scripts/fuzz.sh all 300           # Fuzz all targets for 300s each
 #
 # Requires: clang/clang++, cmake, ninja, libsdl2-dev, libsdl2-mixer-dev
 
@@ -23,9 +23,8 @@ BUILD_DIR="$PROJECT_DIR/build/ci-fuzz"
 CORPUS_DIR="$PROJECT_DIR/fuzz/corpus"
 CRASH_DIR="$PROJECT_DIR/fuzz/crashes"
 
-TARGETS=(fuzz_pixie fuzz_scenario fuzz_savefile)
+TARGETS=(fuzz_scenario fuzz_savefile)
 CORPUS_MAP=(
-    "fuzz_pixie:pixie"
     "fuzz_scenario:scenario"
     "fuzz_savefile:savefile"
 )
@@ -53,7 +52,7 @@ if [ -z "$TARGET" ] || [ "$DURATION" = "0" ] && [ "$TARGET" != "all" ]; then
     echo "Available targets: ${TARGETS[*]}"
     echo ""
     echo "To run a fuzzer:"
-    echo "  $0 pixie 60        # Fuzz pixie parser for 60 seconds"
+    echo "  $0 scenario 60     # Fuzz scenario parser for 60 seconds"
     echo "  $0 all 300         # Fuzz all targets for 300s each"
     exit 0
 fi

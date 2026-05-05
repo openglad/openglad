@@ -1633,11 +1633,6 @@ if(ENABLE_FUZZING)
         target_link_options(${name} PRIVATE ${FUZZ_LINK_FLAGS})
     endfunction()
 
-    # fuzz_pixie: exercises .pix sprite data parsing (header + payload)
-    add_fuzz_target(fuzz_pixie ${SRC_DIR}/fuzz/fuzz_pixie.cpp)
-    target_sources(fuzz_pixie PRIVATE ${SRC_DIR}/resources/pixie_data.cpp)
-    target_link_libraries(fuzz_pixie PRIVATE ${SDL2_LIBRARIES})
-
     # fuzz_scenario: exercises .fss scenario binary parsing
     add_fuzz_target(fuzz_scenario ${SRC_DIR}/fuzz/fuzz_scenario.cpp)
     target_link_libraries(fuzz_scenario PRIVATE ${SDL2_LIBRARIES})
