@@ -1,6 +1,7 @@
 #include <openglad/core/frame_pacing.h>
 #include <openglad/core/frame_rate_config.h>
 #include <openglad/core/runtime_trace.h>
+#include <openglad/core/util.h>
 #include <openglad/gameplay/game_client.h>
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/net_transport.h>
@@ -115,7 +116,13 @@ void run_jitter_drive_at_fps(int fps)
     (void)fixture;
     ASSERT_TRUE(og::runtime::local_transport_active(*game_session));
 
-    const std::uint32_t interval = og::core::target_frame_interval_ms(fps);
+    // Sim cadence is derived from world.timer_wait (master semantics),
+    // independent of target_fps. Advance the clock at that cadence so each
+    // frame hits exactly one sim deadline; the invariant under test is that
+    // setting any target_fps does not perturb sim determinism.
+    const std::uint32_t interval = static_cast<std::uint32_t>(std::lround(
+        og::core::rounded_render_tick_interval_ms(
+            game_screen->world().timer_wait, 1.0f)));
     ASSERT_GE(interval, 1u);
 
     og::runtime::set_runtime_trace_enabled(true);
@@ -137,7 +144,8 @@ void run_jitter_drive_at_fps(int fps)
     deps.enable_render = false;
     deps.enable_event_poll = false;
     // Leave deps.fixed_tick_ms == 0 so compute_tick_schedule() reads from
-    // og::runtime::current_session->target_fps_ — proving the knob is honored.
+    // world.timer_wait (master sim cadence) — proving target_fps is not
+    // consulted on the sim path.
     deps.now_ms = [&fake_now]() { return fake_now; };
     deps.sleep_ms = [&sleep_calls](std::uint32_t ms) {
         sleep_calls.push_back(ms);
