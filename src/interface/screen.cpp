@@ -417,6 +417,8 @@ void screen::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 void screen::buffer_to_screen(Sint32 viewstartx, Sint32 viewstarty,
                               Sint32 viewwidth, Sint32 viewheight)
 {
+    TRACE("present", "buffer_to_screen %d %d %d %d",
+          viewstartx, viewstarty, viewwidth, viewheight);
     video_impl_->buffer_to_screen(viewstartx, viewstarty, viewwidth, viewheight);
 }
 

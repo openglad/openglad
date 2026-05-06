@@ -6,6 +6,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/legacy/base.h>
+#include <openglad/core/test_trace.h>
 #include <gtest/gtest.h>
 #include <memory>
 
@@ -206,5 +207,50 @@ TEST(GladHud, glad_score_panel_and_new_score_panel_modes)
     ASSERT_EQ(1, (int)score_panel(og::runtime::current_session->myscreen_, 1)) << "score_panel overload";
 
     v->control = control_pointer_is_live(og::runtime::current_session->myscreen_->level_runtime_data(), old_control) ? old_control : nullptr;
+}
+
+TEST(GladHud, RedrawmeFlickerNoUnpaintedPresent)
+{
+    auto control = make_player(0);
+    ASSERT_TRUE(control != nullptr);
+    walker* controlp = control.get();
+    controlp->user = 0;
+    controlp->team_num = 0;
+    controlp->dead = 0;
+    controlp->stats()->hitpoints = 50;
+    controlp->stats()->max_hitpoints = 100;
+    controlp->stats()->magicpoints = 30;
+    controlp->stats()->max_magicpoints = 80;
+
+    screen* s = og::runtime::current_session->myscreen_;
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_TRUE(v != nullptr);
+    walker* old_control = v->control;
+    v->control = controlp;
+    v->prefs[PREF_OVERLAY] = PREF_OVERLAY_ON;
+    v->prefs[PREF_LIFE]    = PREF_LIFE_BARS;
+    v->prefs[PREF_SCORE]   = PREF_SCORE_ON;
+    v->prefs[PREF_FOES]    = PREF_FOES_ON;
+
+    s->redrawme = 1;
+    trace_clear();
+
+    s->draw_panels(s->numviews);
+    ASSERT_EQ(0, trace_count("present"))
+        << "regression: draw_panels must not present; presenting before "
+           "score_panel paints the HUD causes the overlay flicker";
+
+    score_panel(s, 1);
+    ASSERT_EQ(0, trace_count("present"))
+        << "score_panel paints into the back buffer only; it must not present";
+
+    s->buffer_to_screen(0, 0, 320, 200);
+    ASSERT_EQ(1, trace_count("present"))
+        << "exactly one full-screen present must follow score_panel in the "
+           "redrawme path";
+
+    v->control = control_pointer_is_live(s->level_runtime_data(), old_control)
+        ? old_control : nullptr;
+    s->redrawme = 0;
 }
 
