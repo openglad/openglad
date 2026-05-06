@@ -1251,7 +1251,6 @@ void screen::draw_panels(short howmany)
 
 
 	redraw(); // repaint the screen area ..
-	buffer_to_screen(0, 0, 320, 200);
 }
 
 // Uses pixel coordinates
