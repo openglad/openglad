@@ -8,7 +8,10 @@
 
 namespace og::core {
 
-inline constexpr int kDefaultTargetFps = 12;
+// Default render-frame rate. Sim cadence is governed by world.timer_wait
+// (master semantics) — target_fps controls how often the render path runs,
+// not the gameplay tick rate.
+inline constexpr int kDefaultTargetFps = 72;
 inline constexpr int kMinTargetFps = 10;
 inline constexpr int kMaxTargetFps = 240;
 

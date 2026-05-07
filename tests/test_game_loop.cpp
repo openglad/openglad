@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <set>
 #include <string>
@@ -16,6 +17,7 @@
 #include <openglad/gameplay/input_state.h>
 #include <openglad/core/frame_pacing.h>
 #include <openglad/core/frame_rate_config.h>
+#include <openglad/core/runtime_trace.h>
 #include <openglad/interface/replay_runtime.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/platform/game_loop.h>
@@ -1820,6 +1822,11 @@ TEST(GameLoop, single_tick_per_call)
               game_frame_with_result(*game_screen, st, deps));
     EXPECT_EQ(0, tick_count);
 
+    // With enable_render = false the render pacer is never configured and
+    // remains uninitialized. Only the sim pacer participates.
+    EXPECT_EQ(0u, st.render_pacer.interval_ms())
+        << "render_pacer must stay uninitialized when enable_render is false";
+
     // N=100 calls, each advancing the clock by exactly one interval. The
     // pacer must fire exactly one tick per call — never more.
     for (int i = 0; i < kFrames; ++i)
@@ -1833,6 +1840,8 @@ TEST(GameLoop, single_tick_per_call)
             << " ticks; expected exactly 1";
     }
     EXPECT_EQ(tick_count, kFrames);
+    EXPECT_EQ(0u, st.render_pacer.interval_ms())
+        << "render_pacer must stay uninitialized after all sim-only frames";
 
     game_screen->world().delete_objects();
 }
@@ -1877,6 +1886,117 @@ TEST(GameLoop, idle_call_sleeps_remaining_interval)
     EXPECT_EQ(0, tick_count);
     ASSERT_EQ(sleeps.size(), 2u);
     EXPECT_EQ(sleeps[1], interval_ms - (interval_ms / 2u));
+
+    game_screen->world().delete_objects();
+}
+
+// ---------------------------------------------------------------------------
+// Locks in master sim cadence under high-fps render. Regresses the bug fixed
+// across phases 1-4: sim used to be paced from target_fps, so raising
+// target_fps would speed up gameplay. The contract now is sim cadence is
+// derived from world.timer_wait * TIMER_WAIT_TO_MS (master semantics) and is
+// independent of target_fps; render runs at target_fps.
+// ---------------------------------------------------------------------------
+
+TEST(MasterSpeedRegression, sim_runs_at_timer_wait_cadence)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    GameSpeedGuard speed(1.0f);
+    ASSERT_TRUE(load_minimal_game_loop_scenario("test_master_speed_regression"))
+        << "load_saved_game should succeed for master-speed regression test";
+
+    // Reset target_fps to 72 for this test, restoring it on exit.
+    const int saved_target_fps = og::runtime::current_session->target_fps_;
+    og::runtime::current_session->target_fps_ = 72;
+    struct TargetFpsRestore {
+        int saved;
+        ~TargetFpsRestore() {
+            og::runtime::current_session->target_fps_ = saved;
+        }
+    } target_fps_restore{saved_target_fps};
+
+    // Force the master cadence: world.timer_wait = DEFAULT_TIMER_WAIT (=6),
+    // so sim_interval = 6 * 13.6 ≈ 82 ms. Confirmed in assertions below.
+    game_screen->world().timer_wait = og::sim::DEFAULT_TIMER_WAIT;
+
+    constexpr int kFrames = 600;
+    const std::uint32_t render_interval =
+        og::core::target_frame_interval_ms(72);
+    ASSERT_EQ(14u, render_interval);
+    const std::uint32_t sim_interval =
+        static_cast<std::uint32_t>(std::lround(
+            og::sim::DEFAULT_TIMER_WAIT * og::sim::TIMER_WAIT_TO_MS));
+    ASSERT_EQ(82u, sim_interval);
+
+    og::runtime::set_runtime_trace_enabled(true);
+    og::runtime::clear_runtime_trace();
+
+    GameLoopFrameState st;
+    std::uint32_t fake_now = 200000u;
+    int tick_count = 0;
+    int render_count = 0;
+    std::vector<std::uint32_t> sleeps;
+    // Pre-configure both pacers so the loop's interval-mismatch checks are
+    // no-ops and the first call does not emit a startup sleep.
+    st.sim_pacer.configure(sim_interval, fake_now);
+    st.render_pacer.configure(render_interval, fake_now);
+
+    GameLoopDeps deps;
+    deps.enable_render = true;
+    deps.enable_event_poll = false;
+    // Master-cadence default branch: deps.fixed_tick_ms == 0 forces
+    // compute_tick_schedule() to read from world.timer_wait.
+    deps.fixed_tick_ms = 0u;
+    deps.now_ms = [&fake_now]() { return fake_now; };
+    deps.sleep_ms = [&sleeps](std::uint32_t ms) { sleeps.push_back(ms); };
+    deps.after_act = [&tick_count](screen&) { ++tick_count; };
+    deps.on_render = [&render_count](screen&) { ++render_count; };
+
+    for (int i = 0; i < kFrames; ++i)
+    {
+        fake_now += render_interval;
+        const GameFrameResult result =
+            game_frame_with_result(*game_screen, st, deps);
+        ASSERT_EQ(GameFrameResult::Continue, result)
+            << "scenario must keep running across all 600 master-cadence "
+               "frames";
+    }
+
+    // 600 calls × 14 ms / 82 ms ≈ 102 sim ticks. Allow ±1 to absorb the
+    // initial deadline phase between the two pacers.
+    const int expected_sim_ticks = static_cast<int>(
+        (static_cast<std::uint64_t>(kFrames) * render_interval) / sim_interval);
+    EXPECT_EQ(102, expected_sim_ticks)
+        << "expected_sim_ticks formula must match the documented constant";
+    EXPECT_NEAR(expected_sim_ticks, tick_count, 1)
+        << "sim must run at master cadence (~82 ms / tick), not at the "
+           "render rate";
+
+    // Render fires once per call (drive clock advances by exactly
+    // render_interval). Allow ±2 to absorb pacer phase.
+    EXPECT_NEAR(kFrames, render_count, 2)
+        << "render must run at target_fps (~14 ms / frame at 72 fps)";
+
+    // No call should sleep — every call has at least the render pacer
+    // firing, so the desktop loop never enters the idle sleep branch.
+    EXPECT_TRUE(sleeps.empty())
+        << "no sleeps expected when fake_now exactly tracks the render "
+           "deadline";
+    const auto traces = og::runtime::copy_runtime_trace();
+    const int sleep_traces = static_cast<int>(std::count_if(
+        traces.begin(), traces.end(),
+        [](const og::runtime::RuntimeTraceRecord& r) {
+            return r.category == "game_loop" &&
+                r.event == "desktop_loop_sleep_ms";
+        }));
+    EXPECT_EQ(0, sleep_traces)
+        << "desktop_loop_sleep_ms must not fire when render fires every call";
+
+    // Sanity: world.timer_wait must remain at DEFAULT_TIMER_WAIT throughout —
+    // any drift would mean the test is implicitly retuning master cadence.
+    EXPECT_EQ(og::sim::DEFAULT_TIMER_WAIT, game_screen->world().timer_wait)
+        << "world.timer_wait must not drift during the regression run";
 
     game_screen->world().delete_objects();
 }

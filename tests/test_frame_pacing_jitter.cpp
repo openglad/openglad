@@ -110,20 +110,28 @@ void run_jitter_drive_at_fps(int fps)
     // gameplay state.
     game_screen->world().delete_objects();
     game_screen->world().end = 0;
+    game_screen->world().timer_wait = og::sim::DEFAULT_TIMER_WAIT;
 
     const InProcessShadowFixture fixture =
         install_clientonly_shadow_fixture(*game_session, *game_screen);
     (void)fixture;
     ASSERT_TRUE(og::runtime::local_transport_active(*game_session));
 
-    // Sim cadence is derived from world.timer_wait (master semantics),
-    // independent of target_fps. Advance the clock at that cadence so each
-    // frame hits exactly one sim deadline; the invariant under test is that
-    // setting any target_fps does not perturb sim determinism.
-    const std::uint32_t interval = static_cast<std::uint32_t>(std::lround(
-        og::core::rounded_render_tick_interval_ms(
-            game_screen->world().timer_wait, 1.0f)));
-    ASSERT_GE(interval, 1u);
+    // Two-pacer model:
+    // - sim_pacer fires at the master cadence derived from world.timer_wait
+    //   (DEFAULT_TIMER_WAIT * TIMER_WAIT_TO_MS ≈ 82 ms), independent of fps.
+    // - render_pacer fires at the configured target fps (~14 ms at 72 fps,
+    //   ~17 ms at 60 fps).
+    // The drive clock advances at the render cadence so the render pacer
+    // observes a tight, deterministic 1-ms-jitter sequence, while sim ticks
+    // fire every sim_interval/render_interval drive calls.
+    const std::uint32_t render_interval =
+        og::core::target_frame_interval_ms(fps);
+    ASSERT_GE(render_interval, 1u);
+    const std::uint32_t sim_interval =
+        static_cast<std::uint32_t>(std::lround(
+            og::sim::DEFAULT_TIMER_WAIT * og::sim::TIMER_WAIT_TO_MS));
+    ASSERT_EQ(82u, sim_interval);
 
     og::runtime::set_runtime_trace_enabled(true);
     og::runtime::clear_runtime_trace();
@@ -131,21 +139,23 @@ void run_jitter_drive_at_fps(int fps)
     constexpr int kFrames = 600;
     std::uint32_t fake_now = 100000u;
     int tick_count = 0;
+    int render_count = 0;
     std::vector<std::uint32_t> sleep_calls;
     std::vector<std::uint32_t> tick_observations;
+    std::vector<std::uint32_t> render_observations;
 
     GameLoopFrameState st;
-    // Pre-configure the pacer so its interval already matches the schedule
-    // (avoiding the configure-and-sleep on the first call). The deadline
-    // becomes fake_now + interval, which the loop hits exactly each iteration.
-    st.sim_pacer.configure(interval, fake_now);
+    // Pre-configure both pacers at fake_now so the loop's interval-mismatch
+    // check is a no-op and no startup sleep is emitted.
+    st.sim_pacer.configure(sim_interval, fake_now);
+    st.render_pacer.configure(render_interval, fake_now);
 
     GameLoopDeps deps;
-    deps.enable_render = false;
+    deps.enable_render = true;
     deps.enable_event_poll = false;
     // Leave deps.fixed_tick_ms == 0 so compute_tick_schedule() reads from
-    // world.timer_wait (master sim cadence) — proving target_fps is not
-    // consulted on the sim path.
+    // world.timer_wait (master sim cadence) — proving target_fps drives
+    // render only, not sim.
     deps.now_ms = [&fake_now]() { return fake_now; };
     deps.sleep_ms = [&sleep_calls](std::uint32_t ms) {
         sleep_calls.push_back(ms);
@@ -154,47 +164,86 @@ void run_jitter_drive_at_fps(int fps)
         ++tick_count;
         tick_observations.push_back(fake_now);
     };
+    deps.on_render = [&render_count, &render_observations, &fake_now](screen&) {
+        ++render_count;
+        render_observations.push_back(fake_now);
+    };
 
     for (int i = 0; i < kFrames; ++i)
     {
-        fake_now += interval;
+        fake_now += render_interval;
         const GameFrameResult result =
             game_frame_with_result(*game_screen, st, deps);
         ASSERT_EQ(GameFrameResult::Continue, result)
             << "scenario should keep running across all jitter frames";
     }
 
-    EXPECT_EQ(kFrames, tick_count)
-        << "exactly one sim tick must run per frame at " << fps
-        << " fps — no catch-up bursts, no skipped ticks";
-    ASSERT_EQ(static_cast<std::size_t>(kFrames), tick_observations.size());
+    // Sim ticks fire roughly kFrames * render_interval / sim_interval times
+    // (≈ 102 at 72 fps, ≈ 124 at 60 fps). Allow ±2 to absorb phase between
+    // the two deadlines at startup.
+    const int expected_sim_ticks = static_cast<int>(
+        (static_cast<std::uint64_t>(kFrames) * render_interval) / sim_interval);
+    EXPECT_NEAR(expected_sim_ticks, tick_count, 2)
+        << "sim cadence must track world.timer_wait (master), not target_fps,"
+           " at " << fps << " fps";
 
-    std::vector<std::uint32_t> deltas;
-    deltas.reserve(tick_observations.size());
-    for (std::size_t i = 1; i < tick_observations.size(); ++i)
-        deltas.push_back(tick_observations[i] - tick_observations[i - 1]);
-    ASSERT_FALSE(deltas.empty());
-    const std::uint32_t min_delta =
-        *std::min_element(deltas.begin(), deltas.end());
-    const std::uint32_t max_delta =
-        *std::max_element(deltas.begin(), deltas.end());
-    EXPECT_EQ(interval, min_delta)
-        << "min observed inter-tick interval should equal the configured "
-           "frame interval at "
+    // One render fires per call (drive clock advances by exactly
+    // render_interval).
+    EXPECT_NEAR(kFrames, render_count, 1)
+        << "render cadence must track target_fps at " << fps << " fps";
+    ASSERT_GE(render_observations.size(), 2u);
+    ASSERT_GE(tick_observations.size(), 2u);
+
+    // Sim observations are sampled at the drive (render) clock, so
+    // inter-sim-tick deltas snap to multiples of render_interval. The
+    // structural cadence guarantee is total-elapsed / total-ticks ≈
+    // sim_interval — i.e. the long-run average matches master cadence —
+    // not that every individual delta equals sim_interval.
+    const std::uint64_t total_elapsed_ms =
+        tick_observations.back() - tick_observations.front();
+    const std::uint64_t observed_intervals =
+        tick_observations.size() - 1;
+    // Average inter-tick interval must be within one render-frame quantum
+    // of sim_interval. A tighter bound would be unsound because the pacer
+    // applies drift correction in interval-sized increments, so individual
+    // deltas can be off by up to one render frame in either direction.
+    const double mean_sim_delta_ms =
+        static_cast<double>(total_elapsed_ms) /
+        static_cast<double>(observed_intervals);
+    EXPECT_NEAR(static_cast<double>(sim_interval), mean_sim_delta_ms,
+                static_cast<double>(render_interval))
+        << "average sim cadence must track master (~" << sim_interval
+        << " ms / tick) at " << fps << " fps";
+
+    std::vector<std::uint32_t> render_deltas;
+    render_deltas.reserve(render_observations.size());
+    for (std::size_t i = 1; i < render_observations.size(); ++i)
+        render_deltas.push_back(
+            render_observations[i] - render_observations[i - 1]);
+    const std::uint32_t min_render_delta =
+        *std::min_element(render_deltas.begin(), render_deltas.end());
+    const std::uint32_t max_render_delta =
+        *std::max_element(render_deltas.begin(), render_deltas.end());
+    EXPECT_EQ(render_interval, min_render_delta)
+        << "min observed inter-render delta should equal the configured "
+           "render interval at "
         << fps << " fps";
-    EXPECT_EQ(interval, max_delta)
-        << "max observed inter-tick interval should equal the configured "
-           "frame interval at "
+    EXPECT_EQ(render_interval, max_render_delta)
+        << "max observed inter-render delta should equal the configured "
+           "render interval at "
         << fps << " fps";
-    EXPECT_LE(max_delta - min_delta, 1u)
-        << "structural jitter must be bounded by integer-rounding (<=1ms) at "
+    EXPECT_LE(max_render_delta - min_render_delta, 1u)
+        << "render-pacer structural jitter must be bounded by integer "
+           "rounding (<=1ms) at "
         << fps << " fps";
 
-    // With the pacer pre-configured and the clock advancing by exactly
-    // `interval` each call, the desktop loop should never sleep nor emit a
-    // desktop_loop_sleep_ms trace.
+    // With both pacers pre-configured and the clock advancing exactly one
+    // render quantum each call, every call has at least render_decision
+    // firing — so the loop should never sleep nor emit a desktop_loop_sleep_ms
+    // trace.
     EXPECT_TRUE(sleep_calls.empty())
-        << "no sleeps expected when fake_now exactly tracks the deadline";
+        << "no sleeps expected when fake_now exactly tracks the render "
+           "deadline";
     const auto traces = og::runtime::copy_runtime_trace();
     const int sleep_traces = static_cast<int>(std::count_if(
         traces.begin(), traces.end(),
@@ -227,12 +276,12 @@ og::sim::WorldSnapshot make_storm_snapshot(std::uint32_t tick)
 
 } // namespace
 
-TEST(FramePacingJitter, deterministic_72_fps_zero_structural_jitter)
+TEST(FramePacingJitter, deterministic_72_fps_render_with_master_sim_cadence)
 {
     run_jitter_drive_at_fps(72);
 }
 
-TEST(FramePacingJitter, deterministic_60_fps_zero_structural_jitter)
+TEST(FramePacingJitter, deterministic_60_fps_render_with_master_sim_cadence)
 {
     run_jitter_drive_at_fps(60);
 }
