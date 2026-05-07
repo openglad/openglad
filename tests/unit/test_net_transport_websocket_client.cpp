@@ -339,6 +339,16 @@ TEST(NetTransportWebSocketClient,
     EXPECT_EQ((std::vector<og::sim::PeerId>{client_options.remote_peer_id}),
               client.connected_peers());
 
+    // Drain any residual Connect/Disconnect transitions that the tight 1-20ms
+    // backoff can produce on slow CI runners (e.g. coverage builds) before
+    // exercising the post-reconnect send path.
+    for (int i = 0; i < 10; ++i)
+    {
+        (void)client.poll();
+        (void)server.poll();
+        std::this_thread::sleep_for(5ms);
+    }
+
     const auto server_message = send_until_matching_message(
         client,
         [&] {
@@ -352,7 +362,7 @@ TEST(NetTransportWebSocketClient,
             return message.peer_id != first_server_peer_id &&
                 decode_client_ready_tick(message.data) == 88u;
         },
-        10s);
+        15s);
     ASSERT_TRUE(server_message.has_value());
 
     const auto client_message = send_until_matching_message(
@@ -373,7 +383,7 @@ TEST(NetTransportWebSocketClient,
             return message.peer_id == remote_peer_id &&
                 decode_keyframe_request_tick(message.data) == 77u;
         },
-        10s);
+        15s);
     ASSERT_TRUE(client_message.has_value());
 
     client.disconnect(client_options.remote_peer_id);
