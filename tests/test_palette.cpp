@@ -1,6 +1,12 @@
 #include <array>
+#include <cstdlib>
+#include <sstream>
+#include <string>
+#include <vector>
 
 #include <openglad/interface/render/pal32.h>
+#include <openglad/resources/og_file.h>
+#include <openglad/resources/our_palette.h>
 #include <gtest/gtest.h>
 
 TEST(Palette, set_and_query_reg)
@@ -77,5 +83,65 @@ TEST(Palette, save_palette_is_stubbed_out)
 {
     std::array<unsigned char, 768> pal{};
     ASSERT_EQ(0, save_palette(pal)) << "save_palette should remain a no-op in SDL-free tests";
+}
+
+
+TEST(PaletteExport, gpl_matches_runtime_palette)
+{
+    auto file = og::io::og_open_read("pix/openglad.gpl");
+    if (!file)
+        file = og::io::og_open_read("openglad.gpl");
+    ASSERT_TRUE(file != nullptr) << "pix/openglad.gpl must be readable via og_open_read";
+
+    std::vector<char> blob;
+    char chunk[4096];
+    for (;;) {
+        const std::size_t got = file->read(chunk, 1, sizeof(chunk));
+        if (got == 0)
+            break;
+        blob.insert(blob.end(), chunk, chunk + got);
+    }
+    ASSERT_FALSE(blob.empty()) << "pix/openglad.gpl must not be empty";
+
+    std::istringstream stream(std::string(blob.begin(), blob.end()));
+    std::string line;
+
+    ASSERT_TRUE(std::getline(stream, line)) << "expected GIMP Palette header";
+    ASSERT_EQ("GIMP Palette", line) << "first line must be 'GIMP Palette'";
+
+    int header_lines_consumed = 1;
+    while (std::getline(stream, line)) {
+        ++header_lines_consumed;
+        if (line.empty())
+            continue;
+        if (line[0] == '#')
+            break;
+        // Tolerate Name:/Columns: and any other prelude lines until '#'.
+    }
+    ASSERT_LE(header_lines_consumed, 16) << "header should be short; runaway parser";
+
+    int parsed = 0;
+    while (parsed < 256) {
+        ASSERT_TRUE(std::getline(stream, line))
+            << "ran out of lines after " << parsed << " palette entries";
+        if (line.empty())
+            continue;
+        std::istringstream parts(line);
+        int r = -1, g = -1, b = -1;
+        ASSERT_TRUE(static_cast<bool>(parts >> r >> g >> b))
+            << "could not parse RGB triple at entry " << parsed << ": '" << line << "'";
+        ASSERT_GE(r, 0); ASSERT_LE(r, 255);
+        ASSERT_GE(g, 0); ASSERT_LE(g, 255);
+        ASSERT_GE(b, 0); ASSERT_LE(b, 255);
+
+        const int expect_r = (static_cast<int>(our_pal_lookup(parsed * 3 + 0)) * 255) / 63;
+        const int expect_g = (static_cast<int>(our_pal_lookup(parsed * 3 + 1)) * 255) / 63;
+        const int expect_b = (static_cast<int>(our_pal_lookup(parsed * 3 + 2)) * 255) / 63;
+        ASSERT_LE(std::abs(r - expect_r), 1) << "entry " << parsed << " R drift";
+        ASSERT_LE(std::abs(g - expect_g), 1) << "entry " << parsed << " G drift";
+        ASSERT_LE(std::abs(b - expect_b), 1) << "entry " << parsed << " B drift";
+        ++parsed;
+    }
+    ASSERT_EQ(256, parsed) << "must parse exactly 256 palette entries";
 }
 

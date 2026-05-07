@@ -59,7 +59,7 @@ openglad/
 ├── docs/                   Architecture documentation
 │
 ├── cfg/                    Runtime configuration (openglad.yaml)
-├── pix/                    Sprite and tileset assets (.pix format)
+├── pix/                    Indexed-color sprite PNGs + Aseprite JSON sidecars (see [docs/sprite-format.md](sprite-format.md))
 ├── sound/                  Audio files (WAV, OGG)
 ├── builtin/                Core game resources
 ├── extra_campaigns/        Additional game scenarios
@@ -108,7 +108,9 @@ Data and persistence:
 
 - campaign/level/save/config loading and parsing
 - filesystem/archive/yaml wrappers
-- pixie/asset loading
+- pixie/asset loading (indexed-color PNGs + Aseprite JSON sidecars; artist
+  workflow and palette contract are documented in
+  [docs/sprite-format.md](sprite-format.md))
 
 ### `og_interface`
 

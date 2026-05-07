@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
-"""One-shot migration: rewrite every sprite PNG as indexed-color and emit
-per-PNG Aseprite "Hash" JSON sidecars, then delete pix/sprite_manifest.txt.
+"""Sprite/palette tooling.
 
-Phase 4 will extend this script with --emit-gpl. For now it only migrates.
+Two modes:
 
-The script is one-shot: once pix/sprite_manifest.txt has been deleted, the
-script refuses to run again.
+* Default (one-shot migration): rewrite every sprite PNG as indexed-color and
+  emit per-PNG Aseprite "Hash" JSON sidecars, then delete
+  ``pix/sprite_manifest.txt``. Refuses to run after the manifest is gone.
+
+* ``--emit-gpl <path>``: regenerate the GIMP palette artifact from
+  ``src/resources/our_palette.cpp`` alone. Re-runnable, has no dependency on
+  the (now-deleted) sprite manifest.
 """
 
 from __future__ import annotations
 
+import argparse
 import glob
 import json
 import os
@@ -355,10 +360,38 @@ def verify_sidecar_roundtrip(path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# GIMP palette (.gpl) emission
+# ---------------------------------------------------------------------------
+
+def format_gpl(palette_rgb: bytes) -> str:
+    """Render a 256-entry GIMP palette from an 8-bit RGB triplet stream.
+
+    Format: ``GIMP Palette`` header, ``Name:`` and ``Columns:`` lines, a
+    ``#`` comment marker, then 256 lines of ``%3d %3d %3d\\tcolor_NNN``. The
+    layout is fixed so the artifact is byte-deterministic across reruns.
+    """
+    if len(palette_rgb) != 768:
+        raise RuntimeError("palette must be 256*3 bytes")
+    lines = ["GIMP Palette", "Name: OpenGlad", "Columns: 16", "#"]
+    for i in range(256):
+        r = palette_rgb[i * 3 + 0]
+        g = palette_rgb[i * 3 + 1]
+        b = palette_rgb[i * 3 + 2]
+        lines.append(f"{r:3d} {g:3d} {b:3d}\tcolor_{i:03d}")
+    return "\n".join(lines) + "\n"
+
+
+def emit_gpl(out_path: Path) -> None:
+    palette_6 = load_palette_6bit()
+    palette_rgb = palette_8bit_rgb(palette_6)
+    out_path.write_text(format_gpl(palette_rgb), encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
-def main() -> int:
+def run_migration() -> int:
     if not MANIFEST_PATH.exists():
         print(f"error: {MANIFEST_PATH} not present — migration already ran",
               file=sys.stderr)
@@ -430,6 +463,25 @@ def main() -> int:
     print(f"[migrate] repacked {GLADIATOR_GLAD.name}")
     print(f"[migrate] deleted {MANIFEST_PATH.relative_to(REPO_ROOT)}")
     return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--emit-gpl",
+        metavar="PATH",
+        type=Path,
+        default=None,
+        help="Regenerate the GIMP palette from our_palette.cpp and exit.",
+    )
+    args = parser.parse_args(argv)
+
+    if args.emit_gpl is not None:
+        emit_gpl(args.emit_gpl)
+        print(f"[gpl] wrote {args.emit_gpl}")
+        return 0
+
+    return run_migration()
 
 
 if __name__ == "__main__":
