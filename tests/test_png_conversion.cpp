@@ -5,6 +5,7 @@
 #include <openglad/resources/our_palette.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/core/pixdefs.h>
+#include <openglad/core/test_trace.h>
 
 #include "lodepng.h"
 
@@ -283,10 +284,9 @@ TEST(IndexedPngEncoding, round_trip_pixel_indices)
     fs::create_directories(tmp_dir, ec);
     const fs::path path = tmp_dir / "round_trip.png";
 
-    // Frame metadata for read_pixie_file comes from sprite_manifest.txt, not from
-    // the PNG; since this temp file has no manifest entry it round-trips as a
-    // single-frame sprite of height H*F. The pixel bytes themselves must still
-    // match exactly.
+    // No JSON sidecar accompanies this temp file, so read_pixie_file falls
+    // back to a single-frame sprite of height H. Pixel bytes must round-trip
+    // byte-identical regardless.
     constexpr int W = 17;
     constexpr int H = 27;
     constexpr std::size_t total = static_cast<std::size_t>(W) * H;
@@ -355,4 +355,138 @@ TEST(IndexedPngEncoding, rejects_wrong_palette)
 
     fs::remove(good, ec);
     fs::remove(bad, ec);
+}
+
+namespace {
+
+// Write a PNG containing `frames` vertically-stacked frames of size W x frame_h
+// using a deterministic per-pixel index pattern.
+void write_indexed_png_strip(const std::string& path,
+                             int W, int frame_h, int frames)
+{
+    const std::size_t total = static_cast<std::size_t>(W)
+        * static_cast<std::size_t>(frame_h)
+        * static_cast<std::size_t>(frames);
+    auto* buf = new unsigned char[total];
+    for (std::size_t i = 0; i < total; ++i)
+        buf[i] = static_cast<unsigned char>((i * 17u + 3u) & 0xFFu);
+    PixieData data(static_cast<unsigned char>(frames),
+                   static_cast<unsigned char>(W),
+                   static_cast<unsigned char>(frame_h),
+                   buf);
+    ASSERT_TRUE(write_pixie_png(path.c_str(), data));
+}
+
+void write_text_file(const std::string& path, const std::string& contents)
+{
+    std::FILE* f = std::fopen(path.c_str(), "wb");
+    ASSERT_TRUE(f != nullptr) << "open for write: " << path;
+    if (!f) return;
+    if (!contents.empty())
+        std::fwrite(contents.data(), 1, contents.size(), f);
+    std::fclose(f);
+}
+
+std::string aseprite_sidecar_for(int W, int frame_h, int frames)
+{
+    std::string s = "{\n  \"frames\": {\n";
+    for (int i = 0; i < frames; ++i) {
+        s += "    \"frame_" + std::to_string(i) + "\": {\n";
+        s += "      \"frame\": { \"x\": 0, \"y\": "
+             + std::to_string(i * frame_h)
+             + ", \"w\": " + std::to_string(W)
+             + ", \"h\": " + std::to_string(frame_h) + " },\n";
+        s += "      \"rotated\": false,\n";
+        s += "      \"trimmed\": false,\n";
+        s += "      \"duration\": 100\n";
+        s += (i + 1 == frames) ? "    }\n" : "    },\n";
+    }
+    s += "  },\n  \"meta\": {\n";
+    s += "    \"app\": \"https://www.aseprite.org/\",\n";
+    s += "    \"format\": \"I8\",\n";
+    s += "    \"size\": { \"w\": " + std::to_string(W)
+         + ", \"h\": " + std::to_string(frame_h * frames) + " },\n";
+    s += "    \"frameTags\": [],\n";
+    s += "    \"layers\": [ { \"name\": \"Layer 1\", \"opacity\": 255 } ],\n";
+    s += "    \"slices\": []\n";
+    s += "  }\n}\n";
+    return s;
+}
+
+} // namespace
+
+TEST(JsonSidecar, parses_aseprite_hash_format)
+{
+    namespace fs = std::filesystem;
+    const fs::path tmp_dir = fs::path("temp") / "json_sidecar";
+    std::error_code ec;
+    fs::create_directories(tmp_dir, ec);
+    const fs::path png = tmp_dir / "hash.png";
+    const fs::path json = tmp_dir / "hash.json";
+
+    constexpr int W = 12;
+    constexpr int FH = 9;
+    constexpr int FRAMES = 4;
+    write_indexed_png_strip(png.string(), W, FH, FRAMES);
+    write_text_file(json.string(), aseprite_sidecar_for(W, FH, FRAMES));
+
+    PixieData round = read_pixie_file(png.string().c_str());
+    ASSERT_TRUE(round.valid());
+    ASSERT_EQ(FRAMES, static_cast<int>(round.frames));
+    ASSERT_EQ(W, static_cast<int>(round.w));
+    ASSERT_EQ(FH, static_cast<int>(round.h));
+
+    fs::remove(png, ec);
+    fs::remove(json, ec);
+}
+
+TEST(JsonSidecar, missing_sidecar_treated_as_single_frame)
+{
+    namespace fs = std::filesystem;
+    const fs::path tmp_dir = fs::path("temp") / "json_sidecar";
+    std::error_code ec;
+    fs::create_directories(tmp_dir, ec);
+    const fs::path png = tmp_dir / "no_sidecar.png";
+    // Make sure no stale sidecar lingers from a prior run.
+    fs::remove(tmp_dir / "no_sidecar.json", ec);
+
+    constexpr int W = 18;
+    constexpr int H = 23;
+    write_indexed_png_strip(png.string(), W, H, 1);
+
+    PixieData round = read_pixie_file(png.string().c_str());
+    ASSERT_TRUE(round.valid());
+    ASSERT_EQ(1, static_cast<int>(round.frames));
+    ASSERT_EQ(W, static_cast<int>(round.w));
+    ASSERT_EQ(H, static_cast<int>(round.h));
+
+    fs::remove(png, ec);
+}
+
+TEST(JsonSidecar, malformed_sidecar_logs_and_falls_back)
+{
+    namespace fs = std::filesystem;
+    const fs::path tmp_dir = fs::path("temp") / "json_sidecar";
+    std::error_code ec;
+    fs::create_directories(tmp_dir, ec);
+    const fs::path png = tmp_dir / "malformed.png";
+    const fs::path json = tmp_dir / "malformed.json";
+
+    constexpr int W = 10;
+    constexpr int H = 7;
+    write_indexed_png_strip(png.string(), W, H, 1);
+    write_text_file(json.string(), "{\"frames\": \"not an object\"}");
+
+    trace_clear();
+    PixieData round = read_pixie_file(png.string().c_str());
+    // Malformed sidecar -> warning -> fallback: PNG decodes as single frame.
+    ASSERT_TRUE(round.valid()) << "fallback should succeed when sidecar is malformed";
+    ASSERT_EQ(1, static_cast<int>(round.frames));
+    ASSERT_EQ(W, static_cast<int>(round.w));
+    ASSERT_EQ(H, static_cast<int>(round.h));
+    ASSERT_TRUE(trace_contains("io", "malformed Aseprite sidecar"))
+        << "expected a TRACE(\"io\", ...) warning when sidecar is malformed";
+
+    fs::remove(png, ec);
+    fs::remove(json, ec);
 }
