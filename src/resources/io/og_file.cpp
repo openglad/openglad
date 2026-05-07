@@ -707,32 +707,28 @@ PixieData read_pixie_file(const char* filename)
 
     const auto colortype = state.info_png.color.colortype;
     const auto bitdepth = state.info_png.color.bitdepth;
-    const bool indexed_8bit = (colortype == LCT_PALETTE && bitdepth == 8);
-    const bool legacy_grey_8bit = (colortype == LCT_GREY && bitdepth == 8);
-    if (!indexed_8bit && !legacy_grey_8bit) {
-        LogError("Sprite PNG must be indexed or legacy grayscale (8-bit): pix/{}\n", filename);
+    if (colortype != LCT_PALETTE || bitdepth != 8) {
+        LogError("Sprite PNG must be indexed 8-bit: pix/{}\n", filename);
         return result;
     }
 
-    if (indexed_8bit) {
-        if (state.info_png.color.palettesize != 256) {
-            LogError("Sprite PNG palette must have 256 entries: pix/{} (got {})\n",
-                     filename, static_cast<unsigned>(state.info_png.color.palettesize));
-            return result;
-        }
-        const unsigned char* pal = state.info_png.color.palette;
-        for (unsigned i = 0; i < 256; ++i) {
-            for (unsigned c = 0; c < 3; ++c) {
-                const unsigned expected6 = our_pal_lookup(static_cast<int>(i * 3 + c));
-                const unsigned expected8 = (expected6 * 255u) / 63u;
-                const unsigned stored = pal[i * 4 + c];
-                const int diff = static_cast<int>(stored) - static_cast<int>(expected8);
-                if (diff < -1 || diff > 1) {
-                    LogError("Sprite PNG palette mismatch at entry {} channel {}: pix/{} "
-                             "(stored {}, expected {})\n",
-                             i, c, filename, stored, expected8);
-                    return result;
-                }
+    if (state.info_png.color.palettesize != 256) {
+        LogError("Sprite PNG palette must have 256 entries: pix/{} (got {})\n",
+                 filename, static_cast<unsigned>(state.info_png.color.palettesize));
+        return result;
+    }
+    const unsigned char* pal = state.info_png.color.palette;
+    for (unsigned i = 0; i < 256; ++i) {
+        for (unsigned c = 0; c < 3; ++c) {
+            const unsigned expected6 = our_pal_lookup(static_cast<int>(i * 3 + c));
+            const unsigned expected8 = (expected6 * 255u) / 63u;
+            const unsigned stored = pal[i * 4 + c];
+            const int diff = static_cast<int>(stored) - static_cast<int>(expected8);
+            if (diff < -1 || diff > 1) {
+                LogError("Sprite PNG palette mismatch at entry {} channel {}: pix/{} "
+                         "(stored {}, expected {})\n",
+                         i, c, filename, stored, expected8);
+                return result;
             }
         }
     }

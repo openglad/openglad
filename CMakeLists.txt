@@ -1124,6 +1124,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_level_data_ops.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_level_data_error_paths.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_png_conversion.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_aseprite_round_trip.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_smooth_ops.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_smooth_more_branches.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_smooth_matrix.cpp
@@ -1468,6 +1469,7 @@ if(NOT EMSCRIPTEN)
             test_level_editor_smoke.cpp
             test_level_data_coverage.cpp
             test_png_conversion.cpp
+            test_aseprite_round_trip.cpp
         )
 
         og_add_test_group(og_test_io FILES
