@@ -193,6 +193,7 @@ set(GAME_SOURCES
 		    ${SRC_DIR}/resources/gparser.cpp
 		    ${SRC_DIR}/resources/gloader.cpp
     ${SRC_DIR}/resources/level_file_io.cpp
+    ${SRC_DIR}/resources/our_palette.cpp
     ${SRC_DIR}/resources/pixie_data.cpp
     ${SRC_DIR}/resources/save_data.cpp
     ${SRC_DIR}/interface/session_state.cpp
@@ -214,6 +215,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/interface/sdl_context_services.cpp
     ${SRC_DIR}/interface/cheat_handler.cpp
     ${SRC_DIR}/interface/render/sdl_level_render.cpp
+    ${THIRD_PARTY_DIR}/lodepng/lodepng.cpp
 )
 
 set(GAME_SOURCES_NO_MAIN ${GAME_SOURCES})
@@ -235,6 +237,7 @@ set(OG_DATA_SOURCES
     ${SRC_DIR}/resources/gparser.cpp
     ${SRC_DIR}/resources/gloader.cpp
     ${SRC_DIR}/resources/level_file_io.cpp
+    ${SRC_DIR}/resources/our_palette.cpp
     ${SRC_DIR}/resources/pixie_data.cpp
     ${SRC_DIR}/resources/save_data.cpp
 )
@@ -364,6 +367,7 @@ set(OG_IO_SOURCES
     ${SRC_DIR}/resources/io/zip_api.cpp
     ${SRC_DIR}/resources/io/yaml_stream.cpp
     ${SRC_DIR}/resources/io/og_file.cpp
+    ${THIRD_PARTY_DIR}/lodepng/lodepng.cpp
 )
 
 set(OG_PLATFORM_SOURCES
@@ -607,6 +611,7 @@ set(OG_THIRD_PARTY_INCLUDE_DIRS
     ${THIRD_PARTY_DIR}/physfs/extras
     ${THIRD_PARTY_DIR}/physfs/zlib123
     ${THIRD_PARTY_DIR}/libzip
+    ${THIRD_PARTY_DIR}/lodepng
 )
 
 set(COMMON_DEFINITIONS
@@ -807,6 +812,7 @@ if(NOT EMSCRIPTEN)
         ${THIRD_PARTY_DIR}/physfs
         ${THIRD_PARTY_DIR}/physfs/extras
         ${THIRD_PARTY_DIR}/libzip
+        ${THIRD_PARTY_DIR}/lodepng
     )
     target_link_libraries(og_resources PUBLIC
         og_core
@@ -923,6 +929,8 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/resources/io/zip_api.cpp
         ${SRC_DIR}/resources/io/yaml_stream.cpp
         ${SRC_DIR}/resources/io/og_file.cpp
+        ${SRC_DIR}/resources/our_palette.cpp
+        ${THIRD_PARTY_DIR}/lodepng/lodepng.cpp
         # runtime (SDL-free subset)
         ${SRC_DIR}/platform/game_context.cpp
         ${SRC_DIR}/gameplay/gameplay_context.cpp
@@ -946,6 +954,7 @@ if(NOT EMSCRIPTEN)
         ${THIRD_PARTY_DIR}/physfs
         ${THIRD_PARTY_DIR}/physfs/extras
         ${THIRD_PARTY_DIR}/libzip
+        ${THIRD_PARTY_DIR}/lodepng
     )
     target_compile_definitions(openglad_text PRIVATE
         ${COMMON_DEFINITIONS}
@@ -1114,6 +1123,8 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_view_redraw.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_level_data_ops.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_level_data_error_paths.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_png_conversion.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_aseprite_round_trip.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_smooth_ops.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_smooth_more_branches.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_smooth_matrix.cpp
@@ -1457,6 +1468,8 @@ if(NOT EMSCRIPTEN)
             test_level_editor_prompt_block.cpp
             test_level_editor_smoke.cpp
             test_level_data_coverage.cpp
+            test_png_conversion.cpp
+            test_aseprite_round_trip.cpp
         )
 
         og_add_test_group(og_test_io FILES
@@ -1623,11 +1636,6 @@ if(ENABLE_FUZZING)
         target_compile_options(${name} PRIVATE ${FUZZ_SANITIZER_FLAGS})
         target_link_options(${name} PRIVATE ${FUZZ_LINK_FLAGS})
     endfunction()
-
-    # fuzz_pixie: exercises .pix sprite data parsing (header + payload)
-    add_fuzz_target(fuzz_pixie ${SRC_DIR}/fuzz/fuzz_pixie.cpp)
-    target_sources(fuzz_pixie PRIVATE ${SRC_DIR}/resources/pixie_data.cpp)
-    target_link_libraries(fuzz_pixie PRIVATE ${SDL2_LIBRARIES})
 
     # fuzz_scenario: exercises .fss scenario binary parsing
     add_fuzz_target(fuzz_scenario ${SRC_DIR}/fuzz/fuzz_scenario.cpp)

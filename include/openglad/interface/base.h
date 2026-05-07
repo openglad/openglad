@@ -161,8 +161,8 @@ inline constexpr unsigned char MAX_MP_COLOR = 64; // When mp's are over max :)
 #include <openglad/gameplay/statistics.h>
 
 inline constexpr int STANDARD_TEXT_TIME = 75;   // how many cycles to display text?
-inline constexpr const char* TEXT_1 = "text.pix";       // standard text pixie
-inline constexpr const char* TEXT_BIG = "textbig.pix";       // standard text pixie
+inline constexpr const char* TEXT_1 = "text.png";       // standard text pixie
+inline constexpr const char* TEXT_BIG = "textbig.png";       // standard text pixie
 
 inline constexpr int DONT_DELETE = 1;
 

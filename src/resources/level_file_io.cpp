@@ -16,6 +16,8 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/resources/og_file.h>
 
+bool write_pixie_png(const char* filepath, const PixieData& data);
+
 #include <algorithm>
 #include <array>
 #include <cstdio>
@@ -71,12 +73,16 @@ void fill_fixed_field(char* dst, size_t fixed_len, std::string_view src,
     }
 }
 
-std::string ensure_pix_extension(std::string_view name)
+std::string ensure_png_extension(std::string_view name)
 {
     std::string s(name);
-    if (s.size() >= 4 && s.compare(s.size() - 4, 4, ".pix") == 0)
+    if (s.size() >= 4 && s.compare(s.size() - 4, 4, ".png") == 0)
         return s;
-    return s + ".pix";
+    if (s.size() >= 4 && s.compare(s.size() - 4, 4, ".pix") == 0)
+        s.replace(s.size() - 4, 4, ".png");
+    else
+        s += ".png";
+    return s;
 }
 
 void set_error(LevelFileIoError* out_error, LevelFileIoError err)
@@ -268,7 +274,7 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
         }
     }
 
-    const std::string gridpix = ensure_pix_extension(newgrid);
+    const std::string gridpix = ensure_png_extension(newgrid);
     world.grid = read_pixie_file(gridpix.c_str());
     if (!world.grid.valid())
     {
@@ -550,42 +556,15 @@ bool write_scenario_payload(og::io::OgFile& outfile,
 
 bool save_grid_file(const char* gridname, const PixieData& grid)
 {
-    char numframes = 1;
-    char x = static_cast<char>(grid.w);
-    char y = static_cast<char>(grid.h);
     std::string fullpath(gridname);
-    fullpath += ".pix";
+    fullpath += ".png";
     //buffers: PORT: make sure grid name is lowercase
     lowercase(fullpath);
 
-    auto outfile = og::io::og_open_write("temp/pix/", fullpath.c_str());
-    if (!outfile)
+    const std::string full_with_dir = "temp/pix/" + fullpath;
+    if (!write_pixie_png(full_with_dir.c_str(), grid))
     {
-        Log("Failed to save map file: temp/pix/{}\n", fullpath);
-        return false;
-    }
-
-    auto write_exact = [&](const void* src, std::size_t size,
-                           std::size_t count) -> bool {
-        if (outfile->write(src, size, count) != count)
-        {
-            Log("Failed to save map file: temp/pix/{}\n", fullpath);
-            return false;
-        }
-        return true;
-    };
-
-    const std::size_t payload_size =
-        static_cast<std::size_t>(grid.w) * static_cast<std::size_t>(grid.h);
-
-    if (!write_exact(&numframes, 1, 1) || !write_exact(&x, 1, 1) ||
-        !write_exact(&y, 1, 1))
-    {
-        return false;
-    }
-    if (payload_size > 0 &&
-        (grid.data == nullptr || !write_exact(grid.data.get(), 1, payload_size)))
-    {
+        Log("Failed to save map file: {}\n", full_with_dir);
         return false;
     }
     return true;

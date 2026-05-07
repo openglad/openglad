@@ -72,7 +72,7 @@ const FamilyDescriptor& describe_family_ghost()
         .customize_weapon = nullptr,
         .on_ani_complete = nullptr,
         .on_melee_hit = nullptr,
-        .pix_filename = "ghost.pix",
+        .pix_filename = "ghost.png",
         .animation_type = FAMILY_ANIM_STANDARD,
         .ai_line_of_sight = 12,
         .description = "Ghosts can pass through   \n"

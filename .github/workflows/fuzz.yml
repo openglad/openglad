@@ -20,8 +20,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - target: fuzz_pixie
-            corpus: fuzz/corpus/pixie
           - target: fuzz_scenario
             corpus: fuzz/corpus/scenario
           - target: fuzz_savefile

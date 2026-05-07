@@ -90,7 +90,7 @@ const FamilyDescriptor& describe_family_skeleton()
         .customize_weapon = nullptr,
         .on_ani_complete = nullptr,
         .on_melee_hit = nullptr,
-        .pix_filename = "skeleton.pix",
+        .pix_filename = "skeleton.png",
         .animation_type = FAMILY_ANIM_SKELETON,
         .ai_line_of_sight = 7,
         .description = "Skeletons are the pathetic\n"

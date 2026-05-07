@@ -723,28 +723,22 @@ TEST(LevelDataLoadVersions, level_data_load_version6plus_truncated_description_d
 TEST(LevelDataLoadVersions, level_data_load_version6plus_named_objects_treasure_route_and_door_fixup)
 {
     namespace fs = std::filesystem;
-    const fs::path grid_path = "grid.pix";
+    const fs::path grid_path = "grid.png";
     std::error_code ec;
     fs::remove(grid_path, ec);
 
     // Build a tiny 4x4 pixie: mostly grass with a wall directly above door tile (2,2)->(2,1).
     {
-        std::FILE* f = std::fopen(grid_path.string().c_str(), "wb");
-        ASSERT_TRUE(f != nullptr) << "create grid.pix fixture";
-        if (!f)
-            return;
-        const unsigned char header[] = {1, 4, 4}; // frames,w,h
-        unsigned char data[16];
-        for (unsigned char& b : data) b = PIX_GRASS1;
-        data[2 + 4 * 1] = PIX_H_WALL1;
-        std::fwrite(header, 1, sizeof(header), f);
-        std::fwrite(data, 1, sizeof(data), f);
-        std::fclose(f);
+        auto pixels = new unsigned char[16];
+        for (int i = 0; i < 16; i++) pixels[i] = PIX_GRASS1;
+        pixels[2 + 4 * 1] = PIX_H_WALL1;
+        PixieData fixture(1, 4, 4, pixels);
+        ASSERT_TRUE(write_pixie_png(grid_path.string().c_str(), fixture)) << "create grid.png fixture";
     }
 
     LevelRuntimeData data(7777);
     std::vector<uint8_t> bytes;
-    append_fixed8(bytes, "grid"); // -> grid.pix
+    append_fixed8(bytes, "grid"); // -> grid.png
     {
         std::array<char, 30> title{};
         std::memcpy(title.data(), "v9 objects", 9);

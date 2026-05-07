@@ -46,11 +46,11 @@ bool create_new_campaign(const std::string& campaign_id)
     create_dir(get_user_path() + "temp/pix");
     create_dir(get_user_path() + "temp/scen");
     create_dir(get_user_path() + "temp/sound");
-    (void)create_new_pix_with_error(get_user_path() + "temp/icon.pix", 32, 32);
+    (void)create_new_pix_with_error(get_user_path() + "temp/icon.png", 32, 32);
     (void)create_new_campaign_descriptor_with_error(get_user_path() + "temp/campaign.yaml");
     (void)create_new_scen_file_with_error(get_user_path() + "temp/scen/scen1.fss", "scen0001");
     // Create the map file (grid)
-    (void)create_new_map_pix_with_error(get_user_path() + "temp/pix/scen0001.pix", 40, 60);
+    (void)create_new_map_pix_with_error(get_user_path() + "temp/pix/scen0001.png", 40, 60);
 
     bool result = repack_campaign(campaign_id);
     if(!result)

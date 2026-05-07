@@ -289,7 +289,7 @@ bool CampaignData::load()
         // TODO: Get rating from website
         rating = 0.0f;
 
-        icondata = read_pixie_file("icon.pix");
+        icondata = read_pixie_file("icon.png");
 
         // Count the number of levels
         std::list<int> levels = list_levels();

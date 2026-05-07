@@ -62,7 +62,7 @@ const FamilyDescriptor& describe_family_faerie()
         .customize_weapon = nullptr,
         .on_ani_complete = nullptr,
         .on_melee_hit = nullptr,
-        .pix_filename = "faerie.pix",
+        .pix_filename = "faerie.png",
         .animation_type = FAMILY_ANIM_STANDARD,
         .ai_line_of_sight = 8,
         .description = "The faerie are small,     \n"

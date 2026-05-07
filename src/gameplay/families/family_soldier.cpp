@@ -200,7 +200,7 @@ const FamilyDescriptor& describe_family_soldier()
         .customize_weapon = nullptr,
         .on_ani_complete = nullptr,
         .on_melee_hit = nullptr,
-        .pix_filename = "footman.pix",
+        .pix_filename = "footman.png",
         .animation_type = FAMILY_ANIM_STANDARD,
         .ai_line_of_sight = 7,
         .description = "Your basic grunt, can     \n"

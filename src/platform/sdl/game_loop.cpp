@@ -52,7 +52,7 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
         if (deps.enable_render) {
             s.draw_panels(s.numviews);
             score_panel(&s, 1);
-            s.refresh();
+            s.buffer_to_screen(0, 0, 320, 200);
         }
 #endif
         s.redrawme = 0;

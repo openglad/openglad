@@ -315,7 +315,7 @@ void delete_level(int id)
     std::error_code ec;
     std::filesystem::remove(path, ec);
     // Delete terrain file
-    path = std::format("{}temp/pix/scen{:04d}.pix", get_user_path(), id);
+    path = std::format("{}temp/pix/scen{:04d}.png", get_user_path(), id);
     std::filesystem::remove(path, ec);
     repack_campaign(campaign);
 

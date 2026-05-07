@@ -197,7 +197,7 @@ TEST(LevelDataErrorPaths, level_data_save_reports_failure_when_grid_write_is_sho
     fs::create_directories("temp/scen");
     fs::create_directories("temp/pix");
 
-    const fs::path grid_path = fs::path("temp/pix") / "grid_short_write.pix";
+    const fs::path grid_path = fs::path("temp/pix") / "grid_short_write.png";
     std::error_code ec;
     fs::remove(grid_path, ec);
     fs::create_symlink("/dev/full", grid_path, ec);
@@ -402,8 +402,8 @@ TEST(LevelDataErrorPaths, level_data_load_reports_parse_failed_when_grid_pix_mis
     ASSERT_TRUE(write_file_bytes(scen_path, scenario_bytes)) << "missing-grid scenario fixture should be written";
 
     std::error_code ec;
-    fs::remove(fs::path("pix") / "nogrid9x.pix", ec);
-    fs::remove("nogrid9x.pix", ec);
+    fs::remove(fs::path("pix") / "nogrid9x.png", ec);
+    fs::remove("nogrid9x.png", ec);
 
     og::runtime::current_session->myscreen_->world().id = kMissingGridScenarioId;
     og::runtime::current_session->myscreen_->world().title = "before missing grid load";

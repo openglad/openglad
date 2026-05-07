@@ -1,5 +1,6 @@
 #include <openglad/resources/pixie_data.h>
 #include <openglad/resources/og_file.h>
+#include <openglad/legacy/base.h>
 #include <openglad/resources/ogfile_yaml.h>
 #include <openglad/resources/filesystem.h>
 #include <openglad/resources/physfs_api.h>
@@ -45,8 +46,8 @@ TEST(IoPlatformCoverage, og_file_read_write_seek_and_pixie_paths)
     namespace fs = std::filesystem;
     const fs::path tmp_dir = fs::path("temp") / "io_platform_cov";
     const fs::path bin_path = tmp_dir / "rw.bin";
-    const fs::path pix_ok = tmp_dir / "ok.pix";
-    const fs::path pix_bad = tmp_dir / "bad.pix";
+    const fs::path pix_ok = tmp_dir / "ok.png";
+    const fs::path pix_bad = tmp_dir / "bad.png";
 
     std::error_code ec;
     fs::create_directories(tmp_dir, ec);
@@ -76,37 +77,28 @@ TEST(IoPlatformCoverage, og_file_read_write_seek_and_pixie_paths)
     ASSERT_TRUE(og::io::og_open_read("temp/io_platform_cov/does_not_exist.bin") == nullptr) << "missing file should return null";
 
     {
-        std::FILE* f = std::fopen(pix_ok.string().c_str(), "wb");
-        ASSERT_TRUE(f != nullptr) << "create valid pix";
-        if (!f)
-            return;
-        const unsigned char header[] = {2, 2, 1}; // frames=2, w=2, h=1 => 4-byte payload
-        const unsigned char pix_data[] = {7, 8, 9, 10};
-        std::fwrite(header, 1, sizeof(header), f);
-        std::fwrite(pix_data, 1, sizeof(pix_data), f);
-        std::fclose(f);
+        PixieData test_data(1, 2, 1, new unsigned char[2]{7, 8});
+        ASSERT_TRUE(write_pixie_png(pix_ok.string().c_str(), test_data)) << "write valid PNG fixture";
     }
 
     PixieData ok = read_pixie_file(pix_ok.string().c_str());
-    ASSERT_EQ(2, static_cast<int>(ok.frames)) << "pix frames parsed";
-    ASSERT_EQ(2, static_cast<int>(ok.w)) << "pix width parsed";
-    ASSERT_EQ(1, static_cast<int>(ok.h)) << "pix height parsed";
-    ASSERT_TRUE(ok.data != nullptr) << "pix payload present";
+    ASSERT_EQ(1, static_cast<int>(ok.frames)) << "png frames parsed";
+    ASSERT_EQ(2, static_cast<int>(ok.w)) << "png width parsed";
+    ASSERT_EQ(1, static_cast<int>(ok.h)) << "png height parsed";
+    ASSERT_TRUE(ok.data != nullptr) << "png payload present";
 
     {
         std::FILE* f = std::fopen(pix_bad.string().c_str(), "wb");
-        ASSERT_TRUE(f != nullptr) << "create truncated pix";
+        ASSERT_TRUE(f != nullptr) << "create truncated file";
         if (!f)
             return;
-        const unsigned char header[] = {1, 3, 1}; // expects 3 payload bytes
-        const unsigned char short_data[] = {42};
-        std::fwrite(header, 1, sizeof(header), f);
-        std::fwrite(short_data, 1, sizeof(short_data), f);
+        const unsigned char junk[] = {1, 3, 1, 42};
+        std::fwrite(junk, 1, sizeof(junk), f);
         std::fclose(f);
     }
 
     PixieData bad = read_pixie_file(pix_bad.string().c_str());
-    ASSERT_TRUE(bad.data == nullptr) << "truncated pix should fail payload read";
+    ASSERT_TRUE(bad.data == nullptr) << "invalid PNG should fail decode";
 }
 
 
@@ -484,7 +476,7 @@ TEST(IoPlatformCoverage, og_file_batch3_physfs_seek_and_path_overloads)
         ASSERT_EQ(-1, static_cast<int>(phys->seek(0, 99))) << "physfs invalid whence should fail";
     }
 
-    PixieData missing = read_pixie_file("does_not_exist_batch3.pix");
+    PixieData missing = read_pixie_file("does_not_exist_batch3.png");
     ASSERT_TRUE(missing.data == nullptr) << "missing pix file should return empty PixieData";
 
     std::remove(overload_file.string().c_str());
@@ -553,7 +545,7 @@ TEST(IoPlatformCoverage, platform_io_delete_level_nonempty_campaign_path)
         if (f) std::fclose(f);
     }
     {
-        std::FILE* f = std::fopen((temp_pix / "scen0321.pix").string().c_str(), "wb");
+        std::FILE* f = std::fopen((temp_pix / "scen0321.png").string().c_str(), "wb");
         ASSERT_TRUE(f != nullptr) << "create pix file";
         if (f) std::fclose(f);
     }
@@ -799,7 +791,7 @@ TEST(IoPlatformCoverage, read_pixie_file_truncated_header_path)
 {
     namespace fs = std::filesystem;
     const fs::path tmp_dir = fs::path("temp") / "io_platform_cov";
-    const fs::path pix_header_bad = tmp_dir / "bad_header.pix";
+    const fs::path pix_header_bad = tmp_dir / "bad_header.png";
     std::error_code ec;
     fs::create_directories(tmp_dir, ec);
 

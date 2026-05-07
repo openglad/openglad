@@ -62,7 +62,7 @@ void intro_main(Sint32 argc, char** argv)
     
 	og::runtime::current_session->myscreen_->clear();
 
-	gladdata = read_pixie_file("3mages2.pix");
+	gladdata = read_pixie_file("3mages2.png");
 	pixie gladiator(gladdata);
 	gladiator.drawMix(120,55,og::runtime::current_session->myscreen_->viewob[0].get());
 	mytext.write_y(100,"FORGOTTEN SAGES PRESENTS", 230, og::runtime::current_session->myscreen_->viewob[0].get());
@@ -75,9 +75,8 @@ void intro_main(Sint32 argc, char** argv)
 		return;
 	}
 
-	//gladdata = read_pixie_file("glad.pix");
-	gladdata = read_pixie_file("glad2.pix");
-	bigdata = read_pixie_file("bigfoot.pix");
+	gladdata = read_pixie_file("glad2.png");
+	bigdata = read_pixie_file("bigfoot.png");
 	pixie gladiator2(gladdata);
 	pixie bigfoot(bigdata);
 	og::runtime::current_session->myscreen_->clear();
@@ -121,25 +120,25 @@ void intro_main(Sint32 argc, char** argv)
 
 	// First 'interlude' snapshot
 	og::runtime::current_session->myscreen_->clear();
-	uldata = read_pixie_file("game2ul.pix");
+	uldata = read_pixie_file("game2ul.png");
 	pixie ul(uldata);
 	ul.setxy(41, 12);
 	ul.draw(og::runtime::current_session->myscreen_->viewob[0].get());
 	uldata.free();
 
-	urdata = read_pixie_file("game2ur.pix");
+	urdata = read_pixie_file("game2ur.png");
 	pixie ur(urdata);
 	ur.setxy(160, 12);
 	ur.draw(og::runtime::current_session->myscreen_->viewob[0].get());
 	urdata.free();
 
-	lldata = read_pixie_file("game2ll.pix");
+	lldata = read_pixie_file("game2ll.png");
 	pixie ll(lldata);
 	ll.setxy(41, 103);
 	ll.draw(og::runtime::current_session->myscreen_->viewob[0].get());
 	lldata.free();
 
-	lrdata = read_pixie_file("game2lr.pix");
+	lrdata = read_pixie_file("game2lr.png");
 	pixie lr(lrdata);
 	lr.setxy(160, 103);
 	lr.draw(og::runtime::current_session->myscreen_->viewob[0].get());
@@ -168,13 +167,13 @@ void intro_main(Sint32 argc, char** argv)
 
 	// Second 'interlude' & extra credits
 	og::runtime::current_session->myscreen_->clear();
-	uldata = read_pixie_file("game4.pix");
+	uldata = read_pixie_file("game4.png");
 	pixie ul2(uldata);
 	ul2.setxy(0, 0);
 	ul2.draw(og::runtime::current_session->myscreen_->viewob[0].get());
 	uldata.free();
 
-	lldata = read_pixie_file("game5.pix");
+	lldata = read_pixie_file("game5.png");
 	pixie ll2(lldata);
 	ll2.setxy(160, 78);
 	ll2.draw(og::runtime::current_session->myscreen_->viewob[0].get());

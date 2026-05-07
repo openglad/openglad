@@ -150,7 +150,7 @@ const FamilyDescriptor& describe_family_archer()
         .customize_weapon = nullptr,
         .on_ani_complete = nullptr,
         .on_melee_hit = nullptr,
-        .pix_filename = "archer.pix",
+        .pix_filename = "archer.png",
         .animation_type = FAMILY_ANIM_STANDARD,
         .ai_line_of_sight = 12,
         .description = "Archers are fleet of foot,\n"
