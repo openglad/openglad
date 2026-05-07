@@ -20,9 +20,8 @@
 #include <cstdio>
 #include <cstring>
 #include <memory>
-#include <sstream>
+#include <optional>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 // Path helpers (defined in platform_io.cpp, linked via og_io or text client)
@@ -280,60 +279,124 @@ bool write_pixie_png(const char* filepath, const PixieData& data)
 }
 
 // ---------------------------------------------------------------------------
-// Sprite manifest — maps PNG filename to (frames, width, height)
+// Aseprite sprite-sheet sidecar — per-PNG <basename>.json describes frame
+// layout. We need three numbers (frames, frame_w, frame_h); we don't ship a
+// full JSON parser — Phase 3 will polish this. The fields we extract live in
+// the "Hash"-format `frames` object, where each entry has a `frame` rectangle.
+// All frames share the same width/height (vertical strip), so we only read
+// the first one to learn (frame_w, frame_h), and count entries to learn
+// `frames`.
 // ---------------------------------------------------------------------------
-struct SpriteInfo { int frames; int w; int h; };
-static std::unordered_map<std::string, SpriteInfo> s_sprite_manifest;
-static bool s_manifest_loaded = false;
+struct FrameInfo { int frames; int frame_w; int frame_h; };
 
-static void load_sprite_manifest()
+static std::string sidecar_path_for(const char* filename)
+{
+    std::string s = filename ? filename : "";
+    auto dot = s.find_last_of('.');
+    if (dot != std::string::npos)
+        s.resize(dot);
+    s += ".json";
+    return s;
+}
+
+// Find the first integer following `key:` in `text`, starting at `from`.
+// Whitespace, an optional `"`, and an optional `+` sign are tolerated.
+static bool extract_int_after(const std::string& text, const std::string& key,
+                              std::size_t from, int& out, std::size_t* next_pos = nullptr)
+{
+    auto pos = text.find(key, from);
+    if (pos == std::string::npos) return false;
+    pos += key.size();
+    while (pos < text.size() && (std::isspace(static_cast<unsigned char>(text[pos]))
+                                 || text[pos] == ':' || text[pos] == '"'
+                                 || text[pos] == '+'))
+        ++pos;
+    bool negative = false;
+    if (pos < text.size() && text[pos] == '-') { negative = true; ++pos; }
+    if (pos >= text.size() || !std::isdigit(static_cast<unsigned char>(text[pos])))
+        return false;
+    long val = 0;
+    while (pos < text.size() && std::isdigit(static_cast<unsigned char>(text[pos]))) {
+        val = val * 10 + (text[pos] - '0');
+        ++pos;
+    }
+    out = static_cast<int>(negative ? -val : val);
+    if (next_pos) *next_pos = pos;
+    return true;
+}
+
+static std::optional<FrameInfo> load_aseprite_sidecar(const char* filename)
 {
     using namespace og::io;
-    if (s_manifest_loaded) return;
-    s_manifest_loaded = true;
+    const std::string rel = sidecar_path_for(filename);
+    auto infile = og_open_read("pix/", rel.c_str());
+    if (!infile) infile = og_open_read(rel.c_str());
+    if (!infile) return std::nullopt;
 
-    auto infile = og_open_read("pix/", "sprite_manifest.txt");
-    if (!infile)
-        infile = og_open_read("sprite_manifest.txt");
-    if (!infile) {
-        LogWarn("No sprite_manifest.txt found; assuming 1 frame per PNG\n");
-        return;
-    }
-
-    // Read entire file
-    infile->seek(0, 2); // SEEK_END
+    infile->seek(0, 2);
     auto file_size = infile->tell();
-    infile->seek(0, 0); // SEEK_SET
-    if (file_size <= 0) return;
+    infile->seek(0, 0);
+    if (file_size <= 0) return std::nullopt;
 
-    std::string content(static_cast<std::size_t>(file_size), '\0');
-    infile->read(content.data(), 1, static_cast<std::size_t>(file_size));
+    std::string text(static_cast<std::size_t>(file_size), '\0');
+    if (infile->read(text.data(), 1, static_cast<std::size_t>(file_size))
+        != static_cast<std::size_t>(file_size))
+        return std::nullopt;
 
-    std::istringstream iss(content);
-    std::string line;
-    while (std::getline(iss, line)) {
-        if (line.empty() || line[0] == '#') continue;
-        std::istringstream lss(line);
-        std::string fname;
-        int frames, w, h;
-        if (lss >> fname >> frames >> w >> h) {
-            s_sprite_manifest[fname] = {frames, w, h};
+    // Find the "frames" object body.
+    auto frames_key = text.find("\"frames\"");
+    if (frames_key == std::string::npos) return std::nullopt;
+    auto open_brace = text.find('{', frames_key);
+    if (open_brace == std::string::npos) return std::nullopt;
+
+    // Read frame_w / frame_h from the first "frame" rectangle.
+    auto first_frame_key = text.find("\"frame\"", open_brace);
+    if (first_frame_key == std::string::npos) return std::nullopt;
+    int fw = 0, fh = 0;
+    std::size_t after_w = 0, after_h = 0;
+    if (!extract_int_after(text, "\"w\"", first_frame_key, fw, &after_w))
+        return std::nullopt;
+    if (!extract_int_after(text, "\"h\"", first_frame_key, fh, &after_h))
+        return std::nullopt;
+
+    // Count frames by iterating "\"frame\":" occurrences within the frames
+    // object. We bound the scan by the matching closing brace of the frames
+    // object — each frame's per-frame `"frame"` rectangle counts once.
+    int depth = 0;
+    std::size_t close_brace = std::string::npos;
+    for (std::size_t i = open_brace; i < text.size(); ++i) {
+        char c = text[i];
+        if (c == '{') ++depth;
+        else if (c == '}') {
+            --depth;
+            if (depth == 0) { close_brace = i; break; }
         }
     }
+    if (close_brace == std::string::npos) return std::nullopt;
+
+    int frames = 0;
+    std::size_t scan = open_brace;
+    while (true) {
+        auto hit = text.find("\"frame\"", scan);
+        if (hit == std::string::npos || hit >= close_brace) break;
+        ++frames;
+        scan = hit + 7;
+    }
+    if (frames <= 0) return std::nullopt;
+    return FrameInfo{frames, fw, fh};
 }
 
 // ---------------------------------------------------------------------------
 // read_pixie_file — SDL-free indexed PNG implementation
 // ---------------------------------------------------------------------------
 // Reads a PNG sprite file via lodepng. Each pixel value is a palette index.
-// Frame metadata comes from pix/sprite_manifest.txt.
+// Frame metadata comes from a per-PNG Aseprite "Hash"-format JSON sidecar
+// (pix/<basename>.json); single-frame sprites have no sidecar.
 
 PixieData read_pixie_file(const char* filename)
 {
     using namespace og::io;
     PixieData result;
-
-    load_sprite_manifest();
 
     auto infile = og_open_read("pix/", filename);
     if (!infile)
@@ -410,13 +473,13 @@ PixieData read_pixie_file(const char* filename)
         return result;
     }
 
-    // Look up frame metadata from manifest
-    auto it = s_sprite_manifest.find(filename);
+    // Look up frame metadata from per-PNG Aseprite JSON sidecar; absent
+    // sidecar means single-frame sprite.
     int frames = 1;
     int frame_h = static_cast<int>(png_h);
-    if (it != s_sprite_manifest.end()) {
-        frames = it->second.frames;
-        frame_h = it->second.h;
+    if (auto info = load_aseprite_sidecar(filename)) {
+        frames = info->frames;
+        frame_h = info->frame_h;
     }
 
     if (png_w > 255 || frame_h > 255 || frames > 255) {
@@ -426,7 +489,7 @@ PixieData read_pixie_file(const char* filename)
 
     const auto expected_h = static_cast<unsigned>(frame_h) * static_cast<unsigned>(frames);
     if (expected_h != png_h) {
-        LogError("Sprite manifest mismatch for pix/{}: expected total height {}, got {}\n",
+        LogError("Sprite sidecar mismatch for pix/{}: expected total height {}, got {}\n",
                  filename, expected_h, png_h);
         return result;
     }

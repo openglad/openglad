@@ -1,0 +1,276 @@
+{
+  "frames": {
+    "bottle 0.aseprite": {
+      "frame": {
+        "x": 0,
+        "y": 0,
+        "w": 7,
+        "h": 13
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 7,
+        "h": 13
+      },
+      "sourceSize": {
+        "w": 7,
+        "h": 13
+      },
+      "duration": 100
+    },
+    "bottle 1.aseprite": {
+      "frame": {
+        "x": 0,
+        "y": 13,
+        "w": 7,
+        "h": 13
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 7,
+        "h": 13
+      },
+      "sourceSize": {
+        "w": 7,
+        "h": 13
+      },
+      "duration": 100
+    },
+    "bottle 2.aseprite": {
+      "frame": {
+        "x": 0,
+        "y": 26,
+        "w": 7,
+        "h": 13
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 7,
+        "h": 13
+      },
+      "sourceSize": {
+        "w": 7,
+        "h": 13
+      },
+      "duration": 100
+    },
+    "bottle 3.aseprite": {
+      "frame": {
+        "x": 0,
+        "y": 39,
+        "w": 7,
+        "h": 13
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 7,
+        "h": 13
+      },
+      "sourceSize": {
+        "w": 7,
+        "h": 13
+      },
+      "duration": 100
+    },
+    "bottle 4.aseprite": {
+      "frame": {
+        "x": 0,
+        "y": 52,
+        "w": 7,
+        "h": 13
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 7,
+        "h": 13
+      },
+      "sourceSize": {
+        "w": 7,
+        "h": 13
+      },
+      "duration": 100
+    },
+    "bottle 5.aseprite": {
+      "frame": {
+        "x": 0,
+        "y": 65,
+        "w": 7,
+        "h": 13
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 7,
+        "h": 13
+      },
+      "sourceSize": {
+        "w": 7,
+        "h": 13
+      },
+      "duration": 100
+    },
+    "bottle 6.aseprite": {
+      "frame": {
+        "x": 0,
+        "y": 78,
+        "w": 7,
+        "h": 13
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 7,
+        "h": 13
+      },
+      "sourceSize": {
+        "w": 7,
+        "h": 13
+      },
+      "duration": 100
+    },
+    "bottle 7.aseprite": {
+      "frame": {
+        "x": 0,
+        "y": 91,
+        "w": 7,
+        "h": 13
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 7,
+        "h": 13
+      },
+      "sourceSize": {
+        "w": 7,
+        "h": 13
+      },
+      "duration": 100
+    },
+    "bottle 8.aseprite": {
+      "frame": {
+        "x": 0,
+        "y": 104,
+        "w": 7,
+        "h": 13
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 7,
+        "h": 13
+      },
+      "sourceSize": {
+        "w": 7,
+        "h": 13
+      },
+      "duration": 100
+    },
+    "bottle 9.aseprite": {
+      "frame": {
+        "x": 0,
+        "y": 117,
+        "w": 7,
+        "h": 13
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 7,
+        "h": 13
+      },
+      "sourceSize": {
+        "w": 7,
+        "h": 13
+      },
+      "duration": 100
+    },
+    "bottle 10.aseprite": {
+      "frame": {
+        "x": 0,
+        "y": 130,
+        "w": 7,
+        "h": 13
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 7,
+        "h": 13
+      },
+      "sourceSize": {
+        "w": 7,
+        "h": 13
+      },
+      "duration": 100
+    },
+    "bottle 11.aseprite": {
+      "frame": {
+        "x": 0,
+        "y": 143,
+        "w": 7,
+        "h": 13
+      },
+      "rotated": false,
+      "trimmed": false,
+      "spriteSourceSize": {
+        "x": 0,
+        "y": 0,
+        "w": 7,
+        "h": 13
+      },
+      "sourceSize": {
+        "w": 7,
+        "h": 13
+      },
+      "duration": 100
+    }
+  },
+  "meta": {
+    "app": "https://www.aseprite.org/",
+    "version": "1.3.7",
+    "image": "bottle.png",
+    "format": "I8",
+    "size": {
+      "w": 7,
+      "h": 156
+    },
+    "scale": "1",
+    "frameTags": [],
+    "layers": [
+      {
+        "name": "Layer 1",
+        "opacity": 255,
+        "blendMode": "normal"
+      }
+    ],
+    "slices": []
+  }
+}
