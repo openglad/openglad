@@ -225,6 +225,9 @@ OgFilePtr og_open_write(const char* path, const char* file)
 // ---------------------------------------------------------------------------
 // write_pixie_png — SDL-free indexed PNG writing via lodepng + OgFile
 // ---------------------------------------------------------------------------
+// Pixie<->PNG conversion lineage: based on pixedit by Zardus (9/03/2002) and
+// the standalone pixconvert tool by Jonathan Dearborn (5/07/2013), now folded
+// into the engine's I/O layer.
 
 static void build_indexed_png_state(lodepng::State& state)
 {
