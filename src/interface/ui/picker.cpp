@@ -207,11 +207,9 @@ static void picker_initialize_shared_menu_state()
     og::runtime::current_session->myscreen_->viewob[0]->resize(PREF_VIEW_FULL);
     og::runtime::current_session->myscreen_->clearbuffer();
 
-    //main_title_logo_data = read_pixie_file("glad.pix");
     pks().main_title_logo_data = read_pixie_file("title.png"); // marbled gladiator title
     pks().main_title_logo_pix = make_picker_pixie(pks().main_title_logo_data);
 
-    //main_columns_data = read_pixie_file("mage.pix");
     pks().main_columns_data = read_pixie_file("columns.png");
     pks().main_columns_pix = make_picker_pixie(pks().main_columns_data);
 

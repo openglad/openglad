@@ -53,7 +53,7 @@ bool save_level(GameWorld& world,
                 const LevelFileMetadata& metadata,
                 LevelFileIoError* out_error = nullptr);
 
-// Serialize only the scenario (.fss) payload. Does not write the grid .pix file.
+// Serialize only the scenario (.fss) payload. Does not write the grid .png file.
 bool save_level_scenario_file(GameWorld& world,
                               const std::string& path,
                               const LevelFileMetadata& metadata,

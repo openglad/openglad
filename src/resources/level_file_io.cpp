@@ -558,6 +558,7 @@ bool save_grid_file(const char* gridname, const PixieData& grid)
 {
     std::string fullpath(gridname);
     fullpath += ".png";
+    //buffers: PORT: make sure grid name is lowercase
     lowercase(fullpath);
 
     const std::string full_with_dir = "temp/pix/" + fullpath;

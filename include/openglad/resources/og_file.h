@@ -71,5 +71,5 @@ inline bool og_write_exact(OgFile& f, const void* src, std::size_t size, std::si
 
 class PixieData;
 
-// Read a pixie (.pix) sprite file. SDL-free — implemented in og_file.cpp.
+// Read a pixie (.png) sprite file. SDL-free — implemented in og_file.cpp.
 PixieData read_pixie_file(const char* filename);

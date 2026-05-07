@@ -75,7 +75,6 @@ void intro_main(Sint32 argc, char** argv)
 		return;
 	}
 
-	//gladdata = read_pixie_file("glad.pix");
 	gladdata = read_pixie_file("glad2.png");
 	bigdata = read_pixie_file("bigfoot.png");
 	pixie gladiator2(gladdata);
