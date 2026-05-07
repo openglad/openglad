@@ -224,6 +224,30 @@ OgFilePtr og_open_write(const char* path, const char* file)
 // write_pixie_png — SDL-free indexed PNG writing via lodepng + OgFile
 // ---------------------------------------------------------------------------
 
+static void build_indexed_png_state(lodepng::State& state)
+{
+    state.info_raw.colortype = LCT_PALETTE;
+    state.info_raw.bitdepth = 8;
+    state.info_png.color.colortype = LCT_PALETTE;
+    state.info_png.color.bitdepth = 8;
+    // Force lodepng to write the configured indexed colortype rather than
+    // auto-downgrading to grayscale when the image only references low-index
+    // entries.
+    state.encoder.auto_convert = 0;
+
+    for (unsigned i = 0; i < 256; ++i) {
+        const unsigned r6 = our_pal_lookup(static_cast<int>(i * 3));
+        const unsigned g6 = our_pal_lookup(static_cast<int>(i * 3 + 1));
+        const unsigned b6 = our_pal_lookup(static_cast<int>(i * 3 + 2));
+        const auto r8 = static_cast<unsigned char>((r6 * 255u) / 63u);
+        const auto g8 = static_cast<unsigned char>((g6 * 255u) / 63u);
+        const auto b8 = static_cast<unsigned char>((b6 * 255u) / 63u);
+        const auto a8 = static_cast<unsigned char>((i == 0) ? 0u : 255u);
+        lodepng_palette_add(&state.info_raw, r8, g8, b8, a8);
+        lodepng_palette_add(&state.info_png.color, r8, g8, b8, a8);
+    }
+}
+
 bool write_pixie_png(const char* filepath, const PixieData& data)
 {
     if (!data.valid()) return false;
@@ -238,22 +262,7 @@ bool write_pixie_png(const char* filepath, const PixieData& data)
     const unsigned h = static_cast<unsigned>(data.h) * static_cast<unsigned>(data.frames);
 
     lodepng::State state;
-    state.info_raw.colortype = LCT_PALETTE;
-    state.info_raw.bitdepth = 8;
-    state.info_png.color.colortype = LCT_PALETTE;
-    state.info_png.color.bitdepth = 8;
-
-    for (unsigned i = 0; i < 256; ++i) {
-        const unsigned r6 = our_pal_lookup(static_cast<int>(i * 3));
-        const unsigned g6 = our_pal_lookup(static_cast<int>(i * 3 + 1));
-        const unsigned b6 = our_pal_lookup(static_cast<int>(i * 3 + 2));
-        const auto r8 = static_cast<unsigned char>((r6 * 255u) / 63u);
-        const auto g8 = static_cast<unsigned char>((g6 * 255u) / 63u);
-        const auto b8 = static_cast<unsigned char>((b6 * 255u) / 63u);
-        const auto a8 = static_cast<unsigned char>((i == 0) ? 0u : 255u);
-        lodepng_palette_add(&state.info_raw, r8, g8, b8, a8);
-        lodepng_palette_add(&state.info_png.color, r8, g8, b8, a8);
-    }
+    build_indexed_png_state(state);
 
     std::vector<unsigned char> png_bytes;
     const unsigned err = lodepng::encode(png_bytes, data.data.get(), w, h, state);
@@ -371,6 +380,29 @@ PixieData read_pixie_file(const char* filename)
     if (!indexed_8bit && !legacy_grey_8bit) {
         LogError("Sprite PNG must be indexed or legacy grayscale (8-bit): pix/{}\n", filename);
         return result;
+    }
+
+    if (indexed_8bit) {
+        if (state.info_png.color.palettesize != 256) {
+            LogError("Sprite PNG palette must have 256 entries: pix/{} (got {})\n",
+                     filename, static_cast<unsigned>(state.info_png.color.palettesize));
+            return result;
+        }
+        const unsigned char* pal = state.info_png.color.palette;
+        for (unsigned i = 0; i < 256; ++i) {
+            for (unsigned c = 0; c < 3; ++c) {
+                const unsigned expected6 = our_pal_lookup(static_cast<int>(i * 3 + c));
+                const unsigned expected8 = (expected6 * 255u) / 63u;
+                const unsigned stored = pal[i * 4 + c];
+                const int diff = static_cast<int>(stored) - static_cast<int>(expected8);
+                if (diff < -1 || diff > 1) {
+                    LogError("Sprite PNG palette mismatch at entry {} channel {}: pix/{} "
+                             "(stored {}, expected {})\n",
+                             i, c, filename, stored, expected8);
+                    return result;
+                }
+            }
+        }
     }
 
     if (pixels.size() != static_cast<std::size_t>(png_w) * static_cast<std::size_t>(png_h)) {
