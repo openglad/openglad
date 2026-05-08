@@ -645,6 +645,115 @@ TEST_F(WalkerSpecials, ghost_scare)
 }
 
 
+TEST_F(WalkerSpecials, ghost_scare_animates_and_dissipates)
+{
+    walker* w = make_special_guy(FAMILY_GHOST);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->current_special = 1; // scare
+    ASSERT_TRUE(w->special()) << "scare should fire";
+
+    auto find_scare_effects = []() {
+        std::vector<walker*> result;
+        for (auto& uptr : og::runtime::current_session->myscreen_->world().oblist) {
+            walker* e = uptr.get();
+            if (e && e->family == FAMILY_GHOST_SCARE)
+                result.push_back(e);
+        }
+        for (auto& uptr : og::runtime::current_session->myscreen_->world().fxlist) {
+            walker* e = uptr.get();
+            if (e && e->family == FAMILY_GHOST_SCARE)
+                result.push_back(e);
+        }
+        return result;
+    };
+
+    auto effects = find_scare_effects();
+    ASSERT_EQ(effects.size(), 1u) << "exactly one ghost-scare effect should be spawned";
+    walker* fx = effects[0];
+    ASSERT_EQ(fx->ani_type, ANI_SCARE) << "spawned effect should use ANI_SCARE animation";
+
+    short max_cycle = fx->cycle;
+    size_t max_seen = effects.size();
+    for (int i = 0; i < 64 && fx->dead == 0; ++i) {
+        fx->act();
+        if (fx->cycle > max_cycle)
+            max_cycle = fx->cycle;
+        size_t now = find_scare_effects().size();
+        if (now > max_seen)
+            max_seen = now;
+    }
+
+    ASSERT_GT(max_cycle, 0) << "animation should advance frames";
+    ASSERT_EQ(fx->dead, 1) << "effect should be dead within 64 ticks";
+    ASSERT_LE(max_seen, 1u) << "no additional ghost-scare effects should spawn";
+}
+
+
+TEST_F(WalkerSpecials, ghost_scare_does_not_accumulate)
+{
+    walker* w = make_special_guy(FAMILY_GHOST);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->current_special = 1; // scare
+    ASSERT_TRUE(w->special()) << "first scare should fire";
+
+    auto find_first_scare = []() -> walker* {
+        for (auto& uptr : og::runtime::current_session->myscreen_->world().oblist) {
+            walker* e = uptr.get();
+            if (e && e->family == FAMILY_GHOST_SCARE && !e->dead)
+                return e;
+        }
+        for (auto& uptr : og::runtime::current_session->myscreen_->world().fxlist) {
+            walker* e = uptr.get();
+            if (e && e->family == FAMILY_GHOST_SCARE && !e->dead)
+                return e;
+        }
+        return nullptr;
+    };
+
+    walker* first = find_first_scare();
+    ASSERT_TRUE(first != nullptr) << "first ghost-scare effect should exist";
+
+    auto tick_world = []() {
+        for (auto& uptr : og::runtime::current_session->myscreen_->world().oblist) {
+            walker* e = uptr.get();
+            if (e && !e->dead)
+                e->act();
+        }
+        for (auto& uptr : og::runtime::current_session->myscreen_->world().fxlist) {
+            walker* e = uptr.get();
+            if (e && !e->dead)
+                e->act();
+        }
+    };
+
+    for (int i = 0; i < 32 && first->dead == 0; ++i)
+        tick_world();
+    ASSERT_EQ(first->dead, 1) << "first effect should be dead after ticking";
+
+    ASSERT_TRUE(w->special()) << "second scare should fire";
+    walker* second = find_first_scare();
+    ASSERT_TRUE(second != nullptr) << "second ghost-scare effect should exist";
+    ASSERT_NE(second, first) << "second effect should be a fresh entity";
+
+    for (int i = 0; i < 32 && second->dead == 0; ++i)
+        tick_world();
+    ASSERT_EQ(second->dead, 1) << "second effect should also dissipate";
+
+    int alive = 0;
+    for (auto& uptr : og::runtime::current_session->myscreen_->world().oblist) {
+        walker* e = uptr.get();
+        if (e && e->family == FAMILY_GHOST_SCARE && !e->dead)
+            alive++;
+    }
+    for (auto& uptr : og::runtime::current_session->myscreen_->world().fxlist) {
+        walker* e = uptr.get();
+        if (e && e->family == FAMILY_GHOST_SCARE && !e->dead)
+            alive++;
+    }
+    ASSERT_EQ(alive, 0) << "no live ghost-scare effects should remain";
+}
+
+
 TEST_F(WalkerSpecials, orc_howl)
 {
     walker* w = make_special_guy(FAMILY_ORC);

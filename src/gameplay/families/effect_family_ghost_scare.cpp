@@ -15,7 +15,7 @@ static bool ghost_scare_on_act(effect* self)
 {
     if (self->owner)
         self->center_on(self->owner);
-    return true; // handled, fall through to animate/die
+    return false; // delegate to effect::act default animate/die path
 }
 
 static bool ghost_scare_on_death(effect* self)
