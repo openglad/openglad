@@ -101,6 +101,21 @@ endif()
 set(SRC_DIR ${CMAKE_SOURCE_DIR}/src)
 set(THIRD_PARTY_DIR ${CMAKE_SOURCE_DIR}/third_party)
 
+# Vendor source: lodepng triggers -Wconversion narrowing warnings under the
+# project's -Wall/-Wextra/-Wconversion gate. Suppress warnings on this single
+# translation unit rather than patching upstream.
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    set_source_files_properties(
+        ${THIRD_PARTY_DIR}/lodepng/lodepng.cpp
+        PROPERTIES COMPILE_OPTIONS "-w"
+    )
+elseif(MSVC)
+    set_source_files_properties(
+        ${THIRD_PARTY_DIR}/lodepng/lodepng.cpp
+        PROPERTIES COMPILE_OPTIONS "/w"
+    )
+endif()
+
 set(OG_NETWORK_SOURCES)
 if(NOT EMSCRIPTEN)
     list(APPEND OG_NETWORK_SOURCES
