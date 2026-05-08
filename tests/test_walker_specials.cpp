@@ -645,6 +645,115 @@ TEST_F(WalkerSpecials, ghost_scare)
 }
 
 
+TEST_F(WalkerSpecials, ghost_scare_animates_and_dissipates)
+{
+    walker* w = make_special_guy(FAMILY_GHOST);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->current_special = 1; // scare
+    ASSERT_TRUE(w->special()) << "scare should fire";
+
+    auto find_scare_effects = []() {
+        std::vector<walker*> result;
+        for (auto& uptr : og::runtime::current_session->myscreen_->world().oblist) {
+            walker* e = uptr.get();
+            if (e && e->family == FAMILY_GHOST_SCARE)
+                result.push_back(e);
+        }
+        for (auto& uptr : og::runtime::current_session->myscreen_->world().fxlist) {
+            walker* e = uptr.get();
+            if (e && e->family == FAMILY_GHOST_SCARE)
+                result.push_back(e);
+        }
+        return result;
+    };
+
+    auto effects = find_scare_effects();
+    ASSERT_EQ(effects.size(), 1u) << "exactly one ghost-scare effect should be spawned";
+    walker* fx = effects[0];
+    ASSERT_EQ(fx->ani_type, ANI_SCARE) << "spawned effect should use ANI_SCARE animation";
+
+    short max_cycle = fx->cycle;
+    size_t max_seen = effects.size();
+    for (int i = 0; i < 64 && fx->dead == 0; ++i) {
+        fx->act();
+        if (fx->cycle > max_cycle)
+            max_cycle = fx->cycle;
+        size_t now = find_scare_effects().size();
+        if (now > max_seen)
+            max_seen = now;
+    }
+
+    ASSERT_GT(max_cycle, 0) << "animation should advance frames";
+    ASSERT_EQ(fx->dead, 1) << "effect should be dead within 64 ticks";
+    ASSERT_LE(max_seen, 1u) << "no additional ghost-scare effects should spawn";
+}
+
+
+TEST_F(WalkerSpecials, ghost_scare_does_not_accumulate)
+{
+    walker* w = make_special_guy(FAMILY_GHOST);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->current_special = 1; // scare
+    ASSERT_TRUE(w->special()) << "first scare should fire";
+
+    auto find_first_scare = []() -> walker* {
+        for (auto& uptr : og::runtime::current_session->myscreen_->world().oblist) {
+            walker* e = uptr.get();
+            if (e && e->family == FAMILY_GHOST_SCARE && !e->dead)
+                return e;
+        }
+        for (auto& uptr : og::runtime::current_session->myscreen_->world().fxlist) {
+            walker* e = uptr.get();
+            if (e && e->family == FAMILY_GHOST_SCARE && !e->dead)
+                return e;
+        }
+        return nullptr;
+    };
+
+    walker* first = find_first_scare();
+    ASSERT_TRUE(first != nullptr) << "first ghost-scare effect should exist";
+
+    auto tick_world = []() {
+        for (auto& uptr : og::runtime::current_session->myscreen_->world().oblist) {
+            walker* e = uptr.get();
+            if (e && !e->dead)
+                e->act();
+        }
+        for (auto& uptr : og::runtime::current_session->myscreen_->world().fxlist) {
+            walker* e = uptr.get();
+            if (e && !e->dead)
+                e->act();
+        }
+    };
+
+    for (int i = 0; i < 32 && first->dead == 0; ++i)
+        tick_world();
+    ASSERT_EQ(first->dead, 1) << "first effect should be dead after ticking";
+
+    ASSERT_TRUE(w->special()) << "second scare should fire";
+    walker* second = find_first_scare();
+    ASSERT_TRUE(second != nullptr) << "second ghost-scare effect should exist";
+    ASSERT_NE(second, first) << "second effect should be a fresh entity";
+
+    for (int i = 0; i < 32 && second->dead == 0; ++i)
+        tick_world();
+    ASSERT_EQ(second->dead, 1) << "second effect should also dissipate";
+
+    int alive = 0;
+    for (auto& uptr : og::runtime::current_session->myscreen_->world().oblist) {
+        walker* e = uptr.get();
+        if (e && e->family == FAMILY_GHOST_SCARE && !e->dead)
+            alive++;
+    }
+    for (auto& uptr : og::runtime::current_session->myscreen_->world().fxlist) {
+        walker* e = uptr.get();
+        if (e && e->family == FAMILY_GHOST_SCARE && !e->dead)
+            alive++;
+    }
+    ASSERT_EQ(alive, 0) << "no live ghost-scare effects should remain";
+}
+
+
 TEST_F(WalkerSpecials, orc_howl)
 {
     walker* w = make_special_guy(FAMILY_ORC);
@@ -1400,4 +1509,990 @@ TEST_F(WalkerSpecials, success_returns_true_and_spends_mp)
 
     delete w;
     og::runtime::current_session->myscreen_->world().delete_objects();
+}
+
+
+// ---------------------------------------------------------------------------
+// Phase 2: simulation-driving regression tests for every special.
+// One TEST_F per (family, current_special) pair from the audit table, each
+// driving the world simulation forward and asserting at least one observable
+// post-condition beyond construction.
+// ---------------------------------------------------------------------------
+
+static void tick_world(int n)
+{
+    for (int i = 0; i < n; ++i)
+    {
+        for (auto& uptr : og::runtime::current_session->myscreen_->world().oblist)
+        {
+            walker* e = uptr.get();
+            if (e && !e->dead)
+                e->act();
+        }
+        for (auto& uptr : og::runtime::current_session->myscreen_->world().fxlist)
+        {
+            walker* e = uptr.get();
+            if (e && !e->dead)
+                e->act();
+        }
+        for (auto& uptr : og::runtime::current_session->myscreen_->world().weaplist)
+        {
+            walker* e = uptr.get();
+            if (e && !e->dead)
+                e->act();
+        }
+    }
+}
+
+static int count_family_in_weaplist(char family)
+{
+    int c = 0;
+    for (auto& uptr : og::runtime::current_session->myscreen_->world().weaplist)
+    {
+        walker* w = uptr.get();
+        if (w && w->family == family)
+            c++;
+    }
+    return c;
+}
+
+
+TEST_F(WalkerSpecials, soldier_charge_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_SOLDIER, 1, 4);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->lastx = w->stepsize;
+    w->lasty = 0;
+    w->busy = 0;
+    w->current_special = 1;
+    int cmds_before = static_cast<int>(w->stats()->commands.size());
+    ASSERT_TRUE(w->special()) << "soldier charge should fire when forward is clear";
+    int cmds_after = static_cast<int>(w->stats()->commands.size());
+    tick_world(48);
+    ASSERT_TRUE(cmds_after > cmds_before) << "charge should enqueue a rush command";
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, soldier_boomerang_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_SOLDIER, 1, 4);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->busy = 0;
+    w->current_special = 2;
+    int before = count_family_all_lists(FAMILY_BOOMERANG);
+    ASSERT_TRUE(w->special()) << "soldier boomerang should fire";
+    int just_after = count_family_all_lists(FAMILY_BOOMERANG);
+    ASSERT_TRUE(just_after > before) << "boomerang FX should be spawned";
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, soldier_whirlwind_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_SOLDIER, 1, 4);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->lastx = w->stepsize;
+    w->lasty = 0;
+    w->busy = 0;
+    w->current_special = 3;
+    int cmds_before = static_cast<int>(w->stats()->commands.size());
+    ASSERT_TRUE(w->special()) << "whirlwind should fire";
+    ASSERT_TRUE(w->busy > 0) << "whirlwind should set busy on caster";
+    int cmds_after = static_cast<int>(w->stats()->commands.size());
+    ASSERT_TRUE(cmds_after > cmds_before) << "whirlwind should enqueue walk commands";
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, soldier_disarm_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_SOLDIER, 1, 4);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(100, 100);
+    w->curdir = static_cast<char>(FACE_RIGHT);
+    w->lastx = w->stepsize;
+    w->lasty = 0;
+    w->busy = 0;
+    w->current_special = 4;
+
+    walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_TRUE(foe != nullptr) << "foe created";
+    foe->team_num = 2;
+    foe->setxy(w->xpos + w->sizex + 1, w->ypos + 0);
+    foe->stats()->level = 1;
+    const float foe_busy_before = foe->busy;
+
+    bool fired = w->special();
+    if (fired)
+    {
+        ASSERT_TRUE(w->busy > 0) << "successful disarm should leave caster busy";
+    }
+    else
+    {
+        ASSERT_TRUE(foe->busy >= foe_busy_before) << "failed disarm should not corrupt foe state";
+    }
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, archer_fire_arrows_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_ARCHER, 1, 4);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->lastx = w->stepsize;
+    w->lasty = 0;
+    w->busy = 0;
+    w->current_special = 1;
+    int cmds_before = static_cast<int>(w->stats()->commands.size());
+    ASSERT_TRUE(w->special()) << "archer fire arrows should issue commands";
+    int cmds_after = static_cast<int>(w->stats()->commands.size());
+    ASSERT_TRUE(cmds_after > cmds_before) << "fire arrows should enqueue quick-fire commands";
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, archer_barrage_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_ARCHER, 1, 4);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(100, 100);
+    w->lastx = w->stepsize;
+    w->lasty = 0;
+    w->busy = 0;
+    w->current_special = 2;
+    int arrows_before = count_family_in_weaplist(FAMILY_ARROW);
+    ASSERT_TRUE(w->special()) << "archer barrage should fire";
+    int arrows_after = count_family_in_weaplist(FAMILY_ARROW);
+    ASSERT_TRUE(arrows_after > arrows_before) << "barrage should add arrows to weaplist";
+    ASSERT_TRUE(w->busy > 0) << "barrage should set busy";
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, archer_exploding_bolt_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_ARCHER, 1, 4);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(100, 100);
+    w->lastx = w->stepsize;
+    w->lasty = 0;
+    w->busy = 0;
+    w->current_special = 3;
+    int bolts_before = count_family_in_weaplist(FAMILY_FIRE_ARROW);
+    ASSERT_TRUE(w->special()) << "exploding bolt should fire";
+    int bolts_after = count_family_in_weaplist(FAMILY_FIRE_ARROW);
+    ASSERT_TRUE(bolts_after > bolts_before) << "exploding bolt should add fire arrow to weaplist";
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, mage_teleport_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_MAGE, 1, 4);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(100, 100);
+    w->busy = 0;
+    w->current_special = 1;
+    w->shifter_down = 0;
+    const Sint32 orig_x = w->xpos;
+    const Sint32 orig_y = w->ypos;
+    ASSERT_TRUE(w->special()) << "mage teleport should fire";
+    ASSERT_EQ(w->ani_type, ANI_TELE_OUT) << "mage teleport (no marker) should set ani_type to ANI_TELE_OUT";
+    bool moved = false;
+    for (int i = 0; i < 64 && !moved; ++i)
+    {
+        w->act();
+        if (w->xpos != orig_x || w->ypos != orig_y)
+            moved = true;
+    }
+    tick_world(8);
+    ASSERT_TRUE(moved) << "mage teleport should change position after animation completes";
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, mage_warp_starburst_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_MAGE, 1, 5);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(100, 100);
+    w->lastx = w->stepsize;
+    w->lasty = 0;
+    w->busy = 0;
+    w->current_special = 2;
+    w->stats()->magicpoints = 1500;
+    int fbs_before = count_family_in_weaplist(FAMILY_FIREBALL);
+    ASSERT_TRUE(w->special()) << "mage warp/starburst should fire";
+    int fbs_after = count_family_in_weaplist(FAMILY_FIREBALL);
+    ASSERT_TRUE(fbs_after > fbs_before) << "starburst should add fireballs to weaplist";
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, mage_freeze_time_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_MAGE, 0, 4);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(100, 100);
+    w->busy = 0;
+    w->current_special = 3;
+    og::runtime::current_session->myscreen_->world().enemy_freeze = 0;
+    ASSERT_TRUE(w->special()) << "mage freeze time should fire (player path)";
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->world().enemy_freeze > 0) << "freeze time should set world enemy_freeze";
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, mage_energy_wave_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_MAGE, 1, 5);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(100, 100);
+    w->lastx = w->stepsize;
+    w->lasty = 0;
+    w->busy = 0;
+    w->current_special = 4;
+    int waves_before = count_family_in_weaplist(FAMILY_WAVE);
+    ASSERT_TRUE(w->special()) << "mage energy wave should fire";
+    int waves_after = count_family_in_weaplist(FAMILY_WAVE);
+    ASSERT_TRUE(waves_after > waves_before) << "energy wave should spawn FAMILY_WAVE in weaplist";
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, mage_heartburst_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_MAGE, 1, 5);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(100, 100);
+    w->busy = 0;
+    w->current_special = 5;
+    w->stats()->magicpoints = 1500;
+    w->stats()->special_cost[5] = 0;
+
+    walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_TRUE(foe != nullptr) << "foe created";
+    foe->team_num = 2;
+    foe->setxy(w->xpos + 8, w->ypos + 8);
+    foe->stats()->level = 1;
+
+    int explosions_before = count_family_all_lists(FAMILY_EXPLOSION);
+    ASSERT_TRUE(w->special()) << "mage heartburst should fire when foes are present";
+    int explosions_after = count_family_all_lists(FAMILY_EXPLOSION);
+    ASSERT_TRUE(explosions_after > explosions_before) << "heartburst should spawn explosion FX";
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, skeleton_tunnel_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_SKELETON, 1, 4);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(100, 100);
+    w->lastx = w->stepsize;
+    w->lasty = 0;
+    w->busy = 0;
+    w->ani_type = ANI_WALK; // skeletons spawn with ANI_SKEL_GROW; tunnel only fires from a normal state
+    w->current_special = 1;
+    const Sint32 orig_x = w->xpos;
+    const Sint32 orig_y = w->ypos;
+    ASSERT_TRUE(w->special()) << "skeleton tunnel should fire";
+    ASSERT_EQ(w->ani_type, ANI_TELE_OUT) << "tunnel should set ani_type to ANI_TELE_OUT";
+    bool moved = false;
+    for (int i = 0; i < 64 && !moved; ++i)
+    {
+        w->act();
+        if (w->xpos != orig_x || w->ypos != orig_y)
+            moved = true;
+    }
+    ASSERT_TRUE(moved) << "skeleton tunnel should change position";
+    tick_world(8);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, cleric_heal_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_CLERIC, 1, 5);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(100, 100);
+    w->busy = 0;
+    w->current_special = 1;
+    w->shifter_down = 0;
+    w->stats()->magicpoints = 2000;
+
+    walker* ally1 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* ally2 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_TRUE(ally1 != nullptr && ally2 != nullptr) << "allies created";
+    ally1->team_num = 1;
+    ally2->team_num = 1;
+    ally1->setxy(w->xpos + 8, w->ypos + 0);
+    ally2->setxy(w->xpos + 12, w->ypos + 0);
+    ally1->stats()->max_hitpoints = 100;
+    ally2->stats()->max_hitpoints = 100;
+    ally1->stats()->hitpoints = 20;
+    ally2->stats()->hitpoints = 20;
+    const float ally1_hp_before = ally1->stats()->hitpoints;
+    const float ally2_hp_before = ally2->stats()->hitpoints;
+
+    ASSERT_TRUE(w->special()) << "cleric heal should fire with wounded allies";
+    ASSERT_TRUE(ally1->stats()->hitpoints > ally1_hp_before
+                || ally2->stats()->hitpoints > ally2_hp_before) << "heal should restore at least one ally's hitpoints";
+    tick_world(48);
+    delete w;
+}
+
+
+// Dynamically place a stain at a passable spot near the caster so the cleric
+// raise-* / resurrect specials can succeed regardless of level layout.
+static walker* place_stain_near(walker* caster, char old_family, unsigned char team, int level)
+{
+    walker* stain = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::Treasure, FAMILY_STAIN);
+    if (!stain)
+        return nullptr;
+    stain->team_num = team;
+    stain->stats()->level = level;
+    stain->stats()->old_family = old_family;
+    stain->dead = 0;
+    for (int dx = 18; dx <= 28; dx += 2)
+    {
+        stain->setxy(caster->xpos + dx, caster->ypos + 0);
+        if (og::runtime::current_session->myscreen_->world().query_passable(
+                stain->xpos, stain->ypos, stain))
+            return stain;
+    }
+    for (int dy = 18; dy <= 28; dy += 2)
+    {
+        stain->setxy(caster->xpos + 0, caster->ypos + dy);
+        if (og::runtime::current_session->myscreen_->world().query_passable(
+                stain->xpos, stain->ypos, stain))
+            return stain;
+    }
+    return stain;
+}
+
+
+TEST_F(WalkerSpecials, cleric_raise_undead_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_CLERIC, 1, 5);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(80, 80);
+    w->busy = 0;
+    w->current_special = 2;
+    w->shifter_down = 0;
+    w->stats()->magicpoints = 2000;
+
+    walker* stain = place_stain_near(w, FAMILY_SOLDIER, 2, 2);
+    ASSERT_TRUE(stain != nullptr) << "stain placed";
+
+    int skel_before = count_family_in_oblist(FAMILY_SKELETON);
+    ASSERT_TRUE(w->special()) << "raise undead should fire from stain";
+    int skel_after = count_family_in_oblist(FAMILY_SKELETON);
+    ASSERT_TRUE(skel_after > skel_before) << "raise undead should add a skeleton to oblist";
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, cleric_raise_ghost_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_CLERIC, 1, 5);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(80, 80);
+    w->busy = 0;
+    w->current_special = 3;
+    w->shifter_down = 0;
+    w->stats()->magicpoints = 2000;
+
+    walker* stain = place_stain_near(w, FAMILY_SOLDIER, 2, 2);
+    ASSERT_TRUE(stain != nullptr) << "stain placed";
+
+    int ghost_before = count_family_in_oblist(FAMILY_GHOST);
+    ASSERT_TRUE(w->special()) << "raise ghost should fire from stain";
+    int ghost_after = count_family_in_oblist(FAMILY_GHOST);
+    ASSERT_TRUE(ghost_after > ghost_before) << "raise ghost should add a ghost to oblist";
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, cleric_resurrect_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_CLERIC, 1, 5);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(80, 80);
+    w->busy = 0;
+    w->current_special = 4;
+    w->shifter_down = 0;
+    w->stats()->magicpoints = 2000;
+    w->stats()->special_cost[4] = 0;
+
+    walker* stain = place_stain_near(w, FAMILY_SOLDIER, 1, 2);
+    ASSERT_TRUE(stain != nullptr) << "stain placed";
+
+    int soldiers_before = count_family_in_oblist(FAMILY_SOLDIER);
+    int ghosts_before = count_family_in_oblist(FAMILY_GHOST);
+    ASSERT_TRUE(w->special()) << "resurrect should fire from friendly stain";
+    int soldiers_after = count_family_in_oblist(FAMILY_SOLDIER);
+    int ghosts_after = count_family_in_oblist(FAMILY_GHOST);
+    ASSERT_TRUE(soldiers_after > soldiers_before
+                || ghosts_after > ghosts_before)
+        << "resurrect should produce a living entity (friendly soldier or ghost on enemy stain)";
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, elf_rocks_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_ELF, 1, 4);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(100, 100);
+    w->lastx = w->stepsize;
+    w->lasty = 0;
+    w->busy = 0;
+    w->current_special = 1;
+    int rocks_before = count_family_in_weaplist(FAMILY_ROCK);
+    ASSERT_TRUE(w->special()) << "elf rocks should fire";
+    int rocks_after = count_family_in_weaplist(FAMILY_ROCK);
+    ASSERT_TRUE(rocks_after > rocks_before) << "elf rocks should add rocks to weaplist";
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, elf_bouncing_rocks_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_ELF, 1, 4);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(100, 100);
+    w->lastx = w->stepsize;
+    w->lasty = 0;
+    w->busy = 0;
+    w->current_special = 2;
+    int rocks_before = count_family_in_weaplist(FAMILY_ROCK);
+    ASSERT_TRUE(w->special()) << "elf bouncing rocks should fire";
+    int rocks_after = count_family_in_weaplist(FAMILY_ROCK);
+    ASSERT_TRUE(rocks_after > rocks_before) << "bouncing rocks should add rocks to weaplist";
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, elf_lots_of_rocks_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_ELF, 1, 5);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(100, 100);
+    w->lastx = w->stepsize;
+    w->lasty = 0;
+    w->busy = 0;
+    w->current_special = 3;
+    int rocks_before = count_family_in_weaplist(FAMILY_ROCK);
+    ASSERT_TRUE(w->special()) << "elf lots of rocks should fire";
+    int rocks_after = count_family_in_weaplist(FAMILY_ROCK);
+    ASSERT_TRUE(rocks_after > rocks_before) << "lots of rocks should add rocks to weaplist";
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, elf_mega_rocks_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_ELF, 1, 6);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(100, 100);
+    w->lastx = w->stepsize;
+    w->lasty = 0;
+    w->busy = 0;
+    w->current_special = 4;
+    w->stats()->magicpoints = 2000;
+    int rocks_before = count_family_in_weaplist(FAMILY_ROCK);
+    ASSERT_TRUE(w->special()) << "elf mega rocks should fire";
+    int rocks_after = count_family_in_weaplist(FAMILY_ROCK);
+    ASSERT_TRUE(rocks_after > rocks_before) << "mega rocks should add rocks to weaplist";
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, fire_elemental_starburst_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_FIREELEMENTAL, 1, 4);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(100, 100);
+    w->lastx = w->stepsize;
+    w->lasty = 0;
+    w->busy = 0;
+    w->current_special = 1;
+    w->stats()->magicpoints = 2000;
+    int meteors_before = count_family_in_weaplist(FAMILY_METEOR);
+    ASSERT_TRUE(w->special()) << "fire elemental starburst should fire";
+    int meteors_after = count_family_in_weaplist(FAMILY_METEOR);
+    ASSERT_TRUE(meteors_after > meteors_before) << "starburst should add meteors to weaplist";
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, thief_drop_bomb_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_THIEF, 1, 4);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(100, 100);
+    w->busy = 0;
+    w->user = 0;
+    w->current_special = 1;
+    int bombs_before = count_family_in_oblist(FAMILY_BOMB);
+    ASSERT_TRUE(w->special()) << "thief drop bomb should fire";
+    int bombs_after = count_family_in_oblist(FAMILY_BOMB);
+    ASSERT_TRUE(bombs_after > bombs_before) << "drop bomb should spawn FAMILY_BOMB in oblist";
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, thief_cloak_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_THIEF, 1, 4);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(100, 100);
+    w->busy = 0;
+    w->user = 0;
+    w->invisibility_left = 0;
+    w->current_special = 2;
+    ASSERT_TRUE(w->special()) << "thief cloak should fire";
+    ASSERT_TRUE(w->invisibility_left > 0) << "cloak should set invisibility_left";
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, thief_taunt_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_THIEF, 1, 5);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(100, 100);
+    w->busy = 0;
+    w->user = 0;
+    w->shifter_down = 0;
+    w->current_special = 3;
+
+    walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_TRUE(foe != nullptr) << "foe created";
+    foe->team_num = 2;
+    foe->setxy(w->xpos + 12, w->ypos + 4);
+    foe->stats()->level = 1;
+    foe->foe = nullptr;
+
+    SequenceRandom seq_rng({0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
+    GameContext test_ctx;
+    test_ctx.rng = &seq_rng;
+    push_test_context(&test_ctx);
+    ASSERT_TRUE(w->special()) << "thief taunt should fire when foes are nearby";
+    pop_test_context();
+    ASSERT_TRUE(foe->foe == w) << "taunt should retarget foe at thief";
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, thief_charm_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_THIEF, 1, 6);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(100, 100);
+    w->busy = 0;
+    w->user = 0;
+    w->shifter_down = 1;
+    w->current_special = 3;
+
+    walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_TRUE(foe != nullptr) << "foe created";
+    foe->team_num = 2;
+    foe->setxy(w->xpos + 8, w->ypos + 4);
+    foe->stats()->level = 1;
+    foe->real_team_num = 255;
+    foe->charm_left = 0;
+
+    SequenceRandom seq_rng({1, 1, 1, 1, 1, 1, 1, 1});
+    GameContext test_ctx;
+    test_ctx.rng = &seq_rng;
+    push_test_context(&test_ctx);
+    ASSERT_TRUE(w->special()) << "thief charm should fire on a charmable foe";
+    pop_test_context();
+    ASSERT_TRUE(foe->charm_left > 0 || foe->team_num == w->team_num)
+        << "charm should set charm_left or move foe to thief team";
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, thief_poison_cloud_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_THIEF, 1, 4);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(100, 100);
+    w->busy = 0;
+    w->user = 0;
+    w->current_special = 4;
+    int clouds_before = count_family_all_lists(FAMILY_CLOUD);
+    ASSERT_TRUE(w->special()) << "thief poison cloud should fire";
+    int clouds_after = count_family_all_lists(FAMILY_CLOUD);
+    ASSERT_TRUE(clouds_after > clouds_before) << "poison cloud should spawn FAMILY_CLOUD";
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, druid_grow_tree_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_DRUID, 1, 5);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(100, 100);
+    w->lastx = w->stepsize;
+    w->lasty = 0;
+    w->busy = 0;
+    w->current_special = 1;
+    w->stats()->magicpoints = 2000;
+    int trees_before = count_family_in_weaplist(FAMILY_TREE);
+    ASSERT_TRUE(w->special()) << "druid grow tree should fire";
+    int trees_after = count_family_in_weaplist(FAMILY_TREE);
+    ASSERT_TRUE(trees_after > trees_before) << "grow tree should add FAMILY_TREE to weaplist";
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, druid_summon_faerie_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_DRUID, 1, 5);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(100, 100);
+    w->lastx = w->stepsize;
+    w->lasty = 0;
+    w->busy = 0;
+    w->current_special = 2;
+    w->stats()->magicpoints = 2000;
+    int faerie_before = count_family_in_oblist(FAMILY_FAERIE);
+    ASSERT_TRUE(w->special()) << "druid summon faerie should fire";
+    int faerie_after = count_family_in_oblist(FAMILY_FAERIE);
+    ASSERT_TRUE(faerie_after > faerie_before) << "summon faerie should add FAMILY_FAERIE to oblist";
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, druid_reveal_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_DRUID, 1, 4);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(100, 100);
+    w->busy = 0;
+    w->view_all = 0;
+    w->current_special = 3;
+    ASSERT_TRUE(w->special()) << "druid reveal should fire";
+    ASSERT_TRUE(w->view_all > 0) << "reveal should set view_all";
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, druid_protection_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_DRUID, 1, 5);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(100, 100);
+    w->busy = 0;
+    w->current_special = 4;
+    w->stats()->magicpoints = 2000;
+
+    walker* ally1 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* ally2 = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_TRUE(ally1 != nullptr && ally2 != nullptr) << "allies created";
+    ally1->team_num = 1;
+    ally2->team_num = 1;
+    ally1->setxy(w->xpos + 8, w->ypos + 0);
+    ally2->setxy(w->xpos + 12, w->ypos + 4);
+    ally1->stats()->level = 2;
+    ally2->stats()->level = 2;
+
+    int prot_before = count_family_in_weaplist(FAMILY_CIRCLE_PROTECTION);
+    ASSERT_TRUE(w->special()) << "druid protection should fire with friends nearby";
+    int prot_after = count_family_in_weaplist(FAMILY_CIRCLE_PROTECTION);
+    ASSERT_TRUE(prot_after > prot_before) << "protection should add FAMILY_CIRCLE_PROTECTION to weaplist";
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, orc_howl_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_ORC, 1, 4);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(100, 100);
+    w->busy = 0;
+    w->current_special = 1;
+
+    walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_TRUE(foe != nullptr) << "foe created";
+    foe->team_num = 2;
+    foe->setxy(w->xpos + 16, w->ypos + 4);
+    foe->stats()->level = 1;
+    foe->stats()->frozen_delay = 0;
+    foe->stats()->hitpoints = 30.0f;
+
+    FixedRandom one_rng(1);
+    GameContext test_ctx;
+    test_ctx.rng = &one_rng;
+    push_test_context(&test_ctx);
+    ASSERT_TRUE(w->special()) << "orc howl should fire";
+    pop_test_context();
+    ASSERT_TRUE(foe->stats()->frozen_delay > 0) << "howl should freeze nearby foes";
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, orc_eat_corpse_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_ORC, 1, 4);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(100, 100);
+    w->busy = 0;
+    w->current_special = 2;
+    w->stats()->max_hitpoints = 200;
+    w->stats()->hitpoints = 50;
+
+    walker* stain = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::Treasure, FAMILY_STAIN);
+    ASSERT_TRUE(stain != nullptr) << "stain created";
+    stain->center_on(w);
+    stain->team_num = 2;
+    stain->stats()->level = 3;
+    stain->dead = 0;
+
+    const float hp_before = w->stats()->hitpoints;
+    ASSERT_TRUE(w->special()) << "orc eat corpse should fire";
+    ASSERT_TRUE(w->stats()->hitpoints > hp_before) << "eat corpse should heal the orc";
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, barbarian_hurl_boulder_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_BARBARIAN, 1, 5);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(100, 100);
+    w->lastx = w->stepsize;
+    w->lasty = 0;
+    w->busy = 0;
+    w->current_special = 1;
+    int boulders_before = count_family_in_weaplist(FAMILY_BOULDER);
+    ASSERT_TRUE(w->special()) << "barbarian hurl boulder should fire";
+    int boulders_after = count_family_in_weaplist(FAMILY_BOULDER);
+    ASSERT_TRUE(boulders_after > boulders_before) << "hurl boulder should add FAMILY_BOULDER to weaplist";
+    ASSERT_TRUE(w->busy > 0) << "hurl boulder should set busy";
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, barbarian_exploding_boulder_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_BARBARIAN, 1, 5);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(100, 100);
+    w->lastx = w->stepsize;
+    w->lasty = 0;
+    w->busy = 0;
+    w->current_special = 2;
+    int boulders_before = count_family_in_weaplist(FAMILY_BOULDER);
+    ASSERT_TRUE(w->special()) << "barbarian exploding boulder should fire";
+    int boulders_after = count_family_in_weaplist(FAMILY_BOULDER);
+    ASSERT_TRUE(boulders_after > boulders_before) << "exploding boulder should add FAMILY_BOULDER to weaplist";
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, archmage_teleport_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_ARCHMAGE, 1, 8);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(120, 120);
+    w->busy = 0;
+    w->user = 0;
+    w->current_special = 1;
+    w->shifter_down = 1;
+    w->stats()->special_cost[1] = 0;
+    w->stats()->magicpoints = 2000;
+    if (w->myguy)
+        w->myguy->intelligence = 200;
+
+    int markers_before = count_family_in_oblist(FAMILY_MARKER);
+    ASSERT_TRUE(w->special()) << "archmage teleport (marker) should fire";
+    int markers_after = count_family_in_oblist(FAMILY_MARKER);
+    ASSERT_TRUE(markers_after > markers_before) << "marker placement path should spawn FAMILY_MARKER";
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, archmage_heartburst_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_ARCHMAGE, 1, 8);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(120, 120);
+    w->busy = 0;
+    w->shifter_down = 0;
+    w->current_special = 2;
+    w->stats()->magicpoints = 2000;
+    w->stats()->special_cost[2] = 0;
+
+    walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_TRUE(foe != nullptr) << "foe created";
+    foe->team_num = 2;
+    foe->setxy(w->xpos + 8, w->ypos + 8);
+    foe->stats()->level = 1;
+
+    int explosions_before = count_family_all_lists(FAMILY_EXPLOSION);
+    ASSERT_TRUE(w->special()) << "archmage heartburst should fire when foes are present";
+    int explosions_after = count_family_all_lists(FAMILY_EXPLOSION);
+    ASSERT_TRUE(explosions_after > explosions_before) << "heartburst should spawn explosion FX";
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, archmage_summon_image_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_ARCHMAGE, 1, 8);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(120, 120);
+    w->busy = 0;
+    w->shifter_down = 0;
+    w->current_special = 3;
+    w->stats()->magicpoints = 800;
+    w->stats()->special_cost[3] = 0;
+
+    int oblist_before = static_cast<int>(og::runtime::current_session->myscreen_->world().oblist.size());
+    ASSERT_TRUE(w->special()) << "archmage summon image should fire";
+    int oblist_after = static_cast<int>(og::runtime::current_session->myscreen_->world().oblist.size());
+    ASSERT_TRUE(oblist_after > oblist_before) << "summon image should add a living entity to oblist";
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, archmage_mind_control_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_ARCHMAGE, 1, 8);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(120, 120);
+    w->busy = 0;
+    w->shifter_down = 0;
+    w->current_special = 4;
+    w->stats()->magicpoints = 1000;
+    w->stats()->special_cost[4] = 0;
+
+    walker* foe = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_TRUE(foe != nullptr) << "foe created";
+    foe->team_num = 2;
+    foe->setxy(w->xpos + 6, w->ypos + 6);
+    foe->stats()->level = 1;
+    foe->real_team_num = 255;
+    foe->charm_left = 0;
+    const unsigned char foe_team_before = foe->team_num;
+
+    SequenceRandom seq_rng({1, 1, 1, 1, 1, 1, 1, 1});
+    GameContext test_ctx;
+    test_ctx.rng = &seq_rng;
+    push_test_context(&test_ctx);
+    ASSERT_TRUE(w->special()) << "archmage mind control should fire";
+    pop_test_context();
+    ASSERT_TRUE(foe->team_num != foe_team_before || foe->charm_left > 0)
+        << "mind control should change foe team or set charm_left";
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, slime_split_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_SLIME, 1, 4);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(100, 100);
+    w->busy = 0;
+    w->current_special = 1;
+    ASSERT_TRUE(w->special()) << "slime split should fire";
+    ASSERT_EQ(w->ani_type, ANI_SLIME_SPLIT) << "split should set ani_type to ANI_SLIME_SPLIT";
+    int small_before = count_family_in_oblist(FAMILY_SMALL_SLIME);
+    bool transformed = false;
+    for (int i = 0; i < 64 && !transformed; ++i)
+    {
+        w->act();
+        if (w->family == FAMILY_SMALL_SLIME)
+            transformed = true;
+        if (count_family_in_oblist(FAMILY_SMALL_SLIME) > small_before)
+            transformed = true;
+    }
+    tick_world(8);
+    ASSERT_TRUE(transformed) << "split should transform slime into a small slime and spawn another";
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, medium_slime_grow_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_MEDIUM_SLIME, 1, 4);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(100, 100);
+    w->busy = 0;
+    w->current_special = 1;
+    bool fired = w->special();
+    if (fired)
+    {
+        ASSERT_EQ(w->family, FAMILY_SLIME) << "successful grow should transform to FAMILY_SLIME";
+    }
+    else
+    {
+        ASSERT_TRUE(w->stats()->commands.size() > 0)
+            << "failed grow (no space) should still leave a walk command queued";
+    }
+    tick_world(48);
+    delete w;
+}
+
+
+TEST_F(WalkerSpecials, small_slime_grow_drives_simulation)
+{
+    walker* w = make_special_guy(FAMILY_SMALL_SLIME, 1, 4);
+    ASSERT_TRUE(w != nullptr) << "walker created";
+    w->setxy(100, 100);
+    w->busy = 0;
+    w->current_special = 1;
+    bool fired = w->special();
+    if (fired)
+    {
+        ASSERT_EQ(w->family, FAMILY_MEDIUM_SLIME) << "successful grow should transform to FAMILY_MEDIUM_SLIME";
+    }
+    else
+    {
+        ASSERT_TRUE(w->stats()->commands.size() > 0)
+            << "failed grow (no space) should still leave a walk command queued";
+    }
+    tick_world(48);
+    delete w;
 }
