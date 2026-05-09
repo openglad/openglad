@@ -60,8 +60,10 @@ public:
 
     // Activate this session: install its globals as current.
     // Returns an RAII guard that restores the previous session on destruction.
+    // When swap_render=false, the per-session SDL render surface swap is
+    // skipped (used by worker threads that must not touch E_Screen->render).
     class SessionScope;
-    [[nodiscard]] SessionScope activate();
+    [[nodiscard]] SessionScope activate(bool swap_render = true);
 
     // Per-session render surface (320x200 32-bit).
     // Non-null only for sessions that don't own the display (create_display=false).
@@ -126,7 +128,7 @@ public:
 
 private:
     friend class GameSession;
-    explicit SessionScope(GameSession& session);
+    explicit SessionScope(GameSession& session, bool swap_render = true);
 
     GameSession* session_ = nullptr;
     SessionState* saved_session_ = nullptr;

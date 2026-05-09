@@ -797,7 +797,7 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
         runtime->server->send_initial_snapshots(og::sim::SnapshotCaptureMode::Peek);
     }
     {
-        auto client_scope = session.activate();
+        auto client_scope = session.activate(/*swap_render=*/false);
         GameplayContextGuard client_gameplay_scope(&session.game_);
         for (auto& client : runtime->clients)
             poll_local_transport_client(gameplay_screen, client, INT_MAX);
@@ -962,7 +962,7 @@ void reset_network_host_transport_shadow(
         runtime->server->send_initial_snapshots(og::sim::SnapshotCaptureMode::Peek);
     }
     {
-        auto client_scope = session.activate();
+        auto client_scope = session.activate(/*swap_render=*/false);
         GameplayContextGuard client_gameplay_scope(&session.game_);
         for (auto& local_client : runtime->clients)
             poll_local_transport_client(gameplay_screen, local_client, INT_MAX);
@@ -1007,7 +1007,7 @@ void reset_network_client_transport_shadow(
     runtime->clients.push_back(std::move(client));
 
     {
-        auto client_scope = session.activate();
+        auto client_scope = session.activate(/*swap_render=*/false);
         GameplayContextGuard client_gameplay_scope(&session.game_);
         poll_local_transport_client(gameplay_screen, runtime->clients.front(), INT_MAX);
     }
@@ -1075,7 +1075,7 @@ void local_transport_shadow_finish_tick(GameSession& session)
                 "local_transport_shadow", "finish_tick_authoritative_step"));
         // Single-thread authoritative order:
         //  3-9. Install the server session/context and run one authoritative step.
-        auto server_scope = runtime->server_session->activate();
+        auto server_scope = runtime->server_session->activate(/*swap_render=*/false);
         GameplayContextGuard server_gameplay_scope(
             &runtime->server_session->game_);
         ScopedSessionGameplayActivation gameplay_active(*runtime->server_session);
@@ -1088,7 +1088,7 @@ void local_transport_shadow_finish_tick(GameSession& session)
         og::runtime::emit_runtime_trace(
             og::runtime::make_runtime_trace_record(
                 "local_transport_shadow", "finish_tick_client_drain_begin"));
-        auto client_scope = session.activate();
+        auto client_scope = session.activate(/*swap_render=*/false);
         GameplayContextGuard client_gameplay_scope(&session.game_);
         for (auto& client : runtime->clients)
         {

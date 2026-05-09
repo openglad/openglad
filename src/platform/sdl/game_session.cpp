@@ -262,12 +262,12 @@ GameSession::~GameSession()
 // SessionScope: RAII activation of a session's globals
 // ---------------------------------------------------------------------------
 
-GameSession::SessionScope GameSession::activate()
+GameSession::SessionScope GameSession::activate(bool swap_render)
 {
-    return SessionScope(*this);
+    return SessionScope(*this, swap_render);
 }
 
-GameSession::SessionScope::SessionScope(GameSession& session)
+GameSession::SessionScope::SessionScope(GameSession& session, bool swap_render)
     : session_(&session)
 {
     // Save current session
@@ -283,7 +283,7 @@ GameSession::SessionScope::SessionScope(GameSession& session)
     current_game = &session_->game_;
 
     // Swap render surface if this session has its own.
-    if (session_->session_surface_ && E_Screen) {
+    if (swap_render && session_->session_surface_ && E_Screen) {
         saved_render_surface_ = E_Screen->render;
         did_swap_render_ = true;
         E_Screen->render = session_->session_surface_;

@@ -304,18 +304,23 @@ int main(int argc, char* argv[])
                 display_h = dm.h;
             }
         }
-        // TODO(perf): remove in Phase 2 — headless profiling clamp so SSH/CI
-        // runs reproduce the 4x3=12 cell grid called out in CMakeLists.txt:1086.
-        if (const char* clamp_env = std::getenv("OPENGLAD_DEMO_DISPLAY_CLAMP")) {
-            int cw = 0, ch = 0;
-            if (std::sscanf(clamp_env, "%dx%d", &cw, &ch) == 2 && cw > 0 && ch > 0) {
-                display_w = cw;
-                display_h = ch;
-                Log("OPENGLAD_DEMO_DISPLAY_CLAMP applied: {}x{}\n", cw, ch);
+        int grid_cols = display_w / CELL_W;
+        int grid_rows = display_h / CELL_H;
+        // The render loop is sequential on the main thread, so cell count
+        // drives steady-state frame cost linearly. Cap to the documented
+        // demo intent (4x3 = 12 cells, see CMakeLists.txt:1086) so a 4K+
+        // desktop doesn't drop FPS into the single digits. Power users can
+        // opt back in via OPENGLAD_DEMO_GRID=COLSxROWS.
+        if (const char* grid_env = std::getenv("OPENGLAD_DEMO_GRID")) {
+            int gc = 0, gr = 0;
+            if (std::sscanf(grid_env, "%dx%d", &gc, &gr) == 2 && gc >= 1 && gr >= 1) {
+                grid_cols = gc;
+                grid_rows = gr;
             }
+        } else {
+            grid_cols = std::min(grid_cols, 4);
+            grid_rows = std::min(grid_rows, 3);
         }
-        const int grid_cols = display_w / CELL_W;
-        const int grid_rows = display_h / CELL_H;
         const int num_sessions = grid_cols * grid_rows;
 
         Log("Display: {}x{}, grid: {}x{} = {} sessions\n",
@@ -418,24 +423,8 @@ int main(int argc, char* argv[])
         bool running = true;
         int frames_run = 0;
 
-        // TODO(perf): remove in Phase 2 — per-stage timing accumulators.
-        using clk = std::chrono::steady_clock;
-        using us = std::chrono::microseconds;
-        constexpr int PERF_WARMUP_FRAMES = 30;
-        constexpr int PERF_REPORT_EVERY = 30;
-        long long perf_frame_us_sum = 0;
-        long long perf_barrier_us_sum = 0;
-        long long perf_render_loop_us_sum = 0;
-        long long perf_render_session_us_sum = 0;
-        long long perf_render_session_max_us = 0;
-        long long perf_render_session_max_frame_max_us = 0;
-        long long perf_composite_us_sum = 0;
-        long long perf_present_us_sum = 0;
-        int perf_samples = 0;
-        int perf_render_session_samples = 0;
-
         while (running) {
-            auto frame_start = clk::now();
+            auto frame_start = std::chrono::steady_clock::now();
 
             // --- Phase 1: Poll SDL events (main thread only) ---
             // The demo manages its own shutdown — don't forward quit events
@@ -457,8 +446,6 @@ int main(int argc, char* argv[])
             if (!running) break;
 
             // --- Phase 2: Signal workers to simulate one frame ---
-            // TODO(perf): remove in Phase 2 — barrier timing.
-            auto t_barrier_start = clk::now();
             {
                 std::lock_guard lock(sync.mtx);
                 sync.workers_done = 0;
@@ -473,15 +460,9 @@ int main(int argc, char* argv[])
                     return sync.workers_done >= num_sessions;
                 });
             }
-            auto t_barrier_end = clk::now();
 
             // --- Phase 4: Render each session to its surface (main thread) ---
             // This is sequential: only the main thread touches E_Screen.
-            // TODO(perf): remove in Phase 2 — render-loop timing.
-            auto t_render_loop_start = clk::now();
-            long long this_frame_render_session_max_us = 0;
-            int this_frame_render_session_samples = 0;
-            long long this_frame_render_session_sum_us = 0;
             E_Screen->suppress_present = true;
             int active_count = 0;
             for (int i = 0; i < num_sessions; i++) {
@@ -493,21 +474,11 @@ int main(int argc, char* argv[])
                 screen* s = og::runtime::current_session->myscreen_;
                 if (!s) continue;
 
-                auto t_rs_start = clk::now();
                 render_session_frame(*s);
-                auto t_rs_end = clk::now();
-                long long rs_us = std::chrono::duration_cast<us>(t_rs_end - t_rs_start).count();
-                this_frame_render_session_sum_us += rs_us;
-                this_frame_render_session_samples++;
-                if (rs_us > this_frame_render_session_max_us)
-                    this_frame_render_session_max_us = rs_us;
             }
             E_Screen->suppress_present = false;
-            auto t_render_loop_end = clk::now();
 
             // --- Phase 5: Composite and present (main thread only) ---
-            // TODO(perf): remove in Phase 2 — composite + present timing.
-            auto t_composite_start = clk::now();
             SDL_FillRect(composite_surface, nullptr, 0x000000);
             for (int i = 0; i < num_sessions; i++) {
                 SDL_Surface* src = demos[static_cast<size_t>(i)].session->session_surface_;
@@ -515,9 +486,7 @@ int main(int argc, char* argv[])
                 int row = i / grid_cols;
                 composite_session(composite_surface, src, col, row);
             }
-            auto t_composite_end = clk::now();
 
-            auto t_present_start = clk::now();
             SDL_UpdateTexture(composite_tex, nullptr,
                               composite_surface->pixels,
                               composite_surface->pitch);
@@ -525,7 +494,6 @@ int main(int argc, char* argv[])
             SDL_RenderCopy(E_Screen->renderer, composite_tex,
                            nullptr, nullptr);
             SDL_RenderPresent(E_Screen->renderer);
-            auto t_present_end = clk::now();
 
             // If all sessions are done, restart them with new scenarios.
             if (active_count == 0) {
@@ -537,56 +505,6 @@ int main(int argc, char* argv[])
                                       chosen[static_cast<size_t>(i)], demo_rng);
                 }
                 E_Screen->suppress_present = false;
-            }
-
-            // TODO(perf): remove in Phase 2 — accumulate per-stage timings
-            // and emit a summary every 30 frames after a 30-frame warmup.
-            {
-                long long frame_us = std::chrono::duration_cast<us>(
-                    clk::now() - frame_start).count();
-                long long barrier_us = std::chrono::duration_cast<us>(
-                    t_barrier_end - t_barrier_start).count();
-                long long render_loop_us = std::chrono::duration_cast<us>(
-                    t_render_loop_end - t_render_loop_start).count();
-                long long composite_us = std::chrono::duration_cast<us>(
-                    t_composite_end - t_composite_start).count();
-                long long present_us = std::chrono::duration_cast<us>(
-                    t_present_end - t_present_start).count();
-
-                if (frames_run >= PERF_WARMUP_FRAMES) {
-                    perf_frame_us_sum += frame_us;
-                    perf_barrier_us_sum += barrier_us;
-                    perf_render_loop_us_sum += render_loop_us;
-                    perf_composite_us_sum += composite_us;
-                    perf_present_us_sum += present_us;
-                    perf_render_session_us_sum += this_frame_render_session_sum_us;
-                    perf_render_session_samples += this_frame_render_session_samples;
-                    if (this_frame_render_session_max_us > perf_render_session_max_us)
-                        perf_render_session_max_us = this_frame_render_session_max_us;
-                    if (this_frame_render_session_max_us > perf_render_session_max_frame_max_us)
-                        perf_render_session_max_frame_max_us = this_frame_render_session_max_us;
-                    perf_samples++;
-
-                    if (perf_samples > 0 && perf_samples % PERF_REPORT_EVERY == 0) {
-                        long long avg_frame = perf_frame_us_sum / perf_samples;
-                        long long avg_barrier = perf_barrier_us_sum / perf_samples;
-                        long long avg_render_loop = perf_render_loop_us_sum / perf_samples;
-                        long long avg_composite = perf_composite_us_sum / perf_samples;
-                        long long avg_present = perf_present_us_sum / perf_samples;
-                        long long avg_rs = perf_render_session_samples > 0
-                            ? perf_render_session_us_sum / perf_render_session_samples
-                            : 0;
-                        double fps = avg_frame > 0 ? 1e6 / static_cast<double>(avg_frame) : 0.0;
-                        Log("perf[{} samples] frame={}us({:.1f}fps) barrier={}us "
-                            "render_loop={}us render_session(avg)={}us "
-                            "render_session(worst-cell)={}us composite={}us "
-                            "present={}us active={}\n",
-                            perf_samples, avg_frame, fps, avg_barrier,
-                            avg_render_loop, avg_rs, perf_render_session_max_frame_max_us,
-                            avg_composite, avg_present, active_count);
-                        perf_render_session_max_frame_max_us = 0;
-                    }
-                }
             }
 
             // Frame pacing: sleep remainder of the target frame period.
