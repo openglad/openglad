@@ -267,3 +267,71 @@ under the ~12.25 fps pacing cap.)
 fixes it as part of the secondary fix above (5 call sites in
 `local_transport_shadow.cpp`, 1 signature change in
 `game_session.h`, 1 ctor change in `game_session.cpp`). Not deferred.
+
+## Post-fix measurements
+
+Same headless host (`Linux 6.17.0-20-generic`, x86_64, GCC 13.3.0,
+`SDL_VIDEODRIVER=dummy`), same `dev-release` preset, same warmup-discard
+of 30 frames, same per-stage timers (chrono `steady_clock`, µs) as
+Phase 1. The Phase 1 instrumentation block was re-applied locally on top
+of the Phase 2 commit `76fdc557` and reverted before commit; the post-
+fix tree on `wip/networking` retains no profiling code.
+
+The Phase 2 cap auto-clamps the grid to 4×3 = 12 cells regardless of
+desktop size, so the canonical reproduction collapses to:
+
+```
+SDL_VIDEODRIVER=dummy \
+OPENGLAD_DEMO_DISPLAY_CLAMP=1280x720 \
+OPENGLAD_DEMO_MAX_FRAMES=200 \
+./build/dev-release/openglad_demo 2>/tmp/demo.err
+```
+
+(`OPENGLAD_DEMO_DISPLAY_CLAMP` is the temporarily-restored Phase 1
+profiling knob — it controls the host composite/present surface size,
+not the grid. The Phase 2 4×3 cap drives `num_sessions = 12`.)
+
+Steady-state averages over the 4 reporting windows after warmup
+(`perf_samples ∈ {60, 90, 120, 150}` — ≥ 90 frames ≈ 7.4 s of
+steady-state at the ~12.25 fps pacing cap):
+
+| Stage | Pre-fix (4×3, Phase 1) | Post-fix (4×3, Phase 2) | Δ |
+|-------|------------------------|-------------------------|---|
+| `barrier`        | 7 207 µs   | 1 907 µs    | −5 300 µs |
+| `render_loop`    | 9 679 µs   | 9 992 µs    | ±noise |
+| `render_session` avg / worst | 805 / 1 257 µs | 832 / 1 303 µs | ±noise |
+| `composite`      | 221 µs     | 248 µs      | ±noise |
+| `present`        | 821 µs     | 812 µs      | ±noise |
+| `frame` (compute, pre-pacing) | 17 935 µs (55.8 fps) | 12 965 µs (≈ 77 fps) | −5 000 µs |
+
+The `frame` and `barrier` improvements at the same 12-cell grid are an
+unintended side-effect of the secondary fix (worker threads no longer
+do the `E_Screen->render` swap each tick) plus run-to-run host-load
+variance; the primary fix's value is its effect on large desktops,
+where pre-fix `num_sessions` would have ballooned to 30/120/+ and
+`render_loop` grown linearly. Per the Phase 2 cap, that scaling path is
+gone — `num_sessions` is now bounded to 12 regardless of `display_w/h`,
+so the 6×5 = 30 and 12×10 = 120 sweeps from Phase 1 are no longer
+reachable without the `OPENGLAD_DEMO_GRID` opt-in.
+
+`Display: 1280x720, grid: 4x3 = 12 sessions` confirmed in the run log
+(via the existing `Log("Display: …, grid: …")` line at
+`src/platform/sdl/demo.cpp:326-327`).
+
+**Presented FPS.** As in Phase 1, `frame` is measured *before* the
+end-of-loop pacing sleep on `FRAME_PERIOD = 6 × 13600 µs ≈ 81.6 ms`
+(`src/platform/sdl/demo.cpp:421`, `:511-515`). Post-fix compute
+`frame ≈ 13.0 ms` is well under 81.6 ms, so every frame is fully paced
+to the design cap and the **steady-state presented FPS = 1 / 0.0816 s
+≈ 12.25 fps**, matching the design intent of `FRAME_PERIOD`.
+
+**Target met: yes.** The Phase 1 `## Proposed fix` target is
+"steady-state presented FPS ≥ 11 fps on the 4×3 = 12 cell reproduction";
+the post-fix value is ~12.25 fps (the `FRAME_PERIOD` pacing cap), which
+clears the target with the documented headroom. The user-reported
+"~1 fps" regime is no longer reachable through the desktop-size sprawl
+amplifier even on a 4K+ display, because the auto-clamp bounds
+`num_sessions` to 12 by default.
+
+`ctest --preset ci-test --output-on-failure`: green (final guard run,
+no regressions).
