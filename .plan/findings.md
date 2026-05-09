@@ -6,3 +6,11 @@
 - ahead_behind = 327/1
 - conflict_files = src/gameplay/families/effect_family_ghost_scare.cpp
 - auto_merge_files_requiring_post_rebase_migration = tests/test_walker_specials.cpp (whole-file accessor migration; master inserts at two regions, near merge-base line 651 and at the file tail)
+
+## Phase 4 test verification
+
+- Command: `ctest --preset ci-test --output-on-failure`
+- Result: `100% tests passed, 0 tests failed out of 36`
+- Total test time: 208.39 sec (integration: 184.91 sec*proc across 23 tests, unit: 2.89 sec*proc across 7 tests, emscripten build: 16.14 sec)
+- All 42 master-inserted `WalkerSpecials` tests pass under the Phase 2 accessor migration; no behavior gap from `set_busy(0)` vs `busy = 0` style differences was observed.
+- No accessor-induced (a/b) failures encountered; no pre-existing branch failures (c) encountered. No fixup commit to `tests/test_walker_specials.cpp` or `effect_family_ghost_scare.cpp` was required.
