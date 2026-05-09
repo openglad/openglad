@@ -2150,10 +2150,10 @@ TEST_F(WalkerSpecials, thief_cloak_drives_simulation)
     w->setxy(100, 100);
     w->set_busy(0);
     w->set_user(0);
-    w->invisibility_left = 0;
+    w->set_invisibility_left(0);
     w->set_current_special(2);
     ASSERT_TRUE(w->special()) << "thief cloak should fire";
-    ASSERT_TRUE(w->invisibility_left > 0) << "cloak should set invisibility_left";
+    ASSERT_TRUE(w->invisibility_left() > 0) << "cloak should set invisibility_left";
     tick_world(48);
     delete w;
 }
@@ -2174,7 +2174,7 @@ TEST_F(WalkerSpecials, thief_taunt_drives_simulation)
     foe->set_team_num(2);
     foe->setxy(w->xpos() + 12, w->ypos() + 4);
     foe->stats()->set_level(1);
-    foe->foe = nullptr;
+    foe->set_foe(nullptr);
 
     SequenceRandom seq_rng({0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
     GameContext test_ctx;
@@ -2182,7 +2182,7 @@ TEST_F(WalkerSpecials, thief_taunt_drives_simulation)
     push_test_context(&test_ctx);
     ASSERT_TRUE(w->special()) << "thief taunt should fire when foes are nearby";
     pop_test_context();
-    ASSERT_TRUE(foe->foe == w) << "taunt should retarget foe at thief";
+    ASSERT_TRUE(foe->foe() == w) << "taunt should retarget foe at thief";
     tick_world(48);
     delete w;
 }
