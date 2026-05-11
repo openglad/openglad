@@ -138,6 +138,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/platform/sdl/picker_lobby_network_client.cpp
     ${OG_NETWORK_SOURCES}
     ${SRC_DIR}/interface/score_panel.cpp
+    ${SRC_DIR}/interface/fps_overlay.cpp
     ${SRC_DIR}/platform/sdl/screen_lifecycle.cpp
     ${SRC_DIR}/core/combat_math.cpp
     ${SRC_DIR}/core/runtime_trace.cpp
@@ -379,6 +380,7 @@ set(OG_RUNTIME_SOURCES
     ${SRC_DIR}/platform/sdl/local_transport_shadow.cpp
     ${SRC_DIR}/gameplay/net_transport_multiplex.cpp
     ${SRC_DIR}/interface/score_panel.cpp
+    ${SRC_DIR}/interface/fps_overlay.cpp
     ${SRC_DIR}/platform/sdl/screen_lifecycle.cpp
     ${SRC_DIR}/interface/screen.cpp
     ${SRC_DIR}/interface/platform_bridge.cpp
@@ -481,6 +483,7 @@ set(OG_INTERFACE_COMPONENT_SOURCES
     ${OG_RENDER_SOURCES}
     ${OG_UI_SOURCES}
     ${SRC_DIR}/interface/score_panel.cpp
+    ${SRC_DIR}/interface/fps_overlay.cpp
     ${SRC_DIR}/interface/screen.cpp
     ${SRC_DIR}/interface/platform_bridge.cpp
     ${SRC_DIR}/interface/guy_create.cpp

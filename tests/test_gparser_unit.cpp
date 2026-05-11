@@ -49,6 +49,26 @@ TEST(GparserUnit, gparser_commandline_switches_and_unknown_arg)
     ASSERT_TRUE(local_cfg.get_setting("graphics", "fullscreen") == "on");
 }
 
+TEST(GparserUnit, gparser_show_fps_flag)
+{
+    cfg_store local_cfg;
+
+    std::vector<std::string> arg_storage = {
+        "openglad",
+        "--show-fps"
+    };
+    std::vector<char*> argv_buf;
+    argv_buf.reserve(arg_storage.size());
+    for (std::string& s : arg_storage)
+        argv_buf.push_back(s.data());
+
+    int argc = static_cast<int>(argv_buf.size());
+    char** argv = argv_buf.data();
+    local_cfg.commandline(argc, argv);
+
+    ASSERT_TRUE(local_cfg.is_on("graphics", "show_fps"));
+}
+
 TEST(GparserUnit, gparser_commandline_help_and_version_exit_paths)
 {
     auto run_child = [](const char* flag) -> int {

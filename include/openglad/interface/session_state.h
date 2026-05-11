@@ -84,6 +84,8 @@ struct SessionState {
     bool relay_speed_warning_shown_ = false;
     bool debug_draw_paths_ = false;
     bool debug_draw_obmap_ = false;
+    // Developer overlay: when true, score_panel draws measured render FPS in the top-right corner.
+    bool show_fps_ = false;
 
     // Entity-layer state (Phase 4) — moved from guy.cpp and cheat_handler.cpp.
     int guy_id_counter_ = 0;

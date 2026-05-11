@@ -226,6 +226,7 @@ void bootstrap_runtime(int argc, char* argv[])
     const int fps = og::core::target_fps_from_cfg(cfg);
     og::core::apply_target_fps_to_cfg(cfg, fps);
     og::runtime::current_session->target_fps_ = fps;
+    og::runtime::current_session->show_fps_ = cfg.is_on("graphics", "show_fps");
     cfg.save_settings();
 #if defined(__EMSCRIPTEN__) && !defined(TESTING)
     if (og::platform::web::should_skip_intro_for_tests())

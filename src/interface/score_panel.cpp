@@ -13,8 +13,10 @@
  */
 
 #include <openglad/interface/base.h>
+#include <openglad/interface/fps_overlay.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/view.h>
+#include <openglad/interface/session_state.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/core/constants.h>
@@ -291,6 +293,12 @@ short new_score_panel(screen* s, short /*do_it*/)
 #endif
             }
         }
+    }
+
+    if (og::runtime::current_session != nullptr &&
+        og::runtime::current_session->show_fps_)
+    {
+        draw_fps_overlay(*s);
     }
 
     return 1;

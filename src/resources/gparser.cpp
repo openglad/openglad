@@ -190,7 +190,8 @@ void cfg_store::commandline(int &argc, char **&argv)
 "  -i		Use sai2x engine for pixel doubling\n"
 "  -f		Use full screen\n"
 "  -h		Print a summary of the options\n"
-"  -v		Print the version number\n";
+"  -v		Print the version number\n"
+"  --show-fps   Overlay render FPS in the top-right corner\n";
 
 	const char versmsg[] = "openglad version " OPENGLAD_VERSION_STRING "\n";
 
@@ -201,6 +202,12 @@ void cfg_store::commandline(int &argc, char **&argv)
 	// Iterate over arguments, ignoring the first (Program Name).
 	for(int argnum = 1; argnum < argc; argnum++)
 	{
+		if (std::string(argv[argnum]) == "--show-fps")
+		{
+			data["graphics"]["show_fps"] = "on";
+			Log("FPS overlay on.");
+			continue;
+		}
 		// Look for arguments of 2 chars only:
 		if(argv[argnum][0] == '-' && std::string(argv[argnum]).size() == 2)
 		{

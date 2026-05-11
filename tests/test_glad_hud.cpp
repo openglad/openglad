@@ -225,6 +225,66 @@ TEST(GladHud, glad_score_panel_and_new_score_panel_modes)
     v->control = control_pointer_is_live(og::runtime::current_session->myscreen_->level_runtime_data(), old_control) ? old_control : nullptr;
 }
 
+TEST(GladHud, fps_overlay_draws_when_enabled)
+{
+    struct ShowFpsGuard {
+        ~ShowFpsGuard() { og::runtime::current_session->show_fps_ = false; }
+    } guard;
+
+    auto control = make_player(0);
+    ASSERT_TRUE(control != nullptr) << "control should be created";
+    walker* controlp = control.get();
+    controlp->set_user(0);
+    controlp->set_team_num(0);
+    controlp->set_dead(0);
+    controlp->stats()->set_hitpoints(50);
+    controlp->stats()->set_max_hitpoints(100);
+    controlp->stats()->set_magicpoints(30);
+    controlp->stats()->set_max_magicpoints(80);
+
+    screen* s = og::runtime::current_session->myscreen_;
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_TRUE(v != nullptr);
+    walker* old_control = v->control;
+    v->control = controlp;
+    // Keep the base HUD off in the top-right strip the overlay scans.
+    v->prefs[PREF_OVERLAY] = PREF_OVERLAY_OFF;
+    v->prefs[PREF_LIFE]    = PREF_LIFE_TEXT;
+    v->prefs[PREF_SCORE]   = PREF_SCORE_OFF;
+    v->prefs[PREF_FOES]    = PREF_FOES_OFF;
+
+    constexpr int kY0 = 0;
+    constexpr int kY1 = 12;
+    constexpr int kX0 = 280;
+    constexpr int kX1 = 320;
+
+    auto scan_rect_nonzero = [](const std::array<unsigned char, 64000>& frame) {
+        for (int y = kY0; y < kY1; ++y)
+            for (int x = kX0; x < kX1; ++x)
+                if (frame[static_cast<std::size_t>(y * 320 + x)] != 0)
+                    return true;
+        return false;
+    };
+
+    og::runtime::current_session->show_fps_ = true;
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    auto frame_on = capture_rendered_frame(*s);
+    ASSERT_TRUE(scan_rect_nonzero(frame_on))
+        << "expected FPS overlay pixels in y[" << kY0 << "," << kY1
+        << ") x[" << kX0 << "," << kX1 << ")";
+
+    og::runtime::current_session->show_fps_ = false;
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    auto frame_off = capture_rendered_frame(*s);
+    ASSERT_FALSE(scan_rect_nonzero(frame_off))
+        << "rectangle must be clean when show_fps_ is false";
+
+    v->control = control_pointer_is_live(s->level_runtime_data(), old_control)
+        ? old_control : nullptr;
+}
+
 TEST(GladHud, RedrawmeFlickerNoUnpaintedPresent)
 {
     auto control = make_player(0);
