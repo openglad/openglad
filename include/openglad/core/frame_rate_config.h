@@ -8,10 +8,11 @@
 
 namespace og::core {
 
-// Default render-frame rate. Sim cadence is governed by world.timer_wait
-// (master semantics) — target_fps controls how often the render path runs,
-// not the gameplay tick rate.
-inline constexpr int kDefaultTargetFps = 72;
+// Default render-frame rate. 60 FPS matches the common display refresh
+// (~16.7 ms per frame). Sim cadence is governed by world.timer_wait
+// (master semantics) — target_fps controls how often the render path
+// runs, not the gameplay tick rate.
+inline constexpr int kDefaultTargetFps = 60;
 inline constexpr int kMinTargetFps = 10;
 inline constexpr int kMaxTargetFps = 240;
 
@@ -36,7 +37,7 @@ void apply_target_fps_to_cfg(Cfg& cfg, int fps)
     cfg.apply_setting("graphics", "target_fps", std::to_string(clamped));
 }
 
-// Rounds half-up: 72 fps -> 14 ms, 60 fps -> 17 ms. Always >= 1 ms.
+// Rounds half-up: 60 fps -> 17 ms, 120 fps -> 8 ms, 30 fps -> 33 ms. Always >= 1 ms.
 inline std::uint32_t target_frame_interval_ms(int fps)
 {
     if (fps <= 0)

@@ -78,7 +78,7 @@ struct SessionState {
     // world.timer_wait (master semantics); target_fps_ controls only how
     // often the render path runs. Keep the literal in sync with
     // og::core::kDefaultTargetFps via static_assert in frame_rate_config.cpp.
-    int target_fps_ = 72;
+    int target_fps_ = 60;
     std::int8_t pending_timer_wait_request_ = kNoTimerWaitRequest;
     bool relay_transport_active_ = false;
     bool relay_speed_warning_shown_ = false;
