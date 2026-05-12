@@ -1470,6 +1470,10 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_sim_input_handler.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_smooth_coverage.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_stats_coverage.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/parity_runner.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/state_dump.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/parity_test_main.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_scenarios.cpp
         )
 
         function(og_add_test_group NAME)
@@ -1795,6 +1799,19 @@ if(NOT EMSCRIPTEN)
 
         og_add_test_group(og_test_mass_coverage FILES
             test_mass_coverage.cpp
+        )
+
+        # Gameplay parity harness (Phase 04 skeleton). The og_test_parity group
+        # captures a canonical schema-v1 state dump per scenario and compares
+        # against the committed master golden under tests/parity/golden/.
+        og_add_test_group(og_test_parity FILES
+            test_parity_scenarios.cpp
+            parity_runner.cpp
+            state_dump.cpp
+            parity_test_main.cpp
+        )
+        target_include_directories(og_test_parity PRIVATE
+            ${CMAKE_SOURCE_DIR}/tests/parity
         )
 
         og_add_unit_group(og_unit_core FILES
