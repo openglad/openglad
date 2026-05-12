@@ -1,0 +1,466 @@
+# Gameplay Parity Harness — Design (Schema v1)
+
+This document is the implementation contract for the gameplay parity harness.
+It is consumed verbatim by Phase 04 (branch-side scaffolding) and Phase 05
+(master companion). All decisions below are committed; no later phase may
+change schema v1, the canonical tick definition, or the scenario id set
+without revising this document first.
+
+Inputs already on disk (consumed in place):
+
+- `.plan/parity-risk-inventory.md` — 12 subsystems, 12 probes.
+- `.plan/master-baseline.md` — master worktree at `../openglad-master`
+  (`parity-baseline-master`), `ci-test` green on master.
+- Branch headers: `include/openglad/gameplay/{game_world.h,sim_entity.h,
+  world_snapshot.h}`.
+- Master headers: `../openglad-master/include/openglad/gameplay/{game_world.h,
+  sim_entity.h,walker.h}` and `../openglad-master/tests/test_game_world_fixture.h`.
+
+## Scenario list
+
+Fifteen scenarios. Every `scenario file` path exists on **both** the branch
+(`/home/yans/code/openglad`) and the master worktree
+(`/home/yans/code/openglad-master`); verified by `test -f` against both trees
+on 2026-05-12. `input script` is a flat sequence of
+`(tick, player_id, key_mask)` tuples embedded as a `constexpr` literal in
+`tests/parity/scenario_table.h` (see Phase 04). `tick_budget` is the number
+of `og::sim::GameWorld::tick()` invocations the runner performs before
+dumping. Save-roundtrip is in-process but still names a scenario file so the
+checker's `test -f` rule holds.
+
+| id | scenario file (full path) | RNG seed | input script | duration (ticks) | what it exercises |
+|---|---|---:|---|---:|---|
+| `ai_idle_wander_scen9301` | `scen/scen9301.fss` | `0x00000001` | none (empty list) | 300 | Subsystem 1 — walker AI and movement: wandering NPCs, pathfinding decisions, wall-collision behaviour. |
+| `combat_attack_scen99` | `temp/scen/scen99.fss` | `0x00000042` | `[(5,0,K_ATTACK)..(64,0,K_ATTACK)]` (hold attack tick 5–64) | 200 | Subsystem 2 — combat math, damage roll, defense, level-up curve. |
+| `special_archmage_scen123` | `temp/scen/scen123.fss` | `0x0000F00D` | `[(20,0,K_SPECIAL)]` | 200 | Subsystem 3 — archmage special (per `family_archmage.cpp`, 227-line delta). |
+| `special_cleric_scen124` | `temp/scen/scen124.fss` | `0x0000F00D` | `[(20,0,K_SPECIAL)]` | 200 | Subsystem 3 — cleric heal special (`family_cleric.cpp`, 136-line delta). |
+| `special_mage_scen126` | `temp/scen/scen126.fss` | `0x0000F00D` | `[(20,0,K_SPECIAL)]` | 200 | Subsystem 3 — mage rock cast (`family_mage.cpp`, 136-line delta). |
+| `special_thief_scen789` | `temp/scen/scen789.fss` | `0x0000F00D` | `[(20,0,K_SPECIAL)]` | 200 | Subsystem 3 — thief teleport / backstab (`family_thief.cpp`, 86-line delta). |
+| `effect_bomb_lifetime_scen99` | `temp/scen/scen99.fss` | `0x0000BEEF` | `[(10,0,K_SPECIAL)]` (bomb-thrower team) | 60 | Subsystem 4 — bomb effect lifetime, position, damage radius. |
+| `effect_chain_scen9410` | `temp/scen/scen9410.fss` | `0x0000BEEF` | `[(15,0,K_SPECIAL)]` | 100 | Subsystem 4 — chain-lightning hop count and per-target damage. |
+| `summon_druid_pet_scen950` | `temp/scen/scen950.fss` | `0x0000CAFE` | `[(8,0,K_SPECIAL)]` | 80 | Subsystem 5 — druid summon: pet appears, inherits `real_team_num`. |
+| `scoring_after_combat_scen99` | `temp/scen/scen99.fss` | `0x00000042` | `[(5,0,K_ATTACK)..(64,0,K_ATTACK)]` | 200 | Subsystem 6 — `score_per_team[]` after the combat probe (shares branch run with `combat_attack_scen99`, asserts on a different field). |
+| `save_roundtrip_scen99` | `temp/scen/scen99.fss` | `0x00000123` | none | 1 | Subsystem 7 — load scenario, serialize `save_data` via branch `save_data::write` into `std::stringstream`, deserialize, compare to master companion serialization. In-process; one tick before dump just to materialise walkers. |
+| `exit_trigger_scen9302` | `scen/scen9302.fss` | `0x00000007` | `[(0,0,K_RIGHT)..(420,0,K_RIGHT)]` (walk to exit tile) | 600 (or until `level_done`) | Subsystem 8 — exit trigger fires, `level_done == 1`, `next_level` set, `events[]` contains `level_exited`. |
+| `tick_cadence_scen9301` | `scen/scen9301.fss` | `0x00000001` | none | 600 | Subsystem 9 — `tick_count_ == 600` after 600 invocations; byte-equal walker positions vs master. Stresses the cadence contract directly. |
+| `rng_seed_stable_scen99` | `temp/scen/scen99.fss` | `0x00000001` | none | 1 | Subsystem 10 — seeded `rng_.state_ = 1` round-trips to a known post-tick value on both branches. Detects spurious `state_` mutation by `world_snapshot.cpp` / `dirty_field_bits.h` setup. |
+| `scripted_input_scen9301` | `scen/scen9301.fss` | `0x00000010` | `[(0,0,K_UP),(20,0,0),(40,0,K_RIGHT),(60,0,0),(80,0,K_ATTACK),(100,0,0)]` | 200 | Subsystem 11 — fixed input script reaches the simulation at the same tick on both branches (the branch path runs through `local_transport_shadow`; the master path applies directly to `world.input_state_`). |
+
+Branch-internal companion (no master golden, but runs in the same test
+binary):
+
+| id | scenario file | RNG seed | input | duration | exercises |
+|---|---|---:|---|---:|---|
+| `snapshot_dirty_bits_scen9301` | `scen/scen9301.fss` | `0x00000055` | none | 50 | Subsystem 12 — branch-only: dump the world twice (once via the dirty-tracked server mirror, once via direct iteration of `world.walkers`); the two dumps must be byte-equal. Fails locally if a setter forgets `mark_dirty(...)`. Not compared against master. |
+
+That is 15 master-comparable scenarios plus 1 branch-internal companion =
+**15 + 1 = 16 GoogleTest entries** under `og_test_parity`. The
+master-comparable count of 15 is the number used by Phase 04's
+`ctest --preset ci-test -N` golden-list assertion and by Phase 06's
+`ls tests/parity/golden/*.json | wc -l` check.
+
+`K_ATTACK`, `K_SPECIAL`, `K_UP`, `K_RIGHT` are the existing keymap masks
+from `include/openglad/input/input_state.h`; the harness uses them as
+`uint32_t` constants without referring to SDL key codes.
+
+## State dump schema v1
+
+The dumper emits **exactly one** UTF-8 JSON object per invocation, written
+with sorted keys, no trailing whitespace, LF line endings, and a single
+terminating newline. The canonical emitter lives in
+`tests/parity/state_dump.cpp` on the branch and
+`../openglad-master/tools/parity_dump_state.cpp` on the master companion.
+Both TUs produce **byte-identical** output for an equivalent world state.
+
+Top-level keys (sorted lexicographically when serialised):
+
+```json
+{
+  "effects": [ /* see below */ ],
+  "events": [ /* see below */ ],
+  "rng_state": "0x00000001",
+  "schema_version": "v1",
+  "score_per_team": [0, 0, 0, 0],
+  "tick": 0,
+  "walkers": [ /* see below */ ]
+}
+```
+
+Field rules:
+
+- `schema_version` — fixed string literal `"v1"`. Mismatch is a hard error.
+- `tick` — unsigned 32-bit integer, monotonic, equals `world.tick_count_`
+  at dump time.
+- `rng_state` — `og::sim::SimRandom::state_` formatted with
+  `printf("0x%08X", state_)`. Both branches expose the field publicly
+  (`include/openglad/gameplay/game_world.h:50` on the branch;
+  same struct in `../openglad-master/include/openglad/gameplay/game_world.h`),
+  so the value is always observable. The literal `"unobservable"` is only
+  emitted if a future build hides `state_`; the harness fails fast if it sees
+  that on either side and the scenario is not in `## Determinism fallback`
+  mode.
+- `walkers[]` — every entry alive **or** dead-but-not-yet-removed, sorted
+  by `(team, id)` ascending. Each row:
+  ```json
+  {
+    "id": 17,
+    "family": "FAMILY_SOLDIER",
+    "team": 0,
+    "xpos": 96,
+    "ypos": 128,
+    "hp": 12.000000,
+    "max_hp": 12.000000,
+    "ammo": 3,
+    "alive": true
+  }
+  ```
+  - `id` — `walker::serial_number` (existing on both branches).
+  - `family` — symbolic string from `og::FamilyName(walker->family())` /
+    `og::FamilyName(walker->family)` (branch / master). The mapping table
+    lives in `tests/parity/state_dump.cpp` and is byte-identical to the one
+    in the master companion. If a family appears only on one side, the
+    string `"FAMILY_UNKNOWN_<int>"` is emitted; that becomes an
+    informational diff per `## Comparison rules`.
+  - `team` — `walker->team_num()` (branch) / `walker->team_num` (master).
+  - `xpos`, `ypos` — `int32` tile-space; accessor on branch, public on
+    master.
+  - `hp`, `max_hp` — `walker->stats()->hitpoints` and
+    `walker->stats()->max_hitpoints`. Both fields are `float` on both
+    branches; formatted with `"%.6f"`.
+  - `ammo` — `walker->stats()->ammo` (int).
+  - `alive` — `walker->dead == 0` (branch and master both have public
+    `dead`).
+- `effects[]` — entries from `world.effects` (a `std::list<std::unique_ptr<
+  walker>>` of effect-type walkers on both branches), sorted by
+  `(family, id)` ascending. Each row:
+  ```json
+  {
+    "id": 42,
+    "family": "FAMILY_EFFECT_BOMB",
+    "xpos": 96,
+    "ypos": 128,
+    "lifetime": 14
+  }
+  ```
+  - `lifetime` is `walker->stats()->lifetime` (existing on both branches).
+- `score_per_team[]` — exactly 4 entries (indices 0–3), unsigned 32-bit
+  integers from `world.m_score[]`.
+- `events[]` — emitted in **tick order**, then in **insertion order** within
+  a tick. The dumper subscribes to a per-scenario event recorder
+  (`tests/parity/state_dump.cpp` installs the branch recorder via the
+  existing `sim_event_log.h` stub which is present on both branches at
+  `include/openglad/gameplay/sim_event_log.h`). Allowed `kind` values:
+  - `"walker_died"` — `{ "kind": "walker_died", "tick": 42, "id": 17 }`
+  - `"walker_attacked"` — `{ "kind": "walker_attacked", "tick": 42,
+    "attacker": 17, "victim": 18, "damage": 3 }`
+  - `"level_exited"` — `{ "kind": "level_exited", "tick": 420,
+    "next_level": 9303 }`
+  - `"treasure_collected"` — `{ "kind": "treasure_collected", "tick": 50,
+    "walker": 17, "treasure_family": "FAMILY_GOLD" }`
+
+Canonical ordering rules (the JSON serialiser **must** honour these even
+when the underlying container's iteration order differs):
+
+1. Object keys: sorted lexicographically per JSON level.
+2. `walkers[]`: ascending by `team`, ties broken by ascending `id`.
+3. `effects[]`: ascending by `family` (symbolic string compare), ties
+   broken by ascending `id`.
+4. `events[]`: ascending by `tick`, ties broken by insertion order (the
+   recorder maintains a per-tick sequence counter).
+
+Floats: `printf("%.6f", value)`. Trailing zeros are kept (`12.000000`, not
+`12`). No `-0.000000`: emitter normalises negative zero to positive zero
+before formatting.
+
+## Comparison rules
+
+For each scenario in non-fallback mode the differ in
+`scripts/parity/diff_dumps.py` does the following:
+
+1. **Schema check.** `schema_version` must equal `"v1"` on both sides. Any
+   other value is a fatal harness error (not a regression).
+2. **Tick check.** `tick` on both sides must equal the scenario's
+   `tick_budget`. Mismatch fails the test with `cadence_mismatch`; this is
+   the canary for Subsystem 9.
+3. **RNG check.** If neither side declared `## Determinism fallback`,
+   `rng_state` must match exactly. Mismatch → `rng_drift` regression.
+4. **Numeric integer fields** (`id`, `team`, `xpos`, `ypos`, `ammo`,
+   `score_per_team[i]`, event `tick` / `next_level` / `damage`): exact
+   integer equality. No tolerance.
+5. **HP / max_hp.** Both are `float` on both branches. The differ requires
+   exact `%.6f` string equality. Any drift — even at the ULP level — is
+   flagged as a regression candidate per Phase 06's strict rule and is
+   **never silently absorbed**. Phase 06 may move a flagged HP diff to
+   `intended_diff` only with a cited branch commit; until then it counts
+   as `regression`.
+6. **Identity fallback.** If `walker.id` values diverge between sides (e.g.
+   the branch's `guy_id_counter` reset path differs from master), the
+   differ falls back to identifying walkers by
+   `(family, team, initial_xpos, initial_ypos)`. `initial_xpos` /
+   `initial_ypos` are recorded by the runner from the **dump at tick 0**
+   and propagated to the per-scenario comparison context. Effects use the
+   same fallback keyed on `(family, initial_xpos, initial_ypos)`.
+7. **Branch-only fields.** If a future schema-v1.1 adds a field that exists
+   only on the branch dumper (e.g., a `dirty_bits` summary), the differ
+   emits it as an **informational diff** (logged but does not fail the
+   test). Schema-v1 has no such fields; this rule is forward-compatible
+   only.
+8. **Event ordering.** A regression on the same `tick` with a different
+   per-tick insertion order is still a regression — the recorders on both
+   sides must agree on insertion order. Phase 04 documents the exact
+   subscription points so that order is deterministic.
+
+The differ emits a structured human-readable report on mismatch
+(`scripts/parity/diff_dumps.py`), exit code 1, and a machine-readable
+summary on `stdout` line 1 in the form
+`SCENARIO <id> FAIL <category> <field>`. GoogleTest assertion messages
+include the first three categorised differences.
+
+## Determinism fallback
+
+Each scenario is one of:
+
+- **byte-equal** (default): the harness asserts byte-equal canonical JSON
+  between branch and master golden.
+- **invariant**: the scenario declares an `invariants:` list of Boolean
+  predicates over the final dump. The harness then runs both sides, dumps
+  both, and asserts every predicate holds on **both** sides. The master
+  golden is still captured (so future regressions are visible), but the
+  GoogleTest assertion is `EXPECT(invariant.holds(branch_dump) &&
+  invariant.holds(master_dump))`, not a byte-equal compare.
+
+`## Tick-cadence parity contract` (below) commits to byte-equal cadence,
+so the default mode is **byte-equal** for every scenario. Each scenario
+nonetheless declares a `byte_equal_feasible:` flag plus the invariants it
+would fall back to, so a single discovered cadence problem during Phase 06
+flips the affected scenario into fallback mode without rewriting the test.
+
+Per-scenario classification:
+
+| id | byte_equal_feasible | fallback invariants |
+|---|---|---|
+| `ai_idle_wander_scen9301` | yes | `count(walkers, alive) >= 1`; `walkers[0].xpos in [0..LEVEL_W]` |
+| `combat_attack_scen99` | yes | `sum(walkers.hp) < initial_sum_hp`; `any(events.kind == "walker_attacked")` |
+| `special_archmage_scen123` | yes | `any(effects.family == "FAMILY_EFFECT_BOMB" or "FAMILY_WAVE")` after tick 20 |
+| `special_cleric_scen124` | yes | `walkers[caster].hp >= pre_special_hp` (heal applied) |
+| `special_mage_scen126` | yes | `any(effects.family startswith "FAMILY_WEAPON")` after tick 20 |
+| `special_thief_scen789` | yes | `walkers[caster].xpos != pre_special_xpos` (teleport / step-back) |
+| `effect_bomb_lifetime_scen99` | yes | `count(effects, family == "FAMILY_EFFECT_BOMB") <= 1`; `effect.lifetime decreases monotonically` |
+| `effect_chain_scen9410` | yes | `count(events.kind == "walker_attacked") >= 2` |
+| `summon_druid_pet_scen950` | yes | `count(walkers, team == caster.team) > pre_summon_count`; `pet.real_team_num == caster.real_team_num` |
+| `scoring_after_combat_scen99` | yes | `score_per_team[winning_team] > 0` |
+| `save_roundtrip_scen99` | yes | `sha1(branch_save_blob) == sha1(master_save_blob)` |
+| `exit_trigger_scen9302` | yes | `level_done == 1`; `any(events.kind == "level_exited")`; `next_level == 9303` |
+| `tick_cadence_scen9301` | yes | `tick == 600`; walker count unchanged from tick 0 |
+| `rng_seed_stable_scen99` | yes | branch `rng_state` after 1 tick == master `rng_state` after 1 tick |
+| `scripted_input_scen9301` | yes | `walkers[0].xpos` and `ypos` move monotonically with the script |
+
+Every row is `byte_equal_feasible: yes` at design time. The contract below
+commits to the cadence that makes this true. Phase 06 may flip any row to
+fallback mode after empirical investigation, in which case the invariants
+column is what the test will actually assert.
+
+## Tick-cadence parity contract
+
+**Canonical definition:** one tick = one invocation of
+`og::sim::GameWorld::tick()`.
+
+- On the branch: declared at `include/openglad/gameplay/game_world.h:208`
+  (`void tick();`). Verified by reading the header at design time.
+- On master: declared at
+  `../openglad-master/include/openglad/gameplay/game_world.h:123`
+  (`void tick();`). Same signature, same return type, same namespace.
+
+`walker::act()` is invoked **from inside** `GameWorld::tick()` on both
+branches (the branch implementation lives in `src/gameplay/game_world.cpp`,
+the master implementation in `../openglad-master/src/gameplay/game_world.cpp`).
+The harness does **not** call `walker::act()` directly; it does **not**
+emulate master's pre-refactor `world().timer_wait`-driven per-walker loop.
+Both sides drive the simulation through the same single entry point.
+
+Enforcement loop, identical on both sides:
+
+```cpp
+seed(world);                              // world.rng_.state_ = spec.rng_seed
+apply_initial_input(world, spec);         // first tuple at tick 0 if any
+StateDump tick0 = capture(world);         // initial-position fallback context
+for (std::uint32_t t = 0; t < spec.tick_budget; ++t) {
+    apply_scripted_input(world, spec, t); // (tick, player_id, key_mask)
+    world.tick();                         // SINGLE canonical step
+}
+StateDump dump = capture(world);
+```
+
+Fail-fast cadence checks:
+
+1. After the loop, `world.tick_count_` must equal `spec.tick_budget`.
+   Mismatch (e.g., because `tick()` early-returns when paused) is a fatal
+   harness error, not a parity diff; both runners assert
+   `ASSERT_EQ(world.tick_count_, spec.tick_budget)` before emitting the
+   dump.
+2. If `world.level_done == 1` before the budget is exhausted, the runner
+   stops the loop at that point, records the early-stop tick, and the
+   differ requires both sides to have stopped at the **same** tick. Early
+   stop at differing ticks is a `cadence_mismatch` regression.
+3. The branch test binary does not interpose any
+   `local_transport_shadow` or `FrameDeadlinePacer` layer in the parity
+   runner — input is written directly into `world.input_state_` to remove
+   transport latency from the parity equation. The
+   `scripted_input_scen9301` scenario adds a second branch-only variant
+   that routes through `local_transport_shadow` and asserts the same
+   dump; that is the Subsystem 11 probe.
+4. `tick_budget` is a `std::uint32_t`. No floating timer, no real-time
+   sleep, no `SDL_Delay`. The runner never yields between `tick()` calls.
+
+## Test groups to add
+
+Two CMake test groups; both registered via macros that already exist in
+the branch's top-level `CMakeLists.txt`.
+
+| target | macro | source files | description |
+|---|---|---|---|
+| `og_test_parity` | `og_add_test_group(og_test_parity ...)` | `tests/parity/parity_runner.{h,cpp}`, `tests/parity/state_dump.{h,cpp}`, `tests/parity/scenario_table.h`, `tests/parity/parity_test_main.cpp`, `tests/parity/test_parity_scenarios.cpp` | SDL integration group. Loads scenarios via the same I/O path as the rest of the game; required because `gloader.cpp` uses PhysFS which the unit-group main does not init. |
+| `og_unit_parity` (optional) | `og_add_unit_group(og_unit_parity ...)` | `tests/parity/unit/test_canonical_json.cpp` (Phase 04 may add) | Headless: verifies the canonical JSON emitter is deterministic on a fixed in-memory `StateDump` (sorting, float formatting, key order). No SDL, no scenario load. Optional — Phase 04 may choose to fold these checks into `og_unit_data` if the unit group's link surface conflicts. |
+
+Phase 04's `04a-check-build` lists the `og_test_parity` group only; the
+unit group is treated as a nice-to-have.
+
+## Files to add/modify
+
+**New (branch repo `/home/yans/code/openglad`):**
+
+- `tests/parity/parity_runner.h`
+- `tests/parity/parity_runner.cpp`
+- `tests/parity/state_dump.h`
+- `tests/parity/state_dump.cpp`
+- `tests/parity/parity_test_main.cpp`
+- `tests/parity/test_parity_scenarios.cpp`
+- `tests/parity/scenario_table.h` — single source of truth for
+  `ScenarioSpec` values; copied byte-for-byte into the master companion
+  in Phase 05. Header comment states the synchronisation rule
+  (`// SYNCHRONIZE WITH ../openglad-master/tools/parity_scenario_table.h`).
+- `tests/parity/golden/.gitkeep`
+- `tests/parity/golden/<scenario_id>.json` — placeholders (committed in
+  Phase 06).
+- `scripts/parity/capture_master_golden.sh`
+- `scripts/parity/run_parity_diff.sh`
+- `scripts/parity/diff_dumps.py`
+- `scripts/parity/validate_schema.py` (added in Phase 05, listed here for
+  completeness).
+
+**New (master worktree `/home/yans/code/openglad-master`, committed on
+branch `parity-companion` only — never on `origin/master`):**
+
+- `tools/parity_dump_master.cpp`
+- `tools/parity_dump_state.cpp`
+- `tools/parity_dump_state.h`
+- `tools/parity_scenario_table.h` — byte-for-byte copy of
+  `tests/parity/scenario_table.h`.
+- A CMake target `parity_dump_master` registered in
+  `../openglad-master/CMakeLists.txt` that builds the four `tools/` files
+  into a standalone executable at
+  `../openglad-master/build/ci-test/parity_dump_master`.
+- `.plan/master-companion.md` (on the branch repo, not master) — documents
+  how to apply / rebuild the companion.
+
+**Modify (branch):**
+
+- `CMakeLists.txt` — register `og_test_parity` (and optionally
+  `og_unit_parity`) following the existing `og_add_test_group(og_test_*)`
+  calls.
+- `.gitignore` — already exempts `.plan/logs/` from Phase 02; no further
+  change required.
+
+**Modify (master worktree, branch `parity-companion` only):**
+
+- `../openglad-master/CMakeLists.txt` — register the `parity_dump_master`
+  target.
+
+**Read-only / untouched:**
+
+- Everything under `.plan/` other than the new design / companion /
+  divergence / fixes / signoff documents listed in `plan.md` §4.
+- Every file under `src/`, `include/` on both branches — touched in
+  Phase 07 only if a regression demands it.
+- All residue listed in `plan.md` §1.
+
+## Coverage matrix
+
+Every subsystem in `.plan/parity-risk-inventory.md` `## Subsystems at risk`
+is covered. No "Subsystems not covered" section is required: the inventory
+listed 12 subsystems and every one of them appears below at least once.
+
+| Phase 01 subsystem | covering scenario(s) |
+|---|---|
+| 1. Walker AI and movement | `ai_idle_wander_scen9301`, `tick_cadence_scen9301`, `scripted_input_scen9301` |
+| 2. Combat math and damage | `combat_attack_scen99` |
+| 3. Special abilities per family | `special_archmage_scen123`, `special_cleric_scen124`, `special_mage_scen126`, `special_thief_scen789` |
+| 4. Effect lifecycle | `effect_bomb_lifetime_scen99`, `effect_chain_scen9410` |
+| 5. Summon and pet behavior | `summon_druid_pet_scen950` |
+| 6. Scoring and team statistics | `scoring_after_combat_scen99` |
+| 7. Save format read / write | `save_roundtrip_scen99` |
+| 8. Scenario load and exit-trigger firing | `exit_trigger_scen9302` |
+| 9. Tick cadence (sim-vs-render decoupling) | `tick_cadence_scen9301` (primary); every other scenario verifies cadence indirectly via the `tick == tick_budget` rule in `## Comparison rules` |
+| 10. RNG seeding and determinism | `rng_seed_stable_scen99` (primary); every scenario relies on `rng_state` byte-match per `## Comparison rules` |
+| 11. Per-frame transport shadow (single-player path) | `scripted_input_scen9301` (variant routed through `local_transport_shadow` on the branch side; see `## Tick-cadence parity contract` item 3) |
+| 12. World snapshot + dirty-field bookkeeping | `snapshot_dirty_bits_scen9301` (branch-internal; no master golden, asserted on the branch side only) |
+
+Family-coverage caveat: the four `special_*` scenarios exercise four of
+the fifteen family files (`archmage`, `cleric`, `mage`, `thief`). The
+remaining eleven families (`archer`, `druid` direct cast, `elf`,
+`soldier`, `slime`, `barbarian`, `orc`, `skeleton`, `ghost`,
+`fire_elemental`, `druid` summon — partially via `summon_druid_pet_scen950`)
+are exercised **indirectly** by walker AI in the other scenarios (any
+family walker spawned by a scenario's `.fss` runs its standard tick path,
+which catches movement / aggression / death regressions even without a
+family-specific special-cast probe). Specials for the eleven uncovered
+families are listed under `## Subsystems with partial parity coverage`
+below and flagged for `.plan/parity-signoff.md` `## Open risks` in
+Phase 08.
+
+### Subsystems with partial parity coverage
+
+These rows are **not** "not covered" — they have at least one parity
+probe — but they have a known gap that Phase 08 must document so a future
+contributor knows what manual QA still buys us.
+
+| subsystem | gap | proposed manual QA |
+|---|---|---|
+| 3. Special abilities (per family) | Specials for `archer`, `druid` (direct cast), `elf`, `soldier`, `slime`, `barbarian`, `orc`, `skeleton`, `ghost`, `fire_elemental` are not individually scenario-probed. | Manual run of `temp/scen/scen9421.fss` and `temp/scen/scen9450.fss` (existing multi-family arenas) with each family selected from the picker, eyeballing the special effect. |
+| 4. Effect lifecycle | Door-open and ghost-scare effects (`effect_family_door_open`, `effect_family_ghost_scare`) are not individually probed; covered only as side effects of family specials. | Manual run of `scen/scen9303.fss` (door / portal heavy) and `scen/scen9304.fss` (ghost-heavy). |
+| 7. Save format | Round-trip is in-process; no real `.glad`-archive save written to disk and re-opened. | Manual `Continue` from a fresh `Save Game` via the picker, branch + master, byte-compare the on-disk save blob. |
+
+These rows do not block parity sign-off; they are inputs to Phase 08's
+`## Open risks`.
+
+## Synchronisation rules between branch and master companion
+
+Phase 05's master companion is a separate compilation but the **same**
+schema, scenario table, and canonical JSON. The contract:
+
+1. `tests/parity/scenario_table.h` (branch) and
+   `../openglad-master/tools/parity_scenario_table.h` (companion) must be
+   byte-identical. Phase 05 enforces this via a header SHA-1 check
+   recorded in `.plan/master-companion.md`.
+2. RNG seeding statement on both sides is the **same source code**:
+   `world.rng_.state_ = spec.rng_seed;` (or `world().rng_.state_ =
+   spec.rng_seed;` if a `GameWorld&` accessor is preferred — both branches
+   provide both forms). No `srand()`, no setter, no cfg key.
+3. The canonical JSON emitter logic in `state_dump.cpp` (branch) and
+   `tools/parity_dump_state.cpp` (companion) is a hand-rolled
+   sorted-key / `%.6f`-float emitter; both TUs must produce the same
+   output character-for-character. Branch and companion differ only in
+   how they **read** fields — branch uses accessors
+   (`walker->xpos()`, `walker->team_num()`, `walker->family()`), master
+   uses public fields (`walker->xpos`, `walker->team_num`,
+   `walker->family`). Both call `walker->stats()->hitpoints` (the
+   `stats()` accessor exists on both branches).
+4. Event recorders: branch installs its recorder through the existing
+   `sim_event_log.h` stub; master installs an equivalent recorder via the
+   same stub (the file already exists on master per
+   `.plan/master-baseline.md`). Insertion-order numbering uses a single
+   monotonic `uint32_t` per scenario run on both sides.
+
+These four rules turn schema v1 into an unambiguous shared contract;
+any breakage in Phase 06 is by definition a real divergence, not a
+harness bug.
