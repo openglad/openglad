@@ -128,7 +128,7 @@ wires the loader. There is no current evidence of any specific
 regression in the subsystems listed in `.plan/parity-risk-inventory.md`;
 the skeleton run has not yet exercised them.
 
-## Regressions to fix in Phase 7
+## Regressions to fix in Phase 07
 
 No master-vs-branch byte-level regressions were observed in this run.
 Phase 07 still has gating work — Phase 06 leaves the following items as
