@@ -1472,6 +1472,8 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_stats_coverage.cpp
             ${CMAKE_SOURCE_DIR}/tests/parity/parity_runner.cpp
             ${CMAKE_SOURCE_DIR}/tests/parity/state_dump.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/parity_bootstrap.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/scenario_runtime.cpp
             ${CMAKE_SOURCE_DIR}/tests/parity/parity_test_main.cpp
             ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_scenarios.cpp
         )
@@ -1808,11 +1810,40 @@ if(NOT EMSCRIPTEN)
             test_parity_scenarios.cpp
             parity_runner.cpp
             state_dump.cpp
+            parity_bootstrap.cpp
+            scenario_runtime.cpp
             parity_test_main.cpp
         )
         target_include_directories(og_test_parity PRIVATE
             ${CMAKE_SOURCE_DIR}/tests/parity
         )
+        target_compile_definitions(og_test_parity PRIVATE
+            OG_PARITY_WORKSPACE_ROOT="${CMAKE_SOURCE_DIR}"
+        )
+
+        # Standalone smoke runner — Phase 02 verifier and the launcher
+        # extended in Phase 07 to enumerate scenarios via --list.
+        add_executable(parity_runner_smoke
+            ${CMAKE_SOURCE_DIR}/tests/parity/parity_runner_smoke_main.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/parity_runner.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/state_dump.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/parity_bootstrap.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/scenario_runtime.cpp
+        )
+        configure_openglad_library(parity_runner_smoke)
+        configure_openglad_sdl_target(parity_runner_smoke)
+        target_compile_definitions(parity_runner_smoke PRIVATE
+            TESTING
+            OG_PARITY_WORKSPACE_ROOT="${CMAKE_SOURCE_DIR}"
+        )
+        target_include_directories(parity_runner_smoke PRIVATE
+            ${CMAKE_SOURCE_DIR}/tests
+            ${CMAKE_SOURCE_DIR}/tests/parity
+            ${OG_THIRD_PARTY_INCLUDE_DIRS}
+        )
+        target_link_libraries(parity_runner_smoke PRIVATE og_game_test)
+        configure_openglad_runtime_target(parity_runner_smoke)
+        add_runtime_assets_dependency(parity_runner_smoke)
 
         og_add_unit_group(og_unit_core FILES
             ${CMAKE_SOURCE_DIR}/tests/unit/test_frame_rate_config.cpp

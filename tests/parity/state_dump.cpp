@@ -207,6 +207,8 @@ StateDump capture_state_dump(const GameWorld& world,
     dump.tick           = world.tick_count_;
     dump.rng_state      = world.rng_.state_;
     dump.rng_observable = true;
+    dump.level_done       = static_cast<std::int32_t>(world.level_done);
+    dump.level_tick_count = world.level_tick_count();
 
     for (std::size_t i = 0; i < 4; ++i)
         dump.score_per_team[i] = world.m_score[i];
@@ -297,7 +299,11 @@ std::string canonical_serialize(const StateDump& dump)
         append_uint(out, ev.tick);
         out.push_back('}');
     }
-    out.append("],\"rng_state\":");
+    out.append("],\"level_done\":");
+    append_int(out, dump.level_done);
+    out.append(",\"level_tick_count\":");
+    append_uint(out, dump.level_tick_count);
+    out.append(",\"rng_state\":");
     if (dump.rng_observable)
         append_escaped_string(out, format_hex32(dump.rng_state));
     else

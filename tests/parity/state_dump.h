@@ -59,6 +59,11 @@ struct StateDump
     std::vector<WalkerEntry>   walkers;
     std::vector<EffectEntry>   effects;
     std::vector<EventEntry>    events;
+    // Phase 02 redo additions to schema v1. The serialiser emits these as
+    // top-level keys in sorted order; v1 readers tolerate unknown keys per
+    // .plan/parity-harness-design.md (forward-compatible rule).
+    std::int32_t               level_done       = 0; // world.level_done
+    std::uint32_t              level_tick_count = 0; // world.level_tick_count()
 };
 
 // Build a StateDump from a live GameWorld.

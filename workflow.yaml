@@ -1,548 +1,842 @@
-name: openglad-jitter-elimination
-description: |
-  Redesign the networking and frame-pacing code so that each frame runs in
-  the same amount of time and the FPS becomes configurable.
-
 vars:
-  GOAL: "Redesign and reimplement the networking code so that there is no possibility for jitter: each frame should run in the exact same amount of time. Make the fps configurable."
+  GOAL: "Actually deploy the gameplay parity comparison framework against origin/master across a wide variety of scenarios. Cumulative coverage must include every walker family, special ability, attack/weapon, effect, treasure, generator, and event kind. Tear down the fraudulent prior signoff and replace it with honest, reproducible evidence."
 
 phases:
-  - id: phase_1_add_fps_config
+  - id: 01-audit-and-teardown
     type: implement
+    bounce_target: null
     prompt: |
-      You are an implementer working on the openglad C++ codebase. Goal: {{ GOAL }}
+      You are the implementer for Phase 01 of the parity-redo workflow.
 
-      This is Phase 1 — add FPS configuration plumbing.
+      Project goal: {{ GOAL }}
 
-      ## Preexisting Inputs (consume in place — do NOT regenerate, refetch, or rediscover)
-      - `.plan/goal.md` — original one-line goal.
-      - `.plan/plan.md` — full implementation plan; read in place.
-      - `include/openglad/resources/gparser.h` — `cfg_store::get_setting` (line 31), `apply_setting` (line 30), `load_settings` (line 26), `save_settings` (line 28).
-      - `cfg/openglad.yaml` — canonical config; already contains a `graphics:` map with `fullscreen`, `overscan_percentage`, `render`.
-      - `src/platform/sdl/glad.cpp:200` — `initialize_runtime_config` calling `cfg.load_settings()`.
-      - `src/platform/sdl/glad.cpp:204-230` — `bootstrap_runtime` reading from already-loaded cfg; persists via `cfg.save_settings()` at line 216; mirrors `overscan_percentage` at lines 220-224.
-      - `include/openglad/gameplay/net_constants.h` — `DEFAULT_SIM_TICK_MS` (line 9), `TIMER_WAIT_TO_MS` (line 10).
-      - `include/openglad/interface/session_state.h:76` — `g_game_speed_factor_` field; new field added adjacent.
-      - `CMakeLists.txt` — existing `og_add_unit_group(og_unit_sim …)` block (around line 1762) and `OG_CORE_SOURCES` list.
+      Phase Name: Audit prior fraud and remove poisoned artifacts.
+
+      Branch: `wip/networking`. You MUST create one git commit on this branch before yielding.
+
+      ## Preexisting Inputs (consume in place — do NOT regenerate, recollect, rediscover, or re-derive)
+
+      Treat these as authoritative artifacts of prior phases. Do NOT rebuild them.
+
+      - `.plan/goal.md`
+      - `.plan/parity-risk-inventory.md`
+      - `.plan/parity-harness-design.md`
+      - `.plan/parity-signoff.md` (the fraudulent signoff to be retired)
+      - `.plan/parity-divergence-report.md`
+      - `.plan/parity-fixes.md`
+      - `tests/parity/parity_runner.cpp`
+      - `tests/parity/test_parity_scenarios.cpp`
+      - `tests/parity/scenario_table.h`
+      - `tests/parity/golden/` (15 byte-identical empty-world JSON files)
+      - `../openglad-master/tools/parity_dump_master.cpp` (the broken master companion)
 
       ## New Outputs
-      - New header `include/openglad/core/frame_rate_config.h` exporting:
-          - `inline constexpr int kDefaultTargetFps = 72;`
-          - `inline constexpr int kMinTargetFps = 10;`
-          - `inline constexpr int kMaxTargetFps = 240;`
-          - `int target_fps_from_cfg(cfg_store& cfg);` (clamps & defaults).
-          - `void apply_target_fps_to_cfg(cfg_store& cfg, int fps);`
-          - `std::uint32_t target_frame_interval_ms(int fps);` (defined inline; rounds half-up; safe-clamps to `>= 1`).
-      - New impl `src/core/frame_rate_config.cpp` (added to `OG_CORE_SOURCES` in `CMakeLists.txt`).
-      - New unit tests `tests/unit/test_frame_rate_config.cpp`.
-      - New `og_add_unit_group(og_unit_core …)` block in `CMakeLists.txt`, sibling to the existing `og_add_unit_group(og_unit_sim …)` block (around line 1762). Contains only `tests/unit/test_frame_rate_config.cpp` initially; later phases extend it.
-      - `cfg/openglad.yaml`: add `target_fps: 72` under `graphics:`, preserving alphabetical ordering with `fullscreen`, `overscan_percentage`, `render`.
+
+      - `.plan/parity-redo-audit.md` — fraud inventory. Required sections:
+        (a) the byte-identical `{"effects":[],"events":[],...,"tick":1,"walkers":[]}` pattern shared by all 15 goldens (with one literal sample);
+        (b) line-numbered citations from `parity_runner.cpp` and `../openglad-master/tools/parity_dump_master.cpp` for the scenario-not-loaded no-op;
+        (c) line-numbered citation from `parity_runner.cpp::apply_inputs_at_tick` for the empty body;
+        (d) explanation of the `level_done`-on-empty-world short-circuit that keeps every golden at `tick: 1`;
+        (e) note that `.plan/parity-signoff.md` is being renamed to `.plan/parity-signoff-fraudulent.md` in this same commit.
+      - `.plan/parity-signoff-fraudulent.md` — original signoff renamed in place via `git mv` so it remains in history but is no longer authoritative.
+
+      The audit document must include literal command outputs (e.g. `wc -c tests/parity/golden/*.json` showing every file ≤ 200 bytes before deletion) and explicitly state that future phases will reconstruct goldens from a fixed master companion, not the current broken one.
 
       ## File Changes
-      - Create `include/openglad/core/frame_rate_config.h`, `src/core/frame_rate_config.cpp`, `tests/unit/test_frame_rate_config.cpp`.
-      - `CMakeLists.txt`:
-          - Add `${SRC_DIR}/core/frame_rate_config.cpp` to `OG_CORE_SOURCES` (alongside `${SRC_DIR}/core/frame_pacing.cpp`).
-          - Add new `og_add_unit_group(og_unit_core FILES ${CMAKE_SOURCE_DIR}/tests/unit/test_frame_rate_config.cpp)` block adjacent to `og_unit_sim` (around line 1762).
-      - `src/platform/sdl/glad.cpp` `bootstrap_runtime()` (after the overscan block at lines 220-224):
-          ```cpp
-          const int fps = og::core::target_fps_from_cfg(cfg);
-          og::core::apply_target_fps_to_cfg(cfg, fps);
-          og::runtime::current_session->target_fps_ = fps;
-          ```
-        `apply_setting` writes the canonical clamped value back so the next save persists it. Move `cfg.save_settings()` to immediately after the new `apply_setting` call so both overscan and `target_fps` are flushed in one save, mirroring the existing overscan pattern.
-      - `include/openglad/interface/session_state.h`: add `int target_fps_ = 72;` adjacent to `g_game_speed_factor_` at line 76. Default literal matches `og::core::kDefaultTargetFps`; do not include the new header here (avoid circular include) — keep the literal default in sync with the constant via a `static_assert` in `frame_rate_config.cpp`.
-      - `cfg/openglad.yaml`: add `target_fps: 72` under `graphics:`.
 
-      ## Implementation Details
-      - YAML setting key path: `("graphics", "target_fps")`. Reader returns the parsed int clamped to `[kMinTargetFps, kMaxTargetFps]`; missing or unparseable falls back to `kDefaultTargetFps`. Writer always serializes a base-10 integer with no leading zeros via `cfg.apply_setting("graphics", "target_fps", std::to_string(fps))`.
-      - `target_frame_interval_ms(int fps)` returns `std::max<std::uint32_t>(1u, static_cast<std::uint32_t>((1000 + fps / 2) / fps))`. Document that this rounds half-up so 72 fps → 14 ms and 60 fps → 17 ms.
-      - The session field is read-only after `bootstrap_runtime()` for this phase. Future runtime adjustments go through a setter that re-applies to `cfg` (out of scope here).
+      - Delete `tests/parity/golden/*.json` (all 15 files).
+      - `git mv .plan/parity-signoff.md .plan/parity-signoff-fraudulent.md`.
+      - Create `.plan/parity-redo-audit.md`.
+      - No source code is modified in this phase.
 
-      ## Success Criteria
-      - `target_fps_from_cfg()` is unit-tested for default, clamp-low, clamp-high, parse-failure, and persistence round-trip.
-      - `cmake --build --preset ci-test --target og_unit_core` succeeds.
-      - The broader test suite still compiles.
-      - `cfg/openglad.yaml` contains `target_fps: 72` under `graphics:`.
+      ## Git Commit Requirement (BLOCKING)
 
-      ## Git Commit Requirement
-      Before yielding control, you MUST stage and commit all changes with
-      `git add -A && git commit -m "add-fps-config: <change>"`. Do not yield
-      with a dirty working tree.
+      Before yielding, `git add` the 15 deletions, the rename, and `.plan/parity-redo-audit.md`, and create one commit on `wip/networking` (suggested subject: `parity-redo: phase 01 — tear down fraudulent golden set and rename signoff`). The next check phase expects HEAD to contain these changes.
 
-  - id: phase_1_check
+  - id: 01a-check-audit-document
     type: check
-    bounce_target: phase_1_add_fps_config
+    bounce_target: 01-audit-and-teardown
     prompt: |
-      You are a strict reviewer for Phase 1 (`add-fps-config`) of the openglad
-      jitter elimination work. Goal context: {{ GOAL }}
+      You are the verifier for Phase 01 (`01-audit-and-teardown`). Your role is to confirm the audit document exists, lists every deleted golden by path, and that the deletions and rename are committed at HEAD.
 
-      ## Preexisting Inputs (consume in place; do not regenerate)
-      - `include/openglad/core/frame_rate_config.h` (new in Phase 1)
-      - `src/core/frame_rate_config.cpp` (new in Phase 1)
-      - `tests/unit/test_frame_rate_config.cpp` (new in Phase 1)
-      - `cfg/openglad.yaml` (must contain `target_fps: 72` under `graphics:`)
-      - `CMakeLists.txt` (must register new source in `OG_CORE_SOURCES` and add `og_add_unit_group(og_unit_core ...)` block)
+      Run each of the following and check the result:
 
-      ## What to verify
-      - `og::core::target_fps_from_cfg()`, `apply_target_fps_to_cfg()`, and `target_frame_interval_ms()` exist with the documented signatures and semantics (clamps, default = 72, half-up rounding, `>= 1`).
-      - `kDefaultTargetFps`, `kMinTargetFps`, `kMaxTargetFps` constants exist with correct values (72/10/240).
-      - `cfg/openglad.yaml` has `target_fps: 72` under `graphics:`.
-      - `bootstrap_runtime()` in `src/platform/sdl/glad.cpp` reads, clamps, applies, and persists `target_fps`, and writes it onto `og::runtime::current_session->target_fps_`.
-      - `include/openglad/interface/session_state.h` has `int target_fps_ = 72;` adjacent to `g_game_speed_factor_` and does NOT include `frame_rate_config.h`.
-      - A `static_assert` in `frame_rate_config.cpp` keeps the session default in sync with `kDefaultTargetFps`.
-      - `og_add_unit_group(og_unit_core ...)` exists in `CMakeLists.txt` near the `og_unit_sim` block and contains `tests/unit/test_frame_rate_config.cpp`.
-      - The unit tests cover default, clamp-low, clamp-high, parse-failure, and persistence round-trip.
+      1. `test -f .plan/parity-redo-audit.md` — must succeed.
+      2. `test -f .plan/parity-signoff-fraudulent.md` — must succeed.
+      3. `test ! -f .plan/parity-signoff.md` — must succeed (the old file is gone).
+      4. `[ "$(ls tests/parity/golden/*.json 2>/dev/null | wc -l)" -eq 0 ]` — zero JSON goldens remain.
+      5. `grep -c '"walkers":\[\]' .plan/parity-redo-audit.md` — must return ≥ 1 (the document cites the empty-world golden pattern).
+      6. `[ "$(git log -1 --name-status | grep -c '^D')" -ge 15 ]` — HEAD commit shows ≥ 15 deletions.
+      7. Open `.plan/parity-redo-audit.md` and confirm it contains all five required sections (empty-world sample, line-numbered runner citation, line-numbered master companion citation, `apply_inputs_at_tick` empty-body citation, explanation of the `level_done` short-circuit, mention of the signoff rename).
 
-      ## Commands you MUST run (verbatim)
-      - `cmake --preset ci-test`
-      - `cmake --build --preset ci-test --target og_unit_core`
-      - `ctest --preset ci-test --output-on-failure -R 'FrameRateConfig'`
-
-      Build and test failures, missing constants, missing config key, or a
-      dirty working tree are all FAIL conditions. End your response with
-      exactly one of:
-
+      If every check passes, emit on the final line exactly:
       `VERDICT: PASS`
-      or
-      `VERDICT: FAIL: <reason>`
 
-  - id: phase_2_deadline_pacer
+      Otherwise emit on the final line exactly:
+      `VERDICT: FAIL: <concise reason>`
+
+  - id: 02-real-runner-and-companion
     type: implement
+    bounce_target: null
     prompt: |
-      You are an implementer working on the openglad C++ codebase. Goal: {{ GOAL }}
+      You are the implementer for Phase 02 of the parity-redo workflow.
 
-      This is Phase 2 — replace the variable-tick accumulator with a deadline pacer.
+      Project goal: {{ GOAL }}
 
-      ## Preexisting Inputs (consume in place — do NOT regenerate or rediscover)
-      - `.plan/plan.md` — full implementation plan.
-      - `src/core/frame_pacing.cpp`, `include/openglad/core/frame_pacing.h` — existing pacing helpers (kept; new pacer lives alongside).
-      - `tests/test_game_loop.cpp:1595-1690` — `GameLoopJitter` suite (must keep passing; `now_ms` injected via `GameLoopDeps`).
-      - `src/server/server_main.cpp:360-380` — `sleep_until` deadline pattern (inspiration).
-      - `include/openglad/core/runtime_trace.h:64-67` — `emit_runtime_trace` / `make_runtime_trace_record` (call directly, no macro gating).
-      - `include/openglad/core/frame_rate_config.h` — produced in Phase 1.
-      - `src/core/frame_rate_config.cpp` — produced in Phase 1.
-      - `og_unit_core` test group in `CMakeLists.txt` — created in Phase 1.
+      Phase Name: Real branch runner + real master companion.
+
+      Branches: primary repo on `wip/networking`; master companion worktree at `../openglad-master` on its own `parity-companion` branch. You MUST create TWO commits before yielding (one in each worktree).
+
+      ## Preexisting Inputs (consume in place — do NOT regenerate, rediscover, or re-derive)
+
+      Treat the Phase 01 audit and the Phase 03 harness design as authoritative. Reuse the existing schema-v1 emitter; do not rewrite the schema.
+
+      - `.plan/parity-redo-audit.md` (Phase 01 output — authoritative)
+      - `.plan/parity-harness-design.md` (schema reused unchanged)
+      - `tests/parity/parity_runner.{h,cpp}` (to be rewritten)
+      - `tests/parity/parity_test_main.cpp` (PhysFS init lands here or in a runner setup helper)
+      - `tests/parity/scenario_table.h` (extended with a smoke scenario plus the new `SpawnSpec`/`Exercises`/`fresh_arena`/`player_team`/`is_intentionally_empty` fields)
+      - `tests/parity/test_parity_scenarios.cpp` (extended with one smoke test entry)
+      - `tests/parity/state_dump.{h,cpp}` (schema unchanged; emitter reused; extend v1 with `level_done`, `level_tick_count` fields — v1 tolerates unknown keys)
+      - `tests/test_network_fixture.h:495-535` (reference for headless `LevelRuntimeData` setup)
+      - `src/platform/text/platform_headless.cpp:340-385` (reference for PhysFS + campaign bootstrap)
+      - `src/interface/level_runtime_data.cpp:831-883` (reference for scenario-file resolution)
+      - `../openglad-master/tools/parity_dump_master.cpp` (to be rewritten against master's real surface)
+      - `../openglad-master/tools/parity_dump_master_stubs.cpp`
+      - `CMakeLists.txt` (parity-test wiring at line 1807)
+      - `../openglad-master/CMakeLists.txt`
 
       ## New Outputs
-      - In `include/openglad/core/frame_pacing.h`, add:
-          ```cpp
-          struct FrameDeadlineDecision {
-              bool run_tick = false;
-              bool run_render = false;
-              std::uint32_t sleep_ms = 0;
-              std::uint32_t next_deadline_ms = 0;
-          };
 
-          class FrameDeadlinePacer {
-          public:
-              void configure(std::uint32_t interval_ms, std::uint32_t now_ms);
-              FrameDeadlineDecision tick(std::uint32_t now_ms);
-              void reset(std::uint32_t now_ms);
-              std::uint32_t interval_ms() const;
-          private:
-              std::uint32_t interval_ms_ = 0;
-              std::uint32_t next_deadline_ms_ = 0;
-              bool initialized_ = false;
-          };
-          ```
-      - Implementation in `src/core/frame_pacing.cpp` enforcing **exactly one tick per call**:
-          - `configure(interval, now)` clamps `interval_ms_ = std::max<std::uint32_t>(1u, interval)`, sets `next_deadline_ms_ = now + interval_ms_`, and `initialized_ = true`.
-          - `tick(now)`: if not initialized, `configure(1, now)` and return `{false, false, 1, now + 1}` plus a `pacer_resync` trace. Otherwise:
-              - If `now < next_deadline_ms_`, return `{run_tick=false, run_render=false, sleep_ms = next_deadline_ms_ - now, next_deadline_ms = next_deadline_ms_}`.
-              - Else if `now - next_deadline_ms_ <= interval_ms_` (within one interval of slip): advance `next_deadline_ms_ += interval_ms_` and return `{true, true, 0, next_deadline_ms_}`.
-              - Else (slipped more than one interval): set `next_deadline_ms_ = now + interval_ms_`, emit a `pacer_resync` runtime trace via `emit_runtime_trace(make_runtime_trace_record("frame_pacing", "pacer_resync"))`, and return `{true, true, 0, next_deadline_ms_}` so the current frame still runs exactly one tick (drop lost time deliberately rather than burst-catch-up).
-      - New tests `tests/unit/test_frame_deadline_pacer.cpp` added to the `og_unit_core` group.
-
-      ## File Changes
-      - Edit `include/openglad/core/frame_pacing.h` and `src/core/frame_pacing.cpp` to add `FrameDeadlinePacer` and `FrameDeadlineDecision`.
-      - Add new tests `tests/unit/test_frame_deadline_pacer.cpp` covering: steady-state advance, pause/resume resync (slip > 1 interval emits one `pacer_resync` and runs exactly one tick on the resync frame), configure → tick → tick determinism with injected clock, interval=0 clamps to 1, `sleep_ms` matches `interval_ms - elapsed`. Add to the `og_unit_core` group created in Phase 1.
+      - `tests/parity/parity_bootstrap.{h,cpp}` — PhysFS + campaign + search-path setup that:
+        1. Calls `og::resources::init(argv0)`.
+        2. Sets writable scratch directory under `${CMAKE_BINARY_DIR}/parity-write/`.
+        3. Calls `restore_default_campaigns()` then `mount_campaign_package_with_error("org.openglad.gladiator")`.
+        4. Adds `temp/scen/` and `scen/` to the PhysFS search path so scenario files at either root resolve as `scen{id}.fss`.
+        5. Installs `sdl_level_data_hooks()` unchanged.
+        6. Provides teardown that unmounts and `og::resources::deinit`s.
+        Includes a `BootstrapScope` RAII struct. Mirrored byte-for-byte at `../openglad-master/tools/parity_bootstrap.{h,cpp}`.
+      - `tests/parity/scenario_runtime.{h,cpp}`:
+        - `int scenario_level_id(string_view scenario_file)` parses the integer between `scen` and `.fss`.
+        - `void apply_post_load_spawns(GameWorld&, const ScenarioSpec&)` iterates `spec.spawns[]` and calls `world.add_ob(static_cast<Order>(spawn.order), spawn.family, /*atstart=*/true)`, sets position via `set_xpos`/`set_ypos`, team via `set_team_num`/`set_real_team_num`, and `set_default_weapon`/`set_current_weapon` when non-zero.
+        - `void apply_inputs_at_tick(GameWorld&, const ScenarioSpec&, uint32_t tick)` finds matching entries, identifies the first walker with `team_num() == spec.player_team`, and calls `walker->set_keys(entry.key_mask)`.
+        - `void clear_world_entities(GameWorld&)` for `fresh_arena` scenarios.
+      - Extensions of `ScenarioSpec` in `tests/parity/scenario_table.h`:
+        - `const SpawnSpec* spawns; std::size_t spawn_count;`
+        - `struct SpawnSpec { std::int32_t family; std::uint8_t team; std::uint8_t order; std::int32_t x; std::int32_t y; std::uint16_t default_weapon; std::uint16_t current_weapon; };`
+        - Wrapper helpers `kOrderLiving`, `kOrderWeapon`, `kOrderTreasure`, `kOrderGenerator`, `kOrderFX`.
+        - `std::uint8_t player_team = 0;`, `bool is_intentionally_empty = false;`, `bool fresh_arena = false;`, `std::uint64_t exercises = 0;` plus a new `enum class Exercises : std::uint64_t { None = 0 };` (extended in Phase 03).
+        - Existing 16 scenarios initialised with `spawns = nullptr; spawn_count = 0;`.
+        - Input constants `K_NONE`, `K_FIRE`, `K_SPECIAL`, `K_SPECIAL_SWITCH`, plus directional variants.
+      - New smoke scenarios `smoke_nonempty_scen99` (populated arena, no inputs) and `smoke_nonempty_scen99_inputs` (scripted `{1, 0, K_FIRE}, {3, 0, K_NONE}`); both must produce non-empty walker dumps with differing position/keys fields.
+      - Rewrite of `parity_runner.cpp::run_scenario` to use `LevelRuntimeData(level_id, /*headless=*/true, &sdl_level_data_hooks())`, install a `ScopedGameplayContext`, call `level.load()`, re-seed `world.rng_.state_ = spec.rng_seed` AFTER `load()`, optionally `clear_world_entities(world)` when `fresh_arena`, apply spawns, then run the full `tick_budget` ticks applying inputs each tick WITHOUT breaking on `level_done`. The schema-v1 dump records `world.level_done` and `world.level_tick_count()`. References `extern cfg_store cfg;` from `include/openglad/resources/gparser.h:38` — does not default-construct a local `cfg_store`.
+      - Mirror rewrite of `../openglad-master/tools/parity_dump_master.cpp::run` against master's actual surface, including additional headless stubs in `parity_dump_master_stubs.cpp`. `tools/parity_scenario_table.h` on master is byte-for-byte synchronised.
+      - `parity_runner_smoke` — small CMake executable target linking bootstrap + runner; emits JSON for a named scenario to stdout (extended in Phase 07 to support `--list`).
+      - Append to `.plan/parity-harness-design.md` a "Phase 02 redo: load path" section documenting the real load/tick/inject pipeline and the new `spawns[]` schema field. Schema-v1 JSON unchanged.
 
       ## Implementation Details
-      - The class is fully defined in the header; the `pacer_resync` runtime-trace emit lives in the .cpp to keep the header free of `runtime_trace.h`.
-      - `FrameDeadlinePacer` is the production replacement for the multi-tick accumulator inside `ticks_to_run_this_call()` (`src/platform/sdl/game_loop.cpp:123-184`). Removal of the multi-tick path is **Phase 3**, not this phase. This phase only adds the new class and tests; it does not yet wire it into the desktop loop.
 
-      ## Success Criteria
-      - Unit tests assert that 1000 simulated frames with a perfect clock advance `next_deadline_ms_` by exactly `1000 * interval_ms_`.
-      - One stalled iteration produces a one-frame skip and exactly one `pacer_resync` trace.
-      - `sleep_ms` is correct mid-interval.
-      - No call ever returns `run_tick=true` twice for one delta below `interval_ms`.
-      - Existing `GameLoopJitter` tests in `og_test_game_core` still pass unchanged.
+      - PhysFS init happens exactly once per process in `parity_test_main.cpp` SetUp.
+      - `LevelRuntimeData::load()` reads RNG state during decoration; re-apply `rng_seed` AFTER `load()` so the tick loop starts from the canonical seed.
+      - Do NOT `break` on `level_done`; run the full `tick_budget`.
+      - Mirror bootstrap/scenario-runtime files between branch and `../openglad-master/tools/` are kept byte-for-byte synchronised.
 
-      ## Git Commit Requirement
-      Before yielding control, you MUST stage and commit all changes with
-      `git add -A && git commit -m "deadline-pacer: <change>"`. Do not yield
-      with a dirty working tree.
+      ## Git Commit Requirement (BLOCKING)
 
-  - id: phase_2_check
+      Two commits before yielding, one in each worktree:
+      1. `git add` branch-side files and `git commit -m "parity-redo: phase 02 — real runner and schema-v1 fields"`.
+      2. `git -C ../openglad-master add` companion files and `git -C ../openglad-master commit -m "parity-companion: phase 02 — real load/tick/inject pipeline"`.
+
+      The check phases assert both commits exist and that both working trees are clean (`git status --porcelain` empty).
+
+  - id: 02a-check-build-clean
     type: check
-    bounce_target: phase_2_deadline_pacer
+    bounce_target: 02-real-runner-and-companion
     prompt: |
-      You are a strict reviewer for Phase 2 (`deadline-pacer`) of the openglad
-      jitter elimination work.
+      You are the verifier for Phase 02 (`02-real-runner-and-companion`). Your role is to confirm both branch and master companion build cleanly and that both worktrees have the phase commit at HEAD with a clean working tree.
 
-      ## Preexisting Inputs (consume in place; do not regenerate)
-      - `include/openglad/core/frame_pacing.h` — must declare `FrameDeadlineDecision` and `FrameDeadlinePacer`.
-      - `src/core/frame_pacing.cpp` — must implement the one-tick-per-call deadline pacer with `pacer_resync` trace.
-      - `tests/unit/test_frame_deadline_pacer.cpp` — must cover steady-state, slip, interval=0, mid-interval sleep, and determinism.
-      - `tests/test_game_loop.cpp` — existing `GameLoopJitter` suite must remain green.
+      Run each of the following and check the result:
 
-      ## What to verify
-      - A single `og::core::FrameDeadlinePacer` exists with the documented public API.
-      - `tick(now)` is purely deterministic given an injected clock (no calls to `SDL_GetTicks`, no chrono, no random).
-      - `pacer_resync` is emitted via `emit_runtime_trace(make_runtime_trace_record("frame_pacing", "pacer_resync"))` only when slip exceeds one interval.
-      - The slip path drops lost time and runs exactly one tick (no burst catch-up).
-      - No multi-tick or accumulator path was added.
-      - `tests/unit/test_frame_deadline_pacer.cpp` is registered in the `og_unit_core` group.
+      1. `cmake --preset ci-test` — must succeed.
+      2. `cmake --build --preset ci-test --target og_test_parity parity_runner_smoke` — must succeed.
+      3. `(cd ../openglad-master && cmake --preset ci-test && cmake --build --preset ci-test --target parity_dump_master)` — must succeed.
+      4. `git log -1 --stat` — branch commit visible, touching the new parity sources and CMakeLists.txt.
+      5. `git -C ../openglad-master log -1 --name-status` — master-side commit visible; `name-status` must list `tools/parity_dump_master.cpp`, `tools/parity_bootstrap.cpp`, and `tools/parity_scenario_runtime.cpp`.
+      6. `[ -z "$(git -C ../openglad-master status --porcelain)" ]` — master worktree clean.
+      7. `[ -z "$(git status --porcelain)" ]` — branch worktree clean.
 
-      ## Commands you MUST run (verbatim)
-      - `cmake --build --preset ci-test --target og_unit_core og_test_game_core`
-      - `ctest --preset ci-test --output-on-failure -R 'FrameDeadlinePacer|GameLoopJitter'`
-
-      End your response with exactly one of:
-
+      If every check passes, emit on the final line exactly:
       `VERDICT: PASS`
-      or
-      `VERDICT: FAIL: <reason>`
 
-  - id: phase_3_desktop_loop_rewrite
-    type: implement
+      Otherwise emit on the final line exactly:
+      `VERDICT: FAIL: <concise reason>`
+
+  - id: 02b-check-smoke-nonempty
+    type: check
+    bounce_target: 02-real-runner-and-companion
     prompt: |
-      You are an implementer working on the openglad C++ codebase. Goal: {{ GOAL }}
+      You are the verifier for Phase 02 (`02-real-runner-and-companion`). Your role is to confirm the rewritten runner actually loads a scenario, runs ≥ 50 ticks, and emits a non-empty walker dump on BOTH branch and master, and that scripted inputs produce observably-different state.
 
-      This is Phase 3 — switch the desktop loop to one-tick-per-frame deadline pacing.
+      Run each of the following and check the result:
 
-      ## Preexisting Inputs (consume in place — do NOT rebuild from scratch)
-      - `.plan/plan.md` — full implementation plan.
-      - `src/platform/sdl/game_loop.cpp:55` (`kMaxTicksPerCall = 4`), `:72` (`compute_tick_schedule`), `:123-184` (`ticks_to_run_this_call`).
-      - `src/platform/sdl/game_loop.cpp:307` (`game_frame_with_result`).
-      - `src/platform/sdl/glad_gameplay.cpp:227-257` (`glad_main` and the bare `while` loop).
-      - `include/openglad/platform/game_loop.h` (`GameLoopDeps` shape lines 24-43; existing fields stay).
-      - `include/openglad/interface/game_loop_state.h` (`GameLoopFrameState` lines 10-19; new field added here).
-      - Phase 1 outputs: `target_fps_` session field; `og::core::target_frame_interval_ms`.
-      - Phase 2 outputs: `og::core::FrameDeadlinePacer`, `FrameDeadlineDecision`.
-      - `tests/test_game_loop.cpp` — existing test fixtures using `now_ms` injection via `GameLoopDeps`.
-      - `scripts/run_jitter_gtests.sh` — existing jitter runner.
+      1. `./build/ci-test/og_test_parity --gtest_filter=Parity.smoke_nonempty_scen99` — must exit 0 with a passing test line.
+      2. `../openglad-master/build/ci-test/parity_dump_master --scenario smoke_nonempty_scen99 --out /tmp/smoke.json` — must exit 0 and produce `/tmp/smoke.json`.
+      3. `python3 -c "import json; d=json.load(open('/tmp/smoke.json')); assert len(d['walkers'])>0 and d['tick']>=50, d"` — must exit 0.
+      4. Run `smoke_nonempty_scen99` and `smoke_nonempty_scen99_inputs` and confirm their dumps differ in at least one walker position or `keys` field (the inputs scenario must show observable input-driven divergence).
+
+      If every check passes, emit on the final line exactly:
+      `VERDICT: PASS`
+
+      Otherwise emit on the final line exactly:
+      `VERDICT: FAIL: <concise reason>`
+
+  - id: 03-coverage-manifest-and-gate
+    type: implement
+    bounce_target: null
+    prompt: |
+      You are the implementer for Phase 03 of the parity-redo workflow.
+
+      Project goal: {{ GOAL }}
+
+      Phase Name: Define and enforce coverage taxonomy.
+
+      Branches: primary repo on `wip/networking`; master companion at `../openglad-master` on `parity-companion`. You MUST create one commit on each branch before yielding.
+
+      ## Preexisting Inputs (consume in place — do NOT rediscover families or rebuild Phase 02 artifacts)
+
+      Treat the Phase 02 runner/companion and the extended `scenario_table.h` as authoritative. Read `constants.h` and `event.h` once to enumerate the required-coverage targets; do not invent or rename them.
+
+      - `tests/parity/scenario_table.h` (extended in Phase 02 with `SpawnSpec`, `spawns`, `exercises`, `fresh_arena`, `player_team`, `is_intentionally_empty`)
+      - `../openglad-master/tools/parity_scenario_table.h` (mirror — must remain byte-for-byte synchronised after the `Exercises` widening)
+      - `include/openglad/core/constants.h` (`FAMILY_*` constants and `MAX_TREASURE`)
+      - `include/openglad/gameplay/event.h` (`enum class EventKind`)
+      - `src/gameplay/effect_family_registry.cpp` (effect family registration)
+      - `src/gameplay/families/family_*.cpp` (family descriptors with `set_do_special(...)` bindings)
+      - `tests/parity/state_dump.cpp::kind_string` (canonical symbolic names for `EventKind`, lines 134-147)
+      - The `og_test_parity` binary from Phase 02 (builds cleanly)
 
       ## New Outputs
-      - `GameLoopDeps::sleep_ms` callback (`std::function<void(std::uint32_t)>`) — defaults to `SDL_Delay`. Tests inject a no-op or capturing lambda.
-      - Native main-loop helper `og::runtime::run_native_game_loop(screen&, GameLoopFrameState&, const GameLoopDeps&)` declared in `include/openglad/platform/game_loop.h` that owns the sleep+tick cycle, replacing the bare `while (!done) game_frame(...)` in `glad_main()`.
-      - New tests:
-          - `GameLoop.single_tick_per_call`: N=100 calls with `now_ms` advanced by exactly the interval each call asserts exactly N ticks executed, never more.
-          - `GameLoop.idle_call_sleeps_remaining_interval`: inject `now_ms` returning `interval_ms / 2` past the last tick; capture `deps.sleep_ms` arg and assert it equals the remaining half-interval.
 
-      ## File Changes
-      - `include/openglad/platform/game_loop.h`: add `std::function<void(std::uint32_t)> sleep_ms;` to `GameLoopDeps`. Declare `void run_native_game_loop(screen&, GameLoopFrameState&, const GameLoopDeps&);`.
-      - `include/openglad/interface/game_loop_state.h`: add `#include <openglad/core/frame_pacing.h>` and `og::core::FrameDeadlinePacer pacer;` field. Keep `last_frame_time` and `accumulated_time` for now (legacy callers may still touch them in tests); production code stops reading them.
-      - `src/platform/sdl/game_loop.cpp`:
-          - Delete `kMaxTicksPerCall` and the multi-tick branch in `ticks_to_run_this_call()`. Function still exists for browser callers but always returns 0 or 1.
-          - In `compute_tick_schedule()`, the interval is now `og::core::target_frame_interval_ms(og::runtime::current_session->target_fps_) / std::max(0.01f, og::runtime::current_session->g_game_speed_factor_)` clamped to `>= 1` ms. `deps.fixed_tick_ms` still wins when non-zero (kept for tests).
-          - `game_frame_with_result()`: at the start of the timing block, configure the pacer on first call (`st.pacer.configure(interval_ms, now_ms())` if `interval_ms() == 0`), then call `auto decision = st.pacer.tick(now_ms())`. If `decision.run_tick == false`, invoke `(deps.sleep_ms ? deps.sleep_ms : SDL_Delay)(decision.sleep_ms)` and return `Continue` without rendering and without polling input again. If `run_tick == true`, run **exactly one** sim tick (no for-loop over `ticks_to_run`) and one render.
-          - Render is gated on `decision.run_render` — render only on tick frames, never on idle wakeups.
-          - Emit `runtime_trace` `desktop_loop_sleep_ms` with the captured sleep value so jitter scripts can observe the actual sleep distribution.
-      - `src/platform/sdl/glad_gameplay.cpp:255-257`: replace the `while (!g_frame_state().done) { game_frame(...); }` block with `run_native_game_loop(*current_screen, g_frame_state(), GameLoopDeps{});`. The helper is the one and only place that calls `SDL_Delay` for pacing in the native build.
-      - `tests/test_game_loop.cpp`: update any test that asserted multi-tick catch-up behavior to assert the new single-tick contract; existing `now_ms` injection tests should pass with at most a fixture tweak.
-      - Add new tests inside the `og_test_game_core` group:
-          - `GameLoop.single_tick_per_call`
-          - `GameLoop.idle_call_sleeps_remaining_interval`
+      - `.plan/parity-coverage-manifest.md` — long-form table of every coverage target with a `covering_scenario_id` column (initially most rows say `(none yet)`). Frontmatter includes `master_companion_sha:` (recorded from Phase 02's master commit) so Phases 04-07 diff against a fixed master.
+      - `tests/parity/coverage_targets.h` declaring:
+        - `inline constexpr std::int32_t kRequiredWalkerFamilies[]` — all 21 from `FAMILY_SOLDIER..FAMILY_TOWER1`.
+        - `inline constexpr std::int32_t kRequiredEffectFamilies[]` — all 13.
+        - `inline constexpr std::int32_t kRequiredWeaponFamilies[]` — all 20 from `FAMILY_KNIFE..FAMILY_BOULDER`.
+        - `inline constexpr std::int32_t kRequiredTreasureFamilies[]` — `FAMILY_STAIN..FAMILY_SPEED_POTION`.
+        - `inline constexpr std::pair<std::int32_t, std::uint8_t> kRequiredSpecials[]` enumerating every `(family, special_index)` pair with a non-null `do_special`.
+        - `inline constexpr std::string_view kRequiredEventKinds[]` — the nine non-`None` `EventKind` symbols matching `state_dump.cpp::kind_string`.
+      - `tests/parity/test_parity_coverage_gate.cpp` — added to the existing `og_add_test_group(parity ...)` source list (no new executable target). Cases under the `Parity` GoogleTest suite, selectable via `--gtest_filter='Parity.coverage_gate*'`:
+        - `Parity.coverage_gate_walker_families`
+        - `Parity.coverage_gate_specials`
+        - `Parity.coverage_gate_effect_families`
+        - `Parity.coverage_gate_weapon_families`
+        - `Parity.coverage_gate_treasure_families`
+        - `Parity.coverage_gate_event_kinds`
+        - `Parity.coverage_gate` (umbrella requiring all above)
+        Each case runs every scenario in `kScenarios` once via `run_scenario`, collects the union of `walker.family`, `effect.family`, `event.kind`, and per-scenario `spec.exercises` bits, asserts the corresponding required array is a subset of the observed union. The fixture builds the union once in `SetUpTestSuite()` and caches it. Failures print a structured list of every uncovered target.
+      - `scripts/parity/check_coverage_manifest.py` — pre-build static check. Parses `include/openglad/core/constants.h` for every `inline constexpr int FAMILY_*` and `include/openglad/gameplay/event.h` for `EventKind`. Asserts `tests/parity/coverage_targets.h` is a superset of the parsed entities. Exits non-zero with named missing entries.
+      - Widen `enum class Exercises : std::uint64_t` in `tests/parity/scenario_table.h` with one bit per coverage target not structurally observable (e.g. `Special_Archmage_1 = 1ULL<<0`, ...). Mirror the widening byte-for-byte in `../openglad-master/tools/parity_scenario_table.h`.
+      - Register `tests/parity/test_parity_coverage_gate.cpp` in the existing `og_add_test_group(parity ...)` source list in `CMakeLists.txt` (line 1807). No new `add_executable(...)`.
+      - Append a "Phase 03 redo: coverage gate" section to `.plan/parity-harness-design.md` pointing to the manifest and gate test.
 
       ## Implementation Details
-      - The browser path (`run_browser_wrapper_frame()` in `src/platform/sdl/game_loop.cpp:437`) is updated separately in **Phase 5**; this phase leaves it alone except for the `pacer` field already being present on `GameLoopFrameState` (the browser path simply does not call `pacer.tick`).
-      - `last_frame_time` and `accumulated_time` are kept on `GameLoopFrameState` to avoid disturbing test fixtures, but production code in `game_frame_with_result()` no longer reads them. Final removal is out of scope here.
 
-      ## Success Criteria
-      - Existing `GameLoopJitter` tests pass.
-      - `GameLoop.single_tick_per_call` and `GameLoop.idle_call_sleeps_remaining_interval` pass.
-      - `scripts/run_jitter_gtests.sh` exits zero.
-      - No code path inside `game_frame_with_result()` runs more than one sim tick or renders on an idle wakeup.
+      - The manifest is the single source of truth for "what must be tested". Adding a family without updating the manifest fails the static check; adding a manifest entry without a covering scenario fails the runtime gate.
+      - `kRequiredSpecials[]` is populated by inspecting each `src/gameplay/families/family_*.cpp` for `set_do_special(...)` bindings; or per-family `special_count` with `(family, 1..special_count)`.
+      - At Phase 03 completion the coverage gate is expected to FAIL at runtime — Phases 04-06 will fill it in. That is intended and is what verifier `03b` confirms.
 
-      ## Git Commit Requirement
-      Before yielding control, you MUST stage and commit all changes with
-      `git add -A && git commit -m "desktop-loop-rewrite: <change>"`. Do not
-      yield with a dirty working tree.
+      ## Git Commit Requirement (BLOCKING)
 
-  - id: phase_3_check
+      One commit per worktree before yielding:
+      1. Branch-side: `git add` new files and edits, `git commit -m "parity-redo: phase 03 — coverage manifest and runtime gate"`.
+      2. Master-side: `git -C ../openglad-master add tools/parity_scenario_table.h`, `git -C ../openglad-master commit -m "parity-companion: phase 03 — Exercises mirror"`.
+
+  - id: 03a-check-manifest-completeness
     type: check
-    bounce_target: phase_3_desktop_loop_rewrite
+    bounce_target: 03-coverage-manifest-and-gate
     prompt: |
-      You are a strict reviewer for Phase 3 (`desktop-loop-rewrite`) of the
-      openglad jitter elimination work.
+      You are the verifier for Phase 03 (`03-coverage-manifest-and-gate`). Your role is to confirm the static coverage manifest enumerates every family, weapon, effect, treasure, generator, special-ability index, and `EventKind` declared in headers and family descriptors.
 
-      ## Preexisting Inputs (consume in place; do not regenerate)
-      - `src/platform/sdl/game_loop.cpp` — `game_frame_with_result()` must use the deadline pacer.
-      - `src/platform/sdl/glad_gameplay.cpp` — `glad_main` must call `run_native_game_loop(...)`.
-      - `include/openglad/platform/game_loop.h` — must declare `run_native_game_loop` and `GameLoopDeps::sleep_ms`.
-      - `include/openglad/interface/game_loop_state.h` — must include the new `pacer` field.
-      - `tests/test_game_loop.cpp` — must contain `GameLoop.single_tick_per_call` and `GameLoop.idle_call_sleeps_remaining_interval`.
-      - `scripts/run_jitter_gtests.sh` — must exit zero.
+      Run each of the following and check the result:
 
-      ## What to verify
-      - Desktop loop runs **at most one** sim tick per call. The multi-tick catch-up branch and `kMaxTicksPerCall` are gone.
-      - Idle wakeups call `deps.sleep_ms(...)` (defaulting to `SDL_Delay`) and do NOT render.
-      - Render is gated on `decision.run_render`.
-      - `desktop_loop_sleep_ms` runtime trace is emitted with the captured sleep value.
-      - `glad_main()` no longer contains a bare `while (!done)` loop calling `game_frame`; it delegates to `run_native_game_loop(...)`.
-      - The `pacer` field exists on `GameLoopFrameState`; production code no longer reads `last_frame_time`/`accumulated_time`.
+      1. `python3 scripts/parity/check_coverage_manifest.py` — must exit 0.
+      2. `cmake --build --preset ci-test --target og_test_parity` — must succeed.
+      3. `test -s .plan/parity-coverage-manifest.md` — must succeed.
+      4. `test -s tests/parity/coverage_targets.h` — must succeed.
+      5. `grep -q 'master_companion_sha:' .plan/parity-coverage-manifest.md` — must succeed.
+      6. `git log -1 --pretty=%s` — branch commit subject must mention phase 03.
+      7. `git -C ../openglad-master log -1 --pretty=%s` — master-side commit subject must mention phase 03.
 
-      ## Commands you MUST run (verbatim)
-      - `cmake --build --preset ci-test`
-      - `ctest --preset ci-test --output-on-failure -R 'GameLoop|FrameDeadlinePacer|FrameRateConfig|Picker'`
-      - `bash scripts/run_jitter_gtests.sh build/ci-test/og_test_game_core build/ci-test/og_test_view build/ci-test/og_unit_sim`
-
-      End your response with exactly one of:
-
+      If every check passes, emit on the final line exactly:
       `VERDICT: PASS`
-      or
-      `VERDICT: FAIL: <reason>`
 
-  - id: phase_4_bounded_network_drain
-    type: implement
+      Otherwise emit on the final line exactly:
+      `VERDICT: FAIL: <concise reason>`
+
+  - id: 03b-check-gate-fails-on-omission
+    type: check
+    bounce_target: 03-coverage-manifest-and-gate
     prompt: |
-      You are an implementer working on the openglad C++ codebase. Goal: {{ GOAL }}
+      You are the verifier for Phase 03 (`03-coverage-manifest-and-gate`). Your role is to confirm the coverage gate is a real runtime gate that fails when a covering scenario is removed. Build failure is NOT an acceptable substitute — fail this check if the binary cannot be built.
 
-      This is Phase 4 — bound networking work per tick.
+      Run each of the following and check the result:
 
-      ## Preexisting Inputs (consume in place — do NOT rediscover)
-      - `.plan/plan.md` — full implementation plan.
-      - `src/platform/sdl/local_transport_shadow.cpp:1053-1119` (`local_transport_shadow_finish_tick`) and `:182-204` (`poll_local_transport_client`).
-      - `include/openglad/gameplay/game_client.h:39-40` (`poll_messages` / `poll_messages(float)`).
-      - `include/openglad/gameplay/game_server.h:131` (`poll_incoming_messages`).
-      - `include/openglad/gameplay/net_constants.h` (`KEYFRAME_INTERVAL_TICKS` line 14, `MAX_GRID_DIRTY_TILES` line 21).
-      - `tests/unit/test_net_transport*.cpp` and `tests/test_network_fixture.h` — extend, do not replace.
-      - Existing `og_test_picker_network` group at `CMakeLists.txt:1667` — already links the shadow runtime.
-      - `include/openglad/core/runtime_trace.h` — `emit_runtime_trace` API for the overflow trace.
+      1. `git stash push -m phase03b -- tests/parity/scenario_table.h` — must succeed (working tree clean before; gives you a safe slot to edit).
+      2. Edit `tests/parity/scenario_table.h` in place to remove the lone covering scenario for one target recorded by Phase 03 in `.plan/parity-coverage-manifest.md`.
+      3. `cmake --build --preset ci-test --target og_test_parity` — must succeed (the gate is runtime, not compile-time).
+      4. `./build/ci-test/og_test_parity --gtest_filter='Parity.coverage_gate*'` — must exit non-zero. Its failure output must name the now-uncovered target.
+      5. `git checkout -- tests/parity/scenario_table.h && git stash pop` — restore the file.
+      6. `cmake --build --preset ci-test --target og_test_parity` — must succeed after restoration (validates the test environment is reproducible).
+
+      If every check passes, emit on the final line exactly:
+      `VERDICT: PASS`
+
+      Otherwise emit on the final line exactly:
+      `VERDICT: FAIL: <concise reason>`
+
+  - id: 04-walker-family-scenarios
+    type: implement
+    bounce_target: null
+    prompt: |
+      You are the implementer for Phase 04 of the parity-redo workflow.
+
+      Project goal: {{ GOAL }}
+
+      Phase Name: One byte-equal scenario per walker family (21 families).
+
+      Branches: primary repo on `wip/networking`; master companion at `../openglad-master` on `parity-companion`. You MUST create one commit on each branch before yielding.
+
+      ## Preexisting Inputs (consume in place — do NOT regenerate, recapture, or re-derive)
+
+      Treat the Phase 03 manifest, coverage_targets, scenario_table, and the master companion binary as authoritative. Reuse the existing master companion built at the SHA recorded in the manifest frontmatter — do not rebuild master from scratch.
+
+      - `tests/parity/scenario_table.h` (extended through Phase 03)
+      - `tests/parity/coverage_targets.h::kRequiredWalkerFamilies[]`
+      - `tests/parity/scenario_runtime.{h,cpp}` (provides `apply_post_load_spawns`, `clear_world_entities`)
+      - `../openglad-master/tools/parity_scenario_table.h` (mirror — keep byte-for-byte synchronised)
+      - `scen/scen99.fss`, `scen/scen9301.fss` (base maps)
+      - `scripts/parity/capture_master_golden.sh` (callable here with `tests/parity/golden/` as destination)
+      - `scripts/parity/validate_schema.py`
+      - `../openglad-master/build/ci-test/parity_dump_master` (built in Phase 02 at the SHA in `.plan/parity-coverage-manifest.md` frontmatter)
+      - `.plan/parity-coverage-manifest.md`
 
       ## New Outputs
-      - In `include/openglad/gameplay/net_constants.h`:
-          ```cpp
-          inline constexpr int MAX_INBOUND_MESSAGES_PER_TICK = 64;
-          inline constexpr int MAX_OUTBOUND_MESSAGES_PER_TICK = 32;
-          inline constexpr std::uint32_t MAX_NETWORK_BUDGET_US_PER_TICK = 2000; // 2 ms (advisory, traced not enforced)
-          ```
-      - New overloads:
-          - `void GameClient::poll_messages(float current_render_alpha, int max_messages);`
-          - `void GameServer::poll_incoming_messages(int max_messages);`
-          - `int GameServer::messages_drained_last_call() const;` (so the shadow can know whether the cap fired).
-      - New tests `tests/test_local_transport_shadow_budget.cpp` (in the existing `og_test_picker_network` group at `CMakeLists.txt:1667`):
-          - Push 1000 fake snapshot messages; assert exactly `MAX_INBOUND_MESSAGES_PER_TICK` are drained per call and the un-drained queue persists.
-          - Run repeated ticks until the queue drains; assert no tick processes more than the cap.
-          - Assert exactly one `shadow_inbound_overflow` trace on the first tick of the storm and at least one across the storm.
 
-      ## File Changes
-      - `include/openglad/gameplay/game_client.h`, `src/gameplay/game_client.cpp`: add the bounded overload; existing unbounded versions delegate with `INT_MAX`.
-      - `include/openglad/gameplay/game_server.h`, `src/gameplay/game_server.cpp`: same shape, plus `messages_drained_last_call()`.
-      - `src/platform/sdl/local_transport_shadow.cpp`:
-          - `poll_local_transport_client()` gains an `int budget` parameter and forwards.
-          - `local_transport_shadow_finish_tick()` calls `poll_local_transport_client(*session.myscreen_, client, MAX_INBOUND_MESSAGES_PER_TICK)`. If the server reports it drained the full budget, emit `runtime_trace` `shadow_inbound_overflow` so tests can assert the cap fired.
-      - New `tests/test_local_transport_shadow_budget.cpp` added to the `og_test_picker_network` group in `CMakeLists.txt`.
+      - 21 new `ScenarioSpec` entries in `kScenarios`, one per family `FAMILY_SOLDIER..FAMILY_TOWER1`. Naming: `family_<symbolic_lowercase>_scen99` or `_scen9301`. Each spec uses:
+        - `tick_budget = 150`.
+        - `fresh_arena = true` (runner clears pre-existing walkers via `clear_world_entities(world)` between `level.load()` and `apply_post_load_spawns`).
+        - `spawns[]`: target family on team 0 at `(120, 120)` and `FAMILY_SOLDIER` on team 1 at `(180, 120)` as a sparring partner; generators get an additional spawn entry of the corresponding generator family.
+        - `inputs[]`: `{ {5, 0, K_FIRE}, {64, 0, K_NONE} }` — attack at tick 5, stop at tick 64. Non-combatant generators have empty `inputs`.
+        - `exercises`: appropriate bit flag from Phase 03's `Exercises` enum.
+      - Mirror entries in `../openglad-master/tools/parity_scenario_table.h` (byte-for-byte synchronised), committed on `parity-companion`.
+      - 21 golden files in `tests/parity/golden/family_*.json` captured in this phase by the rebuilt master companion via `scripts/parity/capture_master_golden.sh tests/parity/golden/` filtered to the new ids; schema-validated; committed. Canonical — not regenerated by later phases except Phase 07's audit.
+      - `tests/parity/test_parity_scenarios.cpp` — add `OG_PARITY_TEST(N, family_<name>_scen99)` lines.
+      - `.plan/parity-coverage-manifest.md` updated with `covering_scenario_id` populated for all 21 walker families.
 
       ## Implementation Details
-      - Budget values (64 / 32 / 2 ms) are tunable but live in the header so they are visible in code review and jitter runs.
-      - When the cap is hit, the un-drained queue stays in the transport and is consumed next tick. Snapshots are idempotent under sequence numbers (already true), so deferred application is safe.
-      - The 2-ms time budget is advisory only in this phase (recorded in trace but not enforced by an additional clock check inside the loop). Hard time-budget enforcement is deferred — the message-count cap is the primary jitter safety net.
 
-      ## Success Criteria
-      - New `tests/test_local_transport_shadow_budget.cpp` cases pass.
-      - Existing `og_test_picker_network` and the inprocess transport tests pass unchanged.
-      - `runtime_trace` records `shadow_inbound_overflow` at least once in the new storm test.
+      - `fresh_arena = true` is required so families that depend on RNG consumption during `load()` do not accumulate pre-existing walkers.
+      - Family-specific gotchas: slime splits on death (dump captures split products); `FAMILY_GHOST` fires ghost-scare effect on enemy contact; `FAMILY_TOWER1` is static but fires weapons.
+      - Capture sequence:
+        1. Confirm `../openglad-master/build/ci-test/parity_dump_master` is built from the SHA recorded in the manifest frontmatter.
+        2. `scripts/parity/capture_master_golden.sh tests/parity/golden/` filtered to the 21 new ids.
+        3. `python3 scripts/parity/validate_schema.py tests/parity/golden/family_*.json`.
 
-      ## Git Commit Requirement
-      Before yielding control, you MUST stage and commit all changes with
-      `git add -A && git commit -m "bounded-network-drain: <change>"`. Do not
-      yield with a dirty working tree.
+      ## Git Commit Requirement (BLOCKING)
 
-  - id: phase_4_check
+      Two commits before yielding:
+      1. Branch-side: `git add` scenario table, test registrations, manifest updates, and the 21 new golden files; `git commit -m "parity-redo: phase 04 — 21 walker-family scenarios + goldens"`.
+      2. Master-side: `git -C ../openglad-master add tools/parity_scenario_table.h && git -C ../openglad-master commit -m "parity-companion: phase 04 — walker-family scenario mirror"`.
+
+      Both worktrees must have clean status at verification.
+
+  - id: 04a-check-family-coverage
     type: check
-    bounce_target: phase_4_bounded_network_drain
+    bounce_target: 04-walker-family-scenarios
     prompt: |
-      You are a strict reviewer for Phase 4 (`bounded-network-drain`) of the
-      openglad jitter elimination work.
+      You are the verifier for Phase 04 (`04-walker-family-scenarios`). Your role is to confirm every entry in `kRequiredWalkerFamilies[]` is observed in the union of `dump.walkers[*].family` and that 21 family golden files exist on disk.
 
-      ## Preexisting Inputs (consume in place; do not regenerate)
-      - `src/platform/sdl/local_transport_shadow.cpp` — must call the bounded poll and emit `shadow_inbound_overflow`.
-      - `include/openglad/gameplay/game_client.h` — must declare `poll_messages(float, int)`.
-      - `include/openglad/gameplay/game_server.h` — must declare `poll_incoming_messages(int)` and `messages_drained_last_call()`.
-      - `include/openglad/gameplay/net_constants.h` — must define `MAX_INBOUND_MESSAGES_PER_TICK`, `MAX_OUTBOUND_MESSAGES_PER_TICK`, `MAX_NETWORK_BUDGET_US_PER_TICK`.
-      - `tests/test_local_transport_shadow_budget.cpp` — must exist and be wired into `og_test_picker_network`.
-      - `CMakeLists.txt` — must register the new test source.
+      Run each of the following and check the result:
 
-      ## What to verify
-      - Inbound polling is bounded at exactly `MAX_INBOUND_MESSAGES_PER_TICK` per tick; un-drained queue persists.
-      - Storm test asserts exactly one `shadow_inbound_overflow` trace on the first tick and at least one across the storm.
-      - The unbounded `poll_messages`/`poll_incoming_messages` overloads delegate to the bounded ones with `INT_MAX`.
-      - No existing test regressed.
+      1. `cmake --build --preset ci-test --target og_test_parity` — must succeed.
+      2. `./build/ci-test/og_test_parity --gtest_filter='Parity.coverage_gate_walker_families'` — must exit 0.
+      3. `[ "$(ls tests/parity/golden/family_*.json | wc -l)" -eq 21 ]` — exactly 21 family goldens present.
+      4. Each `tests/parity/golden/family_*.json` contains `"walkers":[...]` with ≥ 2 entries and `"tick": 150`. Spot-check at least three goldens by parsing JSON.
+      5. `.plan/parity-coverage-manifest.md` shows `covering_scenario_id` filled for every walker family — `grep -c '(none yet)' .plan/parity-coverage-manifest.md` for walker rows should be 0 (or the file documents the families row block separately and shows all 21 rows filled).
+      6. `git log -1 --pretty=%s` on `wip/networking` mentions phase 04.
+      7. `git -C ../openglad-master log -1 --pretty=%s` mentions phase 04.
 
-      ## Commands you MUST run (verbatim)
-      - `cmake --build --preset ci-test`
-      - `ctest --preset ci-test --output-on-failure -R 'NetTransport|GameClient|GameServer|LocalTransportShadow'`
-
-      End your response with exactly one of:
-
+      If every check passes, emit on the final line exactly:
       `VERDICT: PASS`
-      or
-      `VERDICT: FAIL: <reason>`
 
-  - id: phase_5_browser_and_headless_pacer
-    type: implement
+      Otherwise emit on the final line exactly:
+      `VERDICT: FAIL: <concise reason>`
+
+  - id: 04b-check-byte-equal-vs-master
+    type: check
+    bounce_target: 04-walker-family-scenarios
     prompt: |
-      You are an implementer working on the openglad C++ codebase. Goal: {{ GOAL }}
+      You are the verifier for Phase 04 (`04-walker-family-scenarios`). Your role is to re-derive evidence by running the rebuilt master companion for every family scenario and `diff -q`'ing against the committed branch golden, then running the parity tests.
 
-      This is Phase 5 — browser pacing and headless server pacing alignment.
+      Run each of the following and check the result:
 
-      ## Preexisting Inputs (consume in place — do NOT rediscover)
-      - `.plan/plan.md` — full implementation plan.
-      - `src/platform/sdl/glad.cpp:243-340` (`emscripten_frame_wrapper`).
-      - `src/platform/sdl/game_loop.cpp:437-469` (`run_browser_wrapper_frame`).
-      - `src/core/frame_pacing.cpp:13-60` (`browser_frame_target_interval_ms` and `step_browser_frame_pacing` — kept; cadence input changes).
-      - `src/server/server_main.cpp:360-380` — existing `sleep_until` headless pacer.
-      - Phase 1 outputs: `target_fps_from_cfg()` getter, `target_frame_interval_ms()`.
-      - Phase 2 outputs: `FrameDeadlinePacer`.
-      - `tests/unit/test_game_loop_wrapper.cpp` (in `og_unit_sim`) — covers `step_browser_frame_pacing`.
-      - `tests/test_game_loop.cpp:1595-1690` — `GameLoopJitter.browser_wrapper_*` tests.
-      - `scripts/test_headless_server_cli.sh`, `scripts/test_emscripten_build.sh` — preexisting scripts.
+      1. `(cd ../openglad-master && cmake --build --preset ci-test --target parity_dump_master)` — must succeed.
+      2. For each id in `$(ls tests/parity/golden/family_*.json | xargs -n1 basename | sed 's/\.json$//')`:
+         - `../openglad-master/build/ci-test/parity_dump_master --scenario "$id" --out "/tmp/${id}.json"` — must exit 0.
+         - `diff -q "tests/parity/golden/${id}.json" "/tmp/${id}.json"` — must report no difference.
+      3. `./build/ci-test/og_test_parity --gtest_filter='Parity.family_*'` — must exit 0 with 21 passes.
+
+      Any divergence flags either a regression (Phase 07 will classify) or an out-of-date golden. Fail this check on any non-zero exit or any diff.
+
+      If every check passes, emit on the final line exactly:
+      `VERDICT: PASS`
+
+      Otherwise emit on the final line exactly:
+      `VERDICT: FAIL: <concise reason>`
+
+  - id: 05-special-ability-scenarios
+    type: implement
+    bounce_target: null
+    prompt: |
+      You are the implementer for Phase 05 of the parity-redo workflow.
+
+      Project goal: {{ GOAL }}
+
+      Phase Name: Per-family per-special-index coverage.
+
+      Branches: primary repo on `wip/networking`; master companion at `../openglad-master` on `parity-companion`. Create one commit on each before yielding.
+
+      ## Preexisting Inputs (consume in place — do NOT regenerate Phase 04 outputs)
+
+      Reuse the walker-family scenarios and goldens from Phase 04, the coverage_targets header, the rebuilt master companion at the manifest-recorded SHA, and the existing capture/validate scripts.
+
+      - All outputs of Phase 04 (walker-family scenarios + goldens committed)
+      - `tests/parity/scenario_table.h` (with `SpawnSpec`, `exercises`, `fresh_arena`, etc.)
+      - `tests/parity/coverage_targets.h::kRequiredSpecials[]`
+      - `tests/parity/scenario_runtime.cpp`
+      - `tests/parity/golden/` (Phase 04 canonical goldens — do not overwrite)
+      - `src/gameplay/families/family_*.cpp` (canonical special-action bindings)
+      - `../openglad-master/tools/parity_scenario_table.h` (mirror)
+      - `../openglad-master/build/ci-test/parity_dump_master` (rebuilt against the SHA in the manifest frontmatter)
+      - `scripts/parity/capture_master_golden.sh`, `scripts/parity/validate_schema.py`
+      - `.plan/parity-coverage-manifest.md`
 
       ## New Outputs
-      - Browser pacer sources its target interval from `og::core::target_frame_interval_ms(session.target_fps_)` instead of `browser_frame_target_interval_ms(timer_wait, speed_factor)`. The 16 ms browser floor at `src/core/frame_pacing.cpp:22` remains (browser cannot tick faster than rAF).
-      - Headless server pacer (`src/server/server_main.cpp`) uses `og::core::target_frame_interval_ms(target_fps_from_cfg(cfg))` instead of `wait_ticks * TIMER_WAIT_TO_MS`.
-      - Headless server CLI gains `--fps <n>`: when present, it calls `cfg.apply_setting("graphics", "target_fps", arg)` before reading the value back via `target_fps_from_cfg(cfg)`.
-      - New `runtime_trace` `browser_frame_step` emitted at most once per frame in the rAF wrapper.
 
-      ## File Changes
-      - `src/core/frame_pacing.cpp` and `include/openglad/core/frame_pacing.h`: change `browser_frame_target_interval_ms()` to take `int fps` instead of `(short timer_wait, float speed_factor)`. Update all callers in the same change; do not add a compat overload. Update `tests/unit/test_game_loop_wrapper.cpp` (in `og_unit_sim`) and any other test in the same change.
-      - `src/platform/sdl/glad.cpp:243-340` (`emscripten_frame_wrapper`): replace `timer_wait`/`speed_factor` reads with `og::runtime::current_session->target_fps_`. Strict single-step contract: each call to `run_browser_wrapper_frame` may execute at most one sim tick (it already does); add a `runtime_trace` `browser_frame_step` that emits at most once per frame and update `tests/unit/test_game_loop_wrapper.cpp` to assert the count.
-      - `src/server/server_main.cpp:360-380`: replace `wait_ticks * TIMER_WAIT_TO_MS` with `og::core::target_frame_interval_ms(...)`. Parse `--fps <n>` in the existing CLI argument loop and call `cfg.apply_setting("graphics", "target_fps", value)` before computing the interval. The integer is then read via `target_fps_from_cfg(cfg)` (clamps).
-      - `tests/test_game_loop.cpp:1595-1690`: update `GameLoopJitter.browser_wrapper_*` tests to drive the new fps-based input shape; assertions on rounded interval should use `target_frame_interval_ms()`.
-      - `tests/unit/test_game_loop_wrapper.cpp`: same.
+      - ~40–60 new `ScenarioSpec` entries (one per `(family, special_index)` pair in `kRequiredSpecials[]`). Naming: `special_<family>_<idx>_scen<base>`, e.g. `special_archmage_1_scen99`. Index order matches the family descriptor's `special_actions[]` index.
+      - Input sequences:
+        - For `special_index == 0`: `inputs = { {10, 0, K_SPECIAL}, {11, 0, K_NONE} }`.
+        - For higher indices, step the active special with `K_SPECIAL_SWITCH` first, e.g. `special_index == 2`:
+          `{ {5, 0, K_SPECIAL_SWITCH}, {6, 0, K_NONE}, {7, 0, K_SPECIAL_SWITCH}, {8, 0, K_NONE}, {10, 0, K_SPECIAL}, {11, 0, K_NONE} }`.
+      - Mirror entries committed to `../openglad-master/tools/parity_scenario_table.h`.
+      - Per-scenario goldens under `tests/parity/golden/special_*.json`, captured in this phase by the rebuilt master companion (`capture_master_golden.sh tests/parity/golden/` filtered to the new ids), schema-validated, and committed. Canonical — Phase 07 only re-captures into a throwaway directory.
+      - `.plan/parity-coverage-manifest.md` updated with covering scenario ids for every `(family, special_index)` pair.
+      - `tests/parity/test_parity_scenarios.cpp` extended with macro invocations.
 
       ## Implementation Details
-      - The browser tick is still scheduled by the browser's rAF loop, so the deadline pacer is **not** used in the browser to *sleep*; the browser uses `step_browser_frame_pacing()` to decide whether the rAF callback should run a tick. What changes is the input — the rAF helper now reads `target_fps_` from the session instead of `timer_wait` and `speed_factor`.
-      - `world.timer_wait` continues to be transmitted in snapshots (sim determinism). Visual cadence is no longer slaved to it.
-      - On the headless server, the deadline-sleep loop keeps its existing structure but pulls the fps value from cfg at startup; in-game changes to the target fps require a server restart (acceptable for headless).
 
-      ## Success Criteria
-      - All `GameLoopJitter.browser_*` tests pass with the new signatures.
-      - `scripts/test_headless_server_cli.sh` runs and exits cleanly; the server respects `--fps <n>`.
-      - `scripts/test_emscripten_build.sh` either compiles cleanly or self-skips with exit 0.
-      - No code path in the browser wrapper or headless server reads `timer_wait * speed_factor` for pacing — the value is sourced from `target_fps`.
+      - The four pre-existing `special_X_scenY` scenarios are RENAMED to fit the new convention and re-pointed at the spawn-injection model.
+      - Summoning specials need `tick_budget >= 80` for the spawned entity to appear.
+      - Caster-only specials rely on the dump's applied-effect `lifetime` field, which the differ already compares.
 
-      ## Git Commit Requirement
-      Before yielding control, you MUST stage and commit all changes with
-      `git add -A && git commit -m "browser-and-headless-pacer: <change>"`.
-      Do not yield with a dirty working tree.
+      ## Git Commit Requirement (BLOCKING)
 
-  - id: phase_5_check
+      Two commits before yielding:
+      1. Branch-side: `git add` scenario table, test registrations, manifest updates, and all new `tests/parity/golden/special_*.json`; `git commit -m "parity-redo: phase 05 — per-family special-ability scenarios + goldens"`.
+      2. Master-side: `git -C ../openglad-master add tools/parity_scenario_table.h && git -C ../openglad-master commit -m "parity-companion: phase 05 — special-ability scenario mirror"`.
+
+      Both worktrees must have clean status at verification.
+
+  - id: 05a-check-specials-coverage
     type: check
-    bounce_target: phase_5_browser_and_headless_pacer
+    bounce_target: 05-special-ability-scenarios
     prompt: |
-      You are a strict reviewer for Phase 5 (`browser-and-headless-pacer`) of
-      the openglad jitter elimination work.
+      You are the verifier for Phase 05 (`05-special-ability-scenarios`). Your role is to confirm every `(family, special_index)` pair in `kRequiredSpecials[]` is observed (by `exercises` bit or by an effect/event known to be produced by the special).
 
-      ## Preexisting Inputs (consume in place; do not regenerate)
-      - `src/platform/sdl/glad.cpp` — `emscripten_frame_wrapper` must source pacing from `target_fps_`.
-      - `src/platform/sdl/game_loop.cpp` — browser wrapper must call the new fps-based interval helper.
-      - `src/core/frame_pacing.cpp` — `browser_frame_target_interval_ms(int fps)` signature must be updated; 16 ms floor preserved.
-      - `src/server/server_main.cpp` — must use `target_frame_interval_ms(target_fps_from_cfg(cfg))` and parse `--fps <n>`.
-      - `tests/unit/test_game_loop_wrapper.cpp` — must drive the new fps-based input shape and assert the `browser_frame_step` runtime trace count.
-      - `tests/test_game_loop.cpp` — `GameLoopJitter.browser_wrapper_*` tests must use `target_frame_interval_ms()`.
-      - `scripts/test_headless_server_cli.sh`, `scripts/test_emscripten_build.sh` — must run cleanly (the emscripten script may self-skip with exit 0 if emsdk is missing).
+      Run each of the following and check the result:
 
-      ## What to verify
-      - No `timer_wait * speed_factor` pacing math remains in the browser wrapper or headless server.
-      - The `--fps <n>` CLI flag sets `graphics.target_fps` before the interval is computed.
-      - `browser_frame_step` runtime trace is emitted at most once per browser frame.
-      - The 16 ms browser floor is preserved.
+      1. `cmake --build --preset ci-test --target og_test_parity` — must succeed.
+      2. `./build/ci-test/og_test_parity --gtest_filter='Parity.coverage_gate_specials'` — must exit 0.
+      3. `ls tests/parity/golden/special_*.json | wc -l` — must equal the number of pairs in `kRequiredSpecials[]` (~40–60). Confirm by parsing `tests/parity/coverage_targets.h` for the pair count and comparing.
+      4. `.plan/parity-coverage-manifest.md` shows a non-empty `covering_scenario_id` for every `(family, special_index)` pair (no `(none yet)` left in the specials block).
+      5. `git log -1 --pretty=%s` mentions phase 05 on both worktrees.
 
-      ## Commands you MUST run (verbatim)
-      - `cmake --build --preset ci-test`
-      - `ctest --preset ci-test --output-on-failure -R 'GameLoopWrapper|GameLoopJitter|HeadlessServer'`
-      - `bash scripts/test_headless_server_cli.sh`
-      - `bash scripts/test_emscripten_build.sh`
-
-      Any non-zero exit from `scripts/test_emscripten_build.sh` is a failure
-      (the script is expected to self-detect a missing emsdk and exit 0).
-
-      End your response with exactly one of:
-
+      If every check passes, emit on the final line exactly:
       `VERDICT: PASS`
-      or
-      `VERDICT: FAIL: <reason>`
 
-  - id: phase_6_jitter_measurement_final
-    type: implement
+      Otherwise emit on the final line exactly:
+      `VERDICT: FAIL: <concise reason>`
+
+  - id: 05b-check-byte-equal-vs-master
+    type: check
+    bounce_target: 05-special-ability-scenarios
     prompt: |
-      You are an implementer working on the openglad C++ codebase. Goal: {{ GOAL }}
+      You are the verifier for Phase 05 (`05-special-ability-scenarios`). Your role is to re-derive evidence by per-scenario `diff -q` between committed branch goldens and freshly captured master dumps.
 
-      This is Phase 6 — end-to-end jitter measurement and final docs.
+      Run each of the following and check the result:
 
-      ## Preexisting Inputs (consume in place — do NOT rebuild)
-      - `.plan/plan.md` — full implementation plan.
-      - All artifacts from Phases 1-5 (consumed in place):
-          - `include/openglad/core/frame_rate_config.h`, `src/core/frame_rate_config.cpp` (Phase 1).
-          - `include/openglad/core/frame_pacing.h`, `src/core/frame_pacing.cpp` containing `FrameDeadlinePacer` (Phase 2).
-          - Updated `src/platform/sdl/game_loop.cpp` and `src/platform/sdl/glad_gameplay.cpp` (Phase 3).
-          - Updated `src/platform/sdl/local_transport_shadow.cpp` and bounded message overloads (Phase 4).
-          - Updated browser/headless pacers (Phase 5).
-      - `scripts/analyze_jitter_metrics.mjs` and `scripts/run_jitter_gtests.sh`.
-      - `cfg/openglad.yaml` (already updated in Phase 1).
-      - `scripts/check_vendor_leaks.sh`.
-      - Existing `og_test_game_core` group at `CMakeLists.txt:1593-1606`.
+      1. `(cd ../openglad-master && cmake --build --preset ci-test --target parity_dump_master)` — must succeed.
+      2. For each id in `$(ls tests/parity/golden/special_*.json | xargs -n1 basename | sed 's/\.json$//')`:
+         - `../openglad-master/build/ci-test/parity_dump_master --scenario "$id" --out "/tmp/${id}.json"` — must exit 0.
+         - `diff -q "tests/parity/golden/${id}.json" "/tmp/${id}.json"` — must report no difference.
+      3. `./build/ci-test/og_test_parity --gtest_filter='Parity.special_*'` — must exit 0.
+
+      Any non-zero diff or non-zero test exit fails this check.
+
+      If every check passes, emit on the final line exactly:
+      `VERDICT: PASS`
+
+      Otherwise emit on the final line exactly:
+      `VERDICT: FAIL: <concise reason>`
+
+  - id: 06-residual-coverage-scenarios
+    type: implement
+    bounce_target: null
+    prompt: |
+      You are the implementer for Phase 06 of the parity-redo workflow.
+
+      Project goal: {{ GOAL }}
+
+      Phase Name: Close all remaining coverage gaps (effects, weapons, treasures, generators, save round-trip, exit-trigger, event kinds).
+
+      Branches: primary repo on `wip/networking`; master companion at `../openglad-master` on `parity-companion`. Create one commit on each before yielding.
+
+      ## Preexisting Inputs (consume in place — do NOT regenerate Phase 04 or 05 outputs)
+
+      Reuse Phase 04/05 scenarios and goldens; reuse the existing `apply_post_load_spawns` (it already supports `Order::WEAPON`/`Order::TREASURE` plus the weapon-override fields from Phase 02). Reuse the manifest-pinned master companion.
+
+      - All outputs of Phases 04 and 05
+      - `tests/parity/coverage_targets.h` (declares `kRequiredEffectFamilies[]`, `kRequiredWeaponFamilies[]`, `kRequiredTreasureFamilies[]`, `kRequiredEventKinds[]`)
+      - `src/gameplay/effect_family_registry.cpp`
+      - `src/resources/save_data.cpp`
+      - `tests/parity/scenario_runtime.{h,cpp}`
+      - `../openglad-master/tools/parity_scenario_table.h` (mirror)
+      - `../openglad-master/build/ci-test/parity_dump_master` (rebuilt at manifest-recorded SHA)
+      - `.plan/parity-coverage-manifest.md`
 
       ## New Outputs
-      - New deterministic jitter regression test `tests/test_frame_pacing_jitter.cpp` (in `og_test_game_core` group at `CMakeLists.txt:1593-1606`):
-          - Drives `game_frame_with_result()` for 600 simulated frames at 72 fps with an injected `now_ms` advancing by exactly `target_frame_interval_ms(72)` each call.
-          - Captures every value passed to `deps.sleep_ms` and every `desktop_loop_sleep_ms` runtime trace.
-          - Asserts `max(observed_interval) - min(observed_interval) <= 1` ms (zero structural jitter; only integer rounding remains).
-          - Asserts exactly 600 sim ticks ran (no catch-up bursts, no skipped ticks).
-          - Repeats the same flow at 60 fps in a second test case to prove the knob is honored.
-      - Jitter assertion under storm: extend the budgeted-drain test from Phase 4 (or add a new case in `tests/test_frame_pacing_jitter.cpp`) asserting that with 1000 inbound messages queued, `local_transport_shadow_finish_tick` returns within a bound proportional to `MAX_INBOUND_MESSAGES_PER_TICK` rather than to the queue length, measured against an injected clock.
 
-      ## File Changes
-      - New `tests/test_frame_pacing_jitter.cpp`; add to the `og_test_game_core` group at `CMakeLists.txt:1593`.
-      - **Do not** add markdown summary docs; per repo rules, documentation files are not created unless explicitly requested.
+      - Effect scenarios (~13): `effect_expand`, `effect_ghost_scare`, `effect_bomb`, `effect_explosion`, `effect_flash`, `effect_magic_shield`, `effect_knife_back`, `effect_boomerang`, `effect_cloud`, `effect_marker`, `effect_chain`, `effect_door_open`, `effect_hit`. Only the residue not already covered by Phases 04-05.
+      - Weapon scenarios (~20): one per weapon family `FAMILY_KNIFE..FAMILY_BOULDER`. Each `spawns[]` sets `default_weapon` and `current_weapon` to the target weapon family id; carrier family chosen so its attack path fires the weapon's emit-projectile logic.
+      - Treasure scenarios (13): every treasure family spawned via `spawns[]` and collected by a walker driven onto it. Pickup verified by (a) treasure walker absent from final `dump.walkers[]`, and (b) post-pickup change in collector stats or `dump.score_per_team`. Coverage gate keys on the absent-treasure observation plus the `exercises` bit.
+      - Generator scenarios (4): tent / tower / bones / treehouse. Spawn generator, tick long enough for a child walker, verify the child in `walkers[]`.
+      - `save_roundtrip_disk_99`: loads scen99, runs 20 ticks, calls `level.save()` to write a real `.glad` archive into the PhysFS write-dir, opens it, deserialises into a fresh `LevelRuntimeData`, dumps, asserts byte-equal to in-memory dump.
+      - `exit_trigger_real_9302`: scripts the player onto the exit tile of scen9302; captures the `level_exited` event with the correct `next_level`.
+      - `rng_reseed_after_load_99`: validates the seed-after-load contract from Phase 02. Loads with seed A, re-seeds to B post-load, ticks; vs. loading with seed B and not re-seeding, post-tick dumps must differ.
+      - Event-emission scenarios for `EventKind` values not naturally emitted (`play_sound`, `notification`, `set_palette`, `request_redraw`, `end_game`/`set_end`/`request_exit_confirmation`/`withdraw_to_level` (covered by `exit_trigger_real_9302`), `score_change`).
+      - Mirror entries in `../openglad-master/tools/parity_scenario_table.h`, committed on `parity-companion`.
+      - Goldens for every new scenario captured in this phase via the rebuilt master companion, schema-validated, committed.
+      - `scripts/parity/audit_event_coverage.py` — loads every golden, unions `events[*].kind`, asserts the union equals the full set in `kRequiredEventKinds[]`. Exits non-zero on missing kinds.
+      - `.plan/parity-coverage-manifest.md` final state — all rows filled.
+      - `tests/parity/test_parity_scenarios.cpp` extended with macro invocations.
+      - Append a note to `.plan/parity-harness-design.md` updating the final scenario count.
 
       ## Implementation Details
-      - The jitter regression test must be wall-clock-independent — uses an injected clock so it is reproducible on any CI runner including ASan and UBSan.
-      - The two fps cases (60 and 72) live in the same compilation unit; both use the injected-clock harness from `tests/test_game_loop.cpp` patterns.
 
-      ## Success Criteria
-      - Full `ctest --preset ci-test` is green.
-      - `scripts/run_jitter_gtests.sh` exits zero.
-      - `scripts/check_vendor_leaks.sh` exits zero (no third-party header leakage from the new code, which only touches `og::core`, `og::runtime`, and `og::sim` public headers).
-      - New `FramePacingJitter.*` tests in `og_test_game_core` are exercised and pass for both 60 and 72 fps.
-      - Storm-jitter assertion holds: `local_transport_shadow_finish_tick` is bounded by `MAX_INBOUND_MESSAGES_PER_TICK`, not by queue length.
+      - `apply_post_load_spawns` calls `walker->set_default_weapon`/`set_current_weapon` (`include/openglad/gameplay/walker.h:170-171`) only for non-zero fields. There is no `walker::weapon_type` member.
+      - Save round-trip on disk uses the PhysFS write-dir under `${CMAKE_BINARY_DIR}/parity-write/` from Phase 02's bootstrap.
+      - `exit_trigger_real_9302` script is generated by reading scen9302's map metadata to compute the exit tile position.
 
-      ## Git Commit Requirement
-      Before yielding control, you MUST stage and commit all changes with
-      `git add -A && git commit -m "jitter-measurement-final: <change>"`. Do
-      not yield with a dirty working tree.
+      ## Git Commit Requirement (BLOCKING)
 
-  - id: phase_6_check
+      Two commits before yielding:
+      1. Branch-side: `git add` scenario table, test registrations, audit script, manifest updates, and every new golden file; `git commit -m "parity-redo: phase 06 — residual effect/weapon/treasure/generator/event coverage"`.
+      2. Master-side: `git -C ../openglad-master add tools/parity_scenario_table.h && git -C ../openglad-master commit -m "parity-companion: phase 06 — residual coverage mirror"`.
+
+      Both worktrees must have clean status at verification.
+
+  - id: 06a-check-residual-coverage
     type: check
-    bounce_target: phase_6_jitter_measurement_final
+    bounce_target: 06-residual-coverage-scenarios
     prompt: |
-      You are a strict reviewer for Phase 6 (`jitter-measurement-final`) of
-      the openglad jitter elimination work.
+      You are the verifier for Phase 06 (`06-residual-coverage-scenarios`). Your role is to confirm every coverage-gate case reports zero uncovered targets across walker families, effect families, weapon families, treasure families, generator families, specials, and event kinds.
 
-      ## Preexisting Inputs (consume in place; do not regenerate)
-      - `tests/test_frame_pacing_jitter.cpp` — must exist with both 60 fps and 72 fps test cases and a storm-jitter assertion.
-      - `scripts/run_jitter_gtests.sh` — must exit zero.
-      - `scripts/check_vendor_leaks.sh` — must exit zero.
-      - `CMakeLists.txt` — must register `tests/test_frame_pacing_jitter.cpp` in the `og_test_game_core` group at line 1593.
+      Run each of the following and check the result:
 
-      ## What to verify
-      - Deterministic 600-frame jitter regression at both 60 fps and 72 fps with an injected clock.
-      - `max(observed_interval) - min(observed_interval) <= 1` ms.
-      - Exactly 600 sim ticks ran (no catch-up bursts, no skipped ticks).
-      - Storm-jitter assertion: `local_transport_shadow_finish_tick` returns within a bound proportional to `MAX_INBOUND_MESSAGES_PER_TICK`, not the queue length.
-      - No new markdown summary docs were added.
+      1. `cmake --build --preset ci-test --target og_test_parity` — must succeed.
+      2. `./build/ci-test/og_test_parity --gtest_filter='Parity.coverage_gate*'` — must exit 0 with zero uncovered targets reported.
+      3. `grep -c '(none yet)' .plan/parity-coverage-manifest.md` — must report 0 across the entire manifest (every coverage row populated).
 
-      ## Commands you MUST run (verbatim)
-      - `cmake --build --preset ci-test`
-      - `ctest --preset ci-test --output-on-failure`
-      - `bash scripts/run_jitter_gtests.sh build/ci-test/og_test_game_core build/ci-test/og_test_view build/ci-test/og_unit_sim`
-      - `bash scripts/check_vendor_leaks.sh`
-
-      End your response with exactly one of:
-
+      If every check passes, emit on the final line exactly:
       `VERDICT: PASS`
-      or
-      `VERDICT: FAIL: <reason>`
+
+      Otherwise emit on the final line exactly:
+      `VERDICT: FAIL: <concise reason>`
+
+  - id: 06b-check-event-kind-coverage
+    type: check
+    bounce_target: 06-residual-coverage-scenarios
+    prompt: |
+      You are the verifier for Phase 06 (`06-residual-coverage-scenarios`). Your role is to re-derive event-kind coverage by directly grepping every golden via the new audit script.
+
+      Run each of the following and check the result:
+
+      1. `python3 scripts/parity/audit_event_coverage.py tests/parity/golden/` — must exit 0 with no missing kinds reported.
+      2. `test -x scripts/parity/audit_event_coverage.py || test -f scripts/parity/audit_event_coverage.py` — must succeed.
+      3. Confirm the audit script's reported union equals `kRequiredEventKinds[]` from `tests/parity/coverage_targets.h`.
+
+      If every check passes, emit on the final line exactly:
+      `VERDICT: PASS`
+
+      Otherwise emit on the final line exactly:
+      `VERDICT: FAIL: <concise reason>`
+
+  - id: 06c-check-byte-equal-vs-master
+    type: check
+    bounce_target: 06-residual-coverage-scenarios
+    prompt: |
+      You are the verifier for Phase 06 (`06-residual-coverage-scenarios`). Your role is to per-scenario `diff -q` newly committed branch goldens against freshly captured master dumps for the residual categories.
+
+      Run each of the following and check the result:
+
+      1. `(cd ../openglad-master && cmake --build --preset ci-test --target parity_dump_master)` — must succeed.
+      2. For each id in `$(ls tests/parity/golden/{effect_*,weapon_*,treasure_*,generator_*,event_*,save_roundtrip_*,exit_trigger_*,rng_reseed_*}.json 2>/dev/null | xargs -n1 basename | sed 's/\.json$//')`:
+         - `../openglad-master/build/ci-test/parity_dump_master --scenario "$id" --out "/tmp/${id}.json"` — must exit 0.
+         - `diff -q "tests/parity/golden/${id}.json" "/tmp/${id}.json"` — must report no difference.
+      3. `./build/ci-test/og_test_parity --gtest_filter='Parity.effect_*:Parity.weapon_*:Parity.treasure_*:Parity.generator_*:Parity.event_*:Parity.save_roundtrip_*:Parity.exit_trigger_*:Parity.rng_reseed_*'` — must exit 0.
+
+      Any non-zero diff or non-zero test exit fails this check.
+
+      If every check passes, emit on the final line exactly:
+      `VERDICT: PASS`
+
+      Otherwise emit on the final line exactly:
+      `VERDICT: FAIL: <concise reason>`
+
+  - id: 07-master-capture-and-fix
+    type: implement
+    bounce_target: null
+    prompt: |
+      You are the implementer for Phase 07 of the parity-redo workflow.
+
+      Project goal: {{ GOAL }}
+
+      Phase Name: Verify (do not overwrite) goldens, classify divergences, fix.
+
+      Branch: `wip/networking`. Create one or more commits before yielding — each tagged `parity-redo: phase 07 — ...` or `parity-fix: ...` per fix.
+
+      ## Preexisting Inputs (consume in place — do NOT re-capture into the canonical golden tree)
+
+      Treat Phase 04/05/06's committed goldens as canonical. Re-capture writes only to `/tmp/golden-rebuild/`. Reuse the audit script, capture script, and manifest-pinned master companion.
+
+      - All outputs of Phases 04-06 (canonical goldens under `tests/parity/golden/`)
+      - `scripts/parity/capture_master_golden.sh` (extended here to accept a destination directory argument)
+      - `tests/parity/parity_runner_smoke_main.cpp` (extended here to support `--list`)
+      - `scripts/parity/audit_event_coverage.py` (extended here to support `--reject-empty-walkers`)
+      - `../openglad-master/build/ci-test/parity_dump_master` (rebuilt at manifest-recorded SHA)
+      - `.plan/parity-fixes.md` (rewrite as divergence log)
+      - `.plan/parity-coverage-manifest.md` (frontmatter `master_companion_sha:` from Phase 02)
+      - `src/gameplay/walker_combat.cpp:302` (canary perturbation site)
+
+      ## New Outputs
+
+      - `.plan/parity-fixes.md` rewritten with real divergence classifications observed by re-capturing into `/tmp/golden-rebuild/` and diffing against the committed golden tree. Each row is either `regression` (with branch-side code-fix commit SHA) or `intended_diff` (with branch commit SHA authorising the change). Phrases like "no divergences observed vacuously" are forbidden. If re-capture yields zero diffs, the document states so explicitly with the scenario count diffed.
+      - Branch-side source-code fixes for any real regressions, committed with `parity-fix:` tagged messages. Committed goldens are NOT overwritten except via the intended_diff path.
+      - `.plan/parity-coverage-manifest.md` annotated with the final master companion SHA and the branch HEAD SHA at re-capture time.
+      - Extended `scripts/parity/capture_master_golden.sh` accepting a destination-directory argument (defaults preserved for Phase 04-06 callers), iterating `parity_dump_master --list`, writing per-scenario JSON, schema-validating, aborting on malformed output.
+      - Extended `tests/parity/parity_runner_smoke_main.cpp` adding `--list` that prints every scenario id in `kScenarios` one per line.
+      - Extended `scripts/parity/audit_event_coverage.py` with `--reject-empty-walkers` mode rejecting any scenario with `tick_budget > 1` and `is_intentionally_empty == false` whose dump has empty `walkers[]`.
+
+      ## Implementation Details — verification pass, not re-capture
+
+      Re-capture sequence:
+      1. `mkdir -p /tmp/golden-rebuild && rm -rf /tmp/golden-rebuild/*`.
+      2. `(cd ../openglad-master && cmake --build --preset ci-test --target parity_dump_master)`.
+      3. `scripts/parity/capture_master_golden.sh /tmp/golden-rebuild/`.
+      4. `diff -r tests/parity/golden/ /tmp/golden-rebuild/`.
+
+      Expected outcome: zero diffs. When a diff fires, inspect the branch-side code path and EITHER fix branch code (commit message tagged `parity-fix:`) OR classify as `intended_diff` citing the branch commit SHA that authorised the behaviour change. Blindly re-capturing the canonical golden is forbidden.
+
+      Canary perturbation (verifier 07c will re-do this for itself): perturb `src/gameplay/walker_combat.cpp:302` (current statement `stats_->set_hitpoints(stats_->hitpoints() - tempdamage_i);`) via a one-line sed replacing `- tempdamage_i)` with `- (tempdamage_i + 1))`, rebuild `og_test_parity`, assert non-zero exit, revert via `git checkout -- src/gameplay/walker_combat.cpp`, rebuild, confirm clean tree still passes.
+
+      ## Git Commit Requirement (BLOCKING)
+
+      `git add` updated scripts, the rewritten `.plan/parity-fixes.md`, manifest SHA annotations, and any `parity-fix:` code fixes; `git commit` (one or more commits, each tagged `parity-redo: phase 07 — ...` or `parity-fix: ...`) before yielding. If the intended_diff path is used, the same commit must touch both the modified golden and `.plan/parity-fixes.md`.
+
+  - id: 07a-check-all-goldens-present
+    type: check
+    bounce_target: 07-master-capture-and-fix
+    prompt: |
+      You are the verifier for Phase 07 (`07-master-capture-and-fix`). Your role is to confirm every scenario id has exactly one matching golden file and that no golden is illegitimately empty.
+
+      Run each of the following and check the result:
+
+      1. `cmake --build --preset ci-test --target parity_runner_smoke` — must succeed.
+      2. `expected=$(./build/ci-test/parity_runner_smoke --list | wc -l); actual=$(ls tests/parity/golden/*.json | wc -l); [ "$expected" = "$actual" ]` — counts must match.
+      3. For each id in `$(./build/ci-test/parity_runner_smoke --list)`: `test -f "tests/parity/golden/${id}.json"` — must succeed.
+      4. `python3 scripts/parity/audit_event_coverage.py --reject-empty-walkers tests/parity/golden/` — must exit 0 (no scenario with `tick_budget > 1` and `is_intentionally_empty == false` has empty `walkers[]`).
+
+      If every check passes, emit on the final line exactly:
+      `VERDICT: PASS`
+
+      Otherwise emit on the final line exactly:
+      `VERDICT: FAIL: <concise reason>`
+
+  - id: 07b-check-parity-clean
+    type: check
+    bounce_target: 07-master-capture-and-fix
+    prompt: |
+      You are the verifier for Phase 07 (`07-master-capture-and-fix`). Your role is to confirm the parity suite passes 100%, re-capture produces zero diffs against the committed goldens, and every `intended_diff` row cites a branch commit that exists in `git log`.
+
+      Run each of the following and check the result:
+
+      1. `cmake --build --preset ci-test --target og_test_parity` — must succeed.
+      2. `ctest --preset ci-test -R '^og_test_parity' --output-on-failure` — must exit 0.
+      3. `rm -rf /tmp/golden-rebuild && mkdir -p /tmp/golden-rebuild` — must succeed.
+      4. `(cd ../openglad-master && cmake --build --preset ci-test --target parity_dump_master)` — must succeed.
+      5. `scripts/parity/capture_master_golden.sh /tmp/golden-rebuild/` — must exit 0.
+      6. `diff -r tests/parity/golden/ /tmp/golden-rebuild/` — must produce zero output.
+      7. Validate every `intended_diff` SHA in `.plan/parity-fixes.md` exists as a reachable git commit, e.g. by running:
+
+         {% raw %}
+         python3 - <<'PY'
+         import re, subprocess, pathlib
+         doc = pathlib.Path('.plan/parity-fixes.md').read_text()
+         for sha in re.findall(r'intended_diff:.*?([0-9a-f]{7,40})', doc):
+             subprocess.check_call(['git', 'cat-file', '-e', sha + '^{commit}'])
+         PY
+         {% endraw %}
+
+         — must exit 0.
+
+      If every check passes, emit on the final line exactly:
+      `VERDICT: PASS`
+
+      Otherwise emit on the final line exactly:
+      `VERDICT: FAIL: <concise reason>`
+
+  - id: 07c-check-noop-perturbation
+    type: check
+    bounce_target: 07-master-capture-and-fix
+    prompt: |
+      You are the verifier for Phase 07 (`07-master-capture-and-fix`). Your role is to confirm the harness is load-bearing by perturbing a single gameplay constant and asserting at least one parity test fails; then revert and confirm the clean tree still passes.
+
+      Run each of the following and check the result:
+
+      1. `[ -z "$(git status --porcelain)" ]` — working tree must be clean before perturbation.
+      2. `sed -i 's/- tempdamage_i)/- (tempdamage_i + 1))/' src/gameplay/walker_combat.cpp` — must succeed.
+      3. `cmake --build --preset ci-test --target og_test_parity` — must succeed.
+      4. `ctest --preset ci-test -R '^og_test_parity' --output-on-failure` — must exit non-zero. If it exits 0 the canary failed to fire; immediately `git checkout -- src/gameplay/walker_combat.cpp` and FAIL this check.
+      5. `git checkout -- src/gameplay/walker_combat.cpp` — must succeed.
+      6. `cmake --build --preset ci-test --target og_test_parity` — must succeed.
+      7. `ctest --preset ci-test -R '^og_test_parity' --output-on-failure` — must exit 0 after revert.
+
+      If every check passes, emit on the final line exactly:
+      `VERDICT: PASS`
+
+      Otherwise emit on the final line exactly:
+      `VERDICT: FAIL: <concise reason>`
+
+  - id: 08-ci-and-honest-signoff
+    type: implement
+    bounce_target: null
+    prompt: |
+      You are the implementer for Phase 08 of the parity-redo workflow.
+
+      Project goal: {{ GOAL }}
+
+      Phase Name: Lock the gate, replace the fraudulent sign-off.
+
+      Branch: `wip/networking`. Create one git commit before yielding with subject `parity-redo: phase 08 — CI gate and honest sign-off`.
+
+      ## Preexisting Inputs (consume in place — do NOT re-audit, re-capture, or re-bisect)
+
+      Treat the audit, manifest, divergence ledger, and canary evidence as authoritative. Run the commands you cite in the signoff so the cited counts are fresh — but do not re-derive prior phases.
+
+      - All outputs of Phases 01-07 (audit doc, real runner/companion, coverage manifest + gate, walker/special/residual scenarios with goldens, divergence ledger, canary-validated harness)
+      - `.github/workflows/test.yml`
+      - `.plan/parity-coverage-manifest.md`
+      - `.plan/parity-redo-audit.md`
+      - `.plan/parity-fixes.md`
+      - `.plan/parity-signoff-fraudulent.md` (historical reference; never cited as authoritative)
+      - `scripts/parity/check_coverage_manifest.py`
+      - `tests/parity/golden/` (canonical goldens)
+      - `build/ci-test/og_test_parity`
+
+      ## New Outputs
+
+      - `.plan/parity-signoff.md` — rewritten from scratch. Required sections in order:
+        1. Tear-down summary citing `.plan/parity-redo-audit.md`.
+        2. Real coverage table citing `.plan/parity-coverage-manifest.md`, with observed-vs-required counts per category and a non-zero golden-file count with `ls -l` evidence.
+        3. Divergence ledger citing `.plan/parity-fixes.md`.
+        4. Reproduction commands a third party can replay.
+        5. Canary perturbation evidence (the Phase 07c sed + ctest sequence).
+        6. Master companion commit SHA and branch HEAD SHA the goldens were captured against.
+        7. Literal excerpt of `ctest --preset ci-test -R '^og_test_parity'` showing the full pass count.
+        None of "vacuously satisfied", "indirectly covered", or "not currently registered" may appear.
+      - `.github/workflows/test.yml` extended with two CI steps that run BEFORE the final ctest pass so a missing target fails CI fast:
+        1. "Parity coverage manifest check" — `python3 scripts/parity/check_coverage_manifest.py` (pre-build).
+        2. "Parity coverage gate" — `./build/ci-test/og_test_parity --gtest_filter='Parity.coverage_gate*' --gtest_color=no` (immediately after build).
+        The existing parity-test step still runs the full `og_test_parity` group via `ctest --preset ci-test -R '^og_test_parity'`. All steps use `if: always()` so a single failure still surfaces the others. The coverage-gate cases live inside the existing `og_test_parity` binary; no separate executable is created.
+      - Final amendment to `.plan/parity-harness-design.md` — add "Phase 08 redo" section pointing at the rewritten sign-off and explicitly superseding any contradictory claim in older sections.
+
+      ## Implementation Details
+
+      - Run every command you cite in the signoff before writing it so cited counts are fresh; verifier `08b` compares cited counts against re-execution and fails on stale numbers.
+      - CI step ordering: manifest check (cheap) before build; coverage gate immediately after build; full parity suite as part of the normal ctest pass.
+
+      ## Git Commit Requirement (BLOCKING)
+
+      `git add .github/workflows/test.yml .plan/parity-signoff.md .plan/parity-harness-design.md`, then `git commit -m "parity-redo: phase 08 — CI gate and honest sign-off"` before yielding. The signoff must cite the very commit that contains it via `branch HEAD: <HEAD-sha>` — write the signoff, commit, then amend ONLY if needed to inject the post-commit SHA (or compute the SHA in advance via `git commit --allow-empty` chaining if you prefer to avoid an amend). The check phases assert HEAD contains this commit and that `grep -q "branch HEAD: $(git rev-parse HEAD)" .plan/parity-signoff.md` succeeds.
+
+  - id: 08a-check-ci-yaml-runs-coverage
+    type: check
+    bounce_target: 08-ci-and-honest-signoff
+    prompt: |
+      You are the verifier for Phase 08 (`08-ci-and-honest-signoff`). Your role is to confirm `.github/workflows/test.yml` contains both the manifest-check invocation and a coverage-gate invocation that selects the `Parity.coverage_gate*` cases inside `og_test_parity`.
+
+      Run each of the following and check the result:
+
+      1. `grep -q 'check_coverage_manifest.py' .github/workflows/test.yml` — must succeed.
+      2. `grep -qE "(gtest_filter=['\"]Parity.coverage_gate|ctest .* -R .Parity\\.coverage_gate)" .github/workflows/test.yml` — must succeed.
+      3. `grep -q "og_test_parity" .github/workflows/test.yml` — must succeed.
+      4. Confirm the new CI steps run BEFORE the final ctest pass (read the file and check ordering: manifest check pre-build; coverage gate immediately after build; full parity suite in the normal ctest pass).
+
+      If every check passes, emit on the final line exactly:
+      `VERDICT: PASS`
+
+      Otherwise emit on the final line exactly:
+      `VERDICT: FAIL: <concise reason>`
+
+  - id: 08b-check-signoff-honest
+    type: check
+    bounce_target: 08-ci-and-honest-signoff
+    prompt: |
+      You are the verifier for Phase 08 (`08-ci-and-honest-signoff`). Your role is to confirm the rewritten sign-off cites real evidence (non-zero golden count, full coverage table, master companion SHA, branch HEAD SHA) and contains none of the banned weasel phrases.
+
+      Run each of the following and check the result:
+
+      1. `test -f .plan/parity-signoff.md` — must succeed.
+      2. `! grep -qiE 'vacuously|not currently registered|indirectly covered' .plan/parity-signoff.md` — must succeed (none of the banned phrases appear).
+      3. `grep -q "branch HEAD: $(git rev-parse HEAD)" .plan/parity-signoff.md` — must succeed.
+      4. Extract the master companion SHA from the manifest frontmatter:
+         `sha=$(awk '/master_companion_sha:/ {print $2; exit}' .plan/parity-coverage-manifest.md); grep -q "$sha" .plan/parity-signoff.md` — must succeed.
+      5. Re-execute the cited golden count:
+         `cited=$(grep -oE 'golden files?: *[0-9]+' .plan/parity-signoff.md | head -1 | grep -oE '[0-9]+'); actual=$(ls tests/parity/golden/*.json | wc -l); [ "$cited" = "$actual" ]` — must succeed.
+
+      If every check passes, emit on the final line exactly:
+      `VERDICT: PASS`
+
+      Otherwise emit on the final line exactly:
+      `VERDICT: FAIL: <concise reason>`
+
+  - id: 08c-check-end-to-end-rebuild
+    type: check
+    bounce_target: 08-ci-and-honest-signoff
+    prompt: |
+      You are the verifier for Phase 08 (`08-ci-and-honest-signoff`). Your role is to confirm a clean rebuild from scratch passes the coverage manifest check, the build, the coverage gate, and the full ctest suite end-to-end.
+
+      Run each of the following and check the result:
+
+      1. `rm -rf build/` — must succeed.
+      2. `python3 scripts/parity/check_coverage_manifest.py` — must exit 0.
+      3. `cmake --preset ci-test` — must succeed.
+      4. `cmake --build --preset ci-test` — must succeed.
+      5. `./build/ci-test/og_test_parity --gtest_filter='Parity.coverage_gate*'` — must exit 0.
+      6. `ctest --preset ci-test --output-on-failure` — must exit 0.
+
+      If every check passes, emit on the final line exactly:
+      `VERDICT: PASS`
+
+      Otherwise emit on the final line exactly:
+      `VERDICT: FAIL: <concise reason>`

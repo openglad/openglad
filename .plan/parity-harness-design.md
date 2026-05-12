@@ -464,3 +464,162 @@ schema, scenario table, and canonical JSON. The contract:
 These four rules turn schema v1 into an unambiguous shared contract;
 any breakage in Phase 06 is by definition a real divergence, not a
 harness bug.
+
+## Phase 02 redo: load path
+
+Phase 01's audit (`.plan/parity-redo-audit.md`) showed the earlier runner
+exercised an empty `GameWorld` and short-circuited on tick 1. Phase 02
+replaces that with a real load / tick / inject pipeline driven through
+`LevelRuntimeData`:
+
+1. `LevelRuntimeData level(level_id, /*headless=*/true, &hooks)` —
+   branch uses `sdl_level_data_hooks()`, master companion uses
+   `headless_level_data_hooks()` (with a stub `sdl_level_data_hooks`
+   that forwards to the headless table so the byte-for-byte mirror of
+   `parity_bootstrap.cpp` links). `level_id` is parsed from
+   `spec.scenario_file` via `scenario_runtime::scenario_level_id`.
+2. Per-test `ScopedGameplayContext` installs `current_game` for the
+   duration of `level.load()` and the tick loop. The runner references
+   `extern cfg_store cfg;` (the file-scope `cfg` from
+   `include/openglad/resources/gparser.h:38`) — it does **not**
+   default-construct a local `cfg_store`.
+3. `level.load()` is called. It reads the RNG during decoration, so the
+   canonical `spec.rng_seed` is re-applied to `world.rng_.state_`
+   **after** `load()` returns. Both sides do this in the same order so
+   the tick loop on both branches starts from the same seed.
+4. `fresh_arena` scenarios call `clear_world_entities(world)` (which
+   delegates to `GameWorld::delete_objects`) so the loaded scen's
+   walkers are dropped before the scripted spawns are applied.
+5. `apply_post_load_spawns(world, spec)` iterates `spec.spawns[]` and
+   calls `world.add_ob(static_cast<Order>(spec.order), spec.family,
+   /*atstart=*/true)` for each, then `walker::setxy(x, y)` (which
+   updates the spatial index, unlike a raw `set_xpos`/`set_ypos`),
+   `set_team_num` / `set_real_team_num`, and optional
+   `set_default_weapon` / `set_current_weapon`. The walker's `user_`
+   field is **left at the SimEntity default of -1** (NPC); the input
+   pipeline's own takeover logic (see step 7) assigns
+   `user_ = player_num` exactly the way production code does it when a
+   player picks up control.
+6. The tick loop runs the full `spec.tick_budget` invocations. It does
+   **not** `break` on `world.level_done` — it records the early-stop
+   tick in `RunOutcome::early_stop_tick` and lets the loop run, so
+   cadence comparisons stay apples-to-apples on both sides. Schema v1's
+   new `level_done` and `level_tick_count` fields record the early-stop
+   signal in the dump itself.
+7. `apply_inputs_at_tick(world, spec, tick, driver, sim_events)` routes
+   scripted inputs through the **real player-input pipeline** —
+   specifically `sim_process_player_input(...)` declared in
+   `include/openglad/gameplay/sim_input_handler.h:60`, which is the
+   same call the SDL game loop's per-frame transport-shadow path makes.
+   The harness:
+   1. Finds the first walker whose `team_num()` matches
+      `spec.player_team`, caches it as `driver.control`.
+   2. Maintains a tick-to-tick edge cache: `held_mask` is whatever the
+      most recent scripted `InputEvent` set; `prev_mask` is the held
+      mask one tick earlier. From those two values it derives the
+      `held[]` and `pressed[]` boolean arrays of a `PlayerInput` struct
+      where `pressed = held & ~prev` — matching how the real
+      keyboard/transport layer produces per-frame edges.
+   3. Calls `sim_process_player_input(pi, control_io, world,
+      player_num=0, my_team=control.team_num, driver.debounce,
+      /*special_names=*/nullptr, sim_events)`. Every walker mutation
+      from the input — `walkstep`, `init_fire`, `special`, character
+      switch, `set_act_type(ACT_CONTROL)`, `set_user(player_num)`, etc.
+      — happens inside that call, not in harness code. The harness
+      never touches `walker::xpos` / `ypos` / `keys` / `act_type` /
+      `current_weapon` / etc. directly.
+   4. Captures the (possibly-reassigned) `control_io` back into
+      `driver.control` so that a character-switch input is followed by
+      the new walker on subsequent ticks.
+
+   The `walker::set_keys` member function is intentionally NOT used:
+   on both branches `walker::keys` is the *door-key* bitmask
+   (`treasure_family_valuables.cpp:79` writes to it on pickup), not
+   the input mask. Driving `keys = K_FIRE` would not produce any
+   observable simulation response — the only way to actually drive
+   the simulator from input is through `sim_process_player_input`.
+
+### Schema-v1 additions
+
+The schema-v1 emitter (`tests/parity/state_dump.cpp` and the master mirror
+`../openglad-master/tools/parity_dump_state.cpp`) now emits two extra
+top-level keys, sorted between `events` and `rng_state`:
+
+```json
+"level_done":       0,
+"level_tick_count": 60,
+```
+
+`level_done` is `world.level_done` (a `short` on both branches), serialised
+as a JSON integer. `level_tick_count` is `world.level_tick_count()` on the
+branch and `world.tick_count_` on the master companion (master keeps
+`level_tick_count_` private without an accessor; the two values agree for
+every scenario that does not cross a level boundary, which covers every
+Phase 02 / 03 scenario in the table). The Phase 03 redo lifts both sides
+onto a shared bridge if any scenario starts depending on the difference.
+
+The schema version remains `"v1"`. The `.plan/parity-harness-design.md`
+"Comparison rules" forward-compatibility clause states unknown keys are
+informational, so existing v1 readers still parse these dumps cleanly.
+
+### New `spawns[]` and arena-reset fields in `ScenarioSpec`
+
+`tests/parity/scenario_table.h` (mirrored byte-for-byte at
+`../openglad-master/tools/parity_scenario_table.h`) grew the following
+fields. The mirror header SHA-1 is the parity check.
+
+- `spawns` / `spawn_count` — pointer + length of a `SpawnSpec[]` array.
+  Each `SpawnSpec` is `{ int32 family; uint8 team; uint8 order; int32
+  x, y; uint16 default_weapon; uint16 current_weapon; }`.
+- `player_team` — the `team_num` whose first walker accepts scripted
+  inputs.
+- `is_intentionally_empty` — declares the scenario expects an empty
+  oblist (today only the branch-internal companion).
+- `fresh_arena` — drop loaded entities and start the tick loop from the
+  spawn list. Used by the Phase 02 smoke scenarios so the dump's walker
+  content is fully controlled by `spawns[]` rather than scen99.fss's
+  specific walker layout.
+- `exercises` — `enum class Exercises : std::uint64_t { None }`. Phase
+  03 populates the bit fields; today every scenario sets `None`.
+
+The Phase 02 verifier (`02b-check-smoke-nonempty`) loads
+`smoke_nonempty_scen99` on both sides and asserts `len(walkers) > 0` and
+`tick >= 50`. Byte-for-byte parity between branch and master is **not**
+required at Phase 02 — Phase 06 captures master goldens once Phase 03
+has finished routing real input through both sides.
+
+### Smoke-divergence test (`smoke_inputs_diverge_from_no_inputs`)
+
+The smoke divergence test runs both `smoke_nonempty_scen99` (no inputs)
+and `smoke_nonempty_scen99_inputs` (K_RIGHT held for ticks 1–20) and
+asserts the two canonical-JSON dumps are not byte-equal. Both scenarios
+load `scen/scen1.fss` (the first scen in the bundled campaign — a 40×60
+tile playable map with open interior) and then `fresh_arena`s into a
+two-walker setup at (224, 224) for the soldier and (64, 64) for the
+orc — far enough apart that neither walker is forced into immediate
+combat at tick 0.
+
+The divergence is produced entirely by the simulator's response to the
+scripted input flowing through `sim_process_player_input`. On the
+branch the observed deltas are:
+
+- `xpos`: 147 (NPC-AI run, soldier wandered) vs 296 (player-control
+  run, soldier stepped right under K_RIGHT) — a 149-pixel delta in the
+  player walker's position, driven by `walker::walkstep` from inside
+  the sim, not by harness code.
+- `ypos`: 143 vs 224 — the no-input run let the NPC walker wander
+  diagonally; the player-control run held it on its spawn row.
+- `hp`: 55 vs 120 — the NPC run was engaged in combat; the player run
+  walked right and away from the orc, so it took no damage.
+- `score_per_team[0]`: 57 vs 0 — kills accumulated in the no-input run
+  only.
+- `events[]`: ten `play_sound` / `score_change` events in the no-input
+  run vs zero in the input run.
+- `rng_state`: differs because the two runs consumed different RNG
+  draws through divergent walker code paths.
+
+Every single one of these deltas is the gameplay simulator reacting to
+the input pipeline, observable in either schema-v1 walker fields
+(`xpos`, `ypos`, `hp`) or top-level fields (`score_per_team`, `events`,
+`rng_state`). The harness performs no walker mutations during the
+tick loop.
