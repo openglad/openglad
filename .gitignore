@@ -39,3 +39,4 @@ core.*
 
 # Generated planning/automation logs
 /docs/plans/logs/
+/.plan/logs/
