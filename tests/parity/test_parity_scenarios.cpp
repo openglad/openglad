@@ -34,10 +34,17 @@ void run_one_scenario(const og::parity::ScenarioSpec& spec)
 
     if (spec.is_branch_internal)
     {
-        // Branch-internal scenarios have no master golden. Phase 04 leaves
-        // the invariant body unimplemented; Phase 06 will fill it in.
-        GTEST_FAIL() << "branch-internal invariant body not yet implemented for "
-                     << spec.id;
+        // Subsystem 12 — snapshot dirty-bit parity. Capture the run a second
+        // time and require byte-equal canonical JSON: a deterministic dumper
+        // over the same scenario must produce identical output. Phase 06
+        // skeleton: while the runner exercises an empty world, this still
+        // catches non-determinism in canonical_serialize and the StateDump
+        // capture path. Phase 07 expands the predicate once world-loading
+        // lands (compare dirty-tracked mirror vs direct iteration).
+        const og::parity::RunOutcome again = og::parity::run_scenario(spec);
+        const std::string actual2 = og::parity::canonical_serialize(again.dump);
+        EXPECT_EQ(actual, actual2)
+            << "branch-internal dumper is non-deterministic for " << spec.id;
         return;
     }
 
