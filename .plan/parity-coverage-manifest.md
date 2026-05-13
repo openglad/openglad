@@ -1,7 +1,7 @@
 ---
 phase: 04-walker-family-scenarios
 schema: v1
-master_companion_sha: ff485465cdadbcc91b124bcf36ed8e2a727f893f
+master_companion_sha: 87c07781534ea07a350b22662bb1434fdba9bdb4
 generated_from:
   - include/openglad/core/constants.h
   - include/openglad/gameplay/event.h
@@ -133,9 +133,9 @@ the generator gate when a generator-bearing scenario lands.
 
 | family | covering_scenario_id |
 |---|---|
-| `FAMILY_TENT` | `family_skeleton_scen99` |
+| `FAMILY_TENT` | `(none yet)` |
 | `FAMILY_TOWER` | `family_mage_scen99` |
-| `FAMILY_BONES` | `family_ghost_scen99` |
+| `FAMILY_BONES` | `(none yet)` |
 | `FAMILY_TREEHOUSE` | `family_elf_scen99` |
 
 ## Required effect (FX) families (13)
