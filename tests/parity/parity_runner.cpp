@@ -3,6 +3,10 @@
 #include "scenario_runtime.h"
 
 #include <openglad/core/order.h>
+#include <openglad/resources/level_data_hooks.h>
+
+namespace og::parity { const LevelDataHooks& parity_level_data_hooks(); }
+
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/sim_event_log.h>
@@ -62,8 +66,14 @@ RunOutcome run_scenario(const ScenarioSpec& spec)
     RunOutcome out;
 
     const int level_id = scenario_level_id(spec.scenario_file);
+    // Use the parity headless hooks (see tests/parity/parity_headless_hooks.cpp)
+    // so the branch installs the same no-`attach_render` entity factory the
+    // master companion uses via `headless_level_data_hooks`. The SDL hooks
+    // would wire `attach_render`, allocating a WalkerRender per spawn — a
+    // path the master companion does not exercise, and one that shifts the
+    // post-spawn world state in ways that break byte equality.
     LevelRuntimeData level(level_id, /*headless=*/true,
-                           &sdl_level_data_hooks());
+                           &parity_level_data_hooks());
 
     SaveData save;
     og::sim::SimEventLog events;

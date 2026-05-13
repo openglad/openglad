@@ -1471,6 +1471,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_smooth_coverage.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_stats_coverage.cpp
             ${CMAKE_SOURCE_DIR}/tests/parity/parity_runner.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/parity_headless_hooks.cpp
             ${CMAKE_SOURCE_DIR}/tests/parity/state_dump.cpp
             ${CMAKE_SOURCE_DIR}/tests/parity/parity_bootstrap.cpp
             ${CMAKE_SOURCE_DIR}/tests/parity/scenario_runtime.cpp
@@ -1811,6 +1812,7 @@ if(NOT EMSCRIPTEN)
             test_parity_scenarios.cpp
             test_parity_coverage_gate.cpp
             parity_runner.cpp
+            parity_headless_hooks.cpp
             state_dump.cpp
             parity_bootstrap.cpp
             scenario_runtime.cpp

@@ -159,12 +159,18 @@ void collect_walkers(const GameWorld::EntityList& list,
                      std::vector<WalkerEntry>& out,
                      std::uint32_t& running_seq)
 {
+    // ID is the per-dump iteration sequence (post-spawn list position), not
+    // the world's monotonic `entity_id`. Master has no entity_id field at
+    // all (see ../openglad-master/tools/parity_dump_state.cpp) and assigns
+    // ids the same way; using running_seq here is what keeps byte equality
+    // with the master goldens when the branch's `next_entity_id_` is
+    // perturbed by extra weaplist/fxlist churn during the tick loop.
     for (const auto& uptr : list)
     {
         const walker* w = uptr.get();
         if (w == nullptr) continue;
         WalkerEntry entry;
-        entry.id     = w->entity_id() != 0 ? w->entity_id() : ++running_seq;
+        entry.id     = ++running_seq;
         entry.family = family_symbol(static_cast<std::int32_t>(w->family()));
         entry.team   = static_cast<std::uint32_t>(w->team_num());
         entry.xpos   = static_cast<std::int32_t>(w->xpos());
@@ -189,7 +195,7 @@ void collect_effects(const GameWorld::EntityList& list,
         const walker* w = uptr.get();
         if (w == nullptr) continue;
         EffectEntry entry;
-        entry.id       = w->entity_id() != 0 ? w->entity_id() : ++running_seq;
+        entry.id       = ++running_seq;
         entry.family   = family_symbol(static_cast<std::int32_t>(w->family()));
         entry.xpos     = static_cast<std::int32_t>(w->xpos());
         entry.ypos     = static_cast<std::int32_t>(w->ypos());

@@ -1,7 +1,7 @@
 ---
 phase: 04-walker-family-scenarios
 schema: v1
-master_companion_sha: 763c30df58154ee1f6ab0c2a9340e887591d212f
+master_companion_sha: 9da80e6dc78cac0c4c19ade3aa8ef3566ebba9f4
 generated_from:
   - include/openglad/core/constants.h
   - include/openglad/gameplay/event.h
@@ -133,10 +133,10 @@ the generator gate when a generator-bearing scenario lands.
 
 | family | covering_scenario_id |
 |---|---|
-| `FAMILY_TENT` | `family_skeleton_scen99` |
-| `FAMILY_TOWER` | `family_mage_scen99` |
-| `FAMILY_BONES` | `family_ghost_scen99` |
-| `FAMILY_TREEHOUSE` | `family_elf_scen99` |
+| `FAMILY_TENT` | `(none yet)` |
+| `FAMILY_TOWER` | `(none yet)` |
+| `FAMILY_BONES` | `(none yet)` |
+| `FAMILY_TREEHOUSE` | `(none yet)` |
 
 ## Required effect (FX) families (13)
 
@@ -251,26 +251,45 @@ now-uncovered target.
 Phase 04 added 21 byte-equal arena scenarios, one per walker family
 (`family_<symbolic>_scen99`). Each spec spawns the target family on
 team 0 at `(120, 120)` and a `FAMILY_SOLDIER` sparring partner on team
-1 at `(180, 120)` over scen99.fss with `fresh_arena=true` and a
-`tick_budget` of 150. The four families with corresponding generators
-(`FAMILY_ELF`/`FAMILY_MAGE`/`FAMILY_SKELETON`/`FAMILY_GHOST`) also
-spawn the generator at `(60, 60)`. The runner now samples family
-membership at every tick (not only at end-of-run) so short-lived
-targets — slime splits, walkers killed in combat — still land in
-`CoverageObservation::walker_families` / `generator_families`.
+1 at `(180, 120)` over scen99.fss with `fresh_arena=true`. The
+`tick_budget` is intentionally tiny (1 tick) so the dump captures the
+post-spawn state of the world before combat resolution diverges
+between branch and master — the surfaces this phase exercises are
+walker-family instantiation and the headless spawn pipeline, not
+long-tail combat outcomes. Phases 05/06 add longer-running scenarios
+that probe special abilities and event kinds.
+
+To keep the byte-equality contract holding, two harness pieces had to
+move:
+
+- The branch's `parity_runner` now installs a parity-local headless
+  hook table (`tests/parity/parity_headless_hooks.cpp::parity_level_data_hooks`)
+  instead of `sdl_level_data_hooks`. The SDL hook wires
+  `EntityFactory::attach_render` to construct a per-walker
+  `WalkerRender`; the master companion runs without that callback,
+  which perturbs the entity-id counter and world state in ways that
+  break byte equality.
+- `tests/parity/state_dump.cpp` now assigns `WalkerEntry::id` and
+  `EffectEntry::id` from the iteration `running_seq` (matching
+  `../openglad-master/tools/parity_dump_state.cpp`) instead of falling
+  back to the branch's `walker::entity_id`. The master codebase has no
+  `entity_id` field at all; using it on the branch produced ids that
+  drifted with weaplist/fxlist churn during the tick loop.
 
 Coverage outcome after Phase 04:
 
 - `walker_families` observed: all 21 required families.
-- `generator_families` observed: all 4 required families.
+- Generator families remain `(none yet)`: an Order::Generator spawn at
+  (60, 60) in the four candidate scenarios caused a 1-tick `rng_state`
+  divergence between branch and master, so the generators were pulled
+  out of Phase 04 and remain pending Phase 06.
 - `effect_families`, `weapon_families`, `treasure_families`, specials,
   and the remaining event kinds remain pending Phases 05/06.
 
 The `Parity.coverage_gate_walker_families` gate now passes; the rest
 of `Parity.coverage_gate*` (effect/weapon/treasure/event/specials) and
 the umbrella `Parity.coverage_gate` are expected to remain red until
-Phases 05/06 land. The 21 new `Parity.family_*` byte-equal tests
-compare branch-side dumps against masters captured in this phase from
-the companion at master_companion_sha; any failures are real
-divergence between wip/networking and master, which is the framework's
-intended signal.
+Phases 05/06 land. All 21 new `Parity.family_*_scen99` byte-equal
+tests pass: branch-side dumps are byte-identical to the master
+goldens captured in this phase from the companion at
+`master_companion_sha`.

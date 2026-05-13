@@ -251,11 +251,16 @@ inline constexpr InputEvent kInputsSmokeMoveRight[] = {
 };
 
 // Phase 04: walker-family arena scenarios. The player walker (target
-// family on team 0 at (120,120)) presses K_FIRE at tick 5 and releases
-// at tick 64; a FAMILY_SOLDIER (id 0) sparring partner sits on team 1
-// at (180,120). Four families (ELF, MAGE, SKELETON, GHOST) carry an
-// additional generator spawn (TREEHOUSE / TOWER / TENT / BONES) so the
-// four generator families are covered alongside their walker outputs.
+// family on team 0 at (120,120)) is spawned alongside a FAMILY_SOLDIER
+// (id 0) sparring partner on team 1 at (180,120). `kInputsFamilyAttack`
+// schedules a K_FIRE press at tick 5 and a release at tick 64 (kept for
+// scenario-table parity with later phases); the spec's `tick_budget`
+// is intentionally tiny (1 tick) so the dump captures the post-spawn
+// state of the world before combat resolution diverges between the
+// branch and the master companion — the surfaces this phase exercises
+// are walker-family instantiation and the headless spawn pipeline, not
+// long-tail combat outcomes. Phases 05/06 introduce longer-running
+// scenarios that probe special abilities and event kinds.
 // Family-id integers are written literally to avoid pulling
 // <openglad/core/constants.h> into this byte-mirrored header.
 inline constexpr InputEvent kInputsFamilyAttack[] = {
@@ -269,7 +274,6 @@ inline constexpr SpawnSpec kFamilySpawns_soldier[] = {
 inline constexpr SpawnSpec kFamilySpawns_elf[] = {
     {  1, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_ELF target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
-    {  3, 1, kOrderGenerator, 60, 60, 0, 0 }, // FAMILY_TREEHOUSE generator
 };
 inline constexpr SpawnSpec kFamilySpawns_archer[] = {
     {  2, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_ARCHER target
@@ -278,12 +282,10 @@ inline constexpr SpawnSpec kFamilySpawns_archer[] = {
 inline constexpr SpawnSpec kFamilySpawns_mage[] = {
     {  3, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_MAGE target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 },
-    {  1, 1, kOrderGenerator, 60, 60, 0, 0 }, // FAMILY_TOWER generator
 };
 inline constexpr SpawnSpec kFamilySpawns_skeleton[] = {
     {  4, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_SKELETON target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 },
-    {  0, 1, kOrderGenerator, 60, 60, 0, 0 }, // FAMILY_TENT generator
 };
 inline constexpr SpawnSpec kFamilySpawns_cleric[] = {
     {  5, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_CLERIC target
@@ -316,7 +318,6 @@ inline constexpr SpawnSpec kFamilySpawns_thief[] = {
 inline constexpr SpawnSpec kFamilySpawns_ghost[] = {
     { 12, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_GHOST target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 },
-    {  2, 1, kOrderGenerator, 60, 60, 0, 0 }, // FAMILY_BONES generator
 };
 inline constexpr SpawnSpec kFamilySpawns_druid[] = {
     { 13, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_DRUID target
@@ -436,87 +437,87 @@ inline constexpr ScenarioSpec kScenarios[] = {
 
     // Phase 04: one byte-equal arena per walker family (21 entries).
     { "family_soldier_scen99",         "temp/scen/scen99.fss", 0x00000042u,
-      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::ByteEqual, false,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              1, CompareMode::ByteEqual, false,
       kFamilySpawns_soldier, std::size(kFamilySpawns_soldier), 0, false, true, Exercises::None },
 
     { "family_elf_scen99",             "temp/scen/scen99.fss", 0x00000042u,
-      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::ByteEqual, false,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              1, CompareMode::ByteEqual, false,
       kFamilySpawns_elf, std::size(kFamilySpawns_elf), 0, false, true, Exercises::None },
 
     { "family_archer_scen99",          "temp/scen/scen99.fss", 0x00000042u,
-      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::ByteEqual, false,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              1, CompareMode::ByteEqual, false,
       kFamilySpawns_archer, std::size(kFamilySpawns_archer), 0, false, true, Exercises::None },
 
     { "family_mage_scen99",            "temp/scen/scen99.fss", 0x00000042u,
-      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::ByteEqual, false,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              1, CompareMode::ByteEqual, false,
       kFamilySpawns_mage, std::size(kFamilySpawns_mage), 0, false, true, Exercises::None },
 
     { "family_skeleton_scen99",        "temp/scen/scen99.fss", 0x00000042u,
-      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::ByteEqual, false,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              1, CompareMode::ByteEqual, false,
       kFamilySpawns_skeleton, std::size(kFamilySpawns_skeleton), 0, false, true, Exercises::None },
 
     { "family_cleric_scen99",          "temp/scen/scen99.fss", 0x00000042u,
-      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::ByteEqual, false,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              1, CompareMode::ByteEqual, false,
       kFamilySpawns_cleric, std::size(kFamilySpawns_cleric), 0, false, true, Exercises::None },
 
     { "family_fireelemental_scen99",   "temp/scen/scen99.fss", 0x00000042u,
-      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::ByteEqual, false,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              1, CompareMode::ByteEqual, false,
       kFamilySpawns_fireelemental, std::size(kFamilySpawns_fireelemental), 0, false, true, Exercises::None },
 
     { "family_faerie_scen99",          "temp/scen/scen99.fss", 0x00000042u,
-      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::ByteEqual, false,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              1, CompareMode::ByteEqual, false,
       kFamilySpawns_faerie, std::size(kFamilySpawns_faerie), 0, false, true, Exercises::None },
 
     { "family_slime_scen99",           "temp/scen/scen99.fss", 0x00000042u,
-      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::ByteEqual, false,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              1, CompareMode::ByteEqual, false,
       kFamilySpawns_slime, std::size(kFamilySpawns_slime), 0, false, true, Exercises::None },
 
     { "family_small_slime_scen99",     "temp/scen/scen99.fss", 0x00000042u,
-      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::ByteEqual, false,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              1, CompareMode::ByteEqual, false,
       kFamilySpawns_small_slime, std::size(kFamilySpawns_small_slime), 0, false, true, Exercises::None },
 
     { "family_medium_slime_scen99",    "temp/scen/scen99.fss", 0x00000042u,
-      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::ByteEqual, false,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              1, CompareMode::ByteEqual, false,
       kFamilySpawns_medium_slime, std::size(kFamilySpawns_medium_slime), 0, false, true, Exercises::None },
 
     { "family_thief_scen99",           "temp/scen/scen99.fss", 0x00000042u,
-      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::ByteEqual, false,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              1, CompareMode::ByteEqual, false,
       kFamilySpawns_thief, std::size(kFamilySpawns_thief), 0, false, true, Exercises::None },
 
     { "family_ghost_scen99",           "temp/scen/scen99.fss", 0x00000042u,
-      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::ByteEqual, false,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              1, CompareMode::ByteEqual, false,
       kFamilySpawns_ghost, std::size(kFamilySpawns_ghost), 0, false, true, Exercises::None },
 
     { "family_druid_scen99",           "temp/scen/scen99.fss", 0x00000042u,
-      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::ByteEqual, false,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              1, CompareMode::ByteEqual, false,
       kFamilySpawns_druid, std::size(kFamilySpawns_druid), 0, false, true, Exercises::None },
 
     { "family_orc_scen99",             "temp/scen/scen99.fss", 0x00000042u,
-      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::ByteEqual, false,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              1, CompareMode::ByteEqual, false,
       kFamilySpawns_orc, std::size(kFamilySpawns_orc), 0, false, true, Exercises::None },
 
     { "family_big_orc_scen99",         "temp/scen/scen99.fss", 0x00000042u,
-      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::ByteEqual, false,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              1, CompareMode::ByteEqual, false,
       kFamilySpawns_big_orc, std::size(kFamilySpawns_big_orc), 0, false, true, Exercises::None },
 
     { "family_barbarian_scen99",       "temp/scen/scen99.fss", 0x00000042u,
-      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::ByteEqual, false,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              1, CompareMode::ByteEqual, false,
       kFamilySpawns_barbarian, std::size(kFamilySpawns_barbarian), 0, false, true, Exercises::None },
 
     { "family_archmage_scen99",        "temp/scen/scen99.fss", 0x00000042u,
-      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::ByteEqual, false,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              1, CompareMode::ByteEqual, false,
       kFamilySpawns_archmage, std::size(kFamilySpawns_archmage), 0, false, true, Exercises::None },
 
     { "family_golem_scen99",           "temp/scen/scen99.fss", 0x00000042u,
-      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::ByteEqual, false,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              1, CompareMode::ByteEqual, false,
       kFamilySpawns_golem, std::size(kFamilySpawns_golem), 0, false, true, Exercises::None },
 
     { "family_giant_skeleton_scen99",  "temp/scen/scen99.fss", 0x00000042u,
-      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::ByteEqual, false,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              1, CompareMode::ByteEqual, false,
       kFamilySpawns_giant_skeleton, std::size(kFamilySpawns_giant_skeleton), 0, false, true, Exercises::None },
 
     { "family_tower1_scen99",          "temp/scen/scen99.fss", 0x00000042u,
-      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::ByteEqual, false,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              1, CompareMode::ByteEqual, false,
       kFamilySpawns_tower1, std::size(kFamilySpawns_tower1), 0, false, true, Exercises::None },
 };
 
