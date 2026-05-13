@@ -87,29 +87,12 @@ RunOutcome run_scenario(const ScenarioSpec& spec)
 
     apply_post_load_spawns(world, spec);
 
-    ScenarioInputDriver input_driver;
-    for (std::uint32_t t = 0; t < spec.tick_budget; ++t)
-    {
-        apply_inputs_at_tick(world, spec, t, input_driver, &events);
-        world.tick();
-        // Phase 02 redo: do NOT break on level_done. Both sides drive the
-        // full tick_budget so cadence comparison stays apples-to-apples;
-        // level_done is recorded in the schema-v1 dump as a top-level
-        // field for divergence reports to look at.
-        if (world.level_done != 0 && !out.early_stopped)
-        {
-            out.early_stopped   = true;
-            out.early_stop_tick = world.tick_count_;
-        }
-    }
-    out.ticked = true;
-    out.dump   = capture_state_dump(world, &events);
-
     // Phase 03 coverage observation. The schema-v1 dump only carries
     // oblist (without per-walker order) and fxlist, but the coverage
     // gate needs to know which weapon / treasure / generator families
-    // were instantiated. Walk the live world before the gameplay
-    // context tears down.
+    // were instantiated over the lifetime of the run. Walkers that die
+    // mid-run get cleaned out of oblist before end-of-run, so we sample
+    // every list at every tick rather than only at the end.
     auto bag_walker = [](const walker* w, CoverageObservation& obs) {
         if (w == nullptr) return;
         const auto family = static_cast<std::int32_t>(w->family());
@@ -123,12 +106,36 @@ RunOutcome run_scenario(const ScenarioSpec& spec)
             default:               break;
         }
     };
-    for (const auto& uptr : world.oblist)
-        bag_walker(uptr.get(), out.coverage);
-    for (const auto& uptr : world.weaplist)
-        bag_walker(uptr.get(), out.coverage);
-    for (const auto& uptr : world.fxlist)
-        bag_walker(uptr.get(), out.coverage);
+    auto sample_world = [&]() {
+        for (const auto& uptr : world.oblist)
+            bag_walker(uptr.get(), out.coverage);
+        for (const auto& uptr : world.weaplist)
+            bag_walker(uptr.get(), out.coverage);
+        for (const auto& uptr : world.fxlist)
+            bag_walker(uptr.get(), out.coverage);
+    };
+
+    sample_world(); // post-spawn snapshot
+
+    ScenarioInputDriver input_driver;
+    for (std::uint32_t t = 0; t < spec.tick_budget; ++t)
+    {
+        apply_inputs_at_tick(world, spec, t, input_driver, &events);
+        world.tick();
+        sample_world();
+        // Phase 02 redo: do NOT break on level_done. Both sides drive the
+        // full tick_budget so cadence comparison stays apples-to-apples;
+        // level_done is recorded in the schema-v1 dump as a top-level
+        // field for divergence reports to look at.
+        if (world.level_done != 0 && !out.early_stopped)
+        {
+            out.early_stopped   = true;
+            out.early_stop_tick = world.tick_count_;
+        }
+    }
+    out.ticked = true;
+    out.dump   = capture_state_dump(world, &events);
+
     for (const auto& ev : events.events())
         out.coverage.event_kinds.insert(
             event_kind_symbol(static_cast<std::uint32_t>(ev.kind)));

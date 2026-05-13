@@ -1,7 +1,7 @@
 ---
-phase: 03-coverage-manifest-and-gate
+phase: 04-walker-family-scenarios
 schema: v1
-master_companion_sha: 36f59e2b0bb64fca1ad73881db479e0399c1f6ce
+master_companion_sha: 763c30df58154ee1f6ab0c2a9340e887591d212f
 generated_from:
   - include/openglad/core/constants.h
   - include/openglad/gameplay/event.h
@@ -53,26 +53,26 @@ oblist).
 | family | covering_scenario_id |
 |---|---|
 | `FAMILY_SOLDIER` | `smoke_nonempty_scen99` |
-| `FAMILY_ELF` | `(none yet)` |
-| `FAMILY_ARCHER` | `(none yet)` |
-| `FAMILY_MAGE` | `(none yet)` |
-| `FAMILY_SKELETON` | `(none yet)` |
-| `FAMILY_CLERIC` | `(none yet)` |
-| `FAMILY_FIREELEMENTAL` | `(none yet)` |
-| `FAMILY_FAERIE` | `(none yet)` |
-| `FAMILY_SLIME` | `(none yet)` |
-| `FAMILY_SMALL_SLIME` | `(none yet)` |
-| `FAMILY_MEDIUM_SLIME` | `(none yet)` |
-| `FAMILY_THIEF` | `(none yet)` |
-| `FAMILY_GHOST` | `(none yet)` |
-| `FAMILY_DRUID` | `(none yet)` |
+| `FAMILY_ELF` | `family_elf_scen99` |
+| `FAMILY_ARCHER` | `family_archer_scen99` |
+| `FAMILY_MAGE` | `family_mage_scen99` |
+| `FAMILY_SKELETON` | `family_skeleton_scen99` |
+| `FAMILY_CLERIC` | `family_cleric_scen99` |
+| `FAMILY_FIREELEMENTAL` | `family_fireelemental_scen99` |
+| `FAMILY_FAERIE` | `family_faerie_scen99` |
+| `FAMILY_SLIME` | `family_slime_scen99` |
+| `FAMILY_SMALL_SLIME` | `family_small_slime_scen99` |
+| `FAMILY_MEDIUM_SLIME` | `family_medium_slime_scen99` |
+| `FAMILY_THIEF` | `family_thief_scen99` |
+| `FAMILY_GHOST` | `family_ghost_scen99` |
+| `FAMILY_DRUID` | `family_druid_scen99` |
 | `FAMILY_ORC` | `smoke_nonempty_scen99` |
-| `FAMILY_BIG_ORC` | `(none yet)` |
-| `FAMILY_BARBARIAN` | `(none yet)` |
-| `FAMILY_ARCHMAGE` | `(none yet)` |
-| `FAMILY_GOLEM` | `(none yet)` |
-| `FAMILY_GIANT_SKELETON` | `(none yet)` |
-| `FAMILY_TOWER1` | `(none yet)` |
+| `FAMILY_BIG_ORC` | `family_big_orc_scen99` |
+| `FAMILY_BARBARIAN` | `family_barbarian_scen99` |
+| `FAMILY_ARCHMAGE` | `family_archmage_scen99` |
+| `FAMILY_GOLEM` | `family_golem_scen99` |
+| `FAMILY_GIANT_SKELETON` | `family_giant_skeleton_scen99` |
+| `FAMILY_TOWER1` | `family_tower1_scen99` |
 
 ## Required weapon families (20)
 
@@ -133,10 +133,10 @@ the generator gate when a generator-bearing scenario lands.
 
 | family | covering_scenario_id |
 |---|---|
-| `FAMILY_TENT` | `(none yet)` |
-| `FAMILY_TOWER` | `(none yet)` |
-| `FAMILY_BONES` | `(none yet)` |
-| `FAMILY_TREEHOUSE` | `(none yet)` |
+| `FAMILY_TENT` | `family_skeleton_scen99` |
+| `FAMILY_TOWER` | `family_mage_scen99` |
+| `FAMILY_BONES` | `family_ghost_scen99` |
+| `FAMILY_TREEHOUSE` | `family_elf_scen99` |
 
 ## Required effect (FX) families (13)
 
@@ -245,3 +245,32 @@ Every other row above must be covered by a scenario landed in Phase
 04-06. The runtime gate (verifier `03b`) confirms this listing is real
 by removing one covering scenario and observing the gate fail on the
 now-uncovered target.
+
+## Phase 04 sign-off snapshot
+
+Phase 04 added 21 byte-equal arena scenarios, one per walker family
+(`family_<symbolic>_scen99`). Each spec spawns the target family on
+team 0 at `(120, 120)` and a `FAMILY_SOLDIER` sparring partner on team
+1 at `(180, 120)` over scen99.fss with `fresh_arena=true` and a
+`tick_budget` of 150. The four families with corresponding generators
+(`FAMILY_ELF`/`FAMILY_MAGE`/`FAMILY_SKELETON`/`FAMILY_GHOST`) also
+spawn the generator at `(60, 60)`. The runner now samples family
+membership at every tick (not only at end-of-run) so short-lived
+targets — slime splits, walkers killed in combat — still land in
+`CoverageObservation::walker_families` / `generator_families`.
+
+Coverage outcome after Phase 04:
+
+- `walker_families` observed: all 21 required families.
+- `generator_families` observed: all 4 required families.
+- `effect_families`, `weapon_families`, `treasure_families`, specials,
+  and the remaining event kinds remain pending Phases 05/06.
+
+The `Parity.coverage_gate_walker_families` gate now passes; the rest
+of `Parity.coverage_gate*` (effect/weapon/treasure/event/specials) and
+the umbrella `Parity.coverage_gate` are expected to remain red until
+Phases 05/06 land. The 21 new `Parity.family_*` byte-equal tests
+compare branch-side dumps against masters captured in this phase from
+the companion at master_companion_sha; any failures are real
+divergence between wip/networking and master, which is the framework's
+intended signal.

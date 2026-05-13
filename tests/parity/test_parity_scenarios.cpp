@@ -134,6 +134,29 @@ OG_PARITY_TEST(snapshot_dirty_bits_scen9301)
 OG_PARITY_TEST(smoke_nonempty_scen99)
 OG_PARITY_TEST(smoke_nonempty_scen99_inputs)
 
+// Phase 04 — one byte-equal scenario per walker family.
+OG_PARITY_TEST(family_soldier_scen99)
+OG_PARITY_TEST(family_elf_scen99)
+OG_PARITY_TEST(family_archer_scen99)
+OG_PARITY_TEST(family_mage_scen99)
+OG_PARITY_TEST(family_skeleton_scen99)
+OG_PARITY_TEST(family_cleric_scen99)
+OG_PARITY_TEST(family_fireelemental_scen99)
+OG_PARITY_TEST(family_faerie_scen99)
+OG_PARITY_TEST(family_slime_scen99)
+OG_PARITY_TEST(family_small_slime_scen99)
+OG_PARITY_TEST(family_medium_slime_scen99)
+OG_PARITY_TEST(family_thief_scen99)
+OG_PARITY_TEST(family_ghost_scen99)
+OG_PARITY_TEST(family_druid_scen99)
+OG_PARITY_TEST(family_orc_scen99)
+OG_PARITY_TEST(family_big_orc_scen99)
+OG_PARITY_TEST(family_barbarian_scen99)
+OG_PARITY_TEST(family_archmage_scen99)
+OG_PARITY_TEST(family_golem_scen99)
+OG_PARITY_TEST(family_giant_skeleton_scen99)
+OG_PARITY_TEST(family_tower1_scen99)
+
 #undef OG_PARITY_TEST
 
 // Phase 02 — verify the two smoke runs produce observably-different walker

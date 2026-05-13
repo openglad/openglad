@@ -6,9 +6,10 @@ Usage: validate_schema.py DUMP.json [DUMP.json ...]
 Reads each dump and asserts the shape promised by schema v1 in
 `.plan/parity-harness-design.md`:
 
-- top-level keys: effects, events, rng_state, schema_version, score_per_team,
-  tick, walkers (lexicographically sorted in the emitted JSON, but Python's
-  json.load() ignores order so we only check presence here)
+- top-level keys: effects, events, level_done, level_tick_count, rng_state,
+  schema_version, score_per_team, tick, walkers (lexicographically sorted in
+  the emitted JSON, but Python's json.load() ignores order so we only check
+  presence here)
 - schema_version == "v1"
 - tick is a non-negative integer
 - rng_state is a string matching ^0x[0-9A-F]{8}$ or the literal "unobservable"
@@ -37,8 +38,8 @@ SCHEMA_VERSION = "v1"
 _HEX32 = re.compile(r"^0x[0-9A-F]{8}$")
 
 _TOP_LEVEL_KEYS = {
-    "effects", "events", "rng_state", "schema_version",
-    "score_per_team", "tick", "walkers",
+    "effects", "events", "level_done", "level_tick_count",
+    "rng_state", "schema_version", "score_per_team", "tick", "walkers",
 }
 
 _WALKER_KEYS = {
@@ -179,6 +180,12 @@ def validate(path: Path) -> None:
 
     if not _is_uint(doc["tick"]):
         raise ValidationError("tick: expected non-negative int")
+
+    if not _is_int(doc["level_done"]):
+        raise ValidationError("level_done: expected int")
+
+    if not _is_uint(doc["level_tick_count"]):
+        raise ValidationError("level_tick_count: expected non-negative int")
 
     rng_state = doc["rng_state"]
     if not isinstance(rng_state, str):
