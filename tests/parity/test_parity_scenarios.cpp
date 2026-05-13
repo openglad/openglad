@@ -8,8 +8,21 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <string_view>
 
 namespace {
+
+// Look up a scenario by id at runtime. Returns nullptr if no entry in
+// `kScenarios` matches — callers GTEST_SKIP in that case so removing a
+// scenario from the table does not break compilation of this file
+// (Phase 03 verifier 03b stashes one entry and expects og_test_parity
+// to still build; the coverage gate alone signals the omission).
+const og::parity::ScenarioSpec* find_scenario(std::string_view id)
+{
+    for (const auto& spec : og::parity::kScenarios)
+        if (spec.id == id) return &spec;
+    return nullptr;
+}
 
 std::filesystem::path golden_path(std::string_view id)
 {
@@ -82,49 +95,66 @@ void run_one_scenario(const og::parity::ScenarioSpec& spec)
 
 // One TEST per scenario. The id forms the GoogleTest case name so
 // `ctest --preset ci-test -R '^og_test_parity'` enumerates each scenario
-// individually via --gtest_list_tests. The macro expansion below keeps the
-// scenario table as the single source of truth.
+// individually via --gtest_list_tests. The macro looks the scenario up
+// in `kScenarios` by id at runtime, NOT by hardcoded index — removing
+// an entry from the table must remain a compile-clean operation so the
+// coverage gate (Phase 03 verifier 03b) can fail at runtime rather than
+// breaking the build of unrelated tests.
 
-#define OG_PARITY_TEST(IDX, NAME)                                              \
+#define OG_PARITY_TEST(NAME)                                                   \
     TEST(Parity, NAME)                                                         \
     {                                                                          \
-        static_assert(IDX < og::parity::kScenarioCount,                        \
-                      "scenario index out of range");                          \
-        run_one_scenario(og::parity::kScenarios[IDX]);                         \
+        const og::parity::ScenarioSpec* spec = find_scenario(#NAME);           \
+        if (spec == nullptr)                                                   \
+        {                                                                      \
+            GTEST_SKIP() << "scenario \"" #NAME                                \
+                            "\" is not present in kScenarios; "                \
+                            "Parity.coverage_gate* is the responsible gate.";  \
+            return;                                                            \
+        }                                                                      \
+        run_one_scenario(*spec);                                               \
     }
 
-OG_PARITY_TEST(0,  ai_idle_wander_scen9301)
-OG_PARITY_TEST(1,  combat_attack_scen99)
-OG_PARITY_TEST(2,  special_archmage_scen123)
-OG_PARITY_TEST(3,  special_cleric_scen124)
-OG_PARITY_TEST(4,  special_mage_scen126)
-OG_PARITY_TEST(5,  special_thief_scen789)
-OG_PARITY_TEST(6,  effect_bomb_lifetime_scen99)
-OG_PARITY_TEST(7,  effect_chain_scen9410)
-OG_PARITY_TEST(8,  summon_druid_pet_scen950)
-OG_PARITY_TEST(9,  scoring_after_combat_scen99)
-OG_PARITY_TEST(10, save_roundtrip_scen99)
-OG_PARITY_TEST(11, exit_trigger_scen9302)
-OG_PARITY_TEST(12, tick_cadence_scen9301)
-OG_PARITY_TEST(13, rng_seed_stable_scen99)
-OG_PARITY_TEST(14, scripted_input_scen9301)
-OG_PARITY_TEST(15, snapshot_dirty_bits_scen9301)
-OG_PARITY_TEST(16, smoke_nonempty_scen99)
-OG_PARITY_TEST(17, smoke_nonempty_scen99_inputs)
+OG_PARITY_TEST(ai_idle_wander_scen9301)
+OG_PARITY_TEST(combat_attack_scen99)
+OG_PARITY_TEST(special_archmage_scen123)
+OG_PARITY_TEST(special_cleric_scen124)
+OG_PARITY_TEST(special_mage_scen126)
+OG_PARITY_TEST(special_thief_scen789)
+OG_PARITY_TEST(effect_bomb_lifetime_scen99)
+OG_PARITY_TEST(effect_chain_scen9410)
+OG_PARITY_TEST(summon_druid_pet_scen950)
+OG_PARITY_TEST(scoring_after_combat_scen99)
+OG_PARITY_TEST(save_roundtrip_scen99)
+OG_PARITY_TEST(exit_trigger_scen9302)
+OG_PARITY_TEST(tick_cadence_scen9301)
+OG_PARITY_TEST(rng_seed_stable_scen99)
+OG_PARITY_TEST(scripted_input_scen9301)
+OG_PARITY_TEST(snapshot_dirty_bits_scen9301)
+OG_PARITY_TEST(smoke_nonempty_scen99)
+OG_PARITY_TEST(smoke_nonempty_scen99_inputs)
 
 #undef OG_PARITY_TEST
 
 // Phase 02 — verify the two smoke runs produce observably-different walker
 // state. If both dumps were identical, the input-injection path is broken.
+// Looks scenarios up by id so removing them from the table degrades to
+// SKIP rather than failing compilation.
 TEST(Parity, smoke_inputs_diverge_from_no_inputs)
 {
-    const auto& no_inputs   = og::parity::kScenarios[16];
-    const auto& with_inputs = og::parity::kScenarios[17];
-    ASSERT_EQ(no_inputs.id,   std::string_view("smoke_nonempty_scen99"));
-    ASSERT_EQ(with_inputs.id, std::string_view("smoke_nonempty_scen99_inputs"));
+    const og::parity::ScenarioSpec* no_inputs =
+        find_scenario("smoke_nonempty_scen99");
+    const og::parity::ScenarioSpec* with_inputs =
+        find_scenario("smoke_nonempty_scen99_inputs");
+    if (no_inputs == nullptr || with_inputs == nullptr)
+    {
+        GTEST_SKIP() << "smoke scenarios not present in kScenarios; "
+                        "Parity.coverage_gate* is the responsible gate.";
+        return;
+    }
 
-    const auto a = og::parity::run_scenario(no_inputs);
-    const auto b = og::parity::run_scenario(with_inputs);
+    const auto a = og::parity::run_scenario(*no_inputs);
+    const auto b = og::parity::run_scenario(*with_inputs);
     const std::string sa = og::parity::canonical_serialize(a.dump);
     const std::string sb = og::parity::canonical_serialize(b.dump);
     EXPECT_NE(sa, sb)
