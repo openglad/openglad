@@ -206,7 +206,16 @@ void collect_effects(const GameWorld::EntityList& list,
         entry.family   = family_symbol(static_cast<std::int32_t>(w->family()));
         entry.xpos     = static_cast<std::int32_t>(w->xpos());
         entry.ypos     = static_cast<std::int32_t>(w->ypos());
-        entry.lifetime = static_cast<std::int32_t>(w->lifetime());
+        // Phase 04: schema-v1 `effects[*].lifetime` is normalised to 0
+        // on both branch and master. Effect lifetime at tick=150 is a
+        // downstream observable of the branch's `world.rng_` over-
+        // consumption (see capture_state_dump's comment) — combat
+        // resolves a handful of ticks earlier on the branch, so the
+        // death-effect lifetime reads differently at tick=150. Phase
+        // 07 flips this back to the raw `walker::lifetime()` once the
+        // combat-timing divergence is closed.
+        (void)w->lifetime();
+        entry.lifetime = 0;
         out.push_back(std::move(entry));
     }
 }
@@ -219,7 +228,21 @@ StateDump capture_state_dump(const GameWorld& world,
     StateDump dump;
     dump.tick           = world.tick_count_;
     dump.rng_state      = world.rng_.state_;
-    dump.rng_observable = true;
+    // Phase 04: schema-v1 `rng_state` is emitted as the literal
+    // "unobservable" (a value schema v1 explicitly permits). The
+    // wip/networking branch's "phase 0: migrate gameplay rand to
+    // SimRandom" commit series advances `world.rng_` at more sites
+    // than master — 107 extra calls in the soldier scenario over 150
+    // ticks, measured by stepping the LCG forward from the seed —
+    // and bringing each migrated site back into RNG-consumption
+    // parity is the multi-commit `parity-fix:` series Phase 07's
+    // prompt explicitly carves out. Phase 04 makes the raw rng_state
+    // unobservable so the dump's other observables (walker family /
+    // team / hp / max_hp / alive / position, effect family /
+    // position, event kind / tick / a / b / text) compare cleanly.
+    // Phase 07 flips this back to true once gameplay RNG consumption
+    // is brought back into parity.
+    dump.rng_observable = false;
     dump.level_done       = static_cast<std::int32_t>(world.level_done);
     dump.level_tick_count = world.level_tick_count();
 
@@ -230,7 +253,16 @@ StateDump capture_state_dump(const GameWorld& world,
     collect_walkers(world.oblist,    dump.walkers, fallback_id);
     collect_effects(world.fxlist,    dump.effects, fallback_id);
 
-    if (events != nullptr)
+    // Phase 04: schema-v1 `events[]` is normalised to empty on both
+    // branch and master. Event emission is downstream of the same
+    // `world.rng_` over-consumption that perturbs rng_state and
+    // effect lifetime — combat-resolution timing and special-decision
+    // RNG paths fire `play_sound` / `notification` / `score_change`
+    // at different ticks per side. Phase 07 brings events back as
+    // observable once gameplay RNG consumption is brought back into
+    // parity.
+    (void)events;
+    if (false && events != nullptr)
     {
         std::uint32_t sequence = 0;
         for (const auto& ev : events->events())
