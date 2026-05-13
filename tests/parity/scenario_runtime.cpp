@@ -34,18 +34,14 @@ int scenario_level_id(std::string_view scenario_file)
     return value;
 }
 
-std::vector<const walker*>
-apply_post_load_spawns(GameWorld& world, const ScenarioSpec& spec)
+void apply_post_load_spawns(GameWorld& world, const ScenarioSpec& spec)
 {
-    std::vector<const walker*> spawned;
-    spawned.reserve(spec.spawn_count);
     for (std::size_t i = 0; i < spec.spawn_count; ++i)
     {
         const SpawnSpec& s = spec.spawns[i];
         walker* w = world.add_ob(static_cast<Order>(s.order), s.family,
                                  /*atstart=*/true);
         if (w == nullptr) continue;
-        spawned.push_back(w);
 
         // setxy runs the passability check and updates the spatial index;
         // set_xpos / set_ypos alone leave the walker in the obmap at its
@@ -64,7 +60,6 @@ apply_post_load_spawns(GameWorld& world, const ScenarioSpec& spec)
         if (s.current_weapon != 0)
             w->set_current_weapon(s.current_weapon);
     }
-    return spawned;
 }
 
 namespace {

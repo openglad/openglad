@@ -3,10 +3,6 @@
 #include "scenario_runtime.h"
 
 #include <openglad/core/order.h>
-#include <openglad/resources/level_data_hooks.h>
-
-namespace og::parity { const LevelDataHooks& parity_level_data_hooks(); }
-
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/sim_event_log.h>
@@ -15,10 +11,6 @@ namespace og::parity { const LevelDataHooks& parity_level_data_hooks(); }
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/save_data.h>
-
-#include <unordered_map>
-#include <utility>
-#include <vector>
 
 // `cfg` is the file-scope cfg_store in data/gparser.cpp; declared here so
 // the runner can install it into the ScopedGameplayContext. Do NOT
@@ -70,15 +62,8 @@ RunOutcome run_scenario(const ScenarioSpec& spec)
     RunOutcome out;
 
     const int level_id = scenario_level_id(spec.scenario_file);
-    // Install the parity-local headless hook table (see
-    // tests/parity/parity_headless_hooks.cpp). The production
-    // `sdl_level_data_hooks` table wires `EntityFactory::attach_render`
-    // to construct a per-walker WalkerRender; the master companion
-    // uses `headless_level_data_hooks` with no `attach_render`. For
-    // the dumps to be apples-to-apples both sides need to install the
-    // same entity factory in `world.entity_factory`.
     LevelRuntimeData level(level_id, /*headless=*/true,
-                           &parity_level_data_hooks());
+                           &sdl_level_data_hooks());
 
     SaveData save;
     og::sim::SimEventLog events;
@@ -100,17 +85,7 @@ RunOutcome run_scenario(const ScenarioSpec& spec)
     if (spec.fresh_arena)
         clear_world_entities(world);
 
-    const std::vector<const walker*> spawned =
-        apply_post_load_spawns(world, spec);
-    std::unordered_map<const walker*,
-                       std::pair<std::int32_t, std::int32_t>> spawned_set;
-    spawned_set.reserve(spawned.size());
-    for (std::size_t i = 0; i < spawned.size() && i < spec.spawn_count; ++i)
-    {
-        if (spawned[i] == nullptr) continue;
-        const SpawnSpec& s = spec.spawns[i];
-        spawned_set.emplace(spawned[i], std::make_pair(s.x, s.y));
-    }
+    apply_post_load_spawns(world, spec);
 
     // Phase 03 coverage observation. The schema-v1 dump only carries
     // oblist (without per-walker order) and fxlist, but the coverage
@@ -159,7 +134,7 @@ RunOutcome run_scenario(const ScenarioSpec& spec)
         }
     }
     out.ticked = true;
-    out.dump   = capture_state_dump(world, &events, &spawned_set);
+    out.dump   = capture_state_dump(world, &events);
 
     for (const auto& ev : events.events())
         out.coverage.event_kinds.insert(

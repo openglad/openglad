@@ -10,11 +10,9 @@
 
 #include <cstdint>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 class GameWorld;
-class walker;
 namespace og::sim { class SimEventLog; }
 
 namespace og::parity {
@@ -69,20 +67,8 @@ struct StateDump
 };
 
 // Build a StateDump from a live GameWorld.
-//
-// If `walker_whitelist` is non-null, only walkers whose pointer is a
-// key in the map are emitted in `walkers[]` / `effects[]`; AI- and
-// generator-spawned children (which spawn at different cadences on
-// branch vs master) are excluded. The map's value is the original
-// spawn (xpos, ypos) for that walker — the dumper emits the spawn
-// position instead of the live `walker::xpos/ypos`, so AI-driven
-// wandering during the tick loop does not surface in the dump.
-StateDump capture_state_dump(
-    const GameWorld& world,
-    const og::sim::SimEventLog* events = nullptr,
-    const std::unordered_map<const walker*,
-                              std::pair<std::int32_t, std::int32_t>>*
-        walker_whitelist = nullptr);
+StateDump capture_state_dump(const GameWorld& world,
+                             const og::sim::SimEventLog* events = nullptr);
 
 // Canonical JSON serialisation. Sorted keys, "%.6f" floats, LF line endings,
 // single trailing newline. Branch and master companion must produce

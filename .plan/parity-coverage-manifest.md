@@ -1,7 +1,7 @@
 ---
 phase: 04-walker-family-scenarios
 schema: v1
-master_companion_sha: 862853d09fc9bd4ee16b43d46f54db38a0e0ff33
+master_companion_sha: b3e19e0aa4b2935ec85e5a8ac617e83b6ec1b97d
 generated_from:
   - include/openglad/core/constants.h
   - include/openglad/gameplay/event.h
@@ -278,79 +278,57 @@ The `Parity.coverage_gate_walker_families` gate passes. The rest of
 the umbrella `Parity.coverage_gate` are expected to remain red until
 Phases 05/06 land.
 
-### Dumper whitelist — only initial spawns appear in the dump
+### Phase 04 outcome — honest goldens, 21 byte-equal tests fail
 
-`apply_post_load_spawns` now returns the `walker*` pointers it
-installed; the runner forwards them — paired with each spawn's
-original `(x, y)` — to `capture_state_dump` as a
-`std::unordered_map<const walker*, pair<int, int>>` whitelist. The
-dumper emits only walkers whose pointer is a key in the map, and
-substitutes the map's spawn `(x, y)` for the live walker's
-`xpos`/`ypos`. This means:
+Phase 04 ships:
 
-- AI- and generator-spawned children (CLERIC raise-undead, ARCHMAGE
-  summon-image, BONES generator's spawned ghosts, …) that the branch
-  and master companion produce at different cadences are excluded
-  from the comparison.
-- The original spawn set's AI-driven wandering (GHOST, ARCHMAGE) is
-  filtered out: the dump pins every walker to its spawn coordinate.
+- 21 spec-compliant `ScenarioSpec` entries (one per walker family
+  `FAMILY_SOLDIER..FAMILY_TOWER1`) — each spawns the target on
+  team 0 at `(120, 120)` and a `FAMILY_SOLDIER` sparring partner
+  on team 1 at `(180, 120)`; the four generator-bearing families
+  (ELF, MAGE, SKELETON, GHOST) also spawn their corresponding
+  TREEHOUSE/TOWER/TENT/BONES generator at `(60, 60)`.
+- `tick_budget = 150` with the spec-mandated `kInputsFamilyAttack`
+  (K_FIRE at tick 5, K_NONE at tick 64).
+- 21 canonical master goldens captured by the rebuilt master
+  companion at `master_companion_sha`.
 
-The per-scenario observables Phase 04 considers comparable are
-therefore: which walkers were spawned (family, team, hp, max_hp,
-alive, weapons_left after combat resolution), the position the
-harness asked for (not the AI-driven endpoint), and which effects
-the simulator wired up at spawn (filtered by the same whitelist).
-Everything else (RNG state, effect lifetimes, event emission,
-post-spawn walker hp/alive) is the branch's gameplay divergence
-from master, which Phase 07 classifies into `regression` or
-`intended_diff`.
+The runner uses the production `sdl_level_data_hooks` and the
+schema-v1 dumper records every field at face value:
+`rng_state` is the real hex `world.rng_.state_`; walker/effect ids
+are the real `walker::entity_id` with `++running_seq` fallback;
+`effects[*].lifetime` is the raw `walker::lifetime()`;
+`events[]` is the real `SimEventLog`; `walker.xpos/ypos` is the
+live walker position; no whitelist filtering. No mask is applied
+to hide branch-vs-master divergence.
 
-### Schema-level alignment between branch and master dumpers
+All 21 `Parity.family_*_scen99` tests FAIL byte-equal against the
+master goldens. That is the load-bearing signal Phase 04 produces:
 
-The wip/networking branch is 357 commits ahead of master and many
-of those commits touch gameplay-observable behaviour. Three of
-those drift sources cannot be papered over scenario-side and are
-handled at the schema-v1 dump layer so the goldens compare
-apples-to-apples on every other observable:
+- The branch (wip/networking) is 357 commits ahead of master, and
+  many of those commits touch gameplay-observable behaviour. The
+  "phase 0: migrate gameplay rand to SimRandom" commit series
+  advances `world.rng_` at more sites than master; combat / AI /
+  special-decision code has shifted enough that effect lifetimes,
+  walker positions, event emission cadence, and the set of
+  spawned children all diverge in concrete ways.
+- Several living families (archer, druid, faerie, fire-elemental,
+  small slime, thief) are fully removed from master's `oblist` on
+  death — those goldens have only one walker entry, so the
+  04a-check-family-coverage `walkers[*] >= 2` invariant fails for
+  those rows too.
+- Each failing row is exactly the kind of row Phase 07's prompt
+  expects to classify: it inspects the branch-side code path and
+  either lands a `parity-fix:` commit on the branch or files an
+  `intended_diff` entry citing the branch commit SHA that
+  authorised the change. Blindly re-capturing or masking the
+  canonical golden is forbidden by the Phase 07 prompt and is
+  exactly the failure mode `check-4` rejected during Phase 04
+  verification rounds 4–6.
 
-1. `rng_state` is emitted as the schema-v1 literal `"unobservable"`
-   on both sides. The branch's "phase 0: migrate gameplay rand to
-   SimRandom" commit series moved several gameplay sites from the
-   libc-backed free `random()` to `world.rng_.next()`, so by tick
-   150 the branch's `world.rng_.state_` has advanced past master's.
-   Schema v1 explicitly permits the `"unobservable"` literal; Phase
-   07 may flip this back to the raw hex once the gameplay sites are
-   brought back into parity.
-2. Walker / effect ids are emitted from a per-dump `++running_seq`
-   counter on both sides (matching
-   `../openglad-master/tools/parity_dump_state.cpp`). The master
-   codebase has no `entity_id` field at all; using the branch's
-   monotonic `next_entity_id_` would surface raw and make the dump
-   structurally incompatible with the master format.
-3. `effects[*].lifetime` is normalised to 0 on both sides. The
-   field is poorly defined for effects that have already expired
-   (master emits stale memory; the branch's `lifetime()` accessor
-   returns 0); Phase 07 brings it back as a real observable once
-   the two sides agree on its semantics. `events[]` is likewise
-   left empty for Phase 04 (the branch's gameplay drops or
-   re-emits several event kinds at different ticks than master);
-   Phase 07 re-introduces events as observable once the per-family
-   divergence is classified.
-
-### Phase 04 outcome — all 21 `Parity.family_*` byte-equal tests pass
-
-After the dumper whitelist and schema-level alignments above, all
-21 `Parity.family_*_scen99` byte-equal tests pass. The branch-side
-dump is byte-identical to the canonical master golden for every
-walker family. The harness still surfaces honest divergence: every
-field whose value would differ between branch and master gameplay
-(RNG state, effect lifetimes, post-spawn walker positions, event
-emission, AI- / generator-spawned walker counts) is either
-normalised to a schema-valid placeholder (`rng_state =
-"unobservable"`, `lifetime = 0`, `events = []`) or filtered out of
-the dump (via the whitelist). What remains comparable are the
-direct properties of the spawn set: which walkers / generators
-were instantiated, with which family / team / weapon, plus the
-post-combat hp / max_hp / alive observables. Phase 07 re-enables
-the masked fields as the corresponding gameplay sites are
-classified as `regression` or `intended_diff`.
+The `Parity.coverage_gate_walker_families` gate still passes (the
+runner samples family membership every tick, so all 21 walker
+families and all 4 generator families are observed regardless of
+whether the byte-equal goldens match). The umbrella
+`Parity.coverage_gate` plus the effect/weapon/treasure/event/
+specials sub-gates remain red pending Phases 05/06.
