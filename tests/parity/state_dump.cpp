@@ -159,12 +159,22 @@ void collect_walkers(const GameWorld::EntityList& list,
                      std::vector<WalkerEntry>& out,
                      std::uint32_t& running_seq)
 {
+    // Schema-v1 walker/effect ids are iteration-position counters. The
+    // master gameplay codebase has no `entity_id` field at all (see
+    // ../openglad-master/src/gameplay/walker.h and the dumper's comment
+    // in tools/parity_dump_state.cpp), so master can only assign ids
+    // by walking oblist / fxlist with `++running_seq`. The branch's
+    // monotonic `next_entity_id_` is branch-internal entity tracking,
+    // not part of the parity dump contract; surfacing it here would
+    // give the branch a different id scheme from master and break the
+    // single-schema apples-to-apples comparison. Both sides therefore
+    // use `++running_seq` for `WalkerEntry::id` / `EffectEntry::id`.
     for (const auto& uptr : list)
     {
         const walker* w = uptr.get();
         if (w == nullptr) continue;
         WalkerEntry entry;
-        entry.id     = w->entity_id() != 0 ? w->entity_id() : ++running_seq;
+        entry.id     = ++running_seq;
         entry.family = family_symbol(static_cast<std::int32_t>(w->family()));
         entry.team   = static_cast<std::uint32_t>(w->team_num());
         entry.xpos   = static_cast<std::int32_t>(w->xpos());
@@ -189,7 +199,10 @@ void collect_effects(const GameWorld::EntityList& list,
         const walker* w = uptr.get();
         if (w == nullptr) continue;
         EffectEntry entry;
-        entry.id       = w->entity_id() != 0 ? w->entity_id() : ++running_seq;
+        // See `collect_walkers` for why `id` is `++running_seq` and not
+        // `walker::entity_id`: master has no `entity_id` field; the
+        // parity dump contract is a single iteration-position scheme.
+        entry.id       = ++running_seq;
         entry.family   = family_symbol(static_cast<std::int32_t>(w->family()));
         entry.xpos     = static_cast<std::int32_t>(w->xpos());
         entry.ypos     = static_cast<std::int32_t>(w->ypos());
