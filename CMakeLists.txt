@@ -1842,6 +1842,17 @@ if(NOT EMSCRIPTEN)
         )
         target_compile_features(scenario_facts_dump PRIVATE cxx_std_20)
         target_link_libraries(scenario_facts_dump PRIVATE og_game_test)
+        # Coverage builds: libog_game_test.a is compiled with --coverage and
+        # leaves undefined references to __gcov_init / __gcov_exit /
+        # __gcov_merge_add in the static archive. Link against gcov via
+        # --coverage so the standalone executable resolves them. The ASan
+        # / TSan presets do NOT route through configure_openglad_library
+        # here because pulling in project_sanitizers transitively slows
+        # og_test_view's tick budget enough to time out at 180s on CI.
+        if(ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+            target_compile_options(scenario_facts_dump PRIVATE --coverage)
+            target_link_options(scenario_facts_dump PRIVATE --coverage)
+        endif()
         add_custom_command(
             OUTPUT  ${CMAKE_SOURCE_DIR}/tests/parity/scenario_facts_generated.json
             COMMAND scenario_facts_dump
