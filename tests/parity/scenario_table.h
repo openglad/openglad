@@ -250,25 +250,27 @@ inline constexpr InputEvent kInputsSmokeMoveRight[] = {
     {1,  0, K_RIGHT}, {21, 0, K_NONE},
 };
 
-// Phase 04: walker-family arena scenarios. Each spec spawns the target
-// family on team 0 at (120, 120) and a FAMILY_SOLDIER (id 0) on team 0
-// at (600, 600). `kInputsFamilyAttack` schedules a K_FIRE press at tick
-// 5 and a release at tick 64, the spec-mandated combat input.
+// Phase 04: walker-family arena scenarios. The player walker (target
+// family on team 0 at (120, 120)) is spawned alongside a FAMILY_SOLDIER
+// (id 0) sparring partner on team 1 at (180, 120). `kInputsFamilyAttack`
+// schedules a K_FIRE press at tick 5 and a release at tick 64.
+// `tick_budget = 150` runs combat to completion. Four families
+// (ELF, MAGE, SKELETON, GHOST) carry an additional generator spawn
+// (TREEHOUSE / TOWER / TENT / BONES) at (60, 60) so the four generator
+// families are exercised alongside their walker outputs.
 //
-// The sparring SOLDIER sits on the same team as the target and far
-// enough away (480 pixels) that scen99's load() does not produce any
-// reachable enemies and the K_FIRE-spawned weapons have no target.
-// scen99 has no team-1 walkers after `fresh_arena` clears the
-// pre-loaded population, so `level_done` trips on tick 1 ("all
-// enemies dead"); both sides converge to identical walker / effect
-// state by `tick_budget = 150`. This is the only spawn topology that
-// keeps the byte-equality contract holding under the spec-mandated
-// K_FIRE input: pitting the target against a team-1 enemy lets
-// combat resolve at different speeds on branch vs master (the
-// branch's `world.rng_` advances at more sites — see Phase 0 commit
-// series "migrate gameplay rand to SimRandom"), which leaks into
-// effect lifetime at tick 150. Phases 05/06 layer on more involved
-// scenarios.
+// At the time of writing every one of these scenarios produces a
+// dump that diverges from the master companion's output (RNG state,
+// effect lifetimes, sometimes generator-child spawn counts) because
+// the wip/networking branch has 300+ commits of gameplay/RNG changes
+// on top of master. The harness emits the divergence faithfully and
+// the 21 `Parity.family_*` byte-equal tests are expected to fail
+// against the canonical master goldens; Phase 07 will classify each
+// row as `regression` (fix branch code, then re-run) or
+// `intended_diff` (cite the branch commit that introduced the
+// change). Do NOT hide a divergence by neutering the scenario, the
+// dumper, or the schema. See `.plan/parity-coverage-manifest.md` for
+// the per-scenario divergence catalog.
 //
 // Family-id integers are written literally to avoid pulling
 // <openglad/core/constants.h> into this byte-mirrored header.
@@ -278,87 +280,91 @@ inline constexpr InputEvent kInputsFamilyAttack[] = {
 
 inline constexpr SpawnSpec kFamilySpawns_soldier[] = {
     {  0, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_SOLDIER target
-    {  0, 0, kOrderLiving, 600, 600, 0, 0 }, // FAMILY_SOLDIER sparring partner (same team, far away)
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
 };
 inline constexpr SpawnSpec kFamilySpawns_elf[] = {
     {  1, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_ELF target
-    {  0, 0, kOrderLiving, 600, 600, 0, 0 }, // FAMILY_SOLDIER sparring partner (same team, far away)
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
+    {  3, 1, kOrderGenerator, 60, 60, 0, 0 }, // FAMILY_TREEHOUSE generator
 };
 inline constexpr SpawnSpec kFamilySpawns_archer[] = {
     {  2, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_ARCHER target
-    {  0, 0, kOrderLiving, 600, 600, 0, 0 }, // FAMILY_SOLDIER sparring partner (same team, far away)
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
 };
 inline constexpr SpawnSpec kFamilySpawns_mage[] = {
-    {  3, 1, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_MAGE target (team 1 — killed by sparring)
-    {  0, 0, kOrderLiving, 130, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner (team 0, adjacent — short combat)
+    {  3, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_MAGE target
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
+    {  1, 1, kOrderGenerator, 60, 60, 0, 0 }, // FAMILY_TOWER generator
 };
 inline constexpr SpawnSpec kFamilySpawns_skeleton[] = {
     {  4, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_SKELETON target
-    {  0, 0, kOrderLiving, 600, 600, 0, 0 }, // FAMILY_SOLDIER sparring partner (same team, far away)
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
+    {  0, 1, kOrderGenerator, 60, 60, 0, 0 }, // FAMILY_TENT generator
 };
 inline constexpr SpawnSpec kFamilySpawns_cleric[] = {
     {  5, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_CLERIC target
-    {  0, 0, kOrderLiving, 600, 600, 0, 0 }, // FAMILY_SOLDIER sparring partner (same team, far away)
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
 };
 inline constexpr SpawnSpec kFamilySpawns_fireelemental[] = {
     {  6, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_FIREELEMENTAL target
-    {  0, 0, kOrderLiving, 600, 600, 0, 0 }, // FAMILY_SOLDIER sparring partner (same team, far away)
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
 };
 inline constexpr SpawnSpec kFamilySpawns_faerie[] = {
     {  7, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_FAERIE target
-    {  0, 0, kOrderLiving, 600, 600, 0, 0 }, // FAMILY_SOLDIER sparring partner (same team, far away)
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
 };
 inline constexpr SpawnSpec kFamilySpawns_slime[] = {
     {  8, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_SLIME target
-    {  0, 0, kOrderLiving, 600, 600, 0, 0 }, // FAMILY_SOLDIER sparring partner (same team, far away)
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
 };
 inline constexpr SpawnSpec kFamilySpawns_small_slime[] = {
     {  9, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_SMALL_SLIME target
-    {  0, 0, kOrderLiving, 600, 600, 0, 0 }, // FAMILY_SOLDIER sparring partner (same team, far away)
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
 };
 inline constexpr SpawnSpec kFamilySpawns_medium_slime[] = {
     { 10, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_MEDIUM_SLIME target
-    {  0, 0, kOrderLiving, 600, 600, 0, 0 }, // FAMILY_SOLDIER sparring partner (same team, far away)
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
 };
 inline constexpr SpawnSpec kFamilySpawns_thief[] = {
     { 11, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_THIEF target
-    {  0, 0, kOrderLiving, 600, 600, 0, 0 }, // FAMILY_SOLDIER sparring partner (same team, far away)
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
 };
 inline constexpr SpawnSpec kFamilySpawns_ghost[] = {
     { 12, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_GHOST target
-    {  0, 1, kOrderLiving, 130, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner (team 1, adjacent — short combat)
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
+    {  2, 1, kOrderGenerator, 60, 60, 0, 0 }, // FAMILY_BONES generator
 };
 inline constexpr SpawnSpec kFamilySpawns_druid[] = {
     { 13, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_DRUID target
-    {  0, 0, kOrderLiving, 600, 600, 0, 0 }, // FAMILY_SOLDIER sparring partner (same team, far away)
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
 };
 inline constexpr SpawnSpec kFamilySpawns_orc[] = {
     { 14, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_ORC target
-    {  0, 0, kOrderLiving, 600, 600, 0, 0 }, // FAMILY_SOLDIER sparring partner (same team, far away)
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
 };
 inline constexpr SpawnSpec kFamilySpawns_big_orc[] = {
     { 15, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_BIG_ORC target
-    {  0, 0, kOrderLiving, 600, 600, 0, 0 }, // FAMILY_SOLDIER sparring partner (same team, far away)
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
 };
 inline constexpr SpawnSpec kFamilySpawns_barbarian[] = {
     { 16, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_BARBARIAN target
-    {  0, 0, kOrderLiving, 600, 600, 0, 0 }, // FAMILY_SOLDIER sparring partner (same team, far away)
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
 };
 inline constexpr SpawnSpec kFamilySpawns_archmage[] = {
     { 17, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_ARCHMAGE target
-    {  0, 1, kOrderLiving, 130, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner (team 1, adjacent — short combat)
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
 };
 inline constexpr SpawnSpec kFamilySpawns_golem[] = {
     { 18, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_GOLEM target
-    {  0, 0, kOrderLiving, 600, 600, 0, 0 }, // FAMILY_SOLDIER sparring partner (same team, far away)
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
 };
 inline constexpr SpawnSpec kFamilySpawns_giant_skeleton[] = {
     { 19, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_GIANT_SKELETON target
-    {  0, 0, kOrderLiving, 600, 600, 0, 0 }, // FAMILY_SOLDIER sparring partner (same team, far away)
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
 };
 inline constexpr SpawnSpec kFamilySpawns_tower1[] = {
     { 20, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_TOWER1 target (static)
-    {  0, 0, kOrderLiving, 600, 600, 0, 0 }, // FAMILY_SOLDIER sparring partner (same team, far away)
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
 };
 
 // --- Scenario table --------------------------------------------------------
