@@ -333,11 +333,7 @@ inline constexpr SpawnSpec kFamilySpawns_thief[] = {
 inline constexpr SpawnSpec kFamilySpawns_ghost[] = {
     { 12, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_GHOST target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
-    // FAMILY_BONES generator removed from this scenario only: the
-    // BONES generator's child-spawn cadence diverges between branch
-    // and master (a downstream symptom of the wip/networking branch's
-    // RNG over-consumption, and a Phase 07 parity-fix target).
-    // Generator coverage for FAMILY_BONES rolls forward to Phase 06.
+    {  2, 1, kOrderGenerator, 60, 60, 0, 0 }, // FAMILY_BONES generator
 };
 inline constexpr SpawnSpec kFamilySpawns_druid[] = {
     { 13, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_DRUID target
