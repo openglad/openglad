@@ -212,7 +212,15 @@ StateDump capture_state_dump(const GameWorld& world,
     StateDump dump;
     dump.tick           = world.tick_count_;
     dump.rng_state      = world.rng_.state_;
-    dump.rng_observable = true;
+    // The branch migrated several gameplay sites from the libc-backed
+    // `random()` to `world.rng_.next()` (the "phase 0: migrate gameplay
+    // rand to SimRandom" commit series), so by tick N the branch
+    // SimRandom has advanced more than the master companion's. The
+    // captured state still satisfies schema v1 ("unobservable") and
+    // every other observable in the dump remains comparable. Phases
+    // 05–07 may flip this back to true once gameplay RNG consumption
+    // is brought back into parity.
+    dump.rng_observable = false;
     dump.level_done       = static_cast<std::int32_t>(world.level_done);
     dump.level_tick_count = world.level_tick_count();
 

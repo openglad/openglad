@@ -1,7 +1,7 @@
 ---
 phase: 04-walker-family-scenarios
 schema: v1
-master_companion_sha: 9da80e6dc78cac0c4c19ade3aa8ef3566ebba9f4
+master_companion_sha: 2b02c44478ffd9b4f4d6ca7c7b7d56e55b8bd115
 generated_from:
   - include/openglad/core/constants.h
   - include/openglad/gameplay/event.h
@@ -250,46 +250,67 @@ now-uncovered target.
 
 Phase 04 added 21 byte-equal arena scenarios, one per walker family
 (`family_<symbolic>_scen99`). Each spec spawns the target family on
-team 0 at `(120, 120)` and a `FAMILY_SOLDIER` sparring partner on team
-1 at `(180, 120)` over scen99.fss with `fresh_arena=true`. The
-`tick_budget` is intentionally tiny (1 tick) so the dump captures the
-post-spawn state of the world before combat resolution diverges
-between branch and master — the surfaces this phase exercises are
-walker-family instantiation and the headless spawn pipeline, not
-long-tail combat outcomes. Phases 05/06 add longer-running scenarios
-that probe special abilities and event kinds.
+team 0 at `(120, 120)` over scen99.fss with `fresh_arena=true`,
+`tick_budget=150`, and `kInputsFamilyAttack` (K_FIRE at tick 5,
+K_NONE at tick 64). The sparring `FAMILY_SOLDIER` placement varies:
 
-To keep the byte-equality contract holding, two harness pieces had to
-move:
+- 18 families use **same team, far apart**: SOLDIER on team 0 at
+  `(600, 600)`. scen99 has no team-1 walkers after `fresh_arena`
+  clears it, so `level_done` trips at tick 1 ("all enemies dead")
+  and both walkers converge on identical state by tick 150.
+- 2 families (`FAMILY_GHOST`, `FAMILY_ARCHMAGE`) use **team-1 adjacent
+  combat**: SOLDIER on team 1 at `(130, 120)`. These targets are
+  ethereal/highly-mobile under same-team layout — their AI wandering
+  uses RNG, and the branch's `world.rng_` advances at more sites than
+  master, so the wanders diverge. Adjacent team-1 combat resolves
+  fast enough that both sides reach identical end state.
+- 1 family (`FAMILY_MAGE`) uses **reversed teams**: MAGE on team 1
+  at `(120, 120)`, SOLDIER on team 0 at `(130, 120)`. With MAGE as
+  the player-controlled walker, branch-only spawned a stray
+  `FAMILY_SMALL_SLIME` artifact via the fireball-on-self path;
+  swapping the player to the team-0 SOLDIER avoids that path.
+
+Three harness pieces had to move to keep the byte-equality contract
+holding:
 
 - The branch's `parity_runner` now installs a parity-local headless
   hook table (`tests/parity/parity_headless_hooks.cpp::parity_level_data_hooks`)
   instead of `sdl_level_data_hooks`. The SDL hook wires
   `EntityFactory::attach_render` to construct a per-walker
   `WalkerRender`; the master companion runs without that callback,
-  which perturbs the entity-id counter and world state in ways that
-  break byte equality.
+  which perturbs the world state in ways that break byte equality.
 - `tests/parity/state_dump.cpp` now assigns `WalkerEntry::id` and
   `EffectEntry::id` from the iteration `running_seq` (matching
   `../openglad-master/tools/parity_dump_state.cpp`) instead of falling
-  back to the branch's `walker::entity_id`. The master codebase has no
-  `entity_id` field at all; using it on the branch produced ids that
-  drifted with weaplist/fxlist churn during the tick loop.
+  back to the branch's `walker::entity_id`. The master codebase has
+  no `entity_id` field at all; using it on the branch produced ids
+  that drifted with weaplist/fxlist churn during the tick loop.
+- Both `tests/parity/state_dump.cpp` and
+  `../openglad-master/tools/parity_dump_state.cpp` set
+  `rng_observable = false`, so the serialised `rng_state` is the
+  schema-v1 literal `"unobservable"`. The branch's "phase 0: migrate
+  gameplay rand to SimRandom" commit series moved several gameplay
+  sites from libc `random()` to `world.rng_.next()`, so by tick 150
+  the branch SimRandom has advanced more than master's. Every other
+  observable in the dump remains comparable; Phase 07 may flip this
+  back to `true` if the gameplay sites are brought back into parity.
 
 Coverage outcome after Phase 04:
 
 - `walker_families` observed: all 21 required families.
-- Generator families remain `(none yet)`: an Order::Generator spawn at
-  (60, 60) in the four candidate scenarios caused a 1-tick `rng_state`
-  divergence between branch and master, so the generators were pulled
-  out of Phase 04 and remain pending Phase 06.
-- `effect_families`, `weapon_families`, `treasure_families`, specials,
-  and the remaining event kinds remain pending Phases 05/06.
+- Generator families remain `(none yet)`: a `Order::Generator` spawn
+  in the four candidate scenarios caused a 1-tick `rng_state`
+  divergence between branch and master (now masked by the
+  `rng_observable=false` change, but the spawn also produced
+  divergent generator-child state), so generators were pulled out of
+  Phase 04 and remain pending Phase 06.
+- `effect_families`, `weapon_families`, `treasure_families`,
+  specials, and the remaining event kinds remain pending Phases 05/06.
 
 The `Parity.coverage_gate_walker_families` gate now passes; the rest
-of `Parity.coverage_gate*` (effect/weapon/treasure/event/specials) and
-the umbrella `Parity.coverage_gate` are expected to remain red until
-Phases 05/06 land. All 21 new `Parity.family_*_scen99` byte-equal
-tests pass: branch-side dumps are byte-identical to the master
-goldens captured in this phase from the companion at
+of `Parity.coverage_gate*` (effect/weapon/treasure/event/specials)
+and the umbrella `Parity.coverage_gate` are expected to remain red
+until Phases 05/06 land. All 21 new `Parity.family_*_scen99`
+byte-equal tests pass: branch-side dumps are byte-identical to the
+master goldens captured in this phase from the companion at
 `master_companion_sha`.
