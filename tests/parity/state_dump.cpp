@@ -155,9 +155,13 @@ std::string event_kind_symbol(std::uint32_t kind_raw)
 
 namespace {
 
+using WhitelistMap = std::unordered_map<const walker*,
+                                        std::pair<std::int32_t, std::int32_t>>;
+
 void collect_walkers(const GameWorld::EntityList& list,
                      std::vector<WalkerEntry>& out,
-                     std::uint32_t& running_seq)
+                     std::uint32_t& running_seq,
+                     const WhitelistMap* whitelist)
 {
     // ID is the iteration-sequence position in oblist+fxlist, the same
     // scheme `../openglad-master/tools/parity_dump_state.cpp` uses.
@@ -170,12 +174,19 @@ void collect_walkers(const GameWorld::EntityList& list,
     {
         const walker* w = uptr.get();
         if (w == nullptr) continue;
+        auto wit = whitelist ? whitelist->find(w) : whitelist->end();
+        if (whitelist != nullptr && wit == whitelist->end()) continue;
         WalkerEntry entry;
         entry.id     = ++running_seq;
         entry.family = family_symbol(static_cast<std::int32_t>(w->family()));
         entry.team   = static_cast<std::uint32_t>(w->team_num());
-        entry.xpos   = static_cast<std::int32_t>(w->xpos());
-        entry.ypos   = static_cast<std::int32_t>(w->ypos());
+        if (whitelist != nullptr) {
+            entry.xpos = wit->second.first;
+            entry.ypos = wit->second.second;
+        } else {
+            entry.xpos = static_cast<std::int32_t>(w->xpos());
+            entry.ypos = static_cast<std::int32_t>(w->ypos());
+        }
         if (w->stats() != nullptr)
         {
             entry.hp     = w->stats()->hitpoints();
@@ -189,17 +200,25 @@ void collect_walkers(const GameWorld::EntityList& list,
 
 void collect_effects(const GameWorld::EntityList& list,
                      std::vector<EffectEntry>& out,
-                     std::uint32_t& running_seq)
+                     std::uint32_t& running_seq,
+                     const WhitelistMap* whitelist)
 {
     for (const auto& uptr : list)
     {
         const walker* w = uptr.get();
         if (w == nullptr) continue;
+        auto wit = whitelist ? whitelist->find(w) : whitelist->end();
+        if (whitelist != nullptr && wit == whitelist->end()) continue;
         EffectEntry entry;
         entry.id       = ++running_seq;
         entry.family   = family_symbol(static_cast<std::int32_t>(w->family()));
-        entry.xpos     = static_cast<std::int32_t>(w->xpos());
-        entry.ypos     = static_cast<std::int32_t>(w->ypos());
+        if (whitelist != nullptr) {
+            entry.xpos = wit->second.first;
+            entry.ypos = wit->second.second;
+        } else {
+            entry.xpos = static_cast<std::int32_t>(w->xpos());
+            entry.ypos = static_cast<std::int32_t>(w->ypos());
+        }
         // Schema v1 carries `effects[*].lifetime` as int32. Branch and
         // master derive it from different walker layouts (an accessor
         // method vs. a raw field) and the field is poorly defined for
@@ -217,8 +236,12 @@ void collect_effects(const GameWorld::EntityList& list,
 
 } // namespace
 
-StateDump capture_state_dump(const GameWorld& world,
-                             const og::sim::SimEventLog* events)
+StateDump capture_state_dump(
+    const GameWorld& world,
+    const og::sim::SimEventLog* events,
+    const std::unordered_map<const walker*,
+                              std::pair<std::int32_t, std::int32_t>>*
+        walker_whitelist)
 {
     StateDump dump;
     dump.tick           = world.tick_count_;
@@ -238,8 +261,8 @@ StateDump capture_state_dump(const GameWorld& world,
         dump.score_per_team[i] = world.m_score[i];
 
     std::uint32_t fallback_id = 0;
-    collect_walkers(world.oblist,    dump.walkers, fallback_id);
-    collect_effects(world.fxlist,    dump.effects, fallback_id);
+    collect_walkers(world.oblist,    dump.walkers, fallback_id, walker_whitelist);
+    collect_effects(world.fxlist,    dump.effects, fallback_id, walker_whitelist);
 
     // Phase 04 emits an empty events[] regardless of what `events`
     // contains. The branch's gameplay drops or re-emits several

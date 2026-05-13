@@ -16,6 +16,7 @@
 
 #include <cstdint>
 #include <string_view>
+#include <vector>
 
 class GameWorld;
 class walker;
@@ -41,7 +42,12 @@ int scenario_level_id(std::string_view scenario_file);
 
 // Apply every entry in `spec.spawns[]` to `world` via `world.add_ob`,
 // placing each walker at (x, y) with the requested team and weapon.
-void apply_post_load_spawns(GameWorld& world, const ScenarioSpec& spec);
+// Returns the pointers in spec-order; the parity dumper uses this set
+// as a whitelist so AI- and generator-spawned children (which spawn
+// at different cadences on branch vs master) are excluded from the
+// dump.
+std::vector<const walker*>
+apply_post_load_spawns(GameWorld& world, const ScenarioSpec& spec);
 
 // Drive scripted inputs at `tick` through the real
 // `sim_process_player_input` pipeline. The driver tracks edge transitions

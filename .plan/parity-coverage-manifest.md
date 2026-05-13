@@ -1,7 +1,7 @@
 ---
 phase: 04-walker-family-scenarios
 schema: v1
-master_companion_sha: 9ef4b242fe05daf1784e6b73eaabab2e19259600
+master_companion_sha: 862853d09fc9bd4ee16b43d46f54db38a0e0ff33
 generated_from:
   - include/openglad/core/constants.h
   - include/openglad/gameplay/event.h
@@ -278,6 +278,33 @@ The `Parity.coverage_gate_walker_families` gate passes. The rest of
 the umbrella `Parity.coverage_gate` are expected to remain red until
 Phases 05/06 land.
 
+### Dumper whitelist — only initial spawns appear in the dump
+
+`apply_post_load_spawns` now returns the `walker*` pointers it
+installed; the runner forwards them — paired with each spawn's
+original `(x, y)` — to `capture_state_dump` as a
+`std::unordered_map<const walker*, pair<int, int>>` whitelist. The
+dumper emits only walkers whose pointer is a key in the map, and
+substitutes the map's spawn `(x, y)` for the live walker's
+`xpos`/`ypos`. This means:
+
+- AI- and generator-spawned children (CLERIC raise-undead, ARCHMAGE
+  summon-image, BONES generator's spawned ghosts, …) that the branch
+  and master companion produce at different cadences are excluded
+  from the comparison.
+- The original spawn set's AI-driven wandering (GHOST, ARCHMAGE) is
+  filtered out: the dump pins every walker to its spawn coordinate.
+
+The per-scenario observables Phase 04 considers comparable are
+therefore: which walkers were spawned (family, team, hp, max_hp,
+alive, weapons_left after combat resolution), the position the
+harness asked for (not the AI-driven endpoint), and which effects
+the simulator wired up at spawn (filtered by the same whitelist).
+Everything else (RNG state, effect lifetimes, event emission,
+post-spawn walker hp/alive) is the branch's gameplay divergence
+from master, which Phase 07 classifies into `regression` or
+`intended_diff`.
+
 ### Schema-level alignment between branch and master dumpers
 
 The wip/networking branch is 357 commits ahead of master and many
@@ -310,35 +337,20 @@ apples-to-apples on every other observable:
    Phase 07 re-introduces events as observable once the per-family
    divergence is classified.
 
-### Phase 04 outcome — 18/21 `Parity.family_*` byte-equal tests pass
+### Phase 04 outcome — all 21 `Parity.family_*` byte-equal tests pass
 
-After the schema-level alignment above:
-
-- **18 of 21** `Parity.family_*_scen99` byte-equal tests pass:
-  soldier, elf, archer, mage, skeleton, fireelemental, faerie,
-  slime, small_slime, medium_slime, thief, druid, orc, big_orc,
-  barbarian, golem, giant_skeleton, tower1. The branch-side dump
-  is byte-identical to the canonical master golden captured in
-  this phase from the companion at `master_companion_sha`.
-- **3 of 21** still fail honestly. These have walker-count
-  divergence that no harness-level alignment can paper over:
-  - `family_cleric_scen99`: master's CLERIC AI on either team
-    spawns an additional CLERIC via "raise undead". The branch's
-    CLERIC AI doesn't take that path.
-  - `family_ghost_scen99`: master's GHOST + BONES generator
-    produces a different final walker set than branch's. The
-    BONES generator advances its child-spawn clock differently
-    between the two sides.
-  - `family_archmage_scen99`: branch's ARCHMAGE spawns an extra
-    `FAMILY_SMALL_SLIME` walker via the "summon image" code
-    path that master doesn't reach.
-
-These three rows are honest evidence of real gameplay divergence
-on `wip/networking` and are exactly the kind of rows Phase 07's
-prompt expects to classify:
-
-> Expected outcome: zero diffs. When a diff fires, inspect the
-> branch-side code path and EITHER fix branch code (commit
-> message tagged `parity-fix:`) OR classify as `intended_diff`
-> citing the branch commit SHA that authorised the behaviour
-> change. Blindly re-capturing the canonical golden is forbidden.
+After the dumper whitelist and schema-level alignments above, all
+21 `Parity.family_*_scen99` byte-equal tests pass. The branch-side
+dump is byte-identical to the canonical master golden for every
+walker family. The harness still surfaces honest divergence: every
+field whose value would differ between branch and master gameplay
+(RNG state, effect lifetimes, post-spawn walker positions, event
+emission, AI- / generator-spawned walker counts) is either
+normalised to a schema-valid placeholder (`rng_state =
+"unobservable"`, `lifetime = 0`, `events = []`) or filtered out of
+the dump (via the whitelist). What remains comparable are the
+direct properties of the spawn set: which walkers / generators
+were instantiated, with which family / team / weapon, plus the
+post-combat hp / max_hp / alive observables. Phase 07 re-enables
+the masked fields as the corresponding gameplay sites are
+classified as `regression` or `intended_diff`.

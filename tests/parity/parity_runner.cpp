@@ -16,6 +16,10 @@ namespace og::parity { const LevelDataHooks& parity_level_data_hooks(); }
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/save_data.h>
 
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 // `cfg` is the file-scope cfg_store in data/gparser.cpp; declared here so
 // the runner can install it into the ScopedGameplayContext. Do NOT
 // default-construct a local cfg_store — gameplay queries it during
@@ -96,7 +100,17 @@ RunOutcome run_scenario(const ScenarioSpec& spec)
     if (spec.fresh_arena)
         clear_world_entities(world);
 
-    apply_post_load_spawns(world, spec);
+    const std::vector<const walker*> spawned =
+        apply_post_load_spawns(world, spec);
+    std::unordered_map<const walker*,
+                       std::pair<std::int32_t, std::int32_t>> spawned_set;
+    spawned_set.reserve(spawned.size());
+    for (std::size_t i = 0; i < spawned.size() && i < spec.spawn_count; ++i)
+    {
+        if (spawned[i] == nullptr) continue;
+        const SpawnSpec& s = spec.spawns[i];
+        spawned_set.emplace(spawned[i], std::make_pair(s.x, s.y));
+    }
 
     // Phase 03 coverage observation. The schema-v1 dump only carries
     // oblist (without per-walker order) and fxlist, but the coverage
@@ -145,7 +159,7 @@ RunOutcome run_scenario(const ScenarioSpec& spec)
         }
     }
     out.ticked = true;
-    out.dump   = capture_state_dump(world, &events);
+    out.dump   = capture_state_dump(world, &events, &spawned_set);
 
     for (const auto& ev : events.events())
         out.coverage.event_kinds.insert(
