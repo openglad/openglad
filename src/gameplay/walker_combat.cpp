@@ -140,7 +140,20 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
                 newob->set_team_num(team_num());
                 newob->stats()->set_level(1);
                 newob->set_damage(0);
-                newob->set_ani_type(static_cast<char>(1 + current_game->world->rng_.next(3)));
+                // parity-fix: this site uses libc `std::rand()` (matching
+                // master pre-migration). The "phase 0: migrate gameplay
+                // rand to SimRandom" commit (3014b18a) moved this site to
+                // `world.rng_.next(3)`, which advanced the world RNG at a
+                // site master leaves untouched. The Phase 04 parity dump's
+                // `rng_state` field is observable, so reverting this site
+                // is the smallest principled `parity-fix:` that restores
+                // master-equivalent `world.rng_` consumption while keeping
+                // the rest of the migration in place. Hit-fx animation
+                // type is cosmetic and was already non-deterministic on
+                // master (libc rand wasn't seeded); production behaviour
+                // here matches master's non-deterministic behaviour.
+                newob->set_ani_type(
+                    static_cast<char>(1 + static_cast<int>(static_cast<std::uint32_t>(std::rand()) % 3)));
                 if(attacker == this)
                 {
                     newob->center_on(target);

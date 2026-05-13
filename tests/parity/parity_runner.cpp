@@ -2,6 +2,7 @@
 
 #include "scenario_runtime.h"
 
+#include <openglad/core/irandom.h>
 #include <openglad/core/order.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
@@ -12,6 +13,8 @@
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/save_data.h>
 
+#include <cstdlib>
+
 // `cfg` is the file-scope cfg_store in data/gparser.cpp; declared here so
 // the runner can install it into the ScopedGameplayContext. Do NOT
 // default-construct a local cfg_store — gameplay queries it during
@@ -21,6 +24,24 @@ extern cfg_store cfg;
 namespace og::parity {
 
 namespace {
+
+// Phase 04 parity-fix: a libc-rand-backed IRandom used to scope the
+// gameplay_rng_override around `apply_post_load_spawns`. The branch's
+// `walker_rng()` consults `gameplay_rng_override()` first; when the
+// override is installed, walker construction reads from libc rand
+// (matching master's pre-migration `rand()%10` for path_check_counter).
+// The override is removed before the tick loop so combat sites that
+// master also reads from `world.rng_` (compute_xp_from_action,
+// compute_base_damage) stay on `world.rng_` on both sides.
+class LibcRandRandom : public IRandom
+{
+public:
+    std::uint32_t next(std::uint32_t max_exclusive) override
+    {
+        if (max_exclusive == 0) return 0;
+        return static_cast<std::uint32_t>(std::rand()) % max_exclusive;
+    }
+};
 
 // Test-side ScopedGameplayContext mirror. Cannot reuse the one declared in
 // tests/test_gameplay_context_scope.h because including it would pull in the
@@ -73,6 +94,13 @@ RunOutcome run_scenario(const ScenarioSpec& spec)
 
     ScopedGameplayContext ctx(level.world(), save, events, ::cfg);
 
+    // Seed libc rand deterministically. The branch's walker_combat.cpp
+    // (the migrated hit-fx ani_type site, see parity-fix above) and
+    // master's gameplay both consume `std::rand()` at the same
+    // call site; both binaries reset libc state to seed 1 at scenario
+    // start so the consumption is byte-equivalent.
+    std::srand(1);
+
     out.loaded = level.load();
 
     GameWorld& world = level.world();
@@ -85,7 +113,20 @@ RunOutcome run_scenario(const ScenarioSpec& spec)
     if (spec.fresh_arena)
         clear_world_entities(world);
 
-    apply_post_load_spawns(world, spec);
+    // Scope a libc-rand override around `apply_post_load_spawns` so the
+    // branch's `walker_rng()` reads libc rand during walker construction
+    // — matching master's pre-migration `rand()%10` for the
+    // path_check_counter init. The override is removed immediately
+    // after the spawn loop so combat sites that consult
+    // `gameplay_rng_override()` during the tick loop (combat_rng's
+    // damage/xp callers) stay on `world.rng_` on both sides.
+    {
+        LibcRandRandom parity_construct_rng;
+        IRandom*       parity_construct_slot = &parity_construct_rng;
+        set_gameplay_rng_override(&parity_construct_slot);
+        apply_post_load_spawns(world, spec);
+        set_gameplay_rng_override(nullptr);
+    }
 
     // Phase 03 coverage observation. The schema-v1 dump only carries
     // oblist (without per-walker order) and fxlist, but the coverage
