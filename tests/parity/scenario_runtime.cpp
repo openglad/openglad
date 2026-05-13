@@ -43,6 +43,7 @@ void apply_post_load_spawns(GameWorld& world, const ScenarioSpec& spec)
                                  /*atstart=*/true);
         if (w == nullptr) continue;
 
+
         // setxy runs the passability check and updates the spatial index;
         // set_xpos / set_ypos alone leave the walker in the obmap at its
         // construction-time origin and the simulator immediately relocates

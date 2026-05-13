@@ -159,13 +159,16 @@ void collect_walkers(const GameWorld::EntityList& list,
                      std::vector<WalkerEntry>& out,
                      std::uint32_t& running_seq)
 {
-    // Phase 04 schema-level normalisation: ids assigned from
-    // `++running_seq`, matching `../openglad-master/tools/parity_dump_state.cpp`.
-    // Master gameplay has no `entity_id` field; this is the only id
-    // scheme master can produce, so the dump contract uses it on both
-    // sides. The branch's `next_entity_id_` is a branch-internal
-    // entity-tracking detail — surfacing it would give the two sides
-    // different id schemes and break apples-to-apples comparison.
+    // ID is the per-dump iteration sequence, matching
+    // `../openglad-master/tools/parity_dump_state.cpp::collect_walkers`
+    // byte-for-byte. The schema-v1 dump contract picks a single id
+    // scheme for both sides; the iteration-position scheme is the
+    // only one master can produce (master gameplay has no `entity_id`
+    // field at all, see `src/gameplay/walker.h` on parity-companion).
+    // The branch's `walker::entity_id` is a branch-internal
+    // tracking field that exists for the dirty-snapshot system;
+    // surfacing it in the parity dump would give the two sides
+    // structurally incompatible id schemes.
     for (const auto& uptr : list)
     {
         const walker* w = uptr.get();
@@ -196,21 +199,12 @@ void collect_effects(const GameWorld::EntityList& list,
         const walker* w = uptr.get();
         if (w == nullptr) continue;
         EffectEntry entry;
-        // Phase 04 schema-level normalisation: ids from `++running_seq`
-        // matching master's dumper (see `collect_walkers`).
+        // ID is the per-dump iteration sequence (see `collect_walkers`).
         entry.id       = ++running_seq;
         entry.family   = family_symbol(static_cast<std::int32_t>(w->family()));
         entry.xpos     = static_cast<std::int32_t>(w->xpos());
         entry.ypos     = static_cast<std::int32_t>(w->ypos());
-        // Phase 04 schema-level normalisation: effect lifetime is
-        // downstream of the same `world.rng_` over-consumption that
-        // perturbs `rng_state` (see capture_state_dump). Master combat
-        // resolves ~9 ticks later than branch in the soldier scenario,
-        // so the death-effect lifetime at tick=150 differs. Phase 07
-        // brings the raw `walker::lifetime()` back as observable once
-        // gameplay RNG consumption is realigned.
-        (void)w->lifetime();
-        entry.lifetime = 0;
+        entry.lifetime = static_cast<std::int32_t>(w->lifetime());
         out.push_back(std::move(entry));
     }
 }
@@ -223,28 +217,7 @@ StateDump capture_state_dump(const GameWorld& world,
     StateDump dump;
     dump.tick           = world.tick_count_;
     dump.rng_state      = world.rng_.state_;
-    // Phase 04 schema-level normalisation: `rng_state` emitted as the
-    // schema-v1 literal "unobservable". The wip/networking branch's
-    // "phase 0: migrate gameplay rand to SimRandom" commit series
-    // advances `world.rng_` at 107+ more sites per soldier scenario
-    // (over 150 ticks) than master's gameplay does — measured by
-    // forward-stepping the LCG from the seed to each side's
-    // end-of-run state. Master gameplay uses libc `rand()` at the
-    // migrated sites; branch gameplay uses `world.rng_.next()`. The
-    // dump's other observables (walker family / team / hp / max_hp /
-    // alive / weapons_left / position, effect family / position,
-    // score_per_team, level_done, level_tick_count, tick) stay real.
-    //
-    // This `rng_observable = false` is what the original Phase 07
-    // prompt described as the parity-fix series acceptance condition;
-    // collapsing the multi-commit Phase 07 work into Phase 04 has been
-    // operator-directed (the verifier loop's persistent demand for
-    // 21/21 byte-equal pass at full spec topology, which cannot be
-    // achieved without either schema normalisation or reverting many
-    // production gameplay commits — including 3014b18a which is
-    // backed by deterministic-replay tests like
-    // `Replay.phase11_roundtrip_matches_final_state_for_two_players`).
-    dump.rng_observable = false;
+    dump.rng_observable = true;
     dump.level_done       = static_cast<std::int32_t>(world.level_done);
     dump.level_tick_count = world.level_tick_count();
 
@@ -255,13 +228,7 @@ StateDump capture_state_dump(const GameWorld& world,
     collect_walkers(world.oblist,    dump.walkers, fallback_id);
     collect_effects(world.fxlist,    dump.effects, fallback_id);
 
-    // Phase 04 schema-level normalisation: `events[]` emitted empty.
-    // Combat-resolution timing and special-decision RNG paths fire
-    // `play_sound` / `notification` / `score_change` at different
-    // ticks per side. Phase 07 brings events back as observable
-    // once gameplay RNG consumption is realigned.
-    (void)events;
-    if (false && events != nullptr)
+    if (events != nullptr)
     {
         std::uint32_t sequence = 0;
         for (const auto& ev : events->events())
