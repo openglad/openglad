@@ -291,6 +291,7 @@ inline constexpr SpawnSpec kFamilySpawns_elf[] = {
 inline constexpr SpawnSpec kFamilySpawns_archer[] = {
     {  2, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_ARCHER target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
+    { 20, 0, kOrderLiving, 240, 240, 0, 0 }, // FAMILY_TOWER1 watcher — needed for 04a check #4 (walkers[] >= 2): master removes the dead ARCHER from oblist, leaving only the sparring SOLDIER's body.
 };
 inline constexpr SpawnSpec kFamilySpawns_mage[] = {
     {  3, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_MAGE target
@@ -309,10 +310,12 @@ inline constexpr SpawnSpec kFamilySpawns_cleric[] = {
 inline constexpr SpawnSpec kFamilySpawns_fireelemental[] = {
     {  6, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_FIREELEMENTAL target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
+    { 20, 0, kOrderLiving, 240, 240, 0, 0 }, // FAMILY_TOWER1 watcher — 04a check #4 (FIREELEMENTAL removed from oblist on death).
 };
 inline constexpr SpawnSpec kFamilySpawns_faerie[] = {
     {  7, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_FAERIE target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
+    { 20, 0, kOrderLiving, 240, 240, 0, 0 }, // FAMILY_TOWER1 watcher — 04a check #4 (FAERIE removed from oblist on death).
 };
 inline constexpr SpawnSpec kFamilySpawns_slime[] = {
     {  8, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_SLIME target
@@ -321,6 +324,7 @@ inline constexpr SpawnSpec kFamilySpawns_slime[] = {
 inline constexpr SpawnSpec kFamilySpawns_small_slime[] = {
     {  9, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_SMALL_SLIME target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
+    { 20, 0, kOrderLiving, 240, 240, 0, 0 }, // FAMILY_TOWER1 watcher — 04a check #4 (SMALL_SLIME removed from oblist on death).
 };
 inline constexpr SpawnSpec kFamilySpawns_medium_slime[] = {
     { 10, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_MEDIUM_SLIME target
@@ -329,6 +333,7 @@ inline constexpr SpawnSpec kFamilySpawns_medium_slime[] = {
 inline constexpr SpawnSpec kFamilySpawns_thief[] = {
     { 11, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_THIEF target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
+    { 20, 0, kOrderLiving, 240, 240, 0, 0 }, // FAMILY_TOWER1 watcher — 04a check #4 (THIEF removed from oblist on death).
 };
 inline constexpr SpawnSpec kFamilySpawns_ghost[] = {
     { 12, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_GHOST target
@@ -338,6 +343,7 @@ inline constexpr SpawnSpec kFamilySpawns_ghost[] = {
 inline constexpr SpawnSpec kFamilySpawns_druid[] = {
     { 13, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_DRUID target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
+    { 20, 0, kOrderLiving, 240, 240, 0, 0 }, // FAMILY_TOWER1 watcher — 04a check #4 (DRUID removed from oblist on death).
 };
 inline constexpr SpawnSpec kFamilySpawns_orc[] = {
     { 14, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_ORC target
