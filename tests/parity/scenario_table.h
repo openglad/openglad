@@ -291,7 +291,6 @@ inline constexpr SpawnSpec kFamilySpawns_elf[] = {
 inline constexpr SpawnSpec kFamilySpawns_archer[] = {
     {  2, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_ARCHER target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
-    { 20, 0, kOrderLiving, 240, 240, 0, 0 }, // FAMILY_TOWER1 watcher — keeps walkers[] >= 2 when target dies and gets removed from oblist (04a check #4).
 };
 inline constexpr SpawnSpec kFamilySpawns_mage[] = {
     {  3, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_MAGE target
@@ -301,11 +300,7 @@ inline constexpr SpawnSpec kFamilySpawns_mage[] = {
 inline constexpr SpawnSpec kFamilySpawns_skeleton[] = {
     {  4, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_SKELETON target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
-    { 20, 0, kOrderLiving, 240, 240, 0, 0 }, // FAMILY_TOWER1 watcher — keeps walkers[] >= 2 (04a check #4).
-    // FAMILY_TENT generator pulled out — its child-spawn cadence
-    // diverges between branch and master at tick 150 because the
-    // branch's `world.rng_` over-consumption shifts the generator's
-    // internal clock. Generator coverage rolls to Phase 06.
+    {  0, 1, kOrderGenerator, 60, 60, 0, 0 }, // FAMILY_TENT generator
 };
 inline constexpr SpawnSpec kFamilySpawns_cleric[] = {
     {  5, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_CLERIC target
@@ -314,12 +309,10 @@ inline constexpr SpawnSpec kFamilySpawns_cleric[] = {
 inline constexpr SpawnSpec kFamilySpawns_fireelemental[] = {
     {  6, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_FIREELEMENTAL target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
-    { 20, 0, kOrderLiving, 240, 240, 0, 0 }, // FAMILY_TOWER1 watcher (04a check #4).
 };
 inline constexpr SpawnSpec kFamilySpawns_faerie[] = {
     {  7, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_FAERIE target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
-    { 20, 0, kOrderLiving, 240, 240, 0, 0 }, // FAMILY_TOWER1 watcher (04a check #4).
 };
 inline constexpr SpawnSpec kFamilySpawns_slime[] = {
     {  8, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_SLIME target
@@ -328,7 +321,6 @@ inline constexpr SpawnSpec kFamilySpawns_slime[] = {
 inline constexpr SpawnSpec kFamilySpawns_small_slime[] = {
     {  9, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_SMALL_SLIME target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
-    { 20, 0, kOrderLiving, 240, 240, 0, 0 }, // FAMILY_TOWER1 watcher (04a check #4).
 };
 inline constexpr SpawnSpec kFamilySpawns_medium_slime[] = {
     { 10, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_MEDIUM_SLIME target
@@ -337,19 +329,15 @@ inline constexpr SpawnSpec kFamilySpawns_medium_slime[] = {
 inline constexpr SpawnSpec kFamilySpawns_thief[] = {
     { 11, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_THIEF target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
-    { 20, 0, kOrderLiving, 240, 240, 0, 0 }, // FAMILY_TOWER1 watcher (04a check #4).
 };
 inline constexpr SpawnSpec kFamilySpawns_ghost[] = {
     { 12, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_GHOST target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
-    // FAMILY_BONES generator pulled out — same divergent
-    // spawn-cadence reason as FAMILY_TENT under FAMILY_SKELETON.
-    // Generator coverage rolls to Phase 06.
+    {  2, 1, kOrderGenerator, 60, 60, 0, 0 }, // FAMILY_BONES generator
 };
 inline constexpr SpawnSpec kFamilySpawns_druid[] = {
     { 13, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_DRUID target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
-    { 20, 0, kOrderLiving, 240, 240, 0, 0 }, // FAMILY_TOWER1 watcher (04a check #4).
 };
 inline constexpr SpawnSpec kFamilySpawns_orc[] = {
     { 14, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_ORC target

@@ -159,22 +159,12 @@ void collect_walkers(const GameWorld::EntityList& list,
                      std::vector<WalkerEntry>& out,
                      std::uint32_t& running_seq)
 {
-    // ID is the per-dump iteration sequence, matching
-    // `../openglad-master/tools/parity_dump_state.cpp::collect_walkers`
-    // byte-for-byte. The schema-v1 dump contract picks a single id
-    // scheme for both sides; the iteration-position scheme is the
-    // only one master can produce (master gameplay has no `entity_id`
-    // field at all, see `src/gameplay/walker.h` on parity-companion).
-    // The branch's `walker::entity_id` is a branch-internal
-    // tracking field that exists for the dirty-snapshot system;
-    // surfacing it in the parity dump would give the two sides
-    // structurally incompatible id schemes.
     for (const auto& uptr : list)
     {
         const walker* w = uptr.get();
         if (w == nullptr) continue;
         WalkerEntry entry;
-        entry.id     = ++running_seq;
+        entry.id     = w->entity_id() != 0 ? w->entity_id() : ++running_seq;
         entry.family = family_symbol(static_cast<std::int32_t>(w->family()));
         entry.team   = static_cast<std::uint32_t>(w->team_num());
         entry.xpos   = static_cast<std::int32_t>(w->xpos());
@@ -199,21 +189,11 @@ void collect_effects(const GameWorld::EntityList& list,
         const walker* w = uptr.get();
         if (w == nullptr) continue;
         EffectEntry entry;
-        // ID is the per-dump iteration sequence (see `collect_walkers`).
-        entry.id       = ++running_seq;
+        entry.id       = w->entity_id() != 0 ? w->entity_id() : ++running_seq;
         entry.family   = family_symbol(static_cast<std::int32_t>(w->family()));
         entry.xpos     = static_cast<std::int32_t>(w->xpos());
         entry.ypos     = static_cast<std::int32_t>(w->ypos());
-        // Schema-v1 effects[].lifetime emitted as 0. The branch's
-        // post-`3014b18a` `world.rng_` consumption shifts combat
-        // resolution by a few ticks vs master, so the death-effect
-        // lifetime at tick=150 differs. The Phase 04 deliverable is
-        // the framework + canonical goldens; per CLAUDE.md tests
-        // must pass, so the field is normalised here. Phase 07's
-        // `parity-fix:` series flips this back once gameplay RNG
-        // consumption is realigned with master.
-        (void)w->lifetime();
-        entry.lifetime = 0;
+        entry.lifetime = static_cast<std::int32_t>(w->lifetime());
         out.push_back(std::move(entry));
     }
 }
@@ -226,15 +206,7 @@ StateDump capture_state_dump(const GameWorld& world,
     StateDump dump;
     dump.tick           = world.tick_count_;
     dump.rng_state      = world.rng_.state_;
-    // Schema-v1 rng_state emitted as "unobservable". The branch's
-    // "phase 0: migrate gameplay rand to SimRandom" series (3014b18a
-    // et al) advances `world.rng_` at 107+ more sites per soldier
-    // scenario over 150 ticks than master — the raw state diverges
-    // structurally. Per CLAUDE.md tests must pass; schema v1
-    // explicitly permits the "unobservable" literal here. Phase 07's
-    // `parity-fix:` series flips this back to `true` as each
-    // gameplay site is brought back into RNG-consumption parity.
-    dump.rng_observable = false;
+    dump.rng_observable = true;
     dump.level_done       = static_cast<std::int32_t>(world.level_done);
     dump.level_tick_count = world.level_tick_count();
 
@@ -245,13 +217,7 @@ StateDump capture_state_dump(const GameWorld& world,
     collect_walkers(world.oblist,    dump.walkers, fallback_id);
     collect_effects(world.fxlist,    dump.effects, fallback_id);
 
-    // Schema-v1 events[] emitted empty. The branch's combat-resolution
-    // and special-decision RNG paths fire `play_sound` /
-    // `notification` / `score_change` at different ticks than master
-    // because `world.rng_` advances differently. Phase 07 brings
-    // events back as observable.
-    (void)events;
-    if (false && events != nullptr)
+    if (events != nullptr)
     {
         std::uint32_t sequence = 0;
         for (const auto& ev : events->events())
