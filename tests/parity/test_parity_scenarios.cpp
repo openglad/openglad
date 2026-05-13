@@ -1,11 +1,16 @@
+#include "coverage_targets.h"
+#include "fact_predicate.h"
 #include "parity_runner.h"
 #include "scenario_table.h"
 #include "state_dump.h"
+
+#include <openglad/core/constants.h>
 
 #include <gtest/gtest.h>
 
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -45,15 +50,12 @@ void run_one_scenario(const og::parity::ScenarioSpec& spec)
     const og::parity::RunOutcome outcome = og::parity::run_scenario(spec);
     const std::string actual = og::parity::canonical_serialize(outcome.dump);
 
-    if (spec.is_branch_internal)
+    if (spec.is_branch_internal ||
+        spec.compare_mode == og::parity::CompareMode::Invariant)
     {
-        // Subsystem 12 — snapshot dirty-bit parity. Capture the run a second
-        // time and require byte-equal canonical JSON: a deterministic dumper
-        // over the same scenario must produce identical output. Phase 06
-        // skeleton: while the runner exercises an empty world, this still
-        // catches non-determinism in canonical_serialize and the StateDump
-        // capture path. Phase 07 expands the predicate once world-loading
-        // lands (compare dirty-tracked mirror vs direct iteration).
+        // Subsystem 12 — snapshot dirty-bit parity. Capture the run a
+        // second time and require byte-equal canonical JSON: a deterministic
+        // dumper over the same scenario must produce identical output.
         const og::parity::RunOutcome again = og::parity::run_scenario(spec);
         const std::string actual2 = og::parity::canonical_serialize(again.dump);
         EXPECT_EQ(actual, actual2)
@@ -61,28 +63,58 @@ void run_one_scenario(const og::parity::ScenarioSpec& spec)
         return;
     }
 
-    // Phase 02 smoke scenarios verify the runner actually loaded a scenario
-    // and exercised a non-empty world. They have no master golden yet
-    // (Phase 07 captures), so just check the dump itself is sensible.
-    if (spec.id.rfind("smoke_", 0) == 0)
+    const std::filesystem::path path = golden_path(spec.id);
+    std::string expected;
+    const bool have_golden = read_file(path, expected);
+
+    if (spec.compare_mode == og::parity::CompareMode::SemanticParity)
     {
-        EXPECT_GE(outcome.dump.tick, 50u)
-            << "smoke scenario " << spec.id << " ran fewer than 50 ticks";
-        EXPECT_FALSE(outcome.dump.walkers.empty())
-            << "smoke scenario " << spec.id << " produced an empty walker list";
+        // Phase 01 semantic-parity contract: evaluate the row's predicates
+        // on both the master golden (parsed) and the freshly captured
+        // branch dump. The two dumps may differ byte-for-byte (RNG drift,
+        // intended branch behavioural diffs) but every predicate must hold
+        // on both.
+        ASSERT_NE(spec.expected_facts, nullptr)
+            << "SemanticParity row " << spec.id
+            << " has no expected_facts[]";
+        ASSERT_GT(spec.fact_count, 0u)
+            << "SemanticParity row " << spec.id
+            << " has fact_count == 0";
+
+        const og::parity::FactEvalResult branch =
+            og::parity::evaluate_facts(spec.expected_facts, spec.fact_count,
+                                       outcome.dump);
+        EXPECT_TRUE(branch.ok)
+            << "semantic-parity branch dump failed for " << spec.id
+            << ": " << branch.message;
+
+        if (have_golden)
+        {
+            auto parsed = og::parity::parse_state_dump(expected);
+            ASSERT_TRUE(parsed.has_value())
+                << "could not parse master golden for " << spec.id
+                << " at " << path.string();
+            const og::parity::FactEvalResult master =
+                og::parity::evaluate_facts(spec.expected_facts, spec.fact_count,
+                                           *parsed);
+            EXPECT_TRUE(master.ok)
+                << "semantic-parity master golden failed for " << spec.id
+                << ": " << master.message;
+        }
+        else
+        {
+            GTEST_SKIP() << "master golden missing for " << spec.id
+                         << " (expected at " << path.string()
+                         << ") — Phase 04+ recapture will populate";
+        }
         return;
     }
 
-    const std::filesystem::path path = golden_path(spec.id);
-    std::string expected;
-    if (!read_file(path, expected))
+    // ByteEqual rows: require the dump match the golden byte-for-byte.
+    if (!have_golden)
     {
-        // Phase 01 teardown deleted the fraudulent goldens; Phase 07
-        // captures honest replacements from the rewritten master companion.
-        // Until then, mark the comparison as pending rather than failing.
         GTEST_SKIP() << "golden not yet captured for " << spec.id
-                     << " (expected at " << path.string()
-                     << ") — Phase 07 will capture from master companion";
+                     << " (expected at " << path.string() << ")";
         return;
     }
 
@@ -183,4 +215,83 @@ TEST(Parity, smoke_inputs_diverge_from_no_inputs)
     EXPECT_NE(sa, sb)
         << "smoke scenarios with and without inputs produced identical dumps; "
         << "apply_inputs_at_tick is not reaching the player walker";
+}
+
+// Phase 01 new gtests --------------------------------------------------------
+
+TEST(Parity, exercises_bitcount_matches_required_specials)
+{
+    // The Exercises enum reserves one bit per (family, special_index) pair
+    // in kRequiredSpecials. The highest declared bit must equal
+    // 1ULL << (count - 1) so coverage masks stay tight against the
+    // canonical list.
+    constexpr std::size_t kCount = std::size(og::parity::kRequiredSpecials);
+    EXPECT_EQ(kCount, std::size_t{42})
+        << "kRequiredSpecials length drifted from the 42-bit Exercises "
+           "layout in scenario_table.h";
+
+    const std::uint64_t highest =
+        static_cast<std::uint64_t>(og::parity::Exercises::Special_Archmage_4);
+    EXPECT_EQ(highest, 1ULL << (kCount - 1))
+        << "Exercises::Special_Archmage_4 must be bit (kCount - 1)";
+}
+
+TEST(Parity, parse_state_dump_tolerates_legacy_v1_shape)
+{
+    const std::filesystem::path path =
+        golden_path("family_soldier_scen99");
+    std::string golden;
+    ASSERT_TRUE(read_file(path, golden))
+        << "missing golden at " << path.string();
+    auto parsed = og::parity::parse_state_dump(golden);
+    ASSERT_TRUE(parsed.has_value())
+        << "parse_state_dump rejected a canonical v1 master golden";
+    EXPECT_FALSE(parsed->inventory_keys.has_value())
+        << "schema-v1 master goldens must not carry inventory_keys";
+
+    // Evaluate at least one backfilled predicate so the parser's output
+    // round-trips through the evaluator on real golden data.
+    const og::parity::ScenarioSpec* spec =
+        find_scenario("family_soldier_scen99");
+    ASSERT_NE(spec, nullptr);
+    ASSERT_GT(spec->fact_count, 0u);
+    const og::parity::FactEvalResult result =
+        og::parity::evaluate_facts(spec->expected_facts, spec->fact_count,
+                                   *parsed);
+    EXPECT_TRUE(result.ok)
+        << "backfilled predicate failed on master golden: " << result.message;
+}
+
+TEST(Parity, weapon_family_emitted_matches_dump_weapons_only)
+{
+    // Synthetic dump fixture: a weapon-order FAMILY_DOOR sits in
+    // dump.weapons[]; an effect-order FAMILY_DOOR_OPEN sits in
+    // dump.effects[]. The predicate must match the weapon and reject
+    // the effect.
+    og::parity::StateDump dump;
+    og::parity::WeaponEntry door_w;
+    door_w.family   = og::parity::family_symbol(FAMILY_DOOR);
+    door_w.id       = 100;
+    door_w.team     = 0;
+    door_w.xpos     = 0;
+    door_w.ypos     = 0;
+    door_w.lifetime = 0;
+    dump.weapons.push_back(door_w);
+
+    og::parity::EffectEntry door_open_fx;
+    door_open_fx.family   = og::parity::family_symbol(FAMILY_DOOR_OPEN);
+    door_open_fx.id       = 200;
+    door_open_fx.lifetime = 0;
+    dump.effects.push_back(door_open_fx);
+
+    const auto match_door = og::parity::evaluate_one(
+        og::parity::pred::WeaponFamilyEmitted(FAMILY_DOOR), dump);
+    EXPECT_TRUE(match_door.ok)
+        << "WeaponFamilyEmitted(FAMILY_DOOR) did not match dump.weapons[].family=18";
+
+    const auto match_door_open = og::parity::evaluate_one(
+        og::parity::pred::WeaponFamilyEmitted(FAMILY_DOOR_OPEN), dump);
+    EXPECT_FALSE(match_door_open.ok)
+        << "WeaponFamilyEmitted(FAMILY_DOOR_OPEN) matched dump.effects[].family=11; "
+        << "predicate must be pinned to dump.weapons[] only";
 }

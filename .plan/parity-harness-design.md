@@ -684,3 +684,57 @@ verifier `03b` confirms this. The Phase 02 smoke and combat scenarios
 cumulatively cover only `FAMILY_SOLDIER`, `FAMILY_ORC`, `play_sound`,
 and `score_change`; Phases 04-06 will land scenarios that fill in every
 other row in `parity-coverage-manifest.md`.
+
+## Phase 01 redo: semantic parity contract
+
+Phase 01 (`.plan/phases/01-semantic-parity-contract.md`) replaces the
+strict byte-equal contract with a semantic-equivalence predicate
+framework. `tests/parity/scenario_table.h` gains a third
+`CompareMode::SemanticParity`; ByteEqual rows whose master golden
+diverges from a fresh branch dump (detected via
+`parity_runner_smoke --scenario <id> --out <tmp>` + `cmp -s`) are
+flipped to that mode.
+
+Predicates are defined in `tests/parity/fact_predicate.h` as a `FactKind`
+enum + `FactPredicate` struct + `evaluate_facts(...)` evaluator + a
+`parse_state_dump(std::string_view)` JSON parser. Each row declares an
+`expected_facts[]` array and a `discriminating_mutation`: a single
+source-line change that is supposed to flip at least one of those
+predicates (Phase 02 applies it via the canary).
+
+The predicate kinds recognised by both the C++ evaluator and the
+Python mirror (`scripts/parity/evaluate_facts.py`) are: `TickReached`,
+`LevelDoneEquals`, `ScoreDelta`, `WalkerFamilyCount`,
+`WalkerOfTeamAlive`, `WalkerHpRangeAtFinalTick`, `WalkerKeysApplied`,
+`WalkerPositionMoved`, `WalkerDiedByFinal`, `WalkerAliveAtFinal`,
+`TreasureFamilyRemovedFromOblist`, `StatDeltaOnPickup`,
+`EffectFamilyCount`, `EventKindAtLeast`, `EventKindExactly`,
+`WeaponFamilyEmitted`. `WeaponFamilyEmitted` is pinned to
+`dump.weapons[].family` only — never `dump.effects[]`; the gtest
+`Parity.weapon_family_emitted_matches_dump_weapons_only` enforces this
+with a synthetic fixture.
+
+`SpawnSpec` grows two trailing optional fields (`stats_level`,
+`magicpoints`); scenario_runtime applies them when non-zero so caster
+rows for special-slot `>= 2` can satisfy the cycling gate
+(`sim_input_handler.cpp:218` requires `(N-1)*3+1 <= stats.level()`) and
+firing gate (`living.cpp:532-533` requires
+`magicpoints >= special_cost(current_special)`). The byte-mirror layout
+is preserved because both defaults are zero.
+
+`StateDump` gains `std::optional<std::vector<std::uint8_t>>
+inventory_keys` (Phase 04 wires producer and serialiser; the parser
+already tolerates the absent key) and an in-memory
+`std::vector<WeaponEntry> weapons` member (also unserialised; pre-existing
+ByteEqual rows therefore still byte-match their goldens).
+
+`scripts/parity/lint_scenario_facts.py` parses the table and asserts the
+pair-coherence, the non-empty fact requirements, the non-default
+mutation, and the caster-precondition floor. `LINT_SCENARIO_TABLE=<path>`
+overrides the parsed file (used by verifier 01b for the tampered-table
+negative test).
+
+A CMake-time tool `scenario_facts_dump` (linked into
+`og_test_parity` as a dependency) emits
+`tests/parity/scenario_facts_generated.json` — the single source of
+truth used by `evaluate_facts.py` and any future cross-language tool.

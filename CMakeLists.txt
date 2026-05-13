@@ -1472,6 +1472,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_stats_coverage.cpp
             ${CMAKE_SOURCE_DIR}/tests/parity/parity_runner.cpp
             ${CMAKE_SOURCE_DIR}/tests/parity/state_dump.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/fact_predicate.cpp
             ${CMAKE_SOURCE_DIR}/tests/parity/parity_bootstrap.cpp
             ${CMAKE_SOURCE_DIR}/tests/parity/scenario_runtime.cpp
             ${CMAKE_SOURCE_DIR}/tests/parity/parity_test_main.cpp
@@ -1812,6 +1813,7 @@ if(NOT EMSCRIPTEN)
             test_parity_coverage_gate.cpp
             parity_runner.cpp
             state_dump.cpp
+            fact_predicate.cpp
             parity_bootstrap.cpp
             scenario_runtime.cpp
             parity_test_main.cpp
@@ -1822,6 +1824,37 @@ if(NOT EMSCRIPTEN)
         target_compile_definitions(og_test_parity PRIVATE
             OG_PARITY_WORKSPACE_ROOT="${CMAKE_SOURCE_DIR}"
         )
+
+        # Phase 01 (semantic-parity): pre-build tool that emits the
+        # single-source-of-truth JSON for scripts/parity/evaluate_facts.py.
+        # Runs automatically as a dependency of og_test_parity so the
+        # generated file is always up to date with scenario_table.h.
+        add_executable(scenario_facts_dump
+            ${CMAKE_SOURCE_DIR}/tests/parity/scenario_facts_dump_main.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/fact_predicate.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/state_dump.cpp
+        )
+        target_include_directories(scenario_facts_dump PRIVATE
+            ${CMAKE_SOURCE_DIR}/tests
+            ${CMAKE_SOURCE_DIR}/tests/parity
+            ${CMAKE_SOURCE_DIR}/include
+            ${OG_THIRD_PARTY_INCLUDE_DIRS}
+        )
+        target_compile_features(scenario_facts_dump PRIVATE cxx_std_20)
+        target_link_libraries(scenario_facts_dump PRIVATE og_game_test)
+        add_custom_command(
+            OUTPUT  ${CMAKE_SOURCE_DIR}/tests/parity/scenario_facts_generated.json
+            COMMAND scenario_facts_dump
+                    --out ${CMAKE_SOURCE_DIR}/tests/parity/scenario_facts_generated.json
+            DEPENDS scenario_facts_dump
+                    ${CMAKE_SOURCE_DIR}/tests/parity/scenario_table.h
+            COMMENT "Regenerating scenario_facts_generated.json"
+            VERBATIM
+        )
+        add_custom_target(scenario_facts_generated ALL
+            DEPENDS ${CMAKE_SOURCE_DIR}/tests/parity/scenario_facts_generated.json
+        )
+        add_dependencies(og_test_parity scenario_facts_generated)
 
         # Standalone smoke runner — Phase 02 verifier and the launcher
         # extended in Phase 07 to enumerate scenarios via --list.

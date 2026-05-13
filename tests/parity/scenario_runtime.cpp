@@ -4,6 +4,7 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/input_state.h>
 #include <openglad/gameplay/sim_input_handler.h>
+#include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 
 namespace og::parity {
@@ -60,6 +61,20 @@ void apply_post_load_spawns(GameWorld& world, const ScenarioSpec& spec)
             w->set_default_weapon(s.default_weapon);
         if (s.current_weapon != 0)
             w->set_current_weapon(s.current_weapon);
+
+        // Phase 01 (semantic-parity): caster preconditions for special slots
+        // >= 2. The cycling gate sim_input_handler.cpp:218 requires
+        // (N-1)*3+1 <= stats.level(); the firing gate living.cpp:532-533
+        // requires magicpoints >= special_cost(current_special). Zero
+        // defaults preserve byte-mirror layout for rows that don't need
+        // either.
+        if (w->stats() != nullptr)
+        {
+            if (s.stats_level != 0)
+                w->stats()->set_level(s.stats_level);
+            if (s.magicpoints != 0)
+                w->stats()->set_magicpoints(static_cast<float>(s.magicpoints));
+        }
     }
 }
 

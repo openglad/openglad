@@ -9,6 +9,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -39,6 +40,23 @@ struct EffectEntry
     std::int32_t  lifetime = 0;
 };
 
+// Weapon-order entity (weaplist). The schema-v1 canonical_serialize does
+// not yet emit a top-level "weapons" array — Phase 04 wires the producer
+// + serialiser together. Until then this vector stays empty for runner-
+// produced dumps and parse_state_dump tolerates an absent "weapons" key.
+// `WeaponFamilyEmitted` predicates search ONLY this vector — never
+// `effects[]` — so FAMILY_DOOR (Order::Weapon, id 18) matches and
+// FAMILY_DOOR_OPEN (effect, id 11) does not.
+struct WeaponEntry
+{
+    std::uint32_t id       = 0;
+    std::string   family;
+    std::uint32_t team     = 0;
+    std::int32_t  xpos     = 0;
+    std::int32_t  ypos     = 0;
+    std::int32_t  lifetime = 0;
+};
+
 struct EventEntry
 {
     std::string   kind;       // canonical kind name, e.g. "play_sound"
@@ -64,6 +82,14 @@ struct StateDump
     // .plan/parity-harness-design.md (forward-compatible rule).
     std::int32_t               level_done       = 0; // world.level_done
     std::uint32_t              level_tick_count = 0; // world.level_tick_count()
+    // Phase 01 (semantic-parity contract) additions. Producer not yet
+    // wired — `weapons` stays empty for runner-produced dumps and
+    // `inventory_keys` stays std::nullopt. Phase 04 wires both ends.
+    // parse_state_dump tolerates an absent "weapons" key and an absent
+    // "inventory_keys" key. WeaponFamilyEmitted predicates evaluate over
+    // `weapons` ONLY.
+    std::vector<WeaponEntry>           weapons;
+    std::optional<std::vector<std::uint8_t>> inventory_keys;
 };
 
 // Build a StateDump from a live GameWorld.

@@ -332,3 +332,32 @@ families and all 4 generator families are observed regardless of
 whether the byte-equal goldens match). The umbrella
 `Parity.coverage_gate` plus the effect/weapon/treasure/event/
 specials sub-gates remain red pending Phases 05/06.
+
+## Parity contract
+
+Per `.plan/phases/01-semantic-parity-contract.md` the parity harness now
+recognises three comparison modes; the lint and the runner both refuse
+empty / default values for the new metadata fields.
+
+- `CompareMode::ByteEqual` — the canonical JSON dump produced by
+  `og::parity::canonical_serialize(...)` must match the master golden at
+  `tests/parity/golden/<id>.json` byte-for-byte. Phase 01's divergence
+  detector (`parity_runner_smoke --scenario <id> --out <tmp>` + `cmp -s
+  ... golden`) selects which rows can keep this mode. Currently 12 rows.
+- `CompareMode::SemanticParity` — the master golden is parsed via
+  `og::parity::parse_state_dump(...)`; both the parsed master and the
+  freshly captured branch dump must satisfy every entry in
+  `spec.expected_facts[]`. The 26 rows whose byte dump diverged from the
+  master golden carry this mode.
+- `CompareMode::Invariant` — branch-only run-time check; no golden
+  comparison. 1 row (snapshot_dirty_bits_scen9301).
+
+Predicate layout, semantics, and the `WeaponFamilyEmitted` / dump.weapons
+binding are described in `tests/parity/fact_predicate.h`. The lint
+(`scripts/parity/lint_scenario_facts.py`) enforces the rules listed in
+`.plan/phases/01-semantic-parity-contract.md` and the manifest gate
+(`tests/parity/test_parity_coverage_gate.cpp`) is untouched in Phase 01.
+
+`EffectFamilyCount` predicates must be qualified by either a source-walker
+family (`arg3 >= 0`) or a `[min_tick, max_tick]` window
+(`arg2 / arg3`); the lint rejects unqualified entries.
