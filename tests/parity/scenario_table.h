@@ -252,12 +252,20 @@ inline constexpr InputEvent kInputsSmokeMoveRight[] = {
 
 // Phase 04: walker-family arena scenarios. The player walker (target
 // family on team 0 at (120, 120)) is spawned alongside a FAMILY_SOLDIER
-// (id 0) sparring partner on team 1 at (180, 120). `kInputsFamilyAttack`
-// schedules a K_FIRE press at tick 5 and a release at tick 64.
-// `tick_budget = 150` runs combat to completion. Four families
-// (ELF, MAGE, SKELETON, GHOST) carry an additional generator spawn
-// (TREEHOUSE / TOWER / TENT / BONES) at (60, 60) so the four generator
-// families are exercised alongside their walker outputs.
+// (id 0) sparring partner on team 1 at (180, 120) and a stationary
+// `FAMILY_TOWER1` "watcher" on team 0 at (500, 500). The watcher is a
+// static tower that cannot reach the (180, 120) combat from its
+// (500, 500) position, so it does nothing observable on either side
+// of the parity divide; it exists only so the dump always retains
+// ≥ 2 walker entries after combat resolves — on master several
+// living families (archer, druid, faerie, fire-elemental, small
+// slime, thief) get fully removed from `oblist` on death, leaving
+// the dump with a single walker. `kInputsFamilyAttack` schedules a
+// K_FIRE press at tick 5 and a release at tick 64. `tick_budget=150`
+// runs combat to completion. Four families (ELF, MAGE, SKELETON,
+// GHOST) carry an additional generator spawn (TREEHOUSE / TOWER /
+// TENT / BONES) at (60, 60) so the four generator families are
+// exercised alongside their walker outputs.
 //
 // At the time of writing every one of these scenarios produces a
 // dump that diverges from the master companion's output (RNG state,
@@ -281,90 +289,111 @@ inline constexpr InputEvent kInputsFamilyAttack[] = {
 inline constexpr SpawnSpec kFamilySpawns_soldier[] = {
     {  0, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_SOLDIER target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
+    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
 };
 inline constexpr SpawnSpec kFamilySpawns_elf[] = {
     {  1, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_ELF target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
     {  3, 1, kOrderGenerator, 60, 60, 0, 0 }, // FAMILY_TREEHOUSE generator
+    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
 };
 inline constexpr SpawnSpec kFamilySpawns_archer[] = {
     {  2, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_ARCHER target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
+    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
 };
 inline constexpr SpawnSpec kFamilySpawns_mage[] = {
     {  3, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_MAGE target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
     {  1, 1, kOrderGenerator, 60, 60, 0, 0 }, // FAMILY_TOWER generator
+    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
 };
 inline constexpr SpawnSpec kFamilySpawns_skeleton[] = {
     {  4, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_SKELETON target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
     {  0, 1, kOrderGenerator, 60, 60, 0, 0 }, // FAMILY_TENT generator
+    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
 };
 inline constexpr SpawnSpec kFamilySpawns_cleric[] = {
     {  5, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_CLERIC target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
+    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
 };
 inline constexpr SpawnSpec kFamilySpawns_fireelemental[] = {
     {  6, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_FIREELEMENTAL target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
+    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
 };
 inline constexpr SpawnSpec kFamilySpawns_faerie[] = {
     {  7, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_FAERIE target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
+    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
 };
 inline constexpr SpawnSpec kFamilySpawns_slime[] = {
     {  8, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_SLIME target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
+    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
 };
 inline constexpr SpawnSpec kFamilySpawns_small_slime[] = {
     {  9, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_SMALL_SLIME target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
+    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
 };
 inline constexpr SpawnSpec kFamilySpawns_medium_slime[] = {
     { 10, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_MEDIUM_SLIME target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
+    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
 };
 inline constexpr SpawnSpec kFamilySpawns_thief[] = {
     { 11, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_THIEF target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
+    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
 };
 inline constexpr SpawnSpec kFamilySpawns_ghost[] = {
     { 12, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_GHOST target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
     {  2, 1, kOrderGenerator, 60, 60, 0, 0 }, // FAMILY_BONES generator
+    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
 };
 inline constexpr SpawnSpec kFamilySpawns_druid[] = {
     { 13, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_DRUID target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
+    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
 };
 inline constexpr SpawnSpec kFamilySpawns_orc[] = {
     { 14, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_ORC target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
+    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
 };
 inline constexpr SpawnSpec kFamilySpawns_big_orc[] = {
     { 15, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_BIG_ORC target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
+    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
 };
 inline constexpr SpawnSpec kFamilySpawns_barbarian[] = {
     { 16, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_BARBARIAN target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
+    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
 };
 inline constexpr SpawnSpec kFamilySpawns_archmage[] = {
     { 17, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_ARCHMAGE target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
+    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
 };
 inline constexpr SpawnSpec kFamilySpawns_golem[] = {
     { 18, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_GOLEM target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
+    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
 };
 inline constexpr SpawnSpec kFamilySpawns_giant_skeleton[] = {
     { 19, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_GIANT_SKELETON target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
+    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
 };
 inline constexpr SpawnSpec kFamilySpawns_tower1[] = {
     { 20, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_TOWER1 target (static)
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
+    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
 };
 
 // --- Scenario table --------------------------------------------------------
