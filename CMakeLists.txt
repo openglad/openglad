@@ -1830,6 +1830,7 @@ if(NOT EMSCRIPTEN)
         add_executable(parity_runner_smoke
             ${CMAKE_SOURCE_DIR}/tests/parity/parity_runner_smoke_main.cpp
             ${CMAKE_SOURCE_DIR}/tests/parity/parity_runner.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/parity_headless_hooks.cpp
             ${CMAKE_SOURCE_DIR}/tests/parity/state_dump.cpp
             ${CMAKE_SOURCE_DIR}/tests/parity/parity_bootstrap.cpp
             ${CMAKE_SOURCE_DIR}/tests/parity/scenario_runtime.cpp
