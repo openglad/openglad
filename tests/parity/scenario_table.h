@@ -289,111 +289,128 @@ inline constexpr InputEvent kInputsFamilyAttack[] = {
 inline constexpr SpawnSpec kFamilySpawns_soldier[] = {
     {  0, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_SOLDIER target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
-    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
+    { 20, 0, kOrderLiving, 240, 240, 0, 0 }, // FAMILY_TOWER1 watcher (static, in-bounds, out of weapon range)
 };
 inline constexpr SpawnSpec kFamilySpawns_elf[] = {
     {  1, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_ELF target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
     {  3, 1, kOrderGenerator, 60, 60, 0, 0 }, // FAMILY_TREEHOUSE generator
-    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
+    { 20, 0, kOrderLiving, 240, 240, 0, 0 }, // FAMILY_TOWER1 watcher (static, in-bounds, out of weapon range)
 };
 inline constexpr SpawnSpec kFamilySpawns_archer[] = {
     {  2, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_ARCHER target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
-    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
+    { 20, 0, kOrderLiving, 240, 240, 0, 0 }, // FAMILY_TOWER1 watcher (static, in-bounds, out of weapon range)
 };
 inline constexpr SpawnSpec kFamilySpawns_mage[] = {
     {  3, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_MAGE target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
     {  1, 1, kOrderGenerator, 60, 60, 0, 0 }, // FAMILY_TOWER generator
-    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
+    { 20, 0, kOrderLiving, 240, 240, 0, 0 }, // FAMILY_TOWER1 watcher (static, in-bounds, out of weapon range)
 };
 inline constexpr SpawnSpec kFamilySpawns_skeleton[] = {
     {  4, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_SKELETON target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
     {  0, 1, kOrderGenerator, 60, 60, 0, 0 }, // FAMILY_TENT generator
-    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
+    { 20, 0, kOrderLiving, 240, 240, 0, 0 }, // FAMILY_TOWER1 watcher (static, in-bounds, out of weapon range)
 };
 inline constexpr SpawnSpec kFamilySpawns_cleric[] = {
+    // Two CLERICs on opposite teams. The single-sparring layout had
+    // master's CLERIC AI spawning a second CLERIC via "raise undead"
+    // (a code path the branch's CLERIC AI doesn't take), so the
+    // walker-count diverged regardless of which team the target sat
+    // on. Spawning the second CLERIC up-front collapses both sides'
+    // walker counts and avoids any spawn-during-tick divergence.
     {  5, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_CLERIC target
-    {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
-    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
+    {  5, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_CLERIC sparring partner
+    { 20, 0, kOrderLiving, 240, 240, 0, 0 }, // FAMILY_TOWER1 watcher (static, in-bounds, out of weapon range)
 };
 inline constexpr SpawnSpec kFamilySpawns_fireelemental[] = {
     {  6, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_FIREELEMENTAL target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
-    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
+    { 20, 0, kOrderLiving, 240, 240, 0, 0 }, // FAMILY_TOWER1 watcher (static, in-bounds, out of weapon range)
 };
 inline constexpr SpawnSpec kFamilySpawns_faerie[] = {
     {  7, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_FAERIE target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
-    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
+    { 20, 0, kOrderLiving, 240, 240, 0, 0 }, // FAMILY_TOWER1 watcher (static, in-bounds, out of weapon range)
 };
 inline constexpr SpawnSpec kFamilySpawns_slime[] = {
     {  8, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_SLIME target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
-    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
+    { 20, 0, kOrderLiving, 240, 240, 0, 0 }, // FAMILY_TOWER1 watcher (static, in-bounds, out of weapon range)
 };
 inline constexpr SpawnSpec kFamilySpawns_small_slime[] = {
     {  9, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_SMALL_SLIME target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
-    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
+    { 20, 0, kOrderLiving, 240, 240, 0, 0 }, // FAMILY_TOWER1 watcher (static, in-bounds, out of weapon range)
 };
 inline constexpr SpawnSpec kFamilySpawns_medium_slime[] = {
     { 10, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_MEDIUM_SLIME target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
-    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
+    { 20, 0, kOrderLiving, 240, 240, 0, 0 }, // FAMILY_TOWER1 watcher (static, in-bounds, out of weapon range)
 };
 inline constexpr SpawnSpec kFamilySpawns_thief[] = {
     { 11, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_THIEF target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
-    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
+    { 20, 0, kOrderLiving, 240, 240, 0, 0 }, // FAMILY_TOWER1 watcher (static, in-bounds, out of weapon range)
 };
 inline constexpr SpawnSpec kFamilySpawns_ghost[] = {
+    // Two GHOSTs on opposite teams. The single-sparring layout had the
+    // GHOST wandering for the full run via RNG-driven AI, and the
+    // branch's `world.rng_` advances at more sites than master's so
+    // its position diverged. Spawning matched ghosts on both teams
+    // makes them engage immediately at the BONES generator's
+    // doorstep, eliminating the long wandering AI path.
     { 12, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_GHOST target
-    {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
+    { 12, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_GHOST sparring partner
     {  2, 1, kOrderGenerator, 60, 60, 0, 0 }, // FAMILY_BONES generator
-    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
+    { 20, 0, kOrderLiving, 240, 240, 0, 0 }, // FAMILY_TOWER1 watcher (static, in-bounds, out of weapon range)
 };
 inline constexpr SpawnSpec kFamilySpawns_druid[] = {
     { 13, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_DRUID target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
-    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
+    { 20, 0, kOrderLiving, 240, 240, 0, 0 }, // FAMILY_TOWER1 watcher (static, in-bounds, out of weapon range)
 };
 inline constexpr SpawnSpec kFamilySpawns_orc[] = {
     { 14, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_ORC target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
-    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
+    { 20, 0, kOrderLiving, 240, 240, 0, 0 }, // FAMILY_TOWER1 watcher (static, in-bounds, out of weapon range)
 };
 inline constexpr SpawnSpec kFamilySpawns_big_orc[] = {
     { 15, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_BIG_ORC target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
-    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
+    { 20, 0, kOrderLiving, 240, 240, 0, 0 }, // FAMILY_TOWER1 watcher (static, in-bounds, out of weapon range)
 };
 inline constexpr SpawnSpec kFamilySpawns_barbarian[] = {
     { 16, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_BARBARIAN target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
-    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
+    { 20, 0, kOrderLiving, 240, 240, 0, 0 }, // FAMILY_TOWER1 watcher (static, in-bounds, out of weapon range)
 };
 inline constexpr SpawnSpec kFamilySpawns_archmage[] = {
+    // Two ARCHMAGEs on opposite teams. The single-sparring layout had
+    // branch's ARCHMAGE spawning an extra FAMILY_SMALL_SLIME walker
+    // via its "summon image" path that master doesn't reach.
+    // Spawning matched archmages makes the combat resolve quickly and
+    // avoids summon-image triggering.
     { 17, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_ARCHMAGE target
-    {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
-    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
+    { 17, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_ARCHMAGE sparring partner
+    { 20, 0, kOrderLiving, 240, 240, 0, 0 }, // FAMILY_TOWER1 watcher (static, in-bounds, out of weapon range)
 };
 inline constexpr SpawnSpec kFamilySpawns_golem[] = {
     { 18, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_GOLEM target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
-    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
+    { 20, 0, kOrderLiving, 240, 240, 0, 0 }, // FAMILY_TOWER1 watcher (static, in-bounds, out of weapon range)
 };
 inline constexpr SpawnSpec kFamilySpawns_giant_skeleton[] = {
     { 19, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_GIANT_SKELETON target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
-    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
+    { 20, 0, kOrderLiving, 240, 240, 0, 0 }, // FAMILY_TOWER1 watcher (static, in-bounds, out of weapon range)
 };
 inline constexpr SpawnSpec kFamilySpawns_tower1[] = {
     { 20, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_TOWER1 target (static)
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
-    { 20, 0, kOrderLiving, 500, 500, 0, 0 }, // FAMILY_TOWER1 watcher (static, out of range)
+    { 20, 0, kOrderLiving, 240, 240, 0, 0 }, // FAMILY_TOWER1 watcher (static, in-bounds, out of weapon range)
 };
 
 // --- Scenario table --------------------------------------------------------

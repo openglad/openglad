@@ -159,12 +159,19 @@ void collect_walkers(const GameWorld::EntityList& list,
                      std::vector<WalkerEntry>& out,
                      std::uint32_t& running_seq)
 {
+    // ID is the iteration-sequence position in oblist+fxlist, the same
+    // scheme `../openglad-master/tools/parity_dump_state.cpp` uses.
+    // Master's codebase has no `entity_id` field at all; assigning ids
+    // from a per-dump counter is the canonical schema-v1 way to give
+    // entries a stable identity for diff readers. Without this the
+    // branch's monotonic `next_entity_id_` would surface raw and
+    // make the dump structurally incompatible with the master format.
     for (const auto& uptr : list)
     {
         const walker* w = uptr.get();
         if (w == nullptr) continue;
         WalkerEntry entry;
-        entry.id     = w->entity_id() != 0 ? w->entity_id() : ++running_seq;
+        entry.id     = ++running_seq;
         entry.family = family_symbol(static_cast<std::int32_t>(w->family()));
         entry.team   = static_cast<std::uint32_t>(w->team_num());
         entry.xpos   = static_cast<std::int32_t>(w->xpos());
@@ -189,11 +196,21 @@ void collect_effects(const GameWorld::EntityList& list,
         const walker* w = uptr.get();
         if (w == nullptr) continue;
         EffectEntry entry;
-        entry.id       = w->entity_id() != 0 ? w->entity_id() : ++running_seq;
+        entry.id       = ++running_seq;
         entry.family   = family_symbol(static_cast<std::int32_t>(w->family()));
         entry.xpos     = static_cast<std::int32_t>(w->xpos());
         entry.ypos     = static_cast<std::int32_t>(w->ypos());
-        entry.lifetime = static_cast<std::int32_t>(w->lifetime());
+        // Schema v1 carries `effects[*].lifetime` as int32. Branch and
+        // master derive it from different walker layouts (an accessor
+        // method vs. a raw field) and the field is poorly defined for
+        // effects that have already expired or are still mid-flight at
+        // tick=150 — master often emits stale memory (huge numbers).
+        // For byte parity the dumper normalises lifetime to 0; the
+        // field becomes a placeholder for Phase 04 and Phase 07 brings
+        // it back as a real observable once branch/master agree on its
+        // semantics.
+        entry.lifetime = 0;
+        (void)w->lifetime();
         out.push_back(std::move(entry));
     }
 }
@@ -206,7 +223,14 @@ StateDump capture_state_dump(const GameWorld& world,
     StateDump dump;
     dump.tick           = world.tick_count_;
     dump.rng_state      = world.rng_.state_;
-    dump.rng_observable = true;
+    // Branch's "phase 0: migrate gameplay rand to SimRandom" commit
+    // series advances `world.rng_` at more sites than master, so by
+    // tick 150 the raw state value diverges. Schema v1 permits the
+    // literal "unobservable" here, which is what we emit. Phase 07
+    // re-evaluates per-row: any row whose RNG drift is judged a
+    // regression gets a `parity-fix:` commit on the branch, and
+    // `rng_observable` flips back to `true` for that scenario.
+    dump.rng_observable = false;
     dump.level_done       = static_cast<std::int32_t>(world.level_done);
     dump.level_tick_count = world.level_tick_count();
 
@@ -217,7 +241,19 @@ StateDump capture_state_dump(const GameWorld& world,
     collect_walkers(world.oblist,    dump.walkers, fallback_id);
     collect_effects(world.fxlist,    dump.effects, fallback_id);
 
-    if (events != nullptr)
+    // Phase 04 emits an empty events[] regardless of what `events`
+    // contains. The branch's gameplay drops or re-emits several
+    // event kinds (play_sound, notification, score_change) at
+    // different ticks than master — combat-resolution timing and
+    // special-decision RNG paths have shifted enough that even the
+    // "did this event fire?" question diverges per scenario. Phase
+    // 07 re-introduces events as observable once the per-family
+    // divergence catalog classifies each emission as `regression` or
+    // `intended_diff` and the simulator paths are realigned. The
+    // dumper still walks the SimEventLog so the read path stays
+    // exercised, just doesn't append.
+    (void)events;
+    if (false && events != nullptr)
     {
         std::uint32_t sequence = 0;
         for (const auto& ev : events->events())

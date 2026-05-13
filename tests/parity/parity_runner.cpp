@@ -3,6 +3,9 @@
 #include "scenario_runtime.h"
 
 #include <openglad/core/order.h>
+#include <openglad/resources/level_data_hooks.h>
+
+namespace og::parity { const LevelDataHooks& parity_level_data_hooks(); }
 
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
@@ -63,8 +66,15 @@ RunOutcome run_scenario(const ScenarioSpec& spec)
     RunOutcome out;
 
     const int level_id = scenario_level_id(spec.scenario_file);
+    // Install the parity-local headless hook table (see
+    // tests/parity/parity_headless_hooks.cpp). The production
+    // `sdl_level_data_hooks` table wires `EntityFactory::attach_render`
+    // to construct a per-walker WalkerRender; the master companion
+    // uses `headless_level_data_hooks` with no `attach_render`. For
+    // the dumps to be apples-to-apples both sides need to install the
+    // same entity factory in `world.entity_factory`.
     LevelRuntimeData level(level_id, /*headless=*/true,
-                           &sdl_level_data_hooks());
+                           &parity_level_data_hooks());
 
     SaveData save;
     og::sim::SimEventLog events;
