@@ -2,9 +2,11 @@
 
 #include "scenario_runtime.h"
 
+#include <openglad/core/order.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/level_data_hooks.h>
@@ -102,6 +104,35 @@ RunOutcome run_scenario(const ScenarioSpec& spec)
     }
     out.ticked = true;
     out.dump   = capture_state_dump(world, &events);
+
+    // Phase 03 coverage observation. The schema-v1 dump only carries
+    // oblist (without per-walker order) and fxlist, but the coverage
+    // gate needs to know which weapon / treasure / generator families
+    // were instantiated. Walk the live world before the gameplay
+    // context tears down.
+    auto bag_walker = [](const walker* w, CoverageObservation& obs) {
+        if (w == nullptr) return;
+        const auto family = static_cast<std::int32_t>(w->family());
+        switch (w->query_order())
+        {
+            case Order::Living:    obs.walker_families.insert(family); break;
+            case Order::Weapon:    obs.weapon_families.insert(family); break;
+            case Order::Treasure:  obs.treasure_families.insert(family); break;
+            case Order::Generator: obs.generator_families.insert(family); break;
+            case Order::FX:        obs.effect_families.insert(family); break;
+            default:               break;
+        }
+    };
+    for (const auto& uptr : world.oblist)
+        bag_walker(uptr.get(), out.coverage);
+    for (const auto& uptr : world.weaplist)
+        bag_walker(uptr.get(), out.coverage);
+    for (const auto& uptr : world.fxlist)
+        bag_walker(uptr.get(), out.coverage);
+    for (const auto& ev : events.events())
+        out.coverage.event_kinds.insert(
+            event_kind_symbol(static_cast<std::uint32_t>(ev.kind)));
+
     return out;
 }
 

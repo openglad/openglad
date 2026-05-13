@@ -1476,6 +1476,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/parity/scenario_runtime.cpp
             ${CMAKE_SOURCE_DIR}/tests/parity/parity_test_main.cpp
             ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_scenarios.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_coverage_gate.cpp
         )
 
         function(og_add_test_group NAME)
@@ -1808,6 +1809,7 @@ if(NOT EMSCRIPTEN)
         # against the committed master golden under tests/parity/golden/.
         og_add_test_group(og_test_parity FILES
             test_parity_scenarios.cpp
+            test_parity_coverage_gate.cpp
             parity_runner.cpp
             state_dump.cpp
             parity_bootstrap.cpp

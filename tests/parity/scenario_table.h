@@ -49,12 +49,99 @@ enum class CompareMode : std::uint8_t
     Invariant,   // run-time predicate over the dump; no golden compare
 };
 
-// Bit set of subsystems / features a scenario exercises. Phase 03 extends
-// this enum with the per-subsystem bits; the v1 schema only ships `None`.
+// Bit set of per-(family, special_index) special-ability invocations a
+// scenario exercises. Specials are not structurally observable in the
+// state-dump (the simulator only emits the resulting walkers / effects /
+// events, not "this scenario invoked archmage special 1"), so the gate
+// has to be told. Walker / effect / weapon / treasure / generator family
+// coverage and event-kind coverage are observed structurally by the
+// runner — those do not get bits here.
+//
+// Phase 03 widens this enum to one bit per (family, special_index) where
+// the family's descriptor has a non-null `do_special` AND the special
+// name is not "NONE". The bit ordering below is fixed by the manifest in
+// .plan/parity-coverage-manifest.md and MUST NOT be reordered without
+// updating both the manifest and master companion mirror byte-for-byte.
 enum class Exercises : std::uint64_t
 {
     None = 0,
+
+    // FAMILY_SOLDIER (0): CHARGE, BOOMERANG, WHIRLWIND, DISARM
+    Special_Soldier_1            = 1ULL <<  0,
+    Special_Soldier_2            = 1ULL <<  1,
+    Special_Soldier_3            = 1ULL <<  2,
+    Special_Soldier_4            = 1ULL <<  3,
+    // FAMILY_ELF (1): ROCKS, BOUNCING ROCKS, LOTS OF ROCKS, MEGA ROCKS
+    Special_Elf_1                = 1ULL <<  4,
+    Special_Elf_2                = 1ULL <<  5,
+    Special_Elf_3                = 1ULL <<  6,
+    Special_Elf_4                = 1ULL <<  7,
+    // FAMILY_ARCHER (2): FIRE ARROWS, BARRAGE, EXPLODING BOLT
+    Special_Archer_1             = 1ULL <<  8,
+    Special_Archer_2             = 1ULL <<  9,
+    Special_Archer_3             = 1ULL << 10,
+    // FAMILY_MAGE (3): TELEPORT, WARP SPACE, FREEZE TIME, ENERGY WAVE, HEARTBURST
+    Special_Mage_1               = 1ULL << 11,
+    Special_Mage_2               = 1ULL << 12,
+    Special_Mage_3               = 1ULL << 13,
+    Special_Mage_4               = 1ULL << 14,
+    Special_Mage_5               = 1ULL << 15,
+    // FAMILY_SKELETON (4): TUNNEL
+    Special_Skeleton_1           = 1ULL << 16,
+    // FAMILY_CLERIC (5): HEAL, RAISE UNDEAD, RAISE GHOST, RESURRECT
+    Special_Cleric_1             = 1ULL << 17,
+    Special_Cleric_2             = 1ULL << 18,
+    Special_Cleric_3             = 1ULL << 19,
+    Special_Cleric_4             = 1ULL << 20,
+    // FAMILY_FIREELEMENTAL (6): STARBURST
+    Special_FireElemental_1      = 1ULL << 21,
+    // FAMILY_SLIME (8): SPLIT
+    Special_Slime_1              = 1ULL << 22,
+    // FAMILY_SMALL_SLIME (9): GROW
+    Special_SmallSlime_1         = 1ULL << 23,
+    // FAMILY_MEDIUM_SLIME (10): GROW
+    Special_MediumSlime_1        = 1ULL << 24,
+    // FAMILY_THIEF (11): DROP BOMB, CLOAK, TAUNT ENEMY, POISON CLOUD
+    Special_Thief_1              = 1ULL << 25,
+    Special_Thief_2              = 1ULL << 26,
+    Special_Thief_3              = 1ULL << 27,
+    Special_Thief_4              = 1ULL << 28,
+    // FAMILY_GHOST (12): SCARE
+    Special_Ghost_1              = 1ULL << 29,
+    // FAMILY_DRUID (13): GROW TREE, SUMMON FAERIE, REVEAL, PROTECTION
+    Special_Druid_1              = 1ULL << 30,
+    Special_Druid_2              = 1ULL << 31,
+    Special_Druid_3              = 1ULL << 32,
+    Special_Druid_4              = 1ULL << 33,
+    // FAMILY_ORC (14): HOWL, EAT CORPSE
+    Special_Orc_1                = 1ULL << 34,
+    Special_Orc_2                = 1ULL << 35,
+    // FAMILY_BARBARIAN (16): HURL BOULDER, EXPLODING BOULDER
+    Special_Barbarian_1          = 1ULL << 36,
+    Special_Barbarian_2          = 1ULL << 37,
+    // FAMILY_ARCHMAGE (17): TELEPORT, HEARTBURST, SUMMON IMAGE, MIND CONTROL
+    Special_Archmage_1           = 1ULL << 38,
+    Special_Archmage_2           = 1ULL << 39,
+    Special_Archmage_3           = 1ULL << 40,
+    Special_Archmage_4           = 1ULL << 41,
 };
+
+// Bitwise helpers so scenario rows can OR multiple Special_* bits.
+inline constexpr Exercises operator|(Exercises a, Exercises b) noexcept
+{
+    return static_cast<Exercises>(
+        static_cast<std::uint64_t>(a) | static_cast<std::uint64_t>(b));
+}
+inline constexpr Exercises operator&(Exercises a, Exercises b) noexcept
+{
+    return static_cast<Exercises>(
+        static_cast<std::uint64_t>(a) & static_cast<std::uint64_t>(b));
+}
+inline constexpr Exercises& operator|=(Exercises& a, Exercises b) noexcept
+{
+    a = a | b;
+    return a;
+}
 
 // Canonical wrapper helpers for spawn `order` values. Wrap the values defined
 // in <openglad/core/order.h>; we keep this header free of that include so the

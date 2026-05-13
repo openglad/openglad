@@ -623,3 +623,64 @@ the input pipeline, observable in either schema-v1 walker fields
 (`xpos`, `ypos`, `hp`) or top-level fields (`score_per_team`, `events`,
 `rng_state`). The harness performs no walker mutations during the
 tick loop.
+
+## Phase 03 redo: coverage gate
+
+Phase 03 added a static coverage taxonomy and a runtime gate that runs
+every scenario in `kScenarios` once and asserts the cumulative
+observation set covers every required entity. See:
+
+- `.plan/parity-coverage-manifest.md` — long-form manifest with one row
+  per coverage target and a `covering_scenario_id` column (initially
+  `(none yet)` for most rows). Frontmatter pins
+  `master_companion_sha:` to Phase 02's master commit
+  (`36f59e2b0bb64fca1ad73881db479e0399c1f6ce`) so all later phases diff
+  against a fixed master baseline.
+- `tests/parity/coverage_targets.h` — constexpr arrays declaring the
+  21 walker families, 13 effect families, 20 weapon families, 13
+  treasure families, 4 generator families, 9 event kinds, and 42
+  `(family, special_index)` pairs that scenarios must cumulatively hit.
+- `tests/parity/test_parity_coverage_gate.cpp` — registered into the
+  existing `og_test_parity` test group. Cases:
+  `Parity.coverage_gate_walker_families`,
+  `Parity.coverage_gate_effect_families`,
+  `Parity.coverage_gate_weapon_families`,
+  `Parity.coverage_gate_treasure_families`,
+  `Parity.coverage_gate_event_kinds`,
+  `Parity.coverage_gate_specials`, and the umbrella
+  `Parity.coverage_gate`. Each prints a structured list of every
+  uncovered target on failure.
+- `scripts/parity/check_coverage_manifest.py` — pre-build textual gate
+  asserting `coverage_targets.h` is a superset of every `FAMILY_*` in
+  `include/openglad/core/constants.h` and every `EventKind` in
+  `include/openglad/gameplay/event.h`. Exits non-zero with named missing
+  entries.
+
+### v1-compatible spec extension: Exercises bits
+
+The Phase 02 `enum class Exercises : std::uint64_t` shipped with only
+`Exercises::None`. Phase 03 widens it byte-for-byte across the branch
+and `../openglad-master/tools/parity_scenario_table.h` mirror to define
+one bit per `(family, special_index)` pair from `kRequiredSpecials[]`
+(42 bits, enumerator names `Special_<Family>_<Idx>`). Scenarios that
+invoke a given special set the matching bit in `spec.exercises`; the
+coverage gate ORs every scenario's bits together and asserts the union
+covers every bit position.
+
+The other coverage axes — walker / weapon / treasure / generator /
+effect family and event kind — are observed structurally by the runner
+via `CoverageObservation` (a new field on `RunOutcome`). The runner
+walks `world.oblist`, `world.weaplist`, `world.fxlist`, and the
+`SimEventLog` before the gameplay context tears down, and bags each
+entity into a per-Order family set. This sidesteps the schema-v1 dump's
+limitation of carrying only `oblist` (without per-walker order) and
+`fxlist`; the dump itself is unchanged and the master companion mirror
+remains byte-compatible.
+
+### Phase 03 gate state
+
+At Phase 03 completion the gate is expected to **fail at runtime** —
+verifier `03b` confirms this. The Phase 02 smoke and combat scenarios
+cumulatively cover only `FAMILY_SOLDIER`, `FAMILY_ORC`, `play_sound`,
+and `score_change`; Phases 04-06 will land scenarios that fill in every
+other row in `parity-coverage-manifest.md`.
