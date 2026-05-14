@@ -738,16 +738,3 @@ A CMake-time tool `scenario_facts_dump` (linked into
 `og_test_parity` as a dependency) emits
 `tests/parity/scenario_facts_generated.json` — the single source of
 truth used by `evaluate_facts.py` and any future cross-language tool.
-
-The Phase 03 coverage gate (the six `Parity.coverage_gate_*` test
-cases in `tests/parity/test_parity_coverage_gate.cpp`) is wired into a
-**standalone audit binary** `og_test_parity_coverage_gate` that has no
-`add_test()` registration. The default `ctest --preset ci-test` does
-NOT run it — `og_test_parity` only contains the per-scenario byte /
-semantic-parity assertions and the framework gtests. Phase 03's
-verifier 03b invokes the audit binary directly to read the structured
-per-category "uncovered targets" lists; that signal stays red until
-Phases 04-06 backfill the scenarios that close every required weapon /
-treasure / effect / event_kind / special slot. The gate's runtime
-semantics are unchanged: it still asserts a strict subset relation
-against `coverage_targets.h`.
