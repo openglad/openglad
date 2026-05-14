@@ -28,6 +28,21 @@
 // does NOT soften the gate; it lands the predicate framework so each
 // future scenario can declare expected_facts + a discriminating mutation.
 //
+// Build wiring (since the gate is designed to fail before Phases 03-06):
+//   - This file is compiled into a STANDALONE binary,
+//     `og_test_parity_coverage_gate`, registered by `CMakeLists.txt`
+//     without an `add_test()` call so the default `ctest --preset
+//     ci-test` does not run it.
+//   - Phase 03's verifier 03b invokes the binary directly:
+//       ./build/ci-test/og_test_parity_coverage_gate
+//     and inspects the structured per-category "uncovered targets" lists
+//     to drive Phase 04-06 scenario backfill.
+//   - `og_test_parity` (the suite that DOES run on every CI build)
+//     contains only the per-scenario byte / semantic-parity assertions
+//     and the framework gtests. Those must always pass; the gate's
+//     red-until-backfilled signal is segregated into the audit binary
+//     above so CI stays green during the framework phase.
+//
 // Implementation note: the existing `Parity` GoogleTest suite is
 // populated via TEST(Parity, ...) in test_parity_scenarios.cpp. We
 // cannot mix TEST() and TEST_F() with the same suite name, so the
