@@ -2139,6 +2139,16 @@ if(NOT EMSCRIPTEN)
                 PROCESSORS 3
                 TIMEOUT 420
             )
+            # og_test_view's gameplay-rendering suite has been observed
+            # exceeding the generic 180-second CTest budget under
+            # ASan/UBSan on GitHub's 4-core runners when scheduled
+            # alongside the other heavyweight integration binaries; match
+            # the 420-second budget already used for the rest of the
+            # ASan integration lane.
+            set_tests_properties(og_test_view PROPERTIES
+                PROCESSORS 3
+                TIMEOUT 420
+            )
         endif()
 
         set(OPENG_LAD_TEXT_SIM_EXEC_TIMEOUT 55)
