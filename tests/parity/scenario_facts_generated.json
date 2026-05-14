@@ -3,7 +3,7 @@
     { "id": "ai_idle_wander_scen9301", "compare_mode": "ByteEqual", "predicates": [
       { "kind": "TickReached", "arg0": 300, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
       { "kind": "LevelDoneEquals", "arg0": 2, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
-      { "kind": "EventKindAtLeast", "arg0": 1, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" } ] },
+      { "kind": "EventKindExactly", "arg0": 1, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" } ] },
     { "id": "combat_attack_scen99", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 200, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
       { "kind": "LevelDoneEquals", "arg0": 2, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
@@ -12,23 +12,19 @@
     { "id": "special_archmage_scen123", "compare_mode": "ByteEqual", "predicates": [
       { "kind": "TickReached", "arg0": 200, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
       { "kind": "LevelDoneEquals", "arg0": 2, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
-      { "kind": "EventKindExactly", "arg0": 1, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
-      { "kind": "EventKindAtLeast", "arg0": 1, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" } ] },
+      { "kind": "EventKindExactly", "arg0": 1, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" } ] },
     { "id": "special_cleric_scen124", "compare_mode": "ByteEqual", "predicates": [
       { "kind": "TickReached", "arg0": 200, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
       { "kind": "LevelDoneEquals", "arg0": 2, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
-      { "kind": "EventKindExactly", "arg0": 1, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
-      { "kind": "EventKindAtLeast", "arg0": 1, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" } ] },
+      { "kind": "EventKindExactly", "arg0": 1, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" } ] },
     { "id": "special_mage_scen126", "compare_mode": "ByteEqual", "predicates": [
       { "kind": "TickReached", "arg0": 200, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
       { "kind": "LevelDoneEquals", "arg0": 2, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
-      { "kind": "EventKindExactly", "arg0": 1, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
-      { "kind": "EventKindAtLeast", "arg0": 1, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" } ] },
+      { "kind": "EventKindExactly", "arg0": 1, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" } ] },
     { "id": "special_thief_scen789", "compare_mode": "ByteEqual", "predicates": [
       { "kind": "TickReached", "arg0": 200, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
       { "kind": "LevelDoneEquals", "arg0": 2, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
-      { "kind": "EventKindExactly", "arg0": 1, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
-      { "kind": "EventKindAtLeast", "arg0": 1, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" } ] },
+      { "kind": "EventKindExactly", "arg0": 1, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" } ] },
     { "id": "effect_bomb_lifetime_scen99", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 60, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
       { "kind": "LevelDoneEquals", "arg0": 2, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
@@ -41,7 +37,7 @@
     { "id": "summon_druid_pet_scen950", "compare_mode": "ByteEqual", "predicates": [
       { "kind": "TickReached", "arg0": 80, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
       { "kind": "LevelDoneEquals", "arg0": 2, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
-      { "kind": "EventKindAtLeast", "arg0": 1, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" } ] },
+      { "kind": "EventKindExactly", "arg0": 1, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" } ] },
     { "id": "scoring_after_combat_scen99", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 200, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
       { "kind": "LevelDoneEquals", "arg0": 2, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
@@ -54,11 +50,11 @@
     { "id": "exit_trigger_scen9302", "compare_mode": "ByteEqual", "predicates": [
       { "kind": "TickReached", "arg0": 600, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
       { "kind": "LevelDoneEquals", "arg0": 2, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
-      { "kind": "EventKindAtLeast", "arg0": 1, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" } ] },
+      { "kind": "EventKindExactly", "arg0": 1, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" } ] },
     { "id": "tick_cadence_scen9301", "compare_mode": "ByteEqual", "predicates": [
       { "kind": "TickReached", "arg0": 600, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
       { "kind": "LevelDoneEquals", "arg0": 2, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
-      { "kind": "EventKindAtLeast", "arg0": 1, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" } ] },
+      { "kind": "EventKindExactly", "arg0": 1, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" } ] },
     { "id": "rng_seed_stable_scen99", "compare_mode": "ByteEqual", "predicates": [
       { "kind": "TickReached", "arg0": 1, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
       { "kind": "LevelDoneEquals", "arg0": 2, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
@@ -66,14 +62,16 @@
     { "id": "scripted_input_scen9301", "compare_mode": "ByteEqual", "predicates": [
       { "kind": "TickReached", "arg0": 200, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
       { "kind": "LevelDoneEquals", "arg0": 2, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
-      { "kind": "EventKindAtLeast", "arg0": 1, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" } ] },
+      { "kind": "EventKindExactly", "arg0": 1, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" } ] },
     { "id": "snapshot_dirty_bits_scen9301", "compare_mode": "Invariant", "predicates": [ ] },
     { "id": "smoke_nonempty_scen99", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 60, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
       { "kind": "WalkerFamilyCount", "arg0": 0, "arg1": 1, "arg2": 1, "arg3": 0, "arg4": 0, "label": "" },
       { "kind": "WalkerFamilyCount", "arg0": 14, "arg1": 1, "arg2": 1, "arg3": 0, "arg4": 0, "label": "" },
       { "kind": "WalkerOfTeamAlive", "arg0": 0, "arg1": 1, "arg2": 1, "arg3": 0, "arg4": 0, "label": "" },
-      { "kind": "WalkerOfTeamAlive", "arg0": 1, "arg1": 1, "arg2": 1, "arg3": 0, "arg4": 0, "label": "" } ] },
+      { "kind": "WalkerOfTeamAlive", "arg0": 1, "arg1": 1, "arg2": 1, "arg3": 0, "arg4": 0, "label": "" },
+      { "kind": "EventKindAtLeast", "arg0": 1, "arg1": 5, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
+      { "kind": "EventKindAtLeast", "arg0": 9, "arg1": 2, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" } ] },
     { "id": "smoke_nonempty_scen99_inputs", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 60, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
       { "kind": "WalkerFamilyCount", "arg0": 0, "arg1": 1, "arg2": 1, "arg3": 0, "arg4": 0, "label": "" },

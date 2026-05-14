@@ -63,6 +63,98 @@ def parse_predicate_arrays(text: str) -> dict[str, list[str]]:
     return out
 
 
+def parse_predicate_calls(text: str) -> dict[str, list[dict]]:
+    """{array_name: [{kind, raw_args}, ...]} where raw_args is the
+    parenthesised argument list of each pred::Kind(...) call as written
+    in the source. The lint inspects raw_args by position to enforce
+    per-FactKind shape rules."""
+    out: dict[str, list[dict]] = {}
+    rx = re.compile(
+        r"inline\s+constexpr\s+FactPredicate\s+(kFacts_\w+)\s*\[\]\s*=\s*\{([^}]*)\};",
+        re.DOTALL,
+    )
+    for m in rx.finditer(text):
+        name = m.group(1)
+        body = m.group(2)
+        preds: list[dict] = []
+        i = 0
+        while True:
+            mm = re.search(r"pred::(\w+)\s*\(", body[i:])
+            if mm is None:
+                break
+            kind = mm.group(1)
+            start = i + mm.end()
+            depth = 1
+            j = start
+            in_str = False
+            while j < len(body) and depth > 0:
+                c = body[j]
+                if in_str:
+                    if c == "\\":
+                        j += 2
+                        continue
+                    if c == '"':
+                        in_str = False
+                else:
+                    if c == '"':
+                        in_str = True
+                    elif c == "(":
+                        depth += 1
+                    elif c == ")":
+                        depth -= 1
+                        if depth == 0:
+                            break
+                j += 1
+            raw_args = body[start:j]
+            # Split args on top-level commas.
+            args: list[str] = []
+            cur = ""
+            depth2 = 0
+            in_str2 = False
+            for c in raw_args:
+                if in_str2:
+                    cur += c
+                    if c == '"':
+                        in_str2 = False
+                    continue
+                if c == '"':
+                    in_str2 = True
+                    cur += c
+                    continue
+                if c in "([{":
+                    depth2 += 1
+                elif c in ")]}":
+                    depth2 -= 1
+                if c == "," and depth2 == 0:
+                    args.append(cur.strip())
+                    cur = ""
+                else:
+                    cur += c
+            if cur.strip():
+                args.append(cur.strip())
+            preds.append({"kind": kind, "args": args})
+            i = j + 1
+        out[name] = preds
+    return out
+
+
+def parse_int_arg(arg: str) -> "int | None":
+    """Parse an integer constant ignoring `/*comment*/` and trailing
+    whitespace. Returns None if the arg is not a bare int literal."""
+    # Strip C-style comments.
+    s = re.sub(r"/\*.*?\*/", "", arg, flags=re.DOTALL).strip()
+    # Strip designated-init prefixes like /*tick window upper marker*/.
+    if not s:
+        return None
+    m = re.fullmatch(r"-?\d+", s)
+    if not m:
+        return None
+    try:
+        return int(s)
+    except ValueError:
+        return None
+
+
 def parse_mutation_constants(text: str) -> dict[str, dict[str, str]]:
     """{const_name: {file,line,from,to,rationale}}; lint doesn't deeply parse."""
     out: dict[str, dict[str, str]] = {}
@@ -231,8 +323,32 @@ def main() -> int:
     text = _load_table(table)
 
     pred_arrays = parse_predicate_arrays(text)
+    pred_calls  = parse_predicate_calls(text)
     mutations   = parse_mutation_constants(text)
     rows        = parse_scenarios(text)
+
+    # Spec-mandated rule: every EffectFamilyCount predicate must be
+    # qualified by EITHER a source-walker family (`arg3 >= 0`) OR a
+    # tick-window upper bound (`arg4 > 0`). Unqualified predicates
+    # collapse to "count effects of family X" with no link to the
+    # producing scenario state, so they cannot reliably flip on a
+    # discriminating mutation. Reject them.
+    effect_lint_errors: list[str] = []
+    for arr_name, preds in pred_calls.items():
+        for i, pred in enumerate(preds):
+            if pred["kind"] != "EffectFamilyCount":
+                continue
+            args = pred["args"]
+            # pred::EffectFamilyCount(family, mn, mx, source_qualifier, window=0, label="")
+            arg3 = parse_int_arg(args[3]) if len(args) >= 4 else None
+            arg4 = parse_int_arg(args[4]) if len(args) >= 5 else None
+            source_qualified = arg3 is not None and arg3 >= 0
+            window_qualified = arg4 is not None and arg4 > 0
+            if not source_qualified and not window_qualified:
+                effect_lint_errors.append(
+                    f"{arr_name}[#{i}]: unqualified EffectFamilyCount "
+                    f"(arg3={arg3}, arg4={arg4}); must have source-walker "
+                    f"family (arg3>=0) OR tick-window upper (arg4>0)")
 
     if not rows:
         sys.stderr.write("lint: no scenario rows parsed\n")
@@ -349,13 +465,16 @@ def main() -> int:
                                 f"(team-0 SpawnSpec stats_level>={floor_level} "
                                 f"AND magicpoints>=600)")
 
-    if errors:
+    all_errors = errors + effect_lint_errors
+
+    if all_errors:
         sys.stderr.write("lint_scenario_facts: FAIL\n")
-        for e in errors:
+        for e in all_errors:
             sys.stderr.write(f"  - {e}\n")
         return 1
 
-    print(f"lint_scenario_facts: OK ({len(rows)} rows checked)")
+    print(f"lint_scenario_facts: OK ({len(rows)} rows checked, "
+          f"{sum(len(p) for p in pred_calls.values())} predicates)")
     return 0
 
 

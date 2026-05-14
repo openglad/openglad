@@ -451,7 +451,10 @@ inline constexpr SpawnSpec kFamilySpawns_tower1[] = {
 inline constexpr FactPredicate kFacts_ai_idle_wander_scen9301[] = {
     pred::TickReached(300),
     pred::LevelDoneEquals(2),
-    pred::EventKindAtLeast(/*play_sound*/1, 0),
+    // Master golden has zero events; any mutation that re-introduces a
+    // sound emission (e.g. neutering the walker_ai damage gate so combat
+    // resumes) would emit play_sound at first hit and flip this exact-0.
+    pred::EventKindExactly(/*play_sound*/1, 0),
 };
 
 inline constexpr FactPredicate kFacts_combat_attack_scen99[] = {
@@ -469,28 +472,24 @@ inline constexpr FactPredicate kFacts_special_archmage_scen123[] = {
     // Master golden has 0 events; mutation that re-enables the special
     // fire gate would emit a play_sound and flip this exact-match.
     pred::EventKindExactly(/*play_sound*/1, 0),
-    pred::EventKindAtLeast(/*play_sound*/1, 0),
 };
 
 inline constexpr FactPredicate kFacts_special_cleric_scen124[] = {
     pred::TickReached(200),
     pred::LevelDoneEquals(2),
     pred::EventKindExactly(/*play_sound*/1, 0),
-    pred::EventKindAtLeast(/*play_sound*/1, 0),
 };
 
 inline constexpr FactPredicate kFacts_special_mage_scen126[] = {
     pred::TickReached(200),
     pred::LevelDoneEquals(2),
     pred::EventKindExactly(/*play_sound*/1, 0),
-    pred::EventKindAtLeast(/*play_sound*/1, 0),
 };
 
 inline constexpr FactPredicate kFacts_special_thief_scen789[] = {
     pred::TickReached(200),
     pred::LevelDoneEquals(2),
     pred::EventKindExactly(/*play_sound*/1, 0),
-    pred::EventKindAtLeast(/*play_sound*/1, 0),
 };
 
 inline constexpr FactPredicate kFacts_effect_bomb_lifetime_scen99[] = {
@@ -516,7 +515,7 @@ inline constexpr FactPredicate kFacts_effect_chain_scen9410[] = {
 inline constexpr FactPredicate kFacts_summon_druid_pet_scen950[] = {
     pred::TickReached(80),
     pred::LevelDoneEquals(2),
-    pred::EventKindAtLeast(/*play_sound*/1, 0),
+    pred::EventKindExactly(/*play_sound*/1, 0),
 };
 
 inline constexpr FactPredicate kFacts_scoring_after_combat_scen99[] = {
@@ -541,13 +540,13 @@ inline constexpr FactPredicate kFacts_save_roundtrip_scen99[] = {
 inline constexpr FactPredicate kFacts_exit_trigger_scen9302[] = {
     pred::TickReached(600),
     pred::LevelDoneEquals(2),
-    pred::EventKindAtLeast(/*play_sound*/1, 0),
+    pred::EventKindExactly(/*play_sound*/1, 0),
 };
 
 inline constexpr FactPredicate kFacts_tick_cadence_scen9301[] = {
     pred::TickReached(600),
     pred::LevelDoneEquals(2),
-    pred::EventKindAtLeast(/*play_sound*/1, 0),
+    pred::EventKindExactly(/*play_sound*/1, 0),
 };
 
 inline constexpr FactPredicate kFacts_rng_seed_stable_scen99[] = {
@@ -559,7 +558,7 @@ inline constexpr FactPredicate kFacts_rng_seed_stable_scen99[] = {
 inline constexpr FactPredicate kFacts_scripted_input_scen9301[] = {
     pred::TickReached(200),
     pred::LevelDoneEquals(2),
-    pred::EventKindAtLeast(/*play_sound*/1, 0),
+    pred::EventKindExactly(/*play_sound*/1, 0),
 };
 
 inline constexpr FactPredicate kFacts_smoke_nonempty_scen99[] = {
@@ -568,6 +567,10 @@ inline constexpr FactPredicate kFacts_smoke_nonempty_scen99[] = {
     pred::WalkerFamilyCount(/*FAMILY_ORC*/14, 1, 1),
     pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
     pred::WalkerOfTeamAlive(/*team=*/1, 1, 1),
+    // Master golden has 8 play_sound and 4 score_change events at tick
+    // 60; branch settles at 7+3. Both clear the floor below.
+    pred::EventKindAtLeast(/*play_sound*/1, 5),
+    pred::EventKindAtLeast(/*score_change*/9, 2),
 };
 
 inline constexpr FactPredicate kFacts_smoke_nonempty_scen99_inputs[] = {

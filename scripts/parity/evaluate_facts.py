@@ -116,10 +116,20 @@ def evaluate_one(p: dict, dump: dict) -> tuple[bool, str]:
         return (True, "indeterminate: no baseline in v1 dump")
     if kind == "EffectFamilyCount":
         sym = family_symbol(a0)
-        n = sum(1 for e in effects if e["family"] == sym)
+        a4   = int(p.get("arg4", 0))
         if a3 >= 0 and cnt_walker(a3) == 0:
             return (False, f"qualifier {family_symbol(a3)} absent")
-        return (a1 <= n <= a2, f"effects({sym})={n} need in [{a1},{a2}]")
+        # tick-window upper bound (arg4 > 0): only count effects whose
+        # lifetime <= arg4. arg4 == 0 == "no window filter".
+        if a4 > 0:
+            n = sum(1 for e in effects
+                    if e["family"] == sym and e.get("lifetime", 0) <= a4)
+            window = f" (window lifetime<={a4})"
+        else:
+            n = sum(1 for e in effects if e["family"] == sym)
+            window = ""
+        return (a1 <= n <= a2,
+                f"effects({sym})={n} need in [{a1},{a2}]{window}")
     if kind == "EventKindAtLeast":
         name = EVENT_KINDS[a0] if 0 <= a0 < len(EVENT_KINDS) else ""
         n = sum(1 for e in events if e["kind"] == name)

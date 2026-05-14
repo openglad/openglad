@@ -102,6 +102,24 @@ std::size_t count_effects_family(const StateDump& d, std::int32_t family)
     return n;
 }
 
+// `EffectFamilyCount` may carry a tick-window upper bound in arg4: when
+// arg4 > 0 the predicate only counts effects whose lifetime <= arg4.
+// This implements the spec's `[min_tick, max_tick]` window qualifier.
+std::size_t count_effects_family_within_window(const StateDump& d,
+                                               std::int32_t family,
+                                               std::int32_t window_max_lifetime)
+{
+    const std::string sym = family_symbol(family);
+    std::size_t n = 0;
+    for (const auto& e : d.effects)
+    {
+        if (e.family != sym) continue;
+        if (window_max_lifetime > 0 && e.lifetime > window_max_lifetime) continue;
+        ++n;
+    }
+    return n;
+}
+
 std::size_t count_weapons_family(const StateDump& d, std::int32_t family)
 {
     const std::string sym = family_symbol(family);
@@ -251,12 +269,21 @@ FactEvalResult evaluate_one(const FactPredicate& p, const StateDump& dump)
                     return (make_fail(r, p, "qualifier source family " +
                                       family_symbol(p.arg3) + " absent"), r);
             }
-            const std::size_t n = count_effects_family(dump, p.arg0);
+            // Tick-window qualifier (arg4 > 0): only effects whose
+            // lifetime <= arg4 contribute to the count. arg4 == 0 means
+            // "no window filter" (count all effects of the family).
+            const std::size_t n = (p.arg4 > 0)
+                ? count_effects_family_within_window(dump, p.arg0, p.arg4)
+                : count_effects_family(dump, p.arg0);
             if (static_cast<std::int32_t>(n) < p.arg1 ||
                 static_cast<std::int32_t>(n) > p.arg2)
                 return (make_fail(r, p, "effect-count=" + std::to_string(n) +
                                   " out of [" + std::to_string(p.arg1) + "," +
-                                  std::to_string(p.arg2) + "]"), r);
+                                  std::to_string(p.arg2) + "]" +
+                                  (p.arg4 > 0
+                                      ? " (window lifetime<=" +
+                                            std::to_string(p.arg4) + ")"
+                                      : std::string())), r);
             return r;
         }
         case FactKind::EventKindAtLeast:
