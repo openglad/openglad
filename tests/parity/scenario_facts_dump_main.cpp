@@ -142,6 +142,10 @@ int main(int argc, char** argv)
                 p.arg0, p.arg1, p.arg2, p.arg3, p.arg4);
             out.append(nums);
             append_escaped(out, p.label);
+            out.append(", \"applies_to_branch\": ");
+            out.append(p.applies_to_branch ? "true" : "false");
+            out.append(", \"applies_to_master\": ");
+            out.append(p.applies_to_master ? "true" : "false");
             out.append(" }");
         }
         out.append(" ] }");

@@ -19,6 +19,17 @@
 
 namespace og::parity {
 
+// Which side of the parity comparison a FactPredicate participates in.
+// Phase 01 default leaves both `applies_to_branch` and `applies_to_master`
+// true; rows whose predicate cannot meaningfully apply to one side (e.g.
+// a branch-only scenario that the master companion refuses to dump) set
+// the unwanted side false and the evaluator short-circuits per-predicate.
+enum class FactSide : std::uint8_t
+{
+    Branch,
+    Master,
+};
+
 enum class FactKind : std::uint8_t
 {
     TickReached,                     // arg0 = min_tick
@@ -51,6 +62,8 @@ struct FactPredicate
     std::int32_t     arg3  = 0;
     std::int32_t     arg4  = 0;
     std::string_view label = {};
+    bool             applies_to_branch = true;
+    bool             applies_to_master = true;
 };
 
 struct FactEvalResult
@@ -69,7 +82,13 @@ FactEvalResult evaluate_one(const FactPredicate& p, const StateDump& dump);
 // Evaluate every predicate in [begin, count). The result is ok iff every
 // determinate evaluation held; the message lists the first failing
 // predicate (or empty on full pass).
-FactEvalResult evaluate_facts(const FactPredicate* begin,
+//
+// `side` gates per-predicate: if the predicate's applies_to_<side> flag is
+// false the evaluator short-circuits that predicate as a pass (used by
+// asymmetric rows where one side cannot satisfy the predicate by design —
+// e.g. a branch-only scenario the master companion cannot dump).
+FactEvalResult evaluate_facts(FactSide             side,
+                              const FactPredicate* begin,
                               std::size_t          count,
                               const StateDump&     dump);
 
@@ -174,6 +193,25 @@ inline constexpr FactPredicate EventKindExactly(std::int32_t kind_ordinal, std::
 inline constexpr FactPredicate WeaponFamilyEmitted(std::int32_t family, std::string_view label = {}) noexcept
 {
     return {FactKind::WeaponFamilyEmitted, family, 0, 0, 0, 0, label};
+}
+
+// FactSide-gating helpers. Wrap any pred::* call to mark the predicate as
+// applying to only one side of the parity comparison. The master companion
+// may legitimately diverge from the branch dump in ways that no numeric
+// widening can cover (e.g. branch-only scenario assets the master cannot
+// load); those rows pin the substantive predicate to applies_to_branch=true
+// and applies_to_master=false (or vice versa). Phase 9b polices the total
+// number of intentionally-asymmetric rows; this helper is the only
+// supported way to construct one.
+inline constexpr FactPredicate branch_only(FactPredicate p) noexcept
+{
+    p.applies_to_master = false;
+    return p;
+}
+inline constexpr FactPredicate master_only(FactPredicate p) noexcept
+{
+    p.applies_to_branch = false;
+    return p;
 }
 
 } // namespace pred

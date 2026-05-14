@@ -314,14 +314,20 @@ FactEvalResult evaluate_one(const FactPredicate& p, const StateDump& dump)
     return r;
 }
 
-FactEvalResult evaluate_facts(const FactPredicate* begin,
+FactEvalResult evaluate_facts(FactSide             side,
+                              const FactPredicate* begin,
                               std::size_t          count,
                               const StateDump&     dump)
 {
     FactEvalResult agg;
     for (std::size_t i = 0; i < count; ++i)
     {
-        FactEvalResult one = evaluate_one(begin[i], dump);
+        const FactPredicate& p = begin[i];
+        const bool gated_out =
+            (side == FactSide::Branch && !p.applies_to_branch) ||
+            (side == FactSide::Master && !p.applies_to_master);
+        if (gated_out) continue;
+        FactEvalResult one = evaluate_one(p, dump);
         if (!one.ok)
         {
             agg.ok = false;

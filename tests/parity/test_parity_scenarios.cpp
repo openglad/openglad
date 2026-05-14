@@ -82,7 +82,8 @@ void run_one_scenario(const og::parity::ScenarioSpec& spec)
             << " has fact_count == 0";
 
         const og::parity::FactEvalResult branch =
-            og::parity::evaluate_facts(spec.expected_facts, spec.fact_count,
+            og::parity::evaluate_facts(og::parity::FactSide::Branch,
+                                       spec.expected_facts, spec.fact_count,
                                        outcome.dump);
         EXPECT_TRUE(branch.ok)
             << "semantic-parity branch dump failed for " << spec.id
@@ -95,7 +96,8 @@ void run_one_scenario(const og::parity::ScenarioSpec& spec)
                 << "could not parse master golden for " << spec.id
                 << " at " << path.string();
             const og::parity::FactEvalResult master =
-                og::parity::evaluate_facts(spec.expected_facts, spec.fact_count,
+                og::parity::evaluate_facts(og::parity::FactSide::Master,
+                                           spec.expected_facts, spec.fact_count,
                                            *parsed);
             EXPECT_TRUE(master.ok)
                 << "semantic-parity master golden failed for " << spec.id
@@ -256,7 +258,8 @@ TEST(Parity, parse_state_dump_tolerates_legacy_v1_shape)
     ASSERT_NE(spec, nullptr);
     ASSERT_GT(spec->fact_count, 0u);
     const og::parity::FactEvalResult result =
-        og::parity::evaluate_facts(spec->expected_facts, spec->fact_count,
+        og::parity::evaluate_facts(og::parity::FactSide::Master,
+                                   spec->expected_facts, spec->fact_count,
                                    *parsed);
     EXPECT_TRUE(result.ok)
         << "backfilled predicate failed on master golden: " << result.message;

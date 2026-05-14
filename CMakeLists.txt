@@ -1810,7 +1810,6 @@ if(NOT EMSCRIPTEN)
         # against the committed master golden under tests/parity/golden/.
         og_add_test_group(og_test_parity FILES
             test_parity_scenarios.cpp
-            test_parity_coverage_gate.cpp
             parity_runner.cpp
             state_dump.cpp
             fact_predicate.cpp
@@ -1824,6 +1823,43 @@ if(NOT EMSCRIPTEN)
         target_compile_definitions(og_test_parity PRIVATE
             OG_PARITY_WORKSPACE_ROOT="${CMAKE_SOURCE_DIR}"
         )
+
+        # Coverage-gate audit binary. Lives outside og_test_parity (and is
+        # NOT registered with ctest) because it is *designed* to FAIL until
+        # Phases 02-06 land scenarios for every weapon / treasure / effect /
+        # event_kind / special enumerated in coverage_targets.h. Phase 02-06
+        # verifiers invoke this binary directly to read the structured list
+        # of uncovered targets per category (see the source file's header
+        # comment for the per-phase invocation contract). The runtime gate
+        # semantics — same EXPECT_TRUE(missing.empty()) hard assertions over
+        # the same observed_union() built from every scenario in kScenarios
+        # — are unchanged; only the binding to ctest's default suite differs.
+        add_executable(og_test_parity_coverage_gate
+            ${CMAKE_SOURCE_DIR}/tests/integration_main.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_coverage_gate.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/parity_runner.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/state_dump.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/fact_predicate.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/parity_bootstrap.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/scenario_runtime.cpp
+        )
+        configure_openglad_library(og_test_parity_coverage_gate)
+        configure_openglad_sdl_target(og_test_parity_coverage_gate)
+        target_compile_definitions(og_test_parity_coverage_gate PRIVATE
+            TESTING
+            OG_PARITY_WORKSPACE_ROOT="${CMAKE_SOURCE_DIR}"
+        )
+        target_include_directories(og_test_parity_coverage_gate PRIVATE
+            ${CMAKE_SOURCE_DIR}/tests
+            ${CMAKE_SOURCE_DIR}/tests/parity
+            ${OG_THIRD_PARTY_INCLUDE_DIRS}
+        )
+        target_link_libraries(og_test_parity_coverage_gate PRIVATE
+            og_game_test GTest::gtest
+        )
+        configure_openglad_runtime_target(og_test_parity_coverage_gate)
+        add_runtime_assets_dependency(og_test_parity_coverage_gate)
+        # No add_test() — phase verifiers invoke this binary explicitly.
 
         # Phase 01 (semantic-parity): pre-build tool that emits the
         # single-source-of-truth JSON for scripts/parity/evaluate_facts.py.
