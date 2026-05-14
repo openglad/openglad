@@ -134,26 +134,6 @@ RunOutcome run_scenario(const ScenarioSpec& spec)
         }
     }
     out.ticked = true;
-
-    // Phase 01 coverage scaffold: drive the remaining event_kinds whose
-    // production-side trigger points are conditional on scenario types
-    // not easily set up from SpawnSpec (SAVE_ALL scenarios for EndGame;
-    // specific mage AI cycles for SetPalette/RequestRedraw; EXIT pickup
-    // for RequestExitConfirmation/WithdrawToLevel). The events flow
-    // through the canonical SimEventLog so the coverage gate observes
-    // them via the standard `event_kinds` sample. Phase 02+ replaces
-    // each emission below with a real gameplay-triggered emit and the
-    // scaffold is removed in lock-step.
-    if (spec.id == "coverage_events_scen99")
-    {
-        events.push(og::sim::EventKind::SetPalette,             0, 0);
-        events.push(og::sim::EventKind::RequestRedraw,          0, 0);
-        events.push(og::sim::EventKind::EndGame,                0, 0);
-        events.push(og::sim::EventKind::RequestExitConfirmation,0, 0);
-        events.push(og::sim::EventKind::WithdrawToLevel,        0, 0);
-        events.push_notification("coverage_events_scen99 notification", 0);
-    }
-
     out.dump   = capture_state_dump(world, &events);
 
     for (const auto& ev : events.events())

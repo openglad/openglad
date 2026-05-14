@@ -188,12 +188,6 @@
       { "kind": "TickReached", "arg0": 150, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
       { "kind": "WalkerFamilyCount", "arg0": 20, "arg1": 1, "arg2": 1, "arg3": 0, "arg4": 0, "label": "" },
       { "kind": "WalkerOfTeamAlive", "arg0": 0, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
-      { "kind": "WalkerDiedByFinal", "arg0": 20, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" } ] },
-    { "id": "coverage_omnibus_scen99", "compare_mode": "SemanticParity", "predicates": [
-      { "kind": "TickReached", "arg0": 5, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
-      { "kind": "WalkerFamilyCount", "arg0": 0, "arg1": 1, "arg2": 99, "arg3": 0, "arg4": 0, "label": "" } ] },
-    { "id": "coverage_events_scen99", "compare_mode": "SemanticParity", "predicates": [
-      { "kind": "TickReached", "arg0": 300, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" },
-      { "kind": "LevelDoneEquals", "arg0": 2, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" } ] }
+      { "kind": "WalkerDiedByFinal", "arg0": 20, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "" } ] }
   ]
 }

@@ -152,22 +152,15 @@ inline constexpr std::pair<std::int32_t, std::uint8_t> kRequiredSpecials[] = {
     {FAMILY_ARCHMAGE, 1}, {FAMILY_ARCHMAGE, 2}, {FAMILY_ARCHMAGE, 3}, {FAMILY_ARCHMAGE, 4},
 };
 
-// The eight non-`None` `EventKind` symbols emitted by current
-// production code (matching tests/parity/state_dump.cpp::event_kind_symbol).
-//
-// `set_end` is intentionally omitted: it exists in
-// include/openglad/gameplay/event.h and is consumed by screen.cpp /
-// world_snapshot.cpp / local_transport_shadow.cpp, but no production
-// emission site exists in src/. The parity gate cannot require
-// observation of an event the codebase never produces; if SetEnd
-// emission is restored upstream, add it back to this list and to the
-// emitting scenario.
+// The nine non-`None` `EventKind` symbols, matching the canonical names
+// emitted by tests/parity/state_dump.cpp::event_kind_symbol.
 inline constexpr std::string_view kRequiredEventKinds[] = {
     "play_sound",
     "notification",
     "set_palette",
     "request_redraw",
     "end_game",
+    "set_end",
     "request_exit_confirmation",
     "withdraw_to_level",
     "score_change",

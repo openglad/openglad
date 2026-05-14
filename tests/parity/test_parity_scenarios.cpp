@@ -189,12 +189,6 @@ OG_PARITY_TEST(family_golem_scen99)
 OG_PARITY_TEST(family_giant_skeleton_scen99)
 OG_PARITY_TEST(family_tower1_scen99)
 
-// Phase 01 coverage scenarios. Both lack master goldens (branch-only);
-// run_one_scenario GTEST_SKIPs them while the coverage gate observes
-// their spawns / event emissions independently.
-OG_PARITY_TEST(coverage_omnibus_scen99)
-OG_PARITY_TEST(coverage_events_scen99)
-
 #undef OG_PARITY_TEST
 
 // Phase 02 — verify the two smoke runs produce observably-different walker
