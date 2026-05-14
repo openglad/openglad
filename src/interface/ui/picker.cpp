@@ -1552,6 +1552,17 @@ void draw_toggle_effect_button(button& b, const std::string& category, const std
     mytext.write_xy_center(b.x + b.sizex/2, b.y + b.sizey/2 - 3, DARK_BLUE, "%s", b.label.c_str());
 }
 
+void draw_sprite_sheet_button(button& b)
+{
+    if (b.hidden || b.no_draw)
+        return;
+    if (cfg.get_setting("graphics", "sprite_sheet").empty())
+        return;
+    og::runtime::current_session->myscreen_->draw_button_colored(b.x-1, b.y-1, b.x + b.sizex, b.y + b.sizey, 1, LIGHT_GREEN);
+    text& mytext = og::runtime::current_session->myscreen_->text_normal;
+    mytext.write_xy_center(b.x + b.sizex/2, b.y + b.sizey/2 - 3, DARK_BLUE, "%s", b.label.c_str());
+}
+
 static std::string get_key_display_name_short(int keycode)
 {
     const char* key_name = og::input_native::key_name(keycode);
@@ -1859,15 +1870,7 @@ Sint32 main_options()
 		draw_toggle_effect_button(buttons[11], "effects", "damage_numbers");
 		draw_toggle_effect_button(buttons[12], "effects", "heal_numbers");
 		draw_toggle_effect_button(buttons[13], "effects", "gore");
-        {
-            const button& b = buttons[16];
-            const std::string ss_pack = cfg.get_setting("graphics", "sprite_sheet");
-            if (!ss_pack.empty()) {
-                og::runtime::current_session->myscreen_->draw_button_colored(
-                    b.x-1, b.y-1, b.x + b.sizex, b.y + b.sizey, 1, LIGHT_GREEN);
-                mytext.write_xy_center(b.x + b.sizex/2, b.y + b.sizey/2 - 3, DARK_BLUE, "%s", b.label.c_str());
-            }
-        }
+        draw_sprite_sheet_button(buttons[16]);
 
         draw_highlight(buttons[highlighted_button]);
         og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);

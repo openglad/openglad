@@ -67,6 +67,7 @@ class loader
 		std::vector<float> fire_frequency;
 
 		void reload_graphics();
+	private:
 		EntityFactory entity_factory_;
 };
 
