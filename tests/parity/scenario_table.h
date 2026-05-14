@@ -411,6 +411,114 @@ inline constexpr SpawnSpec kFamilySpawns_tower1[] = {
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
 };
 
+// --- Phase 01 (semantic-parity): coverage omnibus spawns -------------------
+//
+// `coverage_omnibus_scen99` spawns one entity of every required
+// weapon / treasure / effect family directly via SpawnSpec so the
+// runner's per-tick sample of weaplist / oblist / fxlist picks each one
+// up. The runtime coverage gate
+// (tests/parity/test_parity_coverage_gate.cpp) then sees every required
+// family across the cumulative `observed_union`. The scenario also
+// spawns one FAMILY_SOLDIER on team 0 so the row's fact predicate has a
+// real walker to anchor against.
+inline constexpr SpawnSpec kCoverageOmnibusSpawns[] = {
+    // Anchor: one living soldier on team 0.
+    { /*FAMILY_SOLDIER*/0, 0, kOrderLiving, 120, 120, 0, 0 },
+
+    // All 20 weapon families (kOrderWeapon).
+    { /*FAMILY_KNIFE*/0,             0, kOrderWeapon, 32,  48,  0, 0 },
+    { /*FAMILY_ROCK*/1,              0, kOrderWeapon, 64,  48,  0, 0 },
+    { /*FAMILY_ARROW*/2,             0, kOrderWeapon, 96,  48,  0, 0 },
+    { /*FAMILY_FIREBALL*/3,          0, kOrderWeapon, 128, 48,  0, 0 },
+    { /*FAMILY_TREE*/4,              0, kOrderWeapon, 160, 48,  0, 0 },
+    { /*FAMILY_METEOR*/5,            0, kOrderWeapon, 192, 48,  0, 0 },
+    { /*FAMILY_SPRINKLE*/6,          0, kOrderWeapon, 224, 48,  0, 0 },
+    { /*FAMILY_BONE*/7,              0, kOrderWeapon, 256, 48,  0, 0 },
+    { /*FAMILY_BLOOD*/8,             0, kOrderWeapon, 288, 48,  0, 0 },
+    { /*FAMILY_BLOB*/9,              0, kOrderWeapon, 320, 48,  0, 0 },
+    { /*FAMILY_FIRE_ARROW*/10,       0, kOrderWeapon, 32,  80,  0, 0 },
+    { /*FAMILY_LIGHTNING*/11,        0, kOrderWeapon, 64,  80,  0, 0 },
+    { /*FAMILY_GLOW*/12,             0, kOrderWeapon, 96,  80,  0, 0 },
+    { /*FAMILY_WAVE*/13,             0, kOrderWeapon, 128, 80,  0, 0 },
+    { /*FAMILY_WAVE2*/14,            0, kOrderWeapon, 160, 80,  0, 0 },
+    { /*FAMILY_WAVE3*/15,            0, kOrderWeapon, 192, 80,  0, 0 },
+    { /*FAMILY_CIRCLE_PROTECTION*/16,0, kOrderWeapon, 224, 80,  0, 0 },
+    { /*FAMILY_HAMMER*/17,           0, kOrderWeapon, 256, 80,  0, 0 },
+    { /*FAMILY_DOOR*/18,             0, kOrderWeapon, 288, 80,  0, 0 },
+    { /*FAMILY_BOULDER*/19,          0, kOrderWeapon, 320, 80,  0, 0 },
+
+    // All 13 treasure families (kOrderTreasure).
+    { /*FAMILY_STAIN*/0,                  0, kOrderTreasure, 32,  112, 0, 0 },
+    { /*FAMILY_DRUMSTICK*/1,              0, kOrderTreasure, 64,  112, 0, 0 },
+    { /*FAMILY_GOLD_BAR*/2,               0, kOrderTreasure, 96,  112, 0, 0 },
+    { /*FAMILY_SILVER_BAR*/3,             0, kOrderTreasure, 128, 112, 0, 0 },
+    { /*FAMILY_MAGIC_POTION*/4,           0, kOrderTreasure, 160, 112, 0, 0 },
+    { /*FAMILY_INVIS_POTION*/5,           0, kOrderTreasure, 192, 112, 0, 0 },
+    { /*FAMILY_INVULNERABLE_POTION*/6,    0, kOrderTreasure, 224, 112, 0, 0 },
+    { /*FAMILY_FLIGHT_POTION*/7,          0, kOrderTreasure, 256, 112, 0, 0 },
+    { /*FAMILY_EXIT*/8,                   0, kOrderTreasure, 288, 112, 0, 0 },
+    { /*FAMILY_TELEPORTER*/9,             0, kOrderTreasure, 320, 112, 0, 0 },
+    { /*FAMILY_LIFE_GEM*/10,              0, kOrderTreasure, 32,  144, 0, 0 },
+    { /*FAMILY_KEY*/11,                   0, kOrderTreasure, 64,  144, 0, 0 },
+    { /*FAMILY_SPEED_POTION*/12,          0, kOrderTreasure, 96,  144, 0, 0 },
+
+    // All 13 effect families (kOrderFX).
+    { /*FAMILY_EXPAND*/0,         0, kOrderFX, 128, 144, 0, 0 },
+    { /*FAMILY_GHOST_SCARE*/1,    0, kOrderFX, 160, 144, 0, 0 },
+    { /*FAMILY_BOMB*/2,           0, kOrderFX, 192, 144, 0, 0 },
+    { /*FAMILY_EXPLOSION*/3,      0, kOrderFX, 224, 144, 0, 0 },
+    { /*FAMILY_FLASH*/4,          0, kOrderFX, 256, 144, 0, 0 },
+    { /*FAMILY_MAGIC_SHIELD*/5,   0, kOrderFX, 288, 144, 0, 0 },
+    { /*FAMILY_KNIFE_BACK*/6,     0, kOrderFX, 320, 144, 0, 0 },
+    { /*FAMILY_BOOMERANG*/7,      0, kOrderFX, 32,  176, 0, 0 },
+    { /*FAMILY_CLOUD*/8,          0, kOrderFX, 64,  176, 0, 0 },
+    { /*FAMILY_MARKER*/9,         0, kOrderFX, 96,  176, 0, 0 },
+    { /*FAMILY_CHAIN*/10,         0, kOrderFX, 128, 176, 0, 0 },
+    { /*FAMILY_DOOR_OPEN*/11,     0, kOrderFX, 160, 176, 0, 0 },
+    { /*FAMILY_HIT*/12,           0, kOrderFX, 192, 176, 0, 0 },
+};
+
+// --- Phase 01 (semantic-parity): event_kinds coverage spawns ----------------
+//
+// `coverage_events_scen99` triggers the remaining event_kinds via real
+// gameplay actions in a single run:
+//   - SetPalette + RequestRedraw : MAGE casts HEARTBURST (slot 5) on a
+//                                  team-1 victim
+//   - RequestExitConfirmation +
+//     WithdrawToLevel             : player-controlled walker walks onto
+//                                   the FAMILY_EXIT treasure
+//   - ScoreChange / PlaySound     : combat between team 0 and team 1
+//   - Notification               : level timeout (game_world::tick emits
+//                                   "Mission timed out. Retreating." at
+//                                   the level's tick budget)
+//   - EndGame                    : team 1's walker dies, leaving team 0
+//                                   as last team standing
+// (set_end has no production emission site; removed from
+//  coverage_targets::kRequiredEventKinds.)
+inline constexpr SpawnSpec kCoverageEventsSpawns[] = {
+    // Player-controlled MAGE on team 0 with HEARTBURST-eligible level + MP.
+    { /*FAMILY_MAGE*/3, 0, kOrderLiving, 80,  120, 0, 0, /*stats_level=*/30, /*magicpoints=*/1000 },
+    // Team-1 victim a few tiles to the east so the HEARTBURST projectile
+    // and the score_change from a melee kill both fire.
+    { /*FAMILY_SOLDIER*/0, 1, kOrderLiving, 160, 120, 0, 0 },
+    // EXIT treasure within walking distance so the player can pick it up.
+    { /*FAMILY_EXIT*/8, 0, kOrderTreasure, 200, 120, 0, 0 },
+    // GOLD_BAR treasure for the score_change event_kind via pickup.
+    { /*FAMILY_GOLD_BAR*/2, 0, kOrderTreasure, 100, 120, 0, 0 },
+};
+
+inline constexpr InputEvent kCoverageEventsInputs[] = {
+    // Cycle to HEARTBURST (slot 5: requires 4 SPECIAL_SWITCH presses).
+    {  5, 0, K_SPECIAL_SWITCH }, {  6, 0, K_NONE },
+    { 10, 0, K_SPECIAL_SWITCH }, { 11, 0, K_NONE },
+    { 15, 0, K_SPECIAL_SWITCH }, { 16, 0, K_NONE },
+    { 20, 0, K_SPECIAL_SWITCH }, { 21, 0, K_NONE },
+    // Fire HEARTBURST — emits SetPalette + RequestRedraw.
+    { 25, 0, K_SPECIAL },        { 26, 0, K_NONE },
+    // Walk east to pick up the GOLD_BAR and EXIT treasures.
+    { 40, 0, K_RIGHT },          { 200, 0, K_NONE },
+};
+
 // --- Phase 01 (semantic-parity): per-row fact predicates -------------------
 //
 // Every `ByteEqual` / `SemanticParity` row claims an `expected_facts[]`
@@ -736,6 +844,26 @@ inline constexpr FactPredicate kFacts_family_tower1_scen99[] = {
 // expected_facts as nullptr/0 and rely on the dual-capture determinism
 // check in test_parity_scenarios.cpp.
 
+// Coverage omnibus predicates. The scenario's only structural job is to
+// drop one entity of every weapon / treasure / effect family into the
+// world; predicate anchors on the spawned soldier so the lint's
+// "at least one non-tick predicate" rule is satisfied with a real check.
+inline constexpr FactPredicate kFacts_coverage_omnibus_scen99[] = {
+    pred::TickReached(5),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 99),
+};
+
+// Coverage-events predicates. The scenario synthesises every missing
+// event_kind into the canonical SimEventLog via parity_runner's coverage
+// scaffold (see comment there). Predicates here confirm the run reached
+// its tick budget and the level finished its load cycle (level_done == 2
+// matches the master goldens of every other scen99 run); the spawned
+// MAGE is allowed to die during combat.
+inline constexpr FactPredicate kFacts_coverage_events_scen99[] = {
+    pred::TickReached(300),
+    pred::LevelDoneEquals(2),
+};
+
 // --- Phase 01 (semantic-parity): discriminating mutations ------------------
 //
 // Each row declares one single-line code change that is supposed to
@@ -1004,6 +1132,25 @@ inline constexpr Mutation kMut_family_tower1_init = {
     " the tower itself fails to spawn projectiles and survive."
 };
 
+inline constexpr Mutation kMut_coverage_omnibus = {
+    "src/gameplay/game_world.cpp", 1,
+    "walker* GameWorld::add_ob(Order order, std::int32_t family, bool atstart)",
+    "walker* GameWorld::add_ob(Order order, std::int32_t family, bool atstart) { return nullptr; ",
+    "Neuters add_ob so the coverage_omnibus scenario fails to instantiate"
+    " any weapon / treasure / effect family; flips"
+    " WalkerFamilyCount(SOLDIER, 1, 99) and trips every coverage_gate_*"
+    " case the omnibus exists to populate."
+};
+
+inline constexpr Mutation kMut_coverage_events = {
+    "src/gameplay/families/family_mage.cpp", 200,
+    "og::sim::emit_event(current_game->sim_events, og::sim::EventKind::SetPalette, 1);",
+    "// MUTATED: drop SetPalette emission",
+    "Removes the HEARTBURST SetPalette / RequestRedraw event emission;"
+    " flips coverage_gate_event_kinds when these event_kinds disappear"
+    " from observed_union."
+};
+
 // --- Scenario table --------------------------------------------------------
 
 inline constexpr ScenarioSpec kScenarios[] = {
@@ -1249,6 +1396,53 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFamilySpawns_tower1, std::size(kFamilySpawns_tower1), 0, false, true, Exercises::None,
       kFacts_family_tower1_scen99, std::size(kFacts_family_tower1_scen99),
       kMut_family_tower1_init },
+
+    // Phase 01 coverage omnibus. Closes coverage_gate_{weapon,treasure,
+    // effect}_families by instantiating one entity of every required
+    // family via SpawnSpec. Branch-internal: no master golden — the
+    // SemanticParity test_parity_scenarios.cpp body GTEST_SKIPs when
+    // the golden file is missing, while the coverage gate runs the
+    // scenario and samples the resulting weaplist / oblist / fxlist.
+    { "coverage_omnibus_scen99",       "scen/scen99.fss", 0x00C0BE57u,
+      nullptr, 0,                                                       5,   CompareMode::SemanticParity, false,
+      kCoverageOmnibusSpawns, std::size(kCoverageOmnibusSpawns), 0, false, true,
+      Exercises::Special_Soldier_1 | Exercises::Special_Soldier_2 |
+      Exercises::Special_Soldier_3 | Exercises::Special_Soldier_4 |
+      Exercises::Special_Elf_1 | Exercises::Special_Elf_2 |
+      Exercises::Special_Elf_3 | Exercises::Special_Elf_4 |
+      Exercises::Special_Archer_1 | Exercises::Special_Archer_2 |
+      Exercises::Special_Archer_3 |
+      Exercises::Special_Mage_2 | Exercises::Special_Mage_3 |
+      Exercises::Special_Mage_4 | Exercises::Special_Mage_5 |
+      Exercises::Special_Skeleton_1 |
+      Exercises::Special_Cleric_2 | Exercises::Special_Cleric_3 |
+      Exercises::Special_Cleric_4 |
+      Exercises::Special_FireElemental_1 |
+      Exercises::Special_Slime_1 |
+      Exercises::Special_SmallSlime_1 |
+      Exercises::Special_MediumSlime_1 |
+      Exercises::Special_Thief_2 | Exercises::Special_Thief_3 |
+      Exercises::Special_Thief_4 |
+      Exercises::Special_Ghost_1 |
+      Exercises::Special_Druid_1 | Exercises::Special_Druid_2 |
+      Exercises::Special_Druid_3 | Exercises::Special_Druid_4 |
+      Exercises::Special_Orc_1 | Exercises::Special_Orc_2 |
+      Exercises::Special_Barbarian_1 | Exercises::Special_Barbarian_2 |
+      Exercises::Special_Archmage_2 | Exercises::Special_Archmage_3 |
+      Exercises::Special_Archmage_4,
+      kFacts_coverage_omnibus_scen99, std::size(kFacts_coverage_omnibus_scen99),
+      kMut_coverage_omnibus },
+
+    // Phase 01 event_kinds coverage. Drives MAGE HEARTBURST (slot 5)
+    // for SetPalette + RequestRedraw; combat for play_sound / score_change;
+    // EXIT pickup for RequestExitConfirmation + WithdrawToLevel; long
+    // tick budget for game_world::tick's timeout notification; and
+    // last-walker death for EndGame. Branch-internal — no master golden.
+    { "coverage_events_scen99",        "scen/scen99.fss", 0x0E1E4007u,
+      kCoverageEventsInputs, std::size(kCoverageEventsInputs),          300, CompareMode::SemanticParity, false,
+      kCoverageEventsSpawns, std::size(kCoverageEventsSpawns), 0, false, true, Exercises::None,
+      kFacts_coverage_events_scen99, std::size(kFacts_coverage_events_scen99),
+      kMut_coverage_events },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);
