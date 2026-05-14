@@ -66,6 +66,9 @@ class loader
 		std::vector<float> damage;
 		std::vector<float> fire_frequency;
 
-	private:
+		void reload_graphics();
 		EntityFactory entity_factory_;
 };
+
+// Link-time dispatch: SDL build provides the real instance; headless build provides nothing.
+loader* sdl_entity_loader();

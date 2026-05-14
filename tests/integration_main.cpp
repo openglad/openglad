@@ -214,8 +214,13 @@ int main(int argc, char** argv)
 
     // Default to the offscreen driver but let the environment override it:
     // offscreen probes EGL, which can block forever on a wedged GPU driver
-    // (SDL_VIDEODRIVER=dummy is the pure-software escape hatch).
+    // (SDL_VIDEODRIVER=dummy is the pure-software escape hatch). offscreen
+    // requires OpenGL, which is unavailable on macOS, so default to dummy there.
+#if defined(__APPLE__)
+    SDL_setenv("SDL_VIDEODRIVER", "dummy", 0);
+#else
     SDL_setenv("SDL_VIDEODRIVER", "offscreen", 0);
+#endif
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 0);
 
     init_logging();

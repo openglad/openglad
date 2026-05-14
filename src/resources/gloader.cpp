@@ -428,6 +428,11 @@ loader::loader(EntityFactory entity_factory)
 		};
 	}
 
+	reload_graphics();
+}
+
+void loader::reload_graphics()
+{
 	std::fill(std::begin(hitpoints), std::end(hitpoints), 0.0f);
 
 	// Livings — all data driven from family descriptors

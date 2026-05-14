@@ -164,6 +164,7 @@ Sint32 return_menu(Sint32 arg);
 Sint32 name_guy(Sint32 arg); // name the current guy
 Sint32 do_set_scen_level(Sint32 arg1);
 Sint32 do_pick_campaign(Sint32 arg1);
+Sint32 do_pick_spritesheet(Sint32 arg);
 Sint32 set_difficulty();
 Sint32 change_teamnum(Sint32 arg);
 Sint32 change_hire_teamnum(Sint32 arg);
@@ -264,6 +265,7 @@ enum class ButtonAction : Sint32
     ViewScenarioPageFlip = 69,
     CreateScenarioMenu = 70,
     TeamsPageFlip = 71,
+    PickSpriteSheet = 72,
 };
 
 inline constexpr Sint32 button_action_id(ButtonAction action)

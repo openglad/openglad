@@ -4,10 +4,15 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/gparser.h>
+#include <openglad/resources/filesystem.h>
 #include <openglad/legacy/base.h>
 #include <openglad/interface/screen.h>
 #include <openglad/platform/game_context.h>
 #include <gtest/gtest.h>
+#include <filesystem>
+#include <fstream>
+
+void apply_sprite_sheet_setting();
 
 #include <algorithm>
 #include <cstddef>
@@ -340,4 +345,53 @@ TEST(GloaderFuncs, gloader_active_config_branch_with_ctx_and_global_cfg)
         << "gore toggle should select distinct blood sprite data";
 
     cfg.apply_setting("effects", "gore", prev_global_gore);
+}
+
+
+// ---------------------------------------------------------------------------
+// Custom spritesheet PhysFS override
+// ---------------------------------------------------------------------------
+
+TEST(GloaderFuncs, custom_spritesheet_overrides_default_pix)
+{
+    const char* config_dir = std::getenv("OPENGLAD_CONFIG_DIR");
+    ASSERT_TRUE(config_dir != nullptr) << "OPENGLAD_CONFIG_DIR must be set by the test harness";
+
+    // Read the standard footman.png so we have a baseline to compare against.
+    const std::vector<std::uint8_t> standard_bytes = og::resources::read_file("pix/footman.png");
+    ASSERT_FALSE(standard_bytes.empty()) << "standard footman.png must be present";
+
+    // Write a custom footman.png with distinct content into a temporary pack directory.
+    const std::filesystem::path pack_dir =
+        std::filesystem::path(config_dir) / "extra_pix" / "test_pack";
+    std::filesystem::create_directories(pack_dir);
+    const std::vector<std::uint8_t> custom_bytes = {0x00, 0x01, 0x02, 0x03, 0x04};
+    {
+        std::ofstream f(pack_dir / "footman.png", std::ios::binary);
+        f.write(reinterpret_cast<const char*>(custom_bytes.data()),
+                static_cast<std::streamsize>(custom_bytes.size()));
+    }
+
+    const std::string orig = cfg.get_setting("graphics", "sprite_sheet");
+
+    // Start from a clean (unmounted) state.
+    cfg.apply_setting("graphics", "sprite_sheet", "");
+    apply_sprite_sheet_setting();
+
+    // Mount the custom pack — footman.png must now resolve to the custom version.
+    cfg.apply_setting("graphics", "sprite_sheet", "test_pack");
+    apply_sprite_sheet_setting();
+    ASSERT_EQ(custom_bytes, og::resources::read_file("pix/footman.png"))
+        << "custom pack must shadow the standard footman.png";
+
+    // Unmount — standard footman.png must be visible again.
+    cfg.apply_setting("graphics", "sprite_sheet", "");
+    apply_sprite_sheet_setting();
+    ASSERT_EQ(standard_bytes, og::resources::read_file("pix/footman.png"))
+        << "standard footman.png must be restored after unmounting the custom pack";
+
+    // Restore original setting and clean up.
+    cfg.apply_setting("graphics", "sprite_sheet", orig);
+    apply_sprite_sheet_setting();
+    std::filesystem::remove_all(pack_dir);
 }

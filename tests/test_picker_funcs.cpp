@@ -8,6 +8,8 @@
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/picker_ui_state.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/resources/gparser.h>
+#include <openglad/resources/filesystem.h>
 #include <gtest/gtest.h>
 #include <array>
 #include <atomic>
@@ -20,6 +22,9 @@
 #include <string>
 #include <utility>
 #include <vector>
+
+// Forward declaration from platform_io.cpp
+void apply_sprite_sheet_setting();
 
 // Forward declarations from picker.cpp
 std::string get_class_description(unsigned char family);
@@ -2096,4 +2101,34 @@ TEST(PickerFuncs, local_lobby_request_team_change_reseats_p1)
     save.my_team = orig_my_team;
     save.numplayers = orig_numplayers;
     save.allied_mode = orig_allied;
+}
+
+// ---------------------------------------------------------------------------
+// Sprite sheet picker tests
+// ---------------------------------------------------------------------------
+
+class SpriteSheetPicker : public ::testing::Test {
+protected:
+    std::string orig_setting_;
+
+    void SetUp() override {
+        orig_setting_ = cfg.get_setting("graphics", "sprite_sheet");
+        cfg.apply_setting("graphics", "sprite_sheet", "");
+        apply_sprite_sheet_setting();
+    }
+
+    void TearDown() override {
+        cfg.apply_setting("graphics", "sprite_sheet", orig_setting_);
+        apply_sprite_sheet_setting();
+    }
+};
+
+
+TEST_F(SpriteSheetPicker, config_round_trip)
+{
+    cfg.apply_setting("graphics", "sprite_sheet", "my-pack");
+    ASSERT_EQ("my-pack", cfg.get_setting("graphics", "sprite_sheet"));
+
+    cfg.apply_setting("graphics", "sprite_sheet", "");
+    ASSERT_EQ("", cfg.get_setting("graphics", "sprite_sheet"));
 }

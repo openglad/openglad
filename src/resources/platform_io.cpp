@@ -16,6 +16,7 @@
  */
 
 #include <openglad/resources/io.h>
+#include <openglad/resources/gparser.h>
 #include <openglad/core/util.h>
 #include <openglad/resources/level_file_io.h>
 #include <openglad/gameplay/game_world.h>
@@ -260,6 +261,7 @@ static void create_dataopenglad()
     mkdir((user_path + "campaigns/").c_str(), 0770);
     mkdir((user_path + "save/").c_str(), 0770);
     mkdir((user_path + "cfg/").c_str(), 0770);
+    mkdir((user_path + "extra_pix/").c_str(), 0770);
 }
 
 #ifdef __EMSCRIPTEN__
@@ -384,6 +386,29 @@ void io_exit()
     sync_filesystem();
 #endif
     og::resources::deinit();
+}
+
+static std::string s_mounted_sprite_sheet_dir;
+
+void apply_sprite_sheet_setting()
+{
+    const std::string name = cfg.get_setting("graphics", "sprite_sheet");
+    const std::string new_dir = name.empty() ? "" : (get_user_path() + "extra_pix/" + name);
+
+    if (s_mounted_sprite_sheet_dir == new_dir)
+        return;
+
+    if (!s_mounted_sprite_sheet_dir.empty())
+        og::resources::unmount(s_mounted_sprite_sheet_dir.c_str());
+
+    if (!new_dir.empty()) {
+        if (!og::resources::mount(new_dir.c_str(), "pix/", 0))
+            LogWarn("Sprite sheet '{}': failed to mount\n", new_dir);
+        else
+            Log("Sprite sheet mounted: {}\n", new_dir);
+    }
+
+    s_mounted_sprite_sheet_dir = new_dir;
 }
 
 void sync_filesystem()
