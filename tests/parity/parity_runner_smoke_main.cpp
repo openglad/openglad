@@ -9,6 +9,7 @@
 //   parity_runner_smoke --list      # Phase 07 will populate this; today it
 //                                   # prints the master-comparable subset.
 
+#include "fact_predicate.h"
 #include "parity_bootstrap.h"
 #include "parity_runner.h"
 #include "scenario_table.h"
@@ -36,7 +37,93 @@ void print_usage(std::FILE* out)
 {
     std::fprintf(out,
         "usage: parity_runner_smoke --scenario <id> [--out <path>]\n"
+        "       parity_runner_smoke --scenario <id> --evaluate-facts [--out <path>]\n"
         "       parity_runner_smoke --list\n");
+}
+
+const char* fact_kind_name(og::parity::FactKind k)
+{
+    using og::parity::FactKind;
+    switch (k)
+    {
+        case FactKind::TickReached:                     return "TickReached";
+        case FactKind::LevelDoneEquals:                 return "LevelDoneEquals";
+        case FactKind::ScoreDelta:                      return "ScoreDelta";
+        case FactKind::WalkerFamilyCount:               return "WalkerFamilyCount";
+        case FactKind::WalkerOfTeamAlive:               return "WalkerOfTeamAlive";
+        case FactKind::WalkerHpRangeAtFinalTick:        return "WalkerHpRangeAtFinalTick";
+        case FactKind::WalkerKeysApplied:               return "WalkerKeysApplied";
+        case FactKind::WalkerPositionMoved:             return "WalkerPositionMoved";
+        case FactKind::WalkerDiedByFinal:               return "WalkerDiedByFinal";
+        case FactKind::WalkerAliveAtFinal:              return "WalkerAliveAtFinal";
+        case FactKind::TreasureFamilyRemovedFromOblist: return "TreasureFamilyRemovedFromOblist";
+        case FactKind::StatDeltaOnPickup:               return "StatDeltaOnPickup";
+        case FactKind::EffectFamilyCount:               return "EffectFamilyCount";
+        case FactKind::EventKindAtLeast:                return "EventKindAtLeast";
+        case FactKind::EventKindExactly:                return "EventKindExactly";
+        case FactKind::WeaponFamilyEmitted:             return "WeaponFamilyEmitted";
+    }
+    return "Unknown";
+}
+
+void append_json_escaped(std::string& out, std::string_view s)
+{
+    out.push_back('"');
+    for (char c : s)
+    {
+        switch (c)
+        {
+            case '"':  out.append("\\\""); break;
+            case '\\': out.append("\\\\"); break;
+            case '\n': out.append("\\n");  break;
+            case '\r': out.append("\\r");  break;
+            case '\t': out.append("\\t");  break;
+            default:
+                if (static_cast<unsigned char>(c) < 0x20)
+                {
+                    char buf[8];
+                    std::snprintf(buf, sizeof(buf), "\\u%04X",
+                                  static_cast<unsigned char>(c));
+                    out.append(buf);
+                }
+                else
+                {
+                    out.push_back(c);
+                }
+                break;
+        }
+    }
+    out.push_back('"');
+}
+
+std::string serialize_fact_evaluation(const og::parity::ScenarioSpec& spec,
+                                      const og::parity::StateDump&    dump)
+{
+    std::string out;
+    out.append("{\n  \"scenario\": ");
+    append_json_escaped(out, spec.id);
+    out.append(",\n  \"facts\": [");
+    for (std::size_t i = 0; i < spec.fact_count; ++i)
+    {
+        const auto& p = spec.expected_facts[i];
+        const auto r = og::parity::evaluate_one(p, dump);
+        if (i != 0) out.push_back(',');
+        out.append("\n    { \"index\": ");
+        char buf[32];
+        std::snprintf(buf, sizeof(buf), "%zu", i);
+        out.append(buf);
+        out.append(", \"kind\": ");
+        append_json_escaped(out, fact_kind_name(p.kind));
+        out.append(", \"ok\": ");
+        out.append(r.ok ? "true" : "false");
+        out.append(", \"indeterminate\": ");
+        out.append(r.indeterminate ? "true" : "false");
+        out.append(", \"message\": ");
+        append_json_escaped(out, r.message);
+        out.append(" }");
+    }
+    out.append("\n  ]\n}\n");
+    return out;
 }
 
 const og::parity::ScenarioSpec* find_scenario(std::string_view id)
@@ -65,6 +152,7 @@ int main(int argc, char** argv)
 {
     std::string scenario_id;
     std::string out_path = "-";
+    bool evaluate_facts = false;
 
     for (int i = 1; i < argc; ++i)
     {
@@ -89,6 +177,11 @@ int main(int argc, char** argv)
             out_path = argv[++i];
             continue;
         }
+        if (arg == "--evaluate-facts")
+        {
+            evaluate_facts = true;
+            continue;
+        }
         std::fprintf(stderr, "parity_runner_smoke: unrecognised argument: %.*s\n",
                      static_cast<int>(arg.size()), arg.data());
         print_usage(stderr);
@@ -111,11 +204,13 @@ int main(int argc, char** argv)
 
     og::parity::BootstrapScope boot(argv[0]);
     const auto outcome = og::parity::run_scenario(*spec);
-    const std::string json = og::parity::canonical_serialize(outcome.dump);
+    const std::string payload = evaluate_facts
+        ? serialize_fact_evaluation(*spec, outcome.dump)
+        : og::parity::canonical_serialize(outcome.dump);
 
     if (out_path == "-")
     {
-        std::fwrite(json.data(), 1, json.size(), stdout);
+        std::fwrite(payload.data(), 1, payload.size(), stdout);
     }
     else
     {
@@ -127,7 +222,7 @@ int main(int argc, char** argv)
                 out_path.c_str());
             return 2;
         }
-        f.write(json.data(), static_cast<std::streamsize>(json.size()));
+        f.write(payload.data(), static_cast<std::streamsize>(payload.size()));
         if (!f)
         {
             std::fprintf(stderr,

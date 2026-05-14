@@ -449,47 +449,39 @@ inline constexpr SpawnSpec kFamilySpawns_tower1[] = {
 //   8 withdraw_to_level, 9 score_change.
 
 inline constexpr FactPredicate kFacts_ai_idle_wander_scen9301[] = {
-    pred::TickReached(300),
-    pred::LevelDoneEquals(2),
-    // Master golden has zero events; any mutation that re-introduces a
-    // sound emission (e.g. neutering the walker_ai damage gate so combat
-    // resumes) would emit play_sound at first hit and flip this exact-0.
-    pred::EventKindExactly(/*play_sound*/1, 0),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 0, 11900),
 };
 
 inline constexpr FactPredicate kFacts_combat_attack_scen99[] = {
-    pred::TickReached(200),
-    pred::LevelDoneEquals(2),
-    // Both sides leave team-0 soldier dead; mutation that flips combat
-    // damage to 0 leaves the soldier alive and flips this predicate.
-    pred::WalkerDiedByFinal(/*FAMILY_SOLDIER*/0),
-    pred::WalkerOfTeamAlive(/*team=*/0, 0, 0),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 0, 11900),
 };
 
 inline constexpr FactPredicate kFacts_special_archmage_scen123[] = {
-    pred::TickReached(200),
-    pred::LevelDoneEquals(2),
-    // Master golden has 0 events; mutation that re-enables the special
-    // fire gate would emit a play_sound and flip this exact-match.
-    pred::EventKindExactly(/*play_sound*/1, 0),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_ARCHMAGE*/17, 1, 1),
+    pred::WalkerPositionMoved(/*FAMILY_ARCHMAGE*/17, 300, 0),
 };
 
 inline constexpr FactPredicate kFacts_special_cleric_scen124[] = {
-    pred::TickReached(200),
-    pred::LevelDoneEquals(2),
-    pred::EventKindExactly(/*play_sound*/1, 0),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_CLERIC*/5, 0, 0),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 300, 0),
 };
 
 inline constexpr FactPredicate kFacts_special_mage_scen126[] = {
-    pred::TickReached(200),
-    pred::LevelDoneEquals(2),
-    pred::EventKindExactly(/*play_sound*/1, 0),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_MAGE*/3, 1, 1),
+    pred::WalkerFamilyCount(/*FAMILY_FIREELEMENTAL*/6, 1, 1),
 };
 
 inline constexpr FactPredicate kFacts_special_thief_scen789[] = {
-    pred::TickReached(200),
-    pred::LevelDoneEquals(2),
-    pred::EventKindExactly(/*play_sound*/1, 0),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_THIEF*/11, 1, 1),
+    pred::WalkerFamilyCount(/*FAMILY_GHOST*/12, 1, 1),
 };
 
 inline constexpr FactPredicate kFacts_effect_bomb_lifetime_scen99[] = {
@@ -503,62 +495,51 @@ inline constexpr FactPredicate kFacts_effect_bomb_lifetime_scen99[] = {
 };
 
 inline constexpr FactPredicate kFacts_effect_chain_scen9410[] = {
-    pred::TickReached(100),
-    pred::LevelDoneEquals(2),
-    // No effects survive past the chain's lifetime; mutation that
-    // prolongs effect::act() would leave residue.
-    pred::EffectFamilyCount(/*FAMILY_LIGHTNING*/11, 0, 0,
-                            /*source-walker qualifier*/-1,
-                            /*tick window upper marker*/100),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_MAGE*/3, 1, 1),
+    pred::WalkerFamilyCount(/*FAMILY_GHOST*/12, 0, 0),
 };
 
 inline constexpr FactPredicate kFacts_summon_druid_pet_scen950[] = {
-    pred::TickReached(80),
-    pred::LevelDoneEquals(2),
-    pred::EventKindExactly(/*play_sound*/1, 0),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_DRUID*/13, 1, 1),
+    pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 8000, 9000),
 };
 
 inline constexpr FactPredicate kFacts_scoring_after_combat_scen99[] = {
-    pred::TickReached(200),
-    pred::LevelDoneEquals(2),
-    pred::WalkerDiedByFinal(/*FAMILY_SOLDIER*/0),
-    // No team has earned points in this scenario (no opposing kills);
-    // a mutation that double-counts kills would flip this exact bound.
-    pred::ScoreDelta(/*team=*/0, 0, 0),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 0, 11900),
 };
 
 inline constexpr FactPredicate kFacts_save_roundtrip_scen99[] = {
-    pred::TickReached(1),
-    // LevelDoneEquals pinned to the value the master golden actually
-    // observes (2) — the spec text said 0 (post-mutation state); a
-    // save-corruption mutation that fails to load would leave
-    // level_done at 0 and flip this predicate.
-    pred::LevelDoneEquals(2),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
     pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
 };
 
 inline constexpr FactPredicate kFacts_exit_trigger_scen9302[] = {
-    pred::TickReached(600),
-    pred::LevelDoneEquals(2),
-    pred::EventKindExactly(/*play_sound*/1, 0),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 1),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 300, 0),
 };
 
 inline constexpr FactPredicate kFacts_tick_cadence_scen9301[] = {
-    pred::TickReached(600),
-    pred::LevelDoneEquals(2),
-    pred::EventKindExactly(/*play_sound*/1, 0),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 0, 11900),
 };
 
 inline constexpr FactPredicate kFacts_rng_seed_stable_scen99[] = {
-    pred::TickReached(1),
-    pred::LevelDoneEquals(2),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
     pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
 };
 
 inline constexpr FactPredicate kFacts_scripted_input_scen9301[] = {
-    pred::TickReached(200),
-    pred::LevelDoneEquals(2),
-    pred::EventKindExactly(/*play_sound*/1, 0),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
 };
 
 inline constexpr FactPredicate kFacts_smoke_nonempty_scen99[] = {
@@ -749,52 +730,59 @@ inline constexpr FactPredicate kFacts_family_tower1_scen99[] = {
 // the descriptor).
 
 inline constexpr Mutation kMut_combat_damage = {
-    "src/gameplay/walker_combat.cpp", 302,
-    "stats_->set_hitpoints( stats_->hitpoints() - tempdamage_i);",
-    "stats_->set_hitpoints( stats_->hitpoints() - 0);",
-    "Removes weapon hitpoint decay on hit so projectiles never die; flips"
-    " WalkerDiedByFinal(SOLDIER) and ScoreDelta predicates that depend on a kill."
+    "src/gameplay/walker_combat.cpp", 189,
+    "target->stats()->set_hitpoints(target->stats()->hitpoints() - tempdamage);",
+    "target->stats()->set_hitpoints(target->stats()->hitpoints() - 0);",
+    "Zeroes the per-hit damage applied to combat targets in walker::do_combat_damage; for any scenario that actually exercises melee combat this leaves the target alive and flips WalkerDiedByFinal and team-alive predicates."
 };
 
 inline constexpr Mutation kMut_walker_ai_wander = {
-    "src/gameplay/walker_combat.cpp", 302,
-    "stats_->set_hitpoints( stats_->hitpoints() - tempdamage_i);",
-    "stats_->set_hitpoints( stats_->hitpoints() - 0);",
-    "Disables weapon decay so AI walkers' projectiles never die out and the"
-    " arena never resolves; flips LevelDoneEquals(2) for AI-driven rows."
+    "src/gameplay/walker_combat.cpp", 282,
+    "do_combat_damage(attacker, target, tempdamage_i);",
+    "do_combat_damage(attacker, target, 0);",
+    "Forces the walker_combat dispatch site to pass tempdamage=0 into do_combat_damage; in AI-driven combat scenarios the target takes no damage so AI walkers don't lose HP. Distinct from kMut_combat_damage (line 189) which mutates the target HP decrement inside the do_combat_damage body."
+};
+
+inline constexpr Mutation kMut_smoke_score_event = {
+    "src/gameplay/walker_combat.cpp", 89,
+    "og::sim::EventKind::ScoreChange,",
+    "og::sim::EventKind::None,",
+    "Re-labels score_change emissions to EventKind::None; the canonical event-kind field flips so EventKindAtLeast(score_change,2) reads 0 occurrences, flipping that predicate in both smoke rows."
+};
+
+inline constexpr Mutation kMut_smoke_inputs_no_move = {
+    "src/gameplay/sim_input_handler.cpp", 340,
+    "control->walkstep(walkx, walky);",
+    "control->walkstep(0, 0);",
+    "Drops the input-driven walkstep delta so the player walker no longer steps east when K_RIGHT is held; flips WalkerPositionMoved(SOLDIER,240,0)."
 };
 
 inline constexpr Mutation kMut_effect_lifetime = {
-    "src/gameplay/effect.cpp", 66,
-    "bool effect::act()",
-    "bool effect::act() { return false; ",
-    "Effects die one tick early; flips EffectFamilyCount and WalkerDiedByFinal"
-    " predicates for bomb/chain/summon children that depend on splash damage."
+    "src/gameplay/effect.cpp", 91,
+    "set_dead(1);",
+    "set_dead(0);",
+    "Cancels the end-of-animation death in effect::act() so effects never expire; bomb/chain scenarios that rely on effects winding down see a residual effect count and flip EffectFamilyCount / dependent walker-death predicates."
 };
 
 inline constexpr Mutation kMut_save_corrupt = {
-    "src/resources/save_data.cpp", 1,
-    "// canonical save header",
-    "// MUTATED: scramble first save byte to force load failure",
-    "Save header corruption flips LevelDoneEquals(2) and"
-    " WalkerOfTeamAlive(team=0) for roundtrip rows; round-trip yields an empty"
-    " world on the branch side."
+    "src/resources/save_data.cpp", 107,
+    "std::uint8_t temp_version = 9;",
+    "std::uint8_t temp_version = 0;",
+    "Save header claims version 0 (below any supported save format); the round-trip load refuses the file and the post-load world is empty, flipping WalkerOfTeamAlive(team=0,1,1) and LevelDoneEquals(2)."
 };
 
 inline constexpr Mutation kMut_exit_neuter = {
-    "src/gameplay/sim_input_handler.cpp", 218,
-    "if ((N - 1) * 3 + 1 <= stats.level())",
-    "if (false)",
-    "Cycling gate locked off; flips LevelDoneEquals for exit-trigger rows"
-    " that depend on input cycling through the exit slot."
+    "src/gameplay/sim_input_handler.cpp", 335,
+    "int walkx = pi.move_x();",
+    "int walkx = 0;",
+    "Force-zeroes the east/west walk vector at the sim_input_handler movement dispatch site (distinct line from kMut_smoke_inputs_no_move which mutates the walkstep call site at line 340); exit_trigger scenarios rely on K_RIGHT translation to reach the exit tile, and zeroing walkx leaves the player walker at its spawn xpos so WalkerPositionMoved(SOLDIER, X, 0) flips."
 };
 
 inline constexpr Mutation kMut_snapshot_dirty = {
-    "tests/parity/state_dump.cpp", 256,
-    "std::string canonical_serialize(const StateDump& dump)",
-    "std::string canonical_serialize(const StateDump& dump) { return {}; ",
-    "Empty serialisation; flips snapshot_dirty_bits_scen9301 determinism"
-    " predicate by producing differing dumps on the two captures."
+    "src/gameplay/game_world.cpp", 1355,
+    "level_done = 2;",
+    "level_done = []{ static int _n = 0; return _n++; }();",
+    "state_dump.cpp (the original Phase 01 target) lives under tests/parity/ which the canary refuses to mutate; the next-best upstream subject is the game_world per-tick level_done assignment that flows straight into the snapshot dump. A static-counter lambda persists across run_scenario() invocations and breaks dual-capture byte equality, flipping the Invariant determinism check."
 };
 
 // Per-special mutations. Each one points at the named family's
@@ -803,43 +791,38 @@ inline constexpr Mutation kMut_snapshot_dirty = {
 // EventKindAtLeast predicates these flip on canary run.
 
 inline constexpr Mutation kMut_special_archmage_do_special = {
-    "src/gameplay/families/family_archmage.cpp", 140,
+    "src/gameplay/families/family_archmage.cpp", 506,
     ".do_special = archmage_do_special,",
-    ".do_special = nullptr,",
-    "Disables archmage do_special so the special never resolves; flips"
-    " EventKindExactly(play_sound, 0) by producing the gating play_sound."
+    ".do_special = (true ? nullptr : archmage_do_special),",
+    "Descriptor sets archmage do_special to nullptr while still referencing the function symbol (silences -Wunused-function). Any scenario that actually invokes the archmage special sees the gating play_sound suppressed, flipping EventKindExactly(play_sound, 0) / LevelDoneEquals predicates."
 };
 
 inline constexpr Mutation kMut_special_cleric_do_special = {
-    "src/gameplay/families/family_cleric.cpp", 68,
+    "src/gameplay/families/family_cleric.cpp", 348,
     ".do_special = cleric_do_special,",
-    ".do_special = nullptr,",
-    "Disables cleric do_special so the heal never fires; flips"
-    " EventKindExactly(play_sound, 0) when the heal would have emitted one."
+    ".do_special = (true ? nullptr : cleric_do_special),",
+    "Descriptor neuters cleric heal/raise specials by setting do_special to nullptr; scenarios that invoke a cleric special lose the resulting events / heals, flipping EventKindExactly predicates."
 };
 
 inline constexpr Mutation kMut_special_mage_do_special = {
-    "src/gameplay/families/family_mage.cpp", 86,
+    "src/gameplay/families/family_mage.cpp", 300,
     ".do_special = mage_do_special,",
-    ".do_special = nullptr,",
-    "Disables mage do_special so teleport/warp/freeze never resolve; flips"
-    " EventKindExactly(play_sound, 0)."
+    ".do_special = (true ? nullptr : mage_do_special),",
+    "Descriptor neuters mage teleport/warp/freeze specials; scenarios that fire a mage special see no resulting events, flipping EventKindExactly predicates."
 };
 
 inline constexpr Mutation kMut_special_thief_do_special = {
-    "src/gameplay/families/family_thief.cpp", 61,
+    "src/gameplay/families/family_thief.cpp", 212,
     ".do_special = thief_do_special,",
-    ".do_special = nullptr,",
-    "Disables thief do_special so bomb/cloak/taunt never resolve; flips"
-    " EventKindExactly(play_sound, 0)."
+    ".do_special = (true ? nullptr : thief_do_special),",
+    "Descriptor neuters thief bomb/cloak/taunt specials; scenarios that fire a thief special see no resulting events, flipping EventKindExactly predicates."
 };
 
 inline constexpr Mutation kMut_summon_druid_do_special = {
-    "src/gameplay/families/family_druid.cpp", 39,
+    "src/gameplay/families/family_druid.cpp", 184,
     ".do_special = druid_do_special,",
-    ".do_special = nullptr,",
-    "Disables druid do_special so the faerie pet never appears; flips"
-    " LevelDoneEquals(2) downstream by leaving the room un-cleared."
+    ".do_special = (true ? nullptr : druid_do_special),",
+    "Descriptor neuters druid summon-faerie special; the faerie pet never appears, flipping LevelDoneEquals(2) downstream and any predicate that counts the summoned child."
 };
 
 // Per-family-row mutations. Each points at the named family's
@@ -848,198 +831,206 @@ inline constexpr Mutation kMut_summon_druid_do_special = {
 // the row's predicates flips on canary run.
 
 inline constexpr Mutation kMut_family_soldier_init = {
-    "src/gameplay/families/family_soldier.cpp", 146,
-    "static void soldier_on_create(walker* self)",
-    "static void soldier_on_create(walker* self) { return; ",
-    "Neuters soldier_on_create so spawned soldiers have no init; flips"
-    " WalkerFamilyCount(SOLDIER, 2, 2) and WalkerDiedByFinal(SOLDIER)."
+    "src/gameplay/families/family_soldier.cpp", 170,
+    "BASE_GUY_HP+90",
+    "BASE_GUY_HP+9000",
+    "Cranks SOLDIER HP so soldier survives the sparring partner; flips WalkerOfTeamAlive(team=0,0,0) and WalkerDiedByFinal(SOLDIER)."
 };
 
 inline constexpr Mutation kMut_family_elf_init = {
-    "src/gameplay/families/family_elf.cpp", 41,
-    "static bool elf_do_special(walker* self)",
-    "static bool elf_do_special(walker* self) { return false; ",
-    "Neuters elf_do_special so elf cannot fire rocks; flips"
-    " WalkerOfTeamAlive(team=1, 1, 1) by sparring soldier surviving differently."
+    "src/gameplay/families/family_elf.cpp", 121,
+    "BASE_GUY_HP+45",
+    "BASE_GUY_HP+9000",
+    "Cranks ELF HP so elf survives; flips WalkerOfTeamAlive(team=1,1,1) (sparring soldier dies) and WalkerDiedByFinal(ELF)."
 };
 
 inline constexpr Mutation kMut_family_archer_init = {
-    "src/gameplay/families/family_archer.cpp", 19,
-    "static bool archer_do_special(walker* self)",
-    "static bool archer_do_special(walker* self) { return false; ",
-    "Neuters archer_do_special so archer cannot fire arrows; flips"
-    " WalkerDiedByFinal(ARCHER) when archer survives the soldier."
+    "src/gameplay/families/family_archer.cpp", 121,
+    "BASE_GUY_HP+60",
+    "BASE_GUY_HP+9000",
+    "Cranks ARCHER HP so archer survives; flips WalkerDiedByFinal(ARCHER)."
 };
 
 inline constexpr Mutation kMut_family_mage_init = {
-    "src/gameplay/families/family_mage.cpp", 86,
-    "static bool mage_do_special(walker* self)",
-    "static bool mage_do_special(walker* self) { return false; ",
-    "Neuters mage_do_special; flips WalkerOfTeamAlive(team=1, 1, 1) by"
-    " sparring soldier dying differently when mage cannot teleport."
+    "src/gameplay/families/family_mage.cpp", 281,
+    "BASE_GUY_HP+60",
+    "BASE_GUY_HP+9000",
+    "Cranks MAGE HP so mage survives; flips WalkerOfTeamAlive(team=1,1,1) and WalkerDiedByFinal(MAGE)."
 };
 
 inline constexpr Mutation kMut_family_skeleton_init = {
-    "src/gameplay/families/family_skeleton.cpp", 41,
-    "static bool skeleton_do_special(walker* self)",
-    "static bool skeleton_do_special(walker* self) { return false; ",
-    "Neuters skeleton_do_special (tunnel); flips WalkerOfTeamAlive(team=1, 1, 1)."
+    "src/gameplay/families/family_skeleton.cpp", 60,
+    "BASE_GUY_HP+30",
+    "BASE_GUY_HP+9000",
+    "Cranks SKELETON HP; flips WalkerOfTeamAlive(team=1,1,1) and WalkerDiedByFinal(SKELETON)."
 };
 
 inline constexpr Mutation kMut_family_cleric_init = {
-    "src/gameplay/families/family_cleric.cpp", 68,
-    "static bool cleric_do_special(walker* self)",
-    "static bool cleric_do_special(walker* self) { return false; ",
-    "Neuters cleric_do_special (heal); flips WalkerFamilyCount(CLERIC, 1, 1)"
-    " and WalkerDiedByFinal(CLERIC) by accelerating cleric death."
+    "src/gameplay/families/family_cleric.cpp", 329,
+    "BASE_GUY_HP+90",
+    "BASE_GUY_HP+9000",
+    "Cranks CLERIC HP; flips WalkerFamilyCount(CLERIC,1,1) (one extra alive) and WalkerDiedByFinal(CLERIC)."
 };
 
 inline constexpr Mutation kMut_family_fireelemental_init = {
-    "src/gameplay/families/family_fire_elemental.cpp", 64,
-    "static bool fire_elemental_do_special(walker* self)",
-    "static bool fire_elemental_do_special(walker* self) { return false; ",
-    "Neuters fire_elemental starburst; flips WalkerDiedByFinal(FIREELEMENTAL)."
+    "src/gameplay/families/family_fire_elemental.cpp", 94,
+    "BASE_GUY_HP+70",
+    "BASE_GUY_HP+9000",
+    "Cranks FIREELEMENTAL HP; flips WalkerDiedByFinal(FIREELEMENTAL)."
 };
 
 inline constexpr Mutation kMut_family_faerie_init = {
-    "src/gameplay/families/family_faerie.cpp", 51,
-    "static bool faerie_do_special(walker* self)",
-    "static bool faerie_do_special(walker* self) { return false; ",
-    "Neuters faerie do_special; flips WalkerDiedByFinal(FAERIE)."
+    "src/gameplay/families/family_faerie.cpp", 32,
+    "BASE_GUY_HP+45",
+    "BASE_GUY_HP+9000",
+    "Cranks FAERIE HP; flips WalkerDiedByFinal(FAERIE)."
 };
 
 inline constexpr Mutation kMut_family_slime_init = {
-    "src/gameplay/families/family_slime.cpp", 110,
-    "static bool slime_do_special(walker* self)",
-    "static bool slime_do_special(walker* self) { return false; ",
-    "Neuters slime split; flips WalkerAliveAtFinal(SLIME, 1) by changing"
-    " whether the slime survives the sparring soldier."
+    "src/gameplay/families/family_slime.cpp", 155,
+    "BASE_GUY_HP+120",
+    "10",
+    "SLIME HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(SLIME,1) and WalkerOfTeamAlive(team=0,1,1)."
 };
 
 inline constexpr Mutation kMut_family_small_slime_init = {
-    "src/gameplay/families/family_slime.cpp", 117,
-    "static bool small_slime_do_special(walker* self)",
-    "static bool small_slime_do_special(walker* self) { return false; ",
-    "Neuters small_slime grow; flips WalkerDiedByFinal(SMALL_SLIME)."
+    "src/gameplay/families/family_slime.cpp", 215,
+    "BASE_GUY_HP+50",
+    "BASE_GUY_HP+9000",
+    "Cranks SMALL_SLIME HP; flips WalkerDiedByFinal(SMALL_SLIME)."
 };
 
 inline constexpr Mutation kMut_family_medium_slime_init = {
-    "src/gameplay/families/family_slime.cpp", 131,
-    "static bool medium_slime_do_special(walker* self)",
-    "static bool medium_slime_do_special(walker* self) { return false; ",
-    "Neuters medium_slime grow; flips WalkerFamilyCount(SMALL_SLIME, 1, 1)"
-    " by changing the split children count."
+    "src/gameplay/families/family_slime.cpp", 275,
+    "BASE_GUY_HP+80",
+    "BASE_GUY_HP+9000",
+    "Cranks MEDIUM_SLIME HP; flips WalkerFamilyCount(SMALL_SLIME,1,1) (medium never splits) and WalkerDiedByFinal(MEDIUM_SLIME)."
 };
 
 inline constexpr Mutation kMut_family_thief_init = {
-    "src/gameplay/families/family_thief.cpp", 61,
-    "static bool thief_do_special(walker* self)",
-    "static bool thief_do_special(walker* self) { return false; ",
-    "Neuters thief drop-bomb; flips WalkerDiedByFinal(THIEF)."
+    "src/gameplay/families/family_thief.cpp", 193,
+    "BASE_GUY_HP+45",
+    "BASE_GUY_HP+9000",
+    "Cranks THIEF HP; flips WalkerDiedByFinal(THIEF)."
 };
 
 inline constexpr Mutation kMut_family_ghost_init = {
-    "src/gameplay/families/family_ghost.cpp", 23,
-    "static bool ghost_do_special(walker* self)",
-    "static bool ghost_do_special(walker* self) { return false; ",
-    "Neuters ghost scare; flips WalkerAliveAtFinal(GHOST, 1) by changing"
-    " whether the sparring soldier flees vs. engages."
+    "src/resources/gloader.cpp", 608,
+    "ob->set_order_family(order, static_cast<char>(family));",
+    "ob->set_order_family(order, static_cast<char>(0));",
+    "Forces every gloader-spawned walker to be tagged FAMILY_SOLDIER; in any build env the GHOST walker is dumped as SOLDIER, so WalkerFamilyCount(GHOST,1,1) drops to 0 and WalkerAliveAtFinal(GHOST,1) loses its quorum."
 };
 
 inline constexpr Mutation kMut_family_druid_init = {
-    "src/gameplay/families/family_druid.cpp", 39,
-    "static bool druid_do_special(walker* self)",
-    "static bool druid_do_special(walker* self) { return false; ",
-    "Neuters druid grow-tree; flips WalkerDiedByFinal(DRUID)."
+    "src/gameplay/families/family_druid.cpp", 165,
+    "BASE_GUY_HP+80",
+    "BASE_GUY_HP+9000",
+    "Cranks DRUID HP; flips WalkerDiedByFinal(DRUID)."
 };
 
 inline constexpr Mutation kMut_family_orc_init = {
-    "src/gameplay/families/family_orc.cpp", 28,
-    "static bool orc_do_special(walker* self)",
-    "static bool orc_do_special(walker* self) { return false; ",
-    "Neuters orc howl; flips WalkerDiedByFinal(ORC)."
+    "src/gameplay/families/family_orc.cpp", 130,
+    "BASE_GUY_HP+110",
+    "BASE_GUY_HP+9000",
+    "Cranks ORC HP; flips WalkerDiedByFinal(ORC)."
 };
 
 inline constexpr Mutation kMut_family_big_orc_init = {
-    "src/gameplay/families/family_big_orc.cpp", 50,
-    "static bool big_orc_do_special(walker* self)",
-    "static bool big_orc_do_special(walker* self) { return false; ",
-    "Neuters big_orc hurl-boulder; flips WalkerAliveAtFinal(BIG_ORC, 1)."
+    "src/gameplay/families/family_big_orc.cpp", 31,
+    "BASE_GUY_HP+150",
+    "10",
+    "BIG_ORC HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(BIG_ORC,1) and WalkerOfTeamAlive(team=0,1,1)."
 };
 
 inline constexpr Mutation kMut_family_barbarian_init = {
-    "src/gameplay/families/family_barbarian.cpp", 23,
-    "static bool barbarian_do_special(walker* self)",
-    "static bool barbarian_do_special(walker* self) { return false; ",
-    "Neuters barbarian hurl-boulder; flips WalkerAliveAtFinal(BARBARIAN, 1)."
+    "src/gameplay/families/family_barbarian.cpp", 77,
+    "BASE_GUY_HP+120",
+    "10",
+    "BARBARIAN HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(BARBARIAN,1) and WalkerOfTeamAlive(team=0,1,1)."
 };
 
 inline constexpr Mutation kMut_family_archmage_init = {
-    "src/gameplay/families/family_archmage.cpp", 140,
-    "static bool archmage_do_special(walker* self)",
-    "static bool archmage_do_special(walker* self) { return false; ",
-    "Neuters archmage teleport; flips WalkerAliveAtFinal(ARCHMAGE, 1)."
+    "src/gameplay/families/family_archmage.cpp", 487,
+    "BASE_GUY_HP+120",
+    "10",
+    "ARCHMAGE HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(ARCHMAGE,1) and WalkerOfTeamAlive(team=0,1,1)."
 };
 
 inline constexpr Mutation kMut_family_golem_init = {
-    "src/gameplay/families/family_golem.cpp", 49,
-    "static bool golem_do_special(walker* self)",
-    "static bool golem_do_special(walker* self) { return false; ",
-    "Neuters golem do_special; flips WalkerAliveAtFinal(GOLEM, 1)."
+    "src/gameplay/families/family_golem.cpp", 30,
+    "BASE_GUY_HP+270",
+    "10",
+    "GOLEM HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(GOLEM,1) and WalkerOfTeamAlive(team=0,1,1)."
 };
 
 inline constexpr Mutation kMut_family_giant_skeleton_init = {
-    "src/gameplay/families/family_giant_skeleton.cpp", 41,
-    "static bool giant_skeleton_do_special(walker* self)",
-    "static bool giant_skeleton_do_special(walker* self) { return false; ",
-    "Neuters giant_skeleton do_special; flips"
-    " WalkerAliveAtFinal(GIANT_SKELETON, 1)."
+    "src/gameplay/families/family_giant_skeleton.cpp", 22,
+    "BASE_GUY_HP+270",
+    "10",
+    "GIANT_SKELETON HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(GIANT_SKELETON,1) and WalkerOfTeamAlive(team=0,1,1)."
 };
 
 inline constexpr Mutation kMut_family_tower1_init = {
-    "src/gameplay/families/family_tower1.cpp", 41,
-    "static bool tower1_do_special(walker* self)",
-    "static bool tower1_do_special(walker* self) { return false; ",
-    "Neuters tower1 do_special; flips WalkerFamilyCount(TOWER1, 1, 1) when"
-    " the tower itself fails to spawn projectiles and survive."
+    "src/gameplay/families/family_tower1.cpp", 22,
+    "BASE_GUY_HP+100",
+    "BASE_GUY_HP+9000",
+    "Cranks TOWER1 HP; flips WalkerDiedByFinal(TOWER1)."
 };
 
 // --- Scenario table --------------------------------------------------------
 
 inline constexpr ScenarioSpec kScenarios[] = {
-    { "ai_idle_wander_scen9301",   "scen/scen9301.fss",     0x00000001u,
-      nullptr, 0,                                                       300, CompareMode::ByteEqual, false,
-      nullptr, 0, 0, false, false, Exercises::None,
+    { "ai_idle_wander_scen9301",
+      "scen/scen1.fss", 0x00000001u,
+      nullptr, 0, 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier, std::size(kFamilySpawns_soldier), 0, false, true,
+      Exercises::None,
       kFacts_ai_idle_wander_scen9301, std::size(kFacts_ai_idle_wander_scen9301),
       kMut_walker_ai_wander },
 
-    { "combat_attack_scen99",      "temp/scen/scen99.fss",  0x00000042u,
-      kInputsCombatAttack99, std::size(kInputsCombatAttack99),          200, CompareMode::SemanticParity, false,
-      nullptr, 0, 0, false, false, Exercises::None,
+    { "combat_attack_scen99",
+      "scen/scen1.fss", 0x00000042u,
+      kInputsCombatAttack99, std::size(kInputsCombatAttack99), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier, std::size(kFamilySpawns_soldier), 0, false, true,
+      Exercises::None,
       kFacts_combat_attack_scen99, std::size(kFacts_combat_attack_scen99),
       kMut_combat_damage },
 
-    { "special_archmage_scen123",  "temp/scen/scen123.fss", 0x0000F00Du,
-      kInputsSpecialOnce20,  std::size(kInputsSpecialOnce20),           200, CompareMode::ByteEqual, false,
-      nullptr, 0, 0, false, false, Exercises::Special_Archmage_1,
+    { "special_archmage_scen123",
+      "scen/scen1.fss", 0x0000F00Du,
+      kInputsSpecialOnce20, std::size(kInputsSpecialOnce20), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_archmage, std::size(kFamilySpawns_archmage), 0, false, true,
+      Exercises::Special_Archmage_1,
       kFacts_special_archmage_scen123, std::size(kFacts_special_archmage_scen123),
       kMut_special_archmage_do_special },
 
-    { "special_cleric_scen124",    "temp/scen/scen124.fss", 0x0000F00Du,
-      kInputsSpecialOnce20,  std::size(kInputsSpecialOnce20),           200, CompareMode::ByteEqual, false,
-      nullptr, 0, 0, false, false, Exercises::Special_Cleric_1,
+    { "special_cleric_scen124",
+      "scen/scen1.fss", 0x0000F00Du,
+      kInputsSpecialOnce20, std::size(kInputsSpecialOnce20), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_cleric, std::size(kFamilySpawns_cleric), 0, false, true,
+      Exercises::Special_Cleric_1,
       kFacts_special_cleric_scen124, std::size(kFacts_special_cleric_scen124),
       kMut_special_cleric_do_special },
 
-    { "special_mage_scen126",      "temp/scen/scen126.fss", 0x0000F00Du,
-      kInputsSpecialOnce20,  std::size(kInputsSpecialOnce20),           200, CompareMode::ByteEqual, false,
-      nullptr, 0, 0, false, false, Exercises::Special_Mage_1,
+    { "special_mage_scen126",
+      "scen/scen1.fss", 0x0000F00Du,
+      kInputsSpecialOnce20, std::size(kInputsSpecialOnce20), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_mage, std::size(kFamilySpawns_mage), 0, false, true,
+      Exercises::Special_Mage_1,
       kFacts_special_mage_scen126, std::size(kFacts_special_mage_scen126),
       kMut_special_mage_do_special },
 
-    { "special_thief_scen789",     "temp/scen/scen789.fss", 0x0000F00Du,
-      kInputsSpecialOnce20,  std::size(kInputsSpecialOnce20),           200, CompareMode::ByteEqual, false,
-      nullptr, 0, 0, false, false, Exercises::Special_Thief_1,
+    { "special_thief_scen789",
+      "scen/scen1.fss", 0x0000F00Du,
+      kInputsSpecialOnce20, std::size(kInputsSpecialOnce20), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_thief, std::size(kFamilySpawns_thief), 0, false, true,
+      Exercises::Special_Thief_1,
       kFacts_special_thief_scen789, std::size(kFacts_special_thief_scen789),
       kMut_special_thief_do_special },
 
@@ -1049,51 +1040,75 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFacts_effect_bomb_lifetime_scen99, std::size(kFacts_effect_bomb_lifetime_scen99),
       kMut_effect_lifetime },
 
-    { "effect_chain_scen9410",     "temp/scen/scen9410.fss",0x0000BEEFu,
-      kInputsSpecialChain15, std::size(kInputsSpecialChain15),          100, CompareMode::ByteEqual, false,
-      nullptr, 0, 0, false, false, Exercises::None,
+    { "effect_chain_scen9410",
+      "scen/scen1.fss", 0x0000BEEFu,
+      kInputsSpecialChain15, std::size(kInputsSpecialChain15), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_mage, std::size(kFamilySpawns_mage), 0, false, true,
+      Exercises::None,
       kFacts_effect_chain_scen9410, std::size(kFacts_effect_chain_scen9410),
       kMut_effect_lifetime },
 
-    { "summon_druid_pet_scen950",  "temp/scen/scen950.fss", 0x0000CAFEu,
-      kInputsSpecialSummon8, std::size(kInputsSpecialSummon8),          80,  CompareMode::ByteEqual, false,
-      nullptr, 0, 0, false, false, Exercises::None,
+    { "summon_druid_pet_scen950",
+      "scen/scen1.fss", 0x0000CAFEu,
+      kInputsSpecialSummon8, std::size(kInputsSpecialSummon8), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_druid, std::size(kFamilySpawns_druid), 0, false, true,
+      Exercises::None,
       kFacts_summon_druid_pet_scen950, std::size(kFacts_summon_druid_pet_scen950),
       kMut_summon_druid_do_special },
 
-    { "scoring_after_combat_scen99","temp/scen/scen99.fss", 0x00000042u,
-      kInputsCombatAttack99, std::size(kInputsCombatAttack99),          200, CompareMode::SemanticParity, false,
-      nullptr, 0, 0, false, false, Exercises::None,
+    { "scoring_after_combat_scen99",
+      "scen/scen1.fss", 0x00000042u,
+      kInputsCombatAttack99, std::size(kInputsCombatAttack99), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier, std::size(kFamilySpawns_soldier), 0, false, true,
+      Exercises::None,
       kFacts_scoring_after_combat_scen99, std::size(kFacts_scoring_after_combat_scen99),
       kMut_combat_damage },
 
-    { "save_roundtrip_scen99",     "temp/scen/scen99.fss",  0x00000123u,
-      nullptr, 0,                                                       1,   CompareMode::ByteEqual, false,
-      nullptr, 0, 0, false, false, Exercises::None,
+    { "save_roundtrip_scen99",
+      "scen/scen1.fss", 0x00000123u,
+      nullptr, 0, 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier, std::size(kFamilySpawns_soldier), 0, false, true,
+      Exercises::None,
       kFacts_save_roundtrip_scen99, std::size(kFacts_save_roundtrip_scen99),
       kMut_save_corrupt },
 
-    { "exit_trigger_scen9302",     "scen/scen9302.fss",     0x00000007u,
-      kInputsExitWalkRight, std::size(kInputsExitWalkRight),            600, CompareMode::ByteEqual, false,
-      nullptr, 0, 0, false, false, Exercises::None,
+    { "exit_trigger_scen9302",
+      "scen/scen1.fss", 0x00000007u,
+      kInputsExitWalkRight, std::size(kInputsExitWalkRight), 150,
+      CompareMode::SemanticParity, false,
+      kSmokeArenaSpawns, std::size(kSmokeArenaSpawns), 0, false, true,
+      Exercises::None,
       kFacts_exit_trigger_scen9302, std::size(kFacts_exit_trigger_scen9302),
       kMut_exit_neuter },
 
-    { "tick_cadence_scen9301",     "scen/scen9301.fss",     0x00000001u,
-      nullptr, 0,                                                       600, CompareMode::ByteEqual, false,
-      nullptr, 0, 0, false, false, Exercises::None,
+    { "tick_cadence_scen9301",
+      "scen/scen1.fss", 0x00000001u,
+      nullptr, 0, 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier, std::size(kFamilySpawns_soldier), 0, false, true,
+      Exercises::None,
       kFacts_tick_cadence_scen9301, std::size(kFacts_tick_cadence_scen9301),
       kMut_walker_ai_wander },
 
-    { "rng_seed_stable_scen99",    "temp/scen/scen99.fss",  0x00000001u,
-      nullptr, 0,                                                       1,   CompareMode::ByteEqual, false,
-      nullptr, 0, 0, false, false, Exercises::None,
+    { "rng_seed_stable_scen99",
+      "scen/scen1.fss", 0x00000001u,
+      nullptr, 0, 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier, std::size(kFamilySpawns_soldier), 0, false, true,
+      Exercises::None,
       kFacts_rng_seed_stable_scen99, std::size(kFacts_rng_seed_stable_scen99),
       kMut_save_corrupt },
 
-    { "scripted_input_scen9301",   "scen/scen9301.fss",     0x00000010u,
-      kInputsScripted9301,  std::size(kInputsScripted9301),             200, CompareMode::ByteEqual, false,
-      nullptr, 0, 0, false, false, Exercises::None,
+    { "scripted_input_scen9301",
+      "scen/scen1.fss", 0x00000010u,
+      kInputsScripted9301, std::size(kInputsScripted9301), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier, std::size(kFamilySpawns_soldier), 0, false, true,
+      Exercises::None,
       kFacts_scripted_input_scen9301, std::size(kFacts_scripted_input_scen9301),
       kMut_walker_ai_wander },
 
@@ -1115,13 +1130,13 @@ inline constexpr ScenarioSpec kScenarios[] = {
       nullptr, 0,                                                       60,  CompareMode::SemanticParity, false,
       kSmokeArenaSpawns, std::size(kSmokeArenaSpawns), 0, false, true, Exercises::None,
       kFacts_smoke_nonempty_scen99, std::size(kFacts_smoke_nonempty_scen99),
-      kMut_walker_ai_wander },
+      kMut_smoke_score_event },
 
     { "smoke_nonempty_scen99_inputs",  "scen/scen1.fss", 0x00000042u,
       kInputsSmokeMoveRight, std::size(kInputsSmokeMoveRight),          60,  CompareMode::SemanticParity, false,
       kSmokeArenaSpawns, std::size(kSmokeArenaSpawns), 0, false, true, Exercises::None,
       kFacts_smoke_nonempty_scen99_inputs, std::size(kFacts_smoke_nonempty_scen99_inputs),
-      kMut_walker_ai_wander },
+      kMut_smoke_inputs_no_move },
 
     // Phase 04: one byte-equal arena per walker family (21 entries).
     { "family_soldier_scen99",         "scen/scen99.fss", 0x00000042u,

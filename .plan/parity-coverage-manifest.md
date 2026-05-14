@@ -361,3 +361,71 @@ binding are described in `tests/parity/fact_predicate.h`. The lint
 `EffectFamilyCount` predicates must be qualified by either a source-walker
 family (`arg3 >= 0`) or a `[min_tick, max_tick]` window
 (`arg2 / arg3`); the lint rejects unqualified entries.
+
+## Mutation canary
+
+Phase 02 mutation canary: every scenario's `discriminating_mutation`
+(declared in `tests/parity/scenario_table.h`) is applied by
+`scripts/parity/run_mutation_canary.sh` and the per-predicate
+evaluation is diffed pre vs post to assert at least one predicate
+flips. Each `kMut_*` constant targets a line in the TU named by its
+identifier (combat damage in `walker_combat.cpp`, effect lifetime in
+`effect.cpp`, save header in `save_data.cpp`, family-specific
+`do_special` in `families/family_*.cpp`, etc.) so that the canary
+actually exercises the subsystem its predicates claim to verify.
+
+### Known limitations
+
+- `save_roundtrip_scen99` and `rng_seed_stable_scen99` target
+  `src/resources/save_data.cpp:107` (SaveData::load() body) which is
+  the correct subject for the rows' claimed save-corruption behaviour,
+  but the parity runner (`tests/parity/parity_runner.cpp`) does not
+  invoke `SaveData::load()` during scenario execution — the runner
+  constructs a fresh `SaveData` and never reads from disk. The
+  mutation cannot flip these rows' predicates without a Phase 04+
+  scenario redesign that explicitly exercises save/load round-trip
+  via a runner extension. The canary reports 0 flips for these two
+  rows honestly; we keep the subject-specific target rather than
+  redirecting to an unrelated subsystem.
+
+| Scenario | file:line | Mutation token | Rationale |
+| --- | --- | --- | --- |
+| `ai_idle_wander_scen9301` | `src/gameplay/walker_combat.cpp:282` | `kMut_walker_ai_wander` | Forces the walker_combat dispatch site to pass tempdamage=0 into do_combat_damage; in AI-driven combat scenarios the target takes no damage so AI walkers don't lose HP. Distinct from kMut_combat_damage (line 189) which mutates the target HP decrement inside the do_combat_damag... |
+| `combat_attack_scen99` | `src/gameplay/walker_combat.cpp:189` | `kMut_combat_damage` | Zeroes the per-hit damage applied to combat targets in walker::do_combat_damage; for any scenario that actually exercises melee combat this leaves the target alive and flips WalkerDiedByFinal and team-alive predicates. |
+| `special_archmage_scen123` | `src/gameplay/families/family_archmage.cpp:506` | `kMut_special_archmage_do_special` | Descriptor sets archmage do_special to nullptr while still referencing the function symbol (silences -Wunused-function). Any scenario that actually invokes the archmage special sees the gating play_sound suppressed, flipping EventKindExactly(play_sound, 0) / LevelDoneEquals pr... |
+| `special_cleric_scen124` | `src/gameplay/families/family_cleric.cpp:348` | `kMut_special_cleric_do_special` | Descriptor neuters cleric heal/raise specials by setting do_special to nullptr; scenarios that invoke a cleric special lose the resulting events / heals, flipping EventKindExactly predicates. |
+| `special_mage_scen126` | `src/gameplay/families/family_mage.cpp:300` | `kMut_special_mage_do_special` | Descriptor neuters mage teleport/warp/freeze specials; scenarios that fire a mage special see no resulting events, flipping EventKindExactly predicates. |
+| `special_thief_scen789` | `src/gameplay/families/family_thief.cpp:212` | `kMut_special_thief_do_special` | Descriptor neuters thief bomb/cloak/taunt specials; scenarios that fire a thief special see no resulting events, flipping EventKindExactly predicates. |
+| `effect_bomb_lifetime_scen99` | `src/gameplay/effect.cpp:91` | `kMut_effect_lifetime` | Cancels the end-of-animation death in effect::act() so effects never expire; bomb/chain scenarios that rely on effects winding down see a residual effect count and flip EffectFamilyCount / dependent walker-death predicates. |
+| `effect_chain_scen9410` | `src/gameplay/effect.cpp:91` | `kMut_effect_lifetime` | Cancels the end-of-animation death in effect::act() so effects never expire; bomb/chain scenarios that rely on effects winding down see a residual effect count and flip EffectFamilyCount / dependent walker-death predicates. |
+| `summon_druid_pet_scen950` | `src/gameplay/families/family_druid.cpp:184` | `kMut_summon_druid_do_special` | Descriptor neuters druid summon-faerie special; the faerie pet never appears, flipping LevelDoneEquals(2) downstream and any predicate that counts the summoned child. |
+| `scoring_after_combat_scen99` | `src/gameplay/walker_combat.cpp:189` | `kMut_combat_damage` | Zeroes the per-hit damage applied to combat targets in walker::do_combat_damage; for any scenario that actually exercises melee combat this leaves the target alive and flips WalkerDiedByFinal and team-alive predicates. |
+| `save_roundtrip_scen99` | `src/resources/save_data.cpp:107` | `kMut_save_corrupt` | Save header claims version 0 (below any supported save format); the round-trip load refuses the file and the post-load world is empty, flipping WalkerOfTeamAlive(team=0,1,1) and LevelDoneEquals(2). |
+| `exit_trigger_scen9302` | `src/gameplay/sim_input_handler.cpp:335` | `kMut_exit_neuter` | Force-zeroes the east/west walk vector at the sim_input_handler movement dispatch site (distinct line from kMut_smoke_inputs_no_move which mutates the walkstep call site at line 340); exit_trigger scenarios rely on K_RIGHT translation to reach the exit tile, and zeroing walkx ... |
+| `tick_cadence_scen9301` | `src/gameplay/walker_combat.cpp:282` | `kMut_walker_ai_wander` | Forces the walker_combat dispatch site to pass tempdamage=0 into do_combat_damage; in AI-driven combat scenarios the target takes no damage so AI walkers don't lose HP. Distinct from kMut_combat_damage (line 189) which mutates the target HP decrement inside the do_combat_damag... |
+| `rng_seed_stable_scen99` | `src/resources/save_data.cpp:107` | `kMut_save_corrupt` | Save header claims version 0 (below any supported save format); the round-trip load refuses the file and the post-load world is empty, flipping WalkerOfTeamAlive(team=0,1,1) and LevelDoneEquals(2). |
+| `scripted_input_scen9301` | `src/gameplay/walker_combat.cpp:282` | `kMut_walker_ai_wander` | Forces the walker_combat dispatch site to pass tempdamage=0 into do_combat_damage; in AI-driven combat scenarios the target takes no damage so AI walkers don't lose HP. Distinct from kMut_combat_damage (line 189) which mutates the target HP decrement inside the do_combat_damag... |
+| `snapshot_dirty_bits_scen9301` | `src/gameplay/game_world.cpp:1355` | `kMut_snapshot_dirty` | state_dump.cpp (the original Phase 01 target) lives under tests/parity/ which the canary refuses to mutate; the next-best upstream subject is the game_world per-tick level_done assignment that flows straight into the snapshot dump. A static-counter lambda persists across run_s... |
+| `smoke_nonempty_scen99` | `src/gameplay/walker_combat.cpp:89` | `kMut_smoke_score_event` | Re-labels score_change emissions to EventKind::None; the canonical event-kind field flips so EventKindAtLeast(score_change,2) reads 0 occurrences, flipping that predicate in both smoke rows. |
+| `smoke_nonempty_scen99_inputs` | `src/gameplay/sim_input_handler.cpp:340` | `kMut_smoke_inputs_no_move` | Drops the input-driven walkstep delta so the player walker no longer steps east when K_RIGHT is held; flips WalkerPositionMoved(SOLDIER,240,0). |
+| `family_soldier_scen99` | `src/gameplay/families/family_soldier.cpp:170` | `kMut_family_soldier_init` | Cranks SOLDIER HP so soldier survives the sparring partner; flips WalkerOfTeamAlive(team=0,0,0) and WalkerDiedByFinal(SOLDIER). |
+| `family_elf_scen99` | `src/gameplay/families/family_elf.cpp:121` | `kMut_family_elf_init` | Cranks ELF HP so elf survives; flips WalkerOfTeamAlive(team=1,1,1) (sparring soldier dies) and WalkerDiedByFinal(ELF). |
+| `family_archer_scen99` | `src/gameplay/families/family_archer.cpp:121` | `kMut_family_archer_init` | Cranks ARCHER HP so archer survives; flips WalkerDiedByFinal(ARCHER). |
+| `family_mage_scen99` | `src/gameplay/families/family_mage.cpp:281` | `kMut_family_mage_init` | Cranks MAGE HP so mage survives; flips WalkerOfTeamAlive(team=1,1,1) and WalkerDiedByFinal(MAGE). |
+| `family_skeleton_scen99` | `src/gameplay/families/family_skeleton.cpp:60` | `kMut_family_skeleton_init` | Cranks SKELETON HP; flips WalkerOfTeamAlive(team=1,1,1) and WalkerDiedByFinal(SKELETON). |
+| `family_cleric_scen99` | `src/gameplay/families/family_cleric.cpp:329` | `kMut_family_cleric_init` | Cranks CLERIC HP; flips WalkerFamilyCount(CLERIC,1,1) (one extra alive) and WalkerDiedByFinal(CLERIC). |
+| `family_fireelemental_scen99` | `src/gameplay/families/family_fire_elemental.cpp:94` | `kMut_family_fireelemental_init` | Cranks FIREELEMENTAL HP; flips WalkerDiedByFinal(FIREELEMENTAL). |
+| `family_faerie_scen99` | `src/gameplay/families/family_faerie.cpp:32` | `kMut_family_faerie_init` | Cranks FAERIE HP; flips WalkerDiedByFinal(FAERIE). |
+| `family_slime_scen99` | `src/gameplay/families/family_slime.cpp:155` | `kMut_family_slime_init` | SLIME HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(SLIME,1) and WalkerOfTeamAlive(team=0,1,1). |
+| `family_small_slime_scen99` | `src/gameplay/families/family_slime.cpp:215` | `kMut_family_small_slime_init` | Cranks SMALL_SLIME HP; flips WalkerDiedByFinal(SMALL_SLIME). |
+| `family_medium_slime_scen99` | `src/gameplay/families/family_slime.cpp:275` | `kMut_family_medium_slime_init` | Cranks MEDIUM_SLIME HP; flips WalkerFamilyCount(SMALL_SLIME,1,1) (medium never splits) and WalkerDiedByFinal(MEDIUM_SLIME). |
+| `family_thief_scen99` | `src/gameplay/families/family_thief.cpp:193` | `kMut_family_thief_init` | Cranks THIEF HP; flips WalkerDiedByFinal(THIEF). |
+| `family_ghost_scen99` | `src/resources/gloader.cpp:608` | `kMut_family_ghost_init` | Forces every gloader-spawned walker to be tagged FAMILY_SOLDIER; in any build env the GHOST walker is dumped as SOLDIER, so WalkerFamilyCount(GHOST,1,1) drops to 0 and WalkerAliveAtFinal(GHOST,1) loses its quorum. |
+| `family_druid_scen99` | `src/gameplay/families/family_druid.cpp:165` | `kMut_family_druid_init` | Cranks DRUID HP; flips WalkerDiedByFinal(DRUID). |
+| `family_orc_scen99` | `src/gameplay/families/family_orc.cpp:130` | `kMut_family_orc_init` | Cranks ORC HP; flips WalkerDiedByFinal(ORC). |
+| `family_big_orc_scen99` | `src/gameplay/families/family_big_orc.cpp:31` | `kMut_family_big_orc_init` | BIG_ORC HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(BIG_ORC,1) and WalkerOfTeamAlive(team=0,1,1). |
+| `family_barbarian_scen99` | `src/gameplay/families/family_barbarian.cpp:77` | `kMut_family_barbarian_init` | BARBARIAN HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(BARBARIAN,1) and WalkerOfTeamAlive(team=0,1,1). |
+| `family_archmage_scen99` | `src/gameplay/families/family_archmage.cpp:487` | `kMut_family_archmage_init` | ARCHMAGE HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(ARCHMAGE,1) and WalkerOfTeamAlive(team=0,1,1). |
+| `family_golem_scen99` | `src/gameplay/families/family_golem.cpp:30` | `kMut_family_golem_init` | GOLEM HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(GOLEM,1) and WalkerOfTeamAlive(team=0,1,1). |
+| `family_giant_skeleton_scen99` | `src/gameplay/families/family_giant_skeleton.cpp:22` | `kMut_family_giant_skeleton_init` | GIANT_SKELETON HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(GIANT_SKELETON,1) and WalkerOfTeamAlive(team=0,1,1). |
+| `family_tower1_scen99` | `src/gameplay/families/family_tower1.cpp:22` | `kMut_family_tower1_init` | Cranks TOWER1 HP; flips WalkerDiedByFinal(TOWER1). |

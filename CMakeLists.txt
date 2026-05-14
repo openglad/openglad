@@ -1873,6 +1873,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/parity/parity_runner_smoke_main.cpp
             ${CMAKE_SOURCE_DIR}/tests/parity/parity_runner.cpp
             ${CMAKE_SOURCE_DIR}/tests/parity/state_dump.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/fact_predicate.cpp
             ${CMAKE_SOURCE_DIR}/tests/parity/parity_bootstrap.cpp
             ${CMAKE_SOURCE_DIR}/tests/parity/scenario_runtime.cpp
         )
