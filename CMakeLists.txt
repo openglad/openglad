@@ -2103,6 +2103,13 @@ if(NOT EMSCRIPTEN)
                 PROCESSORS 3
                 TIMEOUT 420
             )
+            # ASan/UBSan makes the view integration suite slow enough on
+            # GitHub's shared runners to exceed CTest's generic 180s limit
+            # when scheduled beside the other heavy integration binaries.
+            set_tests_properties(og_test_view PROPERTIES
+                PROCESSORS 3
+                TIMEOUT 420
+            )
         endif()
 
         set(OPENG_LAD_TEXT_SIM_EXEC_TIMEOUT 55)
