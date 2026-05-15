@@ -522,35 +522,23 @@ inline constexpr SpawnSpec kFamilySpawns_tower1[] = {
 
 inline constexpr FactPredicate kFacts_ai_idle_wander_scen9301[] = {
     pred::TickReached(150),
-    // Master companion cannot replay scen9301 with the same walker spawn
-    // (the .fss it loads ends at tick 1 with walkers=[]); widen the count
-    // bound to [0,2] so the branch-observed 2 SOLDIERs and the master-
-    // observed 0 SOLDIERs both pass. (a)
-    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 0, 2),
-    // Master has no live teams; branch keeps one team-0 walker alive. (a)
-    pred::WalkerOfTeamAlive(/*team=*/0, 0, 1),
-    // Structural HP range predicate cannot match against an empty master
-    // dump regardless of bounds widening; pin to branch only. (c)
-    pred::branch_only(pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 0, 11900)),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
+    pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 7900, 8200),
 };
 
 inline constexpr FactPredicate kFacts_combat_attack_scen99[] = {
     pred::TickReached(150),
-    // Master golden ends with 1 SOLDIER in oblist (others dead); widen to
-    // [1,2] to encompass branch's 2 alive SOLDIERs and master's 1. (a)
-    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
-    pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 0, 11900),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::WalkerOfTeamAlive(/*team=*/0, 1, 2),
+    pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 1900, 10700),
 };
 
 inline constexpr FactPredicate kFacts_special_archmage_scen123[] = {
     pred::TickReached(150),
-    // Branch spawns ARCHMAGE; master cannot replay the scen (empty oblist).
-    // Widen count to [0,1]. (a)
-    pred::WalkerFamilyCount(/*FAMILY_ARCHMAGE*/17, 0, 1),
-    // Master has no live teams; branch keeps one team-0 walker alive. (a)
-    pred::WalkerOfTeamAlive(/*team=*/0, 0, 1),
-    // Position predicate cannot match against an empty master dump. (c)
-    pred::branch_only(pred::WalkerPositionMoved(/*FAMILY_ARCHMAGE*/17, 300, 0)),
+    pred::WalkerFamilyCount(/*FAMILY_ARCHMAGE*/17, 1, 1),
+    pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
+    pred::WalkerPositionMoved(/*FAMILY_ARCHMAGE*/17, 288, 368),
 };
 
 inline constexpr FactPredicate kFacts_special_cleric_scen124[] = {
@@ -560,24 +548,21 @@ inline constexpr FactPredicate kFacts_special_cleric_scen124[] = {
     // reconciled companion run; keep the fact kind and widen to the
     // observed lower bound shared by both sides.
     pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 184, 0),
+    pred::EffectFamilyCount(/*FAMILY_SOLDIER*/0, 1, 1, /*source=*/0),
 };
 
 inline constexpr FactPredicate kFacts_special_mage_scen126[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_MAGE*/3, 0, 1),
-    pred::WalkerFamilyCount(/*FAMILY_FIREELEMENTAL*/6, 0, 1),
-    // Master dumps no walkers for this scenario while the branch keeps two
-    // team-0 walkers alive; widen the observed range. (a)
-    pred::WalkerOfTeamAlive(/*team=*/0, 0, 2),
+    pred::WalkerFamilyCount(/*FAMILY_MAGE*/3, 1, 1),
+    pred::WalkerOfTeamAlive(/*team=*/0, 1, 2),
+    pred::WalkerPositionMoved(/*FAMILY_MAGE*/3, 304, 336),
 };
 
 inline constexpr FactPredicate kFacts_special_thief_scen789[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_THIEF*/11, 0, 1),
-    pred::WalkerFamilyCount(/*FAMILY_GHOST*/12, 0, 1),
-    // Master dumps no walkers for this scenario while the branch keeps three
-    // team-0 walkers alive; widen the observed range. (a)
-    pred::WalkerOfTeamAlive(/*team=*/0, 0, 3),
+    pred::WalkerFamilyCount(/*FAMILY_THIEF*/11, 1, 1),
+    pred::WalkerOfTeamAlive(/*team=*/0, 2, 3),
+    pred::EventKindAtLeast(/*play_sound*/1, 31),
 };
 
 inline constexpr FactPredicate kFacts_effect_bomb_lifetime_scen99[] = {
@@ -591,77 +576,64 @@ inline constexpr FactPredicate kFacts_effect_bomb_lifetime_scen99[] = {
 };
 
 inline constexpr FactPredicate kFacts_effect_chain_scen9410[] = {
-    // Master replay ends at tick 100; widen the lower bound to (100). (a)
-    pred::TickReached(100),
-    pred::WalkerFamilyCount(/*FAMILY_MAGE*/3, 0, 1),
-    pred::WalkerFamilyCount(/*FAMILY_GHOST*/12, 0, 0),
-    // Master dumps no walkers for this scenario while the branch keeps one
-    // team-0 walker alive; widen the observed range. (a)
-    pred::WalkerOfTeamAlive(/*team=*/0, 0, 1),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 1),
+    pred::WalkerOfTeamAlive(/*team=*/1, 1, 2),
+    pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 11100, 12000),
+    pred::EventKindAtLeast(/*play_sound*/1, 4),
 };
 
 inline constexpr FactPredicate kFacts_summon_druid_pet_scen950[] = {
-    // Master replay ends at tick 80; widen TickReached to (80). (a)
-    pred::TickReached(80),
-    pred::WalkerFamilyCount(/*FAMILY_DRUID*/13, 0, 1),
-    // Master has no live teams; branch keeps two team-0 walkers alive. (a)
-    pred::WalkerOfTeamAlive(/*team=*/0, 0, 2),
-    // Branch-only HP predicate — master oblist empty. (c)
-    pred::branch_only(pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 8000, 9000)),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_DRUID*/13, 1, 1),
+    pred::WalkerOfTeamAlive(/*team=*/0, 2, 2),
+    pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 7200, 8400),
 };
 
 inline constexpr FactPredicate kFacts_scoring_after_combat_scen99[] = {
     pred::TickReached(150),
-    // Master golden carries 1 SOLDIER (others dead); widen to [1,2]. (a)
-    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
-    pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 0, 11900),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::WalkerOfTeamAlive(/*team=*/0, 1, 2),
+    pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 1900, 10700),
+    pred::EventKindAtLeast(/*score_change*/9, 3),
 };
 
 inline constexpr FactPredicate kFacts_save_roundtrip_scen99[] = {
-    pred::TickReached(1),
-    // Master golden ends at tick 1 with the canonical SOLDIER + SKELETON
-    // pair from the save-state restore path (SOLDIER alive, SKELETON
-    // already dead from the saved game). Branch runs the full tick budget
-    // and ends with the 4-walker arena (SOLDIER team=0 + FIREELEMENTAL
-    // team=0 + SOLDIER team=1 + GHOST team=1). Widen counts to encompass
-    // both: branch SOLDIER count=2, master=1 → [1,2]; branch team=0
-    // alive=2, master=1 → [1,2]. (a)
-    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
     pred::WalkerOfTeamAlive(/*team=*/0, 1, 2),
+    pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 6300, 10100),
 };
 
 inline constexpr FactPredicate kFacts_exit_trigger_scen9302[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 0, 1),
-    // Master has no live teams; branch keeps one team-0 walker alive. (a)
-    pred::WalkerOfTeamAlive(/*team=*/0, 0, 1),
-    // Branch-only position predicate — master scen9302 replay yields empty
-    // oblist that cannot satisfy any (xpos, ypos) lower bound. (c)
-    pred::branch_only(pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 300, 0)),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 1),
+    pred::WalkerFamilyCount(/*FAMILY_ORC*/14, 1, 1),
+    pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 623, 224),
 };
 
 inline constexpr FactPredicate kFacts_tick_cadence_scen9301[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 0, 2),
-    // Master has no live teams; branch keeps one team-0 walker alive. (a)
-    pred::WalkerOfTeamAlive(/*team=*/0, 0, 1),
-    pred::branch_only(pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 0, 11900)),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
+    pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 7900, 8200),
 };
 
 inline constexpr FactPredicate kFacts_rng_seed_stable_scen99[] = {
-    // Master replay ends at tick 1; widen to (1). (a)
-    pred::TickReached(1),
-    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
     pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
+    pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 7900, 8200),
 };
 
 inline constexpr FactPredicate kFacts_scripted_input_scen9301[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 0, 2),
-    // Widen team-0 alive count from [1,1] to [0,1] so the branch (where
-    // the player-controlled SOLDIER is on team 1 and team 0 ends with 0
-    // alive) matches the master replay (also 0 walkers). (a)
-    pred::WalkerOfTeamAlive(/*team=*/0, 0, 1),
+    pred::LevelDoneEquals(2),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
+    pred::EventKindExactly(/*request_exit_confirmation*/7, 1),
+    pred::EventKindExactly(/*withdraw_to_level*/8, 1),
 };
 
 inline constexpr FactPredicate kFacts_smoke_nonempty_scen99[] = {
