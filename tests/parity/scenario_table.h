@@ -553,7 +553,7 @@ inline constexpr FactPredicate kFacts_special_cleric_scen124[] = {
     // Original threshold (x >= 300) no longer matches the branch or
     // reconciled companion run; keep the fact kind and widen to the
     // observed lower bound shared by both sides.
-    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 180, 0),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 184, 0),
 };
 
 inline constexpr FactPredicate kFacts_special_mage_scen126[] = {

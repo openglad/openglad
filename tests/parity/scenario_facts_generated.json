@@ -17,7 +17,7 @@
     { "id": "special_cleric_scen124", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 150, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "WalkerFamilyCount", "arg0": 5, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
-      { "kind": "WalkerPositionMoved", "arg0": 0, "arg1": 180, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
+      { "kind": "WalkerPositionMoved", "arg0": 0, "arg1": 184, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
     { "id": "special_mage_scen126", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 150, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "WalkerFamilyCount", "arg0": 3, "arg1": 0, "arg2": 1, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
