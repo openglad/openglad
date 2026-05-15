@@ -75,6 +75,8 @@ void apply_post_load_spawns(GameWorld& world, const ScenarioSpec& spec)
             if (s.magicpoints != 0)
                 w->stats()->set_magicpoints(static_cast<float>(s.magicpoints));
         }
+        if (s.precompleted_level != 0)
+            world.completed_levels.insert(s.precompleted_level);
     }
 }
 
