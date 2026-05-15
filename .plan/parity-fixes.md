@@ -100,3 +100,23 @@ is therefore vacuously satisfied.
 | scenario_id | previous classification | new classification | citing branch commit | justification |
 |-------------|-------------------------|--------------------|----------------------|---------------|
 | _(none)_ | — | — | — | — |
+
+# Phase 01 side-gate log
+
+Phase 01 used default sub-rule (a) widening for the three rows called out
+as currently failing by the plan: `special_cleric_scen124`,
+`save_roundtrip_scen99`, and `scripted_input_scen9301`. None of those
+three rows required sub-rule (c).
+
+The following branch-only predicates are the explicit sub-rule (c) uses in
+Phase 01. In each case the reconciled master dump has no matching walker
+structure for the structural predicate, so no numeric widening can make the
+same predicate substantive on both sides.
+
+| scenario_id | branch-only predicate | reason |
+|-------------|-----------------------|--------|
+| `ai_idle_wander_scen9301` | `WalkerHpRangeAtFinalTick(SOLDIER, 0, 11900)` | Master dump ends with `walkers=[]`; HP range has no subject on master. |
+| `special_archmage_scen123` | `WalkerPositionMoved(ARCHMAGE, 300, 0)` | Master dump ends with `walkers=[]`; position movement has no subject on master. |
+| `summon_druid_pet_scen950` | `WalkerHpRangeAtFinalTick(SOLDIER, 8000, 9000)` | Master dump ends with `walkers=[]`; HP range has no subject on master. |
+| `exit_trigger_scen9302` | `WalkerPositionMoved(SOLDIER, 300, 0)` | Master dump ends with `walkers=[]`; position movement has no subject on master. |
+| `tick_cadence_scen9301` | `WalkerHpRangeAtFinalTick(SOLDIER, 0, 11900)` | Master dump ends with `walkers=[]`; HP range has no subject on master. |
