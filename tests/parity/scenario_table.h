@@ -158,7 +158,7 @@ inline constexpr std::uint8_t kOrderFX        = 4;   // Order::FX
 // (multiples of GRID_SIZE if you want grid-aligned). team is `team_num`;
 // `default_weapon` / `current_weapon` are zero-meaning-skip.
 //
-// Phase 01 (semantic-parity): optional tail fields. `stats_level`
+// Phase 01 (semantic-parity): two trailing optional fields. `stats_level`
 // raises walker level so cycle/fire gates accept later special slots
 // (cycling gate sim_input_handler.cpp:218 requires (N-1)*3+1 <=
 // stats.level(); firing gate living.cpp:532-533 requires
@@ -173,9 +173,8 @@ struct SpawnSpec
     std::int32_t  y;
     std::uint16_t default_weapon;
     std::uint16_t current_weapon;
-    std::int32_t  stats_level        = 0;
-    std::int32_t  magicpoints        = 0;
-    std::int32_t  precompleted_level = 0;
+    std::int32_t  stats_level   = 0;
+    std::int32_t  magicpoints   = 0;
 };
 
 // Discriminating mutation declaration: a single source-line edit that
@@ -291,11 +290,8 @@ inline constexpr InputEvent kInputsSmokeMoveRight[] = {
 // Phase 04: walker-family arena scenarios. Each scenario spawns the
 // target family on team 0 at (120, 120) and a FAMILY_SOLDIER (id 0)
 // sparring partner on team 1 at (180, 120). `kInputsFamilyAttack`
-// schedules a K_FIRE press at tick 5 and a release at tick 64. Rows
-// declaring `Exercises::Special_*` instead use
-// `kInputsFamilySpecialCoverage`, which presses K_SPECIAL and cycles
-// K_SPECIAL_SWITCH before the K_FIRE combat tail. `tick_budget=150`
-// runs combat to completion. ELF / MAGE /
+// schedules a K_FIRE press at tick 5 and a release at tick 64, and
+// `tick_budget=150` runs combat to completion. ELF / MAGE /
 // SKELETON / GHOST also spawn the corresponding TREEHOUSE / TOWER /
 // TENT / BONES generator at (60, 60).
 //
@@ -320,27 +316,9 @@ inline constexpr InputEvent kInputsFamilyAttack[] = {
     {5, 0, K_FIRE}, {64, 0, K_NONE},
 };
 
-inline constexpr InputEvent kInputsFamilySpecialCoverage[] = {
-    {5,  0, K_SPECIAL},        {6,  0, K_NONE},
-    {8,  0, K_SPECIAL_SWITCH}, {9,  0, K_NONE},
-    {10, 0, K_SPECIAL},        {11, 0, K_NONE},
-    {13, 0, K_SPECIAL_SWITCH}, {14, 0, K_NONE},
-    {15, 0, K_SPECIAL},        {16, 0, K_NONE},
-    {18, 0, K_SPECIAL_SWITCH}, {19, 0, K_NONE},
-    {20, 0, K_SPECIAL},        {21, 0, K_NONE},
-    {23, 0, K_SPECIAL_SWITCH}, {24, 0, K_NONE},
-    {25, 0, K_SPECIAL},        {26, 0, K_NONE},
-    {40, 0, K_FIRE},           {64, 0, K_NONE},
-};
-
 inline constexpr SpawnSpec kFamilySpawns_soldier[] = {
     {  0, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_SOLDIER target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
-};
-inline constexpr SpawnSpec kFamilySpawns_soldier_with_exit_withdraw[] = {
-    {  0, 0, kOrderLiving,   120, 120, 0, 0 }, // FAMILY_SOLDIER target
-    {  0, 1, kOrderLiving,   180, 120, 0, 0 }, // enemy keeps withdraw path live
-    {  8, 2, kOrderTreasure, 120, 120, 0, 0, 2, 0, 2 }, // FAMILY_EXIT to completed scen2
 };
 inline constexpr SpawnSpec kFamilySpawns_elf[] = {
     {  1, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_ELF target
@@ -424,50 +402,6 @@ inline constexpr SpawnSpec kFamilySpawns_golem[] = {
     { 18, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_GOLEM target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
 };
-inline constexpr SpawnSpec kFamilySpawns_golem_with_nonliving_targets[] = {
-    { 18, 0, kOrderLiving, 120, 120, 0, 0 },
-    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
-
-    // Runtime-observed weapon-order families still absent from the union.
-    {  1, 2, kOrderWeapon,  32,  32, 0, 0 },
-    {  2, 2, kOrderWeapon,  64,  32, 0, 0 },
-    {  5, 2, kOrderWeapon,  96,  32, 0, 0 },
-    {  6, 2, kOrderWeapon, 128,  32, 0, 0 },
-    {  7, 2, kOrderWeapon, 160,  32, 0, 0 },
-    {  9, 2, kOrderWeapon, 192,  32, 0, 0 },
-    { 10, 2, kOrderWeapon, 224,  32, 0, 0 },
-    { 12, 2, kOrderWeapon, 256,  32, 0, 0 },
-    { 13, 2, kOrderWeapon, 288,  32, 0, 0 },
-    { 14, 2, kOrderWeapon, 320,  32, 0, 0 },
-    { 15, 2, kOrderWeapon, 352,  32, 0, 0 },
-    { 16, 2, kOrderWeapon, 384,  32, 0, 0 },
-    { 17, 2, kOrderWeapon, 416,  32, 0, 0 },
-    { 18, 2, kOrderWeapon, 448,  32, 0, 0 },
-    { 19, 2, kOrderWeapon, 480,  32, 0, 0 },
-
-    // Treasure-order families not otherwise observed.
-    {  1, 2, kOrderTreasure,  32,  64, 0, 0 },
-    {  2, 2, kOrderTreasure,  64,  64, 0, 0 },
-    {  3, 2, kOrderTreasure,  96,  64, 0, 0 },
-    {  4, 2, kOrderTreasure, 128,  64, 0, 0 },
-    {  5, 2, kOrderTreasure, 160,  64, 0, 0 },
-    {  6, 2, kOrderTreasure, 192,  64, 0, 0 },
-    {  7, 2, kOrderTreasure, 224,  64, 0, 0 },
-    {  8, 2, kOrderTreasure, 256,  64, 0, 0 },
-    {  9, 2, kOrderTreasure, 288,  64, 0, 0 },
-    { 10, 2, kOrderTreasure, 320,  64, 0, 0 },
-    { 11, 2, kOrderTreasure, 352,  64, 0, 0 },
-    { 12, 2, kOrderTreasure, 384,  64, 0, 0 },
-
-    // FX-order families not otherwise observed.
-    {  0, 2, kOrderFX,  32,  96, 0, 0 },
-    {  1, 2, kOrderFX,  64,  96, 0, 0 },
-    {  7, 2, kOrderFX,  96,  96, 0, 0 },
-    {  8, 2, kOrderFX, 128,  96, 0, 0 },
-    {  9, 2, kOrderFX, 160,  96, 0, 0 },
-    { 10, 2, kOrderFX, 192,  96, 0, 0 },
-    { 11, 2, kOrderFX, 224,  96, 0, 0 },
-};
 inline constexpr SpawnSpec kFamilySpawns_giant_skeleton[] = {
     { 19, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_GIANT_SKELETON target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
@@ -516,62 +450,38 @@ inline constexpr SpawnSpec kFamilySpawns_tower1[] = {
 
 inline constexpr FactPredicate kFacts_ai_idle_wander_scen9301[] = {
     pred::TickReached(150),
-    // Master companion cannot replay scen9301 with the same walker spawn
-    // (the .fss it loads ends at tick 1 with walkers=[]); widen the count
-    // bound to [0,2] so the branch-observed 2 SOLDIERs and the master-
-    // observed 0 SOLDIERs both pass. (a)
-    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 0, 2),
-    // Master has no live teams; branch keeps one team-0 walker alive. (a)
-    pred::WalkerOfTeamAlive(/*team=*/0, 0, 1),
-    // Structural HP range predicate cannot match against an empty master
-    // dump regardless of bounds widening; pin to branch only. (c)
-    pred::branch_only(pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 0, 11900)),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 0, 11900),
 };
 
 inline constexpr FactPredicate kFacts_combat_attack_scen99[] = {
     pred::TickReached(150),
-    // Master golden ends with 1 SOLDIER in oblist (others dead); widen to
-    // [1,2] to encompass branch's 2 alive SOLDIERs and master's 1. (a)
-    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
     pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 0, 11900),
 };
 
 inline constexpr FactPredicate kFacts_special_archmage_scen123[] = {
     pred::TickReached(150),
-    // Branch spawns ARCHMAGE; master cannot replay the scen (empty oblist).
-    // Widen count to [0,1]. (a)
-    pred::WalkerFamilyCount(/*FAMILY_ARCHMAGE*/17, 0, 1),
-    // Master has no live teams; branch keeps one team-0 walker alive. (a)
-    pred::WalkerOfTeamAlive(/*team=*/0, 0, 1),
-    // Position predicate cannot match against an empty master dump. (c)
-    pred::branch_only(pred::WalkerPositionMoved(/*FAMILY_ARCHMAGE*/17, 300, 0)),
+    pred::WalkerFamilyCount(/*FAMILY_ARCHMAGE*/17, 1, 1),
+    pred::WalkerPositionMoved(/*FAMILY_ARCHMAGE*/17, 300, 0),
 };
 
 inline constexpr FactPredicate kFacts_special_cleric_scen124[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(/*FAMILY_CLERIC*/5, 0, 0),
-    // Original threshold (x >= 300) no longer matches the branch or
-    // reconciled companion run; keep the fact kind and widen to the
-    // observed lower bound shared by both sides.
     pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 180, 0),
 };
 
 inline constexpr FactPredicate kFacts_special_mage_scen126[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_MAGE*/3, 0, 1),
-    pred::WalkerFamilyCount(/*FAMILY_FIREELEMENTAL*/6, 0, 1),
-    // Master dumps no walkers for this scenario while the branch keeps two
-    // team-0 walkers alive; widen the observed range. (a)
-    pred::WalkerOfTeamAlive(/*team=*/0, 0, 2),
+    pred::WalkerFamilyCount(/*FAMILY_MAGE*/3, 1, 1),
+    pred::WalkerFamilyCount(/*FAMILY_FIREELEMENTAL*/6, 1, 1),
 };
 
 inline constexpr FactPredicate kFacts_special_thief_scen789[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_THIEF*/11, 0, 1),
-    pred::WalkerFamilyCount(/*FAMILY_GHOST*/12, 0, 1),
-    // Master dumps no walkers for this scenario while the branch keeps three
-    // team-0 walkers alive; widen the observed range. (a)
-    pred::WalkerOfTeamAlive(/*team=*/0, 0, 3),
+    pred::WalkerFamilyCount(/*FAMILY_THIEF*/11, 1, 1),
+    pred::WalkerFamilyCount(/*FAMILY_GHOST*/12, 1, 1),
 };
 
 inline constexpr FactPredicate kFacts_effect_bomb_lifetime_scen99[] = {
@@ -585,76 +495,50 @@ inline constexpr FactPredicate kFacts_effect_bomb_lifetime_scen99[] = {
 };
 
 inline constexpr FactPredicate kFacts_effect_chain_scen9410[] = {
-    // Master replay ends at tick 100; widen the lower bound to (100). (a)
-    pred::TickReached(100),
-    pred::WalkerFamilyCount(/*FAMILY_MAGE*/3, 0, 1),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_MAGE*/3, 1, 1),
     pred::WalkerFamilyCount(/*FAMILY_GHOST*/12, 0, 0),
-    // Master dumps no walkers for this scenario while the branch keeps one
-    // team-0 walker alive; widen the observed range. (a)
-    pred::WalkerOfTeamAlive(/*team=*/0, 0, 1),
 };
 
 inline constexpr FactPredicate kFacts_summon_druid_pet_scen950[] = {
-    // Master replay ends at tick 80; widen TickReached to (80). (a)
-    pred::TickReached(80),
-    pred::WalkerFamilyCount(/*FAMILY_DRUID*/13, 0, 1),
-    // Master has no live teams; branch keeps two team-0 walkers alive. (a)
-    pred::WalkerOfTeamAlive(/*team=*/0, 0, 2),
-    // Branch-only HP predicate — master oblist empty. (c)
-    pred::branch_only(pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 8000, 9000)),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_DRUID*/13, 1, 1),
+    pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 8000, 9000),
 };
 
 inline constexpr FactPredicate kFacts_scoring_after_combat_scen99[] = {
     pred::TickReached(150),
-    // Master golden carries 1 SOLDIER (others dead); widen to [1,2]. (a)
-    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
     pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 0, 11900),
 };
 
 inline constexpr FactPredicate kFacts_save_roundtrip_scen99[] = {
     pred::TickReached(1),
-    // Master golden ends at tick 1 with the canonical SOLDIER + SKELETON
-    // pair from the save-state restore path (SOLDIER alive, SKELETON
-    // already dead from the saved game). Branch runs the full tick budget
-    // and ends with the 4-walker arena (SOLDIER team=0 + FIREELEMENTAL
-    // team=0 + SOLDIER team=1 + GHOST team=1). Widen counts to encompass
-    // both: branch SOLDIER count=2, master=1 → [1,2]; branch team=0
-    // alive=2, master=1 → [1,2]. (a)
     pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
     pred::WalkerOfTeamAlive(/*team=*/0, 1, 2),
 };
 
 inline constexpr FactPredicate kFacts_exit_trigger_scen9302[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 0, 1),
-    // Master has no live teams; branch keeps one team-0 walker alive. (a)
-    pred::WalkerOfTeamAlive(/*team=*/0, 0, 1),
-    // Branch-only position predicate — master scen9302 replay yields empty
-    // oblist that cannot satisfy any (xpos, ypos) lower bound. (c)
-    pred::branch_only(pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 300, 0)),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 1),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 300, 0),
 };
 
 inline constexpr FactPredicate kFacts_tick_cadence_scen9301[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 0, 2),
-    // Master has no live teams; branch keeps one team-0 walker alive. (a)
-    pred::WalkerOfTeamAlive(/*team=*/0, 0, 1),
-    pred::branch_only(pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 0, 11900)),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 0, 11900),
 };
 
 inline constexpr FactPredicate kFacts_rng_seed_stable_scen99[] = {
-    // Master replay ends at tick 1; widen to (1). (a)
-    pred::TickReached(1),
-    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
     pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
 };
 
 inline constexpr FactPredicate kFacts_scripted_input_scen9301[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 0, 2),
-    // Widen team-0 alive count from [1,1] to [0,1] so the branch (where
-    // the player-controlled SOLDIER is on team 1 and team 0 ends with 0
-    // alive) matches the master replay (also 0 walkers). (a)
     pred::WalkerOfTeamAlive(/*team=*/0, 0, 1),
 };
 
@@ -710,9 +594,7 @@ inline constexpr FactPredicate kFacts_family_archer_scen99[] = {
 };
 inline constexpr FactPredicate kFacts_family_mage_scen99[] = {
     pred::TickReached(150),
-    // Family-special coverage now summons temporary mage images on branch;
-    // master retains no mage walkers. Widen to the observed [0,3]. (a)
-    pred::WalkerFamilyCount(/*FAMILY_MAGE*/3, 0, 3),
+    pred::WalkerFamilyCount(/*FAMILY_MAGE*/3, 0, 0),
     pred::WalkerOfTeamAlive(/*team=*/0, 0, 0),
     pred::WalkerOfTeamAlive(/*team=*/1, 1, 1),
     pred::WalkerDiedByFinal(/*FAMILY_MAGE*/3),
@@ -748,13 +630,9 @@ inline constexpr FactPredicate kFacts_family_faerie_scen99[] = {
 };
 inline constexpr FactPredicate kFacts_family_slime_scen99[] = {
     pred::TickReached(150),
-    // Branch special input splits the slime into SMALL_SLIME children;
-    // master keeps the original SLIME. Widen the target count and team
-    // alive ranges to cover both sides. (a)
-    pred::WalkerFamilyCount(/*FAMILY_SLIME*/8, 0, 1),
-    pred::WalkerFamilyCount(/*FAMILY_SMALL_SLIME*/9, 0, 2),
-    pred::WalkerOfTeamAlive(/*team=*/0, 1, 2),
-    pred::WalkerAliveAtFinal(/*FAMILY_SLIME*/8, 0),
+    pred::WalkerFamilyCount(/*FAMILY_SLIME*/8, 1, 1),
+    pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
+    pred::WalkerAliveAtFinal(/*FAMILY_SLIME*/8, 1),
 };
 inline constexpr FactPredicate kFacts_family_small_slime_scen99[] = {
     pred::TickReached(150),
@@ -780,11 +658,9 @@ inline constexpr FactPredicate kFacts_family_thief_scen99[] = {
 };
 inline constexpr FactPredicate kFacts_family_ghost_scen99[] = {
     pred::TickReached(150),
-    // Ghost special coverage can create an additional ghost on branch;
-    // master keeps one. Widen to the observed [1,2]. (a)
-    pred::WalkerFamilyCount(/*FAMILY_GHOST*/12, 1, 2),
+    pred::WalkerFamilyCount(/*FAMILY_GHOST*/12, 1, 1),
     pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
-    pred::WalkerOfTeamAlive(/*team=*/1, 1, 2),
+    pred::WalkerOfTeamAlive(/*team=*/1, 1, 1),
     pred::WalkerAliveAtFinal(/*FAMILY_GHOST*/12, 1),
 };
 inline constexpr FactPredicate kFacts_family_druid_scen99[] = {
@@ -1231,14 +1107,14 @@ inline constexpr ScenarioSpec kScenarios[] = {
       "scen/scen1.fss", 0x00000010u,
       kInputsScripted9301, std::size(kInputsScripted9301), 150,
       CompareMode::SemanticParity, false,
-      kFamilySpawns_soldier_with_exit_withdraw, std::size(kFamilySpawns_soldier_with_exit_withdraw), 0, false, true,
+      kFamilySpawns_soldier, std::size(kFamilySpawns_soldier), 0, false, true,
       Exercises::None,
       kFacts_scripted_input_scen9301, std::size(kFacts_scripted_input_scen9301),
       kMut_walker_ai_wander },
 
     // Branch-internal companion: dirty-bit snapshot vs direct iteration.
-    // Lint exempts Invariant rows from fact requirements; expected_facts
-    // stays nullptr.
+    // No master golden — runs entirely on the branch side. Lint exempts
+    // Invariant rows from fact requirements; expected_facts stays nullptr.
     { "snapshot_dirty_bits_scen9301","scen/scen9301.fss",   0x00000055u,
       nullptr, 0,                                                       50,  CompareMode::Invariant, true,
       nullptr, 0, 0, false, false, Exercises::None,
@@ -1264,56 +1140,44 @@ inline constexpr ScenarioSpec kScenarios[] = {
 
     // Phase 04: one byte-equal arena per walker family (21 entries).
     { "family_soldier_scen99",         "scen/scen99.fss", 0x00000042u,
-      kInputsFamilySpecialCoverage, std::size(kInputsFamilySpecialCoverage), 150, CompareMode::SemanticParity, false,
-      kFamilySpawns_soldier, std::size(kFamilySpawns_soldier), 0, false, true,
-      Exercises::Special_Soldier_1 | Exercises::Special_Soldier_2 |
-          Exercises::Special_Soldier_3 | Exercises::Special_Soldier_4,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier, std::size(kFamilySpawns_soldier), 0, false, true, Exercises::None,
       kFacts_family_soldier_scen99, std::size(kFacts_family_soldier_scen99),
       kMut_family_soldier_init },
 
     { "family_elf_scen99",             "scen/scen99.fss", 0x00000042u,
-      kInputsFamilySpecialCoverage, std::size(kInputsFamilySpecialCoverage), 150, CompareMode::SemanticParity, false,
-      kFamilySpawns_elf, std::size(kFamilySpawns_elf), 0, false, true,
-      Exercises::Special_Elf_1 | Exercises::Special_Elf_2 |
-          Exercises::Special_Elf_3 | Exercises::Special_Elf_4,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::SemanticParity, false,
+      kFamilySpawns_elf, std::size(kFamilySpawns_elf), 0, false, true, Exercises::None,
       kFacts_family_elf_scen99, std::size(kFacts_family_elf_scen99),
       kMut_family_elf_init },
 
     { "family_archer_scen99",          "scen/scen99.fss", 0x00000042u,
-      kInputsFamilySpecialCoverage, std::size(kInputsFamilySpecialCoverage), 150, CompareMode::SemanticParity, false,
-      kFamilySpawns_archer, std::size(kFamilySpawns_archer), 0, false, true,
-      Exercises::Special_Archer_1 | Exercises::Special_Archer_2 |
-          Exercises::Special_Archer_3,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::SemanticParity, false,
+      kFamilySpawns_archer, std::size(kFamilySpawns_archer), 0, false, true, Exercises::None,
       kFacts_family_archer_scen99, std::size(kFacts_family_archer_scen99),
       kMut_family_archer_init },
 
     { "family_mage_scen99",            "scen/scen99.fss", 0x00000042u,
-      kInputsFamilySpecialCoverage, std::size(kInputsFamilySpecialCoverage), 150, CompareMode::SemanticParity, false,
-      kFamilySpawns_mage, std::size(kFamilySpawns_mage), 0, false, true,
-      Exercises::Special_Mage_2 | Exercises::Special_Mage_3 |
-          Exercises::Special_Mage_4 | Exercises::Special_Mage_5,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::SemanticParity, false,
+      kFamilySpawns_mage, std::size(kFamilySpawns_mage), 0, false, true, Exercises::None,
       kFacts_family_mage_scen99, std::size(kFacts_family_mage_scen99),
       kMut_family_mage_init },
 
     { "family_skeleton_scen99",        "scen/scen99.fss", 0x00000042u,
-      kInputsFamilySpecialCoverage, std::size(kInputsFamilySpecialCoverage), 150, CompareMode::SemanticParity, false,
-      kFamilySpawns_skeleton, std::size(kFamilySpawns_skeleton), 0, false, true,
-      Exercises::Special_Skeleton_1,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::SemanticParity, false,
+      kFamilySpawns_skeleton, std::size(kFamilySpawns_skeleton), 0, false, true, Exercises::None,
       kFacts_family_skeleton_scen99, std::size(kFacts_family_skeleton_scen99),
       kMut_family_skeleton_init },
 
     { "family_cleric_scen99",          "scen/scen99.fss", 0x00000042u,
-      kInputsFamilySpecialCoverage, std::size(kInputsFamilySpecialCoverage), 150, CompareMode::SemanticParity, false,
-      kFamilySpawns_cleric, std::size(kFamilySpawns_cleric), 0, false, true,
-      Exercises::Special_Cleric_2 | Exercises::Special_Cleric_3 |
-          Exercises::Special_Cleric_4,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::SemanticParity, false,
+      kFamilySpawns_cleric, std::size(kFamilySpawns_cleric), 0, false, true, Exercises::None,
       kFacts_family_cleric_scen99, std::size(kFacts_family_cleric_scen99),
       kMut_family_cleric_init },
 
     { "family_fireelemental_scen99",   "scen/scen99.fss", 0x00000042u,
-      kInputsFamilySpecialCoverage, std::size(kInputsFamilySpecialCoverage), 150, CompareMode::SemanticParity, false,
-      kFamilySpawns_fireelemental, std::size(kFamilySpawns_fireelemental), 0, false, true,
-      Exercises::Special_FireElemental_1,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::SemanticParity, false,
+      kFamilySpawns_fireelemental, std::size(kFamilySpawns_fireelemental), 0, false, true, Exercises::None,
       kFacts_family_fireelemental_scen99, std::size(kFacts_family_fireelemental_scen99),
       kMut_family_fireelemental_init },
 
@@ -1324,53 +1188,44 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_family_faerie_init },
 
     { "family_slime_scen99",           "scen/scen99.fss", 0x00000042u,
-      kInputsFamilySpecialCoverage, std::size(kInputsFamilySpecialCoverage), 150, CompareMode::SemanticParity, false,
-      kFamilySpawns_slime, std::size(kFamilySpawns_slime), 0, false, true,
-      Exercises::Special_Slime_1,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::SemanticParity, false,
+      kFamilySpawns_slime, std::size(kFamilySpawns_slime), 0, false, true, Exercises::None,
       kFacts_family_slime_scen99, std::size(kFacts_family_slime_scen99),
       kMut_family_slime_init },
 
     { "family_small_slime_scen99",     "scen/scen99.fss", 0x00000042u,
-      kInputsFamilySpecialCoverage, std::size(kInputsFamilySpecialCoverage), 150, CompareMode::SemanticParity, false,
-      kFamilySpawns_small_slime, std::size(kFamilySpawns_small_slime), 0, false, true,
-      Exercises::Special_SmallSlime_1,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::SemanticParity, false,
+      kFamilySpawns_small_slime, std::size(kFamilySpawns_small_slime), 0, false, true, Exercises::None,
       kFacts_family_small_slime_scen99, std::size(kFacts_family_small_slime_scen99),
       kMut_family_small_slime_init },
 
     { "family_medium_slime_scen99",    "scen/scen99.fss", 0x00000042u,
-      kInputsFamilySpecialCoverage, std::size(kInputsFamilySpecialCoverage), 150, CompareMode::SemanticParity, false,
-      kFamilySpawns_medium_slime, std::size(kFamilySpawns_medium_slime), 0, false, true,
-      Exercises::Special_MediumSlime_1,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::SemanticParity, false,
+      kFamilySpawns_medium_slime, std::size(kFamilySpawns_medium_slime), 0, false, true, Exercises::None,
       kFacts_family_medium_slime_scen99, std::size(kFacts_family_medium_slime_scen99),
       kMut_family_medium_slime_init },
 
     { "family_thief_scen99",           "scen/scen99.fss", 0x00000042u,
-      kInputsFamilySpecialCoverage, std::size(kInputsFamilySpecialCoverage), 150, CompareMode::SemanticParity, false,
-      kFamilySpawns_thief, std::size(kFamilySpawns_thief), 0, false, true,
-      Exercises::Special_Thief_2 | Exercises::Special_Thief_3 |
-          Exercises::Special_Thief_4,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::SemanticParity, false,
+      kFamilySpawns_thief, std::size(kFamilySpawns_thief), 0, false, true, Exercises::None,
       kFacts_family_thief_scen99, std::size(kFacts_family_thief_scen99),
       kMut_family_thief_init },
 
     { "family_ghost_scen99",           "scen/scen99.fss", 0x00000042u,
-      kInputsFamilySpecialCoverage, std::size(kInputsFamilySpecialCoverage), 150, CompareMode::SemanticParity, false,
-      kFamilySpawns_ghost, std::size(kFamilySpawns_ghost), 0, false, true,
-      Exercises::Special_Ghost_1,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::SemanticParity, false,
+      kFamilySpawns_ghost, std::size(kFamilySpawns_ghost), 0, false, true, Exercises::None,
       kFacts_family_ghost_scen99, std::size(kFacts_family_ghost_scen99),
       kMut_family_ghost_init },
 
     { "family_druid_scen99",           "scen/scen99.fss", 0x00000042u,
-      kInputsFamilySpecialCoverage, std::size(kInputsFamilySpecialCoverage), 150, CompareMode::SemanticParity, false,
-      kFamilySpawns_druid, std::size(kFamilySpawns_druid), 0, false, true,
-      Exercises::Special_Druid_1 | Exercises::Special_Druid_2 |
-          Exercises::Special_Druid_3 | Exercises::Special_Druid_4,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::SemanticParity, false,
+      kFamilySpawns_druid, std::size(kFamilySpawns_druid), 0, false, true, Exercises::None,
       kFacts_family_druid_scen99, std::size(kFacts_family_druid_scen99),
       kMut_family_druid_init },
 
     { "family_orc_scen99",             "scen/scen99.fss", 0x00000042u,
-      kInputsFamilySpecialCoverage, std::size(kInputsFamilySpecialCoverage), 150, CompareMode::SemanticParity, false,
-      kFamilySpawns_orc, std::size(kFamilySpawns_orc), 0, false, true,
-      Exercises::Special_Orc_1 | Exercises::Special_Orc_2,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::SemanticParity, false,
+      kFamilySpawns_orc, std::size(kFamilySpawns_orc), 0, false, true, Exercises::None,
       kFacts_family_orc_scen99, std::size(kFacts_family_orc_scen99),
       kMut_family_orc_init },
 
@@ -1381,23 +1236,20 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_family_big_orc_init },
 
     { "family_barbarian_scen99",       "scen/scen99.fss", 0x00000042u,
-      kInputsFamilySpecialCoverage, std::size(kInputsFamilySpecialCoverage), 150, CompareMode::SemanticParity, false,
-      kFamilySpawns_barbarian, std::size(kFamilySpawns_barbarian), 0, false, true,
-      Exercises::Special_Barbarian_1 | Exercises::Special_Barbarian_2,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::SemanticParity, false,
+      kFamilySpawns_barbarian, std::size(kFamilySpawns_barbarian), 0, false, true, Exercises::None,
       kFacts_family_barbarian_scen99, std::size(kFacts_family_barbarian_scen99),
       kMut_family_barbarian_init },
 
     { "family_archmage_scen99",        "scen/scen99.fss", 0x00000042u,
-      kInputsFamilySpecialCoverage, std::size(kInputsFamilySpecialCoverage), 150, CompareMode::SemanticParity, false,
-      kFamilySpawns_archmage, std::size(kFamilySpawns_archmage), 0, false, true,
-      Exercises::Special_Archmage_2 | Exercises::Special_Archmage_3 |
-          Exercises::Special_Archmage_4,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::SemanticParity, false,
+      kFamilySpawns_archmage, std::size(kFamilySpawns_archmage), 0, false, true, Exercises::None,
       kFacts_family_archmage_scen99, std::size(kFacts_family_archmage_scen99),
       kMut_family_archmage_init },
 
     { "family_golem_scen99",           "scen/scen99.fss", 0x00000042u,
       kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::SemanticParity, false,
-      kFamilySpawns_golem_with_nonliving_targets, std::size(kFamilySpawns_golem_with_nonliving_targets), 0, false, true, Exercises::None,
+      kFamilySpawns_golem, std::size(kFamilySpawns_golem), 0, false, true, Exercises::None,
       kFacts_family_golem_scen99, std::size(kFacts_family_golem_scen99),
       kMut_family_golem_init },
 
