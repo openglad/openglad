@@ -1341,6 +1341,7 @@ void GameWorld::reset_level_progress()
 {
     level_tick_count_ = 0;
     last_level_id_ = -1;
+    completion_events_emitted = false;
 }
 
 void GameWorld::tick()
