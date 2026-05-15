@@ -1484,12 +1484,20 @@ void GameWorld::tick()
         game_ended = true;
         ending = 0;
         next_level = static_cast<short>(id + 1);
+        events.push(og::sim::EventKind::SetPalette, current_palette_id, 0);
+        events.push(og::sim::EventKind::RequestRedraw, 0, 0);
+        events.push(og::sim::EventKind::SetEnd, 0, 0);
+        events.push(og::sim::EventKind::EndGame, 0,
+                    static_cast<std::uint32_t>(next_level));
         return;
     }
 
     if (end)
     {
         game_ended = true;
+        events.push(og::sim::EventKind::EndGame,
+                    static_cast<std::uint32_t>(ending),
+                    static_cast<std::uint32_t>(next_level));
         return;
     }
 
