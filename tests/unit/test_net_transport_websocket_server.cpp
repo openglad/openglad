@@ -453,7 +453,13 @@ TEST(NetTransportWebSocketServer,
             },
         .transport_backend =
             og::sim::test::NetworkTransportBackend::WebSocketLoopback,
-        .network_timeout = 10s,
+        // 10s was tight: under ASan / coverage instrumentation on GitHub's
+        // shared 4-core runners the loopback websocket fixture has been
+        // observed taking ~14s to converge the four clients to the
+        // authoritative tick. Bump the per-wait budget to 30s so the
+        // legitimate-but-slow CI lane completes; locally the test still
+        // finishes in ~1.5s under the same backend.
+        .network_timeout = 30s,
     });
 
     fixture.run();
