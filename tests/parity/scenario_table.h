@@ -333,6 +333,12 @@ inline constexpr InputEvent kInputsFamilySpecialCoverage[] = {
     {40, 0, K_FIRE},           {64, 0, K_NONE},
 };
 
+inline constexpr InputEvent kInputsSlimeSpecialCoverage[] = {
+    {5,   0, K_SPECIAL},
+    {6,   0, K_RIGHT},
+    {140, 0, K_NONE},
+};
+
 inline constexpr SpawnSpec kFamilySpawns_soldier[] = {
     {  0, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_SOLDIER target
     {  0, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
@@ -1324,21 +1330,21 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_family_faerie_init },
 
     { "family_slime_scen99",           "scen/scen99.fss", 0x00000042u,
-      kInputsFamilySpecialCoverage, std::size(kInputsFamilySpecialCoverage), 150, CompareMode::SemanticParity, false,
+      kInputsSlimeSpecialCoverage, std::size(kInputsSlimeSpecialCoverage), 150, CompareMode::SemanticParity, false,
       kFamilySpawns_slime, std::size(kFamilySpawns_slime), 0, false, true,
       Exercises::Special_Slime_1,
       kFacts_family_slime_scen99, std::size(kFacts_family_slime_scen99),
       kMut_family_slime_init },
 
     { "family_small_slime_scen99",     "scen/scen99.fss", 0x00000042u,
-      kInputsFamilySpecialCoverage, std::size(kInputsFamilySpecialCoverage), 150, CompareMode::SemanticParity, false,
+      kInputsSlimeSpecialCoverage, std::size(kInputsSlimeSpecialCoverage), 150, CompareMode::SemanticParity, false,
       kFamilySpawns_small_slime, std::size(kFamilySpawns_small_slime), 0, false, true,
       Exercises::Special_SmallSlime_1,
       kFacts_family_small_slime_scen99, std::size(kFacts_family_small_slime_scen99),
       kMut_family_small_slime_init },
 
     { "family_medium_slime_scen99",    "scen/scen99.fss", 0x00000042u,
-      kInputsFamilySpecialCoverage, std::size(kInputsFamilySpecialCoverage), 150, CompareMode::SemanticParity, false,
+      kInputsSlimeSpecialCoverage, std::size(kInputsSlimeSpecialCoverage), 150, CompareMode::SemanticParity, false,
       kFamilySpawns_medium_slime, std::size(kFamilySpawns_medium_slime), 0, false, true,
       Exercises::Special_MediumSlime_1,
       kFacts_family_medium_slime_scen99, std::size(kFacts_family_medium_slime_scen99),
