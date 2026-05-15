@@ -1285,6 +1285,54 @@ TEST(RuntimeCoveragePaths, sim_world_round9_no_hostiles_or_exit_sets_next_level_
     clear_level_lists();
 }
 
+TEST(RuntimeCoveragePaths, sim_world_completion_events_reset_between_level_attempts)
+{
+    clear_level_lists();
+
+    GameWorld& world = setup_tick_world(4242);
+    ASSERT_TRUE(current_game != nullptr && current_game->sim_events != nullptr)
+        << "current_game sim_events should be wired";
+    if (current_game == nullptr || current_game->sim_events == nullptr)
+        return;
+    og::sim::SimEventLog& events = *current_game->sim_events;
+
+    auto saw_completion_events = [&events]() {
+        bool saw_set_end = false;
+        bool saw_end_game = false;
+        for (const auto& ev : events.events())
+        {
+            if (ev.kind == og::sim::EventKind::SetEnd)
+                saw_set_end = true;
+            if (ev.kind == og::sim::EventKind::EndGame)
+                saw_end_game = true;
+        }
+        return saw_set_end && saw_end_game;
+    };
+
+    world.my_team = 0;
+    world.id = 51;
+    world.end = 0;
+    events.clear();
+    world.tick();
+    ASSERT_TRUE(world.completion_events_emitted)
+        << "first empty-level completion should mark events emitted";
+    ASSERT_TRUE(saw_completion_events())
+        << "first completion should emit SetEnd and EndGame";
+
+    events.clear();
+    world.id = 52;
+    world.reset_level_progress();
+    ASSERT_TRUE(!world.completion_events_emitted)
+        << "starting another level attempt must re-arm completion events";
+    world.tick();
+    ASSERT_TRUE(world.completion_events_emitted)
+        << "second empty-level completion should mark events emitted again";
+    ASSERT_TRUE(saw_completion_events())
+        << "second completion on the same GameWorld should emit SetEnd and EndGame";
+
+    clear_level_lists();
+}
+
 
 // --- Issue #98 regression tests: exits triggerable without beating scenario ---
 
