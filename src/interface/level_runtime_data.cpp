@@ -211,6 +211,7 @@ void replace_loaded_world_state(LevelRuntimeData* level, GameWorld& loaded_world
     dst.difficulty = loaded_world.difficulty;
     dst.level_done = loaded_world.level_done;
     dst.game_ended = loaded_world.game_ended;
+    dst.completion_events_emitted = loaded_world.completion_events_emitted;
     dst.next_level = loaded_world.next_level;
     dst.ending = loaded_world.ending;
     dst.enemy_freeze = loaded_world.enemy_freeze;
@@ -636,6 +637,7 @@ void LevelRuntimeData::attach_world(GameWorld* world)
         next_world->difficulty = old_world->difficulty;
         next_world->level_done = old_world->level_done;
         next_world->game_ended = old_world->game_ended;
+        next_world->completion_events_emitted = old_world->completion_events_emitted;
         next_world->next_level = old_world->next_level;
         next_world->ending = old_world->ending;
         next_world->enemy_freeze = old_world->enemy_freeze;

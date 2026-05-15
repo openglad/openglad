@@ -213,6 +213,7 @@ public:
     // Game state flags written in-place by tick().
     short level_done = 0;
     bool game_ended = false;
+    bool completion_events_emitted = false;
     short next_level = -1;
     short ending = 0;
     std::int32_t enemy_freeze = 0;
