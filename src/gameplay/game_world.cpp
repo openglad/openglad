@@ -1255,6 +1255,7 @@ void GameWorld::clear()
     difficulty = 100;
     level_done = 0;
     game_ended = false;
+    completion_events_emitted = false;
     next_level = -1;
     ending = 0;
     enemy_freeze = 0;
@@ -1484,20 +1485,28 @@ void GameWorld::tick()
         game_ended = true;
         ending = 0;
         next_level = static_cast<short>(id + 1);
-        events.push(og::sim::EventKind::SetPalette, current_palette_id, 0);
-        events.push(og::sim::EventKind::RequestRedraw, 0, 0);
-        events.push(og::sim::EventKind::SetEnd, 0, 0);
-        events.push(og::sim::EventKind::EndGame, 0,
-                    static_cast<std::uint32_t>(next_level));
+        if (!completion_events_emitted)
+        {
+            completion_events_emitted = true;
+            events.push(og::sim::EventKind::SetPalette, current_palette_id, 0);
+            events.push(og::sim::EventKind::RequestRedraw, 0, 0);
+            events.push(og::sim::EventKind::SetEnd, 0, 0);
+            events.push(og::sim::EventKind::EndGame, 0,
+                        static_cast<std::uint32_t>(next_level));
+        }
         return;
     }
 
     if (end)
     {
         game_ended = true;
-        events.push(og::sim::EventKind::EndGame,
-                    static_cast<std::uint32_t>(ending),
-                    static_cast<std::uint32_t>(next_level));
+        if (!completion_events_emitted)
+        {
+            completion_events_emitted = true;
+            events.push(og::sim::EventKind::EndGame,
+                        static_cast<std::uint32_t>(ending),
+                        static_cast<std::uint32_t>(next_level));
+        }
         return;
     }
 
