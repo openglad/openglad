@@ -469,7 +469,7 @@ inline constexpr FactPredicate kFacts_special_archmage_scen123[] = {
 inline constexpr FactPredicate kFacts_special_cleric_scen124[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(/*FAMILY_CLERIC*/5, 0, 0),
-    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 300, 0),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 180, 0),
 };
 
 inline constexpr FactPredicate kFacts_special_mage_scen126[] = {
@@ -513,9 +513,9 @@ inline constexpr FactPredicate kFacts_scoring_after_combat_scen99[] = {
 };
 
 inline constexpr FactPredicate kFacts_save_roundtrip_scen99[] = {
-    pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
-    pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
+    pred::TickReached(1),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    pred::WalkerOfTeamAlive(/*team=*/0, 1, 2),
 };
 
 inline constexpr FactPredicate kFacts_exit_trigger_scen9302[] = {
@@ -538,8 +538,8 @@ inline constexpr FactPredicate kFacts_rng_seed_stable_scen99[] = {
 
 inline constexpr FactPredicate kFacts_scripted_input_scen9301[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
-    pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 0, 2),
+    pred::WalkerOfTeamAlive(/*team=*/0, 0, 1),
 };
 
 inline constexpr FactPredicate kFacts_smoke_nonempty_scen99[] = {

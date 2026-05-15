@@ -6,11 +6,16 @@ emitted by the CMake-time scenario_facts_dump tool), evaluates the
 predicates against any StateDump JSON, and reports pass/fail.
 
 Usage:
-  evaluate_facts.py <scenario_id> <dump.json>
+  evaluate_facts.py [--side {branch,master}] <scenario_id> <dump.json>
+
+`--side` defaults to `branch` and mirrors the C++ FactSide gate: a
+predicate whose `applies_to_<side>` JSON field is false is short-circuited
+as a pass on that side.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -145,10 +150,20 @@ def evaluate_one(p: dict, dump: dict) -> tuple[bool, str]:
 
 
 def main() -> int:
-    if len(sys.argv) != 3:
-        sys.stderr.write("usage: evaluate_facts.py <scenario_id> <dump.json>\n")
-        return 2
-    scenario_id, dump_path = sys.argv[1], sys.argv[2]
+    parser = argparse.ArgumentParser(
+        prog="evaluate_facts.py",
+        description="Evaluate scenario predicates against a StateDump JSON.",
+    )
+    parser.add_argument(
+        "--side",
+        choices=("branch", "master"),
+        default="branch",
+        help="Which side's applies_to_<side> gate to honour. Defaults to branch.",
+    )
+    parser.add_argument("scenario_id")
+    parser.add_argument("dump_path")
+    args = parser.parse_args()
+
     if not FACTS.is_file():
         sys.stderr.write(
             f"evaluate_facts: {FACTS} missing — run cmake build to "
@@ -156,13 +171,24 @@ def main() -> int:
         )
         return 2
     facts = json.loads(FACTS.read_text())
-    row = next((s for s in facts.get("scenarios", []) if s["id"] == scenario_id), None)
+    row = next(
+        (s for s in facts.get("scenarios", []) if s["id"] == args.scenario_id),
+        None,
+    )
     if row is None:
-        sys.stderr.write(f"unknown scenario: {scenario_id}\n")
+        sys.stderr.write(f"unknown scenario: {args.scenario_id}\n")
         return 2
-    dump = json.loads(Path(dump_path).read_text())
+    dump = json.loads(Path(args.dump_path).read_text())
+    side_key = "applies_to_branch" if args.side == "branch" else "applies_to_master"
     failed: list[str] = []
+    evaluated = 0
+    skipped = 0
     for i, p in enumerate(row.get("predicates", [])):
+        # Default true mirrors the C++ FactPredicate field default.
+        if not bool(p.get(side_key, True)):
+            skipped += 1
+            continue
+        evaluated += 1
         ok, msg = evaluate_one(p, dump)
         if not ok:
             failed.append(f"#{i} kind={p['kind']} {msg}")
@@ -170,7 +196,10 @@ def main() -> int:
         for f in failed:
             sys.stderr.write(f"FAIL {f}\n")
         return 1
-    print(f"evaluate_facts {scenario_id}: OK ({len(row.get('predicates', []))} predicates)")
+    print(
+        f"evaluate_facts {args.scenario_id} side={args.side}: OK "
+        f"({evaluated} evaluated, {skipped} side-gated)"
+    )
     return 0
 
 

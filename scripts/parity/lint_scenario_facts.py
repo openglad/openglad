@@ -16,6 +16,13 @@ Asserts:
 The lint is regex-based, not a full C++ parser. It expects the
 scenario_table.h emitted by Phase 01 and breaks loudly on schema drift.
 
+This lint reads only the C++ table; the matching JSON view at
+``tests/parity/scenario_facts_generated.json`` may carry additional
+optional keys per predicate (notably ``applies_to_branch`` and
+``applies_to_master``, both default true). Those keys are emitted by
+``scenario_facts_dump_main.cpp`` and are tolerated by this lint by virtue
+of it not parsing the JSON at all — they pass through unobserved here.
+
 Override the parsed table file via LINT_SCENARIO_TABLE=<path>.
 """
 
