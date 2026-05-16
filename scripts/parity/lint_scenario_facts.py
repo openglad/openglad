@@ -71,10 +71,14 @@ def parse_predicate_arrays(text: str) -> dict[str, list[str]]:
 
 
 def parse_predicate_calls(text: str) -> dict[str, list[dict]]:
-    """{array_name: [{kind, raw_args}, ...]} where raw_args is the
+    """{array_name: [{kind, raw_args, trail}, ...]} where raw_args is the
     parenthesised argument list of each pred::Kind(...) call as written
-    in the source. The lint inspects raw_args by position to enforce
-    per-FactKind shape rules."""
+    in the source. `trail` captures the source between this predicate's
+    closing `)` (plus the comma) and the next predicate's `pred::` token
+    (or the end of the array body); the unjustified_widening rule scans
+    `trail` for inline `// intended_diff:` / `// rng_drift:` markers.
+    The lint inspects raw_args by position to enforce per-FactKind shape
+    rules."""
     out: dict[str, list[dict]] = {}
     rx = re.compile(
         r"inline\s+constexpr\s+FactPredicate\s+(kFacts_\w+)\s*\[\]\s*=\s*\{([^}]*)\};",
@@ -83,16 +87,18 @@ def parse_predicate_calls(text: str) -> dict[str, list[dict]]:
     for m in rx.finditer(text):
         name = m.group(1)
         body = m.group(2)
-        preds: list[dict] = []
+        # Per-predicate spans so we can compute the trailing region.
+        spans: list[tuple[int, int, str, list[str]]] = []
         i = 0
         while True:
             mm = re.search(r"pred::(\w+)\s*\(", body[i:])
             if mm is None:
                 break
             kind = mm.group(1)
-            start = i + mm.end()
+            call_start = i + mm.start()
+            arg_start = i + mm.end()
             depth = 1
-            j = start
+            j = arg_start
             in_str = False
             while j < len(body) and depth > 0:
                 c = body[j]
@@ -112,7 +118,7 @@ def parse_predicate_calls(text: str) -> dict[str, list[dict]]:
                         if depth == 0:
                             break
                 j += 1
-            raw_args = body[start:j]
+            raw_args = body[arg_start:j]
             # Split args on top-level commas.
             args: list[str] = []
             cur = ""
@@ -139,8 +145,13 @@ def parse_predicate_calls(text: str) -> dict[str, list[dict]]:
                     cur += c
             if cur.strip():
                 args.append(cur.strip())
-            preds.append({"kind": kind, "args": args})
+            spans.append((call_start, j + 1, kind, args))
             i = j + 1
+        preds: list[dict] = []
+        for idx, (cs, ce, kind, args) in enumerate(spans):
+            next_start = spans[idx + 1][0] if idx + 1 < len(spans) else len(body)
+            trail = body[ce:next_start]
+            preds.append({"kind": kind, "args": args, "trail": trail})
         out[name] = preds
     return out
 
@@ -323,6 +334,47 @@ def parse_scenarios(text: str) -> list[dict[str, str]]:
 
 SPECIAL_RX = re.compile(r"^special_(?P<family>[a-z_]+?)(?:_(?P<idx>\d+))?_scen\d+$")
 
+# unjustified_widening rule grammar — inline C++ comment attached to a
+# widened predicate. Must include a reason of at least 20 characters and
+# a `; commit <hex 7..40>` trailing token.
+WIDENING_JUSTIFICATION_RX = re.compile(
+    r"//\s*(?P<kind>intended_diff|rng_drift)\s*:\s*(?P<reason>.{20,}?)\s*;\s*commit\s+(?P<sha>[0-9a-fA-F]{7,40})\b"
+)
+
+# Maximum hp-cents span a WalkerHpRangeAtFinalTick range may carry without
+# triggering the unjustified_widening rule. Mirrors the spec threshold of
+# 200 hp-cents = 2.0 hp.
+HP_RANGE_TIGHT_MAX_CENTS = 200
+
+
+def _classify_widened(kind: str, args: list[str]) -> "tuple[bool, str]":
+    """Return (is_widened, human-readable predicate signature). Widened
+    iff WalkerFamilyCount/WalkerOfTeamAlive with arg1 != arg2 OR
+    WalkerHpRangeAtFinalTick with (arg2-arg1) > 200. Unparseable args
+    short-circuit to "not widened" so the lint never false-fires on a
+    novel call shape."""
+    if kind in ("WalkerFamilyCount", "WalkerOfTeamAlive"):
+        if len(args) < 3:
+            return False, kind
+        mn = parse_int_arg(args[1])
+        mx = parse_int_arg(args[2])
+        if mn is None or mx is None:
+            return False, kind
+        if mn == mx:
+            return False, f"{kind}(arg0={args[0]}, {mn}, {mx})"
+        return True, f"{kind}(arg0={args[0]}, {mn}, {mx})"
+    if kind == "WalkerHpRangeAtFinalTick":
+        if len(args) < 3:
+            return False, kind
+        mn = parse_int_arg(args[1])
+        mx = parse_int_arg(args[2])
+        if mn is None or mx is None:
+            return False, kind
+        if (mx - mn) <= HP_RANGE_TIGHT_MAX_CENTS:
+            return False, f"{kind}(arg0={args[0]}, {mn}, {mx})"
+        return True, f"{kind}(arg0={args[0]}, {mn}, {mx})"
+    return False, kind
+
 
 def main() -> int:
     table_env = os.environ.get("LINT_SCENARIO_TABLE")
@@ -333,6 +385,28 @@ def main() -> int:
     pred_calls  = parse_predicate_calls(text)
     mutations   = parse_mutation_constants(text)
     rows        = parse_scenarios(text)
+
+    # Spec-mandated rule (Phase 03 unjustified_widening): every widened
+    # range predicate (WalkerFamilyCount / WalkerOfTeamAlive with
+    # arg1 != arg2, or WalkerHpRangeAtFinalTick with span > 200 hp-cents)
+    # must carry an inline `// intended_diff: <reason ≥20 chars>;
+    # commit <sha 7..40>` OR `// rng_drift: ...; commit ...` justification
+    # placed in the source span between the predicate's closing `)` and
+    # the next predicate. Catches future regressions where someone widens
+    # a range to mask a divergence rather than narrow to exact-value
+    # semantics or annotate the rationale.
+    widening_lint_errors: list[str] = []
+    for arr_name, preds in pred_calls.items():
+        for i, pred in enumerate(preds):
+            widened, sig = _classify_widened(pred["kind"], pred["args"])
+            if not widened:
+                continue
+            trail = pred.get("trail", "")
+            if not WIDENING_JUSTIFICATION_RX.search(trail):
+                widening_lint_errors.append(
+                    f"{arr_name}[#{i}]: widened predicate {sig} missing "
+                    f"`// intended_diff:` or `// rng_drift:` justification "
+                    f"(grammar: kind ':' reason '; commit ' <hex 7..40>)")
 
     # Spec-mandated rule: every EffectFamilyCount predicate must be
     # qualified by EITHER a source-walker family (`arg3 >= 0`) OR a
@@ -472,7 +546,7 @@ def main() -> int:
                                 f"(team-0 SpawnSpec stats_level>={floor_level} "
                                 f"AND magicpoints>=600)")
 
-    all_errors = errors + effect_lint_errors
+    all_errors = errors + effect_lint_errors + widening_lint_errors
 
     if all_errors:
         sys.stderr.write("lint_scenario_facts: FAIL\n")

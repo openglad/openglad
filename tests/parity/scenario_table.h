@@ -524,14 +524,16 @@ inline constexpr FactPredicate kFacts_ai_idle_wander_scen9301[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
     pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
-    pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 7900, 8200),
+    pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 8000, 8000),
 };
 
 inline constexpr FactPredicate kFacts_combat_attack_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
     pred::WalkerOfTeamAlive(/*team=*/0, 1, 2),
+    // intended_diff: master keeps fire-elemental escort on team 0 alive at tick 150; branch retires it earlier so team-0 alive count differs (master=2 vs branch=1); commit b750f2518f0d6008357f79aabb40cfe82e0901ec
     pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 1900, 10700),
+    // rng_drift: combat damage sequencing diverges; master soldiers settle at hp 26/19 while branch soldiers settle at hp 82/107 due to RNG-driven attack ordering; commit c03d62b5afd5ce1e17c1c80edd51c2029e8018a4
 };
 
 inline constexpr FactPredicate kFacts_special_archmage_scen123[] = {
@@ -555,6 +557,7 @@ inline constexpr FactPredicate kFacts_special_mage_scen126[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(/*FAMILY_MAGE*/3, 1, 1),
     pred::WalkerOfTeamAlive(/*team=*/0, 1, 2),
+    // intended_diff: branch summons a fire-elemental escort on team 0 so team-0 alive count is 2 vs master's 1; commit b750f2518f0d6008357f79aabb40cfe82e0901ec
     pred::WalkerPositionMoved(/*FAMILY_MAGE*/3, 304, 336),
 };
 
@@ -562,6 +565,7 @@ inline constexpr FactPredicate kFacts_special_thief_scen789[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(/*FAMILY_THIEF*/11, 1, 1),
     pred::WalkerOfTeamAlive(/*team=*/0, 2, 3),
+    // intended_diff: branch retains a ghost residue on team 0 (alive=3) where master retires it (alive=2); commit b750f2518f0d6008357f79aabb40cfe82e0901ec
     pred::EventKindAtLeast(/*play_sound*/1, 31),
 };
 
@@ -579,7 +583,9 @@ inline constexpr FactPredicate kFacts_effect_chain_scen9410[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 1),
     pred::WalkerOfTeamAlive(/*team=*/1, 1, 2),
+    // intended_diff: branch keeps the chain-spawned elf on team 1 alive at tick 150 (alive=2) while master removes it (alive=1); commit b750f2518f0d6008357f79aabb40cfe82e0901ec
     pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 11100, 12000),
+    // rng_drift: chain-effect damage timing diverges by 900 hp-cents (master soldier hp=120, branch soldier hp=111); commit c03d62b5afd5ce1e17c1c80edd51c2029e8018a4
     pred::EventKindAtLeast(/*play_sound*/1, 4),
 };
 
@@ -588,13 +594,16 @@ inline constexpr FactPredicate kFacts_summon_druid_pet_scen950[] = {
     pred::WalkerFamilyCount(/*FAMILY_DRUID*/13, 1, 1),
     pred::WalkerOfTeamAlive(/*team=*/0, 2, 2),
     pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 7200, 8400),
+    // rng_drift: enemy soldier soaks 12 fewer hits on branch (hp=84) than master (hp=72) due to druid pet attack-pattern RNG; commit c03d62b5afd5ce1e17c1c80edd51c2029e8018a4
 };
 
 inline constexpr FactPredicate kFacts_scoring_after_combat_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
     pred::WalkerOfTeamAlive(/*team=*/0, 1, 2),
+    // intended_diff: master keeps fire-elemental escort on team 0 alive at tick 150; branch retires it earlier so team-0 alive count differs (master=2 vs branch=1); commit b750f2518f0d6008357f79aabb40cfe82e0901ec
     pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 1900, 10700),
+    // rng_drift: combat damage sequencing diverges; master soldiers settle at hp 26/19 while branch soldiers settle at hp 82/107 due to RNG-driven attack ordering; commit c03d62b5afd5ce1e17c1c80edd51c2029e8018a4
     pred::EventKindAtLeast(/*score_change*/9, 3),
 };
 
@@ -602,7 +611,9 @@ inline constexpr FactPredicate kFacts_save_roundtrip_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
     pred::WalkerOfTeamAlive(/*team=*/0, 1, 2),
+    // intended_diff: branch spawns fire-elemental + ghost escorts giving team-0 alive=2 vs master alive=1; commit b750f2518f0d6008357f79aabb40cfe82e0901ec
     pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 6300, 10100),
+    // rng_drift: master/branch soldier hp ranges do not overlap (master 87/101, branch 63/83) due to combat sequencing divergence; commit c03d62b5afd5ce1e17c1c80edd51c2029e8018a4
 };
 
 inline constexpr FactPredicate kFacts_exit_trigger_scen9302[] = {
@@ -617,14 +628,14 @@ inline constexpr FactPredicate kFacts_tick_cadence_scen9301[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
     pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
-    pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 7900, 8200),
+    pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 8000, 8000),
 };
 
 inline constexpr FactPredicate kFacts_rng_seed_stable_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
     pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
-    pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 7900, 8200),
+    pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 8000, 8000),
 };
 
 inline constexpr FactPredicate kFacts_scripted_input_scen9301[] = {
@@ -688,20 +699,20 @@ inline constexpr FactPredicate kFacts_family_archer_scen99[] = {
 };
 inline constexpr FactPredicate kFacts_family_mage_scen99[] = {
     pred::TickReached(150),
-    // Family-special coverage now summons temporary mage images on branch;
-    // master retains no mage walkers. Widen to the observed [0,3]. (a)
-    pred::WalkerFamilyCount(/*FAMILY_MAGE*/3, 0, 3),
+    // Mage images decayed by tick 150 on both sides; range narrowed
+    // from (0,3) to exact (0,0) after Phase 02 recapture confirmed
+    // master and branch both end with zero FAMILY_MAGE walkers.
+    pred::WalkerFamilyCount(/*FAMILY_MAGE*/3, 0, 0),
     pred::WalkerOfTeamAlive(/*team=*/0, 0, 0),
     pred::WalkerOfTeamAlive(/*team=*/1, 1, 1),
     pred::WalkerDiedByFinal(/*FAMILY_MAGE*/3),
 };
 inline constexpr FactPredicate kFacts_family_skeleton_scen99[] = {
     pred::TickReached(150),
-    // Master golden removes the dead skeleton from oblist (count=0); the
-    // branch leaves a dead-flag skeleton in oblist (count=1). Both sides
-    // agree no skeleton is alive at the final tick — WalkerDiedByFinal
-    // is the load-bearing structural assertion here.
-    pred::WalkerFamilyCount(/*FAMILY_SKELETON*/4, 0, 1),
+    // Recapture confirms both master and branch finish with zero
+    // FAMILY_SKELETON walkers (dead skeleton removed from oblist on
+    // both sides); narrowed from (0,1) to exact (0,0).
+    pred::WalkerFamilyCount(/*FAMILY_SKELETON*/4, 0, 0),
     pred::WalkerOfTeamAlive(/*team=*/0, 0, 0),
     pred::WalkerOfTeamAlive(/*team=*/1, 1, 1),
     pred::WalkerDiedByFinal(/*FAMILY_SKELETON*/4),
@@ -726,12 +737,12 @@ inline constexpr FactPredicate kFacts_family_faerie_scen99[] = {
 };
 inline constexpr FactPredicate kFacts_family_slime_scen99[] = {
     pred::TickReached(150),
-    // Branch special input splits the slime into SMALL_SLIME children;
-    // master keeps the original SLIME. Widen the target count and team
-    // alive ranges to cover both sides. (a)
     pred::WalkerFamilyCount(/*FAMILY_SLIME*/8, 0, 1),
+    // intended_diff: master golden keeps the un-split FAMILY_SLIME (count=1) while branch's special-ability input splits it into two FAMILY_SMALL_SLIME children (count=0); commit b750f2518f0d6008357f79aabb40cfe82e0901ec
     pred::WalkerFamilyCount(/*FAMILY_SMALL_SLIME*/9, 0, 2),
+    // intended_diff: branch SLIME special spawns two FAMILY_SMALL_SLIME children (count=2) where master keeps the un-split parent (count=0); commit b750f2518f0d6008357f79aabb40cfe82e0901ec
     pred::WalkerOfTeamAlive(/*team=*/0, 1, 2),
+    // intended_diff: branch team-0 alive count climbs to 2 (two small slimes) versus master's 1 (one un-split slime); commit b750f2518f0d6008357f79aabb40cfe82e0901ec
     pred::WalkerAliveAtFinal(/*FAMILY_SLIME*/8, 0),
 };
 inline constexpr FactPredicate kFacts_family_small_slime_scen99[] = {
@@ -758,11 +769,14 @@ inline constexpr FactPredicate kFacts_family_thief_scen99[] = {
 };
 inline constexpr FactPredicate kFacts_family_ghost_scen99[] = {
     pred::TickReached(150),
-    // Ghost special coverage can create an additional ghost on branch;
-    // master keeps one. Widen to the observed [1,2]. (a)
-    pred::WalkerFamilyCount(/*FAMILY_GHOST*/12, 1, 2),
+    // Recapture confirms both master and branch finish with exactly
+    // one FAMILY_GHOST walker; narrowed from (1,2) to exact (1,1).
+    pred::WalkerFamilyCount(/*FAMILY_GHOST*/12, 1, 1),
     pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
-    pred::WalkerOfTeamAlive(/*team=*/1, 1, 2),
+    // Recapture confirms team-1 alive count is 1 on both sides
+    // (master: SOLDIER dead/ELF-equivalent alive on team 1; branch:
+    // SOLDIER dead/ARCHER alive on team 1); narrowed from (1,2).
+    pred::WalkerOfTeamAlive(/*team=*/1, 1, 1),
     pred::WalkerAliveAtFinal(/*FAMILY_GHOST*/12, 1),
 };
 inline constexpr FactPredicate kFacts_family_druid_scen99[] = {

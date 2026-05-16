@@ -358,6 +358,52 @@ Phase 06 (canary + regressions) replaces both mutations with edits the
 runner does invoke (a per-tick RNG advance for `rng_seed_stable_scen99`
 and a save/load round-trip stage for `save_roundtrip_scen99`).
 
+## Reclassified rows (Phase 03)
+
+Phase 03 walked the Phase 01 widened-predicate inventory and either
+narrowed every row to exact-value semantics or annotated it with an
+inline `// intended_diff: <reason>; commit <sha>` / `// rng_drift: ...;
+commit <sha>` justification recognised by the new
+`scripts/parity/lint_scenario_facts.py::unjustified_widening` rule.
+Recapture (Phase 02, companion SHA
+`c03d62b5afd5ce1e17c1c80edd51c2029e8018a4`) and a fresh branch dump
+captured with `build/ci-test/parity_runner_smoke --scenario <id>` were
+the data sources for both decisions. After the changes, all 50
+`og_test_parity` cases still pass and the lint reports `OK`.
+
+| scenario_id | predicate | before | after | citation |
+|-------------|-----------|--------|-------|----------|
+| `ai_idle_wander_scen9301` | `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER)` | `(7900, 8200)` | `(8000, 8000)` | narrowed — recapture confirms both master and branch each have a soldier at hp 80 |
+| `combat_attack_scen99` | `WalkerOfTeamAlive(team=0)` | `(1, 2)` | `(1, 2)` w/ `intended_diff` | master keeps fire-elemental escort on team 0 alive at tick 150; branch retires it earlier (master=2 vs branch=1); commit `b750f2518f0d6008357f79aabb40cfe82e0901ec` |
+| `combat_attack_scen99` | `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER)` | `(1900, 10700)` | `(1900, 10700)` w/ `rng_drift` | combat damage sequencing diverges; master soldiers settle at hp 26/19 vs branch hp 82/107; commit `c03d62b5afd5ce1e17c1c80edd51c2029e8018a4` |
+| `special_mage_scen126` | `WalkerOfTeamAlive(team=0)` | `(1, 2)` | `(1, 2)` w/ `intended_diff` | branch summons a fire-elemental escort on team 0 (alive=2) vs master (alive=1); commit `b750f2518f0d6008357f79aabb40cfe82e0901ec` |
+| `special_thief_scen789` | `WalkerOfTeamAlive(team=0)` | `(2, 3)` | `(2, 3)` w/ `intended_diff` | branch retains a ghost residue on team 0 (alive=3) where master retires it (alive=2); commit `b750f2518f0d6008357f79aabb40cfe82e0901ec` |
+| `effect_chain_scen9410` | `WalkerOfTeamAlive(team=1)` | `(1, 2)` | `(1, 2)` w/ `intended_diff` | branch keeps the chain-spawned elf on team 1 alive (alive=2) while master removes it (alive=1); commit `b750f2518f0d6008357f79aabb40cfe82e0901ec` |
+| `effect_chain_scen9410` | `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER)` | `(11100, 12000)` | `(11100, 12000)` w/ `rng_drift` | chain-effect damage timing diverges by 900 hp-cents (master soldier hp=120, branch soldier hp=111); commit `c03d62b5afd5ce1e17c1c80edd51c2029e8018a4` |
+| `summon_druid_pet_scen950` | `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER)` | `(7200, 8400)` | `(7200, 8400)` w/ `rng_drift` | enemy soldier soaks 12 fewer hits on branch (hp=84) than master (hp=72) due to druid pet attack-pattern RNG; commit `c03d62b5afd5ce1e17c1c80edd51c2029e8018a4` |
+| `scoring_after_combat_scen99` | `WalkerOfTeamAlive(team=0)` | `(1, 2)` | `(1, 2)` w/ `intended_diff` | mirror of `combat_attack_scen99:533` — master fire-elemental escort retained; commit `b750f2518f0d6008357f79aabb40cfe82e0901ec` |
+| `scoring_after_combat_scen99` | `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER)` | `(1900, 10700)` | `(1900, 10700)` w/ `rng_drift` | mirror of `combat_attack_scen99:534` combat sequencing divergence; commit `c03d62b5afd5ce1e17c1c80edd51c2029e8018a4` |
+| `save_roundtrip_scen99` | `WalkerOfTeamAlive(team=0)` | `(1, 2)` | `(1, 2)` w/ `intended_diff` | branch spawns fire-elemental + ghost escorts (team-0 alive=2) vs master (alive=1); commit `b750f2518f0d6008357f79aabb40cfe82e0901ec` |
+| `save_roundtrip_scen99` | `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER)` | `(6300, 10100)` | `(6300, 10100)` w/ `rng_drift` | master/branch soldier hp ranges do not overlap (master 87/101, branch 63/83); commit `c03d62b5afd5ce1e17c1c80edd51c2029e8018a4` |
+| `tick_cadence_scen9301` | `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER)` | `(7900, 8200)` | `(8000, 8000)` | narrowed — soldier-at-hp-80 present on both sides |
+| `rng_seed_stable_scen99` | `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER)` | `(7900, 8200)` | `(8000, 8000)` | narrowed — same as `tick_cadence_scen9301` |
+| `family_mage_scen99` | `WalkerFamilyCount(FAMILY_MAGE)` | `(0, 3)` | `(0, 0)` | narrowed — recapture confirms both sides end with zero mages (no image survivors at tick 150) |
+| `family_skeleton_scen99` | `WalkerFamilyCount(FAMILY_SKELETON)` | `(0, 1)` | `(0, 0)` | narrowed — recapture confirms both master and branch finish with zero skeletons (the prior comment about branch retaining a dead-flag skeleton is stale) |
+| `family_slime_scen99` | `WalkerFamilyCount(FAMILY_SLIME)` | `(0, 1)` | `(0, 1)` w/ `intended_diff` | master keeps the un-split SLIME (count=1) while branch's special splits it into two SMALL_SLIME children (count=0); commit `b750f2518f0d6008357f79aabb40cfe82e0901ec` |
+| `family_slime_scen99` | `WalkerFamilyCount(FAMILY_SMALL_SLIME)` | `(0, 2)` | `(0, 2)` w/ `intended_diff` | mirror of the SLIME→SMALL_SLIME split — branch=2, master=0; commit `b750f2518f0d6008357f79aabb40cfe82e0901ec` |
+| `family_slime_scen99` | `WalkerOfTeamAlive(team=0)` | `(1, 2)` | `(1, 2)` w/ `intended_diff` | branch team-0 alive=2 (two small slimes) vs master alive=1 (un-split slime); commit `b750f2518f0d6008357f79aabb40cfe82e0901ec` |
+| `family_ghost_scen99` | `WalkerFamilyCount(FAMILY_GHOST)` | `(1, 2)` | `(1, 1)` | narrowed — both master and branch end with exactly one ghost walker |
+| `family_ghost_scen99` | `WalkerOfTeamAlive(team=1)` | `(1, 2)` | `(1, 1)` | narrowed — both sides end with team-1 alive=1 (master ARCHER-equivalent, branch ARCHER) |
+
+Summary: 21 widened predicates reclassified — **8 narrowed** to exact
+values, **13 retained** with an inline `intended_diff` (8) or
+`rng_drift` (5) citation. The lint rule
+(`scripts/parity/lint_scenario_facts.py::unjustified_widening`) refuses
+any future addition that widens a `WalkerFamilyCount` /
+`WalkerOfTeamAlive` range to `mn != mx` or a
+`WalkerHpRangeAtFinalTick` to `(mx - mn) > 200` hp-cents without one of
+those two inline citations.
+
 ## Closing
 
 The honest position: the parity surface is broad (50 tests, 39
