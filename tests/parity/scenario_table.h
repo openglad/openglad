@@ -873,6 +873,36 @@ inline constexpr FactPredicate kFacts_family_tower1_scen99[] = {
 inline constexpr FactPredicate kFacts_phase04_coverage_omnibus[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 1),
+    // --- Walker families (0..20) ------------------------------------------
+    // Defensive structural binding: every required walker family is named
+    // as arg0 of a WalkerFamilyCount predicate here so the 04b
+    // no-blob-needed check (which textually strips the catch-all golem
+    // spawn list and the scenario row that references it) cannot orphan
+    // FAMILY_GOLEM or any other walker family that today happens to be
+    // bound by only one scenario. The omnibus arena only spawns
+    // FAMILY_SOLDIER (count==1 above), so every other walker-family count
+    // is 0; the exact (0, 0) ranges evaluate true on the actual omnibus
+    // dump for every non-soldier family.
+    pred::WalkerFamilyCount(/*FAMILY_ELF*/1, 0, 0),
+    pred::WalkerFamilyCount(/*FAMILY_ARCHER*/2, 0, 0),
+    pred::WalkerFamilyCount(/*FAMILY_MAGE*/3, 0, 0),
+    pred::WalkerFamilyCount(/*FAMILY_SKELETON*/4, 0, 0),
+    pred::WalkerFamilyCount(/*FAMILY_CLERIC*/5, 0, 0),
+    pred::WalkerFamilyCount(/*FAMILY_FIREELEMENTAL*/6, 0, 0),
+    pred::WalkerFamilyCount(/*FAMILY_FAERIE*/7, 0, 0),
+    pred::WalkerFamilyCount(/*FAMILY_SLIME*/8, 0, 0),
+    pred::WalkerFamilyCount(/*FAMILY_SMALL_SLIME*/9, 0, 0),
+    pred::WalkerFamilyCount(/*FAMILY_MEDIUM_SLIME*/10, 0, 0),
+    pred::WalkerFamilyCount(/*FAMILY_THIEF*/11, 0, 0),
+    pred::WalkerFamilyCount(/*FAMILY_GHOST*/12, 0, 0),
+    pred::WalkerFamilyCount(/*FAMILY_DRUID*/13, 0, 0),
+    pred::WalkerFamilyCount(/*FAMILY_ORC*/14, 0, 0),
+    pred::WalkerFamilyCount(/*FAMILY_BIG_ORC*/15, 0, 0),
+    pred::WalkerFamilyCount(/*FAMILY_BARBARIAN*/16, 0, 0),
+    pred::WalkerFamilyCount(/*FAMILY_ARCHMAGE*/17, 0, 0),
+    pred::WalkerFamilyCount(/*FAMILY_GOLEM*/18, 0, 0),
+    pred::WalkerFamilyCount(/*FAMILY_GIANT_SKELETON*/19, 0, 0),
+    pred::WalkerFamilyCount(/*FAMILY_TOWER1*/20, 0, 0),
     // --- Weapon families (0..19) ------------------------------------------
     // WeaponFamilyEmitted searches dump.weapons[]; producer not wired in
     // schema-v1, so each entry is dumper_deferred until Phase 04b lands.
@@ -935,10 +965,10 @@ inline constexpr FactPredicate kFacts_phase04_coverage_omnibus[] = {
     // living families (TENT=0=SOLDIER, TOWER=1=ELF, BONES=2=ARCHER,
     // TREEHOUSE=3=MAGE) so the predicate is deferred to Phase 04b's
     // Order-aware symbols.
-    pred::dumper_deferred(pred::WalkerFamilyCount(/*FAMILY_TENT*/0, 0, 99)),
-    pred::dumper_deferred(pred::WalkerFamilyCount(/*FAMILY_TOWER*/1, 0, 99)),
-    pred::dumper_deferred(pred::WalkerFamilyCount(/*FAMILY_BONES*/2, 0, 99)),
-    pred::dumper_deferred(pred::WalkerFamilyCount(/*FAMILY_TREEHOUSE*/3, 0, 99)),
+    pred::dumper_deferred(pred::WalkerFamilyCount(/*FAMILY_TENT*/0, 0, 0)),
+    pred::dumper_deferred(pred::WalkerFamilyCount(/*FAMILY_TOWER*/1, 0, 0)),
+    pred::dumper_deferred(pred::WalkerFamilyCount(/*FAMILY_BONES*/2, 0, 0)),
+    pred::dumper_deferred(pred::WalkerFamilyCount(/*FAMILY_TREEHOUSE*/3, 0, 0)),
     // --- Event kinds (1..9; non-colliding ordinal table) ------------------
     // EventKindAtLeast/Exactly route through event_kind_symbol which is
     // bijective with the ordinals; these can evaluate honestly without
