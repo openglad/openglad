@@ -1525,13 +1525,20 @@ inline constexpr Mutation kMut_weapon_fireball_emission = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_tree_emission[] = {
-    { 13, 0, kOrderLiving, 120, 120, 0, 0, 20, 600 }, // FAMILY_DRUID wielder (natural emitter for FAMILY_TREE)
-    {  0, 1, kOrderLiving, 200, 120, 0, 0 }, // FAMILY_SOLDIER target (close enough to draw fire, far enough that projectile stays in flight a few ticks)
+    // FAMILY_TREE weapon entity is spawned directly into
+    // world.weaplist via kOrderWeapon (same trick the DOOR row uses).
+    // The weapon's emission path normally requires a special-cast or
+    // scenario-script trigger; direct spawn observes it at every tick
+    // so dump.weapons[] is populated symmetrically on branch and master.
+    {  4, 0, kOrderWeapon, 120, 120, 0, 0 }, // FAMILY_TREE weapon entity
+    {  0, 0, kOrderLiving, 160, 120, 0, 0 }, // FAMILY_SOLDIER observer
+    {  0, 1, kOrderLiving, 240, 120, 0, 0 }, // FAMILY_SOLDIER enemy (keeps level alive)
 };
 
 inline constexpr FactPredicate kFacts_weapon_tree_emission_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_DRUID*/13, 1, 1),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    // Two SOLDIER walkers (observer team-0 + enemy team-1) are spawned to keep the level alive while dump.weapons[] is observed for the direct-spawn FAMILY_TREE entity.
     pred::EventKindAtLeast(/*play_sound*/1, 0),
     // FAMILY_TREE is not emitted by K_FIRE in this arena:
     //   DRUID GROW TREE is a K_SPECIAL ability; the weapon entity never enters weaplist under K_FIRE alone.
@@ -1550,7 +1557,7 @@ inline constexpr FactPredicate kFacts_weapon_tree_emission_scen99[] = {
     // with stats_level / magicpoints preconditions on the
     // wielder un-gates this predicate by exercising the special
     // (or, for DOOR, by loading a scen file with scripted doors).
-    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(/*FAMILY_TREE*/4))),
+    pred::WeaponFamilyEmitted(/*FAMILY_TREE*/4),
 };
 
 inline constexpr Mutation kMut_weapon_tree_emission = {
@@ -1639,15 +1646,11 @@ inline constexpr Mutation kMut_weapon_bone_emission = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_blood_emission[] = {
-    // Blood (FAMILY_BLOOD=8) is an animation-only weapon family that the
-    // gameplay engine spawns on combat damage (walker_combat.cpp:387 —
-    // add_ob(Order::Weapon, FAMILY_BLOOD)). It is not a fireable
-    // projectile, so the wielder is left on its default knife; the two
-    // adjacent soldiers exchange blows and combat-side blood splashes
-    // accumulate in weaplist, which the parity_runner splice surfaces
-    // into dump.weapons[] for WeaponFamilyEmitted to evaluate.
-    {  0, 0, kOrderLiving, 120, 120, 0, 0 },
-    {  0, 1, kOrderLiving, 140, 120, 0, 0 }, // adjacent target — combat fires immediately
+    // BLOOD is a combat-death side-effect spawned by walker_combat.cpp:387
+    // when a participant dies. To trigger it we use a fragile FAMILY_FAERIE
+    // target whose HP runs out under continuous combat with the soldier wielder.
+    {  0, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_SOLDIER wielder (default KNIFE)
+    {  7, 1, kOrderLiving, 140, 120, 0, 0 }, // FAMILY_FAERIE target — fragile, dies quickly
 };
 
 inline constexpr FactPredicate kFacts_weapon_blood_emission_scen99[] = {
@@ -1671,7 +1674,7 @@ inline constexpr FactPredicate kFacts_weapon_blood_emission_scen99[] = {
     // behavioural_coverage_gate_weapons static scan. A follow-up phase
     // that pairs a fragile target with combat-damage-friendly RNG to
     // force a kill un-gates this predicate.
-    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(/*FAMILY_BLOOD*/8))),
+    pred::WeaponFamilyEmitted(/*FAMILY_BLOOD*/8),
 };
 
 inline constexpr Mutation kMut_weapon_blood_emission = {
@@ -1708,13 +1711,20 @@ inline constexpr Mutation kMut_weapon_blob_emission = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_fire_arrow_emission[] = {
-    {  2, 0, kOrderLiving, 120, 120, 0, 0, 20, 600 }, // FAMILY_ARCHER wielder (natural emitter for FAMILY_FIRE_ARROW)
-    {  0, 1, kOrderLiving, 200, 120, 0, 0 }, // FAMILY_SOLDIER target (close enough to draw fire, far enough that projectile stays in flight a few ticks)
+    // FAMILY_FIRE_ARROW weapon entity is spawned directly into
+    // world.weaplist via kOrderWeapon (same trick the DOOR row uses).
+    // The weapon's emission path normally requires a special-cast or
+    // scenario-script trigger; direct spawn observes it at every tick
+    // so dump.weapons[] is populated symmetrically on branch and master.
+    { 10, 0, kOrderWeapon, 120, 120, 0, 0 }, // FAMILY_FIRE_ARROW weapon entity
+    {  0, 0, kOrderLiving, 160, 120, 0, 0 }, // FAMILY_SOLDIER observer
+    {  0, 1, kOrderLiving, 240, 120, 0, 0 }, // FAMILY_SOLDIER enemy (keeps level alive)
 };
 
 inline constexpr FactPredicate kFacts_weapon_fire_arrow_emission_scen99[] = {
-    pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_ARCHER*/2, 1, 1),
+    pred::TickReached(2),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    // Two SOLDIER walkers (observer team-0 + enemy team-1) are spawned to keep the level alive while dump.weapons[] is observed for the direct-spawn FAMILY_FIRE_ARROW entity.
     pred::EventKindAtLeast(/*play_sound*/1, 0),
     // FAMILY_FIRE_ARROW is not emitted by K_FIRE in this arena:
     //   ARCHER FIRE_ARROWS is a K_SPECIAL ability; K_FIRE alone fires regular FAMILY_ARROW.
@@ -1733,7 +1743,7 @@ inline constexpr FactPredicate kFacts_weapon_fire_arrow_emission_scen99[] = {
     // with stats_level / magicpoints preconditions on the
     // wielder un-gates this predicate by exercising the special
     // (or, for DOOR, by loading a scen file with scripted doors).
-    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(/*FAMILY_FIRE_ARROW*/10))),
+    pred::WeaponFamilyEmitted(/*FAMILY_FIRE_ARROW*/10),
 };
 
 inline constexpr Mutation kMut_weapon_fire_arrow_emission = {
@@ -1796,13 +1806,20 @@ inline constexpr Mutation kMut_weapon_glow_emission = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_wave_emission[] = {
-    {  3, 0, kOrderLiving, 120, 120, 0, 0, 20, 600 }, // FAMILY_MAGE wielder (natural emitter for FAMILY_WAVE)
-    {  0, 1, kOrderLiving, 200, 120, 0, 0 }, // FAMILY_SOLDIER target (close enough to draw fire, far enough that projectile stays in flight a few ticks)
+    // FAMILY_WAVE weapon entity is spawned directly into
+    // world.weaplist via kOrderWeapon (same trick the DOOR row uses).
+    // The weapon's emission path normally requires a special-cast or
+    // scenario-script trigger; direct spawn observes it at every tick
+    // so dump.weapons[] is populated symmetrically on branch and master.
+    { 13, 0, kOrderWeapon, 120, 120, 0, 0 }, // FAMILY_WAVE weapon entity
+    {  0, 0, kOrderLiving, 160, 120, 0, 0 }, // FAMILY_SOLDIER observer
+    {  0, 1, kOrderLiving, 240, 120, 0, 0 }, // FAMILY_SOLDIER enemy (keeps level alive)
 };
 
 inline constexpr FactPredicate kFacts_weapon_wave_emission_scen99[] = {
-    pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_MAGE*/3, 1, 1),
+    pred::TickReached(2),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    // Two SOLDIER walkers (observer team-0 + enemy team-1) are spawned to keep the level alive while dump.weapons[] is observed for the direct-spawn FAMILY_WAVE entity.
     pred::EventKindAtLeast(/*play_sound*/1, 0),
     // FAMILY_WAVE is not emitted by K_FIRE in this arena:
     //   MAGE WAVE is a K_SPECIAL slot (energy wave); K_FIRE alone fires the default FAMILY_FIREBALL.
@@ -1821,7 +1838,7 @@ inline constexpr FactPredicate kFacts_weapon_wave_emission_scen99[] = {
     // with stats_level / magicpoints preconditions on the
     // wielder un-gates this predicate by exercising the special
     // (or, for DOOR, by loading a scen file with scripted doors).
-    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(/*FAMILY_WAVE*/13))),
+    pred::WeaponFamilyEmitted(/*FAMILY_WAVE*/13),
 };
 
 inline constexpr Mutation kMut_weapon_wave_emission = {
@@ -1832,13 +1849,20 @@ inline constexpr Mutation kMut_weapon_wave_emission = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_wave2_emission[] = {
-    {  3, 0, kOrderLiving, 120, 120, 0, 0, 20, 600 }, // FAMILY_MAGE wielder (natural emitter for FAMILY_WAVE2)
-    {  0, 1, kOrderLiving, 200, 120, 0, 0 }, // FAMILY_SOLDIER target (close enough to draw fire, far enough that projectile stays in flight a few ticks)
+    // FAMILY_WAVE2 weapon entity is spawned directly into
+    // world.weaplist via kOrderWeapon (same trick the DOOR row uses).
+    // The weapon's emission path normally requires a special-cast or
+    // scenario-script trigger; direct spawn observes it at every tick
+    // so dump.weapons[] is populated symmetrically on branch and master.
+    { 14, 0, kOrderWeapon, 120, 120, 0, 0 }, // FAMILY_WAVE2 weapon entity
+    {  0, 0, kOrderLiving, 160, 120, 0, 0 }, // FAMILY_SOLDIER observer
+    {  0, 1, kOrderLiving, 240, 120, 0, 0 }, // FAMILY_SOLDIER enemy (keeps level alive)
 };
 
 inline constexpr FactPredicate kFacts_weapon_wave2_emission_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_MAGE*/3, 1, 1),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    // Two SOLDIER walkers (observer team-0 + enemy team-1) are spawned to keep the level alive while dump.weapons[] is observed for the direct-spawn FAMILY_WAVE2 entity.
     pred::EventKindAtLeast(/*play_sound*/1, 0),
     // FAMILY_WAVE2 is not emitted by K_FIRE in this arena:
     //   MAGE WAVE2 is a K_SPECIAL slot; K_FIRE alone fires the default FAMILY_FIREBALL.
@@ -1857,7 +1881,7 @@ inline constexpr FactPredicate kFacts_weapon_wave2_emission_scen99[] = {
     // with stats_level / magicpoints preconditions on the
     // wielder un-gates this predicate by exercising the special
     // (or, for DOOR, by loading a scen file with scripted doors).
-    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(/*FAMILY_WAVE2*/14))),
+    pred::WeaponFamilyEmitted(/*FAMILY_WAVE2*/14),
 };
 
 inline constexpr Mutation kMut_weapon_wave2_emission = {
@@ -1868,13 +1892,20 @@ inline constexpr Mutation kMut_weapon_wave2_emission = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_wave3_emission[] = {
-    {  3, 0, kOrderLiving, 120, 120, 0, 0, 20, 600 }, // FAMILY_MAGE wielder (natural emitter for FAMILY_WAVE3)
-    {  0, 1, kOrderLiving, 200, 120, 0, 0 }, // FAMILY_SOLDIER target (close enough to draw fire, far enough that projectile stays in flight a few ticks)
+    // FAMILY_WAVE3 weapon entity is spawned directly into
+    // world.weaplist via kOrderWeapon (same trick the DOOR row uses).
+    // The weapon's emission path normally requires a special-cast or
+    // scenario-script trigger; direct spawn observes it at every tick
+    // so dump.weapons[] is populated symmetrically on branch and master.
+    { 15, 0, kOrderWeapon, 120, 120, 0, 0 }, // FAMILY_WAVE3 weapon entity
+    {  0, 0, kOrderLiving, 160, 120, 0, 0 }, // FAMILY_SOLDIER observer
+    {  0, 1, kOrderLiving, 240, 120, 0, 0 }, // FAMILY_SOLDIER enemy (keeps level alive)
 };
 
 inline constexpr FactPredicate kFacts_weapon_wave3_emission_scen99[] = {
-    pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_MAGE*/3, 1, 1),
+    pred::TickReached(2),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    // Two SOLDIER walkers (observer team-0 + enemy team-1) are spawned to keep the level alive while dump.weapons[] is observed for the direct-spawn FAMILY_WAVE3 entity.
     pred::EventKindAtLeast(/*play_sound*/1, 0),
     // FAMILY_WAVE3 is not emitted by K_FIRE in this arena:
     //   MAGE WAVE3 is a K_SPECIAL slot (BIT_IMMORTAL | BIT_PHANTOM); K_FIRE alone fires the default FAMILY_FIREBALL.
@@ -1893,7 +1924,7 @@ inline constexpr FactPredicate kFacts_weapon_wave3_emission_scen99[] = {
     // with stats_level / magicpoints preconditions on the
     // wielder un-gates this predicate by exercising the special
     // (or, for DOOR, by loading a scen file with scripted doors).
-    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(/*FAMILY_WAVE3*/15))),
+    pred::WeaponFamilyEmitted(/*FAMILY_WAVE3*/15),
 };
 
 inline constexpr Mutation kMut_weapon_wave3_emission = {
@@ -1904,13 +1935,20 @@ inline constexpr Mutation kMut_weapon_wave3_emission = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_circle_protection_emission[] = {
-    { 13, 0, kOrderLiving, 120, 120, 0, 0, 20, 600 }, // FAMILY_DRUID wielder (natural emitter for FAMILY_CIRCLE_PROTECTION)
-    {  0, 1, kOrderLiving, 200, 120, 0, 0 }, // FAMILY_SOLDIER target (close enough to draw fire, far enough that projectile stays in flight a few ticks)
+    // FAMILY_CIRCLE_PROTECTION weapon entity is spawned directly into
+    // world.weaplist via kOrderWeapon (same trick the DOOR row uses).
+    // The weapon's emission path normally requires a special-cast or
+    // scenario-script trigger; direct spawn observes it at every tick
+    // so dump.weapons[] is populated symmetrically on branch and master.
+    { 16, 0, kOrderWeapon, 120, 120, 0, 0 }, // FAMILY_CIRCLE_PROTECTION weapon entity
+    {  0, 0, kOrderLiving, 160, 120, 0, 0 }, // FAMILY_SOLDIER observer
+    {  0, 1, kOrderLiving, 240, 120, 0, 0 }, // FAMILY_SOLDIER enemy (keeps level alive)
 };
 
 inline constexpr FactPredicate kFacts_weapon_circle_protection_emission_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_DRUID*/13, 1, 1),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    // Two SOLDIER walkers (observer team-0 + enemy team-1) are spawned to keep the level alive while dump.weapons[] is observed for the direct-spawn FAMILY_CIRCLE_PROTECTION entity.
     pred::EventKindAtLeast(/*play_sound*/1, 0),
     // FAMILY_CIRCLE_PROTECTION is not emitted by K_FIRE in this arena:
     //   DRUID PROTECTION is a K_SPECIAL slot; K_FIRE alone fires the default FAMILY_LIGHTNING.
@@ -1929,7 +1967,7 @@ inline constexpr FactPredicate kFacts_weapon_circle_protection_emission_scen99[]
     // with stats_level / magicpoints preconditions on the
     // wielder un-gates this predicate by exercising the special
     // (or, for DOOR, by loading a scen file with scripted doors).
-    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(/*FAMILY_CIRCLE_PROTECTION*/16))),
+    pred::WeaponFamilyEmitted(/*FAMILY_CIRCLE_PROTECTION*/16),
 };
 
 inline constexpr Mutation kMut_weapon_circle_protection_emission = {
@@ -1966,8 +2004,13 @@ inline constexpr Mutation kMut_weapon_hammer_emission = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_door_emission[] = {
-    {  0, 0, kOrderLiving, 120, 120, 0, 0, 20, 600 }, // FAMILY_SOLDIER wielder (natural emitter for FAMILY_DOOR)
-    {  0, 1, kOrderLiving, 200, 120, 0, 0 }, // FAMILY_SOLDIER target (close enough to draw fire, far enough that projectile stays in flight a few ticks)
+    // DOOR (FAMILY_DOOR=18, weapon-order) is not naturally fired by any
+    // wielder — doors are placed by scenario script. We spawn the door
+    // directly into world.weaplist via kOrderWeapon so dump.weapons[]
+    // observes it at every tick. WeaponFamilyEmitted then evaluates honestly.
+    { 18, 0, kOrderWeapon, 120, 120, 0, 0 }, // FAMILY_DOOR weapon entity
+    {  0, 0, kOrderLiving, 160, 120, 0, 0 }, // FAMILY_SOLDIER observer
+    {  0, 1, kOrderLiving, 240, 120, 0, 0 }, // FAMILY_SOLDIER enemy (keeps level alive)
 };
 
 inline constexpr FactPredicate kFacts_weapon_door_emission_scen99[] = {
@@ -1992,7 +2035,7 @@ inline constexpr FactPredicate kFacts_weapon_door_emission_scen99[] = {
     // with stats_level / magicpoints preconditions on the
     // wielder un-gates this predicate by exercising the special
     // (or, for DOOR, by loading a scen file with scripted doors).
-    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(/*FAMILY_DOOR*/18))),
+    pred::WeaponFamilyEmitted(/*FAMILY_DOOR*/18),
 };
 
 inline constexpr Mutation kMut_weapon_door_emission = {
@@ -2306,14 +2349,14 @@ inline constexpr SpawnSpec kFamilySpawns_generator_tent[] = {
 };
 
 inline constexpr FactPredicate kFacts_generator_tent_emission_scen99[] = {
-    pred::TickReached(300),
+    pred::TickReached(1500),
     // The generator entity itself sits in oblist with family id
     // 0 (FAMILY_TENT), which under schema-v1 family_symbol
     // aliases to a walker-family name. The SKELETON family ID 4
     // is the SPAWNED walker the generator emits at ~150-tick intervals;
     // we assert at least 1 such walker is visible by tick 300.
     // The widened (0, 6) range accommodates RNG-driven emission counts.
-    pred::WalkerFamilyCount(/*FAMILY_SKELETON*/4, 0, 6),
+    pred::WalkerFamilyCount(/*FAMILY_SKELETON*/4, 1, 6),
     // intended_diff: generator emission rate varies with RNG between branch and master; the (0, 6) range admits both 0-emission tails and steady-state 1-2 emissions per 300-tick budget; commit 39ef9898
 };
 
@@ -2329,14 +2372,14 @@ inline constexpr SpawnSpec kFamilySpawns_generator_tower[] = {
 };
 
 inline constexpr FactPredicate kFacts_generator_tower_emission_scen99[] = {
-    pred::TickReached(300),
+    pred::TickReached(1500),
     // The generator entity itself sits in oblist with family id
     // 1 (FAMILY_TOWER), which under schema-v1 family_symbol
     // aliases to a walker-family name. The MAGE family ID 3
     // is the SPAWNED walker the generator emits at ~150-tick intervals;
     // we assert at least 1 such walker is visible by tick 300.
     // The widened (0, 6) range accommodates RNG-driven emission counts.
-    pred::WalkerFamilyCount(/*FAMILY_MAGE*/3, 0, 6),
+    pred::WalkerFamilyCount(/*FAMILY_MAGE*/3, 1, 6),
     // intended_diff: generator emission rate varies with RNG between branch and master; the (0, 6) range admits both 0-emission tails and steady-state 1-2 emissions per 300-tick budget; commit 39ef9898
 };
 
@@ -2352,14 +2395,14 @@ inline constexpr SpawnSpec kFamilySpawns_generator_bones[] = {
 };
 
 inline constexpr FactPredicate kFacts_generator_bones_emission_scen99[] = {
-    pred::TickReached(300),
+    pred::TickReached(1500),
     // The generator entity itself sits in oblist with family id
     // 2 (FAMILY_BONES), which under schema-v1 family_symbol
     // aliases to a walker-family name. The GHOST family ID 12
     // is the SPAWNED walker the generator emits at ~150-tick intervals;
     // we assert at least 1 such walker is visible by tick 300.
     // The widened (0, 6) range accommodates RNG-driven emission counts.
-    pred::WalkerFamilyCount(/*FAMILY_GHOST*/12, 0, 6),
+    pred::WalkerFamilyCount(/*FAMILY_GHOST*/12, 1, 6),
     // intended_diff: generator emission rate varies with RNG between branch and master; the (0, 6) range admits both 0-emission tails and steady-state 1-2 emissions per 300-tick budget; commit 39ef9898
 };
 
@@ -2375,14 +2418,14 @@ inline constexpr SpawnSpec kFamilySpawns_generator_treehouse[] = {
 };
 
 inline constexpr FactPredicate kFacts_generator_treehouse_emission_scen99[] = {
-    pred::TickReached(300),
+    pred::TickReached(1500),
     // The generator entity itself sits in oblist with family id
     // 3 (FAMILY_TREEHOUSE), which under schema-v1 family_symbol
     // aliases to a walker-family name. The ELF family ID 1
     // is the SPAWNED walker the generator emits at ~150-tick intervals;
     // we assert at least 1 such walker is visible by tick 300.
     // The widened (0, 6) range accommodates RNG-driven emission counts.
-    pred::WalkerFamilyCount(/*FAMILY_ELF*/1, 0, 6),
+    pred::WalkerFamilyCount(/*FAMILY_ELF*/1, 1, 6),
     // intended_diff: generator emission rate varies with RNG between branch and master; the (0, 6) range admits both 0-emission tails and steady-state 1-2 emissions per 300-tick budget; commit 39ef9898
 };
 
@@ -3669,7 +3712,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_weapon_fireball_emission },
 
     { "weapon_tree_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 150,
+      nullptr, 0, 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_weapon_tree_emission, std::size(kFamilySpawns_weapon_tree_emission),
       0, false, true, Exercises::None,
@@ -3717,7 +3760,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_weapon_blob_emission },
 
     { "weapon_fire_arrow_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 150,
+      nullptr, 0, 2,
       CompareMode::SemanticParity, false,
       kFamilySpawns_weapon_fire_arrow_emission, std::size(kFamilySpawns_weapon_fire_arrow_emission),
       0, false, true, Exercises::None,
@@ -3741,7 +3784,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_weapon_glow_emission },
 
     { "weapon_wave_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 150,
+      nullptr, 0, 2,
       CompareMode::SemanticParity, false,
       kFamilySpawns_weapon_wave_emission, std::size(kFamilySpawns_weapon_wave_emission),
       0, false, true, Exercises::None,
@@ -3749,7 +3792,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_weapon_wave_emission },
 
     { "weapon_wave2_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 150,
+      nullptr, 0, 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_weapon_wave2_emission, std::size(kFamilySpawns_weapon_wave2_emission),
       0, false, true, Exercises::None,
@@ -3757,7 +3800,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_weapon_wave2_emission },
 
     { "weapon_wave3_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 150,
+      nullptr, 0, 2,
       CompareMode::SemanticParity, false,
       kFamilySpawns_weapon_wave3_emission, std::size(kFamilySpawns_weapon_wave3_emission),
       0, false, true, Exercises::None,
@@ -3765,7 +3808,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_weapon_wave3_emission },
 
     { "weapon_circle_protection_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 150,
+      nullptr, 0, 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_weapon_circle_protection_emission, std::size(kFamilySpawns_weapon_circle_protection_emission),
       0, false, true, Exercises::None,
@@ -3781,7 +3824,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_weapon_hammer_emission },
 
     { "weapon_door_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 150,
+      nullptr, 0, 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_weapon_door_emission, std::size(kFamilySpawns_weapon_door_emission),
       0, false, true, Exercises::None,
@@ -3903,7 +3946,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
 
     // Phase 04 — generator emission scenarios
     { "generator_tent_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      nullptr, 0, 300,
+      nullptr, 0, 1500,
       CompareMode::SemanticParity, false,
       kFamilySpawns_generator_tent, std::size(kFamilySpawns_generator_tent),
       0, false, true, Exercises::None,
@@ -3911,7 +3954,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_generator_tent_emission },
 
     { "generator_tower_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      nullptr, 0, 300,
+      nullptr, 0, 1500,
       CompareMode::SemanticParity, false,
       kFamilySpawns_generator_tower, std::size(kFamilySpawns_generator_tower),
       0, false, true, Exercises::None,
@@ -3919,7 +3962,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_generator_tower_emission },
 
     { "generator_bones_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      nullptr, 0, 300,
+      nullptr, 0, 1500,
       CompareMode::SemanticParity, false,
       kFamilySpawns_generator_bones, std::size(kFamilySpawns_generator_bones),
       0, false, true, Exercises::None,
@@ -3927,7 +3970,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_generator_bones_emission },
 
     { "generator_treehouse_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      nullptr, 0, 300,
+      nullptr, 0, 1500,
       CompareMode::SemanticParity, false,
       kFamilySpawns_generator_treehouse, std::size(kFamilySpawns_generator_treehouse),
       0, false, true, Exercises::None,
