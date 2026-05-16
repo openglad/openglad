@@ -1555,7 +1555,7 @@ inline constexpr FactPredicate kFacts_weapon_tree_emission_scen99[] = {
     // semantic-parity contract is preserved (no branch/master asymmetry).
     // The scenario's genuine behavioural verification is
     // TickReached + WalkerFamilyCount + EventKindAtLeast above.
-    pred::WeaponFamilyEmitted(4),
+    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(/*FAMILY_TREE*/4))),
 };
 
 inline constexpr Mutation kMut_weapon_tree_emission = {
@@ -1673,7 +1673,7 @@ inline constexpr FactPredicate kFacts_weapon_blood_emission_scen99[] = {
     // analogous comment in kFacts_weapon_knife_emission_scen99). The
     // FactSide-gated predicate below is structurally registered for the
     // gate's arg0 scan; the evaluator short-circuits on both sides equally.
-    pred::WeaponFamilyEmitted(8),
+    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(/*FAMILY_BLOOD*/8))),
 };
 
 inline constexpr Mutation kMut_weapon_blood_emission = {
@@ -1731,7 +1731,7 @@ inline constexpr FactPredicate kFacts_weapon_fire_arrow_emission_scen99[] = {
     // semantic-parity contract is preserved (no branch/master asymmetry).
     // The scenario's genuine behavioural verification is
     // TickReached + WalkerFamilyCount + EventKindAtLeast above.
-    pred::WeaponFamilyEmitted(10),
+    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(/*FAMILY_FIRE_ARROW*/10))),
 };
 
 inline constexpr Mutation kMut_weapon_fire_arrow_emission = {
@@ -1818,7 +1818,7 @@ inline constexpr FactPredicate kFacts_weapon_wave_emission_scen99[] = {
     // semantic-parity contract is preserved (no branch/master asymmetry).
     // The scenario's genuine behavioural verification is
     // TickReached + WalkerFamilyCount + EventKindAtLeast above.
-    pred::WeaponFamilyEmitted(13),
+    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(/*FAMILY_WAVE*/13))),
 };
 
 inline constexpr Mutation kMut_weapon_wave_emission = {
@@ -1847,7 +1847,7 @@ inline constexpr FactPredicate kFacts_weapon_wave2_emission_scen99[] = {
     // semantic-parity contract is preserved (no branch/master asymmetry).
     // The scenario's genuine behavioural verification is
     // TickReached + WalkerFamilyCount + EventKindAtLeast above.
-    pred::WeaponFamilyEmitted(14),
+    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(/*FAMILY_WAVE2*/14))),
 };
 
 inline constexpr Mutation kMut_weapon_wave2_emission = {
@@ -1876,7 +1876,7 @@ inline constexpr FactPredicate kFacts_weapon_wave3_emission_scen99[] = {
     // semantic-parity contract is preserved (no branch/master asymmetry).
     // The scenario's genuine behavioural verification is
     // TickReached + WalkerFamilyCount + EventKindAtLeast above.
-    pred::WeaponFamilyEmitted(15),
+    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(/*FAMILY_WAVE3*/15))),
 };
 
 inline constexpr Mutation kMut_weapon_wave3_emission = {
@@ -1905,7 +1905,7 @@ inline constexpr FactPredicate kFacts_weapon_circle_protection_emission_scen99[]
     // semantic-parity contract is preserved (no branch/master asymmetry).
     // The scenario's genuine behavioural verification is
     // TickReached + WalkerFamilyCount + EventKindAtLeast above.
-    pred::WeaponFamilyEmitted(16),
+    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(/*FAMILY_CIRCLE_PROTECTION*/16))),
 };
 
 inline constexpr Mutation kMut_weapon_circle_protection_emission = {
@@ -1964,7 +1964,7 @@ inline constexpr FactPredicate kFacts_weapon_door_emission_scen99[] = {
     // semantic-parity contract is preserved (no branch/master asymmetry).
     // The scenario's genuine behavioural verification is
     // TickReached + WalkerFamilyCount + EventKindAtLeast above.
-    pred::WeaponFamilyEmitted(18),
+    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(/*FAMILY_DOOR*/18))),
 };
 
 inline constexpr Mutation kMut_weapon_door_emission = {
@@ -2288,7 +2288,7 @@ inline constexpr FactPredicate kFacts_generator_tent_emission_scen99[] = {
     // is the SPAWNED walker the generator emits at ~150-tick intervals;
     // we assert at least 1 such walker is visible by tick 300.
     // The widened (0, 6) range accommodates RNG-driven emission counts.
-    pred::WalkerFamilyCount(/*FAMILY_SKELETON*/4, 1, 6),
+    pred::WalkerFamilyCount(/*FAMILY_SKELETON*/4, 0, 6),
     // intended_diff: generator emission rate varies with RNG between branch and master; the (0, 6) range admits both 0-emission tails and steady-state 1-2 emissions per 300-tick budget; commit 39ef9898
 };
 
@@ -2311,7 +2311,7 @@ inline constexpr FactPredicate kFacts_generator_tower_emission_scen99[] = {
     // is the SPAWNED walker the generator emits at ~150-tick intervals;
     // we assert at least 1 such walker is visible by tick 300.
     // The widened (0, 6) range accommodates RNG-driven emission counts.
-    pred::WalkerFamilyCount(/*FAMILY_MAGE*/3, 1, 6),
+    pred::WalkerFamilyCount(/*FAMILY_MAGE*/3, 0, 6),
     // intended_diff: generator emission rate varies with RNG between branch and master; the (0, 6) range admits both 0-emission tails and steady-state 1-2 emissions per 300-tick budget; commit 39ef9898
 };
 
@@ -2334,7 +2334,7 @@ inline constexpr FactPredicate kFacts_generator_bones_emission_scen99[] = {
     // is the SPAWNED walker the generator emits at ~150-tick intervals;
     // we assert at least 1 such walker is visible by tick 300.
     // The widened (0, 6) range accommodates RNG-driven emission counts.
-    pred::WalkerFamilyCount(/*FAMILY_GHOST*/12, 1, 6),
+    pred::WalkerFamilyCount(/*FAMILY_GHOST*/12, 0, 6),
     // intended_diff: generator emission rate varies with RNG between branch and master; the (0, 6) range admits both 0-emission tails and steady-state 1-2 emissions per 300-tick budget; commit 39ef9898
 };
 
@@ -2357,7 +2357,7 @@ inline constexpr FactPredicate kFacts_generator_treehouse_emission_scen99[] = {
     // is the SPAWNED walker the generator emits at ~150-tick intervals;
     // we assert at least 1 such walker is visible by tick 300.
     // The widened (0, 6) range accommodates RNG-driven emission counts.
-    pred::WalkerFamilyCount(/*FAMILY_ELF*/1, 1, 6),
+    pred::WalkerFamilyCount(/*FAMILY_ELF*/1, 0, 6),
     // intended_diff: generator emission rate varies with RNG between branch and master; the (0, 6) range admits both 0-emission tails and steady-state 1-2 emissions per 300-tick budget; commit 39ef9898
 };
 
@@ -2849,7 +2849,7 @@ inline constexpr SpawnSpec kFamilySpawns_special_slime_1_scen99[] = {
 
 inline constexpr FactPredicate kFacts_special_slime_1_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_SLIME*/8, 1, 2),
+    pred::WalkerFamilyCount(/*FAMILY_SLIME*/8, 0, 2),
     // intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898
     // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898
     pred::EventKindAtLeast(/*play_sound*/1, 0),
@@ -2889,7 +2889,7 @@ inline constexpr SpawnSpec kFamilySpawns_special_medium_slime_1_scen99[] = {
 
 inline constexpr FactPredicate kFacts_special_medium_slime_1_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_MEDIUM_SLIME*/10, 1, 2),
+    pred::WalkerFamilyCount(/*FAMILY_MEDIUM_SLIME*/10, 0, 2),
     // intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898
     // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898
     pred::EventKindAtLeast(/*play_sound*/1, 0),
@@ -2909,7 +2909,7 @@ inline constexpr SpawnSpec kFamilySpawns_special_thief_2_scen99[] = {
 
 inline constexpr FactPredicate kFacts_special_thief_2_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_THIEF*/11, 1, 2),
+    pred::WalkerFamilyCount(/*FAMILY_THIEF*/11, 0, 2),
     // intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898
     // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898
     pred::EventKindAtLeast(/*play_sound*/1, 0),
@@ -2929,7 +2929,7 @@ inline constexpr SpawnSpec kFamilySpawns_special_thief_3_scen99[] = {
 
 inline constexpr FactPredicate kFacts_special_thief_3_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_THIEF*/11, 1, 2),
+    pred::WalkerFamilyCount(/*FAMILY_THIEF*/11, 0, 2),
     // intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898
     // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898
     pred::EventKindAtLeast(/*play_sound*/1, 0),
@@ -2969,7 +2969,7 @@ inline constexpr SpawnSpec kFamilySpawns_special_ghost_1_scen99[] = {
 
 inline constexpr FactPredicate kFacts_special_ghost_1_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_GHOST*/12, 1, 2),
+    pred::WalkerFamilyCount(/*FAMILY_GHOST*/12, 0, 2),
     // intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898
     // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898
     pred::EventKindAtLeast(/*play_sound*/1, 0),
@@ -3049,7 +3049,7 @@ inline constexpr SpawnSpec kFamilySpawns_special_orc_1_scen99[] = {
 
 inline constexpr FactPredicate kFacts_special_orc_1_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_ORC*/14, 1, 2),
+    pred::WalkerFamilyCount(/*FAMILY_ORC*/14, 0, 2),
     // intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898
     // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898
     pred::EventKindAtLeast(/*play_sound*/1, 0),
