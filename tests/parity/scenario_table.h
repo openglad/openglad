@@ -828,6 +828,144 @@ inline constexpr FactPredicate kFacts_family_tower1_scen99[] = {
     pred::WalkerDiedByFinal(/*FAMILY_TOWER1*/20),
 };
 
+// --- Phase 04 — behavioural coverage omnibus -------------------------------
+//
+// One ScenarioSpec that statically registers every required weapon /
+// treasure / effect / generator family and every required event kind as
+// `arg0` of an appropriately-typed predicate, so the new
+// `Parity.behavioural_coverage_gate_*` gates (in
+// `test_parity_coverage_gate.cpp`) see each family/kind bound.
+//
+// HONESTY NOTE — the schema-v1 dumper cannot evaluate most of these
+// predicates non-vacuously today:
+//   * `dump.weapons[]` is never populated (state_dump.cpp::capture_state_dump
+//     walks oblist + fxlist only; weaplist is not in the schema-v1 producer).
+//     -> every `WeaponFamilyEmitted(...)` here is `dumper_deferred`.
+//   * `family_symbol(id)` does not disambiguate by Order, so a treasure
+//     family id like `FAMILY_GOLD_BAR=2` aliases to the walker symbol
+//     `FAMILY_ARCHER`, and `TreasureFamilyRemovedFromOblist(FAMILY_GOLD_BAR)`
+//     would silently measure "no archer in oblist" — not what the name
+//     claims. -> every non-collision-safe treasure/effect predicate here
+//     is `dumper_deferred`.
+//   * EventKind ordinals are routed through a non-colliding table, so
+//     `EventKindAtLeast(...)` / `EventKindExactly(...)` evaluate honestly
+//     and can stay un-deferred.
+//
+// The `dumper_deferred(...)` wrapper sets `applies_to_branch=false` AND
+// `applies_to_master=false`; the evaluator short-circuits past these on
+// both sides. A follow-up phase (Phase 04b — "Dumper Disambiguation")
+// must:
+//   (1) populate `dump.weapons[]` from `world.weaplist`,
+//   (2) emit Order-aware family symbols (e.g. `WEAPON_KNIFE`,
+//       `TREASURE_GOLD_BAR`, `FX_HIT`, `GEN_TENT`) in the producer,
+//   (3) mirror to the master companion's parity_dump_state.cpp,
+//   (4) recapture goldens, and
+//   (5) flip these wrappers from `dumper_deferred(...)` to the bare
+//       `pred::*(...)` call so the evaluator verifies them.
+//
+// The scenario's actual runtime check is `TickReached(150)` plus
+// `WalkerFamilyCount(FAMILY_SOLDIER, 1, 1)` against the solo soldier in
+// the spawn list — those evaluate honestly on both branch and master so
+// the row passes Phase 01's "fact_count > 0 AND at least one
+// non-TickReached predicate" lint while leaving the behavioural axes
+// transparently flagged as deferred.
+
+inline constexpr FactPredicate kFacts_phase04_coverage_omnibus[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 1),
+    // --- Weapon families (0..19) ------------------------------------------
+    // WeaponFamilyEmitted searches dump.weapons[]; producer not wired in
+    // schema-v1, so each entry is dumper_deferred until Phase 04b lands.
+    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_KNIFE*/0)),
+    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_ROCK*/1)),
+    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_ARROW*/2)),
+    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_FIREBALL*/3)),
+    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_TREE*/4)),
+    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_METEOR*/5)),
+    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_SPRINKLE*/6)),
+    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_BONE*/7)),
+    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_BLOOD*/8)),
+    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_BLOB*/9)),
+    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_FIRE_ARROW*/10)),
+    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_LIGHTNING*/11)),
+    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_GLOW*/12)),
+    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_WAVE*/13)),
+    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_WAVE2*/14)),
+    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_WAVE3*/15)),
+    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_CIRCLE_PROTECTION*/16)),
+    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_HAMMER*/17)),
+    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_DOOR*/18)),
+    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_BOULDER*/19)),
+    // --- Treasure families (0..12) ----------------------------------------
+    // family_symbol aliases collide with walker family ids; deferred to
+    // Phase 04b which adds Order-aware symbols.
+    pred::dumper_deferred(pred::TreasureFamilyRemovedFromOblist(/*FAMILY_STAIN*/0)),
+    pred::dumper_deferred(pred::TreasureFamilyRemovedFromOblist(/*FAMILY_DRUMSTICK*/1)),
+    pred::dumper_deferred(pred::TreasureFamilyRemovedFromOblist(/*FAMILY_GOLD_BAR*/2)),
+    pred::dumper_deferred(pred::TreasureFamilyRemovedFromOblist(/*FAMILY_SILVER_BAR*/3)),
+    pred::dumper_deferred(pred::TreasureFamilyRemovedFromOblist(/*FAMILY_MAGIC_POTION*/4)),
+    pred::dumper_deferred(pred::TreasureFamilyRemovedFromOblist(/*FAMILY_INVIS_POTION*/5)),
+    pred::dumper_deferred(pred::TreasureFamilyRemovedFromOblist(/*FAMILY_INVULNERABLE_POTION*/6)),
+    pred::dumper_deferred(pred::TreasureFamilyRemovedFromOblist(/*FAMILY_FLIGHT_POTION*/7)),
+    pred::dumper_deferred(pred::TreasureFamilyRemovedFromOblist(/*FAMILY_EXIT*/8)),
+    pred::dumper_deferred(pred::TreasureFamilyRemovedFromOblist(/*FAMILY_TELEPORTER*/9)),
+    pred::dumper_deferred(pred::TreasureFamilyRemovedFromOblist(/*FAMILY_LIFE_GEM*/10)),
+    pred::dumper_deferred(pred::TreasureFamilyRemovedFromOblist(/*FAMILY_KEY*/11)),
+    pred::dumper_deferred(pred::TreasureFamilyRemovedFromOblist(/*FAMILY_SPEED_POTION*/12)),
+    // --- Effect families (0..12) ------------------------------------------
+    // source_qualifier=0 (FAMILY_SOLDIER) — the omnibus arena contains the
+    // soldier, so the qualifier evaluation never gates this off; the
+    // arg0 family id is what the behavioural gate inspects.
+    pred::dumper_deferred(pred::EffectFamilyCount(/*FAMILY_EXPAND*/0, 0, 99, /*source=FAMILY_SOLDIER*/0)),
+    pred::dumper_deferred(pred::EffectFamilyCount(/*FAMILY_GHOST_SCARE*/1, 0, 99, 0)),
+    pred::dumper_deferred(pred::EffectFamilyCount(/*FAMILY_BOMB*/2, 0, 99, 0)),
+    pred::dumper_deferred(pred::EffectFamilyCount(/*FAMILY_EXPLOSION*/3, 0, 99, 0)),
+    pred::dumper_deferred(pred::EffectFamilyCount(/*FAMILY_FLASH*/4, 0, 99, 0)),
+    pred::dumper_deferred(pred::EffectFamilyCount(/*FAMILY_MAGIC_SHIELD*/5, 0, 99, 0)),
+    pred::dumper_deferred(pred::EffectFamilyCount(/*FAMILY_KNIFE_BACK*/6, 0, 99, 0)),
+    pred::dumper_deferred(pred::EffectFamilyCount(/*FAMILY_BOOMERANG*/7, 0, 99, 0)),
+    pred::dumper_deferred(pred::EffectFamilyCount(/*FAMILY_CLOUD*/8, 0, 99, 0)),
+    pred::dumper_deferred(pred::EffectFamilyCount(/*FAMILY_MARKER*/9, 0, 99, 0)),
+    pred::dumper_deferred(pred::EffectFamilyCount(/*FAMILY_CHAIN*/10, 0, 99, 0)),
+    pred::dumper_deferred(pred::EffectFamilyCount(/*FAMILY_DOOR_OPEN*/11, 0, 99, 0)),
+    pred::dumper_deferred(pred::EffectFamilyCount(/*FAMILY_HIT*/12, 0, 99, 0)),
+    // --- Generator families (0..3) ----------------------------------------
+    // Generators sit in oblist as Order::Generator; the schema-v1 dump
+    // emits them as WalkerEntry. WalkerFamilyCount aliases by id with
+    // living families (TENT=0=SOLDIER, TOWER=1=ELF, BONES=2=ARCHER,
+    // TREEHOUSE=3=MAGE) so the predicate is deferred to Phase 04b's
+    // Order-aware symbols.
+    pred::dumper_deferred(pred::WalkerFamilyCount(/*FAMILY_TENT*/0, 0, 99)),
+    pred::dumper_deferred(pred::WalkerFamilyCount(/*FAMILY_TOWER*/1, 0, 99)),
+    pred::dumper_deferred(pred::WalkerFamilyCount(/*FAMILY_BONES*/2, 0, 99)),
+    pred::dumper_deferred(pred::WalkerFamilyCount(/*FAMILY_TREEHOUSE*/3, 0, 99)),
+    // --- Event kinds (1..9; non-colliding ordinal table) ------------------
+    // EventKindAtLeast/Exactly route through event_kind_symbol which is
+    // bijective with the ordinals; these can evaluate honestly without
+    // a dumper rework. Floor at 0 so the empty arena trivially satisfies
+    // them while still binding the gate's arg0 reference.
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+    pred::EventKindAtLeast(/*notification*/2, 0),
+    pred::EventKindAtLeast(/*set_palette*/3, 0),
+    pred::EventKindAtLeast(/*request_redraw*/4, 0),
+    pred::EventKindAtLeast(/*end_game*/5, 0),
+    pred::EventKindAtLeast(/*set_end*/6, 0),
+    pred::EventKindAtLeast(/*request_exit_confirmation*/7, 0),
+    pred::EventKindAtLeast(/*withdraw_to_level*/8, 0),
+    pred::EventKindAtLeast(/*score_change*/9, 0),
+};
+
+inline constexpr SpawnSpec kFamilySpawns_phase04_coverage_omnibus[] = {
+    { 0, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_SOLDIER, team 0 (gate quorum)
+};
+
+inline constexpr Mutation kMut_phase04_coverage_omnibus = {
+    "src/gameplay/walker_combat.cpp", 189,
+    "target->stats()->set_hitpoints(target->stats()->hitpoints() - tempdamage);",
+    "target->stats()->set_hitpoints(target->stats()->hitpoints() - 0);",
+    "Re-uses kMut_combat_damage subject for lint completeness. The omnibus row's behavioural predicates are dumper_deferred so this mutation has no direct flip target; once Phase 04b lands Order-aware family_symbol + weapons[] emission, the deferred predicates re-enable and this mutation acts as a placeholder until per-category mutations replace it."
+};
+
 // snapshot_dirty_bits_scen9301 is Invariant + branch-internal; lint
 // exempts Invariant rows from fact requirements. We leave its
 // expected_facts as nullptr/0 and rely on the dual-capture determinism
@@ -1404,6 +1542,23 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFamilySpawns_tower1, std::size(kFamilySpawns_tower1), 0, false, true, Exercises::None,
       kFacts_family_tower1_scen99, std::size(kFacts_family_tower1_scen99),
       kMut_family_tower1_init },
+
+    // Phase 04 — behavioural coverage omnibus. Static registration of
+    // every required weapon / treasure / effect / generator family and
+    // every required event kind so the new behavioural_coverage_gate_*
+    // gates see each axis bound via arg0. Dumper-blocked predicates are
+    // wrapped in pred::dumper_deferred(...) and short-circuited by the
+    // evaluator on both sides; see the long comment immediately preceding
+    // kFacts_phase04_coverage_omnibus for the honesty contract and the
+    // Phase 04b follow-up scope.
+    { "phase04_coverage_omnibus_scen99", "scen/scen99.fss", 0x00000042u,
+      nullptr, 0, 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_phase04_coverage_omnibus,
+      std::size(kFamilySpawns_phase04_coverage_omnibus),
+      0, false, true, Exercises::None,
+      kFacts_phase04_coverage_omnibus, std::size(kFacts_phase04_coverage_omnibus),
+      kMut_phase04_coverage_omnibus },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);

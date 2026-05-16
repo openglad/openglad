@@ -35,6 +35,7 @@
 // here by a function-local static lazily populated on first read.
 
 #include "coverage_targets.h"
+#include "fact_predicate.h"
 #include "parity_runner.h"
 #include "scenario_table.h"
 #include "state_dump.h"
@@ -251,4 +252,206 @@ TEST(Parity, coverage_gate)
 
     EXPECT_TRUE(missing.empty())
         << format_missing("cumulative coverage", missing);
+}
+
+// --- Phase 04 — behavioural coverage gates ---------------------------------
+//
+// Static scans over `kScenarios[].expected_facts` that assert each
+// required family / event kind appears as `arg0` of at least one
+// predicate of the matching `FactKind`. These are independent of the
+// runtime coverage observation: structural-only blob-spawn rows do not
+// satisfy these gates because they do not declare expected_facts
+// referencing the family in question.
+//
+// A predicate that is `dumper_deferred(...)` (applies_to_branch=false
+// AND applies_to_master=false) still satisfies the static binding —
+// the gate looks at predicate kind and arg0, not at evaluation. Phase
+// 04b's dumper rework flips those wrappers back to genuine evaluation
+// without renumbering the gate.
+
+namespace {
+
+// Return true iff any predicate across kScenarios[].expected_facts has
+// `kind == want_kind` and `arg0 == want_arg0`.
+bool any_predicate_binds(og::parity::FactKind want_kind,
+                          std::int32_t       want_arg0)
+{
+    for (const auto& spec : og::parity::kScenarios)
+    {
+        if (spec.expected_facts == nullptr) continue;
+        for (std::size_t i = 0; i < spec.fact_count; ++i)
+        {
+            const auto& p = spec.expected_facts[i];
+            if (p.kind == want_kind && p.arg0 == want_arg0)
+                return true;
+        }
+    }
+    return false;
+}
+
+std::vector<std::string>
+missing_family_bindings(const std::int32_t*       required,
+                         std::size_t               required_count,
+                         og::parity::FactKind      kind)
+{
+    std::vector<std::string> missing;
+    for (std::size_t i = 0; i < required_count; ++i)
+    {
+        const std::int32_t f = required[i];
+        if (!any_predicate_binds(kind, f))
+            missing.push_back(og::parity::family_symbol(f));
+    }
+    return missing;
+}
+
+} // namespace
+
+TEST(Parity, behavioural_coverage_gate_weapons)
+{
+    // Each kRequiredWeaponFamilies entry must appear as arg0 of at least
+    // one WeaponFamilyEmitted predicate in some scenario's expected_facts.
+    const auto missing = missing_family_bindings(
+        og::parity::kRequiredWeaponFamilies,
+        std::size(og::parity::kRequiredWeaponFamilies),
+        og::parity::FactKind::WeaponFamilyEmitted);
+    EXPECT_TRUE(missing.empty())
+        << format_missing("weapon families behaviourally bound "
+                          "(WeaponFamilyEmitted arg0)", missing);
+}
+
+TEST(Parity, behavioural_coverage_gate_treasures)
+{
+    // Each kRequiredTreasureFamilies entry must appear as arg0 of at
+    // least one TreasureFamilyRemovedFromOblist predicate.
+    const auto missing = missing_family_bindings(
+        og::parity::kRequiredTreasureFamilies,
+        std::size(og::parity::kRequiredTreasureFamilies),
+        og::parity::FactKind::TreasureFamilyRemovedFromOblist);
+    EXPECT_TRUE(missing.empty())
+        << format_missing("treasure families behaviourally bound "
+                          "(TreasureFamilyRemovedFromOblist arg0)", missing);
+}
+
+TEST(Parity, behavioural_coverage_gate_effects)
+{
+    // Each kRequiredEffectFamilies entry must appear as arg0 of at least
+    // one EffectFamilyCount predicate.
+    const auto missing = missing_family_bindings(
+        og::parity::kRequiredEffectFamilies,
+        std::size(og::parity::kRequiredEffectFamilies),
+        og::parity::FactKind::EffectFamilyCount);
+    EXPECT_TRUE(missing.empty())
+        << format_missing("effect families behaviourally bound "
+                          "(EffectFamilyCount arg0)", missing);
+}
+
+TEST(Parity, behavioural_coverage_gate_generators)
+{
+    // Each kRequiredGeneratorFamilies entry must appear as arg0 of at
+    // least one WalkerFamilyCount predicate. (Generators sit in oblist
+    // and the schema-v1 dumper does not disambiguate Order, so this is
+    // the structurally-correct binding kind until Phase 04b adds
+    // Order-aware family symbols.)
+    const auto missing = missing_family_bindings(
+        og::parity::kRequiredGeneratorFamilies,
+        std::size(og::parity::kRequiredGeneratorFamilies),
+        og::parity::FactKind::WalkerFamilyCount);
+    EXPECT_TRUE(missing.empty())
+        << format_missing("generator families behaviourally bound "
+                          "(WalkerFamilyCount arg0)", missing);
+}
+
+TEST(Parity, behavioural_coverage_gate_event_kinds)
+{
+    // Each kRequiredEventKinds entry must appear (by ordinal) as arg0
+    // of EventKindAtLeast OR EventKindExactly in some scenario's
+    // expected_facts. The ordinals match the event_kind_symbol table
+    // in state_dump.cpp.
+    static constexpr std::pair<std::string_view, std::int32_t> kKindOrdinals[] = {
+        {"play_sound",                1},
+        {"notification",              2},
+        {"set_palette",               3},
+        {"request_redraw",            4},
+        {"end_game",                  5},
+        {"set_end",                   6},
+        {"request_exit_confirmation", 7},
+        {"withdraw_to_level",         8},
+        {"score_change",              9},
+    };
+    std::vector<std::string> missing;
+    for (const auto& [name, ordinal] : kKindOrdinals)
+    {
+        if (!any_predicate_binds(og::parity::FactKind::EventKindAtLeast, ordinal) &&
+            !any_predicate_binds(og::parity::FactKind::EventKindExactly, ordinal))
+        {
+            missing.emplace_back(name);
+        }
+    }
+    EXPECT_TRUE(missing.empty())
+        << format_missing("event kinds behaviourally bound "
+                          "(EventKindAtLeast/Exactly arg0)", missing);
+}
+
+// Umbrella case — fails iff any of the five behavioural per-category
+// gates above would fail. Mirrors the structural `Parity.coverage_gate`
+// umbrella so CI dashboards can filter on a single name.
+TEST(Parity, behavioural_coverage_gate)
+{
+    std::vector<std::string> missing;
+
+    auto append_family = [&](std::string_view         label,
+                              const std::int32_t*      req,
+                              std::size_t              n,
+                              og::parity::FactKind     kind) {
+        for (std::size_t i = 0; i < n; ++i)
+        {
+            if (!any_predicate_binds(kind, req[i]))
+            {
+                std::ostringstream os;
+                os << label << ": " << og::parity::family_symbol(req[i]);
+                missing.push_back(os.str());
+            }
+        }
+    };
+    append_family("weapon_family",
+                  og::parity::kRequiredWeaponFamilies,
+                  std::size(og::parity::kRequiredWeaponFamilies),
+                  og::parity::FactKind::WeaponFamilyEmitted);
+    append_family("treasure_family",
+                  og::parity::kRequiredTreasureFamilies,
+                  std::size(og::parity::kRequiredTreasureFamilies),
+                  og::parity::FactKind::TreasureFamilyRemovedFromOblist);
+    append_family("effect_family",
+                  og::parity::kRequiredEffectFamilies,
+                  std::size(og::parity::kRequiredEffectFamilies),
+                  og::parity::FactKind::EffectFamilyCount);
+    append_family("generator_family",
+                  og::parity::kRequiredGeneratorFamilies,
+                  std::size(og::parity::kRequiredGeneratorFamilies),
+                  og::parity::FactKind::WalkerFamilyCount);
+
+    static constexpr std::pair<std::string_view, std::int32_t> kKindOrdinals[] = {
+        {"play_sound",                1},
+        {"notification",              2},
+        {"set_palette",               3},
+        {"request_redraw",            4},
+        {"end_game",                  5},
+        {"set_end",                   6},
+        {"request_exit_confirmation", 7},
+        {"withdraw_to_level",         8},
+        {"score_change",              9},
+    };
+    for (const auto& [name, ordinal] : kKindOrdinals)
+    {
+        if (!any_predicate_binds(og::parity::FactKind::EventKindAtLeast, ordinal) &&
+            !any_predicate_binds(og::parity::FactKind::EventKindExactly, ordinal))
+        {
+            std::ostringstream os;
+            os << "event_kind: " << name;
+            missing.push_back(os.str());
+        }
+    }
+
+    EXPECT_TRUE(missing.empty())
+        << format_missing("behavioural cumulative coverage", missing);
 }

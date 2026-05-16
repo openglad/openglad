@@ -191,6 +191,9 @@ OG_PARITY_TEST(family_golem_scen99)
 OG_PARITY_TEST(family_giant_skeleton_scen99)
 OG_PARITY_TEST(family_tower1_scen99)
 
+// Phase 04 — behavioural coverage omnibus.
+OG_PARITY_TEST(phase04_coverage_omnibus_scen99)
+
 #undef OG_PARITY_TEST
 
 // Phase 02 — verify the two smoke runs produce observably-different walker
