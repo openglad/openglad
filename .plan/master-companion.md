@@ -10,14 +10,17 @@ git worktree (`../openglad-master`) on a local-only branch
 - Worktree:      `/home/yans/code/openglad-master`
 - Branch:        `parity-companion` (local-only, built on top of
   `parity-baseline-master` per `.plan/master-baseline.md`)
-- Commit SHA:    `ce70d23286f1e8034284e7c718ec658065f525e5`
+- Commit SHA:    `c03d62b5afd5ce1e17c1c80edd51c2029e8018a4`
+  (pinned by parity-finish-2 phase 02 on 2026-05-16; matches
+  `.plan/parity-coverage-manifest.md` frontmatter `master_companion_sha:`
+  and `.plan/parity-recapture-diff.md` header)
 - Parent (master baseline): `16963de0eea0bdccdbe9e0b85825bac9cc1ab0cd`
   (= `origin/master` HEAD on 2026-05-12)
 - Binary:        `../openglad-master/build/ci-test/parity_dump_master`
 
 ## Scenarios covered
 
-The companion emits goldens for the 15 **master-comparable** scenarios from
+The companion emits goldens for the 38 **master-comparable** scenarios from
 `tests/parity/scenario_table.h`. The branch-internal `snapshot_dirty_bits_scen9301`
 scenario has no master golden by design (no dirty-bits infrastructure on
 master); the companion refuses to dump it.
@@ -38,6 +41,29 @@ exit_trigger_scen9302
 tick_cadence_scen9301
 rng_seed_stable_scen99
 scripted_input_scen9301
+smoke_nonempty_scen99
+smoke_nonempty_scen99_inputs
+family_soldier_scen99
+family_elf_scen99
+family_archer_scen99
+family_mage_scen99
+family_skeleton_scen99
+family_cleric_scen99
+family_fireelemental_scen99
+family_faerie_scen99
+family_slime_scen99
+family_small_slime_scen99
+family_medium_slime_scen99
+family_thief_scen99
+family_ghost_scen99
+family_druid_scen99
+family_orc_scen99
+family_big_orc_scen99
+family_barbarian_scen99
+family_archmage_scen99
+family_golem_scen99
+family_giant_skeleton_scen99
+family_tower1_scen99
 ```
 
 Run `parity_dump_master --list` for the canonical, machine-readable list
@@ -48,8 +74,12 @@ Run `parity_dump_master --list` for the canonical, machine-readable list
 | File                                           | Role |
 |------------------------------------------------|------|
 | `tools/parity_dump_master.cpp`                 | Entry point: parses `--scenario <id> --out <path>`, finds the spec, drives the tick loop, writes canonical JSON. |
-| `tools/parity_dump_state.{h,cpp}`              | Schema-v1 emitter. Mirrors `tests/parity/state_dump.{h,cpp}` on the branch byte-for-byte; differs only in how it reads fields (master public members vs branch accessors). |
+| `tools/parity_dump_state.{h,cpp}`              | Schema-v1 emitter. Mirrors `tests/parity/state_dump.{h,cpp}` on the branch byte-for-byte for the fields master populates; differs in how it reads fields (master public members vs branch accessors). |
 | `tools/parity_scenario_table.h`                | **Byte-for-byte** copy of `tests/parity/scenario_table.h`. Synchronisation contract is enforced via the SHA-1 below. |
+| `tools/fact_predicate.h`                       | Verbatim copy of `tests/parity/fact_predicate.h`. Pulled in transitively through the mirrored `parity_scenario_table.h`. Master never reads through any of the declared symbols. |
+| `tools/state_dump.h`                           | Single-line forwarder (`#include "parity_dump_state.h"`). Resolves the `#include "state_dump.h"` chain inside the mirrored `fact_predicate.h` to master's existing `StateDump` definition. |
+| `tools/parity_bootstrap.{h,cpp}`               | Phase 02-redo addition. Initialises the headless data layer (PhysFS / palette / level loader hooks) so `parity_dump_master` can load `.fss` scenarios. |
+| `tools/parity_scenario_runtime.{h,cpp}`        | Phase 02-redo addition. Routes scripted `InputEvent`s into the same `sim_process_player_input` pipeline the SDL loop uses; applies post-load spawn specs. |
 | `tools/parity_dump_master_stubs.cpp`           | Minimal SDL-free stubs for the few symbols `og_gameplay` would otherwise pull from `og_interface` / `og_platform_sdl` (`walker::~walker`, `set_frame`, `find_follow_leader`, `og::runtime::active_session_reset_time`). |
 | `src/resources/pixie_data.cpp` (vendored in)   | Provides `PixieData::valid()`, referenced by `walker_specials.cpp`. Compiled directly into the binary so we don't drag in `og_resources`. |
 | `CMakeLists.txt` (modified)                    | Registers the `parity_dump_master` target at the bottom of the file, guarded on `NOT EMSCRIPTEN AND TARGET og_gameplay`. |
@@ -62,15 +92,23 @@ one requires the same edit to the other and a rebuilt master golden set.
 
 | File on companion (`../openglad-master/`)      | SHA-1 (sha1sum)                                |
 |------------------------------------------------|------------------------------------------------|
-| `tools/parity_scenario_table.h`                | `4f8698d68ee446620752a96cbc980b71564b1f50`     |
-| `tools/parity_dump_master.cpp`                 | `d4d6d8797aa512b87d85b9daebe3d05bd1f816b8`     |
-| `tools/parity_dump_state.h`                    | `9fc7c48d94215fa9ec8265c06531c074f8b8844a`     |
-| `tools/parity_dump_state.cpp`                  | `a484eb61bf195b71a63c6380dc3eccc0002f73f8`     |
-| `tools/parity_dump_master_stubs.cpp`           | `0f07908c3cfdcc9b8a247c6119d83a922380452e`     |
+| `tools/parity_scenario_table.h`                | `78a0aec5eee0d7729661a4ca84eca1bcc64fe37b`     |
+| `tools/parity_dump_master.cpp`                 | `fd1f6b9604326eae096c4ffe733eaf03efa1c3ee`     |
+| `tools/parity_dump_state.h`                    | `8e605498139ce8e17f6b4b9e34545b4dbcd3159b`     |
+| `tools/parity_dump_state.cpp`                  | `06103b4d4a125fdf9f341df382a644593ec4c812`     |
+| `tools/parity_dump_master_stubs.cpp`           | `9c69eca8181a48832cebd9672b87d503bd9b1453`     |
+| `tools/fact_predicate.h`                       | `662486bce8643e93c984a01aa0a8661feccf47b6`     |
+| `tools/state_dump.h`                           | `11272f58969024c65bdc966f47de683944d74da8`     |
+| `tools/parity_bootstrap.cpp`                   | `eb27e81a927d85d57cf663ebbd6c1e867c0e8f72`     |
+| `tools/parity_bootstrap.h`                     | `eaf10ffd2850866cfeb7bea42a712e9498719480`     |
+| `tools/parity_scenario_runtime.cpp`            | `7aae94859c2a4e6955f207aa9e57d16053afaa18`     |
+| `tools/parity_scenario_runtime.h`              | `3c1ece3d0f7b371826837d37907710a53fd8d0c5`     |
 
 The companion-side `parity_scenario_table.h` SHA must equal the branch
-`tests/parity/scenario_table.h` SHA verbatim — `4f8698d6...` matches on both
-sides today.
+`tests/parity/scenario_table.h` SHA verbatim — `78a0aec5eee0d7729661a4ca84eca1bcc64fe37b`
+matches on both sides today. SHA-1s above were captured during
+parity-finish-2 phase 02 on companion HEAD
+`c03d62b5afd5ce1e17c1c80edd51c2029e8018a4`.
 
 ## RNG-seeding mechanism (literal)
 
