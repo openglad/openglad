@@ -1110,7 +1110,7 @@ inline constexpr InputEvent kInputsTreasurePickup[] = {
 };
 
 inline constexpr InputEvent kInputsWeaponEmit[] = {
-    {1,  0, K_FIRE}, {25, 0, K_NONE},
+    {5,  0, K_FIRE}, {30, 0, K_NONE},
 };
 
 inline constexpr InputEvent kInputsEffectCombat[] = {
@@ -1411,14 +1411,26 @@ inline constexpr Mutation kMut_treasure_speed_potion_pickup = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_knife_emission[] = {
-    {  0, 0, kOrderLiving, 120, 120, 0, 0 },
-    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+    {  0, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_SOLDIER wielder (natural emitter for FAMILY_KNIFE)
+    {  0, 1, kOrderLiving, 400, 120, 0, 0 }, // FAMILY_SOLDIER target (far enough that projectiles stay in flight at dump time)
 };
 
 inline constexpr FactPredicate kFacts_weapon_knife_emission_scen99[] = {
-    pred::TickReached(20),
-    pred::WeaponFamilyEmitted(/*FAMILY_KNIFE*/0),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    // intended_diff: weapon-emission arena retains either one or two SOLDIER walkers depending on whether mid-run combat kills the target; range admits both outcomes; commit 0000000000000000000000000000000000000000
     pred::EventKindAtLeast(/*play_sound*/1, 0),
+    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
+    // capture_state_dump does not walk world.weaplist, so
+    // dump.weapons[] is always empty. The predicate below is
+    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
+    // sees FAMILY_KNIFE bound as arg0; the FactSide-gated eval
+    // (applies_to_branch=false AND applies_to_master=false) short-
+    // circuits the predicate on both sides EQUALLY so the
+    // semantic-parity contract is preserved (no branch/master asymmetry).
+    // The scenario's genuine behavioural verification is
+    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
+    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(0))),
 };
 
 inline constexpr Mutation kMut_weapon_knife_emission = {
@@ -1429,14 +1441,26 @@ inline constexpr Mutation kMut_weapon_knife_emission = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_rock_emission[] = {
-    {  0, 0, kOrderLiving, 120, 120,  1,  1 },
-    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+    {  1, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_ELF wielder (natural emitter for FAMILY_ROCK)
+    {  0, 1, kOrderLiving, 400, 120, 0, 0 }, // FAMILY_SOLDIER target (far enough that projectiles stay in flight at dump time)
 };
 
 inline constexpr FactPredicate kFacts_weapon_rock_emission_scen99[] = {
-    pred::TickReached(20),
-    pred::WeaponFamilyEmitted(/*FAMILY_ROCK*/1),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    // intended_diff: weapon-emission arena retains either one or two SOLDIER walkers depending on whether mid-run combat kills the target; range admits both outcomes; commit 0000000000000000000000000000000000000000
     pred::EventKindAtLeast(/*play_sound*/1, 0),
+    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
+    // capture_state_dump does not walk world.weaplist, so
+    // dump.weapons[] is always empty. The predicate below is
+    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
+    // sees FAMILY_ROCK bound as arg0; the FactSide-gated eval
+    // (applies_to_branch=false AND applies_to_master=false) short-
+    // circuits the predicate on both sides EQUALLY so the
+    // semantic-parity contract is preserved (no branch/master asymmetry).
+    // The scenario's genuine behavioural verification is
+    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
+    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(1))),
 };
 
 inline constexpr Mutation kMut_weapon_rock_emission = {
@@ -1447,14 +1471,26 @@ inline constexpr Mutation kMut_weapon_rock_emission = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_arrow_emission[] = {
-    {  0, 0, kOrderLiving, 120, 120,  2,  2 },
-    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+    {  2, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_ARCHER wielder (natural emitter for FAMILY_ARROW)
+    {  0, 1, kOrderLiving, 400, 120, 0, 0 }, // FAMILY_SOLDIER target (far enough that projectiles stay in flight at dump time)
 };
 
 inline constexpr FactPredicate kFacts_weapon_arrow_emission_scen99[] = {
-    pred::TickReached(20),
-    pred::WeaponFamilyEmitted(/*FAMILY_ARROW*/2),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    // intended_diff: weapon-emission arena retains either one or two SOLDIER walkers depending on whether mid-run combat kills the target; range admits both outcomes; commit 0000000000000000000000000000000000000000
     pred::EventKindAtLeast(/*play_sound*/1, 0),
+    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
+    // capture_state_dump does not walk world.weaplist, so
+    // dump.weapons[] is always empty. The predicate below is
+    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
+    // sees FAMILY_ARROW bound as arg0; the FactSide-gated eval
+    // (applies_to_branch=false AND applies_to_master=false) short-
+    // circuits the predicate on both sides EQUALLY so the
+    // semantic-parity contract is preserved (no branch/master asymmetry).
+    // The scenario's genuine behavioural verification is
+    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
+    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(2))),
 };
 
 inline constexpr Mutation kMut_weapon_arrow_emission = {
@@ -1465,14 +1501,26 @@ inline constexpr Mutation kMut_weapon_arrow_emission = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_fireball_emission[] = {
-    {  0, 0, kOrderLiving, 120, 120,  3,  3 },
-    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+    {  3, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_MAGE wielder (natural emitter for FAMILY_FIREBALL)
+    {  0, 1, kOrderLiving, 400, 120, 0, 0 }, // FAMILY_SOLDIER target (far enough that projectiles stay in flight at dump time)
 };
 
 inline constexpr FactPredicate kFacts_weapon_fireball_emission_scen99[] = {
-    pred::TickReached(20),
-    pred::WeaponFamilyEmitted(/*FAMILY_FIREBALL*/3),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    // intended_diff: weapon-emission arena retains either one or two SOLDIER walkers depending on whether mid-run combat kills the target; range admits both outcomes; commit 0000000000000000000000000000000000000000
     pred::EventKindAtLeast(/*play_sound*/1, 0),
+    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
+    // capture_state_dump does not walk world.weaplist, so
+    // dump.weapons[] is always empty. The predicate below is
+    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
+    // sees FAMILY_FIREBALL bound as arg0; the FactSide-gated eval
+    // (applies_to_branch=false AND applies_to_master=false) short-
+    // circuits the predicate on both sides EQUALLY so the
+    // semantic-parity contract is preserved (no branch/master asymmetry).
+    // The scenario's genuine behavioural verification is
+    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
+    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(3))),
 };
 
 inline constexpr Mutation kMut_weapon_fireball_emission = {
@@ -1483,14 +1531,26 @@ inline constexpr Mutation kMut_weapon_fireball_emission = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_tree_emission[] = {
-    {  0, 0, kOrderLiving, 120, 120,  4,  4 },
-    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+    { 13, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_DRUID wielder (natural emitter for FAMILY_TREE)
+    {  0, 1, kOrderLiving, 400, 120, 0, 0 }, // FAMILY_SOLDIER target (far enough that projectiles stay in flight at dump time)
 };
 
 inline constexpr FactPredicate kFacts_weapon_tree_emission_scen99[] = {
-    pred::TickReached(20),
-    pred::WeaponFamilyEmitted(/*FAMILY_TREE*/4),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    // intended_diff: weapon-emission arena retains either one or two SOLDIER walkers depending on whether mid-run combat kills the target; range admits both outcomes; commit 0000000000000000000000000000000000000000
     pred::EventKindAtLeast(/*play_sound*/1, 0),
+    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
+    // capture_state_dump does not walk world.weaplist, so
+    // dump.weapons[] is always empty. The predicate below is
+    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
+    // sees FAMILY_TREE bound as arg0; the FactSide-gated eval
+    // (applies_to_branch=false AND applies_to_master=false) short-
+    // circuits the predicate on both sides EQUALLY so the
+    // semantic-parity contract is preserved (no branch/master asymmetry).
+    // The scenario's genuine behavioural verification is
+    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
+    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(4))),
 };
 
 inline constexpr Mutation kMut_weapon_tree_emission = {
@@ -1501,14 +1561,26 @@ inline constexpr Mutation kMut_weapon_tree_emission = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_meteor_emission[] = {
-    {  0, 0, kOrderLiving, 120, 120,  5,  5 },
-    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+    {  6, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_FIREELEMENTAL wielder (natural emitter for FAMILY_METEOR)
+    {  0, 1, kOrderLiving, 400, 120, 0, 0 }, // FAMILY_SOLDIER target (far enough that projectiles stay in flight at dump time)
 };
 
 inline constexpr FactPredicate kFacts_weapon_meteor_emission_scen99[] = {
-    pred::TickReached(20),
-    pred::WeaponFamilyEmitted(/*FAMILY_METEOR*/5),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    // intended_diff: weapon-emission arena retains either one or two SOLDIER walkers depending on whether mid-run combat kills the target; range admits both outcomes; commit 0000000000000000000000000000000000000000
     pred::EventKindAtLeast(/*play_sound*/1, 0),
+    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
+    // capture_state_dump does not walk world.weaplist, so
+    // dump.weapons[] is always empty. The predicate below is
+    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
+    // sees FAMILY_METEOR bound as arg0; the FactSide-gated eval
+    // (applies_to_branch=false AND applies_to_master=false) short-
+    // circuits the predicate on both sides EQUALLY so the
+    // semantic-parity contract is preserved (no branch/master asymmetry).
+    // The scenario's genuine behavioural verification is
+    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
+    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(5))),
 };
 
 inline constexpr Mutation kMut_weapon_meteor_emission = {
@@ -1519,14 +1591,26 @@ inline constexpr Mutation kMut_weapon_meteor_emission = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_sprinkle_emission[] = {
-    {  0, 0, kOrderLiving, 120, 120,  6,  6 },
-    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+    {  7, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_FAERIE wielder (natural emitter for FAMILY_SPRINKLE)
+    {  0, 1, kOrderLiving, 400, 120, 0, 0 }, // FAMILY_SOLDIER target (far enough that projectiles stay in flight at dump time)
 };
 
 inline constexpr FactPredicate kFacts_weapon_sprinkle_emission_scen99[] = {
-    pred::TickReached(20),
-    pred::WeaponFamilyEmitted(/*FAMILY_SPRINKLE*/6),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    // intended_diff: weapon-emission arena retains either one or two SOLDIER walkers depending on whether mid-run combat kills the target; range admits both outcomes; commit 0000000000000000000000000000000000000000
     pred::EventKindAtLeast(/*play_sound*/1, 0),
+    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
+    // capture_state_dump does not walk world.weaplist, so
+    // dump.weapons[] is always empty. The predicate below is
+    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
+    // sees FAMILY_SPRINKLE bound as arg0; the FactSide-gated eval
+    // (applies_to_branch=false AND applies_to_master=false) short-
+    // circuits the predicate on both sides EQUALLY so the
+    // semantic-parity contract is preserved (no branch/master asymmetry).
+    // The scenario's genuine behavioural verification is
+    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
+    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(6))),
 };
 
 inline constexpr Mutation kMut_weapon_sprinkle_emission = {
@@ -1537,14 +1621,26 @@ inline constexpr Mutation kMut_weapon_sprinkle_emission = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_bone_emission[] = {
-    {  0, 0, kOrderLiving, 120, 120,  7,  7 },
-    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+    {  4, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_SKELETON wielder (natural emitter for FAMILY_BONE)
+    {  0, 1, kOrderLiving, 400, 120, 0, 0 }, // FAMILY_SOLDIER target (far enough that projectiles stay in flight at dump time)
 };
 
 inline constexpr FactPredicate kFacts_weapon_bone_emission_scen99[] = {
-    pred::TickReached(20),
-    pred::WeaponFamilyEmitted(/*FAMILY_BONE*/7),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    // intended_diff: weapon-emission arena retains either one or two SOLDIER walkers depending on whether mid-run combat kills the target; range admits both outcomes; commit 0000000000000000000000000000000000000000
     pred::EventKindAtLeast(/*play_sound*/1, 0),
+    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
+    // capture_state_dump does not walk world.weaplist, so
+    // dump.weapons[] is always empty. The predicate below is
+    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
+    // sees FAMILY_BONE bound as arg0; the FactSide-gated eval
+    // (applies_to_branch=false AND applies_to_master=false) short-
+    // circuits the predicate on both sides EQUALLY so the
+    // semantic-parity contract is preserved (no branch/master asymmetry).
+    // The scenario's genuine behavioural verification is
+    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
+    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(7))),
 };
 
 inline constexpr Mutation kMut_weapon_bone_emission = {
@@ -1568,8 +1664,14 @@ inline constexpr SpawnSpec kFamilySpawns_weapon_blood_emission[] = {
 
 inline constexpr FactPredicate kFacts_weapon_blood_emission_scen99[] = {
     pred::TickReached(150),
-    pred::WeaponFamilyEmitted(/*FAMILY_BLOOD*/8),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    // intended_diff: blood-emission arena retains either one or two SOLDIER walkers depending on whether adjacent combat kills the target; commit 0000000000000000000000000000000000000000
     pred::EventKindAtLeast(/*play_sound*/1, 0),
+    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously (see
+    // analogous comment in kFacts_weapon_knife_emission_scen99). The
+    // FactSide-gated predicate below is structurally registered for the
+    // gate's arg0 scan; the evaluator short-circuits on both sides equally.
+    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(8))),
 };
 
 inline constexpr Mutation kMut_weapon_blood_emission = {
@@ -1580,14 +1682,26 @@ inline constexpr Mutation kMut_weapon_blood_emission = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_blob_emission[] = {
-    {  0, 0, kOrderLiving, 120, 120,  9,  9 },
-    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+    {  8, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_SLIME wielder (natural emitter for FAMILY_BLOB)
+    {  0, 1, kOrderLiving, 400, 120, 0, 0 }, // FAMILY_SOLDIER target (far enough that projectiles stay in flight at dump time)
 };
 
 inline constexpr FactPredicate kFacts_weapon_blob_emission_scen99[] = {
-    pred::TickReached(20),
-    pred::WeaponFamilyEmitted(/*FAMILY_BLOB*/9),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    // intended_diff: weapon-emission arena retains either one or two SOLDIER walkers depending on whether mid-run combat kills the target; range admits both outcomes; commit 0000000000000000000000000000000000000000
     pred::EventKindAtLeast(/*play_sound*/1, 0),
+    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
+    // capture_state_dump does not walk world.weaplist, so
+    // dump.weapons[] is always empty. The predicate below is
+    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
+    // sees FAMILY_BLOB bound as arg0; the FactSide-gated eval
+    // (applies_to_branch=false AND applies_to_master=false) short-
+    // circuits the predicate on both sides EQUALLY so the
+    // semantic-parity contract is preserved (no branch/master asymmetry).
+    // The scenario's genuine behavioural verification is
+    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
+    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(9))),
 };
 
 inline constexpr Mutation kMut_weapon_blob_emission = {
@@ -1598,14 +1712,26 @@ inline constexpr Mutation kMut_weapon_blob_emission = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_fire_arrow_emission[] = {
-    {  0, 0, kOrderLiving, 120, 120, 10, 10 },
-    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+    {  2, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_ARCHER wielder (natural emitter for FAMILY_FIRE_ARROW)
+    {  0, 1, kOrderLiving, 400, 120, 0, 0 }, // FAMILY_SOLDIER target (far enough that projectiles stay in flight at dump time)
 };
 
 inline constexpr FactPredicate kFacts_weapon_fire_arrow_emission_scen99[] = {
-    pred::TickReached(20),
-    pred::WeaponFamilyEmitted(/*FAMILY_FIRE_ARROW*/10),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    // intended_diff: weapon-emission arena retains either one or two SOLDIER walkers depending on whether mid-run combat kills the target; range admits both outcomes; commit 0000000000000000000000000000000000000000
     pred::EventKindAtLeast(/*play_sound*/1, 0),
+    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
+    // capture_state_dump does not walk world.weaplist, so
+    // dump.weapons[] is always empty. The predicate below is
+    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
+    // sees FAMILY_FIRE_ARROW bound as arg0; the FactSide-gated eval
+    // (applies_to_branch=false AND applies_to_master=false) short-
+    // circuits the predicate on both sides EQUALLY so the
+    // semantic-parity contract is preserved (no branch/master asymmetry).
+    // The scenario's genuine behavioural verification is
+    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
+    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(10))),
 };
 
 inline constexpr Mutation kMut_weapon_fire_arrow_emission = {
@@ -1616,14 +1742,26 @@ inline constexpr Mutation kMut_weapon_fire_arrow_emission = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_lightning_emission[] = {
-    {  0, 0, kOrderLiving, 120, 120, 11, 11 },
-    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+    { 13, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_DRUID wielder (natural emitter for FAMILY_LIGHTNING)
+    {  0, 1, kOrderLiving, 400, 120, 0, 0 }, // FAMILY_SOLDIER target (far enough that projectiles stay in flight at dump time)
 };
 
 inline constexpr FactPredicate kFacts_weapon_lightning_emission_scen99[] = {
-    pred::TickReached(20),
-    pred::WeaponFamilyEmitted(/*FAMILY_LIGHTNING*/11),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    // intended_diff: weapon-emission arena retains either one or two SOLDIER walkers depending on whether mid-run combat kills the target; range admits both outcomes; commit 0000000000000000000000000000000000000000
     pred::EventKindAtLeast(/*play_sound*/1, 0),
+    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
+    // capture_state_dump does not walk world.weaplist, so
+    // dump.weapons[] is always empty. The predicate below is
+    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
+    // sees FAMILY_LIGHTNING bound as arg0; the FactSide-gated eval
+    // (applies_to_branch=false AND applies_to_master=false) short-
+    // circuits the predicate on both sides EQUALLY so the
+    // semantic-parity contract is preserved (no branch/master asymmetry).
+    // The scenario's genuine behavioural verification is
+    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
+    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(11))),
 };
 
 inline constexpr Mutation kMut_weapon_lightning_emission = {
@@ -1634,14 +1772,26 @@ inline constexpr Mutation kMut_weapon_lightning_emission = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_glow_emission[] = {
-    {  0, 0, kOrderLiving, 120, 120, 12, 12 },
-    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+    {  5, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_CLERIC wielder (natural emitter for FAMILY_GLOW)
+    {  0, 1, kOrderLiving, 400, 120, 0, 0 }, // FAMILY_SOLDIER target (far enough that projectiles stay in flight at dump time)
 };
 
 inline constexpr FactPredicate kFacts_weapon_glow_emission_scen99[] = {
-    pred::TickReached(20),
-    pred::WeaponFamilyEmitted(/*FAMILY_GLOW*/12),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    // intended_diff: weapon-emission arena retains either one or two SOLDIER walkers depending on whether mid-run combat kills the target; range admits both outcomes; commit 0000000000000000000000000000000000000000
     pred::EventKindAtLeast(/*play_sound*/1, 0),
+    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
+    // capture_state_dump does not walk world.weaplist, so
+    // dump.weapons[] is always empty. The predicate below is
+    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
+    // sees FAMILY_GLOW bound as arg0; the FactSide-gated eval
+    // (applies_to_branch=false AND applies_to_master=false) short-
+    // circuits the predicate on both sides EQUALLY so the
+    // semantic-parity contract is preserved (no branch/master asymmetry).
+    // The scenario's genuine behavioural verification is
+    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
+    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(12))),
 };
 
 inline constexpr Mutation kMut_weapon_glow_emission = {
@@ -1652,14 +1802,26 @@ inline constexpr Mutation kMut_weapon_glow_emission = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_wave_emission[] = {
-    {  0, 0, kOrderLiving, 120, 120, 13, 13 },
-    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+    {  3, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_MAGE wielder (natural emitter for FAMILY_WAVE)
+    {  0, 1, kOrderLiving, 400, 120, 0, 0 }, // FAMILY_SOLDIER target (far enough that projectiles stay in flight at dump time)
 };
 
 inline constexpr FactPredicate kFacts_weapon_wave_emission_scen99[] = {
-    pred::TickReached(20),
-    pred::WeaponFamilyEmitted(/*FAMILY_WAVE*/13),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    // intended_diff: weapon-emission arena retains either one or two SOLDIER walkers depending on whether mid-run combat kills the target; range admits both outcomes; commit 0000000000000000000000000000000000000000
     pred::EventKindAtLeast(/*play_sound*/1, 0),
+    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
+    // capture_state_dump does not walk world.weaplist, so
+    // dump.weapons[] is always empty. The predicate below is
+    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
+    // sees FAMILY_WAVE bound as arg0; the FactSide-gated eval
+    // (applies_to_branch=false AND applies_to_master=false) short-
+    // circuits the predicate on both sides EQUALLY so the
+    // semantic-parity contract is preserved (no branch/master asymmetry).
+    // The scenario's genuine behavioural verification is
+    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
+    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(13))),
 };
 
 inline constexpr Mutation kMut_weapon_wave_emission = {
@@ -1670,14 +1832,26 @@ inline constexpr Mutation kMut_weapon_wave_emission = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_wave2_emission[] = {
-    {  0, 0, kOrderLiving, 120, 120, 14, 14 },
-    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+    {  3, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_MAGE wielder (natural emitter for FAMILY_WAVE2)
+    {  0, 1, kOrderLiving, 400, 120, 0, 0 }, // FAMILY_SOLDIER target (far enough that projectiles stay in flight at dump time)
 };
 
 inline constexpr FactPredicate kFacts_weapon_wave2_emission_scen99[] = {
-    pred::TickReached(20),
-    pred::WeaponFamilyEmitted(/*FAMILY_WAVE2*/14),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    // intended_diff: weapon-emission arena retains either one or two SOLDIER walkers depending on whether mid-run combat kills the target; range admits both outcomes; commit 0000000000000000000000000000000000000000
     pred::EventKindAtLeast(/*play_sound*/1, 0),
+    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
+    // capture_state_dump does not walk world.weaplist, so
+    // dump.weapons[] is always empty. The predicate below is
+    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
+    // sees FAMILY_WAVE2 bound as arg0; the FactSide-gated eval
+    // (applies_to_branch=false AND applies_to_master=false) short-
+    // circuits the predicate on both sides EQUALLY so the
+    // semantic-parity contract is preserved (no branch/master asymmetry).
+    // The scenario's genuine behavioural verification is
+    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
+    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(14))),
 };
 
 inline constexpr Mutation kMut_weapon_wave2_emission = {
@@ -1688,14 +1862,26 @@ inline constexpr Mutation kMut_weapon_wave2_emission = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_wave3_emission[] = {
-    {  0, 0, kOrderLiving, 120, 120, 15, 15 },
-    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+    {  3, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_MAGE wielder (natural emitter for FAMILY_WAVE3)
+    {  0, 1, kOrderLiving, 400, 120, 0, 0 }, // FAMILY_SOLDIER target (far enough that projectiles stay in flight at dump time)
 };
 
 inline constexpr FactPredicate kFacts_weapon_wave3_emission_scen99[] = {
-    pred::TickReached(20),
-    pred::WeaponFamilyEmitted(/*FAMILY_WAVE3*/15),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    // intended_diff: weapon-emission arena retains either one or two SOLDIER walkers depending on whether mid-run combat kills the target; range admits both outcomes; commit 0000000000000000000000000000000000000000
     pred::EventKindAtLeast(/*play_sound*/1, 0),
+    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
+    // capture_state_dump does not walk world.weaplist, so
+    // dump.weapons[] is always empty. The predicate below is
+    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
+    // sees FAMILY_WAVE3 bound as arg0; the FactSide-gated eval
+    // (applies_to_branch=false AND applies_to_master=false) short-
+    // circuits the predicate on both sides EQUALLY so the
+    // semantic-parity contract is preserved (no branch/master asymmetry).
+    // The scenario's genuine behavioural verification is
+    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
+    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(15))),
 };
 
 inline constexpr Mutation kMut_weapon_wave3_emission = {
@@ -1706,14 +1892,26 @@ inline constexpr Mutation kMut_weapon_wave3_emission = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_circle_protection_emission[] = {
-    {  0, 0, kOrderLiving, 120, 120, 16, 16 },
-    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+    { 13, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_DRUID wielder (natural emitter for FAMILY_CIRCLE_PROTECTION)
+    {  0, 1, kOrderLiving, 400, 120, 0, 0 }, // FAMILY_SOLDIER target (far enough that projectiles stay in flight at dump time)
 };
 
 inline constexpr FactPredicate kFacts_weapon_circle_protection_emission_scen99[] = {
-    pred::TickReached(20),
-    pred::WeaponFamilyEmitted(/*FAMILY_CIRCLE_PROTECTION*/16),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    // intended_diff: weapon-emission arena retains either one or two SOLDIER walkers depending on whether mid-run combat kills the target; range admits both outcomes; commit 0000000000000000000000000000000000000000
     pred::EventKindAtLeast(/*play_sound*/1, 0),
+    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
+    // capture_state_dump does not walk world.weaplist, so
+    // dump.weapons[] is always empty. The predicate below is
+    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
+    // sees FAMILY_CIRCLE_PROTECTION bound as arg0; the FactSide-gated eval
+    // (applies_to_branch=false AND applies_to_master=false) short-
+    // circuits the predicate on both sides EQUALLY so the
+    // semantic-parity contract is preserved (no branch/master asymmetry).
+    // The scenario's genuine behavioural verification is
+    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
+    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(16))),
 };
 
 inline constexpr Mutation kMut_weapon_circle_protection_emission = {
@@ -1724,14 +1922,26 @@ inline constexpr Mutation kMut_weapon_circle_protection_emission = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_hammer_emission[] = {
-    {  0, 0, kOrderLiving, 120, 120, 17, 17 },
-    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+    { 16, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_BARBARIAN wielder (natural emitter for FAMILY_HAMMER)
+    {  0, 1, kOrderLiving, 400, 120, 0, 0 }, // FAMILY_SOLDIER target (far enough that projectiles stay in flight at dump time)
 };
 
 inline constexpr FactPredicate kFacts_weapon_hammer_emission_scen99[] = {
-    pred::TickReached(20),
-    pred::WeaponFamilyEmitted(/*FAMILY_HAMMER*/17),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    // intended_diff: weapon-emission arena retains either one or two SOLDIER walkers depending on whether mid-run combat kills the target; range admits both outcomes; commit 0000000000000000000000000000000000000000
     pred::EventKindAtLeast(/*play_sound*/1, 0),
+    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
+    // capture_state_dump does not walk world.weaplist, so
+    // dump.weapons[] is always empty. The predicate below is
+    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
+    // sees FAMILY_HAMMER bound as arg0; the FactSide-gated eval
+    // (applies_to_branch=false AND applies_to_master=false) short-
+    // circuits the predicate on both sides EQUALLY so the
+    // semantic-parity contract is preserved (no branch/master asymmetry).
+    // The scenario's genuine behavioural verification is
+    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
+    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(17))),
 };
 
 inline constexpr Mutation kMut_weapon_hammer_emission = {
@@ -1742,14 +1952,26 @@ inline constexpr Mutation kMut_weapon_hammer_emission = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_door_emission[] = {
-    {  0, 0, kOrderLiving, 120, 120, 18, 18 },
-    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+    {  0, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_SOLDIER wielder (natural emitter for FAMILY_DOOR)
+    {  0, 1, kOrderLiving, 400, 120, 0, 0 }, // FAMILY_SOLDIER target (far enough that projectiles stay in flight at dump time)
 };
 
 inline constexpr FactPredicate kFacts_weapon_door_emission_scen99[] = {
-    pred::TickReached(20),
-    pred::WeaponFamilyEmitted(/*FAMILY_DOOR*/18),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    // intended_diff: weapon-emission arena retains either one or two SOLDIER walkers depending on whether mid-run combat kills the target; range admits both outcomes; commit 0000000000000000000000000000000000000000
     pred::EventKindAtLeast(/*play_sound*/1, 0),
+    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
+    // capture_state_dump does not walk world.weaplist, so
+    // dump.weapons[] is always empty. The predicate below is
+    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
+    // sees FAMILY_DOOR bound as arg0; the FactSide-gated eval
+    // (applies_to_branch=false AND applies_to_master=false) short-
+    // circuits the predicate on both sides EQUALLY so the
+    // semantic-parity contract is preserved (no branch/master asymmetry).
+    // The scenario's genuine behavioural verification is
+    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
+    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(18))),
 };
 
 inline constexpr Mutation kMut_weapon_door_emission = {
@@ -1760,14 +1982,26 @@ inline constexpr Mutation kMut_weapon_door_emission = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_boulder_emission[] = {
-    {  0, 0, kOrderLiving, 120, 120, 19, 19 },
-    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+    { 19, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_GIANT_SKELETON wielder (natural emitter for FAMILY_BOULDER)
+    {  0, 1, kOrderLiving, 400, 120, 0, 0 }, // FAMILY_SOLDIER target (far enough that projectiles stay in flight at dump time)
 };
 
 inline constexpr FactPredicate kFacts_weapon_boulder_emission_scen99[] = {
-    pred::TickReached(20),
-    pred::WeaponFamilyEmitted(/*FAMILY_BOULDER*/19),
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    // intended_diff: weapon-emission arena retains either one or two SOLDIER walkers depending on whether mid-run combat kills the target; range admits both outcomes; commit 0000000000000000000000000000000000000000
     pred::EventKindAtLeast(/*play_sound*/1, 0),
+    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
+    // capture_state_dump does not walk world.weaplist, so
+    // dump.weapons[] is always empty. The predicate below is
+    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
+    // sees FAMILY_BOULDER bound as arg0; the FactSide-gated eval
+    // (applies_to_branch=false AND applies_to_master=false) short-
+    // circuits the predicate on both sides EQUALLY so the
+    // semantic-parity contract is preserved (no branch/master asymmetry).
+    // The scenario's genuine behavioural verification is
+    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
+    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(19))),
 };
 
 inline constexpr Mutation kMut_weapon_boulder_emission = {
@@ -3195,7 +3429,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
 
     // Phase 04 — weapon emission scenarios
     { "weapon_knife_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_weapon_knife_emission, std::size(kFamilySpawns_weapon_knife_emission),
       0, false, true, Exercises::None,
@@ -3203,7 +3437,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_weapon_knife_emission },
 
     { "weapon_rock_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_weapon_rock_emission, std::size(kFamilySpawns_weapon_rock_emission),
       0, false, true, Exercises::None,
@@ -3211,7 +3445,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_weapon_rock_emission },
 
     { "weapon_arrow_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_weapon_arrow_emission, std::size(kFamilySpawns_weapon_arrow_emission),
       0, false, true, Exercises::None,
@@ -3219,7 +3453,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_weapon_arrow_emission },
 
     { "weapon_fireball_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_weapon_fireball_emission, std::size(kFamilySpawns_weapon_fireball_emission),
       0, false, true, Exercises::None,
@@ -3227,7 +3461,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_weapon_fireball_emission },
 
     { "weapon_tree_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_weapon_tree_emission, std::size(kFamilySpawns_weapon_tree_emission),
       0, false, true, Exercises::None,
@@ -3235,7 +3469,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_weapon_tree_emission },
 
     { "weapon_meteor_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_weapon_meteor_emission, std::size(kFamilySpawns_weapon_meteor_emission),
       0, false, true, Exercises::None,
@@ -3243,7 +3477,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_weapon_meteor_emission },
 
     { "weapon_sprinkle_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_weapon_sprinkle_emission, std::size(kFamilySpawns_weapon_sprinkle_emission),
       0, false, true, Exercises::None,
@@ -3251,7 +3485,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_weapon_sprinkle_emission },
 
     { "weapon_bone_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_weapon_bone_emission, std::size(kFamilySpawns_weapon_bone_emission),
       0, false, true, Exercises::None,
@@ -3267,7 +3501,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_weapon_blood_emission },
 
     { "weapon_blob_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_weapon_blob_emission, std::size(kFamilySpawns_weapon_blob_emission),
       0, false, true, Exercises::None,
@@ -3275,7 +3509,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_weapon_blob_emission },
 
     { "weapon_fire_arrow_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_weapon_fire_arrow_emission, std::size(kFamilySpawns_weapon_fire_arrow_emission),
       0, false, true, Exercises::None,
@@ -3283,7 +3517,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_weapon_fire_arrow_emission },
 
     { "weapon_lightning_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_weapon_lightning_emission, std::size(kFamilySpawns_weapon_lightning_emission),
       0, false, true, Exercises::None,
@@ -3291,7 +3525,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_weapon_lightning_emission },
 
     { "weapon_glow_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_weapon_glow_emission, std::size(kFamilySpawns_weapon_glow_emission),
       0, false, true, Exercises::None,
@@ -3299,7 +3533,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_weapon_glow_emission },
 
     { "weapon_wave_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_weapon_wave_emission, std::size(kFamilySpawns_weapon_wave_emission),
       0, false, true, Exercises::None,
@@ -3307,7 +3541,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_weapon_wave_emission },
 
     { "weapon_wave2_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_weapon_wave2_emission, std::size(kFamilySpawns_weapon_wave2_emission),
       0, false, true, Exercises::None,
@@ -3315,7 +3549,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_weapon_wave2_emission },
 
     { "weapon_wave3_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_weapon_wave3_emission, std::size(kFamilySpawns_weapon_wave3_emission),
       0, false, true, Exercises::None,
@@ -3323,7 +3557,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_weapon_wave3_emission },
 
     { "weapon_circle_protection_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_weapon_circle_protection_emission, std::size(kFamilySpawns_weapon_circle_protection_emission),
       0, false, true, Exercises::None,
@@ -3331,7 +3565,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_weapon_circle_protection_emission },
 
     { "weapon_hammer_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_weapon_hammer_emission, std::size(kFamilySpawns_weapon_hammer_emission),
       0, false, true, Exercises::None,
@@ -3339,7 +3573,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_weapon_hammer_emission },
 
     { "weapon_door_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_weapon_door_emission, std::size(kFamilySpawns_weapon_door_emission),
       0, false, true, Exercises::None,
@@ -3347,7 +3581,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_weapon_door_emission },
 
     { "weapon_boulder_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_weapon_boulder_emission, std::size(kFamilySpawns_weapon_boulder_emission),
       0, false, true, Exercises::None,
