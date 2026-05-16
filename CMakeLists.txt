@@ -1476,6 +1476,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/parity/parity_bootstrap.cpp
             ${CMAKE_SOURCE_DIR}/tests/parity/scenario_runtime.cpp
             ${CMAKE_SOURCE_DIR}/tests/parity/parity_test_main.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/golden_evaluation_helper.cpp
             ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_scenarios.cpp
             ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_coverage_gate.cpp
         )
@@ -1817,6 +1818,7 @@ if(NOT EMSCRIPTEN)
             parity_bootstrap.cpp
             scenario_runtime.cpp
             parity_test_main.cpp
+            golden_evaluation_helper.cpp
         )
         target_include_directories(og_test_parity PRIVATE
             ${CMAKE_SOURCE_DIR}/tests/parity

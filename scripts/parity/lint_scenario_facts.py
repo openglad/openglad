@@ -334,6 +334,48 @@ def parse_scenarios(text: str) -> list[dict[str, str]]:
 
 SPECIAL_RX = re.compile(r"^special_(?P<family>[a-z_]+?)(?:_(?P<idx>\d+))?_scen\d+$")
 
+# Phase 04-prep — lower-snake family name -> integer family-id. Mirrors
+# family_symbol() in tests/parity/state_dump.cpp; used by the
+# `caster_zero_min` rule to map a `special_<family>_<idx>_scen*` row to
+# the integer the caster's WalkerFamilyCount predicate would carry.
+FAMILY_NAME_TO_ID: dict[str, int] = {
+    "soldier":         0,
+    "elf":             1,
+    "archer":          2,
+    "mage":            3,
+    "skeleton":        4,
+    "cleric":          5,
+    "fireelemental":   6,
+    "faerie":          7,
+    "slime":           8,
+    "small_slime":     9,
+    "medium_slime":   10,
+    "thief":          11,
+    "ghost":          12,
+    "druid":          13,
+    "orc":            14,
+    "big_orc":        15,
+    "barbarian":      16,
+    "archmage":       17,
+    "golem":          18,
+    "giant_skeleton": 19,
+    "tower1":         20,
+}
+
+# Phase 04-prep — recogniser for the `// negative_assertion: <reason>`
+# inline comment that licenses `WalkerFamilyCount(F, 0, 0)` and
+# `EffectFamilyCount(F, 0, 0)` predicates per policy decision P3.
+NEGATIVE_ASSERTION_RX = re.compile(
+    r"//\s*negative_assertion\s*:\s*(?P<reason>\S.*)"
+)
+
+# Phase 04-prep — recogniser for the `// scripted_spawn: ...` inline
+# comment that licenses a `WeaponFamilyEmitted(F)` predicate whose
+# spawn-side evidence is a `kOrderWeapon` script entry (policy P5).
+SCRIPTED_SPAWN_RX = re.compile(
+    r"//\s*scripted_spawn\s*:\s*(?P<reason>\S.*)"
+)
+
 # unjustified_widening rule grammar — inline C++ comment attached to a
 # widened predicate. Must include a reason of at least 20 characters and
 # a `; commit <hex 7..40>` trailing token.
@@ -345,6 +387,89 @@ WIDENING_JUSTIFICATION_RX = re.compile(
 # triggering the unjustified_widening rule. Mirrors the spec threshold of
 # 200 hp-cents = 2.0 hp.
 HP_RANGE_TIGHT_MAX_CENTS = 200
+
+
+def parse_spawn_arrays(text: str) -> dict[str, list[dict]]:
+    """Phase 04-prep — return {array_name: [{family, team, order,
+    default_weapon, current_weapon}, ...]}.
+
+    Used by `family_alias_mismatch` to verify that a behavioural
+    predicate that names a treasure / weapon family-id has corresponding
+    spawn-side evidence in the scenario's `SpawnSpec[]` array. We only
+    need the first seven fields (family, team, order, x, y,
+    default_weapon, current_weapon) so the parser ignores the
+    Phase 01 tail fields (stats_level, magicpoints, precompleted_level).
+    """
+    out: dict[str, list[dict]] = {}
+    head_rx = re.compile(
+        r"inline\s+constexpr\s+SpawnSpec\s+(k\w+)\s*\[\]\s*=\s*\{",
+    )
+    for hm in head_rx.finditer(text):
+        name = hm.group(1)
+        start = hm.end()
+        depth = 1
+        i = start
+        in_str = False
+        while i < len(text) and depth > 0:
+            c = text[i]
+            if in_str:
+                if c == "\\":
+                    i += 2
+                    continue
+                if c == '"':
+                    in_str = False
+            else:
+                if c == '"':
+                    in_str = True
+                elif c == "{":
+                    depth += 1
+                elif c == "}":
+                    depth -= 1
+                    if depth == 0:
+                        break
+            i += 1
+        body = text[start:i]
+        entries: list[dict] = []
+        # Each entry is `{ family, team, order, x, y, default_weapon, current_weapon, ... }`.
+        for entry_match in re.finditer(r"\{([^{}]*)\}", body):
+            inner = entry_match.group(1)
+            # Mask string literals so commas inside them don't split.
+            masked = re.sub(
+                r'"(?:\\.|[^"\\])*"',
+                lambda mm: " " * len(mm.group(0)),
+                inner,
+            )
+            parts: list[tuple[int, int]] = []
+            depth2 = 0
+            seg_start = 0
+            for j, ch in enumerate(masked):
+                if ch == "(":
+                    depth2 += 1
+                elif ch == ")":
+                    depth2 -= 1
+                elif ch == "," and depth2 == 0:
+                    parts.append((seg_start, j))
+                    seg_start = j + 1
+            parts.append((seg_start, len(masked)))
+            seg_strs = [inner[s:e].strip() for s, e in parts]
+            if len(seg_strs) < 7:
+                continue
+            family = parse_int_arg(seg_strs[0])
+            team   = parse_int_arg(seg_strs[1])
+            order  = re.sub(r"/\*.*?\*/", "", seg_strs[2], flags=re.DOTALL).strip()
+            default_weapon = parse_int_arg(seg_strs[5])
+            current_weapon = parse_int_arg(seg_strs[6])
+            if family is None or team is None:
+                continue
+            entries.append({
+                "family":         family,
+                "team":           team,
+                "order":          order,
+                "default_weapon": default_weapon if default_weapon is not None else 0,
+                "current_weapon": current_weapon if current_weapon is not None else 0,
+            })
+        out[name] = entries
+    return out
 
 
 def _classify_widened(kind: str, args: list[str]) -> "tuple[bool, str]":
@@ -385,6 +510,7 @@ def main() -> int:
     pred_calls  = parse_predicate_calls(text)
     mutations   = parse_mutation_constants(text)
     rows        = parse_scenarios(text)
+    spawn_arrays = parse_spawn_arrays(text)
 
     # Spec-mandated rule (Phase 03 unjustified_widening): every widened
     # range predicate (WalkerFamilyCount / WalkerOfTeamAlive with
@@ -430,6 +556,186 @@ def main() -> int:
                     f"{arr_name}[#{i}]: unqualified EffectFamilyCount "
                     f"(arg3={arg3}, arg4={arg4}); must have source-walker "
                     f"family (arg3>=0) OR tick-window upper (arg4>0)")
+
+    # Phase 04-prep — dead_predicate rule. Detects rows where the
+    # outer pred:: wrapper is `branch_only(pred::master_only(...))` (or
+    # the symmetric inversion). The runtime gate also asserts this at
+    # test time (`Parity.behavioural_coverage_gate_no_dead_predicates`);
+    # the lint catches the violation pre-build so source-level patches
+    # never reach a build that would otherwise pass.
+    dead_predicate_errors: list[str] = []
+    for arr_name, preds in pred_calls.items():
+        for i, pred in enumerate(preds):
+            kind = pred["kind"]
+            args = pred["args"]
+            raw_args = ",".join(args)
+            outer_is_branch_only = kind == "branch_only"
+            outer_is_master_only = kind == "master_only"
+            if outer_is_branch_only and "master_only" in raw_args:
+                dead_predicate_errors.append(
+                    f"{arr_name}[#{i}]: dead_predicate — "
+                    f"branch_only wrapping master_only short-circuits both "
+                    f"sides (applies_to_master=false AND applies_to_branch=false)")
+            elif outer_is_master_only and "branch_only" in raw_args:
+                dead_predicate_errors.append(
+                    f"{arr_name}[#{i}]: dead_predicate — "
+                    f"master_only wrapping branch_only short-circuits both "
+                    f"sides (applies_to_master=false AND applies_to_branch=false)")
+
+    # Phase 04-prep — vacuous_event_floor rule. Rejects
+    # `EventKindAtLeast(*, 0)`: the predicate "at least 0 events of
+    # kind K" always passes, so it carries no behavioural binding and
+    # cannot be flipped by any mutation (policy P4).
+    vacuous_event_floor_errors: list[str] = []
+    for arr_name, preds in pred_calls.items():
+        for i, pred in enumerate(preds):
+            if pred["kind"] != "EventKindAtLeast":
+                continue
+            args = pred["args"]
+            if len(args) < 2:
+                continue
+            mn = parse_int_arg(args[1])
+            if mn == 0:
+                vacuous_event_floor_errors.append(
+                    f"{arr_name}[#{i}]: vacuous_event_floor — "
+                    f"EventKindAtLeast(arg0={args[0]}, 0) always passes; "
+                    f"use EventKindAtLeast(*, 1) or EventKindExactly(*, n)")
+
+    # Phase 04-prep — zero_zero_count_no_negation rule. A
+    # `WalkerFamilyCount(F, 0, 0)` or `EffectFamilyCount(F, 0, 0)`
+    # predicate is an assertion that the family is absent. That is
+    # only honest as a paired negative assertion (policy P3), so the
+    # source row MUST carry an inline `// negative_assertion: <reason>`
+    # comment that the lint can grep for. Absent comment -> violation.
+    zero_zero_count_errors: list[str] = []
+    for arr_name, preds in pred_calls.items():
+        for i, pred in enumerate(preds):
+            kind = pred["kind"]
+            if kind not in ("WalkerFamilyCount", "EffectFamilyCount"):
+                continue
+            args = pred["args"]
+            if len(args) < 3:
+                continue
+            mn = parse_int_arg(args[1])
+            mx = parse_int_arg(args[2])
+            if mn != 0 or mx != 0:
+                continue
+            trail = pred.get("trail", "")
+            if not NEGATIVE_ASSERTION_RX.search(trail):
+                zero_zero_count_errors.append(
+                    f"{arr_name}[#{i}]: zero_zero_count_no_negation — "
+                    f"{kind}(arg0={args[0]}, 0, 0) needs inline "
+                    f"`// negative_assertion: <reason>` comment between "
+                    f"this predicate and the next (policy P3)")
+
+    # Phase 04-prep — family_alias_mismatch and caster_zero_min rules.
+    # Both require mapping a scenario row -> its kFacts_* predicate
+    # array and its kSpawns_* spawn array. Iterate `rows` and apply
+    # both checks per scenario.
+    family_alias_errors: list[str] = []
+    caster_zero_min_errors: list[str] = []
+    for row in rows:
+        sid       = row["id"]
+        facts_ref = row["expected_facts"]
+        if facts_ref == "nullptr":
+            continue
+        preds = pred_calls.get(facts_ref, [])
+        if not preds:
+            continue
+
+        spawn_ref_match = re.search(r"(k\w*Spawns_\w+)", row["raw"])
+        spawn_name = spawn_ref_match.group(1) if spawn_ref_match else ""
+        spawns     = spawn_arrays.get(spawn_name, [])
+
+        # caster_zero_min — special_<family>_<idx>_scen* rows where the
+        # caster's WalkerFamilyCount predicate has min=0 max=2. The
+        # caster is the team-0 wielder in the scenario's spawn list,
+        # which is guaranteed alive at scenario start, so the only
+        # honest range for the caster family is (1, 1) at minimum.
+        sm = SPECIAL_RX.match(sid)
+        caster_family_id: "int | None" = None
+        if sm:
+            name = sm.group("family")
+            caster_family_id = FAMILY_NAME_TO_ID.get(name)
+            if caster_family_id is None:
+                # Spawn-list fallback: take the first team-0 living entry's
+                # family-id, which is the caster by spawn convention.
+                for sp in spawns:
+                    if sp.get("team") == 0 and sp.get("order", "").endswith("Living"):
+                        caster_family_id = sp.get("family")
+                        break
+        if caster_family_id is not None:
+            for i, pred in enumerate(preds):
+                if pred["kind"] != "WalkerFamilyCount":
+                    continue
+                args = pred["args"]
+                if len(args) < 3:
+                    continue
+                arg0 = parse_int_arg(args[0])
+                mn   = parse_int_arg(args[1])
+                mx   = parse_int_arg(args[2])
+                if arg0 == caster_family_id and mn == 0 and mx == 2:
+                    caster_zero_min_errors.append(
+                        f"{facts_ref}[#{i}] (scenario {sid}): "
+                        f"caster_zero_min — WalkerFamilyCount("
+                        f"caster_family={caster_family_id}, 0, 2) "
+                        f"vacuous; caster is alive + unique at scenario "
+                        f"start, the only honest range is (1, 1) "
+                        f"(policy P8)")
+
+        # family_alias_mismatch — each TreasureFamilyRemovedFromOblist(F)
+        # or WeaponFamilyEmitted(F) predicate must have spawn-side
+        # evidence in the scenario's SpawnSpec[] array:
+        #   * TreasureFamilyRemovedFromOblist(F): an entry with
+        #     order=kOrderTreasure and family=F.
+        #   * WeaponFamilyEmitted(F): EITHER (a) order=kOrderWeapon and
+        #     family=F AND the predicate carries an inline
+        #     `// scripted_spawn: ...` comment that explains the
+        #     scripted spawn; OR (b) a kOrderLiving entry whose
+        #     default_weapon=F (set_default_weapon).
+        for i, pred in enumerate(preds):
+            kind = pred["kind"]
+            args = pred["args"]
+            if not args:
+                continue
+            family = parse_int_arg(args[0])
+            if family is None:
+                continue
+            trail = pred.get("trail", "")
+            if kind == "TreasureFamilyRemovedFromOblist":
+                ok = any(
+                    sp.get("family") == family and sp.get("order") == "kOrderTreasure"
+                    for sp in spawns
+                )
+                if not ok:
+                    family_alias_errors.append(
+                        f"{facts_ref}[#{i}] (scenario {sid}): "
+                        f"family_alias_mismatch — TreasureFamilyRemovedFromOblist"
+                        f"({family}) but {spawn_name or '<no spawn array>'} has "
+                        f"no kOrderTreasure entry with family-id == {family} "
+                        f"(policy P6)")
+            elif kind == "WeaponFamilyEmitted":
+                via_weapon_order = any(
+                    sp.get("family") == family and sp.get("order") == "kOrderWeapon"
+                    for sp in spawns
+                )
+                via_default_weapon = any(
+                    sp.get("order") == "kOrderLiving" and
+                    sp.get("default_weapon") == family
+                    for sp in spawns
+                )
+                has_scripted_spawn_comment = bool(SCRIPTED_SPAWN_RX.search(trail))
+                ok_a = via_weapon_order and has_scripted_spawn_comment
+                ok_b = via_default_weapon
+                if not (ok_a or ok_b):
+                    family_alias_errors.append(
+                        f"{facts_ref}[#{i}] (scenario {sid}): "
+                        f"family_alias_mismatch — WeaponFamilyEmitted("
+                        f"{family}) but {spawn_name or '<no spawn array>'} "
+                        f"has no kOrderLiving wielder with default_weapon=={family} "
+                        f"AND no kOrderWeapon entry with family-id == {family} "
+                        f"paired with a `// scripted_spawn:` predicate-trail "
+                        f"comment (policy P6)")
 
     if not rows:
         sys.stderr.write("lint: no scenario rows parsed\n")
@@ -546,7 +852,16 @@ def main() -> int:
                                 f"(team-0 SpawnSpec stats_level>={floor_level} "
                                 f"AND magicpoints>=600)")
 
-    all_errors = errors + effect_lint_errors + widening_lint_errors
+    all_errors = (
+        errors
+        + effect_lint_errors
+        + widening_lint_errors
+        + dead_predicate_errors
+        + vacuous_event_floor_errors
+        + zero_zero_count_errors
+        + family_alias_errors
+        + caster_zero_min_errors
+    )
 
     if all_errors:
         sys.stderr.write("lint_scenario_facts: FAIL\n")

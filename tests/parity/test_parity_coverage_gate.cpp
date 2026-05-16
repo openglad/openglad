@@ -36,6 +36,7 @@
 
 #include "coverage_targets.h"
 #include "fact_predicate.h"
+#include "golden_evaluation_helper.h"
 #include "parity_runner.h"
 #include "scenario_table.h"
 #include "state_dump.h"
@@ -454,4 +455,142 @@ TEST(Parity, behavioural_coverage_gate)
 
     EXPECT_TRUE(missing.empty())
         << format_missing("behavioural cumulative coverage", missing);
+}
+
+// --- Phase 04-prep — runtime behavioural gate ------------------------------
+//
+// The static `arg0`-scan gates above only confirm that a predicate of the
+// right shape *exists*; they do not enforce that the predicate actually
+// flips when evaluated against the committed master golden. Phase 04-prep
+// adds the runtime gate the per-family sub-phases depend on:
+//
+//   Parity.behavioural_coverage_gate_runtime
+//     For every master-comparable scenario in `kScenarios` that has at
+//     least one non-`TickReached` predicate, load
+//     `tests/parity/golden/<id>.json` (skip if missing — that is the
+//     per-family sub-phase's job), iterate the row's `expected_facts`
+//     and require >= 1 predicate where `applies_to_master == true`,
+//     `evaluate_one` returns `ok=true` with `indeterminate=false`, and
+//     the predicate kind is NOT `TickReached`. A scenario whose
+//     master-side predicates all skip (gated off, indeterminate, or
+//     `TickReached`-only) fails the gate.
+//
+//   Parity.behavioural_coverage_gate_no_dead_predicates
+//     Every `FactPredicate` row whose `applies_to_master == false` AND
+//     `applies_to_branch == false` is a fatal error — that combination
+//     short-circuits both sides of the parity comparison and is vacuous
+//     by construction (policy P2).
+
+namespace {
+
+bool scenario_has_non_tick_predicate(const og::parity::ScenarioSpec& spec)
+{
+    if (spec.expected_facts == nullptr || spec.fact_count == 0)
+        return false;
+    for (std::size_t i = 0; i < spec.fact_count; ++i)
+        if (spec.expected_facts[i].kind != og::parity::FactKind::TickReached)
+            return true;
+    return false;
+}
+
+std::string format_runtime_failure(std::string_view scenario_id,
+                                   const og::parity::GoldenEvaluation& ev)
+{
+    std::ostringstream os;
+    os << scenario_id
+       << ": no non-TickReached master-side predicate evaluated TRUE on the "
+          "committed golden; per-predicate trace:";
+    if (ev.predicates.empty())
+        os << " <empty>";
+    for (const auto& pe : ev.predicates)
+    {
+        os << "\n      [#" << pe.index
+           << "] kind=" << static_cast<unsigned>(pe.kind)
+           << " arg0=" << pe.arg0
+           << " atm=" << (pe.applies_to_master ? "Y" : "N")
+           << " atb=" << (pe.applies_to_branch ? "Y" : "N")
+           << " ok=" << (pe.ok ? "Y" : "N")
+           << " indet=" << (pe.indeterminate ? "Y" : "N");
+        if (!pe.message.empty())
+            os << " msg=\"" << pe.message << "\"";
+    }
+    return os.str();
+}
+
+} // namespace
+
+TEST(Parity, behavioural_coverage_gate_runtime)
+{
+    std::vector<std::string> failures;
+    std::vector<std::string> skipped_missing_golden;
+
+    for (const auto& spec : og::parity::kScenarios)
+    {
+        if (spec.is_branch_internal) continue;
+        if (spec.compare_mode == og::parity::CompareMode::Invariant) continue;
+        if (!scenario_has_non_tick_predicate(spec)) continue;
+
+        const og::parity::GoldenEvaluation ev =
+            og::parity::evaluate_facts_against_golden_for_id(spec.id);
+
+        if (!ev.scenario_present)
+        {
+            failures.push_back(std::string(spec.id) +
+                ": helper reported scenario not present in kScenarios "
+                "(internal error)");
+            continue;
+        }
+
+        if (!ev.golden_present)
+        {
+            // Per the Phase 04-prep contract: missing goldens are the
+            // per-family sub-phase's responsibility. Skip without
+            // failing — the parent sub-phase's own gate will catch
+            // unpopulated rows.
+            skipped_missing_golden.push_back(std::string(spec.id));
+            continue;
+        }
+
+        if (!ev.parse_ok)
+        {
+            failures.push_back(std::string(spec.id) +
+                ": parse_state_dump rejected the committed golden (" +
+                ev.load_error + ")");
+            continue;
+        }
+
+        if (!ev.any_non_tick_master_pass())
+            failures.push_back(format_runtime_failure(spec.id, ev));
+    }
+
+    EXPECT_TRUE(failures.empty())
+        << format_missing("runtime behavioural gate", failures)
+        << "\n  (scenarios skipped — no committed golden yet: "
+        << skipped_missing_golden.size() << ")";
+}
+
+TEST(Parity, behavioural_coverage_gate_no_dead_predicates)
+{
+    std::vector<std::string> failures;
+    for (const auto& spec : og::parity::kScenarios)
+    {
+        if (spec.expected_facts == nullptr) continue;
+        for (std::size_t i = 0; i < spec.fact_count; ++i)
+        {
+            const auto& p = spec.expected_facts[i];
+            if (!p.applies_to_master && !p.applies_to_branch)
+            {
+                std::ostringstream os;
+                os << spec.id << "[#" << i << "] kind="
+                   << static_cast<unsigned>(p.kind)
+                   << " arg0=" << p.arg0
+                   << " — applies_to_master=false AND applies_to_branch=false "
+                      "(dead predicate; both sides short-circuit, evaluation "
+                      "is vacuous)";
+                failures.push_back(os.str());
+            }
+        }
+    }
+    EXPECT_TRUE(failures.empty())
+        << format_missing("dead predicates", failures);
 }
