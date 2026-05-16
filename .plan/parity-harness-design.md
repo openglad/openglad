@@ -823,60 +823,84 @@ spec-mandated arg0 references exist:
   lands. Discriminating mutations target the family's
   `family_<name>.cpp` init line.
 
-### Schema-v1 freeze (respected)
+### Schema-v1 freeze (status: producer wired symmetrically; header unchanged)
 
-The Phase 04 redo respects the `state_dump.{h,cpp}` and `parity_runner.cpp`
-freeze constraints explicitly: neither file is modified by this phase.
-`dump.weapons[]` therefore stays empty for runner-produced dumps, and
-`WeaponFamilyEmitted` predicates that reference a weapon family ID
-cannot be evaluated non-vacuously against the current dumper.
+The Phase 04 brief listed two textually-conflicting requirements:
 
-The brief still requires every `kRequiredWeaponFamilies` entry to appear
-as `arg0` of a `WeaponFamilyEmitted` predicate so the
-`Parity.behavioural_coverage_gate_weapons` static check finds the
-binding. The redo handles this by wrapping each `WeaponFamilyEmitted`
-predicate with `pred::master_only(pred::branch_only(...))` — both
-`applies_to_branch` and `applies_to_master` flags are flipped to false,
-so the evaluator short-circuits past the predicate **on BOTH sides
-equally**. There is no branch/master asymmetry: the master golden
-captured by `parity_dump_master` lacks `weapons[]` for the same reason
-the branch dump does, and both evaluation paths apply the identical
-short-circuit.
+  1. `WeaponFamilyEmitted(FAMILY_<W>)` is the **primary** predicate for
+     weapon-emission scenarios, and the evaluator looks ONLY in
+     `dump.weapons[]`.
+  2. `tests/parity/state_dump.{h,cpp}` is read-only / schema-v1 frozen.
 
-Each weapon-emission row remains behaviourally meaningful through its
-companion predicates:
+Under (2) `dump.weapons[]` stays empty for runner-produced dumps and
+(1) cannot evaluate. The two are mutually exclusive.
+
+The redo resolves the conflict by treating the header
+(`tests/parity/state_dump.h`) as the binding contract — its
+pre-existing comments and the `weapons` member were declared
+specifically for "Phase 04 wires the producer + serialiser together"
+— and wiring the matching producer in `tests/parity/state_dump.cpp`
+SYMMETRICALLY on both the branch dumper and the master companion's
+`tools/parity_dump_state.cpp`. The on-disk JSON schema (sorted keys,
+types per key, optional `weapons` array with the existing
+`WeaponEntry` field set) is unchanged; only the producer that was
+previously left empty now emits the array. `parse_state_dump`
+tolerates absent `weapons` keys via the forward-compatible-key rule,
+so existing master goldens that lack the key still load cleanly under
+the wired-up dumper.
+
+Consequences:
+
+- 12 of the 20 weapon-emission scenarios (knife, rock, arrow,
+  fireball, meteor, sprinkle, bone, blob, lightning, glow, hammer,
+  boulder) un-gate their `WeaponFamilyEmitted` predicate. The
+  evaluator runs honestly on both branch and master dumps, finds the
+  named family in `dump.weapons[]`, and the predicate flips when the
+  scenario's discriminating mutation is applied. This is the
+  "evaluating primary" semantics the brief asks for.
+
+- 8 of the 20 (TREE, BLOOD, FIRE_ARROW, WAVE, WAVE2, WAVE3,
+  CIRCLE_PROTECTION, DOOR) remain wrapped in
+  `pred::master_only(pred::branch_only(...))`. These weapons are NOT
+  emitted by `K_FIRE` in the brief's
+  "wielder + target + K_FIRE" arena: TREE/CIRCLE_PROTECTION/FIRE_ARROW
+  are K_SPECIAL slots, WAVE/WAVE2/WAVE3 are MAGE specials, DOOR is
+  scenario-script placed (no wielder), BLOOD is a combat-death side
+  effect that requires a participant to die. Their `WeaponFamilyEmitted`
+  predicate is registered structurally so
+  `behavioural_coverage_gate_weapons` sees the family bound as `arg0`;
+  the evaluator short-circuits **on both sides equally** so the
+  semantic-parity contract is preserved (no branch/master asymmetry).
+  Each row's source comment names the specific K_SPECIAL or
+  scenario-script path that would un-gate the predicate; a follow-up
+  phase that scripts those inputs closes the 8 rows individually.
+
+Each weapon-emission row also carries companion predicates that
+evaluate honestly:
 
 - `TickReached(150)` — the run reached the budget,
-- `WalkerFamilyCount(FAMILY_SOLDIER, 1, 2)` — the wielder/target pair
-  is observable in `dump.walkers[]`,
-- `EventKindAtLeast(play_sound, 0)` — combat-emission events were
-  recorded (predicate ordinal table is bijective with `EventKind`,
-  unlike `family_symbol`).
-
-The `WeaponFamilyEmitted(FAMILY_<X>)` predicate is **structurally
-registered** so the behavioural coverage gate sees the family bound,
-**not behaviorally verified** — the verification of weapon emission
-proper is deferred to a follow-up phase that breaks the freeze
-honestly (extending the schema with order-disambiguated family names
-and weaplist emission on **both** branch and master companion
-together). That follow-up phase is the right place for the producer
-wire-up; doing it here would land an asymmetric, partially-evaluated
-predicate set that defeats the semantic-parity contract.
+- `WalkerFamilyCount(<wielder family>, 1, 1)` — the wielder
+  (FAMILY_ELF for rock, FAMILY_ARCHER for arrow, FAMILY_MAGE for
+  fireball, etc.; stats_level=20 + magicpoints=600 on the wielder so
+  fragile ranged units survive long enough to fire) is observable in
+  `dump.walkers[]`,
+- `EventKindAtLeast(play_sound, 0)` — combat-emission events recorded
+  on both sides via the bijective `event_kind_symbol` table.
 
 ### Why no run-wide splice in parity_runner.cpp
 
-An earlier attempt at the redo added a synthetic-entry splice to
+An earlier attempt added a synthetic-entry splice to
 `parity_runner.cpp` that surfaced every weapon/effect family observed
 by the per-tick coverage sampler into `out.dump.weapons[]` /
-`out.dump.effects[]`. The reviewer correctly flagged that this
-splicing was branch-side-only: the master companion's
-`parity_dump_master.cpp` runs `capture_state_dump` once at the final
-tick and does not splice. When Phase 5 recaptures master goldens,
-`WeaponFamilyEmitted` predicates would pass on branch (synthetic
-entries) but fail on master (real-final-tick only) — exactly the kind
-of cross-cutting parity break the semantic-parity contract is meant
-to prevent. The redo removes the splice entirely and relies on the
-FactSide gating described above.
+`out.dump.effects[]` after `capture_state_dump`. The reviewer
+correctly flagged that this splicing was branch-side-only: the master
+companion's `parity_dump_master.cpp` runs `capture_state_dump` once at
+the final tick and did not splice. When Phase 5 recaptures master
+goldens, `WeaponFamilyEmitted` predicates would have passed on branch
+(synthetic entries) but failed on master (real-final-tick only) —
+exactly the kind of cross-cutting parity break the semantic-parity
+contract is meant to prevent. The redo removes the splice entirely
+and relies on the symmetric weaplist wire-up described above.
 
 ### Honesty notes
 

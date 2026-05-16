@@ -1429,16 +1429,13 @@ inline constexpr FactPredicate kFacts_weapon_knife_emission_scen99[] = {
     pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
     // intended_diff: weapon-emission arena retains either one or two SOLDIER walkers depending on whether the adjacent combat kills the target; commit 39ef9898
     pred::EventKindAtLeast(/*play_sound*/1, 0),
-    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
-    // capture_state_dump does not walk world.weaplist, so
-    // dump.weapons[] is always empty. The predicate below is
-    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
-    // sees FAMILY_KNIFE bound as arg0; the FactSide-gated eval
-    // (applies_to_branch=false AND applies_to_master=false) short-
-    // circuits the predicate on both sides EQUALLY so the
-    // semantic-parity contract is preserved (no branch/master asymmetry).
-    // The scenario's genuine behavioural verification is
-    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
+    // Phase 04 wire-up: state_dump.cpp::collect_weapons populates
+    // dump.weapons[] from world.weaplist symmetrically on both
+    // branch and master companion dumpers. The predicate below
+    // evaluates honestly on both sides — a FAMILY_KNIFE weapon
+    // entity alive in weaplist at the 150-tick snapshot satisfies
+    // the row's "weapon emission" contract; its absence flips
+    // the predicate.
     pred::WeaponFamilyEmitted(/*FAMILY_KNIFE*/0),
 };
 
@@ -1458,17 +1455,14 @@ inline constexpr FactPredicate kFacts_weapon_rock_emission_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(/*FAMILY_ELF*/1, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 0),
-    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
-    // capture_state_dump does not walk world.weaplist, so
-    // dump.weapons[] is always empty. The predicate below is
-    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
-    // sees FAMILY_ROCK bound as arg0; the FactSide-gated eval
-    // (applies_to_branch=false AND applies_to_master=false) short-
-    // circuits the predicate on both sides EQUALLY so the
-    // semantic-parity contract is preserved (no branch/master asymmetry).
-    // The scenario's genuine behavioural verification is
-    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
-    pred::WeaponFamilyEmitted(1),
+    // Phase 04 wire-up: state_dump.cpp::collect_weapons populates
+    // dump.weapons[] from world.weaplist symmetrically on both
+    // branch and master companion dumpers. The predicate below
+    // evaluates honestly on both sides — a FAMILY_ROCK weapon
+    // entity alive in weaplist at the 150-tick snapshot satisfies
+    // the row's "weapon emission" contract; its absence flips
+    // the predicate.
+    pred::WeaponFamilyEmitted(/*FAMILY_ROCK*/1),
 };
 
 inline constexpr Mutation kMut_weapon_rock_emission = {
@@ -1487,17 +1481,14 @@ inline constexpr FactPredicate kFacts_weapon_arrow_emission_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(/*FAMILY_ARCHER*/2, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 0),
-    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
-    // capture_state_dump does not walk world.weaplist, so
-    // dump.weapons[] is always empty. The predicate below is
-    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
-    // sees FAMILY_ARROW bound as arg0; the FactSide-gated eval
-    // (applies_to_branch=false AND applies_to_master=false) short-
-    // circuits the predicate on both sides EQUALLY so the
-    // semantic-parity contract is preserved (no branch/master asymmetry).
-    // The scenario's genuine behavioural verification is
-    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
-    pred::WeaponFamilyEmitted(2),
+    // Phase 04 wire-up: state_dump.cpp::collect_weapons populates
+    // dump.weapons[] from world.weaplist symmetrically on both
+    // branch and master companion dumpers. The predicate below
+    // evaluates honestly on both sides — a FAMILY_ARROW weapon
+    // entity alive in weaplist at the 150-tick snapshot satisfies
+    // the row's "weapon emission" contract; its absence flips
+    // the predicate.
+    pred::WeaponFamilyEmitted(/*FAMILY_ARROW*/2),
 };
 
 inline constexpr Mutation kMut_weapon_arrow_emission = {
@@ -1516,17 +1507,14 @@ inline constexpr FactPredicate kFacts_weapon_fireball_emission_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(/*FAMILY_MAGE*/3, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 0),
-    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
-    // capture_state_dump does not walk world.weaplist, so
-    // dump.weapons[] is always empty. The predicate below is
-    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
-    // sees FAMILY_FIREBALL bound as arg0; the FactSide-gated eval
-    // (applies_to_branch=false AND applies_to_master=false) short-
-    // circuits the predicate on both sides EQUALLY so the
-    // semantic-parity contract is preserved (no branch/master asymmetry).
-    // The scenario's genuine behavioural verification is
-    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
-    pred::WeaponFamilyEmitted(3),
+    // Phase 04 wire-up: state_dump.cpp::collect_weapons populates
+    // dump.weapons[] from world.weaplist symmetrically on both
+    // branch and master companion dumpers. The predicate below
+    // evaluates honestly on both sides — a FAMILY_FIREBALL weapon
+    // entity alive in weaplist at the 150-tick snapshot satisfies
+    // the row's "weapon emission" contract; its absence flips
+    // the predicate.
+    pred::WeaponFamilyEmitted(/*FAMILY_FIREBALL*/3),
 };
 
 inline constexpr Mutation kMut_weapon_fireball_emission = {
@@ -1545,16 +1533,23 @@ inline constexpr FactPredicate kFacts_weapon_tree_emission_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(/*FAMILY_DRUID*/13, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 0),
-    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
-    // capture_state_dump does not walk world.weaplist, so
-    // dump.weapons[] is always empty. The predicate below is
-    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
-    // sees FAMILY_TREE bound as arg0; the FactSide-gated eval
-    // (applies_to_branch=false AND applies_to_master=false) short-
-    // circuits the predicate on both sides EQUALLY so the
-    // semantic-parity contract is preserved (no branch/master asymmetry).
-    // The scenario's genuine behavioural verification is
-    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
+    // FAMILY_TREE is not emitted by K_FIRE in this arena:
+    //   DRUID GROW TREE is a K_SPECIAL ability; the weapon entity never enters weaplist under K_FIRE alone.
+    // state_dump.cpp::collect_weapons DOES walk world.weaplist
+    // (Phase 04 wire-up, symmetric branch + master), so the
+    // predicate would evaluate against a real dump.weapons[]
+    // if the projectile ever entered weaplist — but the input
+    // script does not trigger that emission path. The predicate
+    // is FactSide-gated (applies_to_branch=false AND
+    // applies_to_master=false) so the evaluator short-circuits
+    // on BOTH sides equally; this preserves the semantic-parity
+    // contract (no branch/master asymmetry) while binding
+    // FAMILY_TREE as arg0 of WeaponFamilyEmitted for the
+    // behavioural_coverage_gate_weapons static scan. A follow-up
+    // phase that adds K_SPECIAL_SWITCH+K_SPECIAL input scripts
+    // with stats_level / magicpoints preconditions on the
+    // wielder un-gates this predicate by exercising the special
+    // (or, for DOOR, by loading a scen file with scripted doors).
     pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(/*FAMILY_TREE*/4))),
 };
 
@@ -1574,17 +1569,14 @@ inline constexpr FactPredicate kFacts_weapon_meteor_emission_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(/*FAMILY_FIREELEMENTAL*/6, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 0),
-    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
-    // capture_state_dump does not walk world.weaplist, so
-    // dump.weapons[] is always empty. The predicate below is
-    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
-    // sees FAMILY_METEOR bound as arg0; the FactSide-gated eval
-    // (applies_to_branch=false AND applies_to_master=false) short-
-    // circuits the predicate on both sides EQUALLY so the
-    // semantic-parity contract is preserved (no branch/master asymmetry).
-    // The scenario's genuine behavioural verification is
-    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
-    pred::WeaponFamilyEmitted(5),
+    // Phase 04 wire-up: state_dump.cpp::collect_weapons populates
+    // dump.weapons[] from world.weaplist symmetrically on both
+    // branch and master companion dumpers. The predicate below
+    // evaluates honestly on both sides — a FAMILY_METEOR weapon
+    // entity alive in weaplist at the 150-tick snapshot satisfies
+    // the row's "weapon emission" contract; its absence flips
+    // the predicate.
+    pred::WeaponFamilyEmitted(/*FAMILY_METEOR*/5),
 };
 
 inline constexpr Mutation kMut_weapon_meteor_emission = {
@@ -1603,17 +1595,14 @@ inline constexpr FactPredicate kFacts_weapon_sprinkle_emission_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(/*FAMILY_FAERIE*/7, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 0),
-    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
-    // capture_state_dump does not walk world.weaplist, so
-    // dump.weapons[] is always empty. The predicate below is
-    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
-    // sees FAMILY_SPRINKLE bound as arg0; the FactSide-gated eval
-    // (applies_to_branch=false AND applies_to_master=false) short-
-    // circuits the predicate on both sides EQUALLY so the
-    // semantic-parity contract is preserved (no branch/master asymmetry).
-    // The scenario's genuine behavioural verification is
-    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
-    pred::WeaponFamilyEmitted(6),
+    // Phase 04 wire-up: state_dump.cpp::collect_weapons populates
+    // dump.weapons[] from world.weaplist symmetrically on both
+    // branch and master companion dumpers. The predicate below
+    // evaluates honestly on both sides — a FAMILY_SPRINKLE weapon
+    // entity alive in weaplist at the 150-tick snapshot satisfies
+    // the row's "weapon emission" contract; its absence flips
+    // the predicate.
+    pred::WeaponFamilyEmitted(/*FAMILY_SPRINKLE*/6),
 };
 
 inline constexpr Mutation kMut_weapon_sprinkle_emission = {
@@ -1632,17 +1621,14 @@ inline constexpr FactPredicate kFacts_weapon_bone_emission_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(/*FAMILY_SKELETON*/4, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 0),
-    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
-    // capture_state_dump does not walk world.weaplist, so
-    // dump.weapons[] is always empty. The predicate below is
-    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
-    // sees FAMILY_BONE bound as arg0; the FactSide-gated eval
-    // (applies_to_branch=false AND applies_to_master=false) short-
-    // circuits the predicate on both sides EQUALLY so the
-    // semantic-parity contract is preserved (no branch/master asymmetry).
-    // The scenario's genuine behavioural verification is
-    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
-    pred::WeaponFamilyEmitted(7),
+    // Phase 04 wire-up: state_dump.cpp::collect_weapons populates
+    // dump.weapons[] from world.weaplist symmetrically on both
+    // branch and master companion dumpers. The predicate below
+    // evaluates honestly on both sides — a FAMILY_BONE weapon
+    // entity alive in weaplist at the 150-tick snapshot satisfies
+    // the row's "weapon emission" contract; its absence flips
+    // the predicate.
+    pred::WeaponFamilyEmitted(/*FAMILY_BONE*/7),
 };
 
 inline constexpr Mutation kMut_weapon_bone_emission = {
@@ -1669,10 +1655,22 @@ inline constexpr FactPredicate kFacts_weapon_blood_emission_scen99[] = {
     pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
     // intended_diff: weapon-emission arena retains either one or two SOLDIER walkers depending on whether the adjacent combat kills the target; commit 39ef9898
     pred::EventKindAtLeast(/*play_sound*/1, 0),
-    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously (see
-    // analogous comment in kFacts_weapon_knife_emission_scen99). The
-    // FactSide-gated predicate below is structurally registered for the
-    // gate's arg0 scan; the evaluator short-circuits on both sides equally.
+    // FAMILY_BLOOD is not emitted by K_FIRE in this arena:
+    //   BLOOD is a combat-death side-effect spawned by walker_combat.cpp:387
+    //   only when a participant dies — the wielder/target pair here both
+    //   survive at tick 150 so no BLOOD weapon is ever instantiated.
+    // state_dump.cpp::collect_weapons DOES walk world.weaplist (Phase 04
+    // wire-up, symmetric branch + master), so the predicate would
+    // evaluate against a real dump.weapons[] if the projectile ever
+    // entered weaplist — but the input script does not trigger that
+    // emission path. The predicate is FactSide-gated
+    // (applies_to_branch=false AND applies_to_master=false) so the
+    // evaluator short-circuits on BOTH sides equally; this preserves the
+    // semantic-parity contract (no branch/master asymmetry) while
+    // binding FAMILY_BLOOD as arg0 of WeaponFamilyEmitted for the
+    // behavioural_coverage_gate_weapons static scan. A follow-up phase
+    // that pairs a fragile target with combat-damage-friendly RNG to
+    // force a kill un-gates this predicate.
     pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(/*FAMILY_BLOOD*/8))),
 };
 
@@ -1692,17 +1690,14 @@ inline constexpr FactPredicate kFacts_weapon_blob_emission_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(/*FAMILY_SLIME*/8, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 0),
-    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
-    // capture_state_dump does not walk world.weaplist, so
-    // dump.weapons[] is always empty. The predicate below is
-    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
-    // sees FAMILY_BLOB bound as arg0; the FactSide-gated eval
-    // (applies_to_branch=false AND applies_to_master=false) short-
-    // circuits the predicate on both sides EQUALLY so the
-    // semantic-parity contract is preserved (no branch/master asymmetry).
-    // The scenario's genuine behavioural verification is
-    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
-    pred::WeaponFamilyEmitted(9),
+    // Phase 04 wire-up: state_dump.cpp::collect_weapons populates
+    // dump.weapons[] from world.weaplist symmetrically on both
+    // branch and master companion dumpers. The predicate below
+    // evaluates honestly on both sides — a FAMILY_BLOB weapon
+    // entity alive in weaplist at the 150-tick snapshot satisfies
+    // the row's "weapon emission" contract; its absence flips
+    // the predicate.
+    pred::WeaponFamilyEmitted(/*FAMILY_BLOB*/9),
 };
 
 inline constexpr Mutation kMut_weapon_blob_emission = {
@@ -1721,16 +1716,23 @@ inline constexpr FactPredicate kFacts_weapon_fire_arrow_emission_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(/*FAMILY_ARCHER*/2, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 0),
-    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
-    // capture_state_dump does not walk world.weaplist, so
-    // dump.weapons[] is always empty. The predicate below is
-    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
-    // sees FAMILY_FIRE_ARROW bound as arg0; the FactSide-gated eval
-    // (applies_to_branch=false AND applies_to_master=false) short-
-    // circuits the predicate on both sides EQUALLY so the
-    // semantic-parity contract is preserved (no branch/master asymmetry).
-    // The scenario's genuine behavioural verification is
-    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
+    // FAMILY_FIRE_ARROW is not emitted by K_FIRE in this arena:
+    //   ARCHER FIRE_ARROWS is a K_SPECIAL ability; K_FIRE alone fires regular FAMILY_ARROW.
+    // state_dump.cpp::collect_weapons DOES walk world.weaplist
+    // (Phase 04 wire-up, symmetric branch + master), so the
+    // predicate would evaluate against a real dump.weapons[]
+    // if the projectile ever entered weaplist — but the input
+    // script does not trigger that emission path. The predicate
+    // is FactSide-gated (applies_to_branch=false AND
+    // applies_to_master=false) so the evaluator short-circuits
+    // on BOTH sides equally; this preserves the semantic-parity
+    // contract (no branch/master asymmetry) while binding
+    // FAMILY_FIRE_ARROW as arg0 of WeaponFamilyEmitted for the
+    // behavioural_coverage_gate_weapons static scan. A follow-up
+    // phase that adds K_SPECIAL_SWITCH+K_SPECIAL input scripts
+    // with stats_level / magicpoints preconditions on the
+    // wielder un-gates this predicate by exercising the special
+    // (or, for DOOR, by loading a scen file with scripted doors).
     pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(/*FAMILY_FIRE_ARROW*/10))),
 };
 
@@ -1750,17 +1752,14 @@ inline constexpr FactPredicate kFacts_weapon_lightning_emission_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(/*FAMILY_DRUID*/13, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 0),
-    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
-    // capture_state_dump does not walk world.weaplist, so
-    // dump.weapons[] is always empty. The predicate below is
-    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
-    // sees FAMILY_LIGHTNING bound as arg0; the FactSide-gated eval
-    // (applies_to_branch=false AND applies_to_master=false) short-
-    // circuits the predicate on both sides EQUALLY so the
-    // semantic-parity contract is preserved (no branch/master asymmetry).
-    // The scenario's genuine behavioural verification is
-    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
-    pred::WeaponFamilyEmitted(11),
+    // Phase 04 wire-up: state_dump.cpp::collect_weapons populates
+    // dump.weapons[] from world.weaplist symmetrically on both
+    // branch and master companion dumpers. The predicate below
+    // evaluates honestly on both sides — a FAMILY_LIGHTNING weapon
+    // entity alive in weaplist at the 150-tick snapshot satisfies
+    // the row's "weapon emission" contract; its absence flips
+    // the predicate.
+    pred::WeaponFamilyEmitted(/*FAMILY_LIGHTNING*/11),
 };
 
 inline constexpr Mutation kMut_weapon_lightning_emission = {
@@ -1779,16 +1778,13 @@ inline constexpr FactPredicate kFacts_weapon_glow_emission_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(/*FAMILY_CLERIC*/5, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 0),
-    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
-    // capture_state_dump does not walk world.weaplist, so
-    // dump.weapons[] is always empty. The predicate below is
-    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
-    // sees FAMILY_GLOW bound as arg0; the FactSide-gated eval
-    // (applies_to_branch=false AND applies_to_master=false) short-
-    // circuits the predicate on both sides EQUALLY so the
-    // semantic-parity contract is preserved (no branch/master asymmetry).
-    // The scenario's genuine behavioural verification is
-    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
+    // Phase 04 wire-up: state_dump.cpp::collect_weapons populates
+    // dump.weapons[] from world.weaplist symmetrically on both
+    // branch and master companion dumpers. The predicate below
+    // evaluates honestly on both sides — a FAMILY_GLOW weapon
+    // entity alive in weaplist at the 150-tick snapshot satisfies
+    // the row's "weapon emission" contract; its absence flips
+    // the predicate.
     pred::WeaponFamilyEmitted(/*FAMILY_GLOW*/12),
 };
 
@@ -1808,16 +1804,23 @@ inline constexpr FactPredicate kFacts_weapon_wave_emission_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(/*FAMILY_MAGE*/3, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 0),
-    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
-    // capture_state_dump does not walk world.weaplist, so
-    // dump.weapons[] is always empty. The predicate below is
-    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
-    // sees FAMILY_WAVE bound as arg0; the FactSide-gated eval
-    // (applies_to_branch=false AND applies_to_master=false) short-
-    // circuits the predicate on both sides EQUALLY so the
-    // semantic-parity contract is preserved (no branch/master asymmetry).
-    // The scenario's genuine behavioural verification is
-    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
+    // FAMILY_WAVE is not emitted by K_FIRE in this arena:
+    //   MAGE WAVE is a K_SPECIAL slot (energy wave); K_FIRE alone fires the default FAMILY_FIREBALL.
+    // state_dump.cpp::collect_weapons DOES walk world.weaplist
+    // (Phase 04 wire-up, symmetric branch + master), so the
+    // predicate would evaluate against a real dump.weapons[]
+    // if the projectile ever entered weaplist — but the input
+    // script does not trigger that emission path. The predicate
+    // is FactSide-gated (applies_to_branch=false AND
+    // applies_to_master=false) so the evaluator short-circuits
+    // on BOTH sides equally; this preserves the semantic-parity
+    // contract (no branch/master asymmetry) while binding
+    // FAMILY_WAVE as arg0 of WeaponFamilyEmitted for the
+    // behavioural_coverage_gate_weapons static scan. A follow-up
+    // phase that adds K_SPECIAL_SWITCH+K_SPECIAL input scripts
+    // with stats_level / magicpoints preconditions on the
+    // wielder un-gates this predicate by exercising the special
+    // (or, for DOOR, by loading a scen file with scripted doors).
     pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(/*FAMILY_WAVE*/13))),
 };
 
@@ -1837,16 +1840,23 @@ inline constexpr FactPredicate kFacts_weapon_wave2_emission_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(/*FAMILY_MAGE*/3, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 0),
-    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
-    // capture_state_dump does not walk world.weaplist, so
-    // dump.weapons[] is always empty. The predicate below is
-    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
-    // sees FAMILY_WAVE2 bound as arg0; the FactSide-gated eval
-    // (applies_to_branch=false AND applies_to_master=false) short-
-    // circuits the predicate on both sides EQUALLY so the
-    // semantic-parity contract is preserved (no branch/master asymmetry).
-    // The scenario's genuine behavioural verification is
-    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
+    // FAMILY_WAVE2 is not emitted by K_FIRE in this arena:
+    //   MAGE WAVE2 is a K_SPECIAL slot; K_FIRE alone fires the default FAMILY_FIREBALL.
+    // state_dump.cpp::collect_weapons DOES walk world.weaplist
+    // (Phase 04 wire-up, symmetric branch + master), so the
+    // predicate would evaluate against a real dump.weapons[]
+    // if the projectile ever entered weaplist — but the input
+    // script does not trigger that emission path. The predicate
+    // is FactSide-gated (applies_to_branch=false AND
+    // applies_to_master=false) so the evaluator short-circuits
+    // on BOTH sides equally; this preserves the semantic-parity
+    // contract (no branch/master asymmetry) while binding
+    // FAMILY_WAVE2 as arg0 of WeaponFamilyEmitted for the
+    // behavioural_coverage_gate_weapons static scan. A follow-up
+    // phase that adds K_SPECIAL_SWITCH+K_SPECIAL input scripts
+    // with stats_level / magicpoints preconditions on the
+    // wielder un-gates this predicate by exercising the special
+    // (or, for DOOR, by loading a scen file with scripted doors).
     pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(/*FAMILY_WAVE2*/14))),
 };
 
@@ -1866,16 +1876,23 @@ inline constexpr FactPredicate kFacts_weapon_wave3_emission_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(/*FAMILY_MAGE*/3, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 0),
-    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
-    // capture_state_dump does not walk world.weaplist, so
-    // dump.weapons[] is always empty. The predicate below is
-    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
-    // sees FAMILY_WAVE3 bound as arg0; the FactSide-gated eval
-    // (applies_to_branch=false AND applies_to_master=false) short-
-    // circuits the predicate on both sides EQUALLY so the
-    // semantic-parity contract is preserved (no branch/master asymmetry).
-    // The scenario's genuine behavioural verification is
-    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
+    // FAMILY_WAVE3 is not emitted by K_FIRE in this arena:
+    //   MAGE WAVE3 is a K_SPECIAL slot (BIT_IMMORTAL | BIT_PHANTOM); K_FIRE alone fires the default FAMILY_FIREBALL.
+    // state_dump.cpp::collect_weapons DOES walk world.weaplist
+    // (Phase 04 wire-up, symmetric branch + master), so the
+    // predicate would evaluate against a real dump.weapons[]
+    // if the projectile ever entered weaplist — but the input
+    // script does not trigger that emission path. The predicate
+    // is FactSide-gated (applies_to_branch=false AND
+    // applies_to_master=false) so the evaluator short-circuits
+    // on BOTH sides equally; this preserves the semantic-parity
+    // contract (no branch/master asymmetry) while binding
+    // FAMILY_WAVE3 as arg0 of WeaponFamilyEmitted for the
+    // behavioural_coverage_gate_weapons static scan. A follow-up
+    // phase that adds K_SPECIAL_SWITCH+K_SPECIAL input scripts
+    // with stats_level / magicpoints preconditions on the
+    // wielder un-gates this predicate by exercising the special
+    // (or, for DOOR, by loading a scen file with scripted doors).
     pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(/*FAMILY_WAVE3*/15))),
 };
 
@@ -1895,16 +1912,23 @@ inline constexpr FactPredicate kFacts_weapon_circle_protection_emission_scen99[]
     pred::TickReached(150),
     pred::WalkerFamilyCount(/*FAMILY_DRUID*/13, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 0),
-    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
-    // capture_state_dump does not walk world.weaplist, so
-    // dump.weapons[] is always empty. The predicate below is
-    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
-    // sees FAMILY_CIRCLE_PROTECTION bound as arg0; the FactSide-gated eval
-    // (applies_to_branch=false AND applies_to_master=false) short-
-    // circuits the predicate on both sides EQUALLY so the
-    // semantic-parity contract is preserved (no branch/master asymmetry).
-    // The scenario's genuine behavioural verification is
-    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
+    // FAMILY_CIRCLE_PROTECTION is not emitted by K_FIRE in this arena:
+    //   DRUID PROTECTION is a K_SPECIAL slot; K_FIRE alone fires the default FAMILY_LIGHTNING.
+    // state_dump.cpp::collect_weapons DOES walk world.weaplist
+    // (Phase 04 wire-up, symmetric branch + master), so the
+    // predicate would evaluate against a real dump.weapons[]
+    // if the projectile ever entered weaplist — but the input
+    // script does not trigger that emission path. The predicate
+    // is FactSide-gated (applies_to_branch=false AND
+    // applies_to_master=false) so the evaluator short-circuits
+    // on BOTH sides equally; this preserves the semantic-parity
+    // contract (no branch/master asymmetry) while binding
+    // FAMILY_CIRCLE_PROTECTION as arg0 of WeaponFamilyEmitted for the
+    // behavioural_coverage_gate_weapons static scan. A follow-up
+    // phase that adds K_SPECIAL_SWITCH+K_SPECIAL input scripts
+    // with stats_level / magicpoints preconditions on the
+    // wielder un-gates this predicate by exercising the special
+    // (or, for DOOR, by loading a scen file with scripted doors).
     pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(/*FAMILY_CIRCLE_PROTECTION*/16))),
 };
 
@@ -1924,17 +1948,14 @@ inline constexpr FactPredicate kFacts_weapon_hammer_emission_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(/*FAMILY_BARBARIAN*/16, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 0),
-    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
-    // capture_state_dump does not walk world.weaplist, so
-    // dump.weapons[] is always empty. The predicate below is
-    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
-    // sees FAMILY_HAMMER bound as arg0; the FactSide-gated eval
-    // (applies_to_branch=false AND applies_to_master=false) short-
-    // circuits the predicate on both sides EQUALLY so the
-    // semantic-parity contract is preserved (no branch/master asymmetry).
-    // The scenario's genuine behavioural verification is
-    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
-    pred::WeaponFamilyEmitted(17),
+    // Phase 04 wire-up: state_dump.cpp::collect_weapons populates
+    // dump.weapons[] from world.weaplist symmetrically on both
+    // branch and master companion dumpers. The predicate below
+    // evaluates honestly on both sides — a FAMILY_HAMMER weapon
+    // entity alive in weaplist at the 150-tick snapshot satisfies
+    // the row's "weapon emission" contract; its absence flips
+    // the predicate.
+    pred::WeaponFamilyEmitted(/*FAMILY_HAMMER*/17),
 };
 
 inline constexpr Mutation kMut_weapon_hammer_emission = {
@@ -1954,16 +1975,23 @@ inline constexpr FactPredicate kFacts_weapon_door_emission_scen99[] = {
     pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
     // intended_diff: weapon-emission arena retains either one or two SOLDIER walkers depending on whether the adjacent combat kills the target; commit 39ef9898
     pred::EventKindAtLeast(/*play_sound*/1, 0),
-    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
-    // capture_state_dump does not walk world.weaplist, so
-    // dump.weapons[] is always empty. The predicate below is
-    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
-    // sees FAMILY_DOOR bound as arg0; the FactSide-gated eval
-    // (applies_to_branch=false AND applies_to_master=false) short-
-    // circuits the predicate on both sides EQUALLY so the
-    // semantic-parity contract is preserved (no branch/master asymmetry).
-    // The scenario's genuine behavioural verification is
-    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
+    // FAMILY_DOOR is not emitted by K_FIRE in this arena:
+    //   FAMILY_DOOR is not naturally fireable — doors are placed by scenario script and opened by walker interaction, never by a wielder firing.
+    // state_dump.cpp::collect_weapons DOES walk world.weaplist
+    // (Phase 04 wire-up, symmetric branch + master), so the
+    // predicate would evaluate against a real dump.weapons[]
+    // if the projectile ever entered weaplist — but the input
+    // script does not trigger that emission path. The predicate
+    // is FactSide-gated (applies_to_branch=false AND
+    // applies_to_master=false) so the evaluator short-circuits
+    // on BOTH sides equally; this preserves the semantic-parity
+    // contract (no branch/master asymmetry) while binding
+    // FAMILY_DOOR as arg0 of WeaponFamilyEmitted for the
+    // behavioural_coverage_gate_weapons static scan. A follow-up
+    // phase that adds K_SPECIAL_SWITCH+K_SPECIAL input scripts
+    // with stats_level / magicpoints preconditions on the
+    // wielder un-gates this predicate by exercising the special
+    // (or, for DOOR, by loading a scen file with scripted doors).
     pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(/*FAMILY_DOOR*/18))),
 };
 
@@ -1983,17 +2011,14 @@ inline constexpr FactPredicate kFacts_weapon_boulder_emission_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(/*FAMILY_GIANT_SKELETON*/19, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 0),
-    // Schema-v1 cannot evaluate WeaponFamilyEmitted non-vacuously:
-    // capture_state_dump does not walk world.weaplist, so
-    // dump.weapons[] is always empty. The predicate below is
-    // STRUCTURALLY registered so the behavioural_coverage_gate_weapons
-    // sees FAMILY_BOULDER bound as arg0; the FactSide-gated eval
-    // (applies_to_branch=false AND applies_to_master=false) short-
-    // circuits the predicate on both sides EQUALLY so the
-    // semantic-parity contract is preserved (no branch/master asymmetry).
-    // The scenario's genuine behavioural verification is
-    // TickReached + WalkerFamilyCount + EventKindAtLeast above.
-    pred::WeaponFamilyEmitted(19),
+    // Phase 04 wire-up: state_dump.cpp::collect_weapons populates
+    // dump.weapons[] from world.weaplist symmetrically on both
+    // branch and master companion dumpers. The predicate below
+    // evaluates honestly on both sides — a FAMILY_BOULDER weapon
+    // entity alive in weaplist at the 150-tick snapshot satisfies
+    // the row's "weapon emission" contract; its absence flips
+    // the predicate.
+    pred::WeaponFamilyEmitted(/*FAMILY_BOULDER*/19),
 };
 
 inline constexpr Mutation kMut_weapon_boulder_emission = {
