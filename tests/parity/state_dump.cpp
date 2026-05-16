@@ -198,6 +198,32 @@ void collect_effects(const GameWorld::EntityList& list,
     }
 }
 
+// Phase 04 — weapon-order entity collector. The schema-v1 producer left
+// `dump.weapons[]` empty (header comment: "Phase 04 wires the producer +
+// serialiser together"). Phase 04 wires it here so WeaponFamilyEmitted
+// predicates evaluate on real weaplist entries. family_symbol returns
+// FAMILY_<living-walker> for the matching id; within dump.weapons[] this
+// is a bijection over weapon-family ids 0..19, so WeaponFamilyEmitted(id)
+// matches iff a weapon entity with that family id is alive in weaplist.
+void collect_weapons(const GameWorld::EntityList& list,
+                     std::vector<WeaponEntry>& out,
+                     std::uint32_t& running_seq)
+{
+    for (const auto& uptr : list)
+    {
+        const walker* w = uptr.get();
+        if (w == nullptr) continue;
+        WeaponEntry entry;
+        entry.id       = w->entity_id() != 0 ? w->entity_id() : ++running_seq;
+        entry.family   = family_symbol(static_cast<std::int32_t>(w->family()));
+        entry.team     = static_cast<std::uint32_t>(w->team_num());
+        entry.xpos     = static_cast<std::int32_t>(w->xpos());
+        entry.ypos     = static_cast<std::int32_t>(w->ypos());
+        entry.lifetime = static_cast<std::int32_t>(w->lifetime());
+        out.push_back(std::move(entry));
+    }
+}
+
 } // namespace
 
 StateDump capture_state_dump(const GameWorld& world,
@@ -216,6 +242,7 @@ StateDump capture_state_dump(const GameWorld& world,
     std::uint32_t fallback_id = 0;
     collect_walkers(world.oblist,    dump.walkers, fallback_id);
     collect_effects(world.fxlist,    dump.effects, fallback_id);
+    collect_weapons(world.weaplist,  dump.weapons, fallback_id);
 
     if (events != nullptr)
     {
@@ -248,6 +275,11 @@ StateDump capture_state_dump(const GameWorld& world,
               [](const EventEntry& a, const EventEntry& b) {
                   if (a.tick != b.tick) return a.tick < b.tick;
                   return a.sequence < b.sequence;
+              });
+    std::sort(dump.weapons.begin(), dump.weapons.end(),
+              [](const WeaponEntry& a, const WeaponEntry& b) {
+                  if (a.family != b.family) return a.family < b.family;
+                  return a.id < b.id;
               });
 
     return dump;
@@ -338,6 +370,26 @@ std::string canonical_serialize(const StateDump& dump)
         append_uint(out, w.team);
         out.append(",\"weapons_left\":");
         append_int(out, w.weapons_left);
+        out.append(",\"xpos\":");
+        append_int(out, w.xpos);
+        out.append(",\"ypos\":");
+        append_int(out, w.ypos);
+        out.push_back('}');
+    }
+    out.append("],\"weapons\":[");
+    for (std::size_t i = 0; i < dump.weapons.size(); ++i)
+    {
+        if (i != 0) out.push_back(',');
+        const auto& w = dump.weapons[i];
+        // Keys sorted: family, id, lifetime, team, xpos, ypos.
+        out.append("{\"family\":");
+        append_escaped_string(out, w.family);
+        out.append(",\"id\":");
+        append_uint(out, w.id);
+        out.append(",\"lifetime\":");
+        append_int(out, w.lifetime);
+        out.append(",\"team\":");
+        append_uint(out, w.team);
         out.append(",\"xpos\":");
         append_int(out, w.xpos);
         out.append(",\"ypos\":");

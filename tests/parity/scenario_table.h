@@ -1114,7 +1114,7 @@ inline constexpr InputEvent kInputsWeaponEmit[] = {
 };
 
 inline constexpr InputEvent kInputsEffectCombat[] = {
-    {5,  0, K_FIRE}, {30, 0, K_NONE},
+    {5, 0, K_FIRE}, {149, 0, K_NONE},
 };
 
 inline constexpr SpawnSpec kFamilySpawns_event_arena[] = {
@@ -1125,8 +1125,8 @@ inline constexpr SpawnSpec kFamilySpawns_event_arena[] = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_effect_combat_arena[] = {
-    {  0, 0, kOrderLiving, 120, 120, 0, 0 },
-    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+    {  0, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_SOLDIER wielder (continuous K_FIRE through tick 149 keeps combat HIT effects fresh at dump time)
+    {  0, 1, kOrderLiving, 140, 120, 0, 0 }, // FAMILY_SOLDIER target adjacent
 };
 
 inline constexpr InputEvent kInputsSpecialSlot1[] = {
@@ -1439,7 +1439,7 @@ inline constexpr FactPredicate kFacts_weapon_knife_emission_scen99[] = {
     // semantic-parity contract is preserved (no branch/master asymmetry).
     // The scenario's genuine behavioural verification is
     // TickReached + WalkerFamilyCount + EventKindAtLeast above.
-    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(0))),
+    pred::WeaponFamilyEmitted(/*FAMILY_KNIFE*/0),
 };
 
 inline constexpr Mutation kMut_weapon_knife_emission = {
@@ -1800,7 +1800,7 @@ inline constexpr FactPredicate kFacts_weapon_glow_emission_scen99[] = {
     // semantic-parity contract is preserved (no branch/master asymmetry).
     // The scenario's genuine behavioural verification is
     // TickReached + WalkerFamilyCount + EventKindAtLeast above.
-    pred::master_only(pred::branch_only(pred::WeaponFamilyEmitted(12))),
+    pred::WeaponFamilyEmitted(/*FAMILY_GLOW*/12),
 };
 
 inline constexpr Mutation kMut_weapon_glow_emission = {
