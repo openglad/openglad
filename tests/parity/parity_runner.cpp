@@ -2,6 +2,10 @@
 
 #include "scenario_runtime.h"
 
+#include <algorithm>
+#include <set>
+#include <string>
+
 #include <openglad/core/order.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
@@ -135,6 +139,70 @@ RunOutcome run_scenario(const ScenarioSpec& spec)
     }
     out.ticked = true;
     out.dump   = capture_state_dump(world, &events);
+
+    // Phase 04 — splice run-observed weapon families into the final dump.
+    // Many projectile weapons live only a handful of ticks (knife/rock hit
+    // their target and die within 1-2 ticks of emission), so the
+    // end-of-run weaplist may not contain a weapon that was definitively
+    // emitted during the run. The coverage sampler (sample_world above)
+    // already records every weapon family it observed across all ticks;
+    // we surface that observation as synthetic WeaponEntry rows here so
+    // `WeaponFamilyEmitted` predicates can evaluate against "did this
+    // family fly at any point during the run" rather than only "is this
+    // family alive in weaplist at the final tick". The synthetic rows
+    // carry id=0 and lifetime=0 so they sort first and do not collide
+    // with real weaplist entries (whose entity_id() values start at 1).
+    {
+        std::set<std::string> existing_family_strings;
+        for (const auto& w : out.dump.weapons)
+            existing_family_strings.insert(w.family);
+        for (std::int32_t fam : out.coverage.weapon_families)
+        {
+            const std::string sym = family_symbol(fam);
+            if (existing_family_strings.count(sym) != 0) continue;
+            WeaponEntry synth;
+            synth.id       = 0;
+            synth.family   = sym;
+            synth.team     = 0;
+            synth.xpos     = 0;
+            synth.ypos     = 0;
+            synth.lifetime = 0;
+            out.dump.weapons.push_back(std::move(synth));
+            existing_family_strings.insert(sym);
+        }
+        std::sort(out.dump.weapons.begin(), out.dump.weapons.end(),
+                  [](const WeaponEntry& a, const WeaponEntry& b) {
+                      if (a.family != b.family) return a.family < b.family;
+                      return a.id < b.id;
+                  });
+    }
+
+    // Same splice for effect families — effects also expire quickly and
+    // EffectFamilyCount predicates ask "was this FX emitted during the
+    // run", not "is it alive in fxlist at the final tick".
+    {
+        std::set<std::string> existing_effect_strings;
+        for (const auto& e : out.dump.effects)
+            existing_effect_strings.insert(e.family);
+        for (std::int32_t fam : out.coverage.effect_families)
+        {
+            const std::string sym = family_symbol(fam);
+            if (existing_effect_strings.count(sym) != 0) continue;
+            EffectEntry synth;
+            synth.id       = 0;
+            synth.family   = sym;
+            synth.xpos     = 0;
+            synth.ypos     = 0;
+            synth.lifetime = 0;
+            out.dump.effects.push_back(std::move(synth));
+            existing_effect_strings.insert(sym);
+        }
+        std::sort(out.dump.effects.begin(), out.dump.effects.end(),
+                  [](const EffectEntry& a, const EffectEntry& b) {
+                      if (a.family != b.family) return a.family < b.family;
+                      return a.id < b.id;
+                  });
+    }
 
     for (const auto& ev : events.events())
         out.coverage.event_kinds.insert(

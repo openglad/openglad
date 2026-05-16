@@ -80,26 +80,26 @@ Observed via `CoverageObservation::weapon_families` (weaplist).
 
 | family | covering_scenario_id |
 |---|---|
-| `FAMILY_KNIFE` | `(none yet)` |
-| `FAMILY_ROCK` | `(none yet)` |
-| `FAMILY_ARROW` | `(none yet)` |
-| `FAMILY_FIREBALL` | `(none yet)` |
-| `FAMILY_TREE` | `(none yet)` |
-| `FAMILY_METEOR` | `(none yet)` |
-| `FAMILY_SPRINKLE` | `(none yet)` |
-| `FAMILY_BONE` | `(none yet)` |
-| `FAMILY_BLOOD` | `(none yet)` |
-| `FAMILY_BLOB` | `(none yet)` |
-| `FAMILY_FIRE_ARROW` | `(none yet)` |
-| `FAMILY_LIGHTNING` | `(none yet)` |
-| `FAMILY_GLOW` | `(none yet)` |
-| `FAMILY_WAVE` | `(none yet)` |
-| `FAMILY_WAVE2` | `(none yet)` |
-| `FAMILY_WAVE3` | `(none yet)` |
-| `FAMILY_CIRCLE_PROTECTION` | `(none yet)` |
-| `FAMILY_HAMMER` | `(none yet)` |
-| `FAMILY_DOOR` | `(none yet)` |
-| `FAMILY_BOULDER` | `(none yet)` |
+| `FAMILY_KNIFE` | `weapon_knife_emission_scen99` |
+| `FAMILY_ROCK` | `weapon_rock_emission_scen99` |
+| `FAMILY_ARROW` | `weapon_arrow_emission_scen99` |
+| `FAMILY_FIREBALL` | `weapon_fireball_emission_scen99` |
+| `FAMILY_TREE` | `weapon_tree_emission_scen99` |
+| `FAMILY_METEOR` | `weapon_meteor_emission_scen99` |
+| `FAMILY_SPRINKLE` | `weapon_sprinkle_emission_scen99` |
+| `FAMILY_BONE` | `weapon_bone_emission_scen99` |
+| `FAMILY_BLOOD` | `weapon_blood_emission_scen99` |
+| `FAMILY_BLOB` | `weapon_blob_emission_scen99` |
+| `FAMILY_FIRE_ARROW` | `weapon_fire_arrow_emission_scen99` |
+| `FAMILY_LIGHTNING` | `weapon_lightning_emission_scen99` |
+| `FAMILY_GLOW` | `weapon_glow_emission_scen99` |
+| `FAMILY_WAVE` | `weapon_wave_emission_scen99` |
+| `FAMILY_WAVE2` | `weapon_wave2_emission_scen99` |
+| `FAMILY_WAVE3` | `weapon_wave3_emission_scen99` |
+| `FAMILY_CIRCLE_PROTECTION` | `weapon_circle_protection_emission_scen99` |
+| `FAMILY_HAMMER` | `weapon_hammer_emission_scen99` |
+| `FAMILY_DOOR` | `weapon_door_emission_scen99` |
+| `FAMILY_BOULDER` | `weapon_boulder_emission_scen99` |
 
 ## Required treasure families (13)
 
@@ -108,19 +108,19 @@ in oblist).
 
 | family | covering_scenario_id |
 |---|---|
-| `FAMILY_STAIN` | `(none yet)` |
-| `FAMILY_DRUMSTICK` | `(none yet)` |
-| `FAMILY_GOLD_BAR` | `(none yet)` |
-| `FAMILY_SILVER_BAR` | `(none yet)` |
-| `FAMILY_MAGIC_POTION` | `(none yet)` |
-| `FAMILY_INVIS_POTION` | `(none yet)` |
-| `FAMILY_INVULNERABLE_POTION` | `(none yet)` |
-| `FAMILY_FLIGHT_POTION` | `(none yet)` |
-| `FAMILY_EXIT` | `(none yet)` |
-| `FAMILY_TELEPORTER` | `(none yet)` |
-| `FAMILY_LIFE_GEM` | `(none yet)` |
-| `FAMILY_KEY` | `(none yet)` |
-| `FAMILY_SPEED_POTION` | `(none yet)` |
+| `FAMILY_STAIN` | `treasure_stain_observation_scen99` |
+| `FAMILY_DRUMSTICK` | `treasure_drumstick_pickup_scen99` |
+| `FAMILY_GOLD_BAR` | `treasure_gold_bar_pickup_scen99` |
+| `FAMILY_SILVER_BAR` | `treasure_silver_bar_pickup_scen99` |
+| `FAMILY_MAGIC_POTION` | `treasure_magic_potion_pickup_scen99` |
+| `FAMILY_INVIS_POTION` | `treasure_invis_potion_pickup_scen99` |
+| `FAMILY_INVULNERABLE_POTION` | `treasure_invulnerable_potion_pickup_scen99` |
+| `FAMILY_FLIGHT_POTION` | `treasure_flight_potion_pickup_scen99` |
+| `FAMILY_EXIT` | `treasure_stain_observation_scen99` |
+| `FAMILY_TELEPORTER` | `treasure_teleporter_pickup_scen99` |
+| `FAMILY_LIFE_GEM` | `treasure_life_gem_pickup_scen99` |
+| `FAMILY_KEY` | `treasure_key_pickup_scen99` |
+| `FAMILY_SPEED_POTION` | `treasure_speed_potion_pickup_scen99` |
 
 ## Required generator families (4)
 
@@ -144,19 +144,19 @@ Observed via `CoverageObservation::effect_families` (fxlist).
 
 | family | covering_scenario_id |
 |---|---|
-| `FAMILY_EXPAND` | `(none yet)` |
-| `FAMILY_GHOST_SCARE` | `(none yet)` |
-| `FAMILY_BOMB` | `(none yet)` |
-| `FAMILY_EXPLOSION` | `(none yet)` |
-| `FAMILY_FLASH` | `(none yet)` |
-| `FAMILY_MAGIC_SHIELD` | `(none yet)` |
-| `FAMILY_KNIFE_BACK` | `(none yet)` |
-| `FAMILY_BOOMERANG` | `(none yet)` |
-| `FAMILY_CLOUD` | `(none yet)` |
-| `FAMILY_MARKER` | `(none yet)` |
-| `FAMILY_CHAIN` | `(none yet)` |
-| `FAMILY_DOOR_OPEN` | `(none yet)` |
-| `FAMILY_HIT` | `(none yet)` |
+| `FAMILY_EXPAND` | `effect_expand_emission_scen99` |
+| `FAMILY_GHOST_SCARE` | `effect_ghost_scare_emission_scen99` |
+| `FAMILY_BOMB` | `effect_bomb_emission_scen99` |
+| `FAMILY_EXPLOSION` | `effect_explosion_emission_scen99` |
+| `FAMILY_FLASH` | `effect_flash_emission_scen99` |
+| `FAMILY_MAGIC_SHIELD` | `effect_magic_shield_emission_scen99` |
+| `FAMILY_KNIFE_BACK` | `effect_knife_back_emission_scen99` |
+| `FAMILY_BOOMERANG` | `effect_boomerang_emission_scen99` |
+| `FAMILY_CLOUD` | `effect_cloud_emission_scen99` |
+| `FAMILY_MARKER` | `effect_marker_emission_scen99` |
+| `FAMILY_CHAIN` | `effect_chain_emission_scen99` |
+| `FAMILY_DOOR_OPEN` | `effect_door_open_emission_scen99` |
+| `FAMILY_HIT` | `effect_hit_emission_scen99` |
 
 ## Required event kinds (9)
 
@@ -166,14 +166,14 @@ lowercase strings from `state_dump.cpp::event_kind_symbol`).
 | event_kind | covering_scenario_id |
 |---|---|
 | `play_sound` | `smoke_nonempty_scen99` |
-| `notification` | `(none yet)` |
-| `set_palette` | `(none yet)` |
-| `request_redraw` | `(none yet)` |
-| `end_game` | `(none yet)` |
-| `set_end` | `(none yet)` |
-| `request_exit_confirmation` | `(none yet)` |
-| `withdraw_to_level` | `(none yet)` |
-| `score_change` | `(none yet)` |
+| `notification` | `event_notification_emission_scen99` |
+| `set_palette` | `event_set_palette_emission_scen99` |
+| `request_redraw` | `event_request_redraw_emission_scen99` |
+| `end_game` | `event_end_game_emission_scen99` |
+| `set_end` | `event_set_end_emission_scen99` |
+| `request_exit_confirmation` | `scripted_input_scen9301` |
+| `withdraw_to_level` | `scripted_input_scen9301` |
+| `score_change` | `scoring_after_combat_scen99` |
 
 ## Required specials (42)
 
@@ -185,48 +185,48 @@ mirror byte-for-byte to `../openglad-master/tools/parity_scenario_table.h`.
 
 | bit | (family, special_idx) | special name | Exercises enumerator | covering_scenario_id |
 |---:|---|---|---|---|
-|  0 | `(FAMILY_SOLDIER, 1)` | CHARGE | `Special_Soldier_1` | `(none yet)` |
-|  1 | `(FAMILY_SOLDIER, 2)` | BOOMERANG | `Special_Soldier_2` | `(none yet)` |
-|  2 | `(FAMILY_SOLDIER, 3)` | WHIRLWIND | `Special_Soldier_3` | `(none yet)` |
-|  3 | `(FAMILY_SOLDIER, 4)` | DISARM | `Special_Soldier_4` | `(none yet)` |
-|  4 | `(FAMILY_ELF, 1)` | ROCKS | `Special_Elf_1` | `(none yet)` |
-|  5 | `(FAMILY_ELF, 2)` | BOUNCING ROCKS | `Special_Elf_2` | `(none yet)` |
-|  6 | `(FAMILY_ELF, 3)` | LOTS OF ROCKS | `Special_Elf_3` | `(none yet)` |
-|  7 | `(FAMILY_ELF, 4)` | MEGA ROCKS | `Special_Elf_4` | `(none yet)` |
-|  8 | `(FAMILY_ARCHER, 1)` | FIRE ARROWS | `Special_Archer_1` | `(none yet)` |
-|  9 | `(FAMILY_ARCHER, 2)` | BARRAGE | `Special_Archer_2` | `(none yet)` |
-| 10 | `(FAMILY_ARCHER, 3)` | EXPLODING BOLT | `Special_Archer_3` | `(none yet)` |
-| 11 | `(FAMILY_MAGE, 1)` | TELEPORT | `Special_Mage_1` | `(none yet)` |
-| 12 | `(FAMILY_MAGE, 2)` | WARP SPACE | `Special_Mage_2` | `(none yet)` |
-| 13 | `(FAMILY_MAGE, 3)` | FREEZE TIME | `Special_Mage_3` | `(none yet)` |
-| 14 | `(FAMILY_MAGE, 4)` | ENERGY WAVE | `Special_Mage_4` | `(none yet)` |
-| 15 | `(FAMILY_MAGE, 5)` | HEARTBURST | `Special_Mage_5` | `(none yet)` |
-| 16 | `(FAMILY_SKELETON, 1)` | TUNNEL | `Special_Skeleton_1` | `(none yet)` |
-| 17 | `(FAMILY_CLERIC, 1)` | HEAL | `Special_Cleric_1` | `(none yet)` |
-| 18 | `(FAMILY_CLERIC, 2)` | RAISE UNDEAD | `Special_Cleric_2` | `(none yet)` |
-| 19 | `(FAMILY_CLERIC, 3)` | RAISE GHOST | `Special_Cleric_3` | `(none yet)` |
-| 20 | `(FAMILY_CLERIC, 4)` | RESURRECT | `Special_Cleric_4` | `(none yet)` |
-| 21 | `(FAMILY_FIREELEMENTAL, 1)` | STARBURST | `Special_FireElemental_1` | `(none yet)` |
-| 22 | `(FAMILY_SLIME, 1)` | SPLIT | `Special_Slime_1` | `(none yet)` |
-| 23 | `(FAMILY_SMALL_SLIME, 1)` | GROW | `Special_SmallSlime_1` | `(none yet)` |
-| 24 | `(FAMILY_MEDIUM_SLIME, 1)` | GROW | `Special_MediumSlime_1` | `(none yet)` |
-| 25 | `(FAMILY_THIEF, 1)` | DROP BOMB | `Special_Thief_1` | `(none yet)` |
-| 26 | `(FAMILY_THIEF, 2)` | CLOAK | `Special_Thief_2` | `(none yet)` |
-| 27 | `(FAMILY_THIEF, 3)` | TAUNT ENEMY | `Special_Thief_3` | `(none yet)` |
-| 28 | `(FAMILY_THIEF, 4)` | POISON CLOUD | `Special_Thief_4` | `(none yet)` |
-| 29 | `(FAMILY_GHOST, 1)` | SCARE | `Special_Ghost_1` | `(none yet)` |
-| 30 | `(FAMILY_DRUID, 1)` | GROW TREE | `Special_Druid_1` | `(none yet)` |
-| 31 | `(FAMILY_DRUID, 2)` | SUMMON FAERIE | `Special_Druid_2` | `(none yet)` |
-| 32 | `(FAMILY_DRUID, 3)` | REVEAL | `Special_Druid_3` | `(none yet)` |
-| 33 | `(FAMILY_DRUID, 4)` | PROTECTION | `Special_Druid_4` | `(none yet)` |
-| 34 | `(FAMILY_ORC, 1)` | HOWL | `Special_Orc_1` | `(none yet)` |
-| 35 | `(FAMILY_ORC, 2)` | EAT CORPSE | `Special_Orc_2` | `(none yet)` |
-| 36 | `(FAMILY_BARBARIAN, 1)` | HURL BOULDER | `Special_Barbarian_1` | `(none yet)` |
-| 37 | `(FAMILY_BARBARIAN, 2)` | EXPLODING BOULDER | `Special_Barbarian_2` | `(none yet)` |
-| 38 | `(FAMILY_ARCHMAGE, 1)` | TELEPORT | `Special_Archmage_1` | `(none yet)` |
-| 39 | `(FAMILY_ARCHMAGE, 2)` | HEARTBURST | `Special_Archmage_2` | `(none yet)` |
-| 40 | `(FAMILY_ARCHMAGE, 3)` | SUMMON IMAGE | `Special_Archmage_3` | `(none yet)` |
-| 41 | `(FAMILY_ARCHMAGE, 4)` | MIND CONTROL | `Special_Archmage_4` | `(none yet)` |
+|  0 | `(FAMILY_SOLDIER, 1)` | CHARGE | `Special_Soldier_1` | `special_soldier_1_scen99` |
+|  1 | `(FAMILY_SOLDIER, 2)` | BOOMERANG | `Special_Soldier_2` | `special_soldier_2_scen99` |
+|  2 | `(FAMILY_SOLDIER, 3)` | WHIRLWIND | `Special_Soldier_3` | `special_soldier_3_scen99` |
+|  3 | `(FAMILY_SOLDIER, 4)` | DISARM | `Special_Soldier_4` | `special_soldier_4_scen99` |
+|  4 | `(FAMILY_ELF, 1)` | ROCKS | `Special_Elf_1` | `special_elf_1_scen99` |
+|  5 | `(FAMILY_ELF, 2)` | BOUNCING ROCKS | `Special_Elf_2` | `special_elf_2_scen99` |
+|  6 | `(FAMILY_ELF, 3)` | LOTS OF ROCKS | `Special_Elf_3` | `special_elf_3_scen99` |
+|  7 | `(FAMILY_ELF, 4)` | MEGA ROCKS | `Special_Elf_4` | `special_elf_4_scen99` |
+|  8 | `(FAMILY_ARCHER, 1)` | FIRE ARROWS | `Special_Archer_1` | `special_archer_1_scen99` |
+|  9 | `(FAMILY_ARCHER, 2)` | BARRAGE | `Special_Archer_2` | `special_archer_2_scen99` |
+| 10 | `(FAMILY_ARCHER, 3)` | EXPLODING BOLT | `Special_Archer_3` | `special_archer_3_scen99` |
+| 11 | `(FAMILY_MAGE, 1)` | TELEPORT | `Special_Mage_1` | `special_mage_scen126` |
+| 12 | `(FAMILY_MAGE, 2)` | WARP SPACE | `Special_Mage_2` | `special_mage_2_scen99` |
+| 13 | `(FAMILY_MAGE, 3)` | FREEZE TIME | `Special_Mage_3` | `special_mage_3_scen99` |
+| 14 | `(FAMILY_MAGE, 4)` | ENERGY WAVE | `Special_Mage_4` | `special_mage_4_scen99` |
+| 15 | `(FAMILY_MAGE, 5)` | HEARTBURST | `Special_Mage_5` | `special_mage_5_scen99` |
+| 16 | `(FAMILY_SKELETON, 1)` | TUNNEL | `Special_Skeleton_1` | `special_skeleton_1_scen99` |
+| 17 | `(FAMILY_CLERIC, 1)` | HEAL | `Special_Cleric_1` | `special_cleric_scen124` |
+| 18 | `(FAMILY_CLERIC, 2)` | RAISE UNDEAD | `Special_Cleric_2` | `special_cleric_2_scen99` |
+| 19 | `(FAMILY_CLERIC, 3)` | RAISE GHOST | `Special_Cleric_3` | `special_cleric_3_scen99` |
+| 20 | `(FAMILY_CLERIC, 4)` | RESURRECT | `Special_Cleric_4` | `special_cleric_4_scen99` |
+| 21 | `(FAMILY_FIREELEMENTAL, 1)` | STARBURST | `Special_FireElemental_1` | `special_fireelemental_1_scen99` |
+| 22 | `(FAMILY_SLIME, 1)` | SPLIT | `Special_Slime_1` | `special_slime_1_scen99` |
+| 23 | `(FAMILY_SMALL_SLIME, 1)` | GROW | `Special_SmallSlime_1` | `special_small_slime_1_scen99` |
+| 24 | `(FAMILY_MEDIUM_SLIME, 1)` | GROW | `Special_MediumSlime_1` | `special_medium_slime_1_scen99` |
+| 25 | `(FAMILY_THIEF, 1)` | DROP BOMB | `Special_Thief_1` | `special_thief_scen789` |
+| 26 | `(FAMILY_THIEF, 2)` | CLOAK | `Special_Thief_2` | `special_thief_2_scen99` |
+| 27 | `(FAMILY_THIEF, 3)` | TAUNT ENEMY | `Special_Thief_3` | `special_thief_3_scen99` |
+| 28 | `(FAMILY_THIEF, 4)` | POISON CLOUD | `Special_Thief_4` | `special_thief_4_scen99` |
+| 29 | `(FAMILY_GHOST, 1)` | SCARE | `Special_Ghost_1` | `special_ghost_1_scen99` |
+| 30 | `(FAMILY_DRUID, 1)` | GROW TREE | `Special_Druid_1` | `special_druid_1_scen99` |
+| 31 | `(FAMILY_DRUID, 2)` | SUMMON FAERIE | `Special_Druid_2` | `summon_druid_pet_scen950` |
+| 32 | `(FAMILY_DRUID, 3)` | REVEAL | `Special_Druid_3` | `special_druid_3_scen99` |
+| 33 | `(FAMILY_DRUID, 4)` | PROTECTION | `Special_Druid_4` | `special_druid_4_scen99` |
+| 34 | `(FAMILY_ORC, 1)` | HOWL | `Special_Orc_1` | `special_orc_1_scen99` |
+| 35 | `(FAMILY_ORC, 2)` | EAT CORPSE | `Special_Orc_2` | `special_orc_2_scen99` |
+| 36 | `(FAMILY_BARBARIAN, 1)` | HURL BOULDER | `Special_Barbarian_1` | `special_barbarian_1_scen99` |
+| 37 | `(FAMILY_BARBARIAN, 2)` | EXPLODING BOULDER | `Special_Barbarian_2` | `special_barbarian_2_scen99` |
+| 38 | `(FAMILY_ARCHMAGE, 1)` | TELEPORT | `Special_Archmage_1` | `special_archmage_scen123` |
+| 39 | `(FAMILY_ARCHMAGE, 2)` | HEARTBURST | `Special_Archmage_2` | `special_archmage_2_scen99` |
+| 40 | `(FAMILY_ARCHMAGE, 3)` | SUMMON IMAGE | `Special_Archmage_3` | `special_archmage_3_scen99` |
+| 41 | `(FAMILY_ARCHMAGE, 4)` | MIND CONTROL | `Special_Archmage_4` | `special_archmage_4_scen99` |
 
 ## Phase 03 sign-off snapshot
 

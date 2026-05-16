@@ -828,174 +828,6 @@ inline constexpr FactPredicate kFacts_family_tower1_scen99[] = {
     pred::WalkerDiedByFinal(/*FAMILY_TOWER1*/20),
 };
 
-// --- Phase 04 — behavioural coverage omnibus -------------------------------
-//
-// One ScenarioSpec that statically registers every required weapon /
-// treasure / effect / generator family and every required event kind as
-// `arg0` of an appropriately-typed predicate, so the new
-// `Parity.behavioural_coverage_gate_*` gates (in
-// `test_parity_coverage_gate.cpp`) see each family/kind bound.
-//
-// HONESTY NOTE — the schema-v1 dumper cannot evaluate most of these
-// predicates non-vacuously today:
-//   * `dump.weapons[]` is never populated (state_dump.cpp::capture_state_dump
-//     walks oblist + fxlist only; weaplist is not in the schema-v1 producer).
-//     -> every `WeaponFamilyEmitted(...)` here is `dumper_deferred`.
-//   * `family_symbol(id)` does not disambiguate by Order, so a treasure
-//     family id like `FAMILY_GOLD_BAR=2` aliases to the walker symbol
-//     `FAMILY_ARCHER`, and `TreasureFamilyRemovedFromOblist(FAMILY_GOLD_BAR)`
-//     would silently measure "no archer in oblist" — not what the name
-//     claims. -> every non-collision-safe treasure/effect predicate here
-//     is `dumper_deferred`.
-//   * EventKind ordinals are routed through a non-colliding table, so
-//     `EventKindAtLeast(...)` / `EventKindExactly(...)` evaluate honestly
-//     and can stay un-deferred.
-//
-// The `dumper_deferred(...)` wrapper sets `applies_to_branch=false` AND
-// `applies_to_master=false`; the evaluator short-circuits past these on
-// both sides. A follow-up phase (Phase 04b — "Dumper Disambiguation")
-// must:
-//   (1) populate `dump.weapons[]` from `world.weaplist`,
-//   (2) emit Order-aware family symbols (e.g. `WEAPON_KNIFE`,
-//       `TREASURE_GOLD_BAR`, `FX_HIT`, `GEN_TENT`) in the producer,
-//   (3) mirror to the master companion's parity_dump_state.cpp,
-//   (4) recapture goldens, and
-//   (5) flip these wrappers from `dumper_deferred(...)` to the bare
-//       `pred::*(...)` call so the evaluator verifies them.
-//
-// The scenario's actual runtime check is `TickReached(150)` plus
-// `WalkerFamilyCount(FAMILY_SOLDIER, 1, 1)` against the solo soldier in
-// the spawn list — those evaluate honestly on both branch and master so
-// the row passes Phase 01's "fact_count > 0 AND at least one
-// non-TickReached predicate" lint while leaving the behavioural axes
-// transparently flagged as deferred.
-
-inline constexpr FactPredicate kFacts_phase04_coverage_omnibus[] = {
-    pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 1),
-    // --- Walker families (0..20) ------------------------------------------
-    // Defensive structural binding: every required walker family is named
-    // as arg0 of a WalkerFamilyCount predicate here so the 04b
-    // no-blob-needed check (which textually strips the catch-all golem
-    // spawn list and the scenario row that references it) cannot orphan
-    // FAMILY_GOLEM or any other walker family that today happens to be
-    // bound by only one scenario. The omnibus arena only spawns
-    // FAMILY_SOLDIER (count==1 above), so every other walker-family count
-    // is 0; the exact (0, 0) ranges evaluate true on the actual omnibus
-    // dump for every non-soldier family.
-    pred::WalkerFamilyCount(/*FAMILY_ELF*/1, 0, 0),
-    pred::WalkerFamilyCount(/*FAMILY_ARCHER*/2, 0, 0),
-    pred::WalkerFamilyCount(/*FAMILY_MAGE*/3, 0, 0),
-    pred::WalkerFamilyCount(/*FAMILY_SKELETON*/4, 0, 0),
-    pred::WalkerFamilyCount(/*FAMILY_CLERIC*/5, 0, 0),
-    pred::WalkerFamilyCount(/*FAMILY_FIREELEMENTAL*/6, 0, 0),
-    pred::WalkerFamilyCount(/*FAMILY_FAERIE*/7, 0, 0),
-    pred::WalkerFamilyCount(/*FAMILY_SLIME*/8, 0, 0),
-    pred::WalkerFamilyCount(/*FAMILY_SMALL_SLIME*/9, 0, 0),
-    pred::WalkerFamilyCount(/*FAMILY_MEDIUM_SLIME*/10, 0, 0),
-    pred::WalkerFamilyCount(/*FAMILY_THIEF*/11, 0, 0),
-    pred::WalkerFamilyCount(/*FAMILY_GHOST*/12, 0, 0),
-    pred::WalkerFamilyCount(/*FAMILY_DRUID*/13, 0, 0),
-    pred::WalkerFamilyCount(/*FAMILY_ORC*/14, 0, 0),
-    pred::WalkerFamilyCount(/*FAMILY_BIG_ORC*/15, 0, 0),
-    pred::WalkerFamilyCount(/*FAMILY_BARBARIAN*/16, 0, 0),
-    pred::WalkerFamilyCount(/*FAMILY_ARCHMAGE*/17, 0, 0),
-    pred::WalkerFamilyCount(/*FAMILY_GOLEM*/18, 0, 0),
-    pred::WalkerFamilyCount(/*FAMILY_GIANT_SKELETON*/19, 0, 0),
-    pred::WalkerFamilyCount(/*FAMILY_TOWER1*/20, 0, 0),
-    // --- Weapon families (0..19) ------------------------------------------
-    // WeaponFamilyEmitted searches dump.weapons[]; producer not wired in
-    // schema-v1, so each entry is dumper_deferred until Phase 04b lands.
-    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_KNIFE*/0)),
-    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_ROCK*/1)),
-    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_ARROW*/2)),
-    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_FIREBALL*/3)),
-    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_TREE*/4)),
-    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_METEOR*/5)),
-    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_SPRINKLE*/6)),
-    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_BONE*/7)),
-    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_BLOOD*/8)),
-    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_BLOB*/9)),
-    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_FIRE_ARROW*/10)),
-    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_LIGHTNING*/11)),
-    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_GLOW*/12)),
-    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_WAVE*/13)),
-    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_WAVE2*/14)),
-    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_WAVE3*/15)),
-    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_CIRCLE_PROTECTION*/16)),
-    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_HAMMER*/17)),
-    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_DOOR*/18)),
-    pred::dumper_deferred(pred::WeaponFamilyEmitted(/*FAMILY_BOULDER*/19)),
-    // --- Treasure families (0..12) ----------------------------------------
-    // family_symbol aliases collide with walker family ids; deferred to
-    // Phase 04b which adds Order-aware symbols.
-    pred::dumper_deferred(pred::TreasureFamilyRemovedFromOblist(/*FAMILY_STAIN*/0)),
-    pred::dumper_deferred(pred::TreasureFamilyRemovedFromOblist(/*FAMILY_DRUMSTICK*/1)),
-    pred::dumper_deferred(pred::TreasureFamilyRemovedFromOblist(/*FAMILY_GOLD_BAR*/2)),
-    pred::dumper_deferred(pred::TreasureFamilyRemovedFromOblist(/*FAMILY_SILVER_BAR*/3)),
-    pred::dumper_deferred(pred::TreasureFamilyRemovedFromOblist(/*FAMILY_MAGIC_POTION*/4)),
-    pred::dumper_deferred(pred::TreasureFamilyRemovedFromOblist(/*FAMILY_INVIS_POTION*/5)),
-    pred::dumper_deferred(pred::TreasureFamilyRemovedFromOblist(/*FAMILY_INVULNERABLE_POTION*/6)),
-    pred::dumper_deferred(pred::TreasureFamilyRemovedFromOblist(/*FAMILY_FLIGHT_POTION*/7)),
-    pred::dumper_deferred(pred::TreasureFamilyRemovedFromOblist(/*FAMILY_EXIT*/8)),
-    pred::dumper_deferred(pred::TreasureFamilyRemovedFromOblist(/*FAMILY_TELEPORTER*/9)),
-    pred::dumper_deferred(pred::TreasureFamilyRemovedFromOblist(/*FAMILY_LIFE_GEM*/10)),
-    pred::dumper_deferred(pred::TreasureFamilyRemovedFromOblist(/*FAMILY_KEY*/11)),
-    pred::dumper_deferred(pred::TreasureFamilyRemovedFromOblist(/*FAMILY_SPEED_POTION*/12)),
-    // --- Effect families (0..12) ------------------------------------------
-    // source_qualifier=0 (FAMILY_SOLDIER) — the omnibus arena contains the
-    // soldier, so the qualifier evaluation never gates this off; the
-    // arg0 family id is what the behavioural gate inspects.
-    pred::dumper_deferred(pred::EffectFamilyCount(/*FAMILY_EXPAND*/0, 0, 99, /*source=FAMILY_SOLDIER*/0)),
-    pred::dumper_deferred(pred::EffectFamilyCount(/*FAMILY_GHOST_SCARE*/1, 0, 99, 0)),
-    pred::dumper_deferred(pred::EffectFamilyCount(/*FAMILY_BOMB*/2, 0, 99, 0)),
-    pred::dumper_deferred(pred::EffectFamilyCount(/*FAMILY_EXPLOSION*/3, 0, 99, 0)),
-    pred::dumper_deferred(pred::EffectFamilyCount(/*FAMILY_FLASH*/4, 0, 99, 0)),
-    pred::dumper_deferred(pred::EffectFamilyCount(/*FAMILY_MAGIC_SHIELD*/5, 0, 99, 0)),
-    pred::dumper_deferred(pred::EffectFamilyCount(/*FAMILY_KNIFE_BACK*/6, 0, 99, 0)),
-    pred::dumper_deferred(pred::EffectFamilyCount(/*FAMILY_BOOMERANG*/7, 0, 99, 0)),
-    pred::dumper_deferred(pred::EffectFamilyCount(/*FAMILY_CLOUD*/8, 0, 99, 0)),
-    pred::dumper_deferred(pred::EffectFamilyCount(/*FAMILY_MARKER*/9, 0, 99, 0)),
-    pred::dumper_deferred(pred::EffectFamilyCount(/*FAMILY_CHAIN*/10, 0, 99, 0)),
-    pred::dumper_deferred(pred::EffectFamilyCount(/*FAMILY_DOOR_OPEN*/11, 0, 99, 0)),
-    pred::dumper_deferred(pred::EffectFamilyCount(/*FAMILY_HIT*/12, 0, 99, 0)),
-    // --- Generator families (0..3) ----------------------------------------
-    // Generators sit in oblist as Order::Generator; the schema-v1 dump
-    // emits them as WalkerEntry. WalkerFamilyCount aliases by id with
-    // living families (TENT=0=SOLDIER, TOWER=1=ELF, BONES=2=ARCHER,
-    // TREEHOUSE=3=MAGE) so the predicate is deferred to Phase 04b's
-    // Order-aware symbols.
-    pred::dumper_deferred(pred::WalkerFamilyCount(/*FAMILY_TENT*/0, 0, 0)),
-    pred::dumper_deferred(pred::WalkerFamilyCount(/*FAMILY_TOWER*/1, 0, 0)),
-    pred::dumper_deferred(pred::WalkerFamilyCount(/*FAMILY_BONES*/2, 0, 0)),
-    pred::dumper_deferred(pred::WalkerFamilyCount(/*FAMILY_TREEHOUSE*/3, 0, 0)),
-    // --- Event kinds (1..9; non-colliding ordinal table) ------------------
-    // EventKindAtLeast/Exactly route through event_kind_symbol which is
-    // bijective with the ordinals; these can evaluate honestly without
-    // a dumper rework. Floor at 0 so the empty arena trivially satisfies
-    // them while still binding the gate's arg0 reference.
-    pred::EventKindAtLeast(/*play_sound*/1, 0),
-    pred::EventKindAtLeast(/*notification*/2, 0),
-    pred::EventKindAtLeast(/*set_palette*/3, 0),
-    pred::EventKindAtLeast(/*request_redraw*/4, 0),
-    pred::EventKindAtLeast(/*end_game*/5, 0),
-    pred::EventKindAtLeast(/*set_end*/6, 0),
-    pred::EventKindAtLeast(/*request_exit_confirmation*/7, 0),
-    pred::EventKindAtLeast(/*withdraw_to_level*/8, 0),
-    pred::EventKindAtLeast(/*score_change*/9, 0),
-};
-
-inline constexpr SpawnSpec kFamilySpawns_phase04_coverage_omnibus[] = {
-    { 0, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_SOLDIER, team 0 (gate quorum)
-};
-
-inline constexpr Mutation kMut_phase04_coverage_omnibus = {
-    "src/gameplay/walker_combat.cpp", 189,
-    "target->stats()->set_hitpoints(target->stats()->hitpoints() - tempdamage);",
-    "target->stats()->set_hitpoints(target->stats()->hitpoints() - 0);",
-    "Re-uses kMut_combat_damage subject for lint completeness. The omnibus row's behavioural predicates are dumper_deferred so this mutation has no direct flip target; once Phase 04b lands Order-aware family_symbol + weapons[] emission, the deferred predicates re-enable and this mutation acts as a placeholder until per-category mutations replace it."
-};
-
 // snapshot_dirty_bits_scen9301 is Invariant + branch-internal; lint
 // exempts Invariant rows from fact requirements. We leave its
 // expected_facts as nullptr/0 and rely on the dual-capture determinism
@@ -1260,6 +1092,1697 @@ inline constexpr Mutation kMut_family_tower1_init = {
     "BASE_GUY_HP+9000",
     "Cranks TOWER1 HP; flips WalkerDiedByFinal(TOWER1)."
 };
+
+// --- Phase 04 — per-entity behavioural scenarios (Phase 04 redo) -----------
+//
+// Treasure-pickup, weapon-emission, effect-emission, generator-spawn,
+// event-kind, and per-family per-slot special-cast scenarios. Each row
+// is a real arena that exercises the named entity through gameplay; the
+// expected_facts[] predicates evaluate honestly on schema-v1 (the weaplist
+// is wired into capture_state_dump as of this phase, so WeaponFamilyEmitted
+// works against real entries; family-symbol aliasing within each list is
+// bijective so per-list predicates measure presence/absence correctly).
+// Each row carries a unique discriminating_mutation pointing at the
+// family's real pickup/emission/registry hook.
+
+inline constexpr InputEvent kInputsTreasurePickup[] = {
+    {1,  0, K_RIGHT}, {20, 0, K_NONE},
+};
+
+inline constexpr InputEvent kInputsWeaponEmit[] = {
+    {1,  0, K_FIRE}, {25, 0, K_NONE},
+};
+
+inline constexpr InputEvent kInputsEffectCombat[] = {
+    {5,  0, K_FIRE}, {30, 0, K_NONE},
+};
+
+inline constexpr SpawnSpec kFamilySpawns_event_arena[] = {
+    {  0, 0, kOrderLiving, 120, 120, 0, 0 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+    { 14, 1, kOrderLiving, 220, 120, 0, 0 },
+    {  4, 1, kOrderLiving, 260, 120, 0, 0 },
+};
+
+inline constexpr SpawnSpec kFamilySpawns_effect_combat_arena[] = {
+    {  0, 0, kOrderLiving, 120, 120, 0, 0 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr InputEvent kInputsSpecialSlot1[] = {
+    { 20, 0, K_SPECIAL},
+    { 21, 0, K_NONE},
+};
+
+inline constexpr InputEvent kInputsSpecialSlot2[] = {
+    {  5, 0, K_SPECIAL_SWITCH},
+    {  6, 0, K_NONE},
+    { 20, 0, K_SPECIAL},
+    { 21, 0, K_NONE},
+};
+
+inline constexpr InputEvent kInputsSpecialSlot3[] = {
+    {  5, 0, K_SPECIAL_SWITCH},
+    {  6, 0, K_NONE},
+    {  8, 0, K_SPECIAL_SWITCH},
+    {  9, 0, K_NONE},
+    { 20, 0, K_SPECIAL},
+    { 21, 0, K_NONE},
+};
+
+inline constexpr InputEvent kInputsSpecialSlot4[] = {
+    {  5, 0, K_SPECIAL_SWITCH},
+    {  6, 0, K_NONE},
+    {  8, 0, K_SPECIAL_SWITCH},
+    {  9, 0, K_NONE},
+    { 11, 0, K_SPECIAL_SWITCH},
+    { 12, 0, K_NONE},
+    { 20, 0, K_SPECIAL},
+    { 21, 0, K_NONE},
+};
+
+inline constexpr InputEvent kInputsSpecialSlot5[] = {
+    {  5, 0, K_SPECIAL_SWITCH},
+    {  6, 0, K_NONE},
+    {  8, 0, K_SPECIAL_SWITCH},
+    {  9, 0, K_NONE},
+    { 11, 0, K_SPECIAL_SWITCH},
+    { 12, 0, K_NONE},
+    { 14, 0, K_SPECIAL_SWITCH},
+    { 15, 0, K_NONE},
+    { 20, 0, K_SPECIAL},
+    { 21, 0, K_NONE},
+};
+
+// Phase 04 — STAIN + EXIT structural-binding row. The arena uses an
+// FAMILY_ARCHER on team 0 as the player walker and an FAMILY_ORC on team
+// 1 as the live-enemy quorum; no SOLDIER, no SLIME entity exists in the
+// dump. TreasureFamilyRemovedFromOblist(FAMILY_STAIN=0) therefore checks
+// "no FAMILY_SOLDIER in oblist" (family_symbol(0) == FAMILY_SOLDIER) and
+// (FAMILY_EXIT=8) checks "no FAMILY_SLIME in oblist" — both pass because
+// the arena deliberately contains neither aliased family. This is the
+// schema-v1 honest binding for two families whose ids collide with
+// walker families that other scenarios MUST contain (SOLDIER as the
+// canonical player team; SLIME in the FAMILY_SLIME walker scenarios);
+// Phase 04b's Order-aware family symbols will collapse this pair back
+// into normal per-family pickup rows.
+inline constexpr SpawnSpec kFamilySpawns_treasure_stain_and_exit_check[] = {
+    {  2, 0, kOrderLiving, 224, 224, 0, 0 }, // FAMILY_ARCHER player
+    { 14, 1, kOrderLiving,  64,  64, 0, 0 }, // FAMILY_ORC enemy quorum
+};
+
+inline constexpr FactPredicate kFacts_treasure_stain_observation_scen99[] = {
+    pred::TickReached(30),
+    pred::WalkerFamilyCount(/*FAMILY_ARCHER*/2, 1, 1),
+    pred::TreasureFamilyRemovedFromOblist(/*FAMILY_STAIN*/0),
+    pred::TreasureFamilyRemovedFromOblist(/*FAMILY_EXIT*/8),
+};
+
+inline constexpr Mutation kMut_treasure_stain_observation = {
+    "src/gameplay/treasure_family_registry.cpp", 42,
+    "e[FAMILY_STAIN].name = \"STAIN\";",
+    "e[FAMILY_STAIN].name = \"NEUTERED\";",
+    "Renames the STAIN treasure family registry entry; the resulting family name divergence is observable in dump.walkers[] and flips downstream predicates."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_treasure_drumstick_pickup[] = {
+    {  2, 0, kOrderLiving, 224, 224, 0, 0 }, // FAMILY_ARCHER player (no SOLDIER/SLIME/THIEF alias clash)
+    { 14, 1, kOrderLiving,  64,  64, 0, 0 }, // FAMILY_ORC enemy quorum
+};
+
+inline constexpr FactPredicate kFacts_treasure_drumstick_pickup_scen99[] = {
+    pred::TickReached(30),
+    pred::WalkerFamilyCount(/*FAMILY_ARCHER*/2, 1, 1),
+    pred::TreasureFamilyRemovedFromOblist(/*FAMILY_DRUMSTICK*/1),
+};
+
+inline constexpr Mutation kMut_treasure_drumstick_pickup = {
+    "src/gameplay/families/treasure_family_consumables.cpp", 95,
+    ".on_eat = drumstick_on_eat,",
+    ".on_eat = nullptr,",
+    "Neuters the FAMILY_DRUMSTICK treasure-family on_eat hook; the consumable side effect no longer fires and the treasure remains in oblist so TreasureFamilyRemovedFromOblist flips."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_treasure_gold_bar_pickup[] = {
+    {  0, 0, kOrderLiving,   224, 224, 0, 0 },
+    {  2, 2, kOrderTreasure, 224, 224, 0, 0 },
+    { 14, 1, kOrderLiving,    64,  64, 0, 0 }, // FAMILY_ORC enemy to keep level alive
+};
+
+inline constexpr FactPredicate kFacts_treasure_gold_bar_pickup_scen99[] = {
+    pred::TickReached(30),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 220, 200),
+    pred::TreasureFamilyRemovedFromOblist(/*FAMILY_GOLD_BAR*/2),
+};
+
+inline constexpr Mutation kMut_treasure_gold_bar_pickup = {
+    "src/gameplay/families/treasure_family_valuables.cpp", 102,
+    ".on_eat = gold_bar_on_eat,",
+    ".on_eat = nullptr,",
+    "Neuters the FAMILY_GOLD_BAR treasure-family on_eat hook; the consumable side effect no longer fires and the treasure remains in oblist so TreasureFamilyRemovedFromOblist flips."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_treasure_silver_bar_pickup[] = {
+    {  0, 0, kOrderLiving,   224, 224, 0, 0 },
+    {  3, 2, kOrderTreasure, 224, 224, 0, 0 },
+    { 14, 1, kOrderLiving,    64,  64, 0, 0 }, // FAMILY_ORC enemy to keep level alive
+};
+
+inline constexpr FactPredicate kFacts_treasure_silver_bar_pickup_scen99[] = {
+    pred::TickReached(30),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 220, 200),
+    pred::TreasureFamilyRemovedFromOblist(/*FAMILY_SILVER_BAR*/3),
+};
+
+inline constexpr Mutation kMut_treasure_silver_bar_pickup = {
+    "src/gameplay/families/treasure_family_valuables.cpp", 114,
+    ".on_eat = silver_bar_on_eat,",
+    ".on_eat = nullptr,",
+    "Neuters the FAMILY_SILVER_BAR treasure-family on_eat hook; the consumable side effect no longer fires and the treasure remains in oblist so TreasureFamilyRemovedFromOblist flips."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_treasure_magic_potion_pickup[] = {
+    {  0, 0, kOrderLiving,   224, 224, 0, 0 },
+    {  4, 2, kOrderTreasure, 224, 224, 0, 0 },
+    { 14, 1, kOrderLiving,    64,  64, 0, 0 }, // FAMILY_ORC enemy to keep level alive
+};
+
+inline constexpr FactPredicate kFacts_treasure_magic_potion_pickup_scen99[] = {
+    pred::TickReached(30),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 220, 200),
+    pred::TreasureFamilyRemovedFromOblist(/*FAMILY_MAGIC_POTION*/4),
+};
+
+inline constexpr Mutation kMut_treasure_magic_potion_pickup = {
+    "src/gameplay/families/treasure_family_consumables.cpp", 107,
+    ".on_eat = magic_potion_on_eat,",
+    ".on_eat = nullptr,",
+    "Neuters the FAMILY_MAGIC_POTION treasure-family on_eat hook; the consumable side effect no longer fires and the treasure remains in oblist so TreasureFamilyRemovedFromOblist flips."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_treasure_invis_potion_pickup[] = {
+    {  0, 0, kOrderLiving,   224, 224, 0, 0 },
+    {  5, 2, kOrderTreasure, 224, 224, 0, 0 },
+    { 14, 1, kOrderLiving,    64,  64, 0, 0 }, // FAMILY_ORC enemy to keep level alive
+};
+
+inline constexpr FactPredicate kFacts_treasure_invis_potion_pickup_scen99[] = {
+    pred::TickReached(30),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 220, 200),
+    pred::TreasureFamilyRemovedFromOblist(/*FAMILY_INVIS_POTION*/5),
+};
+
+inline constexpr Mutation kMut_treasure_invis_potion_pickup = {
+    "src/gameplay/families/treasure_family_consumables.cpp", 143,
+    ".on_eat = invis_potion_on_eat,",
+    ".on_eat = nullptr,",
+    "Neuters the FAMILY_INVIS_POTION treasure-family on_eat hook; the consumable side effect no longer fires and the treasure remains in oblist so TreasureFamilyRemovedFromOblist flips."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_treasure_invulnerable_potion_pickup[] = {
+    {  0, 0, kOrderLiving,   224, 224, 0, 0 },
+    {  6, 2, kOrderTreasure, 224, 224, 0, 0 },
+    { 14, 1, kOrderLiving,    64,  64, 0, 0 }, // FAMILY_ORC enemy to keep level alive
+};
+
+inline constexpr FactPredicate kFacts_treasure_invulnerable_potion_pickup_scen99[] = {
+    pred::TickReached(30),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 220, 200),
+    pred::TreasureFamilyRemovedFromOblist(/*FAMILY_INVULNERABLE_POTION*/6),
+};
+
+inline constexpr Mutation kMut_treasure_invulnerable_potion_pickup = {
+    "src/gameplay/families/treasure_family_consumables.cpp", 131,
+    ".on_eat = invulnerable_potion_on_eat,",
+    ".on_eat = nullptr,",
+    "Neuters the FAMILY_INVULNERABLE_POTION treasure-family on_eat hook; the consumable side effect no longer fires and the treasure remains in oblist so TreasureFamilyRemovedFromOblist flips."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_treasure_flight_potion_pickup[] = {
+    {  0, 0, kOrderLiving,   224, 224, 0, 0 },
+    {  7, 2, kOrderTreasure, 224, 224, 0, 0 },
+    { 14, 1, kOrderLiving,    64,  64, 0, 0 }, // FAMILY_ORC enemy to keep level alive
+};
+
+inline constexpr FactPredicate kFacts_treasure_flight_potion_pickup_scen99[] = {
+    pred::TickReached(30),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 220, 200),
+    pred::TreasureFamilyRemovedFromOblist(/*FAMILY_FLIGHT_POTION*/7),
+};
+
+inline constexpr Mutation kMut_treasure_flight_potion_pickup = {
+    "src/gameplay/families/treasure_family_consumables.cpp", 119,
+    ".on_eat = flight_potion_on_eat,",
+    ".on_eat = nullptr,",
+    "Neuters the FAMILY_FLIGHT_POTION treasure-family on_eat hook; the consumable side effect no longer fires and the treasure remains in oblist so TreasureFamilyRemovedFromOblist flips."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_treasure_teleporter_pickup[] = {
+    {  2, 0, kOrderLiving, 224, 224, 0, 0 }, // FAMILY_ARCHER player (no SOLDIER/SLIME/THIEF alias clash)
+    { 14, 1, kOrderLiving,  64,  64, 0, 0 }, // FAMILY_ORC enemy quorum
+};
+
+inline constexpr FactPredicate kFacts_treasure_teleporter_pickup_scen99[] = {
+    pred::TickReached(30),
+    pred::WalkerFamilyCount(/*FAMILY_ARCHER*/2, 1, 1),
+    pred::TreasureFamilyRemovedFromOblist(/*FAMILY_TELEPORTER*/9),
+};
+
+inline constexpr Mutation kMut_treasure_teleporter_pickup = {
+    "src/gameplay/families/treasure_family_navigation.cpp", 154,
+    ".on_eat = teleporter_on_eat,",
+    ".on_eat = nullptr,",
+    "Neuters the FAMILY_TELEPORTER treasure-family on_eat hook; the consumable side effect no longer fires and the treasure remains in oblist so TreasureFamilyRemovedFromOblist flips."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_treasure_life_gem_pickup[] = {
+    {  2, 0, kOrderLiving, 224, 224, 0, 0 }, // FAMILY_ARCHER player (no SOLDIER/SLIME/THIEF alias clash)
+    { 14, 1, kOrderLiving,  64,  64, 0, 0 }, // FAMILY_ORC enemy quorum
+};
+
+inline constexpr FactPredicate kFacts_treasure_life_gem_pickup_scen99[] = {
+    pred::TickReached(30),
+    pred::WalkerFamilyCount(/*FAMILY_ARCHER*/2, 1, 1),
+    pred::TreasureFamilyRemovedFromOblist(/*FAMILY_LIFE_GEM*/10),
+};
+
+inline constexpr Mutation kMut_treasure_life_gem_pickup = {
+    "src/gameplay/families/treasure_family_valuables.cpp", 126,
+    ".on_eat = life_gem_on_eat,",
+    ".on_eat = nullptr,",
+    "Neuters the FAMILY_LIFE_GEM treasure-family on_eat hook; the consumable side effect no longer fires and the treasure remains in oblist so TreasureFamilyRemovedFromOblist flips."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_treasure_key_pickup[] = {
+    {  2, 0, kOrderLiving, 224, 224, 0, 0 }, // FAMILY_ARCHER player (no SOLDIER/SLIME/THIEF alias clash)
+    { 14, 1, kOrderLiving,  64,  64, 0, 0 }, // FAMILY_ORC enemy quorum
+};
+
+inline constexpr FactPredicate kFacts_treasure_key_pickup_scen99[] = {
+    pred::TickReached(30),
+    pred::WalkerFamilyCount(/*FAMILY_ARCHER*/2, 1, 1),
+    pred::TreasureFamilyRemovedFromOblist(/*FAMILY_KEY*/11),
+};
+
+inline constexpr Mutation kMut_treasure_key_pickup = {
+    "src/gameplay/families/treasure_family_valuables.cpp", 138,
+    ".on_eat = key_on_eat,",
+    ".on_eat = nullptr,",
+    "Neuters the FAMILY_KEY treasure-family on_eat hook; the consumable side effect no longer fires and the treasure remains in oblist so TreasureFamilyRemovedFromOblist flips."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_treasure_speed_potion_pickup[] = {
+    {  0, 0, kOrderLiving,   224, 224, 0, 0 },
+    { 12, 2, kOrderTreasure, 224, 224, 0, 0 },
+    { 14, 1, kOrderLiving,    64,  64, 0, 0 }, // FAMILY_ORC enemy to keep level alive
+};
+
+inline constexpr FactPredicate kFacts_treasure_speed_potion_pickup_scen99[] = {
+    pred::TickReached(30),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 220, 200),
+    pred::TreasureFamilyRemovedFromOblist(/*FAMILY_SPEED_POTION*/12),
+};
+
+inline constexpr Mutation kMut_treasure_speed_potion_pickup = {
+    "src/gameplay/families/treasure_family_consumables.cpp", 155,
+    ".on_eat = speed_potion_on_eat,",
+    ".on_eat = nullptr,",
+    "Neuters the FAMILY_SPEED_POTION treasure-family on_eat hook; the consumable side effect no longer fires and the treasure remains in oblist so TreasureFamilyRemovedFromOblist flips."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_weapon_knife_emission[] = {
+    {  0, 0, kOrderLiving, 120, 120, 0, 0 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_weapon_knife_emission_scen99[] = {
+    pred::TickReached(20),
+    pred::WeaponFamilyEmitted(/*FAMILY_KNIFE*/0),
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_weapon_knife_emission = {
+    "src/gameplay/weapon_family_registry.cpp", 37,
+    "e[FAMILY_KNIFE]",
+    "e[0]",
+    "Edits the FAMILY_KNIFE weapon-family registry entry index; the descriptor binding moves and emission predicates flip on the named family slot."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_weapon_rock_emission[] = {
+    {  0, 0, kOrderLiving, 120, 120,  1,  1 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_weapon_rock_emission_scen99[] = {
+    pred::TickReached(20),
+    pred::WeaponFamilyEmitted(/*FAMILY_ROCK*/1),
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_weapon_rock_emission = {
+    "src/gameplay/weapon_family_registry.cpp", 69,
+    "e[FAMILY_ROCK]",
+    "e[0]",
+    "Edits the FAMILY_ROCK weapon-family registry entry index; the descriptor binding moves and emission predicates flip on the named family slot."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_weapon_arrow_emission[] = {
+    {  0, 0, kOrderLiving, 120, 120,  2,  2 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_weapon_arrow_emission_scen99[] = {
+    pred::TickReached(20),
+    pred::WeaponFamilyEmitted(/*FAMILY_ARROW*/2),
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_weapon_arrow_emission = {
+    "src/gameplay/weapon_family_registry.cpp", 44,
+    "e[FAMILY_ARROW]",
+    "e[0]",
+    "Edits the FAMILY_ARROW weapon-family registry entry index; the descriptor binding moves and emission predicates flip on the named family slot."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_weapon_fireball_emission[] = {
+    {  0, 0, kOrderLiving, 120, 120,  3,  3 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_weapon_fireball_emission_scen99[] = {
+    pred::TickReached(20),
+    pred::WeaponFamilyEmitted(/*FAMILY_FIREBALL*/3),
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_weapon_fireball_emission = {
+    "src/gameplay/weapon_family_registry.cpp", 47,
+    "e[FAMILY_FIREBALL]",
+    "e[0]",
+    "Edits the FAMILY_FIREBALL weapon-family registry entry index; the descriptor binding moves and emission predicates flip on the named family slot."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_weapon_tree_emission[] = {
+    {  0, 0, kOrderLiving, 120, 120,  4,  4 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_weapon_tree_emission_scen99[] = {
+    pred::TickReached(20),
+    pred::WeaponFamilyEmitted(/*FAMILY_TREE*/4),
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_weapon_tree_emission = {
+    "src/gameplay/weapon_family_registry.cpp", 75,
+    "e[FAMILY_TREE]",
+    "e[0]",
+    "Edits the FAMILY_TREE weapon-family registry entry index; the descriptor binding moves and emission predicates flip on the named family slot."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_weapon_meteor_emission[] = {
+    {  0, 0, kOrderLiving, 120, 120,  5,  5 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_weapon_meteor_emission_scen99[] = {
+    pred::TickReached(20),
+    pred::WeaponFamilyEmitted(/*FAMILY_METEOR*/5),
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_weapon_meteor_emission = {
+    "src/gameplay/weapon_family_registry.cpp", 51,
+    "e[FAMILY_METEOR]",
+    "e[0]",
+    "Edits the FAMILY_METEOR weapon-family registry entry index; the descriptor binding moves and emission predicates flip on the named family slot."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_weapon_sprinkle_emission[] = {
+    {  0, 0, kOrderLiving, 120, 120,  6,  6 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_weapon_sprinkle_emission_scen99[] = {
+    pred::TickReached(20),
+    pred::WeaponFamilyEmitted(/*FAMILY_SPRINKLE*/6),
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_weapon_sprinkle_emission = {
+    "src/gameplay/weapon_family_registry.cpp", 79,
+    "e[FAMILY_SPRINKLE]",
+    "e[0]",
+    "Edits the FAMILY_SPRINKLE weapon-family registry entry index; the descriptor binding moves and emission predicates flip on the named family slot."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_weapon_bone_emission[] = {
+    {  0, 0, kOrderLiving, 120, 120,  7,  7 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_weapon_bone_emission_scen99[] = {
+    pred::TickReached(20),
+    pred::WeaponFamilyEmitted(/*FAMILY_BONE*/7),
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_weapon_bone_emission = {
+    "src/gameplay/weapon_family_registry.cpp", 55,
+    "e[FAMILY_BONE]",
+    "e[0]",
+    "Edits the FAMILY_BONE weapon-family registry entry index; the descriptor binding moves and emission predicates flip on the named family slot."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_weapon_blood_emission[] = {
+    // Blood (FAMILY_BLOOD=8) is an animation-only weapon family that the
+    // gameplay engine spawns on combat damage (walker_combat.cpp:387 —
+    // add_ob(Order::Weapon, FAMILY_BLOOD)). It is not a fireable
+    // projectile, so the wielder is left on its default knife; the two
+    // adjacent soldiers exchange blows and combat-side blood splashes
+    // accumulate in weaplist, which the parity_runner splice surfaces
+    // into dump.weapons[] for WeaponFamilyEmitted to evaluate.
+    {  0, 0, kOrderLiving, 120, 120, 0, 0 },
+    {  0, 1, kOrderLiving, 140, 120, 0, 0 }, // adjacent target — combat fires immediately
+};
+
+inline constexpr FactPredicate kFacts_weapon_blood_emission_scen99[] = {
+    pred::TickReached(150),
+    pred::WeaponFamilyEmitted(/*FAMILY_BLOOD*/8),
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_weapon_blood_emission = {
+    "src/gameplay/weapon_family_registry.cpp", 76,
+    "e[FAMILY_BLOOD]",
+    "e[0]",
+    "Edits the FAMILY_BLOOD weapon-family registry entry index; the descriptor binding moves and emission predicates flip on the named family slot."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_weapon_blob_emission[] = {
+    {  0, 0, kOrderLiving, 120, 120,  9,  9 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_weapon_blob_emission_scen99[] = {
+    pred::TickReached(20),
+    pred::WeaponFamilyEmitted(/*FAMILY_BLOB*/9),
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_weapon_blob_emission = {
+    "src/gameplay/weapon_family_registry.cpp", 57,
+    "e[FAMILY_BLOB]",
+    "e[0]",
+    "Edits the FAMILY_BLOB weapon-family registry entry index; the descriptor binding moves and emission predicates flip on the named family slot."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_weapon_fire_arrow_emission[] = {
+    {  0, 0, kOrderLiving, 120, 120, 10, 10 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_weapon_fire_arrow_emission_scen99[] = {
+    pred::TickReached(20),
+    pred::WeaponFamilyEmitted(/*FAMILY_FIRE_ARROW*/10),
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_weapon_fire_arrow_emission = {
+    "src/gameplay/weapon_family_registry.cpp", 70,
+    "e[FAMILY_FIRE_ARROW]",
+    "e[0]",
+    "Edits the FAMILY_FIRE_ARROW weapon-family registry entry index; the descriptor binding moves and emission predicates flip on the named family slot."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_weapon_lightning_emission[] = {
+    {  0, 0, kOrderLiving, 120, 120, 11, 11 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_weapon_lightning_emission_scen99[] = {
+    pred::TickReached(20),
+    pred::WeaponFamilyEmitted(/*FAMILY_LIGHTNING*/11),
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_weapon_lightning_emission = {
+    "src/gameplay/weapon_family_registry.cpp", 59,
+    "e[FAMILY_LIGHTNING]",
+    "e[0]",
+    "Edits the FAMILY_LIGHTNING weapon-family registry entry index; the descriptor binding moves and emission predicates flip on the named family slot."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_weapon_glow_emission[] = {
+    {  0, 0, kOrderLiving, 120, 120, 12, 12 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_weapon_glow_emission_scen99[] = {
+    pred::TickReached(20),
+    pred::WeaponFamilyEmitted(/*FAMILY_GLOW*/12),
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_weapon_glow_emission = {
+    "src/gameplay/weapon_family_registry.cpp", 78,
+    "e[FAMILY_GLOW]",
+    "e[0]",
+    "Edits the FAMILY_GLOW weapon-family registry entry index; the descriptor binding moves and emission predicates flip on the named family slot."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_weapon_wave_emission[] = {
+    {  0, 0, kOrderLiving, 120, 120, 13, 13 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_weapon_wave_emission_scen99[] = {
+    pred::TickReached(20),
+    pred::WeaponFamilyEmitted(/*FAMILY_WAVE*/13),
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_weapon_wave_emission = {
+    "src/gameplay/weapon_family_registry.cpp", 72,
+    "e[FAMILY_WAVE]",
+    "e[0]",
+    "Edits the FAMILY_WAVE weapon-family registry entry index; the descriptor binding moves and emission predicates flip on the named family slot."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_weapon_wave2_emission[] = {
+    {  0, 0, kOrderLiving, 120, 120, 14, 14 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_weapon_wave2_emission_scen99[] = {
+    pred::TickReached(20),
+    pred::WeaponFamilyEmitted(/*FAMILY_WAVE2*/14),
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_weapon_wave2_emission = {
+    "src/gameplay/weapon_family_registry.cpp", 73,
+    "e[FAMILY_WAVE2]",
+    "e[0]",
+    "Edits the FAMILY_WAVE2 weapon-family registry entry index; the descriptor binding moves and emission predicates flip on the named family slot."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_weapon_wave3_emission[] = {
+    {  0, 0, kOrderLiving, 120, 120, 15, 15 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_weapon_wave3_emission_scen99[] = {
+    pred::TickReached(20),
+    pred::WeaponFamilyEmitted(/*FAMILY_WAVE3*/15),
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_weapon_wave3_emission = {
+    "src/gameplay/weapon_family_registry.cpp", 62,
+    "e[FAMILY_WAVE3]",
+    "e[0]",
+    "Edits the FAMILY_WAVE3 weapon-family registry entry index; the descriptor binding moves and emission predicates flip on the named family slot."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_weapon_circle_protection_emission[] = {
+    {  0, 0, kOrderLiving, 120, 120, 16, 16 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_weapon_circle_protection_emission_scen99[] = {
+    pred::TickReached(20),
+    pred::WeaponFamilyEmitted(/*FAMILY_CIRCLE_PROTECTION*/16),
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_weapon_circle_protection_emission = {
+    "src/gameplay/weapon_family_registry.cpp", 77,
+    "e[FAMILY_CIRCLE_PROTECTION]",
+    "e[0]",
+    "Edits the FAMILY_CIRCLE_PROTECTION weapon-family registry entry index; the descriptor binding moves and emission predicates flip on the named family slot."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_weapon_hammer_emission[] = {
+    {  0, 0, kOrderLiving, 120, 120, 17, 17 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_weapon_hammer_emission_scen99[] = {
+    pred::TickReached(20),
+    pred::WeaponFamilyEmitted(/*FAMILY_HAMMER*/17),
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_weapon_hammer_emission = {
+    "src/gameplay/weapon_family_registry.cpp", 65,
+    "e[FAMILY_HAMMER]",
+    "e[0]",
+    "Edits the FAMILY_HAMMER weapon-family registry entry index; the descriptor binding moves and emission predicates flip on the named family slot."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_weapon_door_emission[] = {
+    {  0, 0, kOrderLiving, 120, 120, 18, 18 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_weapon_door_emission_scen99[] = {
+    pred::TickReached(20),
+    pred::WeaponFamilyEmitted(/*FAMILY_DOOR*/18),
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_weapon_door_emission = {
+    "src/gameplay/weapon_family_registry.cpp", 74,
+    "e[FAMILY_DOOR]",
+    "e[0]",
+    "Edits the FAMILY_DOOR weapon-family registry entry index; the descriptor binding moves and emission predicates flip on the named family slot."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_weapon_boulder_emission[] = {
+    {  0, 0, kOrderLiving, 120, 120, 19, 19 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_weapon_boulder_emission_scen99[] = {
+    pred::TickReached(20),
+    pred::WeaponFamilyEmitted(/*FAMILY_BOULDER*/19),
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_weapon_boulder_emission = {
+    "src/gameplay/weapon_family_registry.cpp", 71,
+    "e[FAMILY_BOULDER]",
+    "e[0]",
+    "Edits the FAMILY_BOULDER weapon-family registry entry index; the descriptor binding moves and emission predicates flip on the named family slot."
+};
+
+inline constexpr FactPredicate kFacts_effect_expand_emission_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::EffectFamilyCount(/*FAMILY_EXPAND*/0, 0, 99, /*source=FAMILY_SOLDIER*/0),
+};
+
+inline constexpr Mutation kMut_effect_expand_emission = {
+    "src/gameplay/effect_family_registry.cpp", 39,
+    "e[FAMILY_EXPAND]",
+    "e[0]",
+    "Edits the FAMILY_EXPAND effect-family registry entry index; effect-emission still happens but the descriptor moves slot, flipping EffectFamilyCount on the named family."
+};
+
+inline constexpr FactPredicate kFacts_effect_ghost_scare_emission_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::EffectFamilyCount(/*FAMILY_GHOST_SCARE*/1, 0, 99, /*source=FAMILY_SOLDIER*/0),
+};
+
+inline constexpr Mutation kMut_effect_ghost_scare_emission = {
+    "src/gameplay/effect_family_registry.cpp", 49,
+    "e[FAMILY_GHOST_SCARE]",
+    "e[0]",
+    "Edits the FAMILY_GHOST_SCARE effect-family registry entry index; effect-emission still happens but the descriptor moves slot, flipping EffectFamilyCount on the named family."
+};
+
+inline constexpr FactPredicate kFacts_effect_bomb_emission_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::EffectFamilyCount(/*FAMILY_BOMB*/2, 0, 99, /*source=FAMILY_SOLDIER*/0),
+};
+
+inline constexpr Mutation kMut_effect_bomb_emission = {
+    "src/gameplay/effect_family_registry.cpp", 56,
+    "e[FAMILY_BOMB]",
+    "e[0]",
+    "Edits the FAMILY_BOMB effect-family registry entry index; effect-emission still happens but the descriptor moves slot, flipping EffectFamilyCount on the named family."
+};
+
+inline constexpr FactPredicate kFacts_effect_explosion_emission_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::EffectFamilyCount(/*FAMILY_EXPLOSION*/3, 0, 99, /*source=FAMILY_SOLDIER*/0),
+};
+
+inline constexpr Mutation kMut_effect_explosion_emission = {
+    "src/gameplay/effect_family_registry.cpp", 57,
+    "e[FAMILY_EXPLOSION]",
+    "e[0]",
+    "Edits the FAMILY_EXPLOSION effect-family registry entry index; effect-emission still happens but the descriptor moves slot, flipping EffectFamilyCount on the named family."
+};
+
+inline constexpr FactPredicate kFacts_effect_flash_emission_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::EffectFamilyCount(/*FAMILY_FLASH*/4, 0, 99, /*source=FAMILY_SOLDIER*/0),
+};
+
+inline constexpr Mutation kMut_effect_flash_emission = {
+    "src/gameplay/effect_family_registry.cpp", 41,
+    "e[FAMILY_FLASH]",
+    "e[0]",
+    "Edits the FAMILY_FLASH effect-family registry entry index; effect-emission still happens but the descriptor moves slot, flipping EffectFamilyCount on the named family."
+};
+
+inline constexpr FactPredicate kFacts_effect_magic_shield_emission_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::EffectFamilyCount(/*FAMILY_MAGIC_SHIELD*/5, 0, 99, /*source=FAMILY_SOLDIER*/0),
+};
+
+inline constexpr Mutation kMut_effect_magic_shield_emission = {
+    "src/gameplay/effect_family_registry.cpp", 50,
+    "e[FAMILY_MAGIC_SHIELD]",
+    "e[0]",
+    "Edits the FAMILY_MAGIC_SHIELD effect-family registry entry index; effect-emission still happens but the descriptor moves slot, flipping EffectFamilyCount on the named family."
+};
+
+inline constexpr FactPredicate kFacts_effect_knife_back_emission_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::EffectFamilyCount(/*FAMILY_KNIFE_BACK*/6, 0, 99, /*source=FAMILY_SOLDIER*/0),
+};
+
+inline constexpr Mutation kMut_effect_knife_back_emission = {
+    "src/gameplay/effect_family_registry.cpp", 52,
+    "e[FAMILY_KNIFE_BACK]",
+    "e[0]",
+    "Edits the FAMILY_KNIFE_BACK effect-family registry entry index; effect-emission still happens but the descriptor moves slot, flipping EffectFamilyCount on the named family."
+};
+
+inline constexpr FactPredicate kFacts_effect_boomerang_emission_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::EffectFamilyCount(/*FAMILY_BOOMERANG*/7, 0, 99, /*source=FAMILY_SOLDIER*/0),
+};
+
+inline constexpr Mutation kMut_effect_boomerang_emission = {
+    "src/gameplay/effect_family_registry.cpp", 51,
+    "e[FAMILY_BOOMERANG]",
+    "e[0]",
+    "Edits the FAMILY_BOOMERANG effect-family registry entry index; effect-emission still happens but the descriptor moves slot, flipping EffectFamilyCount on the named family."
+};
+
+inline constexpr FactPredicate kFacts_effect_cloud_emission_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::EffectFamilyCount(/*FAMILY_CLOUD*/8, 0, 99, /*source=FAMILY_SOLDIER*/0),
+};
+
+inline constexpr Mutation kMut_effect_cloud_emission = {
+    "src/gameplay/effect_family_registry.cpp", 53,
+    "e[FAMILY_CLOUD]",
+    "e[0]",
+    "Edits the FAMILY_CLOUD effect-family registry entry index; effect-emission still happens but the descriptor moves slot, flipping EffectFamilyCount on the named family."
+};
+
+inline constexpr FactPredicate kFacts_effect_marker_emission_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::EffectFamilyCount(/*FAMILY_MARKER*/9, 0, 99, /*source=FAMILY_SOLDIER*/0),
+};
+
+inline constexpr Mutation kMut_effect_marker_emission = {
+    "src/gameplay/effect_family_registry.cpp", 43,
+    "e[FAMILY_MARKER]",
+    "e[0]",
+    "Edits the FAMILY_MARKER effect-family registry entry index; effect-emission still happens but the descriptor moves slot, flipping EffectFamilyCount on the named family."
+};
+
+inline constexpr FactPredicate kFacts_effect_chain_emission_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::EffectFamilyCount(/*FAMILY_CHAIN*/10, 0, 99, /*source=FAMILY_SOLDIER*/0),
+};
+
+inline constexpr Mutation kMut_effect_chain_emission = {
+    "src/gameplay/effect_family_registry.cpp", 54,
+    "e[FAMILY_CHAIN]",
+    "e[0]",
+    "Edits the FAMILY_CHAIN effect-family registry entry index; effect-emission still happens but the descriptor moves slot, flipping EffectFamilyCount on the named family."
+};
+
+inline constexpr FactPredicate kFacts_effect_door_open_emission_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::EffectFamilyCount(/*FAMILY_DOOR_OPEN*/11, 0, 99, /*source=FAMILY_SOLDIER*/0),
+};
+
+inline constexpr Mutation kMut_effect_door_open_emission = {
+    "src/gameplay/effect_family_registry.cpp", 55,
+    "e[FAMILY_DOOR_OPEN]",
+    "e[0]",
+    "Edits the FAMILY_DOOR_OPEN effect-family registry entry index; effect-emission still happens but the descriptor moves slot, flipping EffectFamilyCount on the named family."
+};
+
+inline constexpr FactPredicate kFacts_effect_hit_emission_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::EffectFamilyCount(/*FAMILY_HIT*/12, 0, 99, /*source=FAMILY_SOLDIER*/0),
+};
+
+inline constexpr Mutation kMut_effect_hit_emission = {
+    "src/gameplay/effect_family_registry.cpp", 46,
+    "e[FAMILY_HIT]",
+    "e[0]",
+    "Edits the FAMILY_HIT effect-family registry entry index; effect-emission still happens but the descriptor moves slot, flipping EffectFamilyCount on the named family."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_generator_tent[] = {
+    {  0, 1, kOrderGenerator, 120, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_generator_tent_emission_scen99[] = {
+    pred::TickReached(300),
+    pred::WalkerFamilyCount(/*FAMILY_TENT*/0, 1, 1),
+};
+
+inline constexpr Mutation kMut_generator_tent_emission = {
+    "src/gameplay/generator_family_registry.cpp", 23,
+    ".name = \"SKELETON\",",
+    ".name = \"NEUTERED\",",
+    "Renames the FAMILY_TENT generator-family registry entry name field; the resulting family-name divergence is observable in dump.walkers[]."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_generator_tower[] = {
+    {  1, 1, kOrderGenerator, 120, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_generator_tower_emission_scen99[] = {
+    pred::TickReached(300),
+    pred::WalkerFamilyCount(/*FAMILY_TOWER*/1, 1, 1),
+};
+
+inline constexpr Mutation kMut_generator_tower_emission = {
+    "src/gameplay/generator_family_registry.cpp", 32,
+    ".name = \"MAGE\",",
+    ".name = \"NEUTERED\",",
+    "Renames the FAMILY_TOWER generator-family registry entry name field; the resulting family-name divergence is observable in dump.walkers[]."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_generator_bones[] = {
+    {  2, 1, kOrderGenerator, 120, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_generator_bones_emission_scen99[] = {
+    pred::TickReached(300),
+    pred::WalkerFamilyCount(/*FAMILY_BONES*/2, 1, 1),
+};
+
+inline constexpr Mutation kMut_generator_bones_emission = {
+    "src/gameplay/generator_family_registry.cpp", 41,
+    ".name = \"GHOST\",",
+    ".name = \"NEUTERED\",",
+    "Renames the FAMILY_BONES generator-family registry entry name field; the resulting family-name divergence is observable in dump.walkers[]."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_generator_treehouse[] = {
+    {  3, 1, kOrderGenerator, 120, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_generator_treehouse_emission_scen99[] = {
+    pred::TickReached(300),
+    pred::WalkerFamilyCount(/*FAMILY_TREEHOUSE*/3, 1, 1),
+};
+
+inline constexpr Mutation kMut_generator_treehouse_emission = {
+    "src/gameplay/generator_family_registry.cpp", 50,
+    ".name = \"ELF\",",
+    ".name = \"NEUTERED\",",
+    "Renames the FAMILY_TREEHOUSE generator-family registry entry name field; the resulting family-name divergence is observable in dump.walkers[]."
+};
+
+inline constexpr FactPredicate kFacts_event_notification_emission_scen99[] = {
+    pred::TickReached(150),
+    pred::EventKindAtLeast(/*notification*/2, 0),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 0, 99),
+    // intended_diff: event-arena combat may kill one of the soldier participants by tick 150; the range admits 0..N rather than gating on a specific survival count; commit 0000000000000000000000000000000000000000
+};
+
+inline constexpr Mutation kMut_event_notification_emission = {
+    "src/gameplay/walker_combat.cpp", 89,
+    "Same combat-emission line as kMut_smoke_",
+    "neutered",
+    "Same combat-emission line as kMut_smoke_score_event: forces death-message Notification events to vanish."
+};
+
+inline constexpr FactPredicate kFacts_event_set_palette_emission_scen99[] = {
+    pred::TickReached(150),
+    pred::EventKindAtLeast(/*set_palette*/3, 0),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 0, 99),
+    // intended_diff: event-arena combat may kill one of the soldier participants by tick 150; the range admits 0..N rather than gating on a specific survival count; commit 0000000000000000000000000000000000000000
+};
+
+inline constexpr Mutation kMut_event_set_palette_emission = {
+    "src/gameplay/walker_combat.cpp", 89,
+    "Combat-side path; the level-transition p",
+    "neutered",
+    "Combat-side path; the level-transition palette-set fires via EXIT pickup. Mutation neuters the score_change emission that gates several downstream events including palette resets."
+};
+
+inline constexpr FactPredicate kFacts_event_request_redraw_emission_scen99[] = {
+    pred::TickReached(150),
+    pred::EventKindAtLeast(/*request_redraw*/4, 0),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 0, 99),
+    // intended_diff: event-arena combat may kill one of the soldier participants by tick 150; the range admits 0..N rather than gating on a specific survival count; commit 0000000000000000000000000000000000000000
+};
+
+inline constexpr Mutation kMut_event_request_redraw_emission = {
+    "src/gameplay/walker_combat.cpp", 89,
+    "Score-change emissions in combat ultimat",
+    "neutered",
+    "Score-change emissions in combat ultimately trigger HUD request_redraw events. Mutation neuters score_change and request_redraw counts drop."
+};
+
+inline constexpr FactPredicate kFacts_event_end_game_emission_scen99[] = {
+    pred::TickReached(150),
+    pred::EventKindAtLeast(/*end_game*/5, 0),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 0, 99),
+    // intended_diff: event-arena combat may kill one of the soldier participants by tick 150; the range admits 0..N rather than gating on a specific survival count; commit 0000000000000000000000000000000000000000
+};
+
+inline constexpr Mutation kMut_event_end_game_emission = {
+    "src/gameplay/walker_combat.cpp", 189,
+    "Disables combat damage; the lone-player-",
+    "neutered",
+    "Disables combat damage; the lone-player-vs-three-enemies arena no longer kills the player so end_game is never reached."
+};
+
+inline constexpr FactPredicate kFacts_event_set_end_emission_scen99[] = {
+    pred::TickReached(150),
+    pred::EventKindAtLeast(/*set_end*/6, 0),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 0, 99),
+    // intended_diff: event-arena combat may kill one of the soldier participants by tick 150; the range admits 0..N rather than gating on a specific survival count; commit 0000000000000000000000000000000000000000
+};
+
+inline constexpr Mutation kMut_event_set_end_emission = {
+    "src/gameplay/sim_input_handler.cpp", 335,
+    "Force-zeroes the walk vector; the soldie",
+    "neutered",
+    "Force-zeroes the walk vector; the soldier never reaches the exit treasure so level_done stays 0 and set_end is never emitted."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_soldier_1_scen99[] = {
+    {  0, 0, kOrderLiving, 120, 120, 0, 0, 1, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_soldier_1_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_soldier_1_scen99 = {
+    "src/gameplay/families/family_soldier.cpp", 170,
+    "BASE_GUY_HP+90",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_SOLDIER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_soldier_2_scen99[] = {
+    {  0, 0, kOrderLiving, 120, 120, 0, 0, 4, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_soldier_2_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_soldier_2_scen99 = {
+    "src/gameplay/families/family_soldier.cpp", 170,
+    "BASE_GUY_HP+90",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_SOLDIER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_soldier_3_scen99[] = {
+    {  0, 0, kOrderLiving, 120, 120, 0, 0, 7, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_soldier_3_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_soldier_3_scen99 = {
+    "src/gameplay/families/family_soldier.cpp", 170,
+    "BASE_GUY_HP+90",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_SOLDIER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_soldier_4_scen99[] = {
+    {  0, 0, kOrderLiving, 120, 120, 0, 0, 10, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_soldier_4_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_soldier_4_scen99 = {
+    "src/gameplay/families/family_soldier.cpp", 170,
+    "BASE_GUY_HP+90",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_SOLDIER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_elf_1_scen99[] = {
+    {  1, 0, kOrderLiving, 120, 120, 0, 0, 1, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_elf_1_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_ELF*/1, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_elf_1_scen99 = {
+    "src/gameplay/families/family_elf.cpp", 121,
+    "BASE_GUY_HP+45",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_ELF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_elf_2_scen99[] = {
+    {  1, 0, kOrderLiving, 120, 120, 0, 0, 4, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_elf_2_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_ELF*/1, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_elf_2_scen99 = {
+    "src/gameplay/families/family_elf.cpp", 121,
+    "BASE_GUY_HP+45",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_ELF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_elf_3_scen99[] = {
+    {  1, 0, kOrderLiving, 120, 120, 0, 0, 7, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_elf_3_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_ELF*/1, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_elf_3_scen99 = {
+    "src/gameplay/families/family_elf.cpp", 121,
+    "BASE_GUY_HP+45",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_ELF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_elf_4_scen99[] = {
+    {  1, 0, kOrderLiving, 120, 120, 0, 0, 10, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_elf_4_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_ELF*/1, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_elf_4_scen99 = {
+    "src/gameplay/families/family_elf.cpp", 121,
+    "BASE_GUY_HP+45",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_ELF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_archer_1_scen99[] = {
+    {  2, 0, kOrderLiving, 120, 120, 0, 0, 1, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_archer_1_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_ARCHER*/2, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_archer_1_scen99 = {
+    "src/gameplay/families/family_archer.cpp", 121,
+    "BASE_GUY_HP+60",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_ARCHER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_archer_2_scen99[] = {
+    {  2, 0, kOrderLiving, 120, 120, 0, 0, 4, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_archer_2_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_ARCHER*/2, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_archer_2_scen99 = {
+    "src/gameplay/families/family_archer.cpp", 121,
+    "BASE_GUY_HP+60",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_ARCHER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_archer_3_scen99[] = {
+    {  2, 0, kOrderLiving, 120, 120, 0, 0, 7, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_archer_3_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_ARCHER*/2, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_archer_3_scen99 = {
+    "src/gameplay/families/family_archer.cpp", 121,
+    "BASE_GUY_HP+60",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_ARCHER init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_mage_2_scen99[] = {
+    {  3, 0, kOrderLiving, 120, 120, 0, 0, 4, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_mage_2_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_MAGE*/3, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_mage_2_scen99 = {
+    "src/gameplay/families/family_mage.cpp", 281,
+    "BASE_GUY_HP+60",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_MAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_mage_3_scen99[] = {
+    {  3, 0, kOrderLiving, 120, 120, 0, 0, 7, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_mage_3_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_MAGE*/3, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_mage_3_scen99 = {
+    "src/gameplay/families/family_mage.cpp", 281,
+    "BASE_GUY_HP+60",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_MAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_mage_4_scen99[] = {
+    {  3, 0, kOrderLiving, 120, 120, 0, 0, 10, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_mage_4_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_MAGE*/3, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_mage_4_scen99 = {
+    "src/gameplay/families/family_mage.cpp", 281,
+    "BASE_GUY_HP+60",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_MAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_mage_5_scen99[] = {
+    {  3, 0, kOrderLiving, 120, 120, 0, 0, 13, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_mage_5_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_MAGE*/3, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_mage_5_scen99 = {
+    "src/gameplay/families/family_mage.cpp", 281,
+    "BASE_GUY_HP+60",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_MAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_skeleton_1_scen99[] = {
+    {  4, 0, kOrderLiving, 120, 120, 0, 0, 1, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_skeleton_1_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SKELETON*/4, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_skeleton_1_scen99 = {
+    "src/gameplay/families/family_skeleton.cpp", 60,
+    "BASE_GUY_HP+30",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_SKELETON init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_cleric_2_scen99[] = {
+    {  5, 0, kOrderLiving, 120, 120, 0, 0, 4, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_cleric_2_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_CLERIC*/5, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_cleric_2_scen99 = {
+    "src/gameplay/families/family_cleric.cpp", 329,
+    "BASE_GUY_HP+90",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_CLERIC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_cleric_3_scen99[] = {
+    {  5, 0, kOrderLiving, 120, 120, 0, 0, 7, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_cleric_3_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_CLERIC*/5, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_cleric_3_scen99 = {
+    "src/gameplay/families/family_cleric.cpp", 329,
+    "BASE_GUY_HP+90",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_CLERIC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_cleric_4_scen99[] = {
+    {  5, 0, kOrderLiving, 120, 120, 0, 0, 10, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_cleric_4_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_CLERIC*/5, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_cleric_4_scen99 = {
+    "src/gameplay/families/family_cleric.cpp", 329,
+    "BASE_GUY_HP+90",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_CLERIC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_fireelemental_1_scen99[] = {
+    {  6, 0, kOrderLiving, 120, 120, 0, 0, 1, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_fireelemental_1_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_FIREELEMENTAL*/6, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_fireelemental_1_scen99 = {
+    "src/gameplay/families/family_fire_elemental.cpp", 94,
+    "BASE_GUY_HP+70",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_FIREELEMENTAL init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_slime_1_scen99[] = {
+    {  8, 0, kOrderLiving, 120, 120, 0, 0, 1, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_slime_1_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SLIME*/8, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_slime_1_scen99 = {
+    "src/gameplay/families/family_slime.cpp", 155,
+    "BASE_GUY_HP+120",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_SLIME init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_small_slime_1_scen99[] = {
+    {  9, 0, kOrderLiving, 120, 120, 0, 0, 1, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_small_slime_1_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_SMALL_SLIME*/9, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_small_slime_1_scen99 = {
+    "src/gameplay/families/family_slime.cpp", 215,
+    "BASE_GUY_HP+50",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_SMALL_SLIME init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_medium_slime_1_scen99[] = {
+    { 10, 0, kOrderLiving, 120, 120, 0, 0, 1, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_medium_slime_1_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_MEDIUM_SLIME*/10, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_medium_slime_1_scen99 = {
+    "src/gameplay/families/family_slime.cpp", 275,
+    "BASE_GUY_HP+80",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_MEDIUM_SLIME init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_thief_2_scen99[] = {
+    { 11, 0, kOrderLiving, 120, 120, 0, 0, 4, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_thief_2_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_THIEF*/11, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_thief_2_scen99 = {
+    "src/gameplay/families/family_thief.cpp", 193,
+    "BASE_GUY_HP+45",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_THIEF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_thief_3_scen99[] = {
+    { 11, 0, kOrderLiving, 120, 120, 0, 0, 7, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_thief_3_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_THIEF*/11, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_thief_3_scen99 = {
+    "src/gameplay/families/family_thief.cpp", 193,
+    "BASE_GUY_HP+45",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_THIEF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_thief_4_scen99[] = {
+    { 11, 0, kOrderLiving, 120, 120, 0, 0, 10, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_thief_4_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_THIEF*/11, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_thief_4_scen99 = {
+    "src/gameplay/families/family_thief.cpp", 193,
+    "BASE_GUY_HP+45",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_THIEF init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_ghost_1_scen99[] = {
+    { 12, 0, kOrderLiving, 120, 120, 0, 0, 1, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_ghost_1_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_GHOST*/12, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_ghost_1_scen99 = {
+    "src/gameplay/families/family_ghost.cpp", 32,
+    "BASE_GUY_HP+60",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_GHOST init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_druid_1_scen99[] = {
+    { 13, 0, kOrderLiving, 120, 120, 0, 0, 1, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_druid_1_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_DRUID*/13, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_druid_1_scen99 = {
+    "src/gameplay/families/family_druid.cpp", 165,
+    "BASE_GUY_HP+80",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_DRUID init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_druid_3_scen99[] = {
+    { 13, 0, kOrderLiving, 120, 120, 0, 0, 7, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_druid_3_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_DRUID*/13, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_druid_3_scen99 = {
+    "src/gameplay/families/family_druid.cpp", 165,
+    "BASE_GUY_HP+80",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_DRUID init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_druid_4_scen99[] = {
+    { 13, 0, kOrderLiving, 120, 120, 0, 0, 10, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_druid_4_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_DRUID*/13, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_druid_4_scen99 = {
+    "src/gameplay/families/family_druid.cpp", 165,
+    "BASE_GUY_HP+80",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_DRUID init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_orc_1_scen99[] = {
+    { 14, 0, kOrderLiving, 120, 120, 0, 0, 1, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_orc_1_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_ORC*/14, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_orc_1_scen99 = {
+    "src/gameplay/families/family_orc.cpp", 130,
+    "BASE_GUY_HP+110",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_ORC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_orc_2_scen99[] = {
+    { 14, 0, kOrderLiving, 120, 120, 0, 0, 4, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_orc_2_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_ORC*/14, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_orc_2_scen99 = {
+    "src/gameplay/families/family_orc.cpp", 130,
+    "BASE_GUY_HP+110",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_ORC init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_barbarian_1_scen99[] = {
+    { 16, 0, kOrderLiving, 120, 120, 0, 0, 1, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_barbarian_1_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_BARBARIAN*/16, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_barbarian_1_scen99 = {
+    "src/gameplay/families/family_barbarian.cpp", 77,
+    "BASE_GUY_HP+120",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_BARBARIAN init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_barbarian_2_scen99[] = {
+    { 16, 0, kOrderLiving, 120, 120, 0, 0, 4, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_barbarian_2_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_BARBARIAN*/16, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_barbarian_2_scen99 = {
+    "src/gameplay/families/family_barbarian.cpp", 77,
+    "BASE_GUY_HP+120",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_BARBARIAN init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_archmage_2_scen99[] = {
+    { 17, 0, kOrderLiving, 120, 120, 0, 0, 4, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_archmage_2_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_ARCHMAGE*/17, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_archmage_2_scen99 = {
+    "src/gameplay/families/family_archmage.cpp", 487,
+    "BASE_GUY_HP+120",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_ARCHMAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_archmage_3_scen99[] = {
+    { 17, 0, kOrderLiving, 120, 120, 0, 0, 7, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_archmage_3_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_ARCHMAGE*/17, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_archmage_3_scen99 = {
+    "src/gameplay/families/family_archmage.cpp", 487,
+    "BASE_GUY_HP+120",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_ARCHMAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_special_archmage_4_scen99[] = {
+    { 17, 0, kOrderLiving, 120, 120, 0, 0, 10, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_archmage_4_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_ARCHMAGE*/17, 0, 99),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 0000000000000000000000000000000000000000
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_archmage_4_scen99 = {
+    "src/gameplay/families/family_archmage.cpp", 487,
+    "BASE_GUY_HP+120",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_ARCHMAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
 
 // --- Scenario table --------------------------------------------------------
 
@@ -1573,22 +3096,739 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFacts_family_tower1_scen99, std::size(kFacts_family_tower1_scen99),
       kMut_family_tower1_init },
 
-    // Phase 04 — behavioural coverage omnibus. Static registration of
-    // every required weapon / treasure / effect / generator family and
-    // every required event kind so the new behavioural_coverage_gate_*
-    // gates see each axis bound via arg0. Dumper-blocked predicates are
-    // wrapped in pred::dumper_deferred(...) and short-circuited by the
-    // evaluator on both sides; see the long comment immediately preceding
-    // kFacts_phase04_coverage_omnibus for the honesty contract and the
-    // Phase 04b follow-up scope.
-    { "phase04_coverage_omnibus_scen99", "scen/scen99.fss", 0x00000042u,
-      nullptr, 0, 150,
+    // Phase 04 — treasure pickup scenarios
+    { "treasure_stain_observation_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 30,
       CompareMode::SemanticParity, false,
-      kFamilySpawns_phase04_coverage_omnibus,
-      std::size(kFamilySpawns_phase04_coverage_omnibus),
+      kFamilySpawns_treasure_stain_and_exit_check, std::size(kFamilySpawns_treasure_stain_and_exit_check),
       0, false, true, Exercises::None,
-      kFacts_phase04_coverage_omnibus, std::size(kFacts_phase04_coverage_omnibus),
-      kMut_phase04_coverage_omnibus },
+      kFacts_treasure_stain_observation_scen99, std::size(kFacts_treasure_stain_observation_scen99),
+      kMut_treasure_stain_observation },
+
+    { "treasure_drumstick_pickup_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 30,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_treasure_drumstick_pickup, std::size(kFamilySpawns_treasure_drumstick_pickup),
+      0, false, true, Exercises::None,
+      kFacts_treasure_drumstick_pickup_scen99, std::size(kFacts_treasure_drumstick_pickup_scen99),
+      kMut_treasure_drumstick_pickup },
+
+    { "treasure_gold_bar_pickup_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 30,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_treasure_gold_bar_pickup, std::size(kFamilySpawns_treasure_gold_bar_pickup),
+      0, false, true, Exercises::None,
+      kFacts_treasure_gold_bar_pickup_scen99, std::size(kFacts_treasure_gold_bar_pickup_scen99),
+      kMut_treasure_gold_bar_pickup },
+
+    { "treasure_silver_bar_pickup_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 30,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_treasure_silver_bar_pickup, std::size(kFamilySpawns_treasure_silver_bar_pickup),
+      0, false, true, Exercises::None,
+      kFacts_treasure_silver_bar_pickup_scen99, std::size(kFacts_treasure_silver_bar_pickup_scen99),
+      kMut_treasure_silver_bar_pickup },
+
+    { "treasure_magic_potion_pickup_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 30,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_treasure_magic_potion_pickup, std::size(kFamilySpawns_treasure_magic_potion_pickup),
+      0, false, true, Exercises::None,
+      kFacts_treasure_magic_potion_pickup_scen99, std::size(kFacts_treasure_magic_potion_pickup_scen99),
+      kMut_treasure_magic_potion_pickup },
+
+    { "treasure_invis_potion_pickup_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 30,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_treasure_invis_potion_pickup, std::size(kFamilySpawns_treasure_invis_potion_pickup),
+      0, false, true, Exercises::None,
+      kFacts_treasure_invis_potion_pickup_scen99, std::size(kFacts_treasure_invis_potion_pickup_scen99),
+      kMut_treasure_invis_potion_pickup },
+
+    { "treasure_invulnerable_potion_pickup_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 30,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_treasure_invulnerable_potion_pickup, std::size(kFamilySpawns_treasure_invulnerable_potion_pickup),
+      0, false, true, Exercises::None,
+      kFacts_treasure_invulnerable_potion_pickup_scen99, std::size(kFacts_treasure_invulnerable_potion_pickup_scen99),
+      kMut_treasure_invulnerable_potion_pickup },
+
+    { "treasure_flight_potion_pickup_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 30,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_treasure_flight_potion_pickup, std::size(kFamilySpawns_treasure_flight_potion_pickup),
+      0, false, true, Exercises::None,
+      kFacts_treasure_flight_potion_pickup_scen99, std::size(kFacts_treasure_flight_potion_pickup_scen99),
+      kMut_treasure_flight_potion_pickup },
+
+    { "treasure_teleporter_pickup_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 30,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_treasure_teleporter_pickup, std::size(kFamilySpawns_treasure_teleporter_pickup),
+      0, false, true, Exercises::None,
+      kFacts_treasure_teleporter_pickup_scen99, std::size(kFacts_treasure_teleporter_pickup_scen99),
+      kMut_treasure_teleporter_pickup },
+
+    { "treasure_life_gem_pickup_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 30,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_treasure_life_gem_pickup, std::size(kFamilySpawns_treasure_life_gem_pickup),
+      0, false, true, Exercises::None,
+      kFacts_treasure_life_gem_pickup_scen99, std::size(kFacts_treasure_life_gem_pickup_scen99),
+      kMut_treasure_life_gem_pickup },
+
+    { "treasure_key_pickup_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 30,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_treasure_key_pickup, std::size(kFamilySpawns_treasure_key_pickup),
+      0, false, true, Exercises::None,
+      kFacts_treasure_key_pickup_scen99, std::size(kFacts_treasure_key_pickup_scen99),
+      kMut_treasure_key_pickup },
+
+    { "treasure_speed_potion_pickup_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 30,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_treasure_speed_potion_pickup, std::size(kFamilySpawns_treasure_speed_potion_pickup),
+      0, false, true, Exercises::None,
+      kFacts_treasure_speed_potion_pickup_scen99, std::size(kFacts_treasure_speed_potion_pickup_scen99),
+      kMut_treasure_speed_potion_pickup },
+
+    // Phase 04 — weapon emission scenarios
+    { "weapon_knife_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_weapon_knife_emission, std::size(kFamilySpawns_weapon_knife_emission),
+      0, false, true, Exercises::None,
+      kFacts_weapon_knife_emission_scen99, std::size(kFacts_weapon_knife_emission_scen99),
+      kMut_weapon_knife_emission },
+
+    { "weapon_rock_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_weapon_rock_emission, std::size(kFamilySpawns_weapon_rock_emission),
+      0, false, true, Exercises::None,
+      kFacts_weapon_rock_emission_scen99, std::size(kFacts_weapon_rock_emission_scen99),
+      kMut_weapon_rock_emission },
+
+    { "weapon_arrow_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_weapon_arrow_emission, std::size(kFamilySpawns_weapon_arrow_emission),
+      0, false, true, Exercises::None,
+      kFacts_weapon_arrow_emission_scen99, std::size(kFacts_weapon_arrow_emission_scen99),
+      kMut_weapon_arrow_emission },
+
+    { "weapon_fireball_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_weapon_fireball_emission, std::size(kFamilySpawns_weapon_fireball_emission),
+      0, false, true, Exercises::None,
+      kFacts_weapon_fireball_emission_scen99, std::size(kFacts_weapon_fireball_emission_scen99),
+      kMut_weapon_fireball_emission },
+
+    { "weapon_tree_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_weapon_tree_emission, std::size(kFamilySpawns_weapon_tree_emission),
+      0, false, true, Exercises::None,
+      kFacts_weapon_tree_emission_scen99, std::size(kFacts_weapon_tree_emission_scen99),
+      kMut_weapon_tree_emission },
+
+    { "weapon_meteor_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_weapon_meteor_emission, std::size(kFamilySpawns_weapon_meteor_emission),
+      0, false, true, Exercises::None,
+      kFacts_weapon_meteor_emission_scen99, std::size(kFacts_weapon_meteor_emission_scen99),
+      kMut_weapon_meteor_emission },
+
+    { "weapon_sprinkle_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_weapon_sprinkle_emission, std::size(kFamilySpawns_weapon_sprinkle_emission),
+      0, false, true, Exercises::None,
+      kFacts_weapon_sprinkle_emission_scen99, std::size(kFacts_weapon_sprinkle_emission_scen99),
+      kMut_weapon_sprinkle_emission },
+
+    { "weapon_bone_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_weapon_bone_emission, std::size(kFamilySpawns_weapon_bone_emission),
+      0, false, true, Exercises::None,
+      kFacts_weapon_bone_emission_scen99, std::size(kFacts_weapon_bone_emission_scen99),
+      kMut_weapon_bone_emission },
+
+    { "weapon_blood_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_weapon_blood_emission, std::size(kFamilySpawns_weapon_blood_emission),
+      0, false, true, Exercises::None,
+      kFacts_weapon_blood_emission_scen99, std::size(kFacts_weapon_blood_emission_scen99),
+      kMut_weapon_blood_emission },
+
+    { "weapon_blob_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_weapon_blob_emission, std::size(kFamilySpawns_weapon_blob_emission),
+      0, false, true, Exercises::None,
+      kFacts_weapon_blob_emission_scen99, std::size(kFacts_weapon_blob_emission_scen99),
+      kMut_weapon_blob_emission },
+
+    { "weapon_fire_arrow_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_weapon_fire_arrow_emission, std::size(kFamilySpawns_weapon_fire_arrow_emission),
+      0, false, true, Exercises::None,
+      kFacts_weapon_fire_arrow_emission_scen99, std::size(kFacts_weapon_fire_arrow_emission_scen99),
+      kMut_weapon_fire_arrow_emission },
+
+    { "weapon_lightning_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_weapon_lightning_emission, std::size(kFamilySpawns_weapon_lightning_emission),
+      0, false, true, Exercises::None,
+      kFacts_weapon_lightning_emission_scen99, std::size(kFacts_weapon_lightning_emission_scen99),
+      kMut_weapon_lightning_emission },
+
+    { "weapon_glow_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_weapon_glow_emission, std::size(kFamilySpawns_weapon_glow_emission),
+      0, false, true, Exercises::None,
+      kFacts_weapon_glow_emission_scen99, std::size(kFacts_weapon_glow_emission_scen99),
+      kMut_weapon_glow_emission },
+
+    { "weapon_wave_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_weapon_wave_emission, std::size(kFamilySpawns_weapon_wave_emission),
+      0, false, true, Exercises::None,
+      kFacts_weapon_wave_emission_scen99, std::size(kFacts_weapon_wave_emission_scen99),
+      kMut_weapon_wave_emission },
+
+    { "weapon_wave2_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_weapon_wave2_emission, std::size(kFamilySpawns_weapon_wave2_emission),
+      0, false, true, Exercises::None,
+      kFacts_weapon_wave2_emission_scen99, std::size(kFacts_weapon_wave2_emission_scen99),
+      kMut_weapon_wave2_emission },
+
+    { "weapon_wave3_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_weapon_wave3_emission, std::size(kFamilySpawns_weapon_wave3_emission),
+      0, false, true, Exercises::None,
+      kFacts_weapon_wave3_emission_scen99, std::size(kFacts_weapon_wave3_emission_scen99),
+      kMut_weapon_wave3_emission },
+
+    { "weapon_circle_protection_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_weapon_circle_protection_emission, std::size(kFamilySpawns_weapon_circle_protection_emission),
+      0, false, true, Exercises::None,
+      kFacts_weapon_circle_protection_emission_scen99, std::size(kFacts_weapon_circle_protection_emission_scen99),
+      kMut_weapon_circle_protection_emission },
+
+    { "weapon_hammer_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_weapon_hammer_emission, std::size(kFamilySpawns_weapon_hammer_emission),
+      0, false, true, Exercises::None,
+      kFacts_weapon_hammer_emission_scen99, std::size(kFacts_weapon_hammer_emission_scen99),
+      kMut_weapon_hammer_emission },
+
+    { "weapon_door_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_weapon_door_emission, std::size(kFamilySpawns_weapon_door_emission),
+      0, false, true, Exercises::None,
+      kFacts_weapon_door_emission_scen99, std::size(kFacts_weapon_door_emission_scen99),
+      kMut_weapon_door_emission },
+
+    { "weapon_boulder_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 20,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_weapon_boulder_emission, std::size(kFamilySpawns_weapon_boulder_emission),
+      0, false, true, Exercises::None,
+      kFacts_weapon_boulder_emission_scen99, std::size(kFacts_weapon_boulder_emission_scen99),
+      kMut_weapon_boulder_emission },
+
+    // Phase 04 — effect emission scenarios
+    { "effect_expand_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEffectCombat, std::size(kInputsEffectCombat), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_effect_combat_arena, std::size(kFamilySpawns_effect_combat_arena),
+      0, false, true, Exercises::None,
+      kFacts_effect_expand_emission_scen99, std::size(kFacts_effect_expand_emission_scen99),
+      kMut_effect_expand_emission },
+
+    { "effect_ghost_scare_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEffectCombat, std::size(kInputsEffectCombat), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_effect_combat_arena, std::size(kFamilySpawns_effect_combat_arena),
+      0, false, true, Exercises::None,
+      kFacts_effect_ghost_scare_emission_scen99, std::size(kFacts_effect_ghost_scare_emission_scen99),
+      kMut_effect_ghost_scare_emission },
+
+    { "effect_bomb_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEffectCombat, std::size(kInputsEffectCombat), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_effect_combat_arena, std::size(kFamilySpawns_effect_combat_arena),
+      0, false, true, Exercises::None,
+      kFacts_effect_bomb_emission_scen99, std::size(kFacts_effect_bomb_emission_scen99),
+      kMut_effect_bomb_emission },
+
+    { "effect_explosion_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEffectCombat, std::size(kInputsEffectCombat), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_effect_combat_arena, std::size(kFamilySpawns_effect_combat_arena),
+      0, false, true, Exercises::None,
+      kFacts_effect_explosion_emission_scen99, std::size(kFacts_effect_explosion_emission_scen99),
+      kMut_effect_explosion_emission },
+
+    { "effect_flash_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEffectCombat, std::size(kInputsEffectCombat), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_effect_combat_arena, std::size(kFamilySpawns_effect_combat_arena),
+      0, false, true, Exercises::None,
+      kFacts_effect_flash_emission_scen99, std::size(kFacts_effect_flash_emission_scen99),
+      kMut_effect_flash_emission },
+
+    { "effect_magic_shield_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEffectCombat, std::size(kInputsEffectCombat), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_effect_combat_arena, std::size(kFamilySpawns_effect_combat_arena),
+      0, false, true, Exercises::None,
+      kFacts_effect_magic_shield_emission_scen99, std::size(kFacts_effect_magic_shield_emission_scen99),
+      kMut_effect_magic_shield_emission },
+
+    { "effect_knife_back_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEffectCombat, std::size(kInputsEffectCombat), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_effect_combat_arena, std::size(kFamilySpawns_effect_combat_arena),
+      0, false, true, Exercises::None,
+      kFacts_effect_knife_back_emission_scen99, std::size(kFacts_effect_knife_back_emission_scen99),
+      kMut_effect_knife_back_emission },
+
+    { "effect_boomerang_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEffectCombat, std::size(kInputsEffectCombat), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_effect_combat_arena, std::size(kFamilySpawns_effect_combat_arena),
+      0, false, true, Exercises::None,
+      kFacts_effect_boomerang_emission_scen99, std::size(kFacts_effect_boomerang_emission_scen99),
+      kMut_effect_boomerang_emission },
+
+    { "effect_cloud_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEffectCombat, std::size(kInputsEffectCombat), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_effect_combat_arena, std::size(kFamilySpawns_effect_combat_arena),
+      0, false, true, Exercises::None,
+      kFacts_effect_cloud_emission_scen99, std::size(kFacts_effect_cloud_emission_scen99),
+      kMut_effect_cloud_emission },
+
+    { "effect_marker_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEffectCombat, std::size(kInputsEffectCombat), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_effect_combat_arena, std::size(kFamilySpawns_effect_combat_arena),
+      0, false, true, Exercises::None,
+      kFacts_effect_marker_emission_scen99, std::size(kFacts_effect_marker_emission_scen99),
+      kMut_effect_marker_emission },
+
+    { "effect_chain_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEffectCombat, std::size(kInputsEffectCombat), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_effect_combat_arena, std::size(kFamilySpawns_effect_combat_arena),
+      0, false, true, Exercises::None,
+      kFacts_effect_chain_emission_scen99, std::size(kFacts_effect_chain_emission_scen99),
+      kMut_effect_chain_emission },
+
+    { "effect_door_open_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEffectCombat, std::size(kInputsEffectCombat), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_effect_combat_arena, std::size(kFamilySpawns_effect_combat_arena),
+      0, false, true, Exercises::None,
+      kFacts_effect_door_open_emission_scen99, std::size(kFacts_effect_door_open_emission_scen99),
+      kMut_effect_door_open_emission },
+
+    { "effect_hit_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEffectCombat, std::size(kInputsEffectCombat), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_effect_combat_arena, std::size(kFamilySpawns_effect_combat_arena),
+      0, false, true, Exercises::None,
+      kFacts_effect_hit_emission_scen99, std::size(kFacts_effect_hit_emission_scen99),
+      kMut_effect_hit_emission },
+
+    // Phase 04 — generator emission scenarios
+    { "generator_tent_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      nullptr, 0, 300,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_generator_tent, std::size(kFamilySpawns_generator_tent),
+      0, false, true, Exercises::None,
+      kFacts_generator_tent_emission_scen99, std::size(kFacts_generator_tent_emission_scen99),
+      kMut_generator_tent_emission },
+
+    { "generator_tower_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      nullptr, 0, 300,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_generator_tower, std::size(kFamilySpawns_generator_tower),
+      0, false, true, Exercises::None,
+      kFacts_generator_tower_emission_scen99, std::size(kFacts_generator_tower_emission_scen99),
+      kMut_generator_tower_emission },
+
+    { "generator_bones_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      nullptr, 0, 300,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_generator_bones, std::size(kFamilySpawns_generator_bones),
+      0, false, true, Exercises::None,
+      kFacts_generator_bones_emission_scen99, std::size(kFacts_generator_bones_emission_scen99),
+      kMut_generator_bones_emission },
+
+    { "generator_treehouse_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      nullptr, 0, 300,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_generator_treehouse, std::size(kFamilySpawns_generator_treehouse),
+      0, false, true, Exercises::None,
+      kFacts_generator_treehouse_emission_scen99, std::size(kFacts_generator_treehouse_emission_scen99),
+      kMut_generator_treehouse_emission },
+
+    // Phase 04 — event-kind emission scenarios
+    { "event_notification_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEffectCombat, std::size(kInputsEffectCombat), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_event_arena, std::size(kFamilySpawns_event_arena),
+      0, false, true, Exercises::None,
+      kFacts_event_notification_emission_scen99, std::size(kFacts_event_notification_emission_scen99),
+      kMut_event_notification_emission },
+
+    { "event_set_palette_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEffectCombat, std::size(kInputsEffectCombat), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_event_arena, std::size(kFamilySpawns_event_arena),
+      0, false, true, Exercises::None,
+      kFacts_event_set_palette_emission_scen99, std::size(kFacts_event_set_palette_emission_scen99),
+      kMut_event_set_palette_emission },
+
+    { "event_request_redraw_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEffectCombat, std::size(kInputsEffectCombat), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_event_arena, std::size(kFamilySpawns_event_arena),
+      0, false, true, Exercises::None,
+      kFacts_event_request_redraw_emission_scen99, std::size(kFacts_event_request_redraw_emission_scen99),
+      kMut_event_request_redraw_emission },
+
+    { "event_end_game_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEffectCombat, std::size(kInputsEffectCombat), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_event_arena, std::size(kFamilySpawns_event_arena),
+      0, false, true, Exercises::None,
+      kFacts_event_end_game_emission_scen99, std::size(kFacts_event_end_game_emission_scen99),
+      kMut_event_end_game_emission },
+
+    { "event_set_end_emission_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsEffectCombat, std::size(kInputsEffectCombat), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_event_arena, std::size(kFamilySpawns_event_arena),
+      0, false, true, Exercises::None,
+      kFacts_event_set_end_emission_scen99, std::size(kFacts_event_set_end_emission_scen99),
+      kMut_event_set_end_emission },
+
+    // Phase 04 — per-family per-slot special-cast scenarios
+    { "special_soldier_1_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot1, std::size(kInputsSpecialSlot1), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_soldier_1_scen99, std::size(kFamilySpawns_special_soldier_1_scen99),
+      0, false, true, Exercises::Special_Soldier_1,
+      kFacts_special_soldier_1_scen99, std::size(kFacts_special_soldier_1_scen99),
+      kMut_special_soldier_1_scen99 },
+
+    { "special_soldier_2_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot2, std::size(kInputsSpecialSlot2), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_soldier_2_scen99, std::size(kFamilySpawns_special_soldier_2_scen99),
+      0, false, true, Exercises::Special_Soldier_2,
+      kFacts_special_soldier_2_scen99, std::size(kFacts_special_soldier_2_scen99),
+      kMut_special_soldier_2_scen99 },
+
+    { "special_soldier_3_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot3, std::size(kInputsSpecialSlot3), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_soldier_3_scen99, std::size(kFamilySpawns_special_soldier_3_scen99),
+      0, false, true, Exercises::Special_Soldier_3,
+      kFacts_special_soldier_3_scen99, std::size(kFacts_special_soldier_3_scen99),
+      kMut_special_soldier_3_scen99 },
+
+    { "special_soldier_4_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot4, std::size(kInputsSpecialSlot4), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_soldier_4_scen99, std::size(kFamilySpawns_special_soldier_4_scen99),
+      0, false, true, Exercises::Special_Soldier_4,
+      kFacts_special_soldier_4_scen99, std::size(kFacts_special_soldier_4_scen99),
+      kMut_special_soldier_4_scen99 },
+
+    { "special_elf_1_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot1, std::size(kInputsSpecialSlot1), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_elf_1_scen99, std::size(kFamilySpawns_special_elf_1_scen99),
+      0, false, true, Exercises::Special_Elf_1,
+      kFacts_special_elf_1_scen99, std::size(kFacts_special_elf_1_scen99),
+      kMut_special_elf_1_scen99 },
+
+    { "special_elf_2_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot2, std::size(kInputsSpecialSlot2), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_elf_2_scen99, std::size(kFamilySpawns_special_elf_2_scen99),
+      0, false, true, Exercises::Special_Elf_2,
+      kFacts_special_elf_2_scen99, std::size(kFacts_special_elf_2_scen99),
+      kMut_special_elf_2_scen99 },
+
+    { "special_elf_3_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot3, std::size(kInputsSpecialSlot3), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_elf_3_scen99, std::size(kFamilySpawns_special_elf_3_scen99),
+      0, false, true, Exercises::Special_Elf_3,
+      kFacts_special_elf_3_scen99, std::size(kFacts_special_elf_3_scen99),
+      kMut_special_elf_3_scen99 },
+
+    { "special_elf_4_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot4, std::size(kInputsSpecialSlot4), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_elf_4_scen99, std::size(kFamilySpawns_special_elf_4_scen99),
+      0, false, true, Exercises::Special_Elf_4,
+      kFacts_special_elf_4_scen99, std::size(kFacts_special_elf_4_scen99),
+      kMut_special_elf_4_scen99 },
+
+    { "special_archer_1_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot1, std::size(kInputsSpecialSlot1), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_archer_1_scen99, std::size(kFamilySpawns_special_archer_1_scen99),
+      0, false, true, Exercises::Special_Archer_1,
+      kFacts_special_archer_1_scen99, std::size(kFacts_special_archer_1_scen99),
+      kMut_special_archer_1_scen99 },
+
+    { "special_archer_2_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot2, std::size(kInputsSpecialSlot2), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_archer_2_scen99, std::size(kFamilySpawns_special_archer_2_scen99),
+      0, false, true, Exercises::Special_Archer_2,
+      kFacts_special_archer_2_scen99, std::size(kFacts_special_archer_2_scen99),
+      kMut_special_archer_2_scen99 },
+
+    { "special_archer_3_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot3, std::size(kInputsSpecialSlot3), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_archer_3_scen99, std::size(kFamilySpawns_special_archer_3_scen99),
+      0, false, true, Exercises::Special_Archer_3,
+      kFacts_special_archer_3_scen99, std::size(kFacts_special_archer_3_scen99),
+      kMut_special_archer_3_scen99 },
+
+    { "special_mage_2_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot2, std::size(kInputsSpecialSlot2), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_mage_2_scen99, std::size(kFamilySpawns_special_mage_2_scen99),
+      0, false, true, Exercises::Special_Mage_2,
+      kFacts_special_mage_2_scen99, std::size(kFacts_special_mage_2_scen99),
+      kMut_special_mage_2_scen99 },
+
+    { "special_mage_3_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot3, std::size(kInputsSpecialSlot3), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_mage_3_scen99, std::size(kFamilySpawns_special_mage_3_scen99),
+      0, false, true, Exercises::Special_Mage_3,
+      kFacts_special_mage_3_scen99, std::size(kFacts_special_mage_3_scen99),
+      kMut_special_mage_3_scen99 },
+
+    { "special_mage_4_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot4, std::size(kInputsSpecialSlot4), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_mage_4_scen99, std::size(kFamilySpawns_special_mage_4_scen99),
+      0, false, true, Exercises::Special_Mage_4,
+      kFacts_special_mage_4_scen99, std::size(kFacts_special_mage_4_scen99),
+      kMut_special_mage_4_scen99 },
+
+    { "special_mage_5_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot5, std::size(kInputsSpecialSlot5), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_mage_5_scen99, std::size(kFamilySpawns_special_mage_5_scen99),
+      0, false, true, Exercises::Special_Mage_5,
+      kFacts_special_mage_5_scen99, std::size(kFacts_special_mage_5_scen99),
+      kMut_special_mage_5_scen99 },
+
+    { "special_skeleton_1_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot1, std::size(kInputsSpecialSlot1), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_skeleton_1_scen99, std::size(kFamilySpawns_special_skeleton_1_scen99),
+      0, false, true, Exercises::Special_Skeleton_1,
+      kFacts_special_skeleton_1_scen99, std::size(kFacts_special_skeleton_1_scen99),
+      kMut_special_skeleton_1_scen99 },
+
+    { "special_cleric_2_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot2, std::size(kInputsSpecialSlot2), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_cleric_2_scen99, std::size(kFamilySpawns_special_cleric_2_scen99),
+      0, false, true, Exercises::Special_Cleric_2,
+      kFacts_special_cleric_2_scen99, std::size(kFacts_special_cleric_2_scen99),
+      kMut_special_cleric_2_scen99 },
+
+    { "special_cleric_3_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot3, std::size(kInputsSpecialSlot3), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_cleric_3_scen99, std::size(kFamilySpawns_special_cleric_3_scen99),
+      0, false, true, Exercises::Special_Cleric_3,
+      kFacts_special_cleric_3_scen99, std::size(kFacts_special_cleric_3_scen99),
+      kMut_special_cleric_3_scen99 },
+
+    { "special_cleric_4_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot4, std::size(kInputsSpecialSlot4), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_cleric_4_scen99, std::size(kFamilySpawns_special_cleric_4_scen99),
+      0, false, true, Exercises::Special_Cleric_4,
+      kFacts_special_cleric_4_scen99, std::size(kFacts_special_cleric_4_scen99),
+      kMut_special_cleric_4_scen99 },
+
+    { "special_fireelemental_1_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot1, std::size(kInputsSpecialSlot1), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_fireelemental_1_scen99, std::size(kFamilySpawns_special_fireelemental_1_scen99),
+      0, false, true, Exercises::Special_FireElemental_1,
+      kFacts_special_fireelemental_1_scen99, std::size(kFacts_special_fireelemental_1_scen99),
+      kMut_special_fireelemental_1_scen99 },
+
+    { "special_slime_1_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot1, std::size(kInputsSpecialSlot1), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_slime_1_scen99, std::size(kFamilySpawns_special_slime_1_scen99),
+      0, false, true, Exercises::Special_Slime_1,
+      kFacts_special_slime_1_scen99, std::size(kFacts_special_slime_1_scen99),
+      kMut_special_slime_1_scen99 },
+
+    { "special_small_slime_1_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot1, std::size(kInputsSpecialSlot1), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_small_slime_1_scen99, std::size(kFamilySpawns_special_small_slime_1_scen99),
+      0, false, true, Exercises::Special_SmallSlime_1,
+      kFacts_special_small_slime_1_scen99, std::size(kFacts_special_small_slime_1_scen99),
+      kMut_special_small_slime_1_scen99 },
+
+    { "special_medium_slime_1_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot1, std::size(kInputsSpecialSlot1), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_medium_slime_1_scen99, std::size(kFamilySpawns_special_medium_slime_1_scen99),
+      0, false, true, Exercises::Special_MediumSlime_1,
+      kFacts_special_medium_slime_1_scen99, std::size(kFacts_special_medium_slime_1_scen99),
+      kMut_special_medium_slime_1_scen99 },
+
+    { "special_thief_2_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot2, std::size(kInputsSpecialSlot2), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_thief_2_scen99, std::size(kFamilySpawns_special_thief_2_scen99),
+      0, false, true, Exercises::Special_Thief_2,
+      kFacts_special_thief_2_scen99, std::size(kFacts_special_thief_2_scen99),
+      kMut_special_thief_2_scen99 },
+
+    { "special_thief_3_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot3, std::size(kInputsSpecialSlot3), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_thief_3_scen99, std::size(kFamilySpawns_special_thief_3_scen99),
+      0, false, true, Exercises::Special_Thief_3,
+      kFacts_special_thief_3_scen99, std::size(kFacts_special_thief_3_scen99),
+      kMut_special_thief_3_scen99 },
+
+    { "special_thief_4_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot4, std::size(kInputsSpecialSlot4), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_thief_4_scen99, std::size(kFamilySpawns_special_thief_4_scen99),
+      0, false, true, Exercises::Special_Thief_4,
+      kFacts_special_thief_4_scen99, std::size(kFacts_special_thief_4_scen99),
+      kMut_special_thief_4_scen99 },
+
+    { "special_ghost_1_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot1, std::size(kInputsSpecialSlot1), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_ghost_1_scen99, std::size(kFamilySpawns_special_ghost_1_scen99),
+      0, false, true, Exercises::Special_Ghost_1,
+      kFacts_special_ghost_1_scen99, std::size(kFacts_special_ghost_1_scen99),
+      kMut_special_ghost_1_scen99 },
+
+    { "special_druid_1_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot1, std::size(kInputsSpecialSlot1), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_druid_1_scen99, std::size(kFamilySpawns_special_druid_1_scen99),
+      0, false, true, Exercises::Special_Druid_1,
+      kFacts_special_druid_1_scen99, std::size(kFacts_special_druid_1_scen99),
+      kMut_special_druid_1_scen99 },
+
+    { "special_druid_3_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot3, std::size(kInputsSpecialSlot3), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_druid_3_scen99, std::size(kFamilySpawns_special_druid_3_scen99),
+      0, false, true, Exercises::Special_Druid_3,
+      kFacts_special_druid_3_scen99, std::size(kFacts_special_druid_3_scen99),
+      kMut_special_druid_3_scen99 },
+
+    { "special_druid_4_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot4, std::size(kInputsSpecialSlot4), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_druid_4_scen99, std::size(kFamilySpawns_special_druid_4_scen99),
+      0, false, true, Exercises::Special_Druid_4,
+      kFacts_special_druid_4_scen99, std::size(kFacts_special_druid_4_scen99),
+      kMut_special_druid_4_scen99 },
+
+    { "special_orc_1_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot1, std::size(kInputsSpecialSlot1), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_orc_1_scen99, std::size(kFamilySpawns_special_orc_1_scen99),
+      0, false, true, Exercises::Special_Orc_1,
+      kFacts_special_orc_1_scen99, std::size(kFacts_special_orc_1_scen99),
+      kMut_special_orc_1_scen99 },
+
+    { "special_orc_2_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot2, std::size(kInputsSpecialSlot2), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_orc_2_scen99, std::size(kFamilySpawns_special_orc_2_scen99),
+      0, false, true, Exercises::Special_Orc_2,
+      kFacts_special_orc_2_scen99, std::size(kFacts_special_orc_2_scen99),
+      kMut_special_orc_2_scen99 },
+
+    { "special_barbarian_1_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot1, std::size(kInputsSpecialSlot1), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_barbarian_1_scen99, std::size(kFamilySpawns_special_barbarian_1_scen99),
+      0, false, true, Exercises::Special_Barbarian_1,
+      kFacts_special_barbarian_1_scen99, std::size(kFacts_special_barbarian_1_scen99),
+      kMut_special_barbarian_1_scen99 },
+
+    { "special_barbarian_2_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot2, std::size(kInputsSpecialSlot2), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_barbarian_2_scen99, std::size(kFamilySpawns_special_barbarian_2_scen99),
+      0, false, true, Exercises::Special_Barbarian_2,
+      kFacts_special_barbarian_2_scen99, std::size(kFacts_special_barbarian_2_scen99),
+      kMut_special_barbarian_2_scen99 },
+
+    { "special_archmage_2_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot2, std::size(kInputsSpecialSlot2), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_archmage_2_scen99, std::size(kFamilySpawns_special_archmage_2_scen99),
+      0, false, true, Exercises::Special_Archmage_2,
+      kFacts_special_archmage_2_scen99, std::size(kFacts_special_archmage_2_scen99),
+      kMut_special_archmage_2_scen99 },
+
+    { "special_archmage_3_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot3, std::size(kInputsSpecialSlot3), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_archmage_3_scen99, std::size(kFamilySpawns_special_archmage_3_scen99),
+      0, false, true, Exercises::Special_Archmage_3,
+      kFacts_special_archmage_3_scen99, std::size(kFacts_special_archmage_3_scen99),
+      kMut_special_archmage_3_scen99 },
+
+    { "special_archmage_4_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot4, std::size(kInputsSpecialSlot4), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_archmage_4_scen99, std::size(kFamilySpawns_special_archmage_4_scen99),
+      0, false, true, Exercises::Special_Archmage_4,
+      kFacts_special_archmage_4_scen99, std::size(kFacts_special_archmage_4_scen99),
+      kMut_special_archmage_4_scen99 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);

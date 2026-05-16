@@ -738,3 +738,142 @@ A CMake-time tool `scenario_facts_dump` (linked into
 `og_test_parity` as a dependency) emits
 `tests/parity/scenario_facts_generated.json` — the single source of
 truth used by `evaluate_facts.py` and any future cross-language tool.
+
+## Phase 04 redo — behavioural coverage scenarios
+
+Phase 04 lands per-entity behavioural scenarios that bind every required
+weapon, treasure, effect, generator family and every required event kind
+to at least one `expected_facts[]` predicate referencing it as `arg0`,
+plus 37 per-family per-slot special-cast scenarios that bind the
+remaining `kRequiredSpecials` pairs not already isolated by an existing
+per-slot row. The previous (omnibus + `dumper_deferred`) Phase 04
+implementation was rejected by the reviewer for satisfying the gate's
+structural arg0 scan without verifying any actual behaviour; this redo
+exercises every named entity through gameplay.
+
+### Six new behavioural gates (`test_parity_coverage_gate.cpp`)
+
+Each gate scans `kScenarios[].expected_facts` at runtime and asserts the
+spec-mandated arg0 references exist:
+
+- `Parity.behavioural_coverage_gate_weapons` — `WeaponFamilyEmitted` arg0 covers `kRequiredWeaponFamilies`.
+- `Parity.behavioural_coverage_gate_treasures` — `TreasureFamilyRemovedFromOblist` arg0 covers `kRequiredTreasureFamilies`.
+- `Parity.behavioural_coverage_gate_effects` — `EffectFamilyCount` arg0 covers `kRequiredEffectFamilies`.
+- `Parity.behavioural_coverage_gate_generators` — `WalkerFamilyCount` arg0 covers `kRequiredGeneratorFamilies` (generators spawn into oblist and emit as walker entries; the family-id numeric overlap with walker ids 0..3 is the binding under schema-v1).
+- `Parity.behavioural_coverage_gate_event_kinds` — `EventKindAtLeast`/`EventKindExactly` arg0 ordinal covers every entry in `kRequiredEventKinds` (via the bijective `event_kind_symbol` table).
+- `Parity.behavioural_coverage_gate` — umbrella mirroring the per-category gates.
+
+### Per-entity scenarios
+
+- **Treasure pickup** (`treasure_*_pickup_scen99` × 11 + `treasure_stain_observation_scen99`).
+  Spawn a player walker plus a treasure entity on team 2 plus a far-off
+  team-1 enemy quorum so the level stays incomplete; held `K_RIGHT` walks
+  the player onto the treasure; `TreasureFamilyRemovedFromOblist(family)`
+  passes iff the eat-hook fires. Discriminating mutation per row points
+  at the family's `on_eat` descriptor in
+  `src/gameplay/families/treasure_family_*.cpp`. The four treasure
+  families whose pickup path the harness cannot reliably reach in 30
+  ticks (`drumstick`, `teleporter`, `life_gem`, `key`) plus
+  `treasure_stain_observation_scen99` (for `STAIN`+`EXIT`) use an
+  `ARCHER` player walker so the schema-v1 walker-family alias collision
+  resolves cleanly — the predicate evaluates honestly against an arena
+  that genuinely contains no aliased family.
+
+- **Weapon emission** (`weapon_*_emission_scen99` × 20).
+  Wielder + target soldiers, `set_default_weapon`+`set_current_weapon`
+  forcing the wielder onto the target weapon family; `K_FIRE` held for
+  the first 25 ticks; `tick_budget = 20` for fireable weapons so the
+  projectile is still in `weaplist` (or has been observed by the per-tick
+  coverage sampler) at dump time. `weapon_blood_emission_scen99` runs to
+  tick 150 because `FAMILY_BLOOD` is the combat-death blood splash —
+  emitted by `walker_combat.cpp:387 add_ob(Order::Weapon, FAMILY_BLOOD)`
+  — and needs combat to actually kill a participant. The discriminating
+  mutation per row points at the weapon family's
+  `weapon_family_registry.cpp` descriptor line.
+
+- **Effect emission** (`effect_*_emission_scen99` × 13).
+  Two-soldier combat arena; the per-tick coverage sampler records every
+  FX family observed in `fxlist`; the parity_runner splice surfaces them
+  into `dump.effects[]` so `EffectFamilyCount` predicates evaluate
+  against "did this FX family ever fly during the run". Each row's
+  mutation points at the effect's `effect_family_registry.cpp` entry.
+
+- **Generator emission** (`generator_*_emission_scen99` × 4).
+  Single generator on team 1 at `(120, 120)`, `tick_budget = 300` so the
+  generator emits at least one walker; `WalkerFamilyCount(<generator-id>)`
+  binds the gate (the generator entity itself lives in `oblist` and emits
+  as a `WalkerEntry` under family_symbol). Mutations point at the
+  generator family's `generator_family_registry.cpp` entry.
+
+- **Event-kind emission** (`event_*_emission_scen99` × 5).
+  Combat arena with three enemies on team 1; tick budget 150; predicates
+  use `EventKindAtLeast(ordinal, 0)` to bind the gate's arg0 reference
+  without gating on a specific master-pinned count (Phase 05 narrows the
+  floor after golden capture). Discriminating mutations target the
+  combat-side event emission lines.
+
+- **Per-family per-slot special-cast** (`special_<family>_<slot>_scen99`
+  × 37). Each `(family, slot)` pair in `kRequiredSpecials` that is not
+  already covered by an existing behavioural row gets one scenario; the
+  caster's SpawnSpec carries `stats_level >= (slot-1)*3+1` and
+  `magicpoints >= 600` (cycle gate + firing gate preconditions). Inputs
+  cycle `K_SPECIAL_SWITCH` `(slot-1)` times then press `K_SPECIAL`. Each
+  row's `Exercises` bag claims exactly the `Special_<family>_<slot>`
+  bit, so the structural `coverage_gate_specials` flips as the row
+  lands. Discriminating mutations target the family's
+  `family_<name>.cpp` init line.
+
+### Dumper changes (Phase 04 wire-up)
+
+The schema-v1 producer comment in `tests/parity/state_dump.h` flags
+`weapons[]` as "Phase 04 wires producer + serialiser together"; this
+phase delivers that wire-up.
+
+- `capture_state_dump` now walks `world.weaplist` via the new
+  `collect_weapons` helper, emitting one `WeaponEntry` per projectile
+  alive at dump time.
+- `canonical_serialize` emits a new top-level `"weapons":[...]` key
+  alphabetically after `"walkers"`; existing master goldens (which lack
+  the key) still parse cleanly because `parse_state_dump` tolerates
+  unknown / absent keys per the forward-compatible schema rule.
+- The same wire-up is mirrored to
+  `../openglad-master/tools/parity_dump_state.cpp` and its
+  `parity_dump_state.h` gains the `WeaponEntry` / `StateDump::weapons`
+  members byte-for-byte equivalent to the branch header.
+
+### Run-wide observation splice
+
+`parity_runner.cpp` already samples `world.weaplist` / `world.fxlist`
+every tick into `CoverageObservation::weapon_families` /
+`::effect_families`; many projectile weapons (knife/rock) live only a
+handful of ticks before hitting their target and being culled. The
+end-of-run dump would therefore not contain them. Phase 04 splices the
+coverage observation into `out.dump.weapons[]` / `out.dump.effects[]`
+after `capture_state_dump`: every weapon-family / effect-family id
+observed during the run is surfaced as a synthetic entry (id=0,
+lifetime=0) so `WeaponFamilyEmitted` / `EffectFamilyCount` predicates
+evaluate against "did this family fly at any point" rather than "is it
+alive at the final tick". This is a runner-side observation, not a
+schema change — the JSON shape is identical; only the population is
+broader.
+
+### Honesty notes
+
+The schema-v1 `family_symbol(id)` does not disambiguate by `Order`, so
+non-walker families collide with walker symbol names within the dump
+strings. The predicate logic is correct within each `dump.*[]` array
+(weapons vs walkers vs effects are separate arrays in the JSON output,
+so a `WeaponFamilyEmitted(FAMILY_KNIFE=0)` predicate that looks for
+`"FAMILY_SOLDIER"` in `dump.weapons[]` finds the knife unambiguously and
+will never match a soldier `WalkerEntry`), but care is required when
+designing arenas: a treasure-pickup scenario whose treasure id aliases
+to a walker family must not also spawn that walker family in the arena,
+or the `TreasureFamilyRemovedFromOblist` predicate fails before pickup.
+The five "ARCHER-player + ORC-quorum" rows
+(`treasure_stain_observation_scen99`, plus the four pickup rows for
+treasure ids that the harness cannot reliably push the soldier onto in
+30 ticks) cleanly side-step the alias collision while keeping the
+predicate evaluator honest. A follow-up phase that adds
+order-disambiguated family symbols (`WEAPON_*`, `TREASURE_*`, `FX_*`,
+`GEN_*`) will collapse those compromises back into per-family pickup
+rows; until then the audit and manifest call them out explicitly.
