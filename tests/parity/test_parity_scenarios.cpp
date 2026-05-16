@@ -188,6 +188,7 @@ OG_PARITY_TEST(family_big_orc_scen99)
 OG_PARITY_TEST(family_barbarian_scen99)
 OG_PARITY_TEST(family_archmage_scen99)
 OG_PARITY_TEST(family_golem_scen99)
+OG_PARITY_TEST(coverage_catchall_scen99)
 OG_PARITY_TEST(family_giant_skeleton_scen99)
 OG_PARITY_TEST(family_tower1_scen99)
 

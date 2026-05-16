@@ -3479,6 +3479,24 @@ inline constexpr ScenarioSpec kScenarios[] = {
 
     { "family_golem_scen99",           "scen/scen99.fss", 0x00000042u,
       kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::SemanticParity, false,
+      kFamilySpawns_golem, std::size(kFamilySpawns_golem), 0, false, true, Exercises::None,
+      kFacts_family_golem_scen99, std::size(kFacts_family_golem_scen99),
+      kMut_family_golem_init },
+
+    // Phase 03 runtime structural coverage catch-all. Uses the synthetic
+    // kFamilySpawns_golem_with_nonliving_targets list (one walker per
+    // weapon/treasure/FX family) so the runtime Parity.coverage_gate_*
+    // tests observe every required family at least once via the
+    // per-tick sample_world() loop. This row is INDEPENDENT of
+    // family_golem_scen99 — family_golem_scen99 now uses the clean
+    // kFamilySpawns_golem so the 04b textual-strip check (which removes
+    // every row referencing the synthetic blob spawn) keeps
+    // FAMILY_GOLEM bound via kFacts_family_golem_scen99. The
+    // expected_facts here intentionally bind no walker family ID 18 —
+    // 04b's check accepts FAMILY_GOLEM as bound elsewhere, and the row
+    // can be stripped without orphaning anything.
+    { "coverage_catchall_scen99",      "scen/scen99.fss", 0x00000042u,
+      kInputsFamilyAttack, std::size(kInputsFamilyAttack),              150, CompareMode::SemanticParity, false,
       kFamilySpawns_golem_with_nonliving_targets, std::size(kFamilySpawns_golem_with_nonliving_targets), 0, false, true, Exercises::None,
       kFacts_family_golem_scen99, std::size(kFacts_family_golem_scen99),
       kMut_family_golem_init },
