@@ -71,7 +71,12 @@ The companion commit message literally embeds the branch HEAD SHA captured befor
 ### `02b-check-companion-binary-fresh`
 - **Type**: `check`
 - **Bounce target**: `02-companion-resync`
-- **Purpose**: confirm the companion dumper rebuilt successfully and lists the same scenarios as the branch table.
+- **Purpose**: confirm the companion dumper rebuilt successfully and lists the
+  same **master-comparable** scenarios as the branch table. The branch table
+  may carry rows marked `is_branch_internal=true` (e.g.
+  `snapshot_dirty_bits_scen9301`); `list_scenarios()` in
+  `parity_dump_master.cpp` skips those by design, so the count comparison must
+  filter them on the branch side too.
 - **Commands**:
   ```
   cd /home/yans/code/openglad-master && cmake --build --preset ci-test --target parity_dump_master
@@ -79,7 +84,12 @@ The companion commit message literally embeds the branch HEAD SHA captured befor
   BRANCH_COUNT=$(python3 -c "
   from pathlib import Path
   from scripts.parity.lint_scenario_facts import _load_table, parse_scenarios
-  print(len(parse_scenarios(_load_table(Path('tests/parity/scenario_table.h')))))
+  rows = parse_scenarios(_load_table(Path('tests/parity/scenario_table.h')))
+  # Mirror parity_dump_master.cpp list_scenarios(): drop is_branch_internal rows.
+  # is_branch_internal is the bool positional field after compare_mode;
+  # only branch-internal rows use 'CompareMode::Invariant, true,' verbatim.
+  master_listable = [r for r in rows if 'CompareMode::Invariant, true,' not in r['raw']]
+  print(len(master_listable))
   ")
   COMPANION_COUNT=$(../openglad-master/build/ci-test/parity_dump_master --list | wc -l)
   test "$BRANCH_COUNT" = "$COMPANION_COUNT"
@@ -89,6 +99,15 @@ The companion commit message literally embeds the branch HEAD SHA captured befor
 - **Type**: `check`
 - **Bounce target**: `02-companion-resync`
 - **Purpose**: confirm `.plan/parity-coverage-manifest.md` and `.plan/master-companion.md` cite the current companion HEAD, and both worktrees have a commit on top.
+- **Note on the parent-SHA check**: the companion commit message embeds the
+  branch HEAD *captured before the `cp`*, which is the parent of the branch
+  commit that lands afterward (manifest update + master-companion.md
+  table refresh both happen in that branch commit). So the SHA quoted in
+  the companion message equals `git rev-parse HEAD~1` on the branch, not
+  `git rev-parse HEAD`. The two-sided cycle — manifest cites companion
+  HEAD, companion msg embeds branch HEAD — has no fixed point under
+  collision-resistant hashing, so the contract is parent-of-HEAD by
+  design.
 - **Commands**:
   ```
   grep '^master_companion_sha: ' .plan/parity-coverage-manifest.md | wc -l           # expect 1
@@ -98,13 +117,16 @@ The companion commit message literally embeds the branch HEAD SHA captured befor
   git log -1 --name-status | grep -F .plan/parity-coverage-manifest.md
   git log -1 --name-status | grep -F .plan/master-companion.md
   git -C ../openglad-master log -1 --name-status | grep -F tools/parity_scenario_table.h
-  git -C ../openglad-master log -1 --pretty=%B | grep -F "$(git rev-parse HEAD)"
+  git -C ../openglad-master log -1 --pretty=%B | grep -F "$(git rev-parse HEAD~1)"
   ```
 
 ## Success Criteria
 
 - `sha1sum` shows one unique digest across branch and companion `scenario_table.h`.
-- Companion `parity_dump_master --list` line count equals the branch scenario count parsed via the lint script.
+- Companion `parity_dump_master --list` line count equals the branch
+  master-comparable scenario count (parsed via the lint script, filtered to
+  exclude `is_branch_internal=true` rows that `list_scenarios()` skips on the
+  master side).
 - `.plan/parity-coverage-manifest.md` and `.plan/master-companion.md` both name the current companion HEAD.
 - Branch HEAD touches both doc files; companion HEAD touches the mirror.
 

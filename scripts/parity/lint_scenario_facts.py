@@ -262,8 +262,20 @@ def _balanced_block(text: str, marker: str) -> str:
     return ""
 
 
+_BRANCH_INTERNAL_RX = re.compile(
+    r"CompareMode::(?:ByteEqual|SemanticParity|Invariant)\s*,\s*true\b"
+)
+
+
 def parse_scenarios(text: str) -> list[dict[str, str]]:
-    """Return one dict per row inside kScenarios[]."""
+    """Return one dict per master-comparable row inside kScenarios[].
+
+    Mirrors the companion's `list_scenarios()` filter in
+    `tools/parity_dump_master.cpp` — rows marked `is_branch_internal=true`
+    (the bool positional field after compare_mode) are skipped. Branch-internal
+    scenarios cannot be cross-binary verified against master, so they are not
+    counted by lint, canary, or the Phase 02 mirror-parity check.
+    """
     body = _balanced_block(text, "inline constexpr ScenarioSpec kScenarios[]")
     if not body:
         sys.stderr.write("lint: could not locate kScenarios[] block\n")
@@ -284,6 +296,8 @@ def parse_scenarios(text: str) -> list[dict[str, str]]:
                 start = -1
     out = []
     for r in rows:
+        if _BRANCH_INTERNAL_RX.search(r):
+            continue
         # ID is the first quoted token.
         m = re.search(r'"([^"]+)"', r)
         if not m:
