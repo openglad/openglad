@@ -1,7 +1,7 @@
 ---
 phase: 04-walker-family-scenarios
 schema: v1
-master_companion_sha: 08f8ae4644956d1fbb30d8a2d6638dce277d1391
+master_companion_sha: b77d16130dabc86a22ba500be67b1c53f6874535
 generated_from:
   - include/openglad/core/constants.h
   - include/openglad/gameplay/event.h
