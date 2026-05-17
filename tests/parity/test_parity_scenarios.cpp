@@ -194,7 +194,7 @@ OG_PARITY_TEST(family_tower1_scen99)
 
 
 // Phase 04 redo — per-entity behavioural scenarios.
-OG_PARITY_TEST(treasure_stain_observation_scen99)
+OG_PARITY_TEST(treasure_stain_pickup_scen99)
 OG_PARITY_TEST(treasure_drumstick_pickup_scen99)
 OG_PARITY_TEST(treasure_gold_bar_pickup_scen99)
 OG_PARITY_TEST(treasure_silver_bar_pickup_scen99)

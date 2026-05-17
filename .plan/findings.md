@@ -1,173 +1,156 @@
-## Findings — Plan Review (parity framework, redo pass)
+## Findings — Plan Review (parity-finish-3, checker pass after fifth refinement)
 
-The previously-blocking findings have been addressed (the plan now uses
-`world.tick()` and `world.rng_.state_ = spec.rng_seed` instead of the
-hallucinated `GameWorld::act()` / `current_session->rng()` accessors).
-Most other codebase facts cross-check: `add_ob(Order, std::int32_t,
-bool)` at `game_world.h:154`, `walker::set_keys` via
-`OG_WALKER_DIRTY_FIELD(... keys ...)` at `walker.h:201`,
-`Order::{Living=0,Weapon=1,Treasure=2,Generator=3,FX=4,Special=5,Button1=6}`
-at `order.h:12-19`, `KEY_FIRE=8 / KEY_SPECIAL=9 / KEY_SPECIAL_SWITCH=11`
-at `input.h:232-235`, the 21/20/13/13/4 family counts in
-`constants.h`, `EventKind` and `kind_string` in `event.h` /
-`state_dump.cpp:137-146`, `walker_combat.cpp:302`'s
-`- tempdamage_i)` substring, and `sdl_level_data_hooks()` at
-`level_data_hooks.h:37`. The topology contract (linear, inline-only,
-single fixed `bounce_target`, no `bounce_targets`, no
-`parallel_groups`, commit-before-yield, `Preexisting Inputs` and
-`New Outputs` separated) is intact.
+The prior round's blocking finding (no row binds FAMILY_STAIN(0) /
+FAMILY_EXIT(8) post-Phase-1) is **fully resolved**:
 
-The remaining issues below must be resolved before generating
-`.plan/phases/*.md` and `.plan/workflow-structure.yaml`.
+- Phase 4 §7a introduces a concrete new row
+  `treasure_stain_and_exit_binding_scen99` whose `expected_facts[]`
+  carries both `TreasureFamilyOfOrderRemovedFromOblist(0,
+  kOrderTreasure)` and `TreasureFamilyOfOrderRemovedFromOblist(8,
+  kOrderTreasure)`. The row spawns only a FAMILY_ARCHER walker, so
+  both predicates pass trivially under the per-Order family-symbol
+  resolution Phase 4 lands (no STAIN/EXIT walker exists in the
+  dump's `walkers[]`).
+- Phase 4 verifier 04a has a structural backstop (Python block that
+  re-derives, from `tests/parity/scenario_table.h`, that family ids 0
+  and 8 are both bound under `TreasureFamilyOfOrderRemovedFromOblist`).
+- Phase 5 adds a separate `TEST(Parity,
+  behavioural_coverage_gate_treasure_kinds_required)` case asserting
+  the same — moves the binding requirement from a structural file
+  walk to a real gtest case.
+- Phase 4 §7 explicitly states the `treasure_stain_pickup_scen99` row
+  keeps its WIP shape (`TickReached(150)` +
+  `WalkerPositionMoved(FAMILY_SOLDIER, 144, 120)`) and does NOT
+  re-add a STAIN-removal predicate; the binding is provided by the
+  dedicated §7a row.
 
-### Blocking issues
+Spot-checks against the codebase confirm the plan's mechanical
+claims:
 
-1. **Phase 06's weapon-coverage scenarios reference a `SpawnSpec`
-   field that Phase 02 does not define.** Phase 06 Implementation
-   Details state *"For weapon coverage, the carrier walker's
-   `walker->weapon_type` (or equivalent) is set via the spawn spec
-   if the family's default weapon doesn't match the target weapon
-   family."* But Phase 02 lays down `SpawnSpec` as exactly
-   `{ std::int32_t family; std::uint8_t team; std::uint8_t order;
-   std::int32_t x; std::int32_t y; }` (plan lines 525-535), with no
-   weapon field, no overrides table, and no post-spawn hook. There
-   is also no `walker::weapon_type` member on either side; the
-   actual fields are `default_weapon_` / `current_weapon_` (private,
-   exposed via `set_default_weapon` / `set_current_weapon` per
-   `walker.h:170-171`). The plan must either (a) extend `SpawnSpec`
-   in Phase 02 with a `std::uint16_t default_weapon = 0;` (and
-   `std::uint16_t current_weapon = 0;`) field, with a documented
-   "0 means leave at family default" convention, and have
-   `apply_post_load_spawns` call `set_default_weapon` /
-   `set_current_weapon` on the returned walker, or (b) define a
-   separate post-load weapon-injection table that Phase 06 uses.
-   The current text leaves the workflow writer to invent a missing
-   data structure.
+- `FactKind` enum currently has exactly 16 entries
+  (`tests/parity/fact_predicate.h:33-54`); the 17th `TreasureFamilyOfOrderRemovedFromOblist`
+  appended at end matches the plan.
+- `WalkerAliveAtFinal(family, min_alive)` is 2-arg as cited
+  (`tests/parity/fact_predicate.h:161-164`).
+- `CompareMode` has exactly `ByteEqual`, `Invariant`, `SemanticParity`
+  (`tests/parity/scenario_table.h:46-51`); `BranchOnly` /
+  `RngObservation` correctly identified as non-existent.
+- `kOrderTreasure = 2` exists at `tests/parity/scenario_table.h:153`.
+- `kInputsEmpty[1] = { {0, 0, K_NONE} }` exists at
+  `tests/parity/scenario_table.h:228`.
+- `enum class Order : unsigned char { Living=0, Weapon=1, Treasure=2,
+  Generator=3, FX=4, Special=5, Button1=6 }` exists at
+  `include/openglad/core/order.h:12-20`.
+- `walker::query_order()` exists and is overridden by treasure
+  (verified at `src/gameplay/treasure.cpp:94,110`).
+- `dead_predicate` rule exists at
+  `scripts/parity/lint_scenario_facts.py:560-583`; matches plan's
+  cited line range.
+- `load_exemptions()` parser exists at
+  `scripts/parity/run_mutation_canary_runtime.py:74-91` and accepts
+  exactly `#`-comments + `^-\s*<id>\s*$` rows + bare tokens.
+- `behavioural_coverage_gate_no_dead_predicates` test exists at
+  `tests/parity/test_parity_coverage_gate.cpp:572`.
+- `tests/parity/golden/family_soldier_scen99.json` exists and is
+  exercised by `OG_PARITY_TEST(family_soldier_scen99)`
+  (`tests/parity/test_parity_scenarios.cpp:172`).
+- `fact_predicate.h` between branch and master is currently byte-equal
+  (`diff -q` returns rc=0) — Phase 4's `cp` mirror step is sound.
+- `treasure` overrides `query_order() -> Order::Treasure` so the new
+  `family_symbol_for_entity(w)` will resolve correctly.
 
-2. **Phase 03's coverage-gate target is ambiguous about whether it
-   is a new binary or a new test case inside the existing test
-   group.** The plan's New Outputs say *"register
-   `og_test_parity_coverage_gate` as part of the parity test group
-   (or as its own ctest entry)"* (Phase 03 File Changes) — the
-   "or" is unresolved. CLAUDE.md and `CMakeLists.txt:1807`
-   establish that integration tests live under `og_add_test_group`
-   binaries (`og_test_parity`), not as standalone binaries. The
-   Phase 04 verifier runs `./build/ci-test/og_test_parity_coverage_gate
-   --gtest_filter=...` as if it were its own binary (plan lines
-   856-857), but the Phase 03 verifier runs
-   `cmake --build --preset ci-test --target
-   og_test_parity_coverage_gate` (plan line 835-836), which would
-   fail unless the target name maps to either a standalone
-   executable or a CMake interface target. The plan must commit
-   to one of:
-   - **(A)** Coverage gate is registered as separate cases under
-     the existing `og_test_parity` group binary (e.g. cases named
-     `Parity.coverage_gate_*` inside `og_test_parity`), in which
-     case the verifier commands must be rewritten as
-     `./build/ci-test/og_test_parity --gtest_filter='Parity.coverage_gate*'`
-     and the `og_add_test_group` call grows
-     `test_parity_coverage_gate.cpp`.
-   - **(B)** A new standalone executable target, in which case
-     Phase 03 declares it with `add_executable(og_test_parity_coverage_gate ...)`
-     rather than `og_add_test_group`, and the Phase 04/05/06
-     verifiers correctly invoke that binary path.
-   Either is fine; the plan must pick one and update every
-   verifier command accordingly.
+### Non-blocking observations
 
-3. **Phase 03 verifier `03b` mixes "fails to compile" and "fails at
-   runtime" as acceptable outcomes.** Plan line 716-718: *"asserts
-   the resulting binary **fails** to compile or **fails** at
-   runtime"*. The gate is a runtime check (it iterates `kScenarios`
-   in `SetUpTestSuite()` and compares observed-vs-required arrays —
-   per Phase 03's own description at lines 770-786, this is
-   runtime behaviour, not a `static_assert`). A workflow writer
-   that treats compile-failure as a valid outcome will write a
-   different bash assertion than one that treats only runtime
-   failure as valid. Pick one: the gate fails at runtime with a
-   diagnostic naming every uncovered target. Compile-failure is
-   only relevant if Phase 03 *also* adds a `static_assert` on
-   manifest size; if so, the plan must commit to that and state
-   the trigger.
+These are real but do not block workflow generation; the plan's
+verifiers catch them and the bounces are well-bounded.
 
-4. **Phase 07's "Regenerate all goldens" mandate contradicts the
-   workflow contract item #7 ("Existing artifacts are reused, not
-   regenerated").** Phase 07 New Outputs (plan line 1227-1228)
-   say *"A fully populated `tests/parity/golden/` matching the
-   final `kScenarios` list"*, implying Phase 04-06's per-tranche
-   goldens are overwritten. The Generated Workflow Contract item
-   #7 (plan line 281-300) lists categories that may be modified
-   in place but never says "golden files are draft until Phase
-   07". Two cheap reconciliations: (a) explicitly mark Phase
-   04/05/06 goldens as draft, with Phase 07 producing the
-   canonical set against the rebuilt-once master companion at a
-   pinned SHA; or (b) require Phases 04-06 to do their own
-   master-side capture and Phase 07 only catches stragglers
-   (existing-file diffs that re-run the master companion once
-   and assert no change). As written the workflow writer cannot
-   tell whether Phase 07's `capture_master_golden.sh` invocation
-   is a re-capture (which can mask drift) or a verification pass.
+1. **`kMut_treasure_stain_and_exit_binding` cites a non-existent
+   source file.** Plan Phase 4 §7a defines:
+   ```
+   { "src/runtime/game_loop.cpp", /*line*/<TICK_INCREMENT_LINE>,
+     "++screen->level_tick_count;", "/* tick freeze */", ... }
+   ```
+   No `src/runtime/game_loop.cpp` exists in the tree — only
+   `src/runtime/game_loop.h`. The actual tick-advance statement is
+   `tick_count_++;` at `src/gameplay/game_world.cpp:1359`
+   (or `level_tick_count_++;` at line 1366). `game_frame()` lives at
+   `src/platform/sdl/game_loop.cpp:434`, NOT in `src/runtime/`, and
+   the parity runner does not invoke the SDL `game_frame` — it calls
+   `world.tick()` directly (`tests/parity/parity_runner.cpp:124`).
 
-### Non-blocking but worth tightening
+   The plan does include a fallback ("If no exact-match
+   `++screen->level_tick_count;` line exists in the present tree, the
+   agent picks any tick-advance statement in `game_frame()` whose
+   removal verifiably keeps `dump.tick == 0`"), but the `game_frame()`
+   reference in the fallback is also stale. The implementer would
+   need to discover the real mutation site
+   (`src/gameplay/game_world.cpp:1359`'s `tick_count_++;`) and
+   adjust `file`, `line`, `before`, `after` accordingly.
 
-5. **The "19 phases" total is wrong.** Plan line 330: *"Eight
-   implement phases, each paired with one or more explicit check
-   phases. Total: 8 implement + 11 check = 19 phases."* The actual
-   verifier count across Phases 1-8 is `1+2+2+2+2+3+3+3 = 18` check
-   phases, so the total is `8 + 18 = 26` phases. The number isn't
-   load-bearing but a workflow writer that trusts the header could
-   under-allocate phase ids.
+   The mutation is data in `scenario_table.h`; Phase 4 ships it
+   without applying it. The first verifier to detect a broken mutation
+   is Phase 7 verifier 07a (canary). That is a 3-phase bounce
+   distance, which is workable but rough.
 
-6. **Phase 02's `run_scenario` snippet does not declare where the
-   `cfg` symbol comes from.** Plan line 572:
-   `ScopedGameplayContext gameplay(level, save, events, cfg);`
-   and line 573-574: `&level.world().rng_, &cfg`. The actual
-   symbol is the global `extern cfg_store cfg;` declared in
-   `include/openglad/resources/gparser.h:38` (verified). Phase 02
-   should name the include explicitly so the workflow writer
-   doesn't try to default-construct a local `cfg`.
+2. **Phase 4 verifier 04a's FAIL-delta arithmetic prose is
+   internally inconsistent.** Plan Phase 1 inventory says "total 13
+   FAIL" composed of "11 `treasure_*_pickup_scen99` failures, the
+   `treasure_stain_pickup_scen99` row's distinct failure, and the 2
+   behavioural-gate failures" (which arithmetically is 11 + 1 + 2 =
+   14, not 13). Plan §1 also states "The 12th `treasure_*_pickup_scen99`
+   id, `treasure_stain_pickup_scen99`, does NOT appear in the
+   failing-test set" — so stain is NOT failing.
 
-7. **Phase 02 does not explicitly require a commit on the master
-   worktree.** Rule #8 ("Commit-before-yield") is stated globally
-   in the contract, but Phase 02 modifies both
-   `tests/parity/*` on the branch and
-   `../openglad-master/tools/*` on the master worktree, and the
-   master worktree is a separate git checkout on the
-   `parity-companion` branch. The Phase 02 prompt must spell out
-   that the agent runs `git -C ../openglad-master add ... &&
-   git -C ../openglad-master commit ...` in addition to the
-   branch-side commit, or the next phase's "verify master
-   companion changes are committed" check has nothing to grep.
+   Plan Phase 4 verifier 04a asserts `FAIL count ≤ Phase 3 FAIL − 13`
+   citing "11 treasure + 1 stain + 2 gate failures Phase 1 inventoried
+   all close in this phase". The "1 stain" inclusion conflicts with
+   Phase 1's "does NOT appear" claim.
 
-8. **The dump emitter extension wording is imprecise.** Phase 02
-   Implementation Details say *"the dump records `world.level_done`
-   and `world.level_tick_count_`"* (plan line 660). `level_done` is
-   public (`game_world.h:214`) but `level_tick_count_` is private
-   (`game_world.h:253`); the emitter must use the public
-   accessor `world.level_tick_count()` (`game_world.h:161`). One-
-   line fix; not a contract issue.
+   If stain genuinely doesn't fail (no master golden in Phase 1 means
+   it's SKIPPED, then Phase 3 captures golden and either turns it
+   PASS or new-FAIL), the −13 delta is correct (11 pickup + 2 gate);
+   the "1 stain" mention is sloppy prose. If stain newly fails in
+   Phase 3 and Phase 4 closes it, the delta should be −14. The
+   verifier hard-codes −13.
 
-9. **Phase 04's "fresh_arena = true" feature is introduced in
-   Phase 04 but the field is not added in Phase 02.** Plan line
-   926-927 introduces `kScenarios[].fresh_arena = true` as a new
-   `ScenarioSpec` bool; Phase 02's `ScenarioSpec` extension list
-   (lines 522-549) names `spawns`, `spawn_count`, `player_team`,
-   `is_intentionally_empty`, `exercises` but not `fresh_arena`.
-   Either move `fresh_arena` into Phase 02's spec extensions, or
-   make Phase 04's `clear_world_entities()` an unconditional
-   helper invoked only by scenarios whose `spawns[]` is non-empty
-   (the existing `spawn_count > 0` is a cheap proxy). The plan
-   should commit one way.
+   Recommendation: pick one accounting and reconcile the prose. Until
+   then the implementer may bounce 04a with an off-by-one mismatch.
 
-10. **Treasure-family coverage drops one family.** Plan line 1086:
-    *"each treasure family (`FAMILY_STAIN..FAMILY_KEY`)"* — the
-    range `FAMILY_STAIN(0)..FAMILY_KEY(11)` is 12 entries, but
-    `constants.h:95-108` defines 13 treasure families through
-    `FAMILY_SPEED_POTION(12)`. The intent ("every defined treasure
-    family") is correct; the cited range omits one family. Fix
-    the range to `FAMILY_STAIN..FAMILY_SPEED_POTION` (or list
-    `MAX_TREASURE = 12` so the range is inclusive of `[0..12]`).
+3. **"The two `missing_family_bindings` callers for the treasure
+   ledger swap to `any_treasure_binding` instead" is wrong by count.**
+   There is exactly ONE `missing_family_bindings(...,
+   FactKind::TreasureFamilyRemovedFromOblist)` call site — at
+   `tests/parity/test_parity_coverage_gate.cpp:327-330` in
+   `behavioural_coverage_gate_treasures`. The umbrella
+   `behavioural_coverage_gate` (cpp:399) uses its own internal
+   `append_family` lambda that calls `any_predicate_binds` directly
+   for `treasure_family` (cpp:421-424).
 
-VERDICT: items 1-4 are concrete enough that the workflow writer
-would need to invent missing structural decisions; items 5-10
-are tightenings that the next refinement pass can fold in
-quickly.
+   For BOTH gates to accept the new FactKind (Phase 4 verifier 04a
+   asserts both green), the implementer must:
+   - swap the `missing_family_bindings` call in
+     `behavioural_coverage_gate_treasures` to `any_treasure_binding`,
+     AND
+   - patch the lambda inside `behavioural_coverage_gate` (or replace
+     its treasure call with the new helper).
+
+   Verifier 04a's test-count assertion catches a missed second
+   patch (umbrella gate would FAIL), so the bounce is short — but
+   the plan instruction is imprecise.
+
+4. **Family-collision prose mismatch.** Plan §1 claims treasure ids
+   "0/1/2/3/4/8 collide with walker families FAMILY_SOLDIER, FAMILY_ELF,
+   FAMILY_ARCHER, FAMILY_MAGE, FAMILY_SKELETON, FAMILY_CLERIC". Per
+   `include/openglad/core/constants.h:51,54`, FAMILY_CLERIC=5 and
+   FAMILY_SLIME=8. The correct enumeration for id 8 is FAMILY_SLIME.
+   Cosmetic but worth fixing — Phase 1's failure-message section
+   uses "treasure_family: FAMILY_SLIME" elsewhere (correct), so the
+   inline prose contradicts itself.
+
+VERDICT: The previously-blocking finding is resolved. The plan is
+structurally sound: linear topology, fixed bounce_targets, explicit
+verifiers, inline-only YAML preserved, commit-before-yield restated,
+Preexisting vs. New Outputs cleanly separated. The four observations
+above are real but non-blocking — verifiers catch each one within a
+finite bounce loop, and the topology / artifact flow does not change.
+Workflow generation may proceed.

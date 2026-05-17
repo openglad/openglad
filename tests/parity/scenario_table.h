@@ -1105,8 +1105,13 @@ inline constexpr Mutation kMut_family_tower1_init = {
 // Each row carries a unique discriminating_mutation pointing at the
 // family's real pickup/emission/registry hook.
 
+// Phase 04a — treasure pickup. K_RIGHT held ticks 1..20 (released at
+// tick 21) so the lone player soldier at x=96 walks east toward the
+// literal treasure spawn at x=160. tick_budget=150 leaves >100 idle
+// ticks for the on_eat hook's side effects (sounds/notifications/score)
+// to settle before the dump.
 inline constexpr InputEvent kInputsTreasurePickup[] = {
-    {1,  0, K_RIGHT}, {20, 0, K_NONE},
+    {1,  0, K_RIGHT}, {21, 0, K_NONE},
 };
 
 inline constexpr InputEvent kInputsWeaponEmit[] = {
@@ -1174,185 +1179,196 @@ inline constexpr InputEvent kInputsSpecialSlot5[] = {
     { 21, 0, K_NONE},
 };
 
-// Phase 04 — STAIN + EXIT structural-binding row. The arena uses an
-// FAMILY_ARCHER on team 0 as the player walker and an FAMILY_ORC on team
-// 1 as the live-enemy quorum; no SOLDIER, no SLIME entity exists in the
-// dump. TreasureFamilyRemovedFromOblist(FAMILY_STAIN=0) therefore checks
-// "no FAMILY_SOLDIER in oblist" (family_symbol(0) == FAMILY_SOLDIER) and
-// (FAMILY_EXIT=8) checks "no FAMILY_SLIME in oblist" — both pass because
-// the arena deliberately contains neither aliased family. This is the
-// schema-v1 honest binding for two families whose ids collide with
-// walker families that other scenarios MUST contain (SOLDIER as the
-// canonical player team; SLIME in the FAMILY_SLIME walker scenarios);
-// Phase 04b's Order-aware family symbols will collapse this pair back
-// into normal per-family pickup rows.
-inline constexpr SpawnSpec kFamilySpawns_treasure_stain_and_exit_check[] = {
-    {  2, 0, kOrderLiving, 224, 224, 0, 0 }, // FAMILY_ARCHER player
-    { 14, 1, kOrderLiving,  64,  64, 0, 0 }, // FAMILY_ORC enemy quorum
+// Phase 04a — treasure-pickup behavioural scenarios.
+//
+// Every row uses the same arena shape: a lone FAMILY_SOLDIER on team 0
+// spawned at (96, 120) and the literal treasure family F as a
+// kOrderTreasure spawn at (160, 120). The K_RIGHT input held over
+// ticks 1..20 (released at tick 21) walks the soldier east into the
+// treasure; the 150-tick budget then leaves >100 idle ticks for the
+// on_eat side effects (sounds / notifications / score / stat
+// applications) to settle before the dump is captured.
+//
+// P6 (family_alias_mismatch) is satisfied because every row's
+// SpawnSpec[] includes a kOrderTreasure entry of the literal family-id
+// the row's TreasureFamilyRemovedFromOblist(F) predicate names.
+//
+// STAIN (FAMILY_STAIN id=0) is the special case: stain is the lone
+// treasure family with init_ignore=true (registry sets its in-world
+// walker to ignore the collision grid), so the soldier walks straight
+// through it without triggering the eat-me path. The literal STAIN
+// kOrderTreasure entry stays in oblist; its family_symbol is
+// FAMILY_SOLDIER (id 0 collides with FAMILY_SOLDIER walker), so the
+// row CANNOT honestly use TreasureFamilyRemovedFromOblist(0). Per
+// policy P1 we fall back to the closest schema-v1 predicate that flips
+// on the discriminating mutation — WalkerPositionMoved(FAMILY_SOLDIER,
+// X_pinned, 120) with X_pinned > the stain's spawn xpos so only the
+// soldier (which the master golden has east of the stain) can satisfy
+// it; the mutation flips init_ignore false so the stain enters the
+// collision grid and blocks the soldier short of X_pinned, dropping
+// the dump's max-soldier-x below X_pinned. The schema-v2 feature note
+// in .plan/parity-schema-v2-needs.md tracks the canonical
+// EffectFamilyCount(FAMILY_STAIN) predicate this row would carry once
+// schema v2 lands an oblist/Order disambiguator.
+
+inline constexpr SpawnSpec kFamilySpawns_treasure_stain_pickup[] = {
+    {  0, 0, kOrderLiving,   96, 120, 0, 0 }, // FAMILY_SOLDIER player walker
+    {  0, 0, kOrderTreasure, 160, 120, 0, 0 }, // FAMILY_STAIN literal treasure (id=0)
 };
 
-inline constexpr FactPredicate kFacts_treasure_stain_observation_scen99[] = {
-    pred::TickReached(30),
-    pred::WalkerFamilyCount(/*FAMILY_ARCHER*/2, 1, 1),
-    pred::TreasureFamilyRemovedFromOblist(/*FAMILY_STAIN*/0),
-    pred::TreasureFamilyRemovedFromOblist(/*FAMILY_EXIT*/8),
+inline constexpr FactPredicate kFacts_treasure_stain_pickup_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 120),
 };
 
-inline constexpr Mutation kMut_treasure_stain_observation = {
-    "src/gameplay/treasure_family_registry.cpp", 42,
-    "e[FAMILY_STAIN].name = \"STAIN\";",
-    "e[FAMILY_STAIN].name = \"NEUTERED\";",
-    "Renames the STAIN treasure family registry entry; the resulting family name divergence is observable in dump.walkers[] and flips downstream predicates."
+inline constexpr Mutation kMut_treasure_stain_pickup = {
+    "src/gameplay/treasure_family_registry.cpp", 43,
+    "e[FAMILY_STAIN].init_ignore = true;",
+    "e[FAMILY_STAIN].init_ignore = false;",
+    "Flips the STAIN treasure registry init_ignore from true to false; the literal stain treasure now enters the collision grid (walker_movement.cpp:48-51 only calls map->move() for non-ignored walkers, so init_ignore=true previously removed the stain from obmap entirely). With the stain collidable the player soldier's eastward walkstep collides with the stain at xpos=160 and is blocked short of WalkerPositionMoved's pinned min, flipping that predicate."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_drumstick_pickup[] = {
-    {  2, 0, kOrderLiving, 224, 224, 0, 0 }, // FAMILY_ARCHER player (no SOLDIER/SLIME/THIEF alias clash)
-    { 14, 1, kOrderLiving,  64,  64, 0, 0 }, // FAMILY_ORC enemy quorum
+    {  0, 0, kOrderLiving,   96, 120, 0, 0 },
+    {  1, 0, kOrderTreasure, 160, 120, 0, 0 }, // FAMILY_DRUMSTICK literal treasure
 };
 
 inline constexpr FactPredicate kFacts_treasure_drumstick_pickup_scen99[] = {
-    pred::TickReached(30),
-    pred::WalkerFamilyCount(/*FAMILY_ARCHER*/2, 1, 1),
+    pred::TickReached(150),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 120),
     pred::TreasureFamilyRemovedFromOblist(/*FAMILY_DRUMSTICK*/1),
+    pred::EventKindAtLeast(/*play_sound*/1, 1),
+    pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 12000, 12000),
 };
 
 inline constexpr Mutation kMut_treasure_drumstick_pickup = {
     "src/gameplay/families/treasure_family_consumables.cpp", 95,
     ".on_eat = drumstick_on_eat,",
     ".on_eat = nullptr,",
-    "Neuters the FAMILY_DRUMSTICK treasure-family on_eat hook; the consumable side effect no longer fires and the treasure remains in oblist so TreasureFamilyRemovedFromOblist flips."
+    "Neuters the FAMILY_DRUMSTICK treasure-family on_eat hook; the consumable side effect no longer fires (no set_dead(1), no SOUND_EAT emission) so the drumstick remains in oblist and TreasureFamilyRemovedFromOblist flips along with the paired play_sound floor."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_gold_bar_pickup[] = {
-    {  0, 0, kOrderLiving,   224, 224, 0, 0 },
-    {  2, 2, kOrderTreasure, 224, 224, 0, 0 },
-    { 14, 1, kOrderLiving,    64,  64, 0, 0 }, // FAMILY_ORC enemy to keep level alive
+    {  0, 0, kOrderLiving,   96, 120, 0, 0 },
+    {  2, 0, kOrderTreasure, 160, 120, 0, 0 }, // FAMILY_GOLD_BAR literal treasure
 };
 
 inline constexpr FactPredicate kFacts_treasure_gold_bar_pickup_scen99[] = {
-    pred::TickReached(30),
-    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 220, 200),
+    pred::TickReached(150),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 120),
     pred::TreasureFamilyRemovedFromOblist(/*FAMILY_GOLD_BAR*/2),
-    pred::EventKindAtLeast(/*score_change*/9, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
+    pred::EventKindAtLeast(/*score_change*/9, 1),
 };
 
 inline constexpr Mutation kMut_treasure_gold_bar_pickup = {
     "src/gameplay/families/treasure_family_valuables.cpp", 102,
     ".on_eat = gold_bar_on_eat,",
     ".on_eat = nullptr,",
-    "Neuters the FAMILY_GOLD_BAR treasure-family on_eat hook; the consumable side effect no longer fires and the treasure remains in oblist so TreasureFamilyRemovedFromOblist flips."
+    "Neuters the FAMILY_GOLD_BAR treasure-family on_eat hook; the score_change and play_sound emissions and the set_dead(1) all stop firing, so the gold bar stays in oblist and TreasureFamilyRemovedFromOblist + the audible/score predicates flip."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_silver_bar_pickup[] = {
-    {  0, 0, kOrderLiving,   224, 224, 0, 0 },
-    {  3, 2, kOrderTreasure, 224, 224, 0, 0 },
-    { 14, 1, kOrderLiving,    64,  64, 0, 0 }, // FAMILY_ORC enemy to keep level alive
+    {  0, 0, kOrderLiving,   96, 120, 0, 0 },
+    {  3, 0, kOrderTreasure, 160, 120, 0, 0 }, // FAMILY_SILVER_BAR literal treasure
 };
 
 inline constexpr FactPredicate kFacts_treasure_silver_bar_pickup_scen99[] = {
-    pred::TickReached(30),
-    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 220, 200),
+    pred::TickReached(150),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 120),
     pred::TreasureFamilyRemovedFromOblist(/*FAMILY_SILVER_BAR*/3),
-    pred::EventKindAtLeast(/*score_change*/9, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
+    pred::EventKindAtLeast(/*score_change*/9, 1),
 };
 
 inline constexpr Mutation kMut_treasure_silver_bar_pickup = {
     "src/gameplay/families/treasure_family_valuables.cpp", 114,
     ".on_eat = silver_bar_on_eat,",
     ".on_eat = nullptr,",
-    "Neuters the FAMILY_SILVER_BAR treasure-family on_eat hook; the consumable side effect no longer fires and the treasure remains in oblist so TreasureFamilyRemovedFromOblist flips."
+    "Neuters the FAMILY_SILVER_BAR treasure-family on_eat hook; the score_change and play_sound emissions and the set_dead(1) all stop firing, so the silver bar stays in oblist and TreasureFamilyRemovedFromOblist + the audible/score predicates flip."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_magic_potion_pickup[] = {
-    {  0, 0, kOrderLiving,   224, 224, 0, 0 },
-    {  4, 2, kOrderTreasure, 224, 224, 0, 0 },
-    { 14, 1, kOrderLiving,    64,  64, 0, 0 }, // FAMILY_ORC enemy to keep level alive
+    {  0, 0, kOrderLiving,   96, 120, 0, 0 },
+    {  4, 0, kOrderTreasure, 160, 120, 0, 0 }, // FAMILY_MAGIC_POTION literal treasure
 };
 
 inline constexpr FactPredicate kFacts_treasure_magic_potion_pickup_scen99[] = {
-    pred::TickReached(30),
-    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 220, 200),
+    pred::TickReached(150),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 120),
     pred::TreasureFamilyRemovedFromOblist(/*FAMILY_MAGIC_POTION*/4),
-    pred::EventKindAtLeast(/*notification*/2, 1),
+    pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 12000, 12000),
 };
 
 inline constexpr Mutation kMut_treasure_magic_potion_pickup = {
     "src/gameplay/families/treasure_family_consumables.cpp", 107,
     ".on_eat = magic_potion_on_eat,",
     ".on_eat = nullptr,",
-    "Neuters the FAMILY_MAGIC_POTION treasure-family on_eat hook; the consumable side effect no longer fires and the treasure remains in oblist so TreasureFamilyRemovedFromOblist flips."
+    "Neuters the FAMILY_MAGIC_POTION treasure-family on_eat hook; magicpoints stay at the soldier's baseline, the notify_potion_consume() path does not fire and the potion is never marked dead so TreasureFamilyRemovedFromOblist flips."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_invis_potion_pickup[] = {
-    {  0, 0, kOrderLiving,   224, 224, 0, 0 },
-    {  5, 2, kOrderTreasure, 224, 224, 0, 0 },
-    { 14, 1, kOrderLiving,    64,  64, 0, 0 }, // FAMILY_ORC enemy to keep level alive
+    {  0, 0, kOrderLiving,   96, 120, 0, 0 },
+    {  5, 0, kOrderTreasure, 160, 120, 0, 0 }, // FAMILY_INVIS_POTION literal treasure
 };
 
 inline constexpr FactPredicate kFacts_treasure_invis_potion_pickup_scen99[] = {
-    pred::TickReached(30),
-    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 220, 200),
+    pred::TickReached(150),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 120),
     pred::TreasureFamilyRemovedFromOblist(/*FAMILY_INVIS_POTION*/5),
-    pred::EventKindAtLeast(/*notification*/2, 1),
 };
 
 inline constexpr Mutation kMut_treasure_invis_potion_pickup = {
     "src/gameplay/families/treasure_family_consumables.cpp", 143,
     ".on_eat = invis_potion_on_eat,",
     ".on_eat = nullptr,",
-    "Neuters the FAMILY_INVIS_POTION treasure-family on_eat hook; the consumable side effect no longer fires and the treasure remains in oblist so TreasureFamilyRemovedFromOblist flips."
+    "Neuters the FAMILY_INVIS_POTION treasure-family on_eat hook; the invisibility bonus is never applied and the notify_potion_consume() set_dead(1) never fires, so the potion stays in oblist and TreasureFamilyRemovedFromOblist flips."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_invulnerable_potion_pickup[] = {
-    {  0, 0, kOrderLiving,   224, 224, 0, 0 },
-    {  6, 2, kOrderTreasure, 224, 224, 0, 0 },
-    { 14, 1, kOrderLiving,    64,  64, 0, 0 }, // FAMILY_ORC enemy to keep level alive
+    {  0, 0, kOrderLiving,   96, 120, 0, 0 },
+    {  6, 0, kOrderTreasure, 160, 120, 0, 0 }, // FAMILY_INVULNERABLE_POTION literal treasure
 };
 
 inline constexpr FactPredicate kFacts_treasure_invulnerable_potion_pickup_scen99[] = {
-    pred::TickReached(30),
-    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 220, 200),
+    pred::TickReached(150),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 120),
     pred::TreasureFamilyRemovedFromOblist(/*FAMILY_INVULNERABLE_POTION*/6),
-    pred::EventKindAtLeast(/*notification*/2, 1),
 };
 
 inline constexpr Mutation kMut_treasure_invulnerable_potion_pickup = {
     "src/gameplay/families/treasure_family_consumables.cpp", 131,
     ".on_eat = invulnerable_potion_on_eat,",
     ".on_eat = nullptr,",
-    "Neuters the FAMILY_INVULNERABLE_POTION treasure-family on_eat hook; the consumable side effect no longer fires and the treasure remains in oblist so TreasureFamilyRemovedFromOblist flips."
+    "Neuters the FAMILY_INVULNERABLE_POTION treasure-family on_eat hook; the invulnerability bonus is never applied and the notify_potion_consume() set_dead(1) never fires, so the potion stays in oblist and TreasureFamilyRemovedFromOblist flips."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_flight_potion_pickup[] = {
-    {  0, 0, kOrderLiving,   224, 224, 0, 0 },
-    {  7, 2, kOrderTreasure, 224, 224, 0, 0 },
-    { 14, 1, kOrderLiving,    64,  64, 0, 0 }, // FAMILY_ORC enemy to keep level alive
+    {  0, 0, kOrderLiving,   96, 120, 0, 0 },
+    {  7, 0, kOrderTreasure, 160, 120, 0, 0 }, // FAMILY_FLIGHT_POTION literal treasure
 };
 
 inline constexpr FactPredicate kFacts_treasure_flight_potion_pickup_scen99[] = {
-    pred::TickReached(30),
-    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 220, 200),
+    pred::TickReached(150),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 120),
     pred::TreasureFamilyRemovedFromOblist(/*FAMILY_FLIGHT_POTION*/7),
-    pred::EventKindAtLeast(/*notification*/2, 1),
 };
 
 inline constexpr Mutation kMut_treasure_flight_potion_pickup = {
     "src/gameplay/families/treasure_family_consumables.cpp", 119,
     ".on_eat = flight_potion_on_eat,",
     ".on_eat = nullptr,",
-    "Neuters the FAMILY_FLIGHT_POTION treasure-family on_eat hook; the consumable side effect no longer fires and the treasure remains in oblist so TreasureFamilyRemovedFromOblist flips."
+    "Neuters the FAMILY_FLIGHT_POTION treasure-family on_eat hook; the flight-left bonus is never granted and the notify_potion_consume() set_dead(1) never fires, so the potion stays in oblist and TreasureFamilyRemovedFromOblist flips."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_teleporter_pickup[] = {
-    {  2, 0, kOrderLiving, 224, 224, 0, 0 }, // FAMILY_ARCHER player (no SOLDIER/SLIME/THIEF alias clash)
-    { 14, 1, kOrderLiving,  64,  64, 0, 0 }, // FAMILY_ORC enemy quorum
+    {  0, 0, kOrderLiving,   96, 120, 0, 0 },
+    {  9, 0, kOrderTreasure, 160, 120, 0, 0 }, // FAMILY_TELEPORTER literal treasure
 };
 
 inline constexpr FactPredicate kFacts_treasure_teleporter_pickup_scen99[] = {
-    pred::TickReached(30),
-    pred::WalkerFamilyCount(/*FAMILY_ARCHER*/2, 1, 1),
+    pred::TickReached(150),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 120),
     pred::TreasureFamilyRemovedFromOblist(/*FAMILY_TELEPORTER*/9),
 };
 
@@ -1360,63 +1376,65 @@ inline constexpr Mutation kMut_treasure_teleporter_pickup = {
     "src/gameplay/families/treasure_family_navigation.cpp", 154,
     ".on_eat = teleporter_on_eat,",
     ".on_eat = nullptr,",
-    "Neuters the FAMILY_TELEPORTER treasure-family on_eat hook; the consumable side effect no longer fires and the treasure remains in oblist so TreasureFamilyRemovedFromOblist flips."
+    "Neuters the FAMILY_TELEPORTER treasure-family on_eat hook; the soldier's xpos/ypos is never relocated by the teleporter and the teleporter itself stays alive in oblist, so TreasureFamilyRemovedFromOblist flips. (The TELEPORTER row uses a lone-teleporter spawn with no matching destination, so the on_eat path early-returns harmlessly when active.)"
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_life_gem_pickup[] = {
-    {  2, 0, kOrderLiving, 224, 224, 0, 0 }, // FAMILY_ARCHER player (no SOLDIER/SLIME/THIEF alias clash)
-    { 14, 1, kOrderLiving,  64,  64, 0, 0 }, // FAMILY_ORC enemy quorum
+    {  0, 0, kOrderLiving,   96, 120, 0, 0 },
+    { 10, 0, kOrderTreasure, 160, 120, 0, 0 }, // FAMILY_LIFE_GEM literal treasure
 };
 
 inline constexpr FactPredicate kFacts_treasure_life_gem_pickup_scen99[] = {
-    pred::TickReached(30),
-    pred::WalkerFamilyCount(/*FAMILY_ARCHER*/2, 1, 1),
+    pred::TickReached(150),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 120),
     pred::TreasureFamilyRemovedFromOblist(/*FAMILY_LIFE_GEM*/10),
+    pred::EventKindAtLeast(/*play_sound*/1, 1),
+    pred::EventKindAtLeast(/*score_change*/9, 1),
+    pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 12000, 12000),
 };
 
 inline constexpr Mutation kMut_treasure_life_gem_pickup = {
     "src/gameplay/families/treasure_family_valuables.cpp", 126,
     ".on_eat = life_gem_on_eat,",
     ".on_eat = nullptr,",
-    "Neuters the FAMILY_LIFE_GEM treasure-family on_eat hook; the consumable side effect no longer fires and the treasure remains in oblist so TreasureFamilyRemovedFromOblist flips."
+    "Neuters the FAMILY_LIFE_GEM treasure-family on_eat hook; the soldier's max-hp / hp grant is never applied and the score_change / play_sound emissions never fire, so the gem stays in oblist and TreasureFamilyRemovedFromOblist + audible/score predicates flip."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_key_pickup[] = {
-    {  2, 0, kOrderLiving, 224, 224, 0, 0 }, // FAMILY_ARCHER player (no SOLDIER/SLIME/THIEF alias clash)
-    { 14, 1, kOrderLiving,  64,  64, 0, 0 }, // FAMILY_ORC enemy quorum
+    {  0, 0, kOrderLiving,   96, 120, 0, 0 },
+    { 11, 0, kOrderTreasure, 160, 120, 0, 0 }, // FAMILY_KEY literal treasure
 };
 
 inline constexpr FactPredicate kFacts_treasure_key_pickup_scen99[] = {
-    pred::TickReached(30),
-    pred::WalkerFamilyCount(/*FAMILY_ARCHER*/2, 1, 1),
+    pred::TickReached(150),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 120),
     pred::TreasureFamilyRemovedFromOblist(/*FAMILY_KEY*/11),
+    pred::WalkerKeysApplied(/*min_keys=*/0),
 };
 
 inline constexpr Mutation kMut_treasure_key_pickup = {
     "src/gameplay/families/treasure_family_valuables.cpp", 138,
     ".on_eat = key_on_eat,",
     ".on_eat = nullptr,",
-    "Neuters the FAMILY_KEY treasure-family on_eat hook; the consumable side effect no longer fires and the treasure remains in oblist so TreasureFamilyRemovedFromOblist flips."
+    "Neuters the FAMILY_KEY treasure-family on_eat hook; the soldier's key inventory bit is never set and the set_dead(1) never fires, so the key stays in oblist and TreasureFamilyRemovedFromOblist flips."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_speed_potion_pickup[] = {
-    {  0, 0, kOrderLiving,   224, 224, 0, 0 },
-    { 12, 2, kOrderTreasure, 224, 224, 0, 0 },
-    { 14, 1, kOrderLiving,    64,  64, 0, 0 }, // FAMILY_ORC enemy to keep level alive
+    {  0, 0, kOrderLiving,   96, 120, 0, 0 },
+    { 12, 0, kOrderTreasure, 160, 120, 0, 0 }, // FAMILY_SPEED_POTION literal treasure
 };
 
 inline constexpr FactPredicate kFacts_treasure_speed_potion_pickup_scen99[] = {
-    pred::TickReached(30),
-    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 220, 200),
+    pred::TickReached(150),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 120),
     pred::TreasureFamilyRemovedFromOblist(/*FAMILY_SPEED_POTION*/12),
-    pred::EventKindAtLeast(/*notification*/2, 1),
 };
 
 inline constexpr Mutation kMut_treasure_speed_potion_pickup = {
     "src/gameplay/families/treasure_family_consumables.cpp", 155,
     ".on_eat = speed_potion_on_eat,",
     ".on_eat = nullptr,",
-    "Neuters the FAMILY_SPEED_POTION treasure-family on_eat hook; the consumable side effect no longer fires and the treasure remains in oblist so TreasureFamilyRemovedFromOblist flips."
+    "Neuters the FAMILY_SPEED_POTION treasure-family on_eat hook; the speed bonus is never applied and the notify_potion_consume() set_dead(1) never fires, so the potion stays in oblist and TreasureFamilyRemovedFromOblist flips."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_knife_emission[] = {
@@ -3581,17 +3599,21 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFacts_family_tower1_scen99, std::size(kFacts_family_tower1_scen99),
       kMut_family_tower1_init },
 
-    // Phase 04 — treasure pickup scenarios
-    { "treasure_stain_observation_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 30,
+    // Phase 04a — treasure pickup scenarios. Every row spawns a lone
+    // FAMILY_SOLDIER at (96, 120) and the literal treasure family F as
+    // a kOrderTreasure at (160, 120); K_RIGHT held ticks 1..20 walks
+    // the soldier east into the treasure; tick_budget=150 leaves the
+    // on_eat side effects time to settle.
+    { "treasure_stain_pickup_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 150,
       CompareMode::SemanticParity, false,
-      kFamilySpawns_treasure_stain_and_exit_check, std::size(kFamilySpawns_treasure_stain_and_exit_check),
+      kFamilySpawns_treasure_stain_pickup, std::size(kFamilySpawns_treasure_stain_pickup),
       0, false, true, Exercises::None,
-      kFacts_treasure_stain_observation_scen99, std::size(kFacts_treasure_stain_observation_scen99),
-      kMut_treasure_stain_observation },
+      kFacts_treasure_stain_pickup_scen99, std::size(kFacts_treasure_stain_pickup_scen99),
+      kMut_treasure_stain_pickup },
 
     { "treasure_drumstick_pickup_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 30,
+      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_treasure_drumstick_pickup, std::size(kFamilySpawns_treasure_drumstick_pickup),
       0, false, true, Exercises::None,
@@ -3599,7 +3621,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_treasure_drumstick_pickup },
 
     { "treasure_gold_bar_pickup_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 30,
+      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_treasure_gold_bar_pickup, std::size(kFamilySpawns_treasure_gold_bar_pickup),
       0, false, true, Exercises::None,
@@ -3607,7 +3629,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_treasure_gold_bar_pickup },
 
     { "treasure_silver_bar_pickup_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 30,
+      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_treasure_silver_bar_pickup, std::size(kFamilySpawns_treasure_silver_bar_pickup),
       0, false, true, Exercises::None,
@@ -3615,7 +3637,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_treasure_silver_bar_pickup },
 
     { "treasure_magic_potion_pickup_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 30,
+      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_treasure_magic_potion_pickup, std::size(kFamilySpawns_treasure_magic_potion_pickup),
       0, false, true, Exercises::None,
@@ -3623,7 +3645,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_treasure_magic_potion_pickup },
 
     { "treasure_invis_potion_pickup_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 30,
+      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_treasure_invis_potion_pickup, std::size(kFamilySpawns_treasure_invis_potion_pickup),
       0, false, true, Exercises::None,
@@ -3631,7 +3653,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_treasure_invis_potion_pickup },
 
     { "treasure_invulnerable_potion_pickup_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 30,
+      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_treasure_invulnerable_potion_pickup, std::size(kFamilySpawns_treasure_invulnerable_potion_pickup),
       0, false, true, Exercises::None,
@@ -3639,7 +3661,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_treasure_invulnerable_potion_pickup },
 
     { "treasure_flight_potion_pickup_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 30,
+      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_treasure_flight_potion_pickup, std::size(kFamilySpawns_treasure_flight_potion_pickup),
       0, false, true, Exercises::None,
@@ -3647,7 +3669,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_treasure_flight_potion_pickup },
 
     { "treasure_teleporter_pickup_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 30,
+      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_treasure_teleporter_pickup, std::size(kFamilySpawns_treasure_teleporter_pickup),
       0, false, true, Exercises::None,
@@ -3655,7 +3677,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_treasure_teleporter_pickup },
 
     { "treasure_life_gem_pickup_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 30,
+      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_treasure_life_gem_pickup, std::size(kFamilySpawns_treasure_life_gem_pickup),
       0, false, true, Exercises::None,
@@ -3663,7 +3685,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_treasure_life_gem_pickup },
 
     { "treasure_key_pickup_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 30,
+      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_treasure_key_pickup, std::size(kFamilySpawns_treasure_key_pickup),
       0, false, true, Exercises::None,
@@ -3671,7 +3693,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_treasure_key_pickup },
 
     { "treasure_speed_potion_pickup_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 30,
+      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_treasure_speed_potion_pickup, std::size(kFamilySpawns_treasure_speed_potion_pickup),
       0, false, true, Exercises::None,
