@@ -165,6 +165,7 @@ OG_PARITY_TEST(tick_cadence_scen9301)
 OG_PARITY_TEST(rng_seed_stable_scen99)
 OG_PARITY_TEST(scripted_input_scen9301)
 OG_PARITY_TEST(snapshot_dirty_bits_scen9301)
+OG_PARITY_TEST(smoke_empty_scen99)
 OG_PARITY_TEST(smoke_nonempty_scen99)
 OG_PARITY_TEST(smoke_nonempty_scen99_inputs)
 

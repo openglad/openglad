@@ -81,6 +81,7 @@
       { "kind": "EventKindExactly", "arg0": 7, "arg1": 1, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "EventKindExactly", "arg0": 8, "arg1": 1, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
     { "id": "snapshot_dirty_bits_scen9301", "compare_mode": "Invariant", "predicates": [ ] },
+    { "id": "smoke_empty_scen99", "compare_mode": "Invariant", "predicates": [ ] },
     { "id": "smoke_nonempty_scen99", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 60, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "WalkerFamilyCount", "arg0": 0, "arg1": 1, "arg2": 1, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },

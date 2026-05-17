@@ -7,9 +7,9 @@ Reads each dump and asserts the shape promised by schema v1 in
 `.plan/parity-harness-design.md`:
 
 - top-level keys: effects, events, level_done, level_tick_count, rng_state,
-  schema_version, score_per_team, tick, walkers (lexicographically sorted in
-  the emitted JSON, but Python's json.load() ignores order so we only check
-  presence here)
+  schema_version, score_per_team, tick, walkers, weapons (lexicographically
+  sorted in the emitted JSON, but Python's json.load() ignores order so we
+  only check presence here)
 - schema_version == "v1"
 - tick is a non-negative integer
 - rng_state is a string matching ^0x[0-9A-F]{8}$ or the literal "unobservable"
@@ -19,6 +19,8 @@ Reads each dump and asserts the shape promised by schema v1 in
 - effects[] entries have family(str), id(int), lifetime(int), xpos(int), ypos(int)
 - events[] entries have a(int), b(int), kind(str), sequence(int), text(str),
   tick(int)
+- weapons[] entries have family(str), id(int), lifetime(int), team(int),
+  xpos(int), ypos(int)
 
 Exit code 0 on success; 1 on any validation failure (with the offending
 file:field reported on stderr). Useful as a fail-fast guard before invoking
@@ -40,6 +42,7 @@ _HEX32 = re.compile(r"^0x[0-9A-F]{8}$")
 _TOP_LEVEL_KEYS = {
     "effects", "events", "level_done", "level_tick_count",
     "rng_state", "schema_version", "score_per_team", "tick", "walkers",
+    "weapons",
 }
 
 _WALKER_KEYS = {
@@ -50,6 +53,8 @@ _WALKER_KEYS = {
 _EFFECT_KEYS = {"family", "id", "lifetime", "xpos", "ypos"}
 
 _EVENT_KEYS = {"a", "b", "kind", "sequence", "text", "tick"}
+
+_WEAPON_KEYS = {"family", "id", "lifetime", "team", "xpos", "ypos"}
 
 
 class ValidationError(Exception):
@@ -119,6 +124,28 @@ def _check_effect(idx: int, e: dict) -> None:
     if not _is_int(e["xpos"]):
         raise ValidationError(f"{where}.xpos: expected int")
     if not _is_int(e["ypos"]):
+        raise ValidationError(f"{where}.ypos: expected int")
+
+
+def _check_weapon(idx: int, w: dict) -> None:
+    where = f"weapons[{idx}]"
+    if set(w.keys()) != _WEAPON_KEYS:
+        extra = set(w.keys()) - _WEAPON_KEYS
+        missing = _WEAPON_KEYS - set(w.keys())
+        raise ValidationError(
+            f"{where}: key set mismatch (extra={sorted(extra)}, "
+            f"missing={sorted(missing)})")
+    if not isinstance(w["family"], str):
+        raise ValidationError(f"{where}.family: expected string")
+    if not _is_uint(w["id"]):
+        raise ValidationError(f"{where}.id: expected non-negative int")
+    if not _is_int(w["lifetime"]):
+        raise ValidationError(f"{where}.lifetime: expected int")
+    if not _is_uint(w["team"]):
+        raise ValidationError(f"{where}.team: expected non-negative int")
+    if not _is_int(w["xpos"]):
+        raise ValidationError(f"{where}.xpos: expected int")
+    if not _is_int(w["ypos"]):
         raise ValidationError(f"{where}.ypos: expected int")
 
 
@@ -226,6 +253,14 @@ def validate(path: Path) -> None:
         if not isinstance(ev, dict):
             raise ValidationError(f"events[{i}]: expected object")
         _check_event(i, ev)
+
+    weapons = doc["weapons"]
+    if not isinstance(weapons, list):
+        raise ValidationError("weapons: expected list")
+    for i, w in enumerate(weapons):
+        if not isinstance(w, dict):
+            raise ValidationError(f"weapons[{i}]: expected object")
+        _check_weapon(i, w)
 
 
 def main(argv: List[str]) -> int:

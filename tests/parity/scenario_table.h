@@ -3418,6 +3418,19 @@ inline constexpr ScenarioSpec kScenarios[] = {
     // depending on any particular scen99.fss content. The _inputs variant
     // applies K_FIRE briefly so position / keys diverge from the no-input
     // smoke twin.
+    //
+    // smoke_empty_scen99 is the canonical "world has no walkers" smoke
+    // probe used by phase 02 verifier 02b to assert the schema-v1 dumper
+    // emits a structurally valid JSON for an empty oblist (walkers: []).
+    // It is Invariant (no master golden required) and carries no
+    // predicates — the dumper-determinism check in test_parity_scenarios
+    // covers it by running the scenario twice and asserting byte-equal
+    // serialisation.
+    { "smoke_empty_scen99",            "scen/scen1.fss", 0x00000042u,
+      nullptr, 0,                                                       1,   CompareMode::Invariant, false,
+      nullptr, 0, 0, true, true, Exercises::None,
+      nullptr, 0, {} },
+
     { "smoke_nonempty_scen99",         "scen/scen1.fss", 0x00000042u,
       nullptr, 0,                                                       60,  CompareMode::SemanticParity, false,
       kSmokeArenaSpawns, std::size(kSmokeArenaSpawns), 0, false, true, Exercises::None,

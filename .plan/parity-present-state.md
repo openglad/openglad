@@ -5,21 +5,21 @@ Phase: `01-baseline-and-inventory`. Generated 2026-05-17.
 ## Test count snapshot
 
 `build/ci-test/og_test_parity --gtest_brief=1` (raw output: `/tmp/p01.out`).
-- Passed: 56
+- Passed: 57
 - Skipped: 81
 - Failing: 13
 
-(Total tests run: 150. `--gtest_brief=1` omits the `[  FAILED  ] N tests.` summary line; failure count is `grep -cE "^\[  FAILED  \] Parity\." /tmp/p01.out`.)
+(Total tests run: 151. `--gtest_brief=1` omits the `[  FAILED  ] N tests.` summary line; failure count is `grep -cE "^\[  FAILED  \] Parity\." /tmp/p01.out`. Phase 02 added the `smoke_empty_scen99` Invariant row, lifting Passed from 56→57.)
 
 ## Master companion SHA pinned this phase
 
-Master companion SHA: de702ef0679e7d06b434da0b0725688160739f5d
+Master companion SHA: 47d7a15bc2fac2cea8aa55868a2db2601a525665
 
 ## Mirror SHA delta
 
 ```
-1f95d0afa823e7caccf1973c16f28212a675f033  tests/parity/scenario_table.h
-1f95d0afa823e7caccf1973c16f28212a675f033  ../openglad-master/tools/parity_scenario_table.h
+1489234990e5e8ea3c0bb6cc81a0cb11df6a637d  tests/parity/scenario_table.h
+1489234990e5e8ea3c0bb6cc81a0cb11df6a637d  ../openglad-master/tools/parity_scenario_table.h
 ```
 Mirrored — both sides equal. (Phase 02 resync no-op condition.)
 

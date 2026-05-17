@@ -10,10 +10,10 @@ git worktree (`../openglad-master`) on a local-only branch
 - Worktree:      `/home/yans/code/openglad-master`
 - Branch:        `parity-companion` (local-only, built on top of
   `parity-baseline-master` per `.plan/master-baseline.md`)
-- Commit SHA:    `de702ef0679e7d06b434da0b0725688160739f5d`
-  (pinned by parity-finish-3 phase 02 on 2026-05-16; matches
+- Commit SHA:    `47d7a15bc2fac2cea8aa55868a2db2601a525665`
+  (pinned by parity-cov phase 02 on 2026-05-17; matches
   `.plan/parity-coverage-manifest.md` frontmatter `master_companion_sha:`
-  and embeds branch HEAD `a8590cf60e3a327e573040d85b4e9b4d0cc86ebc`)
+  and embeds branch HEAD `8247032bba82902967978a6282e2db802355a158`)
 - Parent (master baseline): `16963de0eea0bdccdbe9e0b85825bac9cc1ab0cd`
   (= `origin/master` HEAD on 2026-05-12)
 - Binary:        `../openglad-master/build/ci-test/parity_dump_master`
@@ -92,8 +92,8 @@ one requires the same edit to the other and a rebuilt master golden set.
 
 | File on companion (`../openglad-master/`)      | SHA-1 (sha1sum)                                |
 |------------------------------------------------|------------------------------------------------|
-| `tools/parity_scenario_table.h`                | `1f95d0afa823e7caccf1973c16f28212a675f033`     |
-| `tools/parity_dump_master.cpp`                 | `fd1f6b9604326eae096c4ffe733eaf03efa1c3ee`     |
+| `tools/parity_scenario_table.h`                | `1489234990e5e8ea3c0bb6cc81a0cb11df6a637d`     |
+| `tools/parity_dump_master.cpp`                 | `66f357c940935e8ffdd838aaf17f1394418bfa95`     |
 | `tools/parity_dump_state.h`                    | `a9a944e8e6bb63ac9724bdd44f4a161bddc806ab`     |
 | `tools/parity_dump_state.cpp`                  | `09c0a0c86e99d67ddd48843e6066e4d113967263`     |
 | `tools/parity_dump_master_stubs.cpp`           | `9c69eca8181a48832cebd9672b87d503bd9b1453`     |
@@ -105,11 +105,11 @@ one requires the same edit to the other and a rebuilt master golden set.
 | `tools/parity_scenario_runtime.h`              | `3c1ece3d0f7b371826837d37907710a53fd8d0c5`     |
 
 The companion-side `parity_scenario_table.h` SHA must equal the branch
-`tests/parity/scenario_table.h` SHA verbatim — `1f95d0afa823e7caccf1973c16f28212a675f033`
+`tests/parity/scenario_table.h` SHA verbatim — `1489234990e5e8ea3c0bb6cc81a0cb11df6a637d`
 matches on both sides today. SHA-1s above were captured during
-parity-finish-3 phase 02 on companion HEAD
-`de702ef0679e7d06b434da0b0725688160739f5d` (mirroring branch HEAD
-`a8590cf60e3a327e573040d85b4e9b4d0cc86ebc`).
+parity-cov phase 02 on companion HEAD
+`47d7a15bc2fac2cea8aa55868a2db2601a525665` (mirroring branch HEAD
+`8247032bba82902967978a6282e2db802355a158`).
 
 ## RNG-seeding mechanism (literal)
 
