@@ -4,6 +4,11 @@
 // This header is the single source of truth for the parity scenarios. The
 // master companion copies this file byte-for-byte; any change here must be
 // mirrored on the companion before the next golden capture.
+//
+// Phase 03 — treasure_*_pickup_scen99 rows use the Order-aware
+// `pred::TreasureFamilyOfOrderRemovedFromOblist(family, kOrderTreasure)`
+// kind paired with the per-Order `family_symbol_by_order` resolver in
+// `state_dump.cpp` / `parity_dump_state.cpp`.
 
 #pragma once
 
