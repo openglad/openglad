@@ -271,22 +271,31 @@ FactEvalResult evaluate_one(const FactPredicate& p, const StateDump& dump)
         }
         case FactKind::TreasureFamilyOfOrderRemovedFromOblist:
         {
-            // Order-aware: render the target family under the table for
-            // p.arg1 (Order) and search dump.walkers[] for any entry
-            // whose family string matches. Predicate satisfied iff no
-            // such entry exists. The Phase 03 dumper emits walker
-            // family strings via `family_symbol_by_order`, so a
-            // Treasure-order walker (e.g. FAMILY_GOLD_BAR id=2 under
-            // Order::Treasure) renders as "FAMILY_GOLD_BAR" — not the
-            // schema-v1 Living-aliased "FAMILY_ARCHER" — and a
-            // surviving treasure entity therefore correctly trips the
-            // predicate instead of vacuously passing via alias.
+            // Order-aware. Render the target family under the table for
+            // p.arg1 (Order) and search dump.walkers[] for any
+            // *remaining* (alive) entry whose family string matches.
+            // Binary semantic — PASS iff zero alive walkers of that
+            // family are listed, FAIL otherwise. A walker whose
+            // `on_eat` hook flipped `set_dead(1)` is reaped by
+            // `GameWorld::tick`'s `// --- Remove dead entities ---`
+            // pass on the next non-early-return tick and so does not
+            // qualify as "remaining" for this predicate's purposes
+            // (`dead()==1` flips schema-v1's `alive` field to false
+            // when the dump captures it before the reap pass runs).
+            // The Phase 03 dumper emits walker family strings via
+            // `family_symbol_by_order`, so a Treasure-order walker
+            // (e.g. FAMILY_GOLD_BAR id=2 under Order::Treasure)
+            // renders as "FAMILY_GOLD_BAR" — not the schema-v1
+            // Living-aliased "FAMILY_ARCHER" — and a surviving
+            // treasure entity therefore correctly trips the predicate
+            // against its own family namespace instead of vacuously
+            // passing via the Living-table alias.
             const std::string sym = family_symbol_by_order(p.arg1, p.arg0);
             for (const auto& w : dump.walkers)
             {
-                if (w.family == sym)
+                if (w.family == sym && w.alive)
                     return (make_fail(r, p, "family " + sym +
-                                      " still present in oblist"), r);
+                                      " still alive in oblist"), r);
             }
             return r;
         }
