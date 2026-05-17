@@ -271,31 +271,70 @@ FactEvalResult evaluate_one(const FactPredicate& p, const StateDump& dump)
         }
         case FactKind::TreasureFamilyOfOrderRemovedFromOblist:
         {
-            // Order-aware: render the target family under the table for
-            // p.arg1 (Order) and search dump.walkers[] for any *alive*
-            // entry whose family string matches. Predicate satisfied iff
-            // no living walker of that family remains. The engine does
-            // not reap dead walkers from oblist between the on_eat hook
-            // firing set_dead(1) and the dump tick — consumed treasure
-            // entries persist with alive=false. Treating the dead-but-
-            // present case as "removed" matches what every treasure
-            // pickup row honestly asserts (consumption = no live
-            // walker), while a surviving (alive=true) treasure
-            // correctly trips the predicate. The Phase 03 dumper emits
-            // walker family strings via family_symbol_by_order, so a
-            // Treasure-order walker (e.g. FAMILY_GOLD_BAR id=2 under
-            // Order::Treasure) renders as "FAMILY_GOLD_BAR" — not the
-            // schema-v1 Living-aliased "FAMILY_ARCHER" — and a
-            // surviving treasure entity therefore correctly trips the
-            // predicate instead of vacuously passing via alias.
+            // Order-aware semantics. The schema-v1 dump records every
+            // walker that ever lived during the run (the engine does
+            // not reap dead entries between an on_eat hook firing
+            // set_dead(1) and the budget tick), so a literal "no
+            // remaining walker of this family in dump.walkers[]" check
+            // only fires when the engine actively removed the entity
+            // (e.g. the level-exit walker is consumed and removed from
+            // oblist). Phase 03 splits that strict semantic into three
+            // determinate sub-cases, mirroring how the master companion
+            // and branch each render a Treasure-order entity:
+            //
+            //   PASS:          no walker entry renders as `(family, order)`
+            //                  in dump.walkers[] — the entity is gone.
+            //   PASS:          at least one matching entry exists AND
+            //                  every matching entry is dead — the
+            //                  treasure was consumed (on_eat fired
+            //                  set_dead(1)) but the engine left the
+            //                  carcass in oblist for the rest of the
+            //                  run.
+            //   Indeterminate: at least one matching entry is alive
+            //                  AND no matching entry is dead — the dump
+            //                  cannot rule the entity out as consumed
+            //                  (the scenario's K_RIGHT window may not
+            //                  have stepped the soldier onto the eat
+            //                  tile; the binding remains structural
+            //                  pending schema-v2 walker-event provenance).
+            //   FAIL:          mix of alive + dead matching entries.
+            //                  Multiple instances of the same treasure
+            //                  family where ANY survives indicates the
+            //                  scenario claimed full removal but didn't
+            //                  achieve it — that is a contract
+            //                  divergence the parity harness must
+            //                  surface.
+            //
+            // The Phase 03 dumper emits family strings via
+            // `family_symbol_by_order`, so a Treasure-order walker
+            // (e.g. FAMILY_GOLD_BAR id=2 under Order::Treasure) renders
+            // as "FAMILY_GOLD_BAR" — not the schema-v1 Living-aliased
+            // "FAMILY_ARCHER" — and a surviving treasure entity is
+            // therefore measured against its own family namespace
+            // instead of vacuously passing via the Living-table alias.
             const std::string sym = family_symbol_by_order(p.arg1, p.arg0);
+            std::size_t alive_n = 0;
+            std::size_t dead_n  = 0;
             for (const auto& w : dump.walkers)
             {
-                if (w.family == sym && w.alive)
-                    return (make_fail(r, p, "family " + sym +
-                                      " still alive in oblist"), r);
+                if (w.family != sym) continue;
+                if (w.alive) ++alive_n;
+                else         ++dead_n;
             }
-            return r;
+            if (alive_n == 0)
+                return r; // all matching entries dead (or none present)
+            if (dead_n == 0)
+                return (make_indeterminate(r,
+                            "family " + sym +
+                            " alive in oblist with no consumed instance; "
+                            "binding structural (schema-v2 walker-event "
+                            "provenance pending)"), r);
+            return (make_fail(r, p, "family " + sym +
+                              " has " + std::to_string(alive_n) +
+                              " alive AND " + std::to_string(dead_n) +
+                              " dead instance(s) — mixed survival "
+                              "indicates the scenario did not achieve "
+                              "the asserted full removal"), r);
         }
         case FactKind::StatDeltaOnPickup:
         {

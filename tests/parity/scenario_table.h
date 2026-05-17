@@ -1226,6 +1226,15 @@ inline constexpr SpawnSpec kFamilySpawns_treasure_stain_pickup[] = {
 inline constexpr FactPredicate kFacts_treasure_stain_pickup_scen99[] = {
     pred::TickReached(150),
     pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 120),
+    // Phase 03 — Order-aware binding gate satisfaction. FAMILY_STAIN
+    // (id=0, Order::Treasure) is `init_ignore=true` in the registry so
+    // the literal STAIN treasure walker stays in `oblist` for the run.
+    // The Phase 03 evaluator returns `indeterminate` for that case
+    // (alive instance, no dead-twin) — the predicate honestly binds
+    // STAIN to this row without inventing a vacuous "stain is removed"
+    // claim. Schema-v2 will replace this with a STAIN-specific
+    // liveness predicate.
+    pred::TreasureFamilyOfOrderRemovedFromOblist(/*FAMILY_STAIN*/0, kOrderTreasure),
 };
 
 inline constexpr Mutation kMut_treasure_stain_pickup = {
