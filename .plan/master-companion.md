@@ -10,10 +10,10 @@ git worktree (`../openglad-master`) on a local-only branch
 - Worktree:      `/home/yans/code/openglad-master`
 - Branch:        `parity-companion` (local-only, built on top of
   `parity-baseline-master` per `.plan/master-baseline.md`)
-- Commit SHA:    `b77d16130dabc86a22ba500be67b1c53f6874535`
+- Commit SHA:    `de702ef0679e7d06b434da0b0725688160739f5d`
   (pinned by parity-finish-3 phase 02 on 2026-05-16; matches
   `.plan/parity-coverage-manifest.md` frontmatter `master_companion_sha:`
-  and embeds branch HEAD `019a5115ef365240724dd0b15967255caaabd19c`)
+  and embeds branch HEAD `a8590cf60e3a327e573040d85b4e9b4d0cc86ebc`)
 - Parent (master baseline): `16963de0eea0bdccdbe9e0b85825bac9cc1ab0cd`
   (= `origin/master` HEAD on 2026-05-12)
 - Binary:        `../openglad-master/build/ci-test/parity_dump_master`
@@ -108,8 +108,8 @@ The companion-side `parity_scenario_table.h` SHA must equal the branch
 `tests/parity/scenario_table.h` SHA verbatim — `1f95d0afa823e7caccf1973c16f28212a675f033`
 matches on both sides today. SHA-1s above were captured during
 parity-finish-3 phase 02 on companion HEAD
-`b77d16130dabc86a22ba500be67b1c53f6874535` (mirroring branch HEAD
-`019a5115ef365240724dd0b15967255caaabd19c`).
+`de702ef0679e7d06b434da0b0725688160739f5d` (mirroring branch HEAD
+`a8590cf60e3a327e573040d85b4e9b4d0cc86ebc`).
 
 ## RNG-seeding mechanism (literal)
 
