@@ -953,30 +953,11 @@ A 17th `FactKind`, `TreasureFamilyOfOrderRemovedFromOblist`, is
 appended (never inserted, so serialised ordinals never shift). The
 factory signature is
 `TreasureFamilyOfOrderRemovedFromOblist(int32_t family, int32_t order,
-std::string label)`. The schema-v1 dump records every walker that
-ever lived during the run (the engine does not reap dead entries
-between an `on_eat` hook firing `set_dead(1)` and the budget tick),
-so the evaluator splits the strict "no remaining walker matches"
-semantic into three determinate sub-cases — mirroring how the master
-companion and branch each render a Treasure-order entity:
-
-- **PASS** when no walker entry renders as `(family, order)` in
-  `dump.walkers[]` (the entity is gone — e.g. the level-exit walker
-  is consumed and removed from `oblist`).
-- **PASS** when at least one matching entry exists AND every match
-  is dead (the treasure was consumed; the engine left the carcass in
-  `oblist` for the rest of the run).
-- **Indeterminate** when at least one matching entry is alive AND no
-  matching entry is dead — the dump cannot rule the entity out as
-  consumed (STAIN, lone-teleporter, KEY rows where `on_eat` does not
-  flip `set_dead`); the binding remains structural pending schema-v2
-  walker-event provenance.
-- **FAIL** when the matches contain both alive and dead instances
-  (multi-instance scenarios where one survivor indicates the asserted
-  full removal did not happen).
-
-The legacy `TreasureFamilyRemovedFromOblist` factory is left intact
-for callers that have not yet migrated.
+std::string label)` and the evaluator walks `dump.walkers[]` and
+compares each entry's `family` string against the table-resolved
+symbol for `(family, order)` — predicate satisfied iff no remaining
+walker matches. The legacy `TreasureFamilyRemovedFromOblist` factory
+is left intact for callers that have not yet migrated.
 
 `behavioural_coverage_gate_treasures` and the umbrella
 `behavioural_coverage_gate` both consult a free helper
@@ -985,15 +966,15 @@ for callers that have not yet migrated.
 `TreasureFamilyOfOrderRemovedFromOblist(arg0==family_id, arg1==
 kOrderTreasure)`. EXIT (id 8) gains an honest Order-aware binding on
 `exit_trigger_scen9302`, where the soldier consumes the exit walker
-and no `FAMILY_EXIT` entry survives in `dump.walkers[]` at the budget
-tick. STAIN (id 0) is bound on its own
-`treasure_stain_pickup_scen99` row via the same Order-aware kind:
-the predicate evaluates to **Indeterminate** there (the
+and no `FAMILY_EXIT` entry survives in `dump.walkers[]` at the
+budget tick. STAIN (id 0) is bound on its own
+`treasure_stain_pickup_scen99` row via the same Order-aware kind;
+that row's predicate honestly fails on the dump because the
 `init_ignore=true` STAIN treasure walker stays alive in `oblist`
-for the run, with no dead-twin), satisfying the structural-binding
-contract honestly without claiming removal. The treasure-removal
+for the run — the divergence is the parity harness's intended
+signal, not something the evaluator softens. The treasure-removal
 predicates on DRUMSTICK / TELEPORTER / KEY rows are replaced in
-place with the Order-aware kind per the Phase 03 contract; whether
-each predicate honestly fires (PASS), reports Indeterminate, or
-trips FAIL depends on the post-Phase-02 companion's simulated pickup
-behaviour for the row's `kInputsTreasurePickup` window.
+place with the Order-aware kind per the Phase 03 contract; the
+spec did not authorise any other scenario edit (`kInputsTreasurePickup`
+and spawn lists stay unchanged), so rows whose `on_eat` does not
+fire under the existing window record their honest divergence.

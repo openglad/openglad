@@ -18,7 +18,8 @@
     { "id": "special_cleric_scen124", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 150, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "WalkerFamilyCount", "arg0": 5, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
-      { "kind": "WalkerPositionMoved", "arg0": 0, "arg1": 184, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
+      { "kind": "WalkerPositionMoved", "arg0": 0, "arg1": 184, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
+      { "kind": "EffectFamilyCount", "arg0": 0, "arg1": 1, "arg2": 1, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
     { "id": "special_mage_scen126", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 150, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "WalkerFamilyCount", "arg0": 3, "arg1": 1, "arg2": 1, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
@@ -164,9 +165,9 @@
       { "kind": "WalkerDiedByFinal", "arg0": 11, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
     { "id": "family_ghost_scen99", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 150, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
-      { "kind": "WalkerFamilyCount", "arg0": 12, "arg1": 1, "arg2": 1, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": false },
+      { "kind": "WalkerFamilyCount", "arg0": 12, "arg1": 1, "arg2": 1, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "WalkerOfTeamAlive", "arg0": 0, "arg1": 1, "arg2": 1, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
-      { "kind": "WalkerOfTeamAlive", "arg0": 1, "arg1": 1, "arg2": 1, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": false },
+      { "kind": "WalkerOfTeamAlive", "arg0": 1, "arg1": 1, "arg2": 1, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "WalkerAliveAtFinal", "arg0": 12, "arg1": 1, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
     { "id": "family_druid_scen99", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 150, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
@@ -221,15 +222,20 @@
       { "kind": "TickReached", "arg0": 150, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "WalkerPositionMoved", "arg0": 0, "arg1": 144, "arg2": 120, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "TreasureFamilyOfOrderRemovedFromOblist", "arg0": 1, "arg1": 2, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
+      { "kind": "EventKindAtLeast", "arg0": 1, "arg1": 1, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "WalkerHpRangeAtFinalTick", "arg0": 0, "arg1": 12000, "arg2": 12000, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
     { "id": "treasure_gold_bar_pickup_scen99", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 150, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "WalkerPositionMoved", "arg0": 0, "arg1": 144, "arg2": 120, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
-      { "kind": "TreasureFamilyOfOrderRemovedFromOblist", "arg0": 2, "arg1": 2, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
+      { "kind": "TreasureFamilyOfOrderRemovedFromOblist", "arg0": 2, "arg1": 2, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
+      { "kind": "EventKindAtLeast", "arg0": 1, "arg1": 1, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
+      { "kind": "EventKindAtLeast", "arg0": 9, "arg1": 1, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
     { "id": "treasure_silver_bar_pickup_scen99", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 150, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "WalkerPositionMoved", "arg0": 0, "arg1": 144, "arg2": 120, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
-      { "kind": "TreasureFamilyOfOrderRemovedFromOblist", "arg0": 3, "arg1": 2, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
+      { "kind": "TreasureFamilyOfOrderRemovedFromOblist", "arg0": 3, "arg1": 2, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
+      { "kind": "EventKindAtLeast", "arg0": 1, "arg1": 1, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
+      { "kind": "EventKindAtLeast", "arg0": 9, "arg1": 1, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
     { "id": "treasure_magic_potion_pickup_scen99", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 150, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "WalkerPositionMoved", "arg0": 0, "arg1": 144, "arg2": 120, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
@@ -255,7 +261,8 @@
       { "kind": "TickReached", "arg0": 150, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "WalkerPositionMoved", "arg0": 0, "arg1": 144, "arg2": 120, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "TreasureFamilyOfOrderRemovedFromOblist", "arg0": 10, "arg1": 2, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
-      { "kind": "EventKindAtLeast", "arg0": 9, "arg1": 1, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": false },
+      { "kind": "EventKindAtLeast", "arg0": 1, "arg1": 1, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
+      { "kind": "EventKindAtLeast", "arg0": 9, "arg1": 1, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "WalkerHpRangeAtFinalTick", "arg0": 0, "arg1": 12000, "arg2": 12000, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
     { "id": "treasure_key_pickup_scen99", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 150, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },

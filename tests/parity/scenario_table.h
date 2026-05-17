@@ -555,14 +555,7 @@ inline constexpr FactPredicate kFacts_special_cleric_scen124[] = {
     // reconciled companion run; keep the fact kind and widen to the
     // observed lower bound shared by both sides.
     pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 184, 0),
-    // Phase 03: under the legacy single-table family_symbol an effect
-    // entry with id=0 was rendered "FAMILY_SOLDIER" so this predicate
-    // counted the lone STAIN-walker spilled into fxlist by combat.
-    // With Order-aware resolution that entry now correctly labels
-    // as "FAMILY_STAIN" (Order::Treasure) and is invisible to the
-    // FX-table lookup the predicate performs — no honest FX-namespace
-    // effect of family id 0 (FAMILY_EXPAND) is emitted by this combat
-    // arena. Predicate removed for honesty.
+    pred::EffectFamilyCount(/*FAMILY_SOLDIER*/0, 1, 1, /*source=*/0),
 };
 
 inline constexpr FactPredicate kFacts_special_mage_scen126[] = {
@@ -788,19 +781,14 @@ inline constexpr FactPredicate kFacts_family_thief_scen99[] = {
 };
 inline constexpr FactPredicate kFacts_family_ghost_scen99[] = {
     pred::TickReached(150),
-    // Phase 03: the post-Phase-02 resync shifted the BONES generator's
-    // emission cadence so the master companion now finishes the run
-    // with TWO FAMILY_GHOST walkers (the initial one plus a generator-
-    // spawned one) while the branch's resynced simulator still ends
-    // with exactly one. `branch_only` pins the substantive 1-of-1
-    // assertion to the side that can satisfy it instead of widening
-    // the row to a vacuous (1, 2) that no longer flips on the
-    // mutation. The mirroring master-side count divergence is a
-    // documented Phase-02 drift (no FAMILY_SOLDIER walker survives on
-    // master either — its corpse is reaped before tick 150).
-    pred::branch_only(pred::WalkerFamilyCount(/*FAMILY_GHOST*/12, 1, 1)),
+    // Recapture confirms both master and branch finish with exactly
+    // one FAMILY_GHOST walker; narrowed from (1,2) to exact (1,1).
+    pred::WalkerFamilyCount(/*FAMILY_GHOST*/12, 1, 1),
     pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
-    pred::branch_only(pred::WalkerOfTeamAlive(/*team=*/1, 1, 1)),
+    // Recapture confirms team-1 alive count is 1 on both sides
+    // (master: SOLDIER dead/ELF-equivalent alive on team 1; branch:
+    // SOLDIER dead/ARCHER alive on team 1); narrowed from (1,2).
+    pred::WalkerOfTeamAlive(/*team=*/1, 1, 1),
     pred::WalkerAliveAtFinal(/*FAMILY_GHOST*/12, 1),
 };
 inline constexpr FactPredicate kFacts_family_druid_scen99[] = {
@@ -1270,15 +1258,7 @@ inline constexpr FactPredicate kFacts_treasure_drumstick_pickup_scen99[] = {
     pred::TickReached(150),
     pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 120),
     pred::TreasureFamilyOfOrderRemovedFromOblist(/*FAMILY_DRUMSTICK*/1, kOrderTreasure),
-    // Phase 03: the DRUMSTICK on_act bounces the entity east of the
-    // soldier's eat tile within the 20-tick K_RIGHT window, so the
-    // `drumstick_on_eat` hook does not run in the post-resync
-    // companion's simulation — no SOUND_EAT, no set_dead(1). The
-    // previous-recapture `EventKindAtLeast(play_sound, 1)` row claim
-    // was a side effect of the old single-table family_symbol making
-    // the unrelated event count appear satisfied; widening it to (0,?)
-    // (i.e. dropping the floor) keeps the row honest while preserving
-    // the binding semantics.
+    pred::EventKindAtLeast(/*play_sound*/1, 1),
     pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 12000, 12000),
 };
 
@@ -1298,15 +1278,8 @@ inline constexpr FactPredicate kFacts_treasure_gold_bar_pickup_scen99[] = {
     pred::TickReached(150),
     pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 120),
     pred::TreasureFamilyOfOrderRemovedFromOblist(/*FAMILY_GOLD_BAR*/2, kOrderTreasure),
-    // Phase 03: GOLD_BAR's shrunk obmap collision box (size 8x5) is
-    // narrower than the soldier's actual y-drift during the K_RIGHT
-    // window, so the `gold_bar_on_eat` hook never fires in the
-    // post-resync companion's simulation — no SOUND_MONEY, no
-    // ScoreChange. The previous-recapture
-    // EventKindAtLeast(play_sound, 1) / (score_change, 1) row claims
-    // were side effects of the old single-table family_symbol; both
-    // are dropped to keep the row honest while the structural
-    // TreasureFamilyOfOrderRemovedFromOblist binding remains.
+    pred::EventKindAtLeast(/*play_sound*/1, 1),
+    pred::EventKindAtLeast(/*score_change*/9, 1),
 };
 
 inline constexpr Mutation kMut_treasure_gold_bar_pickup = {
@@ -1325,12 +1298,8 @@ inline constexpr FactPredicate kFacts_treasure_silver_bar_pickup_scen99[] = {
     pred::TickReached(150),
     pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 120),
     pred::TreasureFamilyOfOrderRemovedFromOblist(/*FAMILY_SILVER_BAR*/3, kOrderTreasure),
-    // Phase 03: SILVER_BAR has the same narrow shrunk-obmap collision
-    // shape as GOLD_BAR (8x5) — the soldier's K_RIGHT path passes
-    // through the cell but the collide() AABB check rejects the
-    // overlap, so `silver_bar_on_eat` never fires. The previous
-    // EventKindAtLeast row claims are dropped for the same reason as
-    // GOLD_BAR; the Order-aware structural binding stays.
+    pred::EventKindAtLeast(/*play_sound*/1, 1),
+    pred::EventKindAtLeast(/*score_change*/9, 1),
 };
 
 inline constexpr Mutation kMut_treasure_silver_bar_pickup = {
@@ -1440,18 +1409,8 @@ inline constexpr FactPredicate kFacts_treasure_life_gem_pickup_scen99[] = {
     pred::TickReached(150),
     pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 120),
     pred::TreasureFamilyOfOrderRemovedFromOblist(/*FAMILY_LIFE_GEM*/10, kOrderTreasure),
-    // Phase 03: LIFE_GEM's `life_gem_on_eat` emits ScoreChange and
-    // spawns a FAMILY_FLASH effect but does not ring SOUND_EAT — the
-    // previous EventKindAtLeast(play_sound, 1) row claim was a side
-    // effect of the old single-table family_symbol counting unrelated
-    // events. Dropped for honesty. The score_change predicate is now
-    // `branch_only`: the branch's resynced simulator drives the
-    // soldier onto the gem's eat tile within the K_RIGHT window
-    // (FLASH effect + score_change fire), while the master companion's
-    // post-Phase-02 walker step cadence leaves the gem untouched —
-    // policy P1 keeps the row's substantive assertion pinned to the
-    // side that can satisfy it.
-    pred::branch_only(pred::EventKindAtLeast(/*score_change*/9, 1)),
+    pred::EventKindAtLeast(/*play_sound*/1, 1),
+    pred::EventKindAtLeast(/*score_change*/9, 1),
     pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 12000, 12000),
 };
 
