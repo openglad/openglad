@@ -264,18 +264,6 @@ void collect_walkers(const GameWorld::EntityList& list,
     {
         const walker* w = uptr.get();
         if (w == nullptr) continue;
-        // Phase 03 — Order-aware emit. Schema-v1's `walkers[]` array
-        // captures gameplay-active walkers (Living, Generator). Order
-        // entries that are inventory/world-tile decorations (Treasure,
-        // Weapon, FX) live in their own logical namespace under the
-        // per-Order family resolution and are addressed via dedicated
-        // dump fields (`weapons[]` / `effects[]`) or via the
-        // `TreasureFamilyOfOrderRemovedFromOblist` Order-aware
-        // predicate — never as `walkers[]` entries. Skipping
-        // `Order::Treasure` here keeps the legacy Living-aliased
-        // confusion from re-surfacing through `dump.walkers[]` and
-        // matches what the schema's `walkers[]` semantically denotes.
-        if (w->query_order() == Order::Treasure) continue;
         WalkerEntry entry;
         entry.id     = w->entity_id() != 0 ? w->entity_id() : ++running_seq;
         entry.family = family_symbol_by_order(
@@ -305,15 +293,8 @@ void collect_effects(const GameWorld::EntityList& list,
         if (w == nullptr) continue;
         EffectEntry entry;
         entry.id       = w->entity_id() != 0 ? w->entity_id() : ++running_seq;
-        // Phase 03 — fxlist content is rendered in the FX family
-        // namespace regardless of the walker's actual `query_order()`.
-        // The engine spills Treasure-order entities (e.g. combat-driven
-        // STAIN blood spots) into fxlist as visual effects, so the
-        // schema-v1 dump labels them by their FX-table slot to match
-        // what `EffectFamilyCount` predicates observe in
-        // `dump.effects[]`.
         entry.family   = family_symbol_by_order(
-            static_cast<std::int32_t>(Order::FX),
+            static_cast<std::int32_t>(w->query_order()),
             static_cast<std::int32_t>(w->family()));
         entry.xpos     = static_cast<std::int32_t>(w->xpos());
         entry.ypos     = static_cast<std::int32_t>(w->ypos());

@@ -1258,6 +1258,7 @@ inline constexpr FactPredicate kFacts_treasure_drumstick_pickup_scen99[] = {
     pred::TickReached(150),
     pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 120),
     pred::TreasureFamilyOfOrderRemovedFromOblist(/*FAMILY_DRUMSTICK*/1, kOrderTreasure),
+    pred::EventKindAtLeast(/*play_sound*/1, 1),
     pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 12000, 12000),
 };
 
@@ -1277,6 +1278,8 @@ inline constexpr FactPredicate kFacts_treasure_gold_bar_pickup_scen99[] = {
     pred::TickReached(150),
     pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 120),
     pred::TreasureFamilyOfOrderRemovedFromOblist(/*FAMILY_GOLD_BAR*/2, kOrderTreasure),
+    pred::EventKindAtLeast(/*play_sound*/1, 1),
+    pred::EventKindAtLeast(/*score_change*/9, 1),
 };
 
 inline constexpr Mutation kMut_treasure_gold_bar_pickup = {
@@ -1295,6 +1298,8 @@ inline constexpr FactPredicate kFacts_treasure_silver_bar_pickup_scen99[] = {
     pred::TickReached(150),
     pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 120),
     pred::TreasureFamilyOfOrderRemovedFromOblist(/*FAMILY_SILVER_BAR*/3, kOrderTreasure),
+    pred::EventKindAtLeast(/*play_sound*/1, 1),
+    pred::EventKindAtLeast(/*score_change*/9, 1),
 };
 
 inline constexpr Mutation kMut_treasure_silver_bar_pickup = {
@@ -1404,6 +1409,8 @@ inline constexpr FactPredicate kFacts_treasure_life_gem_pickup_scen99[] = {
     pred::TickReached(150),
     pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 120),
     pred::TreasureFamilyOfOrderRemovedFromOblist(/*FAMILY_LIFE_GEM*/10, kOrderTreasure),
+    pred::EventKindAtLeast(/*play_sound*/1, 1),
+    pred::EventKindAtLeast(/*score_change*/9, 1),
     pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 12000, 12000),
 };
 
