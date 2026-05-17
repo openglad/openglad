@@ -2,6 +2,8 @@
 
 #include "state_dump.h"
 
+#include <openglad/core/order.h>
+
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
@@ -14,6 +16,10 @@
 namespace og::parity {
 
 namespace {
+
+constexpr std::int32_t kLivingOrder    = static_cast<std::int32_t>(Order::Living);
+constexpr std::int32_t kWeaponOrder    = static_cast<std::int32_t>(Order::Weapon);
+constexpr std::int32_t kFXOrder        = static_cast<std::int32_t>(Order::FX);
 
 // EventKind ordinal -> canonical event_kind_symbol name. Mirrors the
 // switch in state_dump.cpp::event_kind_symbol so a predicate written as
@@ -69,7 +75,7 @@ bool make_indeterminate(FactEvalResult& r, std::string detail = {})
 // Number of walkers matching family symbol corresponding to numeric id.
 std::size_t count_walkers_family(const StateDump& d, std::int32_t family)
 {
-    const std::string sym = family_symbol(family);
+    const std::string sym = family_symbol_by_order(kLivingOrder, family);
     std::size_t n = 0;
     for (const auto& w : d.walkers)
         if (w.family == sym) ++n;
@@ -78,7 +84,7 @@ std::size_t count_walkers_family(const StateDump& d, std::int32_t family)
 
 std::size_t count_walkers_family_alive(const StateDump& d, std::int32_t family)
 {
-    const std::string sym = family_symbol(family);
+    const std::string sym = family_symbol_by_order(kLivingOrder, family);
     std::size_t n = 0;
     for (const auto& w : d.walkers)
         if (w.family == sym && w.alive) ++n;
@@ -95,7 +101,7 @@ std::size_t count_walkers_team_alive(const StateDump& d, std::uint32_t team)
 
 std::size_t count_effects_family(const StateDump& d, std::int32_t family)
 {
-    const std::string sym = family_symbol(family);
+    const std::string sym = family_symbol_by_order(kFXOrder, family);
     std::size_t n = 0;
     for (const auto& e : d.effects)
         if (e.family == sym) ++n;
@@ -109,7 +115,7 @@ std::size_t count_effects_family_within_window(const StateDump& d,
                                                std::int32_t family,
                                                std::int32_t window_max_lifetime)
 {
-    const std::string sym = family_symbol(family);
+    const std::string sym = family_symbol_by_order(kFXOrder, family);
     std::size_t n = 0;
     for (const auto& e : d.effects)
     {
@@ -122,7 +128,7 @@ std::size_t count_effects_family_within_window(const StateDump& d,
 
 std::size_t count_weapons_family(const StateDump& d, std::int32_t family)
 {
-    const std::string sym = family_symbol(family);
+    const std::string sym = family_symbol_by_order(kWeaponOrder, family);
     std::size_t n = 0;
     for (const auto& w : d.weapons)
         if (w.family == sym) ++n;
@@ -197,7 +203,7 @@ FactEvalResult evaluate_one(const FactPredicate& p, const StateDump& dump)
         }
         case FactKind::WalkerHpRangeAtFinalTick:
         {
-            const std::string sym = family_symbol(p.arg0);
+            const std::string sym = family_symbol_by_order(kLivingOrder, p.arg0);
             const float lo = static_cast<float>(p.arg1) / 100.0f;
             const float hi = static_cast<float>(p.arg2) / 100.0f;
             for (const auto& w : dump.walkers)
@@ -220,7 +226,7 @@ FactEvalResult evaluate_one(const FactPredicate& p, const StateDump& dump)
         }
         case FactKind::WalkerPositionMoved:
         {
-            const std::string sym = family_symbol(p.arg0);
+            const std::string sym = family_symbol_by_order(kLivingOrder, p.arg0);
             for (const auto& w : dump.walkers)
             {
                 if (w.family == sym && w.xpos >= p.arg1 && w.ypos >= p.arg2)
@@ -233,7 +239,8 @@ FactEvalResult evaluate_one(const FactPredicate& p, const StateDump& dump)
         case FactKind::WalkerDiedByFinal:
         {
             if (count_walkers_family_alive(dump, p.arg0) != 0)
-                return (make_fail(r, p, "family " + family_symbol(p.arg0) +
+                return (make_fail(r, p, "family " +
+                                  family_symbol_by_order(kLivingOrder, p.arg0) +
                                   " still has alive walker"), r);
             return r;
         }
@@ -242,15 +249,43 @@ FactEvalResult evaluate_one(const FactPredicate& p, const StateDump& dump)
             const std::size_t n = count_walkers_family_alive(dump, p.arg0);
             if (static_cast<std::int32_t>(n) < p.arg1)
                 return (make_fail(r, p, "alive=" + std::to_string(n) +
-                                  " of " + family_symbol(p.arg0) +
+                                  " of " +
+                                  family_symbol_by_order(kLivingOrder, p.arg0) +
                                   " < required " + std::to_string(p.arg1)), r);
             return r;
         }
         case FactKind::TreasureFamilyRemovedFromOblist:
         {
+            // Legacy schema-v1 predicate. arg0 is the literal family id
+            // and is compared against dump.walkers[].family rendered
+            // under the Living table (the only oblist family table
+            // schema-v1 emitted). Per the Phase 03 contract the new
+            // TreasureFamilyOfOrderRemovedFromOblist predicate is the
+            // honest Order-aware replacement; this legacy kind is left
+            // intact for callers that have not yet migrated.
             if (count_walkers_family(dump, p.arg0) != 0)
-                return (make_fail(r, p, "family " + family_symbol(p.arg0) +
+                return (make_fail(r, p, "family " +
+                                  family_symbol_by_order(kLivingOrder, p.arg0) +
                                   " still present in oblist"), r);
+            return r;
+        }
+        case FactKind::TreasureFamilyOfOrderRemovedFromOblist:
+        {
+            // Order-aware: render the target family under the table for
+            // p.arg1 (Order) and search dump.walkers[] for any *alive*
+            // entry whose family string matches. Predicate satisfied iff
+            // no live walker of that family remains. A dead-but-still-
+            // in-oblist treasure (the on_eat path marks set_dead(1) but
+            // the walker entry persists until the next reap pass) counts
+            // as "consumed" for parity purposes — that is what every
+            // treasure pickup row honestly asserts.
+            const std::string sym = family_symbol_by_order(p.arg1, p.arg0);
+            for (const auto& w : dump.walkers)
+            {
+                if (w.family == sym && w.alive)
+                    return (make_fail(r, p, "family " + sym +
+                                      " still alive in oblist"), r);
+            }
             return r;
         }
         case FactKind::StatDeltaOnPickup:
@@ -267,7 +302,8 @@ FactEvalResult evaluate_one(const FactPredicate& p, const StateDump& dump)
             {
                 if (count_walkers_family(dump, p.arg3) == 0)
                     return (make_fail(r, p, "qualifier source family " +
-                                      family_symbol(p.arg3) + " absent"), r);
+                                      family_symbol_by_order(kLivingOrder, p.arg3) +
+                                      " absent"), r);
             }
             // Tick-window qualifier (arg4 > 0): only effects whose
             // lifetime <= arg4 contribute to the count. arg4 == 0 means
@@ -307,7 +343,8 @@ FactEvalResult evaluate_one(const FactPredicate& p, const StateDump& dump)
             // dump.weapons[] ONLY — predicate must not match dump.effects[].
             if (count_weapons_family(dump, p.arg0) == 0)
                 return (make_fail(r, p, "no weapon of family " +
-                                  family_symbol(p.arg0)), r);
+                                  family_symbol_by_order(kWeaponOrder, p.arg0)),
+                        r);
             return r;
         }
     }

@@ -101,8 +101,11 @@ StateDump capture_state_dump(const GameWorld& world,
 // byte-identical output for an equivalent dump.
 std::string canonical_serialize(const StateDump& dump);
 
-// Family-id -> symbolic name. Returns "FAMILY_UNKNOWN_<int>" for unmapped ids.
-std::string family_symbol(std::int32_t family_id);
+// (Order, family-id) -> symbolic family name. Schema-v1 (Phase 03) per-Order
+// resolution: the dumped `family` string is taken from the table for the
+// entity's `Order` (Living / Weapon / Treasure / Generator / FX). Returns
+// "FAMILY_UNKNOWN_<order>_<id>" for unmapped (order, id) pairs.
+std::string family_symbol_by_order(std::int32_t order, std::int32_t family_id);
 
 // EventKind -> canonical lowercase name (e.g. "play_sound").
 std::string event_kind_symbol(std::uint32_t kind_raw);

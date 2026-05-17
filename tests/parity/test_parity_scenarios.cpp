@@ -369,7 +369,8 @@ TEST(Parity, weapon_family_emitted_matches_dump_weapons_only)
     // the effect.
     og::parity::StateDump dump;
     og::parity::WeaponEntry door_w;
-    door_w.family   = og::parity::family_symbol(FAMILY_DOOR);
+    door_w.family   = og::parity::family_symbol_by_order(
+        static_cast<std::int32_t>(Order::Weapon), FAMILY_DOOR);
     door_w.id       = 100;
     door_w.team     = 0;
     door_w.xpos     = 0;
@@ -378,7 +379,8 @@ TEST(Parity, weapon_family_emitted_matches_dump_weapons_only)
     dump.weapons.push_back(door_w);
 
     og::parity::EffectEntry door_open_fx;
-    door_open_fx.family   = og::parity::family_symbol(FAMILY_DOOR_OPEN);
+    door_open_fx.family   = og::parity::family_symbol_by_order(
+        static_cast<std::int32_t>(Order::FX), FAMILY_DOOR_OPEN);
     door_open_fx.id       = 200;
     door_open_fx.lifetime = 0;
     dump.effects.push_back(door_open_fx);

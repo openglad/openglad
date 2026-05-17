@@ -41,6 +41,8 @@
 #include "scenario_table.h"
 #include "state_dump.h"
 
+#include <openglad/core/order.h>
+
 #include <gtest/gtest.h>
 
 #include <cstdint>
@@ -102,14 +104,16 @@ std::string format_missing(std::string_view label,
 
 std::vector<std::string>
 missing_families(const std::int32_t* required, std::size_t required_count,
-                  const std::set<std::int32_t>& observed)
+                  const std::set<std::int32_t>& observed,
+                  Order                        order)
 {
     std::vector<std::string> missing;
     for (std::size_t i = 0; i < required_count; ++i)
     {
         const std::int32_t f = required[i];
         if (observed.count(f) == 0)
-            missing.push_back(og::parity::family_symbol(f));
+            missing.push_back(og::parity::family_symbol_by_order(
+                static_cast<std::int32_t>(order), f));
     }
     return missing;
 }
@@ -133,7 +137,8 @@ std::vector<std::string> missing_specials(std::uint64_t observed_exercises)
         {
             const auto& pair = og::parity::kRequiredSpecials[i];
             std::ostringstream os;
-            os << og::parity::family_symbol(pair.first)
+            os << og::parity::family_symbol_by_order(
+                      static_cast<std::int32_t>(Order::Living), pair.first)
                << " special " << static_cast<int>(pair.second)
                << " (Exercises bit " << i << ")";
             missing.push_back(os.str());
@@ -150,7 +155,7 @@ TEST(Parity, coverage_gate_walker_families)
     const auto missing = missing_families(
         og::parity::kRequiredWalkerFamilies,
         std::size(og::parity::kRequiredWalkerFamilies),
-        u.obs.walker_families);
+        u.obs.walker_families, Order::Living);
     EXPECT_TRUE(missing.empty()) << format_missing("walker families", missing);
 }
 
@@ -160,7 +165,7 @@ TEST(Parity, coverage_gate_effect_families)
     const auto missing = missing_families(
         og::parity::kRequiredEffectFamilies,
         std::size(og::parity::kRequiredEffectFamilies),
-        u.obs.effect_families);
+        u.obs.effect_families, Order::FX);
     EXPECT_TRUE(missing.empty()) << format_missing("effect families", missing);
 }
 
@@ -170,7 +175,7 @@ TEST(Parity, coverage_gate_weapon_families)
     const auto missing = missing_families(
         og::parity::kRequiredWeaponFamilies,
         std::size(og::parity::kRequiredWeaponFamilies),
-        u.obs.weapon_families);
+        u.obs.weapon_families, Order::Weapon);
     EXPECT_TRUE(missing.empty()) << format_missing("weapon families", missing);
 }
 
@@ -180,7 +185,7 @@ TEST(Parity, coverage_gate_treasure_families)
     const auto missing = missing_families(
         og::parity::kRequiredTreasureFamilies,
         std::size(og::parity::kRequiredTreasureFamilies),
-        u.obs.treasure_families);
+        u.obs.treasure_families, Order::Treasure);
     EXPECT_TRUE(missing.empty()) << format_missing("treasure families", missing);
 }
 
@@ -208,27 +213,30 @@ TEST(Parity, coverage_gate)
 
     auto append_family = [&](std::string_view label,
                               const std::int32_t* req, std::size_t n,
-                              const std::set<std::int32_t>& obs) {
+                              const std::set<std::int32_t>& obs,
+                              Order                         order) {
         for (std::size_t i = 0; i < n; ++i)
             if (obs.count(req[i]) == 0)
             {
                 std::ostringstream os;
-                os << label << ": " << og::parity::family_symbol(req[i]);
+                os << label << ": "
+                   << og::parity::family_symbol_by_order(
+                          static_cast<std::int32_t>(order), req[i]);
                 missing.push_back(os.str());
             }
     };
     append_family("walker_family",   og::parity::kRequiredWalkerFamilies,
                   std::size(og::parity::kRequiredWalkerFamilies),
-                  u.obs.walker_families);
+                  u.obs.walker_families, Order::Living);
     append_family("effect_family",   og::parity::kRequiredEffectFamilies,
                   std::size(og::parity::kRequiredEffectFamilies),
-                  u.obs.effect_families);
+                  u.obs.effect_families, Order::FX);
     append_family("weapon_family",   og::parity::kRequiredWeaponFamilies,
                   std::size(og::parity::kRequiredWeaponFamilies),
-                  u.obs.weapon_families);
+                  u.obs.weapon_families, Order::Weapon);
     append_family("treasure_family", og::parity::kRequiredTreasureFamilies,
                   std::size(og::parity::kRequiredTreasureFamilies),
-                  u.obs.treasure_families);
+                  u.obs.treasure_families, Order::Treasure);
 
     for (const auto& kind : og::parity::kRequiredEventKinds)
         if (u.obs.event_kinds.count(std::string(kind)) == 0)
@@ -245,7 +253,9 @@ TEST(Parity, coverage_gate)
         {
             const auto& pair = og::parity::kRequiredSpecials[i];
             std::ostringstream os;
-            os << "special: " << og::parity::family_symbol(pair.first)
+            os << "special: "
+               << og::parity::family_symbol_by_order(
+                      static_cast<std::int32_t>(Order::Living), pair.first)
                << " idx " << static_cast<int>(pair.second);
             missing.push_back(os.str());
         }
@@ -293,16 +303,47 @@ bool any_predicate_binds(og::parity::FactKind want_kind,
 std::vector<std::string>
 missing_family_bindings(const std::int32_t*       required,
                          std::size_t               required_count,
-                         og::parity::FactKind      kind)
+                         og::parity::FactKind      kind,
+                         Order                     order)
 {
     std::vector<std::string> missing;
     for (std::size_t i = 0; i < required_count; ++i)
     {
         const std::int32_t f = required[i];
         if (!any_predicate_binds(kind, f))
-            missing.push_back(og::parity::family_symbol(f));
+            missing.push_back(og::parity::family_symbol_by_order(
+                static_cast<std::int32_t>(order), f));
     }
     return missing;
+}
+
+// Phase 03 — true iff at least one predicate in `kScenarios` binds the
+// given treasure family. The legacy `TreasureFamilyRemovedFromOblist`
+// kind matches arg0 == family_id alone; the Order-aware
+// `TreasureFamilyOfOrderRemovedFromOblist` kind additionally requires
+// arg1 == kOrderTreasure (so a (family, Living) row, if anyone ever
+// authored one, would NOT satisfy this binding for the same family id).
+// Both treasure gate sites delegate to this helper so each kind earns
+// the right to satisfy the gate without renumbering predicates already
+// authored in the legacy form.
+bool any_treasure_binding(std::int32_t family_id)
+{
+    if (any_predicate_binds(og::parity::FactKind::TreasureFamilyRemovedFromOblist,
+                            family_id))
+        return true;
+    for (const auto& spec : og::parity::kScenarios)
+    {
+        if (spec.expected_facts == nullptr) continue;
+        for (std::size_t i = 0; i < spec.fact_count; ++i)
+        {
+            const auto& p = spec.expected_facts[i];
+            if (p.kind == og::parity::FactKind::TreasureFamilyOfOrderRemovedFromOblist
+                && p.arg0 == family_id
+                && p.arg1 == static_cast<std::int32_t>(Order::Treasure))
+                return true;
+        }
+    }
+    return false;
 }
 
 } // namespace
@@ -314,7 +355,7 @@ TEST(Parity, behavioural_coverage_gate_weapons)
     const auto missing = missing_family_bindings(
         og::parity::kRequiredWeaponFamilies,
         std::size(og::parity::kRequiredWeaponFamilies),
-        og::parity::FactKind::WeaponFamilyEmitted);
+        og::parity::FactKind::WeaponFamilyEmitted, Order::Weapon);
     EXPECT_TRUE(missing.empty())
         << format_missing("weapon families behaviourally bound "
                           "(WeaponFamilyEmitted arg0)", missing);
@@ -323,14 +364,21 @@ TEST(Parity, behavioural_coverage_gate_weapons)
 TEST(Parity, behavioural_coverage_gate_treasures)
 {
     // Each kRequiredTreasureFamilies entry must appear as arg0 of at
-    // least one TreasureFamilyRemovedFromOblist predicate.
-    const auto missing = missing_family_bindings(
-        og::parity::kRequiredTreasureFamilies,
-        std::size(og::parity::kRequiredTreasureFamilies),
-        og::parity::FactKind::TreasureFamilyRemovedFromOblist);
+    // least one TreasureFamilyRemovedFromOblist OR
+    // TreasureFamilyOfOrderRemovedFromOblist(arg0, kOrderTreasure)
+    // predicate. Phase 03 introduced the Order-aware kind; this gate
+    // accepts either form so rows can migrate independently.
+    std::vector<std::string> missing;
+    for (const std::int32_t f : og::parity::kRequiredTreasureFamilies)
+    {
+        if (!any_treasure_binding(f))
+            missing.push_back(og::parity::family_symbol_by_order(
+                static_cast<std::int32_t>(Order::Treasure), f));
+    }
     EXPECT_TRUE(missing.empty())
         << format_missing("treasure families behaviourally bound "
-                          "(TreasureFamilyRemovedFromOblist arg0)", missing);
+                          "(TreasureFamily{,OfOrder}RemovedFromOblist arg0)",
+                          missing);
 }
 
 TEST(Parity, behavioural_coverage_gate_effects)
@@ -340,7 +388,7 @@ TEST(Parity, behavioural_coverage_gate_effects)
     const auto missing = missing_family_bindings(
         og::parity::kRequiredEffectFamilies,
         std::size(og::parity::kRequiredEffectFamilies),
-        og::parity::FactKind::EffectFamilyCount);
+        og::parity::FactKind::EffectFamilyCount, Order::FX);
     EXPECT_TRUE(missing.empty())
         << format_missing("effect families behaviourally bound "
                           "(EffectFamilyCount arg0)", missing);
@@ -356,7 +404,7 @@ TEST(Parity, behavioural_coverage_gate_generators)
     const auto missing = missing_family_bindings(
         og::parity::kRequiredGeneratorFamilies,
         std::size(og::parity::kRequiredGeneratorFamilies),
-        og::parity::FactKind::WalkerFamilyCount);
+        og::parity::FactKind::WalkerFamilyCount, Order::Generator);
     EXPECT_TRUE(missing.empty())
         << format_missing("generator families behaviourally bound "
                           "(WalkerFamilyCount arg0)", missing);
@@ -403,13 +451,16 @@ TEST(Parity, behavioural_coverage_gate)
     auto append_family = [&](std::string_view         label,
                               const std::int32_t*      req,
                               std::size_t              n,
-                              og::parity::FactKind     kind) {
+                              og::parity::FactKind     kind,
+                              Order                    order) {
         for (std::size_t i = 0; i < n; ++i)
         {
             if (!any_predicate_binds(kind, req[i]))
             {
                 std::ostringstream os;
-                os << label << ": " << og::parity::family_symbol(req[i]);
+                os << label << ": "
+                   << og::parity::family_symbol_by_order(
+                          static_cast<std::int32_t>(order), req[i]);
                 missing.push_back(os.str());
             }
         }
@@ -417,19 +468,30 @@ TEST(Parity, behavioural_coverage_gate)
     append_family("weapon_family",
                   og::parity::kRequiredWeaponFamilies,
                   std::size(og::parity::kRequiredWeaponFamilies),
-                  og::parity::FactKind::WeaponFamilyEmitted);
-    append_family("treasure_family",
-                  og::parity::kRequiredTreasureFamilies,
-                  std::size(og::parity::kRequiredTreasureFamilies),
-                  og::parity::FactKind::TreasureFamilyRemovedFromOblist);
+                  og::parity::FactKind::WeaponFamilyEmitted, Order::Weapon);
+    // Treasure family binding accepts either the legacy
+    // `TreasureFamilyRemovedFromOblist` or the Phase 03 Order-aware
+    // `TreasureFamilyOfOrderRemovedFromOblist(arg0, kOrderTreasure)`
+    // kind.
+    for (const std::int32_t f : og::parity::kRequiredTreasureFamilies)
+    {
+        if (!any_treasure_binding(f))
+        {
+            std::ostringstream os;
+            os << "treasure_family: "
+               << og::parity::family_symbol_by_order(
+                      static_cast<std::int32_t>(Order::Treasure), f);
+            missing.push_back(os.str());
+        }
+    }
     append_family("effect_family",
                   og::parity::kRequiredEffectFamilies,
                   std::size(og::parity::kRequiredEffectFamilies),
-                  og::parity::FactKind::EffectFamilyCount);
+                  og::parity::FactKind::EffectFamilyCount, Order::FX);
     append_family("generator_family",
                   og::parity::kRequiredGeneratorFamilies,
                   std::size(og::parity::kRequiredGeneratorFamilies),
-                  og::parity::FactKind::WalkerFamilyCount);
+                  og::parity::FactKind::WalkerFamilyCount, Order::Generator);
 
     static constexpr std::pair<std::string_view, std::int32_t> kKindOrdinals[] = {
         {"play_sound",                1},

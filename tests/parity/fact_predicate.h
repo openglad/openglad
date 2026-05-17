@@ -51,6 +51,14 @@ enum class FactKind : std::uint8_t
     EventKindAtLeast,                // arg0 = kind ordinal, arg1 = min
     EventKindExactly,                // arg0 = kind ordinal, arg1 = exact count
     WeaponFamilyEmitted,             // arg0 = family — searches dump.weapons[] ONLY
+    // Phase 03 — Order-aware analogue of TreasureFamilyRemovedFromOblist.
+    // arg0 = family id, arg1 = Order ordinal (kOrderLiving / kOrderTreasure
+    // / kOrderGenerator / kOrderWeapon / kOrderFX). The evaluator renders
+    // (family, order) through `family_symbol_by_order` and asserts no entry
+    // in `dump.walkers[]` matches that resolved name. Treasure pickup rows
+    // use this kind so the predicate honestly observes the treasure
+    // walker's disappearance rather than aliasing onto a Living name.
+    TreasureFamilyOfOrderRemovedFromOblist, // arg0 = family, arg1 = order
 };
 
 struct FactPredicate
@@ -167,6 +175,18 @@ inline constexpr FactPredicate TreasureFamilyRemovedFromOblist(std::int32_t fami
                                                                std::string_view label = {}) noexcept
 {
     return {FactKind::TreasureFamilyRemovedFromOblist, family, 0, 0, 0, 0, label};
+}
+// Phase 03 — Order-aware analogue of TreasureFamilyRemovedFromOblist.
+// `order` is the Order ordinal (Order::Treasure for treasure pickup rows).
+// The evaluator renders (family, order) through `family_symbol_by_order`
+// and asserts no `dump.walkers[]` entry matches the resolved name.
+inline constexpr FactPredicate TreasureFamilyOfOrderRemovedFromOblist(
+    std::int32_t     family,
+    std::int32_t     order,
+    std::string_view label = {}) noexcept
+{
+    return {FactKind::TreasureFamilyOfOrderRemovedFromOblist,
+            family, order, 0, 0, 0, label};
 }
 inline constexpr FactPredicate StatDeltaOnPickup(std::int32_t stat_kind, std::int32_t mn, std::int32_t mx,
                                                  std::string_view label = {}) noexcept

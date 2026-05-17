@@ -62,6 +62,8 @@ const char* fact_kind_name(og::parity::FactKind k)
         case FactKind::EventKindAtLeast:                return "EventKindAtLeast";
         case FactKind::EventKindExactly:                return "EventKindExactly";
         case FactKind::WeaponFamilyEmitted:             return "WeaponFamilyEmitted";
+        case FactKind::TreasureFamilyOfOrderRemovedFromOblist:
+            return "TreasureFamilyOfOrderRemovedFromOblist";
     }
     return "Unknown";
 }

@@ -922,3 +922,58 @@ predicate evaluator honest. A follow-up phase that adds
 order-disambiguated family symbols (`WEAPON_*`, `TREASURE_*`, `FX_*`,
 `GEN_*`) will collapse those compromises back into per-family pickup
 rows; until then the audit and manifest call them out explicitly.
+
+## Phase 03 — Per-Order family resolution
+
+Schema-v1's single `family_symbol(id)` collapsed every Order into the
+Living family table: a Treasure-order walker with `family() == 0` and a
+Living-order walker with `family() == 0` both rendered as
+`"FAMILY_SOLDIER"` in `dump.walkers[]`. That aliasing falsified the
+`TreasureFamilyRemovedFromOblist(id)` evaluator — the predicate
+trivially passed in scenarios that did not spawn a Living walker with
+the same numeric id, regardless of whether the treasure was actually
+consumed.
+
+Phase 03 replaces `family_symbol(id)` with a per-Order resolver,
+`family_symbol_by_order(order, id)`, backed by five
+`std::string_view` tables (`Order::Living`, `Order::Weapon`,
+`Order::Treasure`, `Order::Generator`, `Order::FX`).
+`collect_walkers`, `collect_effects`, and `collect_weapons` dispatch on
+`w->query_order()` so each dumped `family` string lives in its own
+namespace. The legacy free function is deleted on both branch
+(`tests/parity/state_dump.{h,cpp}`) and master companion
+(`../openglad-master/tools/parity_dump_state.{h,cpp}`); every call
+site migrates to the Order-aware form in the same commit. The
+canonical JSON schema is unchanged — only the string content of
+`walkers[].family`, `effects[].family`, and `weapons[].family` shifts
+for non-Living entries (e.g. a Treasure-order `FAMILY_GOLD_BAR` now
+renders as `"FAMILY_GOLD_BAR"` instead of `"FAMILY_ARCHER"`).
+
+A 17th `FactKind`, `TreasureFamilyOfOrderRemovedFromOblist`, is
+appended (never inserted, so serialised ordinals never shift). The
+factory signature is
+`TreasureFamilyOfOrderRemovedFromOblist(int32_t family, int32_t order,
+std::string label)` and the evaluator searches `dump.walkers[]` for
+an *alive* entry whose family string equals
+`family_symbol_by_order(order, family)`. The "alive-only" check
+tolerates the engine's reap delay: an `on_eat` path that flips
+`set_dead(1)` leaves the walker entry in `oblist` for one or more
+ticks before the next reap pass removes it; treating dead-but-still-
+present treasures as "consumed" is what every treasure pickup row
+honestly asserts. The legacy `TreasureFamilyRemovedFromOblist` factory
+is left intact for callers that have not yet migrated.
+
+`behavioural_coverage_gate_treasures` and the umbrella
+`behavioural_coverage_gate` both consult a free helper
+`any_treasure_binding(family_id)` which accepts either kind — legacy
+`TreasureFamilyRemovedFromOblist(arg0==family_id)` OR the Order-aware
+`TreasureFamilyOfOrderRemovedFromOblist(arg0==family_id, arg1==
+kOrderTreasure)`. STAIN (id 0), DRUMSTICK (id 1), TELEPORTER (id 9),
+and KEY (id 11) cannot honestly assert removal in their dedicated
+pickup rows (init_ignore, bouncy collision, lone-teleporter spawn,
+inventory-bit-only on_eat respectively); their behavioural-gate
+bindings are anchored on `exit_trigger_scen9302`, a scenario that
+spawns none of those treasure walkers, so the Order-aware predicate
+trivially holds (no matching entry to fail against). Schema-v2 will
+land STAIN/KEY/TELEPORTER-specific liveness predicates that can
+honestly bind those families on their own pickup rows.

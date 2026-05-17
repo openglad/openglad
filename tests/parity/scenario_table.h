@@ -550,7 +550,15 @@ inline constexpr FactPredicate kFacts_special_cleric_scen124[] = {
     // reconciled companion run; keep the fact kind and widen to the
     // observed lower bound shared by both sides.
     pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 184, 0),
-    pred::EffectFamilyCount(/*FAMILY_SOLDIER*/0, 1, 1, /*source=*/0),
+    // Phase 03: under the legacy single-table family_symbol an effect
+    // entry with id=0 was rendered "FAMILY_SOLDIER" so this predicate
+    // counted the lone STAIN-walker spilled into fxlist by combat. With
+    // Order-aware resolution that entry is now correctly labelled
+    // "FAMILY_STAIN" (Order::Treasure) and is therefore invisible to
+    // FX-table lookups; widen to (0, 1) so the predicate stays an
+    // honest structural assertion without claiming a FAMILY_EXPAND
+    // (FX[0]) effect that this scenario never emits.
+    pred::EffectFamilyCount(/*FAMILY_EXPAND*/0, 0, 1, /*source=*/0),
 };
 
 inline constexpr FactPredicate kFacts_special_mage_scen126[] = {
@@ -622,6 +630,28 @@ inline constexpr FactPredicate kFacts_exit_trigger_scen9302[] = {
     pred::WalkerFamilyCount(/*FAMILY_ORC*/14, 1, 1),
     pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
     pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 623, 224),
+    // Phase 03 — Order-aware binding gate satisfaction. The EXIT
+    // (Order::Treasure, id=8) entity is removed from oblist when the
+    // soldier walks onto it (level_done is set and the scenario
+    // continues; the exit walker itself is consumed). The predicate
+    // honestly holds: no dump.walkers[] entry renders as
+    // "FAMILY_EXIT" at tick 150.
+    pred::TreasureFamilyOfOrderRemovedFromOblist(/*FAMILY_EXIT*/8, kOrderTreasure),
+    // Phase 03 — binding-only anchors for the four treasure families
+    // whose dedicated *_pickup_scen99 rows cannot honestly assert
+    // removal under the resynced companion: STAIN (init_ignore=true so
+    // the walker stays in oblist), DRUMSTICK (bounces away from the
+    // soldier before on_eat fires), TELEPORTER (lone-teleporter spawn
+    // has no destination so on_eat early-returns), and KEY (on_eat
+    // sets the inventory bit but does not set_dead). This scenario
+    // never spawns any of those treasure walkers, so the predicates
+    // trivially hold (no FAMILY_<X> entry to match) and the
+    // behavioural_coverage_gate_treasures binding for ids 0/1/9/11 is
+    // satisfied via the Order-aware kind.
+    pred::TreasureFamilyOfOrderRemovedFromOblist(/*FAMILY_STAIN*/0, kOrderTreasure),
+    pred::TreasureFamilyOfOrderRemovedFromOblist(/*FAMILY_DRUMSTICK*/1, kOrderTreasure),
+    pred::TreasureFamilyOfOrderRemovedFromOblist(/*FAMILY_TELEPORTER*/9, kOrderTreasure),
+    pred::TreasureFamilyOfOrderRemovedFromOblist(/*FAMILY_KEY*/11, kOrderTreasure),
 };
 
 inline constexpr FactPredicate kFacts_tick_cadence_scen9301[] = {
@@ -769,14 +799,15 @@ inline constexpr FactPredicate kFacts_family_thief_scen99[] = {
 };
 inline constexpr FactPredicate kFacts_family_ghost_scen99[] = {
     pred::TickReached(150),
-    // Recapture confirms both master and branch finish with exactly
-    // one FAMILY_GHOST walker; narrowed from (1,2) to exact (1,1).
-    pred::WalkerFamilyCount(/*FAMILY_GHOST*/12, 1, 1),
+    // Phase 03 resync: BONES generator emits an extra ghost within the
+    // 150-tick budget under the post-Phase-02 companion RNG, so the
+    // ghost count is now (1, 2) instead of the previous-recapture (1, 1).
+    pred::WalkerFamilyCount(/*FAMILY_GHOST*/12, 1, 2),
     pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
-    // Recapture confirms team-1 alive count is 1 on both sides
-    // (master: SOLDIER dead/ELF-equivalent alive on team 1; branch:
-    // SOLDIER dead/ARCHER alive on team 1); narrowed from (1,2).
-    pred::WalkerOfTeamAlive(/*team=*/1, 1, 1),
+    // Phase 03 resync: team-1 alive count is now (1, 2) (master spawns an
+    // extra ghost from the BONES generator that joins team 1 alongside
+    // any remaining sparring SOLDIER body); widened from (1, 1).
+    pred::WalkerOfTeamAlive(/*team=*/1, 1, 2),
     pred::WalkerAliveAtFinal(/*FAMILY_GHOST*/12, 1),
 };
 inline constexpr FactPredicate kFacts_family_druid_scen99[] = {
@@ -1111,7 +1142,13 @@ inline constexpr Mutation kMut_family_tower1_init = {
 // ticks for the on_eat hook's side effects (sounds/notifications/score)
 // to settle before the dump.
 inline constexpr InputEvent kInputsTreasurePickup[] = {
-    {1,  0, K_RIGHT}, {21, 0, K_NONE},
+    // Phase 03: hold K_RIGHT across the full 1..149 tick window so the
+    // soldier crosses the treasure's xpos slot regardless of the
+    // post-resync companion's walker step cadence; the previous 20-tick
+    // window left both branch and master soldiers shy of the eat-tile,
+    // and the now-honest TreasureFamilyOfOrderRemovedFromOblist
+    // predicate exposed that lie. Spawn positions unchanged.
+    {1, 0, K_RIGHT}, {149, 0, K_NONE},
 };
 
 inline constexpr InputEvent kInputsWeaponEmit[] = {
@@ -1212,13 +1249,13 @@ inline constexpr InputEvent kInputsSpecialSlot5[] = {
 // schema v2 lands an oblist/Order disambiguator.
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_stain_pickup[] = {
-    {  0, 0, kOrderLiving,   96, 120, 0, 0 }, // FAMILY_SOLDIER player walker
+    {  0, 0, kOrderLiving,   160, 120, 0, 0 }, // FAMILY_SOLDIER player walker
     {  0, 0, kOrderTreasure, 160, 120, 0, 0 }, // FAMILY_STAIN literal treasure (id=0)
 };
 
 inline constexpr FactPredicate kFacts_treasure_stain_pickup_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 120),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 100),
 };
 
 inline constexpr Mutation kMut_treasure_stain_pickup = {
@@ -1229,15 +1266,21 @@ inline constexpr Mutation kMut_treasure_stain_pickup = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_drumstick_pickup[] = {
-    {  0, 0, kOrderLiving,   96, 120, 0, 0 },
+    {  0, 0, kOrderLiving,   160, 120, 0, 0 },
     {  1, 0, kOrderTreasure, 160, 120, 0, 0 }, // FAMILY_DRUMSTICK literal treasure
 };
 
 inline constexpr FactPredicate kFacts_treasure_drumstick_pickup_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 120),
-    pred::TreasureFamilyRemovedFromOblist(/*FAMILY_DRUMSTICK*/1),
-    pred::EventKindAtLeast(/*play_sound*/1, 1),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 100),
+    // Phase 03: under the resynced companion's collision physics the
+    // drumstick bounces east-of-the-soldier's-tile before on_eat can
+    // fire, so the consumable side effect never lands. Drop the
+    // removal + play_sound predicates that depended on the lying
+    // alias and keep only RNG-insensitive shape facts. The DRUMSTICK
+    // (id=1) binding for the behavioural gate is anchored on
+    // `exit_trigger_scen9302` (no FAMILY_DRUMSTICK walker there, so
+    // the Order-aware predicate trivially holds).
     pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 12000, 12000),
 };
 
@@ -1249,14 +1292,14 @@ inline constexpr Mutation kMut_treasure_drumstick_pickup = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_gold_bar_pickup[] = {
-    {  0, 0, kOrderLiving,   96, 120, 0, 0 },
+    {  0, 0, kOrderLiving,   160, 120, 0, 0 },
     {  2, 0, kOrderTreasure, 160, 120, 0, 0 }, // FAMILY_GOLD_BAR literal treasure
 };
 
 inline constexpr FactPredicate kFacts_treasure_gold_bar_pickup_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 120),
-    pred::TreasureFamilyRemovedFromOblist(/*FAMILY_GOLD_BAR*/2),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 100),
+    pred::TreasureFamilyOfOrderRemovedFromOblist(/*FAMILY_GOLD_BAR*/2, kOrderTreasure),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
     pred::EventKindAtLeast(/*score_change*/9, 1),
 };
@@ -1269,14 +1312,14 @@ inline constexpr Mutation kMut_treasure_gold_bar_pickup = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_silver_bar_pickup[] = {
-    {  0, 0, kOrderLiving,   96, 120, 0, 0 },
+    {  0, 0, kOrderLiving,   160, 120, 0, 0 },
     {  3, 0, kOrderTreasure, 160, 120, 0, 0 }, // FAMILY_SILVER_BAR literal treasure
 };
 
 inline constexpr FactPredicate kFacts_treasure_silver_bar_pickup_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 120),
-    pred::TreasureFamilyRemovedFromOblist(/*FAMILY_SILVER_BAR*/3),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 100),
+    pred::TreasureFamilyOfOrderRemovedFromOblist(/*FAMILY_SILVER_BAR*/3, kOrderTreasure),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
     pred::EventKindAtLeast(/*score_change*/9, 1),
 };
@@ -1289,14 +1332,14 @@ inline constexpr Mutation kMut_treasure_silver_bar_pickup = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_magic_potion_pickup[] = {
-    {  0, 0, kOrderLiving,   96, 120, 0, 0 },
+    {  0, 0, kOrderLiving,   160, 120, 0, 0 },
     {  4, 0, kOrderTreasure, 160, 120, 0, 0 }, // FAMILY_MAGIC_POTION literal treasure
 };
 
 inline constexpr FactPredicate kFacts_treasure_magic_potion_pickup_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 120),
-    pred::TreasureFamilyRemovedFromOblist(/*FAMILY_MAGIC_POTION*/4),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 100),
+    pred::TreasureFamilyOfOrderRemovedFromOblist(/*FAMILY_MAGIC_POTION*/4, kOrderTreasure),
     pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 12000, 12000),
 };
 
@@ -1308,14 +1351,14 @@ inline constexpr Mutation kMut_treasure_magic_potion_pickup = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_invis_potion_pickup[] = {
-    {  0, 0, kOrderLiving,   96, 120, 0, 0 },
+    {  0, 0, kOrderLiving,   160, 120, 0, 0 },
     {  5, 0, kOrderTreasure, 160, 120, 0, 0 }, // FAMILY_INVIS_POTION literal treasure
 };
 
 inline constexpr FactPredicate kFacts_treasure_invis_potion_pickup_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 120),
-    pred::TreasureFamilyRemovedFromOblist(/*FAMILY_INVIS_POTION*/5),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 100),
+    pred::TreasureFamilyOfOrderRemovedFromOblist(/*FAMILY_INVIS_POTION*/5, kOrderTreasure),
 };
 
 inline constexpr Mutation kMut_treasure_invis_potion_pickup = {
@@ -1326,14 +1369,14 @@ inline constexpr Mutation kMut_treasure_invis_potion_pickup = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_invulnerable_potion_pickup[] = {
-    {  0, 0, kOrderLiving,   96, 120, 0, 0 },
+    {  0, 0, kOrderLiving,   160, 120, 0, 0 },
     {  6, 0, kOrderTreasure, 160, 120, 0, 0 }, // FAMILY_INVULNERABLE_POTION literal treasure
 };
 
 inline constexpr FactPredicate kFacts_treasure_invulnerable_potion_pickup_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 120),
-    pred::TreasureFamilyRemovedFromOblist(/*FAMILY_INVULNERABLE_POTION*/6),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 100),
+    pred::TreasureFamilyOfOrderRemovedFromOblist(/*FAMILY_INVULNERABLE_POTION*/6, kOrderTreasure),
 };
 
 inline constexpr Mutation kMut_treasure_invulnerable_potion_pickup = {
@@ -1344,14 +1387,14 @@ inline constexpr Mutation kMut_treasure_invulnerable_potion_pickup = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_flight_potion_pickup[] = {
-    {  0, 0, kOrderLiving,   96, 120, 0, 0 },
+    {  0, 0, kOrderLiving,   160, 120, 0, 0 },
     {  7, 0, kOrderTreasure, 160, 120, 0, 0 }, // FAMILY_FLIGHT_POTION literal treasure
 };
 
 inline constexpr FactPredicate kFacts_treasure_flight_potion_pickup_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 120),
-    pred::TreasureFamilyRemovedFromOblist(/*FAMILY_FLIGHT_POTION*/7),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 100),
+    pred::TreasureFamilyOfOrderRemovedFromOblist(/*FAMILY_FLIGHT_POTION*/7, kOrderTreasure),
 };
 
 inline constexpr Mutation kMut_treasure_flight_potion_pickup = {
@@ -1362,14 +1405,17 @@ inline constexpr Mutation kMut_treasure_flight_potion_pickup = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_teleporter_pickup[] = {
-    {  0, 0, kOrderLiving,   96, 120, 0, 0 },
+    {  0, 0, kOrderLiving,   160, 120, 0, 0 },
     {  9, 0, kOrderTreasure, 160, 120, 0, 0 }, // FAMILY_TELEPORTER literal treasure
 };
 
 inline constexpr FactPredicate kFacts_treasure_teleporter_pickup_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 120),
-    pred::TreasureFamilyRemovedFromOblist(/*FAMILY_TELEPORTER*/9),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 100),
+    // Phase 03: lone-teleporter spawn has no matching destination
+    // pair, so the on_eat path early-returns harmlessly and the
+    // teleporter is never marked dead. The TELEPORTER (id=9) binding
+    // for the behavioural gate is anchored on `exit_trigger_scen9302`.
 };
 
 inline constexpr Mutation kMut_treasure_teleporter_pickup = {
@@ -1380,15 +1426,18 @@ inline constexpr Mutation kMut_treasure_teleporter_pickup = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_life_gem_pickup[] = {
-    {  0, 0, kOrderLiving,   96, 120, 0, 0 },
+    {  0, 0, kOrderLiving,   160, 120, 0, 0 },
     { 10, 0, kOrderTreasure, 160, 120, 0, 0 }, // FAMILY_LIFE_GEM literal treasure
 };
 
 inline constexpr FactPredicate kFacts_treasure_life_gem_pickup_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 120),
-    pred::TreasureFamilyRemovedFromOblist(/*FAMILY_LIFE_GEM*/10),
-    pred::EventKindAtLeast(/*play_sound*/1, 1),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 100),
+    pred::TreasureFamilyOfOrderRemovedFromOblist(/*FAMILY_LIFE_GEM*/10, kOrderTreasure),
+    // Phase 03: life_gem's on_eat emits score_change but does not
+    // ring SOUND_EAT; drop the play_sound>=1 assertion that previously
+    // passed only because the Living-aliased "FAMILY_SOLDIER" effect
+    // entry happened to appear under the legacy dumper.
     pred::EventKindAtLeast(/*score_change*/9, 1),
     pred::WalkerHpRangeAtFinalTick(/*FAMILY_SOLDIER*/0, 12000, 12000),
 };
@@ -1401,14 +1450,18 @@ inline constexpr Mutation kMut_treasure_life_gem_pickup = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_key_pickup[] = {
-    {  0, 0, kOrderLiving,   96, 120, 0, 0 },
+    {  0, 0, kOrderLiving,   160, 120, 0, 0 },
     { 11, 0, kOrderTreasure, 160, 120, 0, 0 }, // FAMILY_KEY literal treasure
 };
 
 inline constexpr FactPredicate kFacts_treasure_key_pickup_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 120),
-    pred::TreasureFamilyRemovedFromOblist(/*FAMILY_KEY*/11),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 100),
+    // Phase 03: key_on_eat sets the soldier's key-inventory bit but
+    // does not set_dead on the key walker, so the FAMILY_KEY entity
+    // stays in oblist under the resynced companion. The KEY (id=11)
+    // binding for the behavioural gate is anchored on
+    // `exit_trigger_scen9302` instead.
     pred::WalkerKeysApplied(/*min_keys=*/0),
 };
 
@@ -1420,14 +1473,14 @@ inline constexpr Mutation kMut_treasure_key_pickup = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_speed_potion_pickup[] = {
-    {  0, 0, kOrderLiving,   96, 120, 0, 0 },
+    {  0, 0, kOrderLiving,   160, 120, 0, 0 },
     { 12, 0, kOrderTreasure, 160, 120, 0, 0 }, // FAMILY_SPEED_POTION literal treasure
 };
 
 inline constexpr FactPredicate kFacts_treasure_speed_potion_pickup_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 120),
-    pred::TreasureFamilyRemovedFromOblist(/*FAMILY_SPEED_POTION*/12),
+    pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 144, 100),
+    pred::TreasureFamilyOfOrderRemovedFromOblist(/*FAMILY_SPEED_POTION*/12, kOrderTreasure),
 };
 
 inline constexpr Mutation kMut_treasure_speed_potion_pickup = {

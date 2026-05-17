@@ -95,38 +95,139 @@ void append_bool(std::string& out, bool value)
 
 } // namespace
 
-std::string family_symbol(std::int32_t family_id)
+// Per-Order family symbol tables. Schema-v1 dumped a single Living-only
+// table for every walker regardless of Order, which aliased treasure /
+// weapon / generator / effect entries to the wrong human-readable name
+// (e.g. a Generator FAMILY_TENT (id 0) dumped as "FAMILY_SOLDIER"). The
+// new resolution dispatches on Order so the dumped `family` string
+// matches the entity's true family within its Order's namespace.
+//
+// Out-of-range ids or Orders without a dedicated table fall through to
+// the "FAMILY_UNKNOWN_<order>_<id>" form so the dumper stays total.
+namespace {
+
+constexpr std::string_view kLivingFamilies[] = {
+    "FAMILY_SOLDIER",
+    "FAMILY_ELF",
+    "FAMILY_ARCHER",
+    "FAMILY_MAGE",
+    "FAMILY_SKELETON",
+    "FAMILY_CLERIC",
+    "FAMILY_FIREELEMENTAL",
+    "FAMILY_FAERIE",
+    "FAMILY_SLIME",
+    "FAMILY_SMALL_SLIME",
+    "FAMILY_MEDIUM_SLIME",
+    "FAMILY_THIEF",
+    "FAMILY_GHOST",
+    "FAMILY_DRUID",
+    "FAMILY_ORC",
+    "FAMILY_BIG_ORC",
+    "FAMILY_BARBARIAN",
+    "FAMILY_ARCHMAGE",
+    "FAMILY_GOLEM",
+    "FAMILY_GIANT_SKELETON",
+    "FAMILY_TOWER1",
+};
+
+constexpr std::string_view kWeaponFamilies[] = {
+    "FAMILY_KNIFE",
+    "FAMILY_ROCK",
+    "FAMILY_ARROW",
+    "FAMILY_FIREBALL",
+    "FAMILY_TREE",
+    "FAMILY_METEOR",
+    "FAMILY_SPRINKLE",
+    "FAMILY_BONE",
+    "FAMILY_BLOOD",
+    "FAMILY_BLOB",
+    "FAMILY_FIRE_ARROW",
+    "FAMILY_LIGHTNING",
+    "FAMILY_GLOW",
+    "FAMILY_WAVE",
+    "FAMILY_WAVE2",
+    "FAMILY_WAVE3",
+    "FAMILY_CIRCLE_PROTECTION",
+    "FAMILY_HAMMER",
+    "FAMILY_DOOR",
+    "FAMILY_BOULDER",
+};
+
+constexpr std::string_view kTreasureFamilies[] = {
+    "FAMILY_STAIN",
+    "FAMILY_DRUMSTICK",
+    "FAMILY_GOLD_BAR",
+    "FAMILY_SILVER_BAR",
+    "FAMILY_MAGIC_POTION",
+    "FAMILY_INVIS_POTION",
+    "FAMILY_INVULNERABLE_POTION",
+    "FAMILY_FLIGHT_POTION",
+    "FAMILY_EXIT",
+    "FAMILY_TELEPORTER",
+    "FAMILY_LIFE_GEM",
+    "FAMILY_KEY",
+    "FAMILY_SPEED_POTION",
+};
+
+constexpr std::string_view kGeneratorFamilies[] = {
+    "FAMILY_TENT",
+    "FAMILY_TOWER",
+    "FAMILY_BONES",
+    "FAMILY_TREEHOUSE",
+};
+
+constexpr std::string_view kEffectFamilies[] = {
+    "FAMILY_EXPAND",
+    "FAMILY_GHOST_SCARE",
+    "FAMILY_BOMB",
+    "FAMILY_EXPLOSION",
+    "FAMILY_FLASH",
+    "FAMILY_MAGIC_SHIELD",
+    "FAMILY_KNIFE_BACK",
+    "FAMILY_BOOMERANG",
+    "FAMILY_CLOUD",
+    "FAMILY_MARKER",
+    "FAMILY_CHAIN",
+    "FAMILY_DOOR_OPEN",
+    "FAMILY_HIT",
+};
+
+} // namespace
+
+std::string family_symbol_by_order(std::int32_t order, std::int32_t family_id)
 {
-    switch (family_id)
+    const std::string_view* table = nullptr;
+    std::size_t             size  = 0;
+    switch (static_cast<Order>(order))
     {
-        case FAMILY_SOLDIER:        return "FAMILY_SOLDIER";
-        case FAMILY_ELF:            return "FAMILY_ELF";
-        case FAMILY_ARCHER:         return "FAMILY_ARCHER";
-        case FAMILY_MAGE:           return "FAMILY_MAGE";
-        case FAMILY_SKELETON:       return "FAMILY_SKELETON";
-        case FAMILY_CLERIC:         return "FAMILY_CLERIC";
-        case FAMILY_FIREELEMENTAL:  return "FAMILY_FIREELEMENTAL";
-        case FAMILY_FAERIE:         return "FAMILY_FAERIE";
-        case FAMILY_SLIME:          return "FAMILY_SLIME";
-        case FAMILY_SMALL_SLIME:    return "FAMILY_SMALL_SLIME";
-        case FAMILY_MEDIUM_SLIME:   return "FAMILY_MEDIUM_SLIME";
-        case FAMILY_THIEF:          return "FAMILY_THIEF";
-        case FAMILY_GHOST:          return "FAMILY_GHOST";
-        case FAMILY_DRUID:          return "FAMILY_DRUID";
-        case FAMILY_ORC:            return "FAMILY_ORC";
-        case FAMILY_BIG_ORC:        return "FAMILY_BIG_ORC";
-        case FAMILY_BARBARIAN:      return "FAMILY_BARBARIAN";
-        case FAMILY_ARCHMAGE:       return "FAMILY_ARCHMAGE";
-        case FAMILY_GOLEM:          return "FAMILY_GOLEM";
-        case FAMILY_GIANT_SKELETON: return "FAMILY_GIANT_SKELETON";
-        case FAMILY_TOWER1:         return "FAMILY_TOWER1";
-        default:
-        {
-            char buf[40];
-            std::snprintf(buf, sizeof(buf), "FAMILY_UNKNOWN_%d", family_id);
-            return std::string(buf);
-        }
+        case Order::Living:
+            table = kLivingFamilies;
+            size  = sizeof(kLivingFamilies) / sizeof(kLivingFamilies[0]);
+            break;
+        case Order::Weapon:
+            table = kWeaponFamilies;
+            size  = sizeof(kWeaponFamilies) / sizeof(kWeaponFamilies[0]);
+            break;
+        case Order::Treasure:
+            table = kTreasureFamilies;
+            size  = sizeof(kTreasureFamilies) / sizeof(kTreasureFamilies[0]);
+            break;
+        case Order::Generator:
+            table = kGeneratorFamilies;
+            size  = sizeof(kGeneratorFamilies) / sizeof(kGeneratorFamilies[0]);
+            break;
+        case Order::FX:
+            table = kEffectFamilies;
+            size  = sizeof(kEffectFamilies) / sizeof(kEffectFamilies[0]);
+            break;
+        default: break;
     }
+    if (table != nullptr && family_id >= 0 &&
+        static_cast<std::size_t>(family_id) < size)
+        return std::string(table[family_id]);
+    char buf[48];
+    std::snprintf(buf, sizeof(buf), "FAMILY_UNKNOWN_%d_%d", order, family_id);
+    return std::string(buf);
 }
 
 std::string event_kind_symbol(std::uint32_t kind_raw)
@@ -165,7 +266,9 @@ void collect_walkers(const GameWorld::EntityList& list,
         if (w == nullptr) continue;
         WalkerEntry entry;
         entry.id     = w->entity_id() != 0 ? w->entity_id() : ++running_seq;
-        entry.family = family_symbol(static_cast<std::int32_t>(w->family()));
+        entry.family = family_symbol_by_order(
+            static_cast<std::int32_t>(w->query_order()),
+            static_cast<std::int32_t>(w->family()));
         entry.team   = static_cast<std::uint32_t>(w->team_num());
         entry.xpos   = static_cast<std::int32_t>(w->xpos());
         entry.ypos   = static_cast<std::int32_t>(w->ypos());
@@ -190,7 +293,9 @@ void collect_effects(const GameWorld::EntityList& list,
         if (w == nullptr) continue;
         EffectEntry entry;
         entry.id       = w->entity_id() != 0 ? w->entity_id() : ++running_seq;
-        entry.family   = family_symbol(static_cast<std::int32_t>(w->family()));
+        entry.family   = family_symbol_by_order(
+            static_cast<std::int32_t>(w->query_order()),
+            static_cast<std::int32_t>(w->family()));
         entry.xpos     = static_cast<std::int32_t>(w->xpos());
         entry.ypos     = static_cast<std::int32_t>(w->ypos());
         entry.lifetime = static_cast<std::int32_t>(w->lifetime());
@@ -201,10 +306,7 @@ void collect_effects(const GameWorld::EntityList& list,
 // Phase 04 — weapon-order entity collector. The schema-v1 producer left
 // `dump.weapons[]` empty (header comment: "Phase 04 wires the producer +
 // serialiser together"). Phase 04 wires it here so WeaponFamilyEmitted
-// predicates evaluate on real weaplist entries. family_symbol returns
-// FAMILY_<living-walker> for the matching id; within dump.weapons[] this
-// is a bijection over weapon-family ids 0..19, so WeaponFamilyEmitted(id)
-// matches iff a weapon entity with that family id is alive in weaplist.
+// predicates evaluate on real weaplist entries.
 void collect_weapons(const GameWorld::EntityList& list,
                      std::vector<WeaponEntry>& out,
                      std::uint32_t& running_seq)
@@ -215,7 +317,9 @@ void collect_weapons(const GameWorld::EntityList& list,
         if (w == nullptr) continue;
         WeaponEntry entry;
         entry.id       = w->entity_id() != 0 ? w->entity_id() : ++running_seq;
-        entry.family   = family_symbol(static_cast<std::int32_t>(w->family()));
+        entry.family   = family_symbol_by_order(
+            static_cast<std::int32_t>(w->query_order()),
+            static_cast<std::int32_t>(w->family()));
         entry.team     = static_cast<std::uint32_t>(w->team_num());
         entry.xpos     = static_cast<std::int32_t>(w->xpos());
         entry.ypos     = static_cast<std::int32_t>(w->ypos());
