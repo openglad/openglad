@@ -108,7 +108,7 @@ in oblist).
 
 | family | covering_scenario_id |
 |---|---|
-| `FAMILY_STAIN` | `treasure_stain_observation_scen99` |
+| `FAMILY_STAIN` | `treasure_stain_pickup_scen99` |
 | `FAMILY_DRUMSTICK` | `treasure_drumstick_pickup_scen99` |
 | `FAMILY_GOLD_BAR` | `treasure_gold_bar_pickup_scen99` |
 | `FAMILY_SILVER_BAR` | `treasure_silver_bar_pickup_scen99` |
@@ -116,7 +116,7 @@ in oblist).
 | `FAMILY_INVIS_POTION` | `treasure_invis_potion_pickup_scen99` |
 | `FAMILY_INVULNERABLE_POTION` | `treasure_invulnerable_potion_pickup_scen99` |
 | `FAMILY_FLIGHT_POTION` | `treasure_flight_potion_pickup_scen99` |
-| `FAMILY_EXIT` | `treasure_stain_observation_scen99` |
+| `FAMILY_EXIT` | `scripted_input_scen9301` |
 | `FAMILY_TELEPORTER` | `treasure_teleporter_pickup_scen99` |
 | `FAMILY_LIFE_GEM` | `treasure_life_gem_pickup_scen99` |
 | `FAMILY_KEY` | `treasure_key_pickup_scen99` |

@@ -1,170 +1,295 @@
-# Parity present-state snapshot — Phase 01
+# Phase 01 — Parity Present-State Snapshot
 
-Captured on master companion HEAD `136ea37b205cea05a932d87423199949496cf549`.
-Counts derived from `build/ci-test/og_test_parity --gtest_brief=1` after
-`cmake --build --preset ci-test --target og_test_parity`.
+Phase: `01-baseline-and-inventory`. Generated 2026-05-17.
 
 ## Test count snapshot
 
-Passed: 56
-Skipped: 81
-Failing tests: 13
-Skipped scenarios after this phase: 81
+`build/ci-test/og_test_parity --gtest_brief=1` (raw output: `/tmp/p01.out`).
+- Passed: 56
+- Skipped: 81
+- Failing: 13
 
-(Note: verifier 01a extracts `PASSED`/`SKIPPED` via
-`grep -oE '^\[  PASSED  \] [0-9]+ tests?\.' | awk '{print $3}'`. Awk splits on
-whitespace runs, so `$3` of `[  PASSED  ] 56 tests.` is the literal `]`. The
-grep-token forms the verifier searches for therefore are:)
-Passed: ]
-Skipped: ]
+(Total tests run: 150. `--gtest_brief=1` omits the `[  FAILED  ] N tests.` summary line; failure count is `grep -cE "^\[  FAILED  \] Parity\." /tmp/p01.out`.)
 
-## Failing tests
+## Master companion SHA pinned this phase
 
-- Parity.behavioural_coverage_gate_treasures
-- Parity.behavioural_coverage_gate
-- Parity.treasure_drumstick_pickup_scen99
-- Parity.treasure_gold_bar_pickup_scen99
-- Parity.treasure_silver_bar_pickup_scen99
-- Parity.treasure_magic_potion_pickup_scen99
-- Parity.treasure_invis_potion_pickup_scen99
-- Parity.treasure_invulnerable_potion_pickup_scen99
-- Parity.treasure_flight_potion_pickup_scen99
-- Parity.treasure_teleporter_pickup_scen99
-- Parity.treasure_life_gem_pickup_scen99
-- Parity.treasure_key_pickup_scen99
-- Parity.treasure_speed_potion_pickup_scen99
-
-## Skipped tests
-
-- master golden missing for coverage_catchall_scen99 (expected at tests/parity/golden/coverage_catchall_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for effect_bomb_emission_scen99 (expected at tests/parity/golden/effect_bomb_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for effect_boomerang_emission_scen99 (expected at tests/parity/golden/effect_boomerang_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for effect_chain_emission_scen99 (expected at tests/parity/golden/effect_chain_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for effect_cloud_emission_scen99 (expected at tests/parity/golden/effect_cloud_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for effect_door_open_emission_scen99 (expected at tests/parity/golden/effect_door_open_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for effect_expand_emission_scen99 (expected at tests/parity/golden/effect_expand_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for effect_explosion_emission_scen99 (expected at tests/parity/golden/effect_explosion_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for effect_flash_emission_scen99 (expected at tests/parity/golden/effect_flash_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for effect_ghost_scare_emission_scen99 (expected at tests/parity/golden/effect_ghost_scare_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for effect_hit_emission_scen99 (expected at tests/parity/golden/effect_hit_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for effect_knife_back_emission_scen99 (expected at tests/parity/golden/effect_knife_back_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for effect_magic_shield_emission_scen99 (expected at tests/parity/golden/effect_magic_shield_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for effect_marker_emission_scen99 (expected at tests/parity/golden/effect_marker_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for event_end_game_emission_scen99 (expected at tests/parity/golden/event_end_game_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for event_notification_emission_scen99 (expected at tests/parity/golden/event_notification_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for event_request_redraw_emission_scen99 (expected at tests/parity/golden/event_request_redraw_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for event_set_end_emission_scen99 (expected at tests/parity/golden/event_set_end_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for event_set_palette_emission_scen99 (expected at tests/parity/golden/event_set_palette_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for generator_bones_emission_scen99 (expected at tests/parity/golden/generator_bones_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for generator_tent_emission_scen99 (expected at tests/parity/golden/generator_tent_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for generator_tower_emission_scen99 (expected at tests/parity/golden/generator_tower_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for generator_treehouse_emission_scen99 (expected at tests/parity/golden/generator_treehouse_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_archer_1_scen99 (expected at tests/parity/golden/special_archer_1_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_archer_2_scen99 (expected at tests/parity/golden/special_archer_2_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_archer_3_scen99 (expected at tests/parity/golden/special_archer_3_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_archmage_2_scen99 (expected at tests/parity/golden/special_archmage_2_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_archmage_3_scen99 (expected at tests/parity/golden/special_archmage_3_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_archmage_4_scen99 (expected at tests/parity/golden/special_archmage_4_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_barbarian_1_scen99 (expected at tests/parity/golden/special_barbarian_1_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_barbarian_2_scen99 (expected at tests/parity/golden/special_barbarian_2_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_cleric_2_scen99 (expected at tests/parity/golden/special_cleric_2_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_cleric_3_scen99 (expected at tests/parity/golden/special_cleric_3_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_cleric_4_scen99 (expected at tests/parity/golden/special_cleric_4_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_druid_1_scen99 (expected at tests/parity/golden/special_druid_1_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_druid_3_scen99 (expected at tests/parity/golden/special_druid_3_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_druid_4_scen99 (expected at tests/parity/golden/special_druid_4_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_elf_1_scen99 (expected at tests/parity/golden/special_elf_1_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_elf_2_scen99 (expected at tests/parity/golden/special_elf_2_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_elf_3_scen99 (expected at tests/parity/golden/special_elf_3_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_elf_4_scen99 (expected at tests/parity/golden/special_elf_4_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_fireelemental_1_scen99 (expected at tests/parity/golden/special_fireelemental_1_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_ghost_1_scen99 (expected at tests/parity/golden/special_ghost_1_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_mage_2_scen99 (expected at tests/parity/golden/special_mage_2_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_mage_3_scen99 (expected at tests/parity/golden/special_mage_3_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_mage_4_scen99 (expected at tests/parity/golden/special_mage_4_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_mage_5_scen99 (expected at tests/parity/golden/special_mage_5_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_medium_slime_1_scen99 (expected at tests/parity/golden/special_medium_slime_1_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_orc_1_scen99 (expected at tests/parity/golden/special_orc_1_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_orc_2_scen99 (expected at tests/parity/golden/special_orc_2_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_skeleton_1_scen99 (expected at tests/parity/golden/special_skeleton_1_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_slime_1_scen99 (expected at tests/parity/golden/special_slime_1_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_small_slime_1_scen99 (expected at tests/parity/golden/special_small_slime_1_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_soldier_1_scen99 (expected at tests/parity/golden/special_soldier_1_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_soldier_2_scen99 (expected at tests/parity/golden/special_soldier_2_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_soldier_3_scen99 (expected at tests/parity/golden/special_soldier_3_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_soldier_4_scen99 (expected at tests/parity/golden/special_soldier_4_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_thief_2_scen99 (expected at tests/parity/golden/special_thief_2_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_thief_3_scen99 (expected at tests/parity/golden/special_thief_3_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for special_thief_4_scen99 (expected at tests/parity/golden/special_thief_4_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for treasure_drumstick_pickup_scen99 (expected at tests/parity/golden/treasure_drumstick_pickup_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for treasure_flight_potion_pickup_scen99 (expected at tests/parity/golden/treasure_flight_potion_pickup_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for treasure_gold_bar_pickup_scen99 (expected at tests/parity/golden/treasure_gold_bar_pickup_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for treasure_invis_potion_pickup_scen99 (expected at tests/parity/golden/treasure_invis_potion_pickup_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for treasure_invulnerable_potion_pickup_scen99 (expected at tests/parity/golden/treasure_invulnerable_potion_pickup_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for treasure_key_pickup_scen99 (expected at tests/parity/golden/treasure_key_pickup_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for treasure_life_gem_pickup_scen99 (expected at tests/parity/golden/treasure_life_gem_pickup_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for treasure_magic_potion_pickup_scen99 (expected at tests/parity/golden/treasure_magic_potion_pickup_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for treasure_silver_bar_pickup_scen99 (expected at tests/parity/golden/treasure_silver_bar_pickup_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for treasure_speed_potion_pickup_scen99 (expected at tests/parity/golden/treasure_speed_potion_pickup_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for treasure_stain_pickup_scen99 (expected at tests/parity/golden/treasure_stain_pickup_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for treasure_teleporter_pickup_scen99 (expected at tests/parity/golden/treasure_teleporter_pickup_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for weapon_arrow_emission_scen99 (expected at tests/parity/golden/weapon_arrow_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for weapon_blob_emission_scen99 (expected at tests/parity/golden/weapon_blob_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for weapon_blood_emission_scen99 (expected at tests/parity/golden/weapon_blood_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for weapon_bone_emission_scen99 (expected at tests/parity/golden/weapon_bone_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for weapon_boulder_emission_scen99 (expected at tests/parity/golden/weapon_boulder_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for weapon_circle_protection_emission_scen99 (expected at tests/parity/golden/weapon_circle_protection_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for weapon_door_emission_scen99 (expected at tests/parity/golden/weapon_door_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for weapon_fire_arrow_emission_scen99 (expected at tests/parity/golden/weapon_fire_arrow_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for weapon_fireball_emission_scen99 (expected at tests/parity/golden/weapon_fireball_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for weapon_glow_emission_scen99 (expected at tests/parity/golden/weapon_glow_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for weapon_hammer_emission_scen99 (expected at tests/parity/golden/weapon_hammer_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for weapon_knife_emission_scen99 (expected at tests/parity/golden/weapon_knife_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for weapon_lightning_emission_scen99 (expected at tests/parity/golden/weapon_lightning_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for weapon_meteor_emission_scen99 (expected at tests/parity/golden/weapon_meteor_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for weapon_rock_emission_scen99 (expected at tests/parity/golden/weapon_rock_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for weapon_sprinkle_emission_scen99 (expected at tests/parity/golden/weapon_sprinkle_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for weapon_tree_emission_scen99 (expected at tests/parity/golden/weapon_tree_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for weapon_wave2_emission_scen99 (expected at tests/parity/golden/weapon_wave2_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for weapon_wave3_emission_scen99 (expected at tests/parity/golden/weapon_wave3_emission_scen99.json) — Phase 04+ recapture will populate
-- master golden missing for weapon_wave_emission_scen99 (expected at tests/parity/golden/weapon_wave_emission_scen99.json) — Phase 04+ recapture will populate
-
-## Master companion SHA (pinned this phase)
-
-Master companion SHA: 136ea37b205cea05a932d87423199949496cf549
+Master companion SHA: de702ef0679e7d06b434da0b0725688160739f5d
 
 ## Mirror SHA delta
 
 ```
 1f95d0afa823e7caccf1973c16f28212a675f033  tests/parity/scenario_table.h
-f08478bbe820066f187d2aaf4930ef13722fa6c9  ../openglad-master/tools/parity_scenario_table.h
+1f95d0afa823e7caccf1973c16f28212a675f033  ../openglad-master/tools/parity_scenario_table.h
 ```
+Mirrored — both sides equal. (Phase 02 resync no-op condition.)
 
-BRANCH ≠ COMPANION — Phase 02 resyncs.
+## Failing tests (13)
 
-## Phase plan acknowledgement
+- behavioural_coverage_gate_treasures
+- behavioural_coverage_gate
+- treasure_drumstick_pickup_scen99
+- treasure_gold_bar_pickup_scen99
+- treasure_silver_bar_pickup_scen99
+- treasure_magic_potion_pickup_scen99
+- treasure_invis_potion_pickup_scen99
+- treasure_invulnerable_potion_pickup_scen99
+- treasure_flight_potion_pickup_scen99
+- treasure_teleporter_pickup_scen99
+- treasure_life_gem_pickup_scen99
+- treasure_key_pickup_scen99
+- treasure_speed_potion_pickup_scen99
 
-Broken-state authorisation section quoted verbatim from `.plan/plan.md`:
+## Skipped tests — one bullet per `master golden missing for <id>` line (92 lines)
 
-> ### Broken-state authorisation
+- coverage_catchall_scen99
+- effect_bomb_emission_scen99
+- effect_boomerang_emission_scen99
+- effect_chain_emission_scen99
+- effect_cloud_emission_scen99
+- effect_door_open_emission_scen99
+- effect_expand_emission_scen99
+- effect_explosion_emission_scen99
+- effect_flash_emission_scen99
+- effect_ghost_scare_emission_scen99
+- effect_hit_emission_scen99
+- effect_knife_back_emission_scen99
+- effect_magic_shield_emission_scen99
+- effect_marker_emission_scen99
+- event_end_game_emission_scen99
+- event_notification_emission_scen99
+- event_request_redraw_emission_scen99
+- event_set_end_emission_scen99
+- event_set_palette_emission_scen99
+- generator_bones_emission_scen99
+- generator_tent_emission_scen99
+- generator_tower_emission_scen99
+- generator_treehouse_emission_scen99
+- special_archer_1_scen99
+- special_archer_2_scen99
+- special_archer_3_scen99
+- special_archmage_2_scen99
+- special_archmage_3_scen99
+- special_archmage_4_scen99
+- special_barbarian_1_scen99
+- special_barbarian_2_scen99
+- special_cleric_2_scen99
+- special_cleric_3_scen99
+- special_cleric_4_scen99
+- special_druid_1_scen99
+- special_druid_3_scen99
+- special_druid_4_scen99
+- special_elf_1_scen99
+- special_elf_2_scen99
+- special_elf_3_scen99
+- special_elf_4_scen99
+- special_fireelemental_1_scen99
+- special_ghost_1_scen99
+- special_mage_2_scen99
+- special_mage_3_scen99
+- special_mage_4_scen99
+- special_mage_5_scen99
+- special_medium_slime_1_scen99
+- special_orc_1_scen99
+- special_orc_2_scen99
+- special_skeleton_1_scen99
+- special_slime_1_scen99
+- special_small_slime_1_scen99
+- special_soldier_1_scen99
+- special_soldier_2_scen99
+- special_soldier_3_scen99
+- special_soldier_4_scen99
+- special_thief_2_scen99
+- special_thief_3_scen99
+- special_thief_4_scen99
+- treasure_drumstick_pickup_scen99
+- treasure_flight_potion_pickup_scen99
+- treasure_gold_bar_pickup_scen99
+- treasure_invis_potion_pickup_scen99
+- treasure_invulnerable_potion_pickup_scen99
+- treasure_key_pickup_scen99
+- treasure_life_gem_pickup_scen99
+- treasure_magic_potion_pickup_scen99
+- treasure_silver_bar_pickup_scen99
+- treasure_speed_potion_pickup_scen99
+- treasure_stain_pickup_scen99
+- treasure_teleporter_pickup_scen99
+- weapon_arrow_emission_scen99
+- weapon_blob_emission_scen99
+- weapon_blood_emission_scen99
+- weapon_bone_emission_scen99
+- weapon_boulder_emission_scen99
+- weapon_circle_protection_emission_scen99
+- weapon_door_emission_scen99
+- weapon_fire_arrow_emission_scen99
+- weapon_fireball_emission_scen99
+- weapon_glow_emission_scen99
+- weapon_hammer_emission_scen99
+- weapon_knife_emission_scen99
+- weapon_lightning_emission_scen99
+- weapon_meteor_emission_scen99
+- weapon_rock_emission_scen99
+- weapon_sprinkle_emission_scen99
+- weapon_tree_emission_scen99
+- weapon_wave2_emission_scen99
+- weapon_wave3_emission_scen99
+- weapon_wave_emission_scen99
+
+## Broken-state authorisation (quoted verbatim from `.plan/plan.md` §1)
+
+> The global rule "all tests pass at all times" is overridden by the user's verbatim goal only inside this multi-phase window. Bounds:
 >
-> The global rule says "All testcases must pass at all times unless explicitly specified otherwise by the user." The user's verbatim goal ("Continue iterating until everything is fully tested ... checked for verifiable certainty that they are semantically equivalent") is the explicit override. Closing 13 pre-existing failures plus 81 pre-existing skips, and lighting up the deferred cohorts that Phase 3's mass golden capture turns from SKIP into FAIL, requires multi-phase landing where intermediate commits keep failing tests visible until Phase 6's bundle.
+> - After phase 03, treasure cohort and the two behavioural gates green. `og_test_parity` may still report `[SKIPPED]` rows but `[FAILED] 0`.
+> - After phase 04, every `SemanticParity` row in the current scenario table has a golden on disk; `[SKIPPED] 0` for those rows. New rows added in phases 05–09 are allowed `[SKIPPED]` until their own phase's verifier requires them green.
+> - After phase 09, `og_test_parity` reports `[PASSED] = total tests`, `[SKIPPED] 0`, `[FAILED] 0`.
+> - After phase 11, the entire repository test suite (`ctest --preset ci-test`) is green.
 >
-> - Phase 1 commits the WIP and inventory doc. The 11 `treasure_*_pickup_scen99` failures, the `treasure_stain_pickup_scen99` failure, and the 2 behavioural-gate failures remain visible after Phase 1 (total 13 FAIL).
-> - Phase 2 introduces no new failures (mirror resync is a no-op on the test surface).
-> - Phase 3 captures master goldens for the 81 SKIPped scenarios. Every scenario whose golden Phase 3 writes flips from SKIP to PASS or FAIL. The plan accepts FAIL count growth in Phase 3 because deferred cohorts (`weapon_*_emission_scen99`, `effect_*_emission_scen99`, `generator_*_emission_scen99`, `event_*_emission_scen99`, `special_<family>_<idx>_scen99`) only succeed once Phase 6 wires up real spawns. Verifier 03c bounds new FAILs by name regex.
-> - Phase 4 lands the dumper change + 17th FactKind + treasure-row predicates in one bundled commit and takes the **treasure cohort + behavioural gates** green. Verifier 04a does NOT yet assert the full suite is `[FAILED] 0`.
-> - Phase 5 hardens the gate. Verifier 05c asserts FAIL count is **≤ the count Phase 3 left behind** and no treasure or behavioural-gate row is failing.
-> - Phase 6 wires up deferred rows. Verifier 06a is the first that requires `og_test_parity` to report `[  FAILED  ] 0` AND `[  SKIPPED ] 0`. The broken-state window closes.
-> - Phase 7 verifies anti-cheat and mutation canary on the green base.
-> - Phase 8 asserts the full repo test suite is green.
+> Each phase's verifier asserts the relevant bound; broken-state windows that escape these bounds are bounces.
 
-The user's verbatim goal is the explicit override for the global "all tests
-pass" rule for the Phase 1–6 window only. Bound by these checkpoints:
+## Per-target coverage gap inventory
 
-- Treasure cohort + behavioural gates green at end of Phase 4 (verifier 04a).
-- Full `og_test_parity` zero FAIL zero SKIP at end of Phase 6 (verifier 06a).
-- Entire repository test suite green at end of Phase 8 (verifier 08b).
+Generated by `python3 scripts/parity/check_coverage_manifest.py --emit-gap-table`. Seven tables — one per category.
 
-Deferred weapon / effect / generator / event / special cohorts are authorised
-to remain red across Phases 3, 4, 5 and only close in Phase 6.
+### Walker families (21)
+| target | observed_in_any_row | covering_scenario_id | golden_present |
+|---|---|---|---|
+| `FAMILY_SOLDIER` | yes | `ai_idle_wander_scen9301` | yes |
+| `FAMILY_ELF` | yes | `family_elf_scen99` | yes |
+| `FAMILY_ARCHER` | yes | `family_archer_scen99` | yes |
+| `FAMILY_MAGE` | yes | `special_mage_scen126` | yes |
+| `FAMILY_SKELETON` | yes | `effect_bomb_lifetime_scen99` | yes |
+| `FAMILY_CLERIC` | yes | `special_cleric_scen124` | yes |
+| `FAMILY_FIREELEMENTAL` | yes | `family_fireelemental_scen99` | yes |
+| `FAMILY_FAERIE` | yes | `family_faerie_scen99` | yes |
+| `FAMILY_SLIME` | yes | `family_slime_scen99` | yes |
+| `FAMILY_SMALL_SLIME` | yes | `family_slime_scen99` | yes |
+| `FAMILY_MEDIUM_SLIME` | yes | `family_medium_slime_scen99` | yes |
+| `FAMILY_THIEF` | yes | `special_thief_scen789` | yes |
+| `FAMILY_GHOST` | yes | `family_ghost_scen99` | yes |
+| `FAMILY_DRUID` | yes | `summon_druid_pet_scen950` | yes |
+| `FAMILY_ORC` | yes | `exit_trigger_scen9302` | yes |
+| `FAMILY_BIG_ORC` | yes | `family_big_orc_scen99` | yes |
+| `FAMILY_BARBARIAN` | yes | `family_barbarian_scen99` | yes |
+| `FAMILY_ARCHMAGE` | yes | `special_archmage_scen123` | yes |
+| `FAMILY_GOLEM` | yes | `family_golem_scen99` | yes |
+| `FAMILY_GIANT_SKELETON` | yes | `family_giant_skeleton_scen99` | yes |
+| `FAMILY_TOWER1` | yes | `special_thief_scen789` | yes |
+### Weapon families (20)
+| target | observed_in_any_row | covering_scenario_id | golden_present |
+|---|---|---|---|
+| `FAMILY_KNIFE` | yes | `weapon_knife_emission_scen99` | no |
+| `FAMILY_ROCK` | yes | `weapon_rock_emission_scen99` | no |
+| `FAMILY_ARROW` | yes | `weapon_arrow_emission_scen99` | no |
+| `FAMILY_FIREBALL` | yes | `weapon_fireball_emission_scen99` | no |
+| `FAMILY_TREE` | yes | `weapon_tree_emission_scen99` | no |
+| `FAMILY_METEOR` | yes | `weapon_meteor_emission_scen99` | no |
+| `FAMILY_SPRINKLE` | yes | `weapon_sprinkle_emission_scen99` | no |
+| `FAMILY_BONE` | yes | `weapon_bone_emission_scen99` | no |
+| `FAMILY_BLOOD` | yes | `weapon_blood_emission_scen99` | no |
+| `FAMILY_BLOB` | yes | `weapon_blob_emission_scen99` | no |
+| `FAMILY_FIRE_ARROW` | yes | `weapon_fire_arrow_emission_scen99` | no |
+| `FAMILY_LIGHTNING` | yes | `weapon_lightning_emission_scen99` | no |
+| `FAMILY_GLOW` | yes | `weapon_glow_emission_scen99` | no |
+| `FAMILY_WAVE` | yes | `weapon_wave_emission_scen99` | no |
+| `FAMILY_WAVE2` | yes | `weapon_wave2_emission_scen99` | no |
+| `FAMILY_WAVE3` | yes | `weapon_wave3_emission_scen99` | no |
+| `FAMILY_CIRCLE_PROTECTION` | yes | `weapon_circle_protection_emission_scen99` | no |
+| `FAMILY_HAMMER` | yes | `weapon_hammer_emission_scen99` | no |
+| `FAMILY_DOOR` | yes | `weapon_door_emission_scen99` | no |
+| `FAMILY_BOULDER` | yes | `weapon_boulder_emission_scen99` | no |
+### Treasure families (13)
+| target | observed_in_any_row | covering_scenario_id | golden_present |
+|---|---|---|---|
+| `FAMILY_STAIN` | yes | `treasure_stain_pickup_scen99` | no |
+| `FAMILY_DRUMSTICK` | yes | `treasure_drumstick_pickup_scen99` | no |
+| `FAMILY_GOLD_BAR` | yes | `treasure_gold_bar_pickup_scen99` | no |
+| `FAMILY_SILVER_BAR` | yes | `treasure_silver_bar_pickup_scen99` | no |
+| `FAMILY_MAGIC_POTION` | yes | `treasure_magic_potion_pickup_scen99` | no |
+| `FAMILY_INVIS_POTION` | yes | `treasure_invis_potion_pickup_scen99` | no |
+| `FAMILY_INVULNERABLE_POTION` | yes | `treasure_invulnerable_potion_pickup_scen99` | no |
+| `FAMILY_FLIGHT_POTION` | yes | `treasure_flight_potion_pickup_scen99` | no |
+| `FAMILY_EXIT` | yes | `scripted_input_scen9301` | yes |
+| `FAMILY_TELEPORTER` | yes | `treasure_teleporter_pickup_scen99` | no |
+| `FAMILY_LIFE_GEM` | yes | `treasure_life_gem_pickup_scen99` | no |
+| `FAMILY_KEY` | yes | `treasure_key_pickup_scen99` | no |
+| `FAMILY_SPEED_POTION` | yes | `treasure_speed_potion_pickup_scen99` | no |
+### Generator families (4)
+| target | observed_in_any_row | covering_scenario_id | golden_present |
+|---|---|---|---|
+| `FAMILY_TENT` | yes | `family_skeleton_scen99` | yes |
+| `FAMILY_TOWER` | yes | `special_mage_scen126` | yes |
+| `FAMILY_BONES` | yes | `family_ghost_scen99` | yes |
+| `FAMILY_TREEHOUSE` | yes | `family_elf_scen99` | yes |
+### Effect (FX) families (13)
+| target | observed_in_any_row | covering_scenario_id | golden_present |
+|---|---|---|---|
+| `FAMILY_EXPAND` | yes | `effect_expand_emission_scen99` | no |
+| `FAMILY_GHOST_SCARE` | yes | `effect_ghost_scare_emission_scen99` | no |
+| `FAMILY_BOMB` | yes | `effect_bomb_emission_scen99` | no |
+| `FAMILY_EXPLOSION` | yes | `effect_explosion_emission_scen99` | no |
+| `FAMILY_FLASH` | yes | `effect_flash_emission_scen99` | no |
+| `FAMILY_MAGIC_SHIELD` | yes | `effect_magic_shield_emission_scen99` | no |
+| `FAMILY_KNIFE_BACK` | yes | `effect_knife_back_emission_scen99` | no |
+| `FAMILY_BOOMERANG` | yes | `effect_boomerang_emission_scen99` | no |
+| `FAMILY_CLOUD` | yes | `effect_cloud_emission_scen99` | no |
+| `FAMILY_MARKER` | yes | `effect_marker_emission_scen99` | no |
+| `FAMILY_CHAIN` | yes | `effect_chain_emission_scen99` | no |
+| `FAMILY_DOOR_OPEN` | yes | `effect_door_open_emission_scen99` | no |
+| `FAMILY_HIT` | yes | `effect_hit_emission_scen99` | no |
+### Specials (42 (family, slot) pairs)
+| target | observed_in_any_row | covering_scenario_id | golden_present |
+|---|---|---|---|
+| `FAMILY_SOLDIER:slot1` | yes | `family_soldier_scen99` | yes |
+| `FAMILY_SOLDIER:slot2` | yes | `family_soldier_scen99` | yes |
+| `FAMILY_SOLDIER:slot3` | yes | `family_soldier_scen99` | yes |
+| `FAMILY_SOLDIER:slot4` | yes | `family_soldier_scen99` | yes |
+| `FAMILY_ELF:slot1` | yes | `family_elf_scen99` | yes |
+| `FAMILY_ELF:slot2` | yes | `family_elf_scen99` | yes |
+| `FAMILY_ELF:slot3` | yes | `family_elf_scen99` | yes |
+| `FAMILY_ELF:slot4` | yes | `family_elf_scen99` | yes |
+| `FAMILY_ARCHER:slot1` | yes | `family_archer_scen99` | yes |
+| `FAMILY_ARCHER:slot2` | yes | `family_archer_scen99` | yes |
+| `FAMILY_ARCHER:slot3` | yes | `family_archer_scen99` | yes |
+| `FAMILY_MAGE:slot1` | yes | `special_mage_scen126` | yes |
+| `FAMILY_MAGE:slot2` | yes | `family_mage_scen99` | yes |
+| `FAMILY_MAGE:slot3` | yes | `family_mage_scen99` | yes |
+| `FAMILY_MAGE:slot4` | yes | `family_mage_scen99` | yes |
+| `FAMILY_MAGE:slot5` | yes | `family_mage_scen99` | yes |
+| `FAMILY_SKELETON:slot1` | yes | `family_skeleton_scen99` | yes |
+| `FAMILY_CLERIC:slot1` | yes | `special_cleric_scen124` | yes |
+| `FAMILY_CLERIC:slot2` | yes | `family_cleric_scen99` | yes |
+| `FAMILY_CLERIC:slot3` | yes | `family_cleric_scen99` | yes |
+| `FAMILY_CLERIC:slot4` | yes | `family_cleric_scen99` | yes |
+| `FAMILY_FIREELEMENTAL:slot1` | yes | `family_fireelemental_scen99` | yes |
+| `FAMILY_SLIME:slot1` | yes | `family_slime_scen99` | yes |
+| `FAMILY_SMALL_SLIME:slot1` | yes | `family_small_slime_scen99` | yes |
+| `FAMILY_MEDIUM_SLIME:slot1` | yes | `family_medium_slime_scen99` | yes |
+| `FAMILY_THIEF:slot1` | yes | `special_thief_scen789` | yes |
+| `FAMILY_THIEF:slot2` | yes | `family_thief_scen99` | yes |
+| `FAMILY_THIEF:slot3` | yes | `family_thief_scen99` | yes |
+| `FAMILY_THIEF:slot4` | yes | `family_thief_scen99` | yes |
+| `FAMILY_GHOST:slot1` | yes | `family_ghost_scen99` | yes |
+| `FAMILY_DRUID:slot1` | yes | `family_druid_scen99` | yes |
+| `FAMILY_DRUID:slot2` | yes | `family_druid_scen99` | yes |
+| `FAMILY_DRUID:slot3` | yes | `family_druid_scen99` | yes |
+| `FAMILY_DRUID:slot4` | yes | `family_druid_scen99` | yes |
+| `FAMILY_ORC:slot1` | yes | `family_orc_scen99` | yes |
+| `FAMILY_ORC:slot2` | yes | `family_orc_scen99` | yes |
+| `FAMILY_BARBARIAN:slot1` | yes | `family_barbarian_scen99` | yes |
+| `FAMILY_BARBARIAN:slot2` | yes | `family_barbarian_scen99` | yes |
+| `FAMILY_ARCHMAGE:slot1` | yes | `special_archmage_scen123` | yes |
+| `FAMILY_ARCHMAGE:slot2` | yes | `family_archmage_scen99` | yes |
+| `FAMILY_ARCHMAGE:slot3` | yes | `family_archmage_scen99` | yes |
+| `FAMILY_ARCHMAGE:slot4` | yes | `family_archmage_scen99` | yes |
+### Event kinds (9)
+| target | observed_in_any_row | covering_scenario_id | golden_present |
+|---|---|---|---|
+| `play_sound` | yes | `special_thief_scen789` | yes |
+| `notification` | yes | `event_notification_emission_scen99` | no |
+| `set_palette` | yes | `event_set_palette_emission_scen99` | no |
+| `request_redraw` | yes | `event_request_redraw_emission_scen99` | no |
+| `end_game` | yes | `event_end_game_emission_scen99` | no |
+| `set_end` | yes | `event_set_end_emission_scen99` | no |
+| `request_exit_confirmation` | yes | `scripted_input_scen9301` | yes |
+| `withdraw_to_level` | yes | `scripted_input_scen9301` | yes |
+| `score_change` | yes | `scoring_after_combat_scen99` | yes |
+
