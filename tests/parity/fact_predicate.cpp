@@ -274,11 +274,20 @@ FactEvalResult evaluate_one(const FactPredicate& p, const StateDump& dump)
             // Order-aware: render the target family under the table for
             // p.arg1 (Order) and search dump.walkers[] for any *alive*
             // entry whose family string matches. Predicate satisfied iff
-            // no live walker of that family remains. A dead-but-still-
-            // in-oblist treasure (the on_eat path marks set_dead(1) but
-            // the walker entry persists until the next reap pass) counts
-            // as "consumed" for parity purposes — that is what every
-            // treasure pickup row honestly asserts.
+            // no living walker of that family remains. The engine does
+            // not reap dead walkers from oblist between the on_eat hook
+            // firing set_dead(1) and the dump tick — consumed treasure
+            // entries persist with alive=false. Treating the dead-but-
+            // present case as "removed" matches what every treasure
+            // pickup row honestly asserts (consumption = no live
+            // walker), while a surviving (alive=true) treasure
+            // correctly trips the predicate. The Phase 03 dumper emits
+            // walker family strings via family_symbol_by_order, so a
+            // Treasure-order walker (e.g. FAMILY_GOLD_BAR id=2 under
+            // Order::Treasure) renders as "FAMILY_GOLD_BAR" — not the
+            // schema-v1 Living-aliased "FAMILY_ARCHER" — and a
+            // surviving treasure entity therefore correctly trips the
+            // predicate instead of vacuously passing via alias.
             const std::string sym = family_symbol_by_order(p.arg1, p.arg0);
             for (const auto& w : dump.walkers)
             {

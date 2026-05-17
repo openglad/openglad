@@ -968,12 +968,18 @@ is left intact for callers that have not yet migrated.
 `any_treasure_binding(family_id)` which accepts either kind — legacy
 `TreasureFamilyRemovedFromOblist(arg0==family_id)` OR the Order-aware
 `TreasureFamilyOfOrderRemovedFromOblist(arg0==family_id, arg1==
-kOrderTreasure)`. STAIN (id 0), DRUMSTICK (id 1), TELEPORTER (id 9),
-and KEY (id 11) cannot honestly assert removal in their dedicated
-pickup rows (init_ignore, bouncy collision, lone-teleporter spawn,
-inventory-bit-only on_eat respectively); their behavioural-gate
-bindings are anchored on `exit_trigger_scen9302`, a scenario that
-spawns none of those treasure walkers, so the Order-aware predicate
-trivially holds (no matching entry to fail against). Schema-v2 will
-land STAIN/KEY/TELEPORTER-specific liveness predicates that can
-honestly bind those families on their own pickup rows.
+kOrderTreasure)`. EXIT (id 8) gains an honest Order-aware binding on
+`exit_trigger_scen9302`, where the soldier consumes the exit walker
+and no `FAMILY_EXIT` entry survives in `dump.walkers[]` at the budget
+tick. STAIN (id 0) remains a known binding gap on the behavioural
+gate: its `init_ignore=true` registry flag means the literal STAIN
+treasure walker never enters the eat path on its dedicated
+`treasure_stain_pickup_scen99` row, and policy P1 forbids anchoring
+the binding on an unrelated scenario where the predicate would pass
+vacuously (no `FAMILY_STAIN` walker present). The treasure-removal
+predicates on DRUMSTICK / TELEPORTER / KEY rows are replaced in
+place with the Order-aware kind per the Phase 03 contract; whether
+each predicate honestly fires depends on the post-Phase-02 companion's
+simulated pickup behaviour for the row's `kInputsTreasurePickup`
+window, and follow-up phases will close any per-row gaps without
+weakening the predicate set further.
