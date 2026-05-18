@@ -52,27 +52,27 @@ oblist).
 
 | family | covering_scenario_id |
 |---|---|
-| `FAMILY_SOLDIER` | `ai_idle_wander_scen9301` |
+| `FAMILY_SOLDIER` | `family_soldier_scen99` |
 | `FAMILY_ELF` | `family_elf_scen99` |
 | `FAMILY_ARCHER` | `family_archer_scen99` |
-| `FAMILY_MAGE` | `special_mage_scen126` |
-| `FAMILY_SKELETON` | `effect_bomb_lifetime_scen99` |
-| `FAMILY_CLERIC` | `special_cleric_scen124` |
+| `FAMILY_MAGE` | `family_mage_scen99` |
+| `FAMILY_SKELETON` | `family_skeleton_scen99` |
+| `FAMILY_CLERIC` | `family_cleric_scen99` |
 | `FAMILY_FIREELEMENTAL` | `family_fireelemental_scen99` |
 | `FAMILY_FAERIE` | `family_faerie_scen99` |
 | `FAMILY_SLIME` | `family_slime_scen99` |
-| `FAMILY_SMALL_SLIME` | `family_slime_scen99` |
+| `FAMILY_SMALL_SLIME` | `family_small_slime_scen99` |
 | `FAMILY_MEDIUM_SLIME` | `family_medium_slime_scen99` |
-| `FAMILY_THIEF` | `special_thief_scen789` |
+| `FAMILY_THIEF` | `family_thief_scen99` |
 | `FAMILY_GHOST` | `family_ghost_scen99` |
-| `FAMILY_DRUID` | `summon_druid_pet_scen950` |
-| `FAMILY_ORC` | `exit_trigger_scen9302` |
+| `FAMILY_DRUID` | `family_druid_scen99` |
+| `FAMILY_ORC` | `family_orc_scen99` |
 | `FAMILY_BIG_ORC` | `family_big_orc_scen99` |
 | `FAMILY_BARBARIAN` | `family_barbarian_scen99` |
-| `FAMILY_ARCHMAGE` | `special_archmage_scen123` |
+| `FAMILY_ARCHMAGE` | `family_archmage_scen99` |
 | `FAMILY_GOLEM` | `family_golem_scen99` |
 | `FAMILY_GIANT_SKELETON` | `family_giant_skeleton_scen99` |
-| `FAMILY_TOWER1` | `special_thief_scen789` |
+| `FAMILY_TOWER1` | `family_tower1_scen99` |
 
 ## Required weapon families (20)
 
