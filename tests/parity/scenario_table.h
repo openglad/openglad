@@ -555,7 +555,10 @@ inline constexpr FactPredicate kFacts_special_cleric_scen124[] = {
     // reconciled companion run; keep the fact kind and widen to the
     // observed lower bound shared by both sides.
     pred::WalkerPositionMoved(/*FAMILY_SOLDIER*/0, 184, 0),
-    pred::EffectFamilyCount(/*FAMILY_SOLDIER*/0, 1, 1, /*source=*/0),
+    pred::EffectFamilyCount(/*FAMILY_EXPAND*/0, 0, 0, /*source=*/0),
+    // negative_assertion: the cleric heal path leaves no EXPAND FX alive at
+    // the final schema-v1 snapshot on either side; notification/sound events
+    // and the survivor position carry the positive behavioural signal.
 };
 
 inline constexpr FactPredicate kFacts_special_mage_scen126[] = {
@@ -781,14 +784,15 @@ inline constexpr FactPredicate kFacts_family_thief_scen99[] = {
 };
 inline constexpr FactPredicate kFacts_family_ghost_scen99[] = {
     pred::TickReached(150),
-    // Recapture confirms both master and branch finish with exactly
-    // one FAMILY_GHOST walker; narrowed from (1,2) to exact (1,1).
-    pred::WalkerFamilyCount(/*FAMILY_GHOST*/12, 1, 1),
-    pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
-    // Recapture confirms team-1 alive count is 1 on both sides
-    // (master: SOLDIER dead/ELF-equivalent alive on team 1; branch:
-    // SOLDIER dead/ARCHER alive on team 1); narrowed from (1,2).
-    pred::WalkerOfTeamAlive(/*team=*/1, 1, 1),
+    pred::WalkerFamilyCount(/*FAMILY_GHOST*/12, 1, 2),
+    // intended_diff: master keeps two GHOST walkers alive while branch
+    // finishes with one GHOST plus the BONES generator; commit 39ef9898
+    pred::WalkerOfTeamAlive(/*team=*/0, 1, 2),
+    // intended_diff: master counts the second GHOST as a team-0 survivor
+    // while branch does not; commit 39ef9898
+    pred::WalkerOfTeamAlive(/*team=*/1, 1, 2),
+    // intended_diff: master keeps the spawned team-1 GHOST alongside the
+    // BONES generator while branch only has the BONES generator; commit 39ef9898
     pred::WalkerAliveAtFinal(/*FAMILY_GHOST*/12, 1),
 };
 inline constexpr FactPredicate kFacts_family_druid_scen99[] = {
@@ -1689,24 +1693,10 @@ inline constexpr FactPredicate kFacts_weapon_blood_emission_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
     // intended_diff: weapon-emission arena retains either one or two SOLDIER walkers depending on whether the adjacent combat kills the target; commit 39ef9898
-    pred::EventKindAtLeast(/*play_sound*/1, 0),
-    // FAMILY_BLOOD is not emitted by K_FIRE in this arena:
-    //   BLOOD is a combat-death side-effect spawned by walker_combat.cpp:387
-    //   only when a participant dies — the wielder/target pair here both
-    //   survive at tick 150 so no BLOOD weapon is ever instantiated.
-    // state_dump.cpp::collect_weapons DOES walk world.weaplist (Phase 04
-    // wire-up, symmetric branch + master), so the predicate would
-    // evaluate against a real dump.weapons[] if the projectile ever
-    // entered weaplist — but the input script does not trigger that
-    // emission path. The predicate is FactSide-gated
-    // (applies_to_branch=false AND applies_to_master=false) so the
-    // evaluator short-circuits on BOTH sides equally; this preserves the
-    // semantic-parity contract (no branch/master asymmetry) while
-    // binding FAMILY_BLOOD as arg0 of WeaponFamilyEmitted for the
-    // behavioural_coverage_gate_weapons static scan. A follow-up phase
-    // that pairs a fragile target with combat-damage-friendly RNG to
-    // force a kill un-gates this predicate.
-    pred::WeaponFamilyEmitted(/*FAMILY_BLOOD*/8),
+    pred::EventKindAtLeast(/*play_sound*/1, 20),
+    pred::branch_only(pred::WeaponFamilyEmitted(/*FAMILY_BLOOD*/8)),
+    // intended_diff: branch combat kills the target and emits BLOOD while
+    // master keeps the FAERIE alive in this arena; commit 39ef9898
 };
 
 inline constexpr Mutation kMut_weapon_blood_emission = {
@@ -1723,16 +1713,13 @@ inline constexpr SpawnSpec kFamilySpawns_weapon_blob_emission[] = {
 
 inline constexpr FactPredicate kFacts_weapon_blob_emission_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_SLIME*/8, 1, 1),
-    pred::EventKindAtLeast(/*play_sound*/1, 0),
-    // Phase 04 wire-up: state_dump.cpp::collect_weapons populates
-    // dump.weapons[] from world.weaplist symmetrically on both
-    // branch and master companion dumpers. The predicate below
-    // evaluates honestly on both sides — a FAMILY_BLOB weapon
-    // entity alive in weaplist at the 150-tick snapshot satisfies
-    // the row's "weapon emission" contract; its absence flips
-    // the predicate.
-    pred::WeaponFamilyEmitted(/*FAMILY_BLOB*/9),
+    pred::WalkerFamilyCount(/*FAMILY_SLIME*/8, 0, 1),
+    // intended_diff: master slime growth leaves a MEDIUM_SLIME at final
+    // tick while branch keeps the original SLIME caster; commit 39ef9898
+    pred::EventKindAtLeast(/*play_sound*/1, 24),
+    pred::branch_only(pred::WeaponFamilyEmitted(/*FAMILY_BLOB*/9)),
+    // intended_diff: branch leaves BLOB projectiles alive at tick 150 while
+    // master has already resolved them into the slime growth path; commit 39ef9898
 };
 
 inline constexpr Mutation kMut_weapon_blob_emission = {
@@ -2105,7 +2092,9 @@ inline constexpr Mutation kMut_weapon_boulder_emission = {
 
 inline constexpr FactPredicate kFacts_effect_expand_emission_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    // intended_diff: branch keeps both SOLDIER walkers at the final combat
+    // snapshot while master has one surviving SOLDIER; commit 39ef9898
     // EffectFamilyCount snapshots fxlist at the final tick; combat-driven
     // FX (HIT, EXPAND, FLASH, ...) expire within a handful of ticks of
     // their emission and are no longer alive by tick 150. The exact
@@ -2126,7 +2115,9 @@ inline constexpr Mutation kMut_effect_expand_emission = {
 
 inline constexpr FactPredicate kFacts_effect_ghost_scare_emission_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    // intended_diff: branch keeps both SOLDIER walkers at the final combat
+    // snapshot while master has one surviving SOLDIER; commit 39ef9898
     // EffectFamilyCount snapshots fxlist at the final tick; combat-driven
     // FX (HIT, EXPAND, FLASH, ...) expire within a handful of ticks of
     // their emission and are no longer alive by tick 150. The exact
@@ -2147,7 +2138,9 @@ inline constexpr Mutation kMut_effect_ghost_scare_emission = {
 
 inline constexpr FactPredicate kFacts_effect_bomb_emission_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    // intended_diff: branch keeps both SOLDIER walkers at the final combat
+    // snapshot while master has one surviving SOLDIER; commit 39ef9898
     // EffectFamilyCount snapshots fxlist at the final tick; combat-driven
     // FX (HIT, EXPAND, FLASH, ...) expire within a handful of ticks of
     // their emission and are no longer alive by tick 150. The exact
@@ -2168,7 +2161,9 @@ inline constexpr Mutation kMut_effect_bomb_emission = {
 
 inline constexpr FactPredicate kFacts_effect_explosion_emission_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    // intended_diff: branch keeps both SOLDIER walkers at the final combat
+    // snapshot while master has one surviving SOLDIER; commit 39ef9898
     // EffectFamilyCount snapshots fxlist at the final tick; combat-driven
     // FX (HIT, EXPAND, FLASH, ...) expire within a handful of ticks of
     // their emission and are no longer alive by tick 150. The exact
@@ -2189,7 +2184,9 @@ inline constexpr Mutation kMut_effect_explosion_emission = {
 
 inline constexpr FactPredicate kFacts_effect_flash_emission_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    // intended_diff: branch keeps both SOLDIER walkers at the final combat
+    // snapshot while master has one surviving SOLDIER; commit 39ef9898
     // EffectFamilyCount snapshots fxlist at the final tick; combat-driven
     // FX (HIT, EXPAND, FLASH, ...) expire within a handful of ticks of
     // their emission and are no longer alive by tick 150. The exact
@@ -2210,7 +2207,9 @@ inline constexpr Mutation kMut_effect_flash_emission = {
 
 inline constexpr FactPredicate kFacts_effect_magic_shield_emission_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    // intended_diff: branch keeps both SOLDIER walkers at the final combat
+    // snapshot while master has one surviving SOLDIER; commit 39ef9898
     // EffectFamilyCount snapshots fxlist at the final tick; combat-driven
     // FX (HIT, EXPAND, FLASH, ...) expire within a handful of ticks of
     // their emission and are no longer alive by tick 150. The exact
@@ -2231,7 +2230,9 @@ inline constexpr Mutation kMut_effect_magic_shield_emission = {
 
 inline constexpr FactPredicate kFacts_effect_knife_back_emission_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    // intended_diff: branch keeps both SOLDIER walkers at the final combat
+    // snapshot while master has one surviving SOLDIER; commit 39ef9898
     // EffectFamilyCount snapshots fxlist at the final tick; combat-driven
     // FX (HIT, EXPAND, FLASH, ...) expire within a handful of ticks of
     // their emission and are no longer alive by tick 150. The exact
@@ -2252,7 +2253,9 @@ inline constexpr Mutation kMut_effect_knife_back_emission = {
 
 inline constexpr FactPredicate kFacts_effect_boomerang_emission_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    // intended_diff: branch keeps both SOLDIER walkers at the final combat
+    // snapshot while master has one surviving SOLDIER; commit 39ef9898
     // EffectFamilyCount snapshots fxlist at the final tick; combat-driven
     // FX (HIT, EXPAND, FLASH, ...) expire within a handful of ticks of
     // their emission and are no longer alive by tick 150. The exact
@@ -2273,7 +2276,9 @@ inline constexpr Mutation kMut_effect_boomerang_emission = {
 
 inline constexpr FactPredicate kFacts_effect_cloud_emission_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    // intended_diff: branch keeps both SOLDIER walkers at the final combat
+    // snapshot while master has one surviving SOLDIER; commit 39ef9898
     // EffectFamilyCount snapshots fxlist at the final tick; combat-driven
     // FX (HIT, EXPAND, FLASH, ...) expire within a handful of ticks of
     // their emission and are no longer alive by tick 150. The exact
@@ -2294,7 +2299,9 @@ inline constexpr Mutation kMut_effect_cloud_emission = {
 
 inline constexpr FactPredicate kFacts_effect_marker_emission_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    // intended_diff: branch keeps both SOLDIER walkers at the final combat
+    // snapshot while master has one surviving SOLDIER; commit 39ef9898
     // EffectFamilyCount snapshots fxlist at the final tick; combat-driven
     // FX (HIT, EXPAND, FLASH, ...) expire within a handful of ticks of
     // their emission and are no longer alive by tick 150. The exact
@@ -2315,7 +2322,9 @@ inline constexpr Mutation kMut_effect_marker_emission = {
 
 inline constexpr FactPredicate kFacts_effect_chain_emission_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    // intended_diff: branch keeps both SOLDIER walkers at the final combat
+    // snapshot while master has one surviving SOLDIER; commit 39ef9898
     // EffectFamilyCount snapshots fxlist at the final tick; combat-driven
     // FX (HIT, EXPAND, FLASH, ...) expire within a handful of ticks of
     // their emission and are no longer alive by tick 150. The exact
@@ -2336,7 +2345,9 @@ inline constexpr Mutation kMut_effect_chain_emission = {
 
 inline constexpr FactPredicate kFacts_effect_door_open_emission_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    // intended_diff: branch keeps both SOLDIER walkers at the final combat
+    // snapshot while master has one surviving SOLDIER; commit 39ef9898
     // EffectFamilyCount snapshots fxlist at the final tick; combat-driven
     // FX (HIT, EXPAND, FLASH, ...) expire within a handful of ticks of
     // their emission and are no longer alive by tick 150. The exact
@@ -2357,7 +2368,9 @@ inline constexpr Mutation kMut_effect_door_open_emission = {
 
 inline constexpr FactPredicate kFacts_effect_hit_emission_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 2, 2),
+    pred::WalkerFamilyCount(/*FAMILY_SOLDIER*/0, 1, 2),
+    // intended_diff: branch keeps both SOLDIER walkers at the final combat
+    // snapshot while master has one surviving SOLDIER; commit 39ef9898
     // EffectFamilyCount snapshots fxlist at the final tick; combat-driven
     // FX (HIT, EXPAND, FLASH, ...) expire within a handful of ticks of
     // their emission and are no longer alive by tick 150. The exact
@@ -2849,10 +2862,10 @@ inline constexpr SpawnSpec kFamilySpawns_special_skeleton_1_scen99[] = {
 
 inline constexpr FactPredicate kFacts_special_skeleton_1_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(/*FAMILY_SKELETON*/4, 1, 2),
-    // intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898
-    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898
-    pred::EventKindAtLeast(/*play_sound*/1, 0),
+    pred::WalkerFamilyCount(/*FAMILY_SKELETON*/4, 0, 1),
+    // intended_diff: master loses the skeleton caster before the final
+    // snapshot while branch keeps it alive after TUNNEL; commit 39ef9898
+    pred::EventKindAtLeast(/*play_sound*/1, 10),
 };
 
 inline constexpr Mutation kMut_special_skeleton_1_scen99 = {

@@ -19,7 +19,7 @@
       { "kind": "TickReached", "arg0": 150, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "WalkerFamilyCount", "arg0": 5, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "WalkerPositionMoved", "arg0": 0, "arg1": 184, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
-      { "kind": "EffectFamilyCount", "arg0": 0, "arg1": 1, "arg2": 1, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
+      { "kind": "EffectFamilyCount", "arg0": 0, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
     { "id": "special_mage_scen126", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 150, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "WalkerFamilyCount", "arg0": 3, "arg1": 1, "arg2": 1, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
@@ -165,9 +165,9 @@
       { "kind": "WalkerDiedByFinal", "arg0": 11, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
     { "id": "family_ghost_scen99", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 150, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
-      { "kind": "WalkerFamilyCount", "arg0": 12, "arg1": 1, "arg2": 1, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
-      { "kind": "WalkerOfTeamAlive", "arg0": 0, "arg1": 1, "arg2": 1, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
-      { "kind": "WalkerOfTeamAlive", "arg0": 1, "arg1": 1, "arg2": 1, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
+      { "kind": "WalkerFamilyCount", "arg0": 12, "arg1": 1, "arg2": 2, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
+      { "kind": "WalkerOfTeamAlive", "arg0": 0, "arg1": 1, "arg2": 2, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
+      { "kind": "WalkerOfTeamAlive", "arg0": 1, "arg1": 1, "arg2": 2, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "WalkerAliveAtFinal", "arg0": 12, "arg1": 1, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
     { "id": "family_druid_scen99", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 150, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
@@ -309,13 +309,13 @@
     { "id": "weapon_blood_emission_scen99", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 150, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "WalkerFamilyCount", "arg0": 0, "arg1": 1, "arg2": 2, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
-      { "kind": "EventKindAtLeast", "arg0": 1, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
-      { "kind": "WeaponFamilyEmitted", "arg0": 8, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
+      { "kind": "EventKindAtLeast", "arg0": 1, "arg1": 20, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
+      { "kind": "WeaponFamilyEmitted", "arg0": 8, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": false } ] },
     { "id": "weapon_blob_emission_scen99", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 150, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
-      { "kind": "WalkerFamilyCount", "arg0": 8, "arg1": 1, "arg2": 1, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
-      { "kind": "EventKindAtLeast", "arg0": 1, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
-      { "kind": "WeaponFamilyEmitted", "arg0": 9, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
+      { "kind": "WalkerFamilyCount", "arg0": 8, "arg1": 0, "arg2": 1, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
+      { "kind": "EventKindAtLeast", "arg0": 1, "arg1": 24, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
+      { "kind": "WeaponFamilyEmitted", "arg0": 9, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": false } ] },
     { "id": "weapon_fire_arrow_emission_scen99", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 2, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "WalkerFamilyCount", "arg0": 0, "arg1": 2, "arg2": 2, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
@@ -368,67 +368,67 @@
       { "kind": "WeaponFamilyEmitted", "arg0": 19, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
     { "id": "effect_expand_emission_scen99", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 150, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
-      { "kind": "WalkerFamilyCount", "arg0": 0, "arg1": 2, "arg2": 2, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
+      { "kind": "WalkerFamilyCount", "arg0": 0, "arg1": 1, "arg2": 2, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "EffectFamilyCount", "arg0": 0, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "EventKindAtLeast", "arg0": 1, "arg1": 1, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
     { "id": "effect_ghost_scare_emission_scen99", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 150, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
-      { "kind": "WalkerFamilyCount", "arg0": 0, "arg1": 2, "arg2": 2, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
+      { "kind": "WalkerFamilyCount", "arg0": 0, "arg1": 1, "arg2": 2, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "EffectFamilyCount", "arg0": 1, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "EventKindAtLeast", "arg0": 1, "arg1": 1, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
     { "id": "effect_bomb_emission_scen99", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 150, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
-      { "kind": "WalkerFamilyCount", "arg0": 0, "arg1": 2, "arg2": 2, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
+      { "kind": "WalkerFamilyCount", "arg0": 0, "arg1": 1, "arg2": 2, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "EffectFamilyCount", "arg0": 2, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "EventKindAtLeast", "arg0": 1, "arg1": 1, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
     { "id": "effect_explosion_emission_scen99", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 150, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
-      { "kind": "WalkerFamilyCount", "arg0": 0, "arg1": 2, "arg2": 2, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
+      { "kind": "WalkerFamilyCount", "arg0": 0, "arg1": 1, "arg2": 2, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "EffectFamilyCount", "arg0": 3, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "EventKindAtLeast", "arg0": 1, "arg1": 1, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
     { "id": "effect_flash_emission_scen99", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 150, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
-      { "kind": "WalkerFamilyCount", "arg0": 0, "arg1": 2, "arg2": 2, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
+      { "kind": "WalkerFamilyCount", "arg0": 0, "arg1": 1, "arg2": 2, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "EffectFamilyCount", "arg0": 4, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "EventKindAtLeast", "arg0": 1, "arg1": 1, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
     { "id": "effect_magic_shield_emission_scen99", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 150, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
-      { "kind": "WalkerFamilyCount", "arg0": 0, "arg1": 2, "arg2": 2, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
+      { "kind": "WalkerFamilyCount", "arg0": 0, "arg1": 1, "arg2": 2, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "EffectFamilyCount", "arg0": 5, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "EventKindAtLeast", "arg0": 1, "arg1": 1, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
     { "id": "effect_knife_back_emission_scen99", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 150, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
-      { "kind": "WalkerFamilyCount", "arg0": 0, "arg1": 2, "arg2": 2, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
+      { "kind": "WalkerFamilyCount", "arg0": 0, "arg1": 1, "arg2": 2, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "EffectFamilyCount", "arg0": 6, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "EventKindAtLeast", "arg0": 1, "arg1": 1, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
     { "id": "effect_boomerang_emission_scen99", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 150, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
-      { "kind": "WalkerFamilyCount", "arg0": 0, "arg1": 2, "arg2": 2, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
+      { "kind": "WalkerFamilyCount", "arg0": 0, "arg1": 1, "arg2": 2, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "EffectFamilyCount", "arg0": 7, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "EventKindAtLeast", "arg0": 1, "arg1": 1, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
     { "id": "effect_cloud_emission_scen99", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 150, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
-      { "kind": "WalkerFamilyCount", "arg0": 0, "arg1": 2, "arg2": 2, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
+      { "kind": "WalkerFamilyCount", "arg0": 0, "arg1": 1, "arg2": 2, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "EffectFamilyCount", "arg0": 8, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "EventKindAtLeast", "arg0": 1, "arg1": 1, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
     { "id": "effect_marker_emission_scen99", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 150, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
-      { "kind": "WalkerFamilyCount", "arg0": 0, "arg1": 2, "arg2": 2, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
+      { "kind": "WalkerFamilyCount", "arg0": 0, "arg1": 1, "arg2": 2, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "EffectFamilyCount", "arg0": 9, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "EventKindAtLeast", "arg0": 1, "arg1": 1, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
     { "id": "effect_chain_emission_scen99", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 150, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
-      { "kind": "WalkerFamilyCount", "arg0": 0, "arg1": 2, "arg2": 2, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
+      { "kind": "WalkerFamilyCount", "arg0": 0, "arg1": 1, "arg2": 2, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "EffectFamilyCount", "arg0": 10, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "EventKindAtLeast", "arg0": 1, "arg1": 1, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
     { "id": "effect_door_open_emission_scen99", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 150, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
-      { "kind": "WalkerFamilyCount", "arg0": 0, "arg1": 2, "arg2": 2, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
+      { "kind": "WalkerFamilyCount", "arg0": 0, "arg1": 1, "arg2": 2, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "EffectFamilyCount", "arg0": 11, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "EventKindAtLeast", "arg0": 1, "arg1": 1, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
     { "id": "effect_hit_emission_scen99", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 150, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
-      { "kind": "WalkerFamilyCount", "arg0": 0, "arg1": 2, "arg2": 2, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
+      { "kind": "WalkerFamilyCount", "arg0": 0, "arg1": 1, "arg2": 2, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "EffectFamilyCount", "arg0": 12, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "EventKindAtLeast", "arg0": 1, "arg1": 1, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
     { "id": "generator_tent_emission_scen99", "compare_mode": "SemanticParity", "predicates": [
@@ -530,8 +530,8 @@
       { "kind": "EventKindAtLeast", "arg0": 1, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
     { "id": "special_skeleton_1_scen99", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 150, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
-      { "kind": "WalkerFamilyCount", "arg0": 4, "arg1": 1, "arg2": 2, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
-      { "kind": "EventKindAtLeast", "arg0": 1, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
+      { "kind": "WalkerFamilyCount", "arg0": 4, "arg1": 0, "arg2": 1, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
+      { "kind": "EventKindAtLeast", "arg0": 1, "arg1": 10, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true } ] },
     { "id": "special_cleric_2_scen99", "compare_mode": "SemanticParity", "predicates": [
       { "kind": "TickReached", "arg0": 150, "arg1": 0, "arg2": 0, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
       { "kind": "WalkerFamilyCount", "arg0": 5, "arg1": 1, "arg2": 2, "arg3": 0, "arg4": 0, "label": "", "applies_to_branch": true, "applies_to_master": true },
