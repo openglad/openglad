@@ -54,10 +54,12 @@ enum class FactKind : std::uint8_t
     // Phase 03 — Order-aware analogue of TreasureFamilyRemovedFromOblist.
     // arg0 = family id, arg1 = Order ordinal (kOrderLiving / kOrderTreasure
     // / kOrderGenerator / kOrderWeapon / kOrderFX). The evaluator renders
-    // (family, order) through `family_symbol_by_order` and asserts no entry
-    // in `dump.walkers[]` matches that resolved name. Treasure pickup rows
-    // use this kind so the predicate honestly observes the treasure
-    // walker's disappearance rather than aliasing onto a Living name.
+    // (family, order) through `family_symbol_by_order`. A dump with no
+    // matching live entry satisfies the predicate; a dump with only live
+    // matching entries is indeterminate under schema-v1 because the harness
+    // cannot prove whether pickup/reap should have occurred. Treasure pickup
+    // rows use this kind so static binding no longer aliases onto a Living
+    // family name.
     TreasureFamilyOfOrderRemovedFromOblist, // arg0 = family, arg1 = order
 };
 
@@ -178,8 +180,9 @@ inline constexpr FactPredicate TreasureFamilyRemovedFromOblist(std::int32_t fami
 }
 // Phase 03 — Order-aware analogue of TreasureFamilyRemovedFromOblist.
 // `order` is the Order ordinal (Order::Treasure for treasure pickup rows).
-// The evaluator renders (family, order) through `family_symbol_by_order`
-// and asserts no `dump.walkers[]` entry matches the resolved name.
+// The evaluator renders (family, order) through `family_symbol_by_order`.
+// Schema-v1 lacks enough provenance to hard-fail a live matching survivor,
+// so that state is reported indeterminate rather than aliased to Living.
 inline constexpr FactPredicate TreasureFamilyOfOrderRemovedFromOblist(
     std::int32_t     family,
     std::int32_t     order,

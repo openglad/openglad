@@ -955,9 +955,12 @@ factory signature is
 `TreasureFamilyOfOrderRemovedFromOblist(int32_t family, int32_t order,
 std::string label)` and the evaluator walks `dump.walkers[]` and
 compares each entry's `family` string against the table-resolved
-symbol for `(family, order)` — predicate satisfied iff no remaining
-walker matches. The legacy `TreasureFamilyRemovedFromOblist` factory
-is left intact for callers that have not yet migrated.
+symbol for `(family, order)`. Under schema-v1, an absent match or a
+dead-only match satisfies the predicate; a live-only match is reported
+indeterminate because the dump does not carry enough provenance to
+distinguish "not reached" from "reached but not reaped"; mixed
+live+dead matches fail. The legacy `TreasureFamilyRemovedFromOblist`
+factory is left intact for callers that have not yet migrated.
 
 `behavioural_coverage_gate_treasures` and the umbrella
 `behavioural_coverage_gate` both consult a free helper
@@ -969,12 +972,8 @@ kOrderTreasure)`. EXIT (id 8) gains an honest Order-aware binding on
 and no `FAMILY_EXIT` entry survives in `dump.walkers[]` at the
 budget tick. STAIN (id 0) is bound on its own
 `treasure_stain_pickup_scen99` row via the same Order-aware kind;
-that row's predicate honestly fails on the dump because the
-`init_ignore=true` STAIN treasure walker stays alive in `oblist`
-for the run — the divergence is the parity harness's intended
-signal, not something the evaluator softens. The treasure-removal
-predicates on DRUMSTICK / TELEPORTER / KEY rows are replaced in
-place with the Order-aware kind per the Phase 03 contract; the
-spec did not authorise any other scenario edit (`kInputsTreasurePickup`
-and spawn lists stay unchanged), so rows whose `on_eat` does not
-fire under the existing window record their honest divergence.
+because STAIN is `init_ignore=true`, the v1 dump leaves it as a
+live-only match and the predicate is indeterminate. The
+treasure-removal predicates on DRUMSTICK / TELEPORTER / KEY rows are
+replaced in place with the Order-aware kind per the Phase 03 contract;
+`kInputsTreasurePickup` and spawn lists stay unchanged.

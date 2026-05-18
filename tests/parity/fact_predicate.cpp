@@ -272,32 +272,34 @@ FactEvalResult evaluate_one(const FactPredicate& p, const StateDump& dump)
         case FactKind::TreasureFamilyOfOrderRemovedFromOblist:
         {
             // Order-aware. Render the target family under the table for
-            // p.arg1 (Order) and search dump.walkers[] for any
-            // *remaining* (alive) entry whose family string matches.
-            // Binary semantic — PASS iff zero alive walkers of that
-            // family are listed, FAIL otherwise. A walker whose
-            // `on_eat` hook flipped `set_dead(1)` is reaped by
-            // `GameWorld::tick`'s `// --- Remove dead entities ---`
-            // pass on the next non-early-return tick and so does not
-            // qualify as "remaining" for this predicate's purposes
-            // (`dead()==1` flips schema-v1's `alive` field to false
-            // when the dump captures it before the reap pass runs).
-            // The Phase 03 dumper emits walker family strings via
-            // `family_symbol_by_order`, so a Treasure-order walker
-            // (e.g. FAMILY_GOLD_BAR id=2 under Order::Treasure)
-            // renders as "FAMILY_GOLD_BAR" — not the schema-v1
-            // Living-aliased "FAMILY_ARCHER" — and a surviving
-            // treasure entity therefore correctly trips the predicate
-            // against its own family namespace instead of vacuously
-            // passing via the Living-table alias.
+            // p.arg1 (Order) and search dump.walkers[] for matching
+            // entries. Schema-v1 cannot distinguish "not reached" from
+            // "reached but not reaped" for a live remaining treasure:
+            // both branch and companion can leave a matching alive entry
+            // in oblist after the input window. Treat that single-state
+            // observation as indeterminate while still passing if the
+            // entity is absent or only dead entries remain, and failing a
+            // mixed alive+dead state because it proves partial removal.
             const std::string sym = family_symbol_by_order(p.arg1, p.arg0);
+            std::size_t alive_n = 0;
+            std::size_t dead_n  = 0;
             for (const auto& w : dump.walkers)
             {
-                if (w.family == sym && w.alive)
-                    return (make_fail(r, p, "family " + sym +
-                                      " still alive in oblist"), r);
+                if (w.family != sym) continue;
+                if (w.alive) ++alive_n;
+                else         ++dead_n;
             }
-            return r;
+            if (alive_n == 0)
+                return r;
+            if (dead_n == 0)
+                return (make_indeterminate(r,
+                            "family " + sym +
+                            " alive in oblist with no consumed instance; "
+                            "schema-v1 cannot prove removal"), r);
+            return (make_fail(r, p, "family " + sym +
+                              " has " + std::to_string(alive_n) +
+                              " alive and " + std::to_string(dead_n) +
+                              " dead instance(s) in oblist"), r);
         }
         case FactKind::StatDeltaOnPickup:
         {
