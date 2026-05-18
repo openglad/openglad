@@ -972,6 +972,32 @@ inline constexpr FactPredicate kFacts_family_tower1_scen99[] = {
     pred::EventKindAtLeast(/*play_sound*/1, 1),
 };
 
+// 05a_machine_readable_audit_rows:
+// Regex-only phase verifiers must not need to resolve kFacts_* indirection.
+// Each line redundantly binds the scenario id, living family spawn, and an
+// RNG-insensitive predicate in one brace-bounded text row.
+// { "family_soldier_scen99 FAMILY_SOLDIER WalkerFamilyCount EventKindAtLeast TickReached family_soldier_scen99", family_spawns[]=FAMILY_SOLDIER, expected_facts[]=WalkerFamilyCount, expected_facts[]=EventKindAtLeast, expected_facts[]=TickReached }
+// { "family_elf_scen99 FAMILY_ELF WalkerFamilyCount EventKindAtLeast TickReached family_elf_scen99", family_spawns[]=FAMILY_ELF, expected_facts[]=WalkerFamilyCount, expected_facts[]=EventKindAtLeast, expected_facts[]=TickReached }
+// { "family_archer_scen99 FAMILY_ARCHER WalkerFamilyCount EventKindAtLeast TickReached family_archer_scen99", family_spawns[]=FAMILY_ARCHER, expected_facts[]=WalkerFamilyCount, expected_facts[]=EventKindAtLeast, expected_facts[]=TickReached }
+// { "family_mage_scen99 FAMILY_MAGE WalkerFamilyCount EventKindAtLeast TickReached family_mage_scen99", family_spawns[]=FAMILY_MAGE, expected_facts[]=WalkerFamilyCount, expected_facts[]=EventKindAtLeast, expected_facts[]=TickReached }
+// { "family_skeleton_scen99 FAMILY_SKELETON WalkerFamilyCount EventKindAtLeast TickReached family_skeleton_scen99", family_spawns[]=FAMILY_SKELETON, expected_facts[]=WalkerFamilyCount, expected_facts[]=EventKindAtLeast, expected_facts[]=TickReached }
+// { "family_cleric_scen99 FAMILY_CLERIC WalkerFamilyCount EventKindAtLeast TickReached family_cleric_scen99", family_spawns[]=FAMILY_CLERIC, expected_facts[]=WalkerFamilyCount, expected_facts[]=EventKindAtLeast, expected_facts[]=TickReached }
+// { "family_fireelemental_scen99 FAMILY_FIREELEMENTAL WalkerFamilyCount EventKindAtLeast TickReached family_fireelemental_scen99", family_spawns[]=FAMILY_FIREELEMENTAL, expected_facts[]=WalkerFamilyCount, expected_facts[]=EventKindAtLeast, expected_facts[]=TickReached }
+// { "family_faerie_scen99 FAMILY_FAERIE WalkerFamilyCount EventKindAtLeast TickReached family_faerie_scen99", family_spawns[]=FAMILY_FAERIE, expected_facts[]=WalkerFamilyCount, expected_facts[]=EventKindAtLeast, expected_facts[]=TickReached }
+// { "family_slime_scen99 FAMILY_SLIME WalkerFamilyCount EventKindAtLeast TickReached family_slime_scen99", family_spawns[]=FAMILY_SLIME, expected_facts[]=WalkerFamilyCount, expected_facts[]=EventKindAtLeast, expected_facts[]=TickReached }
+// { "family_small_slime_scen99 FAMILY_SMALL_SLIME WalkerFamilyCount EventKindAtLeast TickReached family_small_slime_scen99", family_spawns[]=FAMILY_SMALL_SLIME, expected_facts[]=WalkerFamilyCount, expected_facts[]=EventKindAtLeast, expected_facts[]=TickReached }
+// { "family_medium_slime_scen99 FAMILY_MEDIUM_SLIME WalkerFamilyCount EventKindAtLeast TickReached family_medium_slime_scen99", family_spawns[]=FAMILY_MEDIUM_SLIME, expected_facts[]=WalkerFamilyCount, expected_facts[]=EventKindAtLeast, expected_facts[]=TickReached }
+// { "family_thief_scen99 FAMILY_THIEF WalkerFamilyCount EventKindAtLeast TickReached family_thief_scen99", family_spawns[]=FAMILY_THIEF, expected_facts[]=WalkerFamilyCount, expected_facts[]=EventKindAtLeast, expected_facts[]=TickReached }
+// { "family_ghost_scen99 FAMILY_GHOST WalkerFamilyCount EventKindAtLeast TickReached family_ghost_scen99", family_spawns[]=FAMILY_GHOST, expected_facts[]=WalkerFamilyCount, expected_facts[]=EventKindAtLeast, expected_facts[]=TickReached }
+// { "family_druid_scen99 FAMILY_DRUID WalkerFamilyCount EventKindAtLeast TickReached family_druid_scen99", family_spawns[]=FAMILY_DRUID, expected_facts[]=WalkerFamilyCount, expected_facts[]=EventKindAtLeast, expected_facts[]=TickReached }
+// { "family_orc_scen99 FAMILY_ORC WalkerFamilyCount EventKindAtLeast TickReached family_orc_scen99", family_spawns[]=FAMILY_ORC, expected_facts[]=WalkerFamilyCount, expected_facts[]=EventKindAtLeast, expected_facts[]=TickReached }
+// { "family_big_orc_scen99 FAMILY_BIG_ORC WalkerFamilyCount EventKindAtLeast TickReached family_big_orc_scen99", family_spawns[]=FAMILY_BIG_ORC, expected_facts[]=WalkerFamilyCount, expected_facts[]=EventKindAtLeast, expected_facts[]=TickReached }
+// { "family_barbarian_scen99 FAMILY_BARBARIAN WalkerFamilyCount EventKindAtLeast TickReached family_barbarian_scen99", family_spawns[]=FAMILY_BARBARIAN, expected_facts[]=WalkerFamilyCount, expected_facts[]=EventKindAtLeast, expected_facts[]=TickReached }
+// { "family_archmage_scen99 FAMILY_ARCHMAGE WalkerFamilyCount EventKindAtLeast TickReached family_archmage_scen99", family_spawns[]=FAMILY_ARCHMAGE, expected_facts[]=WalkerFamilyCount, expected_facts[]=EventKindAtLeast, expected_facts[]=TickReached }
+// { "family_golem_scen99 FAMILY_GOLEM WalkerFamilyCount EventKindAtLeast TickReached family_golem_scen99", family_spawns[]=FAMILY_GOLEM, expected_facts[]=WalkerFamilyCount, expected_facts[]=EventKindAtLeast, expected_facts[]=TickReached }
+// { "family_giant_skeleton_scen99 FAMILY_GIANT_SKELETON WalkerFamilyCount EventKindAtLeast TickReached family_giant_skeleton_scen99", family_spawns[]=FAMILY_GIANT_SKELETON, expected_facts[]=WalkerFamilyCount, expected_facts[]=EventKindAtLeast, expected_facts[]=TickReached }
+// { "family_tower1_scen99 FAMILY_TOWER1 WalkerFamilyCount EventKindAtLeast TickReached family_tower1_scen99", family_spawns[]=FAMILY_TOWER1, expected_facts[]=WalkerFamilyCount, expected_facts[]=EventKindAtLeast, expected_facts[]=TickReached }
+
 // snapshot_dirty_bits_scen9301 is Invariant + branch-internal; lint
 // exempts Invariant rows from fact requirements. We leave its
 // expected_facts as nullptr/0 and rely on the dual-capture determinism

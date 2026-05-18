@@ -688,7 +688,22 @@ void append_row_object(std::string& out, const og::parity::ScenarioSpec& s)
 void append_audit_row_object(std::string& out, const og::parity::ScenarioSpec& s)
 {
     out.append("{ \"id\": ");
-    append_escaped(out, s.id);
+    std::string audit_id{s.id};
+    for (std::size_t i = 0; i < s.spawn_count; ++i)
+    {
+        const auto& sp = s.spawns[i];
+        if (sp.order != og::parity::kOrderLiving) continue;
+        audit_id.push_back(' ');
+        audit_id.append(og::parity::family_symbol_by_order(sp.order, sp.family));
+    }
+    for (std::size_t i = 0; i < s.fact_count; ++i)
+    {
+        audit_id.push_back(' ');
+        audit_id.append(kind_name(s.expected_facts[i].kind));
+    }
+    audit_id.push_back(' ');
+    audit_id.append(s.id);
+    append_escaped(out, audit_id);
     out.append(", \"scenario_id\": ");
     append_escaped(out, s.id);
     out.append(", \"compare_mode\": ");
