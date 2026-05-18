@@ -170,6 +170,9 @@ void append_predicate_array(std::string& out, const og::parity::ScenarioSpec& s)
         append_escaped(out, kind_name(p.kind));
         out.append(", \"type\": ");
         append_escaped(out, kind_name(p.kind));
+        out.append(", ");
+        append_escaped(out, kind_name(p.kind));
+        out.append(": true");
         char nums[128];
         std::snprintf(nums, sizeof(nums),
             ", \"arg0\": %d, \"arg1\": %d, \"arg2\": %d, \"arg3\": %d, \"arg4\": %d, \"label\": ",
@@ -397,6 +400,9 @@ void append_minimal_predicate_array(std::string& out, const og::parity::Scenario
         append_escaped(out, kind_name(s.expected_facts[i].kind));
         out.append(", \"type\": ");
         append_escaped(out, kind_name(s.expected_facts[i].kind));
+        out.append(", ");
+        append_escaped(out, kind_name(s.expected_facts[i].kind));
+        out.append(": true");
         out.append(" }");
     }
     out.push_back(']');
