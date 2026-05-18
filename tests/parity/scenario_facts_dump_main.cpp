@@ -364,21 +364,23 @@ std::string predicate_expression(const og::parity::FactPredicate& p)
 
 void append_predicate_expression_array(std::string& out, const og::parity::ScenarioSpec& s)
 {
-    out.push_back('[');
-    bool first = true;
+    append_predicate_array(out, s);
+    if (s.fact_count == 0) return;
+
+    // Keep expected_facts[] consumable both as predicate objects
+    // (`fact["kind"]`) and as the older string aliases.
+    out.resize(out.size() - 2);
     for (std::size_t i = 0; i < s.fact_count; ++i)
     {
-        if (!first) out.append(", ");
-        first = false;
+        out.append(", ");
         append_escaped(out, predicate_expression(s.expected_facts[i]));
     }
     for (std::size_t i = 0; i < s.fact_count; ++i)
     {
-        if (!first) out.append(", ");
-        first = false;
+        out.append(", ");
         append_escaped(out, kind_name(s.expected_facts[i].kind));
     }
-    out.push_back(']');
+    out.append(" ]");
 }
 
 void append_living_family_spawns(std::string& out, const og::parity::ScenarioSpec& s)
