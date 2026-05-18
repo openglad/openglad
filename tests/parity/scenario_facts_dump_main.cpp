@@ -24,9 +24,9 @@
 //         "predicate_kinds": ["TickReached", "WalkerFamilyCount", ...],
 //         "expected_fact_kinds": ["TickReached", "WalkerFamilyCount", ...],
 //         "expected_facts_kinds": ["TickReached", "WalkerFamilyCount", ...],
-//         "expected_facts": [ ...same shape as predicates...,
-//                             plus symbolic arg0 aliases for audits... ],
-//         "expected_fact_objects": [ ...same shape as predicates... ] },
+//         "expected_facts": ["TickReached", "WalkerFamilyCount", ...],
+//         "expected_fact_objects": [ ...same shape as predicates... ],
+//         "expected_fact_audit_objects": [ ...objects plus symbolic arg0 aliases... ] },
 //       ...
 //     ],
 //     "rows": [ ...same row objects as scenarios... ],
@@ -366,9 +366,11 @@ void append_row_object(std::string& out, const og::parity::ScenarioSpec& s)
     out.append(", \"expected_facts_kinds\": ");
     append_predicate_kind_array(out, s);
     out.append(", \"expected_facts\": ");
-    append_predicate_audit_array(out, s);
+    append_predicate_kind_array(out, s);
     out.append(", \"expected_fact_objects\": ");
     append_predicate_array(out, s);
+    out.append(", \"expected_fact_audit_objects\": ");
+    append_predicate_audit_array(out, s);
     out.append(" }");
 }
 
