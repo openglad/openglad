@@ -18,7 +18,8 @@
 //           ...
 //         ],
 //         "predicate_kinds": ["TickReached", "WalkerFamilyCount", ...],
-//         "expected_facts": ["TickReached", "WalkerFamilyCount", ...],
+//         "expected_fact_kinds": ["TickReached", "WalkerFamilyCount", ...],
+//         "expected_facts": [ ...same shape as predicates... ],
 //         "expected_fact_objects": [ ...same shape as predicates... ] },
 //       ...
 //     ],
@@ -249,8 +250,10 @@ void append_row_object(std::string& out, const og::parity::ScenarioSpec& s)
     append_predicate_array(out, s);
     out.append(", \"predicate_kinds\": ");
     append_predicate_kind_array(out, s);
-    out.append(", \"expected_facts\": ");
+    out.append(", \"expected_fact_kinds\": ");
     append_predicate_kind_array(out, s);
+    out.append(", \"expected_facts\": ");
+    append_predicate_array(out, s);
     out.append(", \"expected_fact_objects\": ");
     append_predicate_array(out, s);
     out.append(" }");
