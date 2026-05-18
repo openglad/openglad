@@ -8,7 +8,7 @@
 //         "scenario_id": "...",
 //         "compare_mode": "ByteEqual"|"SemanticParity"|"Invariant",
 //         "coverage_audit": "...",
-//         "family_spawns": ["FAMILY_SOLDIER", ...],
+//         "family_spawns": ["FAMILY_SOLDIER", 0, ...],
 //         "family_spawn_names": ["FAMILY_SOLDIER", ...],
 //         "family_spawn_objects": [{ "family": "FAMILY_SOLDIER",
 //                                    "family_id": 0, "team": 0, ... }],
@@ -505,7 +505,7 @@ void append_row_object(std::string& out, const og::parity::ScenarioSpec& s)
                   static_cast<unsigned long long>(s.exercises));
     out.append(nums);
     out.append(", \"family_spawns\": ");
-    append_living_family_spawns(out, s);
+    append_living_family_spawns_mixed(out, s);
     out.append(", \"family_spawn_names\": ");
     append_living_family_spawns(out, s);
     out.append(", \"family_spawn_objects\": ");
