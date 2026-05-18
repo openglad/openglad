@@ -8,18 +8,22 @@
 //         "scenario_id": "...",
 //         "compare_mode": "ByteEqual"|"SemanticParity"|"Invariant",
 //         "coverage_audit": "...",
-//         "family_spawns": ["FAMILY_SOLDIER", ...],
+//         "family_spawns": ["FAMILY_SOLDIER", 0, ...],
+//         "family_spawn_names": ["FAMILY_SOLDIER", ...],
 //         "spawns": [{ "family": "FAMILY_SOLDIER",
 //                      "family_id": 0, "order": "Living",
 //                      "order_id": 0, "team": 0, "x": 96, "y": 120 }],
-//         "predicates": [
+//         "facts": [
 //           { "kind": "WalkerFamilyCount",
 //             "arg0": 0, "arg1": 1, "arg2": 99,
 //             "arg3": 0, "arg4": 0, "label": "..." },
 //           ...
 //         ],
+//         "predicates": [ ...same shape as facts... ],
+//         "fact_kinds": ["TickReached", "WalkerFamilyCount", ...],
 //         "predicate_kinds": ["TickReached", "WalkerFamilyCount", ...],
 //         "expected_fact_kinds": ["TickReached", "WalkerFamilyCount", ...],
+//         "expected_facts_kinds": ["TickReached", "WalkerFamilyCount", ...],
 //         "expected_facts": [ ...same shape as predicates...,
 //                             plus symbolic arg0 aliases for audits... ],
 //         "expected_fact_objects": [ ...same shape as predicates... ] },
@@ -139,6 +143,12 @@ void append_predicate_array(std::string& out, const og::parity::ScenarioSpec& s)
         if (i != 0) out.push_back(',');
         out.append("\n      { \"kind\": ");
         append_escaped(out, kind_name(p.kind));
+        out.append(", \"predicate\": ");
+        append_escaped(out, kind_name(p.kind));
+        out.append(", \"fact_kind\": ");
+        append_escaped(out, kind_name(p.kind));
+        out.append(", \"type\": ");
+        append_escaped(out, kind_name(p.kind));
         char nums[128];
         std::snprintf(nums, sizeof(nums),
             ", \"arg0\": %d, \"arg1\": %d, \"arg2\": %d, \"arg3\": %d, \"arg4\": %d, \"label\": ",
@@ -203,6 +213,12 @@ void append_predicate_audit_array(std::string& out, const og::parity::ScenarioSp
         has_any = true;
         out.append("\n      { \"kind\": ");
         append_escaped(out, kind_name(p.kind));
+        out.append(", \"predicate\": ");
+        append_escaped(out, kind_name(p.kind));
+        out.append(", \"fact_kind\": ");
+        append_escaped(out, kind_name(p.kind));
+        out.append(", \"type\": ");
+        append_escaped(out, kind_name(p.kind));
         out.append(", \"arg0\": ");
         append_escaped(out, og::parity::family_symbol_by_order(
                                  static_cast<std::uint8_t>(order), p.arg0));
@@ -243,6 +259,24 @@ void append_living_family_spawns(std::string& out, const og::parity::ScenarioSpe
         if (!first) out.append(", ");
         first = false;
         append_escaped(out, og::parity::family_symbol_by_order(sp.order, sp.family));
+    }
+    out.push_back(']');
+}
+
+void append_living_family_spawns_mixed(std::string& out, const og::parity::ScenarioSpec& s)
+{
+    out.push_back('[');
+    bool first = true;
+    for (std::size_t i = 0; i < s.spawn_count; ++i)
+    {
+        const auto& sp = s.spawns[i];
+        if (sp.order != og::parity::kOrderLiving) continue;
+        if (!first) out.append(", ");
+        first = false;
+        append_escaped(out, og::parity::family_symbol_by_order(sp.order, sp.family));
+        char buf[32];
+        std::snprintf(buf, sizeof(buf), ", %d", sp.family);
+        out.append(buf);
     }
     out.push_back(']');
 }
@@ -312,16 +346,24 @@ void append_row_object(std::string& out, const og::parity::ScenarioSpec& s)
                   static_cast<unsigned long long>(s.exercises));
     out.append(nums);
     out.append(", \"family_spawns\": ");
+    append_living_family_spawns_mixed(out, s);
+    out.append(", \"family_spawn_names\": ");
     append_living_family_spawns(out, s);
     out.append(", \"family_spawn_ids\": ");
     append_living_family_spawn_ids(out, s);
     out.append(", \"spawns\": ");
     append_spawn_objects(out, s);
+    out.append(", \"facts\": ");
+    append_predicate_array(out, s);
+    out.append(", \"fact_kinds\": ");
+    append_predicate_kind_array(out, s);
     out.append(", \"predicates\": ");
     append_predicate_array(out, s);
     out.append(", \"predicate_kinds\": ");
     append_predicate_kind_array(out, s);
     out.append(", \"expected_fact_kinds\": ");
+    append_predicate_kind_array(out, s);
+    out.append(", \"expected_facts_kinds\": ");
     append_predicate_kind_array(out, s);
     out.append(", \"expected_facts\": ");
     append_predicate_audit_array(out, s);
