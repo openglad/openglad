@@ -392,6 +392,22 @@ def emit_gap_table_main() -> int:
     ordered = parse_coverage_target_ordered(coverage_text)
     specials = parse_required_specials(coverage_text)
     scenarios = parse_scenarios(scen_text)
+    if not scenarios:
+        sys.stderr.write("check_coverage_manifest.py: failed to parse kScenarios[]\n")
+        return 1
+    missing_arrays = [name for name, rows in ordered.items() if not rows]
+    if missing_arrays:
+        sys.stderr.write(
+            "check_coverage_manifest.py: failed to parse coverage arrays: "
+            + ", ".join(missing_arrays)
+            + "\n"
+        )
+        return 1
+    if not specials:
+        sys.stderr.write(
+            "check_coverage_manifest.py: failed to parse kRequiredSpecials[]\n"
+        )
+        return 1
     spawns = find_array_bodies(scen_text, "kFamilySpawns_")
     # kSmokeArenaSpawns + others without the kFamilySpawns_ prefix
     other_spawn_names = set(s["spawns_name"] for s in scenarios) - set(spawns)
@@ -512,6 +528,23 @@ def emit_gap_table_main() -> int:
 def emit_scenario_list_main() -> int:
     scen_text = read(SCENARIO_TABLE_H)
     scenarios = parse_scenarios(scen_text)
+    if not scenarios:
+        sys.stderr.write("check_coverage_manifest.py: failed to parse kScenarios[]\n")
+        return 1
+    incomplete = [
+        scn["id"] or "<unknown>"
+        for scn in scenarios
+        if not scn["id"]
+        or not scn["compare_mode"]
+        or scn["is_branch_internal"] not in {"true", "false"}
+    ]
+    if incomplete:
+        sys.stderr.write(
+            "check_coverage_manifest.py: incomplete scenario rows: "
+            + ", ".join(incomplete)
+            + "\n"
+        )
+        return 1
     for scn in scenarios:
         sys.stdout.write(
             f"{scn['id']}\t{scn['compare_mode']}\t{scn['is_branch_internal']}\n"

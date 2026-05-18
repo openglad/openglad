@@ -1,154 +1,35 @@
-# Phase 01 — Parity Present-State Snapshot
-
-Phase: `01-baseline-and-inventory`. Generated 2026-05-17.
-
+# Parity Present State - Phase 01
 ## Test count snapshot
-
-`build/ci-test/og_test_parity --gtest_brief=1` (raw output: `/tmp/p01.out`).
-- Passed: 57
-- Skipped: 81
-- Failing: 13
-
-(Total tests run: 151. `--gtest_brief=1` omits the `[  FAILED  ] N tests.` summary line; failure count is `grep -cE "^\[  FAILED  \] Parity\." /tmp/p01.out`. Phase 02 added the `smoke_empty_scen99` Invariant row, lifting Passed from 56→57.)
-
+Passed: 57
+Skipped: 80
+Failing: 14
+## Failing tests
+- Parity.special_cleric_scen124
+- Parity.family_ghost_scen99
+- Parity.treasure_stain_pickup_scen99
+- Parity.treasure_drumstick_pickup_scen99
+- Parity.treasure_gold_bar_pickup_scen99
+- Parity.treasure_silver_bar_pickup_scen99
+- Parity.treasure_magic_potion_pickup_scen99
+- Parity.treasure_invis_potion_pickup_scen99
+- Parity.treasure_invulnerable_potion_pickup_scen99
+- Parity.treasure_flight_potion_pickup_scen99
+- Parity.treasure_teleporter_pickup_scen99
+- Parity.treasure_life_gem_pickup_scen99
+- Parity.treasure_key_pickup_scen99
+- Parity.treasure_speed_potion_pickup_scen99
+## Skipped tests
+- Other: coverage_catchall_scen99
+- Weapons: weapon_knife_emission_scen99, weapon_rock_emission_scen99, weapon_arrow_emission_scen99, weapon_fireball_emission_scen99, weapon_tree_emission_scen99, weapon_meteor_emission_scen99, weapon_sprinkle_emission_scen99, weapon_bone_emission_scen99, weapon_blood_emission_scen99, weapon_blob_emission_scen99, weapon_fire_arrow_emission_scen99, weapon_lightning_emission_scen99, weapon_glow_emission_scen99, weapon_wave_emission_scen99, weapon_wave2_emission_scen99, weapon_wave3_emission_scen99, weapon_circle_protection_emission_scen99, weapon_hammer_emission_scen99, weapon_door_emission_scen99, weapon_boulder_emission_scen99
+- Effects: effect_expand_emission_scen99, effect_ghost_scare_emission_scen99, effect_bomb_emission_scen99, effect_explosion_emission_scen99, effect_flash_emission_scen99, effect_magic_shield_emission_scen99, effect_knife_back_emission_scen99, effect_boomerang_emission_scen99, effect_cloud_emission_scen99, effect_marker_emission_scen99, effect_chain_emission_scen99, effect_door_open_emission_scen99, effect_hit_emission_scen99
+- Generators/events: generator_tent_emission_scen99, generator_tower_emission_scen99, generator_bones_emission_scen99, generator_treehouse_emission_scen99, event_notification_emission_scen99, event_set_palette_emission_scen99, event_request_redraw_emission_scen99, event_end_game_emission_scen99, event_set_end_emission_scen99
+- Specials: special_soldier_1_scen99, special_soldier_2_scen99, special_soldier_3_scen99, special_soldier_4_scen99, special_elf_1_scen99, special_elf_2_scen99, special_elf_3_scen99, special_elf_4_scen99, special_archer_1_scen99, special_archer_2_scen99, special_archer_3_scen99, special_mage_2_scen99, special_mage_3_scen99, special_mage_4_scen99, special_mage_5_scen99, special_skeleton_1_scen99, special_cleric_2_scen99, special_cleric_3_scen99, special_cleric_4_scen99, special_fireelemental_1_scen99, special_slime_1_scen99, special_small_slime_1_scen99, special_medium_slime_1_scen99, special_thief_2_scen99, special_thief_3_scen99, special_thief_4_scen99, special_ghost_1_scen99, special_druid_1_scen99, special_druid_3_scen99, special_druid_4_scen99, special_orc_1_scen99, special_orc_2_scen99, special_barbarian_1_scen99, special_barbarian_2_scen99, special_archmage_2_scen99, special_archmage_3_scen99, special_archmage_4_scen99
 ## Master companion SHA pinned this phase
-
-Master companion SHA: 47d7a15bc2fac2cea8aa55868a2db2601a525665
-
+Master companion SHA: b900addb5084bbf98b46267d1624289a25e5ff66
 ## Mirror SHA delta
-
-```
-1489234990e5e8ea3c0bb6cc81a0cb11df6a637d  tests/parity/scenario_table.h
-1489234990e5e8ea3c0bb6cc81a0cb11df6a637d  ../openglad-master/tools/parity_scenario_table.h
-```
-Mirrored — both sides equal. (Phase 02 resync no-op condition.)
-
-## Failing tests (13)
-
-- behavioural_coverage_gate_treasures
-- behavioural_coverage_gate
-- treasure_drumstick_pickup_scen99
-- treasure_gold_bar_pickup_scen99
-- treasure_silver_bar_pickup_scen99
-- treasure_magic_potion_pickup_scen99
-- treasure_invis_potion_pickup_scen99
-- treasure_invulnerable_potion_pickup_scen99
-- treasure_flight_potion_pickup_scen99
-- treasure_teleporter_pickup_scen99
-- treasure_life_gem_pickup_scen99
-- treasure_key_pickup_scen99
-- treasure_speed_potion_pickup_scen99
-
-## Skipped tests — one bullet per `master golden missing for <id>` line (92 lines)
-
-- coverage_catchall_scen99
-- effect_bomb_emission_scen99
-- effect_boomerang_emission_scen99
-- effect_chain_emission_scen99
-- effect_cloud_emission_scen99
-- effect_door_open_emission_scen99
-- effect_expand_emission_scen99
-- effect_explosion_emission_scen99
-- effect_flash_emission_scen99
-- effect_ghost_scare_emission_scen99
-- effect_hit_emission_scen99
-- effect_knife_back_emission_scen99
-- effect_magic_shield_emission_scen99
-- effect_marker_emission_scen99
-- event_end_game_emission_scen99
-- event_notification_emission_scen99
-- event_request_redraw_emission_scen99
-- event_set_end_emission_scen99
-- event_set_palette_emission_scen99
-- generator_bones_emission_scen99
-- generator_tent_emission_scen99
-- generator_tower_emission_scen99
-- generator_treehouse_emission_scen99
-- special_archer_1_scen99
-- special_archer_2_scen99
-- special_archer_3_scen99
-- special_archmage_2_scen99
-- special_archmage_3_scen99
-- special_archmage_4_scen99
-- special_barbarian_1_scen99
-- special_barbarian_2_scen99
-- special_cleric_2_scen99
-- special_cleric_3_scen99
-- special_cleric_4_scen99
-- special_druid_1_scen99
-- special_druid_3_scen99
-- special_druid_4_scen99
-- special_elf_1_scen99
-- special_elf_2_scen99
-- special_elf_3_scen99
-- special_elf_4_scen99
-- special_fireelemental_1_scen99
-- special_ghost_1_scen99
-- special_mage_2_scen99
-- special_mage_3_scen99
-- special_mage_4_scen99
-- special_mage_5_scen99
-- special_medium_slime_1_scen99
-- special_orc_1_scen99
-- special_orc_2_scen99
-- special_skeleton_1_scen99
-- special_slime_1_scen99
-- special_small_slime_1_scen99
-- special_soldier_1_scen99
-- special_soldier_2_scen99
-- special_soldier_3_scen99
-- special_soldier_4_scen99
-- special_thief_2_scen99
-- special_thief_3_scen99
-- special_thief_4_scen99
-- treasure_drumstick_pickup_scen99
-- treasure_flight_potion_pickup_scen99
-- treasure_gold_bar_pickup_scen99
-- treasure_invis_potion_pickup_scen99
-- treasure_invulnerable_potion_pickup_scen99
-- treasure_key_pickup_scen99
-- treasure_life_gem_pickup_scen99
-- treasure_magic_potion_pickup_scen99
-- treasure_silver_bar_pickup_scen99
-- treasure_speed_potion_pickup_scen99
-- treasure_stain_pickup_scen99
-- treasure_teleporter_pickup_scen99
-- weapon_arrow_emission_scen99
-- weapon_blob_emission_scen99
-- weapon_blood_emission_scen99
-- weapon_bone_emission_scen99
-- weapon_boulder_emission_scen99
-- weapon_circle_protection_emission_scen99
-- weapon_door_emission_scen99
-- weapon_fire_arrow_emission_scen99
-- weapon_fireball_emission_scen99
-- weapon_glow_emission_scen99
-- weapon_hammer_emission_scen99
-- weapon_knife_emission_scen99
-- weapon_lightning_emission_scen99
-- weapon_meteor_emission_scen99
-- weapon_rock_emission_scen99
-- weapon_sprinkle_emission_scen99
-- weapon_tree_emission_scen99
-- weapon_wave2_emission_scen99
-- weapon_wave3_emission_scen99
-- weapon_wave_emission_scen99
-
-## Broken-state authorisation (quoted verbatim from `.plan/plan.md` §1)
-
-> The global rule "all tests pass at all times" is overridden by the user's verbatim goal only inside this multi-phase window. Bounds:
->
-> - After phase 03, treasure cohort and the two behavioural gates green. `og_test_parity` may still report `[SKIPPED]` rows but `[FAILED] 0`.
-> - After phase 04, every `SemanticParity` row in the current scenario table has a golden on disk; `[SKIPPED] 0` for those rows. New rows added in phases 05–09 are allowed `[SKIPPED]` until their own phase's verifier requires them green.
-> - After phase 09, `og_test_parity` reports `[PASSED] = total tests`, `[SKIPPED] 0`, `[FAILED] 0`.
-> - After phase 11, the entire repository test suite (`ctest --preset ci-test`) is green.
->
-> Each phase's verifier asserts the relevant bound; broken-state windows that escape these bounds are bounces.
-
+4326c97f55e32239eab0871975ecd115fcfbfb91  tests/parity/scenario_table.h
+4326c97f55e32239eab0871975ecd115fcfbfb91  ../openglad-master/tools/parity_scenario_table.h
 ## Per-target coverage gap inventory
-
-Generated by `python3 scripts/parity/check_coverage_manifest.py --emit-gap-table`. Seven tables — one per category.
-
 ### Walker families (21)
 | target | observed_in_any_row | covering_scenario_id | golden_present |
 |---|---|---|---|
@@ -199,19 +80,19 @@ Generated by `python3 scripts/parity/check_coverage_manifest.py --emit-gap-table
 ### Treasure families (13)
 | target | observed_in_any_row | covering_scenario_id | golden_present |
 |---|---|---|---|
-| `FAMILY_STAIN` | yes | `treasure_stain_pickup_scen99` | no |
-| `FAMILY_DRUMSTICK` | yes | `treasure_drumstick_pickup_scen99` | no |
-| `FAMILY_GOLD_BAR` | yes | `treasure_gold_bar_pickup_scen99` | no |
-| `FAMILY_SILVER_BAR` | yes | `treasure_silver_bar_pickup_scen99` | no |
-| `FAMILY_MAGIC_POTION` | yes | `treasure_magic_potion_pickup_scen99` | no |
-| `FAMILY_INVIS_POTION` | yes | `treasure_invis_potion_pickup_scen99` | no |
-| `FAMILY_INVULNERABLE_POTION` | yes | `treasure_invulnerable_potion_pickup_scen99` | no |
-| `FAMILY_FLIGHT_POTION` | yes | `treasure_flight_potion_pickup_scen99` | no |
-| `FAMILY_EXIT` | yes | `scripted_input_scen9301` | yes |
-| `FAMILY_TELEPORTER` | yes | `treasure_teleporter_pickup_scen99` | no |
-| `FAMILY_LIFE_GEM` | yes | `treasure_life_gem_pickup_scen99` | no |
-| `FAMILY_KEY` | yes | `treasure_key_pickup_scen99` | no |
-| `FAMILY_SPEED_POTION` | yes | `treasure_speed_potion_pickup_scen99` | no |
+| `FAMILY_STAIN` | yes | `treasure_stain_pickup_scen99` | yes |
+| `FAMILY_DRUMSTICK` | yes | `treasure_drumstick_pickup_scen99` | yes |
+| `FAMILY_GOLD_BAR` | yes | `treasure_gold_bar_pickup_scen99` | yes |
+| `FAMILY_SILVER_BAR` | yes | `treasure_silver_bar_pickup_scen99` | yes |
+| `FAMILY_MAGIC_POTION` | yes | `treasure_magic_potion_pickup_scen99` | yes |
+| `FAMILY_INVIS_POTION` | yes | `treasure_invis_potion_pickup_scen99` | yes |
+| `FAMILY_INVULNERABLE_POTION` | yes | `treasure_invulnerable_potion_pickup_scen99` | yes |
+| `FAMILY_FLIGHT_POTION` | yes | `treasure_flight_potion_pickup_scen99` | yes |
+| `FAMILY_EXIT` | yes | `exit_trigger_scen9302` | yes |
+| `FAMILY_TELEPORTER` | yes | `treasure_teleporter_pickup_scen99` | yes |
+| `FAMILY_LIFE_GEM` | yes | `treasure_life_gem_pickup_scen99` | yes |
+| `FAMILY_KEY` | yes | `treasure_key_pickup_scen99` | yes |
+| `FAMILY_SPEED_POTION` | yes | `treasure_speed_potion_pickup_scen99` | yes |
 ### Generator families (4)
 | target | observed_in_any_row | covering_scenario_id | golden_present |
 |---|---|---|---|
@@ -292,4 +173,10 @@ Generated by `python3 scripts/parity/check_coverage_manifest.py --emit-gap-table
 | `request_exit_confirmation` | yes | `scripted_input_scen9301` | yes |
 | `withdraw_to_level` | yes | `scripted_input_scen9301` | yes |
 | `score_change` | yes | `scoring_after_combat_scen99` | yes |
-
+## Broken-state authorisation
+The global rule "all tests pass at all times" is overridden by the user's verbatim goal only inside this multi-phase window. The override is bounded:
+- After phase 03, the treasure cohort and the two behavioural gates must be green. `og_test_parity` may still report `[SKIPPED]` rows but `[FAILED] 0`.
+- After phase 04, every `SemanticParity` row in the current scenario table has a golden on disk; `[SKIPPED] 0` for those rows. New rows added in phases 05–09 are allowed to be `[SKIPPED]` until their own phase's verifier requires them green.
+- After phase 09, `og_test_parity` reports `[PASSED] = total tests`, `[SKIPPED] 0`, `[FAILED] 0`.
+- After phase 11, the entire repository test suite (`ctest --preset ci-test`) is green.
+Each phase's verifier asserts the relevant bound; broken-state windows that escape these bounds are bounces.
