@@ -19,7 +19,8 @@
 //         ],
 //         "predicate_kinds": ["TickReached", "WalkerFamilyCount", ...],
 //         "expected_fact_kinds": ["TickReached", "WalkerFamilyCount", ...],
-//         "expected_facts": [ ...same shape as predicates... ],
+//         "expected_facts": [ ...same shape as predicates...,
+//                             plus symbolic arg0 aliases for audits... ],
 //         "expected_fact_objects": [ ...same shape as predicates... ] },
 //       ...
 //     ],
@@ -152,6 +153,73 @@ void append_predicate_array(std::string& out, const og::parity::ScenarioSpec& s)
     out.append(" ]");
 }
 
+int arg0_order_for_symbol(og::parity::FactKind k)
+{
+    using og::parity::FactKind;
+    switch (k)
+    {
+        case FactKind::WalkerFamilyCount:
+        case FactKind::WalkerHpRangeAtFinalTick:
+        case FactKind::WalkerPositionMoved:
+        case FactKind::WalkerDiedByFinal:
+        case FactKind::WalkerAliveAtFinal:
+            return og::parity::kOrderLiving;
+        case FactKind::TreasureFamilyRemovedFromOblist:
+        case FactKind::TreasureFamilyOfOrderRemovedFromOblist:
+        case FactKind::StatDeltaOnPickup:
+            return og::parity::kOrderTreasure;
+        case FactKind::EffectFamilyCount:
+            return og::parity::kOrderFX;
+        case FactKind::WeaponFamilyEmitted:
+            return og::parity::kOrderWeapon;
+        case FactKind::TickReached:
+        case FactKind::LevelDoneEquals:
+        case FactKind::ScoreDelta:
+        case FactKind::WalkerKeysApplied:
+        case FactKind::EventKindAtLeast:
+        case FactKind::EventKindExactly:
+            return -1;
+    }
+    return -1;
+}
+
+void append_predicate_audit_array(std::string& out, const og::parity::ScenarioSpec& s)
+{
+    append_predicate_array(out, s);
+    if (s.fact_count == 0) return;
+
+    // Remove the closing " ]" so symbolic aliases can be appended without
+    // changing the canonical `predicates` array used by evaluators.
+    out.resize(out.size() - 2);
+    bool has_any = s.fact_count != 0;
+    for (std::size_t i = 0; i < s.fact_count; ++i)
+    {
+        const auto& p = s.expected_facts[i];
+        const int order = arg0_order_for_symbol(p.kind);
+        if (order < 0) continue;
+
+        if (has_any) out.push_back(',');
+        has_any = true;
+        out.append("\n      { \"kind\": ");
+        append_escaped(out, kind_name(p.kind));
+        out.append(", \"arg0\": ");
+        append_escaped(out, og::parity::family_symbol_by_order(
+                                 static_cast<std::uint8_t>(order), p.arg0));
+        char nums[160];
+        std::snprintf(nums, sizeof(nums),
+            ", \"arg0_id\": %d, \"arg1\": %d, \"arg2\": %d, \"arg3\": %d, \"arg4\": %d, \"label\": ",
+            p.arg0, p.arg1, p.arg2, p.arg3, p.arg4);
+        out.append(nums);
+        append_escaped(out, p.label);
+        out.append(", \"applies_to_branch\": ");
+        out.append(p.applies_to_branch ? "true" : "false");
+        out.append(", \"applies_to_master\": ");
+        out.append(p.applies_to_master ? "true" : "false");
+        out.append(" }");
+    }
+    out.append(" ]");
+}
+
 void append_predicate_kind_array(std::string& out, const og::parity::ScenarioSpec& s)
 {
     out.push_back('[');
@@ -253,7 +321,7 @@ void append_row_object(std::string& out, const og::parity::ScenarioSpec& s)
     out.append(", \"expected_fact_kinds\": ");
     append_predicate_kind_array(out, s);
     out.append(", \"expected_facts\": ");
-    append_predicate_array(out, s);
+    append_predicate_audit_array(out, s);
     out.append(", \"expected_fact_objects\": ");
     append_predicate_array(out, s);
     out.append(" }");
