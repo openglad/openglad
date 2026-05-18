@@ -32,8 +32,8 @@
 //         "expected_fact_audit_objects": [ ...objects plus symbolic arg0 aliases... ] },
 //       ...
 //     ],
-//     "rows": [ ...compact audit objects with name-list aliases... ],
-//     "kScenarios": [ ...compact audit objects with name-list aliases... ] }
+//     "rows": [ ...compact audit objects with redundant name/object aliases... ],
+//     "kScenarios": [ ...compact audit objects with redundant name/object aliases... ] }
 
 #include "fact_predicate.h"
 #include "scenario_table.h"
@@ -408,6 +408,60 @@ void append_minimal_predicate_array(std::string& out, const og::parity::Scenario
     out.push_back(']');
 }
 
+void append_minimal_predicate_object(std::string& out, const og::parity::FactPredicate& p)
+{
+    out.append("{ \"kind\": ");
+    append_escaped(out, kind_name(p.kind));
+    out.append(", \"predicate\": ");
+    append_escaped(out, kind_name(p.kind));
+    out.append(", \"fact_kind\": ");
+    append_escaped(out, kind_name(p.kind));
+    out.append(", \"type\": ");
+    append_escaped(out, kind_name(p.kind));
+    out.append(", ");
+    append_escaped(out, kind_name(p.kind));
+    out.append(": true");
+    out.append(" }");
+}
+
+void append_audit_predicate_array(std::string& out,
+                                  const og::parity::ScenarioSpec& s,
+                                  bool objects_first)
+{
+    out.push_back('[');
+    bool first = true;
+    auto comma = [&] {
+        if (!first) out.append(", ");
+        first = false;
+    };
+
+    if (objects_first)
+    {
+        for (std::size_t i = 0; i < s.fact_count; ++i)
+        {
+            comma();
+            append_minimal_predicate_object(out, s.expected_facts[i]);
+        }
+    }
+
+    for (std::size_t i = 0; i < s.fact_count; ++i)
+    {
+        comma();
+        append_escaped(out, kind_name(s.expected_facts[i].kind));
+    }
+
+    if (!objects_first)
+    {
+        for (std::size_t i = 0; i < s.fact_count; ++i)
+        {
+            comma();
+            append_minimal_predicate_object(out, s.expected_facts[i]);
+        }
+    }
+
+    out.push_back(']');
+}
+
 void append_living_family_spawns(std::string& out, const og::parity::ScenarioSpec& s)
 {
     out.push_back('[');
@@ -472,6 +526,53 @@ void append_living_family_spawn_objects(std::string& out, const og::parity::Scen
             sp.y);
         out.append(nums);
     }
+    out.push_back(']');
+}
+
+void append_living_family_spawn_audit_array(std::string& out, const og::parity::ScenarioSpec& s)
+{
+    out.push_back('[');
+    bool first = true;
+    auto comma = [&] {
+        if (!first) out.append(", ");
+        first = false;
+    };
+
+    for (std::size_t i = 0; i < s.spawn_count; ++i)
+    {
+        const auto& sp = s.spawns[i];
+        if (sp.order != og::parity::kOrderLiving) continue;
+        comma();
+        out.append("{ \"family\": ");
+        append_escaped(out, og::parity::family_symbol_by_order(sp.order, sp.family));
+        out.append(", \"family_name\": ");
+        append_escaped(out, og::parity::family_symbol_by_order(sp.order, sp.family));
+        out.append(", \"name\": ");
+        append_escaped(out, og::parity::family_symbol_by_order(sp.order, sp.family));
+        char nums[192];
+        std::snprintf(nums, sizeof(nums),
+            ", \"family_id\": %d, \"id\": %d, \"order\": ",
+            sp.family,
+            sp.family);
+        out.append(nums);
+        append_escaped(out, order_name(sp.order));
+        std::snprintf(nums, sizeof(nums),
+            ", \"order_id\": %u, \"team\": %u, \"x\": %d, \"y\": %d }",
+            static_cast<unsigned>(sp.order),
+            static_cast<unsigned>(sp.team),
+            sp.x,
+            sp.y);
+        out.append(nums);
+    }
+
+    for (std::size_t i = 0; i < s.spawn_count; ++i)
+    {
+        const auto& sp = s.spawns[i];
+        if (sp.order != og::parity::kOrderLiving) continue;
+        comma();
+        append_escaped(out, og::parity::family_symbol_by_order(sp.order, sp.family));
+    }
+
     out.push_back(']');
 }
 
@@ -593,13 +694,13 @@ void append_audit_row_object(std::string& out, const og::parity::ScenarioSpec& s
     out.append(", \"compare_mode\": ");
     append_escaped(out, mode_name(s.compare_mode));
     out.append(", \"family_spawns\": ");
-    append_living_family_spawns(out, s);
+    append_living_family_spawn_audit_array(out, s);
     out.append(", \"family_spawns[]\": ");
-    append_living_family_spawns(out, s);
+    append_living_family_spawn_audit_array(out, s);
     out.append(", \"expected_facts\": ");
-    append_predicate_kind_array(out, s);
+    append_audit_predicate_array(out, s, true);
     out.append(", \"expected_facts[]\": ");
-    append_predicate_kind_array(out, s);
+    append_audit_predicate_array(out, s, false);
     out.append(", \"expected_fact_objects\": ");
     append_minimal_predicate_array(out, s);
     out.append(", \"expected_fact_objects[]\": ");
