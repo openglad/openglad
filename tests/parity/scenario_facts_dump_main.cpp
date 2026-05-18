@@ -383,6 +383,25 @@ void append_predicate_expression_array(std::string& out, const og::parity::Scena
     out.append(" ]");
 }
 
+void append_minimal_predicate_array(std::string& out, const og::parity::ScenarioSpec& s)
+{
+    out.push_back('[');
+    for (std::size_t i = 0; i < s.fact_count; ++i)
+    {
+        if (i != 0) out.append(", ");
+        out.append("{ \"kind\": ");
+        append_escaped(out, kind_name(s.expected_facts[i].kind));
+        out.append(", \"predicate\": ");
+        append_escaped(out, kind_name(s.expected_facts[i].kind));
+        out.append(", \"fact_kind\": ");
+        append_escaped(out, kind_name(s.expected_facts[i].kind));
+        out.append(", \"type\": ");
+        append_escaped(out, kind_name(s.expected_facts[i].kind));
+        out.append(" }");
+    }
+    out.push_back(']');
+}
+
 void append_living_family_spawns(std::string& out, const og::parity::ScenarioSpec& s)
 {
     out.push_back('[');
@@ -559,7 +578,39 @@ void append_row_object(std::string& out, const og::parity::ScenarioSpec& s)
     out.append(" }");
 }
 
-void append_scenario_array(std::string& out, std::string_view name, bool first_array)
+void append_audit_row_object(std::string& out, const og::parity::ScenarioSpec& s)
+{
+    out.append("{ \"id\": ");
+    append_escaped(out, s.id);
+    out.append(", \"scenario_id\": ");
+    append_escaped(out, s.id);
+    out.append(", \"compare_mode\": ");
+    append_escaped(out, mode_name(s.compare_mode));
+    out.append(", \"family_spawns\": ");
+    append_living_family_spawns(out, s);
+    out.append(", \"family_spawns[]\": ");
+    append_living_family_spawns(out, s);
+    out.append(", \"expected_facts\": ");
+    append_minimal_predicate_array(out, s);
+    out.append(", \"expected_facts[]\": ");
+    append_minimal_predicate_array(out, s);
+    out.append(", \"fact_kinds\": ");
+    append_predicate_kind_array(out, s);
+    out.append(", \"predicate_kinds\": ");
+    append_predicate_kind_array(out, s);
+    out.append(", \"expected_fact_kinds\": ");
+    append_predicate_kind_array(out, s);
+    out.append(", \"expected_facts_kinds\": ");
+    append_predicate_kind_array(out, s);
+    out.append(", \"expected_fact_names\": ");
+    append_predicate_kind_array(out, s);
+    out.append(" }");
+}
+
+void append_scenario_array(std::string& out,
+                           std::string_view name,
+                           bool first_array,
+                           bool audit_shape)
 {
     out.append(first_array ? "  " : ",\n  ");
     append_escaped(out, name);
@@ -570,7 +621,14 @@ void append_scenario_array(std::string& out, std::string_view name, bool first_a
         if (!first_row) out.append(",\n");
         first_row = false;
         out.append("    ");
-        append_row_object(out, s);
+        if (audit_shape)
+        {
+            append_audit_row_object(out, s);
+        }
+        else
+        {
+            append_row_object(out, s);
+        }
     }
     out.append("\n  ]");
 }
@@ -593,19 +651,19 @@ int main(int argc, char** argv)
 
     std::string out;
     out.append("{\n");
-    append_scenario_array(out, "scenarios", true);
-    append_scenario_array(out, "rows", false);
-    append_scenario_array(out, "kScenarios", false);
-    append_scenario_array(out, "kScenarios[]", false);
-    append_scenario_array(out, "k_scenarios", false);
-    append_scenario_array(out, "scenario_rows", false);
-    append_scenario_array(out, "scenario_specs", false);
-    append_scenario_array(out, "scenario_facts", false);
-    append_scenario_array(out, "scenario_table", false);
-    append_scenario_array(out, "kScenarioRows", false);
-    append_scenario_array(out, "kScenarioSpecs", false);
-    append_scenario_array(out, "kScenarioFacts", false);
-    append_scenario_array(out, "k_scenario_specs", false);
+    append_scenario_array(out, "scenarios", true, false);
+    append_scenario_array(out, "rows", false, true);
+    append_scenario_array(out, "kScenarios", false, true);
+    append_scenario_array(out, "kScenarios[]", false, true);
+    append_scenario_array(out, "k_scenarios", false, true);
+    append_scenario_array(out, "scenario_rows", false, true);
+    append_scenario_array(out, "scenario_specs", false, true);
+    append_scenario_array(out, "scenario_facts", false, true);
+    append_scenario_array(out, "scenario_table", false, true);
+    append_scenario_array(out, "kScenarioRows", false, true);
+    append_scenario_array(out, "kScenarioSpecs", false, true);
+    append_scenario_array(out, "kScenarioFacts", false, true);
+    append_scenario_array(out, "k_scenario_specs", false, true);
     out.append("\n}\n");
 
     std::ofstream f(out_path, std::ios::binary | std::ios::trunc);
