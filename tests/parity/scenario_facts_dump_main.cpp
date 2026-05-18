@@ -506,6 +506,8 @@ void append_row_object(std::string& out, const og::parity::ScenarioSpec& s)
     out.append(nums);
     out.append(", \"family_spawns\": ");
     append_living_family_spawns_mixed(out, s);
+    out.append(", \"family_spawns[]\": ");
+    append_living_family_spawns_mixed(out, s);
     out.append(", \"family_spawn_names\": ");
     append_living_family_spawns(out, s);
     out.append(", \"family_spawn_objects\": ");
@@ -520,9 +522,13 @@ void append_row_object(std::string& out, const og::parity::ScenarioSpec& s)
     append_spawn_objects(out, s);
     out.append(", \"facts\": ");
     append_predicate_array(out, s);
+    out.append(", \"facts[]\": ");
+    append_predicate_array(out, s);
     out.append(", \"fact_kinds\": ");
     append_predicate_kind_array(out, s);
     out.append(", \"predicates\": ");
+    append_predicate_array(out, s);
+    out.append(", \"predicates[]\": ");
     append_predicate_array(out, s);
     out.append(", \"predicate_kinds\": ");
     append_predicate_kind_array(out, s);
@@ -533,6 +539,8 @@ void append_row_object(std::string& out, const og::parity::ScenarioSpec& s)
     out.append(", \"expected_fact_names\": ");
     append_predicate_kind_array(out, s);
     out.append(", \"expected_facts\": ");
+    append_predicate_expression_array(out, s);
+    out.append(", \"expected_facts[]\": ");
     append_predicate_expression_array(out, s);
     out.append(", \"expected_fact_objects\": ");
     append_predicate_array(out, s);
@@ -578,11 +586,15 @@ int main(int argc, char** argv)
     append_scenario_array(out, "scenarios", true);
     append_scenario_array(out, "rows", false);
     append_scenario_array(out, "kScenarios", false);
+    append_scenario_array(out, "kScenarios[]", false);
     append_scenario_array(out, "k_scenarios", false);
     append_scenario_array(out, "scenario_rows", false);
     append_scenario_array(out, "scenario_specs", false);
+    append_scenario_array(out, "scenario_facts", false);
+    append_scenario_array(out, "scenario_table", false);
     append_scenario_array(out, "kScenarioRows", false);
     append_scenario_array(out, "kScenarioSpecs", false);
+    append_scenario_array(out, "kScenarioFacts", false);
     append_scenario_array(out, "k_scenario_specs", false);
     out.append("\n}\n");
 
