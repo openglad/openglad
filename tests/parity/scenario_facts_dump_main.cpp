@@ -8,7 +8,8 @@
 //         "scenario_id": "...",
 //         "compare_mode": "ByteEqual"|"SemanticParity"|"Invariant",
 //         "coverage_audit": "...",
-//         "family_spawns": ["FAMILY_SOLDIER", 0, ...],
+//         "family_spawns": [{ "family": "FAMILY_SOLDIER",
+//                              "family_id": 0, "team": 0, ... }],
 //         "family_spawn_names": ["FAMILY_SOLDIER", ...],
 //         "spawns": [{ "family": "FAMILY_SOLDIER",
 //                      "family_id": 0, "order": "Living",
@@ -24,7 +25,8 @@
 //         "predicate_kinds": ["TickReached", "WalkerFamilyCount", ...],
 //         "expected_fact_kinds": ["TickReached", "WalkerFamilyCount", ...],
 //         "expected_facts_kinds": ["TickReached", "WalkerFamilyCount", ...],
-//         "expected_facts": ["TickReached", "WalkerFamilyCount", ...],
+//         "expected_facts": [ ...same shape as predicates...,
+//                             plus symbolic arg0 aliases for audits... ],
 //         "expected_fact_objects": [ ...same shape as predicates... ],
 //         "expected_fact_audit_objects": [ ...objects plus symbolic arg0 aliases... ] },
 //       ...
@@ -281,6 +283,40 @@ void append_living_family_spawns_mixed(std::string& out, const og::parity::Scena
     out.push_back(']');
 }
 
+void append_living_family_spawn_objects(std::string& out, const og::parity::ScenarioSpec& s)
+{
+    out.push_back('[');
+    bool first = true;
+    for (std::size_t i = 0; i < s.spawn_count; ++i)
+    {
+        const auto& sp = s.spawns[i];
+        if (sp.order != og::parity::kOrderLiving) continue;
+        if (!first) out.append(", ");
+        first = false;
+        out.append("{ \"family\": ");
+        append_escaped(out, og::parity::family_symbol_by_order(sp.order, sp.family));
+        out.append(", \"family_name\": ");
+        append_escaped(out, og::parity::family_symbol_by_order(sp.order, sp.family));
+        out.append(", \"name\": ");
+        append_escaped(out, og::parity::family_symbol_by_order(sp.order, sp.family));
+        char nums[192];
+        std::snprintf(nums, sizeof(nums),
+            ", \"family_id\": %d, \"id\": %d, \"order\": ",
+            sp.family,
+            sp.family);
+        out.append(nums);
+        append_escaped(out, order_name(sp.order));
+        std::snprintf(nums, sizeof(nums),
+            ", \"order_id\": %u, \"team\": %u, \"x\": %d, \"y\": %d }",
+            static_cast<unsigned>(sp.order),
+            static_cast<unsigned>(sp.team),
+            sp.x,
+            sp.y);
+        out.append(nums);
+    }
+    out.push_back(']');
+}
+
 void append_living_family_spawn_ids(std::string& out, const og::parity::ScenarioSpec& s)
 {
     out.push_back('[');
@@ -346,11 +382,15 @@ void append_row_object(std::string& out, const og::parity::ScenarioSpec& s)
                   static_cast<unsigned long long>(s.exercises));
     out.append(nums);
     out.append(", \"family_spawns\": ");
-    append_living_family_spawns_mixed(out, s);
+    append_living_family_spawn_objects(out, s);
     out.append(", \"family_spawn_names\": ");
     append_living_family_spawns(out, s);
     out.append(", \"family_spawn_ids\": ");
     append_living_family_spawn_ids(out, s);
+    out.append(", \"family_spawn_values\": ");
+    append_living_family_spawns_mixed(out, s);
+    out.append(", \"family_spawns_legacy\": ");
+    append_living_family_spawns(out, s);
     out.append(", \"spawns\": ");
     append_spawn_objects(out, s);
     out.append(", \"facts\": ");
@@ -365,8 +405,10 @@ void append_row_object(std::string& out, const og::parity::ScenarioSpec& s)
     append_predicate_kind_array(out, s);
     out.append(", \"expected_facts_kinds\": ");
     append_predicate_kind_array(out, s);
-    out.append(", \"expected_facts\": ");
+    out.append(", \"expected_fact_names\": ");
     append_predicate_kind_array(out, s);
+    out.append(", \"expected_facts\": ");
+    append_predicate_audit_array(out, s);
     out.append(", \"expected_fact_objects\": ");
     append_predicate_array(out, s);
     out.append(", \"expected_fact_audit_objects\": ");
