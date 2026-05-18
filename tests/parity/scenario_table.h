@@ -1094,6 +1094,13 @@ inline constexpr Mutation kMut_family_spawn_identity = {
     "Rotates every dumped living-family identity at loader binding time; each phase-05 family row loses its exact WalkerFamilyCount(FAMILY_X,1,1) predicate even though the spawn list still asked for the original family."
 };
 
+inline constexpr Mutation kMut_family_spawn_identity_elf = {
+    "src/resources/gloader.cpp", 608,
+    "ob->set_order_family(order, static_cast<char>(family));",
+    "ob->set_order_family(order, static_cast<char>(family == 0 ? 2 : 0));",
+    "Maps the player SOLDIER away from ELF and maps the target ELF away from ELF; family_elf_scen99 loses its exact WalkerFamilyCount(FAMILY_ELF,1,1) predicate."
+};
+
 inline constexpr Mutation kMut_family_soldier_init = {
     "src/gameplay/families/family_soldier.cpp", 170,
     "BASE_GUY_HP+90",
@@ -3634,7 +3641,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kFamilySpawns_complete_elf, std::size(kFamilySpawns_complete_elf), 0, false, true,
       Exercises::None,
       kFacts_family_elf_scen99, std::size(kFacts_family_elf_scen99),
-      kMut_family_spawn_identity },
+      kMut_family_spawn_identity_elf },
 
     { "family_archer_scen99",          "scen/scen1.fss", 0x00000042u,
       kInputsFamilyCompleteness, std::size(kInputsFamilyCompleteness), 600, CompareMode::SemanticParity, false,
