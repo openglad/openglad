@@ -602,21 +602,19 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Parity coverage manifest gate (Phase 01 adds gap-table / scenario-list emitters)",
     )
-    parser.add_argument(
+    emit_group = parser.add_mutually_exclusive_group()
+    emit_group.add_argument(
         "--emit-gap-table",
         action="store_true",
         help="Emit seven pipe tables (walker/weapon/treasure/generator/effect/specials/event) to stdout.",
     )
-    parser.add_argument(
+    emit_group.add_argument(
         "--emit-scenario-list",
         action="store_true",
         help="Emit one tab-separated <id>\\t<compare_mode>\\t<is_branch_internal> per kScenarios row.",
     )
     args = parser.parse_args()
 
-    if args.emit_gap_table and args.emit_scenario_list:
-        sys.stderr.write("--emit-gap-table and --emit-scenario-list are mutually exclusive\n")
-        return 2
     if args.emit_gap_table:
         return emit_gap_table_main()
     if args.emit_scenario_list:
