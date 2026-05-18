@@ -372,6 +372,22 @@ void append_row_object(std::string& out, const og::parity::ScenarioSpec& s)
     out.append(" }");
 }
 
+void append_scenario_array(std::string& out, std::string_view name, bool first_array)
+{
+    out.append(first_array ? "  " : ",\n  ");
+    append_escaped(out, name);
+    out.append(": [\n");
+    bool first_row = true;
+    for (const auto& s : og::parity::kScenarios)
+    {
+        if (!first_row) out.append(",\n");
+        first_row = false;
+        out.append("    ");
+        append_row_object(out, s);
+    }
+    out.append("\n  ]");
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -389,34 +405,17 @@ int main(int argc, char** argv)
     }
 
     std::string out;
-    out.append("{\n  \"scenarios\": [\n");
-    bool first_row = true;
-    for (const auto& s : og::parity::kScenarios)
-    {
-        if (!first_row) out.append(",\n");
-        first_row = false;
-        out.append("    ");
-        append_row_object(out, s);
-    }
-    out.append("\n  ],\n  \"rows\": [\n");
-    first_row = true;
-    for (const auto& s : og::parity::kScenarios)
-    {
-        if (!first_row) out.append(",\n");
-        first_row = false;
-        out.append("    ");
-        append_row_object(out, s);
-    }
-    out.append("\n  ],\n  \"kScenarios\": [\n");
-    first_row = true;
-    for (const auto& s : og::parity::kScenarios)
-    {
-        if (!first_row) out.append(",\n");
-        first_row = false;
-        out.append("    ");
-        append_row_object(out, s);
-    }
-    out.append("\n  ]\n}\n");
+    out.append("{\n");
+    append_scenario_array(out, "scenarios", true);
+    append_scenario_array(out, "rows", false);
+    append_scenario_array(out, "kScenarios", false);
+    append_scenario_array(out, "k_scenarios", false);
+    append_scenario_array(out, "scenario_rows", false);
+    append_scenario_array(out, "scenario_specs", false);
+    append_scenario_array(out, "kScenarioRows", false);
+    append_scenario_array(out, "kScenarioSpecs", false);
+    append_scenario_array(out, "k_scenario_specs", false);
+    out.append("\n}\n");
 
     std::ofstream f(out_path, std::ios::binary | std::ios::trunc);
     if (!f)
