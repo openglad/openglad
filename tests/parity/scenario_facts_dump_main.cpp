@@ -365,10 +365,18 @@ std::string predicate_expression(const og::parity::FactPredicate& p)
 void append_predicate_expression_array(std::string& out, const og::parity::ScenarioSpec& s)
 {
     out.push_back('[');
+    bool first = true;
     for (std::size_t i = 0; i < s.fact_count; ++i)
     {
-        if (i != 0) out.append(", ");
+        if (!first) out.append(", ");
+        first = false;
         append_escaped(out, predicate_expression(s.expected_facts[i]));
+    }
+    for (std::size_t i = 0; i < s.fact_count; ++i)
+    {
+        if (!first) out.append(", ");
+        first = false;
+        append_escaped(out, kind_name(s.expected_facts[i].kind));
     }
     out.push_back(']');
 }
