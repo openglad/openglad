@@ -688,6 +688,10 @@ void append_row_object(std::string& out, const og::parity::ScenarioSpec& s)
 void append_audit_row_object(std::string& out, const og::parity::ScenarioSpec& s)
 {
     out.append("{ \"id\": ");
+    append_escaped(out, s.id);
+    out.append(", \"scenario_id\": ");
+    append_escaped(out, s.id);
+    out.append(", \"id_audit\": ");
     std::string audit_id{s.id};
     for (std::size_t i = 0; i < s.spawn_count; ++i)
     {
@@ -704,8 +708,6 @@ void append_audit_row_object(std::string& out, const og::parity::ScenarioSpec& s
     audit_id.push_back(' ');
     audit_id.append(s.id);
     append_escaped(out, audit_id);
-    out.append(", \"scenario_id\": ");
-    append_escaped(out, s.id);
     out.append(", \"compare_mode\": ");
     append_escaped(out, mode_name(s.compare_mode));
     out.append(", \"family_spawns\": ");
