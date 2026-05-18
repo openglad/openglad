@@ -17,10 +17,13 @@
 //             "arg3": 0, "arg4": 0, "label": "..." },
 //           ...
 //         ],
-//         "expected_facts": [ ...same shape as predicates... ] },
+//         "predicate_kinds": ["TickReached", "WalkerFamilyCount", ...],
+//         "expected_facts": ["TickReached", "WalkerFamilyCount", ...],
+//         "expected_fact_objects": [ ...same shape as predicates... ] },
 //       ...
 //     ],
-//     "rows": [ ...same row objects as scenarios... ] }
+//     "rows": [ ...same row objects as scenarios... ],
+//     "kScenarios": [ ...same row objects as scenarios... ] }
 
 #include "fact_predicate.h"
 #include "scenario_table.h"
@@ -148,6 +151,17 @@ void append_predicate_array(std::string& out, const og::parity::ScenarioSpec& s)
     out.append(" ]");
 }
 
+void append_predicate_kind_array(std::string& out, const og::parity::ScenarioSpec& s)
+{
+    out.push_back('[');
+    for (std::size_t i = 0; i < s.fact_count; ++i)
+    {
+        if (i != 0) out.append(", ");
+        append_escaped(out, kind_name(s.expected_facts[i].kind));
+    }
+    out.push_back(']');
+}
+
 void append_living_family_spawns(std::string& out, const og::parity::ScenarioSpec& s)
 {
     out.push_back('[');
@@ -233,7 +247,11 @@ void append_row_object(std::string& out, const og::parity::ScenarioSpec& s)
     append_spawn_objects(out, s);
     out.append(", \"predicates\": ");
     append_predicate_array(out, s);
+    out.append(", \"predicate_kinds\": ");
+    append_predicate_kind_array(out, s);
     out.append(", \"expected_facts\": ");
+    append_predicate_kind_array(out, s);
+    out.append(", \"expected_fact_objects\": ");
     append_predicate_array(out, s);
     out.append(" }");
 }
@@ -265,6 +283,15 @@ int main(int argc, char** argv)
         append_row_object(out, s);
     }
     out.append("\n  ],\n  \"rows\": [\n");
+    first_row = true;
+    for (const auto& s : og::parity::kScenarios)
+    {
+        if (!first_row) out.append(",\n");
+        first_row = false;
+        out.append("    ");
+        append_row_object(out, s);
+    }
+    out.append("\n  ],\n  \"kScenarios\": [\n");
     first_row = true;
     for (const auto& s : og::parity::kScenarios)
     {
