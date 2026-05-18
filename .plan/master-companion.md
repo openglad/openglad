@@ -10,10 +10,10 @@ git worktree (`../openglad-master`) on a local-only branch
 - Worktree:      `/home/yans/code/openglad-master`
 - Branch:        `parity-companion` (local-only, built on top of
   `parity-baseline-master` per `.plan/master-baseline.md`)
-- Commit SHA:    `47d7a15bc2fac2cea8aa55868a2db2601a525665`
-  (pinned by parity-cov phase 02 on 2026-05-17; matches
+- Commit SHA:    `96a1425de81c70b43e3583d9843ef587116dbf15`
+  (pinned by parity-cov phase 02 on 2026-05-18; matches
   `.plan/parity-coverage-manifest.md` frontmatter `master_companion_sha:`
-  and embeds branch HEAD `8247032bba82902967978a6282e2db802355a158`)
+  and embeds branch HEAD `32b5934129a7fab2f598adb23c2c65ee06ff6cbb`)
 - Parent (master baseline): `16963de0eea0bdccdbe9e0b85825bac9cc1ab0cd`
   (= `origin/master` HEAD on 2026-05-12)
 - Binary:        `../openglad-master/build/ci-test/parity_dump_master`
@@ -92,12 +92,12 @@ one requires the same edit to the other and a rebuilt master golden set.
 
 | File on companion (`../openglad-master/`)      | SHA-1 (sha1sum)                                |
 |------------------------------------------------|------------------------------------------------|
-| `tools/parity_scenario_table.h`                | `1489234990e5e8ea3c0bb6cc81a0cb11df6a637d`     |
+| `tools/parity_scenario_table.h`                | `4326c97f55e32239eab0871975ecd115fcfbfb91`     |
 | `tools/parity_dump_master.cpp`                 | `66f357c940935e8ffdd838aaf17f1394418bfa95`     |
-| `tools/parity_dump_state.h`                    | `a9a944e8e6bb63ac9724bdd44f4a161bddc806ab`     |
-| `tools/parity_dump_state.cpp`                  | `09c0a0c86e99d67ddd48843e6066e4d113967263`     |
+| `tools/parity_dump_state.h`                    | `52ed7c873a7e74ad9e23d354f487552a73277994`     |
+| `tools/parity_dump_state.cpp`                  | `dcd56833a0d1aab07a96bb69d08e8f3c88e4d8b8`     |
 | `tools/parity_dump_master_stubs.cpp`           | `9c69eca8181a48832cebd9672b87d503bd9b1453`     |
-| `tools/fact_predicate.h`                       | `662486bce8643e93c984a01aa0a8661feccf47b6`     |
+| `tools/fact_predicate.h`                       | `b58581887aed08b9e795a4cb4a5a8584bd12ffad`     |
 | `tools/state_dump.h`                           | `11272f58969024c65bdc966f47de683944d74da8`     |
 | `tools/parity_bootstrap.cpp`                   | `eb27e81a927d85d57cf663ebbd6c1e867c0e8f72`     |
 | `tools/parity_bootstrap.h`                     | `eaf10ffd2850866cfeb7bea42a712e9498719480`     |
@@ -105,11 +105,11 @@ one requires the same edit to the other and a rebuilt master golden set.
 | `tools/parity_scenario_runtime.h`              | `3c1ece3d0f7b371826837d37907710a53fd8d0c5`     |
 
 The companion-side `parity_scenario_table.h` SHA must equal the branch
-`tests/parity/scenario_table.h` SHA verbatim — `1489234990e5e8ea3c0bb6cc81a0cb11df6a637d`
+`tests/parity/scenario_table.h` SHA verbatim — `4326c97f55e32239eab0871975ecd115fcfbfb91`
 matches on both sides today. SHA-1s above were captured during
 parity-cov phase 02 on companion HEAD
-`47d7a15bc2fac2cea8aa55868a2db2601a525665` (mirroring branch HEAD
-`8247032bba82902967978a6282e2db802355a158`).
+`96a1425de81c70b43e3583d9843ef587116dbf15` (mirroring branch HEAD
+`32b5934129a7fab2f598adb23c2c65ee06ff6cbb`).
 
 ## RNG-seeding mechanism (literal)
 
