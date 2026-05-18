@@ -32,8 +32,8 @@
 //         "expected_fact_audit_objects": [ ...objects plus symbolic arg0 aliases... ] },
 //       ...
 //     ],
-//     "rows": [ ...same row objects as scenarios... ],
-//     "kScenarios": [ ...same row objects as scenarios... ] }
+//     "rows": [ ...compact audit objects with name-list aliases... ],
+//     "kScenarios": [ ...compact audit objects with name-list aliases... ] }
 
 #include "fact_predicate.h"
 #include "scenario_table.h"
@@ -597,8 +597,12 @@ void append_audit_row_object(std::string& out, const og::parity::ScenarioSpec& s
     out.append(", \"family_spawns[]\": ");
     append_living_family_spawns(out, s);
     out.append(", \"expected_facts\": ");
-    append_minimal_predicate_array(out, s);
+    append_predicate_kind_array(out, s);
     out.append(", \"expected_facts[]\": ");
+    append_predicate_kind_array(out, s);
+    out.append(", \"expected_fact_objects\": ");
+    append_minimal_predicate_array(out, s);
+    out.append(", \"expected_fact_objects[]\": ");
     append_minimal_predicate_array(out, s);
     out.append(", \"fact_kinds\": ");
     append_predicate_kind_array(out, s);
