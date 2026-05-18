@@ -7,6 +7,7 @@
 //       { "id": "...",
 //         "scenario_id": "...",
 //         "compare_mode": "ByteEqual"|"SemanticParity"|"Invariant",
+//         "coverage_audit": "...",
 //         "family_spawns": ["FAMILY_SOLDIER", ...],
 //         "spawns": [{ "family": "FAMILY_SOLDIER",
 //                      "family_id": 0, "order": "Living",
@@ -296,6 +297,8 @@ void append_row_object(std::string& out, const og::parity::ScenarioSpec& s)
     append_escaped(out, s.id);
     out.append(", \"compare_mode\": ");
     append_escaped(out, mode_name(s.compare_mode));
+    out.append(", \"coverage_audit\": ");
+    append_escaped(out, s.coverage_audit);
     out.append(", \"is_branch_internal\": ");
     out.append(s.is_branch_internal ? "true" : "false");
     out.append(", \"tick_budget\": ");

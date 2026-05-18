@@ -330,10 +330,15 @@ def parse_scenarios(text: str) -> list[dict[str, str]]:
         else:
             facts_name = "nullptr"
             facts_count_expr = "0"
-        # discriminating mutation: trailing kMut_* identifier (or '{}'
-        # default). The row text ends with the mutation; grab the last
-        # kMut_* or {} token.
-        mut_match = re.search(r"(kMut_\w+|\{\s*\})\s*$", r.strip())
+        # discriminating mutation: kMut_* identifier (or '{}' default) at
+        # the tail. Newer rows may carry one trailing coverage_audit string
+        # after the mutation for static checkers that do not resolve
+        # kFacts_* arrays.
+        mut_match = re.search(
+            r"(kMut_\w+|\{\s*\})(?:\s*,\s*\"(?:\\.|[^\"])*\")?\s*$",
+            r.strip(),
+            re.S,
+        )
         mut_token = mut_match.group(1) if mut_match else ""
         out.append({
             "id":              sid,
