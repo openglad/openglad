@@ -5,15 +5,19 @@
 // The JSON shape is:
 //   { "scenarios": [
 //       { "id": "...",
+//         "scenario_id": "...",
 //         "compare_mode": "ByteEqual"|"SemanticParity"|"Invariant",
+//         "family_spawns": ["FAMILY_SOLDIER", ...],
 //         "predicates": [
 //           { "kind": "WalkerFamilyCount",
 //             "arg0": 0, "arg1": 1, "arg2": 99,
 //             "arg3": 0, "arg4": 0, "label": "..." },
 //           ...
-//         ] },
+//         ],
+//         "expected_facts": [ ...same shape as predicates... ] },
 //       ...
-//     ] }
+//     ],
+//     "rows": [ ...same row objects as scenarios... ] }
 
 #include "fact_predicate.h"
 #include "scenario_table.h"
@@ -104,6 +108,93 @@ void append_escaped(std::string& out, std::string_view s)
     out.push_back('"');
 }
 
+void append_predicate_array(std::string& out, const og::parity::ScenarioSpec& s)
+{
+    out.push_back('[');
+    for (std::size_t i = 0; i < s.fact_count; ++i)
+    {
+        const auto& p = s.expected_facts[i];
+        if (i != 0) out.push_back(',');
+        out.append("\n      { \"kind\": ");
+        append_escaped(out, kind_name(p.kind));
+        char nums[128];
+        std::snprintf(nums, sizeof(nums),
+            ", \"arg0\": %d, \"arg1\": %d, \"arg2\": %d, \"arg3\": %d, \"arg4\": %d, \"label\": ",
+            p.arg0, p.arg1, p.arg2, p.arg3, p.arg4);
+        out.append(nums);
+        append_escaped(out, p.label);
+        out.append(", \"applies_to_branch\": ");
+        out.append(p.applies_to_branch ? "true" : "false");
+        out.append(", \"applies_to_master\": ");
+        out.append(p.applies_to_master ? "true" : "false");
+        out.append(" }");
+    }
+    out.append(" ]");
+}
+
+void append_living_family_spawns(std::string& out, const og::parity::ScenarioSpec& s)
+{
+    out.push_back('[');
+    bool first = true;
+    for (std::size_t i = 0; i < s.spawn_count; ++i)
+    {
+        const auto& sp = s.spawns[i];
+        if (sp.order != og::parity::kOrderLiving) continue;
+        if (!first) out.append(", ");
+        first = false;
+        append_escaped(out, og::parity::family_symbol_by_order(sp.order, sp.family));
+    }
+    out.push_back(']');
+}
+
+void append_living_family_spawn_ids(std::string& out, const og::parity::ScenarioSpec& s)
+{
+    out.push_back('[');
+    bool first = true;
+    for (std::size_t i = 0; i < s.spawn_count; ++i)
+    {
+        const auto& sp = s.spawns[i];
+        if (sp.order != og::parity::kOrderLiving) continue;
+        if (!first) out.append(", ");
+        first = false;
+        char buf[32];
+        std::snprintf(buf, sizeof(buf), "%d", sp.family);
+        out.append(buf);
+    }
+    out.push_back(']');
+}
+
+void append_row_object(std::string& out, const og::parity::ScenarioSpec& s)
+{
+    out.append("{ \"id\": ");
+    append_escaped(out, s.id);
+    out.append(", \"scenario_id\": ");
+    append_escaped(out, s.id);
+    out.append(", \"compare_mode\": ");
+    append_escaped(out, mode_name(s.compare_mode));
+    out.append(", \"is_branch_internal\": ");
+    out.append(s.is_branch_internal ? "true" : "false");
+    out.append(", \"tick_budget\": ");
+    char nums[128];
+    std::snprintf(nums, sizeof(nums), "%u", static_cast<unsigned>(s.tick_budget));
+    out.append(nums);
+    out.append(", \"fresh_arena\": ");
+    out.append(s.fresh_arena ? "true" : "false");
+    out.append(", \"exercises\": ");
+    std::snprintf(nums, sizeof(nums), "%llu",
+                  static_cast<unsigned long long>(s.exercises));
+    out.append(nums);
+    out.append(", \"family_spawns\": ");
+    append_living_family_spawns(out, s);
+    out.append(", \"family_spawn_ids\": ");
+    append_living_family_spawn_ids(out, s);
+    out.append(", \"predicates\": ");
+    append_predicate_array(out, s);
+    out.append(", \"expected_facts\": ");
+    append_predicate_array(out, s);
+    out.append(" }");
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -127,30 +218,17 @@ int main(int argc, char** argv)
     {
         if (!first_row) out.append(",\n");
         first_row = false;
-        out.append("    { \"id\": ");
-        append_escaped(out, s.id);
-        out.append(", \"compare_mode\": ");
-        append_escaped(out, mode_name(s.compare_mode));
-        out.append(", \"predicates\": [");
-        for (std::size_t i = 0; i < s.fact_count; ++i)
-        {
-            const auto& p = s.expected_facts[i];
-            if (i != 0) out.push_back(',');
-            out.append("\n      { \"kind\": ");
-            append_escaped(out, kind_name(p.kind));
-            char nums[128];
-            std::snprintf(nums, sizeof(nums),
-                ", \"arg0\": %d, \"arg1\": %d, \"arg2\": %d, \"arg3\": %d, \"arg4\": %d, \"label\": ",
-                p.arg0, p.arg1, p.arg2, p.arg3, p.arg4);
-            out.append(nums);
-            append_escaped(out, p.label);
-            out.append(", \"applies_to_branch\": ");
-            out.append(p.applies_to_branch ? "true" : "false");
-            out.append(", \"applies_to_master\": ");
-            out.append(p.applies_to_master ? "true" : "false");
-            out.append(" }");
-        }
-        out.append(" ] }");
+        out.append("    ");
+        append_row_object(out, s);
+    }
+    out.append("\n  ],\n  \"rows\": [\n");
+    first_row = true;
+    for (const auto& s : og::parity::kScenarios)
+    {
+        if (!first_row) out.append(",\n");
+        first_row = false;
+        out.append("    ");
+        append_row_object(out, s);
     }
     out.append("\n  ]\n}\n");
 
