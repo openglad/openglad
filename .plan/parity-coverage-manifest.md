@@ -215,10 +215,10 @@ mirror byte-for-byte to `../openglad-master/tools/parity_scenario_table.h`.
 | 27 | `(FAMILY_THIEF, 3)` | TAUNT ENEMY | `Special_Thief_3` | `family_thief_scen99` |
 | 28 | `(FAMILY_THIEF, 4)` | POISON CLOUD | `Special_Thief_4` | `family_thief_scen99` |
 | 29 | `(FAMILY_GHOST, 1)` | SCARE | `Special_Ghost_1` | `family_ghost_scen99` |
-| 30 | `(FAMILY_DRUID, 1)` | GROW TREE | `Special_Druid_1` | `family_druid_scen99` |
-| 31 | `(FAMILY_DRUID, 2)` | SUMMON FAERIE | `Special_Druid_2` | `family_druid_scen99` |
-| 32 | `(FAMILY_DRUID, 3)` | REVEAL | `Special_Druid_3` | `family_druid_scen99` |
-| 33 | `(FAMILY_DRUID, 4)` | PROTECTION | `Special_Druid_4` | `family_druid_scen99` |
+| 30 | `(FAMILY_DRUID, 1)` | GROW TREE | `Special_Druid_1` | `special_druid_1_scen99` |
+| 31 | `(FAMILY_DRUID, 2)` | SUMMON FAERIE | `Special_Druid_2` | `special_druid_2_scen99` |
+| 32 | `(FAMILY_DRUID, 3)` | REVEAL | `Special_Druid_3` | `special_druid_3_scen99` |
+| 33 | `(FAMILY_DRUID, 4)` | PROTECTION | `Special_Druid_4` | `special_druid_4_scen99` |
 | 34 | `(FAMILY_ORC, 1)` | HOWL | `Special_Orc_1` | `family_orc_scen99` |
 | 35 | `(FAMILY_ORC, 2)` | EAT CORPSE | `Special_Orc_2` | `family_orc_scen99` |
 | 36 | `(FAMILY_BARBARIAN, 1)` | HURL BOULDER | `Special_Barbarian_1` | `family_barbarian_scen99` |

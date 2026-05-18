@@ -8,6 +8,9 @@
 //         "scenario_id": "...",
 //         "compare_mode": "ByteEqual"|"SemanticParity"|"Invariant",
 //         "family_spawns": ["FAMILY_SOLDIER", ...],
+//         "spawns": [{ "family": "FAMILY_SOLDIER",
+//                      "family_id": 0, "order": "Living",
+//                      "order_id": 0, "team": 0, "x": 96, "y": 120 }],
 //         "predicates": [
 //           { "kind": "WalkerFamilyCount",
 //             "arg0": 0, "arg1": 1, "arg2": 99,
@@ -74,6 +77,19 @@ const char* mode_name(og::parity::CompareMode m)
         case CompareMode::ByteEqual:      return "ByteEqual";
         case CompareMode::Invariant:      return "Invariant";
         case CompareMode::SemanticParity: return "SemanticParity";
+    }
+    return "Unknown";
+}
+
+const char* order_name(std::uint8_t order)
+{
+    switch (order)
+    {
+        case og::parity::kOrderLiving:    return "Living";
+        case og::parity::kOrderWeapon:    return "Weapon";
+        case og::parity::kOrderTreasure:  return "Treasure";
+        case og::parity::kOrderGenerator: return "Generator";
+        case og::parity::kOrderFX:        return "FX";
     }
     return "Unknown";
 }
@@ -164,6 +180,31 @@ void append_living_family_spawn_ids(std::string& out, const og::parity::Scenario
     out.push_back(']');
 }
 
+void append_spawn_objects(std::string& out, const og::parity::ScenarioSpec& s)
+{
+    out.push_back('[');
+    for (std::size_t i = 0; i < s.spawn_count; ++i)
+    {
+        const auto& sp = s.spawns[i];
+        if (i != 0) out.append(", ");
+        out.append("{ \"family\": ");
+        append_escaped(out, og::parity::family_symbol_by_order(sp.order, sp.family));
+        char nums[192];
+        std::snprintf(nums, sizeof(nums),
+            ", \"family_id\": %d, \"order\": ", sp.family);
+        out.append(nums);
+        append_escaped(out, order_name(sp.order));
+        std::snprintf(nums, sizeof(nums),
+            ", \"order_id\": %u, \"team\": %u, \"x\": %d, \"y\": %d }",
+            static_cast<unsigned>(sp.order),
+            static_cast<unsigned>(sp.team),
+            sp.x,
+            sp.y);
+        out.append(nums);
+    }
+    out.push_back(']');
+}
+
 void append_row_object(std::string& out, const og::parity::ScenarioSpec& s)
 {
     out.append("{ \"id\": ");
@@ -188,6 +229,8 @@ void append_row_object(std::string& out, const og::parity::ScenarioSpec& s)
     append_living_family_spawns(out, s);
     out.append(", \"family_spawn_ids\": ");
     append_living_family_spawn_ids(out, s);
+    out.append(", \"spawns\": ");
+    append_spawn_objects(out, s);
     out.append(", \"predicates\": ");
     append_predicate_array(out, s);
     out.append(", \"expected_facts\": ");

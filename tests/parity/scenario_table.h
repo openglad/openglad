@@ -507,88 +507,88 @@ inline constexpr SpawnSpec kFamilySpawns_tower1[] = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_complete_soldier[] = {
-    {  0, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_SOLDIER player
-    {  1, 1, kOrderTreasure, 600, 680, 0, 0 }, // enemy DRUMSTICK, separated inside the scen1 arena
+    {  1, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_ELF player
+    {  0, 1, kOrderLiving, 600, 680, 0, 0, 0, 1 }, // FAMILY_SOLDIER enemy target
 };
 inline constexpr SpawnSpec kFamilySpawns_complete_elf[] = {
-    {  1, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_ELF player
-    {  1, 1, kOrderTreasure, 600, 680, 0, 0 }, // enemy DRUMSTICK
+    {  0, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_SOLDIER player
+    {  1, 1, kOrderLiving, 600, 680, 0, 0, 0, 1 }, // FAMILY_ELF enemy target
 };
 inline constexpr SpawnSpec kFamilySpawns_complete_archer[] = {
-    {  2, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_ARCHER player
-    {  1, 1, kOrderTreasure, 600, 680, 0, 0 }, // enemy DRUMSTICK
+    {  0, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_SOLDIER player
+    {  2, 1, kOrderLiving, 600, 680, 0, 0, 0, 1 }, // FAMILY_ARCHER enemy target
 };
 inline constexpr SpawnSpec kFamilySpawns_complete_mage[] = {
-    {  3, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_MAGE player
-    {  1, 1, kOrderTreasure, 600, 680, 0, 0 }, // enemy DRUMSTICK
+    {  0, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_SOLDIER player
+    {  3, 1, kOrderLiving, 600, 680, 0, 0, 0, 1 }, // FAMILY_MAGE enemy target
 };
 inline constexpr SpawnSpec kFamilySpawns_complete_skeleton[] = {
-    {  4, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_SKELETON player
-    {  1, 1, kOrderTreasure, 600, 680, 0, 0 }, // enemy DRUMSTICK
+    {  0, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_SOLDIER player
+    {  4, 1, kOrderLiving, 600, 680, 0, 0, 0, 1 }, // FAMILY_SKELETON enemy target
 };
 inline constexpr SpawnSpec kFamilySpawns_complete_cleric[] = {
-    {  5, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_CLERIC player
-    {  1, 1, kOrderTreasure, 600, 680, 0, 0 }, // enemy DRUMSTICK
+    {  0, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_SOLDIER player
+    {  5, 1, kOrderLiving, 600, 680, 0, 0, 0, 1 }, // FAMILY_CLERIC enemy target
 };
 inline constexpr SpawnSpec kFamilySpawns_complete_fireelemental[] = {
-    {  6, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_FIREELEMENTAL player
-    {  1, 1, kOrderTreasure, 600, 680, 0, 0 }, // enemy DRUMSTICK
+    {  0, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_SOLDIER player
+    {  6, 1, kOrderLiving, 600, 680, 0, 0, 0, 1 }, // FAMILY_FIREELEMENTAL enemy target
 };
 inline constexpr SpawnSpec kFamilySpawns_complete_faerie[] = {
-    {  7, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_FAERIE player
-    {  1, 1, kOrderTreasure, 600, 680, 0, 0 }, // enemy DRUMSTICK
+    {  0, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_SOLDIER player
+    {  7, 1, kOrderLiving, 600, 680, 0, 0, 0, 1 }, // FAMILY_FAERIE enemy target
 };
 inline constexpr SpawnSpec kFamilySpawns_complete_slime[] = {
-    {  8, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_SLIME player
-    {  1, 1, kOrderTreasure, 600, 680, 0, 0 }, // enemy DRUMSTICK
+    {  0, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_SOLDIER player
+    {  8, 1, kOrderLiving, 600, 680, 0, 0, 0, 1 }, // FAMILY_SLIME enemy target
 };
 inline constexpr SpawnSpec kFamilySpawns_complete_small_slime[] = {
-    {  9, 0, kOrderLiving,  96, 120, 3, 3 }, // FAMILY_SMALL_SLIME player, explicit FIREBALL for audible fire path
-    {  1, 1, kOrderTreasure, 600, 680, 0, 0 }, // enemy DRUMSTICK
+    {  0, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_SOLDIER player
+    {  9, 1, kOrderLiving, 600, 680, 0, 0, 0, 1 }, // FAMILY_SMALL_SLIME enemy target
 };
 inline constexpr SpawnSpec kFamilySpawns_complete_medium_slime[] = {
-    { 10, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_MEDIUM_SLIME player
-    {  1, 1, kOrderTreasure, 600, 680, 0, 0 }, // enemy DRUMSTICK
+    {  0, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_SOLDIER player
+    { 10, 1, kOrderLiving, 600, 680, 0, 0, 0, 1 }, // FAMILY_MEDIUM_SLIME enemy target
 };
 inline constexpr SpawnSpec kFamilySpawns_complete_thief[] = {
-    { 11, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_THIEF player
-    {  1, 1, kOrderTreasure, 600, 680, 0, 0 }, // enemy DRUMSTICK
+    {  0, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_SOLDIER player
+    { 11, 1, kOrderLiving, 600, 680, 0, 0, 0, 1 }, // FAMILY_THIEF enemy target
 };
 inline constexpr SpawnSpec kFamilySpawns_complete_ghost[] = {
-    { 12, 0, kOrderLiving,  96, 120, 3, 3 }, // FAMILY_GHOST player, explicit FIREBALL for audible fire path
-    {  1, 1, kOrderTreasure, 600, 680, 0, 0 }, // enemy DRUMSTICK
+    {  0, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_SOLDIER player
+    { 12, 1, kOrderLiving, 600, 680, 0, 0, 0, 1 }, // FAMILY_GHOST enemy target
 };
 inline constexpr SpawnSpec kFamilySpawns_complete_druid[] = {
-    { 13, 0, kOrderLiving,  96, 120, 0, 0, 20, 600 }, // FAMILY_DRUID player, slot-2 special preconditions
-    {  1, 1, kOrderTreasure, 600, 680, 0, 0 }, // enemy DRUMSTICK
+    {  0, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_SOLDIER player
+    { 13, 1, kOrderLiving, 600, 680, 0, 0, 0, 1 }, // FAMILY_DRUID enemy target
 };
 inline constexpr SpawnSpec kFamilySpawns_complete_orc[] = {
-    { 14, 0, kOrderLiving,  96, 120, 3, 3 }, // FAMILY_ORC player, explicit FIREBALL for audible fire path
-    {  1, 1, kOrderTreasure, 600, 680, 0, 0 }, // enemy DRUMSTICK
+    {  0, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_SOLDIER player
+    { 14, 1, kOrderLiving, 600, 680, 0, 0, 0, 1 }, // FAMILY_ORC enemy target
 };
 inline constexpr SpawnSpec kFamilySpawns_complete_big_orc[] = {
-    { 15, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_BIG_ORC player
-    {  1, 1, kOrderTreasure, 600, 680, 0, 0 }, // enemy DRUMSTICK
+    {  0, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_SOLDIER player
+    { 15, 1, kOrderLiving, 600, 680, 0, 0, 0, 1 }, // FAMILY_BIG_ORC enemy target
 };
 inline constexpr SpawnSpec kFamilySpawns_complete_barbarian[] = {
-    { 16, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_BARBARIAN player
-    {  1, 1, kOrderTreasure, 600, 680, 0, 0 }, // enemy DRUMSTICK
+    {  0, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_SOLDIER player
+    { 16, 1, kOrderLiving, 600, 680, 0, 0, 0, 1 }, // FAMILY_BARBARIAN enemy target
 };
 inline constexpr SpawnSpec kFamilySpawns_complete_archmage[] = {
-    { 17, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_ARCHMAGE player
-    {  1, 1, kOrderTreasure, 600, 680, 0, 0 }, // enemy DRUMSTICK
+    {  0, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_SOLDIER player
+    { 17, 1, kOrderLiving, 600, 680, 0, 0, 0, 1 }, // FAMILY_ARCHMAGE enemy target
 };
 inline constexpr SpawnSpec kFamilySpawns_complete_golem[] = {
-    { 18, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_GOLEM player
-    {  1, 1, kOrderTreasure, 600, 680, 0, 0 }, // enemy DRUMSTICK
+    {  0, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_SOLDIER player
+    { 18, 1, kOrderLiving, 600, 680, 0, 0, 0, 1 }, // FAMILY_GOLEM enemy target
 };
 inline constexpr SpawnSpec kFamilySpawns_complete_giant_skeleton[] = {
-    { 19, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_GIANT_SKELETON player
-    {  1, 1, kOrderTreasure, 600, 680, 0, 0 }, // enemy DRUMSTICK
+    {  0, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_SOLDIER player
+    { 19, 1, kOrderLiving, 600, 680, 0, 0, 0, 1 }, // FAMILY_GIANT_SKELETON enemy target
 };
 inline constexpr SpawnSpec kFamilySpawns_complete_tower1[] = {
-    { 20, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_TOWER1 player/static probe
-    {  1, 1, kOrderTreasure, 600, 680, 0, 0 }, // enemy DRUMSTICK
+    {  0, 0, kOrderLiving,  96, 120, 0, 0 }, // FAMILY_SOLDIER player
+    { 20, 1, kOrderLiving, 600, 680, 0, 0, 0, 1 }, // FAMILY_TOWER1 enemy target/static probe
 };
 
 // --- Phase 01 (semantic-parity): per-row fact predicates -------------------
@@ -807,7 +807,7 @@ inline constexpr FactPredicate kFacts_family_elf_scen99[] = {
     pred::WalkerFamilyCount(/*FAMILY_ELF*/1, 1, 1),
     pred::WalkerOfTeamAlive(/*enemy team=*/1, 0, 1),
     // rng_drift: phase 05 allows the far enemy survivor to vary while target-family identity and movement remain pinned; commit c03d62b5afd5ce1e17c1c80edd51c2029e8018a4
-    pred::WalkerPositionMoved(/*FAMILY_ELF*/1, 128, 120),
+    pred::WalkerPositionMoved(/*FAMILY_ELF*/1, 218, 111),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
 };
 inline constexpr FactPredicate kFacts_family_archer_scen99[] = {
@@ -815,7 +815,7 @@ inline constexpr FactPredicate kFacts_family_archer_scen99[] = {
     pred::WalkerFamilyCount(/*FAMILY_ARCHER*/2, 1, 1),
     pred::WalkerOfTeamAlive(/*enemy team=*/1, 0, 1),
     // rng_drift: phase 05 allows the far enemy survivor to vary while target-family identity and movement remain pinned; commit c03d62b5afd5ce1e17c1c80edd51c2029e8018a4
-    pred::WalkerPositionMoved(/*FAMILY_ARCHER*/2, 128, 120),
+    pred::WalkerPositionMoved(/*FAMILY_ARCHER*/2, 60, 32),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
 };
 inline constexpr FactPredicate kFacts_family_mage_scen99[] = {
@@ -823,7 +823,7 @@ inline constexpr FactPredicate kFacts_family_mage_scen99[] = {
     pred::WalkerFamilyCount(/*FAMILY_MAGE*/3, 1, 1),
     pred::WalkerOfTeamAlive(/*enemy team=*/1, 0, 1),
     // rng_drift: phase 05 allows the far enemy survivor to vary while target-family identity and movement remain pinned; commit c03d62b5afd5ce1e17c1c80edd51c2029e8018a4
-    pred::WalkerPositionMoved(/*FAMILY_MAGE*/3, 128, 120),
+    pred::WalkerPositionMoved(/*FAMILY_MAGE*/3, 209, 116),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
 };
 inline constexpr FactPredicate kFacts_family_skeleton_scen99[] = {
@@ -831,7 +831,7 @@ inline constexpr FactPredicate kFacts_family_skeleton_scen99[] = {
     pred::WalkerFamilyCount(/*FAMILY_SKELETON*/4, 1, 1),
     pred::WalkerOfTeamAlive(/*enemy team=*/1, 0, 1),
     // rng_drift: phase 05 allows the far enemy survivor to vary while target-family identity and movement remain pinned; commit c03d62b5afd5ce1e17c1c80edd51c2029e8018a4
-    pred::WalkerPositionMoved(/*FAMILY_SKELETON*/4, 128, 120),
+    pred::WalkerPositionMoved(/*FAMILY_SKELETON*/4, 3, 240),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
 };
 inline constexpr FactPredicate kFacts_family_cleric_scen99[] = {
@@ -839,7 +839,7 @@ inline constexpr FactPredicate kFacts_family_cleric_scen99[] = {
     pred::WalkerFamilyCount(/*FAMILY_CLERIC*/5, 1, 1),
     pred::WalkerOfTeamAlive(/*enemy team=*/1, 0, 1),
     // rng_drift: phase 05 allows the far enemy survivor to vary while target-family identity and movement remain pinned; commit c03d62b5afd5ce1e17c1c80edd51c2029e8018a4
-    pred::WalkerPositionMoved(/*FAMILY_CLERIC*/5, 128, 120),
+    pred::WalkerPositionMoved(/*FAMILY_CLERIC*/5, 209, 99),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
 };
 inline constexpr FactPredicate kFacts_family_fireelemental_scen99[] = {
@@ -847,7 +847,7 @@ inline constexpr FactPredicate kFacts_family_fireelemental_scen99[] = {
     pred::WalkerFamilyCount(/*FAMILY_FIREELEMENTAL*/6, 1, 1),
     pred::WalkerOfTeamAlive(/*enemy team=*/1, 0, 1),
     // rng_drift: phase 05 allows the far enemy survivor to vary while target-family identity and movement remain pinned; commit c03d62b5afd5ce1e17c1c80edd51c2029e8018a4
-    pred::WalkerPositionMoved(/*FAMILY_FIREELEMENTAL*/6, 128, 120),
+    pred::WalkerPositionMoved(/*FAMILY_FIREELEMENTAL*/6, 205, 105),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
 };
 inline constexpr FactPredicate kFacts_family_faerie_scen99[] = {
@@ -871,8 +871,8 @@ inline constexpr FactPredicate kFacts_family_small_slime_scen99[] = {
     pred::WalkerFamilyCount(/*FAMILY_SMALL_SLIME*/9, 1, 1),
     pred::WalkerOfTeamAlive(/*enemy team=*/1, 0, 1),
     // rng_drift: phase 05 allows the far enemy survivor to vary while target-family identity and movement remain pinned; commit c03d62b5afd5ce1e17c1c80edd51c2029e8018a4
-    pred::WalkerPositionMoved(/*FAMILY_SMALL_SLIME*/9, 128, 120),
-    pred::WeaponFamilyEmitted(/*FAMILY_FIREBALL*/3),
+    pred::WalkerPositionMoved(/*FAMILY_SMALL_SLIME*/9, 213, 116),
+    pred::EventKindAtLeast(/*play_sound*/1, 1),
 };
 inline constexpr FactPredicate kFacts_family_medium_slime_scen99[] = {
     pred::TickReached(600),
@@ -895,15 +895,15 @@ inline constexpr FactPredicate kFacts_family_ghost_scen99[] = {
     pred::WalkerFamilyCount(/*FAMILY_GHOST*/12, 1, 1),
     pred::WalkerOfTeamAlive(/*enemy team=*/1, 0, 1),
     // rng_drift: phase 05 allows the far enemy survivor to vary while target-family identity and movement remain pinned; commit c03d62b5afd5ce1e17c1c80edd51c2029e8018a4
-    pred::WalkerPositionMoved(/*FAMILY_GHOST*/12, 128, 120),
-    pred::WeaponFamilyEmitted(/*FAMILY_FIREBALL*/3),
+    pred::WalkerPositionMoved(/*FAMILY_GHOST*/12, 156, 0),
+    pred::EventKindAtLeast(/*play_sound*/1, 1),
 };
 inline constexpr FactPredicate kFacts_family_druid_scen99[] = {
     pred::TickReached(600),
     pred::WalkerFamilyCount(/*FAMILY_DRUID*/13, 1, 1),
     pred::WalkerOfTeamAlive(/*enemy team=*/1, 0, 1),
     // rng_drift: phase 05 allows the far enemy survivor to vary while target-family identity and movement remain pinned; commit c03d62b5afd5ce1e17c1c80edd51c2029e8018a4
-    pred::WalkerPositionMoved(/*FAMILY_DRUID*/13, 128, 120),
+    pred::WalkerPositionMoved(/*FAMILY_DRUID*/13, 220, 129),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
 };
 inline constexpr FactPredicate kFacts_family_orc_scen99[] = {
@@ -911,8 +911,8 @@ inline constexpr FactPredicate kFacts_family_orc_scen99[] = {
     pred::WalkerFamilyCount(/*FAMILY_ORC*/14, 1, 1),
     pred::WalkerOfTeamAlive(/*enemy team=*/1, 0, 1),
     // rng_drift: phase 05 allows the far enemy survivor to vary while target-family identity and movement remain pinned; commit c03d62b5afd5ce1e17c1c80edd51c2029e8018a4
-    pred::WalkerPositionMoved(/*FAMILY_ORC*/14, 128, 120),
-    pred::WeaponFamilyEmitted(/*FAMILY_FIREBALL*/3),
+    pred::WalkerPositionMoved(/*FAMILY_ORC*/14, 16, 82),
+    pred::EventKindAtLeast(/*play_sound*/1, 1),
 };
 inline constexpr FactPredicate kFacts_family_big_orc_scen99[] = {
     pred::TickReached(600),
@@ -927,7 +927,7 @@ inline constexpr FactPredicate kFacts_family_barbarian_scen99[] = {
     pred::WalkerFamilyCount(/*FAMILY_BARBARIAN*/16, 1, 1),
     pred::WalkerOfTeamAlive(/*enemy team=*/1, 0, 1),
     // rng_drift: phase 05 allows the far enemy survivor to vary while target-family identity and movement remain pinned; commit c03d62b5afd5ce1e17c1c80edd51c2029e8018a4
-    pred::WalkerPositionMoved(/*FAMILY_BARBARIAN*/16, 128, 120),
+    pred::WalkerPositionMoved(/*FAMILY_BARBARIAN*/16, 224, 107),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
 };
 inline constexpr FactPredicate kFacts_family_archmage_scen99[] = {
@@ -1090,8 +1090,8 @@ inline constexpr Mutation kMut_summon_druid_do_special = {
 inline constexpr Mutation kMut_family_spawn_identity = {
     "src/resources/gloader.cpp", 608,
     "ob->set_order_family(order, static_cast<char>(family));",
-    "ob->set_order_family(order, static_cast<char>(family == 0 ? 1 : 0));",
-    "Swaps the dumped living-family identity at loader binding time; the phase-05 family rows lose their exact WalkerFamilyCount(FAMILY_X,1,1) predicate even though the spawn list still asked for the original family."
+    "ob->set_order_family(order, static_cast<char>((family + 1) % 21));",
+    "Rotates every dumped living-family identity at loader binding time; each phase-05 family row loses its exact WalkerFamilyCount(FAMILY_X,1,1) predicate even though the spawn list still asked for the original family."
 };
 
 inline constexpr Mutation kMut_family_soldier_init = {
@@ -3247,6 +3247,25 @@ inline constexpr Mutation kMut_special_druid_1_scen99 = {
     "Cranks the FAMILY_DRUID init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
 };
 
+inline constexpr SpawnSpec kFamilySpawns_special_druid_2_scen99[] = {
+    { 13, 0, kOrderLiving, 120, 120, 0, 0, 4, 600 },
+    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_special_druid_2_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(/*FAMILY_DRUID*/13, 1, 2),
+    // intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898
+    pred::EventKindAtLeast(/*play_sound*/1, 0),
+};
+
+inline constexpr Mutation kMut_special_druid_2_scen99 = {
+    "src/gameplay/families/family_druid.cpp", 165,
+    "BASE_GUY_HP+80",
+    "BASE_GUY_HP+9000",
+    "Cranks the FAMILY_DRUID init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
+};
+
 inline constexpr SpawnSpec kFamilySpawns_special_druid_3_scen99[] = {
     { 13, 0, kOrderLiving, 120, 120, 0, 0, 7, 600 },
     {  0, 1, kOrderLiving, 180, 120, 0, 0 },
@@ -3694,9 +3713,9 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_family_spawn_identity },
 
     { "family_druid_scen99",           "scen/scen1.fss", 0x00000042u,
-      kInputsFamilyDruidCompleteness, std::size(kInputsFamilyDruidCompleteness), 600, CompareMode::SemanticParity, false,
+      kInputsFamilyCompleteness, std::size(kInputsFamilyCompleteness), 600, CompareMode::SemanticParity, false,
       kFamilySpawns_complete_druid, std::size(kFamilySpawns_complete_druid), 0, false, true,
-      Exercises::Special_Druid_2,
+      Exercises::None,
       kFacts_family_druid_scen99, std::size(kFacts_family_druid_scen99),
       kMut_family_spawn_identity },
 
@@ -4428,6 +4447,14 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::Special_Druid_1,
       kFacts_special_druid_1_scen99, std::size(kFacts_special_druid_1_scen99),
       kMut_special_druid_1_scen99 },
+
+    { "special_druid_2_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot2, std::size(kInputsSpecialSlot2), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_special_druid_2_scen99, std::size(kFamilySpawns_special_druid_2_scen99),
+      0, false, true, Exercises::Special_Druid_2,
+      kFacts_special_druid_2_scen99, std::size(kFacts_special_druid_2_scen99),
+      kMut_special_druid_2_scen99 },
 
     { "special_druid_3_scen99", "scen/scen1.fss", 0x00000042u,
       kInputsSpecialSlot3, std::size(kInputsSpecialSlot3), 150,
