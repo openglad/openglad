@@ -118,7 +118,6 @@ Data and persistence:
 - pixie/asset loading (indexed-color PNGs + Aseprite JSON sidecars; artist
   workflow and palette contract are documented in
   [docs/sprite-format.md](sprite-format.md))
-- `loader::reload_graphics()` for hot-swapping sprite packs at runtime (see [Custom Sprite Packs](#custom-sprite-packs))
 
 ### `og_interface`
 

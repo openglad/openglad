@@ -64,3 +64,5 @@ core.*
 /docs/plans/
 /.claude/*
 !/.claude/skills/
+
+.DS_Store
