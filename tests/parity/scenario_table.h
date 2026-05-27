@@ -1666,13 +1666,8 @@ inline constexpr FactPredicate kFacts_weapon_knife_emission_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 2,
         "intended_diff: weapon-emission arena retains either one or two SOLDIER walkers depending on whether the adjacent combat kills the target; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 7),
-    // Phase 04 wire-up: state_dump.cpp::collect_weapons populates
-    // dump.weapons[] from world.weaplist symmetrically on both
-    // branch and master companion dumpers. The predicate below
-    // evaluates honestly on both sides — a FAMILY_KNIFE weapon
-    // entity alive in weaplist at the 150-tick snapshot satisfies
-    // the row's "weapon emission" contract; its absence flips
-    // the predicate.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 5000, 12000,
+        "rng_drift: surviving wielder SOLDIER settles at hp 117 on master; branch combat sequencing may shift wielder HP lower; range covers both sides"),
     pred::WeaponFamilyEmitted(FAMILY_KNIFE),
 };
 
@@ -1692,13 +1687,7 @@ inline constexpr FactPredicate kFacts_weapon_rock_emission_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_ELF, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 26),
-    // Phase 04 wire-up: state_dump.cpp::collect_weapons populates
-    // dump.weapons[] from world.weaplist symmetrically on both
-    // branch and master companion dumpers. The predicate below
-    // evaluates honestly on both sides — a FAMILY_ROCK weapon
-    // entity alive in weaplist at the 150-tick snapshot satisfies
-    // the row's "weapon emission" contract; its absence flips
-    // the predicate.
+    pred::WalkerDiedByFinal(FAMILY_SOLDIER),
     pred::WeaponFamilyEmitted(FAMILY_ROCK),
 };
 
@@ -1718,13 +1707,7 @@ inline constexpr FactPredicate kFacts_weapon_arrow_emission_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_ARCHER, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 25),
-    // Phase 04 wire-up: state_dump.cpp::collect_weapons populates
-    // dump.weapons[] from world.weaplist symmetrically on both
-    // branch and master companion dumpers. The predicate below
-    // evaluates honestly on both sides — a FAMILY_ARROW weapon
-    // entity alive in weaplist at the 150-tick snapshot satisfies
-    // the row's "weapon emission" contract; its absence flips
-    // the predicate.
+    pred::WalkerDiedByFinal(FAMILY_SOLDIER),
     pred::WeaponFamilyEmitted(FAMILY_ARROW),
 };
 
@@ -1744,13 +1727,7 @@ inline constexpr FactPredicate kFacts_weapon_fireball_emission_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 30),
-    // Phase 04 wire-up: state_dump.cpp::collect_weapons populates
-    // dump.weapons[] from world.weaplist symmetrically on both
-    // branch and master companion dumpers. The predicate below
-    // evaluates honestly on both sides — a FAMILY_FIREBALL weapon
-    // entity alive in weaplist at the 150-tick snapshot satisfies
-    // the row's "weapon emission" contract; its absence flips
-    // the predicate.
+    pred::WalkerDiedByFinal(FAMILY_SOLDIER),
     pred::WeaponFamilyEmitted(FAMILY_FIREBALL),
 };
 
@@ -1777,6 +1754,7 @@ inline constexpr FactPredicate kFacts_weapon_tree_emission_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
     // Two SOLDIER walkers (observer team-0 + enemy team-1) are spawned to keep the level alive while dump.weapons[] is observed for the direct-spawn FAMILY_TREE entity.
     pred::EventKindAtLeast(/*play_sound*/1, 20),
+    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
     // FAMILY_TREE is not emitted by K_FIRE in this arena:
     //   DRUID GROW TREE is a K_SPECIAL ability; the weapon entity never enters weaplist under K_FIRE alone.
     // state_dump.cpp::collect_weapons DOES walk world.weaplist
@@ -1813,13 +1791,7 @@ inline constexpr FactPredicate kFacts_weapon_meteor_emission_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_FIREELEMENTAL, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 25),
-    // Phase 04 wire-up: state_dump.cpp::collect_weapons populates
-    // dump.weapons[] from world.weaplist symmetrically on both
-    // branch and master companion dumpers. The predicate below
-    // evaluates honestly on both sides — a FAMILY_METEOR weapon
-    // entity alive in weaplist at the 150-tick snapshot satisfies
-    // the row's "weapon emission" contract; its absence flips
-    // the predicate.
+    pred::WalkerDiedByFinal(FAMILY_SOLDIER),
     pred::WeaponFamilyEmitted(FAMILY_METEOR),
 };
 
@@ -1839,13 +1811,7 @@ inline constexpr FactPredicate kFacts_weapon_sprinkle_emission_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_FAERIE, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 16),
-    // Phase 04 wire-up: state_dump.cpp::collect_weapons populates
-    // dump.weapons[] from world.weaplist symmetrically on both
-    // branch and master companion dumpers. The predicate below
-    // evaluates honestly on both sides — a FAMILY_SPRINKLE weapon
-    // entity alive in weaplist at the 150-tick snapshot satisfies
-    // the row's "weapon emission" contract; its absence flips
-    // the predicate.
+    pred::WalkerDiedByFinal(FAMILY_SOLDIER),
     pred::WeaponFamilyEmitted(FAMILY_SPRINKLE),
 };
 
@@ -1865,13 +1831,7 @@ inline constexpr FactPredicate kFacts_weapon_bone_emission_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_SKELETON, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 35),
-    // Phase 04 wire-up: state_dump.cpp::collect_weapons populates
-    // dump.weapons[] from world.weaplist symmetrically on both
-    // branch and master companion dumpers. The predicate below
-    // evaluates honestly on both sides — a FAMILY_BONE weapon
-    // entity alive in weaplist at the 150-tick snapshot satisfies
-    // the row's "weapon emission" contract; its absence flips
-    // the predicate.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 10000, 12000),
     pred::WeaponFamilyEmitted(FAMILY_BONE),
 };
 
@@ -1895,6 +1855,7 @@ inline constexpr FactPredicate kFacts_weapon_blood_emission_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 2,
         "intended_diff: weapon-emission arena retains either one or two SOLDIER walkers depending on whether the adjacent combat kills the target; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 20),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 10000, 12000),
     pred::branch_only(pred::WeaponFamilyEmitted(FAMILY_BLOOD,
         "intended_diff: branch combat kills the target and emits BLOOD while master keeps the FAERIE alive in this arena; commit 39ef9898")),
 };
@@ -1916,6 +1877,8 @@ inline constexpr FactPredicate kFacts_weapon_blob_emission_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_SLIME, 0, 1,
         "intended_diff: master slime growth leaves a MEDIUM_SLIME at final tick while branch keeps the original SLIME caster; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 24),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 100, 12000,
+        "rng_drift: level-20 slime pummels default soldier to hp 3 on master; branch combat sequencing may shift target HP across the full near-death range"),
     pred::branch_only(pred::WeaponFamilyEmitted(FAMILY_BLOB,
         "intended_diff: branch leaves BLOB projectiles alive at tick 150 while master has already resolved them into the slime growth path; commit 39ef9898")),
 };
@@ -1943,6 +1906,7 @@ inline constexpr FactPredicate kFacts_weapon_fire_arrow_emission_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
     // Two SOLDIER walkers (observer team-0 + enemy team-1) are spawned to keep the level alive while dump.weapons[] is observed for the direct-spawn FAMILY_FIRE_ARROW entity.
     pred::EventKindExactly(/*play_sound*/1, 0),
+    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 2),
     // FAMILY_FIRE_ARROW is not emitted by K_FIRE in this arena:
     //   ARCHER FIRE_ARROWS is a K_SPECIAL ability; K_FIRE alone fires regular FAMILY_ARROW.
     // state_dump.cpp::collect_weapons DOES walk world.weaplist
@@ -1979,13 +1943,7 @@ inline constexpr FactPredicate kFacts_weapon_lightning_emission_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_DRUID, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 17),
-    // Phase 04 wire-up: state_dump.cpp::collect_weapons populates
-    // dump.weapons[] from world.weaplist symmetrically on both
-    // branch and master companion dumpers. The predicate below
-    // evaluates honestly on both sides — a FAMILY_LIGHTNING weapon
-    // entity alive in weaplist at the 150-tick snapshot satisfies
-    // the row's "weapon emission" contract; its absence flips
-    // the predicate.
+    pred::WalkerDiedByFinal(FAMILY_SOLDIER),
     pred::WeaponFamilyEmitted(FAMILY_LIGHTNING),
 };
 
@@ -2005,13 +1963,7 @@ inline constexpr FactPredicate kFacts_weapon_glow_emission_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_CLERIC, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 35),
-    // Phase 04 wire-up: state_dump.cpp::collect_weapons populates
-    // dump.weapons[] from world.weaplist symmetrically on both
-    // branch and master companion dumpers. The predicate below
-    // evaluates honestly on both sides — a FAMILY_GLOW weapon
-    // entity alive in weaplist at the 150-tick snapshot satisfies
-    // the row's "weapon emission" contract; its absence flips
-    // the predicate.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 10000, 12000),
     pred::WeaponFamilyEmitted(FAMILY_GLOW),
 };
 
@@ -2038,6 +1990,7 @@ inline constexpr FactPredicate kFacts_weapon_wave_emission_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
     // Two SOLDIER walkers (observer team-0 + enemy team-1) are spawned to keep the level alive while dump.weapons[] is observed for the direct-spawn FAMILY_WAVE entity.
     pred::EventKindExactly(/*play_sound*/1, 0),
+    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 2),
     // FAMILY_WAVE is not emitted by K_FIRE in this arena:
     //   MAGE WAVE is a K_SPECIAL slot (energy wave); K_FIRE alone fires the default FAMILY_FIREBALL.
     // state_dump.cpp::collect_weapons DOES walk world.weaplist
@@ -2081,6 +2034,7 @@ inline constexpr FactPredicate kFacts_weapon_wave2_emission_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
     // Two SOLDIER walkers (observer team-0 + enemy team-1) are spawned to keep the level alive while dump.weapons[] is observed for the direct-spawn FAMILY_WAVE2 entity.
     pred::EventKindAtLeast(/*play_sound*/1, 20),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 5000, 9000),
     // FAMILY_WAVE2 is not emitted by K_FIRE in this arena:
     //   MAGE WAVE2 is a K_SPECIAL slot; K_FIRE alone fires the default FAMILY_FIREBALL.
     // state_dump.cpp::collect_weapons DOES walk world.weaplist
@@ -2124,6 +2078,7 @@ inline constexpr FactPredicate kFacts_weapon_wave3_emission_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
     // Two SOLDIER walkers (observer team-0 + enemy team-1) are spawned to keep the level alive while dump.weapons[] is observed for the direct-spawn FAMILY_WAVE3 entity.
     pred::EventKindExactly(/*play_sound*/1, 0),
+    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 2),
     // FAMILY_WAVE3 is not emitted by K_FIRE in this arena:
     //   MAGE WAVE3 is a K_SPECIAL slot (BIT_IMMORTAL | BIT_PHANTOM); K_FIRE alone fires the default FAMILY_FIREBALL.
     // state_dump.cpp::collect_weapons DOES walk world.weaplist
@@ -2167,6 +2122,7 @@ inline constexpr FactPredicate kFacts_weapon_circle_protection_emission_scen99[]
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
     // Two SOLDIER walkers (observer team-0 + enemy team-1) are spawned to keep the level alive while dump.weapons[] is observed for the direct-spawn FAMILY_CIRCLE_PROTECTION entity.
     pred::EventKindAtLeast(/*play_sound*/1, 20),
+    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
     // FAMILY_CIRCLE_PROTECTION is not emitted by K_FIRE in this arena:
     //   DRUID PROTECTION is a K_SPECIAL slot; K_FIRE alone fires the default FAMILY_LIGHTNING.
     // state_dump.cpp::collect_weapons DOES walk world.weaplist
@@ -2203,13 +2159,7 @@ inline constexpr FactPredicate kFacts_weapon_hammer_emission_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_BARBARIAN, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 23),
-    // Phase 04 wire-up: state_dump.cpp::collect_weapons populates
-    // dump.weapons[] from world.weaplist symmetrically on both
-    // branch and master companion dumpers. The predicate below
-    // evaluates honestly on both sides — a FAMILY_HAMMER weapon
-    // entity alive in weaplist at the 150-tick snapshot satisfies
-    // the row's "weapon emission" contract; its absence flips
-    // the predicate.
+    pred::WalkerDiedByFinal(FAMILY_SOLDIER),
     pred::WeaponFamilyEmitted(FAMILY_HAMMER),
 };
 
@@ -2235,6 +2185,7 @@ inline constexpr FactPredicate kFacts_weapon_door_emission_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 2,
         "intended_diff: weapon-emission arena retains either one or two SOLDIER walkers depending on whether the adjacent combat kills the target; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 20),
+    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
     // FAMILY_DOOR is not emitted by K_FIRE in this arena:
     //   FAMILY_DOOR is not naturally fireable — doors are placed by scenario script and opened by walker interaction, never by a wielder firing.
     // state_dump.cpp::collect_weapons DOES walk world.weaplist
@@ -2271,13 +2222,7 @@ inline constexpr FactPredicate kFacts_weapon_boulder_emission_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_GIANT_SKELETON, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 20),
-    // Phase 04 wire-up: state_dump.cpp::collect_weapons populates
-    // dump.weapons[] from world.weaplist symmetrically on both
-    // branch and master companion dumpers. The predicate below
-    // evaluates honestly on both sides — a FAMILY_BOULDER weapon
-    // entity alive in weaplist at the 150-tick snapshot satisfies
-    // the row's "weapon emission" contract; its absence flips
-    // the predicate.
+    pred::WalkerDiedByFinal(FAMILY_SOLDIER),
     pred::WeaponFamilyEmitted(FAMILY_BOULDER),
 };
 
