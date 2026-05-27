@@ -1656,6 +1656,25 @@ inline constexpr Mutation kMut_treasure_speed_potion_pickup = {
     "Neuters the FAMILY_SPEED_POTION treasure-family on_eat hook; the speed bonus is never applied and the notify_potion_consume() set_dead(1) never fires, so the potion stays in oblist and TreasureFamilyRemovedFromOblist flips."
 };
 
+inline constexpr SpawnSpec kFamilySpawns_treasure_exit_pickup[] = {
+    {  0, 0, kOrderLiving,   96, 120, 0, 0 },
+    { FAMILY_EXIT, 0, kOrderTreasure, 160, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_treasure_exit_pickup_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerPositionMoved(FAMILY_SOLDIER, 144, 120),
+    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_EXIT, kOrderTreasure),
+    pred::LevelDoneEquals(2),
+};
+
+inline constexpr Mutation kMut_treasure_exit_pickup = {
+    "src/gameplay/families/treasure_family_navigation.cpp", 142,
+    ".on_eat = exit_on_eat,",
+    ".on_eat = nullptr,",
+    "Neuters the FAMILY_EXIT treasure-family on_eat hook; the level_done flag is never set to 2 and the exit treasure is never marked dead, so it stays in oblist and both TreasureFamilyOfOrderRemovedFromOblist and LevelDoneEquals(2) flip."
+};
+
 inline constexpr SpawnSpec kFamilySpawns_weapon_knife_emission[] = {
     { FAMILY_SOLDIER, 0, kOrderLiving, 120, 120, 0, 0, 20, 600 }, // FAMILY_SOLDIER wielder (natural emitter for FAMILY_KNIFE)
     { FAMILY_SOLDIER, 1, kOrderLiving, 200, 120, 0, 0 }, // FAMILY_SOLDIER target (close enough to draw fire, far enough that projectile stays in flight a few ticks)
@@ -3939,6 +3958,14 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_treasure_speed_potion_pickup_scen99, std::size(kFacts_treasure_speed_potion_pickup_scen99),
       kMut_treasure_speed_potion_pickup },
+
+    { "treasure_exit_pickup_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_treasure_exit_pickup, std::size(kFamilySpawns_treasure_exit_pickup),
+      0, false, true, Exercises::None,
+      kFacts_treasure_exit_pickup_scen99, std::size(kFacts_treasure_exit_pickup_scen99),
+      kMut_treasure_exit_pickup },
 
     // Phase 04 — weapon emission scenarios
     { "weapon_knife_emission_scen99", "scen/scen1.fss", 0x00000042u,
