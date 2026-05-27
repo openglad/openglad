@@ -2246,6 +2246,7 @@ inline constexpr FactPredicate kFacts_effect_expand_emission_scen99[] = {
     // current schema-v1 freeze.
     pred::EffectFamilyCount(FAMILY_EXPAND, 0, 0, /*source=FAMILY_SOLDIER*/0),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
+    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
 };
 
 inline constexpr Mutation kMut_effect_expand_emission = {
@@ -2268,6 +2269,7 @@ inline constexpr FactPredicate kFacts_effect_ghost_scare_emission_scen99[] = {
     // current schema-v1 freeze.
     pred::EffectFamilyCount(FAMILY_GHOST_SCARE, 0, 0, /*source=FAMILY_SOLDIER*/0),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
+    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
 };
 
 inline constexpr Mutation kMut_effect_ghost_scare_emission = {
@@ -2290,6 +2292,7 @@ inline constexpr FactPredicate kFacts_effect_bomb_emission_scen99[] = {
     // current schema-v1 freeze.
     pred::EffectFamilyCount(FAMILY_BOMB, 0, 0, /*source=FAMILY_SOLDIER*/0),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
+    pred::EventKindAtLeast(/*score_change*/9, 1),
 };
 
 inline constexpr Mutation kMut_effect_bomb_emission = {
@@ -2312,6 +2315,7 @@ inline constexpr FactPredicate kFacts_effect_explosion_emission_scen99[] = {
     // current schema-v1 freeze.
     pred::EffectFamilyCount(FAMILY_EXPLOSION, 0, 0, /*source=FAMILY_SOLDIER*/0),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
+    pred::EventKindAtLeast(/*score_change*/9, 1),
 };
 
 inline constexpr Mutation kMut_effect_explosion_emission = {
@@ -2334,6 +2338,7 @@ inline constexpr FactPredicate kFacts_effect_flash_emission_scen99[] = {
     // current schema-v1 freeze.
     pred::EffectFamilyCount(FAMILY_FLASH, 0, 0, /*source=FAMILY_SOLDIER*/0),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
+    pred::EventKindAtLeast(/*score_change*/9, 1),
 };
 
 inline constexpr Mutation kMut_effect_flash_emission = {
@@ -2356,6 +2361,7 @@ inline constexpr FactPredicate kFacts_effect_magic_shield_emission_scen99[] = {
     // current schema-v1 freeze.
     pred::EffectFamilyCount(FAMILY_MAGIC_SHIELD, 0, 0, /*source=FAMILY_SOLDIER*/0),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
+    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
 };
 
 inline constexpr Mutation kMut_effect_magic_shield_emission = {
@@ -2378,6 +2384,7 @@ inline constexpr FactPredicate kFacts_effect_knife_back_emission_scen99[] = {
     // current schema-v1 freeze.
     pred::EffectFamilyCount(FAMILY_KNIFE_BACK, 0, 0, /*source=FAMILY_SOLDIER*/0),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
+    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
 };
 
 inline constexpr Mutation kMut_effect_knife_back_emission = {
@@ -2400,6 +2407,7 @@ inline constexpr FactPredicate kFacts_effect_boomerang_emission_scen99[] = {
     // current schema-v1 freeze.
     pred::EffectFamilyCount(FAMILY_BOOMERANG, 0, 0, /*source=FAMILY_SOLDIER*/0),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
+    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
 };
 
 inline constexpr Mutation kMut_effect_boomerang_emission = {
@@ -2422,6 +2430,7 @@ inline constexpr FactPredicate kFacts_effect_cloud_emission_scen99[] = {
     // current schema-v1 freeze.
     pred::EffectFamilyCount(FAMILY_CLOUD, 0, 0, /*source=FAMILY_SOLDIER*/0),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
+    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
 };
 
 inline constexpr Mutation kMut_effect_cloud_emission = {
@@ -2444,6 +2453,7 @@ inline constexpr FactPredicate kFacts_effect_marker_emission_scen99[] = {
     // current schema-v1 freeze.
     pred::EffectFamilyCount(FAMILY_MARKER, 0, 0, /*source=FAMILY_SOLDIER*/0),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
+    pred::EventKindAtLeast(/*score_change*/9, 1),
 };
 
 inline constexpr Mutation kMut_effect_marker_emission = {
@@ -2466,6 +2476,7 @@ inline constexpr FactPredicate kFacts_effect_chain_emission_scen99[] = {
     // current schema-v1 freeze.
     pred::EffectFamilyCount(FAMILY_CHAIN, 0, 0, /*source=FAMILY_SOLDIER*/0),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
+    pred::EventKindAtLeast(/*score_change*/9, 1),
 };
 
 inline constexpr Mutation kMut_effect_chain_emission = {
@@ -2488,6 +2499,7 @@ inline constexpr FactPredicate kFacts_effect_door_open_emission_scen99[] = {
     // current schema-v1 freeze.
     pred::EffectFamilyCount(FAMILY_DOOR_OPEN, 0, 0, /*source=FAMILY_SOLDIER*/0),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
+    pred::EventKindAtLeast(/*score_change*/9, 1),
 };
 
 inline constexpr Mutation kMut_effect_door_open_emission = {
@@ -2510,6 +2522,7 @@ inline constexpr FactPredicate kFacts_effect_hit_emission_scen99[] = {
     // current schema-v1 freeze.
     pred::EffectFamilyCount(FAMILY_HIT, 0, 0, /*source=FAMILY_SOLDIER*/0),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
+    pred::EventKindAtLeast(/*score_change*/9, 1),
 };
 
 inline constexpr Mutation kMut_effect_hit_emission = {
@@ -2533,6 +2546,8 @@ inline constexpr FactPredicate kFacts_generator_tent_emission_scen99[] = {
     // The widened (0, 6) range accommodates RNG-driven emission counts.
     pred::WalkerFamilyCount(FAMILY_SKELETON, 1, 6,
         "intended_diff: generator emission rate varies with RNG between branch and master; the (0, 6) range admits both 0-emission tails and steady-state 1-2 emissions per 300-tick budget; commit 39ef9898"),
+    pred::EventKindAtLeast(/*play_sound*/1, 1),
+    pred::WalkerOfTeamAlive(/*team=*/1, 2, 10),
 };
 
 inline constexpr Mutation kMut_generator_tent_emission = {
@@ -2556,6 +2571,9 @@ inline constexpr FactPredicate kFacts_generator_tower_emission_scen99[] = {
     // The widened (0, 6) range accommodates RNG-driven emission counts.
     pred::WalkerFamilyCount(FAMILY_MAGE, 1, 6,
         "intended_diff: generator emission rate varies with RNG between branch and master; the (0, 6) range admits both 0-emission tails and steady-state 1-2 emissions per 300-tick budget; commit 39ef9898"),
+    pred::EventKindAtLeast(/*play_sound*/1, 2),
+    pred::WalkerOfTeamAlive(/*team=*/1, 2, 15,
+        "intended_diff: mage teleport creates MARKER walkers inflating team-1 alive count beyond generator+mages; master has 7 (1 tower + 4 mages + 2 markers), branch count varies with RNG; commit 39ef9898"),
 };
 
 inline constexpr Mutation kMut_generator_tower_emission = {
@@ -2579,6 +2597,8 @@ inline constexpr FactPredicate kFacts_generator_bones_emission_scen99[] = {
     // The widened (0, 6) range accommodates RNG-driven emission counts.
     pred::WalkerFamilyCount(FAMILY_GHOST, 1, 6,
         "intended_diff: generator emission rate varies with RNG between branch and master; the (0, 6) range admits both 0-emission tails and steady-state 1-2 emissions per 300-tick budget; commit 39ef9898"),
+    pred::EventKindAtLeast(/*play_sound*/1, 1),
+    pred::WalkerOfTeamAlive(/*team=*/1, 2, 10),
 };
 
 inline constexpr Mutation kMut_generator_bones_emission = {
@@ -2602,6 +2622,8 @@ inline constexpr FactPredicate kFacts_generator_treehouse_emission_scen99[] = {
     // The widened (0, 6) range accommodates RNG-driven emission counts.
     pred::WalkerFamilyCount(FAMILY_ELF, 1, 6,
         "intended_diff: generator emission rate varies with RNG between branch and master; the (0, 6) range admits both 0-emission tails and steady-state 1-2 emissions per 300-tick budget; commit 39ef9898"),
+    pred::EventKindAtLeast(/*play_sound*/1, 3),
+    pred::WalkerOfTeamAlive(/*team=*/1, 2, 10),
 };
 
 inline constexpr Mutation kMut_generator_treehouse_emission = {
