@@ -1445,6 +1445,7 @@ inline constexpr FactPredicate kFacts_treasure_stain_pickup_scen99[] = {
     // claim. Schema-v2 will replace this with a STAIN-specific
     // liveness predicate.
     pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_STAIN, kOrderTreasure),
+    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
 };
 
 inline constexpr Mutation kMut_treasure_stain_pickup = {
@@ -1482,6 +1483,7 @@ inline constexpr FactPredicate kFacts_treasure_gold_bar_pickup_scen99[] = {
     pred::TickReached(150),
     pred::WalkerPositionMoved(FAMILY_SOLDIER, 144, 120),
     pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_GOLD_BAR, kOrderTreasure),
+    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
 };
 
 inline constexpr Mutation kMut_treasure_gold_bar_pickup = {
@@ -1500,6 +1502,7 @@ inline constexpr FactPredicate kFacts_treasure_silver_bar_pickup_scen99[] = {
     pred::TickReached(150),
     pred::WalkerPositionMoved(FAMILY_SOLDIER, 144, 120),
     pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_SILVER_BAR, kOrderTreasure),
+    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
 };
 
 inline constexpr Mutation kMut_treasure_silver_bar_pickup = {
@@ -1537,6 +1540,7 @@ inline constexpr FactPredicate kFacts_treasure_invis_potion_pickup_scen99[] = {
     pred::TickReached(150),
     pred::WalkerPositionMoved(FAMILY_SOLDIER, 144, 120),
     pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_INVIS_POTION, kOrderTreasure),
+    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
 };
 
 inline constexpr Mutation kMut_treasure_invis_potion_pickup = {
@@ -1555,6 +1559,7 @@ inline constexpr FactPredicate kFacts_treasure_invulnerable_potion_pickup_scen99
     pred::TickReached(150),
     pred::WalkerPositionMoved(FAMILY_SOLDIER, 144, 120),
     pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_INVULNERABLE_POTION, kOrderTreasure),
+    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
 };
 
 inline constexpr Mutation kMut_treasure_invulnerable_potion_pickup = {
@@ -1573,6 +1578,7 @@ inline constexpr FactPredicate kFacts_treasure_flight_potion_pickup_scen99[] = {
     pred::TickReached(150),
     pred::WalkerPositionMoved(FAMILY_SOLDIER, 144, 120),
     pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_FLIGHT_POTION, kOrderTreasure),
+    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
 };
 
 inline constexpr Mutation kMut_treasure_flight_potion_pickup = {
@@ -1591,6 +1597,7 @@ inline constexpr FactPredicate kFacts_treasure_teleporter_pickup_scen99[] = {
     pred::TickReached(150),
     pred::WalkerPositionMoved(FAMILY_SOLDIER, 144, 120),
     pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_TELEPORTER, kOrderTreasure),
+    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
 };
 
 inline constexpr Mutation kMut_treasure_teleporter_pickup = {
@@ -1647,6 +1654,7 @@ inline constexpr FactPredicate kFacts_treasure_speed_potion_pickup_scen99[] = {
     pred::TickReached(150),
     pred::WalkerPositionMoved(FAMILY_SOLDIER, 144, 120),
     pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_SPEED_POTION, kOrderTreasure),
+    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
 };
 
 inline constexpr Mutation kMut_treasure_speed_potion_pickup = {
@@ -2566,7 +2574,8 @@ inline constexpr FactPredicate kFacts_generator_tent_emission_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_SKELETON, 1, 6,
         "intended_diff: generator emission rate varies with RNG between branch and master; the (0, 6) range admits both 0-emission tails and steady-state 1-2 emissions per 300-tick budget; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
-    pred::WalkerOfTeamAlive(/*team=*/1, 2, 10),
+    pred::WalkerOfTeamAlive(/*team=*/1, 2, 10,
+        "rng_drift: generator spawn rate over 1500 ticks varies with RNG; master/branch alive counts diverge"),
 };
 
 inline constexpr Mutation kMut_generator_tent_emission = {
@@ -2617,7 +2626,8 @@ inline constexpr FactPredicate kFacts_generator_bones_emission_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_GHOST, 1, 6,
         "intended_diff: generator emission rate varies with RNG between branch and master; the (0, 6) range admits both 0-emission tails and steady-state 1-2 emissions per 300-tick budget; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
-    pred::WalkerOfTeamAlive(/*team=*/1, 2, 10),
+    pred::WalkerOfTeamAlive(/*team=*/1, 2, 10,
+        "rng_drift: generator spawn rate over 1500 ticks varies with RNG; master/branch alive counts diverge"),
 };
 
 inline constexpr Mutation kMut_generator_bones_emission = {
@@ -2642,7 +2652,8 @@ inline constexpr FactPredicate kFacts_generator_treehouse_emission_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_ELF, 1, 6,
         "intended_diff: generator emission rate varies with RNG between branch and master; the (0, 6) range admits both 0-emission tails and steady-state 1-2 emissions per 300-tick budget; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 3),
-    pred::WalkerOfTeamAlive(/*team=*/1, 2, 10),
+    pred::WalkerOfTeamAlive(/*team=*/1, 2, 10,
+        "rng_drift: generator spawn rate over 1500 ticks varies with RNG; master/branch alive counts diverge"),
 };
 
 inline constexpr Mutation kMut_generator_treehouse_emission = {

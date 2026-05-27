@@ -46,6 +46,7 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <fstream>
 #include <iterator>
 #include <set>
 #include <sstream>
@@ -655,4 +656,393 @@ TEST(Parity, behavioural_coverage_gate_no_dead_predicates)
     }
     EXPECT_TRUE(failures.empty())
         << format_missing("dead predicates", failures);
+}
+
+// --- Predicate depth and quality gates --------------------------------------
+
+namespace {
+
+const og::parity::ScenarioSpec*
+find_scenario(std::string_view id)
+{
+    for (const auto& s : og::parity::kScenarios)
+        if (s.id == id) return &s;
+    return nullptr;
+}
+
+std::size_t count_non_tick(const og::parity::ScenarioSpec& spec)
+{
+    std::size_t n = 0;
+    if (spec.expected_facts)
+        for (std::size_t i = 0; i < spec.fact_count; ++i)
+            if (spec.expected_facts[i].kind != og::parity::FactKind::TickReached)
+                ++n;
+    return n;
+}
+
+bool has_predicate_kind(const og::parity::ScenarioSpec& spec,
+                        og::parity::FactKind            kind)
+{
+    if (!spec.expected_facts) return false;
+    for (std::size_t i = 0; i < spec.fact_count; ++i)
+        if (spec.expected_facts[i].kind == kind) return true;
+    return false;
+}
+
+bool is_consequence_predicate(const og::parity::FactPredicate& p)
+{
+    using FK = og::parity::FactKind;
+    if (p.kind == FK::TickReached) return false;
+    if (p.kind == FK::EventKindAtLeast && p.arg0 == 1) return false;
+    if (p.kind == FK::WalkerFamilyCount)
+        return p.label.find("consequence:") != std::string_view::npos;
+    return true;
+}
+
+bool label_exempted(std::string_view label)
+{
+    return label.starts_with("rng_drift:") ||
+           label.starts_with("intended_diff:") ||
+           label.starts_with("consequence:");
+}
+
+} // namespace
+
+TEST(Parity, predicate_depth_gate_core_scenarios)
+{
+    static constexpr std::string_view kCoreIds[] = {
+        "ai_idle_wander_scen9301",
+        "combat_attack_scen99",
+        "special_archmage_scen123",
+        "special_cleric_scen124",
+        "special_mage_scen126",
+        "special_thief_scen789",
+        "effect_bomb_lifetime_scen99",
+        "effect_chain_scen9410",
+        "summon_druid_pet_scen950",
+        "scoring_after_combat_scen99",
+        "save_roundtrip_scen99",
+        "exit_trigger_scen9302",
+        "tick_cadence_scen9301",
+        "rng_seed_stable_scen99",
+        "scripted_input_scen9301",
+        "smoke_nonempty_scen99",
+        "smoke_nonempty_scen99_inputs",
+    };
+
+    std::vector<std::string> failures;
+    for (const auto id : kCoreIds)
+    {
+        const auto* spec = find_scenario(id);
+        ASSERT_NE(spec, nullptr) << "core scenario " << id
+                                 << " not found in kScenarios";
+
+        const std::size_t non_tick = count_non_tick(*spec);
+        if (non_tick < 4)
+        {
+            std::ostringstream os;
+            os << id << ": " << non_tick
+               << " non-TickReached predicates (need >= 4)";
+            failures.push_back(os.str());
+        }
+    }
+    ASSERT_TRUE(failures.empty())
+        << format_missing("predicate depth (core scenarios)", failures);
+}
+
+TEST(Parity, predicate_depth_gate_walker_families)
+{
+    static constexpr std::string_view kFamilyIds[] = {
+        "family_soldier_scen99",
+        "family_elf_scen99",
+        "family_archer_scen99",
+        "family_mage_scen99",
+        "family_skeleton_scen99",
+        "family_cleric_scen99",
+        "family_fireelemental_scen99",
+        "family_faerie_scen99",
+        "family_slime_scen99",
+        "family_small_slime_scen99",
+        "family_medium_slime_scen99",
+        "family_thief_scen99",
+        "family_ghost_scen99",
+        "family_druid_scen99",
+        "family_orc_scen99",
+        "family_big_orc_scen99",
+        "family_barbarian_scen99",
+        "family_archmage_scen99",
+        "family_golem_scen99",
+        "family_giant_skeleton_scen99",
+        "family_tower1_scen99",
+    };
+
+    std::vector<std::string> failures;
+    for (const auto id : kFamilyIds)
+    {
+        const auto* spec = find_scenario(id);
+        ASSERT_NE(spec, nullptr) << "family scenario " << id
+                                 << " not found in kScenarios";
+
+        const std::size_t non_tick = count_non_tick(*spec);
+        if (non_tick < 5)
+        {
+            std::ostringstream os;
+            os << id << ": " << non_tick
+               << " non-TickReached predicates (need >= 5)";
+            failures.push_back(os.str());
+        }
+
+        const bool has_hp_or_death =
+            has_predicate_kind(*spec,
+                og::parity::FactKind::WalkerHpRangeAtFinalTick) ||
+            has_predicate_kind(*spec,
+                og::parity::FactKind::WalkerDiedByFinal);
+        if (!has_hp_or_death)
+        {
+            std::ostringstream os;
+            os << id
+               << ": missing WalkerHpRangeAtFinalTick or WalkerDiedByFinal";
+            failures.push_back(os.str());
+        }
+    }
+    ASSERT_TRUE(failures.empty())
+        << format_missing("predicate depth (walker families)", failures);
+}
+
+TEST(Parity, predicate_depth_gate_emissions)
+{
+    std::vector<std::string> failures;
+    for (const auto& spec : og::parity::kScenarios)
+    {
+        const std::string_view id = spec.id;
+        const bool is_emission =
+            id.find("_emission_scen99") != std::string_view::npos ||
+            id.find("_pickup_scen99") != std::string_view::npos;
+        if (!is_emission) continue;
+
+        const std::size_t non_tick = count_non_tick(spec);
+        if (non_tick < 3)
+        {
+            std::ostringstream os;
+            os << id << ": " << non_tick
+               << " non-TickReached predicates (need >= 3)";
+            failures.push_back(os.str());
+        }
+    }
+    ASSERT_TRUE(failures.empty())
+        << format_missing("predicate depth (emissions)", failures);
+}
+
+TEST(Parity, predicate_depth_gate_specials)
+{
+    static constexpr std::string_view kCoreSpecials[] = {
+        "special_archmage_scen123",
+        "special_cleric_scen124",
+        "special_mage_scen126",
+        "special_thief_scen789",
+    };
+
+    auto is_core_special = [](std::string_view id) {
+        for (const auto s : kCoreSpecials)
+            if (id == s) return true;
+        return false;
+    };
+
+    std::vector<std::string> failures;
+    for (const auto& spec : og::parity::kScenarios)
+    {
+        const std::string_view id = spec.id;
+        if (!id.starts_with("special_")) continue;
+        if (id.find("_scen99") == std::string_view::npos) continue;
+        if (is_core_special(id)) continue;
+
+        const std::size_t total = spec.fact_count;
+        const std::size_t non_tick = count_non_tick(spec);
+
+        if (total < 4)
+        {
+            std::ostringstream os;
+            os << id << ": " << total
+               << " total predicates (need >= 4)";
+            failures.push_back(os.str());
+        }
+        if (non_tick < 3)
+        {
+            std::ostringstream os;
+            os << id << ": " << non_tick
+               << " non-TickReached predicates (need >= 3)";
+            failures.push_back(os.str());
+        }
+
+        std::size_t consequence_count = 0;
+        if (spec.expected_facts)
+            for (std::size_t i = 0; i < spec.fact_count; ++i)
+                if (is_consequence_predicate(spec.expected_facts[i]))
+                    ++consequence_count;
+        if (consequence_count < 1)
+        {
+            std::ostringstream os;
+            os << id << ": 0 consequence predicates (need >= 1)";
+            failures.push_back(os.str());
+        }
+    }
+    ASSERT_TRUE(failures.empty())
+        << format_missing("predicate depth (specials)", failures);
+}
+
+TEST(Parity, predicate_depth_gate_no_trivially_wide_ranges)
+{
+    using FK = og::parity::FactKind;
+    std::vector<std::string> violations;
+
+    for (const auto& spec : og::parity::kScenarios)
+    {
+        if (!spec.expected_facts) continue;
+        for (std::size_t i = 0; i < spec.fact_count; ++i)
+        {
+            const auto& p = spec.expected_facts[i];
+            bool bad = false;
+
+            switch (p.kind) {
+            case FK::WalkerHpRangeAtFinalTick:
+                if ((p.arg2 - p.arg1) > 5000 && !label_exempted(p.label))
+                    bad = true;
+                break;
+            case FK::WalkerFamilyCount:
+                if (p.arg2 > p.arg1 + 5 && !label_exempted(p.label))
+                    bad = true;
+                break;
+            case FK::WalkerOfTeamAlive:
+                if (p.arg2 > p.arg1 + 3 && !label_exempted(p.label))
+                    bad = true;
+                break;
+            case FK::EffectFamilyCount:
+                if (p.arg2 > p.arg1 + 10)
+                    bad = true;
+                break;
+            case FK::ScoreDelta:
+                if (p.arg2 > p.arg1 + 10000)
+                    bad = true;
+                break;
+            case FK::EventKindAtLeast:
+                if (p.arg1 <= 0)
+                    bad = true;
+                break;
+            default:
+                break;
+            }
+
+            if (bad)
+            {
+                std::ostringstream os;
+                os << spec.id << "[#" << i << "] kind="
+                   << static_cast<unsigned>(p.kind)
+                   << " arg0=" << p.arg0
+                   << " range=[" << p.arg1 << "," << p.arg2 << "]"
+                   << " label=\"" << p.label << "\"";
+                violations.push_back(os.str());
+            }
+        }
+    }
+    ASSERT_TRUE(violations.empty())
+        << format_missing("trivially wide ranges", violations);
+}
+
+TEST(Parity, golden_evaluation_gate_all_semanticparity)
+{
+    std::vector<std::string> failures;
+    std::size_t evaluated = 0;
+
+    for (const auto& spec : og::parity::kScenarios)
+    {
+        if (spec.compare_mode != og::parity::CompareMode::SemanticParity)
+            continue;
+        if (!spec.expected_facts || spec.fact_count == 0)
+            continue;
+
+        const og::parity::GoldenEvaluation ev =
+            og::parity::evaluate_facts_against_golden_for_id(spec.id);
+
+        if (!ev.scenario_present)
+        {
+            failures.push_back(std::string(spec.id) +
+                ": not present in kScenarios (internal error)");
+            continue;
+        }
+        if (!ev.golden_present) continue;
+        if (!ev.parse_ok)
+        {
+            failures.push_back(std::string(spec.id) +
+                ": parse_state_dump failed (" + ev.load_error + ")");
+            continue;
+        }
+
+        ++evaluated;
+
+        for (const auto& pe : ev.predicates)
+        {
+            if (!pe.applies_to_master) continue;
+            if (pe.ok || pe.indeterminate) continue;
+
+            std::ostringstream os;
+            os << spec.id << "[#" << pe.index
+               << "] kind=" << static_cast<unsigned>(pe.kind)
+               << " arg0=" << pe.arg0
+               << " FAILED: " << pe.message;
+            failures.push_back(os.str());
+        }
+    }
+
+    EXPECT_GT(evaluated, 0u) << "no SemanticParity scenarios with golden files";
+    EXPECT_TRUE(failures.empty())
+        << format_missing("golden evaluation (SemanticParity)", failures);
+}
+
+TEST(Parity, mutation_canary_discriminating_power_gate)
+{
+    std::vector<std::string> failures;
+
+    for (const auto& spec : og::parity::kScenarios)
+    {
+        const auto& m = spec.discriminating_mutation;
+        if (m.file.empty()) continue;
+
+        std::ifstream in(std::string(m.file));
+        if (!in.good())
+        {
+            std::ostringstream os;
+            os << spec.id << ": mutation source_file \""
+               << m.file << "\" does not exist on disk";
+            failures.push_back(os.str());
+            continue;
+        }
+
+        int line_count = 0;
+        {
+            std::string buf;
+            while (std::getline(in, buf)) ++line_count;
+        }
+
+        if (m.line < 1 || m.line > line_count)
+        {
+            std::ostringstream os;
+            os << spec.id << ": mutation source_line " << m.line
+               << " out of range [1," << line_count << "] in \""
+               << m.file << "\"";
+            failures.push_back(os.str());
+        }
+
+        if (m.file == "src/resources/save_data.cpp" &&
+            spec.id.find("save") == std::string_view::npos)
+        {
+            std::ostringstream os;
+            os << spec.id
+               << ": mutation targets src/resources/save_data.cpp but "
+                  "scenario code path does not invoke save subsystem";
+            failures.push_back(os.str());
+        }
+    }
+
+    ASSERT_TRUE(failures.empty())
+        << format_missing("mutation canary discriminating power", failures);
 }
