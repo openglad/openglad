@@ -1,4 +1,5 @@
 #include <openglad/interface/input.h>
+#include <openglad/interface/native_input.h>
 #include <gtest/gtest.h>
 #include <SDL.h>
 extern void wait_for_key(int somekey);
@@ -196,8 +197,10 @@ TEST(InputJoystick, input_joydata_press_release_helpers_and_player_queries)
 
     wait_for_key(SDLK_SPACE); // TESTING build: should return immediately.
 
-    resetJoystick(0); // Should safely reinitialize joystick subsystem in tests.
-    ASSERT_TRUE(!playerHasJoystick(0)) << "resetJoystick should leave player unbound when no joystick exists";
+    resetJoystick(0);
+    const bool has_device = og::input_native::num_joysticks() > 0;
+    ASSERT_EQ(has_device, playerHasJoystick(0))
+        << "playerHasJoystick should reflect whether a joystick device was detected";
 }
 
 

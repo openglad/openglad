@@ -385,6 +385,7 @@ TEST(InputKeybinds, native_input_push_helpers_and_wrappers_smoke)
     og::input_native::sleep_ms(1);
     ASSERT_TRUE(og::input_native::ticks_ms() >= ticks_before) << "ticks_ms should advance monotonically";
 
+    while (og::input_native::poll_event() != nullptr) {}
     og::input_native::push_key_event(true, SDLK_q);
     const void* key_event = og::input_native::wait_event();
     ASSERT_TRUE(key_event != nullptr) << "wait_event should return the queued key event";
@@ -392,12 +393,14 @@ TEST(InputKeybinds, native_input_push_helpers_and_wrappers_smoke)
     ASSERT_TRUE(og::input_native::decode_event(key_event, out)) << "queued key event should decode";
     ASSERT_EQ((int)og::input_native::EventType::KeyDown, (int)out.type) << "queued key event should remain keydown";
 
+    while (og::input_native::poll_event() != nullptr) {}
     og::input_native::push_mouse_button_event(true, SDL_BUTTON_LEFT, 12, 34);
     const void* mouse_event = og::input_native::wait_event();
     ASSERT_TRUE(mouse_event != nullptr) << "wait_event should return the queued mouse event";
     ASSERT_TRUE(og::input_native::decode_event(mouse_event, out)) << "queued mouse event should decode";
     ASSERT_EQ((int)og::input_native::EventType::MouseButtonDown, (int)out.type) << "queued mouse event should remain mouse button down";
 
+    while (og::input_native::poll_event() != nullptr) {}
     og::input_native::push_touch_event(og::input_native::EventType::FingerDown, 0.25f, 0.5f, 0.1f, -0.2f, 77);
     const void* touch_event = og::input_native::wait_event();
     ASSERT_TRUE(touch_event != nullptr) << "wait_event should return the queued touch event";
