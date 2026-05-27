@@ -105,9 +105,9 @@ void run_one_scenario(const og::parity::ScenarioSpec& spec)
         }
         else
         {
-            GTEST_SKIP() << "master golden missing for " << spec.id
-                         << " (expected at " << path.string()
-                         << ") — Phase 04+ recapture will populate";
+            ADD_FAILURE() << "master golden missing for " << spec.id
+                          << " (expected at " << path.string()
+                          << ") — Phase 04+ recapture will populate";
         }
         return;
     }
