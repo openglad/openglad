@@ -3157,6 +3157,8 @@ inline constexpr FactPredicate kFacts_special_slime_1_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_SLIME, 0, 2,
         "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 16),
+    pred::WalkerFamilyCount(FAMILY_SMALL_SLIME, 1, 3,
+        "consequence: SPLIT produces SMALL_SLIME offspring; golden shows 2 alive"),
 };
 
 inline constexpr Mutation kMut_special_slime_1_scen99 = {
@@ -3176,6 +3178,7 @@ inline constexpr FactPredicate kFacts_special_small_slime_1_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_SMALL_SLIME, 0, 2,
         "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 6),
+    pred::WalkerPositionMoved(FAMILY_SOLDIER, 120, 100),
 };
 
 inline constexpr Mutation kMut_special_small_slime_1_scen99 = {
@@ -3195,6 +3198,7 @@ inline constexpr FactPredicate kFacts_special_medium_slime_1_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_MEDIUM_SLIME, 0, 2,
         "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 16),
+    pred::EventKindAtLeast(/*score_change*/9, 1),
 };
 
 inline constexpr Mutation kMut_special_medium_slime_1_scen99 = {
@@ -3214,6 +3218,7 @@ inline constexpr FactPredicate kFacts_special_thief_2_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_THIEF, 0, 2,
         "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 11),
+    pred::EventKindAtLeast(/*notification*/2, 1),
 };
 
 inline constexpr Mutation kMut_special_thief_2_scen99 = {
@@ -3233,6 +3238,7 @@ inline constexpr FactPredicate kFacts_special_thief_3_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_THIEF, 0, 2,
         "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 10),
+    pred::EventKindAtLeast(/*notification*/2, 1),
 };
 
 inline constexpr Mutation kMut_special_thief_3_scen99 = {
@@ -3252,6 +3258,7 @@ inline constexpr FactPredicate kFacts_special_thief_4_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_THIEF, 1, 2,
         "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 10),
+    pred::WalkerDiedByFinal(FAMILY_SOLDIER),
 };
 
 inline constexpr Mutation kMut_special_thief_4_scen99 = {
@@ -3271,6 +3278,7 @@ inline constexpr FactPredicate kFacts_special_ghost_1_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_GHOST, 0, 2,
         "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 11),
+    pred::EventKindAtLeast(/*score_change*/9, 1),
 };
 
 inline constexpr Mutation kMut_special_ghost_1_scen99 = {
@@ -3290,6 +3298,7 @@ inline constexpr FactPredicate kFacts_special_druid_1_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_DRUID, 1, 2,
         "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 16),
+    pred::EventKindAtLeast(/*score_change*/9, 1),
 };
 
 inline constexpr Mutation kMut_special_druid_1_scen99 = {
@@ -3309,6 +3318,8 @@ inline constexpr FactPredicate kFacts_special_druid_2_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_DRUID, 1, 2,
         "intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 16),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_DRUID, 5000, 11000,
+        "consequence: SUMMON_FAERIE drains caster MP which affects combat HP; golden 8700 cents"),
 };
 
 inline constexpr Mutation kMut_special_druid_2_scen99 = {
@@ -3328,6 +3339,8 @@ inline constexpr FactPredicate kFacts_special_druid_3_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_DRUID, 1, 2,
         "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 16),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_DRUID, 5000, 11000,
+        "consequence: REVEAL drains caster MP which affects combat HP; golden 8700 cents"),
 };
 
 inline constexpr Mutation kMut_special_druid_3_scen99 = {
@@ -3347,6 +3360,7 @@ inline constexpr FactPredicate kFacts_special_druid_4_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_DRUID, 1, 2,
         "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 16),
+    pred::WalkerAliveAtFinal(FAMILY_DRUID, 1),
 };
 
 inline constexpr Mutation kMut_special_druid_4_scen99 = {
@@ -3366,6 +3380,7 @@ inline constexpr FactPredicate kFacts_special_orc_1_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_ORC, 0, 2,
         "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 11),
+    pred::EventKindAtLeast(/*score_change*/9, 1),
 };
 
 inline constexpr Mutation kMut_special_orc_1_scen99 = {
@@ -3385,6 +3400,8 @@ inline constexpr FactPredicate kFacts_special_orc_2_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_ORC, 1, 2,
         "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 8),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 7000, 14000,
+        "consequence: EAT_CORPSE restores HP; golden 10900 cents"),
 };
 
 inline constexpr Mutation kMut_special_orc_2_scen99 = {
@@ -3404,6 +3421,8 @@ inline constexpr FactPredicate kFacts_special_barbarian_1_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_BARBARIAN, 1, 2,
         "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 19),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_BARBARIAN, 3000, 10000,
+        "consequence: HURL_BOULDER combat exchange damages barbarian; golden 7100 cents"),
 };
 
 inline constexpr Mutation kMut_special_barbarian_1_scen99 = {
@@ -3423,6 +3442,8 @@ inline constexpr FactPredicate kFacts_special_barbarian_2_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_BARBARIAN, 1, 2,
         "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 17),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_BARBARIAN, 5000, 12000,
+        "consequence: EXPLODING_BOULDER combat exchange damages barbarian; golden 8900 cents"),
 };
 
 inline constexpr Mutation kMut_special_barbarian_2_scen99 = {
@@ -3442,6 +3463,8 @@ inline constexpr FactPredicate kFacts_special_archmage_2_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 2,
         "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 2),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHMAGE, 10000, 15000,
+        "consequence: HEARTBURST drains caster HP; golden 14600 cents"),
 };
 
 inline constexpr Mutation kMut_special_archmage_2_scen99 = {
@@ -3461,6 +3484,8 @@ inline constexpr FactPredicate kFacts_special_archmage_3_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 2,
         "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 2),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHMAGE, 10000, 15000,
+        "consequence: SUMMON_IMAGE drains caster MP which affects combat HP; golden 14600 cents"),
 };
 
 inline constexpr Mutation kMut_special_archmage_3_scen99 = {
@@ -3480,6 +3505,7 @@ inline constexpr FactPredicate kFacts_special_archmage_4_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 2,
         "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 2),
+    pred::WalkerAliveAtFinal(FAMILY_ARCHMAGE, 1),
 };
 
 inline constexpr Mutation kMut_special_archmage_4_scen99 = {
