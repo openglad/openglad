@@ -693,7 +693,7 @@ bool is_consequence_predicate(const og::parity::FactPredicate& p)
 {
     using FK = og::parity::FactKind;
     if (p.kind == FK::TickReached) return false;
-    if (p.kind == FK::EventKindAtLeast && p.arg0 == 1) return false;
+    if (p.kind == FK::EventKindAtLeast && p.arg1 == 0) return false;
     if (p.kind == FK::WalkerFamilyCount)
         return p.label.find("consequence:") != std::string_view::npos;
     return true;
