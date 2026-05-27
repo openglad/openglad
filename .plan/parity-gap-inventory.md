@@ -198,8 +198,8 @@ true). Only `special_skeleton_1_scen99` has `floor=10`.
 | Classification | Count | Percentage |
 |----------------|-------|------------|
 | STRONG | 3 | 2.3% |
-| MEDIUM | 57 | 42.9% |
-| WEAK | 71 | 53.4% |
+| MEDIUM | 60 | 45.1% |
+| WEAK | 68 | 51.1% |
 | TRIVIAL | 2 | 1.5% |
 | **Total** | **133** | |
 
