@@ -289,6 +289,12 @@ OG_PARITY_TEST(special_archmage_2_scen99)
 OG_PARITY_TEST(special_archmage_3_scen99)
 OG_PARITY_TEST(special_archmage_4_scen99)
 
+// Walker status-timer scenarios.
+OG_PARITY_TEST(enemy_freeze_mage_scen99)
+OG_PARITY_TEST(invisibility_thief_scen99)
+OG_PARITY_TEST(speed_potion_movement_scen99)
+OG_PARITY_TEST(invulnerable_potion_scen99)
+
 #undef OG_PARITY_TEST
 
 // Phase 02 — verify the two smoke runs produce observably-different walker

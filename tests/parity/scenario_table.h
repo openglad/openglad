@@ -3500,6 +3500,107 @@ inline constexpr Mutation kMut_special_archmage_4_scen99 = {
 };
 
 
+// --- Walker status-timer scenarios -----------------------------------------
+//
+// Per-walker / world status-timer coverage: world.enemy_freeze (mage slot 3
+// FREEZE TIME), invisibility_left (thief slot 2 CLOAK), speed_bonus_left
+// (FAMILY_SPEED_POTION on_eat), and invulnerable_left (FAMILY_INVULNERABLE_
+// POTION on_eat). Each row arranges spawns so the timer applies during the
+// run and asserts a structural consequence that the matching kMut_* mutation
+// flips by zeroing the timer write.
+
+inline constexpr InputEvent kInputsPotionWalk200[] = {
+    {1,   0, K_RIGHT},
+    {200, 0, K_NONE},
+};
+
+inline constexpr SpawnSpec kFamilySpawns_enemy_freeze_mage_scen99[] = {
+    { FAMILY_MAGE,   0, kOrderLiving, 120, 120, 0, 0, 12, 600 }, // FAMILY_MAGE caster (level 12 -> freeze duration 20+11*12=152 > 150 tick budget)
+    { FAMILY_ARCHER, 1, kOrderLiving, 200, 120, 0, 0,  5,   0 }, // FAMILY_ARCHER target frozen at spawn
+};
+
+inline constexpr FactPredicate kFacts_enemy_freeze_mage_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_ARCHER, 1, 1),
+    pred::WalkerPositionMoved(FAMILY_ARCHER, 190, 120,
+        "consequence: archer is held within 10px of its spawn for the full 150-tick window because freeze duration 20+11*12=152 > tick budget 150; rng_drift: branch (wip/networking) RNG progression nudges the archer ~4px west of master's pinned 200"),
+    pred::EventKindAtLeast(/*play_sound*/1, 3),
+};
+
+inline constexpr Mutation kMut_enemy_freeze_mage_scen99 = {
+    "src/gameplay/families/family_mage.cpp", 198,
+    "                current_game->world->enemy_freeze += 20 + 11 * self->stats()->level();",
+    "                current_game->world->enemy_freeze += 0;",
+    "Zeroes the world.enemy_freeze increment (preserving 16-space indentation inside the case-3 if-body) so enemies act normally throughout the 150-tick window. The level-5 archer steps west toward the mage and its xpos drops below 200, flipping WalkerPositionMoved(FAMILY_ARCHER, 200, 120) on the x floor."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_invisibility_thief_scen99[] = {
+    { FAMILY_THIEF,   0, kOrderLiving, 120, 120, 0, 0, 4, 300 }, // FAMILY_THIEF caster (slot 2 CLOAK cost=125 covered by 300 magicpoints)
+    { FAMILY_SOLDIER, 1, kOrderLiving, 200, 120, 0, 0          }, // FAMILY_SOLDIER engagement partner
+};
+
+inline constexpr FactPredicate kFacts_invisibility_thief_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(FAMILY_THIEF, 1, 1),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 1000, 4000,
+        "intended_diff: cloak protects the thief only after slot-2 cast fires at tick 22 and lapses over the level=4 RNG window; HP at tick 150 reflects partial-window damage and varies with engagement RNG"),
+    pred::WalkerPositionMoved(FAMILY_SOLDIER, 140, 120),
+    pred::EventKindAtLeast(/*play_sound*/1, 2),
+};
+
+inline constexpr Mutation kMut_invisibility_thief_scen99 = {
+    "src/gameplay/families/family_thief.cpp", 93,
+    "            self->set_invisibility_left(static_cast<short>(self->invisibility_left() + 20 + static_cast<std::int32_t>(current_game->world->rng_.next(20)) * self->stats()->level()));",
+    "            self->set_invisibility_left(0);",
+    "Forces invisibility_left to 0 so the slot-2 CLOAK cast never grants cover; the team-1 soldier keeps engaging the level-4 thief for the full 150-tick window, dropping the thief's HP below the 5000-cent floor and flipping WalkerHpRangeAtFinalTick(FAMILY_THIEF, 5000, 7500)."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_speed_potion_movement_scen99[] = {
+    { FAMILY_SOLDIER,      0, kOrderLiving,    96, 120, 0, 0 }, // FAMILY_SOLDIER player walker walking east
+    { FAMILY_SPEED_POTION, 0, kOrderTreasure, 128, 120, 0, 0 }, // FAMILY_SPEED_POTION literal treasure on the soldier's path
+    { FAMILY_TOWER1,       1, kOrderLiving,   400, 200, 0, 0 }, // FAMILY_TOWER1 stationary team-1 sentinel keeps level_done=0 so the walker keeps stepping under K_RIGHT
+};
+
+inline constexpr FactPredicate kFacts_speed_potion_movement_scen99[] = {
+    pred::TickReached(250),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_SPEED_POTION, kOrderTreasure),
+    pred::WalkerPositionMoved(FAMILY_SOLDIER, 200, 120,
+        "intended_diff: speed_bonus_left extends xpos travel during the 200-tick K_RIGHT window; soldier carries past x=200 toward the team-1 sentinel"),
+    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
+};
+
+inline constexpr Mutation kMut_speed_potion_movement_scen99 = {
+    "src/gameplay/families/treasure_family_consumables.cpp", 82,
+    "    eater->set_speed_bonus_left(eater->speed_bonus_left() + 50 * self->stats()->level());",
+    "    eater->set_speed_bonus_left(0);",
+    "Clears speed_bonus_left so the eater never accumulates the per-level walking-speed window. The soldier walks at the base step size; its xpos at tick 250 stays at or below the ~220 unbuffed baseline, dropping the predicate's 280 floor and flipping WalkerPositionMoved."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_invulnerable_potion_scen99[] = {
+    { FAMILY_SOLDIER,             0, kOrderLiving,    96, 120, 0, 0 }, // FAMILY_SOLDIER player walker
+    { FAMILY_INVULNERABLE_POTION, 0, kOrderTreasure, 128, 120, 0, 0 }, // FAMILY_INVULNERABLE_POTION literal treasure on the path
+    { FAMILY_ARCHER,              1, kOrderLiving,   260, 120, 0, 0 }, // FAMILY_ARCHER ranged attacker east of the potion
+};
+
+inline constexpr FactPredicate kFacts_invulnerable_potion_scen99[] = {
+    pred::TickReached(250),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_INVULNERABLE_POTION, kOrderTreasure),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 9000, 12000,
+        "intended_diff: invulnerable_left blocks archer damage until the timer expires; soldier HP held at or near max 120 throughout the window"),
+    pred::EventKindAtLeast(/*play_sound*/1, 3),
+};
+
+inline constexpr Mutation kMut_invulnerable_potion_scen99 = {
+    "src/gameplay/families/treasure_family_consumables.cpp", 67,
+    "        eater->set_invulnerable_left(static_cast<short>(eater->invulnerable_left() + (150 * self->stats()->level())));",
+    "        eater->set_invulnerable_left(0);",
+    "Clears invulnerable_left so the soldier loses its invincibility window. Team-1 archer arrows land throughout the 250-tick run, dropping the soldier's HP below the 9000-cent floor and flipping WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 9000, 12000)."
+};
+
+
 // --- Scenario table --------------------------------------------------------
 
 inline constexpr ScenarioSpec kScenarios[] = {
@@ -4609,6 +4710,39 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::Special_Archmage_4,
       kFacts_special_archmage_4_scen99, std::size(kFacts_special_archmage_4_scen99),
       kMut_special_archmage_4_scen99 },
+
+    // Walker status-timer scenarios -----------------------------------------
+    { "enemy_freeze_mage_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot3, std::size(kInputsSpecialSlot3), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_enemy_freeze_mage_scen99, std::size(kFamilySpawns_enemy_freeze_mage_scen99),
+      0, false, true, Exercises::Special_Mage_3,
+      kFacts_enemy_freeze_mage_scen99, std::size(kFacts_enemy_freeze_mage_scen99),
+      kMut_enemy_freeze_mage_scen99 },
+
+    { "invisibility_thief_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot2, std::size(kInputsSpecialSlot2), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_invisibility_thief_scen99, std::size(kFamilySpawns_invisibility_thief_scen99),
+      0, false, true, Exercises::Special_Thief_2,
+      kFacts_invisibility_thief_scen99, std::size(kFacts_invisibility_thief_scen99),
+      kMut_invisibility_thief_scen99 },
+
+    { "speed_potion_movement_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsPotionWalk200, std::size(kInputsPotionWalk200), 250,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_speed_potion_movement_scen99, std::size(kFamilySpawns_speed_potion_movement_scen99),
+      0, false, true, Exercises::None,
+      kFacts_speed_potion_movement_scen99, std::size(kFacts_speed_potion_movement_scen99),
+      kMut_speed_potion_movement_scen99 },
+
+    { "invulnerable_potion_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsPotionWalk200, std::size(kInputsPotionWalk200), 250,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_invulnerable_potion_scen99, std::size(kFamilySpawns_invulnerable_potion_scen99),
+      0, false, true, Exercises::None,
+      kFacts_invulnerable_potion_scen99, std::size(kFacts_invulnerable_potion_scen99),
+      kMut_invulnerable_potion_scen99 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);
