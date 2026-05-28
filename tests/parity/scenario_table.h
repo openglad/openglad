@@ -3549,7 +3549,8 @@ inline constexpr FactPredicate kFacts_invisibility_thief_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_THIEF, 1, 1),
     pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 1300, 2500,
-        "intended_diff: cloak protects the thief only between slot-2 cast at tick ~22 and its level-4 RNG-bounded expiry; HP at tick 150 reflects partial-window engagement and varies with rng (master: 15.0, branch: 23.0)"),
+        "intended_diff: cloak protects the thief only between slot-2 cast at tick ~22 and its level-4 RNG-bounded expiry, so HP at tick 150 reflects partial-window engagement and varies with rng (master hp=15, branch hp=23); commit a4ae4e3cf4a3aef89bafbb1171a24fb571be9b25"),
+    // intended_diff: cloak window is shorter than the 150-tick budget so the thief takes partial-window engagement damage that varies with rng (master hp=15, branch hp=23); commit a4ae4e3cf4a3aef89bafbb1171a24fb571be9b25
     pred::WalkerPositionMoved(FAMILY_SOLDIER, 140, 120),
     pred::EventKindAtLeast(/*play_sound*/1, 2),
 };
@@ -3592,7 +3593,9 @@ inline constexpr FactPredicate kFacts_invulnerable_potion_scen99[] = {
     pred::TickReached(250),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
     pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_INVULNERABLE_POTION, kOrderTreasure),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 11500, 12000),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 11500, 12000,
+        "intended_diff: invulnerable_left blocks all archer-arrow damage until the 150-tick timer expires, so the soldier finishes at or near max hp 120 while the line-67 zeroing mutation drops it to ~99 below the floor; commit a4ae4e3cf4a3aef89bafbb1171a24fb571be9b25"),
+    // intended_diff: invulnerable_left blocks all archer-arrow damage so the soldier finishes at or near max hp 120 while the line-67 zeroing mutation drops it to ~99 below the floor; commit a4ae4e3cf4a3aef89bafbb1171a24fb571be9b25
     pred::EventKindAtLeast(/*play_sound*/1, 3),
 };
 
