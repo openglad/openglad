@@ -295,6 +295,10 @@ OG_PARITY_TEST(invisibility_thief_scen99)
 OG_PARITY_TEST(speed_potion_movement_scen99)
 OG_PARITY_TEST(invulnerable_potion_scen99)
 
+// Summon-lifecycle scenarios.
+OG_PARITY_TEST(summon_lifetime_faerie_scen99)
+OG_PARITY_TEST(summon_lifetime_decrement_faerie_scen99)
+
 #undef OG_PARITY_TEST
 
 // Phase 02 — verify the two smoke runs produce observably-different walker

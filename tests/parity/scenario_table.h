@@ -3607,6 +3607,66 @@ inline constexpr Mutation kMut_invulnerable_potion_scen99 = {
 };
 
 
+// --- Summon-lifecycle scenarios --------------------------------------------
+//
+// Druid slot-2 SUMMON FAERIE deterministically spawns a FAMILY_FAERIE walker
+// owned by the caster with lifetime = 50 + level*40 (family_druid.cpp:71). At
+// level 4 that is 210 ticks. The faerie is reaped by the per-tick lifetime
+// decrement in living.cpp:104-109 once its counter hits zero. Both rows place
+// the team-1 enemy far off-map (2000,2000) so range-gated AI targeting
+// (game_world.cpp:1078-1103) never reaches the faerie or the druid: the druid
+// survives the whole run, owner-death cascades (living.cpp:87/98) never fire,
+// and the faerie's disappearance is attributable purely to lifetime expiry.
+// The 650-tick budget (~3x the 210-tick lifetime) leaves the faerie long gone
+// by dump time. summon_lifetime_faerie_scen99 targets the spawn-time
+// initialisation write; summon_lifetime_decrement_faerie_scen99 targets the
+// per-tick decrement that drives expiry.
+
+inline constexpr SpawnSpec kFamilySpawns_summon_lifetime_faerie_scen99[] = {
+    { FAMILY_DRUID,   0, kOrderLiving, 120,  120,  0, 0, 4, 300 }, // FAMILY_DRUID caster (level 4 -> faerie lifetime 50+4*40=210; magicpoints 300 covers SUMMON FAERIE special_cost=80)
+    { FAMILY_SOLDIER, 1, kOrderLiving, 2000, 2000, 0, 0          }, // FAMILY_SOLDIER off-map far enough the AI never reaches the faerie before its 210-tick lifetime expires
+};
+
+inline constexpr FactPredicate kFacts_summon_lifetime_faerie_scen99[] = {
+    pred::TickReached(650),
+    pred::WalkerFamilyCount(FAMILY_DRUID, 1, 1),
+    pred::WalkerDiedByFinal(FAMILY_FAERIE,
+        "consequence: faerie summoned around tick 30 then expired by tick 650 as its lifetime ran out — no alive FAMILY_FAERIE remains (the dead entry persists in the dump, so this counts alive walkers, not raw objects)"),
+    pred::EventKindAtLeast(/*play_sound*/1, 1,
+        "consequence: the slot-2 cast emits a single play_sound at tick ~20; the unreachable off-map enemy and the silent lifetime-expiry reap add no further sounds, so exactly one play_sound is observed on both sides"),
+    pred::WalkerOfTeamAlive(0, 1, 2),
+};
+
+inline constexpr Mutation kMut_summon_lifetime_faerie_scen99 = {
+    "src/gameplay/families/family_druid.cpp", 71,
+    "            alive->set_lifetime(50 + self->stats()->level() * 40);",
+    "            alive->set_lifetime(99999);",
+    "Replaces the spawn-time lifetime initialisation with an effectively-infinite value; the faerie is still alive at tick 650 so WalkerDiedByFinal(FAMILY_FAERIE) fails because an alive FAMILY_FAERIE remains."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_summon_lifetime_decrement_faerie_scen99[] = {
+    { FAMILY_DRUID,   0, kOrderLiving, 120,  120,  0, 0, 4, 300 }, // FAMILY_DRUID caster (magicpoints 300 covers SUMMON FAERIE special_cost=80)
+    { FAMILY_SOLDIER, 1, kOrderLiving, 2000, 2000, 0, 0          }, // FAMILY_SOLDIER off-map so the druid is never engaged; owner-death cascades never fire, isolating the per-tick decrement
+};
+
+inline constexpr FactPredicate kFacts_summon_lifetime_decrement_faerie_scen99[] = {
+    pred::TickReached(650),
+    pred::WalkerFamilyCount(FAMILY_DRUID, 1, 1),
+    pred::WalkerDiedByFinal(FAMILY_FAERIE,
+        "consequence: faerie's 210-tick lifetime is decremented once per tick at living.cpp:104-105 until it reaches 0 around tick ~240; lines 106-109 then fire set_dead+death+return — no alive FAMILY_FAERIE remains by the final tick"),
+    pred::EventKindAtLeast(/*play_sound*/1, 1,
+        "consequence: the slot-2 cast emits a single play_sound at tick ~20; the off-map enemy keeps the druid unengaged and the lifetime-expiry reap is silent, so exactly one play_sound is observed on both sides"),
+    pred::WalkerOfTeamAlive(0, 1, 2),
+};
+
+inline constexpr Mutation kMut_summon_lifetime_decrement_faerie_scen99 = {
+    "src/gameplay/living.cpp", 104,
+    "\t\tconst auto remaining_lifetime = lifetime() - 1;",
+    "\t\tconst auto remaining_lifetime = lifetime();",
+    "Removes the `- 1` so remaining_lifetime == lifetime() every tick; `if (remaining_lifetime < 1)` at line 106 is permanently false and the lifetime-expiry kill at 108-109 never fires. With the druid kept alive (off-map enemy), owner-death cascades at 87/98 also never fire, so the faerie is still alive at tick 650 and WalkerDiedByFinal(FAMILY_FAERIE) fails because an alive FAMILY_FAERIE remains. Exercises the decrement path rather than initialisation."
+};
+
+
 // --- Scenario table --------------------------------------------------------
 
 inline constexpr ScenarioSpec kScenarios[] = {
@@ -4749,6 +4809,23 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_invulnerable_potion_scen99, std::size(kFacts_invulnerable_potion_scen99),
       kMut_invulnerable_potion_scen99 },
+
+    // Summon-lifecycle scenarios --------------------------------------------
+    { "summon_lifetime_faerie_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot2, std::size(kInputsSpecialSlot2), 650,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_summon_lifetime_faerie_scen99, std::size(kFamilySpawns_summon_lifetime_faerie_scen99),
+      0, false, true, Exercises::Special_Druid_2,
+      kFacts_summon_lifetime_faerie_scen99, std::size(kFacts_summon_lifetime_faerie_scen99),
+      kMut_summon_lifetime_faerie_scen99 },
+
+    { "summon_lifetime_decrement_faerie_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot2, std::size(kInputsSpecialSlot2), 650,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_summon_lifetime_decrement_faerie_scen99, std::size(kFamilySpawns_summon_lifetime_decrement_faerie_scen99),
+      0, false, true, Exercises::Special_Druid_2,
+      kFacts_summon_lifetime_decrement_faerie_scen99, std::size(kFacts_summon_lifetime_decrement_faerie_scen99),
+      kMut_summon_lifetime_decrement_faerie_scen99 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);
