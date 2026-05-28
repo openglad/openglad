@@ -2764,10 +2764,9 @@ inline constexpr SpawnSpec kFamilySpawns_special_soldier_2_scen99[] = {
 
 inline constexpr FactPredicate kFacts_special_soldier_2_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 2,
-        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
-    pred::EventKindAtLeast(/*play_sound*/1, 19),
-    pred::EventKindAtLeast(/*score_change*/9, 2),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
+    pred::EventKindAtLeast(/*play_sound*/1, 8),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 8000, 9000),
 };
 
 inline constexpr Mutation kMut_special_soldier_2_scen99 = {
@@ -2784,11 +2783,9 @@ inline constexpr SpawnSpec kFamilySpawns_special_soldier_3_scen99[] = {
 
 inline constexpr FactPredicate kFacts_special_soldier_3_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 2,
-        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
-    pred::EventKindAtLeast(/*play_sound*/1, 19),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 1000, 8000,
-        "rng_drift: WHIRLWIND combat damage varies across master/branch RNG paths; master HP in [3500, 4700] cents"),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
+    pred::EventKindAtLeast(/*play_sound*/1, 8),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 8000, 8400),
 };
 
 inline constexpr Mutation kMut_special_soldier_3_scen99 = {
@@ -2805,11 +2802,9 @@ inline constexpr SpawnSpec kFamilySpawns_special_soldier_4_scen99[] = {
 
 inline constexpr FactPredicate kFacts_special_soldier_4_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 2,
-        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
-    pred::EventKindAtLeast(/*play_sound*/1, 19),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 1000, 8000,
-        "rng_drift: DISARM combat damage varies across master/branch RNG paths; master HP in [3500, 4700] cents"),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
+    pred::EventKindAtLeast(/*play_sound*/1, 8),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 8000, 8400),
 };
 
 inline constexpr Mutation kMut_special_soldier_4_scen99 = {
@@ -2927,11 +2922,9 @@ inline constexpr SpawnSpec kFamilySpawns_special_archer_2_scen99[] = {
 
 inline constexpr FactPredicate kFacts_special_archer_2_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(FAMILY_ARCHER, 1, 2,
-        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
-    pred::EventKindAtLeast(/*play_sound*/1, 27),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 500, 12000,
-        "rng_drift: BARRAGE damage on enemy soldier varies widely across master/branch RNG paths; master HP 2400 cents"),
+    pred::WalkerFamilyCount(FAMILY_ARCHER, 1, 1),
+    pred::EventKindAtLeast(/*play_sound*/1, 11),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 1700, 1900),
 };
 
 inline constexpr Mutation kMut_special_archer_2_scen99 = {
@@ -2948,10 +2941,9 @@ inline constexpr SpawnSpec kFamilySpawns_special_archer_3_scen99[] = {
 
 inline constexpr FactPredicate kFacts_special_archer_3_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(FAMILY_ARCHER, 1, 2,
-        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
-    pred::EventKindAtLeast(/*play_sound*/1, 19),
-    pred::EventKindAtLeast(/*score_change*/9, 1),
+    pred::WalkerDiedByFinal(FAMILY_ARCHER),
+    pred::EventKindAtLeast(/*play_sound*/1, 7),
+    pred::EventKindAtLeast(/*notification*/2, 2),
 };
 
 inline constexpr Mutation kMut_special_archer_3_scen99 = {
@@ -2968,10 +2960,9 @@ inline constexpr SpawnSpec kFamilySpawns_special_mage_2_scen99[] = {
 
 inline constexpr FactPredicate kFacts_special_mage_2_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(FAMILY_MAGE, 1, 2,
-        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
-    pred::EventKindAtLeast(/*play_sound*/1, 2),
-    pred::WalkerPositionMoved(FAMILY_MAGE, 300, 150),
+    pred::EventKindAtLeast(/*play_sound*/1, 25),
+    pred::branch_only(pred::WalkerHpRangeAtFinalTick(FAMILY_MAGE, 4000, 4400)),
+    pred::master_only(pred::WalkerDiedByFinal(FAMILY_MAGE)),
 };
 
 inline constexpr Mutation kMut_special_mage_2_scen99 = {
@@ -2988,10 +2979,10 @@ inline constexpr SpawnSpec kFamilySpawns_special_mage_3_scen99[] = {
 
 inline constexpr FactPredicate kFacts_special_mage_3_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(FAMILY_MAGE, 1, 2,
-        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
-    pred::EventKindAtLeast(/*play_sound*/1, 2),
-    pred::WalkerPositionMoved(FAMILY_MAGE, 300, 150),
+    pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
+    pred::EventKindAtLeast(/*play_sound*/1, 3),
+    pred::EventKindAtLeast(/*notification*/2, 9),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_MAGE, 7600, 7800),
 };
 
 inline constexpr Mutation kMut_special_mage_3_scen99 = {
@@ -3008,10 +2999,10 @@ inline constexpr SpawnSpec kFamilySpawns_special_mage_4_scen99[] = {
 
 inline constexpr FactPredicate kFacts_special_mage_4_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(FAMILY_MAGE, 1, 2,
-        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
-    pred::EventKindAtLeast(/*play_sound*/1, 2),
-    pred::WalkerPositionMoved(FAMILY_MAGE, 300, 150),
+    pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
+    pred::EventKindAtLeast(/*play_sound*/1, 11),
+    pred::EventKindAtLeast(/*score_change*/9, 8),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_MAGE, 5300, 5400),
 };
 
 inline constexpr Mutation kMut_special_mage_4_scen99 = {
@@ -3028,10 +3019,10 @@ inline constexpr SpawnSpec kFamilySpawns_special_mage_5_scen99[] = {
 
 inline constexpr FactPredicate kFacts_special_mage_5_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(FAMILY_MAGE, 1, 2,
-        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
-    pred::EventKindAtLeast(/*play_sound*/1, 2),
-    pred::WalkerPositionMoved(FAMILY_MAGE, 300, 150),
+    pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
+    pred::EventKindAtLeast(/*play_sound*/1, 4),
+    pred::EventKindAtLeast(/*score_change*/9, 2),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_MAGE, 8600, 8700),
 };
 
 inline constexpr Mutation kMut_special_mage_5_scen99 = {
@@ -3212,10 +3203,9 @@ inline constexpr SpawnSpec kFamilySpawns_special_thief_2_scen99[] = {
 
 inline constexpr FactPredicate kFacts_special_thief_2_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(FAMILY_THIEF, 0, 2,
-        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
-    pred::EventKindAtLeast(/*play_sound*/1, 11),
-    pred::EventKindAtLeast(/*notification*/2, 1),
+    pred::WalkerFamilyCount(FAMILY_THIEF, 1, 1),
+    pred::EventKindAtLeast(/*play_sound*/1, 1),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 4000, 6700),
 };
 
 inline constexpr Mutation kMut_special_thief_2_scen99 = {
@@ -3252,10 +3242,10 @@ inline constexpr SpawnSpec kFamilySpawns_special_thief_4_scen99[] = {
 
 inline constexpr FactPredicate kFacts_special_thief_4_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(FAMILY_THIEF, 1, 2,
-        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
-    pred::EventKindAtLeast(/*play_sound*/1, 10),
-    pred::WalkerDiedByFinal(FAMILY_SOLDIER),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000),
+    pred::EventKindAtLeast(/*play_sound*/1, 15),
+    pred::branch_only(pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 0, 500)),
+    pred::master_only(pred::WalkerDiedByFinal(FAMILY_THIEF)),
 };
 
 inline constexpr Mutation kMut_special_thief_4_scen99 = {
@@ -3333,11 +3323,9 @@ inline constexpr SpawnSpec kFamilySpawns_special_druid_3_scen99[] = {
 
 inline constexpr FactPredicate kFacts_special_druid_3_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(FAMILY_DRUID, 1, 2,
-        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
-    pred::EventKindAtLeast(/*play_sound*/1, 16),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_DRUID, 5000, 11000,
-        "consequence: REVEAL drains caster MP which affects combat HP; golden 8700 cents"),
+    pred::WalkerFamilyCount(FAMILY_DRUID, 1, 1),
+    pred::EventKindAtLeast(/*play_sound*/1, 14),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_DRUID, 5000, 5300),
 };
 
 inline constexpr Mutation kMut_special_druid_3_scen99 = {
@@ -3354,10 +3342,9 @@ inline constexpr SpawnSpec kFamilySpawns_special_druid_4_scen99[] = {
 
 inline constexpr FactPredicate kFacts_special_druid_4_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(FAMILY_DRUID, 1, 2,
-        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
-    pred::EventKindAtLeast(/*play_sound*/1, 16),
-    pred::WalkerAliveAtFinal(FAMILY_DRUID, 1),
+    pred::WalkerFamilyCount(FAMILY_DRUID, 1, 1),
+    pred::EventKindAtLeast(/*play_sound*/1, 14),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_DRUID, 5000, 5300),
 };
 
 inline constexpr Mutation kMut_special_druid_4_scen99 = {

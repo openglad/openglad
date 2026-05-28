@@ -1,11 +1,15 @@
 #include "scenario_runtime.h"
 
 #include <openglad/core/order.h>
+#include <openglad/gameplay/families/family_descriptor.h>
+#include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/input_state.h>
 #include <openglad/gameplay/sim_input_handler.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
+
+#include <string>
 
 namespace og::parity {
 
@@ -157,13 +161,31 @@ void apply_inputs_at_tick(GameWorld& world,
     walker*     control_io   = driver.control;
     const short player_num   = 0;
     const short my_team      = static_cast<short>(driver.control->team_num());
+
+    // Mirror screen.cpp:855-863 so the special-cycling gate at
+    // sim_input_handler.cpp:209-213 can distinguish defined vs "NONE"
+    // slots. get_family_descriptor self-initialises the registry on
+    // first use (family_registry.cpp:93-98), so no explicit init.
+    static std::string special_names_table[NUM_FAMILIES][NUM_SPECIALS];
+    static bool        special_names_initialised = false;
+    if (!special_names_initialised)
+    {
+        for (int i = 0; i < NUM_FAMILIES; ++i)
+        {
+            const FamilyDescriptor* fd = get_family_descriptor(i);
+            for (int j = 0; j < NUM_SPECIALS; ++j)
+                special_names_table[i][j] = fd ? fd->special_names[j] : "NONE";
+        }
+        special_names_initialised = true;
+    }
+
     sim_process_player_input(pi,
                              control_io,
                              world,
                              player_num,
                              my_team,
                              driver.debounce,
-                             /*special_names=*/nullptr,
+                             special_names_table,
                              sim_events);
     // sim_process_player_input may reassign control (character switch /
     // death). Keep the driver pointed at the live one.
