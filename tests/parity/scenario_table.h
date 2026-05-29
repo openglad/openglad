@@ -3711,6 +3711,111 @@ inline constexpr Mutation kMut_generator_saturation_scen99 = {
 };
 
 
+// Weapon-trajectory scenarios ------------------------------------------------
+// Three projectile/effect-trajectory specials whose observable consequence is
+// a spawned weapon or FX walker downstream of the caster's own state:
+//   * FAMILY_ELF slot 2 (BOUNCING ROCKS) fires FAMILY_ROCK projectiles via a
+//     two-shot fire() loop (family_elf.cpp:62-74);
+//   * FAMILY_SOLDIER slot 2 (BOOMERANG) summons one FAMILY_BOOMERANG FX walker
+//     (family_soldier.cpp:45-52; FX family registered effect_family_shield.cpp:133-134);
+//   * FAMILY_BARBARIAN slot 2 (EXPLODING BOULDER) emits a FAMILY_BOULDER whose
+//     projectile_explode_on_death (weapon_family_projectiles.cpp:14-31) adds a
+//     FAMILY_EXPLOSION FX walker, gated by set_skip_exit(5000) at
+//     family_barbarian.cpp:59.
+//
+// OBSERVABILITY NOTE. The naive predicates for these (WeaponFamilyEmitted on the
+// projectile / EffectFamilyCount on the FX) are not satisfiable under schema-v1:
+//   - FX walkers spawned via add_ob(Order::FX, ...) land in `oblist` (->
+//     dump.walkers[]), NOT `fxlist` (-> dump.effects[]) — see game_world.cpp:559
+//     (only Order::Weapon diverts to weaplist). So EffectFamilyCount, which
+//     searches dump.effects[], counts zero for FAMILY_BOOMERANG / FAMILY_EXPLOSION.
+//   - dump.walkers[] renders each entity through its own Order's family table,
+//     while WalkerFamilyCount resolves its arg through family_symbol_by_order at
+//     kLivingOrder (fact_predicate.cpp:78). An FX-order "FAMILY_BOOMERANG" string
+//     is therefore unreachable by WalkerFamilyCount too (the same aliasing wall
+//     the generator_saturation scenario documents).
+//   - WeaponFamilyEmitted snapshots dump.weapons[] at the final tick. These fast
+//     projectiles have expired/detonated long before the trajectory has fully
+//     played out, so the snapshot is empty; and the elf's normal attack also
+//     fires FAMILY_ROCK, so a snapshot rock would not isolate the special.
+// Each scenario therefore asserts the trajectory's *downstream* consequences that
+// ARE structurally observable and that the mutation provably flips (measured
+// against the branch dump with the mutation applied):
+//   - rocks landing -> soldier takes damage (score_change events + sub-full HP);
+//   - boomerang summon -> extra alive entities on the caster's team (team 0);
+//   - boulder detonation -> enemy soldiers take explosion damage (score_change
+//     events + sub-full HP). Each mutation removes that consequence entirely.
+inline constexpr SpawnSpec kFamilySpawns_weapon_rock_slot2_emit_scen99[] = {
+    { FAMILY_ELF,     0, kOrderLiving, 120, 120, 0, 0, 4, 300 }, // FAMILY_ELF caster (level 4 -> slot 2 BOUNCING ROCKS reachable)
+    { FAMILY_SOLDIER, 1, kOrderLiving, 200, 120, 0, 0 },         // FAMILY_SOLDIER target to the right so the elf faces it and the rocks fly toward it
+};
+
+inline constexpr FactPredicate kFacts_weapon_rock_slot2_emit_scen99[] = {
+    pred::TickReached(30),
+    pred::WalkerFamilyCount(FAMILY_ELF, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    pred::EventKindAtLeast(/*score_change*/9, 1,
+        "consequence: elf slot 2 BOUNCING ROCKS land on the enemy soldier and generate score_change events; the mutation aborts the fire() loop so no rock spawns, no rock lands, and zero score_change events occur"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 2000, 9000,
+        "rng_drift: soldier HP at tick 30 reflects BOUNCING ROCKS + melee damage (branch 6500 / master 3400 cents); the widened 7000-cent span carries a gate-recognised label and excludes the undamaged 12000-cent mutant outcome"),
+};
+
+inline constexpr Mutation kMut_weapon_rock_slot2_emit_scen99 = {
+    "src/gameplay/families/family_elf.cpp", 66,
+    "                fireob = static_cast<weap*>(self->fire());",
+    "                return false;",
+    "Aborts the first iteration of the BOUNCING ROCKS two-shot fire() loop with an early `return false;` before any rock projectile is spawned; the special's rocks never land on the enemy soldier, so the soldier stays at full HP and emits no score_change events — EventKindAtLeast(score_change, 1) fails on its floor and the soldier-HP window no longer holds."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_weapon_boomerang_return_scen99[] = {
+    { FAMILY_SOLDIER, 0, kOrderLiving, 120, 120, 0, 0, 4, 300 }, // FAMILY_SOLDIER caster (level 4 -> slot 2 BOOMERANG reachable)
+    { FAMILY_ARCHER,  1, kOrderLiving, 200, 200, 0, 0 },         // FAMILY_ARCHER opponent placed diagonally so combat RNG drives caster HP drift
+};
+
+inline constexpr FactPredicate kFacts_weapon_boomerang_return_scen99[] = {
+    pred::TickReached(80),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    pred::WalkerOfTeamAlive(0, 2, 4,
+        "consequence: BOOMERANG slot 2 adds FAMILY_BOOMERANG FX walker(s) to the caster's team (team 0), which the schema-v1 dump only exposes by team since the FX-order family string is unreachable by WalkerFamilyCount/EffectFamilyCount; the mutation aborts the summon so only the lone soldier remains alive on team 0"),
+    pred::EventKindAtLeast(/*play_sound*/1, 2),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 8000, 14000,
+        "rng_drift: soldier HP at tick 80 varies with archer engagement RNG; widened 6000-cent span carries a gate-recognised label"),
+};
+
+inline constexpr Mutation kMut_weapon_boomerang_return_scen99 = {
+    "src/gameplay/families/family_soldier.cpp", 46,
+    "            newob = summon_entity(self, Order::FX, FAMILY_BOOMERANG);",
+    "            return false;",
+    "Replaces the BOOMERANG FX summon with an early `return false;` before the FAMILY_BOOMERANG walker is created; the caster's team (team 0) loses its boomerang FX entities, dropping team-0 alive from 3 to 1 so WalkerOfTeamAlive(0, 2, 4) fails on its lower bound."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_weapon_exploding_boulder_scen99[] = {
+    { FAMILY_BARBARIAN, 0, kOrderLiving, 120, 120, 0, 0, 5, 300 }, // FAMILY_BARBARIAN caster (level 5 -> slot 2 EXPLODING BOULDER reachable)
+    { FAMILY_SOLDIER,   1, kOrderLiving, 160, 120, 0, 0 },          // three FAMILY_SOLDIER targets clustered ahead so the boulder's death-explosion has bodies in radius
+    { FAMILY_SOLDIER,   1, kOrderLiving, 200, 160, 0, 0 },
+    { FAMILY_SOLDIER,   1, kOrderLiving, 260, 200, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_weapon_exploding_boulder_scen99[] = {
+    pred::TickReached(60),
+    pred::WalkerFamilyCount(FAMILY_BARBARIAN, 1, 1),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 3000, 9000,
+        "consequence: EXPLODING BOULDER's projectile_explode_on_death detonation damages clustered enemy soldiers below full HP (branch 6000-6300 / master 3600-6100 cents); the mutation zeroes skip_exit so the boulder never explodes and every soldier stays at full 12000-cent HP outside this window"),
+    pred::EventKindAtLeast(/*score_change*/9, 1,
+        "consequence: explosion damage to the enemy soldiers generates score_change events; the mutation suppresses the detonation so zero score_change events occur"),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 0, 3,
+        "rng_drift: explosion may kill 0-3 enemy soldiers depending on radius/aim"),
+    pred::EventKindAtLeast(/*play_sound*/1, 3),
+};
+
+inline constexpr Mutation kMut_weapon_exploding_boulder_scen99 = {
+    "src/gameplay/families/family_barbarian.cpp", 59,
+    "        alive->set_skip_exit(5000);",
+    "        alive->set_skip_exit(0);",
+    "Zeroes the EXPLODING BOULDER skip_exit budget so projectile_explode_on_death short-circuits at its `if (!self->skip_exit()) return false;` guard; the boulder never detonates, the clustered enemy soldiers take no explosion damage (all stay at full 12000-cent HP) and emit no score_change events — the soldier-HP window and EventKindAtLeast(score_change, 1) both fail."
+};
+
+
 // --- Scenario table --------------------------------------------------------
 
 inline constexpr ScenarioSpec kScenarios[] = {
@@ -4879,6 +4984,31 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_generator_saturation_scen99, std::size(kFacts_generator_saturation_scen99),
       kMut_generator_saturation_scen99 },
+
+    // Weapon-trajectory scenarios -------------------------------------------
+    { "weapon_rock_slot2_emit_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot2, std::size(kInputsSpecialSlot2), 30,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_weapon_rock_slot2_emit_scen99, std::size(kFamilySpawns_weapon_rock_slot2_emit_scen99),
+      0, false, true, Exercises::None,
+      kFacts_weapon_rock_slot2_emit_scen99, std::size(kFacts_weapon_rock_slot2_emit_scen99),
+      kMut_weapon_rock_slot2_emit_scen99 },
+
+    { "weapon_boomerang_return_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot2, std::size(kInputsSpecialSlot2), 80,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_weapon_boomerang_return_scen99, std::size(kFamilySpawns_weapon_boomerang_return_scen99),
+      0, false, true, Exercises::None,
+      kFacts_weapon_boomerang_return_scen99, std::size(kFacts_weapon_boomerang_return_scen99),
+      kMut_weapon_boomerang_return_scen99 },
+
+    { "weapon_exploding_boulder_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot2, std::size(kInputsSpecialSlot2), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_weapon_exploding_boulder_scen99, std::size(kFamilySpawns_weapon_exploding_boulder_scen99),
+      0, false, true, Exercises::None,
+      kFacts_weapon_exploding_boulder_scen99, std::size(kFacts_weapon_exploding_boulder_scen99),
+      kMut_weapon_exploding_boulder_scen99 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);
