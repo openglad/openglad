@@ -3971,6 +3971,192 @@ inline constexpr Mutation kMut_effect_bomb_timer_scen99 = {
 };
 
 
+// --- Phase 06: input-pipeline edge-case scenarios --------------------------
+//
+// These four rows drive the real player-input pipeline (PlayerInput decode +
+// sim_process_player_input) through edge cases that the family/effect rows
+// never reach: diagonal movement decode, sustained held-fire, mid-run
+// character switch, and special-slot index wrap. Each row's discriminating
+// mutation edits exactly one source line in input_state.cpp /
+// sim_input_handler.cpp; the byte-match `from` text is verified against the
+// live source line by the mutation canary (scripts/parity/_apply_mutation.py).
+
+// (1) DIAGONAL MOVEMENT. A lone soldier on the player team holds K_DOWN_RIGHT
+// for forty ticks. PlayerInput::move_x()/move_y() each decode the DownRight
+// bit into a +1 component (input_state.cpp:10-12 and :24-26), so walkstep
+// advances the soldier in BOTH axes. WalkerPositionMoved requires xpos AND
+// ypos to clear the floor — the mutation neuters the move_y() DownRight decode
+// (line 26) so the y component is dropped and the soldier never clears the
+// ypos floor.
+inline constexpr InputEvent kInputs_input_diagonal_movement[] = {
+    {  1, 0, K_DOWN_RIGHT },
+    { 40, 0, K_NONE },
+};
+
+inline constexpr SpawnSpec kFamilySpawns_input_diagonal_movement_scen99[] = {
+    { FAMILY_SOLDIER, 0, kOrderLiving, 160, 160, 0, 0 }, // lone player-team soldier; fresh arena so K_DOWN_RIGHT is the only mover
+};
+
+inline constexpr FactPredicate kFacts_input_diagonal_movement_scen99[] = {
+    pred::TickReached(80),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    pred::WalkerPositionMoved(FAMILY_SOLDIER, 175, 175,
+        "consequence: diagonal K_DOWN_RIGHT moves the soldier in both axes; mutation disables the move_y() DownRight decode so the y component is dropped and the soldier never clears the ypos floor"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 5000, 15000,
+        "rng_drift: lone soldier takes no combat damage; range widened to absorb cross-side HP/regen drift"),
+    pred::WalkerOfTeamAlive(0, 1, 1),
+};
+
+inline constexpr Mutation kMut_input_diagonal_movement_scen99 = {
+    "src/interface/input/input_state.cpp", 26,
+    "        held[static_cast<int>(InputKey::DownRight)])",
+    "        false)",
+    "Drops the DownRight bit from PlayerInput::move_y(): the diagonal key no longer contributes a +1 y component, so the soldier advances only in x and never clears the ypos floor of WalkerPositionMoved(FAMILY_SOLDIER, 175, 175)."
+};
+
+// (2) HELD FIRE. A lone player-team soldier holds K_FIRE for the whole run.
+// The held-fire branch (sim_input_handler.cpp:350) re-arms init_fire() every
+// tick, so the soldier looses a FAMILY_KNIFE on every boomerang cycle (the
+// knife is a returning weapon, one in flight at a time) and emits a fire sound
+// per throw. The mutation disables the held-fire branch, leaving only the
+// single press-edge fire at sim_input_handler.cpp:329 — one throw, one sound.
+//
+// OBSERVABILITY NOTE. The soldier's knife is a RETURNING projectile: it is
+// FAMILY_KNIFE (Order::Weapon, weaplist) only while outbound and
+// FAMILY_KNIFE_BACK (oblist) while returning, so whether a FAMILY_KNIFE is in
+// dump.weapons[] at the final tick is a coin-flip on the boomerang phase and
+// not a robust signal. The robust, cross-side-stable consequence is the COUNT
+// of fire sounds: held-fire throws repeatedly (many play_sound events) while
+// the mutated single press-fire emits essentially one. The soldier is alone
+// (no foe) so no combat RNG perturbs the throw cadence and nothing can kill it.
+inline constexpr InputEvent kInputs_input_hold_fire_search[] = {
+    {   5, 0, K_FIRE },
+    { 400, 0, K_NONE },
+};
+
+inline constexpr SpawnSpec kFamilySpawns_input_hold_fire_search_scen99[] = {
+    { FAMILY_SOLDIER, 0, kOrderLiving, 96, 120, 0, 0, 1, 0 }, // lone player-team soldier (level 1 -> short-range knife, fast boomerang cadence); holds fire
+};
+
+inline constexpr FactPredicate kFacts_input_hold_fire_search_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    pred::EventKindAtLeast(/*play_sound*/1, 5,
+        "consequence: held-fire re-arms the throw every tick, so the soldier looses a knife each boomerang cycle and emits many fire sounds across the run; the mutation disables held-fire, leaving only the single press-edge throw and its lone sound"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 5000, 15000,
+        "rng_drift: the lone soldier takes no combat damage; range widened to absorb cross-side HP/regen drift"),
+    pred::WalkerOfTeamAlive(0, 1, 1),
+};
+
+inline constexpr Mutation kMut_input_hold_fire_search_scen99 = {
+    "src/gameplay/sim_input_handler.cpp", 350,
+    "        if (pi.is_held(InputAction::Fire))",
+    "        if (false)",
+    "Disables the held-fire branch so the soldier fires only on the single press edge at line 329; the sustained knife stream collapses to one throw and the play_sound count falls below the floor of EventKindAtLeast(play_sound, 5)."
+};
+
+// (3) SWITCH CHARACTER. Two real_team==255 walkers share the player team
+// (player_team = 255). The driver first controls the soldier; K_SWITCH then
+// hands control to the archer via sim_cycle_next_character
+// (sim_input_handler.cpp:188), so the held K_FIRE that follows is the ARCHER's
+// fire. The mutation pins control to oldcontrol, so the switch is a no-op and
+// the soldier keeps the helm.
+//
+// OBSERVABILITY NOTE. Position is not a usable signal here: an UNcontrolled
+// living runs the AI and random-walks to an unpredictable spot (living.cpp
+// act_random / COMMAND_RANDOM_WALK), so the never-controlled walker can drift
+// anywhere and no xpos threshold separates the two runs. Instead we observe
+// WHICH WEAPON FAMILY is emitted. After the switch, held K_FIRE makes the
+// controlled walker fire: the ARCHER looses FAMILY_ARROW (a non-returning
+// projectile that persists in weaplist), whereas the SOLDIER would throw
+// FAMILY_KNIFE. So an emitted FAMILY_ARROW proves the archer holds the helm.
+// The mutation keeps the soldier in control, so K_FIRE throws knives and no
+// FAMILY_ARROW is ever emitted. Both walkers are real_team 255 (the switch
+// filter requires it) and friendly to each other (no combat), so neither dies.
+inline constexpr InputEvent kInputs_input_switch_char[] = {
+    {   5, 0, K_SWITCH },
+    {   6, 0, K_NONE },
+    {  10, 0, K_FIRE },
+    { 400, 0, K_NONE }, // release past the tick budget: fire held through the final tick so a fresh FAMILY_ARROW is in flight at capture
+};
+
+inline constexpr SpawnSpec kFamilySpawns_input_switch_char_scen99[] = {
+    // add_ob(atstart=true) PREPENDS, so the last spawn lands at the front of
+    // oblist and is the walker find_player_walker hands the driver first. The
+    // soldier is therefore listed second so it is controlled FIRST; K_SWITCH
+    // then cycles control onto the archer.
+    { FAMILY_ARCHER,  255, kOrderLiving, 160, 140, 0, 0, 5, 200 }, // switch target: gains control after K_SWITCH, then held K_FIRE looses arrows
+    { FAMILY_SOLDIER, 255, kOrderLiving, 120, 120, 0, 0, 5, 200 }, // first controlled walker (real_team 255 so the switch filter accepts it)
+};
+
+inline constexpr FactPredicate kFacts_input_switch_char_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_ARCHER, 1, 1),
+    pred::WeaponFamilyEmitted(FAMILY_ARROW,
+        "consequence: K_SWITCH hands control to the archer, whose held K_FIRE looses FAMILY_ARROW projectiles; the mutation pins control to the soldier, so K_FIRE throws knives and no arrow is ever emitted"),
+    pred::EventKindAtLeast(/*play_sound*/1, 3,
+        "rng_drift: fire-sound count varies with the held-fire cadence"),
+};
+
+inline constexpr Mutation kMut_input_switch_char_scen99 = {
+    "src/gameplay/sim_input_handler.cpp", 188,
+    "        control = sim_cycle_next_character(level.oblist, oldcontrol, reverse, filter);",
+    "        control = oldcontrol;",
+    "Makes K_SWITCH a no-op: control never leaves the soldier, so the held K_FIRE throws FAMILY_KNIFE rather than the archer's FAMILY_ARROW, and WeaponFamilyEmitted(FAMILY_ARROW) finds no arrow."
+};
+
+// (4) SPECIAL-SLOT WRAP. A player-team mage cycles K_SPECIAL_SWITCH seven
+// times. Each press increments current_special (sim_input_handler.cpp:204);
+// the fifth press pushes past the last defined slot and wraps back to 1
+// (line 219), and the run lands on slot 3 (FREEZE TIME) when K_SPECIAL fires.
+// Seven K_SPECIAL_SWITCH presses cycle current_special 1->2->3->4->5, then the
+// fifth press pushes past the last slot and wraps to 1 (line 219), and presses
+// six/seven walk it back to 3 — FREEZE TIME. K_SPECIAL then fires that slot.
+//
+// OBSERVABILITY NOTE. The mutation resets the slot to 1, so K_SPECIAL fires
+// TELEPORT instead — which jumps the mage to a random tile, and the team-1
+// soldier chases it to an unpredictable spot, so the soldier's final POSITION
+// is not a usable signal (a moved-at-least floor cannot tell "frozen near
+// spawn" from "chased far away"). The robust, on-point signal is the
+// FREEZE-TIME palette tint: a team-0 freeze sets current_palette_id and emits
+// SetPalette events (family_mage.cpp:199-200, plus the freeze-end reset in
+// game_world.cpp:1385-1386). TELEPORT emits none. So a SetPalette event proves
+// the wrap landed on FREEZE TIME.
+inline constexpr InputEvent kInputs_input_special_switch_wrap[] = {
+    {  2, 0, K_SPECIAL_SWITCH }, {  3, 0, K_NONE },
+    {  4, 0, K_SPECIAL_SWITCH }, {  5, 0, K_NONE },
+    {  6, 0, K_SPECIAL_SWITCH }, {  7, 0, K_NONE },
+    {  8, 0, K_SPECIAL_SWITCH }, {  9, 0, K_NONE },
+    { 10, 0, K_SPECIAL_SWITCH }, { 11, 0, K_NONE },
+    { 12, 0, K_SPECIAL_SWITCH }, { 13, 0, K_NONE },
+    { 14, 0, K_SPECIAL_SWITCH }, { 15, 0, K_NONE },
+    { 16, 0, K_SPECIAL },        { 17, 0, K_NONE },
+};
+
+inline constexpr SpawnSpec kFamilySpawns_input_special_switch_wrap_scen99[] = {
+    { FAMILY_MAGE,    0, kOrderLiving, 120, 120, 0, 0, 13, 600 }, // player mage: level 13 + 600 magic so every special slot is reachable and affordable
+    { FAMILY_SOLDIER, 1, kOrderLiving, 200, 120, 0, 0 },         // team-1 soldier downrange; frozen in place by FREEZE TIME
+};
+
+inline constexpr FactPredicate kFacts_input_special_switch_wrap_scen99[] = {
+    pred::TickReached(150),
+    pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    pred::EventKindAtLeast(/*set_palette*/3, 1,
+        "consequence: the special-switch wrap lands on FREEZE TIME, whose team-0 cast tints the arena palette and emits SetPalette events; the mutation resets the slot index so TELEPORT fires instead and no palette change is emitted"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 0, 15000,
+        "rng_drift: soldier HP varies with engagement RNG"),
+};
+
+inline constexpr Mutation kMut_input_special_switch_wrap_scen99 = {
+    "src/gameplay/sim_input_handler.cpp", 204,
+    "        control->set_current_special(control->current_special() + 1);",
+    "        control->set_current_special(1);",
+    "Replaces the per-press increment with a hard reset to slot 1, so the wrap never reaches FREEZE TIME (slot 3); K_SPECIAL fires TELEPORT, which emits no SetPalette event, failing EventKindAtLeast(set_palette, 1)."
+};
+
+
 // --- Scenario table --------------------------------------------------------
 
 inline constexpr ScenarioSpec kScenarios[] = {
@@ -5198,6 +5384,39 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_effect_bomb_timer_scen99, std::size(kFacts_effect_bomb_timer_scen99),
       kMut_effect_bomb_timer_scen99 },
+
+    // Input-pipeline scenarios ----------------------------------------------
+    { "input_diagonal_movement_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_input_diagonal_movement, std::size(kInputs_input_diagonal_movement), 80,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_input_diagonal_movement_scen99, std::size(kFamilySpawns_input_diagonal_movement_scen99),
+      0, false, true, Exercises::None,
+      kFacts_input_diagonal_movement_scen99, std::size(kFacts_input_diagonal_movement_scen99),
+      kMut_input_diagonal_movement_scen99 },
+
+    { "input_hold_fire_search_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_input_hold_fire_search, std::size(kInputs_input_hold_fire_search), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_input_hold_fire_search_scen99, std::size(kFamilySpawns_input_hold_fire_search_scen99),
+      0, false, true, Exercises::None,
+      kFacts_input_hold_fire_search_scen99, std::size(kFacts_input_hold_fire_search_scen99),
+      kMut_input_hold_fire_search_scen99 },
+
+    { "input_switch_char_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_input_switch_char, std::size(kInputs_input_switch_char), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_input_switch_char_scen99, std::size(kFamilySpawns_input_switch_char_scen99),
+      255, false, true, Exercises::None,
+      kFacts_input_switch_char_scen99, std::size(kFacts_input_switch_char_scen99),
+      kMut_input_switch_char_scen99 },
+
+    { "input_special_switch_wrap_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_input_special_switch_wrap, std::size(kInputs_input_special_switch_wrap), 150,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_input_special_switch_wrap_scen99, std::size(kFamilySpawns_input_special_switch_wrap_scen99),
+      0, false, true, Exercises::None,
+      kFacts_input_special_switch_wrap_scen99, std::size(kFacts_input_special_switch_wrap_scen99),
+      kMut_input_special_switch_wrap_scen99 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);

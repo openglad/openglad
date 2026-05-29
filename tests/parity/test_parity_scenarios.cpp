@@ -315,6 +315,12 @@ OG_PARITY_TEST(effect_protection_emit_scen99)
 // Effect-timer scenarios.
 OG_PARITY_TEST(effect_bomb_timer_scen99)
 
+// Input-pipeline scenarios.
+OG_PARITY_TEST(input_diagonal_movement_scen99)
+OG_PARITY_TEST(input_hold_fire_search_scen99)
+OG_PARITY_TEST(input_switch_char_scen99)
+OG_PARITY_TEST(input_special_switch_wrap_scen99)
+
 #undef OG_PARITY_TEST
 
 // Phase 02 — verify the two smoke runs produce observably-different walker
