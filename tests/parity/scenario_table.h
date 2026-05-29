@@ -4215,6 +4215,39 @@ inline constexpr Mutation kMut_multiplayer_two_teams_scen99 = {
     "Replaces the no-myguy team-number friendliness comparison with an unconditional `return 1`, so every pair of walkers is friendly regardless of team; the three-team melee never starts, every walker keeps full HP, and the combat play_sound stream collapses from ~10 to 1 — below the EventKindAtLeast(play_sound, 4) floor (verified: mutated branch dump emits play_sound == 1)."
 };
 
+// Level-withdraw scenario. Reuses scripted_input_scen9301's spawn list
+// (kFamilySpawns_soldier_with_exit_withdraw: a player SOLDIER on team 0, a
+// surviving team-1 enemy that keeps a live foe in the level, and a FAMILY_EXIT
+// treasure whose stats().level()==2 points at the already-completed scen2) and
+// its input script (kInputsScripted9301: UP→RIGHT→FIRE) which walks the player
+// onto the exit. Because the destination level is completed but the current one
+// is not, exit_on_eat takes the withdraw branch
+// (treasure_family_navigation.cpp:84-96): it sets world.withdraw_requested=true
+// and emits WithdrawToLevel. From the next tick on, the early-break guards at
+// game_world.cpp:1393/1438/etc fire before any living foe can set level_done=0,
+// so level_done holds at its default 2 (game_world.cpp:1357) — the loop never
+// reaches the level_done=0 assignment at 1408. The tick budget is widened to
+// 200 (vs the 150 of scripted_input) so the withdraw latches well before the
+// final dump. Because the player spawns on the exit tile the withdraw fires at
+// tick ~5, well before the scripted K_FIRE, so the run emits no combat
+// play_sound events — the two events the withdraw branch does emit
+// (WithdrawToLevel and the withdraw-flavoured RequestExitConfirmation) carry
+// the event-floor predicates instead.
+inline constexpr FactPredicate kFacts_level_withdraw_scen99[] = {
+    pred::TickReached(200),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
+    pred::LevelDoneEquals(2, "consequence: withdraw path returns level_done=2; mutation forces withdraw_requested=false so the loop completes and level_done becomes 0"),
+    pred::EventKindAtLeast(/*withdraw_to_level*/8, 1),
+    pred::EventKindAtLeast(/*request_exit_confirmation*/7, 1),
+};
+
+inline constexpr Mutation kMut_level_withdraw_scen99 = {
+    "src/gameplay/families/treasure_family_navigation.cpp", 86,
+    "        world.withdraw_requested = true;",
+    "        world.withdraw_requested = false;",
+    "Forces the withdraw-request flag false at the instant the player eats the FAMILY_EXIT treasure on a completed destination level; the early-break guards at game_world.cpp:1393/1438 never fire, the entity-act loop runs to completion, the surviving team-1 enemy sets level_done=0 at game_world.cpp:1408, and the level_done==2 completion branch at 1484 is skipped — so LevelDoneEquals(2) flips to level_done==0 (verified against the mutated branch dump)."
+};
+
 
 // --- Scenario table --------------------------------------------------------
 
@@ -5485,6 +5518,16 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_multiplayer_two_teams_scen99, std::size(kFacts_multiplayer_two_teams_scen99),
       kMut_multiplayer_two_teams_scen99 },
+
+    // Level-withdraw scenario -----------------------------------------------
+    { "level_withdraw_scen99",
+      "scen/scen1.fss", 0x00000010u,
+      kInputsScripted9301, std::size(kInputsScripted9301), 200,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_soldier_with_exit_withdraw, std::size(kFamilySpawns_soldier_with_exit_withdraw),
+      0, false, true, Exercises::None,
+      kFacts_level_withdraw_scen99, std::size(kFacts_level_withdraw_scen99),
+      kMut_level_withdraw_scen99 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);

@@ -324,6 +324,9 @@ OG_PARITY_TEST(input_special_switch_wrap_scen99)
 // Multi-team is_friendly scenario.
 OG_PARITY_TEST(multiplayer_two_teams_scen99)
 
+// Level-withdraw scenario.
+OG_PARITY_TEST(level_withdraw_scen99)
+
 #undef OG_PARITY_TEST
 
 // Phase 02 — verify the two smoke runs produce observably-different walker
