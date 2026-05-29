@@ -312,6 +312,9 @@ OG_PARITY_TEST(effect_heartburst_multitarget_scen99)
 OG_PARITY_TEST(effect_poison_cloud_emit_scen99)
 OG_PARITY_TEST(effect_protection_emit_scen99)
 
+// Effect-timer scenarios.
+OG_PARITY_TEST(effect_bomb_timer_scen99)
+
 #undef OG_PARITY_TEST
 
 // Phase 02 — verify the two smoke runs produce observably-different walker

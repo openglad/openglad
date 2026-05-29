@@ -3931,6 +3931,46 @@ inline constexpr Mutation kMut_effect_protection_emit_scen99 = {
 };
 
 
+// Effect-timer scenarios -----------------------------------------------------
+// FAMILY_THIEF slot 1 (DROP BOMB) spawns a FAMILY_BOMB FX walker that lives on
+// a self-destruct timer (family_thief.cpp:69 add_ob(Order::FX, FAMILY_BOMB, 1);
+// the bomb's on_death later detonates a FAMILY_EXPLOSION — effect_family_bomb.cpp:17-29).
+// The bomb is the canonical "effect on a timer" the parity suite must observe.
+//
+// OBSERVABILITY NOTE. add_ob(Order::FX, ...) routes everything that is not
+// Order::Weapon into oblist (game_world.cpp:564), NOT fxlist, so the freshly
+// dropped FAMILY_BOMB surfaces in dump.walkers[] (collect_walkers reads oblist
+// and renders the bomb's own FX-order family string "FAMILY_BOMB"), never in
+// dump.effects[] (collect_effects reads fxlist only — state_dump.cpp:347-348).
+// EffectFamilyCount(FAMILY_BOMB, ...) counts dump.effects[] and is therefore
+// structurally 0; WalkerFamilyCount(FAMILY_BOMB, ...) renders FAMILY_BOMB under
+// the Living table and never matches the FX-order "FAMILY_BOMB" string — the
+// same aliasing wall the poison-cloud row documents. The bomb's spawn is thus
+// only robustly observable by TEAM: it lands on the thief's team (team 0) as an
+// alive walker. We pick tick 30 — early enough that the timed bomb has not yet
+// detonated, so it is still alive in oblist as a team-0 walker and the soldier
+// (parked far away at 400,400) has taken no blast damage on either branch.
+inline constexpr SpawnSpec kFamilySpawns_effect_bomb_timer_scen99[] = {
+    { FAMILY_THIEF,   0, kOrderLiving, 120, 120, 0, 0, 5, 300 }, // thief caster (level 5 + 300 magicpoints -> slot 1 DROP BOMB affordable); the player-controlled walker
+    { FAMILY_SOLDIER, 1, kOrderLiving, 400, 400, 0, 0 },         // lone FAMILY_SOLDIER foe parked far away so the bomb blast never reaches it
+};
+
+inline constexpr FactPredicate kFacts_effect_bomb_timer_scen99[] = {
+    pred::TickReached(30),
+    pred::WalkerFamilyCount(FAMILY_THIEF, 1, 1),
+    pred::WalkerOfTeamAlive(0, 2, 3,
+        "consequence: DROP BOMB slot 1 adds the timed FAMILY_BOMB FX walker(s) to the thief's team (team 0) — schema-v1 routes the bomb through add_ob(Order::FX) into oblist, where it surfaces as an alive team-0 walker (the FX-order family string aliases under WalkerFamilyCount / EffectFamilyCount, so the spawn is only robustly observable by team). The mutation bypasses the spawn so only the lone thief remains alive on team 0 and this count collapses to 1, below the floor of 2."),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+};
+
+inline constexpr Mutation kMut_effect_bomb_timer_scen99 = {
+    "src/gameplay/families/family_thief.cpp", 69,
+    "            newob = current_game->world->add_ob(Order::FX, FAMILY_BOMB, 1);",
+    "            return false;",
+    "Replaces the DROP BOMB FX spawn with an early `return false;` before any FAMILY_BOMB walker is created; oblist never holds a bomb so the thief's team (team 0) keeps only the lone thief alive and WalkerOfTeamAlive(0, 2, 3) collapses to 1, below its floor."
+};
+
+
 // --- Scenario table --------------------------------------------------------
 
 inline constexpr ScenarioSpec kScenarios[] = {
@@ -5149,6 +5189,15 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_effect_protection_emit_scen99, std::size(kFacts_effect_protection_emit_scen99),
       kMut_effect_protection_emit_scen99 },
+
+    // Effect-timer scenarios ------------------------------------------------
+    { "effect_bomb_timer_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot1, std::size(kInputsSpecialSlot1), 30,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_effect_bomb_timer_scen99, std::size(kFamilySpawns_effect_bomb_timer_scen99),
+      0, false, true, Exercises::None,
+      kFacts_effect_bomb_timer_scen99, std::size(kFacts_effect_bomb_timer_scen99),
+      kMut_effect_bomb_timer_scen99 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);
