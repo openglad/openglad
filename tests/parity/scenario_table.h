@@ -3667,6 +3667,50 @@ inline constexpr Mutation kMut_summon_lifetime_decrement_faerie_scen99 = {
 };
 
 
+// Generator-saturation scenario ---------------------------------------------
+// A FAMILY_TOWER generator (default_weapon = FAMILY_MAGE per
+// generator_family_registry.cpp:30-37) runs act_generate (walker.cpp:1217-1235)
+// every tick, gated on `living_count < MAXOBS`. Over a 2500-tick budget it
+// emits FAMILY_MAGE walkers, driving living_count upward toward MAXOBS. A lone
+// FAMILY_SOLDIER observer sits far off-map (240,240) so it never interferes
+// with emission. The level-5 generator fires at an elevated rate so the
+// saturation pile-up is visible within the budget.
+inline constexpr SpawnSpec kFamilySpawns_generator_saturation_scen99[] = {
+    { FAMILY_TOWER,   1, kOrderGenerator, 60,   60,   0, 0, 5, 0 }, // FAMILY_TOWER generator (level 5 -> elevated act_generate fire rate); emits FAMILY_MAGE
+    { FAMILY_SOLDIER, 0, kOrderLiving,    2000, 2000, 0, 0 },       // FAMILY_SOLDIER observer placed off-map: range-gated AI targeting (game_world.cpp:1078-1103) never reaches the 60,60 generator cluster, so the observer never interferes with emission
+};
+
+// NOTE on the generator's own family: the dump renders the FAMILY_TOWER
+// generator under Order::Generator (family string "FAMILY_TOWER"), but
+// WalkerFamilyCount always aliases its family arg through family_symbol_by_order
+// at kLivingOrder (fact_predicate.cpp:78) — generator-order families are not
+// reachable that way, so a WalkerFamilyCount(FAMILY_TOWER, ...) row would
+// resolve to the living-order family #1 and count 0 on both sides. The marker
+// walkers the mages leave behind are likewise FX-order entities (rendered via
+// the effect table), so they are unreachable through WalkerFamilyCount too. The
+// generator's persistence is therefore asserted indirectly via
+// WalkerOfTeamAlive(1, ...), matching how generator_tower_emission_scen99
+// handles the same aliasing; the saturation effect is asserted positively on
+// the emitted FAMILY_MAGE walkers — both their count and their final-tick HP.
+inline constexpr FactPredicate kFacts_generator_saturation_scen99[] = {
+    pred::TickReached(2500),
+    pred::WalkerFamilyCount(FAMILY_MAGE, 3, 30,
+        "consequence: generator saturates living_count over 2500 ticks; range spans RNG drift"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_MAGE, 10000, 100000,
+        "rng_drift: spawned-mage HP at the final tick varies with level rolls and RNG; the [100,1000] window brackets the observed steady-state mage HP (~272-440) and is empty once the generator is silenced"),
+    pred::EventKindAtLeast(/*play_sound*/1, 4),
+    pred::WalkerOfTeamAlive(1, 3, 40,
+        "rng_drift: generator+mage alive count saturates toward MAXOBS and varies with per-tick RNG"),
+};
+
+inline constexpr Mutation kMut_generator_saturation_scen99 = {
+    "src/gameplay/walker.cpp", 1219,
+    "\tif ( current_game->world->living_count < MAXOBS &&",
+    "\tif ( false &&",
+    "Replaces the `living_count < MAXOBS` half of the act_generate gate with `false`, making the conjunction always false; the generator never fires, zero FAMILY_MAGE spawn, and WalkerFamilyCount(FAMILY_MAGE, 3, 30) fails on its lower bound."
+};
+
+
 // --- Scenario table --------------------------------------------------------
 
 inline constexpr ScenarioSpec kScenarios[] = {
@@ -4826,6 +4870,15 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::Special_Druid_2,
       kFacts_summon_lifetime_decrement_faerie_scen99, std::size(kFacts_summon_lifetime_decrement_faerie_scen99),
       kMut_summon_lifetime_decrement_faerie_scen99 },
+
+    // Generator-saturation scenario -----------------------------------------
+    { "generator_saturation_scen99", "scen/scen1.fss", 0x00000042u,
+      nullptr, 0, 2500,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_generator_saturation_scen99, std::size(kFamilySpawns_generator_saturation_scen99),
+      0, false, true, Exercises::None,
+      kFacts_generator_saturation_scen99, std::size(kFacts_generator_saturation_scen99),
+      kMut_generator_saturation_scen99 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);
