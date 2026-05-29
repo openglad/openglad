@@ -4249,6 +4249,77 @@ inline constexpr Mutation kMut_level_withdraw_scen99 = {
 };
 
 
+// --- Phase 09: mid-combat / consumable walker-state scenarios ---------------
+//
+// midcombat_partial_hp_scen99: two FAMILY_SOLDIERs 60px apart (player team 0 at
+// (120,120), foe team 1 at (180,120)) trade thrown knives -- the same proven,
+// non-lethal exchange combat_attack_scen99 uses -- and by the 80-tick budget
+// both sit in the wide mid-HP band below their 12000-cent (120 HP) max.
+// Discriminator (ANY-soldier HP band): the mutation zeroes the central
+// combat-damage write (walker_combat.cpp:189) so neither soldier takes damage
+// and both finish at full HP (12000) -- no soldier remains in the band, flipping
+// it. The band is widened to bracket the branch/master RNG-driven damage spread
+// (branch ~10000/10600 vs master ~1800/4900) (label_exempted); play_sound still
+// fires (swing logic untouched).
+inline constexpr InputEvent kInputs_midcombat_partial_hp[] = {
+    {  5, 0, K_FIRE },
+    { 64, 0, K_NONE },
+};
+inline constexpr SpawnSpec kFamilySpawns_midcombat_partial_hp_scen99[] = {
+    { FAMILY_SOLDIER, 0, kOrderLiving, 120, 120, 0, 0 }, // player soldier (team 0)
+    { FAMILY_SOLDIER, 1, kOrderLiving, 180, 120, 0, 0 }, // foe soldier (team 1)
+};
+inline constexpr FactPredicate kFacts_midcombat_partial_hp_scen99[] = {
+    pred::TickReached(80),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 500, 11500,
+        "consequence: the two soldiers trade knife blows and at least one settles in the wide mid-HP band on both sides; the mutation zeros the central combat-damage write so both take no damage and finish at full HP (12000), leaving no soldier in the band (label_exempted)"),
+    pred::WalkerOfTeamAlive(0, 1, 1),
+    pred::EventKindAtLeast(/*play_sound*/1, 4),
+};
+inline constexpr Mutation kMut_midcombat_partial_hp_scen99 = {
+    "src/gameplay/walker_combat.cpp", 189,
+    "    target->stats()->set_hitpoints(target->stats()->hitpoints() - tempdamage);",
+    "    target->stats()->set_hitpoints(target->stats()->hitpoints() - 0);",
+    "Zeroes the central per-hit combat-damage write in walker::do_combat_damage; neither soldier takes damage and both finish at full HP (12000), leaving no FAMILY_SOLDIER in the WalkerHpRangeAtFinalTick band -- flipping it."
+};
+
+// consumable_inventory_state_scen99: a player FAMILY_SOLDIER (team 0) walks RIGHT
+// (K_RIGHT) from (96,120) across a FAMILY_MAGIC_POTION and a level-10
+// FAMILY_DRUMSTICK -- the proven walk-and-eat path treasure_drumstick_pickup_scen99
+// uses, where stepping onto a treasure tile triggers the eat. A downrange team-1
+// FAMILY_ARCHER plinks the walking player with arrows so it is below its 12000-cent
+// (120 HP) max by the time it reaches the drumstick; the drumstick heal then fires
+// (10*level + rng, capped) and tops it back up. Because the foe is a FAMILY_ARCHER,
+// not a soldier, WalkerFamilyCount(FAMILY_SOLDIER) stays 1. Both treasures leave
+// the oblist. Discriminator (player HP band): the healed player lands in the band
+// on both sides; the mutation no-ops the heal (+amount -> +0) so the player keeps
+// only its lower arrow-wounded HP, below the band -- flipping it.
+inline constexpr InputEvent kInputs_consumable_inventory_state[] = {
+    {  0, 0, K_RIGHT },
+    { 30, 0, K_NONE },
+};
+inline constexpr SpawnSpec kFamilySpawns_consumable_inventory_state_scen99[] = {
+    { FAMILY_SOLDIER,      0, kOrderLiving,    96, 120, 0, 0, 3, 0 }, // player soldier (team 0): walks right, eats, gets shot
+    { FAMILY_ARCHER,       1, kOrderLiving,   200, 120, 0, 0, 3, 0 }, // downrange archer (team 1, not a soldier): wounds the walker
+    { FAMILY_DRUMSTICK,    0, kOrderTreasure, 160, 120, 0, 0, 10, 0 }, // on the walk path; heals the arrow-wounded player
+    { FAMILY_MAGIC_POTION, 0, kOrderTreasure, 140, 120, 0, 0 }, // on the walk path; consumed when passed
+};
+inline constexpr FactPredicate kFacts_consumable_inventory_state_scen99[] = {
+    pred::TickReached(60),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_DRUMSTICK, kOrderTreasure),
+    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_MAGIC_POTION, kOrderTreasure),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 3500, 7000,
+        "consequence: the arrow-wounded player soldier eats the level-10 drumstick on the walk path and is healed into the HP band on both sides; the mutation no-ops the heal so the player keeps only its lower arrow-wounded HP, below the lower bound"),
+};
+inline constexpr Mutation kMut_consumable_inventory_state_scen99 = {
+    "src/gameplay/families/treasure_family_consumables.cpp", 25,
+    "    eater->stats()->set_hitpoints(eater->stats()->hitpoints() + amount);",
+    "    eater->stats()->set_hitpoints(eater->stats()->hitpoints() + 0);",
+    "No-ops the drumstick heal so the arrow-wounded player never recovers; its final HP stays at the lower wounded value, below the WalkerHpRangeAtFinalTick lower bound -- flipping it."
+};
+
 // --- Scenario table --------------------------------------------------------
 
 inline constexpr ScenarioSpec kScenarios[] = {
@@ -5528,6 +5599,23 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_level_withdraw_scen99, std::size(kFacts_level_withdraw_scen99),
       kMut_level_withdraw_scen99 },
+
+    // Mid-combat / consumable walker-state scenarios ------------------------
+    { "midcombat_partial_hp_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_midcombat_partial_hp, std::size(kInputs_midcombat_partial_hp), 80,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_midcombat_partial_hp_scen99, std::size(kFamilySpawns_midcombat_partial_hp_scen99),
+      0, false, true, Exercises::None,
+      kFacts_midcombat_partial_hp_scen99, std::size(kFacts_midcombat_partial_hp_scen99),
+      kMut_midcombat_partial_hp_scen99 },
+
+    { "consumable_inventory_state_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_consumable_inventory_state, std::size(kInputs_consumable_inventory_state), 60,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_consumable_inventory_state_scen99, std::size(kFamilySpawns_consumable_inventory_state_scen99),
+      0, false, true, Exercises::None,
+      kFacts_consumable_inventory_state_scen99, std::size(kFacts_consumable_inventory_state_scen99),
+      kMut_consumable_inventory_state_scen99 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);

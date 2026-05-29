@@ -326,6 +326,8 @@ OG_PARITY_TEST(multiplayer_two_teams_scen99)
 
 // Level-withdraw scenario.
 OG_PARITY_TEST(level_withdraw_scen99)
+OG_PARITY_TEST(midcombat_partial_hp_scen99)
+OG_PARITY_TEST(consumable_inventory_state_scen99)
 
 #undef OG_PARITY_TEST
 
