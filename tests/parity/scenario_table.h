@@ -4157,6 +4157,65 @@ inline constexpr Mutation kMut_input_special_switch_wrap_scen99 = {
 };
 
 
+// --- Phase 07: multi-team is_friendly scenario -----------------------------
+//
+// Three living walkers on THREE distinct teams share one arena: a player-team
+// soldier (team 0) at (120,120), a thief (team 2) at (140,140), and an archer
+// (team 1) at (200,200). None carry a myguy pointer, so is_friendly
+// (walker.cpp:1675-1742) falls into the no-myguy branch (has_myguy == 0,
+// lines 1711-1716) and the friendliness verdict reduces to the bare team-number
+// comparison on the load-bearing line 1723:
+// `headus->team_num() == headtarget->team_num()`. Because all three team
+// numbers differ, every pair is mutually hostile: the adjacent soldier and thief
+// trade blows, the cross-team melee spills toward the archer, and the arena emits
+// a stream of combat play_sound events (branch ~10, master ~12 at the 44-tick
+// budget). All three survive the budget.
+//
+// MUTATION DISCRIMINATOR — play_sound, not archer HP. The mutation rewrites
+// line 1723 to `return 1`, making EVERY pair mutually friendly regardless of
+// team. With no hostile pairs nobody attacks: every walker keeps full HP and the
+// combat-sound stream collapses to the player's lone scripted fire (play_sound
+// == 1, below the floor of 4). The archer's HP cannot be the discriminator here:
+// it must stay alive on BOTH sides, and at this budget the master leaves it
+// untouched at its spawn HP (~90) even unmutated, so its window has to bracket
+// the full no-damage..some-damage span ([0,100]) and necessarily also admits the
+// mutated full-HP value. The honest, side-stable falsification signal is
+// therefore the play_sound count; the archer-HP row asserts only that the
+// third team's walker survives. The branch and master combat trajectories
+// diverge in the survivors' exact HP (branch soldier ~96 / thief ~56 /
+// archer ~80 vs. master ~57 / ~75 / ~90), which the wide HP window and the
+// floor (not an exact count) absorb without per-side wrappers.
+inline constexpr InputEvent kInputs_multiplayer_two_teams[] = {
+    {   5, 0, K_RIGHT },
+    {  30, 0, K_NONE },
+    {  35, 0, K_FIRE },
+    { 200, 0, K_NONE },
+};
+
+inline constexpr SpawnSpec kFamilySpawns_multiplayer_two_teams_scen99[] = {
+    { FAMILY_SOLDIER, 0, kOrderLiving, 120, 120, 0, 0, 3, 200 }, // player-team soldier (team 0)
+    { FAMILY_THIEF,   2, kOrderLiving, 140, 140, 0, 0, 3, 200 }, // team-2 thief: hostile to both other teams via the line-1723 comparison
+    { FAMILY_ARCHER,  1, kOrderLiving, 200, 200, 0, 0 },         // team-1 archer: third distinct team; survives the budget on both sides
+};
+
+inline constexpr FactPredicate kFacts_multiplayer_two_teams_scen99[] = {
+    pred::TickReached(44),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_THIEF, 1, 1),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 0, 10000,
+        "rng_drift: the team-1 archer spawns at (200,200), away from the (120,120)/(140,140) soldier-thief melee; whether the cross-team combat reaches it by tick 44 differs across sides (branch leaves it ~80, master ~90), so this window brackets its spawn HP and asserts the third team's walker survives. The mutation discriminator is the play_sound consequence below, not this row."),
+    pred::EventKindAtLeast(/*play_sound*/1, 4,
+        "consequence: the soldier (team 0), thief (team 2), and archer (team 1) carry three distinct team_nums and none holds a myguy pointer, so is_friendly takes the no-myguy branch and the verdict reduces to the team_num comparison on walker.cpp:1723; because the numbers differ every pair is hostile and the units trade blows, emitting a stream of combat play_sound events (branch ~10, master ~12). The mutation rewrites line 1723 to `return 1`, making every pair friendly: combat ceases, only the player's lone scripted fire remains, and the play_sound count collapses to 1 — below this floor of 4."),
+};
+
+inline constexpr Mutation kMut_multiplayer_two_teams_scen99 = {
+    "src/gameplay/walker.cpp", 1723,
+    "\t\treturn headus->team_num() == headtarget->team_num();",
+    "\t\treturn 1;",
+    "Replaces the no-myguy team-number friendliness comparison with an unconditional `return 1`, so every pair of walkers is friendly regardless of team; the three-team melee never starts, every walker keeps full HP, and the combat play_sound stream collapses from ~10 to 1 — below the EventKindAtLeast(play_sound, 4) floor (verified: mutated branch dump emits play_sound == 1)."
+};
+
+
 // --- Scenario table --------------------------------------------------------
 
 inline constexpr ScenarioSpec kScenarios[] = {
@@ -5417,6 +5476,15 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_input_special_switch_wrap_scen99, std::size(kFacts_input_special_switch_wrap_scen99),
       kMut_input_special_switch_wrap_scen99 },
+
+    // Multi-team is_friendly scenario ---------------------------------------
+    { "multiplayer_two_teams_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputs_multiplayer_two_teams, std::size(kInputs_multiplayer_two_teams), 44,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_multiplayer_two_teams_scen99, std::size(kFamilySpawns_multiplayer_two_teams_scen99),
+      0, false, true, Exercises::None,
+      kFacts_multiplayer_two_teams_scen99, std::size(kFacts_multiplayer_two_teams_scen99),
+      kMut_multiplayer_two_teams_scen99 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);
