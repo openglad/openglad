@@ -3816,6 +3816,121 @@ inline constexpr Mutation kMut_weapon_exploding_boulder_scen99 = {
 };
 
 
+// Effect-emission scenarios --------------------------------------------------
+// Three specials whose observable consequence is a multi-target / multi-spawn
+// effect emission:
+//   * FAMILY_ARCHMAGE slot 2 (HEARTBURST) detonates a per-foe FAMILY_EXPLOSION
+//     against every in-range enemy (family_archmage.cpp:237-250);
+//   * FAMILY_THIEF slot 4 (POISON CLOUD) summons one FAMILY_CLOUD FX that
+//     poisons approaching foes each tick (family_thief.cpp:165-178; the cloud's
+//     per-tick attack lives in effect_family_cloud.cpp);
+//   * FAMILY_DRUID slot 4 (PROTECTION) emits a FAMILY_CIRCLE_PROTECTION weapon
+//     onto each in-range friendly when >1 friendly is within range 60
+//     (family_druid.cpp:86-149; the weapon's orbit-owner animate lives in
+//     weapon_family_animate.cpp:32-43).
+//
+// OBSERVABILITY NOTE. The FX-spawning specials (HEARTBURST, POISON CLOUD) route
+// their effects through summon_entity(self, Order::FX, ...) -> add_ob, which
+// (game_world.cpp:559-564) diverts only Order::Weapon to weaplist and lands
+// everything else — including Order::FX — in oblist. capture_state_dump only
+// populates dump.effects[] from world.fxlist (state_dump.cpp:348), so an
+// FX-via-oblist FAMILY_EXPLOSION / FAMILY_CLOUD never reaches dump.effects[];
+// EffectFamilyCount(FAMILY_EXPLOSION/FAMILY_CLOUD, >0, ...) is unsatisfiable
+// under schema-v1 (the same aliasing wall the weapon-trajectory and existing
+// effect_*_emission rows document — they pin EffectFamilyCount(..., 0, 0)).
+// These rows therefore assert the emission's *downstream* consequences that ARE
+// structurally observable and that the mutation provably flips:
+//   - HEARTBURST -> explosions damage the in-range soldiers below full HP (and
+//     emit SOUND_EXPLODE per foe); the mutation aborts the spawn loop so every
+//     soldier stays at full HP and emits no explosion sound;
+//   - POISON CLOUD -> the cloud poisons the lone approaching soldier below full
+//     HP (and its per-tick attack emits sound); the mutation skips the spawn so
+//     the soldier — never attacked by the input-only-special thief — stays at
+//     full HP;
+//   - PROTECTION -> the FAMILY_CIRCLE_PROTECTION weapon DOES enter weaplist
+//     (Order::Weapon -> dump.weapons[]), so WeaponFamilyEmitted is directly
+//     observable; the mutation bypasses the summon so weaplist never holds it.
+inline constexpr SpawnSpec kFamilySpawns_effect_heartburst_multitarget_scen99[] = {
+    { FAMILY_ARCHMAGE, 0, kOrderLiving, 120, 120, 0, 0, 4, 300 }, // archmage caster (level 4 + 300 magicpoints -> slot 2 HEARTBURST affordable)
+    { FAMILY_SOLDIER,  1, kOrderLiving, 160, 120, 0, 0 },          // four FAMILY_SOLDIER foes fanned to the right so all sit inside HEARTBURST range
+    { FAMILY_SOLDIER,  1, kOrderLiving, 190, 120, 0, 0 },
+    { FAMILY_SOLDIER,  1, kOrderLiving, 220, 120, 0, 0 },
+    { FAMILY_SOLDIER,  1, kOrderLiving, 250, 120, 0, 0 },
+};
+
+inline constexpr FactPredicate kFacts_effect_heartburst_multitarget_scen99[] = {
+    pred::TickReached(30),
+    pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 0, 11000,
+        "consequence: HEARTBURST detonates a per-foe explosion against each in-range soldier, leaving at least one soldier below full HP; the mutation aborts the spawn loop so no explosion lands and every soldier stays at full 12000-cent HP outside this window"),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 0, 4,
+        "consequence: the per-foe explosions may kill some of the four in-range soldiers"),
+    pred::EventKindAtLeast(/*play_sound*/1, 4,
+        "consequence: HEARTBURST emits SOUND_EXPLODE once per detonated foe; the mutation suppresses every explosion so the play_sound floor collapses"),
+};
+
+inline constexpr Mutation kMut_effect_heartburst_multitarget_scen99 = {
+    "src/gameplay/families/family_archmage.cpp", 239,
+    "                        newob = summon_entity(self, Order::FX, FAMILY_EXPLOSION);",
+    "                        return false;",
+    "Aborts the HEARTBURST per-foe explosion loop with an early `return false;` before the first FAMILY_EXPLOSION is summoned; no explosion lands on any in-range soldier (all stay at full 12000-cent HP) and no SOUND_EXPLODE is emitted — the soldier-HP window and EventKindAtLeast(play_sound, 4) both fail."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_effect_poison_cloud_emit_scen99[] = {
+    { FAMILY_THIEF,   0, kOrderLiving, 120, 120, 0, 0, 10, 300 }, // thief caster (level 10 + 300 magicpoints -> slot 4 POISON CLOUD affordable)
+    { FAMILY_SOLDIER, 1, kOrderLiving, 200, 120, 0, 0 },          // lone FAMILY_SOLDIER foe that walks into the cloud; the input-only-special thief never melees it
+};
+
+inline constexpr FactPredicate kFacts_effect_poison_cloud_emit_scen99[] = {
+    pred::TickReached(45),
+    pred::WalkerFamilyCount(FAMILY_THIEF, 1, 1),
+    pred::WalkerOfTeamAlive(0, 2, 2,
+        "consequence: POISON CLOUD slot 4 adds a FAMILY_CLOUD FX walker to the thief's team (team 0) — schema-v1 only exposes it by team since the FX-order family string aliases onto FAMILY_SLIME under WalkerFamilyCount; the mutation bypasses the spawn so only the lone thief remains alive on team 0 (the cloud's random-walk path, and hence whether it ever poisons the soldier, diverges by RNG between branch and master, so the spawn's *existence* is the robust observable)"),
+    pred::EventKindAtLeast(/*play_sound*/1, 1,
+        "consequence: the live cloud and the approaching soldier's melee both emit play_sound events; the floor stays >0 in both arms"),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 0, 15000,
+        "rng_drift: thief HP varies with the approaching soldier's melee RNG across the run window"),
+};
+
+inline constexpr Mutation kMut_effect_poison_cloud_emit_scen99 = {
+    "src/gameplay/families/family_thief.cpp", 169,
+    "            newob = summon_entity(self, Order::FX, FAMILY_CLOUD);",
+    "            return false;",
+    "Replaces the POISON CLOUD FX summon with an early `return false;` before the FAMILY_CLOUD walker is created; the cloud never enters oblist so team 0 holds only the lone thief — WalkerOfTeamAlive(0, 2, 2) collapses to 1 and fails its lower bound."
+};
+
+inline constexpr SpawnSpec kFamilySpawns_effect_protection_emit_scen99[] = {
+    // The friendly soldier is spawned FIRST so the druid — spawned next — lands
+    // ahead of it in oblist (add_ob prepends), making the druid the walker that
+    // find_player_walker binds and the special input drives. No enemies are
+    // spawned: with no foe to charge, the AI friendly idles next to the druid
+    // and stays well inside range 60 at the tick-20 cast on BOTH branch and
+    // master, so PROTECTION's howmany>1 gate opens deterministically (whether a
+    // foe is in range at the exact cast tick is RNG/AI-movement sensitive and
+    // diverges between branch and master). With no incoming damage the emitted
+    // circle is never consumed as a shield, so it persists in weaplist.
+    { FAMILY_SOLDIER, 0, kOrderLiving, 130, 120, 0, 0 },          // second team-0 friendly, 10px from the druid -> inside range 60 throughout
+    { FAMILY_DRUID,   0, kOrderLiving, 120, 120, 0, 0, 10, 300 }, // druid caster (level 10 + 300 magicpoints -> slot 4 PROTECTION affordable); the player-controlled walker
+};
+
+inline constexpr FactPredicate kFacts_effect_protection_emit_scen99[] = {
+    pred::TickReached(25),
+    pred::WalkerFamilyCount(FAMILY_DRUID, 1, 1),
+    pred::WeaponFamilyEmitted(FAMILY_CIRCLE_PROTECTION,
+        "consequence: druid slot 4 PROTECTION emits a FAMILY_CIRCLE_PROTECTION weapon onto the in-range friendly when >1 friendly is in range; the weapon enters weaplist (Order::Weapon -> dump.weapons[]) and orbits its still-alive owner; the mutation bypasses creation so the emit never fires"),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    pred::EventKindAtLeast(/*play_sound*/1, 1,
+        "consequence: a successful PROTECTION cast emits SOUND_HEAL; the mutation aborts the emit before the heal so this play_sound floor collapses to 0"),
+};
+
+inline constexpr Mutation kMut_effect_protection_emit_scen99 = {
+    "src/gameplay/families/family_druid.cpp", 116,
+    "                                alive = summon_entity(newob, Order::Weapon, FAMILY_CIRCLE_PROTECTION);",
+    "                                return false;",
+    "Replaces the PROTECTION circle summon with an early `return false;` before the FAMILY_CIRCLE_PROTECTION weapon is created; weaplist never holds the circle so WeaponFamilyEmitted(FAMILY_CIRCLE_PROTECTION) fails — the emit never fires."
+};
+
+
 // --- Scenario table --------------------------------------------------------
 
 inline constexpr ScenarioSpec kScenarios[] = {
@@ -5009,6 +5124,31 @@ inline constexpr ScenarioSpec kScenarios[] = {
       0, false, true, Exercises::None,
       kFacts_weapon_exploding_boulder_scen99, std::size(kFacts_weapon_exploding_boulder_scen99),
       kMut_weapon_exploding_boulder_scen99 },
+
+    // Effect-emission scenarios ---------------------------------------------
+    { "effect_heartburst_multitarget_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot2, std::size(kInputsSpecialSlot2), 30,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_effect_heartburst_multitarget_scen99, std::size(kFamilySpawns_effect_heartburst_multitarget_scen99),
+      0, false, true, Exercises::None,
+      kFacts_effect_heartburst_multitarget_scen99, std::size(kFacts_effect_heartburst_multitarget_scen99),
+      kMut_effect_heartburst_multitarget_scen99 },
+
+    { "effect_poison_cloud_emit_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot4, std::size(kInputsSpecialSlot4), 45,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_effect_poison_cloud_emit_scen99, std::size(kFamilySpawns_effect_poison_cloud_emit_scen99),
+      0, false, true, Exercises::None,
+      kFacts_effect_poison_cloud_emit_scen99, std::size(kFacts_effect_poison_cloud_emit_scen99),
+      kMut_effect_poison_cloud_emit_scen99 },
+
+    { "effect_protection_emit_scen99", "scen/scen1.fss", 0x00000042u,
+      kInputsSpecialSlot4, std::size(kInputsSpecialSlot4), 25,
+      CompareMode::SemanticParity, false,
+      kFamilySpawns_effect_protection_emit_scen99, std::size(kFamilySpawns_effect_protection_emit_scen99),
+      0, false, true, Exercises::None,
+      kFacts_effect_protection_emit_scen99, std::size(kFacts_effect_protection_emit_scen99),
+      kMut_effect_protection_emit_scen99 },
 };
 
 inline constexpr std::size_t kScenarioCount = std::size(kScenarios);
