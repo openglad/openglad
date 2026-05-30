@@ -1732,26 +1732,31 @@ inline constexpr Mutation kMut_treasure_flight_potion_pickup = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_teleporter_pickup[] = {
-    { FAMILY_SOLDIER, 0, kOrderLiving,   120, 120, 0, 0 }, // player soldier; takes ACT_CONTROL on tick-0 input
-    { FAMILY_TELEPORTER, 0, kOrderTreasure, 120, 120, 0, 0 }, // co-located: eaten FIRST in the tick-0 move pass (oblist order), distance^2==0 passes the >21 gate, bumps eater->skip_exit to 20
-    {  0, 1, kOrderLiving,   180, 120, 0, 0 }, // live enemy keeps guys_here!=0 so the EXIT takes the withdraw branch
-    { FAMILY_EXIT, 2, kOrderTreasure, 120, 120, 0, 0, 2, 0, 2 }, // co-located withdraw EXIT to completed scen2; eaten AFTER the teleporter in the same pass, suppressed by skip_exit>1
+    { FAMILY_SOLDIER, 0, kOrderLiving,   120, 120, 0, 0 },       // player soldier (proven withdraw arrangement, mirrors kFamilySpawns_soldier_with_exit_withdraw)
+    { FAMILY_TELEPORTER, 2, kOrderTreasure, 120, 120, 0, 0 },    // co-located teleporter (TEAM 2, not the player team 0, so it does not steal player-control); eaten in-pile, bumps eater->skip_exit +20 ahead of its no-target early-return
+    {  0, 1, kOrderLiving,   180, 120, 0, 0 },                   // live enemy keeps the withdraw path live (level_done stays 0)
+    { FAMILY_EXIT, 2, kOrderTreasure, 120, 120, 0, 0, 2, 0, 2 }, // co-located EXIT (dest scen2 precompleted) -> withdraw branch
 };
 
 inline constexpr FactPredicate kFacts_treasure_teleporter_pickup_scen99[] = {
     pred::TickReached(150),
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
-    // OBSERVABLE NAMED BEHAVIOUR: picking up the co-located teleporter on tick 0
-    // bumps the eater's skip_exit to 20 (treasure_family_navigation.cpp:113).
-    // That bump trips exit_on_eat's early guard (line 42, skip_exit()>1) when the
-    // soldier eats the co-located withdraw EXIT in the SAME input-pass collision
-    // scan (the teleporter precedes the EXIT in the (120,120) obmap pile), so the
-    // EXIT emits NEITHER the withdraw RequestExitConfirmation NOR WithdrawToLevel
-    // -- both counts are 0 on branch and on master. Neutering teleporter_on_eat
-    // (the discriminating mutation) removes the bump: skip_exit stays 0, the EXIT
-    // takes its withdraw branch and emits both events (count 1 each), flipping
-    // BOTH predicates below from exact-0 to a failing 1.
-    pred::EventKindExactly(/*request_exit_confirmation*/7, 0),
+    // OBSERVABLE NAMED BEHAVIOUR (canary teeth): the player SOLDIER eats the
+    // co-located teleporter first; teleporter_on_eat bumps the eater's skip_exit
+    // by +20 (treasure_family_navigation.cpp) ahead of its no-target early-return,
+    // so when the co-located withdraw EXIT is eaten next in the same obmap pile,
+    // exit_on_eat's skip_exit()>1 guard fires and the EXIT emits NEITHER
+    // RequestExitConfirmation (7) NOR WithdrawToLevel (8) -- both 0 on branch and
+    // master. NOTE the teleporter is TEAM 2, not the player team 0: a team-0
+    // treasure is picked by the harness's player-control takeover instead of the
+    // soldier, leaving the soldier an NPC (act_type != ACT_CONTROL, in_act) that
+    // never reaches exit_on_eat's emit path. The discriminating mutation neuters
+    // teleporter_on_eat (.on_eat=nullptr): the skip_exit bump is gone, so the
+    // soldier reaches the EXIT with skip_exit=0 while ACT_CONTROL and not in_act,
+    // takes the withdraw branch, and emits WithdrawToLevel + RequestExitConfirmation
+    // once each -- flipping BOTH exact-0 predicates 0 -> 1. Verified by the canary.
+    pred::EventKindExactly(/*request_exit_confirmation*/7, 0,
+        "consequence: the teleporter's skip_exit bump suppresses the co-located EXIT's withdraw RequestExitConfirmation; neutering teleporter_on_eat lets the EXIT withdraw and emit kind 7, flipping this exact-0 predicate 0->1"),
     pred::EventKindExactly(/*withdraw_to_level*/8, 0),
     // Structural coverage anchor: keeps FAMILY_TELEPORTER bound to
     // TreasureFamilyOfOrderRemovedFromOblist for behavioural_coverage_gate_
@@ -1768,7 +1773,7 @@ inline constexpr Mutation kMut_treasure_teleporter_pickup = {
     "src/gameplay/families/treasure_family_navigation.cpp", 154,
     ".on_eat = teleporter_on_eat,",
     ".on_eat = nullptr,",
-    "Neuters the FAMILY_TELEPORTER treasure-family on_eat hook. NOTE: under the current oblist-only scenario spawner the teleporter never finds an fxlist-resident partner teleporter, so teleporter_on_eat early-returns without relocating the eater whether or not the hook is present -- the relocation/FLASH effects are unobservable (find_teleport_target needs an fxlist partner the oblist spawner cannot provide), but the skip_exit->EXIT-withdraw SUPPRESSION is observed: with the hook present the eaten teleporter bumps skip_exit so the co-located withdraw EXIT emits neither withdraw event (branch+master 0); neutering the hook lets the EXIT fire both events (count 1), flipping EventKindExactly(7,0) and (8,0). The hook target is byte-accurate so the canary applies cleanly."
+    "Neuters the FAMILY_TELEPORTER treasure-family on_eat hook. Unmutated, teleporter_on_eat bumps the eating soldier's skip_exit by +20 ahead of its no-target early-return, so the co-located withdraw EXIT (eaten next in the same obmap pile) hits exit_on_eat's skip_exit()>1 guard and emits no withdraw events (kind 7/8 count 0 on branch+master). Neutered, the bump is gone: the soldier reaches the EXIT with skip_exit=0 while ACT_CONTROL and not in_act, takes the withdraw branch, and emits WithdrawToLevel(8) + RequestExitConfirmation(7) once each -- flipping EventKindExactly(7,0) and (8,0) from 0 to 1. The teleporter is spawned TEAM 2 so it does not steal the player-control takeover from the team-0 soldier (a team-0 teleporter left the soldier an NPC and no withdraw ever fired). Byte-accurate hook target so the canary applies cleanly."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_life_gem_pickup[] = {
@@ -3106,7 +3111,7 @@ inline constexpr SpawnSpec kFamilySpawns_special_soldier_1_scen99[] = {
 inline constexpr FactPredicate kFacts_special_soldier_1_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 2,
-        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
+        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 20),
     pred::EventKindAtLeast(/*score_change*/9, 2),
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 3000, 4400),
@@ -3184,7 +3189,7 @@ inline constexpr SpawnSpec kFamilySpawns_special_elf_1_scen99[] = {
 inline constexpr FactPredicate kFacts_special_elf_1_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_ELF, 1, 2,
-        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
+        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 20),
     pred::WalkerHpRangeAtFinalTick(FAMILY_ELF, 500, 7500,
         "rng_drift: ROCKS combat damage on elf varies across master/branch RNG paths; master HP 2200 cents"),
@@ -3205,7 +3210,7 @@ inline constexpr SpawnSpec kFamilySpawns_special_elf_2_scen99[] = {
 inline constexpr FactPredicate kFacts_special_elf_2_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_ELF, 1, 2,
-        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
+        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 15),
     pred::EventKindAtLeast(/*score_change*/9, 2),
     pred::WalkerHpRangeAtFinalTick(FAMILY_ELF, 2000, 5000,
@@ -3227,7 +3232,7 @@ inline constexpr SpawnSpec kFamilySpawns_special_elf_3_scen99[] = {
 inline constexpr FactPredicate kFacts_special_elf_3_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_ELF, 1, 2,
-        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
+        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 6),
     pred::WalkerDiedByFinal(FAMILY_SOLDIER),
     pred::WalkerHpRangeAtFinalTick(FAMILY_ELF, 7000, 7600),
@@ -3248,7 +3253,7 @@ inline constexpr SpawnSpec kFamilySpawns_special_elf_4_scen99[] = {
 inline constexpr FactPredicate kFacts_special_elf_4_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_ELF, 1, 2,
-        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
+        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 6),
     pred::WalkerDiedByFinal(FAMILY_SOLDIER),
     pred::WalkerHpRangeAtFinalTick(FAMILY_ELF, 7000, 7600,
@@ -3270,7 +3275,7 @@ inline constexpr SpawnSpec kFamilySpawns_special_archer_1_scen99[] = {
 inline constexpr FactPredicate kFacts_special_archer_1_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_ARCHER, 1, 2,
-        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
+        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 28),
     pred::EventKindAtLeast(/*score_change*/9, 1),
     pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 4000, 7000),
@@ -3432,7 +3437,7 @@ inline constexpr SpawnSpec kFamilySpawns_special_cleric_2_scen99[] = {
 inline constexpr FactPredicate kFacts_special_cleric_2_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_CLERIC, 1, 2,
-        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
+        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 17),
     pred::WalkerHpRangeAtFinalTick(FAMILY_CLERIC, 1000, 10000,
         "rng_drift: RAISE_UNDEAD combat damage on cleric varies across master/branch RNG paths; master HP 4300 cents"),
@@ -3453,7 +3458,7 @@ inline constexpr SpawnSpec kFamilySpawns_special_cleric_3_scen99[] = {
 inline constexpr FactPredicate kFacts_special_cleric_3_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_CLERIC, 1, 2,
-        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
+        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 17),
     pred::WalkerHpRangeAtFinalTick(FAMILY_CLERIC, 1000, 10000,
         "rng_drift: RAISE_GHOST combat damage on cleric varies across master/branch RNG paths; master HP 4300 cents"),
@@ -3474,7 +3479,7 @@ inline constexpr SpawnSpec kFamilySpawns_special_cleric_4_scen99[] = {
 inline constexpr FactPredicate kFacts_special_cleric_4_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_CLERIC, 1, 2,
-        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
+        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 17),
     pred::WalkerHpRangeAtFinalTick(FAMILY_CLERIC, 1000, 10000,
         "rng_drift: RESURRECT combat damage on cleric varies across master/branch RNG paths; master HP 4300 cents"),
@@ -3495,7 +3500,7 @@ inline constexpr SpawnSpec kFamilySpawns_special_fireelemental_1_scen99[] = {
 inline constexpr FactPredicate kFacts_special_fireelemental_1_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_FIREELEMENTAL, 1, 2,
-        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
+        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 28),
     pred::EventKindAtLeast(/*score_change*/9, 2),
     pred::WalkerHpRangeAtFinalTick(FAMILY_FIREELEMENTAL, 5000, 8000,
@@ -3517,7 +3522,7 @@ inline constexpr SpawnSpec kFamilySpawns_special_slime_1_scen99[] = {
 inline constexpr FactPredicate kFacts_special_slime_1_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_SLIME, 0, 2,
-        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
+        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 16),
     pred::WalkerFamilyCount(FAMILY_SMALL_SLIME, 1, 3,
         "consequence: SPLIT produces SMALL_SLIME offspring; golden shows 2 alive"),
@@ -3561,7 +3566,7 @@ inline constexpr SpawnSpec kFamilySpawns_special_medium_slime_1_scen99[] = {
 inline constexpr FactPredicate kFacts_special_medium_slime_1_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_MEDIUM_SLIME, 0, 2,
-        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
+        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 16),
     pred::EventKindAtLeast(/*score_change*/9, 1),
     pred::EventKindAtLeast(/*notification*/2, 1),
@@ -3601,7 +3606,7 @@ inline constexpr SpawnSpec kFamilySpawns_special_thief_3_scen99[] = {
 inline constexpr FactPredicate kFacts_special_thief_3_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_THIEF, 0, 2,
-        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
+        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 10),
     pred::EventKindAtLeast(/*notification*/2, 1),
     pred::WalkerDiedByFinal(FAMILY_THIEF),
@@ -3662,7 +3667,7 @@ inline constexpr SpawnSpec kFamilySpawns_special_druid_1_scen99[] = {
 inline constexpr FactPredicate kFacts_special_druid_1_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_DRUID, 1, 2,
-        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
+        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 16),
     pred::EventKindAtLeast(/*score_change*/9, 1),
     pred::WalkerHpRangeAtFinalTick(FAMILY_DRUID, 3000, 6000),
@@ -3762,7 +3767,7 @@ inline constexpr SpawnSpec kFamilySpawns_special_orc_2_scen99[] = {
 inline constexpr FactPredicate kFacts_special_orc_2_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_ORC, 1, 2,
-        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
+        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 8),
     pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 7000, 14000,
         "consequence: EAT_CORPSE restores HP; golden 10900 cents"),
@@ -3783,7 +3788,7 @@ inline constexpr SpawnSpec kFamilySpawns_special_barbarian_1_scen99[] = {
 inline constexpr FactPredicate kFacts_special_barbarian_1_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_BARBARIAN, 1, 2,
-        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
+        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 19),
     pred::WalkerHpRangeAtFinalTick(FAMILY_BARBARIAN, 3000, 10000,
         "consequence: HURL_BOULDER combat exchange damages barbarian; golden 7100 cents"),
@@ -3804,7 +3809,7 @@ inline constexpr SpawnSpec kFamilySpawns_special_barbarian_2_scen99[] = {
 inline constexpr FactPredicate kFacts_special_barbarian_2_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_BARBARIAN, 1, 2,
-        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
+        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 17),
     pred::WalkerHpRangeAtFinalTick(FAMILY_BARBARIAN, 5000, 12000,
         "consequence: EXPLODING_BOULDER combat exchange damages barbarian; golden 8900 cents"),
@@ -3825,7 +3830,7 @@ inline constexpr SpawnSpec kFamilySpawns_special_archmage_2_scen99[] = {
 inline constexpr FactPredicate kFacts_special_archmage_2_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 2,
-        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
+        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 2),
     pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHMAGE, 10000, 15000,
         "consequence: HEARTBURST drains caster HP; golden 14600 cents"),
@@ -3846,7 +3851,7 @@ inline constexpr SpawnSpec kFamilySpawns_special_archmage_3_scen99[] = {
 inline constexpr FactPredicate kFacts_special_archmage_3_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 2,
-        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
+        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 2),
     pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHMAGE, 10000, 15000,
         "consequence: SUMMON_IMAGE drains caster MP which affects combat HP; golden 14600 cents"),
@@ -3867,7 +3872,7 @@ inline constexpr SpawnSpec kFamilySpawns_special_archmage_4_scen99[] = {
 inline constexpr FactPredicate kFacts_special_archmage_4_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 2,
-        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes branches see; commit 39ef9898 intended_diff: per-slot special cast may emit a short-lived family-mirror walker (image/mirror/summon); count widens to (1, 2) to admit the branch behaviour; commit 39ef9898"),
+        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes; commit 39ef9898"),
     pred::EventKindAtLeast(/*play_sound*/1, 2),
     pred::WalkerAliveAtFinal(FAMILY_ARCHMAGE, 1),
     pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHMAGE, 100, 50000,
