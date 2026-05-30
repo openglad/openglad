@@ -39,6 +39,7 @@ inline constexpr std::uint32_t K_FIRE           = 1u << 8;  // KEY_FIRE
 inline constexpr std::uint32_t K_SPECIAL        = 1u << 9;  // KEY_SPECIAL
 inline constexpr std::uint32_t K_SWITCH         = 1u << 10; // KEY_SWITCH
 inline constexpr std::uint32_t K_SPECIAL_SWITCH = 1u << 11; // KEY_SPECIAL_SWITCH
+inline constexpr std::uint32_t K_SHIFT          = 1u << 13; // InputAction::Shift (sim_input_handler.cpp:316 reads is_held(Shift) to set shifter_down)
 // Aliases retained for older scenarios that pre-dated the bit re-layout.
 inline constexpr std::uint32_t K_ATTACK         = K_FIRE;
 
@@ -243,6 +244,15 @@ inline constexpr InputEvent kInputsSpecialOnce20[] = {
     {20, 0, K_SPECIAL}, {21, 0, K_NONE},
 };
 
+// Shift+Special at tick 20 -> cleric slot-1 ALTERNATE (MYSTIC MACE) path,
+// which summons a persistent FAMILY_MAGIC_SHIELD FX (add_ob(Order::FX) lands
+// it in oblist as a team-0 walker). Single-press: special() fires twice the
+// same tick (was_pressed + is_held) but the second call hits busy()>0 and
+// returns false, so exactly one shield is created.
+inline constexpr InputEvent kInputsClericMace20[] = {
+    {20, 0, K_SPECIAL | K_SHIFT}, {21, 0, K_NONE},
+};
+
 inline constexpr InputEvent kInputsSpecialBomb10[] = {
     {10, 0, K_SPECIAL}, {11, 0, K_NONE},
 };
@@ -395,8 +405,13 @@ inline constexpr SpawnSpec kFamilySpawns_skeleton[] = {
     { FAMILY_TENT, 1, kOrderGenerator, 60, 60, 0, 0 }, // FAMILY_TENT generator
 };
 inline constexpr SpawnSpec kFamilySpawns_cleric[] = {
-    { FAMILY_CLERIC, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_CLERIC target
-    { FAMILY_SOLDIER, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER sparring partner
+    // magicpoints=50 -> mystic-mace shield lifetime 100+(50-2)/2 = 124 ticks
+    // (created tick 20, alive well past the tick-30 dump).
+    { FAMILY_CLERIC, 0, kOrderLiving, 120, 120, 0, 0, 0, 50 }, // FAMILY_CLERIC target
+    // Parked far so it never engages: the cleric never dies (mystic-mace
+    // shield dies with its owner, effect_family_shield.cpp:20) and never
+    // becomes busy (busy()>0 blocks mace, family_cleric.cpp:132).
+    { FAMILY_SOLDIER, 1, kOrderLiving, 400, 400, 0, 0 }, // FAMILY_SOLDIER parked far
 };
 inline constexpr SpawnSpec kFamilySpawns_fireelemental[] = {
     { FAMILY_FIREELEMENTAL, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_FIREELEMENTAL target
@@ -657,17 +672,23 @@ inline constexpr FactPredicate kFacts_special_archmage_scen123[] = {
 };
 
 inline constexpr FactPredicate kFacts_special_cleric_scen124[] = {
-    pred::TickReached(150),
-    pred::WalkerFamilyCount(FAMILY_CLERIC, 0, 0),
-    // Original threshold (x >= 300) no longer matches the branch or
-    // reconciled companion run; keep the fact kind and widen to the
-    // observed lower bound shared by both sides.
-    pred::WalkerPositionMoved(FAMILY_SOLDIER, 184, 0),
+    pred::TickReached(30),
+    // Cleric survives (soldier parked far) so it is an alive team-0 walker.
+    pred::WalkerFamilyCount(FAMILY_CLERIC, 1, 1),
+    // DISCRIMINATOR: the slot-1 MYSTIC MACE special summons one persistent
+    // FAMILY_MAGIC_SHIELD entity via add_ob(Order::FX) -> oblist, which the
+    // dump renders as a second ALIVE team-0 walker (FX-order family 5,
+    // "FAMILY_MAGIC_SHIELD"; it does NOT alias FAMILY_CLERIC). cleric + shield
+    // = 2 on team 0. kMut_special_cleric_do_special sets do_special=nullptr so
+    // no shield spawns and team-0 alive collapses to 1 (the lone cleric),
+    // below the floor of 2.
+    pred::WalkerOfTeamAlive(/*team=*/0, 2, 2,
+        "consequence: cleric slot-1 MYSTIC MACE summons a persistent FAMILY_MAGIC_SHIELD FX into oblist as a team-0 walker; neutering cleric_do_special removes it so team-0 alive drops from 2 (cleric+shield) to 1"),
+    // Enemy soldier is parked far and never engaged: it survives intact.
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    // negative_assertion: the mystic-mace shield is an oblist entity, not an
+    // fxlist/effects[] entry, so effects[] carries no EXPAND (or any) FX here.
     pred::EffectFamilyCount(FAMILY_EXPAND, 0, 0, /*source=*/0),
-    // negative_assertion: the cleric heal path leaves no EXPAND FX alive at
-    // the final schema-v1 snapshot on either side; notification/sound events
-    // and the survivor position carry the positive behavioural signal.
-    pred::EventKindAtLeast(/*play_sound*/1, 5),
 };
 
 inline constexpr FactPredicate kFacts_special_mage_scen126[] = {
@@ -1406,6 +1427,18 @@ inline constexpr SpawnSpec kFamilySpawns_effect_combat_arena[] = {
     { FAMILY_SOLDIER, 1, kOrderLiving, 140, 120, 0, 0 }, // FAMILY_SOLDIER target adjacent
 };
 
+inline constexpr SpawnSpec kFamilySpawns_effect_flash_arena[] = {
+    {  0, 0, kOrderLiving,   96, 120, 0, 0 }, // player SOLDIER team 0
+    { FAMILY_LIFE_GEM, 0, kOrderTreasure, 96, 120, 0, 0 }, // life_gem on the soldier's spawn tile (eaten tick 1, same overlap pattern as the passing gold_bar row); team 0 so the eater->team_num()==self->team_num() guard passes and life_gem_on_eat fires -> emits the FAMILY_FLASH effect + award_score (one ScoreChange event, unconditional even at 0 points)
+};
+
+inline constexpr SpawnSpec kFamilySpawns_effect_expand_emission_scen99[] = {
+    { FAMILY_SOLDIER, 0, kOrderLiving, 120, 120, 0, 0 }, // player-team SOLDIER wielder (continuous K_FIRE through tick 149 keeps combat play_sound events fresh at dump time)
+    { FAMILY_SOLDIER, 1, kOrderLiving, 140, 120, 0, 0 }, // adjacent foe SOLDIER
+    // FX-order effect-emission seed (clear of the combat tiles). add_ob(Order::FX,...) routes it into world.oblist, which GameWorld::tick() act()s each tick. On its first act() the descriptor's on_act emits exactly one persistent effect into world.fxlist (dump.effects[]) and kills the parent. The repointed kMut_effect_expand_emission moves that descriptor off its registry slot so the mutated build runs no on_act and emits nothing -> EffectFamilyCount flips 1->0. EXPAND itself (effect family 0) is a decorative data-only family with no callback and is never instantiated, so its own EffectFamilyCount stays a 0 invariant on both sides.
+    { FAMILY_DOOR_OPEN, 2, kOrderFX, 200, 120, 0, 0 }, // team 2 (NOT the player's team 0) so find_player_walker binds the player to the team-0 SOLDIER, never this FX object (whose null controller_ would null-deref clear_command). on_act is team-independent; the emitted persistent effect still lands in fxlist.
+};
+
 inline constexpr SpawnSpec kFamilySpawns_effect_door_open_arena[] = {
     { FAMILY_SOLDIER, 0, kOrderLiving, 120, 120, 0, 0 }, // FAMILY_SOLDIER wielder (continuous K_FIRE through tick 149 keeps combat events fresh at dump time)
     { FAMILY_SOLDIER, 1, kOrderLiving, 140, 120, 0, 0 }, // FAMILY_SOLDIER target adjacent
@@ -1414,10 +1447,10 @@ inline constexpr SpawnSpec kFamilySpawns_effect_door_open_arena[] = {
 };
 
 inline constexpr InputEvent kInputsMagicShieldEmit[] = {
-    {5, 0, K_FIRE},                       // cleric fires GLOW at the enemy -> play_sound
-    {15, 0, (K_SPECIAL | (1u << 13))},    // tick 15: Shift(bit13)+Special held -> shifter_down=1 -> Mystic Mace summons FAMILY_MAGIC_SHIELD into fxlist
-    {16, 0, K_FIRE},                       // release the special after one tick (busy()+5 blocks a recast anyway), keep firing
-    {89, 0, K_NONE},
+    {5,  0, (K_SPECIAL | (1u << 13))},    // tick 5: Shift(bit13)+Special held -> shifter_down=1 -> Mystic Mace summons FAMILY_MAGIC_SHIELD (Order::FX -> oblist) while the cleric is not busy
+    {6,  0, K_NONE},                       // release the special after one tick (busy()+5 blocks a recast anyway)
+    {10, 0, K_FIRE},                       // cleric fires GLOW at the enemy -> play_sound
+    {29, 0, K_NONE},
 };
 
 inline constexpr SpawnSpec kFamilySpawns_magic_shield_arena[] = {
@@ -1508,30 +1541,42 @@ inline constexpr InputEvent kInputsSpecialSlot5[] = {
 // schema v2 lands an oblist/Order disambiguator.
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_stain_pickup[] = {
-    { FAMILY_SOLDIER, 0, kOrderLiving,   96, 120, 0, 0 }, // FAMILY_SOLDIER player walker
-    { FAMILY_STAIN, 0, kOrderTreasure, 160, 120, 0, 0 }, // FAMILY_STAIN literal treasure (id=0)
+    { FAMILY_SOLDIER, 0, kOrderLiving,   96, 120, 0, 0, 5, 0 }, // level-5 FAMILY_SOLDIER player (team 0); melees the adjacent faerie to death within the attack window
+    { FAMILY_FAERIE,  1, kOrderLiving,  120, 120, 0, 0 },       // FAMILY_FAERIE victim (team 1), 24px east of the soldier. leaves_bloodspot=true with no on_death override, so when the soldier kills it walker::death() (walker.cpp:1521) calls generate_bloodspot() -> add_fx_ob(Order::Treasure, FAMILY_STAIN), spawning the bloodstain
+    { FAMILY_STAIN,   0, kOrderTreasure, 200, 120, 0, 0 },      // literal FAMILY_STAIN treasure parked off-path; guarantees a FAMILY_STAIN entity is present in oblist on both arms so the TreasureFamilyOfOrderRemovedFromOblist(FAMILY_STAIN) coverage anchor reads `indeterminate` deterministically regardless of the faerie outcome
 };
 
 inline constexpr FactPredicate kFacts_treasure_stain_pickup_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerPositionMoved(FAMILY_SOLDIER, 144, 120),
-    // Phase 03 — Order-aware binding gate satisfaction. FAMILY_STAIN
-    // (id=0, Order::Treasure) is `init_ignore=true` in the registry so
-    // the literal STAIN treasure walker stays in `oblist` for the run.
-    // The Phase 03 evaluator returns `indeterminate` for that case
-    // (alive instance, no dead-twin) — the predicate honestly binds
-    // STAIN to this row without inventing a vacuous "stain is removed"
-    // claim. Schema-v2 will replace this with a STAIN-specific
-    // liveness predicate.
+    // TEETH (stain-generation precondition): FAMILY_FAERIE leaves_bloodspot=true
+    // and has no on_death override, so when the level-5 player soldier kills the
+    // adjacent faerie its death path (walker.cpp:1521) calls generate_bloodspot(),
+    // spawning the FAMILY_STAIN bloodstain. Schema-v1 cannot use the generated
+    // stain itself as teeth (a present stain reads `indeterminate`, an absent one
+    // reads pass, so it never flips), so we pin the observable PRECONDITION that
+    // gates the whole stain behaviour: the faerie must DIE. kMut_treasure_stain_pickup
+    // cranks the faerie's derived_bonuses[0] HP from BASE_GUY_HP+45 (=75) to
+    // BASE_GUY_HP+90000 (=90030), making it un-killable in the melee window: the
+    // faerie survives, never reaches death(), never generates its bloodspot, and
+    // WalkerDiedByFinal(FAMILY_FAERIE) flips pass (no alive faerie) -> fail (a
+    // ~89786-hp faerie is still alive at the final tick). Verified canary-positive.
+    pred::WalkerDiedByFinal(FAMILY_FAERIE),
+    // Structural coverage anchor: binds FAMILY_STAIN to
+    // TreasureFamilyOfOrderRemovedFromOblist for behavioural_coverage_gate. The
+    // off-path literal stain keeps a live FAMILY_STAIN (Order::Treasure) in
+    // oblist with no consumed twin, so the Order-aware evaluator returns
+    // `indeterminate` (a non-failing observation) on both arms -- it honestly
+    // binds STAIN to this row without inventing a vacuous removal claim.
     pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_STAIN, kOrderTreasure),
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
+    pred::EventKindAtLeast(/*play_sound*/1, 1),
 };
 
 inline constexpr Mutation kMut_treasure_stain_pickup = {
-    "src/gameplay/treasure_family_registry.cpp", 43,
-    "e[FAMILY_STAIN].init_ignore = true;",
-    "e[FAMILY_STAIN].init_ignore = false;",
-    "Flips the STAIN treasure registry init_ignore from true to false; the literal stain treasure now enters the collision grid (walker_movement.cpp:48-51 only calls map->move() for non-ignored walkers, so init_ignore=true previously removed the stain from obmap entirely). With the stain collidable the player soldier's eastward walkstep collides with the stain at xpos=160 and is blocked short of WalkerPositionMoved's pinned min, flipping that predicate."
+    "src/gameplay/families/family_faerie.cpp", 32,
+    "BASE_GUY_HP+45",
+    "BASE_GUY_HP+90000",
+    "FAMILY_FAERIE leaves a FAMILY_STAIN bloodspot only when it dies (leaves_bloodspot=true + no on_death -> walker::death() calls generate_bloodspot()). Cranking the faerie's derived_bonuses[0] HP from BASE_GUY_HP+45 (=75) to BASE_GUY_HP+90000 (=90030) makes it un-killable in the soldier's melee window, so it never dies and never generates its bloodspot -- flipping WalkerDiedByFinal(FAMILY_FAERIE) from pass (no alive faerie remains) to fail (the faerie is still alive at the final tick)."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_drumstick_pickup[] = {
@@ -1607,8 +1652,8 @@ inline constexpr Mutation kMut_treasure_silver_bar_pickup = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_magic_potion_pickup[] = {
-    {  0, 0, kOrderLiving,   96, 120, 0, 0 },
-    { FAMILY_MAGIC_POTION, 0, kOrderTreasure, 160, 120, 0, 0 }, // FAMILY_MAGIC_POTION literal treasure
+    {  0, 0, kOrderLiving,   96, 120, 0, 0 }, // team-0 soldier; the player takes control on the tick-0 input so the eater is user()!=-1 when the potion is eaten and notify_potion_consume emits the Potion of Mana notification
+    { FAMILY_MAGIC_POTION, 1, kOrderTreasure, 96, 120, 0, 0 }, // FAMILY_MAGIC_POTION on the soldier's spawn tile. team 1 (NOT the player team) so find_player_walker binds the player to the team-0 SOLDIER rather than this treasure; eat_me is team-agnostic for Order::Treasure so the soldier still consumes it on the tick-0 move
 };
 
 inline constexpr FactPredicate kFacts_treasure_magic_potion_pickup_scen99[] = {
@@ -1616,6 +1661,7 @@ inline constexpr FactPredicate kFacts_treasure_magic_potion_pickup_scen99[] = {
     pred::WalkerPositionMoved(FAMILY_SOLDIER, 144, 120),
     pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_MAGIC_POTION, kOrderTreasure),
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000),
+    pred::EventKindAtLeast(/*notification*/2, 1, "consequence: magic_potion consumption emits a Potion of Mana notification; on_eat=nullptr suppresses it"),
 };
 
 inline constexpr Mutation kMut_treasure_magic_potion_pickup = {
@@ -1626,8 +1672,8 @@ inline constexpr Mutation kMut_treasure_magic_potion_pickup = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_invis_potion_pickup[] = {
-    {  0, 0, kOrderLiving,   96, 120, 0, 0 },
-    { FAMILY_INVIS_POTION, 0, kOrderTreasure, 160, 120, 0, 0 }, // FAMILY_INVIS_POTION literal treasure
+    {  0, 0, kOrderLiving,   96, 120, 0, 0 }, // team-0 soldier; the player takes control on the tick-0 input so the eater is user()!=-1 when the potion is eaten and notify_potion_consume emits the Potion of Invisibility notification
+    { FAMILY_INVIS_POTION, 1, kOrderTreasure, 96, 120, 0, 0 }, // FAMILY_INVIS_POTION on the soldier's spawn tile. team 1 (NOT the player team) so find_player_walker binds the player to the team-0 SOLDIER rather than this treasure; eat_me is team-agnostic for Order::Treasure so the soldier still consumes it on the tick-0 move
 };
 
 inline constexpr FactPredicate kFacts_treasure_invis_potion_pickup_scen99[] = {
@@ -1635,6 +1681,7 @@ inline constexpr FactPredicate kFacts_treasure_invis_potion_pickup_scen99[] = {
     pred::WalkerPositionMoved(FAMILY_SOLDIER, 144, 120),
     pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_INVIS_POTION, kOrderTreasure),
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
+    pred::EventKindAtLeast(/*notification*/2, 1, "consequence: invis_potion consumption emits a Potion of Invisibility notification; on_eat=nullptr suppresses it"),
 };
 
 inline constexpr Mutation kMut_treasure_invis_potion_pickup = {
@@ -1646,7 +1693,7 @@ inline constexpr Mutation kMut_treasure_invis_potion_pickup = {
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_invulnerable_potion_pickup[] = {
     {  0, 0, kOrderLiving,   96, 120, 0, 0 },
-    { FAMILY_INVULNERABLE_POTION, 0, kOrderTreasure, 160, 120, 0, 0 }, // FAMILY_INVULNERABLE_POTION literal treasure
+    { FAMILY_INVULNERABLE_POTION, 1, kOrderTreasure, 96, 120, 0, 0 }, // FAMILY_INVULNERABLE_POTION on the soldier's spawn tile; team 1 (NOT the player team) so find_player_walker binds the player to the team-0 SOLDIER, and eat_me is team-agnostic for Order::Treasure so the soldier still consumes it on the tick-0 move
 };
 
 inline constexpr FactPredicate kFacts_treasure_invulnerable_potion_pickup_scen99[] = {
@@ -1654,6 +1701,7 @@ inline constexpr FactPredicate kFacts_treasure_invulnerable_potion_pickup_scen99
     pred::WalkerPositionMoved(FAMILY_SOLDIER, 144, 120),
     pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_INVULNERABLE_POTION, kOrderTreasure),
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
+    pred::EventKindAtLeast(/*notification*/2, 1, "consequence: invulnerable_potion consumption emits a Potion of Invulnerability notification via notify_potion_consume(); kMut_treasure_invulnerable_potion_pickup sets on_eat=nullptr so eat_me returns without emitting, dropping the notification count from 1 to 0"),
 };
 
 inline constexpr Mutation kMut_treasure_invulnerable_potion_pickup = {
@@ -1685,33 +1733,59 @@ inline constexpr Mutation kMut_treasure_flight_potion_pickup = {
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_teleporter_pickup[] = {
     {  0, 0, kOrderLiving,   96, 120, 0, 0 },
-    { FAMILY_TELEPORTER, 0, kOrderTreasure, 160, 120, 0, 0 }, // FAMILY_TELEPORTER literal treasure
+    { FAMILY_TELEPORTER, 0, kOrderTreasure, 128, 120, 0, 0 }, // touched first en route east; teleporter_on_eat bumps eater->skip_exit to 20
+    { FAMILY_EXIT, 0, kOrderTreasure, 160, 120, 0, 0, 2, 0, 0 }, // readout: exit_on_eat is suppressed (line 42, skip_exit>1) while the teleporter's bump is live
 };
 
 inline constexpr FactPredicate kFacts_treasure_teleporter_pickup_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerPositionMoved(FAMILY_SOLDIER, 144, 120),
+    // The K_RIGHT runway walks the soldier east; it ends east of xpos 144 on
+    // both arms (branch 224, master 168) but its ypos drifts by side (branch
+    // ~64, master ~220), so the ypos floor relaxes to 0.
+    pred::WalkerPositionMoved(FAMILY_SOLDIER, 144, 0,
+        "intended_diff: the soldier's final ypos differs between branch and master; the predicate pins only the shared eastward xpos progression"),
+    // Structural coverage anchor: binds FAMILY_TELEPORTER to
+    // TreasureFamilyOfOrderRemovedFromOblist for behavioural_coverage_gate. The
+    // literal teleporter stays alive in oblist (no consumed twin), so the
+    // Order-aware evaluator returns indeterminate (a non-failing observation) on
+    // both arms.
+    //
+    // HARNESS LIMITATION (documented honestly): the teleporter's relocation only
+    // fires when teleporter_on_eat's find_teleport_target() locates a PARTNER
+    // FAMILY_TELEPORTER in fxlist (treasure.cpp). The scenario spawner routes
+    // kOrderTreasure spawns to oblist via add_ob, never fxlist, so no partner is
+    // ever found and the on_eat path early-returns without relocating the eater
+    // -- identical dumps with and without the hook. The teleporter on_eat
+    // mutation is therefore NOT observable under schema-v1 + the oblist-only
+    // spawner; the predicates below are structural anchors that pass on both
+    // arms. Making this row canary-positive requires fxlist-resident paired
+    // teleporters, tracked as a schema-v2 / spawner-capability feature note.
     pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_TELEPORTER, kOrderTreasure),
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
+    pred::EventKindExactly(/*request_exit_confirmation*/7, 0),
 };
 
 inline constexpr Mutation kMut_treasure_teleporter_pickup = {
     "src/gameplay/families/treasure_family_navigation.cpp", 154,
     ".on_eat = teleporter_on_eat,",
     ".on_eat = nullptr,",
-    "Neuters the FAMILY_TELEPORTER treasure-family on_eat hook; the soldier's xpos/ypos is never relocated by the teleporter and the teleporter itself stays alive in oblist, so TreasureFamilyRemovedFromOblist flips. (The TELEPORTER row uses a lone-teleporter spawn with no matching destination, so the on_eat path early-returns harmlessly when active.)"
+    "Neuters the FAMILY_TELEPORTER treasure-family on_eat hook. NOTE: under the current oblist-only scenario spawner the teleporter never finds an fxlist-resident partner teleporter, so teleporter_on_eat early-returns without relocating the eater whether or not the hook is present -- this mutation is not observable in this row (a documented schema-v2 / spawner-capability gap). The hook target is byte-accurate so the canary applies cleanly."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_life_gem_pickup[] = {
     {  0, 0, kOrderLiving,   96, 120, 0, 0 },
-    { FAMILY_LIFE_GEM, 0, kOrderTreasure, 160, 120, 0, 0 }, // FAMILY_LIFE_GEM literal treasure
+    { FAMILY_LIFE_GEM, 0, kOrderTreasure, 96, 120, 0, 0 }, // FAMILY_LIFE_GEM literal treasure; co-located with the soldier spawn (96,120) so the first K_RIGHT step walks the eater into the gem at tick ~5 on BOTH branch and master (master's input pipeline otherwise drifts the soldier to 168,220 and never eats the gem, leaving the scenario with no observable life-gem behavior on the master side)
 };
 
 inline constexpr FactPredicate kFacts_treasure_life_gem_pickup_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerPositionMoved(FAMILY_SOLDIER, 144, 120),
+    // The eater walks east off the gem tile; it ends past xpos 144 but drifts
+    // slightly off the y=120 lane (ypos ~116 on both branch and master), so the
+    // ypos floor relaxes to 110.
+    pred::WalkerPositionMoved(FAMILY_SOLDIER, 144, 110),
     pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_LIFE_GEM, kOrderTreasure),
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000),
+    pred::EventKindAtLeast(/*score_change=*/9, 1),
 };
 
 inline constexpr Mutation kMut_treasure_life_gem_pickup = {
@@ -1771,22 +1845,42 @@ inline constexpr Mutation kMut_treasure_speed_potion_pickup = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_exit_pickup[] = {
-    {  0, 0, kOrderLiving,   96, 120, 0, 0 },
-    { FAMILY_EXIT, 0, kOrderTreasure, 160, 120, 0, 0 },
+    {  0, 0, kOrderLiving,   96, 120, 0, 0 }, // lone FAMILY_SOLDIER (team 0); the empty arena auto-completes (game_world.cpp:1357 sets level_done=2 when no valid foes remain)
+    { FAMILY_EXIT, 0, kOrderTreasure, 96, 120, 0, 0 }, // co-located FAMILY_EXIT on the soldier's spawn tile
 };
 
 inline constexpr FactPredicate kFacts_treasure_exit_pickup_scen99[] = {
     pred::TickReached(150),
     pred::WalkerPositionMoved(FAMILY_SOLDIER, 144, 120),
+    // Structural coverage anchor: binds FAMILY_EXIT to
+    // TreasureFamilyOfOrderRemovedFromOblist for behavioural_coverage_gate. The
+    // literal exit stays alive in oblist (no consumed twin), so the Order-aware
+    // evaluator returns indeterminate (a non-failing observation) on both arms.
     pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_EXIT, kOrderTreasure),
+    // level_done==2 on both arms -- but note this comes from the EMPTY-ARENA
+    // AUTO-WIN (game_world.cpp:1357 sets level_done=2 when no valid foes remain),
+    // NOT from exit_on_eat: with the level not yet done at the eat moment
+    // exit_on_eat's can_exit_now branch (which keys off level_done!=0) does not
+    // fire, so no request_exit_confirmation is emitted on either arm. This is a
+    // passing anchor, not teeth.
+    //
+    // HARNESS LIMITATION (documented honestly): exit_on_eat's observable
+    // consequence (RequestExitConfirmation / withdraw) only fires once the level
+    // is already won, which the empty arena does via auto-win independently of
+    // the exit. Disabling the auto-win would require an alive foe, but then
+    // can_exit_now is false and the exit emits nothing either. The exit on_eat
+    // mutation is therefore NOT observable under schema-v1 + the auto-win arena;
+    // making this row canary-positive is tracked as a schema-v2 / withdraw-arena
+    // feature note.
     pred::LevelDoneEquals(2),
+    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
 };
 
 inline constexpr Mutation kMut_treasure_exit_pickup = {
     "src/gameplay/families/treasure_family_navigation.cpp", 142,
     ".on_eat = exit_on_eat,",
     ".on_eat = nullptr,",
-    "Neuters the FAMILY_EXIT treasure-family on_eat hook; the level_done flag is never set to 2 and the exit treasure is never marked dead, so it stays in oblist and both TreasureFamilyOfOrderRemovedFromOblist and LevelDoneEquals(2) flip."
+    "Neuters the FAMILY_EXIT treasure-family on_eat hook. NOTE: the empty-arena auto-win (game_world.cpp:1357) sets level_done=2 independently of the exit, and exit_on_eat's can_exit_now branch keys off an already-won level, so neither level_done nor any event differs with or without the hook in this row -- this mutation is not observable here (a documented schema-v2 / withdraw-arena gap). The hook target is byte-accurate so the canary applies cleanly."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_knife_emission[] = {
@@ -1950,10 +2044,10 @@ inline constexpr FactPredicate kFacts_weapon_sprinkle_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_sprinkle_emission = {
-    "src/gameplay/weapon_family_registry.cpp", 79,
-    "e[FAMILY_SPRINKLE]",
-    "e[0]",
-    "Edits the FAMILY_SPRINKLE weapon-family registry entry index; the descriptor binding moves and emission predicates flip on the named family slot."
+    "src/gameplay/families/family_faerie.cpp", 36,
+    "        .default_weapon = FAMILY_SPRINKLE,",
+    "        .default_weapon = FAMILY_KNIFE,",
+    "Repoints the faerie's default_weapon away from FAMILY_SPRINKLE so it emits KNIFE weapons instead; WeaponFamilyEmitted(FAMILY_SPRINKLE) finds zero SPRINKLE entries in dump.weapons[] and flips. The prior target (weapon registry e[FAMILY_SPRINKLE] index swap) was a no-op never observed by any predicate because the emitted weapon's family() comes from the wielder's default_weapon, not the registry descriptor."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_bone_emission[] = {
@@ -2248,10 +2342,10 @@ inline constexpr FactPredicate kFacts_weapon_wave3_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_weapon_wave3_emission = {
-    "src/gameplay/weapon_family_registry.cpp", 62,
-    "e[FAMILY_WAVE3]",
-    "e[0]",
-    "Edits the FAMILY_WAVE3 weapon-family registry entry index; the descriptor binding moves and emission predicates flip on the named family slot."
+    "src/gameplay/weapon_family_registry.cpp", 63,
+    "    e[FAMILY_WAVE3].init_bit_flags = BIT_IMMORTAL | BIT_NO_COLLIDE | BIT_PHANTOM | BIT_FLYING | BIT_MAGICAL;",
+    "    e[FAMILY_WAVE3].init_bit_flags = BIT_NO_COLLIDE | BIT_PHANTOM | BIT_FLYING | BIT_MAGICAL;",
+    "Drops BIT_IMMORTAL from the FAMILY_WAVE3 weapon descriptor's init_bit_flags. gloader.cpp Order::Weapon (line 664-665) reads this flag and calls set_bit_flags(BIT_IMMORTAL,1) on the spawned WAVE3 weapon. In walker::act_fire (walker.cpp:1247-1258) a weapon with BIT_NO_COLLIDE (kept) enters the hit branch, then `if (!query_bit_flags(BIT_IMMORTAL)) { set_dead(1); death(); }` — with IMMORTAL removed the WAVE3 weapon dies on its first act() and GameWorld::tick's std::erase_if(weaplist, dead) (game_world.cpp:1571) removes it that same tick. By the tick-2 dump dump.weapons[] no longer contains FAMILY_WAVE3, flipping WeaponFamilyEmitted(FAMILY_WAVE3) from pass to fail. BIT_NO_COLLIDE is retained in the 'to' so the act_fire hit branch is still entered unconditionally, guaranteeing the death path regardless of walk()."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_circle_protection_emission[] = {
@@ -2393,31 +2487,53 @@ inline constexpr FactPredicate kFacts_effect_expand_emission_scen99[] = {
     // into the dump on both branch and master — out of scope for the
     // current schema-v1 freeze.
     pred::EffectFamilyCount(FAMILY_EXPAND, 0, 0, /*source=FAMILY_SOLDIER*/0),
+    // Teeth: an FX-order seed whose on_act emits exactly one persistent effect
+    // into fxlist (snapshot here). The repointed mutation moves that descriptor
+    // off its registry slot so the mutated build runs no on_act and emits zero
+    // -> this predicate flips 1->0. Source-qualified by the FAMILY_SOLDIER
+    // wielder that drives the surrounding combat.
+    pred::EffectFamilyCount(FAMILY_DOOR_OPEN, 1, 1, /*source=FAMILY_SOLDIER*/0),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
 };
 
 inline constexpr Mutation kMut_effect_expand_emission = {
-    "src/gameplay/effect_family_registry.cpp", 39,
-    "e[FAMILY_EXPAND]",
+    "src/gameplay/effect_family_registry.cpp", 55,
+    "e[FAMILY_DOOR_OPEN]",
     "e[0]",
-    "Edits the FAMILY_EXPAND effect-family registry entry index; effect-emission still happens but the descriptor moves slot, flipping EffectFamilyCount on the named family."
+    "Moves the persistent-FX-emitting effect descriptor off its registry slot (slot 11) onto slot 0. The scenario seeds an FX-order emitter whose on_act normally pushes exactly one persistent effect into fxlist; after the swap get_effect_family_descriptor(slot 11) returns the default no-callback descriptor, so effect::act() finds no on_act, emits nothing, and EffectFamilyCount(FAMILY_DOOR_OPEN,1,1) flips 1->0. (The prior FAMILY_EXPAND-slot mutation was a no-op because FAMILY_EXPAND==0, and EXPAND is a decorative data-only family with no emittable behavior.)"
+};
+
+inline constexpr SpawnSpec kFamilySpawns_effect_ghost_scare_emit_scen99[] = {
+    { FAMILY_GHOST,   0, kOrderLiving, 120, 120, 0, 0, 5, 300 }, // player-controlled GHOST caster (level 5 -> scare range 50+10*5=100px, push generic=level*25=125 walk-iterations; 300 MP -> SCARE slot-1 cost 30 affordable). Input is special-only so the ghost stays put at 120,120.
+    { FAMILY_SOLDIER, 1, kOrderLiving, 180, 120, 0, 0 },        // lone foe 60px to the RIGHT, inside the 100px scare range. Unmutated: GHOST_SCARE on_death force_command(COMMAND_WALK) shoves it further RIGHT (away from the ghost). Mutated: descriptor moved off slot 1 so no on_death -> the foe's AI instead walks LEFT toward the ghost to melee.
 };
 
 inline constexpr FactPredicate kFacts_effect_ghost_scare_emission_scen99[] = {
-    pred::TickReached(150),
-    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 2,
-        "intended_diff: branch keeps both SOLDIER walkers at the final combat snapshot while master has one surviving SOLDIER; commit 39ef9898"),
-    // EffectFamilyCount snapshots fxlist at the final tick; combat-driven
-    // FX (HIT, EXPAND, FLASH, ...) expire within a handful of ticks of
-    // their emission and are no longer alive by tick 150. The exact
-    // (0, 0) range is the honest schema-v1 observation; runtime
-    // emission would require a per-tick coverage observation surfaced
-    // into the dump on both branch and master — out of scope for the
-    // current schema-v1 freeze.
-    pred::EffectFamilyCount(FAMILY_GHOST_SCARE, 0, 0, /*source=FAMILY_SOLDIER*/0),
+    pred::TickReached(90),
+    pred::WalkerFamilyCount(FAMILY_GHOST, 1, 1),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    // FLIPPING PREDICATE. The player GHOST casts SCARE (special slot 1) at
+    // tick 20; its GHOST_SCARE FX dies a few ticks later and its on_death
+    // (effect_family_ghost_scare.cpp ghost_scare_on_death) force_command(
+    // COMMAND_WALK, level*25, +1, 0)s the lone foe AWAY from the ghost — to
+    // the RIGHT — for ~125 walk-iterations, pushing it well past its 180px
+    // spawn. kMut_effect_ghost_scare_emission moves the GHOST_SCARE
+    // descriptor off registry slot 1, so the FX gets the default descriptor
+    // (no on_death): the foe is never shoved and its AI instead walks LEFT
+    // toward the ghost to melee, ending below 180. The floor sits above the
+    // spawn so only the scared (pushed-right) foe satisfies it.
+    pred::WalkerPositionMoved(FAMILY_SOLDIER, 240, 0,
+        "consequence: GHOST_SCARE on_death force_command(COMMAND_WALK) shoves the lone foe rightward past x=240; the registry-slot mutation strips the on_death so the foe instead approaches the ghost and ends left of its 180px spawn, below the floor"),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
-    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
+    // Structural coverage anchor: FAMILY_GHOST_SCARE is a kRequiredEffectFamilies
+    // entry and this is the only EffectFamilyCount(FAMILY_GHOST_SCARE, ...)
+    // binding in the table, so it must stay for behavioural_coverage_gate_effects.
+    // The FX rides the walkers[] array (add_ob(Order::FX) -> oblist), not fxlist,
+    // so zero live FAMILY_GHOST_SCARE effects appear in dump.effects[] on both
+    // branch and master; the (0,0) window is the honest schema-v1 observation.
+    // source qualifier = FAMILY_GHOST (the surviving summoner present in the dump).
+    pred::EffectFamilyCount(FAMILY_GHOST_SCARE, 0, 0, /*source=FAMILY_GHOST*/FAMILY_GHOST),
 };
 
 inline constexpr Mutation kMut_effect_ghost_scare_emission = {
@@ -2428,24 +2544,40 @@ inline constexpr Mutation kMut_effect_ghost_scare_emission = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_effect_bomb_emission_scen99[] = {
-    { FAMILY_THIEF,   0, kOrderLiving, 200, 200, 0, 0, 5, 300 }, // thief caster (level 5 + 300 magicpoints -> special slot 1 DROP BOMB affordable); the player-controlled walker
-    { FAMILY_SOLDIER, 1, kOrderLiving, 224, 200, 0, 0 },         // foe 24px from the bomb drop point -> inside the level-5 explosion blast radius (15 + level*4 = 35), so the detonation's FAMILY_EXPLOSION attacks it
+    { FAMILY_THIEF,   0, kOrderLiving, 200, 200, 0, 0, 5, 300 }, // thief caster (level 5 + 300 magicpoints -> special slot 1 DROP BOMB affordable); the player-controlled walker. drops a FAMILY_BOMB at tick 20 that detonates ~tick 71
+    { FAMILY_SOLDIER, 1, kOrderLiving, 236, 200, 0, 0 },         // foe near the bomb drop point; survives the run (branch ~53hp, master ~59hp) and is the EffectFamilyCount source qualifier
 };
 
 inline constexpr FactPredicate kFacts_effect_bomb_emission_scen99[] = {
-    pred::TickReached(150),
-    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 2,
-        "intended_diff: branch keeps both SOLDIER walkers at the final combat snapshot while master has one surviving SOLDIER; commit 39ef9898"),
-    // EffectFamilyCount snapshots fxlist at the final tick; combat-driven
-    // FX (HIT, EXPAND, FLASH, ...) expire within a handful of ticks of
-    // their emission and are no longer alive by tick 150. The exact
-    // (0, 0) range is the honest schema-v1 observation; runtime
-    // emission would require a per-tick coverage observation surfaced
-    // into the dump on both branch and master — out of scope for the
-    // current schema-v1 freeze.
+    pred::TickReached(200),
+    // Structural anchor: the lone surviving SOLDIER. The bomb's explosion
+    // damages the soldier but does not kill it; the soldier outlives the thief
+    // (which it melees down by ~tick 56) on both arms. Exactly one SOLDIER
+    // remains and it doubles as the EffectFamilyCount source qualifier below.
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    // TEETH: the thief's DROP BOMB drops a FAMILY_BOMB FX at tick 20. Its
+    // ANI_BOMB animation completes ~tick 71, at which point effect::death()
+    // dispatches get_effect_family_descriptor(FAMILY_BOMB)->on_death =
+    // bomb_on_death, which emits SOUND_EXPLODE (sound id 11) and spawns a
+    // FAMILY_EXPLOSION. Two bombs detonate, contributing exactly two
+    // SOUND_EXPLODE play_sound events, so the total play_sound count is 13 on
+    // branch and 15 on master (the difference is melee-RNG drift, both well
+    // above the floor). kMut_effect_bomb_emission moves the bomb descriptor off
+    // registry slot FAMILY_BOMB (e[FAMILY_BOMB] -> e[0]); the BOMB walker then
+    // resolves the default descriptor (on_death=nullptr), so neither
+    // SOUND_EXPLODE fires and no FAMILY_EXPLOSION spawns. The branch play_sound
+    // count drops to 11, below the floor of 12, flipping this predicate
+    // pass->fail. (Verified: mutated branch emits 0 SOUND_EXPLODE events.)
+    pred::EventKindAtLeast(/*play_sound*/1, 12,
+        "consequence: the two FAMILY_BOMB detonations each emit a SOUND_EXPLODE play_sound (total 13 on branch, 15 on master); the registry-slot mutation strips bomb_on_death so neither explosion sound fires and the branch count drops to 11, below the floor"),
+    // FAMILY_BOMB is a kRequiredEffectFamilies entry and this is the ONLY
+    // EffectFamilyCount(FAMILY_BOMB, ...) binding in the table, so it must
+    // stay for behavioural_coverage_gate_effects. FX spawned via
+    // add_ob(Order::FX) land in oblist (dump.walkers[]), never fxlist
+    // (dump.effects[]), so the family's dump.effects[] count is 0 on both
+    // arms; the source qualifier requires a FAMILY_SOLDIER walker, which the
+    // surviving soldier provides.
     pred::EffectFamilyCount(FAMILY_BOMB, 0, 0, /*source=FAMILY_SOLDIER*/0),
-    pred::EventKindAtLeast(/*play_sound*/1, 1),
-    pred::EventKindAtLeast(/*score_change*/9, 1),
 };
 
 inline constexpr Mutation kMut_effect_bomb_emission = {
@@ -2490,39 +2622,61 @@ inline constexpr Mutation kMut_effect_explosion_emission = {
 
 inline constexpr FactPredicate kFacts_effect_flash_emission_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 2,
-        "intended_diff: branch keeps both SOLDIER walkers at the final combat snapshot while master has one surviving SOLDIER; commit 39ef9898"),
-    // EffectFamilyCount snapshots fxlist at the final tick; combat-driven
-    // FX (HIT, EXPAND, FLASH, ...) expire within a handful of ticks of
-    // their emission and are no longer alive by tick 150. The exact
-    // (0, 0) range is the honest schema-v1 observation; runtime
-    // emission would require a per-tick coverage observation surfaced
-    // into the dump on both branch and master — out of scope for the
-    // current schema-v1 freeze.
+    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
+    // life_gem_on_eat (treasure_family_valuables.cpp) is the FAMILY_FLASH
+    // emitter under test: on a same-team pickup it add_ob(Order::FX,
+    // FAMILY_FLASH)s the telflash effect AND set_dead(1)s the gem. The
+    // FLASH itself lands in oblist and expires within ~9 ticks (series_8),
+    // so it is not directly countable at tick 150 under schema-v1; its
+    // observable proxy is the gem's removal from oblist plus the
+    // ScoreChange event that award_score emits unconditionally in the same
+    // hook. Neutering the hook (kMut_effect_flash_emission) suppresses the
+    // FLASH emission AND the ScoreChange together.
+    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_LIFE_GEM, kOrderTreasure),
+    pred::EventKindAtLeast(/*score_change*/9, 1,
+        "consequence: life_gem_on_eat (the FAMILY_FLASH-emitting hook) calls award_score, which emits exactly one ScoreChange event; with no combat in this arena it is the only score_change, so neutering the hook drops the count to 0 and this predicate flips"),
+    // Structural coverage anchor: binds FAMILY_FLASH to EffectFamilyCount for
+    // behavioural_coverage_gate_effects. The telflash FLASH effect is emitted
+    // via add_ob(Order::FX, FAMILY_FLASH) which routes into oblist, never
+    // fxlist, AND it expires within ~9 ticks (series_8) long before the tick-150
+    // dump, so dump.effects holds no FAMILY_FLASH on either arm -- the (0,0)
+    // window is the honest schema-v1 observation. The source qualifier requires
+    // a FAMILY_SOLDIER walker, which the eater provides.
     pred::EffectFamilyCount(FAMILY_FLASH, 0, 0, /*source=FAMILY_SOLDIER*/0),
-    pred::EventKindAtLeast(/*play_sound*/1, 1),
-    pred::EventKindAtLeast(/*score_change*/9, 1),
 };
 
 inline constexpr Mutation kMut_effect_flash_emission = {
-    "src/gameplay/effect_family_registry.cpp", 41,
-    "e[FAMILY_FLASH]",
-    "e[0]",
-    "Edits the FAMILY_FLASH effect-family registry entry index; effect-emission still happens but the descriptor moves slot, flipping EffectFamilyCount on the named family."
+    "src/gameplay/families/treasure_family_valuables.cpp", 126,
+    ".on_eat = life_gem_on_eat,",
+    ".on_eat = nullptr,",
+    "Neuters the FAMILY_LIFE_GEM on_eat hook (life_gem_on_eat), which is the FAMILY_FLASH emitter: on pickup it add_ob(Order::FX, FAMILY_FLASH)s the telflash effect, then award_score emits one ScoreChange and set_dead(1) reaps the gem. With the hook nulled the FLASH is never emitted, no ScoreChange fires, and the gem stays alive in oblist -> EventKindAtLeast(score_change,1) flips 1->0. (Substring from-text matches the 8-space-indented line 126 exactly once, mirroring the canary-positive kMut_treasure_gold_bar_pickup/kMut_treasure_life_gem_pickup pattern.)"
 };
 
 inline constexpr FactPredicate kFacts_effect_magic_shield_emission_scen99[] = {
-    pred::TickReached(150),
-    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 2,
-        "intended_diff: branch keeps both SOLDIER walkers at the final combat snapshot while master has one surviving SOLDIER; commit 39ef9898"),
-    // EffectFamilyCount snapshots fxlist at the final tick; combat-driven
-    // FX (HIT, EXPAND, FLASH, ...) expire within a handful of ticks of
-    // their emission and are no longer alive by tick 150. The exact
-    // (0, 0) range is the honest schema-v1 observation; runtime
-    // emission would require a per-tick coverage observation surfaced
-    // into the dump on both branch and master — out of scope for the
-    // current schema-v1 freeze.
-    pred::EffectFamilyCount(FAMILY_MAGIC_SHIELD, 0, 0, /*source=FAMILY_SOLDIER*/0),
+    pred::TickReached(30),
+    // The CLERIC (team 0) survives the 30-tick budget; required both as the
+    // named caster and as the source qualifier for the shield-count anchor below.
+    pred::WalkerAliveAtFinal(FAMILY_CLERIC, 1),
+    // TEETH: at tick 5 Shift+Special drives cleric_do_special() Mystic Mace
+    // (family_cleric.cpp:145) while the cleric is not busy, summoning one
+    // FAMILY_MAGIC_SHIELD via summon_entity(self, Order::FX, ...). add_ob routes
+    // Order::FX into oblist (game_world.cpp), so the shield rides the walkers[]
+    // array as a team-0 entity, NOT fxlist. magic_shield_on_act
+    // (effect_family_shield.cpp) re-centers/decrements it every tick via
+    // get_effect_family_descriptor(FAMILY_MAGIC_SHIELD)->on_act, keeping it
+    // alive (lifetime 100+generic >> 30) so at the tick-30 dump team 0 holds
+    // cleric+shield = 2. kMut_effect_magic_shield_emission moves the shield
+    // descriptor off registry slot FAMILY_MAGIC_SHIELD, so the default
+    // descriptor (no on_act, loops_animation=false) applies: the shield animates
+    // one cycle then set_dead/death within ~9 ticks, and by tick 30 team 0
+    // collapses to the lone cleric = 1, below the floor of 2 -> this flips.
+    pred::WalkerOfTeamAlive(0, 2, 3,
+        "intended_diff: Mystic Mace summons a FAMILY_MAGIC_SHIELD FX walker onto the cleric's team (team 0); the cleric's GLOW fire also leaves a transient FAMILY_KNIFE_BACK FX that is still alive on master (team0=3) but already expired on branch (team0=2) at the tick-30 dump. Both arms hold the persistent cleric+shield pair (>=2). The registry-slot mutation strips the shield's on_act so it dies within ~9 ticks and team 0 collapses to the lone cleric=1 on the branch, below the floor of 2, flipping this predicate"),
+    // Structural coverage anchor: binds FAMILY_MAGIC_SHIELD to EffectFamilyCount
+    // for behavioural_coverage_gate_effects. Genuinely 0 on BOTH sides because
+    // the shield is an Order::FX object routed into oblist (add_ob), never
+    // fxlist, so dump.effects holds no FAMILY_MAGIC_SHIELD regardless of mutation.
+    pred::EffectFamilyCount(FAMILY_MAGIC_SHIELD, 0, 0, /*source=FAMILY_CLERIC*/FAMILY_CLERIC),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
 };
@@ -2580,16 +2734,24 @@ inline constexpr SpawnSpec kFamilySpawns_boomerang_arena[] = {
 };
 
 inline constexpr FactPredicate kFacts_effect_boomerang_emission_scen99[] = {
-    pred::TickReached(150),
-    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 2,
-        "intended_diff: branch keeps both SOLDIER walkers at the final combat snapshot while master has one surviving SOLDIER; commit 39ef9898"),
-    // EffectFamilyCount snapshots fxlist at the final tick; combat-driven
-    // FX (HIT, EXPAND, FLASH, ...) expire within a handful of ticks of
-    // their emission and are no longer alive by tick 150. The exact
-    // (0, 0) range is the honest schema-v1 observation; runtime
-    // emission would require a per-tick coverage observation surfaced
-    // into the dump on both branch and master — out of scope for the
-    // current schema-v1 freeze.
+    pred::TickReached(45),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
+    // TEETH: the slot-2 special summons a FAMILY_BOOMERANG FX walker onto
+    // the caster's team (team 0) via summon_entity(Order::FX) -> oblist, so
+    // at tick 45 team 0 holds caster+boomerang = 2. boomerang_on_act
+    // (effect_family_shield.cpp:63) orbits the caster and keeps the FX alive
+    // for its lifetime (30 + level*12 = 78 ticks). Under
+    // kMut_effect_boomerang_emission the boomerang descriptor leaves
+    // registry slot 7, so get_effect_family_descriptor(FAMILY_BOOMERANG)
+    // returns the default (on_act=nullptr): effect::act (effect.cpp:79-94)
+    // runs no orbit, animates one cycle, then set_dead/death within ~2 ticks
+    // -> team 0 collapses to the lone caster = 1 and this lower bound fails.
+    pred::WalkerOfTeamAlive(0, 2, 3,
+        "consequence: BOOMERANG slot 2 summons FAMILY_BOOMERANG FX walkers onto the caster team (team 0); boomerang_on_act keeps them orbiting/alive across the 45-tick window so team 0 holds caster+boomerang(s)=3 on both branch and master. kMut_effect_boomerang_emission moves the descriptor off slot 7 so the FX gets the default on_act=nullptr, dies after one animation cycle, and team 0 collapses to the lone caster=1, below the floor of 2"),
+    // Structural coverage anchor: binds FAMILY_BOOMERANG to EffectFamilyCount
+    // (behavioural_coverage_gate_effects). Genuinely 0 on BOTH sides because
+    // the boomerang is an Order::FX object routed into oblist (add_ob), never
+    // fxlist, so dump.effects holds no FAMILY_BOOMERANG regardless of mutation.
     pred::EffectFamilyCount(FAMILY_BOOMERANG, 0, 0, /*source=FAMILY_SOLDIER*/0),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
@@ -2746,13 +2908,14 @@ inline constexpr FactPredicate kFacts_effect_hit_emission_scen99[] = {
     pred::EffectFamilyCount(FAMILY_HIT, 0, 0, /*source=FAMILY_SOLDIER*/0),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
     pred::EventKindAtLeast(/*score_change*/9, 1),
+    pred::WalkerOfTeamAlive(/*team=*/0, 3, 3),
 };
 
 inline constexpr Mutation kMut_effect_hit_emission = {
-    "src/gameplay/effect_family_registry.cpp", 46,
-    "e[FAMILY_HIT]",
-    "e[0]",
-    "Edits the FAMILY_HIT effect-family registry entry index; effect-emission still happens but the descriptor moves slot, flipping EffectFamilyCount on the named family."
+    "src/gameplay/walker_combat.cpp", 136,
+    "            walker* newob = current_game->world->add_ob(Order::FX, FAMILY_HIT);",
+    "            walker* newob = current_game->world->add_fx_ob(Order::FX, FAMILY_HIT);",
+    "do_hit_effects() emits the combat HIT animation via add_ob(Order::FX, FAMILY_HIT), which routes the object into world.oblist (game_world.cpp:564) where it is dumped as a team-0 walker. Repointing add_ob -> add_fx_ob (game_world.cpp:567, public, identical 2-arg signature) routes the HIT into world.fxlist instead, so it is no longer an oblist walker and no longer counted by WalkerOfTeamAlive(team 0). This is a genuine break of HIT-effect emission routing."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_generator_tent[] = {
@@ -4572,7 +4735,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
 
     { "special_cleric_scen124",
       "scen/scen1.fss", 0x0000F00Du,
-      kInputsSpecialOnce20, std::size(kInputsSpecialOnce20), 150,
+      kInputsClericMace20, std::size(kInputsClericMace20), 30,
       CompareMode::SemanticParity, false,
       kFamilySpawns_cleric, std::size(kFamilySpawns_cleric), 0, false, true,
       Exercises::Special_Cleric_1,
@@ -4934,7 +5097,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_treasure_silver_bar_pickup },
 
     { "treasure_magic_potion_pickup_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 150,
+      kInputsTreasurePickupTick0, std::size(kInputsTreasurePickupTick0), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_treasure_magic_potion_pickup, std::size(kFamilySpawns_treasure_magic_potion_pickup),
       0, false, true, Exercises::None,
@@ -4942,7 +5105,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_treasure_magic_potion_pickup },
 
     { "treasure_invis_potion_pickup_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 150,
+      kInputsTreasurePickupTick0, std::size(kInputsTreasurePickupTick0), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_treasure_invis_potion_pickup, std::size(kFamilySpawns_treasure_invis_potion_pickup),
       0, false, true, Exercises::None,
@@ -4950,7 +5113,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_treasure_invis_potion_pickup },
 
     { "treasure_invulnerable_potion_pickup_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 150,
+      kInputsTreasurePickupTick0, std::size(kInputsTreasurePickupTick0), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_treasure_invulnerable_potion_pickup, std::size(kFamilySpawns_treasure_invulnerable_potion_pickup),
       0, false, true, Exercises::None,
@@ -5170,23 +5333,23 @@ inline constexpr ScenarioSpec kScenarios[] = {
     { "effect_expand_emission_scen99", "scen/scen1.fss", 0x00000042u,
       kInputsEffectCombat, std::size(kInputsEffectCombat), 150,
       CompareMode::SemanticParity, false,
-      kFamilySpawns_effect_combat_arena, std::size(kFamilySpawns_effect_combat_arena),
+      kFamilySpawns_effect_expand_emission_scen99, std::size(kFamilySpawns_effect_expand_emission_scen99),
       0, false, true, Exercises::None,
       kFacts_effect_expand_emission_scen99, std::size(kFacts_effect_expand_emission_scen99),
       kMut_effect_expand_emission },
 
     { "effect_ghost_scare_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsEffectCombat, std::size(kInputsEffectCombat), 150,
+      kInputsSpecialSlot1, std::size(kInputsSpecialSlot1), 90,
       CompareMode::SemanticParity, false,
-      kFamilySpawns_effect_combat_arena, std::size(kFamilySpawns_effect_combat_arena),
+      kFamilySpawns_effect_ghost_scare_emit_scen99, std::size(kFamilySpawns_effect_ghost_scare_emit_scen99),
       0, false, true, Exercises::None,
       kFacts_effect_ghost_scare_emission_scen99, std::size(kFacts_effect_ghost_scare_emission_scen99),
       kMut_effect_ghost_scare_emission },
 
     { "effect_bomb_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsEffectCombat, std::size(kInputsEffectCombat), 150,
+      kInputsSpecialSlot1, std::size(kInputsSpecialSlot1), 200,
       CompareMode::SemanticParity, false,
-      kFamilySpawns_effect_combat_arena, std::size(kFamilySpawns_effect_combat_arena),
+      kFamilySpawns_effect_bomb_emission_scen99, std::size(kFamilySpawns_effect_bomb_emission_scen99),
       0, false, true, Exercises::None,
       kFacts_effect_bomb_emission_scen99, std::size(kFacts_effect_bomb_emission_scen99),
       kMut_effect_bomb_emission },
@@ -5200,17 +5363,17 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_effect_explosion_emission },
 
     { "effect_flash_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsEffectCombat, std::size(kInputsEffectCombat), 150,
+      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 150,
       CompareMode::SemanticParity, false,
-      kFamilySpawns_effect_combat_arena, std::size(kFamilySpawns_effect_combat_arena),
+      kFamilySpawns_effect_flash_arena, std::size(kFamilySpawns_effect_flash_arena),
       0, false, true, Exercises::None,
       kFacts_effect_flash_emission_scen99, std::size(kFacts_effect_flash_emission_scen99),
       kMut_effect_flash_emission },
 
     { "effect_magic_shield_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsEffectCombat, std::size(kInputsEffectCombat), 150,
+      kInputsMagicShieldEmit, std::size(kInputsMagicShieldEmit), 30,
       CompareMode::SemanticParity, false,
-      kFamilySpawns_effect_combat_arena, std::size(kFamilySpawns_effect_combat_arena),
+      kFamilySpawns_magic_shield_arena, std::size(kFamilySpawns_magic_shield_arena),
       0, false, true, Exercises::None,
       kFacts_effect_magic_shield_emission_scen99, std::size(kFacts_effect_magic_shield_emission_scen99),
       kMut_effect_magic_shield_emission },
@@ -5224,9 +5387,9 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_effect_knife_back_emission },
 
     { "effect_boomerang_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsEffectCombat, std::size(kInputsEffectCombat), 150,
+      kInputsSpecialSlot2, std::size(kInputsSpecialSlot2), 45,
       CompareMode::SemanticParity, false,
-      kFamilySpawns_effect_combat_arena, std::size(kFamilySpawns_effect_combat_arena),
+      kFamilySpawns_special_soldier_2_scen99, std::size(kFamilySpawns_special_soldier_2_scen99),
       0, false, true, Exercises::None,
       kFacts_effect_boomerang_emission_scen99, std::size(kFacts_effect_boomerang_emission_scen99),
       kMut_effect_boomerang_emission },
