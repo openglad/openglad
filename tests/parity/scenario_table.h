@@ -1732,37 +1732,35 @@ inline constexpr Mutation kMut_treasure_flight_potion_pickup = {
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_teleporter_pickup[] = {
-    {  0, 0, kOrderLiving,   96, 120, 0, 0 },
-    { FAMILY_TELEPORTER, 0, kOrderTreasure, 128, 120, 0, 0 }, // touched first en route east; teleporter_on_eat bumps eater->skip_exit to 20
-    { FAMILY_EXIT, 0, kOrderTreasure, 160, 120, 0, 0, 2, 0, 0 }, // readout: exit_on_eat is suppressed (line 42, skip_exit>1) while the teleporter's bump is live
+    { FAMILY_SOLDIER, 0, kOrderLiving,   120, 120, 0, 0 }, // player soldier; takes ACT_CONTROL on tick-0 input
+    { FAMILY_TELEPORTER, 0, kOrderTreasure, 120, 120, 0, 0 }, // co-located: eaten FIRST in the tick-0 move pass (oblist order), distance^2==0 passes the >21 gate, bumps eater->skip_exit to 20
+    {  0, 1, kOrderLiving,   180, 120, 0, 0 }, // live enemy keeps guys_here!=0 so the EXIT takes the withdraw branch
+    { FAMILY_EXIT, 2, kOrderTreasure, 120, 120, 0, 0, 2, 0, 2 }, // co-located withdraw EXIT to completed scen2; eaten AFTER the teleporter in the same pass, suppressed by skip_exit>1
 };
 
 inline constexpr FactPredicate kFacts_treasure_teleporter_pickup_scen99[] = {
     pred::TickReached(150),
-    // The K_RIGHT runway walks the soldier east; it ends east of xpos 144 on
-    // both arms (branch 224, master 168) but its ypos drifts by side (branch
-    // ~64, master ~220), so the ypos floor relaxes to 0.
-    pred::WalkerPositionMoved(FAMILY_SOLDIER, 144, 0,
-        "intended_diff: the soldier's final ypos differs between branch and master; the predicate pins only the shared eastward xpos progression"),
-    // Structural coverage anchor: binds FAMILY_TELEPORTER to
-    // TreasureFamilyOfOrderRemovedFromOblist for behavioural_coverage_gate. The
-    // literal teleporter stays alive in oblist (no consumed twin), so the
-    // Order-aware evaluator returns indeterminate (a non-failing observation) on
-    // both arms.
-    //
-    // HARNESS LIMITATION (documented honestly): the teleporter's relocation only
-    // fires when teleporter_on_eat's find_teleport_target() locates a PARTNER
-    // FAMILY_TELEPORTER in fxlist (treasure.cpp). The scenario spawner routes
-    // kOrderTreasure spawns to oblist via add_ob, never fxlist, so no partner is
-    // ever found and the on_eat path early-returns without relocating the eater
-    // -- identical dumps with and without the hook. The teleporter on_eat
-    // mutation is therefore NOT observable under schema-v1 + the oblist-only
-    // spawner; the predicates below are structural anchors that pass on both
-    // arms. Making this row canary-positive requires fxlist-resident paired
-    // teleporters, tracked as a schema-v2 / spawner-capability feature note.
-    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_TELEPORTER, kOrderTreasure),
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
+    // OBSERVABLE NAMED BEHAVIOUR: picking up the co-located teleporter on tick 0
+    // bumps the eater's skip_exit to 20 (treasure_family_navigation.cpp:113).
+    // That bump trips exit_on_eat's early guard (line 42, skip_exit()>1) when the
+    // soldier eats the co-located withdraw EXIT in the SAME tick-0 pass, so the
+    // EXIT emits NEITHER the withdraw RequestExitConfirmation NOR WithdrawToLevel
+    // -- both counts are 0 on branch and on master. Neutering teleporter_on_eat
+    // (the discriminating mutation) removes the bump: skip_exit stays 0, the EXIT
+    // takes its withdraw branch and emits both events (count 1 each), flipping
+    // BOTH predicates below from exact-0 to a failing 1.
     pred::EventKindExactly(/*request_exit_confirmation*/7, 0),
+    pred::EventKindExactly(/*withdraw_to_level*/8, 0),
+    // Structural coverage anchor: keeps FAMILY_TELEPORTER bound to
+    // TreasureFamilyOfOrderRemovedFromOblist for behavioural_coverage_gate_
+    // treasures. The co-located teleporter only bumps the eater's skip_exit
+    // (treasure_family_navigation.cpp:113); it is never set_dead, so the
+    // literal stays alive in oblist (hp 0) on BOTH branch and master. With a
+    // single alive instance and no consumed one, the Order-aware evaluator
+    // returns indeterminate (non-failing) on both arms — a passing anchor,
+    // not the teeth.
+    pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_TELEPORTER, kOrderTreasure),
 };
 
 inline constexpr Mutation kMut_treasure_teleporter_pickup = {
@@ -1851,36 +1849,36 @@ inline constexpr SpawnSpec kFamilySpawns_treasure_exit_pickup[] = {
 
 inline constexpr FactPredicate kFacts_treasure_exit_pickup_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerPositionMoved(FAMILY_SOLDIER, 144, 120),
-    // Structural coverage anchor: binds FAMILY_EXIT to
-    // TreasureFamilyOfOrderRemovedFromOblist for behavioural_coverage_gate. The
-    // literal exit stays alive in oblist (no consumed twin), so the Order-aware
-    // evaluator returns indeterminate (a non-failing observation) on both arms.
+    // The player SOLDIER (team 0) walks onto a co-located FAMILY_EXIT whose
+    // destination (scen2) is already completed while a live team-1 foe remains,
+    // so exit_on_eat takes the withdraw branch (treasure_family_navigation.cpp:
+    // 84-96) and emits BOTH WithdrawToLevel and the withdraw-flavoured
+    // RequestExitConfirmation exactly once. The discriminating mutation neuters
+    // .on_eat = exit_on_eat (line 142) -> the dispatcher at treasure.cpp:61-62
+    // ("if (tfd && tfd->on_eat)") skips the callback entirely, so NEITHER event
+    // is emitted: both EventKindExactly predicates flip 1 -> 0. These are the
+    // teeth.
+    pred::EventKindExactly(/*request_exit_confirmation*/7, 1),
+    pred::EventKindExactly(/*withdraw_to_level*/8, 1),
+    // Structural coverage anchor: keeps FAMILY_EXIT bound to
+    // TreasureFamilyOfOrderRemovedFromOblist for behavioural_coverage_gate_
+    // treasures. The literal exit stays alive in oblist (hp 0, not consumed),
+    // so the Order-aware evaluator returns indeterminate (non-failing) on both
+    // arms.
     pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_EXIT, kOrderTreasure),
-    // level_done==2 on both arms -- but note this comes from the EMPTY-ARENA
-    // AUTO-WIN (game_world.cpp:1357 sets level_done=2 when no valid foes remain),
-    // NOT from exit_on_eat: with the level not yet done at the eat moment
-    // exit_on_eat's can_exit_now branch (which keys off level_done!=0) does not
-    // fire, so no request_exit_confirmation is emitted on either arm. This is a
-    // passing anchor, not teeth.
-    //
-    // HARNESS LIMITATION (documented honestly): exit_on_eat's observable
-    // consequence (RequestExitConfirmation / withdraw) only fires once the level
-    // is already won, which the empty arena does via auto-win independently of
-    // the exit. Disabling the auto-win would require an alive foe, but then
-    // can_exit_now is false and the exit emits nothing either. The exit on_eat
-    // mutation is therefore NOT observable under schema-v1 + the auto-win arena;
-    // making this row canary-positive is tracked as a schema-v2 / withdraw-arena
-    // feature note.
+    // level_done holds at its default 2 on both arms: the withdraw early-break
+    // guards (game_world.cpp:1393/1438) fire before the surviving foe can set
+    // level_done=0. Passing anchor on both arms (not the teeth here).
     pred::LevelDoneEquals(2),
-    pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
+    pred::WalkerOfTeamAlive(/*team=*/0, 1, 1),
 };
 
 inline constexpr Mutation kMut_treasure_exit_pickup = {
     "src/gameplay/families/treasure_family_navigation.cpp", 142,
     ".on_eat = exit_on_eat,",
     ".on_eat = nullptr,",
-    "Neuters the FAMILY_EXIT treasure-family on_eat hook. NOTE: the empty-arena auto-win (game_world.cpp:1357) sets level_done=2 independently of the exit, and exit_on_eat's can_exit_now branch keys off an already-won level, so neither level_done nor any event differs with or without the hook in this row -- this mutation is not observable here (a documented schema-v2 / withdraw-arena gap). The hook target is byte-accurate so the canary applies cleanly."
+    "Neuters the FAMILY_EXIT treasure-family on_eat hook (treasure.cpp:61-62 dispatches it behind `if (tfd && tfd->on_eat)`, so nullptr means the callback never runs). With the player SOLDIER walking onto an EXIT whose destination (scen2) is already completed while a live team-1 foe remains, exit_on_eat normally takes the withdraw branch and emits WithdrawToLevel + the withdraw-flavoured RequestExitConfirmation exactly once each; neutering the hook suppresses both, flipping EventKindExactly(request_exit_confirmation=7,1) and EventKindExactly(withdraw_to_level=8,1) from count=1 to count=0. The hook target is byte-accurate so the canary applies cleanly."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_knife_emission[] = {
@@ -5129,7 +5127,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_treasure_flight_potion_pickup },
 
     { "treasure_teleporter_pickup_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 150,
+      kInputsTreasurePickupTick0, std::size(kInputsTreasurePickupTick0), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_treasure_teleporter_pickup, std::size(kFamilySpawns_treasure_teleporter_pickup),
       0, false, true, Exercises::None,
@@ -5161,9 +5159,9 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_treasure_speed_potion_pickup },
 
     { "treasure_exit_pickup_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsTreasurePickup, std::size(kInputsTreasurePickup), 150,
+      kInputsScripted9301, std::size(kInputsScripted9301), 150,
       CompareMode::SemanticParity, false,
-      kFamilySpawns_treasure_exit_pickup, std::size(kFamilySpawns_treasure_exit_pickup),
+      kFamilySpawns_soldier_with_exit_withdraw, std::size(kFamilySpawns_soldier_with_exit_withdraw),
       0, false, true, Exercises::None,
       kFacts_treasure_exit_pickup_scen99, std::size(kFacts_treasure_exit_pickup_scen99),
       kMut_treasure_exit_pickup },
