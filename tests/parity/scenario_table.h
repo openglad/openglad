@@ -1744,7 +1744,8 @@ inline constexpr FactPredicate kFacts_treasure_teleporter_pickup_scen99[] = {
     // OBSERVABLE NAMED BEHAVIOUR: picking up the co-located teleporter on tick 0
     // bumps the eater's skip_exit to 20 (treasure_family_navigation.cpp:113).
     // That bump trips exit_on_eat's early guard (line 42, skip_exit()>1) when the
-    // soldier eats the co-located withdraw EXIT in the SAME tick-0 pass, so the
+    // soldier eats the co-located withdraw EXIT in the SAME input-pass collision
+    // scan (the teleporter precedes the EXIT in the (120,120) obmap pile), so the
     // EXIT emits NEITHER the withdraw RequestExitConfirmation NOR WithdrawToLevel
     // -- both counts are 0 on branch and on master. Neutering teleporter_on_eat
     // (the discriminating mutation) removes the bump: skip_exit stays 0, the EXIT
@@ -1767,7 +1768,7 @@ inline constexpr Mutation kMut_treasure_teleporter_pickup = {
     "src/gameplay/families/treasure_family_navigation.cpp", 154,
     ".on_eat = teleporter_on_eat,",
     ".on_eat = nullptr,",
-    "Neuters the FAMILY_TELEPORTER treasure-family on_eat hook. NOTE: under the current oblist-only scenario spawner the teleporter never finds an fxlist-resident partner teleporter, so teleporter_on_eat early-returns without relocating the eater whether or not the hook is present -- this mutation is not observable in this row (a documented schema-v2 / spawner-capability gap). The hook target is byte-accurate so the canary applies cleanly."
+    "Neuters the FAMILY_TELEPORTER treasure-family on_eat hook. NOTE: under the current oblist-only scenario spawner the teleporter never finds an fxlist-resident partner teleporter, so teleporter_on_eat early-returns without relocating the eater whether or not the hook is present -- the relocation/FLASH effects are unobservable (find_teleport_target needs an fxlist partner the oblist spawner cannot provide), but the skip_exit->EXIT-withdraw SUPPRESSION is observed: with the hook present the eaten teleporter bumps skip_exit so the co-located withdraw EXIT emits neither withdraw event (branch+master 0); neutering the hook lets the EXIT fire both events (count 1), flipping EventKindExactly(7,0) and (8,0). The hook target is byte-accurate so the canary applies cleanly."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_treasure_life_gem_pickup[] = {
@@ -5127,7 +5128,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_treasure_flight_potion_pickup },
 
     { "treasure_teleporter_pickup_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsTreasurePickupTick0, std::size(kInputsTreasurePickupTick0), 150,
+      kInputsScripted9301, std::size(kInputsScripted9301), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_treasure_teleporter_pickup, std::size(kFamilySpawns_treasure_teleporter_pickup),
       0, false, true, Exercises::None,
