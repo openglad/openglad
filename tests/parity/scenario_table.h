@@ -2538,13 +2538,17 @@ inline constexpr FactPredicate kFacts_weapon_boulder_emission_scen99[] = {
     pred::EventKindAtLeast(/*play_sound*/1, 20),
     pred::WalkerDiedByFinal(FAMILY_SOLDIER),
     pred::WeaponFamilyEmitted(FAMILY_BOULDER),
+    pred::WeaponSpeed(FAMILY_BOULDER, 1350, 1600,
+        "trajectory: FAMILY_BOULDER seq-0 projectile travels a straight ~14px/tick line; max consecutive-tick step observed = 1513 centi-px/tick (gloader stepsize 10 * 1.414 cardinal scaling). Range [1350,1600] brackets the 1414-1513 step on both arms and flips when the boulder's base stepsize is changed at gloader.cpp:430."),
+    pred::WeaponNetTravel(FAMILY_BOULDER, kWeaponPathStraight, 18000,
+        "trajectory: FAMILY_BOULDER seq-0 net displacement = 24240 centi >= 18000 threshold and net >= 0.7*pathlen (pathlen=24236, ratio ~1.0) — a heavy straight projectile with no reversal; both arms identical, fails if the path is slowed/curved by a stepsize mutation that shortens net travel below threshold."),
 };
 
 inline constexpr Mutation kMut_weapon_boulder_emission = {
-    "src/gameplay/families/family_giant_skeleton.cpp", 26,
-    "        .default_weapon = FAMILY_BOULDER,",
-    "        .default_weapon = FAMILY_ROCK,",
-    "Repoints the FAMILY_GIANT_SKELETON natural emitter off FAMILY_BOULDER (to FAMILY_ROCK); the skeleton now fires rocks, so no FAMILY_BOULDER weapon ever enters weaplist and WeaponFamilyEmitted(FAMILY_BOULDER) flips pass->fail."
+    "src/resources/gloader.cpp", 430,
+    "{Order::Weapon, FAMILY_BOULDER,           \"boulder1.png\",50, ACT_FIRE, aninone,        10,  9, 25, 0}",
+    "{Order::Weapon, FAMILY_BOULDER,           \"boulder1.png\",50, ACT_FIRE, aninone,         4,  9, 25, 0}",
+    "Cuts FAMILY_BOULDER's base stepsize from 10 to 4 in the gloader weapon table; after the cardinal-direction *1.414 scaling (walker.cpp:1092) the boulder now moves ~5.66px/tick instead of ~14.14, so its seq-0 per-tick step drops to ~566 centi-px/tick — outside WeaponSpeed's [1350,1600] window — flipping WeaponSpeed(FAMILY_BOULDER) pass->fail. The boulder still emits (WeaponFamilyEmitted stays green) and still travels straight, isolating the speed-trajectory tooth. The from/to omit line 430's two leading TABs and match the unique substring of that line (the canary's lookup_mutation emits a TAB-separated record consumed by `IFS=$'\\t' read`, so embedded tabs would corrupt the field split — identical convention to the sibling kMut_weapon_knife/_rock/_arrow which target a TAB-indented line)."
 };
 
 inline constexpr FactPredicate kFacts_effect_expand_emission_scen99[] = {
