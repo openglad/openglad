@@ -2584,13 +2584,26 @@ inline constexpr FactPredicate kFacts_weapon_door_emission_scen99[] = {
     // wielder un-gates this predicate by exercising the special
     // (or, for DOOR, by loading a scen file with scripted doors).
     pred::WeaponFamilyEmitted(FAMILY_DOOR),
+    // Trajectory teeth: DOOR is direct-spawned ACT_SIT scenery
+    // (gloader.cpp:429). weap::act()'s ACT_SIT case (weap.cpp:85-91) is a
+    // pure no-op for a weapon -- it only emits a "Weapon sitting"
+    // notification (suppressed for DOOR via skip_sit_notify) and never
+    // walks the entity. Direct-spawned weapons also carry no fire
+    // direction (lastx=lasty=0), so even ACT_FIRE's walk() would be a
+    // no-op. The door therefore stays pinned at its spawn (120,120) for
+    // all 150 ticks: weapon_tracks is 150 identical samples =>
+    // max consecutive-tick step = 0 centi-px, pathlen = 0 centi-px.
+    pred::WeaponSpeed(FAMILY_DOOR, 0, 0,
+        "stationary_scenery: FAMILY_DOOR is a direct-spawn ACT_SIT scenery weapon (gloader.cpp:429) whose weap::act() ACT_SIT case never walks it; its weapon_tracks per-tick step is exactly 0 centi-px/tick. The discriminating mutation makes weap::act()'s ACT_SIT case worldmove the door 1px/tick, pushing max_step_centi to ~100 outside [0,0]."),
+    pred::WeaponNetTravel(FAMILY_DOOR, kWeaponPathStationary, 100,
+        "stationary_scenery: FAMILY_DOOR's weapon_tracks pathlen is 0 centi-px (the ACT_SIT case never moves it), well inside the 100-centi-px STATIONARY threshold; the mutation makes the ACT_SIT case worldmove the door 1px/tick east, accumulating ~15000 centi-px of pathlen over 150 ticks so the STATIONARY class fails."),
 };
 
 inline constexpr Mutation kMut_weapon_door_emission = {
-    "src/gameplay/weapon_family_registry.cpp", 74,
-    "e[FAMILY_DOOR]",
-    "e[0]",
-    "Edits the FAMILY_DOOR weapon-family registry entry index; the descriptor binding moves and emission predicates flip on the named family slot."
+    "src/gameplay/weap.cpp", 88,
+    "if (!wfd || !wfd->skip_sit_notify)",
+    "if (wfd && (worldmove(1, 0), false))",
+    "Rewrites the guard in weap::act()'s ACT_SIT case (weap.cpp:85-91) so the case, instead of being a stationary no-op, worldmoves the sitting weapon 1px east every tick. The original guard `if (!wfd || !wfd->skip_sit_notify)` gates a 'Weapon sitting' notification; the mutated `if (wfd && (worldmove(1, 0), false))` keeps wfd referenced (no unused-variable warning), unconditionally evaluates worldmove(1,0) -- advancing xpos by 1px/tick -- then yields false so the notification is still suppressed (DOOR has skip_sit_notify=true). The direct-spawned FAMILY_DOOR weapon, which hits this ACT_SIT case every tick, is no longer stationary: its weapon_tracks walk from (120,120) at tick0 to (270,120) at tick150 (150 distinct positions). max_step_centi jumps from 0 to 100 (WeaponSpeed(FAMILY_DOOR,0,0) fails its [0,0] bracket) and pathlen_centi reaches ~15000 (WeaponNetTravel STATIONARY,100 fails). Both trajectory predicates flip from pass to fail; the mutation lives in src/gameplay/weap.cpp, outside the forbidden tests/parity and openglad-master prefixes, and the canary restores via git checkout."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_boulder_emission[] = {
