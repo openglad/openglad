@@ -2045,13 +2045,15 @@ inline constexpr FactPredicate kFacts_weapon_meteor_emission_scen99[] = {
     pred::EventKindAtLeast(/*play_sound*/1, 25),
     pred::WalkerDiedByFinal(FAMILY_SOLDIER),
     pred::WeaponFamilyEmitted(FAMILY_METEOR),
+    pred::WeaponSpeed(FAMILY_METEOR, 950, 1100, "meteor flies ~10px/tick (boosted magical projectile)"),
+    pred::WeaponNetTravel(FAMILY_METEOR, kWeaponPathStraight, 2000, "meteor travels straight"),
 };
 
 inline constexpr Mutation kMut_weapon_meteor_emission = {
-    "src/gameplay/families/family_fire_elemental.cpp", 98,
-    ".default_weapon = FAMILY_METEOR",
-    ".default_weapon = FAMILY_KNIFE",
-    "Repoints the FAMILY_FIREELEMENTAL default weapon (the genuine meteor-emission source: gloader copies default_weapon -> current_weapon, and walker::create_weapon() emits a weapon of current_weapon()) from FAMILY_METEOR to FAMILY_KNIFE, so the elemental fires knives instead of meteors and dump.weapons[] contains zero FAMILY_METEOR entries; WeaponFamilyEmitted(FAMILY_METEOR) flips pass->fail."
+    "src/gameplay/walker.cpp", 1092,
+    "362.0f",
+    "181.0f",
+    "Halves the cardinal-fire stepsize boost (362/256 ~= 1.414 -> 181/256 ~= 0.707) applied in walker::create_weapon() to projectiles fired UP/RIGHT/DOWN/LEFT. FAMILY_METEOR is fired RIGHT (cardinal), so its per-tick stepsize halves: max_step_centi drops from ~1020 to ~510 centi-px/tick, falling below the 950 floor of WeaponSpeed(FAMILY_METEOR,950,1100), which flips pass->fail."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_sprinkle_emission[] = {
