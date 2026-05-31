@@ -4331,17 +4331,27 @@ inline constexpr FactPredicate kFacts_weapon_boomerang_return_scen99[] = {
     pred::TickReached(80),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
     pred::WalkerOfTeamAlive(0, 2, 4,
-        "consequence: BOOMERANG slot 2 adds FAMILY_BOOMERANG FX walker(s) to the caster's team (team 0), which the schema-v1 dump only exposes by team since the FX-order family string is unreachable by WalkerFamilyCount/EffectFamilyCount; the mutation aborts the summon so only the lone soldier remains alive on team 0"),
+        "consequence: BOOMERANG slot 2 adds FAMILY_BOOMERANG FX walker(s) to the caster's team (team 0); a passing anchor -- the trajectory predicate below is the discriminating tooth"),
     pred::EventKindAtLeast(/*play_sound*/1, 2),
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 8000, 14000,
         "rng_drift: soldier HP at tick 80 varies with archer engagement RNG; widened 6000-cent span carries a gate-recognised label"),
+    // Trajectory teeth: the FAMILY_BOOMERANG FX walker hovers anchored to its
+    // (stationary) caster via boomerang_on_act's center_on(owner); its orbit is
+    // sub-pixel at integer resolution, so weapon_tracks (now sampled from oblist
+    // for Order::FX) records it perfectly stationary at (135,133), pathlen 0.
+    // EffectNetTravel resolves the FX-order family namespace. It flips under
+    // kMut_weapon_boomerang_return_scen99, which drops the center_on(owner)
+    // anchor so the orbit offset accumulates and the boomerang drifts
+    // (pathlen ~35400 >> threshold), failing STATIONARY.
+    pred::EffectNetTravel(FAMILY_BOOMERANG, kWeaponPathStationary, 200,
+        "consequence: boomerang stays owner-anchored (stationary) until center_on(owner) is removed, then it drifts off"),
 };
 
 inline constexpr Mutation kMut_weapon_boomerang_return_scen99 = {
-    "src/gameplay/families/family_soldier.cpp", 46,
-    "            newob = summon_entity(self, Order::FX, FAMILY_BOOMERANG);",
-    "            return false;",
-    "Replaces the BOOMERANG FX summon with an early `return false;` before the FAMILY_BOOMERANG walker is created; the caster's team (team 0) loses its boomerang FX entities, dropping team-0 alive from 3 to 1 so WalkerOfTeamAlive(0, 2, 4) fails on its lower bound."
+    "src/gameplay/families/effect_family_shield.cpp", 80,
+    "self->center_on(self->owner());",
+    ";",
+    "Removes the center_on(owner) anchor inside boomerang_on_act (line 80; the identical call at line 27 in magic_shield_on_act is untouched because _apply_mutation is line-scoped). Normally the boomerang re-centers on its owner every tick and only adds a sub-pixel orbit offset, so weapon_tracks sees it stationary at the owner (pathlen 0). Without the anchor the orbit offset accumulates and the boomerang drifts ~35400 centi-px over the run, so EffectNetTravel(FAMILY_BOOMERANG, STATIONARY, 200) flips pass->fail. boomerang_on_act is used only by FAMILY_BOOMERANG, so no family guard is needed."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_exploding_boulder_scen99[] = {

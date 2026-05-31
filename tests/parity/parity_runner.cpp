@@ -131,6 +131,7 @@ RunOutcome run_scenario(const ScenarioSpec& spec)
     std::vector<WeaponTrackSample> tracks;
     std::unordered_map<std::uint32_t /*entity_id*/, std::int32_t /*seq*/> seq_by_id;
     std::map<std::int32_t /*family*/, std::int32_t /*next seq*/> next_seq_per_family;
+    std::map<std::int32_t /*family*/, std::int32_t /*next seq*/> fx_next_seq_per_family;
     auto sample_weapon_tracks = [&]() {
         for (const auto& uptr : world.weaplist)
         {
@@ -155,6 +156,42 @@ RunOutcome run_scenario(const ScenarioSpec& spec)
             s.tick     = world.tick_count_;
             s.family   = family_symbol_by_order(
                 static_cast<std::int32_t>(Order::Weapon), fam);
+            s.seq      = seq;
+            s.xpos     = static_cast<std::int32_t>(w->xpos());
+            s.ypos     = static_cast<std::int32_t>(w->ypos());
+            s.lifetime = static_cast<std::int32_t>(w->lifetime());
+            tracks.push_back(std::move(s));
+        }
+        // FX-order projectiles (e.g. FAMILY_BOOMERANG) are summoned via add_ob,
+        // which routes every non-weapon Order into oblist (not fxlist) — so they
+        // were invisible to weapon_tracks. Sample Order::FX walkers from oblist
+        // into the same vector, resolved in the Order::FX family namespace
+        // (distinct strings from weapon families, so weapon predicates ignore
+        // them). A separate per-family seq counter keeps FX family ids from
+        // colliding with weapon family ids; the weaplist loop above is unchanged.
+        for (const auto& uptr : world.oblist)
+        {
+            const walker* w = uptr.get();
+            if (w == nullptr) continue;
+            if (w->query_order() != Order::FX) continue;
+            if (w->dead() != 0) continue;
+            const auto fam = static_cast<std::int32_t>(w->family());
+            const auto id  = w->entity_id();
+            auto it = seq_by_id.find(id);
+            std::int32_t seq;
+            if (it == seq_by_id.end())
+            {
+                seq = fx_next_seq_per_family[fam]++;
+                seq_by_id.emplace(id, seq);
+            }
+            else
+            {
+                seq = it->second;
+            }
+            WeaponTrackSample s;
+            s.tick     = world.tick_count_;
+            s.family   = family_symbol_by_order(
+                static_cast<std::int32_t>(Order::FX), fam);
             s.seq      = seq;
             s.xpos     = static_cast<std::int32_t>(w->xpos());
             s.ypos     = static_cast<std::int32_t>(w->ypos());

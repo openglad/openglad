@@ -160,9 +160,10 @@ std::int32_t hypot_centi(std::int32_t dx, std::int32_t dy)
 // >=1 sample. dump.weapon_tracks is canonically sorted by (family, seq,
 // tick), so the first matching block is the lowest-seq track and its
 // samples are already tick-ascending.
-WeaponTrackMetrics weapon_track_metrics(const StateDump& d, std::int32_t family)
+WeaponTrackMetrics weapon_track_metrics(const StateDump& d, std::int32_t family,
+                                        std::int32_t order = kWeaponOrder)
 {
-    const std::string sym = family_symbol_by_order(kWeaponOrder, family);
+    const std::string sym = family_symbol_by_order(order, family);
     WeaponTrackMetrics m;
 
     // Prefer the lowest-seq track (the wielder's first/primary flight). But if
@@ -463,12 +464,15 @@ FactEvalResult evaluate_one(const FactPredicate& p, const StateDump& dump)
             return r;
         }
         case FactKind::WeaponNetTravel:
+        case FactKind::EffectNetTravel:
         {
-            const WeaponTrackMetrics m = weapon_track_metrics(dump, p.arg0);
+            const std::int32_t order =
+                (p.kind == FactKind::EffectNetTravel) ? kFXOrder : kWeaponOrder;
+            const WeaponTrackMetrics m = weapon_track_metrics(dump, p.arg0, order);
             if (!m.has_track)
                 return (make_indeterminate(r,
                             "no track for " +
-                            family_symbol_by_order(kWeaponOrder, p.arg0)), r);
+                            family_symbol_by_order(order, p.arg0)), r);
             const std::int32_t thr = p.arg2;
             switch (p.arg1)
             {

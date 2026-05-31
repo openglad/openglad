@@ -72,6 +72,9 @@ enum class FactKind : std::uint8_t
                                      //   speed = MAX consecutive-tick step.
     WeaponNetTravel,                 // arg0 = family, arg1 = behavior flag
                                      //   (kWeaponPath*), arg2 = threshold_centi.
+    EffectNetTravel,                 // FX-order analogue of WeaponNetTravel:
+                                     //   arg0 = FX family, arg1 = behavior flag
+                                     //   (kWeaponPath*), arg2 = threshold_centi.
 };
 
 // behavior_flag values for WeaponNetTravel (arg1). Centi-pixel units
@@ -262,6 +265,16 @@ inline constexpr FactPredicate WeaponNetTravel(std::int32_t family, std::int32_t
                                                std::string_view label = {}) noexcept
 {
     return {FactKind::WeaponNetTravel, family, behavior_flag, threshold_centi, 0, 0, label};
+}
+// FX-order analogue of WeaponNetTravel: classifies an Order::FX walker's path
+// (e.g. FAMILY_BOOMERANG orbiting its owner = kWeaponPathReturns) over
+// dump.weapon_tracks, resolved in the Order::FX family namespace. No track ->
+// Indeterminate.
+inline constexpr FactPredicate EffectNetTravel(std::int32_t family, std::int32_t behavior_flag,
+                                               std::int32_t threshold_centi,
+                                               std::string_view label = {}) noexcept
+{
+    return {FactKind::EffectNetTravel, family, behavior_flag, threshold_centi, 0, 0, label};
 }
 
 // FactSide-gating helpers. Wrap any pred::* call to mark the predicate as

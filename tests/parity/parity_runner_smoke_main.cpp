@@ -66,6 +66,7 @@ const char* fact_kind_name(og::parity::FactKind k)
             return "TreasureFamilyOfOrderRemovedFromOblist";
         case FactKind::WeaponSpeed:                     return "WeaponSpeed";
         case FactKind::WeaponNetTravel:                 return "WeaponNetTravel";
+        case FactKind::EffectNetTravel:                 return "EffectNetTravel";
     }
     return "Unknown";
 }

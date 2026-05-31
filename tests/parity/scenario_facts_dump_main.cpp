@@ -78,6 +78,7 @@ const char* kind_name(og::parity::FactKind k)
         case FactKind::WeaponFamilyEmitted:             return "WeaponFamilyEmitted";
         case FactKind::WeaponSpeed:                     return "WeaponSpeed";
         case FactKind::WeaponNetTravel:                 return "WeaponNetTravel";
+        case FactKind::EffectNetTravel:                 return "EffectNetTravel";
         case FactKind::TreasureFamilyOfOrderRemovedFromOblist:
             return "TreasureFamilyOfOrderRemovedFromOblist";
     }
@@ -206,6 +207,7 @@ int arg0_order_for_symbol(og::parity::FactKind k)
         case FactKind::StatDeltaOnPickup:
             return og::parity::kOrderTreasure;
         case FactKind::EffectFamilyCount:
+        case FactKind::EffectNetTravel:
             return og::parity::kOrderFX;
         case FactKind::WeaponFamilyEmitted:
         case FactKind::WeaponSpeed:
@@ -372,6 +374,10 @@ std::string predicate_expression(const og::parity::FactPredicate& p)
         case FactKind::WeaponNetTravel:
             std::snprintf(buf, sizeof(buf), "WeaponNetTravel(%s, %d, %d)",
                           weapon(p.arg0).c_str(), p.arg1, p.arg2);
+            return buf;
+        case FactKind::EffectNetTravel:
+            std::snprintf(buf, sizeof(buf), "EffectNetTravel(%s, %d, %d)",
+                          fx(p.arg0).c_str(), p.arg1, p.arg2);
             return buf;
     }
     return "Unknown()";
