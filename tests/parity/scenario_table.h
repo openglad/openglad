@@ -2226,13 +2226,17 @@ inline constexpr FactPredicate kFacts_weapon_lightning_emission_scen99[] = {
     pred::EventKindAtLeast(/*play_sound*/1, 17),
     pred::WalkerDiedByFinal(FAMILY_SOLDIER),
     pred::WeaponFamilyEmitted(FAMILY_LIGHTNING),
+    pred::WeaponSpeed(FAMILY_LIGHTNING, 1250, 1360,
+        "trajectory: lightning bolt travels ~12.7 px/tick (cardinal-scaled base stepsize 9 -> 362/256); seq0 max consecutive-tick step = 1304 centi-px/tick, bracketed tight [1250,1360]"),
+    pred::WeaponNetTravel(FAMILY_LIGHTNING, kWeaponPathStraight, 2000,
+        "trajectory: lightning is a straight bolt; seq0 net displacement 2508 centi-px == pathlen 2508 (net*10 >= pathlen*7 holds, net >= 2000 threshold)"),
 };
 
 inline constexpr Mutation kMut_weapon_lightning_emission = {
-    "src/gameplay/families/family_druid.cpp", 169,
-    ".default_weapon = FAMILY_LIGHTNING,",
-    ".default_weapon = FAMILY_KNIFE,",
-    "Repoints the DRUID family default_weapon off FAMILY_LIGHTNING; the druid wielder now fires FAMILY_KNIFE instead, so zero FAMILY_LIGHTNING weapon entities ever spawn and WeaponFamilyEmitted(FAMILY_LIGHTNING) flips."
+    "src/resources/gloader.cpp", 422,
+    "aniarrow,        9, 13,  6, 0",
+    "aniarrow,        2, 13,  6, 0",
+    "Halves+ the FAMILY_LIGHTNING base stepsize (column 'step' 9 -> 2) in the EntityDef weapon-defaults table; the cardinal-fired bolt's per-tick step collapses from ~12.7 px (max_step 1304 centi-px/tick) to ~2.8 px (~283 centi-px/tick), so WeaponSpeed(FAMILY_LIGHTNING,1250,1360) flips (and seq0 net falls below the WeaponNetTravel STRAIGHT threshold 2000 too)."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_glow_emission[] = {
