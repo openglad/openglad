@@ -1971,13 +1971,23 @@ inline constexpr FactPredicate kFacts_weapon_fireball_emission_scen99[] = {
     pred::EventKindAtLeast(/*play_sound*/1, 30),
     pred::WalkerDiedByFinal(FAMILY_SOLDIER),
     pred::WeaponFamilyEmitted(FAMILY_FIREBALL),
+    // Per-tick speed of the first fired FIREBALL (lowest-seq track, ticks
+    // 8..11): max consecutive-tick step observed = 922 centi-px/tick
+    // (base stepsize ~6.5px * 362/256 cardinal-fire scale). Tight bracket
+    // [850,1000] holds on branch and recaptured master; flips low under a
+    // speed mutation that drops the 362/256 scale.
+    pred::WeaponSpeed(FAMILY_FIREBALL, 850, 1000, "fireball ~9px/tick straight magical bolt"),
+    // Straight magical projectile: net displacement >= ~100 centi and
+    // net >= 0.7*pathlen. Seq-0 net=2571, pathlen=2572 (net/path=0.9996).
+    // Threshold 1000 centi is safely below observed net on both arms.
+    pred::WeaponNetTravel(FAMILY_FIREBALL, kWeaponPathStraight, 1000, "fireball travels straight, no reversal"),
 };
 
 inline constexpr Mutation kMut_weapon_fireball_emission = {
-    "src/gameplay/families/family_mage.cpp", 285,
-    "        .default_weapon = FAMILY_FIREBALL,",
-    "        .default_weapon = FAMILY_ARROW,",
-    "Repoints the MAGE wielder's default_weapon away from FAMILY_FIREBALL so the spawned mage emits ARROW projectiles instead of fireballs; the WeaponFamilyEmitted(FAMILY_FIREBALL) predicate observes zero FAMILY_FIREBALL entities in dump.weapons[] and flips pass->fail."
+    "src/gameplay/walker.cpp", 1092,
+    "(weapon->stepsize() * 362.0f)",
+    "(weapon->stepsize() * 256.0f)",
+    "Removes the sqrt(2)=362/256 cardinal-fire velocity scale applied to the fired FIREBALL's stepsize in walker::create_weapon(); the projectile's per-tick step drops from ~922 to ~600-667 centi-px/tick, so WeaponSpeed(FAMILY_FIREBALL,850,1000) observes a max consecutive step below 850 and flips pass->fail. Path stays straight so WeaponNetTravel(STRAIGHT) is unaffected (>=1 trajectory predicate flips, as required)."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_tree_emission[] = {
