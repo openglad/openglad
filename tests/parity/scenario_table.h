@@ -4343,28 +4343,28 @@ inline constexpr Mutation kMut_weapon_boomerang_return_scen99 = {
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_exploding_boulder_scen99[] = {
     { FAMILY_BARBARIAN, 0, kOrderLiving, 120, 120, 0, 0, 5, 300 }, // FAMILY_BARBARIAN caster (level 5 -> slot 2 EXPLODING BOULDER reachable)
-    { FAMILY_SOLDIER,   1, kOrderLiving, 160, 120, 0, 0 },          // three FAMILY_SOLDIER targets clustered ahead so the boulder's death-explosion has bodies in radius
-    { FAMILY_SOLDIER,   1, kOrderLiving, 200, 160, 0, 0 },
-    { FAMILY_SOLDIER,   1, kOrderLiving, 260, 200, 0, 0 },
+    { FAMILY_SOLDIER,   1, kOrderLiving, 220, 120, 0, 0 }, // on +x axis, far enough that the boulder's ~32px box clears it for ~4-5 ticks before exploding
+    { FAMILY_SOLDIER,   1, kOrderLiving, 250, 130, 0, 0 },
+    { FAMILY_SOLDIER,   1, kOrderLiving, 280, 140, 0, 0 },
 };
 
 inline constexpr FactPredicate kFacts_weapon_exploding_boulder_scen99[] = {
     pred::TickReached(60),
     pred::WalkerFamilyCount(FAMILY_BARBARIAN, 1, 1),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 3000, 9000,
-        "consequence: EXPLODING BOULDER's projectile_explode_on_death detonation damages clustered enemy soldiers below full HP (branch 6000-6300 / master 3600-6100 cents); the mutation zeroes skip_exit so the boulder never explodes and every soldier stays at full 12000-cent HP outside this window"),
-    pred::EventKindAtLeast(/*score_change*/9, 1,
-        "consequence: explosion damage to the enemy soldiers generates score_change events; the mutation suppresses the detonation so zero score_change events occur"),
-    pred::WalkerFamilyCount(FAMILY_SOLDIER, 0, 3,
-        "rng_drift: explosion may kill 0-3 enemy soldiers depending on radius/aim"),
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 3, 3,
+        "consequence: with the soldier cluster pushed downrange (220/250/280) the AI soldiers charge back toward the level-5 barbarian and outrun the boulder, so the boulder flies its full ~9-tick range and detonates on empty ground — all three enemy soldiers survive to the final tick on both arms"),
     pred::EventKindAtLeast(/*play_sound*/1, 3),
+    pred::WeaponSpeed(FAMILY_BOULDER, 900, 1500,
+        "trajectory: the EXPLODING BOULDER special travels at level*2=10 px/tick (myguy==nullptr AI-cast path in barbarian_do_special). Per-tick step is 1000 centi-px/tick on a pure axis or 1414 on a diagonal (RNG `waver` chooses lasty in {-10,0,10}); range [900,1500] brackets both on branch and recaptured master. The discriminating mutation drops stepsize to level*0.5=2.5 px/tick (250-354 centi) which falls below 900 and fails this predicate."),
+    pred::WeaponNetTravel(FAMILY_BOULDER, /*kWeaponPathStraight*/0, 1500,
+        "trajectory: the boulder flies in one fixed heading for its whole life (lastx/lasty never change once fired), so net displacement == pathlen and net >= 0.7*pathlen always holds; threshold 1500 centi (15px) is met by >=2 ticks of 10px flight on both arms. The mutation that makes the boulder die in 1 tick (or collapses its step) drives net below 1500 and fails this; a path-curving mutation breaks net>=0.7*pathlen."),
 };
 
 inline constexpr Mutation kMut_weapon_exploding_boulder_scen99 = {
-    "src/gameplay/families/family_barbarian.cpp", 59,
-    "        alive->set_skip_exit(5000);",
-    "        alive->set_skip_exit(0);",
-    "Zeroes the EXPLODING BOULDER skip_exit budget so projectile_explode_on_death short-circuits at its `if (!self->skip_exit()) return false;` guard; the boulder never detonates, the clustered enemy soldiers take no explosion damage (all stay at full 12000-cent HP) and emit no score_change events — the soldier-HP window and EventKindAtLeast(score_change, 1) both fail."
+    "src/gameplay/families/family_barbarian.cpp", 43,
+    "        alive->set_stepsize(static_cast<float>(self->stats()->level()) * 2.0f);",
+    "        alive->set_stepsize(static_cast<float>(self->stats()->level()) * 0.5f);",
+    "Quarters the EXPLODING BOULDER's per-tick stepsize for AI casters (level*2 -> level*0.5 = 2.5 px/tick), dropping the boulder's per-tick displacement from 1000-1414 centi-px/tick to 250-354 centi-px/tick. WeaponSpeed(FAMILY_BOULDER,900,1500) fails because max consecutive-tick step falls below 900."
 };
 
 
