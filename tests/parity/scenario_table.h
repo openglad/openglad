@@ -2025,13 +2025,28 @@ inline constexpr FactPredicate kFacts_weapon_tree_emission_scen99[] = {
     // wielder un-gates this predicate by exercising the special
     // (or, for DOOR, by loading a scen file with scripted doors).
     pred::WeaponFamilyEmitted(FAMILY_TREE),
+    // Trajectory teeth: the direct-spawn FAMILY_TREE entity sits in
+    // weaplist at (120,120) for all 150 ticks (ACT_SIT, stepsize 0) on
+    // BOTH arms, so these are UNGATED. Computed purely from
+    // dump.weapon_tracks => identical on branch dump and recaptured
+    // master golden. WeaponNetTravel STATIONARY: observed pathlen=0 <=
+    // 200 centi (2px slack) passes; the discriminating mutation moves the
+    // tree +2px/tick (pathlen ~= 29800 centi) which exceeds 200 and flips
+    // this predicate. WeaponSpeed [0,0]: observed max consecutive-tick
+    // step is 0 (150 consecutive samples => has_two_consec=true =>
+    // determinate); the mutation's 2px/tick step = 200 centi > 0 and also
+    // flips this predicate.
+    pred::WeaponNetTravel(FAMILY_TREE, kWeaponPathStationary, 200,
+        "stationary direct-spawn tree: pathlen=0 on both arms; flips under the +2px/tick mutation"),
+    pred::WeaponSpeed(FAMILY_TREE, 0, 0,
+        "stationary direct-spawn tree: max per-tick step=0 on both arms; flips under the +2px/tick mutation"),
 };
 
 inline constexpr Mutation kMut_weapon_tree_emission = {
-    "src/gameplay/weapon_family_registry.cpp", 75,
-    "e[FAMILY_TREE]",
-    "e[0]",
-    "Edits the FAMILY_TREE weapon-family registry entry index; the descriptor binding moves and emission predicates flip on the named family slot."
+    "src/gameplay/weap.cpp", 88,
+    "if (!wfd || !wfd->skip_sit_notify)",
+    "if (family() == FAMILY_TREE) setxy(static_cast<short>(xpos() + 2), ypos()); if (!wfd || !wfd->skip_sit_notify)",
+    "ACT_SIT case in weap::act() normally leaves the direct-spawn tree fixed at its spawn xy; this family-gated nudge advances FAMILY_TREE +2px/tick every tick it sits, so its weapon_tracks path becomes a straight x-run (pathlen ~= 29800 centi over 149 steps, max step = 200 centi). WeaponNetTravel(FAMILY_TREE,STATIONARY,200) flips (29800 > 200) and WeaponSpeed(FAMILY_TREE,0,0) flips (200 > 0)."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_meteor_emission[] = {
