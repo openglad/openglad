@@ -2149,8 +2149,8 @@ inline constexpr FactPredicate kFacts_weapon_blood_emission_scen99[] = {
 inline constexpr Mutation kMut_weapon_blood_emission = {
     "src/gameplay/families/weapon_family_animate.cpp", 29,
     "return true;",
-    "self->setxy(self->xpos() + 8, self->ypos()); return true;",
-    "Injects an 8-px/tick eastward drift into tree_blood_on_animate (the BLOOD/TREE animate callback) so the death-spatter BLOOD weapon advances each tick instead of staying at the kill tile. max consecutive-tick step becomes hypot(8,0)*100 = 800 centi-px/tick and pathlen over 4 samples becomes ~2400 centi-px, so WeaponSpeed(FAMILY_BLOOD,0,0) and WeaponNetTravel(FAMILY_BLOOD,STATIONARY,50) both flip pass->fail on the branch arm."
+    "self->setxy(static_cast<short>(self->xpos() + 8), self->ypos()); return true;",
+    "Injects an 8-px/tick eastward drift into tree_blood_on_animate (the BLOOD/TREE animate callback) so the death-spatter BLOOD weapon advances each tick instead of staying at the kill tile. The static_cast<short> on the x-arg keeps both setxy args short so weap::setxy(short,short) is selected unambiguously (xpos()/ypos() return short; xpos()+8 promotes to int). max consecutive-tick step becomes hypot(8,0)*100 = 800 centi-px/tick and pathlen over 4 samples becomes ~2400 centi-px, so WeaponSpeed(FAMILY_BLOOD,0,0) and WeaponNetTravel(FAMILY_BLOOD,STATIONARY,50) both flip pass->fail on the branch arm."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_blob_emission[] = {
