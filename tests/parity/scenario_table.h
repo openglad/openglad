@@ -2463,13 +2463,23 @@ inline constexpr FactPredicate kFacts_weapon_hammer_emission_scen99[] = {
     pred::EventKindAtLeast(/*play_sound*/1, 23),
     pred::WalkerDiedByFinal(FAMILY_SOLDIER),
     pred::WeaponFamilyEmitted(FAMILY_HAMMER),
+    // Trajectory teeth: seq-0 HAMMER track (ticks 8-11) measured max consecutive-tick
+    // step = 922 centi-px/tick on both arms (deterministic, symmetric capture).
+    // Range brackets the observed 922 tightly and excludes a halved-speed mutation (~460).
+    pred::WeaponSpeed(FAMILY_HAMMER, 850, 1000,
+        "HAMMER per-tick step ~922 centi-px/tick (8-9 px/tick straight projectile)"),
+    // Behavior anchor: HAMMER is a straight projectile. seq-0 net=2571 centi-px,
+    // pathlen=2572, net/path=0.9996. threshold 500 centi-px passes on both arms and
+    // survives a speed-only mutation (stays straight).
+    pred::WeaponNetTravel(FAMILY_HAMMER, kWeaponPathStraight, 500,
+        "HAMMER path is straight (net displacement ~= pathlen, no reversal)"),
 };
 
 inline constexpr Mutation kMut_weapon_hammer_emission = {
-    "src/gameplay/families/family_barbarian.cpp", 81,
-    "        .default_weapon = FAMILY_HAMMER,",
-    "        .default_weapon = FAMILY_KNIFE,",
-    "Repoints the barbarian's default_weapon away from FAMILY_HAMMER so it emits KNIFE weapons instead; WeaponFamilyEmitted(FAMILY_HAMMER) finds zero HAMMER entries in dump.weapons[] and flips. The prior target (weapon registry .name index swap) was a no-op never observed by any predicate."
+    "src/gameplay/walker.cpp", 1092,
+    "\t\t\t\tweapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
+    "\t\t\t\tweapon->set_stepsize((weapon->stepsize() * 181.0f) / 256.0f);",
+    "Halves the cardinal-facing weapon stepsize multiplier (362->181, i.e. ~1.414x -> ~0.707x). HAMMER fires FACE_RIGHT in this scenario so this branch runs; its per-tick step collapses from ~922 to ~460 centi-px. WeaponSpeed(FAMILY_HAMMER,850,1000) then sees max_step_centi~460 < 850 and FLIPS on the branch arm vs the unmutated master golden (~922). WeaponNetTravel(STRAIGHT) and WeaponFamilyEmitted stay satisfied. Prior target (.default_weapon FAMILY_HAMMER->FAMILY_KNIFE) only flipped binary emission, not trajectory."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_door_emission[] = {
