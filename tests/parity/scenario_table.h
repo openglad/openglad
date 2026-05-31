@@ -2252,13 +2252,27 @@ inline constexpr FactPredicate kFacts_weapon_glow_emission_scen99[] = {
     pred::EventKindAtLeast(/*play_sound*/1, 35),
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 10000, 12000),
     pred::WeaponFamilyEmitted(FAMILY_GLOW),
+    // Trajectory teeth: the cleric's GLOW aura is an animated, NON-moving
+    // effect that sits on its spawn coord (141,116) for its whole lifetime.
+    // Observed seq=0 track over ticks 7..150: max consecutive-tick step = 0
+    // centi-px/tick, pathlen = 0. WeaponSpeed brackets [0,50] (speed=0 is
+    // determinate because there are 144 consecutive samples). WeaponNetTravel
+    // STATIONARY requires pathlen <= 50 centi-px (zero here). Both pass on
+    // branch AND on the recaptured master golden (master glow_on_animate is
+    // behaviorally identical and never moves), and BOTH flip when the
+    // discriminating mutation injects a +1px/tick x-displacement into
+    // glow_on_animate (then max_step=100 > 50 and pathlen ~14300 > 50).
+    pred::WeaponSpeed(FAMILY_GLOW, 0, 50,
+        "GLOW is a stationary cleric aura: per-tick step 0 centi-px/tick (bracketed [0,50]); flips if glow_on_animate gains motion"),
+    pred::WeaponNetTravel(FAMILY_GLOW, /*STATIONARY*/2, 50,
+        "GLOW aura pathlen 0 <= 50 centi-px (barely-moves class); flips if glow_on_animate moves the weapon"),
 };
 
 inline constexpr Mutation kMut_weapon_glow_emission = {
-    "src/gameplay/weapon_family_registry.cpp", 78,
-    "e[FAMILY_GLOW]",
-    "e[0]",
-    "Edits the FAMILY_GLOW weapon-family registry entry index; the descriptor binding moves and emission predicates flip on the named family slot."
+    "src/gameplay/families/weapon_family_animate.cpp", 59,
+    "self->set_lifetime(lifetime - 1);",
+    "self->set_lifetime(lifetime - 1); self->set_xpos(self->xpos() + 1);",
+    "Injects a +1px/tick x-displacement into glow_on_animate so the cleric's GLOW aura moves instead of staying fixed. The seq=0 weapon_track then shows max consecutive step = 100 centi-px/tick and pathlen ~14300 centi-px over ticks 7..150, so WeaponSpeed(FAMILY_GLOW,0,50) (100 > 50) and WeaponNetTravel(FAMILY_GLOW,STATIONARY,50) (pathlen 14300 > 50) both flip. The prior target (registry e[FAMILY_GLOW]->e[0] index swap) was not observed by any trajectory predicate."
 };
 
 inline constexpr InputEvent kInputsWaveSpecialEmit[] = {
