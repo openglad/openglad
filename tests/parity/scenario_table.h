@@ -1924,13 +1924,17 @@ inline constexpr FactPredicate kFacts_weapon_rock_emission_scen99[] = {
     pred::EventKindAtLeast(/*play_sound*/1, 26),
     pred::WalkerDiedByFinal(FAMILY_SOLDIER),
     pred::WeaponFamilyEmitted(FAMILY_ROCK),
+    pred::WeaponSpeed(FAMILY_ROCK, 650, 760,
+        "rock trajectory speed: lowest-seq (seq 0) rock travels +7px x, -1px y per tick -> hypot(7,1)=707 centi-px/tick on both arms; range [650,760] brackets 707 tightly and flips low if the cardinal stepsize scaling (walker.cpp:1092, 362/256) is reduced"),
+    pred::WeaponNetTravel(FAMILY_ROCK, /*kWeaponPathStraight*/0, 2000,
+        "rock path is STRAIGHT: seq-0 net displacement 2828 centi-px == pathlen 2828 (net>=2000 threshold AND net>=0.7*pathlen). The normal ELF default-weapon fire never sets do_bounce (set only in elf special, family_elf.cpp:70/83/97), so rocks fly straight and never reverse; identical on both arms"),
 };
 
 inline constexpr Mutation kMut_weapon_rock_emission = {
-    "src/gameplay/families/family_elf.cpp", 125,
-    "        .default_weapon = FAMILY_ROCK,",
-    "        .default_weapon = FAMILY_BLOOD,",
-    "Repoints the FAMILY_ELF default_weapon away from FAMILY_ROCK so the wielder's normal attack no longer emits rocks; the named rock-emission behavior is broken and pred::WeaponFamilyEmitted(FAMILY_ROCK) flips pass->fail because zero FAMILY_ROCK weapons are produced. Note the from/to carry 8 leading SPACES to byte-match the .default_weapon line in describe_family_elf()."
+    "src/gameplay/walker.cpp", 1092,
+    "weapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
+    "weapon->set_stepsize((weapon->stepsize() * 181.0f) / 256.0f);",
+    "Halves the cardinal-facing weapon-stepsize scale factor (362.0f -> 181.0f) at walker.cpp:1092, the only 362.0f site in src/gameplay/ and the line that turns a rock's base stepsize into its effective +7px/tick travel. With the scale halved the rock's per-tick step drops from 7px (707 centi-px/tick) to ~4px (412 centi-px/tick measured), below the 650 floor, so pred::WeaponSpeed(FAMILY_ROCK,650,760) flips pass->fail. FAMILY_ROCK is still emitted (WeaponFamilyEmitted unaffected) and the path stays straight (WeaponNetTravel STRAIGHT still passes), so the canary records exactly the WeaponSpeed flip — a true trajectory-speed flip. The from/to omit the line's leading TABs and match as the unique substring of line 1092 (the canary's _apply_mutation does a substring str.replace, and the from-text is read verbatim from this source literal — leading TABs would be parsed as literal backslash-t and fail to match the real tabs, exactly like the sibling kMut_weapon_knife_emission which targets the same line). NOTE: the OLD kMut (family_elf.cpp:125 ->FAMILY_BLOOD) only flipped WeaponFamilyEmitted and could NOT exercise the trajectory teeth, since a no-track family makes WeaponSpeed/WeaponNetTravel return Indeterminate (fact_predicate.cpp:446-449, 461-464)."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_arrow_emission[] = {
