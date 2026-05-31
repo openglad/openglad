@@ -2088,13 +2088,17 @@ inline constexpr FactPredicate kFacts_weapon_bone_emission_scen99[] = {
     pred::EventKindAtLeast(/*play_sound*/1, 35),
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 10000, 12000),
     pred::WeaponFamilyEmitted(FAMILY_BONE),
+    pred::WeaponSpeed(FAMILY_BONE, 850, 950,
+        "BONE fires straight at base stepsize 6 -> cardinal *362/256 = 8.48 px/tick; max consecutive-tick step = 900 centi-px (the 9-px ticks). Tight [850,950] brackets the observed 900 and flips if stepsize changes (3->~500, 12->~1700)."),
+    pred::WeaponNetTravel(FAMILY_BONE, kWeaponPathStraight, 8000,
+        "BONE seq-0 is a pure-vertical projectile: net travel 10200 centi-px == pathlen (no reversal). STRAIGHT requires net >= 8000 AND net >= 0.7*pathlen; both hold. Threshold 8000 < observed 10200 keeps margin."),
 };
 
 inline constexpr Mutation kMut_weapon_bone_emission = {
-    "src/gameplay/families/family_skeleton.cpp", 64,
-    "        .default_weapon = FAMILY_BONE,",
-    "        .default_weapon = FAMILY_KNIFE,",
-    "Repoints the skeleton's default_weapon away from FAMILY_BONE so it emits KNIFE weapons instead; WeaponFamilyEmitted(FAMILY_BONE) finds zero BONE entries in dump.weapons[] and flips. The prior target (weapon registry .name index swap) was a no-op never observed by any predicate."
+    "src/resources/gloader.cpp", 420,
+    "\t\t{Order::Weapon, FAMILY_BONE,              \"bone1.png\",    5, ACT_FIRE, anikni,          6,  6,  5, 0},",
+    "\t\t{Order::Weapon, FAMILY_BONE,              \"bone1.png\",    5, ACT_FIRE, anikni,          3,  6,  5, 0},",
+    "Halves FAMILY_BONE's base stepsize (7th column, the loaded weapon step) from 6 to 3. The cardinal firing path (walker.cpp:1092 stepsize*362/256) then yields 3*1.414=4.24 px/tick, so the seq-0 BONE projectile's max consecutive-tick step drops from 900 to ~500 centi-px, OUTSIDE WeaponSpeed(FAMILY_BONE,850,950) -> that predicate FLIPS. BONE is still emitted (WeaponFamilyEmitted stays green) and still travels straight, so the flip is isolated to the speed teeth."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_blood_emission[] = {
