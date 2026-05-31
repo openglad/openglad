@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -164,19 +165,25 @@ WeaponTrackMetrics weapon_track_metrics(const StateDump& d, std::int32_t family)
     const std::string sym = family_symbol_by_order(kWeaponOrder, family);
     WeaponTrackMetrics m;
 
-    // Find the first (lowest-seq) track for the family.
-    std::int32_t target_seq = 0;
-    bool         found      = false;
+    // Prefer the lowest-seq track (the wielder's first/primary flight). But if
+    // that track is a degenerate stub (<2 samples — e.g. a slime's seq0 BLOB
+    // that dies on spawn after a speed mutation while later blobs fly on), fall
+    // back to the family's LONGEST track so the metric still measures a real
+    // flight instead of stranding at Indeterminate. Single-fire scenarios have
+    // exactly one seq with a full sample run, so this is a no-op for them and
+    // preserves their seq0-tuned bands.
+    std::map<std::int32_t /*seq*/, std::int32_t /*count*/> count_by_seq;
     for (const auto& s : d.weapon_tracks)
+        if (s.family == sym)
+            ++count_by_seq[s.seq];
+    if (count_by_seq.empty()) return m; // has_track stays false
+    std::int32_t target_seq = count_by_seq.begin()->first; // lowest seq
+    if (count_by_seq[target_seq] < 2)                      // stub -> longest track
     {
-        if (s.family != sym) continue;
-        if (!found || s.seq < target_seq)
-        {
-            target_seq = s.seq;
-            found      = true;
-        }
+        std::int32_t best_count = 0;
+        for (const auto& [seq, cnt] : count_by_seq) // map iterates seq ascending
+            if (cnt > best_count) { best_count = cnt; target_seq = seq; }
     }
-    if (!found) return m; // has_track stays false
     m.has_track = true;
 
     // Collect that track's samples in tick order (already sorted globally).
