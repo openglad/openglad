@@ -2380,13 +2380,20 @@ inline constexpr FactPredicate kFacts_weapon_wave2_emission_scen99[] = {
     // wielder un-gates this predicate by exercising the special
     // (or, for DOOR, by loading a scen file with scripted doors).
     pred::WeaponFamilyEmitted(FAMILY_WAVE2),
+    // Trajectory teeth: WAVE2 is direct-spawned and runs ACT_RANDOM (weap::act),
+    // which emits a notification and returns WITHOUT moving, so the projectile
+    // is perfectly stationary at (120,120) for all 150 ticks. Observed
+    // max_step_centi=0, pathlen_centi=0. These flip under kMut_weapon_wave2_emission
+    // (which injects per-tick motion into the ACT_RANDOM path for FAMILY_WAVE2).
+    pred::WeaponSpeed(FAMILY_WAVE2, 0, 0, "wave2 stationary: 0 centi-px/tick"),
+    pred::WeaponNetTravel(FAMILY_WAVE2, kWeaponPathStationary, 50, "wave2 stationary path"),
 };
 
 inline constexpr Mutation kMut_weapon_wave2_emission = {
-    "src/gameplay/weapon_family_registry.cpp", 73,
-    "e[FAMILY_WAVE2]",
-    "e[0]",
-    "Edits the FAMILY_WAVE2 weapon-family registry entry index; the descriptor binding moves and emission predicates flip on the named family slot."
+    "src/gameplay/weap.cpp", 126,
+    "\t\t\t\treturn 1;",
+    "\t\t\t\tif (family() == FAMILY_WAVE2) { setxy(xpos() + 5, ypos() + 0); } return 1;",
+    "Injects a per-tick +5px x-step into FAMILY_WAVE2's ACT_RANDOM act() path; the previously-stationary wave moves, so max_step_centi jumps to 500 and pathlen_centi grows ~74500, flipping WeaponSpeed([0,0]) and WeaponNetTravel(STATIONARY,50). The braces + ypos()+0 keep both setxy args int (unambiguous int32_t overload) and suppress -Wmisleading-indentation."
 };
 
 inline constexpr InputEvent kInputsWeaponWave3Emission[] = {
