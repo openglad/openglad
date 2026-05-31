@@ -111,6 +111,15 @@ IRandom& walker_rng()
 
 int next_path_check_counter(IRandom& rng)
 {
+    // path_check_counter is a cosmetic AI-recheck cadence. Master draws it from
+    // the C-library rand() (`5 + rand()%10`); the branch draws it from the
+    // construction-time gameplay/session RNG (`rng`) so it stays deterministic
+    // for snapshot/replay/preview. When the parity harness installs a libc-rand
+    // cosmetic override, draw from that instead so the captured dump matches
+    // master's dual-RNG-stream behavior — without disturbing production
+    // determinism or the preview/session-RNG path encoded in `rng`.
+    if (IRandom* cos = cosmetic_rng_override())
+        return 5 + static_cast<int>(cos->next(10));
     return 5 + static_cast<int>(rng.next(10));
 }
 } // namespace

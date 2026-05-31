@@ -140,7 +140,16 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
                 newob->set_team_num(team_num());
                 newob->stats()->set_level(1);
                 newob->set_damage(0);
-                newob->set_ani_type(static_cast<char>(1 + current_game->world->rng_.next(3)));
+                // Cosmetic FX animation type: master draws it from libc rand
+                // (`1 + rand()%3`), NOT world.rng_. Production draws from
+                // world.rng_ for snapshot/replay determinism; the parity
+                // harness's libc-rand cosmetic override (when installed) matches
+                // master's dual-RNG-stream behavior. combat_rng (damage/xp)
+                // deliberately does NOT consult this override.
+                IRandom* ani_rng = cosmetic_rng();
+                newob->set_ani_type(static_cast<char>(
+                    1 + (ani_rng != nullptr ? ani_rng->next(3)
+                                            : current_game->world->rng_.next(3))));
                 if(attacker == this)
                 {
                     newob->center_on(target);

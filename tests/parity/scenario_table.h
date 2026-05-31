@@ -2128,22 +2128,15 @@ inline constexpr SpawnSpec kFamilySpawns_weapon_blood_emission[] = {
 
 inline constexpr FactPredicate kFacts_weapon_blood_emission_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 2,
-        "intended_diff: weapon-emission arena retains either one or two SOLDIER walkers depending on whether the adjacent combat kills the target; commit 39ef9898"),
+    // After restoring master's dual-RNG semantics the branch no longer kills
+    // the target in this arena: it keeps exactly one SOLDIER and the FAERIE
+    // alive (SOLDIER hp 112, FAERIE hp 15) just like master, so no combat-death
+    // BLOOD spatter is emitted on either side. The previous
+    // branch_only(BLOOD...) trajectory predicates encoded the now-fixed RNG
+    // drift that made the branch (and only the branch) score the kill.
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 20),
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 10000, 12000),
-    pred::branch_only(pred::WeaponFamilyEmitted(FAMILY_BLOOD,
-        "intended_diff: branch combat kills the target and emits BLOOD while master keeps the FAERIE alive in this arena; commit 39ef9898")),
-    // Trajectory teeth: combat-death blood spatter is spawned once at the
-    // dead target's tile (walker_combat.cpp setxy) and only cycles its
-    // animation (tree_blood_on_animate never moves it) -> 0 centi-px/tick,
-    // pathlen 0. Observed: 4 consecutive samples (ticks 132-135) all at
-    // (172,120). branch_only because master keeps the target alive so no
-    // BLOOD track exists on the master golden (master arm short-circuits).
-    pred::branch_only(pred::WeaponSpeed(FAMILY_BLOOD, 0, 0,
-        "intended_diff: branch-only death-spatter BLOOD is stationary (max consecutive-tick step = 0 centi-px/tick); a speed/path mutation pushes it >0 and this flips")),
-    pred::branch_only(pred::WeaponNetTravel(FAMILY_BLOOD, /*kWeaponPathStationary*/2, 50,
-        "intended_diff: branch-only death-spatter BLOOD barely moves (pathlen <= 50 centi-px); a drift mutation makes pathlen >> threshold and this flips")),
 };
 
 inline constexpr Mutation kMut_weapon_blood_emission = {
@@ -2159,18 +2152,29 @@ inline constexpr SpawnSpec kFamilySpawns_weapon_blob_emission[] = {
 };
 
 inline constexpr FactPredicate kFacts_weapon_blob_emission_scen99[] = {
-    pred::TickReached(150),
-    pred::WalkerFamilyCount(FAMILY_SLIME, 0, 1,
-        "intended_diff: master slime growth leaves a MEDIUM_SLIME at final tick while branch keeps the original SLIME caster; commit 39ef9898"),
-    pred::EventKindAtLeast(/*play_sound*/1, 24),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 100, 12000,
-        "rng_drift: level-20 slime pummels default soldier to hp 3 on master; branch combat sequencing may shift target HP across the full near-death range"),
-    pred::branch_only(pred::WeaponFamilyEmitted(FAMILY_BLOB,
-        "intended_diff: branch leaves BLOB projectiles alive at tick 150 while master has already resolved them into the slime growth path; commit 39ef9898")),
-    pred::branch_only(pred::WeaponSpeed(FAMILY_BLOB, 280, 360,
-        "trajectory: BLOB projectile travels FACE_RIGHT at the cardinal-boosted stepsize (3 px/tick); seq0 max consecutive-tick step is 316 centi-px/tick, inside [280,360]. branch_only because master resolves the blob into MEDIUM_SLIME growth (no BLOB track to measure)")),
-    pred::branch_only(pred::WeaponNetTravel(FAMILY_BLOB, kWeaponPathStraight, 3000,
-        "trajectory: BLOB seq0 net displacement is 5630 centi-px (>=3000) and net >= 0.7*pathlen (5636), i.e. a straight outbound projectile with no reversal. branch_only because master has no BLOB track")),
+    // Dumps at tick 30, the last tick the FAMILY_BLOB projectile is still in
+    // flight, so the blob is a LIVE weapon[] entry on both arms. At tick 150
+    // the blob always resolves into slime growth on BOTH master and branch, so
+    // it can never be a live weapon at a final snapshot; the previous
+    // branch_only(WeaponFamilyEmitted FAMILY_BLOB) "intended_diff" only "held"
+    // because the pre-fix branch RNG drift kept the blob alive past tick 150 —
+    // the bug this fix removes. Snapshotting mid-flight gives an honest,
+    // shared FAMILY_BLOB live-weapon coverage anchor.
+    pred::TickReached(30),
+    // The SLIME caster is alive at tick 30 (still casting; grows later) on both
+    // arms, and its FAMILY_BLOB barrage has already battered the soldier to
+    // near death (hp 2 = 200 cents).
+    pred::WalkerFamilyCount(FAMILY_SLIME, 1, 1),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 100, 400),
+    pred::EventKindAtLeast(/*play_sound*/1, 3),
+    pred::EventKindAtLeast(/*score_change*/9, 1),
+    // LIVE FAMILY_BLOB projectile in flight at tick 30 — coverage anchor.
+    pred::WeaponFamilyEmitted(FAMILY_BLOB),
+    // BLOB projectile trajectory (seq 0): max consecutive-tick step 316
+    // centi-px/tick (cardinal-boosted 3 px/tick) and net displacement 5630
+    // centi-px straight outbound. Identical on branch and master golden.
+    pred::WeaponSpeed(FAMILY_BLOB, 280, 360),
+    pred::WeaponNetTravel(FAMILY_BLOB, kWeaponPathStraight, 3000),
 };
 
 inline constexpr Mutation kMut_weapon_blob_emission = {
@@ -3010,22 +3014,18 @@ inline constexpr FactPredicate kFacts_effect_chain_emission_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
     // CONSEQUENCE of FAMILY_CHAIN's on_act: the summoned chain travels to its
     // nearest-foe leader and on contact spawns a FAMILY_EXPLOSION that
-    // blast-attacks that soldier for the chain's ~110 damage, dropping at
-    // least one enemy SOLDIER below its full 12000-cent HP by tick 40. Under
-    // kMut_effect_chain_emission (e[FAMILY_CHAIN] -> e[0]) the chain loses its
-    // on_act, never travels, never explodes, deals zero damage; with no K_FIRE
-    // the archmage never melees either, so every enemy SOLDIER stays at full
-    // 12000-cent HP -> the <=11000 ceiling fails. This is the canary flip.
-    // branch_only: this damage consequence is the canary teeth on the BRANCH
-    // (the mutation strips FAMILY_CHAIN's on_act so the chain is inert and every
-    // SOLDIER stays at full 12000-cent HP, flipping this predicate present->fail).
-    // The MASTER companion's slot-2 archmage special behaves differently (its
-    // recaptured golden leaves all three SOLDIERs at 11200-12000 cents and emits
-    // only a single play_sound), so this consequence is a genuine branch/master
-    // game-behaviour divergence that no numeric widening can cover without losing
-    // the teeth; it is pinned to the branch side per the FactSide-gating contract.
-    pred::branch_only(pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 0, 11000,
-        "consequence: chain lightning's FAMILY_CHAIN on_act detonates an explosion on the nearest enemy SOLDIER, leaving at least one below 11000-cent HP; the registry-slot mutation strips on_act so the chain is inert and every SOLDIER stays at full 12000-cent HP, above the ceiling")),
+    // blast-attacks that soldier for the chain's ~80 damage, dropping at least
+    // one enemy SOLDIER below its full 12000-cent HP by tick 40. After
+    // restoring master's dual-RNG semantics the branch reproduces master's
+    // outcome exactly: one SOLDIER at 11200 cents, the other two at full
+    // 12000. The previous branch_only(<=11000) ceiling was never satisfiable
+    // on the master golden (its damaged soldier also sits at 11200) and so was
+    // hidden on the branch side; the honest shared fact is "at least one
+    // SOLDIER below full HP". Under kMut_effect_chain_emission the chain loses
+    // its on_act, never explodes, deals zero damage, and every SOLDIER stays
+    // at full 12000 cents -> no soldier in [0,11900] -> the canary flips.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 0, 11900,
+        "consequence: chain lightning's FAMILY_CHAIN on_act detonates an explosion on the nearest enemy SOLDIER, leaving at least one below full 12000-cent HP (observed 11200 on both arms); the registry-slot mutation strips on_act so the chain is inert and every SOLDIER stays at full 12000-cent HP, above the ceiling"),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
     // Structural coverage anchor: binds FAMILY_CHAIN to EffectFamilyCount arg0
     // for behavioural_coverage_gate_effects. The summoned FAMILY_CHAIN is a
@@ -3064,8 +3064,11 @@ inline constexpr Mutation kMut_effect_door_open_emission = {
 
 inline constexpr FactPredicate kFacts_effect_hit_emission_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 2,
-        "intended_diff: branch keeps both SOLDIER walkers at the final combat snapshot while master has one surviving SOLDIER; commit 39ef9898"),
+    // After restoring master's dual-RNG semantics the branch matches master
+    // exactly here: one surviving SOLDIER at hp 32 on both arms. The previous
+    // (1,2) intended_diff encoded the now-fixed RNG drift that kept both
+    // soldiers alive on the branch.
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
     // EffectFamilyCount snapshots fxlist at the final tick; combat-driven
     // FX (HIT, EXPAND, FLASH, ...) expire within a handful of ticks of
     // their emission and are no longer alive by tick 150. The exact
@@ -3077,6 +3080,12 @@ inline constexpr FactPredicate kFacts_effect_hit_emission_scen99[] = {
     pred::EventKindAtLeast(/*play_sound*/1, 1),
     pred::EventKindAtLeast(/*score_change*/9, 1),
     pred::WalkerOfTeamAlive(/*team=*/0, 3, 3),
+    // Coverage binding for FAMILY_BLOOD: the lethal combat in this arena
+    // spatters a death-blood weapon that is still live at the final tick on
+    // both branch and master golden (the weapon_blood_emission arena no longer
+    // scores a kill after the RNG fix, so this is now the canonical BLOOD
+    // coverage anchor).
+    pred::WeaponFamilyEmitted(FAMILY_BLOOD),
 };
 
 inline constexpr Mutation kMut_effect_hit_emission = {
@@ -3500,8 +3509,15 @@ inline constexpr SpawnSpec kFamilySpawns_special_mage_2_scen99[] = {
 inline constexpr FactPredicate kFacts_special_mage_2_scen99[] = {
     pred::TickReached(150),
     pred::EventKindAtLeast(/*play_sound*/1, 25),
-    pred::branch_only(pred::WalkerHpRangeAtFinalTick(FAMILY_MAGE, 4000, 4400)),
-    pred::master_only(pred::WalkerDiedByFinal(FAMILY_MAGE)),
+    // After restoring master's dual-RNG semantics the branch mage dies before
+    // the final snapshot exactly as master does (no surviving FAMILY_MAGE),
+    // so this is now a shared fact on both sides — the previous
+    // branch_only(alive)/master_only(died) pair encoded the now-fixed RNG drift.
+    pred::WalkerDiedByFinal(FAMILY_MAGE),
+    // The lone enemy SOLDIER survives at full 12000-cent HP on both arms: the
+    // mage's slot-2 special expends the caster without landing damage.
+    pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
+    pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000),
 };
 
 inline constexpr Mutation kMut_special_mage_2_scen99 = {
@@ -3578,12 +3594,15 @@ inline constexpr SpawnSpec kFamilySpawns_special_skeleton_1_scen99[] = {
 
 inline constexpr FactPredicate kFacts_special_skeleton_1_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(FAMILY_SKELETON, 0, 1,
-        "intended_diff: master loses the skeleton caster before the final snapshot while branch keeps it alive after TUNNEL; commit 39ef9898"),
+    // After restoring master's dual-RNG semantics the branch skeleton caster
+    // dies before the final snapshot exactly as master does (count 0), so the
+    // shared count floor is 0 and the caster-died fact holds on both sides —
+    // the previous branch_only(alive)/master_only(died) pair encoded the
+    // now-fixed RNG drift.
+    pred::WalkerFamilyCount(FAMILY_SKELETON, 0, 0),
     pred::EventKindAtLeast(/*play_sound*/1, 10),
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 8000, 12000),
-    pred::branch_only(pred::WalkerHpRangeAtFinalTick(FAMILY_SKELETON, 400, 600)),
-    pred::master_only(pred::WalkerDiedByFinal(FAMILY_SKELETON)),
+    pred::WalkerDiedByFinal(FAMILY_SKELETON),
 };
 
 inline constexpr Mutation kMut_special_skeleton_1_scen99 = {
@@ -3769,11 +3788,19 @@ inline constexpr SpawnSpec kFamilySpawns_special_thief_3_scen99[] = {
 
 inline constexpr FactPredicate kFacts_special_thief_3_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(FAMILY_THIEF, 0, 2,
-        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes; commit 39ef9898"),
+    // The committed golden was STALE: a fresh dump from the current master
+    // dumper (rng_state 0x510614DF) matches the fixed branch byte-for-byte.
+    // Both keep the lone THIEF caster alive at hp 5 (500 cents) after its
+    // per-slot taunt/fire dance, emit the THIEF taunt notification, and log a
+    // play_sound stream. The previous intended_diff/WalkerDiedByFinal set
+    // encoded the now-fixed RNG drift against the stale golden.
+    pred::WalkerFamilyCount(FAMILY_THIEF, 1, 1),
+    // Canary teeth: baseline caster is at near-death hp 5 (<=1000 cents); the
+    // kMut cranks init HP to BASE_GUY_HP+9000 so the caster ends in the
+    // thousands, out of range -> flips.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 0, 1000),
     pred::EventKindAtLeast(/*play_sound*/1, 10),
     pred::EventKindAtLeast(/*notification*/2, 1),
-    pred::WalkerDiedByFinal(FAMILY_THIEF),
 };
 
 inline constexpr Mutation kMut_special_thief_3_scen99 = {
@@ -3792,8 +3819,11 @@ inline constexpr FactPredicate kFacts_special_thief_4_scen99[] = {
     pred::TickReached(150),
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000),
     pred::EventKindAtLeast(/*play_sound*/1, 15),
-    pred::branch_only(pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 0, 500)),
-    pred::master_only(pred::WalkerDiedByFinal(FAMILY_THIEF)),
+    // After restoring master's dual-RNG semantics the branch thief dies before
+    // the final snapshot exactly as master does, so this is a shared fact —
+    // the previous branch_only(alive)/master_only(died) pair encoded the
+    // now-fixed RNG drift.
+    pred::WalkerDiedByFinal(FAMILY_THIEF),
 };
 
 inline constexpr Mutation kMut_special_thief_4_scen99 = {
@@ -4035,12 +4065,21 @@ inline constexpr SpawnSpec kFamilySpawns_special_archmage_4_scen99[] = {
 
 inline constexpr FactPredicate kFacts_special_archmage_4_scen99[] = {
     pred::TickReached(150),
-    pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 2,
-        "intended_diff: per-slot special cast may emit a short-lived mirror/image/summon walker; (1, 2) admits both the caster-only and caster+mirror outcomes; commit 39ef9898"),
-    pred::EventKindAtLeast(/*play_sound*/1, 2),
+    // The committed golden was STALE: a fresh dump from the current master
+    // dumper (rng_state 0x7825A250) matches the fixed branch byte-for-byte.
+    // Both keep the lone ARCHMAGE caster alive at hp 146 after the slot-4
+    // mind-control special and log exactly one play_sound plus the
+    // "ArchMage has controlled N men" notification. The previous
+    // intended_diff(play_sound>=2)/(HP 100..50000) set encoded the now-fixed
+    // RNG drift against the stale golden (which then read 21 HP / 2 sounds).
+    pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
     pred::WalkerAliveAtFinal(FAMILY_ARCHMAGE, 1),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHMAGE, 100, 50000,
-        "consequence: caster's final HP after the slot-4 special is bounded by its real init/max HP (150). Range [1.00, 500.00] HP admits the branch run (21.0) and the master golden (146.0); kMut_special_archmage_4_scen99 raises init HP to BASE_GUY_HP+9000 (=9030), pushing final HP into the thousands (~8900), out of range -> flips. intended_diff: branch (21.0) and master (146.0) legitimately diverge here, so the range spans >50 HP and carries an exempted label per the coverage gate."),
+    pred::EventKindAtLeast(/*play_sound*/1, 1),
+    pred::EventKindAtLeast(/*notification*/2, 1),
+    // Canary teeth: caster ends at its real init HP 146 (<=15000 cents); the
+    // kMut raises init HP to BASE_GUY_HP+9000, pushing final HP into the
+    // thousands of display HP, out of range -> flips.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHMAGE, 10000, 15000),
 };
 
 inline constexpr Mutation kMut_special_archmage_4_scen99 = {
@@ -5424,7 +5463,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_weapon_blood_emission },
 
     { "weapon_blob_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 150,
+      kInputsWeaponEmit, std::size(kInputsWeaponEmit), 30,
       CompareMode::SemanticParity, false,
       kFamilySpawns_weapon_blob_emission, std::size(kFamilySpawns_weapon_blob_emission),
       0, false, true, Exercises::None,

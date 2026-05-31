@@ -34,7 +34,14 @@ IRandom& elf_rng()
 
 float next_spread_multiplier(IRandom& rng)
 {
-    return 0.8f + 0.4f * static_cast<float>(rng.next(101)) / 100.0f;
+    // Cosmetic fireball/rock spread jitter: master draws it from libc rand
+    // (`0.8 + 0.4*(rand()%101)/100`), NOT the gameplay RNG. Production draws
+    // from the gameplay RNG (`rng`) for snapshot/replay determinism; the parity
+    // harness's libc-rand cosmetic override (when installed) matches master's
+    // dual-RNG-stream behavior. The rest of the elf special (rock counts, etc.)
+    // stays on elf_rng() / world.rng_ on both branch and master.
+    IRandom& src = (cosmetic_rng_override() != nullptr) ? *cosmetic_rng_override() : rng;
+    return 0.8f + 0.4f * static_cast<float>(src.next(101)) / 100.0f;
 }
 }
 
