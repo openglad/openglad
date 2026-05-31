@@ -2068,13 +2068,15 @@ inline constexpr FactPredicate kFacts_weapon_sprinkle_emission_scen99[] = {
     pred::WalkerDiedByFinal(FAMILY_SOLDIER),
     pred::WalkerHpRangeAtFinalTick(FAMILY_FAERIE, 7500, 7500),
     pred::WeaponFamilyEmitted(FAMILY_SPRINKLE),
+    pred::WeaponSpeed(FAMILY_SPRINKLE, 900, 950, "FAMILY_SPRINKLE thrown-weapon max consecutive-tick step ~922 centi-px/tick (faerie fires FACE_RIGHT; base stepsize scaled 362/256)"),
+    pred::WeaponNetTravel(FAMILY_SPRINKLE, kWeaponPathStraight, 2500, "FAMILY_SPRINKLE flies mostly-straight +x: seq-0 net=3396 >= 2500 centi-px and net ~= pathlen (3396/3397)"),
 };
 
 inline constexpr Mutation kMut_weapon_sprinkle_emission = {
-    "src/gameplay/families/family_faerie.cpp", 36,
-    "        .default_weapon = FAMILY_SPRINKLE,",
-    "        .default_weapon = FAMILY_KNIFE,",
-    "Repoints the faerie's default_weapon away from FAMILY_SPRINKLE so it emits KNIFE weapons instead; WeaponFamilyEmitted(FAMILY_SPRINKLE) finds zero SPRINKLE entries in dump.weapons[] and flips. The prior target (weapon registry e[FAMILY_SPRINKLE] index swap) was a no-op never observed by any predicate because the emitted weapon's family() comes from the wielder's default_weapon, not the registry descriptor."
+    "src/gameplay/walker.cpp", 1092,
+    "\t\t\t\tweapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
+    "\t\t\t\tweapon->set_stepsize((weapon->stepsize() * 181.0f) / 256.0f);",
+    "Halves the cardinal-fire stepsize boost (362/256 ~= 1.414 -> 181/256 ~= 0.707) at walker.cpp:1092 applied in walker::create_weapon() to projectiles fired UP/RIGHT/DOWN/LEFT. FAMILY_SPRINKLE is fired RIGHT (cardinal), so its per-tick stepsize roughly halves: max_step_centi drops from ~922 to ~460 centi-px/tick (below the 900 floor of WeaponSpeed(FAMILY_SPRINKLE,900,950)) AND the seq-0 net displacement halves from ~3396 to ~1700 centi-px (below the 2500 threshold of WeaponNetTravel STRAIGHT), so BOTH trajectory predicates flip pass->fail. The prior target (faerie default_weapon swap) was a presence-only flip that never exercised trajectory."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_bone_emission[] = {
