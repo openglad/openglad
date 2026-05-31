@@ -1948,13 +1948,16 @@ inline constexpr FactPredicate kFacts_weapon_arrow_emission_scen99[] = {
     pred::EventKindAtLeast(/*play_sound*/1, 25),
     pred::WalkerDiedByFinal(FAMILY_SOLDIER),
     pred::WeaponFamilyEmitted(FAMILY_ARROW),
+    // Trajectory teeth: observed max_step_centi=1105 (~11.3 px/tick), net=3314, pathlen=3315 (perfectly straight).
+    pred::WeaponSpeed(FAMILY_ARROW, 1000, 1250, "arrow ~11.3px/tick straight-shot speed"),
+    pred::WeaponNetTravel(FAMILY_ARROW, kWeaponPathStraight, 2000, "arrow flies straight, no reversal"),
 };
 
 inline constexpr Mutation kMut_weapon_arrow_emission = {
-    "src/gameplay/families/family_archer.cpp", 125,
-    ".default_weapon = FAMILY_ARROW,",
-    ".default_weapon = FAMILY_KNIFE,",
-    "Repoints the ARCHER family's default_weapon away from FAMILY_ARROW; gloader.cpp:628 reads fd->default_weapon into the walker's current_weapon, so the archer now fires FAMILY_KNIFE entities into world.weaplist instead of FAMILY_ARROW, and WeaponFamilyEmitted(FAMILY_ARROW) flips (the branch weaplist no longer contains any FAMILY_ARROW entry). Distinct from kMut_family_archer_init (family_archer.cpp:121) which mutates derived_bonuses/HP."
+    "src/gameplay/walker.cpp", 1092,
+    "weapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
+    "weapon->set_stepsize((weapon->stepsize() * 256.0f) / 256.0f);",
+    "walker::create_weapon scales every fired projectile's stepsize by 362/256 (~1.414) for the cardinal/diagonal facing cases; FAMILY_ARROW is a data-only weapon family (weapon_family_registry.cpp:44, no movement callback) so its per-tick speed is exactly this scaled stepsize. Dropping the scale (362->256) cuts the arrow's step from ~11.3px/tick to 8px/tick, so weapon_tracks seq=0 max_step_centi falls from 1105 to ~800, below WeaponSpeed(FAMILY_ARROW,1000,1250)'s lower bound, flipping that predicate. The path stays straight so WeaponNetTravel(STRAIGHT) is unaffected, demonstrating the speed teeth are independent of the path-class teeth."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_fireball_emission[] = {
