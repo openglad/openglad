@@ -2446,6 +2446,18 @@ inline constexpr FactPredicate kFacts_weapon_wave3_emission_scen99[] = {
     // wielder un-gates this predicate by exercising the special
     // (or, for DOOR, by loading a scen file with scripted doors).
     pred::WeaponFamilyEmitted(FAMILY_WAVE3),
+    // Trajectory teeth for FAMILY_WAVE3 (direct-spawn immortal phantom).
+    // Observed weapon_tracks: 2 samples at tick1/tick2 both (120,120) =>
+    // pathlen=0, net=0, max consecutive-step=0. Path class is STATIONARY.
+    pred::WeaponNetTravel(FAMILY_WAVE3, kWeaponPathStationary, 5,
+                          "wave3_stationary_phantom"),
+    // Speed = 0 centi-px/tick (2 consecutive identical samples). Tight [0,0]
+    // bracket. Passes on both arms; goes Indeterminate (pass) when the
+    // discriminating mutation kills the phantom at tick1 (track drops to 0
+    // samples) -- so the FLIP is carried by WeaponFamilyEmitted above, not by
+    // these locks. These two predicates parity-lock the phantom's zero-motion
+    // shape symmetrically across branch and recaptured master.
+    pred::WeaponSpeed(FAMILY_WAVE3, 0, 0, "wave3_speed_zero"),
 };
 
 inline constexpr Mutation kMut_weapon_wave3_emission = {
