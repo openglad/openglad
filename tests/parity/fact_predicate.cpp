@@ -6,12 +6,14 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace og::parity {
 
@@ -133,6 +135,82 @@ std::size_t count_weapons_family(const StateDump& d, std::int32_t family)
     for (const auto& w : d.weapons)
         if (w.family == sym) ++n;
     return n;
+}
+
+// Weapon-trajectory analysis over dump.weapon_tracks. A "track" is the
+// time-ordered sequence of samples for one (family, seq) projectile.
+struct WeaponTrackMetrics
+{
+    bool         has_track          = false; // >=1 sample for the family
+    bool         has_two_consec     = false; // >=1 pair with consecutive ticks
+    std::int32_t max_step_centi     = 0;     // max consecutive-tick step
+    std::int32_t net_centi          = 0;     // first->last displacement
+    std::int32_t pathlen_centi      = 0;     // sum of adjacent step magnitudes
+    std::size_t  sample_count       = 0;
+};
+
+std::int32_t hypot_centi(std::int32_t dx, std::int32_t dy)
+{
+    const double d = std::hypot(static_cast<double>(dx), static_cast<double>(dy));
+    return static_cast<std::int32_t>(std::lround(d * 100.0));
+}
+
+// Compute metrics for the FIRST track (lowest seq) of `family` that has
+// >=1 sample. dump.weapon_tracks is canonically sorted by (family, seq,
+// tick), so the first matching block is the lowest-seq track and its
+// samples are already tick-ascending.
+WeaponTrackMetrics weapon_track_metrics(const StateDump& d, std::int32_t family)
+{
+    const std::string sym = family_symbol_by_order(kWeaponOrder, family);
+    WeaponTrackMetrics m;
+
+    // Find the first (lowest-seq) track for the family.
+    std::int32_t target_seq = 0;
+    bool         found      = false;
+    for (const auto& s : d.weapon_tracks)
+    {
+        if (s.family != sym) continue;
+        if (!found || s.seq < target_seq)
+        {
+            target_seq = s.seq;
+            found      = true;
+        }
+    }
+    if (!found) return m; // has_track stays false
+    m.has_track = true;
+
+    // Collect that track's samples in tick order (already sorted globally).
+    std::vector<const WeaponTrackSample*> samples;
+    for (const auto& s : d.weapon_tracks)
+        if (s.family == sym && s.seq == target_seq)
+            samples.push_back(&s);
+    std::sort(samples.begin(), samples.end(),
+              [](const WeaponTrackSample* a, const WeaponTrackSample* b) {
+                  return a->tick < b->tick;
+              });
+    m.sample_count = samples.size();
+    if (samples.size() < 2)
+        return m; // pathlen=0, net=0; STATIONARY satisfiable
+
+    const std::int32_t dx_net = samples.back()->xpos - samples.front()->xpos;
+    const std::int32_t dy_net = samples.back()->ypos - samples.front()->ypos;
+    m.net_centi = hypot_centi(dx_net, dy_net);
+
+    for (std::size_t i = 1; i < samples.size(); ++i)
+    {
+        const std::int32_t dx = samples[i]->xpos - samples[i - 1]->xpos;
+        const std::int32_t dy = samples[i]->ypos - samples[i - 1]->ypos;
+        const std::int32_t step = hypot_centi(dx, dy);
+        m.pathlen_centi += step;
+        // Only consecutive-tick pairs feed the speed estimate so a gap from
+        // a transform (e.g. WAVE -> WAVE2 re-seq) does not inflate a step.
+        if (samples[i]->tick == samples[i - 1]->tick + 1)
+        {
+            m.has_two_consec = true;
+            if (step > m.max_step_centi) m.max_step_centi = step;
+        }
+    }
+    return m;
 }
 
 std::size_t count_events_kind(const StateDump& d, std::int32_t kind_ordinal)
@@ -359,6 +437,93 @@ FactEvalResult evaluate_one(const FactPredicate& p, const StateDump& dump)
                                   family_symbol_by_order(kWeaponOrder, p.arg0)),
                         r);
             return r;
+        }
+        case FactKind::WeaponSpeed:
+        {
+            const WeaponTrackMetrics m = weapon_track_metrics(dump, p.arg0);
+            // Legacy-golden / stationary-family tolerance: no track or no
+            // consecutive-tick pair to measure speed from.
+            if (!m.has_track || !m.has_two_consec)
+                return (make_indeterminate(r,
+                            "no measurable track for " +
+                            family_symbol_by_order(kWeaponOrder, p.arg0)), r);
+            if (m.max_step_centi < p.arg1 || m.max_step_centi > p.arg2)
+                return (make_fail(r, p, "speed=" +
+                                  std::to_string(m.max_step_centi) +
+                                  " centi-px/tick out of [" +
+                                  std::to_string(p.arg1) + "," +
+                                  std::to_string(p.arg2) + "]"), r);
+            return r;
+        }
+        case FactKind::WeaponNetTravel:
+        {
+            const WeaponTrackMetrics m = weapon_track_metrics(dump, p.arg0);
+            if (!m.has_track)
+                return (make_indeterminate(r,
+                            "no track for " +
+                            family_symbol_by_order(kWeaponOrder, p.arg0)), r);
+            const std::int32_t thr = p.arg2;
+            switch (p.arg1)
+            {
+                case kWeaponPathStraight:
+                {
+                    // Need >=2 samples to have a displacement at all.
+                    if (m.sample_count < 2)
+                        return (make_indeterminate(r,
+                                    "STRAIGHT needs >=2 samples for " +
+                                    family_symbol_by_order(kWeaponOrder, p.arg0)),
+                                r);
+                    // net >= threshold AND net >= 0.7 * pathlen (mostly straight).
+                    if (m.net_centi < thr)
+                        return (make_fail(r, p, "net=" +
+                                          std::to_string(m.net_centi) +
+                                          " < threshold " +
+                                          std::to_string(thr)), r);
+                    if (m.net_centi * 10 < m.pathlen_centi * 7)
+                        return (make_fail(r, p, "net=" +
+                                          std::to_string(m.net_centi) +
+                                          " < 0.7*pathlen=" +
+                                          std::to_string(m.pathlen_centi) +
+                                          " (path not straight)"), r);
+                    return r;
+                }
+                case kWeaponPathReturns:
+                {
+                    if (m.sample_count < 2)
+                        return (make_indeterminate(r,
+                                    "RETURNS needs >=2 samples for " +
+                                    family_symbol_by_order(kWeaponOrder, p.arg0)),
+                                r);
+                    // pathlen >= threshold AND net < 0.5 * pathlen.
+                    if (m.pathlen_centi < thr)
+                        return (make_fail(r, p, "pathlen=" +
+                                          std::to_string(m.pathlen_centi) +
+                                          " < threshold " +
+                                          std::to_string(thr)), r);
+                    if (m.net_centi * 2 >= m.pathlen_centi)
+                        return (make_fail(r, p, "net=" +
+                                          std::to_string(m.net_centi) +
+                                          " >= 0.5*pathlen=" +
+                                          std::to_string(m.pathlen_centi) +
+                                          " (did not return)"), r);
+                    return r;
+                }
+                case kWeaponPathStationary:
+                {
+                    // pathlen <= threshold (barely moves). With <2 samples
+                    // pathlen is 0 which trivially satisfies STATIONARY.
+                    if (m.pathlen_centi > thr)
+                        return (make_fail(r, p, "pathlen=" +
+                                          std::to_string(m.pathlen_centi) +
+                                          " > threshold " +
+                                          std::to_string(thr) +
+                                          " (not stationary)"), r);
+                    return r;
+                }
+                default:
+                    return (make_fail(r, p, "unknown behavior flag " +
+                                      std::to_string(p.arg1)), r);
+            }
         }
     }
     return r;
@@ -622,6 +787,19 @@ bool parse_weapon(Parser& P, WeaponEntry& w)
     });
 }
 
+bool parse_weapon_track(Parser& P, WeaponTrackSample& s)
+{
+    return P.parse_object([&](const std::string& key) -> bool {
+        if (key == "family")   { auto v = P.read_string(); if (!v) return false; s.family = *v; return true; }
+        if (key == "lifetime") { auto n = P.read_number(); if (!n) return false; s.lifetime = static_cast<std::int32_t>(*n); return true; }
+        if (key == "seq")      { auto n = P.read_number(); if (!n) return false; s.seq = static_cast<std::int32_t>(*n); return true; }
+        if (key == "tick")     { auto n = P.read_number(); if (!n) return false; s.tick = static_cast<std::uint32_t>(*n); return true; }
+        if (key == "xpos")     { auto n = P.read_number(); if (!n) return false; s.xpos = static_cast<std::int32_t>(*n); return true; }
+        if (key == "ypos")     { auto n = P.read_number(); if (!n) return false; s.ypos = static_cast<std::int32_t>(*n); return true; }
+        return P.skip_value();
+    });
+}
+
 bool parse_event(Parser& P, EventEntry& e)
 {
     return P.parse_object([&](const std::string& key) -> bool {
@@ -675,6 +853,15 @@ std::optional<StateDump> parse_state_dump(std::string_view json)
                 WeaponEntry w;
                 if (!parse_weapon(P, w)) return false;
                 out.weapons.push_back(std::move(w));
+                return true;
+            });
+        }
+        if (key == "weapon_tracks")
+        {
+            return P.parse_array([&]() -> bool {
+                WeaponTrackSample s;
+                if (!parse_weapon_track(P, s)) return false;
+                out.weapon_tracks.push_back(std::move(s));
                 return true;
             });
         }

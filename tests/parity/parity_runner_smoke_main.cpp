@@ -64,6 +64,8 @@ const char* fact_kind_name(og::parity::FactKind k)
         case FactKind::WeaponFamilyEmitted:             return "WeaponFamilyEmitted";
         case FactKind::TreasureFamilyOfOrderRemovedFromOblist:
             return "TreasureFamilyOfOrderRemovedFromOblist";
+        case FactKind::WeaponSpeed:                     return "WeaponSpeed";
+        case FactKind::WeaponNetTravel:                 return "WeaponNetTravel";
     }
     return "Unknown";
 }

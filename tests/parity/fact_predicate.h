@@ -61,7 +61,30 @@ enum class FactKind : std::uint8_t
     // rows use this kind so static binding no longer aliases onto a Living
     // family name.
     TreasureFamilyOfOrderRemovedFromOblist, // arg0 = family, arg1 = order
+    // Weapon-trajectory predicates. Both are pure functions of
+    // dump.weapon_tracks (the per-tick samples), so they evaluate
+    // identically on the branch dump and the master golden (both arms
+    // capture weapon_tracks symmetrically from the same deterministic run).
+    // A dump with no track for the family (legacy goldens, stationary
+    // families) reports Indeterminate (treated as pass).
+    WeaponSpeed,                     // arg0 = family, arg1 = min_centi_px/tick,
+                                     //   arg2 = max_centi_px/tick. Representative
+                                     //   speed = MAX consecutive-tick step.
+    WeaponNetTravel,                 // arg0 = family, arg1 = behavior flag
+                                     //   (kWeaponPath*), arg2 = threshold_centi.
 };
+
+// behavior_flag values for WeaponNetTravel (arg1). Centi-pixel units
+// (100 * pixel distance).
+//   STRAIGHT   : net displacement >= threshold AND net >= 0.7 * pathlen
+//                (mostly-straight, no reversal).
+//   RETURNS    : pathlen >= threshold AND net < 0.5 * pathlen (goes out and
+//                comes back / is consumed near origin — ROCK bounce class).
+//   STATIONARY : pathlen <= threshold (weapon barely moves — tree / glow /
+//                door / circle_protection / immortal wave3).
+inline constexpr std::int32_t kWeaponPathStraight   = 0;
+inline constexpr std::int32_t kWeaponPathReturns    = 1;
+inline constexpr std::int32_t kWeaponPathStationary = 2;
 
 struct FactPredicate
 {
@@ -104,7 +127,10 @@ FactEvalResult evaluate_facts(FactSide             side,
 
 // Schema-v1 JSON -> StateDump parser. Tolerates unknown top-level keys
 // (forward-compatible rule) and missing optional keys (inventory_keys,
-// weapons). Returns std::nullopt on hard parse error; the message in the
+// weapons, weapon_tracks). The "weapon_tracks" array is now parsed when
+// present (additive schema); legacy goldens that lack it leave
+// out.weapon_tracks empty and trajectory predicates report Indeterminate.
+// Returns std::nullopt on hard parse error; the message in the
 // optional<FactEvalResult> is unused here — callers ASSERT_TRUE on
 // optional::has_value() and inspect fields directly.
 std::optional<StateDump> parse_state_dump(std::string_view json);
@@ -216,6 +242,26 @@ inline constexpr FactPredicate EventKindExactly(std::int32_t kind_ordinal, std::
 inline constexpr FactPredicate WeaponFamilyEmitted(std::int32_t family, std::string_view label = {}) noexcept
 {
     return {FactKind::WeaponFamilyEmitted, family, 0, 0, 0, 0, label};
+}
+// Representative per-tick speed of `family`'s projectile (MAX consecutive-
+// tick step) must lie in [min_centi, max_centi] centi-pixels/tick. Computed
+// from dump.weapon_tracks; no track / no >=2 consecutive samples ->
+// Indeterminate.
+inline constexpr FactPredicate WeaponSpeed(std::int32_t family, std::int32_t min_centi,
+                                           std::int32_t max_centi,
+                                           std::string_view label = {}) noexcept
+{
+    return {FactKind::WeaponSpeed, family, min_centi, max_centi, 0, 0, label};
+}
+// Path-class predicate over dump.weapon_tracks. `behavior_flag` is one of
+// kWeaponPathStraight / kWeaponPathReturns / kWeaponPathStationary;
+// `threshold_centi` is the centi-pixel threshold the chosen class compares
+// against. No track -> Indeterminate.
+inline constexpr FactPredicate WeaponNetTravel(std::int32_t family, std::int32_t behavior_flag,
+                                               std::int32_t threshold_centi,
+                                               std::string_view label = {}) noexcept
+{
+    return {FactKind::WeaponNetTravel, family, behavior_flag, threshold_centi, 0, 0, label};
 }
 
 // FactSide-gating helpers. Wrap any pred::* call to mark the predicate as

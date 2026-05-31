@@ -331,9 +331,11 @@ void collect_weapons(const GameWorld::EntityList& list,
 } // namespace
 
 StateDump capture_state_dump(const GameWorld& world,
-                             const og::sim::SimEventLog* events)
+                             const og::sim::SimEventLog* events,
+                             std::vector<WeaponTrackSample> weapon_tracks)
 {
     StateDump dump;
+    dump.weapon_tracks  = std::move(weapon_tracks);
     dump.tick           = world.tick_count_;
     dump.rng_state      = world.rng_.state_;
     dump.rng_observable = true;
@@ -385,6 +387,13 @@ StateDump capture_state_dump(const GameWorld& world,
                   if (a.family != b.family) return a.family < b.family;
                   return a.id < b.id;
               });
+    // Canonical, stable, identical-on-both-arms order: (family, seq, tick).
+    std::sort(dump.weapon_tracks.begin(), dump.weapon_tracks.end(),
+              [](const WeaponTrackSample& a, const WeaponTrackSample& b) {
+                  if (a.family != b.family) return a.family < b.family;
+                  if (a.seq != b.seq)       return a.seq < b.seq;
+                  return a.tick < b.tick;
+              });
 
     return dump;
 }
@@ -392,7 +401,10 @@ StateDump capture_state_dump(const GameWorld& world,
 std::string canonical_serialize(const StateDump& dump)
 {
     // Top-level keys are emitted in sorted (lexicographic) order:
-    //   effects, events, rng_state, schema_version, score_per_team, tick, walkers.
+    //   effects, events, level_done, level_tick_count, rng_state,
+    //   schema_version, score_per_team, tick, walkers, weapon_tracks, weapons.
+    // ("weapon_tracks" sorts after "walkers" and before "weapons": '_' 0x5F
+    //  < 's' 0x73.)
     std::string out;
     out.reserve(256 + dump.walkers.size() * 96 + dump.effects.size() * 64 +
                 dump.events.size() * 48);
@@ -478,6 +490,26 @@ std::string canonical_serialize(const StateDump& dump)
         append_int(out, w.xpos);
         out.append(",\"ypos\":");
         append_int(out, w.ypos);
+        out.push_back('}');
+    }
+    out.append("],\"weapon_tracks\":[");
+    for (std::size_t i = 0; i < dump.weapon_tracks.size(); ++i)
+    {
+        if (i != 0) out.push_back(',');
+        const auto& s = dump.weapon_tracks[i];
+        // Keys sorted: family, lifetime, seq, tick, xpos, ypos.
+        out.append("{\"family\":");
+        append_escaped_string(out, s.family);
+        out.append(",\"lifetime\":");
+        append_int(out, s.lifetime);
+        out.append(",\"seq\":");
+        append_int(out, s.seq);
+        out.append(",\"tick\":");
+        append_uint(out, s.tick);
+        out.append(",\"xpos\":");
+        append_int(out, s.xpos);
+        out.append(",\"ypos\":");
+        append_int(out, s.ypos);
         out.push_back('}');
     }
     out.append("],\"weapons\":[");

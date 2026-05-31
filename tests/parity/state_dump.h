@@ -57,6 +57,26 @@ struct WeaponEntry
     std::int32_t  lifetime = 0;
 };
 
+// Per-tick trajectory sample of a single live weaplist projectile. The
+// runner samples every live Order::Weapon entity at every tick of the
+// scenario, so the resulting array of samples reconstructs each weapon's
+// path/speed over its lifetime. `seq` is the intra-family spawn index
+// (0,1,2,...), assigned by first-appearance order within the family — it
+// is the cross-arm-comparable key (NOT entity_id, which the master side
+// does not have). Branch and master deterministically spawn weapons in
+// the same order from the same rng_seed, so a given (family, seq) names
+// the same projectile on both arms. `tick` is world.tick_count_ at the
+// moment of sampling (post world.tick()).
+struct WeaponTrackSample
+{
+    std::uint32_t tick     = 0;
+    std::string   family;
+    std::int32_t  seq      = 0;
+    std::int32_t  xpos     = 0;
+    std::int32_t  ypos     = 0;
+    std::int32_t  lifetime = 0;
+};
+
 struct EventEntry
 {
     std::string   kind;       // canonical kind name, e.g. "play_sound"
@@ -89,12 +109,24 @@ struct StateDump
     // "inventory_keys" key. WeaponFamilyEmitted predicates evaluate over
     // `weapons` ONLY.
     std::vector<WeaponEntry>           weapons;
+    // Additive (schema_version stays "v1"). Per-tick trajectory samples of
+    // every live weaplist projectile, captured each tick by the runner.
+    // Existing goldens predate this key; parse_state_dump tolerates its
+    // absence (the vector stays empty) and trajectory predicates report
+    // Indeterminate (pass) on legacy dumps. Serialised as the top-level
+    // "weapon_tracks" key, sorted lexicographically between "walkers" and
+    // "weapons".
+    std::vector<WeaponTrackSample>     weapon_tracks;
     std::optional<std::vector<std::uint8_t>> inventory_keys;
 };
 
-// Build a StateDump from a live GameWorld.
+// Build a StateDump from a live GameWorld. `weapon_tracks` carries the
+// per-tick trajectory samples the runner collected over the run (the live
+// world only exposes the final tick, so the samples must be threaded in);
+// capture_state_dump moves them into the dump and sorts them canonically.
 StateDump capture_state_dump(const GameWorld& world,
-                             const og::sim::SimEventLog* events = nullptr);
+                             const og::sim::SimEventLog* events = nullptr,
+                             std::vector<WeaponTrackSample> weapon_tracks = {});
 
 // Canonical JSON serialisation. Sorted keys, "%.6f" floats, LF line endings,
 // single trailing newline. Branch and master companion must produce

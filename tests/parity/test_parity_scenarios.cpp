@@ -8,8 +8,10 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <filesystem>
 #include <fstream>
+#include <initializer_list>
 #include <iterator>
 #include <sstream>
 #include <string>
@@ -437,4 +439,109 @@ TEST(Parity, weapon_family_emitted_matches_dump_weapons_only)
     EXPECT_FALSE(match_door_open.ok)
         << "WeaponFamilyEmitted(FAMILY_DOOR_OPEN) matched dump.effects[].family=11; "
         << "predicate must be pinned to dump.weapons[] only";
+}
+
+namespace {
+
+// Build a synthetic dump carrying one FAMILY_ROCK track (seq 0) from the
+// per-tick (tick, xpos, ypos) samples supplied. `seq` is fixed at 0.
+og::parity::StateDump make_rock_track_dump(
+    std::initializer_list<std::array<std::int32_t, 3>> samples)
+{
+    og::parity::StateDump dump;
+    const std::string sym = og::parity::family_symbol_by_order(
+        static_cast<std::int32_t>(Order::Weapon), FAMILY_ROCK);
+    for (const auto& s : samples)
+    {
+        og::parity::WeaponTrackSample t;
+        t.family = sym;
+        t.seq    = 0;
+        t.tick   = static_cast<std::uint32_t>(s[0]);
+        t.xpos   = s[1];
+        t.ypos   = s[2];
+        dump.weapon_tracks.push_back(t);
+    }
+    return dump;
+}
+
+} // namespace
+
+TEST(Parity, weapon_trajectory_predicates_evaluate_over_weapon_tracks)
+{
+    using og::parity::evaluate_one;
+    namespace pred = og::parity::pred;
+
+    // A straight horizontal rock: +10px/tick over 4 consecutive ticks.
+    // Per-tick step = 1000 centi-px; net = pathlen = 3000 centi-px.
+    const auto straight = make_rock_track_dump(
+        {{1, 100, 50}, {2, 110, 50}, {3, 120, 50}, {4, 130, 50}});
+
+    // WeaponSpeed: representative (MAX consecutive) step = 1000 centi-px.
+    EXPECT_TRUE(evaluate_one(pred::WeaponSpeed(FAMILY_ROCK, 900, 1100), straight).ok)
+        << "straight rock speed should fall in [900,1100] centi-px/tick";
+    {
+        const auto out_of_window =
+            evaluate_one(pred::WeaponSpeed(FAMILY_ROCK, 0, 500), straight);
+        EXPECT_FALSE(out_of_window.ok)
+            << "1000 centi-px/tick must fall OUT of [0,500] (predicate has teeth)";
+        EXPECT_FALSE(out_of_window.indeterminate);
+    }
+
+    // STRAIGHT path: net (3000) >= threshold AND net >= 0.7*pathlen.
+    EXPECT_TRUE(evaluate_one(
+        pred::WeaponNetTravel(FAMILY_ROCK, og::parity::kWeaponPathStraight, 2000),
+        straight).ok) << "straight path should classify as STRAIGHT";
+
+    // A returning rock: out to x=140 then back to x=100. pathlen = 8000,
+    // net = 0 -> RETURNS, and NOT STRAIGHT.
+    const auto returns = make_rock_track_dump(
+        {{1, 100, 50}, {2, 120, 50}, {3, 140, 50}, {4, 120, 50}, {5, 100, 50}});
+    EXPECT_TRUE(evaluate_one(
+        pred::WeaponNetTravel(FAMILY_ROCK, og::parity::kWeaponPathReturns, 4000),
+        returns).ok) << "out-and-back path should classify as RETURNS";
+    EXPECT_FALSE(evaluate_one(
+        pred::WeaponNetTravel(FAMILY_ROCK, og::parity::kWeaponPathStraight, 1000),
+        returns).ok) << "out-and-back path must NOT classify as STRAIGHT";
+
+    // A stationary rock: never moves. pathlen = 0 -> STATIONARY.
+    const auto stationary = make_rock_track_dump(
+        {{1, 100, 50}, {2, 100, 50}, {3, 100, 50}});
+    EXPECT_TRUE(evaluate_one(
+        pred::WeaponNetTravel(FAMILY_ROCK, og::parity::kWeaponPathStationary, 100),
+        stationary).ok) << "non-moving rock should classify as STATIONARY";
+    EXPECT_FALSE(evaluate_one(
+        pred::WeaponNetTravel(FAMILY_ROCK, og::parity::kWeaponPathStationary, 100),
+        straight).ok) << "moving rock must NOT classify as STATIONARY";
+
+    // Legacy-golden tolerance: a dump with NO track for the family is
+    // Indeterminate (ok=true) for both trajectory kinds.
+    og::parity::StateDump empty;
+    {
+        const auto s = evaluate_one(pred::WeaponSpeed(FAMILY_ROCK, 0, 100), empty);
+        EXPECT_TRUE(s.ok && s.indeterminate)
+            << "WeaponSpeed on a track-less dump must be Indeterminate (pass)";
+        const auto n = evaluate_one(
+            pred::WeaponNetTravel(FAMILY_ROCK, og::parity::kWeaponPathStraight, 100),
+            empty);
+        EXPECT_TRUE(n.ok && n.indeterminate)
+            << "WeaponNetTravel on a track-less dump must be Indeterminate (pass)";
+    }
+}
+
+TEST(Parity, parse_state_dump_round_trips_weapon_tracks)
+{
+    // canonical_serialize -> parse_state_dump must preserve weapon_tracks,
+    // and the parser must still tolerate a dump that lacks the key.
+    og::parity::StateDump dump = make_rock_track_dump(
+        {{7, 135, 122}, {8, 142, 121}, {9, 149, 120}});
+    const std::string json = og::parity::canonical_serialize(dump);
+    auto parsed = og::parity::parse_state_dump(json);
+    ASSERT_TRUE(parsed.has_value());
+    ASSERT_EQ(parsed->weapon_tracks.size(), 3u);
+    EXPECT_EQ(parsed->weapon_tracks[0].tick, 7u);
+    EXPECT_EQ(parsed->weapon_tracks[0].xpos, 135);
+    EXPECT_EQ(parsed->weapon_tracks[2].ypos, 120);
+    EXPECT_EQ(parsed->weapon_tracks[0].family,
+              og::parity::family_symbol_by_order(
+                  static_cast<std::int32_t>(Order::Weapon), FAMILY_ROCK));
 }
