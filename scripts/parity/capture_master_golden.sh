@@ -113,7 +113,7 @@ def load(path: Path) -> dict:
 
 
 def normalize(doc: dict) -> dict:
-    for bucket in ("effects", "weapons"):
+    for bucket in ("effects", "weapons", "weapon_tracks"):
         for entry in doc.get(bucket, []):
             lifetime = entry.get("lifetime")
             if isinstance(lifetime, int) and abs(lifetime) >= volatile_abs_min:

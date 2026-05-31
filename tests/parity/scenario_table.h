@@ -1900,13 +1900,17 @@ inline constexpr FactPredicate kFacts_weapon_knife_emission_scen99[] = {
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 5000, 12000,
         "rng_drift: surviving wielder SOLDIER settles at hp 117 on master; branch combat sequencing may shift wielder HP lower; range covers both sides"),
     pred::WeaponFamilyEmitted(FAMILY_KNIFE),
+    pred::WeaponSpeed(FAMILY_KNIFE, 600, 800,
+        "trajectory: FAMILY_KNIFE outbound flight steps a constant dx=7,dy=waver per tick (stepsize 5 * 362/256 ~=1.414 on cardinal facing, walker.cpp:1092), giving max consecutive-tick step = hypot(7,1)*100 = 707 centi-px/tick on both arms. Tight [600,800] brackets the observed 707 (margin ~13%) yet excludes the mutated 1005 (kMut multiplier 362->512 -> stepsize 10 -> step ~1005) so the predicate flips."),
+    pred::WeaponNetTravel(FAMILY_KNIFE, kWeaponPathStraight, 2000,
+        "trajectory: the knife's weaplist track is the outbound straight throw (the FAMILY_KNIFE_BACK return is an Order::FX, not a weaplist entry, so RETURNS is reserved for ROCK). seq-0 net=2828 >= threshold 2000 and net==pathlen so net >= 0.7*pathlen holds: classifies STRAIGHT on both arms."),
 };
 
 inline constexpr Mutation kMut_weapon_knife_emission = {
-    "src/gameplay/weapon_family_registry.cpp", 68,
-    "    e[FAMILY_KNIFE] = describe_weapon_knife();",
-    "    e[FAMILY_KNIFE] = describe_weapon_rock();",
-    "Rebinds the FAMILY_KNIFE weapon-family registry slot to the ROCK descriptor (line 68 of weapon_family_registry.cpp, the real binding site after refactor; describe_weapon_rock is already forward-declared at line 21). This strips knife's knife_on_death callback that spawns the FAMILY_KNIFE_BACK returning-knife effect. Without the return mechanic the level-20 wielder depletes its initial weapons_left (10) and stops re-firing, so the sustained post-kill SOUND_FWIP fires (branch ticks 56/91/126; master 42/77/112/147) never happen and the play_sound count drops below 7, flipping EventKindAtLeast(/*play_sound*/1, 7). NB: the old swap e[FAMILY_KNIFE]->e[0] was a no-op because FAMILY_KNIFE==0."
+    "src/gameplay/walker.cpp", 1092,
+    "weapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
+    "weapon->set_stepsize((weapon->stepsize() * 512.0f) / 256.0f);",
+    "Inflates the cardinal-facing projectile stepsize multiplier (walker.cpp:1092, applied in create_weapon() for FACE_UP/RIGHT/DOWN/LEFT). FAMILY_KNIFE fires FACE_RIGHT at the adjacent target; base stepsize 5 normally scales by 362/256 (~1.414) to ~7 giving a constant dx=7,dy=waver step of hypot(7,1)*100 = 707 centi-px/tick. Changing 362->512 scales to 10, raising the per-tick step to ~1005 centi-px/tick, which exceeds the WeaponSpeed(FAMILY_KNIFE,600,800) upper bound and flips that trajectory predicate. The only travelling weaplist family in this arena is the knife (FAMILY_BLOOD stays stationary), so the speed flip is unambiguous. WeaponNetTravel STRAIGHT stays satisfied because the path is still straight, but WeaponSpeed alone flipping satisfies the >=1-predicate canary requirement."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_rock_emission[] = {

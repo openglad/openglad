@@ -56,6 +56,10 @@ _EVENT_KEYS = {"a", "b", "kind", "sequence", "text", "tick"}
 
 _WEAPON_KEYS = {"family", "id", "lifetime", "team", "xpos", "ypos"}
 
+# Additive (schema_version stays "v1"): per-tick trajectory samples. Optional
+# top-level key — legacy goldens predate it. See tests/parity/state_dump.h.
+_WEAPON_TRACK_KEYS = {"family", "lifetime", "seq", "tick", "xpos", "ypos"}
+
 
 class ValidationError(Exception):
     pass
@@ -171,6 +175,28 @@ def _check_event(idx: int, ev: dict) -> None:
         raise ValidationError(f"{where}.tick: expected non-negative int")
 
 
+def _check_weapon_track(idx: int, s: dict) -> None:
+    where = f"weapon_tracks[{idx}]"
+    if set(s.keys()) != _WEAPON_TRACK_KEYS:
+        extra = set(s.keys()) - _WEAPON_TRACK_KEYS
+        missing = _WEAPON_TRACK_KEYS - set(s.keys())
+        raise ValidationError(
+            f"{where}: key set mismatch (extra={sorted(extra)}, "
+            f"missing={sorted(missing)})")
+    if not isinstance(s["family"], str):
+        raise ValidationError(f"{where}.family: expected string")
+    if not _is_int(s["lifetime"]):
+        raise ValidationError(f"{where}.lifetime: expected int")
+    if not _is_int(s["seq"]):
+        raise ValidationError(f"{where}.seq: expected int")
+    if not _is_uint(s["tick"]):
+        raise ValidationError(f"{where}.tick: expected non-negative int")
+    if not _is_int(s["xpos"]):
+        raise ValidationError(f"{where}.xpos: expected int")
+    if not _is_int(s["ypos"]):
+        raise ValidationError(f"{where}.ypos: expected int")
+
+
 def validate(path: Path) -> None:
     try:
         raw = path.read_text(encoding="utf-8")
@@ -193,9 +219,13 @@ def validate(path: Path) -> None:
         raise ValidationError("top-level value must be a JSON object")
 
     actual_keys = set(doc.keys())
-    if actual_keys != _TOP_LEVEL_KEYS:
-        extra = actual_keys - _TOP_LEVEL_KEYS
-        missing = _TOP_LEVEL_KEYS - actual_keys
+    # "weapon_tracks" is an additive (schema_version stays "v1") optional key:
+    # legacy goldens omit it; trajectory scenarios carry it. Required keys must
+    # all be present; only "weapon_tracks" is permitted as an extra.
+    _OPTIONAL_TOP_LEVEL_KEYS = {"weapon_tracks"}
+    missing = _TOP_LEVEL_KEYS - actual_keys
+    extra = actual_keys - _TOP_LEVEL_KEYS - _OPTIONAL_TOP_LEVEL_KEYS
+    if missing or extra:
         raise ValidationError(
             f"top-level key set mismatch (extra={sorted(extra)}, "
             f"missing={sorted(missing)})")
@@ -261,6 +291,15 @@ def validate(path: Path) -> None:
         if not isinstance(w, dict):
             raise ValidationError(f"weapons[{i}]: expected object")
         _check_weapon(i, w)
+
+    if "weapon_tracks" in doc:
+        tracks = doc["weapon_tracks"]
+        if not isinstance(tracks, list):
+            raise ValidationError("weapon_tracks: expected list")
+        for i, s in enumerate(tracks):
+            if not isinstance(s, dict):
+                raise ValidationError(f"weapon_tracks[{i}]: expected object")
+            _check_weapon_track(i, s)
 
 
 def main(argv: List[str]) -> int:
