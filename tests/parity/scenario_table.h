@@ -2140,13 +2140,17 @@ inline constexpr FactPredicate kFacts_weapon_blob_emission_scen99[] = {
         "rng_drift: level-20 slime pummels default soldier to hp 3 on master; branch combat sequencing may shift target HP across the full near-death range"),
     pred::branch_only(pred::WeaponFamilyEmitted(FAMILY_BLOB,
         "intended_diff: branch leaves BLOB projectiles alive at tick 150 while master has already resolved them into the slime growth path; commit 39ef9898")),
+    pred::branch_only(pred::WeaponSpeed(FAMILY_BLOB, 280, 360,
+        "trajectory: BLOB projectile travels FACE_RIGHT at the cardinal-boosted stepsize (3 px/tick); seq0 max consecutive-tick step is 316 centi-px/tick, inside [280,360]. branch_only because master resolves the blob into MEDIUM_SLIME growth (no BLOB track to measure)")),
+    pred::branch_only(pred::WeaponNetTravel(FAMILY_BLOB, kWeaponPathStraight, 3000,
+        "trajectory: BLOB seq0 net displacement is 5630 centi-px (>=3000) and net >= 0.7*pathlen (5636), i.e. a straight outbound projectile with no reversal. branch_only because master has no BLOB track")),
 };
 
 inline constexpr Mutation kMut_weapon_blob_emission = {
-    "src/gameplay/families/family_slime.cpp", 159,
-    "FAMILY_BLOB",
-    "FAMILY_KNIFE",
-    "Repoints the FAMILY_SLIME wielder's default_weapon (the family it emits on K_FIRE) from FAMILY_BLOB to FAMILY_KNIFE; the slime then fires knives, so no FAMILY_BLOB projectile enters world.weaplist and WeaponFamilyEmitted(FAMILY_BLOB) flips pass->fail on the branch run."
+    "src/gameplay/walker.cpp", 1092,
+    "weapon->set_stepsize((weapon->stepsize() * 362.0f) / 256.0f);",
+    "weapon->set_stepsize((weapon->stepsize() * 256.0f) / 256.0f);",
+    "Neutralizes the cardinal-facing 1.414x stepsize boost (362/256) applied to weapons fired straight (FACE_UP/RIGHT/DOWN/LEFT) in create_weapon(). The FAMILY_BLOB the slime fires FACE_RIGHT now keeps its base stepsize (~2.12 px/tick instead of ~3 px/tick), so its max consecutive-tick step drops from 316 to ~224 centi-px/tick, below the WeaponSpeed(FAMILY_BLOB, 280, 360) floor of 280 -> WeaponSpeed flips pass->fail. BLOB is still emitted and still tracked with consecutive samples (no Indeterminate), and the path stays straight so WeaponNetTravel still holds. The from/to omit the line's leading TABs and match as the unique substring of walker.cpp:1092 (the canary's _apply_mutation does a substring str.replace, and the lint parser transports the from-text through a tab-delimited line, so embedded tabs would corrupt the canary's IFS parse — identical convention to the sibling kMut_weapon_knife_emission/_rock/_arrow which target the same line)."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_fire_arrow_emission[] = {
