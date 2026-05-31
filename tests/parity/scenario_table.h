@@ -2502,13 +2502,22 @@ inline constexpr FactPredicate kFacts_weapon_circle_protection_emission_scen99[]
     // wielder un-gates this predicate by exercising the special
     // (or, for DOOR, by loading a scen file with scripted doors).
     pred::WeaponFamilyEmitted(FAMILY_CIRCLE_PROTECTION),
+    // Trajectory teeth (weapon_tracks): the direct-spawn protective ring is
+    // STATIONARY — it never moves a single centi-pixel between consecutive
+    // ticks (max consecutive-tick step = 0) and its total pathlen stays at 0.
+    // WeaponSpeed[0,0] asserts zero per-tick displacement; WeaponNetTravel
+    // STATIONARY(flag=2) asserts total pathlen <= 50 centi-px (< half a pixel).
+    // Both pass on branch + recaptured master and flip the moment the ring
+    // is made to drift (see kMut_weapon_circle_protection_emission below).
+    pred::WeaponSpeed(FAMILY_CIRCLE_PROTECTION, 0, 0, "circle_protection ring is stationary (0 centi-px/tick)"),
+    pred::WeaponNetTravel(FAMILY_CIRCLE_PROTECTION, kWeaponPathStationary, 50, "circle_protection ring pathlen <= 50 centi-px (does not travel)"),
 };
 
 inline constexpr Mutation kMut_weapon_circle_protection_emission = {
-    "src/gameplay/weapon_family_registry.cpp", 77,
-    "e[FAMILY_CIRCLE_PROTECTION]",
-    "e[0]",
-    "Edits the FAMILY_CIRCLE_PROTECTION weapon-family registry entry index; the descriptor binding moves and emission predicates flip on the named family slot."
+    "src/gameplay/families/weapon_family_animate.cpp", 41,
+    "self->center_on(self->owner());",
+    "self->setxy(self->xpos() + 2, self->ypos() + 0);",
+    "Replaces the per-tick recenter-on-owner (a no-op for the owner-less direct-spawn ring, hence stationary) with a fixed +2px/tick x-displacement; the FAMILY_CIRCLE_PROTECTION track then walks 122,124,...,(120+2*149) so max consecutive-tick step jumps 0->200 centi-px/tick and pathlen 0->~29800 centi-px, flipping BOTH WeaponSpeed([0,0] -> speed=200 out of range) and WeaponNetTravel(STATIONARY pathlen 0<=50 -> 29800>50). The +0 on ypos keeps both setxy args int so the unambiguous setxy(int32_t,int32_t) overload binds (xpos()+2 alone vs short ypos() is ambiguous)."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_hammer_emission[] = {
