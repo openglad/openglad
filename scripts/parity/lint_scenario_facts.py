@@ -226,10 +226,34 @@ def parse_mutation_constants(text: str) -> dict[str, dict[str, str]]:
                 start = i + 1
         fields_idx.append((start, len(masked)))
         parts = [body[s:e].strip() for s, e in fields_idx]
-        # Strip wrapping quotes for strings; line is a bare integer.
+        # Strip wrapping quotes for strings and decode the C++ escape
+        # sequences the compiler would resolve, so the recovered value
+        # equals the runtime string literal (and thus matches the
+        # on-disk source line _apply_mutation.py edits). `line` is a bare
+        # integer left untouched.
         def unquote(s: str) -> str:
             if s.startswith('"') and s.endswith('"'):
-                return s[1:-1]
+                inner = s[1:-1]
+                out_chars: list[str] = []
+                i = 0
+                while i < len(inner):
+                    c = inner[i]
+                    if c == "\\" and i + 1 < len(inner):
+                        nxt = inner[i + 1]
+                        out_chars.append(
+                            {
+                                "t": "\t",
+                                "n": "\n",
+                                "r": "\r",
+                                '"': '"',
+                                "\\": "\\",
+                            }.get(nxt, "\\" + nxt)
+                        )
+                        i += 2
+                        continue
+                    out_chars.append(c)
+                    i += 1
+                return "".join(out_chars)
             return s
         if len(parts) >= 5:
             out[name] = {
