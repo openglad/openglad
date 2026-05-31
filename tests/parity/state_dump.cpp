@@ -265,7 +265,15 @@ void collect_walkers(const GameWorld::EntityList& list,
         const walker* w = uptr.get();
         if (w == nullptr) continue;
         WalkerEntry entry;
-        entry.id     = w->entity_id() != 0 ? w->entity_id() : ++running_seq;
+        // Parity id convention: pure list-iteration order (++running_seq),
+        // identical to the master companion dumper
+        // (../openglad-master/tools/parity_dump_state.cpp). Master has no
+        // entity_id; the branch's real spawn-order entity_id() permutes the
+        // (team,id)-sorted array relative to master and manufactures
+        // pseudo-diffs (family/hp/xpos) over an otherwise-identical entity set.
+        // Because add_to_list insertion order is byte-identical on both arms,
+        // ++running_seq yields identical ids and eliminates the id-swap noise.
+        entry.id     = ++running_seq;
         entry.family = family_symbol_by_order(
             static_cast<std::int32_t>(w->query_order()),
             static_cast<std::int32_t>(w->family()));
@@ -292,7 +300,8 @@ void collect_effects(const GameWorld::EntityList& list,
         const walker* w = uptr.get();
         if (w == nullptr) continue;
         EffectEntry entry;
-        entry.id       = w->entity_id() != 0 ? w->entity_id() : ++running_seq;
+        // Pure list-iteration id, matching the master companion dumper.
+        entry.id       = ++running_seq;
         entry.family   = family_symbol_by_order(
             static_cast<std::int32_t>(w->query_order()),
             static_cast<std::int32_t>(w->family()));
@@ -316,7 +325,8 @@ void collect_weapons(const GameWorld::EntityList& list,
         const walker* w = uptr.get();
         if (w == nullptr) continue;
         WeaponEntry entry;
-        entry.id       = w->entity_id() != 0 ? w->entity_id() : ++running_seq;
+        // Pure list-iteration id, matching the master companion dumper.
+        entry.id       = ++running_seq;
         entry.family   = family_symbol_by_order(
             static_cast<std::int32_t>(w->query_order()),
             static_cast<std::int32_t>(w->family()));
