@@ -2461,20 +2461,23 @@ inline constexpr FactPredicate kFacts_weapon_wave3_emission_scen99[] = {
     // pathlen=0, net=0, max consecutive-step=0. Path class is STATIONARY.
     pred::WeaponNetTravel(FAMILY_WAVE3, kWeaponPathStationary, 5,
                           "wave3_stationary_phantom"),
-    // Speed = 0 centi-px/tick (2 consecutive identical samples). Tight [0,0]
-    // bracket. Passes on both arms; goes Indeterminate (pass) when the
-    // discriminating mutation kills the phantom at tick1 (track drops to 0
-    // samples) -- so the FLIP is carried by WeaponFamilyEmitted above, not by
-    // these locks. These two predicates parity-lock the phantom's zero-motion
-    // shape symmetrically across branch and recaptured master.
+    // Speed = 0 centi-px/tick (consecutive identical samples). Tight [0,0]
+    // bracket. Passes on both arms; FLIPS pass->fail under
+    // kMut_weapon_wave3_emission, which injects a per-tick +5px x-step into
+    // FAMILY_WAVE3's act() path at the top of weap::act, before its animate()
+    // early-return (the same motion-injection teeth mechanism the sibling
+    // stationary phantom FAMILY_WAVE2 uses): the wave then moves, max_step jumps
+    // to 500 and pathlen exceeds the STATIONARY threshold. These are genuine
+    // trajectory teeth, parity-locking the phantom's zero-motion shape on both
+    // the branch and the master golden.
     pred::WeaponSpeed(FAMILY_WAVE3, 0, 0, "wave3_speed_zero"),
 };
 
 inline constexpr Mutation kMut_weapon_wave3_emission = {
-    "src/gameplay/weapon_family_registry.cpp", 63,
-    "    e[FAMILY_WAVE3].init_bit_flags = BIT_IMMORTAL | BIT_NO_COLLIDE | BIT_PHANTOM | BIT_FLYING | BIT_MAGICAL;",
-    "    e[FAMILY_WAVE3].init_bit_flags = BIT_NO_COLLIDE | BIT_PHANTOM | BIT_FLYING | BIT_MAGICAL;",
-    "Drops BIT_IMMORTAL from the FAMILY_WAVE3 weapon descriptor's init_bit_flags. gloader.cpp Order::Weapon (line 664-665) reads this flag and calls set_bit_flags(BIT_IMMORTAL,1) on the spawned WAVE3 weapon. In walker::act_fire (walker.cpp:1247-1258) a weapon with BIT_NO_COLLIDE (kept) enters the hit branch, then `if (!query_bit_flags(BIT_IMMORTAL)) { set_dead(1); death(); }` — with IMMORTAL removed the WAVE3 weapon dies on its first act() and GameWorld::tick's std::erase_if(weaplist, dead) (game_world.cpp:1571) removes it that same tick. By the tick-2 dump dump.weapons[] no longer contains FAMILY_WAVE3, flipping WeaponFamilyEmitted(FAMILY_WAVE3) from pass to fail. BIT_NO_COLLIDE is retained in the 'to' so the act_fire hit branch is still entered unconditionally, guaranteeing the death path regardless of walk()."
+    "src/gameplay/weap.cpp", 65,
+    "set_collide_ob(nullptr); // always start with no collision..",
+    "set_collide_ob(nullptr); if (family() == FAMILY_WAVE3) { setxy(xpos() + 5, ypos() + 0); } // always start with no collision..",
+    "Injects a per-tick +5px x-step into FAMILY_WAVE3 at the TOP of weap::act (line 65, before the `if (ani_type() != ANI_WALK) return animate();` early-return that WAVE3 -- a looping immortal phantom -- takes, so it never reaches the ACT_RANDOM path WAVE2 uses). The previously-stationary WAVE3 then moves +5px/tick (verified: tick1 125,120 -> tick2 130,120), so max_step_centi jumps to 500 and pathlen exceeds the STATIONARY threshold, flipping WeaponSpeed(FAMILY_WAVE3,[0,0]) and WeaponNetTravel(FAMILY_WAVE3,STATIONARY,5) pass->fail. The family() guard scopes motion to WAVE3 only; from/to omit the line's leading tab and match the unique substring of weap.cpp:65."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_circle_protection_emission[] = {
