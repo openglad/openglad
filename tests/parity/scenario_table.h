@@ -2159,9 +2159,14 @@ inline constexpr SpawnSpec kFamilySpawns_weapon_fire_arrow_emission[] = {
     // which fires a FIRE_ARROW with set_skip_exit(5000). When that arrow
     // dies it runs FAMILY_FIRE_ARROW's on_death = projectile_explode_on_death
     // (weapon_family_projectiles.cpp:33-49), spawning a FAMILY_EXPLOSION FX
-    // and emitting SOUND_EXPLODE. The kMut_weapon_fire_arrow_emission swap
-    // (e[FAMILY_FIRE_ARROW] -> e[0]) drops that on_death callback, so the
-    // SOUND_EXPLODE play_sound events disappear and the play_sound floor flips.
+    // and emitting SOUND_EXPLODE. The skip_exit'd bolt lingers in flight for
+    // several consecutive ticks, giving the trajectory predicates a real
+    // per-tick path to measure. kMut_weapon_fire_arrow_emission lowers this
+    // family's base stepsize (gloader.cpp:414, 8 -> 3) so the bolt flies ~3x
+    // slower; its per-tick step leaves WeaponSpeed's bracket and its net
+    // travel drops below the STRAIGHT threshold, flipping both trajectory
+    // predicates (the on_death explosion still fires, so the play_sound /
+    // score_change floors stay green — the flip is purely the speed change).
     { FAMILY_ARCHER, 0, kOrderLiving, 120, 120, 0, 0, 7, 600 }, // FAMILY_ARCHER caster (level 7, 600 magicpoints — cycles to EXPLODING BOLT)
     { FAMILY_SOLDIER, 1, kOrderLiving, 180, 120, 0, 0 }, // FAMILY_SOLDIER target (draws the special, keeps level alive)
 };
@@ -2171,27 +2176,43 @@ inline constexpr FactPredicate kFacts_weapon_fire_arrow_emission_scen99[] = {
     // play_sound floor: the EXPLODING BOLT special fires FIRE_ARROWs whose
     // on_death = projectile_explode_on_death emits SOUND_EXPLODE. Branch and
     // master golden both log exactly 7 play_sound events (2 of them
-    // SOUND_EXPLODE). kMut_weapon_fire_arrow_emission removes on_death, so the
-    // two SOUND_EXPLODE events vanish and the count drops to ~5, failing >=7.
+    // SOUND_EXPLODE). This is a baseline-behavior floor that deepens the
+    // predicate set; it stays green under kMut_weapon_fire_arrow_emission
+    // (which only slows the bolt — the explosion and its sounds still fire).
     pred::EventKindAtLeast(/*play_sound*/1, 7),
     // FIRE_ARROW projectile is genuinely present in dump.weapons[] (the
     // skip_exit'd exploding bolt lingers at tick 150) on both sides; binds
     // FAMILY_FIRE_ARROW as arg0 of WeaponFamilyEmitted for the coverage scan.
     pred::WeaponFamilyEmitted(FAMILY_FIRE_ARROW),
+    // Trajectory speed: the EXPLODING-BOLT FIRE_ARROW flies in a straight
+    // line at ~11 px/tick (base stepsize 8 in gloader.cpp:414 scaled by the
+    // 362/256 cardinal multiplier in walker.cpp:1092). The lowest-seq track
+    // gives max consecutive-tick step = 1105 centi-px/tick on both arms.
+    // kMut_weapon_fire_arrow_emission halves the base stepsize, dropping the
+    // step to ~424, failing the [1000,1250] bracket.
+    pred::WeaponSpeed(FAMILY_FIRE_ARROW, 1000, 1250,
+        "FIRE_ARROW per-tick speed ~1105 centi-px/tick (base stepsize 8 * 362/256 facing scale); tight bracket flips when the mutation lowers the stepsize"),
+    // Trajectory shape: skip_exit'd FIRE_ARROW travels dead straight (net
+    // 2209 >= 0.7*pathlen 2210). net_centi=2209 clears the 1500 threshold on
+    // both arms; the slowed projectile under the mutation covers only ~848
+    // net over the same 3-sample window, failing the threshold.
+    pred::WeaponNetTravel(FAMILY_FIRE_ARROW, kWeaponPathStraight, 1500,
+        "FIRE_ARROW path is STRAIGHT: net=2209 >= threshold 1500 and >= 0.7*pathlen; the mutation's slower step shrinks net below 1500"),
     // score_change floor: each exploding bolt that lands a killing/scoring hit
     // awards score; branch and master golden both log exactly 2 score_change
     // events. This deepens the predicate set (depth gate) and corroborates the
-    // explosion landing — removing on_death (the mutation) suppresses the
-    // explosion damage so the score_change floor is also at risk.
+    // explosion landing. It is a baseline-behavior floor: under the stepsize
+    // mutation the bolt still explodes and scores, so this floor stays green —
+    // the discriminating flip is carried by the two trajectory predicates.
     pred::EventKindAtLeast(/*score_change*/9, 1,
-        "consequence: the exploding-bolt detonations award score (2 score_change events on both sides); removing the FIRE_ARROW on_death explosion via the mutation removes the blast damage that drives them"),
+        "consequence: the exploding-bolt detonations award score (2 score_change events on both sides); baseline floor unaffected by the trajectory-only mutation"),
 };
 
 inline constexpr Mutation kMut_weapon_fire_arrow_emission = {
-    "src/gameplay/weapon_family_registry.cpp", 70,
-    "e[FAMILY_FIRE_ARROW]",
-    "e[0]",
-    "Edits the FAMILY_FIRE_ARROW weapon-family registry entry index; the descriptor binding moves and emission predicates flip on the named family slot."
+    "src/resources/gloader.cpp", 414,
+    "8",
+    "3",
+    "Lowers FAMILY_FIRE_ARROW base stepsize from 8 to 3 on the gloader EntityDef row; the projectile flies ~3x slower so its per-tick step (~424 centi-px/tick) leaves WeaponSpeed's [1000,1250] bracket and its net travel (~848) drops below the STRAIGHT threshold 1500 — both trajectory predicates flip."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_lightning_emission[] = {
