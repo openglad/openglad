@@ -4306,13 +4306,17 @@ inline constexpr FactPredicate kFacts_weapon_rock_slot2_emit_scen99[] = {
         "consequence: elf slot 2 BOUNCING ROCKS land on the enemy soldier and generate score_change events; the mutation aborts the fire() loop so no rock spawns, no rock lands, and zero score_change events occur"),
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 2000, 9000,
         "rng_drift: soldier HP at tick 30 reflects BOUNCING ROCKS + melee damage (branch 6500 / master 3400 cents); the widened 7000-cent span carries a gate-recognised label and excludes the undamaged 12000-cent mutant outcome"),
+    pred::WeaponSpeed(FAMILY_ROCK, 650, 900,
+        "trajectory: ELF slot-2 BOUNCING ROCKS first projectile (seq 0) steps toward the enemy soldier at max consecutive-tick speed 707 centi-px/tick on branch and 800 centi-px/tick on the recaptured master golden (the branch next_spread_multiplier spread rounds the x-step differently than master's elf fire path, so the two arms diverge by one pixel); bracket [650,900] brackets BOTH arms and flips when the kMut doubles the rock's x-step to ~1404 centi-px/tick (1404 > 900)"),
+    pred::WeaponNetTravel(FAMILY_ROCK, /*kWeaponPathStraight*/0, 1000,
+        "trajectory: the first rock flies a STRAIGHT path in open-field scen1.fss (net=pathlen=1414, net>=0.7*pathlen, no wall struck within budget so rock_on_death never bounces); threshold 1000 centi clears the observed 1414 net displacement"),
 };
 
 inline constexpr Mutation kMut_weapon_rock_slot2_emit_scen99 = {
-    "src/gameplay/families/family_elf.cpp", 66,
-    "                fireob = static_cast<weap*>(self->fire());",
-    "                return false;",
-    "Aborts the first iteration of the BOUNCING ROCKS two-shot fire() loop with an early `return false;` before any rock projectile is spawned; the special's rocks never land on the enemy soldier, so the soldier stays at full HP and emits no score_change events — EventKindAtLeast(score_change, 1) fails on its floor and the soldier-HP window no longer holds."
+    "src/gameplay/families/family_elf.cpp", 71,
+    "fireob->set_lastx(fireob->lastx() * next_spread_multiplier(rng))",
+    "fireob->set_lastx(fireob->lastx() * next_spread_multiplier(rng) * 2.0f)",
+    "Doubles the BOUNCING ROCKS first projectile's per-tick x-step by multiplying lastx by an extra 2.0f (the next_spread_multiplier(rng) draw is preserved, so RNG ordering is unchanged and the change is isolated to projectile speed). The seq-0 rock now steps ~14 px/tick (~1404 centi-px/tick) instead of 707, so WeaponSpeed(FAMILY_ROCK,650,770) fails its upper bound (1404 > 770) and flips pass->fail. lineofsight decrements per act_fire tick (not per distance), so the faster rock still produces >=2 consecutive samples and the predicate stays determinate rather than Indeterminate."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_boomerang_return_scen99[] = {
