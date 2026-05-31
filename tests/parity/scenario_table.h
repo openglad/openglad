@@ -2134,13 +2134,23 @@ inline constexpr FactPredicate kFacts_weapon_blood_emission_scen99[] = {
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 10000, 12000),
     pred::branch_only(pred::WeaponFamilyEmitted(FAMILY_BLOOD,
         "intended_diff: branch combat kills the target and emits BLOOD while master keeps the FAERIE alive in this arena; commit 39ef9898")),
+    // Trajectory teeth: combat-death blood spatter is spawned once at the
+    // dead target's tile (walker_combat.cpp setxy) and only cycles its
+    // animation (tree_blood_on_animate never moves it) -> 0 centi-px/tick,
+    // pathlen 0. Observed: 4 consecutive samples (ticks 132-135) all at
+    // (172,120). branch_only because master keeps the target alive so no
+    // BLOOD track exists on the master golden (master arm short-circuits).
+    pred::branch_only(pred::WeaponSpeed(FAMILY_BLOOD, 0, 0,
+        "intended_diff: branch-only death-spatter BLOOD is stationary (max consecutive-tick step = 0 centi-px/tick); a speed/path mutation pushes it >0 and this flips")),
+    pred::branch_only(pred::WeaponNetTravel(FAMILY_BLOOD, /*kWeaponPathStationary*/2, 50,
+        "intended_diff: branch-only death-spatter BLOOD barely moves (pathlen <= 50 centi-px); a drift mutation makes pathlen >> threshold and this flips")),
 };
 
 inline constexpr Mutation kMut_weapon_blood_emission = {
-    "src/gameplay/weapon_family_registry.cpp", 76,
-    "e[FAMILY_BLOOD]",
-    "e[0]",
-    "Edits the FAMILY_BLOOD weapon-family registry entry index; the descriptor binding moves and emission predicates flip on the named family slot."
+    "src/gameplay/families/weapon_family_animate.cpp", 29,
+    "return true;",
+    "self->setxy(self->xpos() + 8, self->ypos()); return true;",
+    "Injects an 8-px/tick eastward drift into tree_blood_on_animate (the BLOOD/TREE animate callback) so the death-spatter BLOOD weapon advances each tick instead of staying at the kill tile. max consecutive-tick step becomes hypot(8,0)*100 = 800 centi-px/tick and pathlen over 4 samples becomes ~2400 centi-px, so WeaponSpeed(FAMILY_BLOOD,0,0) and WeaponNetTravel(FAMILY_BLOOD,STATIONARY,50) both flip pass->fail on the branch arm."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_blob_emission[] = {
