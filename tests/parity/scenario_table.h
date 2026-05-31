@@ -2298,13 +2298,22 @@ inline constexpr FactPredicate kFacts_weapon_wave_emission_scen99[] = {
     // and this predicate flips present->absent. (FAMILY_WAVE2/WAVE3 are bound by
     // the separate weapon_wave2/weapon_wave3 direct-spawn scenarios.)
     pred::WeaponFamilyEmitted(FAMILY_WAVE),
+    // Trajectory teeth (computed purely from dump.weapon_tracks, symmetric
+    // branch-vs-master). The MAGE ENERGY WAVE projectile travels right at a
+    // steady ~8 px/tick with a +/-1 px waver; on the lowest-seq (seq 0) track
+    // the consecutive-tick step is hypot(8,1)=8.06 px = 806 centi-px/tick and
+    // the path is dead straight (net == pathlen == 1612 centi over ticks
+    // 16->18). [700,900] tightly brackets 806 on both the branch run and the
+    // recaptured master golden; STRAIGHT thr=1000 holds since net=1612.
+    pred::WeaponSpeed(FAMILY_WAVE, 700, 900, "wave ~806 centi-px/tick"),
+    pred::WeaponNetTravel(FAMILY_WAVE, kWeaponPathStraight, 1000, "wave travels straight"),
 };
 
 inline constexpr Mutation kMut_weapon_wave_emission = {
-    "src/gameplay/families/family_mage.cpp", 223,
-    "            alive = current_game->world->add_ob(Order::Weapon, FAMILY_WAVE);",
-    "            alive = current_game->world->add_ob(Order::Weapon, FAMILY_FIREBALL);",
-    "Makes the MAGE ENERGY WAVE special emit FAMILY_FIREBALL instead of FAMILY_WAVE; the energy-wave projectile that enters world.weaplist now carries the wrong family, so WeaponFamilyEmitted(FAMILY_WAVE) flips present->absent."
+    "src/gameplay/families/family_mage.cpp", 227,
+    "            alive->set_lastx(newob->lastx());",
+    "            alive->set_lastx(newob->lastx() / 2);",
+    "Halves the MAGE ENERGY WAVE projectile's horizontal velocity (lastx 8->4) at the cast site; the FAMILY_WAVE entity still enters world.weaplist (WeaponFamilyEmitted stays true) but its seq-0 consecutive-tick step drops from 806 to 412 centi-px/tick and net travel from 1612 to 825 centi, so WeaponSpeed(FAMILY_WAVE,700,900) flips pass->fail and WeaponNetTravel(FAMILY_WAVE,STRAIGHT,1000) also flips (net 825 < 1000)."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_wave2_emission[] = {
