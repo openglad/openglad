@@ -1296,6 +1296,13 @@ TEST(RuntimeCoveragePaths, sim_world_completion_events_reset_between_level_attem
         return;
     og::sim::SimEventLog& events = *current_game->sim_events;
 
+    // Master contract: the deterministic sim signals level completion
+    // IMPERATIVELY (game_ended / ending / next_level set in-place); it does
+    // NOT push SetEnd/EndGame display events into the sim event log. The
+    // display/redraw work is done by screen.cpp::endgame() (and, for the
+    // networking path, re-derived from the WorldSnapshot in
+    // GameServer::broadcast_current_state). So completing a level via tick()
+    // must leave the sim event log free of completion-display events.
     auto saw_completion_events = [&events]() {
         bool saw_set_end = false;
         bool saw_end_game = false;
@@ -1306,7 +1313,7 @@ TEST(RuntimeCoveragePaths, sim_world_completion_events_reset_between_level_attem
             if (ev.kind == og::sim::EventKind::EndGame)
                 saw_end_game = true;
         }
-        return saw_set_end && saw_end_game;
+        return saw_set_end || saw_end_game;
     };
 
     world.my_team = 0;
@@ -1314,21 +1321,33 @@ TEST(RuntimeCoveragePaths, sim_world_completion_events_reset_between_level_attem
     world.end = 0;
     events.clear();
     world.tick();
-    ASSERT_TRUE(world.completion_events_emitted)
-        << "first empty-level completion should mark events emitted";
-    ASSERT_TRUE(saw_completion_events())
-        << "first completion should emit SetEnd and EndGame";
+    ASSERT_TRUE(world.game_ended)
+        << "first empty-level completion should mark the level ended";
+    ASSERT_EQ(0, (int)world.ending)
+        << "empty-level completion path should set ending to zero";
+    ASSERT_EQ(52, (int)world.next_level)
+        << "empty-level completion path should advance to next level id";
+    ASSERT_TRUE(!saw_completion_events())
+        << "deterministic tick() must NOT push SetEnd/EndGame display events "
+           "(master signals level-end imperatively, not via the sim log)";
 
+    // Drive a second completion on the same GameWorld. reset_level_progress()
+    // re-arms per-level counters (matching master, which resets only
+    // level_tick_count_/last_level_id_); the real level loader clears
+    // game_ended between attempts, which we emulate here so the second
+    // completion edge is observable.
     events.clear();
     world.id = 52;
     world.reset_level_progress();
-    ASSERT_TRUE(!world.completion_events_emitted)
-        << "starting another level attempt must re-arm completion events";
+    world.game_ended = false;
     world.tick();
-    ASSERT_TRUE(world.completion_events_emitted)
-        << "second empty-level completion should mark events emitted again";
-    ASSERT_TRUE(saw_completion_events())
-        << "second completion on the same GameWorld should emit SetEnd and EndGame";
+    ASSERT_TRUE(world.game_ended)
+        << "second empty-level completion should mark the level ended again";
+    ASSERT_EQ(53, (int)world.next_level)
+        << "second completion should advance next level id again";
+    ASSERT_TRUE(!saw_completion_events())
+        << "second completion on the same GameWorld must also stay silent on "
+           "SetEnd/EndGame in the sim event log";
 
     clear_level_lists();
 }

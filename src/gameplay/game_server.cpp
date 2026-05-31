@@ -270,14 +270,18 @@ const PlayerInput& select_player_input(const InputState& input,
                                         : input.players[bounded_index];
 }
 
-bool contains_endgame_event(const og::sim::SimEventBatch& batch) noexcept
+bool contains_event_kind(const og::sim::SimEventBatch& batch,
+                         og::sim::EventKind kind) noexcept
 {
     return std::any_of(
         batch.events.begin(),
         batch.events.end(),
-        [](const og::sim::Event& event) {
-            return event.kind == og::sim::EventKind::EndGame;
-        });
+        [kind](const og::sim::Event& event) { return event.kind == kind; });
+}
+
+bool contains_endgame_event(const og::sim::SimEventBatch& batch) noexcept
+{
+    return contains_event_kind(batch, og::sim::EventKind::EndGame);
 }
 
 std::uint8_t palette_id_from_event_value(std::uint32_t value) noexcept
@@ -2130,16 +2134,45 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
         drained_batch = drain_sim_events(events_);
         maybe_resolve_world_events(*drained_batch, snapshot);
         apply_authoritative_event_state(world_, *drained_batch, snapshot);
-        if (snapshot.game_ended && !contains_endgame_event(*drained_batch))
+        if (snapshot.game_ended)
         {
-            Event endgame_event;
-            endgame_event.kind = EventKind::EndGame;
-            endgame_event.a = static_cast<std::uint32_t>(
-                static_cast<std::int32_t>(snapshot.ending));
-            endgame_event.b = static_cast<std::uint32_t>(
-                static_cast<std::int32_t>(snapshot.next_level));
-            drained_batch->events.push_back(std::move(endgame_event));
-            og::sim::normalize_endgame_event_order(*drained_batch);
+            // Synthesize level-completion display events from authoritative
+            // snapshot state. The deterministic sim (GameWorld::tick) no longer
+            // emits these (matching master, which signals level-end
+            // imperatively via screen.cpp/endgame()); the broadcast layer
+            // re-derives them here so the client mirror still receives the
+            // palette/redraw/end notifications it consumes.
+            if (!contains_event_kind(*drained_batch, EventKind::SetPalette))
+            {
+                Event set_palette_event;
+                set_palette_event.kind = EventKind::SetPalette;
+                set_palette_event.a = snapshot.current_palette_id;
+                set_palette_event.b = 0u;
+                drained_batch->events.push_back(std::move(set_palette_event));
+            }
+            if (!contains_event_kind(*drained_batch, EventKind::RequestRedraw))
+            {
+                Event request_redraw_event;
+                request_redraw_event.kind = EventKind::RequestRedraw;
+                drained_batch->events.push_back(std::move(request_redraw_event));
+            }
+            if (!contains_event_kind(*drained_batch, EventKind::SetEnd))
+            {
+                Event set_end_event;
+                set_end_event.kind = EventKind::SetEnd;
+                drained_batch->events.push_back(std::move(set_end_event));
+            }
+            if (!contains_endgame_event(*drained_batch))
+            {
+                Event endgame_event;
+                endgame_event.kind = EventKind::EndGame;
+                endgame_event.a = static_cast<std::uint32_t>(
+                    static_cast<std::int32_t>(snapshot.ending));
+                endgame_event.b = static_cast<std::uint32_t>(
+                    static_cast<std::int32_t>(snapshot.next_level));
+                drained_batch->events.push_back(std::move(endgame_event));
+                og::sim::normalize_endgame_event_order(*drained_batch);
+            }
         }
     }
 
