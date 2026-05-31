@@ -2325,6 +2325,7 @@ bool is_game_flow_event(EventKind kind) noexcept
     case EventKind::RequestExitConfirmation:
     case EventKind::WithdrawToLevel:
     case EventKind::ScoreChange:
+    case EventKind::DamageTile:
         return true;
 
     case EventKind::None:

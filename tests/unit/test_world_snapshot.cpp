@@ -1205,8 +1205,15 @@ TEST(WorldSnapshot, split_event_batches_uses_shared_game_flow_rules)
     EXPECT_EQ(og::sim::EventKind::EndGame, game_flow_batch.events[1].kind);
 }
 
-TEST(WorldSnapshot, capture_snapshot_collects_grid_damage_from_explosion)
+TEST(WorldSnapshot, explosion_death_emits_damage_tile_event)
 {
+    // Master parity: an exploding effect routes its tile damage through the
+    // sim event log (EventKind::DamageTile) instead of mutating the grid
+    // directly. The deterministic sim emits the event; the authoritative
+    // server (apply_authoritative_event_state) — or master's screen consumer —
+    // applies it to the grid. This keeps the headless sim's grid identical to
+    // master's headless sim (neither damages the tile inline) while preserving
+    // the networking grid-sync once the event is applied.
     TestGameWorld fx;
     GameWorld& world = fx.world();
 
@@ -1229,8 +1236,26 @@ TEST(WorldSnapshot, capture_snapshot_collects_grid_damage_from_explosion)
 
     (void)explosion->death();
 
-    const og::sim::WorldSnapshot snapshot = og::sim::capture_snapshot(world);
+    // death() emits a DamageTile event and does NOT mutate the grid inline.
+    const og::sim::SimEventBatch batch = og::sim::drain_sim_events(fx.events);
+    const og::sim::Event* damage_event = nullptr;
+    for (const auto& ev : batch.events)
+        if (ev.kind == og::sim::EventKind::DamageTile)
+            damage_event = &ev;
+    ASSERT_NE(nullptr, damage_event) << "explosion death must emit DamageTile";
+    EXPECT_EQ(static_cast<std::uint32_t>(damage_x), damage_event->a);
+    EXPECT_EQ(static_cast<std::uint32_t>(damage_y), damage_event->b);
+    EXPECT_EQ(PIX_GRASS1, world.grid.data[tile_index])
+        << "death() must not mutate the grid inline (master parity)";
+    EXPECT_TRUE(world.grid_dirty_tiles().empty());
 
+    // Applying the event (the operation the authoritative server performs)
+    // damages the tile and records it for the snapshot grid-sync.
+    ASSERT_NE(0, world.damage_tile(static_cast<short>(damage_event->a),
+                                   static_cast<short>(damage_event->b)));
+    EXPECT_EQ(PIX_GRASS1_DAMAGED, world.grid.data[tile_index]);
+
+    const og::sim::WorldSnapshot snapshot = og::sim::capture_snapshot(world);
     EXPECT_TRUE(snapshot.grid_dirty);
     EXPECT_FALSE(snapshot.grid_full_resend);
     ASSERT_EQ(1u, snapshot.grid_dirty_tiles.size());

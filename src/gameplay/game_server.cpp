@@ -1,5 +1,6 @@
 #include <openglad/gameplay/game_server.h>
 
+#include <openglad/core/constants.h>
 #include <openglad/core/runtime_trace.h>
 #include <openglad/core/util.h>
 #include <openglad/gameplay/families/family_descriptor.h>
@@ -295,12 +296,59 @@ void apply_authoritative_event_state(GameWorld& world,
 {
     for (const auto& event : batch.events)
     {
-        if (event.kind != og::sim::EventKind::SetPalette)
-            continue;
-
-        const std::uint8_t palette_id = palette_id_from_event_value(event.a);
-        world.current_palette_id = palette_id;
-        snapshot.current_palette_id = palette_id;
+        switch (event.kind)
+        {
+        case og::sim::EventKind::SetPalette:
+        {
+            const std::uint8_t palette_id = palette_id_from_event_value(event.a);
+            world.current_palette_id = palette_id;
+            snapshot.current_palette_id = palette_id;
+            break;
+        }
+        case og::sim::EventKind::DamageTile:
+        {
+            // Tile damage is a deterministic world-state mutation routed
+            // through the sim event log (matching master, where the screen
+            // event consumer calls damage_tile). The authoritative server
+            // applies it here so the grid mutates server-side and the change
+            // propagates to clients via the snapshot grid-sync. The snapshot
+            // for this tick has already been captured, so fold the damaged
+            // tile into it directly (mirroring the SetPalette pattern) instead
+            // of stranding it for the next keyframe.
+            const short xpix = static_cast<short>(event.a);
+            const short ypix = static_cast<short>(event.b);
+            if (world.damage_tile(xpix, ypix) && world.grid.valid())
+            {
+                const short tx = static_cast<short>(xpix / GRID_SIZE);
+                const short ty = static_cast<short>(ypix / GRID_SIZE);
+                if (tx >= 0 && ty >= 0 && tx < world.grid.w && ty < world.grid.h)
+                {
+                    const std::size_t gi =
+                        static_cast<std::size_t>(ty) * world.grid.w + tx;
+                    const std::uint8_t value = world.grid.data[gi];
+                    bool present = false;
+                    for (auto& tile : snapshot.grid_dirty_tiles)
+                    {
+                        if (tile.x == tx && tile.y == ty)
+                        {
+                            tile.value = value;
+                            present = true;
+                            break;
+                        }
+                    }
+                    if (!present && !snapshot.grid_full_resend)
+                    {
+                        snapshot.grid_dirty = true;
+                        snapshot.grid_dirty_tiles.push_back(
+                            {tx, ty, value});
+                    }
+                }
+            }
+            break;
+        }
+        default:
+            break;
+        }
     }
 }
 
