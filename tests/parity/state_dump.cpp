@@ -424,13 +424,18 @@ std::string canonical_serialize(const StateDump& dump)
     {
         if (i != 0) out.push_back(',');
         const auto& e = dump.effects[i];
-        // Keys sorted: family, id, lifetime, xpos, ypos.
+        // Keys sorted: family, id, xpos, ypos.
+        // `lifetime` is intentionally omitted: walker::lifetime is read off
+        // effect-order entities that never assign it, so on master the member
+        // is uninitialised (UB garbage) while the branch zero-initialises it.
+        // No fact predicate consumes effect lifetime (every EffectFamilyCount
+        // row uses window_marker=0, disabling the lifetime filter), so the
+        // field is dropped from the schema on both arms rather than baking
+        // master's UB into the golden.
         out.append("{\"family\":");
         append_escaped_string(out, e.family);
         out.append(",\"id\":");
         append_uint(out, e.id);
-        out.append(",\"lifetime\":");
-        append_int(out, e.lifetime);
         out.append(",\"xpos\":");
         append_int(out, e.xpos);
         out.append(",\"ypos\":");
@@ -507,11 +512,19 @@ std::string canonical_serialize(const StateDump& dump)
     {
         if (i != 0) out.push_back(',');
         const auto& s = dump.weapon_tracks[i];
-        // Keys sorted: family, lifetime, seq, tick, xpos, ypos.
+        // Keys sorted: family, seq, tick, xpos, ypos.
+        // NOTE: weapon_tracks intentionally omits the per-sample `lifetime`
+        // field. The underlying walker::lifetime member is read directly off
+        // weapon-order entities that never assign it (HIT, melee KNIFE, ...);
+        // on master that member is *uninitialised* (walker.h declares it with
+        // no default and the ctor never sets it), so the sampled value is
+        // undefined-behaviour garbage (e.g. 1434172392) and is not a faithful
+        // gameplay signal. The branch zero-initialises the field, so the two
+        // can never agree by construction. No fact predicate consumes the
+        // track lifetime, so it is dropped from the schema on both arms rather
+        // than baking master's UB into the golden.
         out.append("{\"family\":");
         append_escaped_string(out, s.family);
-        out.append(",\"lifetime\":");
-        append_int(out, s.lifetime);
         out.append(",\"seq\":");
         append_int(out, s.seq);
         out.append(",\"tick\":");
@@ -527,13 +540,17 @@ std::string canonical_serialize(const StateDump& dump)
     {
         if (i != 0) out.push_back(',');
         const auto& w = dump.weapons[i];
-        // Keys sorted: family, id, lifetime, team, xpos, ypos.
+        // Keys sorted: family, id, team, xpos, ypos.
+        // `lifetime` is intentionally omitted: walker::lifetime is read off
+        // weapon-order entities that never assign it (HIT, melee KNIFE, ...),
+        // so on master the member is uninitialised (UB garbage) while the
+        // branch zero-initialises it. No fact predicate consumes weapon
+        // lifetime, so the field is dropped from the schema on both arms
+        // rather than baking master's UB into the golden.
         out.append("{\"family\":");
         append_escaped_string(out, w.family);
         out.append(",\"id\":");
         append_uint(out, w.id);
-        out.append(",\"lifetime\":");
-        append_int(out, w.lifetime);
         out.append(",\"team\":");
         append_uint(out, w.team);
         out.append(",\"xpos\":");

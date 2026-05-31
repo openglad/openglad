@@ -50,15 +50,15 @@ _WALKER_KEYS = {
     "team", "weapons_left", "xpos", "ypos",
 }
 
-_EFFECT_KEYS = {"family", "id", "lifetime", "xpos", "ypos"}
+_EFFECT_KEYS = {"family", "id", "xpos", "ypos"}
 
 _EVENT_KEYS = {"a", "b", "kind", "sequence", "text", "tick"}
 
-_WEAPON_KEYS = {"family", "id", "lifetime", "team", "xpos", "ypos"}
+_WEAPON_KEYS = {"family", "id", "team", "xpos", "ypos"}
 
 # Additive (schema_version stays "v1"): per-tick trajectory samples. Optional
 # top-level key — legacy goldens predate it. See tests/parity/state_dump.h.
-_WEAPON_TRACK_KEYS = {"family", "lifetime", "seq", "tick", "xpos", "ypos"}
+_WEAPON_TRACK_KEYS = {"family", "seq", "tick", "xpos", "ypos"}
 
 
 class ValidationError(Exception):
@@ -123,8 +123,6 @@ def _check_effect(idx: int, e: dict) -> None:
         raise ValidationError(f"{where}.family: expected string")
     if not _is_uint(e["id"]):
         raise ValidationError(f"{where}.id: expected non-negative int")
-    if not _is_int(e["lifetime"]):
-        raise ValidationError(f"{where}.lifetime: expected int")
     if not _is_int(e["xpos"]):
         raise ValidationError(f"{where}.xpos: expected int")
     if not _is_int(e["ypos"]):
@@ -143,8 +141,6 @@ def _check_weapon(idx: int, w: dict) -> None:
         raise ValidationError(f"{where}.family: expected string")
     if not _is_uint(w["id"]):
         raise ValidationError(f"{where}.id: expected non-negative int")
-    if not _is_int(w["lifetime"]):
-        raise ValidationError(f"{where}.lifetime: expected int")
     if not _is_uint(w["team"]):
         raise ValidationError(f"{where}.team: expected non-negative int")
     if not _is_int(w["xpos"]):
@@ -185,8 +181,6 @@ def _check_weapon_track(idx: int, s: dict) -> None:
             f"missing={sorted(missing)})")
     if not isinstance(s["family"], str):
         raise ValidationError(f"{where}.family: expected string")
-    if not _is_int(s["lifetime"]):
-        raise ValidationError(f"{where}.lifetime: expected int")
     if not _is_int(s["seq"]):
         raise ValidationError(f"{where}.seq: expected int")
     if not _is_uint(s["tick"]):
