@@ -1470,6 +1470,15 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_sim_input_handler.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_smooth_coverage.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_stats_coverage.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/parity_runner.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/state_dump.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/fact_predicate.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/parity_bootstrap.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/scenario_runtime.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/parity_test_main.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/golden_evaluation_helper.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_scenarios.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_coverage_gate.cpp
         )
 
         function(og_add_test_group NAME)
@@ -1797,6 +1806,94 @@ if(NOT EMSCRIPTEN)
             test_mass_coverage.cpp
         )
 
+        # Gameplay parity harness (Phase 04 skeleton). The og_test_parity group
+        # captures a canonical schema-v1 state dump per scenario and compares
+        # against the committed master golden under tests/parity/golden/.
+        og_add_test_group(og_test_parity FILES
+            test_parity_scenarios.cpp
+            test_parity_coverage_gate.cpp
+            parity_runner.cpp
+            state_dump.cpp
+            fact_predicate.cpp
+            parity_bootstrap.cpp
+            scenario_runtime.cpp
+            parity_test_main.cpp
+            golden_evaluation_helper.cpp
+        )
+        target_include_directories(og_test_parity PRIVATE
+            ${CMAKE_SOURCE_DIR}/tests/parity
+        )
+        target_compile_definitions(og_test_parity PRIVATE
+            OG_PARITY_WORKSPACE_ROOT="${CMAKE_SOURCE_DIR}"
+        )
+
+        # Phase 01 (semantic-parity): pre-build tool that emits the
+        # single-source-of-truth JSON for scripts/parity/evaluate_facts.py.
+        # Runs automatically as a dependency of og_test_parity so the
+        # generated file is always up to date with scenario_table.h.
+        add_executable(scenario_facts_dump
+            ${CMAKE_SOURCE_DIR}/tests/parity/scenario_facts_dump_main.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/fact_predicate.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/state_dump.cpp
+        )
+        target_include_directories(scenario_facts_dump PRIVATE
+            ${CMAKE_SOURCE_DIR}/tests
+            ${CMAKE_SOURCE_DIR}/tests/parity
+            ${CMAKE_SOURCE_DIR}/include
+            ${OG_THIRD_PARTY_INCLUDE_DIRS}
+        )
+        target_compile_features(scenario_facts_dump PRIVATE cxx_std_20)
+        target_link_libraries(scenario_facts_dump PRIVATE og_game_test)
+        # Coverage builds: libog_game_test.a is compiled with --coverage and
+        # leaves undefined references to __gcov_init / __gcov_exit /
+        # __gcov_merge_add in the static archive. Link against gcov via
+        # --coverage so the standalone executable resolves them. The ASan
+        # / TSan presets do NOT route through configure_openglad_library
+        # here because pulling in project_sanitizers transitively slows
+        # og_test_view's tick budget enough to time out at 180s on CI.
+        if(ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+            target_compile_options(scenario_facts_dump PRIVATE --coverage)
+            target_link_options(scenario_facts_dump PRIVATE --coverage)
+        endif()
+        add_custom_command(
+            OUTPUT  ${CMAKE_SOURCE_DIR}/tests/parity/scenario_facts_generated.json
+            COMMAND scenario_facts_dump
+                    --out ${CMAKE_SOURCE_DIR}/tests/parity/scenario_facts_generated.json
+            DEPENDS scenario_facts_dump
+                    ${CMAKE_SOURCE_DIR}/tests/parity/scenario_table.h
+            COMMENT "Regenerating scenario_facts_generated.json"
+            VERBATIM
+        )
+        add_custom_target(scenario_facts_generated ALL
+            DEPENDS ${CMAKE_SOURCE_DIR}/tests/parity/scenario_facts_generated.json
+        )
+        add_dependencies(og_test_parity scenario_facts_generated)
+
+        # Standalone smoke runner — Phase 02 verifier and the launcher
+        # extended in Phase 07 to enumerate scenarios via --list.
+        add_executable(parity_runner_smoke
+            ${CMAKE_SOURCE_DIR}/tests/parity/parity_runner_smoke_main.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/parity_runner.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/state_dump.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/fact_predicate.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/parity_bootstrap.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/scenario_runtime.cpp
+        )
+        configure_openglad_library(parity_runner_smoke)
+        configure_openglad_sdl_target(parity_runner_smoke)
+        target_compile_definitions(parity_runner_smoke PRIVATE
+            TESTING
+            OG_PARITY_WORKSPACE_ROOT="${CMAKE_SOURCE_DIR}"
+        )
+        target_include_directories(parity_runner_smoke PRIVATE
+            ${CMAKE_SOURCE_DIR}/tests
+            ${CMAKE_SOURCE_DIR}/tests/parity
+            ${OG_THIRD_PARTY_INCLUDE_DIRS}
+        )
+        target_link_libraries(parity_runner_smoke PRIVATE og_game_test)
+        configure_openglad_runtime_target(parity_runner_smoke)
+        add_runtime_assets_dependency(parity_runner_smoke)
+
         og_add_unit_group(og_unit_core FILES
             ${CMAKE_SOURCE_DIR}/tests/unit/test_frame_rate_config.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_frame_deadline_pacer.cpp
@@ -2005,6 +2102,13 @@ if(NOT EMSCRIPTEN)
             # 180-second test budget when scheduled alongside other heavy
             # integration binaries.
             set_tests_properties(og_test_snapshot_benchmark PROPERTIES
+                PROCESSORS 3
+                TIMEOUT 420
+            )
+            # ASan/UBSan makes the view integration suite slow enough on
+            # GitHub's shared runners to exceed CTest's generic 180s limit
+            # when scheduled beside the other heavy integration binaries.
+            set_tests_properties(og_test_view PROPERTIES
                 PROCESSORS 3
                 TIMEOUT 420
             )

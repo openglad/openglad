@@ -45,10 +45,25 @@ jobs:
         run: bash scripts/test_headless_server_native_link.sh build/ci-test
 
       - name: Run tests (parallel, excluding menu UI)
+        # Gameplay parity tests (og_test_parity, plus any future og_unit_parity)
+        # are registered via og_add_test_group in CMakeLists.txt and are picked
+        # up here automatically. They run against the committed goldens under
+        # tests/parity/golden/ — CI MUST NOT re-capture goldens (that would
+        # defeat the parity contract). Fresh capture is a developer-driven
+        # step against the ../openglad-master companion; see
+        # .plan/parity-signoff.md `## How to re-run` and
+        # scripts/parity/capture_master_golden.sh.
         run: ctest --test-dir build/ci-test --parallel $(nproc) --output-on-failure --timeout 180 -E og_test_menu_ui
 
       - name: Run menu UI test with extended timeout
         run: ctest --test-dir build/ci-test --output-on-failure --timeout 300 -R og_test_menu_ui
+
+      - name: Surface parity test results distinctly
+        # Re-runs only the parity groups so a parity failure is visible as
+        # its own step in the CI summary, separate from the broader suite.
+        # No re-capture: goldens are read from tests/parity/golden/ as
+        # committed on this branch.
+        run: ctest --test-dir build/ci-test --output-on-failure --timeout 180 -R '^og_(test|unit)_parity'
 
       - name: Typecheck relay worker
         working-directory: relay
