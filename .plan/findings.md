@@ -1,156 +1,64 @@
-## Findings — Plan Review (parity-finish-3, checker after the three-blocker refinement)
+# Review findings — Replan: Parity Coverage Pass 2 (cycle #1, architect re-review #2)
 
-The prior three blocking issues (Phase 03 using flags introduced only in
-Phase 04, Phase 04 verifier 04b consuming `--emit-scenario-list` that no
-phase added, and Phase 03's false claim of "preexisting per-Order
-helpers" in `state_dump.cpp`) are now resolved. The plan correctly:
+All findings from the prior review pass are **resolved** in the current `.plan/plan.md`,
+and every load-bearing codebase claim was independently re-verified against the live tree.
 
-- replaces the `capture_master_golden.sh --all --no-write --diff`
-  invocation in Phase 03 with an inline `for g in tests/parity/golden/*.json`
-  shell loop that uses only the companion binary's existing
-  single-scenario contract;
-- extends Phase 01's `check_coverage_manifest.py` work to add BOTH
-  `--emit-gap-table` and `--emit-scenario-list` under a new `argparse`
-  front-end (also reflected in §4 "Critical Files");
-- restates that `state_dump.cpp` today has ONE bare `family_symbol`
-  function called by all three collectors, and that Phase 03 introduces
-  `family_symbol_by_order(order, family_id)` plus 5 per-Order tables and
-  rewrites all three call sites (the "reuse pre-existing per-Order
-  helpers" wording is gone);
-- tightens 04a's PASSED assertion from a ≥-bound to an exact
-  `P + F + S` (=150 today) derivation;
-- routes Phase 08's `requires_rng_insensitive_predicate` exempt set
-  through computed `compare_mode` from `scenario_facts_generated.json`
-  instead of a hand-edited list;
-- makes Phase 11's CI conditional total (`if [ -f .github/workflows/ci.yml ]; then …; else true; fi`);
-- adds a 03b assertion that `parity_dump_master` mtime is newer than
-  both `parity_dump_state.cpp` AND `parity_dump_state.h`.
+## Resolved
 
-Topology, artifact flow, and contract conformance remain sound: 11
-implement phases × 3 verifiers each = 44 phases, every check has a
-single fixed `bounce_target`, `Preexisting Inputs` and `New Outputs`
-are cleanly separated, inline-only YAML and commit-before-yield are
-restated, and existing artefacts are consumed in place.
+1. **(was SUBSTANTIAL) Mechanical `consequence:` assertion vs. drafted specs.** The
+   per-phase checker enforces "≥1 consequence predicate" via a literal
+   `grep -q 'consequence:'` on the `kFacts_<id>[]` block, which is stricter than the
+   gate's kind-based `is_consequence_predicate`. The §3 specs now give all 16 new
+   scenarios an explicit `consequence:`-labeled predicate, including the 6 that
+   previously relied only on kind-based consequence:
+   - `weapon_rock_slot2_emit_scen99` → `WeaponFamilyEmitted(FAMILY_ROCK, "consequence: …")` (plan:392)
+   - `effect_protection_emit_scen99` → `WeaponFamilyEmitted(FAMILY_CIRCLE_PROTECTION, "consequence: …")` (plan:465)
+   - `input_hold_fire_search_scen99` → `WeaponFamilyEmitted(FAMILY_KNIFE, "consequence: …")` (plan:532)
+   - `multiplayer_two_teams_scen99` → `WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 0, 9000, "consequence: …")` (plan:586)
+   - `midcombat_partial_hp_scen99` → `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 4000, 11000, "consequence: …")` (plan:656)
+   - `consumable_inventory_state_scen99` → `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 9000, 13000, "consequence: …")` (plan:670)
+   §2 (lines 235-240) and the standard implement sequence (step 1, lines 736-739) now
+   state the explicit-label rule. For the four widened HP ranges, the single
+   `consequence:` label also satisfies `label_exempted`
+   (`test_parity_coverage_gate.cpp:702-707`).
 
-One **new blocking issue** has been introduced by the refinement of
-Phase 11. It stems from a piece of guidance in the previous findings
-that was itself factually wrong; the plan adopted it verbatim.
+2. **(was MINOR) Phase 1 conditional commit.** `impl-confirm-prior-work` now reads
+   "if all green and committed, yield immediately — there is nothing to commit. Only
+   if something regressed … you must commit the repair in both worktrees before
+   yielding" (plan:304-308). Contract satisfied without implying a no-op commit.
 
-### Blocking
+## Independently re-verified (all accurate)
 
-1. **Phase 11 Bypass F asserts three `ADD_FAILURE() << "master golden missing"`
-   conversions but only one site can plausibly carry that wording.**
+- State counts: `grep -c 'OG_PARITY_TEST(' …` = **141** (140 + `#define`); **139** goldens;
+  mirror `diff -q` byte-identical. 156/155/157 target arithmetic correct.
+- Mutation source lines byte-for-byte (tabs vs spaces): `walker.cpp:1219` (1 tab),
+  `walker.cpp:1723` (2 tabs), `family_soldier.cpp:46` (12-sp), `family_archmage.cpp:239`
+  (24-sp), `treasure_family_navigation.cpp:86` (8-sp), `game_world.cpp:1357`
+  (`level_done = 2;`), `walker_combat.cpp:189` (4-sp).
+- Coverage gates: exactly **7** tests match `*depth_gate*:*golden_evaluation_gate*:*mutation_canary*`;
+  `_emission_scen99`/`_pickup_scen99` and `starts_with("special_")` buckets confirmed
+  to exclude all 16 new ids; `is_consequence_predicate` kind-based reading and
+  `label_exempted` prefixes confirmed.
+- Wide-range gate thresholds (HP>5000, WalkerFamilyCount>+5, WalkerOfTeamAlive>+3,
+  EffectFamilyCount>+10, EventKindAtLeast min `arg1<=0`) all consistent with the
+  drafted §3 ranges/labels; no zero-floor events; `EventKindAtLeast(kind, min)` arg
+  mapping confirmed in `fact_predicate.h:206-209`.
+- `scenario_facts_generated ALL` target + `add_dependencies(og_test_parity …)` at
+  `CMakeLists.txt:1859-1870`; the awk/grep mechanical assertion in §2 runs cleanly
+  against the real `inline constexpr FactPredicate kFacts_<id>[] = {` declaration style.
+- Topology: linear, inline-only, one deterministic `check` per implement with a single
+  fixed `bounce_target`, no `bounce_targets`, no role-checker swarm; idempotency clause
+  and commit-before-yield (incl. `scenario_facts_generated.json`) in every implement.
 
-   Phase 11 §"New Outputs" §F now says:
+## Non-blocking note (not a defect)
 
-   > **F**: Delete a golden to make a row skip → flip
-   > `test_parity_scenarios.cpp` so missing-golden + `compare_mode == SemanticParity`
-   > becomes `ADD_FAILURE` instead of `GTEST_SKIP`. The file currently
-   > has THREE missing-golden `GTEST_SKIP` call sites
-   > (`tests/parity/test_parity_scenarios.cpp:108`, `:118`, `:144`); Phase
-   > 11 converts all three. Verifier asserts
-   > `grep -c 'GTEST_SKIP() << "master golden missing'
-   >   tests/parity/test_parity_scenarios.cpp` equals `0` and
-   > `grep -c 'ADD_FAILURE() << "master golden missing'
-   >   tests/parity/test_parity_scenarios.cpp` equals `3`.
+- Phase 6 `input_special_switch_wrap_scen99` refers to "full list in the original spec"
+  (plan:552) for its 26-element K_SPECIAL_SWITCH/K_NONE input list rather than inlining
+  it. The exact list is present verbatim in the supplied stuck-workflow YAML available to
+  the workflow generator, and §2 grants explicit numeric latitude (the fixed requirement
+  is "lands on slot 3 FREEZE TIME"), so this does not force the implementer to invent a
+  detail. Optional polish: inline the list in §3 for full self-containment.
 
-   Inspection of the live file shows three GTEST_SKIP sites with three
-   distinct literal messages — only one of them mentions "master golden
-   missing":
-
-   | Line | Branch | Literal message |
-   |------|--------|-----------------|
-   | 108  | `compare_mode == SemanticParity` && golden absent | `"master golden missing for "` |
-   | 118  | `compare_mode == ByteEqual` && golden absent       | `"golden not yet captured for "` |
-   | 144  | `OG_PARITY_TEST(NAME)` macro, scenario not in `kScenarios` | `"scenario \"" #NAME "\" is not present in kScenarios; "` |
-
-   So `grep -c 'GTEST_SKIP() << "master golden missing'` currently
-   returns `1` (not `3`), and the verifier's pre-conversion count
-   assertion (`equals 0` after Phase 11) is already half-satisfied by a
-   one-site flip. To make the post-conversion count
-   `'ADD_FAILURE() << "master golden missing'` equal `3`, the
-   implementer would have to:
-   - flip :118 (a *ByteEqual* missing-golden site, which the narrative
-     explicitly excludes by the "`compare_mode == SemanticParity`"
-     scope) AND rewrite its message from `"golden not yet captured for "`
-     to `"master golden missing for "` — a misleading rewrite, since the
-     site fires under ByteEqual, not SemanticParity;
-   - flip :144 (the *missing-scenario-in-kScenarios* SKIP inside the
-     `OG_PARITY_TEST` macro, a structurally different failure mode that
-     has nothing to do with a missing golden file) AND rewrite its
-     message similarly — which destroys the original failure-mode
-     distinction and makes future debugging materially worse.
-
-   Either the verifier is asserting the wrong count or the implementer
-   has to lie in source-text wording. As written the verifier trips on
-   first invocation, and the prior-findings author's recommendation to
-   "specify all three" was a mistake.
-
-   **Fix**:
-   - Scope Phase 11 §F + verifier 11a's grep to the **single** :108
-     `compare_mode == SemanticParity` site. The narrative already says
-     "when `compare_mode == SemanticParity`" — make the verifier match
-     that.
-   - Verifier 11a's assertions become:
-     - `grep -c 'GTEST_SKIP() << "master golden missing' tests/parity/test_parity_scenarios.cpp` equals `0`.
-     - `grep -c 'ADD_FAILURE() << "master golden missing' tests/parity/test_parity_scenarios.cpp` equals `1`.
-   - Drop the "THREE … (`:108`, `:118`, `:144`); Phase 11 converts all
-     three" sentence. If the plan wants to harden the other two paths
-     (ByteEqual missing-golden, missing-scenario macro), it should
-     introduce them as **separate** bypasses with their own literal
-     greps and their own per-site rationales — not lump them under
-     Bypass F.
-
-### Non-blocking but worth tightening
-
-- **`kRequiredSpecials` field-name references** (Phase 01 §1
-  "Per-target coverage gap inventory" bullet 6) call out
-  `kRequiredSpecials[i].family` and `kRequiredSpecials[i].slot_index`,
-  but the constant is declared `std::pair<std::int32_t, std::uint8_t>`,
-  so the members are `.first` and `.second`. The verifier 01c still
-  works because the implementer plainly reverse-maps the int to the
-  family symbol and prints the slot ordinal, but the field-name prose
-  is technically wrong. A one-line correction ("`(family,
-  special_index)` pairs read as `pair::first` and `pair::second`") would
-  prevent the workflow writer from emitting verifier code that looks up
-  named fields that do not exist.
-
-- **Phase 03 `family_symbol` removal-vs-wrapper rule** is left to the
-  implementer's judgment ("removed (or kept as a thin wrapper …) only
-  if other callers exist in `state_dump.cpp`"). The verifier 03b only
-  asserts the *three collectors* no longer call the bare `family_symbol(`.
-  If the legacy symbol survives as an unused helper, the regex check
-  still passes, but no verifier asserts the wrapper's correctness. A
-  cleaner contract: delete `family_symbol` outright; verifier asserts
-  `grep -c '^std::string family_symbol' state_dump.cpp` equals `0`.
-  Equivalent: keep the wrapper but assert `family_symbol(x)` returns
-  identical strings to `family_symbol_by_order(Order::Living, x)` via a
-  pure unit test in `og_unit_parity` (new).
-
-- **Phase 04 `check_coverage_manifest.py --emit-scenario-list` output
-  contract** is described as `<id>\t<compare_mode>\t<is_branch_internal>`
-  but no test rows or example lines are given. Verifier 04b's
-  enumeration logic depends on parsing this with split-by-tab semantics;
-  consider pinning one literal example line in §4 to keep the workflow
-  writer from inventing a different separator. (Phase 04 verifier
-  parses but the parsing rule is implicit.)
-
-- **`.plan/parity-canary-exemptions.md` format** is asserted by 10b to
-  be `load_exemptions()`-parseable, but `load_exemptions()` lives at
-  `scripts/parity/run_mutation_canary_runtime.py:74-91`. The plan should
-  cite the literal grammar accepted (the comment in §10 says "`- <id>`
-  bullets only; the runtime parser does not understand pipe-tables").
-  Move the literal grammar — at minimum a single example line — into
-  Phase 10's "New Outputs" so the implementer doesn't reach for the
-  source to derive the format.
-
-### Verdict
-
-The plan is structurally sound and 95% of the way there. The single
-remaining blocker (Phase 11 Bypass F's three-site claim) is a concrete
-prompt-contract error: it tells the implementer to make changes that
-contradict the same paragraph's `compare_mode == SemanticParity` scope
-and configures a verifier whose literal grep cannot match the legitimate
-post-state. It must be fixed before workflow generation, otherwise the
-generated 11a verifier will bounce on its first invocation regardless
-of how the implementer interprets the conflicting prose.
+No substantial new issues. The plan is specific enough to generate
+`.plan/phases/*.md` and the workflow YAML without inventing missing details or making
+topology decisions later.

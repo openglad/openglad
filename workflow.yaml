@@ -1,1181 +1,1364 @@
+name: parity-coverage-pass-2-replan
+backend: claude
+working_dir: .
+max_bounces: 999
 vars:
-  GOAL: "Drive openglad parity coverage from baseline to honest sign-off: every required walker/weapon/effect/treasure/generator/special/event-kind bound by RNG-insensitive predicates, mass golden recapture, mutation canary green, and anti-cheat self-test passing."
-
+  GOAL: >-
+    Confirm the 6 already-landed walker-status-timer and summon-lifecycle parity
+    scenarios are intact, then fill the remaining behavioral-coverage gaps in the
+    OpenGlad parity test suite by adding 16 new scenarios across the generator,
+    weapon-trajectory, effect-emission, effect-timer, input-pipeline,
+    multi-team-coordination, level-withdraw, and mid-combat-state categories, and
+    refresh the final parity docs to the 156-scenario state. Mirror every
+    scenario_table.h change byte-for-byte to the master parity-companion worktree,
+    capture master goldens, keep the full suite green, and commit every change in
+    both worktrees.
 phases:
-  - id: 01-baseline-and-inventory
+  - id: impl-confirm-prior-work
     type: implement
     prompt: |
-      You are the implementing engineer for Phase 01 — Baseline test counts and per-target coverage gap inventory.
+      You are confirming that prior already-landed parity work is intact in the
+      OpenGlad parity test suite. There are 6 scenarios that were landed by an
+      earlier pass: `enemy_freeze_mage_scen99`, `invisibility_thief_scen99`,
+      `speed_potion_movement_scen99`, `invulnerable_potion_scen99`,
+      `summon_lifetime_faerie_scen99`, `summon_lifetime_decrement_faerie_scen99`.
 
-      Goal: {{ GOAL }}
+      ## Preexisting Inputs
 
-      Preexisting Inputs (do NOT recollect or rediscover; read and consume them as-is):
-      - `.plan/goal.md`
-      - `.plan/parity-coverage-manifest.md`
-      - `.plan/parity-honest-audit.md`
-      - `tests/parity/coverage_targets.h`
+      Consume and verify these existing artifacts as-is — do **not** refetch,
+      recollect, rediscover, or regenerate them from scratch. If they are already
+      green and committed, there is nothing to do:
+
+      - `tests/parity/scenario_table.h` (contains the 6 already-landed scenarios).
+      - `tests/parity/test_parity_scenarios.cpp` (6 paired `OG_PARITY_TEST` macros).
+      - The 6 golden files:
+        - `tests/parity/golden/enemy_freeze_mage_scen99.json`
+        - `tests/parity/golden/invisibility_thief_scen99.json`
+        - `tests/parity/golden/speed_potion_movement_scen99.json`
+        - `tests/parity/golden/invulnerable_potion_scen99.json`
+        - `tests/parity/golden/summon_lifetime_faerie_scen99.json`
+        - `tests/parity/golden/summon_lifetime_decrement_faerie_scen99.json`
+      - `../openglad-master/tools/parity_scenario_table.h` (the byte-mirror).
+      - `../openglad-master/build/ci-test/parity_dump_master` (built master dump).
+      - The earlier commits already on the branch and their master-mirror commits.
+
+      ## New Outputs
+
+      None in the normal (already-green) case. Only if drift is detected (a golden
+      missing, a named test failing, or `diff -q` showing mirror drift) do you
+      produce repair outputs: a re-mirrored
+      `../openglad-master/tools/parity_scenario_table.h`, a rebuilt
+      `parity_dump_master`, any re-captured missing golden, and the fix commits in
+      both worktrees.
+
+      ## Implementation Details
+
+      First check whether this phase's deliverable already exists and passes: the 6
+      scenarios present in `kScenarios[]`, their macros present, goldens on disk,
+      the named tests green, and the mirror in sync. If all already hold, ensure the
+      required commits have landed and **yield immediately — do not redo work**.
+
+      Run the build + tests and the named filters below. If everything is green and
+      committed, yield immediately — there is nothing to commit. Only if something
+      regressed perform the minimal repair, updating the existing artifacts rather
+      than regenerating them from scratch:
+
+      - re-mirror: `cp tests/parity/scenario_table.h ../openglad-master/tools/parity_scenario_table.h`
+      - rebuild: in `../openglad-master`, `cmake --build --preset ci-test --target parity_dump_master`
+      - re-capture any missing golden via `scripts/parity/capture_master_golden.sh <scenario...>`
+
+      Keep the session short.
+
+      ## Commands
+
+      - `cmake --build --preset ci-test && ctest --preset ci-test` → 0 failures.
+      - `./build/ci-test/og_test_parity --gtest_filter='Parity.enemy_freeze_mage_scen99:Parity.invisibility_thief_scen99:Parity.speed_potion_movement_scen99:Parity.invulnerable_potion_scen99:Parity.summon_lifetime_faerie_scen99:Parity.summon_lifetime_decrement_faerie_scen99'` → all pass.
+      - `diff -q tests/parity/scenario_table.h ../openglad-master/tools/parity_scenario_table.h` → 0 (byte-identical).
+
+      ## Success Criteria
+
+      - All six named scenarios pass.
+      - All six goldens exist on disk.
+      - Mirror table is byte-identical (`diff -q` → 0).
+      - All 7 coverage/golden/mutation gates pass.
+      - `git status --porcelain tests/parity/` is empty.
+      - If any repair was needed, it is committed in both worktrees.
+
+      ## Git Commit Requirement
+
+      In the already-green case there is nothing to commit; yield immediately.
+      If — and only if — a regression was repaired, you **must** commit the repair in
+      **both** worktrees (branch + master mirror) before yielding, including
+      `tests/parity/scenario_facts_generated.json` in the branch commit if the build
+      regenerated it. No `--no-verify` or `--amend` unless flagged in the commit
+      message as recovery. Do not yield until any needed commits land.
+  - id: check-confirm-prior-work
+    type: check
+    bounce_target: impl-confirm-prior-work
+    prompt: |
+      You are a **parity-scenario reviewer**. Deterministically confirm the 6
+      already-landed scenarios are intact, green, mirrored, and committed.
+
+      ## Preexisting Inputs
+
       - `tests/parity/scenario_table.h`
-      - `tests/parity/golden/*.json` (39 files)
-      - `../openglad-master/` worktree at HEAD `de702ef0...`
-      - `scripts/parity/check_coverage_manifest.py` (no argparse yet)
+      - `tests/parity/test_parity_scenarios.cpp`
+      - `tests/parity/golden/enemy_freeze_mage_scen99.json`
+      - `tests/parity/golden/invisibility_thief_scen99.json`
+      - `tests/parity/golden/speed_potion_movement_scen99.json`
+      - `tests/parity/golden/invulnerable_potion_scen99.json`
+      - `tests/parity/golden/summon_lifetime_faerie_scen99.json`
+      - `tests/parity/golden/summon_lifetime_decrement_faerie_scen99.json`
+      - `../openglad-master/tools/parity_scenario_table.h`
+      - `../openglad-master/build/ci-test/parity_dump_master`
 
-      New Outputs:
-      - `.plan/parity-present-state.md` (≤200 lines) containing:
-        - Test count snapshot: lines `Passed: P`, `Skipped: S`, `Failing: F` derived from `og_test_parity --gtest_brief=1`. `--gtest_brief=1` does not emit a `[  FAILED  ] N tests.` summary line; failure count is `grep -cE "^\[  FAILED  \] Parity\." /tmp/p01.out`.
-        - Failing tests: one bullet per `[  FAILED  ] Parity.<id>` line.
-        - Skipped tests: one bullet per `master golden missing for <id>` line.
-        - Master companion SHA pinned this phase: one line `Master companion SHA: <40-hex>` equal to `git -C ../openglad-master rev-parse HEAD`.
-        - Mirror SHA delta: literal `sha1sum tests/parity/scenario_table.h ../openglad-master/tools/parity_scenario_table.h` output. If unequal, state "BRANCH ≠ COMPANION — phase 02 resyncs."
-        - Per-target coverage gap inventory: seven tables, one per category, each with columns `target | observed_in_any_row | covering_scenario_id | golden_present`:
-          - 21 walker families
-          - 20 weapon families
-          - 13 treasure families
-          - 4 generator families
-          - 13 effect families
-          - 42 (family, special_slot) pairs as literal tokens `FAMILY_<name>:slot<N>` (`kRequiredSpecials` is `std::pair<std::int32_t, std::uint8_t>`; `.first` reverse-mapped via the bare `family_symbol` table in `state_dump.cpp`, `.second` rendered decimal)
-          - 9 event kinds
-        - Broken-state authorisation: quote bounds from plan §1 verbatim.
-      - `.plan/parity-coverage-manifest.md` updated in place: `master_companion_sha` frontmatter equals the live companion SHA; `(none yet)` cells reflect current `kScenarios` observations.
-      - Extend `scripts/parity/check_coverage_manifest.py` with `argparse` + two subcommands:
-        - `--emit-gap-table`: parses `tests/parity/coverage_targets.h` and `tests/parity/scenario_table.h`, writes seven gap tables as pipe-tables to stdout.
-        - `--emit-scenario-list`: writes one tab-separated line per `kScenarios` row: `<id>\t<compare_mode>\t<is_branch_internal>` (`compare_mode` is enum identifier verbatim with no `CompareMode::` prefix; `is_branch_internal` is lowercase `true`/`false`). Single trailing newline.
-        - Both subcommands stdout-only, exit 0 on success, ≠0 on parse failure. Default behaviour unchanged.
+      ## What to Verify
 
-      Implementation Steps:
-      1. `cmake --build --preset ci-test --target og_test_parity && build/ci-test/og_test_parity --gtest_brief=1 2>&1 | tee /tmp/p01.out`.
-      2. Extract counts:
-         - `PASSED=$(grep -oE '^\[  PASSED  \] [0-9]+' /tmp/p01.out | head -1 | awk '{print $3}')`
-         - `SKIPPED=$(grep -oE '^\[  SKIPPED \] [0-9]+' /tmp/p01.out | head -1 | awk '{print $3}')`
-         - `FAILED=$(grep -cE '^\[  FAILED  \] Parity\.' /tmp/p01.out)`
-      3. Implement the new argparse subcommands.
-      4. `python3 scripts/parity/check_coverage_manifest.py --emit-gap-table > /tmp/gap.md` and embed verbatim in `.plan/parity-present-state.md`.
-      5. For each target row, `golden_present` is `yes` iff `tests/parity/golden/<covering_scenario_id>.json` exists.
+      Run each command and confirm the stated result:
 
-      Do NOT regenerate or rediscover the manifest or honest audit from scratch — read and update them in place.
+      - `cmake --build --preset ci-test && ctest --preset ci-test` → 0 failures.
+      - `./build/ci-test/og_test_parity --gtest_filter='Parity.enemy_freeze_mage_scen99:Parity.invisibility_thief_scen99:Parity.speed_potion_movement_scen99:Parity.invulnerable_potion_scen99:Parity.summon_lifetime_faerie_scen99:Parity.summon_lifetime_decrement_faerie_scen99'` → all pass.
+      - `ls tests/parity/golden/enemy_freeze_mage_scen99.json tests/parity/golden/invisibility_thief_scen99.json tests/parity/golden/speed_potion_movement_scen99.json tests/parity/golden/invulnerable_potion_scen99.json tests/parity/golden/summon_lifetime_faerie_scen99.json tests/parity/golden/summon_lifetime_decrement_faerie_scen99.json` → all exist.
+      - `diff -q tests/parity/scenario_table.h ../openglad-master/tools/parity_scenario_table.h` → returns 0 (byte-identical).
+      - `./build/ci-test/og_test_parity --gtest_filter='*depth_gate*:*golden_evaluation_gate*:*mutation_canary*'` → all pass.
+      - `git status --porcelain tests/parity/` → empty (no uncommitted parity-test changes).
 
-      Git Commit Requirement (MUST run before yielding):
-      ```
-      git add .plan/parity-present-state.md \
-              .plan/parity-coverage-manifest.md \
-              scripts/parity/check_coverage_manifest.py
-      git commit -m "parity-cov: phase 01 — baseline and per-target gap inventory"
-      ```
-      No companion-side commit this phase.
+      ## Verdict
 
-  - id: 01a-check-tree-clean-and-counts
-    type: check
-    bounce_target: 01-baseline-and-inventory
-    prompt: |
-      You are the reviewer for verification phase 01a.
+      If every check above succeeds, emit exactly:
+      `VERDICT: PASS`
 
-      Purpose: Confirm clean working tree, present-state doc exists, recorded counts re-derive from a fresh test run.
-
-      Verify ALL of the following:
-      1. `git status --porcelain | grep -v '^?? .plan/.juvenal-state.json$' | grep -v '^?? scripts/parity/__pycache__' | wc -l` equals `0`.
-      2. `test -f .plan/parity-present-state.md` succeeds.
-      3. Re-run `cmake --build --preset ci-test --target og_test_parity && build/ci-test/og_test_parity --gtest_brief=1`, re-derive `PASSED/SKIPPED/FAILED`, and `grep -F` each integer in `.plan/parity-present-state.md` under "Test count snapshot".
-      4. `git log -1 --name-status` lists `.plan/parity-present-state.md` and `.plan/parity-coverage-manifest.md`.
-
-      End your response with exactly one verdict line:
-      - `VERDICT: PASS` if all checks succeed.
-      - `VERDICT: FAIL: <reason>` otherwise.
-
-  - id: 01b-check-companion-sha-pinned
-    type: check
-    bounce_target: 01-baseline-and-inventory
-    prompt: |
-      You are the reviewer for verification phase 01b.
-
-      Purpose: Companion SHA is pinned consistently across present-state and manifest.
-
-      Verify ALL of the following:
-      1. `SHA=$(git -C ../openglad-master rev-parse HEAD)`.
-      2. `grep -F "Master companion SHA: $SHA" .plan/parity-present-state.md` exits 0.
-      3. `grep -F "master_companion_sha: $SHA" .plan/parity-coverage-manifest.md` exits 0.
-
-      End your response with exactly one verdict line:
-      - `VERDICT: PASS` if all checks succeed.
-      - `VERDICT: FAIL: <reason>` otherwise.
-
-  - id: 01c-check-gap-inventory-shape
-    type: check
-    bounce_target: 01-baseline-and-inventory
-    prompt: |
-      You are the reviewer for verification phase 01c.
-
-      Purpose: Every walker/weapon/treasure/generator/effect family, special-slot pair, and event kind appears literally in the gap inventory.
-
-      Verify ALL of the following:
-      1. Loop over each `grep -oE '"FAMILY_[A-Z0-9_]+"' tests/parity/coverage_targets.h` token and `grep -F` each in `.plan/parity-present-state.md`.
-      2. For the 9 event kinds in `kRequiredEventKinds`, `grep -F` each in `.plan/parity-present-state.md`.
-      3. For each `(family, slot)` in `kRequiredSpecials` (`std::pair<std::int32_t, std::uint8_t>`), construct the canonical token `FAMILY_<name>:slot<N>` and `grep -F` each in `.plan/parity-present-state.md`.
-
-      End your response with exactly one verdict line:
-      - `VERDICT: PASS` if all checks succeed.
-      - `VERDICT: FAIL: <reason>` otherwise.
-
-  - id: 02-mirror-resync
+      Otherwise emit exactly:
+      `VERDICT: FAIL: <reason>`
+  - id: impl-generator-saturation
     type: implement
     prompt: |
-      You are the implementing engineer for Phase 02 — Make `../openglad-master/tools/parity_scenario_table.h` byte-equal with branch; rebuild master companion.
+      You are adding 1 generator-saturation scenario (`generator_saturation_scen99`)
+      to the OpenGlad parity test suite. It exercises a `FAMILY_TOWER` generator
+      saturating `living_count` toward MAXOBS over 2500 ticks.
 
-      Goal: {{ GOAL }}
+      ## Preexisting Inputs
 
-      Preexisting Inputs (consume in place; do NOT regenerate from scratch):
-      - `tests/parity/scenario_table.h` (branch, current).
-      - `tests/parity/state_dump.{h,cpp}` (branch).
-      - `../openglad-master/tools/parity_scenario_table.h` (possibly stale).
-      - `../openglad-master/tools/parity_dump_state.{cpp,h}`.
-      - `../openglad-master/build/` directory.
-      - `.plan/parity-present-state.md` (from phase 01).
-      - `.plan/parity-coverage-manifest.md` (from phase 01).
-      - `.plan/master-companion.md`.
+      Consume these existing artifacts as-is — do **not** refetch, recollect,
+      rediscover, or regenerate them from scratch; append to / update them in place:
+
+      - `tests/parity/scenario_table.h` (append target; 134 existing + earlier-phase additions are untouched).
+      - `tests/parity/scenario_runtime.cpp` (already wires `special_names_table` — **do not modify**).
+      - `tests/parity/test_parity_scenarios.cpp` (append target).
+      - `tests/parity/fact_predicate.h` (predicate vocabulary).
+      - `tests/parity/test_parity_coverage_gate.cpp` (gate contracts — **not** modified).
+      - `src/gameplay/walker.cpp:1217-1235` (`act_generate`, gates on `living_count < MAXOBS`).
+      - `src/gameplay/generator_family_registry.cpp:30-37` (`FAMILY_TOWER → default_weapon = FAMILY_MAGE`).
       - `scripts/parity/capture_master_golden.sh`.
-      - `scripts/parity/validate_schema.py`.
+      - `../openglad-master/` worktree (branch `parity-companion`), the mirror file
+        `../openglad-master/tools/parity_scenario_table.h`, and the built
+        `../openglad-master/build/ci-test/parity_dump_master`.
 
-      New Outputs:
-      - `../openglad-master/tools/parity_scenario_table.h` byte-equal to branch.
-      - `../openglad-master/build/ci-test/parity_dump_master` rebuilt.
-      - `.plan/master-companion.md` updated with the new pin (post-commit SHA of `../openglad-master`).
-      - `.plan/parity-coverage-manifest.md` `master_companion_sha:` updated to the new SHA.
+      ## New Outputs
 
-      Implementation Steps:
-      1. Confirm no uncommitted branch state (`git status --porcelain` clean modulo permitted ignores).
-      2. `cp -f tests/parity/scenario_table.h ../openglad-master/tools/parity_scenario_table.h`.
-      3. Build companion: `cmake --build ../openglad-master/build/ci-test --target parity_dump_master` (rerun configure on `../openglad-master/` if necessary).
-      4. Companion-side commit:
-         - `git -C ../openglad-master add tools/parity_scenario_table.h`
-         - `git -C ../openglad-master commit -m "parity-companion: phase 02 — mirror scenario_table.h to <branch-sha>"` where `<branch-sha>` is branch HEAD just prior to this phase's branch commit.
-      5. `SHA=$(git -C ../openglad-master rev-parse HEAD)`.
-      6. Edit `.plan/master-companion.md` and `.plan/parity-coverage-manifest.md` to use the new SHA.
-      7. Branch-side commit (below).
+      - 1 `ScenarioSpec` row `generator_saturation_scen99` appended to `kScenarios[]`.
+      - 1 `OG_PARITY_TEST(generator_saturation_scen99)` macro appended.
+      - 1 `kMut_generator_saturation_scen99` mutation descriptor (tab-indented).
+      - 1 golden `tests/parity/golden/generator_saturation_scen99.json`.
+      - Updated `../openglad-master/tools/parity_scenario_table.h` (byte-mirror) + rebuilt `parity_dump_master`.
 
-      Git Commit Requirement (BOTH worktrees, MUST run before yielding):
+      ## Implementation Details
 
-      Companion (in `../openglad-master`):
-      ```
-      git -C ../openglad-master add tools/parity_scenario_table.h
-      git -C ../openglad-master commit -m "parity-companion: phase 02 — mirror scenario_table.h to <branch-sha>"
-      ```
+      First check whether this phase's deliverable already exists and passes
+      (scenario present in `kScenarios[]`, macro present, golden on disk, the named
+      test green, mirror in sync). If all already hold, ensure the two required git
+      commits have landed and yield immediately — do not redo work. Otherwise
+      implement only the missing pieces.
 
-      Branch (in `/home/yans/code/openglad`):
-      ```
-      git add .plan/master-companion.md .plan/parity-coverage-manifest.md
-      git commit -m "parity-cov: phase 02 — resync companion mirror"
-      ```
+      - Spawns: `{FAMILY_TOWER,1,kOrderGenerator,60,60,0,0,5,0}`,
+        `{FAMILY_SOLDIER,0,kOrderLiving,240,240,0,0}` (observer, far enough not to interfere).
+      - Inputs: none (idle scenario). Tick budget 2500.
+      - Facts: `pred::TickReached(2500)`; `pred::WalkerFamilyCount(FAMILY_TOWER,1,1)`;
+        `pred::WalkerFamilyCount(FAMILY_MAGE, 3, 30, "consequence: generator saturates living_count over 2500 ticks; range spans RNG drift")`;
+        `pred::EventKindAtLeast(/*play_sound*/1, 4)`;
+        `pred::WalkerOfTeamAlive(1, 3, 30, "rng_drift: spawn count varies with per-tick RNG")`.
+      - Mutation: `src/gameplay/walker.cpp` line 1219 (tab-indented — preserve the leading tab).
+        - from: `\tif ( current_game->world->living_count < MAXOBS &&`
+        - to:   `\tif ( false &&`
+        - rationale: replacing the `living_count < MAXOBS` half of the `act_generate`
+          gate with `false` makes the conjunction always false; the generator never
+          fires; zero FAMILY_MAGE spawn; `WalkerFamilyCount(FAMILY_MAGE, 3, 30)` fails
+          on its lower bound.
 
-  - id: 02a-check-mirror-sha-equal
+      Empirical numeric values (the `EventKindAtLeast` floor, the count ranges, the
+      tick budget) are tunable starting points: adjust to runtime-observed values so
+      the unmutated scenario passes on the branch, every `EventKindAtLeast` floor is
+      strictly `> 0`, the mutation still flips ≥1 predicate, any widened range carries
+      an `intended_diff:`/`rng_drift:`/`consequence:` label, and the scenario keeps
+      ≥3 non-`TickReached` predicates including ≥1 whose label begins `consequence:`.
+
+      ## Mirror + Capture (standard per-implement sequence)
+
+      1. Append the spawn/input/fact/mutation/`ScenarioSpec` + macro (byte-match the
+         mutation `from`/`to` to the source line including tabs vs spaces).
+      2. `cp tests/parity/scenario_table.h ../openglad-master/tools/parity_scenario_table.h`.
+      3. In the master worktree: `cmake --build --preset ci-test --target parity_dump_master` (run from `../openglad-master`).
+      4. From the branch worktree: `scripts/parity/capture_master_golden.sh generator_saturation_scen99`.
+      5. `cmake --build --preset ci-test && ctest --preset ci-test` → 0 failures.
+         Wrap any branch/master-divergent predicate in `pred::branch_only(...)` /
+         `pred::master_only(...)` with an `intended_diff:`/`rng_drift:` label.
+
+      ## Success Criteria
+
+      - `generator_saturation_scen99` passes; golden exists; mirror byte-identical.
+      - All coverage/golden/mutation gates pass.
+      - ≥3 non-`TickReached` predicates incl. ≥1 with a `consequence:` label.
+      - Mutation `from`/`to` preserves tab indentation matching `src/gameplay/walker.cpp:1219`.
+      - `git status --porcelain tests/parity/` is empty.
+
+      ## Git Commit Requirement
+
+      You **must** commit work to git in **both** worktrees before yielding:
+
+      - `git -C ../openglad-master add tools/parity_scenario_table.h && git -C ../openglad-master commit -m "parity-companion: mirror scenario_table.h generator"`
+      - `git add tests/parity/scenario_table.h tests/parity/test_parity_scenarios.cpp tests/parity/scenario_facts_generated.json tests/parity/golden/generator_saturation_scen99.json && git commit -m "parity-cov: generator-saturation scenario"`
+
+      The branch commit **must include `tests/parity/scenario_facts_generated.json`**
+      (regenerated in-source by the build). After committing,
+      `git status --porcelain tests/parity/` must be empty. No `--no-verify`/`--amend`
+      unless flagged as recovery. Do not yield until both commits land.
+  - id: check-generator-saturation
     type: check
-    bounce_target: 02-mirror-resync
+    bounce_target: impl-generator-saturation
     prompt: |
-      You are the reviewer for verification phase 02a.
+      You are a **parity-scenario reviewer**. Deterministically confirm
+      `generator_saturation_scen99` is present, green, mirrored, committed, and
+      depth/consequence-compliant.
 
-      Purpose: Branch and companion `parity_scenario_table.h` are byte-identical.
+      ## Preexisting Inputs
 
-      Verify ALL of the following:
-      1. `sha1sum tests/parity/scenario_table.h | awk '{print $1}'` equals `sha1sum ../openglad-master/tools/parity_scenario_table.h | awk '{print $1}'`.
-      2. `cmp tests/parity/scenario_table.h ../openglad-master/tools/parity_scenario_table.h` exits 0.
+      - `tests/parity/scenario_table.h`
+      - `tests/parity/test_parity_scenarios.cpp`
+      - `tests/parity/golden/generator_saturation_scen99.json`
+      - `../openglad-master/tools/parity_scenario_table.h`
 
-      End with exactly one verdict line:
-      - `VERDICT: PASS` if all checks succeed.
-      - `VERDICT: FAIL: <reason>` otherwise.
+      ## What to Verify
 
-  - id: 02b-check-companion-binary-fresh
-    type: check
-    bounce_target: 02-mirror-resync
-    prompt: |
-      You are the reviewer for verification phase 02b.
+      Run each command and confirm the stated result:
 
-      Purpose: Companion binary exists, is executable, and emits schema-valid JSON for a known small scenario.
+      - `cmake --build --preset ci-test && ctest --preset ci-test` → 0 failures.
+      - `./build/ci-test/og_test_parity --gtest_filter='Parity.generator_saturation_scen99'` → pass.
+      - `ls tests/parity/golden/generator_saturation_scen99.json` → exists.
+      - `diff -q tests/parity/scenario_table.h ../openglad-master/tools/parity_scenario_table.h` → 0.
+      - `./build/ci-test/og_test_parity --gtest_filter='*depth_gate*:*golden_evaluation_gate*:*mutation_canary*'` → pass.
+      - Mechanical depth/consequence count for `generator_saturation_scen99` — run:
 
-      Verify ALL of the following:
-      1. `test -x ../openglad-master/build/ci-test/parity_dump_master`.
-      2. `../openglad-master/build/ci-test/parity_dump_master smoke_empty_scen99 > /tmp/p02-dump.json` exits 0.
-      3. `python3 scripts/parity/validate_schema.py /tmp/p02-dump.json` exits 0.
-
-      End with exactly one verdict line:
-      - `VERDICT: PASS` if all checks succeed.
-      - `VERDICT: FAIL: <reason>` otherwise.
-
-  - id: 02c-check-sha-pin-doc-consistent
-    type: check
-    bounce_target: 02-mirror-resync
-    prompt: |
-      You are the reviewer for verification phase 02c.
-
-      Purpose: Documentation pins match the live companion SHA, and the companion commit lists the mirror file.
-
-      Verify ALL of the following:
-      1. `SHA=$(git -C ../openglad-master rev-parse HEAD)`.
-      2. `grep -F "$SHA" .plan/master-companion.md` exits 0.
-      3. `grep -F "master_companion_sha: $SHA" .plan/parity-coverage-manifest.md` exits 0.
-      4. `git -C ../openglad-master log -1 --name-status` contains `tools/parity_scenario_table.h`.
-
-      End with exactly one verdict line:
-      - `VERDICT: PASS` if all checks succeed.
-      - `VERDICT: FAIL: <reason>` otherwise.
-
-  - id: 03-fix-treasure-aliasing
-    type: implement
-    prompt: |
-      You are the implementing engineer for Phase 03 — Producer-side per-Order family resolution; 17th FactKind; treasure cohort and behavioural gates green.
-
-      Goal: {{ GOAL }}
-
-      Preexisting Inputs (consume in place; do NOT regenerate from scratch):
-      - `tests/parity/state_dump.{h,cpp}`.
-      - `tests/parity/fact_predicate.{h,cpp}`.
-      - `tests/parity/scenario_table.h` (with 11 treasure pickup rows currently failing).
-      - `tests/parity/test_parity_coverage_gate.cpp` (`behavioural_coverage_gate*`).
-      - `tests/parity/scenario_facts_generated.json`.
-      - `tests/parity/golden/*.json`.
-      - `../openglad-master/tools/parity_scenario_table.h`.
-      - `../openglad-master/tools/parity_dump_state.{cpp,h}`.
-      - `../openglad-master/build/ci-test/parity_dump_master` (rebuilt in phase 02; will be rebuilt again here).
-      - `.plan/parity-harness-design.md`.
-      - `scripts/parity/capture_master_golden.sh`.
-
-      New Outputs:
-      - Per-Order family resolution in `state_dump.cpp`:
-        - Introduce free function `family_symbol_by_order(int32_t order, int32_t family_id)` backed by 5 small static `std::string_view` tables — one per `Order::Living`, `Order::Weapon`, `Order::Treasure`, `Order::Generator`, `Order::Effect`.
-        - Rewrite `collect_walkers`, `collect_weapons`, `collect_effects` to call `family_symbol_by_order(static_cast<int32_t>(w->query_order()), static_cast<int32_t>(w->family()))`.
-        - DELETE the legacy `family_symbol` free function outright (no thin-wrapper); migrate every other call site in the same commit.
-        - Mirror byte-for-byte to `../openglad-master/tools/parity_dump_state.cpp`.
-      - New `FactKind::TreasureFamilyOfOrderRemovedFromOblist` appended at the end of the enum. Factory signature `TreasureFamilyOfOrderRemovedFromOblist(int32_t family, int32_t order, std::string label)`. Evaluator walks `dump.walkers[]` and compares each entry's `family` string against the table-resolved symbol for `(family, order)` — predicate satisfied iff no remaining walker matches. Existing `TreasureFamilyRemovedFromOblist(family, label)` factory left intact.
-      - Updated `tests/parity/scenario_table.h`: every `treasure_*_pickup_scen99` row's `TreasureFamilyRemovedFromOblist(arg0)` replaced by `TreasureFamilyOfOrderRemovedFromOblist(arg0, kOrderTreasure)`. `kInputsTreasurePickup` and spawn lists unchanged.
-      - Updated `tests/parity/test_parity_coverage_gate.cpp`: BOTH `behavioural_coverage_gate_treasures` (cpp:323-334) AND `behavioural_coverage_gate`'s treasure-family branch (cpp:421-424) accept either kind. Introduce free helper `any_treasure_binding(int32_t family_id)` returning true iff any predicate of either kind binds `arg0 == family_id` (with `arg1 == kOrderTreasure` for the new kind). Both gate sites use this helper.
-      - `tests/parity/scenario_facts_generated.json` regenerated by the existing tool (not hand-edited).
-      - Mirror updates on companion side: `../openglad-master/tools/parity_scenario_table.h`, `tools/parity_dump_state.{cpp,h}` (legacy `family_symbol` deleted there too).
-      - New goldens for every treasure row: `tests/parity/golden/treasure_*_pickup_scen99.json` (12 files), captured via `scripts/parity/capture_master_golden.sh <id>` against the resynced + patched companion.
-      - Existing goldens regenerated where the new dumper produces a different `walkers[].family` string. Use this loop:
+        ```bash
+        block=$(awk '/inline constexpr FactPredicate kFacts_generator_saturation_scen99\[\]/{f=1} f{print} /^};/{if(f)exit}' tests/parity/scenario_table.h)
+        total=$(printf '%s\n' "$block" | grep -c 'pred::')
+        ticks=$(printf '%s\n' "$block" | grep -c 'pred::TickReached')
+        test $((total - ticks)) -ge 3                    # ≥3 non-TickReached predicates
+        printf '%s\n' "$block" | grep -q 'consequence:'  # ≥1 consequence predicate
         ```
-        mkdir -p /tmp/p03-staging
-        for g in tests/parity/golden/*.json; do
-            id=$(basename "$g" .json)
-            ../openglad-master/build/ci-test/parity_dump_master "$id" > "/tmp/p03-staging/$id.json"
-            if ! diff -q "$g" "/tmp/p03-staging/$id.json" > /dev/null; then
-                cp "/tmp/p03-staging/$id.json" "$g"
-            fi
-        done
+
+        FAIL if either assertion fails.
+      - Tree-cleanliness: `git status --porcelain tests/parity/` → empty.
+
+      ## Verdict
+
+      If every check above succeeds, emit exactly:
+      `VERDICT: PASS`
+
+      Otherwise emit exactly:
+      `VERDICT: FAIL: <reason>`
+  - id: impl-weapon-trajectories
+    type: implement
+    prompt: |
+      You are adding 3 weapon-trajectory scenarios to the OpenGlad parity test
+      suite: `weapon_rock_slot2_emit_scen99`, `weapon_boomerang_return_scen99`,
+      `weapon_exploding_boulder_scen99`.
+
+      ## Preexisting Inputs
+
+      Consume these existing artifacts as-is — do **not** refetch, recollect,
+      rediscover, or regenerate them from scratch; append to / update them in place:
+
+      - `tests/parity/scenario_table.h`, `tests/parity/scenario_runtime.cpp` (wiring — **do not modify**),
+        `tests/parity/test_parity_scenarios.cpp`, `tests/parity/fact_predicate.h`,
+        `tests/parity/test_parity_coverage_gate.cpp` (widened-range gate at 893-933;
+        `label_exempted` prefixes at 702-707).
+      - `scripts/parity/capture_master_golden.sh`.
+      - `../openglad-master/` worktree + mirror `../openglad-master/tools/parity_scenario_table.h` + `parity_dump_master`.
+      - `src/gameplay/families/family_elf.cpp:62-74` (slot 2 BOUNCING ROCKS — two-fire loop).
+      - `src/gameplay/families/family_soldier.cpp:45-52` (slot 2 BOOMERANG).
+      - `src/gameplay/families/effect_family_shield.cpp:63-134` (boomerang FX; 133-134 registers FAMILY_BOOMERANG).
+      - `src/gameplay/families/family_barbarian.cpp:23-65` (slot 2 EXPLODING BOULDER; line 59 `set_skip_exit(5000)`).
+      - `src/gameplay/families/weapon_family_projectiles.cpp:14-31` (`projectile_explode_on_death`).
+      - Reuses `kInputsSpecialSlot2` (existing input constant — reuse by name).
+
+      ## New Outputs
+
+      3 `ScenarioSpec` rows, 3 `OG_PARITY_TEST(...)` macros, 3 `kMut_*`, 3 goldens,
+      mirror update, rebuilt master dump:
+      - `weapon_rock_slot2_emit_scen99`
+      - `weapon_boomerang_return_scen99`
+      - `weapon_exploding_boulder_scen99`
+
+      ## Implementation Details
+
+      First check whether this phase's deliverable already exists and passes (all 3
+      scenarios in `kScenarios[]`, macros present, goldens on disk, named tests
+      green, mirror in sync). If all hold, ensure the two commits landed and yield
+      immediately — do not redo work. Otherwise implement only the missing pieces.
+
+      - **`weapon_rock_slot2_emit_scen99`**: spawns
+        `{FAMILY_ELF,0,kOrderLiving,120,120,0,0,4,300}`,
+        `{FAMILY_SOLDIER,1,kOrderLiving,200,120,0,0}`; reuse `kInputsSpecialSlot2`;
+        tick 30. Facts: `TickReached(30)`, `WalkerFamilyCount(FAMILY_ELF,1,1)`,
+        `WeaponFamilyEmitted(FAMILY_ROCK, "consequence: elf slot 2 BOUNCING ROCKS emits FAMILY_ROCK projectiles; mutation aborts the first fire() so no rock ever spawns")`,
+        `WalkerOfTeamAlive(0,1,1)`, `WalkerFamilyCount(FAMILY_SOLDIER,1,1)`.
+        Mutation `family_elf.cpp:66` (16-space indent):
+        `                fireob = static_cast<weap*>(self->fire());` → `                return false;`.
+      - **`weapon_boomerang_return_scen99`**: spawns
+        `{FAMILY_SOLDIER,0,kOrderLiving,120,120,0,0,4,300}`,
+        `{FAMILY_ARCHER,1,kOrderLiving,200,200,0,0}`; reuse `kInputsSpecialSlot2`;
+        tick 80. Facts: `TickReached(80)`, `WalkerFamilyCount(FAMILY_SOLDIER,1,1)`,
+        `EffectFamilyCount(FAMILY_BOOMERANG, 1, 2, -1, /*window_marker*/0, "consequence: BOOMERANG slot 2 spawns one FAMILY_BOOMERANG FX walker; default window_marker=0 counts every alive FAMILY_BOOMERANG effect in dump.effects[]")`,
+        `EventKindAtLeast(/*play_sound*/1, 2)`,
+        `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 8000, 14000, "rng_drift: soldier HP at tick 80 varies with archer engagement RNG; widened 6000-cent span carries a gate-recognised label")`.
+        Mutation `family_soldier.cpp:46` (**12-space indent** — byte-match; the source
+        is 12-space-indented, not 16):
+        `            newob = summon_entity(self, Order::FX, FAMILY_BOOMERANG);` → `            return false;`.
+      - **`weapon_exploding_boulder_scen99`**: spawns
+        `{FAMILY_BARBARIAN,0,kOrderLiving,120,120,0,0,5,300}` + 3 soldiers team 1 at
+        `(160,120)`, `(200,160)`, `(260,200)`; reuse `kInputsSpecialSlot2`; tick 60.
+        Facts: `TickReached(60)`, `WalkerFamilyCount(FAMILY_BARBARIAN,1,1)`,
+        `WeaponFamilyEmitted(FAMILY_BOULDER)`,
+        `EffectFamilyCount(FAMILY_EXPLOSION, 1, 4, -1, /*window_marker*/0, "consequence: EXPLODING BOULDER triggers projectile_explode_on_death adding ≥1 FAMILY_EXPLOSION FX walker; default window_marker=0 counts every alive FAMILY_EXPLOSION; upper bound covers chained explosions")`,
+        `WalkerFamilyCount(FAMILY_SOLDIER, 0, 3, "rng_drift: explosion may kill 0-3 enemy soldiers depending on radius/aim")`,
+        `EventKindAtLeast(/*play_sound*/1, 3)`.
+        Mutation `family_barbarian.cpp:59` (8-space indent):
+        `        alive->set_skip_exit(5000);` → `        alive->set_skip_exit(0);`.
+
+      Empirical numerics (`EventKindAtLeast` floors, HP/count ranges, tick budgets)
+      are tunable starting points — adjust to runtime so each unmutated scenario
+      passes, every floor is `> 0`, each mutation flips ≥1 predicate, every widened
+      range carries a label, and each scenario keeps ≥3 non-`TickReached` predicates
+      incl. ≥1 `consequence:`-labelled one. The boomerang 6000-cent HP span MUST
+      carry an `rng_drift:` label.
+
+      ## Mirror + Capture (standard per-implement sequence)
+
+      1. Append table rows + macros (byte-match each mutation `from`/`to` to the cited source line incl. tabs vs spaces).
+      2. `cp tests/parity/scenario_table.h ../openglad-master/tools/parity_scenario_table.h`.
+      3. In the master worktree: `cmake --build --preset ci-test --target parity_dump_master`.
+      4. From the branch worktree: `scripts/parity/capture_master_golden.sh weapon_rock_slot2_emit_scen99 weapon_boomerang_return_scen99 weapon_exploding_boulder_scen99`.
+      5. `cmake --build --preset ci-test && ctest --preset ci-test` → 0 failures.
+         Wrap branch/master-divergent predicates in `pred::branch_only(...)` /
+         `pred::master_only(...)` with an `intended_diff:`/`rng_drift:` label.
+
+      ## Success Criteria
+
+      - All 3 scenarios pass; 3 goldens exist; mirror byte-identical.
+      - The `predicate_depth_gate_no_trivially_wide_ranges` gate and all other gates pass.
+      - Each scenario has ≥3 non-`TickReached` predicates incl. ≥1 `consequence:` label.
+      - `git status --porcelain tests/parity/` is empty.
+
+      ## Git Commit Requirement
+
+      You **must** commit work to git in **both** worktrees before yielding:
+
+      - `git -C ../openglad-master add tools/parity_scenario_table.h && git -C ../openglad-master commit -m "parity-companion: mirror scenario_table.h weapon-trajectories"`
+      - `git add tests/parity/scenario_table.h tests/parity/test_parity_scenarios.cpp tests/parity/scenario_facts_generated.json tests/parity/golden/weapon_rock_slot2_emit_scen99.json tests/parity/golden/weapon_boomerang_return_scen99.json tests/parity/golden/weapon_exploding_boulder_scen99.json && git commit -m "parity-cov: weapon-trajectory scenarios"`
+
+      The branch commit **must include `tests/parity/scenario_facts_generated.json`**.
+      After committing, `git status --porcelain tests/parity/` must be empty.
+      No `--no-verify`/`--amend` unless flagged as recovery. Do not yield until both
+      commits land.
+  - id: check-weapon-trajectories
+    type: check
+    bounce_target: impl-weapon-trajectories
+    prompt: |
+      You are a **parity-scenario reviewer**. Deterministically confirm the 3
+      weapon-trajectory scenarios are present, green, mirrored, committed, and
+      depth/consequence-compliant, including the widened-range gate exemption for
+      the boomerang HP range.
+
+      ## Preexisting Inputs
+
+      - `tests/parity/scenario_table.h`
+      - `tests/parity/test_parity_scenarios.cpp`
+      - `tests/parity/golden/weapon_rock_slot2_emit_scen99.json`
+      - `tests/parity/golden/weapon_boomerang_return_scen99.json`
+      - `tests/parity/golden/weapon_exploding_boulder_scen99.json`
+      - `../openglad-master/tools/parity_scenario_table.h`
+
+      ## What to Verify
+
+      Run each command and confirm the stated result:
+
+      - `cmake --build --preset ci-test && ctest --preset ci-test` → 0 failures.
+      - `./build/ci-test/og_test_parity --gtest_filter='Parity.weapon_rock_slot2_emit_scen99:Parity.weapon_boomerang_return_scen99:Parity.weapon_exploding_boulder_scen99'` → pass.
+      - `ls tests/parity/golden/weapon_rock_slot2_emit_scen99.json tests/parity/golden/weapon_boomerang_return_scen99.json tests/parity/golden/weapon_exploding_boulder_scen99.json` → all exist.
+      - `diff -q tests/parity/scenario_table.h ../openglad-master/tools/parity_scenario_table.h` → 0.
+      - `./build/ci-test/og_test_parity --gtest_filter='Parity.predicate_depth_gate_no_trivially_wide_ranges'` → pass (boomerang's 6000-cent HP span must carry an `rng_drift:` label).
+      - `./build/ci-test/og_test_parity --gtest_filter='*depth_gate*:*golden_evaluation_gate*:*mutation_canary*'` → pass.
+      - Mechanical depth/consequence count for each of the 3 new ids — for each
+        `<id>` in `weapon_rock_slot2_emit_scen99`, `weapon_boomerang_return_scen99`,
+        `weapon_exploding_boulder_scen99` run:
+
+        ```bash
+        block=$(awk '/inline constexpr FactPredicate kFacts_<id>\[\]/{f=1} f{print} /^};/{if(f)exit}' tests/parity/scenario_table.h)
+        total=$(printf '%s\n' "$block" | grep -c 'pred::')
+        ticks=$(printf '%s\n' "$block" | grep -c 'pred::TickReached')
+        test $((total - ticks)) -ge 3
+        printf '%s\n' "$block" | grep -q 'consequence:'
         ```
-      - `.plan/parity-harness-design.md` appended with a short section documenting the new FactKind and per-Order resolution.
 
-      Implementation Notes:
-      - Dump JSON schema is unchanged; only `walkers[].family` string content changes for non-Living oblist entries.
-      - New enum value is appended (not inserted) so serialised ordinals never shift.
-      - Rebuild companion `parity_dump_master` after mirror updates.
+        FAIL if any block fails either assertion.
+      - Tree-cleanliness: `git status --porcelain tests/parity/` → empty.
 
-      Git Commit Requirement (BOTH worktrees, MUST run before yielding):
+      ## Verdict
 
-      Companion:
-      ```
-      git -C ../openglad-master add tools/parity_scenario_table.h \
-                                     tools/parity_dump_state.cpp \
-                                     tools/parity_dump_state.h
-      git -C ../openglad-master commit -m "parity-companion: phase 03 — mirror per-Order family resolution"
-      ```
+      If every check above succeeds, emit exactly:
+      `VERDICT: PASS`
 
-      Branch:
-      ```
-      git add tests/parity/state_dump.cpp \
-              tests/parity/fact_predicate.h \
-              tests/parity/fact_predicate.cpp \
-              tests/parity/scenario_table.h \
-              tests/parity/test_parity_coverage_gate.cpp \
-              tests/parity/scenario_facts_generated.json \
-              tests/parity/golden/ \
-              .plan/parity-harness-design.md
-      git commit -m "parity-cov: phase 03 — per-Order family resolution and TreasureFamilyOfOrderRemovedFromOblist"
-      ```
-
-  - id: 03a-check-build-and-treasure-green
-    type: check
-    bounce_target: 03-fix-treasure-aliasing
-    prompt: |
-      You are the reviewer for verification phase 03a.
-
-      Purpose: Build succeeds; treasure cohort and both behavioural gates pass with no skips.
-
-      Run and verify:
-      1. `cmake --build --preset ci-test --target og_test_parity` exits 0.
-      2. `build/ci-test/og_test_parity --gtest_filter='Parity.treasure_*_pickup_scen99:Parity.behavioural_coverage_gate*' 2>&1 | tee /tmp/p03a.out`.
-      3. `grep -cE '^\[  FAILED  \]' /tmp/p03a.out` equals `0`.
-      4. `grep -cE '^\[  SKIPPED \]' /tmp/p03a.out` equals `0`.
-
-      End with exactly one verdict line:
-      - `VERDICT: PASS` if all checks succeed.
-      - `VERDICT: FAIL: <reason>` otherwise.
-
-  - id: 03b-check-schema-and-mirror-equal
-    type: check
-    bounce_target: 03-fix-treasure-aliasing
-    prompt: |
-      You are the reviewer for verification phase 03b.
-
-      Purpose: Mirror byte-equal; schema unchanged; legacy `family_symbol` gone on branch and companion; companion binary fresh.
-
-      Verify ALL of the following:
-      1. `cmp tests/parity/scenario_table.h ../openglad-master/tools/parity_scenario_table.h` exits 0.
-      2. Extract every JSON top-level key from `tests/parity/golden/smoke_nonempty_scen99.json` and confirm the set matches the frozen schema-v1 list declared in `.plan/parity-harness-design.md`.
-      3. `git -C ../openglad-master log -1 --name-status` lists `tools/parity_scenario_table.h`, `tools/parity_dump_state.cpp`, AND `tools/parity_dump_state.h`.
-      4. Re-run `cmake --build ../openglad-master/build/ci-test --target parity_dump_master` (idempotent; exits 0).
-      5. `test ../openglad-master/build/ci-test/parity_dump_master -nt ../openglad-master/tools/parity_dump_state.cpp` exits 0.
-      6. `test ../openglad-master/build/ci-test/parity_dump_master -nt ../openglad-master/tools/parity_dump_state.h` exits 0.
-      7. `grep -c '^std::string family_symbol(' tests/parity/state_dump.cpp` equals `0`.
-      8. `grep -c '^std::string family_symbol(' ../openglad-master/tools/parity_dump_state.cpp` equals `0`.
-      9. `python3 -c "import re,sys; src=open('tests/parity/state_dump.cpp').read(); bad=re.findall(r'\\bfamily_symbol\\s*\\((?!_by_order)', src); sys.exit(1 if bad else 0)"` exits 0.
-      10. Same regex check against `../openglad-master/tools/parity_dump_state.cpp` exits 0.
-
-      End with exactly one verdict line:
-      - `VERDICT: PASS` if all checks succeed.
-      - `VERDICT: FAIL: <reason>` otherwise.
-
-  - id: 03c-check-no-new-non-treasure-regressions
-    type: check
-    bounce_target: 03-fix-treasure-aliasing
-    prompt: |
-      You are the reviewer for verification phase 03c.
-
-      Purpose: No prior-passing tests now fail; phase closes exactly the treasure + gate failures and no others.
-
-      Run and verify:
-      1. `build/ci-test/og_test_parity --gtest_brief=1 2>&1 | tee /tmp/p03c.out`.
-      2. `FAILED=$(grep -cE '^\[  FAILED  \] Parity\.' /tmp/p03c.out)`.
-      3. Re-derive the prior failing set from `.plan/parity-present-state.md` (bulleted `Parity.<id>` lines under "Failing tests") and the closing set `{Parity.treasure_*_pickup_scen99, Parity.behavioural_coverage_gate, Parity.behavioural_coverage_gate_treasures}`. Assert (a) every prior failing id NOT in the closing set still appears in `/tmp/p03c.out`'s `[  FAILED  ]` lines (no regression), AND (b) every id in the closing set is NOT in `/tmp/p03c.out`'s `[  FAILED  ]` lines (closed by this phase).
-      4. `grep -cE '^\[  FAILED  \] Parity\.treasure_' /tmp/p03c.out` equals `0`.
-      5. `grep -cE '^\[  FAILED  \] Parity\.behavioural_coverage_gate' /tmp/p03c.out` equals `0`.
-
-      End with exactly one verdict line:
-      - `VERDICT: PASS` if all checks succeed.
-      - `VERDICT: FAIL: <reason>` otherwise.
-
-  - id: 04-mass-golden-recapture
+      Otherwise emit exactly:
+      `VERDICT: FAIL: <reason>`
+  - id: impl-effect-emission
     type: implement
     prompt: |
-      You are the implementing engineer for Phase 04 — Capture every missing master golden; refresh existing ones under the resynced companion.
+      You are adding 3 multi-target / multi-spawn effect-emission scenarios to the
+      OpenGlad parity test suite: `effect_heartburst_multitarget_scen99`,
+      `effect_poison_cloud_emit_scen99`, `effect_protection_emit_scen99`.
 
-      Goal: {{ GOAL }}
+      ## Preexisting Inputs
 
-      Preexisting Inputs (consume in place; do NOT regenerate from scratch):
-      - `scripts/parity/capture_master_golden.sh` (extended in this phase).
-      - `tests/parity/scenario_table.h` (final treasure-fixed version from phase 03).
-      - `../openglad-master/build/ci-test/parity_dump_master` (rebuilt in phase 03 with mirror patch).
-      - `tests/parity/golden/*.json` (39+ existing).
-      - `scripts/parity/validate_schema.py`.
-      - `scripts/parity/check_coverage_manifest.py` (with `--emit-scenario-list` added in phase 01).
+      Consume these existing artifacts as-is — do **not** refetch, recollect,
+      rediscover, or regenerate them from scratch; append to / update them in place:
 
-      New Outputs:
-      - `scripts/parity/capture_master_golden.sh` accepts:
-        - `--all` (iterate every `SemanticParity` row in `kScenarios` whose `is_branch_internal == false`).
-        - `--out-dir <path>` (default `tests/parity/golden`).
-        - `--no-write --diff` (emit JSON to tmp dir and `diff -ru tests/parity/golden tmpdir` instead of overwriting; used by verifier).
-      - Up to 93 new + replacement golden files under `tests/parity/golden/` so every `SemanticParity` master-comparable row has a fresh golden.
-      - `.plan/parity-recapture-diff.md` listing every file added/replaced, one line per change formatted `<+|M> <sha1-prefix> <id>.json`.
-      - `tests/parity/scenario_facts_generated.json` regenerated.
-
-      Implementation Steps:
-      1. Implement `--all` by reading `kScenarios` from `tests/parity/scenario_table.h` via companion enumeration (pass each `id` to `parity_dump_master`; write `<out-dir>/<id>.json` if `compare_mode == SemanticParity && is_branch_internal == false`). Reuse existing invocation pattern; do not rewrite the companion binary.
-      2. Run `scripts/parity/capture_master_golden.sh --all`.
-      3. Regenerate `tests/parity/scenario_facts_generated.json` via the existing tool.
-      4. After bulk capture, run `git status tests/parity/golden/ | wc -l` and write the count plus per-file change list into `.plan/parity-recapture-diff.md`.
-
-      Git Commit Requirement (branch-only, MUST run before yielding):
-      ```
-      git add scripts/parity/capture_master_golden.sh \
-              tests/parity/golden/ \
-              tests/parity/scenario_facts_generated.json \
-              .plan/parity-recapture-diff.md
-      git commit -m "parity-cov: phase 04 — mass golden recapture (N goldens)"
-      ```
-      No companion-side commit this phase.
-
-  - id: 04a-check-zero-skipped-and-pass-grows
-    type: check
-    bounce_target: 04-mass-golden-recapture
-    prompt: |
-      You are the reviewer for verification phase 04a.
-
-      Purpose: No more skipped parity tests; total passed equals prior P + F + S (no rows silently dropped).
-
-      Run and verify:
-      1. `cmake --build --preset ci-test --target og_test_parity && build/ci-test/og_test_parity --gtest_brief=1 2>&1 | tee /tmp/p04a.out`.
-      2. `grep -cE '^\[  SKIPPED \] Parity\.' /tmp/p04a.out` equals `0`.
-      3. Read `Passed: P`, `Skipped: S`, `Failing: F` from `.plan/parity-present-state.md` and assert live `[  PASSED  ] N` equals `P + F + S`. With the documented baseline (P=56, S=81, F=13) the assertion is `PASSED == 150`.
-
-      End with exactly one verdict line:
-      - `VERDICT: PASS` if all checks succeed.
-      - `VERDICT: FAIL: <reason>` otherwise.
-
-  - id: 04b-check-every-master-comparable-row-has-golden
-    type: check
-    bounce_target: 04-mass-golden-recapture
-    prompt: |
-      You are the reviewer for verification phase 04b.
-
-      Purpose: Every `SemanticParity && !is_branch_internal` row has a schema-valid golden on disk.
-
-      Run and verify:
-      1. `python3 scripts/parity/check_coverage_manifest.py --emit-scenario-list > /tmp/p04b.tsv`.
-      2. Split each non-empty line of `/tmp/p04b.tsv` on a single ASCII tab (`\t`, 0x09); assert exactly three fields per line. For every row with `compare_mode == SemanticParity && is_branch_internal == false`:
-         - `test -s tests/parity/golden/<id>.json` succeeds.
-         - `python3 scripts/parity/validate_schema.py tests/parity/golden/<id>.json` exits 0.
-
-      End with exactly one verdict line:
-      - `VERDICT: PASS` if all checks succeed.
-      - `VERDICT: FAIL: <reason>` otherwise.
-
-  - id: 04c-check-recapture-doc-and-mirror-untouched
-    type: check
-    bounce_target: 04-mass-golden-recapture
-    prompt: |
-      You are the reviewer for verification phase 04c.
-
-      Purpose: Recapture diff doc lists every file actually changed; mirror untouched this phase.
-
-      Verify:
-      1. `test -f .plan/parity-recapture-diff.md`.
-      2. `LINES=$(grep -cE '^[+M] [0-9a-f]{8} ' .plan/parity-recapture-diff.md)`; assert `LINES >= 1`.
-      3. Assert `LINES` equals `git diff --name-only HEAD~1 HEAD -- tests/parity/golden/ | wc -l`.
-      4. `cmp tests/parity/scenario_table.h ../openglad-master/tools/parity_scenario_table.h` exits 0 (mirror unchanged this phase).
-
-      End with exactly one verdict line:
-      - `VERDICT: PASS` if all checks succeed.
-      - `VERDICT: FAIL: <reason>` otherwise.
-
-  - id: 05-walker-family-completeness
-    type: implement
-    prompt: |
-      You are the implementing engineer for Phase 05 — Every walker family has at least one `SemanticParity` row that pins non-trivial behaviour with at least one RNG-insensitive predicate.
-
-      Goal: {{ GOAL }}
-
-      Preexisting Inputs (consume in place; do NOT regenerate from scratch):
-      - `.plan/parity-present-state.md` gap inventory.
-      - `.plan/parity-coverage-manifest.md`.
-      - `tests/parity/coverage_targets.h::kRequiredWalkerFamilies` (21).
-      - `tests/parity/scenario_table.h` with existing `family_<name>_scen99` rows.
-      - `tests/parity/test_parity_scenarios.cpp`.
-      - `tests/parity/scenario_facts_generated.json`.
-      - `tests/parity/golden/`.
-      - `../openglad-master/build/ci-test/parity_dump_master`.
-      - `scripts/parity/capture_master_golden.sh` (with `--all`/`--out-dir` from phase 04).
-      - `scripts/parity/check_coverage_manifest.py`.
-
-      New Outputs:
-      - For every walker family in `kRequiredWalkerFamilies` whose row currently lacks an RNG-insensitive predicate (per gap inventory) or is missing entirely, add or modify a `family_<lowercase>_scen99` row in `tests/parity/scenario_table.h` with:
-        - `fresh_arena = true`, two-team spawn (player + one of target family), tick budget 600.
-        - `expected_facts[]` containing at least: `WalkerFamilyCount(FAMILY_<X>, 1, 1)` (RNG-insensitive), `WalkerOfTeamAlive(team_enemy, 0, 1)`, `WalkerPositionMoved(FAMILY_<X>, dx_min, dx_max)` with bounds wide enough to absorb path RNG, and one combat-side event (e.g. `EventKindAtLeast("play_sound", 1)` if melee-only).
-        - `discriminating_mutation` against a deterministic field.
-      - `.plan/parity-coverage-manifest.md` walker-table `covering_scenario_id` cells updated.
-      - Mirrored `../openglad-master/tools/parity_scenario_table.h`.
-      - New goldens (`tests/parity/golden/family_*_scen99.json`).
-
-      Implementation Notes:
-      - RNG-insensitive predicate set: `WalkerFamilyCount`, `EffectFamilyCount`, `WeaponFamilyEmitted`, `EventKindAtLeast`/`EventKindExactly`, `WalkerDiedByFinal`, `WalkerAliveAtFinal`, `TreasureFamilyOfOrderRemovedFromOblist`, `LevelDoneEquals`, `TickReached`.
-      - Existing `family_*_scen99` rows are kept; audit each for at least one such predicate. Rows lacking one get an additional predicate, not a widening of existing ones.
-      - Families with no row at all (verifier still asserts presence) get a brand new row, registered with `OG_PARITY_TEST(...)`.
-      - Mirror to companion; rebuild companion binary; recapture goldens via `scripts/parity/capture_master_golden.sh --all` (or per-row).
-
-      Git Commit Requirement (BOTH worktrees, MUST run before yielding):
-
-      Companion:
-      ```
-      git -C ../openglad-master add tools/parity_scenario_table.h
-      git -C ../openglad-master commit -m "parity-companion: phase 05 — mirror walker family rows"
-      ```
-
-      Branch:
-      ```
-      git add tests/parity/scenario_table.h \
-              tests/parity/test_parity_scenarios.cpp \
-              tests/parity/scenario_facts_generated.json \
-              tests/parity/golden/ \
-              .plan/parity-coverage-manifest.md
-      git commit -m "parity-cov: phase 05 — walker family completeness"
-      ```
-
-  - id: 05a-check-walker-rows-and-rng-insensitive
-    type: check
-    bounce_target: 05-walker-family-completeness
-    prompt: |
-      You are the reviewer for verification phase 05a.
-
-      Purpose: Every required walker family has at least one row that spawns it AND has an RNG-insensitive predicate.
-
-      Run and verify (in-line `python3 -c '...'` against `tests/parity/scenario_facts_generated.json`):
-      - For every `FAMILY_*` name in `tests/parity/coverage_targets.h::kRequiredWalkerFamilies`, assert at least one `kScenarios` row has the family in its `family_spawns[]` AND has at least one predicate from the RNG-insensitive set: `WalkerFamilyCount`, `EffectFamilyCount`, `WeaponFamilyEmitted`, `EventKindAtLeast`/`EventKindExactly`, `WalkerDiedByFinal`, `WalkerAliveAtFinal`, `TreasureFamilyOfOrderRemovedFromOblist`, `LevelDoneEquals`, `TickReached`.
-
-      End with exactly one verdict line:
-      - `VERDICT: PASS` if all checks succeed.
-      - `VERDICT: FAIL: <reason>` otherwise.
-
-  - id: 05b-check-cov-manifest-and-tests-pass
-    type: check
-    bounce_target: 05-walker-family-completeness
-    prompt: |
-      You are the reviewer for verification phase 05b.
-
-      Purpose: Walker section of coverage manifest fully populated; family rows green and not skipped.
-
-      Run and verify:
-      1. `python3 scripts/parity/check_coverage_manifest.py` exits 0 with no `(none yet)` cells in walker section.
-      2. `build/ci-test/og_test_parity --gtest_filter='Parity.family_*'` exits 0 with `[  FAILED  ] 0` and `[  SKIPPED ] 0`.
-
-      End with exactly one verdict line:
-      - `VERDICT: PASS` if all checks succeed.
-      - `VERDICT: FAIL: <reason>` otherwise.
-
-  - id: 05c-check-no-regression
-    type: check
-    bounce_target: 05-walker-family-completeness
-    prompt: |
-      You are the reviewer for verification phase 05c.
-
-      Purpose: Full parity suite green; mirror still byte-equal.
-
-      Run and verify:
-      1. `build/ci-test/og_test_parity --gtest_brief=1` exits 0 with `[  FAILED  ] 0`.
-      2. `cmp tests/parity/scenario_table.h ../openglad-master/tools/parity_scenario_table.h` exits 0.
-
-      End with exactly one verdict line:
-      - `VERDICT: PASS` if all checks succeed.
-      - `VERDICT: FAIL: <reason>` otherwise.
-
-  - id: 06-weapon-and-effect-completeness
-    type: implement
-    prompt: |
-      You are the implementing engineer for Phase 06 — Every weapon family observed in `weapons[]` and every effect family in `effects[]`, via dedicated rows with RNG-insensitive predicates.
-
-      Goal: {{ GOAL }}
-
-      Preexisting Inputs (consume in place; do NOT regenerate from scratch):
-      - `tests/parity/coverage_targets.h::kRequiredWeaponFamilies` (20), `::kRequiredEffectFamilies` (13).
-      - Existing `weapon_*_emission_scen99` and `effect_*_emission_scen99` rows (most skipped in baseline; goldens captured in phase 04).
-      - `.plan/parity-present-state.md` gap inventory tagged "needs emission predicate".
-      - `.plan/parity-coverage-manifest.md`.
-      - `tests/parity/scenario_table.h`.
-      - `tests/parity/test_parity_scenarios.cpp`.
-      - `tests/parity/scenario_facts_generated.json`.
-      - `tests/parity/golden/`.
-      - `../openglad-master/build/ci-test/parity_dump_master`.
+      - `tests/parity/scenario_table.h`, `tests/parity/scenario_runtime.cpp` (wiring — **do not modify**),
+        `tests/parity/test_parity_scenarios.cpp`, `tests/parity/fact_predicate.h`,
+        `tests/parity/test_parity_coverage_gate.cpp`.
       - `scripts/parity/capture_master_golden.sh`.
-      - `scripts/parity/lint_scenario_facts.py` (existing 4 rules).
-      - `scripts/parity/check_coverage_manifest.py`.
+      - `../openglad-master/` worktree + mirror + `parity_dump_master`.
+      - `src/gameplay/families/family_archmage.cpp:209-251` (HEARTBURST per-foe explosion loop 237-250).
+      - `src/gameplay/families/family_thief.cpp:165-178` (POISON CLOUD slot 4, line 169 spawns FAMILY_CLOUD).
+      - `src/gameplay/families/family_druid.cpp:86-149` (PROTECTION; gated on `howmany > 1` friendlies in range 60; line 116 spawns FAMILY_CIRCLE_PROTECTION).
+      - `src/gameplay/families/weapon_family_animate.cpp:32-43,126`.
+      - Reuses `kInputsSpecialSlot2`, `kInputsSpecialSlot4` (existing constants — reuse by name).
 
-      New Outputs:
-      - Rows ensuring each weapon family is emitted at least once with `WeaponFamilyEmitted(FAMILY_<W>, min_count=1)`. Emission must arise from a real spawn/special invocation (e.g. `FAMILY_FIREBALL` from `FAMILY_MAGE` with magic-fire special input).
-      - Rows ensuring each effect family is observed with `EffectFamilyCount(FAMILY_<E>, source_family_qualifier, min, max)`. Must be qualified to avoid `effect_count_unqualified` lint violation.
-      - For weapons/effects requiring an opponent (e.g. `FAMILY_BLOOD`), add a two-team scenario with deterministic-strike opening input.
-      - `.plan/parity-coverage-manifest.md` updated for weapon and effect sections.
-      - Mirror updated.
-      - New/replacement goldens for affected rows.
+      ## New Outputs
 
-      Implementation Notes:
-      - 20 weapon families list: `KNIFE, ROCK, ARROW, FIREBALL, TREE, METEOR, SPRINKLE, BONE, BLOOD, BLOB, FIRE_ARROW, LIGHTNING, GLOW, WAVE, WAVE2, WAVE3, CIRCLE_PROTECTION, HAMMER, DOOR, BOULDER`. Identify canonical emitting family for each (e.g. ARCHER → ARROW, MAGE → FIREBALL, BARBARIAN → HAMMER) and choose inputs that fire within the tick budget.
-      - Where emission requires RNG-sensitive AI, set `tick_budget` high enough that emission probability is effectively 1, and use `WeaponFamilyEmitted(family, min_count=1)`. Cite the RNG concession with inline `// rng_drift:` comment so `lint_scenario_facts.py::unjustified_widening` accepts it.
+      3 `ScenarioSpec` rows, 3 macros, 3 `kMut_*`, 3 goldens, mirror update, rebuilt dump:
+      - `effect_heartburst_multitarget_scen99`
+      - `effect_poison_cloud_emit_scen99`
+      - `effect_protection_emit_scen99`
 
-      Git Commit Requirement (BOTH worktrees, MUST run before yielding):
+      ## Implementation Details
 
-      Companion:
-      ```
-      git -C ../openglad-master add tools/parity_scenario_table.h
-      git -C ../openglad-master commit -m "parity-companion: phase 06 — mirror weapon and effect family rows"
-      ```
+      First check whether this phase's deliverable already exists and passes (all 3
+      scenarios in `kScenarios[]`, macros present, goldens on disk, named tests
+      green, mirror in sync). If all hold, ensure the two commits landed and yield
+      immediately — do not redo work. Otherwise implement only the missing pieces.
 
-      Branch:
-      ```
-      git add tests/parity/scenario_table.h \
-              tests/parity/test_parity_scenarios.cpp \
-              tests/parity/scenario_facts_generated.json \
-              tests/parity/golden/ \
-              .plan/parity-coverage-manifest.md
-      git commit -m "parity-cov: phase 06 — weapon and effect family completeness"
-      ```
+      - **`effect_heartburst_multitarget_scen99`**: archmage
+        `{FAMILY_ARCHMAGE,0,kOrderLiving,120,120,0,0,4,300}` + 4 soldiers team 1 at
+        x∈{160,190,220,250}, y=120; reuse `kInputsSpecialSlot2`; tick 30. Facts:
+        `TickReached(30)`, `WalkerFamilyCount(FAMILY_ARCHMAGE,1,1)`,
+        `EffectFamilyCount(FAMILY_EXPLOSION, 4, 12, -1, 0, "consequence: HEARTBURST detonates a per-foe explosion against each in-range soldier; mutation aborts the spawn so the in-window FAMILY_EXPLOSION count collapses")`,
+        `WalkerFamilyCount(FAMILY_SOLDIER, 0, 4, "consequence: explosions may kill some soldiers")`,
+        `EventKindAtLeast(/*play_sound*/1,4)`.
+        Mutation `family_archmage.cpp:239` (24-space indent):
+        `                        newob = summon_entity(self, Order::FX, FAMILY_EXPLOSION);` → `                        return false;`.
+      - **`effect_poison_cloud_emit_scen99`**: thief
+        `{FAMILY_THIEF,0,kOrderLiving,120,120,0,0,10,300}`,
+        `{FAMILY_SOLDIER,1,kOrderLiving,200,120,0,0}`; reuse `kInputsSpecialSlot4`;
+        tick 80. Facts: `TickReached(80)`, `WalkerFamilyCount(FAMILY_THIEF,1,1)`,
+        `EffectFamilyCount(FAMILY_CLOUD, 1, 5, -1, 0, "consequence: POISON CLOUD slot 4 spawns FAMILY_CLOUD FX; mutation bypasses the spawn so the in-window count drops to 0")`,
+        `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 0, 15000, "rng_drift: soldier HP varies with cloud-tick engagement RNG")`,
+        `EventKindAtLeast(/*play_sound*/1,3)`.
+        Mutation `family_thief.cpp:169`:
+        `newob = summon_entity(self, Order::FX, FAMILY_CLOUD);` → `return false;`.
+      - **`effect_protection_emit_scen99`**: druid
+        `{FAMILY_DRUID,0,kOrderLiving,120,120,0,0,10,300}`, **second team-0 friendly**
+        `{FAMILY_SOLDIER,0,kOrderLiving,150,120,0,0}` (required for `howmany > 1`),
+        2 archers team 1 at `(60,120)`, `(220,120)`; reuse `kInputsSpecialSlot4`;
+        tick 150. Facts: `TickReached(150)`, `WalkerFamilyCount(FAMILY_DRUID,1,1)`,
+        `WeaponFamilyEmitted(FAMILY_CIRCLE_PROTECTION, "consequence: druid slot 4 PROTECTION emits a FAMILY_CIRCLE_PROTECTION weapon when ≥1 friendly is in range; mutation bypasses creation so the emit never fires")`,
+        `WalkerFamilyCount(FAMILY_SOLDIER,1,1)`, `EventKindAtLeast(/*play_sound*/1,4)`.
+        Mutation `family_druid.cpp:116` (32-space indent):
+        `                                alive = summon_entity(newob, Order::Weapon, FAMILY_CIRCLE_PROTECTION);` → `                                return false;`.
 
-  - id: 06a-check-weapon-and-effect-emitted
+      Empirical numerics (`EventKindAtLeast` floors, effect-count/HP ranges, tick
+      budgets) are tunable starting points — adjust to runtime so each unmutated
+      scenario passes, every floor is `> 0`, each mutation flips ≥1 predicate, every
+      widened range carries a label, and each scenario keeps ≥3 non-`TickReached`
+      predicates incl. ≥1 `consequence:`-labelled one.
+
+      ## Mirror + Capture (standard per-implement sequence)
+
+      1. Append table rows + macros (byte-match each mutation `from`/`to` to its source line incl. indentation).
+      2. `cp tests/parity/scenario_table.h ../openglad-master/tools/parity_scenario_table.h`.
+      3. In the master worktree: `cmake --build --preset ci-test --target parity_dump_master`.
+      4. From the branch worktree: `scripts/parity/capture_master_golden.sh effect_heartburst_multitarget_scen99 effect_poison_cloud_emit_scen99 effect_protection_emit_scen99`.
+      5. `cmake --build --preset ci-test && ctest --preset ci-test` → 0 failures.
+         Wrap branch/master-divergent predicates in `pred::branch_only(...)` /
+         `pred::master_only(...)` with a label.
+
+      ## Success Criteria
+
+      - All 3 scenarios pass; 3 goldens exist; mirror byte-identical.
+      - All coverage/golden/mutation gates pass.
+      - Each scenario has ≥3 non-`TickReached` predicates incl. ≥1 `consequence:` label.
+      - `git status --porcelain tests/parity/` is empty.
+
+      ## Git Commit Requirement
+
+      You **must** commit work to git in **both** worktrees before yielding:
+
+      - `git -C ../openglad-master add tools/parity_scenario_table.h && git -C ../openglad-master commit -m "parity-companion: mirror scenario_table.h effect-emission"`
+      - `git add tests/parity/scenario_table.h tests/parity/test_parity_scenarios.cpp tests/parity/scenario_facts_generated.json tests/parity/golden/effect_heartburst_multitarget_scen99.json tests/parity/golden/effect_poison_cloud_emit_scen99.json tests/parity/golden/effect_protection_emit_scen99.json && git commit -m "parity-cov: effect-emission scenarios"`
+
+      The branch commit **must include `tests/parity/scenario_facts_generated.json`**.
+      After committing, `git status --porcelain tests/parity/` must be empty.
+      No `--no-verify`/`--amend` unless flagged as recovery. Do not yield until both
+      commits land.
+  - id: check-effect-emission
     type: check
-    bounce_target: 06-weapon-and-effect-completeness
+    bounce_target: impl-effect-emission
     prompt: |
-      You are the reviewer for verification phase 06a.
-
-      Purpose: Every required weapon and effect family is bound by an emission predicate; linter does not trip on these rows.
-
-      Run and verify:
-      1. In-line `python3 -c '...'` against `tests/parity/scenario_facts_generated.json`: for every name in `kRequiredWeaponFamilies`, assert at least one row has `WeaponFamilyEmitted(<that family>, min>=1)`. For every name in `kRequiredEffectFamilies`, assert at least one row has `EffectFamilyCount(<that family>, qualified, min>=1)`.
-      2. `python3 scripts/parity/lint_scenario_facts.py tests/parity/scenario_table.h` exits 0 (no `effect_count_unqualified` or `vacuous_event_floor` violations).
-
-      End with exactly one verdict line:
-      - `VERDICT: PASS` if all checks succeed.
-      - `VERDICT: FAIL: <reason>` otherwise.
-
-  - id: 06b-check-tests-green-and-mirror
-    type: check
-    bounce_target: 06-weapon-and-effect-completeness
-    prompt: |
-      You are the reviewer for verification phase 06b.
-
-      Purpose: Weapon and effect emission tests green; mirror byte-equal.
-
-      Run and verify:
-      1. `build/ci-test/og_test_parity --gtest_filter='Parity.weapon_*_emission_scen99:Parity.effect_*_emission_scen99' 2>&1 | tee /tmp/p06b.out`.
-      2. `grep -cE '^\[  FAILED  \]' /tmp/p06b.out` equals `0`.
-      3. `grep -cE '^\[  SKIPPED \]' /tmp/p06b.out` equals `0`.
-      4. `cmp tests/parity/scenario_table.h ../openglad-master/tools/parity_scenario_table.h` exits 0.
-
-      End with exactly one verdict line:
-      - `VERDICT: PASS` if all checks succeed.
-      - `VERDICT: FAIL: <reason>` otherwise.
-
-  - id: 06c-check-no-suite-regression
-    type: check
-    bounce_target: 06-weapon-and-effect-completeness
-    prompt: |
-      You are the reviewer for verification phase 06c.
-
-      Purpose: Full parity suite green; manifest weapon + effect sections have no `(none yet)` cells.
-
-      Run and verify:
-      1. `build/ci-test/og_test_parity --gtest_brief=1 2>&1 | tee /tmp/p06c.out`. `grep -cE '^\[  FAILED  \]' /tmp/p06c.out` equals `0`.
-      2. `python3 scripts/parity/check_coverage_manifest.py` exits 0 with no `(none yet)` in weapon + effect sections.
-
-      End with exactly one verdict line:
-      - `VERDICT: PASS` if all checks succeed.
-      - `VERDICT: FAIL: <reason>` otherwise.
-
-  - id: 07-treasure-and-generator-completeness
-    type: implement
-    prompt: |
-      You are the implementing engineer for Phase 07 — Every treasure family bound by a removal predicate; every generator family covered by a spawn-emit row.
-
-      Goal: {{ GOAL }}
-
-      Preexisting Inputs (consume in place; do NOT regenerate from scratch):
-      - `tests/parity/coverage_targets.h::kRequiredTreasureFamilies` (13), `::kRequiredGeneratorFamilies` (4).
-      - Treasure rows from phase 03 (now using `TreasureFamilyOfOrderRemovedFromOblist`).
-      - Existing `generator_*_emission_scen99` rows (4).
-      - `tests/parity/test_parity_coverage_gate.cpp` (`behavioural_coverage_gate_treasures`).
-      - `tests/parity/scenario_table.h`.
-      - `tests/parity/scenario_facts_generated.json`.
-      - `tests/parity/golden/`.
-      - `../openglad-master/build/ci-test/parity_dump_master`.
-      - `scripts/parity/capture_master_golden.sh`.
-      - `scripts/parity/check_coverage_manifest.py`.
-      - `.plan/parity-coverage-manifest.md`.
-
-      New Outputs:
-      - For every treasure family in `kRequiredTreasureFamilies` lacking a `Treasure*RemovedFromOblist` predicate (legacy OR new kind), add it to its row or create a new dedicated row. For STAIN (`init_ignore=true`), add `WalkerFamilyCount(FAMILY_STAIN, 1, 1)` (under per-Order resolution) as RNG-insensitive pin alongside the new `TreasureFamilyOfOrderRemovedFromOblist` row.
-      - For every generator family, ensure a row spawns one and runs long enough that it emits its enemy/treasure via `WalkerFamilyCount(<spawned-child>, min, max)` AND `EventKindAtLeast("play_sound", N)`.
-      - Extend `behavioural_coverage_gate_treasures` so its required-bound set accepts either `TreasureFamilyRemovedFromOblist` or `TreasureFamilyOfOrderRemovedFromOblist(arg, kOrderTreasure)`. Gate fails if any required treasure family is unbound.
-      - Mirror updated.
-      - New/replacement goldens for affected rows.
-      - `.plan/parity-coverage-manifest.md` updated for treasure + generator sections.
-
-      Implementation Notes:
-      - Enumerate each treasure family id and resolve binding row; for unbound ids, add predicate to most natural existing row (e.g. `treasure_<name>_pickup_scen99`) or create a small new row.
-      - Generator emission rows: tick budget must be large enough that emission roll fires ≥ once. Use `EventKindAtLeast` rather than `WalkerFamilyCount` exact if emit count varies.
-
-      Git Commit Requirement (BOTH worktrees, MUST run before yielding):
-
-      Companion:
-      ```
-      git -C ../openglad-master add tools/parity_scenario_table.h
-      git -C ../openglad-master commit -m "parity-companion: phase 07 — mirror treasure and generator rows"
-      ```
-
-      Branch:
-      ```
-      git add tests/parity/scenario_table.h \
-              tests/parity/test_parity_coverage_gate.cpp \
-              tests/parity/scenario_facts_generated.json \
-              tests/parity/golden/ \
-              .plan/parity-coverage-manifest.md
-      git commit -m "parity-cov: phase 07 — treasure and generator completeness"
-      ```
-
-  - id: 07a-check-every-treasure-and-generator-bound
-    type: check
-    bounce_target: 07-treasure-and-generator-completeness
-    prompt: |
-      You are the reviewer for verification phase 07a.
-
-      Purpose: Every required treasure and generator family is bound by an appropriate predicate.
-
-      Run and verify (in-line `python3 -c '...'` against `tests/parity/scenario_facts_generated.json`):
-      - Loop `kRequiredTreasureFamilies` — for each id, assert at least one row has a predicate of one of the two `Treasure*RemovedFromOblist` kinds with `arg0 == <id>`.
-      - Loop `kRequiredGeneratorFamilies` — for each family, assert a `WalkerFamilyCount(<that family>, ...)` predicate on some row.
-
-      End with exactly one verdict line:
-      - `VERDICT: PASS` if all checks succeed.
-      - `VERDICT: FAIL: <reason>` otherwise.
-
-  - id: 07b-check-behavioural-gates-green
-    type: check
-    bounce_target: 07-treasure-and-generator-completeness
-    prompt: |
-      You are the reviewer for verification phase 07b.
-
-      Purpose: Behavioural gates, treasure, and generator tests all pass.
-
-      Run and verify:
-      1. `build/ci-test/og_test_parity --gtest_filter='Parity.behavioural_coverage_gate*:Parity.treasure_*:Parity.generator_*' 2>&1 | tee /tmp/p07b.out`.
-      2. `grep -cE '^\[  FAILED  \]' /tmp/p07b.out` equals `0`.
-      3. `grep -cE '^\[  SKIPPED \]' /tmp/p07b.out` equals `0`.
-
-      End with exactly one verdict line:
-      - `VERDICT: PASS` if all checks succeed.
-      - `VERDICT: FAIL: <reason>` otherwise.
-
-  - id: 07c-check-no-suite-regression
-    type: check
-    bounce_target: 07-treasure-and-generator-completeness
-    prompt: |
-      You are the reviewer for verification phase 07c.
-
-      Purpose: Full suite green; mirror byte-equal.
-
-      Run and verify:
-      1. `build/ci-test/og_test_parity --gtest_brief=1 2>&1 | tee /tmp/p07c.out`. `grep -cE '^\[  FAILED  \]' /tmp/p07c.out` equals `0`.
-      2. `cmp tests/parity/scenario_table.h ../openglad-master/tools/parity_scenario_table.h` exits 0.
-
-      End with exactly one verdict line:
-      - `VERDICT: PASS` if all checks succeed.
-      - `VERDICT: FAIL: <reason>` otherwise.
-
-  - id: 08-specials-completeness-and-rng-insensitivity
-    type: implement
-    prompt: |
-      You are the implementing engineer for Phase 08 — All 42 special slots exercised with deterministic verifying predicates; lint rule enforces at least one RNG-insensitive predicate per `SemanticParity` row.
-
-      Goal: {{ GOAL }}
-
-      Preexisting Inputs (consume in place; do NOT regenerate from scratch):
-      - `tests/parity/coverage_targets.h::kRequiredSpecials[]` (42 pairs).
-      - Existing `special_<family>_<idx>_scen99` rows (42).
-      - `Exercises` bitset in `tests/parity/scenario_table.h`.
-      - `scripts/parity/lint_scenario_facts.py` (existing 4 rules).
-      - `tests/parity/test_parity_scenarios.cpp`.
-      - `tests/parity/scenario_facts_generated.json`.
-      - `tests/parity/golden/`.
-      - `../openglad-master/build/ci-test/parity_dump_master`.
-      - `scripts/parity/capture_master_golden.sh`.
-      - `.plan/parity-coverage-manifest.md`.
-
-      New Outputs:
-      - For every `(family, slot)` in `kRequiredSpecials`, ensure exactly one `special_<lowercase_family>_<slot>_scen99` row with:
-        - `fresh_arena = true`, target family spawned, player on same team holding the special button.
-        - `inputs[]` injecting the special-button key at a tick when the special actually fires (look up `src/gameplay/families/family_<x>.cpp::do_special`).
-        - `Exercises::Special_<bit>` set in the row's exercises bitmap.
-        - `expected_facts[]` containing at least one RNG-insensitive predicate that specifically verifies the special fired. Examples by slot type:
-          - Teleport-style → `WalkerPositionMoved(FAMILY_<X>, dx_min, dx_max)` with `dx_max-dx_min >= 100`.
-          - Projectile-emit → `WeaponFamilyEmitted(FAMILY_<projectile>, min=1)`.
-          - Effect-emit → `EffectFamilyCount(FAMILY_<effect>, source=FAMILY_<X>, min=1)`.
-          - Self-buff (e.g. CIRCLE_PROTECTION) → `WalkerFamilyCount(FAMILY_<X>, 1, 1)` AND `EffectFamilyCount(FAMILY_CIRCLE_PROTECTION, source=FAMILY_<X>, 1, 1)`.
-          - Whirlwind/melee → `EventKindAtLeast("play_sound", 2)` plus `WalkerOfTeamAlive(enemy_team, 0, k)`.
-      - New lint rule `requires_rng_insensitive_predicate` in `scripts/parity/lint_scenario_facts.py`:
-        - For every row with `compare_mode == SemanticParity`, `expected_facts[]` must contain at least one predicate of `RNG_INSENSITIVE_KINDS = {WalkerFamilyCount, EffectFamilyCount, WeaponFamilyEmitted, EventKindAtLeast, EventKindExactly, WalkerDiedByFinal, WalkerAliveAtFinal, TreasureFamilyRemovedFromOblist, TreasureFamilyOfOrderRemovedFromOblist, LevelDoneEquals, TickReached}`.
-        - Emits `(row_id, "no_rng_insensitive_predicate")` and exits non-zero.
-        - Exempt set is computed (not enumerated): rule loads `tests/parity/scenario_facts_generated.json`, reads each row's `compare_mode`, skips rows whose `compare_mode != "SemanticParity"`. No hand-edited exempt list.
-      - Mirror updated; new/replacement goldens; `.plan/parity-coverage-manifest.md` updated for specials section.
-
-      Implementation Notes:
-      - Slot-to-effect mapping is read from `src/gameplay/families/family_<x>.cpp`. For unfamiliar specials, run the scenario, capture dump, look at the actual delta — predicate should pin the observed delta tightly.
-      - For purely RNG-driven specials, use widely bracketed `WalkerPositionMoved` with `// rng_drift:` justification AND pair with an RNG-insensitive `EventKindAtLeast` of the special's sound effect.
-
-      Git Commit Requirement (BOTH worktrees, MUST run before yielding):
-
-      Companion:
-      ```
-      git -C ../openglad-master add tools/parity_scenario_table.h
-      git -C ../openglad-master commit -m "parity-companion: phase 08 — mirror specials rows"
-      ```
-
-      Branch:
-      ```
-      git add tests/parity/scenario_table.h \
-              tests/parity/test_parity_scenarios.cpp \
-              scripts/parity/lint_scenario_facts.py \
-              tests/parity/scenario_facts_generated.json \
-              tests/parity/golden/ \
-              .plan/parity-coverage-manifest.md
-      git commit -m "parity-cov: phase 08 — specials completeness and RNG-insensitivity rule"
-      ```
-
-  - id: 08a-check-every-special-row-and-bit
-    type: check
-    bounce_target: 08-specials-completeness-and-rng-insensitivity
-    prompt: |
-      You are the reviewer for verification phase 08a.
-
-      Purpose: Every required `(family, slot)` pair has a row that spawns the family, sets the slot bit, and pins the special with an RNG-insensitive predicate.
-
-      Run and verify (in-line `python3 -c '...'` against `tests/parity/scenario_facts_generated.json`):
-      - For each `(family, slot)` in `kRequiredSpecials`, assert a row whose `family_spawns` includes the family AND whose `exercises` bitmap has `Special_<slot>` set AND whose `expected_facts[]` contains an RNG-insensitive predicate.
-
-      End with exactly one verdict line:
-      - `VERDICT: PASS` if all checks succeed.
-      - `VERDICT: FAIL: <reason>` otherwise.
-
-  - id: 08b-check-lint-rule-trips-and-passes
-    type: check
-    bounce_target: 08-specials-completeness-and-rng-insensitivity
-    prompt: |
-      You are the reviewer for verification phase 08b.
-
-      Purpose: The new lint rule passes on the real file AND trips on a realistic bypass.
-
-      Run and verify:
-      1. `python3 scripts/parity/lint_scenario_facts.py tests/parity/scenario_table.h` exits 0 on the real file.
-      2. Anti-cheat: `git worktree add /tmp/parity-bypass-08b HEAD`. In that worktree, `sed -i` removes every RNG-insensitive predicate from `family_archer_scen99` (a `SemanticParity` row). Then `python3 scripts/parity/lint_scenario_facts.py /tmp/parity-bypass-08b/tests/parity/scenario_table.h` exits non-zero with stdout containing `no_rng_insensitive_predicate`. Cleanup: `git worktree remove --force /tmp/parity-bypass-08b`.
-
-      End with exactly one verdict line:
-      - `VERDICT: PASS` if all checks succeed.
-      - `VERDICT: FAIL: <reason>` otherwise.
-
-  - id: 08c-check-specials-tests-green
-    type: check
-    bounce_target: 08-specials-completeness-and-rng-insensitivity
-    prompt: |
-      You are the reviewer for verification phase 08c.
-
-      Purpose: Special tests all pass; full suite still green.
-
-      Run and verify:
-      1. `build/ci-test/og_test_parity --gtest_filter='Parity.special_*' 2>&1 | tee /tmp/p08c.out`. `grep -cE '^\[  FAILED  \]' /tmp/p08c.out` equals `0`. `grep -cE '^\[  SKIPPED \]' /tmp/p08c.out` equals `0`.
-      2. `build/ci-test/og_test_parity --gtest_brief=1 2>&1 | tee /tmp/p08c-full.out`. `grep -cE '^\[  FAILED  \]' /tmp/p08c-full.out` equals `0`.
-
-      End with exactly one verdict line:
-      - `VERDICT: PASS` if all checks succeed.
-      - `VERDICT: FAIL: <reason>` otherwise.
-
-  - id: 09-event-kind-completeness
-    type: implement
-    prompt: |
-      You are the implementing engineer for Phase 09 — Every required event kind organically emitted by at least one row.
-
-      Goal: {{ GOAL }}
-
-      Preexisting Inputs (consume in place; do NOT regenerate from scratch):
-      - `tests/parity/coverage_targets.h::kRequiredEventKinds[]` (9 strings).
-      - Existing `event_*_emission_scen99` rows.
-      - `tests/parity/scenario_table.h`.
-      - `tests/parity/test_parity_scenarios.cpp`.
-      - `tests/parity/scenario_facts_generated.json`.
-      - `tests/parity/golden/`.
-      - `../openglad-master/build/ci-test/parity_dump_master`.
-      - `scripts/parity/capture_master_golden.sh`.
-      - `.plan/parity-coverage-manifest.md`.
-
-      New Outputs:
-      - For every kind in `kRequiredEventKinds` (`play_sound`, `notification`, `set_palette`, `request_redraw`, `end_game`, `set_end`, `request_exit_confirmation`, `withdraw_to_level`, `score_change`), at least one row whose run organically emits it AND has `EventKindAtLeast(kind, n>=1)` matched on both branch and master.
-      - For hard-to-emit kinds (`end_game`, `withdraw_to_level`), construct minimal scenarios driving the game state into the emitting branch (e.g. exit-treasure pickup for `withdraw_to_level`, all-enemies-dead for `end_game`).
-      - Mirror updated.
-      - New/replacement goldens for affected rows.
-      - `.plan/parity-coverage-manifest.md` updated for events section.
-
-      Implementation Notes:
-      - For each kind, pick the simplest deterministic trigger in gameplay code (e.g. `play_sound` is emitted by any combat strike; `withdraw_to_level` by EXIT-treasure pickup; `end_game` by killing all enemies on the final level).
-      - After authoring the row, regenerate `scenario_facts_generated.json` and recapture the golden.
-
-      Git Commit Requirement (BOTH worktrees, MUST run before yielding):
-
-      Companion:
-      ```
-      git -C ../openglad-master add tools/parity_scenario_table.h
-      git -C ../openglad-master commit -m "parity-companion: phase 09 — mirror event kind rows"
-      ```
-
-      Branch:
-      ```
-      git add tests/parity/scenario_table.h \
-              tests/parity/test_parity_scenarios.cpp \
-              tests/parity/scenario_facts_generated.json \
-              tests/parity/golden/ \
-              .plan/parity-coverage-manifest.md
-      git commit -m "parity-cov: phase 09 — event kind completeness"
-      ```
-
-  - id: 09a-check-every-event-kind-bound
-    type: check
-    bounce_target: 09-event-kind-completeness
-    prompt: |
-      You are the reviewer for verification phase 09a.
-
-      Purpose: Every required event kind is bound by at least one `EventKindAtLeast` predicate.
-
-      Run and verify (in-line `python3 -c '...'` against `tests/parity/scenario_facts_generated.json`):
-      - For every string `k` in `kRequiredEventKinds`, assert at least one row has `EventKindAtLeast(k, >=1)` in `expected_facts[]`.
-
-      End with exactly one verdict line:
-      - `VERDICT: PASS` if all checks succeed.
-      - `VERDICT: FAIL: <reason>` otherwise.
-
-  - id: 09b-check-event-rows-green
-    type: check
-    bounce_target: 09-event-kind-completeness
-    prompt: |
-      You are the reviewer for verification phase 09b.
-
-      Purpose: All `Parity.event_*` rows pass with no skips.
-
-      Run and verify:
-      1. `build/ci-test/og_test_parity --gtest_filter='Parity.event_*' 2>&1 | tee /tmp/p09b.out`.
-      2. `grep -cE '^\[  FAILED  \]' /tmp/p09b.out` equals `0`.
-      3. `grep -cE '^\[  SKIPPED \]' /tmp/p09b.out` equals `0`.
-
-      End with exactly one verdict line:
-      - `VERDICT: PASS` if all checks succeed.
-      - `VERDICT: FAIL: <reason>` otherwise.
-
-  - id: 09c-check-no-suite-regression
-    type: check
-    bounce_target: 09-event-kind-completeness
-    prompt: |
-      You are the reviewer for verification phase 09c.
-
-      Purpose: Full suite green and skip-free; mirror byte-equal.
-
-      Run and verify:
-      1. `build/ci-test/og_test_parity --gtest_brief=1 2>&1 | tee /tmp/p09c.out`. `grep -cE '^\[  FAILED  \]' /tmp/p09c.out` equals `0`. `grep -cE '^\[  SKIPPED \]' /tmp/p09c.out` equals `0`.
-      2. `cmp tests/parity/scenario_table.h ../openglad-master/tools/parity_scenario_table.h` exits 0.
-
-      End with exactly one verdict line:
-      - `VERDICT: PASS` if all checks succeed.
-      - `VERDICT: FAIL: <reason>` otherwise.
-
-  - id: 10-mutation-canary-green
-    type: implement
-    prompt: |
-      You are the implementing engineer for Phase 10 — Every non-exempt scenario row has a `discriminating_mutation` that flips ≥1 predicate; exempt list is finite and justified.
-
-      Goal: {{ GOAL }}
-
-      Preexisting Inputs (consume in place; do NOT regenerate from scratch):
-      - `scripts/parity/run_mutation_canary.sh`.
-      - `scripts/parity/run_mutation_canary_runtime.py` (with `load_exemptions()` at lines 74-91).
-      - `.plan/parity-canary-exemptions.md` (may not yet exist — phase creates it).
-      - `tests/parity/scenario_table.h` (final shape from phase 09).
-      - `tests/parity/scenario_facts_generated.json`.
-      - `../openglad-master/build/ci-test/parity_dump_master`.
-      - `../openglad-master/tools/parity_scenario_table.h`.
-
-      New Outputs:
-      - For every row added in phases 05–09 whose `discriminating_mutation` is incomplete or whose canary does not flip, supply a real mutation (one-line `sed`-applicable change in `tests/parity/scenario_table.h` or in source).
-      - `.plan/parity-canary-exemptions.md` listing each exempt scenario with a 1–2 sentence justification, in the format `load_exemptions()` accepts:
-        - Each exempt scenario id appears on its own line as a Markdown bullet `- <scenario_id>` at column 0 (no nested indentation).
-        - Bullet's id token is `\S+` after leading `- `.
-        - Free-form prose may appear between bullets and is ignored.
-        - Pipe-table rows (`| a | b |`) are NOT understood and MUST NOT be used.
-      - A list of every non-exempt scenario id and the flipped-predicate count from the canary run (record inside `.plan/parity-canary-exemptions.md` or attached doc).
-      - Mirror updated if scenario_table.h edited.
-
-      Implementation Notes:
-      - Run `scripts/parity/run_mutation_canary.sh --all` once to surface non-exempt zero-flip rows.
-      - For each, choose a mutation that demonstrably changes observable behaviour (alter spawn family, change special-button keystroke, advance/retreat tick budget, swap treasure id). Must trip at least one `expected_facts[]` predicate.
-      - For rows where no mutation flips a predicate without changing scenario identity (typically `Invariant` rows or `smoke_noinput`), add to `.plan/parity-canary-exemptions.md` with a written justification.
-
-      Git Commit Requirement (BOTH worktrees, MUST run before yielding; companion commit only if scenario_table.h changed):
-
-      Companion (only if branch scenario_table.h changed):
-      ```
-      git -C ../openglad-master add tools/parity_scenario_table.h
-      git -C ../openglad-master commit -m "parity-companion: phase 10 — mirror mutation tweaks"
-      ```
-
-      Branch:
-      ```
-      git add tests/parity/scenario_table.h \
-              tests/parity/scenario_facts_generated.json \
-              .plan/parity-canary-exemptions.md
-      git commit -m "parity-cov: phase 10 — mutation canary green"
-      ```
-
-  - id: 10a-check-canary-all-flip
-    type: check
-    bounce_target: 10-mutation-canary-green
-    prompt: |
-      You are the reviewer for verification phase 10a.
-
-      Purpose: Every non-exempt scenario row flips at least one predicate under its `discriminating_mutation`; every exempt row is explicitly listed.
-
-      Run and verify:
-      1. `scripts/parity/run_mutation_canary.sh --all 2>&1 | tee /tmp/p10a.out`. Exit 0.
-      2. In-line `python3 -c '...'`: parse every per-scenario `/tmp/canary_runtime_<id>.json`, assert every non-exempt id has `"flipped":` value ≥ 1, and every exempt id is listed in `.plan/parity-canary-exemptions.md` (exempt set loaded via the runtime's own `load_exemptions()`).
-
-      End with exactly one verdict line:
-      - `VERDICT: PASS` if all checks succeed.
-      - `VERDICT: FAIL: <reason>` otherwise.
-
-  - id: 10b-check-exemptions-parseable
-    type: check
-    bounce_target: 10-mutation-canary-green
-    prompt: |
-      You are the reviewer for verification phase 10b.
-
-      Purpose: `.plan/parity-canary-exemptions.md` parses with `load_exemptions()` to a non-empty set; pipe-table bypass is rejected.
-
-      Run and verify:
-      1. `python3 -c "import sys; sys.path.insert(0, 'scripts/parity'); import run_mutation_canary_runtime; s = run_mutation_canary_runtime.load_exemptions('.plan/parity-canary-exemptions.md'); print(s); sys.exit(0 if s else 1)"` exits 0 and prints a non-empty set.
-      2. Anti-cheat: `git worktree add /tmp/parity-bypass-10b HEAD`. Add a `| pipe | table | row |` line to `/tmp/parity-bypass-10b/.plan/parity-canary-exemptions.md`. Re-run `load_exemptions('/tmp/parity-bypass-10b/.plan/parity-canary-exemptions.md')` and assert returned set is identical to the unmutated set (or the parser raises) — i.e. the pipe-table row is NOT silently parsed. Cleanup: `git worktree remove --force /tmp/parity-bypass-10b`.
-
-      End with exactly one verdict line:
-      - `VERDICT: PASS` if all checks succeed.
-      - `VERDICT: FAIL: <reason>` otherwise.
-
-  - id: 10c-check-no-suite-regression
-    type: check
-    bounce_target: 10-mutation-canary-green
-    prompt: |
-      You are the reviewer for verification phase 10c.
-
-      Purpose: Full parity suite still green; mirror byte-equal.
-
-      Run and verify:
-      1. `build/ci-test/og_test_parity --gtest_brief=1 2>&1 | tee /tmp/p10c.out`. `grep -cE '^\[  FAILED  \]' /tmp/p10c.out` equals `0`. `grep -cE '^\[  SKIPPED \]' /tmp/p10c.out` equals `0`.
-      2. `cmp tests/parity/scenario_table.h ../openglad-master/tools/parity_scenario_table.h` exits 0.
-
-      End with exactly one verdict line:
-      - `VERDICT: PASS` if all checks succeed.
-      - `VERDICT: FAIL: <reason>` otherwise.
-
-  - id: 11-anti-cheat-and-final-signoff
-    type: implement
-    prompt: |
-      You are the implementing engineer for Phase 11 — Codify and self-test every bypass; final sign-off doc; full repo test suite green.
-
-      Goal: {{ GOAL }}
-
-      Preexisting Inputs (consume in place; do NOT regenerate from scratch):
-      - `scripts/parity/lint_scenario_facts.py` (existing 4 + new 1 = 5 rules).
-      - `scripts/parity/run_mutation_canary.sh` + `run_mutation_canary_runtime.py` (phase 10).
-      - `scripts/parity/check_coverage_manifest.py` (with subcommands from phases 01 and to-be-added here).
-      - `scripts/parity/capture_master_golden.sh`.
-      - `og_test_parity` (phase 09/10 green).
-      - `tests/parity/test_parity_scenarios.cpp`.
-      - `tests/parity/scenario_table.h` (final shape).
-      - `.plan/parity-coverage-manifest.md`.
-      - `.plan/parity-canary-exemptions.md`.
-      - `.github/workflows/ci.yml` (only if present).
-
-      New Outputs:
-      - `scripts/parity/anti_cheat_selftest.sh` — for each known bypass, spins up a throwaway worktree, applies a realistic mutation, runs the corresponding guard, asserts non-zero exit. Bypasses to cover:
-        - A: Skip a treasure row via `compare_mode = ByteEqual` → guard `scripts/parity/check_coverage_manifest.py --require-semantic-parity-for-required-rows`.
-        - B: Remove all RNG-insensitive predicates → guard `lint_scenario_facts.py::requires_rng_insensitive_predicate`.
-        - C: Replace `EffectFamilyCount(FAMILY_X, source=Y, ...)` with unqualified version → guard `lint_scenario_facts.py::effect_count_unqualified`.
-        - D: Add a dead predicate → guard `lint_scenario_facts.py::dead_predicate`.
-        - E: Widen `WalkerFamilyCount(FAMILY_X, 1, 1)` to `(0, 999)` without `rng_drift` comment → guard `lint_scenario_facts.py::unjustified_widening`.
-        - F: Delete a golden to make a row skip → flip `test_parity_scenarios.cpp:108` so the SemanticParity-missing-golden branch (message `"master golden missing for "`) becomes `ADD_FAILURE` instead of `GTEST_SKIP`. Leave the other two `GTEST_SKIP` sites intact (`:118` ByteEqual missing-golden with `"golden not yet captured for "`, and `:144` `OG_PARITY_TEST(NAME)` missing-scenario SKIP with `"scenario \"" #NAME "\" is not present in kScenarios; "`).
-        - G: Stage a branch-side `scenario_table.h` change without mirroring → guard new `scripts/parity/check_mirror_sha.sh` that `cmp`s the two files and exits non-zero on mismatch.
-        - H: Add a row but never register `OG_PARITY_TEST(id)` → guard new `scripts/parity/check_test_registration.py` greps for every row id in `test_parity_scenarios.cpp`.
-      - `scripts/parity/ci_parity.sh` orchestrator with `set -euo pipefail`: build, full `og_test_parity`, `lint_scenario_facts.py`, `check_coverage_manifest.py`, `check_mirror_sha.sh`, `check_test_registration.py`, `run_mutation_canary.sh --all`, `anti_cheat_selftest.sh`. First failure exits non-zero with the failed step name.
-      - `.plan/parity-signoff-honest.md` summarising final state with literal lines:
-        - `Total rows: <N>`
-        - `Rows green: <N>`
-        - `Rows with ≥1 RNG-insensitive predicate: <N>`
-        - `Coverage manifest: <X>/<X>`
-        - `Anti-cheat bypasses caught: 8/8`
-        - `Canary non-exempt rows green: <N>/<N>`
-      - CI hookup: if `.github/workflows/ci.yml` exists, add a job entry invoking `scripts/parity/ci_parity.sh` and including the literal substring `parity-ci`; if absent, skip.
-      - `tests/parity/test_parity_scenarios.cpp` — Bypass F flip applied at `:108`.
-      - `scripts/parity/check_coverage_manifest.py` — add `--require-semantic-parity-for-required-rows` subcommand if not present.
-
-      Implementation Notes:
-      - `anti_cheat_selftest.sh` orchestrates all 8 bypasses uniformly:
+      You are a **parity-scenario reviewer**. Deterministically confirm the 3
+      effect-emission scenarios are present, green, mirrored, committed, and
+      depth/consequence-compliant.
+
+      ## Preexisting Inputs
+
+      - `tests/parity/scenario_table.h`
+      - `tests/parity/test_parity_scenarios.cpp`
+      - `tests/parity/golden/effect_heartburst_multitarget_scen99.json`
+      - `tests/parity/golden/effect_poison_cloud_emit_scen99.json`
+      - `tests/parity/golden/effect_protection_emit_scen99.json`
+      - `../openglad-master/tools/parity_scenario_table.h`
+
+      ## What to Verify
+
+      Run each command and confirm the stated result:
+
+      - `cmake --build --preset ci-test && ctest --preset ci-test` → 0 failures.
+      - `./build/ci-test/og_test_parity --gtest_filter='Parity.effect_heartburst_multitarget_scen99:Parity.effect_poison_cloud_emit_scen99:Parity.effect_protection_emit_scen99'` → pass.
+      - `ls tests/parity/golden/effect_heartburst_multitarget_scen99.json tests/parity/golden/effect_poison_cloud_emit_scen99.json tests/parity/golden/effect_protection_emit_scen99.json` → all exist.
+      - `diff -q tests/parity/scenario_table.h ../openglad-master/tools/parity_scenario_table.h` → 0.
+      - `./build/ci-test/og_test_parity --gtest_filter='*depth_gate*:*golden_evaluation_gate*:*mutation_canary*'` → pass.
+      - Mechanical depth/consequence count for each of the 3 new ids — for each
+        `<id>` in `effect_heartburst_multitarget_scen99`,
+        `effect_poison_cloud_emit_scen99`, `effect_protection_emit_scen99` run:
+
+        ```bash
+        block=$(awk '/inline constexpr FactPredicate kFacts_<id>\[\]/{f=1} f{print} /^};/{if(f)exit}' tests/parity/scenario_table.h)
+        total=$(printf '%s\n' "$block" | grep -c 'pred::')
+        ticks=$(printf '%s\n' "$block" | grep -c 'pred::TickReached')
+        test $((total - ticks)) -ge 3
+        printf '%s\n' "$block" | grep -q 'consequence:'
         ```
-        for each bypass:
-            worktree=/tmp/parity-bypass-<letter>
-            git worktree add "$worktree" HEAD
-            apply mutation in "$worktree"
-            run guard against "$worktree"
-            assert guard exit ≠ 0
-            git worktree remove --force "$worktree"
-            echo "Bypass <letter>: guard tripped"
+
+        FAIL if any block fails either assertion.
+      - Tree-cleanliness: `git status --porcelain tests/parity/` → empty.
+
+      ## Verdict
+
+      If every check above succeeds, emit exactly:
+      `VERDICT: PASS`
+
+      Otherwise emit exactly:
+      `VERDICT: FAIL: <reason>`
+  - id: impl-effect-timers
+    type: implement
+    prompt: |
+      You are adding 1 effect-timer scenario (`effect_bomb_timer_scen99`) to the
+      OpenGlad parity test suite. It exercises the thief DROP BOMB slot 1 timer
+      lifecycle.
+
+      ## Preexisting Inputs
+
+      Consume these existing artifacts as-is — do **not** refetch, recollect,
+      rediscover, or regenerate them from scratch; append to / update them in place:
+
+      - `tests/parity/scenario_table.h`, `tests/parity/scenario_runtime.cpp` (wiring — **do not modify**),
+        `tests/parity/test_parity_scenarios.cpp`, `tests/parity/fact_predicate.h`,
+        `tests/parity/test_parity_coverage_gate.cpp`.
+      - `scripts/parity/capture_master_golden.sh`.
+      - `../openglad-master/` worktree + mirror + `parity_dump_master`.
+      - `src/gameplay/families/effect_family_bomb.cpp:17-29,95` (on_death adds FAMILY_EXPLOSION; on_act nullptr).
+      - `src/gameplay/families/family_thief.cpp:61-91` (DROP BOMB slot 1, line 69 spawns FAMILY_BOMB).
+      - Reuses `kInputsSpecialSlot1` (existing constant — reuse by name).
+
+      ## New Outputs
+
+      1 `ScenarioSpec` row `effect_bomb_timer_scen99`, 1 macro, 1 `kMut_*`, 1 golden,
+      mirror update, rebuilt dump.
+
+      ## Implementation Details
+
+      First check whether this phase's deliverable already exists and passes
+      (scenario in `kScenarios[]`, macro present, golden on disk, named test green,
+      mirror in sync). If all hold, ensure the two commits landed and yield
+      immediately — do not redo work. Otherwise implement only the missing pieces.
+
+      - **`effect_bomb_timer_scen99`**: spawns
+        `{FAMILY_THIEF,0,kOrderLiving,120,120,0,0,5,300}`,
+        `{FAMILY_SOLDIER,1,kOrderLiving,400,400,0,0}`; reuse `kInputsSpecialSlot1`;
+        tick 30. Facts: `TickReached(30)`, `WalkerFamilyCount(FAMILY_THIEF,1,1)`,
+        `EffectFamilyCount(FAMILY_BOMB, 1, 2, -1, 0, "consequence: DROP BOMB slot 1 spawns a FAMILY_BOMB FX walker that lives on a timer; mutation bypasses the spawn so the in-window count drops to 0")`,
+        `EventKindAtLeast(/*play_sound*/1,2)`, `WalkerOfTeamAlive(0,1,1)`.
+        Mutation `family_thief.cpp:69`:
+        `newob = current_game->world->add_ob(Order::FX, FAMILY_BOMB, 1);` → `return false;`.
+
+      Empirical numerics (`EventKindAtLeast` floor, effect-count range, tick budget)
+      are tunable starting points — adjust to runtime so the unmutated scenario
+      passes, every floor is `> 0`, the mutation flips ≥1 predicate, every widened
+      range carries a label, and the scenario keeps ≥3 non-`TickReached` predicates
+      incl. ≥1 `consequence:`-labelled one.
+
+      ## Mirror + Capture (standard per-implement sequence)
+
+      1. Append the table row + macro (byte-match the mutation `from`/`to` to the source line).
+      2. `cp tests/parity/scenario_table.h ../openglad-master/tools/parity_scenario_table.h`.
+      3. In the master worktree: `cmake --build --preset ci-test --target parity_dump_master`.
+      4. From the branch worktree: `scripts/parity/capture_master_golden.sh effect_bomb_timer_scen99`.
+      5. `cmake --build --preset ci-test && ctest --preset ci-test` → 0 failures.
+         Wrap branch/master-divergent predicates in `pred::branch_only(...)` /
+         `pred::master_only(...)` with a label.
+
+      ## Success Criteria
+
+      - `effect_bomb_timer_scen99` passes; golden exists; mirror byte-identical.
+      - All coverage/golden/mutation gates pass.
+      - ≥3 non-`TickReached` predicates incl. ≥1 `consequence:` label.
+      - `git status --porcelain tests/parity/` is empty.
+
+      ## Git Commit Requirement
+
+      You **must** commit work to git in **both** worktrees before yielding:
+
+      - `git -C ../openglad-master add tools/parity_scenario_table.h && git -C ../openglad-master commit -m "parity-companion: mirror scenario_table.h effect-timers"`
+      - `git add tests/parity/scenario_table.h tests/parity/test_parity_scenarios.cpp tests/parity/scenario_facts_generated.json tests/parity/golden/effect_bomb_timer_scen99.json && git commit -m "parity-cov: effect-timer scenario"`
+
+      The branch commit **must include `tests/parity/scenario_facts_generated.json`**.
+      After committing, `git status --porcelain tests/parity/` must be empty.
+      No `--no-verify`/`--amend` unless flagged as recovery. Do not yield until both
+      commits land.
+  - id: check-effect-timers
+    type: check
+    bounce_target: impl-effect-timers
+    prompt: |
+      You are a **parity-scenario reviewer**. Deterministically confirm
+      `effect_bomb_timer_scen99` is present, green, mirrored, committed, and
+      depth/consequence-compliant.
+
+      ## Preexisting Inputs
+
+      - `tests/parity/scenario_table.h`
+      - `tests/parity/test_parity_scenarios.cpp`
+      - `tests/parity/golden/effect_bomb_timer_scen99.json`
+      - `../openglad-master/tools/parity_scenario_table.h`
+
+      ## What to Verify
+
+      Run each command and confirm the stated result:
+
+      - `cmake --build --preset ci-test && ctest --preset ci-test` → 0 failures.
+      - `./build/ci-test/og_test_parity --gtest_filter='Parity.effect_bomb_timer_scen99'` → pass.
+      - `ls tests/parity/golden/effect_bomb_timer_scen99.json` → exists.
+      - `diff -q tests/parity/scenario_table.h ../openglad-master/tools/parity_scenario_table.h` → 0.
+      - `./build/ci-test/og_test_parity --gtest_filter='*depth_gate*:*golden_evaluation_gate*:*mutation_canary*'` → pass.
+      - Mechanical depth/consequence count for `effect_bomb_timer_scen99` — run:
+
+        ```bash
+        block=$(awk '/inline constexpr FactPredicate kFacts_effect_bomb_timer_scen99\[\]/{f=1} f{print} /^};/{if(f)exit}' tests/parity/scenario_table.h)
+        total=$(printf '%s\n' "$block" | grep -c 'pred::')
+        ticks=$(printf '%s\n' "$block" | grep -c 'pred::TickReached')
+        test $((total - ticks)) -ge 3
+        printf '%s\n' "$block" | grep -q 'consequence:'
         ```
-      - `check_mirror_sha.sh` is a 3-line wrapper around `cmp tests/parity/scenario_table.h ../openglad-master/tools/parity_scenario_table.h`.
-      - `check_test_registration.py` parses `tests/parity/scenario_table.h` for every row id and asserts `OG_PARITY_TEST(<id>)` exists in `tests/parity/test_parity_scenarios.cpp`.
 
-      Git Commit Requirement (BOTH worktrees, MUST run before yielding; companion commit only if a real change exists):
+        FAIL if either assertion fails.
+      - Tree-cleanliness: `git status --porcelain tests/parity/` → empty.
 
-      Companion (only if real change):
-      ```
-      git -C ../openglad-master add tools/parity_scenario_table.h
-      git -C ../openglad-master commit -m "parity-companion: phase 11 — anti-cheat and final signoff"
-      ```
+      ## Verdict
 
-      Branch:
-      ```
-      git add scripts/parity/anti_cheat_selftest.sh \
-              scripts/parity/ci_parity.sh \
-              scripts/parity/check_mirror_sha.sh \
-              scripts/parity/check_test_registration.py \
-              scripts/parity/check_coverage_manifest.py \
-              tests/parity/test_parity_scenarios.cpp \
-              .plan/parity-signoff-honest.md
-      [ -f .github/workflows/ci.yml ] && git add .github/workflows/ci.yml || true
-      git commit -m "parity-cov: phase 11 — anti-cheat self-test and final signoff"
-      ```
+      If every check above succeeds, emit exactly:
+      `VERDICT: PASS`
 
-  - id: 11a-check-anti-cheat-selftest-passes
-    type: check
-    bounce_target: 11-anti-cheat-and-final-signoff
+      Otherwise emit exactly:
+      `VERDICT: FAIL: <reason>`
+  - id: impl-input-pipeline
+    type: implement
     prompt: |
-      You are the reviewer for verification phase 11a.
+      You are adding 4 input-pipeline edge-case scenarios to the OpenGlad parity
+      test suite: `input_diagonal_movement_scen99`, `input_hold_fire_search_scen99`,
+      `input_switch_char_scen99`, `input_special_switch_wrap_scen99`.
 
-      Purpose: All 8 bypasses are caught by their corresponding guard; all throwaway worktrees cleaned up.
+      ## Preexisting Inputs
 
-      Run and verify:
-      1. `scripts/parity/anti_cheat_selftest.sh 2>&1 | tee /tmp/p11a.out` exits 0.
-      2. `grep -F 'Bypass A: guard tripped' /tmp/p11a.out` exits 0.
-      3. `grep -F 'Bypass B: guard tripped' /tmp/p11a.out` exits 0.
-      4. `grep -F 'Bypass C: guard tripped' /tmp/p11a.out` exits 0.
-      5. `grep -F 'Bypass D: guard tripped' /tmp/p11a.out` exits 0.
-      6. `grep -F 'Bypass E: guard tripped' /tmp/p11a.out` exits 0.
-      7. `grep -F 'Bypass F: guard tripped' /tmp/p11a.out` exits 0.
-      8. `grep -F 'Bypass G: guard tripped' /tmp/p11a.out` exits 0.
-      9. `grep -F 'Bypass H: guard tripped' /tmp/p11a.out` exits 0.
-      10. `ls /tmp | grep -E '^parity-bypass-' | wc -l` equals `0`.
-      11. `grep -c 'GTEST_SKIP() << "master golden missing' tests/parity/test_parity_scenarios.cpp` equals `0`.
-      12. `grep -c 'ADD_FAILURE() << "master golden missing' tests/parity/test_parity_scenarios.cpp` equals `1`.
+      Consume these existing artifacts as-is — do **not** refetch, recollect,
+      rediscover, or regenerate them from scratch; append to / update them in place:
 
-      End with exactly one verdict line:
-      - `VERDICT: PASS` if all checks succeed.
-      - `VERDICT: FAIL: <reason>` otherwise.
+      - `tests/parity/scenario_table.h`, `tests/parity/scenario_runtime.cpp` (the
+        **already-wired** `special_names_table` — **do not modify**),
+        `tests/parity/test_parity_scenarios.cpp`, `tests/parity/fact_predicate.h`,
+        `tests/parity/test_parity_coverage_gate.cpp`.
+      - `scripts/parity/capture_master_golden.sh`.
+      - `../openglad-master/` worktree + mirror + `parity_dump_master`; the
+        **already-wired** `special_names_table` in
+        `../openglad-master/tools/parity_scenario_runtime.cpp` (**do not modify**).
+      - `src/interface/input/input_state.cpp:3-29` (`PlayerInput::move_x/move_y` diagonal decode).
+      - `src/gameplay/sim_input_handler.cpp:168-195` (SwitchChar / `sim_cycle_next_character`),
+        `:201-219` (SwitchSpecial wrap), `:326-351` (Fire press vs hold).
+      - `include/openglad/gameplay/input_action.h` (`InputAction::SwitchChar = 10`).
 
-  - id: 11b-check-ci-orchestrator-and-fullsuite-green
+      ## New Outputs
+
+      4 `ScenarioSpec` rows, 4 macros (with new inline input arrays), 4 `kMut_*`,
+      4 goldens, mirror update, rebuilt dump:
+      - `input_diagonal_movement_scen99`
+      - `input_hold_fire_search_scen99`
+      - `input_switch_char_scen99`
+      - `input_special_switch_wrap_scen99`
+
+      ## Implementation Details
+
+      First check whether this phase's deliverable already exists and passes (all 4
+      scenarios in `kScenarios[]`, macros present, goldens on disk, named tests
+      green, mirror in sync). If all hold, ensure the two commits landed and yield
+      immediately — do not redo work. Otherwise implement only the missing pieces.
+
+      - **`input_diagonal_movement_scen99`**: `{FAMILY_SOLDIER,0,kOrderLiving,160,160,0,0}`;
+        new inline inputs `{1,0,K_DOWN_RIGHT},{40,0,K_NONE}`; tick 80. Facts:
+        `TickReached(80)`, `WalkerFamilyCount(FAMILY_SOLDIER,1,1)`,
+        `WalkerPositionMoved(FAMILY_SOLDIER, 175, 175, "consequence: diagonal K_DOWN_RIGHT moves the soldier in both axes; mutation disables the DownRight decode so it never advances")`,
+        `EventKindAtLeast(/*play_sound*/1, 1, "rng_drift: idle-move sound count varies")`,
+        `WalkerOfTeamAlive(0,1,1)`.
+        Mutation `input_state.cpp:26`:
+        `        held[static_cast<int>(InputKey::DownRight)])` → `        false)`.
+      - **`input_hold_fire_search_scen99`**: `{FAMILY_SOLDIER,0,kOrderLiving,96,120,0,0}`,
+        `{FAMILY_ARCHER,1,kOrderLiving,220,200,0,0}`; new inline inputs `{5,0,K_FIRE},{200,0,K_NONE}`;
+        tick 250. Facts: `TickReached(250)`, `WalkerFamilyCount(FAMILY_SOLDIER,1,1)`,
+        `WeaponFamilyEmitted(FAMILY_KNIFE, "consequence: held-fire keeps the soldier firing knives across the run; mutation disables held-fire so far fewer knives are emitted")`,
+        `WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 0, 9000, "rng_drift: archer HP under sustained knife fire varies with engagement RNG")`,
+        `EventKindAtLeast(/*play_sound*/1,6)`.
+        Mutation `sim_input_handler.cpp:350`:
+        `        if (pi.is_held(InputAction::Fire))` → `        if (false)`.
+      - **`input_switch_char_scen99`**: both walkers team 255 —
+        `{FAMILY_SOLDIER,255,kOrderLiving,120,120,0,0,3,200}`,
+        `{FAMILY_ARCHER,255,kOrderLiving,100,140,0,0,3,200}`; **set `ScenarioSpec.player_team = 255`**;
+        new inline inputs `{1,0,K_RIGHT},{20,0,K_NONE},{30,0,K_SWITCH},{31,0,K_NONE},{40,0,K_RIGHT},{120,0,K_NONE}`;
+        tick 150. Facts: `TickReached(150)`, `WalkerFamilyCount(FAMILY_SOLDIER,1,1)`,
+        `WalkerFamilyCount(FAMILY_ARCHER,1,1)`,
+        `WalkerPositionMoved(FAMILY_ARCHER, 110, 140, "consequence: after K_SWITCH transfers control, the second K_RIGHT advances the archer; mutation keeps control on the first walker so the archer never moves")`,
+        `EventKindAtLeast(/*play_sound*/1,1)`.
+        Mutation `sim_input_handler.cpp:188`:
+        `        control = sim_cycle_next_character(level.oblist, oldcontrol, reverse, filter);` → `        control = oldcontrol;`.
+      - **`input_special_switch_wrap_scen99`**: `{FAMILY_MAGE,0,kOrderLiving,120,120,0,0,13,600}`,
+        `{FAMILY_SOLDIER,1,kOrderLiving,200,120,0,0}`; new inline inputs = 12
+        alternating `K_SPECIAL_SWITCH`/`K_NONE` across ticks 5..28 then
+        `{30,0,K_SPECIAL},{31,0,K_NONE}` (the full alternating list lands on slot 3
+        FREEZE TIME); tick 150. Facts: `TickReached(150)`,
+        `WalkerFamilyCount(FAMILY_MAGE,1,1)`,
+        `WalkerPositionMoved(FAMILY_SOLDIER, 200, 120, "consequence: the special-switch wrap lands on FREEZE TIME, pinning the soldier at spawn; mutation resets the slot index so a different special fires and the soldier moves")`,
+        `EventKindAtLeast(/*play_sound*/1,2)`,
+        `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 0, 15000, "rng_drift: soldier HP varies with engagement RNG")`.
+        Mutation `sim_input_handler.cpp:204`:
+        `        control->set_current_special(control->current_special() + 1);` → `        control->set_current_special(1);`.
+
+      Empirical numerics (`EventKindAtLeast` floors, HP/position ranges, tick
+      budgets) are tunable starting points — adjust to runtime so each unmutated
+      scenario passes, every floor is `> 0`, each mutation flips ≥1 predicate, every
+      widened range carries a label, and each scenario keeps ≥3 non-`TickReached`
+      predicates incl. ≥1 `consequence:`-labelled one.
+
+      ## Mirror + Capture (standard per-implement sequence)
+
+      1. Append table rows + macros (with new inline input arrays; byte-match each mutation `from`/`to` to the source line).
+      2. `cp tests/parity/scenario_table.h ../openglad-master/tools/parity_scenario_table.h`.
+      3. In the master worktree: `cmake --build --preset ci-test --target parity_dump_master`.
+      4. From the branch worktree: `scripts/parity/capture_master_golden.sh input_diagonal_movement_scen99 input_hold_fire_search_scen99 input_switch_char_scen99 input_special_switch_wrap_scen99`.
+      5. `cmake --build --preset ci-test && ctest --preset ci-test` → 0 failures.
+         Wrap branch/master-divergent predicates in `pred::branch_only(...)` /
+         `pred::master_only(...)` with a label.
+
+      ## Success Criteria
+
+      - All 4 scenarios pass; 4 goldens exist; mirror byte-identical.
+      - `special_names_table` wiring intact in the branch runtime file.
+      - All coverage/golden/mutation gates pass.
+      - Each scenario has ≥3 non-`TickReached` predicates incl. ≥1 `consequence:` label.
+      - `git status --porcelain tests/parity/` is empty.
+
+      ## Git Commit Requirement
+
+      You **must** commit work to git in **both** worktrees before yielding:
+
+      - `git -C ../openglad-master add tools/parity_scenario_table.h && git -C ../openglad-master commit -m "parity-companion: mirror scenario_table.h input-pipeline"`
+      - `git add tests/parity/scenario_table.h tests/parity/test_parity_scenarios.cpp tests/parity/scenario_facts_generated.json tests/parity/golden/input_diagonal_movement_scen99.json tests/parity/golden/input_hold_fire_search_scen99.json tests/parity/golden/input_switch_char_scen99.json tests/parity/golden/input_special_switch_wrap_scen99.json && git commit -m "parity-cov: input-pipeline scenarios"`
+
+      The branch commit **must include `tests/parity/scenario_facts_generated.json`**.
+      After committing, `git status --porcelain tests/parity/` must be empty.
+      No `--no-verify`/`--amend` unless flagged as recovery. Do not yield until both
+      commits land.
+  - id: check-input-pipeline
     type: check
-    bounce_target: 11-anti-cheat-and-final-signoff
+    bounce_target: impl-input-pipeline
     prompt: |
-      You are the reviewer for verification phase 11b.
+      You are a **parity-scenario reviewer**. Deterministically confirm the 4
+      input-pipeline scenarios are present, green, mirrored, committed,
+      depth/consequence-compliant, and that the runtime wiring is intact.
 
-      Purpose: CI orchestrator passes; full repo test suite passes; CI YAML hookup is correct (conditional on file existing).
+      ## Preexisting Inputs
 
-      Run and verify:
-      1. `scripts/parity/ci_parity.sh` exits 0.
-      2. `cmake --build --preset ci-test && ctest --preset ci-test` exits 0.
-      3. CI-file conditional: `if [ -f .github/workflows/ci.yml ]; then grep -F 'scripts/parity/ci_parity.sh' .github/workflows/ci.yml && grep -F 'parity-ci' .github/workflows/ci.yml; else true; fi` exits 0.
+      - `tests/parity/scenario_table.h`
+      - `tests/parity/test_parity_scenarios.cpp`
+      - `tests/parity/scenario_runtime.cpp`
+      - `tests/parity/golden/input_diagonal_movement_scen99.json`
+      - `tests/parity/golden/input_hold_fire_search_scen99.json`
+      - `tests/parity/golden/input_switch_char_scen99.json`
+      - `tests/parity/golden/input_special_switch_wrap_scen99.json`
+      - `../openglad-master/tools/parity_scenario_table.h`
 
-      End with exactly one verdict line:
-      - `VERDICT: PASS` if all checks succeed.
-      - `VERDICT: FAIL: <reason>` otherwise.
+      ## What to Verify
 
-  - id: 11c-check-signoff-doc-and-manifest
+      Run each command and confirm the stated result:
+
+      - `cmake --build --preset ci-test && ctest --preset ci-test` → 0 failures.
+      - `./build/ci-test/og_test_parity --gtest_filter='Parity.input_diagonal_movement_scen99:Parity.input_hold_fire_search_scen99:Parity.input_switch_char_scen99:Parity.input_special_switch_wrap_scen99'` → pass.
+      - `ls tests/parity/golden/input_diagonal_movement_scen99.json tests/parity/golden/input_hold_fire_search_scen99.json tests/parity/golden/input_switch_char_scen99.json tests/parity/golden/input_special_switch_wrap_scen99.json` → all exist.
+      - `diff -q tests/parity/scenario_table.h ../openglad-master/tools/parity_scenario_table.h` → 0.
+      - `grep -n 'special_names_table' tests/parity/scenario_runtime.cpp` → ≥1 (wiring intact).
+      - `./build/ci-test/og_test_parity --gtest_filter='*depth_gate*:*golden_evaluation_gate*:*mutation_canary*'` → pass.
+      - Mechanical depth/consequence count for each of the 4 new ids — for each
+        `<id>` in `input_diagonal_movement_scen99`, `input_hold_fire_search_scen99`,
+        `input_switch_char_scen99`, `input_special_switch_wrap_scen99` run:
+
+        ```bash
+        block=$(awk '/inline constexpr FactPredicate kFacts_<id>\[\]/{f=1} f{print} /^};/{if(f)exit}' tests/parity/scenario_table.h)
+        total=$(printf '%s\n' "$block" | grep -c 'pred::')
+        ticks=$(printf '%s\n' "$block" | grep -c 'pred::TickReached')
+        test $((total - ticks)) -ge 3
+        printf '%s\n' "$block" | grep -q 'consequence:'
+        ```
+
+        FAIL if any block fails either assertion.
+      - Tree-cleanliness: `git status --porcelain tests/parity/` → empty.
+
+      ## Verdict
+
+      If every check above succeeds, emit exactly:
+      `VERDICT: PASS`
+
+      Otherwise emit exactly:
+      `VERDICT: FAIL: <reason>`
+  - id: impl-multiplayer-teams
+    type: implement
+    prompt: |
+      You are adding 1 multi-team coordination scenario
+      (`multiplayer_two_teams_scen99`) to the OpenGlad parity test suite. It
+      exercises the `is_friendly` team-number comparison across three teams.
+
+      ## Preexisting Inputs
+
+      Consume these existing artifacts as-is — do **not** refetch, recollect,
+      rediscover, or regenerate them from scratch; append to / update them in place:
+
+      - `tests/parity/scenario_table.h`, `tests/parity/scenario_runtime.cpp:42-85`
+        (`apply_post_load_spawns` — no-myguy branch; **do not modify**),
+        `tests/parity/test_parity_scenarios.cpp`, `tests/parity/fact_predicate.h`,
+        `tests/parity/test_parity_coverage_gate.cpp`.
+      - `scripts/parity/capture_master_golden.sh`.
+      - `../openglad-master/` worktree + mirror + `parity_dump_master`.
+      - `src/gameplay/walker.cpp:1675-1742` (`is_friendly`; no-myguy branch 1711-1716; load-bearing line 1723).
+
+      ## New Outputs
+
+      1 `ScenarioSpec` row `multiplayer_two_teams_scen99`, 1 macro,
+      1 `kMut_multiplayer_two_teams_scen99` (tab-indented), 1 golden, mirror update,
+      rebuilt dump.
+
+      ## Implementation Details
+
+      First check whether this phase's deliverable already exists and passes
+      (scenario in `kScenarios[]`, macro present, golden on disk, named test green,
+      mirror in sync). If all hold, ensure the two commits landed and yield
+      immediately — do not redo work. Otherwise implement only the missing pieces.
+
+      - Spawns:
+        - `{FAMILY_SOLDIER,0,kOrderLiving,120,120,0,0,3,200}` (team 0)
+        - `{FAMILY_THIEF,2,kOrderLiving,140,140,0,0,3,200}` (team 2)
+        - `{FAMILY_ARCHER,1,kOrderLiving,200,200,0,0}` (team 1)
+      - Inputs: `{5,0,K_RIGHT},{30,0,K_NONE},{35,0,K_FIRE},{200,0,K_NONE}`; tick budget 200.
+      - Facts: `TickReached(200)`, `WalkerFamilyCount(FAMILY_SOLDIER,1,1)`,
+        `WalkerFamilyCount(FAMILY_THIEF,1,1)`,
+        `WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 0, 9000, "consequence: team-2 thief attacks the team-1 archer because their team_num differs (walker.cpp:1723), driving archer HP down; mutation makes every pair mutually friendly so the archer is barely touched and HP stays high (label_exempted)")`,
+        `EventKindAtLeast(/*play_sound*/1,4)`.
+      - Mutation `walker.cpp:1723` (two leading tabs — preserve them):
+        - from: `\t\treturn headus->team_num() == headtarget->team_num();`
+        - to:   `\t\treturn 1;`
+
+      Empirical numerics (`EventKindAtLeast` floor, HP range, tick budget) are
+      tunable starting points — adjust to runtime so the unmutated scenario passes,
+      every floor is `> 0`, the mutation flips ≥1 predicate, every widened range
+      carries a label, and the scenario keeps ≥3 non-`TickReached` predicates incl.
+      ≥1 `consequence:`-labelled one.
+
+      ## Mirror + Capture (standard per-implement sequence)
+
+      1. Append the table row + macro (byte-match the mutation `from`/`to` incl. the two leading tabs).
+      2. `cp tests/parity/scenario_table.h ../openglad-master/tools/parity_scenario_table.h`.
+      3. In the master worktree: `cmake --build --preset ci-test --target parity_dump_master`.
+      4. From the branch worktree: `scripts/parity/capture_master_golden.sh multiplayer_two_teams_scen99`.
+      5. `cmake --build --preset ci-test && ctest --preset ci-test` → 0 failures.
+         Wrap branch/master-divergent predicates in `pred::branch_only(...)` /
+         `pred::master_only(...)` with a label.
+
+      ## Success Criteria
+
+      - `multiplayer_two_teams_scen99` passes; golden exists; mirror byte-identical.
+      - All coverage/golden/mutation gates pass.
+      - ≥3 non-`TickReached` predicates incl. ≥1 `consequence:` label.
+      - `git status --porcelain tests/parity/` is empty.
+
+      ## Git Commit Requirement
+
+      You **must** commit work to git in **both** worktrees before yielding:
+
+      - `git -C ../openglad-master add tools/parity_scenario_table.h && git -C ../openglad-master commit -m "parity-companion: mirror scenario_table.h multiplayer-teams"`
+      - `git add tests/parity/scenario_table.h tests/parity/test_parity_scenarios.cpp tests/parity/scenario_facts_generated.json tests/parity/golden/multiplayer_two_teams_scen99.json && git commit -m "parity-cov: multiplayer-teams scenario"`
+
+      The branch commit **must include `tests/parity/scenario_facts_generated.json`**.
+      After committing, `git status --porcelain tests/parity/` must be empty.
+      No `--no-verify`/`--amend` unless flagged as recovery. Do not yield until both
+      commits land.
+  - id: check-multiplayer-teams
     type: check
-    bounce_target: 11-anti-cheat-and-final-signoff
+    bounce_target: impl-multiplayer-teams
     prompt: |
-      You are the reviewer for verification phase 11c.
+      You are a **parity-scenario reviewer**. Deterministically confirm
+      `multiplayer_two_teams_scen99` is present, green, mirrored, committed, and
+      depth/consequence-compliant.
 
-      Purpose: Sign-off doc lists literal totals matching live state; mirror byte-equal.
+      ## Preexisting Inputs
 
-      Run and verify:
-      1. `test -f .plan/parity-signoff-honest.md`.
-      2. Re-derive every integer (rows, rows green, rows with ≥1 RNG-insensitive predicate, coverage targets covered/total, canary non-exempt rows green/total) and `grep -F` each literal line into the doc:
-         - `Total rows: <N>`
-         - `Rows green: <N>`
-         - `Rows with ≥1 RNG-insensitive predicate: <N>`
-         - `Coverage manifest: <X>/<X>`
-         - `Anti-cheat bypasses caught: 8/8`
-         - `Canary non-exempt rows green: <N>/<N>`
-      3. `cmp tests/parity/scenario_table.h ../openglad-master/tools/parity_scenario_table.h` exits 0.
+      - `tests/parity/scenario_table.h`
+      - `tests/parity/test_parity_scenarios.cpp`
+      - `tests/parity/golden/multiplayer_two_teams_scen99.json`
+      - `../openglad-master/tools/parity_scenario_table.h`
 
-      End with exactly one verdict line:
-      - `VERDICT: PASS` if all checks succeed.
-      - `VERDICT: FAIL: <reason>` otherwise.
+      ## What to Verify
+
+      Run each command and confirm the stated result:
+
+      - `cmake --build --preset ci-test && ctest --preset ci-test` → 0 failures.
+      - `./build/ci-test/og_test_parity --gtest_filter='Parity.multiplayer_two_teams_scen99'` → pass.
+      - `ls tests/parity/golden/multiplayer_two_teams_scen99.json` → exists.
+      - `diff -q tests/parity/scenario_table.h ../openglad-master/tools/parity_scenario_table.h` → 0.
+      - `./build/ci-test/og_test_parity --gtest_filter='*depth_gate*:*golden_evaluation_gate*:*mutation_canary*'` → pass.
+      - Mechanical depth/consequence count for `multiplayer_two_teams_scen99` — run:
+
+        ```bash
+        block=$(awk '/inline constexpr FactPredicate kFacts_multiplayer_two_teams_scen99\[\]/{f=1} f{print} /^};/{if(f)exit}' tests/parity/scenario_table.h)
+        total=$(printf '%s\n' "$block" | grep -c 'pred::')
+        ticks=$(printf '%s\n' "$block" | grep -c 'pred::TickReached')
+        test $((total - ticks)) -ge 3
+        printf '%s\n' "$block" | grep -q 'consequence:'
+        ```
+
+        FAIL if either assertion fails.
+      - Tree-cleanliness: `git status --porcelain tests/parity/` → empty.
+
+      ## Verdict
+
+      If every check above succeeds, emit exactly:
+      `VERDICT: PASS`
+
+      Otherwise emit exactly:
+      `VERDICT: FAIL: <reason>`
+  - id: impl-level-withdraw
+    type: implement
+    prompt: |
+      You are adding 1 level-withdraw scenario (`level_withdraw_scen99`) to the
+      OpenGlad parity test suite. It exercises the withdraw-to-level navigation path.
+
+      ## Preexisting Inputs
+
+      Consume these existing artifacts as-is — do **not** refetch, recollect,
+      rediscover, or regenerate them from scratch; append to / update them in place
+      and **reuse the shared constants by name (do not duplicate)**:
+
+      - `tests/parity/scenario_table.h`, `tests/parity/scenario_runtime.cpp` (wiring — **do not modify**),
+        `tests/parity/test_parity_scenarios.cpp`, `tests/parity/fact_predicate.h`,
+        `tests/parity/test_parity_coverage_gate.cpp`.
+      - `scripts/parity/capture_master_golden.sh`.
+      - `../openglad-master/` worktree + mirror + `parity_dump_master`.
+      - The existing `scripted_input_scen9301` row and its constants
+        `kFamilySpawns_soldier_with_exit_withdraw` (lines 372-376) and
+        `kInputsScripted9301` (lines 263-270) — **reuse by name; do not duplicate**.
+      - `src/gameplay/game_world.cpp:1357,1391-1499` (withdraw handling; `level_done` default 2 at 1357).
+      - `src/gameplay/families/treasure_family_navigation.cpp:36-98` (`exit_on_eat`; line 86 sets `withdraw_requested`; 88-90 emit WithdrawToLevel).
+
+      ## New Outputs
+
+      1 `ScenarioSpec` row `level_withdraw_scen99`, 1 macro, 1 new fact array
+      `kFacts_level_withdraw_scen99`, 1 `kMut_*`, 1 golden, mirror update, rebuilt
+      dump. **No new spawn/input constants** (reuse by name).
+
+      ## Implementation Details
+
+      First check whether this phase's deliverable already exists and passes
+      (scenario in `kScenarios[]`, macro present, golden on disk, named test green,
+      mirror in sync). If all hold, ensure the two commits landed and yield
+      immediately — do not redo work. Otherwise implement only the missing pieces.
+
+      - Spawn list: **reuse `kFamilySpawns_soldier_with_exit_withdraw` by name** (do not duplicate the constant).
+      - Inputs: **reuse `kInputsScripted9301` by name**. Tick budget 200.
+      - Facts (`kFacts_level_withdraw_scen99`): `TickReached(200)`,
+        `WalkerFamilyCount(FAMILY_SOLDIER, 2, 2)`,
+        `LevelDoneEquals(2, "consequence: withdraw path returns level_done=2; mutation forces withdraw_requested=false so the loop completes and level_done becomes 0")`,
+        `EventKindAtLeast(/*withdraw_to_level*/8, 1)`, `EventKindAtLeast(/*play_sound*/1, 2)`.
+      - Mutation `treasure_family_navigation.cpp:86` (8-space indent):
+        - from: `        world.withdraw_requested = true;`
+        - to:   `        world.withdraw_requested = false;`
+        - rationale: with the flag false, the early-break at `game_world.cpp:1393`
+          never fires, the loop completes and sets `level_done = 0` at 1408 →
+          `LevelDoneEquals(2)` fails.
+
+      Empirical numerics (`EventKindAtLeast` floors, tick budget) are tunable
+      starting points — adjust to runtime so the unmutated scenario passes, every
+      floor is `> 0`, the mutation flips ≥1 predicate, every widened range carries a
+      label, and the scenario keeps ≥3 non-`TickReached` predicates incl. ≥1
+      `consequence:`-labelled one. Here `LevelDoneEquals(2, "consequence: ...")`
+      serves as the consequence predicate.
+
+      ## Mirror + Capture (standard per-implement sequence)
+
+      1. Append the table row + macro + new fact array (byte-match the mutation `from`/`to` to the source line).
+      2. `cp tests/parity/scenario_table.h ../openglad-master/tools/parity_scenario_table.h`.
+      3. In the master worktree: `cmake --build --preset ci-test --target parity_dump_master`.
+      4. From the branch worktree: `scripts/parity/capture_master_golden.sh level_withdraw_scen99`.
+      5. `cmake --build --preset ci-test && ctest --preset ci-test` → 0 failures.
+         Wrap branch/master-divergent predicates in `pred::branch_only(...)` /
+         `pred::master_only(...)` with a label.
+
+      ## Success Criteria
+
+      - `level_withdraw_scen99` passes; golden exists; mirror byte-identical.
+      - Shared spawn/input constants reused by name (each `grep -c` ≥2), not duplicated.
+      - All coverage/golden/mutation gates pass.
+      - ≥3 non-`TickReached` predicates incl. ≥1 `consequence:` label.
+      - `git status --porcelain tests/parity/` is empty.
+
+      ## Git Commit Requirement
+
+      You **must** commit work to git in **both** worktrees before yielding:
+
+      - `git -C ../openglad-master add tools/parity_scenario_table.h && git -C ../openglad-master commit -m "parity-companion: mirror scenario_table.h level-withdraw"`
+      - `git add tests/parity/scenario_table.h tests/parity/test_parity_scenarios.cpp tests/parity/scenario_facts_generated.json tests/parity/golden/level_withdraw_scen99.json && git commit -m "parity-cov: level-withdraw scenario"`
+
+      The branch commit **must include `tests/parity/scenario_facts_generated.json`**.
+      After committing, `git status --porcelain tests/parity/` must be empty.
+      No `--no-verify`/`--amend` unless flagged as recovery. Do not yield until both
+      commits land.
+  - id: check-level-withdraw
+    type: check
+    bounce_target: impl-level-withdraw
+    prompt: |
+      You are a **parity-scenario reviewer**. Deterministically confirm
+      `level_withdraw_scen99` is present, green, mirrored, committed, reuses the
+      shared constants by name, and is depth/consequence-compliant.
+
+      ## Preexisting Inputs
+
+      - `tests/parity/scenario_table.h`
+      - `tests/parity/test_parity_scenarios.cpp`
+      - `tests/parity/golden/level_withdraw_scen99.json`
+      - `../openglad-master/tools/parity_scenario_table.h`
+
+      ## What to Verify
+
+      Run each command and confirm the stated result:
+
+      - `cmake --build --preset ci-test && ctest --preset ci-test` → 0 failures.
+      - `./build/ci-test/og_test_parity --gtest_filter='Parity.level_withdraw_scen99'` → pass.
+      - `ls tests/parity/golden/level_withdraw_scen99.json` → exists.
+      - `diff -q tests/parity/scenario_table.h ../openglad-master/tools/parity_scenario_table.h` → 0.
+      - `./build/ci-test/og_test_parity --gtest_filter='*depth_gate*:*golden_evaluation_gate*:*mutation_canary*'` → pass.
+      - `grep -c 'kFamilySpawns_soldier_with_exit_withdraw' tests/parity/scenario_table.h` → ≥2 (reused by name, not duplicated).
+      - `grep -c 'kInputsScripted9301' tests/parity/scenario_table.h` → ≥2 (reused by name).
+      - Mechanical depth/consequence count for `level_withdraw_scen99` — run:
+
+        ```bash
+        block=$(awk '/inline constexpr FactPredicate kFacts_level_withdraw_scen99\[\]/{f=1} f{print} /^};/{if(f)exit}' tests/parity/scenario_table.h)
+        total=$(printf '%s\n' "$block" | grep -c 'pred::')
+        ticks=$(printf '%s\n' "$block" | grep -c 'pred::TickReached')
+        test $((total - ticks)) -ge 3
+        printf '%s\n' "$block" | grep -q 'consequence:'   # the LevelDoneEquals(2) consequence
+        ```
+
+        FAIL if either assertion fails.
+      - Tree-cleanliness: `git status --porcelain tests/parity/` → empty.
+
+      ## Verdict
+
+      If every check above succeeds, emit exactly:
+      `VERDICT: PASS`
+
+      Otherwise emit exactly:
+      `VERDICT: FAIL: <reason>`
+  - id: impl-midcombat-state
+    type: implement
+    prompt: |
+      You are adding 2 mid-combat walker-state scenarios to the OpenGlad parity test
+      suite: `midcombat_partial_hp_scen99` and `consumable_inventory_state_scen99`.
+
+      ## Preexisting Inputs
+
+      Consume these existing artifacts as-is — do **not** refetch, recollect,
+      rediscover, or regenerate them from scratch; append to / update them in place:
+
+      - `tests/parity/scenario_table.h`, `tests/parity/scenario_runtime.cpp` (wiring — **do not modify**),
+        `tests/parity/test_parity_scenarios.cpp`, `tests/parity/fact_predicate.h`,
+        `tests/parity/test_parity_coverage_gate.cpp`.
+      - `scripts/parity/capture_master_golden.sh`.
+      - `../openglad-master/` worktree + mirror + `parity_dump_master`.
+      - `src/gameplay/walker_combat.cpp:178-206` (central combat-damage HP write at line 189).
+      - `src/gameplay/families/treasure_family_consumables.cpp` (drumstick heal at line 25, magic_potion).
+      - `src/resources/save_data.cpp` (field defs; the harness inspects the live oblist, not `save_game`).
+
+      ## New Outputs
+
+      2 `ScenarioSpec` rows, 2 macros, 2 `kMut_*`, 2 goldens, mirror update, rebuilt dump:
+      - `midcombat_partial_hp_scen99`
+      - `consumable_inventory_state_scen99`
+
+      ## Implementation Details
+
+      First check whether this phase's deliverable already exists and passes (both
+      scenarios in `kScenarios[]`, macros present, goldens on disk, named tests
+      green, mirror in sync). If all hold, ensure the two commits landed and yield
+      immediately — do not redo work. Otherwise implement only the missing pieces.
+
+      - **`midcombat_partial_hp_scen99`**: `{FAMILY_SOLDIER,0,kOrderLiving,120,120,0,0,3,0}`,
+        2 archers team 1 at `(60,120)`, `(180,120)`; inputs `{5,0,K_FIRE},{40,0,K_NONE}`;
+        tick 80. Facts: `TickReached(80)`, `WalkerFamilyCount(FAMILY_SOLDIER,1,1)`,
+        `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 4000, 11000, "consequence: the two archers deal mid-combat damage that lands the soldier in the mid-HP band; mutation zeros the central combat-damage write so HP stays above the upper bound (7000-cent span, label_exempted)")`,
+        `WalkerOfTeamAlive(0,1,1)`, `EventKindAtLeast(/*play_sound*/1,5)`.
+        Mutation `walker_combat.cpp:189` (4-space indent):
+        `    target->stats()->set_hitpoints(target->stats()->hitpoints() - tempdamage);` → `    target->stats()->set_hitpoints(target->stats()->hitpoints() - 0);`.
+      - **`consumable_inventory_state_scen99`**: `{FAMILY_SOLDIER,0,kOrderLiving,96,120,0,0,3,0}`,
+        `{FAMILY_DRUMSTICK,0,kOrderTreasure,128,120,0,0}`,
+        `{FAMILY_MAGIC_POTION,0,kOrderTreasure,160,120,0,0}`; inputs `{1,0,K_RIGHT},{40,0,K_NONE}`;
+        tick 150. Facts: `TickReached(150)`, `WalkerFamilyCount(FAMILY_SOLDIER,1,1)`,
+        `TreasureFamilyOfOrderRemovedFromOblist(FAMILY_DRUMSTICK, kOrderTreasure)`,
+        `TreasureFamilyOfOrderRemovedFromOblist(FAMILY_MAGIC_POTION, kOrderTreasure)`,
+        `WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 9000, 13000, "consequence: eating the drumstick boosts the soldier's HP into the upper band; mutation no-ops the heal so HP drops below the lower bound (label_exempted)")`.
+        Mutation `treasure_family_consumables.cpp:25` (4-space indent):
+        `    eater->stats()->set_hitpoints(eater->stats()->hitpoints() + amount);` → `    eater->stats()->set_hitpoints(eater->stats()->hitpoints() + 0);`.
+
+      Empirical numerics (`EventKindAtLeast` floors, HP ranges, tick budgets) are
+      tunable starting points — adjust to runtime so each unmutated scenario passes,
+      every floor is `> 0`, each mutation flips ≥1 predicate, every widened range
+      carries a label, and each scenario keeps ≥3 non-`TickReached` predicates incl.
+      ≥1 `consequence:`-labelled one. The 7000-cent HP range carries
+      `intended_diff:`/`consequence:` (label_exempted).
+
+      ## Mirror + Capture (standard per-implement sequence)
+
+      1. Append table rows + macros (byte-match each mutation `from`/`to` to its source line incl. indentation).
+      2. `cp tests/parity/scenario_table.h ../openglad-master/tools/parity_scenario_table.h`.
+      3. In the master worktree: `cmake --build --preset ci-test --target parity_dump_master`.
+      4. From the branch worktree: `scripts/parity/capture_master_golden.sh midcombat_partial_hp_scen99 consumable_inventory_state_scen99`.
+      5. `cmake --build --preset ci-test && ctest --preset ci-test` → 0 failures.
+         Wrap branch/master-divergent predicates in `pred::branch_only(...)` /
+         `pred::master_only(...)` with a label.
+
+      ## Success Criteria
+
+      - Both scenarios pass; 2 goldens exist; mirror byte-identical.
+      - The `predicate_depth_gate_no_trivially_wide_ranges` gate and all other gates pass.
+      - Each scenario has ≥3 non-`TickReached` predicates incl. ≥1 `consequence:` label.
+      - `git status --porcelain tests/parity/` is empty.
+
+      ## Git Commit Requirement
+
+      You **must** commit work to git in **both** worktrees before yielding:
+
+      - `git -C ../openglad-master add tools/parity_scenario_table.h && git -C ../openglad-master commit -m "parity-companion: mirror scenario_table.h midcombat-state"`
+      - `git add tests/parity/scenario_table.h tests/parity/test_parity_scenarios.cpp tests/parity/scenario_facts_generated.json tests/parity/golden/midcombat_partial_hp_scen99.json tests/parity/golden/consumable_inventory_state_scen99.json && git commit -m "parity-cov: midcombat-state scenarios"`
+
+      The branch commit **must include `tests/parity/scenario_facts_generated.json`**.
+      After committing, `git status --porcelain tests/parity/` must be empty.
+      No `--no-verify`/`--amend` unless flagged as recovery. Do not yield until both
+      commits land.
+  - id: check-midcombat-state
+    type: check
+    bounce_target: impl-midcombat-state
+    prompt: |
+      You are a **parity-scenario reviewer**. Deterministically confirm the 2
+      mid-combat-state scenarios are present, green, mirrored, committed, and
+      depth/consequence-compliant.
+
+      ## Preexisting Inputs
+
+      - `tests/parity/scenario_table.h`
+      - `tests/parity/test_parity_scenarios.cpp`
+      - `tests/parity/golden/midcombat_partial_hp_scen99.json`
+      - `tests/parity/golden/consumable_inventory_state_scen99.json`
+      - `../openglad-master/tools/parity_scenario_table.h`
+
+      ## What to Verify
+
+      Run each command and confirm the stated result:
+
+      - `cmake --build --preset ci-test && ctest --preset ci-test` → 0 failures.
+      - `./build/ci-test/og_test_parity --gtest_filter='Parity.midcombat_partial_hp_scen99:Parity.consumable_inventory_state_scen99'` → pass.
+      - `ls tests/parity/golden/midcombat_partial_hp_scen99.json tests/parity/golden/consumable_inventory_state_scen99.json` → all exist.
+      - `diff -q tests/parity/scenario_table.h ../openglad-master/tools/parity_scenario_table.h` → 0.
+      - `./build/ci-test/og_test_parity --gtest_filter='*depth_gate*:*golden_evaluation_gate*:*mutation_canary*:Parity.predicate_depth_gate_no_trivially_wide_ranges'` → pass (the 7000-cent HP range carries an `intended_diff:`/`consequence:` label).
+      - Mechanical depth/consequence count for each of the 2 new ids — for each
+        `<id>` in `midcombat_partial_hp_scen99`, `consumable_inventory_state_scen99` run:
+
+        ```bash
+        block=$(awk '/inline constexpr FactPredicate kFacts_<id>\[\]/{f=1} f{print} /^};/{if(f)exit}' tests/parity/scenario_table.h)
+        total=$(printf '%s\n' "$block" | grep -c 'pred::')
+        ticks=$(printf '%s\n' "$block" | grep -c 'pred::TickReached')
+        test $((total - ticks)) -ge 3
+        printf '%s\n' "$block" | grep -q 'consequence:'
+        ```
+
+        FAIL if any block fails either assertion.
+      - Tree-cleanliness: `git status --porcelain tests/parity/` → empty.
+
+      ## Verdict
+
+      If every check above succeeds, emit exactly:
+      `VERDICT: PASS`
+
+      Otherwise emit exactly:
+      `VERDICT: FAIL: <reason>`
+  - id: impl-final-docs
+    type: implement
+    prompt: |
+      You are refreshing the final parity docs to reflect the full 156-scenario
+      state of the OpenGlad parity test suite. **No source code changes.**
+
+      ## Preexisting Inputs
+
+      Consume and update these existing artifacts in place — do **not** refetch,
+      recollect, rediscover, or regenerate them from scratch:
+
+      - The full 156-scenario `tests/parity/scenario_table.h`, 156 macros in
+        `tests/parity/test_parity_scenarios.cpp`, 155 goldens in `tests/parity/golden/`.
+      - Both runtime files (wiring intact; **do not modify**):
+        `tests/parity/scenario_runtime.cpp`,
+        `../openglad-master/tools/parity_scenario_runtime.cpp`.
+      - The mirror `../openglad-master/tools/parity_scenario_table.h` and built
+        `../openglad-master/build/ci-test/parity_dump_master`.
+      - The existing docs `.plan/parity-present-state.md` and
+        `.plan/parity-coverage-manifest.md` (**update in place**).
+
+      ## New Outputs
+
+      - Updated `.plan/parity-present-state.md` (156 total, 154 SemanticParity + 2
+        Invariant, 155 goldens, per-category depth table).
+      - Updated `.plan/parity-coverage-manifest.md` (new
+        `## Gap-Fill Scenarios Added in Coverage Pass 2` section grouping the
+        gap-fill scenarios by the 10 phase categories + updated coverage table).
+      - **No source code changes.**
+
+      ## Implementation Details
+
+      First check whether this phase's deliverable already exists and passes (docs
+      already reference "156 scenarios" / "Gap-Fill Scenarios", suite green, mirror
+      in sync). If all hold, ensure commits landed and yield immediately — do not
+      redo work. Otherwise update only what is missing.
+
+      - **Step 1** — re-confirm mirror in sync; re-mirror
+        (`cp tests/parity/scenario_table.h ../openglad-master/tools/parity_scenario_table.h`)
+        + rebuild master dump (`cmake --build --preset ci-test --target parity_dump_master`
+        run from `../openglad-master`) if `diff -q` shows drift.
+      - **Step 2** — `cmake --build --preset ci-test && ctest --preset ci-test` → 0 failures.
+      - **Steps 3-4** — rewrite the two docs in place. Per-category counts after
+        gap-fill: `status_timer:4, summon:3, generator:5, weapon:23, effect:19,
+        input:4, multiplayer:1, level_transition:2, midcombat:2`. Leave the
+        missing-golden policy at `1` ADD_FAILURE / `0` GTEST_SKIP.
+
+      If the Step-2 build regenerated `tests/parity/scenario_facts_generated.json`,
+      include it in the same branch commit so `git status --porcelain tests/parity/`
+      ends empty.
+
+      ## Success Criteria
+
+      - Full suite green (0 failures); all 156 scenarios + 7 gates pass.
+      - 155 goldens; `OG_PARITY_TEST(` count is exactly 157; mirror byte-identical.
+      - `parity_dump_master` present; runtime wiring intact.
+      - Docs reference "156 scenarios" and the "Gap-Fill Scenarios" section.
+      - Missing-golden policy: 1 ADD_FAILURE / 0 GTEST_SKIP.
+      - `git status --porcelain tests/parity/` is empty.
+
+      ## Git Commit Requirement
+
+      You **must** commit the final docs to git before yielding. If the Step-2 build
+      regenerated `tests/parity/scenario_facts_generated.json`, include it in the
+      same branch commit so `git status --porcelain tests/parity/` ends empty:
+
+      - `git add .plan/parity-present-state.md .plan/parity-coverage-manifest.md tests/parity/scenario_facts_generated.json && git commit -m "parity-cov: final docs refresh (156-scenario state)"`
+
+      If Step 1 had to re-mirror, also commit the master worktree:
+
+      - `git -C ../openglad-master add tools/parity_scenario_table.h && git -C ../openglad-master commit -m "parity-companion: re-mirror scenario_table.h"`
+
+      No `--no-verify`/`--amend` unless flagged as recovery. Do not yield until the
+      required commits land.
+  - id: check-final-docs
+    type: check
+    bounce_target: impl-final-docs
+    prompt: |
+      You are a **parity-scenario reviewer**. Deterministically confirm the full
+      156-scenario state: suite green, mirror in sync, goldens, docs, runtime
+      wiring, and tree-cleanliness.
+
+      ## Preexisting Inputs
+
+      - `tests/parity/scenario_table.h`
+      - `tests/parity/test_parity_scenarios.cpp`
+      - `tests/parity/scenario_runtime.cpp`
+      - `../openglad-master/tools/parity_scenario_table.h`
+      - `../openglad-master/tools/parity_scenario_runtime.cpp`
+      - `../openglad-master/build/ci-test/parity_dump_master`
+      - `.plan/parity-present-state.md`
+      - `.plan/parity-coverage-manifest.md`
+
+      ## What to Verify
+
+      Run each command and confirm the stated result:
+
+      - `cmake --build --preset ci-test && ctest --preset ci-test` → 0 failures.
+      - `./build/ci-test/og_test_parity --gtest_filter='*'` → 0 failures.
+      - `diff -q tests/parity/scenario_table.h ../openglad-master/tools/parity_scenario_table.h` → 0.
+      - `test -x ../openglad-master/build/ci-test/parity_dump_master` → succeeds.
+      - `ls tests/parity/golden/*.json | wc -l` → 155.
+      - `grep -c 'OG_PARITY_TEST(' tests/parity/test_parity_scenarios.cpp` → 157
+        (156 scenario invocations + the single `#define OG_PARITY_TEST(NAME)` line;
+        this is the correct value — it is **not** 156).
+      - Explicit `ls` of all 16 new golden files exists:
+        `ls tests/parity/golden/generator_saturation_scen99.json tests/parity/golden/weapon_rock_slot2_emit_scen99.json tests/parity/golden/weapon_boomerang_return_scen99.json tests/parity/golden/weapon_exploding_boulder_scen99.json tests/parity/golden/effect_heartburst_multitarget_scen99.json tests/parity/golden/effect_poison_cloud_emit_scen99.json tests/parity/golden/effect_protection_emit_scen99.json tests/parity/golden/effect_bomb_timer_scen99.json tests/parity/golden/input_diagonal_movement_scen99.json tests/parity/golden/input_hold_fire_search_scen99.json tests/parity/golden/input_switch_char_scen99.json tests/parity/golden/input_special_switch_wrap_scen99.json tests/parity/golden/multiplayer_two_teams_scen99.json tests/parity/golden/level_withdraw_scen99.json tests/parity/golden/midcombat_partial_hp_scen99.json tests/parity/golden/consumable_inventory_state_scen99.json`
+        → all exist.
+      - `grep -c 'EventKindAtLeast.*,\s*0)' tests/parity/scenario_table.h` → 0.
+      - `grep -c 'GTEST_SKIP() << "master golden missing' tests/parity/test_parity_scenarios.cpp` → 0.
+      - `grep -c 'ADD_FAILURE() << "master golden missing' tests/parity/test_parity_scenarios.cpp` → 1.
+      - `grep -c 'special_names_table' tests/parity/scenario_runtime.cpp ../openglad-master/tools/parity_scenario_runtime.cpp` → ≥2.
+      - `grep -c '156 scenarios' .plan/parity-present-state.md` → ≥1.
+      - `grep -c 'Gap-Fill Scenarios' .plan/parity-coverage-manifest.md` → ≥1.
+      - Tree-cleanliness: `git status --porcelain tests/parity/` → empty (no
+        uncommitted regenerated `scenario_facts_generated.json` or other parity-test changes).
+
+      ## Verdict
+
+      If every check above succeeds, emit exactly:
+      `VERDICT: PASS`
+
+      Otherwise emit exactly:
+      `VERDICT: FAIL: <reason>`
