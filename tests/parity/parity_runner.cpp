@@ -2,6 +2,7 @@
 
 #include "scenario_runtime.h"
 
+#include <openglad/core/irandom.h>
 #include <openglad/core/order.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
@@ -12,6 +13,7 @@
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/save_data.h>
 
+#include <cstdlib>
 #include <map>
 #include <unordered_map>
 #include <utility>
@@ -26,6 +28,25 @@ extern cfg_store cfg;
 namespace og::parity {
 
 namespace {
+
+// A libc-rand-backed IRandom installed as the COSMETIC rng override for the
+// duration of a scenario run. Master draws cosmetic / AI-cadence jitter
+// (walker path_check_counter, FAMILY_HIT FX ani_type, elf fireball/rock spread)
+// from the C-library rand(); the branch keeps those on the per-world gameplay
+// RNG for snapshot/replay/networking determinism. Installing this cosmetic
+// override makes the captured parity dump match master's dual-RNG-stream
+// behavior WITHOUT touching production determinism. It is the COSMETIC override
+// only — combat_rng (damage/xp) consults the separate gameplay_rng_override and
+// therefore stays on world.rng_ on both branch and master.
+class LibcRandRandom : public IRandom
+{
+public:
+    std::uint32_t next(std::uint32_t max_exclusive) override
+    {
+        if (max_exclusive == 0) return 0;
+        return static_cast<std::uint32_t>(std::rand()) % max_exclusive;
+    }
+};
 
 // Test-side ScopedGameplayContext mirror. Cannot reuse the one declared in
 // tests/test_gameplay_context_scope.h because including it would pull in the
@@ -65,6 +86,32 @@ private:
 RunOutcome run_scenario(const ScenarioSpec& spec)
 {
     RunOutcome out;
+
+    // Reset the C-library RNG to its process-initial (default) seed before
+    // load() + tick. Cosmetic jitter (path_check_counter, FAMILY_HIT ani_type,
+    // elf fireball spread) draws from libc rand(), which master keeps separate
+    // from the gameplay RNG. Master's parity_dump_master runs exactly ONE
+    // scenario per process, so libc rand() always starts fresh; the smoke
+    // runner (also one-per-process) matches the golden for the same reason.
+    // This suite batches every scenario into a single process, so without
+    // restoring the default seed here, libc rand() leaks across scenarios and
+    // each scenario diverges from its per-process golden. Resetting before
+    // load() reproduces the fresh-process start both reference dumpers used.
+    std::srand(1);
+
+    // Install the libc-rand COSMETIC rng override for the whole run so the
+    // cosmetic-jitter sites (path_check_counter, FX ani_type, elf spread) draw
+    // from libc rand exactly as master does, while combat/gameplay RNG stays on
+    // world.rng_ (combat_rng consults the SEPARATE gameplay_rng_override, which
+    // is left untouched here). The guard removes the override at scope exit so
+    // it never leaks past this scenario.
+    LibcRandRandom cosmetic_rng_backing;
+    IRandom*       cosmetic_rng_slot = &cosmetic_rng_backing;
+    struct CosmeticOverrideGuard {
+        IRandom** slot;
+        explicit CosmeticOverrideGuard(IRandom** s) { set_cosmetic_rng_override(s); }
+        ~CosmeticOverrideGuard() { set_cosmetic_rng_override(nullptr); }
+    } cosmetic_override_guard{&cosmetic_rng_slot};
 
     const int level_id = scenario_level_id(spec.scenario_file);
     LevelRuntimeData level(level_id, /*headless=*/true,

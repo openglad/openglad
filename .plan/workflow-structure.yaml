@@ -3,417 +3,266 @@ yaml_source_mode: inline-only
 verifier_encoding: explicit-phases
 phases:
   - order: 1
-    id: 01-baseline-and-inventory
+    id: impl-confirm-prior-work
     type: implement
     bounce_target: null
     required_preexisting_inputs:
-      - .plan/goal.md
-      - .plan/parity-coverage-manifest.md
-      - .plan/parity-honest-audit.md
-      - tests/parity/coverage_targets.h
       - tests/parity/scenario_table.h
-      - tests/parity/golden/
-      - ../openglad-master/
-      - scripts/parity/check_coverage_manifest.py
-  - order: 2
-    id: 01a-check-tree-clean-and-counts
-    type: check
-    bounce_target: 01-baseline-and-inventory
-    required_preexisting_inputs:
-      - .plan/parity-present-state.md
-      - .plan/parity-coverage-manifest.md
-      - tests/parity/scenario_table.h
-  - order: 3
-    id: 01b-check-companion-sha-pinned
-    type: check
-    bounce_target: 01-baseline-and-inventory
-    required_preexisting_inputs:
-      - .plan/parity-present-state.md
-      - .plan/parity-coverage-manifest.md
-      - ../openglad-master/
-  - order: 4
-    id: 01c-check-gap-inventory-shape
-    type: check
-    bounce_target: 01-baseline-and-inventory
-    required_preexisting_inputs:
-      - .plan/parity-present-state.md
-      - tests/parity/coverage_targets.h
-  - order: 5
-    id: 02-mirror-resync
-    type: implement
-    bounce_target: null
-    required_preexisting_inputs:
-      - .plan/parity-present-state.md
-      - .plan/parity-coverage-manifest.md
-      - .plan/master-companion.md
-      - tests/parity/scenario_table.h
-      - tests/parity/state_dump.h
-      - tests/parity/state_dump.cpp
+      - tests/parity/test_parity_scenarios.cpp
+      - tests/parity/golden/enemy_freeze_mage_scen99.json
+      - tests/parity/golden/invisibility_thief_scen99.json
+      - tests/parity/golden/speed_potion_movement_scen99.json
+      - tests/parity/golden/invulnerable_potion_scen99.json
+      - tests/parity/golden/summon_lifetime_faerie_scen99.json
+      - tests/parity/golden/summon_lifetime_decrement_faerie_scen99.json
       - ../openglad-master/tools/parity_scenario_table.h
-      - ../openglad-master/tools/parity_dump_state.cpp
-      - ../openglad-master/tools/parity_dump_state.h
-      - ../openglad-master/build/
-      - scripts/parity/validate_schema.py
-  - order: 6
-    id: 02a-check-mirror-sha-equal
+      - ../openglad-master/build/ci-test/parity_dump_master
+  - order: 2
+    id: check-confirm-prior-work
     type: check
-    bounce_target: 02-mirror-resync
+    bounce_target: impl-confirm-prior-work
     required_preexisting_inputs:
       - tests/parity/scenario_table.h
+      - tests/parity/test_parity_scenarios.cpp
+      - tests/parity/golden/enemy_freeze_mage_scen99.json
+      - tests/parity/golden/invisibility_thief_scen99.json
+      - tests/parity/golden/speed_potion_movement_scen99.json
+      - tests/parity/golden/invulnerable_potion_scen99.json
+      - tests/parity/golden/summon_lifetime_faerie_scen99.json
+      - tests/parity/golden/summon_lifetime_decrement_faerie_scen99.json
+      - ../openglad-master/tools/parity_scenario_table.h
+      - ../openglad-master/build/ci-test/parity_dump_master
+  - order: 3
+    id: impl-generator-saturation
+    type: implement
+    bounce_target: null
+    required_preexisting_inputs:
+      - tests/parity/scenario_table.h
+      - tests/parity/test_parity_scenarios.cpp
+      - tests/parity/scenario_runtime.cpp
+      - tests/parity/fact_predicate.h
+      - tests/parity/test_parity_coverage_gate.cpp
+      - src/gameplay/walker.cpp
+      - src/gameplay/generator_family_registry.cpp
+      - scripts/parity/capture_master_golden.sh
+      - ../openglad-master/tools/parity_scenario_table.h
+      - ../openglad-master/build/ci-test/parity_dump_master
+  - order: 4
+    id: check-generator-saturation
+    type: check
+    bounce_target: impl-generator-saturation
+    required_preexisting_inputs:
+      - tests/parity/scenario_table.h
+      - tests/parity/test_parity_scenarios.cpp
+      - tests/parity/golden/generator_saturation_scen99.json
+      - ../openglad-master/tools/parity_scenario_table.h
+  - order: 5
+    id: impl-weapon-trajectories
+    type: implement
+    bounce_target: null
+    required_preexisting_inputs:
+      - tests/parity/scenario_table.h
+      - tests/parity/test_parity_scenarios.cpp
+      - tests/parity/scenario_runtime.cpp
+      - tests/parity/fact_predicate.h
+      - tests/parity/test_parity_coverage_gate.cpp
+      - src/gameplay/families/family_elf.cpp
+      - src/gameplay/families/family_soldier.cpp
+      - src/gameplay/families/effect_family_shield.cpp
+      - src/gameplay/families/family_barbarian.cpp
+      - src/gameplay/families/weapon_family_projectiles.cpp
+      - scripts/parity/capture_master_golden.sh
+      - ../openglad-master/tools/parity_scenario_table.h
+      - ../openglad-master/build/ci-test/parity_dump_master
+  - order: 6
+    id: check-weapon-trajectories
+    type: check
+    bounce_target: impl-weapon-trajectories
+    required_preexisting_inputs:
+      - tests/parity/scenario_table.h
+      - tests/parity/test_parity_scenarios.cpp
+      - tests/parity/golden/weapon_rock_slot2_emit_scen99.json
+      - tests/parity/golden/weapon_boomerang_return_scen99.json
+      - tests/parity/golden/weapon_exploding_boulder_scen99.json
       - ../openglad-master/tools/parity_scenario_table.h
   - order: 7
-    id: 02b-check-companion-binary-fresh
-    type: check
-    bounce_target: 02-mirror-resync
-    required_preexisting_inputs:
-      - ../openglad-master/build/ci-test/parity_dump_master
-      - scripts/parity/validate_schema.py
-  - order: 8
-    id: 02c-check-sha-pin-doc-consistent
-    type: check
-    bounce_target: 02-mirror-resync
-    required_preexisting_inputs:
-      - .plan/master-companion.md
-      - .plan/parity-coverage-manifest.md
-      - ../openglad-master/
-  - order: 9
-    id: 03-fix-treasure-aliasing
+    id: impl-effect-emission
     type: implement
     bounce_target: null
     required_preexisting_inputs:
-      - tests/parity/state_dump.h
-      - tests/parity/state_dump.cpp
+      - tests/parity/scenario_table.h
+      - tests/parity/test_parity_scenarios.cpp
+      - tests/parity/scenario_runtime.cpp
       - tests/parity/fact_predicate.h
-      - tests/parity/fact_predicate.cpp
-      - tests/parity/scenario_table.h
       - tests/parity/test_parity_coverage_gate.cpp
-      - tests/parity/scenario_facts_generated.json
-      - tests/parity/golden/
-      - ../openglad-master/tools/parity_scenario_table.h
-      - ../openglad-master/tools/parity_dump_state.cpp
-      - ../openglad-master/tools/parity_dump_state.h
-      - ../openglad-master/build/ci-test/parity_dump_master
-      - .plan/parity-harness-design.md
+      - src/gameplay/families/family_archmage.cpp
+      - src/gameplay/families/family_thief.cpp
+      - src/gameplay/families/family_druid.cpp
+      - src/gameplay/families/weapon_family_animate.cpp
       - scripts/parity/capture_master_golden.sh
-  - order: 10
-    id: 03a-check-build-and-treasure-green
-    type: check
-    bounce_target: 03-fix-treasure-aliasing
-    required_preexisting_inputs:
-      - tests/parity/scenario_table.h
-      - tests/parity/state_dump.cpp
-      - tests/parity/fact_predicate.cpp
-      - tests/parity/test_parity_coverage_gate.cpp
-  - order: 11
-    id: 03b-check-schema-and-mirror-equal
-    type: check
-    bounce_target: 03-fix-treasure-aliasing
-    required_preexisting_inputs:
-      - tests/parity/scenario_table.h
-      - tests/parity/state_dump.cpp
-      - tests/parity/golden/
       - ../openglad-master/tools/parity_scenario_table.h
-      - ../openglad-master/tools/parity_dump_state.cpp
-      - ../openglad-master/tools/parity_dump_state.h
       - ../openglad-master/build/ci-test/parity_dump_master
-      - .plan/parity-harness-design.md
-  - order: 12
-    id: 03c-check-no-new-non-treasure-regressions
+  - order: 8
+    id: check-effect-emission
     type: check
-    bounce_target: 03-fix-treasure-aliasing
+    bounce_target: impl-effect-emission
     required_preexisting_inputs:
       - tests/parity/scenario_table.h
-      - .plan/parity-present-state.md
-  - order: 13
-    id: 04-mass-golden-recapture
+      - tests/parity/test_parity_scenarios.cpp
+      - tests/parity/golden/effect_heartburst_multitarget_scen99.json
+      - tests/parity/golden/effect_poison_cloud_emit_scen99.json
+      - tests/parity/golden/effect_protection_emit_scen99.json
+      - ../openglad-master/tools/parity_scenario_table.h
+  - order: 9
+    id: impl-effect-timers
     type: implement
     bounce_target: null
     required_preexisting_inputs:
-      - scripts/parity/capture_master_golden.sh
-      - scripts/parity/check_coverage_manifest.py
-      - scripts/parity/validate_schema.py
       - tests/parity/scenario_table.h
-      - tests/parity/scenario_facts_generated.json
-      - tests/parity/golden/
+      - tests/parity/test_parity_scenarios.cpp
+      - tests/parity/scenario_runtime.cpp
+      - tests/parity/fact_predicate.h
+      - tests/parity/test_parity_coverage_gate.cpp
+      - src/gameplay/families/effect_family_bomb.cpp
+      - src/gameplay/families/family_thief.cpp
+      - scripts/parity/capture_master_golden.sh
+      - ../openglad-master/tools/parity_scenario_table.h
+      - ../openglad-master/build/ci-test/parity_dump_master
+  - order: 10
+    id: check-effect-timers
+    type: check
+    bounce_target: impl-effect-timers
+    required_preexisting_inputs:
+      - tests/parity/scenario_table.h
+      - tests/parity/test_parity_scenarios.cpp
+      - tests/parity/golden/effect_bomb_timer_scen99.json
+      - ../openglad-master/tools/parity_scenario_table.h
+  - order: 11
+    id: impl-input-pipeline
+    type: implement
+    bounce_target: null
+    required_preexisting_inputs:
+      - tests/parity/scenario_table.h
+      - tests/parity/test_parity_scenarios.cpp
+      - tests/parity/scenario_runtime.cpp
+      - tests/parity/fact_predicate.h
+      - tests/parity/test_parity_coverage_gate.cpp
+      - src/interface/input/input_state.cpp
+      - src/gameplay/sim_input_handler.cpp
+      - include/openglad/gameplay/input_action.h
+      - scripts/parity/capture_master_golden.sh
+      - ../openglad-master/tools/parity_scenario_table.h
+      - ../openglad-master/tools/parity_scenario_runtime.cpp
+      - ../openglad-master/build/ci-test/parity_dump_master
+  - order: 12
+    id: check-input-pipeline
+    type: check
+    bounce_target: impl-input-pipeline
+    required_preexisting_inputs:
+      - tests/parity/scenario_table.h
+      - tests/parity/test_parity_scenarios.cpp
+      - tests/parity/scenario_runtime.cpp
+      - tests/parity/golden/input_diagonal_movement_scen99.json
+      - tests/parity/golden/input_hold_fire_search_scen99.json
+      - tests/parity/golden/input_switch_char_scen99.json
+      - tests/parity/golden/input_special_switch_wrap_scen99.json
+      - ../openglad-master/tools/parity_scenario_table.h
+  - order: 13
+    id: impl-multiplayer-teams
+    type: implement
+    bounce_target: null
+    required_preexisting_inputs:
+      - tests/parity/scenario_table.h
+      - tests/parity/test_parity_scenarios.cpp
+      - tests/parity/scenario_runtime.cpp
+      - tests/parity/fact_predicate.h
+      - tests/parity/test_parity_coverage_gate.cpp
+      - src/gameplay/walker.cpp
+      - scripts/parity/capture_master_golden.sh
+      - ../openglad-master/tools/parity_scenario_table.h
       - ../openglad-master/build/ci-test/parity_dump_master
   - order: 14
-    id: 04a-check-zero-skipped-and-pass-grows
+    id: check-multiplayer-teams
     type: check
-    bounce_target: 04-mass-golden-recapture
+    bounce_target: impl-multiplayer-teams
     required_preexisting_inputs:
       - tests/parity/scenario_table.h
-      - tests/parity/golden/
-      - .plan/parity-present-state.md
+      - tests/parity/test_parity_scenarios.cpp
+      - tests/parity/golden/multiplayer_two_teams_scen99.json
+      - ../openglad-master/tools/parity_scenario_table.h
   - order: 15
-    id: 04b-check-every-master-comparable-row-has-golden
-    type: check
-    bounce_target: 04-mass-golden-recapture
+    id: impl-level-withdraw
+    type: implement
+    bounce_target: null
     required_preexisting_inputs:
       - tests/parity/scenario_table.h
-      - tests/parity/golden/
-      - scripts/parity/check_coverage_manifest.py
-      - scripts/parity/validate_schema.py
+      - tests/parity/test_parity_scenarios.cpp
+      - tests/parity/scenario_runtime.cpp
+      - tests/parity/fact_predicate.h
+      - tests/parity/test_parity_coverage_gate.cpp
+      - src/gameplay/game_world.cpp
+      - src/gameplay/families/treasure_family_navigation.cpp
+      - scripts/parity/capture_master_golden.sh
+      - ../openglad-master/tools/parity_scenario_table.h
+      - ../openglad-master/build/ci-test/parity_dump_master
   - order: 16
-    id: 04c-check-recapture-doc-and-mirror-untouched
+    id: check-level-withdraw
     type: check
-    bounce_target: 04-mass-golden-recapture
+    bounce_target: impl-level-withdraw
     required_preexisting_inputs:
-      - .plan/parity-recapture-diff.md
       - tests/parity/scenario_table.h
+      - tests/parity/test_parity_scenarios.cpp
+      - tests/parity/golden/level_withdraw_scen99.json
       - ../openglad-master/tools/parity_scenario_table.h
   - order: 17
-    id: 05-walker-family-completeness
+    id: impl-midcombat-state
     type: implement
     bounce_target: null
     required_preexisting_inputs:
-      - .plan/parity-present-state.md
-      - .plan/parity-coverage-manifest.md
-      - tests/parity/coverage_targets.h
       - tests/parity/scenario_table.h
       - tests/parity/test_parity_scenarios.cpp
-      - tests/parity/scenario_facts_generated.json
-      - tests/parity/golden/
-      - ../openglad-master/build/ci-test/parity_dump_master
+      - tests/parity/scenario_runtime.cpp
+      - tests/parity/fact_predicate.h
+      - tests/parity/test_parity_coverage_gate.cpp
+      - src/gameplay/walker_combat.cpp
+      - src/gameplay/families/treasure_family_consumables.cpp
+      - src/resources/save_data.cpp
       - scripts/parity/capture_master_golden.sh
-      - scripts/parity/check_coverage_manifest.py
+      - ../openglad-master/tools/parity_scenario_table.h
+      - ../openglad-master/build/ci-test/parity_dump_master
   - order: 18
-    id: 05a-check-walker-rows-and-rng-insensitive
+    id: check-midcombat-state
     type: check
-    bounce_target: 05-walker-family-completeness
-    required_preexisting_inputs:
-      - tests/parity/coverage_targets.h
-      - tests/parity/scenario_facts_generated.json
-  - order: 19
-    id: 05b-check-cov-manifest-and-tests-pass
-    type: check
-    bounce_target: 05-walker-family-completeness
-    required_preexisting_inputs:
-      - .plan/parity-coverage-manifest.md
-      - scripts/parity/check_coverage_manifest.py
-      - tests/parity/scenario_table.h
-  - order: 20
-    id: 05c-check-no-regression
-    type: check
-    bounce_target: 05-walker-family-completeness
+    bounce_target: impl-midcombat-state
     required_preexisting_inputs:
       - tests/parity/scenario_table.h
+      - tests/parity/test_parity_scenarios.cpp
+      - tests/parity/golden/midcombat_partial_hp_scen99.json
+      - tests/parity/golden/consumable_inventory_state_scen99.json
       - ../openglad-master/tools/parity_scenario_table.h
-  - order: 21
-    id: 06-weapon-and-effect-completeness
+  - order: 19
+    id: impl-final-docs
     type: implement
     bounce_target: null
     required_preexisting_inputs:
-      - tests/parity/coverage_targets.h
       - tests/parity/scenario_table.h
       - tests/parity/test_parity_scenarios.cpp
-      - tests/parity/scenario_facts_generated.json
-      - tests/parity/golden/
+      - tests/parity/scenario_runtime.cpp
+      - ../openglad-master/tools/parity_scenario_table.h
+      - ../openglad-master/tools/parity_scenario_runtime.cpp
+      - ../openglad-master/build/ci-test/parity_dump_master
       - .plan/parity-present-state.md
       - .plan/parity-coverage-manifest.md
-      - ../openglad-master/build/ci-test/parity_dump_master
-      - scripts/parity/capture_master_golden.sh
-      - scripts/parity/lint_scenario_facts.py
-      - scripts/parity/check_coverage_manifest.py
-  - order: 22
-    id: 06a-check-weapon-and-effect-emitted
+  - order: 20
+    id: check-final-docs
     type: check
-    bounce_target: 06-weapon-and-effect-completeness
+    bounce_target: impl-final-docs
     required_preexisting_inputs:
-      - tests/parity/coverage_targets.h
-      - tests/parity/scenario_facts_generated.json
-      - tests/parity/scenario_table.h
-      - scripts/parity/lint_scenario_facts.py
-  - order: 23
-    id: 06b-check-tests-green-and-mirror
-    type: check
-    bounce_target: 06-weapon-and-effect-completeness
-    required_preexisting_inputs:
-      - tests/parity/scenario_table.h
-      - ../openglad-master/tools/parity_scenario_table.h
-  - order: 24
-    id: 06c-check-no-suite-regression
-    type: check
-    bounce_target: 06-weapon-and-effect-completeness
-    required_preexisting_inputs:
-      - tests/parity/scenario_table.h
-      - .plan/parity-coverage-manifest.md
-      - scripts/parity/check_coverage_manifest.py
-  - order: 25
-    id: 07-treasure-and-generator-completeness
-    type: implement
-    bounce_target: null
-    required_preexisting_inputs:
-      - tests/parity/coverage_targets.h
-      - tests/parity/scenario_table.h
-      - tests/parity/test_parity_coverage_gate.cpp
-      - tests/parity/scenario_facts_generated.json
-      - tests/parity/golden/
-      - .plan/parity-coverage-manifest.md
-      - ../openglad-master/build/ci-test/parity_dump_master
-      - scripts/parity/capture_master_golden.sh
-      - scripts/parity/check_coverage_manifest.py
-  - order: 26
-    id: 07a-check-every-treasure-and-generator-bound
-    type: check
-    bounce_target: 07-treasure-and-generator-completeness
-    required_preexisting_inputs:
-      - tests/parity/coverage_targets.h
-      - tests/parity/scenario_facts_generated.json
-  - order: 27
-    id: 07b-check-behavioural-gates-green
-    type: check
-    bounce_target: 07-treasure-and-generator-completeness
-    required_preexisting_inputs:
-      - tests/parity/scenario_table.h
-      - tests/parity/test_parity_coverage_gate.cpp
-  - order: 28
-    id: 07c-check-no-suite-regression
-    type: check
-    bounce_target: 07-treasure-and-generator-completeness
-    required_preexisting_inputs:
-      - tests/parity/scenario_table.h
-      - ../openglad-master/tools/parity_scenario_table.h
-  - order: 29
-    id: 08-specials-completeness-and-rng-insensitivity
-    type: implement
-    bounce_target: null
-    required_preexisting_inputs:
-      - tests/parity/coverage_targets.h
       - tests/parity/scenario_table.h
       - tests/parity/test_parity_scenarios.cpp
-      - tests/parity/scenario_facts_generated.json
-      - tests/parity/golden/
-      - scripts/parity/lint_scenario_facts.py
-      - scripts/parity/capture_master_golden.sh
-      - .plan/parity-coverage-manifest.md
+      - tests/parity/scenario_runtime.cpp
+      - ../openglad-master/tools/parity_scenario_table.h
+      - ../openglad-master/tools/parity_scenario_runtime.cpp
       - ../openglad-master/build/ci-test/parity_dump_master
-  - order: 30
-    id: 08a-check-every-special-row-and-bit
-    type: check
-    bounce_target: 08-specials-completeness-and-rng-insensitivity
-    required_preexisting_inputs:
-      - tests/parity/coverage_targets.h
-      - tests/parity/scenario_facts_generated.json
-  - order: 31
-    id: 08b-check-lint-rule-trips-and-passes
-    type: check
-    bounce_target: 08-specials-completeness-and-rng-insensitivity
-    required_preexisting_inputs:
-      - tests/parity/scenario_table.h
-      - scripts/parity/lint_scenario_facts.py
-  - order: 32
-    id: 08c-check-specials-tests-green
-    type: check
-    bounce_target: 08-specials-completeness-and-rng-insensitivity
-    required_preexisting_inputs:
-      - tests/parity/scenario_table.h
-  - order: 33
-    id: 09-event-kind-completeness
-    type: implement
-    bounce_target: null
-    required_preexisting_inputs:
-      - tests/parity/coverage_targets.h
-      - tests/parity/scenario_table.h
-      - tests/parity/test_parity_scenarios.cpp
-      - tests/parity/scenario_facts_generated.json
-      - tests/parity/golden/
+      - .plan/parity-present-state.md
       - .plan/parity-coverage-manifest.md
-      - ../openglad-master/build/ci-test/parity_dump_master
-      - scripts/parity/capture_master_golden.sh
-  - order: 34
-    id: 09a-check-every-event-kind-bound
-    type: check
-    bounce_target: 09-event-kind-completeness
-    required_preexisting_inputs:
-      - tests/parity/coverage_targets.h
-      - tests/parity/scenario_facts_generated.json
-  - order: 35
-    id: 09b-check-event-rows-green
-    type: check
-    bounce_target: 09-event-kind-completeness
-    required_preexisting_inputs:
-      - tests/parity/scenario_table.h
-  - order: 36
-    id: 09c-check-no-suite-regression
-    type: check
-    bounce_target: 09-event-kind-completeness
-    required_preexisting_inputs:
-      - tests/parity/scenario_table.h
-      - ../openglad-master/tools/parity_scenario_table.h
-  - order: 37
-    id: 10-mutation-canary-green
-    type: implement
-    bounce_target: null
-    required_preexisting_inputs:
-      - scripts/parity/run_mutation_canary.sh
-      - scripts/parity/run_mutation_canary_runtime.py
-      - tests/parity/scenario_table.h
-      - tests/parity/scenario_facts_generated.json
-      - ../openglad-master/build/ci-test/parity_dump_master
-      - ../openglad-master/tools/parity_scenario_table.h
-  - order: 38
-    id: 10a-check-canary-all-flip
-    type: check
-    bounce_target: 10-mutation-canary-green
-    required_preexisting_inputs:
-      - scripts/parity/run_mutation_canary.sh
-      - scripts/parity/run_mutation_canary_runtime.py
-      - tests/parity/scenario_table.h
-      - .plan/parity-canary-exemptions.md
-  - order: 39
-    id: 10b-check-exemptions-parseable
-    type: check
-    bounce_target: 10-mutation-canary-green
-    required_preexisting_inputs:
-      - scripts/parity/run_mutation_canary_runtime.py
-      - .plan/parity-canary-exemptions.md
-  - order: 40
-    id: 10c-check-no-suite-regression
-    type: check
-    bounce_target: 10-mutation-canary-green
-    required_preexisting_inputs:
-      - tests/parity/scenario_table.h
-      - ../openglad-master/tools/parity_scenario_table.h
-  - order: 41
-    id: 11-anti-cheat-and-final-signoff
-    type: implement
-    bounce_target: null
-    required_preexisting_inputs:
-      - scripts/parity/lint_scenario_facts.py
-      - scripts/parity/run_mutation_canary.sh
-      - scripts/parity/run_mutation_canary_runtime.py
-      - scripts/parity/check_coverage_manifest.py
-      - scripts/parity/capture_master_golden.sh
-      - tests/parity/test_parity_scenarios.cpp
-      - tests/parity/scenario_table.h
-      - .plan/parity-coverage-manifest.md
-      - .plan/parity-canary-exemptions.md
-  - order: 42
-    id: 11a-check-anti-cheat-selftest-passes
-    type: check
-    bounce_target: 11-anti-cheat-and-final-signoff
-    required_preexisting_inputs:
-      - scripts/parity/anti_cheat_selftest.sh
-      - scripts/parity/lint_scenario_facts.py
-      - scripts/parity/check_coverage_manifest.py
-      - scripts/parity/check_mirror_sha.sh
-      - scripts/parity/check_test_registration.py
-      - tests/parity/test_parity_scenarios.cpp
-      - tests/parity/scenario_table.h
-  - order: 43
-    id: 11b-check-ci-orchestrator-and-fullsuite-green
-    type: check
-    bounce_target: 11-anti-cheat-and-final-signoff
-    required_preexisting_inputs:
-      - scripts/parity/ci_parity.sh
-      - tests/parity/scenario_table.h
-  - order: 44
-    id: 11c-check-signoff-doc-and-manifest
-    type: check
-    bounce_target: 11-anti-cheat-and-final-signoff
-    required_preexisting_inputs:
-      - .plan/parity-signoff-honest.md
-      - .plan/parity-coverage-manifest.md
-      - .plan/parity-canary-exemptions.md
-      - tests/parity/scenario_table.h
-      - ../openglad-master/tools/parity_scenario_table.h

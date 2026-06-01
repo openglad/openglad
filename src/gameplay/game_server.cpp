@@ -1,5 +1,6 @@
 #include <openglad/gameplay/game_server.h>
 
+#include <openglad/core/constants.h>
 #include <openglad/core/runtime_trace.h>
 #include <openglad/core/util.h>
 #include <openglad/gameplay/families/family_descriptor.h>
@@ -270,14 +271,18 @@ const PlayerInput& select_player_input(const InputState& input,
                                         : input.players[bounded_index];
 }
 
-bool contains_endgame_event(const og::sim::SimEventBatch& batch) noexcept
+bool contains_event_kind(const og::sim::SimEventBatch& batch,
+                         og::sim::EventKind kind) noexcept
 {
     return std::any_of(
         batch.events.begin(),
         batch.events.end(),
-        [](const og::sim::Event& event) {
-            return event.kind == og::sim::EventKind::EndGame;
-        });
+        [kind](const og::sim::Event& event) { return event.kind == kind; });
+}
+
+bool contains_endgame_event(const og::sim::SimEventBatch& batch) noexcept
+{
+    return contains_event_kind(batch, og::sim::EventKind::EndGame);
 }
 
 std::uint8_t palette_id_from_event_value(std::uint32_t value) noexcept
@@ -291,12 +296,59 @@ void apply_authoritative_event_state(GameWorld& world,
 {
     for (const auto& event : batch.events)
     {
-        if (event.kind != og::sim::EventKind::SetPalette)
-            continue;
-
-        const std::uint8_t palette_id = palette_id_from_event_value(event.a);
-        world.current_palette_id = palette_id;
-        snapshot.current_palette_id = palette_id;
+        switch (event.kind)
+        {
+        case og::sim::EventKind::SetPalette:
+        {
+            const std::uint8_t palette_id = palette_id_from_event_value(event.a);
+            world.current_palette_id = palette_id;
+            snapshot.current_palette_id = palette_id;
+            break;
+        }
+        case og::sim::EventKind::DamageTile:
+        {
+            // Tile damage is a deterministic world-state mutation routed
+            // through the sim event log (matching master, where the screen
+            // event consumer calls damage_tile). The authoritative server
+            // applies it here so the grid mutates server-side and the change
+            // propagates to clients via the snapshot grid-sync. The snapshot
+            // for this tick has already been captured, so fold the damaged
+            // tile into it directly (mirroring the SetPalette pattern) instead
+            // of stranding it for the next keyframe.
+            const short xpix = static_cast<short>(event.a);
+            const short ypix = static_cast<short>(event.b);
+            if (world.damage_tile(xpix, ypix) && world.grid.valid())
+            {
+                const short tx = static_cast<short>(xpix / GRID_SIZE);
+                const short ty = static_cast<short>(ypix / GRID_SIZE);
+                if (tx >= 0 && ty >= 0 && tx < world.grid.w && ty < world.grid.h)
+                {
+                    const std::size_t gi =
+                        static_cast<std::size_t>(ty) * world.grid.w + tx;
+                    const std::uint8_t value = world.grid.data[gi];
+                    bool present = false;
+                    for (auto& tile : snapshot.grid_dirty_tiles)
+                    {
+                        if (tile.x == tx && tile.y == ty)
+                        {
+                            tile.value = value;
+                            present = true;
+                            break;
+                        }
+                    }
+                    if (!present && !snapshot.grid_full_resend)
+                    {
+                        snapshot.grid_dirty = true;
+                        snapshot.grid_dirty_tiles.push_back(
+                            {tx, ty, value});
+                    }
+                }
+            }
+            break;
+        }
+        default:
+            break;
+        }
     }
 }
 
@@ -2130,16 +2182,45 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
         drained_batch = drain_sim_events(events_);
         maybe_resolve_world_events(*drained_batch, snapshot);
         apply_authoritative_event_state(world_, *drained_batch, snapshot);
-        if (snapshot.game_ended && !contains_endgame_event(*drained_batch))
+        if (snapshot.game_ended)
         {
-            Event endgame_event;
-            endgame_event.kind = EventKind::EndGame;
-            endgame_event.a = static_cast<std::uint32_t>(
-                static_cast<std::int32_t>(snapshot.ending));
-            endgame_event.b = static_cast<std::uint32_t>(
-                static_cast<std::int32_t>(snapshot.next_level));
-            drained_batch->events.push_back(std::move(endgame_event));
-            og::sim::normalize_endgame_event_order(*drained_batch);
+            // Synthesize level-completion display events from authoritative
+            // snapshot state. The deterministic sim (GameWorld::tick) no longer
+            // emits these (matching master, which signals level-end
+            // imperatively via screen.cpp/endgame()); the broadcast layer
+            // re-derives them here so the client mirror still receives the
+            // palette/redraw/end notifications it consumes.
+            if (!contains_event_kind(*drained_batch, EventKind::SetPalette))
+            {
+                Event set_palette_event;
+                set_palette_event.kind = EventKind::SetPalette;
+                set_palette_event.a = snapshot.current_palette_id;
+                set_palette_event.b = 0u;
+                drained_batch->events.push_back(std::move(set_palette_event));
+            }
+            if (!contains_event_kind(*drained_batch, EventKind::RequestRedraw))
+            {
+                Event request_redraw_event;
+                request_redraw_event.kind = EventKind::RequestRedraw;
+                drained_batch->events.push_back(std::move(request_redraw_event));
+            }
+            if (!contains_event_kind(*drained_batch, EventKind::SetEnd))
+            {
+                Event set_end_event;
+                set_end_event.kind = EventKind::SetEnd;
+                drained_batch->events.push_back(std::move(set_end_event));
+            }
+            if (!contains_endgame_event(*drained_batch))
+            {
+                Event endgame_event;
+                endgame_event.kind = EventKind::EndGame;
+                endgame_event.a = static_cast<std::uint32_t>(
+                    static_cast<std::int32_t>(snapshot.ending));
+                endgame_event.b = static_cast<std::uint32_t>(
+                    static_cast<std::int32_t>(snapshot.next_level));
+                drained_batch->events.push_back(std::move(endgame_event));
+                og::sim::normalize_endgame_event_order(*drained_batch);
+            }
         }
     }
 

@@ -235,6 +235,7 @@ void dispatch_cosmetic_screen_events(screen& self,
             case og::sim::EventKind::RequestExitConfirmation:
             case og::sim::EventKind::WithdrawToLevel:
             case og::sim::EventKind::ScoreChange:
+            case og::sim::EventKind::DamageTile:
             default:
                 break;
         }
@@ -270,6 +271,10 @@ bool dispatch_game_flow_screen_events(screen& self,
                 break;
             case og::sim::EventKind::ScoreChange:
                 self.redrawme = 1;
+                break;
+            case og::sim::EventKind::DamageTile:
+                self.damage_tile(static_cast<short>(ev.a),
+                                 static_cast<short>(ev.b));
                 break;
             case og::sim::EventKind::None:
             case og::sim::EventKind::PlaySound:

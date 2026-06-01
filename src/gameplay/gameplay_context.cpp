@@ -161,6 +161,7 @@ struct GameplayPathfindingState::Impl
 
 thread_local GameplayContext* current_game = nullptr;
 thread_local IRandom** g_rng_override_ref = nullptr;
+thread_local IRandom** g_cosmetic_rng_override_ref = nullptr;
 
 GameplayPathfindingState::GameplayPathfindingState()
     : impl_(std::make_unique<Impl>())
@@ -211,6 +212,34 @@ void set_gameplay_rng_override(IRandom** rng_ref)
     g_rng_override_ref = rng_ref;
     if (current_game)
         current_game->rng_override_ref = rng_ref;
+}
+
+IRandom* cosmetic_rng_override()
+{
+    if (g_cosmetic_rng_override_ref != nullptr)
+        return *g_cosmetic_rng_override_ref;
+
+    return (current_game && current_game->cosmetic_rng_override_ref)
+        ? *current_game->cosmetic_rng_override_ref
+        : nullptr;
+}
+
+void set_cosmetic_rng_override(IRandom** rng_ref)
+{
+    g_cosmetic_rng_override_ref = rng_ref;
+    if (current_game)
+        current_game->cosmetic_rng_override_ref = rng_ref;
+}
+
+IRandom* cosmetic_rng()
+{
+    // Cosmetic override (parity harness) wins; otherwise the per-world gameplay
+    // RNG so production stays deterministic for snapshot/replay/networking.
+    if (IRandom* override_rng = cosmetic_rng_override())
+        return override_rng;
+    if (current_game != nullptr && current_game->world != nullptr)
+        return &current_game->world->rng_;
+    return nullptr;
 }
 
 bool gameplay_world_rng_active()

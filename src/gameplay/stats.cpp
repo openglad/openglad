@@ -1006,7 +1006,15 @@ bool statistics::walk_to_foe()
 	// processing time
 	if(controller_->path_check_counter() <= 0)
 	{
-	    controller_->set_path_check_counter(5 + static_cast<int>(rng(10)));
+	    // Cosmetic AI-recheck cadence: master draws it from libc rand
+	    // (`5 + rand()%10`), NOT the gameplay rng() helper it uses for every
+	    // other AI decision here. Production draws from world.rng_ for
+	    // snapshot/replay determinism; the parity harness's libc-rand cosmetic
+	    // override (when installed) matches master's dual-RNG-stream behavior.
+	    const std::uint32_t cadence = (cosmetic_rng_override() != nullptr)
+	        ? cosmetic_rng_override()->next(10)
+	        : rng(10);
+	    controller_->set_path_check_counter(5 + static_cast<int>(cadence));
 	    controller_->path_to_foe.clear();
 	    
 		xdest = foe->xpos();
