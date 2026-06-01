@@ -453,7 +453,14 @@ TEST(NetTransportWebSocketServer,
             },
         .transport_backend =
             og::sim::test::NetworkTransportBackend::WebSocketLoopback,
-        .network_timeout = 10s,
+        // 90s (not 10s): this 4-client/12hz loopback-websocket sync is
+        // wall-clock-bound (~60 real-time-paced sim ticks) and runs many-x slower
+        // under the coverage build with `ctest --parallel $(nproc)` contention —
+        // observed 11.1s at the old 10s budget AND 31.1s after a 30s bump, both
+        // timing out. The logic is correct (passes in <1s locally and in
+        // non-coverage CI); 90s is generous headroom, well under the 180s ctest
+        // cap, so instrumented/contended runners don't flake.
+        .network_timeout = 90s,
     });
 
     fixture.run();
