@@ -1151,6 +1151,91 @@ TEST(NetTransportInProcess,
     fixture.expect_clients_match_server();
 }
 
+// Regression: a level transition that happens while the game is paused (e.g. a
+// player opens the pause menu and withdraws/exits to another level) must not
+// leave the next level frozen. The server-side pending_pause_state_ /
+// pending_exit_prompt_state_ optionals are not visible to the level-load path,
+// so prepare_clients_for_loaded_level() must clear them — otherwise step()
+// refuses to tick the freshly loaded level and "no one can move".
+TEST(NetTransportInProcess,
+     network_fixture_level_transition_clears_lingering_pause_state)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 2,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+    fixture.step_ticks(1);
+
+    // Pause the game (as the pause menu does before offering withdraw/exit).
+    fixture.client(0).send_pause_request();
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+    fixture.poll_client_messages(1);
+    ASSERT_TRUE(fixture.server().paused());
+
+    // While paused, a level transition is requested and the next level loads.
+    fixture.with_server_context([&] {
+        fixture.server().on_level_transition = [&](int level_id) {
+            GameWorld& world = fixture.server_world();
+            world.id = static_cast<short>(level_id);
+            world.current_scenario = static_cast<short>(level_id);
+            world.tick_count_ = 0;
+            world.reset_level_progress();
+            world.game_ended = false;
+            world.next_level = -1;
+            world.ending = 0;
+            world.level_done = 0;
+            world.end = 0;
+            // A fresh level load clears the *world* pause flag, but cannot touch
+            // the server-private pending_pause_state_ optional.
+            world.paused = false;
+            for (auto& uptr : world.oblist)
+            {
+                walker* const control = uptr.get();
+                if (control == nullptr)
+                    continue;
+                control->set_user(-1);
+                control->restore_act_type();
+            }
+            return true;
+        };
+
+        GameWorld& world = fixture.server_world();
+        world.game_ended = true;
+        world.ending = 0;
+        world.next_level = 2;
+        fixture.server().broadcast_current_state(
+            og::sim::SnapshotCaptureMode::Peek,
+            og::sim::EventDeliveryMode::Skip);
+    });
+    fixture.poll_client_messages(0);
+    fixture.poll_client_messages(1);
+
+    EXPECT_FALSE(fixture.server().paused())
+        << "a level transition must clear lingering server-side pause state";
+    EXPECT_FALSE(fixture.server().pending_exit_prompt());
+
+    // The freshly loaded level must actually tick again (players can move).
+    fixture.client(0).send_client_ready();
+    fixture.client(1).send_client_ready();
+    const std::uint32_t tick_before = fixture.server_world().tick_count_;
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+    fixture.poll_client_messages(1);
+    EXPECT_GT(fixture.server_world().tick_count_, tick_before)
+        << "world must tick after the transition; lingering pause froze it";
+}
+
 TEST(NetTransportInProcess,
      network_fixture_auto_declines_exit_prompt_when_triggering_player_disconnects)
 {

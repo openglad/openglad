@@ -1763,6 +1763,14 @@ void GameServer::handle_level_transition(std::int16_t next_level)
 
 void GameServer::prepare_clients_for_loaded_level()
 {
+    // A freshly loaded level must start live: drop any pause / exit-prompt that
+    // was in effect when the transition was requested (e.g. a withdraw/exit
+    // chosen from the pause menu). These server-side optionals gate step() but
+    // are invisible to the level-load path, so without this the new level would
+    // stay frozen — "in a level but no one can move".
+    clear_pause_state();
+    clear_pending_exit_prompt();
+
     events_.clear();
     world_.clear_removed_entity_ids();
     world_.clear_grid_dirty_tiles();
