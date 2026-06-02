@@ -253,8 +253,10 @@ TEST(GladHud, fps_overlay_draws_when_enabled)
     v->prefs[PREF_SCORE]   = PREF_SCORE_OFF;
     v->prefs[PREF_FOES]    = PREF_FOES_OFF;
 
-    constexpr int kY0 = 0;
-    constexpr int kY1 = 12;
+    // The overlay now renders one row below the TEAM/FOES counter box
+    // (which spans y in [1,16]), so scan the band just beneath it.
+    constexpr int kY0 = 16;
+    constexpr int kY1 = 30;
     constexpr int kX0 = 280;
     constexpr int kX1 = 320;
 
@@ -280,6 +282,74 @@ TEST(GladHud, fps_overlay_draws_when_enabled)
     auto frame_off = capture_rendered_frame(*s);
     ASSERT_FALSE(scan_rect_nonzero(frame_off))
         << "rectangle must be clean when show_fps_ is false";
+
+    v->control = control_pointer_is_live(s->level_runtime_data(), old_control)
+        ? old_control : nullptr;
+}
+
+TEST(GladHud, fps_overlay_clears_foes_counter)
+{
+    // Regression: the FPS overlay used to render at y=2, flush right, directly
+    // on top of the TEAM/FOES counter that new_score_panel draws in the
+    // top-right corner (box spanning y in [1,16]). It must now render strictly
+    // below that box. We diff a FOES-on frame with vs. without the overlay;
+    // every pixel the overlay touches must lie below the counter box.
+    struct ShowFpsGuard {
+        ~ShowFpsGuard() { og::runtime::current_session->show_fps_ = false; }
+    } guard;
+
+    auto control = make_player(0);
+    ASSERT_TRUE(control != nullptr) << "control should be created";
+    walker* controlp = control.get();
+    controlp->set_user(0);
+    controlp->set_team_num(0);
+    controlp->set_dead(0);
+    controlp->stats()->set_hitpoints(50);
+    controlp->stats()->set_max_hitpoints(100);
+    controlp->stats()->set_magicpoints(30);
+    controlp->stats()->set_max_magicpoints(80);
+
+    screen* s = og::runtime::current_session->myscreen_;
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_TRUE(v != nullptr);
+    walker* old_control = v->control;
+    v->control = controlp;
+    // Draw the TEAM/FOES counter (and its button background) in the top-right.
+    v->prefs[PREF_OVERLAY] = PREF_OVERLAY_ON;
+    v->prefs[PREF_LIFE]    = PREF_LIFE_TEXT;
+    v->prefs[PREF_SCORE]   = PREF_SCORE_OFF;  // score countup uses rng(); keep off for determinism
+    v->prefs[PREF_FOES]    = PREF_FOES_ON;
+
+    // The counter box bottom edge: new_score_panel draws it at tm+16 with
+    // tm == yloc (0 for the top viewport) plus zero overscan in the default build.
+    constexpr int kFoesBoxBottom = 16;
+
+    og::runtime::current_session->show_fps_ = false;
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    auto frame_without = capture_rendered_frame(*s);
+
+    og::runtime::current_session->show_fps_ = true;
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    auto frame_with = capture_rendered_frame(*s);
+
+    bool overlay_drew = false;
+    for (int y = 0; y < 200; ++y)
+    {
+        for (int x = 0; x < 320; ++x)
+        {
+            const std::size_t i = static_cast<std::size_t>(y * 320 + x);
+            if (frame_with[i] == frame_without[i])
+                continue;
+            overlay_drew = true;
+            ASSERT_GT(y, kFoesBoxBottom)
+                << "FPS overlay pixel at (" << x << "," << y
+                << ") overlaps the TEAM/FOES counter box (y in [1,"
+                << kFoesBoxBottom << "])";
+        }
+    }
+    ASSERT_TRUE(overlay_drew) << "FPS overlay should have rendered some pixels";
 
     v->control = control_pointer_is_live(s->level_runtime_data(), old_control)
         ? old_control : nullptr;
