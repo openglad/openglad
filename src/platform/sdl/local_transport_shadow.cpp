@@ -5,6 +5,7 @@
 #include <openglad/gameplay/game_client.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/game_server.h>
+#include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/input_state.h>
 #include <openglad/gameplay/net_constants.h>
 #include <openglad/gameplay/net_transport_inprocess.h>
@@ -61,6 +62,12 @@ struct LocalTransportRuntime {
     std::vector<LocalTransportClient> clients;
     std::size_t display_client_index = 0;
     bool display_session_finished = false;
+    // Genuine networked multiplayer session: the live combined roster is kept
+    // off each player's real save0 and each player persists only its own
+    // characters' progress. False for plain local single-player / splitscreen.
+    bool networked = false;
+    // This peer's own player slot, for owner-filtered saves (0xff if none).
+    std::uint8_t own_player_index = 0xff;
 
     [[nodiscard]] screen* server_screen() const
     {
@@ -229,17 +236,46 @@ void release_screen_control_claims(screen& gameplay_screen)
     }
 }
 
-bool save_shadow_save_data(screen& gameplay_screen, const char* action)
+bool save_shadow_save_data(screen& gameplay_screen,
+                           const char* action,
+                           const char* slot = "save0")
 {
     const SaveDataIoError save_error =
-        gameplay_screen.save_data.save_with_error("save0");
+        gameplay_screen.save_data.save_with_error(slot);
     if (save_error == SaveDataIoError::None)
         return true;
 
-    LogError("local_transport_shadow_save_failed action={} error={}\n",
+    LogError("local_transport_shadow_save_failed action={} slot={} error={}\n",
              action,
+             slot,
              static_cast<int>(save_error));
     return false;
+}
+
+// Networked "as if played alone" persist: write only the characters owned by
+// own_player_index back into this peer's real save0, leaving every other slot
+// (other players' characters, this player's not-brought characters) intact.
+// world_screen is the authoritative server world on the host, or the snapshot
+// mirror on a client; both carry owner tags on each myguy.
+void persist_owned_characters_to_save0(const screen& world_screen,
+                                       std::uint8_t own_player_index)
+{
+    if (own_player_index == guy::kNoOwner)
+        return;
+
+    SaveData merged;
+    if (merged.load_with_error("save0") != SaveDataIoError::None)
+    {
+        // No untouched pre-session roster to merge into; skip rather than
+        // clobber save0 with a partial team.
+        LogError("net_persist_skipped reason=no_presession_save0 player={}\n",
+                 own_player_index);
+        return;
+    }
+
+    merged.merge_owned_guys_from(world_screen.world().oblist, own_player_index);
+    if (merged.save_with_error("save0") != SaveDataIoError::None)
+        LogError("net_persist_save_failed player={}\n", own_player_index);
 }
 
 bool load_shadow_level_from_save(screen& gameplay_screen, const char* action)
@@ -256,7 +292,10 @@ bool load_shadow_level_from_save(screen& gameplay_screen, const char* action)
     return true;
 }
 
-bool complete_level_and_load_next(screen& gameplay_screen, int next_level)
+bool complete_level_and_load_next(screen& gameplay_screen,
+                                  int next_level,
+                                  bool networked,
+                                  std::uint8_t own_player_index)
 {
     gameplay_screen.sync_save_data_from_world();
 
@@ -290,26 +329,46 @@ bool complete_level_and_load_next(screen& gameplay_screen, int next_level)
         gameplay_screen.save_data.scen_num);
     gameplay_screen.save_data.scen_num = static_cast<short>(next_level);
     gameplay_screen.save_data.update_guys(gameplay_screen.world().oblist);
-    if (!save_shadow_save_data(gameplay_screen, "complete_level"))
+
+    // For a networked session the combined roster goes to the transient slot,
+    // never the player's real save0. Each completed level we also merge this
+    // peer's own characters' progress back into save0 (as if it played solo).
+    if (networked)
+    {
+        if (!save_shadow_save_data(gameplay_screen, "complete_level",
+                                   "netsession"))
+            return false;
+        persist_owned_characters_to_save0(gameplay_screen, own_player_index);
+    }
+    else if (!save_shadow_save_data(gameplay_screen, "complete_level"))
+    {
         return false;
+    }
 
     return load_shadow_level_from_save(gameplay_screen, "complete_level");
 }
 
-bool withdraw_and_load_level(screen& gameplay_screen, int destination_level)
+bool withdraw_and_load_level(screen& gameplay_screen,
+                             int destination_level,
+                             bool networked)
 {
+    // Withdraw reloads the live roster from the session store. For a networked
+    // session that is the transient slot (the combined roster), never the
+    // player's real save0.
+    const char* const slot = networked ? "netsession" : "save0";
     const SaveDataIoError load_error =
-        gameplay_screen.save_data.load_with_error("save0");
+        gameplay_screen.save_data.load_with_error(slot);
     if (load_error != SaveDataIoError::None)
     {
-        LogError("local_transport_shadow_withdraw_load_failed level={} error={}\n",
+        LogError("local_transport_shadow_withdraw_load_failed level={} slot={} error={}\n",
                  destination_level,
+                 slot,
                  static_cast<int>(load_error));
         return false;
     }
 
     gameplay_screen.save_data.scen_num = static_cast<short>(destination_level);
-    if (!save_shadow_save_data(gameplay_screen, "withdraw"))
+    if (!save_shadow_save_data(gameplay_screen, "withdraw", slot))
         return false;
 
     return load_shadow_level_from_save(gameplay_screen, "withdraw");
@@ -490,9 +549,25 @@ void configure_display_game_client(og::runtime::LocalTransportRuntime& runtime,
 {
     gameplay_screen.set_render_interpolation_client(&display_client);
     display_client.set_initial_setup_callback(
-        [&gameplay_screen, display_client_ptr = &display_client](
+        [&gameplay_screen, runtime_ptr = &runtime, display_player_index,
+         display_client_ptr = &display_client](
             const og::sim::InitialSetupMessage& message,
             bool is_level_transition) {
+            // On a real client, persist this player's own characters' progress
+            // from the just-completed level (the mirror world still holds its
+            // final state) before the transition wipes it. The host persists
+            // its own characters server-side via complete_level_and_load_next,
+            // so skip here for the host's loopback display client.
+            if (is_level_transition && runtime_ptr != nullptr &&
+                runtime_ptr->mode ==
+                    og::runtime::LocalTransportRuntime::Mode::ClientOnly &&
+                display_player_index.has_value())
+            {
+                persist_owned_characters_to_save0(
+                    gameplay_screen,
+                    static_cast<std::uint8_t>(*display_player_index));
+            }
+
             apply_initial_setup_to_client_save(gameplay_screen, message);
 
             if (!is_level_transition)
@@ -525,13 +600,23 @@ void configure_display_game_client(og::runtime::LocalTransportRuntime& runtime,
             dispatch_display_event_batch(gameplay_screen, batch);
         });
     display_client.set_game_flow_event_batch_callback(
-        [&gameplay_screen, runtime_ptr = &runtime](
+        [&gameplay_screen, runtime_ptr = &runtime, display_player_index](
             const og::sim::SimEventBatch& batch) {
             dispatch_display_event_batch(gameplay_screen, batch);
             if (runtime_ptr != nullptr &&
                 (gameplay_screen.world().end != 0 ||
                  batch_ends_display_session(batch)))
             {
+                // Final-level persist for a real client (no further level
+                // transition will fire). Host persists server-side.
+                if (runtime_ptr->mode ==
+                        og::runtime::LocalTransportRuntime::Mode::ClientOnly &&
+                    display_player_index.has_value())
+                {
+                    persist_owned_characters_to_save0(
+                        gameplay_screen,
+                        static_cast<std::uint8_t>(*display_player_index));
+                }
                 runtime_ptr->display_session_finished = true;
             }
         });
@@ -656,6 +741,8 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
     session.relay_speed_warning_shown_ = false;
 
     auto runtime = std::make_shared<LocalTransportRuntime>();
+    runtime->networked = session.networked_session_;
+    runtime->own_player_index = session.own_player_index_;
     const std::size_t player_count = compute_local_player_count(gameplay_screen);
     std::array<std::uint32_t, MAX_PLAYERS> control_entity_ids = {};
     std::array<short, MAX_PLAYERS> player_teams = {};
@@ -689,7 +776,8 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
             &runtime->server_session->game_);
         screen* const server_screen = runtime->server_screen();
         if (server_screen == nullptr ||
-            load_saved_game("save0", server_screen) == 0)
+            load_saved_game(runtime->networked ? "netsession" : "save0",
+                            server_screen) == 0)
         {
             return;
         }
@@ -721,12 +809,15 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
     runtime->server->on_level_transition =
         [server_screen,
          display_screen = &gameplay_screen,
+         networked = runtime->networked,
+         own_player_index = runtime->own_player_index,
          server_session = runtime->server_session.get()](
             int level_id) {
             auto server_scope = server_session->activate();
             GameplayContextGuard server_gameplay_scope(&server_session->game_);
             server_screen->framecount = display_screen->framecount;
-            if (!complete_level_and_load_next(*server_screen, level_id))
+            if (!complete_level_and_load_next(*server_screen, level_id,
+                                              networked, own_player_index))
                 return false;
 
             prepare_server_session_for_gameplay(*server_session);
@@ -735,23 +826,28 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
     runtime->server->on_exit_accepted =
         [server_screen,
          display_screen = &gameplay_screen,
+         networked = runtime->networked,
+         own_player_index = runtime->own_player_index,
          server_session = runtime->server_session.get()](
             int destination) {
             auto server_scope = server_session->activate();
             GameplayContextGuard server_gameplay_scope(&server_session->game_);
             server_screen->framecount = display_screen->framecount;
-            if (!complete_level_and_load_next(*server_screen, destination))
+            if (!complete_level_and_load_next(*server_screen, destination,
+                                              networked, own_player_index))
                 return false;
 
             prepare_server_session_for_gameplay(*server_session);
             return true;
         };
     runtime->server->on_withdraw_accepted =
-        [server_screen, server_session = runtime->server_session.get()](
+        [server_screen,
+         networked = runtime->networked,
+         server_session = runtime->server_session.get()](
             int destination) {
             auto server_scope = server_session->activate();
             GameplayContextGuard server_gameplay_scope(&server_session->game_);
-            if (!withdraw_and_load_level(*server_screen, destination))
+            if (!withdraw_and_load_level(*server_screen, destination, networked))
                 return false;
 
             prepare_server_session_for_gameplay(*server_session);
@@ -825,6 +921,8 @@ void reset_network_host_transport_shadow(
 
     auto runtime = std::make_shared<LocalTransportRuntime>();
     runtime->mode = LocalTransportRuntime::Mode::Authoritative;
+    runtime->networked = session.networked_session_;
+    runtime->own_player_index = session.own_player_index_;
     runtime->server_transport = std::move(server_transport);
     runtime->server_transport->accept_connections();
 
@@ -850,7 +948,8 @@ void reset_network_host_transport_shadow(
             &runtime->server_session->game_);
         screen* const server_screen = runtime->server_screen();
         if (server_screen == nullptr ||
-            load_saved_game("save0", server_screen) == 0)
+            load_saved_game(runtime->networked ? "netsession" : "save0",
+                            server_screen) == 0)
         {
             return;
         }
@@ -882,12 +981,15 @@ void reset_network_host_transport_shadow(
     runtime->server->on_level_transition =
         [server_screen,
          display_screen = &gameplay_screen,
+         networked = runtime->networked,
+         own_player_index = runtime->own_player_index,
          server_session = runtime->server_session.get()](
             int level_id) {
             auto server_scope = server_session->activate();
             GameplayContextGuard server_gameplay_scope(&server_session->game_);
             server_screen->framecount = display_screen->framecount;
-            if (!complete_level_and_load_next(*server_screen, level_id))
+            if (!complete_level_and_load_next(*server_screen, level_id,
+                                              networked, own_player_index))
                 return false;
 
             prepare_server_session_for_gameplay(*server_session);
@@ -896,23 +998,28 @@ void reset_network_host_transport_shadow(
     runtime->server->on_exit_accepted =
         [server_screen,
          display_screen = &gameplay_screen,
+         networked = runtime->networked,
+         own_player_index = runtime->own_player_index,
          server_session = runtime->server_session.get()](
             int destination) {
             auto server_scope = server_session->activate();
             GameplayContextGuard server_gameplay_scope(&server_session->game_);
             server_screen->framecount = display_screen->framecount;
-            if (!complete_level_and_load_next(*server_screen, destination))
+            if (!complete_level_and_load_next(*server_screen, destination,
+                                              networked, own_player_index))
                 return false;
 
             prepare_server_session_for_gameplay(*server_session);
             return true;
         };
     runtime->server->on_withdraw_accepted =
-        [server_screen, server_session = runtime->server_session.get()](
+        [server_screen,
+         networked = runtime->networked,
+         server_session = runtime->server_session.get()](
             int destination) {
             auto server_scope = server_session->activate();
             GameplayContextGuard server_gameplay_scope(&server_session->game_);
-            if (!withdraw_and_load_level(*server_screen, destination))
+            if (!withdraw_and_load_level(*server_screen, destination, networked))
                 return false;
 
             prepare_server_session_for_gameplay(*server_session);
@@ -989,6 +1096,11 @@ void reset_network_client_transport_shadow(
 
     auto runtime = std::make_shared<LocalTransportRuntime>();
     runtime->mode = LocalTransportRuntime::Mode::ClientOnly;
+    runtime->networked = session.networked_session_;
+    runtime->own_player_index =
+        local_player_index < MAX_PLAYERS
+            ? static_cast<std::uint8_t>(local_player_index)
+            : session.own_player_index_;
 
     LocalTransportClient client;
     client.transport = std::move(client_transport);
@@ -1022,6 +1134,8 @@ void clear_local_transport_shadow(GameSession& session) noexcept
     session.local_transport_runtime_.reset();
     session.relay_transport_active_ = false;
     session.relay_speed_warning_shown_ = false;
+    session.networked_session_ = false;
+    session.own_player_index_ = 0xff;
 }
 
 void local_transport_shadow_send_input(GameSession& session,

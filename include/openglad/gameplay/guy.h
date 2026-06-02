@@ -71,4 +71,16 @@ class guy
         int id;
 
         short level;
+
+        // Sentinel for "no networked owner" (single-player / AI characters).
+        static constexpr std::uint8_t kNoOwner = 0xff;
+        // Networked player slot that owns this character (0..MAX_PLAYERS-1), or
+        // kNoOwner. Transient runtime-only state: set at lobby assembly, carried
+        // through the snapshot stream, and used so each player persists only its
+        // own characters. Never serialized to disk by SaveData::save/load.
+        std::uint8_t owner_player_index = kNoOwner;
+        // The owning player's SaveData::team_list slot this character came from
+        // (its own save0 slot, NOT the combined-roster index). Lets the owner
+        // write progress back to the right slot. Transient; never on disk.
+        std::uint8_t owner_save_slot = kNoOwner;
 };

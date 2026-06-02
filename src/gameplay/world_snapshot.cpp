@@ -549,6 +549,8 @@ void serialize_guy_snapshot(std::vector<std::uint8_t>& buffer,
     append_i16(buffer, snapshot.scen_shots);
     append_i16(buffer, snapshot.scen_hits);
     append_i16(buffer, snapshot.level);
+    append_u8(buffer, snapshot.owner_player_index);
+    append_u8(buffer, snapshot.owner_save_slot);
 }
 
 og::sim::GuySnapshot deserialize_guy_snapshot(ByteReader& reader)
@@ -576,6 +578,8 @@ og::sim::GuySnapshot deserialize_guy_snapshot(ByteReader& reader)
     snapshot.scen_shots = reader.read_i16("guy.scen_shots");
     snapshot.scen_hits = reader.read_i16("guy.scen_hits");
     snapshot.level = reader.read_i16("guy.level");
+    snapshot.owner_player_index = reader.read_u8("guy.owner_player_index");
+    snapshot.owner_save_slot = reader.read_u8("guy.owner_save_slot");
     return snapshot;
 }
 
@@ -1257,6 +1261,8 @@ og::sim::GuySnapshot capture_guy_snapshot(const guy& source)
     snapshot.scen_shots = source.scen_shots;
     snapshot.scen_hits = source.scen_hits;
     snapshot.level = source.level;
+    snapshot.owner_player_index = source.owner_player_index;
+    snapshot.owner_save_slot = source.owner_save_slot;
     return snapshot;
 }
 
@@ -1284,6 +1290,8 @@ void apply_guy_snapshot(guy& target, const og::sim::GuySnapshot& snapshot)
     target.scen_shots = snapshot.scen_shots;
     target.scen_hits = snapshot.scen_hits;
     target.level = snapshot.level;
+    target.owner_player_index = snapshot.owner_player_index;
+    target.owner_save_slot = snapshot.owner_save_slot;
 }
 
 void build_entity_snapshot_lookup(

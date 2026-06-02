@@ -414,6 +414,8 @@ void expect_guy_snapshot_eq(const og::sim::GuySnapshot& expected,
     EXPECT_EQ(expected.scen_shots, actual.scen_shots);
     EXPECT_EQ(expected.scen_hits, actual.scen_hits);
     EXPECT_EQ(expected.level, actual.level);
+    EXPECT_EQ(expected.owner_player_index, actual.owner_player_index);
+    EXPECT_EQ(expected.owner_save_slot, actual.owner_save_slot);
 }
 
 void expect_entity_snapshot_eq(const og::sim::EntitySnapshot& expected,
@@ -1703,6 +1705,41 @@ TEST(WorldSnapshot, serialize_snapshot_roundtrip_preserves_keyframe_and_compress
     const og::sim::WorldSnapshot decoded =
         og::sim::deserialize_snapshot(bytes.data(), bytes.size());
     expect_world_snapshot_eq(keyframe, decoded);
+}
+
+// The per-character owner tags must survive capture and the snapshot wire so
+// the server world (seeded from the host's keyframe) and every client mirror
+// can tell which characters each peer owns when persisting saves.
+TEST(WorldSnapshot, guy_snapshot_roundtrip_preserves_owner_tags)
+{
+    TestGameWorld fx;
+    GameWorld& world = fx.world();
+    configure_snapshot_test_services(world);
+    world.resize_grid(32, 32);
+    fill_world_grid(world, PIX_GRASS1);
+
+    walker* actor = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, actor);
+    auto player_guy = std::make_unique<guy>(FAMILY_SOLDIER);
+    player_guy->name = "OwnedHero";
+    player_guy->owner_player_index = 2;  // server-global player slot
+    player_guy->owner_save_slot = 5;     // its slot in its owner's save0
+    actor->set_owned_myguy(std::move(player_guy));
+
+    const og::sim::WorldSnapshot keyframe =
+        og::sim::capture_keyframe_snapshot(world);
+    ASSERT_EQ(1u, keyframe.guy_snapshots.size());
+    EXPECT_EQ(2u, keyframe.guy_snapshots.front().owner_player_index)
+        << "capture must read owner_player_index off the live guy";
+    EXPECT_EQ(5u, keyframe.guy_snapshots.front().owner_save_slot);
+
+    const std::vector<std::uint8_t> bytes = og::sim::serialize_snapshot(keyframe);
+    const og::sim::WorldSnapshot decoded =
+        og::sim::deserialize_snapshot(bytes.data(), bytes.size());
+    ASSERT_EQ(1u, decoded.guy_snapshots.size());
+    EXPECT_EQ(2u, decoded.guy_snapshots.front().owner_player_index)
+        << "owner_player_index must survive the snapshot wire";
+    EXPECT_EQ(5u, decoded.guy_snapshots.front().owner_save_slot);
 }
 
 TEST(WorldSnapshot, serialize_delta_roundtrip_uses_uncompressed_bypass_when_smaller)

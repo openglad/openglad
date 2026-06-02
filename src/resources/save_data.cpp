@@ -507,6 +507,40 @@ void SaveData::update_guys(const std::list<std::unique_ptr<walker>>& oblist)
 	}
 }
 
+void SaveData::merge_owned_guys_from(
+    const std::list<std::unique_ptr<walker>>& oblist,
+    std::uint8_t owner_player_index)
+{
+    if (owner_player_index == guy::kNoOwner)
+        return;
+
+    // This SaveData is expected to already hold the owner's untouched
+    // pre-session roster (loaded from their real save0), which is dense in
+    // [0, team_size). A brought character always originated from one of those
+    // populated slots, so overlaying in place keeps the roster dense — no gaps
+    // (SaveData::save dereferences team_list[i] for i < team_size without a
+    // null check). Slots we never touch (other players' characters, this
+    // player's not-brought characters) are preserved exactly.
+    for (auto& uptr : oblist)
+    {
+        walker* ob = uptr.get();
+        if (ob == nullptr || ob->dead() || ob->myguy == nullptr)
+            continue;
+        if (ob->myguy->owner_player_index != owner_player_index)
+            continue;
+
+        const unsigned int slot = ob->myguy->owner_save_slot;
+        if (slot >= team_size || slot >= MAX_TEAM_SIZE)
+            continue;
+
+        team_list[slot] = std::make_unique<guy>(*ob->myguy);
+        const std::uint32_t exp = team_list[slot]->exp;
+        team_list[slot]->upgrade_to_level(
+            static_cast<short>(calculate_level(team_list[slot]->exp)));
+        team_list[slot]->exp = exp;
+    }
+}
+
 
 bool SaveData::save(const std::string& filename)
 {

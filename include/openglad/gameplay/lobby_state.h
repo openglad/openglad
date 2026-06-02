@@ -39,6 +39,15 @@ struct LobbyCharacterSlot {
     // Slot index maps back to SaveData::team_list when the lobby is applied.
     std::uint8_t slot_index = 0;
     LobbyCharacterData character;
+    // Player slot that owns this character (0xff == unowned). Populated only
+    // when assembling the combined game-start roster; NOT part of the lobby
+    // wire format (the owning player is implicit in the lobby state). Used so
+    // each player persists only its own characters.
+    std::uint8_t owner_player_index = 0xff;
+    // The owning player's own save0 team slot (slot_index gets re-densified for
+    // the combined roster, so the original is preserved here). Assembly-only;
+    // not part of the lobby wire format.
+    std::uint8_t owner_save_slot = 0xff;
 
     bool operator==(const LobbyCharacterSlot&) const = default;
 };

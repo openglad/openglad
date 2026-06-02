@@ -70,6 +70,14 @@ public:
     void reset();
     
     void update_guys(const std::list<std::unique_ptr<walker>>& oblist);  // Copy team from the guys in an oblist
+    // Networked "as if played alone" save: overlay only the characters owned by
+    // owner_player_index (matched via guy::owner_player_index) back into their
+    // own save slots (guy::owner_save_slot), updating progress while leaving
+    // every other slot — other players' characters and this player's
+    // not-brought characters — untouched. Keeps the roster dense; campaign and
+    // score fields are intentionally left as-is (only character growth persists).
+    void merge_owned_guys_from(const std::list<std::unique_ptr<walker>>& oblist,
+                               std::uint8_t owner_player_index);
     bool load(const std::string& filename);
     bool save(const std::string& filename);
     [[nodiscard]] SaveDataIoError load_with_error(const std::string& filename);

@@ -161,6 +161,11 @@ struct GuySnapshot {
     std::int16_t scen_shots = 0;
     std::int16_t scen_hits = 0;
     std::int16_t level = 0;
+    // Networked player slot that owns this character (guy::kNoOwner == 0xff for
+    // single-player / AI). Lets each peer persist only its own characters.
+    std::uint8_t owner_player_index = 0xff;
+    // The owning player's save0 team slot this character came from.
+    std::uint8_t owner_save_slot = 0xff;
 };
 
 struct GridTileSnapshot {

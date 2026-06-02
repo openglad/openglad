@@ -15,6 +15,12 @@ struct PickerLobbyGameStartConfig
     og::sim::LobbySaveDataEquivalent save_data;
     std::int16_t difficulty = 1;
     std::int16_t my_team = 0;
+    // True only for genuine networked sessions (network host or join client).
+    // Drives save isolation: the live combined roster is kept off the player's
+    // real save0, and each player persists only its own characters.
+    bool is_networked = false;
+    // This peer's own player slot in the session (0xff if unknown / local game).
+    std::uint8_t local_player_index = 0xff;
 };
 
 class IPickerLobbyClient

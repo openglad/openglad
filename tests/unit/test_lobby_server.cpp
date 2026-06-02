@@ -319,6 +319,55 @@ TEST(LobbyServer, raw_join_flow_broadcasts_state_and_populates_save_data)
     EXPECT_EQ(1, equivalent.team_list[2].character.teamnum);
 }
 
+TEST(LobbyServer, build_save_data_equivalent_tags_owner_and_origin_slot)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+
+    // Host (player 0) brings two characters from non-contiguous save slots; the
+    // guest (player 1) brings one from a high slot. The combined roster gets
+    // re-densified (slot_index 0,1,2), but every entry must remember WHO owns it
+    // and the owner's ORIGINAL save slot — that is how each peer later writes
+    // progress back to the right slot in its own save0.
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host",
+                          0,
+                          {make_slot(0u, 100, "Soldier", FAMILY_SOLDIER),
+                           make_slot(3u, 101, "Mage", FAMILY_MAGE)}));
+    server.poll_incoming_messages();
+    transport.queue_lobby_message(
+        22u,
+        make_join_message("Guest",
+                          0,
+                          {make_slot(5u, 200, "Archer", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+
+    const og::sim::LobbySaveDataEquivalent equivalent =
+        server.build_save_data_equivalent();
+    ASSERT_EQ(3u, equivalent.team_list.size());
+
+    // Combined indices are re-densified...
+    EXPECT_EQ(0u, equivalent.team_list[0].slot_index);
+    EXPECT_EQ(1u, equivalent.team_list[1].slot_index);
+    EXPECT_EQ(2u, equivalent.team_list[2].slot_index);
+
+    // ...but owner + the owner's original save slot are preserved.
+    EXPECT_EQ("Soldier", equivalent.team_list[0].character.name);
+    EXPECT_EQ(0u, equivalent.team_list[0].owner_player_index);
+    EXPECT_EQ(0u, equivalent.team_list[0].owner_save_slot);
+
+    EXPECT_EQ("Mage", equivalent.team_list[1].character.name);
+    EXPECT_EQ(0u, equivalent.team_list[1].owner_player_index);
+    EXPECT_EQ(3u, equivalent.team_list[1].owner_save_slot);
+
+    EXPECT_EQ("Archer", equivalent.team_list[2].character.name);
+    EXPECT_EQ(1u, equivalent.team_list[2].owner_player_index);
+    EXPECT_EQ(5u, equivalent.team_list[2].owner_save_slot);
+}
+
 TEST(LobbyServer, ready_team_change_and_leave_update_state_and_broadcasts)
 {
     MockLobbyTransport transport;

@@ -82,6 +82,13 @@ struct SessionState {
     std::int8_t pending_timer_wait_request_ = kNoTimerWaitRequest;
     bool relay_transport_active_ = false;
     bool relay_speed_warning_shown_ = false;
+    // True for a genuine networked multiplayer session (host with clients, or a
+    // join client). Gates save isolation: the live combined roster is written to
+    // a transient slot instead of the player's real save0, and each player
+    // persists only its own characters (owner_player_index == own_player_index_).
+    bool networked_session_ = false;
+    // This peer's own player slot for the active networked session (0xff if none).
+    std::uint8_t own_player_index_ = 0xff;
     bool debug_draw_paths_ = false;
     bool debug_draw_obmap_ = false;
     // Developer overlay: when true, score_panel draws measured render FPS in the top-right corner.

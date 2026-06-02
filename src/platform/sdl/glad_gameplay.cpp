@@ -115,6 +115,9 @@ void apply_lobby_game_start_config(
 
         save.team_list[slot.slot_index] =
             make_guy_from_lobby_character(slot.character);
+        save.team_list[slot.slot_index]->owner_player_index =
+            slot.owner_player_index;
+        save.team_list[slot.slot_index]->owner_save_slot = slot.owner_save_slot;
         ++save.team_size;
     }
 
@@ -122,10 +125,21 @@ void apply_lobby_game_start_config(
     {
         og::runtime::current_session->current_difficulty_ =
             static_cast<std::int32_t>(lobby_config.difficulty);
+        og::runtime::current_session->networked_session_ =
+            lobby_config.is_networked;
+        og::runtime::current_session->own_player_index_ =
+            lobby_config.local_player_index;
     }
 
-    if (!save.save("save0"))
-        LogError("glad_init_lobby_save_failed reason=save0_write_failed\n");
+    // For a networked session, keep the live combined roster (which holds every
+    // player's characters) off this player's real save0. It is seeded into a
+    // transient slot the server loads from; each player later merges only its
+    // own characters' progress back into save0. Local games still seed save0.
+    const char* const seed_slot =
+        lobby_config.is_networked ? "netsession" : "save0";
+    if (!save.save(seed_slot))
+        LogError("glad_init_lobby_save_failed slot={} reason=write_failed\n",
+                 seed_slot);
 }
 
 } // namespace

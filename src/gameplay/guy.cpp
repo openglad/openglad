@@ -292,6 +292,8 @@ guy::guy(const guy& copy)
     , scen_hits(copy.scen_hits)
     , id(copy.id)
     , level(copy.level)
+    , owner_player_index(copy.owner_player_index)
+    , owner_save_slot(copy.owner_save_slot)
 {
     name = copy.name;
 }

@@ -588,6 +588,9 @@ LobbySaveDataEquivalent LobbyServer::build_save_data_equivalent() const
             gameplay_slot.character.teamnum = gameplay_team_for_mode(
                 equivalent.allied_mode,
                 gameplay_slot.character.teamnum);
+            gameplay_slot.owner_player_index =
+                state_.players[slot.player_order].player_index;
+            gameplay_slot.owner_save_slot = slot.slot_index;
             equivalent.team_list.push_back(std::move(gameplay_slot));
         }
         return equivalent;
@@ -600,6 +603,9 @@ LobbySaveDataEquivalent LobbyServer::build_save_data_equivalent() const
         compacted.character.teamnum = gameplay_team_for_mode(
             equivalent.allied_mode,
             compacted.character.teamnum);
+        compacted.owner_player_index =
+            state_.players[ordered_slots[index].player_order].player_index;
+        compacted.owner_save_slot = ordered_slots[index].slot_index;
         equivalent.team_list.push_back(std::move(compacted));
     }
 

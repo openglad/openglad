@@ -953,6 +953,9 @@ og::sim::LobbySaveDataEquivalent build_save_data_equivalent_from_state(
         compacted.character.teamnum = gameplay_start_team(
             state.settings.allied_mode,
             compacted.character.teamnum);
+        compacted.owner_player_index =
+            slot.player != nullptr ? slot.player->player_index : 0xffu;
+        compacted.owner_save_slot = slot.save_slot_index;
         equivalent.team_list.push_back(std::move(compacted));
     }
 
@@ -1596,6 +1599,9 @@ public:
             : static_cast<std::int16_t>(server_->state().settings.difficulty);
         config.my_team = gameplay_start_team(config.save_data.allied_mode,
                                              local_team_);
+        config.is_networked = true;
+        config.local_player_index =
+            static_cast<std::uint8_t>(server_->state().host_player_id);
         return config;
     }
 
@@ -1987,6 +1993,12 @@ public:
             static_cast<std::int16_t>(state_->settings.difficulty);
         config.my_team = gameplay_start_team(config.save_data.allied_mode,
                                              local_team_);
+        config.is_networked = true;
+        if (const og::sim::LobbyPlayer* const local_player =
+                og::ui::detail::find_local_player(*state_, player_name_))
+        {
+            config.local_player_index = local_player->player_index;
+        }
         return config;
     }
 
