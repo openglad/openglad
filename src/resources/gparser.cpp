@@ -44,8 +44,22 @@ void cfg_store::apply_setting(const std::string& category, const std::string& se
     data[category][setting] = value;
 }
 
+void cfg_store::apply_override(const std::string& category, const std::string& setting, const std::string& value)
+{
+    overrides[category][setting] = value;
+}
+
 std::string cfg_store::get_setting(const std::string& category, const std::string& setting)
 {
+	// Transient overrides win over persisted settings and are never saved.
+	std::map<std::string, std::map<std::string, std::string> >::iterator o1 = overrides.find(category);
+	if(o1 != overrides.end())
+	{
+		std::map<std::string, std::string>::iterator o2 = o1->second.find(setting);
+		if(o2 != o1->second.end())
+			return o2->second;
+	}
+
 	std::map<std::string, std::map<std::string, std::string> >::iterator a1 = data.find(category);
 	if(a1 != data.end())
 	{
@@ -204,7 +218,10 @@ void cfg_store::commandline(int &argc, char **&argv)
 	{
 		if (std::string(argv[argnum]) == "--show-fps")
 		{
-			data["graphics"]["show_fps"] = "on";
+			// Developer overlay: ephemeral by design. Route through the override
+			// map so it is honored at runtime but never written to the user's
+			// persisted config by save_settings().
+			apply_override("graphics", "show_fps", "on");
 			Log("FPS overlay on.");
 			continue;
 		}

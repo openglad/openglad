@@ -66,7 +66,41 @@ TEST(GparserUnit, gparser_show_fps_flag)
     char** argv = argv_buf.data();
     local_cfg.commandline(argc, argv);
 
+    // The flag is honored at runtime...
     ASSERT_TRUE(local_cfg.is_on("graphics", "show_fps"));
+
+    // ...but must NOT leak into the persisted config. save_settings() serializes
+    // exactly `data`, so "not persisted" == "absent from data". Regression:
+    // --show-fps used to write data["graphics"]["show_fps"], which then got
+    // baked into the user's openglad.yaml on the next settings save.
+    auto cat = local_cfg.data.find("graphics");
+    const bool show_fps_in_data =
+        cat != local_cfg.data.end() && cat->second.count("show_fps") > 0;
+    ASSERT_FALSE(show_fps_in_data)
+        << "--show-fps must be an ephemeral override, not a persisted setting";
+
+    // It lives in the transient overrides map instead.
+    auto ocat = local_cfg.overrides.find("graphics");
+    ASSERT_TRUE(ocat != local_cfg.overrides.end()
+                && ocat->second.count("show_fps") > 0)
+        << "--show-fps should be recorded as a transient override";
+}
+
+TEST(GparserUnit, gparser_override_precedence_and_non_persistence)
+{
+    cfg_store local_cfg;
+
+    // A persisted value...
+    local_cfg.apply_setting("graphics", "show_fps", "off");
+    ASSERT_FALSE(local_cfg.is_on("graphics", "show_fps"));
+
+    // ...is shadowed by a transient override for reads...
+    local_cfg.apply_override("graphics", "show_fps", "on");
+    ASSERT_TRUE(local_cfg.is_on("graphics", "show_fps"));
+    ASSERT_TRUE(local_cfg.get_setting("graphics", "show_fps") == "on");
+
+    // ...without mutating the persisted value that save_settings() would write.
+    ASSERT_TRUE(local_cfg.data["graphics"]["show_fps"] == "off");
 }
 
 TEST(GparserUnit, gparser_commandline_help_and_version_exit_paths)

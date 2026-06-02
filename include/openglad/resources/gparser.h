@@ -28,10 +28,18 @@ public:
     bool save_settings();
 
     void apply_setting(const std::string& category, const std::string& setting, const std::string& value);
+    // Set a transient, in-memory-only override (e.g. a developer command-line
+    // flag). Overrides take precedence over `data` for reads but are never
+    // written back by save_settings(), so they don't leak into the user's
+    // persisted config.
+    void apply_override(const std::string& category, const std::string& setting, const std::string& value);
     std::string get_setting(const std::string& category, const std::string& setting);
 	bool is_on(const std::string& category, const std::string& setting);
 
+	// Persisted settings. save_settings() serializes exactly this map.
 	std::map<std::string, std::map<std::string, std::string> > data;
+	// Ephemeral overrides, consulted by get_setting() but never persisted.
+	std::map<std::string, std::map<std::string, std::string> > overrides;
 };
 
 // Global cfg_store instance, owned at file scope in data/gparser.cpp.
