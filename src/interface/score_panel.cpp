@@ -149,7 +149,14 @@ short new_score_panel(screen* s, short /*do_it*/)
         tm = s->viewob[players]->yloc + OVERSCAN_PADDING;
         rm = s->viewob[players]->endx - OVERSCAN_PADDING;
         bm = s->viewob[players]->endy - OVERSCAN_PADDING;
-        if (control && !control->dead() && control->user() == players)
+        // Draw the HUD whenever this viewport's control walker is a live,
+        // human-claimed walker. We must NOT compare control->user() against the
+        // local viewport index: that only holds for local split-screen (where
+        // game.cpp claims view->control with set_user(view_idx)). On a network
+        // client the single local viewport (players == 0) shows a walker whose
+        // user() is the *server-global* player slot assigned by bind_player, so
+        // a == players check would hide the HUD for every non-host client.
+        if (control && !control->dead() && control->user() != -1)
         {
             draw_button = s->viewob[players]->prefs[PREF_OVERLAY];
             if (draw_button)

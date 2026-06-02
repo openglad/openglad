@@ -225,6 +225,73 @@ TEST(GladHud, glad_score_panel_and_new_score_panel_modes)
     v->control = control_pointer_is_live(og::runtime::current_session->myscreen_->level_runtime_data(), old_control) ? old_control : nullptr;
 }
 
+// Regression: a network client renders a single local viewport (players == 0),
+// but its controlled walker carries the server-global player slot in user()
+// (set by GameServer::bind_player and shipped to the client in the snapshot).
+// new_score_panel used to gate the HUD on `control->user() == players`, which
+// only holds for local split-screen (where game.cpp claims view->control with
+// set_user(view_idx)). For any non-host client (slot 1/2/3) that check was
+// false, so the HUD silently vanished. The HUD must draw whenever the view's
+// control is a live, human-claimed walker, regardless of its global slot.
+TEST(GladHud, score_panel_draws_for_network_client_with_nonlocal_user_slot)
+{
+    screen* s = og::runtime::current_session->myscreen_;
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_TRUE(v != nullptr);
+
+    auto control = make_player(0);
+    ASSERT_TRUE(control != nullptr);
+    walker* controlp = control.get();
+    // Simulate this client being server-assigned player slot 2 while it renders
+    // its own walker in local viewport index 0 (numviews == 1 on a client).
+    controlp->set_user(2);
+    controlp->set_team_num(0);
+    controlp->set_dead(0);
+    controlp->stats()->set_hitpoints(50);
+    controlp->stats()->set_max_hitpoints(100);
+    controlp->stats()->set_magicpoints(30);
+    controlp->stats()->set_max_magicpoints(80);
+
+    walker* old_control = v->control;
+    v->control = controlp;
+    v->prefs[PREF_OVERLAY] = PREF_OVERLAY_ON;  // draws the TEAM/FOES button box
+    v->prefs[PREF_LIFE]    = PREF_LIFE_TEXT;
+    v->prefs[PREF_SCORE]   = PREF_SCORE_OFF;   // score count-up uses rng(); keep off
+    v->prefs[PREF_FOES]    = PREF_FOES_ON;
+
+    // The TEAM/FOES counter box lives in the top-right corner: new_score_panel
+    // draws it at x in [endx-57, endx-2], y in [tm+1, tm+16].
+    const int rm = v->endx;
+    const int kX0 = rm - 57;
+    const int kX1 = rm - 2;
+    constexpr int kY0 = 1;
+    constexpr int kY1 = 16;
+    auto box_has_pixels = [&](const std::array<unsigned char, 64000>& frame) {
+        for (int y = kY0; y < kY1; ++y)
+            for (int x = kX0; x < kX1; ++x)
+                if (frame[static_cast<std::size_t>(y * 320 + x)] != 0)
+                    return true;
+        return false;
+    };
+
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    EXPECT_TRUE(box_has_pixels(capture_rendered_frame(*s)))
+        << "HUD must render for a client whose control->user() (server slot 2) "
+           "differs from the local viewport index 0";
+
+    // Negative control: a genuinely uncontrolled walker (user() == -1, e.g. a
+    // spectator camera target) must still leave the HUD off.
+    controlp->set_user(-1);
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    EXPECT_FALSE(box_has_pixels(capture_rendered_frame(*s)))
+        << "an uncontrolled (user() == -1) view must not paint the HUD";
+
+    v->control = control_pointer_is_live(s->level_runtime_data(), old_control)
+        ? old_control : nullptr;
+}
+
 TEST(GladHud, fps_overlay_draws_when_enabled)
 {
     struct ShowFpsGuard {
