@@ -420,6 +420,18 @@ bool prepare_display_level_for_initial_setup(
     gameplay_screen.world().reset_level_progress();
     gameplay_screen.world().clear_removed_entity_ids();
     gameplay_screen.world().clear_grid_dirty_tiles();
+    // A level transition means the session CONTINUES into the next level. The
+    // display ran results for the just-completed level (screen::endgame on the
+    // forwarded EndGame event), which set world.end=1 / game-over flags. Loading
+    // the next level does not otherwise clear them, so without this reset
+    // finish_tick would see world().end != 0 and tear the session down — the
+    // freshly loaded level would freeze ("in a level but no one can move").
+    gameplay_screen.world().end = 0;
+    gameplay_screen.world().game_ended = false;
+    gameplay_screen.world().ending = 0;
+    gameplay_screen.world().retry = false;
+    gameplay_screen.world().next_level = -1;
+    gameplay_screen.world().level_done = 0;
     sync_single_display_team_from_save(gameplay_screen);
     gameplay_screen.redrawme = 1;
     return true;
@@ -442,8 +454,16 @@ bool batch_ends_display_session(const og::sim::SimEventBatch& batch)
         batch.events.begin(),
         batch.events.end(),
         [](const og::sim::Event& event) {
-            return event.kind == og::sim::EventKind::EndGame ||
-                event.kind == og::sim::EventKind::SetEnd;
+            if (event.kind == og::sim::EventKind::SetEnd)
+                return true;
+            // An EndGame event carries the next level in b. A win that
+            // auto-advances to a next level (b >= 0) does NOT end the display
+            // session — the display follows the server into the next level via
+            // the transition InitialSetup. Only a terminal EndGame (no next
+            // level, b < 0) ends the session and returns to the menu.
+            if (event.kind == og::sim::EventKind::EndGame)
+                return static_cast<std::int32_t>(event.b) < 0;
+            return false;
         });
 }
 
@@ -672,6 +692,16 @@ std::size_t local_transport_client_count(const GameSession& session) noexcept
     const auto runtime = session.local_transport_runtime_;
     return runtime != nullptr ? runtime->clients.size() : 0u;
 }
+
+#ifdef TESTING
+screen* local_transport_shadow_testing_server_screen(GameSession& session)
+{
+    const auto runtime = session.local_transport_runtime_;
+    if (runtime == nullptr || !runtime->authoritative_mode())
+        return nullptr;
+    return runtime->server_screen();
+}
+#endif
 
 bool local_transport_shadow_is_paused(const GameSession& session) noexcept
 {

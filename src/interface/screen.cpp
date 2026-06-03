@@ -1282,13 +1282,31 @@ short screen::endgame(short ending, short nextlevel)
 		if (nextlevel != -1)
 			save_data.scen_num = nextlevel;    // Fake jumping to next level ..
         
-		// Grab our team out of the level
-		save_data.update_guys(world_.oblist);
-		
-		// Autosave because we won
-		save_data.save("save0");
+		// In a networked session this display screen holds the COMBINED roster
+		// (every player's characters). Autosaving it here would clobber this
+		// player's save0 with everyone's gladiators — the networked per-player
+		// save path persists only this player's own characters (owner-filtered),
+		// so the display must not touch save0. Local/single-player still autosaves.
+		const bool networked = og::runtime::current_session != nullptr &&
+			og::runtime::current_session->networked_session_;
+		if (!networked)
+		{
+			// Grab our team out of the level
+			save_data.update_guys(world_.oblist);
 
-		world_.end = 1;
+			// Autosave because we won
+			save_data.save("save0");
+		}
+
+		// In a networked session a win that has a next level is a server-driven
+		// auto-advance: the server loads the next level and the display follows
+		// via the transition InitialSetup. Ending the display session here would
+		// make finish_tick tear it down before the next level arrives — the
+		// freshly loaded level would freeze ("in a level but no one can move").
+		// Only end the session for terminal outcomes (single-player, or a
+		// networked game with no next level).
+		if (!networked || nextlevel == -1)
+			world_.end = 1;
 	}
 
 	sync_world_from_save_data();

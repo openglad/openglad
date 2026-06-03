@@ -57,4 +57,11 @@ void local_transport_shadow_send_input(GameSession& session,
                                        std::uint32_t tick);
 void local_transport_shadow_finish_tick(GameSession& session);
 
+#ifdef TESTING
+// Test-only: the authoritative server's screen for a host/local session, or
+// nullptr for a client-only or non-networked session. Lets tests reach into the
+// authoritative world (e.g. to clear foes and force a deterministic level win).
+screen* local_transport_shadow_testing_server_screen(GameSession& session);
+#endif
+
 } // namespace og::runtime

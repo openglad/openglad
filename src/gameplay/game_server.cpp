@@ -2212,7 +2212,13 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
                 request_redraw_event.kind = EventKind::RequestRedraw;
                 drained_batch->events.push_back(std::move(request_redraw_event));
             }
-            if (!contains_event_kind(*drained_batch, EventKind::SetEnd))
+            // SetEnd tells the display to end its session (world.end=1). Only
+            // send it for a terminal outcome (no next level). When the win
+            // auto-advances to a next level the display must NOT end — it
+            // follows the server into the next level via the transition
+            // InitialSetup; sending SetEnd here would freeze the next level.
+            if (snapshot.next_level < 0 &&
+                !contains_event_kind(*drained_batch, EventKind::SetEnd))
             {
                 Event set_end_event;
                 set_end_event.kind = EventKind::SetEnd;

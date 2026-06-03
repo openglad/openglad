@@ -95,6 +95,10 @@ private:
                                                   const InputState& input,
                                                   std::uint32_t tick);
     friend void local_transport_shadow_finish_tick(GameSession& session);
+#ifdef TESTING
+    friend screen* local_transport_shadow_testing_server_screen(
+        GameSession& session);
+#endif
 
     Config cfg_;
 

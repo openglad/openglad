@@ -861,6 +861,15 @@ void GameClient::apply_full_snapshot(const WorldSnapshot& snapshot,
     notify_control_mapping_changed();
     notify_palette_sync(baseline_->current_palette_id);
     waiting_for_keyframe_ = false;
+    // When a keyframe establishes a fresh baseline (initial sync or a level
+    // transition), the server has reset its client_ready and expects a fresh
+    // confirmation before it streams deltas. Re-confirm even if we already sent
+    // ready for this setup — otherwise a level-transition keyframe deadlocks: the
+    // transition display callback sent client_ready before the keyframe, so the
+    // post-keyframe maybe_send_client_ready() would no-op and the server would
+    // never resume sending — the next level freezes ("no one can move").
+    if (reset_history)
+        client_ready_sent_ = false;
     maybe_send_client_ready();
     maybe_send_snapshot_hash_check(true);
 }
