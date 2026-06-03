@@ -924,6 +924,45 @@ TEST(PickerFuncs, picker_join_game_direct_prompt_replaces_client)
     level_editor_testing_prompt_queue_clear();
 }
 
+// Joining must NOT pop a blocking "connected" modal: the join client's live
+// status (e.g. "Status: connected", "Lobby: N players") is shown on top of the
+// same lobby menu instead, exactly like the host. (The host already passes
+// show_success_popup=false; the join must match it.)
+TEST(PickerFuncs, picker_join_game_does_not_pop_a_success_modal)
+{
+    PlatformBridgeGuard bridge_guard;
+    PlatformBridge bridge = platform_bridge();
+    bridge.create_join_picker_lobby_client =
+        [&](const og::ui::PickerJoinGameOptions&)
+            -> std::unique_ptr<og::ui::IPickerLobbyClient> {
+        auto next_client = std::make_unique<TraceablePickerLobbyClient>(
+            std::make_shared<PickerLobbyClientTrace>());
+        next_client->status_lines_ = {"Status: connected", "Lobby: 2 players"};
+        return next_client;
+    };
+    set_platform_bridge(std::move(bridge));
+
+    picker_testing_yes_or_no_queue_clear();
+    picker_testing_yes_or_no_queue_push(true); // "Direct connect?" = yes
+    level_editor_testing_prompt_queue_clear();
+    level_editor_testing_prompt_queue_push("198.51.100.24:24567");
+
+    auto current_trace = std::make_shared<PickerLobbyClientTrace>();
+    std::unique_ptr<og::ui::IPickerLobbyClient> current_client =
+        std::make_unique<TraceablePickerLobbyClient>(current_trace);
+    ActivePickerLobbyClientGuard guard(
+        static_cast<TraceablePickerLobbyClient*>(current_client.get()));
+
+    trace_clear();
+    EXPECT_TRUE(picker_join_game(current_client));
+    EXPECT_EQ(0, trace_count("popup"))
+        << "joining must not show a blocking success modal; its status renders "
+           "in the lobby menu like the host's";
+
+    picker_testing_yes_or_no_queue_clear();
+    level_editor_testing_prompt_queue_clear();
+}
+
 TEST(PickerFuncs, picker_join_game_relay_prompt_replaces_client)
 {
     PlatformBridgeGuard bridge_guard;

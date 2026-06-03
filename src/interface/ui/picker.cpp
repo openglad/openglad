@@ -361,7 +361,11 @@ bool picker_join_game(
         return picker_replace_lobby_client(
             current_client,
             og::ui::create_join_picker_lobby_client(options),
-            popup_title);
+            popup_title,
+            // Match the host: don't pop a blocking "connected" modal. The join
+            // client's live status_lines() ("Status: connecting/connected",
+            // "Lobby: N players") render on top of the same lobby menu instead.
+            /*show_success_popup=*/false);
     }
     catch (const std::exception& error)
     {
