@@ -756,6 +756,99 @@ TEST(NetTransportInProcess, network_fixture_freezes_on_exit_prompt_and_resumes)
     fixture.expect_clients_match_server();
 }
 
+// Accepting a WITHDRAW (retreat to another level) is a server-driven transition,
+// like a win/exit: the server runs on_withdraw_accepted then re-sets-up the
+// clients. This must NOT freeze the destination level. Regression for the
+// level-transition client re-ready deadlock (clients re-confirm ready after the
+// post-transition keyframe; otherwise deltas never resume and "no one can move").
+TEST(NetTransportInProcess,
+     network_fixture_withdraw_transition_resyncs_client_and_keeps_ticking)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+
+    int withdraws = 0;
+    fixture.server().on_withdraw_accepted = [&](int destination) {
+        ++withdraws;
+        GameWorld& w = fixture.server_world();
+        w.id = static_cast<short>(destination);
+        w.current_scenario = static_cast<short>(destination);
+        w.tick_count_ = 0;
+        w.reset_level_progress();
+        w.game_ended = false;
+        w.next_level = -1;
+        w.ending = 0;
+        w.level_done = 0;
+        w.end = 0;
+        w.withdraw_requested = false;
+        w.withdraw_level = -1;
+        w.pending_exit_prompt = false;
+        for (auto& uptr : w.oblist)
+        {
+            walker* const control = uptr.get();
+            if (control == nullptr)
+                continue;
+            control->set_user(-1);
+            control->restore_act_type();
+        }
+        return true;
+    };
+
+    // Emit a WITHDRAW exit prompt (b != 0 => withdraw) to level 1.
+    fixture.with_server_context([&] {
+        fixture.server_events().push_with_text(
+            og::sim::EventKind::RequestExitConfirmation, "Withdraw?",
+            /*a=destination*/ 1u, /*b=withdraw*/ 1u);
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+    ASSERT_TRUE(fixture.server().pending_exit_prompt());
+
+    // Accept the withdraw -> server runs on_withdraw_accepted + re-sets-up clients.
+    fixture.client(0).send_exit_prompt_response(true);
+    fixture.with_server_context([&] {
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+
+    EXPECT_EQ(1, withdraws) << "accepting a withdraw should run the transition";
+    EXPECT_FALSE(fixture.server().pending_exit_prompt());
+
+    // The display callback would send the post-load ready; the bare fixture
+    // client sends it explicitly. The interesting part is what happens AFTER the
+    // first keyframe (the client must re-confirm ready, or deltas never resume).
+    fixture.client(0).send_client_ready();
+
+    // Drive the post-transition re-handshake (ready -> keyframe -> re-ready ->
+    // deltas).
+    for (int i = 0; i < 8; ++i)
+    {
+        fixture.with_server_context([&] { fixture.server().step(); });
+        fixture.poll_client_messages(0);
+    }
+    ASSERT_TRUE(fixture.client(0).baseline().has_value());
+
+    // CRITICAL: the client keeps ticking after the withdraw transition (no
+    // client-ready deadlock; the previous bug froze the destination level).
+    const std::uint32_t before = fixture.client(0).last_seen_server_tick();
+    for (int i = 0; i < 8; ++i)
+    {
+        fixture.with_server_context([&] { fixture.server().step(); });
+        fixture.poll_client_messages(0);
+    }
+    EXPECT_GT(fixture.client(0).last_seen_server_tick(), before)
+        << "client froze after a withdraw transition";
+    fixture.expect_clients_match_server();
+}
+
 TEST(NetTransportInProcess, network_fixture_keeps_two_clients_in_sync)
 {
     og::sim::test::NetworkTestFixture fixture({
