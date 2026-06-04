@@ -37,6 +37,18 @@ public:
     void disconnect_client(PeerId peer_id);
     void poll_incoming_messages();
 
+    // Re-open the lobby after a level (return-to-lobby between levels). Starting
+    // a game locks the lobby (lobby_locked_) so no further roster/settings
+    // changes are accepted; that lock is permanent in the original one-shot flow
+    // where the server is destroyed at game start. When the connection persists
+    // across gameplay, the same server runs the NEXT level's lobby, so the lock
+    // must be cleared to accept the new round's settings/joins.
+    void unlock_for_new_round() noexcept
+    {
+        lobby_locked_ = false;
+        start_game_requested_ = false;
+    }
+
     [[nodiscard]] const LobbyState& state() const noexcept
     {
         return state_;

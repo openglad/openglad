@@ -1298,15 +1298,14 @@ short screen::endgame(short ending, short nextlevel)
 			save_data.save("save0");
 		}
 
-		// In a networked session a win that has a next level is a server-driven
-		// auto-advance: the server loads the next level and the display follows
-		// via the transition InitialSetup. Ending the display session here would
-		// make finish_tick tear it down before the next level arrives — the
-		// freshly loaded level would freeze ("in a level but no one can move").
-		// Only end the session for terminal outcomes (single-player, or a
-		// networked game with no next level).
-		if (!networked || nextlevel == -1)
-			world_.end = 1;
+		// Every win ends this display session. Single-player and local play
+		// return to the team-build menu; networked play does too (the server
+		// runs in return-to-lobby mode: it persists per-player progress + the
+		// advanced cursor and tells every peer to end, then the menu starts the
+		// next level fresh over the live connection). The networked save0 write
+		// is still skipped above so the combined roster never clobbers a peer's
+		// own save.
+		world_.end = 1;
 	}
 
 	sync_world_from_save_data();

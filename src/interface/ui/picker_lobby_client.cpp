@@ -678,11 +678,27 @@ void picker_lobby_sync_settings_from_save()
 void picker_reinitialize_lobby_after_game()
 {
     g_start_game_requested = false;
-    picker_lobby_initialize_from_save();
+    // Networked clients reuse the live connection that survived gameplay and
+    // re-sync the advanced campaign cursor; local/single-player rebuilds from
+    // the save (the default resume_after_level()).
+    if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
+        client->resume_after_level();
+    else
+        picker_lobby_initialize_from_save();
 }
 
 void picker_lobby_poll()
 {
+    // During active gameplay the per-level GameServer/GameClient own the shared
+    // transport; the lobby's LobbyServer is kept alive but DORMANT (it now
+    // survives gameplay so the next level can be coordinated). Polling it here
+    // would drain the gameplay message stream out from under the GameServer, so
+    // never poll the lobby while a level is running — it resumes between levels.
+    if (og::runtime::current_session != nullptr &&
+        og::runtime::current_session->gameplay_active_)
+    {
+        return;
+    }
     if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
         client->poll_and_apply();
 }

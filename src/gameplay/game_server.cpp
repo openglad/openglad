@@ -1744,6 +1744,16 @@ void GameServer::handle_exit_prompt_response(bool accepted)
     if (!handled)
         return;
 
+    // Return-to-lobby: the accepted exit/withdraw only finalized the cursor (no
+    // next-level load). Tell every display to end + show results so each peer
+    // returns to the team-build menu, then stop — no in-session reload.
+    if (return_to_lobby_mode_)
+    {
+        forward_level_end_to_clients(prompt.withdraw_prompt ? 1 : 0,
+                                     prompt.destination_level);
+        return;
+    }
+
     prepare_clients_for_loaded_level();
 }
 
@@ -1758,7 +1768,40 @@ void GameServer::handle_level_transition(std::int16_t next_level)
     if (!on_level_transition(next_level))
         return;
 
+    // Return-to-lobby: the hook finalized the cursor only (no next-level load).
+    // The win's terminal EndGame was already forwarded for this game-ended tick,
+    // so every display ends and returns to the menu — skip the in-session
+    // client reload.
+    if (return_to_lobby_mode_)
+        return;
+
     prepare_clients_for_loaded_level();
+}
+
+void GameServer::forward_level_end_to_clients(int ending, int next_level)
+{
+    SimEventBatch batch;
+
+    Event set_palette_event;
+    set_palette_event.kind = EventKind::SetPalette;
+    set_palette_event.a = world_.current_palette_id;
+    set_palette_event.b = 0u;
+    batch.events.push_back(std::move(set_palette_event));
+
+    Event request_redraw_event;
+    request_redraw_event.kind = EventKind::RequestRedraw;
+    batch.events.push_back(std::move(request_redraw_event));
+
+    Event endgame_event;
+    endgame_event.kind = EventKind::EndGame;
+    endgame_event.a =
+        static_cast<std::uint32_t>(static_cast<std::int32_t>(ending));
+    endgame_event.b =
+        static_cast<std::uint32_t>(static_cast<std::int32_t>(next_level));
+    batch.events.push_back(std::move(endgame_event));
+    og::sim::normalize_endgame_event_order(batch);
+
+    forward_event_batch(batch);
 }
 
 void GameServer::prepare_clients_for_loaded_level()

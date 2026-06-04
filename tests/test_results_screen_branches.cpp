@@ -83,11 +83,13 @@ TEST(ResultsScreenBranches, results_screen_overload_calls_smoke)
 
 // Gap 4 ("hit play for next level") + Bug B regression: in a networked game the
 // win is delivered as an EndGame game-flow event that the display routes to
-// screen::endgame. The display advances scen_num in memory (so it knows to move
-// on) but must NOT autosave the COMBINED roster to save0 — that would re-clobber
-// this player's save0 with every player's gladiators. The networked per-player
-// save path owns save0.
-TEST(MpEndgameFlow, networked_win_advances_in_memory_but_does_not_clobber_save0)
+// screen::endgame. Networked play now returns to the team-build menu between
+// levels (single-player parity), so the win ENDS the display session
+// (world.end=1) — the same as single-player — instead of auto-advancing
+// in-session. It advances scen_num in memory but must NOT autosave the COMBINED
+// roster to save0 — that would re-clobber this player's save0 with every
+// player's gladiators. The networked per-player save path owns save0.
+TEST(MpEndgameFlow, networked_win_ends_display_to_menu_but_does_not_clobber_save0)
 {
     SaveData& sd = og::runtime::current_session->myscreen_->save_data;
     const auto saved_end = og::runtime::current_session->myscreen_->world().end;
@@ -98,10 +100,10 @@ TEST(MpEndgameFlow, networked_win_advances_in_memory_but_does_not_clobber_save0)
     og::runtime::current_session->networked_session_ = true;
     dispatch_endgame_event(0, 2); // networked WIN -> next level 2
 
-    EXPECT_EQ(0, static_cast<int>(
+    EXPECT_EQ(1, static_cast<int>(
                      og::runtime::current_session->myscreen_->world().end))
-        << "a networked win WITH a next level must NOT end the display session "
-           "(it auto-advances; ending it would freeze the next level)";
+        << "a networked win ends the display session (world.end=1 -> loop exits "
+           "-> back to the team-build menu, where the next level is started)";
     EXPECT_EQ(2, static_cast<int>(sd.scen_num))
         << "the display advances scen_num in memory after a win";
     EXPECT_TRUE(sd.is_level_completed(1));

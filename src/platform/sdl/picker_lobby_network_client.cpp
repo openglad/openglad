@@ -1663,17 +1663,43 @@ public:
             local_client_transport_,
             player_bindings_);
 
-        server_.reset();
-        combined_transport_.reset();
-        websocket_server_transport_.reset();
-        relay_transport_.reset();
-        local_client_transport_.reset();
-        local_server_transport_.reset();
-        state_.reset();
+        // Keep the lobby connection ALIVE across gameplay so the team-build menu
+        // can start the next level over it (single-player parity). The runtime
+        // holds its own shared_ptr refs to the transports, so they outlive the
+        // per-level runtime; the LobbyServer stays alive but dormant (the lobby
+        // is polled only from the menu, never the game loop) and resumes via
+        // resume_after_level(). Only the per-start scratch state is cleared.
         player_bindings_.clear();
         start_request_pending_ = false;
         pending_game_start_config_.reset();
         return true;
+    }
+
+    void resume_after_level() override
+    {
+        g_start_game_requested = false;
+        start_request_pending_ = false;
+        pending_game_start_config_.reset();
+        player_bindings_.clear();
+
+        // If the connection didn't survive (shutdown, or a transport that can't
+        // persist), fall back to a fresh lobby from the save.
+        if (combined_transport_ == nullptr || local_client_transport_ == nullptr ||
+            server_ == nullptr)
+        {
+            initialize_from_save();
+            return;
+        }
+
+        // The LobbyServer locked itself when the previous level started; re-open
+        // it so the next round's settings/joins are accepted again.
+        server_->unlock_for_new_round();
+
+        // Reuse the live connection: re-broadcast the advanced campaign cursor
+        // (scen_num) and this host's own roster from the reloaded save0, then
+        // poll so the LobbyServer re-converges every still-connected peer on the
+        // next level. (sync_from_save = settings + join + poll.)
+        sync_from_save();
     }
 
 private:
@@ -1684,7 +1710,6 @@ private:
         SaveData* const save = current_picker_save();
         if (save == nullptr)
             return;
-
         og::ui::detail::send_lobby_message(
             *local_client_transport_,
             local_client_transport_->local_peer_id(),
@@ -2066,11 +2091,33 @@ public:
             transport_,
             server_peer_id_,
             local_player_index);
-        transport_.reset();
-        state_.reset();
+
+        // Keep the connection ALIVE across gameplay (see the host note): the
+        // runtime holds its own ref to the transport, so it outlives the
+        // per-level runtime, and resume_after_level() rejoins the lobby over the
+        // still-open socket. Only the per-start scratch state is cleared.
         start_request_pending_ = false;
         pending_game_start_config_.reset();
         return true;
+    }
+
+    void resume_after_level() override
+    {
+        start_request_pending_ = false;
+        pending_game_start_config_.reset();
+
+        // If the socket didn't survive, reconnect from scratch.
+        if (transport_ == nullptr)
+        {
+            initialize_from_save();
+            return;
+        }
+
+        // Reuse the still-open socket: re-send this peer's join from the
+        // reloaded (advanced) save0 and re-poll so the host's LobbyServer
+        // re-adds us to the level-N lobby. (sync_from_save re-sends settings +
+        // join and polls.)
+        sync_from_save();
     }
 
 private:

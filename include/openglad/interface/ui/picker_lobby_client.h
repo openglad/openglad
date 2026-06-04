@@ -29,6 +29,15 @@ public:
     virtual ~IPickerLobbyClient() = default;
 
     virtual void initialize_from_save() = 0;
+    // Re-enter the lobby after a level ends (between-levels return to the
+    // team-build menu). The default rebuilds from the current save (local /
+    // single-player). Networked clients override this to REUSE the live
+    // connection that survived gameplay instead of reconnecting, re-syncing the
+    // advanced campaign cursor from the save so the next level is coordinated.
+    virtual void resume_after_level()
+    {
+        initialize_from_save();
+    }
     virtual void shutdown() = 0;
     virtual void sync_from_save() = 0;
     virtual void sync_roster_from_save() = 0;

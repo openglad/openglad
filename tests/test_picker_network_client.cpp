@@ -1372,8 +1372,13 @@ TEST(PickerNetworkClient,
     host_client->shutdown();
 }
 
+// P2: between levels the host returns to the team-build menu over the SAME
+// connection. glad_main tears down the per-level runtime (clear_local_transport
+// _shadow); picker_reinitialize_lobby_after_game then RESUMES the lobby on the
+// surviving transport (no port rebind, no reconnect) and the host is ready to
+// start the next level.
 TEST(PickerNetworkClient,
-     picker_reinitialize_after_game_clears_host_transport_shadow_before_rebinding_port)
+     picker_reinitialize_after_game_resumes_host_lobby_on_surviving_connection)
 {
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     PickerSaveStateGuard save_guard(save);
@@ -1404,11 +1409,23 @@ TEST(PickerNetworkClient,
     ASSERT_NE(nullptr, active_game_session());
     EXPECT_TRUE(og::runtime::local_transport_active(*active_game_session()));
 
+    // glad_main exit tears down the per-level runtime (the connection survives
+    // because the host client kept its own transport refs).
+    og::runtime::clear_local_transport_shadow(*active_game_session());
+    EXPECT_FALSE(og::runtime::local_transport_active(*active_game_session()));
+
+    // Resume the lobby on the surviving connection — must not reconnect/rebind,
+    // must leave the host hosting and ready for the next level.
     EXPECT_NO_THROW(picker_reinitialize_lobby_after_game());
     EXPECT_FALSE(og::runtime::local_transport_active(*active_game_session()));
     EXPECT_TRUE(
         status_lines_contain_prefix(host_client->status_lines(), "LAN: "));
+    EXPECT_TRUE(
+        status_lines_contain_exact(host_client->status_lines(), "Lobby: 1 player"));
     EXPECT_FALSE(picker_lobby_start_request_pending());
+
+    // The host can immediately start the next level over the SAME connection.
+    EXPECT_TRUE(host_client->request_start_game());
 }
 
 TEST(PickerNetworkClient, relay_room_listing_fetches_matching_rooms)
@@ -1671,9 +1688,15 @@ TEST(PickerNetworkClient, join_direct_flow_receives_remote_host_start_and_syncs_
     EXPECT_EQ(1u, og::runtime::local_transport_client_count(*active_game_session()));
     og::runtime::clear_local_transport_shadow(*active_game_session());
 
+    // P2: the lobby connection PERSISTS across gameplay. Installing the gameplay
+    // runtime hands the transport to the per-level runtime but the join client
+    // keeps its own ref, so after the runtime is torn down the socket is still
+    // open — the team-build menu reuses it for the next level instead of
+    // reconnecting. (Pre-P2 this reset the transport and reverted to
+    // "connecting".)
     join_client->poll_and_apply();
     EXPECT_TRUE(
-        status_lines_contain_exact(join_client->status_lines(), "Status: connecting"));
+        status_lines_contain_exact(join_client->status_lines(), "Status: connected"));
 
     join_client->shutdown();
 }
@@ -2259,7 +2282,7 @@ TEST(PickerNetworkClient, host_escape_abort_signals_join_runtime_to_end_session)
 // ("in a level but no one can move"). The win is made deterministic by clearing
 // the authoritative server world's foes via a test-only accessor (no flaky
 // real-time combat).
-TEST(PickerNetworkClient, host_and_join_real_win_advances_to_level_2_on_both_peers)
+TEST(PickerNetworkClient, host_and_join_real_win_returns_both_peers_to_menu)
 {
     IxNetSystemScope net_system;
 
@@ -2442,9 +2465,11 @@ TEST(PickerNetworkClient, host_and_join_real_win_advances_to_level_2_on_both_pee
         EXPECT_GT(killed, 0u) << "level 1 should contain foes to clear";
     }
 
-    // Pump both sims: the server detects the win, runs complete_level_and_load_next,
-    // and re-sets-up both clients for level 2. Each peer sends neutral input every
-    // tick (the heartbeat the server needs to keep syncing the client).
+    // Pump both sims: the server detects the win and (return-to-lobby mode)
+    // finalizes per-player progress + advances the campaign cursor WITHOUT
+    // loading the next level, then forwards a terminal EndGame so every display
+    // ends its session (world.end=1 -> glad_main returns to the team-build menu).
+    // Each peer sends neutral input every tick (the heartbeat the server needs).
     const InputState neutral{};
     std::uint32_t pump_tick = 1;
     const auto pump = [&](int iterations) {
@@ -2465,21 +2490,314 @@ TEST(PickerNetworkClient, host_and_join_real_win_advances_to_level_2_on_both_pee
             }
         }
     };
-    pump(120);
+
+    const auto peer_finished = [&](og::runtime::GameSession& session) -> bool {
+        auto scope = session.activate();
+        return session.myscreen_->world().end != 0;
+    };
+
+    // The headline contract: a win ENDS both peers' display sessions so each
+    // returns to the menu — it must NOT auto-advance into level 2 in-session.
+    bool both_ended = false;
+    for (int round = 0; round < 80 && !both_ended; ++round)
+    {
+        pump(5);
+        both_ended = peer_finished(*cleanup.host_session) &&
+            peer_finished(join_session);
+    }
+    EXPECT_TRUE(both_ended)
+        << "a networked win must end BOTH peers' display sessions (world.end=1) "
+           "so each glad_main returns to the team-build menu";
 
     // --- Gap 3: the host persisted the level advance to the networked roster.
+    // The team-build menu (re)loads from "netsession" and starts level 2 there.
     {
         SaveData netsession;
         ASSERT_EQ(SaveDataIoError::None,
                   netsession.load_with_error("netsession"))
             << "host should have persisted the networked session roster";
         EXPECT_EQ(2, static_cast<int>(netsession.scen_num))
-            << "winning level 1 should advance the campaign to level 2";
+            << "winning level 1 should advance the campaign cursor to level 2";
         EXPECT_TRUE(netsession.is_level_completed(1));
     }
 
-    // --- Gaps 1+5 + freeze regression: both peers loaded level 2, are NOT
-    // stuck-finished, are controllable, and the world keeps ticking.
+    // Neither peer auto-advanced in-session: the host display ended on level 1
+    // (its last InitialSetup was for level 1), it was never re-set-up for level
+    // 2 mid-session — the next level is the menu's job over the live connection.
+    {
+        auto host_scope = cleanup.host_session->activate();
+        const og::sim::GameClient* const dc =
+            cleanup.host_session->myscreen_->render_interpolation_client();
+        ASSERT_NE(nullptr, dc);
+        ASSERT_TRUE(dc->initial_setup().has_value());
+        EXPECT_EQ(1, dc->initial_setup()->level_id)
+            << "host display must NOT have been re-set-up for level 2 in-session";
+    }
+}
+
+// P2 + P3 headline: a networked win returns both peers to the team-build menu,
+// and they start the NEXT level over the SAME live connection that survived
+// gameplay (no reconnect) — full single-player parity. This is the end-to-end
+// proof that the lobby connection persists across glad_main and the menu drives
+// the next level.
+TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& host_save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard host_save_guard(host_save);
+    PickerRuntimeGuard runtime_guard;
+    GameplayRunGuard gameplay_run_guard;
+    prepare_allied_host_network_save(host_save);
+    g_start_game_requested = false;
+#ifdef TESTING
+    g_test_remove_exits = true; // clearing foes leaves level_done==2 (a win)
+#endif
+    set_game_speed(0.0f);
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    host_client->initialize_from_save();
+
+    og::runtime::GameSession::Config join_cfg;
+    join_cfg.create_display = false;
+    join_cfg.install_legacy_globals = false;
+    og::runtime::GameSession join_session(join_cfg);
+    prepare_single_member_network_save(
+        join_session.myscreen_->save_data, 1, "Joiner");
+
+    og::ui::PickerJoinGameOptions join_options;
+    join_options.mode = og::ui::PickerJoinMode::Direct;
+    join_options.direct_endpoint =
+        std::format("127.0.0.1:{}", host_options.port);
+    std::unique_ptr<og::ui::IPickerLobbyClient> join_client;
+    {
+        auto join_scope = join_session.activate();
+        join_client = og::ui::create_join_picker_lobby_client(join_options);
+        join_client->initialize_from_save();
+    }
+
+    struct CleanupGuard
+    {
+        og::runtime::GameSession* host_session = nullptr;
+        og::runtime::GameSession* join_session = nullptr;
+        og::ui::IPickerLobbyClient* host_client = nullptr;
+        og::ui::IPickerLobbyClient* join_client = nullptr;
+
+        ~CleanupGuard()
+        {
+            if (join_session != nullptr)
+            {
+                auto join_scope = join_session->activate();
+                og::runtime::clear_local_transport_shadow(*join_session);
+                if (join_client != nullptr)
+                    join_client->shutdown();
+                if (join_session->myscreen_ != nullptr)
+                {
+                    for (auto& view : join_session->myscreen_->viewob)
+                        if (view != nullptr)
+                            view->control = nullptr;
+                    join_session->myscreen_->world().delete_objects();
+                }
+            }
+            if (host_session != nullptr)
+            {
+                og::runtime::clear_local_transport_shadow(*host_session);
+                if (host_client != nullptr)
+                    host_client->shutdown();
+                if (host_session->myscreen_ != nullptr)
+                {
+                    for (auto& view : host_session->myscreen_->viewob)
+                        if (view != nullptr)
+                            view->control = nullptr;
+                    host_session->myscreen_->world().delete_objects();
+                }
+            }
+        }
+    } cleanup;
+
+    cleanup.host_session = active_game_session();
+    cleanup.join_session = &join_session;
+    cleanup.host_client = host_client.get();
+    cleanup.join_client = join_client.get();
+    ASSERT_NE(nullptr, cleanup.host_session);
+
+    // ---- Lobby converge, then start LEVEL 1. ----
+    const auto converge_lobby = [&](const char* phase) {
+        ASSERT_TRUE(wait_until([&] {
+            host_client->poll_and_apply();
+            bool join_lobby_ready = false;
+            {
+                auto join_scope = join_session.activate();
+                join_client->poll_and_apply();
+                join_lobby_ready = status_lines_contain_exact(
+                    join_client->status_lines(), "Lobby: 2 players");
+            }
+            return status_lines_contain_exact(host_client->status_lines(),
+                                              "Lobby: 2 players") &&
+                join_lobby_ready;
+        })) << phase << ": host and join should converge on a two-player lobby";
+    };
+
+    const auto start_level = [&](const char* phase) {
+        ASSERT_TRUE(host_client->request_start_game()) << phase;
+        ASSERT_TRUE(wait_until([&] {
+            host_client->poll_and_apply();
+            bool join_has_handoff = false;
+            {
+                auto join_scope = join_session.activate();
+                join_client->poll_and_apply();
+                join_has_handoff = join_client->has_game_start_config();
+            }
+            return host_client->has_game_start_config() && join_has_handoff;
+        })) << phase << ": both peers should receive the gameplay handoff";
+
+        const auto host_start_config = host_client->consume_game_start_config();
+        ASSERT_TRUE(host_start_config.has_value()) << phase;
+        {
+            auto host_scope = cleanup.host_session->activate();
+            ActivePickerLobbyClientGuard active_client(host_client.get());
+            ready_screen_for_game_start(
+                *cleanup.host_session->myscreen_, &*host_start_config);
+            glad_init(false, &*host_start_config);
+        }
+        {
+            auto join_scope = join_session.activate();
+            auto join_start_config = join_client->consume_game_start_config();
+            ASSERT_TRUE(join_start_config.has_value()) << phase;
+            ActivePickerLobbyClientGuard active_client(join_client.get());
+            ready_screen_for_game_start(
+                *join_session.myscreen_, &*join_start_config);
+            glad_init(false, &*join_start_config);
+        }
+
+        ASSERT_TRUE(wait_until([&] {
+            bool host_ready = false;
+            {
+                auto host_scope = cleanup.host_session->activate();
+                og::runtime::local_transport_shadow_finish_tick(
+                    *cleanup.host_session);
+                const og::sim::GameClient* const dc =
+                    cleanup.host_session->myscreen_->render_interpolation_client();
+                host_ready = dc != nullptr && dc->baseline().has_value();
+            }
+            bool join_ready = false;
+            {
+                auto join_scope = join_session.activate();
+                og::runtime::local_transport_shadow_finish_tick(join_session);
+                const og::sim::GameClient* const dc =
+                    join_session.myscreen_->render_interpolation_client();
+                join_ready = dc != nullptr && dc->baseline().has_value();
+            }
+            return host_ready && join_ready;
+        })) << phase << ": both runtimes should receive initial snapshots";
+    };
+
+    converge_lobby("level 1");
+    ASSERT_TRUE(host_save.save("save0"));
+    start_level("level 1");
+
+    // ---- Force a deterministic WIN on level 1. ----
+    {
+        screen* const server_screen =
+            og::runtime::local_transport_shadow_testing_server_screen(
+                *cleanup.host_session);
+        ASSERT_NE(nullptr, server_screen);
+        const unsigned char my_team =
+            static_cast<unsigned char>(server_screen->world().my_team);
+        for (auto& uptr : server_screen->world().oblist)
+        {
+            walker* const w = uptr.get();
+            if (w != nullptr && !w->dead() && w->is_friendly_to_team(my_team) == 0)
+                w->set_dead(1);
+        }
+    }
+
+    const InputState neutral{};
+    std::uint32_t pump_tick = 1;
+    const auto pump = [&](int iterations) {
+        for (int i = 0; i < iterations; ++i, ++pump_tick)
+        {
+            {
+                auto host_scope = cleanup.host_session->activate();
+                og::runtime::local_transport_shadow_send_input(
+                    *cleanup.host_session, neutral, pump_tick);
+                og::runtime::local_transport_shadow_finish_tick(
+                    *cleanup.host_session);
+            }
+            {
+                auto join_scope = join_session.activate();
+                og::runtime::local_transport_shadow_send_input(
+                    join_session, neutral, pump_tick);
+                og::runtime::local_transport_shadow_finish_tick(join_session);
+            }
+        }
+    };
+    const auto peer_finished = [&](og::runtime::GameSession& session) -> bool {
+        auto scope = session.activate();
+        return session.myscreen_->world().end != 0;
+    };
+    bool both_ended = false;
+    for (int round = 0; round < 80 && !both_ended; ++round)
+    {
+        pump(5);
+        both_ended = peer_finished(*cleanup.host_session) &&
+            peer_finished(join_session);
+    }
+    ASSERT_TRUE(both_ended) << "both peers must return to the menu after the win";
+
+
+    // ---- Simulate each peer's glad_main exit: the per-level runtime is torn
+    // down, but the lobby client's transport (and the host's LobbyServer)
+    // survive because they kept their own refs. ----
+    {
+        auto host_scope = cleanup.host_session->activate();
+        og::runtime::clear_local_transport_shadow(*cleanup.host_session);
+    }
+    {
+        auto join_scope = join_session.activate();
+        og::runtime::clear_local_transport_shadow(join_session);
+    }
+
+    // ---- Re-enter the lobby over the LIVE connection (what go_menu does via
+    // picker_reinitialize_lobby_after_game). Both displays advanced scen_num to
+    // 2 in memory on the win, so the host re-broadcasts level 2. ----
+    {
+        auto host_scope = cleanup.host_session->activate();
+        ActivePickerLobbyClientGuard active_client(host_client.get());
+        host_client->resume_after_level();
+    }
+    {
+        auto join_scope = join_session.activate();
+        ActivePickerLobbyClientGuard active_client(join_client.get());
+        join_client->resume_after_level();
+    }
+
+    // The lobby re-converges to two players over the SAME connection, and the
+    // advanced campaign cursor (scen_num=2) propagates from the host to the
+    // join (the menu polls every frame; here we poll until it lands).
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        bool join_on_level_2 = false;
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+            join_on_level_2 =
+                join_session.myscreen_->save_data.scen_num == 2 &&
+                status_lines_contain_exact(join_client->status_lines(),
+                                           "Lobby: 2 players");
+        }
+        return host_save.scen_num == 2 &&
+            status_lines_contain_exact(host_client->status_lines(),
+                                       "Lobby: 2 players") &&
+            join_on_level_2;
+    })) << "the advanced level-2 cursor must reach both peers over the live "
+           "connection while staying a two-player lobby";
+
+    // ---- Ready up and start LEVEL 2 over the persisted connection. ----
+    start_level("level 2");
+
     const auto check_on_level_2 =
         [&](og::runtime::GameSession& session, const char* who) {
             auto scope = session.activate();
@@ -2489,35 +2807,18 @@ TEST(PickerNetworkClient, host_and_join_real_win_advances_to_level_2_on_both_pee
             ASSERT_NE(nullptr, dc) << who;
             ASSERT_TRUE(dc->initial_setup().has_value()) << who;
             EXPECT_EQ(2, dc->initial_setup()->level_id)
-                << who << ": should have received level 2 setup";
+                << who << ": should have received level 2 setup over the live "
+                          "connection";
             EXPECT_EQ(2, static_cast<int>(s->world().id))
                 << who << ": display world should be level 2";
             EXPECT_EQ(0, static_cast<int>(s->world().end))
-                << who << ": must NOT be stuck-finished after a win";
+                << who << ": level 2 must be live, not stuck-finished";
             ASSERT_NE(nullptr, s->viewob[0]) << who;
             EXPECT_NE(nullptr, s->viewob[0]->control)
                 << who << ": player must be controllable on level 2";
-            EXPECT_TRUE(dc->baseline().has_value()) << who;
         };
     check_on_level_2(*cleanup.host_session, "host");
     check_on_level_2(join_session, "join");
-
-    // Both peers must keep TICKING on level 2 (the freeze regression froze the
-    // sim). Pump BOTH sessions so the authoritative server keeps stepping for
-    // the join client, then assert each display advanced.
-    const auto last_seen = [&](og::runtime::GameSession& session) -> std::uint32_t {
-        auto scope = session.activate();
-        const og::sim::GameClient* const dc =
-            session.myscreen_->render_interpolation_client();
-        return dc != nullptr ? dc->last_seen_server_tick() : 0u;
-    };
-    const std::uint32_t host_before = last_seen(*cleanup.host_session);
-    const std::uint32_t join_before = last_seen(join_session);
-    pump(40);
-    EXPECT_GT(last_seen(*cleanup.host_session), host_before)
-        << "host: level 2 must keep ticking (not frozen)";
-    EXPECT_GT(last_seen(join_session), join_before)
-        << "join: level 2 must keep ticking (not frozen)";
 }
 
 TEST(PickerNetworkClient,
@@ -3018,9 +3319,15 @@ TEST(PickerNetworkClient, join_relay_flow_connects_and_starts_game)
     EXPECT_EQ(1u, og::runtime::local_transport_client_count(*active_game_session()));
     og::runtime::clear_local_transport_shadow(*active_game_session());
 
+    // P2: the lobby connection PERSISTS across gameplay. Installing the gameplay
+    // runtime hands the transport to the per-level runtime but the join client
+    // keeps its own ref, so after the runtime is torn down the socket is still
+    // open — the team-build menu reuses it for the next level instead of
+    // reconnecting. (Pre-P2 this reset the transport and reverted to
+    // "connecting".)
     join_client->poll_and_apply();
     EXPECT_TRUE(
-        status_lines_contain_exact(join_client->status_lines(), "Status: connecting"));
+        status_lines_contain_exact(join_client->status_lines(), "Status: connected"));
 
     join_client->shutdown();
 }

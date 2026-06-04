@@ -150,6 +150,25 @@ public:
     void step();
 
     void set_wall_clock_ms_source(std::function<std::uint64_t()> source);
+
+    // In return-to-lobby mode a completed level does NOT auto-advance into the
+    // next level in the same session. Instead the server persists per-player
+    // progress + advances the campaign cursor (the on_level_transition /
+    // on_exit_accepted / on_withdraw_accepted hooks finalize-only, without
+    // loading the next level) and every display ends its session (terminal
+    // EndGame), so each peer's glad_main returns to the team-build menu —
+    // matching single-player. The next level is started fresh from the menu over
+    // the persisted connection. Off (default) preserves the in-session
+    // auto-advance used by tests/local split-screen.
+    void set_return_to_lobby_mode(bool enabled) noexcept
+    {
+        return_to_lobby_mode_ = enabled;
+    }
+    [[nodiscard]] bool return_to_lobby_mode() const noexcept
+    {
+        return return_to_lobby_mode_;
+    }
+
     [[nodiscard]] bool pending_exit_prompt() const noexcept
     {
         return pending_exit_prompt_state_.has_value();
@@ -195,6 +214,11 @@ private:
     void clear_pause_state();
     void handle_exit_prompt_response(bool accepted);
     void handle_level_transition(std::int16_t next_level);
+    // Forward a terminal EndGame (plus palette/redraw) to every display so each
+    // peer shows the results screen and returns to the menu. Used by the
+    // exit-portal / withdraw paths in return-to-lobby mode (the win path's
+    // EndGame is already synthesized by broadcast_current_state).
+    void forward_level_end_to_clients(int ending, int next_level);
     void handle_pause_request(PeerId peer_id);
     void handle_pause_response();
     void handle_hello(PeerId peer_id, const HelloMessage& message);
@@ -240,6 +264,7 @@ private:
     std::uint64_t next_session_token_seed_ = 1;
     std::optional<PeerId> host_peer_id_ = std::nullopt;
     std::function<std::uint64_t()> wall_clock_ms_source_;
+    bool return_to_lobby_mode_ = false;
 };
 
 } // namespace og::sim

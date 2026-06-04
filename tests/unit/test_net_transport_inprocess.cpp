@@ -849,6 +849,146 @@ TEST(NetTransportInProcess,
     fixture.expect_clients_match_server();
 }
 
+// Return-to-lobby mode (networked single-player parity): accepting an exit-portal
+// prompt must NOT auto-advance into the next level in-session. Instead the server
+// finalizes the campaign cursor (on_exit_accepted) and FORWARDS A TERMINAL ENDGAME
+// so every display shows results and returns to the team-build menu — it must NOT
+// re-set-up the client for a new level. Regression for the user-reported bug:
+// "clicking Yes to exit instantly loads the next level instead of going to menu."
+TEST(NetTransportInProcess,
+     network_fixture_return_to_lobby_exit_forwards_endgame_not_transition)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+    fixture.server().set_return_to_lobby_mode(true);
+
+    int exits = 0;
+    fixture.server().on_exit_accepted = [&](int /*destination*/) {
+        ++exits; // finalize-only stub: advance cursor without loading a level.
+        return true;
+    };
+
+    bool saw_endgame = false;
+    int endgame_next_level = 99;
+    int saw_level_transition = 0;
+    fixture.client(0).set_game_flow_event_batch_callback(
+        [&](const og::sim::SimEventBatch& batch) {
+            for (const auto& e : batch.events)
+            {
+                if (e.kind == og::sim::EventKind::EndGame)
+                {
+                    saw_endgame = true;
+                    endgame_next_level = static_cast<std::int32_t>(e.b);
+                }
+            }
+        });
+    fixture.client(0).set_initial_setup_callback(
+        [&](const og::sim::InitialSetupMessage&, bool is_level_transition) {
+            if (is_level_transition)
+                ++saw_level_transition;
+        });
+
+    // Emit an EXIT prompt (b == 0 => exit, not withdraw) bound to level 2.
+    fixture.with_server_context([&] {
+        fixture.server_events().push_with_text(
+            og::sim::EventKind::RequestExitConfirmation, "Exit to Level 2?",
+            /*a=destination*/ 2u, /*b=exit*/ 0u);
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+    ASSERT_TRUE(fixture.server().pending_exit_prompt());
+
+    // Accept the exit.
+    fixture.client(0).send_exit_prompt_response(true);
+    fixture.with_server_context([&] { fixture.server().step(); });
+    fixture.poll_client_messages(0);
+
+    EXPECT_EQ(1, exits) << "accepting an exit should finalize the level once";
+    EXPECT_FALSE(fixture.server().pending_exit_prompt());
+    EXPECT_TRUE(saw_endgame)
+        << "return-to-lobby exit must forward a terminal EndGame to the display";
+    EXPECT_EQ(2, endgame_next_level)
+        << "the forwarded EndGame should carry the exit destination level";
+    EXPECT_EQ(0, saw_level_transition)
+        << "return-to-lobby exit must NOT re-set-up the client for a new level "
+           "(no in-session auto-advance)";
+}
+
+// Same contract for an accepted WITHDRAW (retreat): finalize the cursor and
+// forward a terminal EndGame (ending=1) — no in-session level reload.
+TEST(NetTransportInProcess,
+     network_fixture_return_to_lobby_withdraw_forwards_endgame_not_transition)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+    fixture.server().set_return_to_lobby_mode(true);
+
+    int withdraws = 0;
+    fixture.server().on_withdraw_accepted = [&](int /*destination*/) {
+        ++withdraws;
+        return true;
+    };
+
+    bool saw_endgame = false;
+    int endgame_ending = 99;
+    int saw_level_transition = 0;
+    fixture.client(0).set_game_flow_event_batch_callback(
+        [&](const og::sim::SimEventBatch& batch) {
+            for (const auto& e : batch.events)
+            {
+                if (e.kind == og::sim::EventKind::EndGame)
+                {
+                    saw_endgame = true;
+                    endgame_ending = static_cast<std::int32_t>(e.a);
+                }
+            }
+        });
+    fixture.client(0).set_initial_setup_callback(
+        [&](const og::sim::InitialSetupMessage&, bool is_level_transition) {
+            if (is_level_transition)
+                ++saw_level_transition;
+        });
+
+    // Emit a WITHDRAW prompt (b != 0 => withdraw) to level 1.
+    fixture.with_server_context([&] {
+        fixture.server_events().push_with_text(
+            og::sim::EventKind::RequestExitConfirmation, "Withdraw to Level 1?",
+            /*a=destination*/ 1u, /*b=withdraw*/ 1u);
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+    ASSERT_TRUE(fixture.server().pending_exit_prompt());
+
+    fixture.client(0).send_exit_prompt_response(true);
+    fixture.with_server_context([&] { fixture.server().step(); });
+    fixture.poll_client_messages(0);
+
+    EXPECT_EQ(1, withdraws) << "accepting a withdraw should finalize once";
+    EXPECT_FALSE(fixture.server().pending_exit_prompt());
+    EXPECT_TRUE(saw_endgame)
+        << "return-to-lobby withdraw must forward a terminal EndGame";
+    EXPECT_EQ(1, endgame_ending)
+        << "a withdraw's forwarded EndGame should carry ending=1 (retreat)";
+    EXPECT_EQ(0, saw_level_transition)
+        << "return-to-lobby withdraw must NOT re-set-up the client in-session";
+}
+
 TEST(NetTransportInProcess, network_fixture_keeps_two_clients_in_sync)
 {
     og::sim::test::NetworkTestFixture fixture({
