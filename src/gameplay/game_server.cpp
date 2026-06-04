@@ -948,6 +948,17 @@ void GameServer::handle_transport_disconnect(
     }
 
     const ConnectedClientState client = it->second;
+
+    // Tell the remaining players that someone dropped — a transient on-field
+    // banner like the other in-game event notifications. Only while the level is
+    // live: during teardown every client disconnects and there is no display
+    // left to read it (and a level-end is not a "disconnect").
+    if (client.has_player_binding && world_.end == 0 && !world_.game_ended)
+    {
+        events_.push_notification(
+            std::format("Player {} disconnected", client.player_index + 1), 40);
+    }
+
     if (pending_pause_state_.has_value() &&
         pending_pause_state_->player_index == client.player_index)
     {

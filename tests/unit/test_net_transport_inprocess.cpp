@@ -1651,6 +1651,59 @@ TEST(NetTransportInProcess, network_fixture_disconnects_client_after_input_timeo
     EXPECT_NE(ACT_CONTROL, control->act_type());
 }
 
+// When a player drops mid-match, the remaining players get an on-field
+// notification banner naming who left — like the other in-game event messages.
+TEST(NetTransportInProcess, network_fixture_player_disconnect_notifies_remaining_players)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 2,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+    // Establish transport peer tracking for both players before the drop (the
+    // server only notices a *removed* peer relative to a previously seen set).
+    fixture.step_ticks(1);
+
+    // Capture every notification delivered to the remaining player (client 0).
+    std::vector<std::string> notifications;
+    const auto collect = [&](const og::sim::SimEventBatch& batch) {
+        for (const auto& event : batch.events)
+        {
+            if (event.kind == og::sim::EventKind::Notification)
+                notifications.push_back(event.text);
+        }
+    };
+    fixture.client(0).set_sim_event_batch_callback(collect);
+    fixture.client(0).set_game_flow_event_batch_callback(collect);
+
+    // Player 1 (a client) drops its connection.
+    const og::sim::PeerId gone = fixture.client_transport(1).local_peer_id();
+    fixture.client_transport(1).disconnect(gone);
+    fixture.with_server_context([&] {
+        fixture.server().step(); // poll detects the drop -> notify; broadcast forwards
+    });
+    fixture.poll_client_messages(0);
+
+    bool announced_disconnect = false;
+    bool named_the_player = false;
+    for (const std::string& message : notifications)
+    {
+        if (message.find("disconnect") != std::string::npos)
+            announced_disconnect = true;
+        if (message.find("Player 2") != std::string::npos)
+            named_the_player = true;
+    }
+    EXPECT_TRUE(announced_disconnect)
+        << "remaining players should receive a disconnect notification";
+    EXPECT_TRUE(named_the_player)
+        << "the notification should name the player who left (player 1 -> 'Player 2')";
+}
+
 TEST(NetTransportInProcess,
      network_fixture_reconnects_with_session_token_and_reclaims_control)
 {

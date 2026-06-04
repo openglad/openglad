@@ -7,6 +7,18 @@ inline constexpr int32_t MENU_REDRAW = 2;
 inline constexpr int32_t MENU_OK     = 4;
 
 inline constexpr int32_t BUTTON_HEIGHT = 15;
+
+// Networking menu panel frame (outer border corners) and its inset background.
+// draw_button() takes corners (x1,y1,x2,y2); draw_button_inverted() takes
+// (x,y,WIDTH,HEIGHT) — the background is derived from these so the two can never
+// disagree (the old code passed the corners as a width/height, drawing a panel
+// far larger than the frame and off-screen).
+inline constexpr int32_t PICKER_NETWORKING_FRAME_X1 = 26;
+inline constexpr int32_t PICKER_NETWORKING_FRAME_Y1 = 34;
+inline constexpr int32_t PICKER_NETWORKING_FRAME_X2 = 294;
+inline constexpr int32_t PICKER_NETWORKING_FRAME_Y2 = 188;
+inline constexpr int32_t PICKER_NETWORKING_FRAME_BORDER = 6;
+
 inline constexpr int32_t PICKER_NETWORKING_FIELD_X = 128;
 inline constexpr int32_t PICKER_NETWORKING_FIELD_WIDTH = 132;
 inline constexpr int32_t PICKER_NETWORKING_FIELD_Y = 58;

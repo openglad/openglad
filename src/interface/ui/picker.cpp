@@ -641,12 +641,20 @@ public:
 
             draw_backdrop();
             og::runtime::current_session->myscreen_->draw_button(
-                26, 34, 294, 188, 1, 1);
+                PICKER_NETWORKING_FRAME_X1, PICKER_NETWORKING_FRAME_Y1,
+                PICKER_NETWORKING_FRAME_X2, PICKER_NETWORKING_FRAME_Y2, 1, 1);
             og::runtime::current_session->myscreen_->draw_button_inverted(
-                32, 40, 288, 182);
+                PICKER_NETWORKING_FRAME_X1 + PICKER_NETWORKING_FRAME_BORDER,
+                PICKER_NETWORKING_FRAME_Y1 + PICKER_NETWORKING_FRAME_BORDER,
+                static_cast<Uint32>(PICKER_NETWORKING_FRAME_X2 -
+                                    PICKER_NETWORKING_FRAME_X1 -
+                                    2 * PICKER_NETWORKING_FRAME_BORDER),
+                static_cast<Uint32>(PICKER_NETWORKING_FRAME_Y2 -
+                                    PICKER_NETWORKING_FRAME_Y1 -
+                                    2 * PICKER_NETWORKING_FRAME_BORDER));
             draw_buttons(buttons, num_buttons);
 
-            mytext.write_xy_center(160, 48, RED, "NETWORKING");
+            mytext.write_xy_center(160, 44, RED, "NETWORKING");
             static constexpr std::array<std::string_view, 4> k_field_labels{{
                 "JOIN IP / HOST",
                 "PORT",
@@ -1139,13 +1147,16 @@ static const button k_hiremenu_buttons[] =
 
 static const button k_networking_menu_buttons[] =
     {
-        button("network_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.down=1, .right=5}),
+        // Action row (BACK | HOST | JOIN), centered inside the panel so every
+        // control lives within the frame. (BACK previously floated at 10,10,
+        // outside the panel.)
+        button("network_back", "BACK", KEYSTATE_ESCAPE, 41, PICKER_NETWORKING_ACTION_Y, PICKER_NETWORKING_ACTION_WIDTH, BUTTON_HEIGHT, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=4, .right=5}),
         button("network_ip", "", KEYSTATE_UNKNOWN, PICKER_NETWORKING_FIELD_X, PICKER_NETWORKING_FIELD_Y, PICKER_NETWORKING_FIELD_WIDTH, BUTTON_HEIGHT, button_action_id(ButtonAction::EditNetworkAddress), -1, MenuNav{.up=0, .down=2}),
         button("network_port", "", KEYSTATE_UNKNOWN, PICKER_NETWORKING_FIELD_X, PICKER_NETWORKING_FIELD_Y + PICKER_NETWORKING_FIELD_PITCH, PICKER_NETWORKING_FIELD_WIDTH, BUTTON_HEIGHT, button_action_id(ButtonAction::EditNetworkPort), -1, MenuNav{.up=1, .down=3}),
         button("network_room_toggle", "", KEYSTATE_UNKNOWN, PICKER_NETWORKING_FIELD_X, PICKER_NETWORKING_FIELD_Y + 2 * PICKER_NETWORKING_FIELD_PITCH, PICKER_NETWORKING_FIELD_WIDTH, BUTTON_HEIGHT, button_action_id(ButtonAction::ToggleNetworkRoomCode), -1, MenuNav{.up=2, .down=4}),
         button("network_room_value", "", KEYSTATE_UNKNOWN, PICKER_NETWORKING_FIELD_X, PICKER_NETWORKING_FIELD_Y + 3 * PICKER_NETWORKING_FIELD_PITCH, PICKER_NETWORKING_FIELD_WIDTH, BUTTON_HEIGHT, button_action_id(ButtonAction::EditNetworkRoomCode), -1, MenuNav{.up=3, .down=5}),
-        button("network_host", "HOST", KEYSTATE_UNKNOWN, 76, PICKER_NETWORKING_ACTION_Y, PICKER_NETWORKING_ACTION_WIDTH, BUTTON_HEIGHT, button_action_id(ButtonAction::SubmitNetworkHost), -1, MenuNav{.up=4, .right=6}),
-        button("network_join", "JOIN", KEYSTATE_UNKNOWN, 170, PICKER_NETWORKING_ACTION_Y, PICKER_NETWORKING_ACTION_WIDTH, BUTTON_HEIGHT, button_action_id(ButtonAction::SubmitNetworkJoin), -1, MenuNav{.up=4, .left=5}),
+        button("network_host", "HOST", KEYSTATE_UNKNOWN, 123, PICKER_NETWORKING_ACTION_Y, PICKER_NETWORKING_ACTION_WIDTH, BUTTON_HEIGHT, button_action_id(ButtonAction::SubmitNetworkHost), -1, MenuNav{.up=4, .left=0, .right=6}),
+        button("network_join", "JOIN", KEYSTATE_UNKNOWN, 205, PICKER_NETWORKING_ACTION_Y, PICKER_NETWORKING_ACTION_WIDTH, BUTTON_HEIGHT, button_action_id(ButtonAction::SubmitNetworkJoin), -1, MenuNav{.up=4, .left=5}),
     };
 
 
