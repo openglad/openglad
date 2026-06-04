@@ -56,36 +56,40 @@ cd dist && python3 -m http.server 8080
 
 ## Module Structure
 
-The codebase is organized into 10 modules, each a separate CMake static library with enforced dependency rules.
+The codebase is organized into **5 top-level components**, each a CMake static
+library with enforced dependency rules. (Older fine-grained module names — `sim`,
+`data`, `entities`, `io`, `runtime`, `render`, `input`, `ui` — survive only as
+transitional forwarding-header shims under `src/`; the real build/dependency
+boundary is the component.)
 
 ```
-include/openglad/<module>/   — public headers (stable API)
-src/<module>/                — private implementation
-third_party/<lib>/           — vendored external libraries
+include/openglad/<component>/   — public headers (stable API)
+src/<component>/                — private implementation
+third_party/<lib>/              — vendored external libraries
 ```
 
-### Modules
+### Components
 
-| Module | CMake Target | Purpose |
-|--------|-------------|---------|
-| `core` | `og_core` | Pure utilities, math, logging, constants |
-| `sim` | `og_sim` | Deterministic headless simulation |
-| `data` | `og_data` | Serialization: levels, saves, config |
-| `entities` | `og_entities` | Game objects: walker, living, weap, treasure, effect |
-| `io` | `og_io` | Filesystem abstraction (PhysFS, libzip, libyaml) |
-| `runtime` | `og_runtime` | Game session, context, loop, screen |
-| `render` | `og_render` | SDL2 graphics, viewports, text, sprites |
-| `input` | `og_input` | Keyboard/controller, UI buttons |
-| `ui` | `og_ui` | Menus, picker, level editor, intro |
-| `platform` | `og_platform` | Audio (SDL_mixer) |
+| Component | CMake Target | Purpose |
+|-----------|-------------|---------|
+| `core` | `og_core` | Pure utilities, math, constants, shared contracts |
+| `gameplay` | `og_gameplay` | Deterministic sim + entities (walker family), `GameWorld`, **and the SDL-free networking core** (`GameServer`/`GameClient`/`LobbyServer`/`WorldSnapshot`/`ITransport`) |
+| `resources` | `og_resources` | Serialization: levels, saves, config; filesystem/archive/yaml; sprite assets |
+| `interface` | `og_interface` | UI/menus, rendering, input translation, level editor |
+| `platform` | `og_platform_sdl` | `GameSession`, loop/session bridges, SDL video/audio, lobby clients, local transport shadow |
+
+Two thin transport libraries link the WebSocket vendor: `og_platform_ws_transport`
+(native) and `og_platform_emscripten_transport` (browser). Headless binaries
+`openglad_text` (client) and `openglad_server` (dedicated host) link the SDL-free
+components only.
 
 ### Dependency Direction
 
-Dependencies flow inward: `ui → runtime → sim → core`. See `docs/architecture-rules.md` for the full dependency matrix and enforcement details.
+Dependencies flow inward: `og_platform_sdl → og_interface → og_resources → og_gameplay → og_core`. See `docs/architecture-rules.md` for the full dependency matrix and enforcement details, and `docs/ARCHITECTURE.md` for the networking architecture.
 
 ### Key Rules
 
-- **Vendor headers stay in `src/io/`** (PhysFS, libzip, libyaml) and `src/entities/` (micropather only). Enforced by `scripts/check_vendor_leaks.sh`.
+- **Vendor headers stay in `src/resources/io/`** (PhysFS, libzip, libyaml) and `src/gameplay/` (micropather only). Enforced by `scripts/check_vendor_leaks.sh`.
 - **RAII ownership.** `GameSession` is the root owner of screen, prefs, RNG. Use `std::unique_ptr<T>` for owning pointers, `T&`/`T*` for non-owning borrows.
 
 ## Key Data Structures
@@ -116,6 +120,8 @@ GameContext (DI container) → screen*, prefs*, cfg*, IRandom*, InputState
 | libyaml 0.2.5 | YAML parser for configuration |
 | yam 0.1.0 | C++ adapter over libyaml |
 | MicroPather | A* pathfinding |
+| IXWebSocket 11.4.6 | WebSocket transport for networked multiplayer |
+| LodePNG | PNG codec for indexed-color sprite assets |
 
 Version tracking and upgrade policy in `third_party/VENDORED_LIBS.md`.
 

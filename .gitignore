@@ -1,5 +1,6 @@
 # Build output
 *.o
+*.a
 *.exe
 *.dll
 obj/
@@ -11,6 +12,22 @@ obj/
 /openglad
 /openscen
 /openglad_test
+
+# In-source CMake configure artifacts (prefer the out-of-source build/ presets)
+/CMakeCache.txt
+/CMakeFiles/
+/Makefile
+/cmake_install.cmake
+/compile_commands.json
+/component_includes/
+/OpenGladConfig.cmake
+/OpenGladConfigVersion.cmake
+/openglad_demo
+/openglad_server
+/openglad_text
+third_party/**/CMakeFiles/
+third_party/**/Makefile
+third_party/**/cmake_install.cmake
 
 # Emscripten build
 /build-web/
@@ -37,6 +54,9 @@ io_tmp_*.txt
 core.*
 /temp/
 
-# Generated planning/automation logs
-/docs/plans/logs/
-/.plan/logs/
+# Planning / automation scaffolding (not part of the source tree)
+/.plan/
+/.juvenal-state.json
+/.juvenal-replan-archive/
+/workflow.yaml
+/docs/plans/

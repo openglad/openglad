@@ -15,6 +15,7 @@ The codebase has been through an aggressive modernization (branch `cpp-moderniza
 - [Concurrent Sessions](#concurrent-sessions)
 - [Data-Driven Family System](#data-driven-family-system)
 - [Game Loop](#game-loop)
+- [Networking and Multiplayer](#networking-and-multiplayer)
 - [Campaigns, Levels, and Scenarios](#campaigns-levels-and-scenarios)
 - [Build System](#build-system)
 - [Test Structure](#test-structure)
@@ -51,6 +52,8 @@ openglad/
 │   ├── libyaml/            libyaml 0.2.5 (YAML parser)
 │   ├── yam/                C++ adapter over libyaml
 │   ├── micropather/        MicroPather (A* pathfinding)
+│   ├── ixwebsocket/        IXWebSocket (networking transport)
+│   ├── lodepng/            LodePNG (PNG codec for indexed-color sprite assets)
 │   └── VENDORED_LIBS.md    Version tracking and upgrade policy
 │
 ├── cmake/                  CMake support files
@@ -99,6 +102,10 @@ Deterministic simulation and entity behavior:
 - `GameWorld`, `GameplayContext`
 - `walker` family (`living`, `weap`, `treasure`, `effect`)
 - pathing, combat, AI families, simulation input handling
+- **networking core** (SDL-free): `GameServer` (authoritative sim host),
+  `GameClient` (mirror), `LobbyServer`, `WorldSnapshot` (full + delta state
+  serialization), and the `ITransport` interface with the in-process and
+  multiplex implementations. See [Networking and Multiplayer](#networking-and-multiplayer).
 
 Gameplay is intentionally sandboxable and does not own rendering/audio devices.
 
@@ -127,8 +134,18 @@ SDL-specific platform/runtime wiring:
 
 - `GameSession`, lifecycle, loop bridges, native input event bridge
 - SDL video/audio integration and startup entrypoint support
+- the lobby/gameplay bridge: `local_transport_shadow` (runs every game through
+  the client-server architecture) and the picker lobby clients
+  (`picker_lobby_client` / `picker_lobby_network_client`)
 
 This is the outermost layer and can include all component headers.
+
+Two thin transport libraries sit beside the SDL platform layer and link the
+WebSocket vendor:
+
+- `og_platform_ws_transport` — native WebSocket client/server + relay transports
+  (links `ixwebsocket`)
+- `og_platform_emscripten_transport` — browser WebSocket + relay transports
 
 ---
 
@@ -306,7 +323,7 @@ Runtime layer (after SimWorld::tick() returns)
 
 ## Concurrent Sessions
 
-The engine supports multiple `GameSession` instances coexisting in a single process. This enables the demo binary (12 AI-controlled games in a grid) and opens the door for future multiplayer server architectures.
+The engine supports multiple `GameSession` instances coexisting in a single process. This enables the demo binary (12 AI-controlled games in a grid) and is the foundation for the networked multiplayer architecture (a host runs an authoritative server session alongside its own display session — see [Networking and Multiplayer](#networking-and-multiplayer)).
 
 ### SessionScope RAII Guard
 
@@ -402,7 +419,7 @@ struct FamilyDescriptor {
 ### Native Build Flow
 
 ```
-main() [src/glad.cpp]
+main() [src/platform/sdl/glad.cpp]
   ├── io_init()                    Initialize PhysFS filesystem
   ├── cfg.load_settings()          Load openglad.yaml configuration
   ├── GameSession session(cfg)     RAII: create screen, prefs, install globals
@@ -462,6 +479,97 @@ emscripten_frame_wrapper()    (called ~60 FPS by browser)
       ├── Playing: game_frame()    → if done → Picker
       └── Quit:    cancel main loop
 ```
+
+---
+
+## Networking and Multiplayer
+
+OpenGlad multiplayer is **server-authoritative**: one peer (the host) runs the
+deterministic simulation; every peer (including the host) renders a **mirror** of
+the authoritative state that it receives as snapshots. Up to 4 players. The same
+machinery also runs single-player and local split-screen — see
+[Local Transport Shadow](#local-transport-shadow).
+
+### Core components (`og_gameplay`, SDL-free)
+
+| Component | File | Role |
+|-----------|------|------|
+| `GameServer` | `src/gameplay/game_server.cpp` | Owns the authoritative `GameWorld`. Applies player inputs, steps the sim, broadcasts snapshots + game-flow events, tracks connected clients and disconnects. |
+| `GameClient` | `src/gameplay/game_client.cpp` | Mirror. Sends this peer's input, applies snapshots to its local mirror world, raises callbacks (initial setup, control mapping, sim/game-flow event batches, exit/pause prompts). |
+| `WorldSnapshot` | `src/gameplay/world_snapshot.cpp` | Serializes world state. Full **keyframes** and **deltas** against a baseline; per-entity `GuySnapshot`s; deterministic hashing for desync detection. |
+| `ITransport` | `src/gameplay/net_transport.cpp` | Typed message channel (snapshots, input, event batches, lobby messages, hello/heartbeat, exit/pause). Implementations below. |
+| `LobbyServer` | `src/gameplay/lobby_server.cpp` | Pre-game lobby: roster, team assignment, settings (campaign/scenario/difficulty), host election, start handshake. |
+
+**Transports** (`ITransport` implementations):
+
+- `InProcessTransport` (`og_gameplay`) — in-memory loopback (local play + the
+  host's own connection to its server)
+- `MultiplexTransport` (`og_gameplay`) — fans one server out over several
+  transports (e.g. local + WebSocket + relay) so the host serves loopback and
+  remote peers together
+- WebSocket client/server + relay (`og_platform_ws_transport`, native) and the
+  Emscripten equivalents (`og_platform_emscripten_transport`, browser)
+
+### Local Transport Shadow
+
+`src/platform/sdl/local_transport_shadow.cpp` is the bridge that makes **every**
+game — single-player, local split-screen, and networked — run through the
+client-server architecture. During `glad_main`, each frame:
+
+```
+local_transport_shadow_send_input()   queue this peer's InputState
+local_transport_shadow_finish_tick()
+  ├── (host only) server_session.activate(); GameServer::step()
+  │     └── GameWorld::tick() → capture snapshot → broadcast deltas + events
+  └── display_session: drain client(s) → apply snapshot to the mirror world,
+        dispatch sim/game-flow event batches → render
+```
+
+The host carries **two** `GameSession`s: an authoritative *server session* (the
+real sim) and its own *display session* (a mirror, like any client). A pure
+client carries only a display session and a `GameClient`. For local/single-player
+play the server and the single client are both in-process (`InProcessTransport`).
+
+### Lobby → gameplay → lobby flow
+
+The team-build menu already coordinates a networked start. `IPickerLobbyClient`
+(`src/interface/ui/picker_lobby_client.cpp`,
+`picker_lobby_network_client.cpp`) has three implementations:
+
+- `LocalPickerLobbyClient` — single-player / local split-screen
+- `HostPickerLobbyClient` — hosts a `LobbyServer` over a `MultiplexTransport`
+- `JoinPickerLobbyClient` — connects to a remote host
+
+```
+picker_team_build (lobby)                 each peer
+  ├── poll lobby, show status lines
+  ├── host: request_start_game() ──┐
+  └── join: wait for handoff       │   StartGame broadcast
+                                   ▼
+  install_gameplay_runtime() → reset_network_{host,client}_transport_shadow()
+        creates the per-level GameServer / GameClient on the live transport
+  glad_main()  ── play the level ──
+  glad_main returns (world.end != 0) → back to the team-build menu
+  resume_after_level()  reuse the SAME connection for the next level
+```
+
+Between levels every peer returns to the team-build menu (single-player parity).
+The lobby connection **persists across `glad_main`** — `install_gameplay_runtime`
+keeps the host/join client's transport refs and `LobbyServer` alive (dormant
+during gameplay; the lobby is never polled inside the game loop), and
+`resume_after_level()` re-syncs over the live socket rather than reconnecting.
+Finishing a level (win, exit-portal, or withdraw) ends every peer's display
+(terminal `EndGame`); the host advances the campaign cursor and the menu starts
+the next level fresh.
+
+### Per-player save isolation
+
+A networked session must not let one player's `save0` gain or lose another
+player's characters. The combined live roster is written to a transient
+`"netsession"` slot; each player's real `save0` only ever receives **its own**
+characters (matched by transient `guy::owner_player_index` / `owner_save_slot`
+tags carried on the snapshot wire), advanced as if it had played solo — see
+`SaveData::merge_owned_guys_from` and `persist_owned_characters_to_save0`.
 
 ---
 
@@ -569,22 +677,23 @@ ctest --preset ci-test         # Run tests
 
 ### SDL and Headless Build Targets
 
-The project builds two executables from shared source with platform-specific implementations:
+The project builds three executables from shared source with platform-specific implementations:
 
-- **`openglad`** (SDL client) — Full graphical game with rendering, audio, and input via SDL2. Platform-specific code lives in `src/sdl_client/`.
-- **`openglad_text`** (headless client) — SDL-free text-mode client for simulation, testing, and scripting. Platform-specific code lives in `src/text_client/`.
+- **`openglad`** (SDL client) — Full graphical game with rendering, audio, and input via SDL2. SDL platform code lives in `src/platform/sdl/` and `src/interface/`.
+- **`openglad_text`** (headless client) — SDL-free text-mode client for simulation, testing, and scripting. Headless platform code lives in `src/platform/text/`.
+- **`openglad_server`** (headless host) — SDL-free dedicated server that hosts a networked game (runs the authoritative `GameServer` + `LobbyServer` with no display); `src/server/headless_server_runtime.cpp`.
 
-Both targets link the same core modules (`og_core`, `og_sim`, `og_data`, `og_entities`, `og_io`). The boundary is enforced via link-time dispatch: shared code calls functions declared in `level_data_hooks.h` (e.g., `create_level_render`, `level_data_wire_entity_from_screen`), which have separate implementations in `sdl_context_services.cpp` (SDL) and `platform_headless.cpp` (headless).
+The targets link the same core components (`og_core`, `og_gameplay`, `og_resources`; SDL also links `og_interface` and `og_platform_sdl`). The SDL/headless boundary is enforced via link-time dispatch: shared code calls functions declared in `level_data_hooks.h` (e.g., `create_level_render`, `level_data_wire_entity_from_screen`), which have separate implementations in `sdl_context_services.cpp` (SDL) and `platform_headless.cpp` (headless).
 
 **Key boundary files:**
 
 | File | Purpose |
 |------|---------|
-| `src/sdl_client/runtime/sdl_context_services.cpp` | SDL implementations: view control wiring, entity rendering hooks, level draw |
-| `src/sdl_client/runtime/walker_render_bridge.cpp` | SDL `walker` member functions: render component, destructor, frame management |
-| `src/text_client/platform_headless.cpp` | Headless stubs: filesystem init, no-op/warning render functions |
-| `src/text_client/walker_headless.cpp` | Headless `walker` member functions: no render component, sim-only frame tracking |
-| `include/openglad/data/level_data_hooks.h` | Shared declarations enforcing signature parity between SDL and headless |
+| `src/interface/sdl_context_services.cpp` | SDL implementations: view control wiring, entity rendering hooks, level draw |
+| `src/interface/walker_render_bridge.cpp` | SDL `walker` member functions: render component, destructor, frame management |
+| `src/platform/text/platform_headless.cpp` | Headless stubs: filesystem init, no-op/warning render functions |
+| `src/platform/text/walker_headless.cpp` | Headless `walker` member functions: no render component, sim-only frame tracking |
+| `include/openglad/resources/level_data_hooks.h` | Shared declarations enforcing signature parity between SDL and headless |
 
 **Render component pattern:** `walker` holds an optional `std::unique_ptr<WalkerRender> render_`. SDL builds create the component in `attach_render()`; headless builds leave it null. Entity code checks `if (render_)` before delegating to the render component. `LevelData` follows the same pattern with `std::unique_ptr<LevelRender> renderer_`.
 
@@ -684,25 +793,33 @@ The GitHub Actions workflow (`.github/workflows/test.yml`) runs:
 
 | File | Purpose |
 |------|---------|
-| `src/glad.cpp` | **Entry point.** `main()`, Emscripten frame wrapper, game state machine |
+| `src/platform/sdl/glad.cpp` | **Entry point.** `main()`, Emscripten frame wrapper, game state machine |
+| `src/platform/sdl/glad_gameplay.cpp` | `glad_main` / `glad_init`: per-level gameplay bring-up and teardown |
 | `src/platform/sdl/game_session.cpp` | RAII root: creates screen, prefs, SessionScope, per-session surfaces |
 | `src/platform/sdl/demo.cpp` | Multi-session demo: N concurrent AI games in a grid |
-| `src/runtime/screen.cpp` | Game world: `act()` delegates to `SimWorld::tick()`, `redraw()` renders + dispatches events |
-| `src/runtime/game_loop.cpp` | Per-frame loop: `game_frame()` and `game_frame_with_result()` |
-| `src/runtime/game_context.cpp` | `GameContext` and `ctx()` global accessor |
-| `src/entities/walker.cpp` | Base entity class — all game objects inherit from this |
-| `src/entities/living.cpp` | AI behavior for enemies and NPCs |
+| `src/platform/game_context.cpp` | `GameContext` and `ctx()` global accessor |
+| `src/platform/sdl/game_loop.cpp` | Per-frame loop: `game_frame()` and `game_frame_with_result()` |
+| `src/interface/screen.cpp` | Game world wrapper: `tick_world()` drives `GameWorld::tick()`, `redraw()` renders + dispatches events |
+| `src/gameplay/game_world.cpp` | `GameWorld::tick()` — the deterministic, server-authoritative simulation step |
+| `src/gameplay/walker.cpp` | Base entity class — all game objects inherit from this |
+| `src/gameplay/living.cpp` | AI behavior for enemies and NPCs |
 | `src/gameplay/families/` | Data-driven `FamilyDescriptor` per-class files + registry |
-| `src/ui/picker.cpp` | Team selection UI — main menu loop |
-| `src/ui/level_editor.cpp` | Scenario editor (openscen binary) |
-| `src/render/video.cpp` | SDL2 graphics layer — pixel buffer management |
-| `src/render/view.cpp` | Viewport/camera system, split-screen rendering |
-| `src/data/level_data.cpp` | Level file loading and saving |
-| `src/data/save_data.cpp` | Save game serialization |
-| `src/input/input.cpp` | Keyboard/controller event handling |
-| `src/sim/sim_world.cpp` | Live game simulation tick used by the server-authoritative runtime |
-| `src/sim/sim_event_log.cpp` | Event accumulator: decouples sim from rendering/audio |
-| `src/render/walker_draw.cpp` | Entity draw methods (extracted from `walker.cpp`) |
+| `src/gameplay/sim_event_log.cpp` | Event accumulator: decouples sim from rendering/audio |
+| `src/gameplay/game_server.cpp` | Authoritative `GameServer` (multiplayer + local runtime) |
+| `src/gameplay/game_client.cpp` | `GameClient` mirror |
+| `src/gameplay/lobby_server.cpp` | Pre-game `LobbyServer` |
+| `src/gameplay/world_snapshot.cpp` | World state snapshot/delta serialization |
+| `src/gameplay/net_transport.cpp` | `ITransport` interface + message serialization |
+| `src/platform/sdl/local_transport_shadow.cpp` | Runs every game through the client-server runtime; lobby↔gameplay bridge |
+| `src/interface/ui/picker_lobby_network_client.cpp` | Host / Join lobby clients (WebSocket + relay) |
+| `src/interface/ui/picker.cpp` | Team selection UI — main menu loop |
+| `src/interface/ui/level_editor.cpp` | Scenario editor (openscen binary) |
+| `src/interface/render/graphlib.cpp` | SDL2 graphics layer — pixel buffer / draw primitives |
+| `src/interface/render/view.cpp` | Viewport/camera system, split-screen rendering |
+| `src/interface/render/walker_draw.cpp` | Entity draw methods (extracted from `walker.cpp`) |
+| `src/resources/level_file_io.cpp` | Level file loading and saving |
+| `src/resources/save_data.cpp` | Save game serialization |
+| `src/interface/input/input.cpp` | Keyboard/controller event handling |
 | `include/openglad/platform/game_session.h` | GameSession + SessionScope + Config definitions |
 | `include/openglad/gameplay/families/family_descriptor.h` | `FamilyDescriptor` struct for data-driven classes |
 | `include/openglad/gameplay/families/family_registry.h` | Family registry lookup API |

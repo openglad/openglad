@@ -52,6 +52,12 @@ sanitizers/tests to catch real issues.
   - Upstream: https://github.com/leethomason/MicroPather
   - Notes: A* pathfinding implementation. GRINLIZ_NO_STL is commented out to use std::vector.
 
+- LodePNG (`third_party/lodepng`)
+  - Version: 20260119 (`third_party/lodepng/lodepng.cpp` header comment: `LodePNG version`).
+  - Upstream: https://github.com/lvandeve/lodepng
+  - Notes: Zlib-licensed single-file PNG encoder/decoder used for indexed-color sprite
+    assets (`src/resources/io/og_file.cpp`).
+
 ## Upgrade Checklist
 
 1. Record the new upstream version (or commit hash) in this file.
