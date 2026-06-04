@@ -211,6 +211,68 @@ TEST(MenuLayout, networking_buttons_no_overlap)
     check_nav_in_range(buttons, count, "networking");
 }
 
+// Every networking control AND every piece of copy (title, field labels,
+// centered instruction lines) must fit inside the enclosing panel frame, so
+// nothing writes over the frame edge (regression for the long instruction line
+// overrunning the frame's right border).
+TEST(MenuLayout, networking_content_fits_within_panel_frame)
+{
+    button* buttons = picker_networking_buttons();
+    const int count = picker_networking_button_count();
+    text& mytext = og::runtime::current_session->myscreen_->text_normal;
+
+    const int fx1 = PICKER_NETWORKING_FRAME_X1;
+    const int fy1 = PICKER_NETWORKING_FRAME_Y1;
+    const int fx2 = PICKER_NETWORKING_FRAME_X2;
+    const int fy2 = PICKER_NETWORKING_FRAME_Y2;
+    ASSERT_LE(fx2, SCREEN_W);
+    ASSERT_LE(fy2, SCREEN_H);
+
+    const auto fits = [&](int x, int y, int w, int h, const char* what) {
+        EXPECT_GE(x, fx1) << what << " clips the frame's left edge";
+        EXPECT_GE(y, fy1) << what << " clips the frame's top edge";
+        EXPECT_LE(x + w, fx2) << what << " clips the frame's right edge";
+        EXPECT_LE(y + h, fy2) << what << " clips the frame's bottom edge";
+    };
+
+    for (int i = 0; i < count; ++i)
+    {
+        if (buttons[i].hidden)
+            continue;
+        fits(buttons[i].x, buttons[i].y, buttons[i].sizex, buttons[i].sizey,
+             buttons[i].id.c_str());
+    }
+
+    const int title_w = mytext.query_width(std::string_view("NETWORKING"));
+    fits(160 - title_w / 2, PICKER_NETWORKING_TITLE_Y, title_w, mytext.sizey,
+         "title");
+
+    static constexpr std::array<std::string_view, 4> kFrameFieldLabels{{
+        "JOIN IP / HOST", "PORT", "ROOM CODE", "ROOM VALUE",
+    }};
+    for (std::size_t i = 0; i < kFrameFieldLabels.size(); ++i)
+    {
+        const button& field = buttons[i + 1];
+        const int w = mytext.query_width(kFrameFieldLabels[i]);
+        fits(field.x - w - PICKER_NETWORKING_LABEL_GAP,
+             field.y + (field.sizey - mytext.sizey) / 2, w, mytext.sizey,
+             "field label");
+    }
+
+    const auto lines = og::ui::networking_menu_instruction_lines();
+    const int pitch = mytext.sizey + 1;
+    const int height = lines.empty()
+        ? 0
+        : mytext.sizey + static_cast<int>(lines.size() - 1) * pitch;
+    const int iy = buttons[5].y - PICKER_NETWORKING_INSTRUCTION_GAP - height;
+    for (std::size_t i = 0; i < lines.size(); ++i)
+    {
+        const int w = mytext.query_width(lines[i]);
+        fits(160 - w / 2, iy + static_cast<int>(i) * pitch, w, mytext.sizey,
+             "instruction line");
+    }
+}
+
 TEST(MenuLayout, networking_text_does_not_overlap_buttons)
 {
     button* buttons = picker_networking_buttons();
@@ -271,7 +333,7 @@ TEST(MenuLayout, networking_text_does_not_overlap_buttons)
         const std::string_view line = instruction_lines[line_index];
         const int line_w = mytext.query_width(line);
         const int line_h = mytext.sizey;
-        const int line_x = 44;
+        const int line_x = 160 - line_w / 2;
         const int line_y = instruction_y + static_cast<int>(line_index) * instruction_pitch;
 
         ASSERT_LE(line_x + line_w, SCREEN_W) << "instruction copy should remain on-screen";

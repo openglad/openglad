@@ -7,14 +7,27 @@ inline constexpr int32_t MENU_REDRAW = 2;
 inline constexpr int32_t MENU_OK     = 4;
 
 inline constexpr int32_t BUTTON_HEIGHT = 15;
+
+// Networking menu enclosing panel frame. Wide enough to contain the longest
+// copy (the centered instruction lines) with margin. draw_button() takes
+// corners (x1,y1,x2,y2); draw_button_inverted() takes (x,y,WIDTH,HEIGHT), so the
+// background is derived from these corners and can never disagree with the
+// border.
+inline constexpr int32_t PICKER_NETWORKING_FRAME_X1 = 18;
+inline constexpr int32_t PICKER_NETWORKING_FRAME_Y1 = 14;
+inline constexpr int32_t PICKER_NETWORKING_FRAME_X2 = 302;
+inline constexpr int32_t PICKER_NETWORKING_FRAME_Y2 = 184;
+inline constexpr int32_t PICKER_NETWORKING_FRAME_BORDER = 6;
+inline constexpr int32_t PICKER_NETWORKING_TITLE_Y = 26;
+
 inline constexpr int32_t PICKER_NETWORKING_FIELD_X = 128;
 inline constexpr int32_t PICKER_NETWORKING_FIELD_WIDTH = 132;
 inline constexpr int32_t PICKER_NETWORKING_FIELD_Y = 44;
 inline constexpr int32_t PICKER_NETWORKING_FIELD_PITCH = 22;
-inline constexpr int32_t PICKER_NETWORKING_ACTION_Y = 160;
+inline constexpr int32_t PICKER_NETWORKING_ACTION_Y = 156;
 inline constexpr int32_t PICKER_NETWORKING_ACTION_WIDTH = 74;
 inline constexpr int32_t PICKER_NETWORKING_LABEL_GAP = 8;
-inline constexpr int32_t PICKER_NETWORKING_INSTRUCTION_GAP = 6;
+inline constexpr int32_t PICKER_NETWORKING_INSTRUCTION_GAP = 8;
 
 // Forward declare button for menu descriptor arrays.
 struct button;
