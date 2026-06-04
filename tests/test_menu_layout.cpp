@@ -211,45 +211,6 @@ TEST(MenuLayout, networking_buttons_no_overlap)
     check_nav_in_range(buttons, count, "networking");
 }
 
-// Every networking control must live INSIDE the panel frame, so the framed
-// background encloses all the buttons (regression for BACK floating outside the
-// frame at 10,10, and for the background panel being drawn far larger than the
-// frame).
-TEST(MenuLayout, networking_buttons_inside_panel_frame)
-{
-    button* buttons = picker_networking_buttons();
-    const int count = picker_networking_button_count();
-    for (int i = 0; i < count; ++i)
-    {
-        const button& b = buttons[i];
-        if (b.hidden)
-            continue;
-        EXPECT_GE(b.x, PICKER_NETWORKING_FRAME_X1)
-            << "'" << b.id << "' left edge is outside the panel frame";
-        EXPECT_GE(b.y, PICKER_NETWORKING_FRAME_Y1)
-            << "'" << b.id << "' top edge is outside the panel frame";
-        EXPECT_LE(b.x + b.sizex, PICKER_NETWORKING_FRAME_X2)
-            << "'" << b.id << "' right edge is outside the panel frame";
-        EXPECT_LE(b.y + b.sizey, PICKER_NETWORKING_FRAME_Y2)
-            << "'" << b.id << "' bottom edge is outside the panel frame";
-    }
-
-    // The inset background must fit within the frame (the bug drew it from the
-    // frame corners as a width/height, so it spilled far past the border).
-    const int bg_x = PICKER_NETWORKING_FRAME_X1 + PICKER_NETWORKING_FRAME_BORDER;
-    const int bg_y = PICKER_NETWORKING_FRAME_Y1 + PICKER_NETWORKING_FRAME_BORDER;
-    const int bg_w = PICKER_NETWORKING_FRAME_X2 - PICKER_NETWORKING_FRAME_X1
-        - 2 * PICKER_NETWORKING_FRAME_BORDER;
-    const int bg_h = PICKER_NETWORKING_FRAME_Y2 - PICKER_NETWORKING_FRAME_Y1
-        - 2 * PICKER_NETWORKING_FRAME_BORDER;
-    EXPECT_GT(bg_w, 0);
-    EXPECT_GT(bg_h, 0);
-    EXPECT_LE(bg_x + bg_w, PICKER_NETWORKING_FRAME_X2);
-    EXPECT_LE(bg_y + bg_h, PICKER_NETWORKING_FRAME_Y2);
-    EXPECT_LE(PICKER_NETWORKING_FRAME_X2, SCREEN_W);
-    EXPECT_LE(PICKER_NETWORKING_FRAME_Y2, SCREEN_H);
-}
-
 TEST(MenuLayout, networking_text_does_not_overlap_buttons)
 {
     button* buttons = picker_networking_buttons();

@@ -639,19 +639,10 @@ public:
             retvalue = 0;
             sync_button_labels();
 
+            // No panel frame: like the other picker menus, the controls and copy
+            // sit directly on the backdrop. (A small centered frame used to box
+            // this menu, but long instruction copy overran its edge.)
             draw_backdrop();
-            og::runtime::current_session->myscreen_->draw_button(
-                PICKER_NETWORKING_FRAME_X1, PICKER_NETWORKING_FRAME_Y1,
-                PICKER_NETWORKING_FRAME_X2, PICKER_NETWORKING_FRAME_Y2, 1, 1);
-            og::runtime::current_session->myscreen_->draw_button_inverted(
-                PICKER_NETWORKING_FRAME_X1 + PICKER_NETWORKING_FRAME_BORDER,
-                PICKER_NETWORKING_FRAME_Y1 + PICKER_NETWORKING_FRAME_BORDER,
-                static_cast<Uint32>(PICKER_NETWORKING_FRAME_X2 -
-                                    PICKER_NETWORKING_FRAME_X1 -
-                                    2 * PICKER_NETWORKING_FRAME_BORDER),
-                static_cast<Uint32>(PICKER_NETWORKING_FRAME_Y2 -
-                                    PICKER_NETWORKING_FRAME_Y1 -
-                                    2 * PICKER_NETWORKING_FRAME_BORDER));
             draw_buttons(buttons, num_buttons);
 
             mytext.write_xy_center(160, 44, RED, "NETWORKING");
