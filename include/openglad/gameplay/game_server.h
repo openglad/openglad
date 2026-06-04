@@ -213,6 +213,8 @@ private:
     void clear_pending_exit_prompt();
     void clear_pause_state();
     void handle_exit_prompt_response(bool accepted);
+    // Withdraw ALL players to the current level (any peer's "quit this mission").
+    void abort_level_for_all();
     void handle_level_transition(std::int16_t next_level);
     // Forward a terminal EndGame (plus palette/redraw) to every display so each
     // peer shows the results screen and returns to the menu. Used by the

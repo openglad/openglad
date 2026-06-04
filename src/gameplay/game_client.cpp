@@ -497,6 +497,19 @@ void GameClient::send_exit_prompt_response(bool accepted)
     note_outbound_activity();
 }
 
+void GameClient::request_level_abort()
+{
+    update_transport_connection_state();
+    maybe_send_hello_if_needed();
+    ExitPromptResponseMessage message;
+    message.accepted = true;
+    message.abort_request = true;
+    transport_.send_exit_prompt_response(
+        server_peer_id_,
+        std::make_shared<ExitPromptResponseMessage>(message));
+    note_outbound_activity();
+}
+
 void GameClient::send_pause_request()
 {
     update_transport_connection_state();

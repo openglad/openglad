@@ -989,6 +989,66 @@ TEST(NetTransportInProcess,
         << "return-to-lobby withdraw must NOT re-set-up the client in-session";
 }
 
+// A client's unilateral "quit this mission" (request_level_abort) must withdraw
+// ALL players: the server forwards a terminal EndGame (retreat, ending=1) to
+// every peer so they return to the team-build menu together — NOT just leave the
+// requesting client (whose character would otherwise be converted to AI). No
+// in-session level reload.
+TEST(NetTransportInProcess, network_fixture_client_abort_request_withdraws_all_peers)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+    fixture.server().set_return_to_lobby_mode(true);
+
+    int withdraws = 0;
+    fixture.server().on_withdraw_accepted = [&](int /*destination*/) {
+        ++withdraws;
+        return true;
+    };
+
+    bool saw_endgame = false;
+    int endgame_ending = 99;
+    int saw_level_transition = 0;
+    fixture.client(0).set_game_flow_event_batch_callback(
+        [&](const og::sim::SimEventBatch& batch) {
+            for (const auto& e : batch.events)
+            {
+                if (e.kind == og::sim::EventKind::EndGame)
+                {
+                    saw_endgame = true;
+                    endgame_ending = static_cast<std::int32_t>(e.a);
+                }
+            }
+        });
+    fixture.client(0).set_initial_setup_callback(
+        [&](const og::sim::InitialSetupMessage&, bool is_level_transition) {
+            if (is_level_transition)
+                ++saw_level_transition;
+        });
+
+    // The client unilaterally requests to quit the mission (no pending prompt).
+    fixture.client(0).request_level_abort();
+    fixture.with_server_context([&] { fixture.server().step(); });
+    fixture.poll_client_messages(0);
+
+    EXPECT_EQ(1, withdraws)
+        << "a client abort should run the party-wide withdraw exactly once";
+    EXPECT_TRUE(saw_endgame)
+        << "a client abort must withdraw ALL peers via a terminal EndGame";
+    EXPECT_EQ(1, endgame_ending)
+        << "the abort withdraw should retreat (ending=1), not register a win/loss";
+    EXPECT_EQ(0, saw_level_transition)
+        << "a client abort must NOT load a new level in-session";
+}
+
 TEST(NetTransportInProcess, network_fixture_keeps_two_clients_in_sync)
 {
     og::sim::test::NetworkTestFixture fixture({

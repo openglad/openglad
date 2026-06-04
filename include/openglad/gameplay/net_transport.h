@@ -185,6 +185,11 @@ struct ExitPromptBroadcastMessage {
 
 struct ExitPromptResponseMessage {
     bool accepted = false;
+    // Client -> server unilateral "quit this mission" request (no pending
+    // prompt). The server withdraws ALL players to the current level so every
+    // peer returns to the team-build menu together — instead of this one client
+    // leaving and its character being converted to AI.
+    bool abort_request = false;
 
     bool operator==(const ExitPromptResponseMessage&) const = default;
 };

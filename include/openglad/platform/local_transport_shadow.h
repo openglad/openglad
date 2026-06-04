@@ -51,7 +51,12 @@ void reset_network_client_transport_shadow(
     std::size_t local_player_index);
 void clear_local_transport_shadow(GameSession& session) noexcept;
 bool local_transport_shadow_toggle_pause(GameSession& session);
-void local_transport_shadow_abort_level(GameSession& session);
+// Abort the current mission. Host / local play ends it authoritatively and
+// returns true. A networked client instead asks the server to withdraw ALL
+// players and returns false, signalling the caller to keep the display loop
+// running until the server's terminal broadcast ends it (so this client does
+// not just disconnect and leave its character as AI).
+bool local_transport_shadow_abort_level(GameSession& session);
 void local_transport_shadow_send_input(GameSession& session,
                                        const InputState& input,
                                        std::uint32_t tick);

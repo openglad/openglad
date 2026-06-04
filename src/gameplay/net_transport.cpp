@@ -672,6 +672,7 @@ std::vector<std::uint8_t> serialize_exit_prompt_response_message(
 {
     std::vector<std::uint8_t> payload;
     append_bool(payload, message.accepted);
+    append_bool(payload, message.abort_request);
     return wrap_transport_message(kExitPromptResponseMessageType, payload);
 }
 
@@ -682,6 +683,7 @@ deserialize_exit_prompt_response_message(std::span<const std::uint8_t> bytes)
         bytes, kExitPromptResponseMessageType,
         [](PayloadReader& reader, ExitPromptResponseMessage& message) {
             message.accepted = reader.read_bool();
+            message.abort_request = reader.read_bool();
         });
 }
 

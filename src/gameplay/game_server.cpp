@@ -1565,8 +1565,14 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
             break;
 
         case TypedReceivedMessageKind::ExitPromptResponse:
-            if (message.exit_prompt_response && pending_exit_prompt_state_.has_value())
-                handle_exit_prompt_response(message.exit_prompt_response->accepted);
+            if (message.exit_prompt_response)
+            {
+                if (message.exit_prompt_response->abort_request)
+                    abort_level_for_all();
+                else if (pending_exit_prompt_state_.has_value())
+                    handle_exit_prompt_response(
+                        message.exit_prompt_response->accepted);
+            }
             break;
 
         case TypedReceivedMessageKind::PauseBroadcast:
@@ -1751,6 +1757,31 @@ void GameServer::handle_exit_prompt_response(bool accepted)
     {
         forward_level_end_to_clients(prompt.withdraw_prompt ? 1 : 0,
                                      prompt.destination_level);
+        return;
+    }
+
+    prepare_clients_for_loaded_level();
+}
+
+void GameServer::abort_level_for_all()
+{
+    // A player chose "Quit this mission". Treat it as a deliberate party-wide
+    // WITHDRAW to the current level: revert the roster to the level's start and
+    // return every peer to the team-build menu (retry available) — rather than
+    // the requesting client simply leaving and its character becoming AI. Any
+    // player (host or client) may trigger this.
+    clear_pending_exit_prompt();
+    clear_pause_state();
+
+    const int destination = static_cast<int>(world_.current_scenario);
+    const bool handled =
+        on_withdraw_accepted ? on_withdraw_accepted(destination) : false;
+    if (!handled)
+        return;
+
+    if (return_to_lobby_mode_)
+    {
+        forward_level_end_to_clients(1, destination);
         return;
     }
 

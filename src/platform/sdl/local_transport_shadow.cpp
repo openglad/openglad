@@ -773,25 +773,44 @@ bool local_transport_shadow_toggle_pause(GameSession& session)
     return true;
 }
 
-void local_transport_shadow_abort_level(GameSession& session)
+bool local_transport_shadow_abort_level(GameSession& session)
 {
     const auto runtime = session.local_transport_runtime_;
-    if (runtime == nullptr || !runtime->authoritative_mode() ||
-        runtime->server == nullptr)
+    if (runtime == nullptr)
+        return true; // no networking: caller ends the mission locally
+
+    if (runtime->authoritative_mode() && runtime->server != nullptr)
     {
-        return;
+        // Host / local split-screen: end the level authoritatively. The server
+        // world.end=1 propagates to every display via the broadcast snapshot, so
+        // all peers return to the team-build menu.
+        screen* const server_screen = runtime->server_screen();
+        if (server_screen == nullptr)
+            return true;
+
+        auto server_scope = runtime->server_session->activate();
+        GameplayContextGuard server_gameplay_scope(&runtime->server_session->game_);
+        server_screen->world().end = 1;
+        runtime->server->broadcast_current_state(
+            og::sim::SnapshotCaptureMode::Peek,
+            og::sim::EventDeliveryMode::Skip);
+        return true;
     }
 
-    screen* const server_screen = runtime->server_screen();
-    if (server_screen == nullptr)
-        return;
+    // Networked client (no authoritative server): ask the server to withdraw
+    // ALL players to the current level. The display stays live until the
+    // server's terminal broadcast ends it, so this peer's character is NOT left
+    // behind as AI. Return false so the caller waits for that broadcast instead
+    // of tearing down locally (which would just disconnect this one player).
+    if (runtime->display_client_index < runtime->clients.size() &&
+        runtime->clients[runtime->display_client_index].game_client != nullptr)
+    {
+        runtime->clients[runtime->display_client_index]
+            .game_client->request_level_abort();
+        return false;
+    }
 
-    auto server_scope = runtime->server_session->activate();
-    GameplayContextGuard server_gameplay_scope(&runtime->server_session->game_);
-    server_screen->world().end = 1;
-    runtime->server->broadcast_current_state(
-        og::sim::SnapshotCaptureMode::Peek,
-        og::sim::EventDeliveryMode::Skip);
+    return true; // no client to relay through: fall back to a local end
 }
 
 void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)

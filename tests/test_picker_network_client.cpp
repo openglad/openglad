@@ -2986,6 +2986,207 @@ TEST(PickerNetworkClient, host_and_join_join_disconnect_between_levels_reconcile
         << "the host should still be able to start a level after a peer leaves";
 }
 
+// A CLIENT choosing "Quit this mission" must withdraw ALL players (everyone
+// returns to the team-build menu together), not just leave the client behind as
+// AI. End-to-end proof: the join's local abort sends an abort request to the
+// server, which ends the level for BOTH peers.
+TEST(PickerNetworkClient, host_and_join_client_quit_mission_withdraws_both_peers)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& host_save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard host_save_guard(host_save);
+    PickerRuntimeGuard runtime_guard;
+    GameplayRunGuard gameplay_run_guard;
+    prepare_allied_host_network_save(host_save);
+    g_start_game_requested = false;
+    set_game_speed(0.0f);
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    host_client->initialize_from_save();
+
+    og::runtime::GameSession::Config join_cfg;
+    join_cfg.create_display = false;
+    join_cfg.install_legacy_globals = false;
+    og::runtime::GameSession join_session(join_cfg);
+    prepare_single_member_network_save(
+        join_session.myscreen_->save_data, 1, "Joiner");
+
+    og::ui::PickerJoinGameOptions join_options;
+    join_options.mode = og::ui::PickerJoinMode::Direct;
+    join_options.direct_endpoint =
+        std::format("127.0.0.1:{}", host_options.port);
+    std::unique_ptr<og::ui::IPickerLobbyClient> join_client;
+    {
+        auto join_scope = join_session.activate();
+        join_client = og::ui::create_join_picker_lobby_client(join_options);
+        join_client->initialize_from_save();
+    }
+
+    struct CleanupGuard
+    {
+        og::runtime::GameSession* host_session = nullptr;
+        og::runtime::GameSession* join_session = nullptr;
+        og::ui::IPickerLobbyClient* host_client = nullptr;
+        og::ui::IPickerLobbyClient* join_client = nullptr;
+
+        ~CleanupGuard()
+        {
+            if (join_session != nullptr)
+            {
+                auto join_scope = join_session->activate();
+                og::runtime::clear_local_transport_shadow(*join_session);
+                if (join_client != nullptr)
+                    join_client->shutdown();
+                if (join_session->myscreen_ != nullptr)
+                {
+                    for (auto& view : join_session->myscreen_->viewob)
+                        if (view != nullptr)
+                            view->control = nullptr;
+                    join_session->myscreen_->world().delete_objects();
+                }
+            }
+            if (host_session != nullptr)
+            {
+                og::runtime::clear_local_transport_shadow(*host_session);
+                if (host_client != nullptr)
+                    host_client->shutdown();
+                if (host_session->myscreen_ != nullptr)
+                {
+                    for (auto& view : host_session->myscreen_->viewob)
+                        if (view != nullptr)
+                            view->control = nullptr;
+                    host_session->myscreen_->world().delete_objects();
+                }
+            }
+        }
+    } cleanup;
+
+    cleanup.host_session = active_game_session();
+    cleanup.join_session = &join_session;
+    cleanup.host_client = host_client.get();
+    cleanup.join_client = join_client.get();
+    ASSERT_NE(nullptr, cleanup.host_session);
+
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        bool join_ready = false;
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+            join_ready = status_lines_contain_exact(
+                join_client->status_lines(), "Lobby: 2 players");
+        }
+        return status_lines_contain_exact(host_client->status_lines(),
+                                          "Lobby: 2 players") && join_ready;
+    })) << "host and join should converge on a two-player lobby";
+
+    ASSERT_TRUE(host_save.save("save0"));
+    ASSERT_TRUE(host_client->request_start_game());
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        bool join_has_handoff = false;
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+            join_has_handoff = join_client->has_game_start_config();
+        }
+        return host_client->has_game_start_config() && join_has_handoff;
+    })) << "both peers should receive the gameplay handoff";
+
+    {
+        const auto host_config = host_client->consume_game_start_config();
+        ASSERT_TRUE(host_config.has_value());
+        auto host_scope = cleanup.host_session->activate();
+        ActivePickerLobbyClientGuard active_client(host_client.get());
+        ready_screen_for_game_start(
+            *cleanup.host_session->myscreen_, &*host_config);
+        glad_init(false, &*host_config);
+    }
+    {
+        auto join_scope = join_session.activate();
+        const auto join_config = join_client->consume_game_start_config();
+        ASSERT_TRUE(join_config.has_value());
+        ActivePickerLobbyClientGuard active_client(join_client.get());
+        ready_screen_for_game_start(*join_session.myscreen_, &*join_config);
+        glad_init(false, &*join_config);
+    }
+
+    ASSERT_TRUE(wait_until([&] {
+        bool host_ready = false;
+        {
+            auto host_scope = cleanup.host_session->activate();
+            og::runtime::local_transport_shadow_finish_tick(*cleanup.host_session);
+            const og::sim::GameClient* const dc =
+                cleanup.host_session->myscreen_->render_interpolation_client();
+            host_ready = dc != nullptr && dc->baseline().has_value();
+        }
+        bool join_ready = false;
+        {
+            auto join_scope = join_session.activate();
+            og::runtime::local_transport_shadow_finish_tick(join_session);
+            const og::sim::GameClient* const dc =
+                join_session.myscreen_->render_interpolation_client();
+            join_ready = dc != nullptr && dc->baseline().has_value();
+        }
+        return host_ready && join_ready;
+    })) << "both runtimes should receive their initial gameplay snapshots";
+
+    // Both peers are live on level 1.
+    {
+        auto host_scope = cleanup.host_session->activate();
+        ASSERT_EQ(0, static_cast<int>(
+                         cleanup.host_session->myscreen_->world().end));
+    }
+
+    // --- The JOIN (a client, not the host) chooses "Quit this mission". This
+    // asks the server to withdraw everyone — it must return FALSE (request sent,
+    // wait for the server) rather than ending locally.
+    {
+        auto join_scope = join_session.activate();
+        EXPECT_FALSE(og::runtime::local_transport_shadow_abort_level(join_session))
+            << "a client abort should defer to the server, not end locally";
+    }
+
+    const InputState neutral{};
+    std::uint32_t pump_tick = 1;
+    const auto pump = [&](int iterations) {
+        for (int i = 0; i < iterations; ++i, ++pump_tick)
+        {
+            {
+                auto host_scope = cleanup.host_session->activate();
+                og::runtime::local_transport_shadow_send_input(
+                    *cleanup.host_session, neutral, pump_tick);
+                og::runtime::local_transport_shadow_finish_tick(
+                    *cleanup.host_session);
+            }
+            {
+                auto join_scope = join_session.activate();
+                og::runtime::local_transport_shadow_send_input(
+                    join_session, neutral, pump_tick);
+                og::runtime::local_transport_shadow_finish_tick(join_session);
+            }
+        }
+    };
+    const auto peer_finished = [&](og::runtime::GameSession& session) -> bool {
+        auto scope = session.activate();
+        return session.myscreen_->world().end != 0;
+    };
+
+    bool both_ended = false;
+    for (int round = 0; round < 80 && !both_ended; ++round)
+    {
+        pump(5);
+        both_ended = peer_finished(*cleanup.host_session) &&
+            peer_finished(join_session);
+    }
+    EXPECT_TRUE(both_ended)
+        << "a client's 'Quit this mission' must withdraw BOTH peers (the host's "
+           "level must end too) — not just leave the client behind as AI";
+}
+
 TEST(PickerNetworkClient,
      host_and_join_allied_level1_clear_stale_preclaim_and_keep_free_soldier_switchable)
 {

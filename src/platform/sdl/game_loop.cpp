@@ -344,12 +344,23 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
                     s.redrawme = 1;
                     if (result) // player wants to quit
                     {
-                        og::runtime::local_transport_shadow_abort_level(
-                            *gameplay_session);
-                        st.done = true;
-                        og::runtime::finish_replay_recording();
-                        results_screen(2, -1); // Should not show an extra popup
-                        return GameFrameResult::AbortedMission;
+                        if (og::runtime::local_transport_shadow_abort_level(
+                                *gameplay_session))
+                        {
+                            // Host / local / single-player: the mission ended
+                            // authoritatively here.
+                            st.done = true;
+                            og::runtime::finish_replay_recording();
+                            results_screen(2, -1); // Should not show an extra popup
+                            return GameFrameResult::AbortedMission;
+                        }
+
+                        // Networked client: the server was asked to withdraw ALL
+                        // players. Keep this display loop running until the
+                        // server's terminal broadcast ends it (world.end != 0),
+                        // so this client does not just leave with its character
+                        // converted to AI.
+                        break;
                     }
                     else
                     {

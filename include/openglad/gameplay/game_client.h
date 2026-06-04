@@ -34,6 +34,11 @@ public:
     void send_client_ready();
     void send_keyframe_request(std::uint32_t last_seen_tick = 0);
     void send_exit_prompt_response(bool accepted);
+    // Ask the server to withdraw ALL players to the current level (return every
+    // peer to the team-build menu). Used when this peer chooses "Quit this
+    // mission" — a deliberate party-wide retreat, distinct from a disconnect
+    // (which only converts the leaving player's character to AI).
+    void request_level_abort();
     void send_pause_request();
     void send_pause_response();
     void send_snapshot_hash_check();
