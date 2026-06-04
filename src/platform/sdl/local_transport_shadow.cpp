@@ -504,6 +504,20 @@ bool batch_ends_display_session(const og::sim::SimEventBatch& batch)
         });
 }
 
+// True only when this batch carries a WON level end (EndGame with ending==0 —
+// a completed/exited level). A withdraw, abort, or defeat carries ending==1.
+// The per-player save0 merge only happens on a win, so deaths persist on a win
+// while a withdraw/abort reverts the roster to its pre-level state.
+bool batch_is_level_won(const og::sim::SimEventBatch& batch)
+{
+    for (const auto& event : batch.events)
+    {
+        if (event.kind == og::sim::EventKind::EndGame)
+            return static_cast<std::int32_t>(event.a) == 0;
+    }
+    return false;
+}
+
 void respond_to_exit_prompt(screen& gameplay_screen,
                             og::sim::GameClient& game_client,
                             const og::sim::ExitPromptBroadcastMessage& prompt)
@@ -664,11 +678,15 @@ void configure_display_game_client(og::runtime::LocalTransportRuntime& runtime,
                 (gameplay_screen.world().end != 0 ||
                  batch_ends_display_session(batch)))
             {
-                // Final-level persist for a real client (no further level
-                // transition will fire). Host persists server-side.
+                // Persist this client's own characters back to save0 only on a
+                // WON level (the host persists server-side). A withdraw / abort /
+                // defeat (ending != 0) must NOT persist — the roster reverts to
+                // its pre-level state, so a character that died during a level we
+                // later abandon is not lost.
                 if (runtime_ptr->mode ==
                         og::runtime::LocalTransportRuntime::Mode::ClientOnly &&
-                    display_player_index.has_value())
+                    display_player_index.has_value() &&
+                    batch_is_level_won(batch))
                 {
                     persist_owned_characters_to_save0(
                         gameplay_screen,

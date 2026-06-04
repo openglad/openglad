@@ -220,6 +220,70 @@ TEST(SaveLoadTeam, merge_owned_guys_persists_only_own_characters) {
     scr->save_data.reset();
 }
 
+// A brought character that DIES during a won level must be DROPPED from the
+// owner's save0 (death sticks), and the roster must re-densify so SaveData::save
+// never hits a gap. Survivors keep their growth; not-brought characters stay.
+TEST(SaveLoadTeam, merge_owned_guys_drops_dead_own_characters) {
+    screen* scr = og::runtime::current_session->myscreen_;
+
+    scr->save_data.reset();
+    scr->save_data.numplayers = 1;
+    scr->save_data.current_campaign = "org.openglad.gladiator";
+    {
+        auto a = std::make_unique<guy>(FAMILY_SOLDIER); a->name = "ALIVE_A"; a->id = 1; a->exp = 0;
+        auto b = std::make_unique<guy>(FAMILY_ARCHER);  b->name = "DIES_B";  b->id = 2; b->exp = 0;
+        auto c = std::make_unique<guy>(FAMILY_MAGE);    c->name = "ALIVE_C"; c->id = 3; c->exp = 0;
+        scr->save_data.team_list[0] = std::move(a);
+        scr->save_data.team_list[1] = std::move(b);
+        scr->save_data.team_list[2] = std::move(c);
+        scr->save_data.team_size = 3;
+    }
+    ASSERT_TRUE(scr->save_data.save("save0"));
+
+    std::list<std::unique_ptr<walker>> oblist;
+    auto add_walker = [&](unsigned char family, int guy_id, std::uint8_t owner,
+                          std::uint8_t slot, std::uint32_t exp, bool dead,
+                          const char* name) {
+        guy g(static_cast<int>(family));
+        g.id = guy_id;
+        g.name = name;
+        std::unique_ptr<walker> w = guy_create_walker_owned(g, scr);
+        ASSERT_TRUE(w != nullptr);
+        w->set_dead(dead ? 1 : 0);
+        w->myguy->owner_player_index = owner;
+        w->myguy->owner_save_slot = slot;
+        w->myguy->exp = exp;
+        oblist.push_back(std::move(w));
+    };
+    add_walker(FAMILY_SOLDIER, 1, /*owner=*/0, /*slot=*/0, /*exp=*/5000, /*dead=*/false, "ALIVE_A");
+    add_walker(FAMILY_ARCHER,  2, /*owner=*/0, /*slot=*/1, /*exp=*/0,    /*dead=*/true,  "DIES_B");
+    add_walker(FAMILY_MAGE,    3, /*owner=*/0, /*slot=*/2, /*exp=*/8000, /*dead=*/false, "ALIVE_C");
+
+    SaveData merged;
+    ASSERT_EQ(SaveDataIoError::None, merged.load_with_error("save0"));
+    merged.merge_owned_guys_from(oblist, /*owner_player_index=*/0);
+
+    // The dead character is gone; the roster compacted to the two survivors.
+    EXPECT_EQ(2, static_cast<int>(merged.team_size))
+        << "the dead brought character should be dropped";
+    bool found_dead = false;
+    bool found_a = false;
+    bool found_c = false;
+    for (int i = 0; i < merged.team_size; ++i)
+    {
+        ASSERT_TRUE(merged.team_list[i] != nullptr)
+            << "roster must stay dense after dropping the dead character";
+        if (merged.team_list[i]->name == "DIES_B") found_dead = true;
+        if (merged.team_list[i]->name == "ALIVE_A") found_a = true;
+        if (merged.team_list[i]->name == "ALIVE_C") found_c = true;
+    }
+    EXPECT_FALSE(found_dead) << "death must stick — DIES_B must not survive the win";
+    EXPECT_TRUE(found_a);
+    EXPECT_TRUE(found_c);
+
+    scr->save_data.reset();
+}
+
 // Test: Navigate to Load Team menu via UI, see the load slots, and exit
 //
 // Flow: Main Menu -> Continue -> Load Team -> Back -> Back

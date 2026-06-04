@@ -756,6 +756,45 @@ TEST(NetTransportInProcess, network_fixture_freezes_on_exit_prompt_and_resumes)
     fixture.expect_clients_match_server();
 }
 
+// The exit/withdraw prompt must be shown ONLY to the player who triggered it.
+// Broadcasting the blocking yes/no to every display would force the whole party
+// to confirm and freeze the host loop (hence the server) on its own modal — so a
+// client's "Yes" could not be processed until the host also answered. Regression
+// for "client touched the exit and said Yes, but nothing happened until I said
+// Yes on the server too".
+TEST(NetTransportInProcess, network_fixture_exit_prompt_only_reaches_triggering_player)
+{
+    og::sim::test::NetworkTestFixture fixture({
+        .player_count = 2,
+        .level_id = 1,
+        .tick_count = 0,
+        .validate_serialization = true,
+        .input_sequence = {},
+    });
+
+    fixture.load_level();
+    fixture.initial_sync();
+
+    // Player 1 (a non-host client) is the one who touched the exit.
+    walker* const trigger = fixture.server_control(1);
+    ASSERT_NE(nullptr, trigger);
+    trigger->set_skip_exit(10);
+
+    fixture.with_server_context([&] {
+        fixture.server_events().push_with_text(
+            og::sim::EventKind::RequestExitConfirmation, "Exit now?", 5u, 0u);
+        fixture.server().step();
+    });
+    fixture.poll_client_messages(0);
+    fixture.poll_client_messages(1);
+
+    EXPECT_TRUE(fixture.client(1).last_exit_prompt().has_value())
+        << "the triggering player must be prompted";
+    EXPECT_FALSE(fixture.client(0).last_exit_prompt().has_value())
+        << "a non-triggering player must NOT be prompted (its blocking modal "
+           "would otherwise stall the exit until it also answered)";
+}
+
 // Accepting a WITHDRAW (retreat to another level) is a server-driven transition,
 // like a win/exit: the server runs on_withdraw_accepted then re-sets-up the
 // clients. This must NOT freeze the destination level. Regression for the

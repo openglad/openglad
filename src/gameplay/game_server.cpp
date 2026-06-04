@@ -2228,12 +2228,43 @@ void GameServer::maybe_resolve_world_events(SimEventBatch& batch,
     message.destination_level = prompt.destination_level;
     message.withdraw_prompt = prompt.withdraw_prompt;
     message.prompt_text = prompt.prompt_text;
-    for (const auto& [peer_id, client] : clients_)
-    {
-        (void)client;
+
+    // Prompt ONLY the player who triggered the exit/withdraw. Showing the
+    // blocking yes/no on every display would (a) force the whole party to
+    // confirm and (b) freeze the host's loop — and therefore the server — on its
+    // own modal, so a client's "Yes" couldn't be processed until the host also
+    // answered. The triggering player's confirmation drives the exit/withdraw
+    // for everyone (handle_exit_prompt_response -> forward_level_end_to_clients).
+    const auto send_prompt_to = [&](og::sim::PeerId peer_id) {
         transport_.send_exit_prompt_broadcast(
-            peer_id,
-            std::make_shared<ExitPromptBroadcastMessage>(message));
+            peer_id, std::make_shared<ExitPromptBroadcastMessage>(message));
+    };
+
+    bool prompted_trigger = false;
+    if (prompt.triggering_player_index != static_cast<std::size_t>(-1))
+    {
+        for (const auto& [peer_id, client] : clients_)
+        {
+            if (client.has_player_binding &&
+                client.player_index == prompt.triggering_player_index)
+            {
+                send_prompt_to(peer_id);
+                prompted_trigger = true;
+                break;
+            }
+        }
+    }
+
+    if (!prompted_trigger)
+    {
+        // Couldn't identify the triggering player (e.g. a synthesized event):
+        // fall back to prompting everyone — an extra confirmation beats a stuck
+        // exit.
+        for (const auto& [peer_id, client] : clients_)
+        {
+            (void)client;
+            send_prompt_to(peer_id);
+        }
     }
 
     (void)withdraw_request;
