@@ -42,8 +42,8 @@ openglad/
 │   ├── interface/          screen/view/render/text, picker/help/editor/results UI
 │   └── platform/           sdl runtime/session/loop/audio/video, text client
 │
-├── tests/                  Integration test suite (~172 test files, ~1331 cases)
-│   └── unit/               Headless unit tests (~10 files, ~152 cases)
+├── tests/                  Integration test suite (SDL)
+│   └── unit/               Headless unit tests
 │
 ├── third_party/            Vendored external libraries
 │   ├── physfs/             PhysicsFS 3.2.0 (virtual filesystem)
@@ -659,9 +659,9 @@ ctest --preset ci-test         # Run tests
 - `openglad_demo` — Multi-session demo (N concurrent AI-controlled games in a grid)
 - `openglad_text` — Headless text-mode client (no SDL)
 
-**Test executables (28 CTest entries):**
-- `og_unit_sim`, `og_unit_families`, `og_unit_entity`, `og_unit_data` — Four headless unit binaries (291 tests total)
-- `og_test_walker_combat` through `og_test_mass_coverage` — Twenty SDL integration group binaries (1496 tests total)
+**Test executables (run via `ctest --preset ci-test`):**
+- `og_unit_*` (e.g. `og_unit_sim`, `og_unit_families`, `og_unit_entity`, `og_unit_data`) — headless unit binaries
+- `og_test_*` (e.g. `og_test_walker_combat` … `og_test_mass_coverage`) — SDL integration group binaries
 - `openglad_text_sim` — Text client simulation tests
 - `openglad_text_picker_interactive` — Text client picker tests
 - `openglad_text_unsupported` — Text client unsupported-operation tests

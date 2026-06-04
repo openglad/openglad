@@ -159,8 +159,8 @@ brew install googletest             # macOS
 
 | Binary | Description |
 |--------|-------------|
-| `og_unit_*` | Four headless unit group binaries (291 tests total) |
-| `og_test_*` | Twenty SDL integration group binaries (1496 tests total) |
+| `og_unit_*` | Headless unit group binaries |
+| `og_test_*` | SDL integration group binaries |
 | `openglad_text` | Headless text client exercised via CTest script entries |
 
 Integration groups use `tests/integration_main.cpp`. Headless unit groups use `tests/unit/unit_main.cpp`.
