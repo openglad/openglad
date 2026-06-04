@@ -639,13 +639,29 @@ public:
             retvalue = 0;
             sync_button_labels();
 
-            // No panel frame: like the other picker menus, the controls and copy
-            // sit directly on the backdrop. (A small centered frame used to box
-            // this menu, but long instruction copy overran its edge.)
+            // No single panel frame (long instruction copy overran its edge).
+            // Instead each text label gets its own small inset box so it stays
+            // readable against the backdrop, like the rest of the menu's
+            // recessed panels.
             draw_backdrop();
             draw_buttons(buttons, num_buttons);
 
-            mytext.write_xy_center(160, 44, RED, "NETWORKING");
+            screen* const myscreen = og::runtime::current_session->myscreen_;
+            const auto draw_boxed_label =
+                [&](Sint32 x, Sint32 y, std::string_view t, unsigned char color) {
+                    const Sint32 w = mytext.query_width(t);
+                    myscreen->draw_button_inverted(
+                        x - 3, y - 2,
+                        static_cast<Uint32>(w + 6),
+                        static_cast<Uint32>(mytext.sizey + 3));
+                    mytext.write_xy(x, y, t, color);
+                };
+            const auto draw_boxed_label_center =
+                [&](Sint32 cx, Sint32 y, std::string_view t, unsigned char color) {
+                    draw_boxed_label(cx - mytext.query_width(t) / 2, y, t, color);
+                };
+
+            draw_boxed_label_center(160, 22, "NETWORKING", RED);
             static constexpr std::array<std::string_view, 4> k_field_labels{{
                 "JOIN IP / HOST",
                 "PORT",
@@ -663,7 +679,7 @@ public:
                     PICKER_NETWORKING_LABEL_GAP;
                 const Sint32 label_y =
                     field.y + (field.sizey - mytext.sizey) / 2;
-                mytext.write_xy(label_x, label_y, label, DARK_BLUE);
+                draw_boxed_label(label_x, label_y, label, DARK_BLUE);
             }
 
             const Sint32 instruction_pitch = mytext.sizey + 1;
@@ -680,7 +696,7 @@ public:
                  line_index < instruction_lines.size();
                  ++line_index)
             {
-                mytext.write_xy(
+                draw_boxed_label(
                     44,
                     instruction_y +
                         static_cast<Sint32>(line_index) * instruction_pitch,
