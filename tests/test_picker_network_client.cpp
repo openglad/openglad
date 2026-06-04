@@ -2821,6 +2821,171 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
     check_on_level_2(join_session, "join");
 }
 
+// P4 edge case: a peer that DISCONNECTS between levels (over the persisted
+// connection) must be reconciled by the host's surviving LobbyServer — the host
+// drops back to a one-player lobby and can still start the next level solo. This
+// exercises the persisted-connection disconnect path (the LobbyServer is kept
+// alive across gameplay, so its peer tracking must handle a drop on resume).
+TEST(PickerNetworkClient, host_and_join_join_disconnect_between_levels_reconciles_host_lobby)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& host_save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard host_save_guard(host_save);
+    PickerRuntimeGuard runtime_guard;
+    GameplayRunGuard gameplay_run_guard;
+    prepare_allied_host_network_save(host_save);
+    g_start_game_requested = false;
+    set_game_speed(0.0f);
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    host_client->initialize_from_save();
+
+    og::runtime::GameSession::Config join_cfg;
+    join_cfg.create_display = false;
+    join_cfg.install_legacy_globals = false;
+    og::runtime::GameSession join_session(join_cfg);
+    prepare_single_member_network_save(
+        join_session.myscreen_->save_data, 1, "Joiner");
+
+    og::ui::PickerJoinGameOptions join_options;
+    join_options.mode = og::ui::PickerJoinMode::Direct;
+    join_options.direct_endpoint =
+        std::format("127.0.0.1:{}", host_options.port);
+    std::unique_ptr<og::ui::IPickerLobbyClient> join_client;
+    {
+        auto join_scope = join_session.activate();
+        join_client = og::ui::create_join_picker_lobby_client(join_options);
+        join_client->initialize_from_save();
+    }
+
+    struct CleanupGuard
+    {
+        og::runtime::GameSession* host_session = nullptr;
+        og::runtime::GameSession* join_session = nullptr;
+        og::ui::IPickerLobbyClient* host_client = nullptr;
+        og::ui::IPickerLobbyClient* join_client = nullptr;
+
+        ~CleanupGuard()
+        {
+            if (join_session != nullptr)
+            {
+                auto join_scope = join_session->activate();
+                og::runtime::clear_local_transport_shadow(*join_session);
+                if (join_client != nullptr)
+                    join_client->shutdown();
+                if (join_session->myscreen_ != nullptr)
+                    join_session->myscreen_->world().delete_objects();
+            }
+            if (host_session != nullptr)
+            {
+                og::runtime::clear_local_transport_shadow(*host_session);
+                if (host_client != nullptr)
+                    host_client->shutdown();
+                if (host_session->myscreen_ != nullptr)
+                    host_session->myscreen_->world().delete_objects();
+            }
+        }
+    } cleanup;
+
+    cleanup.host_session = active_game_session();
+    cleanup.join_session = &join_session;
+    cleanup.host_client = host_client.get();
+    cleanup.join_client = join_client.get();
+    ASSERT_NE(nullptr, cleanup.host_session);
+
+    // Converge a two-player lobby.
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        bool join_ready = false;
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+            join_ready = status_lines_contain_exact(
+                join_client->status_lines(), "Lobby: 2 players");
+        }
+        return status_lines_contain_exact(host_client->status_lines(),
+                                          "Lobby: 2 players") && join_ready;
+    })) << "host and join should converge on a two-player lobby";
+
+    // Start level 1 (establishes the per-level runtime on the live connection).
+    ASSERT_TRUE(host_save.save("save0"));
+    ASSERT_TRUE(host_client->request_start_game());
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        bool join_has_handoff = false;
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+            join_has_handoff = join_client->has_game_start_config();
+        }
+        return host_client->has_game_start_config() && join_has_handoff;
+    })) << "both peers should receive the gameplay handoff";
+
+    {
+        const auto host_config = host_client->consume_game_start_config();
+        ASSERT_TRUE(host_config.has_value());
+        auto host_scope = cleanup.host_session->activate();
+        ActivePickerLobbyClientGuard active_client(host_client.get());
+        ready_screen_for_game_start(
+            *cleanup.host_session->myscreen_, &*host_config);
+        glad_init(false, &*host_config);
+    }
+    {
+        auto join_scope = join_session.activate();
+        const auto join_config = join_client->consume_game_start_config();
+        ASSERT_TRUE(join_config.has_value());
+        ActivePickerLobbyClientGuard active_client(join_client.get());
+        ready_screen_for_game_start(*join_session.myscreen_, &*join_config);
+        glad_init(false, &*join_config);
+    }
+
+    // Simulate glad_main exit on both peers (per-level runtime torn down, lobby
+    // connection survives) and re-enter the team-build menu over it.
+    {
+        auto host_scope = cleanup.host_session->activate();
+        og::runtime::clear_local_transport_shadow(*cleanup.host_session);
+        ActivePickerLobbyClientGuard active_client(host_client.get());
+        host_client->resume_after_level();
+    }
+    {
+        auto join_scope = join_session.activate();
+        og::runtime::clear_local_transport_shadow(join_session);
+        ActivePickerLobbyClientGuard active_client(join_client.get());
+        join_client->resume_after_level();
+    }
+
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+        }
+        return status_lines_contain_exact(host_client->status_lines(),
+                                          "Lobby: 2 players");
+    })) << "the lobby should re-converge to two players over the live connection";
+
+    // The join LEAVES between levels (closes its connection).
+    {
+        auto join_scope = join_session.activate();
+        join_client->shutdown();
+    }
+    cleanup.join_client = nullptr; // already shut down
+
+    // The host's surviving LobbyServer reconciles the dropped peer.
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        return status_lines_contain_exact(host_client->status_lines(),
+                                          "Lobby: 1 player");
+    })) << "the host lobby must reconcile to one player after the join leaves";
+
+    // The host can still start the next level solo over the surviving connection.
+    EXPECT_TRUE(host_client->request_start_game())
+        << "the host should still be able to start a level after a peer leaves";
+}
+
 TEST(PickerNetworkClient,
      host_and_join_allied_level1_clear_stale_preclaim_and_keep_free_soldier_switchable)
 {
