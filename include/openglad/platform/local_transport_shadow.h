@@ -67,6 +67,17 @@ void local_transport_shadow_finish_tick(GameSession& session);
 // nullptr for a client-only or non-networked session. Lets tests reach into the
 // authoritative world (e.g. to clear foes and force a deterministic level win).
 screen* local_transport_shadow_testing_server_screen(GameSession& session);
+
+// Test-only: attribute an exit/withdraw request to a given player and emit it on
+// the authoritative server, as if that player had touched an exit treasure.
+// Returns false (emitting nothing) if that player has no server-side control.
+bool local_transport_shadow_testing_open_exit_prompt(
+    GameSession& session, std::size_t player_index, int destination_level);
+
+// Test-only: whether the authoritative server still has an unanswered exit prompt
+// (true means a peer was asked to confirm and the sim is frozen waiting on it).
+bool local_transport_shadow_testing_server_pending_exit_prompt(
+    GameSession& session) noexcept;
 #endif
 
 } // namespace og::runtime

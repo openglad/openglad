@@ -2233,3 +2233,77 @@ TEST(GameLoop, game_frame_escape_abort_returns_aborted_mission_when_network_paus
     og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
     game_screen->world().delete_objects();
 }
+
+// Regression: in a local split-screen game, a NON-display player (here player 2)
+// triggering the "Exit Field?" prompt at a level exit must have that prompt
+// answered so the authoritative sim resumes. Player 2 is a *background* client
+// sharing player 1's display; background clients previously had no exit-prompt
+// callback installed, so player 2's prompt went unanswered and the whole game
+// hung (see configure_background_game_client in local_transport_shadow.cpp).
+TEST(GameLoop, local_split_screen_background_player_exit_prompt_does_not_hang)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+
+    SaveData& save = game_screen->save_data;
+    save.reset();
+    save.current_campaign = "org.openglad.gladiator";
+    save.current_levels[save.current_campaign] = 1;
+    save.scen_num = 1;
+    save.numplayers = 2;
+    save.allied_mode = 0;
+    save.my_team = 0;
+
+    auto leader = std::make_unique<guy>(FAMILY_SOLDIER);
+    leader->name = "Leader";
+    leader->teamnum = 0;
+    auto scout = std::make_unique<guy>(FAMILY_ARCHER);
+    scout->name = "Scout";
+    scout->teamnum = 1;
+    save.team_list[0] = std::move(leader);
+    save.team_list[1] = std::move(scout);
+    save.team_size = 2;
+    ASSERT_TRUE(save.save("save0"));
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(
+        og::runtime::local_transport_active(*og::runtime::current_session));
+    ASSERT_EQ(2u, og::runtime::local_transport_client_count(session));
+
+    // Bring both local clients online (initial setup + a few authoritative steps).
+    std::uint32_t tick = 0;
+    for (int i = 0; i < 8; ++i)
+    {
+        og::runtime::local_transport_shadow_send_input(
+            session, InputState{}, tick++);
+        og::runtime::local_transport_shadow_finish_tick(session);
+    }
+
+    // Player 2 (index 1) is the background client. Make it touch the exit and emit
+    // the confirmation request the sim would have produced. Queue a decline so the
+    // level is not actually exited (no load side effects) — the point is only that
+    // the prompt gets *answered*.
+    picker_testing_yes_or_no_queue_clear();
+    picker_testing_yes_or_no_queue_push(false);
+    ASSERT_TRUE(og::runtime::local_transport_shadow_testing_open_exit_prompt(
+        session, /*player_index=*/1u, /*destination_level=*/2))
+        << "player 2 must have a server-side control to trigger the exit prompt";
+
+    // Pump enough authoritative steps for the round trip: server broadcasts the
+    // prompt to player 2 -> background client answers it -> server processes the
+    // response and clears the pending prompt. With the fix this resolves; without
+    // it the prompt stays pending forever and the local game hangs.
+    for (int i = 0; i < 30; ++i)
+        og::runtime::local_transport_shadow_finish_tick(session);
+
+    EXPECT_FALSE(
+        og::runtime::local_transport_shadow_testing_server_pending_exit_prompt(
+            session))
+        << "player 2's exit prompt was never answered -> local game hangs";
+
+    picker_testing_yes_or_no_queue_clear();
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+}

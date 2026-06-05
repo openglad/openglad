@@ -566,7 +566,8 @@ void render_pause_overlay(screen& gameplay_screen,
     gameplay_screen.redrawme = 1;
 }
 
-void configure_background_game_client(og::sim::GameClient& game_client)
+void configure_background_game_client(screen& gameplay_screen,
+                                      og::sim::GameClient& game_client)
 {
     game_client.set_initial_setup_callback(
         [&game_client](
@@ -574,6 +575,18 @@ void configure_background_game_client(og::sim::GameClient& game_client)
             bool is_level_transition) {
             if (is_level_transition)
                 game_client.send_client_ready();
+        });
+    // Local split-screen: players 2..N are background clients that share the one
+    // display. The exit/withdraw prompt is sent only to the player who triggered
+    // it, so a non-display player MUST still be able to answer it on the shared
+    // screen — otherwise the server stays frozen on the pending prompt and the
+    // game hangs. (For networked host/client this same client is reconfigured by
+    // configure_display_game_client right after, which installs the equivalent
+    // callback, so setting it here first is harmless.)
+    game_client.set_exit_prompt_callback(
+        [&gameplay_screen, client_ptr = &game_client](
+            const og::sim::ExitPromptBroadcastMessage& prompt) {
+            respond_to_exit_prompt(gameplay_screen, *client_ptr, prompt);
         });
 }
 
@@ -755,6 +768,39 @@ screen* local_transport_shadow_testing_server_screen(GameSession& session)
     if (runtime == nullptr || !runtime->authoritative_mode())
         return nullptr;
     return runtime->server_screen();
+}
+
+bool local_transport_shadow_testing_open_exit_prompt(
+    GameSession& session, std::size_t player_index, int destination_level)
+{
+    const auto runtime = session.local_transport_runtime_;
+    if (runtime == nullptr || !runtime->authoritative_mode() ||
+        runtime->server == nullptr ||
+        runtime->server_session == nullptr ||
+        runtime->server_session->game_.sim_events == nullptr)
+        return false;
+
+    // Mark this player as the one who touched the exit (so the server attributes
+    // the prompt to them) and emit the request the sim would have emitted. If the
+    // player has no control on the server, return false so the caller can fail
+    // loudly rather than emit an untargeted (toothless) prompt.
+    walker* const control = runtime->server->player_control(player_index);
+    if (control == nullptr)
+        return false;
+    control->set_skip_exit(10);
+    runtime->server_session->game_.sim_events->push_with_text(
+        og::sim::EventKind::RequestExitConfirmation, "Exit Field?",
+        static_cast<std::uint32_t>(destination_level), 0u);
+    return true;
+}
+
+bool local_transport_shadow_testing_server_pending_exit_prompt(
+    GameSession& session) noexcept
+{
+    const auto runtime = session.local_transport_runtime_;
+    if (runtime == nullptr || runtime->server == nullptr)
+        return false;
+    return runtime->server->pending_exit_prompt();
 }
 #endif
 
@@ -1012,7 +1058,7 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
             peer_id,
             client.drives_display ? &gameplay_screen.world() : nullptr);
         og::sim::GameClient* const local_client = client.game_client.get();
-        configure_background_game_client(*local_client);
+        configure_background_game_client(gameplay_screen, *local_client);
         if (client.drives_display)
             configure_display_game_client(
                 *runtime, gameplay_screen, *local_client, std::nullopt);
@@ -1216,7 +1262,7 @@ void reset_network_host_transport_shadow(
         });
     if (binding_it != player_bindings.end())
         display_player_index = binding_it->player_index;
-    configure_background_game_client(*client.game_client);
+    configure_background_game_client(gameplay_screen, *client.game_client);
     configure_display_game_client(
         *runtime,
         gameplay_screen,
@@ -1272,7 +1318,7 @@ void reset_network_client_transport_shadow(
         *client.transport,
         client.server_peer_id,
         &gameplay_screen.world());
-    configure_background_game_client(*client.game_client);
+    configure_background_game_client(gameplay_screen, *client.game_client);
     configure_display_game_client(
         *runtime,
         gameplay_screen,
