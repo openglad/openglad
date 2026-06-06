@@ -49,8 +49,8 @@ TEST(GameLaunch, level_load_initial_view_centers_on_player_control)
     // Simulate the first render pass during level intro.
     og::runtime::current_session->myscreen_->redraw();
 
-    const Sint32 expected_topx = vs->control->xpos - (vs->xview - vs->control->sizex) / 2;
-    const Sint32 expected_topy = vs->control->ypos - (vs->yview - vs->control->sizey) / 2;
+    const Sint32 expected_topx = vs->control->xpos() - (vs->xview - vs->control->sizex()) / 2;
+    const Sint32 expected_topy = vs->control->ypos() - (vs->yview - vs->control->sizey()) / 2;
     ASSERT_EQ(expected_topx, vs->topx) << "initial redraw should center viewport x on control";
     ASSERT_EQ(expected_topy, vs->topy) << "initial redraw should center viewport y on control";
 

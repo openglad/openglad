@@ -13,56 +13,57 @@
 TEST(SimEntity, default_construction)
 {
     og::sim::SimEntity e;
-    ASSERT_TRUE(e.xpos == 0);
-    ASSERT_TRUE(e.ypos == 0);
-    ASSERT_TRUE(e.dead == 0);
-    ASSERT_TRUE(e.user == -1);
-    ASSERT_TRUE(e.team_num == 0);
-    ASSERT_TRUE(e.real_team_num == 255);
+    ASSERT_TRUE(e.xpos() == 0);
+    ASSERT_TRUE(e.ypos() == 0);
+    ASSERT_TRUE(e.entity_id() == 0);
+    ASSERT_TRUE(e.dead() == 0);
+    ASSERT_TRUE(e.user() == -1);
+    ASSERT_TRUE(e.team_num() == 0);
+    ASSERT_TRUE(e.real_team_num() == 255);
 }
 
 TEST(SimEntity, set_position)
 {
     og::sim::SimEntity e;
-    e.xpos = 100;
-    e.ypos = 200;
-    e.sizex = 16;
-    e.sizey = 16;
+    e.set_xpos(100);
+    e.set_ypos(200);
+    e.set_sizex(16);
+    e.set_sizey(16);
 
-    ASSERT_TRUE(e.xpos == 100);
-    ASSERT_TRUE(e.ypos == 200);
-    ASSERT_TRUE(e.sizex == 16);
-    ASSERT_TRUE(e.sizey == 16);
+    ASSERT_TRUE(e.xpos() == 100);
+    ASSERT_TRUE(e.ypos() == 200);
+    ASSERT_TRUE(e.sizex() == 16);
+    ASSERT_TRUE(e.sizey() == 16);
 }
 
 TEST(SimEntity, team_and_identity)
 {
     og::sim::SimEntity e;
-    e.team_num = 1;
-    e.real_team_num = 255;
-    e.user = 0;      // Player 0
+    e.set_team_num(1);
+    e.set_real_team_num(255);
+    e.set_user(0);      // Player 0
 
-    ASSERT_TRUE(e.team_num == 1);
-    ASSERT_TRUE(e.user == 0);
+    ASSERT_TRUE(e.team_num() == 1);
+    ASSERT_TRUE(e.user() == 0);
 }
 
 TEST(SimEntity, state_flags)
 {
     og::sim::SimEntity e;
-    e.invulnerable_left = 30;
-    e.flight_left = 15;
-    e.invisibility_left = 0;
-    e.bonus_rounds = 2;
-    e.dead = 0;
+    e.set_invulnerable_left(30);
+    e.set_flight_left(15);
+    e.set_invisibility_left(0);
+    e.set_bonus_rounds(2);
+    e.set_dead(0);
 
-    ASSERT_TRUE(e.invulnerable_left == 30);
-    ASSERT_TRUE(e.flight_left == 15);
-    ASSERT_TRUE(e.invisibility_left == 0);
-    ASSERT_TRUE(e.bonus_rounds == 2);
-    ASSERT_TRUE(!e.dead);
+    ASSERT_TRUE(e.invulnerable_left() == 30);
+    ASSERT_TRUE(e.flight_left() == 15);
+    ASSERT_TRUE(e.invisibility_left() == 0);
+    ASSERT_TRUE(e.bonus_rounds() == 2);
+    ASSERT_TRUE(!e.dead());
 
-    e.dead = 1;
-    ASSERT_TRUE(e.dead);
+    e.set_dead(1);
+    ASSERT_TRUE(e.dead());
 }
 
 TEST(SimEntity, event_log_binding)
@@ -97,10 +98,10 @@ TEST(SimEntity, walker_headless_construction)
 {
     walker w;  // No PixieData — headless mode
 
-    ASSERT_TRUE(w.xpos == 0);
-    ASSERT_TRUE(w.ypos == 0);
-    ASSERT_TRUE(w.dead == 0);
-    ASSERT_TRUE(w.user == -1);
+    ASSERT_TRUE(w.xpos() == 0);
+    ASSERT_TRUE(w.ypos() == 0);
+    ASSERT_TRUE(w.dead() == 0);
+    ASSERT_TRUE(w.user() == -1);
     ASSERT_TRUE(!w.has_render());
     ASSERT_TRUE(w.bmp_data() == nullptr);
     ASSERT_TRUE(w.render_component() == nullptr);
@@ -110,12 +111,12 @@ TEST(SimEntity, walker_headless_position_and_movement)
 {
     walker w;
     w.setxy(100, 200);
-    ASSERT_TRUE(w.xpos == 100);
-    ASSERT_TRUE(w.ypos == 200);
+    ASSERT_TRUE(w.xpos() == 100);
+    ASSERT_TRUE(w.ypos() == 200);
 
     w.setxy(50, 75);
-    ASSERT_TRUE(w.xpos == 50);
-    ASSERT_TRUE(w.ypos == 75);
+    ASSERT_TRUE(w.xpos() == 50);
+    ASSERT_TRUE(w.ypos() == 75);
 }
 
 TEST(SimEntity, walker_headless_with_rng)
@@ -130,19 +131,19 @@ TEST(SimEntity, walker_headless_stats)
     walker w;
     statistics* st = w.stats();
     ASSERT_TRUE(st != nullptr);
-    st->hitpoints = 50;
-    st->max_hitpoints = 100;
-    ASSERT_TRUE(st->hitpoints == 50);
-    ASSERT_TRUE(st->max_hitpoints == 100);
+    st->set_hitpoints(50);
+    st->set_max_hitpoints(100);
+    ASSERT_TRUE(st->hitpoints() == 50);
+    ASSERT_TRUE(st->max_hitpoints() == 100);
 }
 
 TEST(SimEntity, walker_headless_frame_tracking)
 {
     walker w;
-    ASSERT_TRUE(w.frame == 0);
+    ASSERT_TRUE(w.frame() == 0);
 
     // set_frame validates against frames count; headless walker has 0 frames
     short result = w.set_frame(2);
     ASSERT_TRUE(result == 0);           // Should fail — no frames allocated
-    ASSERT_TRUE(w.frame == 0);  // Frame unchanged
+    ASSERT_TRUE(w.frame() == 0);  // Frame unchanged
 }

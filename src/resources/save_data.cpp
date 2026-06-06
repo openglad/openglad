@@ -476,7 +476,7 @@ bool SaveData::load(const std::string& filename)
 
 std::int32_t calculate_level(std::uint32_t temp_exp);
 
-void SaveData::update_guys(std::list<std::unique_ptr<walker>>& oblist)
+void SaveData::update_guys(const std::list<std::unique_ptr<walker>>& oblist)
 {
     // Delete our old guys
 	for(int i = 0; i < team_size; i++)
@@ -490,7 +490,7 @@ void SaveData::update_guys(std::list<std::unique_ptr<walker>>& oblist)
     for(auto& uptr : oblist)
 	{
 	    walker* ob = uptr.get();
-        if (ob && !ob->dead && ob->myguy)
+        if (ob && !ob->dead() && ob->myguy)
 		{
             if (team_size >= MAX_TEAM_SIZE)
             {
@@ -505,6 +505,78 @@ void SaveData::update_guys(std::list<std::unique_ptr<walker>>& oblist)
 			team_size++;
 		}
 	}
+}
+
+void SaveData::merge_owned_guys_from(
+    const std::list<std::unique_ptr<walker>>& oblist,
+    std::uint8_t owner_player_index)
+{
+    if (owner_player_index == guy::kNoOwner)
+        return;
+
+    // This SaveData holds the owner's untouched pre-session roster (their real
+    // save0), dense in [0, team_size). Rebuild it from the session outcome,
+    // keyed by each brought character's original save slot (owner_save_slot):
+    //   - a brought character that SURVIVED overlays its slot with its grown self
+    //   - a brought character that DIED is DROPPED — death sticks across a win,
+    //     matching solo update_guys (which keeps only living guys)
+    //   - a character that was never brought is preserved exactly
+    // The result is re-densified, because SaveData::save dereferences
+    // team_list[i] for i < team_size without a null check.
+    std::array<const guy*, MAX_TEAM_SIZE> survived = {};
+    std::array<bool, MAX_TEAM_SIZE> died = {};
+    for (auto& uptr : oblist)
+    {
+        walker* ob = uptr.get();
+        if (ob == nullptr || ob->myguy == nullptr)
+            continue;
+        if (ob->myguy->owner_player_index != owner_player_index)
+            continue;
+
+        const unsigned int slot = ob->myguy->owner_save_slot;
+        if (slot >= static_cast<unsigned int>(MAX_TEAM_SIZE))
+            continue;
+
+        if (ob->dead())
+            died[slot] = true;
+        else
+            survived[slot] = ob->myguy;
+    }
+
+    std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> rebuilt;
+    int rebuilt_size = 0;
+    for (int slot = 0; slot < team_size && slot < MAX_TEAM_SIZE; ++slot)
+    {
+        std::unique_ptr<guy> entry;
+        if (survived[static_cast<std::size_t>(slot)] != nullptr)
+        {
+            entry = std::make_unique<guy>(*survived[static_cast<std::size_t>(slot)]);
+            const std::uint32_t exp = entry->exp;
+            entry->upgrade_to_level(
+                static_cast<short>(calculate_level(entry->exp)));
+            entry->exp = exp;
+        }
+        else if (died[static_cast<std::size_t>(slot)])
+        {
+            continue; // brought and died -> drop so the death sticks
+        }
+        else
+        {
+            entry = std::move(team_list[static_cast<std::size_t>(slot)]); // not brought -> keep
+            if (entry == nullptr)
+                continue;
+        }
+        rebuilt[static_cast<std::size_t>(rebuilt_size++)] = std::move(entry);
+    }
+
+    for (auto& slot : team_list)
+        slot.reset();
+    team_size = static_cast<unsigned char>(rebuilt_size);
+    for (int i = 0; i < rebuilt_size; ++i)
+    {
+        team_list[static_cast<std::size_t>(i)] =
+            std::move(rebuilt[static_cast<std::size_t>(i)]);
+    }
 }
 
 

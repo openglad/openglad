@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <memory>
 #include <openglad/interface/button.h>
 #include <openglad/interface/screen.h>
@@ -7,12 +8,44 @@
 #include <openglad/resources/save_data.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/interface/level_runtime_data.h>
+#include <openglad/resources/level_data_hooks.h>
+#include <openglad/resources/level_file_io.h>
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/world_snapshot.h>
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 short load_saved_game(const char *filename, screen *scr);
 
 namespace {
+
+class ScopedGameplayRngOverride
+{
+public:
+    explicit ScopedGameplayRngOverride(IRandom* next)
+        : next_(next)
+        , previous_(gameplay_rng_override())
+        , restore_(previous_)
+    {
+        set_gameplay_rng_override(&next_);
+    }
+
+    ~ScopedGameplayRngOverride()
+    {
+        if (previous_ != nullptr)
+            set_gameplay_rng_override(&restore_);
+        else
+            set_gameplay_rng_override(nullptr);
+    }
+
+    ScopedGameplayRngOverride(const ScopedGameplayRngOverride&) = delete;
+    ScopedGameplayRngOverride& operator=(const ScopedGameplayRngOverride&) = delete;
+
+private:
+    IRandom* next_ = nullptr;
+    IRandom* previous_ = nullptr;
+    IRandom* restore_ = nullptr;
+};
 
 bool prepare_default_level_load()
 {
@@ -23,6 +56,18 @@ bool prepare_default_level_load()
 #endif
     og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
     return mount_campaign_package_with_error("org.openglad.gladiator") == CampaignPackageIoError::None;
+}
+
+const og::sim::EntitySnapshot* find_entity_snapshot(
+    const std::vector<og::sim::EntitySnapshot>& entities,
+    std::uint32_t entity_id)
+{
+    const auto it = std::find_if(
+        entities.begin(), entities.end(),
+        [entity_id](const og::sim::EntitySnapshot& snapshot) {
+            return snapshot.entity_id == entity_id;
+        });
+    return it == entities.end() ? nullptr : &*it;
 }
 
 } // namespace
@@ -96,6 +141,143 @@ TEST(LoadLevels, level_fallback) {
     ASSERT_EQ(1, og::runtime::current_session->myscreen_->world().id) << "nonexistent level should fall back to level 1";
 
     og::runtime::current_session->myscreen_->world().delete_objects();
+}
+
+TEST(LoadLevels, load_advances_world_rng_state)
+{
+    ASSERT_TRUE(prepare_default_level_load()) << "default campaign should be restored and mounted before rng load test";
+
+    constexpr std::uint32_t seed = 123u;
+    LevelRuntimeData level(1, &sdl_level_data_hooks());
+    level.world().rng_.state_ = seed;
+
+    GameWorld expected_world(seed);
+    expected_world.id = 1;
+    sdl_level_data_hooks().wire_world_entity_services(&expected_world, &level);
+
+    og::data::LevelFileMetadata metadata;
+    og::data::LevelFileIoError io_error = og::data::LevelFileIoError::None;
+    {
+        ScopedGameplayRngOverride rng_override(&expected_world.rng_);
+        ASSERT_TRUE(og::data::load_level("scen1.fss", expected_world, metadata, &io_error))
+            << "scratch scenario load should succeed";
+    }
+
+    const std::uint32_t expected_state = expected_world.rng_.state_;
+    ASSERT_NE(seed, expected_state) << "scenario load should consume RNG during walker construction";
+
+    ASSERT_TRUE(level.load()) << "level load should succeed";
+    ASSERT_EQ(expected_state, level.world().rng_.state_)
+        << "world RNG state after load should match the live load-time draws";
+
+    level.world().delete_objects();
+    expected_world.delete_objects();
+}
+
+TEST(LoadLevels, load_resets_future_entity_ids_to_loaded_world_state)
+{
+    ASSERT_TRUE(prepare_default_level_load()) << "default campaign should be restored and mounted before entity id load test";
+
+    LevelRuntimeData level(1, &sdl_level_data_hooks());
+
+    for (int i = 0; i < 256; ++i)
+    {
+        walker* seeded = level.world().add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, seeded) << "seed entity should be created";
+    }
+    level.world().delete_objects();
+
+    ASSERT_TRUE(level.load()) << "level load should succeed";
+
+    auto max_entity_id = [&level]() -> std::uint32_t {
+        std::uint32_t max_id = 0;
+        const auto update = [&max_id](const auto& list) {
+            for (const auto& entry : list)
+            {
+                if (entry)
+                    max_id = std::max(max_id, entry->entity_id());
+            }
+        };
+
+        update(level.world().oblist);
+        update(level.world().fxlist);
+        update(level.world().weaplist);
+        return max_id;
+    };
+
+    const std::uint32_t loaded_max_id = max_entity_id();
+    ASSERT_GT(loaded_max_id, 0u) << "loaded level should assign entity ids";
+
+    walker* fresh = level.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, fresh) << "post-load entity should be created";
+    ASSERT_EQ(loaded_max_id + 1, fresh->entity_id())
+        << "future ids after load should continue from the loaded world, not discarded pre-load history";
+
+    level.world().delete_objects();
+}
+
+TEST(LoadLevels, capture_snapshot_after_real_level_load_and_live_ticks_matches_world)
+{
+    ASSERT_TRUE(prepare_default_level_load())
+        << "default campaign should be restored and mounted before snapshot integration test";
+
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    ASSERT_TRUE(
+        og::runtime::current_session->myscreen_->save_data.save("test_level_snapshot_capture"))
+        << "save should succeed for snapshot integration test";
+    ASSERT_TRUE(load_saved_game("test_level_snapshot_capture",
+                                og::runtime::current_session->myscreen_) != 0)
+        << "load_saved_game should succeed for snapshot integration test";
+
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    ASSERT_TRUE(world.grid.valid()) << "loaded level should provide a valid grid";
+    ASSERT_FALSE(world.oblist.empty()) << "loaded level should contain entities";
+
+    for (int i = 0; i < 3; ++i)
+        world.tick();
+
+    const og::sim::WorldSnapshot snapshot = og::sim::capture_snapshot(world);
+
+    EXPECT_EQ(world.tick_count_, snapshot.tick_count);
+    EXPECT_EQ(world.rng_.state_, snapshot.rng_state);
+    EXPECT_EQ(world.level_tick_count(), snapshot.level_tick_count);
+    EXPECT_EQ(world.level_done, snapshot.level_done);
+    EXPECT_EQ(world.game_ended, snapshot.game_ended);
+    EXPECT_EQ(world.next_level, snapshot.next_level);
+    EXPECT_EQ(world.ending, snapshot.ending);
+    EXPECT_EQ(world.living_count, snapshot.living_count);
+    EXPECT_EQ(world.control_hp, snapshot.control_hp);
+    EXPECT_EQ(world.oblist.size(), snapshot.oblist.size());
+    EXPECT_EQ(world.fxlist.size(), snapshot.fxlist.size());
+    EXPECT_EQ(world.weaplist.size(), snapshot.weaplist.size());
+
+    const walker* const first_entity = world.oblist.front().get();
+    ASSERT_NE(nullptr, first_entity);
+    const og::sim::EntitySnapshot* first_snapshot =
+        find_entity_snapshot(snapshot.oblist, first_entity->entity_id());
+    ASSERT_NE(nullptr, first_snapshot);
+    EXPECT_EQ(first_entity->entity_id(), first_snapshot->entity_id);
+    EXPECT_EQ(first_entity->xpos(), first_snapshot->xpos);
+    EXPECT_EQ(first_entity->ypos(), first_snapshot->ypos);
+    EXPECT_EQ(first_entity->order(), first_snapshot->order);
+    EXPECT_EQ(first_entity->family(), first_snapshot->family);
+    ASSERT_NE(nullptr, first_entity->stats());
+    EXPECT_EQ(first_entity->stats()->hitpoints(), first_snapshot->hitpoints);
+    EXPECT_EQ(first_entity->stats()->level(), first_snapshot->level);
+
+    if (first_entity->myguy != nullptr)
+    {
+        const auto guy_it = std::find_if(
+            snapshot.guy_snapshots.begin(), snapshot.guy_snapshots.end(),
+            [first_entity](const og::sim::GuySnapshot& guy_snapshot) {
+                return guy_snapshot.guy_id == first_entity->myguy->id;
+            });
+        ASSERT_NE(snapshot.guy_snapshots.end(), guy_it);
+        EXPECT_EQ(first_entity->myguy->name, guy_it->name);
+    }
+
+    world.delete_objects();
 }
 
 

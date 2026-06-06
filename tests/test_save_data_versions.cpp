@@ -494,16 +494,16 @@ TEST(SaveDataVersions, save_data_update_guys_copies_only_live_entries_with_myguy
     std::list<std::unique_ptr<walker>> oblist;
 
     auto live_with_guy = std::make_unique<walker>();
-    live_with_guy->dead = 0;
+    live_with_guy->set_dead(0);
     live_with_guy->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     live_with_guy->myguy->exp = 50;
 
     auto dead_with_guy = std::make_unique<walker>();
-    dead_with_guy->dead = 1;
+    dead_with_guy->set_dead(1);
     dead_with_guy->set_owned_myguy(std::make_unique<guy>(FAMILY_ARCHER));
 
     auto live_no_guy = std::make_unique<walker>();
-    live_no_guy->dead = 0;
+    live_no_guy->set_dead(0);
     live_no_guy->clear_myguy();
 
     oblist.push_back(std::move(live_with_guy));
@@ -516,7 +516,9 @@ TEST(SaveDataVersions, save_data_update_guys_copies_only_live_entries_with_myguy
     ASSERT_EQ(1, (int)data.team_size) << "update_guys should copy only live walkers with myguy";
     ASSERT_TRUE(data.team_list[0] != nullptr) << "copied guy should exist";
     if (data.team_list[0])
+    {
         ASSERT_EQ((int)FAMILY_SOLDIER, (int)data.team_list[0]->family) << "copied guy should match source family";
+    }
 }
 
 
@@ -618,4 +620,3 @@ TEST(SaveDataVersions, save_data_round9_reset_campaign_missing_entry_is_noop)
     ASSERT_EQ(0, data.get_num_levels_completed("round9.a")) << "reset_campaign should clear target campaign progress";
     ASSERT_EQ(1, data.get_num_levels_completed("round9.b")) << "reset_campaign should not clear other campaign progress";
 }
-

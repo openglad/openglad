@@ -13,5 +13,6 @@ graphics:
   fullscreen: on
   overscan_percentage: 0
   render: normal
+  target_fps: 72
 sound:
   sound: on

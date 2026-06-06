@@ -10,7 +10,9 @@
 // These were originally walker::draw(), walker::draw_tile(), etc.
 
 #include <openglad/interface/render/walker_draw.h>
+#include <openglad/core/runtime_trace.h>
 #include <openglad/interface/base.h>
+#include <openglad/gameplay/game_client.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/pathfinding_grid.h>
 #include <openglad/interface/render/view.h>
@@ -24,9 +26,288 @@
 
 // ---- Helpers ----
 
+namespace
+{
+
+bool damage_number_snapshot_matches(const DamageNumberRenderSnapshot& lhs,
+                                    const DamageNumberRenderSnapshot& rhs)
+{
+    return lhs.x == rhs.x &&
+           lhs.y == rhs.y &&
+           lhs.t == rhs.t &&
+           lhs.value == rhs.value &&
+           lhs.created_tick == rhs.created_tick &&
+           lhs.color == rhs.color;
+}
+
+DamageNumberRenderSnapshot damage_number_snapshot(
+    const walker::DamageNumber& number)
+{
+    return {
+        .x = number.x,
+        .y = number.y,
+        .t = number.t,
+        .value = number.value,
+        .created_tick = number.created_tick,
+        .color = number.color,
+    };
+}
+
+void snapshot_damage_number_state(DamageNumberRenderContext::Entry& state,
+                                  const walker::DamageNumber& number)
+{
+    state.snapshot = damage_number_snapshot(number);
+}
+
+std::uint32_t damage_number_advance_steps(
+    const DamageNumberRenderContext::Entry* state,
+    const walker::DamageNumber& number,
+    std::uint32_t current_tick)
+{
+    if (state == nullptr)
+        return 1u;
+
+    const std::uint32_t last_advance_tick = state->last_advance_tick;
+    if (last_advance_tick == std::numeric_limits<std::uint32_t>::max())
+    {
+        if (number.created_tick > current_tick)
+            return 1u;
+
+        return current_tick - number.created_tick + 1u;
+    }
+
+    if (last_advance_tick > current_tick)
+    {
+        return 1u;
+    }
+
+    return current_tick - last_advance_tick;
+}
+
+} // namespace
+
+DamageNumberRenderContext::Entry&
+DamageNumberRenderContext::prepare_state(
+    std::uint32_t owner_entity_id,
+    std::size_t index,
+    const DamageNumberRenderSnapshot& snapshot)
+{
+    auto& owner_state = state_by_owner_[owner_entity_id];
+    if (owner_state.size() <= index)
+        owner_state.resize(index + 1u);
+
+    Entry& state = owner_state[index];
+    if (!damage_number_snapshot_matches(state.snapshot, snapshot))
+    {
+        state.snapshot = snapshot;
+        state.last_advance_tick = std::numeric_limits<std::uint32_t>::max();
+    }
+    return state;
+}
+
+void DamageNumberRenderContext::trim_owner(std::uint32_t owner_entity_id,
+                                           std::size_t live_count)
+{
+    if (owner_entity_id == 0u)
+        return;
+
+    if (live_count == 0u)
+    {
+        state_by_owner_.erase(owner_entity_id);
+        return;
+    }
+
+    const auto owner_it = state_by_owner_.find(owner_entity_id);
+    if (owner_it == state_by_owner_.end())
+        return;
+
+    auto& owner_state = owner_it->second;
+    if (owner_state.size() > live_count)
+        owner_state.resize(live_count);
+
+    if (owner_state.empty())
+        state_by_owner_.erase(owner_it);
+}
+
+void DamageNumberRenderContext::erase_index(std::uint32_t owner_entity_id,
+                                            std::size_t index)
+{
+    if (owner_entity_id == 0u)
+        return;
+
+    const auto owner_it = state_by_owner_.find(owner_entity_id);
+    if (owner_it == state_by_owner_.end())
+        return;
+
+    auto& owner_state = owner_it->second;
+    if (index < owner_state.size())
+        owner_state.erase(owner_state.begin() + index);
+
+    if (owner_state.empty())
+        state_by_owner_.erase(owner_it);
+}
+
+void DamageNumberRenderContext::prune_dead_owners(const GameWorld& world)
+{
+    for (auto owner_it = state_by_owner_.begin();
+         owner_it != state_by_owner_.end();)
+    {
+        if (world.find_by_id(owner_it->first) == nullptr)
+            owner_it = state_by_owner_.erase(owner_it);
+        else
+            ++owner_it;
+    }
+}
+
+#ifdef TESTING
+std::size_t DamageNumberRenderContext::state_count() const noexcept
+{
+    std::size_t count = 0u;
+    for (const auto& owner_state : state_by_owner_)
+        count += owner_state.second.size();
+    return count;
+}
+#endif
+
 static bool float_eq(float a, float b)
 {
     return (a == b || (a - 0.000001f < b && a + 0.000001f > b));
+}
+
+#ifdef TESTING
+std::size_t damage_number_render_state_count(const screen* screen_ctx)
+{
+    if (screen_ctx == nullptr)
+        return 0u;
+    return screen_ctx->damage_number_render_context().state_count();
+}
+#endif
+
+static screen* active_game_screen()
+{
+    return og::runtime::current_session != nullptr
+        ? og::runtime::current_session->myscreen_
+        : nullptr;
+}
+
+static const og::sim::GameClient* display_game_client()
+{
+    screen* const game_screen = active_game_screen();
+    return game_screen != nullptr
+        ? game_screen->render_interpolation_client()
+        : nullptr;
+}
+
+static float display_interpolation_speed_factor()
+{
+    screen* const game_screen = active_game_screen();
+    return game_screen != nullptr
+        ? game_screen->render_interpolation_speed_factor()
+        : 1.0f;
+}
+
+bool is_primary_control_walker(const walker& candidate)
+{
+    screen* const game_screen = active_game_screen();
+    if (og::runtime::current_session == nullptr ||
+        !og::runtime::current_session->gameplay_active_ ||
+        game_screen == nullptr || game_screen->viewob[0] == nullptr)
+    {
+        return false;
+    }
+
+    return game_screen->viewob[0]->control == &candidate;
+}
+
+static WalkerRenderPosition current_position(const walker& w)
+{
+    return {
+        .worldx = w.worldx(),
+        .worldy = w.worldy(),
+        // Keep render-time anchors on the authoritative float position even
+        // when no interpolation client is active. Mixing float world coords
+        // for the sprite with snapped integer anchors for camera/UI makes slow
+        // movement look like it buzzes against attached render elements.
+        .xpos = w.worldx(),
+        .ypos = w.worldy(),
+    };
+}
+
+float query_render_interpolation_alpha()
+{
+    const og::sim::GameClient* const client = display_game_client();
+    const float alpha = client != nullptr
+        ? client->render_interpolation_alpha(
+            display_interpolation_speed_factor())
+        : 1.0f;
+    og::runtime::RuntimeTraceRecord trace =
+        og::runtime::make_runtime_trace_record(
+            "render", "query_interpolation_alpha");
+    trace.interpolation_alpha = alpha;
+    og::runtime::emit_runtime_trace(std::move(trace));
+    return alpha;
+}
+
+WalkerRenderPosition resolve_walker_render_position(const walker& w,
+                                                    float alpha)
+{
+    const og::sim::GameClient* const client = display_game_client();
+    if (client == nullptr || w.entity_id() == 0u)
+    {
+        const WalkerRenderPosition position = current_position(w);
+        if (is_primary_control_walker(w))
+        {
+            og::runtime::RuntimeTraceRecord trace =
+                og::runtime::make_runtime_trace_record(
+                    "render", "resolve_control_render_position_local");
+            trace.interpolation_alpha = alpha;
+            trace.control_worldx = position.worldx;
+            trace.control_worldy = position.worldy;
+            trace.control_render_x = position.xpos;
+            trace.control_render_y = position.ypos;
+            og::runtime::emit_runtime_trace(std::move(trace));
+        }
+        return position;
+    }
+
+    const auto position = client->render_position(w.entity_id(), alpha);
+    if (!position.has_value())
+    {
+        const WalkerRenderPosition local = current_position(w);
+        if (is_primary_control_walker(w))
+        {
+            og::runtime::RuntimeTraceRecord trace =
+                og::runtime::make_runtime_trace_record(
+                    "render", "resolve_control_render_position_fallback");
+            trace.interpolation_alpha = alpha;
+            trace.control_worldx = local.worldx;
+            trace.control_worldy = local.worldy;
+            trace.control_render_x = local.xpos;
+            trace.control_render_y = local.ypos;
+            og::runtime::emit_runtime_trace(std::move(trace));
+        }
+        return local;
+    }
+
+    WalkerRenderPosition resolved = {
+        .worldx = position->worldx,
+        .worldy = position->worldy,
+        .xpos = position->xpos,
+        .ypos = position->ypos,
+    };
+    if (is_primary_control_walker(w))
+    {
+        og::runtime::RuntimeTraceRecord trace =
+            og::runtime::make_runtime_trace_record(
+                "render", "resolve_control_render_position_interpolated");
+        trace.interpolation_alpha = alpha;
+        trace.control_worldx = resolved.worldx;
+        trace.control_worldy = resolved.worldy;
+        trace.control_render_x = resolved.xpos;
+        trace.control_render_y = resolved.ypos;
+        og::runtime::emit_runtime_trace(std::move(trace));
+    }
+    return resolved;
 }
 
 static void draw_damage_number(walker::DamageNumber& dn, viewscreen* view_buf)
@@ -58,8 +339,11 @@ void draw_small_health_bar(walker* w, viewscreen* view_buf)
         return;
     }
 
-	Sint32 xscreen = static_cast<Sint32>(w->xpos - view_buf->topx + view_buf->xloc);
-	Sint32 yscreen = static_cast<Sint32>(w->ypos - view_buf->topy + view_buf->yloc);
+    const WalkerRenderPosition draw_pos =
+        resolve_walker_render_position(*w, view_buf->interpolation_alpha);
+
+	Sint32 xscreen = static_cast<Sint32>(draw_pos.xpos - static_cast<float>(view_buf->topx) + static_cast<float>(view_buf->xloc));
+	Sint32 yscreen = static_cast<Sint32>(draw_pos.ypos - static_cast<float>(view_buf->topy) + static_cast<float>(view_buf->yloc));
 
     const Sint32 walkerstartx = xscreen;
     const Sint32 walkerstarty = yscreen;
@@ -69,29 +353,29 @@ void draw_small_health_bar(walker* w, viewscreen* view_buf)
     const Sint32 portendy = view_buf->endy;
 
     const Sint32 bar_x = walkerstartx;
-    const Sint32 bar_y = walkerstarty + w->sizey + 1;
-    const Sint32 bar_w = w->sizex;
+    const Sint32 bar_y = walkerstarty + w->sizey() + 1;
+    const Sint32 bar_w = w->sizex();
     const Sint32 bar_h = 1;
     if(bar_x < portstartx || bar_x > portendx || bar_y < portstarty || bar_y > portendy)
         return;
 
     // Last hit's effect
-    float last_points = w->last_hitpoints;
-    float last_ratio = float(last_points)/w->stats()->max_hitpoints;
+    float last_points = w->last_hitpoints();
+    float last_ratio = float(last_points)/w->stats()->max_hitpoints();
 
     // Current HP
-    float points = w->stats()->hitpoints;
-    float ratio = float(points)/w->stats()->max_hitpoints;
+    float points = w->stats()->hitpoints();
+    float ratio = float(points)/w->stats()->max_hitpoints();
 
     unsigned char whatcolor;
 
-    if (float_eq(points, w->stats()->max_hitpoints))
+    if (float_eq(points, w->stats()->max_hitpoints()))
         whatcolor = MAX_HP_COLOR;
-    else if ( (points * 3) < w->stats()->max_hitpoints)
+    else if ( (points * 3) < w->stats()->max_hitpoints())
         whatcolor = LOW_HP_COLOR;
-    else if ( (points * 3 / 2) < w->stats()->max_hitpoints)
+    else if ( (points * 3 / 2) < w->stats()->max_hitpoints())
         whatcolor = MID_HP_COLOR;
-    else if (points < w->stats()->max_hitpoints)
+    else if (points < w->stats()->max_hitpoints())
         whatcolor = LIGHT_GREEN;//HIGH_HP_COLOR;
     else
         whatcolor = ORANGE_START;
@@ -103,7 +387,7 @@ void draw_small_health_bar(walker* w, viewscreen* view_buf)
             const Sint32 max_w = bar_w;
             const float width_f = static_cast<float>(bar_w);
 
-            if(w->last_hitpoints > w->stats()->hitpoints && last_ratio <= 1.0f)
+            if(w->last_hitpoints() > w->stats()->hitpoints() && last_ratio <= 1.0f)
             {
                 const Sint32 last_w = static_cast<Sint32>(width_f * last_ratio);
                 og::runtime::current_session->myscreen_->draw_box(bar_x, bar_y, bar_x + last_w, bar_y + bar_h, static_cast<unsigned char>(53), 1);
@@ -119,6 +403,17 @@ void draw_small_health_bar(walker* w, viewscreen* view_buf)
 #define ATTACK_LUNGE_SIZE 5
 #define HIT_RECOIL_SIZE 3
 
+// In genuine networked play, same-team peers' characters get a team-color
+// outline so you can tell which are human-controlled. Local split-screen does
+// NOT (each co-player has their own pane) — and since `outline` is a render-only
+// value the net layer rewrites every sim tick, leaving it on there flickered
+// each player's own character. See walker::compute_outline.
+static bool mark_player_controls_outline()
+{
+    return og::runtime::current_session != nullptr &&
+        og::runtime::current_session->networked_session_;
+}
+
 bool draw_walker(walker& w, viewscreen* view_buf)
 {
     const bool show_attack_lunge = cfg.is_on("effects", "attack_lunge");
@@ -128,42 +423,52 @@ bool draw_walker(walker& w, viewscreen* view_buf)
     const bool show_damage_numbers = cfg.is_on("effects", "damage_numbers");
     const bool show_heal_numbers = cfg.is_on("effects", "heal_numbers");
 
-    // Update the drawing coords from the real position
-    w.xpos = static_cast<short>(w.worldx());
-    w.ypos = static_cast<short>(w.worldy());
+    const WalkerRenderPosition draw_pos =
+        resolve_walker_render_position(w, view_buf->interpolation_alpha);
+    const short draw_x = static_cast<short>(draw_pos.worldx);
+    const short draw_y = static_cast<short>(draw_pos.worldy);
 
 	Sint32 xscreen, yscreen;
 
-	if (w.dead)
+	if (w.dead())
 	{
 		Log("drawing a dead guy!\n");
 		return 0;
 	}
-	w.drawcycle++;
+	// drawcycle is advanced by the authoritative sim (effect::act / living::act),
+	// NOT here — render must not write sim-read entity state (it freezes in the
+	// headless server). Enforced by scripts/check_render_no_sim_writes.sh.
 
-    if (!show_hit_anim && w.query_order() == Order::FX && w.family == FAMILY_HIT)
+    if (!show_hit_anim && w.query_order() == Order::FX &&
+        w.family() == FAMILY_HIT)
+    {
         return true;
+    }
 
-	xscreen = static_cast<Sint32>(w.xpos - view_buf->topx + view_buf->xloc);
-	yscreen = static_cast<Sint32>(w.ypos - view_buf->topy + view_buf->yloc);
+	xscreen = static_cast<Sint32>(
+        draw_pos.worldx - static_cast<float>(view_buf->topx) +
+        static_cast<float>(view_buf->xloc));
+	yscreen = static_cast<Sint32>(
+        draw_pos.worldy - static_cast<float>(view_buf->topy) +
+        static_cast<float>(view_buf->yloc));
 
-	if(show_attack_lunge && w.attack_lunge > 0.0f)
+		if(show_attack_lunge && w.attack_lunge() > 0.0f)
 	    {
-	        const float dx = w.attack_lunge * ATTACK_LUNGE_SIZE * cosf(w.attack_lunge_angle);
-	        const float dy = w.attack_lunge * ATTACK_LUNGE_SIZE * sinf(w.attack_lunge_angle);
+	        const float dx = w.attack_lunge() * ATTACK_LUNGE_SIZE * cosf(w.attack_lunge_angle());
+	        const float dy = w.attack_lunge() * ATTACK_LUNGE_SIZE * sinf(w.attack_lunge_angle());
 	        xscreen += static_cast<Sint32>(dx);
 	        yscreen += static_cast<Sint32>(dy);
 	    }
 
-	if(show_hit_recoil && w.hit_recoil > 0.0f)
+		if(show_hit_recoil && w.hit_recoil() > 0.0f)
 	    {
-	        const float dx = w.hit_recoil * HIT_RECOIL_SIZE * cosf(w.hit_recoil_angle);
-	        const float dy = w.hit_recoil * HIT_RECOIL_SIZE * sinf(w.hit_recoil_angle);
+	        const float dx = w.hit_recoil() * HIT_RECOIL_SIZE * cosf(w.hit_recoil_angle());
+	        const float dy = w.hit_recoil() * HIT_RECOIL_SIZE * sinf(w.hit_recoil_angle());
 	        xscreen += static_cast<Sint32>(dx);
 	        yscreen += static_cast<Sint32>(dy);
 	    }
 
-	w.compute_outline(view_buf->control);
+	w.compute_outline(view_buf->control, mark_player_controls_outline());
 
 	bool should_draw_hp = true;
     int fill_mode = 0;
@@ -177,56 +482,54 @@ bool draw_walker(walker& w, viewscreen* view_buf)
         phantom_mode = SHIFT_RANDOM;
         should_draw_hp = false;
     }
-	else if (w.invisibility_left && view_buf->control != nullptr)  //WE ARE INVISIBLE
+	else if (w.invisibility_left() && view_buf->control != nullptr)  //WE ARE INVISIBLE
 	{
-		if (w.team_num == view_buf->control->team_num)
+		if (w.team_num() == view_buf->control->team_num())
         {
             fill_mode = INVISIBLE_MODE;
-            invisibility_amount = ( w.invisibility_left + 10 );
-            outline_style = w.outline;
+            invisibility_amount = (w.invisibility_left() + 10);
+	            outline_style = w.outline();
             should_draw_hp = false;
         }
 	}
 	else if (w.stats()->query_bit_flags(BIT_FORESTWALK) &&
-	         og::runtime::current_session->myscreen_->world().mysmoother.query_genre_x_y(w.xpos/GRID_SIZE, w.ypos/GRID_SIZE) == TYPE_TREES
+	         og::runtime::current_session->myscreen_->world().mysmoother.query_genre_x_y(draw_x / GRID_SIZE, draw_y / GRID_SIZE) == TYPE_TREES
 	         && !w.stats()->query_bit_flags(BIT_FLYING)
-	         && (w.flight_left < 1) )
+	         && (w.flight_left() < 1) )
     {
         fill_mode = INVISIBLE_MODE;
         invisibility_amount = 1000;
         outline_style = 1;
         should_draw_hp = false;
     }
-	else if (w.outline)    // WE HAVE SOME OUTLINE
+	else if (w.outline())    // WE HAVE SOME OUTLINE
 	{
 	    fill_mode = OUTLINE_MODE;
-	    outline_style = w.outline;
+	    outline_style = w.outline();
 	}
 
 	// Draw me
-	if(show_hit_flash && w.hurt_flash)
-    {
-        w.hurt_flash = false;
-
-        auto bmp_span = std::span<const unsigned char>{w.bmp_data(), static_cast<size_t>(w.sizex * w.sizey)};
-        og::runtime::current_session->myscreen_->walkputbuffer_flash(xscreen, yscreen, w.sizex, w.sizey,
+		if(show_hit_flash && w.hurt_flash())
+	    {
+        auto bmp_span = std::span<const unsigned char>{w.bmp_data(), static_cast<size_t>(w.sizex() * w.sizey())};
+        og::runtime::current_session->myscreen_->walkputbuffer_flash(xscreen, yscreen, w.sizex(), w.sizey(),
                                    view_buf->xloc, view_buf->yloc,
                                    view_buf->endx, view_buf->endy,
                                    bmp_span, w.query_team_color());
     }
     else
     {
-        auto bmp_span = std::span<const unsigned char>{w.bmp_data(), static_cast<size_t>(w.sizex * w.sizey)};
+        auto bmp_span = std::span<const unsigned char>{w.bmp_data(), static_cast<size_t>(w.sizex() * w.sizey())};
         if(fill_mode == 0 && outline_style == 0)
         {
-            og::runtime::current_session->myscreen_->walkputbuffer(xscreen, yscreen, w.sizex, w.sizey,
+            og::runtime::current_session->myscreen_->walkputbuffer(xscreen, yscreen, w.sizex(), w.sizey(),
                                    view_buf->xloc, view_buf->yloc,
                                    view_buf->endx, view_buf->endy,
                                    bmp_span, w.query_team_color());
         }
         else
         {
-	            og::runtime::current_session->myscreen_->walkputbuffer( xscreen, yscreen, w.sizex, w.sizey,
+	            og::runtime::current_session->myscreen_->walkputbuffer( xscreen, yscreen, w.sizex(), w.sizey(),
 	                                    view_buf->xloc, view_buf->yloc,
 	                                    view_buf->endx, view_buf->endy,
 	                                    bmp_span, w.query_team_color(),
@@ -237,32 +540,83 @@ bool draw_walker(walker& w, viewscreen* view_buf)
 	        }
 	    }
 
-	if(should_draw_hp)
+    if(should_draw_hp)
         draw_small_health_bar(&w, view_buf);
+
+    screen* const game_screen = active_game_screen();
+    DamageNumberRenderContext* render_context = nullptr;
+    std::uint32_t owner_entity_id = 0u;
+    if (game_screen != nullptr)
+    {
+        render_context = &game_screen->damage_number_render_context();
+        render_context->prune_dead_owners(game_screen->world());
+        owner_entity_id = w.entity_id();
+        render_context->trim_owner(owner_entity_id, w.damage_numbers.size());
+    }
 
     if (show_damage_numbers || show_heal_numbers)
     {
-	    for(auto e = w.damage_numbers.begin(); e != w.damage_numbers.end();)
+        if (game_screen == nullptr)
+            return 1;
+
+        const std::uint32_t current_tick = game_screen->world().tick_count_;
+        const bool use_render_context =
+            render_context != nullptr && owner_entity_id != 0u;
+        std::size_t damage_number_index = 0u;
+        for (auto e = w.damage_numbers.begin(); e != w.damage_numbers.end();)
         {
             const bool is_heal = (e->color == 56);
-            const bool should_render = is_heal ? show_heal_numbers : show_damage_numbers;
+            const bool should_render =
+                is_heal ? show_heal_numbers : show_damage_numbers;
             if (!should_render)
             {
                 ++e;
+                ++damage_number_index;
                 continue;
             }
 
-            e->t -= 0.05f;
-            if(e->t < 0)
+            // UI-only damage/heal numbers should advance once per simulation
+            // tick. Repeated redraws in the same tick should not re-advance,
+            // and delayed redraws must catch up for every elapsed sim tick.
+            DamageNumberRenderContext::Entry* render_state = nullptr;
+            if (use_render_context)
+                render_state =
+                    &render_context->prepare_state(owner_entity_id,
+                                                   damage_number_index,
+                                                   damage_number_snapshot(*e));
+
+            const std::uint32_t advance_steps =
+                damage_number_advance_steps(render_state, *e, current_tick);
+            if (advance_steps > 0u)
             {
+                const float advance_amount =
+                    static_cast<float>(advance_steps);
+                e->t -= 0.05f * advance_amount;
+                e->y -= 1.5f * advance_amount;
+                if (render_state != nullptr)
+                {
+                    render_state->last_advance_tick = current_tick;
+                    snapshot_damage_number_state(*render_state, *e);
+                }
+            }
+
+            if (e->t < 0)
+            {
+                if (render_state != nullptr)
+                {
+                    render_context->erase_index(owner_entity_id,
+                                                damage_number_index);
+                }
                 e = w.damage_numbers.erase(e);
                 continue;
             }
 
-            e->y -= 1.5f;
-            if(view_buf->control == &w)
+            if (view_buf->control == &w)
                 draw_damage_number(*e, view_buf);
-            e++;
+            if (render_state != nullptr)
+                snapshot_damage_number_state(*render_state, *e);
+            ++e;
+            ++damage_number_index;
         }
     }
 
@@ -274,29 +628,35 @@ bool draw_walker(walker& w, viewscreen* view_buf)
 bool draw_walker_tile(walker& w, viewscreen* view_buf)
 {
     if (!cfg.is_on("effects", "hit_anim") &&
-        w.query_order() == Order::FX && w.family == FAMILY_HIT)
+        w.query_order() == Order::FX && w.family() == FAMILY_HIT)
     {
         return true;
     }
 
 	Sint32 xscreen, yscreen;
+    const WalkerRenderPosition draw_pos =
+        resolve_walker_render_position(w, view_buf->interpolation_alpha);
+    const short draw_x = static_cast<short>(draw_pos.worldx);
+    const short draw_y = static_cast<short>(draw_pos.worldy);
 
-	if (w.dead)
+	if (w.dead())
 	{
 		Log("drawing a dead guy!\n");
 		return 0;
 	}
-	w.drawcycle++;
+	// drawcycle is advanced by the authoritative sim (effect::act / living::act),
+	// NOT here — render must not write sim-read entity state (it freezes in the
+	// headless server). Enforced by scripts/check_render_no_sim_writes.sh.
 
-	xscreen = static_cast<Sint32>(w.xpos - view_buf->topx + view_buf->xloc);
-	yscreen = static_cast<Sint32>(w.ypos - view_buf->topy + view_buf->yloc);
+	xscreen = static_cast<Sint32>(draw_pos.worldx - static_cast<float>(view_buf->topx) + static_cast<float>(view_buf->xloc));
+	yscreen = static_cast<Sint32>(draw_pos.worldy - static_cast<float>(view_buf->topy) + static_cast<float>(view_buf->yloc));
 
-	w.compute_outline(view_buf->control);
+	w.compute_outline(view_buf->control, mark_player_controls_outline());
 
-	auto bmp_span = std::span<const unsigned char>{w.bmp_data(), static_cast<size_t>(w.sizex * w.sizey)};
+	auto bmp_span = std::span<const unsigned char>{w.bmp_data(), static_cast<size_t>(w.sizex() * w.sizey())};
 
 	if (w.stats()->query_bit_flags(BIT_PHANTOM)) //WE ARE A PHANTOM
-		og::runtime::current_session->myscreen_->walkputbuffer( xscreen, yscreen, w.sizex, w.sizey,
+		og::runtime::current_session->myscreen_->walkputbuffer( xscreen, yscreen, w.sizex(), w.sizey(),
 		                        view_buf->xloc, view_buf->yloc,
 		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
 		                        bmp_span, w.query_team_color(),
@@ -305,23 +665,23 @@ bool draw_walker_tile(walker& w, viewscreen* view_buf)
 		                        0, //outline
 		                        SHIFT_RANDOM); //type of phantom
 
-	else if (w.invisibility_left)  //WE ARE INVISIBLE
+	else if (w.invisibility_left())  //WE ARE INVISIBLE
 	{
-		if (w.team_num == view_buf->control->team_num)
-			og::runtime::current_session->myscreen_->walkputbuffer( xscreen, yscreen, w.sizex, w.sizey,
+		if (w.team_num() == view_buf->control->team_num())
+			og::runtime::current_session->myscreen_->walkputbuffer( xscreen, yscreen, w.sizex(), w.sizey(),
 			                        view_buf->xloc, view_buf->yloc,
 		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
 			                        bmp_span, w.query_team_color(),
 			                        INVISIBLE_MODE,  //mode
-			                        ( w.invisibility_left + 10 ), //invisibility
-			                        w.outline,  //outline
+			                        (w.invisibility_left() + 10), //invisibility
+				                        w.outline(),  //outline
 			                        0 ); //type of phantom
 	}
 	else if (w.stats()->query_bit_flags(BIT_FORESTWALK) &&
-	         og::runtime::current_session->myscreen_->world().mysmoother.query_genre_x_y(w.xpos/GRID_SIZE, w.ypos/GRID_SIZE) == TYPE_TREES
+	         og::runtime::current_session->myscreen_->world().mysmoother.query_genre_x_y(draw_x / GRID_SIZE, draw_y / GRID_SIZE) == TYPE_TREES
 	         && !w.stats()->query_bit_flags(BIT_FLYING)
-	         && (w.flight_left < 1) )
-		og::runtime::current_session->myscreen_->walkputbuffer( xscreen, yscreen, w.sizex, w.sizey,
+	         && (w.flight_left() < 1) )
+		og::runtime::current_session->myscreen_->walkputbuffer( xscreen, yscreen, w.sizex(), w.sizey(),
 		                        view_buf->xloc, view_buf->yloc,
 		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
 		                        bmp_span, w.query_team_color(),
@@ -330,22 +690,22 @@ bool draw_walker_tile(walker& w, viewscreen* view_buf)
 		                        1,  //outline
 		                        0 ); //type of phantom
 
-	else if (w.outline)    // WE HAVE SOME OUTLINE
+	else if (w.outline())    // WE HAVE SOME OUTLINE
 	{
-		og::runtime::current_session->myscreen_->walkputbuffer( xscreen, yscreen, w.sizex, w.sizey,
+		og::runtime::current_session->myscreen_->walkputbuffer( xscreen, yscreen, w.sizex(), w.sizey(),
 		                        view_buf->xloc, view_buf->yloc,
 		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
 		                        bmp_span, w.query_team_color(),
 		                        OUTLINE_MODE, //mode
 		                        0, //invisibility
-		                        w.outline, //outline
+				                        w.outline(), //outline
 		                        0 ); //type of phantom
 
         draw_small_health_bar(&w, view_buf);
 	}
 	else
 	{
-		og::runtime::current_session->myscreen_->walkputbuffer(xscreen, yscreen, w.sizex, w.sizey,
+		og::runtime::current_session->myscreen_->walkputbuffer(xscreen, yscreen, w.sizex(), w.sizey(),
 		                       view_buf->xloc, view_buf->yloc,
 		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
 		                       bmp_span, w.query_team_color());

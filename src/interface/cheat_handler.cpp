@@ -40,7 +40,7 @@ void handle_cheat_keys(walker*& control, short mynum,
 		og::runtime::current_session->changedteam_[mynum] = 1;
 
 		walker* result = nullptr;
-		control->user = -1;
+		control->set_user(-1);
 		control->set_act_type(ACT_RANDOM);
 
 		short oldteam = game_screen->save_data.my_team;
@@ -53,7 +53,7 @@ void handle_cheat_keys(walker*& control, short mynum,
 			for (auto& uptr : game_screen->world().oblist)
 			{
 				walker* w = uptr.get();
-				if ((w->team_num == game_screen->save_data.my_team) &&
+				if ((w->team_num() == game_screen->save_data.my_team) &&
 						(w->query_order() == Order::Living))
 				{
 					result = w;
@@ -68,7 +68,7 @@ void handle_cheat_keys(walker*& control, short mynum,
 		if (result != nullptr)
 			control = result;
 
-		control->user = static_cast<signed char>(mynum);
+		control->set_user(static_cast<signed char>(mynum));
 		control->set_act_type(ACT_CONTROL);
 	}
 
@@ -79,7 +79,7 @@ void handle_cheat_keys(walker*& control, short mynum,
 			walker* w = uptr.get();
 			if (w && w->query_order() == Order::Living && !control->is_friendly(w))
 			{
-				w->stats()->hitpoints = -1;
+				w->stats()->set_hitpoints(-1);
 				control->attack(w);
 				w->death();
 			}
@@ -87,12 +87,12 @@ void handle_cheat_keys(walker*& control, short mynum,
 	}
 
 	if (query_key_event(KEYCODE_RIGHTBRACKET, native_event))
-		control->stats()->level++;
+		control->stats()->set_level(control->stats()->level() + 1);
 
 	if (query_key_event(KEYCODE_LEFTBRACKET, native_event))
 	{
-		if (control->stats()->level > 1)
-			control->stats()->level--;
+		if (control->stats()->level() > 1)
+			control->stats()->set_level(control->stats()->level() - 1);
 	}
 
 	if (query_key_event(KEYCODE_F1, native_event))
@@ -104,10 +104,10 @@ void handle_cheat_keys(walker*& control, short mynum,
 	if (query_key_event(KEYCODE_F2, native_event))
 	{
 		newob = game_screen->world().add_ob(Order::FX, FAMILY_MAGIC_SHIELD);
-		newob->owner = control;
-		newob->team_num = control->team_num;
-		newob->ani_type = 1;
-		newob->lifetime = 200;
+		newob->set_owner(control);
+		newob->set_team_num(control->team_num());
+		newob->set_ani_type(1);
+		newob->set_lifetime(200);
 	}
 
 	if (query_key_event(KEYCODE_f, native_event))
@@ -120,7 +120,7 @@ void handle_cheat_keys(walker*& control, short mynum,
 
 	if (query_key_event(KEYCODE_h, native_event))
 	{
-		control->stats()->hitpoints += 100;
+		control->stats()->set_hitpoints(control->stats()->hitpoints() + 100);
 		game_screen->world().control_hp += 100;
 	}
 
@@ -133,23 +133,23 @@ void handle_cheat_keys(walker*& control, short mynum,
 	}
 
 	if (query_key_event(KEYCODE_m, native_event))
-		control->stats()->magicpoints += 150;
+		control->stats()->set_magicpoints(control->stats()->magicpoints() + 150);
 
 	if (query_key_event(KEYCODE_s, native_event))
 	{
-		control->speed_bonus_left = control->speed_bonus_left + 20;
-		control->speed_bonus = control->normal_stepsize;
+		control->set_speed_bonus_left(control->speed_bonus_left() + 20);
+		control->set_speed_bonus(control->normal_stepsize());
 	}
 
 	if (query_key_event(KEYCODE_t, native_event))
 	{
-		Sint32 family = (static_cast<Sint32>(static_cast<unsigned char>(control->family)) + 1) % NUM_FAMILIES;
+		Sint32 family = (static_cast<Sint32>(static_cast<unsigned char>(control->family())) + 1) % NUM_FAMILIES;
 		control->transform_to(control->query_order(), family);
 	}
 
 	if (query_key_event(KEYCODE_v, native_event))
 	{
-		if (control->invisibility_left < 3000)
-			control->invisibility_left = control->invisibility_left + 100;
+		if (control->invisibility_left() < 3000)
+			control->set_invisibility_left(control->invisibility_left() + 100);
 	}
 }

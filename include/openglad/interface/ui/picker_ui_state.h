@@ -100,4 +100,5 @@ struct PickerState {
     std::vector<button> details_buttons;
     std::vector<button> trainmenu_buttons;
     std::vector<button> hiremenu_buttons;
+    std::vector<button> networking_buttons;
 };

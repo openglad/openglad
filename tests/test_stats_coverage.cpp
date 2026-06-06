@@ -10,9 +10,9 @@
 TEST(StatsCoverage, stats_constructor_null_controller_defaults_and_no_command_guard)
 {
     statistics s(nullptr);
-    ASSERT_TRUE(s.controller == nullptr) << "constructor should preserve null controller";
-    ASSERT_EQ((int)Order::Living, (int)s.old_order) << "null-controller constructor should default old_order";
-    ASSERT_EQ((int)FAMILY_SOLDIER, (int)s.old_family) << "null-controller constructor should default family";
+    ASSERT_TRUE(s.controller() == nullptr) << "constructor should preserve null controller";
+    ASSERT_EQ((int)Order::Living, (int)s.old_order()) << "null-controller constructor should default old_order";
+    ASSERT_EQ((int)FAMILY_SOLDIER, (int)s.old_family()) << "null-controller constructor should default family";
     ASSERT_EQ(0, (int)s.do_command()) << "do_command should early-return when controller is null";
 }
 
@@ -52,7 +52,7 @@ TEST(StatsCoverage, stats_set_and_try_command_random_walk_paths)
     ASSERT_EQ((int)COMMAND_WALK, (int)s.commands.front().commandtype) << "set_command random should map to walk";
 
     s.add_command(COMMAND_DIE, 1, 0, 0);
-    ASSERT_EQ(1, (int)s.delete_me) << "COMMAND_DIE add should set delete_me immediately";
+    ASSERT_EQ(1, (int)s.delete_me()) << "COMMAND_DIE add should set delete_me immediately";
 
     pop_test_context();
 }
@@ -63,16 +63,16 @@ TEST(StatsCoverage, stats_batch2_command_edge_paths_smoke)
     walker w;
     statistics s(&w);
 
-    w.default_weapon = FAMILY_KNIFE;
-    w.current_weapon = FAMILY_ARROW;
-    w.team_num = 1;
-    w.real_team_num = 0;
+    w.set_default_weapon(FAMILY_KNIFE);
+    w.set_current_weapon(FAMILY_ARROW);
+    w.set_team_num(1);
+    w.set_real_team_num(0);
 
     // clear_command branch that restores weapon/team and clears leader.
     s.clear_command();
-    ASSERT_EQ((int)FAMILY_KNIFE, (int)w.current_weapon) << "clear_command should restore default weapon";
-    ASSERT_EQ(0, (int)w.team_num) << "clear_command should restore real team";
-    ASSERT_EQ(255, (int)w.real_team_num) << "clear_command should reset real team marker";
+    ASSERT_EQ((int)FAMILY_KNIFE, (int)w.current_weapon()) << "clear_command should restore default weapon";
+    ASSERT_EQ(0, (int)w.team_num()) << "clear_command should restore real team";
+    ASSERT_EQ(255, (int)w.real_team_num()) << "clear_command should reset real team marker";
 
     // Add follow command (logging branch) and walk clamping branches.
     s.add_command(COMMAND_FOLLOW, 1, 0, 0);
@@ -99,7 +99,7 @@ TEST(StatsCoverage, stats_round6_block_query_switches_all_directions)
 
     for (int dir = 0; dir < 8; dir++)
     {
-        w->curdir = static_cast<char>(dir);
+        w->set_curdir(static_cast<char>(dir));
         (void)w->stats()->right_blocked();
         (void)w->stats()->right_forward_blocked();
         (void)w->stats()->right_back_blocked();
@@ -107,7 +107,7 @@ TEST(StatsCoverage, stats_round6_block_query_switches_all_directions)
     }
 
     // Invalid dir defaults.
-    w->curdir = static_cast<char>(120);
+    w->set_curdir(static_cast<char>(120));
     (void)w->stats()->right_blocked();
     (void)w->stats()->right_forward_blocked();
     (void)w->stats()->right_back_blocked();
@@ -181,7 +181,7 @@ TEST(StatsCoverage, stats_round7a_command_clamps_and_direction_switches)
     };
     for (char dir : dirs)
     {
-        w->curdir = dir;
+        w->set_curdir(dir);
         (void)w->stats()->right_blocked();
         (void)w->stats()->right_forward_blocked();
         (void)w->stats()->right_back_blocked();
@@ -212,19 +212,18 @@ TEST(StatsCoverage, stats_round7a_follow_and_die_do_command_paths)
     ASSERT_TRUE(foe != nullptr) << "foe created";
     if (foe)
     {
-        foe->team_num = 1;
+        foe->set_team_num(1);
         foe->setxy(96, 64);
-        actor->foe = foe;
+        actor->set_foe(foe);
         actor->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
         (void)actor->stats()->do_command();
-        actor->foe = nullptr;
+        actor->set_foe(nullptr);
     }
 
     // COMMAND_DIE in do_command with commandcount < 2.
-    actor->dead = 0;
-    actor->stats()->delete_me = 0;
+    actor->set_dead(0);
+    actor->stats()->set_delete_me(0);
     actor->stats()->force_command(COMMAND_DIE, 1, 0, 0);
     (void)actor->stats()->do_command();
-    ASSERT_TRUE(actor->stats()->delete_me == 1) << "COMMAND_DIE do_command should set delete_me";
+    ASSERT_TRUE(actor->stats()->delete_me() == 1) << "COMMAND_DIE do_command should set delete_me";
 }
-

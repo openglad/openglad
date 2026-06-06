@@ -41,9 +41,9 @@ walker* add_living(MovementFixture& fx, char family = FAMILY_SOLDIER)
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, family);
     bind_test_entity_sim_context(fx.level, w.get());
-    w->sizex = 16;
-    w->sizey = 16;
-    w->stepsize = 1.0f;
+    w->set_sizex(16);
+    w->set_sizey(16);
+    w->set_stepsize(1.0f);
     w->setxy(64, 64);
     walker* out = w.get();
     fx.level.world().oblist.push_back(std::move(w));
@@ -73,23 +73,23 @@ TEST(WalkerMovementUnit, walker_movement_turn_stationary_and_normal)
     MovementFixture fx;
     walker* normal = add_living(fx, FAMILY_SOLDIER);
     ASSERT_TRUE(normal != nullptr);
-    normal->stepsize = 2.0f;
-    normal->curdir = FACE_UP;
-    normal->lastx = 0.0f;
-    normal->lasty = -normal->stepsize;
+    normal->set_stepsize(2.0f);
+    normal->set_curdir(FACE_UP);
+    normal->set_lastx(0.0f);
+    normal->set_lasty(-normal->stepsize());
     normal->turn(FACE_RIGHT);
-    ASSERT_TRUE(normal->curdir != FACE_UP);
-    ASSERT_TRUE(!(normal->lastx == 0.0f && normal->lasty == -normal->stepsize));
+    ASSERT_TRUE(normal->curdir() != FACE_UP);
+    ASSERT_TRUE(!(normal->lastx() == 0.0f && normal->lasty() == -normal->stepsize()));
 
     walker* tower = add_living(fx, FAMILY_TOWER1);
     ASSERT_TRUE(tower != nullptr);
-    tower->stepsize = 3.0f;
-    tower->lastx = 9.0f;
-    tower->lasty = -4.0f;
-    tower->curdir = FACE_UP;
+    tower->set_stepsize(3.0f);
+    tower->set_lastx(9.0f);
+    tower->set_lasty(-4.0f);
+    tower->set_curdir(FACE_UP);
     tower->turn(FACE_LEFT);
-    ASSERT_TRUE(tower->lastx == 9.0f);
-    ASSERT_TRUE(tower->lasty == -4.0f);
+    ASSERT_TRUE(tower->lastx() == 9.0f);
+    ASSERT_TRUE(tower->lasty() == -4.0f);
 }
 
 TEST(WalkerMovementUnit, walker_movement_walk_and_walkstep_edge_paths)
@@ -98,18 +98,18 @@ TEST(WalkerMovementUnit, walker_movement_walk_and_walkstep_edge_paths)
     walker* w = add_living(fx);
     ASSERT_TRUE(w != nullptr);
 
-    w->curdir = FACE_RIGHT;
+    w->set_curdir(FACE_RIGHT);
     ASSERT_TRUE(w->walk(1.0f, 0.0f));
 
     w->setxy(0, 0);
-    w->curdir = FACE_LEFT;
+    w->set_curdir(FACE_LEFT);
     ASSERT_TRUE(!w->walk(-1.0f, 0.0f));
 
-    w->user = -1;
+    w->set_user(-1);
     (void)w->walkstep(-1.0f, -1.0f);
     (void)w->walkstep(1.0f, -1.0f);
 
-    w->user = 0;
+    w->set_user(0);
     w->setxy(0, 10);
     (void)w->walkstep(-1.0f, -1.0f);
     (void)w->walkstep(-1.0f, 1.0f);
@@ -143,9 +143,9 @@ walker* add_living(WalkerMovementR11Fixture& fx, char family = FAMILY_SOLDIER)
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, family);
     bind_test_entity_sim_context(fx.level, w.get());
-    w->sizex = 16;
-    w->sizey = 16;
-    w->stepsize = 1.0f;
+    w->set_sizex(16);
+    w->set_sizey(16);
+    w->set_stepsize(1.0f);
     w->setxy(96, 96);
     walker* out = w.get();
     fx.level.world().oblist.push_back(std::move(w));
@@ -176,12 +176,12 @@ TEST(WalkerMovementUnit, walker_movement_r11_move_worldmove_setxy_and_setworldxy
 
     (void)w->move(1, -1);
     w->worldmove(0.5f, -0.5f);
-    ASSERT_TRUE(w->xpos != 0 || w->ypos != 0);
+    ASSERT_TRUE(w->xpos() != 0 || w->ypos() != 0);
 
-    w->ignore = 1;
+    w->set_ignore(1);
     (void)w->setxy(100, 100);
     w->setworldxy(101.0f, 99.0f);
-    w->ignore = 0;
+    w->set_ignore(0);
 }
 
 TEST(WalkerMovementUnit, walker_movement_r11_walkstep_npc_and_user_slide_paths)
@@ -193,7 +193,7 @@ TEST(WalkerMovementUnit, walker_movement_r11_walkstep_npc_and_user_slide_paths)
 
     // Force blocked movement by surrounding a tile with non-passable wall tile.
     w->setxy(0, 0);
-    w->user = -1;
+    w->set_user(-1);
     for (int d = 0; d < 8; ++d)
     {
         const float dx = (d == FACE_LEFT || d == FACE_UP_LEFT || d == FACE_DOWN_LEFT) ? -1.0f : ((d == FACE_UP || d == FACE_DOWN) ? 0.0f : 1.0f);
@@ -202,7 +202,7 @@ TEST(WalkerMovementUnit, walker_movement_r11_walkstep_npc_and_user_slide_paths)
     }
 
     // user branch with diagonal slide checks
-    w->user = 0;
+    w->set_user(0);
     w->setxy(1, 1);
     (void)w->walkstep(1.0f, 1.0f);
     (void)w->walkstep(-1.0f, 1.0f);
@@ -219,7 +219,7 @@ TEST(WalkerMovementUnit, walker_movement_r11_walk_turn_and_angles)
 
     // walk(0,0) and changed-direction branch
     ASSERT_TRUE(w->walk(0.0f, 0.0f));
-    w->curdir = FACE_UP;
+    w->set_curdir(FACE_UP);
     ASSERT_TRUE(w->walk(1.0f, 0.0f));
 
     // blocked path with BIT_ANIMATE branch
@@ -230,17 +230,17 @@ TEST(WalkerMovementUnit, walker_movement_r11_walk_turn_and_angles)
     // turn switch and default path
     for (int d = 0; d < 8; ++d)
     {
-        w->curdir = static_cast<char>(d);
+        w->set_curdir(static_cast<char>(d));
         (void)w->turn(static_cast<short>((d + 3) % 8));
     }
-    w->curdir = 120;
+    w->set_curdir(120);
     (void)w->turn(2);
 
     // stationary turn branch in family descriptor path
     walker* tower = add_living(fx, FAMILY_TOWER1);
-    tower->stepsize = 2.0f;
-    tower->lastx = 5.0f;
-    tower->lasty = 6.0f;
+    tower->set_stepsize(2.0f);
+    tower->set_lastx(5.0f);
+    tower->set_lasty(6.0f);
     (void)tower->turn(FACE_LEFT);
 }
 } // namespace detail_walker_movement_r11
@@ -270,9 +270,9 @@ walker* add_living(MovementR12Fixture& fx, char family = FAMILY_SOLDIER)
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, family);
     bind_test_entity_sim_context(fx.level, w.get());
-    w->sizex = 16;
-    w->sizey = 16;
-    w->stepsize = 1.0f;
+    w->set_sizex(16);
+    w->set_sizey(16);
+    w->set_stepsize(1.0f);
     w->setxy(64, 64);
     walker* out = w.get();
     fx.level.world().oblist.push_back(std::move(w));
@@ -303,10 +303,10 @@ TEST(WalkerMovementUnit, walker_movement_r12_stationary_slope_and_animate_paths)
     walker* mover = add_living(fx, FAMILY_SOLDIER);
     ASSERT_TRUE(station && mover);
 
-    station->stepsize = 3.0f;
+    station->set_stepsize(3.0f);
     ASSERT_TRUE(station->walkstep(1.0f, 0.0f));
-    ASSERT_TRUE(station->lastx == 1.0f);
-    ASSERT_TRUE(station->lasty == 0.0f);
+    ASSERT_TRUE(station->lastx() == 1.0f);
+    ASSERT_TRUE(station->lasty() == 0.0f);
 
     ASSERT_TRUE(mover->facing(2, 5) == FACE_DOWN);
     ASSERT_TRUE(mover->facing(2, 1) == FACE_DOWN_RIGHT);
@@ -320,7 +320,7 @@ TEST(WalkerMovementUnit, walker_movement_r12_stationary_slope_and_animate_paths)
     assign_basic_ani(mover);
     mover->stats()->set_bit_flags(BIT_ANIMATE, 1);
     mover->setxy(0, 0);
-    mover->curdir = FACE_LEFT;
+    mover->set_curdir(FACE_LEFT);
     ASSERT_TRUE(!mover->walk(-1.0f, 0.0f));
 }
 
@@ -334,42 +334,42 @@ TEST(WalkerMovementUnit, walker_movement_r12_walkstep_npc_and_user_slide_paths)
     assign_basic_ani(user);
 
     // walk() wrapper
-    npc->lastx = 1.0f;
-    npc->lasty = 0.0f;
+    npc->set_lastx(1.0f);
+    npc->set_lasty(0.0f);
     (void)npc->walk();
 
     // shove non-living fallback path
     ASSERT_TRUE(npc->shove(user, 1, 0) == -1);
 
     npc->setxy(0, 0);
-    npc->stepsize = 1.0f;
-    npc->user = -1;
+    npc->set_stepsize(1.0f);
+    npc->set_user(-1);
 
     // NPC fallback switch paths from blocked movement.
-    npc->curdir = FACE_LEFT;
+    npc->set_curdir(FACE_LEFT);
     (void)npc->walkstep(-1.0f, 0.0f);
-    npc->curdir = FACE_UP;
+    npc->set_curdir(FACE_UP);
     (void)npc->walkstep(0.0f, -1.0f);
-    npc->curdir = FACE_UP_RIGHT;
+    npc->set_curdir(FACE_UP_RIGHT);
     (void)npc->walkstep(1.0f, -1.0f);
-    npc->curdir = FACE_DOWN_LEFT;
+    npc->set_curdir(FACE_DOWN_LEFT);
     (void)npc->walkstep(-1.0f, 1.0f);
 
     // User slide path where diagonal move is blocked but one axis can progress.
     user->setxy(0, 1);
-    user->stepsize = 1.0f;
-    user->user = 0;
-    user->curdir = FACE_UP_LEFT;
+    user->set_stepsize(1.0f);
+    user->set_user(0);
+    user->set_curdir(FACE_UP_LEFT);
     (void)user->walkstep(-1.0f, -1.0f);
 
     // Invalid BIT_ANIMATE walk branch.
     user->stats()->set_bit_flags(BIT_ANIMATE, 1);
     user->setxy(0, 0);
-    user->curdir = FACE_LEFT;
+    user->set_curdir(FACE_LEFT);
     ASSERT_TRUE(!user->walk(-1.0f, 0.0f));
 
     // turn default branch via invalid curdir.
-    user->curdir = 127;
+    user->set_curdir(127);
     (void)user->turn(FACE_UP);
 }
 } // namespace detail_walker_movement_r12
@@ -399,9 +399,9 @@ walker* add_living(MovementR14Fixture& fx, short x, short y)
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
     bind_test_entity_sim_context(fx.level, w.get());
-    w->sizex = 16;
-    w->sizey = 16;
-    w->stepsize = 1.0f;
+    w->set_sizex(16);
+    w->set_sizey(16);
+    w->set_stepsize(1.0f);
     w->setxy(x, y);
     walker* out = w.get();
     fx.level.world().oblist.push_back(std::move(w));
@@ -432,25 +432,25 @@ TEST(WalkerMovementUnit, walker_movement_r14_lines_175_186_198_210_npc_fallback_
     ASSERT_TRUE(npc != nullptr);
 
     assign_basic_ani(npc);
-    npc->user = -1;
+    npc->set_user(-1);
 
-    npc->curdir = FACE_UP;
+    npc->set_curdir(FACE_UP);
     (void)npc->walkstep(0.0f, -1.0f);
 
     npc->setxy(fx.level.world().pixmaxx - 1, 0);
-    npc->curdir = FACE_RIGHT;
+    npc->set_curdir(FACE_RIGHT);
     (void)npc->walkstep(1.0f, 0.0f);
 
     npc->setxy(0, fx.level.world().pixmaxy - 1);
-    npc->curdir = FACE_DOWN;
+    npc->set_curdir(FACE_DOWN);
     (void)npc->walkstep(0.0f, 1.0f);
 
     npc->setxy(0, fx.level.world().pixmaxy - 1);
-    npc->curdir = FACE_DOWN_RIGHT;
+    npc->set_curdir(FACE_DOWN_RIGHT);
     (void)npc->walkstep(1.0f, 1.0f);
 
     npc->setxy(0, 0);
-    npc->curdir = FACE_UP_LEFT;
+    npc->set_curdir(FACE_UP_LEFT);
     (void)npc->walkstep(-1.0f, -1.0f);
 }
 
@@ -461,18 +461,18 @@ TEST(WalkerMovementUnit, walker_movement_r14_lines_234_255_268_273_278_285_292_u
     ASSERT_TRUE(user != nullptr);
 
     assign_basic_ani(user);
-    user->user = 0;
+    user->set_user(0);
 
-    user->curdir = FACE_UP;
+    user->set_curdir(FACE_UP);
     (void)user->walkstep(0.0f, -1.0f);
 
-    user->curdir = FACE_UP_RIGHT;
+    user->set_curdir(FACE_UP_RIGHT);
     (void)user->walkstep(1.0f, -1.0f);
 
-    user->curdir = FACE_DOWN_LEFT;
+    user->set_curdir(FACE_DOWN_LEFT);
     (void)user->walkstep(-1.0f, 1.0f);
 
-    user->curdir = 127;
+    user->set_curdir(127);
     (void)user->turn(FACE_RIGHT);
 }
 } // namespace detail_walker_movement_r14

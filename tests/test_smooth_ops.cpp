@@ -13,6 +13,12 @@ static PixieData make_center_pattern(unsigned char fill, unsigned char center,
                                      unsigned char upleft, unsigned char upright,
                                      unsigned char downleft, unsigned char downright);
 
+static void bind_zero_rng(smoother& s)
+{
+    static FixedRandom rng0(0);
+    s.set_rng(&rng0);
+}
+
 // ---------------------------------------------------------------------------
 // smoother query_x_y
 // ---------------------------------------------------------------------------
@@ -226,6 +232,7 @@ TEST(SmoothOps, smooth_smooth_full_grid)
 {
     og::runtime::current_session->myscreen_->world().create_new_grid();
     smoother s;
+    bind_zero_rng(s);
     s.set_target(og::runtime::current_session->myscreen_->world().grid);
 
     // Should not crash
@@ -249,6 +256,7 @@ TEST(SmoothOps, smooth_smooth_single_grass)
         pd.data[i] = PIX_GRASS1;
 
     smoother s;
+    bind_zero_rng(s);
     s.set_target(pd);
 
     Sint32 result = s.smooth(2, 2);
@@ -268,6 +276,7 @@ TEST(SmoothOps, smooth_smooth_water_surrounded)
         pd.data[i] = PIX_WATER1;
 
     smoother s;
+    bind_zero_rng(s);
     s.set_target(pd);
     Sint32 result = s.smooth(2, 2);
     (void)result;
@@ -285,6 +294,7 @@ TEST(SmoothOps, smooth_smooth_wall_surrounded)
         pd.data[i] = PIX_H_WALL1;
 
     smoother s;
+    bind_zero_rng(s);
     s.set_target(pd);
     Sint32 result = s.smooth(2, 2);
     (void)result;
@@ -304,6 +314,7 @@ TEST(SmoothOps, smooth_smooth_grass_water_border)
             pd.data[j*5+i] = (j < 3) ? PIX_GRASS1 : PIX_WATER1;
 
     smoother s;
+    bind_zero_rng(s);
     s.set_target(pd);
     // Smooth the border cells
     s.smooth(2, 2);
@@ -324,6 +335,7 @@ TEST(SmoothOps, smooth_smooth_tree_border)
     pd.data[12] = PIX_TREE_B1;
 
     smoother s;
+    bind_zero_rng(s);
     s.set_target(pd);
     s.smooth(2, 2);
 }
@@ -342,6 +354,7 @@ TEST(SmoothOps, smooth_smooth_dirt_border)
             pd.data[j*5+i] = (i < 3) ? PIX_DIRT_1 : PIX_GRASS1;
 
     smoother s;
+    bind_zero_rng(s);
     s.set_target(pd);
     s.smooth(2, 2);
     s.smooth(3, 2);
@@ -367,6 +380,7 @@ TEST(SmoothOps, smooth_smooth_carpet_border)
     }
 
     smoother s;
+    bind_zero_rng(s);
     s.set_target(pd);
     s.smooth(2, 2);
     s.smooth(1, 1);
@@ -386,6 +400,7 @@ TEST(SmoothOps, smooth_smooth_cobble_border)
     pd.data[0] = PIX_GRASS1;
 
     smoother s;
+    bind_zero_rng(s);
     s.set_target(pd);
     s.smooth(0, 0);
     s.smooth(1, 0);
@@ -405,6 +420,7 @@ TEST(SmoothOps, smooth_smooth_dark_grass_border)
             pd.data[j*5+i] = (j < 3) ? PIX_GRASS_DARK_1 : PIX_GRASS1;
 
     smoother s;
+    bind_zero_rng(s);
     s.set_target(pd);
     s.smooth(2, 2);
     s.smooth(2, 3);
@@ -423,6 +439,7 @@ TEST(SmoothOps, smooth_smooth_light_grass_border)
             pd.data[j*5+i] = (j < 3) ? PIX_GRASS_LIGHT_1 : PIX_GRASS1;
 
     smoother s;
+    bind_zero_rng(s);
     s.set_target(pd);
     s.smooth(2, 2);
     s.smooth(2, 3);
@@ -440,6 +457,7 @@ TEST(SmoothOps, smooth_smooth_all_edges)
         pd.data[i] = PIX_GRASS1;
 
     smoother s;
+    bind_zero_rng(s);
     s.set_target(pd);
 
     // Smooth every cell including edges
@@ -463,6 +481,7 @@ TEST(SmoothOps, smooth_smooth_mixed_terrain)
             pd.data[j*7+i] = types[(i+j)%4];
 
     smoother s;
+    bind_zero_rng(s);
     s.set_target(pd);
 
     // Smooth the entire grid
@@ -906,4 +925,3 @@ TEST(SmoothOps, smooth_round11_water_and_tree_edge_masks_662_720)
 
     pop_test_context();
 }
-

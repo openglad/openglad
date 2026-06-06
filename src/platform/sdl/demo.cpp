@@ -40,6 +40,7 @@
 #include <openglad/platform/game_context.h>
 #include <openglad/platform/game_loop.h>
 #include <openglad/platform/game_session.h>
+#include <openglad/platform/local_transport_shadow.h>
 #include <openglad/interface/guy_create.h>
 #include <openglad/interface/screen.h>
 #include "SDL.h"
@@ -49,6 +50,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdio>
 #include <cstdlib>
 #include <ctime>
 #include <format>
@@ -115,8 +117,8 @@ static void spawn_random_player_team(screen* s, std::mt19937& rng)
     std::vector<int> enemy_levels;
     for (auto& uptr : s->world().oblist) {
         walker* w = uptr.get();
-        if (w && !w->dead && w->order == Order::Living && w->team_num != 0) {
-            enemy_levels.push_back(static_cast<int>(w->stats()->level));
+        if (w && !w->dead() && w->order() == Order::Living && w->team_num() != 0) {
+            enemy_levels.push_back(static_cast<int>(w->stats()->level()));
         }
     }
 
@@ -133,7 +135,7 @@ static void spawn_random_player_team(screen* s, std::mt19937& rng)
 
         walker* w = guy_create_and_add_walker(g, s);
         if (w) {
-            w->team_num = 0;
+            w->set_team_num(0);
             w->teleport();
         }
     }
@@ -152,7 +154,16 @@ static void init_session_game(DemoSession& demo, int scen_id, std::mt19937& rng)
     s->save_data.scen_num = static_cast<short>(scen_id);
     s->save_data.current_campaign = "org.openglad.gladiator";
 
-    load_saved_game("save0", s);
+    if (!s->save_data.save("save0")) {
+        throw std::runtime_error(std::format(
+            "openglad_demo failed to bootstrap save0 for scenario {}",
+            scen_id));
+    }
+    if (load_saved_game("save0", s) == 0) {
+        throw std::runtime_error(std::format(
+            "openglad_demo failed to load bootstrap save0 for scenario {}",
+            scen_id));
+    }
 
     // Spawn a random player team to fight the enemies
     spawn_random_player_team(s, rng);
@@ -167,6 +178,12 @@ static void init_session_game(DemoSession& demo, int scen_id, std::mt19937& rng)
     s->redrawme = 1;
     s->framecount = 0;
     s->timerstart = query_timer_control();
+    og::runtime::reset_local_transport_shadow(*demo.session, *s);
+    if (!og::runtime::local_transport_active(*demo.session)) {
+        throw std::runtime_error(std::format(
+            "openglad_demo failed to initialize local transport for scenario {}",
+            scen_id));
+    }
     demo.session->frame_state_ = {};
     demo.finished.store(false, std::memory_order_relaxed);
 }
@@ -178,8 +195,9 @@ static void init_session_game(DemoSession& demo, int scen_id, std::mt19937& rng)
 // current_session and waits for the main thread to signal each frame.
 static void worker_thread_func(WorkerSync& sync, DemoSession& demo, int session_idx)
 {
-    // Install this session as thread_local current_session and current_game.
+    // Install this session as thread_local current_session/current_game/current_game_session.
     og::runtime::current_session = demo.session.get();
+    og::runtime::current_game_session = demo.session.get();
     current_game = &demo.session->game_;
 
     // Simulation-only deps: no rendering, no event polling, no frame timing.
@@ -262,17 +280,47 @@ int main(int argc, char* argv[])
 
         cfg.load_settings();
 
-        // Detect native display resolution for fullscreen grid layout
-        SDL_Init(SDL_INIT_VIDEO);
-        SDL_DisplayMode dm;
-        if (SDL_GetDesktopDisplayMode(0, &dm) != 0) {
-            LogError("SDL_GetDesktopDisplayMode failed: {}\n", SDL_GetError());
-            return 1;
+        int max_frames = 0;
+        if (const char* max_frames_env = std::getenv("OPENGLAD_DEMO_MAX_FRAMES")) {
+            max_frames = std::max(0, std::atoi(max_frames_env));
         }
-        const int display_w = dm.w;
-        const int display_h = dm.h;
-        const int grid_cols = display_w / CELL_W;
-        const int grid_rows = display_h / CELL_H;
+        const bool smoke_mode = max_frames > 0;
+
+        // Coverage/demo smoke only needs one startup-tick-shutdown pass.
+        // Clamping to a single cell avoids stressing gcov with a 3x3 session grid.
+        SDL_Init(SDL_INIT_VIDEO);
+        int display_w = 0;
+        int display_h = 0;
+        if (smoke_mode) {
+            display_w = CELL_W;
+            display_h = CELL_H;
+        } else {
+            SDL_DisplayMode dm;
+            if (SDL_GetDesktopDisplayMode(0, &dm) != 0) {
+                LogError("SDL_GetDesktopDisplayMode failed: {}\n", SDL_GetError());
+                return 1;
+            } else {
+                display_w = dm.w;
+                display_h = dm.h;
+            }
+        }
+        int grid_cols = display_w / CELL_W;
+        int grid_rows = display_h / CELL_H;
+        // The render loop is sequential on the main thread, so cell count
+        // drives steady-state frame cost linearly. Cap to the documented
+        // demo intent (4x3 = 12 cells, see CMakeLists.txt:1086) so a 4K+
+        // desktop doesn't drop FPS into the single digits. Power users can
+        // opt back in via OPENGLAD_DEMO_GRID=COLSxROWS.
+        if (const char* grid_env = std::getenv("OPENGLAD_DEMO_GRID")) {
+            int gc = 0, gr = 0;
+            if (std::sscanf(grid_env, "%dx%d", &gc, &gr) == 2 && gc >= 1 && gr >= 1) {
+                grid_cols = gc;
+                grid_rows = gr;
+            }
+        } else {
+            grid_cols = std::min(grid_cols, 4);
+            grid_rows = std::min(grid_rows, 3);
+        }
         const int num_sessions = grid_cols * grid_rows;
 
         Log("Display: {}x{}, grid: {}x{} = {} sessions\n",
@@ -342,7 +390,9 @@ int main(int argc, char* argv[])
         };
 
         // Initialize each session with a unique scenario (main thread).
-        std::vector<int> chosen = pick_scenarios();
+        std::vector<int> chosen = smoke_mode
+            ? std::vector<int>{1}
+            : pick_scenarios();
         E_Screen->suppress_present = true;
         for (int i = 0; i < num_sessions; i++) {
             init_session_game(demos[static_cast<size_t>(i)],
@@ -371,6 +421,8 @@ int main(int argc, char* argv[])
         constexpr std::chrono::microseconds FRAME_PERIOD{TIMER_WAIT_TICKS * 13600};
 
         bool running = true;
+        int frames_run = 0;
+
         while (running) {
             auto frame_start = std::chrono::steady_clock::now();
 
@@ -460,6 +512,11 @@ int main(int argc, char* argv[])
             auto remaining = FRAME_PERIOD - elapsed;
             if (remaining > std::chrono::microseconds(1000)) {
                 std::this_thread::sleep_for(remaining);
+            }
+
+            frames_run++;
+            if (max_frames > 0 && frames_run >= max_frames) {
+                running = false;
             }
         }
 

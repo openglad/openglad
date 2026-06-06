@@ -25,13 +25,41 @@
 #include <openglad/interface/ui/campaign_picker.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/render/view.h>
+#include <openglad/interface/session_state.h>
 #include <openglad/interface/screen.h>
 #include <algorithm>
 #include <format>
 #include <iterator>
-#include <vector>
 
 void popup_dialog(const char* title, const char* message);
+
+namespace
+{
+class ScopedGameplayLoadActivation
+{
+public:
+    explicit ScopedGameplayLoadActivation(og::runtime::SessionState* session)
+        : session_(session)
+        , previous_(session_ ? session_->gameplay_active_ : false)
+    {
+        if (session_ != nullptr)
+            session_->gameplay_active_ = true;
+    }
+
+    ~ScopedGameplayLoadActivation()
+    {
+        if (session_ != nullptr)
+            session_->gameplay_active_ = previous_;
+    }
+
+    ScopedGameplayLoadActivation(const ScopedGameplayLoadActivation&) = delete;
+    ScopedGameplayLoadActivation& operator=(const ScopedGameplayLoadActivation&) = delete;
+
+private:
+    og::runtime::SessionState* session_ = nullptr;
+    bool previous_ = false;
+};
+} // namespace
 
 LoadSavedGameError load_saved_game_with_error(const char *filename, screen *screenp)
 {
@@ -41,12 +69,26 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 		return LoadSavedGameError::MissingScreen;
 	}
 
+    if (filename != nullptr && filename[0] != '\0')
+    {
+        const SaveDataIoError load_error =
+            screenp->save_data.load_with_error(filename);
+        if (load_error != SaveDataIoError::None)
+        {
+            LogError("load_saved_game_failed file={} reason=save_data_load_failed io_error={}\n",
+                     filename,
+                     static_cast<int>(load_error));
+            return LoadSavedGameError::SaveDataLoadFailed;
+        }
+    }
+
 	TRACE("game", "load_saved_game file=%s scen=%d", filename, screenp->save_data.scen_num);
 	guy           *temp_guy;
 	walker        *temp_walker,  *replace_walker;
 	Order         myord{};
 	short         myfam;
 	bool used_fallback_level = false;
+    ScopedGameplayLoadActivation gameplay_load_active(og::runtime::current_session);
 
 	// Spectator mode (numplayers==0) still needs 1 viewscreen for the camera
 	screenp->numviews = (screenp->save_data.numplayers == 0)
@@ -87,7 +129,7 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 	{
 	    walker* w = uptr.get();
 		if (w)
-			w->set_difficulty(static_cast<Uint32>(w->stats()->level));
+			w->set_difficulty(static_cast<Uint32>(w->stats()->level()));
 	}
 
 	// Cycle through the team list ..
@@ -112,8 +154,8 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 				replace_walker = screenp->first_of(Order::Special, FAMILY_RESERVED_TEAM);
 		if (replace_walker)
 		{
-			temp_walker->setxy(replace_walker->xpos, replace_walker->ypos);
-			replace_walker->dead = 1;
+			temp_walker->setxy(replace_walker->xpos(), replace_walker->ypos());
+			replace_walker->set_dead(1);
 		}
 		else
 		{
@@ -126,7 +168,7 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 	replace_walker = screenp->first_of(Order::Special, FAMILY_RESERVED_TEAM);
 	while (replace_walker)
 	{
-		replace_walker->dead = 1;
+		replace_walker->set_dead(1);
 		replace_walker = screenp->first_of(Order::Special, FAMILY_RESERVED_TEAM);
 	}
 
@@ -143,6 +185,21 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 			view_teams.push_back(team_guy->teamnum);
 	}
 
+	const short preferred_team = screenp->save_data.my_team;
+	const bool has_preferred_team = std::any_of(
+		screenp->save_data.team_list.begin(),
+		screenp->save_data.team_list.end(),
+		[preferred_team](const std::unique_ptr<guy>& member) {
+			return member != nullptr && member->teamnum == preferred_team;
+		});
+	if (has_preferred_team)
+	{
+		view_teams.erase(
+			std::remove(view_teams.begin(), view_teams.end(), preferred_team),
+			view_teams.end());
+		view_teams.insert(view_teams.begin(), preferred_team);
+	}
+
 	// Have we already done this scenario?
 	if (og::runtime::current_session->myscreen_->save_data.is_level_completed(og::runtime::current_session->myscreen_->save_data.scen_num))
 	{
@@ -153,17 +210,17 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 			if (w)
 			{
 			    // Kill everything except for our team, exits, and teleporters
-				myfam = w->family;
+				myfam = w->family();
 				myord = w->query_order();
-				if ( ( (w->team_num==0 || w->myguy) && myord==Order::Living) || //living team member
+				if ( ( (w->team_num() ==0 || w->myguy) && myord==Order::Living) || //living team member
 				        (myord==Order::Treasure && myfam==FAMILY_EXIT) || // exit
 				        (myord==Order::Treasure && myfam==FAMILY_TELEPORTER)  // teleporters
 				   )
 				{
-					// do nothing; legal guy
+					// do nothing); legal guy
 				}
 				else
-					w->dead = 1;
+					w->set_dead(1);
 			}
 		}
 
@@ -172,18 +229,18 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 			    walker* w = uptr.get();
 			if (w)
 			{
-				myfam = w->family;
+				myfam = w->family();
 				myord = w->query_order();
-				if ( (w->team_num==0 && myord==Order::Living) || //living team member
+				if ( (w->team_num() ==0 && myord==Order::Living) || //living team member
 				        (myord==Order::Treasure && myfam==FAMILY_EXIT) || // exit
 				        (myord==Order::Treasure && myfam==FAMILY_TELEPORTER)  // teleporters
 
 				   )
 				{
-					// do nothing; legal guy
+					// do nothing); legal guy
 				}
 				else
-					w->dead = 1;
+					w->set_dead(1);
 			}
 		}
 
@@ -192,18 +249,18 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 			    walker* w = uptr.get();
 			if (w)
 			{
-				myfam = w->family;
+				myfam = w->family();
 				myord = w->query_order();
-				if ( (w->team_num==0 && myord==Order::Living) || //living team member
+				if ( (w->team_num() ==0 && myord==Order::Living) || //living team member
 				        (myord==Order::Treasure && myfam==FAMILY_EXIT) || // exit
 				        (myord==Order::Treasure && myfam==FAMILY_TELEPORTER)  // teleporters
 
 				   )
 				{
-					// do nothing; legal guy
+					// do nothing); legal guy
 				}
 				else
-					w->dead = 1;
+					w->set_dead(1);
 			}
 		}
 	}
@@ -228,15 +285,15 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
         {
             // Spectator mode: set a camera target but don't claim player control
             if (view->control && view_idx == 0)
-                screenp->world().control_hp = view->control->stats()->hitpoints;
+                screenp->world().control_hp = view->control->stats()->hitpoints();
         }
-        else if (view->control && view->control->user == -1)
+        else if (view->control && view->control->user() == -1)
         {
-            view->control->user = static_cast<signed char>(view_idx);
+            view->control->set_user(static_cast<signed char>(view_idx));
             view->control->set_act_type(ACT_CONTROL);
             view->control->stats()->clear_command();
             if (view_idx == 0)
-                screenp->world().control_hp = view->control->stats()->hitpoints;
+                screenp->world().control_hp = view->control->stats()->hitpoints();
         }
         ++view_idx;
     }
@@ -247,6 +304,12 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 short load_saved_game(const char *filename, screen  *screenp)
 {
 	const LoadSavedGameError err = load_saved_game_with_error(filename, screenp);
+	if(err == LoadSavedGameError::SaveDataLoadFailed)
+	{
+		std::string buf = "Could not load the saved game.\nPlease report this problem to the developer!\n";
+		popup_dialog("ERROR", buf.c_str());
+		return 0;
+	}
 	if(err == LoadSavedGameError::FallbackLevelLoadFailed)
 	{
 		std::string buf = "Fallback loading failed.\nCould not load scenario.\nPlease report this problem to the developer!\n";

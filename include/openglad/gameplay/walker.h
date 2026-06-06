@@ -46,6 +46,14 @@ using MicroPatherState = void*;
 class walker : public og::sim::SimEntity
 {
 	public:
+#define OG_WALKER_DIRTY_FIELD(type, name, bit)                           \
+    [[nodiscard]] type name() const noexcept { return name##_; }         \
+    void set_##name(type value)                                          \
+    {                                                                    \
+        name##_ = value;                                                 \
+        mark_dirty(bit);                                                 \
+    }
+
 		walker(const PixieData& data);
 		walker();  // Headless constructor (no rendering data)
 		~walker() override;
@@ -71,6 +79,15 @@ class walker : public og::sim::SimEntity
 		void set_owned_myguy(std::unique_ptr<guy> owned_guy);
 		void clear_myguy();
 		void move_myguy_to(walker* target);
+		void set_foe(walker* target);
+		walker* foe() const { return foe_; }
+		void set_leader(walker* target);
+		walker* leader() const { return leader_; }
+		void set_owner(walker* target);
+		walker* owner() const { return owner_; }
+		void set_collide_ob(walker* target);
+		walker* collide_ob() const { return collide_ob_; }
+		void sync_ids_from_pointers();
 		bool reset(void);
 			short move(short x, short y);
 			void worldmove(float x, float y);
@@ -80,8 +97,8 @@ class walker : public og::sim::SimEntity
 			bool setxy(std::uint32_t x, std::uint32_t y) { return setxy(static_cast<std::int32_t>(x), static_cast<std::int32_t>(y)); }
 			bool setxy(float x, float y) { return setxy(static_cast<std::int32_t>(x), static_cast<std::int32_t>(y)); }
 			void setworldxy(float x, float y);
-			float worldx() const { return worldx_; }
-			float worldy() const { return worldy_; }
+			float worldx() const { return SimEntity::worldx(); }
+			float worldy() const { return SimEntity::worldy(); }
 			bool walk();
 			bool walkstep(float x, float y);
 			// Convenience overloads to avoid implicit int->float conversions at call sites.
@@ -103,7 +120,7 @@ class walker : public og::sim::SimEntity
 		bool set_order_family(Order order, char family);
 		virtual Order query_order() const
 		{
-			return order;
+			return order();
 		}
 		walker  *create_weapon();
 		bool fire_check(short xdelta, short ydelta);
@@ -141,6 +158,60 @@ class walker : public og::sim::SimEntity
 
 		// stats (unique_ptr ownership is protected; getter returns raw pointer)
 		statistics* stats() const { return stats_.get(); }
+		OG_WALKER_DIRTY_FIELD(float, lastx, og::dirty::BIT_LASTX);
+		OG_WALKER_DIRTY_FIELD(float, lasty, og::dirty::BIT_LASTY);
+		OG_WALKER_DIRTY_FIELD(float, stepsize, og::dirty::BIT_STEPSIZE);
+		OG_WALKER_DIRTY_FIELD(float, normal_stepsize, og::dirty::BIT_NORMAL_STEPSIZE);
+		OG_WALKER_DIRTY_FIELD(signed char, curdir, og::dirty::BIT_CURDIR);
+		OG_WALKER_DIRTY_FIELD(char, enddir, og::dirty::BIT_ENDDIR);
+		OG_WALKER_DIRTY_FIELD(float, damage, og::dirty::BIT_DAMAGE);
+		OG_WALKER_DIRTY_FIELD(float, fire_frequency, og::dirty::BIT_FIRE_FREQUENCY);
+		OG_WALKER_DIRTY_FIELD(float, busy, og::dirty::BIT_BUSY);
+		OG_WALKER_DIRTY_FIELD(unsigned short, current_weapon, og::dirty::BIT_CURRENT_WEAPON);
+		OG_WALKER_DIRTY_FIELD(unsigned short, default_weapon, og::dirty::BIT_DEFAULT_WEAPON);
+		OG_WALKER_DIRTY_FIELD(float, attack_lunge, og::dirty::BIT_ATTACK_LUNGE);
+		OG_WALKER_DIRTY_FIELD(float, attack_lunge_angle, og::dirty::BIT_ATTACK_LUNGE_ANGLE);
+		OG_WALKER_DIRTY_FIELD(float, hit_recoil, og::dirty::BIT_HIT_RECOIL);
+		OG_WALKER_DIRTY_FIELD(float, hit_recoil_angle, og::dirty::BIT_HIT_RECOIL_ANGLE);
+		OG_WALKER_DIRTY_FIELD(float, last_hitpoints, og::dirty::BIT_LAST_HITPOINTS);
+		OG_WALKER_DIRTY_FIELD(char, action, og::dirty::BIT_ACTION);
+		[[nodiscard]] char act_type() const noexcept { return act_type_; }
+		void set_act_type_state(char value)
+		{
+			act_type_ = value;
+			mark_dirty(og::dirty::BIT_ACT_TYPE);
+		}
+		OG_WALKER_DIRTY_FIELD(char, old_act_type, og::dirty::BIT_OLD_ACT_TYPE);
+		OG_WALKER_DIRTY_FIELD(char, ani_type, og::dirty::BIT_ANI_TYPE);
+		OG_WALKER_DIRTY_FIELD(signed char, cycle, og::dirty::BIT_CYCLE);
+		OG_WALKER_DIRTY_FIELD(unsigned char, drawcycle, og::dirty::BIT_DRAWCYCLE);
+		OG_WALKER_DIRTY_FIELD(char, current_special, og::dirty::BIT_CURRENT_SPECIAL);
+		OG_WALKER_DIRTY_FIELD(char, ignore, og::dirty::BIT_IGNORE);
+		OG_WALKER_DIRTY_FIELD(bool, in_act, og::dirty::BIT_IN_ACT);
+		OG_WALKER_DIRTY_FIELD(short, shifter_down, og::dirty::BIT_SHIFTER_DOWN);
+		OG_WALKER_DIRTY_FIELD(short, yo_delay, og::dirty::BIT_YO_DELAY);
+		OG_WALKER_DIRTY_FIELD(short, skip_exit, og::dirty::BIT_SKIP_EXIT);
+		OG_WALKER_DIRTY_FIELD(unsigned char, outline, og::dirty::BIT_OUTLINE);
+		OG_WALKER_DIRTY_FIELD(bool, hurt_flash, og::dirty::BIT_HURT_FLASH);
+		OG_WALKER_DIRTY_FIELD(std::int32_t, lifetime, og::dirty::BIT_LIFETIME);
+		OG_WALKER_DIRTY_FIELD(float, speed_bonus, og::dirty::BIT_SPEED_BONUS);
+		OG_WALKER_DIRTY_FIELD(std::int32_t, speed_bonus_left, og::dirty::BIT_SPEED_BONUS_LEFT);
+		OG_WALKER_DIRTY_FIELD(short, charm_left, og::dirty::BIT_CHARM_LEFT);
+		OG_WALKER_DIRTY_FIELD(short, weapons_left, og::dirty::BIT_WEAPONS_LEFT);
+		OG_WALKER_DIRTY_FIELD(std::uint32_t, keys, og::dirty::BIT_KEYS);
+		OG_WALKER_DIRTY_FIELD(short, view_all, og::dirty::BIT_VIEW_ALL);
+		OG_WALKER_DIRTY_FIELD(std::int32_t, lineofsight, og::dirty::BIT_LINEOFSIGHT);
+		OG_WALKER_DIRTY_FIELD(int, path_check_counter, og::dirty::BIT_PATH_CHECK_COUNTER);
+		OG_WALKER_DIRTY_FIELD(std::uint32_t, foe_id, og::dirty::BIT_FOE_ID);
+		OG_WALKER_DIRTY_FIELD(std::uint32_t, leader_id, og::dirty::BIT_LEADER_ID);
+		OG_WALKER_DIRTY_FIELD(std::uint32_t, owner_id, og::dirty::BIT_OWNER_ID);
+		OG_WALKER_DIRTY_FIELD(std::uint32_t, collide_ob_id, og::dirty::BIT_COLLIDE_OB_ID);
+		std::int32_t regen_delay() const { return regen_delay_; }
+		void set_regen_delay(std::int32_t value)
+		{
+			regen_delay_ = value;
+			mark_dirty(og::dirty::BIT_REGEN_DELAY);
+		}
 
 		// TODO: Move this to screen class so it doesn't get overlapped by other walkers drawing
 		class DamageNumber
@@ -149,77 +220,97 @@ class walker : public og::sim::SimEntity
             float x, y;
             float t;
             float value;
+            std::uint32_t created_tick = 0u; // Simulation tick when this number was spawned.
 
             unsigned char color;
 
-	            DamageNumber(float x_, float y_, float value_, unsigned char color_);
+	            DamageNumber(float x_,
+                         float y_,
+                         float value_,
+                         unsigned char color_,
+                         std::uint32_t created_tick_ = 0u);
 		};
 
-		void compute_outline(const walker* viewer_control);
+		// mark_player_controls: when true, same-team OTHER player-controlled
+		// characters get a team-color outline (a "this is a human-controlled
+		// peer" marker). Only meaningful in genuine networked play; local
+		// split-screen passes false so co-players aren't outlined (each already
+		// has their own pane) — see walker_draw.cpp.
+		void compute_outline(const walker* viewer_control,
+		                     bool mark_player_controls = false);
 		float get_current_angle();
         void do_heal_effects(walker* healer, walker* target, short amount);
         void do_hit_effects(walker* attacker, walker* target, short tempdamage);
         void do_combat_damage(walker* attacker, walker* target, short tempdamage);
 
 		// Public data members (fields NOT in SimEntity base)
-		short skip_exit;               // cycles after failed exit choice
 		guy  *myguy;                   // Non-owning view of character data; ownership, when present, lives in owned_myguy_
-		walker *foe;
-		walker *leader;
-		walker *owner;                 // for weapons
-		std::uint32_t keys;                   // used to open doors
-		short view_all;                // used for seeing treasures, etc. on radar
-		short weapons_left;            // for fighter's blades
-		float lastx, lasty;
-		signed char cycle;
-		char action;                   // no special action mode
-		char ani_type;
-		float stepsize;
-		float normal_stepsize;         // used for elven forestwalk
-		std::int32_t lineofsight;
-		float damage;
-		float fire_frequency;
-		float busy;
-		char ignore;                   // for non-colliding objects
-		unsigned short current_weapon;
-		std::int32_t lifetime;               // how much life summoned guys have ..
-			float speed_bonus;             // Additional stepsize while speed potions are active
-			std::int32_t speed_bonus_left;        // Cycles remaining for speed bonus
-		walker* collide_ob;
-		unsigned short default_weapon;
-		signed char curdir;            // Current direction facing
 		const signed char * const * ani;
-		unsigned char drawcycle;
-		char current_special;
-		unsigned char outline;
-		short shifter_down;            // is our shifter/alternate key pressed?
-		short yo_delay;
-		bool in_act;                   // set while in an action
-		int path_check_counter;
 		std::vector<MicroPatherState> path_to_foe;  // Result from pathfinding
-		bool hurt_flash;
-		float attack_lunge;
-		float attack_lunge_angle;
-		float hit_recoil;
-		float hit_recoil_angle;
-		float last_hitpoints;
 		std::list<DamageNumber> damage_numbers;
-		char enddir;                   // Proposed direction facing
-		char act_type;
-		char old_act_type;
-		short charm_left;              // If we're still being charmed
 
 	protected:
 		bool act_generate();
 		bool act_fire();
 		bool act_guard();
 		virtual bool act_random();
-		std::int32_t regen_delay_;           // Delay after being hit
+		std::int32_t regen_delay_ = 0;       // Delay after being hit
 		walker * myself_;
 		std::unique_ptr<statistics> stats_;
 		std::unique_ptr<guy> owned_myguy_;
 		std::unique_ptr<og::gameplay::IRenderComponent> render_;  // Optional render component (null for headless)
+
+	private:
+		float lastx_ = 0.0f;
+		float lasty_ = 0.0f;
+		float stepsize_ = 0.0f;
+		float normal_stepsize_ = 0.0f;
+		signed char curdir_ = 0;
+		char enddir_ = 0;
+		float damage_ = 0.0f;
+		float fire_frequency_ = 0.0f;
+		float busy_ = 0.0f;
+		unsigned short current_weapon_ = 0;
+		unsigned short default_weapon_ = 0;
+		float attack_lunge_ = 0.0f;
+		float attack_lunge_angle_ = 0.0f;
+		float hit_recoil_ = 0.0f;
+		float hit_recoil_angle_ = 0.0f;
+		float last_hitpoints_ = 0.0f;
+		char action_ = 0;
+		char act_type_ = 0;
+		char old_act_type_ = 0;
+		char ani_type_ = 0;
+		signed char cycle_ = 0;
+		unsigned char drawcycle_ = 0;
+		char current_special_ = 0;
+		char ignore_ = 0;
+		bool in_act_ = false;
+		short shifter_down_ = 0;
+		short yo_delay_ = 0;
+		short skip_exit_ = 0;
+		unsigned char outline_ = 0;
+		bool hurt_flash_ = false;
+		std::int32_t lifetime_ = 0;
+		float speed_bonus_ = 0.0f;
+		std::int32_t speed_bonus_left_ = 0;
+		short charm_left_ = 0;
+		short weapons_left_ = 0;
+		std::uint32_t keys_ = 0;
+		short view_all_ = 0;
+		std::int32_t lineofsight_ = 0;
+		int path_check_counter_ = 0;
+		std::uint32_t foe_id_ = 0;
+		std::uint32_t leader_id_ = 0;
+		std::uint32_t owner_id_ = 0;
+		std::uint32_t collide_ob_id_ = 0;
+		walker* foe_ = nullptr;
+		walker* leader_ = nullptr;
+		walker* owner_ = nullptr;
+		walker* collide_ob_ = nullptr;
 };
+
+#undef OG_WALKER_DIRTY_FIELD
 
 // Returns the best display name for an entity: myguy name if available,
 // then stats name, then the provided fallback.

@@ -22,45 +22,45 @@ static void barbarian_level_up(guy* self, std::int32_t level_diff)
 
 static bool barbarian_do_special(walker* self)
 {
-    if (self->busy > 0)
+    if (self->busy() > 0)
         return false;
     walker* newob = self->fire();
     if (!newob)
         return false;
     walker* alive = current_game->world->add_ob(Order::Weapon, FAMILY_BOULDER);
     alive->center_on(newob);
-    alive->owner = self;
-    alive->stats()->level = self->stats()->level;
-    alive->lastx = newob->lastx;
-    alive->lasty = newob->lasty;
+    alive->set_owner(self);
+    alive->stats()->set_level(self->stats()->level());
+    alive->set_lastx(newob->lastx());
+    alive->set_lasty(newob->lasty());
     if (self->myguy)
     {
-        alive->stepsize = 1.0f + self->myguy->strength / 7;
-        alive->damage += self->myguy->strength / 5.0f;
+        alive->set_stepsize(1.0f + self->myguy->strength / 7);
+        alive->set_damage(alive->damage() + self->myguy->strength / 5.0f);
     }
     else
     {
-        alive->stepsize = static_cast<float>(self->stats()->level) * 2.0f;
-        alive->damage += static_cast<float>(self->stats()->level);
+        alive->set_stepsize(static_cast<float>(self->stats()->level()) * 2.0f);
+        alive->set_damage(alive->damage() + static_cast<float>(self->stats()->level()));
     }
-    if (alive->stepsize < 1)
-        alive->stepsize = 1;
-    if (alive->stepsize > 15)
-        alive->stepsize = 15;
-    if (alive->lasty > 0)
-        alive->lasty = alive->stepsize;
-    else if (alive->lasty < 0)
-        alive->lasty = -(alive->stepsize);
-    if (alive->lastx > 0)
-        alive->lastx = alive->stepsize;
-    else if (alive->lastx < 0)
-        alive->lastx = -(alive->stepsize);
-    if (self->current_special == 2)
-        alive->skip_exit = 5000;
+    if (alive->stepsize() < 1)
+        alive->set_stepsize(1);
+    if (alive->stepsize() > 15)
+        alive->set_stepsize(15);
+    if (alive->lasty() > 0)
+        alive->set_lasty(alive->stepsize());
+    else if (alive->lasty() < 0)
+        alive->set_lasty(-(alive->stepsize()));
+    if (alive->lastx() > 0)
+        alive->set_lastx(alive->stepsize());
+    else if (alive->lastx() < 0)
+        alive->set_lastx(-(alive->stepsize()));
+    if (self->current_special() == 2)
+        alive->set_skip_exit(5000);
     else
-        alive->skip_exit = 0;
-    newob->dead = 1;
-    self->busy += 1.0f + static_cast<float>(self->current_special) * 5.0f;
+        alive->set_skip_exit(0);
+    newob->set_dead(1);
+    self->set_busy(self->busy() + 1.0f + static_cast<float>(self->current_special()) * 5.0f);
     return true;
 }
 

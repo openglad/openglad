@@ -10,5 +10,9 @@ namespace og::runtime {
 
 SessionState::SessionState() = default;
 SessionState::~SessionState() = default;
+bool SessionState::has_local_transport_runtime() const noexcept
+{
+    return false;
+}
 
 } // namespace og::runtime

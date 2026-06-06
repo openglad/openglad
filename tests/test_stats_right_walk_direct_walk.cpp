@@ -56,11 +56,11 @@ TEST(StatsRightWalkDirectWalk, stats_right_walk_turn_right_adds_walk_command_all
 
     PixieData px = one_px();
     walker w(px);
-    w.stepsize = 1.0f;
+    w.set_stepsize(1.0f);
     w.setxy(GRID_SIZE - 1, GRID_SIZE - 1);
-    w.curdir = FACE_UP;
-    w.lastx = 0.0f;
-    w.lasty = 0.0f;
+    w.set_curdir(FACE_UP);
+    w.set_lastx(0.0f);
+    w.set_lasty(0.0f);
 
     statistics* st = w.stats();
     ASSERT_TRUE(st != nullptr) << "stats exists";
@@ -71,7 +71,7 @@ TEST(StatsRightWalkDirectWalk, stats_right_walk_turn_right_adds_walk_command_all
     for (int desired = 0; desired < 8; desired++)
     {
         st->clear_command();
-        w.enddir = static_cast<char>((desired + 6) % 8); // desired-2 mod 8
+        w.set_enddir(static_cast<char>((desired + 6) % 8)); // desired-2 mod 8
         (void)st->right_walk();
 
         ASSERT_TRUE(!st->commands.empty()) << "right_walk should add a command when right_back_blocked";
@@ -110,9 +110,9 @@ TEST(StatsRightWalkDirectWalk, stats_direct_walk_grid_passability_branches)
     walker w(px);
     walker foe(px);
 
-    w.stepsize = 1.0f;
+    w.set_stepsize(1.0f);
     w.setxy(GRID_SIZE - 1, GRID_SIZE - 1);
-    w.foe = &foe;
+    w.set_foe(&foe);
 
     statistics* st = w.stats();
     ASSERT_TRUE(st != nullptr) << "stats exists";
@@ -124,24 +124,24 @@ TEST(StatsRightWalkDirectWalk, stats_direct_walk_grid_passability_branches)
     set_tile(1, 1, PIX_H_WALL1); // (x+1,y+1)
     set_tile(1, 0, PIX_H_WALL1); // (x+1,y)
     set_tile(0, 1, PIX_H_WALL1); // (x,y+1)
-    foe.setxy(w.xpos + 200, w.ypos + 200);
+    foe.setxy(w.xpos() + 200, w.ypos() + 200);
     ASSERT_EQ(0, static_cast<int>(st->direct_walk())) << "direct_walk should fail when all direct tiles blocked";
 
     // B) Diagonal blocked, x blocked, y ok, but ydelta==0 -> return 0 via (!ydelta) branch.
     set_all_tiles(PIX_GRASS1);
     set_tile(1, 0, PIX_H_WALL1); // (x+1,y) blocks diagonal (y=0) and x
-    foe.setxy(static_cast<Sint32>(w.xpos) + 200, static_cast<Sint32>(w.ypos)); // ydelta==0
+    foe.setxy(static_cast<Sint32>(w.xpos()) + 200, static_cast<Sint32>(w.ypos())); // ydelta==0
     ASSERT_EQ(0, static_cast<int>(st->direct_walk())) << "direct_walk should fail when ydelta==0 and x blocked";
 
     // C) Diagonal blocked, x ok, but xdelta==0 -> return 0 via (!xdelta) branch.
     set_all_tiles(PIX_GRASS1);
     set_tile(0, 1, PIX_H_WALL1); // (x,y+1) blocks diagonal when xdelta==0
-    foe.setxy(static_cast<Sint32>(w.xpos), static_cast<Sint32>(w.ypos) + 200); // xdelta==0
+    foe.setxy(static_cast<Sint32>(w.xpos()), static_cast<Sint32>(w.ypos()) + 200); // xdelta==0
     ASSERT_EQ(0, static_cast<int>(st->direct_walk())) << "direct_walk should fail when xdelta==0 and diagonal blocked";
 
     // D) Diagonal ok but xdelta==ydelta==0 -> return 0 via (!xdelta && !ydelta) branch.
     set_all_tiles(PIX_GRASS1);
-    foe.setxy(static_cast<Sint32>(w.xpos), static_cast<Sint32>(w.ypos));
+    foe.setxy(static_cast<Sint32>(w.xpos()), static_cast<Sint32>(w.ypos()));
     ASSERT_EQ(0, static_cast<int>(st->direct_walk())) << "direct_walk should return 0 when foe at same position";
 }
 
@@ -152,11 +152,11 @@ TEST(StatsRightWalkDirectWalk, stats_right_walk_forward_normalization_and_forwar
 
     PixieData px = one_px();
     walker w(px);
-    w.stepsize = 1.0f;
+    w.set_stepsize(1.0f);
     w.setxy(GRID_SIZE - 1, GRID_SIZE - 1);
-    w.curdir = FACE_UP;
-    w.enddir = FACE_UP;
-    w.foe = nullptr; // keep direct_walk path deterministic when reached
+    w.set_curdir(FACE_UP);
+    w.set_enddir(FACE_UP);
+    w.set_foe(nullptr); // keep direct_walk path deterministic when reached
 
     statistics* st = w.stats();
     ASSERT_TRUE(st != nullptr) << "stats exists";
@@ -169,12 +169,12 @@ TEST(StatsRightWalkDirectWalk, stats_right_walk_forward_normalization_and_forwar
     set_all_tiles(PIX_GRASS1);
     set_tile(1, 0, PIX_H_WALL1);
 
-    w.lastx = 10.0f;
-    w.lasty = 1.0f;
+    w.set_lastx(10.0f);
+    w.set_lasty(1.0f);
     ASSERT_TRUE(st->right_walk()) << "right_walk should take forward branch when right side is blocked";
 
-    w.lastx = 1.0f;
-    w.lasty = 10.0f;
+    w.set_lastx(1.0f);
+    w.set_lasty(10.0f);
     ASSERT_TRUE(st->right_walk()) << "right_walk should normalize steep-y forward branch";
 
     // Force explicit forward_blocked branch: block forward tile too.
@@ -189,7 +189,7 @@ TEST(StatsRightWalkDirectWalk, stats_blocked_direction_switch_tables_all_cases_r
 
     PixieData px = one_px();
     walker w(px);
-    w.stepsize = 1.0f;
+    w.set_stepsize(1.0f);
     w.setxy(GRID_SIZE * 4, GRID_SIZE * 4);
 
     statistics* st = w.stats();
@@ -204,7 +204,7 @@ TEST(StatsRightWalkDirectWalk, stats_blocked_direction_switch_tables_all_cases_r
     };
     for (char d : dirs)
     {
-        w.curdir = d;
+        w.set_curdir(d);
         (void)st->right_blocked();
         (void)st->right_forward_blocked();
         (void)st->right_back_blocked();
@@ -212,4 +212,3 @@ TEST(StatsRightWalkDirectWalk, stats_blocked_direction_switch_tables_all_cases_r
     }
     ASSERT_TRUE(true) << "blocked-direction switch tables executed";
 }
-

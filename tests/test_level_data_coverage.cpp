@@ -91,8 +91,8 @@ static walker* add_living(unsigned char family = FAMILY_SOLDIER)
     walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, family);
     if (w) {
         w->setxy(64, 64);
-        w->sizex = 1;
-        w->sizey = 1;
+        w->set_sizex(1);
+        w->set_sizey(1);
     }
     return w;
 }
@@ -145,8 +145,8 @@ TEST(LevelDataCoverage, level_data_range_helpers_and_null_paths)
     walker* p1 = add_living(FAMILY_SOLDIER);
     walker* p2 = add_living(FAMILY_ARCHER);
     ASSERT_TRUE(p1 != nullptr && p2 != nullptr) << "living walkers should be created";
-    p1->user = -1;
-    p2->user = 0;
+    p1->set_user(-1);
+    p2->set_user(0);
     p2->setxy(96, 64);
 
     walker probe;
@@ -248,7 +248,9 @@ TEST(LevelDataCoverage, level_data_load_clamps_invalid_team_ids_to_score_range)
     walker* loaded = data.world().oblist.empty() ? nullptr : data.world().oblist.front().get();
     ASSERT_TRUE(loaded != nullptr) << "loaded walker should exist";
     if (loaded)
-        ASSERT_EQ(0, (int)loaded->team_num) << "invalid team id should clamp to 0";
+    {
+        ASSERT_EQ(0, (int)loaded->team_num()) << "invalid team id should clamp to 0";
+    }
     data.delete_objects();
 }
 
@@ -269,8 +271,8 @@ TEST(LevelDataCoverage, level_data_query_grid_passable_edge_cases)
     og::runtime::current_session->myscreen_->world().create_new_grid();
     og::runtime::current_session->myscreen_->world().grid.data[0] = PIX_TREE_M1;
     w->setxy(0, 0);
-    w->sizex = 1;
-    w->sizey = 1;
+    w->set_sizex(1);
+    w->set_sizey(1);
     ASSERT_TRUE(!og::runtime::current_session->myscreen_->world().query_grid_passable(0.0f, 0.0f, w)) << "tree should block non-forestwalker";
 
     w->stats()->set_bit_flags(BIT_FORESTWALK, 1);
@@ -281,7 +283,7 @@ TEST(LevelDataCoverage, level_data_query_grid_passable_edge_cases)
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world().query_grid_passable(0.0f, 0.0f, w)) << "flying should pass trees";
 
     w->stats()->set_bit_flags(BIT_FLYING, 0);
-    w->dead = 1;
+    w->set_dead(1);
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world().query_object_passable(0.0f, 0.0f, w)) << "dead walker should skip object collision checks";
 
     og::runtime::current_session->myscreen_->world().delete_objects();
@@ -370,8 +372,8 @@ TEST(LevelDataCoverage, level_data_batch2_misc_uncovered_paths_smoke)
     if (!(a && b))
         return;
 
-    a->team_num = 0;
-    b->team_num = 1;
+    a->set_team_num(0);
+    b->set_team_num(1);
     a->setxy(64, 64);
     b->setxy(96, 64);
 
@@ -401,13 +403,13 @@ TEST(LevelDataCoverage, level_data_wall4_projectile_passability_distance_and_rng
         return;
 
     owner->setxy(160, 0);
-    owner->sizex = 1;
-    owner->sizey = 1;
+    owner->set_sizex(1);
+    owner->set_sizey(1);
 
-    projectile->owner = owner;
+    projectile->set_owner(owner);
     projectile->setxy(0, 0);
-    projectile->sizex = 1;
-    projectile->sizey = 1;
+    projectile->set_sizex(1);
+    projectile->set_sizey(1);
 
     og::runtime::current_session->myscreen_->world().rng_.state_ = 0;
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world().query_grid_passable(0.0f, 0.0f, projectile)) << "weapon on PIX_WALL4 should pass when rng returns 0";
@@ -417,7 +419,7 @@ TEST(LevelDataCoverage, level_data_wall4_projectile_passability_distance_and_rng
 
     owner->setxy(0, 0);
     owner->stats()->set_bit_flags(BIT_FLYING, 0);
-    owner->flight_left = 0;
+    owner->set_flight_left(0);
     ASSERT_TRUE(!og::runtime::current_session->myscreen_->world().query_grid_passable(0.0f, 0.0f, owner)) << "living walker on PIX_WALL4 should be blocked immediately";
 
     og::runtime::current_session->myscreen_->world().delete_objects();
@@ -437,14 +439,16 @@ TEST(LevelDataCoverage, level_data_round8_query_grid_treeb1_and_arrow_slit_varia
 
     living->setxy(0, 0);
     weapon->setxy(0, 0);
-    living->sizex = weapon->sizex = 1;
-    living->sizey = weapon->sizey = 1;
+    living->set_sizex(1);
+    weapon->set_sizex(1);
+    living->set_sizey(1);
+    weapon->set_sizey(1);
 
     // PIX_TREE_B1 branch: living blocks, weapon passes.
     og::runtime::current_session->myscreen_->world().grid.data[0] = PIX_TREE_B1;
     living->stats()->set_bit_flags(BIT_FORESTWALK, 0);
     living->stats()->set_bit_flags(BIT_FLYING, 0);
-    living->flight_left = 0;
+    living->set_flight_left(0);
     ASSERT_TRUE(!og::runtime::current_session->myscreen_->world().query_grid_passable(0.0f, 0.0f, living)) << "TREE_B1 should block non-flying, non-forestwalk living";
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world().query_grid_passable(0.0f, 0.0f, weapon)) << "TREE_B1 should allow weapons";
 
@@ -453,7 +457,7 @@ TEST(LevelDataCoverage, level_data_round8_query_grid_treeb1_and_arrow_slit_varia
     ASSERT_TRUE(owner != nullptr) << "owner should be created";
     if (!owner)
         return;
-    weapon->owner = owner;
+    weapon->set_owner(owner);
     owner->setxy(48, 0);
     weapon->setxy(0, 0);
 
@@ -488,26 +492,26 @@ TEST(LevelDataCoverage, level_data_range_helpers_positive_selection_paths)
     if (!(actor && friend_living && foe_living && foe_generator && friend_weapon && blood_far && blood_near))
         return;
 
-    actor->team_num = 0;
+    actor->set_team_num(0);
     actor->setxy(64, 64);
-    actor->sizex = 1;
-    actor->sizey = 1;
+    actor->set_sizex(1);
+    actor->set_sizey(1);
 
-    friend_living->team_num = 0;
+    friend_living->set_team_num(0);
     friend_living->setxy(80, 64);
-    friend_living->dead = 0;
+    friend_living->set_dead(0);
 
-    foe_living->team_num = 1;
+    foe_living->set_team_num(1);
     foe_living->setxy(96, 64);
-    foe_living->dead = 0;
+    foe_living->set_dead(0);
 
-    foe_generator->team_num = 1;
+    foe_generator->set_team_num(1);
     foe_generator->setxy(112, 64);
-    foe_generator->dead = 0;
+    foe_generator->set_dead(0);
 
-    friend_weapon->team_num = 0;
+    friend_weapon->set_team_num(0);
     friend_weapon->setxy(72, 64);
-    friend_weapon->dead = 0;
+    friend_weapon->set_dead(0);
 
     blood_far->setxy(200, 200);
     blood_near->setxy(68, 64);
@@ -545,15 +549,15 @@ TEST(LevelDataCoverage, level_data_round5_query_grid_passable_contiguous_block_p
         return;
 
     living->setxy(0, 0);
-    living->sizex = 1;
-    living->sizey = 1;
+    living->set_sizex(1);
+    living->set_sizey(1);
     owner->setxy(80, 0);
-    owner->sizex = 1;
-    owner->sizey = 1;
+    owner->set_sizex(1);
+    owner->set_sizey(1);
     weapon->setxy(0, 0);
-    weapon->sizex = 1;
-    weapon->sizey = 1;
-    weapon->owner = owner;
+    weapon->set_sizex(1);
+    weapon->set_sizey(1);
+    weapon->set_owner(owner);
 
     og::runtime::current_session->myscreen_->world().grid.data[0] = PIX_GRASS1;
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world().query_grid_passable(0.0f, 0.0f, living)) << "ground tile should pass";
@@ -603,7 +607,7 @@ TEST(LevelDataCoverage, level_data_round5_query_grid_passable_contiguous_block_p
     og::runtime::current_session->myscreen_->world().grid.data[0] = 255;
     ASSERT_TRUE(!og::runtime::current_session->myscreen_->world().query_grid_passable(0.0f, 0.0f, living)) << "unknown tile should use default fail branch";
 
-    living->dead = 1;
+    living->set_dead(1);
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world().query_object_passable(0.0f, 0.0f, living)) << "dead object should pass object-collision query";
 
     og::runtime::current_session->myscreen_->world().delete_objects();
@@ -625,19 +629,19 @@ TEST(LevelDataCoverage, level_data_round5_find_helpers_contiguous_block_paths)
     if (!(actor && friend_living && foe_living && foe_generator && foe_weapon && blood))
         return;
 
-    actor->team_num = 0;
+    actor->set_team_num(0);
     actor->setxy(64, 64);
 
-    friend_living->team_num = 0;
+    friend_living->set_team_num(0);
     friend_living->setxy(72, 64);
 
-    foe_living->team_num = 1;
+    foe_living->set_team_num(1);
     foe_living->setxy(80, 64);
 
-    foe_generator->team_num = 1;
+    foe_generator->set_team_num(1);
     foe_generator->setxy(96, 64);
 
-    foe_weapon->team_num = 1;
+    foe_weapon->set_team_num(1);
     foe_weapon->setxy(70, 64);
 
     blood->setxy(68, 64);
@@ -657,7 +661,7 @@ TEST(LevelDataCoverage, level_data_round5_find_helpers_contiguous_block_paths)
     auto foe_weapons = og::runtime::current_session->myscreen_->world().find_foe_weapons_in_range(og::runtime::current_session->myscreen_->world().weaplist, 128, &howmany, actor);
     ASSERT_TRUE(foe_weapons.empty()) << "enemy weapon should be excluded because helper accepts friendly weapons";
 
-    foe_weapon->team_num = actor->team_num;
+    foe_weapon->set_team_num(actor->team_num());
     foe_weapons = og::runtime::current_session->myscreen_->world().find_foe_weapons_in_range(og::runtime::current_session->myscreen_->world().weaplist, 128, &howmany, actor);
     ASSERT_TRUE(!foe_weapons.empty() && howmany > 0) << "friendly weapon should be included by helper predicate";
 
@@ -820,13 +824,13 @@ TEST(LevelDataCoverage, level_data_round6_passable_wall4_and_water_weapon_paths)
         return;
 
     owner->setxy(96, 0);
-    weapon->owner = owner;
+    weapon->set_owner(owner);
     weapon->setxy(0, 0);
-    weapon->sizex = 1;
-    weapon->sizey = 1;
+    weapon->set_sizex(1);
+    weapon->set_sizey(1);
     living->setxy(0, 0);
-    living->sizex = 1;
-    living->sizey = 1;
+    living->set_sizex(1);
+    living->set_sizey(1);
 
     og::runtime::current_session->myscreen_->world().grid.frames = 1;
     og::runtime::current_session->myscreen_->world().grid.w = 1;
@@ -872,13 +876,13 @@ TEST(LevelDataCoverage, level_data_round6_wrapper_and_passability_edges)
         return;
 
     owner->setxy(0, 96);
-    weapon->owner = owner;
+    weapon->set_owner(owner);
     weapon->setxy(0, 0);
-    weapon->sizex = 1;
-    weapon->sizey = 1;
+    weapon->set_sizex(1);
+    weapon->set_sizey(1);
     living->setxy(0, 0);
-    living->sizex = 1;
-    living->sizey = 1;
+    living->set_sizex(1);
+    living->set_sizey(1);
 
     og::runtime::current_session->myscreen_->world().grid.frames = 1;
     og::runtime::current_session->myscreen_->world().grid.w = 1;
@@ -1003,8 +1007,8 @@ TEST(LevelDataCoverage, level_data_round6_find_near_foe_boundary_fallback_path)
     if (!(actor && foe))
         return;
 
-    actor->team_num = 0;
-    foe->team_num = 1;
+    actor->set_team_num(0);
+    foe->set_team_num(1);
     actor->setxy(GRID_SIZE * 3, og::runtime::current_session->myscreen_->world().pixmaxy - 1);
     foe->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
 
@@ -1036,16 +1040,16 @@ TEST(LevelDataCoverage, level_data_round7_wall_arrow_distance_axis_and_rng_paths
     og::runtime::current_session->myscreen_->world().grid.data = std::make_unique<unsigned char[]>(1);
     og::runtime::current_session->myscreen_->world().grid.data[0] = PIX_WALL5;
 
-    owner->sizex = 1;
-    owner->sizey = 1;
-    weapon->sizex = 1;
-    weapon->sizey = 1;
-    weapon->owner = owner;
+    owner->set_sizex(1);
+    owner->set_sizey(1);
+    weapon->set_sizex(1);
+    weapon->set_sizey(1);
+    weapon->set_owner(owner);
 
     // Living walkers should fail immediately on wall-arrow tiles.
     living->setxy(0, 0);
-    living->sizex = 1;
-    living->sizey = 1;
+    living->set_sizex(1);
+    living->set_sizey(1);
     ASSERT_TRUE(!og::runtime::current_session->myscreen_->world().query_grid_passable(0.0f, 0.0f, living)) << "wall-arrow tiles should block living walkers";
 
     // X-axis distance branch (abs(dx) > abs(dy)); rng zero => pass.
@@ -1106,8 +1110,8 @@ TEST(LevelDataCoverage, level_data_round11_wrappers_draw_and_query_grid_entry_pa
         og::runtime::current_session->myscreen_->world().grid.data[i] = PIX_GRASS1;
 
     living->setxy(0, 0);
-    living->sizex = GRID_SIZE; // force xover/yover exact-grid-edge path
-    living->sizey = GRID_SIZE;
+    living->set_sizex(GRID_SIZE); // force xover/yover exact-grid-edge path
+    living->set_sizey(GRID_SIZE);
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world().query_grid_passable(0.0f, 0.0f, living)) << "grass tile should be passable for living walker";
 }
 
@@ -1127,9 +1131,11 @@ TEST(LevelDataCoverage, level_data_round13_grid_passability_tree_wall_water_and_
     living->setxy(0, 0);
     weapon->setxy(0, 0);
     owner->setxy(96, 0);
-    weapon->owner = owner;
-    living->sizex = weapon->sizex = 1;
-    living->sizey = weapon->sizey = 1;
+    weapon->set_owner(owner);
+    living->set_sizex(1);
+    weapon->set_sizex(1);
+    living->set_sizey(1);
+    weapon->set_sizey(1);
 
     og::runtime::current_session->myscreen_->world().grid.frames = 1;
     og::runtime::current_session->myscreen_->world().grid.w = 1;
@@ -1146,7 +1152,7 @@ TEST(LevelDataCoverage, level_data_round13_grid_passability_tree_wall_water_and_
     og::runtime::current_session->myscreen_->world().grid.data[0] = PIX_TREE_M1;
     living->stats()->set_bit_flags(BIT_FORESTWALK, 0);
     living->stats()->set_bit_flags(BIT_FLYING, 0);
-    living->flight_left = 0;
+    living->set_flight_left(0);
     ASSERT_TRUE(!og::runtime::current_session->myscreen_->world().query_grid_passable(0.0f, 0.0f, living)) << "tree middle should block normal living walkers";
     living->stats()->set_bit_flags(BIT_FORESTWALK, 1);
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world().query_grid_passable(0.0f, 0.0f, living)) << "forestwalk should pass tree middle";
@@ -1167,13 +1173,13 @@ TEST(LevelDataCoverage, level_data_round13_grid_passability_tree_wall_water_and_
     // Water passability branch for flying vs non-flying living walkers (2046-2078).
     og::runtime::current_session->myscreen_->world().grid.data[0] = PIX_WATER2;
     living->stats()->set_bit_flags(BIT_FLYING, 0);
-    living->flight_left = 0;
+    living->set_flight_left(0);
     ASSERT_TRUE(!og::runtime::current_session->myscreen_->world().query_grid_passable(0.0f, 0.0f, living)) << "water should block non-flying living walkers";
     living->stats()->set_bit_flags(BIT_FLYING, 1);
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world().query_grid_passable(0.0f, 0.0f, living)) << "water should pass flying living walkers";
 
     // query_object_passable dead-object shortcut (2089-2091).
-    living->dead = 1;
+    living->set_dead(1);
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world().query_object_passable(0.0f, 0.0f, living)) << "dead objects should always pass object collision checks";
 
     og::runtime::current_session->myscreen_->world().delete_objects();
@@ -1201,28 +1207,28 @@ TEST(LevelDataCoverage, level_data_round13_find_helpers_selection_and_filters)
           blood_near && blood_far && player_near && player_far))
         return;
 
-    actor->team_num = 0;
+    actor->set_team_num(0);
     actor->setxy(64, 64);
-    foe_far->team_num = 2;
+    foe_far->set_team_num(2);
     foe_far->setxy(220, 64);
-    foe_near->team_num = 1;
+    foe_near->set_team_num(1);
     foe_near->setxy(90, 64);
-    friend_living->team_num = 0;
+    friend_living->set_team_num(0);
     friend_living->setxy(72, 64);
-    friend_weapon->team_num = 0;
+    friend_weapon->set_team_num(0);
     friend_weapon->setxy(70, 64);
-    enemy_weapon->team_num = 2;
+    enemy_weapon->set_team_num(2);
     enemy_weapon->setxy(74, 64);
     blood_near->setxy(80, 64);
     blood_far->setxy(180, 64);
-    player_near->user = 0;
-    player_far->user = 1;
+    player_near->set_user(0);
+    player_far->set_user(1);
     player_near->setxy(78, 64);
     player_far->setxy(200, 64);
 
     FixedRandom rng_zero(0);
-    foe_far->invisibility_left = 0;
-    foe_near->invisibility_left = 0;
+    foe_far->set_invisibility_left(0);
+    foe_near->set_invisibility_left(0);
 
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world().find_far_foe(actor) == foe_near) << "find_far_foe should return nearest visible living/generator foe";
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world().find_nearest_blood(actor) == blood_near) << "find_nearest_blood should return nearest alive stain";
@@ -1238,7 +1244,7 @@ TEST(LevelDataCoverage, level_data_round13_find_helpers_selection_and_filters)
     auto foe_weapons = og::runtime::current_session->myscreen_->world().find_foe_weapons_in_range(og::runtime::current_session->myscreen_->world().weaplist, 64, &howmany, actor);
     ASSERT_TRUE(!foe_weapons.empty() && howmany > 0) << "find_foe_weapons_in_range should include friendly weapons only";
     for (walker* w : foe_weapons)
-        ASSERT_EQ((int)actor->team_num, (int)w->team_num) << "returned weapon should be on friendly team";
+        ASSERT_EQ((int)actor->team_num(), (int)w->team_num()) << "returned weapon should be on friendly team";
 
     auto friends = og::runtime::current_session->myscreen_->world().find_friends_in_range(og::runtime::current_session->myscreen_->world().oblist, 64, &howmany, actor);
     ASSERT_TRUE(!friends.empty() && howmany > 0) << "find_friends_in_range should include friendly living walkers";
@@ -1264,25 +1270,25 @@ TEST(LevelDataCoverage, level_data_round14_find_helper_exclusion_branches)
     if (!(actor && hidden_foe && dead_blood && near_friend && dead_enemy && enemy_weapon))
         return;
 
-    actor->team_num = 0;
+    actor->set_team_num(0);
     actor->setxy(64, 64);
 
-    hidden_foe->team_num = 1;
+    hidden_foe->set_team_num(1);
     hidden_foe->setxy(72, 64);
-    hidden_foe->invisibility_left = 40; // divisor branch in find_far_foe
+    hidden_foe->set_invisibility_left(40); // divisor branch in find_far_foe
 
-    near_friend->team_num = 0;
+    near_friend->set_team_num(0);
     near_friend->setxy(70, 64);
 
-    dead_enemy->team_num = 2;
+    dead_enemy->set_team_num(2);
     dead_enemy->setxy(68, 64);
-    dead_enemy->dead = 1;
+    dead_enemy->set_dead(1);
 
-    enemy_weapon->team_num = 2;
+    enemy_weapon->set_team_num(2);
     enemy_weapon->setxy(66, 64);
 
     dead_blood->setxy(66, 64);
-    dead_blood->dead = 1;
+    dead_blood->set_dead(1);
 
     og::runtime::current_session->myscreen_->world().rng_.state_ = 3;
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world().find_far_foe(actor) == nullptr) << "find_far_foe should skip hidden foes when rng check blocks visibility";
@@ -1291,12 +1297,14 @@ TEST(LevelDataCoverage, level_data_round14_find_helper_exclusion_branches)
     std::int32_t howmany = -1;
     auto in_range = og::runtime::current_session->myscreen_->world().find_in_range(og::runtime::current_session->myscreen_->world().oblist, 32, &howmany, actor);
     for (walker* w : in_range)
-        ASSERT_TRUE(!w->dead) << "find_in_range should exclude dead objects";
+        ASSERT_TRUE(!w->dead()) << "find_in_range should exclude dead objects";
 
     auto foes = og::runtime::current_session->myscreen_->world().find_foes_in_range(og::runtime::current_session->myscreen_->world().oblist, 32, &howmany, actor);
     ASSERT_EQ(1, (int)foes.size()) << "find_foes_in_range should keep one alive enemy in range";
     if (!foes.empty())
+    {
         ASSERT_TRUE(foes.front() == hidden_foe) << "find_foes_in_range should exclude dead and friendly walkers";
+    }
 
     auto foe_weapons = og::runtime::current_session->myscreen_->world().find_foe_weapons_in_range(og::runtime::current_session->myscreen_->world().weaplist, 32, &howmany, actor);
     ASSERT_TRUE(foe_weapons.empty()) << "find_foe_weapons_in_range should exclude enemy-team weapons";
@@ -1349,25 +1357,25 @@ TEST(LevelDataCoverage, level_data_round16_remaining_foes_and_object_passable_co
     if (!(actor && friendly && dead_enemy && alive_enemy))
         return;
 
-    actor->team_num = 0;
+    actor->set_team_num(0);
     actor->setxy(100, 100);
 
-    friendly->team_num = 0;
+    friendly->set_team_num(0);
     friendly->setxy(100, 100);
 
-    dead_enemy->team_num = 1;
-    dead_enemy->dead = 1;
+    dead_enemy->set_team_num(1);
+    dead_enemy->set_dead(1);
     dead_enemy->setxy(100, 100);
 
-    alive_enemy->team_num = 1;
+    alive_enemy->set_team_num(1);
     alive_enemy->setxy(100, 100);
 
     // remaining_foes should count only alive non-friendly living objects.
     ASSERT_EQ(1, (int)remaining_foes(og::runtime::current_session->myscreen_->level_runtime_data(), actor)) << "remaining_foes should ignore friendly and dead living walkers";
 
     // query_object_passable should fail when collision exists for a live walker.
-    actor->dead = 0;
-    ASSERT_TRUE(!og::runtime::current_session->myscreen_->world().query_object_passable(actor->xpos, actor->ypos, actor)) << "query_object_passable should block on occupied tile for live walker";
+    actor->set_dead(0);
+    ASSERT_TRUE(!og::runtime::current_session->myscreen_->world().query_object_passable(actor->xpos(), actor->ypos(), actor)) << "query_object_passable should block on occupied tile for live walker";
 }
 
 

@@ -237,10 +237,10 @@ public:
     walker* find_far_foe(walker* ob);
     walker* find_nearest_blood(walker* who);
     walker* find_nearest_player(walker* ob);
-    std::list<walker*> find_in_range(std::list<std::unique_ptr<walker>>& somelist, std::int32_t range, std::int32_t* howmany, walker* ob);
-    std::list<walker*> find_foes_in_range(std::list<std::unique_ptr<walker>>& somelist, std::int32_t range, std::int32_t* howmany, walker* ob);
-    std::list<walker*> find_foe_weapons_in_range(std::list<std::unique_ptr<walker>>& somelist, std::int32_t range, std::int32_t* howmany, walker* ob);
-    std::list<walker*> find_friends_in_range(std::list<std::unique_ptr<walker>>& somelist, std::int32_t range, std::int32_t* howmany, walker* ob);
+    std::list<walker*> find_in_range(const std::list<std::unique_ptr<walker>>& somelist, std::int32_t range, std::int32_t* howmany, walker* ob);
+    std::list<walker*> find_foes_in_range(const std::list<std::unique_ptr<walker>>& somelist, std::int32_t range, std::int32_t* howmany, walker* ob);
+    std::list<walker*> find_foe_weapons_in_range(const std::list<std::unique_ptr<walker>>& somelist, std::int32_t range, std::int32_t* howmany, walker* ob);
+    std::list<walker*> find_friends_in_range(const std::list<std::unique_ptr<walker>>& somelist, std::int32_t range, std::int32_t* howmany, walker* ob);
 
     void create_new_grid();
     void resize_grid(int width, int height);
@@ -260,8 +260,9 @@ public:
     const LevelVisuals& level_visuals() const { return *static_cast<const LevelVisuals*>(level_visuals_); }
     void attach_world(GameWorld* world);
 
-    // Legacy transitional hook kept for call-site compatibility. Entity-side
-    // SaveData/config pointers were removed in Phase 5, so this is now a no-op.
+    // Legacy transitional hook kept for call-site compatibility. Snapshot
+    // application still needs a per-world gameplay context, so this stores the
+    // world/save/events/config bindings used to rebuild one on demand.
     void set_sim_context(SaveData* save, std::int32_t* enemy_freeze,
                          og::sim::SimEventLog* events, IRandom* rng,
                          cfg_store* config);
@@ -270,6 +271,9 @@ private:
     IoError last_io_error_ = IoError::None;
     bool headless_ = false;  // When true, skip render component creation
     const LevelDataHooks* hooks_ = nullptr;
+    SaveData* sim_context_save_ = nullptr;
+    og::sim::SimEventLog* sim_context_events_ = nullptr;
+    cfg_store* sim_context_config_ = nullptr;
     GameWorld owned_world_;
     GameWorld* world_ = nullptr;
     LevelVisuals owned_level_visuals_;

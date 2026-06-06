@@ -10,7 +10,10 @@
 #include "test_interact.h"
 #include <openglad/resources/save_data.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/interface/guy_create.h>
 #include <functional>
+#include <list>
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 // Forward declarations from picker.cpp
@@ -140,6 +143,147 @@ TEST(SaveLoadTeam, save_team_then_load) {
 
 
 
+// Test: the networked "as if played alone" per-player merge save.
+//
+// SaveData::merge_owned_guys_from must write progress back ONLY for characters
+// owned by the given player (matched by guy::owner_player_index) into their own
+// save slots (guy::owner_save_slot), while:
+//   - preserving this player's not-brought (excluded) characters, and
+//   - ignoring another player's characters — even one carrying the SAME guy id
+//     (the same-save-file clone case the owner tag exists to disambiguate).
+TEST(SaveLoadTeam, merge_owned_guys_persists_only_own_characters) {
+    screen* scr = og::runtime::current_session->myscreen_;
+
+    // Pre-session roster for THIS player (player 0): slot 0 (MINE_A) and slot 2
+    // (MINE_C) are brought to the session; slot 1 (KEEP_B) is excluded and must
+    // survive untouched.
+    scr->save_data.reset();
+    scr->save_data.numplayers = 1;
+    scr->save_data.current_campaign = "org.openglad.gladiator";
+    {
+        auto a = std::make_unique<guy>(FAMILY_SOLDIER); a->name = "MINE_A"; a->id = 1; a->exp = 0;
+        auto b = std::make_unique<guy>(FAMILY_ARCHER);  b->name = "KEEP_B"; b->id = 2; b->exp = 0;
+        auto c = std::make_unique<guy>(FAMILY_MAGE);    c->name = "MINE_C"; c->id = 3; c->exp = 0;
+        scr->save_data.team_list[0] = std::move(a);
+        scr->save_data.team_list[1] = std::move(b);
+        scr->save_data.team_list[2] = std::move(c);
+        scr->save_data.team_size = 3;
+    }
+    ASSERT_TRUE(scr->save_data.save("save0")) << "pre-session save0 must write";
+
+    // Build an in-session world. Player 0's brought characters carry session
+    // progress; a second player (owner 1) owns a character with the SAME guy id
+    // as MINE_A — it must never leak into player 0's save0.
+    std::list<std::unique_ptr<walker>> oblist;
+    auto add_walker = [&](unsigned char family, int guy_id, std::uint8_t owner,
+                          std::uint8_t slot, std::uint32_t exp,
+                          const char* name) {
+        guy g(static_cast<int>(family));
+        g.id = guy_id;
+        g.name = name;
+        std::unique_ptr<walker> w = guy_create_walker_owned(g, scr);
+        ASSERT_TRUE(w != nullptr);
+        w->set_dead(0);
+        w->myguy->owner_player_index = owner;
+        w->myguy->owner_save_slot = slot;
+        w->myguy->exp = exp;
+        oblist.push_back(std::move(w));
+    };
+    add_walker(FAMILY_SOLDIER, 1, /*owner=*/0, /*slot=*/0, /*exp=*/5000, "MINE_A");
+    add_walker(FAMILY_MAGE,    3, /*owner=*/0, /*slot=*/2, /*exp=*/8000, "MINE_C");
+    add_walker(FAMILY_SOLDIER, 1, /*owner=*/1, /*slot=*/0, /*exp=*/99999, "THEIR_CLONE");
+
+    // Merge player 0's own characters back into a fresh load of save0.
+    SaveData merged;
+    ASSERT_EQ(SaveDataIoError::None, merged.load_with_error("save0"));
+    merged.merge_owned_guys_from(oblist, /*owner_player_index=*/0);
+
+    // Brought, owned characters gained their session progress.
+    ASSERT_TRUE(merged.team_list[0] != nullptr);
+    EXPECT_STREQ("MINE_A", merged.team_list[0]->name.c_str());
+    EXPECT_EQ(5000u, merged.team_list[0]->exp) << "owned slot 0 should gain session exp";
+    ASSERT_TRUE(merged.team_list[2] != nullptr);
+    EXPECT_STREQ("MINE_C", merged.team_list[2]->name.c_str());
+    EXPECT_EQ(8000u, merged.team_list[2]->exp);
+
+    // Excluded (not brought) character preserved untouched.
+    ASSERT_TRUE(merged.team_list[1] != nullptr);
+    EXPECT_STREQ("KEEP_B", merged.team_list[1]->name.c_str());
+
+    // The other player's same-id clone (owner 1) must not have leaked in.
+    EXPECT_NE(99999u, merged.team_list[0]->exp)
+        << "another player's same-id character must not overwrite our slot";
+
+    // Roster stayed dense (no gaps that would crash SaveData::save).
+    EXPECT_EQ(3, static_cast<int>(merged.team_size));
+
+    scr->save_data.reset();
+}
+
+// A brought character that DIES during a won level must be DROPPED from the
+// owner's save0 (death sticks), and the roster must re-densify so SaveData::save
+// never hits a gap. Survivors keep their growth; not-brought characters stay.
+TEST(SaveLoadTeam, merge_owned_guys_drops_dead_own_characters) {
+    screen* scr = og::runtime::current_session->myscreen_;
+
+    scr->save_data.reset();
+    scr->save_data.numplayers = 1;
+    scr->save_data.current_campaign = "org.openglad.gladiator";
+    {
+        auto a = std::make_unique<guy>(FAMILY_SOLDIER); a->name = "ALIVE_A"; a->id = 1; a->exp = 0;
+        auto b = std::make_unique<guy>(FAMILY_ARCHER);  b->name = "DIES_B";  b->id = 2; b->exp = 0;
+        auto c = std::make_unique<guy>(FAMILY_MAGE);    c->name = "ALIVE_C"; c->id = 3; c->exp = 0;
+        scr->save_data.team_list[0] = std::move(a);
+        scr->save_data.team_list[1] = std::move(b);
+        scr->save_data.team_list[2] = std::move(c);
+        scr->save_data.team_size = 3;
+    }
+    ASSERT_TRUE(scr->save_data.save("save0"));
+
+    std::list<std::unique_ptr<walker>> oblist;
+    auto add_walker = [&](unsigned char family, int guy_id, std::uint8_t owner,
+                          std::uint8_t slot, std::uint32_t exp, bool dead,
+                          const char* name) {
+        guy g(static_cast<int>(family));
+        g.id = guy_id;
+        g.name = name;
+        std::unique_ptr<walker> w = guy_create_walker_owned(g, scr);
+        ASSERT_TRUE(w != nullptr);
+        w->set_dead(dead ? 1 : 0);
+        w->myguy->owner_player_index = owner;
+        w->myguy->owner_save_slot = slot;
+        w->myguy->exp = exp;
+        oblist.push_back(std::move(w));
+    };
+    add_walker(FAMILY_SOLDIER, 1, /*owner=*/0, /*slot=*/0, /*exp=*/5000, /*dead=*/false, "ALIVE_A");
+    add_walker(FAMILY_ARCHER,  2, /*owner=*/0, /*slot=*/1, /*exp=*/0,    /*dead=*/true,  "DIES_B");
+    add_walker(FAMILY_MAGE,    3, /*owner=*/0, /*slot=*/2, /*exp=*/8000, /*dead=*/false, "ALIVE_C");
+
+    SaveData merged;
+    ASSERT_EQ(SaveDataIoError::None, merged.load_with_error("save0"));
+    merged.merge_owned_guys_from(oblist, /*owner_player_index=*/0);
+
+    // The dead character is gone; the roster compacted to the two survivors.
+    EXPECT_EQ(2, static_cast<int>(merged.team_size))
+        << "the dead brought character should be dropped";
+    bool found_dead = false;
+    bool found_a = false;
+    bool found_c = false;
+    for (int i = 0; i < merged.team_size; ++i)
+    {
+        ASSERT_TRUE(merged.team_list[i] != nullptr)
+            << "roster must stay dense after dropping the dead character";
+        if (merged.team_list[i]->name == "DIES_B") found_dead = true;
+        if (merged.team_list[i]->name == "ALIVE_A") found_a = true;
+        if (merged.team_list[i]->name == "ALIVE_C") found_c = true;
+    }
+    EXPECT_FALSE(found_dead) << "death must stick — DIES_B must not survive the win";
+    EXPECT_TRUE(found_a);
+    EXPECT_TRUE(found_c);
+
+    scr->save_data.reset();
+}
+
 // Test: Navigate to Load Team menu via UI, see the load slots, and exit
 //
 // Flow: Main Menu -> Continue -> Load Team -> Back -> Back
@@ -179,28 +323,30 @@ static int load_menu_injector(void* data)
         interact_match("back", [](const Interactable& item) { return item.y >= 170; });
     }
 
-    // Back in team menu
-    SDL_Delay(500);
-    wait_for_interactable("load_team", 10000);
-    SDL_Delay(500);
-    fprintf(stderr, "  [test] clicking back from team menu\n");
-    interact_match("back", [](const Interactable& item) { return item.y < 170; });
-
-    const Uint32 deadline = SDL_GetTicks() + 8000;
+    const Uint32 deadline = SDL_GetTicks() + 10000;
     while (SDL_GetTicks() < deadline)
     {
         if (wait_for_interactable("continue_game", 150))
             break;
 
-        inject_key_press(SDLK_ESCAPE, 10);
-        SDL_Delay(50);
+        if (wait_for_interactable("load_team", 150))
+        {
+            fprintf(stderr, "  [test] clicking back from team menu\n");
+            interact_match("back", [](const Interactable& item) { return item.y < 170; });
+            SDL_Delay(150);
+            continue;
+        }
 
         if (wait_for_interactable("back", 150))
         {
-            fprintf(stderr, "  [test] retry clicking back\n");
-            interact_match("back", [](const Interactable& item) { return item.y < 170; });
+            fprintf(stderr, "  [test] retry clicking back from load menu\n");
+            interact_match("back", [](const Interactable& item) { return item.y >= 170; });
             SDL_Delay(150);
+            continue;
         }
+
+        inject_key_press(SDLK_ESCAPE, 10);
+        SDL_Delay(50);
     }
 
     state->finished = true;

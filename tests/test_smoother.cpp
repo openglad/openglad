@@ -109,6 +109,21 @@ TEST(Smoother, surrounds_bitmask_counts_neighbors)
     ASSERT_EQ(1 + 8, mask) << "surrounds should return bitmask of matching neighbors";
 }
 
+TEST(Smoother, smooth_uses_bound_rng_without_global_gameplay_context)
+{
+    PixieData grid = make_grid(3, 3, PIX_GRASS1);
+    unsigned char* g = grid.data.get();
+    g[1 + 1 * 3] = PIX_COBBLE_1;
+
+    FixedRandom rng(2);
+    smoother s;
+    s.set_rng(&rng);
+    s.set_target(grid);
+
+    (void)s.smooth(1, 1);
+    ASSERT_EQ(PIX_COBBLE_3, g[1 + 1 * 3]);
+}
+
 
 TEST(Smoother, smooth_covers_multiple_genres_and_around_masks)
 {
@@ -232,4 +247,3 @@ TEST(Smoother, smooth_covers_multiple_genres_and_around_masks)
         (void)s.smooth(1, 2);
     }
 }
-

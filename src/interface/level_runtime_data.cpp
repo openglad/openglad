@@ -49,11 +49,12 @@ void LevelRuntimeData::set_sim_context(SaveData* save, std::int32_t* enemy_freez
                                 og::sim::SimEventLog* events, IRandom* rng,
                                 cfg_store* config)
 {
-    (void)save;
-    (void)config;
     (void)enemy_freeze;
     (void)rng;
-    (void)events;
+    sim_context_save_ = save;
+    sim_context_events_ = events;
+    sim_context_config_ = config;
+    world().set_gameplay_context_bindings(save, events, config);
 }
 
 static EntityFactory make_default_entity_factory()
@@ -81,7 +82,7 @@ static void wire_world_loader(GameWorld& world,
         if (!game_loader)
             return nullptr;
         game_loader->set_walker(&entity, order, family);
-        return game_loader->graphics_for(entity.query_order(), entity.family);
+        return game_loader->graphics_for(entity.query_order(), entity.family());
     };
 
     world.entity_derived_stats = [game_loader](walker* entity, Order order, std::int32_t family) {
@@ -169,6 +170,30 @@ private:
     bool restored_ = false;
 };
 
+class ScopedLoadWorldRngOverride
+{
+public:
+    explicit ScopedLoadWorldRngOverride(IRandom* rng)
+        : rng_(rng)
+    {
+        if (rng_ == nullptr || gameplay_rng_override() != nullptr)
+            return;
+
+        set_gameplay_rng_override(&rng_);
+        installed_ = true;
+    }
+
+    ~ScopedLoadWorldRngOverride()
+    {
+        if (installed_)
+            set_gameplay_rng_override(nullptr);
+    }
+
+private:
+    IRandom* rng_ = nullptr;
+    bool installed_ = false;
+};
+
 void replace_loaded_world_state(LevelRuntimeData* level, GameWorld& loaded_world)
 {
     if (level == nullptr)
@@ -186,6 +211,7 @@ void replace_loaded_world_state(LevelRuntimeData* level, GameWorld& loaded_world
     dst.difficulty = loaded_world.difficulty;
     dst.level_done = loaded_world.level_done;
     dst.game_ended = loaded_world.game_ended;
+    dst.completion_events_emitted = loaded_world.completion_events_emitted;
     dst.next_level = loaded_world.next_level;
     dst.ending = loaded_world.ending;
     dst.enemy_freeze = loaded_world.enemy_freeze;
@@ -201,10 +227,7 @@ void replace_loaded_world_state(LevelRuntimeData* level, GameWorld& loaded_world
     dst.allied_mode = loaded_world.allied_mode;
     dst.current_scenario = loaded_world.current_scenario;
     dst.completed_levels = std::move(loaded_world.completed_levels);
-    dst.oblist.splice(dst.oblist.end(), loaded_world.oblist);
-    dst.fxlist.splice(dst.fxlist.end(), loaded_world.fxlist);
-    dst.weaplist.splice(dst.weaplist.end(), loaded_world.weaplist);
-    dst.dead_list.splice(dst.dead_list.end(), loaded_world.dead_list);
+    dst.move_entities_from(loaded_world);
     dst.living_count = loaded_world.living_count;
     dst.grid = std::move(loaded_world.grid);
     dst.pixmaxx = loaded_world.pixmaxx;
@@ -596,6 +619,8 @@ void LevelRuntimeData::attach_world(GameWorld* world)
         {
             old_world->set_detach_callback({});
             wire_world_entity_services(old_world, this, hooks_);
+            old_world->set_gameplay_context_bindings(
+                sim_context_save_, sim_context_events_, sim_context_config_);
             if (old_world != &owned_world_)
                 install_world_detach_callback(old_world, this);
         }
@@ -612,6 +637,7 @@ void LevelRuntimeData::attach_world(GameWorld* world)
         next_world->difficulty = old_world->difficulty;
         next_world->level_done = old_world->level_done;
         next_world->game_ended = old_world->game_ended;
+        next_world->completion_events_emitted = old_world->completion_events_emitted;
         next_world->next_level = old_world->next_level;
         next_world->ending = old_world->ending;
         next_world->enemy_freeze = old_world->enemy_freeze;
@@ -627,10 +653,7 @@ void LevelRuntimeData::attach_world(GameWorld* world)
         next_world->allied_mode = old_world->allied_mode;
         next_world->current_scenario = old_world->current_scenario;
         next_world->completed_levels = old_world->completed_levels;
-        next_world->oblist.splice(next_world->oblist.end(), old_world->oblist);
-        next_world->fxlist.splice(next_world->fxlist.end(), old_world->fxlist);
-        next_world->weaplist.splice(next_world->weaplist.end(), old_world->weaplist);
-        next_world->dead_list.splice(next_world->dead_list.end(), old_world->dead_list);
+        next_world->move_entities_from(*old_world);
         next_world->living_count = old_world->living_count;
         next_world->grid = std::move(old_world->grid);
         next_world->pixmaxx = old_world->pixmaxx;
@@ -651,10 +674,13 @@ void LevelRuntimeData::attach_world(GameWorld* world)
             old_world->myobmap = std::make_unique<obmap>();
         old_world->set_detach_callback({});
         clear_world_entity_services(old_world);
+        old_world->set_gameplay_context_bindings(nullptr, nullptr, nullptr);
     }
 
     world_ = next_world;
     wire_world_entity_services(world_, this, hooks_);
+    world_->set_gameplay_context_bindings(
+        sim_context_save_, sim_context_events_, sim_context_config_);
     if (world_ != &owned_world_)
         install_world_detach_callback(world_, this);
     else
@@ -818,6 +844,7 @@ bool LevelRuntimeData::load()
     loaded_metadata.description = description;
 
     ScopedCurrentGameWorldBinding world_binding;
+    ScopedLoadWorldRngOverride load_rng_binding(&world().rng_);
     GameWorld loaded_world(world().rng_.state_);
     loaded_world.id = world().id;
     wire_world_entity_services(&loaded_world, this, hooks_);
@@ -976,24 +1003,24 @@ walker* LevelRuntimeData::find_nearest_player(walker *ob)
     return world().find_nearest_player(ob);
 }
 
-std::list<walker*> LevelRuntimeData::find_in_range(std::list<std::unique_ptr<walker>>& somelist, std::int32_t range, std::int32_t* howmany, walker* ob)
+std::list<walker*> LevelRuntimeData::find_in_range(const std::list<std::unique_ptr<walker>>& somelist, std::int32_t range, std::int32_t* howmany, walker* ob)
 {
     return world().find_in_range(somelist, range, howmany, ob);
 }
 
-std::list<walker*> LevelRuntimeData::find_foes_in_range(std::list<std::unique_ptr<walker>>& somelist, std::int32_t range, std::int32_t* howmany, walker* ob)
+std::list<walker*> LevelRuntimeData::find_foes_in_range(const std::list<std::unique_ptr<walker>>& somelist, std::int32_t range, std::int32_t* howmany, walker* ob)
 {
     return world().find_foes_in_range(somelist, range, howmany, ob);
 }
 
-std::list<walker*> LevelRuntimeData::find_foe_weapons_in_range(std::list<std::unique_ptr<walker>>& somelist, std::int32_t range,
-                                      std::int32_t* howmany, walker* ob)
+std::list<walker*> LevelRuntimeData::find_foe_weapons_in_range(const std::list<std::unique_ptr<walker>>& somelist, std::int32_t range,
+                                                               std::int32_t* howmany, walker* ob)
 {
     return world().find_foe_weapons_in_range(somelist, range, howmany, ob);
 }
 
-std::list<walker*> LevelRuntimeData::find_friends_in_range(std::list<std::unique_ptr<walker>>& somelist, std::int32_t range,
-                                      std::int32_t* howmany, walker* ob)
+std::list<walker*> LevelRuntimeData::find_friends_in_range(const std::list<std::unique_ptr<walker>>& somelist, std::int32_t range,
+                                                           std::int32_t* howmany, walker* ob)
 {
     return world().find_friends_in_range(somelist, range, howmany, ob);
 }

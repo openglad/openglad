@@ -6,6 +6,7 @@
  * (at your option) any later version.
  */
 #include <openglad/platform/game_session.h>
+#include <openglad/platform/local_transport_shadow.h>
 
 #include <openglad/core/util.h> // LogError
 #include <openglad/resources/gparser.h> // cfg_store, ::cfg
@@ -22,6 +23,8 @@
 #include <openglad/platform/game_context.h>
 #include <openglad/interface/input.h> // provides MouseState, JoyData + includes input_hardware_state.h
 #include <openglad/interface/platform_bridge.h>
+#include <openglad/interface/ui/picker_lobby_network_client.h>
+#include <openglad/platform/picker_lobby_network_runtime.h>
 #include "SDL.h"
 
 // Defined in view.cpp — loads allkeys from defaults + keyprefs.dat.
@@ -56,6 +59,23 @@ PlatformBridge make_sdl_platform_bridge()
         return new sdl_video(true);
     };
 
+    bridge.create_host_picker_lobby_client =
+        [](const og::ui::PickerHostGameOptions& options) {
+            return og::platform::create_platform_host_picker_lobby_client(
+                options);
+        };
+    bridge.create_join_picker_lobby_client =
+        [](const og::ui::PickerJoinGameOptions& options) {
+            return og::platform::create_platform_join_picker_lobby_client(
+                options);
+        };
+    bridge.list_relay_rooms =
+        [](const std::string& base_url, const std::string& campaign_tag) {
+            return og::platform::list_platform_relay_rooms(
+                base_url,
+                campaign_tag);
+        };
+
     return bridge;
 }
 } // namespace
@@ -63,6 +83,7 @@ PlatformBridge make_sdl_platform_bridge()
 namespace og::runtime {
 
 thread_local SessionState* current_session = nullptr;
+thread_local GameSession* current_game_session = nullptr;
 std::atomic<SessionState*> primary_session{nullptr};
 std::atomic<GameplayContext*> primary_game{nullptr};
 
@@ -73,6 +94,7 @@ GameSession::GameSession(const Config& session_cfg)
 
     prev_session_ = current_session;
     prev_game_ = current_game;
+    prev_game_session_ = current_game_session;
 
     // Allocate input hardware state.
     input_hw_ = std::make_unique<InputHardwareState>();
@@ -98,6 +120,8 @@ GameSession::GameSession(const Config& session_cfg)
     game_.sim_events = ctx_.sim_events.get();
     game_.config = &cfg;
     game_.world = &world_owner_;
+    game_.session_rng_ref = &ctx_.rng;
+    game_.gameplay_active_ref = &gameplay_active_;
 
     // Set prefs before creating the screen; viewscreen construction reads it.
     theprefs_ = prefs_owner_.get();
@@ -115,8 +139,10 @@ GameSession::GameSession(const Config& session_cfg)
             : persist_globals_(persist_globals)
             , saved_session_(current_session)
             , saved_game_(current_game)
+            , saved_game_session_(current_game_session)
         {
             current_session = &session;
+            current_game_session = &session;
             current_game = &session.game_;
             if (persist_globals_) {
                 primary_session.store(&session, std::memory_order_release);
@@ -128,6 +154,7 @@ GameSession::GameSession(const Config& session_cfg)
         {
             if (!persist_globals_) {
                 current_session = saved_session_;
+                current_game_session = saved_game_session_;
                 current_game = saved_game_;
             }
         }
@@ -135,6 +162,7 @@ GameSession::GameSession(const Config& session_cfg)
         bool persist_globals_ = false;
         SessionState* saved_session_ = nullptr;
         GameplayContext* saved_game_ = nullptr;
+        GameSession* saved_game_session_ = nullptr;
     } construction_scope(*this, cfg_.install_legacy_globals);
 
     if (cfg_.allocate_screen) {
@@ -155,6 +183,8 @@ GameSession::GameSession(const Config& session_cfg)
             cfg_.numviews,
             cfg_.create_display);
         myscreen_ = screen_owner_.get();
+        myscreen_->set_render_interpolation_speed_factor(
+            g_game_speed_factor_);
         game_.save = &myscreen_->save_data;
         myscreen_->level_runtime_data().set_sim_context(
             &myscreen_->save_data,
@@ -187,12 +217,20 @@ GameSession::GameSession(const Config& session_cfg)
 ::screen* GameSession::screen_ptr() const { return screen_owner_.get(); }
 options* GameSession::prefs_ptr() const { return prefs_owner_.get(); }
 const cfg_store& GameSession::config() const { return ::cfg; }
+bool GameSession::has_local_transport_runtime() const noexcept
+{
+    return local_transport_runtime_ != nullptr;
+}
 
 GameSession::~GameSession()
 {
+    clear_local_transport_shadow(*this);
+
     if (cfg_.install_legacy_globals) {
         if (current_session == this)
             current_session = prev_session_;
+        if (current_game_session == this)
+            current_game_session = prev_game_session_;
         if (current_game == &game_)
             current_game = prev_game_;
 
@@ -224,26 +262,28 @@ GameSession::~GameSession()
 // SessionScope: RAII activation of a session's globals
 // ---------------------------------------------------------------------------
 
-GameSession::SessionScope GameSession::activate()
+GameSession::SessionScope GameSession::activate(bool swap_render)
 {
-    return SessionScope(*this);
+    return SessionScope(*this, swap_render);
 }
 
-GameSession::SessionScope::SessionScope(GameSession& session)
+GameSession::SessionScope::SessionScope(GameSession& session, bool swap_render)
     : session_(&session)
 {
     // Save current session
     saved_session_ = current_session;
+    saved_game_session_ = current_game_session;
     saved_game_ = current_game;
 
     // Install this session as current.
     // ctx() also reads from current_session->ctx_, so no separate context
     // installation is needed.
     current_session = session_;
+    current_game_session = session_;
     current_game = &session_->game_;
 
     // Swap render surface if this session has its own.
-    if (session_->session_surface_ && E_Screen) {
+    if (swap_render && session_->session_surface_ && E_Screen) {
         saved_render_surface_ = E_Screen->render;
         did_swap_render_ = true;
         E_Screen->render = session_->session_surface_;
@@ -261,6 +301,7 @@ GameSession::SessionScope::~SessionScope()
 
     // Restore previous session.  ctx() follows current_session automatically.
     current_session = saved_session_;
+    current_game_session = saved_game_session_;
     current_game = saved_game_;
 }
 
@@ -268,6 +309,7 @@ GameSession::SessionScope::SessionScope(SessionScope&& other) noexcept
     : session_(other.session_)
     , saved_session_(other.saved_session_)
     , saved_game_(other.saved_game_)
+    , saved_game_session_(other.saved_game_session_)
     , saved_render_surface_(other.saved_render_surface_)
     , did_swap_render_(other.did_swap_render_)
 {
@@ -280,6 +322,11 @@ GameSession::SessionScope::SessionScope(SessionScope&& other) noexcept
 // Defined outside the namespace because base.h declares it at global scope.
 void set_game_speed(float factor)
 {
-    og::runtime::current_session->g_game_speed_factor_ =
-        (factor < 0.0f) ? 0.0f : factor;
+    const float clamped_factor = (factor < 0.0f) ? 0.0f : factor;
+    og::runtime::current_session->g_game_speed_factor_ = clamped_factor;
+    if (og::runtime::current_session->myscreen_ != nullptr)
+    {
+        og::runtime::current_session->myscreen_->
+            set_render_interpolation_speed_factor(clamped_factor);
+    }
 }

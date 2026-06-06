@@ -107,16 +107,16 @@ TEST_F(FamilyDataFixture, walker_init_matches_registry)
         char msg[128];
 
         std::snprintf(msg, sizeof(msg), "family %d default_weapon mismatch", fam);
-        ASSERT_EQ(d->default_weapon, static_cast<int>(w->default_weapon)) << msg;
+        ASSERT_EQ(d->default_weapon, static_cast<int>(w->default_weapon())) << msg;
 
         for (int s = 0; s < NUM_SPECIALS; s++)
         {
             std::snprintf(msg, sizeof(msg), "family %d special_cost[%d] mismatch", fam, s);
-            ASSERT_EQ(d->special_cost[s], w->stats()->special_cost[s]) << msg;
+            ASSERT_EQ(d->special_cost[s], w->stats()->special_cost(s)) << msg;
         }
 
         std::snprintf(msg, sizeof(msg), "family %d weapon_cost mismatch", fam);
-        ASSERT_EQ(d->weapon_cost, w->stats()->weapon_cost) << msg;
+        ASSERT_EQ(d->weapon_cost, w->stats()->weapon_cost()) << msg;
     }
     if (og::runtime::current_session->myscreen_) og::runtime::current_session->myscreen_->world().delete_objects();
 }

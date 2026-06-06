@@ -726,7 +726,7 @@ TEST(LevelDataOps, level_data_find_foe_helpers_return_null_without_valid_targets
     ASSERT_TRUE(actor != nullptr) << "actor should be created";
     if (!actor)
         return;
-    actor->team_num = 0;
+    actor->set_team_num(0);
     actor->setxy(64, 64);
 
     // Friendly and dead enemies should be ignored by foe selection helpers.
@@ -735,10 +735,10 @@ TEST(LevelDataOps, level_data_find_foe_helpers_return_null_without_valid_targets
     ASSERT_TRUE(friendly && dead_enemy) << "fixtures should be created";
     if (!(friendly && dead_enemy))
         return;
-    friendly->team_num = 0;
+    friendly->set_team_num(0);
     friendly->setxy(96, 64);
-    dead_enemy->team_num = 1;
-    dead_enemy->dead = 1;
+    dead_enemy->set_team_num(1);
+    dead_enemy->set_dead(1);
     dead_enemy->setxy(128, 64);
 
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world().find_far_foe(actor) == nullptr) << "find_far_foe should return null when no valid foes exist";

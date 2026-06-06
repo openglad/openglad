@@ -44,48 +44,48 @@ static bool druid_do_special(walker* self)
     std::int32_t didheal;
     std::string message;
 
-    switch (self->current_special)
+    switch (self->current_special())
     {
         case 1: // plant tree
-            if (self->busy > 0)
+            if (self->busy() > 0)
                 return false;
-            self->stats()->magicpoints += self->stats()->weapon_cost;
+            self->stats()->set_magicpoints(self->stats()->magicpoints() + self->stats()->weapon_cost());
             newob = self->fire();
             if (!newob)
                 return false;
-            self->busy += (self->fire_frequency * 2);
+            self->set_busy(self->busy() + (self->fire_frequency() * 2.0f));
             alive = summon_entity(self, Order::Weapon, FAMILY_TREE);
-            alive->setxy(newob->xpos, newob->ypos);
-            alive->ani_type = ANI_GROW;
-            newob->dead = 1;
+            alive->setxy(newob->xpos(), newob->ypos());
+            alive->set_ani_type(ANI_GROW);
+            newob->set_dead(1);
             break;
         case 2: // summon faerie
-            if (self->busy > 0)
+            if (self->busy() > 0)
                 return false;
-            self->stats()->magicpoints += self->stats()->weapon_cost;
+            self->stats()->set_magicpoints(self->stats()->magicpoints() + self->stats()->weapon_cost());
             newob = self->fire();
             if (!newob)
                 return false;
             alive = summon_entity(self, Order::Living, FAMILY_FAERIE);
-            alive->setxy(newob->xpos, newob->ypos);
-            alive->lifetime = 50 + self->stats()->level * 40;
-            newob->dead = 1;
-            if (!current_game->world->query_passable(alive->xpos, alive->ypos, alive))
+            alive->setxy(newob->xpos(), newob->ypos());
+            alive->set_lifetime(50 + self->stats()->level() * 40);
+            newob->set_dead(1);
+            if (!current_game->world->query_passable(alive->xpos(), alive->ypos(), alive))
             {
-                alive->dead = 1;
+                alive->set_dead(1);
                 return false;
             }
-            self->busy += (self->fire_frequency * 3);
+            self->set_busy(self->busy() + (self->fire_frequency() * 3.0f));
             break;
         case 3: // reveal items
-            if (self->busy > 0)
+            if (self->busy() > 0)
                 return false;
-            self->view_all = static_cast<short>(self->view_all + self->stats()->level * 10);
-            self->busy += (self->fire_frequency * 4);
+            self->set_view_all(static_cast<short>(self->view_all() + self->stats()->level() * 10));
+            self->set_busy(self->busy() + (self->fire_frequency() * 4.0f));
             break;
         case 4: // circle of protection
         default:
-            if (self->busy > 0)
+            if (self->busy() > 0)
                 return false;
             {
                 std::int32_t howmany;
@@ -103,9 +103,9 @@ static bool druid_do_special(walker* self)
                             for (auto& uptr : current_game->world->oblist)
                             {
                                 walker* ob = uptr.get();
-                                if (ob && ob->owner == newob
+                                if (ob && ob->owner() == newob
                                         && ob->query_order() == Order::Weapon
-                                        && ob->family == FAMILY_CIRCLE_PROTECTION)
+                                        && ob->family() == FAMILY_CIRCLE_PROTECTION)
                                 {
                                     tempwalk = ob;
                                     break;
@@ -123,8 +123,8 @@ static bool druid_do_special(walker* self)
                                 alive = current_game->world->add_ob(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
                                 if (!alive)
                                     return false;
-                                tempwalk->stats()->hitpoints += alive->stats()->hitpoints;
-                                alive->dead = 1;
+                                tempwalk->stats()->set_hitpoints(tempwalk->stats()->hitpoints() + alive->stats()->hitpoints());
+                                alive->set_dead(1);
                                 didheal++;
                             }
                             if (self->myguy)
@@ -139,7 +139,7 @@ static bool druid_do_special(walker* self)
                             message = "Druid protected 1 man!";
                         else
                             message = std::format("Druid protected {} men!", didheal);
-                        if (self->team_num == 0 || self->myguy)
+                        if (self->team_num() == 0 || self->myguy)
                             og::sim::emit_notification(current_game->sim_events, message);
                         og::sim::emit_sound(current_game->sim_events, SOUND_HEAL);
                     }

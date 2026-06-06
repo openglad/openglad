@@ -1,6 +1,11 @@
 #pragma once
 
+#include <openglad/interface/ui/picker_lobby_network_client.h>
+
 #include <functional>
+#include <memory>
+#include <string>
+#include <vector>
 
 class video;
 
@@ -19,6 +24,15 @@ struct PlatformBridge {
 
     // Render surface creation (abstract video base, never SDL_Surface).
     std::function<video*(int w, int h)> create_surface;
+
+    // Network lobby factories.
+    std::function<std::unique_ptr<og::ui::IPickerLobbyClient>(
+        const og::ui::PickerHostGameOptions&)> create_host_picker_lobby_client;
+    std::function<std::unique_ptr<og::ui::IPickerLobbyClient>(
+        const og::ui::PickerJoinGameOptions&)> create_join_picker_lobby_client;
+    std::function<std::vector<og::ui::PickerRelayRoomInfo>(
+        const std::string& base_url,
+        const std::string& campaign_tag)> list_relay_rooms;
 };
 
 void set_platform_bridge(PlatformBridge bridge);

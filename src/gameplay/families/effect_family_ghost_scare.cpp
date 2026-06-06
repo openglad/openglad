@@ -13,18 +13,18 @@
 
 static bool ghost_scare_on_act(effect* self)
 {
-    if (self->owner)
-        self->center_on(self->owner);
+    if (self->owner())
+        self->center_on(self->owner());
     return false; // delegate to effect::act default animate/die path
 }
 
 static bool ghost_scare_on_death(effect* self)
 {
-    if (!self->owner || self->owner->dead)
+    if (!self->owner() || self->owner()->dead())
         return false;
     std::int32_t howmany = 0;
     auto foelist = current_game->world->find_foes_in_range(current_game->world->oblist,
-        50+(10*self->owner->stats()->level), &howmany, self->owner);
+        50+(10*self->owner()->stats()->level()), &howmany, self->owner());
     if (howmany < 1)
         return false;
 
@@ -32,13 +32,13 @@ static bool ghost_scare_on_death(effect* self)
     {
         if (w && w->query_order() == Order::Living)
         {
-            std::int32_t tempx = w->xpos - self->xpos;
+            std::int32_t tempx = w->xpos() - self->xpos();
             if (tempx)
                 tempx = tempx / (abs(tempx));
-            std::int32_t tempy = w->ypos - self->ypos;
+            std::int32_t tempy = w->ypos() - self->ypos();
             if (tempy)
                 tempy = tempy / (abs(tempy));
-            std::int32_t generic = (self->owner->stats()->level*25);
+            std::int32_t generic = (self->owner()->stats()->level()*25);
             if (w->myguy)
                 generic -= current_game->world->rng_.next(w->myguy->constitution);
             if (generic > 0)

@@ -115,8 +115,14 @@ public:
         ensure_team_populated(save_data_);
 
         sync_config_from_save();
-        start_team_build_in_hire_mode_ = true;
+        show_new_game_team_build_notice_ = true;
         return true;
+    }
+
+    bool configure_networking() override
+    {
+        std::printf("Networking setup is not available in the headless text client.\n");
+        return false;
     }
 
     std::string show_campaign_select() override
@@ -274,9 +280,9 @@ private:
         }
 
         std::printf("Gold: %u\n", static_cast<unsigned>(save_data_.m_totalcash[0]));
-        if (start_team_build_in_hire_mode_) {
-            std::printf("[New game: hire and train your team before GO!]\n");
-            start_team_build_in_hire_mode_ = false;
+        if (show_new_game_team_build_notice_) {
+            std::printf("[New game: build your team before GO!]\n");
+            show_new_game_team_build_notice_ = false;
         }
     }
 
@@ -343,6 +349,9 @@ private:
         case PickerMenuCommand::ShowProgress:
             std::printf("Current campaign progress: campaign=%s level=%d.\n",
                 config_.campaign.c_str(), config_.level);
+            break;
+        case PickerMenuCommand::Networking:
+            (void)configure_networking();
             break;
         case PickerMenuCommand::SetLevel:
             set_level();
@@ -546,7 +555,7 @@ private:
     TextPickerConfig& config_;
     TextPickerError* error_ = nullptr;
     SaveData save_data_;
-    bool start_team_build_in_hire_mode_ = false;
+    bool show_new_game_team_build_notice_ = false;
 };
 
 void run_text_picker(TextPickerConfig& config, TextPickerError* error)

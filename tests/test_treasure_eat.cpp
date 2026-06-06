@@ -28,7 +28,7 @@ static walker* make_treasure(char family, short level = 1)
     walker* t = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::Treasure, family);
     if (t) {
         t->setxy(100, 100);
-        t->stats()->level = level;
+        t->stats()->set_level(level);
     }
     return t;
 }
@@ -48,15 +48,15 @@ TEST(TreasureEat, drumstick)
 {
     walker* eater = make_eater(FAMILY_SOLDIER, 0);
     if (!eater) return;
-    eater->stats()->hitpoints = 50;
-    eater->stats()->max_hitpoints = 100;
+    eater->stats()->set_hitpoints(50);
+    eater->stats()->set_max_hitpoints(100);
 
     walker* drum = make_treasure(FAMILY_DRUMSTICK, 1);
     if (!drum) { delete eater; return; }
 
     drum->eat_me(eater);
-    ASSERT_TRUE(eater->stats()->hitpoints > 50) << "drumstick should heal";
-    ASSERT_TRUE(eater->stats()->hitpoints <= 100) << "should not exceed max HP";
+    ASSERT_TRUE(eater->stats()->hitpoints() > 50) << "drumstick should heal";
+    ASSERT_TRUE(eater->stats()->hitpoints() <= 100) << "should not exceed max HP";
 
     og::runtime::current_session->myscreen_->world().remove_ob(drum);
     delete eater;
@@ -67,15 +67,15 @@ TEST(TreasureEat, drumstick_full_hp)
 {
     walker* eater = make_eater(FAMILY_SOLDIER, 0);
     if (!eater) return;
-    eater->stats()->hitpoints = eater->stats()->max_hitpoints;
+    eater->stats()->set_hitpoints(eater->stats()->max_hitpoints());
 
     walker* drum = make_treasure(FAMILY_DRUMSTICK, 1);
     if (!drum) { delete eater; return; }
 
-    float hp_before = eater->stats()->hitpoints;
+    float hp_before = eater->stats()->hitpoints();
     drum->eat_me(eater);
-    ASSERT_TRUE(eater->stats()->hitpoints == hp_before) << "full HP should not eat drumstick";
-    ASSERT_TRUE(drum->dead != 1) << "drumstick should not die when full HP";
+    ASSERT_TRUE(eater->stats()->hitpoints() == hp_before) << "full HP should not eat drumstick";
+    ASSERT_TRUE(drum->dead() != 1) << "drumstick should not die when full HP";
 
     og::runtime::current_session->myscreen_->world().remove_ob(drum);
     delete eater;
@@ -86,7 +86,7 @@ TEST(TreasureEat, gold_bar)
 {
     walker* eater = make_eater(FAMILY_SOLDIER, 0);
     if (!eater) return;
-    eater->team_num = 0;
+    eater->set_team_num(0);
 
     walker* gold = make_treasure(FAMILY_GOLD_BAR, 2);
     if (!gold) { delete eater; return; }
@@ -96,14 +96,14 @@ TEST(TreasureEat, gold_bar)
         current_game->sim_events->clear();
     gold->eat_me(eater);
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world_.m_score[0] > score_before) << "gold bar adds score";
-    ASSERT_TRUE(gold->dead == 1) << "gold bar consumed";
+    ASSERT_TRUE(gold->dead() == 1) << "gold bar consumed";
     bool saw_score_change = false;
     if (current_game && current_game->sim_events)
     {
         for (const auto& ev : current_game->sim_events->events())
         {
             if (ev.kind == og::sim::EventKind::ScoreChange &&
-                ev.a == static_cast<std::uint32_t>(eater->team_num))
+                ev.a == static_cast<std::uint32_t>(eater->team_num()))
             {
                 saw_score_change = true;
                 break;
@@ -122,7 +122,7 @@ TEST(TreasureEat, gold_bar_invalid_team_does_not_index_score_array)
 {
     walker* eater = make_eater(FAMILY_SOLDIER, 0);
     if (!eater) return;
-    eater->team_num = 250; // corrupted scenario team id
+    eater->set_team_num(250); // corrupted scenario team id
 
     walker* gold = make_treasure(FAMILY_GOLD_BAR, 2);
     if (!gold) { delete eater; return; }
@@ -135,7 +135,7 @@ TEST(TreasureEat, gold_bar_invalid_team_does_not_index_score_array)
 
     gold->eat_me(eater);
     ASSERT_EQ(score_before, total_team_score()) << "invalid team id should not write outside m_score bounds";
-    ASSERT_TRUE(gold->dead == 1) << "gold bar should still be consumed";
+    ASSERT_TRUE(gold->dead() == 1) << "gold bar should still be consumed";
 
     og::runtime::current_session->myscreen_->world().remove_ob(gold);
     delete eater;
@@ -146,7 +146,7 @@ TEST(TreasureEat, silver_bar)
 {
     walker* eater = make_eater(FAMILY_SOLDIER, 0);
     if (!eater) return;
-    eater->team_num = 0;
+    eater->set_team_num(0);
 
     walker* silver = make_treasure(FAMILY_SILVER_BAR, 3);
     if (!silver) { delete eater; return; }
@@ -154,7 +154,7 @@ TEST(TreasureEat, silver_bar)
     Uint32 score_before = og::runtime::current_session->myscreen_->world_.m_score[0];
     silver->eat_me(eater);
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world_.m_score[0] > score_before) << "silver bar adds score";
-    ASSERT_TRUE(silver->dead == 1) << "silver bar consumed";
+    ASSERT_TRUE(silver->dead() == 1) << "silver bar consumed";
 
     og::runtime::current_session->myscreen_->world_.m_score[0] = score_before;
     og::runtime::current_session->myscreen_->world().remove_ob(silver);
@@ -166,15 +166,15 @@ TEST(TreasureEat, flight_potion)
 {
     walker* eater = make_eater(FAMILY_SOLDIER, 0);
     if (!eater) return;
-    eater->flight_left = 0;
-    eater->user = 0;
+    eater->set_flight_left(0);
+    eater->set_user(0);
 
     walker* potion = make_treasure(FAMILY_FLIGHT_POTION, 2);
     if (!potion) { delete eater; return; }
 
     potion->eat_me(eater);
-    ASSERT_TRUE(eater->flight_left > 0) << "flight potion grants flight";
-    ASSERT_TRUE(potion->dead == 1) << "potion consumed";
+    ASSERT_TRUE(eater->flight_left() > 0) << "flight potion grants flight";
+    ASSERT_TRUE(potion->dead() == 1) << "potion consumed";
 
     og::runtime::current_session->myscreen_->world().remove_ob(potion);
     delete eater;
@@ -185,16 +185,16 @@ TEST(TreasureEat, magic_potion)
 {
     walker* eater = make_eater(FAMILY_MAGE, 0);
     if (!eater) return;
-    eater->stats()->magicpoints = 10;
-    eater->stats()->max_magicpoints = 100;
-    eater->user = 0;
+    eater->stats()->set_magicpoints(10);
+    eater->stats()->set_max_magicpoints(100);
+    eater->set_user(0);
 
     walker* potion = make_treasure(FAMILY_MAGIC_POTION, 2);
     if (!potion) { delete eater; return; }
 
     potion->eat_me(eater);
-    ASSERT_TRUE(eater->stats()->magicpoints >= 100) << "magic potion restores MP";
-    ASSERT_TRUE(potion->dead == 1) << "potion consumed";
+    ASSERT_TRUE(eater->stats()->magicpoints() >= 100) << "magic potion restores MP";
+    ASSERT_TRUE(potion->dead() == 1) << "potion consumed";
 
     og::runtime::current_session->myscreen_->world().remove_ob(potion);
     delete eater;
@@ -205,15 +205,15 @@ TEST(TreasureEat, invulnerable_potion)
 {
     walker* eater = make_eater(FAMILY_SOLDIER, 0);
     if (!eater) return;
-    eater->invulnerable_left = 0;
-    eater->user = 0;
+    eater->set_invulnerable_left(0);
+    eater->set_user(0);
 
     walker* potion = make_treasure(FAMILY_INVULNERABLE_POTION, 1);
     if (!potion) { delete eater; return; }
 
     potion->eat_me(eater);
-    ASSERT_TRUE(eater->invulnerable_left > 0) << "invuln potion grants invulnerability";
-    ASSERT_TRUE(potion->dead == 1) << "potion consumed";
+    ASSERT_TRUE(eater->invulnerable_left() > 0) << "invuln potion grants invulnerability";
+    ASSERT_TRUE(potion->dead() == 1) << "potion consumed";
 
     og::runtime::current_session->myscreen_->world().remove_ob(potion);
     delete eater;
@@ -224,15 +224,15 @@ TEST(TreasureEat, invis_potion)
 {
     walker* eater = make_eater(FAMILY_SOLDIER, 0);
     if (!eater) return;
-    eater->invisibility_left = 0;
-    eater->user = 0;
+    eater->set_invisibility_left(0);
+    eater->set_user(0);
 
     walker* potion = make_treasure(FAMILY_INVIS_POTION, 2);
     if (!potion) { delete eater; return; }
 
     potion->eat_me(eater);
-    ASSERT_TRUE(eater->invisibility_left > 0) << "invis potion grants invisibility";
-    ASSERT_TRUE(potion->dead == 1) << "potion consumed";
+    ASSERT_TRUE(eater->invisibility_left() > 0) << "invis potion grants invisibility";
+    ASSERT_TRUE(potion->dead() == 1) << "potion consumed";
 
     og::runtime::current_session->myscreen_->world().remove_ob(potion);
     delete eater;
@@ -243,15 +243,15 @@ TEST(TreasureEat, speed_potion)
 {
     walker* eater = make_eater(FAMILY_SOLDIER, 0);
     if (!eater) return;
-    eater->speed_bonus_left = 0;
-    eater->user = 0;
+    eater->set_speed_bonus_left(0);
+    eater->set_user(0);
 
     walker* potion = make_treasure(FAMILY_SPEED_POTION, 3);
     if (!potion) { delete eater; return; }
 
     potion->eat_me(eater);
-    ASSERT_TRUE(eater->speed_bonus_left > 0) << "speed potion grants speed";
-    ASSERT_TRUE(potion->dead == 1) << "potion consumed";
+    ASSERT_TRUE(eater->speed_bonus_left() > 0) << "speed potion grants speed";
+    ASSERT_TRUE(potion->dead() == 1) << "potion consumed";
 
     og::runtime::current_session->myscreen_->world().remove_ob(potion);
     delete eater;
@@ -262,14 +262,14 @@ TEST(TreasureEat, key)
 {
     walker* eater = make_eater(FAMILY_SOLDIER, 0);
     if (!eater) return;
-    eater->keys = 0;
-    eater->team_num = 0;
+    eater->set_keys(0);
+    eater->set_team_num(0);
 
     walker* key = make_treasure(FAMILY_KEY, 1);
     if (!key) { delete eater; return; }
 
     key->eat_me(eater);
-    ASSERT_TRUE(eater->keys != 0) << "key pickup sets key flags";
+    ASSERT_TRUE(eater->keys() != 0) << "key pickup sets key flags";
 
     og::runtime::current_session->myscreen_->world().remove_ob(key);
     delete eater;
@@ -280,17 +280,17 @@ TEST(TreasureEat, life_gem)
 {
     walker* eater = make_eater(FAMILY_SOLDIER, 0);
     if (!eater) return;
-    eater->team_num = 0;
+    eater->set_team_num(0);
 
     walker* gem = make_treasure(FAMILY_LIFE_GEM, 1);
     if (!gem) { delete eater; return; }
-    gem->team_num = 0;
-    gem->stats()->hitpoints = 500;
+    gem->set_team_num(0);
+    gem->stats()->set_hitpoints(500);
 
     Uint32 score_before = og::runtime::current_session->myscreen_->world_.m_score[0];
     gem->eat_me(eater);
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world_.m_score[0] > score_before) << "life gem adds score";
-    ASSERT_TRUE(gem->dead == 1) << "gem consumed";
+    ASSERT_TRUE(gem->dead() == 1) << "gem consumed";
 
     og::runtime::current_session->myscreen_->world_.m_score[0] = score_before;
     delete eater;
@@ -315,12 +315,12 @@ TEST(TreasureEat, treasure_find_teleport_target_loop_and_missing_self)
     walker* target = static_cast<treasure*>(tele_a)->find_teleport_target();
     ASSERT_TRUE(target == tele_b) << "find_teleport_target should pick next same-level teleporter";
 
-    tele_b->dead = 1;
+    tele_b->set_dead(1);
     target = static_cast<treasure*>(tele_a)->find_teleport_target();
     ASSERT_TRUE(target == nullptr) << "dead/mismatched teleporters should yield null target";
 
     treasure detached;
-    detached.stats()->level = 5;
+    detached.stats()->set_level(5);
     ASSERT_TRUE(detached.find_teleport_target() == nullptr) << "teleporter lookup should return null when self is not in fx list";
 
     og::runtime::current_session->myscreen_->world().delete_objects();
@@ -344,7 +344,7 @@ TEST(TreasureEat, default_fallback_and_teleporter_wraparound)
     tele_a->setxy(60, 100);
     tele_b->setxy(80, 100);
     tele_c->setxy(100, 100);
-    tele_a->dead = 1; // force wraparound search to skip dead teleporter
+    tele_a->set_dead(1); // force wraparound search to skip dead teleporter
 
     walker* target = static_cast<treasure*>(tele_c)->find_teleport_target();
     ASSERT_TRUE(target == tele_b) << "teleporter at list tail should wrap and find earlier same-level target";
@@ -361,33 +361,33 @@ TEST(TreasureEat, treasure_batch7_explicit_fxlist_teleporter_branches)
 
     auto before = std::make_unique<treasure>();
     before->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
-    before->stats()->level = 7;
+    before->stats()->set_level(7);
     before->setxy(60, 60);
     walker* before_ptr = before.get();
     fx.push_back(std::move(before));
 
     auto self = std::make_unique<treasure>();
     self->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
-    self->stats()->level = 7;
+    self->stats()->set_level(7);
     self->setxy(80, 60);
     walker* self_ptr = self.get();
     fx.push_back(std::move(self));
 
     auto mismatch = std::make_unique<treasure>();
     mismatch->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
-    mismatch->stats()->level = 8; // level mismatch should be skipped
+    mismatch->stats()->set_level(8); // level mismatch should be skipped
     mismatch->setxy(100, 60);
     fx.push_back(std::move(mismatch));
 
     walker* found = static_cast<treasure*>(self_ptr)->find_teleport_target();
     ASSERT_TRUE(found == before_ptr) << "tail search should wrap around and return earlier matching teleporter";
 
-    static_cast<treasure*>(before_ptr)->dead = 1;
+    static_cast<treasure*>(before_ptr)->set_dead(1);
     found = static_cast<treasure*>(self_ptr)->find_teleport_target();
     ASSERT_TRUE(found == nullptr) << "dead and mismatched teleporters should be rejected";
 
     treasure detached;
-    detached.stats()->level = 7;
+    detached.stats()->set_level(7);
     ASSERT_TRUE(detached.find_teleport_target() == nullptr) << "find_teleport_target should return null when self is not in fx list";
 
     treasure unknown_family;
@@ -401,9 +401,9 @@ TEST(TreasureEat, treasure_batch7_explicit_fxlist_teleporter_branches)
 TEST(TreasureEat, treasure_set_direct_frame_updates_frame_without_render_component)
 {
     treasure t;
-    ASSERT_EQ(0, (int)t.frame) << "new treasure should start on frame 0";
+    ASSERT_EQ(0, (int)t.frame()) << "new treasure should start on frame 0";
     t.set_direct_frame(7);
-    ASSERT_EQ(7, (int)t.frame) << "set_direct_frame should update frame even without render component";
+    ASSERT_EQ(7, (int)t.frame()) << "set_direct_frame should update frame even without render component";
 }
 
 
@@ -415,13 +415,13 @@ TEST(TreasureEat, treasure_find_teleport_target_filters_invalid_candidates_and_w
 
     auto before = std::make_unique<treasure>();
     before->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
-    before->stats()->level = 4;
+    before->stats()->set_level(4);
     walker* before_ptr = before.get();
     fx.push_back(std::move(before));
 
     auto self = std::make_unique<treasure>();
     self->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
-    self->stats()->level = 4;
+    self->stats()->set_level(4);
     walker* self_ptr = self.get();
     fx.push_back(std::move(self));
 
@@ -429,30 +429,30 @@ TEST(TreasureEat, treasure_find_teleport_target_filters_invalid_candidates_and_w
 
     auto dead = std::make_unique<treasure>();
     dead->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
-    dead->stats()->level = 4;
-    dead->dead = 1;
+    dead->stats()->set_level(4);
+    dead->set_dead(1);
     fx.push_back(std::move(dead));
 
     auto wrong_family = std::make_unique<treasure>();
     wrong_family->set_order_family(Order::Treasure, FAMILY_GOLD_BAR);
-    wrong_family->stats()->level = 4;
+    wrong_family->stats()->set_level(4);
     fx.push_back(std::move(wrong_family));
 
     auto wrong_level = std::make_unique<treasure>();
     wrong_level->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
-    wrong_level->stats()->level = 5;
+    wrong_level->stats()->set_level(5);
     fx.push_back(std::move(wrong_level));
 
     auto after = std::make_unique<treasure>();
     after->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
-    after->stats()->level = 4;
+    after->stats()->set_level(4);
     walker* after_ptr = after.get();
     fx.push_back(std::move(after));
 
     walker* found = static_cast<treasure*>(self_ptr)->find_teleport_target();
     ASSERT_TRUE(found == after_ptr) << "forward search should skip invalid entries and find later valid teleporter";
 
-    static_cast<treasure*>(after_ptr)->dead = 1;
+    static_cast<treasure*>(after_ptr)->set_dead(1);
     found = static_cast<treasure*>(self_ptr)->find_teleport_target();
     ASSERT_TRUE(found == before_ptr) << "when forward candidates are invalid, search should wrap to earlier match";
 
@@ -468,13 +468,13 @@ TEST(TreasureEat, treasure_round10_find_teleport_target_forward_wrap_and_empty_p
 
     auto self = std::make_unique<treasure>();
     self->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
-    self->stats()->level = 6;
+    self->stats()->set_level(6);
     walker* self_ptr = self.get();
     fx.push_back(std::move(self));
 
     auto match_after = std::make_unique<treasure>();
     match_after->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
-    match_after->stats()->level = 6;
+    match_after->stats()->set_level(6);
     walker* after_ptr = match_after.get();
     fx.push_back(std::move(match_after));
 
@@ -482,9 +482,8 @@ TEST(TreasureEat, treasure_round10_find_teleport_target_forward_wrap_and_empty_p
     ASSERT_TRUE(static_cast<treasure*>(self_ptr)->find_teleport_target() == after_ptr) << "find_teleport_target should return later matching teleporter in forward scan";
 
     // Kill forward match and ensure no wrap candidates -> nullptr.
-    after_ptr->dead = 1;
+    after_ptr->set_dead(1);
     ASSERT_TRUE(static_cast<treasure*>(self_ptr)->find_teleport_target() == nullptr) << "find_teleport_target should return nullptr when no live same-level teleporter exists";
 
     fx.clear();
 }
-

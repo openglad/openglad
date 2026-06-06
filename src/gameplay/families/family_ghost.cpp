@@ -23,9 +23,9 @@ static bool ghost_check_special_ai(living* self)
 static bool ghost_do_special(walker* self)
 {
     walker* newob = summon_entity(self, Order::FX, FAMILY_GHOST_SCARE);
-    newob->ani_type = ANI_SCARE;
-    newob->setxy(self->xpos + self->sizex/2 - newob->sizex/2,
-                 self->ypos + self->sizey/2 - newob->sizey/2);
+    newob->set_ani_type(ANI_SCARE);
+    newob->setxy(self->xpos() + self->sizex()/2 - newob->sizex()/2,
+                 self->ypos() + self->sizey()/2 - newob->sizey()/2);
     return true;
 }
 

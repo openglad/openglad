@@ -11,6 +11,8 @@
 #include <filesystem>
 #include <memory>
 
+#include "test_network_fixture.h"
+
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 static std::unique_ptr<walker> make_walker_at(char family, short x, short y, unsigned char team)
@@ -23,13 +25,17 @@ static std::unique_ptr<walker> make_walker_at(char family, short x, short y, uns
     return w;
 }
 
-// ---------------------------------------------------------------------------
-// screen::act smoke test - exercises the main game loop tick
-// ---------------------------------------------------------------------------
-
-TEST(ScreenExtended, screen_act_empty)
+TEST(ScreenExtended, network_fixture_advances_empty_tick)
 {
-    og::runtime::current_session->myscreen_->act();
+    og::sim::test::NetworkTestConfig config;
+    config.level_id = 1;
+    config.tick_count = 1;
+    og::sim::test::NetworkTestFixture fixture(config);
+    fixture.run();
+
+    EXPECT_EQ(1u, fixture.server_world().tick_count_);
+    EXPECT_EQ(1u, fixture.client_world(0).tick_count_);
+    fixture.expect_clients_match_server();
 }
 
 
@@ -42,7 +48,7 @@ TEST(ScreenExtended, screen_add_ob_living)
     walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     ASSERT_TRUE(w != nullptr) << "add_ob should succeed";
     w->setxy(50, 50);
-    w->dead = 1; // mark for cleanup
+    w->set_dead(1); // mark for cleanup
 }
 
 
@@ -50,7 +56,7 @@ TEST(ScreenExtended, screen_add_ob_weapon)
 {
     walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Weapon, FAMILY_KNIFE);
     ASSERT_TRUE(w != nullptr) << "add_ob weapon should succeed";
-    w->dead = 1;
+    w->set_dead(1);
 }
 
 
@@ -58,7 +64,7 @@ TEST(ScreenExtended, screen_add_ob_treasure)
 {
     walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Treasure, FAMILY_STAIN, 1);
     ASSERT_TRUE(w != nullptr) << "add_ob treasure should succeed";
-    w->dead = 1;
+    w->set_dead(1);
 }
 
 
@@ -66,7 +72,7 @@ TEST(ScreenExtended, screen_add_ob_effect)
 {
     walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::FX, FAMILY_EXPLOSION);
     ASSERT_TRUE(w != nullptr) << "add_ob effect should succeed";
-    w->dead = 1;
+    w->set_dead(1);
 }
 
 
@@ -277,8 +283,8 @@ TEST(ScreenExtended, screen_find_nearest_player_and_draw_panels)
 
     walker* p1p = p1.get();
 
-    p1p->user = 0;
-    p2->user = 1;
+    p1p->set_user(0);
+    p2->set_user(1);
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(p1));
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(p2));
 

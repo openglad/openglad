@@ -571,6 +571,16 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         return toggle_player_control_mode(arg);
     case ButtonAction::EditPlayerKeymap:
         return edit_player_keymap(arg);
+    case ButtonAction::HostGame:
+    case ButtonAction::JoinGame:
+    case ButtonAction::Networking:
+    case ButtonAction::EditNetworkAddress:
+    case ButtonAction::EditNetworkPort:
+    case ButtonAction::ToggleNetworkRoomCode:
+    case ButtonAction::EditNetworkRoomCode:
+    case ButtonAction::SubmitNetworkHost:
+    case ButtonAction::SubmitNetworkJoin:
+        return whatfunc;
     case ButtonAction::ShowHelp:
         show_general_help();
         return REDRAW;

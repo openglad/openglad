@@ -21,10 +21,10 @@ static std::unique_ptr<walker> make_living(unsigned char team, signed char user 
     if (!l) return nullptr;
     auto w = l->create_walker_owned(Order::Living, FAMILY_SOLDIER);
     if (!w) return nullptr;
-    w->team_num = team;
-    w->real_team_num = 255;
-    w->dead = 0;
-    w->user = user;
+    w->set_team_num(team);
+    w->set_real_team_num(255);
+    w->set_dead(0);
+    w->set_user(user);
     w->setxy(80, 80);
     return w;
 }
@@ -47,7 +47,6 @@ TEST(SimInputHandler, sim_find_next_control_player_first)
     player->myguy = reinterpret_cast<guy*>(1); // non-null sentinel
 
     // Transfer ownership to oblist
-    walker* npc_ptr = npc.get();
     walker* player_ptr = player.get();
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(npc));
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(player));
@@ -111,7 +110,7 @@ TEST(SimInputHandler, sim_input_assigns_control)
 {
     auto w = make_living(0);
     ASSERT_TRUE(w != nullptr) << "walker should be created";
-    w->stats()->hitpoints = 42.0f;
+    w->stats()->set_hitpoints(42.0f);
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w));
 
     InputState input;
@@ -141,7 +140,7 @@ TEST(SimInputHandler, sim_input_movement)
     ASSERT_TRUE(w != nullptr) << "walker should be created";
     w->setxy(100, 100);
     walker* control = w.get();
-    control->user = 0;
+    control->set_user(0);
     control->set_act_type(ACT_CONTROL);
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w));
 
@@ -171,9 +170,9 @@ TEST(SimInputHandler, sim_input_switch_special_wraps_and_debounces)
     auto w = make_living(0);
     ASSERT_TRUE(w != nullptr) << "walker should be created";
     walker* control = w.get();
-    control->user = 0;
-    control->current_special = 1;
-    control->stats()->level = 1;
+    control->set_user(0);
+    control->set_current_special(1);
+    control->stats()->set_level(1);
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w));
 
     InputState input;
@@ -190,7 +189,7 @@ TEST(SimInputHandler, sim_input_switch_special_wraps_and_debounces)
         0, 0, debounce, special_names, &log);
 
     ASSERT_EQ(1, debounce.changedspec) << "switch special should set debounce latch";
-    ASSERT_EQ(1, control->current_special) << "invalid/locked special should wrap to 1";
+    ASSERT_EQ(1, control->current_special()) << "invalid/locked special should wrap to 1";
 
     input.clear();
     sim_process_player_input(
@@ -212,9 +211,9 @@ TEST(SimInputHandler, sim_input_yell_sets_follow_and_notification)
     walker* control = control_up.get();
     walker* ally = ally_up.get();
     control->set_act_type(ACT_CONTROL);
-    control->yo_delay = 0;
-    ally->leader = nullptr;
-    ally->action = 0;
+    control->set_yo_delay(0);
+    ally->set_leader(nullptr);
+    ally->set_action(0);
 
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control_up));
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(ally_up));
@@ -234,8 +233,8 @@ TEST(SimInputHandler, sim_input_yell_sets_follow_and_notification)
     ASSERT_EQ(SOUND_YO, result.play_sound) << "plain yell should request yo sound";
     ASSERT_TRUE(result.notify_text == "Yo!") << "plain yell should emit Yo notification";
     ASSERT_TRUE(result.notify_source == control) << "notification source should be control";
-    ASSERT_TRUE(ally->leader == control) << "plain yell should assign nearby ally leader";
-    ASSERT_EQ(30, control->yo_delay) << "plain yell should set yell cooldown";
+    ASSERT_TRUE(ally->leader() == control) << "plain yell should assign nearby ally leader";
+    ASSERT_EQ(30, control->yo_delay()) << "plain yell should set yell cooldown";
 
     teardown();
 }
@@ -251,8 +250,8 @@ TEST(SimInputHandler, sim_input_shift_yell_summon_and_release)
     walker* control = control_up.get();
     walker* ally = ally_up.get();
     control->set_act_type(ACT_CONTROL);
-    control->action = 0;
-    ally->action = 0;
+    control->set_action(0);
+    ally->set_action(0);
 
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control_up));
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(ally_up));
@@ -271,16 +270,16 @@ TEST(SimInputHandler, sim_input_shift_yell_summon_and_release)
         0, 0, debounce, special_names, &log);
 
     ASSERT_TRUE(result.notify_text == "SUMMONING DEFENSE!") << "shift+yell should enter summon mode";
-    ASSERT_EQ(ACTION_FOLLOW, ally->action) << "summon mode should set ally action to follow";
+    ASSERT_EQ(ACTION_FOLLOW, ally->action()) << "summon mode should set ally action to follow";
 
-    control->action = ACTION_FOLLOW;
+    control->set_action(ACTION_FOLLOW);
     result = sim_process_player_input(
         input.players[0], control, og::runtime::current_session->myscreen_->world(),
         0, 0, debounce, special_names, &log);
 
     ASSERT_TRUE(result.notify_text == "RELEASING MEN!") << "shift+yell in follow mode should release";
-    ASSERT_EQ(0, ally->action) << "release should reset ally action";
-    ASSERT_EQ(0, control->action) << "release should reset control action";
+    ASSERT_EQ(0, ally->action()) << "release should reset ally action";
+    ASSERT_EQ(0, control->action()) << "release should reset control action";
 
     teardown();
 }
@@ -292,8 +291,8 @@ TEST(SimInputHandler, sim_input_frozen_and_user_mismatch_early_returns)
     ASSERT_TRUE(w != nullptr) << "walker should be created";
     walker* control = w.get();
     control->set_act_type(ACT_CONTROL);
-    control->user = 1;
-    control->stats()->frozen_delay = 2;
+    control->set_user(1);
+    control->stats()->set_frozen_delay(2);
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w));
 
     InputState input;
@@ -307,13 +306,13 @@ TEST(SimInputHandler, sim_input_frozen_and_user_mismatch_early_returns)
         0, 0, debounce, special_names, &log);
     ASSERT_TRUE(result.new_control == control) << "user mismatch should return current control early";
 
-    control->user = 0;
+    control->set_user(0);
     result = sim_process_player_input(
         input.players[0], control, og::runtime::current_session->myscreen_->world(),
         0, 0, debounce, special_names, &log);
 
     ASSERT_TRUE(result.new_control == control) << "frozen control should still be returned";
-    ASSERT_EQ(1, control->stats()->frozen_delay) << "frozen delay should decrement";
+    ASSERT_EQ(1, control->stats()->frozen_delay()) << "frozen delay should decrement";
 
     teardown();
 }
@@ -334,9 +333,9 @@ TEST(SimInputHandler, sim_input_switch_char_forward_and_reverse_paths)
     w1->set_act_type(ACT_CONTROL);
     w2->set_act_type(ACT_RANDOM);
     w3->set_act_type(ACT_RANDOM);
-    w1->real_team_num = 255;
-    w2->real_team_num = 255;
-    w3->real_team_num = 255;
+    w1->set_real_team_num(255);
+    w2->set_real_team_num(255);
+    w3->set_real_team_num(255);
 
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w1_up));
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w2_up));
@@ -363,7 +362,7 @@ TEST(SimInputHandler, sim_input_switch_char_forward_and_reverse_paths)
     input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
     input.players[0].held[static_cast<int>(InputAction::Shift)] = true;
     debounce.changedchar = 0;
-    control->user = 0;
+    control->set_user(0);
     control->set_act_type(ACT_CONTROL);
 
     result = sim_process_player_input(
@@ -386,7 +385,7 @@ TEST(SimInputHandler, sim_input_switch_char_error_and_default_action_paths)
 
     walker* control = detached.get();
     control->set_act_type(ACT_CONTROL);
-    control->action = 99; // default branch for shift+yell action switch
+    control->set_action(99); // default branch for shift+yell action switch
 
     InputState input;
     input.clear();
@@ -411,7 +410,7 @@ TEST(SimInputHandler, sim_input_switch_char_error_and_default_action_paths)
         input.players[0], control, og::runtime::current_session->myscreen_->world(),
         0, 0, debounce, special_names, &log);
 
-    ASSERT_EQ(0, (int)control->action) << "default shift+yell action branch should reset control action";
+    ASSERT_EQ(0, (int)control->action()) << "default shift+yell action branch should reset control action";
 }
 
 
@@ -425,9 +424,9 @@ TEST(SimInputHandler, sim_input_bonus_rounds_and_pressed_held_actions_paths)
     walker* control = control_up.get();
     control->set_act_type(ACT_CONTROL);
     control->setxy(100, 100);
-    control->lastx = control->stepsize;
-    control->lasty = 0.0f;
-    control->bonus_rounds = 2;
+    control->set_lastx(control->stepsize());
+    control->set_lasty(0.0f);
+    control->set_bonus_rounds(2);
     control->stats()->set_bit_flags(BIT_ANIMATE, 1);
 
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control_up));
@@ -449,7 +448,7 @@ TEST(SimInputHandler, sim_input_bonus_rounds_and_pressed_held_actions_paths)
         0, 0, debounce, special_names, &log);
 
     ASSERT_TRUE(result.new_control == control) << "processing should return same control";
-    ASSERT_EQ(1, (int)control->bonus_rounds) << "bonus rounds should decrement each tick";
+    ASSERT_EQ(1, (int)control->bonus_rounds()) << "bonus rounds should decrement each tick";
 
     teardown();
 }
@@ -465,8 +464,8 @@ TEST(SimInputHandler, sim_input_switch_char_forward_selects_next_friendly)
     walker* oldcontrol = control_up.get();
     walker* ally = ally_up.get();
     oldcontrol->set_act_type(ACT_CONTROL);
-    oldcontrol->stats()->hitpoints = 33.0f;
-    ally->stats()->hitpoints = 77.0f;
+    oldcontrol->stats()->set_hitpoints(33.0f);
+    ally->stats()->set_hitpoints(77.0f);
 
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control_up));
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(ally_up));
@@ -502,7 +501,7 @@ TEST(SimInputHandler, sim_input_switch_char_reverse_and_missing_old_control_path
     walker* control = control_up.get();
     walker* ally = ally_up.get();
     control->set_act_type(ACT_CONTROL);
-    ally->stats()->hitpoints = 88.0f;
+    ally->stats()->set_hitpoints(88.0f);
 
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(ally_up));
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control_up));
@@ -530,7 +529,7 @@ TEST(SimInputHandler, sim_input_switch_char_reverse_and_missing_old_control_path
     ASSERT_TRUE(orphan_up != nullptr) << "orphan control should be created";
     walker* orphan = orphan_up.get();
     orphan->set_act_type(ACT_CONTROL);
-    orphan->stats()->hitpoints = 19.0f;
+    orphan->stats()->set_hitpoints(19.0f);
 
     input.clear();
     input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
@@ -553,11 +552,11 @@ TEST(SimInputHandler, sim_input_switch_char_no_candidate_keeps_old_control_and_t
 
     walker* control = control_up.get();
     control->set_act_type(ACT_CONTROL);
-    control->bonus_rounds = 2;
-    control->lastx = 1.0f;
-    control->lasty = 0.0f;
-    control->yo_delay = 4;
-    control->stats()->hitpoints = 55.0f;
+    control->set_bonus_rounds(2);
+    control->set_lastx(1.0f);
+    control->set_lasty(0.0f);
+    control->set_yo_delay(4);
+    control->stats()->set_hitpoints(55.0f);
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control_up));
 
     InputState input;
@@ -573,8 +572,8 @@ TEST(SimInputHandler, sim_input_switch_char_no_candidate_keeps_old_control_and_t
         0, 0, debounce, special_names, &log);
 
     ASSERT_TRUE(control != nullptr) << "control should remain valid";
-    ASSERT_EQ(1, control->bonus_rounds) << "bonus rounds should tick down";
-    ASSERT_EQ(3, control->yo_delay) << "yo_delay should tick down";
+    ASSERT_EQ(1, control->bonus_rounds()) << "bonus rounds should tick down";
+    ASSERT_EQ(3, control->yo_delay()) << "yo_delay should tick down";
     ASSERT_TRUE(result.control_hp_changed) << "switch attempt should still report hp";
     ASSERT_TRUE(result.control_hp == 55.0f) << "hp should remain from old control";
 
@@ -632,6 +631,24 @@ TEST(SimInputHandler, sim_find_next_control_fallback_any_team_player)
     teardown();
 }
 
+TEST(SimInputHandler, sim_find_next_control_skips_claimed_fallback_player)
+{
+    teardown();
+    auto claimed_other_team_player = make_living(1, 2);
+    ASSERT_TRUE(claimed_other_team_player != nullptr)
+        << "claimed other-team player should be created";
+    claimed_other_team_player->myguy = reinterpret_cast<guy*>(1);
+    og::runtime::current_session->myscreen_->world().oblist.push_back(
+        std::move(claimed_other_team_player));
+
+    walker* found = sim_find_next_control(
+        og::runtime::current_session->myscreen_->world(), 0);
+    ASSERT_TRUE(found == nullptr)
+        << "claimed fallback characters should not be reassigned";
+
+    teardown();
+}
+
 
 TEST(SimInputHandler, sim_input_switch_char_wraparound_forward_and_reverse)
 {
@@ -643,7 +660,7 @@ TEST(SimInputHandler, sim_input_switch_char_wraparound_forward_and_reverse)
     walker* candidate = candidate_up.get();
     walker* control = control_up.get();
     control->set_act_type(ACT_CONTROL);
-    candidate->stats()->hitpoints = 61.0f;
+    candidate->stats()->set_hitpoints(61.0f);
 
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(candidate_up));
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control_up));
@@ -673,7 +690,7 @@ TEST(SimInputHandler, sim_input_switch_char_wraparound_forward_and_reverse)
     walker* reverse_control = reverse_control_up.get();
     walker* reverse_candidate = reverse_candidate_up.get();
     reverse_control->set_act_type(ACT_CONTROL);
-    reverse_candidate->stats()->hitpoints = 72.0f;
+    reverse_candidate->stats()->set_hitpoints(72.0f);
 
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(reverse_control_up));
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(reverse_candidate_up));
@@ -699,8 +716,8 @@ TEST(SimInputHandler, sim_input_switch_special_valid_advance_and_shift_yell_defa
     ASSERT_TRUE(control_up != nullptr) << "control should be created";
     walker* control = control_up.get();
     control->set_act_type(ACT_CONTROL);
-    control->current_special = 1;
-    control->stats()->level = 20;
+    control->set_current_special(1);
+    control->stats()->set_level(20);
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control_up));
 
     SimInputDebounce debounce = {};
@@ -715,9 +732,9 @@ TEST(SimInputHandler, sim_input_switch_special_valid_advance_and_shift_yell_defa
         input.players[0], control, og::runtime::current_session->myscreen_->world(),
         0, 0, debounce, special_names, &log);
     ASSERT_TRUE(result.new_control == control) << "switch special should keep control";
-    ASSERT_EQ(2, control->current_special) << "valid unlocked special should advance";
+    ASSERT_EQ(2, control->current_special()) << "valid unlocked special should advance";
 
-    control->action = 99;
+    control->set_action(99);
     input.clear();
     input.players[0].held[static_cast<int>(InputAction::Shift)] = true;
     input.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
@@ -725,7 +742,7 @@ TEST(SimInputHandler, sim_input_switch_special_valid_advance_and_shift_yell_defa
         input.players[0], control, og::runtime::current_session->myscreen_->world(),
         0, 0, debounce, special_names, &log);
     ASSERT_TRUE(result.new_control == control) << "shift+yell default branch should keep control";
-    ASSERT_EQ(0, control->action) << "default shift+yell branch should reset action";
+    ASSERT_EQ(0, control->action()) << "default shift+yell branch should reset action";
 
     teardown();
 }
@@ -745,12 +762,12 @@ TEST(SimInputHandler, sim_input_deep_branch_coverage_smoke)
     walker* ally_after = ally_after_up.get();
     walker* ally_before = ally_before_up.get();
     control->set_act_type(ACT_CONTROL);
-    control->stats()->level = 30;
-    control->current_special = 1;
-    control->yo_delay = 0;
-    control->ani_type = ANI_ATTACK; // forces animate() branch
+    control->stats()->set_level(30);
+    control->set_current_special(1);
+    control->set_yo_delay(0);
+    control->set_ani_type(ANI_ATTACK); // forces animate() branch
     control->stats()->set_bit_flags(BIT_ANIMATE, 1);
-    control->cycle = 0;
+    control->set_cycle(0);
     // Create local mutable animation data (global tables are const)
     static signed char test_wrap_seq[] = {0, -1};
     static const signed char * test_wrap_rows[] = {test_wrap_seq, test_wrap_seq, test_wrap_seq, test_wrap_seq,
@@ -807,13 +824,13 @@ TEST(SimInputHandler, sim_input_deep_branch_coverage_smoke)
     input.clear();
     input.players[0].held[static_cast<int>(InputAction::Shift)] = true;
     input.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
-    control->action = 0;
+    control->set_action(0);
     (void)sim_process_player_input(
         input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, special_names, &log);
-    control->action = ACTION_FOLLOW;
+    control->set_action(ACTION_FOLLOW);
     (void)sim_process_player_input(
         input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, special_names, &log);
-    control->action = 99;
+    control->set_action(99);
     (void)sim_process_player_input(
         input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, special_names, &log);
 
@@ -835,7 +852,7 @@ TEST(SimInputHandler, sim_input_deep_branch_coverage_smoke)
     ASSERT_TRUE(result.new_control == control) << "idle animate branch should keep control";
 
     // Mismatch user early return line.
-    control->user = 1;
+    control->set_user(1);
     input.clear();
     result = sim_process_player_input(
         input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, special_names, &log);
@@ -858,9 +875,9 @@ TEST(SimInputHandler, sim_input_cheat_gates_and_command_queue_skip_movement_bloc
 
     walker* control = control_up.get();
     control->set_act_type(ACT_CONTROL);
-    control->yo_delay = 0;
-    control->current_special = 1;
-    control->stats()->level = 30;
+    control->set_yo_delay(0);
+    control->set_current_special(1);
+    control->stats()->set_level(30);
 
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control_up));
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(ally_up));
@@ -910,7 +927,7 @@ TEST(SimInputHandler, sim_input_switch_char_reverse_missing_old_control_restores
 
     walker* control = orphan_up.get();
     control->set_act_type(ACT_CONTROL);
-    control->stats()->hitpoints = 27.0f;
+    control->stats()->set_hitpoints(27.0f);
 
     InputState input;
     input.clear();
@@ -941,8 +958,8 @@ TEST(SimInputHandler, sim_input_dead_control_reassigns_to_next_alive)
 
     walker* control = dead_control_up.get();
     walker* replacement = replacement_up.get();
-    control->dead = 1;
-    replacement->stats()->hitpoints = 64.0f;
+    control->set_dead(1);
+    replacement->stats()->set_hitpoints(64.0f);
 
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(dead_control_up));
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(replacement_up));
@@ -985,25 +1002,25 @@ TEST(SimInputHandler, sim_input_switch_char_skips_ineligible_candidates_then_sel
     walker* control = control_up.get();
     walker* good = good_up.get();
     control->set_act_type(ACT_CONTROL);
-    control->team_num = 0;
-    control->real_team_num = 255;
-    control->stats()->hitpoints = 31.0f;
+    control->set_team_num(0);
+    control->set_real_team_num(255);
+    control->stats()->set_hitpoints(31.0f);
 
-    enemy_up->team_num = 1;
-    charmed_up->team_num = 0;
-    charmed_up->real_team_num = 7;
-    taken_up->team_num = 0;
-    taken_up->real_team_num = 255;
-    good_up->team_num = 0;
-    good_up->real_team_num = 255;
-    good_up->stats()->hitpoints = 77.0f;
+    enemy_up->set_team_num(1);
+    charmed_up->set_team_num(0);
+    charmed_up->set_real_team_num(7);
+    taken_up->set_team_num(0);
+    taken_up->set_real_team_num(255);
+    good_up->set_team_num(0);
+    good_up->set_real_team_num(255);
+    good_up->stats()->set_hitpoints(77.0f);
 
     // Keep every candidate friendly so team/user/real-team checks determine eligibility.
-    control->owner = control;
-    enemy_up->owner = control;
-    charmed_up->owner = control;
-    taken_up->owner = control;
-    good_up->owner = control;
+    control->set_owner(control);
+    enemy_up->set_owner(control);
+    charmed_up->set_owner(control);
+    taken_up->set_owner(control);
+    good_up->set_owner(control);
 
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(control_up));
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(nonliving));
@@ -1054,7 +1071,7 @@ TEST(SimInputHandler, sim_input_assigns_unowned_control_and_clears_commands)
         input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, special_names, &log);
 
     ASSERT_TRUE(result.new_control == control) << "control should be preserved";
-    ASSERT_EQ(0, (int)control->user) << "unowned control should be assigned to player";
+    ASSERT_EQ(0, (int)control->user()) << "unowned control should be assigned to player";
     ASSERT_TRUE(!control->stats()->has_commands()) << "assignment path should clear queued commands";
 
     teardown();
@@ -1072,9 +1089,9 @@ TEST(SimInputHandler, sim_input_bonus_rounds_walks_when_last_vector_nonzero)
     walker* control = w_up.get();
     control->setxy(100, 100);
     control->set_act_type(ACT_CONTROL);
-    control->bonus_rounds = 1;
-    control->lastx = 1;
-    control->lasty = 0;
+    control->set_bonus_rounds(1);
+    control->set_lastx(1);
+    control->set_lasty(0);
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w_up));
 
     InputState input;
@@ -1087,8 +1104,7 @@ TEST(SimInputHandler, sim_input_bonus_rounds_walks_when_last_vector_nonzero)
         input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, special_names, &log);
 
     ASSERT_TRUE(result.new_control == control) << "control should stay active";
-    ASSERT_EQ(0, (int)control->bonus_rounds) << "bonus rounds should decrement";
+    ASSERT_EQ(0, (int)control->bonus_rounds()) << "bonus rounds should decrement";
 
     teardown();
 }
-

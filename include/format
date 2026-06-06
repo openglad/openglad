@@ -1,0 +1,214 @@
+#pragma once
+
+#if defined(__GNUC__)
+#  pragma GCC system_header
+#endif
+
+#if defined(__has_include_next)
+#  if __has_include_next(<format>)
+#    if defined(__GNUC__)
+#      pragma GCC diagnostic push
+#      pragma GCC diagnostic ignored "-Wpedantic"
+#    endif
+#    if defined(__clang__)
+#      pragma clang diagnostic push
+#      pragma clang diagnostic ignored "-Wgnu-include-next"
+#    endif
+#    include_next <format>
+#    if defined(__clang__)
+#      pragma clang diagnostic pop
+#    endif
+#    if defined(__GNUC__)
+#      pragma GCC diagnostic pop
+#    endif
+#  endif
+#endif
+
+#if defined(OPENGLAD_NEEDS_STD_FORMAT_SHIM)
+
+#include <iomanip>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <utility>
+
+namespace std {
+
+namespace __openglad_format_detail {
+
+struct FormatSpec {
+    int width = 0;
+    int precision = -1;
+    char fill = ' ';
+    char type = '\0';
+};
+
+inline FormatSpec parse_spec(std::string_view field)
+{
+    FormatSpec spec;
+    if (field.empty())
+        return spec;
+    if (field.front() != ':')
+        throw runtime_error("unsupported format field");
+
+    std::size_t pos = 1;
+    if (pos < field.size() && field[pos] == '0') {
+        spec.fill = '0';
+        ++pos;
+    }
+
+    while (pos < field.size() && field[pos] >= '0' && field[pos] <= '9') {
+        spec.width = (spec.width * 10) + static_cast<int>(field[pos] - '0');
+        ++pos;
+    }
+
+    if (pos < field.size() && field[pos] == '.') {
+        ++pos;
+        spec.precision = 0;
+        while (pos < field.size() && field[pos] >= '0' && field[pos] <= '9') {
+            spec.precision =
+                (spec.precision * 10) + static_cast<int>(field[pos] - '0');
+            ++pos;
+        }
+    }
+
+    if (pos < field.size()) {
+        spec.type = field[pos];
+        ++pos;
+    }
+
+    if (pos != field.size())
+        throw runtime_error("unsupported format field");
+
+    return spec;
+}
+
+template<typename T>
+inline std::string format_value(T&& value, const FormatSpec& spec)
+{
+    using Value = std::decay_t<T>;
+
+    std::ostringstream stream;
+    if (spec.width > 0)
+        stream << std::setw(spec.width) << std::setfill(spec.fill);
+
+    if constexpr (std::is_same_v<Value, bool>) {
+        stream << (value ? "true" : "false");
+    } else if constexpr (std::is_same_v<Value, char*> ||
+                         std::is_same_v<Value, const char*>) {
+        stream << (value ? value : "(null)");
+    } else if constexpr (std::is_same_v<Value, std::string_view>) {
+        stream << value;
+    } else if constexpr (std::is_same_v<Value, std::string>) {
+        stream << value;
+    } else if constexpr (std::is_floating_point_v<Value>) {
+        if (spec.precision >= 0)
+            stream << std::setprecision(spec.precision);
+        switch (spec.type) {
+        case 'f':
+            stream << std::fixed;
+            break;
+        case 'g':
+            stream << std::defaultfloat;
+            break;
+        default:
+            break;
+        }
+        stream << value;
+    } else if constexpr (std::is_same_v<Value, signed char> ||
+                         std::is_same_v<Value, unsigned char>) {
+        stream << static_cast<int>(value);
+    } else {
+        stream << value;
+    }
+
+    return stream.str();
+}
+
+inline void append_literal(std::string& output, std::string_view fmt)
+{
+    for (std::size_t i = 0; i < fmt.size(); ++i) {
+        if (fmt[i] == '{') {
+            if ((i + 1) < fmt.size() && fmt[i + 1] == '{') {
+                output.push_back('{');
+                ++i;
+                continue;
+            }
+            throw runtime_error("missing format argument");
+        }
+        if (fmt[i] == '}') {
+            if ((i + 1) < fmt.size() && fmt[i + 1] == '}') {
+                output.push_back('}');
+                ++i;
+                continue;
+            }
+            throw runtime_error("unmatched closing brace");
+        }
+        output.push_back(fmt[i]);
+    }
+}
+
+inline void append_format(std::string& output, std::string_view fmt);
+
+template<typename Arg, typename... Rest>
+inline void append_format(std::string& output,
+                          std::string_view fmt,
+                          Arg&& arg,
+                          Rest&&... rest)
+{
+    for (std::size_t i = 0; i < fmt.size(); ++i) {
+        if (fmt[i] == '{') {
+            if ((i + 1) < fmt.size() && fmt[i + 1] == '{') {
+                output.push_back('{');
+                ++i;
+                continue;
+            }
+
+            const std::size_t close = fmt.find('}', i + 1);
+            if (close == std::string_view::npos)
+                throw runtime_error("unterminated format field");
+
+            const FormatSpec spec = parse_spec(fmt.substr(i + 1, close - i - 1));
+            output += format_value(std::forward<Arg>(arg), spec);
+            append_format(
+                output, fmt.substr(close + 1), std::forward<Rest>(rest)...);
+            return;
+        }
+
+        if (fmt[i] == '}') {
+            if ((i + 1) < fmt.size() && fmt[i + 1] == '}') {
+                output.push_back('}');
+                ++i;
+                continue;
+            }
+            throw runtime_error("unmatched closing brace");
+        }
+
+        output.push_back(fmt[i]);
+    }
+
+    throw runtime_error("too many format arguments");
+}
+
+inline void append_format(std::string& output, std::string_view fmt)
+{
+    append_literal(output, fmt);
+}
+
+} // namespace __openglad_format_detail
+
+template<typename... Args>
+inline std::string format(std::string_view fmt, Args&&... args)
+{
+    std::string output;
+    output.reserve(fmt.size() + sizeof...(Args) * 8);
+    __openglad_format_detail::append_format(
+        output, fmt, std::forward<Args>(args)...);
+    return output;
+}
+
+} // namespace std
+
+#endif

@@ -63,7 +63,7 @@ static int count_family_in_oblist(char family)
     int count = 0;
     for (auto& uptr : og::runtime::current_session->myscreen_->world().oblist) {
         walker* w = uptr.get();
-        if (w && w->family == family)
+        if (w && w->family() == family)
             count++;
     }
     return count;
@@ -100,19 +100,19 @@ TEST(WalkerCombat, walker_attack_basic)
     ASSERT_TRUE(target != nullptr) << "target created";
 
     target->setxy(101, 100);
-    attacker->team_num = 0;
-    target->team_num = 1;
-    float hp_before = target->stats()->hitpoints;
+    attacker->set_team_num(0);
+    target->set_team_num(1);
+    float hp_before = target->stats()->hitpoints();
     bool result = attacker->attack(target);
     // attack may or may not succeed depending on is_friendly logic
     (void)result;
     (void)hp_before;
 
     // Force a deterministic kill path to exercise death messaging/blood branches.
-    target->dead = 0;
-    target->stats()->hitpoints = 1;
-    target->stats()->max_hitpoints = 1;
-    attacker->damage = 500.0f;
+    target->set_dead(0);
+    target->stats()->set_hitpoints(1);
+    target->stats()->set_max_hitpoints(1);
+    attacker->set_damage(500.0f);
     int blood_before = count_family_in_oblist(FAMILY_BLOOD);
     (void)attacker->attack(target);
     int blood_after = count_family_in_oblist(FAMILY_BLOOD);
@@ -140,10 +140,10 @@ TEST(WalkerCombat, walker_attack_friendly_fails)
     ASSERT_TRUE(b != nullptr) << "b created";
 
     b->setxy(101, 100);
-    float hp_before = b->stats()->hitpoints;
+    float hp_before = b->stats()->hitpoints();
     bool result = a->attack(b);
     ASSERT_TRUE(!result) << "attack should fail against friendly";
-    ASSERT_TRUE(b->stats()->hitpoints == hp_before) << "friendly HP should not change";
+    ASSERT_TRUE(b->stats()->hitpoints() == hp_before) << "friendly HP should not change";
 
     delete a;
     delete b;
@@ -158,8 +158,8 @@ TEST(WalkerCombat, walker_attack_slime_magic_bonus)
     ASSERT_TRUE(slime != nullptr) << "slime created";
 
     slime->setxy(101, 100);
-    slime->stats()->hitpoints = 500;
-    slime->stats()->max_hitpoints = 500;
+    slime->stats()->set_hitpoints(500);
+    slime->stats()->set_max_hitpoints(500);
     attacker->stats()->set_bit_flags(BIT_MAGICAL, 1);
 
     attacker->attack(slime);
@@ -168,15 +168,15 @@ TEST(WalkerCombat, walker_attack_slime_magic_bonus)
     walker* sprinkle = og::runtime::current_session->myscreen_->world().add_weap_ob(Order::Weapon, FAMILY_SPRINKLE);
     ASSERT_TRUE(sprinkle != nullptr) << "sprinkle weapon created";
     if (sprinkle) {
-        sprinkle->owner = attacker;
-        sprinkle->team_num = attacker->team_num;
-        sprinkle->damage = 50;
-        slime->dead = 0;
-        slime->stats()->hitpoints = 200;
-        slime->stats()->max_hitpoints = 200;
-        int frozen_before = slime->stats()->frozen_delay;
+        sprinkle->set_owner(attacker);
+        sprinkle->set_team_num(attacker->team_num());
+        sprinkle->set_damage(50);
+        slime->set_dead(0);
+        slime->stats()->set_hitpoints(200);
+        slime->stats()->set_max_hitpoints(200);
+        int frozen_before = slime->stats()->frozen_delay();
         (void)sprinkle->attack(slime);
-        ASSERT_TRUE(slime->stats()->frozen_delay >= frozen_before) << "sprinkle hit should preserve/increase frozen delay";
+        ASSERT_TRUE(slime->stats()->frozen_delay() >= frozen_before) << "sprinkle hit should preserve/increase frozen delay";
     }
 
     // Magic does 2x damage to slimes - just verify no crash
@@ -210,7 +210,7 @@ TEST(WalkerCombat, walker_attack_invulnerable)
     ASSERT_TRUE(b != nullptr) << "b created";
 
     b->setxy(101, 100);
-    b->invulnerable_left = 10;
+    b->set_invulnerable_left(10);
     bool result = a->attack(b);
     ASSERT_TRUE(!result) << "attack should fail against invulnerable";
 
@@ -227,7 +227,7 @@ TEST(WalkerCombat, walker_attack_dead_target)
     ASSERT_TRUE(b != nullptr) << "b created";
 
     b->setxy(101, 100);
-    b->dead = 1;
+    b->set_dead(1);
     bool result = a->attack(b);
     ASSERT_TRUE(!result) << "attack should fail against dead target";
 
@@ -245,12 +245,12 @@ TEST(WalkerCombat, walker_act_control)
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     ASSERT_TRUE(w != nullptr) << "walker created";
     w->set_act_type(ACT_CONTROL);
-    w->attack_lunge = 1.0f;
-    w->hit_recoil = 1.0f;
+    w->set_attack_lunge(1.0f);
+    w->set_hit_recoil(1.0f);
     bool result = w->act();
     ASSERT_TRUE(result) << "ACT_CONTROL should return true";
-    ASSERT_TRUE(w->attack_lunge < 1.0f) << "attack_lunge should decay in act()";
-    ASSERT_TRUE(w->hit_recoil < 1.0f) << "hit_recoil should decay in act()";
+    ASSERT_TRUE(w->attack_lunge() < 1.0f) << "attack_lunge should decay in act()";
+    ASSERT_TRUE(w->hit_recoil() < 1.0f) << "hit_recoil should decay in act()";
 }
 
 
@@ -260,7 +260,7 @@ TEST(WalkerCombat, walker_act_die)
     ASSERT_TRUE(w != nullptr) << "walker created";
     w->set_act_type(ACT_DIE);
     w->act();
-    ASSERT_TRUE(w->dead == 1) << "ACT_DIE should set dead";
+    ASSERT_TRUE(w->dead() == 1) << "ACT_DIE should set dead";
 }
 
 
@@ -269,10 +269,10 @@ TEST(WalkerCombat, walker_act_frozen)
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     ASSERT_TRUE(w != nullptr) << "walker created";
     w->set_act_type(ACT_RANDOM);
-    w->stats()->frozen_delay = 5;
+    w->stats()->set_frozen_delay(5);
     bool result = w->act();
     ASSERT_TRUE(result) << "frozen walker should return 1";
-    ASSERT_EQ(4, (int)w->stats()->frozen_delay) << "frozen_delay should decrement";
+    ASSERT_EQ(4, (int)w->stats()->frozen_delay()) << "frozen_delay should decrement";
 }
 
 
@@ -291,14 +291,14 @@ TEST(WalkerCombat, walker_act_with_commands)
     (void)w->act(); // default act_type path
 
     w->set_act_type(ACT_GUARD);
-    w->foe = nullptr;
+    w->set_foe(nullptr);
     (void)w->act();
 
     walker* foe = make_guy(FAMILY_ORC, 2);
     ASSERT_TRUE(foe != nullptr) << "foe created";
     if (foe) {
-        foe->setxy(w->xpos + 8, w->ypos + 8);
-        w->foe = foe;
+        foe->setxy(w->xpos() + 8, w->ypos() + 8);
+        w->set_foe(foe);
         (void)w->act();
     }
 
@@ -312,9 +312,9 @@ TEST(WalkerCombat, walker_act_with_commands)
             genp->setxy(120, 120);
             genp->set_act_type(ACT_GENERATE);
             // Force act_generate() to enter spawn/regen branch.
-            genp->stats()->level = 5;
-            genp->stats()->max_hitpoints = 10;
-            genp->stats()->hitpoints = 10;
+            genp->stats()->set_level(5);
+            genp->stats()->set_max_hitpoints(10);
+            genp->stats()->set_hitpoints(10);
             SequenceRandomCombat gen_rng({100, 0, 1, 1});
             GameContext gen_ctx;
             gen_ctx.rng = &gen_rng;
@@ -328,27 +328,27 @@ TEST(WalkerCombat, walker_act_with_commands)
         if (proj) {
             proj->setxy(120, 120);
             proj->set_act_type(ACT_FIRE);
-            proj->lineofsight = 0;
+            proj->set_lineofsight(0);
             (void)proj->act();
 
             // Force act_fire() collision path, both mortal and immortal.
             walker* target = make_guy(FAMILY_ORC, 2);
             ASSERT_TRUE(target != nullptr) << "act_fire target created";
             if (target) {
-                target->setxy(proj->xpos, proj->ypos);
-                target->dead = 0;
-                proj->dead = 0;
+                target->setxy(proj->xpos(), proj->ypos());
+                target->set_dead(0);
+                proj->set_dead(0);
                 proj->setxy(120, 120);
-                proj->lineofsight = 2;
-                proj->collide_ob = target;
+                proj->set_lineofsight(2);
+                proj->set_collide_ob(target);
                 proj->stats()->set_bit_flags(BIT_NO_COLLIDE, 1);
                 proj->stats()->set_bit_flags(BIT_IMMORTAL, 0);
                 (void)proj->act();
 
-                proj->dead = 0;
+                proj->set_dead(0);
                 proj->setxy(120, 120);
-                proj->lineofsight = 2;
-                proj->collide_ob = target;
+                proj->set_lineofsight(2);
+                proj->set_collide_ob(target);
                 proj->stats()->set_bit_flags(BIT_NO_COLLIDE, 1);
                 proj->stats()->set_bit_flags(BIT_IMMORTAL, 1);
                 (void)proj->act();
@@ -362,15 +362,15 @@ TEST(WalkerCombat, walker_act_with_commands)
         walker* base_foe = make_guy(FAMILY_ORC, 3);
         ASSERT_TRUE(base_rand != nullptr && base_foe != nullptr) << "base ACT_RANDOM walkers created";
         if (base_rand && base_foe) {
-            base_rand->team_num = 1;
+            base_rand->set_team_num(1);
             base_rand->setxy(132, 132);
-            base_rand->lineofsight = 40;
+            base_rand->set_lineofsight(40);
             base_rand->set_act_type(ACT_RANDOM);
             base_rand->stats()->clear_command();
 
-            base_foe->team_num = 3;
+            base_foe->set_team_num(3);
             base_foe->setxy(136, 132);
-            base_rand->foe = base_foe;
+            base_rand->set_foe(base_foe);
 
             GameContext base_ctx;
 
@@ -382,7 +382,7 @@ TEST(WalkerCombat, walker_act_with_commands)
             (void)base_rand->act();
 
             // act(): rng(4)!=0 -> SEARCH command path.
-            base_rand->foe = nullptr;
+            base_rand->set_foe(nullptr);
             SequenceRandomCombat base_rng2({1, 1, 1});
             base_ctx.rng = &base_rng2;
             push_test_context(&base_ctx);
@@ -400,8 +400,8 @@ TEST(WalkerCombat, walker_act_with_commands)
     if (randomer && random_foe) {
         randomer->setxy(80, 80);
         random_foe->setxy(86, 80);
-        randomer->foe = random_foe;
-        randomer->lineofsight = 40;
+        randomer->set_foe(random_foe);
+        randomer->set_lineofsight(40);
         randomer->set_act_type(ACT_RANDOM);
         randomer->stats()->clear_command();
 
@@ -414,7 +414,7 @@ TEST(WalkerCombat, walker_act_with_commands)
         (void)randomer->act();
 
         // act_random() branch where no foe is found and command is set.
-        randomer->foe = nullptr;
+        randomer->set_foe(nullptr);
         SequenceRandomCombat nofoe_rng({0, 1, 0, 1, 1, 1});
         random_ctx.rng = &nofoe_rng;
         push_test_context(&random_ctx);
@@ -441,17 +441,17 @@ TEST(WalkerCombat, walker_transfer_stats)
     ASSERT_TRUE(a != nullptr) << "a created";
     ASSERT_TRUE(b != nullptr) << "b created";
 
-    a->stats()->hitpoints = 50;
-    a->stats()->max_hitpoints = 100;
-    a->stats()->magicpoints = 30;
-    a->stats()->level = 5;
+    a->stats()->set_hitpoints(50);
+    a->stats()->set_max_hitpoints(100);
+    a->stats()->set_magicpoints(30);
+    a->stats()->set_level(5);
 
     a->transfer_stats(b);
 
-    ASSERT_EQ(50, (int)b->stats()->hitpoints) << "HP transferred";
-    ASSERT_EQ(100, (int)b->stats()->max_hitpoints) << "max HP transferred";
-    ASSERT_EQ(30, (int)b->stats()->magicpoints) << "MP transferred";
-    ASSERT_EQ(5, (int)b->stats()->level) << "level transferred";
+    ASSERT_EQ(50, (int)b->stats()->hitpoints()) << "HP transferred";
+    ASSERT_EQ(100, (int)b->stats()->max_hitpoints()) << "max HP transferred";
+    ASSERT_EQ(30, (int)b->stats()->magicpoints()) << "MP transferred";
+    ASSERT_EQ(5, (int)b->stats()->level()) << "level transferred";
 
     delete a;
     delete b;
@@ -487,7 +487,7 @@ TEST(WalkerCombat, walker_transform_to)
     ASSERT_TRUE(w != nullptr) << "walker created";
 
     w->transform_to(Order::Living, FAMILY_ARCHER);
-    ASSERT_EQ((int)FAMILY_ARCHER, (int)w->family) << "should be archer after transform";
+    ASSERT_EQ((int)FAMILY_ARCHER, (int)w->family()) << "should be archer after transform";
 
 }
 
@@ -499,8 +499,8 @@ TEST(WalkerCombat, walker_transform_to_same_order)
 
     w->set_act_type(ACT_CONTROL);
     w->transform_to(Order::Living, FAMILY_MAGE);
-    ASSERT_EQ((int)FAMILY_MAGE, (int)w->family) << "should be mage";
-    ASSERT_EQ(ACT_CONTROL, (int)w->act_type) << "should preserve act type for same order";
+    ASSERT_EQ((int)FAMILY_MAGE, (int)w->family()) << "should be mage";
+    ASSERT_EQ(ACT_CONTROL, (int)w->act_type()) << "should preserve act type for same order";
 
 }
 
@@ -556,16 +556,16 @@ TEST(WalkerCombat, walker_fire_check_blocks_on_intermediate_step)
         return;
 
     shooter->setxy(96, 96);
-    shooter->lastx = 1;
-    shooter->lasty = 0;
-    shooter->curdir = FACE_RIGHT;
-    shooter->enddir = FACE_RIGHT;
-    shooter->team_num = 0;
-    foe->team_num = 1;
-    shooter->foe = foe;
+    shooter->set_lastx(1);
+    shooter->set_lasty(0);
+    shooter->set_curdir(FACE_RIGHT);
+    shooter->set_enddir(FACE_RIGHT);
+    shooter->set_team_num(0);
+    foe->set_team_num(1);
+    shooter->set_foe(foe);
     shooter->stats()->set_bit_flags(BIT_NO_RANGED, 0);
-    shooter->stats()->magicpoints = 9999.0f;
-    shooter->stats()->weapon_cost = 0.0f;
+    shooter->stats()->set_magicpoints(9999.0f);
+    shooter->stats()->set_weapon_cost(0.0f);
 
     SequenceRandomCombat rng({0});
 
@@ -575,10 +575,10 @@ TEST(WalkerCombat, walker_fire_check_blocks_on_intermediate_step)
         return;
     shooter->set_weapon_heading(probe);
 
-    const short start_x = probe->xpos;
-    const short start_y = probe->ypos;
-    const short step_x = static_cast<short>(probe->lastx);
-    const short step_y = static_cast<short>(probe->lasty);
+    const short start_x = probe->xpos();
+    const short start_y = probe->ypos();
+    const short step_x = static_cast<short>(probe->lastx());
+    const short step_y = static_cast<short>(probe->lasty());
     og::runtime::current_session->myscreen_->world().remove_ob(probe);
 
     ASSERT_TRUE(step_x != 0 || step_y != 0) << "probe step should be non-zero";
@@ -589,8 +589,8 @@ TEST(WalkerCombat, walker_fire_check_blocks_on_intermediate_step)
                    PIX_H_WALL1);
     foe->setxy(static_cast<short>(start_x + 3 * step_x),
                static_cast<short>(start_y + 3 * step_y));
-    foe->sizex = 1;
-    foe->sizey = 1;
+    foe->set_sizex(1);
+    foe->set_sizey(1);
 
     ASSERT_TRUE(!shooter->fire_check(1, 0)) << "fire_check should fail when an intermediate tile on the shot path is blocked";
 }
@@ -605,7 +605,7 @@ TEST(WalkerCombat, walker_init_fire_when_busy)
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     ASSERT_TRUE(w != nullptr) << "walker created";
     w->setxy(100, 100);
-    w->busy = 10;
+    w->set_busy(10);
 
     bool result = w->init_fire(1, 0);
     (void)result; // busy behavior may vary
@@ -628,18 +628,18 @@ TEST(WalkerCombat, walker_set_order_family_all)
                         FAMILY_GHOST, FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN };
     for (int i = 0; i < 14; i++) {
         w->set_order_family(Order::Living, families[i]);
-        ASSERT_EQ((int)families[i], (int)w->family) << "family should match";
+        ASSERT_EQ((int)families[i], (int)w->family()) << "family should match";
     }
 
     // Exercise non-living order assignments too.
     ASSERT_TRUE(w->set_order_family(Order::Weapon, FAMILY_KNIFE)) << "set_order_family weapon should return true";
-    ASSERT_EQ((int)FAMILY_KNIFE, (int)w->family) << "family should change to knife";
+    ASSERT_EQ((int)FAMILY_KNIFE, (int)w->family()) << "family should change to knife";
     ASSERT_TRUE(w->set_order_family(Order::Treasure, FAMILY_STAIN)) << "set_order_family treasure should return true";
-    ASSERT_EQ((int)FAMILY_STAIN, (int)w->family) << "family should change to stain";
+    ASSERT_EQ((int)FAMILY_STAIN, (int)w->family()) << "family should change to stain";
     ASSERT_TRUE(w->set_order_family(Order::FX, FAMILY_EXPLOSION)) << "set_order_family fx should return true";
-    ASSERT_EQ((int)FAMILY_EXPLOSION, (int)w->family) << "family should change to explosion";
+    ASSERT_EQ((int)FAMILY_EXPLOSION, (int)w->family()) << "family should change to explosion";
     ASSERT_TRUE(w->set_order_family(Order::Generator, FAMILY_TENT)) << "set_order_family generator should return true";
-    ASSERT_EQ((int)FAMILY_TENT, (int)w->family) << "family should change to tent";
+    ASSERT_EQ((int)FAMILY_TENT, (int)w->family()) << "family should change to tent";
 
 }
 
@@ -655,8 +655,8 @@ TEST(WalkerCombat, walker_is_friendly_different_teams)
     ASSERT_TRUE(a != nullptr) << "a created";
     ASSERT_TRUE(b != nullptr) << "b created";
 
-    a->team_num = 0;
-    b->team_num = 1;
+    a->set_team_num(0);
+    b->set_team_num(1);
     Sint32 r1 = a->is_friendly(b);
     Sint32 r2 = b->is_friendly(a);
     (void)r1; (void)r2; // exercise the code paths
@@ -683,16 +683,16 @@ TEST(WalkerCombat, walker_set_difficulty_all_families)
         auto w = l->create_walker_owned(Order::Living, families[i]);
         if (w) {
             w->set_difficulty(5);
-            ASSERT_TRUE(w->stats()->max_hitpoints > 0) << "HP positive after set_difficulty";
+            ASSERT_TRUE(w->stats()->max_hitpoints() > 0) << "HP positive after set_difficulty";
         }
     }
 
     auto gen = l->create_walker_owned(Order::Generator, FAMILY_TENT);
     ASSERT_TRUE(gen != nullptr) << "generator created";
     if (gen) {
-        float hp_before = gen->stats()->hitpoints;
+        float hp_before = gen->stats()->hitpoints();
         gen->set_difficulty(7);
-        ASSERT_TRUE(gen->stats()->hitpoints >= hp_before) << "generator HP should be scaled";
+        ASSERT_TRUE(gen->stats()->hitpoints() >= hp_before) << "generator HP should be scaled";
     }
 }
 
@@ -708,7 +708,7 @@ TEST(WalkerCombat, walker_get_current_angle_all_dirs)
 
     float prev_angle = -999;
     for (int dir = 0; dir < 8; dir++) {
-        w->curdir = static_cast<char>(dir);
+        w->set_curdir(static_cast<char>(dir));
         float angle = w->get_current_angle();
         // Each direction should have a different angle
         if (dir > 0) {
@@ -729,29 +729,29 @@ TEST(WalkerCombat, walker_animate_smoke)
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     ASSERT_TRUE(w != nullptr) << "walker created";
     w->setxy(100, 100);
-    w->ani_type = ANI_WALK;
+    w->set_ani_type(ANI_WALK);
     w->animate();
 
     // TELE_OUT branches: mage teleport and skeleton ranged teleport.
     w->transform_to(Order::Living, FAMILY_MAGE);
-    w->ani_type = ANI_TELE_OUT;
-    for (int i = 0; i < 32 && w->ani_type != ANI_WALK; ++i) {
+    w->set_ani_type(ANI_TELE_OUT);
+    for (int i = 0; i < 32 && w->ani_type() != ANI_WALK; ++i) {
         (void)w->animate();
     }
-    ASSERT_TRUE(w->ani_type == ANI_WALK) << "mage teleport animation should settle";
+    ASSERT_TRUE(w->ani_type() == ANI_WALK) << "mage teleport animation should settle";
 
     w->transform_to(Order::Living, FAMILY_SKELETON);
-    w->ani_type = ANI_TELE_OUT;
-    for (int i = 0; i < 32 && w->ani_type != ANI_WALK; ++i) {
+    w->set_ani_type(ANI_TELE_OUT);
+    for (int i = 0; i < 32 && w->ani_type() != ANI_WALK; ++i) {
         (void)w->animate();
     }
-    ASSERT_TRUE(w->ani_type == ANI_WALK) << "skeleton teleport animation should settle";
+    ASSERT_TRUE(w->ani_type() == ANI_WALK) << "skeleton teleport animation should settle";
 
     // Slime split branch.
     w->transform_to(Order::Living, FAMILY_SLIME);
-    w->ani_type = ANI_SLIME_SPLIT;
+    w->set_ani_type(ANI_SLIME_SPLIT);
     int small_slime_before = count_family_in_oblist(FAMILY_SMALL_SLIME);
-    for (int i = 0; i < 32 && w->ani_type != ANI_WALK; ++i) {
+    for (int i = 0; i < 32 && w->ani_type() != ANI_WALK; ++i) {
         (void)w->animate();
     }
     int small_slime_after = count_family_in_oblist(FAMILY_SMALL_SLIME);
@@ -775,11 +775,11 @@ TEST(WalkerCombat, walker_act_random_generator_paths)
     }
 
     walker* genp = gen.get();
-    genp->team_num = 1;
-    foe->team_num = 2;
+    genp->set_team_num(1);
+    foe->set_team_num(2);
     genp->setxy(128, 128);
     foe->setxy(132, 128);
-    genp->lineofsight = 40;
+    genp->set_lineofsight(40);
     genp->set_act_type(ACT_RANDOM);
     genp->stats()->clear_command();
 
@@ -792,14 +792,14 @@ TEST(WalkerCombat, walker_act_random_generator_paths)
     (void)genp->act();
 
     // Trigger 3-of-4 search branch with foe lookup.
-    genp->foe = nullptr;
+    genp->set_foe(nullptr);
     SequenceRandomCombat rng2({1, 0, 0, 0});
     ctx.rng = &rng2;
     push_test_context(&ctx);
     (void)genp->act();
     pop_test_context();
 
-    ASSERT_EQ(ACT_RANDOM, (int)genp->act_type) << "generator should remain in ACT_RANDOM";
+    ASSERT_EQ(ACT_RANDOM, (int)genp->act_type()) << "generator should remain in ACT_RANDOM";
 
     delete foe;
 }
@@ -813,14 +813,14 @@ TEST(WalkerCombat, effect_helpers_and_recoil_branches)
     if (!(attacker && target))
         return;
 
-    target->setxy(attacker->xpos + 12, attacker->ypos + 4);
+    target->setxy(attacker->xpos() + 12, attacker->ypos() + 4);
     cfg.apply_setting("effects", "hit_recoil", "on");
     cfg.apply_setting("effects", "hit_anim", "off");
     cfg.apply_setting("effects", "damage_numbers", "off");
     cfg.apply_setting("effects", "hit_flash", "off");
 
     attacker->do_hit_effects(attacker, target, 12);
-    ASSERT_TRUE(target->hit_recoil > 0.0f) << "hit_recoil should be set for living targets when enabled";
+    ASSERT_TRUE(target->hit_recoil() > 0.0f) << "hit_recoil should be set for living targets when enabled";
 
     // do_heal_effects should be safe on stack walkers.
     walker stack_a;
@@ -844,16 +844,16 @@ TEST(WalkerCombat, walker_attack_weapon_owner_chain_and_nonliving_target)
     walker* weapon = og::runtime::current_session->myscreen_->world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
     ASSERT_TRUE(weapon != nullptr) << "weapon created";
     if (weapon) {
-        owner->user = 0;
-        weapon->owner = owner;
-        weapon->team_num = owner->team_num;
-        weapon->damage = 1.0f;
-        weapon->stats()->hitpoints = 50;
+        owner->set_user(0);
+        weapon->set_owner(owner);
+        weapon->set_team_num(owner->team_num());
+        weapon->set_damage(1.0f);
+        weapon->stats()->set_hitpoints(50);
 
-        living_target->stats()->armor = 5000; // force damage clamp-to-zero path
-        living_target->stats()->hitpoints = 100;
+        living_target->stats()->set_armor(5000); // force damage clamp-to-zero path
+        living_target->stats()->set_hitpoints(100);
         (void)weapon->attack(living_target);
-        ASSERT_TRUE(living_target->stats()->hitpoints <= 100) << "weapon attack path should execute safely";
+        ASSERT_TRUE(living_target->stats()->hitpoints() <= 100) << "weapon attack path should execute safely";
 
         walker* nonliving = og::runtime::current_session->myscreen_->world().add_ob(Order::FX, FAMILY_FLASH);
         ASSERT_TRUE(nonliving != nullptr) << "nonliving target created";
@@ -892,12 +892,12 @@ TEST(WalkerCombat, batch5_heal_and_hit_effect_variants)
     ASSERT_TRUE(projectile != nullptr) << "projectile created";
     if (projectile)
     {
-        projectile->owner = healer;
-        projectile->team_num = healer->team_num;
+        projectile->set_owner(healer);
+        projectile->set_team_num(healer->team_num());
         projectile->setxy(108, 100);
         projectile->do_hit_effects(healer, target, 6);
-        ASSERT_TRUE(target->hurt_flash) << "hit_flash should be set on positive damage when enabled";
-        ASSERT_TRUE(target->hit_recoil > 0.0f) << "hit_recoil should be set for living targets";
+        ASSERT_TRUE(target->hurt_flash()) << "hit_flash should be set on positive damage when enabled";
+        ASSERT_TRUE(target->hit_recoil() > 0.0f) << "hit_recoil should be set for living targets";
     }
 }
 
@@ -913,12 +913,12 @@ TEST(WalkerCombat, batch5_do_combat_damage_target_myguy_stats)
     const float taken_before = victim->myguy ? victim->myguy->scen_damage_taken : 0.0f;
     attacker->do_combat_damage(attacker, victim, 7);
 
-    ASSERT_TRUE(victim->last_hitpoints >= victim->stats()->hitpoints) << "combat damage should update last_hitpoints";
+    ASSERT_TRUE(victim->last_hitpoints() >= victim->stats()->hitpoints()) << "combat damage should update last_hitpoints";
     if (victim->myguy)
     {
         ASSERT_TRUE(victim->myguy->scen_damage_taken >= taken_before) << "target myguy scen_damage_taken should increase";
     }
-    ASSERT_TRUE(victim->stats()->hitpoints <= victim->last_hitpoints) << "combat damage should not increase target hitpoints";
+    ASSERT_TRUE(victim->stats()->hitpoints() <= victim->last_hitpoints()) << "combat damage should not increase target hitpoints";
 }
 
 
@@ -934,13 +934,13 @@ TEST(WalkerCombat, batch6_attack_branches_enemy_and_weapon_paths)
     if (!(attacker && enemy))
         return;
     attacker->stats()->set_bit_flags(BIT_MAGICAL, 1);
-    attacker->damage = 500.0f;
-    enemy->stats()->hitpoints = 3;
-    enemy->stats()->max_hitpoints = 3;
+    attacker->set_damage(500.0f);
+    enemy->stats()->set_hitpoints(3);
+    enemy->stats()->set_max_hitpoints(3);
     enemy->stats()->name = "NamedEnemy";
-    enemy->owner = nullptr;
-    enemy->lifetime = 0;
-    enemy->setxy(attacker->xpos + 10, attacker->ypos + 6);
+    enemy->set_owner(nullptr);
+    enemy->set_lifetime(0);
+    enemy->setxy(attacker->xpos() + 10, attacker->ypos() + 6);
     ASSERT_TRUE(attacker->attack(enemy)) << "enemy kill branch should execute";
 
     // Non-living default branch and weapon durability/death/on-hit callbacks.
@@ -950,17 +950,17 @@ TEST(WalkerCombat, batch6_attack_branches_enemy_and_weapon_paths)
     ASSERT_TRUE(owner && fx_target && weapon) << "owner/fx_target/weapon created";
     if (owner && fx_target && weapon)
     {
-        owner->user = 0;
-        weapon->owner = owner;
-        weapon->team_num = owner->team_num;
-        weapon->damage = 10.0f;
-        weapon->stats()->hitpoints = 1;
+        owner->set_user(0);
+        weapon->set_owner(owner);
+        weapon->set_team_num(owner->team_num());
+        weapon->set_damage(10.0f);
+        weapon->stats()->set_hitpoints(1);
         owner->myguy->total_shots = 2;
         owner->myguy->scen_shots = 2;
-        fx_target->team_num = 1;
+        fx_target->set_team_num(1);
         (void)weapon->attack(fx_target);
         ASSERT_TRUE(owner->myguy->total_shots <= 1) << "default non-living target branch should decrement shots";
-        ASSERT_TRUE(weapon->dead == 1) << "weapon durability path should kill mortal weapon at <=0 hp";
+        ASSERT_TRUE(weapon->dead() == 1) << "weapon durability path should kill mortal weapon at <=0 hp";
     }
 
     og::runtime::current_session->myscreen_->world_.allied_mode = saved_allied_mode;
@@ -979,7 +979,7 @@ TEST(WalkerCombat, batch6_attack_friendly_team_death_messages_and_clamps)
     if (!attacker)
         return;
     attacker->clear_myguy();
-    attacker->damage = 500.0f;
+    attacker->set_damage(500.0f);
 
     // Team-0 target death paths (playerteam==target team) that select various message branches.
     walker* t_dispelled = make_guy(FAMILY_ORC, 0);
@@ -988,20 +988,20 @@ TEST(WalkerCombat, batch6_attack_friendly_team_death_messages_and_clamps)
     ASSERT_TRUE(t_dispelled && t_named && t_myguy_name) << "targets created";
     if (t_dispelled && t_named && t_myguy_name)
     {
-        t_dispelled->stats()->hitpoints = 1;
+        t_dispelled->stats()->set_hitpoints(1);
         t_dispelled->stats()->name = "Summon";
-        t_dispelled->owner = attacker; // dispelled branch
+        t_dispelled->set_owner(attacker); // dispelled branch
         (void)attacker->attack(t_dispelled);
 
-        t_named->stats()->hitpoints = 1;
-        t_named->owner = nullptr;
-        t_named->lifetime = 0;
+        t_named->stats()->set_hitpoints(1);
+        t_named->set_owner(nullptr);
+        t_named->set_lifetime(0);
         t_named->stats()->name = "AllyName"; // named death branch
         (void)attacker->attack(t_named);
 
-        t_myguy_name->stats()->hitpoints = 1;
-        t_myguy_name->owner = nullptr;
-        t_myguy_name->lifetime = 0;
+        t_myguy_name->stats()->set_hitpoints(1);
+        t_myguy_name->set_owner(nullptr);
+        t_myguy_name->set_lifetime(0);
         t_myguy_name->stats()->name.clear();
         if (t_myguy_name->myguy)
             t_myguy_name->myguy->name = "GuyName"; // myguy-name branch
@@ -1013,10 +1013,10 @@ TEST(WalkerCombat, batch6_attack_friendly_team_death_messages_and_clamps)
     ASSERT_TRUE(armored != nullptr) << "armored target created";
     if (armored)
     {
-        armored->stats()->armor = 100000;
-        const float hp_before = armored->stats()->hitpoints;
+        armored->stats()->set_armor(100000);
+        const float hp_before = armored->stats()->hitpoints();
         (void)attacker->attack(armored);
-        ASSERT_TRUE(armored->stats()->hitpoints <= hp_before) << "high armor path should not increase hitpoints";
+        ASSERT_TRUE(armored->stats()->hitpoints() <= hp_before) << "high armor path should not increase hitpoints";
     }
 
     // do_heal_effects early-return branch when heal numbers are disabled.
@@ -1046,36 +1046,36 @@ TEST(WalkerCombat, attack_rewards_single_credit_weapon_hit)
     }
 
     SequenceRandomCombat fixed_rng({0});
-    weapon->owner = owner;
-    weapon->team_num = owner->team_num;
-    weapon->damage = 16.0f;
-    owner->team_num = 0;
-    target->team_num = 1;
+    weapon->set_owner(owner);
+    weapon->set_team_num(owner->team_num());
+    weapon->set_damage(16.0f);
+    owner->set_team_num(0);
+    target->set_team_num(1);
 
-    target->stats()->armor = 0;
-    target->stats()->hitpoints = 200;
-    target->stats()->max_hitpoints = 200;
-    target->setxy(static_cast<short>(owner->xpos + 8), static_cast<short>(owner->ypos));
+    target->stats()->set_armor(0);
+    target->stats()->set_hitpoints(200);
+    target->stats()->set_max_hitpoints(200);
+    target->setxy(static_cast<short>(owner->xpos() + 8), static_cast<short>(owner->ypos()));
 
     const int exp_before = owner->myguy ? owner->myguy->exp : 0;
-    const Uint32 score_before = og::runtime::current_session->myscreen_->world_.m_score[owner->team_num];
-    const float hp_before = target->stats()->hitpoints;
+    const Uint32 score_before = og::runtime::current_session->myscreen_->world_.m_score[owner->team_num()];
+    const float hp_before = target->stats()->hitpoints();
     if (current_game && current_game->sim_events)
         current_game->sim_events->clear();
 
     ASSERT_TRUE(weapon->attack(target)) << "weapon attack should succeed";
 
-    const short dealt = static_cast<short>(hp_before - target->stats()->hitpoints);
+    const short dealt = static_cast<short>(hp_before - target->stats()->hitpoints());
     ASSERT_TRUE(dealt > 0) << "weapon attack should deal positive damage";
-    ASSERT_TRUE(target->stats()->hitpoints > 0) << "weapon reward regression should use non-lethal hit";
+    ASSERT_TRUE(target->stats()->hitpoints() > 0) << "weapon reward regression should use non-lethal hit";
 
-    const std::int32_t level_diff = weapon->stats()->level - target->stats()->level;
+    const std::int32_t level_diff = weapon->stats()->level() - target->stats()->level();
     const short expected_attack_xp = compute_xp_from_attack(level_diff, static_cast<float>(dealt));
     const int exp_after = owner->myguy ? owner->myguy->exp : 0;
     ASSERT_EQ((int)expected_attack_xp, exp_after - exp_before) << "weapon hit should award attack XP exactly once";
 
-    const Uint32 score_after = og::runtime::current_session->myscreen_->world_.m_score[owner->team_num];
-    const Uint32 expected_score = static_cast<Uint32>(dealt) + static_cast<Uint32>(target->stats()->level);
+    const Uint32 score_after = og::runtime::current_session->myscreen_->world_.m_score[owner->team_num()];
+    const Uint32 expected_score = static_cast<Uint32>(dealt) + static_cast<Uint32>(target->stats()->level());
     ASSERT_EQ((int)expected_score, static_cast<int>(score_after - score_before)) << "weapon hit should award score once per hit";
 
     bool saw_score_change = false;
@@ -1084,7 +1084,7 @@ TEST(WalkerCombat, attack_rewards_single_credit_weapon_hit)
         for (const auto& ev : current_game->sim_events->events())
         {
             if (ev.kind == og::sim::EventKind::ScoreChange &&
-                ev.a == static_cast<std::uint32_t>(owner->team_num))
+                ev.a == static_cast<std::uint32_t>(owner->team_num()))
             {
                 saw_score_change = true;
                 break;
@@ -1114,13 +1114,13 @@ TEST(WalkerCombat, attack_ignores_out_of_range_team_score_index)
     }
 
     SequenceRandomCombat fixed_rng({0});
-    attacker->team_num = 250; // invalid score index from corrupted scenario data
-    attacker->damage = 12.0f;
-    target->team_num = 1;
-    target->stats()->armor = 0;
-    target->stats()->hitpoints = 40;
-    target->stats()->max_hitpoints = 40;
-    target->setxy(static_cast<short>(attacker->xpos + 10), static_cast<short>(attacker->ypos));
+    attacker->set_team_num(250); // invalid score index from corrupted scenario data
+    attacker->set_damage(12.0f);
+    target->set_team_num(1);
+    target->stats()->set_armor(0);
+    target->stats()->set_hitpoints(40);
+    target->stats()->set_max_hitpoints(40);
+    target->setxy(static_cast<short>(attacker->xpos() + 10), static_cast<short>(attacker->ypos()));
 
     og::runtime::current_session->myscreen_->world_.m_score[0] = 10;
     og::runtime::current_session->myscreen_->world_.m_score[1] = 20;
@@ -1151,43 +1151,43 @@ TEST(WalkerCombat, attack_rewards_single_credit_melee_kill)
         return;
     }
 
-    attacker->damage = 16.0f;
-    attacker->team_num = 0;
-    target->team_num = 1;
-    target->stats()->armor = 0;
-    target->stats()->hitpoints = 14;
-    target->stats()->max_hitpoints = 14;
-    target->setxy(attacker->xpos + 10, attacker->ypos + 4);
+    attacker->set_damage(16.0f);
+    attacker->set_team_num(0);
+    target->set_team_num(1);
+    target->stats()->set_armor(0);
+    target->stats()->set_hitpoints(14);
+    target->stats()->set_max_hitpoints(14);
+    target->setxy(attacker->xpos() + 10, attacker->ypos() + 4);
     og::runtime::current_session->myscreen_->world().rng_.state_ = 0;
 
     const int exp_before = attacker->myguy ? attacker->myguy->exp : 0;
     const int kills_before = attacker->myguy ? attacker->myguy->kills : 0;
     const int scen_kills_before = attacker->myguy ? attacker->myguy->scen_kills : 0;
     const int level_kills_before = attacker->myguy ? attacker->myguy->level_kills : 0;
-    const Uint32 score_before = og::runtime::current_session->myscreen_->world_.m_score[attacker->team_num];
-    const float hp_before = target->stats()->hitpoints;
+    const Uint32 score_before = og::runtime::current_session->myscreen_->world_.m_score[attacker->team_num()];
+    const float hp_before = target->stats()->hitpoints();
 
     ASSERT_TRUE(attacker->attack(target)) << "melee attack should succeed";
 
-    const short dealt = static_cast<short>(hp_before - target->stats()->hitpoints);
+    const short dealt = static_cast<short>(hp_before - target->stats()->hitpoints());
     ASSERT_EQ(14, (int)dealt) << "configured melee kill should deal deterministic damage";
-    ASSERT_TRUE(target->dead == 1) << "target should die in kill-reward regression";
+    ASSERT_TRUE(target->dead() == 1) << "target should die in kill-reward regression";
 
-    const std::int32_t level_diff = attacker->stats()->level - target->stats()->level;
+    const std::int32_t level_diff = attacker->stats()->level() - target->stats()->level();
     const short expected_attack_xp = compute_xp_from_attack(level_diff, static_cast<float>(dealt));
     const short expected_kill_xp = compute_xp_from_kill(level_diff);
     const int exp_after = attacker->myguy ? attacker->myguy->exp : 0;
     ASSERT_EQ((int)(expected_attack_xp + expected_kill_xp), exp_after - exp_before) << "melee kill should award attack XP once plus one kill XP";
 
-    const Uint32 score_after = og::runtime::current_session->myscreen_->world_.m_score[attacker->team_num];
+    const Uint32 score_after = og::runtime::current_session->myscreen_->world_.m_score[attacker->team_num()];
     const Uint32 expected_score =
-        static_cast<Uint32>(dealt + target->stats()->level) +
-        static_cast<Uint32>(dealt + 10 * target->stats()->level);
+        static_cast<Uint32>(dealt + target->stats()->level()) +
+        static_cast<Uint32>(dealt + 10 * target->stats()->level());
     ASSERT_EQ((int)expected_score, static_cast<int>(score_after - score_before)) << "melee kill should award one hit score and one kill bonus";
 
     ASSERT_EQ(1, (attacker->myguy ? attacker->myguy->kills : 0) - kills_before) << "kill counter should increment once";
     ASSERT_EQ(1, (attacker->myguy ? attacker->myguy->scen_kills : 0) - scen_kills_before) << "scenario kill counter should increment once";
-    ASSERT_EQ((int)target->stats()->level, (attacker->myguy ? attacker->myguy->level_kills : 0) - level_kills_before) << "level_kills should increase by defeated target level";
+    ASSERT_EQ((int)target->stats()->level(), (attacker->myguy ? attacker->myguy->level_kills : 0) - level_kills_before) << "level_kills should increase by defeated target level";
 
     og::runtime::current_session->myscreen_->world().delete_objects();
     og::runtime::current_session->myscreen_->world_.allied_mode = saved_allied_mode;
@@ -1205,33 +1205,33 @@ TEST(WalkerCombat, walker_batch7_init_fire_and_animate_edge_paths)
 
     // init_fire turn-gate while ACT_CONTROL (returns false).
     w->set_act_type(ACT_CONTROL);
-    w->curdir = FACE_LEFT;
+    w->set_curdir(FACE_LEFT);
     bool r = w->init_fire(1, 0);
     ASSERT_TRUE(!r) << "init_fire should refuse turning fire while ACT_CONTROL";
 
     // init_fire turning path for non-control walker.
     w->set_act_type(ACT_RANDOM);
-    w->curdir = FACE_LEFT;
+    w->set_curdir(FACE_LEFT);
     r = w->init_fire(1, 0);
     ASSERT_TRUE(r) << "init_fire should allow turning for non-control walkers";
 
     // Busy gate.
-    w->busy = 3;
-    w->curdir = FACE_RIGHT;
-    w->enddir = FACE_RIGHT;
+    w->set_busy(3);
+    w->set_curdir(FACE_RIGHT);
+    w->set_enddir(FACE_RIGHT);
     r = w->init_fire(1, 0);
     ASSERT_TRUE(!r) << "init_fire should fail while busy";
-    w->busy = 0;
+    w->set_busy(0);
 
     // Attack animation path from ANI_WALK.
-    w->ani_type = ANI_WALK;
+    w->set_ani_type(ANI_WALK);
     r = w->init_fire(1, 0);
     ASSERT_TRUE(r) << "init_fire should start attack animation from ANI_WALK";
 
     // Non-walk path uses fire(); insufficient MP should make it fail.
-    w->ani_type = ANI_ATTACK;
-    w->stats()->magicpoints = 0;
-    w->stats()->weapon_cost = 20;
+    w->set_ani_type(ANI_ATTACK);
+    w->stats()->set_magicpoints(0);
+    w->stats()->set_weapon_cost(20);
     r = w->init_fire(1, 0);
     ASSERT_TRUE(!r) << "init_fire should fail via fire() when MP is insufficient";
 
@@ -1242,7 +1242,7 @@ TEST(WalkerCombat, walker_batch7_init_fire_and_animate_edge_paths)
     w->ani = saved_ani;
 
     // animate() null-sequence path: create a local table with a null at the target index.
-    const int ani_index = w->curdir + w->ani_type * NUM_FACINGS;
+    const int ani_index = w->curdir() + w->ani_type() * NUM_FACINGS;
     const signed char * null_seq_rows[32] = {};
     // Copy existing pointers up to the target index, then null it out.
     for (int i = 0; i <= ani_index; i++)
@@ -1274,9 +1274,9 @@ TEST(WalkerCombat, walker_batch8_act_default_and_animate_invalid_sequence_bounds
     for (int i = 0; i < 128; i++)
         no_sentinel_seq[i] = 0;
 
-    w->ani_type = ANI_ATTACK;
-    w->curdir = FACE_RIGHT;
-    const int ani_index = w->curdir + w->ani_type * NUM_FACINGS;
+    w->set_ani_type(ANI_ATTACK);
+    w->set_curdir(FACE_RIGHT);
+    const int ani_index = w->curdir() + w->ani_type() * NUM_FACINGS;
     // Create a local table with the no-sentinel sequence at the target index.
     const signed char * custom_rows[32] = {};
     for (int i = 0; i <= ani_index; i++)
@@ -1284,12 +1284,12 @@ TEST(WalkerCombat, walker_batch8_act_default_and_animate_invalid_sequence_bounds
     custom_rows[ani_index] = no_sentinel_seq;
     auto saved_ani = w->ani;
     w->ani = custom_rows;
-    w->cycle = 0;
+    w->set_cycle(0);
 
     bool animated = w->animate();
     ASSERT_TRUE(!animated) << "animate() should fail when animation sequence has no sentinel";
-    ASSERT_EQ(ANI_WALK, (int)w->ani_type) << "animate() should reset to ANI_WALK on invalid sequence";
-    ASSERT_EQ(0, (int)w->cycle) << "animate() should reset cycle on invalid sequence";
+    ASSERT_EQ(ANI_WALK, (int)w->ani_type()) << "animate() should reset to ANI_WALK on invalid sequence";
+    ASSERT_EQ(0, (int)w->cycle()) << "animate() should reset cycle on invalid sequence";
 
     w->ani = saved_ani;
     delete w;
@@ -1307,20 +1307,22 @@ TEST(WalkerCombat, round8_attack_early_return_guards)
         return;
 
     // Dead target guard.
-    living_target->dead = 1;
+    living_target->set_dead(1);
     ASSERT_TRUE(!attacker->attack(living_target)) << "attack should fail on dead target";
-    living_target->dead = 0;
+    living_target->set_dead(0);
 
     // Friendly target guard.
-    living_target->team_num = attacker->team_num;
+    living_target->set_team_num(attacker->team_num());
     ASSERT_TRUE(!attacker->attack(living_target)) << "attack should fail on friendly target";
-    living_target->team_num = 1;
+    living_target->set_team_num(1);
 
     // Treasure target guard.
     walker* treasure_target = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::Treasure, FAMILY_GOLD_BAR);
     ASSERT_TRUE(treasure_target != nullptr) << "treasure target created";
     if (treasure_target)
+    {
         ASSERT_TRUE(!attacker->attack(treasure_target)) << "attack should fail against treasure targets";
+    }
 
     // Invincible target guard via bit flag.
     living_target->stats()->set_bit_flags(BIT_INVINCIBLE, 1);
@@ -1328,9 +1330,8 @@ TEST(WalkerCombat, round8_attack_early_return_guards)
     living_target->stats()->set_bit_flags(BIT_INVINCIBLE, 0);
 
     // Invulnerability timer guard.
-    living_target->invulnerable_left = 3;
+    living_target->set_invulnerable_left(3);
     ASSERT_TRUE(!attacker->attack(living_target)) << "attack should fail while invulnerable_left is active";
 
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
-

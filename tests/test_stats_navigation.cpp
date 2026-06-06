@@ -33,7 +33,7 @@ TEST(StatsNavigation, blocked_helpers_and_follow_fallback)
                                   FACE_DOWN,      FACE_DOWN_LEFT, FACE_LEFT,      FACE_UP_LEFT,
                                   (unsigned char)99};
     for (unsigned char d : dirs) {
-        w->curdir = static_cast<char>(d);
+        w->set_curdir(static_cast<char>(d));
         (void)w->stats()->forward_blocked();
         (void)w->stats()->right_forward_blocked();
         (void)w->stats()->right_back_blocked();
@@ -43,11 +43,11 @@ TEST(StatsNavigation, blocked_helpers_and_follow_fallback)
     // view controls (other tests may clear them).
     struct ScreenGuard
     {
-        int old_numviews;
+        short old_numviews;
         walker* old_c0;
         walker* old_c1;
-        int old_yo0;
-        int old_yo1;
+        short old_yo0;
+        short old_yo1;
         explicit ScreenGuard(screen* s)
             : old_numviews(s->numviews)
             , old_c0(nullptr)
@@ -58,12 +58,12 @@ TEST(StatsNavigation, blocked_helpers_and_follow_fallback)
             if (s->viewob[0]) {
                 old_c0 = s->viewob[0]->control;
                 if (old_c0)
-                    old_yo0 = old_c0->yo_delay;
+                    old_yo0 = old_c0->yo_delay();
             }
             if (s->viewob[1]) {
                 old_c1 = s->viewob[1]->control;
                 if (old_c1)
-                    old_yo1 = old_c1->yo_delay;
+                    old_yo1 = old_c1->yo_delay();
             }
         }
         ~ScreenGuard()
@@ -72,12 +72,12 @@ TEST(StatsNavigation, blocked_helpers_and_follow_fallback)
             if (og::runtime::current_session->myscreen_->viewob[0]) {
                 og::runtime::current_session->myscreen_->viewob[0]->control = old_c0;
                 if (old_c0)
-                    old_c0->yo_delay = old_yo0;
+                    old_c0->set_yo_delay(old_yo0);
             }
             if (og::runtime::current_session->myscreen_->viewob[1]) {
                 og::runtime::current_session->myscreen_->viewob[1]->control = old_c1;
                 if (old_c1)
-                    old_c1->yo_delay = old_yo1;
+                    old_c1->set_yo_delay(old_yo1);
             }
         }
         ScreenGuard(const ScreenGuard&) = delete;
@@ -96,13 +96,13 @@ TEST(StatsNavigation, blocked_helpers_and_follow_fallback)
     og::runtime::current_session->myscreen_->viewob[0]->control = view0_control.get();
     og::runtime::current_session->myscreen_->numviews = 1;
 
-    w->foe = nullptr;
-    w->leader = nullptr;
+    w->set_foe(nullptr);
+    w->set_leader(nullptr);
     w->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
     (void)w->stats()->do_command();
 
     // Accept either outcome; the code may clear leader when already too close.
-    ASSERT_TRUE((w->leader == nullptr) || (w->leader == og::runtime::current_session->myscreen_->viewob[0]->control)) << "single-view follow should be stable";
+    ASSERT_TRUE((w->leader() == nullptr) || (w->leader() == og::runtime::current_session->myscreen_->viewob[0]->control)) << "single-view follow should be stable";
 
     // Optionally cover the 2-view branch where neither view has yo_delay.
     if (og::runtime::current_session->myscreen_->viewob[1]) {
@@ -110,16 +110,15 @@ TEST(StatsNavigation, blocked_helpers_and_follow_fallback)
         if (view1_control) {
             view1_control->setxy(300, 300);
             og::runtime::current_session->myscreen_->viewob[1]->control = view1_control.get();
-            og::runtime::current_session->myscreen_->viewob[0]->control->yo_delay = 0;
-            og::runtime::current_session->myscreen_->viewob[1]->control->yo_delay = 0;
+            og::runtime::current_session->myscreen_->viewob[0]->control->set_yo_delay(0);
+            og::runtime::current_session->myscreen_->viewob[1]->control->set_yo_delay(0);
             og::runtime::current_session->myscreen_->numviews = 2;
 
-            w->foe = nullptr;
-            w->leader = nullptr;
+            w->set_foe(nullptr);
+            w->set_leader(nullptr);
             w->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
             (void)w->stats()->do_command();
-            ASSERT_TRUE(w->leader == nullptr) << "two-view follow with no yo_delay should not pick a leader";
+            ASSERT_TRUE(w->leader() == nullptr) << "two-view follow with no yo_delay should not pick a leader";
         }
     }
 }
-

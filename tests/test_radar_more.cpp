@@ -69,39 +69,39 @@ TEST(RadarMore, radar_update_and_draw_covers_key_paths)
 
     if (control) {
         control->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
-        control->team_num = 1;
-        control->view_all = 5; // can_see path
+        control->set_team_num(1);
+        control->set_view_all(5); // can_see path
     }
     if (friend_living) {
         friend_living->setxy(GRID_SIZE * 3, GRID_SIZE * 2);
-        friend_living->team_num = 1;
+        friend_living->set_team_num(1);
     }
     if (enemy_living) {
         enemy_living->setxy(GRID_SIZE * 4, GRID_SIZE * 2);
-        enemy_living->team_num = 2;
-        enemy_living->invisibility_left = 0;
+        enemy_living->set_team_num(2);
+        enemy_living->set_invisibility_left(0);
     }
     if (weapon) {
         weapon->setxy(GRID_SIZE * 5, GRID_SIZE * 2);
-        weapon->team_num = 2;
+        weapon->set_team_num(2);
     }
     if (gen) {
         gen->setxy(GRID_SIZE * 6, GRID_SIZE * 2);
-        gen->team_num = 2;
+        gen->set_team_num(2);
     }
     if (life_gem) {
         life_gem->setxy(GRID_SIZE * 2, GRID_SIZE * 4);
-        life_gem->team_num = 0;
-        life_gem->dead = 0;
+        life_gem->set_team_num(0);
+        life_gem->set_dead(0);
     }
     if (exit_fx) {
         exit_fx->setxy(GRID_SIZE * 3, GRID_SIZE * 4);
-        exit_fx->stats()->level = 2;
-        exit_fx->dead = 0;
+        exit_fx->stats()->set_level(2);
+        exit_fx->set_dead(0);
     }
     if (gold_fx) {
         gold_fx->setxy(GRID_SIZE * 4, GRID_SIZE * 4);
-        gold_fx->dead = 0;
+        gold_fx->set_dead(0);
     }
 
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();

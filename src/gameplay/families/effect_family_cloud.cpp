@@ -17,26 +17,26 @@ static bool cloud_on_act(effect* self)
 {
     std::int32_t temp = 0;
 
-    if (self->lifetime > 0)
-        self->lifetime--;
+    if (self->lifetime() > 0)
+        self->set_lifetime(self->lifetime() - 1);
     else
     {
-        self->dead = 1;
+        self->set_dead(1);
         self->death();
         return true;
     }
-    if (self->lifetime < 8)
-        self->invisibility_left +=3;
-    if (self->invisibility_left > 0)
-        self->invisibility_left--;
+    if (self->lifetime() < 8)
+        self->set_invisibility_left(static_cast<short>(self->invisibility_left() + 3));
+    if (self->invisibility_left() > 0)
+        self->set_invisibility_left(static_cast<short>(self->invisibility_left() - 1));
     // Hit any nearby foes (not friends, for now)
     auto foelist = current_game->world->find_foes_in_range(
-        current_game->world->oblist, self->sizex, &temp, self);
+        current_game->world->oblist, self->sizex(), &temp, self);
 
     for(auto* w : foelist)
     {
-        if (hits(self->xpos, self->ypos, self->sizex, self->sizey,
-                 w->xpos, w->ypos, w->sizex, w->sizey))
+        if (hits(self->xpos(), self->ypos(), self->sizex(), self->sizey(),
+                 w->xpos(), w->ypos(), w->sizex(), w->sizey()))
         {
             self->attack(w);
         }

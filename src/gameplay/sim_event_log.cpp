@@ -13,6 +13,9 @@ namespace og::sim {
 
 void SimEventLog::push(EventKind kind, std::uint32_t a, std::uint32_t b)
 {
+    if (suppressed_)
+        return;
+
     Event ev;
     ev.tick = current_tick_;
     ev.kind = kind;
@@ -24,6 +27,9 @@ void SimEventLog::push(EventKind kind, std::uint32_t a, std::uint32_t b)
 void SimEventLog::push_with_text(EventKind kind, const std::string& text,
                                  std::uint32_t a, std::uint32_t b)
 {
+    if (suppressed_)
+        return;
+
     Event ev;
     ev.tick = current_tick_;
     ev.kind = kind;
@@ -35,6 +41,9 @@ void SimEventLog::push_with_text(EventKind kind, const std::string& text,
 
 void SimEventLog::push_notification(const std::string& message, std::uint32_t duration)
 {
+    if (suppressed_)
+        return;
+
     Event ev;
     ev.tick = current_tick_;
     ev.kind = EventKind::Notification;

@@ -155,16 +155,11 @@ TEST(SimWorldHeadless, sim_world_owns_rng)
     ASSERT_TRUE(world1.rng_.state_ != world2.rng_.state_);
 }
 
-// --- EndGame, DamageTile, SetEnd event kinds (Phase 2: G5, G6) ---
+// --- EndGame and SetEnd-adjacent event kinds (Phase 2: G5, G6) ---
 
 TEST(SimWorldHeadless, event_kind_endgame_value)
 {
     ASSERT_TRUE(static_cast<std::uint32_t>(og::sim::EventKind::EndGame) == 13);
-}
-
-TEST(SimWorldHeadless, event_kind_damage_tile_value)
-{
-    ASSERT_TRUE(static_cast<std::uint32_t>(og::sim::EventKind::DamageTile) == 14);
 }
 
 TEST(SimWorldHeadless, event_kind_set_end_value)
@@ -214,19 +209,6 @@ TEST(SimWorldHeadless, emit_endgame_save_all_failure)
     ASSERT_TRUE(ev.kind == og::sim::EventKind::EndGame);
     ASSERT_TRUE(ev.a == 4);  // SCEN_TYPE_SAVE_ALL
     ASSERT_TRUE(ev.b == static_cast<std::uint32_t>(-1));  // no next level
-}
-
-TEST(SimWorldHeadless, emit_damage_tile_event)
-{
-    og::sim::SimEventLog log;
-    log.current_tick_ = 15;
-    og::sim::emit_event(&log, og::sim::EventKind::DamageTile, 120, 240);
-
-    ASSERT_TRUE(log.size() == 1);
-    const auto& ev = log.events()[0];
-    ASSERT_TRUE(ev.kind == og::sim::EventKind::DamageTile);
-    ASSERT_TRUE(ev.a == 120);  // x_pixel
-    ASSERT_TRUE(ev.b == 240);  // y_pixel
 }
 
 TEST(SimWorldHeadless, emit_set_end_event)
@@ -289,17 +271,17 @@ TEST(SimWorldHeadless, mixed_stream_with_phase2_events)
     log.current_tick_ = 1;
 
     log.push_sound(10);
-    log.push(og::sim::EventKind::DamageTile, 50, 60);
     log.push_notification("level complete!");
+    log.push(og::sim::EventKind::ScoreChange, 1, 250);
     log.push(og::sim::EventKind::SetEnd, 0, 0);
     log.push(og::sim::EventKind::EndGame, 0, 3);
 
     ASSERT_TRUE(log.size() == 5);
     ASSERT_TRUE(log.events()[0].kind == og::sim::EventKind::PlaySound);
-    ASSERT_TRUE(log.events()[1].kind == og::sim::EventKind::DamageTile);
-    ASSERT_TRUE(log.events()[1].a == 50);
-    ASSERT_TRUE(log.events()[1].b == 60);
-    ASSERT_TRUE(log.events()[2].kind == og::sim::EventKind::Notification);
+    ASSERT_TRUE(log.events()[1].kind == og::sim::EventKind::Notification);
+    ASSERT_TRUE(log.events()[2].kind == og::sim::EventKind::ScoreChange);
+    ASSERT_TRUE(log.events()[2].a == 1);
+    ASSERT_TRUE(log.events()[2].b == 250);
     ASSERT_TRUE(log.events()[3].kind == og::sim::EventKind::SetEnd);
     ASSERT_TRUE(log.events()[4].kind == og::sim::EventKind::EndGame);
     ASSERT_TRUE(log.events()[4].b == 3);

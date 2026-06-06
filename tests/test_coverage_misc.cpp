@@ -89,14 +89,14 @@ living* add_living(R17Fixture& fx, char family, unsigned char team, short x, sho
     w->set_order_family(Order::Living, family);
     bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
-    w->sizex = 16;
-    w->sizey = 16;
-    w->stepsize = 1.0f;
-    w->normal_stepsize = 1.0f;
-    w->lineofsight = 8;
-    w->team_num = team;
-    w->real_team_num = 255;
-    w->dead = 0;
+    w->set_sizex(16);
+    w->set_sizey(16);
+    w->set_stepsize(1.0f);
+    w->set_normal_stepsize(1.0f);
+    w->set_lineofsight(8);
+    w->set_team_num(team);
+    w->set_real_team_num(255);
+    w->set_dead(0);
     living* out = w.get();
     fx.level.world().oblist.push_back(std::move(w));
     return out;
@@ -108,11 +108,11 @@ walker* add_fx(R17Fixture& fx, char family, short x, short y)
     w->set_order_family(Order::FX, family);
     bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
-    w->sizex = 16;
-    w->sizey = 16;
-    w->team_num = 0;
-    w->real_team_num = 255;
-    w->dead = 0;
+    w->set_sizex(16);
+    w->set_sizey(16);
+    w->set_team_num(0);
+    w->set_real_team_num(255);
+    w->set_dead(0);
     walker* out = w.get();
     fx.level.world().oblist.push_back(std::move(w));
     return out;
@@ -163,45 +163,45 @@ TEST(CoverageMisc, coverage_r17_family_mage_specials_and_reactions)
     self->set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
     self->myguy->name = "R17 Mage";
     self->myguy->intelligence = 70;
-    self->user = 0;
-    self->stats()->level = 8;
-    self->stats()->magicpoints = 300.0f;
+    self->set_user(0);
+    self->stats()->set_level(8);
+    self->stats()->set_magicpoints(300.0f);
 
-    self->current_special = 1;
-    self->shifter_down = 1;
+    self->set_current_special(1);
+    self->set_shifter_down(1);
     ASSERT_TRUE(!mage->do_special(self));
 
     self->myguy->intelligence = 90;
     walker* marker = add_fx(fx, FAMILY_MARKER, 66, 64);
     ASSERT_TRUE(marker != nullptr);
-    marker->owner = self;
-    marker->dead = 0;
-    self->busy = 0;
-    self->current_special = 1;
-    self->shifter_down = 1;
+    marker->set_owner(self);
+    marker->set_dead(0);
+    self->set_busy(0);
+    self->set_current_special(1);
+    self->set_shifter_down(1);
     ASSERT_TRUE(mage->do_special(self));
 
-    self->busy = 0;
-    self->current_special = 2;
-    self->shifter_down = 0;
-    self->lastx = 1.0f;
-    self->lasty = 0.0f;
+    self->set_busy(0);
+    self->set_current_special(2);
+    self->set_shifter_down(0);
+    self->set_lastx(1.0f);
+    self->set_lasty(0.0f);
     ASSERT_TRUE(mage->do_special(self));
 
     living* foe = add_living(fx, FAMILY_ORC, 1, 96, 64);
     ASSERT_TRUE(foe != nullptr);
-    self->stats()->hitpoints = self->stats()->max_hitpoints;
-    self->stats()->level = 5;
-    self->foe = nullptr;
-    foe->foe = nullptr;
+    self->stats()->set_hitpoints(self->stats()->max_hitpoints());
+    self->stats()->set_level(5);
+    self->set_foe(nullptr);
+    foe->set_foe(nullptr);
     mage->hit_response(self->stats(), foe);
-    ASSERT_TRUE(self->foe == foe);
-    ASSERT_TRUE(foe->foe == self);
+    ASSERT_TRUE(self->foe() == foe);
+    ASSERT_TRUE(foe->foe() == self);
 
     add_living(fx, FAMILY_ORC, 1, 100, 64);
     add_living(fx, FAMILY_ORC, 1, 104, 64);
     add_living(fx, FAMILY_ORC, 1, 108, 64);
-    self->current_special = 1;
+    self->set_current_special(1);
     ASSERT_TRUE(mage->check_special_ai(self));
 }
 
@@ -217,30 +217,30 @@ TEST(CoverageMisc, coverage_r17_family_druid_protection_tree_and_faerie)
     ASSERT_TRUE(self && ally1 && ally2);
 
     self->set_owned_myguy(std::make_unique<guy>(FAMILY_DRUID));
-    self->stats()->level = 7;
-    self->stats()->magicpoints = 300.0f;
-    self->busy = 0;
+    self->stats()->set_level(7);
+    self->stats()->set_magicpoints(300.0f);
+    self->set_busy(0);
 
-    self->current_special = 1;
-    self->lastx = 1.0f;
-    self->lasty = 0.0f;
+    self->set_current_special(1);
+    self->set_lastx(1.0f);
+    self->set_lasty(0.0f);
     ASSERT_TRUE(druid->do_special(self));
 
     walker* existing = fx.level.add_ob(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
     ASSERT_TRUE(existing != nullptr);
-    existing->owner = ally2;
-    existing->team_num = ally2->team_num;
-    existing->setxy(ally2->xpos, ally2->ypos);
+    existing->set_owner(ally2);
+    existing->set_team_num(ally2->team_num());
+    existing->setxy(ally2->xpos(), ally2->ypos());
 
-    self->busy = 0;
-    self->current_special = 4;
+    self->set_busy(0);
+    self->set_current_special(4);
     ASSERT_TRUE(druid->do_special(self));
 
-    self->busy = 0;
-    self->current_special = 2;
+    self->set_busy(0);
+    self->set_current_special(2);
     self->setxy(0, 0);
-    self->lastx = -1.0f;
-    self->lasty = 0.0f;
+    self->set_lastx(-1.0f);
+    self->set_lasty(0.0f);
     (void)druid->do_special(self);
 }
 
@@ -251,43 +251,43 @@ TEST(CoverageMisc, coverage_r17_walker_movement_and_act_cleanup)
     walker* actor = fx.level.add_ob(Order::FX, FAMILY_EXPLOSION);
     ASSERT_TRUE(actor != nullptr);
     actor->setxy(static_cast<short>(64), static_cast<short>(64));
-    actor->sizex = 16;
-    actor->sizey = 16;
-    actor->stepsize = 1.0f;
-    actor->team_num = 0;
+    actor->set_sizex(16);
+    actor->set_sizey(16);
+    actor->set_stepsize(1.0f);
+    actor->set_team_num(0);
 
     living* dead_foe = add_living(fx, FAMILY_ORC, 1, 80, 64);
     living* dead_leader = add_living(fx, FAMILY_ORC, 1, 84, 64);
     living* dead_owner = add_living(fx, FAMILY_ORC, 1, 88, 64);
     ASSERT_TRUE(actor && dead_foe && dead_leader && dead_owner);
-    dead_foe->dead = 1;
-    dead_leader->dead = 1;
-    dead_owner->dead = 1;
+    dead_foe->set_dead(1);
+    dead_leader->set_dead(1);
+    dead_owner->set_dead(1);
 
-    actor->foe = dead_foe;
-    actor->leader = dead_leader;
-    actor->owner = dead_owner;
-    actor->ani_type = ANI_WALK;
-    actor->attack_lunge = 0.2f;
-    actor->hit_recoil = 0.3f;
+    actor->set_foe(dead_foe);
+    actor->set_leader(dead_leader);
+    actor->set_owner(dead_owner);
+    actor->set_ani_type(ANI_WALK);
+    actor->set_attack_lunge(0.2f);
+    actor->set_hit_recoil(0.3f);
     actor->stats()->clear_command();
-    actor->stats()->frozen_delay = 0;
+    actor->stats()->set_frozen_delay(0);
     actor->set_act_type(ACT_CONTROL);
     (void)actor->act();
 
     assign_basic_ani(actor);
-    actor->user = -1;
+    actor->set_user(-1);
     actor->setxy(static_cast<short>(0), static_cast<short>(fx.level.world().pixmaxy - 1));
-    actor->curdir = FACE_DOWN_LEFT;
+    actor->set_curdir(FACE_DOWN_LEFT);
     (void)actor->walkstep(-1.0f, 1.0f);
 
-    actor->user = 0;
+    actor->set_user(0);
     actor->setxy(static_cast<short>(0), static_cast<short>(fx.level.world().pixmaxy - 1));
-    actor->curdir = FACE_DOWN_LEFT;
+    actor->set_curdir(FACE_DOWN_LEFT);
     (void)actor->walkstep(-1.0f, 1.0f);
 
-    actor->curdir = 127;
-    actor->stepsize = 2.0f;
+    actor->set_curdir(127);
+    actor->set_stepsize(2.0f);
     (void)actor->turn(FACE_RIGHT);
 }
 
@@ -377,6 +377,7 @@ public:
     std::vector<const og::ui::PickerMenuItem*> scripted;
     int present_calls = 0;
     int handle_calls = 0;
+    int networking_calls = 0;
 
     const og::ui::PickerMenuItem* present_menu(og::ui::PickerMenuId) override
     {
@@ -388,6 +389,12 @@ public:
     void handle_menu_item(og::ui::PickerMenuId, const og::ui::PickerMenuItem&) override
     {
         ++handle_calls;
+    }
+
+    bool configure_networking() override
+    {
+        ++networking_calls;
+        return false;
     }
 
     std::string show_campaign_select() override { return {}; }
@@ -406,6 +413,7 @@ public:
     og::ui::TeamBuildAction team_build_action = og::ui::TeamBuildAction::BackToMainMenu;
     std::string campaign_result;
     bool new_game_ok = true;
+    bool networking_ok = true;
     bool load_ok = true;
     bool save_ok = true;
     og::ui::PickerScreen after_game = og::ui::PickerScreen::MainMenu;
@@ -416,6 +424,7 @@ public:
     int options_calls = 0;
     int help_calls = 0;
     int run_game_calls = 0;
+    int networking_calls = 0;
     int load_calls = 0;
     int save_calls = 0;
     int prep_calls = 0;
@@ -444,6 +453,12 @@ public:
     {
         ++prep_calls;
         return new_game_ok;
+    }
+
+    bool configure_networking() override
+    {
+        ++networking_calls;
+        return networking_ok;
     }
 
     void show_options() override
@@ -512,9 +527,9 @@ walker* add_living(MovementFixture& fx, short x, short y)
     auto w = std::make_unique<walker>();
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
     bind_test_entity_sim_context(fx.level, w.get());
-    w->sizex = 16;
-    w->sizey = 16;
-    w->stepsize = 1.0f;
+    w->set_sizex(16);
+    w->set_sizey(16);
+    w->set_stepsize(1.0f);
     w->setxy(x, y);
     walker* out = w.get();
     fx.level.world().oblist.push_back(std::move(w));
@@ -606,6 +621,7 @@ TEST(CoverageMisc, coverage_r18_picker_show_main_and_team_build_mappings)
     static const og::ui::PickerMenuItem unknown{"noop", "noop", og::ui::PickerMenuCommand::SetDifficulty, 0};
     static const og::ui::PickerMenuItem new_game{"new", "new", og::ui::PickerMenuCommand::BeginNewGame, 0};
     static const og::ui::PickerMenuItem cont{"continue", "continue", og::ui::PickerMenuCommand::ContinueGame, 0};
+    static const og::ui::PickerMenuItem networking{"networking", "networking", og::ui::PickerMenuCommand::Networking, 0};
     static const og::ui::PickerMenuItem options{"options", "options", og::ui::PickerMenuCommand::Options, 0};
     static const og::ui::PickerMenuItem help{"help", "help", og::ui::PickerMenuCommand::Help, 0};
     static const og::ui::PickerMenuItem quit{"quit", "quit", og::ui::PickerMenuCommand::Quit, 0};
@@ -620,6 +636,10 @@ TEST(CoverageMisc, coverage_r18_picker_show_main_and_team_build_mappings)
     client.scripted = {&cont};
     client.present_calls = 0;
     ASSERT_TRUE(client.show_main_menu() == og::ui::MainMenuAction::ViewTeam);
+
+    client.scripted = {&networking};
+    client.present_calls = 0;
+    ASSERT_TRUE(client.show_main_menu() == og::ui::MainMenuAction::Networking);
 
     client.scripted = {&options};
     client.present_calls = 0;
@@ -647,6 +667,12 @@ TEST(CoverageMisc, coverage_r18_picker_show_main_and_team_build_mappings)
     client.present_calls = 0;
     ASSERT_TRUE(client.show_team_build() == og::ui::TeamBuildAction::BackToMainMenu);
 
+    client.scripted = {&networking, &back};
+    client.present_calls = 0;
+    const int old_networking_calls = client.networking_calls;
+    ASSERT_TRUE(client.show_team_build() == og::ui::TeamBuildAction::BackToMainMenu);
+    ASSERT_TRUE(client.networking_calls == old_networking_calls + 1);
+
     client.scripted = {nullptr};
     client.present_calls = 0;
     ASSERT_TRUE(client.show_team_build() == og::ui::TeamBuildAction::BackToMainMenu);
@@ -657,6 +683,7 @@ TEST(CoverageMisc, coverage_r18_picker_run_picker_state_switches)
     ScriptedPickerClient a;
     a.main_actions = {
         og::ui::MainMenuAction::NewGame,
+        og::ui::MainMenuAction::Networking,
         og::ui::MainMenuAction::LoadGame,
         og::ui::MainMenuAction::SaveGame,
         og::ui::MainMenuAction::Options,
@@ -668,11 +695,12 @@ TEST(CoverageMisc, coverage_r18_picker_run_picker_state_switches)
     og::ui::run_picker(a);
     ASSERT_TRUE(a.prep_calls == 1);
     ASSERT_TRUE(a.show_campaign_calls == 1);
+    ASSERT_TRUE(a.networking_calls == 1);
     ASSERT_TRUE(a.load_calls == 1);
     ASSERT_TRUE(a.save_calls == 1);
     ASSERT_TRUE(a.options_calls == 1);
     ASSERT_TRUE(a.help_calls == 1);
-    ASSERT_TRUE(a.show_team_build_calls == 1);
+    ASSERT_TRUE(a.show_team_build_calls == 2);
     ASSERT_TRUE(a.run_game_calls == 0);
 
     ScriptedPickerClient b;
@@ -727,9 +755,9 @@ TEST(CoverageMisc, coverage_r18_family_cleric_check_special_default_false)
     living self;
     self.set_order_family(Order::Living, FAMILY_CLERIC);
     bind_test_entity_sim_context(fx.level, &self);
-    self.current_special = 1;
-    self.stats()->max_magicpoints = 100.0f;
-    self.stats()->magicpoints = 1.0f;
+    self.set_current_special(1);
+    self.stats()->set_max_magicpoints(100.0f);
+    self.stats()->set_magicpoints(1.0f);
     ASSERT_TRUE(!desc.check_special_ai(&self));
 }
 
@@ -740,25 +768,25 @@ TEST(CoverageMisc, coverage_r18_walker_movement_blocked_user_paths)
     ASSERT_TRUE(user != nullptr);
     assign_basic_ani(user);
 
-    user->user = 0;
-    user->curdir = FACE_DOWN_RIGHT;
+    user->set_user(0);
+    user->set_curdir(FACE_DOWN_RIGHT);
     ASSERT_TRUE(!user->walkstep(1.0f, 1.0f));
 
     user->setxy(0, 0);
-    user->curdir = FACE_UP;
+    user->set_curdir(FACE_UP);
     ASSERT_TRUE(!user->walkstep(0.0f, -1.0f));
 
     // Hit user-slide branches where only one axis can move.
     user->setxy(static_cast<short>(fx.level.world().pixmaxx - 1), static_cast<short>(10));
-    user->curdir = FACE_DOWN_RIGHT;
+    user->set_curdir(FACE_DOWN_RIGHT);
     (void)user->walkstep(1.0f, 1.0f);
 
     user->setxy(static_cast<short>(10), static_cast<short>(fx.level.world().pixmaxy - 1));
-    user->curdir = FACE_DOWN_LEFT;
+    user->set_curdir(FACE_DOWN_LEFT);
     (void)user->walkstep(-1.0f, 1.0f);
 
     user->setxy(static_cast<short>(fx.level.world().pixmaxx - 1), static_cast<short>(10));
-    user->curdir = FACE_UP_RIGHT;
+    user->set_curdir(FACE_UP_RIGHT);
     (void)user->walkstep(1.0f, -1.0f);
 
     // Stationary family short-circuit in walk().
@@ -771,11 +799,11 @@ TEST(CoverageMisc, coverage_r18_walker_movement_blocked_user_paths)
     user->setxy(20, 20);
     user->stats()->set_bit_flags(BIT_ANIMATE, 1);
     assign_resetting_ani(user);
-    const int blocked_x = (user->xpos - 1) / GRID_SIZE;
-    const int blocked_y = user->ypos / GRID_SIZE;
+    const int blocked_x = (user->xpos() - 1) / GRID_SIZE;
+    const int blocked_y = user->ypos() / GRID_SIZE;
     const int blocked_index = blocked_x + blocked_y * fx.level.world().grid.w;
     fx.level.world().grid.data[blocked_index] = PIX_H_WALL1;
-    user->curdir = FACE_LEFT;
+    user->set_curdir(FACE_LEFT);
     ASSERT_TRUE(!user->walk(-1.0f, 0.0f));
 }
 
@@ -788,26 +816,26 @@ TEST(CoverageMisc, coverage_r18_walker_act_decay_cleanup_and_guard_branches)
     walker* owner = add_living(fx, 64, 80);
     ASSERT_TRUE(self && foe && leader && owner);
 
-    self->foe = foe;
-    self->leader = leader;
-    self->owner = owner;
-    foe->dead = 1;
-    leader->dead = 1;
-    owner->dead = 1;
+    self->set_foe(foe);
+    self->set_leader(leader);
+    self->set_owner(owner);
+    foe->set_dead(1);
+    leader->set_dead(1);
+    owner->set_dead(1);
 
-    self->attack_lunge = 0.2f;
-    self->hit_recoil = 0.2f;
+    self->set_attack_lunge(0.2f);
+    self->set_hit_recoil(0.2f);
     self->set_act_type(ACT_CONTROL);
     ASSERT_TRUE(self->act());
-    ASSERT_TRUE(self->foe == nullptr);
-    ASSERT_TRUE(self->leader == nullptr);
-    ASSERT_TRUE(self->owner == nullptr);
-    ASSERT_TRUE(self->attack_lunge == 0.0f);
-    ASSERT_TRUE(self->hit_recoil == 0.0f);
+    ASSERT_TRUE(self->foe() == nullptr);
+    ASSERT_TRUE(self->leader() == nullptr);
+    ASSERT_TRUE(self->owner() == nullptr);
+    ASSERT_TRUE(self->attack_lunge() == 0.0f);
+    ASSERT_TRUE(self->hit_recoil() == 0.0f);
 
-    self->team_num = 0;
-    foe->dead = 0;
-    foe->team_num = 1;
+    self->set_team_num(0);
+    foe->set_dead(0);
+    foe->set_team_num(1);
     self->setxy(64, 64);
     foe->setxy(72, 64);
     self->set_act_type(ACT_GUARD);
@@ -821,12 +849,12 @@ TEST(CoverageMisc, coverage_r18_walker_animate_invalid_sequence_guard)
     ASSERT_TRUE(self != nullptr);
 
     assign_long_ani_no_sentinel(self);
-    self->ani_type = ANI_ATTACK;
-    self->cycle = 0;
+    self->set_ani_type(ANI_ATTACK);
+    self->set_cycle(0);
 
     ASSERT_TRUE(self->animate() == 0);
-    ASSERT_TRUE(self->ani_type == ANI_WALK);
-    ASSERT_TRUE(self->cycle == 0);
+    ASSERT_TRUE(self->ani_type() == ANI_WALK);
+    ASSERT_TRUE(self->cycle() == 0);
 }
 
 TEST(CoverageMisc, coverage_r18_level_data_resize_and_delete_cleanup_branches)
@@ -1002,13 +1030,13 @@ living* add_living(R19Fixture& fx, char family, unsigned char team, short x, sho
     w->set_order_family(Order::Living, family);
     bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
-    w->sizex = 16;
-    w->sizey = 16;
-    w->stepsize = 1.0f;
-    w->normal_stepsize = 1.0f;
-    w->team_num = team;
-    w->real_team_num = 255;
-    w->dead = 0;
+    w->set_sizex(16);
+    w->set_sizey(16);
+    w->set_stepsize(1.0f);
+    w->set_normal_stepsize(1.0f);
+    w->set_team_num(team);
+    w->set_real_team_num(255);
+    w->set_dead(0);
     living* out = w.get();
     fx.level.world().oblist.push_back(std::move(w));
     return out;
@@ -1039,17 +1067,17 @@ TEST(CoverageMisc, coverage_r19_family_cleric_check_special_true_paths)
     living* ally = add_living(fx, FAMILY_SOLDIER, 0, 70, 64);
     ASSERT_TRUE(self && ally);
 
-    self->current_special = 1;
-    self->stats()->max_magicpoints = 100.0f;
-    self->stats()->magicpoints = 80.0f;
-    self->shifter_down = 1;
+    self->set_current_special(1);
+    self->stats()->set_max_magicpoints(100.0f);
+    self->stats()->set_magicpoints(80.0f);
+    self->set_shifter_down(1);
     ASSERT_TRUE(desc.check_special_ai(self));
-    ASSERT_TRUE(self->shifter_down == 0);
+    ASSERT_TRUE(self->shifter_down() == 0);
 
     ally->setxy(300, 300);
-    self->shifter_down = 0;
+    self->set_shifter_down(0);
     ASSERT_TRUE(desc.check_special_ai(self));
-    ASSERT_TRUE(self->shifter_down == 1);
+    ASSERT_TRUE(self->shifter_down() == 1);
 }
 
 TEST(CoverageMisc, coverage_r19_walker_init_fire_busy_and_fire_fail_paths)
@@ -1059,15 +1087,15 @@ TEST(CoverageMisc, coverage_r19_walker_init_fire_busy_and_fire_fail_paths)
     ASSERT_TRUE(self != nullptr);
 
     const short fire_dir = self->facing(1, 0);
-    self->curdir = static_cast<char>(fire_dir);
-    self->enddir = static_cast<char>(fire_dir);
-    self->busy = 1.0f;
+    self->set_curdir(static_cast<char>(fire_dir));
+    self->set_enddir(static_cast<char>(fire_dir));
+    self->set_busy(1.0f);
     ASSERT_TRUE(!self->init_fire(1, 0));
 
-    self->busy = 0.0f;
-    self->ani_type = ANI_ATTACK;
-    self->stats()->weapon_cost = 1;
-    self->stats()->magicpoints = 0.0f;
+    self->set_busy(0.0f);
+    self->set_ani_type(ANI_ATTACK);
+    self->stats()->set_weapon_cost(1);
+    self->stats()->set_magicpoints(0.0f);
     ASSERT_TRUE(!self->init_fire(1, 0));
 }
 
@@ -1078,14 +1106,14 @@ TEST(CoverageMisc, coverage_r19_walker_animate_attack_completion_branch)
     ASSERT_TRUE(self != nullptr);
 
     assign_short_ani(self);
-    self->ani_type = ANI_ATTACK;
-    self->cycle = 0;
-    self->stats()->weapon_cost = 1;
-    self->stats()->magicpoints = 0.0f;
+    self->set_ani_type(ANI_ATTACK);
+    self->set_cycle(0);
+    self->stats()->set_weapon_cost(1);
+    self->stats()->set_magicpoints(0.0f);
 
     ASSERT_TRUE(self->animate());
-    ASSERT_TRUE(self->ani_type == ANI_WALK);
-    ASSERT_TRUE(self->cycle == 0);
+    ASSERT_TRUE(self->ani_type() == ANI_WALK);
+    ASSERT_TRUE(self->cycle() == 0);
 }
 
 TEST(CoverageMisc, coverage_r19_walker_act_random_paths)
@@ -1095,14 +1123,14 @@ TEST(CoverageMisc, coverage_r19_walker_act_random_paths)
     living* foe = add_living(fx, FAMILY_ORC, 1, 120, 64);
     ASSERT_TRUE(self && foe);
 
-    self->lineofsight = 1;
-    self->foe = nullptr;
+    self->set_lineofsight(1);
+    self->set_foe(nullptr);
     self->set_act_type(ACT_RANDOM);
     SeqRandom rng_find_and_move{0, 1, 0};
     (void)self->act();
 
-    foe->dead = 1;
-    self->foe = nullptr;
+    foe->set_dead(1);
+    self->set_foe(nullptr);
     SeqRandom rng_find_none{0, 1, 0};
     (void)self->act();
 }
@@ -1190,15 +1218,15 @@ walker* add_walker(R20Fixture& fx, Order order, char family, unsigned char team,
     auto w = std::make_unique<walker>();
     w->set_order_family(order, family);
     bind_test_entity_sim_context(fx.level, w.get());
-    w->sizex = 16;
-    w->sizey = 16;
-    w->stepsize = 1.0f;
-    w->normal_stepsize = 1.0f;
-    w->lineofsight = 4;
+    w->set_sizex(16);
+    w->set_sizey(16);
+    w->set_stepsize(1.0f);
+    w->set_normal_stepsize(1.0f);
+    w->set_lineofsight(4);
     w->setxy(x, y);
-    w->team_num = team;
-    w->real_team_num = 255;
-    w->dead = 0;
+    w->set_team_num(team);
+    w->set_real_team_num(255);
+    w->set_dead(0);
     walker* out = w.get();
     if (order == Order::Weapon)
         fx.level.world().weaplist.push_back(std::move(w));
@@ -1212,15 +1240,15 @@ living* add_living(R20Fixture& fx, char family, unsigned char team, short x, sho
     auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, family);
     bind_test_entity_sim_context(fx.level, w.get());
-    w->sizex = 16;
-    w->sizey = 16;
-    w->stepsize = 1.0f;
-    w->normal_stepsize = 1.0f;
-    w->lineofsight = 4;
+    w->set_sizex(16);
+    w->set_sizey(16);
+    w->set_stepsize(1.0f);
+    w->set_normal_stepsize(1.0f);
+    w->set_lineofsight(4);
     w->setxy(x, y);
-    w->team_num = team;
-    w->real_team_num = 255;
-    w->dead = 0;
+    w->set_team_num(team);
+    w->set_real_team_num(255);
+    w->set_dead(0);
     living* out = w.get();
     fx.level.world().oblist.push_back(std::move(w));
     return out;
@@ -1268,8 +1296,8 @@ TEST(CoverageMisc, coverage_r20_walker_act_random_no_foe_and_chase_paths)
     ASSERT_TRUE(self != nullptr);
 
     SequenceRandom rng_no_foe{0, 1, 1};
-    self->foe = nullptr;
-    self->lineofsight = 1;
+    self->set_foe(nullptr);
+    self->set_lineofsight(1);
     self->set_act_type(ACT_RANDOM);
     (void)self->act();
 
@@ -1277,11 +1305,11 @@ TEST(CoverageMisc, coverage_r20_walker_act_random_no_foe_and_chase_paths)
     ASSERT_TRUE(foe != nullptr);
     self->stats()->clear_command();
     SequenceRandom rng_chase{0, 1, 1};
-    self->foe = foe;
-    self->lineofsight = 1;
-    self->collide_ob = reinterpret_cast<walker*>(0x1);
+    self->set_foe(foe);
+    self->set_lineofsight(1);
+    self->set_collide_ob(foe);
     (void)self->act();
-    ASSERT_TRUE(self->collide_ob == nullptr);
+    ASSERT_TRUE(self->collide_ob() == nullptr);
 }
 
 TEST(CoverageMisc, coverage_r20_walker_movement_stationary_walkstep_walk_turn)
@@ -1291,22 +1319,22 @@ TEST(CoverageMisc, coverage_r20_walker_movement_stationary_walkstep_walk_turn)
     walker* tower = add_walker(fx, Order::Living, FAMILY_TOWER1, 0, 80, 80);
     ASSERT_TRUE(tower != nullptr);
 
-    tower->stepsize = 2.0f;
-    const float old_lastx = tower->lastx;
-    const float old_lasty = tower->lasty;
+    tower->set_stepsize(2.0f);
+    const float old_lastx = tower->lastx();
+    const float old_lasty = tower->lasty();
 
     ASSERT_TRUE(tower->walkstep(1.0f, 0.0f));
-    ASSERT_TRUE(tower->lastx == 1.0f);
-    ASSERT_TRUE(tower->lasty == 0.0f);
+    ASSERT_TRUE(tower->lastx() == 1.0f);
+    ASSERT_TRUE(tower->lasty() == 0.0f);
 
     ASSERT_TRUE(tower->walk(0.0f, -1.0f));
 
-    tower->curdir = FACE_UP;
+    tower->set_curdir(FACE_UP);
     tower->turn(FACE_LEFT);
-    ASSERT_TRUE(tower->lastx == 1.0f);
-    ASSERT_TRUE(tower->lasty == 0.0f);
-    ASSERT_TRUE(tower->curdir != FACE_UP);
-    ASSERT_TRUE(old_lastx != tower->lastx || old_lasty != tower->lasty);
+    ASSERT_TRUE(tower->lastx() == 1.0f);
+    ASSERT_TRUE(tower->lasty() == 0.0f);
+    ASSERT_TRUE(tower->curdir() != FACE_UP);
+    ASSERT_TRUE(old_lastx != tower->lastx() || old_lasty != tower->lasty());
 }
 
 TEST(CoverageMisc, coverage_r20_level_data_add_paths_and_clear_reset)
@@ -1408,31 +1436,31 @@ TEST(CoverageMisc, coverage_r20_family_cleric_do_special_guard_conditions)
     living self;
 
     self.set_owned_myguy(std::make_unique<guy>(FAMILY_CLERIC));
-    self.user = 0;
+    self.set_user(0);
 
-    self.current_special = 1;
-    self.shifter_down = 1;
-    self.busy = 1.0f;
+    self.set_current_special(1);
+    self.set_shifter_down(1);
+    self.set_busy(1.0f);
     ASSERT_TRUE(!desc.do_special(&self));
 
-    self.busy = 0.0f;
+    self.set_busy(0.0f);
     self.myguy->intelligence = 40;
     ASSERT_TRUE(!desc.do_special(&self));
 
-    self.current_special = 2;
-    self.shifter_down = 1;
-    self.busy = 1.0f;
+    self.set_current_special(2);
+    self.set_shifter_down(1);
+    self.set_busy(1.0f);
     ASSERT_TRUE(!desc.do_special(&self));
 
-    self.busy = 0.0f;
+    self.set_busy(0.0f);
     self.myguy->intelligence = 30;
-    const float old_busy2 = self.busy;
+    const float old_busy2 = self.busy();
     ASSERT_TRUE(!desc.do_special(&self));
-    ASSERT_TRUE(self.busy > old_busy2);
+    ASSERT_TRUE(self.busy() > old_busy2);
 
-    self.current_special = 3;
-    self.shifter_down = 1;
-    self.busy = 0.0f;
+    self.set_current_special(3);
+    self.set_shifter_down(1);
+    self.set_busy(0.0f);
     self.myguy->intelligence = 30;
     ASSERT_TRUE(!desc.do_special(&self));
 }
@@ -1443,25 +1471,25 @@ TEST(CoverageMisc, coverage_r20_family_mage_do_special_guard_conditions)
     living self;
 
     self.set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
-    self.user = 0;
+    self.set_user(0);
 
-    self.current_special = 1;
-    self.ani_type = ANI_TELE_OUT;
+    self.set_current_special(1);
+    self.set_ani_type(ANI_TELE_OUT);
     ASSERT_TRUE(!desc.do_special(&self));
 
-    self.ani_type = ANI_WALK;
-    self.shifter_down = 1;
-    self.busy = 1.0f;
+    self.set_ani_type(ANI_WALK);
+    self.set_shifter_down(1);
+    self.set_busy(1.0f);
     ASSERT_TRUE(!desc.do_special(&self));
 
-    self.busy = 0.0f;
+    self.set_busy(0.0f);
     self.myguy->intelligence = 40;
     ASSERT_TRUE(!desc.do_special(&self));
 
-    self.shifter_down = 0;
-    self.ani_type = ANI_WALK;
+    self.set_shifter_down(0);
+    self.set_ani_type(ANI_WALK);
     ASSERT_TRUE(desc.do_special(&self));
-    ASSERT_TRUE(self.ani_type == ANI_TELE_OUT);
+    ASSERT_TRUE(self.ani_type() == ANI_TELE_OUT);
 }
 
 TEST(CoverageMisc, coverage_r20_family_druid_do_special_default_and_busy_guards)
@@ -1472,16 +1500,16 @@ TEST(CoverageMisc, coverage_r20_family_druid_do_special_default_and_busy_guards)
     living* self = add_living(fx, FAMILY_DRUID, 0, 64, 64);
     ASSERT_TRUE(self != nullptr);
 
-    self->current_special = 4;
-    self->busy = 0.0f;
+    self->set_current_special(4);
+    self->set_busy(0.0f);
     ASSERT_TRUE(!desc.do_special(self));
 
-    self->current_special = 1;
-    self->busy = 1.0f;
+    self->set_current_special(1);
+    self->set_busy(1.0f);
     ASSERT_TRUE(!desc.do_special(self));
 
-    self->current_special = 2;
-    self->busy = 1.0f;
+    self->set_current_special(2);
+    self->set_busy(1.0f);
     ASSERT_TRUE(!desc.do_special(self));
 }
 } // namespace detail_coverage_r20
@@ -1544,14 +1572,14 @@ living* add_living(FinalR16Fixture& fx, char family, unsigned char team, short x
     w->set_order_family(Order::Living, family);
     bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
-    w->sizex = 16;
-    w->sizey = 16;
-    w->stepsize = 2.0f;
-    w->normal_stepsize = 2.0f;
-    w->lineofsight = 8;
-    w->team_num = team;
-    w->real_team_num = 255;
-    w->dead = 0;
+    w->set_sizex(16);
+    w->set_sizey(16);
+    w->set_stepsize(2.0f);
+    w->set_normal_stepsize(2.0f);
+    w->set_lineofsight(8);
+    w->set_team_num(team);
+    w->set_real_team_num(255);
+    w->set_dead(0);
     living* out = w.get();
     fx.level.world().oblist.push_back(std::move(w));
     return out;
@@ -1563,11 +1591,11 @@ walker* add_fx(FinalR16Fixture& fx, char family, short x, short y)
     w->set_order_family(Order::FX, family);
     bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
-    w->sizex = 16;
-    w->sizey = 16;
-    w->team_num = 0;
-    w->real_team_num = 255;
-    w->dead = 0;
+    w->set_sizex(16);
+    w->set_sizey(16);
+    w->set_team_num(0);
+    w->set_real_team_num(255);
+    w->set_dead(0);
     walker* out = w.get();
     fx.level.world().oblist.push_back(std::move(w));
     return out;
@@ -1676,15 +1704,15 @@ TEST(CoverageMisc, final_r16_family_difficulty_levelup_and_ai_checks)
     ASSERT_TRUE(g_druid.dexterity > old_dex);
 
     living self;
-    const float hp0 = self.stats()->max_hitpoints;
+    const float hp0 = self.stats()->max_hitpoints();
     soldier->set_difficulty(&self, 3);
-    ASSERT_TRUE(self.stats()->max_hitpoints > hp0);
+    ASSERT_TRUE(self.stats()->max_hitpoints() > hp0);
 
     FinalR16Fixture fx2;
     living* caster = add_living(fx2, FAMILY_MAGE, 0, 64, 64);
     ASSERT_TRUE(caster != nullptr);
 
-    caster->current_special = 1;
+    caster->set_current_special(1);
     ASSERT_TRUE(mage->check_special_ai(caster));
 
     add_living(fx2, FAMILY_ORC, 1, 74, 64);
@@ -1695,21 +1723,21 @@ TEST(CoverageMisc, final_r16_family_difficulty_levelup_and_ai_checks)
     add_living(fx2, FAMILY_ORC, 1, 104, 64);
     ASSERT_TRUE(mage->check_special_ai(caster));
 
-    caster->foe = add_living(fx2, FAMILY_ORC, 1, 114, 64);
+    caster->set_foe(add_living(fx2, FAMILY_ORC, 1, 114, 64));
     ASSERT_TRUE(soldier->check_special_ai(caster));
-    caster->foe->setxy(66, 64);
+    caster->foe()->setxy(66, 64);
     ASSERT_TRUE(!soldier->check_special_ai(caster));
 
-    caster->current_special = 1;
-    caster->foe = nullptr;
+    caster->set_current_special(1);
+    caster->set_foe(nullptr);
     ASSERT_TRUE(thief->check_special_ai(caster));
 
-    caster->current_special = 3;
-    caster->shifter_down = 1;
+    caster->set_current_special(3);
+    caster->set_shifter_down(1);
     ASSERT_TRUE(thief->check_special_ai(caster));
 
-    caster->current_special = 1;
-    caster->stats()->magicpoints = caster->stats()->max_magicpoints;
+    caster->set_current_special(1);
+    caster->stats()->set_magicpoints(caster->stats()->max_magicpoints());
     ASSERT_TRUE(cleric->check_special_ai(caster));
 }
 
@@ -1720,25 +1748,25 @@ TEST(CoverageMisc, final_r16_walker_specials_teleport_and_turn_undead)
     living* undead = add_living(fx, FAMILY_SKELETON, 1, 120, 64);
     ASSERT_TRUE(self && undead);
 
-    self->current_special = 1;
-    self->dead = 1;
+    self->set_current_special(1);
+    self->set_dead(1);
     ASSERT_TRUE(!self->special());
 
-    self->dead = 0;
-    self->stats()->special_cost[1] = 1;
-    self->stats()->magicpoints = 0;
+    self->set_dead(0);
+    self->stats()->set_special_cost(1, 1);
+    self->stats()->set_magicpoints(0);
     ASSERT_TRUE(!self->special());
 
-    self->stats()->magicpoints = 999.0f;
+    self->stats()->set_magicpoints(999.0f);
     fx.level.delete_grid();
     ASSERT_TRUE(!self->teleport());
     fx.level.create_new_grid();
 
     walker* marker = add_fx(fx, FAMILY_MARKER, 200, 200);
-    marker->owner = self;
-    marker->lifetime = 1;
+    marker->set_owner(self);
+    marker->set_lifetime(1);
     ASSERT_TRUE(self->teleport());
-    ASSERT_TRUE(marker->lifetime <= 1);
+    ASSERT_TRUE(marker->lifetime() <= 1);
 
     self->setxy(64, 64);
     undead->setxy(80, 64);
@@ -1746,7 +1774,7 @@ TEST(CoverageMisc, final_r16_walker_specials_teleport_and_turn_undead)
     ASSERT_TRUE(killed >= 0);
 
     for (auto& uptr : fx.level.world().oblist)
-        uptr->dead = 1;
+        uptr->set_dead(1);
     ASSERT_TRUE(self->turn_undead(120, 5) == -1);
 }
 
@@ -1760,9 +1788,9 @@ TEST(CoverageMisc, final_r16_sim_input_switch_special_and_yell)
     walker* control = control_living;
 
     control_living->set_act_type(ACT_CONTROL);
-    control_living->user = 0;
+    control_living->set_user(0);
     follower->set_act_type(ACT_GUARD);
-    follower->leader = nullptr;
+    follower->set_leader(nullptr);
 
     std::string special_names[NUM_FAMILIES][6];
     for (int i = 0; i < NUM_FAMILIES; ++i)
@@ -1773,12 +1801,12 @@ TEST(CoverageMisc, final_r16_sim_input_switch_special_and_yell)
     SimInputDebounce debounce;
     PlayerInput pi{};
 
-    control_living->current_special = 4;
+    control_living->set_current_special(4);
     pi.pressed[static_cast<int>(InputAction::SwitchSpecial)] = true;
     const SimInputResult s0 = sim_process_player_input(
         pi, control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     ASSERT_TRUE(!s0.endgame_requested);
-    ASSERT_TRUE(control_living->current_special == 1);
+    ASSERT_TRUE(control_living->current_special() == 1);
 
     pi = {};
     pi.pressed[static_cast<int>(InputAction::Yell)] = true;
@@ -1786,8 +1814,8 @@ TEST(CoverageMisc, final_r16_sim_input_switch_special_and_yell)
         pi, control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     ASSERT_TRUE(s1.play_sound == SOUND_YO);
     ASSERT_TRUE(s1.notify_text == "Yo!");
-    ASSERT_TRUE(control_living->yo_delay == 30);
-    ASSERT_TRUE(follower->leader == control_living);
+    ASSERT_TRUE(control_living->yo_delay() == 30);
+    ASSERT_TRUE(follower->leader() == control_living);
 }
 
 TEST(CoverageMisc, final_r16_smooth_targeted_grass_and_dark_variants)
@@ -1854,11 +1882,11 @@ TEST(CoverageMisc, final_r16_stats_walker_level_data_and_picker_state)
     a->stats()->try_command(COMMAND_RANDOM_WALK, 1);
     ASSERT_TRUE(a->stats()->has_commands());
 
-    a->curdir = FACE_UP;
+    a->set_curdir(FACE_UP);
     (void)a->stats()->right_blocked();
-    a->curdir = FACE_DOWN_LEFT;
+    a->set_curdir(FACE_DOWN_LEFT);
     (void)a->stats()->right_forward_blocked();
-    a->curdir = FACE_RIGHT;
+    a->set_curdir(FACE_RIGHT);
     (void)a->stats()->right_back_blocked();
 
     (void)a->walkstep(-1.0f, -1.0f);

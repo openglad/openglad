@@ -15,13 +15,19 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
+#include <openglad/core/frame_pacing.h>
+#include <openglad/core/frame_rate_config.h>
+#include <openglad/core/runtime_trace.h>
 #include <openglad/core/version.h>
+#include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
+#include <openglad/platform/emscripten/web_runtime_diagnostics.h>
 #include <openglad/platform/game_loop.h>
 #include <openglad/platform/game_session.h>
+#include <openglad/platform/local_transport_shadow.h>
 #include <openglad/platform/screen_lifecycle.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -33,11 +39,15 @@
 #include <string>
 #include <cstring>
 #include <format>
+#include <memory>
+#include <limits>
+#include <optional>
 #include <stdexcept>
 #include <openglad/core/util.h>
 #include <openglad/interface/input.h>
 #include <openglad/resources/io.h>
 #include <openglad/interface/render/text.h>
+#include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/results_screen.h>
 #include <openglad/platform/game_context.h>
 // theprefs is now a macro defined in view.h (via game_session.h)
@@ -55,6 +65,16 @@ inline options* active_prefs()
 }
 
 } // namespace
+
+#ifdef __EMSCRIPTEN__
+namespace {
+std::unique_ptr<og::runtime::GameSession> g_web_session;
+bool g_web_boot_started = false;
+std::optional<og::ui::PickerLobbyGameStartConfig> g_web_game_start_config;
+char g_web_arg0[] = "/play.html";
+char* g_web_argv[] = {g_web_arg0, nullptr};
+} // namespace
+#endif
 
 static inline Uint32 rng(Uint32 max_exclusive) {
     return ctx().rng->next(max_exclusive);
@@ -75,6 +95,27 @@ enum class GameState {
 };
 static GameState g_game_state = GameState::Intro;
 static bool g_state_initialized = false;
+
+#ifndef TESTING
+namespace {
+
+EM_JS(void, publish_web_game_state_js, (int state), {
+    window.__opengladGameState = state;
+});
+
+EM_JS(void, publish_web_numviews_js, (int numviews), {
+    window.__opengladNumViews = numviews;
+});
+
+void publish_web_game_state()
+{
+    publish_web_game_state_js(static_cast<int>(g_game_state));
+    const screen* const current_screen = active_screen();
+    publish_web_numviews_js(current_screen != nullptr ? current_screen->numviews : 0);
+}
+
+} // namespace
+#endif
 #endif
 
 
@@ -117,184 +158,305 @@ static inline GameLoopFrameState& g_frame_state() {
     return og::runtime::current_session->frame_state_;
 }
 
+short gameplay_numviews_for_start(
+    const screen& current_screen,
+    const og::ui::PickerLobbyGameStartConfig* lobby_config)
+{
+    const std::uint8_t player_count = lobby_config != nullptr
+        ? lobby_config->save_data.numplayers
+        : current_screen.save_data.numplayers;
+    return static_cast<short>(player_count == 0 ? 1 : player_count);
+}
+
+void ready_screen_for_game_start(
+    screen& current_screen,
+    const og::ui::PickerLobbyGameStartConfig* lobby_config)
+{
+    current_screen.ready_for_battle(
+        gameplay_numviews_for_start(current_screen, lobby_config));
+}
+
 // Forward declarations
-void glad_init();
+void glad_init(bool preserve_frame_timing = false);
+void glad_init(bool preserve_frame_timing,
+               const og::ui::PickerLobbyGameStartConfig* lobby_config);
+
+#ifndef TESTING
+namespace {
+og::runtime::GameSession::Config default_session_config()
+{
+    og::runtime::GameSession::Config session_cfg;
+    session_cfg.numviews = 1;
+    session_cfg.allocate_screen = true;
+    session_cfg.allocate_prefs = true;
+    session_cfg.install_legacy_globals = true;
+    return session_cfg;
+}
+
+void initialize_runtime_config(int argc, char* argv[])
+{
+    init_logging();  // Set up logging output (uses JS console on web)
+    io_init(argc, argv);
+
+    cfg.load_settings();
+    cfg.commandline(argc, argv);
+}
+
+void bootstrap_runtime(int argc, char* argv[])
+{
+#ifdef OUYA
+    OuyaControllerManager::init();
+#endif
+
+    //buffers: setting the seed
+    srand(static_cast<unsigned int>(time(nullptr)));
+
+    init_input();
+    load_player_control_settings_from_cfg(cfg);
+    save_player_control_settings_to_cfg(cfg);
+
+    // Sync overscan from config (must be after session creation since
+    // overscan_percentage is now a macro backed by current_session).
+    og::runtime::current_session->overscan_percentage_ = static_cast<float>(
+        parse_int_strict(cfg.get_setting("graphics", "overscan_percentage")).value_or(0)) / 100.0f;
+    update_overscan_setting();
+    cfg.apply_setting("graphics", "overscan_percentage",
+        std::format("{:.0f}", 100 * og::runtime::current_session->overscan_percentage_));
+
+    const int fps = og::core::target_fps_from_cfg(cfg);
+    og::core::apply_target_fps_to_cfg(cfg, fps);
+    og::runtime::current_session->target_fps_ = fps;
+    og::runtime::current_session->show_fps_ = cfg.is_on("graphics", "show_fps");
+    cfg.save_settings();
+#if defined(__EMSCRIPTEN__) && !defined(TESTING)
+    if (og::platform::web::should_skip_intro_for_tests())
+        return;
+#endif
+    intro_main(argc, argv);
+}
+} // namespace
+#endif
 
 #ifdef __EMSCRIPTEN__
 // Forward declarations for state handlers
 void picker_init();
 bool picker_frame();  // Returns true when should transition to game
+bool picker_check_start_requested();
 void picker_cleanup_for_game();
 void picker_reinit_after_game();
 
 // Emscripten frame wrapper with timing control
 // The browser calls this at ~60 FPS via requestAnimationFrame
-// We accumulate time and only run game logic at the intended frame rate
+// The wrapper keeps gameplay on the browser cadence helper while letting
+// game_frame() own the normal gameplay render path.
 static void emscripten_frame_wrapper() {
 	screen* current_screen = active_screen();
-	// Calculate time since last call
-	Uint32 current_time = SDL_GetTicks();
-	Uint32 delta = current_time - g_frame_state().last_frame_time;
-	g_frame_state().last_frame_time = current_time;
-	g_frame_state().accumulated_time += delta;
+	switch (g_game_state) {
+		case GameState::Picker:
+			og::runtime::current_session->gameplay_active_ = false;
+			if (!g_state_initialized) {
+				picker_reinit_after_game();
+				g_state_initialized = true;
+			}
+			if (picker_frame()) {
+				// Transition to playing state
+				Log("Transitioning from PICKER to PLAYING\n");
+				g_web_game_start_config = picker_lobby_consume_game_start_config();
+                    if (g_web_game_start_config.has_value())
+                        og::platform::web::maybe_apply_jitter_capture_start_config(
+                            *g_web_game_start_config);
+				picker_cleanup_for_game();
+				g_game_state = GameState::Playing;
+				g_state_initialized = false;
+			}
+			break;
 
-	// Calculate target frame time based on timer_wait (in ticks, 1 tick = 13.6ms)
-	// timer_wait defaults to 6, giving ~82ms per frame (~12 FPS)
-	short timer_wait = 6; // Safe default until myscreen is initialized
-	if (current_screen && current_screen->world().timer_wait > 0) {
-		timer_wait = current_screen->world().timer_wait;
-	}
-	Uint32 target_frame_time;
-	if (og::runtime::current_session->g_game_speed_factor_ == 0.0f) {
-		target_frame_time = 0; // Max speed: run every browser frame
-	} else {
-		target_frame_time = static_cast<Uint32>(timer_wait * 13.6f / og::runtime::current_session->g_game_speed_factor_);
-		if (target_frame_time < 16) target_frame_time = 16; // Minimum ~60 FPS cap
-	}
-
-	// Only run logic if enough time has accumulated
-	if (g_frame_state().accumulated_time >= target_frame_time) {
-		switch (g_game_state) {
-			case GameState::Picker:
-				og::runtime::current_session->gameplay_active_ = false;
-				if (!g_state_initialized) {
-					picker_reinit_after_game();
-					g_state_initialized = true;
-				}
-				if (picker_frame()) {
-					// Transition to playing state
-					Log("Transitioning from PICKER to PLAYING\n");
-					picker_cleanup_for_game();
-					g_game_state = GameState::Playing;
-					g_state_initialized = false;
-				}
-				break;
-
-			case GameState::Playing:
-				if (!g_state_initialized) {
-					// Initialize game state
-					Log("GameState::Playing: Initializing game\n");
-					release_mouse();
-					if(current_screen == nullptr)
-					{
-						LogError("game_state_init_failed state=playing reason=missing_screen\n");
-						og::runtime::current_session->gameplay_active_ = false;
-						g_game_state = GameState::Quit;
-						break;
-					}
-					{
-					short numviews = (current_screen->save_data.numplayers == 0) ? 1 : current_screen->save_data.numplayers;
-					current_screen->ready_for_battle(numviews);
-				}
-					og::runtime::current_session->gameplay_active_ = true;
-					glad_init();
-					g_frame_state().done = false;
-					g_frame_state().currentcycle = 0;
-					g_frame_state().cycletime = 3;
-					g_state_initialized = true;
-				}
-				game_frame(*current_screen, g_frame_state());
-				if (g_frame_state().done) {
-					Log("Game done, transitioning back to PICKER\n");
+		case GameState::Playing:
+			if (!g_state_initialized) {
+				// Initialize game state
+				Log("GameState::Playing: Initializing game\n");
+				release_mouse();
+				if(current_screen == nullptr)
+				{
+					LogError("game_state_init_failed state=playing reason=missing_screen\n");
 					og::runtime::current_session->gameplay_active_ = false;
-					clear_keyboard();
-					current_screen->world().delete_objects();
-					g_game_state = GameState::Picker;
-					g_state_initialized = false;
+					g_game_state = GameState::Quit;
+					break;
 				}
+                    og::platform::web::reset_runtime_diagnostics_for_gameplay_start();
+					{
+                    if (g_web_game_start_config.has_value())
+                        og::platform::web::maybe_apply_jitter_capture_start_config(
+                            *g_web_game_start_config);
+					ready_screen_for_game_start(
+					    *current_screen,
+					    g_web_game_start_config.has_value()
+					        ? &*g_web_game_start_config
+					        : nullptr);
+					}
+				og::runtime::current_session->gameplay_active_ = true;
+				glad_init(
+				    true,
+				    g_web_game_start_config.has_value()
+				        ? &*g_web_game_start_config
+				        : nullptr);
+				g_web_game_start_config.reset();
+				g_frame_state().done = false;
+				g_frame_state().initialized = false;
+				g_frame_state().currentcycle = 0;
+				g_frame_state().cycletime = 3;
+				g_frame_state().last_frame_time = 0;
+				g_frame_state().accumulated_time = 0;
+				g_state_initialized = true;
+			}
+			if (current_screen == nullptr || g_frame_state().done)
 				break;
+			{
+				const Uint32 current_time = SDL_GetTicks();
+				std::uint32_t sim_interval = 0u;
+				if (current_screen != nullptr &&
+				    og::runtime::current_session->g_game_speed_factor_ > 0.0f)
+				{
+					const float scaled = og::core::rounded_render_tick_interval_ms(
+						current_screen->world().timer_wait,
+						og::runtime::current_session->g_game_speed_factor_);
+					sim_interval = std::max<std::uint32_t>(
+						1u, static_cast<std::uint32_t>(std::lround(scaled)));
+				}
+				og::core::BrowserFramePacingResult pacing;
+				if (!g_frame_state().initialized) {
+					pacing.target_interval_ms = sim_interval;
+					pacing.should_run_frame = true;
+				} else {
+					const Uint32 delta =
+						current_time - g_frame_state().last_frame_time;
+					pacing = og::core::step_browser_frame_pacing(
+						g_frame_state().accumulated_time,
+						delta,
+						sim_interval);
+				}
 
-			case GameState::Quit:
+				og::runtime::emit_runtime_trace(
+					og::runtime::make_runtime_trace_record(
+						"browser_pacing",
+						pacing.should_run_frame ? "wrapper_frame_ready"
+						                        : "wrapper_frame_skip"));
+
+				run_browser_wrapper_frame(
+					*current_screen,
+					g_frame_state(),
+					current_time,
+					pacing);
+				}
+			if (g_frame_state().done) {
+				Log("Game done, transitioning back to PICKER\n");
 				og::runtime::current_session->gameplay_active_ = false;
-				emscripten_cancel_main_loop();
-				break;
+				if (og::runtime::current_game_session != nullptr)
+					og::runtime::clear_local_transport_shadow(
+					    *og::runtime::current_game_session);
+				clear_keyboard();
+				current_screen->world().delete_objects();
+				g_web_game_start_config.reset();
+				g_game_state = GameState::Picker;
+				g_state_initialized = false;
+			}
+			break;
 
-			default:
-				break;
-		}
+		case GameState::Quit:
+			og::runtime::current_session->gameplay_active_ = false;
+			emscripten_cancel_main_loop();
+			break;
 
-		// Subtract one frame's worth of time (don't reset to 0 to handle remainder)
-		g_frame_state().accumulated_time -= target_frame_time;
-		// Clamp to prevent spiral of death if frames take too long
-		if (g_frame_state().accumulated_time > target_frame_time * 2) {
-			g_frame_state().accumulated_time = 0;
-		}
+		default:
+			break;
 	}
+#ifndef TESTING
+	publish_web_game_state();
+#endif
 }
 #endif
 
 #ifndef TESTING
+#ifdef __EMSCRIPTEN__
+extern "C" EMSCRIPTEN_KEEPALIVE void openglad_web_boot()
+{
+    if (g_web_boot_started) {
+        return;
+    }
+
+    g_web_boot_started = true;
+
+    try
+    {
+        og::platform::web::prepare_runtime_diagnostics_for_boot();
+
+        initialize_runtime_config(1, g_web_argv);
+        g_web_session = std::make_unique<og::runtime::GameSession>(default_session_config());
+        bootstrap_runtime(1, g_web_argv);
+        og::platform::web::seed_test_save_if_requested();
+
+        // For Emscripten, initialize picker and start the unified main loop
+        picker_init();
+        Log("openglad_web_boot: After picker_init, about to check if game should start\n");
+
+        // Check if picker_init resulted in a game start request
+        if (picker_check_start_requested()) {
+            Log("openglad_web_boot: Game start was requested during picker_init, starting in PLAYING state\n");
+            g_web_game_start_config = picker_lobby_consume_game_start_config();
+            if (g_web_game_start_config.has_value())
+                og::platform::web::maybe_apply_jitter_capture_start_config(
+                    *g_web_game_start_config);
+            g_game_state = GameState::Playing;
+            g_state_initialized = false;  // Will trigger glad_init on first frame
+        } else {
+            Log("openglad_web_boot: No game start requested, starting in PICKER state\n");
+            g_web_game_start_config.reset();
+            g_game_state = GameState::Picker;
+            g_state_initialized = true;
+        }
+
+        // Initialize timing
+        g_frame_state().last_frame_time = SDL_GetTicks();
+        g_frame_state().accumulated_time = 0;
+        publish_web_game_state();
+
+        // Browser startup uses an explicit JS-triggered bootstrap, so let the
+        // boot call return after scheduling the frame loop.
+        emscripten_set_main_loop(emscripten_frame_wrapper, 0, 0);
+    }
+    catch (const std::runtime_error& e)
+    {
+        g_web_boot_started = false;
+        g_web_session.reset();
+        publish_web_game_state();
+        LogError("Unrecoverable error: {}\n", e.what());
+    }
+}
+#endif
+
 int main(int argc, char *argv[])
 {
+#ifdef __EMSCRIPTEN__
+    (void)argc;
+    (void)argv;
+    openglad_web_boot();
+    return 0;
+#else
 	try
 	{
-		init_logging();  // Set up logging output (uses JS console on web)
-		io_init(argc, argv);
-
-		cfg.load_settings();
-		cfg.commandline(argc, argv);
+		initialize_runtime_config(argc, argv);
 
 		// GameSession is the RAII root for all runtime state.
 		// It owns the screen, prefs, and installs legacy global shims.
 		// Must be created before any macro-backed globals are accessed
 		// (overscan_percentage, player_keys, keystates, etc.).
-		og::runtime::GameSession::Config session_cfg;
-		session_cfg.numviews = 1;
-		session_cfg.allocate_screen = true;
-		session_cfg.allocate_prefs = true;
-		session_cfg.install_legacy_globals = true;
-		og::runtime::GameSession session(session_cfg);
+		og::runtime::GameSession session(default_session_config());
+		bootstrap_runtime(argc, argv);
 
-    #ifdef OUYA
-    OuyaControllerManager::init();
-    #endif
-
-		//buffers: setting the seed
-		srand(static_cast<unsigned int>(time(nullptr)));
-
-		init_input();
-		load_player_control_settings_from_cfg(cfg);
-		save_player_control_settings_to_cfg(cfg);
-		cfg.save_settings();
-
-		// Sync overscan from config (must be after session creation since
-		// overscan_percentage is now a macro backed by current_session).
-		og::runtime::current_session->overscan_percentage_ = static_cast<float>(
-		    parse_int_strict(cfg.get_setting("graphics", "overscan_percentage")).value_or(0)) / 100.0f;
-		update_overscan_setting();
-		cfg.apply_setting("graphics", "overscan_percentage",
-		    std::format("{:.0f}", 100 * og::runtime::current_session->overscan_percentage_));
-		intro_main(argc, argv);
-
-	#ifdef __EMSCRIPTEN__
-	// For Emscripten, initialize picker and start the unified main loop
-	picker_init();
-	Log("main: After picker_init, about to check if game should start\n");
-
-	// Check if picker_init resulted in a game start request
-	extern bool picker_check_start_requested();
-	if (picker_check_start_requested()) {
-		Log("main: Game start was requested during picker_init, starting in PLAYING state\n");
-		g_game_state = GameState::Playing;
-		g_state_initialized = false;  // Will trigger glad_init on first frame
-	} else {
-		Log("main: No game start requested, starting in PICKER state\n");
-		g_game_state = GameState::Picker;
-		g_state_initialized = true;
-	}
-
-	// Initialize timing
-	g_frame_state().last_frame_time = SDL_GetTicks();
-	g_frame_state().accumulated_time = 0;
-
-		// Start the unified main loop - handles all game states
-		emscripten_set_main_loop(emscripten_frame_wrapper, 0, 1);
-	#else
 		// Native build: use traditional blocking calls
 		picker_main(argc, argv);
 		text_shutdown();
 		io_exit();
-	#endif
 
 	// Session destructor restores previous globals and frees owned resources.
 	}
@@ -305,6 +467,7 @@ int main(int argc, char *argv[])
 	}
 
 	return 0;
+#endif
 }
 #endif // TESTING
 
@@ -322,9 +485,9 @@ void draw_radar_gems(screen* s)
 	short team_light;
 
 	static short old_team_num = -1;
-	if (old_team_num == s->viewob[0]->control->team_num)
+	if (old_team_num == s->viewob[0]->control->team_num())
 		return;
-	old_team_num = s->viewob[0]->control->team_num;
+	old_team_num = s->viewob[0]->control->team_num();
 
 	team_light = s->viewob[0]->control->query_team_color();
 
@@ -368,28 +531,28 @@ void draw_value_bar(short left, short top,
 
 	if (mode == 0) // hitpoint bar
 	{
-		points = control->stats()->hitpoints;
+		points = control->stats()->hitpoints();
 
-		if (float_eq(points, control->stats()->max_hitpoints))
+		if (float_eq(points, control->stats()->max_hitpoints()))
 			whatcolor = MAX_HP_COLOR;
-		else if ( (points * 3) < control->stats()->max_hitpoints)
+		else if ( (points * 3) < control->stats()->max_hitpoints())
 			whatcolor = LOW_HP_COLOR;
-		else if ( (points * 3 / 2) < control->stats()->max_hitpoints)
+		else if ( (points * 3 / 2) < control->stats()->max_hitpoints())
 			whatcolor = MID_HP_COLOR;
-		else if (points < control->stats()->max_hitpoints)
+		else if (points < control->stats()->max_hitpoints())
 			whatcolor = HIGH_HP_COLOR;
 			else 
 				whatcolor = ORANGE_START;
 
-			if (points > control->stats()->max_hitpoints)
+			if (points > control->stats()->max_hitpoints())
 				bar_length = 60;
 			else
-				bar_length = static_cast<Sint32>(ceilf(points * 60.0f / control->stats()->max_hitpoints));
+				bar_length = static_cast<Sint32>(ceilf(points * 60.0f / control->stats()->max_hitpoints()));
 			bar_remainder = 60 - bar_length;
 
 			s->draw_box(left, top, left+61, top+6, BOX_COLOR, 0);
 			//myscreen->fastbox(left, top, 61, 6, BOX_COLOR, 1);
-			if ( points > control->stats()->max_hitpoints)
+			if ( points > control->stats()->max_hitpoints())
 				for (i=0;i<bar_length/2;i++)
 					for (j=0; j<3; j++)
 					{
@@ -427,27 +590,27 @@ void draw_value_bar(short left, short top,
 	}  // end of doing hp stuff..
 	else if (mode == 1) // sp stuff ..
 	{
-		points = control->stats()->magicpoints;
+		points = control->stats()->magicpoints();
 
-		if (float_eq(points, control->stats()->max_magicpoints))
+		if (float_eq(points, control->stats()->max_magicpoints()))
 			whatcolor = MAX_MP_COLOR;
-		else if ( (points * 3) < control->stats()->max_magicpoints)
+		else if ( (points * 3) < control->stats()->max_magicpoints())
 			whatcolor = LOW_MP_COLOR;
-		else if ( (points * 3 / 2) < control->stats()->max_magicpoints)
+		else if ( (points * 3 / 2) < control->stats()->max_magicpoints())
 			whatcolor = MID_MP_COLOR;
-		else if (points < control->stats()->max_magicpoints)
+		else if (points < control->stats()->max_magicpoints())
 			whatcolor = HIGH_MP_COLOR;
 			else 
 				whatcolor = WATER_START;
 
-			if (points > control->stats()->max_magicpoints)
+			if (points > control->stats()->max_magicpoints())
 				bar_length = 60;
 			else
-				bar_length = static_cast<Sint32>(ceilf(points * 60.0f / control->stats()->max_magicpoints));
+				bar_length = static_cast<Sint32>(ceilf(points * 60.0f / control->stats()->max_magicpoints()));
 			bar_remainder = 60 - bar_length;
 
 			s->draw_box(left, top, left+61, top+6, BOX_COLOR, 0);
-			if ( points > control->stats()->max_magicpoints)
+			if ( points > control->stats()->max_magicpoints())
 				for (i=0;i<bar_length/2;i++)
 					for (j=0; j<3; j++)
 					{

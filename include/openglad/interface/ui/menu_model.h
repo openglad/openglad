@@ -23,6 +23,9 @@ enum class PickerMenuCommand : std::int32_t
 {
     BeginNewGame,
     ContinueGame,
+    Networking,
+    HostGame,
+    JoinGame,
     SetPlayerMode,
     SetDifficulty,
     ToggleAlliedMode,

@@ -33,15 +33,15 @@
 treasure::treasure(const PixieData& data)
     : walker(data)
 {
-	ignore =static_cast<char>(0);
-	dead = static_cast<char>(0);
+	set_ignore(static_cast<char>(0));
+	set_dead(static_cast<char>(0));
 }
 
 treasure::treasure()
     : walker()
 {
-	ignore = static_cast<char>(0);
-	dead = static_cast<char>(0);
+	set_ignore(static_cast<char>(0));
+	set_dead(static_cast<char>(0));
 }
 
 treasure::~treasure()
@@ -57,7 +57,7 @@ bool treasure::act()
 
 bool treasure::eat_me(walker  * eater)
 {
-	const auto* tfd = get_treasure_family_descriptor(family);
+	const auto* tfd = get_treasure_family_descriptor(family());
 	if (tfd && tfd->on_eat)
 		return tfd->on_eat(this, eater);
 
@@ -89,11 +89,11 @@ walker  * treasure::find_teleport_target()
 	for(; e != ls.end(); e++)
 	{
 	    walker* w = e->get();
-		if (w && !w->dead)
+		if (w && !w->dead())
 		{
 			if (w->query_order() == Order::Treasure &&
-			        w->family == FAMILY_TELEPORTER &&
-			        w->stats()->level == stats_->level)
+			        w->family() == FAMILY_TELEPORTER &&
+			        w->stats()->level() == stats_->level())
 			{
 				//Log(" to target %d\n", number);
 				return w;
@@ -105,11 +105,11 @@ walker  * treasure::find_teleport_target()
 	for(e = ls.begin(); e != mine; e++)
 	{
 	    walker* w = e->get();
-		if (w && !w->dead)
+		if (w && !w->dead())
 		{
 			if (w->query_order() == Order::Treasure &&
-			        w->family == FAMILY_TELEPORTER &&
-			        w->stats()->level == stats_->level)
+			        w->family() == FAMILY_TELEPORTER &&
+			        w->stats()->level() == stats_->level())
 			{
 				//Log(" to looped target %d\n", number);
 				return w;

@@ -149,10 +149,10 @@ TEST(GuyExtended, guy_update_derived_stats_soldier)
     g.upgrade_to_level(3, true);
     auto w = guy_create_walker_owned(g, og::runtime::current_session->myscreen_);
     ASSERT_TRUE(w != nullptr) << "create_walker should succeed";
-    ASSERT_TRUE(w->stats()->max_hitpoints > 0) << "HP should be positive";
-    ASSERT_TRUE(w->stats()->max_magicpoints >= 0) << "MP should be non-negative";
-    ASSERT_TRUE(w->stats()->heal_per_round >= 0) << "heal_per_round should be non-negative";
-    ASSERT_TRUE(w->stats()->magic_per_round >= 0) << "magic_per_round should be non-negative";
+    ASSERT_TRUE(w->stats()->max_hitpoints() > 0) << "HP should be positive";
+    ASSERT_TRUE(w->stats()->max_magicpoints() >= 0) << "MP should be non-negative";
+    ASSERT_TRUE(w->stats()->heal_per_round() >= 0) << "heal_per_round should be non-negative";
+    ASSERT_TRUE(w->stats()->magic_per_round() >= 0) << "magic_per_round should be non-negative";
 }
 
 
@@ -167,7 +167,7 @@ TEST(GuyExtended, guy_update_derived_stats_all_families)
         g.upgrade_to_level(3, true);
         auto w = guy_create_walker_owned(g, og::runtime::current_session->myscreen_);
         if (w) {
-            ASSERT_TRUE(w->stats()->max_hitpoints > 0) << "HP should be positive for all families";
+            ASSERT_TRUE(w->stats()->max_hitpoints() > 0) << "HP should be positive for all families";
         }
     }
 }
@@ -215,7 +215,7 @@ TEST(GuyExtended, guy_create_walker_various)
         auto w = guy_create_walker_owned(g, og::runtime::current_session->myscreen_);
         ASSERT_TRUE(w != nullptr) << "create_walker should succeed";
         ASSERT_TRUE(w->myguy != nullptr) << "walker should have myguy set";
-        ASSERT_TRUE(w->stats()->level == 2) << "walker level should match guy level";
+        ASSERT_TRUE(w->stats()->level() == 2) << "walker level should match guy level";
     }
 }
 
@@ -298,12 +298,12 @@ TEST(GuyExtended, guy_update_derived_stats_clamps_speed_and_regen_delays)
     if (!w)
         return;
 
-    ASSERT_TRUE(w->stepsize <= 12.0f) << "stepsize should clamp to 12";
-    ASSERT_TRUE(w->fire_frequency >= 1.0f) << "fire_frequency should clamp to minimum 1";
-    ASSERT_TRUE(w->stats()->heal_per_round > 0) << "high stats should increase heal_per_round";
-    ASSERT_TRUE(w->stats()->magic_per_round > 0) << "high stats should increase magic_per_round";
-    ASSERT_TRUE(w->stats()->max_heal_delay >= 2) << "max_heal_delay should respect minimum clamp";
-    ASSERT_TRUE(w->stats()->max_magic_delay >= 2) << "max_magic_delay should respect minimum clamp";
+    ASSERT_TRUE(w->stepsize() <= 12.0f) << "stepsize should clamp to 12";
+    ASSERT_TRUE(w->fire_frequency() >= 1.0f) << "fire_frequency should clamp to minimum 1";
+    ASSERT_TRUE(w->stats()->heal_per_round() > 0) << "high stats should increase heal_per_round";
+    ASSERT_TRUE(w->stats()->magic_per_round() > 0) << "high stats should increase magic_per_round";
+    ASSERT_TRUE(w->stats()->max_heal_delay() >= 2) << "max_heal_delay should respect minimum clamp";
+    ASSERT_TRUE(w->stats()->max_magic_delay() >= 2) << "max_magic_delay should respect minimum clamp";
 }
 
 
@@ -335,4 +335,3 @@ TEST(GuyExtended, guy_round10_query_heart_value_clamps_negative_stat_deltas_to_b
     const Sint32 lowered = g.query_heart_value();
     ASSERT_EQ(base, lowered) << "query_heart_value should clamp negative stat deltas and keep base hiring cost only";
 }
-

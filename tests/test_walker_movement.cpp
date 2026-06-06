@@ -90,7 +90,7 @@ TEST(WalkerMovement, walker_turn_to_all_targets)
     if (!w) return;
 
     for (short target = 0; target < 8; target++) {
-        w->curdir = 0;
+        w->set_curdir(0);
         w->turn(target);
     }
 }
@@ -102,7 +102,7 @@ TEST(WalkerMovement, walker_turn_from_all_starts)
     if (!w) return;
 
     for (short start = 0; start < 8; start++) {
-        w->curdir = static_cast<char>(start);
+        w->set_curdir(static_cast<char>(start));
         w->turn(0);
     }
 }
@@ -149,14 +149,14 @@ TEST(WalkerMovement, walker_walkstep_zero)
 
     // Blocked movement near map edge (npc path).
     w->setxy(0, 0);
-    w->user = -1;
+    w->set_user(-1);
     (void)w->walkstep(-1, 0);
     (void)w->walkstep(0, -1);
     (void)w->walkstep(-1, -1);
 
     // User slide path on blocked diagonal movement.
     w->setxy(0, 10);
-    w->user = 0;
+    w->set_user(0);
     (void)w->walkstep(-1, -1);
     (void)w->walkstep(-1, 1);
 
@@ -171,10 +171,10 @@ TEST(WalkerMovement, walker_walkstep_user_slide_cardinal_break_path_round5)
     if (!w)
         return;
 
-    w->user = 0;
-    w->stepsize = 2.0f;
+    w->set_user(0);
+    w->set_stepsize(2.0f);
     w->setxy(0, 24); // left edge forces blocked cardinal movement
-    w->curdir = FACE_LEFT;
+    w->set_curdir(FACE_LEFT);
 
     const bool moved = w->walkstep(-1, 0);
     ASSERT_TRUE(!moved) << "blocked cardinal user movement should keep slide dx/dy at zero and fail";
@@ -190,8 +190,8 @@ TEST(WalkerMovement, walker_walkstep_user_slide_diagonal_switch_cases_round6)
         return;
 
     // Block movement at map edge so the user-slide diagonal switch executes.
-    w->user = 0;
-    w->stepsize = 1.0f;
+    w->set_user(0);
+    w->set_stepsize(1.0f);
     w->setxy(0, 0);
 
     (void)w->walkstep(1, -1);   // FACE_UP_RIGHT
@@ -236,14 +236,14 @@ TEST(WalkerMovement, walker_draw_tile_basic)
         draw_walker_tile(*w, vs);
 
         // draw_tile invisibility path (requires non-null control).
-        w->invisibility_left = 12;
+        w->set_invisibility_left(12);
         draw_walker_tile(*w, vs);
-        w->invisibility_left = 0;
+        w->set_invisibility_left(0);
 
         // draw_tile outline path.
-        w->invulnerable_left = 10;
+        w->set_invulnerable_left(10);
         draw_walker_tile(*w, vs);
-        w->invulnerable_left = 0;
+        w->set_invulnerable_left(0);
 
         vs->control = old_control;
         delete control;
@@ -256,7 +256,7 @@ TEST(WalkerMovement, walker_draw_with_flight)
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     if (!w) return;
     w->setxy(100, 100);
-    w->flight_left = 10;
+    w->set_flight_left(10);
 
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (vs) {
@@ -270,7 +270,7 @@ TEST(WalkerMovement, walker_draw_with_invisibility)
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     if (!w) return;
     w->setxy(100, 100);
-    w->invisibility_left = 10;
+    w->set_invisibility_left(10);
 
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (vs) {
@@ -282,9 +282,9 @@ TEST(WalkerMovement, walker_draw_with_invisibility)
         }
         draw_walker(*w, vs);
         w->compute_outline(vs->control);
-        w->flight_left = 8;
+        w->set_flight_left(8);
         w->compute_outline(vs->control);
-        w->invulnerable_left = 8;
+        w->set_invulnerable_left(8);
         w->compute_outline(vs->control);
         vs->control = old_control;
         delete control;
@@ -297,7 +297,7 @@ TEST(WalkerMovement, walker_draw_with_invulnerability)
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     if (!w) return;
     w->setxy(100, 100);
-    w->invulnerable_left = 10;
+    w->set_invulnerable_left(10);
 
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (vs) {
@@ -318,18 +318,18 @@ TEST(WalkerMovement, stationary_family_walk_and_turn_branches)
 
     // walkstep stationary short-circuit branch.
     ASSERT_TRUE(w->walkstep(1, 0)) << "stationary walkstep should succeed without moving";
-    ASSERT_EQ(1, (int)w->lastx) << "stationary walkstep should store unit x input";
-    ASSERT_EQ(0, (int)w->lasty) << "stationary walkstep should store unit y input";
+    ASSERT_EQ(1, (int)w->lastx()) << "stationary walkstep should store unit x input";
+    ASSERT_EQ(0, (int)w->lasty()) << "stationary walkstep should store unit y input";
 
     // walk() stationary branch.
     ASSERT_TRUE(w->walk(1, 1)) << "stationary walk should succeed";
 
     // turn() stationary branch should not overwrite facing vector.
-    w->lastx = 7;
-    w->lasty = -3;
+    w->set_lastx(7);
+    w->set_lasty(-3);
     (void)w->turn(FACE_LEFT);
-    ASSERT_EQ(7, (int)w->lastx) << "stationary turn should preserve lastx";
-    ASSERT_EQ(-3, (int)w->lasty) << "stationary turn should preserve lasty";
+    ASSERT_EQ(7, (int)w->lastx()) << "stationary turn should preserve lastx";
+    ASSERT_EQ(-3, (int)w->lasty()) << "stationary turn should preserve lasty";
 }
 
 
@@ -341,18 +341,18 @@ TEST(WalkerMovement, walker_walkstep_user_slide_sets_vertical_and_horizontal_dir
     if (!w)
         return;
 
-    w->user = 0;
-    w->stepsize = 2.0f;
+    w->set_user(0);
+    w->set_stepsize(2.0f);
 
     // Horizontal-only slide: up blocked at top edge, right passable.
     w->setxy(32, 0);
-    w->curdir = FACE_DOWN;
+    w->set_curdir(FACE_DOWN);
     (void)w->walkstep(1, -1);
     ASSERT_TRUE(true) << "user slide horizontal branch executed";
 
     // Vertical-only slide: left blocked at left edge, up passable.
     w->setxy(0, 32);
-    w->curdir = FACE_RIGHT;
+    w->set_curdir(FACE_RIGHT);
     (void)w->walkstep(-1, -1);
     ASSERT_TRUE(true) << "user slide vertical branch executed";
 }
@@ -366,7 +366,7 @@ TEST(WalkerMovement, walker_animate_walk)
 {
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     if (!w) return;
-    w->ani_type = ANI_WALK;
+    w->set_ani_type(ANI_WALK);
     w->animate();
 }
 
@@ -375,7 +375,7 @@ TEST(WalkerMovement, walker_animate_attack)
 {
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     if (!w) return;
-    w->ani_type = ANI_ATTACK;
+    w->set_ani_type(ANI_ATTACK);
     w->animate();
 }
 
@@ -389,7 +389,7 @@ TEST(WalkerMovement, walker_animate_all_families)
     for (int i = 0; i < 14; i++) {
         walker* w = make_guy(families[i], 0);
         if (!w) continue;
-        w->ani_type = ANI_WALK;
+        w->set_ani_type(ANI_WALK);
         w->animate();
     }
 }
@@ -404,10 +404,10 @@ TEST(WalkerMovement, round9_user_cardinal_slide_break_and_offmap_guards)
         return;
 
     // User + cardinal blocked move: dx/dy stays 0 in slide switch and returns false.
-    w->user = 0;
-    w->stepsize = 1.0f;
+    w->set_user(0);
+    w->set_stepsize(1.0f);
     w->setxy(0, 16);
-    w->curdir = FACE_LEFT;
+    w->set_curdir(FACE_LEFT);
     ASSERT_TRUE(!w->walkstep(-1, 0)) << "blocked cardinal user slide should fail";
 
     // walk(0,0) early-return path.
@@ -415,7 +415,7 @@ TEST(WalkerMovement, round9_user_cardinal_slide_break_and_offmap_guards)
 
     // Off-map guard in walk().
     w->setxy(0, 0);
-    w->curdir = FACE_LEFT;
+    w->set_curdir(FACE_LEFT);
     ASSERT_TRUE(!w->walk(-1, 0)) << "walk should fail when target is off map";
 }
 
@@ -431,24 +431,24 @@ TEST(WalkerMovement, round9_blocked_animate_angle_and_turn_default_paths)
     // Force an in-bounds blocked move and keep animation active.
     w->stats()->set_bit_flags(BIT_ANIMATE, 1);
     w->setxy(GRID_SIZE, GRID_SIZE);
-    w->curdir = FACE_RIGHT;
+    w->set_curdir(FACE_RIGHT);
     // Moving from (1,1) one tile right targets tile (2,1).
     og::runtime::current_session->myscreen_->world().grid.data[1 * og::runtime::current_session->myscreen_->world().grid.w + 2] = PIX_TREE_M1;
     ASSERT_TRUE(!w->walk(1, 0)) << "blocked movement should fail while still executing animate-on-block path";
 
     // get_current_angle switch branches.
-    w->curdir = FACE_UP;
+    w->set_curdir(FACE_UP);
     ASSERT_TRUE(w->get_current_angle() < 0.0f) << "FACE_UP angle should be negative";
-    w->curdir = 99;
+    w->set_curdir(99);
     ASSERT_EQ(0, (int)w->get_current_angle()) << "invalid direction should use default angle";
 
     // Invalid curdir is clamped before turning; one step toward FACE_UP from clamped
     // FACE_UP results in FACE_UP_LEFT.
-    w->stepsize = 2.0f;
-    w->curdir = static_cast<char>(-120);
+    w->set_stepsize(2.0f);
+    w->set_curdir(static_cast<char>(-120));
     (void)w->turn(FACE_UP);
-    ASSERT_EQ(-2, (int)w->lastx) << "invalid turn direction should clamp and turn safely";
-    ASSERT_EQ(-2, (int)w->lasty) << "invalid turn direction should default lasty to -stepsize";
+    ASSERT_EQ(-2, (int)w->lastx()) << "invalid turn direction should clamp and turn safely";
+    ASSERT_EQ(-2, (int)w->lasty()) << "invalid turn direction should default lasty to -stepsize";
 }
 
 
@@ -461,8 +461,8 @@ TEST(WalkerMovement, walker_create_weapon_soldier)
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     if (!w) return;
     w->setxy(100, 100);
-    w->lastx = 1;
-    w->lasty = 0;
+    w->set_lastx(1);
+    w->set_lasty(0);
 
     walker* weap = w->fire();
     if (weap) {
@@ -477,8 +477,8 @@ TEST(WalkerMovement, walker_create_weapon_archer)
     walker* w = make_guy(FAMILY_ARCHER, 0);
     if (!w) return;
     w->setxy(100, 100);
-    w->lastx = 1;
-    w->lasty = 0;
+    w->set_lastx(1);
+    w->set_lasty(0);
 
     walker* weap = w->fire();
     if (weap) {
@@ -493,8 +493,8 @@ TEST(WalkerMovement, walker_create_weapon_mage)
     walker* w = make_guy(FAMILY_MAGE, 0);
     if (!w) return;
     w->setxy(100, 100);
-    w->lastx = 0;
-    w->lasty = 1;
+    w->set_lastx(0);
+    w->set_lasty(1);
 
     walker* weap = w->fire();
     if (weap) {
@@ -516,19 +516,19 @@ TEST(WalkerMovement, round6_blocked_animate_and_default_angle_turn)
     og::runtime::current_session->myscreen_->world().grid.data[1] = PIX_TREE_M1;
 
     w->setxy(0, 0);
-    w->sizex = 1;
-    w->sizey = 1;
-    w->curdir = FACE_LEFT;
+    w->set_sizex(1);
+    w->set_sizey(1);
+    w->set_curdir(FACE_LEFT);
     w->stats()->set_bit_flags(BIT_ANIMATE, 1);
     (void)w->walk(-1, 0);
     ASSERT_TRUE(true) << "animated off-map walk path executed";
 
     // get_current_angle default branch.
-    w->curdir = static_cast<char>(99);
+    w->set_curdir(static_cast<char>(99));
     ASSERT_EQ(0, (int)w->get_current_angle()) << "invalid direction should map to angle 0";
 
     // turn default branch in lastx/lasty fallback.
-    w->curdir = static_cast<char>(99);
+    w->set_curdir(static_cast<char>(99));
     (void)w->turn(FACE_UP);
     ASSERT_TRUE(true) << "turn should tolerate invalid current direction";
 }
@@ -545,8 +545,8 @@ TEST(WalkerMovement, walker_on_screen)
     w->setxy(100, 100);
     // on_screen() is a render-layer method on pixie, not walker.
     // Verify walker position is set correctly instead.
-    ASSERT_TRUE(w->xpos == 100) << "xpos set";
-    ASSERT_TRUE(w->ypos == 100) << "ypos set";
+    ASSERT_TRUE(w->xpos() == 100) << "xpos set";
+    ASSERT_TRUE(w->ypos() == 100) << "ypos set";
 }
 
 
@@ -572,13 +572,13 @@ TEST(WalkerMovement, walker_draw_tile_phantom_and_forestwalk_paths)
         w->stats()->set_bit_flags(BIT_PHANTOM, 0);
 
         // FORESTWALK draw_tile branch.
-        int tx = w->xpos / GRID_SIZE;
-        int ty = w->ypos / GRID_SIZE;
+        int tx = w->xpos() / GRID_SIZE;
+        int ty = w->ypos() / GRID_SIZE;
         if (tx >= 0 && ty >= 0 && tx < og::runtime::current_session->myscreen_->world().grid.w && ty < og::runtime::current_session->myscreen_->world().grid.h) {
             og::runtime::current_session->myscreen_->world().grid.data[ty * og::runtime::current_session->myscreen_->world().grid.w + tx] = PIX_TREE_T1;
             og::runtime::current_session->myscreen_->world().mysmoother.set_target(og::runtime::current_session->myscreen_->world().grid);
         }
-        w->flight_left = 0;
+        w->set_flight_left(0);
         w->stats()->set_bit_flags(BIT_FLYING, 0);
         (void)draw_walker_tile(*w, vs);
 
@@ -620,8 +620,8 @@ TEST(WalkerMovement, deep_branch_coverage_smoke)
     ASSERT_TRUE(f9 >= 0 && f9 < 8) << "facing value should be valid";
 
     // NPC blocked walkstep fallback switch paths.
-    w->user = -1;
-    w->stepsize = 2.0f;
+    w->set_user(-1);
+    w->set_stepsize(2.0f);
     w->setxy(0, 0);
     (void)w->walkstep(-1, 0);   // FACE_LEFT
     (void)w->walkstep(0, -1);   // FACE_UP
@@ -638,7 +638,7 @@ TEST(WalkerMovement, deep_branch_coverage_smoke)
     (void)w->walkstep(-1, 1);   // FACE_DOWN_LEFT
 
     // User slide internals.
-    w->user = 0;
+    w->set_user(0);
     w->setxy(32, 0);
     (void)w->walkstep(1, -1);   // horizontal slide path
     w->setxy(0, 32);
@@ -646,17 +646,17 @@ TEST(WalkerMovement, deep_branch_coverage_smoke)
 
     // walk() off-map and blocked animate paths.
     w->setxy(0, 0);
-    w->curdir = FACE_LEFT;
+    w->set_curdir(FACE_LEFT);
     w->stats()->set_bit_flags(BIT_ANIMATE, 1);
     (void)w->walk(-1, 0); // off-map check
-    w->curdir = FACE_UP;
+    w->set_curdir(FACE_UP);
     (void)w->walk(0, -1); // blocked move with animate path
 
     // stationary walk branch + turn default branch.
     w->set_order_family(Order::Living, FAMILY_TOWER1);
     (void)w->walk(1, 0);
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
-    w->curdir = 99;
+    w->set_curdir(99);
     (void)w->turn(FACE_UP);
 
     ASSERT_TRUE(true) << "walker movement deep branches executed";
@@ -671,10 +671,10 @@ TEST(WalkerMovement, round6_npc_blocked_switch_and_user_slide_subpaths)
     if (!w)
         return;
 
-    w->stepsize = 2.0f;
+    w->set_stepsize(2.0f);
 
     // NPC blocked switch: force first and baby-step movement failures by placing at edges.
-    w->user = -1;
+    w->set_user(-1);
 
     w->setxy(0, GRID_SIZE * 6);
     (void)w->walkstep(-1, 0);  // FACE_LEFT -> FACE_DOWN fallback
@@ -698,8 +698,8 @@ TEST(WalkerMovement, round6_npc_blocked_switch_and_user_slide_subpaths)
     (void)w->walkstep(-1, 1);  // FACE_DOWN_LEFT diagonal fallback
 
     // User-slide branch internals: one-axis movement results (gotup/gotover flags).
-    w->user = 0;
-    w->stepsize = 2.0f;
+    w->set_user(0);
+    w->set_stepsize(2.0f);
 
     // Top edge: vertical blocked, horizontal passable -> gotover branch.
     w->setxy(GRID_SIZE * 3, 0);
@@ -765,10 +765,10 @@ TEST(WalkerMovement, round6_scripted_walkstep_switch_coverage)
 {
     PixieData px = one_px_for_scripted();
     ScriptedWalkWalker w(px);
-    w.stepsize = 1.0f;
+    w.set_stepsize(1.0f);
 
     // NPC fallback switch: first two attempts fail, case body executes.
-    w.user = -1;
+    w.set_user(-1);
     w.set_walk_results({false, false, true});
     ASSERT_TRUE(w.walkstep(0, -1)) << "FACE_UP npc fallback should return ret1";
 
@@ -795,7 +795,7 @@ TEST(WalkerMovement, round6_scripted_walkstep_switch_coverage)
     ASSERT_TRUE(w.walkstep(-1, -1)) << "FACE_UP_LEFT npc fallback should return ret1";
 
     // User slide switch cardinal branch (dx/dy stays zero and returns false).
-    w.user = 0;
+    w.set_user(0);
     w.set_walk_results({false, false});
     ASSERT_TRUE(!w.walkstep(0, -1)) << "user cardinal blocked path should return false";
 }
@@ -805,8 +805,8 @@ TEST(WalkerMovement, round8_user_slide_switch_default_branch)
 {
     PixieData px = one_px_for_scripted();
     ScriptedWalkWalker w(px);
-    w.stepsize = 1.0f;
-    w.user = 0;
+    w.set_stepsize(1.0f);
+    w.set_user(0);
 
     // User-slide cardinal branch: switch hits the cardinal break path.
     w.set_forced_facing(FACE_UP);
@@ -827,23 +827,22 @@ TEST(WalkerMovement, walker_get_current_angle_all_direction_cases)
     if (!w)
         return;
 
-    w->curdir = FACE_UP;
+    w->set_curdir(FACE_UP);
     ASSERT_TRUE(w->get_current_angle() < -1.0f) << "FACE_UP should be near -pi/2";
-    w->curdir = FACE_UP_RIGHT;
+    w->set_curdir(FACE_UP_RIGHT);
     ASSERT_TRUE(w->get_current_angle() < 0.0f) << "FACE_UP_RIGHT should be negative";
-    w->curdir = FACE_RIGHT;
+    w->set_curdir(FACE_RIGHT);
     ASSERT_EQ(0, (int)w->get_current_angle()) << "FACE_RIGHT should be zero angle";
-    w->curdir = FACE_DOWN_RIGHT;
+    w->set_curdir(FACE_DOWN_RIGHT);
     ASSERT_TRUE(w->get_current_angle() > 0.0f) << "FACE_DOWN_RIGHT should be positive";
-    w->curdir = FACE_DOWN;
+    w->set_curdir(FACE_DOWN);
     ASSERT_TRUE(w->get_current_angle() > 1.0f) << "FACE_DOWN should be near +pi/2";
-    w->curdir = FACE_DOWN_LEFT;
+    w->set_curdir(FACE_DOWN_LEFT);
     ASSERT_TRUE(w->get_current_angle() > 2.0f) << "FACE_DOWN_LEFT should be in third quadrant";
-    w->curdir = FACE_LEFT;
+    w->set_curdir(FACE_LEFT);
     ASSERT_TRUE(w->get_current_angle() > 3.0f) << "FACE_LEFT should be near pi";
-    w->curdir = FACE_UP_LEFT;
+    w->set_curdir(FACE_UP_LEFT);
     ASSERT_TRUE(w->get_current_angle() > 3.5f) << "FACE_UP_LEFT should be near 5*pi/4";
-    w->curdir = static_cast<char>(99);
+    w->set_curdir(static_cast<char>(99));
     ASSERT_EQ(0, (int)w->get_current_angle()) << "invalid direction should use default 0.0 angle";
 }
-

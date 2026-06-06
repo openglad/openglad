@@ -141,12 +141,28 @@ static int options_injector(void* data)
         }
     }
 
-    // Ensure mainmenu() returns so picker_main() can complete.
-    // In test mode, QUIT does not exit the process; it just returns EXIT_VALUE.
-    if (wait_for_interactable("quit", 1000)) {
-        SDL_Delay(80);
-        fprintf(stderr, "  [test] clicking quit\n");
-        interact("quit");
+    // Ensure mainmenu() returns so picker_main() can complete. Coverage builds
+    // can redraw the main menu slowly after leaving options, so keep nudging
+    // Escape / BACK until the quit button appears and can be clicked.
+    const Uint32 quit_deadline = SDL_GetTicks() + 10000;
+    while (SDL_GetTicks() < quit_deadline) {
+        if (wait_for_interactable("quit", 250)) {
+            SDL_Delay(80);
+            fprintf(stderr, "  [test] clicking quit\n");
+            interact("quit");
+            break;
+        }
+
+        if (wait_for_interactable("options_back", 150)) {
+            fprintf(stderr, "  [test] retry clicking options_back\n");
+            interact("options_back");
+            state->used_options_back = true;
+            SDL_Delay(150);
+            continue;
+        }
+
+        inject_key_press(SDLK_ESCAPE, 10);
+        SDL_Delay(50);
     }
 
     state->finished = true;
@@ -184,4 +200,3 @@ TEST(OptionsMenu, options_menu) {
     ASSERT_TRUE(state.exited_controls) << "should have exited via controls_back";
     ASSERT_TRUE(state.used_options_back) << "should have exited options via options_back";
 }
-

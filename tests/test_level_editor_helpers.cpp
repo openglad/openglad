@@ -112,9 +112,9 @@ struct ListsSwap {
     std::list<std::unique_ptr<walker>> saved_ob, saved_fx, saved_weap;
     ListsSwap()
     {
-        saved_ob.splice(saved_ob.end(), og::runtime::current_session->myscreen_->world().oblist);
-        saved_fx.splice(saved_fx.end(), og::runtime::current_session->myscreen_->world().fxlist);
-        saved_weap.splice(saved_weap.end(), og::runtime::current_session->myscreen_->world().weaplist);
+        og::runtime::current_session->myscreen_->world().oblist.splice_into(saved_ob);
+        og::runtime::current_session->myscreen_->world().fxlist.splice_into(saved_fx);
+        og::runtime::current_session->myscreen_->world().weaplist.splice_into(saved_weap);
     }
     ~ListsSwap()
     {
@@ -131,8 +131,8 @@ static std::unique_ptr<walker> make_living(unsigned char family)
         return nullptr;
     auto w = l->create_walker_owned(Order::Living, family);
     if (w) {
-        w->dead = 0;
-        w->user = -1;
+        w->set_dead(0);
+        w->set_user(-1);
     }
     return w;
 }
@@ -155,7 +155,7 @@ TEST(LevelEditorHelpers, level_editor_some_hit_checks_all_lists)
 
     walker* hit = some_hit(10, 10, probep, &og::runtime::current_session->myscreen_->level_runtime_data());
     ASSERT_TRUE(hit == target1p) << "some_hit should find hit in oblist";
-    ASSERT_TRUE(probep->collide_ob == target1p) << "collide_ob should be set";
+    ASSERT_TRUE(probep->collide_ob() == target1p) << "collide_ob should be set";
 
     og::runtime::current_session->myscreen_->world().oblist.clear();
 
@@ -182,7 +182,7 @@ TEST(LevelEditorHelpers, level_editor_some_hit_checks_all_lists)
     // no hit
     hit = some_hit(1000, 1000, probep, &og::runtime::current_session->myscreen_->level_runtime_data());
     ASSERT_TRUE(hit == nullptr) << "some_hit should return null when no overlap";
-    ASSERT_TRUE(probep->collide_ob == nullptr) << "collide_ob should be cleared on miss";
+    ASSERT_TRUE(probep->collide_ob() == nullptr) << "collide_ob should be cleared on miss";
 }
 
 
@@ -256,4 +256,3 @@ TEST(LevelEditorHelpers, level_editor_create_new_campaign_and_detect_exists)
 
     delete_campaign(id);
 }
-

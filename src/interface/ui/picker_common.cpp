@@ -5,6 +5,7 @@
  */
 
 #include <openglad/interface/ui/picker_common.h>
+#include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
@@ -630,9 +631,10 @@ TrainSession::TrainSession(SaveData& save)
     if (save_.team_size < 1)
         return;
 
-    // Find first non-null team slot
+    // Find first editable team slot. Network lobbies render remote players in
+    // the shared save view, but only the local player's slots may be trained.
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
-        if (save_.team_list[i]) {
+        if (save_.team_list[i] && picker_lobby_save_slot_editable(i)) {
             edit_slot_ = i;
             break;
         }
@@ -643,7 +645,7 @@ TrainSession::TrainSession(SaveData& save)
 
 bool TrainSession::empty() const
 {
-    return save_.team_size < 1 || !working_;
+    return save_.team_size < 1 || !working_ || original_member() == nullptr;
 }
 
 void TrainSession::next_member()
@@ -656,7 +658,9 @@ void TrainSession::next_member()
         edit_slot_++;
         if (edit_slot_ >= MAX_TEAM_SIZE)
             edit_slot_ = 0;
-    } while (!save_.team_list[edit_slot_] && edit_slot_ != start);
+    } while ((!save_.team_list[edit_slot_] ||
+              !picker_lobby_save_slot_editable(edit_slot_)) &&
+             edit_slot_ != start);
 
     select_current_slot();
 }
@@ -671,7 +675,9 @@ void TrainSession::prev_member()
         edit_slot_--;
         if (edit_slot_ < 0)
             edit_slot_ = MAX_TEAM_SIZE - 1;
-    } while (!save_.team_list[edit_slot_] && edit_slot_ != start);
+    } while ((!save_.team_list[edit_slot_] ||
+              !picker_lobby_save_slot_editable(edit_slot_)) &&
+             edit_slot_ != start);
 
     select_current_slot();
 }
@@ -725,10 +731,11 @@ void TrainSession::decrease_stat(Stat stat, int amount)
     if (stat == Stat::Level) {
         if (!stats_increased()) {
             short newlevel = static_cast<short>(static_cast<int>(working_->level) - delta);
-            if (newlevel > 0 && newlevel >= original_->level) {
+            const guy* const original = original_member();
+            if (original && newlevel > 0 && newlevel >= original->level) {
                 working_->upgrade_to_level(newlevel);
-                if (working_->level == original_->level)
-                    working_->exp = original_->exp;
+                if (working_->level == original->level)
+                    working_->exp = original->exp;
             }
         }
     } else {
@@ -758,22 +765,32 @@ void TrainSession::decrease_stat(Stat stat, int amount)
     clamp_working_stats();
 }
 
+void TrainSession::set_team(int team_num)
+{
+    if (!working_)
+        return;
+
+    working_->teamnum =
+        static_cast<short>(std::clamp(team_num, 0, static_cast<int>(SCORE_TEAM_COUNT) - 1));
+}
+
 bool TrainSession::accept(bool force)
 {
-    if (!working_ || !original_)
+    guy* const original = original_member();
+    if (!working_ || !original)
         return false;
 
     std::uint32_t cost = current_cost();
 
     if (!force) {
         // If cost is 0 but stats changed, that's a cost overflow — reject and revert
-        if (cost == 0 && (working_->strength != original_->strength ||
-                          working_->dexterity != original_->dexterity ||
-                          working_->constitution != original_->constitution ||
-                          working_->intelligence != original_->intelligence ||
-                          working_->armor != original_->armor ||
-                          working_->level != original_->level)) {
-            statscopy(working_.get(), original_);
+        if (cost == 0 && (working_->strength != original->strength ||
+                          working_->dexterity != original->dexterity ||
+                          working_->constitution != original->constitution ||
+                          working_->intelligence != original->intelligence ||
+                          working_->armor != original->armor ||
+                          working_->level != original->level)) {
+            statscopy(working_.get(), original);
             return false;
         }
 
@@ -783,10 +800,10 @@ bool TrainSession::accept(bool force)
         save_.m_totalcash[working_->teamnum] -= cost;
     }
 
-    if (original_->level != working_->level)
+    if (original->level != working_->level)
         working_->upgrade_to_level(working_->level);
 
-    statscopy(original_, working_.get());
+    statscopy(original, working_.get());
 
     return true;
 }
@@ -798,34 +815,37 @@ const guy& TrainSession::working_copy() const
 
 const guy& TrainSession::original() const
 {
-    return *original_;
+    return *original_member();
 }
 
 std::uint32_t TrainSession::current_cost() const
 {
-    if (!working_ || !original_)
+    const guy* const original = original_member();
+    if (!working_ || !original)
         return 0;
-    return calculate_train_cost(*working_, *original_);
+    return calculate_train_cost(*working_, *original);
 }
 
 bool TrainSession::level_increased() const
 {
-    if (!working_ || !original_)
+    const guy* const original = original_member();
+    if (!working_ || !original)
         return false;
-    return original_->level < working_->level;
+    return original->level < working_->level;
 }
 
 bool TrainSession::stats_increased() const
 {
-    if (!working_ || !original_)
+    const guy* const original = original_member();
+    if (!working_ || !original)
         return false;
     if (level_increased())
         return false;
-    return (original_->strength < working_->strength
-         || original_->dexterity < working_->dexterity
-         || original_->constitution < working_->constitution
-         || original_->intelligence < working_->intelligence
-         || original_->armor < working_->armor);
+    return (original->strength < working_->strength
+         || original->dexterity < working_->dexterity
+         || original->constitution < working_->constitution
+         || original->intelligence < working_->intelligence
+         || original->armor < working_->armor);
 }
 
 int TrainSession::current_slot() const
@@ -835,34 +855,52 @@ int TrainSession::current_slot() const
 
 void TrainSession::select_current_slot()
 {
-    if (!save_.team_list[edit_slot_]) {
+    const guy* const original = original_member();
+    if (!original) {
         working_.reset();
-        original_ = nullptr;
         return;
     }
 
-    original_ = save_.team_list[edit_slot_].get();
-    working_ = std::make_unique<guy>(original_->family);
-    statscopy(working_.get(), original_);
+    working_ = std::make_unique<guy>(original->family);
+    statscopy(working_.get(), original);
+}
+
+guy* TrainSession::original_member()
+{
+    if (edit_slot_ < 0 || edit_slot_ >= MAX_TEAM_SIZE)
+        return nullptr;
+    if (!picker_lobby_save_slot_editable(edit_slot_))
+        return nullptr;
+    return save_.team_list[edit_slot_].get();
+}
+
+const guy* TrainSession::original_member() const
+{
+    if (edit_slot_ < 0 || edit_slot_ >= MAX_TEAM_SIZE)
+        return nullptr;
+    if (!picker_lobby_save_slot_editable(edit_slot_))
+        return nullptr;
+    return save_.team_list[edit_slot_].get();
 }
 
 void TrainSession::clamp_working_stats()
 {
-    if (!working_ || !original_)
+    const guy* const original = original_member();
+    if (!working_ || !original)
         return;
 
-    if (working_->strength < original_->strength)
-        working_->strength = original_->strength;
-    if (working_->dexterity < original_->dexterity)
-        working_->dexterity = original_->dexterity;
-    if (working_->constitution < original_->constitution)
-        working_->constitution = original_->constitution;
-    if (working_->intelligence < original_->intelligence)
-        working_->intelligence = original_->intelligence;
-    if (working_->armor < original_->armor)
-        working_->armor = original_->armor;
-    if (working_->level < original_->level)
-        working_->upgrade_to_level(original_->level);
+    if (working_->strength < original->strength)
+        working_->strength = original->strength;
+    if (working_->dexterity < original->dexterity)
+        working_->dexterity = original->dexterity;
+    if (working_->constitution < original->constitution)
+        working_->constitution = original->constitution;
+    if (working_->intelligence < original->intelligence)
+        working_->intelligence = original->intelligence;
+    if (working_->armor < original->armor)
+        working_->armor = original->armor;
+    if (working_->level < original->level)
+        working_->upgrade_to_level(original->level);
 }
 
 } // namespace og::ui

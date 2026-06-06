@@ -53,17 +53,17 @@ void walker::attach_render(const PixieData& data)
 {
 	render_ = std::make_unique<WalkerRender>(data);
 	// Sync size from PixieData into SimEntity fields
-	sizex = data.w;
-	sizey = data.h;
+	set_sizex(data.w);
+	set_sizey(data.h);
 	frames = data.frames;
-	frame = 0;
+	set_frame_state(0);
 }
 
 void walker::set_data(const PixieData& data)
 {
 	// Update render graphics and sync sim-level size/frame fields
-	sizex = data.w;
-	sizey = data.h;
+	set_sizex(data.w);
+	set_sizey(data.h);
 	frames = data.frames;
 	if (WalkerRender* render = as_walker_render(this))
 		render->set_data(data);
@@ -79,7 +79,7 @@ short walker::set_frame(short framenum)
 {
 	if (framenum < 0 || framenum >= frames)
 		return 0;
-	frame = framenum;
+	set_frame_state(framenum);
 	if (WalkerRender* render = as_walker_render(this))
 		render->set_frame(framenum);
 	return 1;
@@ -87,7 +87,7 @@ short walker::set_frame(short framenum)
 
 void walker::set_direct_frame(short whichframe)
 {
-	frame = whichframe;
+	set_frame_state(whichframe);
 
 	// Update render component's bmp pointer if available
 	if (WalkerRender* render = as_walker_render(this))
@@ -96,20 +96,26 @@ void walker::set_direct_frame(short whichframe)
 
 walker::~walker()
 {
-	foe = nullptr;
-	leader = nullptr;
-	owner = nullptr;
-	collide_ob = nullptr;
-	dead = 1;
+	set_foe(nullptr);
+	set_leader(nullptr);
+	set_owner(nullptr);
+	set_collide_ob(nullptr);
+	set_dead(1);
 
-	// Walkers can outlive a particular GameWorld::myobmap instance in tests
-	// (screen cleanup replaces the obmap). Ensure we remove from the current
-	// active obmap if present.
-	obmap* active = (current_game != nullptr && current_game->world != nullptr)
-	    ? current_game->world->myobmap.get()
-	    : nullptr;
+	// Prefer the owning world so teardown works even when destruction happens
+	// under a different active gameplay context (for example, hidden server
+	// sessions inside the local transport runtime).
+	GameWorld* const owning_world = owning_world_;
+	obmap* active = (owning_world != nullptr) ? owning_world->myobmap.get() : nullptr;
+	if (active == nullptr &&
+	    current_game != nullptr &&
+	    current_game->world != nullptr)
+	{
+		active = current_game->world->myobmap.get();
+	}
 	if (active != nullptr)
 		active->remove(this);
+	owning_world_ = nullptr;
 
 	stats_.reset();
 	render_.reset();

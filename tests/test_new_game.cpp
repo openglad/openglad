@@ -22,6 +22,9 @@ extern int g_picker_max_mainmenu_calls;
 #include <openglad/interface/ui/picker_ui_state.h>
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
 
+namespace {
+constexpr int kTeamMenuTimeoutMs = 20000;
+}
 
 static void cleanup_picker_state()
 {
@@ -37,21 +40,39 @@ static void cleanup_picker_state()
     pks().main_title_logo_data.free();
 }
 
+static bool wait_for_team_menu(int timeout_ms = kTeamMenuTimeoutMs)
+{
+    int elapsed = 0;
+    const int poll_interval = 50;
+    while (elapsed < timeout_ms) {
+        if (has_interactable("view_team") && has_interactable("networking"))
+            return true;
+
+        SDL_Delay(poll_interval);
+        elapsed += poll_interval;
+    }
+
+    fprintf(stderr, "  [interact] TIMEOUT entering team menu (%d ms)\n",
+            timeout_ms);
+    return false;
+}
+
 // Test: Click "BEGIN NEW GAME" from the main menu, which should reset save data
-// and enter the hire troops screen. Then click BACK to return to the team menu,
-// and BACK again to return to the main menu.
+// and land directly on the team-build screen with Networking available.
+// Then click BACK to return to the main menu.
 //
 // This verifies:
 //   1. The begin_new_game button works
 //   2. Save data gets reset on new game
-//   3. The hire menu appears (with popup dialog)
-//   4. Navigation back to main menu works
+//   3. The team-build menu appears immediately after the intro
+//   4. Networking is available from that menu
+//   5. Navigation back to main menu works
 
 struct NewGameState {
     bool started;
     bool finished;
-    bool saw_hire_menu;
     bool saw_team_menu;
+    bool saw_networking_button;
 };
 
 static int new_game_injector(void* data)
@@ -73,23 +94,11 @@ static int new_game_injector(void* data)
     fprintf(stderr, "  [test] dismissing campaign intro with Escape\n");
     inject_key_press(SDLK_ESCAPE);
 
-    // In TESTING builds, popup_dialog() is a no-op, so no "ok" button exists.
-
-    // Now we should be in the hire menu with hire_me, prev, next, back buttons
+    // Now we should be on the team-build menu immediately.
     SDL_Delay(500);
-    if (wait_for_interactable("hire_me", 10000)) {
-        state->saw_hire_menu = true;
-        SDL_Delay(500);
-
-        // Click BACK to return to create_team_menu
-        fprintf(stderr, "  [test] clicking back from hire menu\n");
-        interact("back");
-    }
-
-    // create_hire_menu returns REDRAW, which puts us back in create_team_menu
-    SDL_Delay(500);
-    if (wait_for_interactable("view_team", 10000)) {
+    if (wait_for_team_menu()) {
         state->saw_team_menu = true;
+        state->saw_networking_button = has_interactable("networking");
         SDL_Delay(750);
 
         // Click BACK to return to main menu
@@ -136,11 +145,10 @@ TEST(NewGame, begin_new_game) {
     g_picker_max_mainmenu_calls = 0;
 
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
-    ASSERT_TRUE(state.saw_hire_menu) << "should have seen the hire menu after new game";
-    ASSERT_TRUE(state.saw_team_menu) << "should have returned to team menu from hire";
+    ASSERT_TRUE(state.saw_team_menu) << "should have landed on the team menu after new game";
+    ASSERT_TRUE(state.saw_networking_button) << "networking should be available immediately after new game";
 
     // beginmenu calls save_data.reset(), so cash should be the default (starting cash)
     // rather than our 99999
     ASSERT_TRUE(og::runtime::current_session->myscreen_->save_data.totalcash != 99999) << "totalcash should have been reset by new game";
 }
-

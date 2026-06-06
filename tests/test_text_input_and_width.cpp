@@ -77,7 +77,9 @@ TEST(TextInputAndWidth, text_input_string_value_accepts_textinput_and_return)
 
     ASSERT_TRUE(v.has_value()) << "input_string_value should return a value";
     if (v.has_value())
+    {
         ASSERT_TRUE(*v == "ab") << "input_string_value should capture injected text";
+    }
 }
 
 
@@ -95,4 +97,3 @@ TEST(TextInputAndWidth, text_input_string_value_escape_returns_nullopt)
 
     ASSERT_TRUE(!v.has_value()) << "escape should cancel and return nullopt";
 }
-

@@ -36,6 +36,8 @@
 
 #include <openglad/interface/ui/campaign_picker.h>
 #include <openglad/interface/ui/level_picker.h>
+#include <openglad/interface/ui/picker_lobby_client.h>
+#include <openglad/interface/ui/menu_model.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
 #include <openglad/interface/ui/picker_common.h>
@@ -115,6 +117,138 @@ Sint32 change_hire_teamnum(Sint32 arg);
 Sint32 create_detail_menu(guy *arg1);
 void glad_main(Sint32 playermode);
 void statscopy(guy *dest, guy *source);
+void picker_lobby_initialize_from_save();
+void picker_reinitialize_lobby_after_game();
+void picker_lobby_sync_roster_from_save();
+void picker_lobby_sync_settings_from_save();
+void picker_lobby_poll();
+bool picker_lobby_request_start();
+bool picker_lobby_start_request_pending();
+extern bool g_start_game_requested;
+
+static void show_need_team_to_train_popup()
+{
+    popup_dialog("NEED A TEAM!", "You need to\nhire a team\nto train");
+}
+
+static bool save_has_trainable_team_member(const SaveData& save)
+{
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i) {
+        if (save.team_list[i] && picker_lobby_save_slot_editable(i))
+            return true;
+    }
+    return false;
+}
+
+void picker_prepare_async_team_build_start_request()
+{
+    picker_lobby_sync_settings_from_save();
+    picker_lobby_sync_roster_from_save();
+
+    const bool start_already_requested =
+        g_start_game_requested && picker_lobby_has_game_start_config();
+    if (start_already_requested)
+        return;
+
+    g_start_game_requested = false;
+#ifdef __EMSCRIPTEN__
+    picker_request_start_game();
+#else
+    (void)picker_lobby_request_start();
+#endif
+}
+
+static bool team_build_remote_start_requested(Sint32& retvalue)
+{
+    if (!g_start_game_requested || !picker_lobby_has_game_start_config())
+        return false;
+
+    pks().selected_menu_item = og::ui::find_picker_menu_item(
+        og::ui::PickerMenuId::TeamBuild,
+        og::ui::PickerMenuCommand::StartGame);
+    retvalue = MENU_EXIT;
+    return true;
+}
+
+static bool team_build_start_selected()
+{
+    return pks().selected_menu_item != nullptr
+        && pks().selected_menu_item->command ==
+            og::ui::PickerMenuCommand::StartGame;
+}
+
+constexpr int kTeamBuildGoButtonIndex = 5;
+constexpr int kTeamBuildProgressButtonIndex = 7;
+constexpr int kTeamBuildSetLevelButtonIndex = 8;
+constexpr int kTeamBuildSetCampaignButtonIndex = 10;
+constexpr int kViewTeamGoButtonIndex = 0;
+
+void sync_button_hidden_state(const button* buttons, int button_index)
+{
+    if (buttons == nullptr || button_index < 0)
+        return;
+    if (og::runtime::current_session->allbuttons_[button_index] == nullptr)
+        return;
+
+    og::runtime::current_session->allbuttons_[button_index]->hidden =
+        buttons[button_index].hidden;
+}
+
+void ensure_highlighted_button_visible(const button* buttons,
+                                       int num_buttons,
+                                       int& highlighted_button)
+{
+    if (buttons == nullptr || num_buttons <= 0)
+        return;
+
+    if (highlighted_button >= 0 && highlighted_button < num_buttons &&
+        !buttons[highlighted_button].hidden)
+    {
+        return;
+    }
+
+    for (int index = 0; index < num_buttons; ++index)
+    {
+        if (!buttons[index].hidden)
+        {
+            highlighted_button = index;
+            return;
+        }
+    }
+
+    highlighted_button = 0;
+}
+
+void sync_team_build_host_control_visibility(button* buttons,
+                                             int num_buttons,
+                                             int& highlighted_button)
+{
+    if (buttons == nullptr || num_buttons <= kTeamBuildSetCampaignButtonIndex)
+        return;
+
+    const bool host_controls_visible = picker_lobby_host_controls_visible();
+    buttons[kTeamBuildGoButtonIndex].hidden = !host_controls_visible;
+    buttons[kTeamBuildSetLevelButtonIndex].hidden = !host_controls_visible;
+    buttons[kTeamBuildSetCampaignButtonIndex].hidden = !host_controls_visible;
+
+    sync_button_hidden_state(buttons, kTeamBuildGoButtonIndex);
+    sync_button_hidden_state(buttons, kTeamBuildSetLevelButtonIndex);
+    sync_button_hidden_state(buttons, kTeamBuildSetCampaignButtonIndex);
+    ensure_highlighted_button_visible(buttons, num_buttons, highlighted_button);
+}
+
+void sync_view_team_host_control_visibility(button* buttons,
+                                            int num_buttons,
+                                            int& highlighted_button)
+{
+    if (buttons == nullptr || num_buttons <= kViewTeamGoButtonIndex)
+        return;
+
+    buttons[kViewTeamGoButtonIndex].hidden =
+        !picker_lobby_host_controls_visible();
+    sync_button_hidden_state(buttons, kViewTeamGoButtonIndex);
+    ensure_highlighted_button_visible(buttons, num_buttons, highlighted_button);
+}
 
 // Per-session picker message buffer: access via current_session->message_.
 
@@ -129,11 +263,11 @@ void statscopy(guy *dest, guy *source);
 static og::ui::DerivedStats compute_guy_derived_stats(const guy& g)
 {
     auto pix = PIX(Order::Living, g.family);
-    return og::ui::compute_derived_stats(g,
-        og::runtime::current_session->myscreen_->myloader->hitpoints[pix],
-        og::runtime::current_session->myscreen_->myloader->damage[pix],
-        og::runtime::current_session->myscreen_->myloader->stepsizes[pix],
-        og::runtime::current_session->myscreen_->myloader->fire_frequency[pix]);
+	return og::ui::compute_derived_stats(g,
+	    og::runtime::current_session->myscreen_->myloader->hitpoints[pix],
+	    og::runtime::current_session->myscreen_->myloader->damage[pix],
+	    og::runtime::current_session->myscreen_->myloader->stepsizes[pix],
+	    og::runtime::current_session->myscreen_->myloader->fire_frequency[pix]);
 }
 
 // Draw the HP/MP/ATK/DEF/SPD/ATK_SPD derived stats block.
@@ -165,13 +299,8 @@ static void draw_derived_stats_block(text& mytext, const og::ui::DerivedStats& d
 
 Sint32 create_team_menu(Sint32 arg1)
 {
+    (void)arg1;
 	Sint32 retvalue=0;
-
-	if (arg1 == 1)
-    {
-        // Go straight to the hiring screen if we just started a new game.
-        retvalue = create_hire_menu(arg1);
-    }
 
 		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
 
@@ -182,6 +311,8 @@ Sint32 create_team_menu(Sint32 arg1)
 	button* buttons = picker_createmenu_buttons();
 	int num_buttons = picker_createmenu_button_count();
 	int highlighted_button = 1;
+    sync_team_build_host_control_visibility(
+        buttons, num_buttons, highlighted_button);
 	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
 	draw_backdrop();
 	draw_buttons(buttons, num_buttons);
@@ -192,6 +323,11 @@ Sint32 create_team_menu(Sint32 arg1)
 	
 	while ( !(retvalue & MENU_EXIT) )
 	{
+        picker_lobby_poll();
+        sync_team_build_host_control_visibility(
+            buttons, num_buttons, highlighted_button);
+        if (team_build_remote_start_requested(retvalue))
+            break;
 	    // Input
 		if(leftmouse(buttons))
 			retvalue = og::runtime::current_session->localbuttons_->leftclick();
@@ -219,15 +355,65 @@ Sint32 create_team_menu(Sint32 arg1)
 		og::runtime::current_session->myscreen_->clearbuffer();
         draw_backdrop();
         draw_buttons(buttons, num_buttons);
+
+        const std::vector<std::string> lobby_status = picker_lobby_status_lines();
+        for (std::size_t line_index = 0;
+             line_index < lobby_status.size() && line_index < 2;
+             ++line_index)
+        {
+            const std::string& line = lobby_status[line_index];
+            if (line.empty())
+                continue;
+
+            const int status_y = 8 + static_cast<int>(line_index) * 10;
+            const int status_w = static_cast<int>(line.size()) * 6;
+            og::runtime::current_session->myscreen_->draw_rect_filled(
+                10,
+                status_y - 1,
+                status_w + 4,
+                8,
+                PURE_BLACK,
+                150);
+            mytext.write_xy(12, status_y, WHITE, "%s", line.c_str());
+        }
         
         // Level name
         int len = static_cast<int>(og::runtime::current_session->myscreen_->world().title.size());
-        og::runtime::current_session->myscreen_->draw_rect_filled(buttons[7].x + buttons[7].sizex - 6*len - 2, buttons[7].y - 8 - 1, 6*len + 4, 8, PURE_BLACK, 150);
-        mytext.write_xy(buttons[7].x + buttons[7].sizex - 6*len, buttons[7].y - 8, WHITE, "%s", og::runtime::current_session->myscreen_->world().title.c_str());
+        og::runtime::current_session->myscreen_->draw_rect_filled(
+            buttons[kTeamBuildProgressButtonIndex].x +
+                buttons[kTeamBuildProgressButtonIndex].sizex - 6 * len - 2,
+            buttons[kTeamBuildProgressButtonIndex].y - 8 - 1,
+            6 * len + 4,
+            8,
+            PURE_BLACK,
+            150);
+        mytext.write_xy(
+            buttons[kTeamBuildProgressButtonIndex].x +
+                buttons[kTeamBuildProgressButtonIndex].sizex - 6 * len,
+            buttons[kTeamBuildProgressButtonIndex].y - 8,
+            WHITE,
+            "%s",
+            og::runtime::current_session->myscreen_->world().title.c_str());
         // Campaign name
         len = static_cast<int>(og::runtime::current_session->myscreen_->save_data.current_campaign.size());
-        og::runtime::current_session->myscreen_->draw_rect_filled(buttons[8].x + buttons[8].sizex - 6*len - 2, buttons[8].y - 8 - 1, 6*len + 4, 8, PURE_BLACK, 150);
-        mytext.write_xy(buttons[8].x + buttons[8].sizex - 6*static_cast<int>(og::runtime::current_session->myscreen_->save_data.current_campaign.size()), buttons[8].y - 8, WHITE, "%s", og::runtime::current_session->myscreen_->save_data.current_campaign.c_str());
+        og::runtime::current_session->myscreen_->draw_rect_filled(
+            buttons[kTeamBuildSetLevelButtonIndex].x +
+                buttons[kTeamBuildSetLevelButtonIndex].sizex - 6 * len - 2,
+            buttons[kTeamBuildSetLevelButtonIndex].y - 8 - 1,
+            6 * len + 4,
+            8,
+            PURE_BLACK,
+            150);
+        mytext.write_xy(
+            buttons[kTeamBuildSetLevelButtonIndex].x +
+                buttons[kTeamBuildSetLevelButtonIndex].sizex -
+                6 * static_cast<int>(
+                        og::runtime::current_session
+                            ->myscreen_->save_data.current_campaign.size()),
+            buttons[kTeamBuildSetLevelButtonIndex].y - 8,
+            WHITE,
+            "%s",
+            og::runtime::current_session->myscreen_->save_data.current_campaign.c_str());
         
         draw_highlight(buttons[highlighted_button]);
         og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
@@ -255,10 +441,17 @@ Sint32 create_view_menu(Sint32 arg1)
 	button* buttons = picker_viewteam_buttons();
 	int num_buttons = picker_viewteam_button_count();
 	int highlighted_button = 1;
+    sync_view_team_host_control_visibility(
+        buttons, num_buttons, highlighted_button);
 	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
 
 	while ( !(retvalue & MENU_EXIT) )
 	{
+        picker_lobby_poll();
+        sync_view_team_host_control_visibility(
+            buttons, num_buttons, highlighted_button);
+        if (team_build_remote_start_requested(retvalue))
+            break;
 	    // Input
 		if(leftmouse(buttons))
 			retvalue = og::runtime::current_session->localbuttons_->leftclick();
@@ -374,6 +567,9 @@ Sint32 create_progress_menu(Sint32 arg1)
 
     while (!(retvalue & MENU_EXIT))
     {
+        picker_lobby_poll();
+        if (team_build_remote_start_requested(retvalue))
+            break;
         // Input
         if (leftmouse(buttons))
             retvalue = og::runtime::current_session->localbuttons_->leftclick();
@@ -387,6 +583,9 @@ Sint32 create_progress_menu(Sint32 arg1)
         const int my = static_cast<int>(mymouse.y);
         if (clicked) {
             while (mymouse.left) {
+                picker_lobby_poll();
+                if (team_build_remote_start_requested(retvalue))
+                    return retvalue;
                 og::input_native::sleep_ms(1);
                 get_input_events(POLL);
             }
@@ -425,6 +624,7 @@ Sint32 create_progress_menu(Sint32 arg1)
                         my >= row_y && my <= row_y + row_height) {
                         // Set current level and exit
                         og::runtime::current_session->myscreen_->save_data.scen_num = static_cast<short>(lp.id);
+                        picker_lobby_sync_settings_from_save();
                         og::runtime::current_session->myscreen_->clearbuffer();
                         return MENU_REDRAW;
                     }
@@ -611,6 +811,9 @@ Sint32 create_hire_menu(Sint32 arg1)
 
 	while ( !(retvalue & MENU_EXIT) )
 	{
+        picker_lobby_poll();
+        if (team_build_remote_start_requested(retvalue))
+            break;
 	    // Input
 		clickvalue = leftmouse(buttons);
 		if (clickvalue == 1)
@@ -779,6 +982,7 @@ Sint32 create_train_menu(Sint32 arg1)
 	Sint32 start_time = query_timer();
 	Uint32 current_cost;
 	Sint32 clickvalue;
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
 	
     UiRect stat_box = {38, 66, 82, 94};
     UiRect stat_box_inner = {stat_box.x + 4, stat_box.y + 4, stat_box.w - 8, stat_box.h - 8};
@@ -790,10 +994,10 @@ Sint32 create_train_menu(Sint32 arg1)
 	if (arg1)
 		arg1 = 1;
 
-	// Make sure we have a valid team
-	if (og::runtime::current_session->myscreen_->save_data.team_size < 1)
+	// Make sure we have a local team member we can train.
+	if (save.team_size < 1 || !save_has_trainable_team_member(save))
 	{
-		popup_dialog("NEED A TEAM!", "You need to\nhire a team\nto train");
+        show_need_team_to_train_popup();
 		
 		return MENU_OK;
 	}
@@ -822,13 +1026,14 @@ Sint32 create_train_menu(Sint32 arg1)
 			og::runtime::current_session->allbuttons_[i]->set_graphic(FAMILY_PLUS);
 	}
 
-	
-	auto& ourteam = og::runtime::current_session->myscreen_->save_data.team_list;
-
-    og::ui::TrainSession train_session(og::runtime::current_session->myscreen_->save_data);
+    og::ui::TrainSession train_session(save);
     pks().train_session = &train_session;
     sync_current_guy_from_train();
-    guy* here = ourteam[og::runtime::current_session->editguy_].get();
+    if (pks().train_session->empty()) {
+        pks().train_session = nullptr;
+        show_need_team_to_train_popup();
+        return MENU_OK;
+    }
     current_cost = pks().train_session->current_cost();
 
 	grab_mouse();
@@ -839,6 +1044,9 @@ Sint32 create_train_menu(Sint32 arg1)
 
 	while ( !(retvalue & MENU_EXIT) )
 	{
+        picker_lobby_poll();
+        if (team_build_remote_start_requested(retvalue))
+            break;
 	    // Input
 		clickvalue = leftmouse(buttons);
 		if (clickvalue == 1)
@@ -847,6 +1055,11 @@ Sint32 create_train_menu(Sint32 arg1)
 			retvalue = og::runtime::current_session->localbuttons_->rightclick();
         
         handle_menu_nav(buttons, highlighted_button, retvalue);
+
+        // Nested menus can replace the global button array before returning.
+        // Once a submenu requests EXIT, stop drawing this menu immediately.
+        if (retvalue & MENU_EXIT)
+            break;
         
         // Reset buttons
         if(og::runtime::current_session->localbuttons_ && (retvalue == MENU_OK || retvalue == MENU_REDRAW))
@@ -867,8 +1080,6 @@ Sint32 create_train_menu(Sint32 arg1)
 
             if (!og::runtime::current_session->current_guy_)
                 sync_current_guy_from_train();
-            if (here != ourteam[og::runtime::current_session->editguy_].get())
-                here = ourteam[og::runtime::current_session->editguy_].get();
             current_cost = pks().train_session->current_cost();
             retvalue = 0;
         }
@@ -898,13 +1109,14 @@ Sint32 create_train_menu(Sint32 arg1)
         
         bool level_increased = pks().train_session->level_increased();
         bool stat_increased = pks().train_session->stats_increased();
+        const guy& original_guy = pks().train_session->original();
 
         struct { const char* label; short cur_val; short old_val; } train_stats[] = {
-            {"  STR:", og::runtime::current_session->current_guy_->strength,     here->strength},
-            {"  DEX:", og::runtime::current_session->current_guy_->dexterity,    here->dexterity},
-            {"  CON:", og::runtime::current_session->current_guy_->constitution, here->constitution},
-            {"  INT:", og::runtime::current_session->current_guy_->intelligence, here->intelligence},
-            {"ARMOR:", og::runtime::current_session->current_guy_->armor,        here->armor},
+            {"  STR:", og::runtime::current_session->current_guy_->strength,     original_guy.strength},
+            {"  DEX:", og::runtime::current_session->current_guy_->dexterity,    original_guy.dexterity},
+            {"  CON:", og::runtime::current_session->current_guy_->constitution, original_guy.constitution},
+            {"  INT:", og::runtime::current_session->current_guy_->intelligence, original_guy.intelligence},
+            {"ARMOR:", og::runtime::current_session->current_guy_->armor,        original_guy.armor},
         };
         for (auto& s : train_stats) {
             og::runtime::current_session->message_ = std::format("{}", s.cur_val);
@@ -1013,6 +1225,10 @@ Sint32 create_train_menu(Sint32 arg1)
 	pks().train_session = nullptr;
 	og::runtime::current_session->myscreen_->clearbuffer();
 	//myscreen->clearscreen();
+    if ((retvalue & MENU_EXIT) && team_build_start_selected())
+    {
+        return MENU_EXIT;
+    }
 	return MENU_REDRAW;
 }
 
@@ -1031,6 +1247,9 @@ static Sint32 create_slot_menu(button* buttons, int num_buttons, const char* tit
 
 	while ( !(retvalue & MENU_EXIT) )
 	{
+        picker_lobby_poll();
+        if (team_build_remote_start_requested(retvalue))
+            break;
 	    // Input
 		if(leftmouse(buttons))
         {
@@ -1170,15 +1389,15 @@ Sint32 cycle_guy(Sint32 whichway)
 		newfamily = og::runtime::current_session->current_guy_->family;
 
 		mywalker = og::runtime::current_session->myscreen_->myloader->create_walker_owned(Order::Living, newfamily);
-		mywalker->stats()->bit_flags = 0;
-		mywalker->curdir = static_cast<signed char>(((frames/192) + FACE_DOWN)%8);
-		mywalker->ani_type = ANI_WALK;
+		mywalker->stats()->set_bit_flags(0);
+		mywalker->set_curdir(static_cast<signed char>(((frames/192) + FACE_DOWN)%8));
+		mywalker->set_ani_type(ANI_WALK);
 		for (i=0; i <= (frames/12)%4; i++)
 			mywalker->animate();
-		//mywalker->team_num = ourteam[editguy]->teamnum;
-		mywalker->team_num = static_cast<unsigned char>(og::runtime::current_session->current_guy_->teamnum);
+		//mywalker->set_team_num(ourteam[editguy]->teamnum);
+		mywalker->set_team_num(static_cast<unsigned char>(og::runtime::current_session->current_guy_->teamnum));
 
-	mywalker->setxy(centerx - (mywalker->sizex/2), centery - (mywalker->sizey/2));
+	mywalker->setxy(centerx - (mywalker->sizex()/2), centery - (mywalker->sizey()/2));
 	og::runtime::current_session->myscreen_->draw_button(centerx - 80 + 54, centery - 45 + 26, centerx - 80 + 106, centery - 45 + 64, 1, 1);
 	og::runtime::current_session->myscreen_->draw_text_bar(centerx - 80 + 56, centery - 45 + 28, centerx - 80 + 104, centery - 45 + 62);
 	draw_walker(*mywalker, og::runtime::current_session->myscreen_->viewob[0].get());
@@ -1215,6 +1434,9 @@ Sint32 name_guy(Sint32 arg)  // 0 == current_guy, 1 == ourteam[editguy]
 {
 	text& nametext = og::runtime::current_session->myscreen_->text_normal;
 	guy *someguy;
+
+	if (arg && !picker_lobby_save_slot_editable(og::runtime::current_session->editguy_))
+		return MENU_REDRAW;
 
 	if (arg)
 		someguy = og::runtime::current_session->myscreen_->save_data.team_list[og::runtime::current_session->editguy_].get();
@@ -1261,6 +1483,7 @@ Sint32 add_guy([[maybe_unused]] Sint32 ignoreme)
 
 	// Sync current_guy from the session's next recruit
 	sync_current_guy_from_hire();
+    picker_lobby_sync_roster_from_save();
 
 	return MENU_OK;
 }
@@ -1270,6 +1493,8 @@ Sint32 edit_guy([[maybe_unused]] Sint32 arg1)
 {
 	if (!pks().train_session || pks().train_session->empty())
 		return -1;
+	if (!picker_lobby_save_slot_editable(pks().train_session->current_slot()))
+		return MENU_OK;
 
 	// SDL-specific: cheat mode (hold right mouse → free changes)
 	bool force = false;
@@ -1283,6 +1508,8 @@ Sint32 edit_guy([[maybe_unused]] Sint32 arg1)
 
 	// Sync working copy back after accept
 	sync_current_guy_from_train();
+    picker_lobby_sync_roster_from_save();
+    sync_current_guy_from_train();
 
 	// Color our team button normally
 	og::runtime::current_session->allbuttons_[18]->do_outline = 0;
@@ -1328,6 +1555,7 @@ Sint32 do_load(Sint32 arg1)
 	if(og::runtime::current_session->myscreen_->save_data.load(newname))
     {
         timed_dialog("GAME LOADED");
+        picker_lobby_sync_from_save();
     }
     else
     {
@@ -1409,6 +1637,7 @@ Sint32 delete_all()
     }
     
     og::runtime::current_session->myscreen_->save_data.team_size = 0;
+    picker_lobby_sync_roster_from_save();
 
 	return counter;
 }
@@ -1430,16 +1659,32 @@ Sint32 go_menu(Sint32 arg1)
     }
 
 #ifdef __EMSCRIPTEN__
-    // For Emscripten: Set flag and return MENU_EXIT to unwind all menu loops
-    // The state machine in main() will handle starting the game
+    picker_prepare_async_team_build_start_request();
     og::runtime::current_session->myscreen_->save_data.save("save0");
-
     og::runtime::current_session->current_guy_.reset();
-
-    picker_request_start_game();
-    Log("go_menu: Setting g_start_game_requested, returning MENU_EXIT\n");
+    Log("go_menu: Lobby start requested, returning MENU_EXIT\n");
     return MENU_EXIT;  // This will unwind all menu loops back to picker_main/picker_frame
 #else
+    picker_lobby_sync_settings_from_save();
+    picker_lobby_sync_roster_from_save();
+    const bool start_already_requested =
+        g_start_game_requested && picker_lobby_has_game_start_config();
+    if (!start_already_requested)
+        g_start_game_requested = false;
+    if (!start_already_requested && !picker_lobby_request_start())
+    {
+        while (!g_start_game_requested && picker_lobby_start_request_pending())
+        {
+            picker_lobby_poll();
+            og::input_native::sleep_ms(10);
+        }
+    }
+
+    if (!g_start_game_requested)
+        return MENU_REDRAW;
+
+    g_start_game_requested = false;
+
     // Native build: use blocking loop
     do
     {
@@ -1502,6 +1747,8 @@ Sint32 go_menu(Sint32 arg1)
         }
     }
     while(og::runtime::current_session->myscreen_->world().retry);
+
+    picker_reinitialize_lobby_after_game();
 
 	return button_action_id(ButtonAction::CreateTeamMenu);
 #endif

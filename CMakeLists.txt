@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.25)
 project(OpenGlad VERSION 1.0 LANGUAGES C CXX)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
+include(CheckCXXSourceCompiles)
 
 # Target C++20 (C++23 when toolchains catch up)
 set(CMAKE_CXX_STANDARD 20)
@@ -13,6 +14,17 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+check_cxx_source_compiles([=[
+    #include <format>
+    #include <string>
+
+    int main()
+    {
+        const std::string value = std::format("{} {}", "OpenGlad", 22);
+        return value == "OpenGlad 22" ? 0 : 1;
+    }
+]=] OPENGLAD_HAS_WORKING_STD_FORMAT)
+
 # Build options
 option(BUILD_TESTING "Build the test suite" OFF)
 option(BUILD_EDITOR "Build the scenario editor (openscen)" ON)
@@ -21,6 +33,7 @@ option(ENABLE_COVERAGE "Enable gcov/lcov coverage instrumentation (tests only)" 
 option(ENABLE_SANITIZERS "Enable compiler sanitizers for project targets" OFF)
 option(ENABLE_CLANG_TIDY "Enable clang-tidy analysis during C/C++ compilation (if found)" OFF)
 option(ENABLE_CPPCHECK "Enable cppcheck analysis during C/C++ compilation (if found)" OFF)
+option(VALIDATE_SERIALIZATION "Round-trip in-process transport typed messages through serializers" OFF)
 set(SANITIZERS "address;undefined" CACHE STRING "Sanitizers to enable when ENABLE_SANITIZERS is ON")
 
 # Coverage runs are only meaningful if the tests are built and executed.
@@ -88,16 +101,47 @@ endif()
 set(SRC_DIR ${CMAKE_SOURCE_DIR}/src)
 set(THIRD_PARTY_DIR ${CMAKE_SOURCE_DIR}/third_party)
 
+# Vendor source: lodepng triggers -Wconversion narrowing warnings under the
+# project's -Wall/-Wextra/-Wconversion gate. Suppress warnings on this single
+# translation unit rather than patching upstream.
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    set_source_files_properties(
+        ${THIRD_PARTY_DIR}/lodepng/lodepng.cpp
+        PROPERTIES COMPILE_OPTIONS "-w"
+    )
+elseif(MSVC)
+    set_source_files_properties(
+        ${THIRD_PARTY_DIR}/lodepng/lodepng.cpp
+        PROPERTIES COMPILE_OPTIONS "/w"
+    )
+endif()
+
+set(OG_NETWORK_SOURCES)
+if(NOT EMSCRIPTEN)
+    list(APPEND OG_NETWORK_SOURCES
+        ${SRC_DIR}/platform/sdl/net_transport_websocket_client.cpp
+        ${SRC_DIR}/platform/sdl/net_transport_websocket_server.cpp
+        ${SRC_DIR}/platform/sdl/net_transport_relay_ws.cpp
+    )
+endif()
+
 # Main game C++ sources
 set(GAME_SOURCES
     ${SRC_DIR}/platform/sdl/glad.cpp
     ${SRC_DIR}/platform/sdl/game_loop.cpp
+    ${SRC_DIR}/core/frame_pacing.cpp
+    ${SRC_DIR}/core/frame_rate_config.cpp
     ${SRC_DIR}/platform/game_context.cpp
     ${SRC_DIR}/platform/sdl/game_session.cpp
     ${SRC_DIR}/platform/sdl/glad_gameplay.cpp
+    ${SRC_DIR}/platform/sdl/local_transport_shadow.cpp
+    ${SRC_DIR}/platform/sdl/picker_lobby_network_client.cpp
+    ${OG_NETWORK_SOURCES}
     ${SRC_DIR}/interface/score_panel.cpp
+    ${SRC_DIR}/interface/fps_overlay.cpp
     ${SRC_DIR}/platform/sdl/screen_lifecycle.cpp
     ${SRC_DIR}/core/combat_math.cpp
+    ${SRC_DIR}/core/runtime_trace.cpp
     ${SRC_DIR}/interface/ui/button.cpp
     ${SRC_DIR}/gameplay/effect.cpp
     ${SRC_DIR}/gameplay/family_registry.cpp
@@ -158,6 +202,8 @@ set(GAME_SOURCES
     ${SRC_DIR}/interface/ui/picker_accessible_levels.cpp
     ${SRC_DIR}/interface/ui/picker_team_build.cpp
     ${SRC_DIR}/interface/ui/menu_model.cpp
+    ${SRC_DIR}/interface/ui/picker_lobby_client.cpp
+    ${SRC_DIR}/interface/ui/picker_lobby_network_client.cpp
     ${SRC_DIR}/interface/ui/picker_common.cpp
     ${SRC_DIR}/interface/ui/picker_state.cpp
     ${SRC_DIR}/interface/render/pixie.cpp
@@ -184,6 +230,7 @@ set(GAME_SOURCES
 	    ${SRC_DIR}/platform/sdl/sai2x.cpp
 		    ${SRC_DIR}/core/util.cpp
 		    ${SRC_DIR}/resources/platform_io.cpp
+            ${THIRD_PARTY_DIR}/physfs/extras/physfsrwops.c
 		    ${SRC_DIR}/resources/io/platform_io_common.cpp
 		    ${SRC_DIR}/resources/io/filesystem.cpp
 		    ${SRC_DIR}/resources/io/physfs_api.cpp
@@ -197,6 +244,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/resources/pixie_data.cpp
     ${SRC_DIR}/resources/save_data.cpp
     ${SRC_DIR}/interface/session_state.cpp
+    ${SRC_DIR}/interface/replay_runtime.cpp
     ${SRC_DIR}/interface/level_runtime_data.cpp
     ${SRC_DIR}/interface/ui/level_picker.cpp
     ${SRC_DIR}/interface/ui/level_editor.cpp
@@ -207,8 +255,15 @@ set(GAME_SOURCES
     ${SRC_DIR}/interface/ui/results_screen.cpp
     ${SRC_DIR}/gameplay/sim_entity.cpp
     ${SRC_DIR}/gameplay/sim_event_log.cpp
+    ${SRC_DIR}/gameplay/game_server.cpp
+    ${SRC_DIR}/gameplay/lobby_server.cpp
+    ${SRC_DIR}/gameplay/game_client.cpp
+    ${SRC_DIR}/gameplay/net_transport.cpp
+    ${SRC_DIR}/gameplay/net_transport_multiplex.cpp
+    ${SRC_DIR}/gameplay/net_transport_inprocess.cpp
     ${SRC_DIR}/gameplay/gameplay_context.cpp
     ${SRC_DIR}/gameplay/game_world.cpp
+    ${SRC_DIR}/gameplay/world_snapshot.cpp
     ${SRC_DIR}/gameplay/sim_input_handler.cpp
     ${SRC_DIR}/platform/sdl/input_event_bridge.cpp
     ${SRC_DIR}/interface/walker_render_bridge.cpp
@@ -216,21 +271,41 @@ set(GAME_SOURCES
     ${SRC_DIR}/interface/cheat_handler.cpp
     ${SRC_DIR}/interface/render/sdl_level_render.cpp
     ${THIRD_PARTY_DIR}/lodepng/lodepng.cpp
+    ${SRC_DIR}/gameplay/input_state_net.cpp
+    ${SRC_DIR}/gameplay/replay.cpp
 )
 
 set(GAME_SOURCES_NO_MAIN ${GAME_SOURCES})
 list(REMOVE_ITEM GAME_SOURCES_NO_MAIN ${SRC_DIR}/platform/sdl/glad.cpp)
+if(EMSCRIPTEN)
+    list(APPEND GAME_SOURCES_NO_MAIN
+        ${SRC_DIR}/platform/emscripten/web_runtime_diagnostics.cpp
+        ${SRC_DIR}/platform/emscripten/net_transport_emscripten_ws.cpp
+        ${SRC_DIR}/platform/emscripten/net_transport_relay_ws.cpp
+    )
+endif()
 
 # Internal module decomposition (Phase 1 architecture foundations).
 # Keep these lists in sync with GAME_SOURCES_NO_MAIN so targets remain behaviorally equivalent.
 set(OG_CORE_SOURCES
     ${SRC_DIR}/core/combat_math.cpp
+    ${SRC_DIR}/core/frame_pacing.cpp
+    ${SRC_DIR}/core/frame_rate_config.cpp
+    ${SRC_DIR}/core/runtime_trace.cpp
     ${SRC_DIR}/core/util.cpp
 )
 
 set(OG_SIM_SOURCES
     ${SRC_DIR}/gameplay/sim_entity.cpp
     ${SRC_DIR}/gameplay/sim_event_log.cpp
+    ${SRC_DIR}/gameplay/game_server.cpp
+    ${SRC_DIR}/gameplay/lobby_server.cpp
+    ${SRC_DIR}/gameplay/game_client.cpp
+    ${SRC_DIR}/gameplay/net_transport.cpp
+    ${SRC_DIR}/gameplay/net_transport_inprocess.cpp
+    ${SRC_DIR}/gameplay/world_snapshot.cpp
+    ${SRC_DIR}/gameplay/input_state_net.cpp
+    ${SRC_DIR}/gameplay/replay.cpp
 )
 
 set(OG_DATA_SOURCES
@@ -302,7 +377,10 @@ set(OG_RUNTIME_SOURCES
     ${SRC_DIR}/platform/sdl/game_loop.cpp
     ${SRC_DIR}/platform/sdl/game_session.cpp
     ${SRC_DIR}/platform/sdl/glad_gameplay.cpp
+    ${SRC_DIR}/platform/sdl/local_transport_shadow.cpp
+    ${SRC_DIR}/gameplay/net_transport_multiplex.cpp
     ${SRC_DIR}/interface/score_panel.cpp
+    ${SRC_DIR}/interface/fps_overlay.cpp
     ${SRC_DIR}/platform/sdl/screen_lifecycle.cpp
     ${SRC_DIR}/interface/screen.cpp
     ${SRC_DIR}/interface/platform_bridge.cpp
@@ -354,13 +432,19 @@ set(OG_UI_SOURCES
     ${SRC_DIR}/interface/ui/picker_main_menu.cpp
     ${SRC_DIR}/interface/ui/picker_team_build.cpp
     ${SRC_DIR}/interface/ui/menu_model.cpp
+    ${SRC_DIR}/interface/ui/picker_lobby_client.cpp
+    ${SRC_DIR}/interface/ui/picker_lobby_network_client.cpp
     ${SRC_DIR}/interface/ui/picker_common.cpp
     ${SRC_DIR}/interface/ui/picker_state.cpp
     ${SRC_DIR}/interface/ui/results_screen.cpp
 )
 
-set(OG_IO_SOURCES
+set(OG_IO_SDL_SOURCES
     ${SRC_DIR}/resources/platform_io.cpp
+    ${THIRD_PARTY_DIR}/physfs/extras/physfsrwops.c
+)
+
+set(OG_IO_SOURCES
     ${SRC_DIR}/resources/io/platform_io_common.cpp
     ${SRC_DIR}/resources/io/filesystem.cpp
     ${SRC_DIR}/resources/io/physfs_api.cpp
@@ -381,6 +465,7 @@ set(OG_PLATFORM_SOURCES
 set(OG_GAMEPLAY_COMPONENT_SOURCES
     ${OG_SIM_SOURCES}
     ${OG_ENTITIES_SOURCES}
+    ${SRC_DIR}/gameplay/net_transport_multiplex.cpp
     ${SRC_DIR}/gameplay/stats.cpp
     ${SRC_DIR}/gameplay/gameplay_context.cpp
     ${SRC_DIR}/gameplay/game_world.cpp
@@ -398,9 +483,11 @@ set(OG_INTERFACE_COMPONENT_SOURCES
     ${OG_RENDER_SOURCES}
     ${OG_UI_SOURCES}
     ${SRC_DIR}/interface/score_panel.cpp
+    ${SRC_DIR}/interface/fps_overlay.cpp
     ${SRC_DIR}/interface/screen.cpp
     ${SRC_DIR}/interface/platform_bridge.cpp
     ${SRC_DIR}/interface/guy_create.cpp
+    ${SRC_DIR}/interface/replay_runtime.cpp
     ${SRC_DIR}/interface/session_state.cpp
     ${SRC_DIR}/interface/level_runtime_data.cpp
     ${SRC_DIR}/interface/walker_render_bridge.cpp
@@ -410,11 +497,14 @@ set(OG_INTERFACE_COMPONENT_SOURCES
 
 set(OG_PLATFORM_SDL_COMPONENT_SOURCES
     ${OG_PLATFORM_SOURCES}
+    ${OG_IO_SDL_SOURCES}
     ${SRC_DIR}/platform/sdl/game.cpp
     ${SRC_DIR}/platform/game_context.cpp
     ${SRC_DIR}/platform/sdl/game_loop.cpp
     ${SRC_DIR}/platform/sdl/game_session.cpp
     ${SRC_DIR}/platform/sdl/glad_gameplay.cpp
+    ${SRC_DIR}/platform/sdl/local_transport_shadow.cpp
+    ${SRC_DIR}/platform/sdl/picker_lobby_network_client.cpp
     ${SRC_DIR}/platform/sdl/screen_lifecycle.cpp
     ${SRC_DIR}/platform/sdl/input_event_bridge.cpp
 )
@@ -457,7 +547,6 @@ set(PHYSFS_SOURCES
     ${THIRD_PARTY_DIR}/physfs/physfs_platform_posix.c
     ${THIRD_PARTY_DIR}/physfs/physfs_platform_unix.c
     ${THIRD_PARTY_DIR}/physfs/physfs_platform_windows.c
-    ${THIRD_PARTY_DIR}/physfs/extras/physfsrwops.c
 )
 
 # External C sources - zlib
@@ -604,6 +693,7 @@ set(EXTERNAL_C_SOURCES
 
 set(OG_PUBLIC_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/include)
 set(OG_THIRD_PARTY_INCLUDE_DIRS
+    ${THIRD_PARTY_DIR}/ixwebsocket
     ${THIRD_PARTY_DIR}/micropather
     ${THIRD_PARTY_DIR}/yam
     ${THIRD_PARTY_DIR}/libyaml/include
@@ -617,6 +707,7 @@ set(OG_THIRD_PARTY_INCLUDE_DIRS
 set(COMMON_DEFINITIONS
     USE_BMP_SCREENSHOT=1
     _USE_MATH_DEFINES
+    OPENGLAD_VALIDATE_SERIALIZATION=$<BOOL:${VALIDATE_SERIALIZATION}>
     PHYSFS_NO_CDROM_SUPPORT=1
     PHYSFS_SUPPORTS_ZIP=1
     PHYSFS_SUPPORTS_7Z=0
@@ -630,6 +721,30 @@ set(COMMON_DEFINITIONS
     PHYSFS_SUPPORTS_VDF=0
     YAML_DECLARE_STATIC
 )
+
+if(NOT OPENGLAD_HAS_WORKING_STD_FORMAT)
+    list(APPEND COMMON_DEFINITIONS OPENGLAD_NEEDS_STD_FORMAT_SHIM=1)
+endif()
+
+set(OG_SANITIZER_TEST_ENVIRONMENT)
+if(ENABLE_SANITIZERS)
+    list(FIND SANITIZERS "address" OG_HAS_ASAN)
+    list(FIND SANITIZERS "undefined" OG_HAS_UBSAN)
+    list(FIND SANITIZERS "thread" OG_HAS_TSAN)
+
+    if(NOT OG_HAS_ASAN EQUAL -1)
+        list(APPEND OG_SANITIZER_TEST_ENVIRONMENT
+            "ASAN_OPTIONS=detect_leaks=1:halt_on_error=1")
+    endif()
+    if(NOT OG_HAS_UBSAN EQUAL -1)
+        list(APPEND OG_SANITIZER_TEST_ENVIRONMENT
+            "UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1")
+    endif()
+    if(NOT OG_HAS_TSAN EQUAL -1)
+        list(APPEND OG_SANITIZER_TEST_ENVIRONMENT
+            "TSAN_OPTIONS=halt_on_error=1")
+    endif()
+endif()
 
 # --------------------------------------------------------------------------
 # Helper functions to configure targets with common settings
@@ -659,7 +774,7 @@ function(configure_component_library target include_root)
 endfunction()
 
 function(configure_openglad_sdl_target target)
-    if(NOT EMSCRIPTEN)
+    if(NOT EMSCRIPTEN AND OG_NATIVE_SDL_AVAILABLE)
         # Opt-in SDL wiring: keeps gameplay-only targets free from platform deps.
         target_link_libraries(${target} PRIVATE PkgConfig::SDL2)
     endif()
@@ -671,6 +786,7 @@ function(configure_openglad_runtime_target target)
         target_compile_options(${target} PRIVATE
             -sUSE_SDL=2
             -sUSE_SDL_MIXER=2
+            "SHELL:-sSDL2_MIXER_FORMATS=[\"wav\"]"
             -Wno-constant-conversion
             -Wno-parentheses-equality
             -Wno-pointer-bool-conversion
@@ -678,6 +794,7 @@ function(configure_openglad_runtime_target target)
         target_link_options(${target} PRIVATE
             -sUSE_SDL=2
             -sUSE_SDL_MIXER=2
+            "SHELL:-sSDL2_MIXER_FORMATS=[\"wav\"]"
         )
     else()
         # Native builds link SDL/system deps via og_runtime_deps, typically pulled
@@ -688,9 +805,6 @@ endfunction()
 
 function(configure_openglad_external_target target)
     target_include_directories(${target} PRIVATE ${OG_THIRD_PARTY_INCLUDE_DIRS})
-    if(NOT EMSCRIPTEN)
-        target_link_libraries(${target} PRIVATE PkgConfig::SDL2)
-    endif()
     target_compile_definitions(${target} PRIVATE ${COMMON_DEFINITIONS})
     if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         # Vendored third-party code: keep warnings actionable in OpenGlad code by silencing
@@ -731,17 +845,78 @@ add_custom_target(check_vendor_leaks
     VERBATIM
 )
 
+# Render must not write sim-read entity state (the "drawcycle" class of bug:
+# render-only writes freeze in the headless sim). See the script header.
+add_custom_target(check_render_no_sim_writes
+    COMMAND ${CMAKE_SOURCE_DIR}/scripts/check_render_no_sim_writes.sh
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Checking render layer does not write synced entity state"
+    VERBATIM
+)
+
 # --------------------------------------------------------------------------
 # External dependency targets
 # --------------------------------------------------------------------------
 
 if(NOT EMSCRIPTEN)
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(SDL2 REQUIRED IMPORTED_TARGET sdl2 SDL2_mixer)
+    find_package(PkgConfig QUIET)
+
+    set(OG_NATIVE_SDL_AVAILABLE OFF)
+    set(OG_NATIVE_SDL_REQUESTED ON)
+    if(CMAKE_DISABLE_FIND_PACKAGE_SDL2 OR
+       CMAKE_DISABLE_FIND_PACKAGE_SDL2_MIXER OR
+       CMAKE_DISABLE_FIND_PACKAGE_SDL2_mixer)
+        set(OG_NATIVE_SDL_REQUESTED OFF)
+    endif()
+    if(OG_NATIVE_SDL_REQUESTED AND PkgConfig_FOUND)
+        pkg_check_modules(SDL2 QUIET IMPORTED_TARGET sdl2 SDL2_mixer)
+        if(SDL2_FOUND)
+            set(OG_NATIVE_SDL_AVAILABLE ON)
+        else()
+            message(STATUS "SDL2/SDL2_mixer not found; SDL-native targets require SDL to build")
+        endif()
+    elseif(OG_NATIVE_SDL_REQUESTED)
+        message(STATUS "PkgConfig not found; SDL-native targets require SDL to build")
+    else()
+        message(STATUS "SDL2 lookup disabled; configuring headless/native non-SDL targets")
+    endif()
 
     # System/runtime link deps (kept as a target so we can control ordering).
     add_library(og_runtime_deps INTERFACE)
-    target_link_libraries(og_runtime_deps INTERFACE PkgConfig::SDL2 m pthread)
+    if(OG_NATIVE_SDL_AVAILABLE)
+        target_link_libraries(og_runtime_deps INTERFACE PkgConfig::SDL2 m pthread)
+    else()
+        target_link_libraries(og_runtime_deps INTERFACE m pthread)
+    endif()
+
+    # Native-only WebSocket dependency. Emscripten uses the browser WebSocket API.
+    set(BUILD_DEMO OFF)
+    set(USE_TLS OFF)
+    set(USE_ZLIB OFF)
+    set(IXWEBSOCKET_INSTALL OFF)
+    add_subdirectory(${THIRD_PARTY_DIR}/ixwebsocket)
+    get_target_property(IXWEBSOCKET_PUBLIC_HEADERS ixwebsocket PUBLIC_HEADER)
+    if(IXWEBSOCKET_PUBLIC_HEADERS)
+        set(IXWEBSOCKET_PUBLIC_HEADERS_ABSOLUTE)
+        foreach(ixwebsocket_header IN LISTS IXWEBSOCKET_PUBLIC_HEADERS)
+            if(IS_ABSOLUTE "${ixwebsocket_header}")
+                list(APPEND IXWEBSOCKET_PUBLIC_HEADERS_ABSOLUTE "${ixwebsocket_header}")
+            else()
+                list(APPEND IXWEBSOCKET_PUBLIC_HEADERS_ABSOLUTE
+                    "${THIRD_PARTY_DIR}/ixwebsocket/${ixwebsocket_header}"
+                )
+            endif()
+        endforeach()
+        set_target_properties(ixwebsocket PROPERTIES
+            PUBLIC_HEADER "${IXWEBSOCKET_PUBLIC_HEADERS_ABSOLUTE}"
+        )
+    endif()
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(ixwebsocket PRIVATE -w)
+    endif()
+
+    add_library(og_ext_ixwebsocket INTERFACE)
+    target_link_libraries(og_ext_ixwebsocket INTERFACE ixwebsocket)
 endif()
 
 add_library(og_ext_yaml STATIC ${LIBYAML_SOURCES})
@@ -787,7 +962,7 @@ set(OG_EXTERNAL_LIBS
 if(NOT EMSCRIPTEN)
     # --- component targets (Phase 12) ---
     prepare_component_include_root(OG_CORE_INCLUDE_ROOT core
-        core interface)
+        core)
     prepare_component_include_root(OG_GAMEPLAY_INCLUDE_ROOT gameplay
         core gameplay)
     prepare_component_include_root(OG_RESOURCES_INCLUDE_ROOT resources
@@ -801,11 +976,10 @@ if(NOT EMSCRIPTEN)
     add_library(og_gameplay STATIC ${OG_GAMEPLAY_COMPONENT_SOURCES})
     configure_component_library(og_gameplay "${OG_GAMEPLAY_INCLUDE_ROOT}")
     target_include_directories(og_gameplay PRIVATE ${THIRD_PARTY_DIR}/micropather)
-    target_link_libraries(og_gameplay PUBLIC og_core ${OG_EXTERNAL_LIBS})
+    target_link_libraries(og_gameplay PUBLIC og_core ${OG_EXTERNAL_LIBS} og_ext_zlib)
 
     add_library(og_resources STATIC ${OG_RESOURCES_COMPONENT_SOURCES})
     configure_component_library(og_resources "${OG_RESOURCES_INCLUDE_ROOT}")
-    configure_openglad_sdl_target(og_resources)
     target_include_directories(og_resources PRIVATE
         ${THIRD_PARTY_DIR}/yam
         ${THIRD_PARTY_DIR}/libyaml/include
@@ -823,22 +997,58 @@ if(NOT EMSCRIPTEN)
     add_library(og_interface STATIC ${OG_INTERFACE_COMPONENT_SOURCES})
     configure_component_library(og_interface "${OG_INTERFACE_INCLUDE_ROOT}")
     configure_openglad_sdl_target(og_interface)
+    # og_interface contains src/interface/render/; enforce render stays read-only
+    # on synced entity state (the drawcycle-class guard).
+    add_dependencies(og_interface check_render_no_sim_writes)
     target_link_libraries(og_interface PUBLIC
         og_core
         og_gameplay
         og_resources
     )
 
+    if(OG_NETWORK_SOURCES)
+        add_library(og_platform_ws_transport STATIC ${OG_NETWORK_SOURCES})
+        configure_component_library(og_platform_ws_transport "${OG_PUBLIC_INCLUDE_DIR}")
+        if(NOT EMSCRIPTEN)
+            target_link_libraries(og_platform_ws_transport PUBLIC ixwebsocket)
+        endif()
+        add_dependencies(og_platform_ws_transport check_vendor_leaks)
+    endif()
+
     add_library(og_platform_sdl STATIC ${OG_PLATFORM_SDL_COMPONENT_SOURCES})
     configure_component_library(og_platform_sdl "${OG_PUBLIC_INCLUDE_DIR}")
     configure_openglad_sdl_target(og_platform_sdl)
+    target_include_directories(og_platform_sdl PRIVATE
+        ${OG_THIRD_PARTY_INCLUDE_DIRS}
+        ${THIRD_PARTY_DIR}/yam
+        ${THIRD_PARTY_DIR}/libyaml/include
+        ${THIRD_PARTY_DIR}/physfs
+        ${THIRD_PARTY_DIR}/physfs/extras
+        ${THIRD_PARTY_DIR}/libzip
+    )
     target_link_libraries(og_platform_sdl PUBLIC
         og_core
         og_gameplay
         og_resources
         og_interface
     )
+    if(TARGET og_platform_ws_transport)
+        target_link_libraries(og_platform_sdl PUBLIC og_platform_ws_transport)
+    endif()
+    if(NOT EMSCRIPTEN)
+        target_link_libraries(og_platform_sdl PRIVATE ixwebsocket)
+    endif()
     add_dependencies(og_platform_sdl check_vendor_leaks)
+
+    add_library(og_platform_emscripten_transport STATIC
+        ${SRC_DIR}/platform/emscripten/net_transport_emscripten_ws.cpp
+        ${SRC_DIR}/platform/emscripten/net_transport_relay_ws.cpp
+    )
+    configure_openglad_library(og_platform_emscripten_transport)
+    if(BUILD_TESTING)
+        target_compile_definitions(og_platform_emscripten_transport PRIVATE TESTING)
+    endif()
+    add_dependencies(og_platform_emscripten_transport check_vendor_leaks)
 
     # Aggregate target for executables/tests.
     add_library(og_game INTERFACE)
@@ -858,7 +1068,6 @@ if(NOT EMSCRIPTEN)
             og_runtime_deps
         )
     endif()
-
     # Stage runtime assets into the build tree so tests and local runs do not
     # depend on pre-existing user data.
     add_custom_target(stage_runtime_assets
@@ -943,6 +1152,23 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/gameplay/stats.cpp
     )
 
+    set(HEADLESS_SERVER_RUNTIME_SOURCES
+        ${SRC_DIR}/server/headless_server_runtime.cpp
+        ${SRC_DIR}/server/headless_tick_interval.cpp
+        ${SRC_DIR}/platform/text/platform_headless.cpp
+        ${SRC_DIR}/platform/text/walker_headless.cpp
+        ${SRC_DIR}/interface/input/input_state.cpp
+        ${SRC_DIR}/platform/game_context.cpp
+        ${SRC_DIR}/interface/session_state.cpp
+        ${SRC_DIR}/interface/level_runtime_data.cpp
+        ${SRC_DIR}/interface/platform_bridge.cpp
+    )
+
+    set(HEADLESS_SERVER_SOURCES
+        ${SRC_DIR}/server/server_main.cpp
+        ${HEADLESS_SERVER_RUNTIME_SOURCES}
+    )
+
     add_executable(openglad_text ${HEADLESS_SOURCES})
     target_include_directories(openglad_text PUBLIC
         $<BUILD_INTERFACE:${OG_PUBLIC_INCLUDE_DIR}>
@@ -969,6 +1195,20 @@ if(NOT EMSCRIPTEN)
     )
     add_runtime_assets_dependency(openglad_text)
 
+    if(TARGET og_platform_ws_transport)
+        add_executable(openglad_server ${HEADLESS_SERVER_SOURCES})
+        configure_openglad_library(openglad_server)
+        target_link_libraries(openglad_server PRIVATE
+            og_core
+            og_gameplay
+            og_resources
+            og_platform_ws_transport
+            m
+            pthread
+        )
+        add_runtime_assets_dependency(openglad_server)
+    endif()
+
     install(TARGETS
         project_warnings
         project_sanitizers
@@ -989,6 +1229,32 @@ if(NOT EMSCRIPTEN)
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     )
+
+    if(NOT EMSCRIPTEN)
+        install(TARGETS ixwebsocket
+            EXPORT OpenGladTargets
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+            PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/ixwebsocket
+        )
+    endif()
+
+    if(TARGET og_platform_ws_transport)
+        install(TARGETS og_platform_ws_transport
+            EXPORT OpenGladTargets
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        )
+
+        install(TARGETS openglad_server
+            EXPORT OpenGladTargets
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        )
+    endif()
 
     if(BUILD_EDITOR)
         install(TARGETS openscen
@@ -1074,9 +1340,12 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_save_load_team.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_view_team.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_options_menu.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_networking_menu.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_menu_layout.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_help.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_load_levels.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_replay.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_snapshot_size_benchmark.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_difficulty.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_guy.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_go_no_team.cpp
@@ -1089,6 +1358,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_text_rendering.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_campaign_and_level_picker.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_intro_smoke.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_dirty_tracking_safety.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_sai2x_scaler.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_view_menu_driven.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_view_options_menu_driven.cpp
@@ -1100,6 +1370,9 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_guy_calcs.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_view_funcs.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_picker_funcs.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_picker_network_client.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_local_transport_shadow_budget.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_frame_pacing_jitter.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_stats_extended.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_stats_navigation.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_screen_funcs.cpp
@@ -1209,6 +1482,15 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_sim_input_handler.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_smooth_coverage.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_stats_coverage.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/parity_runner.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/state_dump.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/fact_predicate.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/parity_bootstrap.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/scenario_runtime.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/parity_test_main.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/golden_evaluation_helper.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_scenarios.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_coverage_gate.cpp
         )
 
         function(og_add_test_group NAME)
@@ -1248,9 +1530,9 @@ if(NOT EMSCRIPTEN)
                 TIMEOUT 180
                 LABELS "integration"
             )
-            if(ENABLE_SANITIZERS)
+            if(OG_SANITIZER_TEST_ENVIRONMENT)
                 set_tests_properties(${NAME} PROPERTIES ENVIRONMENT
-                    "ASAN_OPTIONS=detect_leaks=1:halt_on_error=1;UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1"
+                    "${OG_SANITIZER_TEST_ENVIRONMENT}"
                 )
             endif()
         endfunction()
@@ -1268,6 +1550,7 @@ if(NOT EMSCRIPTEN)
             target_include_directories(${NAME} PRIVATE ${CMAKE_SOURCE_DIR}/tests)
             target_link_libraries(${NAME} PRIVATE og_game GTest::gtest)
             configure_openglad_runtime_target(${NAME})
+            add_runtime_assets_dependency(${NAME})
 
             if(ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
                 target_compile_options(${NAME} PRIVATE -O1 -g)
@@ -1276,12 +1559,13 @@ if(NOT EMSCRIPTEN)
 
             add_test(NAME ${NAME} COMMAND ${NAME})
             set_tests_properties(${NAME} PROPERTIES
+                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
                 TIMEOUT 180
                 LABELS "unit"
             )
-            if(ENABLE_SANITIZERS)
+            if(OG_SANITIZER_TEST_ENVIRONMENT)
                 set_tests_properties(${NAME} PROPERTIES ENVIRONMENT
-                    "ASAN_OPTIONS=detect_leaks=1:halt_on_error=1;UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1"
+                    "${OG_SANITIZER_TEST_ENVIRONMENT}"
                 )
             endif()
         endfunction()
@@ -1296,6 +1580,9 @@ if(NOT EMSCRIPTEN)
         target_include_directories(og_game_test PRIVATE ${OG_THIRD_PARTY_INCLUDE_DIRS})
         target_compile_definitions(og_game_test PRIVATE TESTING)
         target_link_libraries(og_game_test PUBLIC ${OG_EXTERNAL_LIBS} ${OG_IO_EXTERNAL_LIBS} og_runtime_deps)
+        if(NOT EMSCRIPTEN)
+            target_link_libraries(og_game_test PUBLIC ixwebsocket)
+        endif()
         add_dependencies(og_game_test check_vendor_leaks)
 
         enable_testing()
@@ -1371,6 +1658,11 @@ if(NOT EMSCRIPTEN)
             test_go_no_team.cpp
             test_fairy_death.cpp
             test_overpowered_team.cpp
+            test_frame_pacing_jitter.cpp
+        )
+
+        og_add_test_group(og_test_snapshot_safety FILES
+            test_dirty_tracking_safety.cpp
         )
 
         og_add_test_group(og_test_screen FILES
@@ -1428,6 +1720,11 @@ if(NOT EMSCRIPTEN)
             test_menu_model.cpp
         )
 
+        og_add_test_group(og_test_picker_network FILES
+            test_picker_network_client.cpp
+            test_local_transport_shadow_budget.cpp
+        )
+
         og_add_test_group(og_test_menu_ui FILES
             test_back_to_mainmenu.cpp
             test_menu.cpp
@@ -1438,6 +1735,7 @@ if(NOT EMSCRIPTEN)
             test_save_menu.cpp
             test_save_load_team.cpp
             test_options_menu.cpp
+            test_networking_menu.cpp
             test_difficulty.cpp
             test_help.cpp
             test_help_parsing.cpp
@@ -1486,6 +1784,11 @@ if(NOT EMSCRIPTEN)
             test_io_platform_coverage.cpp
         )
 
+        og_add_test_group(og_test_snapshot_benchmark FILES
+            test_replay.cpp
+            test_snapshot_size_benchmark.cpp
+        )
+
         og_add_test_group(og_test_smooth FILES
             test_smooth_matrix.cpp
             test_smooth_more_branches.cpp
@@ -1515,13 +1818,132 @@ if(NOT EMSCRIPTEN)
             test_mass_coverage.cpp
         )
 
+        # Gameplay parity harness (Phase 04 skeleton). The og_test_parity group
+        # captures a canonical schema-v1 state dump per scenario and compares
+        # against the committed master golden under tests/parity/golden/.
+        og_add_test_group(og_test_parity FILES
+            test_parity_scenarios.cpp
+            test_parity_coverage_gate.cpp
+            parity_runner.cpp
+            state_dump.cpp
+            fact_predicate.cpp
+            parity_bootstrap.cpp
+            scenario_runtime.cpp
+            parity_test_main.cpp
+            golden_evaluation_helper.cpp
+        )
+        target_include_directories(og_test_parity PRIVATE
+            ${CMAKE_SOURCE_DIR}/tests/parity
+        )
+        target_compile_definitions(og_test_parity PRIVATE
+            OG_PARITY_WORKSPACE_ROOT="${CMAKE_SOURCE_DIR}"
+        )
+
+        # Phase 01 (semantic-parity): pre-build tool that emits the
+        # single-source-of-truth JSON for scripts/parity/evaluate_facts.py.
+        # Runs automatically as a dependency of og_test_parity so the
+        # generated file is always up to date with scenario_table.h.
+        add_executable(scenario_facts_dump
+            ${CMAKE_SOURCE_DIR}/tests/parity/scenario_facts_dump_main.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/fact_predicate.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/state_dump.cpp
+        )
+        target_include_directories(scenario_facts_dump PRIVATE
+            ${CMAKE_SOURCE_DIR}/tests
+            ${CMAKE_SOURCE_DIR}/tests/parity
+            ${CMAKE_SOURCE_DIR}/include
+            ${OG_THIRD_PARTY_INCLUDE_DIRS}
+        )
+        target_compile_features(scenario_facts_dump PRIVATE cxx_std_20)
+        target_link_libraries(scenario_facts_dump PRIVATE og_game_test)
+        # Coverage builds: libog_game_test.a is compiled with --coverage and
+        # leaves undefined references to __gcov_init / __gcov_exit /
+        # __gcov_merge_add in the static archive. Link against gcov via
+        # --coverage so the standalone executable resolves them. The ASan
+        # / TSan presets do NOT route through configure_openglad_library
+        # here because pulling in project_sanitizers transitively slows
+        # og_test_view's tick budget enough to time out at 180s on CI.
+        if(ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+            target_compile_options(scenario_facts_dump PRIVATE --coverage)
+            target_link_options(scenario_facts_dump PRIVATE --coverage)
+        endif()
+        add_custom_command(
+            OUTPUT  ${CMAKE_SOURCE_DIR}/tests/parity/scenario_facts_generated.json
+            COMMAND scenario_facts_dump
+                    --out ${CMAKE_SOURCE_DIR}/tests/parity/scenario_facts_generated.json
+            DEPENDS scenario_facts_dump
+                    ${CMAKE_SOURCE_DIR}/tests/parity/scenario_table.h
+            COMMENT "Regenerating scenario_facts_generated.json"
+            VERBATIM
+        )
+        add_custom_target(scenario_facts_generated ALL
+            DEPENDS ${CMAKE_SOURCE_DIR}/tests/parity/scenario_facts_generated.json
+        )
+        add_dependencies(og_test_parity scenario_facts_generated)
+
+        # Standalone smoke runner — Phase 02 verifier and the launcher
+        # extended in Phase 07 to enumerate scenarios via --list.
+        add_executable(parity_runner_smoke
+            ${CMAKE_SOURCE_DIR}/tests/parity/parity_runner_smoke_main.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/parity_runner.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/state_dump.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/fact_predicate.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/parity_bootstrap.cpp
+            ${CMAKE_SOURCE_DIR}/tests/parity/scenario_runtime.cpp
+        )
+        configure_openglad_library(parity_runner_smoke)
+        configure_openglad_sdl_target(parity_runner_smoke)
+        target_compile_definitions(parity_runner_smoke PRIVATE
+            TESTING
+            OG_PARITY_WORKSPACE_ROOT="${CMAKE_SOURCE_DIR}"
+        )
+        target_include_directories(parity_runner_smoke PRIVATE
+            ${CMAKE_SOURCE_DIR}/tests
+            ${CMAKE_SOURCE_DIR}/tests/parity
+            ${OG_THIRD_PARTY_INCLUDE_DIRS}
+        )
+        target_link_libraries(parity_runner_smoke PRIVATE og_game_test)
+        configure_openglad_runtime_target(parity_runner_smoke)
+        add_runtime_assets_dependency(parity_runner_smoke)
+
+        og_add_unit_group(og_unit_core FILES
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_frame_rate_config.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_frame_deadline_pacer.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_cadence.cpp
+        )
+
         og_add_unit_group(og_unit_sim FILES
             ${CMAKE_SOURCE_DIR}/tests/unit/test_session_raii.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_game_loop_wrapper.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_lobby_server.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_inprocess.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_multiplex.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_relay_ws.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_websocket_client.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_websocket_server.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_input_state_net.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_replay.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_event_log.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_world_headless.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_entity.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_game_world_entity_ids.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_world_snapshot.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_sim_world.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_sim_input_unit.cpp
+        )
+        if(TARGET og_platform_ws_transport)
+            target_link_libraries(og_unit_sim PRIVATE og_platform_ws_transport)
+        endif()
+
+        og_add_unit_group(og_unit_emscripten_transport FILES
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_net_transport_emscripten_ws.cpp
+        )
+        target_link_libraries(og_unit_emscripten_transport PRIVATE
+            og_platform_emscripten_transport
+        )
+        target_include_directories(og_unit_emscripten_transport PRIVATE
+            ${SRC_DIR}/platform/emscripten
         )
 
         og_add_unit_group(og_unit_families FILES
@@ -1553,6 +1975,63 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/unit/test_spectator_mode.cpp
         )
 
+        add_executable(og_unit_server
+            ${CMAKE_SOURCE_DIR}/tests/unit/headless_unit_main.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_headless_server_runtime.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_headless_server_tick_interval.cpp
+            ${CMAKE_SOURCE_DIR}/src/test_trace.cpp
+            ${HEADLESS_SERVER_RUNTIME_SOURCES}
+        )
+        configure_openglad_library(og_unit_server)
+        target_compile_definitions(og_unit_server PRIVATE TESTING)
+        target_include_directories(og_unit_server PRIVATE
+            ${CMAKE_SOURCE_DIR}/tests
+            ${OG_THIRD_PARTY_INCLUDE_DIRS}
+        )
+        target_link_libraries(og_unit_server PRIVATE
+            og_core
+            og_gameplay
+            og_resources
+            GTest::gtest
+            m
+            pthread
+        )
+        configure_openglad_runtime_target(og_unit_server)
+        add_runtime_assets_dependency(og_unit_server)
+        add_test(NAME og_unit_server COMMAND og_unit_server)
+        set_tests_properties(og_unit_server PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            TIMEOUT 180
+            LABELS "unit"
+        )
+        if(OG_SANITIZER_TEST_ENVIRONMENT)
+            set_tests_properties(og_unit_server PROPERTIES ENVIRONMENT
+                "${OG_SANITIZER_TEST_ENVIRONMENT}"
+            )
+        endif()
+
+        # The picker and menu UI suites include the live networking menu/client
+        # coverage, and the picker-network integration/unit-sim binaries both
+        # initialize IXWebSocket's native net system and transports. On Linux
+        # they can trip EBADF/netlink failures when CTest overlaps them in
+        # separate processes, so serialize just that shared resource.
+        set_tests_properties(
+            og_test_picker
+            og_test_menu_ui
+            og_test_picker_network
+            og_unit_sim
+            PROPERTIES RESOURCE_LOCK native_network_stack
+        )
+        # The dedicated picker-network suite is tiny when it runs alone, but
+        # its live host/join transport handoff can stall on 4-core CI runners
+        # when CTest overlaps it with the other long-running integration
+        # binaries. Give it a dedicated budget and run it by itself in every
+        # lane instead of relying on incidental scheduler order.
+        set_tests_properties(og_test_picker_network PROPERTIES
+            RUN_SERIAL TRUE
+            TIMEOUT 420
+        )
+
         if(ENABLE_COVERAGE)
             # Coverage-instrumented UI-heavy binaries can time out on 4-core CI
             # runners when CTest schedules them all at once.
@@ -1560,22 +2039,153 @@ if(NOT EMSCRIPTEN)
                 og_test_game_core
                 og_test_view
                 og_test_picker
+                og_test_picker_network
                 og_test_menu_ui
                 PROPERTIES PROCESSORS 3
             )
+            # The game-core integration binary also needs isolation in the
+            # coverage lane. Running it beside even one other process on GitHub's
+            # 4-core runners can trigger flaky asset/campaign test failures.
+            set_tests_properties(og_test_game_core PROPERTIES PROCESSORS 4)
+            # The coverage-instrumented unit-sim binary now includes live
+            # WebSocket and relay transport tests. On GitHub's 4-core runners
+            # it can exceed the coverage workflow timeout budget when CTest
+            # schedules it beside other heavyweight binaries, so give it full
+            # runner isolation in that lane.
+            set_tests_properties(og_unit_sim PROPERTIES PROCESSORS 4)
             # Menu UI coverage still runs substantially slower on GitHub's
-            # 4-core runners than it does locally, so keep its per-test budget
-            # higher without loosening the default timeout for the full suite.
-            set_tests_properties(og_test_menu_ui PROPERTIES TIMEOUT 300)
+            # 4-core runners than it does locally, so match the dedicated
+            # coverage workflow budget instead of leaving CTest at 300s here.
+            set_tests_properties(og_test_menu_ui PROPERTIES TIMEOUT 420)
+            set_tests_properties(og_test_picker PROPERTIES TIMEOUT 420)
+            set_tests_properties(og_test_picker_network PROPERTIES TIMEOUT 420)
+            set_tests_properties(og_unit_sim PROPERTIES TIMEOUT 600)
+        endif()
+
+        if(ENABLE_SANITIZERS OR VALIDATE_SERIALIZATION)
+            # The gameplay suite now drives the full local transport path.
+            # Validation mode round-trips every message and sanitizers magnify
+            # the cost enough that the default 180s CTest budget is too tight.
+            set_tests_properties(og_test_game_core PROPERTIES TIMEOUT 420)
+            # The simulation unit binary now includes the WebSocket, relay,
+            # and multiplex transport suites. Serialization validation
+            # round-trips every message there too, which can push CI's
+            # generic 180s budget over the edge when CTest schedules it
+            # beside the heavyweight integration binaries.
+            set_tests_properties(og_unit_sim PROPERTIES
+                PROCESSORS 2
+                TIMEOUT 420
+            )
+        endif()
+        if(ENABLE_SANITIZERS)
+            # Reserve the full 4-core GitHub runner for og_test_game_core.
+            # Under ASan/UBSan it can time out only when CTest schedules it
+            # beside other heavyweight integration binaries.
+            set_tests_properties(og_test_game_core PROPERTIES PROCESSORS 4)
+            # The menu UI binary now spends enough time in redraw-heavy flows
+            # that ASan/UBSan can push it past the generic 180s CTest budget
+            # when GitHub's 4-core runners overlap it with the rest of the
+            # integration batch. Run it alone in that lane and match the
+            # timeout budget already used for the slower coverage variant.
+            set_tests_properties(og_test_menu_ui PROPERTIES
+                PROCESSORS 4
+                TIMEOUT 420
+            )
+            # The picker suite now exercises live WebSocket lobby setup and
+            # end-to-end host/join handoff paths. Under ASan/UBSan it can hit
+            # GitHub's generic 180-second budget when scheduled beside the
+            # rest of the UI-heavy integration binaries.
+            set_tests_properties(og_test_picker PROPERTIES
+                PROCESSORS 3
+                TIMEOUT 420
+            )
+            # The dedicated picker-network suite uses live WebSocket/relay
+            # transports to cover the host/join lobby client paths. Under
+            # ASan/UBSan it can stall only when CTest overlaps it with the
+            # rest of the integration batch, so isolate it in that lane.
+            set_tests_properties(og_test_picker_network PROPERTIES
+                PROCESSORS 2
+                TIMEOUT 420
+                RUN_SERIAL TRUE
+            )
+            # The replay/benchmark binary now exercises honest end-to-end
+            # client sync, which remains correct under ASan/UBSan but slows
+            # down enough on GitHub's 4-core runners to trip the generic
+            # 180-second test budget when scheduled alongside other heavy
+            # integration binaries.
+            set_tests_properties(og_test_snapshot_benchmark PROPERTIES
+                PROCESSORS 3
+                TIMEOUT 420
+            )
+            # ASan/UBSan makes the view integration suite slow enough on
+            # GitHub's shared runners to exceed CTest's generic 180s limit
+            # when scheduled beside the other heavy integration binaries.
+            set_tests_properties(og_test_view PROPERTIES
+                PROCESSORS 3
+                TIMEOUT 420
+            )
+        endif()
+
+        set(OPENG_LAD_TEXT_SIM_EXEC_TIMEOUT 55)
+        set(OPENG_LAD_TEXT_SIM_CTEST_TIMEOUT 60)
+        if(ENABLE_SANITIZERS)
+            # ASan/UBSan plus parallel load can push the headless text sim
+            # past the normal 55s script timeout without indicating a hang.
+            set(OPENG_LAD_TEXT_SIM_EXEC_TIMEOUT 120)
+            set(OPENG_LAD_TEXT_SIM_CTEST_TIMEOUT 180)
         endif()
 
         add_test(NAME openglad_text_sim
-            COMMAND ${CMAKE_SOURCE_DIR}/scripts/test_text_client.sh $<TARGET_FILE:openglad_text>
+            COMMAND ${CMAKE_COMMAND} -E env
+                OPENGLAD_TEXT_TIMEOUT=${OPENG_LAD_TEXT_SIM_EXEC_TIMEOUT}
+                ${CMAKE_SOURCE_DIR}/scripts/test_text_client.sh
+                $<TARGET_FILE:openglad_text>
         )
         set_tests_properties(openglad_text_sim PROPERTIES
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-            TIMEOUT 60
+            TIMEOUT ${OPENG_LAD_TEXT_SIM_CTEST_TIMEOUT}
         )
+
+        if(TARGET openglad_server)
+            add_test(NAME openglad_server_cli
+                COMMAND ${CMAKE_COMMAND} -E env
+                    bash
+                    ${CMAKE_SOURCE_DIR}/scripts/test_headless_server_cli.sh
+                    $<TARGET_FILE:openglad_server>
+            )
+            set_tests_properties(openglad_server_cli PROPERTIES
+                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                TIMEOUT 60
+            )
+
+            if(CMAKE_GENERATOR MATCHES "Ninja")
+                add_test(NAME openglad_server_link_no_sdl
+                    COMMAND ${CMAKE_COMMAND} -E env
+                        bash
+                        ${CMAKE_SOURCE_DIR}/scripts/test_headless_server_native_link.sh
+                        ${CMAKE_BINARY_DIR}
+                )
+                set_tests_properties(openglad_server_link_no_sdl PROPERTIES
+                    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                    TIMEOUT 60
+                )
+            endif()
+        endif()
+
+        if(ENABLE_COVERAGE)
+            add_test(NAME openglad_demo_smoke
+                COMMAND ${CMAKE_COMMAND} -E env
+                    SDL_VIDEODRIVER=dummy
+                    SDL_AUDIODRIVER=dummy
+                    SDL_RENDER_DRIVER=software
+                    OPENGLAD_DEMO_MAX_FRAMES=1
+                    $<TARGET_FILE:openglad_demo>
+            )
+            set_tests_properties(openglad_demo_smoke PROPERTIES
+                WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+                TIMEOUT 120
+            )
+        endif()
 
         add_test(NAME openglad_text_picker_interactive
             COMMAND ${CMAKE_SOURCE_DIR}/scripts/test_text_picker_interactive.sh $<TARGET_FILE:openglad_text>
@@ -1669,14 +2279,15 @@ endif()
     target_compile_definitions(play PRIVATE __ASYNCIFY__)
 
     target_link_options(play PRIVATE
-        "SHELL:-sSDL2_MIXER_FORMATS=[\"wav\",\"ogg\"]"
+        "SHELL:--bind"
         -sALLOW_MEMORY_GROWTH=1
         -sINITIAL_MEMORY=67108864
         -sASYNCIFY
         -sASYNCIFY_STACK_SIZE=65536
         -sEXIT_RUNTIME=0
+        "SHELL:-sMINIFY_HTML=0"
+        -lwebsocket.js
         -lidbfs.js
-        "SHELL:-sEXPORTED_FUNCTIONS=[\"_main\",\"_on_idbfs_sync_done\"]"
         "SHELL:-sEXPORTED_RUNTIME_METHODS=[\"ccall\",\"cwrap\"]"
         "SHELL:--shell-file ${CMAKE_SOURCE_DIR}/web/shell.html"
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/cfg@/cfg"
@@ -1689,5 +2300,17 @@ endif()
     set_target_properties(play PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/dist"
         SUFFIX ".html"
+    )
+
+    add_custom_command(
+        TARGET play
+        POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_SOURCE_DIR}/web/index.html
+            ${CMAKE_SOURCE_DIR}/web/help.html
+            ${CMAKE_SOURCE_DIR}/web/hero.png
+            $<TARGET_FILE_DIR:play>
+        COMMENT "Copying web landing page assets to dist/"
+        VERBATIM
     )
 endif()

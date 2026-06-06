@@ -98,12 +98,12 @@ TEST(EffectChainAndDoor, effect_chain_hits_leader_spawns_explosion_and_secondary
     walker* chain = level.add_fx_ob(Order::FX, FAMILY_CHAIN);
     ASSERT_TRUE(chain != nullptr) << "chain created";
     if (chain) {
-        chain->team_num = 0;
-        chain->owner = owner;
-        chain->leader = leader;
-        chain->lineofsight = 5;
-        chain->damage = 100.0f; // generic = damage * 0.5f => 50 (> 20)
-        chain->setxy(leader->xpos, leader->ypos); // guarantee hits() with leader
+        chain->set_team_num(0);
+        chain->set_owner(owner);
+        chain->set_leader(leader);
+        chain->set_lineofsight(5);
+        chain->set_damage(100.0f); // generic = damage * 0.5f => 50 (> 20)
+        chain->setxy(leader->xpos(), leader->ypos()); // guarantee hits() with leader
         (void)chain->act();
     }
 
@@ -113,8 +113,8 @@ TEST(EffectChainAndDoor, effect_chain_hits_leader_spawns_explosion_and_secondary
     walker* door_open = level.add_fx_ob(Order::FX, FAMILY_DOOR_OPEN);
     ASSERT_TRUE(door_open != nullptr) << "door_open created";
     if (door_open) {
-        door_open->ani_type = ANI_WALK;
-        door_open->curdir = FACE_DOWN;
+        door_open->set_ani_type(ANI_WALK);
+        door_open->set_curdir(FACE_DOWN);
         door_open->setworldxy(200.0f, 200.0f);
         (void)door_open->act();
     }
@@ -137,12 +137,12 @@ TEST(EffectChainAndDoor, effect_chain_early_exit_and_movement_branches)
     walker* chain = level.add_fx_ob(Order::FX, FAMILY_CHAIN);
     ASSERT_TRUE(chain != nullptr) << "chain created";
     if (chain) {
-        chain->owner = nullptr;
-        chain->leader = nullptr;
-        chain->lineofsight = 0;
-        chain->dead = 0;
+        chain->set_owner(nullptr);
+        chain->set_leader(nullptr);
+        chain->set_lineofsight(0);
+        chain->set_dead(0);
         (void)chain->act();
-        ASSERT_TRUE(chain->dead == 1) << "chain without leader/owner should die";
+        ASSERT_TRUE(chain->dead() == 1) << "chain without leader/owner should die";
     }
 
     // Non-hit movement path: chain should move toward leader and consume LOS.
@@ -160,15 +160,15 @@ TEST(EffectChainAndDoor, effect_chain_early_exit_and_movement_branches)
     if (!moving_chain)
         return;
 
-    moving_chain->owner = owner;
-    moving_chain->leader = leader;
-    moving_chain->lineofsight = 5;
+    moving_chain->set_owner(owner);
+    moving_chain->set_leader(leader);
+    moving_chain->set_lineofsight(5);
     moving_chain->setxy(40, 40);
-    const short x_before = moving_chain->xpos;
-    const short y_before = moving_chain->ypos;
+    const short x_before = moving_chain->xpos();
+    const short y_before = moving_chain->ypos();
     (void)moving_chain->act();
-    ASSERT_TRUE(moving_chain->lineofsight == 4) << "movement path should decrement lineofsight";
-    ASSERT_TRUE(moving_chain->xpos != x_before || moving_chain->ypos != y_before) << "movement path should move toward leader";
+    ASSERT_TRUE(moving_chain->lineofsight() == 4) << "movement path should decrement lineofsight";
+    ASSERT_TRUE(moving_chain->xpos() != x_before || moving_chain->ypos() != y_before) << "movement path should move toward leader";
 
     level.delete_objects();
 }
@@ -190,9 +190,9 @@ TEST(EffectChainAndDoor, effect_chain_movement_axis_delta_branches)
     if (!(owner && leader && chain))
         return;
 
-    chain->owner = owner;
-    chain->leader = leader;
-    chain->lineofsight = 20;
+    chain->set_owner(owner);
+    chain->set_leader(leader);
+    chain->set_lineofsight(20);
     chain->setxy(200, 200);
 
     // leader x greater/y less: xd positive, yd negative path
@@ -204,14 +204,13 @@ TEST(EffectChainAndDoor, effect_chain_movement_axis_delta_branches)
     (void)chain->act();
 
     // x equal/y less: x branch skipped, y negative path
-    leader->setxy(chain->xpos, static_cast<short>(chain->ypos - 20));
+    leader->setxy(chain->xpos(), static_cast<short>(chain->ypos() - 20));
     (void)chain->act();
 
     // x equal/y equal: near-distance center_on path
-    leader->setxy(chain->xpos, chain->ypos);
+    leader->setxy(chain->xpos(), chain->ypos());
     (void)chain->act();
 
-    ASSERT_TRUE(chain->lineofsight < 20) << "movement branch should consume lineofsight across acts";
+    ASSERT_TRUE(chain->lineofsight() < 20) << "movement branch should consume lineofsight across acts";
     level.delete_objects();
 }
-

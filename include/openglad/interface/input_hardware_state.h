@@ -13,6 +13,8 @@ struct InputHardwareState {
     int player_control_modes[4]{};
     int player_mode_keys[4][2][16]{};  // [player][mode][key]
     std::int32_t mouse_buttons{0};
+    bool picker_was_left_down{false};
+    bool picker_was_right_down{false};
 
 #ifdef USE_TOUCH_INPUT
     bool tapping{false};

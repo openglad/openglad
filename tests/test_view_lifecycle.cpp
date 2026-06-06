@@ -16,9 +16,9 @@ static std::unique_ptr<walker> make_player_walker(char family, unsigned char tea
     g.upgrade_to_level(3, true);
     auto w = guy_create_walker_owned(g, og::runtime::current_session->myscreen_);
     if (w) {
-        w->team_num = team;
-        w->user = -1;
-        w->dead = 0;
+        w->set_team_num(team);
+        w->set_user(-1);
+        w->set_dead(0);
         w->setxy(50, 50);
     }
     return w;
@@ -31,9 +31,9 @@ static std::unique_ptr<walker> make_npc_walker(char family, unsigned char team)
         return nullptr;
     auto w = l->create_walker_owned(Order::Living, family);
     if (w) {
-        w->team_num = team;
-        w->user = -1;
-        w->dead = 0;
+        w->set_team_num(team);
+        w->set_user(-1);
+        w->set_dead(0);
         w->setxy(60, 60);
     }
     return w;
@@ -65,7 +65,7 @@ TEST(ViewLifecycle, viewscreen_find_next_control_priorities)
         std::list<std::unique_ptr<walker>> saved;
         ObListSwap()
         {
-            saved.splice(saved.end(), og::runtime::current_session->myscreen_->world().oblist);
+            og::runtime::current_session->myscreen_->world().oblist.splice_into(saved);
         }
         ~ObListSwap()
         {
@@ -94,17 +94,16 @@ TEST(ViewLifecycle, viewscreen_find_next_control_priorities)
     ASSERT_TRUE(found1 == player_same_teamp) << "should prefer un-controlled player character on team";
 
     // Mark player_same_team as already controlled; should fall back to any team member.
-    player_same_teamp->user = 0;
+    player_same_teamp->set_user(0);
     walker* found2 = v.find_next_control();
     ASSERT_TRUE(found2 == npc_same_teamp) << "should fall back to any un-controlled living team member";
 
     // Now eliminate team 0 options; should fall back to any remaining player character.
-    npc_same_teamp->dead = 1;
-    player_same_teamp->dead = 1;
+    npc_same_teamp->set_dead(1);
+    player_same_teamp->set_dead(1);
     walker* found3 = v.find_next_control();
     ASSERT_TRUE(found3 == player_other_teamp) << "should fall back to any living player character";
 
     // Cleanup - remove just our inserted walkers.
     og::runtime::current_session->myscreen_->world().oblist.clear();
 }
-

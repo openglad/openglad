@@ -30,7 +30,7 @@ TEST(GloaderFuncs, gloader_create_living_all)
         ASSERT_TRUE(w != nullptr) << "create_walker should succeed for all living families";
         ASSERT_TRUE(w->stats() != nullptr) << "stats should exist";
         ASSERT_TRUE(w->query_order() == Order::Living) << "order should be Living";
-        ASSERT_EQ((int)families[i], (int)w->family) << "family should match";
+        ASSERT_EQ((int)families[i], (int)w->family()) << "family should match";
     }
 }
 
@@ -144,7 +144,7 @@ TEST(GloaderFuncs, gloader_set_derived_stats_all)
         auto w = l->create_walker_owned(Order::Living, families[i]);
         if (w) {
             l->set_derived_stats(w.get(), Order::Living, families[i]);
-            ASSERT_TRUE(w->stats()->max_hitpoints > 0) << "HP should be set";
+            ASSERT_TRUE(w->stats()->max_hitpoints() > 0) << "HP should be set";
         }
     }
 }
@@ -164,7 +164,7 @@ TEST(GloaderFuncs, gloader_set_walker)
     walker* wp = w.get();
 
     og::runtime::current_session->myscreen_->set_walker(wp, Order::Living, FAMILY_MAGE);
-    ASSERT_EQ((int)FAMILY_MAGE, (int)wp->family) << "family should change to mage";
+    ASSERT_EQ((int)FAMILY_MAGE, (int)wp->family()) << "family should change to mage";
 
     const Order orders[] = {Order::Living, Order::Weapon, Order::Treasure, Order::FX, Order::Generator, Order::Special};
     for (Order o : orders) {
@@ -202,19 +202,21 @@ TEST(GloaderFuncs, gloader_invalid_family_clamp_paths)
     ASSERT_TRUE(living_w != nullptr) << "invalid living family should fall back to soldier";
     if (!living_w)
         return;
-    ASSERT_EQ((int)FAMILY_SOLDIER, (int)living_w->family) << "invalid living family should clamp to soldier";
+    ASSERT_EQ((int)FAMILY_SOLDIER, (int)living_w->family()) << "invalid living family should clamp to soldier";
 
     auto weapon_w = l->create_walker_owned(Order::Weapon, NUM_FAMILIES + 5);
     ASSERT_TRUE(weapon_w != nullptr) << "invalid weapon family should clamp to 0 and still construct";
     if (weapon_w)
-        ASSERT_EQ(0, (int)weapon_w->family) << "invalid non-living family should clamp to family 0";
+    {
+        ASSERT_EQ(0, (int)weapon_w->family()) << "invalid non-living family should clamp to family 0";
+    }
 
     l->set_derived_stats(living_w.get(), Order::Living, NUM_FAMILIES + 9);
-    ASSERT_TRUE(living_w->normal_stepsize >= 0.0f) << "set_derived_stats should clamp invalid family safely";
+    ASSERT_TRUE(living_w->normal_stepsize() >= 0.0f) << "set_derived_stats should clamp invalid family safely";
 
     walker* changed = l->set_walker(living_w.get(), Order::Living, NUM_FAMILIES + 9);
     ASSERT_TRUE(changed != nullptr) << "set_walker should clamp invalid family and return object";
-    ASSERT_EQ(0, (int)living_w->family) << "set_walker invalid family should clamp to 0";
+    ASSERT_EQ(0, (int)living_w->family()) << "set_walker invalid family should clamp to 0";
 }
 
 
@@ -228,7 +230,9 @@ TEST(GloaderFuncs, gloader_order_special_and_invalid_graphics_paths)
     auto special = l->create_walker_owned(Order::Special, FAMILY_RESERVED_TEAM);
     ASSERT_TRUE(special != nullptr) << "special order should build generic walker when graphics exist";
     if (special)
+    {
         ASSERT_TRUE(special->query_order() == Order::Special) << "special walker should keep special order";
+    }
 
     // Cover the "invalid graphics -> popup + nullptr" branch deterministically.
     const int idx = PIX(Order::Special, FAMILY_RESERVED_TEAM);
@@ -241,7 +245,9 @@ TEST(GloaderFuncs, gloader_order_special_and_invalid_graphics_paths)
     auto neg_living = l->create_walker_owned(Order::Living, -4);
     ASSERT_TRUE(neg_living != nullptr) << "negative living family should clamp to soldier";
     if (neg_living)
-        ASSERT_EQ((int)FAMILY_SOLDIER, (int)neg_living->family) << "negative living family should map to soldier";
+    {
+        ASSERT_EQ((int)FAMILY_SOLDIER, (int)neg_living->family()) << "negative living family should map to soldier";
+    }
 }
 
 
@@ -265,22 +271,22 @@ TEST(GloaderFuncs, gloader_set_walker_descriptor_flag_and_default_paths)
     ASSERT_TRUE(w->stats()->query_bit_flags(BIT_FLYING) != 0) << "wave3 should set BIT_FLYING";
 
     l->set_walker(w.get(), Order::Weapon, FAMILY_GLOW);
-    ASSERT_EQ(350, (int)w->lifetime) << "glow should set init lifetime";
+    ASSERT_EQ(350, (int)w->lifetime()) << "glow should set init lifetime";
 
     l->set_walker(w.get(), Order::Weapon, FAMILY_CIRCLE_PROTECTION);
-    ASSERT_EQ(5, (int)w->ani_type) << "circle protection should set init ani_type";
+    ASSERT_EQ(5, (int)w->ani_type()) << "circle protection should set init ani_type";
 
     // Treasure descriptor init_ignore + init_frame paths.
     l->set_walker(w.get(), Order::Treasure, FAMILY_STAIN);
-    ASSERT_EQ(1, (int)w->ignore) << "stain treasure should set ignore";
+    ASSERT_EQ(1, (int)w->ignore()) << "stain treasure should set ignore";
 
     l->set_walker(w.get(), Order::Treasure, FAMILY_GOLD_BAR);
-    ASSERT_EQ(0, (int)w->frame) << "gold bar should set direct frame 0";
+    ASSERT_EQ(0, (int)w->frame()) << "gold bar should set direct frame 0";
 
     // Generator descriptor missing path: family >= NUM_GENERATOR_FAMILIES falls back to skeleton.
     l->set_walker(w.get(), Order::Generator, 6);
-    ASSERT_EQ(0, (int)w->stats()->weapon_cost) << "generators should set weapon_cost=0";
-    ASSERT_EQ((int)FAMILY_SKELETON, (int)w->default_weapon) << "missing generator descriptor should default weapon to skeleton";
+    ASSERT_EQ(0, (int)w->stats()->weapon_cost()) << "generators should set weapon_cost=0";
+    ASSERT_EQ((int)FAMILY_SKELETON, (int)w->default_weapon()) << "missing generator descriptor should default weapon to skeleton";
 
     // FX descriptor bit flags.
     l->set_walker(w.get(), Order::FX, FAMILY_CLOUD);
@@ -320,4 +326,3 @@ TEST(GloaderFuncs, gloader_active_config_branch_with_ctx_and_global_cfg)
 
     cfg.apply_setting("effects", "gore", prev_global_gore);
 }
-

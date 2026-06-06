@@ -6,6 +6,7 @@
  * (at your option) any later version.
  */
 #include <cstdint>
+#include <openglad/gameplay/key_mask.h>
 #include <openglad/gameplay/treasure_family_descriptor.h>
 #include <openglad/gameplay/treasure.h>
 #include <openglad/core/constants.h>
@@ -15,7 +16,6 @@
 #include <openglad/gameplay/sim_emit.h>
 #include <format>
 #include <string>
-#include <cmath>
 #include <algorithm>
 
 static bool is_valid_score_team(unsigned char team_num)
@@ -35,11 +35,11 @@ static void award_score(unsigned char team_num, std::uint32_t points)
 
 static bool gold_bar_on_eat(treasure* self, walker* eater)
 {
-    if (eater->team_num == 0 || eater->myguy)
+    if (eater->team_num() == 0 || eater->myguy)
     {
-        award_score(eater->team_num,
-                    static_cast<std::uint32_t>(200 * self->stats()->level));
-        self->dead = 1;
+        award_score(eater->team_num(),
+                    static_cast<std::uint32_t>(200 * self->stats()->level()));
+        self->set_dead(1);
         og::sim::emit_sound(current_game->sim_events, SOUND_MONEY);
     }
     return true;
@@ -47,11 +47,11 @@ static bool gold_bar_on_eat(treasure* self, walker* eater)
 
 static bool silver_bar_on_eat(treasure* self, walker* eater)
 {
-    if (eater->team_num == 0 || eater->myguy)
+    if (eater->team_num() == 0 || eater->myguy)
     {
-        award_score(eater->team_num,
-                    static_cast<std::uint32_t>(50 * self->stats()->level));
-        self->dead = 1;
+        award_score(eater->team_num(),
+                    static_cast<std::uint32_t>(50 * self->stats()->level()));
+        self->set_dead(1);
         og::sim::emit_sound(current_game->sim_events, SOUND_MONEY);
     }
     return true;
@@ -59,30 +59,31 @@ static bool silver_bar_on_eat(treasure* self, walker* eater)
 
 static bool life_gem_on_eat(treasure* self, walker* eater)
 {
-    if (eater->team_num != self->team_num) // only our team can get these
+    if (eater->team_num() != self->team_num()) // only our team can get these
         return true;
-    award_score(eater->team_num,
-                static_cast<std::uint32_t>(std::max(0.0f, self->stats()->hitpoints)));
+    award_score(eater->team_num(),
+                static_cast<std::uint32_t>(std::max(0.0f, self->stats()->hitpoints())));
     walker* flash = current_game->world->add_ob(Order::FX, FAMILY_FLASH);
-    flash->ani_type = ANI_EXPAND_8;
+    flash->set_ani_type(ANI_EXPAND_8);
     flash->center_on(self);
-    self->dead = 1;
+    self->set_dead(1);
     self->death();
     return true;
 }
 
 static bool key_on_eat(treasure* self, walker* eater)
 {
-    if (!(eater->keys & static_cast<std::int32_t>(pow(static_cast<double>(2), self->stats()->level)))) // just got it?
+    const std::int32_t key_mask = key_level_mask(self->stats()->level());
+    if (!(eater->keys() & key_mask)) // just got it?
     {
-        eater->keys = eater->keys | static_cast<std::int32_t>(pow(static_cast<double>(2), self->stats()->level)); // ie, 2, 4, 8, 16...
+        eater->set_keys(eater->keys() | static_cast<std::uint32_t>(key_mask)); // ie, 2, 4, 8, 16...
         std::string message;
         if (eater->myguy)
             message = std::format("{} picks up key {}", eater->myguy->name,
-                    self->stats()->level);
+                    self->stats()->level());
         else
-            message = std::format("{} picks up key {}", eater->stats()->name, self->stats()->level);
-        if (eater->team_num == 0) // only show players picking up keys
+            message = std::format("{} picks up key {}", eater->stats()->name, self->stats()->level());
+        if (eater->team_num() == 0) // only show players picking up keys
         {
             og::sim::emit_notification(current_game->sim_events, message);
             og::sim::emit_sound(current_game->sim_events, SOUND_MONEY);

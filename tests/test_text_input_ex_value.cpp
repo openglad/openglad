@@ -68,7 +68,9 @@ TEST(TextInputExValue, text_input_string_ex_value_accepts_backspace_then_text_an
 
     ASSERT_TRUE(v.has_value()) << "input_string_ex_value should return a value";
     if (v.has_value())
+    {
         ASSERT_TRUE(*v == "xy") << "backspace-first should clear seed and capture injected text";
+    }
 }
 
 
@@ -86,4 +88,3 @@ TEST(TextInputExValue, text_input_string_ex_value_escape_returns_nullopt)
 
     ASSERT_TRUE(!v.has_value()) << "escape should cancel and return nullopt";
 }
-

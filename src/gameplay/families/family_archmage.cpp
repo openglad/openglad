@@ -27,8 +27,8 @@
 
 static bool archmage_handle_teleport(walker* self)
 {
-    self->ani_type = ANI_TELE_IN;
-    self->cycle = 0;
+    self->set_ani_type(ANI_TELE_IN);
+    self->set_cycle(0);
     self->teleport();
     return true;
 }
@@ -36,9 +36,9 @@ static bool archmage_handle_teleport(walker* self)
 static bool archmage_on_fire_weapon(walker* self, walker* weapon)
 {
     // ArchMage gets 1/20th of 'extra' magic for more damage
-    float extra = self->stats()->magicpoints / 20;
-    self->stats()->magicpoints -= extra;
-    weapon->damage += extra;
+    float extra = self->stats()->magicpoints() / 20;
+    self->stats()->set_magicpoints(self->stats()->magicpoints() - extra);
+    weapon->set_damage(weapon->damage() + extra);
     return true;
 }
 
@@ -46,46 +46,47 @@ static void archmage_on_act_living(living* self)
 {
     // Archmage gets bonus viewing periodically based on level
     std::int32_t temp;
-    if (self->stats()->level >= 40)
+    if (self->stats()->level() >= 40)
         temp = 1;
     else
-        temp = 40 - self->stats()->level;
-    if (!(self->drawcycle % temp))
-        self->view_all += 1;
+        temp = 40 - self->stats()->level();
+    if (!(self->drawcycle() % temp))
+        self->set_view_all(static_cast<short>(self->view_all() + 1));
 }
 
 static void archmage_hit_response(statistics* stats, walker* foe)
 {
-    walker* controller = stats->controller;
-    controller->busy = 0; // yes, this is a cheat
+    walker* controller = stats->controller();
+    controller->set_busy(0); // yes, this is a cheat
 
     std::int32_t possible_specials[NUM_SPECIALS];
     for (int i = 0; i < NUM_SPECIALS; i++)
         possible_specials[i] = 0;
-    for (int i = 0; i <= (stats->level + 2) / 3; i++)
-        if (i < NUM_SPECIALS && stats->magicpoints >= stats->special_cost[i])
+    for (int i = 0; i <= (stats->level() + 2) / 3; i++)
+        if (i < NUM_SPECIALS && stats->magicpoints() >= stats->special_cost(i))
             possible_specials[i] = 1;
 
     float threshold;
     if (controller->myguy)
-        threshold = (3.0f * stats->max_hitpoints) / 5.0f;
+        threshold = (3.0f * stats->max_hitpoints()) / 5.0f;
     else
-        threshold = (3.0f * stats->max_hitpoints) / 8.0f;
+        threshold = (3.0f * stats->max_hitpoints()) / 8.0f;
 
-    if (stats->hitpoints < threshold && possible_specials[1] && current_game->world->rng_.next(3))
+    if (stats->hitpoints() < threshold && possible_specials[1] && current_game->world->rng_.next(3))
     {
-        controller->current_special = 1;
-        controller->shifter_down = 0;
-        controller->busy = 0;
+        controller->set_current_special(1);
+        controller->set_shifter_down(0);
+        controller->set_busy(0);
         controller->special();
     }
     else
     {
-        if (controller->foe != foe)
+        if (controller->foe() != foe)
         {
-            controller->foe = foe;
-            foe->foe = controller;
-            stats->last_distance = stats->current_distance = 15000;
+            controller->set_foe(foe);
+            foe->set_foe(controller);
+            stats->set_current_distance(15000);
+            stats->set_last_distance(15000);
         }
         std::int32_t howmany = 0;
         current_game->world->find_foes_in_range(current_game->world->oblist,
@@ -94,7 +95,7 @@ static void archmage_hit_response(statistics* stats, walker* foe)
         {
             if (possible_specials[3])
             {
-                controller->current_special = 3;
+                controller->set_current_special(3);
                 if (controller->special())
                     return;
             }
@@ -102,26 +103,26 @@ static void archmage_hit_response(statistics* stats, walker* foe)
             {
                 if (current_game->world->rng_.next(2))
                 {
-                    controller->shifter_down = 1;
-                    controller->current_special = 2;
+                    controller->set_shifter_down(1);
+                    controller->set_current_special(2);
                     if (controller->special())
                     {
-                        controller->shifter_down = 0;
-                        if (stats->magicpoints >= stats->special_cost[1])
+                        controller->set_shifter_down(0);
+                        if (stats->magicpoints() >= stats->special_cost(1))
                         {
-                            controller->busy = 0;
+                            controller->set_busy(0);
                             controller->special();
                         }
                         return;
                     }
                 }
-                controller->shifter_down = 0;
-                controller->current_special = 2;
+                controller->set_shifter_down(0);
+                controller->set_current_special(2);
                 if (controller->special())
                 {
-                    if (stats->magicpoints >= stats->special_cost[1])
+                    if (stats->magicpoints() >= stats->special_cost(1))
                     {
-                        controller->busy = 0;
+                        controller->set_busy(0);
                         controller->special();
                     }
                     return;
@@ -146,14 +147,14 @@ static bool archmage_do_special(walker* self)
     char person;
     std::string message, tempstr;
 
-    switch (self->current_special)
+    switch (self->current_special())
     {
         case 1: // teleport
-            if (self->ani_type == ANI_TELE_OUT || self->ani_type == ANI_TELE_IN)
+            if (self->ani_type() == ANI_TELE_OUT || self->ani_type() == ANI_TELE_IN)
                 return false;
-            if (self->shifter_down) // leave/remove a marker
+            if (self->shifter_down()) // leave/remove a marker
             {
-                if (self->busy > 0)
+                if (self->busy() > 0)
                     return false;
                 if (self->myguy && (self->myguy->intelligence < 75))
                 {
@@ -166,15 +167,15 @@ static bool archmage_do_special(walker* self)
                     walker* ob = uptr.get();
                     if (ob &&
                             ob->query_order() == Order::FX &&
-                            ob->family == FAMILY_MARKER &&
-                            ob->owner == self &&
-                            !ob->dead)
+                            ob->family() == FAMILY_MARKER &&
+                            ob->owner() == self &&
+                            !ob->dead())
                     {
-                        ob->dead = 1;
+                        ob->set_dead(1);
                         ob->death();
-                        if (self->team_num == 0 || self->myguy)
+                        if (self->team_num() == 0 || self->myguy)
                             og::sim::emit_notification(current_game->sim_events, "(Old Marker Removed)");
-                        self->busy += 8;
+                        self->set_busy(self->busy() + 8.0f);
                         generic = 1;
                         break;
                     }
@@ -183,48 +184,48 @@ static bool archmage_do_special(walker* self)
                 if (!newob)
                     return false;
                 if (self->myguy)
-                    newob->lifetime = self->myguy->intelligence / 33;
+                    newob->set_lifetime(self->myguy->intelligence / 33);
                 else
-                    newob->lifetime = (self->stats()->level / 4) + 1;
-                newob->ani_type = 2;
-                if (self->team_num == 0 || self->myguy)
+                    newob->set_lifetime((self->stats()->level() / 4) + 1);
+                newob->set_ani_type(2);
+                if (self->team_num() == 0 || self->myguy)
                 {
                     og::sim::emit_notification(current_game->sim_events, "Teleport Marker Placed");
-                    message = std::format("({} Uses)", newob->lifetime);
+                    message = std::format("({} Uses)", newob->lifetime());
                     og::sim::emit_notification(current_game->sim_events, message);
                 }
-                self->busy += 8;
-                generic = static_cast<std::int32_t>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[static_cast<int>(self->current_special)]));
+                self->set_busy(self->busy() + 8.0f);
+                generic = static_cast<std::int32_t>(self->stats()->magicpoints() - static_cast<float>(self->stats()->special_cost(static_cast<int>(self->current_special()))));
                 generic /= 2;
-                self->stats()->magicpoints -= static_cast<float>(generic);
+                self->stats()->set_magicpoints(self->stats()->magicpoints() - static_cast<float>(generic));
             }
             else
             {
                 og::sim::emit_sound(current_game->sim_events, SOUND_TELEPORT);
-                self->ani_type = ANI_TELE_OUT;
-                self->cycle = 0;
+                self->set_ani_type(ANI_TELE_OUT);
+                self->set_cycle(0);
             }
             break;
         case 2: // heartburst / chain lightning
-            if (self->busy > 0)
+            if (self->busy() > 0)
                 return false;
-            if (self->shifter_down)
+            if (self->shifter_down())
             {
                 if (self->myguy)
                     generic = 200 + self->myguy->intelligence / 2;
                 else
-                    generic = 200 + self->stats()->level * 5;
+                    generic = 200 + self->stats()->level() * 5;
             }
             else
                 generic = 80;
             {
                 std::list<walker*> newlist = current_game->world->find_foes_in_range(current_game->world->oblist,
-                                                      generic + 2 * self->stats()->level, &howmany, self);
+                                                      generic + 2 * self->stats()->level(), &howmany, self);
                 if (!howmany)
                     return false;
-                if (!self->shifter_down) // normal heartburst
+                if (!self->shifter_down()) // normal heartburst
                 {
-                    generic = static_cast<std::int32_t>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[2]));
+                    generic = static_cast<std::int32_t>(self->stats()->magicpoints() - static_cast<float>(self->stats()->special_cost(2)));
                     generic /= 2;
                     generic /= howmany;
                     if (self->myguy)
@@ -232,35 +233,35 @@ static bool archmage_do_special(walker* self)
                         self->myguy->total_shots += howmany;
                         self->myguy->scen_shots = static_cast<short>(self->myguy->scen_shots + howmany);
                     }
-                    self->busy += 5;
+                    self->set_busy(self->busy() + 5.0f);
                     for (auto* ob : newlist)
                     {
                         newob = summon_entity(self, Order::FX, FAMILY_EXPLOSION);
                         if (!newob)
                             return false;
                         newob->stats()->set_bit_flags(BIT_MAGICAL, 1);
-                        newob->damage = static_cast<float>(generic);
+                        newob->set_damage(static_cast<float>(generic));
                         newob->center_on(ob);
                         og::sim::emit_sound(current_game->sim_events, SOUND_EXPLODE);
-                        newob->ani_type = ANI_EXPLODE;
+                        newob->set_ani_type(ANI_EXPLODE);
                         newob->stats()->set_bit_flags(BIT_MAGICAL, 1);
-                        newob->skip_exit = 100;
-                        self->stats()->magicpoints -= static_cast<float>(generic);
+                        newob->set_skip_exit(100);
+                        self->stats()->set_magicpoints(self->stats()->magicpoints() - static_cast<float>(generic));
                     }
                 }
                 else // chain lightning
                 {
-                    self->busy += 5;
+                    self->set_busy(self->busy() + 5.0f);
                     if (self->myguy)
                     {
                         self->myguy->total_shots++;
                         self->myguy->scen_shots++;
                     }
                     newob = summon_entity(self, Order::FX, FAMILY_CHAIN);
-                    generic = static_cast<std::int32_t>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[2]));
+                    generic = static_cast<std::int32_t>(self->stats()->magicpoints() - static_cast<float>(self->stats()->special_cost(2)));
                     generic /= 2;
-                    self->stats()->magicpoints -= static_cast<float>(generic);
-                    newob->damage = static_cast<float>(generic);
+                    self->stats()->set_magicpoints(self->stats()->magicpoints() - static_cast<float>(generic));
+                    newob->set_damage(static_cast<float>(generic));
                     generic = 30000;
                     for (auto* w : newlist)
                     {
@@ -268,26 +269,26 @@ static bool archmage_do_special(walker* self)
                         if (generic > dist)
                         {
                             generic = dist;
-                            newob->leader = w;
+                            newob->set_leader(w);
                         }
                     }
                 }
             }
             break;
         case 3: // summon image / elemental
-            if (self->busy > 0)
+            if (self->busy() > 0)
                 return false;
-            if (self->shifter_down) // true summoning
+            if (self->shifter_down()) // true summoning
             {
                 if (self->myguy && self->myguy->intelligence < 150)
                 {
-                    if (self->user != -1)
+                    if (self->user() != -1)
                         og::sim::emit_notification(current_game->sim_events, "150 Int required to Summon!");
                     return false;
                 }
-                generic = static_cast<std::int32_t>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[3]));
+                generic = static_cast<std::int32_t>(self->stats()->magicpoints() - static_cast<float>(self->stats()->special_cost(3)));
                 generic /= 2;
-                self->stats()->magicpoints -= static_cast<float>(generic);
+                self->stats()->set_magicpoints(self->stats()->magicpoints() - static_cast<float>(generic));
                 newob = current_game->world->add_ob(Order::Living, FAMILY_FIREELEMENTAL);
                 if (!newob)
                     return false;
@@ -297,29 +298,29 @@ static bool archmage_do_special(walker* self)
                     {
                         if ((i == 0 && j == 0) || (generic))
                             continue;
-                        float testx = static_cast<float>(self->xpos + ((newob->sizex + 1) * i));
-                        float testy = static_cast<float>(self->ypos + ((newob->sizey + 1) * j));
+                        float testx = static_cast<float>(self->xpos() + ((newob->sizex() + 1) * i));
+                        float testy = static_cast<float>(self->ypos() + ((newob->sizey() + 1) * j));
                         if (current_game->world->query_passable(testx, testy, newob))
                         {
                             generic = 1;
                             newob->setxy(testx, testy);
-                            newob->stats()->level = (self->stats()->level + 1) / 2;
-                            newob->set_difficulty(static_cast<std::uint32_t>(newob->stats()->level));
-                            newob->team_num = self->team_num;
-                            newob->owner = self;
-                            newob->lifetime = 200 + 60 * self->stats()->level;
+                            newob->stats()->set_level((self->stats()->level() + 1) / 2);
+                            newob->set_difficulty(static_cast<std::uint32_t>(newob->stats()->level()));
+                            newob->set_team_num(self->team_num());
+                            newob->set_owner(self);
+                            newob->set_lifetime(200 + 60 * self->stats()->level());
                         }
                     }
                 if (!generic)
                 {
-                    newob->dead = 1;
+                    newob->set_dead(1);
                     return false;
                 }
-                self->busy += 15;
+                self->set_busy(self->busy() + 15.0f);
             }
             else // illusion summoning
             {
-                generic = static_cast<std::int32_t>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[3]));
+                generic = static_cast<std::int32_t>(self->stats()->magicpoints() - static_cast<float>(self->stats()->special_cost(3)));
                 if (generic < 100)
                     person = FAMILY_ELF;
                 else if (generic < 250)
@@ -383,45 +384,45 @@ static bool archmage_do_special(walker* self)
                     {
                         if ((i == 0 && j == 0) || (generic))
                             continue;
-                        float testx = static_cast<float>(self->xpos + ((newob->sizex + 1) * i));
-                        float testy = static_cast<float>(self->ypos + ((newob->sizey + 1) * j));
+                        float testx = static_cast<float>(self->xpos() + ((newob->sizex() + 1) * i));
+                        float testy = static_cast<float>(self->ypos() + ((newob->sizey() + 1) * j));
                         if (current_game->world->query_passable(testx, testy, newob))
                         {
                             generic = 1;
                             newob->setxy(testx, testy);
-                            newob->stats()->level = (self->stats()->level + 2) / 3;
-                            newob->set_difficulty(static_cast<std::uint32_t>(newob->stats()->level));
-                            newob->team_num = self->team_num;
-                            newob->owner = self;
-                            newob->lifetime = 100 + 20 * self->stats()->level;
-                            newob->stats()->max_hitpoints = 1;
-                            newob->stats()->hitpoints = 0;
-                            newob->stats()->armor = 0;
-                            newob->foe = self->foe;
+                            newob->stats()->set_level((self->stats()->level() + 2) / 3);
+                            newob->set_difficulty(static_cast<std::uint32_t>(newob->stats()->level()));
+                            newob->set_team_num(self->team_num());
+                            newob->set_owner(self);
+                            newob->set_lifetime(100 + 20 * self->stats()->level());
+                            newob->stats()->set_max_hitpoints(1);
+                            newob->stats()->set_hitpoints(0);
+                            newob->stats()->set_armor(0);
+                            newob->set_foe(self->foe());
                             newob->stats()->set_bit_flags(BIT_MAGICAL, 1);
                             newob->stats()->name = "Phantom";
                         }
                     }
                 if (!generic)
                 {
-                    newob->dead = 1;
+                    newob->set_dead(1);
                     return false;
                 }
-                self->busy += 15;
+                self->set_busy(self->busy() + 15.0f);
             }
             break;
         case 4: // mind control
         {
-            if (self->busy > 0)
+            if (self->busy() > 0)
                 return false;
             std::int32_t mp_after_base_cost = 0;
             std::int32_t controlled_targets = 0;
             {
-                const std::int32_t special_cost = self->stats()->special_cost[static_cast<int>(self->current_special)];
+                const std::int32_t special_cost = self->stats()->special_cost(static_cast<int>(self->current_special()));
                 mp_after_base_cost =
-                    static_cast<std::int32_t>(self->stats()->magicpoints - static_cast<float>(special_cost));
+                    static_cast<std::int32_t>(self->stats()->magicpoints() - static_cast<float>(special_cost));
                 std::list<walker*> newlist = current_game->world->find_foes_in_range(current_game->world->oblist,
-                                                      80 + 4 * self->stats()->level, &howmany, self);
+                                                      80 + 4 * self->stats()->level(), &howmany, self);
                 if (howmany < 1)
                     return false;
                 didheal = 0;
@@ -429,24 +430,24 @@ static bool archmage_do_special(walker* self)
                 for (auto* ob : newlist)
                 {
                     if (generic2 < 10) break;
-                    if ((ob->real_team_num == 255) &&
+                    if ((ob->real_team_num() == 255) &&
                         (ob->query_order() == Order::Living) &&
-                        (ob->charm_left <= 10))
+                        (ob->charm_left() <= 10))
                     {
                         generic2 -= 10;
-                        generic = self->stats()->level - ob->stats()->level;
+                        generic = self->stats()->level() - ob->stats()->level();
                         if (generic < 0 || (!current_game->world->rng_.next(20)))
                         {
-                            ob->real_team_num = ob->team_num;
-                            ob->team_num = static_cast<unsigned char>(current_game->world->rng_.next(8));
-                            ob->charm_left = (static_cast<short>(compute_charm_duration(generic, current_game->world->rng_)));
+                            ob->set_real_team_num(ob->team_num());
+                            ob->set_team_num(static_cast<unsigned char>(current_game->world->rng_.next(8)));
+                            ob->set_charm_left((static_cast<short>(compute_charm_duration(generic, current_game->world->rng_))));
                         }
                         else
                         {
-                            ob->real_team_num = ob->team_num;
-                            ob->team_num = self->team_num;
-                            ob->foe = nullptr;
-                            ob->charm_left = (static_cast<short>(compute_charm_duration(generic, current_game->world->rng_)));
+                            ob->set_real_team_num(ob->team_num());
+                            ob->set_team_num(self->team_num());
+                            ob->set_foe(nullptr);
+                            ob->set_charm_left((static_cast<short>(compute_charm_duration(generic, current_game->world->rng_))));
                         }
                         didheal++;
                         controlled_targets++;
@@ -462,9 +463,9 @@ static bool archmage_do_special(walker* self)
             if (mp_after_base_cost > 0 && controlled_targets > 1)
             {
                 const std::int32_t additional_spend = (controlled_targets - 1) * 10;
-                self->stats()->magicpoints -= static_cast<float>(std::min(additional_spend, mp_after_base_cost));
+                self->stats()->set_magicpoints(self->stats()->magicpoints() - static_cast<float>(std::min(additional_spend, mp_after_base_cost)));
             }
-            self->busy += 10;
+            self->set_busy(self->busy() + 10.0f);
             break;
         }
         default:

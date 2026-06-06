@@ -48,6 +48,18 @@
       }
     },
     {
+      "name": "ci-tsan",
+      "displayName": "CI TSan",
+      "inherits": "dev-debug",
+      "binaryDir": "${sourceDir}/build/ci-tsan",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "ENABLE_SANITIZERS": "ON",
+        "SANITIZERS": "thread"
+      }
+    },
+    {
       "name": "dev-debug-vcpkg",
       "displayName": "Dev Debug (vcpkg toolchain)",
       "inherits": "dev-debug",
@@ -121,6 +133,11 @@
       "jobs": 24
     },
     {
+      "name": "ci-tsan",
+      "configurePreset": "ci-tsan",
+      "jobs": 24
+    },
+    {
       "name": "dev-debug-vcpkg",
       "configurePreset": "dev-debug-vcpkg",
       "jobs": 24
@@ -164,6 +181,18 @@
     {
       "name": "ci-asan",
       "configurePreset": "ci-asan",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "ci-tsan",
+      "configurePreset": "ci-tsan",
+      "filter": {
+        "include": {
+          "name": "^og_unit_sim$"
+        }
+      },
       "output": {
         "outputOnFailure": true
       }

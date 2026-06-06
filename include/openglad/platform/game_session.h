@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 
@@ -10,8 +11,18 @@ struct SDL_Surface;
 class screen;
 class options;
 class cfg_store;
+struct InputState;
+
+namespace og::sim {
+class ITransport;
+class InProcessTransport;
+struct LobbyPlayerBinding;
+using PeerId = std::uint32_t;
+}
 
 namespace og::runtime {
+
+struct LocalTransportRuntime;
 
 // GameSession: RAII root object for runtime state.
 //
@@ -45,17 +56,54 @@ public:
     ::screen* screen_ptr() const;
     options* prefs_ptr() const;
     const cfg_store& config() const;
+    [[nodiscard]] bool has_local_transport_runtime() const noexcept override;
 
     // Activate this session: install its globals as current.
     // Returns an RAII guard that restores the previous session on destruction.
+    // When swap_render=false, the per-session SDL render surface swap is
+    // skipped (used by worker threads that must not touch E_Screen->render).
     class SessionScope;
-    [[nodiscard]] SessionScope activate();
+    [[nodiscard]] SessionScope activate(bool swap_render = true);
 
     // Per-session render surface (320x200 32-bit).
     // Non-null only for sessions that don't own the display (create_display=false).
     SDL_Surface* session_surface_ = nullptr;
 
 private:
+    friend std::size_t local_transport_client_count(
+        const GameSession& session) noexcept;
+    friend bool local_transport_shadow_is_paused(
+        const GameSession& session) noexcept;
+    friend void reset_local_transport_shadow(GameSession& session,
+                                             screen& gameplay_screen);
+    friend void reset_network_host_transport_shadow(
+        GameSession& session,
+        screen& gameplay_screen,
+        std::shared_ptr<og::sim::ITransport> server_transport,
+        std::shared_ptr<og::sim::InProcessTransport> local_client_transport,
+        const std::vector<og::sim::LobbyPlayerBinding>& player_bindings);
+    friend void reset_network_client_transport_shadow(
+        GameSession& session,
+        screen& gameplay_screen,
+        std::shared_ptr<og::sim::ITransport> client_transport,
+        og::sim::PeerId server_peer_id,
+        std::size_t local_player_index);
+    friend void clear_local_transport_shadow(GameSession& session) noexcept;
+    friend bool local_transport_shadow_toggle_pause(GameSession& session);
+    friend bool local_transport_shadow_abort_level(GameSession& session);
+    friend void local_transport_shadow_send_input(GameSession& session,
+                                                  const InputState& input,
+                                                  std::uint32_t tick);
+    friend void local_transport_shadow_finish_tick(GameSession& session);
+#ifdef TESTING
+    friend screen* local_transport_shadow_testing_server_screen(
+        GameSession& session);
+    friend bool local_transport_shadow_testing_open_exit_prompt(
+        GameSession& session, std::size_t player_index, int destination_level);
+    friend bool local_transport_shadow_testing_server_pending_exit_prompt(
+        GameSession& session) noexcept;
+#endif
+
     Config cfg_;
 
     // Default RNG for sessions that install a global context but don't opt into a seeded RNG.
@@ -67,11 +115,13 @@ private:
     // Saved previous session pointer for constructor/destructor restore.
     SessionState* prev_session_ = nullptr;
     GameplayContext* prev_game_ = nullptr;
+    GameSession* prev_game_session_ = nullptr;
 
     // Owned runtime state.
     GameWorld world_owner_{};
     std::unique_ptr<options> prefs_owner_;
     std::unique_ptr<::screen> screen_owner_;
+    std::shared_ptr<LocalTransportRuntime> local_transport_runtime_;
 };
 
 // RAII guard: while alive, the associated session's globals are installed.
@@ -86,13 +136,16 @@ public:
 
 private:
     friend class GameSession;
-    explicit SessionScope(GameSession& session);
+    explicit SessionScope(GameSession& session, bool swap_render = true);
 
     GameSession* session_ = nullptr;
     SessionState* saved_session_ = nullptr;
     GameplayContext* saved_game_ = nullptr;
+    GameSession* saved_game_session_ = nullptr;
     SDL_Surface* saved_render_surface_ = nullptr;
     bool did_swap_render_ = false;
 };
+
+extern thread_local GameSession* current_game_session;
 
 } // namespace og::runtime

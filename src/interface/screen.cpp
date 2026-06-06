@@ -26,6 +26,7 @@
 
 #include <openglad/interface/game_context.h>
 #include <openglad/gameplay/gameplay_context.h>
+#include <openglad/gameplay/game_client.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/sound.h>
 #include <openglad/gameplay/statistics.h>
@@ -36,6 +37,7 @@
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/smooth.h>
+#include <openglad/interface/render/walker_draw.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/core/util.h>
 #include <openglad/interface/input.h>
@@ -43,6 +45,7 @@
 #include <openglad/core/test_trace.h>
 #include <openglad/interface/ui/results_screen.h>
 #include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/world_snapshot.h>
 #include <openglad/interface/render/pal32.h>
 #include <openglad/interface/platform_bridge.h>
 #include <openglad/resources/level_data_hooks.h>
@@ -60,15 +63,40 @@ walker* find_follow_leader()
     if (og::runtime::current_session->myscreen_->numviews == 1)
         return og::runtime::current_session->myscreen_->viewob[0]->control;
     // Multi-view: pick whichever view's controller has yo_delay set
-    if (og::runtime::current_session->myscreen_->viewob[0]->control && og::runtime::current_session->myscreen_->viewob[0]->control->yo_delay)
+    if (og::runtime::current_session->myscreen_->viewob[0]->control && og::runtime::current_session->myscreen_->viewob[0]->control->yo_delay())
         return og::runtime::current_session->myscreen_->viewob[0]->control;
-    if (og::runtime::current_session->myscreen_->viewob[1]->control && og::runtime::current_session->myscreen_->viewob[1]->control->yo_delay)
+    if (og::runtime::current_session->myscreen_->viewob[1]->control && og::runtime::current_session->myscreen_->viewob[1]->control->yo_delay())
         return og::runtime::current_session->myscreen_->viewob[1]->control;
     return nullptr;
 }
 
 namespace
 {
+class ScopedGameplayTickActivation
+{
+public:
+    explicit ScopedGameplayTickActivation(og::runtime::SessionState* session)
+        : session_(session)
+        , previous_(session_ ? session_->gameplay_active_ : false)
+    {
+        if (session_ != nullptr)
+            session_->gameplay_active_ = true;
+    }
+
+    ~ScopedGameplayTickActivation()
+    {
+        if (session_ != nullptr)
+            session_->gameplay_active_ = previous_;
+    }
+
+    ScopedGameplayTickActivation(const ScopedGameplayTickActivation&) = delete;
+    ScopedGameplayTickActivation& operator=(const ScopedGameplayTickActivation&) = delete;
+
+private:
+    og::runtime::SessionState* session_ = nullptr;
+    bool previous_ = false;
+};
+
 const char* scenario_title_error_string(screen::ScenarioTitleError err)
 {
     switch(err)
@@ -137,6 +165,211 @@ const char* save_data_io_error_string(SaveDataIoError err)
 // From picker.cpp
 extern Sint32 calculate_level(Uint32 temp_exp);
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
+
+namespace
+{
+
+void cleanup_dead_view_controls(screen& self)
+{
+    for (int i = 0; i < self.numviews; i++)
+    {
+        if (self.viewob[i]->control && self.viewob[i]->control->dead())
+            self.viewob[i]->control = nullptr;
+    }
+}
+
+screen::TickWorldBatches split_screen_event_batches(
+    const og::sim::SimEventBatch& source)
+{
+    og::sim::SimEventBatch cosmetic_batch;
+    og::sim::GameFlowEventBatch game_flow_batch;
+    og::sim::split_event_batches(source, cosmetic_batch, game_flow_batch);
+
+    return {std::move(cosmetic_batch), std::move(game_flow_batch)};
+}
+
+void dispatch_cosmetic_screen_events(screen& self,
+                                     const std::vector<og::sim::Event>& events)
+{
+    cleanup_dead_view_controls(self);
+    for (const auto& ev : events)
+    {
+        switch (ev.kind)
+        {
+            case og::sim::EventKind::PlaySound:
+                {
+                    const PlatformBridge& bridge = platform_bridge();
+                    if (bridge.play_sound)
+                        bridge.play_sound(static_cast<int>(ev.a));
+                    else if (self.soundp)
+                        self.soundp->play_sound(static_cast<short>(ev.a));
+                }
+                break;
+            case og::sim::EventKind::Notification:
+                if (!ev.text.empty())
+                {
+                    short duration = ev.a ? static_cast<short>(ev.a)
+                                          : STANDARD_TEXT_TIME;
+                    for (short vi = 0; vi < self.numviews; vi++)
+                        self.viewob[vi]->set_display_text(ev.text, duration);
+                }
+                break;
+            case og::sim::EventKind::SetPalette:
+                if (ev.a == 0)
+                {
+                    self.world().current_palette_id = 0;
+                    set_palette(self.ourpalette);
+                }
+                else
+                {
+                    self.world().current_palette_id = 1;
+                    set_palette(self.bluepalette);
+                }
+                break;
+            case og::sim::EventKind::RequestRedraw:
+                self.redrawme = 1;
+                break;
+            case og::sim::EventKind::None:
+            case og::sim::EventKind::EndGame:
+            case og::sim::EventKind::SetEnd:
+            case og::sim::EventKind::RequestExitConfirmation:
+            case og::sim::EventKind::WithdrawToLevel:
+            case og::sim::EventKind::ScoreChange:
+            case og::sim::EventKind::DamageTile:
+            default:
+                break;
+        }
+    }
+}
+
+bool dispatch_game_flow_screen_events(screen& self,
+                                      const std::vector<og::sim::Event>& events)
+{
+    cleanup_dead_view_controls(self);
+
+    const og::sim::Event* first_exit_request = nullptr;
+    const og::sim::Event* first_withdraw_request = nullptr;
+    for (const auto& ev : events)
+    {
+        switch (ev.kind)
+        {
+            case og::sim::EventKind::EndGame:
+                self.sync_save_data_from_world();
+                return self.endgame(static_cast<short>(ev.a),
+                                    static_cast<short>(
+                                        static_cast<std::int32_t>(ev.b)));
+            case og::sim::EventKind::SetEnd:
+                self.world().end = 1;
+                break;
+            case og::sim::EventKind::RequestExitConfirmation:
+                if (first_exit_request == nullptr)
+                    first_exit_request = &ev;
+                break;
+            case og::sim::EventKind::WithdrawToLevel:
+                if (first_withdraw_request == nullptr)
+                    first_withdraw_request = &ev;
+                break;
+            case og::sim::EventKind::ScoreChange:
+                self.redrawme = 1;
+                break;
+            case og::sim::EventKind::DamageTile:
+                self.damage_tile(static_cast<short>(ev.a),
+                                 static_cast<short>(ev.b));
+                break;
+            case og::sim::EventKind::None:
+            case og::sim::EventKind::PlaySound:
+            case og::sim::EventKind::Notification:
+            case og::sim::EventKind::SetPalette:
+            case og::sim::EventKind::RequestRedraw:
+            default:
+                break;
+        }
+    }
+
+    if (first_exit_request != nullptr)
+    {
+        const short destination_level =
+            static_cast<short>(static_cast<std::int32_t>(first_exit_request->a));
+        const bool is_withdraw_prompt = first_exit_request->b != 0;
+        std::string prompt_text = first_exit_request->text;
+        if (prompt_text.empty())
+        {
+            if (is_withdraw_prompt)
+                prompt_text = std::format("Withdraw to Level {}?", destination_level);
+            else
+                prompt_text = std::format("Exit to Level {}?", destination_level);
+        }
+
+        const bool accepted = yes_or_no_prompt("Exit Field", prompt_text.c_str(), false);
+        self.redrawme = 1;
+        if (accepted)
+        {
+            if (is_withdraw_prompt)
+            {
+                short withdraw_level = destination_level;
+                if (first_withdraw_request != nullptr)
+                {
+                    withdraw_level = static_cast<short>(
+                        static_cast<std::int32_t>(first_withdraw_request->a));
+                }
+
+                const SaveDataIoError load_error = self.save_data.load_with_error("save0");
+                if (load_error != SaveDataIoError::None)
+                {
+                    LogError("withdraw_load_failed target_level={} error={}\n",
+                             withdraw_level,
+                             save_data_io_error_string(load_error));
+                    self.sync_save_data_from_world();
+                    self.world().withdraw_requested = false;
+                    self.world().withdraw_level = -1;
+                    return 1;
+                }
+
+                self.save_data.scen_num = withdraw_level;
+                const SaveDataIoError save_error =
+                    self.save_data.save_with_error("save0");
+                if (save_error != SaveDataIoError::None)
+                {
+                    LogError("withdraw_save_failed target_level={} error={}\n",
+                             withdraw_level,
+                             save_data_io_error_string(save_error));
+                    self.sync_save_data_from_world();
+                    self.world().withdraw_requested = false;
+                    self.world().withdraw_level = -1;
+                    return 1;
+                }
+                self.sync_world_from_save_data();
+                return self.endgame(1, withdraw_level);
+            }
+
+            self.sync_save_data_from_world();
+            self.world().withdraw_requested = false;
+            self.world().withdraw_level = -1;
+            return self.endgame(0, destination_level);
+        }
+
+        self.world().withdraw_requested = false;
+        self.world().withdraw_level = -1;
+    }
+    else if (first_withdraw_request != nullptr)
+    {
+        self.world().withdraw_requested = false;
+        self.world().withdraw_level = -1;
+    }
+
+    if (self.world().game_ended && !self.world().end)
+    {
+        self.sync_save_data_from_world();
+        return self.endgame(self.world().ending, self.world().next_level);
+    }
+
+    if (self.world().end)
+        return 1;
+
+    return 1;
+}
+
+} // namespace
 loader* sdl_entity_loader();
 
 // Screen window boundries
@@ -518,6 +751,17 @@ void screen::fade_between24(void* surface, const Uint8* from, const Uint8* to,
     video_impl_->fade_between24(surface, from, to, amount);
 }
 
+void screen::set_render_interpolation_client(
+    const og::sim::GameClient* client) noexcept
+{
+    render_interpolation_client_ = client;
+}
+
+void screen::set_render_interpolation_speed_factor(float speed_factor) noexcept
+{
+    render_interpolation_speed_factor_ = std::max(speed_factor, 0.0f);
+}
+
 int screen::fade_between(void* old_surface, void* new_surface, void* dest_surface)
 {
     return video_impl_->fade_between(old_surface, new_surface, dest_surface);
@@ -555,6 +799,8 @@ void screen::init_common(short howmany, bool has_display)
 
 	timerstart = query_timer_control();
 	framecount = 0;
+    render_interpolation_client_ = nullptr;
+    render_interpolation_speed_factor_ = 1.0f;
 
 	world_.control_hp = 0;
 
@@ -639,6 +885,8 @@ screen::screen(GameWorld& world, std::unique_ptr<video> video_impl, short howman
     , world_(world)
     , myloader(nullptr)
     , level_runtime_data_(1, false, &sdl_level_data_hooks(), &level_visuals_)
+    , damage_number_render_context_(
+          std::make_unique<DamageNumberRenderContext>())
 {
     init_common(howmany, has_display);
 }
@@ -650,8 +898,23 @@ screen::~screen()
 	cleanup(1); //make sure we've cleaned up
 }
 
+DamageNumberRenderContext& screen::damage_number_render_context() noexcept
+{
+    return *damage_number_render_context_;
+}
+
+const DamageNumberRenderContext& screen::damage_number_render_context() const
+    noexcept
+{
+    return *damage_number_render_context_;
+}
+
 void screen::initialize_views()
 {
+    // Debounce state is shared across view instances, so fresh gameplay/replay
+    // startup must clear it before creating a new view set.
+    reset_viewscreen_input_debounce();
+
     // Even though it looks okay here, these positions and sizes are overridden by viewscreen::resize() later.
 	if (numviews == 1)
 	{
@@ -892,182 +1155,40 @@ short screen::continuous_input()
 
 void screen::process_input(const InputState& input_state)
 {
+    ScopedGameplayTickActivation gameplay_input_active(og::runtime::current_session);
 	for (short i = 0; i < numviews; i++)
 		viewob[i]->process_input(input_state);
 }
 
-bool screen::act()
+bool screen::dispatch_sim_event_batch(const og::sim::SimEventBatch& batch)
 {
-	// Delegate simulation tick to GameWorld.
-	// GameWorld encapsulates the deterministic entity update logic that
-	// was previously embedded directly in this method.
-	if (current_game == nullptr || current_game->sim_events == nullptr)
-		return 1;
-	og::sim::SimEventLog& events = *current_game->sim_events;
-	world_.tick();
+    const auto [cosmetic_batch, game_flow_batch] =
+        split_screen_event_batches(batch);
+    dispatch_cosmetic_events(cosmetic_batch);
+    return dispatch_game_flow_events(game_flow_batch);
+}
 
-	// Post-tick: clean up viewscreen control pointers for dead player entities.
-	// This is a rendering concern that doesn't belong in the simulation layer.
-	for (int i = 0; i < numviews; i++)
-	{
-		if (viewob[i]->control && viewob[i]->control->dead)
-			viewob[i]->control = nullptr;
-	}
+screen::TickWorldBatches screen::tick_world()
+{
+    if (current_game == nullptr || current_game->sim_events == nullptr)
+        return {};
 
-	// Process simulation events: dispatch sounds, notifications, etc.
-	// This is the key sim/render boundary — simulation emits events,
-	// the runtime layer dispatches them to platform subsystems.
-	const og::sim::Event* first_exit_request = nullptr;
-	const og::sim::Event* first_withdraw_request = nullptr;
-	for (const auto& ev : events.events())
-	{
-		switch (ev.kind)
-		{
-			case og::sim::EventKind::PlaySound:
-				{
-					const PlatformBridge& bridge = platform_bridge();
-					if (bridge.play_sound)
-						bridge.play_sound(static_cast<int>(ev.a));
-					else if (soundp)
-						soundp->play_sound(static_cast<short>(ev.a));
-				}
-				break;
-			case og::sim::EventKind::Notification:
-				if (!ev.text.empty())
-				{
-					short duration = ev.a ? static_cast<short>(ev.a)
-					                      : STANDARD_TEXT_TIME;
-					for (short vi = 0; vi < numviews; vi++)
-						viewob[vi]->set_display_text(ev.text, duration);
-				}
-				break;
-			case og::sim::EventKind::SetPalette:
-				if (ev.a == 0)
-					set_palette(ourpalette);
-				else
-					set_palette(bluepalette);
-				break;
-			case og::sim::EventKind::RequestRedraw:
-				redrawme = 1;
-				break;
-			case og::sim::EventKind::EndGame:
-				sync_save_data_from_world();
-				events.clear();
-				return endgame(static_cast<short>(ev.a),
-				               static_cast<short>(static_cast<std::int32_t>(ev.b)));
-			case og::sim::EventKind::DamageTile:
-				damage_tile(static_cast<short>(ev.a), static_cast<short>(ev.b));
-				break;
-			case og::sim::EventKind::SetEnd:
-				world_.end = 1;
-				break;
-			case og::sim::EventKind::RequestExitConfirmation:
-				if (first_exit_request == nullptr)
-					first_exit_request = &ev;
-				break;
-			case og::sim::EventKind::WithdrawToLevel:
-				if (first_withdraw_request == nullptr)
-					first_withdraw_request = &ev;
-				break;
-			case og::sim::EventKind::ScoreChange:
-				// Gameplay already mutates world_.m_score; this event notifies
-				// interface code that score-dependent UI should refresh.
-				redrawme = 1;
-				break;
-			default:
-				break;
-		}
-	}
+    ScopedGameplayTickActivation gameplay_tick_active(og::runtime::current_session);
+    world_.tick();
 
-	if (first_exit_request != nullptr)
-	{
-		const short destination_level =
-			static_cast<short>(static_cast<std::int32_t>(first_exit_request->a));
-		const bool is_withdraw_prompt = first_exit_request->b != 0;
-		std::string prompt_text = first_exit_request->text;
-		if (prompt_text.empty())
-		{
-			if (is_withdraw_prompt)
-				prompt_text = std::format("Withdraw to Level {}?", destination_level);
-			else
-				prompt_text = std::format("Exit to Level {}?", destination_level);
-		}
+    return split_screen_event_batches(
+        og::sim::drain_sim_events(*current_game->sim_events));
+}
 
-		const bool accepted = yes_or_no_prompt("Exit Field", prompt_text.c_str(), false);
-		redrawme = 1;
-		if (accepted)
-		{
-			if (is_withdraw_prompt)
-			{
-				short withdraw_level = destination_level;
-				if (first_withdraw_request != nullptr)
-				{
-					withdraw_level = static_cast<short>(
-						static_cast<std::int32_t>(first_withdraw_request->a));
-				}
+void screen::dispatch_cosmetic_events(const og::sim::SimEventBatch& batch)
+{
+    dispatch_cosmetic_screen_events(*this, batch.events);
+}
 
-				const SaveDataIoError load_error = save_data.load_with_error("save0");
-				if (load_error != SaveDataIoError::None)
-				{
-					LogError("withdraw_load_failed target_level={} error={}\n",
-					         withdraw_level,
-					         save_data_io_error_string(load_error));
-					sync_save_data_from_world();
-					world_.withdraw_requested = false;
-					world_.withdraw_level = -1;
-					events.clear();
-					return 1;
-				}
-
-				save_data.scen_num = withdraw_level;
-				const SaveDataIoError save_error = save_data.save_with_error("save0");
-				if (save_error != SaveDataIoError::None)
-				{
-					LogError("withdraw_save_failed target_level={} error={}\n",
-					         withdraw_level,
-					         save_data_io_error_string(save_error));
-					sync_save_data_from_world();
-					world_.withdraw_requested = false;
-					world_.withdraw_level = -1;
-					events.clear();
-					return 1;
-				}
-				sync_world_from_save_data();
-
-				events.clear();
-				return endgame(1, withdraw_level);
-			}
-
-			sync_save_data_from_world();
-			world_.withdraw_requested = false;
-			world_.withdraw_level = -1;
-			events.clear();
-			return endgame(0, destination_level);
-		}
-
-		world_.withdraw_requested = false;
-		world_.withdraw_level = -1;
-	}
-	else if (first_withdraw_request != nullptr)
-	{
-		// Defensive clear for dropped duplicate withdraw events in the same tick.
-		world_.withdraw_requested = false;
-		world_.withdraw_level = -1;
-	}
-
-	events.clear();
-
-	// Handle level completion / game ending.
-	if (world_.game_ended && !world_.end)
-	{
-		sync_save_data_from_world();
-		return endgame(world_.ending, world_.next_level);
-	}
-
-	if (world_.end)
-		return 1;
-
-	return 1;
+bool screen::dispatch_game_flow_events(
+    const og::sim::GameFlowEventBatch& batch)
+{
+    return dispatch_game_flow_screen_events(*this, batch.events);
 }
 
 Uint32 get_time_bonus(int playernum);
@@ -1161,12 +1282,29 @@ short screen::endgame(short ending, short nextlevel)
 		if (nextlevel != -1)
 			save_data.scen_num = nextlevel;    // Fake jumping to next level ..
         
-		// Grab our team out of the level
-		save_data.update_guys(world_.oblist);
-		
-		// Autosave because we won
-		save_data.save("save0");
+		// In a networked session this display screen holds the COMBINED roster
+		// (every player's characters). Autosaving it here would clobber this
+		// player's save0 with everyone's gladiators — the networked per-player
+		// save path persists only this player's own characters (owner-filtered),
+		// so the display must not touch save0. Local/single-player still autosaves.
+		const bool networked = og::runtime::current_session != nullptr &&
+			og::runtime::current_session->networked_session_;
+		if (!networked)
+		{
+			// Grab our team out of the level
+			save_data.update_guys(world_.oblist);
 
+			// Autosave because we won
+			save_data.save("save0");
+		}
+
+		// Every win ends this display session. Single-player and local play
+		// return to the team-build menu; networked play does too (the server
+		// runs in return-to-lobby mode: it persists per-player progress + the
+		// advanced cursor and tells every peer to end, then the menu starts the
+		// next level fresh over the live connection). The networked save0 write
+		// is still skipped above so the combined roster never clobbers a peer's
+		// own save.
 		world_.end = 1;
 	}
 
@@ -1217,12 +1355,12 @@ walker  * screen::first_of(Order whatorder, unsigned char whatfamily,
 	for(auto& uptr : world_.oblist)
 	{
 	    walker* ob = uptr.get();
-		if (ob && !ob->dead)
+		if (ob && !ob->dead())
 		{
 			if (ob->query_order() == whatorder &&
-			        ob->family== whatfamily)
+			        ob->family() == whatfamily)
 			{
-				if (team_num == -1 || team_num == ob->team_num)
+				if (team_num == -1 || team_num == ob->team_num())
 					return ob;
 			}
 		}
@@ -1258,32 +1396,7 @@ void screen::draw_panels(short howmany)
 // Uses pixel coordinates
 char screen::damage_tile(short xloc, short yloc) // damage the specified tile
 {
-	short xover, yover;
-	short gridloc;
-
-	xover = static_cast<short>(xloc / GRID_SIZE);
-	yover = static_cast<short>(yloc / GRID_SIZE);
-
-	if (xover < 0 || yover < 0)
-		return 0;
-	if (xover >= world_.grid.w || yover >= world_.grid.h)
-		return 0;
-
-	gridloc = static_cast<short>(yover*world_.grid.w+xover);
-
-	switch (static_cast<unsigned char>(world_.grid.data[gridloc]))
-	{
-		case PIX_GRASS1: // grass
-		case PIX_GRASS2:
-		case PIX_GRASS3:
-		case PIX_GRASS4:
-			world_.grid.data[gridloc] = PIX_GRASS1_DAMAGED;
-			break;
-		default:
-			break;
-	}
-
-	return world_.grid.data[gridloc];
+	return world_.damage_tile(xloc, yloc);
 }
 
 void screen::do_notify(std::string_view message, walker  *who)

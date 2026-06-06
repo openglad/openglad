@@ -123,17 +123,17 @@ void getLevelStats(LevelRuntimeData& level_data, int* max_enemy_level, float* av
 	        switch(ob->query_order())
 	        {
 	            case Order::Living:
-                if(ob->team_num != 0)
+                if(ob->team_num() != 0)
                 {
                     num++;
-                    level_sum += ob->stats()->level;
-                    difficulty_sum += diff_per_level*ob->stats()->level;
-                    if(ob->stats()->level > max_level)
-                        max_level = ob->stats()->level;
+                    level_sum += ob->stats()->level();
+                    difficulty_sum += diff_per_level*ob->stats()->level();
+                    if(ob->stats()->level() > max_level)
+                        max_level = ob->stats()->level();
                 }
                 else
                 {
-                    difficulty_sum_friends += diff_per_level*ob->stats()->level;
+                    difficulty_sum_friends += diff_per_level*ob->stats()->level();
                 }
 	                break;
 	            default:
@@ -148,9 +148,9 @@ void getLevelStats(LevelRuntimeData& level_data, int* max_enemy_level, float* av
 	        switch(ob->query_order())
 	        {
 	            case Order::Treasure:
-	                if(ob->family == FAMILY_EXIT)
+	                if(ob->family() == FAMILY_EXIT)
 	                {
-	                    exits.push_back(ob->stats()->level);
+	                    exits.push_back(ob->stats()->level());
 	                }
 	                break;
 	            default:

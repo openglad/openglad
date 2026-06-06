@@ -12,39 +12,39 @@
 
 static bool rock_on_death(weap* self)
 {
-    if (!self->do_bounce || !self->lineofsight || self->collide_ob) // died of natural causes
+    if (!self->do_bounce() || !self->lineofsight() || self->collide_ob()) // died of natural causes
         return false;
-    self->dead = 0; // first, un-dead us so we can collide ..
+    self->set_dead(0); // first, un-dead us so we can collide ..
     // Did we hit a barrier?
-    if (current_game->world->query_grid_passable(self->xpos+self->lastx, self->ypos+self->lasty, self))
+    if (current_game->world->query_grid_passable(self->xpos()+self->lastx(), self->ypos()+self->lasty(), self))
     {
-        self->dead = 1;
+        self->set_dead(1);
         return false; // if not, die like normal
     }
-    if (current_game->world->query_grid_passable(self->xpos-self->lastx, self->ypos+self->lasty, self))
+    if (current_game->world->query_grid_passable(self->xpos()-self->lastx(), self->ypos()+self->lasty(), self))
     {
-        self->setxy(self->xpos-self->lastx, self->ypos+self->lasty);  // bounce 'down-left'
-        self->lastx = -self->lastx;
-        self->death_called = 0;
+        self->setxy(self->xpos()-self->lastx(), self->ypos()+self->lasty());  // bounce 'down-left'
+        self->set_lastx(-self->lastx());
+        self->set_death_called(0);
         return true;
     }
-    if (current_game->world->query_grid_passable(self->xpos+self->lastx, self->ypos-self->lasty, self))
+    if (current_game->world->query_grid_passable(self->xpos()+self->lastx(), self->ypos()-self->lasty(), self))
     {
-        self->setxy(self->xpos+self->lastx, self->ypos-self->lasty); // bounce 'up-right'
-        self->lasty = -self->lasty;
-        self->death_called = 0;
+        self->setxy(self->xpos()+self->lastx(), self->ypos()-self->lasty()); // bounce 'up-right'
+        self->set_lasty(-self->lasty());
+        self->set_death_called(0);
         return true;
     }
-    if (current_game->world->query_grid_passable(self->xpos-self->lastx, self->ypos-self->lasty, self))
+    if (current_game->world->query_grid_passable(self->xpos()-self->lastx(), self->ypos()-self->lasty(), self))
     {
-        self->setxy(self->xpos-self->lastx, self->ypos-self->lasty);
-        self->lastx = -self->lastx;
-        self->lasty = -self->lasty;
-        self->death_called = 0;
+        self->setxy(self->xpos()-self->lastx(), self->ypos()-self->lasty());
+        self->set_lastx(-self->lastx());
+        self->set_lasty(-self->lasty());
+        self->set_death_called(0);
         return true;
     }
     // Else we're really stuck, so die :)
-    self->dead = 1;
+    self->set_dead(1);
     return false;
 }
 

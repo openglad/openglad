@@ -19,9 +19,9 @@ static std::unique_ptr<walker> create_living_on_team(unsigned char team)
     auto w = l->create_walker_owned(Order::Living, FAMILY_SOLDIER);
     if (!w)
         return nullptr;
-    w->team_num = team;
-    w->dead = 0;
-    w->user = -1;
+    w->set_team_num(team);
+    w->set_dead(0);
+    w->set_user(-1);
     w->setxy(80, 80);
     return w;
 }
@@ -74,12 +74,12 @@ TEST(ViewInputSmoke, viewscreen_input_consumes_bonus_rounds)
     v->my_team = 0;
 
     // Ensure the bonus-round walk() path runs via process_input().
-    controlp->bonus_rounds = 1;
-    controlp->lastx = 1.0f;
-    controlp->lasty = 0.0f;
+    controlp->set_bonus_rounds(1);
+    controlp->set_lastx(1.0f);
+    controlp->set_lasty(0.0f);
     InputState empty_input = {};
     v->process_input(empty_input);
-    ASSERT_EQ(0, (int)controlp->bonus_rounds) << "bonus rounds should decrement";
+    ASSERT_EQ(0, (int)controlp->bonus_rounds()) << "bonus rounds should decrement";
 
     v->control = nullptr;
 }

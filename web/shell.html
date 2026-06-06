@@ -129,6 +129,12 @@
 
         window.addEventListener('resize', resizeCanvas);
         resizeCanvas(); // Initial sizing
+        window.__opengladWebBootstrap = {
+            runtimeInitialized: false,
+            bootFunctionAvailable: false,
+            bootCalls: 0
+        };
+        window.__opengladGameState = null;
 
         var Module = {
             canvas: canvas,
@@ -165,6 +171,15 @@
 
             onRuntimeInitialized: function() {
                 resizeCanvas();
+                window.__opengladWebBootstrap.runtimeInitialized = true;
+                window.__opengladWebBootstrap.bootFunctionAvailable =
+                    typeof Module._openglad_web_boot === 'function';
+                if (typeof Module._openglad_web_boot === 'function') {
+                    window.__opengladWebBootstrap.bootCalls += 1;
+                    Module._openglad_web_boot();
+                } else {
+                    console.error('OpenGlad web bootstrap export is unavailable');
+                }
             }
         };
 

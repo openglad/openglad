@@ -316,21 +316,21 @@ TEST(CampaignAndLevelPicker, level_picker_cancel_esc_returns_default)
     walker* ally = ld.add_ob(Order::Living, FAMILY_SOLDIER);
     ASSERT_TRUE(e1 && e2 && ally) << "level test walkers should be created";
     if (e1 && e2 && ally) {
-        e1->team_num = 1;
-        e2->team_num = 1;
-        ally->team_num = 0;
-        e1->stats()->level = 4;
-        e2->stats()->level = 2;
-        ally->stats()->level = 3;
+        e1->set_team_num(1);
+        e2->set_team_num(1);
+        ally->set_team_num(0);
+        e1->stats()->set_level(4);
+        e2->stats()->set_level(2);
+        ally->stats()->set_level(3);
     }
     walker* x1 = ld.add_fx_ob(Order::Treasure, FAMILY_EXIT);
     walker* x2 = ld.add_fx_ob(Order::Treasure, FAMILY_EXIT);
     walker* x3 = ld.add_fx_ob(Order::Treasure, FAMILY_EXIT);
     ASSERT_TRUE(x1 && x2 && x3) << "exit markers should be created";
     if (x1 && x2 && x3) {
-        x1->stats()->level = 9;
-        x2->stats()->level = 5;
-        x3->stats()->level = 9;
+        x1->stats()->set_level(9);
+        x2->stats()->set_level(5);
+        x3->stats()->set_level(9);
     }
 
     int max_enemy = 0;

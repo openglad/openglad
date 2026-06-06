@@ -14,6 +14,8 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
+#include <array>
+#include <cassert>
 #include <cstdint>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/statistics.h>
@@ -24,9 +26,8 @@
 #include <openglad/core/util.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
-#include <cmath>
 #include <cstring>
-#define RAISE 1.85  // please also change in picker.cpp
+#include <limits>
 
 // Zardus: PORT, exception doesn't compile (dos thing?): int matherr(struct exception *);
 
@@ -35,6 +36,159 @@ const char* get_family_string(std::int32_t family);
 
 namespace
 {
+struct UInt128
+{
+    std::uint64_t hi = 0;
+    std::uint64_t lo = 0;
+};
+
+constexpr unsigned kStatCostFixedShift = 48;
+constexpr std::uint64_t kStatCostFixedOne = 1ull << kStatCostFixedShift;
+constexpr std::uint64_t kUInt16Mask = 0xFFFFu;
+
+UInt128 make_u128(std::uint64_t value)
+{
+    return {0, value};
+}
+
+bool operator<=(const UInt128& lhs, const UInt128& rhs)
+{
+    return lhs.hi < rhs.hi || (lhs.hi == rhs.hi && lhs.lo <= rhs.lo);
+}
+
+std::array<std::uint16_t, 8> to_u16_limbs(const UInt128& value)
+{
+    return {
+        static_cast<std::uint16_t>(value.lo & kUInt16Mask),
+        static_cast<std::uint16_t>((value.lo >> 16) & kUInt16Mask),
+        static_cast<std::uint16_t>((value.lo >> 32) & kUInt16Mask),
+        static_cast<std::uint16_t>((value.lo >> 48) & kUInt16Mask),
+        static_cast<std::uint16_t>(value.hi & kUInt16Mask),
+        static_cast<std::uint16_t>((value.hi >> 16) & kUInt16Mask),
+        static_cast<std::uint16_t>((value.hi >> 32) & kUInt16Mask),
+        static_cast<std::uint16_t>((value.hi >> 48) & kUInt16Mask),
+    };
+}
+
+std::array<std::uint16_t, 4> to_u16_limbs(std::uint64_t value)
+{
+    return {
+        static_cast<std::uint16_t>(value & kUInt16Mask),
+        static_cast<std::uint16_t>((value >> 16) & kUInt16Mask),
+        static_cast<std::uint16_t>((value >> 32) & kUInt16Mask),
+        static_cast<std::uint16_t>((value >> 48) & kUInt16Mask),
+    };
+}
+
+UInt128 multiply_fixed(const UInt128& lhs, std::uint64_t rhs)
+{
+    const auto lhs_limbs = to_u16_limbs(lhs);
+    const auto rhs_limbs = to_u16_limbs(rhs);
+
+    std::array<std::uint64_t, 13> product{};
+    for (std::size_t i = 0; i < lhs_limbs.size(); ++i)
+    {
+        for (std::size_t j = 0; j < rhs_limbs.size(); ++j)
+            product[i + j] += static_cast<std::uint64_t>(lhs_limbs[i]) * rhs_limbs[j];
+    }
+
+    for (std::size_t i = 0; i + 1 < product.size(); ++i)
+    {
+        product[i + 1] += product[i] >> 16;
+        product[i] &= kUInt16Mask;
+    }
+
+    assert(product[11] == 0);
+    assert(product[12] == 0);
+
+    return {
+        (static_cast<std::uint64_t>(product[7]))
+            | (static_cast<std::uint64_t>(product[8]) << 16)
+            | (static_cast<std::uint64_t>(product[9]) << 32)
+            | (static_cast<std::uint64_t>(product[10]) << 48),
+        (static_cast<std::uint64_t>(product[3]))
+            | (static_cast<std::uint64_t>(product[4]) << 16)
+            | (static_cast<std::uint64_t>(product[5]) << 32)
+            | (static_cast<std::uint64_t>(product[6]) << 48),
+    };
+}
+
+UInt128 pow_fixed(std::uint64_t base, int exponent)
+{
+    UInt128 result = make_u128(kStatCostFixedOne);
+    for (int i = 0; i < exponent; ++i)
+        result = multiply_fixed(result, base);
+    return result;
+}
+
+std::uint64_t twentieth_root_fixed(std::uint32_t value)
+{
+    if (value == 0)
+        return 0;
+
+    std::uint64_t low = 0;
+    std::uint64_t high = 3ull * kStatCostFixedOne;
+    const UInt128 target = make_u128(static_cast<std::uint64_t>(value) * kStatCostFixedOne);
+    while (low + 1 < high)
+    {
+        const std::uint64_t mid = low + (high - low) / 2;
+        if (pow_fixed(mid, 20) <= target)
+            low = mid;
+        else
+            high = mid;
+    }
+    return low;
+}
+
+std::uint64_t multiply_u64_shift_48(std::uint64_t lhs, std::uint64_t rhs)
+{
+    const auto lhs_limbs = to_u16_limbs(lhs);
+    const auto rhs_limbs = to_u16_limbs(rhs);
+
+    std::array<std::uint64_t, 9> product{};
+    for (std::size_t i = 0; i < lhs_limbs.size(); ++i)
+    {
+        for (std::size_t j = 0; j < rhs_limbs.size(); ++j)
+            product[i + j] += static_cast<std::uint64_t>(lhs_limbs[i]) * rhs_limbs[j];
+    }
+
+    for (std::size_t i = 0; i + 1 < product.size(); ++i)
+    {
+        product[i + 1] += product[i] >> 16;
+        product[i] &= kUInt16Mask;
+    }
+
+    return (static_cast<std::uint64_t>(product[3]))
+        | (static_cast<std::uint64_t>(product[4]) << 16)
+        | (static_cast<std::uint64_t>(product[5]) << 32)
+        | (static_cast<std::uint64_t>(product[6]) << 48);
+}
+
+UInt128 raise_stat_cost_curve(std::int32_t value)
+{
+    if (value <= 0)
+        return make_u128(0);
+
+    // Legacy cost curve is value^1.85. Compute it with deterministic
+    // fixed-point math so life-gem values no longer depend on libm exponentiation.
+    const std::uint64_t root = twentieth_root_fixed(static_cast<std::uint32_t>(value));
+    return pow_fixed(root, 37);
+}
+
+std::int32_t stat_cost_curve_contribution(std::int32_t value, std::int32_t stat_cost)
+{
+    if (value <= 0 || stat_cost <= 0)
+        return 0;
+
+    const UInt128 curve = raise_stat_cost_curve(value);
+    const std::uint64_t cost = static_cast<std::uint64_t>(stat_cost);
+    const std::uint64_t contribution =
+        (curve.hi * cost << 16) + multiply_u64_shift_48(curve.lo, cost);
+    return static_cast<std::int32_t>(std::min<std::uint64_t>(
+        contribution,
+        static_cast<std::uint64_t>(std::numeric_limits<std::int32_t>::max())));
+}
+
 int next_guy_id()
 {
     if (current_game != nullptr && current_game->world != nullptr)
@@ -138,6 +292,8 @@ guy::guy(const guy& copy)
     , scen_hits(copy.scen_hits)
     , id(copy.id)
     , level(copy.level)
+    , owner_player_index(copy.owner_player_index)
+    , owner_save_slot(copy.owner_save_slot)
 {
     name = copy.name;
 }
@@ -159,27 +315,27 @@ std::int32_t guy::query_heart_value() // how much are we worth?
 	// Get strength cost ..
 	temp = strength - normal.strength;
 	temp = MAX(temp,0);
-	cost += static_cast<std::int32_t>(pow( temp, RAISE) * static_cast<std::int32_t>(fd->stat_costs[0]));
+	cost += stat_cost_curve_contribution(temp, static_cast<std::int32_t>(fd->stat_costs[0]));
 
 	// Get dexterity cost ..
 	temp = dexterity - normal.dexterity;
 	temp = MAX(temp,0);
-	cost += static_cast<std::int32_t>(pow( temp, RAISE) * static_cast<std::int32_t>(fd->stat_costs[1]));
+	cost += stat_cost_curve_contribution(temp, static_cast<std::int32_t>(fd->stat_costs[1]));
 
 	// Get constitution cost ..
 	temp = constitution - normal.constitution;
 	temp = MAX(temp,0);
-	cost += static_cast<std::int32_t>(pow( temp, RAISE) * static_cast<std::int32_t>(fd->stat_costs[2]));
+	cost += stat_cost_curve_contribution(temp, static_cast<std::int32_t>(fd->stat_costs[2]));
 
 	// Get intelligence cost ..
 	temp = intelligence - normal.intelligence;
 	temp = MAX(temp,0);
-	cost += static_cast<std::int32_t>(pow( temp, RAISE) * static_cast<std::int32_t>(fd->stat_costs[3]));
+	cost += stat_cost_curve_contribution(temp, static_cast<std::int32_t>(fd->stat_costs[3]));
 
 	// Get armor cost ..
 	temp = armor - normal.armor;
 	temp = MAX(temp,0);
-	cost += static_cast<std::int32_t>(pow( temp, RAISE) * static_cast<std::int32_t>(fd->stat_costs[4]));
+	cost += stat_cost_curve_contribution(temp, static_cast<std::int32_t>(fd->stat_costs[4]));
 
 	// Add in the base cost value for the guy ..
 	cost += fd->hiring_cost;
@@ -248,23 +404,23 @@ void apply_difficulty_scaling(living* self, std::uint32_t level, const Difficult
 {
     const float levmult = static_cast<float>(level) * static_cast<float>(level);
     const float level_f = static_cast<float>(level);
-    self->stats()->max_hitpoints   += s.hp * levmult;
-    self->stats()->max_magicpoints += s.mp * levmult;
-    self->damage += s.dmg * level_f;
-    self->stats()->armor += s.armor * levmult;
+    self->stats()->set_max_hitpoints(self->stats()->max_hitpoints() + s.hp * levmult);
+    self->stats()->set_max_magicpoints(self->stats()->max_magicpoints() + s.mp * levmult);
+    self->set_damage(self->damage() + s.dmg * level_f);
+    self->stats()->set_armor(self->stats()->armor() + s.armor * levmult);
 }
 
 bool check_special_ai_distance(living* self, std::uint32_t threshold)
 {
-    if (self->foe)
+    if (self->foe())
     {
-        std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));
+        std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe()));
         return (distance < threshold);
     }
-    self->foe = current_game->world->find_near_foe(self);
-    if (!self->foe)
+    self->set_foe(current_game->world->find_near_foe(self));
+    if (!self->foe())
         return false;
-    std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));
+    std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe()));
     return (distance < threshold);
 }
 
@@ -328,84 +484,86 @@ void guy::update_derived_stats(walker* w)
         current_game->world->set_entity_derived_stats(w, Order::Living, temp_guy->family);
     
     
-    w->stats()->max_hitpoints += temp_guy->get_hp_bonus();
-    w->stats()->hitpoints = w->stats()->max_hitpoints;
+    w->stats()->set_max_hitpoints(w->stats()->max_hitpoints() + temp_guy->get_hp_bonus());
+    w->stats()->set_hitpoints(w->stats()->max_hitpoints());
     
     // No class base value for MP...
-    w->stats()->max_magicpoints = temp_guy->get_mp_bonus();
-    w->stats()->magicpoints = w->stats()->max_magicpoints;
+    w->stats()->set_max_magicpoints(temp_guy->get_mp_bonus());
+    w->stats()->set_magicpoints(w->stats()->max_magicpoints());
 
-    w->damage = w->damage + temp_guy->get_damage_bonus();
+    w->set_damage(w->damage() + temp_guy->get_damage_bonus());
 
     // No class base value for armor...
-    w->stats()->armor = temp_guy->get_armor_bonus();
+    w->stats()->set_armor(temp_guy->get_armor_bonus());
 
     //stepsize makes us run faster, max for a non-weapon is 12
-    w->stepsize = w->stepsize + temp_guy->get_speed_bonus();
-    if (w->stepsize > 12)
-        w->stepsize = 12;
-    w->normal_stepsize = w->stepsize;
+    w->set_stepsize(w->stepsize() + temp_guy->get_speed_bonus());
+    if (w->stepsize() > 12)
+        w->set_stepsize(12);
+    w->set_normal_stepsize(w->stepsize());
 
     //fire_frequency makes us fire faster, min is 1
-    w->fire_frequency = w->fire_frequency - temp_guy->get_fire_frequency_bonus();
-    if (w->fire_frequency < 1)
-        w->fire_frequency = 1;
+    w->set_fire_frequency(w->fire_frequency() - temp_guy->get_fire_frequency_bonus());
+    if (w->fire_frequency() < 1)
+        w->set_fire_frequency(1);
 
     // Per-family walker creation hooks (e.g. soldier weapons_left)
     {
-        const auto* fd = get_family_descriptor(w->family);
+        const auto* fd = get_family_descriptor(w->family());
         if (fd && fd->on_create)
             fd->on_create(w);
     }
 
     // Set the heal delay ..
-    w->stats()->max_heal_delay = REGEN;
+    w->stats()->set_max_heal_delay(REGEN);
     {
         float heal_delay = static_cast<float>(temp_guy->constitution) + static_cast<float>(temp_guy->strength) / 6.0f + 20.0f + 1000.0f;
-        w->stats()->current_heal_delay = static_cast<std::int32_t>(heal_delay); // for purposes of calculation only
+        w->stats()->set_current_heal_delay(static_cast<std::int32_t>(heal_delay)); // for purposes of calculation only
     }
 
-    while (w->stats()->current_heal_delay > REGEN)
+    while (w->stats()->current_heal_delay() > REGEN)
     {
-        w->stats()->current_heal_delay -= REGEN;
-        w->stats()->heal_per_round++;
+        w->stats()->set_current_heal_delay(w->stats()->current_heal_delay() - REGEN);
+        w->stats()->set_heal_per_round(w->stats()->heal_per_round() + 1);
     } // this takes care of the integer part, now calculate the fraction
 
-    if (w->stats()->current_heal_delay > 1)
+    if (w->stats()->current_heal_delay() > 1)
     {
-        w->stats()->max_heal_delay /=
-            static_cast<std::int32_t>(w->stats()->current_heal_delay + 1);
+        w->stats()->set_max_heal_delay(
+            w->stats()->max_heal_delay() /
+            static_cast<std::int32_t>(w->stats()->current_heal_delay() + 1));
     }
-    w->stats()->current_heal_delay = 0; //start off without healing
+    w->stats()->set_current_heal_delay(0); //start off without healing
 
     //make sure we have at least a 2 wait, otherwise we should have
     //calculated our heal_per_round as one higher, and the math must
     //have been screwed up some how
-    if (w->stats()->max_heal_delay < 2)
-        w->stats()->max_heal_delay = 2;
+    if (w->stats()->max_heal_delay() < 2)
+        w->stats()->set_max_heal_delay(2);
 
     // Set the magic delay ..
-    w->stats()->max_magic_delay = REGEN;
-    w->stats()->current_magic_delay = temp_guy->intelligence * 45 + temp_guy->dexterity * 15 + 200;
+    w->stats()->set_max_magic_delay(REGEN);
+    w->stats()->set_current_magic_delay(temp_guy->intelligence * 45 + temp_guy->dexterity * 15 + 200);
 
-    while (w->stats()->current_magic_delay > REGEN)
+    while (w->stats()->current_magic_delay() > REGEN)
     {
-        w->stats()->current_magic_delay -= REGEN;
-        w->stats()->magic_per_round++;
+        w->stats()->set_current_magic_delay(w->stats()->current_magic_delay() - REGEN);
+        w->stats()->set_magic_per_round(w->stats()->magic_per_round() + 1);
     } // this takes care of the integer part, now calculate the fraction
 
-    if (w->stats()->current_magic_delay > 1)
+    if (w->stats()->current_magic_delay() > 1)
     {
-        w->stats()->max_magic_delay /=
-            static_cast<std::int32_t>(w->stats()->current_magic_delay + 1);
+        w->stats()->set_max_magic_delay(
+            w->stats()->max_magic_delay() /
+            static_cast<std::int32_t>(w->stats()->current_magic_delay() + 1));
     }
-    w->stats()->current_magic_delay = 0; //start off without magic regen
+    w->stats()->set_current_magic_delay(0); //start off without magic regen
 
     //make sure we have at least a 2 wait, otherwise we should have
     //calculated our magic_per_round as one higher, and the math must
     //have been screwed up some how
-    if (w->stats()->max_magic_delay < 2)
-        w->stats()->max_magic_delay = 2;
+    if (w->stats()->max_magic_delay() < 2)
+        w->stats()->set_max_magic_delay(2);
 }
 
 // guy_create_walker_owned and guy_create_and_add_walker are free functions

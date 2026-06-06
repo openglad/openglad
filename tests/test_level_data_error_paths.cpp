@@ -339,7 +339,7 @@ TEST(LevelDataErrorPaths, level_data_load_failure_preserves_existing_world_state
         og::runtime::current_session->myscreen_->level_description() = old_description;
         return;
     }
-    sentinel->team_num = 3;
+    sentinel->set_team_num(3);
     sentinel->setxy(48, 64);
 
     const std::size_t before_ob_count = og::runtime::current_session->myscreen_->world().oblist.size();
@@ -362,9 +362,9 @@ TEST(LevelDataErrorPaths, level_data_load_failure_preserves_existing_world_state
     ASSERT_TRUE(after == sentinel) << "failed load should preserve existing object pointer";
     if (after)
     {
-        ASSERT_EQ(3, (int)after->team_num) << "failed load should preserve object fields";
-        ASSERT_EQ(48, (int)after->xpos) << "failed load should preserve object x";
-        ASSERT_EQ(64, (int)after->ypos) << "failed load should preserve object y";
+        ASSERT_EQ(3, (int)after->team_num()) << "failed load should preserve object fields";
+        ASSERT_EQ(48, (int)after->xpos()) << "failed load should preserve object x";
+        ASSERT_EQ(64, (int)after->ypos()) << "failed load should preserve object y";
     }
 
     og::runtime::current_session->myscreen_->world().delete_objects();

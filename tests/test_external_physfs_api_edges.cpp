@@ -28,11 +28,12 @@ struct EnumCollector
     std::vector<std::string> names;
 };
 
-void collect_enum(void* data, const char* /*origdir*/, const char* fname)
+PHYSFS_EnumerateCallbackResult collect_enum(void* data, const char* /*origdir*/, const char* fname)
 {
     EnumCollector* c = static_cast<EnumCollector*>(data);
     if (c && fname)
         c->names.emplace_back(fname);
+    return PHYSFS_ENUM_OK;
 }
 } // namespace
 
@@ -63,14 +64,14 @@ static void run_physfs_searchpath_callbacks_and_mount_edges()
     PHYSFS_freeList(paths);
 
     EnumCollector ec;
-    PHYSFS_enumerateFilesCallback("edge", collect_enum, &ec);
-    ASSERT_TRUE(!ec.names.empty()) << "enumerateFilesCallback should list files";
+    ASSERT_TRUE(PHYSFS_enumerate("edge", collect_enum, &ec)) << "enumerate should list files";
+    ASSERT_TRUE(!ec.names.empty()) << "enumerate should list files";
 
     ASSERT_TRUE(PHYSFS_unmount(base.string().c_str())) << "unmount should succeed";
     ASSERT_TRUE(!PHYSFS_unmount(base.string().c_str())) << "removing same path twice should fail";
 
-    ASSERT_TRUE(PHYSFS_addToSearchPath(base.string().c_str(), 1)) << "addToSearchPath should succeed";
-    ASSERT_TRUE(PHYSFS_unmount(base.string().c_str())) << "unmount after add should succeed";
+    ASSERT_TRUE(PHYSFS_mount(base.string().c_str(), nullptr, 1)) << "mount to root should succeed";
+    ASSERT_TRUE(PHYSFS_unmount(base.string().c_str())) << "unmount after root mount should succeed";
 }
 static void run_physfs_file_seek_tell_flush_append_and_delete_edges()
 {
@@ -90,7 +91,7 @@ static void run_physfs_file_seek_tell_flush_append_and_delete_edges()
     ASSERT_TRUE(wf != nullptr) << "openWrite should succeed";
     ASSERT_TRUE(PHYSFS_setBuffer(wf, 256)) << "setBuffer(write) should succeed";
     const char* first = "abc";
-    ASSERT_TRUE(PHYSFS_write(wf, first, 1, 3) == 3) << "write first chunk";
+    ASSERT_TRUE(PHYSFS_writeBytes(wf, first, 3) == 3) << "write first chunk";
     ASSERT_TRUE(PHYSFS_tell(wf) >= 3) << "tell(write) should advance";
     ASSERT_TRUE(PHYSFS_flush(wf)) << "flush(write) should succeed";
     ASSERT_TRUE(PHYSFS_close(wf)) << "close(write) should succeed";
@@ -98,7 +99,7 @@ static void run_physfs_file_seek_tell_flush_append_and_delete_edges()
     PHYSFS_File* af = PHYSFS_openAppend("io.bin");
     ASSERT_TRUE(af != nullptr) << "openAppend should succeed";
     const char* second = "defg";
-    ASSERT_TRUE(PHYSFS_write(af, second, 1, 4) == 4) << "append chunk";
+    ASSERT_TRUE(PHYSFS_writeBytes(af, second, 4) == 4) << "append chunk";
     ASSERT_TRUE(PHYSFS_close(af)) << "close(append) should succeed";
 
     PHYSFS_File* rf = PHYSFS_openRead("io.bin");
@@ -107,11 +108,11 @@ static void run_physfs_file_seek_tell_flush_append_and_delete_edges()
     ASSERT_TRUE(PHYSFS_fileLength(rf) == 7) << "fileLength should match write+append";
 
     char buf[8] = {};
-    ASSERT_TRUE(PHYSFS_read(rf, buf, 1, 3) == 3) << "read first part";
+    ASSERT_TRUE(PHYSFS_readBytes(rf, buf, 3) == 3) << "read first part";
     ASSERT_TRUE(PHYSFS_tell(rf) == 3) << "tell(read) should match consumed bytes";
     ASSERT_TRUE(!PHYSFS_eof(rf)) << "not at eof after partial read";
     ASSERT_TRUE(PHYSFS_seek(rf, 0)) << "seek to start should succeed";
-    ASSERT_TRUE(PHYSFS_read(rf, buf, 1, 7) == 7) << "read full file";
+    ASSERT_TRUE(PHYSFS_readBytes(rf, buf, 7) == 7) << "read full file";
     ASSERT_TRUE(PHYSFS_eof(rf)) << "eof should be true after full read";
     ASSERT_TRUE(PHYSFS_close(rf)) << "close(read) should succeed";
 
@@ -154,10 +155,10 @@ static void run_physfs_global_api_and_reinit_edges()
     ASSERT_TRUE(linked.major >= 1) << "linked major version should be valid";
 
     const char* base = PHYSFS_getBaseDir();
-    const char* user = PHYSFS_getUserDir();
+    const char* pref = PHYSFS_getPrefDir("openglad", "edgecfg");
     const char* sep = PHYSFS_getDirSeparator();
     ASSERT_TRUE(base != nullptr && base[0] != '\0') << "getBaseDir should be non-empty";
-    ASSERT_TRUE(user != nullptr && user[0] != '\0') << "getUserDir should be non-empty";
+    ASSERT_TRUE(pref != nullptr && pref[0] != '\0') << "getPrefDir should be non-empty";
     ASSERT_TRUE(sep != nullptr && sep[0] != '\0') << "getDirSeparator should be non-empty";
 
     StringCollector cds_cb;
@@ -190,4 +191,3 @@ TEST(ExternalPhysfsApiEdges, external_physfs_api_edges)
     run_physfs_symbolic_link_toggle_and_error_string_path();
     run_physfs_global_api_and_reinit_edges();
 }
-

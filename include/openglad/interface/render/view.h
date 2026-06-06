@@ -20,6 +20,7 @@
 
 #include <openglad/interface/base.h>
 #include <openglad/interface/level_runtime_data.h>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -66,6 +67,7 @@ class radar;
 // Pure helper functions for HP/MP color thresholds
 unsigned char compute_hp_color(float hp, float maxhp);
 unsigned char compute_mp_color(float mp, float maxmp);
+void reset_viewscreen_input_debounce();
 
 // This is a child object of all viewscreens
 //  It is used to save and load all prefs
@@ -102,6 +104,7 @@ class viewscreen
 		short continuous_input();
 		void process_input(const InputState& input_state);
 		void set_display_text(std::string_view newtext, short numcycles);
+		void refresh_display_text(std::string_view newtext, short numcycles);
 		void display_text(); // put the text to the buffer, if there
 		void shift_text(Sint32 row); // cycle text upward
 		void clear_text(void); // clear all text in buffer
@@ -121,7 +124,8 @@ class viewscreen
 		Sint32 gamma; // for gamma correction
 
 		std::string textlist[MAX_MESSAGES];
-		short textcycles[MAX_MESSAGES];  // cycles to display screen-text
+		short textcycles[MAX_MESSAGES];  // duration in sim ticks
+		std::uint32_t text_expire_ticks[MAX_MESSAGES];
 		
 		char infotext[80]; // text to display
 		short mynum;     // # to id the viewscreen, 0, 1, 2 ...
@@ -137,6 +141,7 @@ class viewscreen
 			short radarstart; //has the radar been started yet?
 			Sint32 xview;
 			Sint32 yview;
+			float interpolation_alpha = 1.0f;
 
 	protected:
 		options *prefsob;

@@ -307,8 +307,10 @@ void SimpleButton::draw(screen* s)
 
 bool SimpleButton::contains(int x, int y) const
 {
-    return (area.x <= x && x < area.x + area.w
-            && area.y <= y && y < area.y + area.h);
+    const int max_x = area.x + static_cast<int>(area.w);
+    const int max_y = area.y + static_cast<int>(area.h);
+    return (area.x <= x && x < max_x
+            && area.y <= y && y < max_y);
 }
 
 void SimpleButton::set_colors_normal()
@@ -389,9 +391,9 @@ public:
         else
         {
             order = target->query_order();
-            family = target->family;
-            team = target->team_num;
-            level = target->stats()->level;
+            family = target->family();
+            team = target->team_num();
+            level = target->stats()->level();
         }
     }
 };
@@ -438,13 +440,13 @@ public:
         {
             valid = true;
             name = target_->stats()->name;
-            x = target_->xpos;
-            y = target_->ypos;
-            w = target_->sizex;
-            h = target_->sizey;
+            x = target_->xpos();
+            y = target_->ypos();
+            w = target_->sizex();
+            h = target_->sizey();
             order = target_->query_order();
-            family = target_->family;
-            level = target_->stats()->level;
+            family = target_->family();
+            level = target_->stats()->level();
             this->target = target_;
         }
     }
@@ -937,10 +939,10 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
                 walker* obj = sel.get_object(level.get());
                 if(obj != nullptr)
                 {
-                    if(obj->team_num > 0)
-                        obj->team_num = obj->team_num - 1;
+                    if(obj->team_num() > 0)
+                        obj->set_team_num(obj->team_num() - 1);
                     else
-                        obj->team_num = MAX_TEAM;
+                        obj->set_team_num(MAX_TEAM);
                     eds().levelchanged = 1;
                 }
             }
@@ -962,10 +964,10 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
                 walker* obj = sel.get_object(level.get());
                 if(obj != nullptr)
                 {
-                    if(obj->team_num < MAX_TEAM)
-                        obj->team_num = obj->team_num + 1;
+                    if(obj->team_num() < MAX_TEAM)
+                        obj->set_team_num(obj->team_num() + 1);
                     else
-                        obj->team_num = 0;
+                        obj->set_team_num(0);
                     eds().levelchanged = 1;
                 }
             }
@@ -985,10 +987,10 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
             walker* obj = sel.get_object(level.get());
             if(obj != nullptr)
             {
-                if(obj->stats()->level > 1)
+                if(obj->stats()->level() > 1)
                 {
-                    obj->stats()->level--;
-                    sel.level = obj->stats()->level;
+                    obj->stats()->set_level(obj->stats()->level() - 1);
+                    sel.level = obj->stats()->level();
                     eds().levelchanged = 1;
                 }
             }
@@ -1001,8 +1003,8 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
             walker* obj = sel.get_object(level.get());
             if(obj != nullptr)
             {
-                obj->stats()->level++;
-                sel.level = obj->stats()->level;
+                obj->stats()->set_level(obj->stats()->level() + 1);
+                sel.level = obj->stats()->level();
                 eds().levelchanged = 1;
             }
         }
@@ -1019,9 +1021,9 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
                 else
                     sel.family = NUM_FAMILIES-1;
                 og::runtime::current_session->myscreen_->myloader->set_walker(obj, sel.order, sel.family);
-                obj->ani_type = ANI_WALK;
+                obj->set_ani_type(ANI_WALK);
                 obj->transform_to(sel.order, sel.family);
-                obj->set_frame(obj->ani[obj->curdir][0]);
+                obj->set_frame(obj->ani[obj->curdir()][0]);
                 obj->setxy(sel.x, sel.y);
                 sel.set(obj);
 
@@ -1041,9 +1043,9 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
                 else
                     sel.family = 0;
                 og::runtime::current_session->myscreen_->myloader->set_walker(obj, sel.order, sel.family);
-                obj->ani_type = ANI_WALK;
+                obj->set_ani_type(ANI_WALK);
                 obj->transform_to(sel.order, sel.family);
-                obj->set_frame(obj->ani[obj->curdir][0]);
+                obj->set_frame(obj->ani[obj->curdir()][0]);
                 obj->setxy(sel.x, sel.y);
                 sel.set(obj);
 
@@ -1058,11 +1060,11 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
             walker* obj = sel.get_object(level.get());
             if(obj != nullptr)
             {
-                if(obj->curdir < FACE_UP_LEFT)
-                    obj->curdir = obj->curdir + 1;
+                if(obj->curdir() < FACE_UP_LEFT)
+                    obj->set_curdir(obj->curdir() + 1);
                 else
-                    obj->curdir = FACE_UP;
-				obj->set_frame(obj->ani[obj->curdir][0]);
+                    obj->set_curdir(FACE_UP);
+				obj->set_frame(obj->ani[obj->curdir()][0]);
                 eds().levelchanged = 1;
             }
         }
@@ -1180,8 +1182,8 @@ void get_connected_level_exits(int current_level, const std::list<int>& levels, 
     for(auto& uptr : d.world().fxlist)
     {
         walker* w = uptr.get();
-        if(w->query_order() == Order::Treasure && w->family == FAMILY_EXIT && w->stats() != nullptr)
-            exits.insert(w->stats()->level);
+        if(w->query_order() == Order::Treasure && w->family() == FAMILY_EXIT && w->stats() != nullptr)
+            exits.insert(w->stats()->level());
     }
     
     // With no exits, we'll progress directly to the next sequential level
@@ -1338,12 +1340,12 @@ Sint32 LevelEditorData::display_panel(screen* s)
 	static char livings[NUM_FAMILIES][20] = {};
 	static bool livings_init = false;
 	if (!livings_init) {
-	    for (int i = 0; i < NUM_FAMILIES; i++) {
-	        const auto* fd = get_family_descriptor(i);
+	    for (int family_index = 0; family_index < NUM_FAMILIES; family_index++) {
+	        const auto* fd = get_family_descriptor(family_index);
 	        if (fd && fd->name)
-	            snprintf(livings[i], 20, "%s", fd->name);
+	            snprintf(livings[family_index], 20, "%s", fd->name);
 	        else
-	            snprintf(livings[i], 20, "BEAST");
+	            snprintf(livings[family_index], 20, "BEAST");
 	    }
 	    livings_init = true;
 	}
@@ -1484,7 +1486,7 @@ Sint32 LevelEditorData::display_panel(screen* s)
         newob->setxy(lm+25 + level->level_visuals().topx, PIX_TOP-16-1 + level->level_visuals().topy);
         newob->set_data(s->myloader->graphics[PIX(object_brush.order, object_brush.family)]);
         s->myloader->set_walker(newob, object_brush.order, object_brush.family);
-        newob->team_num = static_cast<unsigned char>(object_brush.team);
+        newob->set_team_num(static_cast<unsigned char>(object_brush.team));
         draw_walker_tile(*newob, s->viewob[0].get());
         // Border
         s->draw_box(lm+25, PIX_TOP-16-1, lm+25+GRID_SIZE, PIX_TOP-16-1+GRID_SIZE, RED, 0, 1);
@@ -1506,7 +1508,7 @@ Sint32 LevelEditorData::display_panel(screen* s)
                     newob->setxy(S_RIGHT+i*GRID_SIZE + level->level_visuals().topx, PIX_TOP+j*GRID_SIZE + level->level_visuals().topy);
                     newob->set_data(s->myloader->graphics[PIX(object_pane()[index].order, object_pane()[index].family)]);
                     s->myloader->set_walker(newob, object_pane()[index].order, object_pane()[index].family);
-                    newob->team_num = static_cast<unsigned char>(object_brush.team);
+                    newob->set_team_num(static_cast<unsigned char>(object_brush.team));
                     draw_walker_tile(*newob, s->viewob[0].get());
                 }
             }
@@ -1529,11 +1531,11 @@ Sint32 LevelEditorData::display_panel(screen* s)
             newob->setxy(mx + level->level_visuals().topx, my + level->level_visuals().topy);
             newob->set_data(s->myloader->graphics[PIX(object_brush.order, object_brush.family)]);
             s->myloader->set_walker(newob, object_brush.order, object_brush.family);
-            newob->team_num = static_cast<unsigned char>(object_brush.team);
+            newob->set_team_num(static_cast<unsigned char>(object_brush.team));
             
             // Get size rounded up to nearest GRID_SIZE
-            int w = newob->sizex;
-            int h = newob->sizey;
+            int w = newob->sizex();
+            int h = newob->sizey();
             w += GRID_SIZE - (w%GRID_SIZE == 0? GRID_SIZE : w%GRID_SIZE);
             h += GRID_SIZE - (h%GRID_SIZE == 0? GRID_SIZE : h%GRID_SIZE);
             
@@ -1640,11 +1642,11 @@ void LevelEditorData::mouse_motion(int mx, int my, int dx, int dy)
                     walker* w = sel.get_object(level.get());
                     if(w != nullptr)
                     {
-                        w->setxy(w->xpos + dx, w->ypos + dy);
+                        w->setxy(w->xpos() + dx, w->ypos() + dy);
 
                         // Update selection position
-                        sel.x = w->xpos;
-                        sel.y = w->ypos;
+                        sel.x = w->xpos();
+                        sel.y = w->ypos();
                     }
                 }
             }
@@ -1687,7 +1689,7 @@ void add_contained_objects_to_selection(LevelRuntimeData* level, const Rectf& ar
     for(auto& uptr : level->world().oblist)
 	{
 	    walker* w = uptr.get();
-		if(w && area.contains(w->xpos + w->sizex/2, w->ypos + w->sizey/2))
+		if(w && area.contains(w->xpos() + w->sizex()/2, w->ypos() + w->sizey()/2))
 		{
 		    if(!is_in_selection(w, selection))
                 selection.push_back(SelectionInfo(w));
@@ -1697,7 +1699,7 @@ void add_contained_objects_to_selection(LevelRuntimeData* level, const Rectf& ar
     for(auto& uptr : level->world().fxlist)
 	{
 	    walker* w = uptr.get();
-		if(w && area.contains(w->xpos + w->sizex/2, w->ypos + w->sizey/2))
+		if(w && area.contains(w->xpos() + w->sizex()/2, w->ypos() + w->sizey()/2))
 		{
 		    if(!is_in_selection(w, selection))
                 selection.push_back(SelectionInfo(w));
@@ -1707,7 +1709,7 @@ void add_contained_objects_to_selection(LevelRuntimeData* level, const Rectf& ar
     for(auto& uptr : level->world().weaplist)
 	{
 	    walker* w = uptr.get();
-		if(w && area.contains(w->xpos + w->sizex/2, w->ypos + w->sizey/2))
+		if(w && area.contains(w->xpos() + w->sizex()/2, w->ypos() + w->sizey()/2))
 		{
 		    if(!is_in_selection(w, selection))
                 selection.push_back(SelectionInfo(w));
@@ -2541,10 +2543,10 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     newob->setxy(windowx, windowy);
                     if (some_hit(windowx, windowy, newob, level.get()))
                     {
-                        std::string name = newob->collide_ob->stats()->name;
+                        std::string name = newob->collide_ob()->stats()->name;
                         if(prompt_for_string("Rename", name))
                         {
-                            newob->collide_ob->stats()->name = name;
+                            newob->collide_ob()->stats()->name = name;
                             eds().levelchanged = 1;
                         }
                     }
@@ -2560,7 +2562,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         if (some_hit(windowx, windowy, newob, level.get()))
                         {
                             // Clicked on a guy
-                            walker* w = newob->collide_ob;
+                            walker* w = newob->collide_ob();
                             if(og::runtime::current_session->keystates_[KEYSTATE_LCTRL] || og::runtime::current_session->keystates_[KEYSTATE_RCTRL])
                             {
                                 // Select/deselect another guy
@@ -2568,7 +2570,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                                 for(std::vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
                                 {
                                     // Identify the guy.  Not the best way...
-                                    if(e->x == w->xpos && e->y == w->ypos && e->w == w->sizex && e->h == w->sizey)
+                                    if(e->x == w->xpos() && e->y == w->ypos() && e->w == w->sizex() && e->h == w->sizey())
                                     {
                                         deselected = true;
                                         selection.erase(e);
@@ -2618,10 +2620,10 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         eds().levelchanged = 1;
                         newob = level->add_ob(object_brush.order, object_brush.family);
                         newob->setxy(windowx, windowy);
-                        newob->team_num = static_cast<unsigned char>(object_brush.team);
-                        newob->stats()->level = object_brush.level;
-                        newob->dead = 0; // just in case
-                        newob->collide_ob = nullptr;
+                        newob->set_team_num(static_cast<unsigned char>(object_brush.team));
+                        newob->stats()->set_level(object_brush.level);
+                        newob->set_dead(0); // just in case
+                        newob->set_collide_ob(nullptr);
                         // Is there already something there?
                         if ( object_brush.snap_to_grid && some_hit(windowx, windowy, newob, level.get()))
                         {
@@ -2752,7 +2754,7 @@ walker* LevelEditorData::get_object(int x, int y)
     newob->setxy(x, y);
     if (some_hit(x, y, newob, level.get()))
     {
-        result = newob->collide_ob;
+        result = newob->collide_ob();
     }
     level->remove_ob(newob);
     return result;
@@ -2813,14 +2815,14 @@ int level_editor_test_exercise_internal_helpers()
             if (sel.get_object(data.level.get()) == inside)
                 score++;
             std::vector<SelectionInfo> selection;
-            Rectf area(static_cast<float>(inside->xpos - 2),
-                       static_cast<float>(inside->ypos - 2),
-                       static_cast<float>(inside->sizex + 4),
-                       static_cast<float>(inside->sizey + 4));
+            Rectf area(static_cast<float>(inside->xpos() - 2),
+                       static_cast<float>(inside->ypos() - 2),
+                       static_cast<float>(inside->sizex() + 4),
+                       static_cast<float>(inside->sizey() + 4));
             add_contained_objects_to_selection(data.level.get(), area, selection);
             if (is_in_selection(inside, selection))
                 score++;
-            if (data.get_object(inside->xpos, inside->ypos) == inside)
+            if (data.get_object(inside->xpos(), inside->ypos()) == inside)
                 score++;
         }
 
@@ -3722,11 +3724,11 @@ walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelRuntimeData* data)
 	{
 	    walker* w = uptr.get();
 		if (w && w != ob
-            && check_collide(x, y, ob->sizex, ob->sizey,
-			                  w->xpos, w->ypos,
-			                  w->sizex, w->sizey) )
+            && check_collide(x, y, ob->sizex(), ob->sizey(),
+			                  w->xpos(), w->ypos(),
+			                  w->sizex(), w->sizey()) )
         {
-            ob->collide_ob = w;
+            ob->set_collide_ob(w);
             return w;
         }
 	}
@@ -3735,11 +3737,11 @@ walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelRuntimeData* data)
 	{
 	    walker* w = uptr.get();
 		if (w && w != ob
-            && check_collide(x, y, ob->sizex, ob->sizey,
-			                  w->xpos, w->ypos,
-			                  w->sizex, w->sizey) )
+            && check_collide(x, y, ob->sizex(), ob->sizey(),
+			                  w->xpos(), w->ypos(),
+			                  w->sizex(), w->sizey()) )
         {
-            ob->collide_ob = w;
+            ob->set_collide_ob(w);
             return w;
         }
 	}
@@ -3748,15 +3750,15 @@ walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelRuntimeData* data)
 	{
 	    walker* w = uptr.get();
 		if (w && w != ob
-            && check_collide(x, y, ob->sizex, ob->sizey,
-			                  w->xpos, w->ypos,
-			                  w->sizex, w->sizey) )
+            && check_collide(x, y, ob->sizex(), ob->sizey(),
+			                  w->xpos(), w->ypos(),
+			                  w->sizex(), w->sizey()) )
         {
-            ob->collide_ob = w;
+            ob->set_collide_ob(w);
             return w;
         }
 	}
 
-	ob->collide_ob = nullptr;
+	ob->set_collide_ob(nullptr);
 	return nullptr;
 }

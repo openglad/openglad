@@ -1,53 +1,19 @@
 // @ts-check
 const { test, expect } = require('@playwright/test');
+const {
+  clickCanvasGameCoord,
+  ensureRenderTicker,
+  focusCanvas,
+  startSeededSinglePlayerFromPicker,
+  waitForGameLoad,
+  waitForRenderedFrames,
+} = require('./wasm_helpers');
 
 // Empirically, blank/near-blank 320x200 PNG canvas captures are typically <1.5KB
 // in this suite, while real rendered frames are larger. Keep this conservative
 // to avoid false negatives from highly compressible scenes.
 const MIN_NON_TRIVIAL_PNG_BYTES = 2_000;
 const IGNORED_RUNTIME_ERROR_PATTERNS = [/get_asset_path: readlink\(\/proc\/self\/exe\) failed/];
-
-// Helper: wait for the WASM game to finish loading.
-// The loading overlay gets class "hidden" when Module.setStatus('') fires.
-async function waitForGameLoad(page) {
-  const timeoutMs = 60_000;
-  const pollMs = 500;
-  const diagnosticsEveryMs = 5_000;
-  const startTime = Date.now();
-  let lastDiagnosticsMs = -diagnosticsEveryMs;
-  let latestState = null;
-
-  while (Date.now() - startTime < timeoutMs) {
-    latestState = await page.evaluate(() => {
-      const loading = document.getElementById('loading');
-      const loadingText = document.getElementById('loading-text');
-      return {
-        exists: Boolean(loading),
-        hidden: Boolean(loading && loading.classList.contains('hidden')),
-        className: loading ? loading.className : null,
-        text: loadingText ? loadingText.textContent : null,
-      };
-    });
-
-    if (latestState.hidden) {
-      await ensureRenderTicker(page);
-      await waitForRenderedFrames(page, 3, 5_000);
-      return;
-    }
-
-    const elapsedMs = Date.now() - startTime;
-    if (elapsedMs - lastDiagnosticsMs >= diagnosticsEveryMs) {
-      console.log(`[waitForGameLoad] still waiting (${elapsedMs}ms): ${JSON.stringify(latestState)}`);
-      lastDiagnosticsMs = elapsedMs;
-    }
-
-    await page.waitForTimeout(pollMs);
-  }
-
-  throw new Error(
-    `Timed out waiting for game load after ${timeoutMs}ms; last #loading state: ${JSON.stringify(latestState)}`,
-  );
-}
 
 function attachRuntimeErrorCollectors(page, errors) {
   page.on('pageerror', (err) => {
@@ -74,35 +40,6 @@ function assertNoRuntimeErrors(errors, context) {
   expect(errors, `Unexpected runtime errors during: ${context}`).toEqual([]);
 }
 
-async function ensureRenderTicker(page) {
-  await page.evaluate(() => {
-    if (window.__pwRenderTickerReady) {
-      return;
-    }
-    window.__pwRenderTickerReady = true;
-    window.__pwRenderFrameCount = 0;
-    const tick = () => {
-      window.__pwRenderFrameCount += 1;
-      window.requestAnimationFrame(tick);
-    };
-    window.requestAnimationFrame(tick);
-  });
-}
-
-async function waitForRenderedFrames(page, frameDelta = 1, timeoutMs = 5_000) {
-  await ensureRenderTicker(page);
-  const initialCount = await page.evaluate(() => window.__pwRenderFrameCount || 0);
-  await page.waitForFunction(
-    ({ start, delta }) => (window.__pwRenderFrameCount || 0) >= start + delta,
-    { start: initialCount, delta: frameDelta },
-    { timeout: timeoutMs },
-  );
-}
-
-async function focusCanvas(page) {
-  await page.locator('#canvas').click();
-  await page.waitForFunction(() => document.activeElement && document.activeElement.id === 'canvas');
-}
 
 // Helper: capture a snapshot of canvas pixel data via screenshot
 // (WebGL canvases don't support getImageData via 2d context)
@@ -156,6 +93,14 @@ test.describe('Game Loading', () => {
     const loading = page.locator('#loading');
     await expect(loading).toBeHidden();
 
+    // The browser runtime should have invoked the exported web bootstrap exactly once.
+    const bootstrapState = await page.evaluate(() => window.__opengladWebBootstrap);
+    expect(bootstrapState).toEqual({
+      runtimeInitialized: true,
+      bootFunctionAvailable: true,
+      bootCalls: 1,
+    });
+
     // No runtime errors should have occurred
     assertNoRuntimeErrors(errors, 'post-load assertions');
   });
@@ -198,6 +143,48 @@ test.describe('Game Loading', () => {
 });
 
 test.describe('Game Interaction', () => {
+  test('lobby-backed picker start transitions from picker to gameplay', async ({ page }) => {
+    const errors = [];
+    attachRuntimeErrorCollectors(page, errors);
+
+    await page.addInitScript(() => {
+      window.__opengladSeedSinglePlayerTeam = true;
+      window.__opengladSkipIntroForTests = true;
+    });
+    await page.goto('/play.html');
+    await waitForGameLoad(page);
+
+    await startSeededSinglePlayerFromPicker(page);
+    assertNoRuntimeErrors(errors, 'picker-to-game transition');
+
+    const canvas = page.locator('#canvas');
+    await expect(canvas).toBeVisible();
+    await expect(page.locator('#loading')).toBeHidden();
+  });
+
+  test('lobby-backed picker start uses lobby player count for gameplay views', async ({ page }) => {
+    const errors = [];
+    attachRuntimeErrorCollectors(page, errors);
+
+    await page.addInitScript(() => {
+      window.__opengladSeedPlayerCount = 3;
+      window.__opengladSkipIntroForTests = true;
+    });
+    await page.goto('/play.html');
+    await waitForGameLoad(page);
+
+    await startSeededSinglePlayerFromPicker(page);
+    await page.waitForFunction(() => window.__opengladNumViews === 3, null, {
+      timeout: 15_000,
+    });
+    await waitForRenderedFrames(page, 4);
+    assertNoRuntimeErrors(errors, 'picker-to-game multi-view transition');
+
+    await expect(page.locator('#canvas')).toBeVisible();
+    await expect(page.locator('#loading')).toBeHidden();
+    await expect.poll(async () => page.evaluate(() => window.__opengladNumViews)).toBe(3);
+  });
+
   test('keyboard input does not crash the game', async ({ page }) => {
     const errors = [];
     attachRuntimeErrorCollectors(page, errors);

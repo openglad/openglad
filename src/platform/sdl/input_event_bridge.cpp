@@ -134,7 +134,7 @@ void handle_key_event(const void* native_event)
 void draw_touch_controls(screen* vob)
 {
     walker* control = vob->viewob[0]->control;
-    if(control == nullptr || control->dead)
+    if(control == nullptr || control->dead())
         return;
 
     auto& hw = *og::runtime::current_session->input_hw_;
@@ -149,15 +149,15 @@ void draw_touch_controls(screen* vob)
     // Touch buttons
     vob->fastbox(FIRE_BUTTON_X, FIRE_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 25);
 
-    if(vob->special_name[static_cast<int>(control->family)][static_cast<int>(control->current_special)] != "NONE")
+    if(vob->special_name[static_cast<int>(control->family)][static_cast<int>(control->current_special())] != "NONE")
         vob->fastbox(SPECIAL_BUTTON_X, SPECIAL_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 26);
 
-    if(control->current_special != 1
-                || (control->current_special + 1 <= NUM_SPECIALS && control->current_special*3+1 <= control->stats()->level
-                     && vob->special_name[static_cast<int>(control->family)][static_cast<int>(control->current_special) + 1] != "NONE"))
+    if(control->current_special() != 1
+                || (control->current_special() + 1 <= NUM_SPECIALS && control->current_special()*3+1 <= control->stats()->level()
+                     && vob->special_name[static_cast<int>(control->family)][static_cast<int>(control->current_special()) + 1] != "NONE"))
         vob->fastbox(NEXT_SPECIAL_BUTTON_X, NEXT_SPECIAL_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 27);
 
-    if(vob->alternate_name[static_cast<int>(control->family)][static_cast<int>(control->current_special)] != "NONE")
+    if(vob->alternate_name[static_cast<int>(control->family)][static_cast<int>(control->current_special())] != "NONE")
         vob->fastbox(ALTERNATE_SPECIAL_BUTTON_X, ALTERNATE_SPECIAL_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 28);
 }
 
@@ -167,7 +167,7 @@ bool input_touch_has_alternate()
     if(s != nullptr
         && s->viewob[0] != nullptr
         && s->viewob[0]->control != nullptr
-        && s->alternate_name[static_cast<int>(s->viewob[0]->control->family)][static_cast<int>(s->viewob[0]->control->current_special)] != "NONE")
+        && s->alternate_name[static_cast<int>(s->viewob[0]->control->family)][static_cast<int>(s->viewob[0]->control->current_special())] != "NONE")
         return true;
     return false;
 }

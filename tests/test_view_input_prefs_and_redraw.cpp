@@ -66,8 +66,8 @@ TEST(ViewInputPrefsAndRedraw, viewscreen_input_key_prefs_triggers_options_menu_b
         ASSERT_TRUE(w != nullptr) << "control walker created";
         if (!w)
             return;
-        w->team_num = 0;
-        w->user = 0;
+        w->set_team_num(0);
+        w->set_user(0);
         w->set_act_type(ACT_CONTROL);
         vs->control = w;
     }
@@ -101,8 +101,8 @@ TEST(ViewInputPrefsAndRedraw, viewscreen_input_shift_slash_triggers_read_scenari
         ASSERT_TRUE(w != nullptr) << "control walker created";
         if (!w)
             return;
-        w->team_num = 0;
-        w->user = 0;
+        w->set_team_num(0);
+        w->set_user(0);
         w->set_act_type(ACT_CONTROL);
         vs->control = w;
     }

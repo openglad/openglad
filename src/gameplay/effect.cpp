@@ -36,13 +36,13 @@
 effect::effect(const PixieData& data)
     : walker(data)
 {
-	ignore = 1; // don't collide with other objects
+	set_ignore(1); // don't collide with other objects
 }
 
 effect::effect()
     : walker()
 {
-	ignore = 1;
+	set_ignore(1);
 }
 
 effect::~effect()
@@ -66,17 +66,27 @@ void orbit_offset(int drawcycle, float &xd, float &yd)
 bool effect::act()
 {
 	// Make sure everyone we're pointing to is valid
-	if (foe && foe->dead)
-		foe = nullptr;
-	if (leader && leader->dead)
-		leader = nullptr;
-	if (owner && owner->dead)
-		owner = nullptr;
+	if (foe() && foe()->dead())
+		set_foe(nullptr);
+	if (leader() && leader()->dead())
+		set_leader(nullptr);
+	if (owner() && owner()->dead())
+		set_owner(nullptr);
 
-	collide_ob = nullptr; // always start with no collision..
+	set_collide_ob(nullptr); // always start with no collision..
 
-	// Per-family action dispatch
-	const auto* efd = get_effect_family_descriptor(family);
+	// drawcycle is this effect's per-tick age counter. The BOOMERANG / MAGIC_SHIELD
+	// orbits scale their radius by (drawcycle+4)/48 (so they spiral outward as it
+	// grows) and the boomerang self-destructs at drawcycle > 253. On master this
+	// counter advanced once per frame in the render path (walker_draw.cpp). The
+	// authoritative sim is now HEADLESS (no render), so we must advance it here —
+	// otherwise the orbit radius is frozen and the boomerang/shield hang in place
+	// on the owner instead of spiralling out. The render-side bump still runs on
+	// the display, but the snapshot from this sim is authoritative.
+	set_drawcycle(static_cast<unsigned char>(drawcycle() + 1));
+
+	// Per-family() action dispatch
+	const auto* efd = get_effect_family_descriptor(family());
 	if (efd && efd->on_act)
 	{
 		if (efd->on_act(this))
@@ -85,10 +95,10 @@ bool effect::act()
 	}
 
 	// Complete previous animations (like firing)
-	if (ani_type != ANI_WALK)
+	if (ani_type() != ANI_WALK)
 		return animate();
 
-	dead = 1;
+	set_dead(1);
 	death();
 
 	return 0;
@@ -96,20 +106,20 @@ bool effect::act()
 
 bool effect::animate()
 {
+	const int ani_index = curdir() + ani_type() * NUM_FACINGS;
+	set_frame(ani[ani_index][cycle()]);
+	set_cycle(static_cast<signed char>(cycle() + 1));
 
-	set_frame(ani[curdir+ani_type*NUM_FACINGS][cycle]);
-	cycle++;
-
-	const auto* efd = get_effect_family_descriptor(family);
+	const auto* efd = get_effect_family_descriptor(family());
 	if (efd && efd->loops_animation)
 	{
-		if (ani[curdir+ani_type*NUM_FACINGS][cycle] == -1)
-			cycle = 0;
+		if (ani[ani_index][cycle()] == -1)
+			set_cycle(0);
 	}
 	else
 	{
-		if (ani[curdir+ani_type*NUM_FACINGS][cycle] == -1)
-			ani_type = ANI_WALK;
+		if (ani[ani_index][cycle()] == -1)
+			set_ani_type(ANI_WALK);
 	}
 
 	return 1;
@@ -131,14 +141,14 @@ std::int32_t compute_explosion_range(std::int32_t level, short skip_exit)
 // for special effects ..
 bool effect::death()
 {
-	// Note that the 'dead' variable should ALREADY be set by the
+	// Note that the 'dead()' variable should ALREADY be set by the
 	// time this function is called, so that we can easily reverse
 	// the decision :)
-	if (death_called)
+	if (death_called())
 		return 0;
-	death_called = 1;
+	set_death_called(1);
 
-	const auto* efd = get_effect_family_descriptor(family);
+	const auto* efd = get_effect_family_descriptor(family());
 	if (efd && efd->on_death)
 		efd->on_death(this);
 

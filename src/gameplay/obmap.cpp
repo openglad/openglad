@@ -19,10 +19,10 @@
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/statistics.h>
+#include <openglad/gameplay/key_mask.h>
 #include <openglad/core/util.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
-#include <cmath>
 #include <algorithm>
 #include <format>
 #include <openglad/gameplay/sim_emit.h>
@@ -57,15 +57,15 @@ short obmap::query_list(walker  *ob, short x, short y)
 {
 	short numx, startnumx, endnumx;
 	short numy, startnumy, endnumy;
-	if (!ob || ob->dead)
+	if (!ob || ob->dead())
 	{
 		Log("Bad ob to query_list.\n");
 		return 1;
 	}
 	startnumx = hash(x);
-	endnumx   = hash( static_cast<short>(x+ob->sizex) );
+	endnumx   = hash( static_cast<short>(x+ob->sizex()) );
 	startnumy = hash(y);
-	endnumy   = hash( static_cast<short>(y+ob->sizey) );
+	endnumy   = hash( static_cast<short>(y+ob->sizey()) );
 
 	// For each y grid row we are in...
 	for (numx = startnumx; numx <= endnumx; numx++)
@@ -104,15 +104,15 @@ short obmap::remove(walker  *ob)  // This goes in walker's destructor
         // Bookkeeping mismatch: attempt a bounded removal based on the
         // walker's current bounding box. This avoids global scans while still
         // preventing stale pointers in pos_to_walker (ASan/UAF).
-        if (ob->xpos < 0 || ob->ypos < 0)
+        if (ob->xpos() < 0 || ob->ypos() < 0)
             return 0;
 
         short numx, startnumx, endnumx;
         short numy, startnumy, endnumy;
-        startnumx = hash(ob->xpos);
-        endnumx = hash(static_cast<short>(ob->xpos + ob->sizex));
-        startnumy = hash(ob->ypos);
-        endnumy = hash(static_cast<short>(ob->ypos + ob->sizey));
+        startnumx = hash(ob->xpos());
+        endnumx = hash(static_cast<short>(ob->xpos() + ob->sizex()));
+        startnumy = hash(ob->ypos());
+        endnumy = hash(static_cast<short>(ob->ypos() + ob->sizey()));
 
         bool removed_any = false;
         for (numx = startnumx; numx <= endnumx; numx++)
@@ -166,9 +166,9 @@ short obmap::add(walker  *ob, short x, short y)  // This goes in walker's constr
 		(void)remove(ob);
 
 	startnumx = hash(x);
-	endnumx   = hash( static_cast<short>(x + ob->sizex) );
+	endnumx   = hash( static_cast<short>(x + ob->sizex()) );
 	startnumy = hash(y);
-	endnumy   = hash( static_cast<short>(y + ob->sizey) );
+	endnumy   = hash( static_cast<short>(y + ob->sizey()) );
 
     // Figure out all of the positions that are occupied
 	std::list<std::pair<short,short> > pos;
@@ -196,7 +196,7 @@ short obmap::add(walker  *ob, short x, short y)  // This goes in walker's constr
 short obmap::move(walker* ob, short x, short y)  // This goes in walker's setxy
 {
     // Do we really need to move?
-	if(x == ob->xpos && y == ob->ypos)
+	if(x == ob->xpos() && y == ob->ypos())
         return 1;
 
 	remove(ob);
@@ -241,8 +241,8 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
 	if (!ob)
 		return 1;
 
-	oxsize = ob->sizex;
-	oysize = ob->sizey;
+	oxsize = ob->sizex();
+	oysize = ob->sizey();
 
 	myorder = ob->query_order();
 
@@ -264,7 +264,7 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
             if (map != nullptr && map->walker_to_pos.find(w) == map->walker_to_pos.end())
                 continue;
 
-            if (w->dead)
+            if (w->dead())
                 continue;
 
             targetorder = w->query_order();
@@ -280,10 +280,10 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
                 continue;
             else
             {
-                x2 = w->xpos;
-                y2 = w->ypos;
-                xsize2 = w->sizex;
-                ysize2 = w->sizey;
+                x2 = w->xpos();
+                y2 = w->ypos();
+                xsize2 = w->sizex();
+                ysize2 = w->sizey();
                 if(collide(x,y,oxsize,oysize,x2,y2,xsize2,ysize2))
                 {
                     if ( targetorder == Order::Treasure )
@@ -291,13 +291,13 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
                         w->eat_me(ob);
                     }
                     else if ( (targetorder == Order::Weapon)
-                              && (w->family == FAMILY_DOOR) )
+                              && (w->family() == FAMILY_DOOR) )
                     {
                         // Can we unlock this door?
-                        if (ob->keys & static_cast<std::int32_t>(pow(static_cast<double>(2), w->stats()->level)))
+                        if (ob->keys() & key_level_mask(w->stats()->level()))
                         {
                             // Open the door ..
-                            w->dead = 1;
+                            w->set_dead(1);
                             w->death();
                             ob->collide(w);
                             if (ob->stats()->query_bit_flags(BIT_NO_COLLIDE))
@@ -307,12 +307,12 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
                         else
                         {
                             // Do we notify?
-                            if (!(ob->skip_exit) && (ob->user != -1))
+                            if (!(ob->skip_exit()) && (ob->user() != -1))
                             {
                                 std::string message = std::format("Key {} needed!",
-                                        w->stats()->level);
+                                        w->stats()->level());
                                 og::sim::emit_notification(current_game->sim_events, message);
-                                ob->skip_exit = 10;
+                                ob->set_skip_exit(10);
                             } // end of failed open door notification
                             ob->collide(w);
                             return 0; // failed to open door
@@ -327,8 +327,8 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
                     }
                 }
                 else
-                    // if (ob->collide_ob) //let's just assume its safe
-                    ob->collide_ob = nullptr;
+                    // if (ob->collide_ob()) //let's just assume its safe
+                    ob->set_collide_ob(nullptr);
             }
         }
 	}

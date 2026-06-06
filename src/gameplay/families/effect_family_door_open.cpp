@@ -11,21 +11,21 @@
 
 static bool door_open_on_act(effect* self)
 {
-    if (self->ani_type != ANI_WALK)
+    if (self->ani_type() != ANI_WALK)
         return false; // let default animate() handle it
 
     walker* newob = current_game->world->add_fx_ob(Order::FX, FAMILY_DOOR_OPEN);
     if (!newob)
         return true; // handled (nothing to spawn)
-    newob->ani_type = ANI_WALK;
+    newob->set_ani_type(ANI_WALK);
     newob->setworldxy(self->worldx(), self->worldy());
-    newob->stats()->level = self->stats()->level;
-    newob->team_num = self->team_num;
-    newob->ignore = 1;
-    newob->curdir = self->curdir;
+    newob->stats()->set_level(self->stats()->level());
+    newob->set_team_num(self->team_num());
+    newob->set_ignore(1);
+    newob->set_curdir(self->curdir());
     // set correct frame
     newob->animate();
-    self->dead = 1;
+    self->set_dead(1);
     self->death();
     return true;
 }

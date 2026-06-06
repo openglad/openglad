@@ -23,6 +23,7 @@
 #include <openglad/interface/render/text.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/world_snapshot.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/level_visuals.h>
 #include <openglad/resources/save_data.h>
@@ -34,9 +35,12 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <utility>
 
 struct InputState;
 class soundob;
+class DamageNumberRenderContext;
+namespace og::sim { class GameClient; }
 
 class screen : public video
 {
@@ -187,7 +191,12 @@ public:
     short input(const void* native_event);
     short continuous_input();
     void process_input(const InputState& input_state);
-    bool act();
+    using TickWorldBatches =
+        std::pair<og::sim::SimEventBatch, og::sim::GameFlowEventBatch>;
+    [[nodiscard]] TickWorldBatches tick_world();
+    void dispatch_cosmetic_events(const og::sim::SimEventBatch& batch);
+    bool dispatch_game_flow_events(const og::sim::GameFlowEventBatch& batch);
+    bool dispatch_sim_event_batch(const og::sim::SimEventBatch& batch);
 
     short endgame(short ending);
     short endgame(short ending, short nextlevel); // what level next?
@@ -222,6 +231,21 @@ public:
     const GameWorld& world() const { return world_; }
     LevelVisuals& level_visuals() { return level_visuals_; }
     const LevelVisuals& level_visuals() const { return level_visuals_; }
+    void set_render_interpolation_client(
+        const og::sim::GameClient* client) noexcept;
+    [[nodiscard]] const og::sim::GameClient* render_interpolation_client()
+        const noexcept
+    {
+        return render_interpolation_client_;
+    }
+    void set_render_interpolation_speed_factor(float speed_factor) noexcept;
+    [[nodiscard]] float render_interpolation_speed_factor() const noexcept
+    {
+        return render_interpolation_speed_factor_;
+    }
+    DamageNumberRenderContext& damage_number_render_context() noexcept;
+    const DamageNumberRenderContext& damage_number_render_context() const
+        noexcept;
 
     // Delegated render data (preserves legacy field-style access).
     std::array<unsigned char, 768>& ourpalette;
@@ -255,6 +279,9 @@ public:
     short numviews;
     Uint32 timerstart;
     Uint32 framecount;
+    const og::sim::GameClient* render_interpolation_client_ = nullptr;
+    float render_interpolation_speed_factor_ = 1.0f;
+    std::unique_ptr<DamageNumberRenderContext> damage_number_render_context_;
 
 private:
     void init_common(short howmany, bool has_display);

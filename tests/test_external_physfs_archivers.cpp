@@ -17,9 +17,9 @@ static void append_u32le(std::vector<uint8_t>& out, uint32_t v)
     out.push_back((uint8_t)((v >> 24) & 0xff));
 }
 
-static bool write_temp_file_bytes(const std::vector<uint8_t>& bytes,
-                                  const char* suffix,
-                                  std::string* out_path)
+[[maybe_unused]] static bool write_temp_file_bytes(const std::vector<uint8_t>& bytes,
+                                                   const char* suffix,
+                                                   std::string* out_path)
 {
     namespace fs = std::filesystem;
     fs::path dir = fs::temp_directory_path();
@@ -38,7 +38,7 @@ static bool write_temp_file_bytes(const std::vector<uint8_t>& bytes,
     return true;
 }
 
-static bool read_physfs_file_all(const char* vpath, std::string* out)
+[[maybe_unused]] static bool read_physfs_file_all(const char* vpath, std::string* out)
 {
     PHYSFS_File* f = PHYSFS_openRead(vpath);
     if (!f)
@@ -47,7 +47,7 @@ static bool read_physfs_file_all(const char* vpath, std::string* out)
     std::string tmp;
     char buf[256];
     while (1) {
-        const PHYSFS_sint64 got = PHYSFS_read(f, buf, 1, sizeof(buf));
+        const PHYSFS_sint64 got = PHYSFS_readBytes(f, buf, sizeof(buf));
         if (got < 0) {
             PHYSFS_close(f);
             return false;
@@ -65,7 +65,8 @@ static bool read_physfs_file_all(const char* vpath, std::string* out)
     return true;
 }
 
-static std::vector<uint8_t> make_qpak_one_file(const char* name56, const std::string& contents)
+[[maybe_unused]] static std::vector<uint8_t> make_qpak_one_file(const char* name56,
+                                                                const std::string& contents)
 {
     std::vector<uint8_t> out;
 
@@ -102,7 +103,8 @@ static std::vector<uint8_t> make_qpak_one_file(const char* name56, const std::st
     return out;
 }
 
-static std::vector<uint8_t> make_wad_one_lump(const char* name8, const std::string& contents)
+[[maybe_unused]] static std::vector<uint8_t> make_wad_one_lump(const char* name8,
+                                                               const std::string& contents)
 {
     std::vector<uint8_t> out;
 
@@ -128,7 +130,8 @@ static std::vector<uint8_t> make_wad_one_lump(const char* name8, const std::stri
     return out;
 }
 
-static std::vector<uint8_t> make_hog_one_file(const char* name13, const std::string& contents)
+[[maybe_unused]] static std::vector<uint8_t> make_hog_one_file(const char* name13,
+                                                               const std::string& contents)
 {
     std::vector<uint8_t> out;
     out.insert(out.end(), {'D', 'H', 'F'});
@@ -143,7 +146,8 @@ static std::vector<uint8_t> make_hog_one_file(const char* name13, const std::str
     return out;
 }
 
-static std::vector<uint8_t> make_grp_one_file(const char* name12, const std::string& contents)
+[[maybe_unused]] static std::vector<uint8_t> make_grp_one_file(const char* name12,
+                                                               const std::string& contents)
 {
     std::vector<uint8_t> out;
     // Header: "KenSilverman" + num files (U32 LE)
@@ -160,7 +164,8 @@ static std::vector<uint8_t> make_grp_one_file(const char* name12, const std::str
     return out;
 }
 
-static std::vector<uint8_t> make_mvl_one_file(const char* name13, const std::string& contents)
+[[maybe_unused]] static std::vector<uint8_t> make_mvl_one_file(const char* name13,
+                                                               const std::string& contents)
 {
     std::vector<uint8_t> out;
     // Header: "DMVL" + num files (U32 LE)
@@ -258,4 +263,3 @@ TEST(ExternalPhysfsArchivers, external_physfs_grp_mvl_mount_and_read)
     }
 #endif
 }
-

@@ -40,7 +40,7 @@ static bool read_physfs_file_all(const char* vpath, std::string* out)
     std::string tmp;
     char buf[256];
     while (1) {
-        const PHYSFS_sint64 got = PHYSFS_read(f, buf, 1, sizeof(buf));
+        const PHYSFS_sint64 got = PHYSFS_readBytes(f, buf, sizeof(buf));
         if (got < 0) {
             PHYSFS_close(f);
             return false;

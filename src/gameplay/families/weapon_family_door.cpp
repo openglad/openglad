@@ -16,19 +16,19 @@ static bool door_on_death(weap* self)
     walker* newob = current_game->world->add_weap_ob(Order::FX, FAMILY_DOOR_OPEN);
     if (!newob)
         return false;
-    newob->ani_type = ANI_DOOR_OPEN;
-    newob->setxy(self->xpos, self->ypos);
-    newob->stats()->level = self->stats()->level;
-    newob->team_num = self->team_num;
+    newob->set_ani_type(ANI_DOOR_OPEN);
+    newob->setxy(self->xpos(), self->ypos());
+    newob->stats()->set_level(self->stats()->level());
+    newob->set_team_num(self->team_num());
     // What way are we 'facing'?
-    if (current_game->world->mysmoother.query_genre_x_y((self->xpos/GRID_SIZE),(self->ypos/GRID_SIZE)-1)
+    if (current_game->world->mysmoother.query_genre_x_y((self->xpos()/GRID_SIZE),(self->ypos()/GRID_SIZE)-1)
             == TYPE_WALL) // a wall above us?
     {
-        newob->curdir = FACE_RIGHT;
+        newob->set_curdir(FACE_RIGHT);
     }
     else
     {
-        self->curdir = FACE_UP;
+        self->set_curdir(FACE_UP);
     }
     return true;
 }

@@ -36,6 +36,9 @@ enum class MainMenuAction : std::int32_t
 {
     ContinueGame,       // Resume with current team
     NewGame,            // Start fresh
+    Networking,         // Open network configuration submenu
+    HostGame,           // Host a networked lobby
+    JoinGame,           // Join a networked lobby
     LoadGame,           // Load a save file
     SaveGame,           // Save current team
     ViewTeam,           // View team roster
@@ -74,6 +77,15 @@ public:
     // Return false to cancel and go back to the main menu.
     virtual bool prepare_new_game() { return true; }
 
+    // Open the networking submenu and return true if it produced a lobby.
+    virtual bool configure_networking() { return false; }
+
+    // Prepare a hosted network lobby from the current save.
+    virtual bool host_game() { return false; }
+
+    // Join a network lobby from the current save.
+    virtual bool join_game() { return false; }
+
     // Display team building menu.
     virtual TeamBuildAction show_team_build();
 
@@ -87,6 +99,10 @@ public:
         (void)menu_id;
         (void)item;
     }
+
+    // Allow platform clients to pump asynchronous lobby/runtime updates while
+    // the shared state machine is between blocking menu screens.
+    virtual void poll_updates() {}
 
     // Display campaign selection. Returns selected campaign ID or empty on cancel.
     virtual std::string show_campaign_select() = 0;

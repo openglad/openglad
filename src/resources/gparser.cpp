@@ -44,8 +44,22 @@ void cfg_store::apply_setting(const std::string& category, const std::string& se
     data[category][setting] = value;
 }
 
+void cfg_store::apply_override(const std::string& category, const std::string& setting, const std::string& value)
+{
+    overrides[category][setting] = value;
+}
+
 std::string cfg_store::get_setting(const std::string& category, const std::string& setting)
 {
+	// Transient overrides win over persisted settings and are never saved.
+	std::map<std::string, std::map<std::string, std::string> >::iterator o1 = overrides.find(category);
+	if(o1 != overrides.end())
+	{
+		std::map<std::string, std::string>::iterator o2 = o1->second.find(setting);
+		if(o2 != o1->second.end())
+			return o2->second;
+	}
+
 	std::map<std::string, std::map<std::string, std::string> >::iterator a1 = data.find(category);
 	if(a1 != data.end())
 	{
@@ -190,7 +204,8 @@ void cfg_store::commandline(int &argc, char **&argv)
 "  -i		Use sai2x engine for pixel doubling\n"
 "  -f		Use full screen\n"
 "  -h		Print a summary of the options\n"
-"  -v		Print the version number\n";
+"  -v		Print the version number\n"
+"  --show-fps   Overlay render FPS in the top-right corner\n";
 
 	const char versmsg[] = "openglad version " OPENGLAD_VERSION_STRING "\n";
 
@@ -201,6 +216,15 @@ void cfg_store::commandline(int &argc, char **&argv)
 	// Iterate over arguments, ignoring the first (Program Name).
 	for(int argnum = 1; argnum < argc; argnum++)
 	{
+		if (std::string(argv[argnum]) == "--show-fps")
+		{
+			// Developer overlay: ephemeral by design. Route through the override
+			// map so it is honored at runtime but never written to the user's
+			// persisted config by save_settings().
+			apply_override("graphics", "show_fps", "on");
+			Log("FPS overlay on.");
+			continue;
+		}
 		// Look for arguments of 2 chars only:
 		if(argv[argnum][0] == '-' && std::string(argv[argnum]).size() == 2)
 		{

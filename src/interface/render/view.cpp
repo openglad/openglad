@@ -24,6 +24,7 @@
 #include <openglad/interface/cheat_handler.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/core/colors.h>
+#include <openglad/core/runtime_trace.h>
 #include <openglad/core/version.h>
 #include <openglad/core/util.h>
 #include <openglad/gameplay/statistics.h>
@@ -38,6 +39,7 @@
 #include <openglad/interface/level_render.h>
 #include <openglad/interface/render/walker_draw.h>
 #include <openglad/interface/game_context.h>
+#include <openglad/interface/session_state.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/sound.h>
 #include <openglad/gameplay/sim_input_handler.h>
@@ -79,7 +81,9 @@ const int key1[] = {
                  KEYCODE_LSHIFT,                        // Shifter
                  KEYCODE_2,                                 // Options menu
                  KEYCODE_F5,                                 // Cheat key
-             };
+};
+
+void timed_dialog(const char* message, float delay_seconds = 3.0f);
              
 const int key2[] = {
                  KEYCODE_KP_8, KEYCODE_KP_9, KEYCODE_KP_6, KEYCODE_KP_3,  // movements
@@ -116,6 +120,8 @@ const int key4[] = {
                  KEYCODE_4,                                 // Options menu
                  KEYCODE_F6,                                 // Cheat key
              };
+
+static SimInputDebounce g_viewscreen_debounce[6] = {};
 
 // This is for saving/loading the key preferences
 Sint32 save_key_prefs();
@@ -175,6 +181,57 @@ walker* sanitize_control_pointer(viewscreen& view, LevelRuntimeData& level)
         view.control = nullptr;
     return view.control;
 }
+
+void publish_primary_render_sample(const viewscreen& view,
+                                   const walker* control,
+                                   float interpolation_alpha,
+                                   float control_worldx,
+                                   float control_worldy,
+                                   float control_render_x,
+                                   float control_render_y,
+                                   float camera_topx_float,
+                                   float camera_topy_float)
+{
+    if (og::runtime::current_session == nullptr ||
+        !og::runtime::current_session->gameplay_active_ || view.mynum != 0)
+    {
+        return;
+    }
+
+    screen* const game_screen = active_screen();
+    if (game_screen == nullptr)
+        return;
+
+    og::runtime::RuntimeRenderSample sample;
+    sample.view_index = view.mynum;
+    sample.tick = game_screen->world().tick_count_;
+    sample.timer_wait = game_screen->world().timer_wait;
+    sample.speed_factor = game_screen->render_interpolation_speed_factor();
+    sample.interpolation_alpha = interpolation_alpha;
+    sample.control_worldx = control != nullptr ? control_worldx : 0.0f;
+    sample.control_worldy = control != nullptr ? control_worldy : 0.0f;
+    sample.control_render_x = control != nullptr ? control_render_x : 0.0f;
+    sample.control_render_y = control != nullptr ? control_render_y : 0.0f;
+    sample.camera_topx = view.topx;
+    sample.camera_topy = view.topy;
+    sample.camera_topx_float = camera_topx_float;
+    sample.camera_topy_float = camera_topy_float;
+    og::runtime::publish_runtime_render_sample(std::move(sample));
+
+    og::runtime::RuntimeTraceRecord trace =
+        og::runtime::make_runtime_trace_record("render", "viewscreen_redraw");
+    trace.tick = game_screen->world().tick_count_;
+    trace.interpolation_alpha = interpolation_alpha;
+    trace.control_worldx = sample.control_worldx;
+    trace.control_worldy = sample.control_worldy;
+    trace.control_render_x = sample.control_render_x;
+    trace.control_render_y = sample.control_render_y;
+    trace.camera_topx = sample.camera_topx;
+    trace.camera_topy = sample.camera_topy;
+    trace.camera_topx_float = sample.camera_topx_float;
+    trace.camera_topy_float = sample.camera_topy_float;
+    og::runtime::emit_runtime_trace(std::move(trace));
+}
 } // namespace
 
 // ************************************************************
@@ -206,6 +263,7 @@ viewscreen::viewscreen(short x, short y, short width,
 
 	// Key entries ..
 	mynum = whatnum;              // what viewscreen am I?
+	my_team = 0;
 	mykeys = allkeys()[mynum]; // assign keyboard mappings
 
 	// Set preferences to default values
@@ -227,6 +285,7 @@ viewscreen::viewscreen(short x, short y, short width,
 	for (i=0; i < MAX_MESSAGES; i++)
 	{
 		textcycles[i] = 0;
+		text_expire_ticks[i] = 0;
 		textlist[i].clear(); // null message
 	}
 
@@ -253,6 +312,12 @@ bool viewscreen::redraw()
 	Sint32 i,j;
 	Sint32 xneg = 0;
 	Sint32 yneg = 0;
+    float control_worldx = 0.0f;
+    float control_worldy = 0.0f;
+    float control_render_x = 0.0f;
+    float control_render_y = 0.0f;
+    float camera_topx_float = static_cast<float>(topx);
+    float camera_topy_float = static_cast<float>(topy);
     LevelRuntimeData& level = active_screen()->level_runtime_data();
 	walker  *controlob = sanitize_control_pointer(*this, level);
 	auto* renderer = active_screen()->level_visuals_.renderer_.get();
@@ -260,18 +325,33 @@ bool viewscreen::redraw()
 	PixieData& gridp = active_screen()->world().grid;
 	unsigned short maxx = gridp.w;
 	unsigned short maxy = gridp.h;
+    interpolation_alpha = query_render_interpolation_alpha();
 
 	// check if we are partially into a grid square and require
 	//   extra row
 	if (controlob)
 	{
-		topx = controlob->xpos - (xview - controlob->sizex)/2;
-		topy = controlob->ypos - (yview - controlob->sizey)/2;
+        const WalkerRenderPosition control_pos =
+            resolve_walker_render_position(*controlob, interpolation_alpha);
+        control_worldx = control_pos.worldx;
+        control_worldy = control_pos.worldy;
+        control_render_x = control_pos.xpos;
+        control_render_y = control_pos.ypos;
+        camera_topx_float =
+            control_pos.xpos -
+            static_cast<float>(xview - controlob->sizex()) / 2.0f;
+        camera_topy_float =
+            control_pos.ypos -
+            static_cast<float>(yview - controlob->sizey()) / 2.0f;
+		topx = static_cast<Sint32>(camera_topx_float);
+		topy = static_cast<Sint32>(camera_topy_float);
 	}
 	else // no control object now ..
 	{
 		topx = active_screen()->level_visuals_.topx;
 		topy = active_screen()->level_visuals_.topy;
+        camera_topx_float = static_cast<float>(topx);
+        camera_topy_float = static_cast<float>(topy);
 	}
 
 
@@ -302,9 +382,18 @@ bool viewscreen::redraw()
 	}
 
 	draw_obs(); //moved here to put the radar on top of obs
-	if (controlob && !controlob->dead && controlob->user == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
+	if (controlob && !controlob->dead() && controlob->user() == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
 		myradar->draw();
 	display_text();
+    publish_primary_render_sample(*this,
+                                  controlob,
+                                  interpolation_alpha,
+                                  control_worldx,
+                                  control_worldy,
+                                  control_render_x,
+                                  control_render_y,
+                                  camera_topx_float,
+                                  camera_topy_float);
 	return 1;
 
 }
@@ -315,24 +404,45 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 	Sint32 i,j;
 	Sint32 xneg = 0;
 	Sint32 yneg = 0;
+    float control_worldx = 0.0f;
+    float control_worldy = 0.0f;
+    float control_render_x = 0.0f;
+    float control_render_y = 0.0f;
+    float camera_topx_float = static_cast<float>(topx);
+    float camera_topy_float = static_cast<float>(topy);
 	walker  *controlob = sanitize_control_pointer(*this, *data);
 	auto* renderer = data->level_visuals().renderer_.get();
 	if (!renderer) return false;
 	PixieData& gridp = data->world().grid;
 	unsigned short maxx = gridp.w;
 	unsigned short maxy = gridp.h;
+    interpolation_alpha = query_render_interpolation_alpha();
 
 	// check if we are partially into a grid square and require
 	//   extra row
 	if (controlob)
 	{
-		topx = controlob->xpos - (xview - controlob->sizex)/2;
-		topy = controlob->ypos - (yview - controlob->sizey)/2;
+        const WalkerRenderPosition control_pos =
+            resolve_walker_render_position(*controlob, interpolation_alpha);
+        control_worldx = control_pos.worldx;
+        control_worldy = control_pos.worldy;
+        control_render_x = control_pos.xpos;
+        control_render_y = control_pos.ypos;
+        camera_topx_float =
+            control_pos.xpos -
+            static_cast<float>(xview - controlob->sizex()) / 2.0f;
+        camera_topy_float =
+            control_pos.ypos -
+            static_cast<float>(yview - controlob->sizey()) / 2.0f;
+		topx = static_cast<Sint32>(camera_topx_float);
+		topy = static_cast<Sint32>(camera_topy_float);
 	}
 	else // no control object now ..
 	{
 		topx = data->level_visuals().topx;
 		topy = data->level_visuals().topy;
+        camera_topx_float = static_cast<float>(topx);
+        camera_topy_float = static_cast<float>(topy);
 	}
 
 
@@ -363,22 +473,33 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 	}
 
 	draw_obs(data); //moved here to put the radar on top of obs
-	if (draw_radar && controlob && !controlob->dead && controlob->user == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
+	if (draw_radar && controlob && !controlob->dead() && controlob->user() == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
 		myradar->draw(data);
 	display_text();
+    publish_primary_render_sample(*this,
+                                  controlob,
+                                  interpolation_alpha,
+                                  control_worldx,
+                                  control_worldy,
+                                  control_render_x,
+                                  control_render_y,
+                                  camera_topx_float,
+                                  camera_topy_float);
 	return 1;
 
 }
 
 void viewscreen::display_text()
 {
+	const std::uint32_t current_tick = active_screen()->world().tick_count_;
 	Sint32 i;
 
 	for (i=0; i < MAX_MESSAGES; i++)
 	{
-		if (textcycles[i] > 0)  // Display text if there's any there ..
+		if (textcycles[i] > 0 &&
+		    !textlist[i].empty() &&
+		    current_tick <= text_expire_ticks[i])
 		{
-			textcycles[i]--;
 			active_screen()->text_normal.write_xy( (xview-static_cast<int>(textlist[i].size())*6)/2,
 			                      30+i*6, textlist[i].c_str(), YELLOW, this );
 		}
@@ -386,7 +507,8 @@ void viewscreen::display_text()
 
 	// Clean up any empty slots
 	for (i=0; i < MAX_MESSAGES; i++)
-		if (textcycles[i] < 1 && !textlist[i].empty() )
+		if (!textlist[i].empty() &&
+		    (textcycles[i] < 1 || current_tick > text_expire_ticks[i]))
 			shift_text(i); // shift text up, starting at position i
 }
 
@@ -398,9 +520,11 @@ void viewscreen::shift_text(Sint32 row)
 	{
 		textlist[i] = textlist[i+1];
 		textcycles[i] = textcycles[i+1];
+		text_expire_ticks[i] = text_expire_ticks[i+1];
 	}
 	textlist[MAX_MESSAGES-1].clear();
 	textcycles[MAX_MESSAGES-1] = 0;
+	text_expire_ticks[MAX_MESSAGES-1] = 0;
 }
 
 bool viewscreen::refresh()
@@ -429,7 +553,7 @@ short viewscreen::input(const void* native_event)
     LevelRuntimeData& level = active_screen()->level_runtime_data();
     walker* controlob = sanitize_control_pointer(*this, level);
 
-	if (!controlob || controlob->dead)
+	if (!controlob || controlob->dead())
 		return 1;
 
 	const PlayerInput& pi = ctx().input.players[mynum];
@@ -474,11 +598,14 @@ short viewscreen::continuous_input()
 	return 1;
 }
 
+void reset_viewscreen_input_debounce()
+{
+	for (auto& debounce : g_viewscreen_debounce)
+		debounce = {};
+}
+
 void viewscreen::process_input(const InputState& input_state)
 {
-	// Per-player debounce state (persists across frames)
-	static SimInputDebounce debounce[6] = {};
-
 	const PlayerInput& pi = input_state.players[mynum];
 
 	// --- Spectator mode: only allow switching the camera target ---
@@ -486,10 +613,10 @@ void viewscreen::process_input(const InputState& input_state)
 	{
 		// SwitchChar cycles the camera target (no ACT_CONTROL claim)
 		if (!pi.was_pressed(InputAction::SwitchChar))
-			debounce[mynum].changedchar = 0;
-		else if (!debounce[mynum].changedchar)
+			g_viewscreen_debounce[mynum].changedchar = 0;
+		else if (!g_viewscreen_debounce[mynum].changedchar)
 		{
-			debounce[mynum].changedchar = 1;
+			g_viewscreen_debounce[mynum].changedchar = 1;
 			walker* oldcontrol = control;
 			if (!oldcontrol)
 			{
@@ -500,18 +627,18 @@ void viewscreen::process_input(const InputState& input_state)
 			bool reverse = pi.is_held(InputAction::Shift);
 			short team = my_team;
 			auto filter = [team](const walker* w) {
-				return !w->dead && w->query_order() == Order::Living
-				       && w->team_num == team;
+				return !w->dead() && w->query_order() == Order::Living
+				       && w->team_num() == team;
 			};
 			walker* found = sim_cycle_next_character(
 				active_screen()->world().oblist, oldcontrol, reverse, filter);
 			if (found)
 				control = found;
-			if (control && control->dead)
+			if (control && control->dead())
 				control = find_next_control();
 		}
 		// If the current control died or was never set, re-acquire
-		if (!control || control->dead)
+		if (!control || control->dead())
 			control = find_next_control();
 		return; // No further input processing in spectator mode
 	}
@@ -526,10 +653,17 @@ void viewscreen::process_input(const InputState& input_state)
 		}
 	}
 
+	if (og::runtime::current_session != nullptr &&
+	    og::runtime::current_session->gameplay_active_ &&
+	    og::runtime::local_transport_active(*og::runtime::current_session))
+	{
+		return;
+	}
+
 	// Delegate all entity-driving logic to the sim layer
 	SimInputResult result = sim_process_player_input(
 		pi, control, active_screen()->world(),
-		mynum, my_team, debounce[mynum],
+		mynum, my_team, g_viewscreen_debounce[mynum],
 		active_screen()->special_name,
 		ctx().sim_events.get());
 
@@ -553,10 +687,11 @@ void viewscreen::process_input(const InputState& input_state)
 
 void viewscreen::set_display_text(std::string_view newtext, short numcycles)
 {
+	const std::uint32_t current_tick = active_screen()->world().tick_count_;
 	Sint32 i;
 
 	i = 0;
-	while (!textlist[i].empty() && i < MAX_MESSAGES)
+	while (i < MAX_MESSAGES && !textlist[i].empty())
 		i++;
 	if (i >= MAX_MESSAGES) // no room, need to scroll messages
 	{
@@ -567,9 +702,42 @@ void viewscreen::set_display_text(std::string_view newtext, short numcycles)
 	textlist[i] = newtext;
 
 	if (numcycles > 0)
+	{
 		textcycles[i] = numcycles;
+		text_expire_ticks[i] =
+		    current_tick + static_cast<std::uint32_t>(numcycles - 1);
+	}
 	else
+	{
 		textcycles[i] = 0;
+		text_expire_ticks[i] = current_tick;
+	}
+}
+
+void viewscreen::refresh_display_text(std::string_view newtext, short numcycles)
+{
+	for (Sint32 slot = 0; slot < MAX_MESSAGES; ++slot)
+	{
+		if (textlist[slot] != newtext)
+			continue;
+
+		const std::uint32_t current_tick =
+		    active_screen()->world().tick_count_;
+		if (numcycles > 0)
+		{
+			textcycles[slot] = numcycles;
+			text_expire_ticks[slot] =
+			    current_tick + static_cast<std::uint32_t>(numcycles - 1);
+		}
+		else
+		{
+			textcycles[slot] = 0;
+			text_expire_ticks[slot] = current_tick;
+		}
+		return;
+	}
+
+	set_display_text(newtext, numcycles);
 }
 
 // Blanks the screen text
@@ -577,7 +745,11 @@ void viewscreen::clear_text()
 {
 	Sint32 i;
 	for (i=0; i < MAX_MESSAGES; i++)
+	{
 		textlist[i].clear();
+		textcycles[i] = 0;
+		text_expire_ticks[i] = 0;
+	}
 }
 
 bool viewscreen::draw_obs()
@@ -591,7 +763,7 @@ bool viewscreen::draw_obs(LevelRuntimeData* data)
 	for (auto& uptr : data->world().fxlist)
 	{
 	    walker* w = uptr.get();
-		if(w && !w->dead)
+		if(w && !w->dead())
 			draw_walker(*w, this);
 	}
 
@@ -599,7 +771,7 @@ bool viewscreen::draw_obs(LevelRuntimeData* data)
 	for (auto& uptr : data->world().oblist)
 	{
 	    walker* w = uptr.get();
-		if(w && !w->dead)
+		if(w && !w->dead())
 			draw_walker(*w, this);
 	}
 
@@ -607,7 +779,7 @@ bool viewscreen::draw_obs(LevelRuntimeData* data)
 	for (auto& uptr : data->world().weaplist)
 	{
 	    walker* w = uptr.get();
-		if(w && !w->dead)
+		if(w && !w->dead())
 			draw_walker(*w, this);
 	}
 
@@ -854,10 +1026,10 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 	for(auto& uptr : active_screen()->world().oblist)
 	{
 	    walker* w = uptr.get();
-		if (w && !w->dead
+		if (w && !w->dead()
 		        && w->query_order() == Order::Living
-		        && w->team_num == teamnum
-		        && (!w->stats()->name.empty() || w->myguy)) //&& w->owner == nullptr)
+		        && w->team_num() == teamnum
+		        && (!w->stats()->name.empty() || w->myguy)) //&& w->owner() == nullptr)
 		{
 		    ls.push_back(w);
 		}
@@ -872,10 +1044,10 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 		{
 			if (numguys++ > 30)
 				break;
-			hp = w->stats()->hitpoints;
-			mp = w->stats()->magicpoints;
-			maxhp = w->stats()->max_hitpoints;
-			maxmp = w->stats()->max_magicpoints;
+			hp = w->stats()->hitpoints();
+			mp = w->stats()->magicpoints();
+			maxhp = w->stats()->max_hitpoints();
+			maxmp = w->stats()->max_magicpoints();
 
 			hpcolor = compute_hp_color(hp, maxhp);
 
@@ -898,7 +1070,7 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 			message = std::format("{:4.0f}/{:.0f}", ceilf(mp), maxmp);
 			mytext.write_xy(left+130, text_down, message.c_str(), static_cast<unsigned char>(mpcolor));
 
-			message = std::format("{:2d}", w->stats()->level);
+			message = std::format("{:2d}", w->stats()->level());
 			mytext.write_xy(left+195, text_down, message.c_str(), static_cast<unsigned char>(BLACK));
 
 			text_down+=6;
@@ -1359,6 +1531,22 @@ Sint32 viewscreen::change_speed(Sint32 whichway)
 		if (active_screen()->world().timer_wait > 20)
 			active_screen()->world().timer_wait = 20;
 	}
+    if (og::runtime::current_session != nullptr)
+    {
+        og::runtime::current_session->pending_timer_wait_request_ =
+            active_screen()->world().timer_wait;
+        if (og::runtime::current_session->relay_transport_active_ &&
+            active_screen()->world().timer_wait < 4 &&
+            !og::runtime::current_session->relay_speed_warning_shown_)
+        {
+            timed_dialog("High game speed increases relay usage.", 2.5f);
+            og::runtime::current_session->relay_speed_warning_shown_ = true;
+        }
+        else if (active_screen()->world().timer_wait >= 4)
+        {
+            og::runtime::current_session->relay_speed_warning_shown_ = false;
+        }
+    }
 	return static_cast<Sint32>((20-active_screen()->world().timer_wait)/2+1);
 }
 

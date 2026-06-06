@@ -26,11 +26,11 @@
 
 static bool thief_check_special_ai(living* self)
 {
-    if (self->current_special == 1) // drop bomb
+    if (self->current_special() == 1) // drop bomb
     {
-        if (self->foe)
+        if (self->foe())
         {
-            std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));
+            std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe()));
             if (distance < 130 && distance > 35)
                 return false;
         }
@@ -40,13 +40,13 @@ static bool thief_check_special_ai(living* self)
         }
         return true; // fallthrough for foe case when distance is acceptable
     }
-    else if (self->current_special == 3)
+    else if (self->current_special() == 3)
     {
         std::uint32_t myrange;
-        if (!self->shifter_down)
-            myrange = 80 + 4 * self->stats()->level;
+        if (!self->shifter_down())
+            myrange = 80 + 4 * self->stats()->level();
         else
-            myrange = 16 + 4 * self->stats()->level;
+            myrange = 16 + 4 * self->stats()->level();
 
         return count_foes_in_range(self, myrange) >= 1;
     }
@@ -63,23 +63,23 @@ static bool thief_do_special(walker* self)
     walker* newob;
     std::string message, tempstr;
 
-    switch (self->current_special)
+    switch (self->current_special())
     {
         case 1: // drop bomb
             newob = current_game->world->add_ob(Order::FX, FAMILY_BOMB, 1);
-            newob->ani_type = ANI_BOMB;
+            newob->set_ani_type(ANI_BOMB);
             if (self->myguy)
             {
                 self->myguy->total_shots++;
                 self->myguy->scen_shots++;
             }
-            newob->damage = static_cast<float>(self->stats()->level + 1) * 15.0f;
-            newob->setxy(self->xpos + self->sizex/2 - newob->sizex/2,
-                         self->ypos + self->sizey/2 - newob->sizey/2);
-            newob->owner = self;
+            newob->set_damage(static_cast<float>(self->stats()->level() + 1) * 15.0f);
+            newob->setxy(self->xpos() + self->sizex()/2 - newob->sizex()/2,
+                         self->ypos() + self->sizey()/2 - newob->sizey()/2);
+            newob->set_owner(self);
             // Run away if we're AI
             {
-                if (self->user == -1)
+                if (self->user() == -1)
                 {
                     std::int32_t tempx = static_cast<std::int32_t>(current_game->world->rng_.next(3)) - 1;
                     std::int32_t tempy = static_cast<std::int32_t>(current_game->world->rng_.next(3)) - 1;
@@ -90,62 +90,62 @@ static bool thief_do_special(walker* self)
             }
             break;
         case 2: // cloak
-            self->invisibility_left = static_cast<short>(self->invisibility_left + 20 + static_cast<std::int32_t>(current_game->world->rng_.next(20)) * self->stats()->level);
+            self->set_invisibility_left(static_cast<short>(self->invisibility_left() + 20 + static_cast<std::int32_t>(current_game->world->rng_.next(20)) * self->stats()->level()));
             break;
         case 3: // taunt / charm
-            if (!self->shifter_down) // normal taunt
+            if (!self->shifter_down()) // normal taunt
             {
-                if (self->busy > 0)
+                if (self->busy() > 0)
                     return false;
-                for_each_foe_in_range(self, 80 + 4 * self->stats()->level, [self](walker* ob) {
-                    if (current_game->world->rng_.next(self->stats()->level) >= current_game->world->rng_.next(ob->stats()->level))
+                for_each_foe_in_range(self, 80 + 4 * self->stats()->level(), [self](walker* ob) {
+                    if (current_game->world->rng_.next(self->stats()->level()) >= current_game->world->rng_.next(ob->stats()->level()))
                     {
-                        ob->foe = self;
-                        ob->leader = self;
-                        if (ob->act_type != ACT_CONTROL)
-                            ob->stats()->force_command(COMMAND_FOLLOW, 10 + current_game->world->rng_.next(self->stats()->level), 0, 0);
+                        ob->set_foe(self);
+                        ob->set_leader(self);
+                        if (ob->act_type() != ACT_CONTROL)
+                            ob->stats()->force_command(COMMAND_FOLLOW, 10 + current_game->world->rng_.next(self->stats()->level()), 0, 0);
                     }
                 });
                 message = std::format("{}: 'Nyah Nyah!'", entity_display_name(self, "THIEF"));
                 og::sim::emit_notification(current_game->sim_events, message);
-                self->busy += 2;
+                self->set_busy(self->busy() + 2.0f);
                 break;
             }
             else // charm opponent
             {
-                if (self->busy > 0)
+                if (self->busy() > 0)
                     return false;
                 {
                     std::int32_t howmany;
                     std::int32_t didheal = 0;
                     std::int32_t generic2 = 0;
                     std::list<walker*> newlist = current_game->world->find_foes_in_range(current_game->world->oblist,
-                                                          16 + 4 * self->stats()->level, &howmany, self);
+                                                          16 + 4 * self->stats()->level(), &howmany, self);
                     if (howmany < 1)
                         return false;
                     for (auto* ob : newlist)
                     {
                         if (didheal) break;
-                        if ((ob->real_team_num == 255) &&
+                        if ((ob->real_team_num() == 255) &&
                             (ob->query_order() == Order::Living) &&
                             1)
                         {
-                            std::int32_t generic = self->stats()->level - ob->stats()->level;
+                            std::int32_t generic = self->stats()->level() - ob->stats()->level();
                             if (generic < 0 || (!current_game->world->rng_.next(20)))
                             {
-                                ob->foe = self;
+                                ob->set_foe(self);
                                 ob->attack(self);
                                 generic2 = 1;
                             }
                             else
                             {
-                                ob->real_team_num = ob->team_num;
-                                ob->team_num = self->team_num;
-                                if (self->foe == ob)
-                                    ob->foe = nullptr;
+                                ob->set_real_team_num(ob->team_num());
+                                ob->set_team_num(self->team_num());
+                                if (self->foe() == ob)
+                                    ob->set_foe(nullptr);
                                 else
-                                    ob->foe = self->foe;
-                                ob->charm_left = (static_cast<short>(75 + generic * 25));
+                                    ob->set_foe(self->foe());
+                                ob->set_charm_left((static_cast<short>(75 + generic * 25)));
                                 generic2 = 0;
                             }
                             didheal++;
@@ -158,23 +158,23 @@ static bool thief_do_special(walker* self)
                     else
                         tempstr = std::format("{} charmed an opponent!", entity_display_name(self, "Thief"));
                     og::sim::emit_notification(current_game->sim_events, tempstr);
-                    self->busy += 10;
+                    self->set_busy(self->busy() + 10.0f);
                 }
                 break;
             }
         case 4: // poison cloud
         default:
-            if (self->busy > 0)
+            if (self->busy() > 0)
                 return false;
             newob = summon_entity(self, Order::FX, FAMILY_CLOUD);
             if (!newob)
                 return false;
-            self->busy += 5;
-            newob->ignore = 1;
-            newob->lifetime = 40 + 3 * self->stats()->level;
-            newob->invisibility_left = 10;
-            newob->ani_type = ANI_SPIN;
-            newob->damage = static_cast<float>(self->stats()->level);
+            self->set_busy(self->busy() + 5.0f);
+            newob->set_ignore(1);
+            newob->set_lifetime(40 + 3 * self->stats()->level());
+            newob->set_invisibility_left(10);
+            newob->set_ani_type(ANI_SPIN);
+            newob->set_damage(static_cast<float>(self->stats()->level()));
             break;
     }
     return true;

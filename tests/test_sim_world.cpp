@@ -39,11 +39,11 @@ TickWalker* add_ob(SimWorldR15Fixture& fx, Order order, char family, unsigned ch
     w->set_order_family(order, family);
     bind_test_entity_sim_context(fx.level, w.get());
     w->setxy(x, y);
-    w->sizex = 16;
-    w->sizey = 16;
-    w->team_num = team;
-    w->real_team_num = 255;
-    w->dead = dead ? 1 : 0;
+    w->set_sizex(16);
+    w->set_sizey(16);
+    w->set_team_num(team);
+    w->set_real_team_num(255);
+    w->set_dead(dead ? 1 : 0);
     TickWalker* out = w.get();
     fx.level.world().oblist.push_back(std::move(w));
     return out;
@@ -54,8 +54,8 @@ TickWalker* add_weap(SimWorldR15Fixture& fx, Order order, char family, unsigned 
     auto w = std::make_unique<TickWalker>();
     w->set_order_family(order, family);
     bind_test_entity_sim_context(fx.level, w.get());
-    w->team_num = team;
-    w->dead = dead ? 1 : 0;
+    w->set_team_num(team);
+    w->set_dead(dead ? 1 : 0);
     TickWalker* out = w.get();
     fx.level.world().weaplist.push_back(std::move(w));
     return out;
@@ -66,8 +66,8 @@ TickWalker* add_fx(SimWorldR15Fixture& fx, Order order, char family, unsigned ch
     auto w = std::make_unique<TickWalker>();
     w->set_order_family(order, family);
     bind_test_entity_sim_context(fx.level, w.get());
-    w->team_num = team;
-    w->dead = dead ? 1 : 0;
+    w->set_team_num(team);
+    w->set_dead(dead ? 1 : 0);
     TickWalker* out = w.get();
     fx.level.world().fxlist.push_back(std::move(w));
     return out;
@@ -92,15 +92,15 @@ TEST(SimWorld, r15_normal_tick_cleanup_and_dead_entity_removal)
     TickWalker* dead_fx = add_fx(fx, Order::FX, FAMILY_EXPLOSION, 0, true);
     ASSERT_TRUE(live_weap && dead_weap && dead_fx);
 
-    ally->foe = dead_ob;
-    ally->leader = dead_ob;
-    ally->owner = dead_ob;
-    ally->collide_ob = dead_ob;
+    ally->set_foe(dead_ob);
+    ally->set_leader(dead_ob);
+    ally->set_owner(dead_ob);
+    ally->set_collide_ob(dead_ob);
 
-    live_weap->foe = dead_ob;
-    live_weap->leader = dead_ob;
-    live_weap->owner = dead_ob;
-    live_weap->collide_ob = dead_ob;
+    live_weap->set_foe(dead_ob);
+    live_weap->set_leader(dead_ob);
+    live_weap->set_owner(dead_ob);
+    live_weap->set_collide_ob(dead_ob);
 
     fx.level.numobs = 3;
 
@@ -110,14 +110,14 @@ TEST(SimWorld, r15_normal_tick_cleanup_and_dead_entity_removal)
     ASSERT_TRUE(ally->acts > 0);
     ASSERT_TRUE(enemy->acts > 0);
     ASSERT_TRUE(live_weap->acts > 0);
-    ASSERT_TRUE(ally->foe == nullptr);
-    ASSERT_TRUE(ally->leader == nullptr);
-    ASSERT_TRUE(ally->owner == nullptr);
-    ASSERT_TRUE(ally->collide_ob == nullptr);
-    ASSERT_TRUE(live_weap->foe == nullptr);
-    ASSERT_TRUE(live_weap->leader == nullptr);
-    ASSERT_TRUE(live_weap->owner == nullptr);
-    ASSERT_TRUE(live_weap->collide_ob == nullptr);
+    ASSERT_TRUE(ally->foe() == nullptr);
+    ASSERT_TRUE(ally->leader() == nullptr);
+    ASSERT_TRUE(ally->owner() == nullptr);
+    ASSERT_TRUE(ally->collide_ob() == nullptr);
+    ASSERT_TRUE(live_weap->foe() == nullptr);
+    ASSERT_TRUE(live_weap->leader() == nullptr);
+    ASSERT_TRUE(live_weap->owner() == nullptr);
+    ASSERT_TRUE(live_weap->collide_ob() == nullptr);
     ASSERT_TRUE(!fx.level.world().dead_list.empty());
     ASSERT_TRUE(fx.level.world().weaplist.size() == 1);
     ASSERT_TRUE(fx.level.world().fxlist.empty());

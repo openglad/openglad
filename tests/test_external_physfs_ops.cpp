@@ -28,11 +28,15 @@ TEST(ExternalPhysfsOps, external_physfs_write_read_stat_and_delete)
     PHYSFS_File* wf = PHYSFS_openWrite("subdir/hello.txt");
     ASSERT_TRUE(wf != nullptr) << "PHYSFS_openWrite should succeed";
     const char* msg = "hello physfs\n";
-    ASSERT_TRUE(PHYSFS_write(wf, msg, 1, 12) == 12) << "PHYSFS_write should write all bytes";
+    constexpr PHYSFS_uint64 msg_len = 12;
+    ASSERT_TRUE(PHYSFS_writeBytes(wf, msg, msg_len) == static_cast<PHYSFS_sint64>(msg_len))
+        << "PHYSFS_writeBytes should write all bytes";
     ASSERT_TRUE(PHYSFS_close(wf)) << "PHYSFS_close(write) should succeed";
 
     ASSERT_TRUE(PHYSFS_exists("subdir/hello.txt")) << "PHYSFS_exists should report file";
-    ASSERT_TRUE(PHYSFS_isDirectory("subdir")) << "PHYSFS_isDirectory should report dir";
+    PHYSFS_Stat stat{};
+    ASSERT_TRUE(PHYSFS_stat("subdir", &stat)) << "PHYSFS_stat should describe the directory";
+    ASSERT_EQ(PHYSFS_FILETYPE_DIRECTORY, stat.filetype) << "PHYSFS_stat should report a directory";
 
     // Read back.
     PHYSFS_File* rf = PHYSFS_openRead("subdir/hello.txt");
@@ -40,7 +44,7 @@ TEST(ExternalPhysfsOps, external_physfs_write_read_stat_and_delete)
     const PHYSFS_sint64 len = PHYSFS_fileLength(rf);
     ASSERT_TRUE(len >= 12) << "PHYSFS_fileLength should report file length";
     char buf[32]{};
-    PHYSFS_sint64 got = PHYSFS_read(rf, buf, 1, sizeof(buf));
+    PHYSFS_sint64 got = PHYSFS_readBytes(rf, buf, sizeof(buf));
     ASSERT_TRUE(got > 0) << "PHYSFS_read should read some bytes";
     (void)PHYSFS_close(rf);
 
@@ -59,4 +63,3 @@ TEST(ExternalPhysfsOps, external_physfs_write_read_stat_and_delete)
     if (!old_write_s.empty())
         (void)PHYSFS_setWriteDir(old_write_s.c_str());
 }
-

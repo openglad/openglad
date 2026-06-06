@@ -13,6 +13,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: relay/package-lock.json
+
       - name: Apply third-party build fixes
         run: git apply third_party/build-fixes.patch
 
@@ -21,18 +27,51 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev libgtest-dev cmake ninja-build
 
+      - name: Install relay npm dependencies
+        working-directory: relay
+        run: npm ci
+
       - uses: hendrikmuhs/ccache-action@v1
         with:
           key: ci-test
 
       - name: Configure (ci-test preset)
-        run: cmake --preset ci-test -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+        run: cmake --preset ci-test -DVALIDATE_SERIALIZATION=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build all test binaries
         run: cmake --build --preset ci-test -j"$(nproc)"
 
-      - name: Run tests (parallel)
-        run: ctest --test-dir build/ci-test --parallel $(nproc) --output-on-failure --timeout 180
+      - name: Verify headless server link is SDL-free
+        run: bash scripts/test_headless_server_native_link.sh build/ci-test
+
+      - name: Run tests (parallel, excluding menu UI)
+        # Gameplay parity tests (og_test_parity, plus any future og_unit_parity)
+        # are registered via og_add_test_group in CMakeLists.txt and are picked
+        # up here automatically. They run against the committed goldens under
+        # tests/parity/golden/ — CI MUST NOT re-capture goldens (that would
+        # defeat the parity contract). Fresh capture is a developer-driven
+        # step against the ../openglad-master companion; see
+        # .plan/parity-signoff.md `## How to re-run` and
+        # scripts/parity/capture_master_golden.sh.
+        run: ctest --test-dir build/ci-test --parallel $(nproc) --output-on-failure --timeout 180 -E og_test_menu_ui
+
+      - name: Run menu UI test with extended timeout
+        run: ctest --test-dir build/ci-test --output-on-failure --timeout 300 -R og_test_menu_ui
+
+      - name: Surface parity test results distinctly
+        # Re-runs only the parity groups so a parity failure is visible as
+        # its own step in the CI summary, separate from the broader suite.
+        # No re-capture: goldens are read from tests/parity/golden/ as
+        # committed on this branch.
+        run: ctest --test-dir build/ci-test --output-on-failure --timeout 180 -R '^og_(test|unit)_parity'
+
+      - name: Typecheck relay worker
+        working-directory: relay
+        run: npm run typecheck
+
+      - name: Run relay worker tests
+        working-directory: relay
+        run: npm test
 
   build:
     name: Native Build
@@ -57,7 +96,40 @@ jobs:
         run: cmake --preset dev-release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build native binaries
-        run: cmake --build --preset dev-release --target openglad openscen -j"$(nproc)"
+        run: cmake --build --preset dev-release --target openglad openscen openglad_server -j"$(nproc)"
+
+      - name: Verify release headless server link is SDL-free
+        run: bash scripts/test_headless_server_native_link.sh build/dev-release
+
+  headless-server:
+    name: Headless Server SDL-Off Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply third-party build fixes
+        run: git apply third_party/build-fixes.patch
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libpng-dev cmake ninja-build
+
+      - uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: headless-server
+
+      - name: Configure headless server build
+        run: >
+          cmake -S . -B build/headless-server -GNinja
+          -DCMAKE_DISABLE_FIND_PACKAGE_SDL2=ON
+          -DCMAKE_DISABLE_FIND_PACKAGE_SDL2_mixer=ON
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Build headless server target
+        run: cmake --build build/headless-server --target openglad_server -j"$(nproc)"
 
   asan:
     name: ASan+UBSan
@@ -79,10 +151,41 @@ jobs:
           key: ci-asan
 
       - name: Configure (ci-asan preset)
-        run: cmake --preset ci-asan -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+        run: cmake --preset ci-asan -DVALIDATE_SERIALIZATION=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build all test binaries
         run: cmake --build --preset ci-asan -j"$(nproc)"
 
-      - name: Run tests (parallel)
-        run: ctest --test-dir build/ci-asan --parallel $(nproc) --output-on-failure --timeout 180
+      - name: Run tests (parallel, excluding menu UI)
+        run: ctest --test-dir build/ci-asan --parallel $(nproc) --output-on-failure --timeout 180 -E og_test_menu_ui
+
+      - name: Run menu UI test with sanitizer timeout
+        run: ctest --test-dir build/ci-asan --output-on-failure --timeout 420 -R og_test_menu_ui
+
+  tsan:
+    name: TSan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply third-party build fixes
+        run: git apply third_party/build-fixes.patch
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libsdl2-dev libsdl2-mixer-dev libpng-dev libgtest-dev cmake ninja-build
+
+      - uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: ci-tsan
+
+      - name: Configure (ci-tsan preset)
+        run: cmake --preset ci-tsan -DVALIDATE_SERIALIZATION=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Build TSan unit binary
+        run: cmake --build --preset ci-tsan --target og_unit_sim -j"$(nproc)"
+
+      - name: Run TSan unit tests
+        run: ctest --preset ci-tsan

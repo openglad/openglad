@@ -4,10 +4,13 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include <openglad/gameplay/gameplay_context.h>
+#include <openglad/gameplay/replay.h>
 #include <openglad/interface/game_context.h>
 #include <openglad/interface/game_loop_state.h>
 
@@ -31,7 +34,8 @@ struct VButtonDeleter {
 // Platform's GameSession derives from this and owns additional lifecycle state.
 struct SessionState {
     SessionState();
-    ~SessionState();
+    virtual ~SessionState();
+    [[nodiscard]] virtual bool has_local_transport_runtime() const noexcept;
 
     ::screen* myscreen_ = nullptr;
     options* theprefs_ = nullptr;
@@ -70,8 +74,25 @@ struct SessionState {
 
     // Game speed + debug state (Batch 7) — moved from util.cpp/walker.cpp/obmap.cpp.
     float g_game_speed_factor_ = 1.0f;
+    // Render-rate target (not sim cadence). Sim cadence comes from
+    // world.timer_wait (master semantics); target_fps_ controls only how
+    // often the render path runs. Keep the literal in sync with
+    // og::core::kDefaultTargetFps via static_assert in frame_rate_config.cpp.
+    int target_fps_ = 60;
+    std::int8_t pending_timer_wait_request_ = kNoTimerWaitRequest;
+    bool relay_transport_active_ = false;
+    bool relay_speed_warning_shown_ = false;
+    // True for a genuine networked multiplayer session (host with clients, or a
+    // join client). Gates save isolation: the live combined roster is written to
+    // a transient slot instead of the player's real save0, and each player
+    // persists only its own characters (owner_player_index == own_player_index_).
+    bool networked_session_ = false;
+    // This peer's own player slot for the active networked session (0xff if none).
+    std::uint8_t own_player_index_ = 0xff;
     bool debug_draw_paths_ = false;
     bool debug_draw_obmap_ = false;
+    // Developer overlay: when true, score_panel draws measured render FPS in the top-right corner.
+    bool show_fps_ = false;
 
     // Entity-layer state (Phase 4) — moved from guy.cpp and cheat_handler.cpp.
     int guy_id_counter_ = 0;
@@ -109,6 +130,10 @@ struct SessionState {
     IRandom* test_context_rng_snapshot_ = nullptr;
     InputState test_context_input_snapshot_ = {};
 
+    // Runtime replay recording state.
+    std::optional<og::sim::ReplayRecorder> replay_recorder_ = std::nullopt;
+    std::filesystem::path replay_output_path_;
+
     GameContext ctx_;
     GameplayContext game_;
     GameLoopFrameState frame_state_;
@@ -120,6 +145,7 @@ struct SessionState {
 
 // The currently-active session state. Set by GameSession ctor / SessionScope.
 extern thread_local SessionState* current_session;
+bool local_transport_active(const SessionState& session) noexcept;
 
 // Non-thread-local atomic pointer to the most recently installed session.
 // Used by child threads (e.g. test injector threads) to inherit the session

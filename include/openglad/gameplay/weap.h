@@ -41,6 +41,14 @@ class weap : public walker
 		}
 
 		// Weapons-only related variables; use with care
-		std::int32_t do_bounce; // do we bounce?
+        [[nodiscard]] std::int32_t do_bounce() const noexcept { return do_bounce_; }
+        void set_do_bounce(std::int32_t value)
+        {
+            do_bounce_ = value;
+            mark_dirty(og::dirty::BIT_DO_BOUNCE);
+        }
+
+    private:
+        std::int32_t do_bounce_ = 0; // do we bounce?
 
 };

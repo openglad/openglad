@@ -210,6 +210,7 @@ public:
     enum class Stat { Strength, Dexterity, Constitution, Intelligence, Armor, Level };
     void increase_stat(Stat stat, int amount = 1);
     void decrease_stat(Stat stat, int amount = 1);
+    void set_team(int team_num);
 
     // Accept: validates cost, deducts gold, copies working copy -> real team member.
     // If level changed, calls upgrade_to_level(). Returns false if can't afford.
@@ -228,7 +229,9 @@ private:
     SaveData& save_;
     int edit_slot_ = 0;
     std::unique_ptr<guy> working_;
-    guy* original_ = nullptr;
+
+    [[nodiscard]] guy* original_member();
+    [[nodiscard]] const guy* original_member() const;
 
     void select_current_slot();
     void clamp_working_stats();

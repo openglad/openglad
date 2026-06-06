@@ -268,10 +268,10 @@ float TroopResult::get_HP() const
     if(after == nullptr)
         return 0.0f;
     
-    if(after->myguy->scen_min_hp > after->stats()->hitpoints)
+    if(after->myguy->scen_min_hp > after->stats()->hitpoints())
         return 1.0f;
     
-    return after->myguy->scen_min_hp/after->stats()->max_hitpoints;
+    return after->myguy->scen_min_hp/after->stats()->max_hitpoints();
 }
 
 bool TroopResult::is_dead() const
@@ -300,16 +300,16 @@ void show_guy(Sint32 frames, guy* myguy, Sint32 centerx, Sint32 centery) // show
 
 	mywalker = og::runtime::current_session->myscreen_->myloader->create_walker_owned(Order::Living,
 	           newfamily);
-	mywalker->stats()->bit_flags = 0;
-	mywalker->curdir = FACE_DOWN;
-	mywalker->ani_type = ANI_WALK;
+	mywalker->stats()->set_bit_flags(0);
+	mywalker->set_curdir(FACE_DOWN);
+	mywalker->set_ani_type(ANI_WALK);
 	for (i=0; i <= (frames/4)%4; i++)
 		mywalker->animate();
     
-	mywalker->team_num = static_cast<unsigned char>(myguy->teamnum);
+	mywalker->set_team_num(static_cast<unsigned char>(myguy->teamnum));
     
     viewscreen* view_buf = og::runtime::current_session->myscreen_->viewob[0].get();
-	mywalker->setxy(centerx - (mywalker->sizex/2) + view_buf->topx - view_buf->xloc, centery - (mywalker->sizey/2) + view_buf->topy - view_buf->yloc);
+	mywalker->setxy(centerx - (mywalker->sizex()/2) + view_buf->topx - view_buf->xloc, centery - (mywalker->sizey()/2) + view_buf->topy - view_buf->yloc);
 	draw_walker(*mywalker, view_buf);
 }
 
@@ -344,7 +344,7 @@ int get_num_foes(LevelRuntimeData& level)
 	{
 	    walker* ob = uptr.get();
 	    // Not dead, not hired, not on red team
-		if (ob && !ob->dead && ob->query_order() == Order::Living && ob->myguy == nullptr && ob->team_num != 0)
+		if (ob && !ob->dead() && ob->query_order() == Order::Living && ob->myguy == nullptr && ob->team_num() != 0)
 		{
 		    result++;
 		}
@@ -880,8 +880,8 @@ int results_screen_test_exercise_internal()
     owned->exp = calculate_exp(owned->level) + 5; // gained level vs before.level=3
     owned->scen_min_hp = 1;
     after_owned.set_owned_myguy(std::move(owned));
-    after_owned.stats()->max_hitpoints = 10;
-    after_owned.stats()->hitpoints = 5;
+    after_owned.stats()->set_max_hitpoints(10);
+    after_owned.stats()->set_hitpoints(5);
 
     TroopResult t1(&before, &after_owned);
     if (t1.gained_level())
@@ -909,7 +909,7 @@ int results_screen_test_exercise_internal()
 
     // HP edge: scen_min_hp > current hitpoints returns 1.0
     after_owned.myguy->scen_min_hp = 1000;
-    after_owned.stats()->hitpoints = 1;
+    after_owned.stats()->set_hitpoints(1);
     TroopResult t4(nullptr, &after_owned);
     if (t4.get_HP() >= 0.99f)
         score++;
@@ -917,7 +917,7 @@ int results_screen_test_exercise_internal()
 
     // Draw helper should no-op when dead.
     after_owned.myguy->scen_min_hp = 0;
-    after_owned.stats()->hitpoints = 0;
+    after_owned.stats()->set_hitpoints(0);
     TroopResult t5(nullptr, &after_owned);
     if (t5.is_dead())
         score++;

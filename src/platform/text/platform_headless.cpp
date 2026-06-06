@@ -184,7 +184,7 @@ void wire_world_with_loader(GameWorld* world, loader* game_loader)
 
     world->entity_configurator = [game_loader](walker& entity, Order order, std::int32_t family) -> const PixieData* {
         game_loader->set_walker(&entity, order, family);
-        return game_loader->graphics_for(entity.query_order(), entity.family);
+        return game_loader->graphics_for(entity.query_order(), entity.family());
     };
 
     world->entity_derived_stats = [game_loader](walker* entity, Order order, std::int32_t family) {
@@ -341,6 +341,10 @@ void io_init(int argc, char* argv[])
     bridge.play_music = [](const char*) {};
     bridge.stop_music = [] {};
     bridge.create_surface = [](int, int) -> video* { return nullptr; };
+    bridge.list_relay_rooms =
+        [](const std::string&, const std::string&) {
+            return std::vector<og::ui::PickerRelayRoomInfo>{};
+        };
     set_platform_bridge(std::move(bridge));
 
     // Create user directory tree
@@ -396,8 +400,9 @@ int toInt(const std::string& s)
 }
 
 // Category B: SDL input sampling not available in headless mode
-void input_state_from_sdl(InputState&)
+void input_state_from_sdl(InputState& out)
 {
+    out.timer_wait_request = kNoTimerWaitRequest;
     std::call_once(warn_input_state, [] {
         LogWarn("input_state_from_sdl: not supported in headless mode\n");
     });

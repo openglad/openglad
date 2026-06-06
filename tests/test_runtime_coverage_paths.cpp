@@ -18,6 +18,8 @@
 #include <gtest/gtest.h>
 #include <SDL.h>
 
+#include "test_network_fixture.h"
+
 // myscreen is now a macro defined in base.h (via game_session.h)
 short new_score_panel(screen* s, short do_it);
 void picker_testing_yes_or_no_queue_clear();
@@ -58,10 +60,10 @@ walker* add_living(unsigned char team)
     walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
     if (!w)
         return nullptr;
-    w->team_num = team;
-    w->real_team_num = 255;
-    w->dead = 0;
-    w->user = -1;
+    w->set_team_num(team);
+    w->set_real_team_num(255);
+    w->set_dead(0);
+    w->set_user(-1);
     w->setxy(100, 100);
     return w;
 }
@@ -71,7 +73,7 @@ treasure* add_treasure(char family, short level)
     walker* w = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::Treasure, family);
     if (!w)
         return nullptr;
-    w->stats()->level = level;
+    w->stats()->set_level(level);
     w->setxy(100, 100);
     return static_cast<treasure*>(w);
 }
@@ -311,7 +313,7 @@ TEST(RuntimeCoveragePaths, treasure_core_methods_and_teleport_target_search)
     treasure standalone;
     ASSERT_TRUE(standalone.act()) << "treasure::act should return true";
     standalone.set_direct_frame(7);
-    ASSERT_EQ(7, standalone.frame) << "set_direct_frame should update frame";
+    ASSERT_EQ(7, standalone.frame()) << "set_direct_frame should update frame";
     walker eater_default;
     ASSERT_TRUE(standalone.eat_me(&eater_default)) << "eat_me should safely return true without descriptor";
 
@@ -319,7 +321,7 @@ TEST(RuntimeCoveragePaths, treasure_core_methods_and_teleport_target_search)
     treasure* tele_b = add_treasure(FAMILY_TELEPORTER, 3);
     ASSERT_TRUE(tele_a->find_teleport_target() == tele_b) << "teleporter should find next live matching target";
 
-    tele_b->dead = 1;
+    tele_b->set_dead(1);
     treasure* tele_c = add_treasure(FAMILY_TELEPORTER, 3);
     ASSERT_TRUE(tele_a->find_teleport_target() == tele_c) << "teleporter should skip dead targets";
 
@@ -344,11 +346,11 @@ TEST(RuntimeCoveragePaths, treasure_exit_and_teleporter_navigation_paths)
     treasure* exit_fx = add_treasure(FAMILY_EXIT, 2);
     walker* controller = add_living(0);
     controller->set_act_type(ACT_CONTROL);
-    controller->skip_exit = 0;
-    controller->in_act = false;
+    controller->set_skip_exit(0);
+    controller->set_in_act(false);
 
     ASSERT_TRUE(exit_fx->eat_me(controller)) << "exit eater path should return true";
-    ASSERT_EQ(10, static_cast<int>(controller->skip_exit)) << "exit path should set skip_exit debounce";
+    ASSERT_EQ(10, static_cast<int>(controller->skip_exit())) << "exit path should set skip_exit debounce";
     bool saw_request_confirmation = false;
     bool saw_withdraw_request = false;
     for (const auto& ev : sim_events.events())
@@ -373,16 +375,16 @@ TEST(RuntimeCoveragePaths, treasure_exit_and_teleporter_navigation_paths)
     tele_2->setxy(130, 100);
     walker* mover = add_living(0);
     mover->setxy(103, 100);
-    mover->skip_exit = 0;
+    mover->set_skip_exit(0);
     tele_1->eat_me(mover);
-    ASSERT_TRUE(mover->skip_exit >= 20) << "teleport should increase skip_exit cooldown";
-    ASSERT_TRUE(tele_1->leader == tele_2) << "teleport should select the linked target";
+    ASSERT_TRUE(mover->skip_exit() >= 20) << "teleport should increase skip_exit cooldown";
+    ASSERT_TRUE(tele_1->leader() == tele_2) << "teleport should select the linked target";
 
     // Teleporter close-range debounce path.
     mover->setxy(100, 100);
-    mover->skip_exit = 1;
+    mover->set_skip_exit(1);
     tele_1->eat_me(mover);
-    ASSERT_EQ(8, static_cast<int>(mover->skip_exit)) << "close + skip_exit path should set skip_exit=8";
+    ASSERT_EQ(8, static_cast<int>(mover->skip_exit())) << "close + skip_exit path should set skip_exit=8";
 
     clear_level_lists();
 }
@@ -405,16 +407,16 @@ TEST(RuntimeCoveragePaths, treasure_navigation_early_returns_and_withdraw_declin
     if (!(exit_fx && eater))
         return;
     eater->set_act_type(ACT_CONTROL);
-    eater->skip_exit = 0;
-    eater->in_act = true;
+    eater->set_skip_exit(0);
+    eater->set_in_act(true);
     ASSERT_TRUE(exit_fx->eat_me(eater)) << "in_act early return should succeed";
-    ASSERT_EQ(0, static_cast<int>(eater->skip_exit)) << "in_act path should not update skip_exit";
+    ASSERT_EQ(0, static_cast<int>(eater->skip_exit())) << "in_act path should not update skip_exit";
 
     // Exit early return: not ACT_CONTROL.
-    eater->in_act = false;
+    eater->set_in_act(false);
     eater->set_act_type(0);
     ASSERT_TRUE(exit_fx->eat_me(eater)) << "non-control early return should succeed";
-    ASSERT_EQ(0, static_cast<int>(eater->skip_exit)) << "non-control path should not update skip_exit";
+    ASSERT_EQ(0, static_cast<int>(eater->skip_exit())) << "non-control path should not update skip_exit";
 
     // Withdraw branch with decline: level is completed, current isn't, enemies still present.
     og::runtime::current_session->myscreen_->save_data.reset();
@@ -424,11 +426,11 @@ TEST(RuntimeCoveragePaths, treasure_navigation_early_returns_and_withdraw_declin
     og::runtime::current_session->myscreen_->sync_world_from_save_data();
     og::runtime::current_session->myscreen_->level_runtime_data().level_done = 0; // enemies still present
     eater->set_act_type(ACT_CONTROL);
-    eater->skip_exit = 0;
-    exit_fx->stats()->level = 3;
+    eater->set_skip_exit(0);
+    exit_fx->stats()->set_level(3);
     sim_events.clear();
     ASSERT_TRUE(exit_fx->eat_me(eater)) << "withdraw decline path should return true";
-    ASSERT_EQ(10, static_cast<int>(eater->skip_exit)) << "withdraw prompt path should set skip_exit debounce";
+    ASSERT_EQ(10, static_cast<int>(eater->skip_exit())) << "withdraw prompt path should set skip_exit debounce";
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world_.withdraw_requested) << "withdraw branch should set world.withdraw_requested";
     bool saw_withdraw_prompt = false;
     bool saw_withdraw_event = false;
@@ -453,19 +455,19 @@ TEST(RuntimeCoveragePaths, treasure_navigation_early_returns_and_withdraw_declin
 
     tele->setxy(200, 200);
     mover->setxy(200, 200);
-    mover->skip_exit = 5;
+    mover->set_skip_exit(5);
     ASSERT_TRUE(tele->eat_me(mover)) << "teleporter skip_exit guard should return true";
-    ASSERT_EQ(5, static_cast<int>(mover->skip_exit)) << "skip_exit guard should not alter cooldown";
+    ASSERT_EQ(5, static_cast<int>(mover->skip_exit())) << "skip_exit guard should not alter cooldown";
 
-    mover->skip_exit = 0;
+    mover->set_skip_exit(0);
     mover->setxy(400, 400);
     ASSERT_TRUE(tele->eat_me(mover)) << "teleporter far-distance guard should return true";
-    ASSERT_EQ(0, static_cast<int>(mover->skip_exit)) << "far-distance path should not alter cooldown";
+    ASSERT_EQ(0, static_cast<int>(mover->skip_exit())) << "far-distance path should not alter cooldown";
 
     // No target teleporter available.
     mover->setxy(200, 200);
     ASSERT_TRUE(tele->eat_me(mover)) << "teleporter without target should return true";
-    ASSERT_TRUE(mover->skip_exit >= 20) << "no-target path still applies cooldown increment";
+    ASSERT_TRUE(mover->skip_exit() >= 20) << "no-target path still applies cooldown increment";
 
     clear_level_lists();
 }
@@ -482,10 +484,10 @@ TEST(RuntimeCoveragePaths, treasure_batch3_find_target_wraparound_and_no_match)
     if (!(tele_a && tele_b && tele_c))
         return;
 
-    tele_b->dead = 1;
+    tele_b->set_dead(1);
     ASSERT_TRUE(tele_c->find_teleport_target() == tele_a) << "teleporter should wrap to earlier matching target when no later target matches";
 
-    tele_a->dead = 1;
+    tele_a->set_dead(1);
     ASSERT_TRUE(tele_c->find_teleport_target() == nullptr) << "teleporter should return nullptr when no live matching target exists";
 
     clear_level_lists();
@@ -506,17 +508,17 @@ TEST(RuntimeCoveragePaths, treasure_batch3_teleporter_leader_and_blocked_destina
 
     tele_src->setxy(100, 100);
     tele_dst->setxy(160, 160);
-    tele_src->leader = tele_dst; // Force the "use leader" branch.
+    tele_src->set_leader(tele_dst); // Force the "use leader" branch.
     mover->setxy(100, 100);
-    mover->skip_exit = 0;
+    mover->set_skip_exit(0);
 
     // Make destination impassable so teleporter recenters mover back to source.
     set_world_tile(160, 160, PIX_H_WALL1);
 
     ASSERT_TRUE(tele_src->eat_me(mover)) << "teleporter eat should still return true when destination blocked";
-    ASSERT_EQ(100, (int)mover->xpos) << "blocked destination should recenter mover to source X";
-    ASSERT_EQ(100, (int)mover->ypos) << "blocked destination should recenter mover to source Y";
-    ASSERT_TRUE(tele_src->leader == tele_dst) << "leader-based destination should remain set";
+    ASSERT_EQ(100, (int)mover->xpos()) << "blocked destination should recenter mover to source X";
+    ASSERT_EQ(100, (int)mover->ypos()) << "blocked destination should recenter mover to source Y";
+    ASSERT_TRUE(tele_src->leader() == tele_dst) << "leader-based destination should remain set";
 
     clear_level_lists();
 }
@@ -549,8 +551,8 @@ TEST(RuntimeCoveragePaths, treasure_batch3_exit_withdraw_accept_path)
         return;
 
     eater->set_act_type(ACT_CONTROL);
-    eater->in_act = false;
-    eater->skip_exit = 0;
+    eater->set_in_act(false);
+    eater->set_skip_exit(0);
 
     ASSERT_TRUE(exit_fx->eat_me(eater)) << "withdraw accept path should return true";
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world_.withdraw_requested) << "withdraw path should mark withdraw_requested for tick short-circuit";
@@ -612,7 +614,32 @@ TEST(RuntimeCoveragePaths, screen_withdraw_aborts_when_autosave_load_fails)
                               "Withdraw to Level 4?", 4, 1);
     sim_events.push(og::sim::EventKind::WithdrawToLevel, 4, 0);
 
-    ASSERT_TRUE(s->act()) << "act should continue after failed withdraw load";
+    og::sim::test::NetworkTestConfig config;
+    config.level_id = 1;
+    config.tick_count = 1;
+    og::sim::test::NetworkTestFixture fixture(config);
+    fixture.run();
+
+    bool saw_game_flow_batch = false;
+    bool dispatch_result = false;
+    const auto dispatch_batch = &screen::dispatch_sim_event_batch;
+    fixture.client(0).set_game_flow_event_batch_callback(
+        [&dispatch_batch, &saw_game_flow_batch, &dispatch_result, s](
+            const og::sim::SimEventBatch& batch) {
+            saw_game_flow_batch = true;
+            dispatch_result = (s->*dispatch_batch)(batch);
+        });
+
+    const og::sim::SimEventBatch batch = og::sim::drain_sim_events(sim_events);
+    fixture.with_server_context([&] {
+        fixture.server().forward_event_batch(batch);
+    });
+    fixture.poll_client_messages(0);
+
+    ASSERT_TRUE(saw_game_flow_batch)
+        << "network fixture should deliver the withdraw batch";
+    ASSERT_TRUE(dispatch_result)
+        << "dispatch should continue after failed withdraw load";
     ASSERT_EQ(7, static_cast<int>(s->save_data.scen_num)) << "failed withdraw load should not change scen_num";
     ASSERT_EQ(7, static_cast<int>(s->world_.current_scenario)) << "failed withdraw load should keep world scenario unchanged";
     ASSERT_EQ(static_cast<int>(SaveDataIoError::CampaignLoadFailed), static_cast<int>(s->save_data.last_io_error())) << "withdraw load failure should be surfaced as campaign load failure";
@@ -626,6 +653,159 @@ TEST(RuntimeCoveragePaths, screen_withdraw_aborts_when_autosave_load_fails)
     s->save_data.reset();
     s->sync_world_from_save_data();
     ASSERT_TRUE(s->save_data.save("save0")) << "cleanup save0 should succeed";
+}
+
+TEST(RuntimeCoveragePaths, screen_tick_world_splits_cosmetic_and_game_flow_batches)
+{
+    clear_level_lists();
+
+    ASSERT_TRUE(current_game != nullptr && current_game->sim_events != nullptr)
+        << "sim events should be available";
+    if (current_game == nullptr || current_game->sim_events == nullptr)
+        return;
+    og::sim::SimEventLog& sim_events = *current_game->sim_events;
+    sim_events.clear();
+
+    GameWorld& world = setup_tick_world(4242);
+    walker* ally = add_living(0);
+    walker* foe = add_living(1);
+    ASSERT_TRUE(ally && foe) << "living fixtures should exist";
+    if (!(ally && foe))
+        return;
+
+    sim_events.push_sound(7);
+    sim_events.push_notification("Tick cosmetic", 3);
+    sim_events.push(og::sim::EventKind::SetPalette, 1, 0);
+    sim_events.push(og::sim::EventKind::RequestRedraw);
+    sim_events.push(og::sim::EventKind::ScoreChange, 2, 125);
+    sim_events.push_with_text(og::sim::EventKind::RequestExitConfirmation,
+                              "Exit to Level 4?", 4, 0);
+
+    screen* s = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(s != nullptr) << "active screen should be available";
+    if (!s)
+        return;
+
+    const auto [cosmetic_batch, game_flow_batch] = s->tick_world();
+
+    ASSERT_TRUE(sim_events.empty()) << "tick_world should drain the sim event log";
+    ASSERT_EQ(world.tick_count_, cosmetic_batch.sequence)
+        << "cosmetic batch sequence should match the producing tick";
+    ASSERT_EQ(world.tick_count_, game_flow_batch.sequence)
+        << "game flow batch sequence should match the producing tick";
+
+    ASSERT_EQ(4u, cosmetic_batch.events.size())
+        << "cosmetic batch should contain only non-game-flow events";
+    ASSERT_EQ(2u, game_flow_batch.events.size())
+        << "game flow batch should contain the score and exit events";
+
+    ASSERT_TRUE(cosmetic_batch.events[0].kind == og::sim::EventKind::PlaySound);
+    ASSERT_TRUE(cosmetic_batch.events[1].kind == og::sim::EventKind::Notification);
+    ASSERT_TRUE(cosmetic_batch.events[2].kind == og::sim::EventKind::SetPalette);
+    ASSERT_TRUE(cosmetic_batch.events[3].kind == og::sim::EventKind::RequestRedraw);
+
+    ASSERT_TRUE(game_flow_batch.events[0].kind == og::sim::EventKind::ScoreChange);
+    ASSERT_TRUE(game_flow_batch.events[1].kind ==
+                og::sim::EventKind::RequestExitConfirmation);
+
+    clear_level_lists();
+}
+
+TEST(RuntimeCoveragePaths, screen_dispatch_cosmetic_events_updates_view_state)
+{
+    clear_level_lists();
+
+    screen* s = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(s != nullptr) << "active screen should be available";
+    if (!s)
+        return;
+
+    s->redrawme = 0;
+    s->world_.current_palette_id = 0;
+    for (short view_index = 0; view_index < s->numviews; ++view_index)
+        s->viewob[view_index]->clear_text();
+
+    og::sim::SimEventBatch batch;
+    og::sim::Event notification_event;
+    notification_event.kind = og::sim::EventKind::Notification;
+    notification_event.a = 9;
+    notification_event.text = "Cosmetic dispatch";
+    batch.events.push_back(notification_event);
+
+    og::sim::Event palette_event;
+    palette_event.kind = og::sim::EventKind::SetPalette;
+    palette_event.a = 1;
+    batch.events.push_back(palette_event);
+
+    og::sim::Event redraw_event;
+    redraw_event.kind = og::sim::EventKind::RequestRedraw;
+    batch.events.push_back(redraw_event);
+
+    s->dispatch_cosmetic_events(batch);
+
+    ASSERT_EQ(1, static_cast<int>(s->redrawme))
+        << "cosmetic redraw event should mark the screen dirty";
+    ASSERT_EQ(1, static_cast<int>(s->world_.current_palette_id))
+        << "palette event should switch to the freeze palette id";
+    ASSERT_EQ(std::string("Cosmetic dispatch"), s->viewob[0]->textlist[0])
+        << "notification event should reach the active view";
+    ASSERT_EQ(9, static_cast<int>(s->viewob[0]->textcycles[0]))
+        << "notification duration should be preserved";
+
+    for (short view_index = 0; view_index < s->numviews; ++view_index)
+        s->viewob[view_index]->clear_text();
+}
+
+TEST(RuntimeCoveragePaths, screen_dispatch_game_flow_events_handles_direct_batches)
+{
+    clear_level_lists();
+
+    screen* s = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(s != nullptr) << "active screen should be available";
+    if (!s)
+        return;
+
+    s->world_.end = 0;
+    s->world_.withdraw_requested = true;
+    s->world_.withdraw_level = 6;
+    s->redrawme = 0;
+
+    picker_testing_yes_or_no_queue_clear();
+    picker_testing_yes_or_no_queue_push(false);
+
+    og::sim::GameFlowEventBatch batch;
+
+    og::sim::Event set_end_event;
+    set_end_event.kind = og::sim::EventKind::SetEnd;
+    batch.events.push_back(set_end_event);
+
+    og::sim::Event score_change_event;
+    score_change_event.kind = og::sim::EventKind::ScoreChange;
+    score_change_event.a = 0;
+    score_change_event.b = 50;
+    batch.events.push_back(score_change_event);
+
+    og::sim::Event exit_prompt_event;
+    exit_prompt_event.kind = og::sim::EventKind::RequestExitConfirmation;
+    exit_prompt_event.a = 6;
+    exit_prompt_event.b = 0;
+    exit_prompt_event.text = "Exit to Level 6?";
+    batch.events.push_back(exit_prompt_event);
+
+    ASSERT_TRUE(s->dispatch_game_flow_events(batch))
+        << "game flow batch should preserve the continue/stop contract";
+    ASSERT_EQ(1, static_cast<int>(s->world_.end))
+        << "SetEnd should flip the world end flag";
+    ASSERT_EQ(1, static_cast<int>(s->redrawme))
+        << "ScoreChange should still request a redraw";
+    ASSERT_TRUE(!s->world_.withdraw_requested)
+        << "declining the prompt should clear pending withdraw state";
+    ASSERT_EQ(-1, static_cast<int>(s->world_.withdraw_level))
+        << "declining the prompt should clear the withdraw destination";
+
+    picker_testing_yes_or_no_queue_clear();
+    s->world_.end = 0;
+    clear_level_lists();
 }
 
 
@@ -647,7 +827,7 @@ TEST(RuntimeCoveragePaths, sim_world_tick_branches_for_end_freeze_and_cleanup)
     walker* ally = add_living(0);
     (void)ally;
     walker* foe = add_living(1);
-    foe->team_num = 1;
+    foe->set_team_num(1);
 
     world.tick();
     ASSERT_EQ(1, static_cast<int>(world.enemy_freeze)) << "enemy_freeze should decrement";
@@ -681,25 +861,25 @@ TEST(RuntimeCoveragePaths, sim_world_tick_branches_for_end_freeze_and_cleanup)
     clear_level_lists();
     walker* owner = add_living(0);
     walker* dead_foe = add_living(1);
-    owner->foe = dead_foe;
-    owner->leader = dead_foe;
-    owner->owner = dead_foe;
-    owner->collide_ob = dead_foe;
-    dead_foe->dead = 1;
+    owner->set_foe(dead_foe);
+    owner->set_leader(dead_foe);
+    owner->set_owner(dead_foe);
+    owner->set_collide_ob(dead_foe);
+    dead_foe->set_dead(1);
     dead_foe->myguy = nullptr;
     walker* dead_fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_FLASH);
     walker* dead_weap = og::runtime::current_session->myscreen_->world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
     ASSERT_TRUE(dead_fx != nullptr) << "expected fx walker";
     ASSERT_TRUE(dead_weap != nullptr) << "expected weapon walker";
-    dead_fx->dead = 1;
-    dead_weap->dead = 1;
+    dead_fx->set_dead(1);
+    dead_weap->set_dead(1);
 
     world.enemy_freeze = 0;
     world.end = 0;
     events.clear();
     world.tick();
-    ASSERT_TRUE(owner->foe == nullptr) << "dead foe pointer should be cleared";
-    ASSERT_TRUE(owner->leader == nullptr) << "dead leader pointer should be cleared";
+    ASSERT_TRUE(owner->foe() == nullptr) << "dead foe pointer should be cleared";
+    ASSERT_TRUE(owner->leader() == nullptr) << "dead leader pointer should be cleared";
     clear_level_lists();
 }
 
@@ -717,8 +897,8 @@ TEST(RuntimeCoveragePaths, treasure_find_teleport_target_wraparound_and_missing_
 
     ASSERT_TRUE(tele_c->find_teleport_target() == tele_a) << "last teleporter should wrap to first matching teleporter";
 
-    tele_a->stats()->level = 7;
-    tele_b->dead = 1;
+    tele_a->stats()->set_level(7);
+    tele_b->set_dead(1);
     ASSERT_TRUE(tele_c->find_teleport_target() == nullptr) << "teleporter should return nullptr when no live same-level target exists";
 
     clear_level_lists();
@@ -770,34 +950,34 @@ TEST(RuntimeCoveragePaths, sim_world_freeze_countdown_notification_and_weap_clea
     ASSERT_TRUE(owner && dead_ref) << "owner and dead ref created";
     if (!(owner && dead_ref))
         return;
-    dead_ref->dead = 1;
-    owner->foe = dead_ref;
-    owner->leader = dead_ref;
-    owner->owner = dead_ref;
-    owner->collide_ob = dead_ref;
+    dead_ref->set_dead(1);
+    owner->set_foe(dead_ref);
+    owner->set_leader(dead_ref);
+    owner->set_owner(dead_ref);
+    owner->set_collide_ob(dead_ref);
 
     walker* weap_owner = og::runtime::current_session->myscreen_->world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
     walker* dead_fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_FLASH);
     walker* dead_weap = og::runtime::current_session->myscreen_->world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
     ASSERT_TRUE(weap_owner && dead_fx && dead_weap) << "weapon/fx walkers created";
     if (weap_owner) {
-        weap_owner->foe = dead_ref;
-        weap_owner->leader = dead_ref;
-        weap_owner->owner = dead_ref;
-        weap_owner->collide_ob = dead_ref;
+        weap_owner->set_foe(dead_ref);
+        weap_owner->set_leader(dead_ref);
+        weap_owner->set_owner(dead_ref);
+        weap_owner->set_collide_ob(dead_ref);
     }
     if (dead_fx)
-        dead_fx->dead = 1;
+        dead_fx->set_dead(1);
     if (dead_weap)
-        dead_weap->dead = 1;
+        dead_weap->set_dead(1);
 
     world.enemy_freeze = 0;
     world.end = 0;
     events.clear();
     world.tick();
-    ASSERT_TRUE(owner->foe == nullptr) << "oblist dead foe pointer should be cleared";
-    ASSERT_TRUE(owner->leader == nullptr) << "oblist dead leader pointer should be cleared";
-    ASSERT_TRUE(weap_owner == nullptr || weap_owner->foe == nullptr) << "weaplist dead foe pointer should be cleared";
+    ASSERT_TRUE(owner->foe() == nullptr) << "oblist dead foe pointer should be cleared";
+    ASSERT_TRUE(owner->leader() == nullptr) << "oblist dead leader pointer should be cleared";
+    ASSERT_TRUE(weap_owner == nullptr || weap_owner->foe() == nullptr) << "weaplist dead foe pointer should be cleared";
 
     clear_level_lists();
 }
@@ -879,7 +1059,7 @@ TEST(RuntimeCoveragePaths, treasure_batch5_default_eat_and_missing_self_target_l
 
     // find_teleport_target should return nullptr when object is not in fxlist.
     standalone.set_order_family(Order::Treasure, FAMILY_TELEPORTER);
-    standalone.stats()->level = 4;
+    standalone.stats()->set_level(4);
     ASSERT_TRUE(standalone.find_teleport_target() == nullptr) << "teleport target lookup should fail when teleporter is not present in fxlist";
 }
 
@@ -899,10 +1079,10 @@ TEST(RuntimeCoveragePaths, treasure_batch6_find_teleport_target_full_loop_paths)
     ASSERT_TRUE(tele_a->find_teleport_target() == tele_b) << "first teleporter should find next same-level teleporter";
 
     // Wraparound scan success branch (mark later candidate dead first).
-    tele_b->dead = 1;
+    tele_b->set_dead(1);
     ASSERT_TRUE(tele_c->find_teleport_target() == nullptr) << "mismatched level with dead later target should return nullptr";
-    tele_b->dead = 0;
-    tele_c->stats()->level = 5;
+    tele_b->set_dead(0);
+    tele_c->stats()->set_level(5);
     ASSERT_TRUE(tele_c->find_teleport_target() == tele_a) << "last teleporter should wrap around to first same-level teleporter";
 
     clear_level_lists();
@@ -928,21 +1108,21 @@ TEST(RuntimeCoveragePaths, sim_world_batch6_cleanup_and_erase_paths_with_hostile
     hostile->set_act_type(ACT_CONTROL);
 
     // Force find_far_foe path by clearing references.
-    ally->foe = nullptr;
-    ally->leader = nullptr;
+    ally->set_foe(nullptr);
+    ally->set_leader(nullptr);
 
     // Dead linked object used for pointer cleanup.
     walker* dead_link = add_living(2);
     ASSERT_TRUE(dead_link != nullptr) << "dead link created";
     if (!dead_link)
         return;
-    dead_link->dead = 1;
-    ally->owner = dead_link;
-    ally->collide_ob = dead_link;
-    hostile->foe = dead_link;
-    hostile->leader = dead_link;
-    hostile->owner = dead_link;
-    hostile->collide_ob = dead_link;
+    dead_link->set_dead(1);
+    ally->set_owner(dead_link);
+    ally->set_collide_ob(dead_link);
+    hostile->set_foe(dead_link);
+    hostile->set_leader(dead_link);
+    hostile->set_owner(dead_link);
+    hostile->set_collide_ob(dead_link);
 
     walker* weap_owner = og::runtime::current_session->myscreen_->world().add_weap_ob(Order::Weapon, FAMILY_KNIFE);
     walker* dead_fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_FLASH);
@@ -950,12 +1130,12 @@ TEST(RuntimeCoveragePaths, sim_world_batch6_cleanup_and_erase_paths_with_hostile
     ASSERT_TRUE(weap_owner && dead_fx && dead_weap) << "weapon/fx created";
     if (!(weap_owner && dead_fx && dead_weap))
         return;
-    weap_owner->foe = dead_link;
-    weap_owner->leader = dead_link;
-    weap_owner->owner = dead_link;
-    weap_owner->collide_ob = dead_link;
-    dead_fx->dead = 1;
-    dead_weap->dead = 1;
+    weap_owner->set_foe(dead_link);
+    weap_owner->set_leader(dead_link);
+    weap_owner->set_owner(dead_link);
+    weap_owner->set_collide_ob(dead_link);
+    dead_fx->set_dead(1);
+    dead_weap->set_dead(1);
 
     // Dead living without myguy should decrement numobs during erase.
     walker* dead_living = add_living(3);
@@ -963,13 +1143,13 @@ TEST(RuntimeCoveragePaths, sim_world_batch6_cleanup_and_erase_paths_with_hostile
     if (!dead_living)
         return;
     dead_living->myguy = nullptr;
-    dead_living->dead = 1;
+    dead_living->set_dead(1);
 
     world.enemy_freeze = 0;
     world.end = 0;
     world.tick();
-    ASSERT_TRUE(ally->owner == nullptr && ally->collide_ob == nullptr) << "dead links should be cleared on oblist entities";
-    ASSERT_TRUE(hostile->foe == nullptr && hostile->leader == nullptr) << "all dead references should be cleared";
+    ASSERT_TRUE(ally->owner() == nullptr && ally->collide_ob() == nullptr) << "dead links should be cleared on oblist entities";
+    ASSERT_TRUE(hostile->foe() == nullptr && hostile->leader() == nullptr) << "all dead references should be cleared";
     (void)weap_owner;
 
     clear_level_lists();
@@ -993,7 +1173,7 @@ TEST(RuntimeCoveragePaths, sim_world_freeze_branch_allows_non_living_actions)
     ASSERT_TRUE(gen != nullptr) << "generator created";
     if (!gen)
         return;
-    gen->team_num = 2;
+    gen->set_team_num(2);
     gen->set_act_type(ACT_CONTROL); // deterministic no-op-ish act path
 
     world.enemy_freeze = 11;
@@ -1027,8 +1207,8 @@ TEST(RuntimeCoveragePaths, sim_world_assigns_far_foe_when_no_target_and_hostiles
         return;
 
     ally->set_act_type(ACT_CONTROL);
-    ally->foe = nullptr;
-    ally->leader = nullptr;
+    ally->set_foe(nullptr);
+    ally->set_leader(nullptr);
     foe_near->setxy(140, 100);
     foe_far->setxy(300, 100);
 
@@ -1036,8 +1216,8 @@ TEST(RuntimeCoveragePaths, sim_world_assigns_far_foe_when_no_target_and_hostiles
     world.end = 0;
     world.tick();
     ASSERT_EQ(0, (int)world.level_done) << "hostile living should keep level unfinished";
-    ASSERT_TRUE(ally->foe != nullptr) << "sim world should assign a far foe when none is set";
-    ASSERT_TRUE(ally->foe == foe_near) << "nearest hostile should be selected as far foe";
+    ASSERT_TRUE(ally->foe() != nullptr) << "sim world should assign a far foe when none is set";
+    ASSERT_TRUE(ally->foe() == foe_near) << "nearest hostile should be selected as far foe";
 }
 
 
@@ -1105,6 +1285,73 @@ TEST(RuntimeCoveragePaths, sim_world_round9_no_hostiles_or_exit_sets_next_level_
     clear_level_lists();
 }
 
+TEST(RuntimeCoveragePaths, sim_world_completion_events_reset_between_level_attempts)
+{
+    clear_level_lists();
+
+    GameWorld& world = setup_tick_world(4242);
+    ASSERT_TRUE(current_game != nullptr && current_game->sim_events != nullptr)
+        << "current_game sim_events should be wired";
+    if (current_game == nullptr || current_game->sim_events == nullptr)
+        return;
+    og::sim::SimEventLog& events = *current_game->sim_events;
+
+    // Master contract: the deterministic sim signals level completion
+    // IMPERATIVELY (game_ended / ending / next_level set in-place); it does
+    // NOT push SetEnd/EndGame display events into the sim event log. The
+    // display/redraw work is done by screen.cpp::endgame() (and, for the
+    // networking path, re-derived from the WorldSnapshot in
+    // GameServer::broadcast_current_state). So completing a level via tick()
+    // must leave the sim event log free of completion-display events.
+    auto saw_completion_events = [&events]() {
+        bool saw_set_end = false;
+        bool saw_end_game = false;
+        for (const auto& ev : events.events())
+        {
+            if (ev.kind == og::sim::EventKind::SetEnd)
+                saw_set_end = true;
+            if (ev.kind == og::sim::EventKind::EndGame)
+                saw_end_game = true;
+        }
+        return saw_set_end || saw_end_game;
+    };
+
+    world.my_team = 0;
+    world.id = 51;
+    world.end = 0;
+    events.clear();
+    world.tick();
+    ASSERT_TRUE(world.game_ended)
+        << "first empty-level completion should mark the level ended";
+    ASSERT_EQ(0, (int)world.ending)
+        << "empty-level completion path should set ending to zero";
+    ASSERT_EQ(52, (int)world.next_level)
+        << "empty-level completion path should advance to next level id";
+    ASSERT_TRUE(!saw_completion_events())
+        << "deterministic tick() must NOT push SetEnd/EndGame display events "
+           "(master signals level-end imperatively, not via the sim log)";
+
+    // Drive a second completion on the same GameWorld. reset_level_progress()
+    // re-arms per-level counters (matching master, which resets only
+    // level_tick_count_/last_level_id_); the real level loader clears
+    // game_ended between attempts, which we emulate here so the second
+    // completion edge is observable.
+    events.clear();
+    world.id = 52;
+    world.reset_level_progress();
+    world.game_ended = false;
+    world.tick();
+    ASSERT_TRUE(world.game_ended)
+        << "second empty-level completion should mark the level ended again";
+    ASSERT_EQ(53, (int)world.next_level)
+        << "second completion should advance next level id again";
+    ASSERT_TRUE(!saw_completion_events())
+        << "second completion on the same GameWorld must also stay silent on "
+           "SetEnd/EndGame in the sim event log";
+
+    clear_level_lists();
+}
+
 
 // --- Issue #98 regression tests: exits triggerable without beating scenario ---
 
@@ -1143,8 +1390,8 @@ TEST(RuntimeCoveragePaths, issue98_can_exit_flag_should_show_exit_not_withdraw)
         return;
 
     eater->set_act_type(ACT_CONTROL);
-    eater->in_act = false;
-    eater->skip_exit = 0;
+    eater->set_in_act(false);
+    eater->set_skip_exit(0);
 
     exit_fx->eat_me(eater);
     bool saw_exit_prompt = false;
@@ -1205,8 +1452,8 @@ TEST(RuntimeCoveragePaths, issue98_no_double_dialog_on_withdraw_exit)
         return;
 
     eater->set_act_type(ACT_CONTROL);
-    eater->in_act = false;
-    eater->skip_exit = 0;
+    eater->set_in_act(false);
+    eater->set_skip_exit(0);
 
     exit_fx->eat_me(eater);
     int confirmation_events = 0;
@@ -1220,4 +1467,3 @@ TEST(RuntimeCoveragePaths, issue98_no_double_dialog_on_withdraw_exit)
     og::runtime::current_session->myscreen_->world().type = 0;
     clear_level_lists();
 }
-

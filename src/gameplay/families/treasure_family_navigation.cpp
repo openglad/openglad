@@ -38,10 +38,10 @@ static bool exit_on_eat(treasure* self, walker* eater)
     if (current_game == nullptr || current_game->world == nullptr)
         return true;
 
-    if (eater->in_act) return true;
-    if (eater->act_type != ACT_CONTROL || (eater->skip_exit > 1))
+    if (eater->in_act()) return true;
+    if (eater->act_type() != ACT_CONTROL || (eater->skip_exit() > 1))
         return true;
-    eater->skip_exit = 10;
+    eater->set_skip_exit(10);
     // See if there are any enemies left ...
     short guys_here;
     if (current_game->world->level_done == 0)
@@ -49,16 +49,16 @@ static bool exit_on_eat(treasure* self, walker* eater)
     else
         guys_here = 0;
     // Get the name of our exit..
-    std::string message = std::format("scen{}", self->stats()->level);
+    std::string message = std::format("scen{}", self->stats()->level());
     std::string exitname = get_scenario_title(message.c_str());
 
     if (exitname == "none")
     {
-        exitname = std::format("Level {}", self->stats()->level);
+        exitname = std::format("Level {}", self->stats()->level());
     }
 
     GameWorld& world = *current_game->world;
-    const short destination_level = static_cast<short>(self->stats()->level);
+    const short destination_level = static_cast<short>(self->stats()->level());
     const bool can_exit_now = (!guys_here || (world.type & GameWorld::TYPE_CAN_EXIT_WHENEVER));
     const bool can_withdraw = is_level_completed(world, destination_level) &&
                               !is_level_completed(world, world.current_scenario);
@@ -99,35 +99,35 @@ static bool exit_on_eat(treasure* self, walker* eater)
 
 static bool teleporter_on_eat(treasure* self, walker* eater)
 {
-    if (eater->skip_exit > 1)
+    if (eater->skip_exit() > 1)
         return true;
     std::int32_t distance = self->distance_to_ob_center(eater); // how far away?
     if (distance > 21)
         return true;
-    if (distance < 4 && eater->skip_exit)
+    if (distance < 4 && eater->skip_exit())
     {
-        eater->skip_exit = 8;
+        eater->set_skip_exit(8);
         return true;
     }
     // If we're close enough, teleport ..
-    eater->skip_exit = eater->skip_exit + 20;
+    eater->set_skip_exit(eater->skip_exit() + 20);
     walker* target;
-    if (!self->leader)
+    if (!self->leader())
         target = self->find_teleport_target();
     else
-        target = self->leader;
+        target = self->leader();
     if (!target)
         return true;
-    self->leader = target;
+    self->set_leader(target);
     eater->center_on(target);
-    if (!current_game->world->query_passable(eater->xpos, eater->ypos, eater))
+    if (!current_game->world->query_passable(eater->xpos(), eater->ypos(), eater))
     {
         eater->center_on(self);
         return true;
     }
     // Now do special effects
     walker* flash = current_game->world->add_ob(Order::FX, FAMILY_FLASH);
-    flash->ani_type = ANI_EXPAND_8;
+    flash->set_ani_type(ANI_EXPAND_8);
     flash->center_on(self);
     return true;
 }

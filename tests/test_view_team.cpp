@@ -1,10 +1,13 @@
-#include <memory>
 #include <array>
+#include <algorithm>
+#include <memory>
 #include <openglad/resources/pixie_data.h>
 #include <openglad/interface/button.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/interface/render/pixien.h>
 #include <openglad/interface/screen.h>
+#include <openglad/interface/ui/menu_model.h>
+#include <openglad/interface/ui/picker_lobby_client.h>
 #include <gtest/gtest.h>
 #include <SDL.h>
 #include "test_input_helpers.h"
@@ -16,6 +19,13 @@
 #include <cstdint>
 #include <functional>
 
+namespace {
+constexpr int kViewMenuTransitionTimeoutMs = 15000;
+constexpr int kGameStartTimeoutMs = 20000;
+constexpr int kGameFinishTimeoutMs = 90000;
+constexpr int kTeamBuildInterceptScope = 2;
+}
+
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 // Forward declarations from picker.cpp
@@ -24,6 +34,8 @@ extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
 Sint32 create_view_menu(Sint32 arg1);
 Sint32 create_team_menu(Sint32 arg1);
+Sint32 create_train_menu(Sint32 arg1);
+extern bool g_start_game_requested;
 #ifdef TESTING
 extern bool g_test_remove_exits;
 extern std::atomic<bool> g_test_in_game;
@@ -34,6 +46,112 @@ namespace og::sim { extern std::int32_t g_test_level_tick_limit_override; }
 
 #include <openglad/interface/ui/picker_ui_state.h>
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
+
+namespace {
+
+class AutoStartPickerLobbyClient final : public og::ui::IPickerLobbyClient
+{
+public:
+    void initialize_from_save() override {}
+    void shutdown() override {}
+    void sync_from_save() override {}
+    void sync_roster_from_save() override {}
+    void sync_settings_from_save() override {}
+    void poll_and_apply() override
+    {
+        ++poll_calls;
+        g_start_game_requested = true;
+    }
+    void set_player_mode(int) override {}
+    bool request_start_game() override
+    {
+        return false;
+    }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    build_game_start_config() const override
+    {
+        return std::nullopt;
+    }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    consume_game_start_config() override
+    {
+        return std::nullopt;
+    }
+    [[nodiscard]] bool start_request_pending() const noexcept override
+    {
+        return false;
+    }
+    [[nodiscard]] bool has_game_start_config() const noexcept override
+    {
+        return true;
+    }
+
+    int poll_calls = 0;
+};
+
+class HostVisibilityPickerLobbyClient final : public og::ui::IPickerLobbyClient
+{
+public:
+    explicit HostVisibilityPickerLobbyClient(bool host_controls_visible)
+        : host_controls_visible_(host_controls_visible)
+    {
+    }
+
+    void initialize_from_save() override {}
+    void shutdown() override {}
+    void sync_from_save() override {}
+    void sync_roster_from_save() override {}
+    void sync_settings_from_save() override {}
+    void poll_and_apply() override {}
+    void set_player_mode(int) override {}
+    bool request_start_game() override
+    {
+        return false;
+    }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    build_game_start_config() const override
+    {
+        return std::nullopt;
+    }
+    [[nodiscard]] std::optional<og::ui::PickerLobbyGameStartConfig>
+    consume_game_start_config() override
+    {
+        return std::nullopt;
+    }
+    [[nodiscard]] bool start_request_pending() const noexcept override
+    {
+        return false;
+    }
+    [[nodiscard]] bool has_game_start_config() const noexcept override
+    {
+        return false;
+    }
+    [[nodiscard]] bool host_controls_visible() const noexcept override
+    {
+        return host_controls_visible_;
+    }
+
+private:
+    bool host_controls_visible_ = true;
+};
+
+struct ActivePickerLobbyClientGuard
+{
+    og::ui::IPickerLobbyClient* saved = nullptr;
+
+    explicit ActivePickerLobbyClientGuard(og::ui::IPickerLobbyClient* client)
+        : saved(og::ui::active_picker_lobby_client())
+    {
+        og::ui::install_active_picker_lobby_client(client);
+    }
+
+    ~ActivePickerLobbyClientGuard()
+    {
+        og::ui::install_active_picker_lobby_client(saved);
+    }
+};
+
+} // namespace
 
 
 static void cleanup_picker_state()
@@ -125,7 +243,8 @@ static bool wait_for_view_menu_buttons(int timeout_ms = 6000)
     int since_last_retry = 250;
     const int poll_interval = 50;
     while (elapsed < timeout_ms) {
-        if (has_interactable_match("go", is_view_menu_button)
+        if (!has_interactable("view_team")
+            && has_interactable_match("go", is_view_menu_button)
             && has_interactable_match("back", is_view_menu_button))
             return true;
 
@@ -142,6 +261,32 @@ static bool wait_for_view_menu_buttons(int timeout_ms = 6000)
 
     fprintf(stderr, "  [interact] TIMEOUT entering view_team menu (%d ms)\n", timeout_ms);
     return false;
+}
+
+static bool start_game_from_view_menu(
+    int epoch_before,
+    int timeout_ms,
+    const std::function<bool(const Interactable&)>& is_view_menu_go)
+{
+    int elapsed = 0;
+    int since_last_click = 250;
+    const int poll_interval = 50;
+    while (elapsed < timeout_ms) {
+        if (g_test_game_epoch.load(std::memory_order_acquire) > epoch_before)
+            return true;
+
+        if (since_last_click >= 250 &&
+            has_interactable_match("go", is_view_menu_go)) {
+            interact_match("go", is_view_menu_go);
+            since_last_click = 0;
+        }
+
+        SDL_Delay(poll_interval);
+        elapsed += poll_interval;
+        since_last_click += poll_interval;
+    }
+
+    return g_test_game_epoch.load(std::memory_order_acquire) > epoch_before;
 }
 
 static bool enter_team_menu_from_main_menu(int timeout_ms = 15000)
@@ -193,7 +338,7 @@ static int view_team_injector(void* data)
     interact("view_team");
 
     const auto is_view_menu_back = [](const Interactable& item) { return item.y >= 160; };
-    if (wait_for_view_menu_buttons(7000)) {
+    if (wait_for_view_menu_buttons(kViewMenuTransitionTimeoutMs)) {
         state->saw_view_menu = true;
         fprintf(stderr, "  [test] clicking back from view menu\n");
         interact_match("back", is_view_menu_back);
@@ -268,30 +413,26 @@ static int view_team_go_injector(void* data)
     interact("view_team");
 
     const auto is_view_menu_go = [](const Interactable& item) { return item.y >= 160; };
-    if (!wait_for_view_menu_buttons(7000)) {
+    if (!wait_for_view_menu_buttons(kViewMenuTransitionTimeoutMs)) {
         unwind_to_main_menu();
         state->finished = true;
         return 0;
     }
     state->saw_view_menu = true;
+    SDL_Delay(100);
 
     g_test_remove_exits = true;
     og::sim::g_test_level_tick_limit_override = 15;
     set_game_speed(0.0f);
 
     const int epoch_before = g_test_game_epoch.load(std::memory_order_acquire);
-    interact_match("go", is_view_menu_go);
+    state->game_started = start_game_from_view_menu(
+        epoch_before, kGameStartTimeoutMs, is_view_menu_go);
 
     int waited_ms = 0;
     const int poll_ms = 50;
-    while (g_test_game_epoch.load(std::memory_order_acquire) == epoch_before && waited_ms < 10000) {
-        SDL_Delay(poll_ms);
-        waited_ms += poll_ms;
-    }
-    state->game_started = g_test_game_epoch.load(std::memory_order_acquire) > epoch_before;
-
-    waited_ms = 0;
-    while (g_test_in_game.load(std::memory_order_acquire) && waited_ms < 60000) {
+    while (g_test_in_game.load(std::memory_order_acquire)
+           && waited_ms < kGameFinishTimeoutMs) {
         SDL_Delay(poll_ms);
         waited_ms += poll_ms;
     }
@@ -343,6 +484,90 @@ TEST(ViewTeam, go_starts_level) {
     ASSERT_TRUE(state.saw_view_menu) << "should have entered the view team menu";
     ASSERT_TRUE(state.game_started) << "GO from view team should start the game";
     ASSERT_TRUE(state.game_finished) << "started game should return to picker";
+}
+
+
+struct TrainMenuViewTeamGoState {
+    bool finished;
+    bool saw_train_menu;
+    bool saw_view_menu;
+    bool clicked_go;
+};
+
+static int train_menu_view_team_go_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<TrainMenuViewTeamGoState*>(data);
+
+    if (!wait_for_interactable("inc_str", 10000)) {
+        state->finished = true;
+        return 0;
+    }
+    state->saw_train_menu = true;
+
+    interact("view_team");
+
+    const auto is_view_menu_go = [](const Interactable& item) { return item.y >= 160; };
+    if (!wait_for_view_menu_buttons(kViewMenuTransitionTimeoutMs)) {
+        state->finished = true;
+        return 0;
+    }
+    state->saw_view_menu = true;
+    state->clicked_go = interact_match("go", is_view_menu_go);
+
+    state->finished = true;
+    return 0;
+}
+
+TEST(ViewTeam, create_train_menu_nested_view_go_exits_as_start_game)
+{
+    trace_clear();
+
+    og::runtime::current_session->myscreen_->save_data.reset();
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign =
+        "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
+    og::runtime::current_session->myscreen_->save_data.totalcash = 50000;
+
+    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+    auto archer = std::make_unique<guy>(FAMILY_ARCHER);
+    soldier->strength = soldier->dexterity = soldier->constitution =
+        soldier->intelligence = soldier->armor = 200;
+    archer->strength = archer->dexterity = archer->constitution =
+        archer->intelligence = archer->armor = 200;
+    og::runtime::current_session->myscreen_->save_data.team_list[0] =
+        std::move(soldier);
+    og::runtime::current_session->myscreen_->save_data.team_list[1] =
+        std::move(archer);
+    og::runtime::current_session->myscreen_->save_data.team_size = 2;
+    og::runtime::current_session->myscreen_->save_data.save("save0");
+
+    TrainMenuViewTeamGoState state = { false, false, false, false };
+    SDL_Thread* thread = SDL_CreateThread(
+        train_menu_view_team_go_injector,
+        "train_menu_view_team_go",
+        &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    pks().selected_menu_item = nullptr;
+    pks().intercept_scope = kTeamBuildInterceptScope;
+    const Sint32 ret = create_train_menu(0);
+    const og::ui::PickerMenuItem* const selected = pks().selected_menu_item;
+    pks().intercept_scope = 0;
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+
+    cleanup_picker_state();
+
+    ASSERT_TRUE(state.finished) << "injector thread should have completed";
+    ASSERT_TRUE(state.saw_train_menu) << "should have entered the train menu";
+    ASSERT_TRUE(state.saw_view_menu) << "should have entered the nested view menu";
+    ASSERT_TRUE(state.clicked_go) << "nested view menu should click GO";
+    ASSERT_TRUE(ret & 1) << "train menu should propagate EXIT to start game";
+    ASSERT_NE(nullptr, selected);
+    EXPECT_EQ(og::ui::PickerMenuCommand::StartGame, selected->command);
 }
 
 
@@ -398,6 +623,52 @@ static int direct_menu_click_injector(void* data)
             click_cooldown_ms -= poll_interval;
         if (esc_cooldown_ms > 0)
             esc_cooldown_ms -= poll_interval;
+    }
+
+    state->finished = true;
+    return 0;
+}
+
+struct DirectMenuVisibilityState {
+    bool finished;
+    bool saw_menu;
+    bool go_visible;
+    bool set_level_visible;
+    bool set_campaign_visible;
+    int min_y;
+    std::atomic<bool>* menu_done;
+};
+
+static int direct_menu_visibility_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<DirectMenuVisibilityState*>(data);
+
+    const auto in_menu_band = [state](const Interactable& item) {
+        return item.y >= state->min_y;
+    };
+
+    while (!state->menu_done->load(std::memory_order_acquire)) {
+        const auto interactables = get_interactables();
+        const auto visible = [&](const char* id) {
+            return std::any_of(
+                interactables.begin(),
+                interactables.end(),
+                [id, &in_menu_band](const Interactable& item) {
+                    return item.id == id && !item.hidden && in_menu_band(item);
+                });
+        };
+
+        if (visible("back")) {
+            state->saw_menu = true;
+            state->go_visible = visible("go");
+            state->set_level_visible = visible("set_level");
+            state->set_campaign_visible = visible("set_campaign");
+            interact_match("back", in_menu_band);
+            break;
+        }
+
+        SDL_Delay(50);
     }
 
     state->finished = true;
@@ -463,6 +734,119 @@ TEST(ViewTeam, create_team_menu_direct_back)
     ASSERT_TRUE(ret & 1) << "create_team_menu(back) should propagate EXIT";
 }
 
+TEST(ViewTeam, create_team_menu_remote_start_exits_as_start_game)
+{
+    trace_clear();
+
+    og::runtime::current_session->myscreen_->save_data.reset();
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
+    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+    og::runtime::current_session->myscreen_->save_data.team_list[0] = std::move(soldier);
+    og::runtime::current_session->myscreen_->save_data.team_size = 1;
+
+    AutoStartPickerLobbyClient client;
+    ActivePickerLobbyClientGuard guard(&client);
+    g_start_game_requested = false;
+    pks().selected_menu_item = nullptr;
+
+    const Sint32 ret = create_team_menu(0);
+    const og::ui::PickerMenuItem* const selected = pks().selected_menu_item;
+    cleanup_picker_state();
+
+    EXPECT_GT(client.poll_calls, 0);
+    ASSERT_TRUE(ret & 1);
+    ASSERT_NE(nullptr, selected);
+    EXPECT_EQ(og::ui::PickerMenuCommand::StartGame, selected->command);
+
+    g_start_game_requested = false;
+}
+
+TEST(ViewTeam, create_team_menu_hides_host_only_controls_for_non_host_client)
+{
+    trace_clear();
+
+    og::runtime::current_session->myscreen_->save_data.reset();
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
+    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+    og::runtime::current_session->myscreen_->save_data.team_list[0] = std::move(soldier);
+    og::runtime::current_session->myscreen_->save_data.team_size = 1;
+
+    HostVisibilityPickerLobbyClient client(false);
+    ActivePickerLobbyClientGuard guard(&client);
+    std::atomic<bool> menu_done{false};
+    DirectMenuVisibilityState state{
+        .finished = false,
+        .saw_menu = false,
+        .go_visible = false,
+        .set_level_visible = false,
+        .set_campaign_visible = false,
+        .min_y = 100,
+        .menu_done = &menu_done,
+    };
+    SDL_Thread* thread =
+        SDL_CreateThread(direct_menu_visibility_injector, "direct_team_visibility", &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create team-menu visibility injector thread";
+
+    const Sint32 ret = create_team_menu(0);
+    menu_done.store(true, std::memory_order_release);
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    cleanup_picker_state();
+
+    ASSERT_TRUE(state.finished) << "team-menu visibility injector should complete";
+    ASSERT_TRUE(state.saw_menu) << "team menu should become visible";
+    EXPECT_FALSE(state.go_visible);
+    EXPECT_FALSE(state.set_level_visible);
+    EXPECT_FALSE(state.set_campaign_visible);
+    ASSERT_TRUE(ret & 1) << "create_team_menu(back) should propagate EXIT";
+}
+
+TEST(ViewTeam, create_view_menu_hides_go_for_non_host_client)
+{
+    trace_clear();
+
+    og::runtime::current_session->myscreen_->save_data.reset();
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
+    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+    og::runtime::current_session->myscreen_->save_data.team_list[0] = std::move(soldier);
+    og::runtime::current_session->myscreen_->save_data.team_size = 1;
+
+    HostVisibilityPickerLobbyClient client(false);
+    ActivePickerLobbyClientGuard guard(&client);
+    std::atomic<bool> menu_done{false};
+    DirectMenuVisibilityState state{
+        .finished = false,
+        .saw_menu = false,
+        .go_visible = false,
+        .set_level_visible = false,
+        .set_campaign_visible = false,
+        .min_y = 160,
+        .menu_done = &menu_done,
+    };
+    SDL_Thread* thread =
+        SDL_CreateThread(direct_menu_visibility_injector, "direct_view_visibility", &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create view-menu visibility injector thread";
+
+    const Sint32 ret = create_view_menu(0);
+    menu_done.store(true, std::memory_order_release);
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    cleanup_picker_state();
+
+    ASSERT_TRUE(state.finished) << "view-menu visibility injector should complete";
+    ASSERT_TRUE(state.saw_menu) << "view menu should become visible";
+    EXPECT_FALSE(state.go_visible);
+    ASSERT_TRUE(ret & 2) << "create_view_menu(back) should return REDRAW";
+}
+
 
 struct ViewTeamGoLevel17State {
     bool finished;
@@ -497,21 +881,15 @@ static int view_team_go_level17_injector(void* data)
     og::sim::g_test_level_tick_limit_override = 15;
     set_game_speed(0.0f);
     const int epoch_before = g_test_game_epoch.load(std::memory_order_acquire);
-    interact_match("go", is_view_menu_go);
+    state->game_started =
+        start_game_from_view_menu(epoch_before, 10000, is_view_menu_go);
 
     int waited_ms = 0;
-    const int poll_ms = 50;
-    while (g_test_game_epoch.load(std::memory_order_acquire) == epoch_before && waited_ms < 10000) {
+    int stable_polls = 0;
+    const int poll_ms = 100;
+    while (g_test_in_game.load(std::memory_order_acquire) && waited_ms < 90000) {
         SDL_Delay(poll_ms);
         waited_ms += poll_ms;
-    }
-    state->game_started = g_test_game_epoch.load(std::memory_order_acquire) > epoch_before;
-
-    int stable_polls = 0;
-    waited_ms = 0;
-    while (g_test_in_game.load(std::memory_order_acquire) && waited_ms < 90000) {
-        SDL_Delay(100);
-        waited_ms += 100;
         const int frames_seen = g_test_game_frame_ticks.load(std::memory_order_acquire);
         if (frames_seen > 0) {
             state->frame_progressed = true;
@@ -584,4 +962,3 @@ TEST(ViewTeam, go_level17_no_hang)
     ASSERT_TRUE(state.frame_progressed) << "level 17 should advance frames";
     ASSERT_TRUE(state.game_finished) << "level 17 should return to picker (no hang)";
 }
-

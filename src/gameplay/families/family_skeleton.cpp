@@ -15,9 +15,9 @@
 
 static bool skeleton_handle_teleport(walker* self)
 {
-    self->ani_type = ANI_TELE_IN;
-    self->cycle = 0;
-    self->teleport_ranged(self->stats()->level * 18);
+    self->set_ani_type(ANI_TELE_IN);
+    self->set_cycle(0);
+    self->teleport_ranged(self->stats()->level() * 18);
     return true;
 }
 
@@ -40,10 +40,10 @@ static void skeleton_level_up(guy* self, std::int32_t level_diff)
 
 static bool skeleton_do_special(walker* self)
 {
-    if (self->ani_type == ANI_TELE_OUT || self->ani_type == ANI_TELE_IN)
+    if (self->ani_type() == ANI_TELE_OUT || self->ani_type() == ANI_TELE_IN)
         return false;
-    self->ani_type = ANI_TELE_OUT;
-    self->cycle = 0;
+    self->set_ani_type(ANI_TELE_OUT);
+    self->set_cycle(0);
     return true;
 }
 

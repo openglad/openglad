@@ -20,6 +20,7 @@
 #include <cstring>
 #include <filesystem>
 #include <vector>
+#include <algorithm>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/interface/level_render.h>
 #include <openglad/core/constants.h>
@@ -47,18 +48,19 @@ struct LevelFixture {
     }
 };
 
-walker* add_to_list(LevelFixture& fx, std::list<std::unique_ptr<walker>>& ls,
+template <typename WalkerList>
+walker* add_to_list(LevelFixture& fx, WalkerList& ls,
                     Order o, char family, unsigned char team, short x, short y)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(o, family);
     bind_test_entity_sim_context(fx.level, w.get());
-    w->sizex = 16;
-    w->sizey = 16;
+    w->set_sizex(16);
+    w->set_sizey(16);
     w->setxy(x, y);
-    w->team_num = team;
-    w->real_team_num = 255;
-    w->dead = 0;
+    w->set_team_num(team);
+    w->set_real_team_num(255);
+    w->set_dead(0);
     walker* out = w.get();
     ls.push_back(std::move(w));
     if (o == Order::Living)
@@ -100,7 +102,7 @@ TEST(LevelDataUnit, level_data_passable_and_range_queries)
     walker* stain = add_to_list(fx, fx.level.world().fxlist, Order::Treasure, FAMILY_STAIN, 0, 70, 64);
     ASSERT_TRUE(self && foe && player && weapon && stain);
 
-    player->user = 0;
+    player->set_user(0);
     self->stats()->set_bit_flags(BIT_ETHEREAL, 1);
     ASSERT_TRUE(fx.level.query_grid_passable(10, 10, self));
     self->stats()->set_bit_flags(BIT_ETHEREAL, 0);
@@ -109,12 +111,12 @@ TEST(LevelDataUnit, level_data_passable_and_range_queries)
     const int tile = 4 + 4 * fx.level.world().grid.w;
     fx.level.world().grid.data[tile] = PIX_H_WALL1;
     self->setxy(4 * GRID_SIZE, 4 * GRID_SIZE);
-    ASSERT_TRUE(!fx.level.query_grid_passable(self->xpos, self->ypos, self));
+    ASSERT_TRUE(!fx.level.query_grid_passable(self->xpos(), self->ypos(), self));
 
-    self->dead = 1;
-    ASSERT_TRUE(fx.level.query_object_passable(self->xpos, self->ypos, self));
-    self->dead = 0;
-    (void)fx.level.query_passable(self->xpos, self->ypos, self);
+    self->set_dead(1);
+    ASSERT_TRUE(fx.level.query_object_passable(self->xpos(), self->ypos(), self));
+    self->set_dead(0);
+    (void)fx.level.query_passable(self->xpos(), self->ypos(), self);
 
     ASSERT_TRUE(fx.level.find_near_foe(self) != nullptr);
     ASSERT_TRUE(fx.level.find_far_foe(self) != nullptr);
@@ -150,6 +152,46 @@ TEST(LevelDataUnit, level_data_remove_and_remaining_foes_paths)
     ASSERT_TRUE(fx.level.world().fxlist.empty());
     ASSERT_TRUE(fx.level.world().weaplist.empty());
 }
+
+TEST(LevelDataUnit, level_data_tick_clears_fx_cross_references_and_controller_ids)
+{
+    LevelFixture fx;
+    GameWorld& world = fx.level.world();
+    world.my_team = 0;
+
+    walker* live_enemy = add_to_list(fx, world.oblist, Order::Living, FAMILY_ORC, 1, 160, 160);
+    walker* dead_target = add_to_list(fx, world.oblist, Order::Living, FAMILY_ORC, 1, 80, 64);
+    walker* fx_holder = add_to_list(fx, world.fxlist, Order::FX, FAMILY_FLASH, 0, 64, 64);
+    ASSERT_TRUE(live_enemy && dead_target && fx_holder);
+    if (!(live_enemy && dead_target && fx_holder))
+        return;
+
+    fx_holder->set_foe(dead_target);
+    fx_holder->set_leader(dead_target);
+    fx_holder->set_owner(dead_target);
+    fx_holder->set_collide_ob(dead_target);
+    fx_holder->stats()->set_controller(dead_target);
+
+    dead_target->set_dead(1);
+    dead_target->myguy = nullptr;
+
+    world.tick();
+
+    EXPECT_EQ(nullptr, fx_holder->foe());
+    EXPECT_EQ(0u, fx_holder->foe_id());
+    EXPECT_EQ(nullptr, fx_holder->leader());
+    EXPECT_EQ(0u, fx_holder->leader_id());
+    EXPECT_EQ(nullptr, fx_holder->owner());
+    EXPECT_EQ(0u, fx_holder->owner_id());
+    EXPECT_EQ(nullptr, fx_holder->collide_ob());
+    EXPECT_EQ(0u, fx_holder->collide_ob_id());
+    EXPECT_EQ(nullptr, fx_holder->stats()->controller());
+    EXPECT_EQ(0u, fx_holder->stats()->controller_id());
+    EXPECT_NE(world.removed_entity_ids().end(),
+              std::find(world.removed_entity_ids().begin(),
+                        world.removed_entity_ids().end(),
+                        dead_target->entity_id()));
+}
 } // namespace detail_level_data_coverage_push
 
 // --- From test_level_data_r11.cpp ---
@@ -174,19 +216,20 @@ struct LevelR11Fixture {
     }
 };
 
-walker* add_to(LevelR11Fixture& fx, std::list<std::unique_ptr<walker>>& ls,
+template <typename WalkerList>
+walker* add_to(LevelR11Fixture& fx, WalkerList& ls,
                Order o, char family, unsigned char team, short x, short y)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(o, family);
     bind_test_entity_sim_context(fx.level, w.get());
-    w->sizex = 16;
-    w->sizey = 16;
-    w->stepsize = 1.0f;
+    w->set_sizex(16);
+    w->set_sizey(16);
+    w->set_stepsize(1.0f);
     w->setxy(x, y);
-    w->team_num = team;
-    w->real_team_num = 255;
-    w->dead = 0;
+    w->set_team_num(team);
+    w->set_real_team_num(255);
+    w->set_dead(0);
     walker* out = w.get();
     ls.push_back(std::move(w));
     if (o == Order::Living)
@@ -249,24 +292,24 @@ TEST(LevelDataUnit, level_data_r11_query_grid_passable_terrain_branches)
 
     // tree branch blocked/unblocked by forestwalk/flying
     fx.level.world().grid.data[gx + gy * fx.level.world().grid.w] = PIX_TREE_M1;
-    ASSERT_TRUE(!fx.level.query_grid_passable(ob->xpos, ob->ypos, ob));
+    ASSERT_TRUE(!fx.level.query_grid_passable(ob->xpos(), ob->ypos(), ob));
     ob->stats()->set_bit_flags(BIT_FORESTWALK, 1);
-    ASSERT_TRUE(fx.level.query_grid_passable(ob->xpos, ob->ypos, ob));
+    ASSERT_TRUE(fx.level.query_grid_passable(ob->xpos(), ob->ypos(), ob));
     ob->stats()->set_bit_flags(BIT_FORESTWALK, 0);
 
     // tree_b branch with weapon
-    walker* weap = add_to(fx, fx.level.world().weaplist, Order::Weapon, FAMILY_ARROW, 1, ob->xpos, ob->ypos);
+    walker* weap = add_to(fx, fx.level.world().weaplist, Order::Weapon, FAMILY_ARROW, 1, ob->xpos(), ob->ypos());
     fx.level.world().grid.data[gx + gy * fx.level.world().grid.w] = PIX_TREE_B1;
-    ASSERT_TRUE(fx.level.query_grid_passable(weap->xpos, weap->ypos, weap));
+    ASSERT_TRUE(fx.level.query_grid_passable(weap->xpos(), weap->ypos(), weap));
 
     // hard wall path
     fx.level.world().grid.data[gx + gy * fx.level.world().grid.w] = PIX_H_WALL1;
-    ASSERT_TRUE(!fx.level.query_grid_passable(ob->xpos, ob->ypos, ob));
+    ASSERT_TRUE(!fx.level.query_grid_passable(ob->xpos(), ob->ypos(), ob));
 
     // arrow wall + weapon owner branch
     fx.level.world().grid.data[gx + gy * fx.level.world().grid.w] = PIX_WALL4;
-    weap->owner = ob;
-    ASSERT_TRUE(!fx.level.query_grid_passable(weap->xpos, weap->ypos, weap) || fx.level.query_grid_passable(weap->xpos, weap->ypos, weap));
+    weap->set_owner(ob);
+    ASSERT_TRUE(!fx.level.query_grid_passable(weap->xpos(), weap->ypos(), weap) || fx.level.query_grid_passable(weap->xpos(), weap->ypos(), weap));
 }
 
 TEST(LevelDataUnit, level_data_r11_object_passability_and_search_sets)
@@ -279,16 +322,16 @@ TEST(LevelDataUnit, level_data_r11_object_passability_and_search_sets)
     walker* stain = add_to(fx, fx.level.world().fxlist, Order::Treasure, FAMILY_STAIN, 0, 68, 64);
     ASSERT_TRUE(self && foe && ally && weapon && stain);
 
-    ally->user = 0;
+    ally->set_user(0);
     self->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     fx.level.world().allied_mode = 0;
 
     // query_object_passable dead-ob fast path
-    self->dead = 1;
-    ASSERT_TRUE(fx.level.query_object_passable(self->xpos, self->ypos, self));
-    self->dead = 0;
+    self->set_dead(1);
+    ASSERT_TRUE(fx.level.query_object_passable(self->xpos(), self->ypos(), self));
+    self->set_dead(0);
 
-    (void)fx.level.query_passable(self->xpos, self->ypos, self);
+    (void)fx.level.query_passable(self->xpos(), self->ypos(), self);
 
     ASSERT_TRUE(fx.level.find_near_foe(self) != nullptr);
     ASSERT_TRUE(fx.level.find_far_foe(self) != nullptr);
@@ -411,19 +454,20 @@ struct LevelR12Fixture {
     }
 };
 
-walker* add_to(LevelR12Fixture& fx, std::list<std::unique_ptr<walker>>& ls,
+template <typename WalkerList>
+walker* add_to(LevelR12Fixture& fx, WalkerList& ls,
                Order o, char family, unsigned char team, short x, short y)
 {
     auto w = std::make_unique<walker>();
     w->set_order_family(o, family);
     bind_test_entity_sim_context(fx.level, w.get());
-    w->sizex = 16;
-    w->sizey = 16;
-    w->stepsize = 1.0f;
+    w->set_sizex(16);
+    w->set_sizey(16);
+    w->set_stepsize(1.0f);
     w->setxy(x, y);
-    w->team_num = team;
-    w->real_team_num = 255;
-    w->dead = 0;
+    w->set_team_num(team);
+    w->set_real_team_num(255);
+    w->set_dead(0);
     walker* out = w.get();
     ls.push_back(std::move(w));
     if (o == Order::Living)
@@ -506,11 +550,11 @@ TEST(LevelDataUnit, level_data_r12_save_null_entries_and_query_passable_branches
     walker* owner = add_to(fx, fx.level.world().oblist, Order::Living, FAMILY_SOLDIER, 0, 64, 64);
     walker* weapon = add_to(fx, fx.level.world().weaplist, Order::Weapon, FAMILY_ARROW, 0, 0, 0);
     ASSERT_TRUE(living && owner && weapon);
-    living->sizex = 1;
-    living->sizey = 1;
-    weapon->sizex = 1;
-    weapon->sizey = 1;
-    weapon->owner = owner;
+    living->set_sizex(1);
+    living->set_sizey(1);
+    weapon->set_sizex(1);
+    weapon->set_sizey(1);
+    weapon->set_owner(owner);
 
     fx.level.world().grid.frames = 1;
     fx.level.world().grid.w = 1;
@@ -542,14 +586,14 @@ TEST(LevelDataUnit, level_data_r12_save_null_entries_and_query_passable_branches
     fx.level.world().grid.data[0] = PIX_WATER1;
     ASSERT_TRUE(fx.level.query_grid_passable(0, 0, weapon));
     ASSERT_TRUE(!fx.level.query_grid_passable(0, 0, living));
-    living->flight_left = 1;
+    living->set_flight_left(1);
     ASSERT_TRUE(fx.level.query_grid_passable(0, 0, living));
 
-    living->flight_left = 0;
+    living->set_flight_left(0);
     fx.level.world().grid.data[0] = 255;
     ASSERT_TRUE(!fx.level.query_grid_passable(0, 0, living));
 
-    living->dead = 1;
+    living->set_dead(1);
     ASSERT_TRUE(fx.level.query_object_passable(0, 0, living));
 }
 
@@ -564,7 +608,7 @@ TEST(LevelDataUnit, level_data_r12_find_helpers_null_and_ranges)
     walker* blood = add_to(fx, fx.level.world().fxlist, Order::Treasure, FAMILY_STAIN, 0, 68, 64);
     ASSERT_TRUE(self && foe && ally && enemy_weapon && blood);
 
-    ally->user = 0;
+    ally->set_user(0);
 
     std::int32_t howmany = 0;
     ASSERT_TRUE(fx.level.find_in_range(fx.level.world().oblist, 50, &howmany, nullptr).empty());

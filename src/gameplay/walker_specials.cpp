@@ -29,9 +29,9 @@
 
 bool walker::special()
 {
-	TRACE("walker", "special: family=%d current_special=%d", family, current_special);
+		TRACE("walker", "special: family=%d current_special=%d", family(), current_special());
 
-	if (dead)
+	if (dead())
 	{
 		Log("Dead guy doing special!\n");
 		return 0;
@@ -43,27 +43,27 @@ bool walker::special()
 		return 0;
 	}
 
-	int special_index = static_cast<int>(current_special);
-	if (special_index < 0 || special_index >= NUM_SPECIALS)
-	{
-		current_special = 1;
-		special_index = 1;
-	}
+		int special_index = static_cast<int>(current_special());
+		if (special_index < 0 || special_index >= NUM_SPECIALS)
+		{
+			set_current_special(1);
+			special_index = 1;
+		}
 
-	if (stats_->magicpoints < stats_->special_cost[special_index])
+	if (stats_->magicpoints() < stats_->special_cost(special_index))
 		return 0;
 
 	if (query_order() != Order::Living)
 		return 0;
 
 	// Dispatch via family descriptor callback
-	auto* fd = get_family_descriptor(family);
+	auto* fd = get_family_descriptor(family());
 	bool did_special = false;
 	if (fd && fd->do_special)
 	{
 		did_special = fd->do_special(this);
 		if (did_special)
-			stats_->magicpoints -= stats_->special_cost[special_index];
+			stats_->set_magicpoints(	stats_->magicpoints() - stats_->special_cost(special_index));
 	}
 	return did_special;
 }
@@ -80,27 +80,27 @@ bool walker::teleport()
 	    walker* ob = uptr.get();
 		if (ob &&
 		        ob->query_order() == Order::FX &&
-		        ob->family == FAMILY_MARKER &&
-		        ob->owner == this &&
-		        !ob->dead
+		        ob->family() == FAMILY_MARKER &&
+		        ob->owner() == this &&
+		        !ob->dead()
 		   )
 		{
 			// Found our marker!
 				distance = distance_to_ob(ob);
-				if (current_game->world->query_passable(ob->xpos, ob->ypos, this) && (distance > 64))
-				{
-					center_on(ob);
-					ob->lifetime--;
-				if (ob->lifetime < 1)
-				{
-					ob->dead = 1;
+					if (current_game->world->query_passable(ob->xpos(), ob->ypos(), this) && (distance > 64))
+					{
+						center_on(ob);
+						ob->set_lifetime(ob->lifetime() - 1);
+					if (ob->lifetime() < 1)
+					{
+						ob->set_dead(1);
 					ob->death();
 				}
 				return 1;
 			} // end of successful transport
 			else  // blocked somehow?
 			{
-				if (user != -1 && (distance > 64) ) // only tell players
+				if (user() != -1 && (distance > 64) ) // only tell players
 					og::sim::emit_notification(current_game->sim_events, "Marker is Blocked!");
 			}
 			}
@@ -136,13 +136,13 @@ bool walker::teleport_ranged(std::int32_t range)
 	std::int32_t newx = 0, newy = 0;
 	std::int32_t keep_going = 200; // maxtries
 
-	newx = static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(2 * range))) - range + xpos;
-	newy = static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(2 * range))) - range + ypos;
+	newx = static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(2 * range))) - range + xpos();
+	newy = static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(2 * range))) - range + ypos();
 
 	while(!current_game->world->query_passable(static_cast<float>(newx), static_cast<float>(newy), this) && keep_going)
 	{
-		newx = static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(2 * range))) - range + xpos;
-		newy = static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(2 * range))) - range + ypos;
+		newx = static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(2 * range))) - range + xpos();
+		newy = static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(2 * range))) - range + ypos();
 		keep_going--;
 	}
 	if (keep_going)
@@ -167,13 +167,13 @@ std::int32_t walker::turn_undead(std::int32_t range, [[maybe_unused]] std::int32
 
     for(auto* w : deadlist)
 	{
-		const auto* target_fd = w ? get_family_descriptor(w->family) : nullptr;
+		const auto* target_fd = w ? get_family_descriptor(w->family()) : nullptr;
 		if (w && target_fd && target_fd->is_undead)
 		{
-			if (current_game->world->rng_.next(range*40) > current_game->world->rng_.next(w->stats()->level*10) )
+			if (current_game->world->rng_.next(range*40) > current_game->world->rng_.next(w->stats()->level()*10) )
 			{
-				w->dead = 1;
-				w->stats()->hitpoints = 0;
+				w->set_dead(1);
+				w->stats()->set_hitpoints(0);
 				//w->death();
 				attack(w); // to generate bloodspot, etc.
 				killed++;

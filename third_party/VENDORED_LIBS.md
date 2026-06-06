@@ -32,6 +32,12 @@ sanitizers/tests to catch real issues.
     config.h and zipconf.h are manually maintained for Linux. zip_err_str.c is auto-generated
     from zip.h/zipint.h error definitions.
 
+- IXWebSocket (`third_party/ixwebsocket`)
+  - Version: 11.4.6 (`third_party/ixwebsocket/ixwebsocket/IXWebSocketVersion.h`: `IX_WEBSOCKET_VERSION`)
+  - Upstream: https://github.com/machinezone/IXWebSocket
+  - Notes: BSD-3-Clause WebSocket client/server library vendored for native networking phases.
+    Built via upstream CMake with TLS, zlib, demos, and install rules disabled in OpenGlad.
+
 - libyaml (`third_party/libyaml`)
   - Version: 0.2.5 (`third_party/libyaml/src/config.h`: `YAML_VERSION_STRING`)
   - Upstream: https://github.com/yaml/libyaml
@@ -45,6 +51,12 @@ sanitizers/tests to catch real issues.
   - Version: Latest from upstream master (2016-10-18 commit).
   - Upstream: https://github.com/leethomason/MicroPather
   - Notes: A* pathfinding implementation. GRINLIZ_NO_STL is commented out to use std::vector.
+
+- LodePNG (`third_party/lodepng`)
+  - Version: 20260119 (`third_party/lodepng/lodepng.cpp` header comment: `LodePNG version`).
+  - Upstream: https://github.com/lvandeve/lodepng
+  - Notes: Zlib-licensed single-file PNG encoder/decoder used for indexed-color sprite
+    assets (`src/resources/io/og_file.cpp`).
 
 ## Upgrade Checklist
 

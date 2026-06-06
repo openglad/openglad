@@ -1,0 +1,16 @@
+name = "openglad-relay"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+
+[[durable_objects.bindings]]
+name = "GAME_ROOM"
+class_name = "GameRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["GameRoom"]
+
+[[kv_namespaces]]
+binding = "ROOM_INDEX"
+id = "00000000000000000000000000000000"
+preview_id = "00000000000000000000000000000000"

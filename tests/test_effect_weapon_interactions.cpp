@@ -80,8 +80,8 @@ TEST(EffectWeaponInteractions, effect_magic_shield_and_boomerang_absorb_friendly
         remove_new_objects(level, ob_before, fx_before, weap_before);
         return;
     }
-    weap->team_num = 1;     // friendly to the effect
-    weap->damage = 2.0f;    // ensures hitpoint subtraction takes effect
+    weap->set_team_num(1);     // friendly to the effect
+    weap->set_damage(2.0f);    // ensures hitpoint subtraction takes effect
     weap->setxy(100, 100);  // within range
     level.world().oblist.push_back(std::move(weap));
 
@@ -89,8 +89,8 @@ TEST(EffectWeaponInteractions, effect_magic_shield_and_boomerang_absorb_friendly
     walker* enemy = level.add_ob(Order::Living, FAMILY_ORC);
     ASSERT_TRUE(enemy != nullptr) << "enemy created";
     if (enemy) {
-        enemy->team_num = 2;
-        enemy->damage = 1.0f;
+        enemy->set_team_num(2);
+        enemy->set_damage(1.0f);
         enemy->setxy(100, 100);
     }
 
@@ -98,10 +98,10 @@ TEST(EffectWeaponInteractions, effect_magic_shield_and_boomerang_absorb_friendly
     walker* shield = level.add_fx_ob(Order::FX, FAMILY_MAGIC_SHIELD);
     ASSERT_TRUE(shield != nullptr) << "shield created";
     if (shield) {
-        shield->owner = owner_raw;
-        shield->team_num = 1;
-        shield->stats()->hitpoints = 1; // low so the absorbed weapon can kill it
-        shield->lifetime = 1;
+        shield->set_owner(owner_raw);
+        shield->set_team_num(1);
+        shield->stats()->set_hitpoints(1); // low so the absorbed weapon can kill it
+        shield->set_lifetime(1);
         shield->setxy(100, 100);
         (void)shield->act();
     }
@@ -110,11 +110,11 @@ TEST(EffectWeaponInteractions, effect_magic_shield_and_boomerang_absorb_friendly
     walker* boomerang = level.add_fx_ob(Order::FX, FAMILY_BOOMERANG);
     ASSERT_TRUE(boomerang != nullptr) << "boomerang created";
     if (boomerang) {
-        boomerang->owner = owner_raw;
-        boomerang->team_num = 1;
-        boomerang->stats()->hitpoints = 5;
-        boomerang->lifetime = 2;
-        boomerang->drawcycle = 1; // avoid the drawcycle>253 early-kill branch
+        boomerang->set_owner(owner_raw);
+        boomerang->set_team_num(1);
+        boomerang->stats()->set_hitpoints(5);
+        boomerang->set_lifetime(2);
+        boomerang->set_drawcycle(1); // avoid the drawcycle>253 early-kill branch
         boomerang->setxy(100, 100);
         (void)boomerang->act();
     }

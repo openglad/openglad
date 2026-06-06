@@ -22,6 +22,12 @@ MainMenuAction IPickerClient::show_main_menu()
             return MainMenuAction::NewGame;
         case PickerMenuCommand::ContinueGame:
             return MainMenuAction::ViewTeam;
+        case PickerMenuCommand::Networking:
+            return MainMenuAction::Networking;
+        case PickerMenuCommand::HostGame:
+            return MainMenuAction::HostGame;
+        case PickerMenuCommand::JoinGame:
+            return MainMenuAction::JoinGame;
         case PickerMenuCommand::Options:
             return MainMenuAction::Options;
         case PickerMenuCommand::Help:
@@ -47,6 +53,9 @@ TeamBuildAction IPickerClient::show_team_build()
             return TeamBuildAction::PlayGame;
         case PickerMenuCommand::Back:
             return TeamBuildAction::BackToMainMenu;
+        case PickerMenuCommand::Networking:
+            (void)configure_networking();
+            break;
         default:
             handle_menu_item(PickerMenuId::TeamBuild, *item);
             break;
@@ -59,6 +68,7 @@ void run_picker(IPickerClient& client)
     PickerScreen screen = PickerScreen::MainMenu;
 
     while (screen != PickerScreen::Quit) {
+        client.poll_updates();
         PickerTransition transition{screen, false};
         switch (screen) {
         case PickerScreen::MainMenu: {
@@ -70,6 +80,21 @@ void run_picker(IPickerClient& client)
             case MainMenuAction::NewGame:
                 transition.next_screen = client.prepare_new_game()
                     ? PickerScreen::CampaignSelect
+                    : PickerScreen::MainMenu;
+                break;
+            case MainMenuAction::Networking:
+                transition.next_screen = client.configure_networking()
+                    ? PickerScreen::TeamBuild
+                    : PickerScreen::MainMenu;
+                break;
+            case MainMenuAction::HostGame:
+                transition.next_screen = client.host_game()
+                    ? PickerScreen::TeamBuild
+                    : PickerScreen::MainMenu;
+                break;
+            case MainMenuAction::JoinGame:
+                transition.next_screen = client.join_game()
+                    ? PickerScreen::TeamBuild
                     : PickerScreen::MainMenu;
                 break;
             case MainMenuAction::LoadGame:
