@@ -75,6 +75,16 @@ bool effect::act()
 
 	set_collide_ob(nullptr); // always start with no collision..
 
+	// drawcycle is this effect's per-tick age counter. The BOOMERANG / MAGIC_SHIELD
+	// orbits scale their radius by (drawcycle+4)/48 (so they spiral outward as it
+	// grows) and the boomerang self-destructs at drawcycle > 253. On master this
+	// counter advanced once per frame in the render path (walker_draw.cpp). The
+	// authoritative sim is now HEADLESS (no render), so we must advance it here —
+	// otherwise the orbit radius is frozen and the boomerang/shield hang in place
+	// on the owner instead of spiralling out. The render-side bump still runs on
+	// the display, but the snapshot from this sim is authoritative.
+	set_drawcycle(static_cast<unsigned char>(drawcycle() + 1));
+
 	// Per-family() action dispatch
 	const auto* efd = get_effect_family_descriptor(family());
 	if (efd && efd->on_act)

@@ -77,6 +77,16 @@ bool living::act()
 	if (dead())
 		return 0;
 
+	// Advance drawcycle in the sim. It is a per-frame counter master bumped in
+	// the render path (walker_draw.cpp); the authoritative sim is now headless,
+	// so FAMILY_ARCHMAGE's periodic bonus-viewing (archmage_on_act_living:
+	// `drawcycle() % temp`) fired EVERY tick (0 % temp == 0) instead of once
+	// every `temp` ticks. Bump it here so livings that read drawcycle behave.
+	// (Same headless-freeze class as the BOOMERANG/MAGIC_SHIELD orbit fixed in
+	// effect::act.) Placed after the dead() guard to mirror the render path,
+	// which skips dead walkers.
+	set_drawcycle(static_cast<unsigned char>(drawcycle() + 1));
+
 	// Make sure everyone we're pointing to is valid
 	if (foe() && (foe()->dead() || (current_game->world->rng_.next(foe()->invisibility_left()/20) > 0) ) )
 		set_foe(nullptr);

@@ -4309,26 +4309,28 @@ inline constexpr FactPredicate kFacts_weapon_boomerang_return_scen99[] = {
     pred::TickReached(80),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
     pred::WalkerOfTeamAlive(0, 2, 4,
-        "consequence: BOOMERANG slot 2 adds FAMILY_BOOMERANG FX walker(s) to the caster's team (team 0); a passing anchor -- the trajectory predicate below is the discriminating tooth"),
+        "consequence: BOOMERANG slot 2 adds FAMILY_BOOMERANG FX walker(s) to the caster's team (team 0)"),
     pred::EventKindAtLeast(/*play_sound*/1, 2),
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 9000, 9000),
-    // Trajectory teeth: the FAMILY_BOOMERANG FX walker hovers anchored to its
-    // (stationary) caster via boomerang_on_act's center_on(owner); its orbit is
-    // sub-pixel at integer resolution, so weapon_tracks (now sampled from oblist
-    // for Order::FX) records it perfectly stationary at (135,133), pathlen 0.
-    // EffectNetTravel resolves the FX-order family namespace. It flips under
-    // kMut_weapon_boomerang_return_scen99, which drops the center_on(owner)
-    // anchor so the orbit offset accumulates and the boomerang drifts
-    // (pathlen ~35400 >> threshold), failing STATIONARY.
-    pred::EffectNetTravel(FAMILY_BOOMERANG, kWeaponPathStationary, 200,
-        "consequence: boomerang stays owner-anchored (stationary) until center_on(owner) is removed, then it drifts off"),
+    // The boomerang's TRAJECTORY (it spirals OUTWARD from its owner) is
+    // deliberately NOT asserted here, and this scenario has NO golden, because
+    // the trajectory CANNOT be validated by the headless parity harness. The
+    // orbit radius scales with drawcycle, a per-frame counter the authoritative
+    // sim advances in effect::act(); on master the spiral was render-driven, so
+    // the headless master companion freezes the boomerang stationary and a
+    // golden captured from it encodes the *frozen-bug* artifact (which is exactly
+    // how the old EffectNetTravel(STATIONARY) fact here went green while the real
+    // game-play boomerang hung on the player). The trajectory is now validated
+    // directly by EffectAct.boomerang_spirals_outward_as_the_sim_ticks
+    // (tests/test_effect_act.cpp). This row keeps only the headless-valid anchors
+    // above (the boomerang is summoned onto the caster's team and stays alive).
 };
 
 inline constexpr Mutation kMut_weapon_boomerang_return_scen99 = {
     "src/gameplay/families/effect_family_shield.cpp", 80,
     "self->center_on(self->owner());",
     ";",
-    "Removes the center_on(owner) anchor inside boomerang_on_act (line 80; the identical call at line 27 in magic_shield_on_act is untouched because _apply_mutation is line-scoped). Normally the boomerang re-centers on its owner every tick and only adds a sub-pixel orbit offset, so weapon_tracks sees it stationary at the owner (pathlen 0). Without the anchor the orbit offset accumulates and the boomerang drifts ~35400 centi-px over the run, so EffectNetTravel(FAMILY_BOOMERANG, STATIONARY, 200) flips pass->fail. boomerang_on_act is used only by FAMILY_BOOMERANG, so no family guard is needed."
+    "Removes the center_on(owner) anchor inside boomerang_on_act (line 80). NOTE: this mutation no longer flips a CI parity fact. The boomerang's trajectory is render-driven (the orbit radius scales with drawcycle, advanced in effect::act on the headless sim but render-driven on master), so it is excluded from the weapon_tracks byte-compare and is validated instead by EffectAct.boomerang_spirals_outward_as_the_sim_ticks (tests/test_effect_act.cpp). The old EffectNetTravel(FAMILY_BOOMERANG, STATIONARY) fact this mutation used to flip was REMOVED: it encoded the headless-frozen artifact (boomerang stationary at the owner) as truth, which is exactly how the parity suite went green while the real game-play boomerang hung on the player."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_exploding_boulder_scen99[] = {
