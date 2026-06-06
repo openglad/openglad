@@ -2307,3 +2307,147 @@ TEST(GameLoop, local_split_screen_background_player_exit_prompt_does_not_hang)
     og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
     game_screen->world().delete_objects();
 }
+
+// --- Taking an exit ALWAYS returns to the team-build "Continue" menu ---
+//
+// Touching an exit portal (and confirming) must END the current level on every
+// peer and return to the team-build menu — in EVERY mode. It must NEVER advance
+// straight into the next level in-session. These tests drive a real local game
+// to an *accepted* exit and assert the display session ended (world().end != 0,
+// which makes glad_main return to go_menu / the Continue menu). With the
+// auto-advance bug the next level loads in place and world().end stays 0.
+
+static int drive_accepted_exit_and_return_display_end(
+    og::runtime::GameSession& session, std::size_t exiting_player_index)
+{
+    // Bring the local client(s) online.
+    std::uint32_t tick = 0;
+    for (int i = 0; i < 8; ++i)
+    {
+        og::runtime::local_transport_shadow_send_input(
+            session, InputState{}, tick++);
+        og::runtime::local_transport_shadow_finish_tick(session);
+    }
+
+    // Accept the exit prompt, then have the given player take an exit to level 2.
+    picker_testing_yes_or_no_queue_clear();
+    picker_testing_yes_or_no_queue_push(true);
+    EXPECT_TRUE(og::runtime::local_transport_shadow_testing_open_exit_prompt(
+        session, exiting_player_index, /*destination_level=*/2))
+        << "player " << exiting_player_index
+        << " must have a server-side control to take the exit";
+
+    // Round trip: server broadcasts the prompt -> player accepts -> server
+    // forwards a terminal EndGame -> the display session ends.
+    for (int i = 0; i < 40; ++i)
+        og::runtime::local_transport_shadow_finish_tick(session);
+
+    picker_testing_yes_or_no_queue_clear();
+    return static_cast<int>(
+        og::runtime::current_session->myscreen_->world().end);
+}
+
+TEST(GameLoop, exit_returns_to_continue_menu_single_player)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+
+    SaveData& save = game_screen->save_data;
+    save.reset();
+    save.current_campaign = "org.openglad.gladiator";
+    save.current_levels[save.current_campaign] = 1;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.allied_mode = 1;
+    save.my_team = 0;
+
+    auto leader = std::make_unique<guy>(FAMILY_SOLDIER);
+    leader->name = "Leader";
+    leader->teamnum = 0;
+    save.team_list[0] = std::move(leader);
+    save.team_size = 1;
+    ASSERT_TRUE(save.save("save0"));
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(
+        og::runtime::local_transport_active(*og::runtime::current_session));
+
+    EXPECT_NE(0, drive_accepted_exit_and_return_display_end(session, 0u))
+        << "single-player exit must return to the Continue menu, not auto-advance";
+
+    picker_testing_yes_or_no_queue_clear();
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+}
+
+static void setup_local_two_player_save(SaveData& save)
+{
+    save.reset();
+    save.current_campaign = "org.openglad.gladiator";
+    save.current_levels[save.current_campaign] = 1;
+    save.scen_num = 1;
+    save.numplayers = 2;
+    save.allied_mode = 0;
+    save.my_team = 0;
+
+    auto leader = std::make_unique<guy>(FAMILY_SOLDIER);
+    leader->name = "Leader";
+    leader->teamnum = 0;
+    auto scout = std::make_unique<guy>(FAMILY_ARCHER);
+    scout->name = "Scout";
+    scout->teamnum = 1;
+    save.team_list[0] = std::move(leader);
+    save.team_list[1] = std::move(scout);
+    save.team_size = 2;
+}
+
+TEST(GameLoop, exit_returns_to_continue_menu_local_two_player_host_player)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+
+    setup_local_two_player_save(game_screen->save_data);
+    ASSERT_TRUE(game_screen->save_data.save("save0"));
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(
+        og::runtime::local_transport_active(*og::runtime::current_session));
+    ASSERT_EQ(2u, og::runtime::local_transport_client_count(session));
+
+    // Player 1 (the display-driving player) takes the exit.
+    EXPECT_NE(0, drive_accepted_exit_and_return_display_end(session, 0u))
+        << "local split-screen exit (player 1) must return to the Continue menu";
+
+    picker_testing_yes_or_no_queue_clear();
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+}
+
+TEST(GameLoop, exit_returns_to_continue_menu_local_two_player_second_player)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+
+    setup_local_two_player_save(game_screen->save_data);
+    ASSERT_TRUE(game_screen->save_data.save("save0"));
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(
+        og::runtime::local_transport_active(*og::runtime::current_session));
+    ASSERT_EQ(2u, og::runtime::local_transport_client_count(session));
+
+    // Player 2 (the background split-screen player) takes the exit — the exact
+    // case reported: it must return to the menu, not jump to the next level.
+    EXPECT_NE(0, drive_accepted_exit_and_return_display_end(session, 1u))
+        << "local split-screen exit (player 2) must return to the Continue menu";
+
+    picker_testing_yes_or_no_queue_clear();
+    og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
+    game_screen->world().delete_objects();
+}

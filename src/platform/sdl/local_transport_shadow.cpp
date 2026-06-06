@@ -224,18 +224,6 @@ void release_world_control_claims(GameWorld& world)
     world.control_hp = 0.0f;
 }
 
-void release_screen_control_claims(screen& gameplay_screen)
-{
-    release_world_control_claims(gameplay_screen.world());
-
-    for (auto& view : gameplay_screen.viewob)
-    {
-        if (view == nullptr)
-            continue;
-        view->control = nullptr;
-    }
-}
-
 bool save_shadow_save_data(screen& gameplay_screen,
                            const char* action,
                            const char* slot = "save0")
@@ -288,20 +276,6 @@ void persist_owned_characters_to_save0(const screen& world_screen,
 
     if (merged.save_with_error("save0") != SaveDataIoError::None)
         LogError("net_persist_save_failed player={}\n", own_player_index);
-}
-
-bool load_shadow_level_from_save(screen& gameplay_screen, const char* action)
-{
-    if (load_saved_game("", &gameplay_screen) == 0)
-    {
-        LogError("local_transport_shadow_level_load_failed action={} level={}\n",
-                 action,
-                 gameplay_screen.save_data.scen_num);
-        return false;
-    }
-
-    release_screen_control_claims(gameplay_screen);
-    return true;
 }
 
 // Tally the just-finished level into the save (scores/cash/time bonus, mark it
@@ -362,18 +336,6 @@ bool finalize_level_and_advance_cursor(screen& gameplay_screen,
     return save_shadow_save_data(gameplay_screen, "complete_level");
 }
 
-bool complete_level_and_load_next(screen& gameplay_screen,
-                                  int next_level,
-                                  bool networked,
-                                  std::uint8_t own_player_index)
-{
-    if (!finalize_level_and_advance_cursor(gameplay_screen, next_level,
-                                           networked, own_player_index))
-        return false;
-
-    return load_shadow_level_from_save(gameplay_screen, "complete_level");
-}
-
 // Withdraw (retreat) discards the current level's gains: reload the roster from
 // the session store (the transient "netsession" slot for networked play — the
 // combined roster — else save0) and point the cursor at destination_level, then
@@ -398,17 +360,6 @@ bool finalize_withdraw_and_advance_cursor(screen& gameplay_screen,
 
     gameplay_screen.save_data.scen_num = static_cast<short>(destination_level);
     return save_shadow_save_data(gameplay_screen, "withdraw", slot);
-}
-
-bool withdraw_and_load_level(screen& gameplay_screen,
-                             int destination_level,
-                             bool networked)
-{
-    if (!finalize_withdraw_and_advance_cursor(gameplay_screen, destination_level,
-                                              networked))
-        return false;
-
-    return load_shadow_level_from_save(gameplay_screen, "withdraw");
 }
 
 void apply_initial_setup_to_client_save(
@@ -640,7 +591,7 @@ void configure_display_game_client(og::runtime::LocalTransportRuntime& runtime,
             // On a real client, persist this player's own characters' progress
             // from the just-completed level (the mirror world still holds its
             // final state) before the transition wipes it. The host persists
-            // its own characters server-side via complete_level_and_load_next,
+            // its own characters server-side via finalize_level_and_advance_cursor,
             // so skip here for the host's loopback display client.
             if (is_level_transition && runtime_ptr != nullptr &&
                 runtime_ptr->mode ==
@@ -953,10 +904,11 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
         server_screen->world(),
         *runtime->server_session->game_.sim_events,
         *runtime->server_transport);
-    // Networked sessions return every peer to the team-build menu between levels
-    // (single-player parity) instead of auto-advancing the next level in-session;
-    // local split-screen keeps the in-session advance (no-op here).
-    runtime->server->set_return_to_lobby_mode(runtime->networked);
+    // Between levels, EVERY mode returns every player to the team-build
+    // "Continue" menu instead of auto-advancing the next level in-session:
+    // single-player, local split-screen, and networked alike. (Networked keeps
+    // the connection live across the menu; local just re-enters go_menu.)
+    runtime->server->set_return_to_lobby_mode(true);
     runtime->server->on_save_sync = [server_screen] {
         server_screen->sync_save_data_from_world();
     };
@@ -970,20 +922,14 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
             auto server_scope = server_session->activate();
             GameplayContextGuard server_gameplay_scope(&server_session->game_);
             server_screen->framecount = display_screen->framecount;
-            if (networked)
-            {
-                // Return-to-lobby: persist per-player progress + advance the
-                // cursor only. The display ends (win EndGame) and the menu
-                // starts the next level fresh over the live connection.
-                return finalize_level_and_advance_cursor(
-                    *server_screen, level_id, networked, own_player_index);
-            }
-            if (!complete_level_and_load_next(*server_screen, level_id,
-                                              networked, own_player_index))
-                return false;
-
-            prepare_server_session_for_gameplay(*server_session);
-            return true;
+            // Every level-end returns every player to the team-build "Continue"
+            // menu — single-player, local split-screen, and networked alike.
+            // Finalize per-player progress + advance the cursor only; the server
+            // then forwards a terminal EndGame so each display ends and go_menu
+            // shows the menu (the next level is started fresh from there). The
+            // game NEVER auto-advances the next level in-session, in any mode.
+            return finalize_level_and_advance_cursor(
+                *server_screen, level_id, networked, own_player_index);
         };
     runtime->server->on_exit_accepted =
         [server_screen,
@@ -995,21 +941,12 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
             auto server_scope = server_session->activate();
             GameplayContextGuard server_gameplay_scope(&server_session->game_);
             server_screen->framecount = display_screen->framecount;
-            if (networked)
-            {
-                // Return-to-lobby: exiting via portal completes the level like a
-                // win — finalize the cursor only; the server then forwards a
-                // terminal EndGame so every display shows results + returns to
-                // the menu.
-                return finalize_level_and_advance_cursor(
-                    *server_screen, destination, networked, own_player_index);
-            }
-            if (!complete_level_and_load_next(*server_screen, destination,
-                                              networked, own_player_index))
-                return false;
-
-            prepare_server_session_for_gameplay(*server_session);
-            return true;
+            // Taking an exit portal completes the level like a win: finalize the
+            // cursor only and let the server forward a terminal EndGame so every
+            // display returns to the team-build menu. NEVER auto-advance the next
+            // level in-session — in any mode (see on_level_transition).
+            return finalize_level_and_advance_cursor(
+                *server_screen, destination, networked, own_player_index);
         };
     runtime->server->on_withdraw_accepted =
         [server_screen,
@@ -1018,19 +955,11 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
             int destination) {
             auto server_scope = server_session->activate();
             GameplayContextGuard server_gameplay_scope(&server_session->game_);
-            if (networked)
-            {
-                // Return-to-lobby: retreat point the cursor at the destination
-                // only; the server forwards a terminal EndGame so every display
-                // returns to the menu, which loads the destination fresh.
-                return finalize_withdraw_and_advance_cursor(
-                    *server_screen, destination, networked);
-            }
-            if (!withdraw_and_load_level(*server_screen, destination, networked))
-                return false;
-
-            prepare_server_session_for_gameplay(*server_session);
-            return true;
+            // Withdraw/retreat points the cursor at the destination and returns
+            // every display to the team-build menu (which loads it fresh). Never
+            // load the destination level in-session — in any mode.
+            return finalize_withdraw_and_advance_cursor(
+                *server_screen, destination, networked);
         };
 
     runtime->clients.reserve(player_count);
@@ -1154,10 +1083,11 @@ void reset_network_host_transport_shadow(
         server_screen->world(),
         *runtime->server_session->game_.sim_events,
         *runtime->server_transport);
-    // Networked sessions return every peer to the team-build menu between levels
-    // (single-player parity) instead of auto-advancing the next level in-session;
-    // local split-screen keeps the in-session advance (no-op here).
-    runtime->server->set_return_to_lobby_mode(runtime->networked);
+    // Between levels, EVERY mode returns every player to the team-build
+    // "Continue" menu instead of auto-advancing the next level in-session:
+    // single-player, local split-screen, and networked alike. (Networked keeps
+    // the connection live across the menu; local just re-enters go_menu.)
+    runtime->server->set_return_to_lobby_mode(true);
     runtime->server->on_save_sync = [server_screen] {
         server_screen->sync_save_data_from_world();
     };
@@ -1171,20 +1101,14 @@ void reset_network_host_transport_shadow(
             auto server_scope = server_session->activate();
             GameplayContextGuard server_gameplay_scope(&server_session->game_);
             server_screen->framecount = display_screen->framecount;
-            if (networked)
-            {
-                // Return-to-lobby: persist per-player progress + advance the
-                // cursor only. The display ends (win EndGame) and the menu
-                // starts the next level fresh over the live connection.
-                return finalize_level_and_advance_cursor(
-                    *server_screen, level_id, networked, own_player_index);
-            }
-            if (!complete_level_and_load_next(*server_screen, level_id,
-                                              networked, own_player_index))
-                return false;
-
-            prepare_server_session_for_gameplay(*server_session);
-            return true;
+            // Every level-end returns every player to the team-build "Continue"
+            // menu — single-player, local split-screen, and networked alike.
+            // Finalize per-player progress + advance the cursor only; the server
+            // then forwards a terminal EndGame so each display ends and go_menu
+            // shows the menu (the next level is started fresh from there). The
+            // game NEVER auto-advances the next level in-session, in any mode.
+            return finalize_level_and_advance_cursor(
+                *server_screen, level_id, networked, own_player_index);
         };
     runtime->server->on_exit_accepted =
         [server_screen,
@@ -1196,21 +1120,12 @@ void reset_network_host_transport_shadow(
             auto server_scope = server_session->activate();
             GameplayContextGuard server_gameplay_scope(&server_session->game_);
             server_screen->framecount = display_screen->framecount;
-            if (networked)
-            {
-                // Return-to-lobby: exiting via portal completes the level like a
-                // win — finalize the cursor only; the server then forwards a
-                // terminal EndGame so every display shows results + returns to
-                // the menu.
-                return finalize_level_and_advance_cursor(
-                    *server_screen, destination, networked, own_player_index);
-            }
-            if (!complete_level_and_load_next(*server_screen, destination,
-                                              networked, own_player_index))
-                return false;
-
-            prepare_server_session_for_gameplay(*server_session);
-            return true;
+            // Taking an exit portal completes the level like a win: finalize the
+            // cursor only and let the server forward a terminal EndGame so every
+            // display returns to the team-build menu. NEVER auto-advance the next
+            // level in-session — in any mode (see on_level_transition).
+            return finalize_level_and_advance_cursor(
+                *server_screen, destination, networked, own_player_index);
         };
     runtime->server->on_withdraw_accepted =
         [server_screen,
@@ -1219,19 +1134,11 @@ void reset_network_host_transport_shadow(
             int destination) {
             auto server_scope = server_session->activate();
             GameplayContextGuard server_gameplay_scope(&server_session->game_);
-            if (networked)
-            {
-                // Return-to-lobby: retreat point the cursor at the destination
-                // only; the server forwards a terminal EndGame so every display
-                // returns to the menu, which loads the destination fresh.
-                return finalize_withdraw_and_advance_cursor(
-                    *server_screen, destination, networked);
-            }
-            if (!withdraw_and_load_level(*server_screen, destination, networked))
-                return false;
-
-            prepare_server_session_for_gameplay(*server_session);
-            return true;
+            // Withdraw/retreat points the cursor at the destination and returns
+            // every display to the team-build menu (which loads it fresh). Never
+            // load the destination level in-session — in any mode.
+            return finalize_withdraw_and_advance_cursor(
+                *server_screen, destination, networked);
         };
 
     for (const og::sim::LobbyPlayerBinding& binding : player_bindings)
