@@ -30,7 +30,12 @@ if [[ ! -d "${RENDER_DIR}" ]]; then
 fi
 
 # Synced-field setters = every `entity.set_X(snapshot.X...)` in the apply path.
-mapfile -t SETTERS < <(
+# (Built with a read loop rather than `mapfile`, which is bash 4+ only — macOS
+# ships bash 3.2.)
+SETTERS=()
+while IFS= read -r setter; do
+    [[ -n "${setter}" ]] && SETTERS+=("${setter}")
+done < <(
     grep -oE 'entity\.set_[a-z_]+\(snapshot\.' "${SNAPSHOT_APPLY}" \
         | sed -E 's/entity\.(set_[a-z_]+)\(.*/\1/' \
         | sort -u
