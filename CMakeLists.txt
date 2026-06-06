@@ -845,6 +845,15 @@ add_custom_target(check_vendor_leaks
     VERBATIM
 )
 
+# Render must not write sim-read entity state (the "drawcycle" class of bug:
+# render-only writes freeze in the headless sim). See the script header.
+add_custom_target(check_render_no_sim_writes
+    COMMAND ${CMAKE_SOURCE_DIR}/scripts/check_render_no_sim_writes.sh
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Checking render layer does not write synced entity state"
+    VERBATIM
+)
+
 # --------------------------------------------------------------------------
 # External dependency targets
 # --------------------------------------------------------------------------
@@ -988,6 +997,9 @@ if(NOT EMSCRIPTEN)
     add_library(og_interface STATIC ${OG_INTERFACE_COMPONENT_SOURCES})
     configure_component_library(og_interface "${OG_INTERFACE_INCLUDE_ROOT}")
     configure_openglad_sdl_target(og_interface)
+    # og_interface contains src/interface/render/; enforce render stays read-only
+    # on synced entity state (the drawcycle-class guard).
+    add_dependencies(og_interface check_render_no_sim_writes)
     target_link_libraries(og_interface PUBLIC
         og_core
         og_gameplay

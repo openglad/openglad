@@ -435,7 +435,9 @@ bool draw_walker(walker& w, viewscreen* view_buf)
 		Log("drawing a dead guy!\n");
 		return 0;
 	}
-	w.set_drawcycle(static_cast<unsigned char>(w.drawcycle() + 1));
+	// drawcycle is advanced by the authoritative sim (effect::act / living::act),
+	// NOT here — render must not write sim-read entity state (it freezes in the
+	// headless server). Enforced by scripts/check_render_no_sim_writes.sh.
 
     if (!show_hit_anim && w.query_order() == Order::FX &&
         w.family() == FAMILY_HIT)
@@ -642,7 +644,9 @@ bool draw_walker_tile(walker& w, viewscreen* view_buf)
 		Log("drawing a dead guy!\n");
 		return 0;
 	}
-	w.set_drawcycle(static_cast<unsigned char>(w.drawcycle() + 1));
+	// drawcycle is advanced by the authoritative sim (effect::act / living::act),
+	// NOT here — render must not write sim-read entity state (it freezes in the
+	// headless server). Enforced by scripts/check_render_no_sim_writes.sh.
 
 	xscreen = static_cast<Sint32>(draw_pos.worldx - static_cast<float>(view_buf->topx) + static_cast<float>(view_buf->xloc));
 	yscreen = static_cast<Sint32>(draw_pos.worldy - static_cast<float>(view_buf->topy) + static_cast<float>(view_buf->yloc));
