@@ -403,6 +403,17 @@ void draw_small_health_bar(walker* w, viewscreen* view_buf)
 #define ATTACK_LUNGE_SIZE 5
 #define HIT_RECOIL_SIZE 3
 
+// In genuine networked play, same-team peers' characters get a team-color
+// outline so you can tell which are human-controlled. Local split-screen does
+// NOT (each co-player has their own pane) — and since `outline` is a render-only
+// value the net layer rewrites every sim tick, leaving it on there flickered
+// each player's own character. See walker::compute_outline.
+static bool mark_player_controls_outline()
+{
+    return og::runtime::current_session != nullptr &&
+        og::runtime::current_session->networked_session_;
+}
+
 bool draw_walker(walker& w, viewscreen* view_buf)
 {
     const bool show_attack_lunge = cfg.is_on("effects", "attack_lunge");
@@ -455,7 +466,7 @@ bool draw_walker(walker& w, viewscreen* view_buf)
 	        yscreen += static_cast<Sint32>(dy);
 	    }
 
-	w.compute_outline(view_buf->control);
+	w.compute_outline(view_buf->control, mark_player_controls_outline());
 
 	bool should_draw_hp = true;
     int fill_mode = 0;
@@ -636,7 +647,7 @@ bool draw_walker_tile(walker& w, viewscreen* view_buf)
 	xscreen = static_cast<Sint32>(draw_pos.worldx - static_cast<float>(view_buf->topx) + static_cast<float>(view_buf->xloc));
 	yscreen = static_cast<Sint32>(draw_pos.worldy - static_cast<float>(view_buf->topy) + static_cast<float>(view_buf->yloc));
 
-	w.compute_outline(view_buf->control);
+	w.compute_outline(view_buf->control, mark_player_controls_outline());
 
 	auto bmp_span = std::span<const unsigned char>{w.bmp_data(), static_cast<size_t>(w.sizex() * w.sizey())};
 

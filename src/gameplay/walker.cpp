@@ -714,7 +714,8 @@ walker::DamageNumber::DamageNumber(float x_,
     , color(color_)
 {}
 
-void walker::compute_outline(const walker* viewer_control)
+void walker::compute_outline(const walker* viewer_control,
+                             bool mark_player_controls)
 {
 	unsigned char next_outline = outline();
 	if (stats_->query_bit_flags( BIT_NAMED ) || invisibility_left() || flight_left() || invulnerable_left())
@@ -782,7 +783,13 @@ void walker::compute_outline(const walker* viewer_control)
 	    next_outline = 0;
 	}
 
-    if (next_outline == 0 && user() != -1 && viewer_control && this != viewer_control
+    // Team-color "player control" marker for same-team OTHER players. Gated on
+    // mark_player_controls: only genuine networked play opts in. In local
+    // split-screen this stays off — co-players already have their own pane, and
+    // because `outline` is a render-only value the network layer rewrites every
+    // sim tick, leaving it on there made each player's own character flicker.
+    if (mark_player_controls && next_outline == 0 && user() != -1 && viewer_control
+        && this != viewer_control
         && this->team_num() == viewer_control->team_num())
     {
         next_outline = query_team_color();

@@ -231,7 +231,13 @@ class walker : public og::sim::SimEntity
                          std::uint32_t created_tick_ = 0u);
 		};
 
-		void compute_outline(const walker* viewer_control);
+		// mark_player_controls: when true, same-team OTHER player-controlled
+		// characters get a team-color outline (a "this is a human-controlled
+		// peer" marker). Only meaningful in genuine networked play; local
+		// split-screen passes false so co-players aren't outlined (each already
+		// has their own pane) — see walker_draw.cpp.
+		void compute_outline(const walker* viewer_control,
+		                     bool mark_player_controls = false);
 		float get_current_angle();
         void do_heal_effects(walker* healer, walker* target, short amount);
         void do_hit_effects(walker* attacker, walker* target, short tempdamage);

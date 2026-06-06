@@ -781,6 +781,54 @@ TEST(WalkerCoreMore, walker_round7a_compute_outline_and_friendliness_edge_paths)
     }
 }
 
+// The team-color "player control" outline marks same-team OTHER human-controlled
+// peers. It is gated on compute_outline's mark_player_controls flag: networked
+// play opts in; local split-screen does NOT (each co-player has their own pane,
+// and leaving the marker on flickered each player's own character because the
+// net layer rewrites the render-only `outline` field every sim tick).
+TEST(WalkerCoreMore, compute_outline_player_control_marker_is_gated)
+{
+    auto& world = og::runtime::current_session->myscreen_->world();
+    world.create_new_grid();
+    world.delete_objects();
+
+    walker* viewer = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* peer = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_TRUE(viewer && peer) << "viewer/peer created";
+    if (!(viewer && peer))
+        return;
+
+    viewer->set_team_num(0);
+    peer->set_team_num(0);   // same team as the viewer
+    peer->set_user(1);       // human-controlled peer (user >= 0)
+    peer->stats()->set_bit_flags(BIT_NAMED, 0);
+    peer->set_invisibility_left(0);
+    peer->set_flight_left(0);
+    peer->set_invulnerable_left(0);
+
+    // Local split-screen: marker suppressed, so it cannot flicker.
+    peer->set_outline(0);
+    peer->compute_outline(viewer, /*mark_player_controls=*/false);
+    EXPECT_EQ(0, static_cast<int>(peer->outline()))
+        << "local split-screen must not mark same-team player-controlled peers";
+
+    // Networked play: marker applied.
+    peer->set_outline(0);
+    peer->compute_outline(viewer, /*mark_player_controls=*/true);
+    EXPECT_EQ(static_cast<int>(peer->query_team_color()),
+              static_cast<int>(peer->outline()))
+        << "networked play marks same-team player-controlled peers";
+
+    // The viewer's own character is never self-marked, even when networked.
+    viewer->set_user(0);
+    viewer->set_outline(0);
+    viewer->compute_outline(viewer, /*mark_player_controls=*/true);
+    EXPECT_EQ(0, static_cast<int>(viewer->outline()))
+        << "a player's own character is not self-marked";
+
+    world.delete_objects();
+}
+
 
 TEST(WalkerCoreMore, walker_round7a_death_guard_and_friendliness_team_paths)
 {
