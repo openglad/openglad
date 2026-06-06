@@ -4312,25 +4312,24 @@ inline constexpr FactPredicate kFacts_weapon_boomerang_return_scen99[] = {
         "consequence: BOOMERANG slot 2 adds FAMILY_BOOMERANG FX walker(s) to the caster's team (team 0)"),
     pred::EventKindAtLeast(/*play_sound*/1, 2),
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 9000, 9000),
-    // The boomerang's TRAJECTORY (it spirals OUTWARD from its owner) is
-    // deliberately NOT asserted here, and this scenario has NO golden, because
-    // the trajectory CANNOT be validated by the headless parity harness. The
-    // orbit radius scales with drawcycle, a per-frame counter the authoritative
-    // sim advances in effect::act(); on master the spiral was render-driven, so
-    // the headless master companion freezes the boomerang stationary and a
-    // golden captured from it encodes the *frozen-bug* artifact (which is exactly
-    // how the old EffectNetTravel(STATIONARY) fact here went green while the real
-    // game-play boomerang hung on the player). The trajectory is now validated
-    // directly by EffectAct.boomerang_spirals_outward_as_the_sim_ticks
-    // (tests/test_effect_act.cpp). This row keeps only the headless-valid anchors
-    // above (the boomerang is summoned onto the caster's team and stays alive).
+    // The boomerang's TRAJECTORY (it spirals outward from its owner) is validated
+    // by the EXACT per-tick weapon_tracks byte-compare against the golden (in this
+    // file's runner), not a semantic fact. The orbit radius scales with drawcycle,
+    // a per-frame counter the authoritative sim advances in effect::act(); the
+    // parity MASTER COMPANION advances it the same way (its effect::act mirrors
+    // master's render-loop bump), so the golden now captures the REAL spiral and
+    // matches the branch byte-for-byte. The old EffectNetTravel(FAMILY_BOOMERANG,
+    // STATIONARY) fact was REMOVED: it encoded the headless-FROZEN boomerang as
+    // truth, which is exactly how this suite went green while the real game-play
+    // boomerang hung on the player. EffectAct.boomerang_spirals_outward_as_the_sim_ticks
+    // (tests/test_effect_act.cpp) guards the sim side directly.
 };
 
 inline constexpr Mutation kMut_weapon_boomerang_return_scen99 = {
     "src/gameplay/families/effect_family_shield.cpp", 80,
     "self->center_on(self->owner());",
     ";",
-    "Removes the center_on(owner) anchor inside boomerang_on_act (line 80). NOTE: this mutation no longer flips a CI parity fact. The boomerang's trajectory is render-driven (the orbit radius scales with drawcycle, advanced in effect::act on the headless sim but render-driven on master), so it is excluded from the weapon_tracks byte-compare and is validated instead by EffectAct.boomerang_spirals_outward_as_the_sim_ticks (tests/test_effect_act.cpp). The old EffectNetTravel(FAMILY_BOOMERANG, STATIONARY) fact this mutation used to flip was REMOVED: it encoded the headless-frozen artifact (boomerang stationary at the owner) as truth, which is exactly how the parity suite went green while the real game-play boomerang hung on the player."
+    "Removes the center_on(owner) anchor inside boomerang_on_act (line 80). Normally the boomerang re-centers on its owner each tick and adds the drawcycle-scaled orbit offset, so it spirals around the owner; without the anchor the offset accumulates from the previous position and the boomerang drifts off-course. That changes the per-tick weapon_tracks, so the EXACT byte-compare against the golden diverges and the scenario flips pass->fail. The boomerang's spiral is now faithfully captured in the golden because the master companion advances drawcycle in its effect::act (mirroring master's render-loop bump), matching the branch byte-for-byte; the old EffectNetTravel(STATIONARY) fact (which encoded the headless-frozen artifact) was removed."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_weapon_exploding_boulder_scen99[] = {
