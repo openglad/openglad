@@ -205,8 +205,15 @@ bool interact_until_label_contains(const std::string& id,
         }
 
         interact(id);
+        // Generous confirmation wait: each interact() on a text field consumes
+        // one queued prompt. If the label-update lags past this (e.g. the slow,
+        // instrumented coverage-CI runner — ~12x slower than local), the loop
+        // re-interacts and eats the NEXT field's prompt, starving a later step
+        // (this is what flaked NetworkingMenu.submenu_validation_errors: the port
+        // edit re-interacted, consumed the blank-IP prompt, and set_valid_port
+        // never reached "24567"). Wait long enough to confirm before re-interacting.
         if (wait_for_interactable_label_contains(
-                id, expected_substring, 1000))
+                id, expected_substring, 5000))
         {
             return true;
         }
@@ -235,7 +242,7 @@ bool interact_until_trace_contains(const std::string& id,
         }
 
         interact(id);
-        if (wait_for_trace_contains(category, substring, 1500))
+        if (wait_for_trace_contains(category, substring, 5000))
             return true;
 
         SDL_Delay(100);
@@ -261,7 +268,7 @@ bool interact_until_any_interactable(const std::string& id,
         }
 
         interact(id);
-        if (wait_for_any_interactable(ids, 1500))
+        if (wait_for_any_interactable(ids, 5000))
             return true;
 
         SDL_Delay(100);
