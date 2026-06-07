@@ -20,6 +20,7 @@ all the work that was saved.
 
 * **[Architecture](docs/ARCHITECTURE.md)** — Module structure, dependency rules, data flow, and build system
 * **[Install / Build](docs/INSTALL.md)** — How to build from source (CMake, native, web)
+* **[ncurses client](docs/ncurses-client.md)** — `openglad_curses`, a zero-SDL terminal (roguelike) client with the same menus, single-player, and host/join multiplayer
 
 ## Table of Contents
 

@@ -658,10 +658,14 @@ ctest --preset ci-test         # Run tests
 - `openscen` — The level editor (same source as openglad, compiled with `-DOPENSCEN`)
 - `openglad_demo` — Multi-session demo (N concurrent AI-controlled games in a grid)
 - `openglad_text` — Headless text-mode client (no SDL)
+- `openglad_curses` — Zero-SDL **ncurses** client: a roguelike terminal renderer +
+  keyboard input backend over the same simulation, menus, save/level loading, and
+  networking. See [docs/ncurses-client.md](ncurses-client.md).
 
 **Test executables (run via `ctest --preset ci-test`):**
 - `og_unit_*` (e.g. `og_unit_sim`, `og_unit_families`, `og_unit_entity`, `og_unit_data`) — headless unit binaries
 - `og_test_*` (e.g. `og_test_walker_combat` … `og_test_mass_coverage`) — SDL integration group binaries
+- `og_test_curses` — ncurses client unit + integration + networking tests (SDL-free, TTY-free)
 - `openglad_text_sim` — Text client simulation tests
 - `openglad_text_picker_interactive` — Text client picker tests
 - `openglad_text_unsupported` — Text client unsupported-operation tests
@@ -682,8 +686,9 @@ The project builds three executables from shared source with platform-specific i
 - **`openglad`** (SDL client) — Full graphical game with rendering, audio, and input via SDL2. SDL platform code lives in `src/platform/sdl/` and `src/interface/`.
 - **`openglad_text`** (headless client) — SDL-free text-mode client for simulation, testing, and scripting. Headless platform code lives in `src/platform/text/`.
 - **`openglad_server`** (headless host) — SDL-free dedicated server that hosts a networked game (runs the authoritative `GameServer` + `LobbyServer` with no display); `src/server/headless_server_runtime.cpp`.
+- **`openglad_curses`** (ncurses client) — SDL-free *playable* terminal client. It links the same SDL-free components the dedicated server does, plus the shared menu model (`menu_model`/`picker_common`/`picker_state`) and a new ncurses front end (`src/platform/curses/`). It runs every game through the engine's own client-server architecture (`InProcessTransport` for local play, WebSocket for networked), rendering the mirror `GameWorld` as a roguelike (one character per tile, one character per "dude" on its nearest tile) and translating key presses into the engine's `InputState`. All of its logic sits behind an `ITerminal`/`IClock` seam so the whole client is tested headlessly with no TTY (`og_test_curses`).
 
-The targets link the same core components (`og_core`, `og_gameplay`, `og_resources`; SDL also links `og_interface` and `og_platform_sdl`). The SDL/headless boundary is enforced via link-time dispatch: shared code calls functions declared in `level_data_hooks.h` (e.g., `create_level_render`, `level_data_wire_entity_from_screen`), which have separate implementations in `sdl_context_services.cpp` (SDL) and `platform_headless.cpp` (headless).
+The SDL, text, server, and curses targets link the same core components (`og_core`, `og_gameplay`, `og_resources`; SDL also links `og_interface` and `og_platform_sdl`; the server and curses clients additionally link `og_platform_ws_transport`). The SDL/headless boundary is enforced via link-time dispatch: shared code calls functions declared in `level_data_hooks.h` (e.g., `create_level_render`, `level_data_wire_entity_from_screen`), which have separate implementations in `sdl_context_services.cpp` (SDL) and `platform_headless.cpp` (headless).
 
 **Key boundary files:**
 

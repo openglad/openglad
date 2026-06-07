@@ -1209,6 +1209,90 @@ if(NOT EMSCRIPTEN)
         add_runtime_assets_dependency(openglad_server)
     endif()
 
+    # --- openglad_curses (zero-SDL ncurses text client) ---
+    # A different renderer/input backend for the same game. Built from the same
+    # SDL-free sources as the headless server (sim + resources + networking core
+    # + headless platform glue) plus the shared menu model and the curses front
+    # end, linking ncurses instead of SDL. See docs/ncurses-client.md.
+    # The curses client implementation, minus main() and the process globals so
+    # the same translation units can be reused by the test binary (which supplies
+    # its own main + globals via curses_test_main.cpp).
+    set(OG_CURSES_LIB_SOURCES
+        ${SRC_DIR}/platform/curses/curses_app.cpp
+        ${SRC_DIR}/platform/curses/curses_terminal.cpp
+        ${SRC_DIR}/platform/curses/headless_terminal.cpp
+        ${SRC_DIR}/platform/curses/clock.cpp
+        ${SRC_DIR}/platform/curses/glyph_map.cpp
+        ${SRC_DIR}/platform/curses/kitty_keys.cpp
+        ${SRC_DIR}/platform/curses/curses_input.cpp
+        ${SRC_DIR}/platform/curses/curses_renderer.cpp
+        ${SRC_DIR}/platform/curses/curses_picker_client.cpp
+        ${SRC_DIR}/platform/curses/curses_game_runtime.cpp
+        ${SRC_DIR}/platform/curses/curses_network.cpp
+    )
+    # Shared SDL-free menu model + business logic (also compiled into openglad_text).
+    set(OG_CURSES_MENU_SOURCES
+        ${SRC_DIR}/interface/ui/menu_model.cpp
+        ${SRC_DIR}/interface/ui/picker_common.cpp
+        ${SRC_DIR}/interface/ui/picker_state.cpp
+    )
+    set(OG_CURSES_SOURCES
+        ${SRC_DIR}/platform/curses/main.cpp
+        ${SRC_DIR}/platform/curses/curses_platform_globals.cpp
+        ${OG_CURSES_LIB_SOURCES}
+        ${OG_CURSES_MENU_SOURCES}
+        ${HEADLESS_SERVER_RUNTIME_SOURCES}
+    )
+
+    # ncurses detection: prefer wide-char ncursesw via pkg-config, fall back to
+    # narrow ncurses, then to CMake's FindCurses.
+    set(OG_CURSES_FOUND FALSE)
+    set(OG_CURSES_NCURSES_LINK "")
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(OG_NCURSESW QUIET IMPORTED_TARGET ncursesw)
+        if(OG_NCURSESW_FOUND)
+            set(OG_CURSES_NCURSES_LINK PkgConfig::OG_NCURSESW)
+            set(OG_CURSES_FOUND TRUE)
+        else()
+            pkg_check_modules(OG_NCURSES QUIET IMPORTED_TARGET ncurses)
+            if(OG_NCURSES_FOUND)
+                set(OG_CURSES_NCURSES_LINK PkgConfig::OG_NCURSES)
+                set(OG_CURSES_FOUND TRUE)
+            endif()
+        endif()
+    endif()
+    if(NOT OG_CURSES_FOUND)
+        set(CURSES_NEED_NCURSES TRUE)
+        find_package(Curses QUIET)
+        if(CURSES_FOUND)
+            set(OG_CURSES_FOUND TRUE)
+        endif()
+    endif()
+
+    if(OG_CURSES_FOUND AND TARGET og_platform_ws_transport)
+        add_executable(openglad_curses ${OG_CURSES_SOURCES})
+        configure_openglad_library(openglad_curses)
+        if(OG_CURSES_NCURSES_LINK)
+            target_link_libraries(openglad_curses PRIVATE ${OG_CURSES_NCURSES_LINK})
+        else()
+            target_include_directories(openglad_curses PRIVATE ${CURSES_INCLUDE_DIRS})
+            target_link_libraries(openglad_curses PRIVATE ${CURSES_LIBRARIES})
+        endif()
+        target_link_libraries(openglad_curses PRIVATE
+            og_core
+            og_gameplay
+            og_resources
+            og_platform_ws_transport
+            m
+            pthread
+        )
+        add_runtime_assets_dependency(openglad_curses)
+        message(STATUS "openglad_curses: enabled (zero-SDL ncurses client)")
+    else()
+        message(STATUS "openglad_curses: disabled (ncurses not found or networking unavailable)")
+    endif()
+
     install(TARGETS
         project_warnings
         project_sanitizers
@@ -1252,6 +1336,13 @@ if(NOT EMSCRIPTEN)
             EXPORT OpenGladTargets
             ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
             LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        )
+    endif()
+
+    if(TARGET openglad_curses)
+        install(TARGETS openglad_curses
+            EXPORT OpenGladTargets
             RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
         )
     endif()
@@ -2007,6 +2098,75 @@ if(NOT EMSCRIPTEN)
         if(OG_SANITIZER_TEST_ENVIRONMENT)
             set_tests_properties(og_unit_server PROPERTIES ENVIRONMENT
                 "${OG_SANITIZER_TEST_ENVIRONMENT}"
+            )
+        endif()
+
+        # --- og_test_curses (ncurses client test suite) ---
+        # All curses tests are SDL-free and TTY-free (HeadlessTerminal + FakeClock),
+        # so they run in CI like the headless unit binaries. Reuses the curses
+        # implementation TUs (minus main/globals) plus its own test main.
+        if(OG_CURSES_FOUND AND TARGET og_platform_ws_transport)
+            add_executable(og_test_curses
+                ${CMAKE_SOURCE_DIR}/tests/curses/curses_test_main.cpp
+                ${CMAKE_SOURCE_DIR}/tests/curses/test_glyph_map.cpp
+                ${CMAKE_SOURCE_DIR}/tests/curses/test_headless_terminal.cpp
+                ${CMAKE_SOURCE_DIR}/tests/curses/test_kitty_keys.cpp
+                ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_input.cpp
+                ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_renderer.cpp
+                ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_picker_client.cpp
+                ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_game_runtime.cpp
+                ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_network.cpp
+                ${CMAKE_SOURCE_DIR}/src/test_trace.cpp
+                ${OG_CURSES_LIB_SOURCES}
+                ${OG_CURSES_MENU_SOURCES}
+                ${HEADLESS_SERVER_RUNTIME_SOURCES}
+            )
+            configure_openglad_library(og_test_curses)
+            target_compile_definitions(og_test_curses PRIVATE TESTING)
+            target_include_directories(og_test_curses PRIVATE
+                ${CMAKE_SOURCE_DIR}/tests
+                ${OG_THIRD_PARTY_INCLUDE_DIRS}
+            )
+            if(OG_CURSES_NCURSES_LINK)
+                target_link_libraries(og_test_curses PRIVATE ${OG_CURSES_NCURSES_LINK})
+            else()
+                target_include_directories(og_test_curses PRIVATE ${CURSES_INCLUDE_DIRS})
+                target_link_libraries(og_test_curses PRIVATE ${CURSES_LIBRARIES})
+            endif()
+            target_link_libraries(og_test_curses PRIVATE
+                og_core
+                og_gameplay
+                og_resources
+                og_platform_ws_transport
+                GTest::gtest
+                m
+                pthread
+            )
+            configure_openglad_runtime_target(og_test_curses)
+            add_runtime_assets_dependency(og_test_curses)
+            add_test(NAME og_test_curses COMMAND og_test_curses)
+            set_tests_properties(og_test_curses PROPERTIES
+                WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+                TIMEOUT 240
+                LABELS "curses"
+            )
+            if(OG_SANITIZER_TEST_ENVIRONMENT)
+                set_tests_properties(og_test_curses PROPERTIES ENVIRONMENT
+                    "${OG_SANITIZER_TEST_ENVIRONMENT}"
+                )
+            endif()
+
+            # Enforce the zero-SDL invariant of the ncurses client in CI: the
+            # binary must contain no SDL symbols and not link libSDL2.
+            add_test(NAME openglad_curses_link_no_sdl
+                COMMAND ${CMAKE_COMMAND} -E env bash
+                    ${CMAKE_SOURCE_DIR}/scripts/test_curses_no_sdl.sh
+                    $<TARGET_FILE:openglad_curses>
+            )
+            set_tests_properties(openglad_curses_link_no_sdl PROPERTIES
+                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                TIMEOUT 60
+                LABELS "curses"
             )
         endif()
 
