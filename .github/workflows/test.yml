@@ -25,7 +25,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev libgtest-dev cmake ninja-build
+          sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev libgtest-dev libncurses-dev cmake ninja-build
 
       - name: Install relay npm dependencies
         working-directory: relay
@@ -54,6 +54,13 @@ jobs:
         # .plan/parity-signoff.md `## How to re-run` and
         # scripts/parity/capture_master_golden.sh.
         run: ctest --test-dir build/ci-test --parallel $(nproc) --output-on-failure --timeout 180 -E og_test_menu_ui
+
+      - name: Verify ncurses client built and its tests ran
+        # The curses targets are gated on finding ncurses at configure time, so a
+        # missing dependency would silently drop the whole client (and its tests)
+        # from the build. --no-tests=error turns that into a hard failure instead
+        # of a green run that tested nothing.
+        run: ctest --test-dir build/ci-test --output-on-failure --timeout 180 -R '^(og_test_curses|openglad_curses_link_no_sdl)$' --no-tests=error
 
       - name: Run menu UI test with extended timeout
         run: ctest --test-dir build/ci-test --output-on-failure --timeout 300 -R og_test_menu_ui
@@ -86,7 +93,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev libgtest-dev cmake ninja-build
+          sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev libgtest-dev libncurses-dev cmake ninja-build
 
       - uses: hendrikmuhs/ccache-action@v1
         with:
@@ -96,7 +103,7 @@ jobs:
         run: cmake --preset dev-release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build native binaries
-        run: cmake --build --preset dev-release --target openglad openscen openglad_server -j"$(nproc)"
+        run: cmake --build --preset dev-release --target openglad openscen openglad_server openglad_curses -j"$(nproc)"
 
       - name: Verify release headless server link is SDL-free
         run: bash scripts/test_headless_server_native_link.sh build/dev-release
@@ -144,7 +151,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev libgtest-dev cmake ninja-build
+          sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev libgtest-dev libncurses-dev cmake ninja-build
 
       - uses: hendrikmuhs/ccache-action@v1
         with:
