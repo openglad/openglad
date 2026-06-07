@@ -2197,6 +2197,7 @@ if(NOT EMSCRIPTEN)
             # runners when CTest schedules them all at once.
             set_tests_properties(
                 og_test_game_core
+                og_test_level
                 og_test_view
                 og_test_picker
                 og_test_picker_network
@@ -2216,6 +2217,9 @@ if(NOT EMSCRIPTEN)
             # Menu UI coverage still runs substantially slower on GitHub's
             # 4-core runners than it does locally, so match the dedicated
             # coverage workflow budget instead of leaving CTest at 300s here.
+            set_tests_properties(og_test_game_core PROPERTIES TIMEOUT 420)
+            set_tests_properties(og_test_level PROPERTIES TIMEOUT 420)
+            set_tests_properties(og_test_view PROPERTIES TIMEOUT 420)
             set_tests_properties(og_test_menu_ui PROPERTIES TIMEOUT 420)
             set_tests_properties(og_test_picker PROPERTIES TIMEOUT 420)
             set_tests_properties(og_test_picker_network PROPERTIES TIMEOUT 420)

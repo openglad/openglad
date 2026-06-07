@@ -12,6 +12,7 @@
 #include "test_interact.h"
 #include <openglad/resources/save_data.h>
 #include <openglad/core/util.h>
+#include <openglad/interface/ui/picker_common.h>
 
 #include <atomic>
 
@@ -46,6 +47,41 @@ constexpr short kFairyFragileArmor = -100;
 constexpr int kFairyPollMs = 10;
 constexpr int kTeamMenuBackGameX = 60;
 constexpr int kTeamMenuBackGameY = 155;
+
+template <typename Predicate>
+bool wait_until(Predicate predicate, int timeout_ms, int poll_ms = kFairyPollMs)
+{
+    int elapsed = 0;
+    while (elapsed < timeout_ms) {
+        if (predicate())
+            return true;
+        SDL_Delay(poll_ms);
+        elapsed += poll_ms;
+    }
+    return false;
+}
+
+bool wait_for_team_menu(int timeout_ms = kGameStartTimeoutMs)
+{
+    int elapsed = 0;
+    int since_last_retry = 250;
+    const int poll_ms = 50;
+    while (elapsed < timeout_ms) {
+        if (has_interactable("view_team") && has_interactable("go"))
+            return true;
+
+        if (since_last_retry >= 250 && has_interactable("hire_me")) {
+            fprintf(stderr, "  [test] retry clicking back from hire menu\n");
+            interact("back");
+            since_last_retry = 0;
+        }
+
+        SDL_Delay(poll_ms);
+        elapsed += poll_ms;
+        since_last_retry += poll_ms;
+    }
+    return false;
+}
 }
 
 // Picker globals that can leak across integration tests and affect menu start state
@@ -198,23 +234,51 @@ static int fairy_injector(void* data)
     SDL_Delay(kUiSettleMs);
 
     // -- Hire Menu: cycle to FAERIE and hire --
-    // Starts at allowable_guys[0] (SOLDIER). Click NEXT 12 times for FAERIE.
-    fprintf(stderr, "  [test] cycling to fairy (NEXT x%d)\n", FAERIE_INDEX);
-    for (int i = 0; i < FAERIE_INDEX; i++) {
-        interact("next");
-        SDL_Delay(kCycleStepMs);
+    if (!pks().hire_session)
+        return fail_fairy_run(state, "hire session did not start");
+
+    // Starts at allowable_guys[0] (SOLDIER). Drive the active hire session
+    // directly so coverage builds do not depend on processing 12 injected NEXT
+    // clicks before the HIRE ME button path is exercised.
+    fprintf(stderr, "  [test] cycling to fairy (cycle_guy x%d)\n", FAERIE_INDEX);
+    for (int i = 0; i < FAERIE_INDEX + 2 &&
+                    (!og::runtime::current_session->current_guy_ ||
+                     og::runtime::current_session->current_guy_->family != FAMILY_FAERIE);
+         i++) {
+        pks().hire_session->next_family();
+        og::runtime::current_session->current_type_ =
+            pks().hire_session->family_index();
+        if (const guy* recruit = pks().hire_session->current_recruit())
+            og::runtime::current_session->current_guy_ =
+                std::make_unique<guy>(*recruit);
+    }
+
+    if (!og::runtime::current_session->current_guy_ ||
+        og::runtime::current_session->current_guy_->family != FAMILY_FAERIE) {
+        return fail_fairy_run(state, "hire menu did not reach fairy");
     }
 
     fprintf(stderr, "  [test] hiring fairy\n");
+    const short team_size_before =
+        og::runtime::current_session->myscreen_->save_data.team_size;
     interact("hire_me");
-    SDL_Delay(kCycleStepMs);
+    if (!wait_until(
+            [team_size_before] {
+                return og::runtime::current_session->myscreen_->save_data.team_size >
+                    team_size_before;
+            },
+            5000,
+            kCycleStepMs)) {
+        return fail_fairy_run(state,
+                              "expected hired fairy before starting level");
+    }
 
     fprintf(stderr, "  [test] clicking back from hire menu\n");
     interact("back");
 
     // -- Team Menu: GO at max speed --
-    SDL_Delay(kUiSettleMs);
-    wait_for_interactable("go", 10000);
+    if (!wait_for_team_menu())
+        return fail_fairy_run(state, "team menu did not appear after hiring");
     SDL_Delay(kUiSettleMs);
 
     if (og::runtime::current_session->myscreen_->save_data.team_size < 1 ||

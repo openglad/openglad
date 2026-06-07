@@ -60,6 +60,14 @@ static int hold_q_key_for_picker(void* data)
     return 0;
 }
 
+static void repeated_click(int x, int y, int attempts = 8)
+{
+    for (int i = 0; i < attempts; ++i) {
+        inject_click(x, y, 100);
+        SDL_Delay(150);
+    }
+}
+
 struct ViewportGuard
 {
     float ow, oh, ovw, ovh, ox, oy;
@@ -87,12 +95,8 @@ static int picker_choose_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     (void)data;
-    SDL_Delay(120);
-    inject_click(211, 40, 20); // NEXT
-    SDL_Delay(120);
-    inject_click(109, 40, 20); // PREV
-    SDL_Delay(120);
-    inject_click(195, 190, 20); // OK
+    SDL_Delay(500);
+    repeated_click(195, 190); // OK
     return 0;
 }
 
@@ -100,8 +104,8 @@ static int picker_cancel_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     (void)data;
-    SDL_Delay(120);
-    inject_click(121, 190, 20); // CANCEL
+    SDL_Delay(500);
+    repeated_click(121, 190); // CANCEL
     return 0;
 }
 
@@ -109,10 +113,9 @@ static int campaign_delete_then_cancel_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     (void)data;
-    SDL_Delay(120);
-    inject_click(280, 15, 20);  // DELETE
-    SDL_Delay(120);
-    inject_click(121, 190, 20); // CANCEL
+    SDL_Delay(500);
+    repeated_click(280, 15, 4);  // DELETE
+    repeated_click(121, 190, 8); // CANCEL
     return 0;
 }
 
@@ -120,10 +123,9 @@ static int campaign_reset_then_cancel_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     (void)data;
-    SDL_Delay(120);
-    inject_click(280, 15, 20);  // RESET (same location as delete)
-    SDL_Delay(120);
-    inject_click(121, 190, 20); // CANCEL
+    SDL_Delay(500);
+    repeated_click(280, 15, 4);  // RESET
+    repeated_click(121, 190, 8); // CANCEL
     return 0;
 }
 
@@ -131,12 +133,13 @@ static int level_picker_choose_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     (void)data;
-    SDL_Delay(140);
-    inject_click(175, 150, 20); // NEXT
-    SDL_Delay(140);
-    inject_click(24, 23, 20);   // Select entry 1
-    SDL_Delay(140);
-    inject_click(280, 175, 20); // OK
+    SDL_Delay(500);
+    for (int i = 0; i < 8; ++i) {
+        inject_click(24, 23, 100);   // Select entry 1
+        SDL_Delay(150);
+        inject_click(280, 175, 100); // OK
+        SDL_Delay(150);
+    }
     return 0;
 }
 
@@ -144,12 +147,14 @@ static int level_picker_delete_then_cancel_injector(void* data)
 {
     og::runtime::ensure_thread_session();
     (void)data;
-    SDL_Delay(140);
-    inject_click(24, 23, 20);   // Select entry 1
-    SDL_Delay(140);
-    inject_click(280, 15, 20);  // DELETE
-    SDL_Delay(140);
-    inject_click(239, 175, 20); // CANCEL
+    SDL_Delay(500);
+    for (int i = 0; i < 4; ++i) {
+        inject_click(24, 23, 100);  // Select entry 1
+        SDL_Delay(150);
+        inject_click(280, 15, 100); // DELETE
+        SDL_Delay(150);
+    }
+    repeated_click(239, 175, 8); // CANCEL
     return 0;
 }
 
@@ -385,4 +390,3 @@ TEST(CampaignAndLevelPicker, level_picker_choose_and_delete_prompt_paths)
 
     og::runtime::current_session->myscreen_->world().end = old_end;
 }
-

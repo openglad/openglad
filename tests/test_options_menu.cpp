@@ -35,6 +35,22 @@ static void cleanup_picker_state()
     pks().main_title_logo_data.free();
 }
 
+static bool click_until_interactable(const std::string& click_id, const std::string& next_id, int timeout_ms)
+{
+    const Uint32 deadline = SDL_GetTicks() + static_cast<Uint32>(timeout_ms);
+    while (SDL_GetTicks() < deadline) {
+        if (has_interactable(next_id))
+            return true;
+        if (has_interactable(click_id)) {
+            interact(click_id);
+            SDL_Delay(250);
+            continue;
+        }
+        SDL_Delay(50);
+    }
+    return has_interactable(next_id);
+}
+
 // Test: Open options menu, toggle some settings, then exit.
 //
 // Flow: Main Menu -> Options -> toggle some settings -> Back -> (main menu exits)
@@ -64,27 +80,26 @@ static int options_injector(void* data)
         state->finished = true;
         return 0;
     }
-    SDL_Delay(300);
+    SDL_Delay(750);
 
     fprintf(stderr, "  [test] clicking options\n");
-    interact("options");
+    bool in_options = click_until_interactable("options", "toggle_hit_flash", 10000);
 
     // Options menu buttons
     SDL_Delay(150);
-    if (wait_for_interactable("toggle_hit_flash", 10000)) {
+    if (in_options || wait_for_interactable("toggle_hit_flash", 10000)) {
         state->saw_options = true;
         SDL_Delay(150);
 
         fprintf(stderr, "  [test] entering player controls\n");
-        interact("player_controls");
+        bool in_controls = click_until_interactable("player_controls", "player1_mode", 5000);
         SDL_Delay(150);
-        if (wait_for_interactable("player1_mode", 5000)) {
+        if (in_controls || wait_for_interactable("player1_mode", 5000)) {
             state->entered_controls = true;
             interact("player1_mode");
             if (wait_for_interactable("controls_back", 5000)) {
                 SDL_Delay(200);
-                interact("controls_back");
-                state->exited_controls = true;
+                state->exited_controls = click_until_interactable("controls_back", "toggle_hit_flash", 5000);
             }
             wait_for_interactable("toggle_hit_flash", 10000);
             SDL_Delay(150);
@@ -138,31 +153,24 @@ static int options_injector(void* data)
         if (wait_for_interactable("options_back", 5000)) {
             interact("options_back");
             state->used_options_back = true;
+            SDL_Delay(500);
         }
     }
 
     // Ensure mainmenu() returns so picker_main() can complete. Coverage builds
-    // can redraw the main menu slowly after leaving options, so keep nudging
-    // Escape / BACK until the quit button appears and can be clicked.
-    const Uint32 quit_deadline = SDL_GetTicks() + 10000;
+    // can redraw the main menu slowly after leaving options, so use Escape to
+    // unwind whichever menu is currently active.
+    const Uint32 quit_deadline = SDL_GetTicks() + 3000;
     while (SDL_GetTicks() < quit_deadline) {
-        if (wait_for_interactable("quit", 250)) {
+        if (has_interactable("quit")) {
             SDL_Delay(80);
             fprintf(stderr, "  [test] clicking quit\n");
             interact("quit");
             break;
         }
 
-        if (wait_for_interactable("options_back", 150)) {
-            fprintf(stderr, "  [test] retry clicking options_back\n");
-            interact("options_back");
-            state->used_options_back = true;
-            SDL_Delay(150);
-            continue;
-        }
-
-        inject_key_press(SDLK_ESCAPE, 10);
-        SDL_Delay(50);
+        inject_key_press(SDLK_ESCAPE, 20);
+        SDL_Delay(150);
     }
 
     state->finished = true;
