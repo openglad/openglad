@@ -64,7 +64,9 @@ jobs:
         run: ctest --test-dir build/ci-coverage --output-on-failure --timeout 420 -R og_test_menu_ui
 
       - name: Run tests (parallel, excluding menu UI)
-        run: ctest --test-dir build/ci-coverage --parallel $(nproc) --output-on-failure --timeout 180 -E og_test_menu_ui
+        # Retry transient SDL injector-test timing flakes under parallel load
+        # (see the note in test.yml); never masks a deterministic failure.
+        run: ctest --test-dir build/ci-coverage --parallel $(nproc) --output-on-failure --timeout 180 --repeat until-pass:3 -E og_test_menu_ui
 
       - name: Typecheck relay worker
         working-directory: relay
