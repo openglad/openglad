@@ -11,6 +11,7 @@ obj/
 /coverage/
 /openglad
 /openscen
+/openglad_curses
 /openglad_test
 
 # In-source CMake configure artifacts (prefer the out-of-source build/ presets)
@@ -38,6 +39,7 @@ third_party/**/cmake_install.cmake
 *.layout
 .idea/
 .vscode/
+.cache/
 *.swp
 *~
 

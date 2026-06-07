@@ -1,0 +1,585 @@
+/* Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ */
+/* Menu-flow tests for CursesPickerClient (the TUI picker front-end).
+ *
+ * Every flow is driven headlessly: a HeadlessTerminal supplies a scripted key
+ * sequence and records what was drawn, while a FakeClock removes all real time.
+ * The picker's menus block on ITerminal::poll_key, so each test scripts the
+ * exact keys for the flow under test, then asserts on the resulting SaveData
+ * (and, where useful, on what landed on the terminal). No SDL, no TTY, no game
+ * loop (run_game / the level runtime are covered by the runtime tests).
+ *
+ * Menu navigation contract exercised here (see curses_picker_client.cpp):
+ *   - Up/'k' and Down/'j' move the highlight; Enter/Space select.
+ *   - Digit 'N' jumps the highlight to the N-th selectable entry.
+ *   - Esc/'q'/Backspace cancel (Quit on Main, Back elsewhere).
+ *   - show_text / "press a key" screens consume exactly one key.
+ */
+#include <gtest/gtest.h>
+
+#include <openglad/platform/curses/curses_picker_client.h>
+#include <openglad/platform/curses/headless_terminal.h>
+
+#include <openglad/core/constants.h>
+#include <openglad/gameplay/guy.h>
+#include <openglad/interface/ui/menu_model.h>
+#include <openglad/interface/ui/picker_common.h>
+#include <openglad/resources/save_data.h>
+
+#include <string>
+
+using namespace og::curses;
+using og::ui::PickerMenuCommand;
+using og::ui::PickerMenuId;
+using og::ui::TextPickerConfig;
+
+namespace {
+
+// Bundles the terminal/clock/config + client so each test reads compactly.
+// A generous 40x100 grid leaves room for every menu the picker draws.
+struct PickerFixture {
+    HeadlessTerminal term{40, 100};
+    FakeClock clock;
+    TextPickerConfig config;
+    CursesPickerOptions options;
+    CursesPickerClient client{term, clock, config, options};
+
+    HeadlessTerminal& t() { return term; }
+    SaveData& save() { return client.save_data(); }
+};
+
+// Select the item at 0-based selectable index `n` from the current menu:
+// jump to it with a digit (1..9) and confirm with Enter.
+void pick(HeadlessTerminal& term, int n)
+{
+    ASSERT_GE(n, 0);
+    ASSERT_LE(n, 8) << "digit-jump only addresses the first 9 selectable items";
+    term.push_char(static_cast<char32_t>(U'1' + n));
+    term.push_special(KeyCode::Enter);
+}
+
+// Dismiss a "press any key" text screen.
+void dismiss(HeadlessTerminal& term)
+{
+    term.push_special(KeyCode::Enter);
+}
+
+// Count non-null team members.
+int team_count(const SaveData& save)
+{
+    int n = 0;
+    og::ui::for_each_team_member(save, [&](int, const guy&) { ++n; });
+    return n;
+}
+
+// Find a Main-menu item's 0-based index among the menu's selectable items.
+// (The Main menu has no header rows, so this equals the digit-jump position.)
+int main_menu_item_index(PickerMenuCommand command, int arg = 0)
+{
+    const auto& def = og::ui::picker_menu_definition(PickerMenuId::Main);
+    for (int i = 0; i < static_cast<int>(def.items.size()); ++i)
+        if (def.items[static_cast<size_t>(i)].command == command &&
+            def.items[static_cast<size_t>(i)].arg == arg)
+            return i;
+    return -1;
+}
+
+} // namespace
+
+// --- construction --------------------------------------------------------
+
+// The constructor must guarantee a starting team and starting gold, exactly
+// like TextPickerClient::ensure_team_initialized.
+TEST(CursesPickerClient, ctor_initializes_team_and_gold)
+{
+    PickerFixture f;
+    EXPECT_EQ(team_count(f.save()), 1);
+    EXPECT_EQ(static_cast<unsigned>(f.save().team_size), 1u);
+    EXPECT_EQ(f.save().m_totalcash[0], 5000u);
+    // The default family is SOLDIER.
+    EXPECT_EQ(f.save().team_list[0]->family, FAMILY_SOLDIER);
+}
+
+// --- present_menu --------------------------------------------------------
+
+// present_menu returns the highlighted item on Enter and renders the title.
+TEST(CursesPickerClient, present_menu_returns_selected_item)
+{
+    PickerFixture f;
+    // Highlight starts on item 0 (Begin New Game); confirm immediately.
+    f.t().push_special(KeyCode::Enter);
+    const auto* item = f.client.present_menu(PickerMenuId::Main);
+    ASSERT_NE(item, nullptr);
+    EXPECT_EQ(item->command, PickerMenuCommand::BeginNewGame);
+    EXPECT_NE(f.t().text_row(0).find("OpenGlad"), std::string::npos)
+        << "menu title should render on the top row";
+}
+
+// Esc on the Main menu cancels to Quit; on other menus it cancels to Back.
+TEST(CursesPickerClient, present_menu_cancel_maps_to_quit_or_back)
+{
+    PickerFixture f;
+    f.t().push_special(KeyCode::Escape);
+    const auto* main_item = f.client.present_menu(PickerMenuId::Main);
+    ASSERT_NE(main_item, nullptr);
+    EXPECT_EQ(main_item->command, PickerMenuCommand::Quit);
+
+    f.t().push_char(U'q');
+    const auto* tb_item = f.client.present_menu(PickerMenuId::TeamBuild);
+    ASSERT_NE(tb_item, nullptr);
+    EXPECT_EQ(tb_item->command, PickerMenuCommand::Back);
+}
+
+// Digit jump + Enter selects the addressed item; arrow keys also move.
+TEST(CursesPickerClient, present_menu_digit_and_arrow_navigation)
+{
+    PickerFixture f;
+    // Jump to the 7th selectable item (Difficulty) and select it.
+    const int diff_idx = main_menu_item_index(PickerMenuCommand::SetDifficulty);
+    ASSERT_GE(diff_idx, 0);
+    f.t().push_char(static_cast<char32_t>(U'1' + diff_idx));
+    f.t().push_special(KeyCode::Enter);
+    const auto* item = f.client.present_menu(PickerMenuId::Main);
+    ASSERT_NE(item, nullptr);
+    EXPECT_EQ(item->command, PickerMenuCommand::SetDifficulty);
+
+    // From the top item, Down once then Enter selects the 2nd item.
+    f.t().push_special(KeyCode::Down);
+    f.t().push_special(KeyCode::Enter);
+    const auto* second = f.client.present_menu(PickerMenuId::Main);
+    ASSERT_NE(second, nullptr);
+    EXPECT_EQ(second->command, PickerMenuCommand::ContinueGame);
+}
+
+// --- new game ------------------------------------------------------------
+
+// prepare_new_game resets the team to a fresh single member and restores gold.
+TEST(CursesPickerClient, prepare_new_game_populates_team_and_resets_gold)
+{
+    PickerFixture f;
+    // Spend gold and grow the team first so the reset is observable.
+    f.save().m_totalcash[0] = 17u;
+    f.save().team_size = 0;
+    for (auto& slot : f.save().team_list)
+        slot.reset();
+
+    ASSERT_TRUE(f.client.prepare_new_game());
+
+    EXPECT_GE(team_count(f.save()), 1) << "new game must populate a team";
+    EXPECT_EQ(f.save().m_totalcash[0], 5000u) << "new game resets gold to 5000";
+    EXPECT_EQ(f.config.team_families, og::ui::collect_team_families(f.save()))
+        << "config team_families must be synced from the save";
+}
+
+// --- difficulty ----------------------------------------------------------
+
+// Handling the Difficulty item cycles options_.difficulty and shows a notice.
+TEST(CursesPickerClient, difficulty_cycles_on_select)
+{
+    PickerFixture f;
+    const int before = f.client.difficulty();
+    const auto* item =
+        og::ui::find_picker_menu_item(PickerMenuId::Main, PickerMenuCommand::SetDifficulty);
+    ASSERT_NE(item, nullptr);
+
+    dismiss(f.t()); // the post-cycle "press a key" notice
+    f.client.handle_menu_item(PickerMenuId::Main, *item);
+
+    EXPECT_EQ(f.client.difficulty(), og::ui::cycle_difficulty(before));
+    // The notice should name the new difficulty somewhere on screen.
+    bool found = false;
+    for (int r = 0; r < f.t().rows(); ++r)
+        if (f.t().text_row(r).find(og::ui::kDifficultyNames[f.client.difficulty()]) !=
+            std::string::npos)
+            found = true;
+    EXPECT_TRUE(found) << "difficulty notice should render the new difficulty name";
+}
+
+// --- player count --------------------------------------------------------
+
+// The "N Player" items set numplayers via the shared set_player_count.
+TEST(CursesPickerClient, player_count_cycles)
+{
+    PickerFixture f;
+    for (int n : {4, 2, 1}) {
+        const auto* item = og::ui::find_picker_menu_item(
+            PickerMenuId::Main, PickerMenuCommand::SetPlayerMode, n);
+        ASSERT_NE(item, nullptr) << "missing player-mode item for " << n;
+        dismiss(f.t());
+        f.client.handle_menu_item(PickerMenuId::Main, *item);
+        EXPECT_EQ(static_cast<int>(f.save().numplayers), n);
+    }
+}
+
+// --- allied mode ---------------------------------------------------------
+
+TEST(CursesPickerClient, allied_mode_toggles)
+{
+    PickerFixture f;
+    const bool before = og::ui::is_allied_mode(f.save());
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::Main, PickerMenuCommand::ToggleAlliedMode);
+    ASSERT_NE(item, nullptr);
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Main, *item);
+    EXPECT_NE(og::ui::is_allied_mode(f.save()), before);
+}
+
+// --- view roster ---------------------------------------------------------
+
+// Viewing the roster renders each member's name to the terminal.
+TEST(CursesPickerClient, view_roster_renders_names)
+{
+    PickerFixture f;
+    const std::string name = f.save().team_list[0]->name;
+    ASSERT_FALSE(name.empty());
+
+    const auto* item =
+        og::ui::find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::ViewTeam);
+    ASSERT_NE(item, nullptr);
+    // View Team shows a scrollable roster screen that consumes one key.
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+
+    bool found = false;
+    for (int r = 0; r < f.t().rows(); ++r)
+        if (f.t().text_row(r).find(name) != std::string::npos)
+            found = true;
+    EXPECT_TRUE(found) << "roster should render the member's name; got:\n" << f.t().dump();
+}
+
+// --- hire ----------------------------------------------------------------
+
+// Hiring a recruit adds a team member and deducts gold.
+TEST(CursesPickerClient, hire_adds_member_and_deducts_gold)
+{
+    PickerFixture f;
+    const int before_count = team_count(f.save());
+    const std::uint32_t before_gold = f.save().m_totalcash[0];
+    ASSERT_GT(before_gold, 0u);
+
+    const auto* item =
+        og::ui::find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::HireTroops);
+    ASSERT_NE(item, nullptr);
+
+    // Hire screen entries: 3 stat headers, then [Hire(0) Next(1) Prev(2) Back(3)].
+    // The first selectable is "Hire this recruit"; choose it (Enter, since it is
+    // the initial highlight), dismiss the "Hired!" notice, then Back out.
+    f.t().push_special(KeyCode::Enter); // Hire
+    dismiss(f.t());                     // "Hired X!" notice
+    f.t().push_char(U'q');              // Back out of the hire loop
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+
+    EXPECT_EQ(team_count(f.save()), before_count + 1) << "hire should add a member";
+    EXPECT_LT(f.save().m_totalcash[0], before_gold) << "hire should deduct gold";
+    EXPECT_EQ(f.config.team_families, og::ui::collect_team_families(f.save()))
+        << "team_families should resync after hiring";
+}
+
+// Cancelling the hire screen leaves the team and gold unchanged.
+TEST(CursesPickerClient, hire_cancel_is_noop)
+{
+    PickerFixture f;
+    const int before_count = team_count(f.save());
+    const std::uint32_t before_gold = f.save().m_totalcash[0];
+
+    const auto* item =
+        og::ui::find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::HireTroops);
+    ASSERT_NE(item, nullptr);
+    f.t().push_special(KeyCode::Escape); // cancel immediately
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+
+    EXPECT_EQ(team_count(f.save()), before_count);
+    EXPECT_EQ(f.save().m_totalcash[0], before_gold);
+}
+
+// --- train ---------------------------------------------------------------
+
+// Training raises a stat and charges gold on accept.
+TEST(CursesPickerClient, train_raises_stat_at_a_cost)
+{
+    PickerFixture f;
+    const short before_str = f.save().team_list[0]->strength;
+    const std::uint32_t before_gold = f.save().m_totalcash[0];
+
+    const auto* item =
+        og::ui::find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::TrainTeam);
+    ASSERT_NE(item, nullptr);
+
+    // Train entries: stats STR(0)..LVL(5), a cost header, then
+    // [Accept(7) Next(8) Prev(9) Back(10)] as selectable indices.
+    // STR is the initial highlight: Enter raises it by 1. Then jump to Accept
+    // (selectable index 6) with digit '7', dismiss the notice, and Back out.
+    f.t().push_special(KeyCode::Enter); // +1 STR (highlight starts on STR)
+    f.t().push_char(U'7');              // jump to "Accept training"
+    f.t().push_special(KeyCode::Enter); // accept
+    dismiss(f.t());                     // "Training accepted." notice
+    f.t().push_char(U'q');              // Back
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+
+    EXPECT_EQ(f.save().team_list[0]->strength, before_str + 1)
+        << "training should raise the chosen stat by 1";
+    EXPECT_LT(f.save().m_totalcash[0], before_gold)
+        << "accepting training should charge gold";
+}
+
+// --- set level -----------------------------------------------------------
+
+// Set Level updates both the config and the save's scenario number.
+TEST(CursesPickerClient, set_level_updates_config_and_save)
+{
+    PickerFixture f;
+    const auto* item =
+        og::ui::find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::SetLevel);
+    ASSERT_NE(item, nullptr);
+
+    // The prompt is pre-filled with the current level; clear it and type 4.
+    f.t().push_special(KeyCode::Backspace); // erase the prefilled "1"
+    f.t().push_char(U'4');
+    f.t().push_special(KeyCode::Enter);
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+
+    EXPECT_EQ(f.config.level, 4);
+    EXPECT_EQ(static_cast<int>(f.save().scen_num), 4);
+}
+
+// --- campaign select -----------------------------------------------------
+
+// Selecting a campaign updates config + save; cancelling keeps the current one.
+TEST(CursesPickerClient, campaign_select_updates_and_cancel_keeps_current)
+{
+    PickerFixture f;
+
+    // Cancel: Esc keeps the current campaign unchanged.
+    const std::string original = f.config.campaign;
+    f.t().push_special(KeyCode::Escape);
+    EXPECT_EQ(f.client.show_campaign_select(), original);
+    EXPECT_EQ(f.config.campaign, original);
+
+    // Select: confirm the highlighted (current) campaign; config + save match.
+    f.t().push_special(KeyCode::Enter);
+    const std::string chosen = f.client.show_campaign_select();
+    EXPECT_FALSE(chosen.empty());
+    EXPECT_EQ(f.config.campaign, chosen);
+    EXPECT_EQ(f.save().current_campaign, chosen);
+}
+
+// --- save / load round-trip ----------------------------------------------
+
+// Saving then loading restores the same team (size, names, families).
+TEST(CursesPickerClient, save_then_load_round_trips_team)
+{
+    // Use a unique save slot under the test's isolated config dir.
+    HeadlessTerminal term{40, 100};
+    FakeClock clock;
+    TextPickerConfig config;
+    config.save_name = "curses_picker_roundtrip";
+    config.level = 3;
+    CursesPickerOptions options;
+    CursesPickerClient client{term, clock, config, options};
+
+    // Grow the roster so the round-trip is meaningful (hire a second soldier).
+    {
+        og::ui::HireSession session(client.save_data(), 0);
+        ASSERT_GE(session.hire(), 0);
+    }
+    const int saved_count = team_count(client.save_data());
+    ASSERT_GE(saved_count, 2);
+    const std::string member0 = client.save_data().team_list[0]->name;
+    const std::string member1 = client.save_data().team_list[1]->name;
+
+    term.push_special(KeyCode::Enter); // dismiss "Saved" notice
+    ASSERT_TRUE(client.save_game());
+
+    // Wipe the in-memory team, then load it back.
+    client.save_data().team_size = 0;
+    for (auto& slot : client.save_data().team_list)
+        slot.reset();
+    ASSERT_EQ(team_count(client.save_data()), 0);
+
+    term.push_special(KeyCode::Enter); // dismiss "Loaded" notice
+    ASSERT_TRUE(client.load_game());
+
+    EXPECT_EQ(team_count(client.save_data()), saved_count);
+    EXPECT_EQ(client.save_data().team_list[0]->name, member0);
+    EXPECT_EQ(client.save_data().team_list[1]->name, member1);
+    EXPECT_EQ(config.level, 3) << "level should restore from the save's scen_num";
+}
+
+// Loading a non-existent slot fails gracefully and returns false.
+TEST(CursesPickerClient, load_missing_slot_fails_gracefully)
+{
+    HeadlessTerminal term{40, 100};
+    FakeClock clock;
+    TextPickerConfig config;
+    config.save_name = "curses_picker_does_not_exist_42";
+    CursesPickerOptions options;
+    CursesPickerClient client{term, clock, config, options};
+
+    term.push_special(KeyCode::Enter); // dismiss "Load failed" notice
+    EXPECT_FALSE(client.load_game());
+}
+
+// --- options -------------------------------------------------------------
+
+// Options accepts a new save slot and a new seed via text prompts.
+TEST(CursesPickerClient, options_set_save_slot_and_seed)
+{
+    PickerFixture f;
+    f.config.save_name = "old_slot";
+    f.config.seed = 7;
+
+    // First prompt: clear "old_slot" and type "new_slot". Backspace count must
+    // match the prefilled length.
+    const std::string old_slot = "old_slot";
+    for (size_t i = 0; i < old_slot.size(); ++i)
+        f.t().push_special(KeyCode::Backspace);
+    f.t().push_string("new_slot");
+    f.t().push_special(KeyCode::Enter);
+
+    // Second prompt: seed prefilled with "7"; erase and type "123".
+    f.t().push_special(KeyCode::Backspace);
+    f.t().push_string("123");
+    f.t().push_special(KeyCode::Enter);
+
+    f.client.show_options();
+
+    EXPECT_EQ(f.config.save_name, "new_slot");
+    EXPECT_EQ(f.config.seed, 123u);
+}
+
+// Cancelling the options prompts (Esc) leaves config untouched.
+TEST(CursesPickerClient, options_cancel_keeps_config)
+{
+    PickerFixture f;
+    f.config.save_name = "keep_me";
+    f.config.seed = 99;
+
+    f.t().push_special(KeyCode::Escape); // cancel save-slot prompt
+    f.t().push_special(KeyCode::Escape); // cancel seed prompt
+    f.client.show_options();
+
+    EXPECT_EQ(f.config.save_name, "keep_me");
+    EXPECT_EQ(f.config.seed, 99u);
+}
+
+// --- help ----------------------------------------------------------------
+
+TEST(CursesPickerClient, help_renders_and_dismisses)
+{
+    PickerFixture f;
+    f.t().push_special(KeyCode::Enter); // dismiss the help screen
+    f.client.show_help();
+    bool found = false;
+    for (int r = 0; r < f.t().rows(); ++r)
+        if (f.t().text_row(r).find("Help") != std::string::npos)
+            found = true;
+    EXPECT_TRUE(found);
+}
+
+// A "press any key" screen must dismiss only on a FRESH press — never on a
+// key-up or an auto-repeat. This is the level-end modal bug: when a level ends
+// because the player walked into the exit, the movement key is still held, and
+// its release + auto-repeat would otherwise dismiss the modal instantly (it would
+// never be seen). Here the release and repeat must be ignored, so all three
+// scripted events are consumed (only the final Enter press dismisses).
+TEST(CursesPickerClient, press_any_key_ignores_release_and_repeat)
+{
+    PickerFixture f;
+    f.t().push_char_release(U'd');                          // key-up: ignored
+    f.t().push_key(Key::character(U'd', KeyEvent::Repeat)); // auto-repeat: ignored
+    f.t().push_special(KeyCode::Enter);                     // fresh press: dismisses
+    f.client.show_help();
+    EXPECT_TRUE(f.t().input_exhausted())
+        << "the release and repeat must not dismiss the modal; only the press does";
+}
+
+// --- networking ----------------------------------------------------------
+//
+// host_game() builds a real WebSocket lobby and blocks in the lobby loop until a
+// game starts or the user cancels, so it is exercised end-to-end by the
+// CursesNetwork suite (in-process, no real sockets) rather than here. These
+// picker tests cover only the menu navigation around it.
+
+TEST(CursesPickerClient, networking_join_cancel_returns_false)
+{
+    PickerFixture f;
+    // Cancel the URL prompt: join_game should report false without a lobby.
+    f.t().push_special(KeyCode::Escape);
+    EXPECT_FALSE(f.client.join_game());
+}
+
+// configure_networking opens the Host/Join/Back submenu; Back returns false.
+TEST(CursesPickerClient, configure_networking_back_returns_false)
+{
+    PickerFixture f;
+    // Submenu entries: Host(0), Join(1), Back(2). Jump to Back and select.
+    pick(f.t(), 2);
+    EXPECT_FALSE(f.client.configure_networking());
+}
+
+// --- end-to-end run_picker -----------------------------------------------
+
+// A full run_picker that immediately quits from the Main menu unwinds cleanly.
+TEST(CursesPickerClient, run_picker_quit_unwinds)
+{
+    PickerFixture f;
+    f.t().push_special(KeyCode::Escape); // Main menu -> Quit
+    // run_picker drives the shared state machine; it must consume exactly the
+    // scripted Quit key and return — not loop forever (which would drain past the
+    // queue) and not leave the Quit key unconsumed.
+    og::ui::run_picker(f.client);
+    EXPECT_TRUE(f.t().input_exhausted())
+        << "run_picker should consume exactly the scripted Quit and then return";
+    // The picker returns to the team-build screen after a game (here, after quit).
+    EXPECT_EQ(f.client.screen_after_game(), og::ui::PickerScreen::TeamBuild);
+}
+
+// A richer run_picker: cycle difficulty from the Main menu, then quit. Asserts
+// the side effect persisted and the loop still unwound.
+TEST(CursesPickerClient, run_picker_main_action_then_quit)
+{
+    PickerFixture f;
+    const int before = f.client.difficulty();
+
+    const int diff_idx = main_menu_item_index(PickerMenuCommand::SetDifficulty);
+    ASSERT_GE(diff_idx, 0);
+    // First Main menu pass: select Difficulty (digit+Enter), dismiss its notice.
+    f.t().push_char(static_cast<char32_t>(U'1' + diff_idx));
+    f.t().push_special(KeyCode::Enter);
+    dismiss(f.t());
+    // Second Main menu pass (show_main_menu loops on non-terminal commands):
+    // Esc to Quit and end the program.
+    f.t().push_special(KeyCode::Escape);
+
+    og::ui::run_picker(f.client);
+
+    EXPECT_EQ(f.client.difficulty(), og::ui::cycle_difficulty(before));
+}
+
+// An end-to-end pass that opens Team Build, enters it (GO! is not pressed),
+// and backs out to the Main menu, then quits — covering the TeamBuild screen
+// transition inside run_picker.
+TEST(CursesPickerClient, run_picker_through_team_build_then_quit)
+{
+    PickerFixture f;
+
+    // Main pass 1: "Continue Game" -> Team Build.
+    const int cont_idx = main_menu_item_index(PickerMenuCommand::ContinueGame);
+    ASSERT_GE(cont_idx, 0);
+    f.t().push_char(static_cast<char32_t>(U'1' + cont_idx));
+    f.t().push_special(KeyCode::Enter);
+    // Team Build: Back -> Main menu.
+    f.t().push_char(U'q');
+    // Main pass 2: Quit.
+    f.t().push_special(KeyCode::Escape);
+
+    og::ui::run_picker(f.client);
+    // The team survived the round trip.
+    EXPECT_GE(team_count(f.save()), 1);
+}

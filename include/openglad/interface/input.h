@@ -190,11 +190,14 @@ inline constexpr int KEYCODE_F7 = 1073741888;
 inline constexpr int KEYCODE_F8 = 1073741889;
 inline constexpr int KEYCODE_F9 = 1073741890;
 inline constexpr int KEYCODE_F10 = 1073741891;
+inline constexpr int KEYCODE_F11 = 1073741892;
 inline constexpr int KEYCODE_F12 = 1073741893;
 inline constexpr int KEYCODE_LCTRL = 1073742048;
 inline constexpr int KEYCODE_LSHIFT = 1073742049;
 inline constexpr int KEYCODE_LALT = 1073742050;
+inline constexpr int KEYCODE_RCTRL = 1073742052;
 inline constexpr int KEYCODE_RSHIFT = 1073742053;
+inline constexpr int KEYCODE_RALT = 1073742054;
 inline constexpr int KEYMOD_CTRL = 0x00C0;
 
 template <typename EventT>
