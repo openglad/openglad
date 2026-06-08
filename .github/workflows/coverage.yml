@@ -61,9 +61,7 @@ jobs:
         run: cmake --build --preset ci-coverage -j"$(nproc)"
 
       - name: Run tests with coverage
-        # Retry transient SDL injector-test timing flakes; never masks a
-        # deterministic failure.
-        run: ctest --test-dir build/ci-coverage --output-on-failure --timeout 420 --repeat until-pass:3
+        run: ctest --test-dir build/ci-coverage --output-on-failure --timeout 420
 
       - name: Typecheck relay worker
         working-directory: relay

@@ -3172,19 +3172,19 @@ int level_editor_test_exercise_internal_helpers()
 
         open_file_menu();
         bool quit_done = click_button(data.fileQuitButton);
-        if (quit_done)
+        if (quit_done && data.current_menu.empty())
             score++;
 
         open_file_menu();
         bool off_menu_done = false;
         data.mouse_up(220, 170, 220, 170, off_menu_done);
-        if (data.current_menu.empty())
+        if (!off_menu_done && data.current_menu.empty())
             score++;
 
         data.dragging = true;
         bool drag_done = false;
         data.mouse_up(220, 170, 220, 170, drag_done);
-        if (!data.dragging)
+        if (!drag_done && !data.dragging && data.current_menu.empty())
             score++;
 
         if (!previously_mounted_campaign.empty()) {

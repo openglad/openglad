@@ -858,11 +858,13 @@ int results_screen_test_exercise_internal()
         empty_result.get_class_name().empty() &&
         empty_result.get_level() == 0 &&
         empty_result.get_tallies() == 0 &&
-        empty_result.get_HP() == 0.0f)
+        empty_result.get_HP() == 0.0f &&
+        empty_result.get_XP_base() == 0.0f &&
+        empty_result.is_dead() &&
+        !empty_result.is_new())
     {
         score++;
     }
-    (void)empty_result.get_XP_base();
     empty_result.draw_guy(160, 100, 0);
     show_guy(0, nullptr, 160, 100);
 
@@ -880,10 +882,13 @@ int results_screen_test_exercise_internal()
         score++;
     if (!t0.get_class_name().empty())
         score++;
-    (void)t0.get_XP_base();
-    (void)t0.get_XP_gain();
-    (void)t0.get_gained_specials();
-    (void)t0.is_new();
+    if (t0.get_XP_base() > 0.0f &&
+        t0.get_XP_gain() == 0.0f &&
+        t0.get_gained_specials().empty() &&
+        !t0.is_new())
+    {
+        score++;
+    }
 
     // after with owned myguy to cover gained/lost/no-change XP branches and HP paths.
     walker after_owned(one_px);
@@ -900,11 +905,21 @@ int results_screen_test_exercise_internal()
     TroopResult t1(&before, &after_owned);
     if (t1.gained_level())
         score++;
-    (void)t1.get_XP_base();
-    (void)t1.get_XP_gain();
-    (void)t1.get_HP();
-    (void)t1.get_tallies();
-    (void)t1.get_gained_specials();
+    if (t1.get_XP_base() == 0.0f &&
+        t1.get_XP_gain() > 0.0f &&
+        t1.get_HP() > 0.0f &&
+        t1.get_HP() < 1.0f &&
+        t1.get_tallies() == 0)
+    {
+        score++;
+    }
+    const std::vector<std::string> gained_specials = t1.get_gained_specials();
+    if (!gained_specials.empty() &&
+        std::all_of(gained_specials.begin(), gained_specials.end(),
+                    [](const std::string& name) { return !name.empty(); }))
+    {
+        score++;
+    }
 
     // lost level branch
     before.level = 6;
@@ -913,14 +928,16 @@ int results_screen_test_exercise_internal()
     TroopResult t2(&before, &after_owned);
     if (t2.lost_level())
         score++;
-    (void)t2.get_XP_gain();
+    if (t2.get_XP_gain() < 0.0f)
+        score++;
 
     // unchanged level branch
     before.level = 3;
     before.exp = calculate_exp(before.level) + 20;
     after_owned.myguy->exp = calculate_exp(before.level) + 25;
     TroopResult t3(&before, &after_owned);
-    (void)t3.get_XP_gain();
+    if (!t3.gained_level() && !t3.lost_level() && t3.get_XP_gain() > 0.0f)
+        score++;
 
     // HP edge: scen_min_hp > current hitpoints returns 1.0
     after_owned.myguy->scen_min_hp = 1000;
@@ -928,9 +945,13 @@ int results_screen_test_exercise_internal()
     TroopResult t4(nullptr, &after_owned);
     if (t4.get_HP() >= 0.99f)
         score++;
-    (void)t4.get_name();
-    (void)t4.get_class_name();
-    (void)t4.get_level();
+    if (t4.get_name() == "After" &&
+        !t4.get_class_name().empty() &&
+        t4.get_level() == calculate_level(after_owned.myguy->exp) &&
+        t4.is_new())
+    {
+        score++;
+    }
     t4.draw_guy(160, 100, 0);
 
     // Draw helper should no-op when dead.
