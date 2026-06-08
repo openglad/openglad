@@ -25,6 +25,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <unistd.h>
 
@@ -190,6 +191,7 @@ PixieData make_pixie(unsigned char frames = 3, unsigned char w = 2, unsigned cha
 
 namespace og::ui {
 int text_picker_testing_exercise_internal_paths();
+std::string text_protocol_testing_format_event_text(std::string_view text);
 }
 
 TEST(PlatformHeadless, user_and_asset_paths_cover_normalization)
@@ -417,6 +419,21 @@ TEST(PlatformHeadless, text_protocol_session_covers_commands_and_load_failure)
     }
 }
 
+TEST(PlatformHeadless, text_protocol_event_text_is_valid_json_escaped)
+{
+    const std::string encoded = og::ui::text_protocol_testing_format_event_text(
+        "quote\" slash\\ newline\n tab\t carriage\r ctrl\x01");
+
+    EXPECT_NE(std::string::npos, encoded.find("\"tick\":7"));
+    EXPECT_NE(std::string::npos, encoded.find("\"kind\":8"));
+    EXPECT_NE(std::string::npos,
+              encoded.find("\"text\":\"quote\\\" slash\\\\ newline\\n tab\\t carriage\\r ctrl\\u0001\""));
+    EXPECT_EQ(std::string::npos, encoded.find('\n'))
+        << "event JSON must not contain raw newlines inside strings";
+    EXPECT_EQ(std::string::npos, encoded.find('\r'))
+        << "event JSON must not contain raw carriage returns inside strings";
+}
+
 TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
 {
     const std::string input =
@@ -483,5 +500,7 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
 TEST(PlatformHeadless, text_picker_internal_help_and_error_paths)
 {
     StdoutSilencer stdout_silencer;
-    EXPECT_GE(og::ui::text_picker_testing_exercise_internal_paths(), 3);
+    constexpr int kExpectedInternalHelperChecks = 23;
+    EXPECT_EQ(kExpectedInternalHelperChecks,
+              og::ui::text_picker_testing_exercise_internal_paths());
 }

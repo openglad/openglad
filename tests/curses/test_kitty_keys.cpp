@@ -294,5 +294,7 @@ TEST(KittyKeys, response_indicates_support_partial_not_done)
 
 TEST(CursesTerminalInternals, pure_helpers_cover_color_write_and_capability_probe)
 {
-    EXPECT_GE(curses_terminal_testing_exercise_internal_helpers(), 13);
+    constexpr int kExpectedInternalHelperChecks = 19;
+    EXPECT_EQ(kExpectedInternalHelperChecks,
+              curses_terminal_testing_exercise_internal_helpers());
 }

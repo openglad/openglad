@@ -122,7 +122,10 @@ TEST(LevelEditorHelpers, level_editor_set_screen_pos_and_tile_matching)
     shareCampaign(og::runtime::current_session->myscreen_);
     std::string name = "Default";
     ASSERT_TRUE(prompt_for_string("Name", name)) << "prompt_for_string test-mode path should accept";
-    ASSERT_TRUE(level_editor_test_exercise_internal_helpers() > 0) << "internal helper exerciser should run";
+    constexpr int kExpectedInternalHelperChecks = 166;
+    ASSERT_EQ(kExpectedInternalHelperChecks,
+              level_editor_test_exercise_internal_helpers())
+        << "internal helper exerciser should run every check";
 
 }
 

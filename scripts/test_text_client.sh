@@ -74,12 +74,23 @@ if results[-1].get('tick') != 1000:
     print(f'FAIL: Last tick should be 1000, got {results[-1].get(\"tick\")}', file=sys.stderr)
     sys.exit(1)
 
-# Line 3: event drain. Some legacy event text can contain raw control
-# characters, so validate the command envelope without forcing a strict JSON
-# decode here.
-if 'cmd' not in lines[2] or 'events' not in lines[2]:
-    print('FAIL: events line missing:', lines[2], file=sys.stderr)
+# Line 3: event drain
+events_msg = json.loads(lines[2])
+if events_msg.get('cmd') != 'events':
+    print('FAIL: events line command mismatch:', lines[2], file=sys.stderr)
     sys.exit(1)
+events = events_msg.get('events')
+if not isinstance(events, list):
+    print('FAIL: events field is not a list:', lines[2], file=sys.stderr)
+    sys.exit(1)
+for i, event in enumerate(events):
+    if not isinstance(event, dict):
+        print(f'FAIL: event {i} is not an object: {event!r}', file=sys.stderr)
+        sys.exit(1)
+    for field in ('tick', 'kind', 'a', 'b'):
+        if field not in event:
+            print(f'FAIL: event {i} missing {field}: {event!r}', file=sys.stderr)
+            sys.exit(1)
 
 # Line 4: state dump
 state = json.loads(lines[3])

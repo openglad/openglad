@@ -198,5 +198,7 @@ TEST(PickerUncovered, picker_team_wraps_on_negative_step)
 
 TEST(PickerUncovered, picker_team_build_internal_paths)
 {
-    ASSERT_GE(picker_team_build_testing_exercise_internal_paths(), 20);
+    constexpr int kExpectedInternalHelperChecks = 31;
+    ASSERT_EQ(kExpectedInternalHelperChecks,
+              picker_team_build_testing_exercise_internal_paths());
 }

@@ -195,5 +195,7 @@ TEST(HelpSmoke, help_read_scenario_scroll_view_exits_on_input)
 
 TEST(HelpSmoke, help_internal_paths_cover_loading_tabs_and_scroll)
 {
-    EXPECT_GE(help_testing_exercise_internal_paths(), 10);
+    constexpr Sint32 kExpectedInternalHelperChecks = 13;
+    EXPECT_EQ(kExpectedInternalHelperChecks,
+              help_testing_exercise_internal_paths());
 }
