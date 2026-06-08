@@ -330,6 +330,7 @@ void CursesTerminal::set_cursor_visible(bool visible)
 void CursesTerminal::beep() { ::beep(); }
 
 #ifdef TESTING
+// GCOVR_EXCL_START -- test-only coverage harness in src/, not shipped code.
 int curses_terminal_testing_exercise_internal_helpers()
 {
     int score = 0;
@@ -442,6 +443,7 @@ int curses_terminal_testing_exercise_internal_helpers()
 
     return score;
 }
+// GCOVR_EXCL_STOP
 #endif
 
 } // namespace og::curses

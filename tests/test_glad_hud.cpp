@@ -171,8 +171,16 @@ TEST(GladHud, glad_draw_gems_and_value_bars_smoke)
     draw_value_bar(10, 76, controlp, 1, og::runtime::current_session->myscreen_);
 
     // New percentage-bar-based drawing.
+    controlp->stats()->set_hitpoints(100);
+    new_draw_value_bar(80, 4, controlp, 0, og::runtime::current_session->myscreen_);
+    controlp->stats()->set_hitpoints(20);
+    new_draw_value_bar(80, 12, controlp, 0, og::runtime::current_session->myscreen_);
+    controlp->stats()->set_hitpoints(80);
     new_draw_value_bar(80, 20, controlp, 0, og::runtime::current_session->myscreen_);
+    controlp->stats()->set_magicpoints(80);
     new_draw_value_bar(80, 28, controlp, 1, og::runtime::current_session->myscreen_);
+    controlp->stats()->set_magicpoints(60);
+    new_draw_value_bar(80, 44, controlp, 1, og::runtime::current_session->myscreen_);
     draw_percentage_bar(80, 36, 12, 30, og::runtime::current_session->myscreen_);
 
     v->control = control_pointer_is_live(og::runtime::current_session->myscreen_->level_runtime_data(), old_control) ? old_control : nullptr;

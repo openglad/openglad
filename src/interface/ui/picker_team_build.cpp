@@ -1755,6 +1755,7 @@ Sint32 go_menu(Sint32 arg1)
 }
 
 #ifdef TESTING
+// GCOVR_EXCL_START -- test-only coverage harness in src/, not shipped code.
 int picker_team_build_testing_exercise_internal_paths()
 {
     struct TestLobbyClient final : og::ui::IPickerLobbyClient
@@ -2015,6 +2016,7 @@ int picker_team_build_testing_exercise_internal_paths()
     restore_team();
     return score;
 }
+// GCOVR_EXCL_STOP
 #endif
 
 void statscopy(guy *dest, guy *source)

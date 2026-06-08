@@ -391,7 +391,7 @@ TEST(PlatformHeadless, walker_render_stubs_keep_sim_state_without_render_compone
 TEST(PlatformHeadless, text_protocol_session_covers_commands_and_load_failure)
 {
     {
-        StdinRedirect input("tick 0\ntick -5\nevents\nstate\nunknown\nquit\n");
+        StdinRedirect input("tick 0\ntick -5\nevents\nstate\r\nunknown\nquit\n");
         CoutRedirect output;
 
         og::ui::TextProtocolArgs args;
@@ -422,12 +422,12 @@ TEST(PlatformHeadless, text_protocol_session_covers_commands_and_load_failure)
 TEST(PlatformHeadless, text_protocol_event_text_is_valid_json_escaped)
 {
     const std::string encoded = og::ui::text_protocol_testing_format_event_text(
-        "quote\" slash\\ newline\n tab\t carriage\r ctrl\x01");
+        "quote\" slash\\ backspace\b formfeed\f newline\n tab\t carriage\r ctrl\x01");
 
     EXPECT_NE(std::string::npos, encoded.find("\"tick\":7"));
     EXPECT_NE(std::string::npos, encoded.find("\"kind\":8"));
     EXPECT_NE(std::string::npos,
-              encoded.find("\"text\":\"quote\\\" slash\\\\ newline\\n tab\\t carriage\\r ctrl\\u0001\""));
+              encoded.find("\"text\":\"quote\\\" slash\\\\ backspace\\b formfeed\\f newline\\n tab\\t carriage\\r ctrl\\u0001\""));
     EXPECT_EQ(std::string::npos, encoded.find('\n'))
         << "event JSON must not contain raw newlines inside strings";
     EXPECT_EQ(std::string::npos, encoded.find('\r'))

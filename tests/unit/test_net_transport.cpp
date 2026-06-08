@@ -562,6 +562,43 @@ TEST(NetTransport, default_send_wrappers_emit_messages_and_ignore_nulls)
     transport.send_snapshot_hash_check(1u, {});
     EXPECT_TRUE(transport.sent_messages().empty());
 
+    auto snapshot = std::make_shared<og::sim::WorldSnapshot>();
+    snapshot->tick_count = 99u;
+    snapshot->rng_state = 123u;
+    transport.send_snapshot(2u, snapshot);
+
+    auto delta = std::make_shared<og::sim::WorldSnapshot>();
+    delta->tick_count = 100u;
+    delta->level_tick_count = 3u;
+    delta->level_done = 1;
+    transport.send_delta_snapshot(2u, delta);
+
+    auto input = std::make_shared<InputState>();
+    input->quit_requested = true;
+    transport.send_input(2u, input, 44u);
+
+    auto sim_batch = std::make_shared<og::sim::SimEventBatch>();
+    sim_batch->sequence = 5u;
+    sim_batch->events.push_back({
+        .tick = 5u,
+        .kind = og::sim::EventKind::Notification,
+        .a = 0u,
+        .b = 0u,
+        .text = "sim-event",
+    });
+    transport.send_sim_event_batch(2u, sim_batch);
+
+    auto game_flow_batch = std::make_shared<og::sim::SimEventBatch>();
+    game_flow_batch->sequence = 6u;
+    game_flow_batch->events.push_back({
+        .tick = 6u,
+        .kind = og::sim::EventKind::EndGame,
+        .a = 1u,
+        .b = 2u,
+        .text = {},
+    });
+    transport.send_game_flow_event_batch(2u, game_flow_batch);
+
     const auto lobby_message = std::make_shared<og::sim::LobbyMessage>();
     lobby_message->payload =
         og::sim::LobbyStartGameMessage{.player_index = 2u};
@@ -630,12 +667,70 @@ TEST(NetTransport, default_send_wrappers_emit_messages_and_ignore_nulls)
                 .snapshot_hash = 7u,
             }));
 
-    ASSERT_EQ(13u, transport.sent_messages().size());
-    for (const og::sim::ReceivedMessage& sent : transport.sent_messages())
+    const std::array<og::sim::TypedReceivedMessageKind, 18> expected_kinds = {
+        og::sim::TypedReceivedMessageKind::Snapshot,
+        og::sim::TypedReceivedMessageKind::DeltaSnapshot,
+        og::sim::TypedReceivedMessageKind::Input,
+        og::sim::TypedReceivedMessageKind::SimEventBatch,
+        og::sim::TypedReceivedMessageKind::GameFlowEventBatch,
+        og::sim::TypedReceivedMessageKind::LobbyMessage,
+        og::sim::TypedReceivedMessageKind::LobbyState,
+        og::sim::TypedReceivedMessageKind::InitialSetup,
+        og::sim::TypedReceivedMessageKind::Hello,
+        og::sim::TypedReceivedMessageKind::ClientReady,
+        og::sim::TypedReceivedMessageKind::KeyframeRequest,
+        og::sim::TypedReceivedMessageKind::Heartbeat,
+        og::sim::TypedReceivedMessageKind::ExitPromptBroadcast,
+        og::sim::TypedReceivedMessageKind::ExitPromptResponse,
+        og::sim::TypedReceivedMessageKind::PauseBroadcast,
+        og::sim::TypedReceivedMessageKind::PauseResponse,
+        og::sim::TypedReceivedMessageKind::ControlChange,
+        og::sim::TypedReceivedMessageKind::SnapshotHashCheck,
+    };
+    ASSERT_EQ(expected_kinds.size(), transport.sent_messages().size());
+    for (std::size_t i = 0; i < transport.sent_messages().size(); ++i)
     {
+        const og::sim::ReceivedMessage& sent = transport.sent_messages()[i];
         EXPECT_EQ(2u, sent.peer_id);
-        EXPECT_NE(og::sim::TypedReceivedMessageKind::Malformed,
-                  og::sim::decode_received_message(sent).kind);
+        const og::sim::TypedReceivedMessage typed =
+            og::sim::decode_received_message(sent);
+        EXPECT_EQ(expected_kinds[i], typed.kind);
+        switch (typed.kind)
+        {
+        case og::sim::TypedReceivedMessageKind::Snapshot:
+            ASSERT_NE(nullptr, typed.snapshot);
+            EXPECT_EQ(99u, typed.snapshot->tick_count);
+            EXPECT_EQ(123u, typed.snapshot->rng_state);
+            break;
+        case og::sim::TypedReceivedMessageKind::DeltaSnapshot:
+            ASSERT_NE(nullptr, typed.snapshot);
+            EXPECT_EQ(100u, typed.snapshot->tick_count);
+            EXPECT_EQ(3u, typed.snapshot->level_tick_count);
+            EXPECT_EQ(1, typed.snapshot->level_done);
+            break;
+        case og::sim::TypedReceivedMessageKind::Input:
+            ASSERT_NE(nullptr, typed.input);
+            EXPECT_EQ(44u, typed.tick);
+            EXPECT_TRUE(typed.input->quit_requested);
+            break;
+        case og::sim::TypedReceivedMessageKind::SimEventBatch:
+            ASSERT_NE(nullptr, typed.event_batch);
+            EXPECT_EQ(sim_batch->sequence, typed.event_batch->sequence);
+            ASSERT_EQ(sim_batch->events.size(), typed.event_batch->events.size());
+            EXPECT_EQ(sim_batch->events[0], typed.event_batch->events[0]);
+            break;
+        case og::sim::TypedReceivedMessageKind::GameFlowEventBatch:
+            ASSERT_NE(nullptr, typed.event_batch);
+            EXPECT_EQ(game_flow_batch->sequence, typed.event_batch->sequence);
+            ASSERT_EQ(game_flow_batch->events.size(),
+                      typed.event_batch->events.size());
+            EXPECT_EQ(game_flow_batch->events[0], typed.event_batch->events[0]);
+            break;
+        default:
+            EXPECT_NE(og::sim::TypedReceivedMessageKind::Malformed,
+                      typed.kind);
+            break;
+        }
     }
 }
 
@@ -662,6 +757,51 @@ TEST(NetTransport, decode_received_message_reports_malformed_inputs)
         og::sim::TypedReceivedMessageKind::Malformed,
         og::sim::decode_received_message({.peer_id = 7u,
                                           .data = malformed_client_ready}).kind);
+}
+
+TEST(NetTransport, decode_received_message_reports_malformed_typed_payloads)
+{
+    const auto malformed_payload = [](std::uint8_t message_type,
+                                      std::uint16_t payload_length) {
+        std::vector<std::uint8_t> bytes;
+        og::sim::append_transport_header(bytes, message_type, payload_length);
+        bytes.resize(og::sim::kTransportHeaderSize + payload_length, 0u);
+        return bytes;
+    };
+
+    const std::array<std::pair<std::uint8_t, std::uint16_t>, 18> cases = {
+        std::pair{og::sim::kSnapshotMessageType, 1u},
+        std::pair{og::sim::kDeltaSnapshotMessageType, 1u},
+        std::pair{og::sim::kInputMessageType, 1u},
+        std::pair{og::sim::kSimEventBatchMessageType, 1u},
+        std::pair{og::sim::kGameFlowEventBatchMessageType, 1u},
+        std::pair{og::sim::kLobbyMessageType, 1u},
+        std::pair{og::sim::kLobbyStateMessageType, 1u},
+        std::pair{og::sim::kInitialSetupMessageType, 1u},
+        std::pair{og::sim::kHelloMessageType, 1u},
+        std::pair{og::sim::kClientReadyMessageType, 1u},
+        std::pair{og::sim::kKeyframeRequestMessageType, 1u},
+        std::pair{og::sim::kHeartbeatMessageType, 1u},
+        std::pair{og::sim::kExitPromptBroadcastMessageType, 1u},
+        std::pair{og::sim::kExitPromptResponseMessageType, 1u},
+        std::pair{og::sim::kPauseBroadcastMessageType, 1u},
+        std::pair{og::sim::kPauseResponseMessageType, 0u},
+        std::pair{og::sim::kControlChangeMessageType, 1u},
+        std::pair{og::sim::kSnapshotHashCheckMessageType, 1u},
+    };
+
+    for (const auto& [message_type, payload_length] : cases)
+    {
+        const og::sim::TypedReceivedMessage decoded =
+            og::sim::decode_received_message({
+                .peer_id = 7u,
+                .data = malformed_payload(message_type, payload_length),
+            });
+        EXPECT_EQ(7u, decoded.peer_id);
+        EXPECT_EQ(og::sim::TypedReceivedMessageKind::Malformed,
+                  decoded.kind)
+            << "message type " << static_cast<int>(message_type);
+    }
 }
 
 TEST(NetTransport, serialize_hello_emits_expected_wire_format)

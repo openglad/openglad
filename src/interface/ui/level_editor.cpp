@@ -2767,6 +2767,7 @@ walker* LevelEditorData::get_object(int x, int y)
 }
 
 #ifdef TESTING
+// GCOVR_EXCL_START -- test-only coverage harness in src/, not shipped code.
 int level_editor_test_exercise_internal_helpers()
 {
     int score = 0;
@@ -3376,6 +3377,7 @@ int level_editor_test_exercise_internal_helpers()
 
     return score;
 }
+// GCOVR_EXCL_STOP
 #endif
 
 std::string get_editor_family_label(Order order, Sint32 family, char livings[][20], const char* treasures[], const char* weapons[])

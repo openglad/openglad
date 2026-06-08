@@ -588,6 +588,7 @@ private:
     std::streambuf* saved_;
 };
 
+// GCOVR_EXCL_START -- test-only coverage harness in src/, not shipped code.
 int text_picker_testing_exercise_internal_paths()
 {
     TextPickerConfig config;
@@ -776,6 +777,7 @@ int text_picker_testing_exercise_internal_paths()
 
     return failed ? -failed_check : checks;
 }
+// GCOVR_EXCL_STOP
 #endif
 
 void run_text_picker(TextPickerConfig& config, TextPickerError* error)

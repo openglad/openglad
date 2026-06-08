@@ -672,6 +672,7 @@ Sint32 show_general_help()
 }
 
 #ifdef TESTING
+// GCOVR_EXCL_START -- test-only coverage harness in src/, not shipped code.
 Sint32 help_testing_exercise_internal_paths()
 {
 	int checks = 0;
@@ -725,4 +726,5 @@ Sint32 help_testing_exercise_internal_paths()
 	editor_help_lines.clear();
 	return failed ? 0 : checks;
 }
+// GCOVR_EXCL_STOP
 #endif

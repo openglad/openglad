@@ -109,6 +109,18 @@ TEST(IoPlatformCoverage, resources_filesystem_api_mount_read_write_exists)
     std::error_code ec;
     fs::create_directories(base, ec);
 
+    ASSERT_FALSE(og::resources::mount(nullptr, nullptr, 1)) << "null mount path should fail";
+    ASSERT_FALSE(og::resources::mount("", nullptr, 1)) << "empty mount path should fail";
+    ASSERT_FALSE(og::resources::unmount(nullptr)) << "null unmount path should fail";
+    ASSERT_FALSE(og::resources::unmount("")) << "empty unmount path should fail";
+    ASSERT_TRUE(og::resources::list_files(nullptr).empty()) << "null list path should return no files";
+    ASSERT_TRUE(og::resources::read_file(nullptr).empty()) << "null read path should return no bytes";
+    ASSERT_TRUE(og::resources::read_file("").empty()) << "empty read path should return no bytes";
+    ASSERT_TRUE(og::resources::read_file("definitely_missing_resources_fs_api.bin").empty())
+        << "missing read path should return no bytes";
+    ASSERT_FALSE(og::resources::exists(nullptr)) << "null exists path should be false";
+    ASSERT_FALSE(og::resources::exists("")) << "empty exists path should be false";
+
     const fs::path mounted_input = base / "mounted_input.bin";
     {
         std::FILE* f = std::fopen(mounted_input.string().c_str(), "wb");
@@ -125,6 +137,14 @@ TEST(IoPlatformCoverage, resources_filesystem_api_mount_read_write_exists)
 
     ASSERT_TRUE(og::resources::set_write_dir(base.string())) << "filesystem set_write_dir should allow temp writes";
     const unsigned char write_payload[] = {9, 8, 7, 6};
+    ASSERT_FALSE(og::resources::write_file(nullptr, write_payload, 0)) << "null write path should fail";
+    ASSERT_FALSE(og::resources::write_file("", write_payload, 0)) << "empty write path should fail";
+    ASSERT_FALSE(og::resources::write_file("null_payload.bin", nullptr, 1))
+        << "non-empty write with null data should fail";
+    ASSERT_FALSE(og::resources::write_file("missing_parent/write_out.bin", write_payload,
+                                           sizeof(write_payload))) << "missing parent write should fail";
+    ASSERT_TRUE(og::resources::write_file("empty.bin", write_payload, 0)) << "zero-length write should succeed";
+    ASSERT_TRUE(og::resources::read_file("empty.bin").empty()) << "empty file should read as no bytes";
     ASSERT_TRUE(og::resources::write_file("write_out.bin", write_payload,
                                           sizeof(write_payload))) << "filesystem write_file should succeed";
     ASSERT_TRUE(og::resources::exists("write_out.bin")) << "filesystem exists should see written file";

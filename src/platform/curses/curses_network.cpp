@@ -1155,6 +1155,7 @@ private:
 } // namespace
 
 #ifdef TESTING
+// GCOVR_EXCL_START -- test-only coverage harness in src/, not shipped code.
 int curses_network_testing_exercise_internal_helpers()
 {
     int score = 0;
@@ -1395,6 +1396,7 @@ int curses_network_testing_exercise_internal_helpers()
 
     return score;
 }
+// GCOVR_EXCL_STOP
 #endif
 
 std::unique_ptr<CursesLobby> make_host_lobby(SaveData& save, const HostOptions& opt,

@@ -72,6 +72,7 @@ TEST(InputMore, input_null_and_wrong_event_paths_are_ignored)
 {
     clear_keyboard();
 
+    handle_events(nullptr);
     handle_text_event(nullptr);
     ASSERT_TRUE(query_text_input() == nullptr) << "null text event should not set text";
 

@@ -221,6 +221,10 @@ TEST(InputKeybinds, input_wait_for_key_event_returns_fake_escape_in_test_mode)
 
 TEST(InputKeybinds, native_input_decode_event_ignores_malformed_scancode_payload)
 {
+    og::input_native::EventData null_out{};
+    ASSERT_TRUE(!og::input_native::decode_event(nullptr, null_out))
+        << "decode_event should reject null native event pointers";
+
     SDL_Event e{};
     std::memset(&e, 0x01, sizeof(e));
     e.type = SDL_KEYDOWN;
@@ -326,6 +330,12 @@ TEST(InputKeybinds, native_input_decode_event_covers_non_keyboard_variants)
 
     e = SDL_Event{};
     e.type = SDL_WINDOWEVENT;
+    e.window.event = SDL_WINDOWEVENT_MINIMIZED;
+    ASSERT_TRUE(og::input_native::decode_event(&e, out)) << "decode_event should accept window minimize";
+    ASSERT_EQ((int)og::input_native::WindowEventType::Minimized, (int)out.window_event) << "window minimize should decode";
+
+    e = SDL_Event{};
+    e.type = SDL_WINDOWEVENT;
     e.window.event = SDL_WINDOWEVENT_RESIZED;
     e.window.data1 = 640;
     e.window.data2 = 400;
@@ -340,6 +350,12 @@ TEST(InputKeybinds, native_input_decode_event_covers_non_keyboard_variants)
     e.window.event = SDL_WINDOWEVENT_CLOSE;
     ASSERT_TRUE(og::input_native::decode_event(&e, out)) << "decode_event should accept window close";
     ASSERT_EQ((int)og::input_native::WindowEventType::Close, (int)out.window_event) << "window close should decode";
+
+    e = SDL_Event{};
+    e.type = SDL_WINDOWEVENT;
+    e.window.event = SDL_WINDOWEVENT_RESTORED;
+    ASSERT_TRUE(og::input_native::decode_event(&e, out)) << "decode_event should accept window restored";
+    ASSERT_EQ((int)og::input_native::WindowEventType::Restored, (int)out.window_event) << "window restore should decode";
 
     e = SDL_Event{};
     e.type = SDL_WINDOWEVENT;
@@ -372,6 +388,12 @@ TEST(InputKeybinds, native_input_push_helpers_and_wrappers_smoke)
     ASSERT_TRUE(og::input_native::key_name(SDLK_q) != nullptr) << "key_name should return a string";
     ASSERT_TRUE(og::input_native::num_joysticks() >= 0) << "num_joysticks should be non-negative";
     ASSERT_EQ(nullptr, og::input_native::joystick_open(-1)) << "opening an invalid joystick should fail cleanly";
+    ASSERT_LE(og::input_native::joystick_num_axes(nullptr), 0) << "null joystick should not report axes";
+    ASSERT_LE(og::input_native::joystick_num_buttons(nullptr), 0) << "null joystick should not report buttons";
+    ASSERT_LE(og::input_native::joystick_num_hats(nullptr), 0) << "null joystick should not report hats";
+    ASSERT_EQ(0, og::input_native::joystick_get_axis(nullptr, 0)) << "null joystick axis read should be neutral";
+    ASSERT_EQ(0, og::input_native::joystick_get_button(nullptr, 0)) << "null joystick button read should be unpressed";
+    ASSERT_EQ(0, og::input_native::joystick_get_hat(nullptr, 0)) << "null joystick hat read should be centered";
 
     const bool joy_before = og::input_native::joystick_subsystem_initialized();
     og::input_native::joystick_init_subsystem();
@@ -406,6 +428,24 @@ TEST(InputKeybinds, native_input_push_helpers_and_wrappers_smoke)
     ASSERT_TRUE(touch_event != nullptr) << "wait_event should return the queued touch event";
     ASSERT_TRUE(og::input_native::decode_event(touch_event, out)) << "queued touch event should decode";
     ASSERT_EQ((int)og::input_native::EventType::FingerDown, (int)out.type) << "queued touch event should remain finger down";
+
+    while (og::input_native::poll_event() != nullptr) {}
+    og::input_native::push_touch_event(og::input_native::EventType::FingerMotion, 0.3f, 0.6f, 0.2f, 0.1f, 78);
+    const void* touch_motion_event = og::input_native::wait_event();
+    ASSERT_TRUE(touch_motion_event != nullptr) << "wait_event should return the queued touch motion";
+    ASSERT_TRUE(og::input_native::decode_event(touch_motion_event, out)) << "queued touch motion should decode";
+    ASSERT_EQ((int)og::input_native::EventType::FingerMotion, (int)out.type) << "queued touch motion should remain finger motion";
+
+    while (og::input_native::poll_event() != nullptr) {}
+    og::input_native::push_touch_event(og::input_native::EventType::FingerUp, 0.4f, 0.7f, -0.1f, -0.2f, 79);
+    const void* touch_up_event = og::input_native::wait_event();
+    ASSERT_TRUE(touch_up_event != nullptr) << "wait_event should return the queued touch up";
+    ASSERT_TRUE(og::input_native::decode_event(touch_up_event, out)) << "queued touch up should decode";
+    ASSERT_EQ((int)og::input_native::EventType::FingerUp, (int)out.type) << "queued touch up should remain finger up";
+
+    while (og::input_native::poll_event() != nullptr) {}
+    og::input_native::push_touch_event(og::input_native::EventType::Unknown, 0.0f, 0.0f, 0.0f, 0.0f, 0);
+    ASSERT_EQ(nullptr, og::input_native::poll_event()) << "invalid touch helper type should not queue an event";
 
     if (!joy_before)
         og::input_native::joystick_quit_subsystem();

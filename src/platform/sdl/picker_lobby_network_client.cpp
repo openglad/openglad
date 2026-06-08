@@ -1338,6 +1338,7 @@ void clear_active_gameplay_shadow() noexcept
 #ifdef TESTING
 namespace og::ui::detail {
 
+// GCOVR_EXCL_START -- test-only coverage harness in src/, not shipped code.
 int picker_lobby_network_testing_exercise_internal_helpers()
 {
     int checks = 0;
@@ -1683,6 +1684,7 @@ int picker_lobby_network_testing_exercise_internal_helpers()
 
     return failed ? -failed_check : checks;
 }
+// GCOVR_EXCL_STOP
 
 } // namespace og::ui::detail
 #endif
