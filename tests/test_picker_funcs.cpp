@@ -7,12 +7,14 @@
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/picker_ui_state.h>
+#include <openglad/resources/io_common.h>
 #include <gtest/gtest.h>
 #include <array>
 #include <atomic>
 #include <cstdlib>
 #include <cstdint>
 #include <cstring>
+#include <fstream>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -35,6 +37,7 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
 Sint32 add_guy(guy* newguy);
 Sint32 do_save(Sint32 arg1);
 Sint32 do_load(Sint32 arg1);
+std::string get_saved_name(const char* filename);
 Sint32 delete_all();
 void quit(Sint32 arg1);
 Sint32 return_menu(Sint32 arg);
@@ -1933,4 +1936,47 @@ TEST(PickerFuncs, train_session_survives_team_slot_replacement_after_accept)
     save.numplayers = old_numplayers;
     for (int i = 0; i < 4; ++i)
         save.m_totalcash[i] = old_cash[i];
+}
+
+TEST(PickerFuncs, get_saved_name_handles_legacy_truncated_and_named_slots)
+{
+    create_dir(get_user_path() + "save");
+
+    auto write_slot = [](const std::string& slot, const std::string& bytes) {
+        const std::string path = get_user_path() + "save/" + slot + ".gtl";
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        ASSERT_TRUE(out.good()) << "failed to open " << path;
+        out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+        ASSERT_TRUE(out.good()) << "failed to write " << path;
+    };
+
+    EXPECT_EQ("EMPTY SLOT", get_saved_name("__picker_missing_slot__"));
+
+    write_slot("__picker_bad_header__", "BAD");
+    EXPECT_EQ("EMPTY SLOT", get_saved_name("__picker_bad_header__"));
+
+    write_slot("__picker_missing_version__", "GTL");
+    EXPECT_EQ("EMPTY SLOT", get_saved_name("__picker_missing_version__"));
+
+    write_slot("__picker_version_1__", std::string("GTL", 3) + std::string(1, '\x01'));
+    EXPECT_EQ("SAVED GAME", get_saved_name("__picker_version_1__"));
+
+    write_slot("__picker_version_0__", std::string("GTL", 3) + std::string(1, '\0'));
+    EXPECT_EQ("SAVED GAME", get_saved_name("__picker_version_0__"));
+
+    write_slot("__picker_version_2_truncated__", std::string("GTL", 3) + std::string(1, '\x02'));
+    EXPECT_EQ("SAVED GAME", get_saved_name("__picker_version_2_truncated__"));
+
+    write_slot("__picker_version_7_missing_registered__",
+               std::string("GTL", 3) + std::string(1, '\x07'));
+    EXPECT_EQ("SAVED GAME", get_saved_name("__picker_version_7_missing_registered__"));
+
+    std::string named = std::string("GTL", 3) + std::string(1, '\x07');
+    named.push_back('\x01');
+    named.push_back('\0');
+    std::array<char, 40> stored_name{};
+    std::memcpy(stored_name.data(), "Named Slot", 10);
+    named.append(stored_name.data(), stored_name.size());
+    write_slot("__picker_version_7_named__", named);
+    EXPECT_EQ("Named Slot", get_saved_name("__picker_version_7_named__"));
 }

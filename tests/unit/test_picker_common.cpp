@@ -106,6 +106,17 @@ TEST(PickerCommon, calculate_hire_cost_with_stats)
     ASSERT_TRUE(more_cost > upgraded_cost);
 }
 
+TEST(PickerCommon, calculate_costs_return_zero_for_unknown_family)
+{
+    init_family_registry();
+    guy recruit(FAMILY_SOLDIER);
+    recruit.family = 99;
+    guy original(recruit);
+
+    EXPECT_EQ(0u, og::ui::calculate_hire_cost(recruit));
+    EXPECT_EQ(0u, og::ui::calculate_train_cost(recruit, original));
+}
+
 // --- calculate_train_cost ---
 
 TEST(PickerCommon, calculate_train_cost_delta)
@@ -189,6 +200,23 @@ TEST(PickerCommon, add_recruit_to_team)
     int slot3 = og::ui::add_recruit_to_team(save, std::move(recruit3), 0);
     ASSERT_TRUE(slot3 == 0);
     ASSERT_TRUE(save.team_size == 2);
+}
+
+TEST(PickerCommon, add_recruit_to_team_rejects_full_and_inconsistent_roster)
+{
+    SaveData full;
+    full.team_size = MAX_TEAM_SIZE;
+    EXPECT_EQ(-1, og::ui::add_recruit_to_team(
+        full, std::make_unique<guy>(FAMILY_SOLDIER), 2));
+
+    SaveData no_empty_slots;
+    no_empty_slots.team_size = 0;
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        no_empty_slots.team_list[i] = std::make_unique<guy>(FAMILY_SOLDIER);
+
+    EXPECT_EQ(-1, og::ui::add_recruit_to_team(
+        no_empty_slots, std::make_unique<guy>(FAMILY_MAGE), 1));
+    EXPECT_EQ(0, no_empty_slots.team_size);
 }
 
 TEST(PickerCommon, train_session_skips_non_editable_lobby_slots)
@@ -345,6 +373,54 @@ TEST(PickerCommon, get_random_name_all_families)
     }
 }
 
+TEST(PickerCommon, get_random_name_covers_non_hirelist_and_default_families)
+{
+    std::srand(11);
+    const int families[] = {
+        FAMILY_ARCHMAGE,
+        FAMILY_BIG_ORC,
+        FAMILY_SLIME,
+        FAMILY_MEDIUM_SLIME,
+        199,
+    };
+
+    for (int family : families) {
+        const char* name = og::ui::get_random_name(static_cast<unsigned char>(family));
+        ASSERT_NE(nullptr, name);
+        EXPECT_GT(std::strlen(name), 0u);
+    }
+}
+
+TEST(PickerCommon, get_unique_name_falls_back_to_numbered_duplicate)
+{
+    SaveData save;
+    std::vector<std::string> slime_names;
+    std::srand(3);
+    for (int attempts = 0; attempts < 200 && slime_names.size() < 6; ++attempts) {
+        std::string name = og::ui::get_random_name(FAMILY_SLIME);
+        if (std::find(slime_names.begin(), slime_names.end(), name) == slime_names.end())
+            slime_names.push_back(name);
+    }
+    ASSERT_EQ(6u, slime_names.size());
+
+    int slot = 0;
+    for (const std::string& name : slime_names) {
+        save.team_list[slot] = std::make_unique<guy>(FAMILY_SLIME);
+        save.team_list[slot]->name = name;
+        ++slot;
+        save.team_list[slot] = std::make_unique<guy>(FAMILY_SLIME);
+        save.team_list[slot]->name = name + "2";
+        ++slot;
+    }
+    save.team_size = static_cast<unsigned char>(slot);
+
+    std::srand(3);
+    const std::string unique_name = og::ui::get_unique_name(FAMILY_SLIME, save);
+    EXPECT_TRUE(unique_name.ends_with("3"));
+    for (int i = 0; i < save.team_size; ++i)
+        ASSERT_NE(save.team_list[i]->name, unique_name);
+}
+
 // --- statscopy ---
 
 TEST(PickerCommon, statscopy)
@@ -450,6 +526,11 @@ TEST(PickerCommon, hire_session_rename_hired)
 
     session.rename_hired(slot, "CustomName");
     ASSERT_TRUE(save.team_list[slot]->name == "CustomName");
+
+    session.rename_hired(-1, "Ignored");
+    session.rename_hired(MAX_TEAM_SIZE, "Ignored");
+    session.rename_hired(3, "Ignored");
+    ASSERT_TRUE(save.team_list[slot]->name == "CustomName");
 }
 
 TEST(PickerCommon, hire_session_team_full)
@@ -480,6 +561,23 @@ TEST(PickerCommon, hire_session_not_enough_gold)
     og::ui::HireSession session(save, 0);
     ASSERT_TRUE(session.hire() == -1);
     ASSERT_TRUE(save.team_size == 0);
+}
+
+TEST(PickerCommon, hire_session_reports_team_and_handles_missing_empty_slot)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_size = 0;
+    save.m_totalcash[2] = 50000;
+
+    og::ui::HireSession session(save, 2);
+    EXPECT_EQ(2, session.team_num());
+
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        save.team_list[i] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_size = MAX_TEAM_SIZE - 1;
+    EXPECT_FALSE(session.team_full());
+    EXPECT_EQ(-1, session.hire());
 }
 
 // --- TrainSession ---
@@ -558,6 +656,67 @@ TEST(PickerCommon, train_session_increase_decrease)
     ASSERT_TRUE(session.working_copy().strength == orig_str);
 }
 
+TEST(PickerCommon, train_session_all_stat_arms_and_clamps)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_MAGE);
+    save.team_size = 1;
+    save.m_totalcash[0] = 50000;
+
+    og::ui::TrainSession session(save);
+    const guy& original = session.original();
+    const short orig_str = original.strength;
+    const short orig_dex = original.dexterity;
+    const short orig_con = original.constitution;
+    const short orig_int = original.intelligence;
+    const short orig_arm = original.armor;
+
+    using Stat = og::ui::TrainSession::Stat;
+    session.increase_stat(Stat::Strength);
+    session.increase_stat(Stat::Dexterity);
+    session.increase_stat(Stat::Constitution);
+    session.increase_stat(Stat::Intelligence);
+    session.increase_stat(Stat::Armor);
+    EXPECT_GT(session.working_copy().strength, orig_str);
+    EXPECT_GT(session.working_copy().dexterity, orig_dex);
+    EXPECT_GT(session.working_copy().constitution, orig_con);
+    EXPECT_GT(session.working_copy().intelligence, orig_int);
+    EXPECT_GT(session.working_copy().armor, orig_arm);
+
+    session.decrease_stat(Stat::Strength, 100);
+    session.decrease_stat(Stat::Dexterity, 100);
+    session.decrease_stat(Stat::Constitution, 100);
+    session.decrease_stat(Stat::Intelligence, 100);
+    session.decrease_stat(Stat::Armor, 100);
+    EXPECT_EQ(orig_str, session.working_copy().strength);
+    EXPECT_EQ(orig_dex, session.working_copy().dexterity);
+    EXPECT_EQ(orig_con, session.working_copy().constitution);
+    EXPECT_EQ(orig_int, session.working_copy().intelligence);
+    EXPECT_EQ(orig_arm, session.working_copy().armor);
+}
+
+TEST(PickerCommon, train_session_handles_null_working_copy_paths)
+{
+    SaveData save;
+    save.team_size = 1;
+
+    og::ui::TrainSession session(save);
+    ASSERT_TRUE(session.empty());
+
+    using Stat = og::ui::TrainSession::Stat;
+    session.next_member();
+    session.prev_member();
+    session.increase_stat(Stat::Strength);
+    session.decrease_stat(Stat::Strength);
+    session.set_team(3);
+
+    EXPECT_EQ(0u, session.current_cost());
+    EXPECT_FALSE(session.level_increased());
+    EXPECT_FALSE(session.stats_increased());
+    EXPECT_FALSE(session.accept());
+}
+
 TEST(PickerCommon, train_session_level_locks_stats)
 {
     init_family_registry();
@@ -576,6 +735,29 @@ TEST(PickerCommon, train_session_level_locks_stats)
     short str_before = session.working_copy().strength;
     session.increase_stat(og::ui::TrainSession::Stat::Strength, 1);
     ASSERT_TRUE(session.working_copy().strength == str_before);
+}
+
+TEST(PickerCommon, train_session_level_decrease_restores_original_exp_and_accepts)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_size = 1;
+    save.m_totalcash[0] = 999999;
+
+    og::ui::TrainSession session(save);
+    const std::uint32_t original_exp = session.original().exp;
+    const short original_level = session.original().level;
+
+    session.increase_stat(og::ui::TrainSession::Stat::Level, 2);
+    ASSERT_GT(session.working_copy().level, original_level);
+    session.decrease_stat(og::ui::TrainSession::Stat::Level, 2);
+    EXPECT_EQ(original_level, session.working_copy().level);
+    EXPECT_EQ(original_exp, session.working_copy().exp);
+
+    session.increase_stat(og::ui::TrainSession::Stat::Level, 1);
+    ASSERT_TRUE(session.accept(true));
+    EXPECT_GT(save.team_list[0]->level, original_level);
 }
 
 TEST(PickerCommon, train_session_stats_lock_level)
@@ -652,6 +834,33 @@ TEST(PickerCommon, train_session_accept_force)
     ASSERT_TRUE(session.accept(true)); // force=true bypasses cost
     ASSERT_TRUE(save.team_list[0]->strength == orig_str + 5);
     ASSERT_TRUE(save.m_totalcash[0] == 0); // gold unchanged
+}
+
+TEST(PickerCommon, train_session_set_team_clamps_and_lobby_revocation_invalidates_original)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_size = 1;
+    save.m_totalcash[0] = 999999;
+
+    EditableSlotPickerLobbyClient client;
+    client.editable_slots.fill(false);
+    client.editable_slots[0] = true;
+    ActivePickerLobbyClientGuard guard(&client);
+
+    og::ui::TrainSession session(save);
+    ASSERT_FALSE(session.empty());
+
+    session.set_team(-10);
+    EXPECT_EQ(0, session.working_copy().teamnum);
+    session.set_team(99);
+    EXPECT_EQ(SCORE_TEAM_COUNT - 1, session.working_copy().teamnum);
+
+    client.editable_slots[0] = false;
+    EXPECT_TRUE(session.empty());
+    EXPECT_EQ(0u, session.current_cost());
+    EXPECT_FALSE(session.accept());
 }
 
 // --- compute_derived_stats ---
@@ -946,6 +1155,7 @@ TEST(PickerCommon, save_error_string)
     ASSERT_TRUE(std::strcmp(og::ui::save_error_string(SaveDataIoError::InvalidHeader), "invalid_header") == 0);
     ASSERT_TRUE(std::strcmp(og::ui::save_error_string(SaveDataIoError::UnsupportedVersion), "unsupported_version") == 0);
     ASSERT_TRUE(std::strcmp(og::ui::save_error_string(SaveDataIoError::CampaignLoadFailed), "campaign_load_failed") == 0);
+    ASSERT_TRUE(std::strcmp(og::ui::save_error_string(static_cast<SaveDataIoError>(999)), "unknown") == 0);
 }
 
 // --- reset_for_new_game sets gold ---

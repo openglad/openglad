@@ -4,13 +4,17 @@
 #include <SDL.h>
 #include "test_input_helpers.h"
 
+#include <string>
 #include <unistd.h>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 // From help.cpp
+short read_scenario(screen* scr);
 short read_campaign_intro(screen* scr);
 Sint32 show_general_help();
+Sint32 help_testing_exercise_internal_paths();
+void help_testing_set_force_scroll_text(bool enabled);
 
 struct ViewportGuard
 {
@@ -35,6 +39,12 @@ struct ViewportGuard
         og::runtime::current_session->viewport_offset_x_ = ox;
         og::runtime::current_session->viewport_offset_y_ = oy;
     }
+};
+
+struct ForceScrollTextGuard
+{
+    ForceScrollTextGuard() { help_testing_set_force_scroll_text(true); }
+    ~ForceScrollTextGuard() { help_testing_set_force_scroll_text(false); }
 };
 
 static int help_injector_thread(void* data)
@@ -109,6 +119,46 @@ static int intro_injector_thread(void* data)
     return 0;
 }
 
+static void hold_keyboard_bit(int keycode, bool held)
+{
+    int numkeys = 0;
+    const Uint8* keys = SDL_GetKeyboardState(&numkeys);
+    Uint8* writable = const_cast<Uint8*>(keys);
+    const SDL_Scancode scancode = SDL_GetScancodeFromKey(keycode);
+    if (scancode >= 0 && scancode < numkeys)
+        writable[scancode] = held ? 1 : 0;
+}
+
+static int scenario_injector_thread(void* data)
+{
+    og::runtime::ensure_thread_session();
+    (void)data;
+    SDL_Delay(80);
+
+    SDL_Event wheel{};
+    wheel.type = SDL_MOUSEWHEEL;
+    wheel.wheel.y = -3;
+    SDL_PushEvent(&wheel);
+
+    SDL_Delay(30);
+    hold_keyboard_bit(SDLK_PAGEDOWN, true);
+    SDL_Delay(40);
+    hold_keyboard_bit(SDLK_PAGEDOWN, false);
+
+    SDL_Delay(30);
+    wheel.wheel.y = 3;
+    SDL_PushEvent(&wheel);
+
+    SDL_Delay(30);
+    hold_keyboard_bit(SDLK_PAGEUP, true);
+    SDL_Delay(40);
+    hold_keyboard_bit(SDLK_PAGEUP, false);
+
+    SDL_Delay(30);
+    inject_key_press(SDLK_ESCAPE, 10);
+    return 0;
+}
+
 TEST(HelpSmoke, help_read_campaign_intro_smoke_exits_on_input)
 {
     og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
@@ -122,3 +172,28 @@ TEST(HelpSmoke, help_read_campaign_intro_smoke_exits_on_input)
     SDL_WaitThread(thread, &thread_result);
 }
 
+TEST(HelpSmoke, help_read_scenario_scroll_view_exits_on_input)
+{
+    ForceScrollTextGuard force_scroll;
+    auto& description = og::runtime::current_session->myscreen_->level_description();
+    const auto saved_description = description;
+    description.clear();
+    for (int i = 0; i < 40; ++i)
+        description.push_back("Scenario line " + std::to_string(i));
+
+    SDL_Thread* thread = SDL_CreateThread(scenario_injector_thread, "scenario_injector", nullptr);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    (void)read_scenario(og::runtime::current_session->myscreen_);
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    hold_keyboard_bit(SDLK_PAGEUP, false);
+    hold_keyboard_bit(SDLK_PAGEDOWN, false);
+    description = saved_description;
+}
+
+TEST(HelpSmoke, help_internal_paths_cover_loading_tabs_and_scroll)
+{
+    EXPECT_GE(help_testing_exercise_internal_paths(), 10);
+}

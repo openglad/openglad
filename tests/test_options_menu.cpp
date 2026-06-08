@@ -3,6 +3,7 @@
 #include <openglad/resources/pixie_data.h>
 #include <openglad/interface/button.h>
 #include <openglad/core/test_trace.h>
+#include <openglad/interface/input.h>
 #include <openglad/interface/render/pixien.h>
 #include <openglad/interface/screen.h>
 #include <gtest/gtest.h>
@@ -16,6 +17,8 @@
 void picker_main(Sint32 argc, char **argv);
 extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
+Sint32 edit_player_keymap(Sint32 arg);
+Sint32 toggle_player_control_mode(Sint32 arg);
 
 #include <openglad/interface/ui/picker_ui_state.h>
 static inline PickerState& pks() { return *og::runtime::current_session->picker_; }
@@ -207,4 +210,25 @@ TEST(OptionsMenu, options_menu) {
     ASSERT_TRUE(state.entered_controls) << "should have entered controls submenu";
     ASSERT_TRUE(state.exited_controls) << "should have exited via controls_back";
     ASSERT_TRUE(state.used_options_back) << "should have exited options via options_back";
+}
+
+TEST(OptionsMenu, edit_player_keymap_exercises_four_and_eight_direction_prompts)
+{
+    constexpr Sint32 kMenuRedraw = 2;
+    reset_default_player_controls();
+    const int original_fire = og::runtime::current_session->player_keys_[0][KEY_FIRE];
+
+    ASSERT_EQ(kMenuRedraw, edit_player_keymap(0))
+        << "four-direction remap should complete without changing ESC-kept keys";
+    ASSERT_EQ(original_fire, og::runtime::current_session->player_keys_[0][KEY_FIRE])
+        << "fake ESC key should preserve the existing binding";
+
+    ASSERT_EQ(kMenuRedraw, toggle_player_control_mode(0));
+    ASSERT_EQ(kMenuRedraw, edit_player_keymap(0))
+        << "eight-direction remap should also complete under TESTING";
+
+    ASSERT_EQ(kMenuRedraw, edit_player_keymap(-1))
+        << "invalid player index should be ignored safely";
+    ASSERT_EQ(kMenuRedraw, edit_player_keymap(4))
+        << "out-of-range player index should be ignored safely";
 }

@@ -6,6 +6,10 @@
 #include <openglad/interface/render/obmap_debug_draw.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/effect.h>
+#include <openglad/gameplay/living.h>
+#include <openglad/gameplay/treasure.h>
+#include <openglad/gameplay/weap.h>
 #include <openglad/interface/button.h>
 #include <openglad/resources/pixie_data.h>
 #include <openglad/resources/yaml_stream.h>
@@ -391,6 +395,30 @@ TEST(MassCoverage, pixie_render_paths) {
     }
     p.set_accel(0);
     ASSERT_EQ(0, p.accel) << "set_accel(0) should disable acceleration";
+}
+
+TEST(MassCoverage, pixie_backed_entity_constructors_set_orders_and_sizes) {
+    PixieData data = make_test_pixie_data(2, 4, 5, 44);
+
+    effect fx(data);
+    EXPECT_EQ(Order::FX, fx.query_order());
+    EXPECT_EQ(4, fx.sizex());
+    EXPECT_EQ(5, fx.sizey());
+
+    living live(data);
+    EXPECT_EQ(Order::Living, live.query_order());
+    EXPECT_EQ(4, live.sizex());
+    EXPECT_EQ(5, live.sizey());
+
+    treasure loot(data);
+    EXPECT_EQ(Order::Treasure, loot.query_order());
+    EXPECT_EQ(4, loot.sizex());
+    EXPECT_EQ(5, loot.sizey());
+
+    weap weapon(data);
+    EXPECT_EQ(Order::Weapon, weapon.query_order());
+    EXPECT_EQ(4, weapon.sizex());
+    EXPECT_EQ(5, weapon.sizey());
 }
 
 TEST(MassCoverage, pixien_and_level_render_paths) {

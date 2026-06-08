@@ -88,6 +88,8 @@ og::sim::LobbyMessage make_join_message(
     short local_team,
     const std::array<bool, MAX_TEAM_SIZE>* excluded_slots);
 
+int picker_lobby_network_testing_exercise_internal_helpers();
+
 } // namespace og::ui::detail
 
 namespace {
@@ -4088,4 +4090,11 @@ TEST(PickerNetworkClient, validation_helpers_reject_invalid_network_picker_input
               og::ui::normalize_relay_base_url(" https://relay.invalid/// "));
     EXPECT_THROW(og::ui::normalize_relay_base_url("ftp://relay.invalid"),
                  std::invalid_argument);
+}
+
+TEST(PickerNetworkClient, internal_helpers_cover_network_picker_paths)
+{
+    EXPECT_GE(
+        og::ui::detail::picker_lobby_network_testing_exercise_internal_helpers(),
+        50);
 }

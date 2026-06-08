@@ -1154,6 +1154,192 @@ private:
 
 } // namespace
 
+#ifdef TESTING
+int curses_network_testing_exercise_internal_helpers()
+{
+    int score = 0;
+
+    const std::string name_a = make_network_player_name();
+    const std::string name_b = make_network_player_name();
+    if (!name_a.empty() && name_a != name_b)
+        ++score;
+
+    og::sim::SimEventBatch batch;
+    batch.events.push_back(og::sim::Event{
+        .kind = og::sim::EventKind::Notification,
+        .text = "network helper notification",
+    });
+    batch.events.push_back(og::sim::Event{
+        .kind = og::sim::EventKind::EndGame,
+        .a = 1,
+        .b = 2,
+        .text = "",
+    });
+    batch.events.push_back(og::sim::Event{
+        .kind = og::sim::EventKind::SetEnd,
+        .text = "",
+    });
+    std::vector<std::string> notifications;
+    collect_notifications(batch, notifications);
+    PendingEnd pending;
+    apply_game_flow_batch(batch, pending, notifications);
+    if (pending.ended && pending.ending == 1 && pending.next_level == 2 &&
+        notifications.size() >= 2)
+        ++score;
+
+    SaveData save;
+    save.current_campaign.clear();
+    save.scen_num = 3;
+    save.my_team = MAX_PLAYERS;
+    save.allied_mode = 1;
+    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+    soldier->id = 77;
+    soldier->name = "Curses Soldier";
+    soldier->teamnum = 2;
+    soldier->level = 4;
+    save.team_list[3] = std::move(soldier);
+    if (resolve_initial_local_team(save) == 2)
+        ++score;
+
+    og::sim::LobbyPlayer player =
+        build_local_lobby_player(save, "local-player", 2);
+    if (player.name == "local-player" && player.team == 2 &&
+        player.character_slots.size() == 1 &&
+        player.character_slots.front().character.name == "Curses Soldier")
+        ++score;
+
+    og::sim::LobbyMessage join_message =
+        make_join_message(save, "local-player", 2);
+    og::sim::LobbyMessage settings_message = make_settings_message(save, 5);
+    if (join_message.kind() == og::sim::LobbyMessageKind::Join &&
+        settings_message.kind() == og::sim::LobbyMessageKind::SettingsChange)
+        ++score;
+
+    og::sim::LobbyState state;
+    state.settings.campaign_id = "";
+    state.settings.scenario_id = 3;
+    state.host_player_id = 0;
+    player.player_index = 0;
+    player.is_host = true;
+    state.players.push_back(player);
+    if (find_local_player(state, "local-player") != nullptr &&
+        find_local_player(state, "missing") == nullptr)
+        ++score;
+
+    class RawTransport final : public og::sim::ITransport {
+    public:
+        explicit RawTransport(std::vector<og::sim::ReceivedMessage> messages)
+            : messages_(std::move(messages))
+        {
+        }
+
+        void send(og::sim::PeerId, const std::uint8_t*, std::size_t) override {}
+        std::vector<og::sim::ReceivedMessage> poll() override
+        {
+            return std::exchange(messages_, {});
+        }
+        void accept_connections() override {}
+        void disconnect(og::sim::PeerId) override {}
+        std::vector<og::sim::PeerId> connected_peers() const override { return {1}; }
+
+    private:
+        std::vector<og::sim::ReceivedMessage> messages_;
+    };
+
+    std::vector<std::uint8_t> unknown;
+    og::sim::append_transport_header(unknown, og::sim::kHeartbeatMessageType, 0);
+    RawTransport raw({
+        og::sim::ReceivedMessage{.peer_id = 1, .data = {0xff}},
+        og::sim::ReceivedMessage{.peer_id = 1, .data = og::sim::serialize_lobby_message(join_message)},
+        og::sim::ReceivedMessage{.peer_id = 1, .data = og::sim::serialize_lobby_state_message(state)},
+        og::sim::ReceivedMessage{.peer_id = 1, .data = unknown},
+    });
+    raw.accept_connections();
+    raw.disconnect(1);
+    raw.send(1, unknown.data(), unknown.size());
+    if (raw.connected_peers() == std::vector<og::sim::PeerId>{1})
+        ++score;
+    const std::vector<og::sim::TypedReceivedMessage> decoded =
+        poll_lobby_transport_messages(raw);
+    if (decoded.size() == 2 &&
+        decoded[0].kind == og::sim::TypedReceivedMessageKind::LobbyMessage &&
+        decoded[1].kind == og::sim::TypedReceivedMessageKind::LobbyState)
+        ++score;
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+    std::string err;
+    if (HostCursesSession::create({}, {}, 1, nullptr, host_client, 0, &err) ==
+            nullptr &&
+        !err.empty())
+        ++score;
+
+    og::sim::LobbySaveDataEquivalent equivalent;
+    equivalent.current_campaign = "org.openglad.gladiator";
+    equivalent.scen_num = 1;
+    equivalent.numplayers = 1;
+    equivalent.allied_mode = 0;
+    equivalent.team_list.push_back(og::sim::LobbyCharacterSlot{
+        .slot_index = 0,
+        .character = player.character_slots.front().character,
+    });
+    std::vector<og::sim::LobbyPlayerBinding> bindings{
+        og::sim::LobbyPlayerBinding{
+            .peer_id = host_client->local_peer_id(),
+            .player_index = 0,
+            .team = 2,
+        },
+    };
+    std::unique_ptr<HostCursesSession> host =
+        HostCursesSession::create(equivalent, bindings, 1, server, host_client,
+                                  0, &err);
+    if (host != nullptr) {
+        InputState input;
+        host->send_input(input);
+        host->advance();
+        (void)host->mirror_world();
+        (void)host->followed_entity_id();
+        (void)host->next_input_tick();
+        (void)host->ended();
+        (void)host->ending();
+        (void)host->next_level();
+        host->request_abort();
+        (void)host->drain_messages();
+        host->commit_result_to_save();
+        (void)host->server();
+        (void)host->client();
+        (void)host->server_world_ref();
+        ++score;
+    }
+
+    auto join_server = og::sim::InProcessTransport::create_server();
+    join_server->accept_connections();
+    auto join_client = join_server->create_client_transport();
+    std::unique_ptr<JoinCursesSession> join =
+        JoinCursesSession::create(equivalent, 1, join_client,
+                                  join_client->local_peer_id(), 0, &err);
+    if (join != nullptr) {
+        InputState input;
+        join->send_input(input);
+        join->advance();
+        (void)join->mirror_world();
+        (void)join->followed_entity_id();
+        (void)join->next_input_tick();
+        (void)join->ended();
+        (void)join->ending();
+        (void)join->next_level();
+        join->request_abort();
+        (void)join->drain_messages();
+        join->commit_result_to_save();
+        (void)join->client();
+        ++score;
+    }
+
+    return score;
+}
+#endif
+
 std::unique_ptr<CursesLobby> make_host_lobby(SaveData& save, const HostOptions& opt,
                                              std::string* error)
 {

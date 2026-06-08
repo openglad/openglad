@@ -24,9 +24,25 @@ TMPOUT=$(mktemp)
 TMPHOME=$(mktemp -d)
 trap 'rm -f "$TMPOUT"; rm -rf "$TMPHOME"' EXIT
 
+if ! "$TEXT_BIN" --help > /dev/null 2>&1; then
+    echo "FAIL: openglad_text --help exited non-zero" >&2
+    exit 1
+fi
+
+if ! "$TEXT_BIN" -h > /dev/null 2>&1; then
+    echo "FAIL: openglad_text -h exited non-zero" >&2
+    exit 1
+fi
+
+if ! HOME="$TMPHOME" OPENGLAD_CONFIG_DIR="$TMPHOME/probe-config/" \
+    "$TEXT_BIN" --probe-unsupported-warnings > /dev/null 2>&1; then
+    echo "FAIL: openglad_text --probe-unsupported-warnings exited non-zero" >&2
+    exit 1
+fi
+
 # Keep the script-level timeout below CTest's 60s test timeout so sanitizer
 # runs still have headroom under parallel load without masking real hangs.
-printf 'tick 1000\nstate\nquit\n' | HOME="$TMPHOME" timeout "$TEXT_TIMEOUT" "$TEXT_BIN" --protocol --level 1 --seed 42 > "$TMPOUT" 2>/dev/null
+printf 'tick 1000\nevents\nstate\nquit\n' | HOME="$TMPHOME" OPENGLAD_CONFIG_DIR="$TMPHOME/config/" timeout "$TEXT_TIMEOUT" "$TEXT_BIN" --protocol --campaign org.openglad.gladiator --level 1 --team 0,1 --seed 42 > "$TMPOUT" 2>/dev/null
 rc=$?
 if [ $rc -ne 0 ]; then
     echo "FAIL: openglad_text exited with code $rc" >&2
@@ -58,18 +74,25 @@ if results[-1].get('tick') != 1000:
     print(f'FAIL: Last tick should be 1000, got {results[-1].get(\"tick\")}', file=sys.stderr)
     sys.exit(1)
 
-# Line 3: state dump
-state = json.loads(lines[2])
+# Line 3: event drain. Some legacy event text can contain raw control
+# characters, so validate the command envelope without forcing a strict JSON
+# decode here.
+if 'cmd' not in lines[2] or 'events' not in lines[2]:
+    print('FAIL: events line missing:', lines[2], file=sys.stderr)
+    sys.exit(1)
+
+# Line 4: state dump
+state = json.loads(lines[3])
 entities = state.get('entities', [])
 dead_count = sum(1 for e in entities if e.get('dead'))
 if dead_count == 0:
     print('FAIL: Expected at least 1 dead entity after 1000 ticks, got 0', file=sys.stderr)
     sys.exit(1)
 
-# Line 4: quit confirmation
-quit_msg = json.loads(lines[3])
+# Line 5: quit confirmation
+quit_msg = json.loads(lines[4])
 if quit_msg.get('status') != 'ok':
-    print('FAIL: Quit message not ok:', lines[3], file=sys.stderr)
+    print('FAIL: Quit message not ok:', lines[4], file=sys.stderr)
     sys.exit(1)
 
 print(f'PASS: 1000 ticks, {len(entities)} entities, {dead_count} dead, clean quit')

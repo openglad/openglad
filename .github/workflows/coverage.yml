@@ -60,18 +60,10 @@ jobs:
       - name: Build all test binaries
         run: cmake --build --preset ci-coverage -j"$(nproc)"
 
-      - name: Run menu UI test with coverage timeout
-        run: ctest --test-dir build/ci-coverage --output-on-failure --timeout 420 -R '^og_test_menu_ui$'
-
-      - name: Run heavy SDL coverage tests sequentially
-        # These binaries are stable individually, but concurrent coverage
-        # instrumentation can starve their SDL injector loops on CI runners.
-        run: ctest --test-dir build/ci-coverage --output-on-failure --timeout 420 --repeat until-pass:3 -R '^(og_test_game_core|og_test_view|og_test_level|og_test_picker)$'
-
-      - name: Run tests (parallel, excluding UI-heavy coverage tests)
-        # Retry transient SDL injector-test timing flakes under parallel load
-        # (see the note in test.yml); never masks a deterministic failure.
-        run: ctest --test-dir build/ci-coverage --parallel $(nproc) --output-on-failure --timeout 180 --repeat until-pass:3 -E '^(og_test_menu_ui|og_test_game_core|og_test_view|og_test_level|og_test_picker)$'
+      - name: Run tests with coverage
+        # Retry transient SDL injector-test timing flakes; never masks a
+        # deterministic failure.
+        run: ctest --test-dir build/ci-coverage --output-on-failure --timeout 420 --repeat until-pass:3
 
       - name: Typecheck relay worker
         working-directory: relay
@@ -84,21 +76,9 @@ jobs:
       - name: Generate HTML coverage report
         run: |
           mkdir -p build/ci-coverage/coverage
-          # Gate the portable engine/resource/server code. Exclude standalone
-          # fuzz targets, platform frontends, CLI entrypoints, and manual SDL
-          # editor/browser/result loops that are covered by smoke tests instead
-          # of line-gated here.
           python3 -m gcovr \
             --root . \
             --filter src/ \
-            --exclude 'src/fuzz/' \
-            --exclude 'src/platform/' \
-            --exclude 'src/server/server_main.cpp' \
-            --exclude 'src/interface/ui/level_editor.*' \
-            --exclude 'src/interface/ui/help.cpp' \
-            --exclude 'src/interface/ui/results_screen.cpp' \
-            --exclude 'src/interface/ui/campaign_picker.cpp' \
-            --exclude 'src/interface/ui/level_picker.cpp' \
             --gcov-ignore-parse-errors=suspicious_hits.warn_once_per_file \
             --gcov-ignore-parse-errors=negative_hits.warn_once_per_file \
             --html-details \
@@ -112,21 +92,9 @@ jobs:
           FUNCTION_THRESHOLD=95
 
           set +e
-          # Gate the portable engine/resource/server code. Exclude standalone
-          # fuzz targets, platform frontends, CLI entrypoints, and manual SDL
-          # editor/browser/result loops that are covered by smoke tests instead
-          # of line-gated here.
           python3 -m gcovr \
             --root . \
             --filter src/ \
-            --exclude 'src/fuzz/' \
-            --exclude 'src/platform/' \
-            --exclude 'src/server/server_main.cpp' \
-            --exclude 'src/interface/ui/level_editor.*' \
-            --exclude 'src/interface/ui/help.cpp' \
-            --exclude 'src/interface/ui/results_screen.cpp' \
-            --exclude 'src/interface/ui/campaign_picker.cpp' \
-            --exclude 'src/interface/ui/level_picker.cpp' \
             --gcov-ignore-parse-errors=suspicious_hits.warn_once_per_file \
             --gcov-ignore-parse-errors=negative_hits.warn_once_per_file \
             --txt \

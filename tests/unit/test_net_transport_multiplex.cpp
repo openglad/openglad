@@ -124,6 +124,154 @@ private:
     std::size_t broadcast_call_count_ = 0;
 };
 
+class FakeTypedTransport final : public og::sim::ITransport
+{
+public:
+    void connect_peer(og::sim::PeerId peer_id)
+    {
+        peers_.push_back(peer_id);
+    }
+
+    void send(og::sim::PeerId peer_id,
+              const std::uint8_t* data,
+              std::size_t len) override
+    {
+        raw_send_peer = peer_id;
+        raw_send_size = len;
+        if (data != nullptr && len > 0)
+            raw_send_first = data[0];
+    }
+
+    bool supports_typed_messages() const noexcept override { return true; }
+    void send_snapshot(og::sim::PeerId peer_id,
+                       std::shared_ptr<og::sim::WorldSnapshot>) override
+    {
+        snapshot_peer = peer_id;
+    }
+    void send_delta_snapshot(og::sim::PeerId peer_id,
+                             std::shared_ptr<og::sim::WorldSnapshot>) override
+    {
+        delta_peer = peer_id;
+    }
+    void send_input(og::sim::PeerId peer_id,
+                    std::shared_ptr<InputState>,
+                    std::uint32_t tick) override
+    {
+        input_peer = peer_id;
+        input_tick = tick;
+    }
+    void send_sim_event_batch(og::sim::PeerId peer_id,
+                              std::shared_ptr<og::sim::SimEventBatch>) override
+    {
+        sim_events_peer = peer_id;
+    }
+    void send_game_flow_event_batch(og::sim::PeerId peer_id,
+                                    std::shared_ptr<og::sim::SimEventBatch>) override
+    {
+        game_flow_peer = peer_id;
+    }
+    void send_lobby_message(og::sim::PeerId peer_id,
+                            std::shared_ptr<og::sim::LobbyMessage>) override
+    {
+        lobby_message_peer = peer_id;
+    }
+    void send_lobby_state(og::sim::PeerId peer_id,
+                          std::shared_ptr<og::sim::LobbyState>) override
+    {
+        lobby_state_peer = peer_id;
+    }
+    void send_initial_setup(og::sim::PeerId peer_id,
+                            std::shared_ptr<og::sim::InitialSetupMessage>) override
+    {
+        initial_setup_peer = peer_id;
+    }
+    void send_hello(og::sim::PeerId peer_id,
+                    std::shared_ptr<og::sim::HelloMessage>) override
+    {
+        hello_peer = peer_id;
+    }
+    void send_client_ready(og::sim::PeerId peer_id,
+                           std::shared_ptr<og::sim::ClientReadyMessage>) override
+    {
+        client_ready_peer = peer_id;
+    }
+    void send_keyframe_request(og::sim::PeerId peer_id,
+                               std::shared_ptr<og::sim::KeyframeRequestMessage>) override
+    {
+        keyframe_peer = peer_id;
+    }
+    void send_heartbeat(og::sim::PeerId peer_id,
+                        std::shared_ptr<og::sim::HeartbeatMessage>) override
+    {
+        heartbeat_peer = peer_id;
+    }
+    void send_exit_prompt_broadcast(
+        og::sim::PeerId peer_id,
+        std::shared_ptr<og::sim::ExitPromptBroadcastMessage>) override
+    {
+        exit_broadcast_peer = peer_id;
+    }
+    void send_exit_prompt_response(
+        og::sim::PeerId peer_id,
+        std::shared_ptr<og::sim::ExitPromptResponseMessage>) override
+    {
+        exit_response_peer = peer_id;
+    }
+    void send_pause_broadcast(og::sim::PeerId peer_id,
+                              std::shared_ptr<og::sim::PauseBroadcastMessage>) override
+    {
+        pause_broadcast_peer = peer_id;
+    }
+    void send_pause_response(og::sim::PeerId peer_id,
+                             std::shared_ptr<og::sim::PauseResponseMessage>) override
+    {
+        pause_response_peer = peer_id;
+    }
+    void send_control_change(og::sim::PeerId peer_id,
+                             std::shared_ptr<og::sim::ControlChangeMessage>) override
+    {
+        control_change_peer = peer_id;
+    }
+    void send_snapshot_hash_check(
+        og::sim::PeerId peer_id,
+        std::shared_ptr<og::sim::SnapshotHashCheckMessage>) override
+    {
+        hash_check_peer = peer_id;
+    }
+
+    std::vector<og::sim::ReceivedMessage> poll() override { return {}; }
+    void accept_connections() override {}
+    void disconnect(og::sim::PeerId peer_id) override { disconnected_peer = peer_id; }
+    std::vector<og::sim::PeerId> connected_peers() const override { return peers_; }
+
+    og::sim::PeerId raw_send_peer = 0;
+    std::size_t raw_send_size = 0;
+    std::uint8_t raw_send_first = 0;
+    og::sim::PeerId snapshot_peer = 0;
+    og::sim::PeerId delta_peer = 0;
+    og::sim::PeerId input_peer = 0;
+    std::uint32_t input_tick = 0;
+    og::sim::PeerId sim_events_peer = 0;
+    og::sim::PeerId game_flow_peer = 0;
+    og::sim::PeerId lobby_message_peer = 0;
+    og::sim::PeerId lobby_state_peer = 0;
+    og::sim::PeerId initial_setup_peer = 0;
+    og::sim::PeerId hello_peer = 0;
+    og::sim::PeerId client_ready_peer = 0;
+    og::sim::PeerId keyframe_peer = 0;
+    og::sim::PeerId heartbeat_peer = 0;
+    og::sim::PeerId exit_broadcast_peer = 0;
+    og::sim::PeerId exit_response_peer = 0;
+    og::sim::PeerId pause_broadcast_peer = 0;
+    og::sim::PeerId pause_response_peer = 0;
+    og::sim::PeerId control_change_peer = 0;
+    og::sim::PeerId hash_check_peer = 0;
+    og::sim::PeerId disconnected_peer = 0;
+
+private:
+    std::vector<og::sim::PeerId> peers_;
+};
+
 } // namespace
 
 TEST(NetTransportMultiplex, poll_typed_assigns_distinct_public_peer_ids)
@@ -447,4 +595,74 @@ TEST(NetTransportMultiplex, broadcast_calls_each_underlying_transport_once)
               raw_a->sent_messages().front().data);
     EXPECT_EQ((std::vector<std::uint8_t>{0xaa, 0x55}),
               raw_b->sent_messages().front().data);
+}
+
+TEST(NetTransportMultiplex, typed_forwarding_methods_route_to_native_peer)
+{
+    auto typed = std::make_shared<FakeTypedTransport>();
+    typed->connect_peer(44u);
+    og::sim::MultiplexTransport transport({typed});
+
+    const std::vector<og::sim::PeerId> public_peers = transport.connected_peers();
+    ASSERT_EQ(1u, public_peers.size());
+    const og::sim::PeerId public_peer = public_peers.front();
+
+    const std::array<std::uint8_t, 2> raw = {0x12, 0x34};
+    transport.send(public_peer, raw.data(), raw.size());
+    transport.send_snapshot(public_peer, {});
+    transport.send_delta_snapshot(public_peer, {});
+    transport.send_input(public_peer, std::make_shared<InputState>(), 1234u);
+    transport.send_sim_event_batch(public_peer, {});
+    transport.send_game_flow_event_batch(public_peer, {});
+    transport.send_lobby_message(public_peer, std::make_shared<og::sim::LobbyMessage>());
+    transport.send_lobby_state(public_peer, std::make_shared<og::sim::LobbyState>());
+    transport.send_initial_setup(public_peer,
+                                 std::make_shared<og::sim::InitialSetupMessage>());
+    transport.send_hello(public_peer, std::make_shared<og::sim::HelloMessage>());
+    transport.send_client_ready(public_peer,
+                                std::make_shared<og::sim::ClientReadyMessage>());
+    transport.send_keyframe_request(public_peer,
+                                    std::make_shared<og::sim::KeyframeRequestMessage>());
+    transport.send_heartbeat(public_peer, std::make_shared<og::sim::HeartbeatMessage>());
+    transport.send_exit_prompt_broadcast(
+        public_peer, std::make_shared<og::sim::ExitPromptBroadcastMessage>());
+    transport.send_exit_prompt_response(
+        public_peer, std::make_shared<og::sim::ExitPromptResponseMessage>());
+    transport.send_pause_broadcast(public_peer,
+                                   std::make_shared<og::sim::PauseBroadcastMessage>());
+    transport.send_pause_response(public_peer,
+                                  std::make_shared<og::sim::PauseResponseMessage>());
+    transport.send_control_change(public_peer,
+                                  std::make_shared<og::sim::ControlChangeMessage>());
+    transport.send_snapshot_hash_check(
+        public_peer, std::make_shared<og::sim::SnapshotHashCheckMessage>());
+    transport.disconnect(public_peer);
+
+    EXPECT_EQ(44u, typed->raw_send_peer);
+    EXPECT_EQ(2u, typed->raw_send_size);
+    EXPECT_EQ(0x12u, typed->raw_send_first);
+    EXPECT_EQ(44u, typed->snapshot_peer);
+    EXPECT_EQ(44u, typed->delta_peer);
+    EXPECT_EQ(44u, typed->input_peer);
+    EXPECT_EQ(1234u, typed->input_tick);
+    EXPECT_EQ(44u, typed->sim_events_peer);
+    EXPECT_EQ(44u, typed->game_flow_peer);
+    EXPECT_EQ(44u, typed->lobby_message_peer);
+    EXPECT_EQ(44u, typed->lobby_state_peer);
+    EXPECT_EQ(44u, typed->initial_setup_peer);
+    EXPECT_EQ(44u, typed->hello_peer);
+    EXPECT_EQ(44u, typed->client_ready_peer);
+    EXPECT_EQ(44u, typed->keyframe_peer);
+    EXPECT_EQ(44u, typed->heartbeat_peer);
+    EXPECT_EQ(44u, typed->exit_broadcast_peer);
+    EXPECT_EQ(44u, typed->exit_response_peer);
+    EXPECT_EQ(44u, typed->pause_broadcast_peer);
+    EXPECT_EQ(44u, typed->pause_response_peer);
+    EXPECT_EQ(44u, typed->control_change_peer);
+    EXPECT_EQ(44u, typed->hash_check_peer);
+    EXPECT_EQ(44u, typed->disconnected_peer);
+
+    transport.send(999u, raw.data(), raw.size());
+    transport.send_lobby_state(999u, std::make_shared<og::sim::LobbyState>());
+    transport.disconnect(999u);
 }

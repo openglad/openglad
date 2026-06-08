@@ -23,6 +23,7 @@
 #include <cstdlib>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include <csignal>
 #include <poll.h>
@@ -167,6 +168,10 @@ struct CursesTerminal::Impl {
 };
 
 CursesTerminal::CursesTerminal() : CursesTerminal(Options{}) {}
+
+#ifdef TESTING
+CursesTerminal::CursesTerminal(TestingTag) : impl_(std::make_unique<Impl>()) {}
+#endif
 
 CursesTerminal::CursesTerminal(Options opt) : impl_(std::make_unique<Impl>())
 {
@@ -323,5 +328,120 @@ void CursesTerminal::set_cursor_visible(bool visible)
 }
 
 void CursesTerminal::beep() { ::beep(); }
+
+#ifdef TESTING
+int curses_terminal_testing_exercise_internal_helpers()
+{
+    int score = 0;
+    try {
+        CursesTerminal terminal(CursesTerminal::Options{});
+        (void)terminal;
+    } catch (const std::runtime_error&) {
+        ++score;
+    }
+
+    restore_terminal();
+    on_sigwinch(SIGWINCH);
+    if (g_resize_pending) {
+        ++score;
+        g_resize_pending = 0;
+    }
+
+    {
+        CursesTerminal term(CursesTerminal::TestingTag{});
+        term.impl_->unicode = true;
+        term.impl_->color = false;
+        term.impl_->handle_resize();
+        if (term.supports_unicode())
+            ++score;
+        if (!term.supports_color())
+            ++score;
+        (void)term.rows();
+        (void)term.cols();
+
+        int in_pipe[2]{};
+        if (::pipe(in_pipe) == 0) {
+            term.impl_->in_fd = in_pipe[0];
+            write_all(in_pipe[1], "\x1b[113u");
+            const Key key = term.poll_key(false);
+            if (key.is_char(U'q'))
+                ++score;
+            ::close(in_pipe[1]);
+            ::close(in_pipe[0]);
+            term.impl_->in_fd = STDIN_FILENO;
+        }
+
+        int empty_pipe[2]{};
+        if (::pipe(empty_pipe) == 0) {
+            ::close(empty_pipe[1]);
+            term.impl_->in_fd = empty_pipe[0];
+            if (term.poll_key(false).is_none())
+                ++score;
+            ::close(empty_pipe[0]);
+            term.impl_->in_fd = STDIN_FILENO;
+        }
+    }
+
+    if (to_ncurses_color(Color::Black) == COLOR_BLACK)
+        ++score;
+    if (to_ncurses_color(Color::Red) == COLOR_RED)
+        ++score;
+    if (to_ncurses_color(Color::Green) == COLOR_GREEN)
+        ++score;
+    if (to_ncurses_color(Color::Yellow) == COLOR_YELLOW)
+        ++score;
+    if (to_ncurses_color(Color::Blue) == COLOR_BLUE)
+        ++score;
+    if (to_ncurses_color(Color::Magenta) == COLOR_MAGENTA)
+        ++score;
+    if (to_ncurses_color(Color::Cyan) == COLOR_CYAN)
+        ++score;
+    if (to_ncurses_color(Color::White) == COLOR_WHITE)
+        ++score;
+    if (to_ncurses_color(Color::Default) == -1)
+        ++score;
+    if (pair_id(Color::Red, Color::Blue) != pair_id(Color::Blue, Color::Red))
+        ++score;
+
+    int write_pipe[2]{};
+    if (::pipe(write_pipe) == 0) {
+        write_all(write_pipe[1], "terminal-write-test");
+        ::close(write_pipe[1]);
+        char buf[64]{};
+        const ssize_t n = ::read(write_pipe[0], buf, sizeof(buf));
+        if (n == 19 && std::string(buf, static_cast<std::size_t>(n)) == "terminal-write-test")
+            ++score;
+        ::close(write_pipe[0]);
+    }
+
+    auto probe = [&](std::string_view reply, bool expected) {
+        int in_pipe[2]{};
+        int out_pipe[2]{};
+        if (::pipe(in_pipe) != 0)
+            return;
+        if (::pipe(out_pipe) != 0) {
+            ::close(in_pipe[0]);
+            ::close(in_pipe[1]);
+            return;
+        }
+        write_all(in_pipe[1], reply);
+        ::close(in_pipe[1]);
+        const bool supported = detect_kitty_support(in_pipe[0], out_pipe[1]);
+        ::close(in_pipe[0]);
+        ::close(out_pipe[1]);
+        std::vector<char> written(kitty::kQuery.size());
+        const ssize_t n = ::read(out_pipe[0], written.data(), written.size());
+        ::close(out_pipe[0]);
+        if (supported == expected &&
+            n == static_cast<ssize_t>(kitty::kQuery.size()) &&
+            std::string_view(written.data(), written.size()) == kitty::kQuery)
+            ++score;
+    };
+    probe("\x1b[?11u\x1b[?62;1c", true);
+    probe("\x1b[?62;1c", false);
+
+    return score;
+}
+#endif
 
 } // namespace og::curses

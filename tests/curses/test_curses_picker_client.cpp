@@ -31,6 +31,7 @@
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/save_data.h>
 
+#include <memory>
 #include <string>
 
 using namespace og::curses;
@@ -156,6 +157,32 @@ TEST(CursesPickerClient, present_menu_digit_and_arrow_navigation)
     EXPECT_EQ(second->command, PickerMenuCommand::ContinueGame);
 }
 
+TEST(CursesPickerClient, present_menu_ignores_releases_and_accepts_space)
+{
+    PickerFixture f;
+    f.t().push_char_release(U'x');
+    f.t().push_char(U' ');
+    const auto* item = f.client.present_menu(PickerMenuId::Main);
+    ASSERT_NE(item, nullptr);
+    EXPECT_EQ(item->command, PickerMenuCommand::BeginNewGame);
+}
+
+TEST(CursesPickerClient, present_menu_team_build_repopulates_empty_config)
+{
+    PickerFixture f;
+    f.config.team_families.clear();
+    f.save().team_size = 0;
+    for (auto& slot : f.save().team_list)
+        slot.reset();
+
+    f.t().push_char(U'q');
+    const auto* item = f.client.present_menu(PickerMenuId::TeamBuild);
+    ASSERT_NE(item, nullptr);
+    EXPECT_EQ(item->command, PickerMenuCommand::Back);
+    EXPECT_FALSE(f.config.team_families.empty());
+    EXPECT_GE(team_count(f.save()), 1);
+}
+
 // --- new game ------------------------------------------------------------
 
 // prepare_new_game resets the team to a fresh single member and restores gold.
@@ -230,6 +257,18 @@ TEST(CursesPickerClient, allied_mode_toggles)
     EXPECT_NE(og::ui::is_allied_mode(f.save()), before);
 }
 
+TEST(CursesPickerClient, level_edit_notice_renders)
+{
+    PickerFixture f;
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::Main, PickerMenuCommand::LevelEdit);
+    ASSERT_NE(item, nullptr);
+
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Main, *item);
+    EXPECT_NE(f.t().dump().find("openscen"), std::string::npos);
+}
+
 // --- view roster ---------------------------------------------------------
 
 // Viewing the roster renders each member's name to the terminal.
@@ -298,6 +337,43 @@ TEST(CursesPickerClient, hire_cancel_is_noop)
     EXPECT_EQ(f.save().m_totalcash[0], before_gold);
 }
 
+TEST(CursesPickerClient, hire_full_team_reports_and_returns)
+{
+    PickerFixture f;
+    f.save().m_totalcash[0] = 50000u;
+    for (auto& slot : f.save().team_list)
+        slot.reset();
+    f.save().team_size = 0;
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i) {
+        f.save().team_list[static_cast<size_t>(i)] = std::make_unique<guy>(FAMILY_SOLDIER);
+        f.save().team_list[static_cast<size_t>(i)]->teamnum = 0;
+        f.save().team_size++;
+    }
+
+    const auto* item =
+        og::ui::find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::HireTroops);
+    ASSERT_NE(item, nullptr);
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+    EXPECT_NE(f.t().dump().find("max size"), std::string::npos);
+}
+
+TEST(CursesPickerClient, hire_navigation_next_prev_and_back)
+{
+    PickerFixture f;
+    const int before_count = team_count(f.save());
+
+    const auto* item =
+        og::ui::find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::HireTroops);
+    ASSERT_NE(item, nullptr);
+    pick(f.t(), 1); // Next family
+    pick(f.t(), 2); // Previous family
+    pick(f.t(), 3); // Back
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+
+    EXPECT_EQ(team_count(f.save()), before_count);
+}
+
 // --- train ---------------------------------------------------------------
 
 // Training raises a stat and charges gold on accept.
@@ -328,6 +404,44 @@ TEST(CursesPickerClient, train_raises_stat_at_a_cost)
         << "accepting training should charge gold";
 }
 
+TEST(CursesPickerClient, train_empty_team_reports_and_returns)
+{
+    PickerFixture f;
+    f.save().team_size = 0;
+    for (auto& slot : f.save().team_list)
+        slot.reset();
+
+    const auto* item =
+        og::ui::find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::TrainTeam);
+    ASSERT_NE(item, nullptr);
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+
+    EXPECT_NE(f.t().dump().find("No team members"), std::string::npos);
+}
+
+TEST(CursesPickerClient, train_navigation_next_prev_and_back)
+{
+    PickerFixture f;
+    {
+        og::ui::HireSession session(f.save(), 0);
+        ASSERT_GE(session.hire(), 0);
+    }
+    const short member0_before = f.save().team_list[0]->strength;
+    const short member1_before = f.save().team_list[1]->strength;
+
+    const auto* item =
+        og::ui::find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::TrainTeam);
+    ASSERT_NE(item, nullptr);
+    pick(f.t(), 7); // Next member
+    pick(f.t(), 8); // Previous member
+    f.t().push_char(U'q'); // Back
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+
+    EXPECT_EQ(f.save().team_list[0]->strength, member0_before);
+    EXPECT_EQ(f.save().team_list[1]->strength, member1_before);
+}
+
 // --- set level -----------------------------------------------------------
 
 // Set Level updates both the config and the save's scenario number.
@@ -346,6 +460,23 @@ TEST(CursesPickerClient, set_level_updates_config_and_save)
 
     EXPECT_EQ(f.config.level, 4);
     EXPECT_EQ(static_cast<int>(f.save().scen_num), 4);
+}
+
+TEST(CursesPickerClient, set_level_rejects_invalid_value)
+{
+    PickerFixture f;
+    const auto* item =
+        og::ui::find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::SetLevel);
+    ASSERT_NE(item, nullptr);
+
+    f.t().push_special(KeyCode::Backspace); // erase the prefilled "1"
+    f.t().push_char(U'0');
+    f.t().push_special(KeyCode::Enter);
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+
+    EXPECT_EQ(f.config.level, 1);
+    EXPECT_NE(f.t().dump().find("Invalid level"), std::string::npos);
 }
 
 // --- campaign select -----------------------------------------------------
@@ -411,6 +542,41 @@ TEST(CursesPickerClient, save_then_load_round_trips_team)
     EXPECT_EQ(config.level, 3) << "level should restore from the save's scen_num";
 }
 
+TEST(CursesPickerClient, team_build_dispatches_save_load_progress_network_and_campaign)
+{
+    PickerFixture f;
+    f.config.save_name = "curses_dispatch_slot";
+
+    const auto* save_item =
+        og::ui::find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::SaveTeam);
+    const auto* load_item =
+        og::ui::find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::LoadTeam);
+    const auto* progress_item =
+        og::ui::find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::ShowProgress);
+    const auto* network_item =
+        og::ui::find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::Networking);
+    const auto* campaign_item =
+        og::ui::find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::SetCampaign);
+    ASSERT_NE(save_item, nullptr);
+    ASSERT_NE(load_item, nullptr);
+    ASSERT_NE(progress_item, nullptr);
+    ASSERT_NE(network_item, nullptr);
+    ASSERT_NE(campaign_item, nullptr);
+
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *save_item);
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *load_item);
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *progress_item);
+    pick(f.t(), 2);
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *network_item);
+    f.t().push_special(KeyCode::Escape);
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *campaign_item);
+
+    EXPECT_EQ(f.save().current_campaign, f.config.campaign);
+}
+
 // Loading a non-existent slot fails gracefully and returns false.
 TEST(CursesPickerClient, load_missing_slot_fails_gracefully)
 {
@@ -466,6 +632,25 @@ TEST(CursesPickerClient, options_cancel_keeps_config)
 
     EXPECT_EQ(f.config.save_name, "keep_me");
     EXPECT_EQ(f.config.seed, 99u);
+}
+
+TEST(CursesPickerClient, options_invalid_seed_keeps_current)
+{
+    PickerFixture f;
+    f.config.save_name = "slot";
+    f.config.seed = 44;
+
+    f.t().push_special(KeyCode::Enter); // accept slot unchanged
+    for (int i = 0; i < 2; ++i)
+        f.t().push_special(KeyCode::Backspace);
+    f.t().push_string("bad");
+    f.t().push_special(KeyCode::Enter);
+    dismiss(f.t());
+    f.client.show_options();
+
+    EXPECT_EQ(f.config.save_name, "slot");
+    EXPECT_EQ(f.config.seed, 44u);
+    EXPECT_NE(f.t().dump().find("Invalid seed"), std::string::npos);
 }
 
 // --- help ----------------------------------------------------------------

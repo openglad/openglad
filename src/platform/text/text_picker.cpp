@@ -558,6 +558,132 @@ private:
     bool show_new_game_team_build_notice_ = false;
 };
 
+#ifdef TESTING
+class ScopedCinRedirect
+{
+public:
+    explicit ScopedCinRedirect(std::string input)
+        : input_(std::move(input))
+        , saved_(std::cin.rdbuf(input_.rdbuf()))
+    {
+    }
+
+    ~ScopedCinRedirect()
+    {
+        std::cin.rdbuf(saved_);
+    }
+
+    ScopedCinRedirect(const ScopedCinRedirect&) = delete;
+    ScopedCinRedirect& operator=(const ScopedCinRedirect&) = delete;
+
+private:
+    std::istringstream input_;
+    std::streambuf* saved_;
+};
+
+int text_picker_testing_exercise_internal_paths()
+{
+    TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER};
+    config.save_name = "missing-text-picker-save";
+    TextPickerError error;
+    TextPickerClient client(config, &error);
+
+    client.show_help();
+    const bool networking = client.configure_networking();
+    const bool loaded = client.load_game();
+    int score = (!networking ? 1 : 0) + (!loaded ? 1 : 0) +
+        (error.code == TextPickerErrorCode::LoadIoError ? 1 : 0);
+
+    {
+        ScopedCinRedirect input("bad\n1\n");
+        if (client.present_menu(PickerMenuId::Main) != nullptr)
+            ++score;
+    }
+    {
+        ScopedCinRedirect input("");
+        const PickerMenuItem* item = client.present_menu(PickerMenuId::TeamBuild);
+        if (item != nullptr && item->command == PickerMenuCommand::Back)
+            ++score;
+    }
+    {
+        ScopedCinRedirect input("");
+        const PickerMenuItem* item = client.present_menu(PickerMenuId::Main);
+        if (item != nullptr && item->command == PickerMenuCommand::Quit)
+            ++score;
+    }
+
+    if (client.prepare_new_game())
+        ++score;
+    if (client.screen_after_game() == PickerScreen::TeamBuild)
+        ++score;
+
+    if (const PickerMenuItem* item =
+            find_picker_menu_item(PickerMenuId::Main, PickerMenuCommand::SetDifficulty))
+        client.handle_menu_item(PickerMenuId::Main, *item);
+    if (const PickerMenuItem* item =
+            find_picker_menu_item(PickerMenuId::Main, PickerMenuCommand::SetPlayerMode, 2))
+        client.handle_menu_item(PickerMenuId::Main, *item);
+    if (const PickerMenuItem* item =
+            find_picker_menu_item(PickerMenuId::Main, PickerMenuCommand::ToggleAlliedMode))
+        client.handle_menu_item(PickerMenuId::Main, *item);
+    if (const PickerMenuItem* item =
+            find_picker_menu_item(PickerMenuId::Main, PickerMenuCommand::LevelEdit))
+        client.handle_menu_item(PickerMenuId::Main, *item);
+    const PickerMenuItem default_main{"helper-default", "Helper Default",
+                                      PickerMenuCommand::BeginNewGame, 0};
+    client.handle_menu_item(PickerMenuId::Main, default_main);
+    const PickerMenuItem default_team{"helper-default", "Helper Default",
+                                      PickerMenuCommand::Back, 0};
+    client.handle_menu_item(PickerMenuId::TeamBuild, default_team);
+
+    auto handle_team_item = [&](PickerMenuCommand command, std::string input_text) {
+        if (const PickerMenuItem* item =
+                find_picker_menu_item(PickerMenuId::TeamBuild, command))
+        {
+            ScopedCinRedirect input(std::move(input_text));
+            client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+            ++score;
+        }
+    };
+
+    handle_team_item(PickerMenuCommand::ViewTeam, "\n");
+    handle_team_item(PickerMenuCommand::TrainTeam, "n\np\n1\n-1\n6\na\nb\n");
+    handle_team_item(PickerMenuCommand::HireTroops, "n\np\nh\nb\n");
+    handle_team_item(PickerMenuCommand::ShowProgress, "");
+    handle_team_item(PickerMenuCommand::Networking, "");
+    handle_team_item(PickerMenuCommand::SetLevel, "0\n");
+    handle_team_item(PickerMenuCommand::SetLevel, "5\n");
+    handle_team_item(PickerMenuCommand::SetCampaign, "999\n");
+    handle_team_item(PickerMenuCommand::SetCampaign, "\n");
+
+    const PickerMenuItem zero_players{"helper-zero", "Zero Players",
+                                      PickerMenuCommand::SetPlayerMode, 0};
+    client.handle_menu_item(PickerMenuId::Main, zero_players);
+    handle_team_item(PickerMenuCommand::ViewTeam, "\n");
+    handle_team_item(PickerMenuCommand::TrainTeam, "b\n");
+    (void)client.prepare_new_game();
+
+    {
+        ScopedCinRedirect input("helper-slot\nbad-seed\n");
+        client.show_options();
+        ++score;
+    }
+    {
+        ScopedCinRedirect input("\n123\n");
+        client.show_options();
+        if (config.seed == 123u)
+            ++score;
+    }
+    if (client.save_game())
+        ++score;
+    if (client.load_game())
+        ++score;
+
+    return score;
+}
+#endif
+
 void run_text_picker(TextPickerConfig& config, TextPickerError* error)
 {
     if (config.team_families.empty())

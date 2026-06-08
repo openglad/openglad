@@ -1164,10 +1164,15 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/interface/platform_bridge.cpp
     )
 
-    set(HEADLESS_SERVER_SOURCES
-        ${SRC_DIR}/server/server_main.cpp
-        ${HEADLESS_SERVER_RUNTIME_SOURCES}
-    )
+        set(HEADLESS_SERVER_SOURCES
+            ${SRC_DIR}/server/server_main.cpp
+            ${HEADLESS_SERVER_RUNTIME_SOURCES}
+        )
+
+        set(HEADLESS_TEST_SOURCES ${HEADLESS_SOURCES})
+        list(REMOVE_ITEM HEADLESS_TEST_SOURCES
+            ${SRC_DIR}/platform/text/main.cpp
+        )
 
     add_executable(openglad_text ${HEADLESS_SOURCES})
     target_include_directories(openglad_text PUBLIC
@@ -1193,6 +1198,10 @@ if(NOT EMSCRIPTEN)
         m
         pthread
     )
+    if(ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(openglad_text PRIVATE --coverage)
+        target_link_options(openglad_text PRIVATE --coverage)
+    endif()
     add_runtime_assets_dependency(openglad_text)
 
     if(TARGET og_platform_ws_transport)
@@ -2101,6 +2110,45 @@ if(NOT EMSCRIPTEN)
             )
         endif()
 
+        add_executable(og_unit_headless_platform
+            ${CMAKE_SOURCE_DIR}/tests/unit/headless_unit_main.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_platform_headless.cpp
+            ${SRC_DIR}/test_trace.cpp
+            ${HEADLESS_TEST_SOURCES}
+        )
+        configure_openglad_library(og_unit_headless_platform)
+        target_compile_definitions(og_unit_headless_platform PRIVATE TESTING)
+        target_include_directories(og_unit_headless_platform PRIVATE
+            ${CMAKE_SOURCE_DIR}/tests
+            ${THIRD_PARTY_DIR}/micropather
+            ${THIRD_PARTY_DIR}/yam
+            ${THIRD_PARTY_DIR}/libyaml/include
+            ${THIRD_PARTY_DIR}/physfs
+            ${THIRD_PARTY_DIR}/physfs/extras
+            ${THIRD_PARTY_DIR}/libzip
+            ${THIRD_PARTY_DIR}/lodepng
+        )
+        target_link_libraries(og_unit_headless_platform PRIVATE
+            og_ext_micropather
+            ${OG_IO_EXTERNAL_LIBS}
+            GTest::gtest
+            m
+            pthread
+        )
+        configure_openglad_runtime_target(og_unit_headless_platform)
+        add_runtime_assets_dependency(og_unit_headless_platform)
+        add_test(NAME og_unit_headless_platform COMMAND og_unit_headless_platform)
+        set_tests_properties(og_unit_headless_platform PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            TIMEOUT 180
+            LABELS "unit"
+        )
+        if(OG_SANITIZER_TEST_ENVIRONMENT)
+            set_tests_properties(og_unit_headless_platform PROPERTIES ENVIRONMENT
+                "${OG_SANITIZER_TEST_ENVIRONMENT}"
+            )
+        endif()
+
         # --- og_test_curses (ncurses client test suite) ---
         # All curses tests are SDL-free and TTY-free (HeadlessTerminal + FakeClock),
         # so they run in CI like the headless unit binaries. Reuses the curses
@@ -2111,6 +2159,7 @@ if(NOT EMSCRIPTEN)
                 ${CMAKE_SOURCE_DIR}/tests/curses/test_glyph_map.cpp
                 ${CMAKE_SOURCE_DIR}/tests/curses/test_headless_terminal.cpp
                 ${CMAKE_SOURCE_DIR}/tests/curses/test_kitty_keys.cpp
+                ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_app.cpp
                 ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_input.cpp
                 ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_renderer.cpp
                 ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_picker_client.cpp
@@ -2164,6 +2213,17 @@ if(NOT EMSCRIPTEN)
                     $<TARGET_FILE:openglad_curses>
             )
             set_tests_properties(openglad_curses_link_no_sdl PROPERTIES
+                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                TIMEOUT 60
+                LABELS "curses"
+            )
+
+            add_test(NAME openglad_curses_cli
+                COMMAND ${CMAKE_COMMAND} -E env bash
+                    ${CMAKE_SOURCE_DIR}/scripts/test_curses_cli.sh
+                    $<TARGET_FILE:openglad_curses>
+            )
+            set_tests_properties(openglad_curses_cli PROPERTIES
                 WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
                 TIMEOUT 60
                 LABELS "curses"

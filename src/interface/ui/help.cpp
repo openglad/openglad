@@ -46,7 +46,23 @@ inline short& help_end_of_file()
 {
     return og::runtime::current_session->help_end_of_file_;
 }
+
+#ifdef TESTING
+bool s_help_force_scroll_text = false;
+#endif
 } // namespace
+
+#ifdef TESTING
+void help_testing_set_force_scroll_text(bool enabled)
+{
+	s_help_force_scroll_text = enabled;
+}
+
+bool help_testing_force_scroll_text()
+{
+	return s_help_force_scroll_text;
+}
+#endif
 
 
 // Shared scrolling text viewer used by read_scenario and read_campaign_intro.
@@ -176,7 +192,8 @@ static short scroll_text_view(screen* scr, int num_lines, int box_width,
 short read_scenario(screen *s)
 {
 #ifdef TESTING
-	return 1;
+	if (!help_testing_force_scroll_text())
+		return 1;
 #endif
 	return scroll_text_view(s,
 		static_cast<int>(s->level_description().size()), 200,
@@ -653,3 +670,59 @@ Sint32 show_general_help()
 
 	return 1;
 }
+
+#ifdef TESTING
+Sint32 help_testing_exercise_internal_paths()
+{
+	int checks = 0;
+	bool failed = false;
+	const auto check = [&checks, &failed](bool condition) {
+		if (condition)
+			++checks;
+		else
+			failed = true;
+	};
+
+	std::vector<std::string> lines;
+	check(!load_help_file("__missing_help_file__.txt", lines) &&
+	      !lines.empty());
+
+	help_files_loaded = false;
+	load_help_files();
+	check(help_files_loaded);
+	load_help_files();
+
+	classes_help_lines = {"Class line 1", "Class line 2"};
+	editor_help_lines = {"Editor line 1"};
+	const TabContent controls = get_tab_content(HelpTab::Controls);
+	const TabContent classes = get_tab_content(HelpTab::Classes);
+	const TabContent editor = get_tab_content(HelpTab::Editor);
+	const TabContent fallback =
+		get_tab_content(static_cast<HelpTab>(99));
+	check(!controls.is_dynamic && controls.num_lines == NUM_CONTROLS_LINES);
+	check(classes.is_dynamic && classes.num_lines == 2);
+	check(editor.is_dynamic && editor.num_lines == 1);
+	check(!fallback.is_dynamic && fallback.num_lines == NUM_CONTROLS_LINES);
+	check(std::strcmp(get_content_line(controls, 0),
+	                  controls_help_lines[0]) == 0);
+	check(std::strcmp(get_content_line(classes, 1), "Class line 2") == 0);
+	check(std::strcmp(get_content_line(editor, 0), "Editor line 1") == 0);
+	check(std::strcmp(get_content_line(editor, 3), "") == 0);
+	check(std::strcmp(get_content_line(editor, -1), "") == 0);
+
+	screen* const scr = og::runtime::current_session->myscreen_;
+	const std::string saved_campaign = scr->save_data.current_campaign;
+	scr->save_data.current_campaign = "__missing_campaign__";
+	check(read_campaign_intro(scr) == 1);
+	scr->save_data.current_campaign = saved_campaign;
+	const auto saved_description = scr->level_description();
+	scr->level_description().clear();
+	check(read_scenario(scr) == 1);
+	scr->level_description() = saved_description;
+
+	help_files_loaded = false;
+	classes_help_lines.clear();
+	editor_help_lines.clear();
+	return failed ? 0 : checks;
+}
+#endif

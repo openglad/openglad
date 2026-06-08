@@ -852,6 +852,19 @@ int results_screen_test_exercise_internal()
     score++;
 
     // TroopResult logic paths.
+    TroopResult empty_result(nullptr, nullptr);
+    if (empty_result.get_name().empty() &&
+        empty_result.get_class_name().empty() &&
+        empty_result.get_level() == 0 &&
+        empty_result.get_tallies() == 0 &&
+        empty_result.get_HP() == 0.0f)
+    {
+        score++;
+    }
+    (void)empty_result.get_XP_base();
+    empty_result.draw_guy(160, 100, 0);
+    show_guy(0, nullptr, 160, 100);
+
     guy before{};
     before.name = "Before";
     before.family = FAMILY_MAGE;
@@ -886,6 +899,7 @@ int results_screen_test_exercise_internal()
     TroopResult t1(&before, &after_owned);
     if (t1.gained_level())
         score++;
+    (void)t1.get_XP_base();
     (void)t1.get_XP_gain();
     (void)t1.get_HP();
     (void)t1.get_tallies();
@@ -913,6 +927,9 @@ int results_screen_test_exercise_internal()
     TroopResult t4(nullptr, &after_owned);
     if (t4.get_HP() >= 0.99f)
         score++;
+    (void)t4.get_name();
+    (void)t4.get_class_name();
+    (void)t4.get_level();
     t4.draw_guy(160, 100, 0);
 
     // Draw helper should no-op when dead.

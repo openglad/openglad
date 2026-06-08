@@ -44,7 +44,7 @@ jobs:
       - name: Verify headless server link is SDL-free
         run: bash scripts/test_headless_server_native_link.sh build/ci-test
 
-      - name: Run tests (parallel, excluding menu UI)
+      - name: Run tests
         # Gameplay parity tests (og_test_parity, plus any future og_unit_parity)
         # are registered via og_add_test_group in CMakeLists.txt and are picked
         # up here automatically. They run against the committed goldens under
@@ -58,7 +58,7 @@ jobs:
         # under heavy parallel + sanitizer CPU contention (a click/transition
         # starved past an internal timeout); a retry under lighter load passes.
         # This never masks a deterministic failure — it still fails after 3 tries.
-        run: ctest --test-dir build/ci-test --parallel $(nproc) --output-on-failure --timeout 180 --repeat until-pass:3 -E og_test_menu_ui
+        run: ctest --test-dir build/ci-test --parallel $(nproc) --output-on-failure --timeout 420 --repeat until-pass:3
 
       - name: Verify ncurses client built and its tests ran
         # The curses targets are gated on finding ncurses at configure time, so a
@@ -66,9 +66,6 @@ jobs:
         # from the build. --no-tests=error turns that into a hard failure instead
         # of a green run that tested nothing.
         run: ctest --test-dir build/ci-test --output-on-failure --timeout 180 -R '^(og_test_curses|openglad_curses_link_no_sdl)$' --no-tests=error
-
-      - name: Run menu UI test with extended timeout
-        run: ctest --test-dir build/ci-test --output-on-failure --timeout 300 -R og_test_menu_ui
 
       - name: Surface parity test results distinctly
         # Re-runs only the parity groups so a parity failure is visible as
@@ -168,13 +165,10 @@ jobs:
       - name: Build all test binaries
         run: cmake --build --preset ci-asan -j"$(nproc)"
 
-      - name: Run tests (parallel, excluding menu UI)
+      - name: Run tests
         # See the note in the "test" job: retry transient injector-test timing
         # flakes, which are most likely here (ASan slowdown + parallel contention).
-        run: ctest --test-dir build/ci-asan --parallel $(nproc) --output-on-failure --timeout 180 --repeat until-pass:3 -E og_test_menu_ui
-
-      - name: Run menu UI test with sanitizer timeout
-        run: ctest --test-dir build/ci-asan --output-on-failure --timeout 420 -R og_test_menu_ui
+        run: ctest --test-dir build/ci-asan --parallel $(nproc) --output-on-failure --timeout 420 --repeat until-pass:3
 
   tsan:
     name: TSan

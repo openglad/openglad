@@ -45,6 +45,11 @@ public:
     void beep() override;
 
 private:
+#ifdef TESTING
+    friend int curses_terminal_testing_exercise_internal_helpers();
+    struct TestingTag {};
+    explicit CursesTerminal(TestingTag);
+#endif
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };

@@ -53,6 +53,33 @@ TEST(LevelEditorHelpers, level_editor_set_screen_pos_and_tile_matching)
     t = (unsigned char)get_random_matching_tile(PIX_PAVEMENT1);
     ASSERT_TRUE(t == PIX_PAVEMENT1 || t == PIX_PAVEMENT2 || t == PIX_PAVEMENT3) << "pavement variant should be one of pavement tiles";
 
+    t = (unsigned char)get_random_matching_tile(PIX_GRASS_DARK_B1);
+    ASSERT_TRUE(t == PIX_GRASS_DARK_B1 || t == PIX_GRASS_DARK_B2) << "dark grass bottom variant should be one of bottom tiles";
+
+    t = (unsigned char)get_random_matching_tile(PIX_GRASS_DARK_R1);
+    ASSERT_TRUE(t == PIX_GRASS_DARK_R1 || t == PIX_GRASS_DARK_R2) << "dark grass right variant should be one of right tiles";
+
+    t = (unsigned char)get_random_matching_tile(PIX_COBBLE_1);
+    ASSERT_TRUE(in_set(t, PIX_COBBLE_1, PIX_COBBLE_2, PIX_COBBLE_3, PIX_COBBLE_4)) << "cobble variant should be one of cobble tiles";
+
+    t = (unsigned char)get_random_matching_tile(PIX_BOULDER_1);
+    ASSERT_TRUE(in_set(t, PIX_BOULDER_1, PIX_BOULDER_2, PIX_BOULDER_3, PIX_BOULDER_4)) << "boulder variant should be one of boulder tiles";
+
+    t = (unsigned char)get_random_matching_tile(PIX_JAGGED_GROUND_1);
+    ASSERT_TRUE(in_set(t, PIX_JAGGED_GROUND_1, PIX_JAGGED_GROUND_2, PIX_JAGGED_GROUND_3, PIX_JAGGED_GROUND_4)) << "jagged variant should be one of jagged ground tiles";
+
+    for (int i = 0; i < 64; ++i) {
+        (void)get_random_matching_tile(PIX_GRASS1);
+        (void)get_random_matching_tile(PIX_GRASS_DARK_1);
+        (void)get_random_matching_tile(PIX_GRASS_DARK_B1);
+        (void)get_random_matching_tile(PIX_GRASS_DARK_R1);
+        (void)get_random_matching_tile(PIX_WATER1);
+        (void)get_random_matching_tile(PIX_PAVEMENT1);
+        (void)get_random_matching_tile(PIX_COBBLE_1);
+        (void)get_random_matching_tile(PIX_BOULDER_1);
+        (void)get_random_matching_tile(PIX_JAGGED_GROUND_1);
+    }
+
     // Default case should return original.
     t = (unsigned char)get_random_matching_tile(222);
     ASSERT_EQ(222, (int)t) << "unknown tiles should be returned unchanged";
@@ -71,6 +98,8 @@ TEST(LevelEditorHelpers, level_editor_set_screen_pos_and_tile_matching)
     ASSERT_TRUE(get_editor_family_label(Order::Generator, FAMILY_TOWER, test_livings, test_treasures, test_weapons) == "MAGE TOWER") << "generator tower label";
     ASSERT_TRUE(get_editor_family_label(Order::Generator, FAMILY_BONES, test_livings, test_treasures, test_weapons) == "BONEPILE") << "generator bones label";
     ASSERT_TRUE(get_editor_family_label(Order::Generator, FAMILY_TREEHOUSE, test_livings, test_treasures, test_weapons) == "TREEHOUSE") << "generator treehouse label";
+    ASSERT_TRUE(get_editor_family_label(Order::Generator, FAMILY_SKELETON, test_livings, test_treasures, test_weapons) == "GENERATOR") << "generic generator label";
+    ASSERT_TRUE(get_editor_family_label(Order::Living, -1, test_livings, test_treasures, test_weapons) == "UNKNOWN") << "invalid family label";
     ASSERT_TRUE(get_editor_family_label(Order::Special, 0, test_livings, test_treasures, test_weapons) == "START TILE") << "special start-tile label";
     ASSERT_TRUE(get_editor_family_label(Order::Living, FAMILY_SOLDIER, test_livings, test_treasures, test_weapons) == "SOLDIER") << "living label";
     ASSERT_TRUE(get_editor_family_label(Order::Treasure, FAMILY_KEY, test_livings, test_treasures, test_weapons) == "TREASURE") << "treasure family label";

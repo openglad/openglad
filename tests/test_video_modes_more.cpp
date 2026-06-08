@@ -67,6 +67,39 @@ TEST(VideoModesMore, video_putbuffer_surface_clipping_and_blit)
     og::runtime::current_session->myscreen_->putbuffer_surface(10, 10, 16, 16, 0, 0, 319, 199, surf.get());
 }
 
+TEST(VideoModesMore, video_clipping_and_accel_surface_edge_paths)
+{
+    std::array<unsigned char, 16 * 16> pixels{};
+    pixels.fill(42);
+    pixels[0] = 0;
+    auto span = std::span<const unsigned char>(pixels.data(), pixels.size());
+
+    og::runtime::current_session->myscreen_->fastbox(10, 10, 4, 4, 12, 0);
+
+    og::runtime::current_session->myscreen_->putbuffer(-4, -4, 16, 16, 0, 0, 319, 199, span);
+    og::runtime::current_session->myscreen_->putbuffer(400, 400, 16, 16, 0, 0, 319, 199, span);
+    og::runtime::current_session->myscreen_->putbuffer_alpha(-4, -4, 16, 16, 0, 0, 319, 199, span, 128);
+    og::runtime::current_session->myscreen_->putbuffer_alpha(400, 400, 16, 16, 0, 0, 319, 199, span, 128);
+    og::runtime::current_session->myscreen_->putbuffer_alpha(10, 10, 0, 16, 0, 0, 319, 199, span, 128);
+
+    EXPECT_EQ(nullptr, og::runtime::current_session->myscreen_->create_accel_surface(span, 0, 16));
+    EXPECT_EQ(nullptr, og::runtime::current_session->myscreen_->create_accel_surface(span.first(3), 4, 4));
+    void* surface = og::runtime::current_session->myscreen_->create_accel_surface(span, 16, 16);
+    ASSERT_NE(nullptr, surface);
+    og::runtime::current_session->myscreen_->destroy_accel_surface(surface);
+    og::runtime::current_session->myscreen_->destroy_accel_surface(nullptr);
+
+    og::runtime::current_session->myscreen_->walkputbuffer_flash(400, 400, 16, 16, 0, 0, 319, 199, span, 40);
+    og::runtime::current_session->myscreen_->walkputbuffer_flash(-4, -4, 16, 16, 0, 0, 319, 199, span, 40);
+    og::runtime::current_session->myscreen_->walkputbuffer_flash(310, 190, 16, 16, 0, 0, 319, 199, span, 40);
+    og::runtime::current_session->myscreen_->walkputbuffer_flash(10, 10, 0, 16, 0, 0, 319, 199, span, 40);
+
+    og::runtime::current_session->myscreen_->walkputbuffertext_alpha(400, 400, 16, 16, 0, 0, 319, 199, span, 40, 128);
+    og::runtime::current_session->myscreen_->walkputbuffertext_alpha(-4, -4, 16, 16, 0, 0, 319, 199, span, 40, 128);
+    og::runtime::current_session->myscreen_->walkputbuffertext_alpha(310, 190, 16, 16, 0, 0, 319, 199, span, 40, 128);
+    og::runtime::current_session->myscreen_->walkputbuffertext_alpha(10, 10, 0, 16, 0, 0, 319, 199, span, 40, 128);
+}
+
 
 TEST(VideoModesMore, video_walkputbuffer_modes_invisible_outline_phantom)
 {
@@ -145,4 +178,3 @@ TEST(VideoModesMore, video_save_screenshot_smoke_and_cleanup)
 
     cleanup_screenshots();
 }
-

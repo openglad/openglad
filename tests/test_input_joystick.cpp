@@ -228,3 +228,49 @@ TEST(InputJoystick, input_didPlayerPressReleaseKey_uses_joystick_mapping_when_bo
     ASSERT_TRUE(!didPlayerReleaseKey(0, KEY_SPECIAL, e)) << "wrong joystick button should not release";
 }
 
+TEST(InputJoystick, input_joydata_null_and_wrong_event_paths)
+{
+    JoyData j;
+    j.index = 2;
+
+    j.key_type[KEY_FIRE] = JoyData::BUTTON;
+    j.key_index[KEY_FIRE] = 4;
+    ASSERT_TRUE(!j.getPress(KEY_FIRE, nullptr)) << "null event should not press";
+    ASSERT_TRUE(!j.getRelease(KEY_FIRE, nullptr)) << "null event should not release";
+
+    SDL_Event key{};
+    key.type = SDL_KEYDOWN;
+    ASSERT_TRUE(!j.getPress(KEY_FIRE, key)) << "keyboard event should not press button mapping";
+    ASSERT_TRUE(!j.getRelease(KEY_FIRE, key)) << "keyboard event should not release button mapping";
+
+    SDL_Event axis{};
+    axis.type = SDL_JOYAXISMOTION;
+    axis.jaxis.which = 2;
+    axis.jaxis.axis = 0;
+    axis.jaxis.value = 0;
+    j.key_type[KEY_UP] = JoyData::POS_AXIS;
+    j.key_index[KEY_UP] = 0;
+    ASSERT_TRUE(!j.getPress(KEY_UP, axis)) << "centered positive axis should not press";
+    j.key_type[KEY_DOWN] = JoyData::NEG_AXIS;
+    j.key_index[KEY_DOWN] = 0;
+    ASSERT_TRUE(!j.getPress(KEY_DOWN, axis)) << "centered negative axis should not press";
+
+    axis.jaxis.which = 1;
+    axis.jaxis.value = 12000;
+    ASSERT_TRUE(!j.getPress(KEY_UP, axis)) << "wrong joystick should not press";
+    ASSERT_TRUE(!j.getRelease(KEY_UP, axis)) << "wrong joystick should not release";
+
+    SDL_Event hat{};
+    hat.type = SDL_JOYHATMOTION;
+    hat.jhat.which = 2;
+    hat.jhat.hat = 0;
+    hat.jhat.value = SDL_HAT_RIGHT;
+    j.key_type[KEY_LEFT] = JoyData::HAT_LEFT;
+    j.key_index[KEY_LEFT] = 0;
+    ASSERT_TRUE(!j.getPress(KEY_LEFT, hat)) << "wrong hat direction should not press";
+    ASSERT_TRUE(!j.getRelease(KEY_LEFT, hat)) << "wrong hat direction should not release";
+
+    j.key_type[KEY_SPECIAL] = JoyData::NONE;
+    ASSERT_TRUE(!j.getPress(KEY_SPECIAL, hat)) << "NONE mapping should not press";
+    ASSERT_TRUE(!j.getRelease(KEY_SPECIAL, hat)) << "NONE mapping should not release";
+}

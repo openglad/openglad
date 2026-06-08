@@ -81,3 +81,27 @@ TEST(HeadlessTerminal, find_and_count_char)
     EXPECT_EQ(term.count_char(U'*'), 2);
     EXPECT_EQ(term.find_char(U'*'), std::make_pair(0, 0));
 }
+
+TEST(HeadlessTerminal, resize_dump_and_beep_cover_remaining_helpers)
+{
+    HeadlessTerminal term(0, -5);
+    EXPECT_EQ(term.rows(), 1);
+    EXPECT_EQ(term.cols(), 1);
+
+    term.resize(3, 4);
+    EXPECT_EQ(term.rows(), 3);
+    EXPECT_EQ(term.cols(), 4);
+    EXPECT_EQ(term.dump(), "    \n    \n    \n");
+
+    term.put_str(1, 1, "ab", Color::Green, Color::Default, false);
+    EXPECT_EQ(term.dump(), "    \n ab \n    \n");
+    term.beep();
+    term.beep();
+    EXPECT_EQ(term.beep_count(), 2);
+
+    term.set_unicode(false);
+    term.set_color(false);
+    EXPECT_FALSE(term.supports_unicode());
+    EXPECT_FALSE(term.supports_color());
+    EXPECT_EQ(term.presented_char_at(99, 99), 0);
+}

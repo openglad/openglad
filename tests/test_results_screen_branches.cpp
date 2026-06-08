@@ -64,10 +64,16 @@ TEST(ResultsScreenBranches, results_screen_ending_branches_smoke)
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
     // Make sure completion state is deterministic: clear and set once.
     og::runtime::current_session->myscreen_->save_data.current_levels.clear();
+    og::runtime::current_session->myscreen_->save_data.completed_levels.clear();
     (void)results_screen(0, 2); // not completed -> "Victory!"
 
-    og::runtime::current_session->myscreen_->save_data.current_levels[og::runtime::current_session->myscreen_->save_data.current_campaign] = og::runtime::current_session->myscreen_->save_data.scen_num;
+    og::runtime::current_session->myscreen_->save_data.completed_levels[og::runtime::current_session->myscreen_->save_data.current_campaign].insert(
+        og::runtime::current_session->myscreen_->save_data.scen_num);
     (void)results_screen(0, 2); // completed -> "Traveling on..."
+
+    results_screen_testing_set_force_full(true);
+    (void)results_screen(0, 2); // force the non-bypass TESTING overload path.
+    results_screen_testing_set_force_full(false);
 
     // Special defeat type.
     (void)results_screen(SCEN_TYPE_SAVE_ALL, -1);
@@ -171,4 +177,3 @@ TEST(MpEndgameFlow, networked_terminal_defeat_ends_session_back_to_menu)
     og::runtime::current_session->networked_session_ = saved_net;
     og::runtime::current_session->myscreen_->world().end = saved_end;
 }
-

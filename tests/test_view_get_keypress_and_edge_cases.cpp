@@ -10,6 +10,7 @@
 #include <SDL.h>
 
 #include <array>
+#include <atomic>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
@@ -60,12 +61,25 @@ static SDL_Event keydown(SDL_Keycode key)
     return e;
 }
 
-static int injector_clear_escape(void* data)
+struct EscapePulseState
+{
+    std::array<Uint8, SDL_NUM_SCANCODES>* keys;
+    std::atomic<bool>* done;
+};
+
+static int injector_pulse_escape(void* data)
 {
     og::runtime::ensure_thread_session();
-    auto* arr = static_cast<std::array<Uint8, SDL_NUM_SCANCODES>*>(data);
-    SDL_Delay(20);
-    (*arr)[SDL_SCANCODE_ESCAPE] = 0;
+    auto* state = static_cast<EscapePulseState*>(data);
+    SDL_Delay(25);
+    while (!state->done->load(std::memory_order_relaxed))
+    {
+        (*state->keys)[KEYSTATE_ESCAPE] = 1;
+        SDL_Delay(25);
+        (*state->keys)[KEYSTATE_ESCAPE] = 0;
+        SDL_Delay(10);
+    }
+    (*state->keys)[KEYSTATE_ESCAPE] = 0;
     return 0;
 }
 } // namespace
@@ -156,8 +170,6 @@ TEST(ViewGetKeypressAndEdgeCases, viewscreen_options_menu_covers_view_size_label
     // Save original pref so we can restore after testing edge cases.
     const signed char saved_view = v->prefs[PREF_VIEW];
 
-    // Immediately request exit, but clear ESC after a short delay so the
-    // "wait for release" loop terminates.
     const std::array<int, 6> view_prefs = {
         static_cast<int>(PREF_VIEW_FULL),
         static_cast<int>(PREF_VIEW_PANELS),
@@ -169,13 +181,16 @@ TEST(ViewGetKeypressAndEdgeCases, viewscreen_options_menu_covers_view_size_label
     for (int view_pref : view_prefs)
     {
         v->prefs[PREF_VIEW] = static_cast<signed char>(view_pref);
-        ks.fake[SDL_SCANCODE_ESCAPE] = 1;
-        SDL_Thread* th = SDL_CreateThread(injector_clear_escape, "clear_esc", &ks.fake);
+        std::atomic<bool> done{false};
+        EscapePulseState state{&ks.fake, &done};
+        SDL_Thread* th = SDL_CreateThread(injector_pulse_escape, "pulse_esc", &state);
+        ASSERT_TRUE(th != nullptr) << "escape injector thread started";
         v->options_menu();
+        done.store(true, std::memory_order_relaxed);
         int code = 0;
         if (th)
             SDL_WaitThread(th, &code);
-        ks.fake[SDL_SCANCODE_ESCAPE] = 0;
+        ks.fake[KEYSTATE_ESCAPE] = 0;
     }
 
     // Restore original pref — options_menu() saves prefs to keyprefs.dat on
