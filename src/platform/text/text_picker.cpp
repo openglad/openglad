@@ -212,10 +212,12 @@ public:
     }
 
 #ifdef TESTING
+    // GCOVR_EXCL_START -- test-only accessor in src/, not shipped code.
     const SaveData& testing_save_data() const
     {
         return save_data_;
     }
+    // GCOVR_EXCL_STOP
 #endif
 
     bool load_game() override
@@ -566,6 +568,7 @@ private:
 };
 
 #ifdef TESTING
+// GCOVR_EXCL_START -- test-only coverage harness in src/, not shipped code.
 class ScopedCinRedirect
 {
 public:
@@ -588,7 +591,6 @@ private:
     std::streambuf* saved_;
 };
 
-// GCOVR_EXCL_START -- test-only coverage harness in src/, not shipped code.
 int text_picker_testing_exercise_internal_paths()
 {
     TextPickerConfig config;

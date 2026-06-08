@@ -829,6 +829,7 @@ void results_screen_testing_set_force_full(bool enabled)
     s_force_full_results_ui = enabled;
 }
 
+// GCOVR_EXCL_START -- test-only coverage harness in src/, not shipped code.
 int results_screen_test_exercise_internal()
 {
     // Exercise the core computation helpers in this TU without entering any
@@ -942,4 +943,5 @@ int results_screen_test_exercise_internal()
 
     return score;
 }
+// GCOVR_EXCL_STOP
 #endif
