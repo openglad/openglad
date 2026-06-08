@@ -1233,17 +1233,40 @@ int curses_network_testing_exercise_internal_helpers()
         {
         }
 
-        void send(og::sim::PeerId, const std::uint8_t*, std::size_t) override {}
+        void send(og::sim::PeerId peer_id,
+                  const std::uint8_t* data,
+                  std::size_t len) override
+        {
+            sent_peer_id_ = peer_id;
+            sent_payload_.assign(data, data + len);
+        }
         std::vector<og::sim::ReceivedMessage> poll() override
         {
             return std::exchange(messages_, {});
         }
-        void accept_connections() override {}
-        void disconnect(og::sim::PeerId) override {}
+        void accept_connections() override { accepted_ = true; }
+        void disconnect(og::sim::PeerId peer_id) override
+        {
+            disconnected_peer_id_ = peer_id;
+        }
         std::vector<og::sim::PeerId> connected_peers() const override { return {1}; }
+        bool accepted() const { return accepted_; }
+        og::sim::PeerId disconnected_peer_id() const
+        {
+            return disconnected_peer_id_;
+        }
+        og::sim::PeerId sent_peer_id() const { return sent_peer_id_; }
+        const std::vector<std::uint8_t>& sent_payload() const
+        {
+            return sent_payload_;
+        }
 
     private:
         std::vector<og::sim::ReceivedMessage> messages_;
+        bool accepted_ = false;
+        og::sim::PeerId disconnected_peer_id_ = 0;
+        og::sim::PeerId sent_peer_id_ = 0;
+        std::vector<std::uint8_t> sent_payload_;
     };
 
     std::vector<std::uint8_t> unknown;
@@ -1257,7 +1280,11 @@ int curses_network_testing_exercise_internal_helpers()
     raw.accept_connections();
     raw.disconnect(1);
     raw.send(1, unknown.data(), unknown.size());
-    if (raw.connected_peers() == std::vector<og::sim::PeerId>{1})
+    if (raw.accepted() &&
+        raw.disconnected_peer_id() == 1 &&
+        raw.sent_peer_id() == 1 &&
+        raw.sent_payload() == unknown &&
+        raw.connected_peers() == std::vector<og::sim::PeerId>{1})
         ++score;
     const std::vector<og::sim::TypedReceivedMessage> decoded =
         poll_lobby_transport_messages(raw);
@@ -1295,22 +1322,44 @@ int curses_network_testing_exercise_internal_helpers()
         HostCursesSession::create(equivalent, bindings, 1, server, host_client,
                                   0, &err);
     if (host != nullptr) {
+        GameWorld& mirror = host->mirror_world();
+        GameWorld& authoritative = host->server_world_ref();
+        const std::uint32_t initial_tick = authoritative.tick_count_;
+        const std::uint32_t initial_next_input_tick = host->next_input_tick();
+        const bool initial_worlds_valid =
+            &mirror != &authoritative &&
+            !mirror.oblist.empty() &&
+            !authoritative.oblist.empty();
         InputState input;
         host->send_input(input);
         host->advance();
-        (void)host->mirror_world();
-        (void)host->followed_entity_id();
-        (void)host->next_input_tick();
-        (void)host->ended();
-        (void)host->ending();
-        (void)host->next_level();
-        host->request_abort();
+        const std::uint32_t advanced_tick = authoritative.tick_count_;
         (void)host->drain_messages();
+        const std::vector<std::string> second_drain = host->drain_messages();
         host->commit_result_to_save();
         (void)host->server();
         (void)host->client();
-        (void)host->server_world_ref();
-        ++score;
+        const bool stable_before_abort =
+            initial_worlds_valid &&
+            initial_tick > 0 &&
+            initial_next_input_tick == initial_tick + 1 &&
+            advanced_tick >= initial_tick &&
+            host->next_input_tick() == authoritative.tick_count_ + 1 &&
+            !host->ended() &&
+            host->ending() == 0 &&
+            host->next_level() <= 0 &&
+            second_drain.empty();
+        host->request_abort();
+        bool ended_after_abort = false;
+        for (int i = 0; i < 25; ++i) {
+            host->advance();
+            ended_after_abort = ended_after_abort || host->ended();
+        }
+        if (stable_before_abort &&
+            ended_after_abort &&
+            host->ended() &&
+            host->ending() != 0)
+            ++score;
     }
 
     auto join_server = og::sim::InProcessTransport::create_server();
@@ -1320,20 +1369,28 @@ int curses_network_testing_exercise_internal_helpers()
         JoinCursesSession::create(equivalent, 1, join_client,
                                   join_client->local_peer_id(), 0, &err);
     if (join != nullptr) {
+        GameWorld& mirror = join->mirror_world();
+        const std::uint32_t initial_tick = mirror.tick_count_;
+        const std::uint32_t initial_next_input_tick = join->next_input_tick();
         InputState input;
         join->send_input(input);
         join->advance();
-        (void)join->mirror_world();
-        (void)join->followed_entity_id();
-        (void)join->next_input_tick();
-        (void)join->ended();
-        (void)join->ending();
-        (void)join->next_level();
-        join->request_abort();
         (void)join->drain_messages();
+        const std::vector<std::string> second_drain = join->drain_messages();
         join->commit_result_to_save();
         (void)join->client();
-        ++score;
+        const bool stable_before_abort =
+            !mirror.oblist.empty() &&
+            initial_next_input_tick == initial_tick + 1 &&
+            join->next_input_tick() == mirror.tick_count_ + 1 &&
+            !join->ended() &&
+            join->ending() == 0 &&
+            join->next_level() <= 0 &&
+            second_drain.empty();
+        join->request_abort();
+        join->advance();
+        if (stable_before_abort && !join->ended())
+            ++score;
     }
 
     return score;

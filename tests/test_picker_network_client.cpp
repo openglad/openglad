@@ -4094,7 +4094,7 @@ TEST(PickerNetworkClient, validation_helpers_reject_invalid_network_picker_input
 
 TEST(PickerNetworkClient, internal_helpers_cover_network_picker_paths)
 {
-    constexpr int kExpectedInternalHelperChecks = 58;
+    constexpr int kExpectedInternalHelperChecks = 59;
     EXPECT_EQ(
         kExpectedInternalHelperChecks,
         og::ui::detail::picker_lobby_network_testing_exercise_internal_helpers());

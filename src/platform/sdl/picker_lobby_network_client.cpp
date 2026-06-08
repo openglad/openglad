@@ -668,7 +668,7 @@ std::vector<std::string> split_top_level_json_objects(std::string_view text)
         const auto value_pos = find_json_field_value(trimmed, "rooms");
         if (!value_pos.has_value() || trimmed[*value_pos] != '[')
             return objects;
-        array_view = trimmed.substr(*value_pos);
+        array_view = std::string_view(trimmed).substr(*value_pos);
     }
 
     if (array_view.empty() || array_view.front() != '[')
@@ -1431,7 +1431,14 @@ int picker_lobby_network_testing_exercise_internal_helpers()
           relay_rooms[0].code == "ROOM-1" &&
           relay_rooms[0].player_count == 3 &&
           relay_rooms[0].created_at_ms == 55);
-    check(parse_relay_room_list(R"({"rooms":[{"code":"room-2"}]})").size() <= 1);
+    const auto wrapped_relay_rooms =
+        parse_relay_room_list(R"({"rooms":[{"code":"room-2"}]})");
+    check(wrapped_relay_rooms.size() == 1);
+    check(!wrapped_relay_rooms.empty() &&
+          wrapped_relay_rooms[0].code == "ROOM-2" &&
+          wrapped_relay_rooms[0].campaign_hash.empty() &&
+          wrapped_relay_rooms[0].player_count == 0 &&
+          wrapped_relay_rooms[0].created_at_ms == 0);
 
     SaveData save;
     save.current_campaign = "campaign-one";
