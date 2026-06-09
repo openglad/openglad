@@ -32,6 +32,9 @@
 #include "results_screen.h"
 #include <string>
 #include <cstring>
+#ifdef OG_PARITY_RECORDER
+#include "parity_event_log.h"
+#endif
 
 using namespace std;
 
@@ -62,7 +65,11 @@ Uint32 random(Uint32 x)
 {
 	if (x < 1)
 		return 0;
-	return (Uint32) ( ((Uint32) rand()) % x);
+	Uint32 value = (Uint32) ( ((Uint32) rand()) % x);
+#ifdef OG_PARITY_RECORDER
+	og::parity::observe_random(x, value);
+#endif
+	return value;
 }
 
 // ************************************************************
@@ -147,7 +154,11 @@ screen::screen(short howmany)
 	
 
 	// Init the sound data
+    #ifdef OG_PARITY_RECORDER
+    soundp = new soundob(true);
+    #else
     soundp = new soundob();
+    #endif
     if(!cfg.is_on("sound", "sound"))
         soundp->set_sound(1);
     first_text.write_xy(left, 94, "Initializing Sound...Done", DARK_BLUE, 1);
@@ -856,6 +867,12 @@ short screen::endgame(short ending)
 
 short screen::endgame(short ending, short nextlevel)
 {
+#ifdef OG_PARITY_RECORDER
+    const char old_end = end;
+    og::parity::record_event(og::parity::kEventEndGame,
+                             static_cast<std::uint32_t>(ending),
+                             static_cast<std::uint32_t>(nextlevel));
+#endif
     if(end)
         return 1;
 	
@@ -942,6 +959,12 @@ short screen::endgame(short ending, short nextlevel)
 	}
 
     
+#ifdef OG_PARITY_RECORDER
+    if (!old_end && end)
+        og::parity::record_event(og::parity::kEventSetEnd,
+                                 static_cast<std::uint32_t>(ending),
+                                 static_cast<std::uint32_t>(nextlevel));
+#endif
 	return 1;
 }
 
@@ -1353,6 +1376,13 @@ char screen::damage_tile(short xloc, short yloc) // damage the specified tile
 
 void screen::do_notify(const char *message, walker  *who)
 {
+#ifdef OG_PARITY_RECORDER
+	og::parity::record_event(
+	    og::parity::kEventNotification,
+	    who ? static_cast<std::uint32_t>(who->query_family()) : 0,
+	    who ? static_cast<std::uint32_t>(who->team_num) : 0,
+	    message ? std::string(message) : std::string());
+#endif
 	short i,sent=0;
 	for(i=0;i<numviews;i++)
 	{

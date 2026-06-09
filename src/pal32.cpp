@@ -27,6 +27,9 @@
 #include "pal32.h"
 #include <stdio.h>
 #include "SDL_types.h"
+#ifdef OG_PARITY_RECORDER
+#include "parity_event_log.h"
+#endif
 
 char temppal[768];    // for loading, setting, etc.
 char gammapal[768];   // for gamma-correction
@@ -122,6 +125,10 @@ short load_palette(const char *filename, unsigned char *newpalette)
 short set_palette(unsigned char *newpalette)
 {
 	short i;
+
+#ifdef OG_PARITY_RECORDER
+	og::parity::record_event(og::parity::kEventSetPalette);
+#endif
 
 	// Copy over the palette info ..
 	for (i=0; i < 768; i++)

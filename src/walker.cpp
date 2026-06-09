@@ -1846,8 +1846,8 @@ void walker::do_combat_damage(walker* attacker, walker* target, short tempdamage
 		attacker->myguy->scen_damage += tempdamage;
     }
     
-    // Deal the damage
-    target->last_hitpoints = target->stats->hitpoints;
+	// Deal the damage
+	target->last_hitpoints = target->stats->hitpoints;
 	target->stats->hitpoints -= tempdamage;
 	
 	do_hit_effects(attacker, target, tempdamage);
@@ -2157,9 +2157,57 @@ short walker::animate()
 {
 	walker  * newob;
 
-	set_frame(ani[curdir+ani_type*NUM_FACINGS][cycle]);
-	cycle++;
-	if (ani[curdir+ani_type*NUM_FACINGS][cycle] == -1)
+	if (!ani)
+		return 0;
+
+	int dir_index = (int) (unsigned char) curdir;
+	if (dir_index < 0 || dir_index >= NUM_FACINGS)
+		dir_index = 0;
+	int type_index = (int) ani_type;
+	if (type_index < ANI_WALK || type_index > ANI_SLIME_SPLIT)
+	{
+		type_index = ANI_WALK;
+		ani_type = ANI_WALK;
+		cycle = 0;
+	}
+
+	const signed char* seq = ani[dir_index + type_index*NUM_FACINGS];
+	if (!seq)
+	{
+		ani_type = ANI_WALK;
+		cycle = 0;
+		return 0;
+	}
+
+	int seq_len = 0;
+	while (seq_len < 128 && seq[seq_len] != -1)
+		seq_len++;
+	if (seq_len <= 0 || seq_len >= 128)
+	{
+		ani_type = ANI_WALK;
+		cycle = 0;
+		return 0;
+	}
+
+	int c = (int) cycle;
+	if (c < 0)
+		c = 0;
+
+	bool at_end;
+	if (c >= seq_len)
+	{
+		at_end = true;
+		cycle = 0;
+	}
+	else
+	{
+		set_frame(seq[c]);
+		c++;
+		at_end = (c >= seq_len);
+		cycle = (signed char) c;
+	}
+
+	if (at_end)
 	{
 		//          if (ani_type == ANI_ATTACK &&
 		//                        query_order() == ORDER_LIVING)
@@ -4230,8 +4278,8 @@ walker::act_generate()
 	        (random(stats->level*3) > (random(300+(myscreen->level_data.numobs*8)) ) )
 	   )
 	{
-		lastx = 1-random(3);
-		lasty = 1-random(3);
+		lastx = 1 - static_cast<int>(random(3));
+		lasty = 1 - static_cast<int>(random(3));
 		if (!lastx && !lasty)
 			lastx = 1;
 		init_fire(lastx, lasty);
@@ -4565,6 +4613,7 @@ short walker::death()
 					break;
 				case FAMILY_GHOST:     // Undead don't leave bloodspots ..
 				case FAMILY_SKELETON:
+				case FAMILY_GIANT_SKELETON:
 				case FAMILY_TOWER1:    // neither do towers
 					break;
 				default:

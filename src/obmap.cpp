@@ -365,4 +365,3 @@ short collide(short x,  short y,  short xsize,  short ysize,
 
 	return 1;
 }
-

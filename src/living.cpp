@@ -493,15 +493,15 @@ bool living::walk(float x, float y)
 
 bool walkerIsAutoAttackable(walker* ob)
 {
-    return (ob->query_order() == ORDER_LIVING
-             || ob->query_family() == FAMILY_TENT
-             || ob->query_family() == FAMILY_TOWER
-             || ob->query_family() == FAMILY_TOWER1
-             || ob->query_family() == FAMILY_TREEHOUSE
-             || ob->query_family() == FAMILY_BONES
-             || ob->query_family() == FAMILY_GLOW
-             || ob->query_family() == FAMILY_TREE
-             || ob->query_family() == FAMILY_DOOR);
+    if (ob->query_order() == ORDER_LIVING || ob->query_order() == ORDER_GENERATOR)
+        return true;
+    if (ob->query_order() == ORDER_WEAPON)
+    {
+        return ob->query_family() == FAMILY_GLOW
+            || ob->query_family() == FAMILY_TREE
+            || ob->query_family() == FAMILY_DOOR;
+    }
+    return false;
 }
 
 short living::collide(walker  *ob)
@@ -891,6 +891,3 @@ short living::do_action()
 			return 0;
 	}
 }
-
-
-

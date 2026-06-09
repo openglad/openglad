@@ -29,6 +29,9 @@
 #include "SDL_mixer.h"
 #include <string>
 #include "util.h"
+#ifdef OG_PARITY_RECORDER
+#include "parity_event_log.h"
+#endif
 using namespace std;
 
 //#define SOUND_DB   0 // define for debugging messages
@@ -164,6 +167,10 @@ void soundob::shutdown()
 
 void soundob::play_sound(short whichnum)
 {
+#ifdef OG_PARITY_RECORDER
+	og::parity::record_event(og::parity::kEventPlaySound,
+	                         static_cast<std::uint32_t>(whichnum), 0, {});
+#endif
 	if (silence)         // If silent mode set, do nothing here
 		return;
 

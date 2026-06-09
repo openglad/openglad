@@ -223,9 +223,9 @@ short statistics::do_command()
 	if (commands.empty())
         return 0;
     
-    commandtype = commands.front().commandtype;
-    com1 = commands.front().com1;
-    com2 = commands.front().com2;
+	commandtype = commands.front().commandtype;
+	com1 = commands.front().com1;
+	com2 = commands.front().com2;
     
     short result = 1;
 

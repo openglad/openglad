@@ -29,6 +29,9 @@
 #include "guy.h"
 #include <algorithm>
 #include <cstring>
+#ifdef OG_PARITY_RECORDER
+#include "parity_event_log.h"
+#endif
 
 // Zardus: this is the func to get events
 void get_input_events(bool);
@@ -188,12 +191,22 @@ short treasure::eat_me(walker  * eater)
                 
                 char buf[40];
                 snprintf(buf, 40, "Withdraw to %s?", exitname);
+#ifdef OG_PARITY_RECORDER
+                og::parity::record_event(
+                    og::parity::kEventRequestExitConfirmation,
+                    static_cast<std::uint32_t>(stats->level), 1, buf);
+#endif
                 bool result = yes_or_no_prompt("Exit Field", buf, false);
 				// Redraw screen ..
 				myscreen->redrawme = 1;
 
 				if (result) // accepted level change
 				{
+#ifdef OG_PARITY_RECORDER
+                    og::parity::record_event(
+                        og::parity::kEventWithdrawToLevel,
+                        static_cast<std::uint32_t>(stats->level), 0, exitname);
+#endif
 					clear_keyboard();
 					// Delete all of our current information and abort ..
 					for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
@@ -361,4 +374,3 @@ walker  * treasure::find_teleport_target()
 
 	return NULL;
 }
-

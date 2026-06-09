@@ -359,6 +359,7 @@ short effect::act()
 			{
 				dead = 1;
 				death();
+				return 1;
 			}
 			if (lifetime < 8)
 				invisibility_left +=3;
@@ -388,8 +389,8 @@ short effect::act()
 				xd = yd = 0;
 				while (xd == 0 && yd == 0)
 				{
-					xd = random(3)-1;
-					yd = random(3)-1;
+					xd = (Sint32) random(3)-1;
+					yd = (Sint32) random(3)-1;
 				}
 				stats->add_command(COMMAND_WALK, (short) random(20), (short) xd, (short) yd);
 			}

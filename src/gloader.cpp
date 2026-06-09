@@ -936,7 +936,7 @@ walker  *loader::set_walker(walker *ob,
 					ob->stats->special_cost[1] = 30;
 					ob->stats->max_magicpoints = 50;
 					//                         ob->stats->magicpoints = 0;
-					if (order == FAMILY_SMALL_SLIME)
+					if (family == FAMILY_SMALL_SLIME)
 						ob->stats->set_bit_flags(BIT_NO_RANGED, 1); // no ranged attack
 					ob->default_weapon = FAMILY_BLOB;
 					ob->stats->weapon_cost = 0; // free slimeball
@@ -1046,6 +1046,7 @@ walker  *loader::set_walker(walker *ob,
 				default:
 					break;
 			}  // end of weapons
+			break;
 		case ORDER_TREASURE:
 			switch (family)
 			{
@@ -1134,5 +1135,3 @@ pixieN *loader::create_pixieN(char order, char family)
 
 	return newpixie;
 }
-
-
