@@ -9,7 +9,7 @@
 
 class cfg_store;
 class walker;
-struct SaveData;
+class SaveData;
 
 namespace og::sim {
 class SimEventLog;
