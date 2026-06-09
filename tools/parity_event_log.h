@@ -18,6 +18,7 @@ enum EventKind : std::uint32_t
     kEventRequestExitConfirmation = 7,
     kEventWithdrawToLevel         = 8,
     kEventScoreChange             = 9,
+    kEventDamageTile              = 10,
 };
 
 struct RecordedEvent

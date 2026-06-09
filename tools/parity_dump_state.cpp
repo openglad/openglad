@@ -252,6 +252,7 @@ std::string event_kind_symbol(std::uint32_t kind_raw)
         case kEventRequestExitConfirmation: return "request_exit_confirmation";
         case kEventWithdrawToLevel:         return "withdraw_to_level";
         case kEventScoreChange:             return "score_change";
+        case kEventDamageTile:              return "damage_tile";
         default:
         {
             char buf[40];
