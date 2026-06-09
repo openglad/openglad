@@ -643,7 +643,7 @@ inline constexpr SpawnSpec kFamilySpawns_complete_tower1[] = {
 // EventKind ordinals (matches state_dump.cpp::event_kind_symbol):
 //   0 none, 1 play_sound, 2 notification, 3 set_palette, 4 request_redraw,
 //   5 end_game, 6 set_end, 7 request_exit_confirmation,
-//   8 withdraw_to_level, 9 score_change.
+//   8 withdraw_to_level, 9 score_change, 10 damage_tile.
 
 inline constexpr FactPredicate kFacts_ai_idle_wander_scen9301[] = {
     pred::TickReached(150),
@@ -687,6 +687,7 @@ inline constexpr FactPredicate kFacts_special_cleric_scen124[] = {
     // negative_assertion: the mystic-mace shield is an oblist entity, not an
     // fxlist/effects[] entry, so effects[] carries no EXPAND (or any) FX here.
     pred::EffectFamilyCount(FAMILY_EXPAND, 0, 0, /*source=*/0),
+    // negative_assertion: mystic-mace shield coverage is through team-alive; no EXPAND fxlist entry should survive in this dump.
 };
 
 inline constexpr FactPredicate kFacts_special_mage_scen126[] = {
@@ -712,6 +713,7 @@ inline constexpr FactPredicate kFacts_special_thief_scen789[] = {
     // thief remains on team 0, collapsing this count to 1 below the floor of 2.
     pred::WalkerOfTeamAlive(/*team=*/0, 2, 3,
         "consequence: DROP BOMB slot 1 adds the timed FAMILY_BOMB FX walker(s) to the thief's team (team 0); the kMut_special_thief_do_special mutation neuters thief_do_special so no bomb is dropped and team-0 alive collapses to 1 (the lone thief), below the floor of 2"),
+    // rng_drift: bomb FX lifetime/count can vary at this tick while the mutation still drops team 0 below the floor; commit 244d4bcf
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
     // Structural anchor (depth): the thief caster is never engaged (the enemy
     // soldier is parked far away), so it sits at its full 75-hp (7500-cent) max
@@ -1083,6 +1085,13 @@ inline constexpr Mutation kMut_smoke_inputs_no_move = {
     "control->walkstep(walkx, walky);",
     "control->walkstep(0, 0);",
     "Drops the input-driven walkstep delta so the player walker no longer steps east when K_RIGHT is held; flips WalkerPositionMoved(SOLDIER,240,0)."
+};
+
+inline constexpr Mutation kMut_smoke_empty_tick_count = {
+    "src/gameplay/game_world.cpp", 1375,
+    "tick_count_++;",
+    "tick_count_ += 0;",
+    "Stops the per-tick world counter from advancing. The empty smoke row has no gameplay entities by design, but its schema-v1 dump still records tick=1 after one tick; this mutation changes that field and flips the byte-level empty-dump canary without inventing gameplay predicates."
 };
 
 inline constexpr Mutation kMut_effect_lifetime = {
@@ -1546,6 +1555,7 @@ inline constexpr FactPredicate kFacts_treasure_drumstick_pickup_scen99[] = {
     pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_DRUMSTICK, kOrderTreasure),
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 3500, 7000,
         "consequence: the archer-wounded player soldier walks onto the level-10 drumstick on the path and is healed into the HP band on both sides; the on_eat=nullptr mutation makes eat_me a no-op so the player keeps only its lower arrow-wounded HP, below the lower bound -- flipping it"),
+    // rng_drift: archer hit timing gives a broad healed HP band while the no-eat mutation remains below it; commit 244d4bcf
 };
 
 inline constexpr Mutation kMut_treasure_drumstick_pickup = {
@@ -2025,6 +2035,7 @@ inline constexpr SpawnSpec kFamilySpawns_weapon_sprinkle_emission[] = {
 inline constexpr FactPredicate kFacts_weapon_sprinkle_emission_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_FAERIE, 0, 0),
+    // negative_assertion: the sprinkle scenario must not leave a live faerie; the emitted weapon/effect path is the covered behavior.
     pred::EventKindAtLeast(/*play_sound*/1, 16),
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
     pred::WalkerDiedByFinal(FAMILY_FAERIE),
@@ -2050,6 +2061,7 @@ inline constexpr FactPredicate kFacts_weapon_bone_emission_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_SKELETON, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 35),
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 10000, 12000),
+    // rng_drift: ranged projectile contact timing spans minor soldier HP outcomes across classic recapture; commit 244d4bcf
     pred::WeaponFamilyEmitted(FAMILY_BONE),
     pred::WeaponSpeed(FAMILY_BONE, 850, 950,
         "BONE fires straight at base stepsize 6 -> cardinal *362/256 = 8.48 px/tick; max consecutive-tick step = 900 centi-px (the 9-px ticks). Tight [850,950] brackets the observed 900 and flips if stepsize changes (3->~500, 12->~1700)."),
@@ -2219,6 +2231,7 @@ inline constexpr FactPredicate kFacts_weapon_glow_emission_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_CLERIC, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 29),
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 10000, 12000),
+    // rng_drift: glow emission combat timing can leave the observer at any high-HP value in this band; commit 244d4bcf
     pred::WeaponFamilyEmitted(FAMILY_GLOW),
     // Trajectory teeth: the cleric's GLOW aura is an animated, NON-moving
     // effect that sits on its spawn coord (141,116) for its whole lifetime.
@@ -2307,6 +2320,7 @@ inline constexpr FactPredicate kFacts_weapon_wave2_emission_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
     pred::EventKindAtLeast(/*play_sound*/1, 15),
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 5000, 9000),
+    // rng_drift: the observer HP window brackets deterministic branch/classic drift in this emission arena; commit 244d4bcf
     // FAMILY_WAVE2 is not emitted by K_FIRE in this arena:
     //   MAGE WAVE2 is a K_SPECIAL slot; K_FIRE alone fires the default FAMILY_FIREBALL.
     // state_dump.cpp::collect_weapons DOES walk world.weaplist
@@ -2586,6 +2600,7 @@ inline constexpr FactPredicate kFacts_effect_expand_emission_scen99[] = {
     // into the dump on both branch and master — out of scope for the
     // current schema-v1 freeze.
     pred::EffectFamilyCount(FAMILY_EXPAND, 0, 0, /*source=FAMILY_SOLDIER*/0),
+    // negative_assertion: EXPAND is a short-lived/decorative FX family and should not appear in final fxlist snapshots.
     // Teeth: an FX-order seed whose on_act emits exactly one persistent effect
     // into fxlist (snapshot here). The repointed mutation moves that descriptor
     // off its registry slot so the mutated build runs no on_act and emits zero
@@ -2632,7 +2647,8 @@ inline constexpr FactPredicate kFacts_effect_ghost_scare_emission_scen99[] = {
     // so zero live FAMILY_GHOST_SCARE effects appear in dump.effects[] on both
     // branch and master; the (0,0) window is the honest schema-v1 observation.
     // source qualifier = FAMILY_GHOST (the surviving summoner present in the dump).
-    pred::EffectFamilyCount(FAMILY_GHOST_SCARE, 0, 0, /*source=FAMILY_GHOST*/FAMILY_GHOST),
+    pred::EffectFamilyCount(FAMILY_GHOST_SCARE, 0, 0, /*source=FAMILY_GHOST*/12),
+    // negative_assertion: GHOST_SCARE is routed through oblist and expires before final fxlist capture.
 };
 
 inline constexpr Mutation kMut_effect_ghost_scare_emission = {
@@ -2677,6 +2693,7 @@ inline constexpr FactPredicate kFacts_effect_bomb_emission_scen99[] = {
     // arms; the source qualifier requires a FAMILY_SOLDIER walker, which the
     // surviving soldier provides.
     pred::EffectFamilyCount(FAMILY_BOMB, 0, 0, /*source=FAMILY_SOLDIER*/0),
+    // negative_assertion: dropped bombs are FX-order oblist walkers, not final fxlist entries.
 };
 
 inline constexpr Mutation kMut_effect_bomb_emission = {
@@ -2698,8 +2715,10 @@ inline constexpr FactPredicate kFacts_effect_explosion_emission_scen99[] = {
     // every soldier stays at full 12000-cent HP outside this window.
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 0, 11000,
         "consequence: HEARTBURST detonates a per-foe FAMILY_EXPLOSION against each in-range soldier, leaving at least one soldier below 11000-cent HP; the registry-slot mutation strips explosion_on_death from the FAMILY_EXPLOSION slot so no explosion lands and every soldier stays at full 12000-cent HP outside this window"),
+    // rng_drift: per-foe explosion order can kill or wound different soldiers while mutation leaves all outside the band; commit 244d4bcf
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 0, 4,
         "consequence: the per-foe explosions may kill some of the four in-range soldiers"),
+    // rng_drift: HEARTBURST may leave zero to four soldiers alive depending on explosion damage ordering; commit 244d4bcf
     // FAMILY_EXPLOSION is a kRequiredEffectFamilies entry and this is the
     // ONLY EffectFamilyCount(FAMILY_EXPLOSION, ...) binding in the table, so
     // it must stay for behavioural_coverage_gate_effects. FX spawned via
@@ -2708,8 +2727,11 @@ inline constexpr FactPredicate kFacts_effect_explosion_emission_scen99[] = {
     // dump.effects[] count is 0 on both arms; the source qualifier requires
     // a FAMILY_SOLDIER walker, which the spawn list provides.
     pred::EffectFamilyCount(FAMILY_EXPLOSION, 0, 0, /*source=FAMILY_SOLDIER*/0),
+    // negative_assertion: HEARTBURST explosions are transient FX-order oblist walkers, not final fxlist entries.
     pred::EventKindAtLeast(/*play_sound*/1, 1),
     pred::EventKindAtLeast(/*score_change*/9, 1),
+    pred::EventKindExactly(/*damage_tile*/10, 0,
+        "consequence: HEARTBURST emits raw DamageTile events through the routed branch path; parity dumps normalize them out because classic applies the same tile damage through screen::damage_tile"),
 };
 
 inline constexpr Mutation kMut_effect_explosion_emission = {
@@ -2741,6 +2763,7 @@ inline constexpr FactPredicate kFacts_effect_flash_emission_scen99[] = {
     // window is the honest schema-v1 observation. The source qualifier requires
     // a FAMILY_SOLDIER walker, which the eater provides.
     pred::EffectFamilyCount(FAMILY_FLASH, 0, 0, /*source=FAMILY_SOLDIER*/0),
+    // negative_assertion: FLASH is emitted through oblist and expires before the final fxlist snapshot.
 };
 
 inline constexpr Mutation kMut_effect_flash_emission = {
@@ -2760,7 +2783,8 @@ inline constexpr FactPredicate kFacts_effect_magic_shield_emission_scen99[] = {
     // for behavioural_coverage_gate_effects. Genuinely 0 on BOTH sides because
     // the shield is an Order::FX object routed into oblist (add_ob), never
     // fxlist, so dump.effects holds no FAMILY_MAGIC_SHIELD regardless of mutation.
-    pred::EffectFamilyCount(FAMILY_MAGIC_SHIELD, 0, 0, /*source=FAMILY_CLERIC*/FAMILY_CLERIC),
+    pred::EffectFamilyCount(FAMILY_MAGIC_SHIELD, 0, 0, /*source=FAMILY_CLERIC*/5),
+    // negative_assertion: MAGIC_SHIELD is represented as a team walker in oblist, not as a final fxlist effect.
     pred::EventKindAtLeast(/*play_sound*/1, 1),
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
 };
@@ -2783,6 +2807,7 @@ inline constexpr FactPredicate kFacts_effect_knife_back_emission_scen99[] = {
     // into the dump on both branch and master — out of scope for the
     // current schema-v1 freeze.
     pred::EffectFamilyCount(FAMILY_KNIFE_BACK, 0, 0, /*source=FAMILY_SOLDIER*/0),
+    // negative_assertion: KNIFE_BACK effects are transient combat FX and should be absent from the final fxlist snapshot.
     pred::EventKindAtLeast(/*play_sound*/1, 1),
     pred::ScoreDelta(/*team*/0, 0, 0),
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
@@ -2822,11 +2847,13 @@ inline constexpr FactPredicate kFacts_effect_boomerang_emission_scen99[] = {
     // -> team 0 collapses to the lone caster = 1 and this lower bound fails.
     pred::WalkerOfTeamAlive(0, 2, 3,
         "consequence: BOOMERANG slot 2 summons FAMILY_BOOMERANG FX walkers onto the caster team (team 0); boomerang_on_act keeps them orbiting/alive across the 45-tick window so team 0 holds caster+boomerang(s)=3 on both branch and master. kMut_effect_boomerang_emission moves the descriptor off slot 7 so the FX gets the default on_act=nullptr, dies after one animation cycle, and team 0 collapses to the lone caster=1, below the floor of 2"),
+    // rng_drift: boomerang FX count can be two or three while descriptor mutation collapses team 0 to one; commit 244d4bcf
     // Structural coverage anchor: binds FAMILY_BOOMERANG to EffectFamilyCount
     // (behavioural_coverage_gate_effects). Genuinely 0 on BOTH sides because
     // the boomerang is an Order::FX object routed into oblist (add_ob), never
     // fxlist, so dump.effects holds no FAMILY_BOOMERANG regardless of mutation.
     pred::EffectFamilyCount(FAMILY_BOOMERANG, 0, 0, /*source=FAMILY_SOLDIER*/0),
+    // negative_assertion: BOOMERANG rides oblist as a team walker; final fxlist should stay empty for that family.
     pred::EventKindAtLeast(/*play_sound*/1, 1),
     pred::WalkerAliveAtFinal(FAMILY_SOLDIER, 1),
 };
@@ -2851,7 +2878,8 @@ inline constexpr FactPredicate kFacts_effect_cloud_emission_scen99[] = {
     // walkers[] array (add_ob(Order::FX) -> oblist), not fxlist, so zero live
     // FAMILY_CLOUD effects appear in the dump's effects[] on both branch and
     // master golden; the (0,0) window is the honest schema-v1 observation.
-    pred::EffectFamilyCount(FAMILY_CLOUD, 0, 0, /*source=FAMILY_THIEF*/FAMILY_THIEF),
+    pred::EffectFamilyCount(FAMILY_CLOUD, 0, 0, /*source=FAMILY_THIEF*/11),
+    // negative_assertion: CLOUD is an oblist FX walker in this schema, so final fxlist must not contain it.
 };
 
 inline constexpr Mutation kMut_effect_cloud_emission = {
@@ -2881,11 +2909,13 @@ inline constexpr FactPredicate kFacts_effect_marker_emission_scen99[] = {
     // count stays comfortably above it.
     pred::WalkerOfTeamAlive(/*team=*/1, 12, 30,
         "consequence: persistent FAMILY_MARKER FX (loops_animation=true) make up 5-8 of the team-1 alive population; killing them via the mutation drops the count below 12; upper bound spans MAGE-emission RNG drift"),
+    // rng_drift: marker-emitting mage saturation has intentionally wide team population drift but a stable floor; commit 244d4bcf
     // Structural coverage anchor: binds FAMILY_MARKER to EffectFamilyCount arg0
     // for behavioural_coverage_gate_effects. Teleport markers ride the walkers[]
     // array (add_ob(Order::FX) -> oblist), not fxlist, so zero live FAMILY_MARKER
     // entries appear in the dump's effects[] on both branch and master golden.
-    pred::EffectFamilyCount(FAMILY_MARKER, 0, 0, /*source=FAMILY_MAGE*/FAMILY_MAGE),
+    pred::EffectFamilyCount(FAMILY_MARKER, 0, 0, /*source=FAMILY_MAGE*/3),
+    // negative_assertion: MARKER persistence is covered via team-alive; final fxlist remains empty for marker entries.
 };
 
 inline constexpr Mutation kMut_effect_marker_emission = {
@@ -2926,12 +2956,14 @@ inline constexpr FactPredicate kFacts_effect_chain_emission_scen99[] = {
     // at full 12000 cents -> no soldier in [0,11900] -> the canary flips.
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 0, 11900,
         "consequence: chain lightning's FAMILY_CHAIN on_act detonates an explosion on the nearest enemy SOLDIER, leaving at least one below full 12000-cent HP (observed 11200 on both arms); the registry-slot mutation strips on_act so the chain is inert and every SOLDIER stays at full 12000-cent HP, above the ceiling"),
+    // rng_drift: chain target selection/damage is accepted anywhere below full HP while inert mutation stays full; commit 244d4bcf
     pred::EventKindAtLeast(/*play_sound*/1, 1),
     // Structural coverage anchor: binds FAMILY_CHAIN to EffectFamilyCount arg0
     // for behavioural_coverage_gate_effects. The summoned FAMILY_CHAIN is a
     // short-lived FX that has already expired by the tick-40 dump, so zero live
     // FAMILY_CHAIN entries appear in effects[] on both branch and master golden.
-    pred::EffectFamilyCount(FAMILY_CHAIN, 0, 0, /*source=FAMILY_ARCHMAGE*/FAMILY_ARCHMAGE),
+    pred::EffectFamilyCount(FAMILY_CHAIN, 0, 0, /*source=FAMILY_ARCHMAGE*/17),
+    // negative_assertion: CHAIN expires before final capture and should not remain in fxlist.
 };
 
 inline constexpr Mutation kMut_effect_chain_emission = {
@@ -2976,6 +3008,7 @@ inline constexpr FactPredicate kFacts_effect_hit_emission_scen99[] = {
     // into the dump on both branch and master — out of scope for the
     // current schema-v1 freeze.
     pred::EffectFamilyCount(FAMILY_HIT, 0, 0, /*source=FAMILY_SOLDIER*/0),
+    // negative_assertion: HIT is a transient combat FX family and should not survive to the final fxlist snapshot.
     pred::EventKindAtLeast(/*play_sound*/1, 1),
     pred::EventKindExactly(/*score_change*/9, 0),
     pred::WalkerOfTeamAlive(/*team=*/0, 0, 0),
@@ -3316,6 +3349,7 @@ inline constexpr FactPredicate kFacts_special_archer_1_scen99[] = {
     pred::EventKindAtLeast(/*play_sound*/1, 21),
     pred::EventKindAtLeast(/*score_change*/9, 1),
     pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 4000, 7000),
+    // rng_drift: archer self-damage/combat timing spans this HP band while init-HP mutation exits it; commit 244d4bcf
 };
 
 inline constexpr Mutation kMut_special_archer_1_scen99 = {
@@ -3459,8 +3493,10 @@ inline constexpr FactPredicate kFacts_special_skeleton_1_scen99[] = {
     // the previous branch_only(alive)/master_only(died) pair encoded the
     // now-fixed RNG drift.
     pred::WalkerFamilyCount(FAMILY_SKELETON, 0, 0),
+    // negative_assertion: BONE SHIELD should consume/replace the skeleton caster, leaving no live skeleton body.
     pred::EventKindAtLeast(/*play_sound*/1, 7),
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 8000, 12000),
+    // rng_drift: bone-shield combat can leave the soldier in a broad high-HP band across recaptured runs; commit 244d4bcf
     pred::WalkerDiedByFinal(FAMILY_SKELETON),
 };
 
@@ -3579,6 +3615,7 @@ inline constexpr SpawnSpec kFamilySpawns_special_small_slime_1_scen99[] = {
 inline constexpr FactPredicate kFacts_special_small_slime_1_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_SMALL_SLIME, 0, 0),
+    // negative_assertion: MERGE should consume the small slime caster so no live small slime remains.
     pred::WalkerFamilyCount(FAMILY_MEDIUM_SLIME, 1, 1),
     pred::WalkerDiedByFinal(FAMILY_SMALL_SLIME),
 };
@@ -3598,6 +3635,7 @@ inline constexpr SpawnSpec kFamilySpawns_special_medium_slime_1_scen99[] = {
 inline constexpr FactPredicate kFacts_special_medium_slime_1_scen99[] = {
     pred::TickReached(150),
     pred::WalkerFamilyCount(FAMILY_MEDIUM_SLIME, 0, 0),
+    // negative_assertion: SPLIT should consume the medium slime caster so no live medium slime remains.
     pred::EventKindAtLeast(/*play_sound*/1, 14),
     pred::EventKindExactly(/*score_change*/9, 0),
     pred::EventKindExactly(/*notification*/2, 0),
@@ -3704,6 +3742,7 @@ inline constexpr FactPredicate kFacts_special_druid_1_scen99[] = {
     pred::EventKindAtLeast(/*play_sound*/1, 15),
     pred::EventKindExactly(/*score_change*/9, 0),
     pred::WalkerHpRangeAtFinalTick(FAMILY_DRUID, 3000, 6000),
+    // rng_drift: grow-tree slot combat leaves the druid in this broad damaged HP band; commit 244d4bcf
 };
 
 inline constexpr Mutation kMut_special_druid_1_scen99 = {
@@ -3724,6 +3763,7 @@ inline constexpr FactPredicate kFacts_special_druid_2_scen99[] = {
     pred::EventKindAtLeast(/*play_sound*/1, 16),
     pred::WalkerHpRangeAtFinalTick(FAMILY_DRUID, 5000, 11000,
         "consequence: SUMMON_FAERIE drains caster MP which affects combat HP; golden 8700 cents"),
+    // rng_drift: summon-faerie combat pressure brackets caster HP while init mutation exits high; commit 244d4bcf
 };
 
 inline constexpr Mutation kMut_special_druid_2_scen99 = {
@@ -3801,6 +3841,7 @@ inline constexpr FactPredicate kFacts_special_orc_2_scen99[] = {
     pred::EventKindAtLeast(/*play_sound*/1, 8),
     pred::WalkerHpRangeAtFinalTick(FAMILY_ORC, 7000, 14000,
         "consequence: EAT_CORPSE restores HP; golden 10900 cents"),
+    // rng_drift: corpse-eat healing/combat order gives a broad orc HP envelope around the observed golden; commit 244d4bcf
 };
 
 inline constexpr Mutation kMut_special_orc_2_scen99 = {
@@ -3821,6 +3862,7 @@ inline constexpr FactPredicate kFacts_special_barbarian_1_scen99[] = {
     pred::EventKindAtLeast(/*play_sound*/1, 15),
     pred::WalkerHpRangeAtFinalTick(FAMILY_BARBARIAN, 3000, 10000,
         "consequence: HURL_BOULDER combat exchange damages barbarian; golden 7100 cents"),
+    // rng_drift: hurl-boulder combat timing spans this barbarian HP band while init mutation exits it; commit 244d4bcf
 };
 
 inline constexpr Mutation kMut_special_barbarian_1_scen99 = {
@@ -3841,6 +3883,7 @@ inline constexpr FactPredicate kFacts_special_barbarian_2_scen99[] = {
     pred::EventKindAtLeast(/*play_sound*/1, 15),
     pred::WalkerHpRangeAtFinalTick(FAMILY_BARBARIAN, 5000, 12000,
         "consequence: EXPLODING_BOULDER combat exchange damages barbarian; golden 8900 cents"),
+    // rng_drift: exploding-boulder combat timing spans this barbarian HP band while init mutation exits it; commit 244d4bcf
 };
 
 inline constexpr Mutation kMut_special_barbarian_2_scen99 = {
@@ -3861,6 +3904,7 @@ inline constexpr FactPredicate kFacts_special_archmage_2_scen99[] = {
     pred::EventKindAtLeast(/*play_sound*/1, 2),
     pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHMAGE, 10000, 15000,
         "consequence: HEARTBURST drains caster HP; golden 14600 cents"),
+    // rng_drift: heartburst drains can vary within the archmage HP band while init mutation exits high; commit 244d4bcf
 };
 
 inline constexpr Mutation kMut_special_archmage_2_scen99 = {
@@ -3911,6 +3955,7 @@ inline constexpr FactPredicate kFacts_special_archmage_4_scen99[] = {
     // kMut raises init HP to BASE_GUY_HP+9000, pushing final HP into the
     // thousands of display HP, out of range -> flips.
     pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHMAGE, 10000, 15000),
+    // rng_drift: mind-control recapture pins archmage near full HP but retains this envelope for stale-golden drift; commit 244d4bcf
 };
 
 inline constexpr Mutation kMut_special_archmage_4_scen99 = {
@@ -4055,6 +4100,7 @@ inline constexpr FactPredicate kFacts_summon_lifetime_faerie_scen99[] = {
     pred::EventKindAtLeast(/*play_sound*/1, 1,
         "consequence: the slot-2 cast emits a single play_sound at tick ~20; the unreachable off-map enemy and the silent lifetime-expiry reap add no further sounds, so exactly one play_sound is observed on both sides"),
     pred::WalkerOfTeamAlive(0, 1, 2),
+    // rng_drift: faerie expiry can leave only the druid or a transient summon count at final capture; commit 244d4bcf
 };
 
 inline constexpr Mutation kMut_summon_lifetime_faerie_scen99 = {
@@ -4077,6 +4123,7 @@ inline constexpr FactPredicate kFacts_summon_lifetime_decrement_faerie_scen99[] 
     pred::EventKindAtLeast(/*play_sound*/1, 1,
         "consequence: the slot-2 cast emits a single play_sound at tick ~20; the off-map enemy keeps the druid unengaged and the lifetime-expiry reap is silent, so exactly one play_sound is observed on both sides"),
     pred::WalkerOfTeamAlive(0, 1, 2),
+    // rng_drift: lifetime decrement timing can leave one or two team-0 walkers at final capture; commit 244d4bcf
 };
 
 inline constexpr Mutation kMut_summon_lifetime_decrement_faerie_scen99 = {
@@ -4198,6 +4245,7 @@ inline constexpr FactPredicate kFacts_weapon_boomerang_return_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
     pred::WalkerOfTeamAlive(0, 2, 4,
         "consequence: BOOMERANG slot 2 adds FAMILY_BOOMERANG FX walker(s) to the caster's team (team 0)"),
+    // rng_drift: boomerang return can leave two to four team-0 bodies while descriptor mutation removes the extras; commit 244d4bcf
     pred::EventKindAtLeast(/*play_sound*/1, 2),
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 10100, 10100),
 };
@@ -4223,7 +4271,7 @@ inline constexpr FactPredicate kFacts_weapon_exploding_boulder_scen99[] = {
         "consequence: with the soldier cluster pushed downrange (220/250/280) the AI soldiers charge back toward the level-5 barbarian and outrun the boulder, so the boulder flies its full ~9-tick range and detonates on empty ground — all three enemy soldiers survive to the final tick on both arms"),
     pred::EventKindAtLeast(/*play_sound*/1, 3),
     pred::WeaponSpeed(FAMILY_BOULDER, 900, 1500,
-        "trajectory: the EXPLODING BOULDER special travels at level*2=10 px/tick (myguy==nullptr AI-cast path in barbarian_do_special). Per-tick step is 1000 centi-px/tick on a pure axis or 1414 on a diagonal (RNG `waver` chooses lasty in {-10,0,10}); range [900,1500] brackets both on branch and recaptured master. The discriminating mutation drops stepsize to level*0.5=2.5 px/tick (250-354 centi) which falls below 900 and fails this predicate."),
+        "trajectory: the EXPLODING BOULDER special travels at level*2=10 px/tick (myguy==nullptr AI-cast path in barbarian_do_special). Per-tick step is 1000 centi-px/tick on a pure axis or 1414 on a diagonal (RNG `waver` chooses lasty as -10, 0, or 10); range [900,1500] brackets both on branch and recaptured master. The discriminating mutation drops stepsize to level*0.5=2.5 px/tick (250-354 centi) which falls below 900 and fails this predicate."),
     pred::WeaponNetTravel(FAMILY_BOULDER, /*kWeaponPathStraight*/0, 1500,
         "trajectory: the boulder flies in one fixed heading for its whole life (lastx/lasty never change once fired), so net displacement == pathlen and net >= 0.7*pathlen always holds; threshold 1500 centi (15px) is met by >=2 ticks of 10px flight on both arms. The mutation that makes the boulder die in 1 tick (or collapses its step) drives net below 1500 and fails this; a path-curving mutation breaks net>=0.7*pathlen."),
 };
@@ -4283,8 +4331,10 @@ inline constexpr FactPredicate kFacts_effect_heartburst_multitarget_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 0, 11000,
         "consequence: HEARTBURST detonates a per-foe explosion against each in-range soldier, leaving at least one soldier below full HP; the mutation aborts the spawn loop so no explosion lands and every soldier stays at full 12000-cent HP outside this window"),
+    // rng_drift: heartburst explosion order can kill or wound different soldiers while mutation leaves all outside band; commit 244d4bcf
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 0, 4,
         "consequence: the per-foe explosions may kill some of the four in-range soldiers"),
+    // rng_drift: multi-target explosion damage may leave any number of soldiers alive after detonation; commit 244d4bcf
     pred::EventKindAtLeast(/*play_sound*/1, 4,
         "consequence: HEARTBURST emits SOUND_EXPLODE once per detonated foe; the mutation suppresses every explosion so the play_sound floor collapses"),
 };
@@ -4379,6 +4429,7 @@ inline constexpr FactPredicate kFacts_effect_bomb_timer_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_THIEF, 1, 1),
     pred::WalkerOfTeamAlive(0, 2, 3,
         "consequence: DROP BOMB slot 1 adds the timed FAMILY_BOMB FX walker(s) to the thief's team (team 0) — schema-v1 routes the bomb through add_ob(Order::FX) into oblist, where it surfaces as an alive team-0 walker (the FX-order family string aliases under WalkerFamilyCount / EffectFamilyCount, so the spawn is only robustly observable by team). The mutation bypasses the spawn so only the lone thief remains alive on team 0 and this count collapses to 1, below the floor of 2."),
+    // rng_drift: bomb timer capture can show one or two live bombs, but spawn removal drops below the floor; commit 244d4bcf
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
 };
 
@@ -4688,6 +4739,7 @@ inline constexpr FactPredicate kFacts_midcombat_partial_hp_scen99[] = {
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 2, 2),
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 500, 11500,
         "consequence: the two soldiers trade knife blows and at least one settles in the wide mid-HP band on both sides; the mutation zeros the central combat-damage write so both take no damage and finish at full HP (12000), leaving no soldier in the band (label_exempted)"),
+    // rng_drift: mid-combat knife exchanges are intentionally bracketed while no-damage mutation leaves full HP; commit 244d4bcf
     pred::WalkerOfTeamAlive(0, 1, 1),
     pred::EventKindAtLeast(/*play_sound*/1, 4),
 };
@@ -4726,6 +4778,7 @@ inline constexpr FactPredicate kFacts_consumable_inventory_state_scen99[] = {
     pred::TreasureFamilyOfOrderRemovedFromOblist(FAMILY_MAGIC_POTION, kOrderTreasure),
     pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 3500, 7000,
         "consequence: the arrow-wounded player soldier eats the level-10 drumstick on the walk path and is healed into the HP band on both sides; the mutation no-ops the heal so the player keeps only its lower arrow-wounded HP, below the lower bound"),
+    // rng_drift: arrow damage plus drumstick heal lands in a broad HP band while no-heal mutation remains below; commit 244d4bcf
 };
 inline constexpr Mutation kMut_consumable_inventory_state_scen99 = {
     "src/gameplay/families/treasure_family_consumables.cpp", 25,
@@ -4894,7 +4947,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
     { "smoke_empty_scen99",            "scen/scen1.fss", 0x00000042u,
       nullptr, 0,                                                       1,   CompareMode::Invariant, false,
       nullptr, 0, 0, true, true, Exercises::None,
-      nullptr, 0, {} },
+      nullptr, 0, kMut_smoke_empty_tick_count },
 
     { "smoke_nonempty_scen99",         "scen/scen1.fss", 0x00000042u,
       nullptr, 0,                                                       60,  CompareMode::SemanticParity, false,

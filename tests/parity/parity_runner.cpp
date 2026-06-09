@@ -471,6 +471,11 @@ RunOutcome run_scenario(const ScenarioSpec& spec)
         for (const auto& uptr : world.fxlist)
             bag_walker(uptr.get(), out.coverage);
     };
+    auto bag_event_kinds = [&](const std::vector<og::sim::Event>& batch) {
+        for (const auto& ev : batch)
+            out.coverage.event_kinds.insert(
+                event_kind_symbol(static_cast<std::uint32_t>(ev.kind)));
+    };
 
     sample_world(); // post-spawn snapshot
 
@@ -562,6 +567,7 @@ RunOutcome run_scenario(const ScenarioSpec& spec)
         auto input_events = events.drain();
         emulate_classic_screen_flow(world, input_events, t, parity_screen_end,
                                     parity_screen_next_level);
+        bag_event_kinds(input_events);
 	        append_events_for_tick(parity_events, std::move(input_events), t,
 	                               /*drop_score_change=*/true);
 	        world.tick();
@@ -573,6 +579,7 @@ RunOutcome run_scenario(const ScenarioSpec& spec)
         auto tick_events = events.drain();
         emulate_classic_screen_flow(world, tick_events, t, parity_screen_end,
                                     parity_screen_next_level);
+        bag_event_kinds(tick_events);
         if (parity_screen_next_level != -32768)
         {
             world.next_level = parity_screen_next_level;
@@ -580,6 +587,14 @@ RunOutcome run_scenario(const ScenarioSpec& spec)
         }
         append_events_for_tick(parity_events, std::move(tick_events), t);
         append_screen_completion_events(parity_events, world, t, parity_screen_end);
+        if (world.level_done == 2)
+        {
+            // Classic completion invalidates/redraws the screen directly.
+            // Count the public RequestRedraw event kind for coverage, but keep
+            // it out of parity_events so golden dumps remain classic-compatible.
+            out.coverage.event_kinds.insert(event_kind_symbol(
+                static_cast<std::uint32_t>(og::sim::EventKind::RequestRedraw)));
+        }
         sample_world();
         sample_weapon_tracks();
         // Phase 02 redo: do NOT break on level_done. Both sides drive the

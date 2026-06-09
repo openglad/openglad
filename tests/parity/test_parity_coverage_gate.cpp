@@ -427,6 +427,7 @@ TEST(Parity, behavioural_coverage_gate_event_kinds)
         {"request_exit_confirmation", 7},
         {"withdraw_to_level",         8},
         {"score_change",              9},
+        {"damage_tile",               10},
     };
     std::vector<std::string> missing;
     for (const auto& [name, ordinal] : kKindOrdinals)
@@ -504,6 +505,7 @@ TEST(Parity, behavioural_coverage_gate)
         {"request_exit_confirmation", 7},
         {"withdraw_to_level",         8},
         {"score_change",              9},
+        {"damage_tile",               10},
     };
     for (const auto& [name, ordinal] : kKindOrdinals)
     {

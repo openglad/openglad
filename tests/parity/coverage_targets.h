@@ -152,28 +152,22 @@ inline constexpr std::pair<std::int32_t, std::uint8_t> kRequiredSpecials[] = {
     {FAMILY_ARCHMAGE, 1}, {FAMILY_ARCHMAGE, 2}, {FAMILY_ARCHMAGE, 3}, {FAMILY_ARCHMAGE, 4},
 };
 
-// The `EventKind` symbols that master's deterministic sim actually emits in
-// the parity scenario suite, matching the canonical names emitted by
-// tests/parity/state_dump.cpp::event_kind_symbol.
-//
-// NOTE: request_redraw, end_game, and set_end are intentionally NOT required.
-// Master signals level-end IMPERATIVELY (screen.cpp::endgame() does the
-// palette/redraw/end work directly) — its deterministic sim event log never
-// carries those three kinds in any committed golden (verified: 0 goldens
-// contain request_redraw/end_game/set_end). They were previously "covered"
-// only by a branch-only completion-event burst pushed from GameWorld::tick(),
-// which was a genuine gameplay divergence from master and has been removed.
-// Requiring them here would force the branch's deterministic sim to diverge
-// from master, so they are excluded from the runtime coverage manifest.
-// (The display semantics are preserved in the broadcast layer for the
-// networking path; see GameServer::broadcast_current_state.)
+// All gameplay `EventKind` symbols except "none", matching the canonical names
+// emitted by tests/parity/state_dump.cpp::event_kind_symbol. DamageTile is
+// observed from raw tick events for coverage, while parity dumps continue to
+// normalize it out because classic mutates tiles through screen::damage_tile
+// rather than recording a comparable sim event.
 inline constexpr std::string_view kRequiredEventKinds[] = {
     "play_sound",
     "notification",
     "set_palette",
+    "request_redraw",
+    "end_game",
+    "set_end",
     "request_exit_confirmation",
     "withdraw_to_level",
     "score_change",
+    "damage_tile",
 };
 
 } // namespace og::parity

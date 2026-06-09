@@ -241,6 +241,7 @@ std::string event_kind_symbol(std::uint32_t kind_raw)
         case EventKind::SetPalette:               return "set_palette";
         case EventKind::RequestRedraw:            return "request_redraw";
         case EventKind::EndGame:                  return "end_game";
+        case EventKind::DamageTile:               return "damage_tile";
         case EventKind::SetEnd:                   return "set_end";
         case EventKind::RequestExitConfirmation:  return "request_exit_confirmation";
         case EventKind::WithdrawToLevel:          return "withdraw_to_level";

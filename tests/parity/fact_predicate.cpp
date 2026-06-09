@@ -28,7 +28,8 @@ constexpr std::int32_t kFXOrder        = static_cast<std::int32_t>(Order::FX);
 // switch in state_dump.cpp::event_kind_symbol so a predicate written as
 // EventKindAtLeast(/*ordinal=*/3) maps to "set_palette".
 //
-// 0 -> "none", 1 -> "play_sound", ..., 9 -> "score_change".
+// 0 -> "none", 1 -> "play_sound", ..., 9 -> "score_change",
+// 10 -> "damage_tile".
 const char* event_kind_symbol_of_ordinal(std::int32_t ordinal)
 {
     static const char* table[] = {
@@ -42,6 +43,7 @@ const char* event_kind_symbol_of_ordinal(std::int32_t ordinal)
         "request_exit_confirmation",
         "withdraw_to_level",
         "score_change",
+        "damage_tile",
     };
     if (ordinal < 0 || static_cast<std::size_t>(ordinal) >=
                           (sizeof(table) / sizeof(table[0])))
