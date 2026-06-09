@@ -75,13 +75,9 @@ bool effect::act()
 
 	set_collide_ob(nullptr); // always start with no collision..
 
-#ifndef TESTING
-	// Runtime headless/network sims advance drawcycle here. The parity harness
-	// compares against e761's recorder, whose act-only loop does not run the
-	// classic draw paths that advanced drawcycle, so TESTING keeps the e761
-	// act-loop value.
+	// Runtime headless/network sims advance drawcycle here so effect motion is
+	// not dependent on a renderer-side draw path.
 	set_drawcycle(static_cast<unsigned char>(drawcycle() + 1));
-#endif
 
 	// Per-family() action dispatch
 	const auto* efd = get_effect_family_descriptor(family());

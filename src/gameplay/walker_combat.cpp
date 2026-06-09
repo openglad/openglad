@@ -350,7 +350,7 @@ bool walker::attack(walker  *target)
         if (getscore)
             award_score(team_num(), static_cast<std::uint32_t>(tempdamage_i)
                                   + static_cast<std::uint32_t>(target->stats()->level()));
-        if (headguy->myguy)
+        if (order() != Order::Weapon && headguy->myguy)
             headguy->myguy->exp += attack_exp;
     }
 

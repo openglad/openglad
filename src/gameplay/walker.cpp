@@ -1057,6 +1057,41 @@ bool walker::animate()
 	return 1;
 }
 
+bool walker::set_frame_from_current_walk_animation()
+{
+	if (!ani)
+		return false;
+
+	const int dir_index = static_cast<int>(curdir());
+	if (dir_index < 0 || dir_index >= NUM_FACINGS)
+		return false;
+
+	const signed char* seq = ani[dir_index];
+	if (!seq)
+		return false;
+
+	int seq_len = 0;
+	while (seq_len < 128 && seq[seq_len] != -1)
+		seq_len++;
+
+	if (seq_len <= 0)
+	{
+		set_cycle(0);
+		set_frame(seq[0]);
+		return true;
+	}
+
+	int c = static_cast<int>(cycle());
+	if (c < 0 || c >= seq_len)
+	{
+		set_cycle(0);
+		c = 0;
+	}
+
+	set_frame(seq[c]);
+	return true;
+}
+
 bool walker::set_order_family(Order neworder, char newfamily)
 {
 	set_order(neworder);

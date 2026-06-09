@@ -77,13 +77,9 @@ bool living::act()
 	if (dead())
 		return 0;
 
-#ifndef TESTING
-	// Runtime headless/network sims advance drawcycle here. The parity harness
-	// compares against e761's recorder, whose act-only loop does not run the
-	// classic draw paths that advanced drawcycle, so TESTING keeps the e761
-	// act-loop value.
+	// Runtime headless/network sims advance drawcycle here so living periodic
+	// effects are not dependent on a renderer-side draw path.
 	set_drawcycle(static_cast<unsigned char>(drawcycle() + 1));
-#endif
 
 	// Make sure everyone we're pointing to is valid
 	if (foe() && (foe()->dead() || (current_game->world->rng_.next(foe()->invisibility_left()/20) > 0) ) )
@@ -454,9 +450,7 @@ bool living::walk(float x, float y)
 			set_cycle(static_cast<signed char>(cycle() + 1));
 			//if (!ani || (curdir*cycle > sizeof(ani)) )
 			//  Log("WALKER::WALK: Bad ani!\n");
-			if (ani[curdir()][cycle()] == -1)
-				set_cycle(0);
-			set_frame(ani[curdir()][cycle()]);
+			set_frame_from_current_walk_animation();
 			return 1;
 		}
 		else //Invalid move?
@@ -471,9 +465,7 @@ bool living::walk(float x, float y)
 			if (stats_->query_bit_flags(BIT_ANIMATE) )  // animate regardless..
 			{
 				set_cycle(static_cast<signed char>(cycle() + 1));
-				if (ani[curdir()][cycle()] == -1)
-					set_cycle(0);
-				set_frame(ani[curdir()][cycle()]);
+				set_frame_from_current_walk_animation();
 			}
 
 			return 0;

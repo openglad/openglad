@@ -138,6 +138,15 @@ std::size_t count_weapons_family(const StateDump& d, std::int32_t family)
     return n;
 }
 
+std::size_t count_weapon_tracks_family(const StateDump& d, std::int32_t family)
+{
+    const std::string sym = family_symbol_by_order(kWeaponOrder, family);
+    std::size_t n = 0;
+    for (const auto& w : d.weapon_tracks)
+        if (w.family == sym) ++n;
+    return n;
+}
+
 // Weapon-trajectory analysis over dump.weapon_tracks. A "track" is the
 // time-ordered sequence of samples for one (family, seq) projectile.
 struct WeaponTrackMetrics
@@ -439,8 +448,11 @@ FactEvalResult evaluate_one(const FactPredicate& p, const StateDump& dump)
         }
         case FactKind::WeaponFamilyEmitted:
         {
-            // dump.weapons[] ONLY — predicate must not match dump.effects[].
-            if (count_weapons_family(dump, p.arg0) == 0)
+            // A projectile can be emitted and expire before the final tick.
+            // Treat either a live final weapon or a recorded weapon track as
+            // proof of emission; do not match dump.effects[].
+            if (count_weapons_family(dump, p.arg0) == 0 &&
+                count_weapon_tracks_family(dump, p.arg0) == 0)
                 return (make_fail(r, p, "no weapon of family " +
                                   family_symbol_by_order(kWeaponOrder, p.arg0)),
                         r);
