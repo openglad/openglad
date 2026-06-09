@@ -19,7 +19,7 @@ static bool bomb_on_death(effect* self)
     if (!self->owner() || self->owner()->dead())
         self->set_owner(self);
     og::sim::emit_sound(current_game->sim_events, SOUND_EXPLODE);
-    walker* newob = current_game->world->add_ob(Order::FX, FAMILY_EXPLOSION, 1);
+    walker* newob = current_game->world->add_ob(Order::FX, FAMILY_EXPLOSION);
     newob->set_owner(self->owner());
     newob->stats()->set_hitpoints(0);
     newob->stats()->set_level(self->owner()->stats()->level());

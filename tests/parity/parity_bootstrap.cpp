@@ -7,6 +7,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <vector>
 
 #ifndef OG_PARITY_WORKSPACE_ROOT
 #define OG_PARITY_WORKSPACE_ROOT "."
@@ -44,11 +46,37 @@ std::string ensure_write_dir()
     return p.string();
 }
 
+bool install_parity_grid_fixture(const std::string& write_dir)
+{
+    std::vector<std::uint8_t> bytes =
+        og::resources::read_file("pix/scen0001.png");
+    if (bytes.empty())
+        bytes = og::resources::read_file("pix/scen1.png");
+    if (bytes.empty())
+        return false;
+
+    const std::filesystem::path pix_dir =
+        std::filesystem::path(write_dir) / "pix";
+    std::error_code ec;
+    std::filesystem::create_directories(pix_dir, ec);
+    if (ec)
+        return false;
+
+    std::ofstream out(pix_dir / "grid.png",
+                      std::ios::binary | std::ios::trunc);
+    if (!out)
+        return false;
+    out.write(reinterpret_cast<const char*>(bytes.data()),
+              static_cast<std::streamsize>(bytes.size()));
+    return out.good();
+}
+
 } // namespace
 
 BootstrapScope::BootstrapScope(const char* argv0)
 {
     workspace_root_  = parity_workspace_root();
+    parity_write_path_ = ensure_write_dir();
     temp_scen_path_  = workspace_root_ + "/temp/scen";
     scen_path_       = workspace_root_ + "/scen";
     builtin_path_    = workspace_root_ + "/builtin";
@@ -58,9 +86,7 @@ BootstrapScope::BootstrapScope(const char* argv0)
     if (owned_physfs_)
     {
         // First-time init: configure write dir + restore default campaign.
-        const std::string write_dir = ensure_write_dir();
-        og::resources::set_write_dir(write_dir);
-        og::resources::mount(write_dir.c_str(), nullptr, 1);
+        og::resources::set_write_dir(parity_write_path_);
     }
 
     // The campaign archive lives next to the workspace; mount the directory
@@ -75,6 +101,12 @@ BootstrapScope::BootstrapScope(const char* argv0)
         // resolvable even when the campaign mount fails (e.g. archive
         // already present from a sibling init).
         (void)mount_campaign_package_with_error("org.openglad.gladiator");
+    }
+
+    if (install_parity_grid_fixture(parity_write_path_) &&
+        og::resources::mount(parity_write_path_.c_str(), nullptr, 0))
+    {
+        mounted_parity_write_ = true;
     }
 
     // Always add the scenario directories so smoke / temp scenarios resolve
@@ -95,6 +127,8 @@ BootstrapScope::BootstrapScope(const char* argv0)
 
 BootstrapScope::~BootstrapScope()
 {
+    if (mounted_parity_write_)
+        og::resources::unmount(parity_write_path_.c_str());
     if (mounted_temp_)
         og::resources::unmount(temp_scen_path_.c_str());
     if (mounted_scen_)

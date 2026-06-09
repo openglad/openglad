@@ -28,7 +28,8 @@ constexpr std::int32_t kFXOrder        = static_cast<std::int32_t>(Order::FX);
 // switch in state_dump.cpp::event_kind_symbol so a predicate written as
 // EventKindAtLeast(/*ordinal=*/3) maps to "set_palette".
 //
-// 0 -> "none", 1 -> "play_sound", ..., 9 -> "score_change".
+// 0 -> "none", 1 -> "play_sound", ..., 9 -> "score_change",
+// 10 -> "damage_tile".
 const char* event_kind_symbol_of_ordinal(std::int32_t ordinal)
 {
     static const char* table[] = {
@@ -42,6 +43,7 @@ const char* event_kind_symbol_of_ordinal(std::int32_t ordinal)
         "request_exit_confirmation",
         "withdraw_to_level",
         "score_change",
+        "damage_tile",
     };
     if (ordinal < 0 || static_cast<std::size_t>(ordinal) >=
                           (sizeof(table) / sizeof(table[0])))
@@ -134,6 +136,15 @@ std::size_t count_weapons_family(const StateDump& d, std::int32_t family)
     const std::string sym = family_symbol_by_order(kWeaponOrder, family);
     std::size_t n = 0;
     for (const auto& w : d.weapons)
+        if (w.family == sym) ++n;
+    return n;
+}
+
+std::size_t count_weapon_tracks_family(const StateDump& d, std::int32_t family)
+{
+    const std::string sym = family_symbol_by_order(kWeaponOrder, family);
+    std::size_t n = 0;
+    for (const auto& w : d.weapon_tracks)
         if (w.family == sym) ++n;
     return n;
 }
@@ -439,8 +450,11 @@ FactEvalResult evaluate_one(const FactPredicate& p, const StateDump& dump)
         }
         case FactKind::WeaponFamilyEmitted:
         {
-            // dump.weapons[] ONLY — predicate must not match dump.effects[].
-            if (count_weapons_family(dump, p.arg0) == 0)
+            // A projectile can be emitted and expire before the final tick.
+            // Treat either a live final weapon or a recorded weapon track as
+            // proof of emission; do not match dump.effects[].
+            if (count_weapons_family(dump, p.arg0) == 0 &&
+                count_weapon_tracks_family(dump, p.arg0) == 0)
                 return (make_fail(r, p, "no weapon of family " +
                                   family_symbol_by_order(kWeaponOrder, p.arg0)),
                         r);

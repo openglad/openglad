@@ -444,12 +444,12 @@ TEST(WalkerMovement, round9_blocked_animate_angle_and_turn_default_paths)
     w->set_curdir(99);
     ASSERT_EQ(0, (int)w->get_current_angle()) << "invalid direction should use default angle";
 
-    // Invalid curdir is clamped before turning; one step toward FACE_UP from clamped
-    // FACE_UP results in FACE_UP_LEFT.
+    // Classic invalid curdir handling keeps the modulo result and falls through
+    // to the default last-vector branch instead of clamping to a valid facing.
     w->set_stepsize(2.0f);
     w->set_curdir(static_cast<char>(-120));
     (void)w->turn(FACE_UP);
-    ASSERT_EQ(-2, (int)w->lastx()) << "invalid turn direction should clamp and turn safely";
+    ASSERT_EQ(0, (int)w->lastx()) << "invalid turn direction should use default lastx";
     ASSERT_EQ(-2, (int)w->lasty()) << "invalid turn direction should default lasty to -stepsize";
 }
 
@@ -530,10 +530,10 @@ TEST(WalkerMovement, round6_blocked_animate_and_default_angle_turn)
     w->set_curdir(static_cast<char>(99));
     ASSERT_EQ(0, (int)w->get_current_angle()) << "invalid direction should map to angle 0";
 
-    // turn default branch in lastx/lasty fallback.
+    // Classic modulo turn from an invalid positive direction lands on FACE_DOWN.
     w->set_curdir(static_cast<char>(99));
     ASSERT_TRUE(w->turn(FACE_UP));
-    ASSERT_EQ(FACE_UP_LEFT, w->curdir());
+    ASSERT_EQ(FACE_DOWN, w->curdir());
 }
 
 
@@ -661,7 +661,7 @@ TEST(WalkerMovement, deep_branch_coverage_smoke)
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
     w->set_curdir(99);
     ASSERT_TRUE(w->turn(FACE_UP));
-    ASSERT_EQ(FACE_UP_LEFT, w->curdir());
+    ASSERT_EQ(FACE_DOWN, w->curdir());
 }
 
 

@@ -295,15 +295,11 @@ bool walker::walkstep(float x, float y)
                                 set_curdir(static_cast<signed char>(FACE_DOWN));
                         }
                         if (gotup || gotover) // we moved somewhere?
-                        {
-                            set_cycle(static_cast<signed char>(mycycle));
-                            set_cycle(static_cast<signed char>(cycle() + 1));
-                            if (ani) {
-                                if (ani[curdir()][cycle()] == -1)
-                                    set_cycle(0);
-                                set_frame(ani[curdir()][cycle()]);
-                            }
-                        }  // end of cycled us a frame
+	                        {
+	                            set_cycle(static_cast<signed char>(mycycle));
+	                            set_cycle(static_cast<signed char>(cycle() + 1));
+	                            set_frame_from_current_walk_animation();
+	                        }  // end of cycled us a frame
                     }
                 }
             }
@@ -356,11 +352,7 @@ bool walker::walk(float x, float y)
             set_cycle(static_cast<signed char>(cycle() + 1));
             //if (!ani || (curdir*cycle > sizeof(ani)) )
             //  Log("WALKER::WALK: Bad ani!\n");
-            if (ani) {
-                if (ani[curdir()][cycle()] == -1)
-                    set_cycle(0);
-                set_frame(ani[curdir()][cycle()]);
-            }
+            set_frame_from_current_walk_animation();
             return 1;
         }
         else //Invalid move?
@@ -370,11 +362,7 @@ bool walker::walk(float x, float y)
             if (stats_->query_bit_flags(BIT_ANIMATE) )  // animate regardless..
             {
                 set_cycle(static_cast<signed char>(cycle() + 1));
-                if (ani) {
-                    if (ani[curdir()][cycle()] == -1)
-                        set_cycle(0);
-                    set_frame(ani[curdir()][cycle()]);
-                }
+                set_frame_from_current_walk_animation();
             }
             return 0;
         }
@@ -383,8 +371,7 @@ bool walker::walk(float x, float y)
     {
         set_curdir(static_cast<signed char>(dir));
         set_cycle(0);
-        if (ani)
-            set_frame(ani[curdir()][cycle()]);
+        set_frame_from_current_walk_animation();
         worldmove(0,0);
     }
     return 1;
@@ -417,13 +404,8 @@ float walker::get_current_angle()
 
 bool walker::turn(short targetdir)
 {
-    auto clamp_dir = [](short dir) -> short {
-        return (dir >= FACE_UP && dir <= FACE_UP_LEFT) ? dir : FACE_UP;
-    };
-
     short distance;
-    short currentdir = clamp_dir(static_cast<short>(curdir()));
-    short target = clamp_dir(targetdir);
+    short currentdir = static_cast<short>(curdir());
 
     //   We use a clock-ordered
     //   of directions to numbers) to a clock-ordered
@@ -431,7 +413,7 @@ bool walker::turn(short targetdir)
     //   our next facing should be based on our current one.
 
     // Find how  we have to turn.
-    distance = static_cast<short>(currentdir - target);
+    distance = static_cast<short>(currentdir - targetdir);
 
     // Figure out if we should turn clockwise or counterclockwise
     if ( ( (distance >= -4) && (distance < 0) ) || (distance >= 4) )
@@ -488,8 +470,7 @@ bool walker::turn(short targetdir)
         }
     }
     set_cycle(0);
-    if (ani)
-        set_frame(ani[curdir()][cycle()]);
+    set_frame_from_current_walk_animation();
     worldmove(0,0);
     return true;
 }

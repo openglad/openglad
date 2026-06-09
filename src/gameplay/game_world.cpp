@@ -91,6 +91,22 @@ void refresh_self_reference_ids(walker& entity)
 namespace og::sim {
 // Test hook to shorten mission timeout checks in deterministic harnesses.
 std::int32_t g_test_level_tick_limit_override = 0;
+
+namespace {
+thread_local IRandom** g_sim_random_override_ref = nullptr;
+}
+
+IRandom* sim_random_override()
+{
+    return (g_sim_random_override_ref != nullptr)
+        ? *g_sim_random_override_ref
+        : nullptr;
+}
+
+void set_sim_random_override(IRandom** rng_ref)
+{
+    g_sim_random_override_ref = rng_ref;
+}
 } // namespace og::sim
 
 GameWorld::GameWorld(std::uint32_t seed)

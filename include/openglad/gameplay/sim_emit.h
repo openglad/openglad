@@ -10,6 +10,7 @@
 // accesses the log via current_game->sim_events. If the pointer is null
 // (e.g., entity created outside of a game session), the call is a no-op.
 
+#include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/sim_event_log.h>
 
 #include <cstdint>
@@ -23,6 +24,16 @@ inline void emit_sound(SimEventLog* log, std::uint32_t sound_id)
 {
     if (log)
         log->push_sound(sound_id);
+}
+
+inline void emit_positional_sound(SimEventLog* log, const walker* source,
+                                  std::uint32_t sound_id)
+{
+    if (current_game && current_game->positional_sound_visible &&
+        !current_game->positional_sound_visible(
+            source, sound_id, current_game->positional_sound_visible_user))
+        return;
+    emit_sound(log, sound_id);
 }
 
 // Emit a text notification event. The runtime event dispatcher will

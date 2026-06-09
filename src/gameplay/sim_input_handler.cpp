@@ -342,9 +342,7 @@ SimInputResult sim_process_player_input(
         else if (control->stats()->query_bit_flags(BIT_ANIMATE))
         {
             control->set_cycle(control->cycle() + 1);
-            if (control->ani[control->curdir()][control->cycle()] == -1)
-                control->set_cycle(0);
-            control->set_frame(control->ani[control->curdir()][control->cycle()]);
+            control->set_frame_from_current_walk_animation();
         }
 
         if (pi.is_held(InputAction::Fire))

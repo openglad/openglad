@@ -85,14 +85,14 @@ static bool exit_on_eat(treasure* self, walker* eater)
     {
         world.withdraw_requested = true;
         world.withdraw_level = destination_level;
-        og::sim::emit_event(current_game->sim_events,
-                            og::sim::EventKind::WithdrawToLevel,
-                            static_cast<std::uint32_t>(destination_level), 0);
         og::sim::emit_event_text(current_game->sim_events,
                                  og::sim::EventKind::RequestExitConfirmation,
                                  format_exit_prompt(exitname, true),
                                  static_cast<std::uint32_t>(destination_level),
                                  1);
+        og::sim::emit_event(current_game->sim_events,
+                            og::sim::EventKind::WithdrawToLevel,
+                            static_cast<std::uint32_t>(destination_level), 0);
     } // end of checking for withdrawal to completed level
     return true;
 }

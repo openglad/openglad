@@ -50,7 +50,9 @@ private:
     bool        mounted_temp_   = false;
     bool        mounted_scen_   = false;
     bool        mounted_builtin_ = false;
+    bool        mounted_parity_write_ = false;
     std::string workspace_root_;
+    std::string parity_write_path_;
     std::string temp_scen_path_;
     std::string scen_path_;
     std::string builtin_path_;

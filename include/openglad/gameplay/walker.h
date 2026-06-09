@@ -117,6 +117,7 @@ class walker : public og::sim::SimEntity
 		virtual bool collide(walker  *ob);
 		bool attack(walker  *target);
 		virtual bool animate();
+		bool set_frame_from_current_walk_animation();
 		bool set_order_family(Order order, char family);
 		virtual Order query_order() const
 		{

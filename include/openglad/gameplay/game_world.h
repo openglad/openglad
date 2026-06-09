@@ -34,6 +34,11 @@ namespace og::sim { class SimEventLog; }
 
 namespace og::sim {
 
+#ifdef TESTING
+IRandom* sim_random_override();
+void set_sim_random_override(IRandom** rng_ref);
+#endif
+
 // Simple LCG random number generator.
 // Given the same seed, produces the same deterministic sequence.
 class SimRandom final : public IRandom {
@@ -42,6 +47,10 @@ public:
 
     std::uint32_t next(std::uint32_t max_exclusive) override {
         if (max_exclusive == 0) return 0;
+#ifdef TESTING
+        if (IRandom* override_rng = sim_random_override())
+            return override_rng->next(max_exclusive);
+#endif
         // LCG: same constants as glibc.
         state_ = state_ * 1103515245u + 12345u;
         return (state_ >> 16) % max_exclusive;

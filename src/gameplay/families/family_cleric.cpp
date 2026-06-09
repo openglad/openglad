@@ -149,7 +149,7 @@ static bool cleric_do_special(walker* self)
                 generic = static_cast<std::int32_t>(self->stats()->magicpoints() - static_cast<float>(self->stats()->special_cost(static_cast<int>(self->current_special()))));
                 generic /= 2;
                 newob->set_lifetime(100 + generic);
-                newob->stats()->set_hitpoints(newob->stats()->hitpoints() + static_cast<float>(generic) / 2.0f);
+                newob->stats()->set_hitpoints(newob->stats()->hitpoints() + static_cast<float>(generic / 2));
                 newob->set_damage(newob->damage() + static_cast<float>(generic) / 4.0f);
                 self->stats()->set_magicpoints(self->stats()->magicpoints() - static_cast<float>(generic));
                 self->set_busy(self->busy() + 5.0f);

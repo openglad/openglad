@@ -124,6 +124,7 @@ const char* event_kind_name(std::int32_t kind)
         case 7: return "request_exit_confirmation";
         case 8: return "withdraw_to_level";
         case 9: return "score_change";
+        case 10: return "damage_tile";
     }
     return "unknown_event";
 }

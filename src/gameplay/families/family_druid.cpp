@@ -66,7 +66,11 @@ static bool druid_do_special(walker* self)
             newob = self->fire();
             if (!newob)
                 return false;
-            alive = summon_entity(self, Order::Living, FAMILY_FAERIE);
+            alive = current_game->world->add_ob(Order::Living, FAMILY_FAERIE);
+            if (!alive)
+                return false;
+            alive->set_owner(self);
+            alive->set_team_num(self->team_num());
             alive->setxy(newob->xpos(), newob->ypos());
             alive->set_lifetime(50 + self->stats()->level() * 40);
             newob->set_dead(1);

@@ -86,7 +86,11 @@ bool weap::act()
 			{
 				const auto* wfd = get_weapon_family_descriptor(family());
 				if (!wfd || !wfd->skip_sit_notify)
-					og::sim::emit_notification(current_game->sim_events, "Weapon sitting");
+					og::sim::emit_event_text(current_game->sim_events,
+					                         og::sim::EventKind::Notification,
+					                         "Weapon sitting",
+					                         static_cast<std::uint32_t>(family()),
+					                         static_cast<std::uint32_t>(team_num()));
 				return 1;
 			}
 
@@ -120,9 +124,14 @@ bool weap::act()
 			// We are randomly walking toward enemy
 		case ACT_RANDOM:
 			{
-				std::string msg = std::format("Weapon {} doing act random?", family());
+				std::string msg = std::format("Weapon {} doing act random?",
+				                              static_cast<int>(static_cast<unsigned char>(family())));
 				//Log("Weapon doing act_random?\n");
-				og::sim::emit_notification(current_game->sim_events, msg);
+				og::sim::emit_event_text(current_game->sim_events,
+				                         og::sim::EventKind::Notification,
+				                         msg,
+				                         static_cast<std::uint32_t>(family()),
+				                         static_cast<std::uint32_t>(team_num()));
 				return 1;
 			}  // END RANDOM
 			//break;
