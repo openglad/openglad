@@ -179,6 +179,43 @@ TEST_F(HeadlessServerRuntimeTest,
 }
 
 TEST_F(HeadlessServerRuntimeTest,
+       lobby_start_config_defaults_campaign_level_and_ignores_bad_slots)
+{
+    active_save_.m_score[0] = 12u;
+    active_save_.m_totalcash[0] = 34u;
+    active_save_.m_totalscore[0] = 56u;
+
+    og::sim::LobbySaveDataEquivalent lobby_save;
+    lobby_save.current_campaign = "";
+    lobby_save.scen_num = -4;
+    lobby_save.numplayers = 3;
+    lobby_save.allied_mode = 1;
+    lobby_save.team_list = {
+        make_slot(0u, 101, "Valid", FAMILY_SOLDIER, 0),
+        make_slot(static_cast<std::uint8_t>(active_save_.team_list.size()),
+                  202,
+                  "Out Of Range",
+                  FAMILY_ELF,
+                  1),
+    };
+
+    og::server::apply_headless_lobby_game_start_config(active_save_, lobby_save);
+
+    EXPECT_EQ("org.openglad.gladiator", active_save_.current_campaign);
+    EXPECT_EQ(1, active_save_.scen_num);
+    EXPECT_EQ(1, active_save_.current_levels[active_save_.current_campaign]);
+    EXPECT_EQ(3u, active_save_.numplayers);
+    EXPECT_EQ(1, active_save_.allied_mode);
+    EXPECT_EQ(1, active_save_.team_size);
+    ASSERT_NE(nullptr, active_save_.team_list[0]);
+    EXPECT_EQ("Valid", active_save_.team_list[0]->name);
+    EXPECT_EQ(nullptr, active_save_.team_list[1]);
+    EXPECT_EQ(12u, active_save_.score);
+    EXPECT_EQ(34u, active_save_.totalcash);
+    EXPECT_EQ(56u, active_save_.totalscore);
+}
+
+TEST_F(HeadlessServerRuntimeTest,
        complete_level_updates_save_and_loads_next_level_for_exit_flow)
 {
     og::sim::LobbySaveDataEquivalent lobby_save;

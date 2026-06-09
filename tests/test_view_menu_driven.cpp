@@ -8,6 +8,7 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <memory>
 #include <thread>
@@ -30,7 +31,7 @@ static std::unique_ptr<walker> create_controlled_living(char family)
 struct KeystateOverride
 {
     const Uint8* prev = nullptr;
-    std::array<Uint8, SDL_NUM_SCANCODES> fake{};
+    std::array<Uint8, MAXKEYS> fake{};
 
     KeystateOverride()
     {
@@ -45,12 +46,20 @@ struct KeystateOverride
     }
 };
 
-static void press_release_after(KeystateOverride& ks, SDL_Scancode sc, int press_ms, int hold_ms)
+static void pulse_key(KeystateOverride& ks, int key, int hold_ms = 80, int release_ms = 30)
 {
-    std::this_thread::sleep_for(std::chrono::milliseconds(press_ms));
-    ks.fake[sc] = 1;
+    ks.fake[static_cast<std::size_t>(key)] = 1;
     std::this_thread::sleep_for(std::chrono::milliseconds(hold_ms));
-    ks.fake[sc] = 0;
+    ks.fake[static_cast<std::size_t>(key)] = 0;
+    std::this_thread::sleep_for(std::chrono::milliseconds(release_ms));
+}
+
+static void pulse_escape_until(KeystateOverride& ks, std::atomic<bool>& done, int timeout_ms = 5000)
+{
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+    while (!done.load(std::memory_order_relaxed) && std::chrono::steady_clock::now() < deadline)
+        pulse_key(ks, KEYSTATE_ESCAPE, 100, 40);
+    ks.fake[KEYSTATE_ESCAPE] = 0;
 }
 
 TEST(ViewMenuDriven, viewscreen_options_menu_exercises_key_paths)
@@ -67,24 +76,27 @@ TEST(ViewMenuDriven, viewscreen_options_menu_exercises_key_paths)
     const signed char saved_view = v->prefs[PREF_VIEW];
 
     KeystateOverride ks;
+    std::atomic<bool> options_done{false};
 
     // Drive a few option toggles then exit with Escape.
     std::thread driver([&]() {
-        press_release_after(ks, SDL_SCANCODE_RIGHTBRACKET, 10, 5);
-        press_release_after(ks, SDL_SCANCODE_LEFTBRACKET, 10, 5);
-        press_release_after(ks, SDL_SCANCODE_COMMA, 10, 5);
-        press_release_after(ks, SDL_SCANCODE_PERIOD, 10, 5);
-        press_release_after(ks, SDL_SCANCODE_R, 10, 5);
-        press_release_after(ks, SDL_SCANCODE_H, 10, 5);
-        press_release_after(ks, SDL_SCANCODE_F, 10, 5);
-        press_release_after(ks, SDL_SCANCODE_S, 10, 5);
-        press_release_after(ks, SDL_SCANCODE_C, 10, 5);
-        press_release_after(ks, SDL_SCANCODE_ESCAPE, 10, 5);
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        pulse_key(ks, KEYSTATE_RIGHTBRACKET);
+        pulse_key(ks, KEYSTATE_LEFTBRACKET);
+        pulse_key(ks, KEYSTATE_COMMA);
+        pulse_key(ks, KEYSTATE_PERIOD);
+        pulse_key(ks, KEYSTATE_r);
+        pulse_key(ks, KEYSTATE_h);
+        pulse_key(ks, KEYSTATE_f);
+        pulse_key(ks, KEYSTATE_s);
+        pulse_key(ks, KEYSTATE_c);
+        pulse_escape_until(ks, options_done);
     });
 
     // Runs a tight loop that polls keystates and draws. Our driver thread
     // flips keys to avoid getting stuck in "wait for key release" loops.
     v->options_menu();
+    options_done.store(true, std::memory_order_relaxed);
 
     driver.join();
 
@@ -105,10 +117,13 @@ TEST(ViewMenuDriven, viewscreen_options_menu_exercises_key_paths)
     og::runtime::current_session->player_keys_[v->mynum][KEY_SHIFTER] = SDLK_AUDIONEXT; // long key name -> truncation
 
     KeystateOverride ks2;
+    std::atomic<bool> bindings_done{false};
     std::thread esc_driver([&]() {
-        press_release_after(ks2, SDL_SCANCODE_ESCAPE, 10, 10);
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        pulse_escape_until(ks2, bindings_done);
     });
     v->view_key_bindings();
+    bindings_done.store(true, std::memory_order_relaxed);
     esc_driver.join();
 
     og::runtime::current_session->player_keys_[v->mynum][KEY_UP] = saved_up;
@@ -123,4 +138,3 @@ TEST(ViewMenuDriven, viewscreen_options_menu_exercises_key_paths)
 
     v->control = nullptr;
 }
-

@@ -1,11 +1,15 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/button.h>
+#include <openglad/interface/input.h>
+#include <openglad/interface/native_input.h>
 #include <openglad/legacy/base.h>
 #include <openglad/interface/screen.h>
 #include <gtest/gtest.h>
 #include <SDL.h>
 
 #include <array>
+#include <atomic>
+#include <cmath>
 #include <memory>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -85,6 +89,7 @@ struct InjectorArgs
 {
     KeyStateGuard* ks = nullptr;
     bool go_to_promote = false;
+    std::atomic<bool>* done = nullptr;
 };
 
 static int injector_thread_exit_detail_menu(void* data)
@@ -101,22 +106,31 @@ static int injector_thread_exit_detail_menu(void* data)
         SDL_Delay(5);
     }
 
-    // Fastest deterministic exit path in picker menus is the ESC hotkey.
-    // leftmouse() treats held hotkeys as a click.
-    if (!a->go_to_promote)
+    const int logical_x = a->go_to_promote ? 200 : 20;
+    const int logical_y = a->go_to_promote ? 30 : 180;
+    const int click_x = static_cast<int>(std::lround(
+        static_cast<float>(logical_x) * og::runtime::current_session->viewport_w_ / 320.0f
+        + og::runtime::current_session->viewport_offset_x_));
+    const int click_y = static_cast<int>(std::lround(
+        static_cast<float>(logical_y) * og::runtime::current_session->viewport_h_ / 200.0f
+        + og::runtime::current_session->viewport_offset_y_));
+    do
     {
-        a->ks->pulse(SDL_SCANCODE_ESCAPE, 40, 10);
-        return 0;
-    }
-
-    // For promote we need menu_nav enabled and highlight moved to the promote button.
-    a->ks->pulse(SDL_SCANCODE_RIGHT, 30, 10);
-
-    // Activate: LCTRL is KEY_FIRE for player 0 by default. First pulse enables
-    // menu_nav, second pulse activates.
-    a->ks->pulse(SDL_SCANCODE_LCTRL, 30, 10);
-    a->ks->pulse(SDL_SCANCODE_LCTRL, 30, 10);
+        og::input_native::push_mouse_button_event(true, og::input_native::kMouseButtonLeft, click_x, click_y);
+        SDL_Delay(5);
+    } while (a->done && !a->done->load(std::memory_order_relaxed));
+    og::input_native::push_mouse_button_event(false, og::input_native::kMouseButtonLeft, click_x, click_y);
     return 0;
+}
+
+void prepare_detail_menu_mouse_click()
+{
+    clear_events();
+    auto& input_hw = input_hardware_state();
+    input_hw.mouse.left = 0;
+    input_hw.mouse.right = 0;
+    input_hw.picker_was_left_down = false;
+    input_hw.picker_was_right_down = false;
 }
 } // namespace
 
@@ -134,14 +148,18 @@ TEST(PickerDetailMenuDriven, picker_detail_menu_back_exercises_many_family_descr
     og::runtime::current_session->current_guy_ = std::make_unique<guy>(*og::runtime::current_session->myscreen_->save_data.team_list[0]);
 
     KeyStateGuard ks;
-    InjectorArgs args{&ks, false};
+    std::atomic<bool> done{false};
+    prepare_detail_menu_mouse_click();
+    InjectorArgs args{&ks, false, &done};
     SDL_Thread* th = SDL_CreateThread(injector_thread_exit_detail_menu, "picker_detail_exit", &args);
     ASSERT_TRUE(th != nullptr) << "injector thread started";
 
     Sint32 r = create_detail_menu(og::runtime::current_session->myscreen_->save_data.team_list[0].get());
+    done.store(true, std::memory_order_relaxed);
     int code = 0;
     if (th)
         SDL_WaitThread(th, &code);
+    clear_events();
 
     // create_detail_menu exits back to the edit menu and always returns REDRAW.
     ASSERT_EQ(2, (int)r) << "detail menu should return REDRAW on back";
@@ -162,16 +180,21 @@ TEST(PickerDetailMenuDriven, picker_detail_menu_promote_mage_to_archmage_branch)
     og::runtime::current_session->current_guy_ = std::make_unique<guy>(*og::runtime::current_session->myscreen_->save_data.team_list[0]);
 
     KeyStateGuard ks;
-    InjectorArgs args{&ks, true};
+    std::atomic<bool> done{false};
+    prepare_detail_menu_mouse_click();
+    InjectorArgs args{&ks, true, &done};
     SDL_Thread* th = SDL_CreateThread(injector_thread_exit_detail_menu, "picker_detail_promote_mage", &args);
     ASSERT_TRUE(th != nullptr) << "injector thread started";
 
     Sint32 r = create_detail_menu(og::runtime::current_session->myscreen_->save_data.team_list[0].get());
+    done.store(true, std::memory_order_relaxed);
     int code = 0;
     if (th)
         SDL_WaitThread(th, &code);
+    clear_events();
 
     ASSERT_EQ(2, (int)r) << "mage promote should request redraw";
+    ASSERT_EQ(FAMILY_ARCHMAGE, og::runtime::current_session->myscreen_->save_data.team_list[0]->family);
 }
 
 
@@ -189,16 +212,21 @@ TEST(PickerDetailMenuDriven, picker_detail_menu_promote_orc_to_captain_branch)
     og::runtime::current_session->current_guy_ = std::make_unique<guy>(*og::runtime::current_session->myscreen_->save_data.team_list[0]);
 
     KeyStateGuard ks;
-    InjectorArgs args{&ks, true};
+    std::atomic<bool> done{false};
+    prepare_detail_menu_mouse_click();
+    InjectorArgs args{&ks, true, &done};
     SDL_Thread* th = SDL_CreateThread(injector_thread_exit_detail_menu, "picker_detail_promote_orc", &args);
     ASSERT_TRUE(th != nullptr) << "injector thread started";
 
     Sint32 r = create_detail_menu(og::runtime::current_session->myscreen_->save_data.team_list[0].get());
+    done.store(true, std::memory_order_relaxed);
     int code = 0;
     if (th)
         SDL_WaitThread(th, &code);
+    clear_events();
 
     ASSERT_EQ(2, (int)r) << "orc promote should request redraw";
+    ASSERT_EQ(FAMILY_BIG_ORC, og::runtime::current_session->myscreen_->save_data.team_list[0]->family);
 }
 
 
@@ -207,4 +235,3 @@ TEST(PickerDetailMenuDriven, picker_family_name_copy_includes_archmage)
     const char* a = family_name_copy(FAMILY_ARCHMAGE);
     ASSERT_TRUE(a != nullptr) << "family_name_copy should return a string";
 }
-

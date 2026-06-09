@@ -14,6 +14,10 @@
 using namespace og::curses;
 using og::curses::kitty::Decoder;
 
+namespace og::curses {
+int curses_terminal_testing_exercise_internal_helpers();
+}
+
 namespace {
 
 // Decode exactly one key from a byte string.
@@ -97,9 +101,11 @@ TEST(KittyKeys, standalone_modifier_keys)
     EXPECT_EQ(decode1("\x1b[57441u").code, KeyCode::LeftShift);
     EXPECT_EQ(decode1("\x1b[57442u").code, KeyCode::LeftCtrl);
     EXPECT_EQ(decode1("\x1b[57443u").code, KeyCode::LeftAlt);
+    EXPECT_EQ(decode1("\x1b[57444u").code, KeyCode::LeftSuper);
     EXPECT_EQ(decode1("\x1b[57447u").code, KeyCode::RightShift);
     EXPECT_EQ(decode1("\x1b[57448u").code, KeyCode::RightCtrl);
     EXPECT_EQ(decode1("\x1b[57449u").code, KeyCode::RightAlt);
+    EXPECT_EQ(decode1("\x1b[57450u").code, KeyCode::RightSuper);
 
     // And they carry press/release, so the engine can track them held.
     EXPECT_EQ(decode1("\x1b[57442u").event, KeyEvent::Press);
@@ -121,18 +127,33 @@ TEST(KittyKeys, arrow_keys_letter_form)
 
 TEST(KittyKeys, tilde_and_ss3_functional_keys)
 {
+    EXPECT_EQ(decode1("\x1b[1~").code, KeyCode::Home);
     EXPECT_EQ(decode1("\x1b[2~").code, KeyCode::Insert);
     EXPECT_EQ(decode1("\x1b[3~").code, KeyCode::Delete);
+    EXPECT_EQ(decode1("\x1b[4~").code, KeyCode::End);
     EXPECT_EQ(decode1("\x1b[5~").code, KeyCode::PageUp);
     EXPECT_EQ(decode1("\x1b[6~").code, KeyCode::PageDown);
+    EXPECT_EQ(decode1("\x1b[7~").code, KeyCode::Home);
+    EXPECT_EQ(decode1("\x1b[8~").code, KeyCode::End);
     EXPECT_EQ(decode1("\x1b[15~").code, KeyCode::F5);
     EXPECT_EQ(decode1("\x1b[17~").code, KeyCode::F6);
+    EXPECT_EQ(decode1("\x1b[18~").code, KeyCode::F7);
+    EXPECT_EQ(decode1("\x1b[19~").code, KeyCode::F8);
+    EXPECT_EQ(decode1("\x1b[20~").code, KeyCode::F9);
+    EXPECT_EQ(decode1("\x1b[21~").code, KeyCode::F10);
+    EXPECT_EQ(decode1("\x1b[23~").code, KeyCode::F11);
     EXPECT_EQ(decode1("\x1b[24~").code, KeyCode::F12);
     // SS3 form for F1..F4.
     EXPECT_EQ(decode1("\x1bOP").code, KeyCode::F1);
+    EXPECT_EQ(decode1("\x1bOQ").code, KeyCode::F2);
+    EXPECT_EQ(decode1("\x1bOR").code, KeyCode::F3);
     EXPECT_EQ(decode1("\x1bOS").code, KeyCode::F4);
     // CSI letter form for F1..F4.
     EXPECT_EQ(decode1("\x1b[1;2P").code, KeyCode::F1);
+    EXPECT_EQ(decode1("\x1b[1;2Q").code, KeyCode::F2);
+    EXPECT_EQ(decode1("\x1b[1;2S").code, KeyCode::F4);
+    EXPECT_EQ(decode1("\x1b[1;2H").code, KeyCode::Home);
+    EXPECT_EQ(decode1("\x1b[1;2F").code, KeyCode::End);
 }
 
 TEST(KittyKeys, focus_events)
@@ -183,6 +204,70 @@ TEST(KittyKeys, raw_byte_fallback_decodes_as_char)
     EXPECT_EQ(k.event, KeyEvent::Press);
 }
 
+TEST(KittyKeys, raw_utf8_fallback_decodes_multibyte_and_control_keys)
+{
+    EXPECT_EQ(decode1("\xc3\xa9").ch, static_cast<char32_t>(0x00e9));
+    EXPECT_EQ(decode1("\xe2\x82\xac").ch, static_cast<char32_t>(0x20ac));
+    EXPECT_EQ(decode1("\xf0\x9f\x98\x80").ch, static_cast<char32_t>(0x1f600));
+    EXPECT_EQ(decode1("\r").code, KeyCode::Enter);
+    EXPECT_EQ(decode1("\n").code, KeyCode::Enter);
+    EXPECT_EQ(decode1("\t").code, KeyCode::Tab);
+    EXPECT_EQ(decode1("\b").code, KeyCode::Backspace);
+    EXPECT_EQ(decode1("\x7f").code, KeyCode::Backspace);
+}
+
+TEST(KittyKeys, malformed_or_unknown_sequences_are_skipped_and_resync)
+{
+    Decoder d;
+    Key k;
+
+    d.feed("\x1b[1114112u\x1b[97u"); // invalid Unicode codepoint, then 'a'
+    ASSERT_TRUE(d.next(k));
+    EXPECT_EQ(k.ch, U'a');
+    EXPECT_FALSE(d.next(k));
+
+    d.clear();
+    d.feed("\x1b[99~\x1b[98u"); // unknown tilde code, then 'b'
+    ASSERT_TRUE(d.next(k));
+    EXPECT_EQ(k.ch, U'b');
+
+    d.clear();
+    d.feed("\x1b[1;2Z\x1b[99u"); // unknown CSI final, then 'c'
+    ASSERT_TRUE(d.next(k));
+    EXPECT_EQ(k.ch, U'c');
+
+    d.clear();
+    d.feed("\x1bOT\x1b[100u"); // unknown SS3 final, then 'd'
+    ASSERT_TRUE(d.next(k));
+    EXPECT_EQ(k.ch, U'd');
+
+    d.clear();
+    d.feed("\xff" "e"); // invalid UTF-8 lead byte, then raw 'e'
+    ASSERT_TRUE(d.next(k));
+    EXPECT_EQ(k.ch, U'e');
+
+    d.clear();
+    d.feed("\xc3x" "f"); // malformed UTF-8 continuation, then raw 'x'
+    ASSERT_TRUE(d.next(k));
+    EXPECT_EQ(k.ch, U'x');
+    ASSERT_TRUE(d.next(k));
+    EXPECT_EQ(k.ch, U'f');
+
+    d.clear();
+    d.feed("\xe2\x82"); // incomplete UTF-8 stays buffered
+    EXPECT_FALSE(d.next(k));
+    d.feed("\xac");
+    ASSERT_TRUE(d.next(k));
+    EXPECT_EQ(k.ch, static_cast<char32_t>(0x20ac));
+
+    d.clear();
+    d.feed("\x1b[?"); // incomplete private CSI response stays buffered
+    EXPECT_FALSE(d.next(k));
+    d.feed("11u\x1b[103u");
+    ASSERT_TRUE(d.next(k));
+    EXPECT_EQ(k.ch, U'g');
+}
+
 TEST(KittyKeys, response_indicates_support_detects_kitty_reply)
 {
     bool done = false;
@@ -205,4 +290,10 @@ TEST(KittyKeys, response_indicates_support_partial_not_done)
     // The kitty reply arrived but the DA reply has not yet -> supported, not done.
     EXPECT_TRUE(kitty::response_indicates_support("\x1b[?0u", done));
     EXPECT_FALSE(done);
+}
+
+TEST(CursesTerminalInternals, pure_helpers_cover_color_write_and_capability_probe)
+{
+    EXPECT_EQ(0,
+              curses_terminal_testing_exercise_internal_helpers());
 }

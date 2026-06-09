@@ -309,7 +309,8 @@ TEST(LevelDataUnit, level_data_r11_query_grid_passable_terrain_branches)
     // arrow wall + weapon owner branch
     fx.level.world().grid.data[gx + gy * fx.level.world().grid.w] = PIX_WALL4;
     weap->set_owner(ob);
-    ASSERT_TRUE(!fx.level.query_grid_passable(weap->xpos(), weap->ypos(), weap) || fx.level.query_grid_passable(weap->xpos(), weap->ypos(), weap));
+    ASSERT_TRUE(fx.level.query_grid_passable(weap->xpos(), weap->ypos(), weap))
+        << "owner-adjacent weapons should be allowed through arrow wall tiles";
 }
 
 TEST(LevelDataUnit, level_data_r11_object_passability_and_search_sets)

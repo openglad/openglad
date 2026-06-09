@@ -211,6 +211,15 @@ public:
         return PickerScreen::TeamBuild;
     }
 
+#ifdef TESTING
+    // GCOVR_EXCL_START -- test-only accessor in src/, not shipped code.
+    const SaveData& testing_save_data() const
+    {
+        return save_data_;
+    }
+    // GCOVR_EXCL_STOP
+#endif
+
     bool load_game() override
     {
         const SaveDataIoError io = save_data_.load_with_error(config_.save_name);
@@ -557,6 +566,221 @@ private:
     SaveData save_data_;
     bool show_new_game_team_build_notice_ = false;
 };
+
+#ifdef TESTING
+// GCOVR_EXCL_START -- test-only coverage harness in src/, not shipped code.
+class ScopedCinRedirect
+{
+public:
+    explicit ScopedCinRedirect(std::string input)
+        : input_(std::move(input))
+        , saved_(std::cin.rdbuf(input_.rdbuf()))
+    {
+    }
+
+    ~ScopedCinRedirect()
+    {
+        std::cin.rdbuf(saved_);
+    }
+
+    ScopedCinRedirect(const ScopedCinRedirect&) = delete;
+    ScopedCinRedirect& operator=(const ScopedCinRedirect&) = delete;
+
+private:
+    std::istringstream input_;
+    std::streambuf* saved_;
+};
+
+int text_picker_testing_exercise_internal_paths()
+{
+    TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER};
+    config.save_name = "missing-text-picker-save";
+    TextPickerError error;
+    TextPickerClient client(config, &error);
+    const SaveData& save = client.testing_save_data();
+
+    int checks = 0;
+    int check_index = 0;
+    int failed_check = 0;
+    bool failed = false;
+    const auto check = [&checks, &check_index, &failed_check, &failed](bool condition) {
+        ++check_index;
+        if (condition)
+            ++checks;
+        else {
+            failed = true;
+            if (failed_check == 0)
+                failed_check = check_index;
+        }
+    };
+
+    client.show_help();
+    const bool networking = client.configure_networking();
+    const bool loaded = client.load_game();
+    check(!networking);
+    check(!loaded);
+    check(error.code == TextPickerErrorCode::LoadIoError &&
+          !error.detail.empty());
+
+    {
+        ScopedCinRedirect input("bad\n1\n");
+        const PickerMenuItem* item = client.present_menu(PickerMenuId::Main);
+        check(item != nullptr &&
+              item->command == PickerMenuCommand::BeginNewGame);
+    }
+    {
+        ScopedCinRedirect input("");
+        const PickerMenuItem* item = client.present_menu(PickerMenuId::TeamBuild);
+        check(item != nullptr && item->command == PickerMenuCommand::Back);
+    }
+    {
+        ScopedCinRedirect input("");
+        const PickerMenuItem* item = client.present_menu(PickerMenuId::Main);
+        check(item != nullptr && item->command == PickerMenuCommand::Quit);
+    }
+
+    check(client.prepare_new_game() &&
+          save.team_size == 1 &&
+          save.team_list[0] != nullptr &&
+          save.team_list[0]->family == FAMILY_SOLDIER);
+    check(client.screen_after_game() == PickerScreen::TeamBuild);
+
+    if (const PickerMenuItem* item =
+            find_picker_menu_item(PickerMenuId::Main, PickerMenuCommand::SetDifficulty)) {
+        const int previous = og::runtime::current_session->current_difficulty_;
+        client.handle_menu_item(PickerMenuId::Main, *item);
+        check(og::runtime::current_session->current_difficulty_ ==
+              cycle_difficulty(previous));
+    } else {
+        check(false);
+    }
+    if (const PickerMenuItem* item =
+            find_picker_menu_item(PickerMenuId::Main, PickerMenuCommand::SetPlayerMode, 2)) {
+        client.handle_menu_item(PickerMenuId::Main, *item);
+        check(save.numplayers == 2);
+    } else {
+        check(false);
+    }
+    if (const PickerMenuItem* item =
+            find_picker_menu_item(PickerMenuId::Main, PickerMenuCommand::ToggleAlliedMode)) {
+        const bool previous = is_allied_mode(save);
+        client.handle_menu_item(PickerMenuId::Main, *item);
+        check(is_allied_mode(save) != previous);
+    } else {
+        check(false);
+    }
+    if (const PickerMenuItem* item =
+            find_picker_menu_item(PickerMenuId::Main, PickerMenuCommand::LevelEdit)) {
+        const int previous_level = config.level;
+        const TextPickerErrorCode previous_error = error.code;
+        client.handle_menu_item(PickerMenuId::Main, *item);
+        check(config.level == previous_level && error.code == previous_error);
+    } else {
+        check(false);
+    }
+    const PickerMenuItem default_main{"helper-default", "Helper Default",
+                                      PickerMenuCommand::BeginNewGame, 0};
+    const unsigned char previous_players = save.numplayers;
+    client.handle_menu_item(PickerMenuId::Main, default_main);
+    check(save.numplayers == previous_players);
+    const PickerMenuItem default_team{"helper-default", "Helper Default",
+                                      PickerMenuCommand::Back, 0};
+    int previous_level = config.level;
+    client.handle_menu_item(PickerMenuId::TeamBuild, default_team);
+    check(config.level == previous_level);
+
+    auto handle_team_item = [&](PickerMenuCommand command,
+                                std::string input_text,
+                                const auto& predicate) {
+        if (const PickerMenuItem* item =
+                find_picker_menu_item(PickerMenuId::TeamBuild, command))
+        {
+            ScopedCinRedirect input(std::move(input_text));
+            client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+            check(predicate());
+        } else {
+            check(false);
+        }
+    };
+
+    unsigned char previous_team_size = save.team_size;
+    handle_team_item(PickerMenuCommand::ViewTeam, "\n", [&] {
+        return save.team_size == previous_team_size;
+    });
+    previous_team_size = save.team_size;
+    handle_team_item(PickerMenuCommand::TrainTeam, "n\np\n1\n-1\n6\na\nb\n", [&] {
+        return save.team_size == previous_team_size &&
+               !config.team_families.empty();
+    });
+    previous_team_size = save.team_size;
+    handle_team_item(PickerMenuCommand::HireTroops, "n\np\nh\nb\n", [&] {
+        return save.team_size == static_cast<unsigned char>(previous_team_size + 1) &&
+               config.team_families.size() == save.team_size;
+    });
+    previous_level = config.level;
+    handle_team_item(PickerMenuCommand::ShowProgress, "", [&] {
+        return config.level == previous_level;
+    });
+    const TextPickerErrorCode error_before_networking = error.code;
+    handle_team_item(PickerMenuCommand::Networking, "", [&] {
+        return error.code == error_before_networking;
+    });
+    previous_level = config.level;
+    handle_team_item(PickerMenuCommand::SetLevel, "0\n", [&] {
+        return config.level == previous_level &&
+               save.scen_num == previous_level;
+    });
+    handle_team_item(PickerMenuCommand::SetLevel, "5\n", [&] {
+        return config.level == 5 && save.scen_num == 5;
+    });
+    const std::string previous_campaign = config.campaign;
+    handle_team_item(PickerMenuCommand::SetCampaign, "999\n", [&] {
+        return config.campaign == previous_campaign &&
+               save.current_campaign == previous_campaign;
+    });
+    handle_team_item(PickerMenuCommand::SetCampaign, "\n", [&] {
+        return config.campaign == previous_campaign &&
+               save.current_campaign == previous_campaign;
+    });
+
+    const PickerMenuItem zero_players{"helper-zero", "Zero Players",
+                                      PickerMenuCommand::SetPlayerMode, 0};
+    client.handle_menu_item(PickerMenuId::Main, zero_players);
+    check(save.numplayers == 0);
+    previous_team_size = save.team_size;
+    handle_team_item(PickerMenuCommand::ViewTeam, "\n", [&] {
+        return save.team_size == previous_team_size;
+    });
+    handle_team_item(PickerMenuCommand::TrainTeam, "b\n", [&] {
+        return save.team_size == previous_team_size &&
+               save.numplayers == 0;
+    });
+    check(client.prepare_new_game() &&
+          save.team_size >= 1 &&
+          !config.team_families.empty());
+
+    {
+        const std::uint32_t previous_seed = config.seed;
+        ScopedCinRedirect input("helper-slot\nbad-seed\n");
+        client.show_options();
+        check(config.save_name == "helper-slot" &&
+              config.seed == previous_seed);
+    }
+    {
+        ScopedCinRedirect input("\n123\n");
+        client.show_options();
+        check(config.save_name == "helper-slot" && config.seed == 123u);
+    }
+    check(client.save_game() && error.code == TextPickerErrorCode::None);
+    check(client.load_game() &&
+          error.code == TextPickerErrorCode::None &&
+          !config.team_families.empty());
+
+    return failed ? -failed_check : 0;
+}
+// GCOVR_EXCL_STOP
+#endif
 
 void run_text_picker(TextPickerConfig& config, TextPickerError* error)
 {

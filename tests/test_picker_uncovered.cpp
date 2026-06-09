@@ -20,6 +20,7 @@ Sint32 do_pick_campaign(Sint32 arg1);
 Sint32 do_set_scen_level(Sint32 arg1);
 Sint32 change_teamnum(Sint32 arg);
 Sint32 change_hire_teamnum(Sint32 arg);
+int picker_team_build_testing_exercise_internal_paths();
 
 namespace
 {
@@ -195,3 +196,7 @@ TEST(PickerUncovered, picker_team_wraps_on_negative_step)
     og::runtime::current_session->current_team_num_ = saved_team_num;
 }
 
+TEST(PickerUncovered, picker_team_build_internal_paths)
+{
+    ASSERT_EQ(0, picker_team_build_testing_exercise_internal_paths());
+}

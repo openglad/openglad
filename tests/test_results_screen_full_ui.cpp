@@ -2,6 +2,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/button.h>
+#include <openglad/interface/input.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/results_screen.h>
 
@@ -11,6 +12,8 @@
 
 #include <map>
 #include <memory>
+#include <string>
+#include <vector>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
 
@@ -25,9 +28,20 @@ struct ResultsThreadState
     bool finished = false;
 };
 
+static void inject_results_click(int game_x, int game_y, int delay_ms = 10)
+{
+    MouseState& mouse = query_mouse_no_poll();
+    mouse.x = static_cast<float>(game_x);
+    mouse.y = static_cast<float>(game_y);
+    mouse.left = true;
+    SDL_Delay(delay_ms < 60 ? 60 : delay_ms);
+    mouse.left = false;
+    SDL_Delay(20);
+}
+
 static int results_ui_injector(void* data)
 {
-    og::runtime::ensure_thread_session();
+    og::runtime::current_session = og::runtime::primary_session.load();
     ResultsThreadState* st = static_cast<ResultsThreadState*>(data);
     st->started = true;
 
@@ -35,19 +49,25 @@ static int results_ui_injector(void* data)
 
     SDL_Event wheel{};
     wheel.type = SDL_MOUSEWHEEL;
+    wheel.wheel.y = 1;
+    SDL_PushEvent(&wheel);
+
     wheel.wheel.y = -1;
     SDL_PushEvent(&wheel);
 
     // Toggle tabs in the full results UI.
-    inject_click(220, 26, 10); // TROOPS
+    inject_results_click(220, 26, 10); // TROOPS
     SDL_Delay(40);
-    inject_click(70, 26, 10);  // OVERVIEW
-    SDL_Delay(40);
-    inject_click(220, 26, 10); // TROOPS again to execute both branches
+    for (int i = 0; i < 3; ++i)
+    {
+        inject_results_click(70, 26, 10);  // OVERVIEW
+        SDL_Delay(50);
+    }
+    inject_results_click(220, 26, 10); // TROOPS again to execute both branches
     SDL_Delay(40);
 
     // Exit via OK.
-    inject_click(130, 170, 10);
+    inject_results_click(130, 170, 10);
 
     // Failsafe in case click misses.
     SDL_Delay(500);
@@ -59,12 +79,12 @@ static int results_ui_injector(void* data)
 
 static int results_ui_scroll_injector(void* data)
 {
-    og::runtime::ensure_thread_session();
+    og::runtime::current_session = og::runtime::primary_session.load();
     ResultsThreadState* st = static_cast<ResultsThreadState*>(data);
     st->started = true;
 
     SDL_Delay(140);
-    inject_click(225, 26, 10); // TROOPS
+    inject_results_click(225, 26, 10); // TROOPS
     SDL_Delay(40);
 
     for (int i = 0; i < 12; ++i)
@@ -86,7 +106,7 @@ static int results_ui_scroll_injector(void* data)
     }
 
     SDL_Delay(80);
-    inject_click(132, 171, 10); // OK
+    inject_results_click(132, 171, 10); // OK
 
     SDL_Delay(400);
     og::runtime::current_session->myscreen_->world().end = 1;
@@ -94,6 +114,65 @@ static int results_ui_scroll_injector(void* data)
     st->finished = true;
     return 0;
 }
+
+static int results_ui_ok_injector(void* data)
+{
+    og::runtime::current_session = og::runtime::primary_session.load();
+    ResultsThreadState* st = static_cast<ResultsThreadState*>(data);
+    st->started = true;
+
+    SDL_Delay(140);
+    inject_results_click(130, 170, 10); // OK
+
+    SDL_Delay(300);
+    og::runtime::current_session->myscreen_->world().end = 1;
+
+    st->finished = true;
+    return 0;
+}
+
+static int results_ui_retry_injector(void* data)
+{
+    og::runtime::current_session = og::runtime::primary_session.load();
+    ResultsThreadState* st = static_cast<ResultsThreadState*>(data);
+    st->started = true;
+
+    SDL_Delay(140);
+    for (int i = 0; i < 6; ++i)
+    {
+        inject_results_click(187, 171, 10); // RETRY
+        SDL_Delay(60);
+    }
+
+    SDL_Delay(300);
+    og::runtime::current_session->myscreen_->world().end = 1;
+
+    st->finished = true;
+    return 0;
+}
+
+static int results_ui_troops_then_ok_injector(void* data)
+{
+    og::runtime::current_session = og::runtime::primary_session.load();
+    ResultsThreadState* st = static_cast<ResultsThreadState*>(data);
+    st->started = true;
+
+    SDL_Delay(140);
+    for (int i = 0; i < 4; ++i)
+    {
+        inject_results_click(220, 26, 10); // TROOPS
+        SDL_Delay(70);
+    }
+    SDL_Delay(500);
+    inject_results_click(130, 170, 10); // OK
+
+    SDL_Delay(300);
+    og::runtime::current_session->myscreen_->world().end = 1;
+
+    st->finished = true;
+    return 0;
+}
+
 } // namespace
 
 TEST(ResultsScreenFullUi, overview_and_troops_paths)
@@ -122,6 +201,7 @@ TEST(ResultsScreenFullUi, overview_and_troops_paths)
 
     static guy b1(FAMILY_SOLDIER);
     static guy b2(FAMILY_MAGE);
+    static guy b3(FAMILY_ARCHER);
     b1.name = "Alpha";
     b1.family = FAMILY_SOLDIER;
     b1.level = 2;
@@ -132,8 +212,14 @@ TEST(ResultsScreenFullUi, overview_and_troops_paths)
     b2.level = 3;
     b2.exp = calculate_exp(3) + 5;
 
+    b3.name = "Delta";
+    b3.family = FAMILY_ARCHER;
+    b3.level = 2;
+    b3.exp = calculate_exp(2) + 25;
+
     before[1] = &b1;
     before[2] = &b2;
+    before[4] = &b3;
 
     w1->myguy->name = "Alpha";
     w1->myguy->family = FAMILY_SOLDIER;
@@ -268,4 +354,191 @@ TEST(ResultsScreenFullUi, troop_scroll_paths_cover_bonus_losses_and_specials)
 
     ASSERT_TRUE(st.started && st.finished) << "scroll injector should run";
     ASSERT_TRUE(!retry) << "scrolling and OK should not request retry";
+}
+
+TEST(ResultsScreenFullUi, defeat_overview_path_reports_foe_totals)
+{
+    const char saved_end = og::runtime::current_session->myscreen_->world().end;
+    og::runtime::current_session->myscreen_->world().end = 0;
+
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
+    og::runtime::current_session->myscreen_->save_data.current_levels.clear();
+    og::runtime::current_session->myscreen_->save_data.m_score[0] = 75;
+
+    std::map<int, guy*> before;
+    std::map<int, walker*> after;
+
+    results_screen_testing_set_force_full(true);
+
+    ResultsThreadState st{};
+    SDL_Thread* thread = SDL_CreateThread(results_ui_ok_injector, "results_ui_ok_injector", &st);
+    ASSERT_TRUE(thread != nullptr) << "failed to create OK injector thread";
+
+    const bool retry = results_screen(1, -1, before, after);
+
+    int rc = 0;
+    SDL_WaitThread(thread, &rc);
+
+    results_screen_testing_set_force_full(false);
+    og::runtime::current_session->myscreen_->world().end = saved_end;
+
+    ASSERT_TRUE(st.started && st.finished) << "OK injector should run";
+    ASSERT_TRUE(!retry) << "defeat OK path should not request retry";
+}
+
+TEST(ResultsScreenFullUi, retry_button_accepts_prompt_and_returns_retry)
+{
+    const char saved_end = og::runtime::current_session->myscreen_->world().end;
+    og::runtime::current_session->myscreen_->world().end = 0;
+
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
+    og::runtime::current_session->myscreen_->save_data.current_levels.clear();
+
+    std::map<int, guy*> before;
+    std::map<int, walker*> after;
+
+    picker_testing_yes_or_no_queue_clear();
+    picker_testing_yes_or_no_queue_push(true);
+    results_screen_testing_set_force_full(true);
+
+    ResultsThreadState st{};
+    SDL_Thread* thread = SDL_CreateThread(results_ui_retry_injector, "results_ui_retry_injector", &st);
+    ASSERT_TRUE(thread != nullptr) << "failed to create retry injector thread";
+
+    const bool retry = results_screen(0, 2, before, after);
+
+    int rc = 0;
+    SDL_WaitThread(thread, &rc);
+
+    results_screen_testing_set_force_full(false);
+    picker_testing_yes_or_no_queue_clear();
+    og::runtime::current_session->myscreen_->world().end = saved_end;
+
+    ASSERT_TRUE(st.started && st.finished) << "retry injector should run";
+    ASSERT_TRUE(retry) << "accepted retry prompt should request retry";
+}
+
+TEST(ResultsScreenFullUi, completed_victory_zeroes_bonus_cash)
+{
+    const char saved_end = og::runtime::current_session->myscreen_->world().end;
+    og::runtime::current_session->myscreen_->world().end = 0;
+
+    auto& screen_ref = *og::runtime::current_session->myscreen_;
+    screen_ref.save_data.current_campaign = "org.openglad.gladiator";
+    screen_ref.save_data.scen_num = 1;
+    screen_ref.save_data.current_levels.clear();
+    screen_ref.save_data.completed_levels.clear();
+    screen_ref.save_data.completed_levels[screen_ref.save_data.current_campaign].insert(
+        screen_ref.save_data.scen_num);
+    screen_ref.save_data.m_score[0] = 250;
+    screen_ref.save_data.m_score[1] = 50;
+    screen_ref.world().time_bonus_limit = 500;
+    screen_ref.world().par_value = 4;
+    screen_ref.framecount = screen_ref.world().time_bonus_limit;
+
+    std::map<int, guy*> before;
+    std::map<int, walker*> after;
+
+    results_screen_testing_set_force_full(true);
+
+    ResultsThreadState st{};
+    SDL_Thread* thread = SDL_CreateThread(results_ui_ok_injector, "results_completed_ok_injector", &st);
+    ASSERT_TRUE(thread != nullptr) << "failed to create OK injector thread";
+
+    const bool retry = results_screen(0, 2, before, after);
+
+    int rc = 0;
+    SDL_WaitThread(thread, &rc);
+
+    results_screen_testing_set_force_full(false);
+    og::runtime::current_session->myscreen_->world().end = saved_end;
+
+    ASSERT_TRUE(st.started && st.finished) << "OK injector should run";
+    ASSERT_TRUE(!retry) << "completed victory OK path should not request retry";
+}
+
+TEST(ResultsScreenFullUi, troop_detail_paths_show_specials_and_negative_xp)
+{
+    const char saved_end = og::runtime::current_session->myscreen_->world().end;
+    og::runtime::current_session->myscreen_->world().end = 0;
+
+    auto& screen_ref = *og::runtime::current_session->myscreen_;
+    screen_ref.save_data.current_campaign = "org.openglad.gladiator";
+    screen_ref.save_data.scen_num = 1;
+    screen_ref.save_data.current_levels.clear();
+    screen_ref.save_data.m_score[0] = 150;
+    screen_ref.world().time_bonus_limit = 200;
+    screen_ref.world().par_value = 2;
+    screen_ref.framecount = 30;
+
+    const std::string saved_special = screen_ref.special_name[FAMILY_MAGE][2];
+    screen_ref.special_name[FAMILY_MAGE][2] = "Arcane Burst";
+
+    std::map<int, guy*> before;
+    std::map<int, walker*> after;
+    std::vector<std::unique_ptr<guy>> before_storage;
+
+    auto* gained = screen_ref.world().add_ob(Order::Living, FAMILY_MAGE);
+    auto* lost = screen_ref.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_TRUE(gained != nullptr && lost != nullptr) << "expected walkers for troop detail test";
+    gained->set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
+    lost->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+
+    auto gained_before = std::make_unique<guy>(FAMILY_MAGE);
+    gained_before->name = "Glyph";
+    gained_before->family = FAMILY_MAGE;
+    gained_before->level = 3;
+    gained_before->exp = calculate_exp(3) + 10;
+    before[1] = gained_before.get();
+    before_storage.push_back(std::move(gained_before));
+
+    gained->myguy->name = "Glyph";
+    gained->myguy->family = FAMILY_MAGE;
+    gained->myguy->exp = calculate_exp(4) + 40;
+    gained->myguy->scen_kills = 1;
+    gained->myguy->scen_damage = 12;
+    gained->myguy->scen_damage_taken = 1;
+    gained->myguy->scen_min_hp = 8;
+    gained->stats()->set_max_hitpoints(10);
+    gained->stats()->set_hitpoints(8);
+    after[1] = gained;
+
+    auto lost_before = std::make_unique<guy>(FAMILY_SOLDIER);
+    lost_before->name = "Bruise";
+    lost_before->family = FAMILY_SOLDIER;
+    lost_before->level = 5;
+    lost_before->exp = calculate_exp(5) + 120;
+    before[2] = lost_before.get();
+    before_storage.push_back(std::move(lost_before));
+
+    lost->myguy->name = "Bruise";
+    lost->myguy->family = FAMILY_SOLDIER;
+    lost->myguy->exp = calculate_exp(4) + 5;
+    lost->myguy->scen_kills = 2;
+    lost->myguy->scen_damage = 6;
+    lost->myguy->scen_damage_taken = 4;
+    lost->myguy->scen_min_hp = 5;
+    lost->stats()->set_max_hitpoints(10);
+    lost->stats()->set_hitpoints(5);
+    after[2] = lost;
+
+    results_screen_testing_set_force_full(true);
+
+    ResultsThreadState st{};
+    SDL_Thread* thread = SDL_CreateThread(results_ui_troops_then_ok_injector, "results_troops_ok_injector", &st);
+    ASSERT_TRUE(thread != nullptr) << "failed to create troop detail injector thread";
+
+    const bool retry = results_screen(0, 2, before, after);
+
+    int rc = 0;
+    SDL_WaitThread(thread, &rc);
+
+    results_screen_testing_set_force_full(false);
+    screen_ref.special_name[FAMILY_MAGE][2] = saved_special;
+    og::runtime::current_session->myscreen_->world().end = saved_end;
+
+    ASSERT_TRUE(st.started && st.finished) << "troop detail injector should run";
+    ASSERT_TRUE(!retry) << "troop detail OK path should not request retry";
 }

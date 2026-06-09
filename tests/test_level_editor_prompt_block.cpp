@@ -105,6 +105,37 @@ int prompt_block_editing_injector(void* data)
     st->finished = true;
     return 0;
 }
+
+int prompt_block_multiline_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    PromptBlockInjectData* d = static_cast<PromptBlockInjectData*>(data);
+    PromptBlockInjectState* st = d->state;
+    st->started = true;
+
+    SDL_Delay(90);
+    inject_key_press(SDLK_RETURN, 20);    // split at the beginning
+    inject_key_press(SDLK_BACKSPACE, 20); // merge the split line back
+    inject_key_press(SDLK_RIGHT, 20);
+    inject_key_press(SDLK_BACKSPACE, 20); // delete within a line
+    for (int i = 0; i < 5; ++i)
+        inject_key_press(SDLK_RETURN, 15);
+    inject_key_press(SDLK_UP, 20);
+    inject_key_press(SDLK_DOWN, 20);
+    inject_key_press(SDLK_RIGHT, 20);
+    inject_key_press(SDLK_DELETE, 20);
+
+    SDL_Delay(40);
+    MouseState& m = query_mouse_no_poll();
+    m.x = 290.0f;
+    m.y = 6.0f;
+    m.left = true;
+    SDL_Delay(40);
+    m.left = false;
+
+    st->finished = true;
+    return 0;
+}
 } // namespace
 
 TEST(LevelEditorPromptBlock, level_editor_prompt_for_string_block_escape_cancel)
@@ -179,3 +210,23 @@ TEST(LevelEditorPromptBlock, level_editor_prompt_for_string_block_editing_keys_a
     ASSERT_TRUE(!edited.empty()) << "edited block should remain non-empty";
 }
 
+TEST(LevelEditorPromptBlock, level_editor_prompt_for_string_block_multiline_editing_paths)
+{
+    std::list<std::string> edited{"abc"};
+
+    PromptBlockInjectState st{};
+    KeyStateGuard keyguard;
+    PromptBlockInjectData inject_data{&st, &keyguard, false, false};
+    SDL_Thread* thread = SDL_CreateThread(prompt_block_multiline_injector, "prompt_block_multiline_injector", &inject_data);
+    ASSERT_TRUE(thread != nullptr) << "failed to create multiline injector thread";
+
+    bool accepted = prompt_for_string_block("Edit multiline text", edited);
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+
+    ASSERT_TRUE(st.started) << "injector should have started";
+    ASSERT_TRUE(st.finished) << "injector should have finished";
+    ASSERT_TRUE(accepted) << "DONE button should accept multiline edits";
+    ASSERT_GE(edited.size(), 2u) << "return key should create multiple lines";
+}

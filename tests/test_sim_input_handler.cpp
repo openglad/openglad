@@ -818,21 +818,27 @@ TEST(SimInputHandler, sim_input_deep_branch_coverage_smoke)
     input.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
     result = sim_process_player_input(
         input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, special_names, &log);
-    ASSERT_TRUE(result.notify_source == control || result.notify_source == nullptr) << "yell path executes";
+    ASSERT_EQ(control, result.notify_source) << "plain yell should report the controlled walker as notification source";
 
     // Shift+yell summon, then release, then default.
     input.clear();
     input.players[0].held[static_cast<int>(InputAction::Shift)] = true;
     input.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
     control->set_action(0);
-    (void)sim_process_player_input(
+    result = sim_process_player_input(
         input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, special_names, &log);
+    ASSERT_EQ("SUMMONING DEFENSE!", result.notify_text) << "shift+yell should summon friendly units";
+    ASSERT_EQ(control, result.notify_source) << "summon notification should come from the controlled walker";
     control->set_action(ACTION_FOLLOW);
-    (void)sim_process_player_input(
+    result = sim_process_player_input(
         input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, special_names, &log);
+    ASSERT_EQ("RELEASING MEN!", result.notify_text) << "shift+yell while following should release units";
+    ASSERT_EQ(0, control->action()) << "release branch should clear follow action";
     control->set_action(99);
-    (void)sim_process_player_input(
+    result = sim_process_player_input(
         input.players[0], control, og::runtime::current_session->myscreen_->world(), 0, 0, debounce, special_names, &log);
+    ASSERT_TRUE(result.notify_text.empty()) << "default shift+yell branch should not claim a notification";
+    ASSERT_EQ(0, control->action()) << "default shift+yell branch should reset unknown actions";
 
     // Movement/action block with walk and fire/special branches.
     input.clear();

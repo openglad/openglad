@@ -60,13 +60,8 @@ jobs:
       - name: Build all test binaries
         run: cmake --build --preset ci-coverage -j"$(nproc)"
 
-      - name: Run menu UI test with coverage timeout
-        run: ctest --test-dir build/ci-coverage --output-on-failure --timeout 420 -R og_test_menu_ui
-
-      - name: Run tests (parallel, excluding menu UI)
-        # Retry transient SDL injector-test timing flakes under parallel load
-        # (see the note in test.yml); never masks a deterministic failure.
-        run: ctest --test-dir build/ci-coverage --parallel $(nproc) --output-on-failure --timeout 180 --repeat until-pass:3 -E og_test_menu_ui
+      - name: Run tests with coverage
+        run: ctest --test-dir build/ci-coverage --output-on-failure --timeout 420 --repeat until-pass:3
 
       - name: Typecheck relay worker
         working-directory: relay
@@ -79,13 +74,9 @@ jobs:
       - name: Generate HTML coverage report
         run: |
           mkdir -p build/ci-coverage/coverage
-          # Phase 4 now measures the full production codebase except fuzz
-          # targets, which remain excluded because they are standalone fuzz
-          # entrypoints rather than shipped game code.
           python3 -m gcovr \
             --root . \
             --filter src/ \
-            --exclude 'src/fuzz/' \
             --gcov-ignore-parse-errors=suspicious_hits.warn_once_per_file \
             --gcov-ignore-parse-errors=negative_hits.warn_once_per_file \
             --html-details \
@@ -95,17 +86,13 @@ jobs:
       - name: Generate coverage summary report and enforce thresholds
         id: coverage_metrics
         run: |
-          LINE_THRESHOLD=85
-          FUNCTION_THRESHOLD=90
+          LINE_THRESHOLD=90
+          FUNCTION_THRESHOLD=95
 
           set +e
-          # Phase 4 now measures the full production codebase except fuzz
-          # targets, which remain excluded because they are standalone fuzz
-          # entrypoints rather than shipped game code.
           python3 -m gcovr \
             --root . \
             --filter src/ \
-            --exclude 'src/fuzz/' \
             --gcov-ignore-parse-errors=suspicious_hits.warn_once_per_file \
             --gcov-ignore-parse-errors=negative_hits.warn_once_per_file \
             --txt \
@@ -161,8 +148,8 @@ jobs:
         if: ${{ always() && github.event_name == 'pull_request' }}
         uses: actions/github-script@v7
         env:
-          LINE_THRESHOLD: 85
-          FUNCTION_THRESHOLD: 90
+          LINE_THRESHOLD: 90
+          FUNCTION_THRESHOLD: 95
           LINE_PCT: ${{ steps.coverage_metrics.outputs.line_pct }}
           FUNCTION_PCT: ${{ steps.coverage_metrics.outputs.function_pct }}
           LINE_STATUS: ${{ steps.coverage_metrics.outputs.line_status }}

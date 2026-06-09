@@ -2,8 +2,10 @@
 
 #include <openglad/core/frame_pacing.h>
 #include <openglad/core/runtime_trace.h>
+#include <openglad/core/util.h>
 
 #include <cstdint>
+#include <vector>
 
 namespace {
 
@@ -121,6 +123,42 @@ TEST(FrameDeadlinePacer, IntervalZeroClampsToOne)
     const auto d2 = pacer.tick(101u);
     EXPECT_TRUE(d2.run_tick);
     EXPECT_EQ(d2.next_deadline_ms, 102u);
+}
+
+TEST(FrameDeadlinePacer, RenderIntervalWrapperAndTraceObserversAreExercised)
+{
+    RuntimeTraceCaptureGuard guard;
+
+    EXPECT_FLOAT_EQ(og::core::render_tick_interval_ms(6, 1.0f),
+                    og::core::rounded_render_tick_interval_ms(6, 1.0f));
+    EXPECT_FLOAT_EQ(og::core::render_tick_interval_ms(12, 0.5f),
+                    og::core::rounded_render_tick_interval_ms(12, 0.5f));
+
+    std::vector<og::runtime::RuntimeTraceRecord> observed_traces;
+    og::runtime::set_runtime_trace_observer(
+        [&](const og::runtime::RuntimeTraceRecord& record) {
+            observed_traces.push_back(record);
+        });
+    og::runtime::emit_runtime_trace(
+        og::runtime::make_runtime_trace_record("unit", "trace_observer"));
+    ASSERT_EQ(observed_traces.size(), 1u);
+    EXPECT_EQ(observed_traces.front().category, "unit");
+    EXPECT_EQ(observed_traces.front().event, "trace_observer");
+    og::runtime::clear_runtime_trace_observer();
+
+    std::vector<og::runtime::RuntimeRenderSample> observed_samples;
+    og::runtime::set_runtime_render_sample_observer(
+        [&](const og::runtime::RuntimeRenderSample& sample) {
+            observed_samples.push_back(sample);
+        });
+    og::runtime::RuntimeRenderSample sample;
+    sample.tick = 77u;
+    sample.interpolation_alpha = 0.25f;
+    og::runtime::publish_runtime_render_sample(sample);
+    ASSERT_EQ(observed_samples.size(), 1u);
+    EXPECT_EQ(observed_samples.front().tick, 77u);
+    EXPECT_FLOAT_EQ(observed_samples.front().interpolation_alpha, 0.25f);
+    og::runtime::clear_runtime_render_sample_observer();
 }
 
 TEST(FrameDeadlinePacer, SmallSlipRunsOneTickWithoutResync)

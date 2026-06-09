@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <gtest/gtest.h>
+#include <iterator>
 
 namespace {
 
@@ -375,6 +376,38 @@ TEST_F(GameWorldEntityIdsFixture, public_entity_list_removals_track_removed_enti
               std::find(world.removed_entity_ids().begin(),
                         world.removed_entity_ids().end(),
                         clear_id));
+}
+
+TEST_F(GameWorldEntityIdsFixture, entity_list_const_reverse_and_front_operations)
+{
+    auto first = std::make_unique<walker>();
+    first->set_order_family(Order::Living, FAMILY_SOLDIER);
+    walker* first_raw = first.get();
+
+    auto second = std::make_unique<walker>();
+    second->set_order_family(Order::Living, FAMILY_ORC);
+    walker* second_raw = second.get();
+
+    world.oblist.push_back(std::move(first));
+    world.oblist.push_front(std::move(second));
+
+    const GameWorld::EntityList& list = world.oblist;
+    ASSERT_EQ(list.size(), 2u);
+    EXPECT_EQ(list.front().get(), second_raw);
+    EXPECT_EQ(list.back().get(), first_raw);
+    EXPECT_EQ(list.cbegin()->get(), second_raw);
+    EXPECT_EQ(std::next(list.cbegin())->get(), first_raw);
+    EXPECT_EQ(list.cend(), list.end());
+    EXPECT_EQ(list.rbegin()->get(), first_raw);
+    EXPECT_EQ(std::next(list.rbegin())->get(), second_raw);
+    EXPECT_EQ(list.rend(), list.crend());
+    EXPECT_EQ(list.crbegin()->get(), first_raw);
+
+    const std::uint32_t second_id = second_raw->entity_id();
+    world.oblist.pop_front();
+    EXPECT_EQ(nullptr, world.find_by_id(second_id));
+    ASSERT_EQ(world.oblist.size(), 1u);
+    EXPECT_EQ(world.oblist.front().get(), first_raw);
 }
 
 TEST_F(GameWorldEntityIdsFixture, delete_objects_tracks_removed_entity_ids_for_all_live_lists)

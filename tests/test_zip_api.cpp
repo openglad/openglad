@@ -43,10 +43,10 @@ TEST(ZipApi, r15_zip_and_unzip_success_paths)
     }
 
     const ArchiveIoError zip_err = og::io::zip_contents_with_error(in.string(), zipfile.string());
-    ASSERT_TRUE(zip_err == ArchiveIoError::None || zip_err == ArchiveIoError::AddEntryFailed);
+    ASSERT_EQ(ArchiveIoError::None, zip_err);
 
     const ArchiveIoError unzip_err = og::io::unzip_into_with_error(zipfile.string(), out.string());
-    ASSERT_TRUE(unzip_err == ArchiveIoError::None || unzip_err == ArchiveIoError::OpenEntryFailed);
+    ASSERT_EQ(ArchiveIoError::None, unzip_err);
 
     ASSERT_TRUE(fs::exists(out / "root.txt"));
     ASSERT_TRUE(fs::exists(out / "subdir" / "nested.txt"));

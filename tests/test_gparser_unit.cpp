@@ -2,9 +2,91 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <string>
+#include <utility>
 #include <vector>
 #include <gtest/gtest.h>
+
+std::string get_asset_path();
+
+namespace
+{
+class ScopedCurrentPath
+{
+public:
+    explicit ScopedCurrentPath(const std::filesystem::path& next)
+        : old_(std::filesystem::current_path())
+    {
+        std::filesystem::current_path(next);
+    }
+
+    ~ScopedCurrentPath()
+    {
+        std::error_code ec;
+        std::filesystem::current_path(old_, ec);
+    }
+
+private:
+    std::filesystem::path old_;
+};
+
+class ScopedPathMove
+{
+public:
+    ScopedPathMove(std::filesystem::path source, std::filesystem::path backup)
+        : source_(std::move(source)), backup_(std::move(backup)), moved_(false)
+    {
+        std::error_code ec;
+        if (std::filesystem::exists(source_, ec))
+        {
+            std::filesystem::remove(backup_, ec);
+            std::filesystem::rename(source_, backup_, ec);
+            moved_ = !ec;
+        }
+    }
+
+    ~ScopedPathMove()
+    {
+        if (!moved_)
+            return;
+        std::error_code ec;
+        std::filesystem::rename(backup_, source_, ec);
+    }
+
+private:
+    std::filesystem::path source_;
+    std::filesystem::path backup_;
+    bool moved_;
+};
+
+std::filesystem::path unit_config_dir()
+{
+    const char* dir = std::getenv("OPENGLAD_CONFIG_DIR");
+    return dir != nullptr ? std::filesystem::path(dir) : std::filesystem::path();
+}
+
+std::filesystem::path unit_config_file()
+{
+    return unit_config_dir() / "cfg" / "openglad.yaml";
+}
+
+void write_unit_config(const char* text)
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::create_directories(unit_config_file().parent_path(), ec);
+
+    FILE* file = std::fopen(unit_config_file().string().c_str(), "wb");
+    ASSERT_TRUE(file != nullptr) << "unit config file should be writable";
+    ASSERT_EQ(std::strlen(text), std::fwrite(text, 1, std::strlen(text), file));
+    std::fclose(file);
+}
+} // namespace
 
 TEST(GparserUnit, gparser_apply_get_and_is_on_paths)
 {
@@ -101,6 +183,95 @@ TEST(GparserUnit, gparser_override_precedence_and_non_persistence)
 
     // ...without mutating the persisted value that save_settings() would write.
     ASSERT_TRUE(local_cfg.data["graphics"]["show_fps"] == "off");
+}
+
+TEST(GparserUnit, gparser_load_settings_reports_missing_config_and_keeps_defaults)
+{
+    namespace fs = std::filesystem;
+    ASSERT_FALSE(unit_config_dir().empty()) << "unit runner should set OPENGLAD_CONFIG_DIR";
+
+    std::error_code ec;
+    fs::remove(unit_config_file(), ec);
+
+    const fs::path isolated_cwd = fs::temp_directory_path() /
+        ("openglad_gparser_missing_" + std::to_string(getpid()));
+    fs::create_directories(isolated_cwd, ec);
+    ScopedCurrentPath cwd_guard(isolated_cwd);
+    const fs::path asset_cfg = fs::path(get_asset_path()) / "cfg" / "openglad.yaml";
+    ScopedPathMove asset_guard(asset_cfg, asset_cfg.parent_path() / "openglad.yaml.gparser-unit-bak");
+
+    cfg_store local_cfg;
+    ASSERT_FALSE(local_cfg.load_settings()) << "missing config should report fallback to defaults";
+    ASSERT_EQ("on", local_cfg.get_setting("sound", "sound"));
+    ASSERT_EQ("normal", local_cfg.get_setting("graphics", "render"));
+    ASSERT_EQ("on", local_cfg.get_setting("effects", "gore"));
+
+    fs::remove_all(isolated_cwd, ec);
+    fs::create_directories(unit_config_file().parent_path(), ec);
+}
+
+TEST(GparserUnit, gparser_load_settings_parses_mapping_sequence_and_alias)
+{
+    const char* valid_yaml =
+        "sound:\n"
+        "  sound: off\n"
+        "graphics:\n"
+        "  render: eagle\n"
+        "  fullscreen: off\n"
+        "defaults: &defaults\n"
+        "  gore: off\n"
+        "listcat:\n"
+        "  - one\n"
+        "  - two\n"
+        "alias_use: *defaults\n";
+    write_unit_config(valid_yaml);
+
+    cfg_store local_cfg;
+    ASSERT_TRUE(local_cfg.load_settings());
+    ASSERT_EQ("off", local_cfg.get_setting("sound", "sound"));
+    ASSERT_EQ("eagle", local_cfg.get_setting("graphics", "render"));
+    ASSERT_EQ("off", local_cfg.get_setting("graphics", "fullscreen"));
+}
+
+TEST(GparserUnit, gparser_save_settings_writes_only_persisted_data_and_reports_open_failure)
+{
+    namespace fs = std::filesystem;
+    ASSERT_FALSE(unit_config_dir().empty()) << "unit runner should set OPENGLAD_CONFIG_DIR";
+
+    std::error_code ec;
+    fs::create_directories(unit_config_file().parent_path(), ec);
+    fs::remove(unit_config_file(), ec);
+
+    cfg_store local_cfg;
+    local_cfg.apply_setting("graphics", "render", "sai");
+    local_cfg.apply_override("graphics", "show_fps", "on");
+    ASSERT_TRUE(local_cfg.save_settings());
+
+    std::ifstream saved(unit_config_file());
+    ASSERT_TRUE(saved.good()) << "save_settings should write cfg/openglad.yaml";
+    const std::string contents((std::istreambuf_iterator<char>(saved)),
+                               std::istreambuf_iterator<char>());
+    ASSERT_NE(std::string::npos, contents.find("render"));
+    ASSERT_NE(std::string::npos, contents.find("sai"));
+    ASSERT_EQ(std::string::npos, contents.find("show_fps"))
+        << "transient overrides must not be persisted";
+
+    const fs::path cfg_dir = unit_config_file().parent_path();
+    fs::remove(unit_config_file(), ec);
+    fs::remove_all(cfg_dir, ec);
+
+    const fs::path isolated_cwd = fs::temp_directory_path() /
+        ("openglad_gparser_save_fail_" + std::to_string(getpid()));
+    fs::create_directories(isolated_cwd, ec);
+    ScopedCurrentPath cwd_guard(isolated_cwd);
+
+    cfg_store failing_cfg;
+    failing_cfg.apply_setting("graphics", "render", "normal");
+    ASSERT_FALSE(failing_cfg.save_settings())
+        << "missing cfg directory should report write failure";
+
+    fs::remove_all(isolated_cwd, ec);
+    fs::create_directories(cfg_dir, ec);
 }
 
 TEST(GparserUnit, gparser_commandline_help_and_version_exit_paths)

@@ -40,14 +40,15 @@ TEST(ScreenFuncs, screen_first_of_found)
 
 TEST(ScreenFuncs, screen_first_of_not_found)
 {
+    og::runtime::current_session->myscreen_->world().delete_objects();
     walker* found = og::runtime::current_session->myscreen_->first_of(Order::Living, FAMILY_ARCHMAGE, 99);
-    // May or may not find one depending on test state, but should not crash
-    (void)found;
+    ASSERT_EQ(nullptr, found) << "first_of should return null when no matching object exists";
 }
 
 
 TEST(ScreenFuncs, screen_first_of_with_team)
 {
+    og::runtime::current_session->myscreen_->world().delete_objects();
     auto w = create_living(FAMILY_SOLDIER);
 	    ASSERT_TRUE(w != nullptr) << "create_walker should succeed";
 	    w->set_team_num(7);
@@ -58,7 +59,7 @@ TEST(ScreenFuncs, screen_first_of_with_team)
     ASSERT_TRUE(found != nullptr) << "first_of with matching team should find it";
 
     walker* not_found = og::runtime::current_session->myscreen_->first_of(Order::Living, FAMILY_SOLDIER, 99);
-    ASSERT_TRUE(not_found == nullptr || not_found->team_num() != 99) << "first_of with wrong team should not find team 99 unit";
+    ASSERT_EQ(nullptr, not_found) << "first_of with wrong team should not find a team-99 unit";
 
     og::runtime::current_session->myscreen_->world().oblist.pop_back();
 }

@@ -25,6 +25,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <string_view>
 
 #include <openglad/resources/gparser.h> // cfg_store, ::cfg
 
@@ -45,6 +46,46 @@ static void json_entity(std::ostream& os, const walker* w, int index)
        << "}";
 }
 
+static void json_string(std::ostream& os, std::string_view value)
+{
+    static constexpr char kHex[] = "0123456789abcdef";
+
+    os << '"';
+    for (unsigned char c : value) {
+        switch (c) {
+        case '"':
+            os << "\\\"";
+            break;
+        case '\\':
+            os << "\\\\";
+            break;
+        case '\b':
+            os << "\\b";
+            break;
+        case '\f':
+            os << "\\f";
+            break;
+        case '\n':
+            os << "\\n";
+            break;
+        case '\r':
+            os << "\\r";
+            break;
+        case '\t':
+            os << "\\t";
+            break;
+        default:
+            if (c < 0x20) {
+                os << "\\u00" << kHex[c >> 4] << kHex[c & 0x0f];
+            } else {
+                os << static_cast<char>(c);
+            }
+            break;
+        }
+    }
+    os << '"';
+}
+
 static void json_event(std::ostream& os, const og::sim::Event& ev)
 {
     os << "{\"tick\":" << ev.tick
@@ -52,13 +93,8 @@ static void json_event(std::ostream& os, const og::sim::Event& ev)
        << ",\"a\":" << ev.a
        << ",\"b\":" << ev.b;
     if (!ev.text.empty()) {
-        os << ",\"text\":\"";
-        for (char c : ev.text) {
-            if (c == '"') os << "\\\"";
-            else if (c == '\\') os << "\\\\";
-            else os << c;
-        }
-        os << "\"";
+        os << ",\"text\":";
+        json_string(os, ev.text);
     }
     os << "}";
 }
@@ -126,6 +162,22 @@ static void cmd_events(og::sim::SimEventLog& events)
 
 } // namespace
 
+#ifdef TESTING
+std::string text_protocol_testing_format_event_text(std::string_view text)
+{
+    og::sim::Event event;
+    event.tick = 7;
+    event.kind = og::sim::EventKind::Notification;
+    event.a = 1;
+    event.b = 2;
+    event.text = text;
+
+    std::ostringstream os;
+    json_event(os, event);
+    return os.str();
+}
+#endif
+
 int run_text_protocol_session(const TextProtocolArgs& args)
 {
     // Set up sim infrastructure
@@ -188,8 +240,9 @@ int run_text_protocol_session(const TextProtocolArgs& args)
     // Output ready message
     std::cout << "{\"status\":\"ready\""
               << ",\"level\":" << args.level
-              << ",\"title\":\"" << level.world().title << "\""
-              << ",\"num_entities\":" << level.world().oblist.size()
+              << ",\"title\":";
+    json_string(std::cout, level.world().title);
+    std::cout << ",\"num_entities\":" << level.world().oblist.size()
               << ",\"seed\":" << args.seed
               << "}\n";
     std::cout.flush();
@@ -219,7 +272,9 @@ int run_text_protocol_session(const TextProtocolArgs& args)
             std::cout.flush();
             break;
         } else {
-            std::cout << "{\"cmd\":\"error\",\"message\":\"unknown command: " << cmd << "\"}\n";
+            std::cout << "{\"cmd\":\"error\",\"message\":";
+            json_string(std::cout, std::string("unknown command: ") + cmd);
+            std::cout << "}\n";
             std::cout.flush();
         }
 

@@ -109,6 +109,18 @@ TEST(IoPlatformCoverage, resources_filesystem_api_mount_read_write_exists)
     std::error_code ec;
     fs::create_directories(base, ec);
 
+    ASSERT_FALSE(og::resources::mount(nullptr, nullptr, 1)) << "null mount path should fail";
+    ASSERT_FALSE(og::resources::mount("", nullptr, 1)) << "empty mount path should fail";
+    ASSERT_FALSE(og::resources::unmount(nullptr)) << "null unmount path should fail";
+    ASSERT_FALSE(og::resources::unmount("")) << "empty unmount path should fail";
+    ASSERT_TRUE(og::resources::list_files(nullptr).empty()) << "null list path should return no files";
+    ASSERT_TRUE(og::resources::read_file(nullptr).empty()) << "null read path should return no bytes";
+    ASSERT_TRUE(og::resources::read_file("").empty()) << "empty read path should return no bytes";
+    ASSERT_TRUE(og::resources::read_file("definitely_missing_resources_fs_api.bin").empty())
+        << "missing read path should return no bytes";
+    ASSERT_FALSE(og::resources::exists(nullptr)) << "null exists path should be false";
+    ASSERT_FALSE(og::resources::exists("")) << "empty exists path should be false";
+
     const fs::path mounted_input = base / "mounted_input.bin";
     {
         std::FILE* f = std::fopen(mounted_input.string().c_str(), "wb");
@@ -125,6 +137,14 @@ TEST(IoPlatformCoverage, resources_filesystem_api_mount_read_write_exists)
 
     ASSERT_TRUE(og::resources::set_write_dir(base.string())) << "filesystem set_write_dir should allow temp writes";
     const unsigned char write_payload[] = {9, 8, 7, 6};
+    ASSERT_FALSE(og::resources::write_file(nullptr, write_payload, 0)) << "null write path should fail";
+    ASSERT_FALSE(og::resources::write_file("", write_payload, 0)) << "empty write path should fail";
+    ASSERT_FALSE(og::resources::write_file("null_payload.bin", nullptr, 1))
+        << "non-empty write with null data should fail";
+    ASSERT_FALSE(og::resources::write_file("missing_parent/write_out.bin", write_payload,
+                                           sizeof(write_payload))) << "missing parent write should fail";
+    ASSERT_TRUE(og::resources::write_file("empty.bin", write_payload, 0)) << "zero-length write should succeed";
+    ASSERT_TRUE(og::resources::read_file("empty.bin").empty()) << "empty file should read as no bytes";
     ASSERT_TRUE(og::resources::write_file("write_out.bin", write_payload,
                                           sizeof(write_payload))) << "filesystem write_file should succeed";
     ASSERT_TRUE(og::resources::exists("write_out.bin")) << "filesystem exists should see written file";
@@ -254,7 +274,8 @@ TEST(IoPlatformCoverage, yaml_stream_empty_input_and_read_failure_paths)
         empty_steps++;
     }
     ASSERT_TRUE(empty_steps > 0) << "empty input should produce at least one parser step";
-    ASSERT_TRUE(empty_r == og::io::YamlParseResult::Done || empty_r == og::io::YamlParseResult::Error) << "empty input should eventually terminate parse";
+    ASSERT_EQ(og::io::YamlParseResult::Done, empty_r)
+        << "empty input should terminate cleanly";
     parser.close_input();
 
     struct FailReadCtx {
@@ -274,9 +295,9 @@ TEST(IoPlatformCoverage, yaml_stream_empty_input_and_read_failure_paths)
         fail_steps++;
     }
     ASSERT_TRUE(fail_steps > 0) << "read failure stream should produce at least one parser step";
-    ASSERT_TRUE(fail_r == og::io::YamlParseResult::Error ||
-                fail_r == og::io::YamlParseResult::Done ||
-                fail_steps == 16) << "read failure should either terminate or remain bounded by guard";
+    ASSERT_EQ(16, fail_steps) << "zero-byte read handler should be bounded by the test guard";
+    ASSERT_EQ(og::io::YamlParseResult::Ok, fail_r)
+        << "zero-byte read handler remains pending until the guard stops polling";
     fail_parser.close_input();
 }
 
@@ -309,8 +330,8 @@ TEST(IoPlatformCoverage, zip_api_roundtrip_and_error_paths)
 
     const ArchiveIoError zip_missing_parent_err =
         og::io::zip_contents_with_error(base.string(), missing_parent_zip.string());
-    ASSERT_TRUE(zip_missing_parent_err == ArchiveIoError::OpenArchiveFailed ||
-        zip_missing_parent_err == ArchiveIoError::CloseArchiveFailed) << "zip with missing parent should fail";
+    ASSERT_EQ(ArchiveIoError::CloseArchiveFailed, zip_missing_parent_err)
+        << "zip with missing parent should report close failure after archive finalization";
 
     ASSERT_EQ(static_cast<int>(ArchiveIoError::None), static_cast<int>(og::io::zip_contents_with_error(base.string(), archive.string()))) << "zip should succeed";
     ASSERT_EQ(static_cast<int>(ArchiveIoError::OpenArchiveFailed), static_cast<int>(og::io::unzip_into_with_error("temp/io_platform_cov_missing.zip", out.string()))) << "unzip missing archive should fail";
@@ -659,7 +680,9 @@ TEST(IoPlatformCoverage, zip_api_missing_input_dir_exists_guard_path)
     fs::remove(archive, ec);
 
     const ArchiveIoError r = og::io::zip_contents_with_error(missing.string(), archive.string());
-    ASSERT_TRUE(r == ArchiveIoError::None || r == ArchiveIoError::AddEntryFailed) << "zipping a missing input dir should take empty-enumeration guard path";
+    ASSERT_EQ(ArchiveIoError::None, r)
+        << "zipping a missing input dir should be treated as an empty input set";
+    ASSERT_FALSE(fs::exists(archive));
     fs::remove(archive, ec);
 }
 
@@ -704,8 +727,14 @@ TEST(IoPlatformCoverage, zip_api_unreadable_and_non_regular_entries_report_add_f
     (void)::mkfifo(fifo_path.string().c_str(), 0600);
 
     const ArchiveIoError r = og::io::zip_contents_with_error(base.string(), archive.string());
-    ASSERT_TRUE(r == ArchiveIoError::AddEntryFailed || r == ArchiveIoError::CloseArchiveFailed ||
-                    r == ArchiveIoError::None) << "zip should report add/close failure (or succeed if platform permits unreadable reopen)";
+    if (::geteuid() == 0) {
+        ASSERT_EQ(ArchiveIoError::None, r)
+            << "root test runner can reopen chmod(0) files, and non-regular entries should be skipped";
+        ASSERT_TRUE(fs::exists(archive));
+    } else {
+        ASSERT_EQ(ArchiveIoError::CloseArchiveFailed, r)
+            << "non-root runner should fail while finalizing an archive with unreadable input";
+    }
 
     (void)::chmod(unreadable.string().c_str(), 0600);
     fs::remove_all(base, ec);
@@ -738,7 +767,9 @@ TEST(IoPlatformCoverage, zip_api_batch9_permission_denied_walk_and_corrupt_unzip
     // Try to trigger recursive iterator increment error path under permission restrictions.
     (void)::chmod(blocked.string().c_str(), 0);
     const ArchiveIoError walk_r = og::io::zip_contents_with_error(base.string(), archive.string());
-    ASSERT_TRUE(walk_r == ArchiveIoError::None || walk_r == ArchiveIoError::AddEntryFailed) << "permission-denied walk should take guarded recursive-iterator path";
+    ASSERT_EQ(ArchiveIoError::None, walk_r)
+        << "permission-denied walk should skip inaccessible entries and still close the archive";
+    ASSERT_TRUE(fs::exists(archive));
     (void)::chmod(blocked.string().c_str(), 0700);
 
     // Corrupt archive bytes should fail open/read in unzip path.
@@ -752,8 +783,8 @@ TEST(IoPlatformCoverage, zip_api_batch9_permission_denied_walk_and_corrupt_unzip
         }
     }
     const ArchiveIoError unzip_r = og::io::unzip_into_with_error(corrupt.string(), out.string());
-    ASSERT_TRUE(unzip_r == ArchiveIoError::OpenArchiveFailed || unzip_r == ArchiveIoError::OpenEntryFailed ||
-                    unzip_r == ArchiveIoError::ReadEntryFailed) << "corrupt archive should fail through guarded unzip error paths";
+    ASSERT_EQ(ArchiveIoError::OpenArchiveFailed, unzip_r)
+        << "corrupt archive header should fail while opening the archive";
 
     fs::remove_all(base, ec);
 }

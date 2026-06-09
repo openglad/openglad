@@ -3,8 +3,6 @@
 
 TEST(ResultsScreenInternalHelper, exercises_core_paths)
 {
-    int score = results_screen_test_exercise_internal();
-    ASSERT_TRUE(score > 0) << "internal helper should execute";
+    ASSERT_EQ(0, results_screen_test_exercise_internal())
+        << "internal helper should report the first failed check as a negative index";
 }
-
-

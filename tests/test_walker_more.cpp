@@ -400,7 +400,8 @@ TEST(WalkerMore, walker_friendliness_null_dead_and_allied_mode_paths)
     b->set_team_num(0);
     ASSERT_TRUE(a->is_friendly(b.get()) != 0) << "team 0 target with one myguy should be treated as friendly";
 
-    ASSERT_TRUE(a->is_friendly_to_team(1) == 0 || a->is_friendly_to_team(1) == 1) << "friendly-to-team path should execute";
+    ASSERT_FALSE(a->is_friendly_to_team(1))
+        << "team 0 walker should not be friendly to team 1 when allied mode is off";
 
     a->set_dead(1);
     ASSERT_TRUE(!a->is_friendly_to_team(0)) << "dead walker should be unfriendly to all teams";

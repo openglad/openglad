@@ -85,6 +85,15 @@ static void append_fixed8(std::vector<uint8_t>& out, const char* s)
         buf[i] = s[i];
     append_bytes(out, buf.data(), buf.size());
 }
+
+static void assert_unknown_order_normalizes_to_living_oblist(const LevelRuntimeData& data)
+{
+    ASSERT_EQ(1u, data.world().oblist.size());
+    ASSERT_TRUE(data.world().fxlist.empty());
+    ASSERT_TRUE(data.world().weaplist.empty());
+    ASSERT_EQ(FAMILY_SOLDIER, data.world().oblist.front()->family());
+    ASSERT_EQ(static_cast<int>(Order::Living), static_cast<int>(data.world().oblist.front()->query_order()));
+}
 } // namespace
 
 TEST(LevelDataLoadVersions, level_data_load_version2_minimal_success)
@@ -537,14 +546,14 @@ TEST(LevelDataLoadVersions, level_data_load_version4_truncated_numlines_or_width
 }
 
 
-TEST(LevelDataLoadVersions, 2_to_5_invalid_order_fails_object_creation)
+TEST(LevelDataLoadVersions, 2_to_5_unknown_order_normalizes_to_living_oblist)
 {
     {
         LevelRuntimeData data(1);
         std::vector<uint8_t> bytes;
         append_fixed8(bytes, "grid");
         append_i16(bytes, 1);
-        append_u8(bytes, 255); // invalid Order -> add_ob should fail
+        append_u8(bytes, 255); // legacy unknown order
         append_u8(bytes, static_cast<uint8_t>(FAMILY_SOLDIER));
         append_i16(bytes, 100);
         append_i16(bytes, 100);
@@ -555,15 +564,15 @@ TEST(LevelDataLoadVersions, 2_to_5_invalid_order_fails_object_creation)
             append_u8(bytes, 0);
         MemoryOgFile rw(bytes.data(), bytes.size());
         const short ok = load_version_2(rw, &data);
-        // Legacy v2 behavior can differ based on loader state; ensure stability/no crash.
-        ASSERT_TRUE(ok == 0 || ok == 1) << "v2 unknown-order input should not crash loader";
+        ASSERT_EQ(1, (int)ok) << "v2 loader should preserve legacy unknown-order objects";
+        assert_unknown_order_normalizes_to_living_oblist(data);
     }
     {
         LevelRuntimeData data(1);
         std::vector<uint8_t> bytes;
         append_fixed8(bytes, "grid");
         append_i16(bytes, 1);
-        append_u8(bytes, 255); // invalid Order -> add_ob should fail
+        append_u8(bytes, 255); // legacy unknown order
         append_u8(bytes, static_cast<uint8_t>(FAMILY_SOLDIER));
         append_i16(bytes, 100);
         append_i16(bytes, 100);
@@ -576,14 +585,15 @@ TEST(LevelDataLoadVersions, 2_to_5_invalid_order_fails_object_creation)
         append_u8(bytes, 0); // numlines
         MemoryOgFile rw(bytes.data(), bytes.size());
         const short ok = load_version_3(rw, &data);
-        ASSERT_TRUE(ok == 0 || ok == 1) << "v3 unknown-order input should not crash loader";
+        ASSERT_EQ(1, (int)ok) << "v3 loader should preserve legacy unknown-order objects";
+        assert_unknown_order_normalizes_to_living_oblist(data);
     }
     {
         LevelRuntimeData data(1);
         std::vector<uint8_t> bytes;
         append_fixed8(bytes, "grid");
         append_i16(bytes, 1);
-        append_u8(bytes, 255); // invalid Order -> add_ob should fail
+        append_u8(bytes, 255); // legacy unknown order
         append_u8(bytes, static_cast<uint8_t>(FAMILY_SOLDIER));
         append_i16(bytes, 100);
         append_i16(bytes, 100);
@@ -598,7 +608,8 @@ TEST(LevelDataLoadVersions, 2_to_5_invalid_order_fails_object_creation)
         append_u8(bytes, 0); // numlines
         MemoryOgFile rw(bytes.data(), bytes.size());
         const short ok = load_version_4(rw, &data);
-        ASSERT_TRUE(ok == 0 || ok == 1) << "v4 unknown-order input should not crash loader";
+        ASSERT_EQ(1, (int)ok) << "v4 loader should preserve legacy unknown-order objects";
+        assert_unknown_order_normalizes_to_living_oblist(data);
     }
     {
         LevelRuntimeData data(1);
@@ -606,7 +617,7 @@ TEST(LevelDataLoadVersions, 2_to_5_invalid_order_fails_object_creation)
         append_fixed8(bytes, "grid");
         append_u8(bytes, 1); // scenario type
         append_i16(bytes, 1);
-        append_u8(bytes, 255); // invalid Order -> add_ob should fail
+        append_u8(bytes, 255); // legacy unknown order
         append_u8(bytes, static_cast<uint8_t>(FAMILY_SOLDIER));
         append_i16(bytes, 100);
         append_i16(bytes, 100);
@@ -621,7 +632,8 @@ TEST(LevelDataLoadVersions, 2_to_5_invalid_order_fails_object_creation)
         append_u8(bytes, 0); // numlines
         MemoryOgFile rw(bytes.data(), bytes.size());
         const short ok = load_version_5(rw, &data);
-        ASSERT_TRUE(ok == 0 || ok == 1) << "v5 unknown-order input should not crash loader";
+        ASSERT_EQ(1, (int)ok) << "v5 loader should preserve legacy unknown-order objects";
+        assert_unknown_order_normalizes_to_living_oblist(data);
     }
 }
 
@@ -692,7 +704,8 @@ TEST(LevelDataLoadVersions, level_data_load_version6plus_invalid_counts_and_obje
         append_u8(bytes, 0); // num lines
         MemoryOgFile rw(bytes.data(), bytes.size());
         const short ok = load_version_6(rw, &data, 9);
-        ASSERT_TRUE(ok == 0 || ok == 1) << "v9 loader unknown order should not crash";
+        ASSERT_EQ(1, (int)ok) << "v9 loader should preserve legacy unknown-order objects";
+        assert_unknown_order_normalizes_to_living_oblist(data);
     }
 }
 
@@ -797,5 +810,8 @@ TEST(LevelDataLoadVersions, level_data_load_scenario_dispatch_case2_path)
     append_i16(bytes, 0); // listsize
     MemoryOgFile rw(bytes.data(), bytes.size());
     const short result = load_scenario_version(rw, &data, 2);
-    ASSERT_TRUE(result == 0 || result == 1) << "dispatch case 2 should execute without crashing";
+    ASSERT_EQ(1, (int)result) << "dispatch case 2 should accept a minimal empty v2 payload";
+    ASSERT_TRUE(data.world().oblist.empty());
+    ASSERT_TRUE(data.world().fxlist.empty());
+    ASSERT_TRUE(data.world().weaplist.empty());
 }

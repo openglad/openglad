@@ -347,7 +347,8 @@ TEST(SimInputUnit, sim_input_r11_animate_movement_and_bit_animate_paths)
     // held fire path
     input.clear();
     input.players[0].held[static_cast<int>(InputAction::Fire)] = true;
-    (void)sim_process_player_input(
+    result = sim_process_player_input(
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+    ASSERT_EQ(control, result.new_control);
 }
 } // namespace detail_sim_input_r11

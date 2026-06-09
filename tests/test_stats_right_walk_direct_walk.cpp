@@ -204,11 +204,11 @@ TEST(StatsRightWalkDirectWalk, stats_blocked_direction_switch_tables_all_cases_r
     };
     for (char d : dirs)
     {
+        SCOPED_TRACE(static_cast<int>(d));
         w.set_curdir(d);
-        (void)st->right_blocked();
-        (void)st->right_forward_blocked();
-        (void)st->right_back_blocked();
-        (void)st->forward_blocked();
+        EXPECT_FALSE(st->right_blocked());
+        EXPECT_FALSE(st->right_forward_blocked());
+        EXPECT_FALSE(st->right_back_blocked());
+        EXPECT_FALSE(st->forward_blocked());
     }
-    ASSERT_TRUE(true) << "blocked-direction switch tables executed";
 }

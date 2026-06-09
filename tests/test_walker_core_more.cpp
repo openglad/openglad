@@ -537,11 +537,8 @@ TEST(WalkerCoreMore, walker_round6_init_fire_animate_and_misc_guards)
 
     // next_frame path (smoke coverage without touching protected state).
     const short before = w->frame();
-    (void)w->next_frame();
-    const short after = w->frame();
-    (void)before;
-    (void)after;
-    ASSERT_TRUE(true) << "next_frame should be callable";
+    ASSERT_EQ(1, w->next_frame()) << "next_frame should report a successful frame set";
+    ASSERT_EQ(before, w->frame()) << "next_frame should keep the wrapped frame selected";
 
     // move_myguy_to nullptr guard.
     w->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));

@@ -613,7 +613,9 @@ TEST(StatsMorePaths, stats_round13_die_and_non_living_fire_command_branches)
     // COMMAND_FIRE on non-living controller path (stats.cpp:253-257).
     weapon->stats()->force_command(COMMAND_FIRE, 1, 1, 0);
     const short fire_result = weapon->stats()->do_command();
-    ASSERT_TRUE(fire_result == 0 || fire_result == 1) << "COMMAND_FIRE on non-living should execute guarded branch without crashing";
+    ASSERT_EQ(1, (int)fire_result)
+        << "COMMAND_FIRE on non-living should take the guarded no-op branch";
+    ASSERT_FALSE(weapon->stats()->has_commands());
 }
 
 

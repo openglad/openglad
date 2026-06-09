@@ -85,6 +85,11 @@ static int event_injector_thread(void* data)
     fprintf(stderr, "  [test] Step 4: clicking team back\n");
     interact("back");
 
+    // Back returns to the main menu. Trip the test-mode max-loop guard so
+    // picker_main() does not sit in a fresh mainmenu() waiting for input.
+    g_picker_mainmenu_calls = g_picker_max_mainmenu_calls;
+    SDL_Delay(500);
+
     seq->finished = true;
     return 0;
 }
@@ -141,4 +146,3 @@ TEST(LevelProgress, menu) {
     // Verify the progress menu was actually entered by checking traces
     ASSERT_TRUE(trace_contains("menu", "init_buttons")) << "menu buttons should have been initialized";
 }
-

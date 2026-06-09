@@ -88,29 +88,31 @@ inline bool wait_for_interactable(const std::string& id, int timeout_ms = 5000)
 inline void interact(const std::string& id)
 {
     og::runtime::ensure_thread_session();
-    AllButtonsLock lock;
     int win_x = -1, win_y = -1;
     bool found = false;
-    for (int i = 0; i < MAX_BUTTONS; i++) {
-        if (!og::runtime::current_session->allbuttons_[i])
-            continue;
-        if (og::runtime::current_session->allbuttons_[i]->id == id && !og::runtime::current_session->allbuttons_[i]->hidden) {
-            // Compute center in game coords (320x200 space)
-            int game_x = og::runtime::current_session->allbuttons_[i]->xloc + og::runtime::current_session->allbuttons_[i]->width / 2;
-            int game_y = og::runtime::current_session->allbuttons_[i]->yloc + og::runtime::current_session->allbuttons_[i]->height / 2;
+    {
+        AllButtonsLock lock;
+        for (int i = 0; i < MAX_BUTTONS; i++) {
+            if (!og::runtime::current_session->allbuttons_[i])
+                continue;
+            if (og::runtime::current_session->allbuttons_[i]->id == id && !og::runtime::current_session->allbuttons_[i]->hidden) {
+                // Compute center in game coords (320x200 space)
+                int game_x = og::runtime::current_session->allbuttons_[i]->xloc + og::runtime::current_session->allbuttons_[i]->width / 2;
+                int game_y = og::runtime::current_session->allbuttons_[i]->yloc + og::runtime::current_session->allbuttons_[i]->height / 2;
 
-            // Convert game coords to window coords using viewport globals
-            win_x = static_cast<int>(static_cast<float>(game_x) * (og::runtime::current_session->viewport_w_ / 320.0f) + og::runtime::current_session->viewport_offset_x_);
-            win_y = static_cast<int>(static_cast<float>(game_y) * (og::runtime::current_session->viewport_h_ / 200.0f) + og::runtime::current_session->viewport_offset_y_);
+                // Convert game coords to window coords using viewport globals
+                win_x = static_cast<int>(static_cast<float>(game_x) * (og::runtime::current_session->viewport_w_ / 320.0f) + og::runtime::current_session->viewport_offset_x_);
+                win_y = static_cast<int>(static_cast<float>(game_y) * (og::runtime::current_session->viewport_h_ / 200.0f) + og::runtime::current_session->viewport_offset_y_);
 
-            fprintf(stderr, "  [interact] clicking '%s' at game(%d,%d) win(%d,%d)\n",
-                    id.c_str(), game_x, game_y, win_x, win_y);
-            found = true;
-            break;
+                fprintf(stderr, "  [interact] clicking '%s' at game(%d,%d) win(%d,%d)\n",
+                        id.c_str(), game_x, game_y, win_x, win_y);
+                found = true;
+                break;
+            }
         }
     }
     if (found)
-        inject_click(win_x, win_y);
+        inject_click(win_x, win_y, 100);
     else
         fprintf(stderr, "  [interact] WARNING: '%s' not found in allbuttons\n", id.c_str());
 }

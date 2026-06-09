@@ -444,7 +444,9 @@ TEST(FamilyCleric, family_soldier_and_treasure_r12_paths)
     self->set_busy(0);
 
     self->set_foe(enemy);
-    ASSERT_TRUE(soldier.check_special_ai(self) || !soldier.check_special_ai(self));
+    ASSERT_EQ(20, self->distance_to_ob(enemy));
+    ASSERT_FALSE(soldier.check_special_ai(self))
+        << "soldier AI should reject targets at the lower charge-distance boundary";
 
     walker* weap = fx.level.add_ob(Order::Weapon, FAMILY_KNIFE);
     ASSERT_TRUE(weap != nullptr);
@@ -621,7 +623,14 @@ TEST(FamilyCleric, r14_lines_110_132_160_heal_plural_and_mystic_mace_branches)
     cleric->set_current_special(1);
     cleric->set_shifter_down(1);
     cleric->set_busy(0);
-    ASSERT_TRUE(desc.do_special(cleric) || !desc.do_special(cleric));
+    const std::size_t ob_count_before_mace = fx.level.world().oblist.size();
+    const int shots_before_mace = cleric->myguy->scen_shots;
+    const float magic_before_mace = cleric->stats()->magicpoints();
+    ASSERT_TRUE(desc.do_special(cleric));
+    ASSERT_GT(fx.level.world().oblist.size(), ob_count_before_mace);
+    ASSERT_EQ(shots_before_mace + 1, cleric->myguy->scen_shots);
+    ASSERT_LT(cleric->stats()->magicpoints(), magic_before_mace);
+    ASSERT_GT(cleric->busy(), 0.0f);
 }
 
 TEST(FamilyCleric, r14_lines_187_189_192_203_206_243_246_turn_undead_and_raise_paths)

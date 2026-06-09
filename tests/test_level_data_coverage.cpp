@@ -312,7 +312,9 @@ TEST(LevelDataCoverage, level_data_set_sim_context_wires_pointers)
 
     LevelRuntimeData d(42);
     d.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg_local);
-    ASSERT_TRUE(true) << "set_sim_context should accept valid pointer set";
+    d.create_new_grid();
+    ASSERT_TRUE(d.world().grid.valid()) << "set_sim_context should leave the level usable";
+    ASSERT_EQ(42, d.world().id);
 }
 
 
@@ -681,7 +683,10 @@ TEST(LevelDataCoverage, level_data_round7a_constructor_overloads_and_remove_path
     LevelRuntimeData b(12, static_cast<const LevelDataHooks*>(nullptr));
     LevelRuntimeData c(13, true);
     LevelRuntimeData d(14, true, static_cast<const LevelDataHooks*>(nullptr));
-    ASSERT_TRUE(true) << "constructor overloads executed";
+    ASSERT_EQ(11, a.world().id);
+    ASSERT_EQ(12, b.world().id);
+    ASSERT_EQ(13, c.world().id);
+    ASSERT_EQ(14, d.world().id);
 
     og::runtime::current_session->myscreen_->world().create_new_grid();
     og::runtime::current_session->myscreen_->world().delete_objects();
@@ -726,7 +731,8 @@ TEST(LevelDataCoverage, level_data_round7a_title_reader_and_error_wrappers)
     og::runtime::current_session->myscreen_->world().create_new_grid();
     std::filesystem::create_directories("temp/scen");
     const auto err = og::runtime::current_session->myscreen_->save_level_with_error();
-    ASSERT_TRUE(err == LevelRuntimeData::IoError::None || err == LevelRuntimeData::IoError::OpenWriteFailed) << "save_with_error wrapper should return a concrete io error";
+    ASSERT_EQ(LevelRuntimeData::IoError::None, err)
+        << "save_with_error wrapper should write the prepared temp scenario";
 }
 
 

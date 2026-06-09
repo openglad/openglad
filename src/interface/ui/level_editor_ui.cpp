@@ -46,6 +46,16 @@ void level_editor_testing_prompt_queue_push(const char* s);
 
 bool prompt_for_string_block(const std::string& message, std::list<std::string>& result)
 {
+#ifdef TESTING
+    auto& q = level_editor_testing_prompt_queue_ref();
+    if (!q.empty()) {
+        (void)message;
+        result.clear();
+        result.push_back(q.front());
+        q.erase(q.begin());
+        return true;
+    }
+#endif
     screen* screen_ctx = active_screen();
     screen_ctx->darken_screen();
     

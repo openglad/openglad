@@ -85,7 +85,10 @@ TEST(LivingUnit, living_r11_act_owner_dead_and_action_follow)
     owner->set_dead(0);
     owner->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     owner->set_team_num(0);
-    ASSERT_TRUE(self->do_action() == 1 || self->do_action() == 0);
+    owner->set_user(0);
+    ASSERT_TRUE(self->do_action());
+    ASSERT_EQ(owner, self->leader());
+    ASSERT_TRUE(self->stats()->has_commands());
 }
 
 TEST(LivingUnit, living_r11_facing_thresholds)
@@ -123,8 +126,13 @@ TEST(LivingUnit, living_r11_collide_and_act_type_switches)
     ASSERT_TRUE(self->act());
 
     self->set_act_type(ACT_DIE);
+    self->stats()->clear_command();
+    self->set_action(0);
+    self->set_user(-1);
+    self->set_curdir(FACE_UP);
+    self->set_enddir(FACE_UP);
     ASSERT_TRUE(self->act());
-    ASSERT_TRUE(self->dead() == 1 || self->dead() == 0);
+    ASSERT_TRUE(self->dead());
 }
 
 TEST(LivingUnit, living_r11_summon_difficulty_checkspecial_and_walk_paths)
@@ -266,7 +274,8 @@ TEST(LivingUnit, living_r14_lines_65_73_89_95_138_175_owner_lifetime_and_counter
     owner->set_dead(0);
     self->set_owner(owner);
     self->set_lifetime(1);
-    ASSERT_TRUE(!self->act() || self->dead() == 1);
+    (void)self->act();
+    ASSERT_TRUE(self->dead());
 }
 
 TEST(LivingUnit, living_r14_lines_155_190_196_212_219_226_235_245_259_266_270_303_308)
@@ -301,7 +310,11 @@ TEST(LivingUnit, living_r14_lines_155_190_196_212_219_226_235_245_259_266_270_30
     self->set_flight_left(0);
     self->set_ani_type(ANI_WALK);
     self->set_act_type(ACT_CONTROL);
-    ASSERT_TRUE(self->act() || self->dead() == 1);
+    ASSERT_TRUE(self->act());
+    ASSERT_FALSE(self->dead());
+    ASSERT_EQ(2, self->speed_bonus_left());
+    ASSERT_LT(self->attack_lunge(), 1.0f);
+    ASSERT_LT(self->hit_recoil(), 1.0f);
 
     self->set_dead(0);
     self->stats()->set_frozen_delay(1);
@@ -341,7 +354,8 @@ TEST(LivingUnit, living_r14_lines_371_375_380_419_433_440_shove_walk_and_animate
     assign_basic_ani(ally);
 
     ally->set_act_type(ACT_GUARD);
-    ASSERT_TRUE(self->shove(ally, 1, 0) == 0 || self->shove(ally, 1, 0) == 1);
+    ASSERT_EQ(1, self->shove(ally, 1, 0));
+    ASSERT_TRUE(ally->stats()->has_commands());
 
     self->set_curdir(FACE_LEFT);
     self->setxy(0, 0);

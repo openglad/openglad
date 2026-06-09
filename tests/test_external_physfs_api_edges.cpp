@@ -175,8 +175,8 @@ static void run_physfs_global_api_and_reinit_edges()
     ASSERT_TRUE(mp != nullptr) << "getMountPoint should find mounted dir";
     ASSERT_TRUE(PHYSFS_unmount(base_dir.string().c_str())) << "unmount dir should succeed";
 
-    // Exercise setSaneConfig path (may fail depending environment; still valuable for coverage).
-    (void)PHYSFS_setSaneConfig("openglad", "edgecfg", nullptr, 0, 0);
+    ASSERT_EQ(1, PHYSFS_setSaneConfig("openglad", "edgecfg", nullptr, 0, 0))
+        << "setSaneConfig should create/use the test config path";
 
     ASSERT_TRUE(PHYSFS_deinit()) << "PHYSFS_deinit should succeed";
     ASSERT_TRUE(!PHYSFS_isInit()) << "PHYSFS should report deinitialized state";

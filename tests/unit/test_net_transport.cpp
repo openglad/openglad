@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -175,6 +176,34 @@ og::sim::LobbyPlayer make_lobby_player_for_test()
     return player;
 }
 
+og::sim::InitialSetupGuyData make_initial_setup_guy_for_test()
+{
+    og::sim::InitialSetupGuyData guy;
+    guy.guy_id = 99;
+    guy.name = "Setup Guy";
+    guy.family = 3;
+    guy.strength = 21;
+    guy.dexterity = 22;
+    guy.constitution = 23;
+    guy.intelligence = 24;
+    guy.armor = 25;
+    guy.exp = 5678u;
+    guy.kills = 9;
+    guy.level_kills = 10;
+    guy.total_damage = 11;
+    guy.total_hits = 12;
+    guy.total_shots = 13;
+    guy.teamnum = 1;
+    guy.scen_damage = 14.5f;
+    guy.scen_kills = 15;
+    guy.scen_damage_taken = 16.5f;
+    guy.scen_min_hp = 17.5f;
+    guy.scen_shots = 18;
+    guy.scen_hits = 19;
+    guy.level = 20;
+    return guy;
+}
+
 og::sim::LobbyState make_lobby_state_for_test()
 {
     og::sim::LobbyState state;
@@ -247,6 +276,532 @@ TEST(NetTransport, default_poll_typed_decodes_raw_messages)
               messages.front().kind);
     ASSERT_TRUE(messages.front().client_ready != nullptr);
     EXPECT_EQ(42u, messages.front().client_ready->last_applied_tick);
+}
+
+TEST(NetTransport, initial_setup_full_roundtrip_and_decode_received_message)
+{
+    og::sim::InitialSetupMessage expected;
+    expected.level_id = 17;
+    expected.level_title = "Arena";
+    expected.level_type = 2;
+    expected.par_value = 50;
+    expected.time_bonus_limit = 300;
+    expected.difficulty = 4;
+    expected.pixmaxx = 640;
+    expected.pixmaxy = 480;
+    expected.my_team = 1;
+    expected.allied_mode = 0;
+    expected.current_scenario = 6;
+    expected.guys.push_back(make_initial_setup_guy_for_test());
+    expected.completed_levels = {1, 2, 3};
+    expected.controlled_entity_ids[0] = 101u;
+    expected.controlled_entity_ids[1] = 202u;
+
+    const std::vector<std::uint8_t> bytes =
+        og::sim::serialize_initial_setup_message(expected);
+    const std::optional<og::sim::InitialSetupMessage> decoded =
+        og::sim::deserialize_initial_setup_message(bytes);
+    ASSERT_TRUE(decoded.has_value());
+    EXPECT_EQ(expected, *decoded);
+
+    const og::sim::TypedReceivedMessage typed =
+        og::sim::decode_received_message({.peer_id = 4u, .data = bytes});
+    EXPECT_EQ(4u, typed.peer_id);
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::InitialSetup, typed.kind);
+    ASSERT_NE(nullptr, typed.initial_setup);
+    EXPECT_EQ(expected, *typed.initial_setup);
+}
+
+TEST(NetTransport, lobby_message_variants_roundtrip_and_decode)
+{
+    std::vector<og::sim::LobbyMessage> messages;
+
+    og::sim::LobbyMessage join;
+    join.payload = og::sim::LobbyJoinMessage{.player = make_lobby_player_for_test()};
+    messages.push_back(join);
+
+    og::sim::LobbyMessage leave;
+    leave.payload = og::sim::LobbyLeaveMessage{.player_index = 2u};
+    messages.push_back(leave);
+
+    og::sim::LobbyMessage ready;
+    ready.payload = og::sim::LobbyReadyMessage{
+        .player_index = 3u,
+        .ready = true,
+    };
+    messages.push_back(ready);
+
+    og::sim::LobbyMessage team_change;
+    team_change.payload = og::sim::LobbyTeamChangeMessage{
+        .player_index = 4u,
+        .team = 1,
+    };
+    messages.push_back(team_change);
+
+    og::sim::LobbyMessage start_game;
+    start_game.payload = og::sim::LobbyStartGameMessage{.player_index = 5u};
+    messages.push_back(start_game);
+
+    og::sim::LobbyMessage settings_change;
+    settings_change.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 6u,
+        .settings = {
+            .campaign_id = "campaign",
+            .scenario_id = 8,
+            .difficulty = 3,
+            .allied_mode = 1,
+        },
+    };
+    messages.push_back(settings_change);
+
+    for (const og::sim::LobbyMessage& message : messages)
+    {
+        const std::vector<std::uint8_t> bytes =
+            og::sim::serialize_lobby_message(message);
+        const std::optional<og::sim::LobbyMessage> decoded =
+            og::sim::deserialize_lobby_message(bytes);
+        ASSERT_TRUE(decoded.has_value());
+        EXPECT_EQ(message, *decoded);
+
+        const og::sim::TypedReceivedMessage typed =
+            og::sim::decode_received_message({.peer_id = 5u, .data = bytes});
+        EXPECT_EQ(og::sim::TypedReceivedMessageKind::LobbyMessage, typed.kind);
+        ASSERT_NE(nullptr, typed.lobby_message);
+        EXPECT_EQ(message, *typed.lobby_message);
+    }
+
+    std::vector<std::uint8_t> bad_kind =
+        og::sim::serialize_lobby_message(leave);
+    bad_kind[og::sim::kTransportHeaderSize] = 0xffu;
+    EXPECT_FALSE(og::sim::deserialize_lobby_message(bad_kind).has_value());
+    EXPECT_EQ(
+        og::sim::TypedReceivedMessageKind::Malformed,
+        og::sim::decode_received_message({.peer_id = 9u, .data = bad_kind}).kind);
+}
+
+TEST(NetTransport, lobby_state_roundtrip_and_decode_received_message)
+{
+    const og::sim::LobbyState expected = make_lobby_state_for_test();
+
+    const std::vector<std::uint8_t> bytes =
+        og::sim::serialize_lobby_state_message(expected);
+    const std::optional<og::sim::LobbyState> decoded =
+        og::sim::deserialize_lobby_state_message(bytes);
+    ASSERT_TRUE(decoded.has_value());
+    EXPECT_EQ(expected, *decoded);
+
+    const og::sim::TypedReceivedMessage typed =
+        og::sim::decode_received_message({.peer_id = 6u, .data = bytes});
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::LobbyState, typed.kind);
+    ASSERT_NE(nullptr, typed.lobby_state);
+    EXPECT_EQ(expected, *typed.lobby_state);
+}
+
+TEST(NetTransport, lightweight_message_roundtrips_and_decode)
+{
+    const auto expect_client_ready = [] {
+        const og::sim::ClientReadyMessage expected{.last_applied_tick = 77u};
+        const auto bytes = og::sim::serialize_client_ready_message(expected);
+        const auto decoded = og::sim::deserialize_client_ready_message(bytes);
+        ASSERT_TRUE(decoded.has_value());
+        EXPECT_EQ(expected, *decoded);
+        const auto typed =
+            og::sim::decode_received_message({.peer_id = 1u, .data = bytes});
+        EXPECT_EQ(og::sim::TypedReceivedMessageKind::ClientReady, typed.kind);
+        ASSERT_NE(nullptr, typed.client_ready);
+        EXPECT_EQ(expected, *typed.client_ready);
+    };
+    expect_client_ready();
+
+    const auto expect_keyframe = [] {
+        const og::sim::KeyframeRequestMessage expected{.last_seen_tick = 88u};
+        const auto bytes = og::sim::serialize_keyframe_request_message(expected);
+        const auto decoded = og::sim::deserialize_keyframe_request_message(bytes);
+        ASSERT_TRUE(decoded.has_value());
+        EXPECT_EQ(expected, *decoded);
+        const auto typed =
+            og::sim::decode_received_message({.peer_id = 1u, .data = bytes});
+        EXPECT_EQ(og::sim::TypedReceivedMessageKind::KeyframeRequest, typed.kind);
+        ASSERT_NE(nullptr, typed.keyframe_request);
+        EXPECT_EQ(expected, *typed.keyframe_request);
+    };
+    expect_keyframe();
+
+    const og::sim::HeartbeatMessage heartbeat;
+    const auto heartbeat_bytes = og::sim::serialize_heartbeat_message(heartbeat);
+    ASSERT_TRUE(og::sim::deserialize_heartbeat_message(heartbeat_bytes).has_value());
+    const auto heartbeat_typed =
+        og::sim::decode_received_message({.peer_id = 1u, .data = heartbeat_bytes});
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::Heartbeat, heartbeat_typed.kind);
+    ASSERT_NE(nullptr, heartbeat_typed.heartbeat);
+    auto bad_heartbeat = heartbeat_bytes;
+    bad_heartbeat.push_back(0u);
+    bad_heartbeat[2] = 1u;
+    EXPECT_FALSE(og::sim::deserialize_heartbeat_message(bad_heartbeat).has_value());
+
+    const og::sim::ExitPromptBroadcastMessage exit_broadcast{
+        .destination_level = 3,
+        .withdraw_prompt = true,
+        .prompt_text = "Leave now?",
+    };
+    const auto exit_broadcast_bytes =
+        og::sim::serialize_exit_prompt_broadcast_message(exit_broadcast);
+    ASSERT_EQ(exit_broadcast,
+              *og::sim::deserialize_exit_prompt_broadcast_message(
+                  exit_broadcast_bytes));
+    const auto exit_broadcast_typed =
+        og::sim::decode_received_message({.peer_id = 1u,
+                                          .data = exit_broadcast_bytes});
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::ExitPromptBroadcast,
+              exit_broadcast_typed.kind);
+    ASSERT_NE(nullptr, exit_broadcast_typed.exit_prompt_broadcast);
+    EXPECT_EQ(exit_broadcast, *exit_broadcast_typed.exit_prompt_broadcast);
+
+    const og::sim::ExitPromptResponseMessage exit_response{
+        .accepted = true,
+        .abort_request = true,
+    };
+    const auto exit_response_bytes =
+        og::sim::serialize_exit_prompt_response_message(exit_response);
+    ASSERT_EQ(exit_response,
+              *og::sim::deserialize_exit_prompt_response_message(
+                  exit_response_bytes));
+    const auto exit_response_typed =
+        og::sim::decode_received_message({.peer_id = 1u,
+                                          .data = exit_response_bytes});
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::ExitPromptResponse,
+              exit_response_typed.kind);
+    ASSERT_NE(nullptr, exit_response_typed.exit_prompt_response);
+    EXPECT_EQ(exit_response, *exit_response_typed.exit_prompt_response);
+
+    const og::sim::PauseBroadcastMessage pause_broadcast{
+        .player_index = 2u,
+        .player_name = "Player",
+    };
+    const auto pause_broadcast_bytes =
+        og::sim::serialize_pause_broadcast_message(pause_broadcast);
+    ASSERT_EQ(pause_broadcast,
+              *og::sim::deserialize_pause_broadcast_message(
+                  pause_broadcast_bytes));
+    const auto pause_broadcast_typed =
+        og::sim::decode_received_message({.peer_id = 1u,
+                                          .data = pause_broadcast_bytes});
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::PauseBroadcast,
+              pause_broadcast_typed.kind);
+    ASSERT_NE(nullptr, pause_broadcast_typed.pause_broadcast);
+    EXPECT_EQ(pause_broadcast, *pause_broadcast_typed.pause_broadcast);
+
+    const og::sim::PauseResponseMessage pause_response{.resume = false};
+    const auto pause_response_bytes =
+        og::sim::serialize_pause_response_message(pause_response);
+    ASSERT_EQ(pause_response,
+              *og::sim::deserialize_pause_response_message(pause_response_bytes));
+    const auto pause_response_typed =
+        og::sim::decode_received_message({.peer_id = 1u,
+                                          .data = pause_response_bytes});
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::PauseResponse,
+              pause_response_typed.kind);
+    ASSERT_NE(nullptr, pause_response_typed.pause_response);
+    EXPECT_EQ(pause_response, *pause_response_typed.pause_response);
+
+    const og::sim::ControlChangeMessage control_change{
+        .player_index = 3u,
+        .entity_id = 404u,
+    };
+    const auto control_change_bytes =
+        og::sim::serialize_control_change_message(control_change);
+    ASSERT_EQ(control_change,
+              *og::sim::deserialize_control_change_message(control_change_bytes));
+    const auto control_change_typed =
+        og::sim::decode_received_message({.peer_id = 1u,
+                                          .data = control_change_bytes});
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::ControlChange,
+              control_change_typed.kind);
+    ASSERT_NE(nullptr, control_change_typed.control_change);
+    EXPECT_EQ(control_change, *control_change_typed.control_change);
+
+    const og::sim::SnapshotHashCheckMessage hash_check{
+        .tick = 500u,
+        .snapshot_hash = 0xabcdef12u,
+    };
+    const auto hash_check_bytes =
+        og::sim::serialize_snapshot_hash_check_message(hash_check);
+    ASSERT_EQ(hash_check,
+              *og::sim::deserialize_snapshot_hash_check_message(hash_check_bytes));
+    const auto hash_check_typed =
+        og::sim::decode_received_message({.peer_id = 1u,
+                                          .data = hash_check_bytes});
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::SnapshotHashCheck,
+              hash_check_typed.kind);
+    ASSERT_NE(nullptr, hash_check_typed.snapshot_hash_check);
+    EXPECT_EQ(hash_check, *hash_check_typed.snapshot_hash_check);
+}
+
+TEST(NetTransport, default_send_wrappers_emit_messages_and_ignore_nulls)
+{
+    MockTransport transport;
+
+    EXPECT_FALSE(transport.supports_typed_messages());
+    transport.send_snapshot(1u, {});
+    transport.send_delta_snapshot(1u, {});
+    transport.send_input(1u, {}, 12u);
+    transport.send_sim_event_batch(1u, {});
+    transport.send_game_flow_event_batch(1u, {});
+    transport.send_lobby_message(1u, {});
+    transport.send_lobby_state(1u, {});
+    transport.send_initial_setup(1u, {});
+    transport.send_hello(1u, {});
+    transport.send_client_ready(1u, {});
+    transport.send_keyframe_request(1u, {});
+    transport.send_heartbeat(1u, {});
+    transport.send_exit_prompt_broadcast(1u, {});
+    transport.send_exit_prompt_response(1u, {});
+    transport.send_pause_broadcast(1u, {});
+    transport.send_pause_response(1u, {});
+    transport.send_control_change(1u, {});
+    transport.send_snapshot_hash_check(1u, {});
+    EXPECT_TRUE(transport.sent_messages().empty());
+
+    auto snapshot = std::make_shared<og::sim::WorldSnapshot>();
+    snapshot->tick_count = 99u;
+    snapshot->rng_state = 123u;
+    transport.send_snapshot(2u, snapshot);
+
+    auto delta = std::make_shared<og::sim::WorldSnapshot>();
+    delta->tick_count = 100u;
+    delta->level_tick_count = 3u;
+    delta->level_done = 1;
+    transport.send_delta_snapshot(2u, delta);
+
+    auto input = std::make_shared<InputState>();
+    input->quit_requested = true;
+    transport.send_input(2u, input, 44u);
+
+    auto sim_batch = std::make_shared<og::sim::SimEventBatch>();
+    sim_batch->sequence = 5u;
+    sim_batch->events.push_back({
+        .tick = 5u,
+        .kind = og::sim::EventKind::Notification,
+        .a = 0u,
+        .b = 0u,
+        .text = "sim-event",
+    });
+    transport.send_sim_event_batch(2u, sim_batch);
+
+    auto game_flow_batch = std::make_shared<og::sim::SimEventBatch>();
+    game_flow_batch->sequence = 6u;
+    game_flow_batch->events.push_back({
+        .tick = 6u,
+        .kind = og::sim::EventKind::EndGame,
+        .a = 1u,
+        .b = 2u,
+        .text = {},
+    });
+    transport.send_game_flow_event_batch(2u, game_flow_batch);
+
+    const auto lobby_message = std::make_shared<og::sim::LobbyMessage>();
+    lobby_message->payload =
+        og::sim::LobbyStartGameMessage{.player_index = 2u};
+    transport.send_lobby_message(2u, lobby_message);
+
+    transport.send_lobby_state(
+        2u,
+        std::make_shared<og::sim::LobbyState>(make_lobby_state_for_test()));
+    transport.send_initial_setup(
+        2u,
+        std::make_shared<og::sim::InitialSetupMessage>(
+            og::sim::InitialSetupMessage{}));
+    transport.send_hello(
+        2u,
+        std::make_shared<og::sim::HelloMessage>(og::sim::HelloMessage{}));
+    transport.send_client_ready(
+        2u,
+        std::make_shared<og::sim::ClientReadyMessage>(
+            og::sim::ClientReadyMessage{.last_applied_tick = 1u}));
+    transport.send_keyframe_request(
+        2u,
+        std::make_shared<og::sim::KeyframeRequestMessage>(
+            og::sim::KeyframeRequestMessage{.last_seen_tick = 2u}));
+    transport.send_heartbeat(
+        2u,
+        std::make_shared<og::sim::HeartbeatMessage>(
+            og::sim::HeartbeatMessage{}));
+    transport.send_exit_prompt_broadcast(
+        2u,
+        std::make_shared<og::sim::ExitPromptBroadcastMessage>(
+            og::sim::ExitPromptBroadcastMessage{
+                .destination_level = 1,
+                .withdraw_prompt = false,
+                .prompt_text = "Prompt",
+            }));
+    transport.send_exit_prompt_response(
+        2u,
+        std::make_shared<og::sim::ExitPromptResponseMessage>(
+            og::sim::ExitPromptResponseMessage{
+                .accepted = true,
+                .abort_request = false,
+            }));
+    transport.send_pause_broadcast(
+        2u,
+        std::make_shared<og::sim::PauseBroadcastMessage>(
+            og::sim::PauseBroadcastMessage{
+                .player_index = 3u,
+                .player_name = "Player",
+            }));
+    transport.send_pause_response(
+        2u,
+        std::make_shared<og::sim::PauseResponseMessage>(
+            og::sim::PauseResponseMessage{.resume = true}));
+    transport.send_control_change(
+        2u,
+        std::make_shared<og::sim::ControlChangeMessage>(
+            og::sim::ControlChangeMessage{
+                .player_index = 4u,
+                .entity_id = 5u,
+            }));
+    transport.send_snapshot_hash_check(
+        2u,
+        std::make_shared<og::sim::SnapshotHashCheckMessage>(
+            og::sim::SnapshotHashCheckMessage{
+                .tick = 6u,
+                .snapshot_hash = 7u,
+            }));
+
+    const std::array<og::sim::TypedReceivedMessageKind, 18> expected_kinds = {
+        og::sim::TypedReceivedMessageKind::Snapshot,
+        og::sim::TypedReceivedMessageKind::DeltaSnapshot,
+        og::sim::TypedReceivedMessageKind::Input,
+        og::sim::TypedReceivedMessageKind::SimEventBatch,
+        og::sim::TypedReceivedMessageKind::GameFlowEventBatch,
+        og::sim::TypedReceivedMessageKind::LobbyMessage,
+        og::sim::TypedReceivedMessageKind::LobbyState,
+        og::sim::TypedReceivedMessageKind::InitialSetup,
+        og::sim::TypedReceivedMessageKind::Hello,
+        og::sim::TypedReceivedMessageKind::ClientReady,
+        og::sim::TypedReceivedMessageKind::KeyframeRequest,
+        og::sim::TypedReceivedMessageKind::Heartbeat,
+        og::sim::TypedReceivedMessageKind::ExitPromptBroadcast,
+        og::sim::TypedReceivedMessageKind::ExitPromptResponse,
+        og::sim::TypedReceivedMessageKind::PauseBroadcast,
+        og::sim::TypedReceivedMessageKind::PauseResponse,
+        og::sim::TypedReceivedMessageKind::ControlChange,
+        og::sim::TypedReceivedMessageKind::SnapshotHashCheck,
+    };
+    ASSERT_EQ(expected_kinds.size(), transport.sent_messages().size());
+    for (std::size_t i = 0; i < transport.sent_messages().size(); ++i)
+    {
+        const og::sim::ReceivedMessage& sent = transport.sent_messages()[i];
+        EXPECT_EQ(2u, sent.peer_id);
+        const og::sim::TypedReceivedMessage typed =
+            og::sim::decode_received_message(sent);
+        EXPECT_EQ(expected_kinds[i], typed.kind);
+        switch (typed.kind)
+        {
+        case og::sim::TypedReceivedMessageKind::Snapshot:
+            ASSERT_NE(nullptr, typed.snapshot);
+            EXPECT_EQ(99u, typed.snapshot->tick_count);
+            EXPECT_EQ(123u, typed.snapshot->rng_state);
+            break;
+        case og::sim::TypedReceivedMessageKind::DeltaSnapshot:
+            ASSERT_NE(nullptr, typed.snapshot);
+            EXPECT_EQ(100u, typed.snapshot->tick_count);
+            EXPECT_EQ(3u, typed.snapshot->level_tick_count);
+            EXPECT_EQ(1, typed.snapshot->level_done);
+            break;
+        case og::sim::TypedReceivedMessageKind::Input:
+            ASSERT_NE(nullptr, typed.input);
+            EXPECT_EQ(44u, typed.tick);
+            EXPECT_TRUE(typed.input->quit_requested);
+            break;
+        case og::sim::TypedReceivedMessageKind::SimEventBatch:
+            ASSERT_NE(nullptr, typed.event_batch);
+            EXPECT_EQ(sim_batch->sequence, typed.event_batch->sequence);
+            ASSERT_EQ(sim_batch->events.size(), typed.event_batch->events.size());
+            EXPECT_EQ(sim_batch->events[0], typed.event_batch->events[0]);
+            break;
+        case og::sim::TypedReceivedMessageKind::GameFlowEventBatch:
+            ASSERT_NE(nullptr, typed.event_batch);
+            EXPECT_EQ(game_flow_batch->sequence, typed.event_batch->sequence);
+            ASSERT_EQ(game_flow_batch->events.size(),
+                      typed.event_batch->events.size());
+            EXPECT_EQ(game_flow_batch->events[0], typed.event_batch->events[0]);
+            break;
+        default:
+            EXPECT_NE(og::sim::TypedReceivedMessageKind::Malformed,
+                      typed.kind);
+            break;
+        }
+    }
+}
+
+TEST(NetTransport, decode_received_message_reports_malformed_inputs)
+{
+    EXPECT_EQ(
+        og::sim::TypedReceivedMessageKind::Malformed,
+        og::sim::decode_received_message({.peer_id = 7u, .data = {0x01}}).kind);
+
+    std::vector<std::uint8_t> unknown_message;
+    og::sim::append_transport_header(unknown_message, 0xffu, 0u);
+    EXPECT_EQ(
+        og::sim::TypedReceivedMessageKind::Malformed,
+        og::sim::decode_received_message({.peer_id = 7u,
+                                          .data = unknown_message}).kind);
+
+    std::vector<std::uint8_t> malformed_client_ready;
+    og::sim::append_transport_header(
+        malformed_client_ready,
+        og::sim::kClientReadyMessageType,
+        1u);
+    malformed_client_ready.push_back(0u);
+    EXPECT_EQ(
+        og::sim::TypedReceivedMessageKind::Malformed,
+        og::sim::decode_received_message({.peer_id = 7u,
+                                          .data = malformed_client_ready}).kind);
+}
+
+TEST(NetTransport, decode_received_message_reports_malformed_typed_payloads)
+{
+    const auto malformed_payload = [](std::uint8_t message_type,
+                                      std::uint16_t payload_length) {
+        std::vector<std::uint8_t> bytes;
+        og::sim::append_transport_header(bytes, message_type, payload_length);
+        bytes.resize(og::sim::kTransportHeaderSize + payload_length, 0u);
+        return bytes;
+    };
+
+    const std::array<std::pair<std::uint8_t, std::uint16_t>, 18> cases = {
+        std::pair{og::sim::kSnapshotMessageType, 1u},
+        std::pair{og::sim::kDeltaSnapshotMessageType, 1u},
+        std::pair{og::sim::kInputMessageType, 1u},
+        std::pair{og::sim::kSimEventBatchMessageType, 1u},
+        std::pair{og::sim::kGameFlowEventBatchMessageType, 1u},
+        std::pair{og::sim::kLobbyMessageType, 1u},
+        std::pair{og::sim::kLobbyStateMessageType, 1u},
+        std::pair{og::sim::kInitialSetupMessageType, 1u},
+        std::pair{og::sim::kHelloMessageType, 1u},
+        std::pair{og::sim::kClientReadyMessageType, 1u},
+        std::pair{og::sim::kKeyframeRequestMessageType, 1u},
+        std::pair{og::sim::kHeartbeatMessageType, 1u},
+        std::pair{og::sim::kExitPromptBroadcastMessageType, 1u},
+        std::pair{og::sim::kExitPromptResponseMessageType, 1u},
+        std::pair{og::sim::kPauseBroadcastMessageType, 1u},
+        std::pair{og::sim::kPauseResponseMessageType, 0u},
+        std::pair{og::sim::kControlChangeMessageType, 1u},
+        std::pair{og::sim::kSnapshotHashCheckMessageType, 1u},
+    };
+
+    for (const auto& [message_type, payload_length] : cases)
+    {
+        const og::sim::TypedReceivedMessage decoded =
+            og::sim::decode_received_message({
+                .peer_id = 7u,
+                .data = malformed_payload(message_type, payload_length),
+            });
+        EXPECT_EQ(7u, decoded.peer_id);
+        EXPECT_EQ(og::sim::TypedReceivedMessageKind::Malformed,
+                  decoded.kind)
+            << "message type " << static_cast<int>(message_type);
+    }
 }
 
 TEST(NetTransport, serialize_hello_emits_expected_wire_format)

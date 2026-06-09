@@ -301,6 +301,170 @@ TEST(Replay, find_first_snapshot_difference_reports_nested_field)
     EXPECT_EQ("77", diff->actual_value);
 }
 
+TEST(Replay, snapshot_difference_formats_all_field_value_kinds)
+{
+    const auto expect_diff =
+        [](const og::sim::WorldSnapshot& expected,
+           const og::sim::WorldSnapshot& actual,
+           std::string_view field,
+           std::string_view expected_value,
+           std::string_view actual_value,
+           bool compare_dirty_masks = true) {
+            const std::optional<og::sim::ReplayVerificationFailure> diff =
+                og::sim::find_first_snapshot_difference(
+                    99u,
+                    expected,
+                    actual,
+                    compare_dirty_masks);
+            ASSERT_TRUE(diff.has_value()) << "expected difference for " << field;
+            EXPECT_EQ(99u, diff->tick);
+            EXPECT_EQ(field, diff->field);
+            EXPECT_EQ(expected_value, diff->expected_value);
+            EXPECT_EQ(actual_value, diff->actual_value);
+        };
+
+    {
+        og::sim::WorldSnapshot expected;
+        og::sim::WorldSnapshot actual = expected;
+        actual.game_ended = true;
+        expect_diff(expected, actual, "game_ended", "false", "true");
+    }
+
+    {
+        og::sim::WorldSnapshot expected;
+        og::sim::WorldSnapshot actual = expected;
+        expected.control_hp = 12.5f;
+        actual.control_hp = 3.25f;
+        expect_diff(expected, actual, "control_hp", "12.5", "3.25");
+    }
+
+    {
+        og::sim::WorldSnapshot expected;
+        og::sim::WorldSnapshot actual = expected;
+        expected.end = -2;
+        actual.end = 4;
+        expect_diff(expected, actual, "end", "-2", "4");
+    }
+
+    {
+        og::sim::WorldSnapshot expected;
+        og::sim::WorldSnapshot actual = expected;
+        expected.current_palette_id = 2u;
+        actual.current_palette_id = 9u;
+        expect_diff(expected, actual, "current_palette_id", "2", "9");
+    }
+
+    {
+        og::sim::WorldSnapshot expected;
+        og::sim::WorldSnapshot actual = expected;
+        expected.full_grid_data = {1u, 2u};
+        actual.full_grid_data = {1u, 2u, 3u};
+        expect_diff(expected,
+                    actual,
+                    "full_grid_data.size",
+                    "2",
+                    "3");
+    }
+
+    {
+        og::sim::WorldSnapshot expected;
+        og::sim::WorldSnapshot actual = expected;
+        expected.guy_snapshots.push_back({.name = "Expected"});
+        actual.guy_snapshots.push_back({.name = "Actual"});
+        expect_diff(expected,
+                    actual,
+                    "guy_snapshots[0].name",
+                    "Expected",
+                    "Actual");
+    }
+
+    {
+        og::sim::WorldSnapshot expected;
+        og::sim::WorldSnapshot actual = expected;
+        og::sim::EntitySnapshot expected_entity;
+        og::sim::EntitySnapshot actual_entity = expected_entity;
+        expected_entity.order = Order::Living;
+        actual_entity.order = Order::Weapon;
+        expected.oblist.push_back(expected_entity);
+        actual.oblist.push_back(actual_entity);
+        expect_diff(expected,
+                    actual,
+                    "oblist[0].order",
+                    "0",
+                    "1");
+    }
+
+    {
+        og::sim::WorldSnapshot expected;
+        og::sim::WorldSnapshot actual = expected;
+        og::sim::EntitySnapshot expected_entity;
+        og::sim::EntitySnapshot actual_entity = expected_entity;
+        expected_entity.special_cost[0] = 10u;
+        actual_entity.special_cost[0] = 20u;
+        expected.oblist.push_back(expected_entity);
+        actual.oblist.push_back(actual_entity);
+        expect_diff(expected,
+                    actual,
+                    "oblist[0].special_cost[0]",
+                    "10",
+                    "20");
+    }
+
+    {
+        og::sim::WorldSnapshot expected;
+        og::sim::WorldSnapshot actual = expected;
+        og::sim::EntitySnapshot expected_entity;
+        og::sim::EntitySnapshot actual_entity = expected_entity;
+        expected_entity.dirty_mask[0] = 1u;
+        actual_entity.dirty_mask[0] = 2u;
+        expected.oblist.push_back(expected_entity);
+        actual.oblist.push_back(actual_entity);
+        expect_diff(expected,
+                    actual,
+                    "oblist[0].dirty_mask[0]",
+                    "1",
+                    "2",
+                    true);
+    }
+}
+
+TEST(Replay, recorder_clear_and_world_snapshot_recorders_reset_state)
+{
+    TestGameWorld fx;
+    GameWorld& world = fx.world();
+    world.tick_count_ = 12u;
+
+    og::sim::ReplayRecorder recorder({
+        .version = og::sim::kReplayFormatVersion,
+        .initial_rng_state = 5u,
+        .level_id = 1,
+        .player_count = 1,
+        .timer_wait = 6,
+        .my_team = 0,
+        .allied_mode = 0,
+        .difficulty = 100,
+        .campaign_id = "org.openglad.gladiator",
+    });
+
+    recorder.record_initial_world(world);
+    EXPECT_TRUE(recorder.has_initial_snapshot());
+    recorder.record_world_snapshot(world.tick_count_, world);
+    recorder.record_world_keyframe(world.tick_count_ + 1u, world);
+    ASSERT_EQ(recorder.checkpoints().size(), 2u);
+    EXPECT_EQ(recorder.checkpoints()[0].kind,
+              og::sim::ReplayCheckpointKind::Snapshot);
+    EXPECT_EQ(recorder.checkpoints()[1].kind,
+              og::sim::ReplayCheckpointKind::Keyframe);
+
+    recorder.record_input(12u, make_sparse_input());
+    EXPECT_EQ(recorder.frame_count(), 1u);
+    recorder.clear();
+    EXPECT_FALSE(recorder.has_initial_snapshot());
+    EXPECT_TRUE(recorder.frames().empty());
+    EXPECT_TRUE(recorder.checkpoints().empty());
+    EXPECT_EQ(recorder.header().campaign_id, "");
+}
+
 TEST(Replay, replay_player_verify_world_tracks_first_divergence)
 {
     TestGameWorld fx;

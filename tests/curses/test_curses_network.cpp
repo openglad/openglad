@@ -34,6 +34,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -51,6 +52,7 @@ std::unique_ptr<CursesLobby> make_join_lobby_over_transport_for_testing(
     SaveData& save, int difficulty,
     std::shared_ptr<og::sim::ITransport> transport,
     og::sim::PeerId server_peer_id);
+int curses_network_testing_exercise_internal_helpers();
 } // namespace og::curses
 
 namespace {
@@ -165,6 +167,15 @@ void advance_all(CursesGameSession& host, CursesGameSession& join, int frames)
     }
 }
 
+bool status_contains(const CursesLobby& lobby, std::string_view needle)
+{
+    for (const std::string& line : lobby.status_lines()) {
+        if (line.find(needle) != std::string::npos)
+            return true;
+    }
+    return false;
+}
+
 } // namespace
 
 TEST(CursesNetwork, host_lobby_builds_over_inprocess_transport)
@@ -187,6 +198,12 @@ TEST(CursesNetwork, host_lobby_builds_over_inprocess_transport)
     const std::vector<std::string> lines = lobby->status_lines();
     ASSERT_FALSE(lines.empty());
     EXPECT_GT(term.present_count(), 0) << "poll() renders the lobby";
+}
+
+TEST(CursesNetwork, internal_helpers_cover_message_and_session_paths)
+{
+    EXPECT_EQ(0,
+              curses_network_testing_exercise_internal_helpers());
 }
 
 TEST(CursesNetwork, roster_reflects_two_players)
@@ -270,6 +287,91 @@ TEST(CursesNetwork, esc_key_cancels_lobby)
     FakeClock clock;
     term.push_special(KeyCode::Escape);
     EXPECT_FALSE(lobby->poll(term, clock)) << "Esc cancels and returns false";
+}
+
+TEST(CursesNetwork, run_curses_lobby_returns_default_result_when_cancelled)
+{
+    SaveData save;
+    init_team_save(save, 0, FAMILY_SOLDIER, "Host");
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+
+    auto lobby = make_host_lobby_over_transport_for_testing(save, 1, server, host_client);
+    ASSERT_NE(lobby, nullptr);
+
+    HeadlessTerminal term(24, 80);
+    FakeClock clock;
+    term.push_char(U'q');
+    const GameRunResult result = run_curses_lobby(*lobby, term, clock);
+    EXPECT_FALSE(result.ended);
+    EXPECT_FALSE(result.withdrew);
+    EXPECT_FALSE(result.quit_app);
+    EXPECT_TRUE(lobby->cancelled());
+}
+
+TEST(CursesNetwork, key_releases_do_not_start_or_cancel_lobby)
+{
+    SaveData save;
+    init_team_save(save, 0, FAMILY_SOLDIER, "Host");
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+
+    auto lobby = make_host_lobby_over_transport_for_testing(save, 1, server, host_client);
+    ASSERT_NE(lobby, nullptr);
+
+    HeadlessTerminal term(24, 80);
+    FakeClock clock;
+    term.push_char_release(U's');
+    term.push_char_release(U'q');
+    term.push_special_release(KeyCode::Enter);
+    EXPECT_FALSE(lobby->poll(term, clock));
+    EXPECT_FALSE(lobby->cancelled());
+    EXPECT_EQ(lobby->take_session(), nullptr);
+}
+
+TEST(CursesNetwork, joiner_start_request_is_noop)
+{
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+    init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+    auto join_client = server->create_client_transport();
+
+    auto host_lobby = make_host_lobby_over_transport_for_testing(
+        host_save, 1, server, host_client);
+    auto join_lobby = make_join_lobby_over_transport_for_testing(
+        join_save, 1, join_client, join_client->local_peer_id());
+
+    ASSERT_TRUE(host_lobby->is_host());
+    ASSERT_FALSE(join_lobby->is_host());
+
+    HeadlessTerminal host_term(24, 80);
+    HeadlessTerminal join_term(24, 80);
+    FakeClock clock;
+    for (int i = 0; i < 100; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+    }
+
+    join_lobby->request_start();
+    bool host_started = false;
+    bool join_started = false;
+    for (int i = 0; i < 50; ++i) {
+        host_started = host_lobby->poll(host_term, clock) || host_started;
+        join_started = join_lobby->poll(join_term, clock) || join_started;
+    }
+    EXPECT_FALSE(host_started);
+    EXPECT_FALSE(join_started);
+    EXPECT_EQ(host_lobby->take_session(), nullptr);
+    EXPECT_EQ(join_lobby->take_session(), nullptr);
 }
 
 TEST(CursesNetwork, host_and_join_sessions_start_and_converge)
@@ -455,4 +557,79 @@ TEST(CursesNetwork, host_start_via_s_key)
             saw_you_marker = true;
     }
     EXPECT_TRUE(saw_you_marker) << "the host roster should flag the local player";
+}
+
+TEST(CursesNetwork, host_start_via_uppercase_s_and_enter)
+{
+    for (const Key key : {Key::character(U'S'), Key::special(KeyCode::Enter)}) {
+        SaveData host_save;
+        SaveData join_save;
+        init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+        init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+
+        auto server = og::sim::InProcessTransport::create_server();
+        server->accept_connections();
+        auto host_client = server->create_client_transport();
+        auto join_client = server->create_client_transport();
+
+        auto host_lobby = make_host_lobby_over_transport_for_testing(
+            host_save, 1, server, host_client);
+        auto join_lobby = make_join_lobby_over_transport_for_testing(
+            join_save, 1, join_client, join_client->local_peer_id());
+
+        HeadlessTerminal host_term(24, 80);
+        HeadlessTerminal join_term(24, 80);
+        FakeClock clock;
+
+        for (int i = 0; i < 200; ++i) {
+            host_lobby->poll(host_term, clock);
+            join_lobby->poll(join_term, clock);
+        }
+
+        host_term.push_key(key);
+        bool host_started = false;
+        bool join_started = false;
+        for (int i = 0; i < 200 && !(host_started && join_started); ++i) {
+            host_started = host_lobby->poll(host_term, clock) || host_started;
+            join_started = join_lobby->poll(join_term, clock) || join_started;
+        }
+        EXPECT_TRUE(host_started);
+        EXPECT_TRUE(join_started);
+    }
+}
+
+TEST(CursesNetwork, host_lobby_status_uses_default_campaign_and_team_fallback)
+{
+    SaveData save;
+    init_team_save(save, 2, FAMILY_ELF, "Fallback");
+    save.current_campaign.clear();
+    save.my_team = MAX_PLAYERS;
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+
+    auto lobby = make_host_lobby_over_transport_for_testing(save, 1, server, host_client);
+    ASSERT_NE(lobby, nullptr);
+
+    HeadlessTerminal term(24, 80);
+    FakeClock clock;
+    lobby->poll(term, clock);
+
+    EXPECT_TRUE(status_contains(*lobby, "Campaign: org.openglad.gladiator"));
+    EXPECT_TRUE(status_contains(*lobby, "team 2"));
+    EXPECT_TRUE(status_contains(*lobby, "[host]"));
+}
+
+TEST(CursesNetwork, malformed_join_url_reports_error)
+{
+    SaveData save;
+    init_team_save(save, 0, FAMILY_SOLDIER, "Joiner");
+
+    JoinOptions options;
+    options.url = "";
+    std::string error;
+    std::unique_ptr<CursesLobby> lobby = make_join_lobby(save, options, &error);
+    EXPECT_EQ(lobby, nullptr);
+    EXPECT_FALSE(error.empty());
 }

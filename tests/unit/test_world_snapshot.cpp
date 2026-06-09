@@ -625,7 +625,9 @@ std::vector<std::uint8_t> zlib_decompress_for_test(
         stream.next_out = chunk.data();
         stream.avail_out = static_cast<uInt>(chunk.size());
         rc = inflate(&stream, Z_NO_FLUSH);
-        EXPECT_TRUE(rc == Z_OK || rc == Z_STREAM_END);
+        if (rc != Z_OK) {
+            EXPECT_EQ(Z_STREAM_END, rc);
+        }
         output.insert(output.end(),
                       chunk.begin(),
                       chunk.begin() + (chunk.size() - stream.avail_out));
@@ -674,6 +676,29 @@ std::vector<std::uint8_t> decode_delta_payload_for_test(
     }
 
     return zlib_decompress_for_test(wire_payload, wire_payload_length);
+}
+
+void append_u32_for_test(std::vector<std::uint8_t>& bytes,
+                         std::uint32_t value)
+{
+    bytes.push_back(static_cast<std::uint8_t>(value & 0xffu));
+    bytes.push_back(static_cast<std::uint8_t>((value >> 8) & 0xffu));
+    bytes.push_back(static_cast<std::uint8_t>((value >> 16) & 0xffu));
+    bytes.push_back(static_cast<std::uint8_t>((value >> 24) & 0xffu));
+}
+
+std::vector<std::uint8_t> frame_event_batch_payload_for_test(
+    std::uint8_t message_type,
+    const std::vector<std::uint8_t>& payload)
+{
+    std::vector<std::uint8_t> bytes;
+    bytes.reserve(og::sim::kTransportHeaderSize + payload.size());
+    bytes.push_back(og::sim::kSnapshotProtocolVersion);
+    bytes.push_back(message_type);
+    bytes.push_back(static_cast<std::uint8_t>(payload.size() & 0xffu));
+    bytes.push_back(static_cast<std::uint8_t>((payload.size() >> 8) & 0xffu));
+    bytes.insert(bytes.end(), payload.begin(), payload.end());
+    return bytes;
 }
 
 } // namespace
@@ -2080,6 +2105,208 @@ TEST(WorldSnapshot, deserialize_snapshot_and_delta_reject_oversized_payloads_and
         (void)og::sim::deserialize_delta(bad_count_delta.data(),
                                          bad_count_delta.size()),
         std::runtime_error);
+}
+
+TEST(WorldSnapshot, serialize_rejects_invalid_grid_payloads)
+{
+    og::sim::WorldSnapshot snapshot;
+    snapshot.grid_dirty = true;
+    snapshot.grid_full_resend = true;
+    EXPECT_THROW((void)og::sim::serialize_snapshot(snapshot), std::runtime_error);
+
+    snapshot.grid_width = 2;
+    snapshot.grid_height = 2;
+    snapshot.full_grid_data = {1, 2, 3};
+    EXPECT_THROW((void)og::sim::serialize_snapshot(snapshot), std::runtime_error);
+
+    snapshot.grid_full_resend = false;
+    EXPECT_THROW((void)og::sim::serialize_snapshot(snapshot), std::runtime_error);
+
+    snapshot.grid_full_resend = true;
+    snapshot.grid_dirty = false;
+    snapshot.full_grid_data = {1, 2, 3, 4};
+    EXPECT_THROW((void)og::sim::serialize_snapshot(snapshot), std::runtime_error);
+
+    snapshot.grid_full_resend = false;
+    snapshot.full_grid_data.clear();
+    snapshot.grid_dirty_tiles.push_back({0, 0, 7});
+    EXPECT_THROW((void)og::sim::serialize_snapshot(snapshot), std::runtime_error);
+
+    snapshot.grid_dirty = true;
+    snapshot.grid_dirty_tiles = {{3, 0, 7}};
+    EXPECT_THROW((void)og::sim::serialize_snapshot(snapshot), std::runtime_error);
+}
+
+TEST(WorldSnapshot, event_batch_roundtrip_and_rejects_malformed_frames)
+{
+    og::sim::SimEventBatch batch;
+    batch.sequence = 7;
+    batch.events.push_back(og::sim::Event{
+        .tick = 8,
+        .kind = og::sim::EventKind::Notification,
+        .a = 1,
+        .b = 2,
+        .text = "event text",
+    });
+    batch.events.push_back(og::sim::Event{
+        .tick = 9,
+        .kind = og::sim::EventKind::EndGame,
+        .a = 0,
+        .b = 3,
+        .text = "",
+    });
+
+    const std::vector<std::uint8_t> bytes =
+        og::sim::serialize_sim_event_batch(batch);
+    const og::sim::SimEventBatch decoded =
+        og::sim::deserialize_sim_event_batch(bytes.data(), bytes.size());
+    EXPECT_EQ(batch.sequence, decoded.sequence);
+    EXPECT_EQ(batch.events, decoded.events);
+
+    const std::vector<std::uint8_t> flow_bytes =
+        og::sim::serialize_game_flow_event_batch(batch);
+    const og::sim::SimEventBatch decoded_flow =
+        og::sim::deserialize_game_flow_event_batch(flow_bytes.data(),
+                                                   flow_bytes.size());
+    EXPECT_EQ(batch.events, decoded_flow.events);
+
+    EXPECT_THROW((void)og::sim::deserialize_sim_event_batch(nullptr, 0),
+                 std::runtime_error);
+
+    std::vector<std::uint8_t> bad_protocol = bytes;
+    bad_protocol[0] =
+        static_cast<std::uint8_t>(og::sim::kSnapshotProtocolVersion + 1);
+    EXPECT_THROW((void)og::sim::deserialize_sim_event_batch(
+                     bad_protocol.data(), bad_protocol.size()),
+                 std::runtime_error);
+
+    std::vector<std::uint8_t> bad_type = bytes;
+    bad_type[1] = og::sim::kGameFlowEventBatchMessageType;
+    EXPECT_THROW((void)og::sim::deserialize_sim_event_batch(
+                     bad_type.data(), bad_type.size()),
+                 std::runtime_error);
+
+    std::vector<std::uint8_t> bad_length = bytes;
+    bad_length[2] = 0;
+    bad_length[3] = 0;
+    EXPECT_THROW((void)og::sim::deserialize_sim_event_batch(
+                     bad_length.data(), bad_length.size()),
+                 std::runtime_error);
+
+    std::vector<std::uint8_t> too_many_events_payload;
+    append_u32_for_test(too_many_events_payload, 1);
+    append_u32_for_test(too_many_events_payload, 4097);
+    const std::vector<std::uint8_t> too_many_events =
+        frame_event_batch_payload_for_test(
+            og::sim::kSimEventBatchMessageType,
+            too_many_events_payload);
+    EXPECT_THROW((void)og::sim::deserialize_sim_event_batch(
+                     too_many_events.data(), too_many_events.size()),
+                 std::runtime_error);
+
+    std::vector<std::uint8_t> oversized_string_payload;
+    append_u32_for_test(oversized_string_payload, 1);
+    append_u32_for_test(oversized_string_payload, 1);
+    append_u32_for_test(oversized_string_payload, 2);
+    append_u32_for_test(oversized_string_payload,
+                        static_cast<std::uint32_t>(og::sim::EventKind::Notification));
+    append_u32_for_test(oversized_string_payload, 0);
+    append_u32_for_test(oversized_string_payload, 0);
+    append_u32_for_test(oversized_string_payload, 1025);
+    const std::vector<std::uint8_t> oversized_string =
+        frame_event_batch_payload_for_test(
+            og::sim::kSimEventBatchMessageType,
+            oversized_string_payload);
+    EXPECT_THROW((void)og::sim::deserialize_sim_event_batch(
+                     oversized_string.data(), oversized_string.size()),
+                 std::runtime_error);
+
+    std::vector<std::uint8_t> truncated_string_payload;
+    append_u32_for_test(truncated_string_payload, 1);
+    append_u32_for_test(truncated_string_payload, 1);
+    append_u32_for_test(truncated_string_payload, 3);
+    append_u32_for_test(truncated_string_payload,
+                        static_cast<std::uint32_t>(og::sim::EventKind::Notification));
+    append_u32_for_test(truncated_string_payload, 0);
+    append_u32_for_test(truncated_string_payload, 0);
+    append_u32_for_test(truncated_string_payload, 4);
+    truncated_string_payload.push_back('x');
+    const std::vector<std::uint8_t> truncated_string =
+        frame_event_batch_payload_for_test(
+            og::sim::kSimEventBatchMessageType,
+            truncated_string_payload);
+    EXPECT_THROW((void)og::sim::deserialize_sim_event_batch(
+                     truncated_string.data(), truncated_string.size()),
+                 std::runtime_error);
+
+    std::vector<std::uint8_t> trailing_payload;
+    append_u32_for_test(trailing_payload, 1);
+    append_u32_for_test(trailing_payload, 0);
+    trailing_payload.push_back(0xee);
+    const std::vector<std::uint8_t> trailing =
+        frame_event_batch_payload_for_test(
+            og::sim::kSimEventBatchMessageType,
+            trailing_payload);
+    EXPECT_THROW((void)og::sim::deserialize_sim_event_batch(
+                     trailing.data(), trailing.size()),
+                 std::runtime_error);
+
+    og::sim::SimEventBatch huge_text;
+    huge_text.events.push_back(og::sim::Event{
+        .tick = 1,
+        .kind = og::sim::EventKind::Notification,
+        .a = 0,
+        .b = 0,
+        .text = std::string(70000, 'x'),
+    });
+    EXPECT_THROW((void)og::sim::serialize_sim_event_batch(huge_text),
+                 std::runtime_error);
+}
+
+TEST(WorldSnapshot, apply_delta_covers_grid_materialization_edges)
+{
+    og::sim::WorldSnapshot baseline;
+    og::sim::WorldSnapshot zero_delta;
+    zero_delta.grid_width = 0;
+    zero_delta.grid_height = 0;
+    zero_delta.grid_dirty = true;
+    zero_delta.grid_full_resend = true;
+    zero_delta.full_grid_data = {1, 2, 3};
+    zero_delta.grid_dirty_tiles = {{0, 0, 9}};
+
+    og::sim::apply_delta(baseline, zero_delta);
+    EXPECT_FALSE(baseline.grid_dirty);
+    EXPECT_FALSE(baseline.grid_full_resend);
+    EXPECT_TRUE(baseline.full_grid_data.empty());
+    EXPECT_TRUE(baseline.grid_dirty_tiles.empty());
+
+    og::sim::WorldSnapshot sparse_delta;
+    sparse_delta.grid_width = 2;
+    sparse_delta.grid_height = 2;
+    sparse_delta.grid_dirty = true;
+    sparse_delta.grid_full_resend = false;
+    sparse_delta.grid_dirty_tiles = {{1, 1, 7}};
+
+    og::sim::apply_delta(baseline, sparse_delta);
+    EXPECT_TRUE(baseline.grid_dirty);
+    EXPECT_FALSE(baseline.grid_full_resend);
+    ASSERT_EQ(1u, baseline.grid_dirty_tiles.size());
+    EXPECT_EQ(7, baseline.grid_dirty_tiles.front().value);
+
+    baseline.grid_full_resend = true;
+    baseline.full_grid_data = {1, 2, 3, 4};
+    baseline.grid_dirty_tiles.clear();
+
+    og::sim::WorldSnapshot dirty_delta;
+    dirty_delta.grid_width = 2;
+    dirty_delta.grid_height = 2;
+    dirty_delta.grid_dirty = true;
+    dirty_delta.grid_dirty_tiles = {{0, 1, 8}, {5, 5, 9}};
+
+    og::sim::apply_delta(baseline, dirty_delta);
+    ASSERT_EQ(4u, baseline.full_grid_data.size());
+    EXPECT_EQ(8, baseline.full_grid_data[2]);
+    EXPECT_TRUE(baseline.grid_dirty_tiles.empty());
 }
 
 TEST(WorldSnapshot, apply_delta_with_all_fields_dirty_matches_current_world_state)

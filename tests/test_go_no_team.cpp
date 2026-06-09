@@ -23,6 +23,19 @@ static inline PickerState& pks() { return *og::runtime::current_session->picker_
 namespace {
 constexpr Uint32 kUiSettleMs = 150;
 constexpr Uint32 kTraceSettleMs = 100;
+
+template <typename Predicate>
+bool wait_until(Predicate predicate, int timeout_ms, int poll_ms = 50)
+{
+    int elapsed = 0;
+    while (elapsed < timeout_ms) {
+        if (predicate())
+            return true;
+        SDL_Delay(poll_ms);
+        elapsed += poll_ms;
+    }
+    return false;
+}
 }
 
 
@@ -75,10 +88,13 @@ static int go_no_team_injector(void* data)
     fprintf(stderr, "  [test] clicking go (with empty team)\n");
     interact("go");
 
-    // popup_dialog returns immediately under TESTING, so just wait a moment
-    // for the trace to be written, then verify it was called
-    SDL_Delay(kTraceSettleMs);
-    state->saw_popup = trace_contains("popup", "NEED A TEAM");
+    // popup_dialog returns immediately under TESTING, but coverage builds can
+    // process the click a few frames later. Poll the trace instead of assuming
+    // a fixed delay is enough.
+    state->saw_popup = wait_until(
+        [] { return trace_contains("popup", "NEED A TEAM"); },
+        2000,
+        kTraceSettleMs);
 
     // Should be back in team menu (popup already dismissed)
     wait_for_interactable("back", 10000);
@@ -152,10 +168,13 @@ static int train_no_team_injector(void* data)
     fprintf(stderr, "  [test] clicking train_team (with empty team)\n");
     interact("train_team");
 
-    // popup_dialog returns immediately under TESTING, so just wait a moment
-    // for the trace to be written, then verify it was called
-    SDL_Delay(kTraceSettleMs);
-    state->saw_popup = trace_contains("popup", "NEED A TEAM");
+    // popup_dialog returns immediately under TESTING, but coverage builds can
+    // process the click a few frames later. Poll the trace instead of assuming
+    // a fixed delay is enough.
+    state->saw_popup = wait_until(
+        [] { return trace_contains("popup", "NEED A TEAM"); },
+        2000,
+        kTraceSettleMs);
 
     // Should be back in team menu (popup already dismissed)
     wait_for_interactable("back", 10000);

@@ -470,10 +470,19 @@ TEST(WalkerUnit, walker_r11_fire_query_next_to_and_outline_branches)
 
     shooter->set_lastx(1.0f);
     shooter->set_lasty(1.0f);
-    ASSERT_TRUE(shooter->query_next_to() == 0 || shooter->query_next_to() == 1);
+    ASSERT_FALSE(shooter->query_next_to())
+        << "empty adjacent diagonal should be object-passable";
+    walker* adjacent_blocker = add_ob(
+        fx, Order::Living, FAMILY_ORC, 1,
+        static_cast<short>(shooter->xpos() + shooter->sizex()),
+        static_cast<short>(shooter->ypos() + shooter->sizey()));
+    ASSERT_TRUE(adjacent_blocker != nullptr);
+    ASSERT_TRUE(shooter->query_next_to())
+        << "occupied adjacent diagonal should not be object-passable";
     shooter->set_lastx(-1.0f);
     shooter->set_lasty(-1.0f);
-    ASSERT_TRUE(shooter->query_next_to() == 0 || shooter->query_next_to() == 1);
+    ASSERT_FALSE(shooter->query_next_to())
+        << "opposite empty adjacent diagonal should remain object-passable";
 
     walker* viewer = add_ob(fx, Order::Living, FAMILY_SOLDIER, 1, 60, 64);
     ASSERT_TRUE(viewer != nullptr);
@@ -649,7 +658,9 @@ TEST(WalkerUnit, walker_r14_lines_769_771_817_823_827_834_teleport_and_ani_compl
     w->set_ani_type(ANI_SKEL_GROW);
     w->set_cycle(4);
     w->set_curdir(FACE_RIGHT);
-    ASSERT_TRUE(w->animate() || !w->animate());
+    ASSERT_TRUE(w->animate());
+    ASSERT_EQ(ANI_WALK, w->ani_type());
+    ASSERT_EQ(0, w->cycle());
 
     w->set_ani_type(ANI_TELE_OUT);
     w->set_cycle(4);

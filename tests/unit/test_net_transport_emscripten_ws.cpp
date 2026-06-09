@@ -41,6 +41,43 @@ using og::sim::detail::set_emscripten_websocket_api_for_testing;
 
 constexpr unsigned short kReadyStateOpen = 1;
 
+TEST(EmscriptenWebSocketTransportDefaults,
+     host_default_api_reports_unsupported_without_override)
+{
+    set_emscripten_websocket_api_for_testing(nullptr);
+
+    const EmscriptenWebSocketApi& api =
+        og::sim::detail::emscripten_websocket_api();
+    WebSocketCreateAttributes attributes;
+    api.init_create_attributes(&attributes);
+    EXPECT_EQ(nullptr, attributes.url);
+    EXPECT_EQ(nullptr, attributes.protocols);
+    EXPECT_EQ(kFalse, api.is_supported());
+    EXPECT_EQ(og::sim::detail::kResultNotSupported,
+              api.create(&attributes));
+    EXPECT_EQ(og::sim::detail::kResultNotSupported,
+              api.set_onopen(1, nullptr, nullptr));
+    EXPECT_EQ(og::sim::detail::kResultNotSupported,
+              api.set_onmessage(1, nullptr, nullptr));
+    EXPECT_EQ(og::sim::detail::kResultNotSupported,
+              api.set_onerror(1, nullptr, nullptr));
+    EXPECT_EQ(og::sim::detail::kResultNotSupported,
+              api.set_onclose(1, nullptr, nullptr));
+    unsigned short ready_state = 0;
+    EXPECT_EQ(og::sim::detail::kResultNotSupported,
+              api.get_ready_state(1, &ready_state));
+    std::array<std::uint8_t, 1> payload = {0x42};
+    EXPECT_EQ(og::sim::detail::kResultNotSupported,
+              api.send_binary(1, payload.data(), payload.size()));
+    EXPECT_EQ(og::sim::detail::kResultNotSupported,
+              api.close(1, 1000, "unit"));
+    EXPECT_EQ(og::sim::detail::kResultNotSupported,
+              api.destroy(1));
+
+    EmscriptenWebSocketTransport transport("ws://example.test/socket");
+    EXPECT_THROW(transport.accept_connections(), std::runtime_error);
+}
+
 class FakeWebSocketBackend
 {
 public:

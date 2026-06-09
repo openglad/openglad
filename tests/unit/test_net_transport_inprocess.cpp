@@ -583,6 +583,210 @@ TEST(NetTransportInProcess, validating_mode_roundtrips_lobby_messages)
     EXPECT_EQ(message, *server_messages[0].lobby_message);
 }
 
+TEST(NetTransportInProcess, validating_mode_roundtrips_lightweight_typed_messages)
+{
+    const auto pair = og::sim::InProcessTransport::create_linked_pair(
+        {.validate_serialization = true});
+
+    og::sim::InitialSetupMessage setup;
+    setup.level_id = 4;
+    setup.level_title = "Level";
+    setup.controlled_entity_ids[0] = 101u;
+    pair.server->send_initial_setup(
+        pair.peer_id,
+        std::make_shared<og::sim::InitialSetupMessage>(setup));
+
+    og::sim::HelloMessage hello;
+    hello.snapshot_format_version = 2;
+    hello.campaign_content_hash = 0x12345678u;
+    pair.server->send_hello(
+        pair.peer_id,
+        std::make_shared<og::sim::HelloMessage>(hello));
+
+    const og::sim::ClientReadyMessage client_ready{.last_applied_tick = 5u};
+    pair.server->send_client_ready(
+        pair.peer_id,
+        std::make_shared<og::sim::ClientReadyMessage>(client_ready));
+
+    const og::sim::KeyframeRequestMessage keyframe{.last_seen_tick = 6u};
+    pair.server->send_keyframe_request(
+        pair.peer_id,
+        std::make_shared<og::sim::KeyframeRequestMessage>(keyframe));
+
+    pair.server->send_heartbeat(
+        pair.peer_id,
+        std::make_shared<og::sim::HeartbeatMessage>());
+
+    const og::sim::ExitPromptBroadcastMessage exit_broadcast{
+        .destination_level = 2,
+        .withdraw_prompt = true,
+        .prompt_text = "Exit?",
+    };
+    pair.server->send_exit_prompt_broadcast(
+        pair.peer_id,
+        std::make_shared<og::sim::ExitPromptBroadcastMessage>(exit_broadcast));
+
+    const og::sim::ExitPromptResponseMessage exit_response{
+        .accepted = true,
+        .abort_request = false,
+    };
+    pair.server->send_exit_prompt_response(
+        pair.peer_id,
+        std::make_shared<og::sim::ExitPromptResponseMessage>(exit_response));
+
+    const og::sim::PauseBroadcastMessage pause_broadcast{
+        .player_index = 1u,
+        .player_name = "Host",
+    };
+    pair.server->send_pause_broadcast(
+        pair.peer_id,
+        std::make_shared<og::sim::PauseBroadcastMessage>(pause_broadcast));
+
+    const og::sim::PauseResponseMessage pause_response{.resume = false};
+    pair.server->send_pause_response(
+        pair.peer_id,
+        std::make_shared<og::sim::PauseResponseMessage>(pause_response));
+
+    const og::sim::ControlChangeMessage control_change{
+        .player_index = 2u,
+        .entity_id = 300u,
+    };
+    pair.server->send_control_change(
+        pair.peer_id,
+        std::make_shared<og::sim::ControlChangeMessage>(control_change));
+
+    const og::sim::SnapshotHashCheckMessage hash_check{
+        .tick = 7u,
+        .snapshot_hash = 0xabcdef01u,
+    };
+    pair.server->send_snapshot_hash_check(
+        pair.peer_id,
+        std::make_shared<og::sim::SnapshotHashCheckMessage>(hash_check));
+
+    const std::vector<og::sim::TypedReceivedMessage> messages =
+        pair.client->poll_typed();
+    ASSERT_EQ(11u, messages.size());
+
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::InitialSetup, messages[0].kind);
+    ASSERT_NE(nullptr, messages[0].initial_setup);
+    EXPECT_EQ(setup, *messages[0].initial_setup);
+
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::Hello, messages[1].kind);
+    ASSERT_NE(nullptr, messages[1].hello);
+    EXPECT_EQ(hello, *messages[1].hello);
+
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::ClientReady, messages[2].kind);
+    ASSERT_NE(nullptr, messages[2].client_ready);
+    EXPECT_EQ(client_ready, *messages[2].client_ready);
+
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::KeyframeRequest,
+              messages[3].kind);
+    ASSERT_NE(nullptr, messages[3].keyframe_request);
+    EXPECT_EQ(keyframe, *messages[3].keyframe_request);
+
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::Heartbeat, messages[4].kind);
+    ASSERT_NE(nullptr, messages[4].heartbeat);
+
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::ExitPromptBroadcast,
+              messages[5].kind);
+    ASSERT_NE(nullptr, messages[5].exit_prompt_broadcast);
+    EXPECT_EQ(exit_broadcast, *messages[5].exit_prompt_broadcast);
+
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::ExitPromptResponse,
+              messages[6].kind);
+    ASSERT_NE(nullptr, messages[6].exit_prompt_response);
+    EXPECT_EQ(exit_response, *messages[6].exit_prompt_response);
+
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::PauseBroadcast,
+              messages[7].kind);
+    ASSERT_NE(nullptr, messages[7].pause_broadcast);
+    EXPECT_EQ(pause_broadcast, *messages[7].pause_broadcast);
+
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::PauseResponse,
+              messages[8].kind);
+    ASSERT_NE(nullptr, messages[8].pause_response);
+    EXPECT_EQ(pause_response, *messages[8].pause_response);
+
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::ControlChange,
+              messages[9].kind);
+    ASSERT_NE(nullptr, messages[9].control_change);
+    EXPECT_EQ(control_change, *messages[9].control_change);
+
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::SnapshotHashCheck,
+              messages[10].kind);
+    ASSERT_NE(nullptr, messages[10].snapshot_hash_check);
+    EXPECT_EQ(hash_check, *messages[10].snapshot_hash_check);
+}
+
+TEST(NetTransportInProcess, null_typed_sends_are_ignored)
+{
+    const auto pair = og::sim::InProcessTransport::create_linked_pair();
+
+    EXPECT_TRUE(pair.server->supports_typed_messages());
+    pair.server->send_snapshot(pair.peer_id, {});
+    pair.server->send_delta_snapshot(pair.peer_id, {});
+    pair.server->send_input(pair.peer_id, {}, 1u);
+    pair.server->send_sim_event_batch(pair.peer_id, {});
+    pair.server->send_game_flow_event_batch(pair.peer_id, {});
+    pair.server->send_lobby_message(pair.peer_id, {});
+    pair.server->send_lobby_state(pair.peer_id, {});
+    pair.server->send_initial_setup(pair.peer_id, {});
+    pair.server->send_hello(pair.peer_id, {});
+    pair.server->send_client_ready(pair.peer_id, {});
+    pair.server->send_keyframe_request(pair.peer_id, {});
+    pair.server->send_heartbeat(pair.peer_id, {});
+    pair.server->send_exit_prompt_broadcast(pair.peer_id, {});
+    pair.server->send_exit_prompt_response(pair.peer_id, {});
+    pair.server->send_pause_broadcast(pair.peer_id, {});
+    pair.server->send_pause_response(pair.peer_id, {});
+    pair.server->send_control_change(pair.peer_id, {});
+    pair.server->send_snapshot_hash_check(pair.peer_id, {});
+
+    EXPECT_TRUE(pair.client->poll_typed().empty());
+}
+
+TEST(NetTransportInProcess, raw_empty_send_and_disconnect_paths)
+{
+    auto server = og::sim::InProcessTransport::create_server();
+    auto client = server->create_client_transport();
+    const og::sim::PeerId peer_id = client->local_peer_id();
+
+    server->send(peer_id, nullptr, 0);
+    const std::vector<og::sim::ReceivedMessage> raw_messages = client->poll();
+    ASSERT_EQ(1u, raw_messages.size());
+    EXPECT_EQ(peer_id, raw_messages[0].peer_id);
+    EXPECT_TRUE(raw_messages[0].data.empty());
+
+    EXPECT_THROW(client->create_client_transport(), std::runtime_error);
+    server->disconnect(peer_id + 99u);
+    EXPECT_EQ((std::vector<og::sim::PeerId>{peer_id}),
+              server->connected_peers());
+
+    server->disconnect(peer_id);
+    EXPECT_TRUE(server->connected_peers().empty());
+    EXPECT_TRUE(client->connected_peers().empty());
+    EXPECT_THROW(
+        server->send_heartbeat(
+            peer_id,
+            std::make_shared<og::sim::HeartbeatMessage>()),
+        std::runtime_error);
+}
+
+TEST(NetTransportInProcess, expired_peer_is_reported_when_sending)
+{
+    auto server = og::sim::InProcessTransport::create_server();
+    auto client = server->create_client_transport();
+    const og::sim::PeerId peer_id = client->local_peer_id();
+    client.reset();
+
+    EXPECT_TRUE(server->connected_peers().empty());
+    EXPECT_THROW(
+        server->send_heartbeat(
+            peer_id,
+            std::make_shared<og::sim::HeartbeatMessage>()),
+        std::runtime_error);
+}
+
 TEST(NetTransportInProcess,
      network_fixture_accepts_timer_wait_request_only_from_host_client)
 {

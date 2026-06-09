@@ -60,6 +60,40 @@ TEST(InputMore, input_send_fake_key_events_flow_through_get_input_events)
     ASSERT_EQ((int)SDLK_c, (int)query_key()) << "fake keydown should be handled and set raw_key";
     ASSERT_EQ(1, (int)query_key_press_event()) << "fake keydown should set key_press_event";
 
+    sendFakeKeyUpEvent(SDLK_c);
+    get_input_events(POLL);
+    ASSERT_EQ(0, og::runtime::current_session->keystates_[SDL_GetScancodeFromKey(SDLK_c)])
+        << "fake keyup should clear the key state";
+
     clear_keyboard();
 }
 
+TEST(InputMore, input_null_and_wrong_event_paths_are_ignored)
+{
+    clear_keyboard();
+
+    handle_events(nullptr);
+    handle_text_event(nullptr);
+    ASSERT_TRUE(query_text_input() == nullptr) << "null text event should not set text";
+
+    handle_mouse_event(nullptr);
+    ASSERT_EQ(0, (int)get_and_reset_scroll_amount()) << "null mouse event should not scroll";
+
+    ASSERT_TRUE(!query_key_event(SDLK_a, nullptr)) << "null event should not match key";
+    quit_if_quit_event(nullptr);
+
+    SDL_Event text{};
+    text.type = SDL_TEXTINPUT;
+    std::strncpy(text.text.text, "abc", sizeof(text.text.text) - 1);
+    ASSERT_TRUE(!query_key_event(SDLK_a, text)) << "text event should not match keydown";
+
+    ASSERT_TRUE(!isKeyboardEvent(nullptr)) << "null event is not keyboard";
+    ASSERT_TRUE(!isJoystickEvent(nullptr)) << "null event is not joystick";
+    ASSERT_TRUE(!isKeyboardEvent(text)) << "text event is not keyboard";
+    ASSERT_TRUE(!isJoystickEvent(text)) << "text event is not joystick";
+
+    SDL_Event up{};
+    up.type = SDL_KEYUP;
+    up.key.keysym.sym = SDLK_a;
+    ASSERT_TRUE(!isKeyboardEvent(up)) << "keyup is not keyboard input for this predicate";
+}

@@ -4,6 +4,7 @@
 #include <SDL.h>
 extern void wait_for_key(int somekey);
 extern void resetJoystick(int player_num);
+extern og::input_native::JoystickHandle joysticks[10];
 
 namespace
 {
@@ -21,6 +22,26 @@ struct PlayerJoyGuard
     {
         for (int i = 0; i < 4; ++i)
             player_joy[i] = old[i];
+    }
+};
+
+struct JoystickHandleGuard
+{
+    og::input_native::JoystickHandle old[10];
+
+    JoystickHandleGuard()
+    {
+        for (int i = 0; i < 10; ++i)
+        {
+            old[i] = joysticks[i];
+            joysticks[i] = nullptr;
+        }
+    }
+
+    ~JoystickHandleGuard()
+    {
+        for (int i = 0; i < 10; ++i)
+            joysticks[i] = old[i];
     }
 };
 } // namespace
@@ -71,6 +92,21 @@ TEST(InputJoystick, input_joydata_setKeyFromEvent_and_takeover)
     e.type = SDL_JOYHATMOTION;
     e.jhat.which = 7;
     e.jhat.hat = 1;
+    e.jhat.value = SDL_HAT_UP;
+    player_joy[2].setKeyFromEvent(KEY_UP, e);
+    ASSERT_EQ(JoyData::HAT_UP, player_joy[2].key_type[KEY_UP]) << "hat up should map to HAT_UP";
+    ASSERT_EQ(1, player_joy[2].key_index[KEY_UP]) << "hat index should be stored";
+
+    e.jhat.value = SDL_HAT_RIGHT;
+    player_joy[2].setKeyFromEvent(KEY_RIGHT, e);
+    ASSERT_EQ(JoyData::HAT_RIGHT, player_joy[2].key_type[KEY_RIGHT]) << "hat right should map to HAT_RIGHT";
+    ASSERT_EQ(1, player_joy[2].key_index[KEY_RIGHT]) << "hat index should be stored";
+
+    e.jhat.value = SDL_HAT_DOWN;
+    player_joy[2].setKeyFromEvent(KEY_DOWN, e);
+    ASSERT_EQ(JoyData::HAT_DOWN, player_joy[2].key_type[KEY_DOWN]) << "hat down should map to HAT_DOWN";
+    ASSERT_EQ(1, player_joy[2].key_index[KEY_DOWN]) << "hat index should be stored";
+
     e.jhat.value = SDL_HAT_LEFT;
     player_joy[2].setKeyFromEvent(KEY_LEFT, e);
     ASSERT_EQ(JoyData::HAT_LEFT, player_joy[2].key_type[KEY_LEFT]) << "hat left should map to HAT_LEFT";
@@ -204,6 +240,47 @@ TEST(InputJoystick, input_joydata_press_release_helpers_and_player_queries)
 }
 
 
+TEST(InputJoystick, input_joydata_getState_handles_all_mapping_types_with_neutral_joystick)
+{
+    JoystickHandleGuard joystick_guard;
+
+    JoyData j;
+    j.index = 0;
+
+    j.key_index[KEY_FIRE] = 0;
+    j.key_type[KEY_FIRE] = JoyData::POS_AXIS;
+    ASSERT_FALSE(j.getState(KEY_FIRE)) << "neutral positive axis should not be held";
+
+    j.key_type[KEY_FIRE] = JoyData::NEG_AXIS;
+    ASSERT_FALSE(j.getState(KEY_FIRE)) << "neutral negative axis should not be held";
+
+    j.key_type[KEY_FIRE] = JoyData::BUTTON;
+    ASSERT_FALSE(j.getState(KEY_FIRE)) << "neutral button should not be held";
+
+    j.key_type[KEY_FIRE] = JoyData::HAT_UP;
+    ASSERT_FALSE(j.getState(KEY_FIRE)) << "centered hat should not hold up";
+
+    j.key_type[KEY_FIRE] = JoyData::HAT_RIGHT;
+    ASSERT_FALSE(j.getState(KEY_FIRE)) << "centered hat should not hold right";
+
+    j.key_type[KEY_FIRE] = JoyData::HAT_DOWN;
+    ASSERT_FALSE(j.getState(KEY_FIRE)) << "centered hat should not hold down";
+
+    j.key_type[KEY_FIRE] = JoyData::HAT_LEFT;
+    ASSERT_FALSE(j.getState(KEY_FIRE)) << "centered hat should not hold left";
+
+    j.key_type[KEY_FIRE] = JoyData::HAT_UP_RIGHT;
+    ASSERT_FALSE(j.getState(KEY_FIRE)) << "diagonal hat mappings are ignored";
+
+    j.key_type[KEY_FIRE] = JoyData::NONE;
+    ASSERT_FALSE(j.getState(KEY_FIRE)) << "unmapped keys should not be held";
+
+    j.index = -1;
+    j.key_type[KEY_FIRE] = JoyData::BUTTON;
+    ASSERT_FALSE(j.getState(KEY_FIRE)) << "unbound joystick should not be held";
+}
+
+
 TEST(InputJoystick, input_didPlayerPressReleaseKey_uses_joystick_mapping_when_bound)
 {
     PlayerJoyGuard guard;
@@ -228,3 +305,57 @@ TEST(InputJoystick, input_didPlayerPressReleaseKey_uses_joystick_mapping_when_bo
     ASSERT_TRUE(!didPlayerReleaseKey(0, KEY_SPECIAL, e)) << "wrong joystick button should not release";
 }
 
+TEST(InputJoystick, input_joydata_null_and_wrong_event_paths)
+{
+    JoyData j;
+    j.index = 2;
+
+    j.key_type[KEY_FIRE] = JoyData::BUTTON;
+    j.key_index[KEY_FIRE] = 4;
+    ASSERT_TRUE(!j.getPress(KEY_FIRE, nullptr)) << "null event should not press";
+    ASSERT_TRUE(!j.getRelease(KEY_FIRE, nullptr)) << "null event should not release";
+
+    SDL_Event key{};
+    key.type = SDL_KEYDOWN;
+    ASSERT_TRUE(!j.getPress(KEY_FIRE, key)) << "keyboard event should not press button mapping";
+    ASSERT_TRUE(!j.getRelease(KEY_FIRE, key)) << "keyboard event should not release button mapping";
+
+    SDL_Event axis{};
+    axis.type = SDL_JOYAXISMOTION;
+    axis.jaxis.which = 2;
+    axis.jaxis.axis = 0;
+    axis.jaxis.value = 0;
+    j.key_type[KEY_UP] = JoyData::POS_AXIS;
+    j.key_index[KEY_UP] = 0;
+    ASSERT_TRUE(!j.getPress(KEY_UP, axis)) << "centered positive axis should not press";
+    j.key_type[KEY_DOWN] = JoyData::NEG_AXIS;
+    j.key_index[KEY_DOWN] = 0;
+    ASSERT_TRUE(!j.getPress(KEY_DOWN, axis)) << "centered negative axis should not press";
+
+    axis.jaxis.which = 1;
+    axis.jaxis.value = 12000;
+    ASSERT_TRUE(!j.getPress(KEY_UP, axis)) << "wrong joystick should not press";
+    ASSERT_TRUE(!j.getRelease(KEY_UP, axis)) << "wrong joystick should not release";
+
+    SDL_Event hat{};
+    hat.type = SDL_JOYHATMOTION;
+    hat.jhat.which = 2;
+    hat.jhat.hat = 0;
+    hat.jhat.value = SDL_HAT_RIGHT;
+    j.key_type[KEY_LEFT] = JoyData::HAT_LEFT;
+    j.key_index[KEY_LEFT] = 0;
+    ASSERT_TRUE(!j.getPress(KEY_LEFT, hat)) << "wrong hat direction should not press";
+    ASSERT_TRUE(!j.getRelease(KEY_LEFT, hat)) << "wrong hat direction should not release";
+
+    j.key_type[KEY_SPECIAL] = JoyData::NONE;
+    ASSERT_TRUE(!j.getPress(KEY_SPECIAL, hat)) << "NONE mapping should not press";
+    ASSERT_TRUE(!j.getRelease(KEY_SPECIAL, hat)) << "NONE mapping should not release";
+
+    ASSERT_TRUE(!didPlayerPressKey(0, KEY_SPECIAL, nullptr)) << "null player press event should not press";
+    ASSERT_TRUE(!didPlayerReleaseKey(0, KEY_SPECIAL, nullptr)) << "null player release event should not release";
+    handle_joy_event(nullptr);
+
+    SDL_Event unknown{};
+    unknown.type = SDL_USEREVENT;
+    handle_joy_event(unknown);
+}

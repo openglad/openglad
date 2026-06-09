@@ -289,6 +289,36 @@ static bool start_game_from_view_menu(
     return g_test_game_epoch.load(std::memory_order_acquire) > epoch_before;
 }
 
+static bool click_intercepted_start_from_view_menu(
+    int timeout_ms,
+    const std::function<bool(const Interactable&)>& is_view_menu_go)
+{
+    int elapsed = 0;
+    int since_last_click = 250;
+    const int poll_interval = 50;
+    while (elapsed < timeout_ms) {
+        if (pks().selected_menu_item != nullptr
+            && pks().selected_menu_item->command ==
+                og::ui::PickerMenuCommand::StartGame) {
+            return true;
+        }
+
+        if (since_last_click >= 250
+            && has_interactable_match("go", is_view_menu_go)) {
+            interact_match("go", is_view_menu_go);
+            since_last_click = 0;
+        }
+
+        SDL_Delay(poll_interval);
+        elapsed += poll_interval;
+        since_last_click += poll_interval;
+    }
+
+    return pks().selected_menu_item != nullptr
+        && pks().selected_menu_item->command ==
+            og::ui::PickerMenuCommand::StartGame;
+}
+
 static bool enter_team_menu_from_main_menu(int timeout_ms = 15000)
 {
     if (!wait_for_interactable("continue_game", 5000))
@@ -513,7 +543,8 @@ static int train_menu_view_team_go_injector(void* data)
         return 0;
     }
     state->saw_view_menu = true;
-    state->clicked_go = interact_match("go", is_view_menu_go);
+    state->clicked_go = click_intercepted_start_from_view_menu(
+        kGameStartTimeoutMs, is_view_menu_go);
 
     state->finished = true;
     return 0;
