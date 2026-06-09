@@ -57,6 +57,7 @@ short effect::act()
 		owner = NULL;
 
 	collide_ob = NULL; // always start with no collision..
+	drawcycle++;
 
 	// Any special actions ..
 	switch (family) // determine what to do..

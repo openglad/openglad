@@ -181,6 +181,8 @@ short living::act()
 		}
 	}
 
+	drawcycle++;
+
 	// Charmed-ness
 	if (charm_left > 1)
 		charm_left--;

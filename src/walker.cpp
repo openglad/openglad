@@ -2024,7 +2024,7 @@ short walker::attack(walker  *target)
 			{
 				myscreen->save_data.m_score[team_num] += tempdamage + target->stats->level; // / 2;
 			}
-			if (headguy->myguy)
+			if (order != ORDER_WEAPON && headguy->myguy)
 				headguy->myguy->exp += newexp;
 		}
 	}
