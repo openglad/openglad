@@ -39,6 +39,9 @@ private:
 
 struct GameplayContext
 {
+    using PositionalSoundVisibleFn =
+        bool (*)(const walker* source, std::uint32_t sound_id, void* user_data);
+
     GameWorld* world = nullptr;
     SaveData* save = nullptr;
     og::sim::SimEventLog* sim_events = nullptr;
@@ -47,6 +50,8 @@ struct GameplayContext
     IRandom** cosmetic_rng_override_ref = nullptr;
     IRandom** session_rng_ref = nullptr;
     bool* gameplay_active_ref = nullptr;
+    PositionalSoundVisibleFn positional_sound_visible = nullptr;
+    void* positional_sound_visible_user = nullptr;
     std::unique_ptr<GameplayPathfindingState> pathfinding;
 };
 

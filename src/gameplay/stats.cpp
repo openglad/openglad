@@ -273,9 +273,9 @@ short statistics::do_command()
 	if (commands.empty())
         return 0;
     
-    commandtype = commands.front().commandtype;
-    com1 = commands.front().com1;
-    com2 = commands.front().com2;
+	commandtype = commands.front().commandtype;
+	com1 = commands.front().com1;
+	com2 = commands.front().com2;
     
     short result = 1;
 
@@ -913,9 +913,7 @@ bool statistics::direct_walk()
 	if (std::fabs(ydelta) > std::fabs(3 * xdelta))
 		xdelta = 0;
 
-	const short xdir = (xdelta > 0.0f) ? 1 : ((xdelta < 0.0f) ? -1 : 0);
-	const short ydir = (ydelta > 0.0f) ? 1 : ((ydelta < 0.0f) ? -1 : 0);
-	if (controller_->fire_check(xdir, ydir))
+	if (controller_->fire_check(static_cast<short>(xdelta), static_cast<short>(ydelta)))
 	{
 		clear_command();
 		controller_->turn(controller_->facing(xdelta, ydelta));

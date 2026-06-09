@@ -566,7 +566,7 @@ walker  * walker::fire()
 		{
 			if (attack(weapon->collide_ob()))
 			{
-				og::sim::emit_sound(current_game->sim_events, SOUND_CLANG);
+				og::sim::emit_positional_sound(current_game->sim_events, this, SOUND_CLANG);
 
                 if(query_order() == Order::Living)
                 {
@@ -587,15 +587,15 @@ walker  * walker::fire()
 				myguy->total_shots++; // record that we fired/attacked
 				myguy->scen_shots++;
             }
+			}
+			weapon->set_dead(1);
+			return nullptr;
 		}
-		weapon->set_dead(1);
-		return nullptr;
-	}
-	else if (stats_->query_bit_flags(BIT_NO_RANGED))
-	{
-		weapon->set_dead(1);
-		return nullptr;
-	}
+		else if (stats_->query_bit_flags(BIT_NO_RANGED))
+		{
+			weapon->set_dead(1);
+			return nullptr;
+		}
 	else
 	{
 		if (order() == Order::Living)
@@ -615,13 +615,14 @@ walker  * walker::fire()
 			myguy->scen_shots++;
         }
 
-		// *** Ranged combat ***
-		{
-			const auto* wfd = get_weapon_family_descriptor(weapon->family());
-			og::sim::emit_sound(current_game->sim_events, static_cast<std::uint32_t>(wfd ? wfd->fire_sound : SOUND_FWIP));
-		}
-		if (order() == Order::Generator)
-		{
+			// *** Ranged combat ***
+			{
+					const auto* wfd = get_weapon_family_descriptor(weapon->family());
+					og::sim::emit_positional_sound(current_game->sim_events, this,
+					                               static_cast<std::uint32_t>(wfd ? wfd->fire_sound : SOUND_FWIP));
+				}
+			if (order() == Order::Generator)
+			{
 			const auto* gfd = get_generator_family_descriptor(family());
 			if (gfd)
 			{
@@ -1202,8 +1203,8 @@ bool walker::fire_check(short xdelta, short ydelta)
 	// Run weapon through where it would go if all went well ..
 	for (i=0; i < weapon->lineofsight(); i++)
 	{
-		weapon->setxy(weapon->xpos() + weapon->lastx(),
-		              weapon->ypos() + weapon->lasty());
+		weapon->setxy(weapon->xpos() + static_cast<float>(i) * weapon->lastx(),
+		              weapon->ypos() + static_cast<float>(i) * weapon->lasty());
 		if ( !current_game->world->query_grid_passable(weapon->xpos(), weapon->ypos(), weapon) )
 		{
 			// we hit a wall, so fail
@@ -1500,7 +1501,7 @@ bool walker::death()
 
 	if (myguy) // were we a real character?  Then make a heart ..
 	{
-			newob = current_game->world->add_ob(Order::Treasure, FAMILY_LIFE_GEM, 1);
+			newob = current_game->world->add_ob(Order::Treasure, FAMILY_LIFE_GEM);
 			newob->stats()->set_hitpoints(static_cast<float>(myguy->query_heart_value()));
 			newob->stats()->set_hitpoints(
 			    newob->stats()->hitpoints() * (0.75f / 2.0f));  // 75%, divided by 2, since score is doubled at end of level
@@ -1541,7 +1542,7 @@ bool walker::death()
 		case Order::Generator:  // go up in flames :>
 			for (i=0; i < 4; i++)
 			{
-				newob = current_game->world->add_ob(Order::FX, FAMILY_EXPLOSION, 1);
+				newob = current_game->world->add_ob(Order::FX, FAMILY_EXPLOSION);
 				if (!newob) // failsafe
 					break;
 				newob->set_team_num(team_num());

@@ -47,6 +47,16 @@ IRandom& combat_rng()
     assert(false && "combat math requires an injected RNG");
     std::abort();
 }
+
+bool positional_sound_visible(const walker* source, std::uint32_t sound_id)
+{
+    if (current_game && current_game->positional_sound_visible &&
+        !current_game->positional_sound_visible(
+            source, sound_id, current_game->positional_sound_visible_user))
+        return false;
+    return true;
+}
+
 } // namespace
 
 // Thin adapter: delegates to combat_math pure functions
@@ -300,10 +310,19 @@ bool walker::attack(walker  *target)
     {
         owner()->set_foe(target);
         target->stats()->hit_response(owner());
+        if (headguy->myguy)
+            headguy->myguy->exp += attack_exp;
     }
     else  //melee combat, set target to hit_response to us
     {
         target->stats()->hit_response(this);
+        if (myguy)
+        {
+            myguy->exp += attack_exp;
+            if (getscore)
+                award_score(team_num(), static_cast<std::uint32_t>(tempdamage_i)
+                                      + static_cast<std::uint32_t>(target->stats()->level()));
+        }
     }
 
     if (order() == Order::Weapon)
@@ -325,14 +344,14 @@ bool walker::attack(walker  *target)
 
     playerteam = 0;
 
-    // Award base hit rewards once per successful enemy hit.
-    if (targetorder == Order::Living && playerteam != target->team_num())
+    // Positive score for hurting enemies, negative for us.
+    if (owner() && targetorder != Order::Weapon && playerteam != target->team_num())
     {
-        if (headguy->myguy)
-            headguy->myguy->exp += attack_exp;
         if (getscore)
             award_score(team_num(), static_cast<std::uint32_t>(tempdamage_i)
                                   + static_cast<std::uint32_t>(target->stats()->level()));
+        if (headguy->myguy)
+            headguy->myguy->exp += attack_exp;
     }
 
     if (target->stats()->hitpoints() <= 0)
@@ -399,7 +418,7 @@ bool walker::attack(walker  *target)
             blood->set_ignore(1); // so that we can be walked over .. ?
             blood->setxy(target->xpos(),target->ypos());
         }
-        if (targetorder == Order::Living)
+        if (targetorder == Order::Living && positional_sound_visible(this, SOUND_DIE1))
         {
             if (current_game->world->rng_.next(2))
                 og::sim::emit_sound(current_game->sim_events, SOUND_DIE1);

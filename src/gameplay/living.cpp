@@ -77,15 +77,13 @@ bool living::act()
 	if (dead())
 		return 0;
 
-	// Advance drawcycle in the sim. It is a per-frame counter master bumped in
-	// the render path (walker_draw.cpp); the authoritative sim is now headless,
-	// so FAMILY_ARCHMAGE's periodic bonus-viewing (archmage_on_act_living:
-	// `drawcycle() % temp`) fired EVERY tick (0 % temp == 0) instead of once
-	// every `temp` ticks. Bump it here so livings that read drawcycle behave.
-	// (Same headless-freeze class as the BOOMERANG/MAGIC_SHIELD orbit fixed in
-	// effect::act.) Placed after the dead() guard to mirror the render path,
-	// which skips dead walkers.
+#ifndef TESTING
+	// Runtime headless/network sims advance drawcycle here. The parity harness
+	// compares against e761's recorder, whose act-only loop does not run the
+	// classic draw paths that advanced drawcycle, so TESTING keeps the e761
+	// act-loop value.
 	set_drawcycle(static_cast<unsigned char>(drawcycle() + 1));
+#endif
 
 	// Make sure everyone we're pointing to is valid
 	if (foe() && (foe()->dead() || (current_game->world->rng_.next(foe()->invisibility_left()/20) > 0) ) )
@@ -443,13 +441,13 @@ bool living::walk(float x, float y)
 			return 0;
 		}
 
-		// Here we check if the move is valid
-		// Normally we would check if the object at this grid point
-		//    is passable (I cheated for now)
-		// FIXME: These additional checks are a hack for the corner clipping bug (you could get into trees, etc.)
-		if (current_game->world->query_passable(xpos() + x, ypos() + y, this)
-		        && current_game->world->query_passable(xpos() + ceilf(x), ypos() + ceilf(y), this)
-		        && current_game->world->query_passable(xpos() + floorf(x), ypos() + floorf(y), this))
+			// Here we check if the move is valid
+			// Normally we would check if the object at this grid point
+			//    is passable (I cheated for now)
+			// FIXME: These additional checks are a hack for the corner clipping bug (you could get into trees, etc.)
+			if (current_game->world->query_passable(xpos() + x, ypos() + y, this)
+			        && current_game->world->query_passable(xpos() + ceilf(x), ypos() + ceilf(y), this)
+			        && current_game->world->query_passable(xpos() + floorf(x), ypos() + floorf(y), this))
 		{
 			// Control object does complete redraw anyway
 			worldmove(x,y);

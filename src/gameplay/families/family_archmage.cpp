@@ -180,9 +180,11 @@ static bool archmage_do_special(walker* self)
                         break;
                     }
                 }
-                newob = summon_entity(self, Order::FX, FAMILY_MARKER);
+                newob = current_game->world->add_ob(Order::FX, FAMILY_MARKER);
                 if (!newob)
                     return false;
+                newob->set_owner(self);
+                newob->center_on(self);
                 if (self->myguy)
                     newob->set_lifetime(self->myguy->intelligence / 33);
                 else
@@ -201,7 +203,8 @@ static bool archmage_do_special(walker* self)
             }
             else
             {
-                og::sim::emit_sound(current_game->sim_events, SOUND_TELEPORT);
+                og::sim::emit_positional_sound(current_game->sim_events, self,
+                                               SOUND_TELEPORT);
                 self->set_ani_type(ANI_TELE_OUT);
                 self->set_cycle(0);
             }

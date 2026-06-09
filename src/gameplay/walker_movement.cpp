@@ -417,13 +417,8 @@ float walker::get_current_angle()
 
 bool walker::turn(short targetdir)
 {
-    auto clamp_dir = [](short dir) -> short {
-        return (dir >= FACE_UP && dir <= FACE_UP_LEFT) ? dir : FACE_UP;
-    };
-
     short distance;
-    short currentdir = clamp_dir(static_cast<short>(curdir()));
-    short target = clamp_dir(targetdir);
+    short currentdir = static_cast<short>(curdir());
 
     //   We use a clock-ordered
     //   of directions to numbers) to a clock-ordered
@@ -431,7 +426,7 @@ bool walker::turn(short targetdir)
     //   our next facing should be based on our current one.
 
     // Find how  we have to turn.
-    distance = static_cast<short>(currentdir - target);
+    distance = static_cast<short>(currentdir - targetdir);
 
     // Figure out if we should turn clockwise or counterclockwise
     if ( ( (distance >= -4) && (distance < 0) ) || (distance >= 4) )

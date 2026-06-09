@@ -1,14 +1,14 @@
 #include "scenario_runtime.h"
 
+#include <openglad/core/constants.h>
 #include <openglad/core/order.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/game_world.h>
-#include <openglad/gameplay/input_state.h>
-#include <openglad/gameplay/sim_input_handler.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 
+#include <cstring>
 #include <string>
 
 namespace og::parity {
@@ -90,24 +90,119 @@ walker* find_player_walker(GameWorld& world, std::uint8_t player_team)
 {
     for (const auto& uptr : world.oblist)
     {
-        if (uptr && uptr->team_num() == player_team)
+        if (uptr && !uptr->dead() &&
+            uptr->query_order() == Order::Living &&
+            uptr->team_num() == player_team)
             return uptr.get();
     }
     return nullptr;
 }
 
-PlayerInput build_player_input(std::uint32_t held_mask,
-                               std::uint32_t prev_mask)
+void claim_control(GameWorld& world,
+                   const ScenarioSpec& spec,
+                   ScenarioInputDriver& driver)
 {
-    PlayerInput pi;
-    const std::uint32_t pressed_mask = held_mask & ~prev_mask;
-    for (int i = 0; i < NUM_INPUT_KEYS; ++i)
+    if (driver.control == nullptr || driver.control->dead())
+        driver.control = find_player_walker(world, spec.player_team);
+    if (driver.control == nullptr)
+        return;
+    if (driver.control->user() == -1)
     {
-        const std::uint32_t bit = (1u << i);
-        pi.held[i]    = (held_mask    & bit) != 0;
-        pi.pressed[i] = (pressed_mask & bit) != 0;
+        driver.control->set_act_type(ACT_CONTROL);
+        driver.control->set_user(0);
+        if (driver.control->stats() != nullptr)
+            driver.control->stats()->clear_command();
     }
-    return pi;
+    driver.initialised = true;
+}
+
+bool held(std::uint32_t mask, std::uint32_t bit)
+{
+    return (mask & bit) != 0;
+}
+
+void cycle_next_character(GameWorld& world,
+                          const ScenarioSpec& spec,
+                          ScenarioInputDriver& driver)
+{
+    walker* old = driver.control;
+    if (old == nullptr) return;
+
+    if (old->user() == 0)
+    {
+        old->restore_act_type();
+        old->set_user(-1);
+    }
+
+    bool seen_old = false;
+    walker* next = nullptr;
+    auto accept = [&](walker* candidate) {
+        return candidate != nullptr &&
+               candidate->query_order() == Order::Living &&
+               candidate->is_friendly(old) &&
+               candidate->team_num() == spec.player_team &&
+               candidate->real_team_num() == 255 &&
+               candidate->user() == -1;
+    };
+
+    for (const auto& uptr : world.oblist)
+    {
+        walker* candidate = uptr.get();
+        if (candidate == old)
+        {
+            seen_old = true;
+            continue;
+        }
+        if (seen_old && accept(candidate))
+        {
+            next = candidate;
+            break;
+        }
+    }
+
+    if (seen_old && next == nullptr)
+    {
+        for (const auto& uptr : world.oblist)
+        {
+            walker* candidate = uptr.get();
+            if (candidate == old) break;
+            if (accept(candidate))
+            {
+                next = candidate;
+                break;
+            }
+        }
+    }
+
+    if (next == nullptr) next = old;
+    driver.control = next;
+    claim_control(world, spec, driver);
+}
+
+void cycle_special(walker* control)
+{
+    if (control == nullptr || control->stats() == nullptr) return;
+
+    control->set_current_special(control->current_special() + 1);
+    const int special_index = static_cast<int>(control->current_special());
+    const auto* descriptor = get_family_descriptor(
+        static_cast<int>(static_cast<unsigned char>(control->family())));
+    const char* special_name =
+        (!descriptor || special_index < 0 || special_index >= NUM_SPECIALS)
+            ? nullptr
+            : descriptor->special_names[special_index];
+    const bool missing_special =
+        descriptor == nullptr ||
+        special_index < 0 ||
+        special_index >= NUM_SPECIALS ||
+        special_name == nullptr ||
+        std::strcmp(special_name, "NONE") == 0;
+
+    if (special_index > (NUM_SPECIALS - 1) ||
+        missing_special ||
+        (((control->current_special() - 1) * 3 + 1) >
+         control->stats()->level()))
+        control->set_current_special(1);
 }
 
 } // namespace
@@ -118,10 +213,11 @@ void apply_inputs_at_tick(GameWorld& world,
                           ScenarioInputDriver& driver,
                           og::sim::SimEventLog* sim_events)
 {
+    (void)sim_events;
+
     // Update the driver's held mask from any input event at this tick.
     // Multiple matching events collapse to the last one (callers should
     // not write the same tick twice; if they do, last write wins).
-    bool had_event = false;
     if (spec.inputs != nullptr)
     {
         for (std::size_t i = 0; i < spec.input_count; ++i)
@@ -129,67 +225,64 @@ void apply_inputs_at_tick(GameWorld& world,
             if (spec.inputs[i].tick == tick && spec.inputs[i].player_id == 0)
             {
                 driver.held_mask = spec.inputs[i].key_mask;
-                had_event = true;
             }
         }
     }
 
-    // Bind the control walker the first time we have any work to do.
-    if (driver.control == nullptr)
-        driver.control = find_player_walker(world, spec.player_team);
+    claim_control(world, spec, driver);
     if (driver.control == nullptr)
     {
         driver.prev_mask = driver.held_mask;
         return;
     }
 
-    // If there is no event and nothing is held, skip the sim pass — it
-    // would still run movement / animation, but with held=pressed=0 the
-    // result is identical to the simulator's own per-tick behaviour and
-    // we save the call overhead. This also keeps the no-input smoke
-    // scenario byte-identical against the corresponding inputs-script
-    // version when both scripts happen to be idle at the same tick.
-    if (!had_event && driver.held_mask == 0 && driver.prev_mask == 0)
-        return;
-
-    // Route the input through the real player-input pipeline. This is the
-    // same call the SDL game loop makes for each player every tick, and
-    // it is what mutates the walker (fire, walkstep, special, animate,
-    // etc.) — the harness never reaches past this call to mutate state
-    // directly.
-    PlayerInput pi = build_player_input(driver.held_mask, driver.prev_mask);
-    walker*     control_io   = driver.control;
-    const short player_num   = 0;
-    const short my_team      = static_cast<short>(driver.control->team_num());
-
-    // Mirror screen.cpp:855-863 so the special-cycling gate at
-    // sim_input_handler.cpp:209-213 can distinguish defined vs "NONE"
-    // slots. get_family_descriptor self-initialises the registry on
-    // first use (family_registry.cpp:93-98), so no explicit init.
-    static std::string special_names_table[NUM_FAMILIES][NUM_SPECIALS];
-    static bool        special_names_initialised = false;
-    if (!special_names_initialised)
+    const std::uint32_t pressed = driver.held_mask & ~driver.prev_mask;
+    if (held(pressed, K_SWITCH))
     {
-        for (int i = 0; i < NUM_FAMILIES; ++i)
-        {
-            const FamilyDescriptor* fd = get_family_descriptor(i);
-            for (int j = 0; j < NUM_SPECIALS; ++j)
-                special_names_table[i][j] = fd ? fd->special_names[j] : "NONE";
-        }
-        special_names_initialised = true;
+        cycle_next_character(world, spec, driver);
+    }
+    walker* control = driver.control;
+    if (control == nullptr || control->dead())
+    {
+        driver.prev_mask = driver.held_mask;
+        return;
     }
 
-    sim_process_player_input(pi,
-                             control_io,
-                             world,
-                             player_num,
-                             my_team,
-                             driver.debounce,
-                             special_names_table,
-                             sim_events);
-    // sim_process_player_input may reassign control (character switch /
-    // death). Keep the driver pointed at the live one.
-    driver.control   = control_io;
+    control->set_shifter_down(held(driver.held_mask, K_SHIFT) ? 1 : 0);
+
+    if (held(pressed, K_SPECIAL_SWITCH))
+        cycle_special(control);
+
+    if (control->stats() != nullptr && control->stats()->commands.empty())
+    {
+        if (held(driver.held_mask, K_SPECIAL))
+            control->special();
+
+        int walkx = 0;
+        int walky = 0;
+        if (held(driver.held_mask, K_UP) || held(driver.held_mask, K_UP_LEFT) ||
+            held(driver.held_mask, K_UP_RIGHT))
+            walky = -1;
+        else if (held(driver.held_mask, K_DOWN) ||
+                 held(driver.held_mask, K_DOWN_LEFT) ||
+                 held(driver.held_mask, K_DOWN_RIGHT))
+            walky = 1;
+
+        if (held(driver.held_mask, K_LEFT) || held(driver.held_mask, K_UP_LEFT) ||
+            held(driver.held_mask, K_DOWN_LEFT))
+            walkx = -1;
+        else if (held(driver.held_mask, K_RIGHT) ||
+                 held(driver.held_mask, K_DOWN_RIGHT) ||
+                 held(driver.held_mask, K_UP_RIGHT))
+            walkx = 1;
+
+        if (walkx != 0 || walky != 0)
+            control->walkstep(static_cast<float>(walkx), static_cast<float>(walky));
+
+        if (held(driver.held_mask, K_FIRE))
+            control->init_fire();
+    }
+
     driver.prev_mask = driver.held_mask;
     driver.initialised = true;
 }

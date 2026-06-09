@@ -66,7 +66,7 @@ static bool thief_do_special(walker* self)
     switch (self->current_special())
     {
         case 1: // drop bomb
-            newob = current_game->world->add_ob(Order::FX, FAMILY_BOMB, 1);
+            newob = current_game->world->add_ob(Order::FX, FAMILY_BOMB);
             newob->set_ani_type(ANI_BOMB);
             if (self->myguy)
             {
