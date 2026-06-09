@@ -2770,39 +2770,38 @@ walker* LevelEditorData::get_object(int x, int y)
 // GCOVR_EXCL_START -- test-only coverage harness in src/, not shipped code.
 int level_editor_test_exercise_internal_helpers()
 {
-    int score = 0;
+    int check_index = 0;
+    int failed_check = 0;
+    const auto check = [&check_index, &failed_check](bool condition) {
+        ++check_index;
+        if (!condition && failed_check == 0)
+            failed_check = check_index;
+    };
 
     Rect r;
-    if (!r.contains(1, 1))
-        score++;
+    check(!r.contains(1, 1));
 
     Rectf rf_pos(10.0f, 10.0f, 5.0f, 5.0f);
     Rectf rf_neg(10.0f, 10.0f, -5.0f, -5.0f);
     Rectf rf_neg_w(10.0f, 10.0f, -5.0f, 5.0f);
     Rectf rf_neg_h(10.0f, 10.0f, 5.0f, -5.0f);
-    if (rf_pos.contains(12.0f, 12.0f))
-        score++;
-    if (rf_neg.contains(8.0f, 8.0f))
-        score++;
-    if (rf_neg_w.contains(8.0f, 12.0f))
-        score++;
-    if (rf_neg_h.contains(12.0f, 8.0f))
-        score++;
+    check(rf_pos.contains(12.0f, 12.0f));
+    check(rf_neg.contains(8.0f, 8.0f));
+    check(rf_neg_w.contains(8.0f, 12.0f));
+    check(rf_neg_h.contains(12.0f, 8.0f));
     SimpleButton btn("X", 0, 0, 20, 10);
-    if (btn.contains(1, 1))
-        score++;
+    check(btn.contains(1, 1));
     btn.set_colors_disabled();
     btn.set_colors_active();
 
     EditorObjectBrush brush;
     brush.set(nullptr);
-    if (brush.order == Order::Living && brush.family == 0)
-        score++;
+    check(brush.order == Order::Living && brush.family == 0);
     SelectionInfo null_selection(nullptr);
-    if (!null_selection.valid && null_selection.get_object(nullptr) == nullptr)
-        score++;
+    check(!null_selection.valid && null_selection.get_object(nullptr) == nullptr);
 
     LevelEditorData data;
+    check(data.level != nullptr);
     if (data.level != nullptr)
     {
         backgrounds().assign(kDefaultBackgrounds,
@@ -2820,38 +2819,32 @@ int level_editor_test_exercise_internal_helpers()
                     data.level->world().grid.w * data.level->world().grid.h,
                     static_cast<unsigned char>(1));
         data.set_terrain(0, 0, PIX_GRASS2);
-        if (data.get_terrain(0, 0) == PIX_GRASS2)
-            score++;
-        if (data.get_terrain(-1, -1) == 0)
-            score++;
+        check(data.get_terrain(0, 0) == PIX_GRASS2);
+        check(data.get_terrain(-1, -1) == 0);
         data.clear_terrain();
-	        if (data.get_terrain(0, 0) == 1)
-	            score++;
+	        check(data.get_terrain(0, 0) == 1);
 	        data.level->world().id = 1;
-	        if (data.loadLevel(1))
-	            score++;
-	        if (data.reloadLevel())
-	            score++;
-	        if (data.loadCampaign("org.openglad.gladiator"))
-            score++;
-        if (data.reloadCampaign())
-            score++;
+	        check(data.loadLevel(1));
+	        check(data.reloadLevel());
+	        check(data.loadCampaign("org.openglad.gladiator"));
+        check(data.reloadCampaign());
 
         walker* inside = data.level->add_ob(Order::Living, FAMILY_SOLDIER);
+        check(inside != nullptr);
         if (inside != nullptr)
         {
             inside->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
             SelectionInfo sel(inside);
-            if (sel.get_object(data.level.get()) == inside)
-                score++;
+            check(sel.get_object(data.level.get()) == inside);
             SelectionInfo cleared(inside);
             cleared.clear();
-            if (cleared.target == nullptr)
-                score++;
+            check(!cleared.valid && cleared.name.empty() && cleared.target == inside);
             walker* effect = data.level->add_fx_ob(Order::FX, FAMILY_KNIFE_BACK);
+            check(effect != nullptr);
             if (effect != nullptr)
                 effect->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
             walker* weapon = data.level->add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+            check(weapon != nullptr);
             if (weapon != nullptr)
                 weapon->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
             std::vector<SelectionInfo> selection;
@@ -2860,55 +2853,45 @@ int level_editor_test_exercise_internal_helpers()
                        static_cast<float>(inside->sizex() + 4),
                        static_cast<float>(inside->sizey() + 4));
             add_contained_objects_to_selection(data.level.get(), area, selection);
-            if (is_in_selection(inside, selection))
-                score++;
-            if (data.get_object(inside->xpos(), inside->ypos()) == inside)
-                score++;
+            check(is_in_selection(inside, selection));
+            check(data.get_object(inside->xpos(), inside->ypos()) == inside);
         }
 
         data.mode = Mode::Terrain;
         data.reset_mode_buttons();
-        if (data.mode_buttons.find(&data.terrainSmoothButton) != data.mode_buttons.end())
-            score++;
+        check(data.mode_buttons.find(&data.terrainSmoothButton) != data.mode_buttons.end());
         data.activate_mode_button(&data.pickerButton);
-        if (data.terrain_brush.picking)
-            score++;
+        check(data.terrain_brush.picking);
         data.activate_mode_button(&data.pickerButton);
-        if (!data.terrain_brush.picking)
-            score++;
+        check(!data.terrain_brush.picking);
         data.activate_mode_button(&data.terrainSmoothButton);
-        if (!data.terrain_brush.use_smoothing)
-            score++;
+        check(!data.terrain_brush.use_smoothing);
         data.activate_mode_button(&data.terrainSmoothButton);
-        if (data.terrain_brush.use_smoothing)
-            score++;
+        check(data.terrain_brush.use_smoothing);
 
         data.mode = Mode::Object;
         data.object_brush.snap_to_grid = true;
         data.reset_mode_buttons();
         data.activate_mode_button(&data.pickerButton);
-        if (data.object_brush.picking)
-            score++;
+        check(data.object_brush.picking);
         data.activate_mode_button(&data.pickerButton);
-        if (!data.object_brush.picking)
-            score++;
+        check(!data.object_brush.picking);
         data.activate_mode_button(&data.gridSnapButton);
-        if (!data.object_brush.snap_to_grid)
-            score++;
+        check(!data.object_brush.snap_to_grid);
 
+        data.object_brush.team = 0;
         data.activate_mode_button(&data.prevTeamButton);
-        if (data.object_brush.team == MAX_TEAM)
-            score++;
+        check(data.object_brush.team == MAX_TEAM);
         data.activate_mode_button(&data.nextTeamButton);
-        if (data.object_brush.team == 0)
-            score++;
+        check(data.object_brush.team == 0);
         data.activate_mode_button(&data.nextTeamButton);
-        if (data.object_brush.team == 1)
-            score++;
+        check(data.object_brush.team == 1);
 
         data.mode = Mode::Select;
+        data.level->delete_objects();
         data.selection.clear();
         walker* selected = data.level->add_ob(Order::Living, FAMILY_SOLDIER);
+        check(selected != nullptr);
         if (selected != nullptr)
         {
             selected->setxy(GRID_SIZE * 3, GRID_SIZE * 3);
@@ -2919,72 +2902,71 @@ int level_editor_test_exercise_internal_helpers()
             data.selection.push_back(SelectionInfo(selected));
 
             data.reset_mode_buttons();
-            if (data.mode_buttons.find(&data.setNameButton) != data.mode_buttons.end())
-                score++;
+            check(data.mode_buttons.find(&data.setNameButton) != data.mode_buttons.end());
 
             level_editor_testing_prompt_queue_clear();
             level_editor_testing_prompt_queue_push("After");
             data.activate_mode_button(&data.setNameButton);
-            if (selected->stats()->name == "After")
-                score++;
+            check(selected->stats()->name == "After");
 
             data.activate_mode_button(&data.prevTeamButton);
-            if (selected->team_num() == MAX_TEAM)
-                score++;
+            check(selected->team_num() == MAX_TEAM);
 	            data.activate_mode_button(&data.nextTeamButton);
-	            if (selected->team_num() == 0)
-	                score++;
+	            check(selected->team_num() == 0);
 	            selected->set_team_num(2);
 	            data.activate_mode_button(&data.prevTeamButton);
-	            if (selected->team_num() == 1)
-	                score++;
+	            check(selected->team_num() == 1);
 	            selected->set_team_num(MAX_TEAM);
 	            data.activate_mode_button(&data.nextTeamButton);
-	            if (selected->team_num() == 0)
-	                score++;
+	            check(selected->team_num() == 0);
 	            data.activate_mode_button(&data.prevLevelButton);
-	            if (selected->stats()->level() == 1)
-	                score++;
+	            check(selected->stats()->level() == 1);
 	            data.activate_mode_button(&data.nextLevelButton);
-	            if (selected->stats()->level() == 2)
-	                score++;
+	            check(selected->stats()->level() == 2);
 	            data.activate_mode_button(&data.prevLevelButton);
-	            if (selected->stats()->level() == 1)
-	                score++;
+	            check(selected->stats()->level() == 1);
 	            selected->stats()->set_level(3);
 	            data.selection.front().level = selected->stats()->level();
 	            data.activate_mode_button(&data.prevLevelButton);
-	            if (selected->stats()->level() == 2)
-	                score++;
+	            check(selected->stats()->level() == 2);
 	            data.selection.front().family = 0;
 	            data.activate_mode_button(&data.prevClassButton);
-	            if (!data.selection.empty() && data.selection.front().family >= 0)
-	                score++;
+	            check(!data.selection.empty() && data.selection.front().family >= 0);
 	            data.selection.front().family = NUM_FAMILIES - 1;
 	            data.activate_mode_button(&data.nextClassButton);
-	            if (!data.selection.empty() && data.selection.front().family >= 0)
-	                score++;
+	            check(!data.selection.empty() && data.selection.front().family >= 0);
 	            data.activate_mode_button(&data.facingButton);
-	            if (selected->curdir() == FACE_UP)
-	                score++;
+	            check(selected->curdir() == FACE_UP);
 	            selected->set_curdir(FACE_UP);
 	            data.activate_mode_button(&data.facingButton);
-	            if (selected->curdir() != FACE_UP)
-	                score++;
+	            check(selected->curdir() != FACE_UP);
 
 	            MouseState& mouse = query_mouse_no_poll();
 	            mouse.left = true;
-	            eds().mouse_last_x = 10;
-	            eds().mouse_last_y = 10;
 	            data.rect_selecting = false;
 	            data.dragging = false;
-	            data.mouse_motion(selected->xpos(), selected->ypos(), 3, 4);
-	            if (data.dragging)
-	                score++;
-	            data.dragging = false;
-	            data.mouse_motion(80, 80, 20, 20);
-	            if (data.rect_selecting)
-	                score++;
+	            screen* motion_screen = og::runtime::current_session->myscreen_;
+	            check(motion_screen != nullptr && motion_screen->viewob[0] != nullptr);
+	            if (motion_screen != nullptr && motion_screen->viewob[0] != nullptr)
+	            {
+	                const int drag_screen_x = 160;
+	                const int drag_screen_y = 160;
+	                const int selected_world_x =
+	                    drag_screen_x + data.level->level_visuals().topx - motion_screen->viewob[0]->xloc;
+	                const int selected_world_y =
+	                    drag_screen_y + data.level->level_visuals().topy - motion_screen->viewob[0]->yloc;
+	                selected->setxy(selected_world_x, selected_world_y);
+	                data.selection.front().set(selected);
+	                check(!data.mouse_on_menus(drag_screen_x, drag_screen_y));
+	                check(data.get_object(selected_world_x, selected_world_y) == selected);
+	                eds().mouse_last_x = drag_screen_x;
+	                eds().mouse_last_y = drag_screen_y;
+	                data.mouse_motion(drag_screen_x, drag_screen_y, 3, 4);
+	                check(data.dragging);
+	                data.dragging = false;
+	                data.mouse_motion(80, 80, 20, 20);
+	                check(data.rect_selecting);
+	            }
             mouse.left = false;
 
             data.selection.clear();
@@ -2993,21 +2975,21 @@ int level_editor_test_exercise_internal_helpers()
             mouse.left = true;
             data.mouse_motion(90, 90, 5, 6);
             mouse.left = false;
-            if (data.selection.front().x == selected->xpos() &&
-                data.selection.front().y == selected->ypos())
-                score++;
+            check(data.selection.front().x == selected->xpos() &&
+                data.selection.front().y == selected->ypos());
             data.dragging = false;
 
             data.rect_selecting = true;
-            data.selection_rect = Rectf(0.0f, 0.0f, 120.0f, 120.0f);
+            data.selection_rect = Rectf(static_cast<float>(selected->xpos() - 4),
+                static_cast<float>(selected->ypos() - 4),
+                static_cast<float>(selected->sizex() + 8),
+                static_cast<float>(selected->sizey() + 8));
             bool done = false;
-            data.mouse_up(90, 90, 20, 20, done);
-            if (!data.rect_selecting && !data.selection.empty())
-                score++;
+            data.mouse_up(160, 160, 160, 160, done);
+            check(!data.rect_selecting && !data.selection.empty());
 
             data.activate_mode_button(&data.deleteButton);
-            if (data.selection.empty())
-                score++;
+            check(data.selection.empty());
         }
 
         data.mode = Mode::Terrain;
@@ -3015,13 +2997,11 @@ int level_editor_test_exercise_internal_helpers()
         data.terrain_brush.picking = true;
         data.set_terrain(2, 2, PIX_WATER1);
         data.pick_by_mouse(GRID_SIZE * 2, GRID_SIZE * 2);
-        if (data.terrain_brush.terrain == PIX_WATER1)
-            score++;
+        check(data.terrain_brush.terrain == PIX_WATER1);
 
         bool done = false;
         data.mouse_up(S_RIGHT + 1, PIX_TOP + 1, S_RIGHT + 1, PIX_TOP + 1, done);
-        if (data.terrain_brush.terrain >= 0)
-            score++;
+        check(data.terrain_brush.terrain >= 0);
 
         data.mode = Mode::Object;
         data.reset_mode_buttons();
@@ -3030,23 +3010,20 @@ int level_editor_test_exercise_internal_helpers()
         data.object_brush.snap_to_grid = true;
         data.object_brush.picking = false;
         data.mouse_up(140, 120, 140, 120, done);
-        if (eds().levelchanged)
-            score++;
+        check(eds().levelchanged);
         data.object_brush.picking = true;
         data.pick_by_mouse(140, 120);
-        if (!data.object_brush.picking || data.object_brush.family == FAMILY_SOLDIER)
-            score++;
+        check(!data.object_brush.picking || data.object_brush.family == FAMILY_SOLDIER);
 
         MouseState& menu_mouse = query_mouse_no_poll();
         menu_mouse.left = false;
         menu_mouse.right = false;
-        auto click_button = [&](SimpleButton& button) {
+        auto click_button = [&](SimpleButton& button, bool expected_done = false) {
             bool menu_done = false;
             const int x = button.area.x + 1;
             const int y = button.area.y + 1;
             data.mouse_up(x, y, x, y, menu_done);
-            if (!menu_done)
-                score++;
+            check(menu_done == expected_done);
             return menu_done;
         };
         auto open_campaign_menu = [&] {
@@ -3103,21 +3080,21 @@ int level_editor_test_exercise_internal_helpers()
         data.mode = Mode::Terrain;
         data.reset_mode_buttons();
         data.update_menu_buttons();
-        if (data.mouse_on_menus(data.modeButton.area.x + 1, data.modeButton.area.y + 1))
-            score++;
-        if (data.mouse_on_menus(data.panLeftButton.area.x + 1, data.panUpButton.area.y + 1))
-            score++;
-        if (!data.mouse_on_menus(200, 170))
-            score++;
+        data.pan_buttons.insert(&data.panLeftButton);
+        data.pan_buttons.insert(&data.panRightButton);
+        data.pan_buttons.insert(&data.panUpButton);
+        data.pan_buttons.insert(&data.panDownButton);
+        check(data.mouse_on_menus(data.terrainSmoothButton.area.x + 1, data.terrainSmoothButton.area.y + 1));
+        check(data.mouse_on_menus(data.panLeftButton.area.x + 1, data.panUpButton.area.y + 1));
+        check(!data.mouse_on_menus(200, 170));
 
-        open_file_menu();
-        open_file_menu();
-        if (data.current_menu.empty())
-            score++;
+        data.current_menu.clear();
+        click_button(data.fileButton);
+        click_button(data.fileButton);
+        check(data.current_menu.empty());
         open_file_menu();
         open_file_campaign_menu();
-        if (!data.current_menu.empty())
-            score++;
+        check(!data.current_menu.empty());
 
         const std::string helper_campaign_id = "org.openglad.coverage.editor_helper";
         const std::string previously_mounted_campaign = get_mounted_campaign();
@@ -3128,17 +3105,13 @@ int level_editor_test_exercise_internal_helpers()
         level_editor_testing_prompt_queue_push(helper_campaign_id.c_str());
         open_file_campaign_menu();
         click_button(data.fileCampaignNewButton);
-	        if (data.campaign->id == helper_campaign_id)
-	            score++;
-	        if (data.saveCampaignAs(helper_campaign_id))
-	            score++;
-	        if (data.saveLevelAs(3))
-	            score++;
+	        check(data.campaign->id == helper_campaign_id);
+	        check(data.saveCampaignAs(helper_campaign_id));
+	        check(data.saveLevelAs(3));
 
 	        open_file_campaign_menu();
         click_button(data.fileCampaignSaveButton);
-        if (!eds().campaignchanged)
-            score++;
+        check(!eds().campaignchanged);
 
         eds().levelchanged = 1;
         eds().campaignchanged = 1;
@@ -3153,39 +3126,32 @@ int level_editor_test_exercise_internal_helpers()
         picker_testing_yes_or_no_queue_push(true);
         expose_hidden_file_campaign_choice(data.fileCampaignShareButton);
         click_button(data.fileCampaignShareButton);
-        if (!eds().levelchanged && !eds().campaignchanged)
-            score++;
+        check(!eds().levelchanged && !eds().campaignchanged);
 
         open_file_level_menu();
-        if (!data.current_menu.empty())
-            score++;
+        check(!data.current_menu.empty());
         eds().levelchanged = 1;
         picker_testing_yes_or_no_queue_push(true);
         open_file_level_menu();
         click_button(data.fileLevelNewButton);
-        if (eds().levelchanged)
-            score++;
+        check(eds().levelchanged);
         open_file_level_menu();
         click_button(data.fileLevelSaveButton);
-        if (!eds().levelchanged)
-            score++;
+        check(!eds().levelchanged);
 
         open_file_menu();
-        bool quit_done = click_button(data.fileQuitButton);
-        if (quit_done && data.current_menu.empty())
-            score++;
+        bool quit_done = click_button(data.fileQuitButton, true);
+        check(quit_done && data.current_menu.empty());
 
         open_file_menu();
         bool off_menu_done = false;
         data.mouse_up(220, 170, 220, 170, off_menu_done);
-        if (!off_menu_done && data.current_menu.empty())
-            score++;
+        check(!off_menu_done && data.current_menu.empty());
 
         data.dragging = true;
         bool drag_done = false;
         data.mouse_up(220, 170, 220, 170, drag_done);
-        if (!drag_done && !data.dragging && data.current_menu.empty())
-            score++;
+        check(!drag_done && !data.dragging && data.current_menu.empty());
 
         if (!previously_mounted_campaign.empty()) {
             (void)unmount_campaign_package_with_error(get_mounted_campaign());
@@ -3195,51 +3161,44 @@ int level_editor_test_exercise_internal_helpers()
         open_campaign_menu();
         click_button(data.campaignInfoButton);
         open_campaign_menu();
-        if (click_button(data.campaignButton))
-            score++;
+        click_button(data.campaignButton);
+        check(data.current_menu.empty());
 
         level_editor_testing_prompt_queue_clear();
         level_editor_testing_prompt_queue_push("Coverage Campaign");
         open_campaign_profile_menu();
         click_button(data.campaignProfileTitleButton);
-        if (data.campaign->title == "Coverage Campaign")
-            score++;
+        check(data.campaign->title == "Coverage Campaign");
 
         level_editor_testing_prompt_queue_push("Coverage Campaign Description");
         open_campaign_profile_menu();
         click_button(data.campaignProfileDescriptionButton);
-        if (!data.campaign->description.empty())
-            score++;
+        check(!data.campaign->description.empty());
 
         level_editor_testing_prompt_queue_push("Coverage Authors");
         open_campaign_profile_menu();
         click_button(data.campaignProfileAuthorsButton);
-        if (data.campaign->authors == "Coverage Authors")
-            score++;
+        check(data.campaign->authors == "Coverage Authors");
 
         level_editor_testing_prompt_queue_push("Coverage Contributors");
         open_campaign_profile_menu();
         click_button(data.campaignProfileContributorsButton);
-        if (data.campaign->contributors == "Coverage Contributors")
-            score++;
+        check(data.campaign->contributors == "Coverage Contributors");
 
         level_editor_testing_prompt_queue_push("9.9");
         open_campaign_details_menu();
         click_button(data.campaignDetailsVersionButton);
-        if (data.campaign->version == "9.9")
-            score++;
+        check(data.campaign->version == "9.9");
 
         level_editor_testing_prompt_queue_push("42");
         open_campaign_details_menu();
         click_button(data.campaignDetailsSuggestedPowerButton);
-        if (data.campaign->suggested_power == 42)
-            score++;
+        check(data.campaign->suggested_power == 42);
 
         level_editor_testing_prompt_queue_push("1");
         open_campaign_details_menu();
         click_button(data.campaignDetailsFirstLevelButton);
-        if (data.campaign->first_level == 1)
-            score++;
+        check(data.campaign->first_level == 1);
 
         open_campaign_menu();
         click_button(data.campaignValidateButton);
@@ -3250,26 +3209,22 @@ int level_editor_test_exercise_internal_helpers()
         level_editor_testing_prompt_queue_push("Coverage Level");
         open_level_profile_menu();
         click_button(data.levelProfileTitleButton);
-        if (data.level->world().title == "Coverage Level")
-            score++;
+        check(data.level->world().title == "Coverage Level");
 
         level_editor_testing_prompt_queue_push("Coverage Level Description");
         open_level_profile_menu();
         click_button(data.levelProfileDescriptionButton);
-        if (!data.level->description.empty())
-            score++;
+        check(!data.level->description.empty());
 
         level_editor_testing_prompt_queue_push("77");
         open_level_details_menu();
         click_button(data.levelDetailsParValueButton);
-        if (data.level->world().par_value == 77)
-            score++;
+        check(data.level->world().par_value == 77);
 
         level_editor_testing_prompt_queue_push("88");
         open_level_details_menu();
         click_button(data.levelDetailsTimeLimitButton);
-        if (data.level->world().time_bonus_limit == 88)
-            score++;
+        check(data.level->world().time_bonus_limit == 88);
 
         level_editor_testing_prompt_queue_push("2");
         level_editor_testing_prompt_queue_push("2");
@@ -3279,16 +3234,14 @@ int level_editor_test_exercise_internal_helpers()
         level_editor_testing_prompt_queue_push("6");
         open_level_details_menu();
         click_button(data.levelDetailsMapSizeButton);
-        if (data.level->world().grid.w == 6 && data.level->world().grid.h == 6)
-            score++;
+        check(data.level->world().grid.w == 6 && data.level->world().grid.h == 6);
 
         const short type_before = data.level->world().type;
         open_level_goals_menu();
         click_button(data.levelGoalsEnemiesButton);
         click_button(data.levelGoalsGeneratorsButton);
         click_button(data.levelGoalsNPCsButton);
-        if (data.level->world().type != type_before)
-            score++;
+        check(data.level->world().type != type_before);
 
         open_level_menu();
         click_button(data.levelResmoothButton);
@@ -3298,26 +3251,24 @@ int level_editor_test_exercise_internal_helpers()
         picker_testing_yes_or_no_queue_push(true);
         open_level_menu();
         click_button(data.levelDeleteObjectsButton);
-        if (data.level->world().oblist.empty())
-            score++;
+        check(data.level->world().oblist.empty());
 
         open_mode_menu();
         click_button(data.modeObjectButton);
-        if (data.mode == Mode::Object)
-            score++;
+        check(data.mode == Mode::Object);
         open_mode_menu();
         click_button(data.modeSelectButton);
-        if (data.mode == Mode::Select)
-            score++;
+        check(data.mode == Mode::Select);
         open_mode_menu();
         click_button(data.modeTerrainButton);
-        if (data.mode == Mode::Terrain)
-            score++;
+        check(data.mode == Mode::Terrain);
 
         screen* scr = og::runtime::current_session->myscreen_;
+        check(scr != nullptr && scr->viewob[0] != nullptr);
         if (scr != nullptr && scr->viewob[0] != nullptr)
         {
             walker* draw_selected = data.level->add_ob(Order::Living, FAMILY_SOLDIER);
+            check(draw_selected != nullptr);
             if (draw_selected != nullptr)
             {
                 draw_selected->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
@@ -3332,7 +3283,7 @@ int level_editor_test_exercise_internal_helpers()
                 data.draw(scr);
                 data.rect_selecting = false;
                 data.display_panel(scr);
-                score++;
+                check(!data.selection.empty());
             }
 
             data.selection.clear();
@@ -3371,11 +3322,11 @@ int level_editor_test_exercise_internal_helpers()
             data.mode = Mode::Terrain;
             data.reset_mode_buttons();
             data.display_panel(scr);
-            score++;
+            check(data.mode == Mode::Terrain);
         }
     }
 
-    return score;
+    return failed_check == 0 ? 0 : -failed_check;
 }
 // GCOVR_EXCL_STOP
 #endif

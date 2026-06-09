@@ -1682,7 +1682,7 @@ int picker_lobby_network_testing_exercise_internal_helpers()
     check(build_host_transport_failure_message("", "") ==
           "Unable to host a network lobby.");
 
-    return failed ? -failed_check : checks;
+    return failed ? -failed_check : 0;
 }
 // GCOVR_EXCL_STOP
 

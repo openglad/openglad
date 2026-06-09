@@ -1816,7 +1816,13 @@ int picker_team_build_testing_exercise_internal_paths()
         }
     } lobby_guard;
 
-    int score = 0;
+    int check_index = 0;
+    int failed_check = 0;
+    const auto check = [&check_index, &failed_check](bool condition) {
+        ++check_index;
+        if (!condition && failed_check == 0)
+            failed_check = check_index;
+    };
     TestLobbyClient client;
     og::ui::install_active_picker_lobby_client(&client);
     client.initialize_from_save();
@@ -1825,14 +1831,10 @@ int picker_team_build_testing_exercise_internal_paths()
     client.sync_settings_from_save();
     client.poll_and_apply();
     client.set_player_mode(2);
-    if (client.request_start_game() && client.requested)
-        score++;
-    if (client.build_game_start_config().has_value())
-        score++;
-    if (client.consume_game_start_config().has_value())
-        score++;
-    if (!client.start_request_pending())
-        score++;
+    check(client.request_start_game() && client.requested);
+    check(client.build_game_start_config().has_value());
+    check(client.consume_game_start_config().has_value());
+    check(!client.start_request_pending());
     client.shutdown();
 
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
@@ -1846,16 +1848,13 @@ int picker_team_build_testing_exercise_internal_paths()
         save.team_size = old_team_size;
     };
 
-    if (!save_has_trainable_team_member(save))
-        score++;
+    check(!save_has_trainable_team_member(save));
     save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
     save.team_size = 1;
     client.editable = false;
-    if (!save_has_trainable_team_member(save))
-        score++;
+    check(!save_has_trainable_team_member(save));
     client.editable = true;
-    if (save_has_trainable_team_member(save))
-        score++;
+    check(save_has_trainable_team_member(save));
 
     button buttons[] = {
         button("b0", "0", KEYSTATE_UNKNOWN, 0, 0, 10, 10, 0, 0, MenuNav{}),
@@ -1878,74 +1877,58 @@ int picker_team_build_testing_exercise_internal_paths()
     buttons[1].hidden = false;
     highlighted = 0;
     ensure_highlighted_button_visible(buttons, 2, highlighted);
-    if (highlighted == 1)
-        score++;
+    check(highlighted == 1);
     buttons[1].hidden = true;
     ensure_highlighted_button_visible(buttons, 2, highlighted);
-    if (highlighted == 0)
-        score++;
+    check(highlighted == 0);
 
     highlighted = 5;
     client.host_visible = false;
     sync_team_build_host_control_visibility(buttons, 11, highlighted);
-    if (buttons[kTeamBuildGoButtonIndex].hidden &&
+    check(buttons[kTeamBuildGoButtonIndex].hidden &&
         buttons[kTeamBuildSetLevelButtonIndex].hidden &&
-        buttons[kTeamBuildSetCampaignButtonIndex].hidden)
-    {
-        score++;
-    }
+        buttons[kTeamBuildSetCampaignButtonIndex].hidden);
     client.host_visible = true;
     sync_team_build_host_control_visibility(buttons, 11, highlighted);
-    if (!buttons[kTeamBuildGoButtonIndex].hidden)
-        score++;
+    check(!buttons[kTeamBuildGoButtonIndex].hidden);
     sync_view_team_host_control_visibility(buttons, 1, highlighted);
-    if (!buttons[kViewTeamGoButtonIndex].hidden)
-        score++;
+    check(!buttons[kViewTeamGoButtonIndex].hidden);
 
     g_start_game_requested = false;
     Sint32 retvalue = 0;
-    if (!team_build_remote_start_requested(retvalue))
-        score++;
+    check(!team_build_remote_start_requested(retvalue));
     g_start_game_requested = true;
     client.has_start_config = false;
-    if (!team_build_remote_start_requested(retvalue))
-        score++;
+    check(!team_build_remote_start_requested(retvalue));
     client.has_start_config = true;
-    if (team_build_remote_start_requested(retvalue) && (retvalue & MENU_EXIT))
-        score++;
-    if (team_build_start_selected())
-        score++;
+    check(team_build_remote_start_requested(retvalue) && (retvalue & MENU_EXIT));
+    check(team_build_start_selected());
     pks().selected_menu_item = nullptr;
-    if (!team_build_start_selected())
-        score++;
+    check(!team_build_start_selected());
     g_start_game_requested = false;
     picker_prepare_async_team_build_start_request();
-    if (client.requested)
-        score++;
-    if (g_start_game_requested)
-        score++;
+    check(client.requested);
+#ifdef __EMSCRIPTEN__
+    check(g_start_game_requested);
+#else
+    check(!g_start_game_requested);
+#endif
 
-    if (!get_class_description(FAMILY_SOLDIER).empty())
-        score++;
-    if (get_class_description(250).empty())
-        score++;
+    check(!get_class_description(FAMILY_SOLDIER).empty());
+    check(get_class_description(250).empty());
     for (int family : og::ui::kAllowableGuys)
     {
         for (int stat = 0; stat < 5; ++stat)
             (void)get_training_cost_rating(static_cast<unsigned char>(family), stat);
     }
-    if (std::strlen(get_training_cost_rating(250, 0)) == 0)
-        score++;
+    check(std::strlen(get_training_cost_rating(250, 0)) == 0);
 
     og::ui::TrainSession train_session(save);
     pks().train_session = nullptr;
-    if (increase_stat(BUT_STR, 1) == MENU_OK &&
+    check(increase_stat(BUT_STR, 1) == MENU_OK &&
         decrease_stat(BUT_STR, 1) == MENU_OK &&
         cycle_team_guy(1) == -1 &&
-        edit_guy(0) == -1)
-    {
-        score++;
-    }
+        edit_guy(0) == -1);
 
     pks().train_session = &train_session;
     for (Sint32 stat : {BUT_STR, BUT_DEX, BUT_CON, BUT_INT, BUT_ARMOR, BUT_LEVEL, Sint32{-999}})
@@ -1956,44 +1939,36 @@ int picker_team_build_testing_exercise_internal_paths()
     (void)cycle_team_guy(1);
     (void)cycle_team_guy(-1);
     sync_current_guy_from_train();
-    if (og::runtime::current_session->current_guy_)
-        score++;
+    check(og::runtime::current_session->current_guy_ != nullptr);
     pks().train_session = nullptr;
 
     og::ui::HireSession hire_session(save, 0);
     pks().hire_session = nullptr;
-    if (add_guy(0) == -1)
-        score++;
+    check(add_guy(0) == -1);
     (void)cycle_guy(0);
     pks().hire_session = &hire_session;
     (void)cycle_guy(1);
     (void)cycle_guy(-1);
     sync_current_guy_from_hire();
-    if (og::runtime::current_session->current_guy_)
-        score++;
+    check(og::runtime::current_session->current_guy_ != nullptr);
     pks().hire_session = nullptr;
 
     og::runtime::current_session->current_guy_.reset();
-    if (name_guy(0) == MENU_REDRAW)
-        score++;
+    check(name_guy(0) == MENU_REDRAW);
     client.editable = false;
     og::runtime::current_session->editguy_ = 0;
-    if (name_guy(1) == MENU_REDRAW)
-        score++;
+    check(name_guy(1) == MENU_REDRAW);
     client.editable = true;
 
     (void)how_many(FAMILY_SOLDIER);
-    if (delete_all() >= 0)
-        score++;
-    if (go_menu(0) == MENU_REDRAW)
-        score++;
+    check(delete_all() >= 0);
+    check(go_menu(0) == MENU_REDRAW);
     save.team_list[0] = std::make_unique<guy>(FAMILY_MAGE);
     save.team_list[0]->teamnum = 0;
     save.team_size = 1;
     client.requested = false;
     g_start_game_requested = false;
-    if (go_menu(0) == MENU_REDRAW && client.requested)
-        score++;
+    check(go_menu(0) == MENU_REDRAW && client.requested);
 
     guy source(FAMILY_ELF);
     guy destination(FAMILY_SOLDIER);
@@ -2002,19 +1977,16 @@ int picker_team_build_testing_exercise_internal_paths()
     source.exp = calculate_exp(source.level);
     source.kills = 4;
     statscopy(&destination, &source);
-    if (destination.family == source.family &&
+    check(destination.family == source.family &&
         destination.name == source.name &&
-        destination.exp == source.exp)
-    {
-        score++;
-    }
+        destination.exp == source.exp);
 
     g_start_game_requested = false;
     pks().selected_menu_item = nullptr;
     pks().train_session = nullptr;
     pks().hire_session = nullptr;
     restore_team();
-    return score;
+    return failed_check == 0 ? 0 : -failed_check;
 }
 // GCOVR_EXCL_STOP
 #endif

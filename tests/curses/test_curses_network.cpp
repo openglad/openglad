@@ -202,8 +202,7 @@ TEST(CursesNetwork, host_lobby_builds_over_inprocess_transport)
 
 TEST(CursesNetwork, internal_helpers_cover_message_and_session_paths)
 {
-    constexpr int kExpectedInternalHelperChecks = 11;
-    EXPECT_EQ(kExpectedInternalHelperChecks,
+    EXPECT_EQ(0,
               curses_network_testing_exercise_internal_helpers());
 }
 

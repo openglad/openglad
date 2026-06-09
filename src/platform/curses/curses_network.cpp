@@ -1158,12 +1158,17 @@ private:
 // GCOVR_EXCL_START -- test-only coverage harness in src/, not shipped code.
 int curses_network_testing_exercise_internal_helpers()
 {
-    int score = 0;
+    int check_index = 0;
+    int failed_check = 0;
+    const auto check = [&check_index, &failed_check](bool condition) {
+        ++check_index;
+        if (!condition && failed_check == 0)
+            failed_check = check_index;
+    };
 
     const std::string name_a = make_network_player_name();
     const std::string name_b = make_network_player_name();
-    if (!name_a.empty() && name_a != name_b)
-        ++score;
+    check(!name_a.empty() && name_a != name_b);
 
     og::sim::SimEventBatch batch;
     batch.events.push_back(og::sim::Event{
@@ -1184,9 +1189,8 @@ int curses_network_testing_exercise_internal_helpers()
     collect_notifications(batch, notifications);
     PendingEnd pending;
     apply_game_flow_batch(batch, pending, notifications);
-    if (pending.ended && pending.ending == 1 && pending.next_level == 2 &&
-        notifications.size() >= 2)
-        ++score;
+    check(pending.ended && pending.ending == 1 && pending.next_level == 2 &&
+        notifications.size() >= 2);
 
     SaveData save;
     save.current_campaign.clear();
@@ -1199,22 +1203,19 @@ int curses_network_testing_exercise_internal_helpers()
     soldier->teamnum = 2;
     soldier->level = 4;
     save.team_list[3] = std::move(soldier);
-    if (resolve_initial_local_team(save) == 2)
-        ++score;
+    check(resolve_initial_local_team(save) == 2);
 
     og::sim::LobbyPlayer player =
         build_local_lobby_player(save, "local-player", 2);
-    if (player.name == "local-player" && player.team == 2 &&
+    check(player.name == "local-player" && player.team == 2 &&
         player.character_slots.size() == 1 &&
-        player.character_slots.front().character.name == "Curses Soldier")
-        ++score;
+        player.character_slots.front().character.name == "Curses Soldier");
 
     og::sim::LobbyMessage join_message =
         make_join_message(save, "local-player", 2);
     og::sim::LobbyMessage settings_message = make_settings_message(save, 5);
-    if (join_message.kind() == og::sim::LobbyMessageKind::Join &&
-        settings_message.kind() == og::sim::LobbyMessageKind::SettingsChange)
-        ++score;
+    check(join_message.kind() == og::sim::LobbyMessageKind::Join &&
+        settings_message.kind() == og::sim::LobbyMessageKind::SettingsChange);
 
     og::sim::LobbyState state;
     state.settings.campaign_id = "";
@@ -1223,9 +1224,8 @@ int curses_network_testing_exercise_internal_helpers()
     player.player_index = 0;
     player.is_host = true;
     state.players.push_back(player);
-    if (find_local_player(state, "local-player") != nullptr &&
-        find_local_player(state, "missing") == nullptr)
-        ++score;
+    check(find_local_player(state, "local-player") != nullptr &&
+        find_local_player(state, "missing") == nullptr);
 
     class RawTransport final : public og::sim::ITransport {
     public:
@@ -1281,27 +1281,24 @@ int curses_network_testing_exercise_internal_helpers()
     raw.accept_connections();
     raw.disconnect(1);
     raw.send(1, unknown.data(), unknown.size());
-    if (raw.accepted() &&
+    check(raw.accepted() &&
         raw.disconnected_peer_id() == 1 &&
         raw.sent_peer_id() == 1 &&
         raw.sent_payload() == unknown &&
-        raw.connected_peers() == std::vector<og::sim::PeerId>{1})
-        ++score;
+        raw.connected_peers() == std::vector<og::sim::PeerId>{1});
     const std::vector<og::sim::TypedReceivedMessage> decoded =
         poll_lobby_transport_messages(raw);
-    if (decoded.size() == 2 &&
+    check(decoded.size() == 2 &&
         decoded[0].kind == og::sim::TypedReceivedMessageKind::LobbyMessage &&
-        decoded[1].kind == og::sim::TypedReceivedMessageKind::LobbyState)
-        ++score;
+        decoded[1].kind == og::sim::TypedReceivedMessageKind::LobbyState);
 
     auto server = og::sim::InProcessTransport::create_server();
     server->accept_connections();
     auto host_client = server->create_client_transport();
     std::string err;
-    if (HostCursesSession::create({}, {}, 1, nullptr, host_client, 0, &err) ==
+    check(HostCursesSession::create({}, {}, 1, nullptr, host_client, 0, &err) ==
             nullptr &&
-        !err.empty())
-        ++score;
+        !err.empty());
 
     og::sim::LobbySaveDataEquivalent equivalent;
     equivalent.current_campaign = "org.openglad.gladiator";
@@ -1322,6 +1319,7 @@ int curses_network_testing_exercise_internal_helpers()
     std::unique_ptr<HostCursesSession> host =
         HostCursesSession::create(equivalent, bindings, 1, server, host_client,
                                   0, &err);
+    check(host != nullptr);
     if (host != nullptr) {
         GameWorld& mirror = host->mirror_world();
         GameWorld& authoritative = host->server_world_ref();
@@ -1356,11 +1354,10 @@ int curses_network_testing_exercise_internal_helpers()
             host->advance();
             ended_after_abort = ended_after_abort || host->ended();
         }
-        if (stable_before_abort &&
+        check(stable_before_abort &&
             ended_after_abort &&
             host->ended() &&
-            host->ending() != 0)
-            ++score;
+            host->ending() != 0);
     }
 
     auto join_server = og::sim::InProcessTransport::create_server();
@@ -1369,6 +1366,7 @@ int curses_network_testing_exercise_internal_helpers()
     std::unique_ptr<JoinCursesSession> join =
         JoinCursesSession::create(equivalent, 1, join_client,
                                   join_client->local_peer_id(), 0, &err);
+    check(join != nullptr);
     if (join != nullptr) {
         GameWorld& mirror = join->mirror_world();
         const std::uint32_t initial_tick = mirror.tick_count_;
@@ -1390,11 +1388,10 @@ int curses_network_testing_exercise_internal_helpers()
             second_drain.empty();
         join->request_abort();
         join->advance();
-        if (stable_before_abort && !join->ended())
-            ++score;
+        check(stable_before_abort && !join->ended());
     }
 
-    return score;
+    return failed_check == 0 ? 0 : -failed_check;
 }
 // GCOVR_EXCL_STOP
 #endif

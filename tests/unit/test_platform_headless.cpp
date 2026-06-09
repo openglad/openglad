@@ -500,7 +500,6 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
 TEST(PlatformHeadless, text_picker_internal_help_and_error_paths)
 {
     StdoutSilencer stdout_silencer;
-    constexpr int kExpectedInternalHelperChecks = 31;
-    EXPECT_EQ(kExpectedInternalHelperChecks,
+    EXPECT_EQ(0,
               og::ui::text_picker_testing_exercise_internal_paths());
 }

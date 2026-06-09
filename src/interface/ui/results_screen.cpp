@@ -834,7 +834,13 @@ int results_screen_test_exercise_internal()
 {
     // Exercise the core computation helpers in this TU without entering any
     // interactive UI loops (safe for CI).
-    int score = 0;
+    int check_index = 0;
+    int failed_check = 0;
+    const auto check = [&check_index, &failed_check](bool condition) {
+        ++check_index;
+        if (!condition && failed_check == 0)
+            failed_check = check_index;
+    };
 
     // walker/pixie store raw pointers to PixieData buffers; keep the data alive
     // for the duration of this helper.
@@ -850,21 +856,20 @@ int results_screen_test_exercise_internal()
     show_ending_popup(0, 2);  // victory not completed
     og::runtime::current_session->myscreen_->save_data.current_levels[og::runtime::current_session->myscreen_->save_data.current_campaign] = og::runtime::current_session->myscreen_->save_data.scen_num;
     show_ending_popup(0, 2);  // victory completed
-    score++;
+    check(og::runtime::current_session->myscreen_->save_data.current_levels[
+              og::runtime::current_session->myscreen_->save_data.current_campaign] ==
+          og::runtime::current_session->myscreen_->save_data.scen_num);
 
     // TroopResult logic paths.
     TroopResult empty_result(nullptr, nullptr);
-    if (empty_result.get_name().empty() &&
+    check(empty_result.get_name().empty() &&
         empty_result.get_class_name().empty() &&
         empty_result.get_level() == 0 &&
         empty_result.get_tallies() == 0 &&
         empty_result.get_HP() == 0.0f &&
         empty_result.get_XP_base() == 0.0f &&
         empty_result.is_dead() &&
-        !empty_result.is_new())
-    {
-        score++;
-    }
+        !empty_result.is_new());
     empty_result.draw_guy(160, 100, 0);
     show_guy(0, nullptr, 160, 100);
 
@@ -878,17 +883,12 @@ int results_screen_test_exercise_internal()
     walker after_null(one_px);
     after_null.clear_myguy();
     TroopResult t0(&before, &after_null);
-    if (t0.get_name() == "Before")
-        score++;
-    if (!t0.get_class_name().empty())
-        score++;
-    if (t0.get_XP_base() > 0.0f &&
+    check(t0.get_name() == "Before");
+    check(!t0.get_class_name().empty());
+    check(t0.get_XP_base() > 0.0f &&
         t0.get_XP_gain() == 0.0f &&
         t0.get_gained_specials().empty() &&
-        !t0.is_new())
-    {
-        score++;
-    }
+        !t0.is_new());
 
     // after with owned myguy to cover gained/lost/no-change XP branches and HP paths.
     walker after_owned(one_px);
@@ -903,66 +903,51 @@ int results_screen_test_exercise_internal()
     after_owned.stats()->set_hitpoints(5);
 
     TroopResult t1(&before, &after_owned);
-    if (t1.gained_level())
-        score++;
-    if (t1.get_XP_base() == 0.0f &&
+    check(t1.gained_level());
+    check(t1.get_XP_base() == 0.0f &&
         t1.get_XP_gain() > 0.0f &&
         t1.get_HP() > 0.0f &&
         t1.get_HP() < 1.0f &&
-        t1.get_tallies() == 0)
-    {
-        score++;
-    }
+        t1.get_tallies() == 0);
     const std::vector<std::string> gained_specials = t1.get_gained_specials();
-    if (!gained_specials.empty() &&
+    check(!gained_specials.empty() &&
         std::all_of(gained_specials.begin(), gained_specials.end(),
-                    [](const std::string& name) { return !name.empty(); }))
-    {
-        score++;
-    }
+                    [](const std::string& name) { return !name.empty(); }));
 
     // lost level branch
     before.level = 6;
     before.exp = calculate_exp(before.level);
     after_owned.myguy->exp = calculate_exp(3); // lost
     TroopResult t2(&before, &after_owned);
-    if (t2.lost_level())
-        score++;
-    if (t2.get_XP_gain() < 0.0f)
-        score++;
+    check(t2.lost_level());
+    check(t2.get_XP_gain() < 0.0f);
 
     // unchanged level branch
     before.level = 3;
     before.exp = calculate_exp(before.level) + 20;
     after_owned.myguy->exp = calculate_exp(before.level) + 25;
     TroopResult t3(&before, &after_owned);
-    if (!t3.gained_level() && !t3.lost_level() && t3.get_XP_gain() > 0.0f)
-        score++;
+    check(!t3.gained_level() && !t3.lost_level() && t3.get_XP_gain() > 0.0f);
 
     // HP edge: scen_min_hp > current hitpoints returns 1.0
     after_owned.myguy->scen_min_hp = 1000;
     after_owned.stats()->set_hitpoints(1);
     TroopResult t4(nullptr, &after_owned);
-    if (t4.get_HP() >= 0.99f)
-        score++;
-    if (t4.get_name() == "After" &&
+    check(t4.get_HP() >= 0.99f);
+    check(t4.get_name() == "After" &&
         !t4.get_class_name().empty() &&
         t4.get_level() == calculate_level(after_owned.myguy->exp) &&
-        t4.is_new())
-    {
-        score++;
-    }
+        t4.is_new());
     t4.draw_guy(160, 100, 0);
 
     // Draw helper should no-op when dead.
     after_owned.myguy->scen_min_hp = 0;
     after_owned.stats()->set_hitpoints(0);
     TroopResult t5(nullptr, &after_owned);
-    if (t5.is_dead())
-        score++;
+    check(t5.is_dead());
     t5.draw_guy(160, 100, 0);
 
-    return score;
+    return failed_check == 0 ? 0 : -failed_check;
 }
 // GCOVR_EXCL_STOP
 #endif

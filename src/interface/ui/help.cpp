@@ -675,13 +675,12 @@ Sint32 show_general_help()
 // GCOVR_EXCL_START -- test-only coverage harness in src/, not shipped code.
 Sint32 help_testing_exercise_internal_paths()
 {
-	int checks = 0;
-	bool failed = false;
-	const auto check = [&checks, &failed](bool condition) {
-		if (condition)
-			++checks;
-		else
-			failed = true;
+	int check_index = 0;
+	int failed_check = 0;
+	const auto check = [&check_index, &failed_check](bool condition) {
+		++check_index;
+		if (!condition && failed_check == 0)
+			failed_check = check_index;
 	};
 
 	std::vector<std::string> lines;
@@ -724,7 +723,7 @@ Sint32 help_testing_exercise_internal_paths()
 	help_files_loaded = false;
 	classes_help_lines.clear();
 	editor_help_lines.clear();
-	return failed ? 0 : checks;
+	return failed_check == 0 ? 0 : -failed_check;
 }
 // GCOVR_EXCL_STOP
 #endif

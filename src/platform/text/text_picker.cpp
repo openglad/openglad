@@ -777,7 +777,7 @@ int text_picker_testing_exercise_internal_paths()
           error.code == TextPickerErrorCode::None &&
           !config.team_families.empty());
 
-    return failed ? -failed_check : checks;
+    return failed ? -failed_check : 0;
 }
 // GCOVR_EXCL_STOP
 #endif

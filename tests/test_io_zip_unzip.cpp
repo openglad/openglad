@@ -235,7 +235,14 @@ TEST(IoZipUnzip, io_zip_batch6_add_entry_failed_for_unreadable_file)
     std::error_code ec;
     fs::permissions(blocked, fs::perms::none, fs::perm_options::replace, ec);
     const ArchiveIoError r = zip_contents_with_error(indir.string(), zipfile.string());
-    ASSERT_TRUE(r == ArchiveIoError::AddEntryFailed || r == ArchiveIoError::CloseArchiveFailed) << "unreadable regular file should produce AddEntryFailed or close failure";
+    if (::geteuid() == 0) {
+        ASSERT_EQ(ArchiveIoError::None, r)
+            << "root test runner can reopen chmod(0) files, so the archive should still close cleanly";
+        ASSERT_TRUE(fs::exists(zipfile));
+    } else {
+        ASSERT_EQ(ArchiveIoError::CloseArchiveFailed, r)
+            << "non-root runner should fail while finalizing an archive with unreadable input";
+    }
     fs::permissions(blocked, fs::perms::owner_read | fs::perms::owner_write,
                     fs::perm_options::replace, ec);
 #else

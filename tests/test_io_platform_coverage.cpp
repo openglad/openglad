@@ -727,8 +727,14 @@ TEST(IoPlatformCoverage, zip_api_unreadable_and_non_regular_entries_report_add_f
     (void)::mkfifo(fifo_path.string().c_str(), 0600);
 
     const ArchiveIoError r = og::io::zip_contents_with_error(base.string(), archive.string());
-    ASSERT_TRUE(r == ArchiveIoError::AddEntryFailed || r == ArchiveIoError::CloseArchiveFailed ||
-                    r == ArchiveIoError::None) << "zip should report add/close failure (or succeed if platform permits unreadable reopen)";
+    if (::geteuid() == 0) {
+        ASSERT_EQ(ArchiveIoError::None, r)
+            << "root test runner can reopen chmod(0) files, and non-regular entries should be skipped";
+        ASSERT_TRUE(fs::exists(archive));
+    } else {
+        ASSERT_EQ(ArchiveIoError::CloseArchiveFailed, r)
+            << "non-root runner should fail while finalizing an archive with unreadable input";
+    }
 
     (void)::chmod(unreadable.string().c_str(), 0600);
     fs::remove_all(base, ec);
@@ -777,8 +783,8 @@ TEST(IoPlatformCoverage, zip_api_batch9_permission_denied_walk_and_corrupt_unzip
         }
     }
     const ArchiveIoError unzip_r = og::io::unzip_into_with_error(corrupt.string(), out.string());
-    ASSERT_TRUE(unzip_r == ArchiveIoError::OpenArchiveFailed || unzip_r == ArchiveIoError::OpenEntryFailed ||
-                    unzip_r == ArchiveIoError::ReadEntryFailed) << "corrupt archive should fail through guarded unzip error paths";
+    ASSERT_EQ(ArchiveIoError::OpenArchiveFailed, unzip_r)
+        << "corrupt archive header should fail while opening the archive";
 
     fs::remove_all(base, ec);
 }

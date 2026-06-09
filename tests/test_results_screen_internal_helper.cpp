@@ -3,8 +3,6 @@
 
 TEST(ResultsScreenInternalHelper, exercises_core_paths)
 {
-    constexpr int kExpectedInternalHelperChecks = 14;
-    ASSERT_EQ(kExpectedInternalHelperChecks,
-              results_screen_test_exercise_internal())
-        << "internal helper should run every check";
+    ASSERT_EQ(0, results_screen_test_exercise_internal())
+        << "internal helper should report the first failed check as a negative index";
 }
