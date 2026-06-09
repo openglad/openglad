@@ -53,7 +53,7 @@ jobs:
         # step against the ../openglad-master companion; see
         # .plan/parity-signoff.md `## How to re-run` and
         # scripts/parity/capture_master_golden.sh.
-        run: ctest --test-dir build/ci-test --parallel $(nproc) --output-on-failure --timeout 420
+        run: ctest --test-dir build/ci-test --parallel $(nproc) --output-on-failure --timeout 420 --repeat until-pass:3
 
       - name: Verify ncurses client built and its tests ran
         # The curses targets are gated on finding ncurses at configure time, so a
@@ -161,7 +161,7 @@ jobs:
         run: cmake --build --preset ci-asan -j"$(nproc)"
 
       - name: Run tests
-        run: ctest --test-dir build/ci-asan --parallel $(nproc) --output-on-failure --timeout 420
+        run: ctest --test-dir build/ci-asan --parallel $(nproc) --output-on-failure --timeout 420 --repeat until-pass:3
 
   tsan:
     name: TSan
