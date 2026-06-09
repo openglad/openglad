@@ -101,10 +101,11 @@ TEST(HelpSmoke, help_show_general_help_smoke_exits_on_escape)
     SDL_Thread* thread = SDL_CreateThread(help_injector_thread, "help_injector", nullptr);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
-    (void)show_general_help();
+    ASSERT_EQ(1, show_general_help());
 
     int thread_result = 0;
     SDL_WaitThread(thread, &thread_result);
+    ASSERT_EQ(0, thread_result);
 }
 
 
@@ -166,10 +167,11 @@ TEST(HelpSmoke, help_read_campaign_intro_smoke_exits_on_input)
     SDL_Thread* thread = SDL_CreateThread(intro_injector_thread, "intro_injector", nullptr);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
-    (void)read_campaign_intro(og::runtime::current_session->myscreen_);
+    ASSERT_EQ(192, read_campaign_intro(og::runtime::current_session->myscreen_));
 
     int thread_result = 0;
     SDL_WaitThread(thread, &thread_result);
+    ASSERT_EQ(0, thread_result);
 }
 
 TEST(HelpSmoke, help_read_scenario_scroll_view_exits_on_input)
@@ -184,10 +186,11 @@ TEST(HelpSmoke, help_read_scenario_scroll_view_exits_on_input)
     SDL_Thread* thread = SDL_CreateThread(scenario_injector_thread, "scenario_injector", nullptr);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
-    (void)read_scenario(og::runtime::current_session->myscreen_);
+    ASSERT_EQ(320, read_scenario(og::runtime::current_session->myscreen_));
 
     int thread_result = 0;
     SDL_WaitThread(thread, &thread_result);
+    ASSERT_EQ(0, thread_result);
     hold_keyboard_bit(SDLK_PAGEUP, false);
     hold_keyboard_bit(SDLK_PAGEDOWN, false);
     description = saved_description;

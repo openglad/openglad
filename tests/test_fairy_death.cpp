@@ -463,8 +463,8 @@ TEST(FairyDeath, fairy_death) {
                 ? state.failure_message
                 : "injector thread should have completed");
 
-    ASSERT_TRUE(state.observed_natural_death || state.saw_generic_defeat)
-        << "the lone fairy run should observe a real fairy death or generic defeat";
+    ASSERT_TRUE(state.observed_natural_death)
+        << "the lone fairy run should observe the hired fairy die in-world";
     // We lost — level 4 should NOT be marked completed
     ASSERT_TRUE(!og::runtime::current_session->myscreen_->save_data.is_level_completed(4)) << "level 4 should NOT be completed (fairy should have died)";
 

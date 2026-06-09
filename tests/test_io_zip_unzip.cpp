@@ -151,7 +151,9 @@ TEST(IoZipUnzip, io_zip_contents_with_error_missing_input_directory_path)
     std::filesystem::create_directories(base);
 
     const ArchiveIoError r = zip_contents_with_error(missing.string(), zipfile.string());
-    ASSERT_TRUE(r == ArchiveIoError::None || r == ArchiveIoError::OpenArchiveFailed) << "missing input dir should not report add-entry errors";
+    ASSERT_EQ(ArchiveIoError::None, r)
+        << "missing input dir should be treated as an empty input set";
+    ASSERT_FALSE(fs::exists(zipfile));
 }
 
 

@@ -54,12 +54,12 @@ TEST(TextInputAndWidth, text_query_width_big_font_varies_by_case)
 TEST(TextInputAndWidth, text_write_variants_smoke)
 {
     text t(TEXT_1);
-    (void)t.write_xy(10, 10, "Hi", WHITE);
-    (void)t.write_xy_shadow(10, 20, WHITE, "%s", "Shadow");
-    (void)t.write_xy_center(160, 30, WHITE, "%s", "Center");
-    (void)t.write_xy_center_alpha(160, 40, WHITE, 128, "%s", "Alpha");
-    (void)t.write_xy_center_shadow(160, 50, WHITE, "%s", "CenterShadow");
-    (void)t.write_char_xy_alpha(10, 60, 'Z', WHITE, 128);
+    ASSERT_GT(t.write_xy(10, 10, "Hi", WHITE), 0);
+    ASSERT_GT(t.write_xy_shadow(10, 20, WHITE, "%s", "Shadow"), 0);
+    ASSERT_GT(t.write_xy_center(160, 30, WHITE, "%s", "Center"), 0);
+    ASSERT_GT(t.write_xy_center_alpha(160, 40, WHITE, 128, "%s", "Alpha"), 0);
+    ASSERT_GT(t.write_xy_center_shadow(160, 50, WHITE, "%s", "CenterShadow"), 0);
+    ASSERT_EQ(1, t.write_char_xy_alpha(10, 60, 'Z', WHITE, 128));
 }
 
 

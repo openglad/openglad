@@ -100,8 +100,10 @@ TEST(PickerDialogsReal, picker_dialogs_no_or_yes_default_paths)
 
 TEST(PickerDialogsReal, picker_dialogs_popup_dialog_testmode_noop)
 {
+    vbutton* buttons_before = og::runtime::current_session->localbuttons_;
     popup_dialog("Information", "This is a test popup\\nwith two lines.");
-    ASSERT_TRUE(true) << "popup_dialog should be non-blocking in test mode";
+    ASSERT_EQ(buttons_before, og::runtime::current_session->localbuttons_)
+        << "test-mode popup should return before installing dialog buttons";
 }
 
 

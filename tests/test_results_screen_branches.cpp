@@ -56,27 +56,27 @@ void seed_save0_single_member(const char* name, short scen_num)
 TEST(ResultsScreenBranches, results_screen_ending_branches_smoke)
 {
     // Defeat generic.
-    (void)results_screen(1, -1);
+    ASSERT_FALSE(results_screen(1, -1));
     // Defeat retreat.
-    (void)results_screen(1, 2);
+    ASSERT_FALSE(results_screen(1, 2));
 
     // Victory, completed vs not completed.
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;
     // Make sure completion state is deterministic: clear and set once.
     og::runtime::current_session->myscreen_->save_data.current_levels.clear();
     og::runtime::current_session->myscreen_->save_data.completed_levels.clear();
-    (void)results_screen(0, 2); // not completed -> "Victory!"
+    ASSERT_FALSE(results_screen(0, 2)); // not completed -> "Victory!"
 
     og::runtime::current_session->myscreen_->save_data.completed_levels[og::runtime::current_session->myscreen_->save_data.current_campaign].insert(
         og::runtime::current_session->myscreen_->save_data.scen_num);
-    (void)results_screen(0, 2); // completed -> "Traveling on..."
+    ASSERT_FALSE(results_screen(0, 2)); // completed -> "Traveling on..."
 
     results_screen_testing_set_force_full(true);
-    (void)results_screen(0, 2); // force the non-bypass TESTING overload path.
+    ASSERT_FALSE(results_screen(0, 2)); // force the non-bypass TESTING overload path.
     results_screen_testing_set_force_full(false);
 
     // Special defeat type.
-    (void)results_screen(SCEN_TYPE_SAVE_ALL, -1);
+    ASSERT_FALSE(results_screen(SCEN_TYPE_SAVE_ALL, -1));
 }
 
 
@@ -84,7 +84,7 @@ TEST(ResultsScreenBranches, results_screen_overload_calls_smoke)
 {
     std::map<int, guy*> before;
     std::map<int, walker*> after;
-    (void)results_screen(0, 2, before, after);
+    ASSERT_FALSE(results_screen(0, 2, before, after));
 }
 
 // Gap 4 ("hit play for next level") + Bug B regression: in a networked game the

@@ -28,6 +28,29 @@ static unsigned char& at(PixieData& g, int x, int y)
     return g.data[x + y * g.w];
 }
 
+static bool is_dark_grass_branch_tile(int pix)
+{
+    switch (pix)
+    {
+        case PIX_GRASS1:
+        case PIX_GRASS_DARK_1:
+        case PIX_GRASS_DARK_2:
+        case PIX_GRASS_DARK_3:
+        case PIX_GRASS_DARK_4:
+        case PIX_GRASS_DARK_LL:
+        case PIX_GRASS_DARK_UR:
+        case PIX_GRASS_DARK_B1:
+        case PIX_GRASS_DARK_B2:
+        case PIX_GRASS_DARK_BR:
+        case PIX_GRASS_DARK_R1:
+        case PIX_GRASS_DARK_R2:
+        case PIX_GRASS_RUBBLE:
+            return true;
+        default:
+            return false;
+    }
+}
+
 static void set_neighbors_for_mask(PixieData& g, int cx, int cy, unsigned char same_type, unsigned char other_type, int mask)
 {
     at(g, cx, cy - 1) = (mask & 1) ? same_type : other_type;  // up
@@ -58,7 +81,7 @@ TEST(SmoothMatrix, covers_carpet_and_light_grass_masks)
         at(carpet, 2, 2) = PIX_CARPET_M;
         set_neighbors_for_mask(carpet, 2, 2, PIX_CARPET_M, PIX_GRASS1, mask);
         s.set_target(carpet);
-        (void)s.smooth(2, 2);
+        ASSERT_EQ(1, s.smooth(2, 2));
 
         const unsigned char cv = at(carpet, 2, 2);
         ASSERT_TRUE(cv >= PIX_CARPET_LL && cv <= PIX_CARPET_SMALL_TINY) << "carpet mask smoothing should emit a carpet tile variant";
@@ -67,7 +90,7 @@ TEST(SmoothMatrix, covers_carpet_and_light_grass_masks)
         at(light, 2, 2) = PIX_GRASS_LIGHT_1;
         set_neighbors_for_mask(light, 2, 2, PIX_GRASS_LIGHT_1, PIX_GRASS1, mask);
         s.set_target(light);
-        (void)s.smooth(2, 2);
+        ASSERT_EQ(1, s.smooth(2, 2));
 
         const unsigned char lv = at(light, 2, 2);
         ASSERT_TRUE(lv >= PIX_GRASS_LIGHT_1 && lv <= PIX_GRASS_LIGHT_LEFT_TOP) << "light-grass mask smoothing should emit a light-grass variant";
@@ -90,28 +113,30 @@ TEST(SmoothMatrix, covers_water_tree_dirt_and_dark_dirt_masks)
         at(water, 2, 2) = PIX_WATER1;
         set_neighbors_for_mask(water, 2, 2, PIX_WATER1, PIX_GRASS1, mask);
         s.set_target(water);
-        (void)s.smooth(2, 2);
+        ASSERT_EQ(1, s.smooth(2, 2));
+        ASSERT_EQ(TYPE_WATER, s.query_genre_x_y(2, 2));
 
         PixieData tree = make_grid(5, 5, PIX_GRASS1);
         at(tree, 2, 2) = PIX_TREE_M1;
         set_neighbors_for_mask(tree, 2, 2, PIX_TREE_M1, PIX_GRASS1, mask);
         s.set_target(tree);
-        (void)s.smooth(2, 2);
+        ASSERT_EQ(1, s.smooth(2, 2));
+        ASSERT_EQ(TYPE_TREES, s.query_genre_x_y(2, 2));
 
         PixieData dirt = make_grid(5, 5, PIX_GRASS1);
         at(dirt, 2, 2) = PIX_DIRT_1;
         set_neighbors_for_mask(dirt, 2, 2, PIX_DIRT_1, PIX_GRASS1, mask);
         s.set_target(dirt);
-        (void)s.smooth(2, 2);
+        ASSERT_EQ(1, s.smooth(2, 2));
+        ASSERT_EQ(TYPE_DIRT, s.query_genre_x_y(2, 2));
 
         PixieData dark_dirt = make_grid(5, 5, PIX_GRASS1);
         at(dark_dirt, 2, 2) = PIX_DIRT_DARK_1;
         set_neighbors_for_mask(dark_dirt, 2, 2, PIX_DIRT_DARK_1, PIX_GRASS1, mask);
         s.set_target(dark_dirt);
-        (void)s.smooth(2, 2);
+        ASSERT_EQ(1, s.smooth(2, 2));
+        ASSERT_EQ(TYPE_DIRT_DARK, s.query_genre_x_y(2, 2));
     }
-
-    ASSERT_TRUE(true) << "matrix smooth branch execution completed";
 }
 
 
@@ -130,28 +155,30 @@ TEST(SmoothMatrix, covers_grass_dark_grass_wall_and_cobble_paths)
         at(grass, 2, 2) = PIX_GRASS1;
         set_neighbors_for_mask(grass, 2, 2, PIX_GRASS1, PIX_DIRT_1, mask);
         s.set_target(grass);
-        (void)s.smooth(2, 2);
+        ASSERT_EQ(1, s.smooth(2, 2));
+        ASSERT_EQ(TYPE_GRASS, s.query_genre_x_y(2, 2));
 
         PixieData dark_grass = make_grid(5, 5, PIX_GRASS1);
         at(dark_grass, 2, 2) = PIX_GRASS_DARK_1;
         set_neighbors_for_mask(dark_grass, 2, 2, PIX_GRASS_DARK_1, PIX_GRASS1, mask);
         s.set_target(dark_grass);
-        (void)s.smooth(2, 2);
+        ASSERT_EQ(1, s.smooth(2, 2));
+        ASSERT_TRUE(is_dark_grass_branch_tile(at(dark_grass, 2, 2)));
 
         PixieData wall = make_grid(5, 6, PIX_GRASS1);
         at(wall, 2, 2) = PIX_H_WALL1;
         set_neighbors_for_mask(wall, 2, 2, PIX_H_WALL1, PIX_GRASS1, mask);
         at(wall, 2, 4) = PIX_H_WALL1;  // feed y+2 checks for wall cases
         s.set_target(wall);
-        (void)s.smooth(2, 2);
+        ASSERT_EQ(1, s.smooth(2, 2));
+        ASSERT_EQ(TYPE_WALL, s.query_genre_x_y(2, 2));
 
         PixieData cobble = make_grid(5, 5, PIX_GRASS1);
         at(cobble, 2, 2) = PIX_COBBLE_1;
         s.set_target(cobble);
-        (void)s.smooth(2, 2);
+        ASSERT_EQ(1, s.smooth(2, 2));
+        ASSERT_EQ(TYPE_COBBLE, s.query_genre_x_y(2, 2));
     }
-
-    ASSERT_TRUE(true) << "matrix smooth coverage across remaining genres completed";
 }
 
 
@@ -289,4 +316,3 @@ TEST(SmoothMatrix, smooth_query_helpers_and_grass_water_corner_branches)
         PIX_GRASSWATER_LR,
         "grass-water LR branch should produce PIX_GRASSWATER_LR");
 }
-

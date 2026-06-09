@@ -556,7 +556,8 @@ TEST(SmoothCoverage, smooth_grass_dark_wall_water_tree_dirt_and_unknown_deep_bra
     ASSERT_EQ(0, (int)s.smooth()) << "smooth() without target should return 0";
     ExposedSmoother ex;
     ex.set_x_y(cx, cy, PIX_WATER1);
-    ASSERT_TRUE(true) << "deep smooth branch scenarios executed";
+    ASSERT_EQ(PIX_GRASS1, ex.query_x_y(cx, cy))
+        << "set_x_y without a target should keep the smoother in fallback mode";
 }
 
 
@@ -784,7 +785,8 @@ TEST(SmoothCoverage, smooth_round6_dark_grass_and_water_single_edge_switches)
     set_diagonals(grid, cx, cy, PIX_GRASS1, PIX_TREE_M1, PIX_GRASS1, PIX_TREE_M1);
     (void)s.smooth(cx, cy);
 
-    ASSERT_TRUE(true) << "dark-grass/water/tree switch branches executed";
+    ASSERT_EQ(PIX_TREE_ML, at(grid, cx, cy))
+        << "tree all-around split should select the left-edge middle tile";
 }
 
 
@@ -899,4 +901,3 @@ TEST(SmoothCoverage, smooth_round7a_query_guards_and_tree_branches)
     set_same_neighbors(grid, cx, cy, PIX_TREE_M1, PIX_GRASS1, TO_RIGHT | TO_UP);
     (void)s.smooth(cx, cy);
 }
-

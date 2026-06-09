@@ -226,7 +226,10 @@ TEST(ExternalYaml, parse_scalars_sequences_mappings)
     for (const auto& doc : corpus) {
         int n = 0;
         ASSERT_TRUE(parse_yaml_events(doc, &n)) << "parser corpus document should succeed";
-        ASSERT_TRUE(n > 0 || doc.empty()) << "parser corpus should produce events for non-empty docs";
+        if (doc.empty())
+            ASSERT_EQ(2, n) << "empty YAML stream should emit stream start/end events";
+        else
+            ASSERT_GT(n, 0) << "non-empty YAML document should produce parser events";
     }
 }
 
@@ -251,15 +254,20 @@ TEST(ExternalYaml, parse_error_path)
 
     const std::vector<std::string> bad = {
         "a:\n\t- tab-indented\n",                // illegal tab indentation
-        "x: &A 1\nx2: *B\n",                     // unknown alias
         "---\n[1, 2, 3\n",                       // broken flow sequence
         "map: {a: 1, b: [2, 3}\n",               // mismatched delimiters
         "%YAML 9.9\n---\na: 1\n"                 // invalid version directive
     };
     for (const auto& doc : bad) {
         int n = 0;
-        (void)parse_yaml_events(doc, &n);
+        ASSERT_FALSE(parse_yaml_events(doc, &n)) << "invalid YAML should fail: " << doc;
+        ASSERT_GT(n, 0) << "parser should reach an error after emitting at least one event";
     }
+
+    int alias_events = 0;
+    ASSERT_TRUE(parse_yaml_events("x: &A 1\nx2: *B\n", &alias_events))
+        << "event parser accepts unresolved aliases at this layer";
+    ASSERT_GT(alias_events, 0) << "accepted alias stream should still emit events";
 }
 
 
@@ -274,4 +282,3 @@ TEST(ExternalYaml, emit_and_reparse)
     ASSERT_TRUE(parse_yaml_events(out, &events)) << "re-parse emitted yaml should succeed";
     ASSERT_TRUE(events > 0) << "re-parse should produce events";
 }
-

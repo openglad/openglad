@@ -347,14 +347,16 @@ TEST(WalkerMovement, walker_walkstep_user_slide_sets_vertical_and_horizontal_dir
     // Horizontal-only slide: up blocked at top edge, right passable.
     w->setxy(32, 0);
     w->set_curdir(FACE_DOWN);
-    (void)w->walkstep(1, -1);
-    ASSERT_TRUE(true) << "user slide horizontal branch executed";
+    ASSERT_TRUE(w->walkstep(1, -1));
+    ASSERT_EQ(32, w->xpos());
+    ASSERT_EQ(0, w->ypos());
 
     // Vertical-only slide: left blocked at left edge, up passable.
     w->setxy(0, 32);
     w->set_curdir(FACE_RIGHT);
-    (void)w->walkstep(-1, -1);
-    ASSERT_TRUE(true) << "user slide vertical branch executed";
+    ASSERT_TRUE(w->walkstep(-1, -1));
+    ASSERT_EQ(0, w->xpos());
+    ASSERT_EQ(32, w->ypos());
 }
 
 
@@ -520,8 +522,9 @@ TEST(WalkerMovement, round6_blocked_animate_and_default_angle_turn)
     w->set_sizey(1);
     w->set_curdir(FACE_LEFT);
     w->stats()->set_bit_flags(BIT_ANIMATE, 1);
-    (void)w->walk(-1, 0);
-    ASSERT_TRUE(true) << "animated off-map walk path executed";
+    ASSERT_FALSE(w->walk(-1, 0));
+    ASSERT_EQ(0, w->xpos());
+    ASSERT_EQ(0, w->ypos());
 
     // get_current_angle default branch.
     w->set_curdir(static_cast<char>(99));
@@ -529,8 +532,8 @@ TEST(WalkerMovement, round6_blocked_animate_and_default_angle_turn)
 
     // turn default branch in lastx/lasty fallback.
     w->set_curdir(static_cast<char>(99));
-    (void)w->turn(FACE_UP);
-    ASSERT_TRUE(true) << "turn should tolerate invalid current direction";
+    ASSERT_TRUE(w->turn(FACE_UP));
+    ASSERT_EQ(FACE_UP_LEFT, w->curdir());
 }
 
 
@@ -657,9 +660,8 @@ TEST(WalkerMovement, deep_branch_coverage_smoke)
     (void)w->walk(1, 0);
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
     w->set_curdir(99);
-    (void)w->turn(FACE_UP);
-
-    ASSERT_TRUE(true) << "walker movement deep branches executed";
+    ASSERT_TRUE(w->turn(FACE_UP));
+    ASSERT_EQ(FACE_UP_LEFT, w->curdir());
 }
 
 
@@ -703,13 +705,17 @@ TEST(WalkerMovement, round6_npc_blocked_switch_and_user_slide_subpaths)
 
     // Top edge: vertical blocked, horizontal passable -> gotover branch.
     w->setxy(GRID_SIZE * 3, 0);
-    (void)w->walkstep(1, -1);
+    const short slide_x_before = w->xpos();
+    ASSERT_TRUE(w->walkstep(1, -1));
+    ASSERT_EQ(slide_x_before, w->xpos());
+    ASSERT_EQ(0, w->ypos());
 
     // Left edge: horizontal blocked, vertical passable -> gotup branch.
     w->setxy(0, GRID_SIZE * 3);
-    (void)w->walkstep(-1, -1);
-
-    ASSERT_TRUE(true) << "blocked npc and user-slide subpaths executed";
+    const short slide_y_before = w->ypos();
+    ASSERT_TRUE(w->walkstep(-1, -1));
+    ASSERT_EQ(0, w->xpos());
+    ASSERT_EQ(slide_y_before, w->ypos());
 }
 
 

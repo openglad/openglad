@@ -262,8 +262,8 @@ TEST(ExternalLibzip, extra_field_api_paths)
     ASSERT_EQ(4, (int)got_len2) << "inserted extra field length should match";
 
     ASSERT_TRUE(zip_file_extra_field_delete_by_id(za, (zip_uint64_t)idx, 0xCAFE, 0, ZIP_FL_LOCAL) == 0) << "zip_file_extra_field_delete_by_id local";
-    // This may no-op if already gone in this location, but should not fail hard.
-    (void)zip_file_extra_field_delete(za, (zip_uint64_t)idx, 0, ZIP_FL_CENTRAL);
+    ASSERT_EQ(0, zip_file_extra_field_delete(za, (zip_uint64_t)idx, 0, ZIP_FL_CENTRAL))
+        << "central extra-field delete should succeed after local delete";
 
     ASSERT_TRUE(zip_close(za) == 0) << "zip_close";
 

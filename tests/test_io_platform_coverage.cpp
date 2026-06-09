@@ -274,7 +274,8 @@ TEST(IoPlatformCoverage, yaml_stream_empty_input_and_read_failure_paths)
         empty_steps++;
     }
     ASSERT_TRUE(empty_steps > 0) << "empty input should produce at least one parser step";
-    ASSERT_TRUE(empty_r == og::io::YamlParseResult::Done || empty_r == og::io::YamlParseResult::Error) << "empty input should eventually terminate parse";
+    ASSERT_EQ(og::io::YamlParseResult::Done, empty_r)
+        << "empty input should terminate cleanly";
     parser.close_input();
 
     struct FailReadCtx {
@@ -294,9 +295,9 @@ TEST(IoPlatformCoverage, yaml_stream_empty_input_and_read_failure_paths)
         fail_steps++;
     }
     ASSERT_TRUE(fail_steps > 0) << "read failure stream should produce at least one parser step";
-    ASSERT_TRUE(fail_r == og::io::YamlParseResult::Error ||
-                fail_r == og::io::YamlParseResult::Done ||
-                fail_steps == 16) << "read failure should either terminate or remain bounded by guard";
+    ASSERT_EQ(16, fail_steps) << "zero-byte read handler should be bounded by the test guard";
+    ASSERT_EQ(og::io::YamlParseResult::Ok, fail_r)
+        << "zero-byte read handler remains pending until the guard stops polling";
     fail_parser.close_input();
 }
 
@@ -329,8 +330,8 @@ TEST(IoPlatformCoverage, zip_api_roundtrip_and_error_paths)
 
     const ArchiveIoError zip_missing_parent_err =
         og::io::zip_contents_with_error(base.string(), missing_parent_zip.string());
-    ASSERT_TRUE(zip_missing_parent_err == ArchiveIoError::OpenArchiveFailed ||
-        zip_missing_parent_err == ArchiveIoError::CloseArchiveFailed) << "zip with missing parent should fail";
+    ASSERT_EQ(ArchiveIoError::CloseArchiveFailed, zip_missing_parent_err)
+        << "zip with missing parent should report close failure after archive finalization";
 
     ASSERT_EQ(static_cast<int>(ArchiveIoError::None), static_cast<int>(og::io::zip_contents_with_error(base.string(), archive.string()))) << "zip should succeed";
     ASSERT_EQ(static_cast<int>(ArchiveIoError::OpenArchiveFailed), static_cast<int>(og::io::unzip_into_with_error("temp/io_platform_cov_missing.zip", out.string()))) << "unzip missing archive should fail";
@@ -679,7 +680,9 @@ TEST(IoPlatformCoverage, zip_api_missing_input_dir_exists_guard_path)
     fs::remove(archive, ec);
 
     const ArchiveIoError r = og::io::zip_contents_with_error(missing.string(), archive.string());
-    ASSERT_TRUE(r == ArchiveIoError::None || r == ArchiveIoError::AddEntryFailed) << "zipping a missing input dir should take empty-enumeration guard path";
+    ASSERT_EQ(ArchiveIoError::None, r)
+        << "zipping a missing input dir should be treated as an empty input set";
+    ASSERT_FALSE(fs::exists(archive));
     fs::remove(archive, ec);
 }
 
@@ -758,7 +761,9 @@ TEST(IoPlatformCoverage, zip_api_batch9_permission_denied_walk_and_corrupt_unzip
     // Try to trigger recursive iterator increment error path under permission restrictions.
     (void)::chmod(blocked.string().c_str(), 0);
     const ArchiveIoError walk_r = og::io::zip_contents_with_error(base.string(), archive.string());
-    ASSERT_TRUE(walk_r == ArchiveIoError::None || walk_r == ArchiveIoError::AddEntryFailed) << "permission-denied walk should take guarded recursive-iterator path";
+    ASSERT_EQ(ArchiveIoError::None, walk_r)
+        << "permission-denied walk should skip inaccessible entries and still close the archive";
+    ASSERT_TRUE(fs::exists(archive));
     (void)::chmod(blocked.string().c_str(), 0700);
 
     // Corrupt archive bytes should fail open/read in unzip path.

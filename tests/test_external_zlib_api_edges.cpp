@@ -105,7 +105,7 @@ TEST(ExternalZlibApiEdges, external_zlib_inflate_header_copy_prime_and_invalid_i
     ASSERT_TRUE(rc == Z_STREAM_END) << "inflate should finish gzip stream";
     ASSERT_TRUE(out == payload) << "inflated payload should match";
     const int sync_point = inflateSyncPoint(&is);
-    ASSERT_TRUE(sync_point == 0 || sync_point == 1) << "inflateSyncPoint should return boolean-like result";
+    ASSERT_EQ(0, sync_point) << "finished gzip stream should not report an active sync point";
     ASSERT_TRUE(inflateEnd(&is) == Z_OK) << "inflateEnd should succeed";
 
     z_stream raw;
@@ -164,13 +164,12 @@ TEST(ExternalZlibApiEdges, external_zlib_inflate_sync_on_corrupted_stream)
     is.avail_out = (uInt)out.size();
 
     rc = inflate(&is, Z_NO_FLUSH);
-    ASSERT_TRUE(rc == Z_DATA_ERROR || rc == Z_BUF_ERROR) << "corrupted stream should error before sync";
+    ASSERT_EQ(Z_DATA_ERROR, rc) << "corrupted stream should report a data error before sync";
 
     int sync_rc = inflateSync(&is);
-    ASSERT_TRUE(sync_rc == Z_OK || sync_rc == Z_DATA_ERROR || sync_rc == Z_BUF_ERROR) << "inflateSync should execute recovery path";
+    ASSERT_EQ(Z_OK, sync_rc) << "inflateSync should recover to the full-flush point";
     const int sp = inflateSyncPoint(&is);
-    ASSERT_TRUE(sp == 0 || sp == 1 || sp == Z_STREAM_ERROR) << "inflateSyncPoint should execute after sync attempt";
+    ASSERT_EQ(0, sp) << "recovered stream should not report another pending sync point";
 
     (void)inflateEnd(&is);
 }
-

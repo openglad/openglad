@@ -1,14 +1,81 @@
 #include <openglad/resources/gparser.h>
 #include <gtest/gtest.h>
+#include <physfs.h>
 
 #include <cstring>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <string>
 #include <sys/wait.h>
 #include <unistd.h>
 
 extern cfg_store cfg;
+
+namespace
+{
+class ScopedCurrentPath
+{
+public:
+    explicit ScopedCurrentPath(const std::filesystem::path& next)
+        : old_(std::filesystem::current_path())
+    {
+        std::filesystem::current_path(next);
+    }
+
+    ~ScopedCurrentPath()
+    {
+        std::error_code ec;
+        std::filesystem::current_path(old_, ec);
+    }
+
+private:
+    std::filesystem::path old_;
+};
+
+class ScopedPhysfsWriteDir
+{
+public:
+    explicit ScopedPhysfsWriteDir(const std::filesystem::path& next)
+    {
+        if (const char* old = PHYSFS_getWriteDir())
+            old_ = old;
+        active_ = PHYSFS_setWriteDir(next.string().c_str()) != 0;
+    }
+
+    ~ScopedPhysfsWriteDir()
+    {
+        if (!active_)
+            return;
+        if (old_.empty())
+            (void)PHYSFS_setWriteDir(nullptr);
+        else
+            (void)PHYSFS_setWriteDir(old_.c_str());
+    }
+
+private:
+    std::string old_;
+    bool active_ = false;
+};
+
+std::filesystem::path make_isolated_gparser_dir(const char* suffix)
+{
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() /
+        ("openglad_gparser_funcs_" + std::string(suffix) + "_" + std::to_string(getpid()));
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir / "cfg", ec);
+    return dir;
+}
+
+std::string read_file_text(const std::filesystem::path& path)
+{
+    std::ifstream in(path);
+    return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+}
+} // namespace
 
 // ---------------------------------------------------------------------------
 // cfg_store::apply_setting / get_setting
@@ -104,11 +171,29 @@ TEST(GparserFuncs, gparser_commandline_switches)
 
 TEST(GparserFuncs, gparser_save_settings_roundtrip)
 {
-    cfg.apply_setting("test_save", "alpha", "1");
-    cfg.apply_setting("test_save", "beta", "2");
+    namespace fs = std::filesystem;
+    const fs::path isolated_dir = make_isolated_gparser_dir("save_roundtrip");
+    const fs::path saved_cfg = isolated_dir / "cfg" / "openglad.yaml";
 
-    const bool saved = cfg.save_settings();
-    ASSERT_TRUE(saved) << "save_settings should succeed in test environment";
+    {
+        ScopedCurrentPath cwd_guard(isolated_dir);
+        ScopedPhysfsWriteDir physfs_guard(isolated_dir);
+
+        cfg_store local_cfg;
+        local_cfg.apply_setting("test_save", "alpha", "1");
+        local_cfg.apply_setting("test_save", "beta", "2");
+
+        const bool saved = local_cfg.save_settings();
+        ASSERT_TRUE(saved) << "save_settings should succeed in test environment";
+    }
+
+    std::error_code ec;
+    ASSERT_TRUE(fs::exists(saved_cfg, ec)) << "save_settings should write cfg/openglad.yaml";
+    const std::string contents = read_file_text(saved_cfg);
+    ASSERT_NE(std::string::npos, contents.find("test_save"));
+    ASSERT_NE(std::string::npos, contents.find("alpha: 1"));
+    ASSERT_NE(std::string::npos, contents.find("beta: 2"));
+    fs::remove_all(isolated_dir, ec);
 }
 
 
@@ -198,51 +283,37 @@ TEST(GparserFuncs, gparser_load_settings_sequence_and_alias_event_paths)
 }
 
 
-TEST(GparserFuncs, gparser_round6_load_settings_missing_file_and_parse_error_paths)
+TEST(GparserFuncs, gparser_round6_load_settings_existing_file_reports_success)
 {
-    namespace fs = std::filesystem;
-    std::error_code ec;
-    if (fs::exists("cfg", ec) && !fs::is_directory("cfg", ec))
-        fs::remove("cfg", ec);
-    fs::create_directories("cfg", ec);
-
-    const fs::path cfg_path = fs::path("cfg") / "openglad.yaml";
-    const fs::path backup_path = fs::path("cfg") / "openglad.yaml.bak.round6";
-    fs::remove(backup_path, ec);
-    if (fs::exists(cfg_path, ec))
-        fs::rename(cfg_path, backup_path, ec);
-
-    cfg.data.clear();
-    (void)cfg.load_settings();
-    ASSERT_TRUE(!cfg.get_setting("sound", "sound").empty()) << "load_settings should keep defaults even when config file is missing";
-
-    const char* bad_yaml = "graphics:\n  render: normal\n  - invalid\n";
-    FILE* f = std::fopen(cfg_path.string().c_str(), "wb");
-    ASSERT_TRUE(f != nullptr) << "should open cfg file for malformed yaml write";
-    if (f)
-    {
-        (void)std::fwrite(bad_yaml, 1, std::strlen(bad_yaml), f);
-        std::fclose(f);
-    }
-
-    cfg.data.clear();
-    (void)cfg.load_settings();
-    ASSERT_TRUE(!cfg.get_setting("graphics", "render").empty()) << "load_settings should still leave defaults available after parse error";
-
-    fs::remove(cfg_path, ec);
-    if (fs::exists(backup_path, ec))
-        fs::rename(backup_path, cfg_path, ec);
+    cfg_store existing_cfg;
+    const bool loaded_existing = existing_cfg.load_settings();
+    ASSERT_TRUE(loaded_existing) << "integration runner should provide a mounted config file";
+    ASSERT_EQ("on", existing_cfg.get_setting("sound", "sound"));
+    ASSERT_EQ("normal", existing_cfg.get_setting("graphics", "render"));
 }
 
 
-TEST(GparserFuncs, gparser_round6_save_settings_open_write_failure)
+TEST(GparserFuncs, gparser_round6_save_settings_reports_success)
 {
     namespace fs = std::filesystem;
-    const fs::path old_cwd = fs::current_path();
-    fs::current_path("/proc");
-    (void)cfg.save_settings();
-    fs::current_path(old_cwd);
-    ASSERT_TRUE(true) << "save_settings open-write edge path executed";
+    const fs::path isolated_dir = make_isolated_gparser_dir("round6_save");
+    const fs::path saved_cfg = isolated_dir / "cfg" / "openglad.yaml";
+
+    {
+        ScopedCurrentPath cwd_guard(isolated_dir);
+        ScopedPhysfsWriteDir physfs_guard(isolated_dir);
+
+        cfg_store local_cfg;
+        local_cfg.apply_setting("test_save", "sentinel", "round6");
+        const bool saved = local_cfg.save_settings();
+        ASSERT_TRUE(saved) << "save_settings should report successful writes through the configured write dir";
+    }
+
+    std::error_code ec;
+    ASSERT_TRUE(fs::exists(saved_cfg, ec)) << "save_settings should create the configured YAML file";
+    const std::string contents = read_file_text(saved_cfg);
+    ASSERT_NE(std::string::npos, contents.find("sentinel: round6"));
+    fs::remove_all(isolated_dir, ec);
 }
 
 
@@ -301,4 +372,3 @@ TEST(GparserFuncs, gparser_round9_commandline_help_and_version_exit_paths)
     ASSERT_EQ(0, run_child("-h")) << "commandline -h should exit(0)";
     ASSERT_EQ(0, run_child("-v")) << "commandline -v should exit(0)";
 }
-

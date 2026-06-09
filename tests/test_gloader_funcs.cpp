@@ -9,6 +9,9 @@
 #include <openglad/platform/game_context.h>
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <cstddef>
+
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 // ---------------------------------------------------------------------------
@@ -321,8 +324,20 @@ TEST(GloaderFuncs, gloader_active_config_branch_with_ctx_and_global_cfg)
     loader global_gore_off;
 
     const int blood_idx = PIX(Order::Weapon, FAMILY_BLOOD);
-    ASSERT_TRUE(global_gore_on.graphics[blood_idx].valid() || !global_gore_on.graphics[blood_idx].valid()) << "constructed loader with global cfg gore=on";
-    ASSERT_TRUE(global_gore_off.graphics[blood_idx].valid() || !global_gore_off.graphics[blood_idx].valid()) << "constructed loader with global cfg gore=off";
+    const PixieData& gore_on = global_gore_on.graphics[blood_idx];
+    const PixieData& gore_off = global_gore_off.graphics[blood_idx];
+    ASSERT_TRUE(gore_on.valid()) << "gore=on should load blood graphics";
+    ASSERT_TRUE(gore_off.valid()) << "gore=off should load friendly blood graphics";
+    ASSERT_EQ(gore_on.frames, gore_off.frames);
+    ASSERT_EQ(gore_on.w, gore_off.w);
+    ASSERT_EQ(gore_on.h, gore_off.h);
+
+    const std::size_t pixel_count =
+        static_cast<std::size_t>(gore_on.frames) * gore_on.w * gore_on.h;
+    ASSERT_FALSE(std::equal(gore_on.data.get(),
+                            gore_on.data.get() + pixel_count,
+                            gore_off.data.get()))
+        << "gore toggle should select distinct blood sprite data";
 
     cfg.apply_setting("effects", "gore", prev_global_gore);
 }

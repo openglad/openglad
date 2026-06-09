@@ -785,6 +785,7 @@ TEST(LivingCombat, living_round10_facing_and_action_follow_branch_matrix)
     {
         actor->set_team_num(2);
         leader->set_team_num(0);
+        leader->set_user(0);
         leader_foe->set_team_num(1);
         leader->set_foe(leader_foe);
         leader->setxy(actor->xpos() + 8, actor->ypos() + 8);
@@ -798,7 +799,9 @@ TEST(LivingCombat, living_round10_facing_and_action_follow_branch_matrix)
         actor->set_foe(nullptr);
         leader->set_foe(nullptr);
         const bool follow_res = lv->do_action();
-        ASSERT_TRUE(follow_res || !follow_res) << "ACTION_FOLLOW with leader and no foe should execute without crashing";
+        ASSERT_TRUE(follow_res) << "ACTION_FOLLOW with leader and no foe should enqueue follow command";
+        ASSERT_EQ(leader, actor->leader());
+        ASSERT_TRUE(actor->stats()->has_commands());
     }
 }
 

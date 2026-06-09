@@ -625,7 +625,9 @@ std::vector<std::uint8_t> zlib_decompress_for_test(
         stream.next_out = chunk.data();
         stream.avail_out = static_cast<uInt>(chunk.size());
         rc = inflate(&stream, Z_NO_FLUSH);
-        EXPECT_TRUE(rc == Z_OK || rc == Z_STREAM_END);
+        if (rc != Z_OK) {
+            EXPECT_EQ(Z_STREAM_END, rc);
+        }
         output.insert(output.end(),
                       chunk.begin(),
                       chunk.begin() + (chunk.size() - stream.avail_out));
