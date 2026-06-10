@@ -305,6 +305,17 @@ void CursesRenderer::draw_hud(ITerminal& term, const GameWorld& world,
                     }
                 }
             }
+            // Waypoint capture meter: first contested control point in index
+            // order, mirroring the SDL panel's "WP n/36" readout. Rides the
+            // CTF group so narrow terminals clip Sp:/Score first.
+            for (int i = 0; i < world.ctf.cp_count; ++i) {
+                const auto& cp = world.ctf.cps[i];
+                if (cp.progress_team < 0)
+                    continue;
+                line1 += "  WP " + std::to_string(cp.progress) + "/" +
+                         std::to_string(og::sim::kCtfCpCaptureTicks);
+                break;
+            }
         }
         // Currently selected special (Tab/SwitchSpecial cycles it). Shown so the
         // player can see what casting fire/special will do.

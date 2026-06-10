@@ -260,6 +260,29 @@ TEST(CursesCtf, hud_shows_caps_line_with_flag_and_respawn_markers)
     row1 = term.text_row(1);
     EXPECT_NE(row1.find("RESPAWN 3"), std::string::npos)
         << "respawn countdown expected: " << row1;
+    ctf.respawn_queue.clear();
+
+    // A contested waypoint shows the capture meter, riding the CTF group
+    // (after Caps, before Sp:/Score) so narrow terminals clip Score first.
+    ctf.cp_count = 1;
+    ctf.cps[0].owner = 1;
+    ctf.cps[0].progress = 12;
+    ctf.cps[0].progress_team = 0;
+    HeadlessTerminal wide(21, 90);
+    renderer.draw(wide, hw.world(), id);
+    row1 = wide.text_row(1);
+    EXPECT_NE(row1.find("WP 12/36"), std::string::npos)
+        << "waypoint capture meter expected: " << row1;
+    ASSERT_NE(row1.find("Score"), std::string::npos) << row1;
+    EXPECT_LT(row1.find("Caps"), row1.find("WP 12/36")) << row1;
+    EXPECT_LT(row1.find("WP 12/36"), row1.find("Score")) << row1;
+
+    // No contender: no meter.
+    ctf.cps[0].progress_team = -1;
+    renderer.draw(wide, hw.world(), id);
+    row1 = wide.text_row(1);
+    EXPECT_EQ(row1.find("WP "), std::string::npos)
+        << "no meter without a contending team: " << row1;
 
     // Inactive CTF leaves the classic HUD untouched.
     ctf.active = false;

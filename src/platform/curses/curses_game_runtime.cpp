@@ -200,6 +200,12 @@ public:
         if (!ended() || ending() != 0)
             return; // only a win advances the campaign and persists earned XP/gold
 
+        // The CTF loss/rematch shape rides the classic WIN shape (ending==0,
+        // next_level == this level) but the match was LOST: treat it like
+        // every other loss so the level is never marked completed.
+        if (is_ctf_rematch_end(server_world(), ending(), next_level()))
+            return;
+
         advance_save_after_win(server_save_, server_world(), next_level());
 
         // Persist back into the caller's save (team XP/levels, gold, progress).
@@ -378,6 +384,24 @@ std::unique_ptr<CursesGameSession> make_local_session(SaveData& save, int diffic
     return LocalCursesSession::create(save, difficulty, error);
 }
 
+std::string mission_verdict_line(const GameRunResult& result)
+{
+    if (result.ctf_match) {
+        if (result.ctf_winner_team < 0 || result.local_team < 0)
+            return "Match over.";
+        return result.local_team == result.ctf_winner_team ? "Victory!"
+                                                           : "Defeat.";
+    }
+    return result.ending == 0 ? "Victory!" : "Defeat.";
+}
+
+bool is_ctf_rematch_end(const GameWorld& world, int ending, int next_level)
+{
+    return ending == 0 && (world.type & GameWorld::TYPE_CTF) &&
+           world.ctf.active && world.ctf.winner_team >= 0 &&
+           next_level == world.id;
+}
+
 void advance_save_after_win(SaveData& save, const GameWorld& finished_world, int next_level)
 {
     og::server::sync_headless_server_save_data_from_world(save, finished_world);
@@ -491,6 +515,22 @@ GameRunResult run_level_loop(CursesGameSession& session, ITerminal& term, IClock
             result.ended = true;
             result.ending = session.ending();
             result.next_level = session.next_level();
+            // CTF verdict context from the replicated mirror state: the
+            // winner, the followed walker's team (match end revives every
+            // player corpse, so it normally resolves alive), and whether
+            // this is the loss/rematch shape.
+            GameWorld& world = session.mirror_world();
+            if ((world.type & GameWorld::TYPE_CTF) && world.ctf.active) {
+                result.ctf_match = true;
+                result.ctf_winner_team = world.ctf.winner_team;
+                result.ctf_rematch =
+                    is_ctf_rematch_end(world, result.ending, result.next_level);
+                const std::uint32_t followed = session.followed_entity_id();
+                const walker* avatar =
+                    followed != 0 ? world.find_by_id(followed) : nullptr;
+                if (avatar != nullptr)
+                    result.local_team = avatar->team_num();
+            }
             break;
         }
 

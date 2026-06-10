@@ -62,3 +62,4 @@ core.*
 /.juvenal-replan-archive/
 /workflow.yaml
 /docs/plans/
+/.claude/

@@ -736,9 +736,12 @@ void CursesPickerClient::run_game()
         run_level_loop(*session, term_, clock_, input, renderer, LevelLoopOptions{});
 
     if (result.ended) {
+        // mission_verdict_line is CTF-aware: a CTF loss still ends with the
+        // classic WIN shape, so ending==0 alone must not claim victory. The
+        // rematch shape's "next level" is this same level — say so honestly.
         menu.show_text("Mission complete",
-            {result.ending == 0 ? "Victory!" : "Defeat.",
-             result.next_level >= 0
+            {mission_verdict_line(result),
+             (result.next_level >= 0 && !result.ctf_rematch)
                  ? std::format("Next level: {}", result.next_level)
                  : std::string("Returning to team build.")});
     }
@@ -863,8 +866,9 @@ void CursesPickerClient::run_network_lobby(std::unique_ptr<CursesLobby> lobby)
     const GameRunResult result = run_curses_lobby(*lobby, term_, clock_);
     if (result.ended) {
         Menu menu(term_, clock_);
-        menu.show_text("Mission complete",
-            {result.ending == 0 ? "Victory!" : "Defeat."});
+        // CTF-aware verdict (see run_game): the local player's team vs the
+        // match winner decides, with a neutral fallback.
+        menu.show_text("Mission complete", {mission_verdict_line(result)});
     }
 }
 

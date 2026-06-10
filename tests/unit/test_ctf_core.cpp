@@ -671,6 +671,157 @@ TEST(CtfCore, control_point_capture_and_contender_reset)
     ASSERT_TRUE(has_notification(fx.events, "GREEN TAKES WAYPOINT!"));
 }
 
+// --- Waypoint retake dynamics (majority contender + symmetric decay) ------
+
+namespace {
+
+// Enemy-owned waypoint scaffold: flags for teams 0/1, one control point at
+// (320,320) pre-owned by team 1 (owner + pad entity team stamped after the
+// lazy init), and ACT_CONTROL livings the test positions explicitly.
+struct RetakeWorld : CtfWorld
+{
+    walker* point = nullptr;
+    walker* attacker = nullptr;
+    walker* owner_bot = nullptr;
+
+    RetakeWorld()
+    {
+        spawn_flag(0, 96, 96);
+        spawn_flag(1, 544, 800);
+        point = spawn_point(320, 320);
+        attacker = spawn_living(FAMILY_SOLDIER, 0, 96, 700);
+        owner_bot = spawn_living(FAMILY_SOLDIER, 1, 544, 700);
+        world().ctf_requested_respawn_ticks = 5000;
+        tick();
+        world().ctf.cps[0].owner = 1;
+        if (point != nullptr)
+            point->set_team_num(1);
+    }
+
+    og::sim::CtfControlPoint& cp() { return world().ctf.cps[0]; }
+};
+
+} // namespace
+
+TEST(CtfCore, retake_of_enemy_owned_point_flips_at_36_sole_ticks)
+{
+    RetakeWorld fx;
+    ASSERT_TRUE(fx.world().ctf.active);
+    ASSERT_EQ(1, fx.world().ctf.cp_count);
+
+    fx.attacker->setxy(336, 320); // 16px from the pad: inside the 48px disc
+    fx.tick(og::sim::kCtfCpCaptureTicks - 1);
+    ASSERT_EQ(1, fx.cp().owner) << "35 sole-occupancy ticks must not flip";
+    ASSERT_EQ(0, fx.cp().progress_team);
+    ASSERT_EQ(og::sim::kCtfCpCaptureTicks - 1, fx.cp().progress);
+
+    fx.tick();
+    ASSERT_EQ(0, fx.cp().owner)
+        << "the 36th sole-occupancy tick retakes the waypoint";
+    ASSERT_EQ(0, fx.point->team_num()) << "pad entity recolors to the taker";
+    ASSERT_EQ(0, fx.cp().progress);
+    ASSERT_EQ(-1, fx.cp().progress_team);
+    ASSERT_TRUE(has_notification(fx.events, "RED TAKES WAYPOINT!"));
+}
+
+TEST(CtfCore, corpses_inside_disc_do_not_contest_retake)
+{
+    RetakeWorld fx;
+    // Dead myguy corpses persist in oblist (the sweep keeps them); park one
+    // enemy and one friendly corpse inside the disc before the retake.
+    walker* enemy_corpse = fx.spawn_living(FAMILY_SOLDIER, 1, 320, 352);
+    walker* friendly_corpse = fx.spawn_living(FAMILY_SOLDIER, 0, 320, 288);
+    ASSERT_NE(nullptr, enemy_corpse);
+    ASSERT_NE(nullptr, friendly_corpse);
+    enemy_corpse->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    friendly_corpse->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    enemy_corpse->myguy->id = 21;
+    friendly_corpse->myguy->id = 22;
+    enemy_corpse->set_dead(1);
+    friendly_corpse->set_dead(1);
+
+    fx.attacker->setxy(336, 320);
+    fx.tick(og::sim::kCtfCpCaptureTicks);
+    ASSERT_TRUE(enemy_corpse->dead());
+    ASSERT_TRUE(friendly_corpse->dead());
+    ASSERT_EQ(0, fx.cp().owner) << "corpses inside the disc must not contest";
+}
+
+TEST(CtfCore, majority_retake_accrues_while_outnumbered_owner_contests)
+{
+    RetakeWorld fx;
+    walker* attacker_b = fx.spawn_living(FAMILY_SOLDIER, 0, 304, 320);
+    ASSERT_NE(nullptr, attacker_b);
+
+    fx.attacker->setxy(336, 320);
+    fx.owner_bot->setxy(320, 352); // owner contests inside the disc, but 2v1
+    fx.tick(og::sim::kCtfCpCaptureTicks - 1);
+    ASSERT_EQ(1, fx.cp().owner);
+    ASSERT_EQ(0, fx.cp().progress_team)
+        << "a 2v1 strict majority accrues for the attackers";
+    ASSERT_EQ(og::sim::kCtfCpCaptureTicks - 1, fx.cp().progress);
+
+    fx.tick();
+    ASSERT_EQ(0, fx.cp().owner)
+        << "a 2v1 majority retakes through the contesting owner";
+}
+
+TEST(CtfCore, equal_presence_holds_meter_without_reset)
+{
+    RetakeWorld fx;
+    fx.cp().progress = 10;
+    fx.cp().progress_team = 0;
+
+    fx.attacker->setxy(336, 320);
+    fx.owner_bot->setxy(320, 352); // 1v1: no strict majority
+    fx.tick(20);
+    ASSERT_EQ(1, fx.cp().owner);
+    ASSERT_EQ(10, fx.cp().progress) << "an even contest freezes the meter";
+    ASSERT_EQ(0, fx.cp().progress_team)
+        << "an even contest must not reset the contender";
+}
+
+TEST(CtfCore, owner_dominance_decays_progress_stepwise)
+{
+    RetakeWorld fx;
+    fx.cp().progress = 30;
+    fx.cp().progress_team = 0;
+
+    fx.owner_bot->setxy(336, 320); // owner alone in the disc
+    fx.tick(5);
+    ASSERT_EQ(25, fx.cp().progress)
+        << "owner-alone ticks decay progress one step per tick";
+    ASSERT_EQ(0, fx.cp().progress_team)
+        << "decay keeps the contending team until the meter empties";
+
+    fx.tick(25);
+    ASSERT_EQ(0, fx.cp().progress);
+    ASSERT_EQ(-1, fx.cp().progress_team)
+        << "draining to zero clears the contender";
+
+    fx.tick(5);
+    ASSERT_EQ(0, fx.cp().progress) << "an empty meter stays empty";
+    ASSERT_EQ(1, fx.cp().owner);
+}
+
+TEST(CtfCore, radius_edge_geometry_contests_at_exactly_48px)
+{
+    RetakeWorld fx;
+    fx.attacker->setxy(336, 320); // on the pad
+    // radius = 3 tiles * 16px = 48px, compared top-left to top-left.
+    fx.owner_bot->setxy(320 + 48, 320);
+    fx.tick(10);
+    ASSERT_EQ(0, fx.cp().progress)
+        << "an enemy at exactly 48px is inside the disc and contests (1v1)";
+
+    fx.owner_bot->setxy(320 + 49, 320);
+    fx.tick(10);
+    ASSERT_EQ(10, fx.cp().progress)
+        << "one px past the radius no longer contests";
+    ASSERT_EQ(0, fx.cp().progress_team);
+    ASSERT_EQ(1, fx.cp().owner);
+}
+
 TEST(CtfCore, control_point_pulse_is_localized_to_owner_team)
 {
     CtfWorld fx;
@@ -719,7 +870,8 @@ TEST(CtfCore, capture_limit_win_sets_match_end_shape)
     ASSERT_EQ(0, fx.world().ctf.winner_team);
     ASSERT_TRUE(fx.world().ctf.winner_is_player);
     ASSERT_EQ(501, fx.world().next_level) << "human win advances the campaign";
-    ASSERT_TRUE(has_notification(fx.events, "TEAM 1 WINS THE MATCH!"));
+    ASSERT_TRUE(has_notification(fx.events, "RED TEAM WINS!"))
+        << "match-end notify uses the team color name, not a bare number";
 }
 
 TEST(CtfCore, bot_win_keeps_same_map_cursor)

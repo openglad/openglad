@@ -1,7 +1,11 @@
 #include <openglad/interface/ui/results_screen.h>
 #include <openglad/interface/screen.h>
+#include <openglad/interface/render/view.h>
 #include <openglad/legacy/base.h>
+#include <openglad/core/test_trace.h>
+#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/event.h>
+#include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/world_snapshot.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/resources/save_data.h>
@@ -152,6 +156,120 @@ TEST(MpEndgameFlow, single_player_win_still_autosaves_save0_advance)
 
     og::runtime::current_session->networked_session_ = saved_net;
     og::runtime::current_session->myscreen_->world().end = saved_end;
+}
+
+// Playtest bug C regression: a CTF LOSS arrives in the classic WIN shape
+// (ending=0, next_level == this level), but the popup must never claim
+// victory, never claim travel, and the level must NOT be marked completed —
+// on the FIRST loss and on every loss after it (the old code marked the
+// level completed on loss #1, so loss #2 printed "Moving on to Level N").
+TEST(ResultsScreenBranches, ctf_loss_popup_is_defeat_and_never_completes_level)
+{
+    screen* const s = og::runtime::current_session->myscreen_;
+    SaveData& sd = s->save_data;
+    const auto saved_end = s->world().end;
+    const char saved_type = s->world().type;
+    walker* const saved_control = s->viewob[0]->control;
+
+    sd.current_campaign = "org.openglad.gladiator";
+    sd.scen_num = 506;
+    sd.current_levels.clear();
+    sd.completed_levels.clear();
+    s->world().completed_levels.clear(); // endgame syncs save from world
+
+    s->world().type |= GameWorld::TYPE_CTF;
+    s->world().ctf = og::sim::CtfState{};
+    s->world().ctf.active = true;
+    s->world().ctf.winner_team = 1;       // GREEN bots won
+    s->world().ctf.winner_is_player = false;
+    s->world().ctf.team_active[0] = true;
+    s->world().ctf.team_active[1] = true;
+
+    // A live local control on the LOSING team drives the DEFEAT! title.
+    walker* const local = s->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, local);
+    local->set_team_num(0);
+    s->viewob[0]->control = local;
+
+    // First loss: the CTF loss/rematch shape (ending=0, next == current).
+    trace_clear();
+    dispatch_endgame_event(0, 506);
+    EXPECT_TRUE(trace_contains("popup", "DEFEAT!"))
+        << "a local control on the losing team must see DEFEAT!";
+    EXPECT_TRUE(trace_contains("popup", "GREEN TEAM WINS!"));
+    EXPECT_TRUE(trace_contains("popup", "rematch"));
+    EXPECT_FALSE(trace_contains("popup", "Victory!"))
+        << "a CTF loss must never show the classic victory popup";
+    EXPECT_FALSE(trace_contains("popup", "Moving on"));
+    EXPECT_FALSE(sd.is_level_completed(506))
+        << "a CTF loss must not mark the level completed";
+    EXPECT_EQ(506, static_cast<int>(sd.scen_num))
+        << "the rematch shape stays on the same level";
+
+    // Second loss: byte-identical messaging — the old bug printed
+    // "Traveling on... Moving on to Level 506" here.
+    trace_clear();
+    dispatch_endgame_event(0, 506);
+    EXPECT_TRUE(trace_contains("popup", "DEFEAT!"));
+    EXPECT_TRUE(trace_contains("popup", "rematch"));
+    EXPECT_FALSE(trace_contains("popup", "Victory!"));
+    EXPECT_FALSE(trace_contains("popup", "Moving on"));
+    EXPECT_FALSE(sd.is_level_completed(506));
+
+    // A CTF WIN (next level advances) still completes the level and shows
+    // VICTORY! for the winning local control.
+    trace_clear();
+    s->world().ctf.winner_team = 0;
+    s->world().ctf.winner_is_player = true;
+    dispatch_endgame_event(0, 507);
+    EXPECT_TRUE(trace_contains("popup", "VICTORY!"));
+    EXPECT_TRUE(trace_contains("popup", "RED TEAM WINS!"));
+    EXPECT_TRUE(trace_contains("popup", "Moving on to Level 507"));
+    EXPECT_TRUE(sd.is_level_completed(506))
+        << "a real CTF win must still mark the level completed";
+
+    s->viewob[0]->control = saved_control;
+    local->set_dead(1);
+    s->world().ctf = og::sim::CtfState{};
+    s->world().type = saved_type;
+    s->world().end = saved_end;
+}
+
+// Neutral fallback: with no resolvable local control the CTF popup must not
+// guess — MATCH OVER, never winner_is_player-derived VICTORY.
+TEST(ResultsScreenBranches, ctf_loss_popup_neutral_fallback_without_control)
+{
+    screen* const s = og::runtime::current_session->myscreen_;
+    SaveData& sd = s->save_data;
+    const auto saved_end = s->world().end;
+    const char saved_type = s->world().type;
+    walker* const saved_control = s->viewob[0]->control;
+
+    sd.current_campaign = "org.openglad.gladiator";
+    sd.scen_num = 506;
+    sd.current_levels.clear();
+    sd.completed_levels.clear();
+
+    s->world().type |= GameWorld::TYPE_CTF;
+    s->world().ctf = og::sim::CtfState{};
+    s->world().ctf.active = true;
+    s->world().ctf.winner_team = 1;
+    // winner_is_player=true must NOT produce VICTORY! — it is global (any
+    // human on the winning team), not this client's outcome.
+    s->world().ctf.winner_is_player = true;
+    s->viewob[0]->control = nullptr;
+
+    trace_clear();
+    dispatch_endgame_event(0, 506);
+    EXPECT_TRUE(trace_contains("popup", "MATCH OVER"))
+        << "no resolvable local control: neutral title";
+    EXPECT_FALSE(trace_contains("popup", "VICTORY!"));
+    EXPECT_FALSE(trace_contains("popup", "Victory!"));
+
+    s->viewob[0]->control = saved_control;
+    s->world().ctf = og::sim::CtfState{};
+    s->world().type = saved_type;
+    s->world().end = saved_end;
 }
 
 // Gap 2 ("back to menu as intended"): a terminal defeat (no next level) sets

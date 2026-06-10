@@ -16,10 +16,13 @@ SET CAMPAIGN in the team-build menu and hit GO.
   home immediately.
 - Everyone **respawns**: fallen fighters return at their team's spawn anchors
   after a delay (default 10 seconds). A match never ends by team wipe.
-- **Waypoints** (control points) sit at contested spots. Standing alone on
-  one for a few seconds claims it; holding it halves your team's respawn
-  wait and pulses a speed boost to teammates nearby. Captures also score
-  classic points (gold for the winners' coffers).
+- **Waypoints** (control points) sit at contested spots. Outnumbering
+  everyone else on one (a strict majority of the fighters in its circle)
+  for a few seconds claims it; even contests freeze the meter, and the
+  owning team drains an attacker's progress at the same rate it accrued.
+  Holding a waypoint halves your team's respawn wait and pulses a speed
+  boost to teammates nearby. Captures also score classic points (gold for
+  the winners' coffers).
 - If the time limit runs out, the team with the most captures wins
   (score breaks ties).
 

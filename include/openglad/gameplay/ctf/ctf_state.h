@@ -103,6 +103,25 @@ bool ctf_on_point_touch(walker* point, walker* eater);
 // CTF match a team wipe never ends the level (phase 7 owns match end).
 bool ctf_suppress_team_wipe_endgame(const GameWorld& world);
 
+// Canonical color name for a score team ("RED"/"GREEN"/"BLUE"/"YELLOW"),
+// matching the rendered palette ramps (team*16+40). Shared by the sim
+// notifications and every win/results surface so players always see the
+// same name for the same tint.
+const char* ctf_team_color_name(int team);
+
+// True when a kind-0 (player revive) entry for this corpse is still pending.
+// Shared by the HUD countdown and the view-control keep-alive paths.
+inline bool ctf_pending_player_respawn(const CtfState& ctf,
+                                       std::uint32_t entity_id)
+{
+    for (const CtfRespawnEntry& entry : ctf.respawn_queue)
+    {
+        if (entry.kind == 0 && entry.walker_entity_id == entity_id)
+            return true;
+    }
+    return false;
+}
+
 // Cadence-gated AI director (role assignment for AI livings).
 void ctf_run_ai_director(GameWorld& world);
 

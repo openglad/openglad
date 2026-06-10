@@ -199,6 +199,26 @@ static void draw_ctf_panel(screen* s, walker* control, Sint32 lm, Sint32 tm,
         }
     }
 
+    // Waypoint capture feedback: while any control point has a contending
+    // team, a compact "WP n/36" meter in that team's ramp color shows the
+    // accruing (or decaying) progress — partial progress was previously
+    // invisible until the flip. Drawn on the tm+36 row: below the HP/MP rows
+    // (tm+10/tm+18) and the FLAG!/compact-caps row (tm+28), above the
+    // score block at the pane bottom, so it collides with nothing in any
+    // split layout. First contested point in index order (deterministic).
+    for (int i = 0; i < ctf.cp_count; ++i)
+    {
+        const og::sim::CtfControlPoint& cp = ctf.cps[i];
+        if (cp.progress_team < 0)
+            continue;
+        const std::string meter =
+            std::format("WP {}/{}", cp.progress, og::sim::kCtfCpCaptureTicks);
+        mytext.write_xy(lm + 2, tm + 36, meter.c_str(),
+                        static_cast<unsigned char>(cp.progress_team * 16 + 40),
+                        static_cast<short>(1));
+        break;
+    }
+
     if (control == nullptr)
         return;
 

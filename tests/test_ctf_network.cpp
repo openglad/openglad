@@ -9,11 +9,13 @@
 #include <openglad/core/ctf_constants.h>
 #include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 
 #include <algorithm>
 #include <cstdint>
+#include <memory>
 
 #include "test_network_fixture.h"
 
@@ -108,6 +110,35 @@ void wipe_team_on_server(NetworkTestFixture& fixture, unsigned char team)
             {
                 w->set_dead(1);
             }
+        }
+    });
+}
+
+// Makes the bound players the SOLE livings of their team (the FIRST BLOOD
+// shape): every other walker on that team moves to `enemy_team`, so a death
+// leaves the player with no fallback body and the server's control nulls.
+void isolate_bound_players_on_team(NetworkTestFixture& fixture,
+                                   unsigned char team,
+                                   unsigned char enemy_team,
+                                   std::size_t player_count)
+{
+    fixture.with_server_context([&] {
+        for (const auto& uptr : fixture.server_world().oblist)
+        {
+            walker* w = uptr.get();
+            if (w == nullptr || w->dead() ||
+                w->query_order() != Order::Living || w->team_num() != team)
+            {
+                continue;
+            }
+            bool is_bound_control = false;
+            for (std::size_t p = 0; p < player_count; ++p)
+            {
+                if (fixture.server_control(p) == w)
+                    is_bound_control = true;
+            }
+            if (!is_bound_control)
+                w->set_team_num(enemy_team);
         }
     });
 }
@@ -279,4 +310,122 @@ TEST(CtfNetwork, team_wipe_still_ends_classic_level)
         << "a classic team wipe must stop the authoritative tick";
     EXPECT_EQ(1, fixture.server_world().ending)
         << "a classic team wipe must request the loss endgame";
+}
+
+// Playtest bug A regression: a solo-team player (no fallback body) whose
+// control nulls at death MUST be rebound after the CTF revive. The revived
+// walker keeps user_=player_index (revive_player_walker preserves identity),
+// which no sim_find_next_control pass can claim (all require user()==-1) —
+// the server's reclaim-by-user-tag scan is the only rebind path, and its
+// ControlChange must drive the client mirror's mapping to the revived id.
+TEST(CtfNetwork, solo_team_player_is_rebound_after_respawn)
+{
+    NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = 1,
+        .validate_serialization = true,
+    });
+    fixture.load_level();
+    inject_ctf_scenario(fixture, 1, /*requested_respawn_ticks=*/8);
+
+    walker* player = fixture.server_control(0);
+    ASSERT_NE(nullptr, player);
+    const std::uint32_t player_id = player->entity_id();
+    fixture.with_server_context([&] {
+        player->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+        player->myguy->id = 31;
+    });
+    const unsigned char bound_team = player->team_num();
+    const unsigned char enemy_team = bound_team == 0 ? 1 : 0;
+    isolate_bound_players_on_team(fixture, bound_team, enemy_team, 1);
+
+    fixture.initial_sync();
+    fixture.step_ticks(2);
+    ASSERT_TRUE(fixture.server_world().ctf.active);
+
+    // Kill the player's walker: with no fallback body the control nulls and
+    // the mirror's mapping drops to entity 0 while the respawn is pending.
+    fixture.with_server_context([&] { player->set_dead(1); });
+    fixture.step_ticks(2);
+    ASSERT_TRUE(og::sim::ctf_pending_player_respawn(
+        fixture.server_world().ctf, player_id))
+        << "the death scan should schedule the player corpse";
+    ASSERT_EQ(nullptr, fixture.server_control(0))
+        << "no fallback body: the control must be null while dead";
+    ASSERT_EQ(0u, fixture.client(0).controlled_entity_ids()[0]);
+
+    // Far past the 8-tick respawn timer: the revive fired and the reclaim
+    // must have rebound the player on both the server and the mirror.
+    fixture.step_ticks(40);
+    walker* revived = fixture.server_world().find_by_id(player_id);
+    ASSERT_NE(nullptr, revived);
+    ASSERT_FALSE(revived->dead()) << "the sim revive must have fired";
+    EXPECT_EQ(0, revived->user()) << "revive preserves the player's user tag";
+    EXPECT_EQ(revived, fixture.server_control(0))
+        << "the server must reclaim the revived walker by user tag";
+    EXPECT_EQ(player_id, fixture.client(0).controlled_entity_ids()[0])
+        << "the reclaim ControlChange must rebind the client mirror";
+    fixture.expect_clients_match_server();
+}
+
+// Two same-team players who both die with no fallback bodies must each
+// reclaim their OWN character: user tags are identity-exact, so iteration
+// order can never swap the revived walkers between the players.
+TEST(CtfNetwork, two_same_team_dead_players_reclaim_their_own_characters)
+{
+    NetworkTestFixture fixture({
+        .player_count = 2,
+        .level_id = 1,
+        .validate_serialization = true,
+    });
+    fixture.load_level();
+    inject_ctf_scenario(fixture, 2, /*requested_respawn_ticks=*/8);
+
+    walker* player0 = fixture.server_control(0);
+    walker* player1 = fixture.server_control(1);
+    ASSERT_NE(nullptr, player0);
+    ASSERT_NE(nullptr, player1);
+    ASSERT_NE(player0, player1);
+    ASSERT_EQ(player0->team_num(), player1->team_num())
+        << "both fixture players should bind onto the level's my_team";
+    const std::uint32_t id0 = player0->entity_id();
+    const std::uint32_t id1 = player1->entity_id();
+    fixture.with_server_context([&] {
+        player0->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+        player0->myguy->id = 41;
+        player1->set_owned_myguy(std::make_unique<guy>(FAMILY_ELF));
+        player1->myguy->id = 42;
+    });
+    const unsigned char bound_team = player0->team_num();
+    const unsigned char enemy_team = bound_team == 0 ? 1 : 0;
+    isolate_bound_players_on_team(fixture, bound_team, enemy_team, 2);
+
+    fixture.initial_sync();
+    fixture.step_ticks(2);
+    ASSERT_TRUE(fixture.server_world().ctf.active);
+
+    fixture.with_server_context([&] {
+        player0->set_dead(1);
+        player1->set_dead(1);
+    });
+    fixture.step_ticks(2);
+    ASSERT_EQ(nullptr, fixture.server_control(0));
+    ASSERT_EQ(nullptr, fixture.server_control(1));
+
+    fixture.step_ticks(40);
+    walker* revived0 = fixture.server_world().find_by_id(id0);
+    walker* revived1 = fixture.server_world().find_by_id(id1);
+    ASSERT_NE(nullptr, revived0);
+    ASSERT_NE(nullptr, revived1);
+    ASSERT_FALSE(revived0->dead());
+    ASSERT_FALSE(revived1->dead());
+    EXPECT_EQ(revived0, fixture.server_control(0))
+        << "player 0 must reclaim its own character (exact user tag)";
+    EXPECT_EQ(revived1, fixture.server_control(1))
+        << "player 1 must reclaim its own character (exact user tag)";
+    EXPECT_EQ(id0, fixture.client(0).controlled_entity_ids()[0]);
+    EXPECT_EQ(id1, fixture.client(0).controlled_entity_ids()[1]);
+    EXPECT_EQ(id0, fixture.client(1).controlled_entity_ids()[0]);
+    EXPECT_EQ(id1, fixture.client(1).controlled_entity_ids()[1]);
+    fixture.expect_clients_match_server();
 }

@@ -27,9 +27,7 @@
 
 namespace og::sim {
 
-namespace {
-
-const char* team_color_name(int team)
+const char* ctf_team_color_name(int team)
 {
     switch (team)
     {
@@ -38,6 +36,13 @@ const char* team_color_name(int team)
         case 2: return "BLUE";
         default: return "YELLOW";
     }
+}
+
+namespace {
+
+const char* team_color_name(int team)
+{
+    return ctf_team_color_name(team);
 }
 
 void fire_ai_respawn(GameWorld& world, const CtfRespawnEntry& entry);
@@ -506,9 +511,9 @@ void run_dropped_flags(GameWorld& world)
     }
 }
 
-// Phase 5: control points. Single-team occupancy accumulates progress, a
-// contender change resets the meter, and owned points pulse a localized
-// speed bonus to nearby owner-team livings.
+// Phase 5: control points. Majority occupancy accumulates progress for the
+// dominant team, owner dominance decays it symmetrically, and owned points
+// pulse a localized speed bonus to nearby owner-team livings.
 void run_control_points(GameWorld& world)
 {
     CtfState& ctf = world.ctf;
@@ -532,18 +537,29 @@ void run_control_points(GameWorld& world)
                 present[team]++;
         }
 
-        int contender = -1;
-        int teams_present = 0;
+        // Majority-occupancy contender: the strongest team contests the
+        // point only with a strict majority of ALL live walkers in the
+        // disc. Reduces to sole occupancy when one team is present; exact
+        // ties (1v1, 2v2) and balanced multi-team brawls hold the meter,
+        // so a single passing enemy no longer freezes a 2-strong retake.
+        int strongest = -1;
+        int strongest_count = 0;
+        int total_present = 0;
         for (int t = 0; t < 4; ++t)
         {
-            if (present[t] > 0)
+            total_present += present[t];
+            if (present[t] > strongest_count)
             {
-                teams_present++;
-                contender = t;
+                strongest_count = present[t];
+                strongest = t;
             }
         }
+        const int contender =
+            (strongest >= 0 && strongest_count * 2 > total_present)
+                ? strongest
+                : -1;
 
-        if (teams_present == 1 && contender != cp.owner)
+        if (contender >= 0 && contender != cp.owner)
         {
             if (cp.progress_team != contender)
             {
@@ -564,12 +580,18 @@ void run_control_points(GameWorld& world)
                 play(SOUND_MONEY);
             }
         }
-        else if (teams_present == 1 && contender == cp.owner)
+        else if (contender >= 0 && contender == cp.owner)
         {
-            cp.progress = 0;
-            cp.progress_team = -1;
+            // Owner dominance decays accrued progress one step per tick
+            // (symmetric with accrual) instead of wiping it: a lone owner
+            // transit no longer zeroes a near-complete retake, but the
+            // owner can still fully cleanse the meter by holding the pad
+            // as long as the attacker did. The meter only clears its
+            // contending team when it drains to zero.
+            if (cp.progress > 0 && --cp.progress == 0)
+                cp.progress_team = -1;
         }
-        // Contested or empty: hold the meter.
+        // Contested (no strict majority) or empty: hold the meter.
 
         if (cp.owner >= 0 && world.tick_count_ >= cp.next_pulse_tick)
         {
@@ -628,7 +650,10 @@ void run_win_check(GameWorld& world)
         return;
 
     ctf.winner_team = static_cast<std::int8_t>(winner);
-    notify(std::format("TEAM {} WINS THE MATCH!", winner + 1));
+    // Color name, not a bare 1-indexed team number: players see team tints,
+    // never indices. Worst case "YELLOW TEAM WINS!" is 17 chars, inside the
+    // 25-char notification budget.
+    notify(std::format("{} TEAM WINS!", team_color_name(winner)));
     play(SOUND_CHARGE);
 
     for (const auto& uptr : world.oblist)

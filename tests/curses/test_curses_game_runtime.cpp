@@ -75,6 +75,69 @@ public:
 
 } // namespace
 
+// Playtest bug C (curses sibling): the post-level verdict must be CTF-aware.
+// A CTF match end always carries the classic WIN shape (ending==0), so
+// ending alone must never decide "Victory!".
+TEST(CursesGameRuntimeVerdict, mission_verdict_line_is_ctf_aware)
+{
+    GameRunResult classic_win;
+    classic_win.ended = true;
+    classic_win.ending = 0;
+    EXPECT_EQ("Victory!", mission_verdict_line(classic_win));
+
+    GameRunResult classic_loss = classic_win;
+    classic_loss.ending = 1;
+    EXPECT_EQ("Defeat.", mission_verdict_line(classic_loss));
+
+    GameRunResult ctf_win = classic_win;
+    ctf_win.ctf_match = true;
+    ctf_win.ctf_winner_team = 0;
+    ctf_win.local_team = 0;
+    EXPECT_EQ("Victory!", mission_verdict_line(ctf_win));
+
+    // The CTF loss still has ending==0 — the team comparison must decide.
+    GameRunResult ctf_loss = ctf_win;
+    ctf_loss.ctf_winner_team = 1;
+    EXPECT_EQ("Defeat.", mission_verdict_line(ctf_loss));
+
+    // Unknown local team (spectator/unresolved avatar): neutral, never a
+    // guessed victory.
+    GameRunResult ctf_unknown = ctf_loss;
+    ctf_unknown.local_team = -1;
+    EXPECT_EQ("Match over.", mission_verdict_line(ctf_unknown));
+}
+
+// The CTF loss/rematch shape (ending==0, next_level == this level) must be
+// recognized so a loss never marks the campaign level completed; a real win
+// (next level advances) and classic shapes are not rematches.
+TEST(CursesGameRuntimeVerdict, is_ctf_rematch_end_matches_loss_shape_only)
+{
+    GameWorld world(0);
+    world.id = 500;
+    world.type = GameWorld::TYPE_CTF;
+    world.ctf.active = true;
+    world.ctf.winner_team = 1;
+
+    EXPECT_TRUE(is_ctf_rematch_end(world, /*ending=*/0, /*next_level=*/500));
+    EXPECT_FALSE(is_ctf_rematch_end(world, /*ending=*/0, /*next_level=*/501))
+        << "an advancing win is not a rematch";
+    EXPECT_FALSE(is_ctf_rematch_end(world, /*ending=*/1, /*next_level=*/500))
+        << "classic loss shape is handled by the existing loss path";
+
+    world.ctf.winner_team = -1;
+    EXPECT_FALSE(is_ctf_rematch_end(world, 0, 500))
+        << "an undecided match is never a rematch shape";
+
+    world.ctf.winner_team = 1;
+    world.ctf.active = false;
+    EXPECT_FALSE(is_ctf_rematch_end(world, 0, 500));
+
+    world.ctf.active = true;
+    world.type = 0;
+    EXPECT_FALSE(is_ctf_rematch_end(world, 0, 500))
+        << "classic levels never take the CTF rematch shape";
+}
+
 TEST(CursesGameRuntimeLocal, session_loads_level_and_populates_mirror)
 {
     SaveData save;

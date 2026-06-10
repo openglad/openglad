@@ -322,6 +322,110 @@ TEST(CtfUi, score_panel_shows_respawn_countdown_for_dead_control)
     v->control = old_control;
 }
 
+// Playtest bug A (display side): a dead myguy control with a pending revive
+// entry must SURVIVE the per-batch dead-control cleanup — the binding real
+// play loses — so the score panel renders the RESPAWN IN countdown without
+// any manual re-stamping. Once the entry is gone (or CTF is inactive) the
+// cleanup nulls dead controls exactly as before.
+TEST(CtfUi, dead_pending_respawn_control_survives_cleanup_and_shows_countdown)
+{
+    CtfScreenWorld ctf;
+    screen* s = ctf.s;
+    ASSERT_TRUE(s->world().ctf.active);
+
+    auto control = make_control(0);
+    ASSERT_NE(nullptr, control);
+    ASSERT_NE(nullptr, control->myguy);
+    control->set_dead(1);
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_NE(nullptr, v);
+    walker* old_control = v->control;
+    v->control = control.get();
+    silence_hud_prefs(v);
+
+    og::sim::CtfRespawnEntry entry;
+    entry.kind = 0;
+    entry.team = 0;
+    entry.ticks_left = 60;
+    entry.walker_entity_id = control->entity_id();
+    s->world().ctf.respawn_queue.push_back(entry);
+
+    // The cleanup runs at the head of every dispatched event batch.
+    const og::sim::SimEventBatch empty_batch;
+    ASSERT_TRUE(s->dispatch_sim_event_batch(empty_batch));
+    ASSERT_EQ(control.get(), v->control)
+        << "a pending-respawn corpse must stay bound through the cleanup";
+
+    // ... and the still-bound dead control renders the countdown.
+    const int lm = v->xloc;
+    const int tm = v->yloc;
+    s->clearbuffer();
+    ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+    EXPECT_TRUE(box_has_pixels(capture_rendered_frame(*s),
+                               lm + 4, tm + 11, lm + 90, tm + 20))
+        << "the retained dead control should render RESPAWN IN <s>";
+
+    // Entry gone (live-duplicate cancel): the cleanup nulls it again.
+    s->world().ctf.respawn_queue.clear();
+    ASSERT_TRUE(s->dispatch_sim_event_batch(empty_batch));
+    EXPECT_EQ(nullptr, v->control)
+        << "without a pending entry a dead control must still be nulled";
+
+    // Inactive CTF: classic behavior, dead controls always nulled.
+    s->world().ctf.respawn_queue.push_back(entry);
+    s->world().ctf.active = false;
+    v->control = control.get();
+    ASSERT_TRUE(s->dispatch_sim_event_batch(empty_batch));
+    EXPECT_EQ(nullptr, v->control)
+        << "the retention is strictly gated on an active CTF match";
+    s->world().ctf.active = true;
+
+    v->control = old_control;
+}
+
+// Playtest bug B (perception): while a control point has a contending team
+// the panel paints a compact "WP n/36" meter on the tm+36 row; with no
+// contender the row stays blank.
+TEST(CtfUi, score_panel_shows_waypoint_capture_meter)
+{
+    CtfScreenWorld ctf;
+    screen* s = ctf.s;
+    ASSERT_TRUE(s->world().ctf.active);
+
+    auto control = make_control(0);
+    ASSERT_NE(nullptr, control);
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_NE(nullptr, v);
+    walker* old_control = v->control;
+    v->control = control.get();
+    silence_hud_prefs(v);
+
+    og::sim::CtfState& state = s->world().ctf;
+    state.cp_count = 1;
+    state.cps[0].owner = 1;
+    state.cps[0].progress = 12;
+    state.cps[0].progress_team = 0;
+
+    const int lm = v->xloc;
+    const int tm = v->yloc;
+    s->clearbuffer();
+    ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+    EXPECT_TRUE(box_has_pixels(capture_rendered_frame(*s),
+                               lm + 2, tm + 35, lm + 52, tm + 44))
+        << "a contested waypoint should paint the WP n/36 meter";
+
+    // No contender: the meter row stays blank.
+    state.cps[0].progress_team = -1;
+    state.cps[0].progress = 0;
+    s->clearbuffer();
+    ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+    EXPECT_FALSE(box_has_pixels(capture_rendered_frame(*s),
+                                lm + 2, tm + 35, lm + 52, tm + 44))
+        << "no meter may paint without a contending team";
+
+    v->control = old_control;
+}
+
 // Audit findings 3+4: a 12-char name, four active teams, and double-digit
 // captures must coexist with zero glyph collisions against the name and the
 // TEAM/FOES column. Proven per text-bearing PREF_LIFE mode by rendering the
@@ -352,6 +456,12 @@ TEST(CtfUi, hud_caps_clear_name_and_foes_column_in_single_view)
     state.captures[0] = 10;
     state.captures[1] = 9;
     state.captures[3] = 3;
+    // Worst-case contested waypoint meter ("WP 35/36" on the tm+36 row) must
+    // also stay collision-free against every classic HUD pixel.
+    state.cp_count = 1;
+    state.cps[0].owner = 1;
+    state.cps[0].progress = 35;
+    state.cps[0].progress_team = 0;
 
     const int tm = v->yloc;
     const int rm = v->endx;
@@ -413,6 +523,12 @@ TEST(CtfUi, hud_caps_compact_group_clears_name_and_flag_in_two_view)
     state.captures[0] = 10;
     state.captures[1] = 10;
     state.captures[3] = 7;
+    // Worst-case contested waypoint meter on the tm+36 row, below the shared
+    // FLAG!/compact-caps row: must add pixels without any collision.
+    state.cp_count = 1;
+    state.cps[0].owner = 1;
+    state.cps[0].progress = 35;
+    state.cps[0].progress_team = 0;
     // The control carries team 1's flag, so FLAG! shares the tm+28 row with
     // the right-aligned compact caps group.
     state.flags[1].state = og::sim::CtfFlagState::Carried;
@@ -566,8 +682,10 @@ TEST(CtfUi, team_build_ctf_buttons_follow_campaign_and_cycle)
 
 TEST(CtfUi, results_helpers_format_winner_and_captures)
 {
-    ASSERT_EQ("TEAM 3 WINS THE MATCH", format_ctf_winner_banner(2));
-    ASSERT_EQ("TEAM 1 WINS THE MATCH", format_ctf_winner_banner(0));
+    // Color names, matching the sim's match-end notification wording.
+    ASSERT_EQ("BLUE TEAM WINS!", format_ctf_winner_banner(2));
+    ASSERT_EQ("RED TEAM WINS!", format_ctf_winner_banner(0));
+    ASSERT_EQ("YELLOW TEAM WINS!", format_ctf_winner_banner(3));
 
     // The capture summary is one compact line: a neutral "CAPS " prefix,
     // active-team counts in team order, neutral ':' separators between them.

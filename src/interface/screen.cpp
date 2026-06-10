@@ -171,10 +171,25 @@ namespace
 
 void cleanup_dead_view_controls(screen& self)
 {
+    // During an active CTF match a dead player corpse with a pending revive
+    // entry stays bound: the camera holds on the corpse and the score panel
+    // renders the RESPAWN IN countdown. Strictly CTF-gated so non-CTF
+    // behavior is byte-identical.
+    const GameWorld& world = self.world();
+    const bool ctf_active =
+        (world.type & GameWorld::TYPE_CTF) && world.ctf.active;
     for (int i = 0; i < self.numviews; i++)
     {
-        if (self.viewob[i]->control && self.viewob[i]->control->dead())
-            self.viewob[i]->control = nullptr;
+        walker* const control = self.viewob[i]->control;
+        if (control == nullptr || !control->dead())
+            continue;
+        if (ctf_active && control->myguy != nullptr &&
+            og::sim::ctf_pending_player_respawn(world.ctf,
+                                                control->entity_id()))
+        {
+            continue;
+        }
+        self.viewob[i]->control = nullptr;
     }
 }
 
@@ -1280,8 +1295,16 @@ short screen::endgame(short ending, short nextlevel)
 			allbonuscash = 0;
 		}
 	    
-		// Beat that level
-		save_data.add_level_completed(save_data.current_campaign, save_data.scen_num); // this scenario is completed ..
+		// Beat that level — except the CTF loss/rematch shape (a decided
+		// match whose next level IS this level): the map was not beaten, so
+		// keep level select honest and preserve the first-real-win time
+		// bonus. Every other side effect (score/cash accrual, roster
+		// update, autosave, world.end) stays.
+		const bool ctf_rematch_shape =
+			(world_.type & GameWorld::TYPE_CTF) && world_.ctf.active &&
+			world_.ctf.winner_team >= 0 && nextlevel == save_data.scen_num;
+		if (!ctf_rematch_shape)
+			save_data.add_level_completed(save_data.current_campaign, save_data.scen_num); // this scenario is completed ..
 		if (nextlevel != -1)
 			save_data.scen_num = nextlevel;    // Fake jumping to next level ..
         
