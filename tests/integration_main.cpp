@@ -212,8 +212,11 @@ int main(int argc, char** argv)
     std::filesystem::create_directories(test_config_dir);
     setenv("OPENGLAD_CONFIG_DIR", test_config_dir.c_str(), 1);
 
-    SDL_setenv("SDL_VIDEODRIVER", "offscreen", 1);
-    SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
+    // Default to the offscreen driver but let the environment override it:
+    // offscreen probes EGL, which can block forever on a wedged GPU driver
+    // (SDL_VIDEODRIVER=dummy is the pure-software escape hatch).
+    SDL_setenv("SDL_VIDEODRIVER", "offscreen", 0);
+    SDL_setenv("SDL_AUDIODRIVER", "dummy", 0);
 
     init_logging();
     SDL_Init(SDL_INIT_VIDEO);

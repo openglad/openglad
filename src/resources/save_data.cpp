@@ -469,7 +469,7 @@ bool SaveData::load(const std::string& filename)
     }
     else
     {
-        ctf_team_count = 2;
+        ctf_team_count = 0; // Auto
         ctf_capture_limit = 0;
         ctf_respawn_ticks = 0;
     }

@@ -916,22 +916,25 @@ TEST(PickerCommon, toggle_allied_mode)
 
 // --- CTF match settings ---
 
-TEST(PickerCommon, cycle_ctf_team_count_wraps_2_3_4)
+TEST(PickerCommon, cycle_ctf_team_count_wraps_auto_2_3_4)
 {
     SaveData save;
-    ASSERT_EQ(2, (int)save.ctf_team_count) << "classic default is 2 teams";
+    ASSERT_EQ(0, (int)save.ctf_team_count)
+        << "default is Auto (every team the map authors)";
 
+    og::ui::cycle_ctf_team_count(save);
+    ASSERT_EQ(2, (int)save.ctf_team_count);
     og::ui::cycle_ctf_team_count(save);
     ASSERT_EQ(3, (int)save.ctf_team_count);
     og::ui::cycle_ctf_team_count(save);
     ASSERT_EQ(4, (int)save.ctf_team_count);
     og::ui::cycle_ctf_team_count(save);
-    ASSERT_EQ(2, (int)save.ctf_team_count) << "cycle wraps back to 2";
+    ASSERT_EQ(0, (int)save.ctf_team_count) << "cycle wraps back to Auto";
 
     // Out-of-range values normalize back into the cycle.
-    save.ctf_team_count = 0;
+    save.ctf_team_count = 9;
     og::ui::cycle_ctf_team_count(save);
-    ASSERT_EQ(2, (int)save.ctf_team_count);
+    ASSERT_EQ(0, (int)save.ctf_team_count);
 }
 
 TEST(PickerCommon, cycle_ctf_capture_limit_sequence)
@@ -955,7 +958,7 @@ TEST(PickerCommon, cycle_ctf_capture_limit_sequence)
 TEST(PickerCommon, format_ctf_labels)
 {
     SaveData save;
-    ASSERT_EQ("CTF Teams: 2", og::ui::format_ctf_teams_label(save));
+    ASSERT_EQ("CTF Teams: Auto", og::ui::format_ctf_teams_label(save));
     save.ctf_team_count = 4;
     ASSERT_EQ("CTF Teams: 4", og::ui::format_ctf_teams_label(save));
 

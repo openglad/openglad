@@ -281,11 +281,16 @@ void CursesRenderer::draw_hud(ITerminal& term, const GameWorld& world,
         line1 += "  Score " + std::to_string(world.m_score[team]);
         if (world.ctf.active) {
             // Per-team capture counts (replicated CtfState; the mirror world
-            // carries it in every snapshot).
+            // carries it in every snapshot). Active teams only, matching the
+            // SDL panel's filter.
             line1 += "  Caps ";
+            bool first = true;
             for (int t = 0; t < 4; ++t) {
-                if (t > 0)
+                if (!world.ctf.team_active[t])
+                    continue;
+                if (!first)
                     line1 += ":";
+                first = false;
                 line1 += std::to_string(world.ctf.captures[t]);
             }
             if (followed_id != 0) {
@@ -300,8 +305,19 @@ void CursesRenderer::draw_hud(ITerminal& term, const GameWorld& world,
                 for (const auto& entry : world.ctf.respawn_queue) {
                     if (entry.kind == 0 &&
                         entry.walker_entity_id == followed_id) {
+                        // An owned control point burns the wait two ticks at
+                        // a time; mirror that in the seconds estimate.
+                        int ticks_per_second = 12;
+                        for (int i = 0; i < world.ctf.cp_count; ++i) {
+                            if (world.ctf.cps[i].owner ==
+                                static_cast<std::int8_t>(entry.team)) {
+                                ticks_per_second = 24;
+                                break;
+                            }
+                        }
                         line1 += "  RESPAWN " + std::to_string(
-                            (static_cast<int>(entry.ticks_left) + 11) / 12);
+                            (static_cast<int>(entry.ticks_left) +
+                             ticks_per_second - 1) / ticks_per_second);
                         break;
                     }
                 }

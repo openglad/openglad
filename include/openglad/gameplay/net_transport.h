@@ -46,7 +46,9 @@ constexpr std::uint8_t net_message_type_value(NetMessageType message_type) noexc
     return static_cast<std::uint8_t>(message_type);
 }
 
-inline constexpr std::uint8_t kNetworkProtocolVersion = 1;
+// v2: lobby settings carry the three CTF fields (team count, capture limit,
+// respawn ticks) and the snapshot format moved to v4 alongside them.
+inline constexpr std::uint8_t kNetworkProtocolVersion = 2;
 inline constexpr std::size_t kTransportHeaderSize = 4;
 inline constexpr std::size_t kSessionTokenSize = 16;
 using SessionToken = std::array<std::uint8_t, kSessionTokenSize>;

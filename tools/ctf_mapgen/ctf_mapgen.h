@@ -47,7 +47,11 @@ struct Dressing
     int flag_level = 1;                  // >1 authors a per-map capture limit
     std::vector<TilePos> cps;            // contested middles (team 7)
     std::vector<Spice> spice;
-    int anchors_per_team = 12;           // 8..16
+    int anchors_per_team = 12;
+    // Tiles to shift the anchor cluster away from the first control point.
+    // Walled base pockets (TRIAD, CROSSFIRE) use 0 so the cluster stays
+    // inside the pocket instead of spilling through the wall ring.
+    int anchor_shift = 3;           // 8..16
 };
 
 struct AdaptedSpec

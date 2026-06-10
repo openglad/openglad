@@ -246,7 +246,7 @@ public:
     std::uint32_t m_score[4] = {};
     short my_team = 0;
     short allied_mode = 0;
-    short ctf_requested_team_count = 2;
+    short ctf_requested_team_count = 0;
     short ctf_requested_capture_limit = 0;
     short ctf_requested_respawn_ticks = 0;
     og::sim::CtfState ctf;

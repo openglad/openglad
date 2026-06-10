@@ -427,7 +427,7 @@ TEST(CtfSnapshot, apply_clears_stale_ctf_state_from_default_snapshot)
     EXPECT_EQ(0, target.world().ctf.anchor_count[0]);
     EXPECT_EQ(0, target.world().ctf.captures[2]);
     EXPECT_EQ(-1, target.world().ctf.winner_team);
-    EXPECT_EQ(2, target.world().ctf_requested_team_count);
+    EXPECT_EQ(0, target.world().ctf_requested_team_count);
     EXPECT_EQ(0, target.world().ctf_requested_capture_limit);
     EXPECT_EQ(0, target.world().ctf_requested_respawn_ticks);
 }

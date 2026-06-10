@@ -284,14 +284,14 @@ TEST(CursesPickerClient, ctf_settings_cycle_on_ctf_campaign_only)
     f.save().current_campaign = "org.openglad.gladiator";
     dismiss(f.t());
     f.client.handle_menu_item(PickerMenuId::TeamBuild, *teams_item);
-    EXPECT_EQ(2, (int)f.save().ctf_team_count);
+    EXPECT_EQ(0, (int)f.save().ctf_team_count);
     EXPECT_NE(f.t().dump().find("CTF maps only"), std::string::npos);
 
-    // CTF campaign: both settings cycle.
+    // CTF campaign: both settings cycle (Auto -> 2).
     f.save().current_campaign = "org.openglad.ctf";
     dismiss(f.t());
     f.client.handle_menu_item(PickerMenuId::TeamBuild, *teams_item);
-    EXPECT_EQ(3, (int)f.save().ctf_team_count);
+    EXPECT_EQ(2, (int)f.save().ctf_team_count);
 
     dismiss(f.t());
     f.client.handle_menu_item(PickerMenuId::TeamBuild, *caps_item);

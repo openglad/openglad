@@ -40,6 +40,8 @@ const char* team_color_name(int team)
     }
 }
 
+void fire_ai_respawn(GameWorld& world, const CtfRespawnEntry& entry);
+
 bool is_score_team(unsigned char team)
 {
     return team < SCORE_TEAM_COUNT;
@@ -100,9 +102,38 @@ void send_flag_home(GameWorld& world, int team)
     }
 }
 
+// Passability probe for spawn placement. query_passable routes through
+// ob_pass_check, whose treasure overlap dispatches eat_me — a probe must
+// never eat a drumstick or pick up a flag at a position the walker is not
+// actually placed at. Grid check plus a manual blocking-entity scan instead.
+bool spawn_spot_clear(GameWorld& world, walker* w, short x, short y)
+{
+    if (!world.query_grid_passable(x, y, w))
+        return false;
+    if (world.myobmap == nullptr)
+        return true;
+    const std::list<walker*>& pile = world.myobmap->obmap_get_list(x, y);
+    for (walker* other : pile)
+    {
+        if (other == nullptr || other == w || other->dead())
+            continue;
+        const Order order = other->query_order();
+        if (order != Order::Living && order != Order::Generator)
+            continue;
+        if (x + w->sizex() > other->xpos() &&
+            x < other->xpos() + other->sizex() &&
+            y + w->sizey() > other->ypos() &&
+            y < other->ypos() + other->sizey())
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 // Places a walker at the team's next respawn anchor: rotates respawn_serial,
-// skips anchors that fail query_passable, falls back to the flag home, and
-// finally to teleport() (world.rng_ draw, CTF-gated by construction).
+// skips anchors that fail the eat-free probe, falls back to the flag home,
+// and finally to teleport() (world.rng_ draw, CTF-gated by construction).
 bool place_at_anchor(GameWorld& world, walker* w, int team)
 {
     CtfState& ctf = world.ctf;
@@ -118,7 +149,7 @@ bool place_at_anchor(GameWorld& world, walker* w, int team)
             ctf.respawn_serial++;
             const short ax = ctf.anchor_x[team][slot];
             const short ay = ctf.anchor_y[team][slot];
-            if (world.query_passable(ax, ay, w))
+            if (spawn_spot_clear(world, w, ax, ay))
             {
                 final_x = ax;
                 final_y = ay;
@@ -126,7 +157,8 @@ bool place_at_anchor(GameWorld& world, walker* w, int team)
             }
         }
         if (final_x < 0 && ctf.flags[team].present &&
-            world.query_passable(ctf.flags[team].home_x, ctf.flags[team].home_y, w))
+            spawn_spot_clear(world, w, ctf.flags[team].home_x,
+                             ctf.flags[team].home_y))
         {
             final_x = ctf.flags[team].home_x;
             final_y = ctf.flags[team].home_y;
@@ -160,6 +192,10 @@ void revive_player_walker(GameWorld& world, walker* w, int team)
     }
     w->set_foe(nullptr);
     w->set_leader(nullptr);
+    // Respawn breaks charm: rejoin the recorded true team.
+    if (team >= 0 && team < 4)
+        w->set_team_num(static_cast<unsigned char>(team));
+    w->set_real_team_num(255);
 
     if (w->user() != -1)
     {
@@ -200,8 +236,7 @@ bool live_duplicate_exists(GameWorld& world, const walker* corpse)
     {
         walker* other = uptr.get();
         if (other != nullptr && other != corpse && !other->dead() &&
-            other->myguy != nullptr && other->myguy->id == corpse->myguy->id &&
-            other->team_num() == corpse->team_num())
+            other->myguy != nullptr && other->myguy->id == corpse->myguy->id)
         {
             return true;
         }
@@ -210,14 +245,19 @@ bool live_duplicate_exists(GameWorld& world, const walker* corpse)
 }
 
 // Kills the corpse's fresh bloodstain so a cleric cannot resurrect a copy of
-// a walker that the CTF respawner is about to bring back.
-void scrub_corpse_stain(GameWorld& world, const walker* corpse)
+// a walker that the CTF respawner is about to bring back. The fresh
+// LIFE_GEM heart goes with it: respawn cycles would otherwise farm score
+// into the time-limit tiebreaker.
+void scrub_corpse_drops_in(const GameWorld::EntityList& list,
+                           const walker* corpse)
 {
-    for (const auto& uptr : world.fxlist)
+    for (const auto& uptr : list)
     {
         walker* fx = uptr.get();
-        if (fx == nullptr || fx->dead() || fx->query_order() != Order::Treasure ||
-            fx->family() != FAMILY_STAIN || fx->team_num() != corpse->team_num())
+        if (fx == nullptr || fx->dead() ||
+            fx->query_order() != Order::Treasure ||
+            (fx->family() != FAMILY_STAIN && fx->family() != FAMILY_LIFE_GEM) ||
+            fx->team_num() != corpse->team_num())
         {
             continue;
         }
@@ -226,6 +266,12 @@ void scrub_corpse_stain(GameWorld& world, const walker* corpse)
         if (dx + dy <= 4)
             fx->set_dead(1);
     }
+}
+
+void scrub_corpse_stain(GameWorld& world, const walker* corpse)
+{
+    scrub_corpse_drops_in(world.fxlist, corpse);
+    scrub_corpse_drops_in(world.oblist, corpse);
 }
 
 void schedule_respawn(GameWorld& world, walker* corpse)
@@ -238,12 +284,19 @@ void schedule_respawn(GameWorld& world, walker* corpse)
             [](const CtfRespawnEntry& entry) { return entry.kind == 1; });
         if (victim == ctf.respawn_queue.end())
             return;
+        // Fire the evicted bot immediately instead of dropping it: its corpse
+        // is already swept, so a plain erase would shrink the roster forever.
+        const CtfRespawnEntry evicted = *victim;
         ctf.respawn_queue.erase(victim);
+        fire_ai_respawn(world, evicted);
     }
 
     CtfRespawnEntry entry;
     entry.kind = (corpse->myguy != nullptr) ? 0 : 1;
-    entry.team = corpse->team_num();
+    // A charmed corpse still wears the charmer's team_num; respawn breaks the
+    // charm and the walker rejoins its true team.
+    entry.team = (corpse->real_team_num() != 255) ? corpse->real_team_num()
+                                                  : corpse->team_num();
     entry.family = static_cast<std::uint8_t>(corpse->family());
     const std::int32_t level =
         (corpse->stats() != nullptr) ? corpse->stats()->level() : 1;
@@ -692,6 +745,11 @@ void ctf_initialize_for_level(GameWorld& world)
     if (active_count < 2)
         return;
 
+    // SAVE_ALL's named-NPC death check fires straight from walker::death and
+    // bypasses the CTF team-wipe suppression; respawns make it meaningless
+    // here, so the bit is dropped on activation.
+    world.type &= static_cast<char>(~GameWorld::TYPE_MUST_PROTECT_NAMED_NPCS);
+
     // Consume the active teams' start markers (their positions are recorded
     // above) so the marker entities cannot block their own respawn anchors.
     for (const auto& uptr : world.oblist)
@@ -723,8 +781,9 @@ void ctf_initialize_for_level(GameWorld& world)
         walker* w = uptr.get();
         if (w == nullptr || w->dead())
             continue;
-        if (w->query_order() != Order::Living &&
-            w->query_order() != Order::Generator)
+        const Order order = w->query_order();
+        if (order != Order::Living && order != Order::Generator &&
+            !(order == Order::Special && w->family() == FAMILY_RESERVED_TEAM))
         {
             continue;
         }
@@ -787,9 +846,14 @@ void ctf_run_tick(GameWorld& world)
 
     // Match already decided: keep the end-state latched without re-running
     // phases (a session layer may step the world again after game_ended).
+    // tick() resets game_ended/ending/next_level at entry, so the full win
+    // shape must be re-asserted or the win degrades to a terminal end.
     if (ctf.winner_team >= 0)
     {
         world.game_ended = true;
+        world.ending = 0;
+        world.next_level = static_cast<short>(
+            ctf.winner_is_player ? world.id + 1 : world.id);
         return;
     }
 
@@ -898,20 +962,6 @@ bool ctf_on_point_touch(walker* point, walker* eater)
     (void)point;
     (void)eater;
     return true;
-}
-
-bool ctf_player_input_should_wait(const GameWorld& world, const walker* control)
-{
-    if (control == nullptr || !control->dead())
-        return false;
-    if (!(world.type & GameWorld::TYPE_CTF) || !world.ctf.active)
-        return false;
-    for (const auto& entry : world.ctf.respawn_queue)
-    {
-        if (entry.kind == 0 && entry.walker_entity_id == control->entity_id())
-            return true;
-    }
-    return false;
 }
 
 bool ctf_suppress_team_wipe_endgame(const GameWorld& world)

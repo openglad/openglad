@@ -64,7 +64,7 @@ public:
     unsigned char numplayers; //numviews
     short allied_mode;
     // CTF match settings (only TYPE_CTF maps read them; 0 = map/default value).
-    short ctf_team_count = 2;
+    short ctf_team_count = 0; // 0 = Auto: every team the map authors
     short ctf_capture_limit = 0;
     short ctf_respawn_ticks = 0;
 

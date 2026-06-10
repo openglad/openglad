@@ -109,12 +109,25 @@ void issue_front_command(walker* w, std::int32_t commandtype,
     s->force_command(commandtype, iterations, com1, com2);
 }
 
-// A carrier's leader (its own flag entity) outlives the carry: clear it when
-// the walker takes a non-carrier role so the tick auto-foe backstop resumes.
+// Director-set leaders outlive their roles: a carrier's own-flag-entity
+// leader and an escort's carrier-walker leader both suppress the tick
+// auto-foe backstop. Clear them when the walker takes a non-carrier,
+// non-escort role. Player leaders from a yell (ACT_CONTROL walkers) are
+// never the director's and stay untouched.
 void clear_stale_flag_leader(const CtfState& ctf, walker* w)
 {
     if (leader_is_flag_entity(ctf, w))
+    {
         w->set_leader(nullptr);
+        return;
+    }
+    const walker* leader = w->leader();
+    if (leader != nullptr && !leader->dead() &&
+        leader->query_order() == Order::Living && leader->user() == -1 &&
+        leader->team_num() == w->team_num())
+    {
+        w->set_leader(nullptr);
+    }
 }
 
 void run_team_director(GameWorld& world, int team)
@@ -276,7 +289,7 @@ void run_team_director(GameWorld& world, int team)
             ? attacker_stats->commands.front().commandtype
             : 0;
         if (front_type != 0 && front_type != COMMAND_SEARCH &&
-            front_type != COMMAND_GOTO)
+            front_type != COMMAND_GOTO && front_type != COMMAND_FOLLOW)
         {
             continue;
         }

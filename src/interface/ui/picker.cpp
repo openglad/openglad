@@ -1242,6 +1242,17 @@ button* picker_createmenu_buttons()
     buttons[kCreateMenuCtfTeamsIndex].label = og::ui::format_ctf_teams_label(save);
     buttons[kCreateMenuCtfCapsIndex].label = og::ui::format_ctf_caps_label(save);
 
+    // Keyboard navigation does not skip hidden buttons, so the CTF row is
+    // routed into the nav graph only while it is shown (the static table's
+    // links route around it; campaign_picker.cpp uses the same pattern).
+    if (show_ctf)
+    {
+        buttons[3].nav.down = kCreateMenuCtfTeamsIndex;
+        buttons[4].nav.down = kCreateMenuCtfCapsIndex;
+        buttons[6].nav.up = kCreateMenuCtfTeamsIndex;
+        buttons[7].nav.up = kCreateMenuCtfCapsIndex;
+    }
+
     return pks().createmenu_buttons.data();
 }
 
@@ -2222,11 +2233,12 @@ Sint32 change_ctf_teams()
    SaveData& save = og::runtime::current_session->myscreen_->save_data;
    og::ui::cycle_ctf_team_count(save);
 
+   const std::string label = og::ui::format_ctf_teams_label(save);
    if (og::runtime::current_session->allbuttons_[kCreateMenuCtfTeamsIndex] != nullptr)
-   {
-       og::runtime::current_session->allbuttons_[kCreateMenuCtfTeamsIndex]->label =
-           og::ui::format_ctf_teams_label(save);
-   }
+       og::runtime::current_session->allbuttons_[kCreateMenuCtfTeamsIndex]->label = label;
+   // The mutable row backs any later redraw of the menu's button table.
+   if (static_cast<int>(pks().createmenu_buttons.size()) > kCreateMenuCtfTeamsIndex)
+       pks().createmenu_buttons[kCreateMenuCtfTeamsIndex].label = label;
 
    picker_lobby_sync_settings_from_save();
 
@@ -2238,11 +2250,11 @@ Sint32 change_ctf_caps()
    SaveData& save = og::runtime::current_session->myscreen_->save_data;
    og::ui::cycle_ctf_capture_limit(save);
 
+   const std::string label = og::ui::format_ctf_caps_label(save);
    if (og::runtime::current_session->allbuttons_[kCreateMenuCtfCapsIndex] != nullptr)
-   {
-       og::runtime::current_session->allbuttons_[kCreateMenuCtfCapsIndex]->label =
-           og::ui::format_ctf_caps_label(save);
-   }
+       og::runtime::current_session->allbuttons_[kCreateMenuCtfCapsIndex]->label = label;
+   if (static_cast<int>(pks().createmenu_buttons.size()) > kCreateMenuCtfCapsIndex)
+       pks().createmenu_buttons[kCreateMenuCtfCapsIndex].label = label;
 
    picker_lobby_sync_settings_from_save();
 

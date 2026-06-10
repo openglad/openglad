@@ -492,23 +492,21 @@ TEST(CtfRespawn, team_wipe_suppression_tracks_match_lifecycle)
     }
 }
 
-TEST(CtfRespawn, player_input_waits_only_while_respawn_is_pending)
+TEST(CtfRespawn, charmed_corpse_respawns_on_its_true_team)
 {
     RespawnArena arena;
     walker* runner = arena.runner;
     runner->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     runner->myguy->id = 41;
-    runner->set_user(0);
-    runner->set_act_type(ACT_CONTROL);
 
-    ASSERT_FALSE(og::sim::ctf_player_input_should_wait(arena.world(), runner));
-    ASSERT_FALSE(og::sim::ctf_player_input_should_wait(arena.world(), nullptr));
+    // Charm flips team_num and parks the true team in real_team_num.
+    runner->set_real_team_num(runner->team_num());
+    runner->set_team_num(1);
 
     arena.kill(runner);
-    arena.fx.tick();
-    ASSERT_TRUE(og::sim::ctf_player_input_should_wait(arena.world(), runner));
+    arena.fx.tick(7);
 
-    arena.fx.tick(6);
-    ASSERT_FALSE(runner->dead());
-    ASSERT_FALSE(og::sim::ctf_player_input_should_wait(arena.world(), runner));
+    ASSERT_FALSE(runner->dead()) << "charmed corpse must still respawn";
+    ASSERT_EQ(0, runner->team_num()) << "respawn breaks the charm";
+    ASSERT_EQ(255, runner->real_team_num());
 }

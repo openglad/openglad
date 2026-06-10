@@ -208,11 +208,12 @@ void dress_world(GameWorld& world, const Dressing& dress)
         if (!dress.cps.empty())
         {
             const TilePos& front = dress.cps.front();
-            auto away = [](short from, short toward) -> short {
+            const short shift = static_cast<short>(dress.anchor_shift);
+            auto away = [shift](short from, short toward) -> short {
                 if (from > toward)
-                    return 3;
+                    return shift;
                 if (from < toward)
-                    return -3;
+                    return static_cast<short>(-shift);
                 return 0;
             };
             cluster.tx = static_cast<short>(cluster.tx +
@@ -511,7 +512,7 @@ std::vector<AdaptedSpec> adapted_specs()
         s.dress.team_count = 4;
         s.dress.base = {TilePos{15, 11}, TilePos{54, 11}, TilePos{16, 57},
                         TilePos{53, 57}};
-        s.dress.cps = {TilePos{34, 30}};
+        s.dress.cps = {TilePos{34, 34}};
         s.description = {
             "FOUR-TEAM CAPTURE THE FLAG IN THE DEEP.",
             "EACH CREW CAMPS BESIDE AN ANCIENT",
@@ -552,9 +553,6 @@ std::vector<AdaptedSpec> adapted_specs()
         s.title = "CTF: A BORDER FORT";
         s.team_map = {-1, -1, -1, 0, -1, -1, -1, -1};
         s.keep_livings_per_team = 5;
-        s.add_siege_tent = true;
-        s.tent_at = {24, 27};
-        s.tent_level = 2;
         s.par_value = 4;
         s.dress.team_count = 2;
         s.dress.base = {TilePos{18, 15}, TilePos{14, 26}, TilePos{}, TilePos{}};
@@ -562,10 +560,10 @@ std::vector<AdaptedSpec> adapted_specs()
         s.description = {
             "SIEGE-STYLE CAPTURE THE FLAG.",
             "THE GARRISON KEEPS ITS BANNER IN THE",
-            "COURTYARD; THE BESIEGERS RAISE THEIRS ON",
-            "THE PLAIN, WHERE A WAR TENT MUSTERS",
-            "FRESH RAIDERS. THE GATEHOUSE WAYPOINT",
-            "DECIDES WHO DICTATES THE SIEGE.",
+            "COURTYARD; THE BESIEGERS RAISE THEIRS",
+            "ON THE OPEN PLAIN. THE GATEHOUSE",
+            "WAYPOINT DECIDES WHO DICTATES THE",
+            "SIEGE.",
         };
         out.push_back(std::move(s));
     }
@@ -580,13 +578,13 @@ std::vector<AdaptedSpec> adapted_specs()
         s.par_value = 6;
         s.dress.team_count = 2;
         s.dress.base = {TilePos{20, 6}, TilePos{36, 48}, TilePos{}, TilePos{}};
-        s.dress.cps = {TilePos{37, 30}, TilePos{3, 26}};
+        s.dress.cps = {TilePos{37, 30}, TilePos{28, 15}};
         s.description = {
             "CAPTURE THE FLAG AROUND LAKE TACONA.",
             "MARCH THE LONG SHORES, OR CHANCE THE",
             "TELEPORTERS THAT TOUCH THE ISLAND",
-            "WAYPOINT IN THE LAKE'S HEART. THE WEST",
-            "FORD WAYPOINT GUARDS THE SHORT ROAD.",
+            "WAYPOINT IN THE LAKE'S HEART. THE NORTH",
+            "SHORE WAYPOINT GUARDS THE LAND ROAD.",
             "FLAGS LOST OVER WATER RETURN HOME.",
         };
         out.push_back(std::move(s));
@@ -665,8 +663,8 @@ void write_icon(const std::string& path)
         put(7, y, 19);
         put(8, y, 21);
     }
-    put(7, 2, 56); // gold finial
-    put(8, 2, 57);
+    put(7, 2, 88); // gold finial (yellow ramp 88..95)
+    put(8, 2, 89);
     for (int y = 28; y < 30; ++y) // base
         for (int x = 5; x <= 10; ++x)
             put(x, y, 17);

@@ -205,6 +205,8 @@ TEST(CursesCtf, hud_shows_caps_line_with_flag_and_respawn_markers)
     // Mirror-style replicated CTF state (the renderer reads it directly).
     og::sim::CtfState& ctf = hw.world().ctf;
     ctf.active = true;
+    ctf.team_active[0] = true;
+    ctf.team_active[1] = true;
     ctf.captures[0] = 1;
     ctf.captures[1] = 2;
 
@@ -212,7 +214,7 @@ TEST(CursesCtf, hud_shows_caps_line_with_flag_and_respawn_markers)
     CursesRenderer renderer;
     renderer.draw(term, hw.world(), id);
     std::string row1 = term.text_row(1);
-    EXPECT_NE(row1.find("Caps 1:2:0:0"), std::string::npos)
+    EXPECT_NE(row1.find("Caps 1:2"), std::string::npos)
         << "caps line on HUD row 1: " << row1;
     EXPECT_EQ(row1.find("FLAG"), std::string::npos)
         << "no carrier marker without a carried flag: " << row1;

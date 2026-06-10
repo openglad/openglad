@@ -9,3 +9,8 @@
 class loader;
 
 void register_ctf_loader_entries(loader& l);
+
+// Single-family registration, exposed so tests can exercise the
+// missing-sprite fallback path with a nonexistent pix filename.
+void register_ctf_treasure_entry(loader& l, int family, const char* pix_file,
+                                 int fallback_family);

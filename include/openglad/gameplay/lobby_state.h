@@ -69,7 +69,7 @@ struct LobbySettings {
     std::int16_t difficulty = 0;
     std::int16_t allied_mode = 0;
     // CTF match settings; only TYPE_CTF maps consume them (0 = map/default).
-    std::int16_t ctf_team_count = 2;
+    std::int16_t ctf_team_count = 0; // 0 = Auto
     std::int16_t ctf_capture_limit = 0;
     std::int16_t ctf_respawn_ticks = 0;
 

@@ -39,8 +39,15 @@ og::sim::LobbySettings sanitize_settings(const og::sim::LobbySettings& requested
         sanitized.scenario_id = fallback.scenario_id;
     if (sanitized.allied_mode != 0 && sanitized.allied_mode != 1)
         sanitized.allied_mode = fallback.allied_mode;
-    sanitized.ctf_team_count =
-        std::clamp<std::int16_t>(sanitized.ctf_team_count, 2, 4);
+    if (sanitized.ctf_team_count > 0)
+    {
+        sanitized.ctf_team_count =
+            std::clamp<std::int16_t>(sanitized.ctf_team_count, 2, 4);
+    }
+    else
+    {
+        sanitized.ctf_team_count = 0; // Auto: every team the map authors
+    }
     sanitized.ctf_capture_limit =
         std::clamp<std::int16_t>(sanitized.ctf_capture_limit, 0, 50);
     if (sanitized.ctf_respawn_ticks != 0)

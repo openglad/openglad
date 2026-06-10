@@ -318,7 +318,10 @@ PixieData paint_triad()
             gap_side = (dx > 0) ? 1 : 3;
         else
             gap_side = (dy > 0) ? 2 : 0;
-        const int second = (gap_side + 1) % 4;
+        // Rear sally door: opposite the plaza gap, identical for every
+        // pocket by construction (the 120-degree layout cannot give all
+        // three pockets a same-handed neighbor door on a square grid).
+        const int second = (gap_side + 2) % 4;
         for (int side : {gap_side, second})
         {
             for (int k = -1; k <= 1; ++k)
@@ -389,7 +392,7 @@ PixieData paint_crossfire()
     // Cover dots on the boulevard.
     put(30, 8, 0, true);
     put(31, 8, 0, true);
-    put(44, 14, 0, true);
+    put(44, 17, 0, true);
 
     // Apply with 4 rotations: (x, y) -> (59 - y, x).
     for (const auto& feat : f)
@@ -495,6 +498,7 @@ std::vector<OriginalSpec> original_specs()
                         TilePos{}};
         s.dress.cps = {TilePos{25, 25}};
         s.dress.anchors_per_team = 12;
+        s.dress.anchor_shift = 0; // walled pockets: keep anchors inside
         s.dress.spice = {
             {FAMILY_INVIS_POTION, 0, {25, 26}, 1},
             {FAMILY_DRUMSTICK, 0, {33, 20}, 1},
@@ -507,10 +511,11 @@ std::vector<OriginalSpec> original_specs()
         s.description = {
             "THREE-WAY CAPTURE THE FLAG.",
             "EVERY POCKET HAS TWO DOORS: ONE FACES",
-            "THE PLAZA, ONE FACES YOUR CLOCKWISE",
-            "NEIGHBOR. STEALING FROM ONE RIVAL BARES",
-            "YOUR BACK TO THE OTHER. THE PLAZA",
-            "WAYPOINT BREAKS STALEMATES.",
+            "THE PLAZA, ONE IS A REAR SALLY DOOR.",
+            "ROUND THE RIM TO STRIKE FROM BEHIND -",
+            "BUT STEALING FROM ONE RIVAL BARES YOUR",
+            "BACK TO THE OTHER. THE PLAZA WAYPOINT",
+            "BREAKS STALEMATES.",
         };
         out.push_back(std::move(s));
     }
@@ -526,6 +531,7 @@ std::vector<OriginalSpec> original_specs()
                         TilePos{10, 49}};
         s.dress.cps = {TilePos{29, 29}};
         s.dress.anchors_per_team = 12;
+        s.dress.anchor_shift = 0; // walled pockets: keep anchors inside
         s.dress.spice = {
             {FAMILY_INVIS_POTION, 0, {30, 30}, 1},
             {FAMILY_SPEED_POTION, 0, {29, 22}, 1},

@@ -99,10 +99,6 @@ void ctf_run_tick(GameWorld& world);
 bool ctf_on_flag_touch(walker* flag, walker* eater);
 bool ctf_on_point_touch(walker* point, walker* eater);
 
-// GameServer dead-respawn input gate: true while the (dead) control walker
-// has a pending CTF respawn and its input should be ignored.
-bool ctf_player_input_should_wait(const GameWorld& world, const walker* control);
-
 // Gate for endgame_requested / team-wipe EndGame consumers: during an active
 // CTF match a team wipe never ends the level (phase 7 owns match end).
 bool ctf_suppress_team_wipe_endgame(const GameWorld& world);

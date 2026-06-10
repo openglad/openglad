@@ -395,3 +395,30 @@ TEST(CtfSprites, control_point_sprite_is_a_single_team_ringed_pad)
     EXPECT_GT(team_band, 0) << "ring must team-tint";
     EXPECT_GT(neutral, 0) << "center must stay neutral";
 }
+
+// The loader registration must survive missing sprite files: graphics fall
+// back to a copy of the stand-in family's column and the gameplay columns
+// always mirror it. (Production hits the dedicated-sprite path; this pins
+// the fallback for asset-less builds.)
+TEST(CtfSprites, loader_registration_falls_back_when_sprite_is_missing)
+{
+    loader& l = ctf_levels_loader();
+    const auto flag_idx =
+        static_cast<std::size_t>(PIX(Order::Treasure, og::FAMILY_FLAG));
+    const auto key_idx =
+        static_cast<std::size_t>(PIX(Order::Treasure, FAMILY_KEY));
+    l.graphics[flag_idx] = PixieData{}; // simulate a missing sprite slot
+
+    register_ctf_treasure_entry(l, og::FAMILY_FLAG, "no_such_sprite.png",
+                                FAMILY_KEY);
+    ASSERT_TRUE(l.graphics[flag_idx].valid())
+        << "fallback must copy the stand-in family's graphics";
+    EXPECT_EQ(l.graphics[key_idx].w, l.graphics[flag_idx].w);
+    EXPECT_EQ(l.graphics[key_idx].h, l.graphics[flag_idx].h);
+    EXPECT_EQ(l.graphics[key_idx].frames, l.graphics[flag_idx].frames);
+    EXPECT_EQ(l.act_types[key_idx], l.act_types[flag_idx]);
+
+    // Restore the real sprite for the rest of the binary.
+    register_ctf_treasure_entry(l, og::FAMILY_FLAG, "flag.png", FAMILY_KEY);
+    ASSERT_TRUE(l.graphics[flag_idx].valid());
+}

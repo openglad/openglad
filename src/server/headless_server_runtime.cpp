@@ -9,12 +9,14 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/resources/campaign_io.h>
+#include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 
 #include <algorithm>
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 namespace {
 
@@ -376,16 +378,22 @@ bool load_headless_level_from_save(LevelRuntimeData& level_data,
     if (!level_data.load())
     {
         const short requested_level = save.scen_num;
-        LogError("headless_server_level_load_failed level={} action=fallback_to_1\n",
-                 requested_level);
-        save.scen_num = 1;
+        // Campaigns may not start at scenario 1 (CTF starts at 500); wrap a
+        // run-off cursor to the lowest level the mounted campaign ships.
+        short fallback_level = 1;
+        const std::vector<int> levels = list_levels_v();
+        if (!levels.empty())
+            fallback_level = static_cast<short>(levels.front());
+        LogError("headless_server_level_load_failed level={} action=fallback_to_{}\n",
+                 requested_level, fallback_level);
+        save.scen_num = fallback_level;
         save.current_levels[save.current_campaign] = save.scen_num;
         sync_world_from_save_data(world, save);
         world.id = save.scen_num;
         if (!level_data.load())
         {
-            LogError("headless_server_level_fallback_failed requested={} fallback=1\n",
-                     requested_level);
+            LogError("headless_server_level_fallback_failed requested={} fallback={}\n",
+                     requested_level, fallback_level);
             return false;
         }
     }

@@ -236,7 +236,7 @@ struct WorldSnapshot {
     std::int16_t ctf_anchor_x[4][kCtfMaxAnchorsPerTeam] = {};
     std::int16_t ctf_anchor_y[4][kCtfMaxAnchorsPerTeam] = {};
     std::vector<CtfRespawnEntry> ctf_respawn_queue;
-    std::int16_t ctf_requested_team_count = 2;
+    std::int16_t ctf_requested_team_count = 0; // 0 = Auto
     std::int16_t ctf_requested_capture_limit = 0;
     std::int16_t ctf_requested_respawn_ticks = 0;
 

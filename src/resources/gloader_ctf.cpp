@@ -36,15 +36,15 @@ PixieData copy_pixie(const PixieData& d)
     return result;
 }
 
-// Registers one CTF treasure family: dedicated sprite when available, with
-// graphics falling back to a copy of an existing treasure column. The
-// gameplay columns always mirror the fallback family so flag/point entities
-// behave like the treasures they stand in for.
-void register_treasure_entry(loader& l, int family, const char* pix_file,
-                             int fallback_family)
+} // namespace
+
+void register_ctf_treasure_entry(loader& l, int family, const char* pix_file,
+                                 int fallback_family)
 {
-    const int idx = PIX(Order::Treasure, family);
-    const int src = PIX(Order::Treasure, fallback_family);
+    const auto idx =
+        static_cast<std::size_t>(PIX(Order::Treasure, family));
+    const auto src =
+        static_cast<std::size_t>(PIX(Order::Treasure, fallback_family));
 
     l.graphics[idx] = read_pixie_file(pix_file);
     if (!l.graphics[idx].valid())
@@ -59,11 +59,11 @@ void register_treasure_entry(loader& l, int family, const char* pix_file,
     l.fire_frequency[idx] = l.fire_frequency[src];
 }
 
-} // namespace
-
 void register_ctf_loader_entries(loader& l)
 {
-    register_treasure_entry(l, og::FAMILY_FLAG, "flag.png", FAMILY_KEY);
-    register_treasure_entry(l, og::FAMILY_CTF_POINT, "ctfpoint.png",
-                            FAMILY_TELEPORTER);
+    // Dedicated sprites when present; graphics fall back to a copy of an
+    // existing treasure column so the entities stay usable without assets.
+    register_ctf_treasure_entry(l, og::FAMILY_FLAG, "flag.png", FAMILY_KEY);
+    register_ctf_treasure_entry(l, og::FAMILY_CTF_POINT, "ctfpoint.png",
+                                FAMILY_TELEPORTER);
 }

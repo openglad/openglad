@@ -236,7 +236,7 @@ TEST(NetTransport, header_helpers_roundtrip_envelope)
     std::vector<std::uint8_t> bytes;
     og::sim::append_transport_header(bytes, og::sim::kHelloMessageType, 0x2211u);
 
-    const std::vector<std::uint8_t> expected = {0x01, 0x01, 0x11, 0x22};
+    const std::vector<std::uint8_t> expected = {0x02, 0x01, 0x11, 0x22};
     EXPECT_EQ(expected, bytes);
 
     og::sim::TransportEnvelope envelope;
@@ -824,8 +824,8 @@ TEST(NetTransport, serialize_hello_emits_expected_wire_format)
 
     constexpr std::array<std::uint8_t, og::sim::kSerializedHelloMessageSize>
         expected = {
-            0x01, 0x01, 0x17, 0x00,
-            0x01, 0x01, 0x03,
+            0x02, 0x01, 0x17, 0x00,
+            0x02, 0x02, 0x03,
             0x00, 0x01, 0x02, 0x03,
             0x04, 0x05, 0x06, 0x07,
             0x08, 0x09, 0x0a, 0x0b,
@@ -865,10 +865,10 @@ TEST(NetTransport, decode_rejects_truncated_and_wrong_version_headers)
 {
     og::sim::TransportEnvelope envelope;
 
-    const std::array<std::uint8_t, 3> truncated = {0x01, 0x01, 0x00};
+    const std::array<std::uint8_t, 3> truncated = {0x02, 0x01, 0x00};
     EXPECT_FALSE(og::sim::decode_transport_envelope(truncated, envelope));
 
-    const std::array<std::uint8_t, 4> wrong_version = {0x02, 0x01, 0x00, 0x00};
+    const std::array<std::uint8_t, 4> wrong_version = {0x03, 0x01, 0x00, 0x00};
     EXPECT_FALSE(og::sim::decode_transport_envelope(wrong_version, envelope));
 }
 
@@ -2693,7 +2693,7 @@ TEST(NetTransport, game_client_disconnects_when_server_message_is_malformed)
     og::sim::GameClient client(transport, 7u);
 
     transport.set_connected_peers({7u});
-    transport.queue_received(7u, {0x01, 0x02, 0x01, 0x00, 0xff});
+    transport.queue_received(7u, {0x02, 0x02, 0x01, 0x00, 0xff});
 
     client.poll_messages();
 

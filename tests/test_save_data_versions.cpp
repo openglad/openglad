@@ -354,7 +354,7 @@ TEST(SaveDataVersions, save_data_load_v9_payload_defaults_ctf_settings)
     tmp.ctf_capture_limit = 7;
     tmp.ctf_respawn_ticks = 999;
     ASSERT_TRUE(tmp.load("ver9_no_ctf")) << "v9 load should succeed";
-    ASSERT_EQ(2, (int)tmp.ctf_team_count) << "v9 saves default ctf_team_count to 2";
+    ASSERT_EQ(0, (int)tmp.ctf_team_count) << "v9 saves default ctf_team_count to Auto";
     ASSERT_EQ(0, (int)tmp.ctf_capture_limit) << "v9 saves default ctf_capture_limit to 0";
     ASSERT_EQ(0, (int)tmp.ctf_respawn_ticks) << "v9 saves default ctf_respawn_ticks to 0";
 }

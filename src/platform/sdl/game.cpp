@@ -25,9 +25,11 @@
 #include <openglad/interface/ui/campaign_picker.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/render/view.h>
+#include <openglad/resources/io_common.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/screen.h>
 #include <algorithm>
+#include <vector>
 #include <format>
 #include <iterator>
 
@@ -103,17 +105,23 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 	if(!screenp->load_level())
 	{
 	    short old_scen = screenp->save_data.scen_num;
-	    LogError("load_saved_game_level_load_failed file={} scen={} action=fallback_to_1\n",
-	        filename ? filename : "(null)", old_scen);
-	    // Failed?  Try level 1.
-		screenp->save_data.scen_num = 1;
+	    // Failed? Try the campaign's first level. Campaigns may not start at
+	    // 1 (CTF starts at 500, arenas at 300), so a cursor that ran past the
+	    // last level wraps to the lowest scenario the mounted campaign ships.
+	    short fallback_level = 1;
+	    const std::vector<int> levels = list_levels_v();
+	    if (!levels.empty())
+	        fallback_level = static_cast<short>(levels.front());
+	    LogError("load_saved_game_level_load_failed file={} scen={} action=fallback_to_{}\n",
+	        filename ? filename : "(null)", old_scen, fallback_level);
+		screenp->save_data.scen_num = fallback_level;
 		screenp->sync_world_from_save_data();
-        screenp->world().id = 1;
+        screenp->world().id = fallback_level;
         used_fallback_level = true;
         if(!screenp->load_level())
         {
-				LogError("load_saved_game_failed file={} scen={} fallback=1 reason=fallback_level_load_failed\n",
-					filename ? filename : "(null)", old_scen);
+				LogError("load_saved_game_failed file={} scen={} fallback={} reason=fallback_level_load_failed\n",
+					filename ? filename : "(null)", old_scen, fallback_level);
 				return LoadSavedGameError::FallbackLevelLoadFailed;
         }
 	}

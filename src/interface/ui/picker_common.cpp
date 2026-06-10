@@ -420,10 +420,13 @@ bool is_allied_mode(const SaveData& save)
 
 void cycle_ctf_team_count(SaveData& save)
 {
-    save.ctf_team_count =
-        (save.ctf_team_count >= 2 && save.ctf_team_count < 4)
-            ? static_cast<short>(save.ctf_team_count + 1)
-            : static_cast<short>(2);
+    // Auto (0 = every team the map authors) -> 2 -> 3 -> 4 -> Auto.
+    if (save.ctf_team_count <= 0)
+        save.ctf_team_count = 2;
+    else if (save.ctf_team_count >= 4)
+        save.ctf_team_count = 0;
+    else
+        save.ctf_team_count = static_cast<short>(save.ctf_team_count + 1);
 }
 
 void cycle_ctf_capture_limit(SaveData& save)
@@ -469,6 +472,8 @@ std::string format_allied_mode_label(const SaveData& save)
 
 std::string format_ctf_teams_label(const SaveData& save)
 {
+    if (save.ctf_team_count <= 0)
+        return "CTF Teams: Auto";
     return std::format("CTF Teams: {}", save.ctf_team_count);
 }
 
