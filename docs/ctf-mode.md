@@ -31,7 +31,8 @@ Two settings appear in the team-build menu when the CTF campaign is active
 - **CTF Teams** — `Auto` fields every team the map authors (2, 3, or 4);
   or force 2/3/4. Teams without human players get AI squads.
 - **Capture Limit** — `Map default` uses the map's authored limit
-  (3 unless the map says otherwise; Lagaren plays to 5), or force 1–10.
+  (3 unless the map says otherwise; the CROSSFIRE finale plays to 5),
+  or force 1–10.
 
 Allied and PvP play work exactly like the classic game: **PVP: Ally** puts
 every human on one team against AI squads; **PVP: Enemy** gives each player
@@ -40,21 +41,26 @@ dedicated server, and in the text/curses clients.
 
 ## The maps
 
-| # | Map | Teams | Source |
-|---|-----|-------|--------|
-| 500 | CTF: LAGAREN BATTLEGROUND | 2 | classic scen25, the pitched two-army field (plays to 5 caps) |
-| 501 | CTF: DUNGEON OF STARS | 4 | classic scen23, teleporter quadrants |
-| 502 | CTF: TIC AND TAC | 2 | classic scen11, fort vs. field |
-| 503 | CTF: A BORDER FORT | 2 | classic scen42, siege duel |
-| 504 | CTF: LAKE TACONA | 2 | classic scen45, lake shores + island teleporters |
-| 505 | CTF: CITY OF NUTHRAM | 3 | classic scen17, city districts |
-| 506 | CTF: FIRST BLOOD | 2 | original — tight starter arena |
-| 507 | CTF: RIVER RUN | 2 | original — bridged river lanes |
-| 508 | CTF: TRIAD | 3 | original — 120° radial forts |
-| 509 | CTF: CROSSFIRE | 4 | original — pinwheel alleys |
+The roster ramps playable area, walk time, and team count, alternating
+originals and adapted classics (the playtest cut the giant maps — short
+walks and dense fights won):
+
+| # | Map | Teams | Size | Source |
+|---|-----|-------|------|--------|
+| 500 | CTF: FIRST BLOOD | 2 | 40×30 | original — tight starter arena |
+| 501 | CTF: A BORDER FORT | 2 | 30×30 | classic scen42, siege duel |
+| 502 | CTF: CASTLE CORNER | 2 | 30×40 | classic scen38, castle hall vs. mustering yard |
+| 503 | CTF: THE OUTPOST | 2 | 40×60 | classic scen9, one-gate compound siege |
+| 504 | CTF: RIVER RUN | 2 | 60×40 | original — bridged river lanes |
+| 505 | CTF: TRIAD | 3 | 51×51 | original — 120° radial forts |
+| 506 | CTF: THE UNDERPASS | 2 | 60×20 | classic scen36, single-tunnel corridor brawl |
+| 507 | CTF: DUNGEON OF STARS | 4 | 70×70 | classic scen23, teleporter quadrants |
+| 508 | CTF: CENTWHEIT MANOR | 3 | 50×50 | classic scen35, manor grounds |
+| 509 | CTF: CROSSFIRE | 4 | 60×60 | original — pinwheel alleys, the finale (plays to 5 caps) |
 
 Maps authored for more teams than the match fields simply mothball the extra
-bases. The campaign loops: winning the last map starts the rotation over.
+bases. The campaign loops: winning CROSSFIRE (509) wraps the rotation back
+to FIRST BLOOD (500).
 
 ## AI
 

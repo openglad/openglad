@@ -156,7 +156,7 @@ private:
 } // namespace
 
 // ---------------------------------------------------------------------------
-// 506 FIRST BLOOD — 40x30, 2 teams, E/W mirror. Open halves split by a
+// 500 FIRST BLOOD — 40x30, 2 teams, E/W mirror. Open halves split by a
 // central wall with three gaps; the middle gap opens into a cobble plaza
 // holding the control point. Flag pads ringed by trees for cover.
 // ---------------------------------------------------------------------------
@@ -197,7 +197,7 @@ PixieData paint_first_blood()
 }
 
 // ---------------------------------------------------------------------------
-// 507 RIVER RUN — 60x40, 2 teams, N/S mirror. A four-tile river crossed by
+// 504 RIVER RUN — 60x40, 2 teams, N/S mirror. A four-tile river crossed by
 // two plank bridges and a wide stone bridge over a cobble island (CP).
 // C-shaped boulder windbreaks shelter the flag pads; trees line the banks.
 // ---------------------------------------------------------------------------
@@ -245,7 +245,7 @@ PixieData paint_river_run()
 }
 
 // ---------------------------------------------------------------------------
-// 508 TRIAD — 51x51, 3 teams placed 120 degrees apart around the center.
+// 505 TRIAD — 51x51, 3 teams placed 120 degrees apart around the center.
 // Walled base pockets with two entrances (one facing the center, one a rear
 // sally door on the rim), spoke lanes to a columned central plaza, and
 // forest belts with drumstick orchards on the direct base-to-base paths.
@@ -429,7 +429,7 @@ std::vector<OriginalSpec> original_specs()
 
     {
         OriginalSpec s;
-        s.out_id = 506;
+        s.out_id = 500;
         s.title = "CTF: FIRST BLOOD";
         s.paint = paint_first_blood;
         s.par_value = 4;
@@ -447,19 +447,21 @@ std::vector<OriginalSpec> original_specs()
             {FAMILY_DRUMSTICK, 0, {37, 17}, 1},
         };
         s.description = {
-            "CAPTURE THE FLAG: A TIGHT DUELING GROUND.",
-            "STEAL THE ENEMY BANNER AND CARRY IT BACK",
-            "TO YOUR OWN. THREE GAPS CROSS THE WALL:",
-            "FAST LANES NORTH AND SOUTH, AND A PLAZA",
-            "IN THE MIDDLE. HOLD THE PLAZA WAYPOINT",
-            "FOR FASTER REINFORCEMENTS.",
+            "CAPTURE THE FLAG: A TIGHT",
+            "DUELING GROUND. STEAL THE ENEMY",
+            "BANNER AND CARRY IT BACK TO",
+            "YOUR OWN. THREE GAPS CROSS THE",
+            "WALL: FAST LANES NORTH AND",
+            "SOUTH, A PLAZA IN THE MIDDLE.",
+            "HOLD THE PLAZA WAYPOINT FOR",
+            "FASTER REINFORCEMENTS.",
         };
         out.push_back(std::move(s));
     }
 
     {
         OriginalSpec s;
-        s.out_id = 507;
+        s.out_id = 504;
         s.title = "CTF: RIVER RUN";
         s.paint = paint_river_run;
         s.par_value = 5;
@@ -477,19 +479,21 @@ std::vector<OriginalSpec> original_specs()
             {FAMILY_DRUMSTICK, 0, {32, 37}, 1},
         };
         s.description = {
-            "CAPTURE THE FLAG ACROSS THE RIVER.",
-            "TWO PLANK BRIDGES FLANK A WIDE STONE",
-            "CROSSING; THE ISLAND WAYPOINT SITS IN",
-            "ITS MIDDLE. A CARRIER WHO FALLS OVER",
-            "WATER SENDS THE FLAG STRAIGHT HOME, SO",
-            "FLIERS GAMBLE WHILE BRIDGES ARE SAFE.",
+            "CAPTURE THE FLAG ACROSS THE",
+            "RIVER. TWO PLANK BRIDGES FLANK",
+            "A WIDE STONE CROSSING; THE",
+            "ISLAND WAYPOINT SITS IN ITS",
+            "MIDDLE. A CARRIER WHO FALLS",
+            "OVER WATER SENDS THE FLAG",
+            "STRAIGHT HOME, SO FLIERS GAMBLE",
+            "WHILE BRIDGES ARE SAFE.",
         };
         out.push_back(std::move(s));
     }
 
     {
         OriginalSpec s;
-        s.out_id = 508;
+        s.out_id = 505;
         s.title = "CTF: TRIAD";
         s.paint = paint_triad;
         s.par_value = 6;
@@ -510,12 +514,14 @@ std::vector<OriginalSpec> original_specs()
         };
         s.description = {
             "THREE-WAY CAPTURE THE FLAG.",
-            "EVERY POCKET HAS TWO DOORS: ONE FACES",
-            "THE PLAZA, ONE IS A REAR SALLY DOOR.",
-            "ROUND THE RIM TO STRIKE FROM BEHIND -",
-            "BUT STEALING FROM ONE RIVAL BARES YOUR",
-            "BACK TO THE OTHER. THE PLAZA WAYPOINT",
-            "BREAKS STALEMATES.",
+            "EVERY POCKET HAS TWO DOORS:",
+            "ONE FACES THE PLAZA, ONE IS A",
+            "REAR SALLY DOOR. ROUND THE RIM",
+            "TO STRIKE FROM BEHIND - BUT",
+            "STEALING FROM ONE RIVAL BARES",
+            "YOUR BACK TO THE OTHER. THE",
+            "PLAZA WAYPOINT BREAKS",
+            "STALEMATES.",
         };
         out.push_back(std::move(s));
     }
@@ -527,6 +533,7 @@ std::vector<OriginalSpec> original_specs()
         s.paint = paint_crossfire;
         s.par_value = 6;
         s.dress.team_count = 4;
+        s.dress.flag_level = 5; // the finale plays to five captures
         s.dress.base = {TilePos{10, 10}, TilePos{49, 10}, TilePos{49, 49},
                         TilePos{10, 49}};
         s.dress.cps = {TilePos{29, 29}};
@@ -544,12 +551,15 @@ std::vector<OriginalSpec> original_specs()
             {FAMILY_DRUMSTICK, 0, {30, 49}, 1},
         };
         s.description = {
-            "FOUR-TEAM CAPTURE THE FLAG PINWHEEL.",
-            "THE CLOCKWISE BOULEVARD IS FAST AND",
-            "OPEN; THE COUNTER-CLOCKWISE ALLEYS HIDE",
-            "BEHIND BOULDERS. RAID FAST, SNEAK HOME.",
-            "THE CENTER PLAZA WAYPOINT SPEEDS YOUR",
-            "RESPAWNS - IF YOU CAN KEEP IT.",
+            "FOUR-TEAM CAPTURE THE FLAG",
+            "PINWHEEL. THE CLOCKWISE",
+            "BOULEVARD IS FAST AND OPEN; THE",
+            "COUNTER-CLOCKWISE ALLEYS HIDE",
+            "BEHIND BOULDERS. RAID FAST,",
+            "SNEAK HOME. THE PLAZA WAYPOINT",
+            "SPEEDS YOUR RESPAWNS - IF YOU",
+            "CAN KEEP IT. FIRST TO FIVE",
+            "CAPTURES TAKES THE FIELD.",
         };
         out.push_back(std::move(s));
     }

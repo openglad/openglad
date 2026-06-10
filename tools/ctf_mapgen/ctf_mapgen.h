@@ -81,9 +81,9 @@ struct OriginalSpec
 };
 
 // Original grid painters (grid_painters.cpp).
-PixieData paint_first_blood();   // 506, 40x30, 2 teams
-PixieData paint_river_run();     // 507, 60x40, 2 teams
-PixieData paint_triad();         // 508, 51x51, 3 teams
+PixieData paint_first_blood();   // 500, 40x30, 2 teams
+PixieData paint_river_run();     // 504, 60x40, 2 teams
+PixieData paint_triad();         // 505, 51x51, 3 teams
 PixieData paint_crossfire();     // 509, 60x60, 4 teams
 
 // Original specs incl. dressing/spice tables (grid_painters.cpp).

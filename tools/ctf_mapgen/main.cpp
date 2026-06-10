@@ -292,7 +292,9 @@ make_metadata(int out_id, const std::vector<std::string>& description)
     metadata.grid_file = std::format("scen{:04d}", out_id);
     for (const std::string& line : description)
     {
-        if (line.size() > 78)
+        // SCENARIO INFORMATION dialog budget: text x=42, frame edge x=240,
+        // 6px per glyph -> at most 33 characters per line.
+        if (line.size() > 33)
             fail(std::format("description line too long: {}", line));
         metadata.description.push_back(line);
     }
@@ -477,78 +479,9 @@ std::vector<AdaptedSpec> adapted_specs()
     std::vector<AdaptedSpec> out;
 
     {
-        // 500: scen25 THE LAGAREN BATTLEGROUND, 90x90, two undead armies.
-        AdaptedSpec s;
-        s.out_id = 500;
-        s.src_id = 25;
-        s.title = "CTF: LAGAREN BATTLEGROUND";
-        s.team_map = {-1, 0, 1, -1, -1, -1, -1, -1};
-        s.keep_livings_per_team = 12;
-        s.par_value = 8;
-        s.dress.team_count = 2;
-        s.dress.flag_level = 5; // the epic map plays to five captures
-        s.dress.base = {TilePos{68, 12}, TilePos{20, 82}, TilePos{}, TilePos{}};
-        s.dress.cps = {TilePos{47, 46}};
-        s.description = {
-            "CAPTURE THE FLAG ON THE OLD KILLING",
-            "FIELDS. TWO ARMIES OF THE RESTLESS DEAD",
-            "STILL HOLD THEIR LINES; SEIZE THE ENEMY",
-            "STANDARD AND DRAG IT HOME ACROSS THE",
-            "BATTLEFIELD. THE CENTRAL SHRINE WAYPOINT",
-            "HASTENS YOUR REINFORCEMENTS.",
-            "FIRST TO FIVE CAPTURES TAKES THE FIELD.",
-        };
-        out.push_back(std::move(s));
-    }
-
-    {
-        // 501: scen23 DUNGEON OF STARS, 70x70, four teleporter quadrants.
+        // 501: scen42 A BORDER FORT, 30x30, garrison versus besiegers.
         AdaptedSpec s;
         s.out_id = 501;
-        s.src_id = 23;
-        s.title = "CTF: DUNGEON OF STARS";
-        s.team_map = kStripAll;
-        s.par_value = 6;
-        s.dress.team_count = 4;
-        s.dress.base = {TilePos{15, 11}, TilePos{54, 11}, TilePos{16, 57},
-                        TilePos{53, 57}};
-        s.dress.cps = {TilePos{34, 34}};
-        s.description = {
-            "FOUR-TEAM CAPTURE THE FLAG IN THE DEEP.",
-            "EACH CREW CAMPS BESIDE AN ANCIENT",
-            "TELEPORTER - RIDE THEM FOR WILD ESCAPES",
-            "WITH A STOLEN FLAG. THE STAR CHAMBER",
-            "WAYPOINT COMMANDS THE CROSSROADS.",
-        };
-        out.push_back(std::move(s));
-    }
-
-    {
-        // 502: scen11 TIC AND TAC, 100x100, fort versus the open field.
-        AdaptedSpec s;
-        s.out_id = 502;
-        s.src_id = 11;
-        s.title = "CTF: TIC AND TAC";
-        s.team_map = kStripAll;
-        s.par_value = 6;
-        s.dress.team_count = 2;
-        s.dress.base = {TilePos{32, 42}, TilePos{39, 10}, TilePos{},
-                        TilePos{}};
-        s.dress.cps = {TilePos{36, 26}};
-        s.description = {
-            "CAPTURE THE FLAG BENEATH THE TWIN",
-            "FORTRESS. ONE BAND HOLDS THE FIELD",
-            "CAMP, THE OTHER THE CASTLE APPROACH.",
-            "THE MEADOW WAYPOINT BETWEEN THEM PAYS",
-            "FOR ITSELF IN FASTER RESPAWNS.",
-        };
-        out.push_back(std::move(s));
-    }
-
-    {
-        // 503: scen42 A BORDER FORT, 30x30, garrison versus besiegers.
-        AdaptedSpec s;
-        s.out_id = 503;
         s.src_id = 42;
         s.title = "CTF: A BORDER FORT";
         s.team_map = {-1, -1, -1, 0, -1, -1, -1, -1};
@@ -559,55 +492,149 @@ std::vector<AdaptedSpec> adapted_specs()
         s.dress.cps = {TilePos{16, 23}};
         s.description = {
             "SIEGE-STYLE CAPTURE THE FLAG.",
-            "THE GARRISON KEEPS ITS BANNER IN THE",
-            "COURTYARD; THE BESIEGERS RAISE THEIRS",
-            "ON THE OPEN PLAIN. THE GATEHOUSE",
-            "WAYPOINT DECIDES WHO DICTATES THE",
-            "SIEGE.",
+            "THE GARRISON KEEPS ITS BANNER",
+            "IN THE COURTYARD; THE BESIEGERS",
+            "RAISE THEIRS ON THE OPEN PLAIN.",
+            "THE GATEHOUSE WAYPOINT DECIDES",
+            "WHO DICTATES THE SIEGE.",
         };
         out.push_back(std::move(s));
     }
 
     {
-        // 504: scen45 LAKE TACONA, 80x60, lake with teleporter island.
+        // 502: scen38 CASTLE CORNER, 30x40, castle hall versus the yard.
+        // The east column x24-28 rows 0-15 is sealed dead space: flags and
+        // CP stay west of x=23, and anchor_shift=0 keeps the north cluster
+        // inside the hall instead of ring-searching across the x23 wall.
         AdaptedSpec s;
-        s.out_id = 504;
-        s.src_id = 45;
-        s.title = "CTF: LAKE TACONA";
+        s.out_id = 502;
+        s.src_id = 38;
+        s.title = "CTF: CASTLE CORNER";
+        s.team_map = kStripAll;
+        s.par_value = 4;
+        s.dress.team_count = 2;
+        s.dress.base = {TilePos{18, 2}, TilePos{15, 33}, TilePos{}, TilePos{}};
+        s.dress.cps = {TilePos{18, 18}};
+        s.dress.anchor_shift = 0; // hall head: keep the cluster in the hall
+        s.description = {
+            "CAPTURE THE FLAG AT THE CASTLE",
+            "CORNER. ONE BANNER STANDS IN",
+            "THE LONG HALL, THE OTHER IN THE",
+            "MUSTERING YARD. ALL ROADS MEET",
+            "AT THE HALL MOUTH - HOLD THAT",
+            "WAYPOINT AND THE CASTLE IS",
+            "YOURS.",
+        };
+        out.push_back(std::move(s));
+    }
+
+    {
+        // 503: scen9 THE OUTPOST, 40x60, one-gate compound siege.
+        // Keeps the source door at (18-19,19) and key at (18,11): the door
+        // seals the now-empty inner keep (dead space after exit stripping).
+        // anchor_shift=0 keeps team 0's cluster in the open courtyard; the
+        // keep interior is passable-but-sealed and the ring search places
+        // anchors by Chebyshev distance, not path distance.
+        AdaptedSpec s;
+        s.out_id = 503;
+        s.src_id = 9;
+        s.title = "CTF: THE OUTPOST";
+        s.team_map = kStripAll;
+        s.par_value = 5;
+        s.dress.team_count = 2;
+        s.dress.base = {TilePos{22, 24}, TilePos{20, 44}, TilePos{}, TilePos{}};
+        s.dress.cps = {TilePos{17, 31}};
+        s.dress.anchor_shift = 0;
+        s.description = {
+            "CAPTURE THE FLAG AT THE LONE",
+            "OUTPOST. ONE BANNER WAITS IN A",
+            "WALLED COURTYARD WITH A SINGLE",
+            "SOUTH GATE; THE OTHER MUSTERS",
+            "ON THE OPEN FIELD. RING ROADS",
+            "FLANK EVERY WALL, AND THE GATE",
+            "WAYPOINT DECIDES WHO KEEPS THE",
+            "DOOR.",
+        };
+        out.push_back(std::move(s));
+    }
+
+    {
+        // 506: scen36 THE UNDERPASS, 60x20, single-tunnel corridor brawl.
+        // Keeps the source door at (43-45,12) and keys at (30,15): the door
+        // only seals a dead-end SE treasure pocket (a key-side raid).
+        // anchor_shift=0: the east base sits in a narrow corridor and a
+        // shifted cluster would center on the x58 wall.
+        AdaptedSpec s;
+        s.out_id = 506;
+        s.src_id = 36;
+        s.title = "CTF: THE UNDERPASS";
+        s.team_map = kStripAll;
+        s.par_value = 5;
+        s.dress.team_count = 2;
+        s.dress.base = {TilePos{8, 9}, TilePos{55, 7}, TilePos{}, TilePos{}};
+        s.dress.cps = {TilePos{33, 7}};
+        s.dress.anchor_shift = 0;
+        s.description = {
+            "CAPTURE THE FLAG IN THE",
+            "UNDERPASS. ONE TUNNEL JOINS",
+            "THE TWO CAMPS, AND EVERY FLAG",
+            "RUN WADES THROUGH THE ENEMY",
+            "RESPAWN STREAM. THE WAYPOINT",
+            "AT THE NARROWS HALVES YOUR",
+            "WAIT - AND A KEY OPENS A",
+            "TREASURE DOOR OFF THE TUNNEL.",
+        };
+        out.push_back(std::move(s));
+    }
+
+    {
+        // 507: scen23 DUNGEON OF STARS, 70x70, four teleporter quadrants.
+        AdaptedSpec s;
+        s.out_id = 507;
+        s.src_id = 23;
+        s.title = "CTF: DUNGEON OF STARS";
         s.team_map = kStripAll;
         s.par_value = 6;
-        s.dress.team_count = 2;
-        s.dress.base = {TilePos{20, 6}, TilePos{36, 48}, TilePos{}, TilePos{}};
-        s.dress.cps = {TilePos{37, 30}, TilePos{28, 15}};
+        s.dress.team_count = 4;
+        s.dress.base = {TilePos{15, 11}, TilePos{54, 11}, TilePos{16, 57},
+                        TilePos{53, 57}};
+        s.dress.cps = {TilePos{34, 34}};
         s.description = {
-            "CAPTURE THE FLAG AROUND LAKE TACONA.",
-            "MARCH THE LONG SHORES, OR CHANCE THE",
-            "TELEPORTERS THAT TOUCH THE ISLAND",
-            "WAYPOINT IN THE LAKE'S HEART. THE NORTH",
-            "SHORE WAYPOINT GUARDS THE LAND ROAD.",
-            "FLAGS LOST OVER WATER RETURN HOME.",
+            "FOUR-TEAM CAPTURE THE FLAG IN",
+            "THE DEEP. EACH CREW CAMPS",
+            "BESIDE AN ANCIENT TELEPORTER -",
+            "RIDE THEM FOR WILD ESCAPES",
+            "WITH A STOLEN FLAG. THE STAR",
+            "CHAMBER WAYPOINT COMMANDS THE",
+            "CROSSROADS.",
         };
         out.push_back(std::move(s));
     }
 
     {
-        // 505: scen17 THE CITY OF NUTHRAM, 100x100, three district crews.
+        // 508: scen35 CENTWHEIT MANOR, 50x50, three crews on the grounds.
+        // anchor_shift=0: the SE base's default shift direction lands on
+        // manor wall and the dresser would nudge unpredictably.
         AdaptedSpec s;
-        s.out_id = 505;
-        s.src_id = 17;
-        s.title = "CTF: CITY OF NUTHRAM";
+        s.out_id = 508;
+        s.src_id = 35;
+        s.title = "CTF: CENTWHEIT MANOR";
         s.team_map = kStripAll;
-        s.par_value = 8;
+        s.par_value = 6;
         s.dress.team_count = 3;
-        s.dress.base = {TilePos{12, 6}, TilePos{90, 9}, TilePos{16, 91},
+        s.dress.base = {TilePos{6, 8}, TilePos{40, 7}, TilePos{40, 41},
                         TilePos{}};
-        s.dress.cps = {TilePos{40, 50}, TilePos{70, 44}};
+        s.dress.cps = {TilePos{19, 28}, TilePos{35, 22}};
+        s.dress.anchor_shift = 0;
         s.description = {
-            "THREE CREWS RUN THE STREETS OF NUTHRAM",
-            "IN A CITY-WIDE GAME OF CAPTURE THE",
-            "FLAG. TELEPORTERS CROSS TOWN IN A",
-            "BLINK - SO DO STOLEN FLAGS. HOLD THE",
-            "MARKET WAYPOINTS TO RULE THE AVENUES.",
+            "THREE CREWS BRAWL ACROSS THE",
+            "MANOR GROUNDS. ONE BANNER ON",
+            "THE WEST LAWN, ONE IN THE",
+            "GREAT HALL, ONE IN THE SOUTH",
+            "WING. THE CENTRAL ARTERY AND",
+            "THE EAST CORRIDOR EACH HOLD A",
+            "WAYPOINT - CLAIM BOTH TO RULE",
+            "THE HOUSE.",
         };
         out.push_back(std::move(s));
     }
@@ -883,8 +910,8 @@ int main(int argc, char* argv[])
         else
         {
             const ExpectedLevel expectations[] = {
-                {500, 2}, {501, 4}, {502, 2}, {503, 2}, {504, 2},
-                {505, 3}, {506, 2}, {507, 2}, {508, 3}, {509, 4},
+                {500, 2}, {501, 2}, {502, 2}, {503, 2}, {504, 2},
+                {505, 3}, {506, 2}, {507, 4}, {508, 3}, {509, 4},
             };
             for (const ExpectedLevel& expected : expectations)
                 self_check_level(expected);

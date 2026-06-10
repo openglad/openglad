@@ -161,12 +161,27 @@ struct ShippedLevel
 {
     int id;
     int team_count;
+    const char* title;
+    int grid_w;
+    int grid_h;
 };
 
 constexpr ShippedLevel kShippedLevels[] = {
-    {500, 2}, {501, 4}, {502, 2}, {503, 2}, {504, 2},
-    {505, 3}, {506, 2}, {507, 2}, {508, 3}, {509, 4},
+    {500, 2, "CTF: FIRST BLOOD", 40, 30},
+    {501, 2, "CTF: A BORDER FORT", 30, 30},
+    {502, 2, "CTF: CASTLE CORNER", 30, 40},
+    {503, 2, "CTF: THE OUTPOST", 40, 60},
+    {504, 2, "CTF: RIVER RUN", 60, 40},
+    {505, 3, "CTF: TRIAD", 51, 51},
+    {506, 2, "CTF: THE UNDERPASS", 60, 20},
+    {507, 4, "CTF: DUNGEON OF STARS", 70, 70},
+    {508, 3, "CTF: CENTWHEIT MANOR", 50, 50},
+    {509, 4, "CTF: CROSSFIRE", 60, 60},
 };
+
+// SCENARIO INFORMATION dialog budget: text starts at x=42, the dialog frame
+// edge sits at x=240, glyph advance is 6px -> at most 33 characters fit.
+constexpr std::size_t kBriefingLineBudget = 33;
 
 } // namespace
 
@@ -182,10 +197,20 @@ TEST_F(CtfCampaignTest, every_shipped_level_is_a_valid_ctf_arena)
         EXPECT_TRUE(world.type & GameWorld::TYPE_CTF) << "TYPE_CTF bit";
         EXPECT_FALSE(world.type & GameWorld::TYPE_CAN_EXIT_WHENEVER)
             << "CAN_EXIT must be cleared on CTF maps";
-        EXPECT_EQ(0u, world.title.rfind("CTF: ", 0))
-            << "title should carry the CTF prefix: " << world.title;
+        EXPECT_EQ(expected.title, world.title) << "shipped roster title";
+        EXPECT_EQ(expected.grid_w, static_cast<int>(world.grid.w))
+            << "grid width";
+        EXPECT_EQ(expected.grid_h, static_cast<int>(world.grid.h))
+            << "grid height";
         EXPECT_FALSE(fx.level.description.empty())
             << "intro description should explain the mode";
+        for (const std::string& line : fx.level.description)
+        {
+            EXPECT_LE(line.size(), kBriefingLineBudget)
+                << "briefing line overflows the SCENARIO INFORMATION "
+                   "dialog: '"
+                << line << "'";
+        }
 
         std::unique_ptr<walker> probe = make_probe(world);
         ASSERT_NE(nullptr, probe);
@@ -280,7 +305,7 @@ TEST_F(CtfCampaignTest, shipped_levels_author_no_named_npcs)
 // richer interaction assertion lives with the director's tests.
 TEST_F(CtfCampaignTest, first_blood_bot_match_smoke)
 {
-    LoadedCtfLevel fx(506);
+    LoadedCtfLevel fx(500);
     ASSERT_TRUE(fx.loaded);
     GameWorld& world = fx.world();
     ASSERT_TRUE(world.type & GameWorld::TYPE_CTF);
@@ -329,16 +354,75 @@ TEST_F(CtfCampaignTest, first_blood_bot_match_smoke)
     }
 }
 
-// The Lagaren flags author a per-map capture limit (stats level 5) which the
-// engine resolves during lazy init.
-TEST_F(CtfCampaignTest, lagaren_authors_a_five_capture_limit)
+// The CROSSFIRE finale's flags author a per-map capture limit (stats level
+// 5) which the engine resolves during lazy init.
+TEST_F(CtfCampaignTest, crossfire_authors_a_five_capture_limit)
 {
-    LoadedCtfLevel fx(500);
+    LoadedCtfLevel fx(509);
     ASSERT_TRUE(fx.loaded);
     GameWorld& world = fx.world();
     world.tick();
     ASSERT_TRUE(world.ctf.active);
     EXPECT_EQ(5, world.ctf.capture_limit);
+}
+
+// The two adapted maps that keep source doors must ship them along with
+// their keys: THE OUTPOST's door seals the empty inner keep, and THE
+// UNDERPASS's door seals a dead-end treasure pocket opened by the key.
+TEST_F(CtfCampaignTest, outpost_and_underpass_keep_their_doors_and_keys)
+{
+    struct DoorKeySpec
+    {
+        int id;
+        int door_x0, door_x1, door_y; // door segment tile span
+        int key_x, key_y;             // key tile
+    };
+    constexpr DoorKeySpec kSpecs[] = {
+        {503, 18, 19, 19, 18, 11}, // scen9: inner-keep door + key
+        {506, 43, 45, 12, 30, 15}, // scen36: treasure-pocket door + keys
+    };
+
+    for (const DoorKeySpec& spec : kSpecs)
+    {
+        SCOPED_TRACE("scen" + std::to_string(spec.id));
+        LoadedCtfLevel fx(spec.id);
+        ASSERT_TRUE(fx.loaded);
+        GameWorld& world = fx.world();
+
+        int door_segments = 0;
+        for (const auto& uptr : world.weaplist)
+        {
+            walker* ob = uptr.get();
+            if (ob == nullptr || ob->query_order() != Order::Weapon ||
+                ob->family() != FAMILY_DOOR)
+            {
+                continue;
+            }
+            const int tx = ob->xpos() / GRID_SIZE;
+            const int ty = ob->ypos() / GRID_SIZE;
+            if (ty == spec.door_y && tx >= spec.door_x0 && tx <= spec.door_x1)
+                ++door_segments;
+        }
+        EXPECT_GE(door_segments, 1)
+            << "kept source door must survive the CTF transform";
+
+        int keys = 0;
+        for (const auto& uptr : world.fxlist)
+        {
+            walker* ob = uptr.get();
+            if (ob == nullptr || ob->query_order() != Order::Treasure ||
+                ob->family() != FAMILY_KEY)
+            {
+                continue;
+            }
+            if (ob->xpos() / GRID_SIZE == spec.key_x &&
+                ob->ypos() / GRID_SIZE == spec.key_y)
+            {
+                ++keys;
+            }
+        }
+        EXPECT_GE(keys, 1) << "kept source key must survive the CTF transform";
+    }
 }
 
 // ---------------------------------------------------------------------------
