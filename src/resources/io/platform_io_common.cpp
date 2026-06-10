@@ -344,6 +344,16 @@ void restore_default_campaigns()
         LogWarn("restore_default_campaigns: {} -> {}: {}\n", src, dst, ec.message());
     else
         Log("Restored default campaign: {} -> {}\n", src, dst);
+
+    ec.clear();
+    src = get_asset_path() + "builtin/org.openglad.ctf.glad";
+    dst = get_user_path() + "campaigns/org.openglad.ctf.glad";
+    std::filesystem::copy_file(src, dst,
+        std::filesystem::copy_options::overwrite_existing, ec);
+    if (ec)
+        LogWarn("restore_default_campaigns: {} -> {}: {}\n", src, dst, ec.message());
+    else
+        Log("Restored default campaign: {} -> {}\n", src, dst);
 }
 
 void restore_default_settings()
