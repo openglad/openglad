@@ -1249,8 +1249,10 @@ button* picker_createmenu_buttons()
     {
         buttons[3].nav.down = kCreateMenuCtfTeamsIndex;
         buttons[4].nav.down = kCreateMenuCtfCapsIndex;
+        buttons[5].nav.down = kCreateMenuCtfCapsIndex;
         buttons[6].nav.up = kCreateMenuCtfTeamsIndex;
         buttons[7].nav.up = kCreateMenuCtfCapsIndex;
+        buttons[8].nav.up = kCreateMenuCtfCapsIndex;
     }
 
     return pks().createmenu_buttons.data();

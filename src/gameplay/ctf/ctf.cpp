@@ -106,26 +106,45 @@ void send_flag_home(GameWorld& world, int team)
 // ob_pass_check, whose treasure overlap dispatches eat_me — a probe must
 // never eat a drumstick or pick up a flag at a position the walker is not
 // actually placed at. Grid check plus a manual blocking-entity scan instead.
+bool spawn_spot_blocked_by(const walker* other, const walker* w,
+                           short x, short y)
+{
+    if (other == nullptr || other == w || other->dead())
+        return false;
+    const Order order = other->query_order();
+    const bool blocking =
+        order == Order::Living || order == Order::Generator ||
+        (order == Order::Weapon &&
+         (other->family() == FAMILY_DOOR || other->family() == FAMILY_TREE ||
+          other->family() == FAMILY_BOULDER));
+    if (!blocking)
+        return false;
+    return x + w->sizex() > other->xpos() &&
+           x < other->xpos() + other->sizex() &&
+           y + w->sizey() > other->ypos() &&
+           y < other->ypos() + other->sizey();
+}
+
 bool spawn_spot_clear(GameWorld& world, walker* w, short x, short y)
 {
     if (!world.query_grid_passable(x, y, w))
         return false;
     if (world.myobmap == nullptr)
         return true;
-    const std::list<walker*>& pile = world.myobmap->obmap_get_list(x, y);
-    for (walker* other : pile)
+    // Walkers register in every 32px obmap bucket their bbox spans; scan all
+    // buckets the spawn bbox touches (a boolean check needs no dedup).
+    constexpr int kBucket = 32;
+    for (int bx = x; bx < x + w->sizex() + kBucket; bx += kBucket)
     {
-        if (other == nullptr || other == w || other->dead())
-            continue;
-        const Order order = other->query_order();
-        if (order != Order::Living && order != Order::Generator)
-            continue;
-        if (x + w->sizex() > other->xpos() &&
-            x < other->xpos() + other->sizex() &&
-            y + w->sizey() > other->ypos() &&
-            y < other->ypos() + other->sizey())
+        for (int by = y; by < y + w->sizey() + kBucket; by += kBucket)
         {
-            return false;
+            const std::list<walker*>& pile = world.myobmap->obmap_get_list(
+                static_cast<short>(bx), static_cast<short>(by));
+            for (walker* other : pile)
+            {
+                if (spawn_spot_blocked_by(other, w, x, y))
+                    return false;
+            }
         }
     }
     return true;
@@ -192,10 +211,11 @@ void revive_player_walker(GameWorld& world, walker* w, int team)
     }
     w->set_foe(nullptr);
     w->set_leader(nullptr);
-    // Respawn breaks charm: rejoin the recorded true team.
+    // Respawn breaks charm: rejoin the recorded true team, fully uncharmed.
     if (team >= 0 && team < 4)
         w->set_team_num(static_cast<unsigned char>(team));
     w->set_real_team_num(255);
+    w->set_charm_left(0);
 
     if (w->user() != -1)
     {
@@ -228,6 +248,9 @@ bool already_scheduled(const CtfState& ctf, std::uint32_t entity_id)
 
 // True when a live walker is already bound to the corpse's character
 // (a cleric resurrect beat the respawner): the corpse must stay retired.
+// Guy ids are only unique per owning player (each client numbers its roster
+// from its own counter), so identity is the (id, owner) pair — owner tags
+// are kNoOwner for everyone in local play, where bare ids suffice.
 bool live_duplicate_exists(GameWorld& world, const walker* corpse)
 {
     if (corpse->myguy == nullptr)
@@ -236,7 +259,11 @@ bool live_duplicate_exists(GameWorld& world, const walker* corpse)
     {
         walker* other = uptr.get();
         if (other != nullptr && other != corpse && !other->dead() &&
-            other->myguy != nullptr && other->myguy->id == corpse->myguy->id)
+            other->myguy != nullptr &&
+            other->myguy->id == corpse->myguy->id &&
+            other->myguy->owner_player_index ==
+                corpse->myguy->owner_player_index &&
+            other->myguy->owner_save_slot == corpse->myguy->owner_save_slot)
         {
             return true;
         }
@@ -261,9 +288,14 @@ void scrub_corpse_drops_in(const GameWorld::EntityList& list,
         {
             continue;
         }
-        const int dx = std::abs(static_cast<int>(fx->xpos()) - corpse->xpos());
-        const int dy = std::abs(static_cast<int>(fx->ypos()) - corpse->ypos());
-        if (dx + dy <= 4)
+        // Compare sprite centers: the LIFE_GEM is center_on'd the corpse
+        // (corner deltas reach 3px per axis for 16px families), the stain
+        // shares the corpse's corner.
+        const int dx = std::abs((fx->xpos() + fx->sizex() / 2) -
+                                (corpse->xpos() + corpse->sizex() / 2));
+        const int dy = std::abs((fx->ypos() + fx->sizey() / 2) -
+                                (corpse->ypos() + corpse->sizey() / 2));
+        if (dx + dy <= 8)
             fx->set_dead(1);
     }
 }
@@ -605,7 +637,12 @@ void run_win_check(GameWorld& world)
         if (w != nullptr && w->dead() && w->query_order() == Order::Living &&
             w->myguy != nullptr && !live_duplicate_exists(world, w))
         {
-            const int team = is_score_team(w->team_num()) ? w->team_num() : 0;
+            // A corpse that died charmed still wears the charmer's team;
+            // revive on the recorded true team like the queue path does.
+            const unsigned char raw_team = (w->real_team_num() != 255)
+                ? w->real_team_num()
+                : w->team_num();
+            const int team = is_score_team(raw_team) ? raw_team : 0;
             revive_player_walker(world, w, team);
         }
     }

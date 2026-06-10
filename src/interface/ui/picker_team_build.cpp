@@ -181,6 +181,8 @@ constexpr int kTeamBuildGoButtonIndex = 5;
 constexpr int kTeamBuildProgressButtonIndex = 7;
 constexpr int kTeamBuildSetLevelButtonIndex = 8;
 constexpr int kTeamBuildSetCampaignButtonIndex = 10;
+constexpr int kTeamBuildCtfTeamsButtonIndex = 11;
+constexpr int kTeamBuildCtfCapsButtonIndex = 12;
 constexpr int kViewTeamGoButtonIndex = 0;
 
 void sync_button_hidden_state(const button* buttons, int button_index)
@@ -234,6 +236,35 @@ void sync_team_build_host_control_visibility(button* buttons,
     sync_button_hidden_state(buttons, kTeamBuildGoButtonIndex);
     sync_button_hidden_state(buttons, kTeamBuildSetLevelButtonIndex);
     sync_button_hidden_state(buttons, kTeamBuildSetCampaignButtonIndex);
+
+    // The CTF settings row mirrors the host-only gating (and stays hidden
+    // outside the CTF campaign); refresh labels so a lobby sync that changed
+    // the save shows through immediately.
+    if (num_buttons > kTeamBuildCtfCapsButtonIndex)
+    {
+        const SaveData& save =
+            og::runtime::current_session->myscreen_->save_data;
+        const bool show_ctf =
+            og::ui::is_ctf_campaign(save) && host_controls_visible;
+        buttons[kTeamBuildCtfTeamsButtonIndex].hidden = !show_ctf;
+        buttons[kTeamBuildCtfCapsButtonIndex].hidden = !show_ctf;
+        if (show_ctf)
+        {
+            buttons[kTeamBuildCtfTeamsButtonIndex].label =
+                og::ui::format_ctf_teams_label(save);
+            buttons[kTeamBuildCtfCapsButtonIndex].label =
+                og::ui::format_ctf_caps_label(save);
+            auto& allbuttons = og::runtime::current_session->allbuttons_;
+            if (allbuttons[kTeamBuildCtfTeamsButtonIndex] != nullptr)
+                allbuttons[kTeamBuildCtfTeamsButtonIndex]->label =
+                    buttons[kTeamBuildCtfTeamsButtonIndex].label;
+            if (allbuttons[kTeamBuildCtfCapsButtonIndex] != nullptr)
+                allbuttons[kTeamBuildCtfCapsButtonIndex]->label =
+                    buttons[kTeamBuildCtfCapsButtonIndex].label;
+        }
+        sync_button_hidden_state(buttons, kTeamBuildCtfTeamsButtonIndex);
+        sync_button_hidden_state(buttons, kTeamBuildCtfCapsButtonIndex);
+    }
     ensure_highlighted_button_visible(buttons, num_buttons, highlighted_button);
 }
 

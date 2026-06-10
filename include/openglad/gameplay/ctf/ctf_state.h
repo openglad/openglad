@@ -106,4 +106,24 @@ bool ctf_suppress_team_wipe_endgame(const GameWorld& world);
 // Cadence-gated AI director (role assignment for AI livings).
 void ctf_run_ai_director(GameWorld& world);
 
+// Whole-seconds estimate for a pending respawn, honoring the control-point
+// acceleration (run_respawn_timers burns two ticks per tick while the team
+// owns any CP). Shared by the SDL and curses HUDs so both track the sim
+// rule; 12 is the sim cadence in ticks per second.
+inline int ctf_respawn_seconds_left(const CtfState& ctf,
+                                    const CtfRespawnEntry& entry)
+{
+    int ticks_per_second = 12;
+    for (int i = 0; i < ctf.cp_count; ++i)
+    {
+        if (ctf.cps[i].owner == static_cast<std::int8_t>(entry.team))
+        {
+            ticks_per_second = 24;
+            break;
+        }
+    }
+    return (static_cast<int>(entry.ticks_left) + ticks_per_second - 1) /
+           ticks_per_second;
+}
+
 } // namespace og::sim

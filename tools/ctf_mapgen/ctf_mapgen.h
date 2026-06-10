@@ -51,7 +51,7 @@ struct Dressing
     // Tiles to shift the anchor cluster away from the first control point.
     // Walled base pockets (TRIAD, CROSSFIRE) use 0 so the cluster stays
     // inside the pocket instead of spilling through the wall ring.
-    int anchor_shift = 3;           // 8..16
+    int anchor_shift = 3;
 };
 
 struct AdaptedSpec

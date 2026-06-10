@@ -305,19 +305,9 @@ void CursesRenderer::draw_hud(ITerminal& term, const GameWorld& world,
                 for (const auto& entry : world.ctf.respawn_queue) {
                     if (entry.kind == 0 &&
                         entry.walker_entity_id == followed_id) {
-                        // An owned control point burns the wait two ticks at
-                        // a time; mirror that in the seconds estimate.
-                        int ticks_per_second = 12;
-                        for (int i = 0; i < world.ctf.cp_count; ++i) {
-                            if (world.ctf.cps[i].owner ==
-                                static_cast<std::int8_t>(entry.team)) {
-                                ticks_per_second = 24;
-                                break;
-                            }
-                        }
                         line1 += "  RESPAWN " + std::to_string(
-                            (static_cast<int>(entry.ticks_left) +
-                             ticks_per_second - 1) / ticks_per_second);
+                            og::sim::ctf_respawn_seconds_left(world.ctf,
+                                                              entry));
                         break;
                     }
                 }

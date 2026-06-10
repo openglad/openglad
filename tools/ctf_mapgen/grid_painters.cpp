@@ -246,8 +246,8 @@ PixieData paint_river_run()
 
 // ---------------------------------------------------------------------------
 // 508 TRIAD — 51x51, 3 teams placed 120 degrees apart around the center.
-// Walled base pockets with two entrances (one facing the center, one facing
-// the clockwise neighbor), spoke lanes to a columned central plaza, and
+// Walled base pockets with two entrances (one facing the center, one a rear
+// sally door on the rim), spoke lanes to a columned central plaza, and
 // forest belts with drumstick orchards on the direct base-to-base paths.
 // ---------------------------------------------------------------------------
 PixieData paint_triad()
@@ -295,8 +295,8 @@ PixieData paint_triad()
         }
     }
 
-    // Base pockets: 9x9 wall ring, gap toward the center plus a second gap
-    // rotated clockwise, carpet flag pad inside.
+    // Base pockets: 9x9 wall ring, gap toward the center plus a rear sally
+    // door opposite it, carpet flag pad inside.
     for (auto& b : bases)
     {
         const int bx = b[0], by = b[1];

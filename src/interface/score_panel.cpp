@@ -175,24 +175,12 @@ static void draw_ctf_panel(screen* s, walker* control, Sint32 lm, Sint32 tm,
         return;
     }
 
-    // Dead control with a pending revive entry: countdown in whole seconds
-    // (the sim runs at 12 ticks per second, and an owned control point burns
-    // the wait down two ticks at a time).
+    // Dead control with a pending revive entry: countdown in whole seconds.
     for (const og::sim::CtfRespawnEntry& entry : ctf.respawn_queue)
     {
         if (entry.kind != 0 || entry.walker_entity_id != control->entity_id())
             continue;
-        int ticks_per_second = 12;
-        for (int i = 0; i < ctf.cp_count; ++i)
-        {
-            if (ctf.cps[i].owner == static_cast<std::int8_t>(entry.team))
-            {
-                ticks_per_second = 24;
-                break;
-            }
-        }
-        const int seconds = (static_cast<int>(entry.ticks_left) +
-                             ticks_per_second - 1) / ticks_per_second;
+        const int seconds = og::sim::ctf_respawn_seconds_left(ctf, entry);
         const std::string message = std::format("RESPAWN IN {}", seconds);
         mytext.write_xy(lm + 4, tm + 12, message.c_str(),
                         static_cast<unsigned char>(YELLOW),

@@ -510,3 +510,147 @@ TEST(CtfRespawn, charmed_corpse_respawns_on_its_true_team)
     ASSERT_EQ(0, runner->team_num()) << "respawn breaks the charm";
     ASSERT_EQ(255, runner->real_team_num());
 }
+
+// Guy ids are only unique per owning player (each networked client numbers
+// its roster from its own counter): a same-id walker owned by ANOTHER player
+// is a different character and must not block the respawn.
+TEST(CtfRespawn, same_guy_id_under_a_different_owner_does_not_block_revive)
+{
+    RespawnArena arena;
+    walker* runner = arena.runner;
+    runner->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    runner->myguy->id = 7;
+    runner->myguy->owner_player_index = 0;
+    runner->myguy->owner_save_slot = 0;
+
+    walker* other_players_guy = arena.fx.spawn_living(FAMILY_SOLDIER, 1, 480, 720);
+    other_players_guy->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    other_players_guy->myguy->id = 7; // same id, different owner
+    other_players_guy->myguy->owner_player_index = 1;
+    other_players_guy->myguy->owner_save_slot = 0;
+
+    arena.kill(runner);
+    arena.fx.tick(7);
+
+    ASSERT_FALSE(runner->dead())
+        << "another player's same-id character must not block the revive";
+    ASSERT_FALSE(other_players_guy->dead());
+}
+
+// Player corpses drop a LIFE_GEM centered on the body; respawn scheduling
+// must scrub it (and the stain) or respawn cycles farm tiebreaker score.
+TEST(CtfRespawn, scheduling_scrubs_the_corpse_life_gem)
+{
+    RespawnArena arena;
+    walker* runner = arena.runner;
+    runner->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    runner->myguy->id = 31;
+
+    arena.kill(runner);
+    int gems = 0;
+    for (const auto& uptr : arena.world().fxlist)
+    {
+        const walker* w = uptr.get();
+        if (w != nullptr && !w->dead() && w->query_order() == Order::Treasure &&
+            w->family() == FAMILY_LIFE_GEM)
+        {
+            ++gems;
+        }
+    }
+    for (const auto& uptr : arena.world().oblist)
+    {
+        const walker* w = uptr.get();
+        if (w != nullptr && !w->dead() && w->query_order() == Order::Treasure &&
+            w->family() == FAMILY_LIFE_GEM)
+        {
+            ++gems;
+        }
+    }
+    ASSERT_GE(gems, 1) << "a player corpse must drop its heart first";
+
+    arena.fx.tick();
+    gems = 0;
+    for (const auto& uptr : arena.world().fxlist)
+    {
+        const walker* w = uptr.get();
+        if (w != nullptr && !w->dead() && w->query_order() == Order::Treasure &&
+            w->family() == FAMILY_LIFE_GEM)
+        {
+            ++gems;
+        }
+    }
+    for (const auto& uptr : arena.world().oblist)
+    {
+        const walker* w = uptr.get();
+        if (w != nullptr && !w->dead() && w->query_order() == Order::Treasure &&
+            w->family() == FAMILY_LIFE_GEM)
+        {
+            ++gems;
+        }
+    }
+    ASSERT_EQ(0, gems) << "scheduling the respawn must scrub the fresh gem";
+}
+
+// A corpse that died charmed revives on its true team at MATCH END too (the
+// win-path revive must not freeze the charm onto the charmer's team).
+TEST(CtfRespawn, match_end_revive_breaks_charm_onto_true_team)
+{
+    RespawnArena arena;
+    walker* runner = arena.runner;
+    runner->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    runner->myguy->id = 53;
+
+    runner->set_real_team_num(0); // charmed off team 0...
+    runner->set_team_num(1);      // ...onto team 1
+    arena.kill(runner);
+    arena.fx.tick(); // scheduled, still pending
+
+    arena.world().ctf.captures[1] = arena.world().ctf.capture_limit;
+    arena.fx.tick(); // win check fires: match-end revive
+
+    ASSERT_TRUE(arena.world().game_ended);
+    ASSERT_FALSE(runner->dead()) << "match end must revive pending corpses";
+    ASSERT_EQ(0, runner->team_num()) << "revive breaks the charm";
+    ASSERT_EQ(255, runner->real_team_num());
+    ASSERT_EQ(0, runner->charm_left());
+}
+
+// Spawn probes must see blockers that straddle obmap buckets and blocking
+// scenery (doors), and must never run treasure pickup side effects.
+TEST(CtfRespawn, anchor_probe_rejects_doors_and_cross_bucket_blockers)
+{
+    CtfWorld fx;
+    fx.spawn_flag(0, 96, 96);
+    fx.spawn_flag(1, 544, 800);
+    // Anchor 1: covered by a door. Anchor 2: unaligned (150,128) so its
+    // 16px spawn bbox spans two 32px obmap buckets; the lurker lives only
+    // in the second bucket. Anchor 3: clear.
+    fx.spawn_anchor(0, 128, 96);
+    fx.spawn_anchor(0, 150, 128);
+    fx.spawn_anchor(0, 224, 128);
+    fx.spawn_anchor(1, 512, 832);
+    walker* runner = fx.spawn_living(FAMILY_SOLDIER, 0, 320, 320);
+    ASSERT_NE(nullptr, runner);
+    runner->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    runner->myguy->id = 61;
+    fx.world().ctf_requested_respawn_ticks = 6;
+
+    walker* door = fx.world().add_weap_ob(Order::Weapon, FAMILY_DOOR);
+    ASSERT_NE(nullptr, door);
+    door->setxy(128, 96);
+    door->set_team_num(7);
+    walker* lurker = fx.spawn_living(FAMILY_SOLDIER, 1, 162, 128);
+    ASSERT_NE(nullptr, lurker);
+
+    fx.tick();
+    ASSERT_TRUE(fx.world().ctf.active);
+
+    runner->set_dead(1);
+    runner->death();
+    fx.tick(7);
+
+    ASSERT_FALSE(runner->dead());
+    EXPECT_EQ(224, runner->xpos()) << "door and cross-bucket living must "
+                                      "both veto their anchors";
+    EXPECT_EQ(128, runner->ypos());
+}
