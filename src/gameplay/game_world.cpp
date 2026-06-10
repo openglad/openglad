@@ -1497,7 +1497,13 @@ void GameWorld::tick()
         return;
 
     // --- Level completion check ---
-    if (level_done == 2)
+    if (type & TYPE_CTF)
+    {
+        og::sim::ctf_run_tick(*this);
+        if (game_ended)
+            return;
+    }
+    else if (level_done == 2)
     {
         game_ended = true;
         ending = 0;

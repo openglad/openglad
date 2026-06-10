@@ -3,6 +3,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/runtime_trace.h>
 #include <openglad/core/util.h>
+#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
 #include <openglad/gameplay/game_world.h>
@@ -1364,7 +1365,8 @@ bool GameServer::process_disconnected_players(std::uint32_t expected_tick)
             maybe_send_control_change(disconnected.player_index, disconnected.control);
         if (result.control_hp_changed)
             world_.control_hp = result.control_hp;
-        if (result.endgame_requested)
+        if (result.endgame_requested &&
+            !og::sim::ctf_suppress_team_wipe_endgame(world_))
         {
             if (has_living_member_for_any_bound_team(
                     world_, clients_, disconnected_players_))
@@ -2034,7 +2036,8 @@ bool GameServer::apply_polled_inputs(std::uint32_t expected_tick)
             maybe_send_control_change(player_index, client.control);
         if (result.control_hp_changed)
             world_.control_hp = result.control_hp;
-        if (result.endgame_requested)
+        if (result.endgame_requested &&
+            !og::sim::ctf_suppress_team_wipe_endgame(world_))
         {
             if (has_living_member_for_any_bound_team(
                     world_, clients_, disconnected_players_))

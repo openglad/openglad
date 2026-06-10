@@ -2083,7 +2083,9 @@ TEST(WorldSnapshot, deserialize_snapshot_and_delta_reject_oversized_payloads_and
     std::vector<std::uint8_t> raw_payload =
         decode_delta_payload_for_test(delta_bytes);
 
-    constexpr std::size_t kEntityCountOffset = 76;
+    // Offset of grid.full_grid_size in a default delta payload: format byte +
+    // 191 bytes of world scalars (the CTF block adds 120) + 4 grid bytes.
+    constexpr std::size_t kEntityCountOffset = 196;
     ASSERT_GE(raw_payload.size(), kEntityCountOffset + sizeof(std::uint32_t));
     raw_payload[kEntityCountOffset + 0] = 0xffu;
     raw_payload[kEntityCountOffset + 1] = 0xffu;

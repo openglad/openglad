@@ -18,6 +18,7 @@
 #include <openglad/interface/session_state.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/gloader.h>
+#include <openglad/resources/gloader_ctf.h>
 
 // myscreen and theprefs are now macros defined in base.h / view.h
 
@@ -73,16 +74,20 @@ void popup_dialog(const char* title, const char* message);
 
 loader* sdl_entity_loader()
 {
-    static auto game_loader = std::make_unique<loader>([] {
-        EntityFactory factory;
-        factory.attach_render = [](walker& w, const PixieData& data) {
-            w.attach_render(data);
-        };
-        factory.report_error = [](const std::string& message) {
-            popup_dialog("ERROR", message.c_str());
-        };
-        return factory;
-    }());
+    static auto game_loader = [] {
+        auto entity_loader = std::make_unique<loader>([] {
+            EntityFactory factory;
+            factory.attach_render = [](walker& w, const PixieData& data) {
+                w.attach_render(data);
+            };
+            factory.report_error = [](const std::string& message) {
+                popup_dialog("ERROR", message.c_str());
+            };
+            return factory;
+        }());
+        register_ctf_loader_entries(*entity_loader);
+        return entity_loader;
+    }();
     return game_loader.get();
 }
 

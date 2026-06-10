@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/pixie_data.h>
 #include <openglad/gameplay/smooth.h>
 #include <openglad/gameplay/irandom.h>
@@ -131,6 +132,7 @@ public:
     static constexpr char TYPE_CAN_EXIT_WHENEVER = 0x1;
     static constexpr char TYPE_MUST_DESTROY_GENERATORS = 0x2;
     static constexpr char TYPE_MUST_PROTECT_NAMED_NPCS = 0x4;
+    static constexpr char TYPE_CTF = 0x8;
 
     explicit GameWorld(std::uint32_t seed = 0);
     ~GameWorld();
@@ -168,7 +170,14 @@ public:
     const walker* find_by_id(std::uint32_t entity_id) const;
     std::uint32_t tracked_entity_id(const walker* entity) const;
     std::uint32_t level_tick_count() const noexcept { return level_tick_count_; }
-    void set_level_tick_count(std::uint32_t value) noexcept { level_tick_count_ = value; }
+    // An explicit tick count always belongs to the current level, so align the
+    // level-change latch too; otherwise the first tick after applying a
+    // mid-level snapshot would zero the restored counter.
+    void set_level_tick_count(std::uint32_t value) noexcept
+    {
+        level_tick_count_ = value;
+        last_level_id_ = id;
+    }
     const std::vector<std::uint32_t>& removed_entity_ids() const noexcept { return removed_entity_ids_; }
     std::vector<std::uint32_t> take_removed_entity_ids();
     void clear_removed_entity_ids() noexcept;
@@ -237,6 +246,10 @@ public:
     std::uint32_t m_score[4] = {};
     short my_team = 0;
     short allied_mode = 0;
+    short ctf_requested_team_count = 2;
+    short ctf_requested_capture_limit = 0;
+    short ctf_requested_respawn_ticks = 0;
+    og::sim::CtfState ctf;
     short current_scenario = 0;
     int guy_id_counter = 0;
     std::uint8_t current_palette_id = 0;
