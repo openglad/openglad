@@ -676,3 +676,98 @@ TEST(CtfSnapshot, snapshot_restore_continuation_matches_uninterrupted_run)
         << "snapshot restore must reproduce the uninterrupted simulation "
            "byte-for-byte; some sim-affecting CTF state is not replicated";
 }
+
+// The self-teleport marker (walker::last_self_teleport_tick) is a
+// server-only transient consumed by the CTF phase of the tick that stamps
+// it; it is deliberately NOT replicated. Capture a keyframe at the boundary
+// right after a real mage blink: the original carrier still holds the stale
+// marker while the restored one holds zero. If anything read the marker
+// across tick boundaries the continuations would diverge; byte-equal end
+// keyframes prove it stays invisible outside its own tick.
+TEST(CtfSnapshot, keyframe_at_blink_tick_boundary_continues_byte_equal)
+{
+    std::vector<std::uint8_t> mid_bytes;
+    std::vector<std::uint8_t> uninterrupted_end;
+    {
+        CtfWorld original;
+        original.spawn_flag(0, 96, 96);
+        walker* flag1 = original.spawn_flag(1, 544, 800);
+        walker* mage = original.spawn_living(FAMILY_MAGE, 0, 200, 200);
+        original.spawn_living(FAMILY_SOLDIER, 1, 400, 700);
+        original.world().ctf_requested_respawn_ticks = 5000;
+        original.tick();
+        ASSERT_TRUE(original.world().ctf.active);
+
+        walker* marker = original.world().add_ob(Order::FX, FAMILY_MARKER);
+        ASSERT_NE(nullptr, marker);
+        marker->set_owner(mage);
+        marker->setxy(416, 416);
+        marker->set_lifetime(5);
+        marker->set_ani_type(ANI_SPIN); // production marker animation:
+        // effect::act kills any FX left on the default ANI_WALK
+
+        ASSERT_TRUE(flag1->eat_me(mage));
+        original.tick();
+        ASSERT_EQ(og::sim::CtfFlagState::Carried,
+                  original.world().ctf.flags[1].state);
+
+        ASSERT_NE(nullptr, mage->stats());
+        mage->stats()->set_max_magicpoints(500);
+        mage->stats()->set_magicpoints(500);
+        mage->set_current_special(1);
+        ASSERT_TRUE(mage->special());
+
+        // Tick up to and including the blink tick (TELE_OUT completes ->
+        // handle_teleport -> walker::teleport drops the carried flag).
+        int guard = 0;
+        while (original.world().ctf.flags[1].state !=
+                   og::sim::CtfFlagState::Dropped &&
+               guard < 40)
+        {
+            original.tick();
+            guard++;
+        }
+        ASSERT_EQ(og::sim::CtfFlagState::Dropped,
+                  original.world().ctf.flags[1].state)
+            << "the scripted mage blink must have fired within 40 ticks";
+        ASSERT_EQ(original.world().tick_count_, mage->last_self_teleport_tick())
+            << "the capture boundary must sit right after the blink tick";
+
+        normalize_transient_walker_state(original.world());
+        mid_bytes = og::sim::serialize_snapshot(
+            og::sim::capture_keyframe_snapshot(original.world()));
+
+        original.tick(60);
+        uninterrupted_end = og::sim::serialize_snapshot(
+            og::sim::capture_keyframe_snapshot(original.world()));
+    }
+
+    CtfWorld restored;
+    const og::sim::WorldSnapshot mid_snapshot =
+        og::sim::deserialize_snapshot(mid_bytes.data(), mid_bytes.size());
+    og::sim::apply_snapshot(restored.world(), mid_snapshot);
+    ASSERT_TRUE(restored.world().ctf.active);
+    ASSERT_EQ(og::sim::CtfFlagState::Dropped,
+              restored.world().ctf.flags[1].state);
+
+    restored.tick(60);
+    const std::vector<std::uint8_t> restored_end = og::sim::serialize_snapshot(
+        og::sim::capture_keyframe_snapshot(restored.world()));
+
+    const og::sim::WorldSnapshot expected_end = og::sim::deserialize_snapshot(
+        uninterrupted_end.data(), uninterrupted_end.size());
+    const og::sim::WorldSnapshot actual_end = og::sim::deserialize_snapshot(
+        restored_end.data(), restored_end.size());
+    const auto failure = og::sim::find_first_snapshot_difference(
+        expected_end.tick_count, expected_end, actual_end);
+    ASSERT_FALSE(failure.has_value())
+        << "diverged at field " << (failure ? failure->field : std::string{})
+        << " expected " << (failure ? failure->expected_value : std::string{})
+        << " actual " << (failure ? failure->actual_value : std::string{});
+
+    ASSERT_EQ(uninterrupted_end.size(), restored_end.size());
+    ASSERT_TRUE(uninterrupted_end == restored_end)
+        << "a stale self-teleport marker must be invisible at tick "
+           "boundaries: continuations from the blink keyframe must match "
+           "byte-for-byte";
+}

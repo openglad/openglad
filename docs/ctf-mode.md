@@ -14,6 +14,10 @@ SET CAMPAIGN in the team-build menu and hit GO.
   again; a teammate's touch returns it home instantly, and an untouched flag
   returns itself after 30 seconds. Flags dropped over water or walls return
   home immediately.
+- **Spell teleports drop the flag at the caster's feet** — every mage,
+  archmage, and skeleton blink (marker beacons included, however short the
+  hop) leaves every carried flag behind at the departure point. Riding a
+  **map teleporter pad carries the flag through**. Humans and AI alike.
 - Everyone **respawns**: fallen fighters return at their team's spawn anchors
   after a delay (default 10 seconds). A match never ends by team wipe.
 - **Waypoints** (control points) sit at contested spots. Outnumbering

@@ -12,12 +12,14 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/statistics.h>
+#include <openglad/gameplay/treasure.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/gloader_ctf.h>
 
 #include "test_game_world_fixture.h"
 
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <vector>
@@ -91,6 +93,29 @@ struct CtfWorld : TestGameWorld
         marker->setxy(x, y);
         marker->set_team_num(static_cast<unsigned char>(team));
         return marker;
+    }
+
+    // A map teleporter pad. Pads pair with the next live same-level pad in
+    // fxlist order (treasure::find_teleport_target), wrapping at the end.
+    walker* spawn_teleporter(int x, int y, int pad_level = 1)
+    {
+        walker* pad = world().add_fx_ob(Order::Treasure, FAMILY_TELEPORTER);
+        if (pad == nullptr)
+            return nullptr;
+        pad->setxy(x, y);
+        if (pad->stats() != nullptr)
+            pad->stats()->set_level(pad_level);
+        return pad;
+    }
+
+    // Stages a self-teleport for the upcoming world tick. The production
+    // paths (walker::teleport / teleport_ranged) stamp the marker inside
+    // the walker's act, after tick() has already incremented tick_count_;
+    // a between-ticks script therefore stamps tick_count_ + 1 before
+    // warping the walker with setxy.
+    void stage_self_teleport(walker* w)
+    {
+        w->set_last_self_teleport_tick(world().tick_count_ + 1);
     }
 
     // ACT_CONTROL livings stand still without player input, which keeps the
@@ -380,8 +405,13 @@ TEST(CtfCore, enemy_touch_picks_up_and_carry_visual_follows)
     ASSERT_EQ(1, flag1->ignore());
     ASSERT_TRUE(has_notification(fx.events, "GREEN FLAG TAKEN!"));
 
+    // A scripted 60/40 px warp: far beyond any walking speed, but with no
+    // self-teleport marker stamped it must NOT drop — position warps from
+    // snapshots and tests are not teleports.
     runner->setxy(260, 240);
     fx.tick();
+    ASSERT_EQ(og::sim::CtfFlagState::Carried, f1.state)
+        << "an unmarked position warp must never drop the flag";
     ASSERT_EQ(260, flag1->xpos());
     ASSERT_EQ(232, flag1->ypos()) << "carry visual rides 8px above the carrier";
     ASSERT_EQ(260, f1.x);
@@ -632,6 +662,435 @@ TEST(CtfCore, drop_on_impassable_tile_returns_home_instantly)
     ASSERT_EQ(544, flag1->xpos());
     ASSERT_EQ(800, flag1->ypos());
     ASSERT_EQ(0, flag1->ignore());
+}
+
+// --- Self-teleport flag drop (UT rule) -------------------------------------
+
+namespace {
+
+// Two-team scaffold for the teleport rule: flags for teams 0/1, an
+// ACT_CONTROL runner on team 0, an enemy to keep both teams fielded, and a
+// long respawn so scripted deaths stay out of the way.
+struct TeleportWorld : CtfWorld
+{
+    walker* flag1 = nullptr;
+    walker* runner = nullptr;
+
+    TeleportWorld()
+    {
+        spawn_flag(0, 96, 96);
+        flag1 = spawn_flag(1, 544, 800);
+        runner = spawn_living(FAMILY_SOLDIER, 0, 200, 200);
+        spawn_living(FAMILY_SOLDIER, 1, 400, 700);
+        world().ctf_requested_respawn_ticks = 5000;
+    }
+
+    og::sim::CtfFlag& f1() { return world().ctf.flags[1]; }
+};
+
+} // namespace
+
+// The core drop bookkeeping for a staged blink: Dropped state at the
+// departure point (the carried flag's replicated x/y from the previous
+// tick), carrier cleared, flag entity grounded and touchable, return timer
+// armed, one announcement.
+TEST(CtfCore, staged_blink_drops_flag_at_departure_point)
+{
+    TeleportWorld fx;
+    fx.tick();
+    ASSERT_TRUE(fx.world().ctf.active);
+    ASSERT_TRUE(fx.flag1->eat_me(fx.runner));
+    fx.tick();
+    ASSERT_EQ(og::sim::CtfFlagState::Carried, fx.f1().state);
+
+    fx.stage_self_teleport(fx.runner);
+    fx.runner->setxy(440, 488); // the blink
+    fx.tick();
+
+    ASSERT_EQ(og::sim::CtfFlagState::Dropped, fx.f1().state);
+    ASSERT_EQ(0u, fx.f1().carrier_entity_id);
+    ASSERT_EQ(200, fx.f1().x) << "the flag stays at the departure point";
+    ASSERT_EQ(200, fx.f1().y);
+    ASSERT_EQ(200, fx.flag1->xpos());
+    ASSERT_EQ(200, fx.flag1->ypos());
+    ASSERT_EQ(0, fx.flag1->ignore());
+    ASSERT_GT(fx.f1().return_ticks, 0);
+    ASSERT_EQ(1, count_notifications(fx.events, "GREEN FLAG DROPPED!"));
+}
+
+// Drives the production special: mage arms ANI_TELE_OUT via walker::special()
+// and walker::animate fires handle_teleport -> walker::teleport(), which
+// stamps the self-teleport marker and center_on()'s the owned marker beacon
+// (deterministic, no RNG draw).
+TEST(CtfCore, real_mage_marker_teleport_special_drops_flag)
+{
+    CtfWorld fx;
+    fx.spawn_flag(0, 96, 96);
+    walker* flag1 = fx.spawn_flag(1, 544, 800);
+    walker* mage = fx.spawn_living(FAMILY_MAGE, 0, 200, 200);
+    fx.spawn_living(FAMILY_SOLDIER, 1, 400, 700);
+    fx.world().ctf_requested_respawn_ticks = 5000;
+    fx.tick();
+    ASSERT_TRUE(fx.world().ctf.active);
+
+    walker* marker = fx.world().add_ob(Order::FX, FAMILY_MARKER);
+    ASSERT_NE(nullptr, marker);
+    marker->set_owner(mage);
+    marker->setxy(416, 416);
+    marker->set_lifetime(5);
+    marker->set_ani_type(ANI_SPIN); // production marker animation:
+    // effect::act kills any FX left on the default ANI_WALK
+
+    ASSERT_TRUE(flag1->eat_me(mage));
+    fx.tick();
+    const short depart_x = mage->xpos();
+    const short depart_y = mage->ypos();
+
+    ASSERT_NE(nullptr, mage->stats());
+    mage->stats()->set_max_magicpoints(500);
+    mage->stats()->set_magicpoints(500);
+    mage->set_current_special(1);
+    ASSERT_TRUE(mage->special()) << "mage teleport special must arm TELE_OUT";
+    fx.tick(20); // TELE_OUT completes -> handle_teleport -> marker blink
+
+    ASSERT_GT(std::abs(mage->xpos() - depart_x) +
+                  std::abs(mage->ypos() - depart_y),
+              64)
+        << "the mage must have blinked to the marker";
+    ASSERT_EQ(og::sim::CtfFlagState::Dropped, fx.world().ctf.flags[1].state);
+    ASSERT_EQ(depart_x, fx.world().ctf.flags[1].x);
+    ASSERT_EQ(depart_y, fx.world().ctf.flags[1].y);
+    ASSERT_EQ(1, count_notifications(fx.events, "GREEN FLAG DROPPED!"));
+}
+
+// The skeleton's blink is teleport_ranged(level * 18): at level 1 the hop
+// spans at most 18 px per axis -- well inside legitimate walking speed,
+// which is exactly why displacement inference could never catch it.
+// Explicit source marking drops the flag no matter how short the hop.
+// Drives the production special: skeleton_do_special arms ANI_TELE_OUT and
+// walker::animate fires handle_teleport -> teleport_ranged (destination
+// from the world RNG, deterministic under the fixture seed).
+TEST(CtfCore, real_level1_skeleton_blink_drops_flag)
+{
+    CtfWorld fx;
+    fx.spawn_flag(0, 96, 96);
+    walker* flag1 = fx.spawn_flag(1, 544, 800);
+    walker* skel = fx.spawn_living(FAMILY_SKELETON, 0, 200, 200);
+    fx.spawn_living(FAMILY_SOLDIER, 1, 400, 700);
+    fx.world().ctf_requested_respawn_ticks = 5000;
+    fx.tick(10); // activation; ANI_SKEL_GROW completes
+    ASSERT_TRUE(fx.world().ctf.active);
+    ASSERT_NE(nullptr, skel->stats());
+    ASSERT_EQ(1u, skel->stats()->level()) << "the short-hop case needs level 1";
+
+    ASSERT_TRUE(flag1->eat_me(skel));
+    fx.tick();
+    const short depart_x = skel->xpos();
+    const short depart_y = skel->ypos();
+
+    skel->stats()->set_max_magicpoints(100);
+    skel->stats()->set_magicpoints(100);
+    skel->set_current_special(1); // TUNNEL
+    ASSERT_TRUE(skel->special()) << "skeleton tunnel must arm TELE_OUT";
+    fx.tick(20); // TELE_OUT completes -> handle_teleport -> teleport_ranged
+
+    ASSERT_LE(std::abs(skel->xpos() - depart_x), 18)
+        << "a level-1 blink stays within 18 px per axis";
+    ASSERT_LE(std::abs(skel->ypos() - depart_y), 18);
+    ASSERT_EQ(og::sim::CtfFlagState::Dropped, fx.world().ctf.flags[1].state)
+        << "even the shortest blink drops the flag";
+    ASSERT_EQ(depart_x, fx.world().ctf.flags[1].x);
+    ASSERT_EQ(depart_y, fx.world().ctf.flags[1].y);
+    ASSERT_EQ(1, count_notifications(fx.events, "GREEN FLAG DROPPED!"));
+}
+
+// COMMAND_RUSH (the fighter's charge special) executes THREE walksteps per
+// do_command round, so a max-stepsize fighter legitimately covers 36 px in
+// one tick -- the false positive that sank displacement inference. Source
+// marking keeps the flag: a charge is legs, not a teleport.
+TEST(CtfCore, fighter_rush_charge_at_max_stepsize_keeps_flag)
+{
+    TeleportWorld fx;
+    fx.tick();
+    ASSERT_TRUE(fx.world().ctf.active);
+    ASSERT_TRUE(fx.flag1->eat_me(fx.runner));
+    fx.tick();
+    ASSERT_EQ(og::sim::CtfFlagState::Carried, fx.f1().state);
+
+    // Max non-weapon stepsize (guy::update_derived_stats caps at 12),
+    // pre-faced so living::act's turn gate doesn't spend ticks rotating.
+    fx.runner->set_normal_stepsize(12.0f);
+    fx.runner->set_stepsize(12.0f);
+    fx.runner->set_curdir(static_cast<signed char>(FACE_RIGHT));
+    fx.runner->set_enddir(static_cast<char>(FACE_RIGHT));
+    ASSERT_NE(nullptr, fx.runner->stats());
+    fx.runner->stats()->add_command(COMMAND_RUSH, 3, 1, 0);
+
+    int max_tick_dx = 0;
+    for (int step = 0; step < 3; ++step)
+    {
+        const short before_x = fx.runner->xpos();
+        fx.tick();
+        const int dx = static_cast<int>(fx.runner->xpos()) - before_x;
+        if (dx > max_tick_dx)
+            max_tick_dx = dx;
+        ASSERT_EQ(og::sim::CtfFlagState::Carried, fx.f1().state)
+            << "step " << step << ": a rush charge must never drop the flag";
+        ASSERT_EQ(fx.runner->xpos(), fx.f1().x);
+        ASSERT_EQ(fx.runner->ypos(), fx.f1().y);
+    }
+    ASSERT_EQ(36, max_tick_dx)
+        << "the charge must actually cover 3x stepsize in a single tick";
+    ASSERT_EQ(0, count_notifications(fx.events, "DROPPED"));
+}
+
+// A real pad ride: obmap probe -> collision -> eat_me -> teleporter_on_eat
+// (production distance gate, find_teleport_target pairing, center_on).
+// Pads never stamp the self-teleport marker, so the flag rides through.
+TEST(CtfCore, real_teleporter_pad_ride_keeps_flag_carried)
+{
+    TeleportWorld fx;
+    walker* padA = fx.spawn_teleporter(320, 320);
+    walker* padB = fx.spawn_teleporter(480, 640);
+    ASSERT_NE(nullptr, padA);
+    ASSERT_NE(nullptr, padB);
+    fx.tick();
+    ASSERT_TRUE(fx.world().ctf.active);
+
+    fx.runner->center_on(padA);
+    ASSERT_TRUE(fx.flag1->eat_me(fx.runner));
+    fx.tick(); // f.x/f.y sync on the departure pad
+
+    (void)fx.world().query_passable(static_cast<float>(padA->xpos()),
+                                    static_cast<float>(padA->ypos()),
+                                    fx.runner);
+    ASSERT_LE(std::abs((fx.runner->xpos() + fx.runner->sizex() / 2) -
+                       (padB->xpos() + padB->sizex() / 2)),
+              1)
+        << "the eat must have center_on'd the rider onto the partner pad";
+
+    fx.tick();
+    ASSERT_EQ(og::sim::CtfFlagState::Carried, fx.f1().state)
+        << "a map teleporter ride carries the flag through";
+    ASSERT_EQ(fx.runner->entity_id(), fx.f1().carrier_entity_id);
+    ASSERT_EQ(fx.runner->xpos(), fx.f1().x)
+        << "the carried flag resyncs at the arrival pad";
+    ASSERT_EQ(fx.runner->ypos(), fx.f1().y);
+    ASSERT_EQ(fx.runner->xpos(), fx.flag1->xpos());
+    ASSERT_EQ(static_cast<short>(fx.runner->ypos() - 8), fx.flag1->ypos());
+    ASSERT_EQ(0, count_notifications(fx.events, "DROPPED"));
+}
+
+// The displacement era exempted pad-shaped jumps by geometry, which a blink
+// from beside a pad to beside its partner could spoof. Source marking does
+// not care about pad geometry: a self-teleport drops no matter where it
+// starts or lands.
+TEST(CtfCore, blink_from_beside_pad_to_beside_partner_drops)
+{
+    TeleportWorld fx;
+    walker* padA = fx.spawn_teleporter(320, 320);
+    walker* padB = fx.spawn_teleporter(480, 640);
+    fx.tick();
+
+    // 20 px off pad A: close enough to look like a ride to any proximity
+    // heuristic, too far for the real eat gate to ever fire.
+    fx.runner->setxy(static_cast<short>(padA->xpos() + 20),
+                     static_cast<short>(padA->ypos() + 20));
+    ASSERT_TRUE(fx.flag1->eat_me(fx.runner));
+    fx.tick();
+    const short depart_x = fx.runner->xpos();
+    const short depart_y = fx.runner->ypos();
+
+    fx.stage_self_teleport(fx.runner);
+    fx.runner->setxy(static_cast<short>(padB->xpos() + 20),
+                     static_cast<short>(padB->ypos() + 20));
+    fx.tick();
+
+    ASSERT_EQ(og::sim::CtfFlagState::Dropped, fx.f1().state);
+    ASSERT_EQ(depart_x, fx.f1().x);
+    ASSERT_EQ(depart_y, fx.f1().y);
+    ASSERT_EQ(1, count_notifications(fx.events, "GREEN FLAG DROPPED!"));
+}
+
+// A marker beacon pre-placed on the caster's own flag stand turns the blink
+// destination probe inside walker::teleport into an own-flag touch while
+// the caster still stands across the map. The touch gate refuses eats fired
+// mid-teleport: no capture is banked, and the same tick's carried-flag
+// phase drops the stolen flag at the departure point instead.
+TEST(CtfCore, capture_during_blink_is_refused)
+{
+    CtfWorld fx;
+    walker* flag0 = fx.spawn_flag(0, 96, 96);
+    walker* flag1 = fx.spawn_flag(1, 544, 800);
+    walker* mage = fx.spawn_living(FAMILY_MAGE, 0, 400, 400);
+    fx.spawn_living(FAMILY_SOLDIER, 1, 400, 700);
+    fx.world().ctf_requested_respawn_ticks = 5000;
+    fx.tick();
+    ASSERT_TRUE(fx.world().ctf.active);
+
+    walker* marker = fx.world().add_ob(Order::FX, FAMILY_MARKER);
+    ASSERT_NE(nullptr, marker);
+    marker->set_owner(mage);
+    marker->setxy(flag0->xpos(), flag0->ypos()); // overlapping the own stand
+    marker->set_lifetime(5);
+    marker->set_ani_type(ANI_SPIN); // production marker animation:
+    // effect::act kills any FX left on the default ANI_WALK
+
+    ASSERT_TRUE(flag1->eat_me(mage));
+    fx.tick();
+    const short depart_x = mage->xpos();
+    const short depart_y = mage->ypos();
+
+    ASSERT_NE(nullptr, mage->stats());
+    mage->stats()->set_max_magicpoints(500);
+    mage->stats()->set_magicpoints(500);
+    mage->set_current_special(1);
+    ASSERT_TRUE(mage->special());
+    fx.tick(20); // the blink lands the mage on its own stand
+
+    ASSERT_LE(std::abs(mage->xpos() - flag0->xpos()), 8)
+        << "the mage must have arrived at the marker on the stand";
+    ASSERT_EQ(0, fx.world().ctf.captures[0])
+        << "a capture banked by the blink's destination probe is an exploit";
+    ASSERT_FALSE(has_notification(fx.events, "SCORES"));
+    ASSERT_EQ(og::sim::CtfFlagState::Dropped, fx.world().ctf.flags[1].state)
+        << "the carried flag drops at the departure point instead";
+    ASSERT_EQ(depart_x, fx.world().ctf.flags[1].x);
+    ASSERT_EQ(depart_y, fx.world().ctf.flags[1].y);
+    ASSERT_EQ(1, count_notifications(fx.events, "GREEN FLAG DROPPED!"));
+}
+
+// The mirror exploit: a marker overlapping an AtHome ENEMY flag would let
+// the destination probe "pick up" the flag while the caster still stands at
+// the departure point -- and the same tick's drop rule would then deposit
+// it there, relocating the flag across the map without it ever being
+// carried. The touch gate refuses the probe-eat: the flag never moves, the
+// mage arrives empty-handed, and a real touch on a later tick picks it up
+// normally.
+TEST(CtfCore, pickup_during_blink_is_refused_and_flag_stays_home)
+{
+    CtfWorld fx;
+    fx.spawn_flag(0, 96, 96);
+    walker* flag1 = fx.spawn_flag(1, 544, 800);
+    walker* mage = fx.spawn_living(FAMILY_MAGE, 0, 200, 200);
+    fx.spawn_living(FAMILY_SOLDIER, 1, 400, 700);
+    fx.world().ctf_requested_respawn_ticks = 5000;
+    fx.tick();
+    ASSERT_TRUE(fx.world().ctf.active);
+
+    walker* marker = fx.world().add_ob(Order::FX, FAMILY_MARKER);
+    ASSERT_NE(nullptr, marker);
+    marker->set_owner(mage);
+    marker->setxy(flag1->xpos(), flag1->ypos()); // overlapping the enemy flag
+    marker->set_lifetime(5);
+    marker->set_ani_type(ANI_SPIN); // production marker animation:
+    // effect::act kills any FX left on the default ANI_WALK
+
+    ASSERT_NE(nullptr, mage->stats());
+    mage->stats()->set_max_magicpoints(500);
+    mage->stats()->set_magicpoints(500);
+    mage->set_current_special(1);
+    ASSERT_TRUE(mage->special());
+    fx.tick(20); // the blink lands the mage on the enemy flag
+
+    ASSERT_LE(std::abs(mage->xpos() - 544), 8)
+        << "the mage must have arrived at the marker on the enemy flag";
+    ASSERT_LE(std::abs(mage->ypos() - 800), 8);
+    ASSERT_EQ(og::sim::CtfFlagState::AtHome, fx.world().ctf.flags[1].state)
+        << "the blink's destination probe must not pick the flag up";
+    ASSERT_EQ(0u, fx.world().ctf.flags[1].carrier_entity_id);
+    ASSERT_EQ(544, flag1->xpos()) << "and the flag must not relocate";
+    ASSERT_EQ(800, flag1->ypos());
+    ASSERT_EQ(0, count_notifications(fx.events, "GREEN FLAG TAKEN!"));
+    ASSERT_EQ(0, count_notifications(fx.events, "DROPPED"));
+
+    // The marker is stale on later ticks: a real touch picks it up.
+    (void)fx.world().query_passable(static_cast<float>(flag1->xpos()),
+                                    static_cast<float>(flag1->ypos()), mage);
+    ASSERT_EQ(og::sim::CtfFlagState::Carried, fx.world().ctf.flags[1].state);
+    ASSERT_EQ(mage->entity_id(), fx.world().ctf.flags[1].carrier_entity_id);
+    ASSERT_EQ(1, count_notifications(fx.events, "GREEN FLAG TAKEN!"));
+}
+
+TEST(CtfCore, teleport_drop_on_impassable_departure_returns_home)
+{
+    TeleportWorld fx;
+    fx.tick();
+    fx.runner->setxy(320, 320);
+    ASSERT_TRUE(fx.flag1->eat_me(fx.runner));
+    fx.tick();
+
+    // Wall the departure tile after the fact, then blink away: the drop
+    // probe fails and the stranding rule sends the flag home.
+    PixieData& grid = fx.world().grid;
+    for (int gy = 20; gy <= 21; ++gy)
+        for (int gx = 20; gx <= 21; ++gx)
+            grid.data[gx + grid.w * gy] = PIX_H_WALL1;
+    fx.stage_self_teleport(fx.runner);
+    fx.runner->setxy(96, 700);
+    fx.tick();
+
+    ASSERT_EQ(og::sim::CtfFlagState::AtHome, fx.f1().state);
+    ASSERT_EQ(544, fx.flag1->xpos());
+    ASSERT_EQ(800, fx.flag1->ypos());
+    ASSERT_EQ(0, fx.flag1->ignore());
+    ASSERT_TRUE(has_notification(fx.events, "GREEN FLAG RETURNED!"));
+    ASSERT_EQ(0, count_notifications(fx.events, "DROPPED"));
+}
+
+TEST(CtfCore, one_blink_drops_every_carried_flag)
+{
+    CtfWorld fx;
+    fx.spawn_flag(0, 96, 96);
+    walker* flag1 = fx.spawn_flag(1, 544, 96);
+    walker* flag2 = fx.spawn_flag(2, 544, 800);
+    walker* runner = fx.spawn_living(FAMILY_SOLDIER, 0, 200, 200);
+    fx.spawn_living(FAMILY_SOLDIER, 1, 500, 150);
+    fx.spawn_living(FAMILY_SOLDIER, 2, 500, 760);
+    fx.world().ctf_requested_team_count = 3;
+    fx.world().ctf_requested_respawn_ticks = 5000;
+    fx.tick();
+    ASSERT_EQ(3, fx.world().ctf.team_count);
+
+    ASSERT_TRUE(flag1->eat_me(runner));
+    ASSERT_TRUE(flag2->eat_me(runner));
+    fx.tick();
+
+    fx.stage_self_teleport(runner);
+    runner->setxy(200, 500);
+    fx.tick();
+    ASSERT_EQ(og::sim::CtfFlagState::Dropped, fx.world().ctf.flags[1].state);
+    ASSERT_EQ(og::sim::CtfFlagState::Dropped, fx.world().ctf.flags[2].state);
+    ASSERT_EQ(200, fx.world().ctf.flags[1].x);
+    ASSERT_EQ(200, fx.world().ctf.flags[1].y);
+    ASSERT_EQ(200, fx.world().ctf.flags[2].x);
+    ASSERT_EQ(200, fx.world().ctf.flags[2].y);
+    ASSERT_EQ(1, count_notifications(fx.events, "GREEN FLAG DROPPED!"));
+    ASSERT_EQ(1, count_notifications(fx.events, "BLUE FLAG DROPPED!"));
+}
+
+// A teleport drop behaves like any other drop for the announcement rule:
+// the regrab of the dropped flag stays silent (TAKEN announces once).
+TEST(CtfCore, regrab_after_teleport_drop_stays_silent)
+{
+    TeleportWorld fx;
+    walker* backup = fx.spawn_living(FAMILY_SOLDIER, 0, 232, 200);
+    fx.tick();
+
+    ASSERT_TRUE(fx.flag1->eat_me(fx.runner));
+    ASSERT_EQ(1, count_notifications(fx.events, "GREEN FLAG TAKEN!"));
+    fx.tick();
+
+    fx.stage_self_teleport(fx.runner);
+    fx.runner->setxy(440, 488);
+    fx.tick();
+    ASSERT_EQ(og::sim::CtfFlagState::Dropped, fx.f1().state);
+
+    ASSERT_TRUE(fx.flag1->eat_me(backup));
+    ASSERT_EQ(og::sim::CtfFlagState::Carried, fx.f1().state);
+    ASSERT_EQ(backup->entity_id(), fx.f1().carrier_entity_id);
+    ASSERT_EQ(1, count_notifications(fx.events, "GREEN FLAG TAKEN!"))
+        << "a regrab after a teleport drop must not re-announce TAKEN";
 }
 
 // --- Control points -----------------------------------------------------
@@ -948,4 +1407,62 @@ TEST(CtfCore, ctf_bot_match_is_deterministic_across_runs)
     ASSERT_TRUE(second.ctf_active);
     ASSERT_EQ(first, second)
         << "same seed + same scripted CTF scenario must replay byte-identically";
+}
+
+namespace {
+
+// Scripted teleport-rule workout: a real pad ride (carries through), a
+// staged blink (drop), and a bot match running underneath (squad mages and
+// skeletons may genuinely blink on the world RNG, exercising the marker in
+// anger). Returns the digest plus the drop announcements.
+struct TeleportRunResult
+{
+    WorldDigest digest;
+    int dropped_notifications = 0;
+
+    bool operator==(const TeleportRunResult& o) const = default;
+};
+
+TeleportRunResult run_ctf_teleport_script(int ticks)
+{
+    CtfWorld fx(500);
+    fx.spawn_flag(0, 160, 160);
+    walker* flag1 = fx.spawn_flag(1, 480, 800);
+    walker* padA = fx.spawn_teleporter(320, 320);
+    fx.spawn_teleporter(480, 640);
+    fx.spawn_anchor(0, 128, 128);
+    fx.spawn_anchor(1, 512, 832);
+    walker* runner = fx.spawn_living(FAMILY_SOLDIER, 0, 200, 200);
+    fx.world().ctf_requested_respawn_ticks = 30;
+    fx.tick(); // team 1 fields a five-bot squad (mage and skeleton included)
+
+    runner->center_on(padA);
+    flag1->eat_me(runner);
+    fx.tick();
+    (void)fx.world().query_passable(static_cast<float>(padA->xpos()),
+                                    static_cast<float>(padA->ypos()),
+                                    runner);
+    fx.tick(5); // pad ride carried the flag through; settle
+    fx.stage_self_teleport(runner);
+    runner->setxy(112, 200); // staged blink: drop
+    fx.tick(ticks);
+
+    TeleportRunResult result;
+    result.digest = digest_world(fx.world());
+    result.dropped_notifications = count_notifications(fx.events, "DROPPED");
+    return result;
+}
+
+} // namespace
+
+TEST(CtfCore, teleport_rule_is_deterministic_across_runs)
+{
+    const TeleportRunResult first = run_ctf_teleport_script(100);
+    const TeleportRunResult second = run_ctf_teleport_script(100);
+
+    ASSERT_TRUE(first.digest.ctf_active);
+    ASSERT_GE(first.dropped_notifications, 1)
+        << "the scripted blink must have dropped the flag";
+    ASSERT_EQ(first, second)
+        << "the teleport rule reads only deterministic position/entity state";
 }

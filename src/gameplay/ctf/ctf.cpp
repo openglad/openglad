@@ -428,21 +428,13 @@ void run_death_scan(GameWorld& world)
     }
 }
 
-void drop_flag(GameWorld& world, int team, walker* carrier)
+// Drops a flag at an explicit point: the carrier's feet for the classic
+// drops, the departure point for the teleport rule. `carrier` (non-null)
+// supplies the footprint for the terrain probe.
+void drop_flag_at(GameWorld& world, int team, walker* carrier,
+                  short drop_x, short drop_y)
 {
     CtfFlag& f = world.ctf.flags[team];
-
-    // No corpse to validate a drop tile against: send the flag home.
-    if (carrier == nullptr)
-    {
-        send_flag_home(world, team);
-        notify(std::format("{} FLAG RETURNED!", team_color_name(team)));
-        play(SOUND_TELEPORT);
-        return;
-    }
-
-    const short drop_x = carrier->xpos();
-    const short drop_y = carrier->ypos();
 
     // Stranding rule: a drop tile that fails the terrain probe (water, wall)
     // returns the flag home instantly instead of dropping it out of reach.
@@ -469,8 +461,29 @@ void drop_flag(GameWorld& world, int team, walker* carrier)
     play(SOUND_YO);
 }
 
+void drop_flag(GameWorld& world, int team, walker* carrier)
+{
+    // No corpse to validate a drop tile against: send the flag home.
+    if (carrier == nullptr)
+    {
+        send_flag_home(world, team);
+        notify(std::format("{} FLAG RETURNED!", team_color_name(team)));
+        play(SOUND_TELEPORT);
+        return;
+    }
+    drop_flag_at(world, team, carrier, carrier->xpos(), carrier->ypos());
+}
+
 // Phase 3: carried flags ride their carrier; invalid carriers (gone, dead,
-// or charm-flipped onto the flag's own team) drop the flag.
+// or charm-flipped onto the flag's own team) drop the flag. A carrier that
+// SELF-teleported this tick — walker::teleport / teleport_ranged stamp the
+// carrier with the tick the blink began, covering mage/archmage/skeleton
+// blinks and marker beacons — leaves every carried flag behind at the
+// departure point (Unreal Tournament semantics): the carried flag's
+// replicated (x, y) still holds the carrier's pre-blink position. Map
+// teleporter pads never stamp the marker, so pad rides carry the flag
+// through with no special-casing. Each carried flag is evaluated
+// independently, so one blink drops every flag a multi-carrier holds.
 void run_carried_flags(GameWorld& world)
 {
     for (int t = 0; t < kCtfMaxFlags; ++t)
@@ -483,6 +496,11 @@ void run_carried_flags(GameWorld& world)
             carrier->team_num() == static_cast<unsigned char>(t))
         {
             drop_flag(world, t, carrier);
+            continue;
+        }
+        if (carrier->last_self_teleport_tick() == world.tick_count_)
+        {
+            drop_flag_at(world, t, carrier, f.x, f.y);
             continue;
         }
         f.x = carrier->xpos();
@@ -943,6 +961,15 @@ bool ctf_on_flag_touch(walker* flag, walker* eater)
     {
         return true;
     }
+    // A flag touch fired while the eater is mid-self-teleport is not a real
+    // touch: walker::teleport / teleport_ranged probe their destination for
+    // passability before moving, and the obmap probe fires eat_me on
+    // whatever overlaps the target spot. Honoring such an eat would bank a
+    // capture or relocate a flag across the blink while the eater still
+    // stands at the departure point, so the touch is ignored outright; the
+    // walker can touch the flag for real by moving on a later tick.
+    if (eater->last_self_teleport_tick() == world.tick_count_)
+        return true;
     const unsigned char eater_team = eater->team_num();
     if (!is_score_team(eater_team) || !world.ctf.team_active[eater_team])
         return true;
