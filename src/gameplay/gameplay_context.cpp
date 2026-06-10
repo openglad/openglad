@@ -68,6 +68,9 @@ public:
     struct Owner
     {
         walker* active_walker = nullptr;
+        short goal_x = 0;
+        short goal_y = 0;
+        bool has_goal = false;
     };
 
     explicit PathingMap(Owner* owner)
@@ -89,12 +92,21 @@ public:
                       std::vector<micropather::StateCost>* adjacent) override
     {
         if (!owner_ || !owner_->active_walker ||
-            owner_->active_walker->foe() == nullptr ||
+            (owner_->active_walker->foe() == nullptr && !owner_->has_goal) ||
             current_game == nullptr || current_game->world == nullptr ||
             current_game->world->myobmap == nullptr)
         {
             return;
         }
+
+        // Straightness bias target: the explicit goal point when one is set,
+        // otherwise the owner's foe (the classic chase path).
+        const int target_x = owner_->has_goal
+            ? owner_->goal_x
+            : owner_->active_walker->foe()->xpos();
+        const int target_y = owner_->has_goal
+            ? owner_->goal_y
+            : owner_->active_walker->foe()->ypos();
 
         const int x1 = GET_STATE_X(state);
         const int y1 = GET_STATE_Y(state);
@@ -132,10 +144,10 @@ public:
                     cost.cost = (i == 0 || j == 0) ? 1.0f : kDiagonalStepCost;
                 }
 
-                const int dx1 = adj_x - ALIGN_TO_GRID(owner_->active_walker->foe()->xpos());
-                const int dy1 = adj_y - ALIGN_TO_GRID(owner_->active_walker->foe()->ypos());
-                const int dx2 = owner_->active_walker->xpos() - ALIGN_TO_GRID(owner_->active_walker->foe()->xpos());
-                const int dy2 = owner_->active_walker->ypos() - ALIGN_TO_GRID(owner_->active_walker->foe()->ypos());
+                const int dx1 = adj_x - ALIGN_TO_GRID(target_x);
+                const int dy1 = adj_y - ALIGN_TO_GRID(target_y);
+                const int dx2 = owner_->active_walker->xpos() - ALIGN_TO_GRID(target_x);
+                const int dy2 = owner_->active_walker->ypos() - ALIGN_TO_GRID(target_y);
                 const int cross = dx1 * dy2 - dx2 * dy1;
                 cost.cost += static_cast<float>(std::abs(cross)) * 0.01f;
 
@@ -186,8 +198,32 @@ void GameplayPathfindingState::solve_for(walker* owner,
         return;
 
     impl_->owner.active_walker = owner;
+    impl_->owner.has_goal = false;
     impl_->pather.Reset();
     (void)impl_->pather.Solve(start_state, end_state, &path_out, &total_cost);
+}
+
+void GameplayPathfindingState::solve_for_point(walker* owner,
+                                               short goal_x,
+                                               short goal_y,
+                                               void* start_state,
+                                               void* end_state,
+                                               std::vector<void*>& path_out,
+                                               float& total_cost)
+{
+    path_out.clear();
+    total_cost = 0.0f;
+
+    if (!impl_ || owner == nullptr)
+        return;
+
+    impl_->owner.active_walker = owner;
+    impl_->owner.goal_x = goal_x;
+    impl_->owner.goal_y = goal_y;
+    impl_->owner.has_goal = true;
+    impl_->pather.Reset();
+    (void)impl_->pather.Solve(start_state, end_state, &path_out, &total_cost);
+    impl_->owner.has_goal = false;
 }
 
 GameplayPathfindingState* ensure_pathfinding_state(GameplayContext& context)

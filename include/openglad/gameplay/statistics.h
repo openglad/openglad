@@ -101,6 +101,9 @@ class statistics
 		bool right_walk();      // walk using right-hand rule
 		bool direct_walk(); // walk in a line toward foe ..
 		bool walk_to_foe(); // try to walk intelligently towards foe
+		bool right_walk_to_point(short x, short y); // right-hand rule toward a point
+		bool direct_walk_to_point(short x, short y); // walk in a line toward a point
+		bool walk_to_point(short x, short y); // walk intelligently toward a point
 
 		std::string name; // for NPC's, normally ..
         OG_STATS_DIRTY_FIELD(Order, old_order, og::dirty::BIT_OLD_ORDER);

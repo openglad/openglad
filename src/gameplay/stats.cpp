@@ -397,6 +397,9 @@ short statistics::do_command()
 				commands.front().commandcount = 0;
             }
 			break;
+		case COMMAND_GOTO: // walk toward a fixed map position
+			walk_to_point(static_cast<short>(com1), static_cast<short>(com2));
+			break;
 		case COMMAND_RIGHT_WALK: // right-hand-walk ONLY
 			if (controller_->foe())
 			{
@@ -1076,6 +1079,234 @@ bool statistics::walk_to_foe()
 	{
 		commands.front().commandcount = 0;
 	}
+
+	return 1;
+}
+
+// Distance at which a position goal counts as reached. Kept below a grid
+// tile so the final approach overlaps the goal cell: anything standing there
+// (a flag, a treasure) collides with the walker before the goal completes.
+inline constexpr int GOTO_ARRIVAL_DISTANCE = 12;
+
+// Maps a facing direction to a unit step delta (the same table right_walk
+// builds inline with its turn switches).
+static void facing_step_delta(char dir, short* xdelta, short* ydelta)
+{
+	switch (dir)
+	{
+		case FACE_UP:
+			*xdelta = 0;
+			*ydelta = -1;
+			break;
+		case FACE_UP_RIGHT:
+			*xdelta = 1;
+			*ydelta = -1;
+			break;
+		case FACE_RIGHT:
+			*xdelta = 1;
+			*ydelta = 0;
+			break;
+		case FACE_DOWN_RIGHT:
+			*xdelta = 1;
+			*ydelta = 1;
+			break;
+		case FACE_DOWN:
+			*xdelta = 0;
+			*ydelta = 1;
+			break;
+		case FACE_DOWN_LEFT:
+			*xdelta = -1;
+			*ydelta = 1;
+			break;
+		case FACE_LEFT:
+			*xdelta = -1;
+			*ydelta = 0;
+			break;
+		case FACE_UP_LEFT:
+			*xdelta = -1;
+			*ydelta = -1;
+			break;
+		default:
+			*xdelta = 0;
+			*ydelta = 0;
+			break;
+	}
+}
+
+// direct_walk, retargeted from the foe to a fixed point: take the straight
+// line (snapped to an axis when one delta dominates 3:1), falling back to a
+// single-axis step when the diagonal is grid-blocked. No foe involvement —
+// position goals never auto-attack.
+bool statistics::direct_walk_to_point(short x, short y)
+{
+	float xdelta, ydelta;
+	float xdeltastep, ydeltastep;
+	float controlx = controller_->xpos(), controly = controller_->ypos();
+
+	xdelta = x - controlx;
+	ydelta = y - controly;
+	if (std::fabs(xdelta) > std::fabs(3 * ydelta))
+		ydelta = 0;
+	if (std::fabs(ydelta) > std::fabs(3 * xdelta))
+		xdelta = 0;
+
+	if (xdelta)
+		xdelta = xdelta / std::fabs(xdelta);
+	if (ydelta)
+		ydelta = ydelta / std::fabs(ydelta);
+
+	xdeltastep = xdelta * controller_->stepsize();
+	ydeltastep = ydelta * controller_->stepsize();
+
+	if (!current_game->world->query_grid_passable(controlx + xdeltastep, controly + ydeltastep, controller_))
+	{
+		if (!current_game->world->query_grid_passable(controlx + xdeltastep, controly + 0, controller_))
+		{
+			if (!current_game->world->query_grid_passable(controlx + 0, controly + ydeltastep, controller_))
+			{
+				// No straight-line move brings us closer to the point.
+				return 0;
+			}
+			else // y ok
+			{
+				if (!ydelta)
+					return 0;
+				controller_->walkstep(0.0f, ydelta);
+				return 1;
+			}
+		}
+		else // x ok
+		{
+			if (!xdelta)
+				return 0;
+			controller_->walkstep(xdelta, 0.0f);
+			return 1;
+		}
+	}
+	else // x and y ok
+	{
+		if (!xdelta && !ydelta)
+			return 0;
+		controller_->walkstep(xdelta, ydelta);
+		return 1;
+	}
+}
+
+// right_walk, retargeted from the foe to a fixed point: identical wall
+// following, but the open-space branch steps toward the point instead of
+// running direct_walk's foe chase/attack.
+bool statistics::right_walk_to_point(short x, short y)
+{
+	float xdelta, ydelta;
+	short xstep, ystep;
+
+	if (right_blocked() || right_forward_blocked())
+	{
+		if (!forward_blocked())  // walk forward
+		{
+			xdelta = controller_->lastx();
+			ydelta = controller_->lasty();
+			if (std::fabs(xdelta) > std::fabs(3 * ydelta))
+				ydelta = 0;
+			if (std::fabs(ydelta) > std::fabs(3 * xdelta))
+				xdelta = 0;
+			if (xdelta)
+				xdelta /= std::fabs(xdelta);
+			if (ydelta)
+				ydelta /= std::fabs(ydelta);
+			return controller_->walkstep(xdelta, ydelta);
+		}
+		else  // turn left
+		{
+			controller_->set_enddir(static_cast<char>((controller_->enddir() + 6) % 8));
+			return controller_->turn(controller_->enddir());
+		}
+	}
+	else if (forward_blocked())
+	{
+		controller_->set_enddir(static_cast<char>((controller_->enddir() + 6) % 8));  // turn left
+		return controller_->turn(controller_->enddir());
+	}
+	else if (right_back_blocked())
+	{
+		controller_->set_enddir(static_cast<char>((controller_->enddir() + 2) % 8));  // turn right
+		facing_step_delta(controller_->enddir(), &xstep, &ystep);
+		add_command(COMMAND_WALK, 1, xstep, ystep);
+	}
+	else
+	{
+		if (!direct_walk_to_point(x, y)) // can't walk straight to the point
+		{
+			facing_step_delta(controller_->curdir(), &xstep, &ystep);
+			return controller_->walkstep(xstep, ystep);
+		}
+	}
+	return true;
+}
+
+// walk_to_foe, retargeted from the foe to a fixed point: same path-check
+// cadence and crowd/proximity short-circuits, the same follow-the-path /
+// direct / right-hand fallback ladder, but the goal is a map position and
+// arrival (GOTO_ARRIVAL_DISTANCE) completes the active command instead of
+// handing off to combat. Only the CTF director issues position goals, so
+// every rng() draw here stays off the classic command paths.
+bool statistics::walk_to_point(short x, short y)
+{
+	Uint32 tempdistance;
+
+	if (!rng(300)) // random just to be sure this gets reset sometime
+	{
+		set_last_distance(15000L);
+		set_current_distance(15000L);
+		return 0;
+	}
+
+	tempdistance = static_cast<Uint32>(abs(x - controller_->xpos()) +
+	                                   abs(y - controller_->ypos()));
+
+	// Arrived: finish whatever remains of the active command.
+	if (tempdistance < GOTO_ARRIVAL_DISTANCE)
+	{
+		controller_->path_to_foe.clear();
+		if (!commands.empty())
+			commands.front().commandcount = 0;
+		return 1;
+	}
+
+	controller_->set_path_check_counter(controller_->path_check_counter() - 1);
+	// This makes us only check every few rounds, to save
+	// processing time
+	if (controller_->path_check_counter() <= 0)
+	{
+		controller_->set_path_check_counter(5 + static_cast<int>(rng(10)));
+		controller_->path_to_foe.clear();
+
+		// Do simpler pathing if the distance is short or if there are too
+		// many walkers (pathfinding is expensive)
+		if (tempdistance >= PATHING_MIN_DISTANCE &&
+		    current_game->world->myobmap != nullptr &&
+		    current_game->world->myobmap->size() <= PATHING_SHORT_CIRCUIT_OBJECT_LIMIT)
+		{
+			controller_->find_path_to_point(x, y);
+		}
+	} //end if do_check
+
+	if (controller_->path_to_foe.size() > 0)
+	{
+		controller_->follow_path_to_foe();
+		set_last_distance(tempdistance);
+	}
+	else if (tempdistance < last_distance()) // are we closer than we've ever been?
+	{
+		set_last_distance(tempdistance);   // then set our checking distance ..
+
+		if (!direct_walk_to_point(x, y))  // Can we walk in a direct line to the point?
+		{
+			right_walk_to_point(x, y);     //   If not, use right-hand walking
+		}
+	}
+	else
+		right_walk_to_point(x, y);
 
 	return 1;
 }

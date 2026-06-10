@@ -106,6 +106,7 @@ class walker : public og::sim::SimEntity
 			bool walkstep(short x, short y) { return walkstep(static_cast<std::int32_t>(x), static_cast<std::int32_t>(y)); }
 			virtual bool walk(float x, float y);
 		void find_path_to_foe();
+		void find_path_to_point(short x, short y);
 		void follow_path_to_foe();
 		bool init_fire();
 		bool init_fire(short xdir, short ydir);
