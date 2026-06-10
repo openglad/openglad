@@ -18,6 +18,7 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/results_screen.h>
+#include <openglad/interface/view_sizes.h>
 #include <openglad/legacy/base.h>
 #include <openglad/platform/game_context.h>
 #include <openglad/resources/gloader.h>
@@ -28,6 +29,7 @@
 #include <array>
 #include <memory>
 #include <string>
+#include <vector>
 
 loader* sdl_entity_loader();
 short new_score_panel(screen* s, short do_it);
@@ -149,6 +151,35 @@ void silence_hud_prefs(viewscreen* v)
     v->prefs[PREF_FOES] = PREF_FOES_OFF;
 }
 
+// Returns how many pixels the CTF block painted on virgin ground, and fails
+// the test if it overwrote any pixel the classic HUD had already lit (i.e.
+// any glyph collision with the name, life rows, or the TEAM/FOES column).
+int ctf_added_pixels_expect_no_overwrite(
+    const std::array<unsigned char, 64000>& classic,
+    const std::array<unsigned char, 64000>& with_ctf)
+{
+    int added = 0;
+    int overwritten = 0;
+    std::size_t first = 0;
+    for (std::size_t i = 0; i < classic.size(); ++i)
+    {
+        if (classic[i] != 0 && with_ctf[i] != classic[i])
+        {
+            if (overwritten == 0)
+                first = i;
+            ++overwritten;
+        }
+        else if (classic[i] == 0 && with_ctf[i] != 0)
+        {
+            ++added;
+        }
+    }
+    EXPECT_EQ(0, overwritten)
+        << "CTF HUD overwrote classic HUD pixels, first at ("
+        << (first % 320) << "," << (first / 320) << ")";
+    return added;
+}
+
 } // namespace
 
 TEST(CtfUi, sdl_loader_has_ctf_entries)
@@ -186,24 +217,28 @@ TEST(CtfUi, score_panel_renders_ctf_captures_block)
     v->control = control.get();
     silence_hud_prefs(v);
 
-    // Distinct counts + a Taken glyph so both segment branches execute.
+    // Distinct counts + a Taken glyph so both segment branches execute. The
+    // single-view group ("2H 0T", 30px) is right-aligned ending at rm-60.
     s->world().ctf.captures[0] = 2;
     s->world().ctf.flags[1].state = og::sim::CtfFlagState::Carried;
 
-    const int lm = v->xloc;
     const int tm = v->yloc;
+    const int rm = v->endx;
     s->clearbuffer();
     ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
     EXPECT_TRUE(box_has_pixels(capture_rendered_frame(*s),
-                               lm + 70, tm + 3, lm + 150, tm + 12))
-        << "the per-team captures block should paint at the viewport top";
+                               rm - 92, tm + 3, rm - 59, tm + 12))
+        << "the per-team captures block should paint right-aligned at rm-60";
+    EXPECT_FALSE(box_has_pixels(capture_rendered_frame(*s),
+                                rm - 59, tm + 3, rm - 55, tm + 12))
+        << "the group must end before the TEAM/FOES column at rm-55";
 
     // The block is gated on ctf.active: deactivated worlds draw nothing here.
     s->world().ctf.active = false;
     s->clearbuffer();
     ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
     EXPECT_FALSE(box_has_pixels(capture_rendered_frame(*s),
-                                lm + 70, tm + 3, lm + 150, tm + 12))
+                                rm - 92, tm + 3, rm - 59, tm + 12))
         << "no CTF block may paint when the match is not active";
 
     v->control = old_control;
@@ -287,6 +322,155 @@ TEST(CtfUi, score_panel_shows_respawn_countdown_for_dead_control)
     v->control = old_control;
 }
 
+// Audit findings 3+4: a 12-char name, four active teams, and double-digit
+// captures must coexist with zero glyph collisions against the name and the
+// TEAM/FOES column. Proven per text-bearing PREF_LIFE mode by rendering the
+// classic HUD alone, then with CTF active, and requiring every classic pixel
+// to survive untouched.
+TEST(CtfUi, hud_caps_clear_name_and_foes_column_in_single_view)
+{
+    CtfScreenWorld ctf;
+    screen* s = ctf.s;
+    ASSERT_TRUE(s->world().ctf.active);
+
+    auto control = make_control(0);
+    ASSERT_NE(nullptr, control);
+    ASSERT_NE(nullptr, control->myguy);
+    control->myguy->name = "Mordenkainen"; // 12 chars: the audited worst case
+
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_NE(nullptr, v);
+    walker* old_control = v->control;
+    v->control = control.get();
+    v->prefs[PREF_OVERLAY] = PREF_OVERLAY_OFF;
+    v->prefs[PREF_SCORE] = PREF_SCORE_OFF; // its rng count-up varies per frame
+    v->prefs[PREF_FOES] = PREF_FOES_ON;
+
+    og::sim::CtfState& state = s->world().ctf;
+    for (int team = 0; team < 4; ++team)
+        state.team_active[team] = true;
+    state.captures[0] = 10;
+    state.captures[1] = 9;
+    state.captures[3] = 3;
+
+    const int tm = v->yloc;
+    const int rm = v->endx;
+    for (char life_pref : {PREF_LIFE_TEXT, PREF_LIFE_BOTH})
+    {
+        v->prefs[PREF_LIFE] = life_pref;
+
+        state.active = false;
+        s->clearbuffer();
+        ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+        const auto classic = capture_rendered_frame(*s);
+
+        state.active = true;
+        s->clearbuffer();
+        ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+        const auto with_ctf = capture_rendered_frame(*s);
+
+        ASSERT_GT(ctf_added_pixels_expect_no_overwrite(classic, with_ctf), 0)
+            << "the CTF caps group must actually paint";
+        EXPECT_TRUE(box_has_pixels(with_ctf, rm - 150, tm + 3, rm - 59, tm + 12))
+            << "caps group expected right-aligned ending at rm-60";
+        EXPECT_FALSE(box_has_pixels(with_ctf, rm - 59, tm + 3, rm - 55, tm + 12))
+            << "caps group must stop short of the TEAM/FOES column";
+    }
+
+    v->control = old_control;
+}
+
+// The 2-player split uses the compact digits-only group on the FLAG! row
+// (tm+28), right-aligned ending at rm-60: it may not collide with the name,
+// the TEAM/FOES column, or the carrier's FLAG! indicator at lm+2.
+TEST(CtfUi, hud_caps_compact_group_clears_name_and_flag_in_two_view)
+{
+    CtfScreenWorld ctf;
+    screen* s = ctf.s;
+    ASSERT_TRUE(s->world().ctf.active);
+
+    auto control = make_control(0);
+    ASSERT_NE(nullptr, control);
+    ASSERT_NE(nullptr, control->myguy);
+    control->myguy->name = "Mordenkainen"; // 12 chars: the audited worst case
+
+    // Rebuild the view layout as a 2-player split; restored below.
+    s->numviews = 2;
+    s->viewob[0] = std::make_unique<viewscreen>(
+        T_LEFT_ONE, T_UP_ONE, T_HALF_WIDTH, T_HEIGHT, 0);
+    s->viewob[1] = std::make_unique<viewscreen>(
+        T_LEFT_TWO, T_UP_TWO, T_HALF_WIDTH, T_HEIGHT, 1);
+    viewscreen* v = s->viewob[0].get();
+    v->control = control.get();
+    s->viewob[1]->control = nullptr;
+    v->prefs[PREF_OVERLAY] = PREF_OVERLAY_OFF;
+    v->prefs[PREF_SCORE] = PREF_SCORE_OFF;
+    v->prefs[PREF_FOES] = PREF_FOES_ON;
+
+    og::sim::CtfState& state = s->world().ctf;
+    for (int team = 0; team < 4; ++team)
+        state.team_active[team] = true;
+    state.captures[0] = 10;
+    state.captures[1] = 10;
+    state.captures[3] = 7;
+    // The control carries team 1's flag, so FLAG! shares the tm+28 row with
+    // the right-aligned compact caps group.
+    state.flags[1].state = og::sim::CtfFlagState::Carried;
+    state.flags[1].carrier_entity_id = control->entity_id();
+
+    const int lm = v->xloc;
+    const int tm = v->yloc;
+    const int rm = v->endx;
+
+    for (char life_pref : {PREF_LIFE_TEXT, PREF_LIFE_BOTH})
+    {
+        v->prefs[PREF_LIFE] = life_pref;
+
+        state.active = false;
+        s->clearbuffer();
+        ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+        const auto classic = capture_rendered_frame(*s);
+
+        state.active = true;
+        s->clearbuffer();
+        ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+        const auto with_ctf = capture_rendered_frame(*s);
+
+        ASSERT_GT(ctf_added_pixels_expect_no_overwrite(classic, with_ctf), 0)
+            << "the compact caps group must actually paint";
+
+        // FLAG! draws after the caps group, so any collision would repaint
+        // group pixels: render the group alone (carrier is someone else) and
+        // require the full frame to preserve each of its pixels.
+        state.flags[1].carrier_entity_id = control->entity_id() + 1;
+        s->clearbuffer();
+        ASSERT_EQ(1, static_cast<int>(new_score_panel(s, 1)));
+        const auto caps_only = capture_rendered_frame(*s);
+        state.flags[1].carrier_entity_id = control->entity_id();
+        int flag_caps_collisions = 0;
+        for (std::size_t i = 0; i < caps_only.size(); ++i)
+        {
+            if (caps_only[i] != 0 && classic[i] == 0 &&
+                with_ctf[i] != caps_only[i])
+                ++flag_caps_collisions;
+        }
+        EXPECT_EQ(0, flag_caps_collisions)
+            << "FLAG! indicator overlapped the compact caps group";
+
+        EXPECT_TRUE(box_has_pixels(with_ctf, lm + 2, tm + 27, lm + 32, tm + 36))
+            << "carrier indicator expected at lm+2 on the tm+28 row";
+        EXPECT_TRUE(box_has_pixels(with_ctf, lm + 34, tm + 27, rm - 59, tm + 36))
+            << "compact caps group expected right-aligned ending at rm-60";
+        EXPECT_FALSE(box_has_pixels(with_ctf, rm - 59, tm + 27, rm - 55, tm + 36))
+            << "compact caps group must stop short of the TEAM/FOES column";
+    }
+
+    // Restore the single-view layout for the tests that follow.
+    s->viewob[1].reset();
+    s->numviews = 1;
+    s->initialize_views();
+}
+
 TEST(CtfUi, radar_draws_flag_and_control_point_blips)
 {
     FixedRandom fixed_rng(1);
@@ -366,8 +550,8 @@ TEST(CtfUi, team_build_ctf_buttons_follow_campaign_and_cycle)
     button* ctf_buttons = picker_createmenu_buttons();
     EXPECT_FALSE(ctf_buttons[11].hidden);
     EXPECT_FALSE(ctf_buttons[12].hidden);
-    EXPECT_EQ("CTF Teams: 2", ctf_buttons[11].label);
-    EXPECT_EQ("Capture Limit: Map default", ctf_buttons[12].label);
+    EXPECT_EQ("Teams: 2", ctf_buttons[11].label);
+    EXPECT_EQ("Limit: Map", ctf_buttons[12].label);
 
     // The button callbacks cycle the save fields.
     (void)change_ctf_teams();
@@ -384,8 +568,30 @@ TEST(CtfUi, results_helpers_format_winner_and_captures)
 {
     ASSERT_EQ("TEAM 3 WINS THE MATCH", format_ctf_winner_banner(2));
     ASSERT_EQ("TEAM 1 WINS THE MATCH", format_ctf_winner_banner(0));
-    ASSERT_EQ("TEAM 2: 3 / 5 CAPTURES", format_ctf_captures_line(1, 3, 5));
-    ASSERT_EQ("TEAM 4: 0 CAPTURES", format_ctf_captures_line(3, 0, 0));
+
+    // The capture summary is one compact line: a neutral "CAPS " prefix,
+    // active-team counts in team order, neutral ':' separators between them.
+    og::sim::CtfState ctf;
+    ctf.team_active[0] = true;
+    ctf.team_active[1] = true;
+    ctf.team_active[3] = true;
+    ctf.captures[0] = 3;
+    ctf.captures[1] = 5;
+    ctf.captures[3] = 10;
+    const std::vector<CtfCapsSegment> segments = format_ctf_caps_segments(ctf);
+    ASSERT_EQ(6u, segments.size());
+    EXPECT_EQ("CAPS ", segments[0].text);
+    EXPECT_EQ(-1, segments[0].team);
+    EXPECT_EQ("3", segments[1].text);
+    EXPECT_EQ(0, segments[1].team);
+    EXPECT_EQ(":", segments[2].text);
+    EXPECT_EQ(-1, segments[2].team);
+    EXPECT_EQ("5", segments[3].text);
+    EXPECT_EQ(1, segments[3].team);
+    EXPECT_EQ(":", segments[4].text);
+    EXPECT_EQ(-1, segments[4].team);
+    EXPECT_EQ("10", segments[5].text);
+    EXPECT_EQ(3, segments[5].team);
 }
 
 TEST(CtfUi, editor_labels_resolve_for_ctf_objects)

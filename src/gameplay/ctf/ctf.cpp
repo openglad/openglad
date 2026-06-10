@@ -559,7 +559,7 @@ void run_control_points(GameWorld& world)
                 if (walker* ce = world.find_by_id(cp.entity_id))
                     ce->set_team_num(static_cast<unsigned char>(contender));
                 award_team_score(world, contender, kCtfCpCaptureScore);
-                notify(std::format("{} TEAM TAKES THE WAYPOINT!",
+                notify(std::format("{} TAKES WAYPOINT!",
                                    team_color_name(contender)));
                 play(SOUND_MONEY);
             }
@@ -868,7 +868,7 @@ void ctf_initialize_for_level(GameWorld& world)
     }
 
     ctf.active = true;
-    notify(std::format("CAPTURE THE FLAG! FIRST TO {}",
+    notify(std::format("CAPTURE THE FLAG! TO {}",
                        static_cast<int>(ctf.capture_limit)));
     play(SOUND_CHARGE);
 }
@@ -980,6 +980,9 @@ bool ctf_on_flag_touch(walker* flag, walker* eater)
     else if (f.state == CtfFlagState::AtHome ||
              f.state == CtfFlagState::Dropped)
     {
+        // Announce only when the flag leaves home: regrab scrums over a
+        // dropped flag would otherwise ping-pong TAKEN lines every touch.
+        const bool taken_from_home = (f.state == CtfFlagState::AtHome);
         f.state = CtfFlagState::Carried;
         f.carrier_entity_id = eater->entity_id();
         f.return_ticks = 0;
@@ -987,8 +990,11 @@ bool ctf_on_flag_touch(walker* flag, walker* eater)
         f.y = eater->ypos();
         flag->set_ignore(1);
         flag->setxy(eater->xpos(), static_cast<short>(eater->ypos() - 8));
-        notify(std::format("{} FLAG TAKEN!", team_color_name(flag_team)));
-        play(SOUND_YO);
+        if (taken_from_home)
+        {
+            notify(std::format("{} FLAG TAKEN!", team_color_name(flag_team)));
+            play(SOUND_YO);
+        }
     }
     return true;
 }

@@ -130,27 +130,72 @@ static void draw_ctf_panel(screen* s, walker* control, Sint32 lm, Sint32 tm,
     const og::sim::CtfState& ctf = s->world_.ctf;
     text& mytext = s->text_normal;
 
-    // Capture counts, one "<caps><flag-glyph>" segment per active team in its
-    // team ramp color. Suppressed in small (>2-way) split-screen panes and
-    // clipped short of the TEAM/FOES column (rm-55) in narrow viewports.
-    if (s->numviews <= 2)
+    // Capture counts. Suppressed in small (>2-way) split-screen panes; the
+    // two larger layouts right-align the group ending at rm-60 so it clears
+    // both 12-char names at lm+3 and the TEAM/FOES column at rm-55.
+    if (s->numviews == 1)
     {
-        Sint32 x = lm + 70;
+        // Full-width pane: one "<caps><flag-glyph>" segment per active team
+        // in its team ramp color, 6px apart.
+        std::string segments[4];
+        Sint32 total_width = 0;
         for (int team = 0; team < 4; ++team)
         {
             if (!ctf.team_active[team])
                 continue;
-            const std::string segment = std::format(
+            segments[team] = std::format(
                 "{}{}",
                 ctf.captures[team],
                 ctf_flag_state_glyph(ctf.flags[team]));
-            const Sint32 width = static_cast<Sint32>(segment.size()) * 6;
-            if (x + width > rm - 58)
-                break;
-            mytext.write_xy(x, tm + 4, segment.c_str(),
+            if (total_width > 0)
+                total_width += 6;
+            total_width += static_cast<Sint32>(segments[team].size()) * 6;
+        }
+        Sint32 x = rm - 60 - total_width;
+        for (int team = 0; team < 4; ++team)
+        {
+            if (segments[team].empty())
+                continue;
+            mytext.write_xy(x, tm + 4, segments[team].c_str(),
                             static_cast<unsigned char>(team * 16 + 40),
                             static_cast<short>(1));
-            x += width + 6;
+            x += static_cast<Sint32>(segments[team].size()) * 6 + 6;
+        }
+    }
+    else if (s->numviews == 2)
+    {
+        // Half-width panes cannot fit the glyph segments beside the name:
+        // compact digits-only group ("2:1:0:3", counts in team ramp colors,
+        // neutral separators) on the tm+28 row, clear of the name and the
+        // HP/MP rows. The carrier's FLAG! stays left at lm+2 on that row.
+        std::string pieces[7];
+        unsigned char piece_colors[7];
+        int piece_count = 0;
+        Sint32 total_width = 0;
+        for (int team = 0; team < 4; ++team)
+        {
+            if (!ctf.team_active[team])
+                continue;
+            if (piece_count > 0)
+            {
+                pieces[piece_count] = ":";
+                piece_colors[piece_count] = WHITE;
+                total_width += 6;
+                ++piece_count;
+            }
+            pieces[piece_count] = std::format("{}", ctf.captures[team]);
+            piece_colors[piece_count] =
+                static_cast<unsigned char>(team * 16 + 40);
+            total_width +=
+                static_cast<Sint32>(pieces[piece_count].size()) * 6;
+            ++piece_count;
+        }
+        Sint32 x = rm - 60 - total_width;
+        for (int i = 0; i < piece_count; ++i)
+        {
+            mytext.write_xy(x, tm + 28, pieces[i].c_str(), piece_colors[i],
+                            static_cast<short>(1));
+            x += static_cast<Sint32>(pieces[i].size()) * 6;
         }
     }
 

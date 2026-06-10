@@ -255,9 +255,11 @@ void CursesRenderer::draw_hud(ITerminal& term, const GameWorld& world,
     }
     term.put_str(top, left, clip(line0), name_color, Color::Default, true);
 
-    // --- Line 1: HP / MP / level / score. Only drawn when the layout actually
-    // reserved a second HUD row (see compute_layout in draw()); otherwise it
-    // would clobber the viewport on a 1-row-HUD terminal.
+    // --- Line 1: HP / MP / level / CTF status / special / score. Only drawn
+    // when the layout actually reserved a second HUD row (see compute_layout
+    // in draw()); otherwise it would clobber the viewport on a 1-row-HUD
+    // terminal. Fields are appended in priority order so an 80-column clip()
+    // eats Score and Sp before the CTF caps/FLAG/RESPAWN status.
     if (term.rows() >= kHudRows + 1) {
         std::string line1;
         if (followed && followed->stats()) {
@@ -270,15 +272,6 @@ void CursesRenderer::draw_hud(ITerminal& term, const GameWorld& world,
             }
             line1 += "  Lv " + std::to_string(static_cast<int>(st->level()));
         }
-        // Currently selected special (Tab/SwitchSpecial cycles it). Shown so the
-        // player can see what casting fire/special will do.
-        if (followed) {
-            const std::string special = current_special_name(followed);
-            if (!special.empty())
-                line1 += "  Sp:" + special;
-        }
-        const int team = std::clamp(static_cast<int>(world.my_team), 0, 3);
-        line1 += "  Score " + std::to_string(world.m_score[team]);
         if (world.ctf.active) {
             // Per-team capture counts (replicated CtfState; the mirror world
             // carries it in every snapshot). Active teams only, matching the
@@ -313,6 +306,15 @@ void CursesRenderer::draw_hud(ITerminal& term, const GameWorld& world,
                 }
             }
         }
+        // Currently selected special (Tab/SwitchSpecial cycles it). Shown so the
+        // player can see what casting fire/special will do.
+        if (followed) {
+            const std::string special = current_special_name(followed);
+            if (!special.empty())
+                line1 += "  Sp:" + special;
+        }
+        const int team = std::clamp(static_cast<int>(world.my_team), 0, 3);
+        line1 += "  Score " + std::to_string(world.m_score[team]);
         term.put_str(top + 1, left, clip(line1), Color::Default, Color::Default, false);
     }
 }

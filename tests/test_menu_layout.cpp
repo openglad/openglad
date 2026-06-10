@@ -177,6 +177,67 @@ TEST(MenuLayout, createmenu_buttons_no_overlap)
     check_nav_in_range(buttons, count, "createmenu");
 }
 
+// The CTF settings live on two grid-aligned 80x15 buttons in the otherwise
+// empty y=40 band of the team-build screen (above the VIEW/TRAIN/HIRE row),
+// wired into the keyboard nav graph only while the CTF campaign shows them.
+TEST(MenuLayout, createmenu_ctf_row_geometry_and_nav)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const std::string old_campaign = save.current_campaign;
+    save.current_campaign = "org.openglad.ctf";
+
+    button* buttons = picker_createmenu_buttons();
+    const int count = picker_createmenu_button_count();
+    ASSERT_GE(count, 13);
+
+    const button& teams = buttons[11];
+    const button& caps = buttons[12];
+    ASSERT_EQ("ctf_teams", teams.id);
+    ASSERT_EQ("ctf_caps", caps.id);
+    EXPECT_FALSE(teams.hidden);
+    EXPECT_FALSE(caps.hidden);
+
+    EXPECT_EQ(30, teams.x);
+    EXPECT_EQ(40, teams.y);
+    EXPECT_EQ(80, teams.sizex);
+    EXPECT_EQ(15, teams.sizey);
+    EXPECT_EQ(120, caps.x);
+    EXPECT_EQ(40, caps.y);
+    EXPECT_EQ(80, caps.sizex);
+    EXPECT_EQ(15, caps.sizey);
+
+    // Shortened labels respect the menu's classic 12-char/80px face budget.
+    EXPECT_LE(teams.label.size(), 12u) << teams.label;
+    EXPECT_LE(caps.label.size(), 12u) << caps.label;
+
+    // Down links into the VIEW/TRAIN/HIRE row, which links back up; the two
+    // settings hop between each other horizontally.
+    EXPECT_EQ(0, teams.nav.down);
+    EXPECT_EQ(12, teams.nav.right);
+    EXPECT_EQ(1, caps.nav.down);
+    EXPECT_EQ(11, caps.nav.left);
+    EXPECT_EQ(11, buttons[0].nav.up);
+    EXPECT_EQ(12, buttons[1].nav.up);
+    EXPECT_EQ(12, buttons[2].nav.up);
+
+    check_no_overlaps(buttons, count, "createmenu_ctf");
+    check_bounds(buttons, count, "createmenu_ctf");
+    check_nav_in_range(buttons, count, "createmenu_ctf");
+
+    // Classic campaigns keep the static table's links: no dangling up-links
+    // into the hidden CTF row.
+    save.current_campaign = "org.openglad.gladiator";
+    button* classic = picker_createmenu_buttons();
+    EXPECT_TRUE(classic[11].hidden);
+    EXPECT_TRUE(classic[12].hidden);
+    EXPECT_EQ(-1, classic[0].nav.up);
+    EXPECT_EQ(-1, classic[1].nav.up);
+    EXPECT_EQ(-1, classic[2].nav.up);
+
+    save.current_campaign = old_campaign;
+    (void)picker_createmenu_buttons();
+}
+
 
 TEST(MenuLayout, control_options_buttons_no_overlap)
 {

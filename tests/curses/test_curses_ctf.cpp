@@ -227,6 +227,27 @@ TEST(CursesCtf, hud_shows_caps_line_with_flag_and_respawn_markers)
     EXPECT_NE(row1.find("FLAG"), std::string::npos)
         << "carrier marker expected: " << row1;
 
+    // Priority order: the CTF fields ride right behind HP/MP/Lv, ahead of
+    // the special and score, so narrow terminals clip the low-value tail.
+    ASSERT_NE(row1.find("Score"), std::string::npos) << row1;
+    EXPECT_LT(row1.find("Caps"), row1.find("Score")) << row1;
+    EXPECT_LT(row1.find("FLAG"), row1.find("Score")) << row1;
+    if (row1.find("Sp:") != std::string::npos)
+    {
+        EXPECT_LT(row1.find("Caps"), row1.find("Sp:")) << row1;
+        EXPECT_LT(row1.find("FLAG"), row1.find("Sp:")) << row1;
+    }
+
+    // A terminal too narrow for the whole line keeps Caps/FLAG and loses
+    // Score (the regression: clipping used to eat exactly the CTF tail).
+    const int narrow_cols = static_cast<int>(row1.find("FLAG")) + 5;
+    HeadlessTerminal narrow(21, narrow_cols);
+    renderer.draw(narrow, hw.world(), id);
+    const std::string narrow_row1 = narrow.text_row(1);
+    EXPECT_NE(narrow_row1.find("Caps 1:2"), std::string::npos) << narrow_row1;
+    EXPECT_NE(narrow_row1.find("FLAG"), std::string::npos) << narrow_row1;
+    EXPECT_EQ(narrow_row1.find("Score"), std::string::npos) << narrow_row1;
+
     // The followed avatar dies into the respawn queue.
     ctf.flags[1].state = og::sim::CtfFlagState::AtHome;
     ctf.flags[1].carrier_entity_id = 0;

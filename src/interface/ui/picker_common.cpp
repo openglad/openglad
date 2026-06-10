@@ -473,15 +473,15 @@ std::string format_allied_mode_label(const SaveData& save)
 std::string format_ctf_teams_label(const SaveData& save)
 {
     if (save.ctf_team_count <= 0)
-        return "CTF Teams: Auto";
-    return std::format("CTF Teams: {}", save.ctf_team_count);
+        return "Teams: Auto";
+    return std::format("Teams: {}", save.ctf_team_count);
 }
 
 std::string format_ctf_caps_label(const SaveData& save)
 {
     if (save.ctf_capture_limit <= 0)
-        return "Capture Limit: Map default";
-    return std::format("Capture Limit: {}", save.ctf_capture_limit);
+        return "Limit: Map";
+    return std::format("Limit: {}", save.ctf_capture_limit);
 }
 
 // --- Team family extraction ---

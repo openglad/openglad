@@ -958,13 +958,21 @@ TEST(PickerCommon, cycle_ctf_capture_limit_sequence)
 TEST(PickerCommon, format_ctf_labels)
 {
     SaveData save;
-    ASSERT_EQ("CTF Teams: Auto", og::ui::format_ctf_teams_label(save));
+    ASSERT_EQ("Teams: Auto", og::ui::format_ctf_teams_label(save));
     save.ctf_team_count = 4;
-    ASSERT_EQ("CTF Teams: 4", og::ui::format_ctf_teams_label(save));
+    ASSERT_EQ("Teams: 4", og::ui::format_ctf_teams_label(save));
 
-    ASSERT_EQ("Capture Limit: Map default", og::ui::format_ctf_caps_label(save));
+    ASSERT_EQ("Limit: Map", og::ui::format_ctf_caps_label(save));
     save.ctf_capture_limit = 5;
-    ASSERT_EQ("Capture Limit: 5", og::ui::format_ctf_caps_label(save));
+    ASSERT_EQ("Limit: 5", og::ui::format_ctf_caps_label(save));
+
+    // The SDL team-build buttons are 80px faces drawing 6px/char centered
+    // text with no clipping: every label must stay inside the classic
+    // 12-char budget (longest is "Limit: 10" / "Teams: Auto").
+    save.ctf_team_count = 0;
+    save.ctf_capture_limit = 10;
+    ASSERT_LE(og::ui::format_ctf_teams_label(save).size(), 12u);
+    ASSERT_LE(og::ui::format_ctf_caps_label(save).size(), 12u);
 }
 
 TEST(PickerCommon, is_ctf_campaign_matches_id_exactly)

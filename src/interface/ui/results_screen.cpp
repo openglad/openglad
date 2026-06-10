@@ -341,12 +341,21 @@ std::string format_ctf_winner_banner(int winner_team)
     return std::format("TEAM {} WINS THE MATCH", winner_team + 1);
 }
 
-std::string format_ctf_captures_line(int team, int captures, int capture_limit)
+std::vector<CtfCapsSegment> format_ctf_caps_segments(const og::sim::CtfState& ctf)
 {
-    if (capture_limit > 0)
-        return std::format("TEAM {}: {} / {} CAPTURES", team + 1, captures,
-                           capture_limit);
-    return std::format("TEAM {}: {} CAPTURES", team + 1, captures);
+    std::vector<CtfCapsSegment> segments;
+    segments.push_back({"CAPS ", -1});
+    bool first = true;
+    for (int team = 0; team < 4; ++team)
+    {
+        if (!ctf.team_active[team])
+            continue;
+        if (!first)
+            segments.push_back({":", -1});
+        first = false;
+        segments.push_back({std::format("{}", ctf.captures[team]), team});
+    }
+    return segments;
 }
 
 int get_num_foes(LevelRuntimeData& level)
@@ -617,8 +626,9 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
             int x = area.x + 12;
 	            y = static_cast<int>(static_cast<float>(area.y + 30) - scroll);
 
-            // CTF match summary: winner banner + per-team capture lines, each
-            // in its team's palette ramp.
+            // CTF match summary: winner banner + a single capture line
+            // ("CAPS 3:5:1:0", counts in their team ramps), at a tight 8px
+            // pitch so the classic gold/foes block stays on the first screen.
             const GameWorld& ctf_world =
                 og::runtime::current_session->myscreen_->world();
             if ((ctf_world.type & GameWorld::TYPE_CTF) && ctf_world.ctf.active)
@@ -632,25 +642,26 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
                         "%s",
                         format_ctf_winner_banner(ctf_world.ctf.winner_team).c_str());
                     END_IF_IN_SCROLL_AREA;
-                    y += 11;
+                    y += 8;
                 }
-                for (int team = 0; team < 4; team++)
+                BEGIN_IF_IN_SCROLL_AREA;
+                const std::vector<CtfCapsSegment> caps_segments =
+                    format_ctf_caps_segments(ctf_world.ctf);
+                Sint32 caps_width = 0;
+                for (const CtfCapsSegment& segment : caps_segments)
+                    caps_width += static_cast<Sint32>(segment.text.size()) * 6;
+                Sint32 caps_x = area.x + area.w/2 - caps_width/2;
+                for (const CtfCapsSegment& segment : caps_segments)
                 {
-                    if (!ctf_world.ctf.team_active[team])
-                        continue;
-                    BEGIN_IF_IN_SCROLL_AREA;
-                    mytext.write_xy_center_shadow(
-                        area.x + area.w/2, y,
-                        static_cast<unsigned char>(team * 16 + 40),
-                        "%s",
-                        format_ctf_captures_line(
-                            team,
-                            ctf_world.ctf.captures[team],
-                            ctf_world.ctf.capture_limit).c_str());
-                    END_IF_IN_SCROLL_AREA;
-                    y += 11;
+                    const unsigned char color = (segment.team < 0)
+                        ? PURE_WHITE
+                        : static_cast<unsigned char>(segment.team * 16 + 40);
+                    mytext.write_xy_shadow(caps_x, y, color, "%s",
+                                           segment.text.c_str());
+                    caps_x += static_cast<Sint32>(segment.text.size()) * 6;
                 }
-                y += 11;
+                END_IF_IN_SCROLL_AREA;
+                y += 8;
             }
 
             if(ending == 0)

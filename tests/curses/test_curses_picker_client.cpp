@@ -315,8 +315,8 @@ TEST(CursesPickerClient, ctf_menu_labels_format_from_save)
     f.t().push_special(KeyCode::Escape);
     (void)f.client.present_menu(PickerMenuId::TeamBuild);
     const std::string dump = f.t().dump();
-    EXPECT_NE(dump.find("CTF Teams: 4"), std::string::npos) << dump;
-    EXPECT_NE(dump.find("Capture Limit: Map default"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("Teams: 4"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("Limit: Map"), std::string::npos) << dump;
 }
 
 // --- view roster ---------------------------------------------------------

@@ -1101,8 +1101,9 @@ static const button k_createmenu_buttons[] =
 
         // CTF match settings: appended so positional indices [0..10] above stay
         // stable; shown only for the CTF campaign (see picker_createmenu_buttons).
-        button("ctf_teams", "CTF Teams: 2", KEYSTATE_UNKNOWN, 30, 118, 80, 12, button_action_id(ButtonAction::CycleCtfTeamCount), -1, MenuNav{.up=3, .down=6, .right=12}, true),
-        button("ctf_caps", "Capture Limit: Map default", KEYSTATE_UNKNOWN, 120, 118, 170, 12, button_action_id(ButtonAction::CycleCtfCaptureLimit), -1, MenuNav{.up=4, .down=7, .left=11}, true),
+        // They occupy the otherwise empty y=40 band on the menu's column grid.
+        button("ctf_teams", "Teams: 2", KEYSTATE_UNKNOWN, 30, 40, 80, 15, button_action_id(ButtonAction::CycleCtfTeamCount), -1, MenuNav{.down=0, .right=12}, true),
+        button("ctf_caps", "Limit: Map", KEYSTATE_UNKNOWN, 120, 40, 80, 15, button_action_id(ButtonAction::CycleCtfCaptureLimit), -1, MenuNav{.down=1, .left=11}, true),
     };
 
 // Positional indices of the CTF settings buttons appended to
@@ -1247,12 +1248,9 @@ button* picker_createmenu_buttons()
     // links route around it; campaign_picker.cpp uses the same pattern).
     if (show_ctf)
     {
-        buttons[3].nav.down = kCreateMenuCtfTeamsIndex;
-        buttons[4].nav.down = kCreateMenuCtfCapsIndex;
-        buttons[5].nav.down = kCreateMenuCtfCapsIndex;
-        buttons[6].nav.up = kCreateMenuCtfTeamsIndex;
-        buttons[7].nav.up = kCreateMenuCtfCapsIndex;
-        buttons[8].nav.up = kCreateMenuCtfCapsIndex;
+        buttons[0].nav.up = kCreateMenuCtfTeamsIndex;
+        buttons[1].nav.up = kCreateMenuCtfCapsIndex;
+        buttons[2].nav.up = kCreateMenuCtfCapsIndex;
     }
 
     return pks().createmenu_buttons.data();

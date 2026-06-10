@@ -274,7 +274,7 @@ TEST(CtfCore, lazy_init_activates_two_team_map)
     ASSERT_EQ(og::sim::kCtfDefaultCaptureLimit, ctf.capture_limit);
     ASSERT_EQ(1, ctf.anchor_count[0]);
     ASSERT_EQ(1, ctf.anchor_count[1]);
-    ASSERT_TRUE(has_notification(fx.events, "CAPTURE THE FLAG! FIRST TO 3"));
+    ASSERT_TRUE(has_notification(fx.events, "CAPTURE THE FLAG! TO 3"));
 }
 
 TEST(CtfCore, init_strips_teams_beyond_requested_count)
@@ -427,6 +427,79 @@ TEST(CtfCore, own_team_touch_returns_dropped_flag)
     ASSERT_EQ(800, flag1->ypos());
     ASSERT_EQ(0, flag1->ignore());
     ASSERT_TRUE(has_notification(fx.events, "GREEN FLAG RETURNED!"));
+}
+
+// A flag announces TAKEN only when it leaves home; regrabs of the dropped
+// flag in a melee stay silent (no notification ping-pong over one flag).
+TEST(CtfCore, regrab_of_dropped_flag_emits_no_second_taken)
+{
+    CtfWorld fx;
+    fx.spawn_flag(0, 96, 96);
+    walker* flag1 = fx.spawn_flag(1, 544, 800);
+    walker* runner = fx.spawn_living(FAMILY_SOLDIER, 0, 200, 200);
+    walker* backup = fx.spawn_living(FAMILY_SOLDIER, 0, 232, 200);
+    fx.spawn_living(FAMILY_SOLDIER, 1, 400, 700);
+    fx.world().ctf_requested_respawn_ticks = 5000;
+    fx.tick();
+    ASSERT_TRUE(fx.world().ctf.active);
+
+    // Home -> Carried announces.
+    ASSERT_TRUE(flag1->eat_me(runner));
+    ASSERT_EQ(1, count_notifications(fx.events, "GREEN FLAG TAKEN!"));
+
+    // The carrier dies and a second enemy regrabs the dropped flag: the
+    // pickup works but stays silent.
+    runner->set_dead(1);
+    fx.tick();
+    ASSERT_EQ(og::sim::CtfFlagState::Dropped, fx.world().ctf.flags[1].state);
+    ASSERT_TRUE(flag1->eat_me(backup));
+    ASSERT_EQ(og::sim::CtfFlagState::Carried, fx.world().ctf.flags[1].state);
+    ASSERT_EQ(backup->entity_id(), fx.world().ctf.flags[1].carrier_entity_id);
+    ASSERT_EQ(1, count_notifications(fx.events, "GREEN FLAG TAKEN!"))
+        << "a regrab of a dropped flag must not re-announce TAKEN";
+}
+
+// Every CTF announcement stays within a 25-char budget (<=150px of 6px
+// glyphs, inside even the 152px 2-player panes), including the worst case:
+// YELLOW, the longest team color name.
+TEST(CtfCore, notifications_fit_25_char_budget)
+{
+    CtfWorld fx;
+    fx.spawn_flag(0, 96, 96);
+    fx.spawn_flag(1, 544, 96);
+    fx.spawn_flag(2, 96, 800);
+    walker* flag3 = fx.spawn_flag(3, 544, 800);
+    fx.spawn_point(320, 320);
+    walker* runner = fx.spawn_living(FAMILY_SOLDIER, 0, 200, 200);
+    fx.spawn_living(FAMILY_SOLDIER, 1, 544, 60);
+    fx.spawn_living(FAMILY_SOLDIER, 2, 60, 800);
+    fx.spawn_living(FAMILY_SOLDIER, 3, 352, 320);
+    fx.world().ctf_requested_respawn_ticks = 5000;
+    fx.tick();
+    ASSERT_TRUE(fx.world().ctf.active);
+    ASSERT_TRUE(has_notification(fx.events, "CAPTURE THE FLAG! TO 3"));
+    fx.world().ctf.flag_return_ticks = 4;
+
+    // Team 3 holds the waypoint alone until it flips.
+    fx.tick(og::sim::kCtfCpCaptureTicks + 1);
+    ASSERT_TRUE(has_notification(fx.events, "YELLOW TAKES WAYPOINT!"));
+
+    // Take, drop, and auto-return team 3's flag.
+    ASSERT_TRUE(flag3->eat_me(runner));
+    ASSERT_TRUE(has_notification(fx.events, "YELLOW FLAG TAKEN!"));
+    runner->set_dead(1);
+    fx.tick();
+    ASSERT_TRUE(has_notification(fx.events, "YELLOW FLAG DROPPED!"));
+    fx.tick(5);
+    ASSERT_TRUE(has_notification(fx.events, "YELLOW FLAG RETURNED!"));
+
+    for (const auto& ev : fx.events.events())
+    {
+        if (ev.kind == og::sim::EventKind::Notification)
+        {
+            EXPECT_LE(ev.text.size(), 25u) << "over budget: " << ev.text;
+        }
+    }
 }
 
 TEST(CtfCore, capture_requires_own_flag_home_and_awards_score)
@@ -595,7 +668,7 @@ TEST(CtfCore, control_point_capture_and_contender_reset)
     ASSERT_EQ(1, point->team_num());
     ASSERT_EQ(og::sim::kCtfCpCaptureScore, fx.world().m_score[1]);
     ASSERT_TRUE(has_score_change(fx.events, 1, og::sim::kCtfCpCaptureScore));
-    ASSERT_TRUE(has_notification(fx.events, "TAKES THE WAYPOINT"));
+    ASSERT_TRUE(has_notification(fx.events, "GREEN TAKES WAYPOINT!"));
 }
 
 TEST(CtfCore, control_point_pulse_is_localized_to_owner_team)
