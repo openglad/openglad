@@ -168,6 +168,8 @@ Sint32 set_difficulty();
 Sint32 change_teamnum(Sint32 arg);
 Sint32 change_hire_teamnum(Sint32 arg);
 Sint32 change_allied();
+Sint32 change_ctf_teams();
+Sint32 change_ctf_caps();
 Sint32 level_editor();
 Sint32 main_options();
 Sint32 main_controls_options();
@@ -240,6 +242,8 @@ enum class ButtonAction : Sint32
     EditNetworkRoomCode = 57,
     SubmitNetworkHost = 58,
     SubmitNetworkJoin = 59,
+    CycleCtfTeamCount = 60,
+    CycleCtfCaptureLimit = 61,
 };
 
 inline constexpr Sint32 button_action_id(ButtonAction action)

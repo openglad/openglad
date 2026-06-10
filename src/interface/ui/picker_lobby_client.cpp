@@ -412,6 +412,9 @@ private:
         settings.difficulty =
             static_cast<std::int16_t>(og::runtime::current_session->current_difficulty_);
         settings.allied_mode = save.allied_mode;
+        settings.ctf_team_count = save.ctf_team_count;
+        settings.ctf_capture_limit = save.ctf_capture_limit;
+        settings.ctf_respawn_ticks = save.ctf_respawn_ticks;
 
         og::sim::LobbyMessage message;
         message.payload = og::sim::LobbySettingsChangeMessage{
@@ -512,6 +515,9 @@ private:
             ? state_->settings.scenario_id
             : 1;
         save.allied_mode = state_->settings.allied_mode;
+        save.ctf_team_count = state_->settings.ctf_team_count;
+        save.ctf_capture_limit = state_->settings.ctf_capture_limit;
+        save.ctf_respawn_ticks = state_->settings.ctf_respawn_ticks;
         save.numplayers = static_cast<unsigned char>(
             spectator_mode_
                 ? 0

@@ -336,6 +336,19 @@ if(area_inner.y < y && y + 10 < area_inner.y + area_inner.h) {
 #define END_IF_IN_SCROLL_AREA \
 }
 
+std::string format_ctf_winner_banner(int winner_team)
+{
+    return std::format("TEAM {} WINS THE MATCH", winner_team + 1);
+}
+
+std::string format_ctf_captures_line(int team, int captures, int capture_limit)
+{
+    if (capture_limit > 0)
+        return std::format("TEAM {}: {} / {} CAPTURES", team + 1, captures,
+                           capture_limit);
+    return std::format("TEAM {}: {} CAPTURES", team + 1, captures);
+}
+
 int get_num_foes(LevelRuntimeData& level)
 {
     int result = 0;
@@ -603,7 +616,43 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
             // Overview
             int x = area.x + 12;
 	            y = static_cast<int>(static_cast<float>(area.y + 30) - scroll);
-            
+
+            // CTF match summary: winner banner + per-team capture lines, each
+            // in its team's palette ramp.
+            const GameWorld& ctf_world =
+                og::runtime::current_session->myscreen_->world();
+            if ((ctf_world.type & GameWorld::TYPE_CTF) && ctf_world.ctf.active)
+            {
+                if (ctf_world.ctf.winner_team >= 0)
+                {
+                    BEGIN_IF_IN_SCROLL_AREA;
+                    mytext.write_xy_center_shadow(
+                        area.x + area.w/2, y,
+                        static_cast<unsigned char>(ctf_world.ctf.winner_team * 16 + 40),
+                        "%s",
+                        format_ctf_winner_banner(ctf_world.ctf.winner_team).c_str());
+                    END_IF_IN_SCROLL_AREA;
+                    y += 11;
+                }
+                for (int team = 0; team < 4; team++)
+                {
+                    if (!ctf_world.ctf.team_active[team])
+                        continue;
+                    BEGIN_IF_IN_SCROLL_AREA;
+                    mytext.write_xy_center_shadow(
+                        area.x + area.w/2, y,
+                        static_cast<unsigned char>(team * 16 + 40),
+                        "%s",
+                        format_ctf_captures_line(
+                            team,
+                            ctf_world.ctf.captures[team],
+                            ctf_world.ctf.capture_limit).c_str());
+                    END_IF_IN_SCROLL_AREA;
+                    y += 11;
+                }
+                y += 11;
+            }
+
             if(ending == 0)
             {
                 // TODO: Show total possible gold collected?  How is this factored into allscore?

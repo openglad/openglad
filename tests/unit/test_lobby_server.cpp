@@ -319,6 +319,64 @@ TEST(LobbyServer, raw_join_flow_broadcasts_state_and_populates_save_data)
     EXPECT_EQ(1, equivalent.team_list[2].character.teamnum);
 }
 
+TEST(LobbyServer, sanitize_clamps_ctf_settings_and_equivalent_carries_them)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host", 0,
+                          {make_slot(0u, 100, "Soldier", FAMILY_SOLDIER)}));
+    server.poll_incoming_messages();
+
+    // Out-of-range CTF settings from the host get clamped, not echoed.
+    og::sim::LobbySettings wild;
+    wild.campaign_id = "org.openglad.ctf";
+    wild.scenario_id = 500;
+    wild.difficulty = 1;
+    wild.allied_mode = 1;
+    wild.ctf_team_count = 9;       // -> 4
+    wild.ctf_capture_limit = 99;   // -> 50
+    wild.ctf_respawn_ticks = 5;    // nonzero -> raised to 12
+    og::sim::LobbyMessage wild_message;
+    wild_message.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 0u,
+        .settings = wild,
+    };
+    transport.queue_lobby_message(11u, wild_message);
+    server.poll_incoming_messages();
+
+    og::sim::LobbyState state = server.state();
+    EXPECT_EQ(4, state.settings.ctf_team_count);
+    EXPECT_EQ(50, state.settings.ctf_capture_limit);
+    EXPECT_EQ(12, state.settings.ctf_respawn_ticks);
+
+    // In-range values (and the 0 = map/default sentinels) pass through.
+    og::sim::LobbySettings sane = wild;
+    sane.ctf_team_count = 3;
+    sane.ctf_capture_limit = 0;
+    sane.ctf_respawn_ticks = 0;
+    og::sim::LobbyMessage sane_message;
+    sane_message.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 0u,
+        .settings = sane,
+    };
+    transport.queue_lobby_message(11u, sane_message);
+    server.poll_incoming_messages();
+
+    state = server.state();
+    EXPECT_EQ(3, state.settings.ctf_team_count);
+    EXPECT_EQ(0, state.settings.ctf_capture_limit);
+    EXPECT_EQ(0, state.settings.ctf_respawn_ticks);
+
+    const og::sim::LobbySaveDataEquivalent equivalent =
+        server.build_save_data_equivalent();
+    EXPECT_EQ(3, equivalent.ctf_team_count);
+    EXPECT_EQ(0, equivalent.ctf_capture_limit);
+    EXPECT_EQ(0, equivalent.ctf_respawn_ticks);
+}
+
 TEST(LobbyServer, build_save_data_equivalent_tags_owner_and_origin_slot)
 {
     MockLobbyTransport transport;

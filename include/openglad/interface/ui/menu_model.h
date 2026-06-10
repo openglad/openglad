@@ -43,6 +43,8 @@ enum class PickerMenuCommand : std::int32_t
     SetCampaign,
     StartGame,
     Back,
+    CycleCtfTeamCount,
+    CycleCtfCaptureLimit,
 };
 
 struct PickerMenuItem

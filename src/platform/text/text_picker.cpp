@@ -305,6 +305,10 @@ private:
             return std::format("{} ({})", item.label, config_.campaign);
         if (item.command == PickerMenuCommand::ToggleAlliedMode)
             return format_allied_mode_label(save_data_);
+        if (item.command == PickerMenuCommand::CycleCtfTeamCount)
+            return format_ctf_teams_label(save_data_);
+        if (item.command == PickerMenuCommand::CycleCtfCaptureLimit)
+            return format_ctf_caps_label(save_data_);
         return std::string(item.label);
     }
 
@@ -367,6 +371,22 @@ private:
             break;
         case PickerMenuCommand::SetCampaign:
             (void)show_campaign_select();
+            break;
+        case PickerMenuCommand::CycleCtfTeamCount:
+            if (!is_ctf_campaign(save_data_)) {
+                std::printf("CTF settings apply to CTF maps only.\n");
+                break;
+            }
+            cycle_ctf_team_count(save_data_);
+            std::printf("%s\n", format_ctf_teams_label(save_data_).c_str());
+            break;
+        case PickerMenuCommand::CycleCtfCaptureLimit:
+            if (!is_ctf_campaign(save_data_)) {
+                std::printf("CTF settings apply to CTF maps only.\n");
+                break;
+            }
+            cycle_ctf_capture_limit(save_data_);
+            std::printf("%s\n", format_ctf_caps_label(save_data_).c_str());
             break;
         default:
             break;

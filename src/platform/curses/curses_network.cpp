@@ -28,6 +28,7 @@
 #include <openglad/platform/curses/terminal.h>
 
 #include <openglad/core/constants.h>
+#include <openglad/core/ctf_constants.h>
 #include <openglad/gameplay/game_client.h>
 #include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/game_world.h>
@@ -217,6 +218,9 @@ og::sim::LobbyMessage make_settings_message(const SaveData& save, int difficulty
     settings.scenario_id = save.scen_num;
     settings.difficulty = static_cast<std::int16_t>(difficulty);
     settings.allied_mode = save.allied_mode;
+    settings.ctf_team_count = save.ctf_team_count;
+    settings.ctf_capture_limit = save.ctf_capture_limit;
+    settings.ctf_respawn_ticks = save.ctf_respawn_ticks;
 
     og::sim::LobbyMessage message;
     message.payload = og::sim::LobbySettingsChangeMessage{
@@ -395,6 +399,55 @@ public:
     og::sim::GameServer& server() { return *server_; }
     og::sim::GameClient& client() { return *client_; }
     GameWorld& server_world_ref() { return server_world(); }
+
+#ifdef TESTING
+    // Turn the loaded classic level into a CTF map on the authoritative server
+    // world: flags + respawn anchors for teams 0/1 and the TYPE_CTF bit. Runs
+    // under the server context so the obmap writes land in the server's grid;
+    // the host's own mirror gets the (authored, non-replicated) type bit too.
+    bool inject_ctf_scenario_for_testing(short requested_respawn_ticks)
+    {
+        GameplayContext* const saved = current_game;
+        current_game = &server_ctx_;
+        GameWorld& world = server_world();
+        world.type |= GameWorld::TYPE_CTF;
+        if (requested_respawn_ticks > 0)
+            world.ctf_requested_respawn_ticks = requested_respawn_ticks;
+
+        bool ok = true;
+        const auto spawn_flag = [&world, &ok](int team, int x, int y) {
+            walker* const flag = world.add_fx_ob(Order::Treasure, og::FAMILY_FLAG);
+            if (flag == nullptr) {
+                ok = false;
+                return;
+            }
+            flag->setxy(static_cast<short>(x), static_cast<short>(y));
+            flag->set_team_num(static_cast<unsigned char>(team));
+        };
+        const auto spawn_anchor = [&world, &ok](int team, int x, int y) {
+            walker* const marker = world.add_ob(Order::Special, FAMILY_RESERVED_TEAM);
+            if (marker == nullptr) {
+                ok = false;
+                return;
+            }
+            marker->setxy(static_cast<short>(x), static_cast<short>(y));
+            marker->set_team_num(static_cast<unsigned char>(team));
+        };
+
+        const int far_x = std::max(160, static_cast<int>(world.pixmaxx) - 48);
+        const int far_y = std::max(160, static_cast<int>(world.pixmaxy) - 48);
+        spawn_flag(0, 48, 48);
+        spawn_flag(1, far_x, far_y);
+        spawn_anchor(0, 80, 48);
+        spawn_anchor(0, 48, 80);
+        spawn_anchor(1, far_x - 32, far_y);
+        spawn_anchor(1, far_x, far_y - 32);
+
+        client_level_->world().type |= GameWorld::TYPE_CTF;
+        current_game = saved;
+        return ok;
+    }
+#endif
 
 private:
     HostCursesSession() = default;
@@ -1090,6 +1143,9 @@ private:
             : state_->settings.campaign_id;
         eq.scen_num = state_->settings.scenario_id > 0 ? state_->settings.scenario_id : 1;
         eq.allied_mode = state_->settings.allied_mode;
+        eq.ctf_team_count = state_->settings.ctf_team_count;
+        eq.ctf_capture_limit = state_->settings.ctf_capture_limit;
+        eq.ctf_respawn_ticks = state_->settings.ctf_respawn_ticks;
         eq.numplayers = static_cast<std::uint8_t>(
             std::min<std::size_t>(state_->players.size(), MAX_PLAYERS));
 
@@ -1463,5 +1519,16 @@ std::unique_ptr<CursesLobby> make_join_lobby_over_transport_for_testing(
     lobby->init_join_over_transport(std::move(transport), server_peer_id);
     return lobby;
 }
+
+#ifdef TESTING
+bool curses_network_testing_inject_ctf(CursesGameSession& session,
+                                       short requested_respawn_ticks)
+{
+    auto* const host = dynamic_cast<HostCursesSession*>(&session);
+    if (host == nullptr)
+        return false;
+    return host->inject_ctf_scenario_for_testing(requested_respawn_ticks);
+}
+#endif
 
 } // namespace og::curses

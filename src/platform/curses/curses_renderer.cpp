@@ -279,6 +279,34 @@ void CursesRenderer::draw_hud(ITerminal& term, const GameWorld& world,
         }
         const int team = std::clamp(static_cast<int>(world.my_team), 0, 3);
         line1 += "  Score " + std::to_string(world.m_score[team]);
+        if (world.ctf.active) {
+            // Per-team capture counts (replicated CtfState; the mirror world
+            // carries it in every snapshot).
+            line1 += "  Caps ";
+            for (int t = 0; t < 4; ++t) {
+                if (t > 0)
+                    line1 += ":";
+                line1 += std::to_string(world.ctf.captures[t]);
+            }
+            if (followed_id != 0) {
+                for (int t = 0; t < 4; ++t) {
+                    const auto& flag = world.ctf.flags[t];
+                    if (flag.state == og::sim::CtfFlagState::Carried &&
+                        flag.carrier_entity_id == followed_id) {
+                        line1 += "  FLAG";
+                        break;
+                    }
+                }
+                for (const auto& entry : world.ctf.respawn_queue) {
+                    if (entry.kind == 0 &&
+                        entry.walker_entity_id == followed_id) {
+                        line1 += "  RESPAWN " + std::to_string(
+                            (static_cast<int>(entry.ticks_left) + 11) / 12);
+                        break;
+                    }
+                }
+            }
+        }
         term.put_str(top + 1, left, clip(line1), Color::Default, Color::Default, false);
     }
 }

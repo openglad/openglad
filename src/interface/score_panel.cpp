@@ -109,6 +109,82 @@ void new_draw_value_bar(Sint32 left, Sint32 top,
 #define OVERSCAN_PADDING 0
 #endif
 
+// Flag-state glyph for the per-team CTF readout: that team's flag is at
+// (H)ome, (T)aken by an enemy carrier, or (D)ropped in the field.
+static char ctf_flag_state_glyph(const og::sim::CtfFlag& flag)
+{
+    switch (flag.state)
+    {
+        case og::sim::CtfFlagState::Carried: return 'T';
+        case og::sim::CtfFlagState::Dropped: return 'D';
+        case og::sim::CtfFlagState::AtHome:
+        default: return 'H';
+    }
+}
+
+// Per-viewport CTF overlay. Reads only replicated world state (CtfState rides
+// the snapshot), so it works identically on the server and network mirrors.
+static void draw_ctf_panel(screen* s, walker* control, Sint32 lm, Sint32 tm)
+{
+    const og::sim::CtfState& ctf = s->world_.ctf;
+    text& mytext = s->text_normal;
+
+    // Capture counts, one "<caps><flag-glyph>" segment per active team in its
+    // team ramp color. Suppressed in small (>2-way) split-screen panes.
+    if (s->numviews <= 2)
+    {
+        Sint32 x = lm + 70;
+        for (int team = 0; team < 4; ++team)
+        {
+            if (!ctf.team_active[team])
+                continue;
+            const std::string segment = std::format(
+                "{}{}",
+                ctf.captures[team],
+                ctf_flag_state_glyph(ctf.flags[team]));
+            mytext.write_xy(x, tm + 4, segment.c_str(),
+                            static_cast<unsigned char>(team * 16 + 40),
+                            static_cast<short>(1));
+            x += static_cast<Sint32>(segment.size()) * 6 + 6;
+        }
+    }
+
+    if (control == nullptr)
+        return;
+
+    if (!control->dead())
+    {
+        // The viewport's control carries an enemy flag.
+        for (int team = 0; team < 4; ++team)
+        {
+            const og::sim::CtfFlag& flag = ctf.flags[team];
+            if (flag.state == og::sim::CtfFlagState::Carried &&
+                flag.carrier_entity_id == control->entity_id())
+            {
+                mytext.write_xy(lm + 2, tm + 28, "FLAG!",
+                                static_cast<unsigned char>(team * 16 + 40),
+                                static_cast<short>(1));
+                break;
+            }
+        }
+        return;
+    }
+
+    // Dead control with a pending revive entry: countdown in whole seconds
+    // (the sim runs at 12 ticks per second).
+    for (const og::sim::CtfRespawnEntry& entry : ctf.respawn_queue)
+    {
+        if (entry.kind != 0 || entry.walker_entity_id != control->entity_id())
+            continue;
+        const int seconds = (static_cast<int>(entry.ticks_left) + 11) / 12;
+        const std::string message = std::format("RESPAWN IN {}", seconds);
+        mytext.write_xy(lm + 4, tm + 12, message.c_str(),
+                        static_cast<unsigned char>(YELLOW),
+                        static_cast<short>(1));
+        break;
+    }
+}
+
 short new_score_panel(screen* s, short /*do_it*/)
 {
 #define L_D(x) x*8
@@ -149,6 +225,9 @@ short new_score_panel(screen* s, short /*do_it*/)
         tm = s->viewob[players]->yloc + OVERSCAN_PADDING;
         rm = s->viewob[players]->endx - OVERSCAN_PADDING;
         bm = s->viewob[players]->endy - OVERSCAN_PADDING;
+
+        if ((s->world_.type & GameWorld::TYPE_CTF) && s->world_.ctf.active)
+            draw_ctf_panel(s, control, lm, tm);
         // Draw the HUD whenever this viewport's control walker is a live,
         // human-claimed walker. We must NOT compare control->user() against the
         // local viewport index: that only holds for local split-screen (where

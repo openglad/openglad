@@ -416,6 +416,33 @@ bool is_allied_mode(const SaveData& save)
     return save.allied_mode != 0;
 }
 
+// --- CTF match settings ---
+
+void cycle_ctf_team_count(SaveData& save)
+{
+    save.ctf_team_count =
+        (save.ctf_team_count >= 2 && save.ctf_team_count < 4)
+            ? static_cast<short>(save.ctf_team_count + 1)
+            : static_cast<short>(2);
+}
+
+void cycle_ctf_capture_limit(SaveData& save)
+{
+    switch (save.ctf_capture_limit)
+    {
+        case 0: save.ctf_capture_limit = 1; break;
+        case 1: save.ctf_capture_limit = 3; break;
+        case 3: save.ctf_capture_limit = 5; break;
+        case 5: save.ctf_capture_limit = 10; break;
+        default: save.ctf_capture_limit = 0; break;
+    }
+}
+
+bool is_ctf_campaign(const SaveData& save)
+{
+    return save.current_campaign == "org.openglad.ctf";
+}
+
 // --- Player count ---
 
 void set_player_count(SaveData& save, int count)
@@ -438,6 +465,18 @@ std::string format_difficulty_label(int difficulty)
 std::string format_allied_mode_label(const SaveData& save)
 {
     return is_allied_mode(save) ? "PVP: Ally" : "PVP: Enemy";
+}
+
+std::string format_ctf_teams_label(const SaveData& save)
+{
+    return std::format("CTF Teams: {}", save.ctf_team_count);
+}
+
+std::string format_ctf_caps_label(const SaveData& save)
+{
+    if (save.ctf_capture_limit <= 0)
+        return "Capture Limit: Map default";
+    return std::format("Capture Limit: {}", save.ctf_capture_limit);
 }
 
 // --- Team family extraction ---

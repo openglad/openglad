@@ -289,6 +289,10 @@ std::string menu_item_label(const PickerMenuItem& item, const TextPickerConfig& 
         return std::format("{} ({})", item.label, config.campaign);
     if (item.command == PickerMenuCommand::ToggleAlliedMode)
         return og::ui::format_allied_mode_label(save);
+    if (item.command == PickerMenuCommand::CycleCtfTeamCount)
+        return og::ui::format_ctf_teams_label(save);
+    if (item.command == PickerMenuCommand::CycleCtfCaptureLimit)
+        return og::ui::format_ctf_caps_label(save);
     return std::string(item.label);
 }
 
@@ -602,6 +606,24 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
     }
     case PickerMenuCommand::SetCampaign:
         (void)show_campaign_select();
+        break;
+    case PickerMenuCommand::CycleCtfTeamCount:
+        if (!og::ui::is_ctf_campaign(save_data_)) {
+            menu.show_text("CTF Teams", {"CTF settings apply to CTF maps only."});
+            break;
+        }
+        og::ui::cycle_ctf_team_count(save_data_);
+        menu.show_text("CTF Teams", {og::ui::format_ctf_teams_label(save_data_)});
+        break;
+    case PickerMenuCommand::CycleCtfCaptureLimit:
+        if (!og::ui::is_ctf_campaign(save_data_)) {
+            menu.show_text("Capture Limit",
+                {"CTF settings apply to CTF maps only."});
+            break;
+        }
+        og::ui::cycle_ctf_capture_limit(save_data_);
+        menu.show_text("Capture Limit",
+            {og::ui::format_ctf_caps_label(save_data_)});
         break;
     default:
         break;

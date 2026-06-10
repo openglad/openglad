@@ -1041,6 +1041,9 @@ void screen::sync_world_from_save_data()
 {
     world_.my_team = save_data.my_team;
     world_.allied_mode = save_data.allied_mode;
+    world_.ctf_requested_team_count = save_data.ctf_team_count;
+    world_.ctf_requested_capture_limit = save_data.ctf_capture_limit;
+    world_.ctf_requested_respawn_ticks = save_data.ctf_respawn_ticks;
     world_.current_scenario = save_data.scen_num;
     for (int i = 0; i < 4; ++i)
         world_.m_score[i] = save_data.m_score[i];

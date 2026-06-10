@@ -559,6 +559,10 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         return change_hire_teamnum(arg);
     case ButtonAction::AlliedMode:
         return change_allied();
+    case ButtonAction::CycleCtfTeamCount:
+        return change_ctf_teams();
+    case ButtonAction::CycleCtfCaptureLimit:
+        return change_ctf_caps();
     case ButtonAction::DoLevelEdit:
         return level_editor();
     case ButtonAction::YesOrNo:

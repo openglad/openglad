@@ -914,6 +914,68 @@ TEST(PickerCommon, toggle_allied_mode)
     ASSERT_TRUE(og::ui::is_allied_mode(save) == initial);
 }
 
+// --- CTF match settings ---
+
+TEST(PickerCommon, cycle_ctf_team_count_wraps_2_3_4)
+{
+    SaveData save;
+    ASSERT_EQ(2, (int)save.ctf_team_count) << "classic default is 2 teams";
+
+    og::ui::cycle_ctf_team_count(save);
+    ASSERT_EQ(3, (int)save.ctf_team_count);
+    og::ui::cycle_ctf_team_count(save);
+    ASSERT_EQ(4, (int)save.ctf_team_count);
+    og::ui::cycle_ctf_team_count(save);
+    ASSERT_EQ(2, (int)save.ctf_team_count) << "cycle wraps back to 2";
+
+    // Out-of-range values normalize back into the cycle.
+    save.ctf_team_count = 0;
+    og::ui::cycle_ctf_team_count(save);
+    ASSERT_EQ(2, (int)save.ctf_team_count);
+}
+
+TEST(PickerCommon, cycle_ctf_capture_limit_sequence)
+{
+    SaveData save;
+    ASSERT_EQ(0, (int)save.ctf_capture_limit) << "default is map/default (0)";
+
+    const int expected[] = {1, 3, 5, 10, 0, 1};
+    for (int step : expected)
+    {
+        og::ui::cycle_ctf_capture_limit(save);
+        ASSERT_EQ(step, (int)save.ctf_capture_limit);
+    }
+
+    // Unknown stored values fall back to the map-default sentinel.
+    save.ctf_capture_limit = 42;
+    og::ui::cycle_ctf_capture_limit(save);
+    ASSERT_EQ(0, (int)save.ctf_capture_limit);
+}
+
+TEST(PickerCommon, format_ctf_labels)
+{
+    SaveData save;
+    ASSERT_EQ("CTF Teams: 2", og::ui::format_ctf_teams_label(save));
+    save.ctf_team_count = 4;
+    ASSERT_EQ("CTF Teams: 4", og::ui::format_ctf_teams_label(save));
+
+    ASSERT_EQ("Capture Limit: Map default", og::ui::format_ctf_caps_label(save));
+    save.ctf_capture_limit = 5;
+    ASSERT_EQ("Capture Limit: 5", og::ui::format_ctf_caps_label(save));
+}
+
+TEST(PickerCommon, is_ctf_campaign_matches_id_exactly)
+{
+    SaveData save;
+    ASSERT_FALSE(og::ui::is_ctf_campaign(save))
+        << "the classic campaign is not CTF";
+    save.current_campaign = "org.openglad.ctf";
+    ASSERT_TRUE(og::ui::is_ctf_campaign(save));
+    save.current_campaign = "org.openglad.ctf2";
+    ASSERT_FALSE(og::ui::is_ctf_campaign(save))
+        << "the match is exact, not a prefix";
+}
+
 // --- set_player_count ---
 
 TEST(PickerCommon, set_player_count)

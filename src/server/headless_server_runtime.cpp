@@ -75,6 +75,9 @@ void sync_world_from_save_data(GameWorld& world, const SaveData& save)
 {
     world.my_team = save.my_team;
     world.allied_mode = save.allied_mode;
+    world.ctf_requested_team_count = save.ctf_team_count;
+    world.ctf_requested_capture_limit = save.ctf_capture_limit;
+    world.ctf_requested_respawn_ticks = save.ctf_respawn_ticks;
     world.current_scenario = save.scen_num;
     for (int index = 0; index < MAX_PLAYERS; ++index)
         world.m_score[index] = save.m_score[index];
@@ -215,6 +218,11 @@ void clear_completed_level_entities(EntityList& entities)
 
 void apply_completed_level_cleanup(GameWorld& world)
 {
+    // CTF rematches replay the full map: flags, control points, and bot
+    // squads must survive a "level already completed" reload.
+    if (world.type & GameWorld::TYPE_CTF)
+        return;
+
     clear_completed_level_entities(world.oblist);
     clear_completed_level_entities(world.weaplist);
     clear_completed_level_entities(world.fxlist);
@@ -279,6 +287,9 @@ void copy_headless_server_save_data(SaveData& destination,
     destination.team_size = source.team_size;
     destination.numplayers = source.numplayers;
     destination.allied_mode = source.allied_mode;
+    destination.ctf_team_count = source.ctf_team_count;
+    destination.ctf_capture_limit = source.ctf_capture_limit;
+    destination.ctf_respawn_ticks = source.ctf_respawn_ticks;
 
     for (std::size_t index = 0; index < destination.team_list.size(); ++index)
     {
@@ -301,6 +312,9 @@ void apply_headless_lobby_game_start_config(
     save.current_levels[save.current_campaign] = save.scen_num;
     save.numplayers = config_save.numplayers;
     save.allied_mode = static_cast<short>(config_save.allied_mode);
+    save.ctf_team_count = static_cast<short>(config_save.ctf_team_count);
+    save.ctf_capture_limit = static_cast<short>(config_save.ctf_capture_limit);
+    save.ctf_respawn_ticks = static_cast<short>(config_save.ctf_respawn_ticks);
     save.my_team = 0;
 
     for (auto& member : save.team_list)

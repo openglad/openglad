@@ -39,6 +39,15 @@ og::sim::LobbySettings sanitize_settings(const og::sim::LobbySettings& requested
         sanitized.scenario_id = fallback.scenario_id;
     if (sanitized.allied_mode != 0 && sanitized.allied_mode != 1)
         sanitized.allied_mode = fallback.allied_mode;
+    sanitized.ctf_team_count =
+        std::clamp<std::int16_t>(sanitized.ctf_team_count, 2, 4);
+    sanitized.ctf_capture_limit =
+        std::clamp<std::int16_t>(sanitized.ctf_capture_limit, 0, 50);
+    if (sanitized.ctf_respawn_ticks != 0)
+    {
+        sanitized.ctf_respawn_ticks =
+            std::clamp<std::int16_t>(sanitized.ctf_respawn_ticks, 12, 1200);
+    }
     return sanitized;
 }
 
@@ -534,6 +543,9 @@ LobbySaveDataEquivalent LobbyServer::build_save_data_equivalent() const
     equivalent.numplayers = static_cast<unsigned char>(
         std::min<std::size_t>(state_.players.size(), static_cast<std::size_t>(MAX_PLAYERS)));
     equivalent.allied_mode = state_.settings.allied_mode;
+    equivalent.ctf_team_count = state_.settings.ctf_team_count;
+    equivalent.ctf_capture_limit = state_.settings.ctf_capture_limit;
+    equivalent.ctf_respawn_ticks = state_.settings.ctf_respawn_ticks;
     equivalent.current_campaign = state_.settings.campaign_id.empty()
         ? std::string(kDefaultCampaignId)
         : state_.settings.campaign_id;

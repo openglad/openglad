@@ -269,6 +269,56 @@ TEST(CursesPickerClient, level_edit_notice_renders)
     EXPECT_NE(f.t().dump().find("openscen"), std::string::npos);
 }
 
+// CTF settings cycle only inside the CTF campaign; elsewhere they notify.
+TEST(CursesPickerClient, ctf_settings_cycle_on_ctf_campaign_only)
+{
+    PickerFixture f;
+    const auto* teams_item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::CycleCtfTeamCount);
+    const auto* caps_item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::CycleCtfCaptureLimit);
+    ASSERT_NE(teams_item, nullptr);
+    ASSERT_NE(caps_item, nullptr);
+
+    // Classic campaign: settings stay put and the notice renders.
+    f.save().current_campaign = "org.openglad.gladiator";
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *teams_item);
+    EXPECT_EQ(2, (int)f.save().ctf_team_count);
+    EXPECT_NE(f.t().dump().find("CTF maps only"), std::string::npos);
+
+    // CTF campaign: both settings cycle.
+    f.save().current_campaign = "org.openglad.ctf";
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *teams_item);
+    EXPECT_EQ(3, (int)f.save().ctf_team_count);
+
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *caps_item);
+    EXPECT_EQ(1, (int)f.save().ctf_capture_limit);
+}
+
+// The team-build labels surface the live CTF settings.
+TEST(CursesPickerClient, ctf_menu_labels_format_from_save)
+{
+    PickerFixture f;
+    f.save().ctf_team_count = 4;
+    f.save().ctf_capture_limit = 0;
+    const auto* teams_item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::CycleCtfTeamCount);
+    const auto* caps_item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::CycleCtfCaptureLimit);
+    ASSERT_NE(teams_item, nullptr);
+    ASSERT_NE(caps_item, nullptr);
+
+    // Drive present_menu so the dynamic labels render in the list.
+    f.t().push_special(KeyCode::Escape);
+    (void)f.client.present_menu(PickerMenuId::TeamBuild);
+    const std::string dump = f.t().dump();
+    EXPECT_NE(dump.find("CTF Teams: 4"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("Capture Limit: Map default"), std::string::npos) << dump;
+}
+
 // --- view roster ---------------------------------------------------------
 
 // Viewing the roster renders each member's name to the terminal.

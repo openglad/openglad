@@ -20,6 +20,7 @@
 	buffers: 7/31/02: *include cleanup
 */
 #include <openglad/core/colors.h>
+#include <openglad/core/ctf_constants.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/render/radar.h>
 #include <openglad/interface/render/view.h>
@@ -350,6 +351,10 @@ short radar::draw(LevelRuntimeData* data)
 					}
 					if (obfamily == FAMILY_EXIT || obfamily == FAMILY_TELEPORTER)
 						do_show = static_cast<short>(static_cast<Uint32>(LIGHT_BLUE) + rng(7));
+					// CTF flags and control points always flicker in their
+					// team's (owner's) color ramp, like exits.
+					if (obfamily == og::FAMILY_FLAG || obfamily == og::FAMILY_CTF_POINT)
+						do_show = static_cast<short>(static_cast<Uint32>(ob->query_team_color()) + rng(7));
 				}
 				if (!on_screen( static_cast<short>((ob->xpos()+1)/GRID_SIZE),
 				                static_cast<short>((ob->ypos()+1)/GRID_SIZE),

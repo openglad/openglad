@@ -1099,7 +1099,16 @@ static const button k_createmenu_buttons[] =
         button("networking", "NETWORKING", KEYSTATE_UNKNOWN, 120, 170, 80, 20, button_action_id(ButtonAction::Networking), -1, MenuNav{.up=7, .left=6, .right=10}),
         button("set_campaign", "SET CAMPAIGN", KEYSTATE_UNKNOWN, 210, 170, 80, 20, button_action_id(ButtonAction::DoPickCampaign), MENU_EXIT, MenuNav{.up=8, .left=9}),
 
+        // CTF match settings: appended so positional indices [0..10] above stay
+        // stable; shown only for the CTF campaign (see picker_createmenu_buttons).
+        button("ctf_teams", "CTF Teams: 2", KEYSTATE_UNKNOWN, 30, 118, 80, 12, button_action_id(ButtonAction::CycleCtfTeamCount), -1, MenuNav{.up=3, .down=6, .right=12}, true),
+        button("ctf_caps", "Capture Limit: Map default", KEYSTATE_UNKNOWN, 120, 118, 170, 12, button_action_id(ButtonAction::CycleCtfCaptureLimit), -1, MenuNav{.up=4, .down=7, .left=11}, true),
     };
+
+// Positional indices of the CTF settings buttons appended to
+// k_createmenu_buttons above.
+constexpr int kCreateMenuCtfTeamsIndex = 11;
+constexpr int kCreateMenuCtfCapsIndex = 12;
 
 static const button k_viewteam_buttons[] =
     {
@@ -1221,6 +1230,18 @@ int picker_mainmenu_button_count()
 button* picker_createmenu_buttons()
 {
     reset_mutable_button_layout(pks().createmenu_buttons, k_createmenu_buttons);
+
+    // CTF settings buttons: only the CTF campaign reads them, and only the
+    // lobby host may edit settings (joiners mirror the GO/SET LEVEL hiding).
+    std::vector<button>& buttons = pks().createmenu_buttons;
+    const SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const bool show_ctf =
+        og::ui::is_ctf_campaign(save) && picker_lobby_host_controls_visible();
+    buttons[kCreateMenuCtfTeamsIndex].hidden = !show_ctf;
+    buttons[kCreateMenuCtfCapsIndex].hidden = !show_ctf;
+    buttons[kCreateMenuCtfTeamsIndex].label = og::ui::format_ctf_teams_label(save);
+    buttons[kCreateMenuCtfCapsIndex].label = og::ui::format_ctf_caps_label(save);
+
     return pks().createmenu_buttons.data();
 }
 
@@ -2192,6 +2213,38 @@ Sint32 change_allied()
 
    //buffers: allbuttons[7]->vdisplay();
    //buffers: myscreen->buffer_to_screen(0, 0, 320, 200);
+
+   return MENU_OK;
+}
+
+Sint32 change_ctf_teams()
+{
+   SaveData& save = og::runtime::current_session->myscreen_->save_data;
+   og::ui::cycle_ctf_team_count(save);
+
+   if (og::runtime::current_session->allbuttons_[kCreateMenuCtfTeamsIndex] != nullptr)
+   {
+       og::runtime::current_session->allbuttons_[kCreateMenuCtfTeamsIndex]->label =
+           og::ui::format_ctf_teams_label(save);
+   }
+
+   picker_lobby_sync_settings_from_save();
+
+   return MENU_OK;
+}
+
+Sint32 change_ctf_caps()
+{
+   SaveData& save = og::runtime::current_session->myscreen_->save_data;
+   og::ui::cycle_ctf_capture_limit(save);
+
+   if (og::runtime::current_session->allbuttons_[kCreateMenuCtfCapsIndex] != nullptr)
+   {
+       og::runtime::current_session->allbuttons_[kCreateMenuCtfCapsIndex]->label =
+           og::ui::format_ctf_caps_label(save);
+   }
+
+   picker_lobby_sync_settings_from_save();
 
    return MENU_OK;
 }

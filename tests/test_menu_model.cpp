@@ -74,6 +74,23 @@ TEST(MenuModel, team_build_lookup)
     const PickerMenuItem* wrong_arg = find_picker_menu_item(
         PickerMenuId::Main, PickerMenuCommand::SetPlayerMode, 99);
     ASSERT_TRUE(wrong_arg == nullptr) << "unknown arg variant should return nullptr";
+
+    const PickerMenuItem* ctf_teams =
+        find_picker_menu_item(PickerMenuId::TeamBuild, "ctf_teams");
+    ASSERT_TRUE(ctf_teams != nullptr) << "ctf_teams id should resolve in team build";
+    ASSERT_EQ(static_cast<int>(PickerMenuCommand::CycleCtfTeamCount),
+              static_cast<int>(ctf_teams->command))
+        << "ctf_teams should map to CycleCtfTeamCount";
+
+    const PickerMenuItem* ctf_caps =
+        find_picker_menu_item(PickerMenuId::TeamBuild, "ctf_caps");
+    ASSERT_TRUE(ctf_caps != nullptr) << "ctf_caps id should resolve in team build";
+    ASSERT_EQ(static_cast<int>(PickerMenuCommand::CycleCtfCaptureLimit),
+              static_cast<int>(ctf_caps->command))
+        << "ctf_caps should map to CycleCtfCaptureLimit";
+
+    ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main, "ctf_teams") == nullptr)
+        << "the CTF items live in the team build menu only";
 }
 
 

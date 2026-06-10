@@ -115,6 +115,17 @@ int difficulty_percent(int difficulty);
 void toggle_allied_mode(SaveData& save);
 bool is_allied_mode(const SaveData& save);
 
+// --- CTF match settings ---
+
+// Cycle the requested CTF team count: 2 -> 3 -> 4 -> 2.
+void cycle_ctf_team_count(SaveData& save);
+
+// Cycle the capture limit: 0 (map default) -> 1 -> 3 -> 5 -> 10 -> 0.
+void cycle_ctf_capture_limit(SaveData& save);
+
+// True when the save's current campaign is the CTF campaign.
+bool is_ctf_campaign(const SaveData& save);
+
 // --- Player count ---
 
 void set_player_count(SaveData& save, int count);
@@ -129,6 +140,12 @@ std::string format_difficulty_label(int difficulty);
 
 // Format the allied mode button label ("PVP: Ally" or "PVP: Enemy").
 std::string format_allied_mode_label(const SaveData& save);
+
+// Format the CTF team count label ("CTF Teams: N").
+std::string format_ctf_teams_label(const SaveData& save);
+
+// Format the capture limit label ("Capture Limit: Map default" or ": N").
+std::string format_ctf_caps_label(const SaveData& save);
 
 // --- Team family extraction ---
 

@@ -20,6 +20,7 @@
 #include <openglad/interface/render/pixien.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/render/radar.h>
+#include <openglad/core/ctf_constants.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
@@ -1333,7 +1334,8 @@ Sint32 LevelEditorData::display_panel(screen* s)
 	const char* treasures[NUM_FAMILIES] =
 	    { blood_string, "DRUMSTICK", "GOLD", "SILVER",
 	      "MAGIC", "INVIS", "INVULN", "FLIGHT",
-	      "EXIT", "TELEPORTER", "LIFE GEM", "KEY", "SPEED", "CC",
+	      "EXIT", "TELEPORTER", "LIFE GEM", "KEY", "SPEED",
+	      "FLAG", "CTF POINT",
 	    };
 	const char* weapons[NUM_FAMILIES] =
 	    { "KNIFE", "ROCK", "ARROW", "FIREBALL",
@@ -3374,6 +3376,10 @@ std::string get_editor_level_label(Order order, Sint32 family, Sint32 level)
                 return std::format("GROUP: {}", level);
             if (family == FAMILY_EXIT)
                 return std::format("EXIT TO: {}", level);
+            if (family == og::FAMILY_FLAG)
+                return std::format("CAPS TO WIN: {}", level);
+            if (family == og::FAMILY_CTF_POINT)
+                return "";
             if (family != FAMILY_STAIN)
                 return std::format("POWER: {}", level);
             return "";

@@ -211,6 +211,9 @@ og::sim::LobbyState make_lobby_state_for_test()
     state.settings.scenario_id = 7;
     state.settings.difficulty = 2;
     state.settings.allied_mode = 1;
+    state.settings.ctf_team_count = 3;
+    state.settings.ctf_capture_limit = 7;
+    state.settings.ctf_respawn_ticks = 96;
     state.host_player_id = 1u;
     state.players.push_back(make_lobby_player_for_test());
     return state;
@@ -350,6 +353,9 @@ TEST(NetTransport, lobby_message_variants_roundtrip_and_decode)
             .scenario_id = 8,
             .difficulty = 3,
             .allied_mode = 1,
+            .ctf_team_count = 4,
+            .ctf_capture_limit = 9,
+            .ctf_respawn_ticks = 180,
         },
     };
     messages.push_back(settings_change);
@@ -1906,12 +1912,16 @@ TEST(NetTransport, lobby_state_and_messages_roundtrip)
 TEST(NetTransport,
      deserialize_lobby_messages_rejects_unknown_kinds_and_oversized_counts)
 {
+    // Wire layout of an empty LobbyState: 4-byte transport header, then the
+    // settings block (4-byte empty campaign string + 7 i16 fields: scenario,
+    // difficulty, allied mode, and the three CTF settings = 18 bytes), then
+    // the 1-byte host player id — so the player-count u32 sits at offset 21.
     const auto empty_state_bytes =
         og::sim::serialize_lobby_state_message(og::sim::LobbyState{});
     auto oversized_player_count =
         std::vector<std::uint8_t>(empty_state_bytes.begin(),
                                   empty_state_bytes.end());
-    write_u32_le(oversized_player_count, 15, 0xffffffffu);
+    write_u32_le(oversized_player_count, 21, 0xffffffffu);
     EXPECT_FALSE(
         og::sim::deserialize_lobby_state_message(oversized_player_count)
             .has_value());
@@ -1925,7 +1935,9 @@ TEST(NetTransport,
     auto oversized_slot_count =
         std::vector<std::uint8_t>(player_state_bytes.begin(),
                                   player_state_bytes.end());
-    write_u32_le(oversized_slot_count, 28, 0xffffffffu);
+    // First player record: index u8 + empty-name u32 + team i16 + ready/host
+    // bools = 9 bytes after the count, putting its slot-count u32 at 34.
+    write_u32_le(oversized_slot_count, 34, 0xffffffffu);
     EXPECT_FALSE(
         og::sim::deserialize_lobby_state_message(oversized_slot_count)
             .has_value());

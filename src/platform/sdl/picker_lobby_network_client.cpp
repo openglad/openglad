@@ -945,6 +945,9 @@ og::sim::LobbySaveDataEquivalent build_save_data_equivalent_from_state(
         state.settings.scenario_id > 0 ? state.settings.scenario_id : 1;
     equivalent.numplayers = spectator_mode ? 0u : 1u;
     equivalent.allied_mode = state.settings.allied_mode;
+    equivalent.ctf_team_count = state.settings.ctf_team_count;
+    equivalent.ctf_capture_limit = state.settings.ctf_capture_limit;
+    equivalent.ctf_respawn_ticks = state.settings.ctf_respawn_ticks;
 
     for (const AppliedLobbySlot& slot : collect_applied_lobby_slots(state))
     {
@@ -993,6 +996,9 @@ void apply_lobby_state_to_save(const og::sim::LobbyState& state,
         ? state.settings.scenario_id
         : 1;
     save.allied_mode = state.settings.allied_mode;
+    save.ctf_team_count = state.settings.ctf_team_count;
+    save.ctf_capture_limit = state.settings.ctf_capture_limit;
+    save.ctf_respawn_ticks = state.settings.ctf_respawn_ticks;
     save.numplayers = static_cast<unsigned char>(spectator_mode ? 0 : 1);
     save.my_team = local_team;
 
@@ -1053,6 +1059,9 @@ og::sim::LobbyMessage make_settings_message(const SaveData& save)
                 ? og::runtime::current_session->current_difficulty_
                 : 1);
     settings.allied_mode = save.allied_mode;
+    settings.ctf_team_count = save.ctf_team_count;
+    settings.ctf_capture_limit = save.ctf_capture_limit;
+    settings.ctf_respawn_ticks = save.ctf_respawn_ticks;
 
     og::sim::LobbyMessage message;
     message.payload = og::sim::LobbySettingsChangeMessage{
