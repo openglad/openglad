@@ -31,11 +31,14 @@ class radar
 		~radar();
 		short draw();
 		short draw(LevelRuntimeData* data);
-		short sizex, sizey;
-		short xpos,ypos;
-		short xloc, yloc;        // where on the screen to display
+		// Extents recorded from the grid at the last sync; zero-initialized
+		// so update()/draw() before any start() can detect the mismatch and
+		// resync instead of looping over garbage bounds.
+		short sizex = 0, sizey = 0;
+		short xpos = 0, ypos = 0;
+		short xloc = 0, yloc = 0;        // where on the screen to display
 		// Zardus: radarx and radary are now class members (instead of temp vars) so that scen can use them for scroll
-		short radarx, radary;	  // what actual portion of the map is on the radar (top-left coord)
+		short radarx = 0, radary = 0;	  // what actual portion of the map is on the radar (top-left coord)
 		short on_screen();
 		short on_screen(short whatx, short whaty, short hor, short ver);
 		short refresh();
@@ -48,10 +51,13 @@ class radar
 		viewscreen * viewscreenp;
 		std::vector<unsigned char> bmp;
 		bool force_lower_position;
-		short xview;
-		short yview;
+		short xview = 0;
+		short yview = 0;
 	protected:
+		// Re-derive sizex/sizey/size, the view clamps, the on-screen
+		// placement, and the bmp allocation from the live grid.
+		void sync_to_grid(LevelRuntimeData* data);
 		short mynum; // what is my viewscreen-related number?
 		//         char  *buffer;
-		unsigned short size;
+		unsigned short size = 0;
 };

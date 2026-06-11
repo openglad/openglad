@@ -3,6 +3,7 @@
 #include <openglad/resources/io.h>
 #include <openglad/legacy/pixdefs.h>
 #include <openglad/interface/screen.h>
+#include <openglad/interface/render/radar.h>
 #include <openglad/legacy/base.h>
 #include <gtest/gtest.h>
 
@@ -125,6 +126,57 @@ TEST(LevelEditorHelpers, level_editor_set_screen_pos_and_tile_matching)
     ASSERT_EQ(0, level_editor_test_exercise_internal_helpers())
         << "internal helper exerciser should report the first failed check as a negative index";
 
+}
+
+
+// Regression: the level editor reaches radar::update() on a radar that never
+// saw start() (LevelEditorData's constructor doesn't start the radar, but
+// clear_terrain() -> resmooth_terrain() -> myradar.update()), and its resize
+// paths can change the grid out from under a started radar. update() used to
+// loop i<sizex, j<sizey over whatever extents were recorded (uninitialized
+// garbage in the never-started case) and write bmp[i+sizex*j] into a buffer
+// sized for the OLD extents (empty in the never-started case) — a flaky
+// heap-overflow SEGFAULT. update() must re-derive the extents and the bmp
+// from the live grid whenever they disagree.
+TEST(LevelEditorHelpers, radar_update_resyncs_to_live_grid_dimensions)
+{
+    LevelRuntimeData* data =
+        &og::runtime::current_session->myscreen_->level_runtime_data();
+    // Own grid so the test is order-independent (40x60 editor default).
+    data->world().create_new_grid();
+    const int orig_w = data->world().grid.w;
+    const int orig_h = data->world().grid.h;
+    ASSERT_GT(orig_w, 0) << "test needs a live grid";
+    ASSERT_GT(orig_h, 0) << "test needs a live grid";
+
+    // Never-started radar (the editor's clear_terrain path): update() must
+    // size itself from the live grid before writing.
+    radar fresh(nullptr, og::runtime::current_session->myscreen_, 0);
+    ASSERT_EQ(0, (int)fresh.sizex) << "fresh radar extents must be zeroed";
+    ASSERT_EQ(0, (int)fresh.sizey) << "fresh radar extents must be zeroed";
+    ASSERT_EQ((size_t)0, fresh.bmp.size()) << "fresh radar bmp must be empty";
+    fresh.update(data);
+    ASSERT_EQ(orig_w, (int)fresh.sizex) << "update should adopt grid width";
+    ASSERT_EQ(orig_h, (int)fresh.sizey) << "update should adopt grid height";
+    ASSERT_EQ((size_t)(orig_w * orig_h), fresh.bmp.size())
+        << "update should allocate the bmp for the live grid";
+
+    // Editor grid resize (e.g. 40x60 -> 6x6) followed by resmooth/update
+    // without a start(): the radar must re-derive, not write with stale
+    // extents.
+    data->resize_grid(6, 6);
+    fresh.update(data);
+    ASSERT_EQ(6, (int)fresh.sizex) << "update should track a shrunken grid";
+    ASSERT_EQ(6, (int)fresh.sizey) << "update should track a shrunken grid";
+    ASSERT_EQ((size_t)36, fresh.bmp.size())
+        << "bmp should be reallocated for the shrunken grid";
+
+    // And back up: growing must also reallocate before the writes.
+    data->resize_grid(orig_w, orig_h);
+    fresh.update(data);
+    ASSERT_EQ(orig_w, (int)fresh.sizex) << "update should track a grown grid";
+    ASSERT_EQ((size_t)(orig_w * orig_h), fresh.bmp.size())
+        << "bmp should be reallocated for the grown grid";
 }
 
 
