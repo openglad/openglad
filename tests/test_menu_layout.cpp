@@ -180,14 +180,89 @@ TEST(MenuLayout, createmenu_buttons_no_overlap)
     check_nav_in_range(buttons, count, "createmenu");
 }
 
-// The y=40 band of the team-build screen is the stable expansion row:
-// TEAMS (opens the team-choice & match-settings subscreen) and VIEW LEVEL
-// (read-only scenario roster viewer), ALWAYS visible — classic and CTF
-// campaigns alike — with static nav links into the VIEW/TRAIN/HIRE row.
-TEST(MenuLayout, createmenu_teams_row_geometry_and_nav)
+namespace
+{
+// Shared graph checks: every nav link in range and landing on a VISIBLE
+// button (nav does not skip hidden buttons), and every visible button
+// keyboard-reachable from `start_index` over the nav edges.
+void check_nav_closed_and_reachable(button* buttons, int count,
+                                    int start_index, const char* variant)
+{
+    check_nav_in_range(buttons, count, variant);
+
+    for (int i = 0; i < count; ++i)
+    {
+        if (buttons[i].hidden)
+            continue;
+        for (const int target : {buttons[i].nav.up, buttons[i].nav.down,
+                                 buttons[i].nav.left, buttons[i].nav.right})
+        {
+            if (target < 0)
+                continue;
+            EXPECT_FALSE(buttons[target].hidden)
+                << variant << ": '" << buttons[i].id
+                << "' links to hidden '" << buttons[target].id << "'";
+        }
+    }
+
+    std::vector<bool> reached(static_cast<std::size_t>(count), false);
+    std::vector<int> frontier{start_index};
+    reached[static_cast<std::size_t>(start_index)] = true;
+    while (!frontier.empty())
+    {
+        const int current = frontier.back();
+        frontier.pop_back();
+        for (const int target :
+             {buttons[current].nav.up, buttons[current].nav.down,
+              buttons[current].nav.left, buttons[current].nav.right})
+        {
+            if (target >= 0 && !reached[static_cast<std::size_t>(target)])
+            {
+                reached[static_cast<std::size_t>(target)] = true;
+                frontier.push_back(target);
+            }
+        }
+    }
+    for (int i = 0; i < count; ++i)
+    {
+        if (!buttons[i].hidden)
+        {
+            EXPECT_TRUE(reached[static_cast<std::size_t>(i)])
+                << variant << ": '" << buttons[i].id
+                << "' is not keyboard-reachable";
+        }
+    }
+}
+} // namespace
+
+// The team-build screen is a clean 3x3 grid on the classic x=30/120/210
+// columns: VIEW/TRAIN/HIRE (y=70), LOAD/SAVE/GO (y=100), and BACK |
+// SCENARIO | NETWORKING (y=140). The scenario-shaped commands (SET CAMPAIGN
+// / SET LEVEL / VIEW LEVEL / TEAMS / PROGRESS) moved into the SCENARIO
+// subscreen; the layout is identical for classic and CTF campaigns.
+TEST(MenuLayout, createmenu_grid_geometry_and_nav)
 {
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     const std::string old_campaign = save.current_campaign;
+
+    struct ExpectedButton
+    {
+        const char* id;
+        const char* label;
+        int x, y, w, h;
+        MenuNav nav;
+    };
+    static const ExpectedButton kExpected[] = {
+        {"view_team", "VIEW TEAM", 30, 70, 80, 15, MenuNav{.down = 3, .right = 1}},
+        {"train_team", "TRAIN TEAM", 120, 70, 80, 15, MenuNav{.down = 4, .left = 0, .right = 2}},
+        {"hire_troops", "HIRE TROOPS", 210, 70, 80, 15, MenuNav{.down = 5, .left = 1}},
+        {"load_team", "LOAD TEAM", 30, 100, 80, 15, MenuNav{.up = 0, .down = 6, .right = 4}},
+        {"save_team", "SAVE TEAM", 120, 100, 80, 15, MenuNav{.up = 1, .down = 7, .left = 3, .right = 5}},
+        {"go", "GO", 210, 100, 80, 15, MenuNav{.up = 2, .down = 8, .left = 4}},
+        {"back", "BACK", 30, 140, 60, 30, MenuNav{.up = 3, .right = 7}},
+        {"scenario", "SCENARIO", 120, 140, 80, 20, MenuNav{.up = 4, .left = 6, .right = 8}},
+        {"networking", "NETWORKING", 210, 140, 80, 20, MenuNav{.up = 5, .left = 7}},
+    };
 
     for (const char* campaign :
          {"org.openglad.gladiator", "org.openglad.ctf"})
@@ -195,48 +270,140 @@ TEST(MenuLayout, createmenu_teams_row_geometry_and_nav)
         save.current_campaign = campaign;
         button* buttons = picker_createmenu_buttons();
         const int count = picker_createmenu_button_count();
-        ASSERT_EQ(13, count) << "team build is the 11 classic buttons + the "
-                                "TEAMS | VIEW LEVEL row";
+        ASSERT_EQ(kCreateMenuButtonCount, count)
+            << "team build is the 3x3 grid (the scenario commands moved into "
+               "the SCENARIO subscreen)";
+        ASSERT_EQ(9, count);
 
-        const button& teams = buttons[kCreateMenuTeamsIndex];
-        const button& viewer = buttons[kCreateMenuViewScenarioIndex];
-        ASSERT_EQ("teams", teams.id) << campaign;
-        ASSERT_EQ("view_scenario", viewer.id) << campaign;
-        EXPECT_FALSE(teams.hidden) << campaign;
-        EXPECT_FALSE(viewer.hidden) << campaign;
-        EXPECT_EQ("TEAMS", teams.label);
-        EXPECT_EQ("VIEW LEVEL", viewer.label);
+        for (int i = 0; i < count; ++i)
+        {
+            const ExpectedButton& want = kExpected[i];
+            const button& got = buttons[i];
+            EXPECT_EQ(want.id, got.id) << campaign << " index " << i;
+            EXPECT_EQ(want.label, got.label) << got.id;
+            EXPECT_FALSE(got.hidden) << got.id;
+            EXPECT_EQ(want.x, got.x) << got.id;
+            EXPECT_EQ(want.y, got.y) << got.id;
+            EXPECT_EQ(want.w, got.sizex) << got.id;
+            EXPECT_EQ(want.h, got.sizey) << got.id;
+            EXPECT_EQ(want.nav.up, got.nav.up) << got.id;
+            EXPECT_EQ(want.nav.down, got.nav.down) << got.id;
+            EXPECT_EQ(want.nav.left, got.nav.left) << got.id;
+            EXPECT_EQ(want.nav.right, got.nav.right) << got.id;
+            // The classic 12-char/80px face budget (6px/char, no clipping).
+            EXPECT_LE(got.label.size(), 12u) << got.label;
+        }
 
-        EXPECT_EQ(30, teams.x);
-        EXPECT_EQ(40, teams.y);
-        EXPECT_EQ(80, teams.sizex);
-        EXPECT_EQ(15, teams.sizey);
-        EXPECT_EQ(120, viewer.x);
-        EXPECT_EQ(40, viewer.y);
-        EXPECT_EQ(80, viewer.sizex);
-        EXPECT_EQ(15, viewer.sizey);
+        EXPECT_EQ(kCreateMenuGoIndex, 5);
+        EXPECT_EQ(kCreateMenuBackIndex, 6);
+        EXPECT_EQ(kCreateMenuScenarioIndex, 7);
+        EXPECT_EQ(kCreateMenuNetworkingIndex, 8);
 
-        // Labels respect the menu's classic 12-char/80px face budget.
-        EXPECT_LE(teams.label.size(), 12u) << teams.label;
-        EXPECT_LE(viewer.label.size(), 12u) << viewer.label;
-
-        // Static nav: down into the VIEW/TRAIN/HIRE row, which links back up
-        // (the 210 slot is empty, so HIRE links up to VIEW LEVEL).
-        EXPECT_EQ(0, teams.nav.down);
-        EXPECT_EQ(12, teams.nav.right);
-        EXPECT_EQ(1, viewer.nav.down);
-        EXPECT_EQ(11, viewer.nav.left);
-        EXPECT_EQ(11, buttons[0].nav.up);
-        EXPECT_EQ(12, buttons[1].nav.up);
-        EXPECT_EQ(12, buttons[2].nav.up);
-
-        check_no_overlaps(buttons, count, "createmenu_teams_row");
-        check_bounds(buttons, count, "createmenu_teams_row");
-        check_nav_in_range(buttons, count, "createmenu_teams_row");
+        check_no_overlaps(buttons, count, "createmenu_grid");
+        check_bounds(buttons, count, "createmenu_grid");
+        check_nav_closed_and_reachable(buttons, count, kCreateMenuBackIndex,
+                                       "createmenu_grid");
     }
 
     save.current_campaign = old_campaign;
     (void)picker_createmenu_buttons();
+}
+
+// Host-gating variants: GO is the team-build screen's only host-gated
+// button; the conditional rewire must keep the graph closed over the
+// visible set in both directions.
+TEST(MenuLayout, createmenu_nav_variants_keyboard_reachable)
+{
+    for (const bool host_visible : {true, false})
+    {
+        button* buttons = picker_createmenu_buttons();
+        const int count = picker_createmenu_button_count();
+        buttons[kCreateMenuGoIndex].hidden = !host_visible;
+        picker_wire_team_build_nav(buttons, count, host_visible);
+        check_nav_closed_and_reachable(
+            buttons, count, kCreateMenuBackIndex,
+            host_visible ? "createmenu_host" : "createmenu_joiner");
+    }
+}
+
+// SCENARIO subscreen static table: the x=30 column stacks the host-gated
+// SET CAMPAIGN / SET LEVEL (their name strips draw alongside) over the
+// always-visible VIEW LEVEL | TEAMS | PROGRESS row; BACK sits at (30,170)
+// so no other screen's "back" shares its geometry.
+TEST(MenuLayout, scenariomenu_static_layout)
+{
+    button* buttons = picker_scenariomenu_buttons();
+    const int count = picker_scenariomenu_button_count();
+    ASSERT_EQ(kScenarioMenuButtonCount, count);
+
+    struct ExpectedButton
+    {
+        const char* id;
+        const char* label;
+        int x, y, w, h;
+        MenuNav nav;
+    };
+    static const ExpectedButton kExpected[] = {
+        {"back", "BACK", 30, 170, 60, 20, MenuNav{.up = 3}},
+        {"set_campaign", "SET CAMPAIGN", 30, 40, 80, 15, MenuNav{.down = 2}},
+        {"set_level", "SET LEVEL", 30, 70, 80, 15, MenuNav{.up = 1, .down = 3}},
+        {"view_scenario", "VIEW LEVEL", 30, 100, 80, 15, MenuNav{.up = 2, .down = 0, .right = 4}},
+        {"teams", "TEAMS", 120, 100, 80, 15, MenuNav{.up = 2, .down = 0, .left = 3, .right = 5}},
+        {"progress", "PROGRESS", 210, 100, 80, 15, MenuNav{.up = 2, .down = 0, .left = 4}},
+    };
+
+    for (int i = 0; i < count; ++i)
+    {
+        const ExpectedButton& want = kExpected[i];
+        const button& got = buttons[i];
+        EXPECT_EQ(want.id, got.id) << "index " << i;
+        EXPECT_EQ(want.label, got.label) << got.id;
+        EXPECT_FALSE(got.hidden) << got.id;
+        EXPECT_EQ(want.x, got.x) << got.id;
+        EXPECT_EQ(want.y, got.y) << got.id;
+        EXPECT_EQ(want.w, got.sizex) << got.id;
+        EXPECT_EQ(want.h, got.sizey) << got.id;
+        EXPECT_EQ(want.nav.up, got.nav.up) << got.id;
+        EXPECT_EQ(want.nav.down, got.nav.down) << got.id;
+        EXPECT_EQ(want.nav.left, got.nav.left) << got.id;
+        EXPECT_EQ(want.nav.right, got.nav.right) << got.id;
+        EXPECT_LE(got.label.size(), 12u) << got.label;
+    }
+
+    EXPECT_EQ(kScenarioMenuBackIndex, 0);
+    EXPECT_EQ(kScenarioMenuSetCampaignIndex, 1);
+    EXPECT_EQ(kScenarioMenuSetLevelIndex, 2);
+    EXPECT_EQ(kScenarioMenuViewScenarioIndex, 3);
+    EXPECT_EQ(kScenarioMenuTeamsIndex, 4);
+    EXPECT_EQ(kScenarioMenuProgressIndex, 5);
+
+    // The campaign-name / level-title strips draw from x=116 (32-char clip,
+    // 6px/char): they must clear the x=30 button column's right edge.
+    EXPECT_GE(116, buttons[kScenarioMenuSetCampaignIndex].x +
+                       buttons[kScenarioMenuSetCampaignIndex].sizex);
+    EXPECT_LE(116 + 32 * 6, SCREEN_W);
+
+    check_no_overlaps(buttons, count, "scenariomenu");
+    check_bounds(buttons, count, "scenariomenu");
+    check_nav_closed_and_reachable(buttons, count, kScenarioMenuBackIndex,
+                                   "scenariomenu_static");
+}
+
+// Host-gating variants for the SCENARIO subscreen: SET CAMPAIGN / SET LEVEL
+// hide for joiners and the row's up-links rewire around them.
+TEST(MenuLayout, scenariomenu_nav_variants_keyboard_reachable)
+{
+    for (const bool host_visible : {true, false})
+    {
+        button* buttons = picker_scenariomenu_buttons();
+        const int count = picker_scenariomenu_button_count();
+        buttons[kScenarioMenuSetCampaignIndex].hidden = !host_visible;
+        buttons[kScenarioMenuSetLevelIndex].hidden = !host_visible;
+        picker_wire_scenario_menu_nav(buttons, count, host_visible);
+        check_nav_closed_and_reachable(
+            buttons, count, kScenarioMenuBackIndex,
+            host_visible ? "scenariomenu_host" : "scenariomenu_joiner");
+    }
 }
 
 // TEAMS subscreen static table: geometry, ids, label budgets, and the
@@ -259,6 +426,10 @@ TEST(MenuLayout, teamsmenu_static_layout)
     ASSERT_EQ("guy_team", buttons[kTeamsMenuGuyTeamIndex].id);
     ASSERT_EQ("ready", buttons[kTeamsMenuReadyIndex].id);
     ASSERT_EQ("ctf_troops", buttons[kTeamsMenuCtfTroopsIndex].id);
+    ASSERT_EQ("team_page_0", buttons[kTeamsMenuPageFirstIndex + 0].id);
+    ASSERT_EQ("team_page_1", buttons[kTeamsMenuPageFirstIndex + 1].id);
+    ASSERT_EQ("team_page_2", buttons[kTeamsMenuPageFirstIndex + 2].id);
+    ASSERT_EQ("team_page_3", buttons[kTeamsMenuPageFirstIndex + 3].id);
 
     // All three CTF match settings (host-gated) plus READY (networked-only)
     // start hidden; the local-classic surface is the static default.
@@ -289,6 +460,27 @@ TEST(MenuLayout, teamsmenu_static_layout)
         EXPECT_LE(join.label.size(), 8u) << join.label;
     }
 
+    // Per-team member pagers: hidden by default, '>' inside the row band's
+    // right edge (the readability bar spans x=8..234), left of the JOIN
+    // column at x=240 and below the row's label line (row_y..row_y+6).
+    for (int t = 0; t < 4; ++t)
+    {
+        const button& pager = buttons[kTeamsMenuPageFirstIndex + t];
+        EXPECT_TRUE(pager.hidden) << pager.id;
+        EXPECT_EQ(219, pager.x) << pager.id;
+        EXPECT_EQ(39 + 30 * t, pager.y) << pager.id;
+        EXPECT_EQ(14, pager.sizex) << pager.id;
+        EXPECT_EQ(12, pager.sizey) << pager.id;
+        EXPECT_EQ(">", pager.label) << pager.id;
+        // Fully inside the row band: bar bottom is row_y+20 = 39+30t+13.
+        EXPECT_LE(pager.x + pager.sizex, 234) << pager.id;
+        EXPECT_LE(pager.y + pager.sizey, (32 + 30 * t) + 20) << pager.id;
+        // The detail slice (26 chars from x=24) and the p/N indicator
+        // (ending at x=217) stay left of the pager face.
+        EXPECT_LE(24 + 26 * 6, 217) << "paged detail slice budget";
+        EXPECT_LT(217, pager.x) << pager.id;
+    }
+
     // 6px/char budgets: 12 chars on the 80px settings faces, 6 on TEAM >.
     EXPECT_LE(buttons[kTeamsMenuCtfTeamsIndex].label.size(), 12u);
     EXPECT_LE(buttons[kTeamsMenuCtfCapsIndex].label.size(), 12u);
@@ -315,6 +507,8 @@ void apply_teams_menu_hidden_flags(button* buttons, const TeamsMenuWiring& w)
     buttons[kTeamsMenuGuyNextIndex].hidden = !w.guy_row;
     buttons[kTeamsMenuGuyTeamIndex].hidden = !w.guy_row;
     buttons[kTeamsMenuReadyIndex].hidden = !w.networked;
+    for (int t = 0; t < 4; ++t)
+        buttons[kTeamsMenuPageFirstIndex + t].hidden = !w.pager_visible[t];
 }
 
 // Every nav link must land on a VISIBLE button (nav does not skip hidden
@@ -375,46 +569,60 @@ void check_teams_menu_wiring(const TeamsMenuWiring& w, const char* variant)
 } // namespace
 
 // The conditional-visibility matrix: every variant the subscreen can show
-// must keep the keyboard nav graph closed over the visible set.
+// must keep the keyboard nav graph closed over the visible set. Pager flags
+// ('>' member pagers, shown only for overflowing detail lines) ride along:
+// beside a visible JOIN, as a row's only anchor (join hidden), and chained
+// across rows with no joins at all.
 TEST(MenuLayout, teamsmenu_nav_variants_keyboard_reachable)
 {
-    // Local classic: all joins, guy row.
+    // Local classic: all joins, guy row; big teams 0/1 carry pagers.
     check_teams_menu_wiring(
         TeamsMenuWiring{.guy_row = true,
-                        .join_visible = {true, true, true, true}},
+                        .join_visible = {true, true, true, true},
+                        .pager_visible = {true, true, false, false}},
         "local_classic");
-    // Local CTF host: settings trio shown.
+    // Local CTF host: settings trio shown, one paged row.
     check_teams_menu_wiring(
         TeamsMenuWiring{.show_ctf = true,
                         .guy_row = true,
-                        .join_visible = {true, true, true, true}},
+                        .join_visible = {true, true, true, true},
+                        .pager_visible = {true, false, false, false}},
         "local_ctf_host");
-    // Local CTF host, 2-team map/clamp.
+    // Local CTF host, 2-team map/clamp: a pager on a join-less row (the
+    // pager becomes that row's chain anchor).
     check_teams_menu_wiring(
         TeamsMenuWiring{.show_ctf = true,
                         .guy_row = true,
-                        .join_visible = {true, true, false, false}},
+                        .join_visible = {true, true, false, false},
+                        .pager_visible = {false, false, true, false}},
         "local_ctf_two_teams");
-    // Networked joiner, classic: READY shown, guy row hidden.
+    // Networked joiner, classic: READY shown, guy row hidden, every lobby
+    // row paged.
     check_teams_menu_wiring(
         TeamsMenuWiring{.networked = true,
-                        .join_visible = {true, true, true, true}},
+                        .join_visible = {true, true, true, true},
+                        .pager_visible = {true, true, true, true}},
         "networked_joiner_classic");
-    // Networked CTF host: settings + READY.
+    // Networked CTF host: settings + READY; pager anchors the join-less row.
     check_teams_menu_wiring(
         TeamsMenuWiring{.show_ctf = true,
                         .networked = true,
-                        .join_visible = {true, true, true, false}},
+                        .join_visible = {true, true, true, false},
+                        .pager_visible = {false, false, false, true}},
         "networked_ctf_host");
-    // Allied local: joins hidden, guy row + CTF settings shown.
+    // Allied local: joins hidden, guy row + CTF settings shown; the pagers
+    // form the whole row-anchor chain.
     check_teams_menu_wiring(
-        TeamsMenuWiring{.show_ctf = true, .guy_row = true},
+        TeamsMenuWiring{.show_ctf = true, .guy_row = true,
+                        .pager_visible = {true, true, false, false}},
         "allied_local_ctf");
-    // Allied networked classic: only BACK and READY.
+    // Allied networked classic: BACK, READY, and one lone pager.
     check_teams_menu_wiring(
-        TeamsMenuWiring{.networked = true},
+        TeamsMenuWiring{.networked = true,
+                        .pager_visible = {true, false, false, false}},
         "allied_networked_classic");
-    // Empty local roster, classic: joins but no guy row.
+    // Empty local roster, classic: joins but no guy row (and no pagers —
+    // an empty roster can never overflow a detail line).
     check_teams_menu_wiring(
         TeamsMenuWiring{.join_visible = {true, true, true, true}},
         "local_empty_roster");

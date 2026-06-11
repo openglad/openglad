@@ -31,7 +31,7 @@ constexpr std::array<PickerMenuItem, 11> kMainMenuItems = {{
 #endif
 }};
 
-constexpr std::array<PickerMenuItem, 16> kTeamBuildItems = {{
+constexpr std::array<PickerMenuItem, 12> kTeamBuildItems = {{
     {"view_team", "View Team", PickerMenuCommand::ViewTeam},
     {"train_team", "Train Team", PickerMenuCommand::TrainTeam},
     {"hire_troops", "Hire Troops", PickerMenuCommand::HireTroops},
@@ -39,17 +39,27 @@ constexpr std::array<PickerMenuItem, 16> kTeamBuildItems = {{
     {"save_team", "Save Team", PickerMenuCommand::SaveTeam},
     {"go", "GO!", PickerMenuCommand::StartGame},
     {"back", "Back", PickerMenuCommand::Back},
-    {"progress", "Progress", PickerMenuCommand::ShowProgress},
-    {"set_level", "Set Level", PickerMenuCommand::SetLevel},
     {"networking", "Networking", PickerMenuCommand::Networking},
-    {"set_campaign", "Set Campaign", PickerMenuCommand::SetCampaign},
+    // The scenario-shaped commands (campaign/level/viewer/teams/progress)
+    // live in the SCENARIO submenu now (kScenarioItems below).
+    {"scenario", "Scenario", PickerMenuCommand::Scenario},
     // The SDL picker groups the CTF match settings into the TEAMS subscreen;
     // terminal clients keep them as flat team-build items.
     {"ctf_teams", "CTF Teams", PickerMenuCommand::CycleCtfTeamCount},
     {"ctf_caps", "Capture Limit", PickerMenuCommand::CycleCtfCaptureLimit},
     {"ctf_troops", "Scenario Troops", PickerMenuCommand::ToggleCtfScenarioTroops},
+}};
+
+// The SCENARIO submenu: everything that chooses or inspects the scenario.
+// SET CAMPAIGN / SET LEVEL stay host-gated on the SDL surface; the terminal
+// clients present the submenu as a nested flat list.
+constexpr std::array<PickerMenuItem, 6> kScenarioItems = {{
+    {"set_campaign", "Set Campaign", PickerMenuCommand::SetCampaign},
+    {"set_level", "Set Level", PickerMenuCommand::SetLevel},
     {"view_scenario", "View Scenario", PickerMenuCommand::ViewScenario},
     {"teams", "Teams", PickerMenuCommand::Teams},
+    {"progress", "Progress", PickerMenuCommand::ShowProgress},
+    {"back", "Back", PickerMenuCommand::Back},
 }};
 
 constexpr PickerMenuDefinition kMainMenu{
@@ -64,6 +74,12 @@ constexpr PickerMenuDefinition kTeamBuildMenu{
     std::span<const PickerMenuItem>(kTeamBuildItems),
 };
 
+constexpr PickerMenuDefinition kScenarioMenu{
+    PickerMenuId::Scenario,
+    "Scenario",
+    std::span<const PickerMenuItem>(kScenarioItems),
+};
+
 } // namespace
 
 const PickerMenuDefinition& picker_menu_definition(PickerMenuId menu)
@@ -73,6 +89,8 @@ const PickerMenuDefinition& picker_menu_definition(PickerMenuId menu)
         return kMainMenu;
     case PickerMenuId::TeamBuild:
         return kTeamBuildMenu;
+    case PickerMenuId::Scenario:
+        return kScenarioMenu;
     }
     return kMainMenu;
 }

@@ -2,7 +2,7 @@
 
 OpenGlad ships a Capture-the-Flag game mode as a built-in campaign:
 **`org.openglad.ctf`** ("Capture the Flag"), levels 500–509. Pick it from
-SET CAMPAIGN in the team-build menu and hit GO.
+SET CAMPAIGN in the team-build screen's SCENARIO submenu and hit GO.
 
 ## Rules
 
@@ -32,8 +32,9 @@ SET CAMPAIGN in the team-build menu and hit GO.
 
 ## Match setup
 
-Two settings appear in the team-build menu when the CTF campaign is active
-(host-only in networked play; they ride the lobby like the PVP toggle):
+Two settings appear in the TEAMS screen (team build → SCENARIO → TEAMS)
+when the CTF campaign is active (host-only in networked play; they ride the
+lobby like the PVP toggle):
 
 - **CTF Teams** — `Auto` fields every team the map authors (2, 3, or 4);
   or force 2/3/4. Teams without human players get AI squads.

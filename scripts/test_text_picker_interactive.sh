@@ -13,6 +13,14 @@ TMPOUT=$(mktemp)
 TMPIN=$(mktemp)
 trap 'rm -rf "$TMPHOME"; rm -f "$TMPOUT" "$TMPIN"' EXIT
 
+# Drive sequence (1-based menu indices):
+#   Main: 1=Begin New Game; blank keeps the campaign.
+#   Team Build (12 items): 3=Hire Troops (n/h/b), 5=Save Team, 4=Load Team,
+#     9=Scenario, 6=GO!, 7=Back.
+#   Scenario submenu (6 items): 4=Teams (play 1, blank exits),
+#     3=View Scenario (blank dismisses), 6=Back.
+#   Protocol session after GO!: state, quit.
+#   Main: 11=Quit.
 cat > "$TMPIN" << 'INP'
 1
 
@@ -22,11 +30,13 @@ h
 b
 5
 4
-16
+9
+4
 play 1
 
-15
+3
 
+6
 6
 state
 quit
@@ -88,6 +98,11 @@ if not any(isinstance(e.get('family'), int) and e.get('family') != 0 for e in te
 
 if not any("Loaded 'text_quicksave'" in l and 'team=2' in l for l in lines):
     print('FAIL: expected load confirmation with team=2 after save/load round-trip', file=sys.stderr)
+    sys.exit(1)
+
+# Scenario submenu: the nested menu between Team Build and its screens.
+if not any('=== Scenario ===' in l for l in lines):
+    print('FAIL: expected the Scenario submenu banner', file=sys.stderr)
     sys.exit(1)
 
 # Teams screen: roster rows grouped by team plus the play/move sub-prompt.

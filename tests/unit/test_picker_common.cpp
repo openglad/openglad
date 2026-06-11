@@ -1802,3 +1802,59 @@ TEST(PickerCommon, scenario_report_troops_strip_annotates_outside_ctf_campaign)
     ASSERT_TRUE(bot_troops != nullptr);
     EXPECT_EQ(og::ui::ScenarioStripReason::None, bot_troops->strip_reason);
 }
+
+// --- TEAMS detail pagination (the per-team '>' pager) -----------------------
+
+TEST(PickerCommon, paginate_team_detail_packs_greedily_and_never_overflows)
+{
+    const std::vector<std::string> names = {
+        "Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf",
+        "Hotel"};
+
+    // 56 joined chars fit one 56-char slice...
+    const auto one = og::ui::paginate_team_detail_pages(names, 56);
+    ASSERT_EQ(1u, one.size());
+    EXPECT_EQ("Alpha, Bravo, Charlie, Delta, Echo, Foxtrot, Golf, Hotel",
+              one[0]);
+
+    // ... and split greedily at the TEAMS screen's 26-char paged budget.
+    const auto pages = og::ui::paginate_team_detail_pages(names, 26);
+    ASSERT_EQ(3u, pages.size());
+    EXPECT_EQ("Alpha, Bravo, Charlie", pages[0]);
+    EXPECT_EQ("Delta, Echo, Foxtrot, Golf", pages[1]);
+    EXPECT_EQ("Hotel", pages[2]);
+    for (const std::string& page : pages)
+        EXPECT_LE(page.size(), 26u) << page;
+}
+
+TEST(PickerCommon, paginate_team_detail_edge_cases)
+{
+    // Empty input still yields exactly one (empty) page: page math never
+    // divides by zero and the screen draws nothing.
+    const auto empty = og::ui::paginate_team_detail_pages({}, 26);
+    ASSERT_EQ(1u, empty.size());
+    EXPECT_TRUE(empty[0].empty());
+
+    // A single oversized item is clipped inside the budget with a visible
+    // '..' marker — this is the one truncation the unpaged screen would
+    // otherwise hide (one page means no '>' pager and no p/N indicator).
+    const auto truncated = og::ui::paginate_team_detail_pages(
+        {"AbsurdlyLongLobbyPlayerName [RDY]"}, 10);
+    ASSERT_EQ(1u, truncated.size());
+    EXPECT_EQ("Absurdly..", truncated[0]);
+    EXPECT_LE(truncated[0].size(), 10u);
+
+    // Items exactly at the budget each take their own page.
+    const auto exact = og::ui::paginate_team_detail_pages(
+        {"0123456789", "abcdefghij"}, 10);
+    ASSERT_EQ(2u, exact.size());
+    EXPECT_EQ("0123456789", exact[0]);
+    EXPECT_EQ("abcdefghij", exact[1]);
+
+    // A degenerate budget still terminates with one truncated char per item
+    // (budgets of <= 2 chars have no room for the '..' marker).
+    const auto tiny = og::ui::paginate_team_detail_pages({"ab", "cd"}, 0);
+    ASSERT_EQ(2u, tiny.size());
+    EXPECT_EQ("a", tiny[0]);
+    EXPECT_EQ("c", tiny[1]);
+}

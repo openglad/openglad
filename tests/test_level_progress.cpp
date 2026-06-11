@@ -56,33 +56,44 @@ static int event_injector_thread(void* data)
 
     // Wait for create_team_menu to init after fade + level load.
     // create_team_menu calls fadeblack(0), level_data.load(), fadeblack(1).
+    // PROGRESS lives inside the SCENARIO subscreen now.
     SDL_Delay(500);
-    wait_for_interactable("progress", 10000);
+    wait_for_interactable("scenario", 10000);
     SDL_Delay(750);
 
-    // Step 2: Click "PROGRESS"
-    fprintf(stderr, "  [test] Step 2: clicking progress\n");
+    // Step 2: Open the SCENARIO subscreen, then click "PROGRESS"
+    fprintf(stderr, "  [test] Step 2: clicking scenario, then progress\n");
+    interact("scenario");
+    wait_for_interactable("progress", 10000);
+    SDL_Delay(500);
     interact("progress");
 
-    // Wait for create_progress_menu to load level data and enter its loop
+    // Wait for create_progress_menu to load level data and enter its loop.
+    // "prev" is unique to the progress menu here, so waiting on it (instead
+    // of the ambiguous per-screen "back") confirms the right screen is up.
     SDL_Delay(500);
-    // The progress menu has a "back" button with different coords than
-    // the team menu's "back". Use wait_for_interactable to confirm it's up.
-    wait_for_interactable("back", 10000);
+    wait_for_interactable("prev", 10000);
     SDL_Delay(500);
 
     // Step 3: Click "BACK" in the progress menu
     fprintf(stderr, "  [test] Step 3: clicking progress back\n");
     interact("back");
 
-    // create_progress_menu returns REDRAW, so we're back in create_team_menu.
-    // Wait for create_team_menu to reinit buttons and reload level data after REDRAW.
+    // create_progress_menu returns REDRAW, so we're back in the SCENARIO
+    // subscreen. Wait for its unique "view_scenario" button, then BACK out.
     SDL_Delay(2000);
-    wait_for_interactable("back", 10000);
+    wait_for_interactable("view_scenario", 10000);
     SDL_Delay(500);
 
-    // Step 4: Click "BACK" in the team menu
-    fprintf(stderr, "  [test] Step 4: clicking team back\n");
+    // Step 4: Click "BACK" in the scenario menu
+    fprintf(stderr, "  [test] Step 4: clicking scenario back\n");
+    interact("back");
+
+    // Step 5: Click "BACK" in the team menu
+    SDL_Delay(500);
+    wait_for_interactable("scenario", 10000);
+    SDL_Delay(500);
+    fprintf(stderr, "  [test] Step 5: clicking team back\n");
     interact("back");
 
     // Back returns to the main menu. Trip the test-mode max-loop guard so

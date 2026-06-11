@@ -17,6 +17,7 @@ enum class PickerMenuId : std::int32_t
 {
     Main,
     TeamBuild,
+    Scenario,
 };
 
 enum class PickerMenuCommand : std::int32_t
@@ -48,6 +49,7 @@ enum class PickerMenuCommand : std::int32_t
     ToggleCtfScenarioTroops,
     ViewScenario,
     Teams,
+    Scenario,
 };
 
 struct PickerMenuItem

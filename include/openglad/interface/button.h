@@ -174,6 +174,8 @@ Sint32 change_ctf_troops();
 Sint32 create_teams_menu(Sint32 arg1); // Team choice & match settings subscreen
 Sint32 create_view_scenario_menu(Sint32 arg1); // Read-only level roster viewer
 Sint32 view_scenario_page_flip(Sint32 step);   // PREV/NEXT inside the viewer
+Sint32 create_scenario_menu(Sint32 arg1); // Campaign/level/teams/progress subscreen
+Sint32 teams_page_flip(Sint32 team);      // TEAMS per-team member pager
 Sint32 teams_join_team(Sint32 team);
 Sint32 teams_cycle_guy(Sint32 whichway);
 Sint32 teams_cycle_guy_team(Sint32 whichway);
@@ -260,6 +262,8 @@ enum class ButtonAction : Sint32
     TeamsCycleGuyTeam = 67,
     ToggleLobbyReady = 68,
     ViewScenarioPageFlip = 69,
+    CreateScenarioMenu = 70,
+    TeamsPageFlip = 71,
 };
 
 inline constexpr Sint32 button_action_id(ButtonAction action)

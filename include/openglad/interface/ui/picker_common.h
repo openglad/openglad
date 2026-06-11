@@ -162,6 +162,15 @@ std::string format_team_row_label(short team,
                                   bool has_humans,
                                   std::string_view seat_tag);
 
+// Greedy ", "-joined pagination of a team's member/player names into slices
+// of at most max_chars characters each. An item longer than max_chars is
+// clipped inside the budget with a trailing '..' marker (so truncation stays
+// visible even when everything fits one unpaged slice; budgets of <= 2 chars
+// just clip). Always returns at least one (possibly empty) page, so page
+// math never divides by zero. Drives the TEAMS screen's per-team pager.
+std::vector<std::string> paginate_team_detail_pages(
+    const std::vector<std::string>& items, int max_chars);
+
 // --- Campaign ordering ---
 
 // Stable hoist of the default campaign (org.openglad.gladiator) to the

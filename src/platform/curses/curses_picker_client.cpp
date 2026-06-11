@@ -257,7 +257,15 @@ private:
         term_.put_str(row++, 0, title, kTitleColor, Color::Default, true);
         ++row;
         const int footer = term_.rows() - 1;
-        for (int i = 0; i < static_cast<int>(entries.size()); ++i) {
+        // Scroll-follow: when the list outgrows the terminal (e.g. the Teams
+        // roster with a full 24-member team), start drawing from an offset
+        // that keeps the cursor row visible instead of truncating the tail.
+        const int capacity = footer - row;
+        const int total = static_cast<int>(entries.size());
+        int first = 0;
+        if (capacity > 0 && total > capacity && cursor >= capacity)
+            first = std::min(cursor - capacity + 1, total - capacity);
+        for (int i = first; i < total; ++i) {
             if (row >= footer)
                 break;
             const ListEntry& e = entries[static_cast<size_t>(i)];

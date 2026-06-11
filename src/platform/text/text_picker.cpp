@@ -847,11 +847,19 @@ int text_picker_testing_exercise_internal_paths()
     auto handle_team_item = [&](PickerMenuCommand command,
                                 std::string input_text,
                                 const auto& predicate) {
-        if (const PickerMenuItem* item =
-                find_picker_menu_item(PickerMenuId::TeamBuild, command))
+        // The scenario-shaped commands live in the SCENARIO submenu now;
+        // both menus dispatch through the same team-build handler.
+        const PickerMenuItem* item =
+            find_picker_menu_item(PickerMenuId::TeamBuild, command);
+        PickerMenuId menu_id = PickerMenuId::TeamBuild;
+        if (item == nullptr) {
+            item = find_picker_menu_item(PickerMenuId::Scenario, command);
+            menu_id = PickerMenuId::Scenario;
+        }
+        if (item != nullptr)
         {
             ScopedCinRedirect input(std::move(input_text));
-            client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+            client.handle_menu_item(menu_id, *item);
             check(predicate());
         } else {
             check(false);
