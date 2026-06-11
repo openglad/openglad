@@ -875,6 +875,51 @@ void ctf_initialize_for_level(GameWorld& world)
         w->set_dead(1);
     }
 
+    // Roster-only armies on request: strip the authored livings and
+    // generators from every active team that fields a roster (myguy) walker.
+    // Teams without a roster keep their authored troops (they are the
+    // opposition; empty ones still get bot squads below), and roster walkers
+    // themselves are never stripped.
+    if (world.ctf_requested_strip_scenario_troops != 0)
+    {
+        bool team_has_myguy[4] = {};
+        for (const auto& uptr : world.oblist)
+        {
+            walker* w = uptr.get();
+            if (w == nullptr || w->dead() ||
+                w->query_order() != Order::Living || w->myguy == nullptr)
+            {
+                continue;
+            }
+            const unsigned char team = w->team_num();
+            if (is_score_team(team))
+                team_has_myguy[team] = true;
+        }
+        for (const auto& uptr : world.oblist)
+        {
+            walker* w = uptr.get();
+            if (w == nullptr || w->dead())
+                continue;
+            const Order order = w->query_order();
+            if (order != Order::Living && order != Order::Generator)
+                continue;
+            if (w->myguy != nullptr)
+                continue;
+            const unsigned char team = w->team_num();
+            if (!is_score_team(team) || !ctf.team_active[team] ||
+                !team_has_myguy[team])
+            {
+                continue;
+            }
+            // Move the corpse off the score-team range first: run_death_scan
+            // (same tick) only schedules respawns for score-team livings, and
+            // an init-stripped troop must NOT come back as a bot respawn.
+            // Deterministic, replicated via entity snapshots.
+            w->set_team_num(SCORE_TEAM_COUNT);
+            w->set_dead(1);
+        }
+    }
+
     // Resolve config: explicit request > per-map value > defaults.
     const short requested_limit = world.ctf_requested_capture_limit;
     std::int32_t limit = kCtfDefaultCaptureLimit;
@@ -914,6 +959,25 @@ void ctf_initialize_for_level(GameWorld& world)
     notify(std::format("CAPTURE THE FLAG! TO {}",
                        static_cast<int>(ctf.capture_limit)));
     play(SOUND_CHARGE);
+}
+
+void ctf_authored_flag_teams(const GameWorld& world, bool (&present)[4])
+{
+    for (bool& team_present : present)
+        team_present = false;
+    for (const auto& uptr : world.fxlist)
+    {
+        walker* fx = uptr.get();
+        if (fx == nullptr || fx->dead() ||
+            fx->query_order() != Order::Treasure ||
+            fx->family() != og::FAMILY_FLAG)
+        {
+            continue;
+        }
+        const unsigned char team = fx->team_num();
+        if (is_score_team(team))
+            present[team] = true;
+    }
 }
 
 void ctf_run_tick(GameWorld& world)

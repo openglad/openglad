@@ -109,6 +109,11 @@ bool ctf_suppress_team_wipe_endgame(const GameWorld& world);
 // same name for the same tint.
 const char* ctf_team_color_name(int team);
 
+// Which score teams author a (live) flag on this map. Non-mutating fxlist
+// scan; usable before ctf_initialize_for_level runs (e.g. by team-choice
+// surfaces constraining CTF team selection to authored teams).
+void ctf_authored_flag_teams(const GameWorld& world, bool (&present)[4]);
+
 // True when a kind-0 (player revive) entry for this corpse is still pending.
 // Shared by the HUD countdown and the view-control keep-alive paths.
 inline bool ctf_pending_player_respawn(const CtfState& ctf,

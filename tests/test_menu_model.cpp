@@ -91,6 +91,38 @@ TEST(MenuModel, team_build_lookup)
 
     ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main, "ctf_teams") == nullptr)
         << "the CTF items live in the team build menu only";
+
+    ASSERT_TRUE(def.items.size() >= 16)
+        << "team build should expose the teams/viewer/troops items";
+
+    const PickerMenuItem* ctf_troops =
+        find_picker_menu_item(PickerMenuId::TeamBuild, "ctf_troops");
+    ASSERT_TRUE(ctf_troops != nullptr) << "ctf_troops id should resolve in team build";
+    ASSERT_EQ(static_cast<int>(PickerMenuCommand::ToggleCtfScenarioTroops),
+              static_cast<int>(ctf_troops->command))
+        << "ctf_troops should map to ToggleCtfScenarioTroops";
+
+    const PickerMenuItem* view_scenario =
+        find_picker_menu_item(PickerMenuId::TeamBuild, "view_scenario");
+    ASSERT_TRUE(view_scenario != nullptr)
+        << "view_scenario id should resolve in team build";
+    ASSERT_EQ(static_cast<int>(PickerMenuCommand::ViewScenario),
+              static_cast<int>(view_scenario->command))
+        << "view_scenario should map to ViewScenario";
+
+    const PickerMenuItem* teams =
+        find_picker_menu_item(PickerMenuId::TeamBuild, "teams");
+    ASSERT_TRUE(teams != nullptr) << "teams id should resolve in team build";
+    ASSERT_EQ(static_cast<int>(PickerMenuCommand::Teams),
+              static_cast<int>(teams->command))
+        << "teams should map to Teams";
+
+    ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main, "teams") == nullptr)
+        << "teams lives in the team build menu only";
+    ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main, "view_scenario") == nullptr)
+        << "view_scenario lives in the team build menu only";
+    ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main, "ctf_troops") == nullptr)
+        << "ctf_troops lives in the team build menu only";
 }
 
 

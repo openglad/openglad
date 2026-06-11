@@ -1,5 +1,7 @@
 #include <openglad/gameplay/lobby_server.h>
 
+#include <openglad/core/ctf_constants.h>
+
 #include <algorithm>
 #include <format>
 #include <memory>
@@ -12,7 +14,7 @@
 namespace
 {
 
-constexpr std::string_view kDefaultCampaignId = "org.openglad.gladiator";
+using og::kDefaultCampaignId;
 constexpr std::int16_t kDefaultScenarioId = 1;
 constexpr std::int16_t kDefaultDifficulty = 1;
 constexpr std::int16_t kDefaultAlliedMode = 1;
@@ -54,6 +56,11 @@ og::sim::LobbySettings sanitize_settings(const og::sim::LobbySettings& requested
     {
         sanitized.ctf_respawn_ticks =
             std::clamp<std::int16_t>(sanitized.ctf_respawn_ticks, 12, 1200);
+    }
+    if (sanitized.ctf_strip_scenario_troops != 0 &&
+        sanitized.ctf_strip_scenario_troops != 1)
+    {
+        sanitized.ctf_strip_scenario_troops = fallback.ctf_strip_scenario_troops;
     }
     return sanitized;
 }
@@ -236,11 +243,28 @@ void LobbyServer::disconnect_client(PeerId peer_id)
     transport_.disconnect(peer_id);
 }
 
+std::int16_t LobbyServer::effective_team_limit() const noexcept
+{
+    // Shared-team (CTF) lobbies with an explicit team count clamp choosable
+    // teams to the requested range; everything else keeps the full range.
+    if (lobby_settings_allow_shared_teams(state_.settings) &&
+        state_.settings.ctf_team_count > 0)
+    {
+        return std::min<std::int16_t>(static_cast<std::int16_t>(MAX_PLAYERS),
+                                      state_.settings.ctf_team_count);
+    }
+    return static_cast<std::int16_t>(MAX_PLAYERS);
+}
+
 bool LobbyServer::is_team_available(std::int16_t team,
                                     PeerId peer_id) const noexcept
 {
-    if (team < 0 || team >= MAX_PLAYERS)
+    if (team < 0 || team >= effective_team_limit())
         return false;
+
+    // CTF lobbies share teams: any in-range team is open to any player.
+    if (lobby_settings_allow_shared_teams(state_.settings))
+        return true;
 
     for (const auto& [other_peer_id, peer] : peers_)
     {
@@ -263,7 +287,8 @@ std::int16_t LobbyServer::resolve_team(
     if (current_team.has_value() && is_team_available(*current_team, peer_id))
         return *current_team;
 
-    for (std::int16_t candidate = 0; candidate < MAX_PLAYERS; ++candidate)
+    const std::int16_t limit = effective_team_limit();
+    for (std::int16_t candidate = 0; candidate < limit; ++candidate)
     {
         if (is_team_available(candidate, peer_id))
             return candidate;
@@ -449,14 +474,23 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
         if (peer_it->second.player.has_value())
         {
             const auto& team_change = std::get<LobbyTeamChangeMessage>(message.payload);
-            const std::int16_t team = resolve_team(
-                peer_id, team_change.team, peer_it->second.player->team);
-            if (team >= 0)
+            const std::int16_t current = peer_it->second.player->team;
+            const std::int16_t team =
+                resolve_team(peer_id, team_change.team, current);
+            if (team >= 0 && team != current)
             {
                 peer_it->second.player->team = team;
                 for (auto& slot : peer_it->second.player->character_slots)
                     slot.character.teamnum = team;
                 rebuild_needed = true;
+            }
+            else
+            {
+                // Denial echo: the resolve fell back to the requester's
+                // current team, so the state will not change and no
+                // broadcast fires. Echo the authoritative state to the
+                // requester so its bounce is detectable without a timeout.
+                send_state(peer_id);
             }
         }
         break;
@@ -479,6 +513,69 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
                 std::get<LobbySettingsChangeMessage>(message.payload);
             state_.settings =
                 sanitize_settings(settings_change.settings, state_.settings);
+
+            // A lowered CTF team count can strand joined players on a team
+            // outside the new range; re-resolve them so nobody is left on a
+            // team the host just removed.
+            const std::int16_t limit = effective_team_limit();
+            for (auto& [other_peer_id, peer] : peers_)
+            {
+                if (!peer.player.has_value() || peer.player->team < limit)
+                    continue;
+                const std::int16_t reteamed = resolve_team(
+                    other_peer_id,
+                    static_cast<std::int16_t>(limit - 1),
+                    std::nullopt);
+                if (reteamed < 0)
+                    continue;
+                peer.player->team = reteamed;
+                for (auto& slot : peer.player->character_slots)
+                    slot.character.teamnum = reteamed;
+                rebuild_needed = true;
+            }
+
+            // Shared->exclusive transition (e.g. CTF campaign -> classic):
+            // players legitimately sharing a team must be de-shared, or a
+            // classic match starts with two humans on one team. Iterate in
+            // connection order; the earliest-connected player keeps the team.
+            if (!lobby_settings_allow_shared_teams(state_.settings))
+            {
+                std::vector<std::pair<PeerId, ConnectedPeerState*>> ordered;
+                ordered.reserve(peers_.size());
+                for (auto& [other_peer_id, peer] : peers_)
+                {
+                    if (peer.player.has_value())
+                        ordered.emplace_back(other_peer_id, &peer);
+                }
+                std::sort(ordered.begin(), ordered.end(),
+                          [](const auto& lhs, const auto& rhs) {
+                              return lhs.second->connection_order <
+                                     rhs.second->connection_order;
+                          });
+                for (std::size_t i = 0; i < ordered.size(); ++i)
+                {
+                    LobbyPlayer& player = *ordered[i].second->player;
+                    bool collides = false;
+                    for (std::size_t j = 0; j < i; ++j)
+                    {
+                        if (ordered[j].second->player->team == player.team)
+                        {
+                            collides = true;
+                            break;
+                        }
+                    }
+                    if (!collides)
+                        continue;
+                    const std::int16_t reteamed = resolve_team(
+                        ordered[i].first, player.team, std::nullopt);
+                    if (reteamed < 0 || reteamed == player.team)
+                        continue;
+                    player.team = reteamed;
+                    for (auto& slot : player.character_slots)
+                        slot.character.teamnum = reteamed;
+                    rebuild_needed = true;
+                }
+            }
         }
         break;
     }
@@ -553,6 +650,7 @@ LobbySaveDataEquivalent LobbyServer::build_save_data_equivalent() const
     equivalent.ctf_team_count = state_.settings.ctf_team_count;
     equivalent.ctf_capture_limit = state_.settings.ctf_capture_limit;
     equivalent.ctf_respawn_ticks = state_.settings.ctf_respawn_ticks;
+    equivalent.ctf_strip_scenario_troops = state_.settings.ctf_strip_scenario_troops;
     equivalent.current_campaign = state_.settings.campaign_id.empty()
         ? std::string(kDefaultCampaignId)
         : state_.settings.campaign_id;

@@ -80,6 +80,7 @@ void sync_world_from_save_data(GameWorld& world, const SaveData& save)
     world.ctf_requested_team_count = save.ctf_team_count;
     world.ctf_requested_capture_limit = save.ctf_capture_limit;
     world.ctf_requested_respawn_ticks = save.ctf_respawn_ticks;
+    world.ctf_requested_strip_scenario_troops = save.ctf_strip_scenario_troops;
     world.current_scenario = save.scen_num;
     for (int index = 0; index < MAX_PLAYERS; ++index)
         world.m_score[index] = save.m_score[index];
@@ -292,6 +293,7 @@ void copy_headless_server_save_data(SaveData& destination,
     destination.ctf_team_count = source.ctf_team_count;
     destination.ctf_capture_limit = source.ctf_capture_limit;
     destination.ctf_respawn_ticks = source.ctf_respawn_ticks;
+    destination.ctf_strip_scenario_troops = source.ctf_strip_scenario_troops;
 
     for (std::size_t index = 0; index < destination.team_list.size(); ++index)
     {
@@ -317,6 +319,8 @@ void apply_headless_lobby_game_start_config(
     save.ctf_team_count = static_cast<short>(config_save.ctf_team_count);
     save.ctf_capture_limit = static_cast<short>(config_save.ctf_capture_limit);
     save.ctf_respawn_ticks = static_cast<short>(config_save.ctf_respawn_ticks);
+    save.ctf_strip_scenario_troops =
+        static_cast<short>(config_save.ctf_strip_scenario_troops);
     save.my_team = 0;
 
     for (auto& member : save.team_list)

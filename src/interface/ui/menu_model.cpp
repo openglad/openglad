@@ -31,7 +31,7 @@ constexpr std::array<PickerMenuItem, 11> kMainMenuItems = {{
 #endif
 }};
 
-constexpr std::array<PickerMenuItem, 13> kTeamBuildItems = {{
+constexpr std::array<PickerMenuItem, 16> kTeamBuildItems = {{
     {"view_team", "View Team", PickerMenuCommand::ViewTeam},
     {"train_team", "Train Team", PickerMenuCommand::TrainTeam},
     {"hire_troops", "Hire Troops", PickerMenuCommand::HireTroops},
@@ -43,8 +43,13 @@ constexpr std::array<PickerMenuItem, 13> kTeamBuildItems = {{
     {"set_level", "Set Level", PickerMenuCommand::SetLevel},
     {"networking", "Networking", PickerMenuCommand::Networking},
     {"set_campaign", "Set Campaign", PickerMenuCommand::SetCampaign},
+    // The SDL picker groups the CTF match settings into the TEAMS subscreen;
+    // terminal clients keep them as flat team-build items.
     {"ctf_teams", "CTF Teams", PickerMenuCommand::CycleCtfTeamCount},
     {"ctf_caps", "Capture Limit", PickerMenuCommand::CycleCtfCaptureLimit},
+    {"ctf_troops", "Scenario Troops", PickerMenuCommand::ToggleCtfScenarioTroops},
+    {"view_scenario", "View Scenario", PickerMenuCommand::ViewScenario},
+    {"teams", "Teams", PickerMenuCommand::Teams},
 }};
 
 constexpr PickerMenuDefinition kMainMenu{

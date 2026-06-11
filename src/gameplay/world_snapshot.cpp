@@ -668,6 +668,7 @@ void serialize_ctf_state(std::vector<std::uint8_t>& buffer,
     append_i16(buffer, snapshot.ctf_requested_team_count);
     append_i16(buffer, snapshot.ctf_requested_capture_limit);
     append_i16(buffer, snapshot.ctf_requested_respawn_ticks);
+    append_i16(buffer, snapshot.ctf_requested_strip_scenario_troops);
 }
 
 void deserialize_ctf_state(ByteReader& reader, og::sim::WorldSnapshot& snapshot)
@@ -760,6 +761,8 @@ void deserialize_ctf_state(ByteReader& reader, og::sim::WorldSnapshot& snapshot)
         reader.read_i16("world.ctf_requested_capture_limit");
     snapshot.ctf_requested_respawn_ticks =
         reader.read_i16("world.ctf_requested_respawn_ticks");
+    snapshot.ctf_requested_strip_scenario_troops =
+        reader.read_i16("world.ctf_requested_strip_scenario_troops");
 }
 
 void serialize_world_state(std::vector<std::uint8_t>& buffer,
@@ -2209,6 +2212,8 @@ void capture_ctf_state(const GameWorld& world, og::sim::WorldSnapshot& snapshot)
     snapshot.ctf_requested_team_count = world.ctf_requested_team_count;
     snapshot.ctf_requested_capture_limit = world.ctf_requested_capture_limit;
     snapshot.ctf_requested_respawn_ticks = world.ctf_requested_respawn_ticks;
+    snapshot.ctf_requested_strip_scenario_troops =
+        world.ctf_requested_strip_scenario_troops;
 }
 
 // Rebuilds the world's CtfState from the snapshot. Constructing a fresh state
@@ -2262,6 +2267,8 @@ void apply_ctf_state(GameWorld& world, const og::sim::WorldSnapshot& snapshot)
     world.ctf_requested_team_count = snapshot.ctf_requested_team_count;
     world.ctf_requested_capture_limit = snapshot.ctf_requested_capture_limit;
     world.ctf_requested_respawn_ticks = snapshot.ctf_requested_respawn_ticks;
+    world.ctf_requested_strip_scenario_troops =
+        snapshot.ctf_requested_strip_scenario_troops;
 }
 
 og::sim::WorldSnapshot capture_snapshot_impl(GameWorld& world,
@@ -2867,6 +2874,8 @@ void apply_delta(WorldSnapshot& baseline, const WorldSnapshot& delta)
     baseline.ctf_requested_team_count = delta.ctf_requested_team_count;
     baseline.ctf_requested_capture_limit = delta.ctf_requested_capture_limit;
     baseline.ctf_requested_respawn_ticks = delta.ctf_requested_respawn_ticks;
+    baseline.ctf_requested_strip_scenario_troops =
+        delta.ctf_requested_strip_scenario_troops;
 
     apply_delta_grid(baseline, delta);
     baseline.guy_snapshots = delta.guy_snapshots;

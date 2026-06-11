@@ -6,6 +6,7 @@
 #include <openglad/gameplay/net_transport_inprocess.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
+#include <openglad/interface/ui/picker_common.h>
 
 #include <algorithm>
 #include <format>
@@ -99,27 +100,12 @@ std::unique_ptr<guy> make_guy_from_lobby_character(
     return result;
 }
 
-std::vector<short> collect_distinct_save_teams(const SaveData& save)
-{
-    std::vector<short> teams;
-    teams.reserve(MAX_PLAYERS);
-    for (const auto& member : save.team_list)
-    {
-        if (!member)
-            continue;
-
-        const short team = member->teamnum;
-        if (team < 0 || team >= MAX_PLAYERS)
-            continue;
-        if (std::find(teams.begin(), teams.end(), team) == teams.end())
-            teams.push_back(team);
-    }
-    return teams;
-}
-
 std::vector<short> build_peer_team_mapping(const SaveData& save, bool spectator_mode)
 {
-    std::vector<short> teams = collect_distinct_save_teams(save);
+    // The seat derivation gameplay uses (distinct nonzero teams in slot
+    // order, my_team hoisted first) so the lobby's Player 1 team matches the
+    // loader's first view.
+    std::vector<short> teams = og::ui::derive_local_seat_teams(save);
     const int required_players = spectator_mode
         ? 0
         : std::clamp<int>(save.numplayers, 1, MAX_PLAYERS);
@@ -348,6 +334,30 @@ public:
         return true;
     }
 
+    bool request_team_change(short team) override
+    {
+        if (!ensure_initialized())
+            return false;
+
+        SaveData& save = og::runtime::current_session->myscreen_->save_data;
+        if (!og::ui::team_has_members(save, team))
+            return false;
+        if (!og::ui::set_preferred_team(save, team))
+            return false;
+
+        // The roster commit re-derives the synthetic seats; the my_team hoist
+        // re-seats Player 1 onto the requested team.
+        commit_from_save(false, true);
+        return true;
+    }
+
+    [[nodiscard]] std::vector<og::sim::LobbyPlayer> lobby_players() const override
+    {
+        if (!state_.has_value())
+            return {};
+        return state_->players;
+    }
+
 private:
     bool ensure_initialized()
     {
@@ -415,6 +425,7 @@ private:
         settings.ctf_team_count = save.ctf_team_count;
         settings.ctf_capture_limit = save.ctf_capture_limit;
         settings.ctf_respawn_ticks = save.ctf_respawn_ticks;
+        settings.ctf_strip_scenario_troops = save.ctf_strip_scenario_troops;
 
         og::sim::LobbyMessage message;
         message.payload = og::sim::LobbySettingsChangeMessage{
@@ -518,6 +529,7 @@ private:
         save.ctf_team_count = state_->settings.ctf_team_count;
         save.ctf_capture_limit = state_->settings.ctf_capture_limit;
         save.ctf_respawn_ticks = state_->settings.ctf_respawn_ticks;
+        save.ctf_strip_scenario_troops = state_->settings.ctf_strip_scenario_troops;
         save.numplayers = static_cast<unsigned char>(
             spectator_mode_
                 ? 0
@@ -753,4 +765,37 @@ bool picker_lobby_host_controls_visible()
     if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
         return client->host_controls_visible();
     return true;
+}
+
+bool picker_lobby_request_team_change(short team)
+{
+    return resolve_picker_lobby_client().request_team_change(team);
+}
+
+bool picker_lobby_set_ready(bool ready)
+{
+    if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
+        return client->set_ready(ready);
+    return false;
+}
+
+bool picker_lobby_local_ready()
+{
+    if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
+        return client->local_ready();
+    return false;
+}
+
+std::vector<og::sim::LobbyPlayer> picker_lobby_players()
+{
+    if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
+        return client->lobby_players();
+    return {};
+}
+
+bool picker_lobby_is_networked()
+{
+    if (og::ui::IPickerLobbyClient* const client = maybe_picker_lobby_client())
+        return client->is_networked_session();
+    return false;
 }

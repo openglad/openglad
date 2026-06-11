@@ -287,6 +287,7 @@ void append_lobby_settings(std::vector<std::uint8_t>& payload,
     append_i16(payload, settings.ctf_team_count);
     append_i16(payload, settings.ctf_capture_limit);
     append_i16(payload, settings.ctf_respawn_ticks);
+    append_i16(payload, settings.ctf_strip_scenario_troops);
 }
 
 og::sim::LobbySettings read_lobby_settings(PayloadReader& reader)
@@ -299,6 +300,7 @@ og::sim::LobbySettings read_lobby_settings(PayloadReader& reader)
     settings.ctf_team_count = reader.read_i16();
     settings.ctf_capture_limit = reader.read_i16();
     settings.ctf_respawn_ticks = reader.read_i16();
+    settings.ctf_strip_scenario_troops = reader.read_i16();
     return settings;
 }
 

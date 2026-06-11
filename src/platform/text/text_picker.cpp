@@ -7,15 +7,19 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
+#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/resources/level_data_hooks.h>
+#include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/picker.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_state.h>
 #include <openglad/interface/ui/text_protocol.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <format>
 #include <iostream>
@@ -128,6 +132,7 @@ public:
     std::string show_campaign_select() override
     {
         std::list<std::string> campaigns = list_campaigns();
+        order_campaigns_default_first(campaigns);
         std::vector<std::string> entries(campaigns.begin(), campaigns.end());
 
         if (entries.empty()) {
@@ -309,6 +314,8 @@ private:
             return format_ctf_teams_label(save_data_);
         if (item.command == PickerMenuCommand::CycleCtfCaptureLimit)
             return format_ctf_caps_label(save_data_);
+        if (item.command == PickerMenuCommand::ToggleCtfScenarioTroops)
+            return format_ctf_troops_label(save_data_);
         return std::string(item.label);
     }
 
@@ -388,9 +395,136 @@ private:
             cycle_ctf_capture_limit(save_data_);
             std::printf("%s\n", format_ctf_caps_label(save_data_).c_str());
             break;
+        case PickerMenuCommand::ToggleCtfScenarioTroops:
+            if (!is_ctf_campaign(save_data_)) {
+                std::printf("CTF settings apply to CTF maps only.\n");
+                break;
+            }
+            toggle_ctf_scenario_troops(save_data_);
+            std::printf("%s\n", format_ctf_troops_label(save_data_).c_str());
+            break;
+        case PickerMenuCommand::ViewScenario:
+            view_scenario();
+            break;
+        case PickerMenuCommand::Teams:
+            teams_screen();
+            break;
         default:
             break;
         }
+    }
+
+    // Read-only roster report of the current level from a scratch headless
+    // load (the same shared report the SDL VIEW LEVEL screen renders).
+    void view_scenario()
+    {
+        if (get_mounted_campaign() != save_data_.current_campaign) {
+            std::printf("Campaign '%s' is not mounted.\n",
+                save_data_.current_campaign.c_str());
+            return;
+        }
+
+        LevelRuntimeData scenario(save_data_.scen_num, false,
+            &headless_level_data_hooks());
+        if (!scenario.load()) {
+            std::printf("Could not load level %d.\n",
+                static_cast<int>(save_data_.scen_num));
+            return;
+        }
+
+        const ScenarioRosterReport report =
+            build_scenario_roster_report(scenario.world(), save_data_);
+        std::printf("\n--- SCEN %d: %s ---\n",
+            static_cast<int>(save_data_.scen_num),
+            scenario.world().title.c_str());
+        for (const std::string& line : format_scenario_report_lines(report))
+            std::printf("%s\n", line.c_str());
+        wait_for_enter();
+    }
+
+    // Roster grouped by team plus a sub-prompt: "play N" re-seats P1
+    // (my_team), "move S N" moves roster slot S to team N. Teams are 1-based
+    // in the prompt, matching the train menu's "Playing on Team N" wording.
+    void teams_screen()
+    {
+        for (;;) {
+            print_team_rows();
+            std::printf("Teams: 'play N' | 'move SLOT N' | blank line exits: ");
+            std::fflush(stdout);
+
+            std::string line;
+            if (!read_line(line) || line.empty())
+                return;
+
+            int value = 0;
+            int slot = 0;
+            if (std::sscanf(line.c_str(), "play %d", &value) == 1) {
+                if (value < 1 || value > 4 ||
+                    !set_preferred_team(save_data_,
+                        static_cast<short>(value - 1))) {
+                    std::printf("No heroes on team %d.\n", value);
+                } else {
+                    std::printf("Playing on %s.\n",
+                        og::sim::ctf_team_color_name(value - 1));
+                }
+                continue;
+            }
+            if (std::sscanf(line.c_str(), "move %d %d", &slot, &value) == 2) {
+                if (slot < 1 || slot > MAX_TEAM_SIZE || value < 1 || value > 4
+                    || !save_data_.team_list[slot - 1]) {
+                    std::printf("Invalid slot or team.\n");
+                    continue;
+                }
+                const short current =
+                    save_data_.team_list[slot - 1]->teamnum;
+                const short moved = cycle_guy_team(save_data_, slot - 1,
+                    (value - 1) - static_cast<int>(current));
+                if (moved < 0)
+                    std::printf("Invalid slot or team.\n");
+                else
+                    std::printf("Moved slot %d to %s.\n", slot,
+                        og::sim::ctf_team_color_name(value - 1));
+                continue;
+            }
+            std::printf("Unrecognized command.\n");
+        }
+    }
+
+    void print_team_rows()
+    {
+        const std::vector<short> seats = derive_local_seat_teams(save_data_);
+        std::printf("\n--- Teams ---\n");
+        // Only seats below numplayers materialize in-game (game.cpp
+        // truncates the derivation at numviews); never tag the rest.
+        const std::size_t seat_limit = std::min<std::size_t>(
+            seats.size(), static_cast<std::size_t>(save_data_.numplayers));
+        for (short t = 0; t < 4; ++t) {
+            std::string seat_tag;
+            for (std::size_t seat = 0; seat < seat_limit; ++seat) {
+                if (seats[seat] == t)
+                    seat_tag = std::format("(P{})", seat + 1);
+            }
+
+            int hero_count = 0;
+            std::string members;
+            for (int slot = 0; slot < MAX_TEAM_SIZE; ++slot) {
+                const auto& member = save_data_.team_list[slot];
+                if (!member || member->teamnum != t)
+                    continue;
+                ++hero_count;
+                members += std::format("  {}. {} ({})\n", slot + 1,
+                    member->name, family_display_name(member->family));
+            }
+
+            // No world is loaded in the text picker, so no map tags
+            // (authored/BOTS) — is_ctf=false keeps the label honest.
+            std::printf("%s\n",
+                format_team_row_label(t, hero_count, false, false, false,
+                    seat_tag).c_str());
+            std::printf("%s", members.c_str());
+        }
+        if (is_ctf_campaign(save_data_))
+            std::printf("[%s]\n", format_ctf_teams_label(save_data_).c_str());
     }
 
     void ensure_team_initialized()

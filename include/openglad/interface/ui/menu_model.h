@@ -45,6 +45,9 @@ enum class PickerMenuCommand : std::int32_t
     Back,
     CycleCtfTeamCount,
     CycleCtfCaptureLimit,
+    ToggleCtfScenarioTroops,
+    ViewScenario,
+    Teams,
 };
 
 struct PickerMenuItem

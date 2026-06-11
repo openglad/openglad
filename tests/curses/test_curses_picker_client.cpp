@@ -818,3 +818,127 @@ TEST(CursesPickerClient, run_picker_through_team_build_then_quit)
     // The team survived the round trip.
     EXPECT_GE(team_count(f.save()), 1);
 }
+
+// --- CTF scenario-troops toggle -------------------------------------------
+
+// The troops toggle is CTF-campaign gated and flips the strip flag.
+TEST(CursesPickerClient, ctf_troops_toggle_on_ctf_campaign_only)
+{
+    PickerFixture f;
+    const auto* troops_item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::ToggleCtfScenarioTroops);
+    ASSERT_NE(troops_item, nullptr);
+
+    // Classic campaign: the toggle refuses and the notice renders.
+    f.save().current_campaign = "org.openglad.gladiator";
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *troops_item);
+    EXPECT_EQ(0, (int)f.save().ctf_strip_scenario_troops);
+    EXPECT_NE(f.t().dump().find("CTF maps only"), std::string::npos);
+
+    // CTF campaign: Scen -> Own -> Scen.
+    f.save().current_campaign = "org.openglad.ctf";
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *troops_item);
+    EXPECT_EQ(1, (int)f.save().ctf_strip_scenario_troops);
+    EXPECT_NE(f.t().dump().find("Troops: Own"), std::string::npos);
+
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *troops_item);
+    EXPECT_EQ(0, (int)f.save().ctf_strip_scenario_troops);
+}
+
+// The team-build label surfaces the live troops setting.
+TEST(CursesPickerClient, ctf_troops_label_formats_from_save)
+{
+    PickerFixture f;
+    f.save().ctf_strip_scenario_troops = 1;
+    f.t().push_special(KeyCode::Escape);
+    (void)f.client.present_menu(PickerMenuId::TeamBuild);
+    EXPECT_NE(f.t().dump().find("Troops: Own"), std::string::npos);
+}
+
+// --- Teams screen ----------------------------------------------------------
+
+// Enter on a character cycles its team; "Play on {COLOR}" re-seats P1.
+TEST(CursesPickerClient, teams_screen_cycles_character_and_sets_my_team)
+{
+    PickerFixture f;
+    const auto* teams_item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::Teams);
+    ASSERT_NE(teams_item, nullptr);
+    ASSERT_EQ(1, team_count(f.save()));
+    ASSERT_EQ(0, (int)f.save().team_list[0]->teamnum);
+    ASSERT_EQ(0, (int)f.save().my_team);
+
+    // 1st selectable = "Play on RED", 2nd = the character: cycle the
+    // character onto GREEN, then take the GREEN seat, then leave.
+    pick(f.t(), 1);                      // character row -> team 0 -> 1
+    pick(f.t(), 0);                      // "Play on GREEN" (team 1)
+    f.t().push_special(KeyCode::Escape); // leave the teams screen
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *teams_item);
+
+    EXPECT_EQ(1, (int)f.save().team_list[0]->teamnum);
+    EXPECT_EQ(1, (int)f.save().my_team);
+    const std::string dump = f.t().dump();
+    EXPECT_NE(dump.find("GREEN TEAM (P1) 1 HEROES"), std::string::npos) << dump;
+}
+
+// Playing on an empty team is impossible: empty teams offer no Play entry.
+TEST(CursesPickerClient, teams_screen_offers_play_only_for_manned_teams)
+{
+    PickerFixture f;
+    const auto* teams_item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::Teams);
+    ASSERT_NE(teams_item, nullptr);
+
+    f.t().push_special(KeyCode::Escape);
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *teams_item);
+
+    const std::string dump = f.t().dump();
+    EXPECT_NE(dump.find("Play on RED"), std::string::npos) << dump;
+    EXPECT_EQ(dump.find("Play on BLUE"), std::string::npos)
+        << "no Play entry for an empty team";
+    EXPECT_NE(dump.find("BLUE TEAM 0 HEROES"), std::string::npos) << dump;
+}
+
+// --- View Scenario ----------------------------------------------------------
+
+// The viewer renders the shared roster report from a scratch headless load.
+TEST(CursesPickerClient, view_scenario_renders_roster_report)
+{
+    PickerFixture f;
+    const auto* viewer_item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::ViewScenario);
+    ASSERT_NE(viewer_item, nullptr);
+    f.save().current_campaign = "org.openglad.gladiator";
+    f.save().scen_num = 1;
+
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *viewer_item);
+
+    const std::string dump = f.t().dump();
+    EXPECT_NE(dump.find("SCEN 1:"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("TEAM"), std::string::npos) << dump;
+}
+
+// --- Campaign ordering -------------------------------------------------------
+
+// The default campaign lists first; the CTF campaign no longer sorts ahead
+// of it alphabetically.
+TEST(CursesPickerClient, campaign_select_lists_default_campaign_first)
+{
+    PickerFixture f;
+    f.t().push_special(KeyCode::Escape); // keep the current campaign
+    (void)f.client.show_campaign_select();
+
+    const std::string dump = f.t().dump();
+    const std::size_t default_pos = dump.find("org.openglad.gladiator");
+    ASSERT_NE(default_pos, std::string::npos) << dump;
+    const std::size_t ctf_pos = dump.find("org.openglad.ctf");
+    if (ctf_pos != std::string::npos)
+    {
+        EXPECT_LT(default_pos, ctf_pos)
+            << "the default campaign must list before the CTF campaign";
+    }
+}

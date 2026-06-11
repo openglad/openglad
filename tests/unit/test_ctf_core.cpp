@@ -1466,3 +1466,186 @@ TEST(CtfCore, teleport_rule_is_deterministic_across_runs)
     ASSERT_EQ(first, second)
         << "the teleport rule reads only deterministic position/entity state";
 }
+
+// --- Scenario-troops strip (Troops: Own) -------------------------------------
+
+namespace {
+
+struct StripScenarioActors
+{
+    walker* hero = nullptr;            // team 0, myguy roster walker
+    walker* authored_friend = nullptr; // team 0, authored living
+    walker* friendly_gen = nullptr;    // team 0, authored generator
+    walker* authored_enemy = nullptr;  // team 1, authored living
+    walker* enemy_gen = nullptr;       // team 1, authored generator
+};
+
+StripScenarioActors build_strip_scenario(CtfWorld& fx)
+{
+    StripScenarioActors actors;
+    fx.spawn_flag(0, 96, 96);
+    fx.spawn_flag(1, 544, 800);
+    fx.spawn_anchor(0, 128, 128);
+    fx.spawn_anchor(1, 512, 832);
+
+    actors.hero = fx.spawn_living(FAMILY_SOLDIER, 0, 160, 160);
+    actors.hero->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    actors.hero->myguy->id = 7;
+
+    actors.authored_friend = fx.spawn_living(FAMILY_ARCHER, 0, 200, 160);
+    actors.authored_enemy = fx.spawn_living(FAMILY_ORC, 1, 480, 760);
+
+    actors.friendly_gen = fx.world().add_ob(Order::Generator, FAMILY_TENT);
+    actors.friendly_gen->setxy(256, 128);
+    actors.friendly_gen->set_team_num(0);
+
+    actors.enemy_gen = fx.world().add_ob(Order::Generator, FAMILY_TOWER);
+    actors.enemy_gen->setxy(448, 832);
+    actors.enemy_gen->set_team_num(1);
+
+    return actors;
+}
+
+WorldDigest run_strip_scenario_match(bool set_field, short strip_flag, int ticks)
+{
+    CtfWorld fx(510);
+    build_strip_scenario(fx);
+    if (set_field)
+        fx.world().ctf_requested_strip_scenario_troops = strip_flag;
+    fx.tick(ticks);
+    return digest_world(fx.world());
+}
+
+} // namespace
+
+TEST(CtfCore, strip_scenario_troops_removes_roster_team_authored_entities)
+{
+    CtfWorld fx;
+    StripScenarioActors actors = build_strip_scenario(fx);
+    fx.world().ctf_requested_strip_scenario_troops = 1;
+
+    fx.tick();
+
+    const og::sim::CtfState& ctf = fx.world().ctf;
+    ASSERT_TRUE(ctf.active);
+
+    // The roster (myguy) team loses its authored living and generator; the
+    // hero itself is never stripped.
+    EXPECT_FALSE(actors.hero->dead());
+    EXPECT_TRUE(actors.authored_friend->dead());
+    EXPECT_TRUE(actors.friendly_gen->dead());
+
+    // The bot team's authored army is the opposition: untouched.
+    EXPECT_FALSE(actors.authored_enemy->dead());
+    EXPECT_FALSE(actors.enemy_gen->dead());
+
+    // The roster team still fields its hero, so no bot squad replaces it.
+    int alive[4] = {};
+    for (const auto& uptr : fx.world().oblist)
+    {
+        const walker* w = uptr.get();
+        if (w != nullptr && !w->dead() && w->query_order() == Order::Living &&
+            w->team_num() < 4)
+            alive[w->team_num()]++;
+    }
+    EXPECT_EQ(1, alive[0]) << "only the hero should remain on team 0";
+    EXPECT_EQ(1, alive[1]) << "the authored enemy army stays";
+
+    // The init-stripped corpses must be invisible to run_death_scan: no
+    // kind-1 (bot) respawn entry may exist for the roster team.
+    for (const auto& entry : ctf.respawn_queue)
+    {
+        EXPECT_FALSE(entry.kind == 1 && entry.team == 0)
+            << "init-stripped troop entered the bot respawn queue";
+    }
+
+    // Past the respawn window (default 120 ticks): the stripped troops must
+    // stay gone instead of returning as immortal bot respawns.
+    fx.tick(150);
+    int alive_after[4] = {};
+    for (const auto& uptr : fx.world().oblist)
+    {
+        const walker* w = uptr.get();
+        if (w != nullptr && !w->dead() && w->query_order() == Order::Living &&
+            w->team_num() < 4)
+            alive_after[w->team_num()]++;
+    }
+    EXPECT_EQ(1, alive_after[0])
+        << "stripped troops must stay gone past the respawn window";
+    EXPECT_FALSE(actors.hero->dead());
+    for (const auto& entry : ctf.respawn_queue)
+    {
+        EXPECT_FALSE(entry.kind == 1 && entry.team == 0)
+            << "bot respawn queued for the roster team after the window";
+    }
+}
+
+TEST(CtfCore, strip_scenario_troops_off_matches_control_run)
+{
+    // An explicit 0 must be byte-equal to the untouched default: the strip
+    // pass adds no behavior (and no rng draws) when the flag is off.
+    const WorldDigest off = run_strip_scenario_match(true, 0, 50);
+    const WorldDigest control = run_strip_scenario_match(false, 0, 50);
+    ASSERT_EQ(off, control);
+}
+
+TEST(CtfCore, strip_scenario_troops_run_is_deterministic)
+{
+    // 150 ticks spans the default 120-tick respawn window, so determinism
+    // covers the no-bot-respawn-of-stripped-troops behavior too.
+    const WorldDigest first = run_strip_scenario_match(true, 1, 150);
+    const WorldDigest second = run_strip_scenario_match(true, 1, 150);
+    ASSERT_TRUE(first.ctf_active);
+    ASSERT_EQ(first, second);
+}
+
+TEST(CtfCore, strip_scenario_troops_inert_when_ctf_does_not_activate)
+{
+    // One flag team: CTF demotes to inactive and the strip must not run.
+    CtfWorld fx;
+    fx.spawn_flag(0, 96, 96);
+    walker* hero = fx.spawn_living(FAMILY_SOLDIER, 0, 160, 160);
+    hero->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    hero->myguy->id = 7;
+    walker* authored = fx.spawn_living(FAMILY_ARCHER, 0, 200, 160);
+    fx.world().ctf_requested_strip_scenario_troops = 1;
+
+    fx.tick();
+
+    ASSERT_FALSE(fx.world().ctf.active);
+    EXPECT_FALSE(authored->dead())
+        << "non-activating CTF maps keep classic rules";
+}
+
+// --- Authored flag-team scan (team-choice surfaces) --------------------------
+
+TEST(CtfCore, authored_flag_teams_scans_live_flags_without_rng)
+{
+    CtfWorld fx;
+    fx.spawn_flag(0, 96, 96);
+    fx.spawn_flag(2, 544, 800);
+    walker* dead_flag = fx.spawn_flag(3, 200, 200);
+    dead_flag->set_dead(1);
+
+    const std::uint32_t rng_before = fx.world().rng_.state_;
+    bool present[4] = {true, true, true, true};
+    og::sim::ctf_authored_flag_teams(fx.world(), present);
+
+    EXPECT_TRUE(present[0]);
+    EXPECT_FALSE(present[1]) << "no flag authored for team 1";
+    EXPECT_TRUE(present[2]);
+    EXPECT_FALSE(present[3]) << "dead flags must be ignored";
+    EXPECT_EQ(rng_before, fx.world().rng_.state_) << "scan must not draw rng";
+}
+
+TEST(CtfCore, authored_flag_teams_empty_on_classic_world)
+{
+    CtfWorld fx;
+    fx.world().type = 0;
+    fx.spawn_living(FAMILY_SOLDIER, 0, 160, 160);
+
+    bool present[4] = {true, true, true, true};
+    og::sim::ctf_authored_flag_teams(fx.world(), present);
+    for (int t = 0; t < 4; ++t)
+        EXPECT_FALSE(present[t]) << "team " << t;
+}

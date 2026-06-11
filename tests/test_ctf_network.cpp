@@ -429,3 +429,88 @@ TEST(CtfNetwork, two_same_team_dead_players_reclaim_their_own_characters)
     EXPECT_EQ(id1, fixture.client(1).controlled_entity_ids()[1]);
     fixture.expect_clients_match_server();
 }
+
+TEST(CtfNetwork, bind_player_prefers_owner_matched_heroes_on_shared_team)
+{
+    // Two players share team 0 (the CTF multi-human-per-team shape). Each
+    // must bind to the walker whose myguy carries ITS owner tag, not to the
+    // first unclaimed walker in oblist order.
+    NetworkTestFixture fixture({
+        .player_count = 2,
+        .level_id = 1,
+    });
+    fixture.load_level();
+
+    walker* first = nullptr;
+    walker* second = nullptr;
+    fixture.with_server_context([&] {
+        // The owner preference is CTF-scoped: classic/allied worlds keep the
+        // original shared-pool claim, so mark the server world as CTF first.
+        fixture.server_world().type |= GameWorld::TYPE_CTF;
+        for (const auto& uptr : fixture.server_world().oblist)
+        {
+            walker* w = uptr.get();
+            if (w == nullptr || w->dead() ||
+                w->query_order() != Order::Living || w->team_num() != 0)
+            {
+                continue;
+            }
+            if (first == nullptr)
+            {
+                first = w;
+                continue;
+            }
+            second = w;
+            break;
+        }
+        if (second == nullptr)
+        {
+            // The classic level fields one team-0 living; add a second hero
+            // beside it so the team is genuinely shared.
+            second = fixture.server_world().add_ob(Order::Living, FAMILY_SOLDIER);
+            ASSERT_NE(nullptr, second);
+            second->setxy(static_cast<short>(first->xpos() + 32),
+                          static_cast<short>(first->ypos()));
+            second->set_team_num(0);
+        }
+
+        // Tag in REVERSE order: the earlier walker belongs to player 1, the
+        // later one to player 0. The generic first-unclaimed scan would give
+        // player 0 the earlier walker; the owner preference must not.
+        first->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+        first->myguy->id = 21;
+        first->myguy->owner_player_index = 1;
+        first->myguy->owner_save_slot = 0;
+        second->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+        second->myguy->id = 22;
+        second->myguy->owner_player_index = 0;
+        second->myguy->owner_save_slot = 1;
+    });
+    ASSERT_NE(nullptr, first);
+    ASSERT_NE(nullptr, second);
+
+    fixture.rebind_players();
+
+    EXPECT_EQ(second, fixture.server_control(0))
+        << "player 0 must claim its owner-tagged hero";
+    EXPECT_EQ(first, fixture.server_control(1))
+        << "player 1 must claim its owner-tagged hero";
+    EXPECT_EQ(0, fixture.server_control(0)->user());
+    EXPECT_EQ(1, fixture.server_control(1)->user());
+}
+
+TEST(CtfNetwork, bind_player_generic_claim_when_no_owner_tags)
+{
+    // Classic shape: no myguy owner tags anywhere. The binding must fall back
+    // to the original first-unclaimed scan (regression guard).
+    NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = 1,
+    });
+    fixture.load_level();
+
+    walker* control = fixture.server_control(0);
+    ASSERT_NE(nullptr, control);
+    EXPECT_EQ(0, control->user());
+    EXPECT_EQ(0, control->team_num());
+}

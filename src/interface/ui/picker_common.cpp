@@ -7,9 +7,14 @@
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/resources/save_data.h>
+#include <openglad/core/ctf_constants.h>
+#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/statistics.h>
+#include <openglad/gameplay/walker.h>
 
 #include <algorithm>
 #include <cmath>
@@ -443,7 +448,107 @@ void cycle_ctf_capture_limit(SaveData& save)
 
 bool is_ctf_campaign(const SaveData& save)
 {
-    return save.current_campaign == "org.openglad.ctf";
+    return save.current_campaign == og::kCtfCampaignId;
+}
+
+void toggle_ctf_scenario_troops(SaveData& save)
+{
+    save.ctf_strip_scenario_troops =
+        static_cast<short>(save.ctf_strip_scenario_troops != 0 ? 0 : 1);
+}
+
+// --- Team choice helpers (local seats) ---
+
+bool team_has_members(const SaveData& save, short team)
+{
+    for (const auto& member : save.team_list)
+    {
+        if (member && member->teamnum == team)
+            return true;
+    }
+    return false;
+}
+
+bool set_preferred_team(SaveData& save, short team)
+{
+    if (team < 0 || team >= MAX_PLAYERS)
+        return false;
+    if (!team_has_members(save, team))
+        return false;
+    save.my_team = team;
+    return true;
+}
+
+short cycle_guy_team(SaveData& save, int slot_index, int dir)
+{
+    if (slot_index < 0 || slot_index >= MAX_TEAM_SIZE)
+        return -1;
+    guy* member = save.team_list[static_cast<std::size_t>(slot_index)].get();
+    if (member == nullptr)
+        return -1;
+    const int next = ((member->teamnum + dir) % 4 + 4) % 4;
+    member->teamnum = static_cast<short>(next);
+    return static_cast<short>(next);
+}
+
+std::vector<short> derive_local_seat_teams(const SaveData& save)
+{
+    std::vector<short> teams;
+    teams.reserve(MAX_PLAYERS);
+    for (const auto& member : save.team_list)
+    {
+        if (!member)
+            continue;
+        const short team = member->teamnum;
+        if (team <= 0 || team >= MAX_PLAYERS)
+            continue;
+        if (std::find(teams.begin(), teams.end(), team) == teams.end())
+            teams.push_back(team);
+    }
+
+    const short preferred = save.my_team;
+    if (preferred >= 0 && preferred < MAX_PLAYERS &&
+        team_has_members(save, preferred))
+    {
+        teams.erase(std::remove(teams.begin(), teams.end(), preferred),
+                    teams.end());
+        teams.insert(teams.begin(), preferred);
+    }
+    return teams;
+}
+
+std::string format_team_row_label(short team,
+                                  int hero_count,
+                                  bool is_ctf,
+                                  bool authored,
+                                  bool has_humans,
+                                  std::string_view seat_tag)
+{
+    std::string label = std::format("{} TEAM", og::sim::ctf_team_color_name(team));
+    if (!seat_tag.empty())
+    {
+        label += ' ';
+        label += seat_tag;
+    }
+    label += ' ';
+    if (is_ctf && !authored)
+        label += "NOT ON MAP";
+    else if (is_ctf && authored && !has_humans && hero_count == 0)
+        label += "BOTS";
+    else
+        label += std::format("{} HEROES", hero_count);
+    return label;
+}
+
+// --- Campaign ordering ---
+
+void order_campaigns_default_first(std::list<std::string>& campaign_ids)
+{
+    const auto it = std::find(campaign_ids.begin(), campaign_ids.end(),
+                              og::kDefaultCampaignId);
+    if (it == campaign_ids.end() || it == campaign_ids.begin())
+        return;
+    campaign_ids.splice(campaign_ids.begin(), campaign_ids, it);
 }
 
 // --- Player count ---
@@ -482,6 +587,11 @@ std::string format_ctf_caps_label(const SaveData& save)
     if (save.ctf_capture_limit <= 0)
         return "Limit: Map";
     return std::format("Limit: {}", save.ctf_capture_limit);
+}
+
+std::string format_ctf_troops_label(const SaveData& save)
+{
+    return save.ctf_strip_scenario_troops != 0 ? "Troops: Own" : "Troops: Scen";
 }
 
 // --- Team family extraction ---
@@ -945,6 +1055,342 @@ void TrainSession::clamp_working_stats()
         working_->armor = original->armor;
     if (working_->level < original->level)
         working_->upgrade_to_level(original->level);
+}
+
+// --- Scenario roster report (View Level) ---
+
+namespace {
+
+// Defensive cap for pathological custom levels (pagination handles real maps).
+constexpr std::size_t kMaxScenarioReportRows = 200;
+
+bool is_score_team_index(int team)
+{
+    return team >= 0 && team < 4;
+}
+
+std::vector<short> roster_teams_for_strip(const SaveData& save)
+{
+    if (is_allied_mode(save))
+        return {0};
+    std::vector<short> teams;
+    for (const auto& member : save.team_list)
+    {
+        if (!member)
+            continue;
+        const short team = member->teamnum;
+        if (team < 0 || team >= MAX_PLAYERS)
+            continue;
+        if (std::find(teams.begin(), teams.end(), team) == teams.end())
+            teams.push_back(team);
+    }
+    return teams;
+}
+
+std::string clip_line(std::string line)
+{
+    constexpr std::size_t kMaxLineLength = 48;
+    if (line.size() > kMaxLineLength)
+        line.resize(kMaxLineLength);
+    return line;
+}
+
+const char* strip_suffix(ScenarioStripReason reason)
+{
+    switch (reason)
+    {
+        case ScenarioStripReason::TroopsOff: return "*";
+        case ScenarioStripReason::InactiveTeam: return "+";
+        default: return "";
+    }
+}
+
+} // namespace
+
+ScenarioRosterReport build_scenario_roster_report(const GameWorld& world,
+                                                  const SaveData& save)
+{
+    ScenarioRosterReport report;
+    report.is_ctf = (world.type & GameWorld::TYPE_CTF) != 0;
+    report.your_team = is_allied_mode(save) ? 0 : save.my_team;
+
+    int map_capture_limit = 0;
+    if (report.is_ctf)
+    {
+        // Mirror the init scan: first live flag per team counts; the first
+        // flag with a stats level above 1 sets the per-map capture limit.
+        for (const auto& uptr : world.fxlist)
+        {
+            walker* fx = uptr.get();
+            if (fx == nullptr || fx->dead() ||
+                fx->query_order() != Order::Treasure)
+            {
+                continue;
+            }
+            if (fx->family() == og::FAMILY_FLAG)
+            {
+                const int team = fx->team_num();
+                if (!is_score_team_index(team) || report.team_has_flag[team])
+                    continue;
+                report.team_has_flag[team] = true;
+                if (map_capture_limit == 0 && fx->stats() != nullptr &&
+                    fx->stats()->level() > 1)
+                {
+                    map_capture_limit = fx->stats()->level();
+                }
+            }
+            else if (fx->family() == og::FAMILY_CTF_POINT)
+            {
+                if (report.cp_count < og::sim::kCtfMaxControlPoints)
+                    report.cp_count++;
+            }
+        }
+
+        // Respawn anchors (dead markers included, matching the init scan).
+        for (const auto& uptr : world.oblist)
+        {
+            walker* w = uptr.get();
+            if (w == nullptr || w->query_order() != Order::Special ||
+                w->family() != FAMILY_RESERVED_TEAM)
+            {
+                continue;
+            }
+            const int team = w->team_num();
+            if (is_score_team_index(team) &&
+                report.team_anchor_count[team] <
+                    og::sim::kCtfMaxAnchorsPerTeam)
+            {
+                report.team_anchor_count[team]++;
+            }
+        }
+
+        // Active teams: the requested count intersected with authored flag
+        // teams, in team index order (the init clamp).
+        const int requested = save.ctf_team_count;
+        const int max_active =
+            (requested <= 0) ? 4 : std::clamp(requested, 2, 4);
+        int active_count = 0;
+        for (int t = 0; t < 4; ++t)
+        {
+            if (report.team_has_flag[t] && active_count < max_active)
+            {
+                report.team_active[t] = true;
+                active_count++;
+            }
+        }
+        report.ctf_will_activate = active_count >= 2;
+        if (!report.ctf_will_activate)
+        {
+            for (bool& active : report.team_active)
+                active = false;
+        }
+
+        const int requested_limit = save.ctf_capture_limit;
+        int limit = og::sim::kCtfDefaultCaptureLimit;
+        if (requested_limit > 0)
+            limit = requested_limit;
+        else if (map_capture_limit > 0)
+            limit = map_capture_limit;
+        report.capture_limit = std::clamp(limit, 1, 255);
+    }
+
+    // Strip-annotation predicates (save-side mirror of the sim rules).
+    // The sim consumes ctf_strip_scenario_troops on ANY TYPE_CTF map, so the
+    // preview must not add a campaign gate the sim does not have.
+    const std::vector<short> roster_teams = roster_teams_for_strip(save);
+    const bool troops_strip_on = report.is_ctf && report.ctf_will_activate &&
+        save.ctf_strip_scenario_troops != 0;
+    auto strip_reason_for_team = [&](int team) {
+        if (!report.is_ctf || !report.ctf_will_activate)
+            return ScenarioStripReason::None;
+        // The sim's inactive-team strip removes every living/generator whose
+        // team is outside the score range or inactive on an activating map.
+        if (!is_score_team_index(team) || !report.team_active[team])
+            return ScenarioStripReason::InactiveTeam;
+        if (troops_strip_on &&
+            std::find(roster_teams.begin(), roster_teams.end(),
+                      static_cast<short>(team)) != roster_teams.end())
+        {
+            return ScenarioStripReason::TroopsOff;
+        }
+        return ScenarioStripReason::None;
+    };
+
+    // Livings: named NPCs individually, unnamed grouped by (team, family,
+    // level). Generators aggregate to one row per team. List order.
+    std::vector<ScenarioRosterRow> generator_rows;
+    for (const auto& uptr : world.oblist)
+    {
+        walker* w = uptr.get();
+        if (w == nullptr || w->dead())
+            continue;
+        const Order order = w->query_order();
+        if (order == Order::Living)
+        {
+            ScenarioRosterRow row;
+            row.team = static_cast<short>(w->team_num());
+            row.family = static_cast<short>(w->family());
+            row.level = w->stats() != nullptr ? w->stats()->level() : 1;
+            if (w->stats() != nullptr && !w->stats()->name.empty())
+            {
+                row.named = true;
+                row.name = w->stats()->name;
+                row.strip_reason = strip_reason_for_team(row.team);
+                report.rows.push_back(std::move(row));
+            }
+            else
+            {
+                auto match = std::find_if(
+                    report.rows.begin(), report.rows.end(),
+                    [&row](const ScenarioRosterRow& existing) {
+                        return !existing.named && !existing.is_generator &&
+                            existing.team == row.team &&
+                            existing.family == row.family &&
+                            existing.level == row.level;
+                    });
+                if (match != report.rows.end())
+                {
+                    match->count++;
+                }
+                else
+                {
+                    row.strip_reason = strip_reason_for_team(row.team);
+                    report.rows.push_back(std::move(row));
+                }
+            }
+        }
+        else if (order == Order::Generator)
+        {
+            const short team = static_cast<short>(w->team_num());
+            auto match = std::find_if(
+                generator_rows.begin(), generator_rows.end(),
+                [team](const ScenarioRosterRow& existing) {
+                    return existing.team == team;
+                });
+            if (match != generator_rows.end())
+            {
+                match->count++;
+            }
+            else
+            {
+                ScenarioRosterRow row;
+                row.team = team;
+                row.is_generator = true;
+                row.family = static_cast<short>(w->family());
+                row.strip_reason = strip_reason_for_team(team);
+                generator_rows.push_back(std::move(row));
+            }
+        }
+        if (report.rows.size() + generator_rows.size() >=
+            kMaxScenarioReportRows)
+        {
+            break;
+        }
+    }
+    report.rows.insert(report.rows.end(),
+                       std::make_move_iterator(generator_rows.begin()),
+                       std::make_move_iterator(generator_rows.end()));
+
+    // Team-major presentation order (stable within a team = list order).
+    std::stable_sort(report.rows.begin(), report.rows.end(),
+                     [](const ScenarioRosterRow& a, const ScenarioRosterRow& b) {
+                         return a.team < b.team;
+                     });
+
+    for (const ScenarioRosterRow& row : report.rows)
+    {
+        if (row.strip_reason == ScenarioStripReason::TroopsOff)
+            report.any_troops_off = true;
+        else if (row.strip_reason == ScenarioStripReason::InactiveTeam)
+            report.any_inactive = true;
+    }
+    return report;
+}
+
+std::vector<std::string> format_scenario_report_lines(
+    const ScenarioRosterReport& report)
+{
+    std::vector<std::string> lines;
+
+    if (report.is_ctf)
+    {
+        int flag_teams = 0;
+        for (const bool present : report.team_has_flag)
+            flag_teams += present ? 1 : 0;
+        lines.push_back(clip_line(std::format(
+            "CTF: {} FLAG TEAMS, {} CONTROL POINTS",
+            flag_teams, report.cp_count)));
+        if (report.ctf_will_activate)
+        {
+            lines.push_back(clip_line(
+                std::format("CAPTURE LIMIT: {}", report.capture_limit)));
+            for (int t = 0; t < 4; ++t)
+            {
+                if (!report.team_has_flag[t])
+                    continue;
+                lines.push_back(clip_line(std::format(
+                    "  {} FLAG  ANCHORS: {}  {}",
+                    og::sim::ctf_team_color_name(t),
+                    report.team_anchor_count[t],
+                    report.team_active[t] ? "ACTIVE" : "INACTIVE")));
+            }
+        }
+        else
+        {
+            lines.push_back(
+                clip_line("CTF INACTIVE: FEWER THAN 2 FLAG TEAMS"));
+        }
+    }
+
+    short current_team = -1;
+    bool first_team = !report.is_ctf;
+    for (const ScenarioRosterRow& row : report.rows)
+    {
+        if (row.team != current_team)
+        {
+            current_team = row.team;
+            if (!first_team || !lines.empty())
+                lines.emplace_back();
+            first_team = false;
+            // Score teams get their color name (matching the TEAMS screen
+            // and the CTF flag lines); anything beyond keeps the raw index.
+            std::string header = (current_team >= 0 && current_team < 4)
+                ? std::format("{} TEAM",
+                              og::sim::ctf_team_color_name(current_team))
+                : std::format("TEAM {}", current_team);
+            if (current_team == report.your_team)
+                header += " (YOURS)";
+            lines.push_back(clip_line(std::move(header)));
+        }
+
+        std::string text;
+        if (row.is_generator)
+        {
+            text = std::format("  {}x GENERATOR", row.count);
+        }
+        else if (row.named)
+        {
+            text = std::format("  {} - {} Lv {}", row.name,
+                               family_display_name(row.family), row.level);
+        }
+        else
+        {
+            text = std::format("  {}x {} Lv {}", row.count,
+                               family_display_name(row.family), row.level);
+        }
+        text += strip_suffix(row.strip_reason);
+        lines.push_back(clip_line(std::move(text)));
+    }
+
+    if (report.any_troops_off || report.any_inactive)
+    {
+        lines.emplace_back();
+        if (report.any_troops_off)
+            lines.push_back(clip_line("* REMOVED: TROOPS OFF"));
+        if (report.any_inactive)
+            lines.push_back(clip_line("+ REMOVED: INACTIVE TEAM"));
+    }
+    return lines;
 }
 
 } // namespace og::ui

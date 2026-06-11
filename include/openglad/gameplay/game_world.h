@@ -249,6 +249,7 @@ public:
     short ctf_requested_team_count = 0;
     short ctf_requested_capture_limit = 0;
     short ctf_requested_respawn_ticks = 0;
+    short ctf_requested_strip_scenario_troops = 0;
     og::sim::CtfState ctf;
     short current_scenario = 0;
     int guy_id_counter = 0;

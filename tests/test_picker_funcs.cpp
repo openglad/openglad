@@ -1980,3 +1980,120 @@ TEST(PickerFuncs, get_saved_name_handles_legacy_truncated_and_named_slots)
     write_slot("__picker_version_7_named__", named);
     EXPECT_EQ("Named Slot", get_saved_name("__picker_version_7_named__"));
 }
+
+// --- Local lobby my_team hoist ---
+
+TEST(PickerFuncs, local_lobby_hoists_my_team_to_player_one)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+
+    // Stash what this test mutates.
+    std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> orig_list;
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        orig_list[i] = std::move(save.team_list[i]);
+    const unsigned char orig_size = save.team_size;
+    const short orig_my_team = save.my_team;
+    const unsigned char orig_numplayers = save.numplayers;
+    const short orig_allied = save.allied_mode;
+
+    // Roster: slot 0 on team 2, slot 1 on team 1. my_team = 1 must be hoisted
+    // to the Player 1 seat (game.cpp's view_teams derivation), so the local
+    // lobby's first peer — and the gameplay start team — is team 1, not the
+    // first-slot team 2.
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->name = "SlotZero";
+    save.team_list[0]->teamnum = 2;
+    save.team_list[1] = std::make_unique<guy>(FAMILY_MAGE);
+    save.team_list[1]->name = "SlotOne";
+    save.team_list[1]->teamnum = 1;
+    save.team_size = 2;
+    save.my_team = 1;
+    save.numplayers = 2;
+    save.allied_mode = 0;
+
+    {
+        auto client = og::ui::create_local_picker_lobby_client();
+        client->initialize_from_save();
+        const auto config = client->build_game_start_config();
+        ASSERT_TRUE(config.has_value());
+        EXPECT_EQ(1, config->my_team)
+            << "P1 must play my_team, not the first slot's team";
+        client->shutdown();
+    }
+
+    // Restore.
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        save.team_list[i] = std::move(orig_list[i]);
+    save.team_size = orig_size;
+    save.my_team = orig_my_team;
+    save.numplayers = orig_numplayers;
+    save.allied_mode = orig_allied;
+}
+
+TEST(PickerFuncs, local_lobby_request_team_change_reseats_p1)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+
+    // Stash what this test mutates.
+    std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> orig_list;
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        orig_list[i] = std::move(save.team_list[i]);
+    const unsigned char orig_size = save.team_size;
+    const short orig_my_team = save.my_team;
+    const unsigned char orig_numplayers = save.numplayers;
+    const short orig_allied = save.allied_mode;
+
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->name = "SlotZero";
+    save.team_list[0]->teamnum = 0;
+    save.team_list[1] = std::make_unique<guy>(FAMILY_MAGE);
+    save.team_list[1]->name = "SlotOne";
+    save.team_list[1]->teamnum = 2;
+    save.team_size = 2;
+    save.my_team = 0;
+    save.numplayers = 2;
+    save.allied_mode = 0;
+
+    {
+        auto client = og::ui::create_local_picker_lobby_client();
+        client->initialize_from_save();
+        EXPECT_FALSE(client->is_networked_session())
+            << "local sessions are not networked";
+        EXPECT_FALSE(client->local_ready());
+
+        // No heroes on team 1: the request must bounce and leave my_team.
+        EXPECT_FALSE(client->request_team_change(1));
+        EXPECT_EQ(0, save.my_team);
+
+        // Team 2 has a hero: my_team moves and the hoist re-seats P1 there.
+        EXPECT_TRUE(client->request_team_change(2));
+        EXPECT_EQ(2, save.my_team);
+        const auto config = client->build_game_start_config();
+        ASSERT_TRUE(config.has_value());
+        EXPECT_EQ(2, config->my_team)
+            << "P1 must re-seat onto the requested team";
+
+        // The local lobby exposes its synthetic seats as lobby players. The
+        // classic LobbyServer resolves the seat swap conservatively (each
+        // synthetic peer keeps a distinct team), so assert the team SET; the
+        // authoritative P1 team for gameplay is config.my_team above.
+        const auto players = client->lobby_players();
+        ASSERT_EQ(2u, players.size());
+        const bool covers_both_teams =
+            (players[0].team == 2 && players[1].team == 0) ||
+            (players[0].team == 0 && players[1].team == 2);
+        EXPECT_TRUE(covers_both_teams)
+            << "synthetic seats must cover teams {0,2}, got "
+            << players[0].team << "/" << players[1].team;
+
+        client->shutdown();
+    }
+
+    // Restore.
+    for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+        save.team_list[i] = std::move(orig_list[i]);
+    save.team_size = orig_size;
+    save.my_team = orig_my_team;
+    save.numplayers = orig_numplayers;
+    save.allied_mode = orig_allied;
+}

@@ -24,12 +24,24 @@
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/gloader_ctf.h>
 #include <openglad/interface/button.h>
+#include <openglad/interface/ui/picker_ui_state.h>
+#include <openglad/core/test_trace.h>
+#include <openglad/resources/io_common.h>
 #include "../src/interface/ui/picker_sdl_defs.h"
+#include "test_input_helpers.h"
+#include "test_interact.h"
+
+#include <SDL.h>
 
 #include <array>
 #include <memory>
 #include <string>
 #include <vector>
+
+// Picker entry points for the injector-driven flows.
+void picker_main(Sint32 argc, char **argv);
+extern int g_picker_mainmenu_calls;
+extern int g_picker_max_mainmenu_calls;
 
 loader* sdl_entity_loader();
 short new_score_panel(screen* s, short do_it);
@@ -641,43 +653,64 @@ TEST(CtfUi, radar_draws_flag_and_control_point_blips)
     pop_test_context();
 }
 
-TEST(CtfUi, team_build_ctf_buttons_follow_campaign_and_cycle)
+// The team-build y=40 row is the always-visible TEAMS | VIEW LEVEL pair (the
+// CTF settings moved into the TEAMS subscreen), and the subscreen's settings
+// buttons cycle the save fields through the same handlers.
+TEST(CtfUi, team_build_row_and_teams_subscreen_settings_cycle)
 {
     screen* s = test_screen();
     SaveData& save = s->save_data;
     const std::string old_campaign = save.current_campaign;
     const short old_teams = save.ctf_team_count;
     const short old_caps = save.ctf_capture_limit;
+    const short old_troops = save.ctf_strip_scenario_troops;
 
-    // Classic campaign: the appended CTF settings buttons stay hidden.
-    save.current_campaign = "org.openglad.gladiator";
-    button* classic = picker_createmenu_buttons();
-    const int count = picker_createmenu_button_count();
-    ASSERT_GE(count, 13) << "team build should expose the appended CTF buttons";
-    EXPECT_EQ("ctf_teams", classic[11].id);
-    EXPECT_EQ("ctf_caps", classic[12].id);
-    EXPECT_TRUE(classic[11].hidden) << "classic campaigns hide CTF settings";
-    EXPECT_TRUE(classic[12].hidden);
+    // The y=40 row never depends on the campaign.
+    for (const char* campaign :
+         {"org.openglad.gladiator", "org.openglad.ctf"})
+    {
+        save.current_campaign = campaign;
+        button* row = picker_createmenu_buttons();
+        ASSERT_EQ(13, picker_createmenu_button_count());
+        EXPECT_EQ("teams", row[11].id) << campaign;
+        EXPECT_EQ("view_scenario", row[12].id) << campaign;
+        EXPECT_FALSE(row[11].hidden) << campaign;
+        EXPECT_FALSE(row[12].hidden) << campaign;
+    }
 
-    // CTF campaign: visible, with live labels from the save.
+    // The CTF match settings live in the TEAMS subscreen now; their handlers
+    // cycle the save fields and refresh the subscreen's descriptor labels.
     save.current_campaign = "org.openglad.ctf";
     save.ctf_team_count = 2;
     save.ctf_capture_limit = 0;
-    button* ctf_buttons = picker_createmenu_buttons();
-    EXPECT_FALSE(ctf_buttons[11].hidden);
-    EXPECT_FALSE(ctf_buttons[12].hidden);
-    EXPECT_EQ("Teams: 2", ctf_buttons[11].label);
-    EXPECT_EQ("Limit: Map", ctf_buttons[12].label);
+    save.ctf_strip_scenario_troops = 0;
+    button* teams_menu = picker_teamsmenu_buttons();
+    ASSERT_EQ(kTeamsMenuButtonCount, picker_teamsmenu_button_count());
+    EXPECT_EQ("ctf_teams", teams_menu[kTeamsMenuCtfTeamsIndex].id);
+    EXPECT_EQ("ctf_caps", teams_menu[kTeamsMenuCtfCapsIndex].id);
+    EXPECT_EQ("ctf_troops", teams_menu[kTeamsMenuCtfTroopsIndex].id);
 
-    // The button callbacks cycle the save fields.
     (void)change_ctf_teams();
     EXPECT_EQ(3, (int)save.ctf_team_count);
     (void)change_ctf_caps();
     EXPECT_EQ(1, (int)save.ctf_capture_limit);
+    (void)change_ctf_troops();
+    EXPECT_EQ(1, (int)save.ctf_strip_scenario_troops);
+
+    const auto& live_rows = og::runtime::current_session->picker_->teamsmenu_buttons;
+    ASSERT_EQ(static_cast<std::size_t>(kTeamsMenuButtonCount), live_rows.size());
+    EXPECT_EQ("Teams: 3", live_rows[kTeamsMenuCtfTeamsIndex].label);
+    EXPECT_EQ("Limit: 1", live_rows[kTeamsMenuCtfCapsIndex].label);
+    EXPECT_EQ("Troops: Own", live_rows[kTeamsMenuCtfTroopsIndex].label);
+
+    (void)change_ctf_troops();
+    EXPECT_EQ(0, (int)save.ctf_strip_scenario_troops);
+    EXPECT_EQ("Troops: Scen", live_rows[kTeamsMenuCtfTroopsIndex].label);
 
     save.current_campaign = old_campaign;
     save.ctf_team_count = old_teams;
     save.ctf_capture_limit = old_caps;
+    save.ctf_strip_scenario_troops = old_troops;
 }
 
 TEST(CtfUi, results_helpers_format_winner_and_captures)
@@ -731,4 +764,486 @@ TEST(CtfUi, editor_labels_resolve_for_ctf_objects)
     ASSERT_EQ("CTF POINT",
               get_editor_family_label(Order::Treasure, og::FAMILY_CTF_POINT,
                                       livings, treasures, weapons));
+}
+
+// ---------------------------------------------------------------------------
+// Injector-driven picker flows for the TEAMS subscreen and the VIEW LEVEL
+// viewer (test_back_to_mainmenu's continue_game pattern: save0 is written
+// first so CONTINUE lands straight in team build without prompts).
+// ---------------------------------------------------------------------------
+
+namespace {
+
+PickerState& picker_state()
+{
+    return *og::runtime::current_session->picker_;
+}
+
+void cleanup_picker_state()
+{
+    for (int i = 0; i < 5; i++) {
+        picker_state().backdrops[i].reset();
+        picker_state().backpics[i].free();
+    }
+    clear_allbuttons();
+    og::runtime::current_session->localbuttons_ = nullptr;
+    picker_state().main_columns_pix.reset();
+    picker_state().main_columns_data.free();
+    picker_state().main_title_logo_pix.reset();
+    picker_state().main_title_logo_data.free();
+}
+
+// Wait until the (visible) interactable `id` shows label `want`.
+bool wait_for_interactable_label(const std::string& id, const std::string& want,
+                                 int timeout_ms)
+{
+    int elapsed = 0;
+    while (elapsed < timeout_ms) {
+        for (const Interactable& item : get_interactables()) {
+            if (item.id == id && !item.hidden && item.label == want)
+                return true;
+        }
+        SDL_Delay(50);
+        elapsed += 50;
+    }
+    fprintf(stderr, "  [interact] TIMEOUT waiting for '%s' label '%s'\n",
+            id.c_str(), want.c_str());
+    return false;
+}
+
+// Wait until a (visible) interactable `id` exists at game coords (x, y) —
+// disambiguates the per-screen "back" buttons by their geometry.
+bool wait_for_interactable_at(const std::string& id, int x, int y,
+                              int timeout_ms)
+{
+    int elapsed = 0;
+    while (elapsed < timeout_ms) {
+        for (const Interactable& item : get_interactables()) {
+            if (item.id == id && !item.hidden && item.x == x && item.y == y)
+                return true;
+        }
+        SDL_Delay(50);
+        elapsed += 50;
+    }
+    fprintf(stderr, "  [interact] TIMEOUT waiting for '%s' at (%d,%d)\n",
+            id.c_str(), x, y);
+    return false;
+}
+
+// Stash/restore the picker save across an injector flow.
+struct SavedPickerSave
+{
+    std::array<std::unique_ptr<guy>, MAX_TEAM_SIZE> team_list;
+    SaveData snapshot_fields;
+
+    SavedPickerSave()
+    {
+        SaveData& save = og::runtime::current_session->myscreen_->save_data;
+        for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+            team_list[i] = std::move(save.team_list[i]);
+        snapshot_fields.team_size = save.team_size;
+        snapshot_fields.my_team = save.my_team;
+        snapshot_fields.numplayers = save.numplayers;
+        snapshot_fields.allied_mode = save.allied_mode;
+        snapshot_fields.scen_num = save.scen_num;
+        snapshot_fields.current_campaign = save.current_campaign;
+        snapshot_fields.ctf_team_count = save.ctf_team_count;
+        snapshot_fields.ctf_capture_limit = save.ctf_capture_limit;
+        snapshot_fields.ctf_respawn_ticks = save.ctf_respawn_ticks;
+        snapshot_fields.ctf_strip_scenario_troops =
+            save.ctf_strip_scenario_troops;
+    }
+
+    ~SavedPickerSave()
+    {
+        SaveData& save = og::runtime::current_session->myscreen_->save_data;
+        for (int i = 0; i < MAX_TEAM_SIZE; ++i)
+            save.team_list[i] = std::move(team_list[i]);
+        save.team_size = snapshot_fields.team_size;
+        save.my_team = snapshot_fields.my_team;
+        save.numplayers = snapshot_fields.numplayers;
+        save.allied_mode = snapshot_fields.allied_mode;
+        save.scen_num = snapshot_fields.scen_num;
+        save.current_campaign = snapshot_fields.current_campaign;
+        save.ctf_team_count = snapshot_fields.ctf_team_count;
+        save.ctf_capture_limit = snapshot_fields.ctf_capture_limit;
+        save.ctf_respawn_ticks = snapshot_fields.ctf_respawn_ticks;
+        save.ctf_strip_scenario_troops =
+            snapshot_fields.ctf_strip_scenario_troops;
+    }
+};
+
+void write_save0_with_two_soldiers(const std::string& campaign, short scen_num)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    for (auto& slot : save.team_list)
+        slot.reset();
+    save.team_size = 0;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->name = "Alpha";
+    save.team_list[0]->teamnum = 0;
+    save.team_list[1] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[1]->name = "Beta";
+    save.team_list[1]->teamnum = 0;
+    save.team_size = 2;
+    save.my_team = 0;
+    save.numplayers = 1;
+    save.allied_mode = 0;
+    save.scen_num = scen_num;
+    save.current_campaign = campaign;
+    save.current_levels.clear();
+    save.current_levels[campaign] = scen_num;
+    save.ctf_team_count = 0;
+    save.ctf_capture_limit = 0;
+    save.ctf_strip_scenario_troops = 0;
+    ASSERT_TRUE(save.save("save0"));
+}
+
+struct TeamsFlowState
+{
+    bool started = false;
+    bool finished = false;
+    bool subscreen_opened = false;
+    bool ctf_buttons_hidden = false;
+    bool you_on_team_0 = false;
+    bool you_on_team_1 = false;
+    bool viewer_opened = false;
+    bool viewer_back_seen = false;
+};
+
+int teams_local_flow_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    TeamsFlowState* state = static_cast<TeamsFlowState*>(data);
+    state->started = true;
+
+    wait_for_interactable("continue_game", 5000);
+    SDL_Delay(750);
+    interact("continue_game");
+
+    SDL_Delay(500);
+    wait_for_interactable("teams", 10000);
+    SDL_Delay(750);
+    interact("teams");
+
+    // TEAMS subscreen: classic local — joins + guy row, no CTF settings.
+    state->subscreen_opened = wait_for_interactable("join_team_0", 10000);
+    SDL_Delay(300);
+    state->ctf_buttons_hidden = !has_interactable("ctf_teams") &&
+        !has_interactable("ctf_caps") && !has_interactable("ctf_troops");
+    state->you_on_team_0 =
+        wait_for_interactable_label("join_team_0", "YOU", 3000);
+
+    // Move the selected hero to GREEN, then take its seat.
+    interact("guy_team");
+    SDL_Delay(300);
+    interact("join_team_1");
+    state->you_on_team_1 =
+        wait_for_interactable_label("join_team_1", "YOU", 5000);
+    // The label can flip while the previous click's press is still held;
+    // settle before the next click so its down-transition isn't swallowed.
+    SDL_Delay(300);
+
+    // Empty team: the JOIN bounces with a popup (TESTING: trace only).
+    interact("join_team_2");
+    SDL_Delay(300);
+
+    interact("back");
+    SDL_Delay(300);
+    wait_for_interactable("go", 10000);
+    SDL_Delay(300);
+
+    // VIEW LEVEL: framed report over a scratch load; BACK returns.
+    interact("view_scenario");
+    state->viewer_opened = wait_for_interactable_at("back", 10, 170, 10000);
+    SDL_Delay(300);
+    interact("back");
+
+    SDL_Delay(300);
+    wait_for_interactable("go", 10000);
+    SDL_Delay(300);
+    interact("back");
+
+    state->finished = true;
+    return 0;
+}
+
+int teams_ctf_settings_flow_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    TeamsFlowState* state = static_cast<TeamsFlowState*>(data);
+    state->started = true;
+
+    wait_for_interactable("continue_game", 5000);
+    SDL_Delay(750);
+    interact("continue_game");
+
+    SDL_Delay(500);
+    wait_for_interactable("teams", 10000);
+    SDL_Delay(750);
+    interact("teams");
+
+    // CTF campaign + local host: the match-settings trio lives here.
+    state->subscreen_opened = wait_for_interactable("ctf_teams", 10000);
+    SDL_Delay(300);
+
+    // Each label can flip while the previous click's press is still held;
+    // settle after every wait so the next down-transition isn't swallowed.
+    interact("ctf_teams");
+    state->you_on_team_0 =
+        wait_for_interactable_label("ctf_teams", "Teams: 2", 5000);
+    SDL_Delay(300);
+    interact("ctf_caps");
+    state->you_on_team_1 =
+        wait_for_interactable_label("ctf_caps", "Limit: 1", 5000);
+    SDL_Delay(300);
+    interact("ctf_troops");
+    state->viewer_opened =
+        wait_for_interactable_label("ctf_troops", "Troops: Own", 5000);
+    SDL_Delay(300);
+
+    interact("back");
+    SDL_Delay(300);
+    wait_for_interactable("go", 10000);
+    SDL_Delay(300);
+
+    // VIEW LEVEL on the loaded CTF map (the save0 load mounted the CTF
+    // campaign): the framed CTF report renders, BACK returns.
+    interact("view_scenario");
+    state->viewer_back_seen = wait_for_interactable_at("back", 10, 170, 10000);
+    SDL_Delay(300);
+    interact("back");
+
+    SDL_Delay(300);
+    wait_for_interactable("go", 10000);
+    SDL_Delay(300);
+    interact("back");
+
+    state->finished = true;
+    return 0;
+}
+
+// Count picker traces whose message carries the given substring (trace_count
+// is per-category only; the page-flip assertions need the page number).
+int count_picker_trace_containing(const char* substring)
+{
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
+    int count = 0;
+    for (const TraceEntry& entry : g_trace_buffer)
+    {
+        if (entry.category == "picker" &&
+            entry.message.find(substring) != std::string::npos)
+        {
+            ++count;
+        }
+    }
+    return count;
+}
+
+struct PagerFlowState
+{
+    bool started = false;
+    bool finished = false;
+    bool viewer_opened = false;
+    bool pager_visible = false;
+};
+
+// handle_menu_nav reads SDL_GetKeyboardState (not the event queue), so the
+// injector pokes the state array directly — the same approach as
+// KeyStateGuard in test_picker_menu_nav.cpp.
+void hold_nav_key(SDL_Keycode key, bool down)
+{
+    int numkeys = 0;
+    const Uint8* ro = SDL_GetKeyboardState(&numkeys);
+    Uint8* keys = const_cast<Uint8*>(ro);
+    const SDL_Scancode sc = SDL_GetScancodeFromKey(key);
+    if (keys != nullptr && sc >= 0 && sc < numkeys)
+        keys[sc] = down ? 1 : 0;
+}
+
+void press_nav_key(SDL_Keycode key, int hold_ms)
+{
+    hold_nav_key(key, true);
+    SDL_Delay(hold_ms);
+    hold_nav_key(key, false);
+}
+
+int view_scenario_pager_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    PagerFlowState* state = static_cast<PagerFlowState*>(data);
+    state->started = true;
+
+    wait_for_interactable("continue_game", 5000);
+    SDL_Delay(750);
+    interact("continue_game");
+
+    SDL_Delay(500);
+    wait_for_interactable("view_scenario", 10000);
+    SDL_Delay(750);
+    interact("view_scenario");
+
+    state->viewer_opened = wait_for_interactable_at("back", 10, 170, 10000);
+    SDL_Delay(300);
+    state->pager_visible =
+        has_interactable("page_prev") && has_interactable("page_next");
+
+    // Mouse path: click NEXT (page 0 -> 1).
+    interact("page_next");
+    SDL_Delay(500);
+
+    // Keyboard path: RIGHT moves the highlight BACK -> PREV (and enables
+    // menu nav); FIRE activates PREV through its ButtonAction (page 1 -> 0).
+    press_nav_key(SDLK_RIGHT, 120);
+    SDL_Delay(300);
+    press_nav_key(SDLK_SPACE, 120);
+    SDL_Delay(500);
+
+    interact("back");
+    SDL_Delay(300);
+    wait_for_interactable("go", 10000);
+    SDL_Delay(300);
+    interact("back");
+
+    state->finished = true;
+    return 0;
+}
+
+} // namespace
+
+TEST(CtfUi, teams_subscreen_local_join_and_viewer_flow)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    write_save0_with_two_soldiers("org.openglad.gladiator", 1);
+
+    TeamsFlowState state;
+    SDL_Thread* thread = SDL_CreateThread(
+        teams_local_flow_injector, "teams_local_flow", &state);
+    ASSERT_NE(nullptr, thread);
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    EXPECT_TRUE(state.finished) << "injector should complete the flow";
+    EXPECT_TRUE(state.subscreen_opened) << "TEAMS subscreen should open";
+    EXPECT_TRUE(state.ctf_buttons_hidden)
+        << "classic campaigns hide the CTF settings trio";
+    EXPECT_TRUE(state.you_on_team_0) << "P1 starts as YOU on RED";
+    EXPECT_TRUE(state.you_on_team_1) << "JOIN should relabel YOU on GREEN";
+    EXPECT_TRUE(state.viewer_opened) << "VIEW LEVEL should open its frame";
+
+    EXPECT_EQ(1, save.my_team) << "JOIN GREEN must set my_team";
+    const guy* alpha = nullptr;
+    for (const auto& member : save.team_list)
+    {
+        if (member && member->name == "Alpha")
+            alpha = member.get();
+    }
+    ASSERT_NE(nullptr, alpha);
+    EXPECT_EQ(1, alpha->teamnum) << "TEAM > must cycle the selected hero";
+
+    EXPECT_TRUE(trace_contains("popup", "NO HEROES"))
+        << "JOIN on an empty team must explain itself";
+    EXPECT_TRUE(trace_contains("picker", "view_scenario lines="))
+        << "the viewer should trace its report";
+}
+
+TEST(CtfUi, teams_subscreen_ctf_settings_flow)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    // The save0 load mounts the CTF campaign; its levels start at scen 500.
+    write_save0_with_two_soldiers("org.openglad.ctf", 500);
+
+    TeamsFlowState state;
+    SDL_Thread* thread = SDL_CreateThread(
+        teams_ctf_settings_flow_injector, "teams_ctf_flow", &state);
+    ASSERT_NE(nullptr, thread);
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    EXPECT_TRUE(state.finished) << "injector should complete the flow";
+    EXPECT_TRUE(state.subscreen_opened)
+        << "CTF campaign + host shows the settings in the subscreen";
+    EXPECT_TRUE(state.you_on_team_0) << "Teams cycle should relabel";
+    EXPECT_TRUE(state.you_on_team_1) << "Limit cycle should relabel";
+    EXPECT_TRUE(state.viewer_opened) << "Troops toggle should relabel";
+
+    EXPECT_EQ(2, (int)save.ctf_team_count);
+    EXPECT_EQ(1, (int)save.ctf_capture_limit);
+    EXPECT_EQ(1, (int)save.ctf_strip_scenario_troops);
+
+    EXPECT_TRUE(state.viewer_back_seen)
+        << "VIEW LEVEL should open on the mounted CTF map";
+    EXPECT_TRUE(trace_contains("picker", "view_scenario lines="))
+        << "the viewer should trace its CTF report";
+
+    // The save0 load remounted the CTF campaign; restore the default mount
+    // so later (or shuffled) tests load classic levels again.
+    (void)unmount_campaign_package_with_error(get_mounted_campaign());
+    (void)mount_campaign_package_with_error("org.openglad.gladiator");
+}
+
+TEST(CtfUi, view_scenario_pager_flips_by_mouse_and_keyboard)
+{
+    trace_clear();
+    SavedPickerSave save_guard;
+    // Gladiator scen 15 (BATTLE OF THE SLIME) formats to well over one page
+    // at 23 rows/page: a stable shipped multi-page fixture.
+    write_save0_with_two_soldiers("org.openglad.gladiator", 15);
+
+    // Deterministic keyboard nav: bind player-0 menu keys explicitly and
+    // keep any configured joystick from shadowing them.
+    const int old_up = og::runtime::current_session->player_keys_[0][KEY_UP];
+    const int old_down = og::runtime::current_session->player_keys_[0][KEY_DOWN];
+    const int old_left = og::runtime::current_session->player_keys_[0][KEY_LEFT];
+    const int old_right = og::runtime::current_session->player_keys_[0][KEY_RIGHT];
+    const int old_fire = og::runtime::current_session->player_keys_[0][KEY_FIRE];
+    const int old_joy_index = player_joy[0].index;
+    set_player_key_binding(0, KEY_UP, SDLK_UP);
+    set_player_key_binding(0, KEY_DOWN, SDLK_DOWN);
+    set_player_key_binding(0, KEY_LEFT, SDLK_LEFT);
+    set_player_key_binding(0, KEY_RIGHT, SDLK_RIGHT);
+    set_player_key_binding(0, KEY_FIRE, SDLK_SPACE);
+    disablePlayerJoystick(0);
+
+    PagerFlowState state;
+    SDL_Thread* thread = SDL_CreateThread(
+        view_scenario_pager_injector, "view_pager_flow", &state);
+    ASSERT_NE(nullptr, thread);
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+    SDL_WaitThread(thread, nullptr);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    set_player_key_binding(0, KEY_UP, old_up);
+    set_player_key_binding(0, KEY_DOWN, old_down);
+    set_player_key_binding(0, KEY_LEFT, old_left);
+    set_player_key_binding(0, KEY_RIGHT, old_right);
+    set_player_key_binding(0, KEY_FIRE, old_fire);
+    player_joy[0].index = old_joy_index;
+
+    EXPECT_TRUE(state.finished) << "injector should complete the flow";
+    EXPECT_TRUE(state.viewer_opened) << "VIEW LEVEL should open its frame";
+    EXPECT_TRUE(state.pager_visible)
+        << "scen 15's report must span multiple pages (PREV/NEXT visible)";
+    EXPECT_GE(count_picker_trace_containing("page=1"), 1)
+        << "mouse click on NEXT must flip to page 1";
+    EXPECT_GE(count_picker_trace_containing("page=0"), 2)
+        << "keyboard FIRE on PREV must flip back (entry trace + flip trace)";
 }

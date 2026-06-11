@@ -179,6 +179,7 @@ void populate_full_ctf_state(GameWorld& world)
     world.ctf_requested_team_count = 4;
     world.ctf_requested_capture_limit = 9;
     world.ctf_requested_respawn_ticks = 55;
+    world.ctf_requested_strip_scenario_troops = 1;
 }
 
 // Asserts every snapshot CTF field equals the world's live state. The
@@ -256,6 +257,8 @@ void expect_snapshot_matches_world(const og::sim::WorldSnapshot& snapshot,
               snapshot.ctf_requested_capture_limit);
     EXPECT_EQ(world.ctf_requested_respawn_ticks,
               snapshot.ctf_requested_respawn_ticks);
+    EXPECT_EQ(world.ctf_requested_strip_scenario_troops,
+              snapshot.ctf_requested_strip_scenario_troops);
 }
 
 void expect_snapshot_ctf_defaults(const og::sim::WorldSnapshot& snapshot)
@@ -295,6 +298,8 @@ void expect_snapshot_ctf_defaults(const og::sim::WorldSnapshot& snapshot)
               snapshot.ctf_requested_capture_limit);
     EXPECT_EQ(defaults.ctf_requested_respawn_ticks,
               snapshot.ctf_requested_respawn_ticks);
+    EXPECT_EQ(defaults.ctf_requested_strip_scenario_troops,
+              snapshot.ctf_requested_strip_scenario_troops);
 }
 
 std::size_t payload_length_from_header(const std::vector<std::uint8_t>& bytes)
@@ -430,6 +435,7 @@ TEST(CtfSnapshot, apply_clears_stale_ctf_state_from_default_snapshot)
     EXPECT_EQ(0, target.world().ctf_requested_team_count);
     EXPECT_EQ(0, target.world().ctf_requested_capture_limit);
     EXPECT_EQ(0, target.world().ctf_requested_respawn_ticks);
+    EXPECT_EQ(0, target.world().ctf_requested_strip_scenario_troops);
 }
 
 // --- Delta path ------------------------------------------------------------
@@ -770,4 +776,46 @@ TEST(CtfSnapshot, keyframe_at_blink_tick_boundary_continues_byte_equal)
         << "a stale self-teleport marker must be invisible at tick "
            "boundaries: continuations from the blink keyframe must match "
            "byte-for-byte";
+}
+
+// --- Requested strip-scenario-troops replication -----------------------------
+
+TEST(CtfSnapshot, strip_scenario_troops_round_trips_and_changes_hash)
+{
+    CtfWorld fx;
+    GameWorld& world = fx.world();
+    world.ctf_requested_strip_scenario_troops = 1;
+
+    // Keyframe capture + serialize + deserialize preserves the field.
+    const og::sim::WorldSnapshot snapshot =
+        og::sim::capture_keyframe_snapshot(world);
+    EXPECT_EQ(1, snapshot.ctf_requested_strip_scenario_troops);
+    const std::vector<std::uint8_t> bytes = og::sim::serialize_snapshot(snapshot);
+    const og::sim::WorldSnapshot decoded =
+        og::sim::deserialize_snapshot(bytes.data(), bytes.size());
+    EXPECT_EQ(1, decoded.ctf_requested_strip_scenario_troops);
+
+    // Apply writes it back into a fresh world.
+    CtfWorld target;
+    ASSERT_EQ(0, target.world().ctf_requested_strip_scenario_troops);
+    og::sim::apply_snapshot(target.world(), decoded);
+    EXPECT_EQ(1, target.world().ctf_requested_strip_scenario_troops);
+
+    // Delta-merge carries it onto a baseline.
+    og::sim::WorldSnapshot baseline =
+        og::sim::capture_keyframe_snapshot(target.world());
+    baseline.ctf_requested_strip_scenario_troops = 0;
+    const og::sim::WorldSnapshot delta_source = og::sim::capture_snapshot(world);
+    const std::vector<std::uint8_t> delta_bytes =
+        og::sim::serialize_delta(delta_source);
+    const og::sim::WorldSnapshot decoded_delta =
+        og::sim::deserialize_delta(delta_bytes.data(), delta_bytes.size());
+    og::sim::apply_delta(baseline, decoded_delta);
+    EXPECT_EQ(1, baseline.ctf_requested_strip_scenario_troops);
+
+    // The payload hash must see the field.
+    og::sim::WorldSnapshot off = snapshot;
+    off.ctf_requested_strip_scenario_troops = 0;
+    EXPECT_NE(og::sim::compute_snapshot_hash(snapshot),
+              og::sim::compute_snapshot_hash(off));
 }

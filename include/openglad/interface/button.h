@@ -170,6 +170,14 @@ Sint32 change_hire_teamnum(Sint32 arg);
 Sint32 change_allied();
 Sint32 change_ctf_teams();
 Sint32 change_ctf_caps();
+Sint32 change_ctf_troops();
+Sint32 create_teams_menu(Sint32 arg1); // Team choice & match settings subscreen
+Sint32 create_view_scenario_menu(Sint32 arg1); // Read-only level roster viewer
+Sint32 view_scenario_page_flip(Sint32 step);   // PREV/NEXT inside the viewer
+Sint32 teams_join_team(Sint32 team);
+Sint32 teams_cycle_guy(Sint32 whichway);
+Sint32 teams_cycle_guy_team(Sint32 whichway);
+Sint32 teams_toggle_ready();
 Sint32 level_editor();
 Sint32 main_options();
 Sint32 main_controls_options();
@@ -244,6 +252,14 @@ enum class ButtonAction : Sint32
     SubmitNetworkJoin = 59,
     CycleCtfTeamCount = 60,
     CycleCtfCaptureLimit = 61,
+    CreateTeamsMenu = 62,
+    ViewScenario = 63,
+    CycleCtfScenarioTroops = 64,
+    JoinTeam = 65,
+    TeamsCycleGuy = 66,
+    TeamsCycleGuyTeam = 67,
+    ToggleLobbyReady = 68,
+    ViewScenarioPageFlip = 69,
 };
 
 inline constexpr Sint32 button_action_id(ButtonAction action)

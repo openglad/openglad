@@ -2,13 +2,22 @@
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/resources/save_data.h>
+#include <openglad/core/ctf_constants.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
+#include <openglad/gameplay/statistics.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/resources/gloader.h>
+#include <openglad/resources/gloader_ctf.h>
+#include "test_game_world_fixture.h"
 #include <array>
 #include <cstdlib>
 #include <cstring>
+#include <list>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace {
@@ -1245,4 +1254,551 @@ TEST(PickerCommon, reset_for_new_game_sets_gold)
     ASSERT_TRUE(save.m_totalcash[0] == 5000);
     // totalcash is now also set by reset_for_new_game
     ASSERT_TRUE(save.totalcash == og::ui::kNewGameStartingGold);
+}
+
+// --- CTF scenario-troops toggle & label ---
+
+TEST(PickerCommon, toggle_ctf_scenario_troops_cycles_binary)
+{
+    SaveData save;
+    ASSERT_EQ(0, save.ctf_strip_scenario_troops);
+    og::ui::toggle_ctf_scenario_troops(save);
+    ASSERT_EQ(1, save.ctf_strip_scenario_troops);
+    og::ui::toggle_ctf_scenario_troops(save);
+    ASSERT_EQ(0, save.ctf_strip_scenario_troops);
+}
+
+TEST(PickerCommon, format_ctf_troops_label_strings_fit_budget)
+{
+    SaveData save;
+    ASSERT_EQ("Troops: Scen", og::ui::format_ctf_troops_label(save));
+    save.ctf_strip_scenario_troops = 1;
+    ASSERT_EQ("Troops: Own", og::ui::format_ctf_troops_label(save));
+    ASSERT_LE(og::ui::format_ctf_troops_label(save).size(), 12u);
+    save.ctf_strip_scenario_troops = 0;
+    ASSERT_LE(og::ui::format_ctf_troops_label(save).size(), 12u);
+}
+
+TEST(PickerCommon, is_ctf_campaign_matches_constant)
+{
+    SaveData save;
+    save.current_campaign = std::string(og::kCtfCampaignId);
+    ASSERT_TRUE(og::ui::is_ctf_campaign(save));
+    ASSERT_EQ("org.openglad.ctf", std::string(og::kCtfCampaignId));
+    save.current_campaign = "org.openglad.gladiator";
+    ASSERT_FALSE(og::ui::is_ctf_campaign(save));
+}
+
+// --- Team choice helpers ---
+
+TEST(PickerCommon, team_has_members_and_set_preferred_team)
+{
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 1;
+    save.team_list[1] = std::make_unique<guy>(FAMILY_MAGE);
+    save.team_list[1]->teamnum = 2;
+    save.team_size = 2;
+    save.my_team = 1;
+
+    ASSERT_TRUE(og::ui::team_has_members(save, 1));
+    ASSERT_TRUE(og::ui::team_has_members(save, 2));
+    ASSERT_FALSE(og::ui::team_has_members(save, 0));
+    ASSERT_FALSE(og::ui::team_has_members(save, 3));
+
+    ASSERT_TRUE(og::ui::set_preferred_team(save, 2));
+    ASSERT_EQ(2, save.my_team);
+
+    // Empty team and out-of-range teams are rejected without mutation.
+    ASSERT_FALSE(og::ui::set_preferred_team(save, 0));
+    ASSERT_EQ(2, save.my_team);
+    ASSERT_FALSE(og::ui::set_preferred_team(save, -1));
+    ASSERT_FALSE(og::ui::set_preferred_team(save, 4));
+    ASSERT_EQ(2, save.my_team);
+}
+
+TEST(PickerCommon, cycle_guy_team_wraps_and_rejects_empty)
+{
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 3;
+    save.team_size = 1;
+
+    ASSERT_EQ(0, og::ui::cycle_guy_team(save, 0, +1)) << "3 + 1 wraps to 0";
+    ASSERT_EQ(0, save.team_list[0]->teamnum);
+    ASSERT_EQ(3, og::ui::cycle_guy_team(save, 0, -1)) << "0 - 1 wraps to 3";
+    ASSERT_EQ(3, save.team_list[0]->teamnum);
+
+    ASSERT_EQ(-1, og::ui::cycle_guy_team(save, 1, +1)) << "empty slot";
+    ASSERT_EQ(-1, og::ui::cycle_guy_team(save, -1, +1));
+    ASSERT_EQ(-1, og::ui::cycle_guy_team(save, MAX_TEAM_SIZE, +1));
+}
+
+TEST(PickerCommon, derive_local_seat_teams_hoists_my_team)
+{
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 2;
+    save.team_list[1] = std::make_unique<guy>(FAMILY_MAGE);
+    save.team_list[1]->teamnum = 1;
+    save.team_list[2] = std::make_unique<guy>(FAMILY_ARCHER);
+    save.team_list[2]->teamnum = 2;
+    save.team_size = 3;
+
+    // Without a hoist (my_team has no members): slot order.
+    save.my_team = 3;
+    ASSERT_EQ((std::vector<short>{2, 1}), og::ui::derive_local_seat_teams(save));
+
+    // my_team = 1 hoists team 1 to the P1 seat.
+    save.my_team = 1;
+    ASSERT_EQ((std::vector<short>{1, 2}), og::ui::derive_local_seat_teams(save));
+}
+
+TEST(PickerCommon, derive_local_seat_teams_excludes_team_zero_unless_hoisted)
+{
+    // Mirrors game.cpp's view_teams rule: nonzero teams only, except the
+    // preferred team which is hoisted even when it is 0.
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 0;
+    save.team_list[1] = std::make_unique<guy>(FAMILY_MAGE);
+    save.team_list[1]->teamnum = 1;
+    save.team_size = 2;
+
+    save.my_team = 1;
+    ASSERT_EQ((std::vector<short>{1}), og::ui::derive_local_seat_teams(save));
+
+    save.my_team = 0;
+    ASSERT_EQ((std::vector<short>{0, 1}), og::ui::derive_local_seat_teams(save));
+}
+
+TEST(PickerCommon, format_team_row_label_variants_fit_budget)
+{
+    const std::string yours =
+        og::ui::format_team_row_label(0, 2, false, false, true, "(P1)");
+    ASSERT_EQ("RED TEAM (P1) 2 HEROES", yours);
+
+    const std::string not_on_map =
+        og::ui::format_team_row_label(3, 0, true, false, false, "(P4)");
+    ASSERT_EQ("YELLOW TEAM (P4) NOT ON MAP", not_on_map);
+
+    const std::string bots =
+        og::ui::format_team_row_label(1, 0, true, true, false, "");
+    ASSERT_EQ("GREEN TEAM BOTS", bots);
+
+    const std::string ctf_humans =
+        og::ui::format_team_row_label(2, 24, true, true, true, "(P2)");
+    ASSERT_EQ("BLUE TEAM (P2) 24 HEROES", ctf_humans);
+
+    for (const std::string& label : {yours, not_on_map, bots, ctf_humans})
+        ASSERT_LE(label.size(), 30u) << label;
+}
+
+// --- Campaign ordering ---
+
+TEST(PickerCommon, order_campaigns_default_first_hoists_gladiator)
+{
+    std::list<std::string> ids = {
+        "org.openglad.ctf",
+        "org.openglad.gladiator",
+        "org.openglad.zombie",
+    };
+    og::ui::order_campaigns_default_first(ids);
+    ASSERT_EQ((std::list<std::string>{
+                  "org.openglad.gladiator",
+                  "org.openglad.ctf",
+                  "org.openglad.zombie",
+              }),
+              ids);
+
+    // Already first: stable no-op.
+    og::ui::order_campaigns_default_first(ids);
+    ASSERT_EQ("org.openglad.gladiator", ids.front());
+    ASSERT_EQ(3u, ids.size());
+
+    // Absent: untouched.
+    std::list<std::string> no_default = {"a.campaign", "b.campaign"};
+    og::ui::order_campaigns_default_first(no_default);
+    ASSERT_EQ((std::list<std::string>{"a.campaign", "b.campaign"}), no_default);
+
+    // Empty list survives.
+    std::list<std::string> empty;
+    og::ui::order_campaigns_default_first(empty);
+    ASSERT_TRUE(empty.empty());
+}
+
+// --- Scenario roster report (View Level) ---
+
+namespace {
+
+loader& report_test_loader()
+{
+    static loader instance{EntityFactory{}};
+    static const bool registered = [] {
+        register_ctf_loader_entries(instance);
+        return true;
+    }();
+    (void)registered;
+    return instance;
+}
+
+// TestGameWorld wired to a CTF-aware loader so flag/control-point spawns run
+// the production entity factory path (mirrors test_ctf_core's fixture).
+struct ReportWorld : TestGameWorld
+{
+    explicit ReportWorld(bool ctf_map)
+        : TestGameWorld(ctf_map ? 510 : 1)
+    {
+        loader* game_loader = &report_test_loader();
+        world().entity_factory =
+            [game_loader](Order order, std::int32_t family) {
+                return game_loader->create_walker_owned(order, family);
+            };
+        world().entity_configurator =
+            [game_loader](walker& entity, Order order,
+                          std::int32_t family) -> const PixieData* {
+                game_loader->set_walker(&entity, order, family);
+                return game_loader->graphics_for(entity.query_order(),
+                                                 entity.family());
+            };
+        world().entity_derived_stats =
+            [game_loader](walker* entity, Order order, std::int32_t family) {
+                if (entity != nullptr)
+                    game_loader->set_derived_stats(entity, order, family);
+            };
+        world().type = ctf_map ? GameWorld::TYPE_CTF : 0;
+    }
+
+    walker* spawn_living_named(int family, int team, int guy_level,
+                               const char* name)
+    {
+        walker* w = world().add_ob(Order::Living, family);
+        w->setxy(160, 160);
+        w->set_team_num(static_cast<unsigned char>(team));
+        if (w->stats() != nullptr)
+        {
+            w->stats()->set_level(guy_level);
+            if (name != nullptr)
+                w->stats()->name = name;
+        }
+        return w;
+    }
+
+    walker* spawn_generator(int family, int team)
+    {
+        walker* w = world().add_ob(Order::Generator, family);
+        w->setxy(256, 256);
+        w->set_team_num(static_cast<unsigned char>(team));
+        return w;
+    }
+
+    walker* spawn_flag(int team, int flag_level = 0)
+    {
+        walker* flag = world().add_fx_ob(Order::Treasure, og::FAMILY_FLAG);
+        flag->setxy(96, 96);
+        flag->set_team_num(static_cast<unsigned char>(team));
+        if (flag_level > 0 && flag->stats() != nullptr)
+            flag->stats()->set_level(flag_level);
+        return flag;
+    }
+
+    walker* spawn_point()
+    {
+        walker* point = world().add_fx_ob(Order::Treasure, og::FAMILY_CTF_POINT);
+        point->setxy(320, 320);
+        return point;
+    }
+
+    walker* spawn_anchor(int team)
+    {
+        walker* marker = world().add_ob(Order::Special, FAMILY_RESERVED_TEAM);
+        marker->setxy(128, 128);
+        marker->set_team_num(static_cast<unsigned char>(team));
+        return marker;
+    }
+};
+
+const og::ui::ScenarioRosterRow* find_named_row(
+    const og::ui::ScenarioRosterReport& report, const std::string& name)
+{
+    for (const auto& row : report.rows)
+    {
+        if (row.named && row.name == name)
+            return &row;
+    }
+    return nullptr;
+}
+
+const og::ui::ScenarioRosterRow* find_group_row(
+    const og::ui::ScenarioRosterReport& report, short team, short family,
+    int level)
+{
+    for (const auto& row : report.rows)
+    {
+        if (!row.named && !row.is_generator && row.team == team &&
+            row.family == family && row.level == level)
+        {
+            return &row;
+        }
+    }
+    return nullptr;
+}
+
+const og::ui::ScenarioRosterRow* find_generator_row(
+    const og::ui::ScenarioRosterReport& report, short team)
+{
+    for (const auto& row : report.rows)
+    {
+        if (row.is_generator && row.team == team)
+            return &row;
+    }
+    return nullptr;
+}
+
+bool any_line_contains(const std::vector<std::string>& lines,
+                       const std::string& needle)
+{
+    for (const auto& line : lines)
+    {
+        if (line.find(needle) != std::string::npos)
+            return true;
+    }
+    return false;
+}
+
+} // namespace
+
+TEST(PickerCommon, scenario_report_groups_classic_roster)
+{
+    ReportWorld fx(false);
+    fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, nullptr);
+    fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, nullptr);
+    fx.spawn_living_named(FAMILY_SOLDIER, 0, 5, nullptr);
+    fx.spawn_living_named(FAMILY_ARCHER, 1, 5, "GONZO");
+    fx.spawn_generator(FAMILY_TENT, 1);
+    fx.spawn_generator(FAMILY_TOWER, 1);
+    walker* corpse = fx.spawn_living_named(FAMILY_ORC, 1, 2, nullptr);
+    corpse->set_dead(1);
+
+    SaveData save;
+    save.my_team = 0;
+    const og::ui::ScenarioRosterReport report =
+        og::ui::build_scenario_roster_report(fx.world(), save);
+
+    EXPECT_FALSE(report.is_ctf);
+    EXPECT_EQ(0, report.your_team);
+
+    const auto* grouped = find_group_row(report, 0, FAMILY_SOLDIER, 3);
+    ASSERT_TRUE(grouped != nullptr);
+    EXPECT_EQ(2, grouped->count) << "same family+level group";
+    const auto* solo = find_group_row(report, 0, FAMILY_SOLDIER, 5);
+    ASSERT_TRUE(solo != nullptr);
+    EXPECT_EQ(1, solo->count) << "different level is a separate row";
+
+    const auto* named = find_named_row(report, "GONZO");
+    ASSERT_TRUE(named != nullptr);
+    EXPECT_EQ(1, named->team);
+    EXPECT_EQ(5, named->level);
+    EXPECT_EQ(FAMILY_ARCHER, named->family);
+
+    const auto* generators = find_generator_row(report, 1);
+    ASSERT_TRUE(generators != nullptr);
+    EXPECT_EQ(2, generators->count) << "generators aggregate per team";
+
+    EXPECT_TRUE(find_group_row(report, 1, FAMILY_ORC, 2) == nullptr)
+        << "dead walkers are not part of the roster";
+
+    // Rows arrive team-major.
+    for (std::size_t i = 1; i < report.rows.size(); ++i)
+        EXPECT_LE(report.rows[i - 1].team, report.rows[i].team);
+
+    const std::vector<std::string> lines =
+        og::ui::format_scenario_report_lines(report);
+    EXPECT_TRUE(any_line_contains(lines, "RED TEAM (YOURS)"))
+        << "score-team headers use the shared color names";
+    EXPECT_TRUE(any_line_contains(lines, "GREEN TEAM"));
+    EXPECT_TRUE(any_line_contains(lines, "2x SOLDIER Lv 3"));
+    EXPECT_TRUE(any_line_contains(lines, "GONZO - ARCHER Lv 5"));
+    EXPECT_TRUE(any_line_contains(lines, "2x GENERATOR"));
+    EXPECT_FALSE(any_line_contains(lines, "CTF"));
+    for (const auto& line : lines)
+        EXPECT_LE(line.size(), 48u) << line;
+}
+
+TEST(PickerCommon, scenario_report_ctf_sections_and_strip_annotations)
+{
+    ReportWorld fx(true);
+    fx.spawn_flag(0, /*level=*/7); // map capture limit 7
+    fx.spawn_flag(1);
+    fx.spawn_point();
+    fx.spawn_anchor(0);
+    fx.spawn_anchor(0);
+    fx.spawn_anchor(1);
+    fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, nullptr); // roster team troops
+    fx.spawn_generator(FAMILY_TENT, 0);
+    fx.spawn_living_named(FAMILY_ORC, 1, 4, nullptr);     // bot team, kept
+    fx.spawn_living_named(FAMILY_ELF, 2, 2, nullptr);     // no flag: inactive
+    fx.spawn_living_named(FAMILY_ELF, 5, 9, nullptr);     // non-score team
+
+    SaveData save;
+    save.current_campaign = std::string(og::kCtfCampaignId);
+    save.my_team = 0;
+    save.ctf_strip_scenario_troops = 1;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 0;
+    save.team_size = 1;
+
+    const og::ui::ScenarioRosterReport report =
+        og::ui::build_scenario_roster_report(fx.world(), save);
+
+    EXPECT_TRUE(report.is_ctf);
+    EXPECT_TRUE(report.ctf_will_activate);
+    EXPECT_TRUE(report.team_has_flag[0]);
+    EXPECT_TRUE(report.team_has_flag[1]);
+    EXPECT_FALSE(report.team_has_flag[2]);
+    EXPECT_TRUE(report.team_active[0]);
+    EXPECT_TRUE(report.team_active[1]);
+    EXPECT_FALSE(report.team_active[2]);
+    EXPECT_EQ(1, report.cp_count);
+    EXPECT_EQ(2, report.team_anchor_count[0]);
+    EXPECT_EQ(1, report.team_anchor_count[1]);
+    EXPECT_EQ(7, report.capture_limit) << "map flag level drives the limit";
+
+    const auto* roster_troops = find_group_row(report, 0, FAMILY_SOLDIER, 3);
+    ASSERT_TRUE(roster_troops != nullptr);
+    EXPECT_EQ(og::ui::ScenarioStripReason::TroopsOff,
+              roster_troops->strip_reason);
+    const auto* roster_gen = find_generator_row(report, 0);
+    ASSERT_TRUE(roster_gen != nullptr);
+    EXPECT_EQ(og::ui::ScenarioStripReason::TroopsOff, roster_gen->strip_reason);
+
+    const auto* bot_troops = find_group_row(report, 1, FAMILY_ORC, 4);
+    ASSERT_TRUE(bot_troops != nullptr);
+    EXPECT_EQ(og::ui::ScenarioStripReason::None, bot_troops->strip_reason);
+
+    const auto* inactive = find_group_row(report, 2, FAMILY_ELF, 2);
+    ASSERT_TRUE(inactive != nullptr);
+    EXPECT_EQ(og::ui::ScenarioStripReason::InactiveTeam, inactive->strip_reason);
+
+    // The sim's inactive-team strip also removes non-score teams (>= 4) on
+    // an activating map; the preview must annotate them the same way.
+    const auto* non_score = find_group_row(report, 5, FAMILY_ELF, 9);
+    ASSERT_TRUE(non_score != nullptr);
+    EXPECT_EQ(og::ui::ScenarioStripReason::InactiveTeam,
+              non_score->strip_reason);
+
+    EXPECT_TRUE(report.any_troops_off);
+    EXPECT_TRUE(report.any_inactive);
+
+    const std::vector<std::string> lines =
+        og::ui::format_scenario_report_lines(report);
+    EXPECT_TRUE(any_line_contains(lines, "CTF: 2 FLAG TEAMS, 1 CONTROL POINTS"));
+    EXPECT_TRUE(any_line_contains(lines, "CAPTURE LIMIT: 7"));
+    EXPECT_TRUE(any_line_contains(lines, "RED FLAG  ANCHORS: 2  ACTIVE"));
+    EXPECT_TRUE(any_line_contains(lines, "RED TEAM (YOURS)"));
+    EXPECT_TRUE(any_line_contains(lines, "BLUE TEAM"))
+        << "score teams keep color-name headers";
+    EXPECT_TRUE(any_line_contains(lines, "TEAM 5"))
+        << "non-score teams keep the raw index header";
+    EXPECT_TRUE(any_line_contains(lines, "1x SOLDIER Lv 3*"));
+    EXPECT_TRUE(any_line_contains(lines, "1x ELF Lv 2+"));
+    EXPECT_TRUE(any_line_contains(lines, "1x ELF Lv 9+"))
+        << "non-score teams carry the inactive strip suffix";
+    EXPECT_TRUE(any_line_contains(lines, "* REMOVED: TROOPS OFF"));
+    EXPECT_TRUE(any_line_contains(lines, "+ REMOVED: INACTIVE TEAM"));
+    for (const auto& line : lines)
+        EXPECT_LE(line.size(), 48u) << line;
+}
+
+TEST(PickerCommon, scenario_report_requested_limit_overrides_map_and_allied_collapses)
+{
+    ReportWorld fx(true);
+    fx.spawn_flag(0, /*level=*/7);
+    fx.spawn_flag(1);
+    fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, nullptr);
+    fx.spawn_living_named(FAMILY_ORC, 1, 4, nullptr);
+
+    SaveData save;
+    save.current_campaign = std::string(og::kCtfCampaignId);
+    save.allied_mode = 1;
+    save.my_team = 2; // ignored when allied
+    save.ctf_capture_limit = 5;
+    save.ctf_strip_scenario_troops = 1;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 3; // allied collapses roster teams to {0}
+    save.team_size = 1;
+
+    const og::ui::ScenarioRosterReport report =
+        og::ui::build_scenario_roster_report(fx.world(), save);
+
+    EXPECT_EQ(5, report.capture_limit) << "explicit request beats the map";
+    EXPECT_EQ(0, report.your_team) << "allied mode plays as team 0";
+
+    const auto* team0 = find_group_row(report, 0, FAMILY_SOLDIER, 3);
+    ASSERT_TRUE(team0 != nullptr);
+    EXPECT_EQ(og::ui::ScenarioStripReason::TroopsOff, team0->strip_reason)
+        << "allied roster-team predicate collapses to team 0";
+    const auto* team1 = find_group_row(report, 1, FAMILY_ORC, 4);
+    ASSERT_TRUE(team1 != nullptr);
+    EXPECT_EQ(og::ui::ScenarioStripReason::None, team1->strip_reason);
+}
+
+TEST(PickerCommon, scenario_report_non_activating_ctf_keeps_classic_rules)
+{
+    ReportWorld fx(true);
+    fx.spawn_flag(0); // single flag team: the match will not activate
+    fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, nullptr);
+
+    SaveData save;
+    save.current_campaign = std::string(og::kCtfCampaignId);
+    save.ctf_strip_scenario_troops = 1;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 0;
+    save.team_size = 1;
+
+    const og::ui::ScenarioRosterReport report =
+        og::ui::build_scenario_roster_report(fx.world(), save);
+
+    EXPECT_TRUE(report.is_ctf);
+    EXPECT_FALSE(report.ctf_will_activate);
+    const auto* troops = find_group_row(report, 0, FAMILY_SOLDIER, 3);
+    ASSERT_TRUE(troops != nullptr);
+    EXPECT_EQ(og::ui::ScenarioStripReason::None, troops->strip_reason)
+        << "the strip is inert on non-activating CTF maps";
+
+    const std::vector<std::string> lines =
+        og::ui::format_scenario_report_lines(report);
+    EXPECT_TRUE(any_line_contains(lines, "CTF INACTIVE"));
+}
+
+TEST(PickerCommon, scenario_report_troops_strip_annotates_outside_ctf_campaign)
+{
+    // The sim consumes ctf_strip_scenario_troops on ANY TYPE_CTF map (no
+    // campaign gate); the preview must mirror it exactly or a custom CTF map
+    // outside the shipped campaign strips in-sim with no '*' in the viewer.
+    ReportWorld fx(true);
+    fx.spawn_flag(0);
+    fx.spawn_flag(1);
+    fx.spawn_living_named(FAMILY_SOLDIER, 0, 3, nullptr);
+    fx.spawn_living_named(FAMILY_ORC, 1, 4, nullptr);
+
+    SaveData save;
+    save.current_campaign = std::string(og::kDefaultCampaignId);
+    save.my_team = 0;
+    save.ctf_strip_scenario_troops = 1;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_list[0]->teamnum = 0;
+    save.team_size = 1;
+
+    const og::ui::ScenarioRosterReport report =
+        og::ui::build_scenario_roster_report(fx.world(), save);
+
+    EXPECT_TRUE(report.is_ctf);
+    EXPECT_TRUE(report.ctf_will_activate);
+    const auto* troops = find_group_row(report, 0, FAMILY_SOLDIER, 3);
+    ASSERT_TRUE(troops != nullptr);
+    EXPECT_EQ(og::ui::ScenarioStripReason::TroopsOff, troops->strip_reason);
+    const auto* bot_troops = find_group_row(report, 1, FAMILY_ORC, 4);
+    ASSERT_TRUE(bot_troops != nullptr);
+    EXPECT_EQ(og::ui::ScenarioStripReason::None, bot_troops->strip_reason);
 }

@@ -22,6 +22,11 @@ h
 b
 5
 4
+16
+play 1
+
+15
+
 6
 state
 quit
@@ -83,6 +88,22 @@ if not any(isinstance(e.get('family'), int) and e.get('family') != 0 for e in te
 
 if not any("Loaded 'text_quicksave'" in l and 'team=2' in l for l in lines):
     print('FAIL: expected load confirmation with team=2 after save/load round-trip', file=sys.stderr)
+    sys.exit(1)
+
+# Teams screen: roster rows grouped by team plus the play/move sub-prompt.
+if not any('--- Teams ---' in l for l in lines):
+    print('FAIL: expected the Teams screen roster header', file=sys.stderr)
+    sys.exit(1)
+if not any('RED TEAM' in l for l in lines):
+    print('FAIL: expected a RED TEAM roster row', file=sys.stderr)
+    sys.exit(1)
+if not any('Playing on RED.' in l for l in lines):
+    print('FAIL: expected the play command confirmation', file=sys.stderr)
+    sys.exit(1)
+
+# View Scenario: the shared roster report from a scratch headless load.
+if not any(l.startswith('--- SCEN ') for l in lines):
+    print('FAIL: expected the View Scenario report header', file=sys.stderr)
     sys.exit(1)
 
 quit_ok = any(o.get('cmd') == 'quit' and o.get('status') == 'ok' for o in objs)

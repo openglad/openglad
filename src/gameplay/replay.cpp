@@ -457,6 +457,7 @@ bool compare_world_snapshot(const WorldSnapshot& expected,
     OG_REPLAY_COMPARE(ctf_requested_team_count);
     OG_REPLAY_COMPARE(ctf_requested_capture_limit);
     OG_REPLAY_COMPARE(ctf_requested_respawn_ticks);
+    OG_REPLAY_COMPARE(ctf_requested_strip_scenario_troops);
     OG_REPLAY_COMPARE(grid_width);
     OG_REPLAY_COMPARE(grid_height);
     OG_REPLAY_COMPARE(grid_dirty);

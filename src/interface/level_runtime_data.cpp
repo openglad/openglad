@@ -228,6 +228,8 @@ void replace_loaded_world_state(LevelRuntimeData* level, GameWorld& loaded_world
     dst.ctf_requested_team_count = loaded_world.ctf_requested_team_count;
     dst.ctf_requested_capture_limit = loaded_world.ctf_requested_capture_limit;
     dst.ctf_requested_respawn_ticks = loaded_world.ctf_requested_respawn_ticks;
+    dst.ctf_requested_strip_scenario_troops =
+        loaded_world.ctf_requested_strip_scenario_troops;
     dst.ctf = std::move(loaded_world.ctf);
     dst.current_scenario = loaded_world.current_scenario;
     dst.completed_levels = std::move(loaded_world.completed_levels);
@@ -658,6 +660,8 @@ void LevelRuntimeData::attach_world(GameWorld* world)
         next_world->ctf_requested_team_count = old_world->ctf_requested_team_count;
         next_world->ctf_requested_capture_limit = old_world->ctf_requested_capture_limit;
         next_world->ctf_requested_respawn_ticks = old_world->ctf_requested_respawn_ticks;
+        next_world->ctf_requested_strip_scenario_troops =
+            old_world->ctf_requested_strip_scenario_troops;
         next_world->ctf = std::move(old_world->ctf);
         next_world->current_scenario = old_world->current_scenario;
         next_world->completed_levels = old_world->completed_levels;

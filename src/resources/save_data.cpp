@@ -474,6 +474,18 @@ bool SaveData::load(const std::string& filename)
         ctf_respawn_ticks = 0;
     }
 
+    // Versions 11+ append the CTF scenario-troops strip flag
+    if (temp_version >= 11)
+    {
+        std::int16_t temp_ctf_strip = 0;
+        READ_OR_FAIL(&temp_ctf_strip, 2, 1);
+        ctf_strip_scenario_troops = temp_ctf_strip;
+    }
+    else
+    {
+        ctf_strip_scenario_troops = 0; // keep authored troops
+    }
+
 	Log("Loading campaign: {}\n", current_campaign);
     int current_level = load_campaign(current_campaign, current_levels);
     if(current_level < 0)
@@ -614,7 +626,7 @@ bool SaveData::save(const std::string& filename)
 	std::fill_n(temp_campaign, 41, '\0');
 
 	char temptext[10] = "GTL";
-	std::uint8_t temp_version = 10;
+	std::uint8_t temp_version = 11;
 
 	std::uint32_t newcash = totalcash;
 	std::uint32_t newscore = totalscore;
@@ -861,6 +873,10 @@ bool SaveData::save(const std::string& filename)
 	WRITE_OR_FAIL(&temp_ctf_teams, 2, 1);
 	WRITE_OR_FAIL(&temp_ctf_caps, 2, 1);
 	WRITE_OR_FAIL(&temp_ctf_respawn, 2, 1);
+
+	// Versions 11+ append the CTF scenario-troops strip flag
+	std::int16_t temp_ctf_strip = ctf_strip_scenario_troops;
+	WRITE_OR_FAIL(&temp_ctf_strip, 2, 1);
 
     // unique_ptr auto-closes outfile
 

@@ -48,7 +48,9 @@ constexpr std::uint8_t net_message_type_value(NetMessageType message_type) noexc
 
 // v2: lobby settings carry the three CTF fields (team count, capture limit,
 // respawn ticks) and the snapshot format moved to v4 alongside them.
-inline constexpr std::uint8_t kNetworkProtocolVersion = 2;
+// v3: lobby settings carry the CTF scenario-troops strip flag and the
+// snapshot format moved to v5 alongside it.
+inline constexpr std::uint8_t kNetworkProtocolVersion = 3;
 inline constexpr std::size_t kTransportHeaderSize = 4;
 inline constexpr std::size_t kSessionTokenSize = 16;
 using SessionToken = std::array<std::uint8_t, kSessionTokenSize>;

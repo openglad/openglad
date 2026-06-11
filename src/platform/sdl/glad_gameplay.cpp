@@ -95,6 +95,8 @@ void apply_lobby_game_start_config(
     save.ctf_team_count = static_cast<short>(config_save.ctf_team_count);
     save.ctf_capture_limit = static_cast<short>(config_save.ctf_capture_limit);
     save.ctf_respawn_ticks = static_cast<short>(config_save.ctf_respawn_ticks);
+    save.ctf_strip_scenario_troops =
+        static_cast<short>(config_save.ctf_strip_scenario_troops);
     if (save.allied_mode != 0)
     {
         save.my_team = 0;

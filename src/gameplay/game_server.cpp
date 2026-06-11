@@ -1109,7 +1109,35 @@ void GameServer::bind_player(PeerId peer_id,
     client.team_num = team_num;
     if (control == nullptr)
     {
-        control = sim_find_next_control(world_, team_num);
+        // CTF: prefer the binding player's OWN hero. Several humans may share
+        // a team in CTF lobbies, and the generic first-unclaimed scan would
+        // hand the first binder a teammate's character. Classic and allied
+        // worlds keep the original pool claim (allied deliberately treats the
+        // combined roster as a shared pool in oblist order).
+        if ((world_.type & GameWorld::TYPE_CTF) != 0)
+        {
+            for (const auto& uptr : world_.oblist)
+            {
+                walker* w = uptr.get();
+                if (w == nullptr || w->dead() ||
+                    w->query_order() != Order::Living)
+                {
+                    continue;
+                }
+                if (w->user() != -1 || w->team_num() != team_num)
+                    continue;
+                if (w->myguy == nullptr ||
+                    w->myguy->owner_player_index !=
+                        static_cast<std::uint8_t>(player_index))
+                {
+                    continue;
+                }
+                control = w;
+                break;
+            }
+        }
+        if (control == nullptr)
+            control = sim_find_next_control(world_, team_num);
         if (control != nullptr && control->user() == -1)
         {
             control->set_user(static_cast<signed char>(player_index));

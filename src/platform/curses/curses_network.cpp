@@ -221,6 +221,7 @@ og::sim::LobbyMessage make_settings_message(const SaveData& save, int difficulty
     settings.ctf_team_count = save.ctf_team_count;
     settings.ctf_capture_limit = save.ctf_capture_limit;
     settings.ctf_respawn_ticks = save.ctf_respawn_ticks;
+    settings.ctf_strip_scenario_troops = save.ctf_strip_scenario_troops;
 
     og::sim::LobbyMessage message;
     message.payload = og::sim::LobbySettingsChangeMessage{
@@ -915,6 +916,26 @@ public:
                 (key.is_enter() || key.is_char(U's') || key.is_char(U'S'))) {
                 request_start();
             }
+            if (key.is_char(U'r') || key.is_char(U'R'))
+                (void)set_ready(!local_ready());
+            if (key.is_char(U't') || key.is_char(U'T')) {
+                // Cycle from the last REQUESTED target (wrapping), not the
+                // replicated team: a denied target is skipped on the next
+                // press instead of being re-requested forever.
+                const short base = last_team_request_ >= 0
+                    ? last_team_request_
+                    : local_team_;
+                const short target =
+                    static_cast<short>((base + 1) % MAX_PLAYERS);
+                last_team_request_ = target;
+                if (request_team_change(target)) {
+                    last_team_request_ = -1;
+                    team_status_.clear();
+                } else {
+                    team_status_ =
+                        "Team " + std::to_string(target) + " taken";
+                }
+            }
         }
         (void)clock;
 
@@ -970,6 +991,7 @@ public:
                 lines.push_back("  Player " + std::to_string(player.player_index + 1) +
                                 " (team " + std::to_string(player.team) + ")" +
                                 (player.is_host ? " [host]" : "") +
+                                (player.ready ? " [ready]" : "") +
                                 (is_me ? " [you]" : ""));
             }
             lines.push_back("Players: " + std::to_string(state_->players.size()));
@@ -977,6 +999,8 @@ public:
             lines.push_back(role_ == LobbyRole::Host ? "Waiting for players..."
                                                      : "Connecting...");
         }
+        if (!team_status_.empty())
+            lines.push_back(team_status_);
         if (start_negotiated_)
             lines.push_back("Starting game...");
         return lines;
@@ -988,6 +1012,66 @@ public:
         teardown();
     }
     bool cancelled() const override { return cancelled_; }
+
+    bool request_team_change(short team) override
+    {
+        og::sim::ITransport* const client_link = role_ == LobbyRole::Host
+            ? host_client_transport_.get()
+            : transport_.get();
+        if (client_link == nullptr)
+            return false;
+
+        og::sim::LobbyMessage message;
+        message.payload = og::sim::LobbyTeamChangeMessage{
+            .player_index = local_player_index(),
+            .team = team,
+        };
+        send_lobby_message(*client_link,
+                           role_ == LobbyRole::Host
+                               ? host_client_transport_->local_peer_id()
+                               : server_peer_id_,
+                           std::move(message));
+        pump_once();
+        return local_team_ == team;
+    }
+
+    bool set_ready(bool ready) override
+    {
+        og::sim::ITransport* const client_link = role_ == LobbyRole::Host
+            ? host_client_transport_.get()
+            : transport_.get();
+        if (client_link == nullptr)
+            return false;
+
+        og::sim::LobbyMessage message;
+        message.payload = og::sim::LobbyReadyMessage{
+            .player_index = local_player_index(),
+            .ready = ready,
+        };
+        send_lobby_message(*client_link,
+                           role_ == LobbyRole::Host
+                               ? host_client_transport_->local_peer_id()
+                               : server_peer_id_,
+                           std::move(message));
+        pump_once();
+        return local_ready() == ready;
+    }
+
+    bool local_ready() const override
+    {
+        if (!state_.has_value())
+            return false;
+        const og::sim::LobbyPlayer* const local =
+            find_local_player(*state_, player_name_);
+        return local != nullptr && local->ready;
+    }
+
+    std::vector<og::sim::LobbyPlayer> players() const override
+    {
+        if (!state_.has_value())
+            return {};
+        return state_->players;
+    }
 
     // --- test accessors -------------------------------------------------------
     const std::optional<og::sim::LobbyState>& state() const { return state_; }
@@ -1010,8 +1094,9 @@ private:
                 break;
             term.put_str(row++, 0, line, Color::Default, Color::Default, false);
         }
-        const char* hint = role_ == LobbyRole::Host ? "[s] start (host)  [q] cancel"
-                                                     : "[q] cancel";
+        const char* hint = role_ == LobbyRole::Host
+            ? "[s] start (host)  [t] team  [r] ready  [q] cancel"
+            : "[t] team  [r] ready  [q] cancel";
         if (term.rows() > 0)
             term.put_str(term.rows() - 1, 0, hint, Color::Cyan, Color::Default, false);
         term.present();
@@ -1026,6 +1111,16 @@ private:
                (local->is_host || local->player_index == state_->host_player_id);
     }
 
+    std::uint8_t local_player_index() const
+    {
+        // Informational only: the LobbyServer keys on the sending peer.
+        if (!state_.has_value())
+            return 0xffu;
+        const og::sim::LobbyPlayer* const local =
+            find_local_player(*state_, player_name_);
+        return local != nullptr ? local->player_index : 0xffu;
+    }
+
     void handle_typed_message(const og::sim::TypedReceivedMessage& message)
     {
         switch (message.kind) {
@@ -1035,6 +1130,12 @@ private:
                 if (const og::sim::LobbyPlayer* const local =
                         find_local_player(*state_, player_name_)) {
                     local_team_ = local->team;
+                    // A late accept (joiner echo) lands here: stop treating
+                    // the request as bounced.
+                    if (local_team_ == last_team_request_) {
+                        last_team_request_ = -1;
+                        team_status_.clear();
+                    }
                 }
             }
             break;
@@ -1146,6 +1247,7 @@ private:
         eq.ctf_team_count = state_->settings.ctf_team_count;
         eq.ctf_capture_limit = state_->settings.ctf_capture_limit;
         eq.ctf_respawn_ticks = state_->settings.ctf_respawn_ticks;
+        eq.ctf_strip_scenario_troops = state_->settings.ctf_strip_scenario_troops;
         eq.numplayers = static_cast<std::uint8_t>(
             std::min<std::size_t>(state_->players.size(), MAX_PLAYERS));
 
@@ -1185,6 +1287,10 @@ private:
     SaveData& save_;
     int difficulty_ = 1;
     short local_team_ = 0;
+    // 't'-cycle bookkeeping: last requested target (-1 = none pending) and
+    // the one-line bounce status surfaced in status_lines().
+    short last_team_request_ = -1;
+    std::string team_status_;
     std::string player_name_;
 
     // Host transports.

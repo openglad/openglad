@@ -9,11 +9,14 @@
 #include <openglad/resources/save_data.h>
 #include <array>
 #include <cstdint>
+#include <list>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 class guy;
+class GameWorld;
 
 namespace og::ui {
 
@@ -126,6 +129,92 @@ void cycle_ctf_capture_limit(SaveData& save);
 // True when the save's current campaign is the CTF campaign.
 bool is_ctf_campaign(const SaveData& save);
 
+// Toggle the CTF scenario-troops strip flag (0 = keep authored troops).
+void toggle_ctf_scenario_troops(SaveData& save);
+
+// --- Team choice helpers (local seats) ---
+
+// True when any roster slot is on the given team.
+bool team_has_members(const SaveData& save, short team);
+
+// Set my_team (the P1 seat) to the given team. Rejects out-of-range teams
+// and teams with no roster members; returns true on success.
+bool set_preferred_team(SaveData& save, short team);
+
+// Cycle a roster slot's teamnum by dir, wrapping over 0..3 (the same
+// (t % 4 + 4) % 4 rule as the train menu). Returns the new team, or -1 when
+// the slot is empty/out of range.
+short cycle_guy_team(SaveData& save, int slot_index, int dir);
+
+// The local seat order gameplay derives (game.cpp view_teams): distinct
+// NONZERO roster teams in slot order, with my_team hoisted to the front when
+// it has members. Single source of truth for seat labels (P1..P4) and the
+// local lobby's synthetic peer teams.
+std::vector<short> derive_local_seat_teams(const SaveData& save);
+
+// One TEAMS-screen row label, <= 30 chars: "{COLOR} TEAM {seat_tag} {status}"
+// where status is "NOT ON MAP" (CTF, no authored flag), "BOTS" (CTF authored
+// team with no humans and no local heroes), or "{n} HEROES".
+std::string format_team_row_label(short team,
+                                  int hero_count,
+                                  bool is_ctf,
+                                  bool authored,
+                                  bool has_humans,
+                                  std::string_view seat_tag);
+
+// --- Campaign ordering ---
+
+// Stable hoist of the default campaign (org.openglad.gladiator) to the
+// front; remainder keeps its existing (alphabetical) order. Applied at the
+// user-facing campaign pickers only; list_campaigns() itself stays honest.
+void order_campaigns_default_first(std::list<std::string>& campaign_ids);
+
+// --- Scenario roster report (View Level) ---
+
+enum class ScenarioStripReason : std::uint8_t {
+    None = 0,
+    TroopsOff,     // removed by the scenario-troops strip ('*')
+    InactiveTeam,  // removed by the CTF inactive-team strip ('+')
+};
+
+struct ScenarioRosterRow {
+    short team = 0;
+    bool is_generator = false;
+    bool named = false;
+    std::string name;  // named NPCs only
+    short family = 0;
+    int level = 1;
+    int count = 1;
+    ScenarioStripReason strip_reason = ScenarioStripReason::None;
+};
+
+struct ScenarioRosterReport {
+    bool is_ctf = false;            // world.type & TYPE_CTF
+    bool ctf_will_activate = false; // >= 2 authored flag teams
+    short your_team = 0;            // 0 when allied, else save.my_team
+    int cp_count = 0;
+    int capture_limit = 0;          // effective: requested > map > default
+    bool team_has_flag[4] = {};
+    bool team_active[4] = {};       // mirror of the init clamp
+    int team_anchor_count[4] = {};
+    std::vector<ScenarioRosterRow> rows; // grouped, team-major
+    bool any_troops_off = false;
+    bool any_inactive = false;
+};
+
+// Scan a (scratch-loaded) world's authored entities into a roster report.
+// Named NPCs get individual rows; unnamed livings group by (team, family,
+// level); generators aggregate per team. Strip annotations mirror the CTF
+// init rules using save-side knowledge (roster teams = distinct team_list
+// teamnums, collapsed to {0} when allied).
+ScenarioRosterReport build_scenario_roster_report(const GameWorld& world,
+                                                  const SaveData& save);
+
+// Render the report as display lines, every line <= 48 chars, with '*'/'+'
+// strip suffixes and trailing legend lines.
+std::vector<std::string> format_scenario_report_lines(
+    const ScenarioRosterReport& report);
+
 // --- Player count ---
 
 void set_player_count(SaveData& save, int count);
@@ -146,6 +235,10 @@ std::string format_ctf_teams_label(const SaveData& save);
 
 // Format the capture limit label ("Capture Limit: Map default" or ": N").
 std::string format_ctf_caps_label(const SaveData& save);
+
+// Format the scenario-troops label ("Troops: Scen" when keeping authored
+// troops, "Troops: Own" when stripping them).
+std::string format_ctf_troops_label(const SaveData& save);
 
 // --- Team family extraction ---
 

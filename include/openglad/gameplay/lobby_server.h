@@ -18,6 +18,7 @@ struct LobbySaveDataEquivalent {
     std::int16_t ctf_team_count = 0; // 0 = Auto
     std::int16_t ctf_capture_limit = 0;
     std::int16_t ctf_respawn_ticks = 0;
+    std::int16_t ctf_strip_scenario_troops = 0;
     std::vector<LobbyCharacterSlot> team_list;
 
     bool operator==(const LobbySaveDataEquivalent&) const = default;
@@ -75,6 +76,7 @@ private:
         std::optional<LobbyPlayer> player = std::nullopt;
     };
 
+    [[nodiscard]] std::int16_t effective_team_limit() const noexcept;
     [[nodiscard]] bool is_team_available(std::int16_t team,
                                          PeerId peer_id) const noexcept;
     [[nodiscard]] std::int16_t resolve_team(

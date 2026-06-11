@@ -54,3 +54,51 @@ button* picker_hiremenu_buttons();
 int picker_hiremenu_button_count();
 button* picker_networking_buttons();
 int picker_networking_button_count();
+button* picker_teamsmenu_buttons();
+int picker_teamsmenu_button_count();
+button* picker_viewscenario_buttons();
+int picker_viewscenario_button_count();
+
+// --- Team-build y=40 row ------------------------------------------------
+// Always-visible row: TEAMS (30,40) | VIEW LEVEL (120,40) | empty 210 slot.
+inline constexpr int kCreateMenuTeamsIndex = 11;
+inline constexpr int kCreateMenuViewScenarioIndex = 12;
+
+// --- TEAMS subscreen layout contract --------------------------------------
+// Positional indices into k_teamsmenu_buttons / picker_teamsmenu_buttons().
+inline constexpr int kTeamsMenuBackIndex = 0;
+inline constexpr int kTeamsMenuCtfTeamsIndex = 1;
+inline constexpr int kTeamsMenuCtfCapsIndex = 2;
+inline constexpr int kTeamsMenuJoinFirstIndex = 3; // join_team_0..3 = 3..6
+inline constexpr int kTeamsMenuGuyPrevIndex = 7;
+inline constexpr int kTeamsMenuGuyNextIndex = 8;
+inline constexpr int kTeamsMenuGuyTeamIndex = 9;
+inline constexpr int kTeamsMenuReadyIndex = 10;
+inline constexpr int kTeamsMenuCtfTroopsIndex = 11;
+inline constexpr int kTeamsMenuButtonCount = 12;
+
+// One frame's visibility state for the TEAMS subscreen. Keyboard nav does not
+// skip hidden buttons, so the nav graph is rewired from this state every
+// frame (picker_wire_teams_menu_nav) instead of routing around statically.
+struct TeamsMenuWiring
+{
+    bool show_ctf = false;        // CTF campaign + lobby host
+    bool networked = false;       // genuine networked session (READY shown)
+    bool guy_row = false;         // local session with a non-empty roster
+    bool join_visible[4] = {false, false, false, false};
+};
+
+// Deterministically rewires the TEAMS subscreen nav graph so every visible
+// button is keyboard-reachable and no link points at a hidden button.
+void picker_wire_teams_menu_nav(button* buttons, int count,
+                                const TeamsMenuWiring& wiring);
+
+// The TEAMS subscreen's selected roster slot, normalized onto an occupied
+// slot (-1 when the roster is empty).
+int teams_menu_selected_guy_slot();
+
+// --- VIEW LEVEL (scenario viewer) layout contract --------------------------
+inline constexpr int kViewScenarioBackIndex = 0;
+inline constexpr int kViewScenarioPrevIndex = 1;
+inline constexpr int kViewScenarioNextIndex = 2;
+inline constexpr int kViewScenarioRowsPerPage = 23;
