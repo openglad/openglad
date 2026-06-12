@@ -309,6 +309,10 @@ TEST(CtfCore, init_strips_teams_beyond_requested_count)
     fx.spawn_flag(1, 544, 96);
     walker* flag2 = fx.spawn_flag(2, 96, 800);
     walker* flag3 = fx.spawn_flag(3, 544, 800);
+    // Stripped flags are dead fxlist treasures, DESTROYED by the end-of-tick
+    // sweep — capture ids now; the pointers are invalid after fx.tick().
+    const std::uint32_t flag2_id = flag2->entity_id();
+    const std::uint32_t flag3_id = flag3->entity_id();
     fx.spawn_anchor(0, 128, 128);
     fx.spawn_anchor(1, 512, 128);
     fx.spawn_anchor(2, 128, 832);
@@ -327,9 +331,10 @@ TEST(CtfCore, init_strips_teams_beyond_requested_count)
     ASSERT_FALSE(ctf.team_active[3]);
     ASSERT_FALSE(ctf.flags[2].present);
     ASSERT_FALSE(ctf.flags[3].present);
-    ASSERT_TRUE(flag2->dead());
-    ASSERT_TRUE(flag3->dead());
-    ASSERT_TRUE(stripped_living->dead());
+    ASSERT_EQ(nullptr, fx.world().find_by_id(flag2_id))
+        << "stripped flag entity must be removed from the world";
+    ASSERT_EQ(nullptr, fx.world().find_by_id(flag3_id));
+    ASSERT_TRUE(stripped_living->dead()); // dead_list keeps livings alive
 
     // Active teams had no livings: each gets a five-bot squad.
     int alive[4] = {};
