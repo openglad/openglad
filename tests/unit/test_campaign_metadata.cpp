@@ -173,6 +173,46 @@ TEST_F(CampaignMetadataTest, scenario_names_are_keyed_by_mounted_campaign)
     EXPECT_EQ(gladiator_name, og::data::scenario_display_name(1));
 }
 
+// Malformed campaign.yaml must fail cleanly, not hang. Tab-indented block
+// scalars are illegal YAML; the vendored yam adapter used to miss libyaml's
+// error (it returns 0, not a negative value) and parse_next spun forever.
+// This content is byte-exact from a real third-party package
+// (org.openglad.tryxian): CRLF line endings, title BEFORE the broken
+// description — so the title parses, then the stream errors.
+TEST_F(CampaignMetadataTest, malformed_yaml_terminates_and_keeps_parsed_title)
+{
+    const std::string id = "org.openglad.test_tab_yaml";
+    ASSERT_TRUE(install_fake_package(id,
+        "---\r\n"
+        "format_version:  1\r\n"
+        "title:           The Tryxian Chronicles\r\n"
+        "version:         1\r\n"
+        "first_level:     103\r\n"
+        "suggested_power: 500\r\n"
+        "authors:         David Chang\r\n"
+        "contributors:    \r\n"
+        "\r\n"
+        "description:     |\r\n"
+        "    Explore the mysteries of the fallen\r\n"
+        "\tTryxian Empire.  This series of\r\n"
+        "\ttough levels will test your advanced\r\n"
+        "\tteam."));
+    EXPECT_EQ("The Tryxian Chronicles", og::data::campaign_display_title(id))
+        << "the title pair parses before the malformed description";
+    remove_fake_package(id);
+}
+
+TEST_F(CampaignMetadataTest, yaml_error_before_title_falls_back_to_raw_id)
+{
+    const std::string id = "org.openglad.test_tab_first";
+    ASSERT_TRUE(install_fake_package(id,
+        "---\r\n"
+        "\tbroken: tab\r\n"
+        "title: Never Reached\r\n"));
+    EXPECT_EQ(id, og::data::campaign_display_title(id));
+    remove_fake_package(id);
+}
+
 TEST_F(CampaignMetadataTest, failed_lookup_heals_once_package_is_mounted)
 {
     // A lookup before the package exists memoizes the raw-id fallback...

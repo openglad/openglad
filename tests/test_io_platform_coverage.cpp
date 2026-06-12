@@ -294,10 +294,13 @@ TEST(IoPlatformCoverage, yaml_stream_empty_input_and_read_failure_paths)
         fail_r = fail_parser.parse_next();
         fail_steps++;
     }
-    ASSERT_TRUE(fail_steps > 0) << "read failure stream should produce at least one parser step";
-    ASSERT_EQ(16, fail_steps) << "zero-byte read handler should be bounded by the test guard";
-    ASSERT_EQ(og::io::YamlParseResult::Ok, fail_r)
-        << "zero-byte read handler remains pending until the guard stops polling";
+    // A read-handler failure must surface as Error on the first step. The
+    // old yam adapter missed it (libyaml reports errors by returning 0, not
+    // a negative value) and callers looping on Ok never terminated — real
+    // malformed campaign.yaml files hung the campaign picker this way.
+    ASSERT_EQ(1, fail_steps) << "read failure should surface immediately";
+    ASSERT_EQ(og::io::YamlParseResult::Error, fail_r)
+        << "a failing read handler must surface as Error, not loop as Ok";
     fail_parser.close_input();
 }
 

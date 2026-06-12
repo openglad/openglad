@@ -46,6 +46,10 @@ sanitizers/tests to catch real issues.
 - yam (`third_party/yam`)
   - Version: 0.1.0 (OpenGlad-vendored wrapper, no upstream repository).
   - Notes: Small C++ adapter around libyaml to produce higher-level events.
+    Local fix (2026-06): `parse_next` checked `yaml_parser_parse(...) < 0`,
+    but libyaml returns 0 on error — malformed YAML (e.g. tab-indented block
+    scalars) was never reported and every `while (parse_next() == OK)` caller
+    looped forever. Both call sites now treat 0 as ERROR.
 
 - MicroPather (`third_party/micropather`)
   - Version: Latest from upstream master (2016-10-18 commit).
