@@ -509,3 +509,77 @@ TEST(PlatformHeadless, text_picker_internal_help_and_error_paths)
     EXPECT_EQ(0,
               og::ui::text_picker_testing_exercise_internal_paths());
 }
+
+// Begin New Game must drop a previously selected campaign back to the
+// default — in the session config AND in the mounted package. The blank
+// answer at the forced campaign-select keeps "current", which after the
+// reset has to be the default campaign, not the stale one.
+TEST(PlatformHeadless, text_picker_new_game_resets_campaign_and_mount)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("org.openglad.ctf"))
+        << "the ctf package ships with the game and should mount";
+
+    const std::string input =
+        "1\n"       // main: begin new game -> forced campaign select
+        "\n"        //   blank keeps current (= default after the reset)
+        "7\n"       // team build: back -> main
+        "11\n";     // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutSilencer stdout_silencer;
+
+    og::ui::TextPickerConfig config;
+    config.campaign = "org.openglad.ctf"; // stale campaign from a prior session
+    config.team_families = {FAMILY_SOLDIER};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+    EXPECT_EQ("org.openglad.gladiator", config.campaign)
+        << "a new game must reset the session campaign to the default";
+    EXPECT_EQ("org.openglad.gladiator", get_mounted_campaign())
+        << "a new game must remount the default campaign package";
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("org.openglad.gladiator"));
+}
+
+// Selecting a campaign must mount its package: the text GO path loads levels
+// straight from the mounted package, so a selection that only updated strings
+// would silently keep playing the previously mounted campaign.
+TEST(PlatformHeadless, text_picker_campaign_select_mounts_selection)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("org.openglad.ctf"))
+        << "the ctf package ships with the game and should mount";
+
+    const std::string input =
+        "2\n"       // main: continue -> team build
+        "9\n"       // team build: Scenario submenu
+        "1\n"       // scenario: set campaign
+        "1\n"       //   entry 1 is always the default campaign
+        "6\n"       // scenario: back -> team build
+        "7\n"       // team build: back -> main
+        "11\n";     // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutSilencer stdout_silencer;
+
+    og::ui::TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+    EXPECT_EQ("org.openglad.gladiator", config.campaign);
+    EXPECT_EQ("org.openglad.gladiator", get_mounted_campaign())
+        << "campaign selection must re-point the mount, not just strings";
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("org.openglad.gladiator"));
+}

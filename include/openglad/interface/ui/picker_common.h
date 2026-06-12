@@ -178,6 +178,14 @@ std::vector<std::string> paginate_team_detail_pages(
 // user-facing campaign pickers only; list_campaigns() itself stays honest.
 void order_campaigns_default_first(std::list<std::string>& campaign_ids);
 
+// Re-point the mounted campaign package at the save's campaign. The mount
+// only follows SaveData::load() and the SET CAMPAIGN picker, so flows that
+// change save.current_campaign behind its back — most importantly the
+// new-game reset — call this to keep level data coherent. Returns false and
+// restores the previous mount when the package is missing (e.g. a networked
+// joiner without the host's campaign).
+bool sync_campaign_mount_to_save(const SaveData& save);
+
 // --- Scenario roster report (View Level) ---
 
 enum class ScenarioStripReason : std::uint8_t {

@@ -766,6 +766,12 @@ bool CursesPickerClient::prepare_new_game()
 {
     og::ui::reset_for_new_game(save_data_);
     og::ui::ensure_team_populated(save_data_);
+    // A new game always starts on the default campaign: drop any campaign a
+    // previously loaded save left in the session config (run_game copies
+    // config_.campaign back over the freshly reset save) and re-point the
+    // mount so the in-picker scenario viewer stays coherent.
+    config_.campaign = save_data_.current_campaign;
+    (void)og::ui::sync_campaign_mount_to_save(save_data_);
     config_.team_families = og::ui::collect_team_families(save_data_);
     return true;
 }
@@ -799,6 +805,9 @@ std::string CursesPickerClient::show_campaign_select()
 
     config_.campaign = ids[static_cast<size_t>(choice)];
     save_data_.current_campaign = config_.campaign;
+    // The launch path self-heals the mount, but the in-picker scenario
+    // viewer reads the mounted package directly — follow the selection now.
+    (void)og::ui::sync_campaign_mount_to_save(save_data_);
     return config_.campaign;
 }
 

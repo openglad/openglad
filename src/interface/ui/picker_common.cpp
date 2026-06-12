@@ -7,6 +7,7 @@
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/resources/save_data.h>
+#include <openglad/resources/io_common.h>
 #include <openglad/core/ctf_constants.h>
 #include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/family_descriptor.h>
@@ -599,6 +600,21 @@ void order_campaigns_default_first(std::list<std::string>& campaign_ids)
     if (it == campaign_ids.end() || it == campaign_ids.begin())
         return;
     campaign_ids.splice(campaign_ids.begin(), campaign_ids, it);
+}
+
+bool sync_campaign_mount_to_save(const SaveData& save)
+{
+    const std::string mounted = get_mounted_campaign();
+    if (mounted == save.current_campaign)
+        return true;
+    if (mount_campaign_package_with_error(save.current_campaign) ==
+        CampaignPackageIoError::None)
+        return true;
+    // Missing/corrupt package (a joiner can legitimately lack the host's
+    // campaign): a failed mount leaves NOTHING mounted, so put the previous
+    // package back to keep some level data loadable.
+    (void)mount_campaign_package_with_error(mounted);
+    return false;
 }
 
 // --- Player count ---

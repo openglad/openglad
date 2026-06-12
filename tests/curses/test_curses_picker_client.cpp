@@ -29,6 +29,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/picker_common.h>
+#include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 
 #include <format>
@@ -202,6 +203,27 @@ TEST(CursesPickerClient, prepare_new_game_populates_team_and_resets_gold)
     EXPECT_EQ(f.save().m_totalcash[0], 5000u) << "new game resets gold to 5000";
     EXPECT_EQ(f.config.team_families, og::ui::collect_team_families(f.save()))
         << "config team_families must be synced from the save";
+}
+
+// A new game must drop a previously selected campaign back to the default —
+// in the save, in the session config (run_game copies config_.campaign over
+// the freshly reset save), and in the mounted package.
+TEST(CursesPickerClient, prepare_new_game_resets_campaign_to_default)
+{
+    PickerFixture f;
+    f.config.campaign = "org.openglad.ctf";
+    f.save().current_campaign = "org.openglad.ctf";
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("org.openglad.ctf"))
+        << "the ctf package ships with the game and should mount";
+
+    ASSERT_TRUE(f.client.prepare_new_game());
+
+    EXPECT_EQ(f.config.campaign, "org.openglad.gladiator")
+        << "a stale config campaign would be copied back onto the save at GO";
+    EXPECT_EQ(f.save().current_campaign, "org.openglad.gladiator");
+    EXPECT_EQ(get_mounted_campaign(), "org.openglad.gladiator")
+        << "the in-picker scenario viewer reads the mounted package";
 }
 
 // --- difficulty ----------------------------------------------------------

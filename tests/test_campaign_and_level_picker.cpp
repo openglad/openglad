@@ -1,4 +1,5 @@
 #include <openglad/interface/ui/campaign_picker.h>
+#include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/level_picker.h>
 #include <openglad/interface/ui/results_screen.h>
 #include <openglad/gameplay/statistics.h>
@@ -389,4 +390,92 @@ TEST(CampaignAndLevelPicker, level_picker_choose_and_delete_prompt_paths)
     ASSERT_EQ(1, canceled_after_delete_prompt) << "delete prompt + cancel should keep default level";
 
     og::runtime::current_session->myscreen_->world().end = old_end;
+}
+
+// picker_main_menu.cpp: the new-game flow under test below.
+bool picker_prepare_new_game_setup();
+
+TEST(CampaignAndLevelPicker, sync_campaign_mount_follows_save_and_restores_on_failure)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const std::string old_mounted = get_mounted_campaign();
+    const std::string old_save_campaign = save.current_campaign;
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("org.openglad.gladiator"));
+
+    save.current_campaign = "org.openglad.ctf";
+    ASSERT_TRUE(og::ui::sync_campaign_mount_to_save(save))
+        << "the ctf package ships with the game and should mount";
+    ASSERT_EQ(std::string("org.openglad.ctf"), get_mounted_campaign());
+
+    // Same campaign again: success without touching the mount.
+    ASSERT_TRUE(og::ui::sync_campaign_mount_to_save(save));
+    ASSERT_EQ(std::string("org.openglad.ctf"), get_mounted_campaign());
+
+    // Missing package: report failure and restore the previous mount.
+    save.current_campaign = "org.openglad.this_campaign_should_not_exist";
+    ASSERT_FALSE(og::ui::sync_campaign_mount_to_save(save));
+    ASSERT_EQ(std::string("org.openglad.ctf"), get_mounted_campaign())
+        << "failed sync must put the previous mount back";
+
+    save.current_campaign = old_save_campaign;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error(old_mounted))
+        << "failed to remount original campaign";
+}
+
+namespace
+{
+SDL_atomic_t s_new_game_setup_done;
+
+int new_game_intro_dismisser(void* data)
+{
+    og::runtime::ensure_thread_session();
+    (void)data;
+    // picker_prepare_new_game_setup() blocks inside read_campaign_intro()
+    // until input_continue (Escape keydown). scroll_text_view() clears the
+    // keyboard on entry, so a single early press can be eaten — keep tapping
+    // until the flow under test reports completion.
+    for (int i = 0; i < 100 && !SDL_AtomicGet(&s_new_game_setup_done); ++i) {
+        SDL_Delay(200);
+        inject_key_press(SDLK_ESCAPE);
+    }
+    return 0;
+}
+} // namespace
+
+TEST(CampaignAndLevelPicker, new_game_resets_campaign_and_mount_to_default)
+{
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const std::string old_mounted = get_mounted_campaign();
+
+    // Simulate "the last session played CTF": the save selects it and its
+    // package is the one mounted (SaveData::load() would have done both).
+    save.current_campaign = "org.openglad.ctf";
+    save.scen_num = 505;
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("org.openglad.ctf"));
+    // team_size == 0 keeps the flow from raising the "restart?" prompt.
+    for (int i = 0; i < MAX_TEAM_SIZE; i++)
+        save.team_list[i].reset();
+    save.team_size = 0;
+
+    SDL_AtomicSet(&s_new_game_setup_done, 0);
+    SDL_Thread* thread =
+        SDL_CreateThread(new_game_intro_dismisser, "intro_dismiss", nullptr);
+    ASSERT_TRUE(thread != nullptr) << "failed to create intro dismisser thread";
+    const bool ok = picker_prepare_new_game_setup();
+    SDL_AtomicSet(&s_new_game_setup_done, 1);
+    SDL_WaitThread(thread, nullptr);
+
+    ASSERT_TRUE(ok) << "new game setup should not abort";
+    ASSERT_EQ(std::string("org.openglad.gladiator"), save.current_campaign)
+        << "a new game must reset to the default campaign";
+    ASSERT_EQ(std::string("org.openglad.gladiator"), get_mounted_campaign())
+        << "a new game must remount the default campaign package";
+    ASSERT_EQ(1, save.scen_num) << "a new game must rewind the level cursor";
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error(old_mounted));
 }

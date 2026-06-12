@@ -118,6 +118,12 @@ public:
         reset_for_new_game(save_data_);
         ensure_team_populated(save_data_);
 
+        // A new game always starts on the default campaign: pull the session
+        // config and the mounted package back from whatever campaign a
+        // previously loaded save selected.
+        config_.campaign = save_data_.current_campaign;
+        (void)sync_campaign_mount_to_save(save_data_);
+
         sync_config_from_save();
         show_new_game_team_build_notice_ = true;
         return true;
@@ -161,6 +167,9 @@ public:
 
         config_.campaign = entries[static_cast<size_t>(*choice - 1)];
         save_data_.current_campaign = config_.campaign;
+        // GO loads levels straight from the mounted package; selecting a
+        // campaign without mounting it would silently play the old one.
+        (void)sync_campaign_mount_to_save(save_data_);
         return config_.campaign;
     }
 
