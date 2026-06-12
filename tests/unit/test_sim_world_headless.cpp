@@ -2,6 +2,10 @@
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/sim_emit.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/walker.h>
+#include <openglad/core/constants.h>
+#include <openglad/core/pixdefs.h>
+#include "../test_game_world_fixture.h"
 
 #include <gtest/gtest.h>
 
@@ -303,4 +307,27 @@ TEST(SimWorldHeadless, emit_notification_null_log_is_noop)
 TEST(SimWorldHeadless, emit_event_null_log_is_noop)
 {
     og::sim::emit_event(nullptr, og::sim::EventKind::PlaySound, 1);
+}
+
+// --- Grid passability ---
+
+// Authored Specials (reserved-team markers, ACT_RANDOM) pathfind with no
+// owner; the arrow-wall pass-through gamble dereferenced the null owner and
+// crashed the sim (real data: Tryxian Chronicles scen108/scen115). Unowned
+// non-living entities must treat arrow walls as solid instead.
+TEST(SimWorldHeadless, arrow_wall_is_solid_for_unowned_special)
+{
+    TestGameWorld t;
+    PixieData& grid = t.world().grid;
+    const int gx = 2;
+    const int gy = 2;
+    grid.data[gx + grid.w * gy] = PIX_WALL4;
+
+    walker* special = t.world().add_ob(Order::Special, FAMILY_RESERVED_TEAM);
+    ASSERT_NE(nullptr, special);
+    ASSERT_EQ(nullptr, special->owner());
+
+    EXPECT_FALSE(t.world().query_grid_passable(
+        static_cast<float>(gx * GRID_SIZE),
+        static_cast<float>(gy * GRID_SIZE), special));
 }

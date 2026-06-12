@@ -1088,7 +1088,7 @@ inline constexpr Mutation kMut_smoke_inputs_no_move = {
 };
 
 inline constexpr Mutation kMut_smoke_empty_tick_count = {
-    "src/gameplay/game_world.cpp", 1375,
+    "src/gameplay/game_world.cpp", 1382,
     "tick_count_++;",
     "tick_count_ += 0;",
     "Stops the per-tick world counter from advancing. The empty smoke row has no gameplay entities by design, but its schema-v1 dump still records tick=1 after one tick; this mutation changes that field and flips the byte-level empty-dump canary without inventing gameplay predicates."
@@ -1116,7 +1116,7 @@ inline constexpr Mutation kMut_exit_neuter = {
 };
 
 inline constexpr Mutation kMut_snapshot_dirty = {
-    "src/gameplay/game_world.cpp", 1355,
+    "src/gameplay/game_world.cpp", 1380,
     "level_done = 2;",
     "level_done = []{ static int _n = 0; return _n++; }();",
     "state_dump.cpp (the original Phase 01 target) lives under tests/parity/ which the canary refuses to mutate; the next-best upstream subject is the game_world per-tick level_done assignment that flows straight into the snapshot dump. A static-counter lambda persists across run_scenario() invocations and breaks dual-capture byte equality, flipping the Invariant determinism check."
@@ -3176,10 +3176,10 @@ inline constexpr FactPredicate kFacts_event_set_end_emission_scen99[] = {
 };
 
 inline constexpr Mutation kMut_event_set_end_emission = {
-    "src/gameplay/game_world.cpp", 1408,
+    "src/gameplay/game_world.cpp", 1431,
     "level_done = 0;",
     "level_done = 2;",
-    "Neuters the enemy-alive guard in GameWorld::tick: instead of resetting level_done to 0 when a live non-friendly Living enemy is found, it forces level_done to stay 2. With enemies still alive the level_done==2 completion branch (game_world.cpp:1484) fires and pushes EventKind::SetEnd, so the arena's set_end suppression is broken and the event sneaks through."
+    "Neuters the enemy-alive guard in GameWorld::tick: instead of resetting level_done to 0 when a live non-friendly Living enemy is found, it forces level_done to stay 2. With enemies still alive the level_done==2 completion branch (game_world.cpp:1515) fires and pushes EventKind::SetEnd, so the arena's set_end suppression is broken and the event sneaks through."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_soldier_1_scen99[] = {
