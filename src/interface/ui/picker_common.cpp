@@ -595,13 +595,17 @@ std::vector<std::string> paginate_team_detail_pages(
 
 // --- Campaign ordering ---
 
-void order_campaigns_default_first(std::list<std::string>& campaign_ids)
+void order_campaigns_for_select(std::list<std::string>& campaign_ids)
 {
-    const auto it = std::find(campaign_ids.begin(), campaign_ids.end(),
-                              og::kDefaultCampaignId);
-    if (it == campaign_ids.end() || it == campaign_ids.begin())
-        return;
-    campaign_ids.splice(campaign_ids.begin(), campaign_ids, it);
+    const auto glad = std::find(campaign_ids.begin(), campaign_ids.end(),
+                                og::kDefaultCampaignId);
+    if (glad != campaign_ids.end() && glad != campaign_ids.begin())
+        campaign_ids.splice(campaign_ids.begin(), campaign_ids, glad);
+
+    const auto ctf = std::find(campaign_ids.begin(), campaign_ids.end(),
+                               og::kCtfCampaignId);
+    if (ctf != campaign_ids.end() && std::next(ctf) != campaign_ids.end())
+        campaign_ids.splice(campaign_ids.end(), campaign_ids, ctf);
 }
 
 std::vector<std::string> format_campaign_select_labels(

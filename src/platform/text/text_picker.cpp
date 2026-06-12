@@ -139,7 +139,7 @@ public:
     std::string show_campaign_select() override
     {
         std::list<std::string> campaigns = list_campaigns();
-        order_campaigns_default_first(campaigns);
+        order_campaigns_for_select(campaigns);
         std::vector<std::string> entries(campaigns.begin(), campaigns.end());
 
         if (entries.empty()) {

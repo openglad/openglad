@@ -173,10 +173,11 @@ std::vector<std::string> paginate_team_detail_pages(
 
 // --- Campaign ordering ---
 
-// Stable hoist of the default campaign (org.openglad.gladiator) to the
-// front; remainder keeps its existing (alphabetical) order. Applied at the
-// user-facing campaign pickers only; list_campaigns() itself stays honest.
-void order_campaigns_default_first(std::list<std::string>& campaign_ids);
+// Display order for campaign selects: the default campaign (gladiator)
+// leads and the CTF campaign trails, so extra campaigns sit in between in
+// their existing (alphabetical) order. Applied at the user-facing campaign
+// pickers only; list_campaigns() itself stays honest.
+void order_campaigns_for_select(std::list<std::string>& campaign_ids);
 
 // Index-aligned display labels for a campaign-select list: the packages'
 // human titles, with the raw id appended ("Forest [org.x.forest]") when two

@@ -1406,7 +1406,6 @@ if(NOT EMSCRIPTEN)
                 ${CMAKE_SOURCE_DIR}/pix
                 ${CMAKE_SOURCE_DIR}/sound
                 ${CMAKE_SOURCE_DIR}/builtin
-                ${CMAKE_SOURCE_DIR}/extra_campaigns
             DESTINATION ${CMAKE_INSTALL_DATADIR}/openglad
         )
     endif()
@@ -2569,7 +2568,6 @@ endif()
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/cfg@/cfg"
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/pix@/pix"
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/sound@/sound"
-        "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/extra_campaigns@/extra_campaigns"
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/builtin@/builtin"
     )
 

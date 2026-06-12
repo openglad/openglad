@@ -794,7 +794,7 @@ std::string CursesPickerClient::show_campaign_select()
 {
     Menu menu(term_, clock_);
     std::list<std::string> campaigns = list_campaigns();
-    og::ui::order_campaigns_default_first(campaigns);
+    og::ui::order_campaigns_for_select(campaigns);
     std::vector<std::string> ids(campaigns.begin(), campaigns.end());
 
     if (ids.empty()) {

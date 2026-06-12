@@ -64,8 +64,7 @@ openglad/
 ├── cfg/                    Runtime configuration (openglad.yaml)
 ├── pix/                    Indexed-color sprite PNGs + Aseprite JSON sidecars (see [docs/sprite-format.md](sprite-format.md))
 ├── sound/                  Audio files (WAV, OGG)
-├── builtin/                Core game resources
-├── extra_campaigns/        Additional game scenarios
+├── builtin/                Core game resources (incl. default campaign packages)
 ├── scen/                   Scenario data files
 │
 ├── CMakeLists.txt          Main build definition
@@ -577,7 +576,7 @@ tags carried on the snapshot wire), advanced as if it had played solo — see
 
 ### Structure
 
-- **Campaign** — A collection of levels with a progression order. Stored as directories under `builtin/` and `extra_campaigns/`.
+- **Campaign** — A collection of levels with a progression order. Shipped as `.glad` packages under `builtin/`.
 - **Level** — A single scenario file defining a tile grid, entity placements, objectives, and intro text.
 - **Scenario** — The in-game term for a level. Each has a numeric ID; the player progresses through them sequentially.
 

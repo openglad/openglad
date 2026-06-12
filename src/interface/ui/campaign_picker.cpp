@@ -341,7 +341,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
     
     // Load campaigns (default campaign first; remainder stays alphabetical).
     std::list<std::string> campaign_ids = list_campaigns();
-    og::ui::order_campaigns_default_first(campaign_ids);
+    og::ui::order_campaigns_for_select(campaign_ids);
     int i = 0;
     for(auto& cid : campaign_ids)
     {
@@ -515,7 +515,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
 	               entries.clear();
                
                campaign_ids = list_campaigns();
-               og::ui::order_campaigns_default_first(campaign_ids);
+               og::ui::order_campaigns_for_select(campaign_ids);
 
                 for(auto& cid : campaign_ids)
                 {

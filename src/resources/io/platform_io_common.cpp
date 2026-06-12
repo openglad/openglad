@@ -341,25 +341,25 @@ void delete_campaign(const std::string& id)
 
 void restore_default_campaigns()
 {
-    std::error_code ec;
-    std::string src = get_asset_path() + "builtin/org.openglad.gladiator.glad";
-    std::string dst = get_user_path() + "campaigns/org.openglad.gladiator.glad";
-    std::filesystem::copy_file(src, dst,
-        std::filesystem::copy_options::overwrite_existing, ec);
-    if (ec)
-        LogWarn("restore_default_campaigns: {} -> {}: {}\n", src, dst, ec.message());
-    else
-        Log("Restored default campaign: {} -> {}\n", src, dst);
-
-    ec.clear();
-    src = get_asset_path() + "builtin/org.openglad.ctf.glad";
-    dst = get_user_path() + "campaigns/org.openglad.ctf.glad";
-    std::filesystem::copy_file(src, dst,
-        std::filesystem::copy_options::overwrite_existing, ec);
-    if (ec)
-        LogWarn("restore_default_campaigns: {} -> {}: {}\n", src, dst, ec.message());
-    else
-        Log("Restored default campaign: {} -> {}\n", src, dst);
+    namespace fs = std::filesystem;
+    const std::string src_dir = get_asset_path() + "builtin";
+    std::error_code iter_ec;
+    for (const auto& entry : fs::directory_iterator(src_dir, iter_ec))
+    {
+        if (entry.path().extension() != ".glad")
+            continue;
+        const std::string src = entry.path().string();
+        const std::string dst =
+            get_user_path() + "campaigns/" + entry.path().filename().string();
+        std::error_code ec;
+        fs::copy_file(src, dst, fs::copy_options::overwrite_existing, ec);
+        if (ec)
+            LogWarn("restore_default_campaigns: {} -> {}: {}\n", src, dst, ec.message());
+        else
+            Log("Restored default campaign: {} -> {}\n", src, dst);
+    }
+    if (iter_ec)
+        LogWarn("restore_default_campaigns: {}: {}\n", src_dir, iter_ec.message());
 
     og::data::clear_campaign_metadata_cache();
 }
