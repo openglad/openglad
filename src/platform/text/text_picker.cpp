@@ -10,6 +10,7 @@
 #include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/interface/level_runtime_data.h>
@@ -143,13 +144,20 @@ public:
 
         if (entries.empty()) {
             set_error(TextPickerErrorCode::CampaignIoError, "no campaigns found");
-            std::printf("No campaigns found; keeping '%s'.\n", config_.campaign.c_str());
+            // Title when known; falls back to the raw id when the kept
+            // campaign's package is itself missing.
+            std::printf("No campaigns found; keeping '%s'.\n",
+                og::data::campaign_display_title(config_.campaign).c_str());
             return config_.campaign;
         }
 
         std::printf("\n--- Campaign Select ---\n");
-        for (size_t i = 0; i < entries.size(); ++i)
-            std::printf("  %zu. %s\n", i + 1, entries[i].c_str());
+        // Human titles, disambiguated with the raw id when two packages
+        // share a title; selection stays by index over the raw-id list.
+        const std::vector<std::string> labels =
+            format_campaign_select_labels(entries);
+        for (size_t i = 0; i < labels.size(); ++i)
+            std::printf("  %zu. %s\n", i + 1, labels[i].c_str());
         std::printf("Select campaign [1-%zu] (blank keeps current): ", entries.size());
         std::fflush(stdout);
 
@@ -252,9 +260,11 @@ public:
 
         sync_config_from_save();
 
-        std::printf("Loaded '%s' (campaign=%s level=%d team=%d gold=%u).\n",
-            config_.save_name.c_str(), config_.campaign.c_str(),
-            config_.level, static_cast<int>(save_data_.team_size),
+        std::printf("Loaded '%s' (campaign=%s level=%s team=%d gold=%u).\n",
+            config_.save_name.c_str(),
+            og::data::campaign_display_title(config_.campaign).c_str(),
+            level_display(config_.level).c_str(),
+            static_cast<int>(save_data_.team_size),
             static_cast<unsigned>(save_data_.m_totalcash[0]));
         clear_error();
         return true;
@@ -314,9 +324,11 @@ private:
         if (item.command == PickerMenuCommand::SetDifficulty)
             return format_difficulty_label(og::runtime::current_session->current_difficulty_);
         if (item.command == PickerMenuCommand::SetLevel)
-            return std::format("{} ({})", item.label, config_.level);
+            return std::format("{} ({})", item.label,
+                level_display(config_.level));
         if (item.command == PickerMenuCommand::SetCampaign)
-            return std::format("{} ({})", item.label, config_.campaign);
+            return std::format("{} ({})", item.label,
+                og::data::campaign_display_title(config_.campaign));
         if (item.command == PickerMenuCommand::ToggleAlliedMode)
             return format_allied_mode_label(save_data_);
         if (item.command == PickerMenuCommand::CycleCtfTeamCount)
@@ -376,8 +388,9 @@ private:
             (void)save_game();
             break;
         case PickerMenuCommand::ShowProgress:
-            std::printf("Current campaign progress: campaign=%s level=%d.\n",
-                config_.campaign.c_str(), config_.level);
+            std::printf("Current campaign progress: campaign=%s level=%s.\n",
+                og::data::campaign_display_title(config_.campaign).c_str(),
+                level_display(config_.level).c_str());
             break;
         case PickerMenuCommand::Networking:
             (void)configure_networking();
@@ -548,6 +561,16 @@ private:
         config_.team_families = collect_team_families(save_data_);
     }
 
+    // Scenario titles are read from the MOUNTED package; when the session
+    // campaign isn't the mounted one (e.g. a loaded save points elsewhere)
+    // the title would describe the wrong campaign, so show the bare number.
+    std::string level_display(int level) const
+    {
+        if (get_mounted_campaign() == config_.campaign)
+            return og::data::scenario_display_name(level);
+        return std::to_string(level);
+    }
+
     void view_team_roster()
     {
         std::printf("\n--- Team Roster ---\n");
@@ -693,7 +716,8 @@ private:
 
     void set_level()
     {
-        std::printf("Set level (current %d): ", config_.level);
+        std::printf("Set level (current %s): ",
+            level_display(config_.level).c_str());
         std::fflush(stdout);
 
         std::string line;

@@ -18,6 +18,7 @@
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/base.h>
 #include <openglad/core/test_trace.h>
+#include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/og_file.h>
 #include <openglad/resources/level_file_io.h>
@@ -415,7 +416,10 @@ bool CampaignData::save()
     cleanup_unpacked_campaign();
 
     if(result)
+    {
         last_io_error_ = IoError::None;
+        og::data::clear_campaign_metadata_cache();
+    }
     return result;
 }
 
@@ -500,9 +504,12 @@ bool CampaignData::save_as(const std::string& new_id)
         last_io_error_ = IoError::PackageUnpackFailed;
     }
     cleanup_unpacked_campaign();
-    
+
     if(result)
+    {
         last_io_error_ = IoError::None;
+        og::data::clear_campaign_metadata_cache();
+    }
     return result;
 }
 
@@ -914,6 +921,9 @@ bool LevelRuntimeData::save()
         last_io_error_ = map_level_file_error(io_error);
         return false;
     }
+
+    // Editor saves can rewrite the scenario title.
+    og::data::clear_campaign_metadata_cache();
 
     last_io_error_ = IoError::None;
 	return true;

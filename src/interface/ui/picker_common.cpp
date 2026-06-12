@@ -6,6 +6,7 @@
 
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
+#include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/core/ctf_constants.h>
@@ -21,6 +22,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <format>
+#include <map>
 
 // Defined in entities/guy.cpp
 std::uint32_t calculate_exp(std::int32_t level);
@@ -600,6 +602,27 @@ void order_campaigns_default_first(std::list<std::string>& campaign_ids)
     if (it == campaign_ids.end() || it == campaign_ids.begin())
         return;
     campaign_ids.splice(campaign_ids.begin(), campaign_ids, it);
+}
+
+std::vector<std::string> format_campaign_select_labels(
+    const std::vector<std::string>& campaign_ids)
+{
+    std::map<std::string, int> title_counts;
+    for (const std::string& id : campaign_ids)
+        ++title_counts[og::data::campaign_display_title(id)];
+
+    std::vector<std::string> labels;
+    labels.reserve(campaign_ids.size());
+    for (const std::string& id : campaign_ids)
+    {
+        std::string label = og::data::campaign_display_title(id);
+        // A fallback label already IS the id — appending it again would
+        // just stutter.
+        if (title_counts[label] > 1 && label != id)
+            label += " [" + id + "]";
+        labels.push_back(std::move(label));
+    }
+    return labels;
 }
 
 bool sync_campaign_mount_to_save(const SaveData& save)

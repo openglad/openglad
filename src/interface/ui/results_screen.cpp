@@ -15,6 +15,7 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/statistics.h>
+#include <openglad/resources/campaign_metadata.h>
 #include <openglad/interface/native_input.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/render/walker_draw.h>
@@ -102,7 +103,13 @@ bool show_ctf_ending_popup(int nextlevel)
     if (nextlevel == s->save_data.scen_num)
         body += "\nGet ready for a rematch!";
     else
-        body += std::format("\nMoving on to Level {}", nextlevel);
+    {
+        // The scenario name sits on its own line: popup_dialog sizes itself
+        // to the longest line, and "Moving on to <NNN. TITLE>" can run the
+        // full 320px screen width.
+        body += std::format(
+            "\nMoving on to\n{}", og::data::scenario_display_name(nextlevel));
+    }
     popup_dialog(title, body.c_str());
     return true;
 }
@@ -120,7 +127,7 @@ void show_ending_popup(int ending, int nextlevel)
 		}
 		else // we're withdrawing to another level
 		{
-		    std::string buf = std::format("Retreating to Level {}\n(You may take this field later)", nextlevel);
+		    std::string buf = std::format("Retreating to\n{}\n(You may take this field later)", og::data::scenario_display_name(nextlevel));
 		    popup_dialog("Retreat!", buf.c_str());
 		}
 
@@ -135,7 +142,7 @@ void show_ending_popup(int ending, int nextlevel)
 			return; // decided CTF match: outcome-aware popup shown
 		if (og::runtime::current_session->myscreen_->save_data.is_level_completed(og::runtime::current_session->myscreen_->save_data.scen_num)) // this scenario is completed ..
 		{
-		    std::string buf = std::format("Moving on to Level {}", nextlevel);
+		    std::string buf = std::format("Moving on to\n{}", og::data::scenario_display_name(nextlevel));
 		    popup_dialog("Traveling on...", buf.c_str());
 		}
 		else

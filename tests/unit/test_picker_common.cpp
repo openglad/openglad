@@ -1427,6 +1427,20 @@ TEST(PickerCommon, order_campaigns_default_first_hoists_gladiator)
     ASSERT_TRUE(empty.empty());
 }
 
+// Unknown packages fall back to raw-id labels with no "[id]" stutter, even
+// when those raw ids collide as "titles". (Real duplicate-title packages are
+// exercised in test_platform_headless.cpp, which can install fixtures.)
+TEST(PickerCommon, campaign_select_labels_fall_back_to_raw_ids)
+{
+    const std::vector<std::string> ids = {
+        "org.openglad.test_absent_a",
+        "org.openglad.test_absent_b",
+        "org.openglad.test_absent_a",
+    };
+    ASSERT_EQ(ids, og::ui::format_campaign_select_labels(ids));
+    ASSERT_TRUE(og::ui::format_campaign_select_labels({}).empty());
+}
+
 // --- Scenario roster report (View Level) ---
 
 namespace {

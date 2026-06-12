@@ -241,6 +241,7 @@ set(GAME_SOURCES
 		    ${SRC_DIR}/resources/gparser.cpp
 		    ${SRC_DIR}/resources/gloader.cpp
     ${SRC_DIR}/resources/gloader_ctf.cpp
+    ${SRC_DIR}/resources/campaign_metadata.cpp
     ${SRC_DIR}/resources/level_file_io.cpp
     ${SRC_DIR}/resources/our_palette.cpp
     ${SRC_DIR}/resources/pixie_data.cpp
@@ -316,6 +317,7 @@ set(OG_DATA_SOURCES
     ${SRC_DIR}/resources/gparser.cpp
     ${SRC_DIR}/resources/gloader.cpp
     ${SRC_DIR}/resources/gloader_ctf.cpp
+    ${SRC_DIR}/resources/campaign_metadata.cpp
     ${SRC_DIR}/resources/level_file_io.cpp
     ${SRC_DIR}/resources/our_palette.cpp
     ${SRC_DIR}/resources/pixie_data.cpp
@@ -2110,6 +2112,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_save_data_unit.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_gparser_unit.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_zip_api.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_campaign_metadata.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_physfs_wrappers.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_input_actions.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_spectator_mode.cpp

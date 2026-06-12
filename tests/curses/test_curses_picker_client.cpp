@@ -650,6 +650,32 @@ TEST(CursesPickerClient, team_build_dispatches_save_load_progress_network_and_ca
     EXPECT_EQ(f.save().current_campaign, f.config.campaign);
 }
 
+// Progress shows human titles. The scenario title is read off the MOUNTED
+// package, so it only renders while the mount matches the configured
+// campaign; a mismatch falls back to the bare level number rather than
+// showing another campaign's title.
+TEST(CursesPickerClient, progress_level_title_requires_matching_mount)
+{
+    PickerFixture f;
+    const auto* item =
+        og::ui::find_picker_menu_item(PickerMenuId::Scenario, PickerMenuCommand::ShowProgress);
+    ASSERT_NE(item, nullptr);
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("org.openglad.gladiator"));
+    f.config.campaign = "org.openglad.ctf"; // configured != mounted
+    f.config.level = 4;
+
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Scenario, *item);
+
+    const std::string dump = f.t().dump();
+    EXPECT_NE(dump.find("Campaign: Capture the Flag"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("Level: 4"), std::string::npos) << dump;
+    EXPECT_EQ(dump.find("Level: 4."), std::string::npos)
+        << "a mismatched mount must not show another campaign's title";
+}
+
 // Loading a non-existent slot fails gracefully and returns false.
 TEST(CursesPickerClient, load_missing_slot_fails_gracefully)
 {
@@ -1031,7 +1057,7 @@ TEST(CursesPickerClient, run_picker_through_scenario_submenu_then_quit)
 // --- Campaign ordering -------------------------------------------------------
 
 // The default campaign lists first; the CTF campaign no longer sorts ahead
-// of it alphabetically.
+// of it alphabetically. Entries render as human titles, not raw ids.
 TEST(CursesPickerClient, campaign_select_lists_default_campaign_first)
 {
     PickerFixture f;
@@ -1039,9 +1065,11 @@ TEST(CursesPickerClient, campaign_select_lists_default_campaign_first)
     (void)f.client.show_campaign_select();
 
     const std::string dump = f.t().dump();
-    const std::size_t default_pos = dump.find("org.openglad.gladiator");
+    EXPECT_EQ(dump.find("org.openglad"), std::string::npos)
+        << "campaign entries must show titles, not raw ids";
+    const std::size_t default_pos = dump.find("Gladiator");
     ASSERT_NE(default_pos, std::string::npos) << dump;
-    const std::size_t ctf_pos = dump.find("org.openglad.ctf");
+    const std::size_t ctf_pos = dump.find("Capture the Flag");
     if (ctf_pos != std::string::npos)
     {
         EXPECT_LT(default_pos, ctf_pos)

@@ -319,9 +319,6 @@ void CampaignEntry::draw(const UiRect& area, int team_power)
         loadtext.write_xy(x + w/2 - static_cast<int>(buf.size())*3, y, buf.c_str(), WHITE, 1);
         y += 10;
     }
-
-    loadtext.write_xy(x + w/2 - static_cast<int>(id.size())*3, y, id.c_str(), WHITE, 1);
-    
 }
 
 

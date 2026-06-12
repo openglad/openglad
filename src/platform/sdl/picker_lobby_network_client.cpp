@@ -11,6 +11,7 @@
 #include <openglad/platform/local_transport_shadow.h>
 #include <openglad/platform/net_transport_relay_ws.h>
 #include <openglad/platform/picker_lobby_network_runtime.h>
+#include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/io_common.h>
 
 #ifdef __EMSCRIPTEN__
@@ -583,9 +584,11 @@ std::string current_campaign_hash()
 
 std::string current_campaign_name()
 {
+    // Display metadata for the relay room list only — room MATCHING stays on
+    // current_campaign_hash() of the raw id.
     if (SaveData* const save = current_picker_save(); save != nullptr)
-        return save->current_campaign;
-    return std::string(kDefaultCampaignId);
+        return og::data::campaign_display_title(save->current_campaign);
+    return og::data::campaign_display_title(std::string(kDefaultCampaignId));
 }
 
 std::string current_host_name(short local_team)
