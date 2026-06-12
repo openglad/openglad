@@ -1890,8 +1890,13 @@ public:
         status_lines_.clear();
         server_.reset();
         combined_transport_.reset();
-        websocket_server_transport_.reset();
+        // Stop the relay websocket client first: its reset joins the
+        // ix::WebSocket background thread that spawns DNS lookups, so the
+        // listening-socket teardown below does not overlap our own in-flight
+        // getaddrinfo work (detached resolver threads can still outlive this;
+        // the vendored IXSocketServer stop() fix is the load-bearing guard).
         relay_transport_.reset();
+        websocket_server_transport_.reset();
         local_client_transport_.reset();
         local_server_transport_.reset();
         spectator_mode_ = false;

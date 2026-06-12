@@ -37,6 +37,14 @@ sanitizers/tests to catch real issues.
   - Upstream: https://github.com/machinezone/IXWebSocket
   - Notes: BSD-3-Clause WebSocket client/server library vendored for native networking phases.
     Built via upstream CMake with TLS, zlib, demos, and install rules disabled in OpenGlad.
+    Local fix (2026-06): `SocketServer::stop()` closed `_serverFd` without resetting
+    it to -1, and stop() runs again from `~WebSocketServer()`/`~SocketServer()`, so
+    every server teardown closed the same stale fd number 2-3 times. A concurrent
+    thread that had reused the number (e.g. glibc getaddrinfo's AI_ADDRCONFIG
+    netlink probe on a detached `DNSLookup` thread) had its descriptor destroyed,
+    aborting the process with "Unexpected error 9 on netlink descriptor N".
+    `stop()` and the `listen()` error paths now close exactly once and reset
+    `_serverFd` to -1. Still unfixed in upstream master as of 2026-06.
 
 - libyaml (`third_party/libyaml`)
   - Version: 0.2.5 (`third_party/libyaml/src/config.h`: `YAML_VERSION_STRING`)

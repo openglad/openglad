@@ -27,6 +27,10 @@
 #include <ixwebsocket/IXHttpServer.h>
 #include <ixwebsocket/IXNetSystem.h>
 #include <ixwebsocket/IXWebSocket.h>
+#include <ixwebsocket/IXWebSocketServer.h>
+
+#include <fcntl.h>
+#include <unistd.h>
 
 #include <algorithm>
 #include <array>
@@ -4268,4 +4272,72 @@ TEST(PickerNetworkClient, host_and_join_team_change_and_ready_round_trip)
     host_client->shutdown();
     cleanup.host_client = nullptr;
     cleanup.join_client = nullptr;
+}
+
+// Regression test for the vendored IXSocketServer local fix (see
+// third_party/VENDORED_LIBS.md): SocketServer::stop() used to close _serverFd
+// without resetting it to -1, so the destructor chain (~WebSocketServer ->
+// stop(), ~SocketServer -> stop()) re-closed the same fd number after it had
+// been freed. If another thread had reused the number in between (e.g. glibc
+// getaddrinfo's AI_ADDRCONFIG netlink probe on a detached DNS-lookup thread),
+// the stale close destroyed that thread's descriptor and glibc aborted the
+// whole process ("Unexpected error 9 on netlink descriptor N"). The
+// cross-thread collision itself is not deterministically reproducible, but
+// the stale close is: occupy every fd number freed by stop() with a
+// placeholder, destroy the server, and verify no placeholder was closed.
+TEST(WebSocketServerFdLifecycle,
+     stop_then_destroy_does_not_close_reused_fd_numbers)
+{
+    IxNetSystemScope net_scope;
+
+    const auto open_fds = [] {
+        std::set<int> fds;
+        for (int fd = 0; fd < 1024; ++fd)
+        {
+            if (fcntl(fd, F_GETFD) != -1)
+                fds.insert(fd);
+        }
+        return fds;
+    };
+
+    // Opened before the server so it cannot grab the fd number the server
+    // releases later.
+    const int placeholder_source = ::open("/dev/null", O_RDONLY);
+    ASSERT_NE(placeholder_source, -1);
+
+    auto server = std::make_unique<ix::WebSocketServer>(
+        ix::getFreePort(), "127.0.0.1");
+    const auto listen_result = server->listen();
+    ASSERT_TRUE(listen_result.first) << listen_result.second;
+    server->start();
+    const std::set<int> fds_while_listening = open_fds();
+
+    server->stop(); // The one legitimate close of the listening fd.
+    const std::set<int> fds_after_stop = open_fds();
+
+    // Re-occupy every fd number stop() released, the way a concurrent
+    // thread's freshly-opened descriptor would.
+    std::vector<int> placeholders;
+    for (const int fd : fds_while_listening)
+    {
+        if (fds_after_stop.count(fd) == 0)
+        {
+            ASSERT_EQ(::dup2(placeholder_source, fd), fd);
+            placeholders.push_back(fd);
+        }
+    }
+    ASSERT_FALSE(placeholders.empty())
+        << "stop() should have released the listening fd";
+
+    // Before the fix, the destructor chain re-closed the stale fd number(s)
+    // and would destroy the placeholders standing in for another thread's fd.
+    server.reset();
+
+    for (const int fd : placeholders)
+    {
+        EXPECT_NE(fcntl(fd, F_GETFD), -1)
+            << "destroying a stopped server closed unrelated fd " << fd;
+        ::close(fd);
+    }
+    ::close(placeholder_source);
 }
