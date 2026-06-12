@@ -319,6 +319,64 @@ TEST(LobbyServer, raw_join_flow_broadcasts_state_and_populates_save_data)
     EXPECT_EQ(1, equivalent.team_list[2].character.teamnum);
 }
 
+TEST(LobbyServer, sanitize_clamps_ctf_settings_and_equivalent_carries_them)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host", 0,
+                          {make_slot(0u, 100, "Soldier", FAMILY_SOLDIER)}));
+    server.poll_incoming_messages();
+
+    // Out-of-range CTF settings from the host get clamped, not echoed.
+    og::sim::LobbySettings wild;
+    wild.campaign_id = "org.openglad.ctf";
+    wild.scenario_id = 500;
+    wild.difficulty = 1;
+    wild.allied_mode = 1;
+    wild.ctf_team_count = 9;       // -> 4
+    wild.ctf_capture_limit = 99;   // -> 50
+    wild.ctf_respawn_ticks = 5;    // nonzero -> raised to 12
+    og::sim::LobbyMessage wild_message;
+    wild_message.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 0u,
+        .settings = wild,
+    };
+    transport.queue_lobby_message(11u, wild_message);
+    server.poll_incoming_messages();
+
+    og::sim::LobbyState state = server.state();
+    EXPECT_EQ(4, state.settings.ctf_team_count);
+    EXPECT_EQ(50, state.settings.ctf_capture_limit);
+    EXPECT_EQ(12, state.settings.ctf_respawn_ticks);
+
+    // In-range values (and the 0 = map/default sentinels) pass through.
+    og::sim::LobbySettings sane = wild;
+    sane.ctf_team_count = 3;
+    sane.ctf_capture_limit = 0;
+    sane.ctf_respawn_ticks = 0;
+    og::sim::LobbyMessage sane_message;
+    sane_message.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 0u,
+        .settings = sane,
+    };
+    transport.queue_lobby_message(11u, sane_message);
+    server.poll_incoming_messages();
+
+    state = server.state();
+    EXPECT_EQ(3, state.settings.ctf_team_count);
+    EXPECT_EQ(0, state.settings.ctf_capture_limit);
+    EXPECT_EQ(0, state.settings.ctf_respawn_ticks);
+
+    const og::sim::LobbySaveDataEquivalent equivalent =
+        server.build_save_data_equivalent();
+    EXPECT_EQ(3, equivalent.ctf_team_count);
+    EXPECT_EQ(0, equivalent.ctf_capture_limit);
+    EXPECT_EQ(0, equivalent.ctf_respawn_ticks);
+}
+
 TEST(LobbyServer, build_save_data_equivalent_tags_owner_and_origin_slot)
 {
     MockLobbyTransport transport;
@@ -848,4 +906,264 @@ TEST(LobbyServer, allied_mode_normalizes_game_start_teams_to_team_zero)
     ASSERT_EQ(2u, bindings.size());
     EXPECT_EQ(0, bindings[0].team);
     EXPECT_EQ(0, bindings[1].team);
+}
+
+namespace {
+
+og::sim::LobbyMessage make_settings_change_message(
+    const og::sim::LobbySettings& settings)
+{
+    og::sim::LobbyMessage message;
+    message.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 0u,
+        .settings = settings,
+    };
+    return message;
+}
+
+og::sim::LobbySettings make_ctf_lobby_settings(std::int16_t team_count = 0)
+{
+    og::sim::LobbySettings settings;
+    settings.campaign_id = "org.openglad.ctf";
+    settings.scenario_id = 1;
+    settings.difficulty = 1;
+    settings.allied_mode = 0;
+    settings.ctf_team_count = team_count;
+    return settings;
+}
+
+og::sim::LobbyMessage make_team_change_message(std::int16_t team)
+{
+    og::sim::LobbyMessage message;
+    message.payload = og::sim::LobbyTeamChangeMessage{
+        .player_index = 0xffu, // identity comes from the sending peer
+        .team = team,
+    };
+    return message;
+}
+
+} // namespace
+
+TEST(LobbyServer, sanitize_strip_flag_accepts_binary_and_rejects_junk)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host", 0,
+                          {make_slot(0u, 100, "Soldier", FAMILY_SOLDIER)}));
+    server.poll_incoming_messages();
+
+    // Default is 0 (keep authored troops).
+    EXPECT_EQ(0, server.state().settings.ctf_strip_scenario_troops);
+
+    // Junk falls back to the current value (0).
+    og::sim::LobbySettings junk = make_ctf_lobby_settings();
+    junk.ctf_strip_scenario_troops = 2;
+    transport.queue_lobby_message(11u, make_settings_change_message(junk));
+    server.poll_incoming_messages();
+    EXPECT_EQ(0, server.state().settings.ctf_strip_scenario_troops);
+
+    // 1 is accepted and carried into the game-start equivalent.
+    og::sim::LobbySettings strip_on = make_ctf_lobby_settings();
+    strip_on.ctf_strip_scenario_troops = 1;
+    transport.queue_lobby_message(11u, make_settings_change_message(strip_on));
+    server.poll_incoming_messages();
+    EXPECT_EQ(1, server.state().settings.ctf_strip_scenario_troops);
+    EXPECT_EQ(1, server.build_save_data_equivalent().ctf_strip_scenario_troops);
+
+    // Junk now falls back to the accepted value (1), not 0.
+    og::sim::LobbySettings junk_again = make_ctf_lobby_settings();
+    junk_again.ctf_strip_scenario_troops = -3;
+    transport.queue_lobby_message(11u, make_settings_change_message(junk_again));
+    server.poll_incoming_messages();
+    EXPECT_EQ(1, server.state().settings.ctf_strip_scenario_troops);
+
+    // 0 passes through.
+    og::sim::LobbySettings strip_off = make_ctf_lobby_settings();
+    strip_off.ctf_strip_scenario_troops = 0;
+    transport.queue_lobby_message(11u, make_settings_change_message(strip_off));
+    server.poll_incoming_messages();
+    EXPECT_EQ(0, server.state().settings.ctf_strip_scenario_troops);
+}
+
+TEST(LobbyServer, ctf_lobby_allows_shared_teams)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+
+    transport.queue_lobby_message(
+        11u, make_join_message("Host", 0, {make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER)}));
+    transport.queue_lobby_message(
+        22u, make_join_message("Guest", 1, {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+
+    transport.queue_lobby_message(
+        11u, make_settings_change_message(make_ctf_lobby_settings()));
+    server.poll_incoming_messages();
+
+    // The guest moves onto the host's team: accepted under CTF settings.
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(22u, make_team_change_message(0));
+    server.poll_incoming_messages();
+
+    ASSERT_EQ(2u, server.state().players.size());
+    EXPECT_EQ(0, server.state().players[0].team);
+    EXPECT_EQ(0, server.state().players[1].team);
+    ASSERT_EQ(1u, server.state().players[1].character_slots.size());
+    EXPECT_EQ(0, server.state().players[1].character_slots[0].character.teamnum);
+    ASSERT_EQ(2u, transport.sent_messages().size());
+    expect_all_sent_states_equal(transport.sent_messages(), server.state());
+
+    // A fresh join requesting the occupied team also lands on it.
+    server.connect_client(33u);
+    transport.queue_lobby_message(
+        33u, make_join_message("Third", 0, {make_slot(2u, 300, "Third Guy", FAMILY_MAGE)}));
+    server.poll_incoming_messages();
+
+    ASSERT_EQ(3u, server.state().players.size());
+    EXPECT_EQ(0, server.state().players[2].team);
+}
+
+TEST(LobbyServer, classic_lobby_keeps_exclusive_teams)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+
+    transport.queue_lobby_message(
+        11u, make_join_message("Host", 0, {make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER)}));
+    transport.queue_lobby_message(
+        22u, make_join_message("Guest", 1, {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+
+    // Default settings are the classic campaign: the host's team is taken, so
+    // the guest's TeamChange resolves back to its current team.
+    transport.queue_lobby_message(22u, make_team_change_message(0));
+    server.poll_incoming_messages();
+
+    ASSERT_EQ(2u, server.state().players.size());
+    EXPECT_EQ(0, server.state().players[0].team);
+    EXPECT_EQ(1, server.state().players[1].team);
+    ASSERT_EQ(1u, server.state().players[1].character_slots.size());
+    EXPECT_EQ(1, server.state().players[1].character_slots[0].character.teamnum);
+}
+
+TEST(LobbyServer, ctf_team_count_clamps_team_choice)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+
+    transport.queue_lobby_message(
+        11u, make_join_message("Host", 0, {make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER)}));
+    transport.queue_lobby_message(
+        22u, make_join_message("Guest", 1, {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+
+    transport.queue_lobby_message(
+        11u, make_settings_change_message(make_ctf_lobby_settings(2)));
+    server.poll_incoming_messages();
+
+    // Team 3 is outside the explicit 2-team range: the change resolves back
+    // to the guest's current (in-range) team.
+    transport.queue_lobby_message(22u, make_team_change_message(3));
+    server.poll_incoming_messages();
+    EXPECT_EQ(1, server.state().players[1].team);
+
+    // An in-range shared team is still accepted.
+    transport.queue_lobby_message(22u, make_team_change_message(0));
+    server.poll_incoming_messages();
+    EXPECT_EQ(0, server.state().players[1].team);
+
+    // A fresh join asking for team 3 is resolved into the valid range.
+    server.connect_client(33u);
+    transport.queue_lobby_message(
+        33u, make_join_message("Third", 3, {make_slot(2u, 300, "Third Guy", FAMILY_MAGE)}));
+    server.poll_incoming_messages();
+    ASSERT_EQ(3u, server.state().players.size());
+    EXPECT_LT(server.state().players[2].team, 2);
+    EXPECT_GE(server.state().players[2].team, 0);
+}
+
+TEST(LobbyServer, settings_change_reteams_out_of_range_players)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+
+    transport.queue_lobby_message(
+        11u, make_join_message("Host", 0, {make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER)}));
+    transport.queue_lobby_message(
+        22u, make_join_message("Guest", 3, {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+    ASSERT_EQ(3, server.state().players[1].team);
+
+    // Lowering the CTF team count to 2 strands the guest on team 3: the
+    // server re-resolves it into range and re-stamps the guest's slots.
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(
+        11u, make_settings_change_message(make_ctf_lobby_settings(2)));
+    server.poll_incoming_messages();
+
+    ASSERT_EQ(2u, server.state().players.size());
+    EXPECT_GE(server.state().players[1].team, 0);
+    EXPECT_LT(server.state().players[1].team, 2);
+    ASSERT_EQ(1u, server.state().players[1].character_slots.size());
+    EXPECT_EQ(server.state().players[1].team,
+              server.state().players[1].character_slots[0].character.teamnum);
+    ASSERT_EQ(2u, transport.sent_messages().size());
+    expect_all_sent_states_equal(transport.sent_messages(), server.state());
+}
+
+TEST(LobbyServer, settings_change_to_classic_deshares_teams)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    server.connect_client(22u);
+
+    transport.queue_lobby_message(
+        11u, make_join_message("Host", 0, {make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER)}));
+    transport.queue_lobby_message(
+        22u, make_join_message("Guest", 1, {make_slot(1u, 200, "Guest Guy", FAMILY_ARCHER)}));
+    server.poll_incoming_messages();
+
+    transport.queue_lobby_message(
+        11u, make_settings_change_message(make_ctf_lobby_settings()));
+    server.poll_incoming_messages();
+
+    // Both humans legitimately share team 0 under CTF settings.
+    transport.queue_lobby_message(22u, make_team_change_message(0));
+    server.poll_incoming_messages();
+    ASSERT_EQ(2u, server.state().players.size());
+    ASSERT_EQ(0, server.state().players[0].team);
+    ASSERT_EQ(0, server.state().players[1].team);
+
+    // Host switches the campaign back to classic: exclusivity returns, so
+    // the later-connected player must be moved off the shared team (with
+    // slots re-stamped) and the new state broadcast.
+    og::sim::LobbySettings classic = make_ctf_lobby_settings();
+    classic.campaign_id = "org.openglad.gladiator";
+    transport.clear_sent_messages();
+    transport.queue_lobby_message(11u, make_settings_change_message(classic));
+    server.poll_incoming_messages();
+
+    ASSERT_EQ(2u, server.state().players.size());
+    EXPECT_EQ(0, server.state().players[0].team)
+        << "the earliest-connected player keeps the shared team";
+    EXPECT_NE(0, server.state().players[1].team);
+    EXPECT_GE(server.state().players[1].team, 0);
+    EXPECT_LT(server.state().players[1].team, 4);
+    ASSERT_EQ(1u, server.state().players[1].character_slots.size());
+    EXPECT_EQ(server.state().players[1].team,
+              server.state().players[1].character_slots[0].character.teamnum);
+    ASSERT_EQ(2u, transport.sent_messages().size());
+    expect_all_sent_states_equal(transport.sent_messages(), server.state());
 }

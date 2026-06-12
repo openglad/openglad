@@ -20,6 +20,7 @@
 	buffers: 7/31/02: *include cleanup
 */
 
+#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/cheat_handler.h>
 #include <openglad/interface/ui/picker_common.h>
@@ -668,7 +669,8 @@ void viewscreen::process_input(const InputState& input_state)
 		ctx().sim_events.get());
 
 	// Handle render-layer effects from the sim result
-	if (result.endgame_requested)
+	if (result.endgame_requested &&
+	    !og::sim::ctf_suppress_team_wipe_endgame(active_screen()->world()))
 	{
 		active_screen()->endgame(result.endgame_type);
 		return;

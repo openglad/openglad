@@ -436,25 +436,29 @@ TEST(PlatformHeadless, text_protocol_event_text_is_valid_json_escaped)
 
 TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
 {
+    // Team Build is 12 items now (7=back, 8=networking, 9=Scenario); the
+    // scenario-shaped commands nest under the Scenario submenu
+    // (1=set_campaign, 2=set_level, 3=view_scenario, 4=teams, 5=progress,
+    // 6=back).
     const std::string input =
-        "bad\n"
-        "7\n"
-        "3\n"
-        "4\n"
-        "5\n"
-        "6\n"
-        "8\n"
-        "9\n"
-        "10\n"
+        "bad\n"     // main: invalid choice
+        "7\n"       // main: difficulty
+        "3\n"       // main: 4 player
+        "4\n"       // main: 3 player
+        "5\n"       // main: 2 player
+        "6\n"       // main: 1 player
+        "8\n"       // main: allied toggle
+        "9\n"       // main: level edit (unavailable)
+        "10\n"      // main: options
         "newslot\n"
         "not-a-seed\n"
-        "10\n"
+        "10\n"      // main: options again
         "textslot\n"
         "123\n"
-        "2\n"
-        "1\n"
+        "2\n"       // main: continue -> team build
+        "1\n"       // team build: view team
         "\n"
-        "2\n"
+        "2\n"       // team build: train
         "n\n"
         "p\n"
         "1\n"
@@ -462,25 +466,27 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
         "6\n"
         "a\n"
         "b\n"
-        "3\n"
+        "3\n"       // team build: hire
         "p\n"
         "n\n"
         "h\n"
         "b\n"
-        "5\n"
-        "4\n"
-        "8\n"
-        "9\n"
+        "5\n"       // team build: save team
+        "4\n"       // team build: load team
+        "9\n"       // team build: Scenario submenu
+        "5\n"       // scenario: progress
+        "2\n"       // scenario: set level (invalid value)
         "0\n"
-        "9\n"
+        "2\n"       // scenario: set level -> 2
         "2\n"
-        "10\n"
-        "11\n"
+        "1\n"       // scenario: set campaign (invalid selection)
         "999\n"
-        "11\n"
+        "1\n"       // scenario: set campaign (blank keeps current)
         "\n"
-        "7\n"
-        "11\n";
+        "6\n"       // scenario: back -> team build
+        "8\n"       // team build: networking (unavailable)
+        "7\n"       // team build: back -> main
+        "11\n";     // main: quit
 
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
@@ -502,4 +508,78 @@ TEST(PlatformHeadless, text_picker_internal_help_and_error_paths)
     StdoutSilencer stdout_silencer;
     EXPECT_EQ(0,
               og::ui::text_picker_testing_exercise_internal_paths());
+}
+
+// Begin New Game must drop a previously selected campaign back to the
+// default — in the session config AND in the mounted package. The blank
+// answer at the forced campaign-select keeps "current", which after the
+// reset has to be the default campaign, not the stale one.
+TEST(PlatformHeadless, text_picker_new_game_resets_campaign_and_mount)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("org.openglad.ctf"))
+        << "the ctf package ships with the game and should mount";
+
+    const std::string input =
+        "1\n"       // main: begin new game -> forced campaign select
+        "\n"        //   blank keeps current (= default after the reset)
+        "7\n"       // team build: back -> main
+        "11\n";     // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutSilencer stdout_silencer;
+
+    og::ui::TextPickerConfig config;
+    config.campaign = "org.openglad.ctf"; // stale campaign from a prior session
+    config.team_families = {FAMILY_SOLDIER};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+    EXPECT_EQ("org.openglad.gladiator", config.campaign)
+        << "a new game must reset the session campaign to the default";
+    EXPECT_EQ("org.openglad.gladiator", get_mounted_campaign())
+        << "a new game must remount the default campaign package";
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("org.openglad.gladiator"));
+}
+
+// Selecting a campaign must mount its package: the text GO path loads levels
+// straight from the mounted package, so a selection that only updated strings
+// would silently keep playing the previously mounted campaign.
+TEST(PlatformHeadless, text_picker_campaign_select_mounts_selection)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("org.openglad.ctf"))
+        << "the ctf package ships with the game and should mount";
+
+    const std::string input =
+        "2\n"       // main: continue -> team build
+        "9\n"       // team build: Scenario submenu
+        "1\n"       // scenario: set campaign
+        "1\n"       //   entry 1 is always the default campaign
+        "6\n"       // scenario: back -> team build
+        "7\n"       // team build: back -> main
+        "11\n";     // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutSilencer stdout_silencer;
+
+    og::ui::TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+    EXPECT_EQ("org.openglad.gladiator", config.campaign);
+    EXPECT_EQ("org.openglad.gladiator", get_mounted_campaign())
+        << "campaign selection must re-point the mount, not just strings";
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("org.openglad.gladiator"));
 }

@@ -16,6 +16,7 @@
  */
 
 #include <openglad/interface/ui/campaign_picker.h>
+#include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/og_file.h>
 #include <openglad/resources/yaml_stream.h>
@@ -341,8 +342,9 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
     
     unsigned int current_campaign_index = 0;
     
-    // Load campaigns
+    // Load campaigns (default campaign first; remainder stays alphabetical).
     std::list<std::string> campaign_ids = list_campaigns();
+    og::ui::order_campaigns_default_first(campaign_ids);
     int i = 0;
     for(auto& cid : campaign_ids)
     {
@@ -516,7 +518,8 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
 	               entries.clear();
                
                campaign_ids = list_campaigns();
-               
+               og::ui::order_campaigns_default_first(campaign_ids);
+
                 for(auto& cid : campaign_ids)
                 {
                     int num_completed = -1;

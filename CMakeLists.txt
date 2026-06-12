@@ -183,6 +183,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/gameplay/families/treasure_family_consumables.cpp
     ${SRC_DIR}/gameplay/families/treasure_family_valuables.cpp
     ${SRC_DIR}/gameplay/families/treasure_family_navigation.cpp
+    ${SRC_DIR}/gameplay/families/treasure_family_ctf.cpp
     ${SRC_DIR}/gameplay/generator_family_registry.cpp
     ${SRC_DIR}/platform/sdl/game.cpp
     ${SRC_DIR}/interface/guy_create.cpp
@@ -239,6 +240,7 @@ set(GAME_SOURCES
 		    ${SRC_DIR}/resources/io/og_file.cpp
 		    ${SRC_DIR}/resources/gparser.cpp
 		    ${SRC_DIR}/resources/gloader.cpp
+    ${SRC_DIR}/resources/gloader_ctf.cpp
     ${SRC_DIR}/resources/level_file_io.cpp
     ${SRC_DIR}/resources/our_palette.cpp
     ${SRC_DIR}/resources/pixie_data.cpp
@@ -263,6 +265,8 @@ set(GAME_SOURCES
     ${SRC_DIR}/gameplay/net_transport_inprocess.cpp
     ${SRC_DIR}/gameplay/gameplay_context.cpp
     ${SRC_DIR}/gameplay/game_world.cpp
+    ${SRC_DIR}/gameplay/ctf/ctf.cpp
+    ${SRC_DIR}/gameplay/ctf/ctf_ai.cpp
     ${SRC_DIR}/gameplay/world_snapshot.cpp
     ${SRC_DIR}/gameplay/sim_input_handler.cpp
     ${SRC_DIR}/platform/sdl/input_event_bridge.cpp
@@ -311,6 +315,7 @@ set(OG_SIM_SOURCES
 set(OG_DATA_SOURCES
     ${SRC_DIR}/resources/gparser.cpp
     ${SRC_DIR}/resources/gloader.cpp
+    ${SRC_DIR}/resources/gloader_ctf.cpp
     ${SRC_DIR}/resources/level_file_io.cpp
     ${SRC_DIR}/resources/our_palette.cpp
     ${SRC_DIR}/resources/pixie_data.cpp
@@ -358,6 +363,7 @@ set(OG_ENTITIES_SOURCES
     ${SRC_DIR}/gameplay/families/treasure_family_consumables.cpp
     ${SRC_DIR}/gameplay/families/treasure_family_valuables.cpp
     ${SRC_DIR}/gameplay/families/treasure_family_navigation.cpp
+    ${SRC_DIR}/gameplay/families/treasure_family_ctf.cpp
     ${SRC_DIR}/gameplay/generator_family_registry.cpp
     ${SRC_DIR}/gameplay/guy.cpp
     ${SRC_DIR}/gameplay/living.cpp
@@ -469,6 +475,8 @@ set(OG_GAMEPLAY_COMPONENT_SOURCES
     ${SRC_DIR}/gameplay/stats.cpp
     ${SRC_DIR}/gameplay/gameplay_context.cpp
     ${SRC_DIR}/gameplay/game_world.cpp
+    ${SRC_DIR}/gameplay/ctf/ctf.cpp
+    ${SRC_DIR}/gameplay/ctf/ctf_ai.cpp
     ${SRC_DIR}/gameplay/sim_input_handler.cpp
     ${SRC_DIR}/gameplay/smooth.cpp
 )
@@ -1144,6 +1152,8 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/platform/game_context.cpp
         ${SRC_DIR}/gameplay/gameplay_context.cpp
         ${SRC_DIR}/gameplay/game_world.cpp
+        ${SRC_DIR}/gameplay/ctf/ctf.cpp
+        ${SRC_DIR}/gameplay/ctf/ctf_ai.cpp
         ${SRC_DIR}/gameplay/sim_input_handler.cpp
         ${SRC_DIR}/interface/session_state.cpp
         ${SRC_DIR}/interface/level_runtime_data.cpp
@@ -1217,6 +1227,30 @@ if(NOT EMSCRIPTEN)
         )
         add_runtime_assets_dependency(openglad_server)
     endif()
+
+    # --- ctf_mapgen (CTF campaign generator) ---
+    # SDL-free authoring tool that produces builtin/org.openglad.ctf.glad.
+    # Not part of the default build; run via scripts/generate_ctf_campaign.sh.
+    add_executable(ctf_mapgen EXCLUDE_FROM_ALL
+        ${CMAKE_SOURCE_DIR}/tools/ctf_mapgen/main.cpp
+        ${CMAKE_SOURCE_DIR}/tools/ctf_mapgen/grid_painters.cpp
+        ${SRC_DIR}/platform/text/platform_headless.cpp
+        ${SRC_DIR}/platform/text/walker_headless.cpp
+        ${SRC_DIR}/interface/input/input_state.cpp
+        ${SRC_DIR}/platform/game_context.cpp
+        ${SRC_DIR}/interface/session_state.cpp
+        ${SRC_DIR}/interface/level_runtime_data.cpp
+        ${SRC_DIR}/interface/platform_bridge.cpp
+    )
+    configure_openglad_library(ctf_mapgen)
+    target_link_libraries(ctf_mapgen PRIVATE
+        og_core
+        og_gameplay
+        og_resources
+        m
+        pthread
+    )
+    add_runtime_assets_dependency(ctf_mapgen)
 
     # --- openglad_curses (zero-SDL ncurses text client) ---
     # A different renderer/input backend for the same game. Built from the same
@@ -1591,6 +1625,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/parity/golden_evaluation_helper.cpp
             ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_scenarios.cpp
             ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_coverage_gate.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_ctf_ui.cpp
         )
 
         function(og_add_test_group NAME)
@@ -1932,6 +1967,10 @@ if(NOT EMSCRIPTEN)
             parity_test_main.cpp
             golden_evaluation_helper.cpp
         )
+
+        og_add_test_group(og_test_ctf FILES
+            test_ctf_ui.cpp
+        )
         target_include_directories(og_test_parity PRIVATE
             ${CMAKE_SOURCE_DIR}/tests/parity
         )
@@ -2031,6 +2070,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/unit/test_world_snapshot.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_sim_world.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_sim_input_unit.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_ctf_network.cpp
         )
         if(TARGET og_platform_ws_transport)
             target_link_libraries(og_unit_sim PRIVATE og_platform_ws_transport)
@@ -2073,6 +2113,14 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/unit/test_physfs_wrappers.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_input_actions.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_spectator_mode.cpp
+        )
+
+        og_add_unit_group(og_unit_ctf FILES
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_ctf_core.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_ctf_respawn.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_ctf_ai.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_ctf_snapshot.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_ctf_levels.cpp
         )
 
         add_executable(og_unit_server
@@ -2165,6 +2213,7 @@ if(NOT EMSCRIPTEN)
                 ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_picker_client.cpp
                 ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_game_runtime.cpp
                 ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_network.cpp
+                ${CMAKE_SOURCE_DIR}/tests/curses/test_curses_ctf.cpp
                 ${CMAKE_SOURCE_DIR}/src/test_trace.cpp
                 ${OG_CURSES_LIB_SOURCES}
                 ${OG_CURSES_MENU_SOURCES}

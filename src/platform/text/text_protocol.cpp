@@ -120,6 +120,44 @@ static void cmd_tick(GameWorld& world, int count)
     std::cout.flush();
 }
 
+static void json_ctf(std::ostream& os, const og::sim::CtfState& ctf)
+{
+    os << "{\"active\":" << (ctf.active ? "true" : "false")
+       << ",\"team_count\":" << static_cast<int>(ctf.team_count)
+       << ",\"capture_limit\":" << static_cast<int>(ctf.capture_limit)
+       << ",\"winner_team\":" << static_cast<int>(ctf.winner_team)
+       << ",\"captures\":[";
+    for (int team = 0; team < 4; team++) {
+        if (team > 0) os << ",";
+        os << static_cast<int>(ctf.captures[team]);
+    }
+    os << "],\"flags\":[";
+    bool first = true;
+    for (int team = 0; team < 4; team++) {
+        const og::sim::CtfFlag& flag = ctf.flags[team];
+        if (!flag.present)
+            continue;
+        if (!first) os << ",";
+        first = false;
+        os << "{\"team\":" << team
+           << ",\"state\":" << static_cast<int>(flag.state)
+           << ",\"carrier\":" << flag.carrier_entity_id
+           << ",\"x\":" << flag.x
+           << ",\"y\":" << flag.y
+           << "}";
+    }
+    os << "],\"cps\":[";
+    for (int index = 0; index < static_cast<int>(ctf.cp_count); index++) {
+        const og::sim::CtfControlPoint& cp = ctf.cps[index];
+        if (index > 0) os << ",";
+        os << "{\"owner\":" << static_cast<int>(cp.owner)
+           << ",\"x\":" << cp.x
+           << ",\"y\":" << cp.y
+           << "}";
+    }
+    os << "]}";
+}
+
 static void cmd_state(const LevelRuntimeData& level)
 {
     std::ostringstream os;
@@ -141,7 +179,9 @@ static void cmd_state(const LevelRuntimeData& level)
         if (idx > 0) os << ",";
         json_entity(os, uptr.get(), idx++);
     }
-    os << "]}";
+    os << "],\"ctf\":";
+    json_ctf(os, level.world().ctf);
+    os << "}";
     std::cout << os.str() << "\n";
     std::cout.flush();
 }

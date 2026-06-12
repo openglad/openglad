@@ -32,6 +32,17 @@ public:
                    std::vector<void*>& path_out,
                    float& total_cost);
 
+    // Position-goal variant: paths toward a fixed map point instead of the
+    // owner's foe. The classic foe solve above is byte-identical with or
+    // without this entry point (the goal is cleared before every foe solve).
+    void solve_for_point(walker* owner,
+                         short goal_x,
+                         short goal_y,
+                         void* start_state,
+                         void* end_state,
+                         std::vector<void*>& path_out,
+                         float& total_cost);
+
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;

@@ -105,7 +105,7 @@ inline constexpr int FAMILY_TELEPORTER = 9;
 inline constexpr int FAMILY_LIFE_GEM = 10; // generated upon death
 inline constexpr int FAMILY_KEY = 11;
 inline constexpr int FAMILY_SPEED_POTION = 12;
-inline constexpr int MAX_TREASURE = 12;
+inline constexpr int MAX_TREASURE = 14;
 
 // Generator families
 inline constexpr int FAMILY_TENT = 0;  // skeletons
@@ -163,6 +163,7 @@ inline constexpr int COMMAND_SEARCH = 11;
 inline constexpr int COMMAND_ATTACK = 12;
 inline constexpr int COMMAND_RIGHT_WALK = 13;
 inline constexpr int COMMAND_UNCHARM = 14;
+inline constexpr int COMMAND_GOTO = 15;
 inline constexpr std::int32_t REGEN = 4000;
 
 // Rendering/display mode constants

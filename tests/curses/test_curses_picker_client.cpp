@@ -29,8 +29,10 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/picker_common.h>
+#include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 
+#include <format>
 #include <memory>
 #include <string>
 
@@ -203,6 +205,27 @@ TEST(CursesPickerClient, prepare_new_game_populates_team_and_resets_gold)
         << "config team_families must be synced from the save";
 }
 
+// A new game must drop a previously selected campaign back to the default —
+// in the save, in the session config (run_game copies config_.campaign over
+// the freshly reset save), and in the mounted package.
+TEST(CursesPickerClient, prepare_new_game_resets_campaign_to_default)
+{
+    PickerFixture f;
+    f.config.campaign = "org.openglad.ctf";
+    f.save().current_campaign = "org.openglad.ctf";
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("org.openglad.ctf"))
+        << "the ctf package ships with the game and should mount";
+
+    ASSERT_TRUE(f.client.prepare_new_game());
+
+    EXPECT_EQ(f.config.campaign, "org.openglad.gladiator")
+        << "a stale config campaign would be copied back onto the save at GO";
+    EXPECT_EQ(f.save().current_campaign, "org.openglad.gladiator");
+    EXPECT_EQ(get_mounted_campaign(), "org.openglad.gladiator")
+        << "the in-picker scenario viewer reads the mounted package";
+}
+
 // --- difficulty ----------------------------------------------------------
 
 // Handling the Difficulty item cycles options_.difficulty and shows a notice.
@@ -267,6 +290,56 @@ TEST(CursesPickerClient, level_edit_notice_renders)
     dismiss(f.t());
     f.client.handle_menu_item(PickerMenuId::Main, *item);
     EXPECT_NE(f.t().dump().find("openscen"), std::string::npos);
+}
+
+// CTF settings cycle only inside the CTF campaign; elsewhere they notify.
+TEST(CursesPickerClient, ctf_settings_cycle_on_ctf_campaign_only)
+{
+    PickerFixture f;
+    const auto* teams_item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::CycleCtfTeamCount);
+    const auto* caps_item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::CycleCtfCaptureLimit);
+    ASSERT_NE(teams_item, nullptr);
+    ASSERT_NE(caps_item, nullptr);
+
+    // Classic campaign: settings stay put and the notice renders.
+    f.save().current_campaign = "org.openglad.gladiator";
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *teams_item);
+    EXPECT_EQ(0, (int)f.save().ctf_team_count);
+    EXPECT_NE(f.t().dump().find("CTF maps only"), std::string::npos);
+
+    // CTF campaign: both settings cycle (Auto -> 2).
+    f.save().current_campaign = "org.openglad.ctf";
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *teams_item);
+    EXPECT_EQ(2, (int)f.save().ctf_team_count);
+
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *caps_item);
+    EXPECT_EQ(1, (int)f.save().ctf_capture_limit);
+}
+
+// The team-build labels surface the live CTF settings.
+TEST(CursesPickerClient, ctf_menu_labels_format_from_save)
+{
+    PickerFixture f;
+    f.save().ctf_team_count = 4;
+    f.save().ctf_capture_limit = 0;
+    const auto* teams_item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::CycleCtfTeamCount);
+    const auto* caps_item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::CycleCtfCaptureLimit);
+    ASSERT_NE(teams_item, nullptr);
+    ASSERT_NE(caps_item, nullptr);
+
+    // Drive present_menu so the dynamic labels render in the list.
+    f.t().push_special(KeyCode::Escape);
+    (void)f.client.present_menu(PickerMenuId::TeamBuild);
+    const std::string dump = f.t().dump();
+    EXPECT_NE(dump.find("Teams: 4"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("Limit: Map"), std::string::npos) << dump;
 }
 
 // --- view roster ---------------------------------------------------------
@@ -449,14 +522,14 @@ TEST(CursesPickerClient, set_level_updates_config_and_save)
 {
     PickerFixture f;
     const auto* item =
-        og::ui::find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::SetLevel);
+        og::ui::find_picker_menu_item(PickerMenuId::Scenario, PickerMenuCommand::SetLevel);
     ASSERT_NE(item, nullptr);
 
     // The prompt is pre-filled with the current level; clear it and type 4.
     f.t().push_special(KeyCode::Backspace); // erase the prefilled "1"
     f.t().push_char(U'4');
     f.t().push_special(KeyCode::Enter);
-    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+    f.client.handle_menu_item(PickerMenuId::Scenario, *item);
 
     EXPECT_EQ(f.config.level, 4);
     EXPECT_EQ(static_cast<int>(f.save().scen_num), 4);
@@ -466,14 +539,14 @@ TEST(CursesPickerClient, set_level_rejects_invalid_value)
 {
     PickerFixture f;
     const auto* item =
-        og::ui::find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::SetLevel);
+        og::ui::find_picker_menu_item(PickerMenuId::Scenario, PickerMenuCommand::SetLevel);
     ASSERT_NE(item, nullptr);
 
     f.t().push_special(KeyCode::Backspace); // erase the prefilled "1"
     f.t().push_char(U'0');
     f.t().push_special(KeyCode::Enter);
     dismiss(f.t());
-    f.client.handle_menu_item(PickerMenuId::TeamBuild, *item);
+    f.client.handle_menu_item(PickerMenuId::Scenario, *item);
 
     EXPECT_EQ(f.config.level, 1);
     EXPECT_NE(f.t().dump().find("Invalid level"), std::string::npos);
@@ -552,11 +625,11 @@ TEST(CursesPickerClient, team_build_dispatches_save_load_progress_network_and_ca
     const auto* load_item =
         og::ui::find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::LoadTeam);
     const auto* progress_item =
-        og::ui::find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::ShowProgress);
+        og::ui::find_picker_menu_item(PickerMenuId::Scenario, PickerMenuCommand::ShowProgress);
     const auto* network_item =
         og::ui::find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::Networking);
     const auto* campaign_item =
-        og::ui::find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::SetCampaign);
+        og::ui::find_picker_menu_item(PickerMenuId::Scenario, PickerMenuCommand::SetCampaign);
     ASSERT_NE(save_item, nullptr);
     ASSERT_NE(load_item, nullptr);
     ASSERT_NE(progress_item, nullptr);
@@ -568,11 +641,11 @@ TEST(CursesPickerClient, team_build_dispatches_save_load_progress_network_and_ca
     dismiss(f.t());
     f.client.handle_menu_item(PickerMenuId::TeamBuild, *load_item);
     dismiss(f.t());
-    f.client.handle_menu_item(PickerMenuId::TeamBuild, *progress_item);
+    f.client.handle_menu_item(PickerMenuId::Scenario, *progress_item);
     pick(f.t(), 2);
     f.client.handle_menu_item(PickerMenuId::TeamBuild, *network_item);
     f.t().push_special(KeyCode::Escape);
-    f.client.handle_menu_item(PickerMenuId::TeamBuild, *campaign_item);
+    f.client.handle_menu_item(PickerMenuId::Scenario, *campaign_item);
 
     EXPECT_EQ(f.save().current_campaign, f.config.campaign);
 }
@@ -767,4 +840,211 @@ TEST(CursesPickerClient, run_picker_through_team_build_then_quit)
     og::ui::run_picker(f.client);
     // The team survived the round trip.
     EXPECT_GE(team_count(f.save()), 1);
+}
+
+// --- CTF scenario-troops toggle -------------------------------------------
+
+// The troops toggle is CTF-campaign gated and flips the strip flag.
+TEST(CursesPickerClient, ctf_troops_toggle_on_ctf_campaign_only)
+{
+    PickerFixture f;
+    const auto* troops_item = og::ui::find_picker_menu_item(
+        PickerMenuId::TeamBuild, PickerMenuCommand::ToggleCtfScenarioTroops);
+    ASSERT_NE(troops_item, nullptr);
+
+    // Classic campaign: the toggle refuses and the notice renders.
+    f.save().current_campaign = "org.openglad.gladiator";
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *troops_item);
+    EXPECT_EQ(0, (int)f.save().ctf_strip_scenario_troops);
+    EXPECT_NE(f.t().dump().find("CTF maps only"), std::string::npos);
+
+    // CTF campaign: Scen -> Own -> Scen.
+    f.save().current_campaign = "org.openglad.ctf";
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *troops_item);
+    EXPECT_EQ(1, (int)f.save().ctf_strip_scenario_troops);
+    EXPECT_NE(f.t().dump().find("Troops: Own"), std::string::npos);
+
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::TeamBuild, *troops_item);
+    EXPECT_EQ(0, (int)f.save().ctf_strip_scenario_troops);
+}
+
+// The team-build label surfaces the live troops setting.
+TEST(CursesPickerClient, ctf_troops_label_formats_from_save)
+{
+    PickerFixture f;
+    f.save().ctf_strip_scenario_troops = 1;
+    f.t().push_special(KeyCode::Escape);
+    (void)f.client.present_menu(PickerMenuId::TeamBuild);
+    EXPECT_NE(f.t().dump().find("Troops: Own"), std::string::npos);
+}
+
+// --- Teams screen ----------------------------------------------------------
+
+// Enter on a character cycles its team; "Play on {COLOR}" re-seats P1.
+// The Teams item lives in the Scenario submenu now.
+TEST(CursesPickerClient, teams_screen_cycles_character_and_sets_my_team)
+{
+    PickerFixture f;
+    const auto* teams_item = og::ui::find_picker_menu_item(
+        PickerMenuId::Scenario, PickerMenuCommand::Teams);
+    ASSERT_NE(teams_item, nullptr);
+    ASSERT_EQ(1, team_count(f.save()));
+    ASSERT_EQ(0, (int)f.save().team_list[0]->teamnum);
+    ASSERT_EQ(0, (int)f.save().my_team);
+
+    // 1st selectable = "Play on RED", 2nd = the character: cycle the
+    // character onto GREEN, then take the GREEN seat, then leave.
+    pick(f.t(), 1);                      // character row -> team 0 -> 1
+    pick(f.t(), 0);                      // "Play on GREEN" (team 1)
+    f.t().push_special(KeyCode::Escape); // leave the teams screen
+    f.client.handle_menu_item(PickerMenuId::Scenario, *teams_item);
+
+    EXPECT_EQ(1, (int)f.save().team_list[0]->teamnum);
+    EXPECT_EQ(1, (int)f.save().my_team);
+    const std::string dump = f.t().dump();
+    EXPECT_NE(dump.find("GREEN TEAM (P1) 1 HEROES"), std::string::npos) << dump;
+}
+
+// Playing on an empty team is impossible: empty teams offer no Play entry.
+TEST(CursesPickerClient, teams_screen_offers_play_only_for_manned_teams)
+{
+    PickerFixture f;
+    const auto* teams_item = og::ui::find_picker_menu_item(
+        PickerMenuId::Scenario, PickerMenuCommand::Teams);
+    ASSERT_NE(teams_item, nullptr);
+
+    f.t().push_special(KeyCode::Escape);
+    f.client.handle_menu_item(PickerMenuId::Scenario, *teams_item);
+
+    const std::string dump = f.t().dump();
+    EXPECT_NE(dump.find("Play on RED"), std::string::npos) << dump;
+    EXPECT_EQ(dump.find("Play on BLUE"), std::string::npos)
+        << "no Play entry for an empty team";
+    EXPECT_NE(dump.find("BLUE TEAM 0 HEROES"), std::string::npos) << dump;
+}
+
+// The teams roster never truncates at the terminal: the list view scrolls
+// to follow the cursor, so a full 24-member team stays reachable AND
+// visible on a short terminal (the curses analogue of the SDL pager).
+TEST(CursesPickerClient, teams_screen_scrolls_to_keep_cursor_visible)
+{
+    HeadlessTerminal term{12, 60};
+    FakeClock clock;
+    TextPickerConfig config;
+    CursesPickerOptions options;
+    CursesPickerClient client{term, clock, config, options};
+
+    SaveData& save = client.save_data();
+    for (auto& slot : save.team_list)
+        slot.reset();
+    save.team_size = 0;
+    for (int i = 0; i < 15; ++i) {
+        save.team_list[static_cast<size_t>(i)] =
+            std::make_unique<guy>(FAMILY_SOLDIER);
+        save.team_list[static_cast<size_t>(i)]->name =
+            std::format("Grunt{:02}", i);
+        save.team_list[static_cast<size_t>(i)]->teamnum = 0;
+        save.team_size++;
+    }
+
+    const auto* teams_item = og::ui::find_picker_menu_item(
+        PickerMenuId::Scenario, PickerMenuCommand::Teams);
+    ASSERT_NE(teams_item, nullptr);
+
+    // Cursor starts on "Play on RED"; 10 downs land on the 10th member
+    // (Grunt09), far past the 12-row terminal's first page.
+    for (int i = 0; i < 10; ++i)
+        term.push_char(U'j');
+    term.push_special(KeyCode::Escape);
+    client.handle_menu_item(PickerMenuId::Scenario, *teams_item);
+
+    const std::string dump = term.dump();
+    EXPECT_NE(dump.find("Grunt09"), std::string::npos)
+        << "the cursor's row must scroll into view; got:\n" << dump;
+    EXPECT_EQ(dump.find("Grunt00"), std::string::npos)
+        << "rows above the scroll window leave the screen";
+}
+
+// --- View Scenario ----------------------------------------------------------
+
+// The viewer renders the shared roster report from a scratch headless load.
+// The View Scenario item lives in the Scenario submenu now.
+TEST(CursesPickerClient, view_scenario_renders_roster_report)
+{
+    PickerFixture f;
+    const auto* viewer_item = og::ui::find_picker_menu_item(
+        PickerMenuId::Scenario, PickerMenuCommand::ViewScenario);
+    ASSERT_NE(viewer_item, nullptr);
+    f.save().current_campaign = "org.openglad.gladiator";
+    f.save().scen_num = 1;
+
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Scenario, *viewer_item);
+
+    const std::string dump = f.t().dump();
+    EXPECT_NE(dump.find("SCEN 1:"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("TEAM"), std::string::npos) << dump;
+}
+
+// --- Scenario submenu --------------------------------------------------------
+
+// run_picker reaches the nested Scenario submenu from Team Build and unwinds
+// cleanly: Continue -> Team Build -> Scenario -> Back -> Back -> Quit.
+TEST(CursesPickerClient, run_picker_through_scenario_submenu_then_quit)
+{
+    PickerFixture f;
+
+    const int cont_idx = main_menu_item_index(PickerMenuCommand::ContinueGame);
+    ASSERT_GE(cont_idx, 0);
+    // Main pass 1: "Continue Game" -> Team Build.
+    f.t().push_char(static_cast<char32_t>(U'1' + cont_idx));
+    f.t().push_special(KeyCode::Enter);
+    // Team Build: the "Scenario" item opens the submenu.
+    int scenario_idx = -1;
+    {
+        const auto& def = og::ui::picker_menu_definition(PickerMenuId::TeamBuild);
+        for (int i = 0; i < static_cast<int>(def.items.size()); ++i)
+            if (def.items[static_cast<size_t>(i)].command ==
+                PickerMenuCommand::Scenario)
+                scenario_idx = i;
+    }
+    ASSERT_GE(scenario_idx, 0);
+    // The Team Build list shows non-selectable context headers, but digit
+    // jump counts selectable entries only, so the item index maps 1:1.
+    ASSERT_LE(scenario_idx, 8) << "digit-jump addresses the first 9 items";
+    f.t().push_char(static_cast<char32_t>(U'1' + scenario_idx));
+    f.t().push_special(KeyCode::Enter);
+    // Scenario submenu: leave with Esc (-> Back), then Team Build Esc,
+    // then Main menu Esc (-> Quit).
+    f.t().push_special(KeyCode::Escape);
+    f.t().push_char(U'q');
+    f.t().push_special(KeyCode::Escape);
+
+    og::ui::run_picker(f.client);
+    EXPECT_TRUE(f.t().input_exhausted())
+        << "the scenario submenu round trip should consume the whole script";
+}
+
+// --- Campaign ordering -------------------------------------------------------
+
+// The default campaign lists first; the CTF campaign no longer sorts ahead
+// of it alphabetically.
+TEST(CursesPickerClient, campaign_select_lists_default_campaign_first)
+{
+    PickerFixture f;
+    f.t().push_special(KeyCode::Escape); // keep the current campaign
+    (void)f.client.show_campaign_select();
+
+    const std::string dump = f.t().dump();
+    const std::size_t default_pos = dump.find("org.openglad.gladiator");
+    ASSERT_NE(default_pos, std::string::npos) << dump;
+    const std::size_t ctf_pos = dump.find("org.openglad.ctf");
+    if (ctf_pos != std::string::npos)
+    {
+        EXPECT_LT(default_pos, ctf_pos)
+            << "the default campaign must list before the CTF campaign";
+    }
 }

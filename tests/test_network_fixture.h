@@ -460,6 +460,13 @@ public:
     {
         return server_ ? server_->player_control(player_index) : nullptr;
     }
+    // Clears every control claim and re-runs the initial player binding.
+    // Lets tests stage walker state (e.g. myguy owner tags) after load_level
+    // and observe how bind_player resolves it.
+    void rebind_players()
+    {
+        bind_players();
+    }
     GameServer& server() { return *server_; }
     GameClient& client(std::size_t client_index)
     {

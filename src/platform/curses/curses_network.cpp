@@ -28,6 +28,7 @@
 #include <openglad/platform/curses/terminal.h>
 
 #include <openglad/core/constants.h>
+#include <openglad/core/ctf_constants.h>
 #include <openglad/gameplay/game_client.h>
 #include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/game_world.h>
@@ -217,6 +218,10 @@ og::sim::LobbyMessage make_settings_message(const SaveData& save, int difficulty
     settings.scenario_id = save.scen_num;
     settings.difficulty = static_cast<std::int16_t>(difficulty);
     settings.allied_mode = save.allied_mode;
+    settings.ctf_team_count = save.ctf_team_count;
+    settings.ctf_capture_limit = save.ctf_capture_limit;
+    settings.ctf_respawn_ticks = save.ctf_respawn_ticks;
+    settings.ctf_strip_scenario_troops = save.ctf_strip_scenario_troops;
 
     og::sim::LobbyMessage message;
     message.payload = og::sim::LobbySettingsChangeMessage{
@@ -395,6 +400,55 @@ public:
     og::sim::GameServer& server() { return *server_; }
     og::sim::GameClient& client() { return *client_; }
     GameWorld& server_world_ref() { return server_world(); }
+
+#ifdef TESTING
+    // Turn the loaded classic level into a CTF map on the authoritative server
+    // world: flags + respawn anchors for teams 0/1 and the TYPE_CTF bit. Runs
+    // under the server context so the obmap writes land in the server's grid;
+    // the host's own mirror gets the (authored, non-replicated) type bit too.
+    bool inject_ctf_scenario_for_testing(short requested_respawn_ticks)
+    {
+        GameplayContext* const saved = current_game;
+        current_game = &server_ctx_;
+        GameWorld& world = server_world();
+        world.type |= GameWorld::TYPE_CTF;
+        if (requested_respawn_ticks > 0)
+            world.ctf_requested_respawn_ticks = requested_respawn_ticks;
+
+        bool ok = true;
+        const auto spawn_flag = [&world, &ok](int team, int x, int y) {
+            walker* const flag = world.add_fx_ob(Order::Treasure, og::FAMILY_FLAG);
+            if (flag == nullptr) {
+                ok = false;
+                return;
+            }
+            flag->setxy(static_cast<short>(x), static_cast<short>(y));
+            flag->set_team_num(static_cast<unsigned char>(team));
+        };
+        const auto spawn_anchor = [&world, &ok](int team, int x, int y) {
+            walker* const marker = world.add_ob(Order::Special, FAMILY_RESERVED_TEAM);
+            if (marker == nullptr) {
+                ok = false;
+                return;
+            }
+            marker->setxy(static_cast<short>(x), static_cast<short>(y));
+            marker->set_team_num(static_cast<unsigned char>(team));
+        };
+
+        const int far_x = std::max(160, static_cast<int>(world.pixmaxx) - 48);
+        const int far_y = std::max(160, static_cast<int>(world.pixmaxy) - 48);
+        spawn_flag(0, 48, 48);
+        spawn_flag(1, far_x, far_y);
+        spawn_anchor(0, 80, 48);
+        spawn_anchor(0, 48, 80);
+        spawn_anchor(1, far_x - 32, far_y);
+        spawn_anchor(1, far_x, far_y - 32);
+
+        client_level_->world().type |= GameWorld::TYPE_CTF;
+        current_game = saved;
+        return ok;
+    }
+#endif
 
 private:
     HostCursesSession() = default;
@@ -862,6 +916,26 @@ public:
                 (key.is_enter() || key.is_char(U's') || key.is_char(U'S'))) {
                 request_start();
             }
+            if (key.is_char(U'r') || key.is_char(U'R'))
+                (void)set_ready(!local_ready());
+            if (key.is_char(U't') || key.is_char(U'T')) {
+                // Cycle from the last REQUESTED target (wrapping), not the
+                // replicated team: a denied target is skipped on the next
+                // press instead of being re-requested forever.
+                const short base = last_team_request_ >= 0
+                    ? last_team_request_
+                    : local_team_;
+                const short target =
+                    static_cast<short>((base + 1) % MAX_PLAYERS);
+                last_team_request_ = target;
+                if (request_team_change(target)) {
+                    last_team_request_ = -1;
+                    team_status_.clear();
+                } else {
+                    team_status_ =
+                        "Team " + std::to_string(target) + " taken";
+                }
+            }
         }
         (void)clock;
 
@@ -917,6 +991,7 @@ public:
                 lines.push_back("  Player " + std::to_string(player.player_index + 1) +
                                 " (team " + std::to_string(player.team) + ")" +
                                 (player.is_host ? " [host]" : "") +
+                                (player.ready ? " [ready]" : "") +
                                 (is_me ? " [you]" : ""));
             }
             lines.push_back("Players: " + std::to_string(state_->players.size()));
@@ -924,6 +999,8 @@ public:
             lines.push_back(role_ == LobbyRole::Host ? "Waiting for players..."
                                                      : "Connecting...");
         }
+        if (!team_status_.empty())
+            lines.push_back(team_status_);
         if (start_negotiated_)
             lines.push_back("Starting game...");
         return lines;
@@ -935,6 +1012,66 @@ public:
         teardown();
     }
     bool cancelled() const override { return cancelled_; }
+
+    bool request_team_change(short team) override
+    {
+        og::sim::ITransport* const client_link = role_ == LobbyRole::Host
+            ? host_client_transport_.get()
+            : transport_.get();
+        if (client_link == nullptr)
+            return false;
+
+        og::sim::LobbyMessage message;
+        message.payload = og::sim::LobbyTeamChangeMessage{
+            .player_index = local_player_index(),
+            .team = team,
+        };
+        send_lobby_message(*client_link,
+                           role_ == LobbyRole::Host
+                               ? host_client_transport_->local_peer_id()
+                               : server_peer_id_,
+                           std::move(message));
+        pump_once();
+        return local_team_ == team;
+    }
+
+    bool set_ready(bool ready) override
+    {
+        og::sim::ITransport* const client_link = role_ == LobbyRole::Host
+            ? host_client_transport_.get()
+            : transport_.get();
+        if (client_link == nullptr)
+            return false;
+
+        og::sim::LobbyMessage message;
+        message.payload = og::sim::LobbyReadyMessage{
+            .player_index = local_player_index(),
+            .ready = ready,
+        };
+        send_lobby_message(*client_link,
+                           role_ == LobbyRole::Host
+                               ? host_client_transport_->local_peer_id()
+                               : server_peer_id_,
+                           std::move(message));
+        pump_once();
+        return local_ready() == ready;
+    }
+
+    bool local_ready() const override
+    {
+        if (!state_.has_value())
+            return false;
+        const og::sim::LobbyPlayer* const local =
+            find_local_player(*state_, player_name_);
+        return local != nullptr && local->ready;
+    }
+
+    std::vector<og::sim::LobbyPlayer> players() const override
+    {
+        if (!state_.has_value())
+            return {};
+        return state_->players;
+    }
 
     // --- test accessors -------------------------------------------------------
     const std::optional<og::sim::LobbyState>& state() const { return state_; }
@@ -957,8 +1094,9 @@ private:
                 break;
             term.put_str(row++, 0, line, Color::Default, Color::Default, false);
         }
-        const char* hint = role_ == LobbyRole::Host ? "[s] start (host)  [q] cancel"
-                                                     : "[q] cancel";
+        const char* hint = role_ == LobbyRole::Host
+            ? "[s] start (host)  [t] team  [r] ready  [q] cancel"
+            : "[t] team  [r] ready  [q] cancel";
         if (term.rows() > 0)
             term.put_str(term.rows() - 1, 0, hint, Color::Cyan, Color::Default, false);
         term.present();
@@ -973,6 +1111,16 @@ private:
                (local->is_host || local->player_index == state_->host_player_id);
     }
 
+    std::uint8_t local_player_index() const
+    {
+        // Informational only: the LobbyServer keys on the sending peer.
+        if (!state_.has_value())
+            return 0xffu;
+        const og::sim::LobbyPlayer* const local =
+            find_local_player(*state_, player_name_);
+        return local != nullptr ? local->player_index : 0xffu;
+    }
+
     void handle_typed_message(const og::sim::TypedReceivedMessage& message)
     {
         switch (message.kind) {
@@ -982,6 +1130,12 @@ private:
                 if (const og::sim::LobbyPlayer* const local =
                         find_local_player(*state_, player_name_)) {
                     local_team_ = local->team;
+                    // A late accept (joiner echo) lands here: stop treating
+                    // the request as bounced.
+                    if (local_team_ == last_team_request_) {
+                        last_team_request_ = -1;
+                        team_status_.clear();
+                    }
                 }
             }
             break;
@@ -1090,6 +1244,10 @@ private:
             : state_->settings.campaign_id;
         eq.scen_num = state_->settings.scenario_id > 0 ? state_->settings.scenario_id : 1;
         eq.allied_mode = state_->settings.allied_mode;
+        eq.ctf_team_count = state_->settings.ctf_team_count;
+        eq.ctf_capture_limit = state_->settings.ctf_capture_limit;
+        eq.ctf_respawn_ticks = state_->settings.ctf_respawn_ticks;
+        eq.ctf_strip_scenario_troops = state_->settings.ctf_strip_scenario_troops;
         eq.numplayers = static_cast<std::uint8_t>(
             std::min<std::size_t>(state_->players.size(), MAX_PLAYERS));
 
@@ -1129,6 +1287,10 @@ private:
     SaveData& save_;
     int difficulty_ = 1;
     short local_team_ = 0;
+    // 't'-cycle bookkeeping: last requested target (-1 = none pending) and
+    // the one-line bounce status surfaced in status_lines().
+    short last_team_request_ = -1;
+    std::string team_status_;
     std::string player_name_;
 
     // Host transports.
@@ -1463,5 +1625,16 @@ std::unique_ptr<CursesLobby> make_join_lobby_over_transport_for_testing(
     lobby->init_join_over_transport(std::move(transport), server_peer_id);
     return lobby;
 }
+
+#ifdef TESTING
+bool curses_network_testing_inject_ctf(CursesGameSession& session,
+                                       short requested_respawn_ticks)
+{
+    auto* const host = dynamic_cast<HostCursesSession*>(&session);
+    if (host == nullptr)
+        return false;
+    return host->inject_ctf_scenario_for_testing(requested_respawn_ticks);
+}
+#endif
 
 } // namespace og::curses

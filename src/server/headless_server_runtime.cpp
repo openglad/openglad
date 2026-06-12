@@ -9,12 +9,14 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/resources/campaign_io.h>
+#include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 
 #include <algorithm>
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 namespace {
 
@@ -75,6 +77,10 @@ void sync_world_from_save_data(GameWorld& world, const SaveData& save)
 {
     world.my_team = save.my_team;
     world.allied_mode = save.allied_mode;
+    world.ctf_requested_team_count = save.ctf_team_count;
+    world.ctf_requested_capture_limit = save.ctf_capture_limit;
+    world.ctf_requested_respawn_ticks = save.ctf_respawn_ticks;
+    world.ctf_requested_strip_scenario_troops = save.ctf_strip_scenario_troops;
     world.current_scenario = save.scen_num;
     for (int index = 0; index < MAX_PLAYERS; ++index)
         world.m_score[index] = save.m_score[index];
@@ -215,6 +221,11 @@ void clear_completed_level_entities(EntityList& entities)
 
 void apply_completed_level_cleanup(GameWorld& world)
 {
+    // CTF rematches replay the full map: flags, control points, and bot
+    // squads must survive a "level already completed" reload.
+    if (world.type & GameWorld::TYPE_CTF)
+        return;
+
     clear_completed_level_entities(world.oblist);
     clear_completed_level_entities(world.weaplist);
     clear_completed_level_entities(world.fxlist);
@@ -279,6 +290,10 @@ void copy_headless_server_save_data(SaveData& destination,
     destination.team_size = source.team_size;
     destination.numplayers = source.numplayers;
     destination.allied_mode = source.allied_mode;
+    destination.ctf_team_count = source.ctf_team_count;
+    destination.ctf_capture_limit = source.ctf_capture_limit;
+    destination.ctf_respawn_ticks = source.ctf_respawn_ticks;
+    destination.ctf_strip_scenario_troops = source.ctf_strip_scenario_troops;
 
     for (std::size_t index = 0; index < destination.team_list.size(); ++index)
     {
@@ -301,6 +316,11 @@ void apply_headless_lobby_game_start_config(
     save.current_levels[save.current_campaign] = save.scen_num;
     save.numplayers = config_save.numplayers;
     save.allied_mode = static_cast<short>(config_save.allied_mode);
+    save.ctf_team_count = static_cast<short>(config_save.ctf_team_count);
+    save.ctf_capture_limit = static_cast<short>(config_save.ctf_capture_limit);
+    save.ctf_respawn_ticks = static_cast<short>(config_save.ctf_respawn_ticks);
+    save.ctf_strip_scenario_troops =
+        static_cast<short>(config_save.ctf_strip_scenario_troops);
     save.my_team = 0;
 
     for (auto& member : save.team_list)
@@ -362,16 +382,22 @@ bool load_headless_level_from_save(LevelRuntimeData& level_data,
     if (!level_data.load())
     {
         const short requested_level = save.scen_num;
-        LogError("headless_server_level_load_failed level={} action=fallback_to_1\n",
-                 requested_level);
-        save.scen_num = 1;
+        // Campaigns may not start at scenario 1 (CTF starts at 500); wrap a
+        // run-off cursor to the lowest level the mounted campaign ships.
+        short fallback_level = 1;
+        const std::vector<int> levels = list_levels_v();
+        if (!levels.empty())
+            fallback_level = static_cast<short>(levels.front());
+        LogError("headless_server_level_load_failed level={} action=fallback_to_{}\n",
+                 requested_level, fallback_level);
+        save.scen_num = fallback_level;
         save.current_levels[save.current_campaign] = save.scen_num;
         sync_world_from_save_data(world, save);
         world.id = save.scen_num;
         if (!level_data.load())
         {
-            LogError("headless_server_level_fallback_failed requested={} fallback=1\n",
-                     requested_level);
+            LogError("headless_server_level_fallback_failed requested={} fallback={}\n",
+                     requested_level, fallback_level);
             return false;
         }
     }

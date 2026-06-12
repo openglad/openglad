@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cmath>
 #include <filesystem>
+#include <memory>
 #include <set>
 #include <string>
 #include <string_view>
@@ -1338,6 +1339,88 @@ TEST(GameLoop,
             controlled_entity_ids,
             &world));
 
+    world.delete_objects();
+}
+
+// Playtest bug A (display side): while a CTF respawn is pending the mapped id
+// is 0, but the view must keep following the dead corpse so the camera holds
+// and the RESPAWN IN countdown renders. A nonzero mapped id always wins, an
+// already-revived walker wearing this player's user tag is kept through the
+// one-tick reclaim window, and a corpse whose pending entry disappeared falls
+// back to nullptr.
+TEST(GameLoop, select_control_for_view_keeps_pending_ctf_respawn_corpse)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    ASSERT_TRUE(game_screen->viewob[0] != nullptr);
+
+    GameWorld& world = game_screen->world();
+    world.delete_objects();
+    const char saved_type = world.type;
+    world.type |= GameWorld::TYPE_CTF;
+    world.ctf = og::sim::CtfState{};
+    world.ctf.active = true;
+
+    walker* const corpse = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* const other = world.add_ob(Order::Living, FAMILY_ARCHER);
+    ASSERT_NE(nullptr, corpse);
+    ASSERT_NE(nullptr, other);
+    corpse->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    corpse->set_team_num(0);
+    corpse->set_user(0);
+    corpse->set_dead(1);
+    other->set_team_num(3); // off the view's team: no same-team fallback hits
+
+    og::sim::CtfRespawnEntry entry;
+    entry.kind = 0;
+    entry.team = 0;
+    entry.ticks_left = 60;
+    entry.walker_entity_id = corpse->entity_id();
+    world.ctf.respawn_queue.push_back(entry);
+
+    viewscreen* const view = game_screen->viewob[0].get();
+    walker* const saved_control = view->control;
+    view->my_team = 0;
+    std::array<std::uint32_t, MAX_PLAYERS> controlled_entity_ids = {};
+
+    // Dead corpse + pending entry: retained.
+    view->control = corpse;
+    EXPECT_EQ(corpse,
+              og::runtime::detail::select_control_for_view(
+                  view, controlled_entity_ids, &world, 0u));
+
+    // A nonzero mapped id beats the keep-alive (body switch never loses).
+    controlled_entity_ids[0] = other->entity_id();
+    EXPECT_EQ(other,
+              og::runtime::detail::select_control_for_view(
+                  view, controlled_entity_ids, &world, 0u));
+    controlled_entity_ids[0] = 0;
+
+    // Revived (alive, user tag intact), entry consumed, ControlChange not yet
+    // applied: still retained through the one-tick window.
+    corpse->set_dead(0);
+    world.ctf.respawn_queue.clear();
+    EXPECT_EQ(corpse,
+              og::runtime::detail::select_control_for_view(
+                  view, controlled_entity_ids, &world, 0u));
+
+    // Dead again with NO pending entry (live-duplicate cancel): falls back
+    // to nullptr.
+    corpse->set_dead(1);
+    EXPECT_EQ(nullptr,
+              og::runtime::detail::select_control_for_view(
+                  view, controlled_entity_ids, &world, 0u));
+
+    // Outside an active CTF match the keep-alive never engages.
+    world.ctf.respawn_queue.push_back(entry);
+    world.ctf.active = false;
+    EXPECT_EQ(nullptr,
+              og::runtime::detail::select_control_for_view(
+                  view, controlled_entity_ids, &world, 0u));
+
+    view->control = saved_control;
+    world.ctf = og::sim::CtfState{};
+    world.type = saved_type;
     world.delete_objects();
 }
 

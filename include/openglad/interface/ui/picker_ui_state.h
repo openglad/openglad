@@ -101,4 +101,18 @@ struct PickerState {
     std::vector<button> trainmenu_buttons;
     std::vector<button> hiremenu_buttons;
     std::vector<button> networking_buttons;
+    std::vector<button> teamsmenu_buttons;
+    std::vector<button> viewscenario_buttons;
+    std::vector<button> scenariomenu_buttons;
+
+    // TEAMS subscreen: roster slot selected by the local guy-cycling row.
+    int teams_menu_guy_slot = 0;
+
+    // TEAMS subscreen: per-team member-detail page (the '>' pager). Session
+    // state only — reset every time the subscreen opens, never persisted.
+    std::array<int, 4> teams_menu_team_page{};
+
+    // VIEW LEVEL: page step requested by the PREV/NEXT ButtonAction handler
+    // (-1/+1), consumed by create_view_scenario_menu's frame loop.
+    int view_scenario_page_step = 0;
 };

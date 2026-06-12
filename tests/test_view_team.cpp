@@ -666,6 +666,7 @@ struct DirectMenuVisibilityState {
     bool go_visible;
     bool set_level_visible;
     bool set_campaign_visible;
+    bool scenario_visible;
     int min_y;
     std::atomic<bool>* menu_done;
 };
@@ -695,6 +696,7 @@ static int direct_menu_visibility_injector(void* data)
             state->go_visible = visible("go");
             state->set_level_visible = visible("set_level");
             state->set_campaign_visible = visible("set_campaign");
+            state->scenario_visible = visible("scenario");
             interact_match("back", in_menu_band);
             break;
         }
@@ -831,10 +833,107 @@ TEST(ViewTeam, create_team_menu_hides_host_only_controls_for_non_host_client)
 
     ASSERT_TRUE(state.finished) << "team-menu visibility injector should complete";
     ASSERT_TRUE(state.saw_menu) << "team menu should become visible";
-    EXPECT_FALSE(state.go_visible);
-    EXPECT_FALSE(state.set_level_visible);
-    EXPECT_FALSE(state.set_campaign_visible);
+    EXPECT_FALSE(state.go_visible) << "GO is host-gated on team build";
+    EXPECT_FALSE(state.set_level_visible)
+        << "set_level lives in the SCENARIO subscreen now";
+    EXPECT_FALSE(state.set_campaign_visible)
+        << "set_campaign lives in the SCENARIO subscreen now";
+    EXPECT_TRUE(state.scenario_visible)
+        << "the SCENARIO entry stays visible for joiners";
     ASSERT_TRUE(ret & 1) << "create_team_menu(back) should propagate EXIT";
+}
+
+// The SCENARIO subscreen keeps SET CAMPAIGN / SET LEVEL host-only while
+// VIEW LEVEL / TEAMS / PROGRESS stay visible; BACK returns MENU_REDRAW.
+TEST(ViewTeam, create_scenario_menu_hides_host_only_controls_for_non_host_client)
+{
+    trace_clear();
+
+    og::runtime::current_session->myscreen_->save_data.reset();
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
+    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+    og::runtime::current_session->myscreen_->save_data.team_list[0] = std::move(soldier);
+    og::runtime::current_session->myscreen_->save_data.team_size = 1;
+
+    HostVisibilityPickerLobbyClient client(false);
+    ActivePickerLobbyClientGuard guard(&client);
+    std::atomic<bool> menu_done{false};
+    DirectMenuVisibilityState state{
+        .finished = false,
+        .saw_menu = false,
+        .go_visible = false,
+        .set_level_visible = false,
+        .set_campaign_visible = false,
+        .scenario_visible = false,
+        .min_y = 0,
+        .menu_done = &menu_done,
+    };
+    SDL_Thread* thread = SDL_CreateThread(
+        direct_menu_visibility_injector, "direct_scenario_visibility", &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create scenario visibility injector thread";
+
+    const Sint32 ret = create_scenario_menu(0);
+    menu_done.store(true, std::memory_order_release);
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    cleanup_picker_state();
+
+    ASSERT_TRUE(state.finished) << "scenario visibility injector should complete";
+    ASSERT_TRUE(state.saw_menu) << "scenario menu should become visible";
+    EXPECT_FALSE(state.set_level_visible)
+        << "set_level is host-only inside the subscreen";
+    EXPECT_FALSE(state.set_campaign_visible)
+        << "set_campaign is host-only inside the subscreen";
+    ASSERT_TRUE(ret & 2) << "create_scenario_menu(back) should return REDRAW";
+}
+
+// ... and the host keeps them: the same direct screen with host controls on.
+TEST(ViewTeam, create_scenario_menu_shows_host_controls_for_host)
+{
+    trace_clear();
+
+    og::runtime::current_session->myscreen_->save_data.reset();
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
+    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+    og::runtime::current_session->myscreen_->save_data.team_list[0] = std::move(soldier);
+    og::runtime::current_session->myscreen_->save_data.team_size = 1;
+
+    HostVisibilityPickerLobbyClient client(true);
+    ActivePickerLobbyClientGuard guard(&client);
+    std::atomic<bool> menu_done{false};
+    DirectMenuVisibilityState state{
+        .finished = false,
+        .saw_menu = false,
+        .go_visible = false,
+        .set_level_visible = false,
+        .set_campaign_visible = false,
+        .scenario_visible = false,
+        .min_y = 0,
+        .menu_done = &menu_done,
+    };
+    SDL_Thread* thread = SDL_CreateThread(
+        direct_menu_visibility_injector, "direct_scenario_host", &state);
+    ASSERT_TRUE(thread != nullptr) << "failed to create scenario host injector thread";
+
+    const Sint32 ret = create_scenario_menu(0);
+    menu_done.store(true, std::memory_order_release);
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    cleanup_picker_state();
+
+    ASSERT_TRUE(state.finished) << "scenario host injector should complete";
+    ASSERT_TRUE(state.saw_menu) << "scenario menu should become visible";
+    EXPECT_TRUE(state.set_level_visible)
+        << "the host keeps SET LEVEL in the subscreen";
+    EXPECT_TRUE(state.set_campaign_visible)
+        << "the host keeps SET CAMPAIGN in the subscreen";
+    ASSERT_TRUE(ret & 2) << "create_scenario_menu(back) should return REDRAW";
 }
 
 TEST(ViewTeam, create_view_menu_hides_go_for_non_host_client)

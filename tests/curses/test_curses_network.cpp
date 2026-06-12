@@ -633,3 +633,126 @@ TEST(CursesNetwork, malformed_join_url_reports_error)
     EXPECT_EQ(lobby, nullptr);
     EXPECT_FALSE(error.empty());
 }
+
+// Classic lobbies keep one human per team: a joiner's request for the host's
+// team bounces and the roster keeps the original assignment.
+TEST(CursesNetwork, classic_lobby_bounces_shared_team_request)
+{
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+    init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+    auto join_client = server->create_client_transport();
+
+    auto host_lobby = make_host_lobby_over_transport_for_testing(
+        host_save, 1, server, host_client);
+    auto join_lobby = make_join_lobby_over_transport_for_testing(
+        join_save, 1, join_client, join_client->local_peer_id());
+
+    HeadlessTerminal host_term(24, 80);
+    HeadlessTerminal join_term(24, 80);
+    FakeClock clock;
+
+    bool two_players = false;
+    for (int i = 0; i < 200 && !two_players; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+        two_players = host_lobby->players().size() == 2;
+    }
+    ASSERT_TRUE(two_players);
+
+    (void)join_lobby->request_team_change(0);
+    for (int i = 0; i < 50; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+    }
+
+    const auto players = host_lobby->players();
+    ASSERT_EQ(2u, players.size());
+    short host_team = -1;
+    short join_team = -1;
+    for (const og::sim::LobbyPlayer& player : players) {
+        if (player.is_host)
+            host_team = static_cast<short>(player.team);
+        else
+            join_team = static_cast<short>(player.team);
+    }
+    EXPECT_EQ(0, host_team);
+    EXPECT_EQ(1, join_team) << "classic lobbies keep exclusive teams";
+
+    host_lobby->cancel();
+    join_lobby->cancel();
+}
+
+// CTF-campaign lobbies allow shared teams; the ready flag round-trips and
+// shows up as a [ready] tag in the status lines.
+TEST(CursesNetwork, ctf_lobby_team_change_and_ready_round_trip)
+{
+    SaveData host_save;
+    SaveData join_save;
+    init_team_save(host_save, 0, FAMILY_SOLDIER, "Host");
+    init_team_save(join_save, 1, FAMILY_ELF, "Joiner");
+    host_save.current_campaign = "org.openglad.ctf"; // shared-team lobby
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+    auto join_client = server->create_client_transport();
+
+    auto host_lobby = make_host_lobby_over_transport_for_testing(
+        host_save, 1, server, host_client);
+    auto join_lobby = make_join_lobby_over_transport_for_testing(
+        join_save, 1, join_client, join_client->local_peer_id());
+
+    HeadlessTerminal host_term(24, 80);
+    HeadlessTerminal join_term(24, 80);
+    FakeClock clock;
+
+    bool two_players = false;
+    for (int i = 0; i < 200 && !two_players; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+        two_players = host_lobby->players().size() == 2;
+    }
+    ASSERT_TRUE(two_players);
+
+    // Joiner moves onto the host's team (asynchronous: poll both sides).
+    (void)join_lobby->request_team_change(0);
+    bool shared = false;
+    for (int i = 0; i < 200 && !shared; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+        const auto players = host_lobby->players();
+        shared = players.size() == 2 && players[0].team == 0 &&
+            players[1].team == 0;
+    }
+    EXPECT_TRUE(shared) << "CTF lobbies allow two humans on one team";
+
+    // The host's own request is synchronous over the loopback link.
+    EXPECT_TRUE(host_lobby->request_team_change(1));
+
+    // Ready round trip + the [ready] status tag.
+    EXPECT_FALSE(host_lobby->local_ready());
+    EXPECT_TRUE(host_lobby->set_ready(true));
+    EXPECT_TRUE(host_lobby->local_ready());
+
+    (void)join_lobby->set_ready(true);
+    bool join_ready_seen = false;
+    for (int i = 0; i < 200 && !join_ready_seen; ++i) {
+        host_lobby->poll(host_term, clock);
+        join_lobby->poll(join_term, clock);
+        for (const og::sim::LobbyPlayer& player : host_lobby->players()) {
+            if (!player.is_host && player.ready)
+                join_ready_seen = true;
+        }
+    }
+    EXPECT_TRUE(join_ready_seen) << "the joiner's ready flag should replicate";
+    EXPECT_TRUE(status_contains(*host_lobby, "[ready]"));
+
+    host_lobby->cancel();
+    join_lobby->cancel();
+}

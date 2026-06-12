@@ -56,10 +56,23 @@ TeamBuildAction IPickerClient::show_team_build()
         case PickerMenuCommand::Networking:
             (void)configure_networking();
             break;
+        case PickerMenuCommand::Scenario:
+            show_scenario_menu();
+            break;
         default:
             handle_menu_item(PickerMenuId::TeamBuild, *item);
             break;
         }
+    }
+}
+
+void IPickerClient::show_scenario_menu()
+{
+    for (;;) {
+        const PickerMenuItem* item = present_menu(PickerMenuId::Scenario);
+        if (!item || item->command == PickerMenuCommand::Back)
+            return;
+        handle_menu_item(PickerMenuId::Scenario, *item);
     }
 }
 

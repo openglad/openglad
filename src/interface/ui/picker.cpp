@@ -528,6 +528,19 @@ public:
                 og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::Quit);
         }
 
+        if (menu_id == og::ui::PickerMenuId::Scenario) {
+            // The SDL client never dispatches the shared state machine's
+            // Scenario menu: the SCENARIO subscreen runs inside the blocking
+            // create_team_menu loop (ButtonAction::CreateScenarioMenu), so
+            // show_team_build never selects the Scenario item here. The
+            // TeamBuild fall-through below would re-enter create_team_menu
+            // and nest a second team-build screen — answer the inherited
+            // show_scenario_menu() loop with a safe no-op Back instead.
+            return og::ui::find_picker_menu_item(
+                og::ui::PickerMenuId::Scenario,
+                og::ui::PickerMenuCommand::Back);
+        }
+
         set_intercept_scope(PickerInterceptScope::TeamBuild);
         create_team_menu(0);
         set_intercept_scope(PickerInterceptScope::None);
@@ -938,6 +951,9 @@ void picker_cleanup_resources()
     pks().trainmenu_buttons.clear();
     pks().hiremenu_buttons.clear();
     pks().networking_buttons.clear();
+    pks().teamsmenu_buttons.clear();
+    pks().viewscenario_buttons.clear();
+    pks().scenariomenu_buttons.clear();
 }
 
 void picker_quit()
@@ -1083,22 +1099,24 @@ static const button k_control_options_buttons[] =
         button_action_id(ButtonAction::RestoreDefaultControls), -1, MenuNav{.up=7}),
 };
 
-// beginmenu (first menu of new game), create_team_menu
+// beginmenu (first menu of new game), create_team_menu.
+// A clean 3x3 grid on the classic x=30/120/210 columns: the scenario-shaped
+// commands (SET CAMPAIGN / SET LEVEL / VIEW LEVEL / TEAMS / PROGRESS) live in
+// the SCENARIO subscreen now (k_scenariomenu_buttons below). GO is the only
+// host-gated button here; sync_team_build_host_control_visibility rewires
+// hire_troops/save_team/networking around it when hidden.
 static const button k_createmenu_buttons[] =
     {
         button("view_team", "VIEW TEAM", KEYSTATE_UNKNOWN, 30, 70, 80, 15, button_action_id(ButtonAction::CreateViewMenu), -1, MenuNav{.down=3, .right=1}),
         button("train_team", "TRAIN TEAM", KEYSTATE_UNKNOWN, 120, 70, 80, 15, button_action_id(ButtonAction::CreateTrainMenu), -1, MenuNav{.down=4, .left=0, .right=2}),
         button("hire_troops", "HIRE TROOPS",  KEYSTATE_UNKNOWN, 210, 70, 80, 15, button_action_id(ButtonAction::CreateHireMenu), -1, MenuNav{.down=5, .left=1}),
         button("load_team", "LOAD TEAM", KEYSTATE_UNKNOWN, 30, 100, 80, 15, button_action_id(ButtonAction::CreateLoadMenu), -1, MenuNav{.up=0, .down=6, .right=4}),
-        button("save_team", "SAVE TEAM", KEYSTATE_UNKNOWN, 120, 100, 80, 15, button_action_id(ButtonAction::CreateSaveMenu), -1, MenuNav{.up=1, .left=3, .right=5}),
+        button("save_team", "SAVE TEAM", KEYSTATE_UNKNOWN, 120, 100, 80, 15, button_action_id(ButtonAction::CreateSaveMenu), -1, MenuNav{.up=1, .down=7, .left=3, .right=5}),
         button("go", "GO", KEYSTATE_UNKNOWN,        210, 100, 80, 15, button_action_id(ButtonAction::GoMenu), -1, MenuNav{.up=2, .down=8, .left=4}),
 
         button("back", "BACK", KEYSTATE_ESCAPE, 30, 140, 60, 30, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=3, .right=7}),
-        button("progress", "PROGRESS", KEYSTATE_UNKNOWN, 120, 140, 80, 20, button_action_id(ButtonAction::CreateProgressMenu), -1, MenuNav{.up=4, .down=9, .left=6, .right=8}),
-        button("set_level", "SET LEVEL", KEYSTATE_UNKNOWN, 210, 140, 80, 20, button_action_id(ButtonAction::DoSetScenLevel), MENU_EXIT, MenuNav{.up=5, .down=10, .left=7}),
-        button("networking", "NETWORKING", KEYSTATE_UNKNOWN, 120, 170, 80, 20, button_action_id(ButtonAction::Networking), -1, MenuNav{.up=7, .left=6, .right=10}),
-        button("set_campaign", "SET CAMPAIGN", KEYSTATE_UNKNOWN, 210, 170, 80, 20, button_action_id(ButtonAction::DoPickCampaign), MENU_EXIT, MenuNav{.up=8, .left=9}),
-
+        button("scenario", "SCENARIO", KEYSTATE_UNKNOWN, 120, 140, 80, 20, button_action_id(ButtonAction::CreateScenarioMenu), -1, MenuNav{.up=4, .left=6, .right=8}),
+        button("networking", "NETWORKING", KEYSTATE_UNKNOWN, 210, 140, 80, 20, button_action_id(ButtonAction::Networking), -1, MenuNav{.up=5, .left=7}),
     };
 
 static const button k_viewteam_buttons[] =
@@ -1196,6 +1214,64 @@ static const button k_loadteam_buttons[] =
         button("load_slot_10", "SLOT Ten", KEYSTATE_UNKNOWN, 25, 160, 220, 10, button_action_id(ButtonAction::DoLoad), 10, MenuNav{.up=8, .down=10}),
         button("back", "BACK", KEYSTATE_ESCAPE,25, 175, 40, 20, button_action_id(ButtonAction::ReturnMenu) , MENU_EXIT, MenuNav{.up=9, .down=0}),
 
+    };
+
+// TEAMS subscreen (create_teams_menu): team rows are drawn at y=32+30*t with
+// the per-team JOIN column at x=240; the CTF match settings (host-gated, CTF
+// campaign only) sit at the top (Teams/Limit) and bottom-right (Troops); the
+// local guy-cycling row sits at y=146; READY replaces the guy row when
+// networked. Static nav encodes the local-classic variant — every conditional
+// state is rewired per frame by picker_wire_teams_menu_nav (the graph never
+// links to a hidden button).
+static const button k_teamsmenu_buttons[] =
+    {
+        button("back", "BACK", KEYSTATE_ESCAPE, 10, 170, 40, 20, button_action_id(ButtonAction::ReturnMenu), MENU_REDRAW, MenuNav{.up=7}),
+        button("ctf_teams", "Teams: Auto", KEYSTATE_UNKNOWN, 120, 8, 80, 15, button_action_id(ButtonAction::CycleCtfTeamCount), -1, MenuNav{.down=3, .right=2}, true),
+        button("ctf_caps", "Limit: Map", KEYSTATE_UNKNOWN, 210, 8, 80, 15, button_action_id(ButtonAction::CycleCtfCaptureLimit), -1, MenuNav{.down=3, .left=1}, true),
+        button("join_team_0", "JOIN", KEYSTATE_UNKNOWN, 240, 32, 50, 12, button_action_id(ButtonAction::JoinTeam), 0, MenuNav{.down=4}),
+        button("join_team_1", "JOIN", KEYSTATE_UNKNOWN, 240, 62, 50, 12, button_action_id(ButtonAction::JoinTeam), 1, MenuNav{.up=3, .down=5}),
+        button("join_team_2", "JOIN", KEYSTATE_UNKNOWN, 240, 92, 50, 12, button_action_id(ButtonAction::JoinTeam), 2, MenuNav{.up=4, .down=6}),
+        button("join_team_3", "JOIN", KEYSTATE_UNKNOWN, 240, 122, 50, 12, button_action_id(ButtonAction::JoinTeam), 3, MenuNav{.up=5, .down=9}),
+        button("guy_prev", "<", KEYSTATE_UNKNOWN, 10, 146, 16, 12, button_action_id(ButtonAction::TeamsCycleGuy), -1, MenuNav{.up=3, .down=0, .right=8}),
+        button("guy_next", ">", KEYSTATE_UNKNOWN, 120, 146, 16, 12, button_action_id(ButtonAction::TeamsCycleGuy), 1, MenuNav{.up=3, .down=0, .left=7, .right=9}),
+        button("guy_team", "TEAM >", KEYSTATE_UNKNOWN, 150, 146, 70, 12, button_action_id(ButtonAction::TeamsCycleGuyTeam), 1, MenuNav{.up=6, .down=0, .left=8}),
+        button("ready", "READY", KEYSTATE_UNKNOWN, 120, 170, 80, 20, button_action_id(ButtonAction::ToggleLobbyReady), -1, MenuNav{.up=6, .left=0}, true),
+        button("ctf_troops", "Troops: Scen", KEYSTATE_UNKNOWN, 210, 170, 80, 20, button_action_id(ButtonAction::CycleCtfScenarioTroops), -1, MenuNav{.up=9, .left=0}, true),
+        // Per-team member pagers: a '>' at the right edge of each team row's
+        // readability bar (8..234), left of the JOIN column at x=240. Hidden
+        // unless that team's detail line needs more than one slice; nav is
+        // fully rewired per frame like every other conditional button here.
+        button("team_page_0", ">", KEYSTATE_UNKNOWN, 219, 39, 14, 12, button_action_id(ButtonAction::TeamsPageFlip), 0, MenuNav{}, true),
+        button("team_page_1", ">", KEYSTATE_UNKNOWN, 219, 69, 14, 12, button_action_id(ButtonAction::TeamsPageFlip), 1, MenuNav{}, true),
+        button("team_page_2", ">", KEYSTATE_UNKNOWN, 219, 99, 14, 12, button_action_id(ButtonAction::TeamsPageFlip), 2, MenuNav{}, true),
+        button("team_page_3", ">", KEYSTATE_UNKNOWN, 219, 129, 14, 12, button_action_id(ButtonAction::TeamsPageFlip), 3, MenuNav{}, true),
+    };
+
+// VIEW LEVEL (create_view_scenario_menu): a read-only framed report; PREV and
+// NEXT page through it and stay hidden while the report fits one page.
+static const button k_viewscenario_buttons[] =
+    {
+        button("back", "BACK", KEYSTATE_ESCAPE, 10, 170, 44, 20, button_action_id(ButtonAction::ReturnMenu), MENU_REDRAW, MenuNav{.right=1}),
+        button("page_prev", "PREV", KEYSTATE_UNKNOWN, 220, 170, 40, 20, button_action_id(ButtonAction::ViewScenarioPageFlip), -1, MenuNav{.left=0, .right=2}, true),
+        button("page_next", "NEXT", KEYSTATE_UNKNOWN, 270, 170, 40, 20, button_action_id(ButtonAction::ViewScenarioPageFlip), 1, MenuNav{.left=1}, true),
+    };
+
+// SCENARIO subscreen (create_scenario_menu): the column at x=30 stacks
+// SET CAMPAIGN (y=40) and SET LEVEL (y=70) — the campaign-name and
+// level-title strips draw beside them — over the always-visible
+// VIEW LEVEL | TEAMS | PROGRESS row (y=100). BACK sits apart at (30,170)
+// so no other screen's "back" shares its geometry (the injector tests
+// disambiguate the per-screen "back" buttons by position). Static nav
+// encodes the host variant; sync_scenario_menu_host_control_visibility
+// rewires the row's up-links when SET CAMPAIGN / SET LEVEL are hidden.
+static const button k_scenariomenu_buttons[] =
+    {
+        button("back", "BACK", KEYSTATE_ESCAPE, 30, 170, 60, 20, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=3}),
+        button("set_campaign", "SET CAMPAIGN", KEYSTATE_UNKNOWN, 30, 40, 80, 15, button_action_id(ButtonAction::DoPickCampaign), -1, MenuNav{.down=2}),
+        button("set_level", "SET LEVEL", KEYSTATE_UNKNOWN, 30, 70, 80, 15, button_action_id(ButtonAction::DoSetScenLevel), -1, MenuNav{.up=1, .down=3}),
+        button("view_scenario", "VIEW LEVEL", KEYSTATE_UNKNOWN, 30, 100, 80, 15, button_action_id(ButtonAction::ViewScenario), -1, MenuNav{.up=2, .down=0, .right=4}),
+        button("teams", "TEAMS", KEYSTATE_UNKNOWN, 120, 100, 80, 15, button_action_id(ButtonAction::CreateTeamsMenu), -1, MenuNav{.up=2, .down=0, .left=3, .right=5}),
+        button("progress", "PROGRESS", KEYSTATE_UNKNOWN, 210, 100, 80, 15, button_action_id(ButtonAction::CreateProgressMenu), -1, MenuNav{.up=2, .down=0, .left=4}),
     };
 
 namespace
@@ -1326,6 +1402,39 @@ button* picker_networking_buttons()
 int picker_networking_button_count()
 {
     return static_cast<int>(pks().networking_buttons.size());
+}
+
+button* picker_teamsmenu_buttons()
+{
+    reset_mutable_button_layout(pks().teamsmenu_buttons, k_teamsmenu_buttons);
+    return pks().teamsmenu_buttons.data();
+}
+
+int picker_teamsmenu_button_count()
+{
+    return static_cast<int>(pks().teamsmenu_buttons.size());
+}
+
+button* picker_viewscenario_buttons()
+{
+    reset_mutable_button_layout(pks().viewscenario_buttons, k_viewscenario_buttons);
+    return pks().viewscenario_buttons.data();
+}
+
+int picker_viewscenario_button_count()
+{
+    return static_cast<int>(pks().viewscenario_buttons.size());
+}
+
+button* picker_scenariomenu_buttons()
+{
+    reset_mutable_button_layout(pks().scenariomenu_buttons, k_scenariomenu_buttons);
+    return pks().scenariomenu_buttons.data();
+}
+
+int picker_scenariomenu_button_count()
+{
+    return static_cast<int>(pks().scenariomenu_buttons.size());
 }
 
 
@@ -2193,6 +2302,161 @@ Sint32 change_allied()
    //buffers: allbuttons[7]->vdisplay();
    //buffers: myscreen->buffer_to_screen(0, 0, 320, 200);
 
+   return MENU_OK;
+}
+
+// Refresh a TEAMS-subscreen settings button's label in both the live vbutton
+// array and the mutable descriptor row that backs later redraws.
+static void refresh_teamsmenu_button_label(int button_index,
+                                           const std::string& label)
+{
+   if (og::runtime::current_session->allbuttons_[button_index] != nullptr)
+       og::runtime::current_session->allbuttons_[button_index]->label = label;
+   if (static_cast<int>(pks().teamsmenu_buttons.size()) > button_index)
+       pks().teamsmenu_buttons[button_index].label = label;
+}
+
+Sint32 change_ctf_teams()
+{
+   SaveData& save = og::runtime::current_session->myscreen_->save_data;
+   og::ui::cycle_ctf_team_count(save);
+
+   refresh_teamsmenu_button_label(kTeamsMenuCtfTeamsIndex,
+                                  og::ui::format_ctf_teams_label(save));
+
+   picker_lobby_sync_settings_from_save();
+
+   return MENU_OK;
+}
+
+Sint32 change_ctf_caps()
+{
+   SaveData& save = og::runtime::current_session->myscreen_->save_data;
+   og::ui::cycle_ctf_capture_limit(save);
+
+   refresh_teamsmenu_button_label(kTeamsMenuCtfCapsIndex,
+                                  og::ui::format_ctf_caps_label(save));
+
+   picker_lobby_sync_settings_from_save();
+
+   return MENU_OK;
+}
+
+Sint32 change_ctf_troops()
+{
+   SaveData& save = og::runtime::current_session->myscreen_->save_data;
+   og::ui::toggle_ctf_scenario_troops(save);
+
+   refresh_teamsmenu_button_label(kTeamsMenuCtfTroopsIndex,
+                                  og::ui::format_ctf_troops_label(save));
+
+   picker_lobby_sync_settings_from_save();
+
+   return MENU_OK;
+}
+
+Sint32 teams_join_team(Sint32 team)
+{
+   if (team < 0 || team >= MAX_PLAYERS)
+       return MENU_OK;
+
+   SaveData& save = og::runtime::current_session->myscreen_->save_data;
+   if (!picker_lobby_is_networked() &&
+       !og::ui::team_has_members(save, static_cast<short>(team)))
+   {
+       popup_dialog("TEAMS", "NO HEROES ON\nTHIS TEAM");
+       return MENU_OK;
+   }
+
+   if (!picker_lobby_request_team_change(static_cast<short>(team)))
+       popup_dialog("TEAMS", "TEAM TAKEN");
+
+   return MENU_OK;
+}
+
+// Advance the TEAMS subscreen's selected roster slot to the next occupied
+// slot in `whichway` (+1/-1), wrapping. Returns the new slot, or -1 when the
+// roster is empty.
+static int advance_teams_menu_guy_slot(const SaveData& save, int whichway)
+{
+   if (save.team_size <= 0)
+       return -1;
+
+   const int slot_count = static_cast<int>(save.team_list.size());
+   int slot = std::clamp(pks().teams_menu_guy_slot, 0, slot_count - 1);
+   for (int step = 0; step < slot_count; ++step)
+   {
+       slot = ((slot + whichway) % slot_count + slot_count) % slot_count;
+       if (save.team_list[slot])
+           return slot;
+   }
+   return -1;
+}
+
+// The selected slot, normalized onto an occupied roster slot (-1 when empty).
+int teams_menu_selected_guy_slot()
+{
+   const SaveData& save = og::runtime::current_session->myscreen_->save_data;
+   if (save.team_size <= 0)
+       return -1;
+
+   const int slot_count = static_cast<int>(save.team_list.size());
+   const int slot = std::clamp(pks().teams_menu_guy_slot, 0, slot_count - 1);
+   if (save.team_list[slot])
+       return slot;
+   return advance_teams_menu_guy_slot(save, 1);
+}
+
+Sint32 teams_cycle_guy(Sint32 whichway)
+{
+   const SaveData& save = og::runtime::current_session->myscreen_->save_data;
+   const int slot = advance_teams_menu_guy_slot(save, whichway >= 0 ? 1 : -1);
+   if (slot >= 0)
+       pks().teams_menu_guy_slot = slot;
+   return MENU_OK;
+}
+
+Sint32 teams_cycle_guy_team(Sint32 whichway)
+{
+   // Per-character moves are a local-session surface: networked lobbies stamp
+   // every slot to the owning player's team (the button is hidden there).
+   if (picker_lobby_is_networked())
+       return MENU_OK;
+
+   SaveData& save = og::runtime::current_session->myscreen_->save_data;
+   const int slot = teams_menu_selected_guy_slot();
+   if (slot < 0)
+       return MENU_OK;
+   if (!picker_lobby_save_slot_editable(slot))
+   {
+       popup_dialog("TEAMS", "LOCKED");
+       return MENU_OK;
+   }
+
+   pks().teams_menu_guy_slot = slot;
+   if (og::ui::cycle_guy_team(save, slot, static_cast<int>(whichway)) >= 0)
+       picker_lobby_sync_roster_from_save();
+
+   return MENU_OK;
+}
+
+Sint32 teams_toggle_ready()
+{
+   const bool ready = !picker_lobby_local_ready();
+   (void)picker_lobby_set_ready(ready);
+   refresh_teamsmenu_button_label(kTeamsMenuReadyIndex,
+                                  ready ? "UNREADY" : "READY");
+   return MENU_OK;
+}
+
+// TEAMS per-team member pager: advance the team's detail slice. The frame
+// loop (compute_teams_menu_state) wraps the raw counter onto the current
+// page count, so a shrinking roster can never strand the page out of range.
+Sint32 teams_page_flip(Sint32 team)
+{
+   if (team < 0 || team >= 4)
+       return MENU_OK;
+   pks().teams_menu_team_page[static_cast<std::size_t>(team)] += 1;
    return MENU_OK;
 }
 

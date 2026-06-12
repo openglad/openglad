@@ -12,6 +12,7 @@
 #include <openglad/platform/curses/glyph_map.h>
 
 #include <openglad/core/constants.h>
+#include <openglad/core/ctf_constants.h>
 #include <openglad/core/order.h>
 #include <openglad/core/terrain_types.h>
 
@@ -174,6 +175,12 @@ Glyph entity_glyph(Order order, int family, unsigned char team_num,
         return g;
     }
     case Order::Treasure:
+        // CTF entities tint by team: 'F' = flag (owning team), 'O' = control
+        // point (current owner).
+        if (family == FAMILY_FLAG)
+            return Glyph{U'F', 'F', team_color(team_num), true, false};
+        if (family == FAMILY_CTF_POINT)
+            return Glyph{U'O', 'O', team_color(team_num), true, false};
         return treasure_glyph(family);
     case Order::Weapon:
         return weapon_glyph(family);

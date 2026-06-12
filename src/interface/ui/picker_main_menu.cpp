@@ -229,6 +229,15 @@ bool picker_prepare_new_game_setup()
     
 	game->clear();
 
+    // Reset the save data so we have a fresh, new team. This happens BEFORE
+    // the intro: a new game always starts on the default campaign, so both
+    // the intro about to be shown and the mounted package must not be
+    // whatever campaign the previous session or match left selected.
+	og::ui::reset_for_new_game(game->save_data);
+	(void)og::ui::sync_campaign_mount_to_save(game->save_data);
+	og::runtime::current_session->current_guy_ = nullptr;
+    picker_lobby_initialize_from_save();
+
 	// Starting new game ..
 	release_mouse();
 	game->clearbuffer();
@@ -237,11 +246,6 @@ bool picker_prepare_new_game_setup()
 	game->refresh();
 	grab_mouse();
 	game->clear();
-
-    // Reset the save data so we have a fresh, new team
-	og::ui::reset_for_new_game(game->save_data);
-	og::runtime::current_session->current_guy_ = nullptr;
-    picker_lobby_initialize_from_save();
 	
 	// Clear the labeling counter
 	for (int i = 0; i < NUM_FAMILIES; i++)

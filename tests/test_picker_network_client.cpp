@@ -4098,3 +4098,174 @@ TEST(PickerNetworkClient, internal_helpers_cover_network_picker_paths)
         0,
         og::ui::detail::picker_lobby_network_testing_exercise_internal_helpers());
 }
+
+// Team choice + ready over a real host/join lobby: classic exclusivity
+// bounces the joiner off the host's team, switching the lobby to the CTF
+// campaign relaxes sharing so the same request lands, and the informational
+// ready flag round-trips into both peers' lobby_players().
+TEST(PickerNetworkClient, host_and_join_team_change_and_ready_round_trip)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& host_save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard host_save_guard(host_save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(host_save, 0, "Host");
+    g_start_game_requested = false;
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    host_client->initialize_from_save();
+    EXPECT_TRUE(host_client->is_networked_session());
+
+    og::runtime::GameSession::Config join_cfg;
+    join_cfg.create_display = false;
+    join_cfg.install_legacy_globals = false;
+    og::runtime::GameSession join_session(join_cfg);
+    prepare_single_member_network_save(
+        join_session.myscreen_->save_data, 1, "Joiner");
+
+    og::ui::PickerJoinGameOptions join_options;
+    join_options.mode = og::ui::PickerJoinMode::Direct;
+    join_options.direct_endpoint =
+        std::format("127.0.0.1:{}", host_options.port);
+    std::unique_ptr<og::ui::IPickerLobbyClient> join_client;
+    {
+        auto join_scope = join_session.activate();
+        join_client = og::ui::create_join_picker_lobby_client(join_options);
+        join_client->initialize_from_save();
+        EXPECT_TRUE(join_client->is_networked_session());
+    }
+
+    struct CleanupGuard
+    {
+        og::runtime::GameSession* join_session = nullptr;
+        og::ui::IPickerLobbyClient* host_client = nullptr;
+        og::ui::IPickerLobbyClient* join_client = nullptr;
+
+        ~CleanupGuard()
+        {
+            if (join_session != nullptr)
+            {
+                auto join_scope = join_session->activate();
+                if (join_client != nullptr)
+                    join_client->shutdown();
+            }
+            if (host_client != nullptr)
+                host_client->shutdown();
+        }
+    } cleanup;
+    cleanup.join_session = &join_session;
+    cleanup.host_client = host_client.get();
+    cleanup.join_client = join_client.get();
+
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        bool join_lobby_ready = false;
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+            join_lobby_ready = status_lines_contain_exact(
+                join_client->status_lines(), "Lobby: 2 players");
+        }
+        return status_lines_contain_exact(host_client->status_lines(),
+                                          "Lobby: 2 players") &&
+            join_lobby_ready;
+    })) << "host and join should converge on a two-player lobby";
+
+    // Classic campaign: one human per team — the joiner's request for the
+    // host's team must bounce and leave the joiner where it was.
+    {
+        auto join_scope = join_session.activate();
+        EXPECT_FALSE(join_client->request_team_change(0))
+            << "classic lobbies keep exclusive teams";
+        EXPECT_EQ(1, join_session.myscreen_->save_data.my_team);
+    }
+
+    // CTF campaign settings relax team sharing; the same request lands.
+    host_save.current_campaign = "org.openglad.ctf";
+    host_client->sync_settings_from_save();
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        bool join_sees_ctf = false;
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+            join_sees_ctf = join_session.myscreen_->save_data.current_campaign ==
+                "org.openglad.ctf";
+        }
+        return join_sees_ctf;
+    })) << "joiner should receive the CTF campaign settings";
+
+    {
+        auto join_scope = join_session.activate();
+        EXPECT_TRUE(join_client->request_team_change(0))
+            << "CTF lobbies allow shared teams";
+        EXPECT_EQ(0, join_session.myscreen_->save_data.my_team);
+    }
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        const auto players = host_client->lobby_players();
+        if (players.size() != 2u)
+            return false;
+        return players[0].team == 0 && players[1].team == 0;
+    })) << "host should see both players sharing team 0";
+
+    // Ready round trip: the joiner readies up, the host sees the tag (and
+    // its own flag stays down until it toggles too). The joiner's send needs
+    // the host to pump its LobbyServer, so converge with both sides polling.
+    {
+        auto join_scope = join_session.activate();
+        EXPECT_FALSE(join_client->local_ready());
+        (void)join_client->set_ready(true);
+    }
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+        }
+        for (const og::sim::LobbyPlayer& player : host_client->lobby_players())
+        {
+            if (!player.is_host && player.ready)
+                return true;
+        }
+        return false;
+    })) << "host should see the joiner's ready tag";
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        bool join_ready = false;
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+            join_ready = join_client->local_ready();
+        }
+        return join_ready;
+    })) << "the ready echo should land on the joiner too";
+    EXPECT_FALSE(host_client->local_ready());
+
+    EXPECT_TRUE(host_client->set_ready(true));
+    ASSERT_TRUE(wait_until([&] {
+        bool join_sees_host_ready = false;
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+            for (const og::sim::LobbyPlayer& player :
+                 join_client->lobby_players())
+            {
+                if (player.is_host && player.ready)
+                    join_sees_host_ready = true;
+            }
+        }
+        return join_sees_host_ready;
+    })) << "joiner should see the host's ready tag";
+
+    {
+        auto join_scope = join_session.activate();
+        join_client->shutdown();
+    }
+    host_client->shutdown();
+    cleanup.host_client = nullptr;
+    cleanup.join_client = nullptr;
+}

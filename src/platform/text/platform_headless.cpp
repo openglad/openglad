@@ -115,6 +115,7 @@ std::string get_asset_path()
 #include <openglad/interface/platform_bridge.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/gloader.h>
+#include <openglad/resources/gloader_ctf.h>
 
 // Safe no-op: view controls are an SDL render concern; headless has no views.
 void headless_clear_stale_view_controls(LevelRuntimeData*) {}
@@ -169,7 +170,12 @@ EntityFactory headless_create_entity_factory()
 
 loader* headless_entity_loader()
 {
-    static auto game_loader = std::make_unique<loader>(headless_create_entity_factory());
+    static auto game_loader = [] {
+        auto entity_loader =
+            std::make_unique<loader>(headless_create_entity_factory());
+        register_ctf_loader_entries(*entity_loader);
+        return entity_loader;
+    }();
     return game_loader.get();
 }
 

@@ -14,7 +14,7 @@ class GameWorld;
 
 namespace og::sim {
 
-inline constexpr std::uint8_t kReplayFormatVersion = 4;
+inline constexpr std::uint8_t kReplayFormatVersion = 6;
 inline constexpr std::size_t kReplayHeaderSize = 32;
 
 enum class ReplayIoError : std::uint8_t {

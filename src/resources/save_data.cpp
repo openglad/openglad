@@ -174,6 +174,9 @@ bool SaveData::load(const std::string& filename)
 	//   2-bytes Number of level indices in list
 	//   List of n level indices
 	//     2-bytes Level index
+	// 2-bytes CTF team count                   // Version 10+
+	// 2-bytes CTF capture limit (0 = map/default)   // Version 10+
+	// 2-bytes CTF respawn ticks (0 = default)  // Version 10+
 
     Log("Loading save: {}\n", filename);
 	std::string temp_filename = std::format("{}.gtl", filename); // gladiator team list
@@ -451,6 +454,38 @@ bool SaveData::load(const std::string& filename)
         }
     }
 
+    // Versions 10+ append the CTF match settings
+    if (temp_version >= 10)
+    {
+        std::int16_t temp_ctf_teams = 2;
+        std::int16_t temp_ctf_caps = 0;
+        std::int16_t temp_ctf_respawn = 0;
+        READ_OR_FAIL(&temp_ctf_teams, 2, 1);
+        READ_OR_FAIL(&temp_ctf_caps, 2, 1);
+        READ_OR_FAIL(&temp_ctf_respawn, 2, 1);
+        ctf_team_count = temp_ctf_teams;
+        ctf_capture_limit = temp_ctf_caps;
+        ctf_respawn_ticks = temp_ctf_respawn;
+    }
+    else
+    {
+        ctf_team_count = 0; // Auto
+        ctf_capture_limit = 0;
+        ctf_respawn_ticks = 0;
+    }
+
+    // Versions 11+ append the CTF scenario-troops strip flag
+    if (temp_version >= 11)
+    {
+        std::int16_t temp_ctf_strip = 0;
+        READ_OR_FAIL(&temp_ctf_strip, 2, 1);
+        ctf_strip_scenario_troops = temp_ctf_strip;
+    }
+    else
+    {
+        ctf_strip_scenario_troops = 0; // keep authored troops
+    }
+
 	Log("Loading campaign: {}\n", current_campaign);
     int current_level = load_campaign(current_campaign, current_levels);
     if(current_level < 0)
@@ -591,7 +626,7 @@ bool SaveData::save(const std::string& filename)
 	std::fill_n(temp_campaign, 41, '\0');
 
 	char temptext[10] = "GTL";
-	std::uint8_t temp_version = 9;
+	std::uint8_t temp_version = 11;
 
 	std::uint32_t newcash = totalcash;
 	std::uint32_t newscore = totalscore;
@@ -662,6 +697,9 @@ bool SaveData::save(const std::string& filename)
 	//   2-bytes Number of level indices in list
 	//   List of n level indices
 	//     2-bytes Level index
+	// 2-bytes CTF team count                   // Version 10+
+	// 2-bytes CTF capture limit (0 = map/default)   // Version 10+
+	// 2-bytes CTF respawn ticks (0 = default)  // Version 10+
 
 	//strcpy(temp_filename, scen_directory);
 	Log("Saving save: {}\n", filename);
@@ -827,6 +865,18 @@ bool SaveData::save(const std::string& filename)
 	            WRITE_OR_FAIL(&index, 2, 1);
 	        }
 	    }
+
+	// Versions 10+ append the CTF match settings
+	std::int16_t temp_ctf_teams = ctf_team_count;
+	std::int16_t temp_ctf_caps = ctf_capture_limit;
+	std::int16_t temp_ctf_respawn = ctf_respawn_ticks;
+	WRITE_OR_FAIL(&temp_ctf_teams, 2, 1);
+	WRITE_OR_FAIL(&temp_ctf_caps, 2, 1);
+	WRITE_OR_FAIL(&temp_ctf_respawn, 2, 1);
+
+	// Versions 11+ append the CTF scenario-troops strip flag
+	std::int16_t temp_ctf_strip = ctf_strip_scenario_troops;
+	WRITE_OR_FAIL(&temp_ctf_strip, 2, 1);
 
     // unique_ptr auto-closes outfile
 

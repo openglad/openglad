@@ -225,6 +225,12 @@ void replace_loaded_world_state(LevelRuntimeData* level, GameWorld& loaded_world
               std::begin(dst.m_score));
     dst.my_team = loaded_world.my_team;
     dst.allied_mode = loaded_world.allied_mode;
+    dst.ctf_requested_team_count = loaded_world.ctf_requested_team_count;
+    dst.ctf_requested_capture_limit = loaded_world.ctf_requested_capture_limit;
+    dst.ctf_requested_respawn_ticks = loaded_world.ctf_requested_respawn_ticks;
+    dst.ctf_requested_strip_scenario_troops =
+        loaded_world.ctf_requested_strip_scenario_troops;
+    dst.ctf = std::move(loaded_world.ctf);
     dst.current_scenario = loaded_world.current_scenario;
     dst.completed_levels = std::move(loaded_world.completed_levels);
     dst.move_entities_from(loaded_world);
@@ -651,6 +657,12 @@ void LevelRuntimeData::attach_world(GameWorld* world)
                   std::begin(next_world->m_score));
         next_world->my_team = old_world->my_team;
         next_world->allied_mode = old_world->allied_mode;
+        next_world->ctf_requested_team_count = old_world->ctf_requested_team_count;
+        next_world->ctf_requested_capture_limit = old_world->ctf_requested_capture_limit;
+        next_world->ctf_requested_respawn_ticks = old_world->ctf_requested_respawn_ticks;
+        next_world->ctf_requested_strip_scenario_troops =
+            old_world->ctf_requested_strip_scenario_troops;
+        next_world->ctf = std::move(old_world->ctf);
         next_world->current_scenario = old_world->current_scenario;
         next_world->completed_levels = old_world->completed_levels;
         next_world->move_entities_from(*old_world);
@@ -669,6 +681,7 @@ void LevelRuntimeData::attach_world(GameWorld* world)
         old_world->pixmaxy = 0;
         old_world->withdraw_requested = false;
         old_world->withdraw_level = -1;
+        old_world->ctf = og::sim::CtfState{};
         old_world->mysmoother.reset();
         if (!old_world->myobmap)
             old_world->myobmap = std::make_unique<obmap>();

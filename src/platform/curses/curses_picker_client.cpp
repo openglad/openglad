@@ -24,7 +24,9 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
+#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/platform/curses/curses_game_runtime.h>
@@ -32,8 +34,10 @@
 #include <openglad/platform/curses/curses_network.h>
 #include <openglad/platform/curses/curses_renderer.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/save_data.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <format>
 #include <list>
@@ -253,7 +257,15 @@ private:
         term_.put_str(row++, 0, title, kTitleColor, Color::Default, true);
         ++row;
         const int footer = term_.rows() - 1;
-        for (int i = 0; i < static_cast<int>(entries.size()); ++i) {
+        // Scroll-follow: when the list outgrows the terminal (e.g. the Teams
+        // roster with a full 24-member team), start drawing from an offset
+        // that keeps the cursor row visible instead of truncating the tail.
+        const int capacity = footer - row;
+        const int total = static_cast<int>(entries.size());
+        int first = 0;
+        if (capacity > 0 && total > capacity && cursor >= capacity)
+            first = std::min(cursor - capacity + 1, total - capacity);
+        for (int i = first; i < total; ++i) {
             if (row >= footer)
                 break;
             const ListEntry& e = entries[static_cast<size_t>(i)];
@@ -289,6 +301,12 @@ std::string menu_item_label(const PickerMenuItem& item, const TextPickerConfig& 
         return std::format("{} ({})", item.label, config.campaign);
     if (item.command == PickerMenuCommand::ToggleAlliedMode)
         return og::ui::format_allied_mode_label(save);
+    if (item.command == PickerMenuCommand::CycleCtfTeamCount)
+        return og::ui::format_ctf_teams_label(save);
+    if (item.command == PickerMenuCommand::CycleCtfCaptureLimit)
+        return og::ui::format_ctf_caps_label(save);
+    if (item.command == PickerMenuCommand::ToggleCtfScenarioTroops)
+        return og::ui::format_ctf_troops_label(save);
     return std::string(item.label);
 }
 
@@ -474,6 +492,105 @@ void train_team(Menu& menu, SaveData& save)
     }
 }
 
+// Roster grouped by team. "Play on {COLOR}" re-seats P1 (my_team); Enter on a
+// character cycles its team (local sessions; the curses picker holds no live
+// lobby, networking negotiates teams in the lobby screen instead).
+void teams_screen(Menu& menu, SaveData& save)
+{
+    int cursor = 0;
+    for (;;) {
+        struct RowAction {
+            short play_team = -1;
+            int cycle_slot = -1;
+        };
+        std::vector<ListEntry> entries;
+        std::vector<RowAction> actions;
+        const std::vector<short> seats = og::ui::derive_local_seat_teams(save);
+
+        // Only seats below numplayers materialize in-game (game.cpp
+        // truncates the derivation at numviews); never tag the rest.
+        const size_t seat_limit = std::min<size_t>(
+            seats.size(), static_cast<size_t>(save.numplayers));
+
+        for (short t = 0; t < 4; ++t) {
+            std::string seat_tag;
+            for (size_t seat = 0; seat < seat_limit; ++seat) {
+                if (seats[seat] == t)
+                    seat_tag = std::format("(P{})", seat + 1);
+            }
+
+            int hero_count = 0;
+            std::vector<std::pair<int, std::string>> members;
+            for (int slot = 0; slot < MAX_TEAM_SIZE; ++slot) {
+                const auto& member = save.team_list[slot];
+                if (!member || member->teamnum != t)
+                    continue;
+                ++hero_count;
+                members.emplace_back(slot, std::format("    {} ({})",
+                    member->name,
+                    og::ui::family_display_name(member->family)));
+            }
+
+            // No world is loaded in the curses picker, so no map tags.
+            entries.push_back(ListEntry{og::ui::format_team_row_label(
+                t, hero_count, false, false, false, seat_tag), false});
+            actions.push_back(RowAction{});
+            if (hero_count > 0) {
+                entries.push_back(ListEntry{std::format("  Play on {}",
+                    og::sim::ctf_team_color_name(t)), true});
+                actions.push_back(RowAction{.play_team = t});
+            }
+            for (auto& [slot, label] : members) {
+                entries.push_back(ListEntry{std::move(label), true});
+                actions.push_back(RowAction{.cycle_slot = slot});
+            }
+        }
+
+        const int choice = menu.choose("Teams", entries,
+            "Enter: play / cycle character team | Esc back", cursor);
+        if (choice < 0)
+            return;
+        cursor = choice;
+
+        const RowAction& action = actions[static_cast<size_t>(choice)];
+        if (action.play_team >= 0) {
+            if (!og::ui::set_preferred_team(save, action.play_team)) {
+                menu.show_text("Teams", {std::format("No heroes on {} team.",
+                    og::sim::ctf_team_color_name(action.play_team))});
+            }
+        } else if (action.cycle_slot >= 0) {
+            (void)og::ui::cycle_guy_team(save, action.cycle_slot, 1);
+        }
+    }
+}
+
+// Read-only roster report of the current level from a scratch headless load
+// (the same shared report the SDL VIEW LEVEL screen renders).
+void view_scenario(Menu& menu, const SaveData& save)
+{
+    if (get_mounted_campaign() != save.current_campaign) {
+        menu.show_text("View Scenario", {std::format(
+            "Campaign '{}' is not mounted.", save.current_campaign)});
+        return;
+    }
+
+    LevelRuntimeData scenario(save.scen_num, false,
+        &headless_level_data_hooks());
+    if (!scenario.load()) {
+        menu.show_text("View Scenario", {std::format(
+            "Could not load level {}.", static_cast<int>(save.scen_num))});
+        return;
+    }
+
+    const og::ui::ScenarioRosterReport report =
+        og::ui::build_scenario_roster_report(scenario.world(), save);
+    std::vector<std::string> lines =
+        og::ui::format_scenario_report_lines(report);
+    lines.insert(lines.begin(), std::format("SCEN {}: {}",
+        static_cast<int>(save.scen_num), scenario.world().title));
+    menu.show_text("View Scenario", lines);
+}
+
 } // namespace
 
 // --- construction --------------------------------------------------------
@@ -603,6 +720,41 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
     case PickerMenuCommand::SetCampaign:
         (void)show_campaign_select();
         break;
+    case PickerMenuCommand::CycleCtfTeamCount:
+        if (!og::ui::is_ctf_campaign(save_data_)) {
+            menu.show_text("CTF Teams", {"CTF settings apply to CTF maps only."});
+            break;
+        }
+        og::ui::cycle_ctf_team_count(save_data_);
+        menu.show_text("CTF Teams", {og::ui::format_ctf_teams_label(save_data_)});
+        break;
+    case PickerMenuCommand::CycleCtfCaptureLimit:
+        if (!og::ui::is_ctf_campaign(save_data_)) {
+            menu.show_text("Capture Limit",
+                {"CTF settings apply to CTF maps only."});
+            break;
+        }
+        og::ui::cycle_ctf_capture_limit(save_data_);
+        menu.show_text("Capture Limit",
+            {og::ui::format_ctf_caps_label(save_data_)});
+        break;
+    case PickerMenuCommand::ToggleCtfScenarioTroops:
+        if (!og::ui::is_ctf_campaign(save_data_)) {
+            menu.show_text("Scenario Troops",
+                {"CTF settings apply to CTF maps only."});
+            break;
+        }
+        og::ui::toggle_ctf_scenario_troops(save_data_);
+        menu.show_text("Scenario Troops",
+            {og::ui::format_ctf_troops_label(save_data_)});
+        break;
+    case PickerMenuCommand::ViewScenario:
+        view_scenario(menu, save_data_);
+        break;
+    case PickerMenuCommand::Teams:
+        teams_screen(menu, save_data_);
+        config_.team_families = og::ui::collect_team_families(save_data_);
+        break;
     default:
         break;
     }
@@ -614,6 +766,12 @@ bool CursesPickerClient::prepare_new_game()
 {
     og::ui::reset_for_new_game(save_data_);
     og::ui::ensure_team_populated(save_data_);
+    // A new game always starts on the default campaign: drop any campaign a
+    // previously loaded save left in the session config (run_game copies
+    // config_.campaign back over the freshly reset save) and re-point the
+    // mount so the in-picker scenario viewer stays coherent.
+    config_.campaign = save_data_.current_campaign;
+    (void)og::ui::sync_campaign_mount_to_save(save_data_);
     config_.team_families = og::ui::collect_team_families(save_data_);
     return true;
 }
@@ -622,6 +780,7 @@ std::string CursesPickerClient::show_campaign_select()
 {
     Menu menu(term_, clock_);
     std::list<std::string> campaigns = list_campaigns();
+    og::ui::order_campaigns_default_first(campaigns);
     std::vector<std::string> ids(campaigns.begin(), campaigns.end());
 
     if (ids.empty()) {
@@ -646,6 +805,9 @@ std::string CursesPickerClient::show_campaign_select()
 
     config_.campaign = ids[static_cast<size_t>(choice)];
     save_data_.current_campaign = config_.campaign;
+    // The launch path self-heals the mount, but the in-picker scenario
+    // viewer reads the mounted package directly — follow the selection now.
+    (void)og::ui::sync_campaign_mount_to_save(save_data_);
     return config_.campaign;
 }
 
@@ -714,9 +876,12 @@ void CursesPickerClient::run_game()
         run_level_loop(*session, term_, clock_, input, renderer, LevelLoopOptions{});
 
     if (result.ended) {
+        // mission_verdict_line is CTF-aware: a CTF loss still ends with the
+        // classic WIN shape, so ending==0 alone must not claim victory. The
+        // rematch shape's "next level" is this same level — say so honestly.
         menu.show_text("Mission complete",
-            {result.ending == 0 ? "Victory!" : "Defeat.",
-             result.next_level >= 0
+            {mission_verdict_line(result),
+             (result.next_level >= 0 && !result.ctf_rematch)
                  ? std::format("Next level: {}", result.next_level)
                  : std::string("Returning to team build.")});
     }
@@ -841,8 +1006,9 @@ void CursesPickerClient::run_network_lobby(std::unique_ptr<CursesLobby> lobby)
     const GameRunResult result = run_curses_lobby(*lobby, term_, clock_);
     if (result.ended) {
         Menu menu(term_, clock_);
-        menu.show_text("Mission complete",
-            {result.ending == 0 ? "Victory!" : "Defeat."});
+        // CTF-aware verdict (see run_game): the local player's team vs the
+        // match winner decides, with a neutral fallback.
+        menu.show_text("Mission complete", {mission_verdict_line(result)});
     }
 }
 

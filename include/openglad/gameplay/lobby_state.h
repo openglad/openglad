@@ -1,5 +1,7 @@
 #pragma once
 
+#include <openglad/core/ctf_constants.h>
+
 #include <cstdint>
 #include <string>
 #include <type_traits>
@@ -68,9 +70,21 @@ struct LobbySettings {
     std::int16_t scenario_id = 0;
     std::int16_t difficulty = 0;
     std::int16_t allied_mode = 0;
+    // CTF match settings; only TYPE_CTF maps consume them (0 = map/default).
+    std::int16_t ctf_team_count = 0; // 0 = Auto
+    std::int16_t ctf_capture_limit = 0;
+    std::int16_t ctf_respawn_ticks = 0;
+    std::int16_t ctf_strip_scenario_troops = 0; // 0 = keep authored troops
 
     bool operator==(const LobbySettings&) const = default;
 };
+
+// CTF lobbies let multiple humans share a team (the mode has respawns and
+// per-team flags); classic lobbies keep one human per team.
+inline bool lobby_settings_allow_shared_teams(const LobbySettings& settings) noexcept
+{
+    return settings.campaign_id == og::kCtfCampaignId;
+}
 
 struct LobbyState {
     LobbySettings settings;

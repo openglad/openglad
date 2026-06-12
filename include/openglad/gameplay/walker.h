@@ -106,6 +106,7 @@ class walker : public og::sim::SimEntity
 			bool walkstep(short x, short y) { return walkstep(static_cast<std::int32_t>(x), static_cast<std::int32_t>(y)); }
 			virtual bool walk(float x, float y);
 		void find_path_to_foe();
+		void find_path_to_point(short x, short y);
 		void follow_path_to_foe();
 		bool init_fire();
 		bool init_fire(short xdir, short ydir);
@@ -213,6 +214,22 @@ class walker : public og::sim::SimEntity
 			regen_delay_ = value;
 			mark_dirty(og::dirty::BIT_REGEN_DELAY);
 		}
+		// Server-only transient (like path_to_foe): the world tick on which
+		// this walker last began a SELF-teleport — walker::teleport /
+		// teleport_ranged, i.e. spell blinks and marker beacons; map
+		// teleporter pads never set it. Stamped the moment the teleport
+		// begins (before any destination probing) and consumed by the CTF
+		// phase of the same tick; always stale at tick boundaries, so
+		// snapshots and replays are unaffected. Never replicated: no dirty
+		// bit, not in EntitySnapshot.
+		[[nodiscard]] std::uint32_t last_self_teleport_tick() const noexcept
+		{
+			return last_self_teleport_tick_;
+		}
+		void set_last_self_teleport_tick(std::uint32_t tick) noexcept
+		{
+			last_self_teleport_tick_ = tick;
+		}
 
 		// TODO: Move this to screen class so it doesn't get overlapped by other walkers drawing
 		class DamageNumber
@@ -305,6 +322,7 @@ class walker : public og::sim::SimEntity
 		std::uint32_t leader_id_ = 0;
 		std::uint32_t owner_id_ = 0;
 		std::uint32_t collide_ob_id_ = 0;
+		std::uint32_t last_self_teleport_tick_ = 0;
 		walker* foe_ = nullptr;
 		walker* leader_ = nullptr;
 		walker* owner_ = nullptr;

@@ -37,6 +37,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -945,6 +946,10 @@ og::sim::LobbySaveDataEquivalent build_save_data_equivalent_from_state(
         state.settings.scenario_id > 0 ? state.settings.scenario_id : 1;
     equivalent.numplayers = spectator_mode ? 0u : 1u;
     equivalent.allied_mode = state.settings.allied_mode;
+    equivalent.ctf_team_count = state.settings.ctf_team_count;
+    equivalent.ctf_capture_limit = state.settings.ctf_capture_limit;
+    equivalent.ctf_respawn_ticks = state.settings.ctf_respawn_ticks;
+    equivalent.ctf_strip_scenario_troops = state.settings.ctf_strip_scenario_troops;
 
     for (const AppliedLobbySlot& slot : collect_applied_lobby_slots(state))
     {
@@ -993,6 +998,10 @@ void apply_lobby_state_to_save(const og::sim::LobbyState& state,
         ? state.settings.scenario_id
         : 1;
     save.allied_mode = state.settings.allied_mode;
+    save.ctf_team_count = state.settings.ctf_team_count;
+    save.ctf_capture_limit = state.settings.ctf_capture_limit;
+    save.ctf_respawn_ticks = state.settings.ctf_respawn_ticks;
+    save.ctf_strip_scenario_troops = state.settings.ctf_strip_scenario_troops;
     save.numplayers = static_cast<unsigned char>(spectator_mode ? 0 : 1);
     save.my_team = local_team;
 
@@ -1042,6 +1051,27 @@ og::sim::LobbyMessage make_join_message(const SaveData& save,
     return message;
 }
 
+og::sim::LobbyMessage make_team_change_message(std::uint8_t player_index,
+                                               short team)
+{
+    og::sim::LobbyMessage message;
+    message.payload = og::sim::LobbyTeamChangeMessage{
+        .player_index = player_index,
+        .team = team,
+    };
+    return message;
+}
+
+og::sim::LobbyMessage make_ready_message(std::uint8_t player_index, bool ready)
+{
+    og::sim::LobbyMessage message;
+    message.payload = og::sim::LobbyReadyMessage{
+        .player_index = player_index,
+        .ready = ready,
+    };
+    return message;
+}
+
 og::sim::LobbyMessage make_settings_message(const SaveData& save)
 {
     og::sim::LobbySettings settings;
@@ -1053,6 +1083,10 @@ og::sim::LobbyMessage make_settings_message(const SaveData& save)
                 ? og::runtime::current_session->current_difficulty_
                 : 1);
     settings.allied_mode = save.allied_mode;
+    settings.ctf_team_count = save.ctf_team_count;
+    settings.ctf_capture_limit = save.ctf_capture_limit;
+    settings.ctf_respawn_ticks = save.ctf_respawn_ticks;
+    settings.ctf_strip_scenario_troops = save.ctf_strip_scenario_troops;
 
     og::sim::LobbyMessage message;
     message.payload = og::sim::LobbySettingsChangeMessage{
@@ -1997,6 +2031,53 @@ public:
             !remote_owned_save_slots_[slot_index];
     }
 
+    bool request_team_change(short team) override
+    {
+        if (!local_client_transport_)
+            return false;
+
+        og::ui::detail::send_lobby_message(
+            *local_client_transport_,
+            local_client_transport_->local_peer_id(),
+            og::ui::detail::make_team_change_message(local_player_index(), team));
+        poll_and_apply();
+        return local_team_ == team;
+    }
+
+    bool set_ready(bool ready) override
+    {
+        if (!local_client_transport_)
+            return false;
+
+        og::ui::detail::send_lobby_message(
+            *local_client_transport_,
+            local_client_transport_->local_peer_id(),
+            og::ui::detail::make_ready_message(local_player_index(), ready));
+        poll_and_apply();
+        return local_ready() == ready;
+    }
+
+    [[nodiscard]] bool local_ready() const noexcept override
+    {
+        if (!state_.has_value())
+            return false;
+        const og::sim::LobbyPlayer* const local_player =
+            og::ui::detail::find_local_player(*state_, player_name_);
+        return local_player != nullptr && local_player->ready;
+    }
+
+    [[nodiscard]] std::vector<og::sim::LobbyPlayer> lobby_players() const override
+    {
+        if (!state_.has_value())
+            return {};
+        return state_->players;
+    }
+
+    [[nodiscard]] bool is_networked_session() const noexcept override
+    {
+        return true;
+    }
+
     bool install_gameplay_runtime(og::runtime::GameSession& session,
                                   screen& gameplay_screen)
     {
@@ -2057,6 +2138,17 @@ public:
     }
 
 private:
+    [[nodiscard]] std::uint8_t local_player_index() const
+    {
+        // The LobbyServer attributes messages to the SENDING PEER; the index
+        // is informational, so an unknown index (0xff) is harmless.
+        if (!state_.has_value())
+            return 0xffu;
+        const og::sim::LobbyPlayer* const local_player =
+            og::ui::detail::find_local_player(*state_, player_name_);
+        return local_player != nullptr ? local_player->player_index : 0xffu;
+    }
+
     void send_settings_from_save()
     {
         if (!local_client_transport_)
@@ -2417,6 +2509,74 @@ public:
             !remote_owned_save_slots_[slot_index];
     }
 
+    bool request_team_change(short team) override
+    {
+        if (!transport_ || transport_->connected_peers().empty())
+            return false;
+
+        const std::uint64_t states_before = lobby_states_received_;
+        og::ui::detail::send_lobby_message(
+            *transport_,
+            server_peer_id_,
+            og::ui::detail::make_team_change_message(local_player_index(), team));
+        // The remote round trip is asynchronous, but the server answers every
+        // request (denials get an explicit state echo): exit on the first
+        // received state instead of burning the full window on a bounce.
+        for (int attempt = 0; attempt < 50; ++attempt)
+        {
+            poll_and_apply();
+            if (local_team_ == team)
+                return true;
+            if (lobby_states_received_ != states_before)
+                return false;
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        return false;
+    }
+
+    bool set_ready(bool ready) override
+    {
+        if (!transport_ || transport_->connected_peers().empty())
+            return false;
+
+        const std::uint64_t states_before = lobby_states_received_;
+        og::ui::detail::send_lobby_message(
+            *transport_,
+            server_peer_id_,
+            og::ui::detail::make_ready_message(local_player_index(), ready));
+        for (int attempt = 0; attempt < 50; ++attempt)
+        {
+            poll_and_apply();
+            if (local_ready() == ready)
+                return true;
+            if (lobby_states_received_ != states_before)
+                return local_ready() == ready;
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        return false;
+    }
+
+    [[nodiscard]] bool local_ready() const noexcept override
+    {
+        if (!state_.has_value())
+            return false;
+        const og::sim::LobbyPlayer* const local_player =
+            og::ui::detail::find_local_player(*state_, player_name_);
+        return local_player != nullptr && local_player->ready;
+    }
+
+    [[nodiscard]] std::vector<og::sim::LobbyPlayer> lobby_players() const override
+    {
+        if (!state_.has_value())
+            return {};
+        return state_->players;
+    }
+
+    [[nodiscard]] bool is_networked_session() const noexcept override
+    {
+        return true;
+    }
+
     bool install_gameplay_runtime(og::runtime::GameSession& session,
                                   screen& gameplay_screen)
     {
@@ -2482,6 +2642,16 @@ private:
         return og::ui::detail::local_player_is_host(*state_, player_name_);
     }
 
+    [[nodiscard]] std::uint8_t local_player_index() const
+    {
+        // Informational only: the LobbyServer keys on the sending peer.
+        if (!state_.has_value())
+            return 0xffu;
+        const og::sim::LobbyPlayer* const local_player =
+            og::ui::detail::find_local_player(*state_, player_name_);
+        return local_player != nullptr ? local_player->player_index : 0xffu;
+    }
+
     void send_settings_from_save()
     {
         if (!transport_ || !state_.has_value())
@@ -2527,6 +2697,7 @@ private:
         case og::sim::TypedReceivedMessageKind::LobbyState:
             if (message.lobby_state)
             {
+                ++lobby_states_received_;
                 state_ = *message.lobby_state;
                 if (const og::sim::LobbyPlayer* const local_player =
                         og::ui::detail::find_local_player(*state_, player_name_))
@@ -2646,6 +2817,9 @@ private:
     bool start_request_pending_ = false;
     bool join_message_sent_ = false;
     bool settings_dirty_ = false;
+    // Counts every authoritative LobbyState received; request windows use it
+    // to detect the server's denial echo without burning the full timeout.
+    std::uint64_t lobby_states_received_ = 0;
     std::optional<og::sim::LobbyPlayer> pending_local_player_;
     std::optional<og::ui::PickerLobbyGameStartConfig> pending_game_start_config_;
 };

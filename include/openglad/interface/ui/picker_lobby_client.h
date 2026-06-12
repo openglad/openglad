@@ -68,6 +68,36 @@ public:
         (void)slot_index;
         return true;
     }
+    // Ask the lobby to move THIS peer (all of its characters) to `team`.
+    // Local sessions validate roster membership and re-seat P1 (my_team);
+    // networked sessions send LobbyTeamChangeMessage for themselves. Returns
+    // true when the lobby landed on the requested team.
+    virtual bool request_team_change(short team)
+    {
+        (void)team;
+        return false;
+    }
+    // Networked-only informational ready flag (LobbyReadyMessage).
+    virtual bool set_ready(bool ready)
+    {
+        (void)ready;
+        return false;
+    }
+    [[nodiscard]] virtual bool local_ready() const noexcept
+    {
+        return false;
+    }
+    // The replicated lobby roster (local clients expose their synthetic
+    // per-seat players too). Empty before any state broadcast.
+    [[nodiscard]] virtual std::vector<og::sim::LobbyPlayer> lobby_players() const
+    {
+        return {};
+    }
+    // True only for genuine networked sessions (network host or join client).
+    [[nodiscard]] virtual bool is_networked_session() const noexcept
+    {
+        return false;
+    }
 };
 
 std::unique_ptr<IPickerLobbyClient> create_local_picker_lobby_client();
@@ -94,6 +124,11 @@ bool picker_lobby_start_request_pending();
 bool picker_lobby_has_game_start_config();
 std::vector<std::string> picker_lobby_status_lines();
 bool picker_lobby_host_controls_visible();
+bool picker_lobby_request_team_change(short team);
+bool picker_lobby_set_ready(bool ready);
+bool picker_lobby_local_ready();
+std::vector<og::sim::LobbyPlayer> picker_lobby_players();
+bool picker_lobby_is_networked();
 inline bool picker_lobby_save_slot_editable(int slot_index)
 {
     if (slot_index < 0)

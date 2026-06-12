@@ -73,6 +73,15 @@ bool walker::teleport()
 	std::int32_t newx = 0, newy = 0;
 	std::int32_t distance = 0;
 
+	// Stamp the self-teleport marker the moment the blink begins, BEFORE
+	// any destination probing: query_passable fires eat_me on whatever
+	// overlaps the probed spot, and consumers (the CTF flag rules) must be
+	// able to tell those probe-eats — and the blink itself — apart from
+	// real movement within this same tick. Server-only transient, stale at
+	// every tick boundary; nothing outside CTF reads it.
+	if (current_game != nullptr && current_game->world != nullptr)
+		set_last_self_teleport_tick(current_game->world->tick_count_);
+
 	// First check to see if we have a marker to go to
 	// NOTE: it must be a bit away from us ..
 	for(auto& uptr : current_game->world->oblist)
@@ -135,6 +144,11 @@ bool walker::teleport_ranged(std::int32_t range)
 {
 	std::int32_t newx = 0, newy = 0;
 	std::int32_t keep_going = 200; // maxtries
+
+	// Self-teleport marker, stamped before the destination probes below —
+	// see walker::teleport for the rationale.
+	if (current_game != nullptr && current_game->world != nullptr)
+		set_last_self_teleport_tick(current_game->world->tick_count_);
 
 	newx = static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(2 * range))) - range + xpos();
 	newy = static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(2 * range))) - range + ypos();

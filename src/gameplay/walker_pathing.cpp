@@ -41,6 +41,25 @@ void walker::find_path_to_foe()
     pathing->solve_for(this, start_state, end_state, path_to_foe, total_cost);
 }
 
+// Position-goal twin of find_path_to_foe: paths toward a fixed map point.
+// The result lands in path_to_foe so follow_path_to_foe consumes it as-is.
+void walker::find_path_to_point(short x, short y)
+{
+    if (current_game == nullptr)
+        return;
+
+    GameplayPathfindingState* pathing = ensure_pathfinding_state(*current_game);
+    if (pathing == nullptr)
+        return;
+
+    float total_cost = 0.0f;
+    const MicroPatherState start_state = MAKE_STATE(xpos(), ypos());
+    const MicroPatherState end_state = MAKE_STATE(x, y);
+
+    pathing->solve_for_point(this, x, y, start_state, end_state, path_to_foe,
+                             total_cost);
+}
+
 void walker::follow_path_to_foe()
 {
     while (!path_to_foe.empty())

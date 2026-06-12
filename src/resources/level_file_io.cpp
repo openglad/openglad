@@ -158,6 +158,7 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
     {
         world.type = 0;
     }
+    world.ctf = {};
 
     if (version >= 8)
         READ_OR_FAIL(&temp_par, 2, 1);

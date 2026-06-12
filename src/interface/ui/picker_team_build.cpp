@@ -38,9 +38,13 @@
 #include <openglad/interface/ui/level_picker.h>
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/menu_model.h>
+#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
+#include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/ui/picker_common.h>
+#include <openglad/resources/level_data_hooks.h>
+#include <openglad/core/test_trace.h>
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -177,10 +181,7 @@ static bool team_build_start_selected()
             og::ui::PickerMenuCommand::StartGame;
 }
 
-constexpr int kTeamBuildGoButtonIndex = 5;
-constexpr int kTeamBuildProgressButtonIndex = 7;
-constexpr int kTeamBuildSetLevelButtonIndex = 8;
-constexpr int kTeamBuildSetCampaignButtonIndex = 10;
+constexpr int kTeamBuildGoButtonIndex = kCreateMenuGoIndex;
 constexpr int kViewTeamGoButtonIndex = 0;
 
 void sync_button_hidden_state(const button* buttons, int button_index)
@@ -219,21 +220,79 @@ void ensure_highlighted_button_visible(const button* buttons,
     highlighted_button = 0;
 }
 
+// Nav must never link to a hidden button: route hire_troops/save_team/
+// networking around GO when it is hidden (and back through it when not).
+void picker_wire_team_build_nav(button* buttons,
+                                int count,
+                                bool host_controls_visible)
+{
+    if (buttons == nullptr || count < kCreateMenuButtonCount)
+        return;
+
+    if (host_controls_visible)
+    {
+        buttons[kCreateMenuHireIndex].nav.down = kCreateMenuGoIndex;
+        buttons[kCreateMenuSaveIndex].nav.right = kCreateMenuGoIndex;
+        buttons[kCreateMenuNetworkingIndex].nav.up = kCreateMenuGoIndex;
+    }
+    else
+    {
+        buttons[kCreateMenuHireIndex].nav.down = kCreateMenuNetworkingIndex;
+        buttons[kCreateMenuSaveIndex].nav.right = -1;
+        buttons[kCreateMenuNetworkingIndex].nav.up = kCreateMenuHireIndex;
+    }
+}
+
+// Rewire the always-visible VIEW LEVEL | TEAMS | PROGRESS row's up-links
+// around the host-gated SET CAMPAIGN / SET LEVEL column.
+void picker_wire_scenario_menu_nav(button* buttons,
+                                   int count,
+                                   bool host_controls_visible)
+{
+    if (buttons == nullptr || count < kScenarioMenuButtonCount)
+        return;
+
+    const int row_up =
+        host_controls_visible ? kScenarioMenuSetLevelIndex : -1;
+    buttons[kScenarioMenuViewScenarioIndex].nav.up = row_up;
+    buttons[kScenarioMenuTeamsIndex].nav.up = row_up;
+    buttons[kScenarioMenuProgressIndex].nav.up = row_up;
+}
+
 void sync_team_build_host_control_visibility(button* buttons,
                                              int num_buttons,
                                              int& highlighted_button)
 {
-    if (buttons == nullptr || num_buttons <= kTeamBuildSetCampaignButtonIndex)
+    if (buttons == nullptr || num_buttons < kCreateMenuButtonCount)
         return;
 
+    // GO is the only host-gated team-build button now: SET CAMPAIGN and
+    // SET LEVEL moved into the SCENARIO subscreen (with their own gating),
+    // and the CTF match settings live inside the TEAMS subscreen.
     const bool host_controls_visible = picker_lobby_host_controls_visible();
     buttons[kTeamBuildGoButtonIndex].hidden = !host_controls_visible;
-    buttons[kTeamBuildSetLevelButtonIndex].hidden = !host_controls_visible;
-    buttons[kTeamBuildSetCampaignButtonIndex].hidden = !host_controls_visible;
-
     sync_button_hidden_state(buttons, kTeamBuildGoButtonIndex);
-    sync_button_hidden_state(buttons, kTeamBuildSetLevelButtonIndex);
-    sync_button_hidden_state(buttons, kTeamBuildSetCampaignButtonIndex);
+    picker_wire_team_build_nav(buttons, num_buttons, host_controls_visible);
+
+    ensure_highlighted_button_visible(buttons, num_buttons, highlighted_button);
+}
+
+void sync_scenario_menu_host_control_visibility(button* buttons,
+                                                int num_buttons,
+                                                int& highlighted_button)
+{
+    if (buttons == nullptr || num_buttons < kScenarioMenuButtonCount)
+        return;
+
+    // SET CAMPAIGN / SET LEVEL keep their host-only visibility inside the
+    // subscreen; VIEW LEVEL / TEAMS / PROGRESS stay visible for everyone.
+    const bool host_controls_visible = picker_lobby_host_controls_visible();
+    buttons[kScenarioMenuSetCampaignIndex].hidden = !host_controls_visible;
+    buttons[kScenarioMenuSetLevelIndex].hidden = !host_controls_visible;
+    sync_button_hidden_state(buttons, kScenarioMenuSetCampaignIndex);
+    sync_button_hidden_state(buttons, kScenarioMenuSetLevelIndex);
+    picker_wire_scenario_menu_nav(buttons, num_buttons, host_controls_visible);
+
     ensure_highlighted_button_visible(buttons, num_buttons, highlighted_button);
 }
 
@@ -377,44 +436,22 @@ Sint32 create_team_menu(Sint32 arg1)
             mytext.write_xy(12, status_y, WHITE, "%s", line.c_str());
         }
         
-        // Level name
-        int len = static_cast<int>(og::runtime::current_session->myscreen_->world().title.size());
-        og::runtime::current_session->myscreen_->draw_rect_filled(
-            buttons[kTeamBuildProgressButtonIndex].x +
-                buttons[kTeamBuildProgressButtonIndex].sizex - 6 * len - 2,
-            buttons[kTeamBuildProgressButtonIndex].y - 8 - 1,
-            6 * len + 4,
-            8,
-            PURE_BLACK,
-            150);
-        mytext.write_xy(
-            buttons[kTeamBuildProgressButtonIndex].x +
-                buttons[kTeamBuildProgressButtonIndex].sizex - 6 * len,
-            buttons[kTeamBuildProgressButtonIndex].y - 8,
-            WHITE,
-            "%s",
-            og::runtime::current_session->myscreen_->world().title.c_str());
-        // Campaign name
-        len = static_cast<int>(og::runtime::current_session->myscreen_->save_data.current_campaign.size());
-        og::runtime::current_session->myscreen_->draw_rect_filled(
-            buttons[kTeamBuildSetLevelButtonIndex].x +
-                buttons[kTeamBuildSetLevelButtonIndex].sizex - 6 * len - 2,
-            buttons[kTeamBuildSetLevelButtonIndex].y - 8 - 1,
-            6 * len + 4,
-            8,
-            PURE_BLACK,
-            150);
-        mytext.write_xy(
-            buttons[kTeamBuildSetLevelButtonIndex].x +
-                buttons[kTeamBuildSetLevelButtonIndex].sizex -
-                6 * static_cast<int>(
-                        og::runtime::current_session
-                            ->myscreen_->save_data.current_campaign.size()),
-            buttons[kTeamBuildSetLevelButtonIndex].y - 8,
-            WHITE,
-            "%s",
-            og::runtime::current_session->myscreen_->save_data.current_campaign.c_str());
-        
+        // Compact current-scenario hint in the empty y=40 band. The full
+        // level-title and campaign-name strips moved into the SCENARIO
+        // subscreen, next to the SET LEVEL / SET CAMPAIGN buttons.
+        {
+            std::string hint = std::format(
+                "SCEN {}: {}",
+                og::runtime::current_session->myscreen_->save_data.scen_num,
+                og::runtime::current_session->myscreen_->world().title);
+            if (hint.size() > 34)
+                hint.resize(34);
+            const int hint_w = static_cast<int>(hint.size()) * 6;
+            og::runtime::current_session->myscreen_->draw_rect_filled(
+                10, 43, hint_w + 4, 8, PURE_BLACK, 150);
+            mytext.write_xy(12, 44, WHITE, "%s", hint.c_str());
+        }
+
         draw_highlight(buttons[highlighted_button]);
         og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
         og::input_native::sleep_ms(10);
@@ -483,6 +520,827 @@ Sint32 create_view_menu(Sint32 arg1)
 		return retvalue;
 
 	return MENU_REDRAW;
+}
+
+// ---------------------------------------------------------------------------
+// TEAMS subscreen: per-team JOIN (local my_team / networked TeamChange), the
+// host-gated CTF match settings, local per-character team cycling, and the
+// networked READY toggle.
+// ---------------------------------------------------------------------------
+
+void picker_wire_teams_menu_nav(button* buttons, int count,
+                                const TeamsMenuWiring& wiring)
+{
+    if (buttons == nullptr || count < kTeamsMenuButtonCount)
+        return;
+
+    // One vertical chain of "row anchors" through the team rows: the row's
+    // JOIN when visible, else its pager. A pager that shares a row with a
+    // visible JOIN hangs off horizontally and copies the JOIN's vertical
+    // links, so every visible pager stays reachable in every variant.
+    std::vector<int> mids;
+    for (int t = 0; t < 4; ++t)
+    {
+        if (wiring.join_visible[t])
+            mids.push_back(kTeamsMenuJoinFirstIndex + t);
+        else if (wiring.pager_visible[t])
+            mids.push_back(kTeamsMenuPageFirstIndex + t);
+    }
+    const int first_mid = mids.empty() ? -1 : mids.front();
+    const int last_mid = mids.empty() ? -1 : mids.back();
+    const int bottom_mid = wiring.networked ? kTeamsMenuReadyIndex : -1;
+    const int bottom_right = wiring.show_ctf ? kTeamsMenuCtfTroopsIndex : -1;
+
+    for (int index = 0; index < kTeamsMenuButtonCount; ++index)
+        buttons[index].nav = MenuNav{};
+
+    // Bottom row: BACK | READY (networked) | TROOPS (CTF host).
+    buttons[kTeamsMenuBackIndex].nav.right =
+        bottom_mid >= 0 ? bottom_mid : bottom_right;
+    if (bottom_mid >= 0)
+    {
+        buttons[bottom_mid].nav.left = kTeamsMenuBackIndex;
+        buttons[bottom_mid].nav.right = bottom_right;
+    }
+    if (bottom_right >= 0)
+    {
+        buttons[bottom_right].nav.left =
+            bottom_mid >= 0 ? bottom_mid : kTeamsMenuBackIndex;
+    }
+
+    // Row-anchor chain (visible rows only, top to bottom).
+    const int below_mids = wiring.guy_row
+        ? kTeamsMenuGuyTeamIndex
+        : (bottom_right >= 0
+               ? bottom_right
+               : (bottom_mid >= 0 ? bottom_mid : kTeamsMenuBackIndex));
+    for (std::size_t mid_order = 0; mid_order < mids.size(); ++mid_order)
+    {
+        buttons[mids[mid_order]].nav.up = mid_order == 0
+            ? (wiring.show_ctf ? kTeamsMenuCtfTeamsIndex : -1)
+            : mids[mid_order - 1];
+        buttons[mids[mid_order]].nav.down = mid_order + 1 < mids.size()
+            ? mids[mid_order + 1]
+            : below_mids;
+    }
+
+    // Pagers beside a visible JOIN: horizontal link plus the JOIN's
+    // vertical neighbors (both already point at visible buttons).
+    for (int t = 0; t < 4; ++t)
+    {
+        if (!wiring.pager_visible[t] || !wiring.join_visible[t])
+            continue;
+        const int pager = kTeamsMenuPageFirstIndex + t;
+        const int join = kTeamsMenuJoinFirstIndex + t;
+        buttons[pager].nav.right = join;
+        buttons[join].nav.left = pager;
+        buttons[pager].nav.up = buttons[join].nav.up;
+        buttons[pager].nav.down = buttons[join].nav.down;
+    }
+
+    // CTF settings row.
+    if (wiring.show_ctf)
+    {
+        buttons[kTeamsMenuCtfTeamsIndex].nav.right = kTeamsMenuCtfCapsIndex;
+        buttons[kTeamsMenuCtfCapsIndex].nav.left = kTeamsMenuCtfTeamsIndex;
+        buttons[kTeamsMenuCtfTeamsIndex].nav.down = first_mid >= 0
+            ? first_mid
+            : (wiring.guy_row ? kTeamsMenuGuyPrevIndex : kTeamsMenuBackIndex);
+        buttons[kTeamsMenuCtfCapsIndex].nav.down = first_mid >= 0
+            ? first_mid
+            : (wiring.guy_row ? kTeamsMenuGuyTeamIndex : bottom_right);
+    }
+
+    // Local guy-cycling row.
+    if (wiring.guy_row)
+    {
+        buttons[kTeamsMenuGuyPrevIndex].nav.right = kTeamsMenuGuyNextIndex;
+        buttons[kTeamsMenuGuyNextIndex].nav.left = kTeamsMenuGuyPrevIndex;
+        buttons[kTeamsMenuGuyNextIndex].nav.right = kTeamsMenuGuyTeamIndex;
+        buttons[kTeamsMenuGuyTeamIndex].nav.left = kTeamsMenuGuyNextIndex;
+        const int above_guys = first_mid >= 0
+            ? first_mid
+            : (wiring.show_ctf ? kTeamsMenuCtfTeamsIndex : -1);
+        buttons[kTeamsMenuGuyPrevIndex].nav.up = above_guys;
+        buttons[kTeamsMenuGuyNextIndex].nav.up = above_guys;
+        buttons[kTeamsMenuGuyTeamIndex].nav.up = last_mid >= 0
+            ? last_mid
+            : (wiring.show_ctf ? kTeamsMenuCtfCapsIndex : -1);
+        buttons[kTeamsMenuGuyPrevIndex].nav.down = kTeamsMenuBackIndex;
+        buttons[kTeamsMenuGuyNextIndex].nav.down = kTeamsMenuBackIndex;
+        buttons[kTeamsMenuGuyTeamIndex].nav.down =
+            bottom_right >= 0 ? bottom_right : kTeamsMenuBackIndex;
+    }
+
+    // Bottom-row up links.
+    buttons[kTeamsMenuBackIndex].nav.up = wiring.guy_row
+        ? kTeamsMenuGuyPrevIndex
+        : (first_mid >= 0
+               ? first_mid
+               : (wiring.show_ctf ? kTeamsMenuCtfTeamsIndex : -1));
+    if (bottom_mid >= 0)
+    {
+        buttons[bottom_mid].nav.up = last_mid >= 0
+            ? last_mid
+            : (wiring.show_ctf ? kTeamsMenuCtfTeamsIndex : -1);
+    }
+    if (bottom_right >= 0)
+    {
+        buttons[bottom_right].nav.up = wiring.guy_row
+            ? kTeamsMenuGuyTeamIndex
+            : (last_mid >= 0 ? last_mid : kTeamsMenuCtfCapsIndex);
+    }
+}
+
+namespace
+{
+
+// The TEAMS screen's detail-line budgets (6px/char from x=24): a single
+// slice may run to the readability bar's edge; a paged slice stops short of
+// the page indicator + '>' pager at the row's right edge.
+constexpr int kTeamsDetailCharsUnpaged = 34;
+constexpr int kTeamsDetailCharsPaged = 26;
+
+// One frame's full TEAMS-subscreen state: the nav wiring inputs plus the CTF
+// map context (authored flag teams from the LIVE picker world, scanned before
+// any CTF init could mutate flags — the picker never runs ctf init).
+struct TeamsMenuFrameState
+{
+    bool is_ctf = false;   // CTF campaign selected
+    bool ctf_map = false;  // loaded picker world is a TYPE_CTF level
+    bool campaign_mounted = true; // mounted campaign matches the save's
+    bool allied = false;
+    bool authored[4] = {};
+    // Per-team member/player detail line, paginated; detail_page is the
+    // normalized current slice (the raw counter lives in PickerState).
+    std::array<std::vector<std::string>, 4> detail_pages;
+    std::array<int, 4> detail_page = {};
+    TeamsMenuWiring wiring;
+};
+
+TeamsMenuFrameState compute_teams_menu_state()
+{
+    TeamsMenuFrameState state;
+    const SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    state.is_ctf = og::ui::is_ctf_campaign(save);
+    state.allied = save.allied_mode != 0;
+    state.wiring.show_ctf =
+        state.is_ctf && picker_lobby_host_controls_visible();
+    state.wiring.networked = picker_lobby_is_networked();
+    state.wiring.guy_row = !state.wiring.networked && save.team_size > 0;
+
+    // Per-team detail items: lobby players (networked) or roster members.
+    const std::vector<og::sim::LobbyPlayer> players =
+        state.wiring.networked ? picker_lobby_players()
+                               : std::vector<og::sim::LobbyPlayer>{};
+    for (int t = 0; t < 4; ++t)
+    {
+        std::vector<std::string> items;
+        if (state.wiring.networked)
+        {
+            for (const og::sim::LobbyPlayer& player : players)
+            {
+                if (player.team != t)
+                    continue;
+                items.push_back(player.ready ? player.name + " [RDY]"
+                                             : player.name);
+            }
+        }
+        else
+        {
+            for (const auto& member : save.team_list)
+            {
+                if (member && member->teamnum == t)
+                    items.push_back(member->name);
+            }
+        }
+
+        // Fits one slice -> no pager; otherwise repack with room for the
+        // "p/N" indicator and the '>' button at the row's right edge.
+        std::vector<std::string> pages =
+            og::ui::paginate_team_detail_pages(items, kTeamsDetailCharsUnpaged);
+        if (pages.size() > 1)
+        {
+            pages = og::ui::paginate_team_detail_pages(
+                items, kTeamsDetailCharsPaged);
+        }
+        state.wiring.pager_visible[t] = pages.size() > 1;
+
+        // Normalize the session's raw flip counter onto this page count and
+        // write it back, so a shrinking roster can't strand the page.
+        const int page_count = static_cast<int>(pages.size());
+        int& raw_page = pks().teams_menu_team_page[static_cast<std::size_t>(t)];
+        raw_page = ((raw_page % page_count) + page_count) % page_count;
+        state.detail_page[static_cast<std::size_t>(t)] = raw_page;
+        state.detail_pages[static_cast<std::size_t>(t)] = std::move(pages);
+    }
+
+    // A joiner without the host's campaign mounted has some OTHER level
+    // loaded: never let authored-flag gating act on a wrong world.
+    state.campaign_mounted =
+        get_mounted_campaign() == save.current_campaign;
+
+    const GameWorld& world = og::runtime::current_session->myscreen_->world();
+    state.ctf_map = state.campaign_mounted &&
+        (world.type & GameWorld::TYPE_CTF) != 0;
+    if (state.ctf_map)
+        og::sim::ctf_authored_flag_teams(world, state.authored);
+
+    int team_limit = MAX_PLAYERS;
+    if (state.is_ctf && save.ctf_team_count > 0)
+        team_limit = std::min<int>(MAX_PLAYERS, save.ctf_team_count);
+
+    const bool spectator = save.numplayers == 0;
+    for (int t = 0; t < 4; ++t)
+    {
+        // A JOIN is offered only where joining is meaningful: never in allied
+        // mode (everyone fights together) or spectator mode, never beyond the
+        // explicit CTF team-count clamp, and never onto a team a CTF map does
+        // not author a flag for (alive there means no flag and no respawn).
+        state.wiring.join_visible[t] = !state.allied && !spectator &&
+            t < team_limit &&
+            (!state.is_ctf || !state.ctf_map || state.authored[t]);
+    }
+    return state;
+}
+
+void sync_teams_menu_visibility(button* buttons,
+                                int num_buttons,
+                                int& highlighted_button,
+                                const TeamsMenuFrameState& state)
+{
+    if (buttons == nullptr || num_buttons < kTeamsMenuButtonCount)
+        return;
+
+    const SaveData& save = og::runtime::current_session->myscreen_->save_data;
+
+    buttons[kTeamsMenuCtfTeamsIndex].hidden = !state.wiring.show_ctf;
+    buttons[kTeamsMenuCtfCapsIndex].hidden = !state.wiring.show_ctf;
+    buttons[kTeamsMenuCtfTroopsIndex].hidden = !state.wiring.show_ctf;
+    if (state.wiring.show_ctf)
+    {
+        buttons[kTeamsMenuCtfTeamsIndex].label =
+            og::ui::format_ctf_teams_label(save);
+        buttons[kTeamsMenuCtfCapsIndex].label =
+            og::ui::format_ctf_caps_label(save);
+        buttons[kTeamsMenuCtfTroopsIndex].label =
+            og::ui::format_ctf_troops_label(save);
+    }
+
+    for (int t = 0; t < 4; ++t)
+    {
+        button& join = buttons[kTeamsMenuJoinFirstIndex + t];
+        join.hidden = !state.wiring.join_visible[t];
+        join.label = save.my_team == t ? "YOU" : "JOIN";
+    }
+
+    buttons[kTeamsMenuGuyPrevIndex].hidden = !state.wiring.guy_row;
+    buttons[kTeamsMenuGuyNextIndex].hidden = !state.wiring.guy_row;
+    buttons[kTeamsMenuGuyTeamIndex].hidden = !state.wiring.guy_row;
+
+    for (int t = 0; t < 4; ++t)
+    {
+        buttons[kTeamsMenuPageFirstIndex + t].hidden =
+            !state.wiring.pager_visible[t];
+    }
+
+    buttons[kTeamsMenuReadyIndex].hidden = !state.wiring.networked;
+    if (state.wiring.networked)
+    {
+        buttons[kTeamsMenuReadyIndex].label =
+            picker_lobby_local_ready() ? "UNREADY" : "READY";
+    }
+
+    picker_wire_teams_menu_nav(buttons, num_buttons, state.wiring);
+
+    auto& allbuttons = og::runtime::current_session->allbuttons_;
+    for (int index = 0; index < kTeamsMenuButtonCount; ++index)
+    {
+        sync_button_hidden_state(buttons, index);
+        if (allbuttons[index] != nullptr)
+            allbuttons[index]->label = buttons[index].label;
+    }
+    ensure_highlighted_button_visible(buttons, num_buttons, highlighted_button);
+}
+
+// Clip a drawn line to the 6px/char budget of the given pixel width.
+std::string clip_to_width(std::string line, int max_chars)
+{
+    if (static_cast<int>(line.size()) > max_chars)
+        line.resize(static_cast<std::size_t>(max_chars));
+    return line;
+}
+
+// Pre-pass: the translucent row readability bars. These must render BENEATH
+// the buttons — the per-team '>' pager (219, 39+30t) is the only button whose
+// face sits inside a bar, and a bar painted after draw_buttons would dim it
+// to ~41% brightness unlike every other button. The frame loop draws this
+// before draw_buttons; all text/content stays in draw_teams_menu_content
+// (drawn after the buttons) so it still reads on top of the bars.
+void draw_teams_menu_row_bars()
+{
+    screen* const myscreen = og::runtime::current_session->myscreen_;
+    for (int t = 0; t < 4; ++t)
+    {
+        const int row_y = 32 + 30 * t;
+        myscreen->draw_rect_filled(8, row_y - 2, 226, 22, PURE_BLACK, 150);
+    }
+}
+
+void draw_teams_menu_content(const TeamsMenuFrameState& state, text& mytext)
+{
+    screen* const myscreen = og::runtime::current_session->myscreen_;
+    const SaveData& save = myscreen->save_data;
+
+    mytext.write_xy(10, 8, "TEAMS", WHITE, 1);
+
+    const std::vector<short> seats = og::ui::derive_local_seat_teams(save);
+    const std::vector<og::sim::LobbyPlayer> players = picker_lobby_players();
+
+    for (int t = 0; t < 4; ++t)
+    {
+        const int row_y = 32 + 30 * t;
+
+        // The team's palette swatch (the row's readability bar is drawn by
+        // draw_teams_menu_row_bars before the buttons).
+        myscreen->draw_rect_filled(
+            10, row_y, 10, 10, static_cast<unsigned char>(t * 16 + 40), 255);
+
+        int hero_count = 0;
+        for (std::size_t slot = 0; slot < save.team_list.size(); ++slot)
+        {
+            const auto& member = save.team_list[slot];
+            if (member && member->teamnum == t)
+                ++hero_count;
+        }
+
+        std::string seat_tag;
+        bool has_humans = false;
+        if (state.wiring.networked)
+        {
+            for (const og::sim::LobbyPlayer& player : players)
+            {
+                if (player.team == t)
+                    has_humans = true;
+            }
+            if (save.my_team == t)
+                seat_tag = "(YOU)";
+        }
+        else
+        {
+            // Only seats below numplayers materialize in-game (game.cpp
+            // truncates the derivation at numviews); never tag the rest.
+            const std::size_t seat_limit = std::min<std::size_t>(
+                seats.size(), static_cast<std::size_t>(save.numplayers));
+            for (std::size_t seat = 0; seat < seat_limit; ++seat)
+            {
+                if (seats[seat] == t)
+                    seat_tag = std::format("(P{})", seat + 1);
+            }
+        }
+
+        // The pager column ('>' at x=219 and the p/N indicator ending at
+        // x=217) narrows both the label row and the detail line.
+        const bool paged = state.wiring.pager_visible[t];
+        const std::string row_label = og::ui::format_team_row_label(
+            static_cast<short>(t),
+            hero_count,
+            state.is_ctf && state.ctf_map,
+            state.authored[t],
+            has_humans,
+            seat_tag);
+        mytext.write_xy(24, row_y,
+                        clip_to_width(row_label, paged ? 32 : 34).c_str(),
+                        WHITE, 1);
+
+        // Member-detail line: the current pre-clipped slice from the frame
+        // state; the indicator makes any truncation visible.
+        const std::vector<std::string>& pages =
+            state.detail_pages[static_cast<std::size_t>(t)];
+        const int page = state.detail_page[static_cast<std::size_t>(t)];
+        const std::string& detail = pages[static_cast<std::size_t>(page)];
+        if (!detail.empty())
+            mytext.write_xy(24, row_y + 9, detail.c_str(), DARK_BLUE, 1);
+        if (paged)
+        {
+            const std::string indicator = std::format(
+                "{}/{}", page + 1, static_cast<int>(pages.size()));
+            mytext.write_xy(217 - 6 * static_cast<int>(indicator.size()),
+                            row_y + 9, indicator.c_str(), WHITE, 1);
+        }
+    }
+
+    // Banner band above the team rows: the y=8 buttons fill rows 8..22
+    // (height 15) and the rows' readability bars start at y=30 (row_y-2
+    // with row_y=32), so the 23..29 band is free of buttons, row bars,
+    // and detail lines (draw_rect_filled fills [y, y+h)).
+    if (state.allied)
+    {
+        myscreen->draw_rect_filled(8, 23, 226, 7, PURE_BLACK, 150);
+        mytext.write_xy(10, 24, "ALLIED: ALL PLAYERS FIGHT TOGETHER",
+                        YELLOW, 1);
+    }
+    else if (!state.campaign_mounted)
+    {
+        // The loaded picker world is some other map: JOIN gating could not
+        // be verified against the real level (authored-flag clamp skipped).
+        myscreen->draw_rect_filled(8, 23, 226, 7, PURE_BLACK, 150);
+        mytext.write_xy(10, 24, "TEAM LIST UNVERIFIED", YELLOW, 1);
+    }
+
+    if (state.wiring.guy_row)
+    {
+        const int slot = teams_menu_selected_guy_slot();
+        if (slot >= 0 && save.team_list[slot])
+        {
+            const std::string guy_line = std::format(
+                "{} {}",
+                save.team_list[slot]->name,
+                og::sim::ctf_team_color_name(save.team_list[slot]->teamnum));
+            mytext.write_xy(30, 148, clip_to_width(guy_line, 14).c_str(),
+                            WHITE, 1);
+        }
+    }
+}
+
+} // namespace
+
+Sint32 create_teams_menu(Sint32 arg1)
+{
+    (void)arg1;
+    Sint32 retvalue = 0;
+    text& mytext = og::runtime::current_session->myscreen_->text_normal;
+
+    og::runtime::current_session->myscreen_->clearbuffer();
+
+	    // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
+
+    button* buttons = picker_teamsmenu_buttons();
+    int num_buttons = picker_teamsmenu_button_count();
+    int highlighted_button = kTeamsMenuBackIndex;
+    // Per-team pager pages are session state and reset every open.
+    pks().teams_menu_team_page.fill(0);
+    TeamsMenuFrameState state = compute_teams_menu_state();
+    og::runtime::current_session->localbuttons_ =
+        init_buttons(buttons, num_buttons);
+    sync_teams_menu_visibility(buttons, num_buttons, highlighted_button, state);
+    short last_level_id =
+        og::runtime::current_session->myscreen_->save_data.scen_num;
+    // Trace each paged team's slice on entry and on every flip (tests pin
+    // the indicator and the rotating member names through these).
+    std::array<int, 4> traced_page = {-1, -1, -1, -1};
+    const auto trace_paged_rows = [&traced_page](
+                                      const TeamsMenuFrameState& frame) {
+        for (int t = 0; t < 4; ++t)
+        {
+            const auto& pages =
+                frame.detail_pages[static_cast<std::size_t>(t)];
+            if (pages.size() <= 1)
+                continue;
+            const int page = frame.detail_page[static_cast<std::size_t>(t)];
+            if (traced_page[static_cast<std::size_t>(t)] == page)
+                continue;
+            traced_page[static_cast<std::size_t>(t)] = page;
+            TRACE("picker", "teams_detail t=%d page=%d/%d %s", t, page + 1,
+                  static_cast<int>(pages.size()),
+                  pages[static_cast<std::size_t>(page)].c_str());
+        }
+    };
+    trace_paged_rows(state);
+
+    while (!(retvalue & MENU_EXIT))
+    {
+        picker_lobby_poll();
+        // Mirror the parent team-build loop's level-reload guard: a host
+        // SET LEVEL synced into save.scen_num while parked here must reload
+        // the picker world so JOIN gating reflects the real map.
+        if (last_level_id !=
+            og::runtime::current_session->myscreen_->save_data.scen_num)
+        {
+            last_level_id =
+                og::runtime::current_session->myscreen_->save_data.scen_num;
+            og::runtime::current_session->myscreen_->world().id = last_level_id;
+            og::runtime::current_session->myscreen_->load_level();
+        }
+        state = compute_teams_menu_state();
+        sync_teams_menu_visibility(
+            buttons, num_buttons, highlighted_button, state);
+        trace_paged_rows(state);
+        // A joiner parked here still follows the host's GO.
+        if (team_build_remote_start_requested(retvalue))
+            break;
+
+        // Input
+        if (leftmouse(buttons))
+            retvalue = og::runtime::current_session->localbuttons_->leftclick();
+
+        handle_menu_nav(buttons, highlighted_button, retvalue);
+
+        // BACK returns MENU_REDRAW to signal "go back to team menu".
+        // Check before reset_buttons can clear it.
+        if (retvalue & MENU_REDRAW)
+            break;
+
+        reset_buttons(og::runtime::current_session->localbuttons_,
+                      buttons, num_buttons, retvalue);
+
+        // Draw: row bars go beneath the buttons (the in-row pager must keep
+        // the standard button face); text content goes on top of both.
+        og::runtime::current_session->myscreen_->clearbuffer();
+        draw_backdrop();
+        draw_teams_menu_row_bars();
+        draw_buttons(buttons, num_buttons);
+        draw_teams_menu_content(state, mytext);
+        draw_highlight(buttons[highlighted_button]);
+        og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
+        og::input_native::sleep_ms(10);
+    }
+    og::runtime::current_session->myscreen_->clearbuffer();
+
+    // Propagate MENU_EXIT (remote start / GO) so TeamBuild interception works;
+    // BACK returns MENU_REDRAW to keep the parent create_team_menu running.
+    if (retvalue & MENU_EXIT)
+        return retvalue;
+
+    return MENU_REDRAW;
+}
+
+#ifdef TESTING
+// Test hook: set up and render exactly one TEAMS-subscreen frame (the real
+// draw order: backdrop -> row bars -> buttons -> content) and present it, so
+// pixel tests can probe button faces against the translucent row bars
+// without racing the blocking frame loop.
+void picker_test_render_teams_menu_frame()
+{
+    text& mytext = og::runtime::current_session->myscreen_->text_normal;
+    button* buttons = picker_teamsmenu_buttons();
+    int num_buttons = picker_teamsmenu_button_count();
+    int highlighted_button = kTeamsMenuBackIndex;
+    pks().teams_menu_team_page.fill(0);
+    TeamsMenuFrameState state = compute_teams_menu_state();
+    og::runtime::current_session->localbuttons_ =
+        init_buttons(buttons, num_buttons);
+    sync_teams_menu_visibility(buttons, num_buttons, highlighted_button, state);
+
+    og::runtime::current_session->myscreen_->clearbuffer();
+    draw_backdrop();
+    draw_teams_menu_row_bars();
+    draw_buttons(buttons, num_buttons);
+    draw_teams_menu_content(state, mytext);
+    draw_highlight(buttons[highlighted_button]);
+    og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
+}
+#endif
+
+// ---------------------------------------------------------------------------
+// VIEW LEVEL: read-only roster report of the current scenario, rendered from
+// a scratch headless level load (never touches the live picker world).
+// ---------------------------------------------------------------------------
+
+// PREV/NEXT handler: records the requested page step for the frame loop and
+// returns MENU_OK so both vbutton::leftclick and handle_menu_nav fire it.
+Sint32 view_scenario_page_flip(Sint32 step)
+{
+    pks().view_scenario_page_step = (step < 0) ? -1 : 1;
+    return MENU_OK;
+}
+
+Sint32 create_view_scenario_menu(Sint32 arg1)
+{
+    (void)arg1;
+    Sint32 retvalue = 0;
+    text& mytext = og::runtime::current_session->myscreen_->text_normal;
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+
+    // The viewer is read-only and never mounts: a joiner without the host's
+    // campaign mounted gets a popup (the accepted joiner-quirk family).
+    if (get_mounted_campaign() != save.current_campaign)
+    {
+        popup_dialog("VIEW LEVEL", "CAMPAIGN NOT\nMOUNTED");
+        return MENU_REDRAW;
+    }
+
+    // Scratch load with the SDL hooks: the hook-less default loader lacks the
+    // CTF treasure families (FAMILY_FLAG / FAMILY_CTF_POINT).
+    LevelRuntimeData scenario(save.scen_num, false, &sdl_level_data_hooks());
+    if (!scenario.load())
+    {
+        popup_dialog("VIEW LEVEL", "COULD NOT\nLOAD LEVEL");
+        return MENU_REDRAW;
+    }
+
+    const og::ui::ScenarioRosterReport report =
+        og::ui::build_scenario_roster_report(scenario.world(), save);
+    const std::vector<std::string> lines =
+        og::ui::format_scenario_report_lines(report);
+    const int total_pages = std::max(
+        1,
+        (static_cast<int>(lines.size()) + kViewScenarioRowsPerPage - 1) /
+            kViewScenarioRowsPerPage);
+    int page = 0;
+
+    std::string title =
+        std::format("SCEN {}: {}", save.scen_num, scenario.world().title);
+    if (title.size() > 48)
+        title.resize(48);
+
+    TRACE("picker", "view_scenario lines=%d page=%d",
+          static_cast<int>(lines.size()), page);
+
+    og::runtime::current_session->myscreen_->clearbuffer();
+
+	    // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
+
+    button* buttons = picker_viewscenario_buttons();
+    int num_buttons = picker_viewscenario_button_count();
+    int highlighted_button = kViewScenarioBackIndex;
+    buttons[kViewScenarioPrevIndex].hidden = total_pages <= 1;
+    buttons[kViewScenarioNextIndex].hidden = total_pages <= 1;
+    if (total_pages <= 1)
+        buttons[kViewScenarioBackIndex].nav.right = -1;
+    og::runtime::current_session->localbuttons_ =
+        init_buttons(buttons, num_buttons);
+
+    pks().view_scenario_page_step = 0;
+
+    while (!(retvalue & MENU_EXIT))
+    {
+        picker_lobby_poll();
+        if (team_build_remote_start_requested(retvalue))
+            break;
+
+        // Input: the leftmouse() result is the consumed press transition; a
+        // fast press+release must still dispatch the click.
+        if (leftmouse(buttons))
+            retvalue = og::runtime::current_session->localbuttons_->leftclick();
+
+        handle_menu_nav(buttons, highlighted_button, retvalue);
+
+        // BACK returns MENU_REDRAW to signal "go back to team menu".
+        if (retvalue & MENU_REDRAW)
+            break;
+
+        // PREV/NEXT carry ButtonAction::ViewScenarioPageFlip: both mouse
+        // leftclick and keyboard FIRE route through do_call, which records
+        // the requested step and returns MENU_OK. Consume the step here.
+        const int step = pks().view_scenario_page_step;
+        pks().view_scenario_page_step = 0;
+        if (step != 0)
+        {
+            const int next_page =
+                std::clamp(page + step, 0, total_pages - 1);
+            retvalue = 0;
+            if (next_page != page)
+            {
+                page = next_page;
+                TRACE("picker", "view_scenario lines=%d page=%d",
+                      static_cast<int>(lines.size()), page);
+            }
+        }
+
+        reset_buttons(og::runtime::current_session->localbuttons_,
+                      buttons, num_buttons, retvalue);
+
+        // Draw
+        og::runtime::current_session->myscreen_->clearbuffer();
+        draw_backdrop();
+        draw_buttons(buttons, num_buttons);
+        og::runtime::current_session->myscreen_->draw_button(5, 5, 314, 160, 2, 1);
+        mytext.write_xy(10, 8, title.c_str(), static_cast<unsigned char>(BLACK), 1);
+        const int first_line =
+            page * kViewScenarioRowsPerPage;
+        for (int row = 0; row < kViewScenarioRowsPerPage; ++row)
+        {
+            const int line_index = first_line + row;
+            if (line_index >= static_cast<int>(lines.size()))
+                break;
+            mytext.write_xy(10, 18 + row * 6, lines[line_index].c_str(),
+                            static_cast<unsigned char>(BLACK), 1);
+        }
+        if (total_pages > 1)
+        {
+            const std::string page_info =
+                std::format("{}/{}", page + 1, total_pages);
+            mytext.write_xy(140, 176, page_info.c_str(), WHITE, 1);
+        }
+        draw_highlight(buttons[highlighted_button]);
+        og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
+        og::input_native::sleep_ms(10);
+    }
+    og::runtime::current_session->myscreen_->clearbuffer();
+
+    if (retvalue & MENU_EXIT)
+        return retvalue;
+
+    return MENU_REDRAW;
+}
+
+// ---------------------------------------------------------------------------
+// SCENARIO subscreen: SET CAMPAIGN / SET LEVEL (host-gated) with the
+// campaign-name / level-title strips alongside, plus the always-visible
+// VIEW LEVEL | TEAMS | PROGRESS row. Blocking-subscreen pattern: per-frame
+// picker_lobby_poll, joiner remote-start honored (propagates MENU_EXIT with
+// the StartGame item), BACK returns MENU_REDRAW to the team-build screen.
+// ---------------------------------------------------------------------------
+
+Sint32 create_scenario_menu(Sint32 arg1)
+{
+    (void)arg1;
+    Sint32 retvalue = 0;
+    text& mytext = og::runtime::current_session->myscreen_->text_normal;
+
+    og::runtime::current_session->myscreen_->clearbuffer();
+
+	    // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
+
+    button* buttons = picker_scenariomenu_buttons();
+    int num_buttons = picker_scenariomenu_button_count();
+    int highlighted_button = kScenarioMenuBackIndex;
+    sync_scenario_menu_host_control_visibility(
+        buttons, num_buttons, highlighted_button);
+    og::runtime::current_session->localbuttons_ =
+        init_buttons(buttons, num_buttons);
+
+    short last_level_id =
+        og::runtime::current_session->myscreen_->save_data.scen_num;
+
+    while (!(retvalue & MENU_EXIT))
+    {
+        picker_lobby_poll();
+        sync_scenario_menu_host_control_visibility(
+            buttons, num_buttons, highlighted_button);
+        // A joiner parked here still follows the host's GO.
+        if (team_build_remote_start_requested(retvalue))
+            break;
+
+        // Input
+        if (leftmouse(buttons))
+            retvalue = og::runtime::current_session->localbuttons_->leftclick();
+
+        handle_menu_nav(buttons, highlighted_button, retvalue);
+
+        // Nested screens (TEAMS / VIEW LEVEL / PROGRESS / the campaign and
+        // level pickers) return MENU_REDRAW; reset_buttons clears it and
+        // reinits this layout. BACK carries MENU_EXIT; a remote start that
+        // fired inside a nested screen propagates MENU_EXIT + StartGame.
+        const bool buttons_were_reset = reset_buttons(
+            og::runtime::current_session->localbuttons_, buttons, num_buttons,
+            retvalue);
+        if (retvalue & MENU_EXIT)
+            break;
+
+        // The parent loop's level-reload guard: a SET LEVEL pick (or a host
+        // sync while parked here) must refresh the title strip's world.
+        if (last_level_id !=
+                og::runtime::current_session->myscreen_->save_data.scen_num ||
+            buttons_were_reset)
+        {
+            retvalue = 0;
+            last_level_id =
+                og::runtime::current_session->myscreen_->save_data.scen_num;
+            og::runtime::current_session->myscreen_->world().id = last_level_id;
+            og::runtime::current_session->myscreen_->load_level();
+        }
+
+        // Draw
+        og::runtime::current_session->myscreen_->clearbuffer();
+        draw_backdrop();
+        draw_buttons(buttons, num_buttons);
+        mytext.write_xy(10, 8, "SCENARIO", WHITE, 1);
+
+        // The campaign-name / level-title strips sit beside the buttons that
+        // change them (always drawn — joiners see the host's choices even
+        // while SET CAMPAIGN / SET LEVEL are hidden).
+        const auto draw_strip = [&mytext](int y, const std::string& value) {
+            const std::string clipped = clip_to_width(value, 32);
+            const int strip_w = static_cast<int>(clipped.size()) * 6;
+            og::runtime::current_session->myscreen_->draw_rect_filled(
+                114, y - 1, strip_w + 4, 8, PURE_BLACK, 150);
+            mytext.write_xy(116, y, WHITE, "%s", clipped.c_str());
+        };
+        draw_strip(
+            buttons[kScenarioMenuSetCampaignIndex].y + 4,
+            og::runtime::current_session->myscreen_->save_data.current_campaign);
+        draw_strip(
+            buttons[kScenarioMenuSetLevelIndex].y + 4,
+            std::format(
+                "SCEN {}: {}",
+                og::runtime::current_session->myscreen_->save_data.scen_num,
+                og::runtime::current_session->myscreen_->world().title));
+
+        draw_highlight(buttons[highlighted_button]);
+        og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
+        og::input_native::sleep_ms(10);
+    }
+    og::runtime::current_session->myscreen_->clearbuffer();
+
+    // Propagate a remote start (MENU_EXIT + the StartGame item) so the
+    // parent team-build screen exits into GO; BACK's own MENU_EXIT folds
+    // into MENU_REDRAW to keep the parent running.
+    if ((retvalue & MENU_EXIT) && team_build_start_selected())
+        return retvalue;
+
+    return MENU_REDRAW;
 }
 
 // Helper struct for progress menu
@@ -1886,11 +2744,28 @@ int picker_team_build_testing_exercise_internal_paths()
     client.host_visible = false;
     sync_team_build_host_control_visibility(buttons, 11, highlighted);
     check(buttons[kTeamBuildGoButtonIndex].hidden &&
-        buttons[kTeamBuildSetLevelButtonIndex].hidden &&
-        buttons[kTeamBuildSetCampaignButtonIndex].hidden);
+        buttons[kCreateMenuHireIndex].nav.down == kCreateMenuNetworkingIndex &&
+        buttons[kCreateMenuSaveIndex].nav.right == -1 &&
+        buttons[kCreateMenuNetworkingIndex].nav.up == kCreateMenuHireIndex);
     client.host_visible = true;
     sync_team_build_host_control_visibility(buttons, 11, highlighted);
-    check(!buttons[kTeamBuildGoButtonIndex].hidden);
+    check(!buttons[kTeamBuildGoButtonIndex].hidden &&
+        buttons[kCreateMenuHireIndex].nav.down == kTeamBuildGoButtonIndex &&
+        buttons[kCreateMenuSaveIndex].nav.right == kTeamBuildGoButtonIndex &&
+        buttons[kCreateMenuNetworkingIndex].nav.up == kTeamBuildGoButtonIndex);
+    client.host_visible = false;
+    sync_scenario_menu_host_control_visibility(buttons, 11, highlighted);
+    check(buttons[kScenarioMenuSetCampaignIndex].hidden &&
+        buttons[kScenarioMenuSetLevelIndex].hidden &&
+        buttons[kScenarioMenuViewScenarioIndex].nav.up == -1 &&
+        buttons[kScenarioMenuTeamsIndex].nav.up == -1 &&
+        buttons[kScenarioMenuProgressIndex].nav.up == -1);
+    client.host_visible = true;
+    sync_scenario_menu_host_control_visibility(buttons, 11, highlighted);
+    check(!buttons[kScenarioMenuSetCampaignIndex].hidden &&
+        !buttons[kScenarioMenuSetLevelIndex].hidden &&
+        buttons[kScenarioMenuViewScenarioIndex].nav.up ==
+            kScenarioMenuSetLevelIndex);
     sync_view_team_host_control_visibility(buttons, 1, highlighted);
     check(!buttons[kViewTeamGoButtonIndex].hidden);
 

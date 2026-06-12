@@ -3,6 +3,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/runtime_trace.h>
 #include <openglad/core/util.h>
+#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
 #include <openglad/gameplay/game_world.h>
@@ -1108,7 +1109,35 @@ void GameServer::bind_player(PeerId peer_id,
     client.team_num = team_num;
     if (control == nullptr)
     {
-        control = sim_find_next_control(world_, team_num);
+        // CTF: prefer the binding player's OWN hero. Several humans may share
+        // a team in CTF lobbies, and the generic first-unclaimed scan would
+        // hand the first binder a teammate's character. Classic and allied
+        // worlds keep the original pool claim (allied deliberately treats the
+        // combined roster as a shared pool in oblist order).
+        if ((world_.type & GameWorld::TYPE_CTF) != 0)
+        {
+            for (const auto& uptr : world_.oblist)
+            {
+                walker* w = uptr.get();
+                if (w == nullptr || w->dead() ||
+                    w->query_order() != Order::Living)
+                {
+                    continue;
+                }
+                if (w->user() != -1 || w->team_num() != team_num)
+                    continue;
+                if (w->myguy == nullptr ||
+                    w->myguy->owner_player_index !=
+                        static_cast<std::uint8_t>(player_index))
+                {
+                    continue;
+                }
+                control = w;
+                break;
+            }
+        }
+        if (control == nullptr)
+            control = sim_find_next_control(world_, team_num);
         if (control != nullptr && control->user() == -1)
         {
             control->set_user(static_cast<signed char>(player_index));
@@ -1341,6 +1370,24 @@ bool GameServer::process_disconnected_players(std::uint32_t expected_tick)
 
     for (auto& disconnected : disconnected_players_)
     {
+        // Same CTF-revive reclaim as apply_polled_inputs: a player who
+        // disconnected while dead with no control gets its revived walker
+        // rebound during the grace window so it is not a statue.
+        if (!disconnected.ai_control_enabled &&
+            disconnected.control == nullptr &&
+            disconnected.player_index < static_cast<std::size_t>(MAX_PLAYERS))
+        {
+            if (walker* reclaimed =
+                    find_ctf_reclaim_control(disconnected.player_index))
+            {
+                disconnected.control = reclaimed;
+                player_controls_[disconnected.player_index] = reclaimed;
+                maybe_send_control_change(disconnected.player_index, reclaimed);
+                if (reclaimed->stats() != nullptr)
+                    world_.control_hp = reclaimed->stats()->hitpoints();
+            }
+        }
+
         if (disconnected.ai_control_enabled || disconnected.control == nullptr ||
             disconnected.control->dead() ||
             disconnected.player_index >= static_cast<std::size_t>(MAX_PLAYERS))
@@ -1364,7 +1411,8 @@ bool GameServer::process_disconnected_players(std::uint32_t expected_tick)
             maybe_send_control_change(disconnected.player_index, disconnected.control);
         if (result.control_hp_changed)
             world_.control_hp = result.control_hp;
-        if (result.endgame_requested)
+        if (result.endgame_requested &&
+            !og::sim::ctf_suppress_team_wipe_endgame(world_))
         {
             if (has_living_member_for_any_bound_team(
                     world_, clients_, disconnected_players_))
@@ -2018,6 +2066,18 @@ bool GameServer::apply_polled_inputs(std::uint32_t expected_tick)
         }
 
         client.resume_in_dead_state = false;
+        if (client.control == nullptr)
+        {
+            // A CTF revive restored this player's walker in place with its
+            // user tag intact; rebind it (the previous_control diff below
+            // broadcasts the ControlChange to every mirror).
+            if (walker* reclaimed = find_ctf_reclaim_control(player_index))
+            {
+                client.control = reclaimed;
+                if (reclaimed->stats() != nullptr)
+                    world_.control_hp = reclaimed->stats()->hitpoints();
+            }
+        }
         const PlayerInput input = select_effective_input(client, expected_tick);
         const SimInputResult result = sim_process_player_input(
             input,
@@ -2034,7 +2094,8 @@ bool GameServer::apply_polled_inputs(std::uint32_t expected_tick)
             maybe_send_control_change(player_index, client.control);
         if (result.control_hp_changed)
             world_.control_hp = result.control_hp;
-        if (result.endgame_requested)
+        if (result.endgame_requested &&
+            !og::sim::ctf_suppress_team_wipe_endgame(world_))
         {
             if (has_living_member_for_any_bound_team(
                     world_, clients_, disconnected_players_))
@@ -2159,6 +2220,25 @@ void GameServer::remember_snapshot_hash(ConnectedClientState& client,
         else
             ++it;
     }
+}
+
+walker* GameServer::find_ctf_reclaim_control(std::size_t player_index) const
+{
+    // Gate strictly on an active CTF match so non-CTF behavior is untouched.
+    if (!(world_.type & GameWorld::TYPE_CTF) || !world_.ctf.active)
+        return nullptr;
+
+    for (const auto& uptr : world_.oblist)
+    {
+        walker* const entity = uptr.get();
+        if (entity != nullptr && !entity->dead() &&
+            entity->query_order() == Order::Living &&
+            entity->user() == static_cast<int>(player_index))
+        {
+            return entity;
+        }
+    }
+    return nullptr;
 }
 
 void GameServer::maybe_send_control_change(std::size_t player_index, walker* control)

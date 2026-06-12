@@ -88,7 +88,11 @@ static void write_save_file(const std::string& filename_no_ext,
                             bool use_v8plus_campaigns,
                             bool v5plus_levelstatus,
                             const std::array<uint8_t, 500>* levelstatus_500,
-                            const std::array<uint8_t, 200>* levelstatus_200)
+                            const std::array<uint8_t, 200>* levelstatus_200,
+                            short ctf_team_count = 2,
+                            short ctf_capture_limit = 0,
+                            short ctf_respawn_ticks = 0,
+                            short ctf_strip_scenario_troops = 0)
 {
     std::string fname = filename_no_ext + ".gtl";
     SDL_RWops* out = open_write_file("save/", fname.c_str());
@@ -179,6 +183,18 @@ static void write_save_file(const std::string& filename_no_ext,
         rw_write_val(out, num_levels2);
         short cleared3 = 2;
         rw_write_val(out, cleared3);
+    }
+
+    // Version 10+ appends the CTF match settings.
+    if (version >= 10) {
+        rw_write_val(out, ctf_team_count);
+        rw_write_val(out, ctf_capture_limit);
+        rw_write_val(out, ctf_respawn_ticks);
+    }
+
+    // Version 11+ appends the CTF scenario-troops strip flag.
+    if (version >= 11) {
+        rw_write_val(out, ctf_strip_scenario_troops);
     }
 
     SDL_RWclose(out);
@@ -290,6 +306,173 @@ TEST(SaveDataVersions, save_data_load_v9_uses_campaign_list)
     ASSERT_EQ(1, tmp.team_size) << "v9 should load 1 guy";
     ASSERT_TRUE(tmp.current_levels.count("org.openglad.gladiator") > 0) << "v9 should populate current_levels";
     ASSERT_TRUE(tmp.completed_levels.count("org.openglad.gladiator") > 0) << "v9 should populate completed_levels";
+}
+
+
+TEST(SaveDataVersions, save_data_load_v10_reads_ctf_settings)
+{
+    write_save_file("ver10_ctf",
+                    /*version=*/10,
+                    /*campaign_id=*/"org.openglad.gladiator",
+                    /*scen_num=*/1,
+                    /*cash=*/100,
+                    /*score=*/200,
+                    /*allied_mode=*/1,
+                    /*numplayers=*/1,
+                    /*guys=*/nullptr,
+                    /*listsize=*/0,
+                    /*use_v8plus_campaigns=*/true,
+                    /*v5plus_levelstatus=*/true,
+                    /*levelstatus_500=*/nullptr,
+                    /*levelstatus_200=*/nullptr,
+                    /*ctf_team_count=*/3,
+                    /*ctf_capture_limit=*/5,
+                    /*ctf_respawn_ticks=*/240);
+
+    SaveData tmp;
+    ASSERT_TRUE(tmp.load("ver10_ctf")) << "v10 load should succeed";
+    ASSERT_EQ(3, (int)tmp.ctf_team_count) << "v10 should read ctf_team_count";
+    ASSERT_EQ(5, (int)tmp.ctf_capture_limit) << "v10 should read ctf_capture_limit";
+    ASSERT_EQ(240, (int)tmp.ctf_respawn_ticks) << "v10 should read ctf_respawn_ticks";
+}
+
+
+TEST(SaveDataVersions, save_data_load_v9_payload_defaults_ctf_settings)
+{
+    write_save_file("ver9_no_ctf",
+                    /*version=*/9,
+                    /*campaign_id=*/"org.openglad.gladiator",
+                    /*scen_num=*/1,
+                    /*cash=*/100,
+                    /*score=*/200,
+                    /*allied_mode=*/1,
+                    /*numplayers=*/1,
+                    /*guys=*/nullptr,
+                    /*listsize=*/0,
+                    /*use_v8plus_campaigns=*/true,
+                    /*v5plus_levelstatus=*/true,
+                    /*levelstatus_500=*/nullptr,
+                    /*levelstatus_200=*/nullptr);
+
+    SaveData tmp;
+    // Poison the in-memory fields: a v9 payload must restore classic defaults.
+    tmp.ctf_team_count = 4;
+    tmp.ctf_capture_limit = 7;
+    tmp.ctf_respawn_ticks = 999;
+    ASSERT_TRUE(tmp.load("ver9_no_ctf")) << "v9 load should succeed";
+    ASSERT_EQ(0, (int)tmp.ctf_team_count) << "v9 saves default ctf_team_count to Auto";
+    ASSERT_EQ(0, (int)tmp.ctf_capture_limit) << "v9 saves default ctf_capture_limit to 0";
+    ASSERT_EQ(0, (int)tmp.ctf_respawn_ticks) << "v9 saves default ctf_respawn_ticks to 0";
+}
+
+
+TEST(SaveDataVersions, save_data_v10_roundtrip_preserves_ctf_settings)
+{
+    SaveData src;
+    src.current_campaign = "org.openglad.gladiator";
+    src.ctf_team_count = 4;
+    src.ctf_capture_limit = 10;
+    src.ctf_respawn_ticks = 120;
+
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+              static_cast<int>(src.save_with_error("typed_save_ctf_roundtrip")))
+        << "v10 writer should succeed";
+
+    SaveData loaded;
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+              static_cast<int>(loaded.load_with_error("typed_save_ctf_roundtrip")))
+        << "v10 reader should succeed";
+    ASSERT_EQ(4, (int)loaded.ctf_team_count) << "ctf_team_count should roundtrip";
+    ASSERT_EQ(10, (int)loaded.ctf_capture_limit) << "ctf_capture_limit should roundtrip";
+    ASSERT_EQ(120, (int)loaded.ctf_respawn_ticks) << "ctf_respawn_ticks should roundtrip";
+}
+
+
+TEST(SaveDataVersions, save_data_load_v10_payload_defaults_strip_flag)
+{
+    write_save_file("ver10_no_strip",
+                    /*version=*/10,
+                    /*campaign_id=*/"org.openglad.gladiator",
+                    /*scen_num=*/1,
+                    /*cash=*/100,
+                    /*score=*/200,
+                    /*allied_mode=*/1,
+                    /*numplayers=*/1,
+                    /*guys=*/nullptr,
+                    /*listsize=*/0,
+                    /*use_v8plus_campaigns=*/true,
+                    /*v5plus_levelstatus=*/true,
+                    /*levelstatus_500=*/nullptr,
+                    /*levelstatus_200=*/nullptr,
+                    /*ctf_team_count=*/3,
+                    /*ctf_capture_limit=*/5,
+                    /*ctf_respawn_ticks=*/240);
+
+    SaveData tmp;
+    // Poison the in-memory field: a v10 payload must restore the classic default.
+    tmp.ctf_strip_scenario_troops = 1;
+    ASSERT_TRUE(tmp.load("ver10_no_strip")) << "v10 load should succeed";
+    ASSERT_EQ(0, (int)tmp.ctf_strip_scenario_troops)
+        << "v10 saves default ctf_strip_scenario_troops to 0 (keep troops)";
+    ASSERT_EQ(3, (int)tmp.ctf_team_count) << "v10 fields still read";
+}
+
+
+TEST(SaveDataVersions, save_data_load_v11_reads_strip_flag)
+{
+    write_save_file("ver11_strip",
+                    /*version=*/11,
+                    /*campaign_id=*/"org.openglad.gladiator",
+                    /*scen_num=*/1,
+                    /*cash=*/100,
+                    /*score=*/200,
+                    /*allied_mode=*/1,
+                    /*numplayers=*/1,
+                    /*guys=*/nullptr,
+                    /*listsize=*/0,
+                    /*use_v8plus_campaigns=*/true,
+                    /*v5plus_levelstatus=*/true,
+                    /*levelstatus_500=*/nullptr,
+                    /*levelstatus_200=*/nullptr,
+                    /*ctf_team_count=*/2,
+                    /*ctf_capture_limit=*/0,
+                    /*ctf_respawn_ticks=*/0,
+                    /*ctf_strip_scenario_troops=*/1);
+
+    SaveData tmp;
+    ASSERT_TRUE(tmp.load("ver11_strip")) << "v11 load should succeed";
+    ASSERT_EQ(1, (int)tmp.ctf_strip_scenario_troops)
+        << "v11 should read ctf_strip_scenario_troops";
+}
+
+
+TEST(SaveDataVersions, save_data_v11_roundtrip_preserves_strip_flag_and_version_byte)
+{
+    SaveData src;
+    src.current_campaign = "org.openglad.gladiator";
+    src.ctf_strip_scenario_troops = 1;
+
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+              static_cast<int>(src.save_with_error("typed_save_strip_roundtrip")))
+        << "v11 writer should succeed";
+
+    // The writer must stamp version 11 in the GTL header.
+    SDL_RWops* in = open_read_file("save/", "typed_save_strip_roundtrip.gtl");
+    ASSERT_TRUE(in != nullptr) << "saved file should be readable";
+    char header[3] = {};
+    unsigned char version_byte = 0;
+    SDL_RWread(in, header, 1, 3);
+    SDL_RWread(in, &version_byte, 1, 1);
+    SDL_RWclose(in);
+    ASSERT_EQ(0, std::memcmp(header, "GTL", 3)) << "GTL header expected";
+    ASSERT_EQ(11, (int)version_byte) << "writer should stamp version 11";
+
+    SaveData loaded;
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+              static_cast<int>(loaded.load_with_error("typed_save_strip_roundtrip")))
+        << "v11 reader should succeed";
+    ASSERT_EQ(1, (int)loaded.ctf_strip_scenario_troops)
+        << "ctf_strip_scenario_troops should roundtrip";
 }
 
 

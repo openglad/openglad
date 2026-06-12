@@ -18,6 +18,8 @@
 #include <openglad/interface/native_input.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/render/walker_draw.h>
+#include <openglad/core/test_trace.h>
+#include <openglad/gameplay/ctf/ctf_state.h>
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
@@ -53,6 +55,58 @@ struct UiRect
     int w = 0;
     int h = 0;
 };
+
+// CTF match end carries the classic WIN shape (ending == 0) even when the
+// local player LOST, so the popup must be derived from the match outcome,
+// never from ending alone. Returns true when it showed the CTF popup.
+//
+// Title: VICTORY!/DEFEAT! from the local viewports' controls vs the winner —
+// NEVER ctf.winner_is_player, which is global (any human on the winning team)
+// and would tell a losing networked client "VICTORY". Null/stale controls or
+// split-screen panes spanning both sides fall back to a neutral MATCH OVER.
+// Flow line: chosen from the end shape itself, evaluated BEFORE screen::
+// endgame rewrites scen_num — the loss/rematch shape keeps nextlevel == the
+// current level.
+bool show_ctf_ending_popup(int nextlevel)
+{
+    screen* const s = og::runtime::current_session->myscreen_;
+    const GameWorld& world = s->world();
+    if (!(world.type & GameWorld::TYPE_CTF) || !world.ctf.active ||
+        world.ctf.winner_team < 0)
+    {
+        return false;
+    }
+
+    const int winner = world.ctf.winner_team;
+    bool any_winner = false;
+    bool any_loser = false;
+    for (int i = 0; i < s->numviews; ++i)
+    {
+        viewscreen* const view = s->viewob[i].get();
+        if (view == nullptr || view->control == nullptr)
+            continue;
+        if (view->control->team_num() == static_cast<unsigned char>(winner))
+            any_winner = true;
+        else
+            any_loser = true;
+    }
+
+    const char* title = "MATCH OVER";
+    if (any_winner && !any_loser)
+        title = "VICTORY!";
+    else if (any_loser && !any_winner)
+        title = "DEFEAT!";
+
+    std::string body =
+        std::format("{} TEAM WINS!", og::sim::ctf_team_color_name(winner));
+    if (nextlevel == s->save_data.scen_num)
+        body += "\nGet ready for a rematch!";
+    else
+        body += std::format("\nMoving on to Level {}", nextlevel);
+    popup_dialog(title, body.c_str());
+    return true;
+}
+
 }
 
 
@@ -77,6 +131,8 @@ void show_ending_popup(int ending, int nextlevel)
 	}
 	else if (ending == 0) // we won
 	{
+		if (show_ctf_ending_popup(nextlevel))
+			return; // decided CTF match: outcome-aware popup shown
 		if (og::runtime::current_session->myscreen_->save_data.is_level_completed(og::runtime::current_session->myscreen_->save_data.scen_num)) // this scenario is completed ..
 		{
 		    std::string buf = std::format("Moving on to Level {}", nextlevel);
@@ -336,6 +392,30 @@ if(area_inner.y < y && y + 10 < area_inner.y + area_inner.h) {
 #define END_IF_IN_SCROLL_AREA \
 }
 
+std::string format_ctf_winner_banner(int winner_team)
+{
+    // Same wording as the sim's match-end notification: color name, never a
+    // bare 1-indexed team number (players see tints, not indices).
+    return std::format("{} TEAM WINS!", og::sim::ctf_team_color_name(winner_team));
+}
+
+std::vector<CtfCapsSegment> format_ctf_caps_segments(const og::sim::CtfState& ctf)
+{
+    std::vector<CtfCapsSegment> segments;
+    segments.push_back({"CAPS ", -1});
+    bool first = true;
+    for (int team = 0; team < 4; ++team)
+    {
+        if (!ctf.team_active[team])
+            continue;
+        if (!first)
+            segments.push_back({":", -1});
+        first = false;
+        segments.push_back({std::format("{}", ctf.captures[team]), team});
+    }
+    return segments;
+}
+
 int get_num_foes(LevelRuntimeData& level)
 {
     int result = 0;
@@ -445,6 +525,14 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
             troops.push_back(TroopResult(before[id], w));
     }
     
+    // MVP. In a decided CTF match only the WINNING team's rostered humans are
+    // candidates — a losing hero must never headline under the winner banner.
+    // When the winner fielded no rostered humans (a solo loss to bots), mvp
+    // stays null and the MVP line is omitted below.
+    const GameWorld& mvp_world = og::runtime::current_session->myscreen_->world();
+    const bool ctf_winner_scope =
+        (mvp_world.type & GameWorld::TYPE_CTF) && mvp_world.ctf.active &&
+        mvp_world.ctf.winner_team >= 0;
     walker* mvp = nullptr;
     float mvp_points = 0;
     for(auto& troop : troops)
@@ -452,6 +540,11 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
         float points = 0;
 
         if(troop.after == nullptr)
+            continue;
+
+        if(ctf_winner_scope &&
+           troop.after->team_num() !=
+               static_cast<unsigned char>(mvp_world.ctf.winner_team))
             continue;
 
         points = troop.after->myguy->scen_damage + 3*troop.after->myguy->scen_damage_taken;
@@ -462,6 +555,11 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
             mvp_points = points;
         }
     }
+    if (mvp != nullptr)
+        TRACE("results", "mvp_pick name=%s team=%d", mvp->myguy->name.c_str(),
+              static_cast<int>(mvp->team_num()));
+    else
+        TRACE("results", "mvp_none");
     
     // Hold indices for troops
     std::vector<int> recruits;
@@ -603,7 +701,45 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
             // Overview
             int x = area.x + 12;
 	            y = static_cast<int>(static_cast<float>(area.y + 30) - scroll);
-            
+
+            // CTF match summary: winner banner + a single capture line
+            // ("CAPS 3:5:1:0", counts in their team ramps), at a tight 8px
+            // pitch so the classic gold/foes block stays on the first screen.
+            const GameWorld& ctf_world =
+                og::runtime::current_session->myscreen_->world();
+            if ((ctf_world.type & GameWorld::TYPE_CTF) && ctf_world.ctf.active)
+            {
+                if (ctf_world.ctf.winner_team >= 0)
+                {
+                    BEGIN_IF_IN_SCROLL_AREA;
+                    mytext.write_xy_center_shadow(
+                        area.x + area.w/2, y,
+                        static_cast<unsigned char>(ctf_world.ctf.winner_team * 16 + 40),
+                        "%s",
+                        format_ctf_winner_banner(ctf_world.ctf.winner_team).c_str());
+                    END_IF_IN_SCROLL_AREA;
+                    y += 8;
+                }
+                BEGIN_IF_IN_SCROLL_AREA;
+                const std::vector<CtfCapsSegment> caps_segments =
+                    format_ctf_caps_segments(ctf_world.ctf);
+                Sint32 caps_width = 0;
+                for (const CtfCapsSegment& segment : caps_segments)
+                    caps_width += static_cast<Sint32>(segment.text.size()) * 6;
+                Sint32 caps_x = area.x + area.w/2 - caps_width/2;
+                for (const CtfCapsSegment& segment : caps_segments)
+                {
+                    const unsigned char color = (segment.team < 0)
+                        ? PURE_WHITE
+                        : static_cast<unsigned char>(segment.team * 16 + 40);
+                    mytext.write_xy_shadow(caps_x, y, color, "%s",
+                                           segment.text.c_str());
+                    caps_x += static_cast<Sint32>(segment.text.size()) * 6;
+                }
+                END_IF_IN_SCROLL_AREA;
+                y += 8;
+            }
+
             if(ending == 0)
             {
                 // TODO: Show total possible gold collected?  How is this factored into allscore?

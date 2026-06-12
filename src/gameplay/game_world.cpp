@@ -1497,7 +1497,15 @@ void GameWorld::tick()
         return;
 
     // --- Level completion check ---
-    if (level_done == 2)
+    // A TYPE_CTF map that failed activation (init attempted, <2 flag teams)
+    // falls through to the classic completion rules.
+    if ((type & TYPE_CTF) && !(ctf.init_attempted && !ctf.active))
+    {
+        og::sim::ctf_run_tick(*this);
+        if (game_ended)
+            return;
+    }
+    else if (level_done == 2)
     {
         game_ended = true;
         ending = 0;

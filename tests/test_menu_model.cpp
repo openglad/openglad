@@ -74,6 +74,95 @@ TEST(MenuModel, team_build_lookup)
     const PickerMenuItem* wrong_arg = find_picker_menu_item(
         PickerMenuId::Main, PickerMenuCommand::SetPlayerMode, 99);
     ASSERT_TRUE(wrong_arg == nullptr) << "unknown arg variant should return nullptr";
+
+    const PickerMenuItem* ctf_teams =
+        find_picker_menu_item(PickerMenuId::TeamBuild, "ctf_teams");
+    ASSERT_TRUE(ctf_teams != nullptr) << "ctf_teams id should resolve in team build";
+    ASSERT_EQ(static_cast<int>(PickerMenuCommand::CycleCtfTeamCount),
+              static_cast<int>(ctf_teams->command))
+        << "ctf_teams should map to CycleCtfTeamCount";
+
+    const PickerMenuItem* ctf_caps =
+        find_picker_menu_item(PickerMenuId::TeamBuild, "ctf_caps");
+    ASSERT_TRUE(ctf_caps != nullptr) << "ctf_caps id should resolve in team build";
+    ASSERT_EQ(static_cast<int>(PickerMenuCommand::CycleCtfCaptureLimit),
+              static_cast<int>(ctf_caps->command))
+        << "ctf_caps should map to CycleCtfCaptureLimit";
+
+    ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main, "ctf_teams") == nullptr)
+        << "the CTF items live in the team build menu only";
+
+    ASSERT_EQ(12u, def.items.size())
+        << "team build is the core team items + networking + scenario + the "
+           "CTF settings trio";
+
+    const PickerMenuItem* ctf_troops =
+        find_picker_menu_item(PickerMenuId::TeamBuild, "ctf_troops");
+    ASSERT_TRUE(ctf_troops != nullptr) << "ctf_troops id should resolve in team build";
+    ASSERT_EQ(static_cast<int>(PickerMenuCommand::ToggleCtfScenarioTroops),
+              static_cast<int>(ctf_troops->command))
+        << "ctf_troops should map to ToggleCtfScenarioTroops";
+
+    const PickerMenuItem* scenario =
+        find_picker_menu_item(PickerMenuId::TeamBuild, "scenario");
+    ASSERT_TRUE(scenario != nullptr) << "scenario id should resolve in team build";
+    ASSERT_EQ(static_cast<int>(PickerMenuCommand::Scenario),
+              static_cast<int>(scenario->command))
+        << "scenario should map to the Scenario submenu command";
+
+    // The scenario-shaped commands moved OUT of the team-build menu.
+    for (const char* moved_id :
+         {"teams", "view_scenario", "set_level", "set_campaign", "progress"})
+    {
+        ASSERT_TRUE(find_picker_menu_item(PickerMenuId::TeamBuild, moved_id) ==
+                    nullptr)
+            << moved_id << " should live in the Scenario submenu now";
+    }
+
+    ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main, "teams") == nullptr)
+        << "teams never lives in the main menu";
+    ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main, "ctf_troops") == nullptr)
+        << "ctf_troops lives in the team build menu only";
+}
+
+
+TEST(MenuModel, scenario_menu_lookup)
+{
+    using namespace og::ui;
+    const PickerMenuDefinition& def =
+        picker_menu_definition(PickerMenuId::Scenario);
+
+    ASSERT_EQ(static_cast<int>(PickerMenuId::Scenario), static_cast<int>(def.id))
+        << "scenario definition should report scenario id";
+    ASSERT_EQ(6u, def.items.size())
+        << "scenario menu: campaign/level/viewer/teams/progress + back";
+
+    const struct
+    {
+        const char* id;
+        PickerMenuCommand command;
+    } kExpected[] = {
+        {"set_campaign", PickerMenuCommand::SetCampaign},
+        {"set_level", PickerMenuCommand::SetLevel},
+        {"view_scenario", PickerMenuCommand::ViewScenario},
+        {"teams", PickerMenuCommand::Teams},
+        {"progress", PickerMenuCommand::ShowProgress},
+        {"back", PickerMenuCommand::Back},
+    };
+    for (const auto& want : kExpected)
+    {
+        const PickerMenuItem* item =
+            find_picker_menu_item(PickerMenuId::Scenario, want.id);
+        ASSERT_TRUE(item != nullptr) << want.id << " should resolve in scenario";
+        ASSERT_EQ(static_cast<int>(want.command), static_cast<int>(item->command))
+            << want.id;
+    }
+
+    ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Scenario, "go") == nullptr)
+        << "GO stays on the team-build screen";
+    ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Scenario, "ctf_teams") ==
+                nullptr)
+        << "the CTF settings trio stays in team build for terminal clients";
 }
 
 

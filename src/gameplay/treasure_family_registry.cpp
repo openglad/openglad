@@ -6,13 +6,14 @@
  * (at your option) any later version.
  */
 #include <openglad/core/constants.h>
+#include <openglad/core/ctf_constants.h>
 #include <openglad/core/util.h>
 #include <openglad/gameplay/treasure_family_descriptor.h>
 #include <openglad/gameplay/family_registries.h>
 
 #include "family_registry_base.h"
 
-static constexpr int NUM_TREASURE_FAMILIES = 13;
+static constexpr int NUM_TREASURE_FAMILIES = 15;
 
 // Forward declarations of per-family descriptor providers
 const TreasureFamilyDescriptor& describe_treasure_drumstick();
@@ -27,6 +28,8 @@ const TreasureFamilyDescriptor& describe_treasure_exit();
 const TreasureFamilyDescriptor& describe_treasure_teleporter();
 const TreasureFamilyDescriptor& describe_treasure_life_gem();
 const TreasureFamilyDescriptor& describe_treasure_key();
+const TreasureFamilyDescriptor& describe_treasure_flag();
+const TreasureFamilyDescriptor& describe_treasure_ctf_point();
 
 static FamilyRegistryBase<TreasureFamilyDescriptor, NUM_TREASURE_FAMILIES> s_registry;
 
@@ -55,6 +58,8 @@ static void populate(TreasureFamilyDescriptor* e)
     e[FAMILY_TELEPORTER] = describe_treasure_teleporter();
     e[FAMILY_LIFE_GEM] = describe_treasure_life_gem();
     e[FAMILY_KEY] = describe_treasure_key();
+    e[og::FAMILY_FLAG] = describe_treasure_flag();
+    e[og::FAMILY_CTF_POINT] = describe_treasure_ctf_point();
 }
 
 void init_treasure_family_registry()

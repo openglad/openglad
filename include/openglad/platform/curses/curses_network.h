@@ -7,6 +7,7 @@
  */
 #pragma once
 
+#include <openglad/gameplay/lobby_state.h>
 #include <openglad/platform/curses/curses_game_runtime.h>
 
 #include <memory>
@@ -55,6 +56,15 @@ public:
     virtual void cancel() = 0;
     // True once the user has cancelled (so the lobby loop can stop polling).
     virtual bool cancelled() const { return false; }
+    // Move THIS peer (all of its characters) to `team` via
+    // LobbyTeamChangeMessage. Returns true when the lobby landed on it.
+    virtual bool request_team_change(short team) = 0;
+    // Toggle this peer's informational ready flag (LobbyReadyMessage).
+    virtual bool set_ready(bool ready) = 0;
+    // This peer's current replicated ready flag.
+    virtual bool local_ready() const = 0;
+    // The replicated lobby roster (empty before any state broadcast).
+    virtual std::vector<og::sim::LobbyPlayer> players() const = 0;
 };
 
 // Construct a hosting lobby from the local save (team + settings). Builds the

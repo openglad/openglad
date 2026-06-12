@@ -110,6 +110,35 @@ walker* select_control_for_view(
             return mapped;
     }
 
+    // CTF respawn keep-alive: while a player is dead the server nulls its
+    // control (ControlChange entity 0), but the view must keep following the
+    // corpse so the camera holds and the RESPAWN IN countdown renders. Retain
+    // the previous control when it still resolves in this display world
+    // (re-verified by id every sync — clients can receive removals) and is
+    // either a dead myguy corpse with a pending revive entry, or already
+    // alive wearing this player's user tag (the one-tick window between the
+    // mirror's revive snapshot and the server's reclaim ControlChange). An
+    // explicit nonzero mapped id above always wins, so a player who switched
+    // bodies never has the old corpse steal the view back; once the pending
+    // entry disappears without a revive, this falls through to nullptr.
+    if ((world->type & GameWorld::TYPE_CTF) && world->ctf.active &&
+        view->control != nullptr &&
+        world->find_by_id(view->control->entity_id()) == view->control)
+    {
+        walker* const previous = view->control;
+        if (!previous->dead() && player_index.has_value() &&
+            previous->user() == static_cast<int>(*player_index))
+        {
+            return previous;
+        }
+        if (previous->dead() && previous->myguy != nullptr &&
+            og::sim::ctf_pending_player_respawn(world->ctf,
+                                                previous->entity_id()))
+        {
+            return previous;
+        }
+    }
+
     for (const std::uint32_t entity_id : controlled_entity_ids)
     {
         walker* const entity = resolve_control_from_entity_id(*world, entity_id);

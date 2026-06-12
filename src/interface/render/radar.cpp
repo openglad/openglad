@@ -20,6 +20,7 @@
 	buffers: 7/31/02: *include cleanup
 */
 #include <openglad/core/colors.h>
+#include <openglad/core/ctf_constants.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/render/radar.h>
 #include <openglad/interface/render/view.h>
@@ -96,6 +97,19 @@ void radar::start()
 
 void radar::start(LevelRuntimeData* data)
 {
+	sync_to_grid(data);
+	update(data);
+
+}
+
+// Derive the radar extents, view clamps, on-screen placement, and bmp
+// allocation from the live grid. start() runs this unconditionally; update()
+// re-runs it whenever the recorded dimensions disagree with the grid (the
+// level editor resizes the grid out from under the radar, and the editor's
+// radar can receive update() before any start()), so the bmp writes in
+// update() always match the allocation.
+void radar::sync_to_grid(LevelRuntimeData* data)
+{
 	sizex = static_cast<unsigned short>(data->world().grid.w);
 	sizey = static_cast<unsigned short>(data->world().grid.h);
 	size = (unsigned short) ((static_cast<unsigned short>(sizex))*(static_cast<unsigned short>(sizey)));
@@ -108,7 +122,7 @@ void radar::start(LevelRuntimeData* data)
 		xview = sizex;
 	if (yview > sizey)
 		yview = sizey;
-    
+
     if(viewscreenp)
     {
         #ifdef USE_TOUCH_INPUT
@@ -146,8 +160,6 @@ void radar::start(LevelRuntimeData* data)
         #endif
     }
     bmp.resize(size);
-	update(data);
-
 }
 
 
@@ -350,6 +362,10 @@ short radar::draw(LevelRuntimeData* data)
 					}
 					if (obfamily == FAMILY_EXIT || obfamily == FAMILY_TELEPORTER)
 						do_show = static_cast<short>(static_cast<Uint32>(LIGHT_BLUE) + rng(7));
+					// CTF flags and control points always flicker in their
+					// team's (owner's) color ramp, like exits.
+					if (obfamily == og::FAMILY_FLAG || obfamily == og::FAMILY_CTF_POINT)
+						do_show = static_cast<short>(static_cast<Uint32>(ob->query_team_color()) + rng(7));
 				}
 				if (!on_screen( static_cast<short>((ob->xpos()+1)/GRID_SIZE),
 				                static_cast<short>((ob->ypos()+1)/GRID_SIZE),
@@ -416,6 +432,17 @@ void radar::update()
 void radar::update(LevelRuntimeData* data)
 {
 	short temp, i, j;
+
+	// The grid can change size between syncs (editor resize / clear paths
+	// call update() directly, and an editor radar may never see start());
+	// writing bmp[i+sizex*j] against stale extents is a heap overflow, so
+	// re-derive everything whenever the recorded extents disagree.
+	if (sizex != static_cast<short>(data->world().grid.w)
+	    || sizey != static_cast<short>(data->world().grid.h)
+	    || bmp.size() != static_cast<std::size_t>(size))
+	{
+		sync_to_grid(data);
+	}
 
 	for (i = 0; i < sizex; i++)
 		for (j = 0; j < sizey; j++)

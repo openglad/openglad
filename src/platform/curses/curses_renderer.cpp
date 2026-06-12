@@ -255,9 +255,11 @@ void CursesRenderer::draw_hud(ITerminal& term, const GameWorld& world,
     }
     term.put_str(top, left, clip(line0), name_color, Color::Default, true);
 
-    // --- Line 1: HP / MP / level / score. Only drawn when the layout actually
-    // reserved a second HUD row (see compute_layout in draw()); otherwise it
-    // would clobber the viewport on a 1-row-HUD terminal.
+    // --- Line 1: HP / MP / level / CTF status / special / score. Only drawn
+    // when the layout actually reserved a second HUD row (see compute_layout
+    // in draw()); otherwise it would clobber the viewport on a 1-row-HUD
+    // terminal. Fields are appended in priority order so an 80-column clip()
+    // eats Score and Sp before the CTF caps/FLAG/RESPAWN status.
     if (term.rows() >= kHudRows + 1) {
         std::string line1;
         if (followed && followed->stats()) {
@@ -269,6 +271,51 @@ void CursesRenderer::draw_hud(ITerminal& term, const GameWorld& world,
                          std::to_string(static_cast<int>(st->max_magicpoints()));
             }
             line1 += "  Lv " + std::to_string(static_cast<int>(st->level()));
+        }
+        if (world.ctf.active) {
+            // Per-team capture counts (replicated CtfState; the mirror world
+            // carries it in every snapshot). Active teams only, matching the
+            // SDL panel's filter.
+            line1 += "  Caps ";
+            bool first = true;
+            for (int t = 0; t < 4; ++t) {
+                if (!world.ctf.team_active[t])
+                    continue;
+                if (!first)
+                    line1 += ":";
+                first = false;
+                line1 += std::to_string(world.ctf.captures[t]);
+            }
+            if (followed_id != 0) {
+                for (int t = 0; t < 4; ++t) {
+                    const auto& flag = world.ctf.flags[t];
+                    if (flag.state == og::sim::CtfFlagState::Carried &&
+                        flag.carrier_entity_id == followed_id) {
+                        line1 += "  FLAG";
+                        break;
+                    }
+                }
+                for (const auto& entry : world.ctf.respawn_queue) {
+                    if (entry.kind == 0 &&
+                        entry.walker_entity_id == followed_id) {
+                        line1 += "  RESPAWN " + std::to_string(
+                            og::sim::ctf_respawn_seconds_left(world.ctf,
+                                                              entry));
+                        break;
+                    }
+                }
+            }
+            // Waypoint capture meter: first contested control point in index
+            // order, mirroring the SDL panel's "WP n/36" readout. Rides the
+            // CTF group so narrow terminals clip Sp:/Score first.
+            for (int i = 0; i < world.ctf.cp_count; ++i) {
+                const auto& cp = world.ctf.cps[i];
+                if (cp.progress_team < 0)
+                    continue;
+                line1 += "  WP " + std::to_string(cp.progress) + "/" +
+                         std::to_string(og::sim::kCtfCpCaptureTicks);
+                break;
+            }
         }
         // Currently selected special (Tab/SwitchSpecial cycles it). Shown so the
         // player can see what casting fire/special will do.
