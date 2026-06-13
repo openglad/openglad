@@ -141,7 +141,7 @@ jobs:
         run: |
           mkdir -p staging/openglad
           cp build/openglad build/openscen staging/openglad/
-          cp -r pix cfg sound builtin extra_campaigns staging/openglad/
+          cp -r pix cfg sound builtin staging/openglad/
           tar czf "${{ matrix.artifact_name }}.tar.gz" -C staging openglad
 
       - name: Package (macOS)
@@ -149,7 +149,7 @@ jobs:
         run: |
           mkdir -p staging/openglad
           cp build/openglad build/openscen staging/openglad/
-          cp -r pix cfg sound builtin extra_campaigns staging/openglad/
+          cp -r pix cfg sound builtin staging/openglad/
           cd staging && zip -r "../${{ matrix.artifact_name }}.zip" openglad
 
       - name: Package (Windows)
@@ -163,7 +163,7 @@ jobs:
           for dll in SDL2.dll SDL2_mixer.dll libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
             [ -f "$MINGW_BIN/$dll" ] && cp "$MINGW_BIN/$dll" staging/openglad/
           done
-          cp -r pix cfg sound builtin extra_campaigns staging/openglad/
+          cp -r pix cfg sound builtin staging/openglad/
           cd staging && 7z a "../${{ matrix.artifact_name }}.zip" openglad
 
       - name: Upload artifact
