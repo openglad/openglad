@@ -233,7 +233,9 @@ TEST(MenuModel, relay_room_code_and_join_mode_helpers_support_relay_flow)
         og::ui::PickerRelayRoomInfo{
             .code = "GLAD-XKCD",
             .campaign_hash = "org.openglad.gladiator",
-            .campaign_name = "org.openglad.gladiator",
+            // Hosts broadcast the human campaign title as display metadata;
+            // matching uses campaign_hash of the raw id.
+            .campaign_name = "Gladiator",
             .host_name = "Host One",
             .player_count = 2u,
             .created_at_ms = 1000,
@@ -241,7 +243,7 @@ TEST(MenuModel, relay_room_code_and_join_mode_helpers_support_relay_flow)
         og::ui::PickerRelayRoomInfo{
             .code = "GLAD-ABCD",
             .campaign_hash = "org.openglad.gladiator",
-            .campaign_name = "org.openglad.gladiator",
+            .campaign_name = "Gladiator",
             .host_name = "",
             .player_count = 1u,
             .created_at_ms = 900,

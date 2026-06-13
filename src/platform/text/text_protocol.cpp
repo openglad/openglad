@@ -11,6 +11,7 @@
 #include <openglad/gameplay/sim_emit.h>
 #include <openglad/gameplay/irandom.h>
 #include <openglad/interface/level_runtime_data.h>
+#include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/gameplay/walker.h>
@@ -239,6 +240,18 @@ int run_text_protocol_session(const TextProtocolArgs& args)
     save.current_campaign = args.campaign;
     save.scen_num = static_cast<short>(args.level);
     save.numplayers = 1;
+
+    // io_init mounts the default campaign; --campaign was only recorded in
+    // the save, so non-default campaigns silently loaded the wrong package.
+    if (get_mounted_campaign() != args.campaign &&
+        mount_campaign_package_with_error(args.campaign) !=
+            CampaignPackageIoError::None) {
+        std::fprintf(stderr, "Failed to mount campaign %s\n",
+            args.campaign.c_str());
+        text_ctx.rng = prev_rng;
+        set_gameplay_rng_override(nullptr);
+        return 1;
+    }
 
     level.set_sim_context(&save, &world.enemy_freeze, &events, &world.rng_, &cfg);
 

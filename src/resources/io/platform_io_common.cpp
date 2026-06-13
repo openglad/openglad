@@ -15,6 +15,7 @@
 
 #include <openglad/resources/io_common.h>
 #include <openglad/core/util.h>
+#include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/filesystem.h>
 #include <openglad/resources/zip_api.h>
 
@@ -101,6 +102,9 @@ CampaignPackageIoError mount_campaign_package_with_error(const std::string& id)
         return CampaignPackageIoError::MountFailed;
     }
     mounted_campaign_state() = id;
+    // A lookup that ran before this package existed memoized the raw-id
+    // fallback; the successful mount proves the package is readable now.
+    og::data::forget_campaign_display_title(id);
     return CampaignPackageIoError::None;
 }
 
@@ -289,6 +293,7 @@ bool repack_campaign(const std::string& campaign_id)
 {
     std::string outfile = get_user_path() + "campaigns/" + campaign_id + ".glad";
     std::remove(outfile.c_str());
+    og::data::clear_campaign_metadata_cache();
     return zip_contents_with_error(get_user_path() + "temp/", outfile) == ArchiveIoError::None;
 }
 
@@ -327,6 +332,7 @@ void delete_campaign(const std::string& id)
     std::string path = std::format("{}campaigns/{}.glad", get_user_path(), id);
     std::error_code ec;
     std::filesystem::remove(path, ec);
+    og::data::clear_campaign_metadata_cache();
 }
 
 // ---------------------------------------------------------------------------
@@ -335,25 +341,27 @@ void delete_campaign(const std::string& id)
 
 void restore_default_campaigns()
 {
-    std::error_code ec;
-    std::string src = get_asset_path() + "builtin/org.openglad.gladiator.glad";
-    std::string dst = get_user_path() + "campaigns/org.openglad.gladiator.glad";
-    std::filesystem::copy_file(src, dst,
-        std::filesystem::copy_options::overwrite_existing, ec);
-    if (ec)
-        LogWarn("restore_default_campaigns: {} -> {}: {}\n", src, dst, ec.message());
-    else
-        Log("Restored default campaign: {} -> {}\n", src, dst);
+    namespace fs = std::filesystem;
+    const std::string src_dir = get_asset_path() + "builtin";
+    std::error_code iter_ec;
+    for (const auto& entry : fs::directory_iterator(src_dir, iter_ec))
+    {
+        if (entry.path().extension() != ".glad")
+            continue;
+        const std::string src = entry.path().string();
+        const std::string dst =
+            get_user_path() + "campaigns/" + entry.path().filename().string();
+        std::error_code ec;
+        fs::copy_file(src, dst, fs::copy_options::overwrite_existing, ec);
+        if (ec)
+            LogWarn("restore_default_campaigns: {} -> {}: {}\n", src, dst, ec.message());
+        else
+            Log("Restored default campaign: {} -> {}\n", src, dst);
+    }
+    if (iter_ec)
+        LogWarn("restore_default_campaigns: {}: {}\n", src_dir, iter_ec.message());
 
-    ec.clear();
-    src = get_asset_path() + "builtin/org.openglad.ctf.glad";
-    dst = get_user_path() + "campaigns/org.openglad.ctf.glad";
-    std::filesystem::copy_file(src, dst,
-        std::filesystem::copy_options::overwrite_existing, ec);
-    if (ec)
-        LogWarn("restore_default_campaigns: {} -> {}: {}\n", src, dst, ec.message());
-    else
-        Log("Restored default campaign: {} -> {}\n", src, dst);
+    og::data::clear_campaign_metadata_cache();
 }
 
 void restore_default_settings()

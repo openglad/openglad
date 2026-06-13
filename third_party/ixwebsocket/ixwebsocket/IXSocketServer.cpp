@@ -95,6 +95,7 @@ namespace ix
                << "at address " << _host << ":" << _port << " : " << strerror(Socket::getErrno());
 
             Socket::closeSocket(_serverFd);
+            _serverFd = -1; // OpenGlad local fix: see stop()
             return std::make_pair(false, ss.str());
         }
 
@@ -112,6 +113,7 @@ namespace ix
                    << strerror(Socket::getErrno());
 
                 Socket::closeSocket(_serverFd);
+                _serverFd = -1; // OpenGlad local fix: see stop()
                 return std::make_pair(false, ss.str());
             }
 
@@ -124,6 +126,7 @@ namespace ix
                    << strerror(Socket::getErrno());
 
                 Socket::closeSocket(_serverFd);
+                _serverFd = -1; // OpenGlad local fix: see stop()
                 return std::make_pair(false, ss.str());
             }
         }
@@ -141,6 +144,7 @@ namespace ix
                    << strerror(Socket::getErrno());
 
                 Socket::closeSocket(_serverFd);
+                _serverFd = -1; // OpenGlad local fix: see stop()
                 return std::make_pair(false, ss.str());
             }
 
@@ -153,6 +157,7 @@ namespace ix
                    << strerror(Socket::getErrno());
 
                 Socket::closeSocket(_serverFd);
+                _serverFd = -1; // OpenGlad local fix: see stop()
                 return std::make_pair(false, ss.str());
             }
         }
@@ -167,6 +172,7 @@ namespace ix
                << "at address " << _host << ":" << _port << " : " << strerror(Socket::getErrno());
 
             Socket::closeSocket(_serverFd);
+            _serverFd = -1; // OpenGlad local fix: see stop()
             return std::make_pair(false, ss.str());
         }
 
@@ -229,7 +235,19 @@ namespace ix
         }
 
         _conditionVariable.notify_one();
-        Socket::closeSocket(_serverFd);
+
+        // OpenGlad local fix: stop() runs again from ~WebSocketServer() and
+        // ~SocketServer() after an explicit stop(), but _serverFd was never
+        // reset, so the same (already freed) fd number was closed 2-3 times per
+        // teardown. If another thread had reused that number in between (e.g.
+        // glibc getaddrinfo's AI_ADDRCONFIG netlink probe on a detached
+        // DNSLookup thread), the stale close destroyed its descriptor and glibc
+        // aborted the process. Close exactly once and mark the fd invalid.
+        if (_serverFd != -1)
+        {
+            Socket::closeSocket(_serverFd);
+            _serverFd = -1;
+        }
     }
 
     void SocketServer::setConnectionStateFactory(

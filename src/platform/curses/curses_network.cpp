@@ -45,7 +45,9 @@
 #include <openglad/platform/net_transport_relay_ws.h>
 #include <openglad/platform/net_transport_websocket_client.h>
 #include <openglad/platform/net_transport_websocket_server.h>
+#include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/gparser.h> // cfg
+#include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/server/headless_server_runtime.h>
@@ -982,10 +984,22 @@ public:
         std::vector<std::string> lines;
         lines.push_back(role_ == LobbyRole::Host ? "Mode: HOST" : "Mode: JOIN");
         if (state_.has_value()) {
-            lines.push_back("Campaign: " + (state_->settings.campaign_id.empty()
-                                                ? std::string(kDefaultCampaignId)
-                                                : state_->settings.campaign_id));
-            lines.push_back("Level: " + std::to_string(state_->settings.scenario_id));
+            // Display titles only; settings.campaign_id itself stays the raw
+            // wire id. Scenario titles are read off the LOCAL mount, so the
+            // titled form is only trustworthy when the mount matches the
+            // lobby's campaign — a joiner with a different campaign mounted
+            // would otherwise see that campaign's title for the host's level
+            // number (every campaign has a level 1).
+            const std::string campaign_id = state_->settings.campaign_id.empty()
+                ? std::string(kDefaultCampaignId)
+                : state_->settings.campaign_id;
+            lines.push_back("Campaign: " +
+                            og::data::campaign_display_title(campaign_id));
+            lines.push_back("Level: " +
+                            (get_mounted_campaign() == campaign_id
+                                 ? og::data::scenario_display_name(
+                                       state_->settings.scenario_id)
+                                 : std::to_string(state_->settings.scenario_id)));
             for (const og::sim::LobbyPlayer& player : state_->players) {
                 const bool is_me = player.name == player_name_;
                 lines.push_back("  Player " + std::to_string(player.player_index + 1) +

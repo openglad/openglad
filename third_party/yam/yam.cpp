@@ -215,10 +215,14 @@ Yam::ParseResultEnum Yam::parse_next()
     else
     {
         yaml_event_delete(&_event);
-        
-        if(yaml_parser_parse(&_parser, &_event) < 0)
+
+        // yaml_parser_parse returns 1 on success and 0 on error (never
+        // negative). Treating 0 as success used to leave a YAML_NO_EVENT in
+        // _event, so callers looping on OK never terminated on malformed
+        // input.
+        if(yaml_parser_parse(&_parser, &_event) == 0)
         {
-            printf("YAML error: %s %s\n", _parser.context, _parser.problem);
+            printf("YAML error: %s %s\n", _parser.context ? _parser.context : "", _parser.problem ? _parser.problem : "");
             return ERROR;
         }
     }
@@ -267,10 +271,11 @@ Yam::ParseResultEnum Yam::parse_next()
                 {
                     // Now let's peek at the next event to see if it is a simple pair
                     yaml_event_delete(&_event);
-                    
-                    if(yaml_parser_parse(&_parser, &_event) < 0)
+
+                    // 0 means error here too — see the check above.
+                    if(yaml_parser_parse(&_parser, &_event) == 0)
                     {
-                        printf("YAML error: %s %s\n", _parser.context, _parser.problem);
+                        printf("YAML error: %s %s\n", _parser.context ? _parser.context : "", _parser.problem ? _parser.problem : "");
                         return ERROR;
                     }
                     

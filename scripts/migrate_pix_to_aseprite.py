@@ -31,7 +31,6 @@ PIX_DIR = REPO_ROOT / "pix"
 MANIFEST_PATH = PIX_DIR / "sprite_manifest.txt"
 PALETTE_SRC = REPO_ROOT / "src" / "resources" / "our_palette.cpp"
 GLADIATOR_GLAD = REPO_ROOT / "builtin" / "org.openglad.gladiator.glad"
-EXTRA_CAMPAIGNS_DIR = REPO_ROOT / "extra_campaigns"
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
@@ -331,11 +330,6 @@ def repack_gladiator_archive(palette_rgb: bytes, trns: bytes) -> None:
         out_path.replace(GLADIATOR_GLAD)
 
 
-def note_extra_campaigns_skipped() -> None:
-    extras: list[str] = []
-    if EXTRA_CAMPAIGNS_DIR.exists():
-        extras = sorted(p.name for p in EXTRA_CAMPAIGNS_DIR.glob("*.glad"))
-    print(f"[migrate] skipping out-of-scope extra_campaigns/*.glad: {extras}")
 
 
 # ---------------------------------------------------------------------------
@@ -434,7 +428,6 @@ def run_migration() -> int:
             sidecar_count += 1
 
     # Gladiator archive (only one in scope).
-    note_extra_campaigns_skipped()
     repack_gladiator_archive(palette_rgb, trns)
 
     # Consistency pass.

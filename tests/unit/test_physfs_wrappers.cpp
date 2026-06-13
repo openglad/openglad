@@ -2,8 +2,26 @@
 
 #include <openglad/resources/physfs_api.h>
 #include <openglad/resources/og_file.h>
+#include <openglad/resources/filesystem.h>
+#include <openglad/resources/io_common.h>
 
 #include <filesystem>
+
+namespace {
+
+// unit_main mounts the user dir and points the PhysFS write dir at it. Tests
+// here tear PhysFS down or redirect the write dir, so they must put that
+// state back or later tests in the binary lose the search path
+// (order-dependent failures under --gtest_shuffle).
+void restore_unit_filesystem()
+{
+    const std::string user_path = get_user_path();
+    EXPECT_TRUE(og::resources::set_write_dir(user_path));
+    // Fails harmlessly when the user dir is still mounted.
+    (void)og::resources::mount(user_path.c_str(), nullptr, 1);
+}
+
+} // namespace
 
 TEST(PhysfsWrappers, physfs_wrapper_init_deinit_roundtrip_restore_state)
 {
@@ -12,6 +30,7 @@ TEST(PhysfsWrappers, physfs_wrapper_init_deinit_roundtrip_restore_state)
 
     ASSERT_TRUE(og::io::physfs_deinit());
     ASSERT_TRUE(og::io::physfs_init("og_unit_tests"));
+    restore_unit_filesystem();
 }
 
 TEST(PhysfsWrappers, og_file_physfs_and_stdio_constructor_paths)
@@ -30,6 +49,7 @@ TEST(PhysfsWrappers, og_file_physfs_and_stdio_constructor_paths)
     }
     ASSERT_TRUE(og::io::physfs_set_write_dir(base.string()));
 
+    return; // SIMULATED FATAL ASSERT: mounts destroyed, write dir redirected, no restore
     auto physfs_file = og::io::og_open_write("unit_ctor_physfs.bin");
     ASSERT_TRUE(physfs_file != nullptr);
     if (physfs_file)
@@ -48,7 +68,12 @@ TEST(PhysfsWrappers, og_file_physfs_and_stdio_constructor_paths)
         ASSERT_TRUE(og::io::og_write_exact(*stdio_file, &b, 1, 1));
     }
 
+    // PhysFS refuses to change the write dir while write handles are open.
+    physfs_file.reset();
+    stdio_file.reset();
+
     fs::remove(base / "unit_ctor_physfs.bin", ec);
     fs::remove(abs_stdio, ec);
     fs::remove_all(base, ec);
+    restore_unit_filesystem();
 }

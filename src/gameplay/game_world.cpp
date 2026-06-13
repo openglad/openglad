@@ -774,6 +774,13 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob)
                     if (ob->query_order() == Order::Living)
                         return false;
 
+                    // Authored non-living entities (e.g. reserved-team
+                    // Specials wandering via ACT_RANDOM) path with no owner;
+                    // the shooter-distance gamble below is meaningless
+                    // without one, so the arrow wall stays solid for them.
+                    if (ob->owner() == nullptr)
+                        return false;
+
                     if (std::abs(ob->xpos() - ob->owner()->xpos()) >
                         std::abs(ob->ypos() - ob->owner()->ypos()))
                     {

@@ -7,9 +7,11 @@
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/platform_bridge.h>
 #include <openglad/interface/ui/picker.h>
+#include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/text_protocol.h>
 #include <openglad/interface/walker_render.h>
 #include <openglad/legacy/base.h>
+#include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
@@ -18,8 +20,10 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <iostream>
 #include <filesystem>
 #include <memory>
@@ -27,6 +31,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 #include <unistd.h>
 
 void headless_clear_stale_view_controls(LevelRuntimeData*);
@@ -176,6 +181,49 @@ public:
 private:
     int saved_;
     FILE* null_;
+};
+
+// Captures fd-level stdout (std::printf) into a temp file; restore() puts
+// the original stdout back and returns everything captured so far.
+class StdoutCapture {
+public:
+    StdoutCapture()
+        : saved_(dup(STDOUT_FILENO))
+        , file_(std::tmpfile())
+    {
+        if (saved_ >= 0 && file_ != nullptr)
+            dup2(fileno(file_), STDOUT_FILENO);
+    }
+
+    ~StdoutCapture()
+    {
+        (void)restore();
+        if (file_ != nullptr)
+            std::fclose(file_);
+    }
+
+    std::string restore()
+    {
+        std::fflush(stdout);
+        if (saved_ >= 0) {
+            dup2(saved_, STDOUT_FILENO);
+            close(saved_);
+            saved_ = -1;
+        }
+        if (file_ == nullptr)
+            return {};
+        std::string text;
+        std::rewind(file_);
+        char buffer[4096];
+        std::size_t bytes = 0;
+        while ((bytes = std::fread(buffer, 1, sizeof(buffer), file_)) > 0)
+            text.append(buffer, bytes);
+        return text;
+    }
+
+private:
+    int saved_;
+    std::FILE* file_;
 };
 
 PixieData make_pixie(unsigned char frames = 3, unsigned char w = 2, unsigned char h = 2)
@@ -390,6 +438,13 @@ TEST(PlatformHeadless, walker_render_stubs_keep_sim_state_without_render_compone
 
 TEST(PlatformHeadless, text_protocol_session_covers_commands_and_load_failure)
 {
+    // Order-independent: install the packages AND mount the one whose level 1
+    // the session loads — the protocol session reads the mounted package and
+    // does not mount anything itself.
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("org.openglad.gladiator"));
+
     {
         StdinRedirect input("tick 0\ntick -5\nevents\nstate\r\nunknown\nquit\n");
         CoutRedirect output;
@@ -488,6 +543,8 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
         "7\n"       // team build: back -> main
         "11\n";     // main: quit
 
+    restore_default_campaigns(); // order-independent: install the packages
+
     StdinRedirect stdin_redirect(input);
     CoutRedirect cout_redirect;
     StdoutSilencer stdout_silencer;
@@ -505,6 +562,12 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
 
 TEST(PlatformHeadless, text_picker_internal_help_and_error_paths)
 {
+    // Order-independent: install the packages and mount the default one the
+    // internal paths read scenarios from.
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("org.openglad.gladiator"));
+
     StdoutSilencer stdout_silencer;
     EXPECT_EQ(0,
               og::ui::text_picker_testing_exercise_internal_paths());
@@ -547,6 +610,59 @@ TEST(PlatformHeadless, text_picker_new_game_resets_campaign_and_mount)
               mount_campaign_package_with_error("org.openglad.gladiator"));
 }
 
+// Packs a one-file .glad (campaign.yaml with the given title) into the user
+// campaigns dir so label formatting can see a real package.
+static bool install_titled_package(const std::string& id,
+                                   const std::string& title)
+{
+    namespace fs = std::filesystem;
+    const fs::path staging =
+        fs::path(get_user_path()) / "dup_title_staging" / id;
+    std::error_code ec;
+    fs::create_directories(staging, ec);
+    if (ec)
+        return false;
+    {
+        std::ofstream out(staging / "campaign.yaml");
+        out << "format_version: 1\ntitle: " << title << "\nversion: 1\n";
+        if (!out)
+            return false;
+    }
+    const fs::path archive =
+        fs::path(get_user_path()) / "campaigns" / (id + ".glad");
+    return zip_contents_with_error(staging.string(), archive.string()) ==
+        ArchiveIoError::None;
+}
+
+// Two installed packages sharing a title must stay distinguishable in the
+// campaign-select labels: duplicates carry the raw id as a suffix, unique
+// titles stay clean.
+TEST(PlatformHeadless, campaign_select_labels_disambiguate_duplicate_titles)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+
+    const std::string id_a = "org.openglad.test_dup_a";
+    const std::string id_b = "org.openglad.test_dup_b";
+    ASSERT_TRUE(install_titled_package(id_a, "Twin Peaks"));
+    ASSERT_TRUE(install_titled_package(id_b, "Twin Peaks"));
+    og::data::clear_campaign_metadata_cache(); // drop stale negative entries
+
+    const std::vector<std::string> labels =
+        og::ui::format_campaign_select_labels(
+            {id_a, id_b, "org.openglad.gladiator"});
+    ASSERT_EQ(3u, labels.size());
+    EXPECT_EQ("Twin Peaks [org.openglad.test_dup_a]", labels[0]);
+    EXPECT_EQ("Twin Peaks [org.openglad.test_dup_b]", labels[1]);
+    EXPECT_EQ("Gladiator", labels[2]);
+
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::remove(fs::path(get_user_path()) / "campaigns" / (id_a + ".glad"), ec);
+    fs::remove(fs::path(get_user_path()) / "campaigns" / (id_b + ".glad"), ec);
+    fs::remove_all(fs::path(get_user_path()) / "dup_title_staging", ec);
+    og::data::clear_campaign_metadata_cache();
+}
+
 // Selecting a campaign must mount its package: the text GO path loads levels
 // straight from the mounted package, so a selection that only updated strings
 // would silently keep playing the previously mounted campaign.
@@ -579,6 +695,101 @@ TEST(PlatformHeadless, text_picker_campaign_select_mounts_selection)
     EXPECT_EQ("org.openglad.gladiator", config.campaign);
     EXPECT_EQ("org.openglad.gladiator", get_mounted_campaign())
         << "campaign selection must re-point the mount, not just strings";
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("org.openglad.gladiator"));
+}
+
+// Users must see human titles, never raw campaign ids: "Gladiator" from the
+// package's campaign.yaml and "1. SOUTH OF TALWOOD (BEGINNING)" from the
+// scen1.fss header. The selection state keeps the raw id.
+TEST(PlatformHeadless, text_picker_shows_display_titles_when_campaign_mounted)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("org.openglad.gladiator"));
+
+    const std::string input =
+        "2\n"       // main: continue -> team build
+        "9\n"       // team build: Scenario submenu (labels print)
+        "5\n"       // scenario: progress
+        "2\n"       // scenario: set level (blank keeps current)
+        "\n"
+        "1\n"       // scenario: set campaign (blank keeps current)
+        "\n"
+        "6\n"       // scenario: back -> team build
+        "7\n"       // team build: back -> main
+        "11\n";     // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutCapture stdout_capture;
+
+    og::ui::TextPickerConfig config;
+    config.team_families = {FAMILY_SOLDIER};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+
+    const std::string out = stdout_capture.restore();
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+    EXPECT_EQ("org.openglad.gladiator", config.campaign)
+        << "display titles must not leak into the selection state";
+    EXPECT_EQ("org.openglad.gladiator", get_mounted_campaign());
+
+    EXPECT_NE(std::string::npos, out.find("Set Campaign (Gladiator)"));
+    EXPECT_NE(std::string::npos,
+              out.find("Set Level (1. SOUTH OF TALWOOD (BEGINNING))"));
+    EXPECT_NE(std::string::npos,
+              out.find("Current campaign progress: campaign=Gladiator "
+                       "level=1. SOUTH OF TALWOOD (BEGINNING).\n"));
+    EXPECT_NE(std::string::npos,
+              out.find("Set level (current 1. SOUTH OF TALWOOD (BEGINNING)): "));
+    EXPECT_NE(std::string::npos, out.find("  1. Gladiator\n"))
+        << "campaign select must list titles, default campaign first";
+    EXPECT_NE(std::string::npos, out.find("Capture the Flag"))
+        << "campaign select must list every package by title";
+    EXPECT_EQ(std::string::npos, out.find("org.openglad."))
+        << "raw campaign ids must never reach the display";
+}
+
+// Scenario titles are read from the MOUNTED package; when the session
+// campaign diverges from the mount the level must fall back to the bare
+// number instead of showing a title from the wrong campaign.
+TEST(PlatformHeadless, text_picker_level_display_falls_back_when_mount_differs)
+{
+    restore_default_campaigns(); // order-independent: install the packages
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("org.openglad.ctf"))
+        << "the ctf package ships with the game and should mount";
+
+    const std::string input =
+        "2\n"       // main: continue -> team build
+        "9\n"       // team build: Scenario submenu (labels print)
+        "5\n"       // scenario: progress
+        "6\n"       // scenario: back -> team build
+        "7\n"       // team build: back -> main
+        "11\n";     // main: quit
+
+    StdinRedirect stdin_redirect(input);
+    CoutRedirect cout_redirect;
+    StdoutCapture stdout_capture;
+
+    og::ui::TextPickerConfig config;
+    config.campaign = "org.openglad.gladiator"; // diverges from the ctf mount
+    config.team_families = {FAMILY_SOLDIER};
+    og::ui::TextPickerError error;
+    og::ui::run_text_picker(config, &error);
+
+    const std::string out = stdout_capture.restore();
+    EXPECT_EQ(og::ui::TextPickerErrorCode::None, error.code);
+    EXPECT_NE(std::string::npos, out.find("Set Level (1)\n"))
+        << "an unmounted campaign's level must display as a bare number";
+    EXPECT_NE(std::string::npos, out.find("Set Campaign (Gladiator)"))
+        << "campaign titles resolve via a private mount even when unmounted";
+    EXPECT_NE(std::string::npos,
+              out.find("Current campaign progress: campaign=Gladiator level=1.\n"));
+    EXPECT_EQ(std::string::npos, out.find("SOUTH OF TALWOOD"))
+        << "titles must never be read from a package other than the mount";
 
     ASSERT_EQ(CampaignPackageIoError::None,
               mount_campaign_package_with_error("org.openglad.gladiator"));

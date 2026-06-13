@@ -1396,35 +1396,63 @@ TEST(PickerCommon, format_team_row_label_variants_fit_budget)
 
 // --- Campaign ordering ---
 
-TEST(PickerCommon, order_campaigns_default_first_hoists_gladiator)
+TEST(PickerCommon, order_campaigns_for_select_glad_first_ctf_last)
 {
+    // The alphabetical list_campaigns() order: gladiator leads, CTF trails,
+    // extra campaigns keep their alphabetical order in between.
     std::list<std::string> ids = {
+        "org.openglad.arenas",
         "org.openglad.ctf",
         "org.openglad.gladiator",
-        "org.openglad.zombie",
+        "org.openglad.tryxian",
     };
-    og::ui::order_campaigns_default_first(ids);
+    og::ui::order_campaigns_for_select(ids);
     ASSERT_EQ((std::list<std::string>{
                   "org.openglad.gladiator",
+                  "org.openglad.arenas",
+                  "org.openglad.tryxian",
                   "org.openglad.ctf",
-                  "org.openglad.zombie",
               }),
               ids);
 
-    // Already first: stable no-op.
-    og::ui::order_campaigns_default_first(ids);
-    ASSERT_EQ("org.openglad.gladiator", ids.front());
-    ASSERT_EQ(3u, ids.size());
+    // Already ordered: stable no-op.
+    og::ui::order_campaigns_for_select(ids);
+    ASSERT_EQ((std::list<std::string>{
+                  "org.openglad.gladiator",
+                  "org.openglad.arenas",
+                  "org.openglad.tryxian",
+                  "org.openglad.ctf",
+              }),
+              ids);
 
-    // Absent: untouched.
-    std::list<std::string> no_default = {"a.campaign", "b.campaign"};
-    og::ui::order_campaigns_default_first(no_default);
-    ASSERT_EQ((std::list<std::string>{"a.campaign", "b.campaign"}), no_default);
+    // Both anchors absent: untouched.
+    std::list<std::string> no_anchors = {"a.campaign", "b.campaign"};
+    og::ui::order_campaigns_for_select(no_anchors);
+    ASSERT_EQ((std::list<std::string>{"a.campaign", "b.campaign"}), no_anchors);
+
+    // Only CTF: a single-element list stays put.
+    std::list<std::string> only_ctf = {"org.openglad.ctf"};
+    og::ui::order_campaigns_for_select(only_ctf);
+    ASSERT_EQ((std::list<std::string>{"org.openglad.ctf"}), only_ctf);
 
     // Empty list survives.
     std::list<std::string> empty;
-    og::ui::order_campaigns_default_first(empty);
+    og::ui::order_campaigns_for_select(empty);
     ASSERT_TRUE(empty.empty());
+}
+
+// Unknown packages fall back to raw-id labels with no "[id]" stutter, even
+// when those raw ids collide as "titles". (Real duplicate-title packages are
+// exercised in test_platform_headless.cpp, which can install fixtures.)
+TEST(PickerCommon, campaign_select_labels_fall_back_to_raw_ids)
+{
+    const std::vector<std::string> ids = {
+        "org.openglad.test_absent_a",
+        "org.openglad.test_absent_b",
+        "org.openglad.test_absent_a",
+    };
+    ASSERT_EQ(ids, og::ui::format_campaign_select_labels(ids));
+    ASSERT_TRUE(og::ui::format_campaign_select_labels({}).empty());
 }
 
 // --- Scenario roster report (View Level) ---

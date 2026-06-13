@@ -28,6 +28,7 @@
 #include <openglad/gameplay/net_transport_inprocess.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/ui/picker_common.h>
+#include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 
 #include <algorithm>
@@ -616,9 +617,42 @@ TEST(CursesNetwork, host_lobby_status_uses_default_campaign_and_team_fallback)
     FakeClock clock;
     lobby->poll(term, clock);
 
-    EXPECT_TRUE(status_contains(*lobby, "Campaign: org.openglad.gladiator"));
+    // The empty campaign id falls back to the default campaign, shown by its
+    // human title (io_init installed the package, so the lookup succeeds).
+    EXPECT_TRUE(status_contains(*lobby, "Campaign: Gladiator"));
     EXPECT_TRUE(status_contains(*lobby, "team 2"));
     EXPECT_TRUE(status_contains(*lobby, "[host]"));
+}
+
+// The lobby "Level:" line reads scenario titles off the LOCAL mount, so when
+// the mounted campaign differs from the lobby's campaign it must show the
+// bare number — never the local campaign's title for a colliding level
+// number (every campaign has a level 1).
+TEST(CursesNetwork, lobby_level_title_requires_matching_mount)
+{
+    SaveData save;
+    init_team_save(save, 2, FAMILY_ELF, "Mismatch");
+    save.current_campaign = "org.openglad.ctf"; // not the mounted campaign
+    save.scen_num = 1; // collides with gladiator's scen1
+
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("org.openglad.gladiator"));
+
+    auto server = og::sim::InProcessTransport::create_server();
+    server->accept_connections();
+    auto host_client = server->create_client_transport();
+
+    auto lobby = make_host_lobby_over_transport_for_testing(save, 1, server, host_client);
+    ASSERT_NE(lobby, nullptr);
+
+    HeadlessTerminal term(24, 80);
+    FakeClock clock;
+    lobby->poll(term, clock);
+
+    EXPECT_TRUE(status_contains(*lobby, "Campaign: Capture the Flag"));
+    EXPECT_TRUE(status_contains(*lobby, "Level: 1"));
+    EXPECT_FALSE(status_contains(*lobby, "Level: 1."))
+        << "a mismatched mount must not serve another campaign's scen1 title";
 }
 
 TEST(CursesNetwork, malformed_join_url_reports_error)

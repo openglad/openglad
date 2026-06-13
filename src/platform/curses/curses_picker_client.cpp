@@ -33,6 +33,7 @@
 #include <openglad/platform/curses/curses_input.h>
 #include <openglad/platform/curses/curses_network.h>
 #include <openglad/platform/curses/curses_renderer.h>
+#include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/save_data.h>
@@ -290,15 +291,27 @@ private:
 
 // --- dynamic menu labels (shared with TextPickerClient semantics) --------
 
+// "N. Title" for the configured level. Scenario titles are read off the
+// MOUNTED package, so the titled form is only trustworthy while the mount
+// matches the configured campaign (team build keeps them in sync); otherwise
+// show the bare number rather than a wrong campaign's title.
+std::string level_display(const TextPickerConfig& config)
+{
+    if (get_mounted_campaign() == config.campaign)
+        return og::data::scenario_display_name(config.level);
+    return std::to_string(config.level);
+}
+
 std::string menu_item_label(const PickerMenuItem& item, const TextPickerConfig& config,
                             const CursesPickerOptions& options, const SaveData& save)
 {
     if (item.command == PickerMenuCommand::SetDifficulty)
         return og::ui::format_difficulty_label(options.difficulty);
     if (item.command == PickerMenuCommand::SetLevel)
-        return std::format("{} ({})", item.label, config.level);
+        return std::format("{} ({})", item.label, level_display(config));
     if (item.command == PickerMenuCommand::SetCampaign)
-        return std::format("{} ({})", item.label, config.campaign);
+        return std::format("{} ({})", item.label,
+            og::data::campaign_display_title(config.campaign));
     if (item.command == PickerMenuCommand::ToggleAlliedMode)
         return og::ui::format_allied_mode_label(save);
     if (item.command == PickerMenuCommand::CycleCtfTeamCount)
@@ -695,8 +708,9 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
         break;
     case PickerMenuCommand::ShowProgress:
         menu.show_text("Progress",
-            {std::format("Campaign: {}", config_.campaign),
-             std::format("Level: {}", config_.level)});
+            {std::format("Campaign: {}",
+                 og::data::campaign_display_title(config_.campaign)),
+             std::format("Level: {}", level_display(config_))});
         break;
     case PickerMenuCommand::Networking:
         (void)configure_networking();
@@ -704,7 +718,7 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
     case PickerMenuCommand::SetLevel: {
         bool accepted = false;
         const std::string entered = menu.prompt("Set Level",
-            std::format("Level (current {}): ", config_.level),
+            std::format("Level (current {}): ", level_display(config_)),
             std::to_string(config_.level), accepted);
         if (accepted && !entered.empty()) {
             const auto level = parse_int_strict(entered);
@@ -780,20 +794,27 @@ std::string CursesPickerClient::show_campaign_select()
 {
     Menu menu(term_, clock_);
     std::list<std::string> campaigns = list_campaigns();
-    og::ui::order_campaigns_default_first(campaigns);
+    og::ui::order_campaigns_for_select(campaigns);
     std::vector<std::string> ids(campaigns.begin(), campaigns.end());
 
     if (ids.empty()) {
+        // Title when known; campaign_display_title falls back to the raw id
+        // when the kept campaign's package is itself missing.
         menu.show_text("Campaign Select",
-            {std::format("No campaigns found; keeping '{}'.", config_.campaign)});
+            {std::format("No campaigns found; keeping '{}'.",
+                og::data::campaign_display_title(config_.campaign))});
         return config_.campaign;
     }
 
+    // Human titles, disambiguated with the raw id when two packages share a
+    // title; the selection result stays the raw id.
+    const std::vector<std::string> labels =
+        og::ui::format_campaign_select_labels(ids);
     std::vector<ListEntry> entries;
     entries.reserve(ids.size());
     int initial = 0;
     for (size_t i = 0; i < ids.size(); ++i) {
-        entries.push_back(ListEntry{ids[i], true});
+        entries.push_back(ListEntry{labels[i], true});
         if (ids[i] == config_.campaign)
             initial = static_cast<int>(i);
     }
@@ -879,10 +900,14 @@ void CursesPickerClient::run_game()
         // mission_verdict_line is CTF-aware: a CTF loss still ends with the
         // classic WIN shape, so ending==0 alone must not claim victory. The
         // rematch shape's "next level" is this same level — say so honestly.
+        // The next level's title is read off whatever campaign the session
+        // left mounted (the one just played); scenario_display_name falls
+        // back to "N. Level N" if it cannot be read.
         menu.show_text("Mission complete",
             {mission_verdict_line(result),
              (result.next_level >= 0 && !result.ctf_rematch)
-                 ? std::format("Next level: {}", result.next_level)
+                 ? std::format("Next level: {}",
+                       og::data::scenario_display_name(result.next_level))
                  : std::string("Returning to team build.")});
     }
 }
@@ -913,7 +938,11 @@ bool CursesPickerClient::load_game()
 
     menu.show_text("Loaded",
         {std::format("Loaded '{}'", config_.save_name),
-         std::format("Campaign: {}  Level: {}", config_.campaign, config_.level),
+         // load_with_error mounted the save's campaign, so the titled level
+         // form is in sync here.
+         std::format("Campaign: {}  Level: {}",
+             og::data::campaign_display_title(config_.campaign),
+             level_display(config_)),
          std::format("Team: {}  Gold: {}",
              static_cast<int>(save_data_.team_size),
              static_cast<unsigned>(save_data_.m_totalcash[0]))});

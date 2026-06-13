@@ -8,6 +8,7 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/world_snapshot.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/resources/io_common.h>
 #include <openglad/resources/save_data.h>
 #include <gtest/gtest.h>
 
@@ -217,16 +218,30 @@ TEST(ResultsScreenBranches, ctf_loss_popup_is_defeat_and_never_completes_level)
     EXPECT_FALSE(sd.is_level_completed(506));
 
     // A CTF WIN (next level advances) still completes the level and shows
-    // VICTORY! for the winning local control.
+    // VICTORY! for the winning local control. The advance popup names the
+    // destination level via scenario_display_name, which reads the MOUNTED
+    // campaign — mount CTF explicitly so shuffle order can't decide which
+    // package serves the scen507 title.
+    (void)unmount_campaign_package_with_error(get_mounted_campaign());
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("org.openglad.ctf"));
     trace_clear();
     s->world().ctf.winner_team = 0;
     s->world().ctf.winner_is_player = true;
     dispatch_endgame_event(0, 507);
     EXPECT_TRUE(trace_contains("popup", "VICTORY!"));
     EXPECT_TRUE(trace_contains("popup", "RED TEAM WINS!"));
-    EXPECT_TRUE(trace_contains("popup", "Moving on to Level 507"));
+    EXPECT_TRUE(trace_contains("popup",
+                               "Moving on to\n507. CTF: DUNGEON OF STARS"))
+        << "the advance popup must name the destination level, not just its "
+           "number";
     EXPECT_TRUE(sd.is_level_completed(506))
         << "a real CTF win must still mark the level completed";
+
+    // Restore the default mount so later (or shuffled) tests load classic
+    // levels again.
+    (void)unmount_campaign_package_with_error(get_mounted_campaign());
+    (void)mount_campaign_package_with_error("org.openglad.gladiator");
 
     s->viewob[0]->control = saved_control;
     local->set_dead(1);

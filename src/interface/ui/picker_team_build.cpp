@@ -43,6 +43,7 @@
 #include <openglad/gameplay/family_registry.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/ui/picker_common.h>
+#include <openglad/resources/campaign_metadata.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/core/test_trace.h>
 #include <algorithm>
@@ -1320,7 +1321,9 @@ Sint32 create_scenario_menu(Sint32 arg1)
         };
         draw_strip(
             buttons[kScenarioMenuSetCampaignIndex].y + 4,
-            og::runtime::current_session->myscreen_->save_data.current_campaign);
+            og::data::campaign_display_title(
+                og::runtime::current_session->myscreen_->save_data
+                    .current_campaign));
         draw_strip(
             buttons[kScenarioMenuSetLevelIndex].y + 4,
             std::format(
