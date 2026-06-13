@@ -20,6 +20,7 @@
 #include <climits>
 #include <cstddef>
 #include <format>
+#include <random>
 #include <stdexcept>
 #include <unordered_set>
 #include <utility>
@@ -739,12 +740,13 @@ void clear_pressed(PlayerInput& input)
         pressed = false;
 }
 
-std::uint64_t splitmix64(std::uint64_t value) noexcept
+bool session_tokens_equal(const og::sim::SessionToken& lhs,
+                          const og::sim::SessionToken& rhs) noexcept
 {
-    value += 0x9e3779b97f4a7c15ULL;
-    value = (value ^ (value >> 30)) * 0xbf58476d1ce4e5b9ULL;
-    value = (value ^ (value >> 27)) * 0x94d049bb133111ebULL;
-    return value ^ (value >> 31);
+    std::uint8_t diff = 0;
+    for (std::size_t index = 0; index < lhs.size(); ++index)
+        diff |= static_cast<std::uint8_t>(lhs[index] ^ rhs[index]);
+    return diff == 0;
 }
 
 } // namespace
@@ -902,19 +904,13 @@ std::uint64_t GameServer::now_ms() const
 SessionToken GameServer::allocate_session_token()
 {
     SessionToken token = kZeroSessionToken;
+    std::random_device random_device;
     while (is_zero_session_token(token))
     {
-        const std::uint64_t lo =
-            splitmix64(next_session_token_seed_++ ^ now_ms());
-        const std::uint64_t hi =
-            splitmix64(next_session_token_seed_++ ^
-                       (now_ms() + 0x9e3779b97f4a7c15ULL));
-        for (std::size_t index = 0; index < 8; ++index)
+        for (std::size_t index = 0; index < token.size(); ++index)
         {
             token[index] =
-                static_cast<std::uint8_t>((lo >> (index * 8)) & 0xffu);
-            token[8 + index] =
-                static_cast<std::uint8_t>((hi >> (index * 8)) & 0xffu);
+                static_cast<std::uint8_t>(random_device() & 0xffu);
         }
     }
     return token;
@@ -978,7 +974,8 @@ void GameServer::handle_transport_disconnect(
             disconnected_players_.end(),
             [&client](const DisconnectedPlayer& disconnected) {
                 return disconnected.player_index == client.player_index ||
-                    disconnected.session_token == client.session_token;
+                    session_tokens_equal(disconnected.session_token,
+                                         client.session_token);
             });
 
         DisconnectedPlayer replacement;
@@ -1236,7 +1233,7 @@ void GameServer::handle_hello(PeerId peer_id, const HelloMessage& message)
     {
         if (!is_zero_session_token(client.session_token) &&
             !is_zero_session_token(message.session_token) &&
-            message.session_token != client.session_token)
+            !session_tokens_equal(message.session_token, client.session_token))
         {
             handle_transport_disconnect(peer_id, true);
             return;
@@ -1259,7 +1256,8 @@ void GameServer::handle_hello(PeerId peer_id, const HelloMessage& message)
         disconnected_players_.begin(),
         disconnected_players_.end(),
         [&message](const DisconnectedPlayer& disconnected) {
-            return disconnected.session_token == message.session_token;
+            return session_tokens_equal(disconnected.session_token,
+                                        message.session_token);
         });
     if (disconnected_it == disconnected_players_.end())
     {

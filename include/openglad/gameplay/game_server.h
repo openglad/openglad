@@ -270,7 +270,6 @@ private:
     std::size_t snapshot_hash_mismatch_count_ = 0;
     std::uint32_t next_sim_event_sequence_ = 1;
     std::uint32_t next_game_flow_event_sequence_ = 1;
-    std::uint64_t next_session_token_seed_ = 1;
     std::optional<PeerId> host_peer_id_ = std::nullopt;
     std::function<std::uint64_t()> wall_clock_ms_source_;
     bool return_to_lobby_mode_ = false;

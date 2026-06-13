@@ -5,6 +5,8 @@ Phase 02 mutation canary helper. Given a target ${file}, 1-indexed
 ${line}, literal ${from} and ${to}, performs a single
 str.replace(${from}, ${to}, 1) on that exact line and writes the file
 back. Validates:
+  - ${file} is a repository-relative path that resolves inside this
+    checkout.
   - ${from} appears literally on ${line} (exactly once — ambiguous
     multi-occurrences abort).
   - The realpath of ${file} resolved against the repo root does NOT live
@@ -34,6 +36,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT_REAL = os.path.realpath(REPO_ROOT)
 FORBIDDEN_PREFIXES = [
     os.path.realpath(REPO_ROOT / ".." / "openglad-master"),
     os.path.realpath(REPO_ROOT / "tests" / "parity"),
@@ -41,9 +44,10 @@ FORBIDDEN_PREFIXES = [
 
 
 def _is_under(path_real: str, prefix_real: str) -> bool:
-    if path_real == prefix_real:
-        return True
-    return path_real.startswith(prefix_real + os.sep)
+    try:
+        return os.path.commonpath([path_real, prefix_real]) == prefix_real
+    except ValueError:
+        return False
 
 
 def main() -> int:
@@ -66,8 +70,20 @@ def main() -> int:
         sys.stderr.write("_apply_mutation: from-text must not be empty\n")
         return 2
 
-    target_path = (REPO_ROOT / file_arg)
+    file_path = Path(file_arg)
+    if file_path.is_absolute() or ".." in file_path.parts:
+        sys.stderr.write(
+            f"_apply_mutation: refusing non-repository-relative path: {file_arg}\n"
+        )
+        return 3
+
+    target_path = REPO_ROOT / file_path
     target_real = os.path.realpath(target_path)
+    if not _is_under(target_real, REPO_ROOT_REAL):
+        sys.stderr.write(
+            f"_apply_mutation: refusing path outside repository: {target_real}\n"
+        )
+        return 3
 
     for prefix in FORBIDDEN_PREFIXES:
         if _is_under(target_real, prefix):

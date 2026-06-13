@@ -1,7 +1,11 @@
 /// <reference path="../node_modules/@cloudflare/vitest-pool-workers/types/cloudflare-test.d.ts" />
 
-import type { Env } from "../src/types";
+import type { Env as AppEnv } from "../src/types";
 
-declare module "cloudflare:test" {
-  interface ProvidedEnv extends Env {}
+declare global {
+  namespace Cloudflare {
+    interface Env extends AppEnv {}
+  }
 }
+
+export {};

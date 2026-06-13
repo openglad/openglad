@@ -15,6 +15,13 @@
 #include <vector>
 
 namespace og::sim {
+namespace {
+
+constexpr std::size_t kMaxInboundFrameBytes = 128u * 1024u;
+constexpr std::size_t kMaxQueuedMessages = 1024u;
+constexpr std::size_t kMaxQueuedPayloadBytes = 16u * 1024u * 1024u;
+
+} // namespace
 
 struct WebSocketClientTransport::Impl
 {
@@ -78,12 +85,24 @@ struct WebSocketClientTransport::Impl
         {
             if (!message->binary)
                 return;
+            if (message->str.size() > kMaxInboundFrameBytes)
+            {
+                enqueue_disconnect(generation);
+                if (websocket)
+                    websocket->close(1009, "message too large");
+                return;
+            }
 
             QueueEntry entry;
             entry.kind = QueueEntryKind::Message;
             entry.generation = generation;
             entry.payload.assign(message->str.begin(), message->str.end());
-            enqueue(std::move(entry));
+            if (!enqueue(std::move(entry)))
+            {
+                enqueue_disconnect(generation);
+                if (websocket)
+                    websocket->close(1008, "receive queue full");
+            }
             break;
         }
 
@@ -151,6 +170,8 @@ struct WebSocketClientTransport::Impl
                 return {};
 
             queued_entries.swap(queue);
+            queued_message_count = 0;
+            queued_payload_bytes = 0;
         }
 
         std::vector<ReceivedMessage> drained_messages;
@@ -270,12 +291,28 @@ private:
     {
         std::lock_guard<std::mutex> lock(queue_mutex);
         queue.clear();
+        queued_message_count = 0;
+        queued_payload_bytes = 0;
     }
 
-    void enqueue(QueueEntry entry)
+    bool enqueue(QueueEntry entry)
     {
         std::lock_guard<std::mutex> lock(queue_mutex);
+        if (queue.size() >= kMaxQueuedMessages)
+            return false;
+        if (entry.kind == QueueEntryKind::Message)
+        {
+            if (queued_message_count >= kMaxQueuedMessages ||
+                entry.payload.size() >
+                    kMaxQueuedPayloadBytes - queued_payload_bytes)
+            {
+                return false;
+            }
+            ++queued_message_count;
+            queued_payload_bytes += entry.payload.size();
+        }
         queue.push_back(std::move(entry));
+        return true;
     }
 
     detail::IxNetSystemGuard net_system_guard;
@@ -289,6 +326,8 @@ private:
 
     mutable std::mutex queue_mutex;
     mutable std::deque<QueueEntry> queue;
+    std::size_t queued_message_count = 0;
+    std::size_t queued_payload_bytes = 0;
 };
 
 WebSocketClientTransport::WebSocketClientTransport(std::string url)

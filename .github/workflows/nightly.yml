@@ -7,7 +7,7 @@ on:
   pull_request:             # Validate multi-platform builds on PRs
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   # ── Check whether there are new commits since last successful nightly ──
@@ -19,6 +19,8 @@ jobs:
       sha_short: ${{ steps.check.outputs.sha_short }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Get current HEAD SHA
         id: sha
@@ -72,6 +74,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Apply third-party build fixes
         run: git apply third_party/build-fixes.patch
@@ -182,6 +186,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Apply third-party build fixes
         run: git apply third_party/build-fixes.patch
@@ -229,8 +235,12 @@ jobs:
       needs.web-deploy.result == 'success' &&
       needs.check-new-commits.outputs.has_new_commits == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Download all build artifacts
         uses: actions/download-artifact@v4
@@ -276,6 +286,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Save successful nightly SHA
         run: echo "${{ github.sha }}" > .nightly-last-sha

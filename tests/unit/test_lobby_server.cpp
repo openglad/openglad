@@ -594,21 +594,24 @@ TEST(LobbyServer, first_connected_peer_remains_host_even_if_another_peer_joins_f
     EXPECT_EQ(1u, server.state().players[1].player_index);
 }
 
-TEST(LobbyServer, malformed_lobby_message_throws)
+TEST(LobbyServer, malformed_lobby_message_disconnects_peer)
 {
     MockLobbyTransport transport;
     og::sim::LobbyServer server(transport);
     server.connect_client(11u);
+    transport.clear_sent_messages();
 
     std::vector<std::uint8_t> malformed = og::sim::serialize_lobby_message(
         make_join_message("Host", 0, {make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER)}));
     malformed.pop_back();
     transport.queue_raw_message(11u, std::move(malformed));
 
-    EXPECT_THROW(server.poll_incoming_messages(), std::runtime_error);
+    EXPECT_NO_THROW(server.poll_incoming_messages());
+    EXPECT_EQ((std::vector<og::sim::PeerId>{11u}), transport.disconnected_peers());
+    EXPECT_TRUE(server.state().players.empty());
 }
 
-TEST(LobbyServer, malformed_typed_message_throws)
+TEST(LobbyServer, malformed_typed_message_disconnects_peer)
 {
     MockLobbyTransport transport(true);
     og::sim::LobbyServer server(transport);
@@ -617,7 +620,9 @@ TEST(LobbyServer, malformed_typed_message_throws)
 
     transport.queue_malformed_typed_message(11u);
 
-    EXPECT_THROW(server.poll_incoming_messages(), std::runtime_error);
+    EXPECT_NO_THROW(server.poll_incoming_messages());
+    EXPECT_EQ((std::vector<og::sim::PeerId>{11u}), transport.disconnected_peers());
+    EXPECT_TRUE(server.state().players.empty());
 }
 
 TEST(LobbyServer, fifth_join_is_rejected_when_lobby_is_full)

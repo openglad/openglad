@@ -24,6 +24,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/resources/campaign_io.h>
 #include <openglad/resources/filesystem_sync.h>
+#include <openglad/resources/io_common.h>
 #include <openglad/resources/og_file.h>
 #include <algorithm>
 #include <cstdint>
@@ -96,6 +97,12 @@ bool SaveData::load(const std::string& filename)
 {
     last_io_error_ = SaveDataIoError::None;
 	TRACE("load", "SaveData::load file=%s", filename.c_str());
+    if (!is_safe_virtual_basename(filename))
+    {
+        LogError("Rejected unsafe save file name for load: {}\n", filename);
+        last_io_error_ = SaveDataIoError::OpenReadFailed;
+        return false;
+    }
 	char filler[50] = "GTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTL"; // for RESERVED
 
 	char temptext[10] = "GTL";
@@ -247,8 +254,9 @@ bool SaveData::load(const std::string& filename)
 	{
 		READ_OR_FAIL(temp_campaign, 1, 40);
 		temp_campaign[40] = '\0';
-		if(std::string(temp_campaign).size() > 3)
-            current_campaign = temp_campaign;
+        const std::string loaded_campaign = temp_campaign;
+		if(loaded_campaign.size() > 3 && is_safe_campaign_id(loaded_campaign))
+            current_campaign = loaded_campaign;
         else
             current_campaign = "org.openglad.gladiator";
 	}
@@ -435,6 +443,12 @@ bool SaveData::load(const std::string& filename)
             // Get the campaign ID (40 chars)
             READ_OR_FAIL(campaign, 1, 40);
             campaign[40] = '\0';
+            if (!is_safe_campaign_id(campaign))
+            {
+                LogError("Rejected unsafe campaign id in save: {}\n", campaign);
+                last_io_error_ = SaveDataIoError::ReadFailed;
+                return false;
+            }
 
             short index = 1;
             // Get the current level for this campaign
@@ -619,6 +633,12 @@ bool SaveData::save(const std::string& filename)
 {
     last_io_error_ = SaveDataIoError::None;
 	TRACE("save", "SaveData::save file=%s", filename.c_str());
+    if (!is_safe_virtual_basename(filename))
+    {
+        LogError("Rejected unsafe save file name for save: {}\n", filename);
+        last_io_error_ = SaveDataIoError::OpenWriteFailed;
+        return false;
+    }
 	char filler[50] = "GTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTL"; // for RESERVED
 	char savedgame[41];
 	std::fill_n(savedgame, 41, '\0');
@@ -737,6 +757,13 @@ bool SaveData::save(const std::string& filename)
 	WRITE_OR_FAIL(savedgame, 40, 1);
 
 	// Write current campaign
+    if (!is_safe_campaign_id(current_campaign))
+    {
+        LogError("Rejected unsafe current campaign id for save: {}\n",
+                 current_campaign);
+        last_io_error_ = SaveDataIoError::WriteFailed;
+        return false;
+    }
 	Log("Saving campaign status: {}\n", current_campaign);
 	snprintf(temp_campaign, sizeof(temp_campaign), "%s", current_campaign.c_str());
 	WRITE_OR_FAIL(temp_campaign, 40, 1);
@@ -843,6 +870,13 @@ bool SaveData::save(const std::string& filename)
     WRITE_OR_FAIL(&num_campaigns, 2, 1);
 	for(std::map<std::string, std::set<int> >::const_iterator e = completed_levels.begin(); e != completed_levels.end(); e++)
     {
+        if (!is_safe_campaign_id(e->first))
+        {
+            LogError("Rejected unsafe completed-level campaign id for save: {}\n",
+                     e->first);
+            last_io_error_ = SaveDataIoError::WriteFailed;
+            return false;
+        }
         // Campaign ID
         char campaign[41];
         std::fill_n(campaign, 41, '\0');

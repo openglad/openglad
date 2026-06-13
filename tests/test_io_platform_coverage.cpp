@@ -353,6 +353,11 @@ TEST(IoPlatformCoverage, platform_io_campaign_error_codes)
 
     ASSERT_EQ(static_cast<int>(CampaignPackageIoError::EmptyId), static_cast<int>(mount_campaign_package_with_error(""))) << "empty campaign id should return EmptyId";
     ASSERT_EQ(static_cast<int>(CampaignPackageIoError::EmptyId), static_cast<int>(remount_campaign_package_with_error())) << "remount with no mounted campaign should return EmptyId";
+    ASSERT_TRUE(!is_safe_campaign_id("../outside")) << "campaign ids must not contain path traversal";
+    ASSERT_TRUE(!is_safe_campaign_id("bad..id")) << "campaign ids must not contain traversal-like dot segments";
+    ASSERT_EQ(static_cast<int>(CampaignPackageIoError::MountFailed), static_cast<int>(mount_campaign_package_with_error("../outside"))) << "unsafe campaign id should be rejected before path construction";
+    ASSERT_TRUE(!unpack_campaign("../outside")) << "unsafe campaign id should not be unpacked";
+    ASSERT_TRUE(!repack_campaign("../outside")) << "unsafe campaign id should not be repacked";
 
     std::map<std::string, int> current_levels;
     const CampaignLoadResult r = load_campaign_with_error("definitely_missing_campaign", current_levels, 7);
@@ -392,9 +397,15 @@ TEST(IoPlatformCoverage, platform_io_batch3_mount_switch_and_listing_filters)
         ASSERT_TRUE(f != nullptr) << "create non-glad marker";
         if (f) std::fclose(f);
     }
+    {
+        std::FILE* f = std::fopen((campaigns_dir / "batch3..unsafe.glad").string().c_str(), "wb");
+        ASSERT_TRUE(f != nullptr) << "create unsafe .glad marker";
+        if (f) std::fclose(f);
+    }
     const std::list<std::string> campaigns = list_campaigns();
     ASSERT_TRUE(std::find(campaigns.begin(), campaigns.end(), "batch3_filter_marker") != campaigns.end()) << "list_campaigns should keep .glad ids";
     ASSERT_TRUE(std::find(campaigns.begin(), campaigns.end(), "batch3_filter_marker.txt") == campaigns.end()) << "list_campaigns should filter non-.glad names";
+    ASSERT_TRUE(std::find(campaigns.begin(), campaigns.end(), "batch3..unsafe") == campaigns.end()) << "list_campaigns should filter unsafe .glad ids";
 
     // list_levels/list_levels_v should filter malformed entries and keep strict positive scen ids.
     {

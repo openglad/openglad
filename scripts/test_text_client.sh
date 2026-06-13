@@ -50,10 +50,11 @@ if [ $rc -ne 0 ]; then
 fi
 
 # Validate with Python (available in CI and dev environments).
-python3 -c "
+python3 - "$TMPOUT" <<'PY'
 import json, sys
 
-lines = [l.strip() for l in open('$TMPOUT') if l.strip()]
+with open(sys.argv[1], encoding='utf-8') as f:
+    lines = [l.strip() for l in f if l.strip()]
 if len(lines) < 3:
     print('FAIL: Expected at least 3 JSON lines, got', len(lines), file=sys.stderr)
     sys.exit(1)
@@ -107,4 +108,4 @@ if quit_msg.get('status') != 'ok':
     sys.exit(1)
 
 print(f'PASS: 1000 ticks, {len(entities)} entities, {dead_count} dead, clean quit')
-"
+PY

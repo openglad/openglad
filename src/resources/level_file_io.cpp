@@ -14,6 +14,7 @@
 #include <openglad/resources/pixie_data.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/resources/io_common.h>
 #include <openglad/resources/og_file.h>
 
 bool write_pixie_png(const char* filepath, const PixieData& data);
@@ -137,6 +138,13 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
     //buffers: PORT: make sure grid name is lowercase
     lowercase(newgrid);
     metadata.grid_file = newgrid;
+    if (!is_safe_virtual_basename(metadata.grid_file, 32))
+    {
+        LogError("Rejected unsafe scenario grid file name: {}\n",
+                 metadata.grid_file);
+        err = LevelFileIoError::ParseFailed;
+        return false;
+    }
 
     if (version >= 6)
     {
@@ -348,6 +356,12 @@ bool load_level(const std::string& path,
                 LevelFileIoError* out_error)
 {
     set_error(out_error, LevelFileIoError::None);
+    if (!is_safe_virtual_basename(path, 64))
+    {
+        LogError("Rejected unsafe level file name for load: {}\n", path);
+        set_error(out_error, LevelFileIoError::OpenReadFailed);
+        return false;
+    }
 
     auto infile = og::io::og_open_read("scen/", path.c_str());
     if (!infile)
@@ -563,6 +577,12 @@ bool write_scenario_payload(og::io::OgFile& outfile,
 
 bool save_grid_file(const char* gridname, const PixieData& grid)
 {
+    if (gridname == nullptr || !is_safe_virtual_basename(gridname, 32))
+    {
+        Log("Rejected unsafe grid file name for save: {}\n",
+            gridname == nullptr ? "" : gridname);
+        return false;
+    }
     std::string fullpath(gridname);
     fullpath += ".png";
     //buffers: PORT: make sure grid name is lowercase
@@ -605,6 +625,12 @@ bool save_level(GameWorld& world,
                 LevelFileIoError* out_error)
 {
     set_error(out_error, LevelFileIoError::None);
+    if (!is_safe_virtual_basename(path, 64))
+    {
+        Log("Rejected unsafe scenario file name for save: {}\n", path);
+        set_error(out_error, LevelFileIoError::OpenWriteFailed);
+        return false;
+    }
 
     const std::string scenario_path = std::string("temp/scen/") + path;
     if (!save_level_scenario_file(world, scenario_path, metadata, out_error))
@@ -684,6 +710,8 @@ LevelFileIoError load_scenario_title_with_error(const char* filename,
 {
     out_title = "none";
     if (filename == nullptr || filename[0] == '\0')
+        return LevelFileIoError::OpenReadFailed;
+    if (!is_safe_virtual_basename(filename, 64))
         return LevelFileIoError::OpenReadFailed;
 
     std::string tempfile = std::string(filename) + ".fss";

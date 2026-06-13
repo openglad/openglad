@@ -11,6 +11,9 @@ env:
   # cause false positives in fuzz runs.
   ASAN_OPTIONS: detect_leaks=0
 
+permissions:
+  contents: read
+
 jobs:
   fuzz:
     name: Fuzz ${{ matrix.target }} (${{ github.event_name == 'schedule' && 'nightly' || 'pr' }})
@@ -26,6 +29,8 @@ jobs:
             corpus: fuzz/corpus/savefile
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Install dependencies
         run: |

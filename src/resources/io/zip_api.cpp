@@ -29,6 +29,10 @@ namespace og::io {
 
 namespace fs = std::filesystem;
 
+constexpr zip_uint64_t kMaxUnzipEntries = 4096;
+constexpr zip_uint64_t kMaxUnzipEntryBytes = 64ull * 1024ull * 1024ull;
+constexpr zip_uint64_t kMaxUnzipTotalBytes = 256ull * 1024ull * 1024ull;
+
 static std::vector<fs::path> list_relative_paths_recursively(const fs::path& base)
 {
     std::vector<fs::path> out;
@@ -193,6 +197,18 @@ ArchiveIoError unzip_into_with_error(const std::string& infile, const std::strin
     std::array<char, buf_size> buf{};
 
     const zip_int64_t num_entries = zip_get_num_entries(archive, 0);
+    if (num_entries < 0)
+    {
+        zip_close(archive);
+        return ArchiveIoError::OpenArchiveFailed;
+    }
+    if (static_cast<zip_uint64_t>(num_entries) > kMaxUnzipEntries)
+    {
+        zip_close(archive);
+        return ArchiveIoError::ResourceLimitExceeded;
+    }
+
+    zip_uint64_t total_uncompressed = 0;
     for (zip_int64_t i = 0; i < num_entries; i++)
     {
         if (zip_stat_index(archive, i, 0, &st) != 0 || st.name == nullptr)
@@ -218,6 +234,18 @@ ArchiveIoError unzip_into_with_error(const std::string& infile, const std::strin
             fs::create_directories(dest, ec);
             continue;
         }
+        if ((st.valid & ZIP_STAT_SIZE) == 0)
+        {
+            result = ArchiveIoError::OpenEntryFailed;
+            continue;
+        }
+        if (st.size > kMaxUnzipEntryBytes ||
+            st.size > kMaxUnzipTotalBytes - total_uncompressed)
+        {
+            result = ArchiveIoError::ResourceLimitExceeded;
+            break;
+        }
+        total_uncompressed += st.size;
 
         fs::create_directories(dest.parent_path(), ec);
 

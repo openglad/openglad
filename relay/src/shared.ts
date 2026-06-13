@@ -7,6 +7,10 @@ export const ROOM_INDEX_TTL_SECONDS = 60 * 60;
 export const EMPTY_ROOM_GRACE_MS = 30_000;
 export const MAX_ROOM_PEERS = 4;
 export const MAX_RELAY_PAYLOAD_BYTES = 64 * 1024;
+export const MAX_RELAY_JSON_MESSAGE_BYTES = 4 * 1024;
+export const MAX_CAMPAIGN_HASH_LENGTH = 128;
+export const MAX_CAMPAIGN_NAME_LENGTH = 128;
+export const MAX_HOST_NAME_LENGTH = 64;
 export const CREATE_RATE_LIMIT_MAX_ROOMS = 10;
 export const CREATE_RATE_LIMIT_WINDOW_SECONDS = 60 * 60;
 export const MESSAGE_RATE_LIMIT_MAX_MESSAGES = 100;
@@ -74,6 +78,10 @@ export function generateOwnerToken(): string {
   return token;
 }
 
+function boundedString(value: string | undefined, maxLength: number): string {
+  return (value ?? "").trim().slice(0, maxLength);
+}
+
 export function makeRoomInfo(init: {
   code: string;
   campaign_hash?: string;
@@ -82,12 +90,15 @@ export function makeRoomInfo(init: {
   player_count?: number;
   created_at?: number;
 }): RoomInfo {
-  const campaignHash = init.campaign_hash ?? "";
+  const campaignHash = boundedString(init.campaign_hash, MAX_CAMPAIGN_HASH_LENGTH);
   return {
     code: init.code,
     campaign_hash: campaignHash,
-    campaign_name: init.campaign_name ?? campaignHash,
-    host_name: init.host_name ?? "",
+    campaign_name: boundedString(
+      init.campaign_name ?? campaignHash,
+      MAX_CAMPAIGN_NAME_LENGTH,
+    ),
+    host_name: boundedString(init.host_name, MAX_HOST_NAME_LENGTH),
     player_count: init.player_count ?? 0,
     created_at: init.created_at ?? Date.now(),
   };

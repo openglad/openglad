@@ -27,6 +27,10 @@ constexpr std::uint8_t kRelaySendToPeerTag = 1u;
 constexpr std::uint8_t kRelayReceiveFromPeerTag = 2u;
 constexpr std::uint8_t kRelayBroadcastTag = 3u;
 constexpr std::size_t kRelayPeerHeaderSize = 5u;
+constexpr std::size_t kMaxInboundFrameBytes = 128u * 1024u;
+constexpr std::size_t kMaxInboundTextBytes = 8u * 1024u;
+constexpr std::size_t kMaxQueuedMessages = 1024u;
+constexpr std::size_t kMaxQueuedPayloadBytes = 16u * 1024u * 1024u;
 
 std::string trim_copy(std::string_view text)
 {
@@ -456,6 +460,8 @@ struct RelayWebSocketTransport::Impl
             if (!lock.owns_lock() || queue.empty())
                 return {};
             queued_entries.swap(queue);
+            queued_message_count = 0;
+            queued_payload_bytes = 0;
         }
 
         std::vector<ReceivedMessage> received;
@@ -595,6 +601,18 @@ private:
     {
         if (websocket_event == nullptr || websocket_event->socket != socket)
             return;
+        const bool is_text = websocket_event->isText == detail::kTrue;
+        const std::size_t max_bytes =
+            is_text ? kMaxInboundTextBytes : kMaxInboundFrameBytes;
+        if (websocket_event->numBytes > max_bytes)
+        {
+            enqueue_disconnect(websocket_event->socket);
+            request_close_socket(
+                websocket_event->socket,
+                1009,
+                is_text ? "control message too large" : "message too large");
+            return;
+        }
 
         QueueEntry entry;
         entry.socket = websocket_event->socket;
@@ -608,7 +626,7 @@ private:
                                      websocket_event->numBytes);
         }
 
-        if (websocket_event->isText == detail::kTrue)
+        if (is_text)
         {
             entry.kind = QueueEntryKind::TextMessage;
             entry.text.assign(entry.payload.begin(), entry.payload.end());
@@ -619,7 +637,11 @@ private:
             entry.kind = QueueEntryKind::BinaryMessage;
         }
 
-        enqueue(std::move(entry));
+        if (!enqueue(std::move(entry)))
+        {
+            enqueue_disconnect(websocket_event->socket);
+            request_close_socket(websocket_event->socket, 1008, "receive queue full");
+        }
     }
 
     void handle_disconnect(WebSocketHandle socket_handle)
@@ -745,6 +767,19 @@ private:
             (void)api.close(socket_handle, 1000, nullptr);
     }
 
+    void request_close_socket(WebSocketHandle socket_handle,
+                              unsigned short code,
+                              const char* reason) const noexcept
+    {
+        if (socket_handle <= 0)
+            return;
+
+        const detail::EmscriptenWebSocketApi& api =
+            detail::emscripten_websocket_api();
+        if (api.close != nullptr)
+            (void)api.close(socket_handle, code, reason);
+    }
+
     void dispose_socket() noexcept
     {
         if (socket <= 0)
@@ -764,12 +799,32 @@ private:
     {
         std::lock_guard<std::mutex> lock(queue_mutex);
         queue.clear();
+        queued_message_count = 0;
+        queued_payload_bytes = 0;
     }
 
-    void enqueue(QueueEntry entry)
+    bool enqueue(QueueEntry entry)
     {
         std::lock_guard<std::mutex> lock(queue_mutex);
+        if (queue.size() >= kMaxQueuedMessages)
+            return false;
+        if (entry.kind == QueueEntryKind::TextMessage ||
+            entry.kind == QueueEntryKind::BinaryMessage)
+        {
+            const std::size_t entry_size =
+                entry.kind == QueueEntryKind::TextMessage
+                    ? entry.text.size()
+                    : entry.payload.size();
+            if (queued_message_count >= kMaxQueuedMessages ||
+                entry_size > kMaxQueuedPayloadBytes - queued_payload_bytes)
+            {
+                return false;
+            }
+            ++queued_message_count;
+            queued_payload_bytes += entry_size;
+        }
         queue.push_back(std::move(entry));
+        return true;
     }
 
     std::string url;
@@ -780,6 +835,8 @@ private:
 
     std::mutex queue_mutex;
     std::deque<QueueEntry> queue;
+    std::size_t queued_message_count = 0;
+    std::size_t queued_payload_bytes = 0;
 
     std::optional<PeerId> local_peer_id_;
     std::optional<PeerId> host_peer_id_;
