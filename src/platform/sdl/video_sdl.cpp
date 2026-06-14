@@ -2102,7 +2102,7 @@ int sdl_video::FadeBetween(
 #ifdef TESTING
 	// In test mode, just do a direct blit instead of animated fade
 	if(pNewSurface)
-		SDL_BlitSurface(pNewSurface, NULL, DestSurface, NULL);
+		SDL_BlitSurface(pNewSurface, nullptr, DestSurface, nullptr);
 	TRACE("video", "FadeBetween: skipping animation (test mode)");
 #else
 	Uint32

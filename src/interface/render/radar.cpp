@@ -112,7 +112,7 @@ void radar::sync_to_grid(LevelRuntimeData* data)
 {
 	sizex = static_cast<unsigned short>(data->world().grid.w);
 	sizey = static_cast<unsigned short>(data->world().grid.h);
-	size = (unsigned short) ((static_cast<unsigned short>(sizex))*(static_cast<unsigned short>(sizey)));
+	size = static_cast<unsigned short>((static_cast<unsigned short>(sizex))*(static_cast<unsigned short>(sizey)));
 	xview = RADAR_X;
 	yview = RADAR_Y;
 	radarx = 0;

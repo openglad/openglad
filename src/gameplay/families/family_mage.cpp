@@ -47,9 +47,7 @@ static void mage_hit_response(statistics* stats, walker* foe)
     else
         threshold = (3.0f * stats->max_hitpoints()) / 8.0f;
 
-    std::int32_t possible_specials[NUM_SPECIALS];
-    for (int i = 0; i < NUM_SPECIALS; i++)
-        possible_specials[i] = 0;
+    std::int32_t possible_specials[NUM_SPECIALS] = {};
     for (int i = 0; i <= (stats->level() + 2) / 3; i++)
         if (i < NUM_SPECIALS && stats->magicpoints() >= stats->special_cost(i))
             possible_specials[i] = 1;

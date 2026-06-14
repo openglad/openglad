@@ -300,12 +300,7 @@ viewscreen::~viewscreen()
 
 void viewscreen::clear()
 {
-	unsigned short i;
-
-	for (i=0;i<64000;i++)
-	{
-		active_screen()->videobuffer[i] = 0;
-	}
+	active_screen()->videobuffer.fill(0);
 }
 
 bool viewscreen::redraw()

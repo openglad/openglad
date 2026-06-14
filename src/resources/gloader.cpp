@@ -401,7 +401,7 @@ PixieData data_copy(const PixieData& d)
     result.w = d.w;
     result.h = d.h;
 
-    size_t len = d.w * d.h * d.frames;
+    size_t len = static_cast<std::size_t>(d.w) * d.h * d.frames;
     result.data = std::make_unique<unsigned char[]>(len);
     std::copy_n(d.data.get(), len, result.data.get());
 

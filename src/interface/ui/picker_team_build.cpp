@@ -1564,7 +1564,7 @@ Sint32 create_progress_menu(Sint32 arg1)
         }
 
         // Scroll indicator
-        if (levels.size() > (size_t)visible_rows) {
+        if (levels.size() > static_cast<size_t>(visible_rows)) {
             std::string scroll_info = std::format("{}-{} of {}",
                      scroll_offset + 1,
                      std::min(scroll_offset + visible_rows, static_cast<int>(levels.size())),
