@@ -283,8 +283,8 @@ std::shared_ptr<og::sim::WorldSnapshot> validate_snapshot_roundtrip(
         is_delta ? og::sim::serialize_delta(*snapshot)
                  : og::sim::serialize_snapshot(*snapshot);
     og::sim::WorldSnapshot decoded =
-        is_delta ? og::sim::deserialize_delta(bytes.data(), bytes.size())
-                 : og::sim::deserialize_snapshot(bytes.data(), bytes.size());
+        is_delta ? og::sim::deserialize_delta(bytes)
+                 : og::sim::deserialize_snapshot(bytes);
 
     const std::optional<og::sim::ReplayVerificationFailure> failure =
         [&]() -> std::optional<og::sim::ReplayVerificationFailure> {
@@ -349,10 +349,8 @@ std::shared_ptr<og::sim::SimEventBatch> validate_event_batch_roundtrip(
         game_flow ? og::sim::serialize_game_flow_event_batch(*batch)
                   : og::sim::serialize_sim_event_batch(*batch);
     og::sim::SimEventBatch decoded =
-        game_flow ? og::sim::deserialize_game_flow_event_batch(bytes.data(),
-                                                               bytes.size())
-                  : og::sim::deserialize_sim_event_batch(bytes.data(),
-                                                         bytes.size());
+        game_flow ? og::sim::deserialize_game_flow_event_batch(bytes)
+                  : og::sim::deserialize_sim_event_batch(bytes);
 
     const std::optional<TransportValidationFailure> failure =
         find_first_event_batch_difference(*batch, decoded);

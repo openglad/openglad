@@ -454,17 +454,14 @@ NewFileIoError create_new_pix_with_error(const std::string& filename, int w, int
 
 NewFileIoError create_new_campaign_descriptor_with_error(const std::string& filename)
 {
-	SDL_RWops* outfile = open_write_file(filename.c_str());
-	if(outfile == nullptr)
+	RwopsPtr outfile{open_write_file(filename.c_str())};
+	if (!outfile)
         return NewFileIoError::OpenWriteFailed;
-    
+
     og::io::YamlEmitter yaml;
-    if (!yaml.set_output(rwops_write_handler, outfile))
-    {
-        SDL_RWclose(outfile);
+    if (!yaml.set_output(rwops_write_handler, outfile.get()))
         return NewFileIoError::WriteFailed;
-    }
-    
+
     yaml.emit_pair("format_version", "1");
     yaml.emit_pair("title", "New Campaign");
     yaml.emit_pair("version", "1");
@@ -473,9 +470,8 @@ NewFileIoError create_new_campaign_descriptor_with_error(const std::string& file
     yaml.emit_pair("authors", "");
     yaml.emit_pair("contributors", "");
     yaml.emit_pair("description", "A new campaign.");
-    
+
     yaml.close_output();
-    SDL_RWclose(outfile);
     return NewFileIoError::None;
 }
 

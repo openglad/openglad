@@ -388,7 +388,6 @@ bool dispatch_game_flow_screen_events(screen& self,
 loader* sdl_entity_loader();
 
 // Screen window boundries
-inline constexpr int MAX_VIEWS = 5;
 inline constexpr int S_UP = 0;
 inline constexpr int S_LEFT = 0;
 inline constexpr int S_DOWN = 200;
@@ -956,6 +955,7 @@ void screen::initialize_views()
 	else
     {
         LogError("screen_init_views_failed numviews={}\n", numviews);
+        numviews = 0; // no views created for an unsupported count; keep per-frame loops in-bounds
     }
 }
 
@@ -1029,11 +1029,15 @@ void screen::reset(short howmany)
 		viewob[2] = std::make_unique<viewscreen>( 112, 16, 100, 168, 2);
 		viewob[3] = std::make_unique<viewscreen>( 112, 16, 100, 168, 3);
 	}
+	else
+	{
+		numviews = 0; // no views created for an unsupported count; keep per-frame loops in-bounds
+	}
 
 	world_.end = 0;
 
 	redrawme = 1;
-	
+
 	save_data.reset();
 	level_runtime_data_.clear();
 	sync_world_from_save_data();

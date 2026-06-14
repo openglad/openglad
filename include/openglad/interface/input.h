@@ -281,8 +281,8 @@ class JoyData
     static inline constexpr int HAT_LEFT = 10;
     static inline constexpr int HAT_UP_LEFT = 11;
     
-    int key_type[NUM_KEYS];
-    int key_index[NUM_KEYS];
+    int key_type[NUM_KEYS]{};
+    int key_index[NUM_KEYS]{};
     
     JoyData();
     JoyData(int index);

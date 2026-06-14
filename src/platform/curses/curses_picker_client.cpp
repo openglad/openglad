@@ -662,11 +662,15 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
     if (menu_id == PickerMenuId::Main) {
         switch (item.command) {
         case PickerMenuCommand::SetDifficulty:
+        {
             options_.difficulty = og::ui::cycle_difficulty(options_.difficulty);
+            const int difficulty_index =
+                ((options_.difficulty % DIFFICULTY_SETTINGS) + DIFFICULTY_SETTINGS) % DIFFICULTY_SETTINGS;
             menu.show_text("Difficulty",
                 {std::format("Difficulty set to {}.",
-                    og::ui::kDifficultyNames[options_.difficulty])});
+                    og::ui::kDifficultyNames[difficulty_index])});
             break;
+        }
         case PickerMenuCommand::SetPlayerMode:
             og::ui::set_player_count(save_data_, item.arg);
             menu.show_text("Players",

@@ -1002,13 +1002,13 @@ TypedReceivedMessage decode_received_message(const ReceivedMessage& message)
         case kSnapshotMessageType:
             typed_message.kind = TypedReceivedMessageKind::Snapshot;
             typed_message.snapshot = std::make_shared<WorldSnapshot>(
-                deserialize_snapshot(message.data.data(), message.data.size()));
+                deserialize_snapshot(message.data));
             return typed_message;
 
         case kDeltaSnapshotMessageType:
             typed_message.kind = TypedReceivedMessageKind::DeltaSnapshot;
             typed_message.snapshot = std::make_shared<WorldSnapshot>(
-                deserialize_delta(message.data.data(), message.data.size()));
+                deserialize_delta(message.data));
             return typed_message;
 
         case kInputMessageType:
@@ -1027,14 +1027,13 @@ TypedReceivedMessage decode_received_message(const ReceivedMessage& message)
         case kSimEventBatchMessageType:
             typed_message.kind = TypedReceivedMessageKind::SimEventBatch;
             typed_message.event_batch = std::make_shared<SimEventBatch>(
-                deserialize_sim_event_batch(message.data.data(), message.data.size()));
+                deserialize_sim_event_batch(message.data));
             return typed_message;
 
         case kGameFlowEventBatchMessageType:
             typed_message.kind = TypedReceivedMessageKind::GameFlowEventBatch;
             typed_message.event_batch = std::make_shared<SimEventBatch>(
-                deserialize_game_flow_event_batch(message.data.data(),
-                                                  message.data.size()));
+                deserialize_game_flow_event_batch(message.data));
             return typed_message;
 
         case kLobbyMessageType:

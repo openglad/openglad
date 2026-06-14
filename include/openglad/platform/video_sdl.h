@@ -165,12 +165,12 @@ public:
     std::array<unsigned char, 768> dospalette{};
 
     std::array<unsigned char, 64000> videobuffer{};
-    short cyclemode;
+    short cyclemode = 0;
 
     //buffers: screen vars
-    SDL_Surface* window;
-    int screen_width, screen_height, fullscreen;
-    int pdouble;
+    SDL_Surface* window = nullptr;
+    int screen_width = 0, screen_height = 0, fullscreen = 0;
+    int pdouble = 0;
 
     text text_normal;
     text text_big;

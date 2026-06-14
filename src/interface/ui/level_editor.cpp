@@ -3361,9 +3361,9 @@ std::string get_editor_family_label(Order order, Sint32 family, char livings[][2
     if (order == Order::Special)
         return "START TILE";
     if (order == Order::Treasure)
-        return treasures[family];
+        return treasures[family] ? treasures[family] : "UNKNOWN";
     if (order == Order::Weapon)
-        return weapons[family];
+        return weapons[family] ? weapons[family] : "UNKNOWN";
     return "UNKNOWN";
 }
 

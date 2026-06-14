@@ -11,6 +11,7 @@
 #include <openglad/platform/curses/terminal.h>
 
 #include <array>
+#include <span>
 
 namespace og::curses {
 
@@ -41,7 +42,7 @@ public:
     CursesInput();
     // Bind to an explicit 16-entry keycode table (indexed by InputAction). Used by
     // tests to exercise specific bindings without the global session.
-    explicit CursesInput(const int* keybindings);
+    explicit CursesInput(std::span<const int, kInputActionCount> keybindings);
 
     // Apply one terminal key event (press/repeat/release) to the held/pressed set.
     void feed(const Key& k);
@@ -64,7 +65,7 @@ public:
     static MetaAction meta_for_key(const Key& k);
 
 private:
-    const int* keybindings_; // 16 SDL keycodes indexed by InputAction (player_keys_[0])
+    std::span<const int, kInputActionCount> keybindings_; // 16 SDL keycodes indexed by InputAction (player_keys_[0])
     std::array<bool, kInputActionCount> held_{};
     std::array<bool, kInputActionCount> pressed_edge_{};
 };

@@ -27,7 +27,7 @@ CursesInput::CursesInput()
 {
 }
 
-CursesInput::CursesInput(const int* keybindings) : keybindings_(keybindings) {}
+CursesInput::CursesInput(std::span<const int, kInputActionCount> keybindings) : keybindings_(keybindings) {}
 
 int CursesInput::keycode_for_key(const Key& k)
 {
@@ -103,17 +103,15 @@ void CursesInput::feed(const Key& k)
         held_.fill(false);
         return;
     }
-    if (keybindings_ == nullptr)
-        return;
     const int keycode = keycode_for_key(k);
     if (keycode == KEYCODE_UNKNOWN)
         return;
 
     // Resolve the key to the action(s) it is bound to for player 0.
     for (int a = 0; a < kInputActionCount; ++a) {
-        if (keybindings_[a] != keycode)
-            continue;
         const auto idx = static_cast<std::size_t>(a);
+        if (keybindings_[idx] != keycode)
+            continue;
         switch (k.event) {
         case KeyEvent::Press:
             pressed_edge_[idx] = true; // down transition this frame

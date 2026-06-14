@@ -2322,7 +2322,13 @@ Sint32 name_guy(Sint32 arg)  // 0 == current_guy, 1 == ourteam[editguy]
 		return MENU_REDRAW;
 
 	if (arg)
-		someguy = og::runtime::current_session->myscreen_->save_data.team_list[og::runtime::current_session->editguy_].get();
+	{
+		auto& team_list = og::runtime::current_session->myscreen_->save_data.team_list;
+		const int slot = og::runtime::current_session->editguy_;
+		if (slot < 0 || slot >= static_cast<int>(team_list.size()))
+			return MENU_REDRAW;
+		someguy = team_list[slot].get();
+	}
 	else
 		someguy = og::runtime::current_session->current_guy_.get();
 

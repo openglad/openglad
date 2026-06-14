@@ -2056,6 +2056,12 @@ int sdl_video::FadeBetween(
         return fail("width mismatch");
 	if(pOldSurface->h != pNewSurface->h)
         return fail("height mismatch");
+	// DestSurface drives the FadeBetween24 write/read loop; colorsf/colorst are
+	// sized to pOldSurface, so a larger dest would read past them. Require an
+	// exact dimension match (and non-null dest) to bound the loop.
+	if(!DestSurface || DestSurface->pitch != pOldSurface->pitch
+	   || DestSurface->w != pOldSurface->w || DestSurface->h != pOldSurface->h)
+        return fail("dest size mismatch");
 	if(pOldSurface->format->Rmask != pNewSurface->format->Rmask)
         return fail("Rmask mismatch");
 	if(pOldSurface->format->Rshift != pNewSurface->format->Rshift)

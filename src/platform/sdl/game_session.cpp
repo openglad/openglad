@@ -128,8 +128,10 @@ GameSession::GameSession(const Config& session_cfg)
     // Set prefs before creating the screen; viewscreen construction reads it.
     theprefs_ = prefs_owner_.get();
 
-    // Initialize legacy video pointer (VGA linear buffer address from DOS era).
-    videoptr_ = reinterpret_cast<unsigned char*>(VIDEO_LINEAR);
+    // Legacy videoptr_ stays at its in-class nullptr default. It formerly held a
+    // fabricated DOS-era VGA linear address (0xA0000); that pointer was never
+    // written through in production (only putblack uses it, and only tests call
+    // putblack, after pointing videoptr_ at a real buffer).
 
     // Share SDL's keyboard state array. SDL_GetKeyboardState returns a pointer
     // to SDL's internal array — it's the same for all sessions.

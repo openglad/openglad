@@ -773,8 +773,7 @@ std::optional<ReplayData> deserialize_replay(std::span<const std::uint8_t> bytes
     try
     {
         replay.initial_snapshot =
-            deserialize_snapshot(initial_snapshot_bytes.data(),
-                                 initial_snapshot_bytes.size());
+            deserialize_snapshot(initial_snapshot_bytes);
     }
     catch (const std::runtime_error&)
     {

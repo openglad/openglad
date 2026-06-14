@@ -313,28 +313,23 @@ static bool load_help_file(const char* filename, std::vector<std::string>& lines
 		return false;
 	}
 
-	char line_buf[HELP_WIDTH];
+	std::string line_buf;
 	char ch = '\0';
-	int pos = 0;
 
 	while (true)
 	{
 		if (!og::io::og_read_exact(*infile, &ch, 1, 1))
 		{
 			// End of file - save any remaining content
-			if (pos > 0)
-			{
-				line_buf[pos] = '\0';
-				lines.push_back(std::string(line_buf));
-			}
+			if (!line_buf.empty())
+				lines.push_back(std::move(line_buf));
 			break;
 		}
 
 		if (ch == '\n' || ch == '\r')
 		{
-			line_buf[pos] = '\0';
-			lines.push_back(std::string(line_buf));
-			pos = 0;
+			lines.push_back(std::move(line_buf));
+			line_buf.clear();
 
 			// Handle \r\n line endings
 			if (ch == '\r')
@@ -346,9 +341,9 @@ static bool load_help_file(const char* filename, std::vector<std::string>& lines
 				}
 			}
 		}
-		else if (pos < HELP_WIDTH - 1)
+		else if (line_buf.size() < static_cast<std::size_t>(HELP_WIDTH - 1))
 		{
-			line_buf[pos++] = ch;
+			line_buf.push_back(ch);
 		}
 	}
 	return true;

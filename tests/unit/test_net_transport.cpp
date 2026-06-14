@@ -1353,16 +1353,14 @@ TEST(NetTransport, game_server_snapshot_hash_check_is_strict_per_peer_per_tick)
     server.send_initial_snapshot(7u, og::sim::SnapshotCaptureMode::Peek);
     ASSERT_GE(transport.sent_messages().size(), 2u);
     const og::sim::WorldSnapshot first_snapshot =
-        og::sim::deserialize_snapshot(transport.sent_messages()[1].data.data(),
-                                      transport.sent_messages()[1].data.size());
+        og::sim::deserialize_snapshot(transport.sent_messages()[1].data);
     transport.clear_sent_messages();
 
     fixture.world().current_palette_id = 1;
     server.send_initial_snapshot(11u, og::sim::SnapshotCaptureMode::Peek);
     ASSERT_GE(transport.sent_messages().size(), 2u);
     const og::sim::WorldSnapshot second_snapshot =
-        og::sim::deserialize_snapshot(transport.sent_messages()[1].data.data(),
-                                      transport.sent_messages()[1].data.size());
+        og::sim::deserialize_snapshot(transport.sent_messages()[1].data);
     ASSERT_EQ(first_snapshot.tick_count, second_snapshot.tick_count);
     ASSERT_NE(first_snapshot.snapshot_hash, second_snapshot.snapshot_hash);
 
@@ -1396,16 +1394,14 @@ TEST(NetTransport, game_server_snapshot_hash_check_preserves_same_peer_same_tick
     server.send_initial_snapshot(7u, og::sim::SnapshotCaptureMode::Peek);
     ASSERT_GE(transport.sent_messages().size(), 2u);
     const og::sim::WorldSnapshot first_snapshot =
-        og::sim::deserialize_snapshot(transport.sent_messages()[1].data.data(),
-                                      transport.sent_messages()[1].data.size());
+        og::sim::deserialize_snapshot(transport.sent_messages()[1].data);
     transport.clear_sent_messages();
 
     fixture.world().current_palette_id = 1;
     server.send_initial_snapshot(7u, og::sim::SnapshotCaptureMode::Peek);
     ASSERT_GE(transport.sent_messages().size(), 2u);
     const og::sim::WorldSnapshot second_snapshot =
-        og::sim::deserialize_snapshot(transport.sent_messages()[1].data.data(),
-                                      transport.sent_messages()[1].data.size());
+        og::sim::deserialize_snapshot(transport.sent_messages()[1].data);
     ASSERT_EQ(first_snapshot.tick_count, second_snapshot.tick_count);
     ASSERT_NE(first_snapshot.snapshot_hash, second_snapshot.snapshot_hash);
 
@@ -1480,8 +1476,7 @@ TEST(NetTransport,
     ASSERT_NE(transport.sent_messages().end(), paused_snapshot_it);
 
     const og::sim::WorldSnapshot paused_snapshot =
-        og::sim::deserialize_snapshot(paused_snapshot_it->data.data(),
-                                      paused_snapshot_it->data.size());
+        og::sim::deserialize_snapshot(paused_snapshot_it->data);
     EXPECT_EQ(paused_tick, paused_snapshot.tick_count);
     EXPECT_TRUE(paused_snapshot.paused);
     EXPECT_EQ(0u, paused_snapshot.pause_player_index);
@@ -1538,8 +1533,7 @@ TEST(NetTransport, game_server_broadcast_current_state_uses_raw_fallback)
         envelope));
     EXPECT_EQ(og::sim::kSnapshotMessageType, envelope.message_type);
     const og::sim::WorldSnapshot initial =
-        og::sim::deserialize_snapshot(transport.sent_messages()[1].data.data(),
-                                      transport.sent_messages()[1].data.size());
+        og::sim::deserialize_snapshot(transport.sent_messages()[1].data);
     EXPECT_EQ(3u, initial.tick_count);
     EXPECT_EQ(2, initial.my_team);
     EXPECT_EQ(1, initial.current_palette_id);
@@ -1618,8 +1612,7 @@ TEST(NetTransport, game_server_forward_event_batch_uses_ready_raw_fallback)
     ASSERT_TRUE(og::sim::decode_transport_envelope(sim_message.data, envelope));
     EXPECT_EQ(og::sim::kSimEventBatchMessageType, envelope.message_type);
     const og::sim::SimEventBatch sim_batch =
-        og::sim::deserialize_sim_event_batch(sim_message.data.data(),
-                                             sim_message.data.size());
+        og::sim::deserialize_sim_event_batch(sim_message.data);
     EXPECT_NE(0u, sim_batch.sequence);
     ASSERT_EQ(1u, sim_batch.events.size());
     EXPECT_EQ(og::sim::EventKind::Notification, sim_batch.events[0].kind);
@@ -1631,8 +1624,7 @@ TEST(NetTransport, game_server_forward_event_batch_uses_ready_raw_fallback)
         og::sim::decode_transport_envelope(game_flow_message.data, envelope));
     EXPECT_EQ(og::sim::kGameFlowEventBatchMessageType, envelope.message_type);
     const og::sim::SimEventBatch game_flow_batch =
-        og::sim::deserialize_game_flow_event_batch(game_flow_message.data.data(),
-                                                   game_flow_message.data.size());
+        og::sim::deserialize_game_flow_event_batch(game_flow_message.data);
     EXPECT_NE(0u, game_flow_batch.sequence);
     ASSERT_EQ(1u, game_flow_batch.events.size());
     EXPECT_EQ(og::sim::EventKind::EndGame, game_flow_batch.events[0].kind);
@@ -1684,9 +1676,7 @@ TEST(NetTransport,
               transport.sent_messages()[1].data);
 
     const og::sim::WorldSnapshot snapshot =
-        og::sim::deserialize_snapshot(
-            transport.broadcast_messages().front().data(),
-            transport.broadcast_messages().front().size());
+        og::sim::deserialize_snapshot(transport.broadcast_messages().front());
     EXPECT_EQ(og::sim::KEYFRAME_INTERVAL_TICKS, snapshot.tick_count);
     EXPECT_EQ(3, snapshot.current_palette_id);
 }
@@ -1767,9 +1757,7 @@ TEST(NetTransport,
     ASSERT_EQ(1u, transport.broadcast_messages().size());
     ASSERT_EQ(1u, transport.sent_messages().size());
     const og::sim::WorldSnapshot snapshot =
-        og::sim::deserialize_snapshot(
-            transport.broadcast_messages().front().data(),
-            transport.broadcast_messages().front().size());
+        og::sim::deserialize_snapshot(transport.broadcast_messages().front());
     const og::sim::EntitySnapshot* actor_snapshot =
         find_entity_snapshot(snapshot.oblist, actor->entity_id());
     ASSERT_NE(nullptr, actor_snapshot);

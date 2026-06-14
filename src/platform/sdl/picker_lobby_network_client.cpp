@@ -1226,12 +1226,11 @@ PendingLocalLobbyState build_pending_local_lobby_state(
 std::string detect_lan_ipv4_address()
 {
 #ifdef __EMSCRIPTEN__
-    char* const hostname = current_browser_hostname_js();
-    if (hostname == nullptr)
+    std::unique_ptr<char, decltype(&std::free)> hostname(current_browser_hostname_js(), &std::free);
+    if (!hostname)
         return "127.0.0.1";
 
-    std::string value = hostname;
-    std::free(hostname);
+    std::string value = hostname.get();
     if (value.empty())
         return "127.0.0.1";
     return value;
@@ -1291,7 +1290,9 @@ std::string detect_lan_ipv4_address()
 
     const auto detect_via_hostname = [&]() -> std::optional<std::string> {
         char hostname[256] = {};
-        if (gethostname(hostname, sizeof(hostname)) != 0 || hostname[0] == '\0')
+        // Reserve the final byte: POSIX leaves NUL-termination unspecified when
+        // the name is truncated, but the zero-initialized buffer keeps [255]=='\0'.
+        if (gethostname(hostname, sizeof(hostname) - 1) != 0 || hostname[0] == '\0')
             return std::nullopt;
 
         addrinfo hints = {};

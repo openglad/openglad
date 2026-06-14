@@ -2426,20 +2426,18 @@ std::vector<std::uint8_t> serialize_event_batch_message(
 }
 
 og::sim::SimEventBatch deserialize_event_batch_message(
-    const std::uint8_t* data,
-    std::size_t size,
+    std::span<const std::uint8_t> data,
     std::uint8_t message_type,
     const char* batch_name)
 {
-    if (data == nullptr || size < kMessageHeaderSize)
+    if (data.data() == nullptr || data.size() < kMessageHeaderSize)
     {
         throw std::runtime_error(std::string(batch_name) +
                                  ": truncated header");
     }
 
     og::sim::TransportEnvelope envelope;
-    if (!decode_transport_envelope(std::span<const std::uint8_t>(data, size),
-                                   envelope))
+    if (!decode_transport_envelope(data, envelope))
     {
         throw std::runtime_error(std::string(batch_name) +
                                  ": unsupported protocol version " +
@@ -2451,13 +2449,13 @@ og::sim::SimEventBatch deserialize_event_batch_message(
                                  ": unexpected message type " +
                                  std::to_string(envelope.message_type));
     }
-    if (size != kMessageHeaderSize + envelope.payload_length)
+    if (data.size() != kMessageHeaderSize + envelope.payload_length)
     {
         throw std::runtime_error(std::string(batch_name) +
                                  ": payload length mismatch");
     }
 
-    ByteReader reader(data + kMessageHeaderSize, envelope.payload_length,
+    ByteReader reader(data.data() + kMessageHeaderSize, envelope.payload_length,
                       batch_name);
     og::sim::SimEventBatch batch;
     batch.sequence = reader.read_u32("event_batch.sequence");
@@ -2491,15 +2489,14 @@ std::vector<std::uint8_t> serialize_snapshot(const WorldSnapshot& snapshot)
     return bytes;
 }
 
-WorldSnapshot deserialize_snapshot(const std::uint8_t* data, std::size_t size)
+WorldSnapshot deserialize_snapshot(std::span<const std::uint8_t> data)
 {
-    if (data == nullptr || size < kMessageHeaderSize)
+    if (data.data() == nullptr || data.size() < kMessageHeaderSize)
     {
         throw std::runtime_error("snapshot message: truncated header");
     }
     og::sim::TransportEnvelope envelope;
-    if (!decode_transport_envelope(std::span<const std::uint8_t>(data, size),
-                                   envelope))
+    if (!decode_transport_envelope(data, envelope))
     {
         throw std::runtime_error(
             "snapshot message: unsupported protocol version " +
@@ -2511,13 +2508,13 @@ WorldSnapshot deserialize_snapshot(const std::uint8_t* data, std::size_t size)
             "snapshot message: unexpected message type " +
             std::to_string(envelope.message_type));
     }
-    if (size != kMessageHeaderSize + envelope.payload_length)
+    if (data.size() != kMessageHeaderSize + envelope.payload_length)
     {
         throw std::runtime_error("snapshot message: payload length mismatch");
     }
 
     const std::vector<std::uint8_t> payload =
-        decompress_zlib_payload(data + kMessageHeaderSize, envelope.payload_length);
+        decompress_zlib_payload(data.data() + kMessageHeaderSize, envelope.payload_length);
     return deserialize_snapshot_payload(payload);
 }
 
@@ -2545,15 +2542,14 @@ std::vector<std::uint8_t> serialize_delta(const WorldSnapshot& delta)
     return bytes;
 }
 
-WorldSnapshot deserialize_delta(const std::uint8_t* data, std::size_t size)
+WorldSnapshot deserialize_delta(std::span<const std::uint8_t> data)
 {
-    if (data == nullptr || size < kMessageHeaderSize)
+    if (data.data() == nullptr || data.size() < kMessageHeaderSize)
     {
         throw std::runtime_error("delta message: truncated header");
     }
     og::sim::TransportEnvelope envelope;
-    if (!decode_transport_envelope(std::span<const std::uint8_t>(data, size),
-                                   envelope))
+    if (!decode_transport_envelope(data, envelope))
     {
         throw std::runtime_error(
             "delta message: unsupported protocol version " +
@@ -2566,7 +2562,7 @@ WorldSnapshot deserialize_delta(const std::uint8_t* data, std::size_t size)
             "delta message: unexpected message type " +
             std::to_string(envelope.message_type));
     }
-    if (size != kMessageHeaderSize + envelope.payload_length)
+    if (data.size() != kMessageHeaderSize + envelope.payload_length)
     {
         throw std::runtime_error("delta message: payload length mismatch");
     }
@@ -2588,7 +2584,7 @@ WorldSnapshot deserialize_delta(const std::uint8_t* data, std::size_t size)
         static_cast<std::size_t>(envelope.payload_length) -
         kDeltaWirePayloadHeaderSize;
     const std::uint8_t* const wire_payload =
-        data + kMessageHeaderSize + kDeltaWirePayloadHeaderSize;
+        data.data() + kMessageHeaderSize + kDeltaWirePayloadHeaderSize;
 
     std::vector<std::uint8_t> payload;
     if (payload_is_uncompressed)
@@ -2609,10 +2605,9 @@ std::vector<std::uint8_t> serialize_sim_event_batch(const SimEventBatch& batch)
                                          "sim event batch");
 }
 
-SimEventBatch deserialize_sim_event_batch(const std::uint8_t* data,
-                                          std::size_t size)
+SimEventBatch deserialize_sim_event_batch(std::span<const std::uint8_t> data)
 {
-    return deserialize_event_batch_message(data, size, kSimEventBatchMessageType,
+    return deserialize_event_batch_message(data, kSimEventBatchMessageType,
                                            "sim event batch");
 }
 
@@ -2623,11 +2618,10 @@ std::vector<std::uint8_t> serialize_game_flow_event_batch(
                                          "game flow event batch");
 }
 
-SimEventBatch deserialize_game_flow_event_batch(const std::uint8_t* data,
-                                                std::size_t size)
+SimEventBatch deserialize_game_flow_event_batch(std::span<const std::uint8_t> data)
 {
     return deserialize_event_batch_message(
-        data, size, kGameFlowEventBatchMessageType, "game flow event batch");
+        data, kGameFlowEventBatchMessageType, "game flow event batch");
 }
 
 bool is_game_flow_event(EventKind kind) noexcept
