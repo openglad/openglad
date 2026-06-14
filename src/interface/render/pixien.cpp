@@ -76,6 +76,9 @@ short pixieN::set_frame(short framenum)
 
 short pixieN::next_frame()
 {
+	// frames can be 0 for a default/moved-from pixie; guard the modulo to avoid
+	// integer division-by-zero UB. set_frame already rejects out-of-range here.
+	if (frames <= 0) return 0;
 	return set_frame(frame++ % frames);
 }
 

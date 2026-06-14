@@ -131,10 +131,14 @@ class statistics
         OG_STATS_DIRTY_FIELD(std::uint32_t, controller_id, og::dirty::BIT_CONTROLLER_ID);
         [[nodiscard]] unsigned short special_cost(int index) const noexcept
         {
+            if (index < 0 || index >= NUM_SPECIALS)
+                return 0;
             return special_cost_[index];
         }
         void set_special_cost(int index, unsigned short value)
         {
+            if (index < 0 || index >= NUM_SPECIALS)
+                return;
             special_cost_[index] = value;
             mark_dirty(og::dirty::BIT_SPECIAL_COST);
         }

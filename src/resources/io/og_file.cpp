@@ -575,7 +575,11 @@ private:
     {
         if (pos_ >= text_.size() || !std::isdigit(static_cast<unsigned char>(text_[pos_])))
             return fail("expected non-negative integer");
-        long v = 0;
+        // Use a 64-bit accumulator: on ILP32 targets (wasm32/Emscripten) `long`
+        // is 32-bit, so `v * 10` overflowed (signed UB) before the guard below
+        // could reject it. `long long` is >=64-bit everywhere; values that pass
+        // the <=1e9 guard still fit losslessly in the int result.
+        long long v = 0;
         while (pos_ < text_.size() && std::isdigit(static_cast<unsigned char>(text_[pos_]))) {
             v = v * 10 + (text_[pos_] - '0');
             if (v > 1'000'000'000L) return fail("integer overflow");

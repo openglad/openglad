@@ -20,6 +20,7 @@ static bool knife_on_death(weap* self)
         return false; // no special handling
 
     walker* newob = current_game->world->add_ob(Order::FX, FAMILY_KNIFE_BACK);
+    if (!newob) return true;
     newob->set_owner(self->owner());
     newob->center_on(self);
     newob->set_lastx(self->lastx());

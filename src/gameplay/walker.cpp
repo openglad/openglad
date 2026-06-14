@@ -202,6 +202,9 @@ walker::walker()
 
 short walker::next_frame()
 {
+	// frames is 0 for a default/test-built or moved-from walker; guard the
+	// modulo to avoid integer division-by-zero UB (mirrors pixieN::next_frame).
+	if (frames <= 0) return 0;
 	return set_frame(static_cast<short>(frame() % frames));
 }
 
@@ -1123,6 +1126,7 @@ walker  *walker::create_weapon()
 	if (query_order() == Order::Generator)
 	{
 			weapon = current_game->world->add_ob(Order::Living, static_cast<char>(default_weapon()));
+		if (!weapon) return nullptr;
 		weapon->set_team_num(team_num());
 		weapon->set_owner(this);
 		weapon->set_difficulty(static_cast<std::uint32_t>(stats_->level()));
@@ -1132,6 +1136,7 @@ walker  *walker::create_weapon()
 		weapon_type = current_weapon();
 
 	weapon = current_game->world->add_ob(Order::Weapon, static_cast<char>(weapon_type));
+	if (!weapon) return nullptr;
 	weapon->set_team_num(team_num());
 	weapon->set_owner(this);
 	weapon->set_difficulty(static_cast<std::uint32_t>(stats_->level()));
@@ -1551,11 +1556,14 @@ bool walker::death()
 	if (myguy) // were we a real character?  Then make a heart ..
 	{
 			newob = current_game->world->add_ob(Order::Treasure, FAMILY_LIFE_GEM);
+			if (newob)
+			{
 			newob->stats()->set_hitpoints(static_cast<float>(myguy->query_heart_value()));
 			newob->stats()->set_hitpoints(
 			    newob->stats()->hitpoints() * (0.75f / 2.0f));  // 75%, divided by 2, since score is doubled at end of level
 			newob->set_team_num(team_num());
 			newob->center_on(this);
+			}
 		}
 
 	switch (order())

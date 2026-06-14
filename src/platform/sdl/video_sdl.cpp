@@ -1804,7 +1804,7 @@ void sdl_video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 						}
 						if (curcolor > static_cast<unsigned char>(247))
 							curcolor = static_cast<unsigned char>(teamcolor+(255-curcolor));
-						videobuffer[buffoff++] = curcolor;
+						pointb(buffoff++, curcolor);
 					} //end each row
 
 					walkoff += walkshift;

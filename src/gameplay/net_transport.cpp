@@ -184,7 +184,11 @@ public:
     std::string read_string()
     {
         const std::uint32_t size = read_u32();
-        if (!ok_ || offset_ + size > payload_.size())
+        // offset_ <= payload_.size() always holds (every read_* advances only
+        // after its own bounds check), so the subtractive comparison avoids the
+        // size_t overflow that `offset_ + size` suffers on 32-bit targets
+        // (wasm32) when `size` is an attacker-controlled uint32 near SIZE_MAX.
+        if (!ok_ || size > payload_.size() - offset_)
         {
             ok_ = false;
             return {};

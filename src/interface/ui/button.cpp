@@ -415,7 +415,12 @@ vbutton * init_buttons(button * buttons, Sint32 numbuttons)
 
     clear_allbuttons();
 
-    for (Sint32 i = 0; i < numbuttons; i++)
+    // allbuttons_/owned_buttons_ are fixed-capacity arrays. Every current caller
+    // passes a small literal count, but clamp to the real capacity so a future
+    // or garbage count can never drive an out-of-bounds store.
+    const Sint32 cap = static_cast<Sint32>(og::runtime::current_session->allbuttons_.size());
+    const Sint32 limit = (numbuttons < 0) ? 0 : (numbuttons > cap ? cap : numbuttons);
+    for (Sint32 i = 0; i < limit; i++)
     {
         std::unique_ptr<vbutton, og::runtime::VButtonDeleter> owned_button(
             new vbutton(buttons[i].x,buttons[i].y,

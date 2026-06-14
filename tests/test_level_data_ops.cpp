@@ -432,6 +432,13 @@ TEST(LevelDataOps, level_data_get_description_line)
 
     og::runtime::current_session->myscreen_->level_description().clear();
 
+    // Empty description must not dereference end() for any index, including
+    // negative ones (regression: get_description_line(-1) on an empty list
+    // previously bypassed the size guard and dereferenced end()).
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->get_level_description_line(0) == "") << "empty list line 0";
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->get_level_description_line(-1) == "") << "empty list negative index";
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->get_level_description_line(5) == "") << "empty list out of range";
+
     CampaignData c("org.openglad.tests");
     c.description.clear();
     c.description.push_back("Campaign 1");

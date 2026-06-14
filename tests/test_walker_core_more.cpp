@@ -540,6 +540,11 @@ TEST(WalkerCoreMore, walker_round6_init_fire_animate_and_misc_guards)
     ASSERT_EQ(1, w->next_frame()) << "next_frame should report a successful frame set";
     ASSERT_EQ(before, w->frame()) << "next_frame should keep the wrapped frame selected";
 
+    // A default/test-built walker has frames==0; next_frame() must guard the
+    // modulo and return 0 rather than dividing by zero (UB).
+    walker zero_frames;
+    ASSERT_EQ(0, zero_frames.next_frame()) << "frames==0 must return 0, not divide by zero";
+
     // move_myguy_to nullptr guard.
     w->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     w->move_myguy_to(nullptr);

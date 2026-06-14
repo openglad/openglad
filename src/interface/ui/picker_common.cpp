@@ -786,11 +786,16 @@ int HireSession::hire()
     if (!recruit_ || team_full())
         return -1;
 
+    // team_num_ comes from a save-loaded guy::teamnum and is not clamped on the
+    // SDL hire path; clamp at the index sites so a corrupt save cannot drive an
+    // out-of-bounds read/write of the 4-element m_totalcash array.
+    const int cash_team = std::clamp(team_num_, 0, static_cast<int>(SCORE_TEAM_COUNT) - 1);
+
     std::uint32_t cost = current_cost();
-    if (cost == 0 || cost > save_.m_totalcash[team_num_])
+    if (cost == 0 || cost > save_.m_totalcash[cash_team])
         return -1;
 
-    save_.m_totalcash[team_num_] -= cost;
+    save_.m_totalcash[cash_team] -= cost;
 
     int newfamily = recruit_->family;
     recruit_->teamnum = static_cast<short>(team_num_);
@@ -1043,10 +1048,15 @@ bool TrainSession::accept(bool force)
             return false;
         }
 
-        if (cost > save_.m_totalcash[working_->teamnum])
+        // working_->teamnum is copied verbatim from a save-loaded guy and is not
+        // clamped on the accept() path; clamp at the index sites so a corrupt
+        // save cannot drive an out-of-bounds read/write of m_totalcash[4].
+        const int cash_team = std::clamp(static_cast<int>(working_->teamnum), 0,
+                                         static_cast<int>(SCORE_TEAM_COUNT) - 1);
+        if (cost > save_.m_totalcash[cash_team])
             return false;
 
-        save_.m_totalcash[working_->teamnum] -= cost;
+        save_.m_totalcash[cash_team] -= cost;
     }
 
     if (original->level != working_->level)
