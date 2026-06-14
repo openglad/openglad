@@ -760,6 +760,7 @@ TEST(LevelDataCoverage, level_data_round6_version6plus_and_title_read_paths)
     {
         std::vector<unsigned char> bytes;
         bytes.resize(8 + 30 + 1 + 2 + 2 + 1 + 1, 0); // grid + title + type + par + listsize + numlines + width
+        bytes[0] = 'g'; bytes[1] = 'r'; bytes[2] = 'i'; bytes[3] = 'd'; // valid grid basename (rejected if empty/unsafe)
         bytes.back() = 120;
         bytes.insert(bytes.end(), 120, 'x');
         MemoryOgFile f(bytes.data(), bytes.size());
@@ -951,7 +952,7 @@ TEST(LevelDataCoverage, level_data_round6_load_version3_4_5_minimal_and_treasure
 
     // Version 3: minimal valid payload + treasure object branch + width==0 branch.
     {
-        std::vector<unsigned char> bytes(8, 0);          // grid name
+        std::vector<unsigned char> bytes{'g','r','i','d',0,0,0,0};  // valid grid basename (rejected if empty/unsafe)
         append_short(bytes, 1);                          // listsize
         append_obj_v3(bytes, static_cast<unsigned char>(Order::Treasure));
         bytes.push_back(1);                              // numlines
@@ -962,7 +963,7 @@ TEST(LevelDataCoverage, level_data_round6_load_version3_4_5_minimal_and_treasure
 
     // Version 4: minimal valid payload + treasure object branch + width==0 branch.
     {
-        std::vector<unsigned char> bytes(8, 0);          // grid name
+        std::vector<unsigned char> bytes{'g','r','i','d',0,0,0,0};  // valid grid basename (rejected if empty/unsafe)
         append_short(bytes, 1);                          // listsize
         append_obj_v4_v5(bytes, static_cast<unsigned char>(Order::Treasure));
         bytes.push_back(1);                              // numlines
@@ -973,7 +974,7 @@ TEST(LevelDataCoverage, level_data_round6_load_version3_4_5_minimal_and_treasure
 
     // Version 5: includes scenario type byte.
     {
-        std::vector<unsigned char> bytes(8, 0);          // grid name
+        std::vector<unsigned char> bytes{'g','r','i','d',0,0,0,0};  // valid grid basename (rejected if empty/unsafe)
         bytes.push_back(2);                              // scenario type
         append_short(bytes, 1);                          // listsize
         append_obj_v4_v5(bytes, static_cast<unsigned char>(Order::Treasure));

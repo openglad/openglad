@@ -1435,6 +1435,9 @@ Sint32 LevelEditorData::display_panel(screen* s)
     {
         // Show the current brush
         {
+            // Defensive: never index pixdata[] (size PIX_MAX) out of bounds.
+            if(terrain_brush.terrain < 0 || terrain_brush.terrain >= PIX_MAX)
+                terrain_brush.terrain = PIX_GRASS1;
             auto& pix = s->level_visuals_.pixdata[terrain_brush.terrain];
             s->putbuffer(lm+25, PIX_TOP-16-1, GRID_SIZE, GRID_SIZE,
                                 0, 0, 320, 200, {pix.data.get(), static_cast<size_t>(pix.w * pix.h * pix.frames)});
@@ -2743,8 +2746,12 @@ unsigned char LevelEditorData::get_terrain(int x, int y)
 {
     if(!is_in_grid(x, y))
         return 0;
-    
-    return level->world().grid.data[y*level->world().grid.w + x];
+
+    // Grid bytes come from untrusted scenario files and are not clamped on load
+    // (the renderer guards tile_index < PIX_MAX, so out-of-range tiles survive).
+    // Clamp here so a poisoned tile can never become an out-of-bounds pixdata[] index.
+    unsigned char t = level->world().grid.data[y*level->world().grid.w + x];
+    return (t < PIX_MAX) ? t : static_cast<unsigned char>(PIX_GRASS1);
 }
 
 void LevelEditorData::set_terrain(int x, int y, unsigned char terrain)

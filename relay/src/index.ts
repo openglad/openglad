@@ -94,6 +94,22 @@ async function enforceCreateRoomRateLimit(
     },
   );
 
+  // KV offers no atomic increment, so the read-check-write above is a TOCTOU:
+  // concurrent requests from one IP can all observe a stale count before any
+  // commits. Re-read the committed counter as a best-effort reconciliation and
+  // reject the losers of such a race once the persisted count for this window
+  // exceeds the cap. This is a strict no-op for legitimate sequential traffic
+  // (the committed count then never exceeds the limit) and only adds rejections
+  // when a concurrency burst has pushed the stored count past the bound.
+  const committed = parseCreateRateLimitState(await env.ROOM_INDEX.get(key));
+  if (
+    committed &&
+    committed.window_started_at === windowStartedAt &&
+    committed.count > CREATE_RATE_LIMIT_MAX_ROOMS
+  ) {
+    return textResponse("Rate limit exceeded", { status: 429 });
+  }
+
   return null;
 }
 
@@ -190,10 +206,19 @@ async function listRooms(env: Env, request: Request): Promise<Response> {
   const url = new URL(request.url);
   const campaignFilter = url.searchParams.get("campaign");
 
-  const listResult = await env.ROOM_INDEX.list({ prefix: ROOM_INDEX_PREFIX });
+  // Bound the per-request KV fan-out so a public, unauthenticated listing can
+  // never amplify a single GET into an unbounded number of KV get() subrequests
+  // regardless of how many room: keys exist. We never loop the list cursor and
+  // hard-cap the number of keys we resolve.
+  const LIST_ROOMS_MAX_KEYS = 100;
+  const listResult = await env.ROOM_INDEX.list({
+    prefix: ROOM_INDEX_PREFIX,
+    limit: LIST_ROOMS_MAX_KEYS,
+  });
+  const boundedKeys = listResult.keys.slice(0, LIST_ROOMS_MAX_KEYS);
   const rooms = (
     await Promise.all(
-      listResult.keys.map(async ({ name }) => {
+      boundedKeys.map(async ({ name }) => {
         const parsed = parseRoomInfo(await env.ROOM_INDEX.get(name));
         if (!parsed) {
           return null;

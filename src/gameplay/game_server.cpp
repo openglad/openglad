@@ -1594,6 +1594,32 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
                     0,
                     20));
             }
+            {
+                // The tick is attacker-controlled (raw wire u32). Drop inputs
+                // whose tick sits absurdly far ahead of the live window: only
+                // ticks <= expected_tick are ever consumed/erased by
+                // select_effective_input, so a flood of distinct far-future
+                // ticks would otherwise grow pending_inputs without bound
+                // (memory-exhaustion DoS). Compute the delta in 64-bit to avoid
+                // uint32 wraparound making a far-future tick look "recent".
+                constexpr std::int64_t kMaxFutureInputTicks =
+                    static_cast<std::int64_t>(KEYFRAME_INTERVAL_TICKS);
+                const std::int64_t tick_delta =
+                    static_cast<std::int64_t>(message.tick) -
+                    static_cast<std::int64_t>(expected_tick);
+                if (tick_delta > kMaxFutureInputTicks)
+                    break;
+                // Defense in depth: cap pending entries per client and ignore
+                // new keys once full, so the invariant holds even if the window
+                // logic above ever changes.
+                constexpr std::size_t kMaxPendingInputsPerClient = 256;
+                if (client.pending_inputs.size() >= kMaxPendingInputsPerClient &&
+                    client.pending_inputs.find(message.tick) ==
+                        client.pending_inputs.end())
+                {
+                    break;
+                }
+            }
             client.pending_inputs[message.tick] =
                 select_player_input(*message.input, client.player_index);
             client.last_received_input_tick = message.tick;
@@ -1625,10 +1651,28 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
             if (message.exit_prompt_response)
             {
                 if (message.exit_prompt_response->abort_request)
+                {
+                    // Abort ("Quit this mission") is intentionally any-player.
                     abort_level_for_all();
+                }
                 else if (pending_exit_prompt_state_.has_value())
-                    handle_exit_prompt_response(
-                        message.exit_prompt_response->accepted);
+                {
+                    // Only the player who was actually prompted may resolve the
+                    // exit/withdraw. The broadcast was restricted to the
+                    // triggering player; accept a response solely from that
+                    // bound peer. When the trigger couldn't be identified the
+                    // prompt was broadcast to everyone, so any bound peer may
+                    // answer in that fallback case.
+                    const auto trig =
+                        pending_exit_prompt_state_->triggering_player_index;
+                    if (client.has_player_binding &&
+                        (trig == static_cast<std::size_t>(-1) ||
+                         client.player_index == trig))
+                    {
+                        handle_exit_prompt_response(
+                            message.exit_prompt_response->accepted);
+                    }
+                }
             }
             break;
 

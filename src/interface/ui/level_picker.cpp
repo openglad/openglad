@@ -368,11 +368,17 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
         if(level_list[i] == default_level)
             current_level_index = i;
     }
-    
+
+    // Clamp so a full NUM_BROWSE_RADARS window fits (mirrors the delete-reload
+    // clamp below); otherwise current_level_index + i can index past the end of
+    // level_list in the initial radar-load loop (out-of-bounds read).
+    if(current_level_index > level_list_length - NUM_BROWSE_RADARS)
+        current_level_index = std::max(0, level_list_length - NUM_BROWSE_RADARS);
+
     // Load the radars (minimaps)
     for(int i = 0; i < NUM_BROWSE_RADARS; i++)
     {
-        if(i < level_list_length)
+        if(current_level_index + i < level_list_length)
             entries[i] = std::make_unique<BrowserEntry>(og::runtime::current_session->myscreen_, i, level_list[current_level_index + i]);
         else
             entries[i].reset();

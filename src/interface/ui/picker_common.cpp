@@ -660,7 +660,9 @@ bool is_spectator_mode(const SaveData& save)
 
 std::string format_difficulty_label(int difficulty)
 {
-    return std::format("Difficulty: {}", kDifficultyNames[difficulty]);
+    const int normalized =
+        ((difficulty % DIFFICULTY_SETTINGS) + DIFFICULTY_SETTINGS) % DIFFICULTY_SETTINGS;
+    return std::format("Difficulty: {}", kDifficultyNames[normalized]);
 }
 
 std::string format_allied_mode_label(const SaveData& save)

@@ -1556,7 +1556,15 @@ void apply_entity_snapshot_fields(GameWorld& world,
     entity.path_to_foe.clear();
     entity.damage_numbers.clear();
 
-    entity.set_order_family(snapshot.order, snapshot.family);
+    // Clamp the wire-supplied family to the valid range before it becomes the
+    // entity's family(): family() indexes per-family tables (descriptors, special
+    // names, graphics) across the sim, and a malicious peer can send any value.
+    // Mirrors loader::set_walker's family clamp so family() stays consistent with
+    // the entity's configured graphics/animation.
+    int safe_family = static_cast<int>(snapshot.family);
+    if (safe_family < 0 || safe_family >= NUM_FAMILIES)
+        safe_family = 0;
+    entity.set_order_family(snapshot.order, static_cast<char>(safe_family));
     entity.set_snapshot_position(snapshot.xpos, snapshot.ypos,
                                  snapshot.worldx, snapshot.worldy);
     entity.set_sizex(snapshot.sizex);
@@ -1592,7 +1600,12 @@ void apply_entity_snapshot_fields(GameWorld& world,
     entity.set_ani_type(snapshot.ani_type);
     entity.set_cycle(snapshot.cycle);
     entity.set_drawcycle(snapshot.drawcycle);
-    entity.set_current_special(snapshot.current_special);
+    // Clamp wire-supplied current_special: it indexes per-special arrays
+    // (special names/costs, NUM_SPECIALS wide) at several use sites.
+    int safe_current_special = static_cast<int>(snapshot.current_special);
+    if (safe_current_special < 0 || safe_current_special >= NUM_SPECIALS)
+        safe_current_special = 0;
+    entity.set_current_special(static_cast<std::int8_t>(safe_current_special));
     entity.set_ignore(snapshot.ignore);
     entity.set_in_act(snapshot.in_act != 0);
     entity.set_shifter_down(snapshot.shifter_down);

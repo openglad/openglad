@@ -68,6 +68,14 @@ std::string lookup_campaign_title(const std::string& campaign_id)
 {
     std::string title;
 
+    // Reject ids that are unsafe to embed in a filesystem/archive path (empty,
+    // oversize, "..", absolute, or non-[alnum._-]). This matches every other
+    // consumer of the campaigns/<id>.glad pattern and prevents an
+    // attacker-controlled id (e.g. from a lobby peer) from steering PHYSFS_mount
+    // at a traversed real-world path. Raw id is shown as the fallback display.
+    if (!is_safe_campaign_id(campaign_id))
+        return campaign_id;
+
     // Fast path: the active campaign is mounted at the root. This also keeps
     // the slow path off the mounted archive — PhysFS refuses to mount the
     // same archive twice.

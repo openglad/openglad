@@ -135,6 +135,7 @@ void walker_init_common(walker* w, IRandom& rng)
 	w->set_collide_ob_id(0);
 	w->set_cycle(0);
 	w->ani = nullptr;
+	w->ani_count = 0;
 	w->set_ani_type(0);
 	w->set_busy(0);
 	w->set_foe(nullptr);
@@ -969,6 +970,19 @@ bool walker::animate()
 	}
 
 	const int ani_index = dir_index + type_index * NUM_FACINGS;
+	// For real entities the loader records this family's table length (ani_count).
+	// Animation tables vary in length (most hold only ANI_WALK/ANI_ATTACK rows), so
+	// an untrusted snapshot/save can set an ani_type the short table doesn't contain
+	// and drive ani_index past the end. Treat that exactly like "no such sequence"
+	// (reset to walk, stop) instead of reading out of bounds. ani_count is 0 only
+	// for test-constructed walkers that assign `ani` directly; those keep the legacy
+	// direct-index behavior.
+	if (ani_count > 0 && ani_index >= ani_count)
+	{
+		set_ani_type(ANI_WALK);
+		set_cycle(0);
+		return 0;
+	}
 	const signed char* seq = ani[ani_index];
 	if (!seq)
 	{

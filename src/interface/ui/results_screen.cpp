@@ -266,7 +266,9 @@ std::vector<std::string> TroopResult::get_gained_specials() const
     std::vector<std::string> result;
     
     int family = get_family();
-    
+    if (family < 0 || family >= NUM_FAMILIES)
+        return result;  // bogus family from an untrusted save -> no specials
+
     Sint32 test1 = get_level() - 1;
     if ( !(test1%3) ) // we're on a special-gaining level
     {

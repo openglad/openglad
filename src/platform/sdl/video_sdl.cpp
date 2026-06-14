@@ -1843,6 +1843,15 @@ void sdl_video::get_pixel(int x, int y, Uint8 *r, Uint8 *g, Uint8 *b)
 	Uint32 col = 0;
 	Uint8 q=0,w=0,e=0;
 
+	//buffers: bound checking to prevent out-of-bounds reads (mirrors pointb)
+	if (x < 0 || x >= E_Screen->render->w || y < 0 || y >= E_Screen->render->h)
+	{
+		*r = 0;
+		*g = 0;
+		*b = 0;
+		return;
+	}
+
 	char *p = reinterpret_cast<char*>(E_Screen->render->pixels);
 	p += E_Screen->render->pitch*y;
 	p += E_Screen->render->format->BytesPerPixel*x;
@@ -1885,6 +1894,10 @@ int sdl_video::get_pixel(int x, int y, int *index)
 int sdl_video::get_pixel(int offset)
 {
 	int x,y,t;
+
+	//buffers: reject out-of-range offsets before converting (mirrors pointb bounds)
+	if (offset < 0 || offset >= E_Screen->render->w * E_Screen->render->h)
+		return 0;
 
 	y = offset/320;
 	x = offset-y*320;

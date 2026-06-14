@@ -361,7 +361,7 @@ bool SaveData::load(const std::string& filename)
             if (temp_guy_ptr != nullptr)
             {
 			    temp_guy_ptr->family       = temp_family;
-			    temp_guy_ptr->name = guyname;
+			    temp_guy_ptr->name.assign(guyname, strnlen(guyname, sizeof(guyname)));
 			    temp_guy_ptr->strength     = temp_str;
 			    temp_guy_ptr->dexterity    = temp_dex;
 			    temp_guy_ptr->constitution = temp_con;

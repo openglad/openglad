@@ -72,7 +72,7 @@ if len(results) != 1000:
     print(f'FAIL: Expected 1000 tick results, got {len(results)}', file=sys.stderr)
     sys.exit(1)
 if results[-1].get('tick') != 1000:
-    print(f'FAIL: Last tick should be 1000, got {results[-1].get(\"tick\")}', file=sys.stderr)
+    print(f'FAIL: Last tick should be 1000, got {results[-1].get("tick")}', file=sys.stderr)
     sys.exit(1)
 
 # Line 3: event drain

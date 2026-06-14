@@ -664,8 +664,15 @@ static std::optional<FrameInfo> load_aseprite_sidecar(const char* filename)
         warn("invalid frame dimensions");
         return std::nullopt;
     }
+    if (static_cast<unsigned>(meta.frame_w) > kMaxPixieDimension
+        || static_cast<unsigned>(meta.frame_h) > kMaxPixieDimension
+        || static_cast<unsigned>(meta.frame_count) > kMaxPixieDimension) {
+        warn("frame metadata out of range");
+        return std::nullopt;
+    }
     if (meta.meta_w != meta.frame_w
-        || meta.meta_h != meta.frame_h * meta.frame_count) {
+        || static_cast<long long>(meta.meta_h)
+               != static_cast<long long>(meta.frame_h) * meta.frame_count) {
         warn("size mismatch between meta.size and frames*frame");
         return std::nullopt;
     }

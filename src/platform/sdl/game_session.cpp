@@ -17,6 +17,7 @@
 #include <openglad/interface/ui/level_editor_state.h>
 #include <openglad/interface/screen.h> // screen class
 #include <openglad/interface/sound.h> // soundob complete type for play_sound
+#include <openglad/core/sound_ids.h> // NUMSOUNDS bound for play_sound dispatch
 #include <openglad/platform/video_sdl.h>
 #include <openglad/interface/render/view.h>    // options class
 #include <openglad/platform/sai2x.h>   // E_Screen
@@ -42,7 +43,8 @@ PlatformBridge make_sdl_platform_bridge()
 
     bridge.play_sound = [](int sound_id) {
         if (!og::runtime::current_session || !og::runtime::current_session->myscreen_ ||
-            !og::runtime::current_session->myscreen_->soundp || sound_id < 0)
+            !og::runtime::current_session->myscreen_->soundp ||
+            sound_id < 0 || sound_id >= NUMSOUNDS)
         {
             return;
         }
