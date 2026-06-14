@@ -39,8 +39,7 @@ static bool weapon_animate_step(weap* self)
     // "no such sequence" (stop) instead of dereferencing a wild pointer. ani_count
     // is 0 only for test-constructed weapons that assign `ani` directly, which keep
     // the legacy direct-index behavior. Mirrors walker::animate/effect::animate.
-    if (self->ani_count > 0 && ani_index >= self->ani_count)
-        return true;
+    if (self->ani_count > 0 && ani_index >= self->ani_count) return true;
     const signed char* seq = self->ani[ani_index];
     if (!seq)
         return true;

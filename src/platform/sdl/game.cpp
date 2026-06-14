@@ -144,11 +144,9 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 	for(int guy_idx = 0; guy_idx < screenp->save_data.team_size; guy_idx++)
     {
 	    temp_guy = screenp->save_data.team_list[guy_idx].get();
-	    if (!temp_guy)
-	        continue;
+	    if (!temp_guy) continue;
 	    temp_walker = guy_create_and_add_walker(*temp_guy, screenp);
-	    if (!temp_walker)
-	        continue;
+	    if (!temp_walker) continue;
 	    // Clear the new guy's battle data
 	    temp_walker->myguy->scen_damage = 0;
 	    temp_walker->myguy->scen_kills = 0;

@@ -392,9 +392,7 @@ std::uint32_t calculate_exp(std::int32_t level)
     for(int k = 2; k <= level; ++k)
     {
         int level_1 = k - 1;
-        int level_2 = k - 2;
-        if(level_2 < 0)
-            level_2 = 0;
+        int level_2 = k - 2; // k starts at 2, so level_2 is always >= 0
         result += static_cast<std::uint32_t>(8000 + 2000*level_1 + 4000*level_2);
     }
     return result;

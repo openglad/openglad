@@ -39,7 +39,6 @@ bool write_pixie_png(const char* filepath, const PixieData& data);
 #include <cstdlib>
 #include <random>
 #include <stdexcept>
-#include <system_error>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -171,15 +170,30 @@ std::string get_asset_path()
     // Assuming the cwd is set to the program's installation directory
     return "";
 #else
-    // Assumes UNIX with /proc
-    std::error_code ec;
-    const auto exe = std::filesystem::read_symlink("/proc/self/exe", ec);
-    if (ec)
+    // Assumes UNIX with /proc. NOTE: kept on the raw readlink() syscall on
+    // purpose — Emscripten's virtual FS satisfies readlink("/proc/self/exe")
+    // but std::filesystem::read_symlink() fails there, which would spam the
+    // WASM console with errors at startup. The buffer is bounded and always
+    // explicitly null-terminated, so there is no overflow.
+    constexpr size_t maxPathSize = 512;
+    char path[maxPathSize];
+    std::fill_n(path, maxPathSize, '\0');
+
+    const ssize_t read_len = readlink("/proc/self/exe", path, maxPathSize - 1);
+    if (read_len < 0)
     {
-        LogError("get_asset_path: read_symlink(/proc/self/exe) failed\n");
+        LogError("get_asset_path: readlink(/proc/self/exe) failed\n");
         return "./";
     }
-    std::string s = exe.parent_path().string() + '/';
+    path[static_cast<size_t>(read_len)] = '\0';
+
+    std::string s = path;
+    size_t slash = s.find_last_of('/');
+    if(slash != std::string::npos)
+    {
+        s = s.substr(0, slash);
+    }
+    s += '/';
 
     return s;
 #endif
