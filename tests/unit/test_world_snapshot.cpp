@@ -1603,6 +1603,46 @@ TEST(WorldSnapshot, apply_snapshot_works_for_attached_external_worlds)
     EXPECT_NE(nullptr, mirror_level.world().find_by_id(actor_id));
 }
 
+TEST(WorldSnapshot, apply_snapshot_clamps_out_of_range_family_and_special)
+{
+    // Security: family/current_special arrive straight off the wire and are used
+    // to index per-family/per-special tables across the sim. A malicious peer can
+    // put any value here, so apply_snapshot must clamp them into range.
+    og::sim::WorldSnapshot snapshot;
+    std::uint32_t actor_id = 0;
+    {
+        TestGameWorld source_fx;
+        GameWorld& source = source_fx.world();
+        configure_snapshot_test_services(source);
+        walker* actor = source.add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, actor);
+        actor->setworldxy(64.0f, 96.0f);
+        actor_id = actor->entity_id();
+        snapshot = og::sim::capture_snapshot(source);
+    }
+    ASSERT_EQ(1u, snapshot.oblist.size());
+    // Forge attacker-controlled out-of-range indices.
+    snapshot.oblist[0].family = static_cast<std::int8_t>(99);
+    snapshot.oblist[0].current_special = static_cast<std::int8_t>(99);
+
+    TestGameWorld mirror_fx;
+    GameWorld& mirror = mirror_fx.world();
+    configure_snapshot_test_services(mirror);
+    GameplayContext* const previous_game = current_game;
+    current_game = nullptr;
+    og::sim::apply_snapshot(mirror, snapshot);
+    current_game = previous_game;
+
+    walker* applied = mirror.find_by_id(actor_id);
+    ASSERT_NE(nullptr, applied) << "entity should still be applied";
+    EXPECT_GE(static_cast<int>(applied->family()), 0);
+    EXPECT_LT(static_cast<int>(applied->family()), NUM_FAMILIES)
+        << "out-of-range family must be clamped";
+    EXPECT_GE(static_cast<int>(applied->current_special()), 0);
+    EXPECT_LT(static_cast<int>(applied->current_special()), NUM_SPECIALS)
+        << "out-of-range current_special must be clamped";
+}
+
 TEST(WorldSnapshot, apply_snapshot_keeps_dead_players_out_of_obmap)
 {
     TestGameWorld source_fx;

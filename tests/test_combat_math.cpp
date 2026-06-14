@@ -260,6 +260,20 @@ TEST(CombatMath, xp_from_action_heal)
 }
 
 
+TEST(CombatMath, xp_from_action_heal_zero_level_no_divide_by_zero)
+{
+    // Security guard: a zero (or negative) attacker_level must not cause an
+    // integer division-by-zero (SIGFPE / UB). The level can reach the XP math
+    // from untrusted state, so the divisor is clamped to >= 1.
+    FixedRandom fixed(50);
+    short xp = compute_xp_from_action(ExpAction::Heal, 0, 1, 10, fixed);
+    ASSERT_EQ(50, (int)xp) << "Heal with level 0 should divide by 1, not crash";
+    // Negative level must also be safe.
+    short xp_neg = compute_xp_from_action(ExpAction::Heal, -3, 1, 10, fixed);
+    ASSERT_EQ(50, (int)xp_neg) << "Heal with negative level should divide by 1, not crash";
+}
+
+
 TEST(CombatMath, xp_from_action_turn_undead)
 {
     FixedRandom fixed(0);

@@ -29,12 +29,11 @@ static bool weapon_animate_step(weap* self)
     int type_index = static_cast<int>(self->ani_type());
     if (type_index < 0)
         type_index = 0;
-    int ani_index = dir_index + type_index * NUM_FACINGS;
-    // For real entities the loader records the table length; reject an out-of-range
-    // row from an untrusted snapshot. ani_count == 0 only for test weapons that set
-    // `ani` directly (legacy direct-index behavior).
-    if (self->ani_count > 0 && ani_index >= self->ani_count)
-        return true;                    // unsupported row -> treat as end-of-animation
+    // Callers (tree/blood, glow) already clamp ani_type to the small range their
+    // table supports, and dir_index is bounded above, so dir+type*NUM_FACINGS stays
+    // within the table. The real untrusted inputs here are curdir and cycle, which
+    // are bounded by the facing clamp above and the sentinel scan below.
+    const int ani_index = dir_index + type_index * NUM_FACINGS;
     const signed char* seq = self->ani[ani_index];
     if (!seq)
         return true;

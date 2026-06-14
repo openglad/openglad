@@ -29,6 +29,23 @@ TEST(VideoBuffers, video_putdata_putdata_alpha_and_get_pixel_smoke)
 }
 
 
+TEST(VideoBuffers, get_pixel_rejects_out_of_range_coordinates)
+{
+    // get_pixel does raw pointer arithmetic + memcpy into the render surface;
+    // out-of-range x/y or offset must be rejected (black / 0) rather than read
+    // outside the surface bounds.
+    auto* s = og::runtime::current_session->myscreen_;
+    s->swap();
+    int idx = -1;
+    int v1 = s->get_pixel(1000000, 1000000, &idx); // exercises x/y bounds guard
+    ASSERT_TRUE(v1 >= 0 && v1 <= 255) << "out-of-range get_pixel(x,y) must be a safe value";
+    int v2 = s->get_pixel(-50, -50, &idx);
+    ASSERT_TRUE(v2 >= 0 && v2 <= 255) << "negative get_pixel(x,y) must be a safe value";
+    ASSERT_EQ(0, s->get_pixel(-1)) << "negative offset must be rejected";
+    ASSERT_EQ(0, s->get_pixel(1000000000)) << "huge offset must be rejected";
+}
+
+
 TEST(VideoBuffers, video_draw_rect_and_alpha_lines_smoke)
 {
     og::runtime::current_session->myscreen_->clearbuffer();

@@ -309,9 +309,13 @@ TEST(IoZipUnzip, io_unzip_rejects_archives_exceeding_entry_limit)
     if (!za)
         return;
 
+    // zip_source_buffer does not copy: it keeps the pointer and libzip reads it
+    // during zip_close() below. The buffer must therefore outlive zip_close(), so
+    // use one function-scoped buffer rather than a per-iteration stack array
+    // (which would be a stack-use-after-scope read at flush time).
+    static const char payload[] = "x";
     for (int i = 0; i < 4097; ++i)
     {
-        const char payload[] = "x";
         zip_source* src = zip_source_buffer(za, payload, 1, 0);
         ASSERT_TRUE(src != nullptr) << "zip_source_buffer entry should succeed";
         char name[64] = {};

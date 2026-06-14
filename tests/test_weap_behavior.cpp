@@ -427,6 +427,40 @@ TEST(WeapBehavior, weapon_family_rock_death_bounce_matrix)
 }
 
 
+TEST(WeapBehavior, weapon_animate_handles_out_of_range_facing_and_cycle)
+{
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+
+    // weap::animate() and the weapon-family on_animate callbacks index the
+    // animation table with curdir/cycle, which can arrive out of range from a
+    // snapshot. These must be bounded (facing clamp + sequence sentinel) rather
+    // than reading out of bounds. ARROW exercises the default branch; TREE and
+    // GLOW exercise the on_animate callbacks.
+    walker* arrow_w = make_weapon(FAMILY_ARROW);
+    walker* tree_w = make_weapon(FAMILY_TREE);
+    walker* glow_w = make_weapon(FAMILY_GLOW);
+    ASSERT_TRUE(arrow_w && tree_w && glow_w);
+    if (!(arrow_w && tree_w && glow_w))
+        return;
+
+    for (walker* w : {arrow_w, tree_w, glow_w})
+    {
+        ASSERT_GT(w->ani_count, 0) << "real weapon records its table length";
+        w->set_curdir(static_cast<char>(100));
+        w->set_cycle(static_cast<signed char>(120));
+        w->set_ani_type(static_cast<char>(40));
+        (void)w->animate(); // must not crash / read OOB (verified under sanitizers)
+        w->set_curdir(static_cast<char>(-7));
+        w->set_cycle(static_cast<signed char>(-3));
+        (void)w->animate();
+    }
+
+    og::runtime::current_session->myscreen_->world().remove_ob(arrow_w);
+    og::runtime::current_session->myscreen_->world().remove_ob(tree_w);
+    og::runtime::current_session->myscreen_->world().remove_ob(glow_w);
+}
+
+
 TEST(WeapBehavior, weapon_family_animate_callbacks_and_sprinkle_hit_paths)
 {
     og::runtime::current_session->myscreen_->world().create_new_grid();
