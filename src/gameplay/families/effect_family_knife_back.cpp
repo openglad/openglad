@@ -51,6 +51,12 @@ static bool knife_back_on_act(effect* self)
         }
         self->setworldxy(self->worldx()+xd, self->worldy()+yd);
         walker* newob = current_game->world->add_ob(Order::Weapon, FAMILY_KNIFE);
+        if (!newob)
+        {
+            self->set_ani_type(ANI_WALK);
+            self->set_dead(1);
+            return true;
+        }
         newob->set_damage(self->damage());
         newob->set_owner(self->owner());
         newob->set_team_num(self->team_num());

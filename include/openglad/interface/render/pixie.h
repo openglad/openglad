@@ -58,14 +58,16 @@ class pixie
 		short sizex, sizey;
 		short xpos, ypos;
 		//buffers: accelerated-surface path on/off, 1/0
-		int accel;
+		int accel = 0;
 		short on_screen();                                                                // on ANY viewscreen?
 		short on_screen(viewscreen  *viewp);  // on a specific viewscreen?
 		const unsigned char* bmp_data() const { return bmp; }
 
 	protected:
-		unsigned short size;
-		unsigned char  *bmp,  *oldbmp;
+		unsigned short size = 0;
+		// oldbmp removed: it was never assigned or read (only a commented-out
+		// `delete oldbmp;` referenced it). Reading it would have been UB.
+		unsigned char* bmp = nullptr;
 		//buffers: same data as bmp but in a convient SDL_Surface
 		// SDL-owned accelerated surface handle (platform type-erased at interface boundary).
 		void* bmp_surface = nullptr;

@@ -261,6 +261,8 @@ static bool archmage_do_special(walker* self)
                         self->myguy->scen_shots++;
                     }
                     newob = summon_entity(self, Order::FX, FAMILY_CHAIN);
+                    if (!newob)
+                        return false;
                     generic = static_cast<std::int32_t>(self->stats()->magicpoints() - static_cast<float>(self->stats()->special_cost(2)));
                     generic /= 2;
                     self->stats()->set_magicpoints(self->stats()->magicpoints() - static_cast<float>(generic));

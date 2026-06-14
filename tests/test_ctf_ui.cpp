@@ -35,6 +35,7 @@
 
 #include <array>
 #include <memory>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -48,7 +49,7 @@ void picker_test_render_teams_menu_frame();
 
 loader* sdl_entity_loader();
 short new_score_panel(screen* s, short do_it);
-std::string get_editor_family_label(Order order, Sint32 family, char livings[][20],
+std::string get_editor_family_label(Order order, Sint32 family, std::span<const std::string> livings,
                                     const char* treasures[], const char* weapons[]);
 std::string get_editor_level_label(Order order, Sint32 family, Sint32 level);
 
@@ -763,7 +764,7 @@ TEST(CtfUi, editor_labels_resolve_for_ctf_objects)
               get_editor_level_label(Order::Treasure, og::FAMILY_FLAG, 5));
     ASSERT_EQ("", get_editor_level_label(Order::Treasure, og::FAMILY_CTF_POINT, 3));
 
-    static char livings[NUM_FAMILIES][20] = {};
+    static std::array<std::string, NUM_FAMILIES> livings;
     const char* treasures[NUM_FAMILIES] =
         { "BLOOD", "DRUMSTICK", "GOLD", "SILVER",
           "MAGIC", "INVIS", "INVULN", "FLIGHT",

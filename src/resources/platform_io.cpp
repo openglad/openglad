@@ -39,6 +39,7 @@ bool write_pixie_png(const char* filepath, const PixieData& data);
 #include <cstdlib>
 #include <random>
 #include <stdexcept>
+#include <system_error>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -171,25 +172,14 @@ std::string get_asset_path()
     return "";
 #else
     // Assumes UNIX with /proc
-    constexpr size_t maxPathSize = 512;
-    char path[maxPathSize];
-    std::fill_n(path, maxPathSize, '\0');
-
-    const ssize_t read_len = readlink("/proc/self/exe", path, maxPathSize - 1);
-    if (read_len < 0)
+    std::error_code ec;
+    const auto exe = std::filesystem::read_symlink("/proc/self/exe", ec);
+    if (ec)
     {
-        LogError("get_asset_path: readlink(/proc/self/exe) failed\n");
+        LogError("get_asset_path: read_symlink(/proc/self/exe) failed\n");
         return "./";
     }
-    path[static_cast<size_t>(read_len)] = '\0';
-
-    std::string s = path;
-    size_t slash = s.find_last_of('/');
-    if(slash != std::string::npos)
-    {
-        s = s.substr(0, slash);
-    }
-    s += '/';
+    std::string s = exe.parent_path().string() + '/';
 
     return s;
 #endif

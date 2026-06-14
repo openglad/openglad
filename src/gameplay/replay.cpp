@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <fstream>
 #include <format>
 #include <iterator>
@@ -37,6 +38,7 @@ void write_u32_le(std::vector<std::uint8_t>& bytes, std::uint32_t value)
 
 std::uint32_t read_u32_le(std::span<const std::uint8_t> bytes, std::size_t offset)
 {
+    assert(offset + 4 <= bytes.size());
     return static_cast<std::uint32_t>(bytes[offset])
         | (static_cast<std::uint32_t>(bytes[offset + 1]) << 8)
         | (static_cast<std::uint32_t>(bytes[offset + 2]) << 16)
@@ -52,6 +54,7 @@ void write_i16_le(std::vector<std::uint8_t>& bytes, std::int16_t value)
 
 std::int16_t read_i16_le(std::span<const std::uint8_t> bytes, std::size_t offset)
 {
+    assert(offset + 2 <= bytes.size());
     return static_cast<std::int16_t>(
         static_cast<std::uint16_t>(bytes[offset]) |
         (static_cast<std::uint16_t>(bytes[offset + 1]) << 8));

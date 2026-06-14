@@ -34,6 +34,13 @@ static bool weapon_animate_step(weap* self)
     // within the table. The real untrusted inputs here are curdir and cycle, which
     // are bounded by the facing clamp above and the sentinel scan below.
     const int ani_index = dir_index + type_index * NUM_FACINGS;
+    // For real entities the loader records this family's table length (ani_count).
+    // If a snapshot-driven ani_type drives ani_index past the end, treat it like
+    // "no such sequence" (stop) instead of dereferencing a wild pointer. ani_count
+    // is 0 only for test-constructed weapons that assign `ani` directly, which keep
+    // the legacy direct-index behavior. Mirrors walker::animate/effect::animate.
+    if (self->ani_count > 0 && ani_index >= self->ani_count)
+        return true;
     const signed char* seq = self->ani[ani_index];
     if (!seq)
         return true;

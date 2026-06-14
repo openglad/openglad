@@ -389,9 +389,7 @@ struct RelayWebSocketTransport::Impl
 
         const std::vector<std::uint8_t> payload =
             encode_targeted_relay_payload(peer_id, data, len);
-        const char* bytes = reinterpret_cast<const char*>(payload.data());
-        const std::string binary(bytes, bytes + payload.size());
-        const ix::WebSocketSendInfo send_info = websocket->sendBinary(binary);
+        const ix::WebSocketSendInfo send_info = websocket->sendBinary(payload);
         if (!send_info.success)
         {
             enqueue_disconnect(active_generation);
@@ -412,9 +410,7 @@ struct RelayWebSocketTransport::Impl
 
         const std::vector<std::uint8_t> payload =
             encode_broadcast_relay_payload(data, len);
-        const char* bytes = reinterpret_cast<const char*>(payload.data());
-        const std::string binary(bytes, bytes + payload.size());
-        const ix::WebSocketSendInfo send_info = websocket->sendBinary(binary);
+        const ix::WebSocketSendInfo send_info = websocket->sendBinary(payload);
         if (!send_info.success)
         {
             enqueue_disconnect(active_generation);

@@ -55,6 +55,8 @@ static bool druid_do_special(walker* self)
                 return false;
             self->set_busy(self->busy() + (self->fire_frequency() * 2.0f));
             alive = summon_entity(self, Order::Weapon, FAMILY_TREE);
+            if (!alive)
+                return false;
             alive->setxy(newob->xpos(), newob->ypos());
             alive->set_ani_type(ANI_GROW);
             newob->set_dead(1);

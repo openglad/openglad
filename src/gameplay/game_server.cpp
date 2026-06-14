@@ -1507,7 +1507,8 @@ void GameServer::poll_incoming_messages(int max_messages)
             std::move(pending_inbound_messages_.front()));
         pending_inbound_messages_.pop_front();
     }
-    messages_drained_last_call_ = static_cast<int>(to_drain);
+    messages_drained_last_call_ = static_cast<int>(
+        std::min(to_drain, static_cast<std::size_t>(INT_MAX)));
 
     for (const PeerId peer_id : poll_result.malformed_peers)
     {

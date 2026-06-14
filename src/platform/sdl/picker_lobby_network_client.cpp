@@ -241,10 +241,16 @@ std::filesystem::path campaign_archive_path(std::string_view campaign_id)
         (std::string(campaign_id) + ".glad");
 }
 
+struct FileCloser
+{
+    void operator()(std::FILE* f) const noexcept { if (f) std::fclose(f); }
+};
+
 std::optional<std::string> crc32_hex_for_file(const std::filesystem::path& path)
 {
-    std::FILE* const file = std::fopen(path.string().c_str(), "rb");
-    if (file == nullptr)
+    std::unique_ptr<std::FILE, FileCloser> file(
+        std::fopen(path.string().c_str(), "rb"));
+    if (!file)
         return std::nullopt;
 
     std::array<unsigned char, 4096> buffer{};
@@ -252,7 +258,7 @@ std::optional<std::string> crc32_hex_for_file(const std::filesystem::path& path)
     while (true)
     {
         const std::size_t read =
-            std::fread(buffer.data(), 1, buffer.size(), file);
+            std::fread(buffer.data(), 1, buffer.size(), file.get());
         if (read > 0)
         {
             crc = crc32(
@@ -263,16 +269,12 @@ std::optional<std::string> crc32_hex_for_file(const std::filesystem::path& path)
 
         if (read < buffer.size())
         {
-            if (std::ferror(file) != 0)
-            {
-                std::fclose(file);
+            if (std::ferror(file.get()) != 0)
                 return std::nullopt;
-            }
             break;
         }
     }
 
-    std::fclose(file);
     return std::format("{:08x}", static_cast<std::uint32_t>(crc));
 }
 
@@ -1306,6 +1308,11 @@ std::string detect_lan_ipv4_address()
             return std::nullopt;
         }
 
+        struct AddrInfoDeleter {
+            void operator()(addrinfo* p) const noexcept { freeaddrinfo(p); }
+        };
+        std::unique_ptr<addrinfo, AddrInfoDeleter> results_guard(results);
+
         std::optional<std::string> detected_address;
         for (addrinfo* current = results; current != nullptr;
              current = current->ai_next)
@@ -1320,7 +1327,6 @@ std::string detect_lan_ipv4_address()
                 break;
         }
 
-        freeaddrinfo(results);
         return detected_address;
     };
 

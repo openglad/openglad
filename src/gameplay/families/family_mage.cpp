@@ -224,6 +224,8 @@ static bool mage_do_special(walker* self)
             if (!newob)
                 return false;
             alive = current_game->world->add_ob(Order::Weapon, FAMILY_WAVE);
+            if (!alive)
+                return false;
             alive->center_on(newob);
             alive->set_owner(self);
             alive->stats()->set_level(self->stats()->level());

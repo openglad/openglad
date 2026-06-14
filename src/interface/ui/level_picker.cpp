@@ -120,6 +120,7 @@ void getLevelStats(LevelRuntimeData& level_data, int* max_enemy_level, float* av
 		for (auto& uptr : level_data.world().oblist)
 		{
 		    walker* ob = uptr.get();
+		    if (!ob) continue;
 	        switch(ob->query_order())
 	        {
 	            case Order::Living:
@@ -145,6 +146,7 @@ void getLevelStats(LevelRuntimeData& level_data, int* max_enemy_level, float* av
 		for (auto& uptr : level_data.world().fxlist)
 		{
 		    walker* ob = uptr.get();
+		    if (!ob) continue;
 	        switch(ob->query_order())
 	        {
 	            case Order::Treasure:
@@ -238,7 +240,7 @@ class BrowserEntry
     float difficulty;
     std::list<int> exits;
     std::string scentext[80];                       // Array to hold scenario information
-    char scentextlines;                    // How many lines of text in scenario info
+    int scentextlines = 0;                 // How many lines of text in scenario info
     
     BrowserEntry(screen* screenp, int index, int scen_num);
     ~BrowserEntry();
@@ -277,7 +279,7 @@ BrowserEntry::BrowserEntry(screen* screenp, int index, int scen_num)
         level_name = level_name.substr(0, 20) + "...";
     }
     
-	    scentextlines = static_cast<char>(std::min<size_t>(level_data.description.size(), 80u));
+	    scentextlines = static_cast<int>(std::min<size_t>(level_data.description.size(), 80u));
     int i = 0;
     for(auto& line : level_data.description)
     {

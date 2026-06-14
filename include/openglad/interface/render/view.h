@@ -146,6 +146,6 @@ class viewscreen
 	protected:
 		options *prefsob;
 
-		short size;
-		unsigned char  *bmp,  *oldbmp;
+		short size = 0;
+		unsigned char  *bmp = nullptr,  *oldbmp = nullptr;
 };

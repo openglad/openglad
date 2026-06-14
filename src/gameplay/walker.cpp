@@ -1198,7 +1198,7 @@ bool walker::fire_check(short xdelta, short ydelta)
 {
 	walker  *weapon = nullptr;
 	//  short newx=0, newy=0;
-	short i;
+	std::int32_t i;
 	std::int32_t distance;
 	short targetdir;
 

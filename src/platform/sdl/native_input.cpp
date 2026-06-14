@@ -115,6 +115,9 @@ bool decode_event(const void* native_event, EventData& out)
         break;
     case SDL_USEREVENT:
         out.user_code = e.user.code;
+        // intptr_t is defined to round-trip a void* losslessly; this is the
+        // canonical, portable idiom (std::bit_cast needs a newer libc++ than the
+        // ctest Emscripten toolchain ships).
         out.user_data1 = reinterpret_cast<std::intptr_t>(e.user.data1);
         break;
     default:

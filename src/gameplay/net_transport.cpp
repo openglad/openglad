@@ -3,6 +3,7 @@
 #include <openglad/gameplay/input_state_net.h>
 #include <openglad/gameplay/world_snapshot.h>
 
+#include <array>
 #include <cstring>
 #include <functional>
 #include <limits>
@@ -42,8 +43,11 @@ void append_i32(std::vector<std::uint8_t>& bytes, std::int32_t value)
 
 void append_f32(std::vector<std::uint8_t>& bytes, float value)
 {
-    const auto* raw = reinterpret_cast<const std::uint8_t*>(&value);
-    bytes.insert(bytes.end(), raw, raw + sizeof(value));
+    // Portable, alias-safe byte extraction (std::bit_cast is unavailable on the
+    // older Emscripten libc++ used by the ctest wasm build).
+    std::array<std::uint8_t, sizeof(float)> raw{};
+    std::memcpy(raw.data(), &value, sizeof(float));
+    bytes.insert(bytes.end(), raw.begin(), raw.end());
 }
 
 void append_string(std::vector<std::uint8_t>& bytes, const std::string& value)

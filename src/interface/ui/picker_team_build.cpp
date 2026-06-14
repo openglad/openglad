@@ -1597,6 +1597,7 @@ std::string get_class_description(unsigned char family)
 	{
 	    const auto* fd = get_family_descriptor(family);
 	    if (!fd) return "";
+	    if (stat < 0 || stat >= 6 || fd->stat_costs[stat] == 0) return "";
 	    int value = 55/(fd->stat_costs[stat]);
 	    int rating = (value * 5) / 11;
 	    switch(rating)
@@ -2106,6 +2107,7 @@ Sint32 create_train_menu(Sint32 arg1)
         og::input_native::sleep_ms(10);
 	}
 	pks().train_session = nullptr;
+	pks().old_guy = nullptr;
 	og::runtime::current_session->myscreen_->clearbuffer();
 	//myscreen->clearscreen();
     if ((retvalue & MENU_EXIT) && team_build_start_selected())

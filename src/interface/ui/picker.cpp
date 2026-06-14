@@ -114,7 +114,8 @@ void destroy_picker_pixie(pixieN* pixie)
 PickerPixieHandle make_picker_pixie(const PixieData& data)
 {
     PickerPixieHandle handle;
-    handle.reset(new pixieN(data), destroy_picker_pixie);
+    auto up = std::make_unique<pixieN>(data);
+    handle.reset(up.release(), destroy_picker_pixie);
     return handle;
 }
 } // namespace
@@ -2225,9 +2226,11 @@ Sint32 set_difficulty()
        og::runtime::current_session->myscreen_->world().difficulty = percent;
    std::string msg = og::ui::format_difficulty_label(og::runtime::current_session->current_difficulty_);
    #ifndef DISABLE_MULTIPLAYER
-   og::runtime::current_session->allbuttons_[6]->label = msg;
+   if (og::runtime::current_session->allbuttons_[6] != nullptr)
+       og::runtime::current_session->allbuttons_[6]->label = msg;
    #else
-   og::runtime::current_session->allbuttons_[2]->label = msg;
+   if (og::runtime::current_session->allbuttons_[2] != nullptr)
+       og::runtime::current_session->allbuttons_[2]->label = msg;
    #endif
 
    //allbuttons[6]->vdisplay();
@@ -2264,7 +2267,8 @@ Sint32 change_teamnum(Sint32 arg)
    og::runtime::current_session->current_guy_->teamnum = static_cast<short>(current_team);
 
    // Update our button display
-   og::runtime::current_session->allbuttons_[18]->label = std::format("Playing on Team {}", current_team + 1);
+   if (og::runtime::current_session->allbuttons_[18] != nullptr)
+       og::runtime::current_session->allbuttons_[18]->label = std::format("Playing on Team {}", current_team + 1);
    //allbuttons[18]->do_outline = 1;
    //allbuttons[18]->vdisplay();
    //myscreen->buffer_to_screen(0, 0, 320, 200);
@@ -2286,7 +2290,8 @@ Sint32 change_hire_teamnum(Sint32 arg)
    }
 
    // Update our button display
-   og::runtime::current_session->allbuttons_[2]->label = std::format("Hiring for Team {}", og::runtime::current_session->current_team_num_ + 1);
+   if (og::runtime::current_session->allbuttons_[2] != nullptr)
+       og::runtime::current_session->allbuttons_[2]->label = std::format("Hiring for Team {}", og::runtime::current_session->current_team_num_ + 1);
 
    return MENU_OK;
 }
@@ -2295,7 +2300,8 @@ Sint32 change_allied()
 {
    og::ui::toggle_allied_mode(og::runtime::current_session->myscreen_->save_data);
 
-   og::runtime::current_session->allbuttons_[7]->label = og::ui::format_allied_mode_label(og::runtime::current_session->myscreen_->save_data);
+   if (og::runtime::current_session->allbuttons_[7] != nullptr)
+       og::runtime::current_session->allbuttons_[7]->label = og::ui::format_allied_mode_label(og::runtime::current_session->myscreen_->save_data);
 
    picker_lobby_sync_settings_from_save();
 

@@ -299,6 +299,8 @@ bool SaveData::load(const std::string& filename)
     {
         LogError("save_load_team_size_invalid file={} listsize={} max={}\n",
             filename, listsize, MAX_TEAM_SIZE);
+        last_io_error_ = SaveDataIoError::ReadFailed;
+        return false;
     }
 
 	// Read the # of players
@@ -436,8 +438,17 @@ bool SaveData::load(const std::string& filename)
         short num_campaigns = 0;
         char campaign[41];
         short num_levels = 0;
+        constexpr short kMaxSavedCampaigns = 128;
+        constexpr short kMaxSavedLevels = 1000;
         // How many campaigns are stored?
         READ_OR_FAIL(&num_campaigns, 2, 1);
+        if (num_campaigns < 0 || num_campaigns > kMaxSavedCampaigns)
+        {
+            LogError("save_load_num_campaigns_invalid file={} num_campaigns={} max={}\n",
+                filename, num_campaigns, kMaxSavedCampaigns);
+            last_io_error_ = SaveDataIoError::ReadFailed;
+            return false;
+        }
         for(int i = 0; i < num_campaigns; i++)
         {
             // Get the campaign ID (40 chars)
@@ -457,6 +468,13 @@ bool SaveData::load(const std::string& filename)
 
             // Get the number of cleared levels
             READ_OR_FAIL(&num_levels, 2, 1);
+            if (num_levels < 0 || num_levels > kMaxSavedLevels)
+            {
+                LogError("save_load_num_levels_invalid file={} num_levels={} max={}\n",
+                    filename, num_levels, kMaxSavedLevels);
+                last_io_error_ = SaveDataIoError::ReadFailed;
+                return false;
+            }
             for(int j = 0; j < num_levels; j++)
             {
                 // Get the level index
@@ -866,7 +884,14 @@ bool SaveData::save(const std::string& filename)
     }
 
 	// Number of campaigns
-	short num_campaigns = static_cast<short>(completed_levels.size());
+	const std::size_t raw_campaign_count = completed_levels.size();
+	if (raw_campaign_count > 32767)
+	{
+	    LogError("save_write_too_many_campaigns {}\n", raw_campaign_count);
+	    last_io_error_ = SaveDataIoError::WriteFailed;
+	    return false;
+	}
+	short num_campaigns = static_cast<short>(raw_campaign_count);
     WRITE_OR_FAIL(&num_campaigns, 2, 1);
 	for(std::map<std::string, std::set<int> >::const_iterator e = completed_levels.begin(); e != completed_levels.end(); e++)
     {
@@ -890,7 +915,14 @@ bool SaveData::save(const std::string& filename)
 	        WRITE_OR_FAIL(&index, 2, 1);
 
 	        // Number of levels
-	        short num_levels = static_cast<short>(e->second.size());
+	        const std::size_t raw_level_count = e->second.size();
+	        if (raw_level_count > 32767)
+	        {
+	            LogError("save_write_too_many_levels {}\n", raw_level_count);
+	            last_io_error_ = SaveDataIoError::WriteFailed;
+	            return false;
+	        }
+	        short num_levels = static_cast<short>(raw_level_count);
 	        WRITE_OR_FAIL(&num_levels, 2, 1);
         for(std::set<int>::const_iterator f = e->second.begin(); f != e->second.end(); f++)
 	        {

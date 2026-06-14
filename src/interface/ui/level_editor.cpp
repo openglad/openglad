@@ -467,7 +467,7 @@ public:
     }
 };
 
-std::string get_editor_family_label(Order order, Sint32 family, char livings[][20], const char* treasures[], const char* weapons[]);
+std::string get_editor_family_label(Order order, Sint32 family, std::span<const std::string> livings, const char* treasures[], const char* weapons[]);
 std::string get_editor_level_label(Order order, Sint32 family, Sint32 level);
 
 class LevelEditorData
@@ -549,7 +549,14 @@ public:
     
     LevelEditorData();
     ~LevelEditorData();
-    
+
+    // Self-referential: menu_buttons et al. store raw pointers to SimpleButton
+    // members of this same object, so copying/moving would dangle them.
+    LevelEditorData(const LevelEditorData&) = delete;
+    LevelEditorData& operator=(const LevelEditorData&) = delete;
+    LevelEditorData(LevelEditorData&&) = delete;
+    LevelEditorData& operator=(LevelEditorData&&) = delete;
+
     bool loadCampaign(const std::string& id);
     bool reloadCampaign();
     
@@ -1345,15 +1352,12 @@ Sint32 LevelEditorData::display_panel(screen* s)
 	      "PROTECTION", "HAMMER", "DOOR",
 	    };
 
-	static char livings[NUM_FAMILIES][20] = {};
+	static std::array<std::string, NUM_FAMILIES> livings;
 	static bool livings_init = false;
 	if (!livings_init) {
 	    for (int family_index = 0; family_index < NUM_FAMILIES; family_index++) {
 	        const auto* fd = get_family_descriptor(family_index);
-	        if (fd && fd->name)
-	            snprintf(livings[family_index], 20, "%s", fd->name);
-	        else
-	            snprintf(livings[family_index], 20, "BEAST");
+	        livings[family_index] = (fd && fd->name) ? fd->name : "BEAST";
 	    }
 	    livings_init = true;
 	}
@@ -3340,13 +3344,13 @@ int level_editor_test_exercise_internal_helpers()
 // GCOVR_EXCL_STOP
 #endif
 
-std::string get_editor_family_label(Order order, Sint32 family, char livings[][20], const char* treasures[], const char* weapons[])
+std::string get_editor_family_label(Order order, Sint32 family, std::span<const std::string> livings, const char* treasures[], const char* weapons[])
 {
     if(family < 0 || family >= NUM_FAMILIES)
         return "UNKNOWN";
 
     if (order == Order::Living)
-        return livings[family];
+        return livings[static_cast<std::size_t>(family)];
     if (order == Order::Generator)
     {
         switch (family)
@@ -3495,6 +3499,10 @@ EventType handle_basic_editor_event(const void* native_event)
 Sint32 level_editor()
 {
     static LevelEditorData data;
+    // Refresh radar pointers in case the session's viewscreen was rebuilt
+    // since this static was first constructed (avoids a dangling viewscreen*).
+    data.myradar.viewscreenp = og::runtime::current_session->myscreen_->viewob[0].get();
+    data.myradar.screenp = og::runtime::current_session->myscreen_;
     EditorTerrainBrush& terrain_brush = data.terrain_brush;
     EditorObjectBrush& object_brush = data.object_brush;
     

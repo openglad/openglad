@@ -256,7 +256,7 @@ const char* ghost_names[] = {
 
 bool has_name_in_save(const char* name, const SaveData& save)
 {
-    for (int i = 0; i < save.team_size; i++) {
+    for (int i = 0; i < save.team_size && i < MAX_TEAM_SIZE; i++) {
         if (save.team_list[i] && save.team_list[i]->name == name)
             return true;
     }

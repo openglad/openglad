@@ -1965,10 +1965,7 @@ void clear_entity_dirty_masks(GameWorld& world)
 
 std::uint8_t capture_bool_byte(const bool& value)
 {
-    unsigned char raw = 0;
-    static_assert(sizeof(raw) == sizeof(value));
-    std::memcpy(&raw, &value, sizeof(raw));
-    return raw != 0 ? 1U : 0U;
+    return value ? 1U : 0U;
 }
 
 void capture_world_grid(const GameWorld& world,

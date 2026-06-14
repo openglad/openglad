@@ -115,7 +115,10 @@ static bool chain_on_act(effect* self)
                 yd = self->leader()->ypos() - self->ypos();
         }
         self->set_curdir(static_cast<signed char>(self->facing(xd, yd)));
-        self->set_frame(self->ani[self->curdir()][0]);
+        if (self->ani)
+        {
+            self->set_frame(self->ani[self->curdir()][0]);
+        }
         self->setworldxy(self->worldx()+xd, self->worldy()+yd);
     }
     else

@@ -147,10 +147,9 @@ struct WebSocketClientTransport::Impl
             return;
 
         const char* bytes = reinterpret_cast<const char*>(data);
-        const std::string payload =
-            (bytes == nullptr || len == 0) ? std::string()
-                                           : std::string(bytes, bytes + len);
-        const ix::WebSocketSendInfo send_info = websocket->sendBinary(payload);
+        const std::size_t send_len = (bytes == nullptr || len == 0) ? 0 : len;
+        const ix::WebSocketSendInfo send_info =
+            websocket->sendBinary(ix::IXWebSocketSendData(bytes, send_len));
         if (!send_info.success)
         {
             enqueue_disconnect(active_generation);

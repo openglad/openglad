@@ -138,6 +138,21 @@ vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
 
 vbutton::vbutton() //for pointers
 {
+    // Zero-initialize every integral member so a default-constructed vbutton
+    // (intended only as a pointer placeholder) never carries indeterminate
+    // values into mouse_on()/vdisplay()/leftclick() if accidentally used.
+    xloc = 0;
+    yloc = 0;
+    width = 0;
+    height = 0;
+    xend = 0;
+    yend = 0;
+    myfunc = 0;
+    arg = 0;
+    hotkey = 0;
+    color = 0;
+    hidden = false;
+    no_draw = false;
     had_focus = do_outline = depressed = 0;
     mypixie = nullptr;
 }

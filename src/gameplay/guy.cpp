@@ -383,12 +383,21 @@ std::uint32_t calculate_exp(std::int32_t level)
 	*/
 	if(level <= 1)
         return 0;
-    
-    int level_1 = level - 1;
-    int level_2 = level - 2;
-    if(level_2 < 0)
-        level_2 = 0;
-    return 8000 + 2000*level_1 + 4000*level_2 + calculate_exp(level-1);
+
+    // Iterative unrolling of the original recurrence to avoid stack
+    // exhaustion when 'level' comes from untrusted save-file bytes (up to
+    // SHRT_MAX). Each iteration reproduces the exact integer arithmetic and
+    // accumulation order of the former recursive form.
+    std::uint32_t result = 0;
+    for(int k = 2; k <= level; ++k)
+    {
+        int level_1 = k - 1;
+        int level_2 = k - 2;
+        if(level_2 < 0)
+            level_2 = 0;
+        result += static_cast<std::uint32_t>(8000 + 2000*level_1 + 4000*level_2);
+    }
+    return result;
 }
 
 void apply_level_up(guy* self, std::int32_t level_diff, const LevelUpGains& g)

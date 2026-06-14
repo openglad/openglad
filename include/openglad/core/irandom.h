@@ -32,5 +32,8 @@ public:
         state_ = state_ * 1103515245u + 12345u;
         return (state_ >> 16) % max_exclusive;
     }
+    // Re-seed the generator, restarting the sequence deterministically.
+    void seed(std::uint32_t s) { state_ = s; }
+private:
     std::uint32_t state_;
 };

@@ -95,7 +95,7 @@ statistics::statistics(walker  * someguy)
         old_family_ = FAMILY_SOLDIER;
     }
 
-	name[0] = 0; // set to null string
+	name.clear(); // set to null string
 }
 
 statistics::~statistics()

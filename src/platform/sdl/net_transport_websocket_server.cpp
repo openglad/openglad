@@ -156,10 +156,9 @@ struct WebSocketServerTransport::Impl
         }
 
         const char* bytes = reinterpret_cast<const char*>(data);
-        const std::string payload =
-            (bytes == nullptr || len == 0) ? std::string()
-                                           : std::string(bytes, bytes + len);
-        const ix::WebSocketSendInfo send_info = socket->sendBinary(payload);
+        const std::size_t send_len = (bytes == nullptr || len == 0) ? 0 : len;
+        const ix::WebSocketSendInfo send_info =
+            socket->sendBinary(ix::IXWebSocketSendData(bytes, send_len));
         if (!send_info.success)
         {
             enqueue_disconnect(peer_it->second.connection_id);
@@ -194,6 +193,14 @@ struct WebSocketServerTransport::Impl
                 if (!entry.socket ||
                     connection_to_peer_id.contains(entry.connection_id))
                 {
+                    break;
+                }
+
+                if (next_peer_id == std::numeric_limits<PeerId>::max())
+                {
+                    // PeerId space exhausted; the next increment would wrap to
+                    // the reserved 'no peer' sentinel (0). Drop the connection
+                    // rather than register a ghost peer.
                     break;
                 }
 

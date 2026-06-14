@@ -20,6 +20,7 @@
 #pragma once
 
 #include <cstdint>
+#include <span>
 #include <openglad/core/irandom.h>
 #include <openglad/gameplay/pixie_data.h>
 #include <openglad/core/terrain_types.h>
@@ -43,7 +44,7 @@ class smoother
 		std::int32_t surrounds(std::int32_t x, std::int32_t y, std::int32_t whatgenre); // returns 0-15 of 4 surroundings
 		void set_x_y(std::int32_t x, std::int32_t y, std::int32_t whatvalue);  // sets grid location to whatvalue
 
-		unsigned char  *mygrid; // our grid to change
+		std::span<unsigned char> mygrid_span_{}; // our grid to change (non-owning view)
 		std::int32_t maxx, maxy;   // dimensions of our grid ..
         IRandom* rng_;
 };

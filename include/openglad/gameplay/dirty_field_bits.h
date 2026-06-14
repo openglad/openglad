@@ -113,4 +113,7 @@ inline constexpr std::uint8_t FIELD_COUNT = 86;
 static_assert(BIT_DO_BOUNCE + 1 == FIELD_COUNT,
               "Dirty field bit count drift -- update dirty_field_bits.h");
 
+static_assert(FIELD_COUNT <= 128,
+              "FIELD_COUNT exceeds dirty_mask_ capacity; increase array size");
+
 } // namespace og::dirty

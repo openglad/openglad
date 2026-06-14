@@ -190,7 +190,8 @@ void restore_preserved_save_slots(
             continue;
 
         save.team_list[restore_index] = std::move(preserved_slot.member);
-        save.team_size++;
+        if (save.team_size < static_cast<unsigned char>(save.team_list.size()))
+            save.team_size++;
     }
 }
 

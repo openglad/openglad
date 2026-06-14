@@ -518,6 +518,8 @@ walker* living::do_summon(char whatfamily, std::int32_t summon_lifetime)
 	walker  *newob;
 
 	newob = current_game->world->add_ob(Order::Living, whatfamily);
+	if (newob == nullptr)
+		return nullptr;
 	newob->set_owner(this);
 		newob->set_lifetime(summon_lifetime);
 	newob->transform_to(Order::Living, whatfamily);

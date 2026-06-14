@@ -278,7 +278,7 @@ class walker : public og::sim::SimEntity
 		bool act_guard();
 		virtual bool act_random();
 		std::int32_t regen_delay_ = 0;       // Delay after being hit
-		walker * myself_;
+		walker * myself_ = nullptr;
 		std::unique_ptr<statistics> stats_;
 		std::unique_ptr<guy> owned_myguy_;
 		std::unique_ptr<og::gameplay::IRenderComponent> render_;  // Optional render component (null for headless)

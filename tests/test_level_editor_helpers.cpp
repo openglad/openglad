@@ -9,6 +9,8 @@
 
 #include <string>
 #include <set>
+#include <array>
+#include <span>
 #include <cstdio>
 #include <unistd.h>
 
@@ -24,7 +26,7 @@ bool create_new_campaign(const std::string& campaign_id);
 bool does_campaign_exist(const std::string& campaign_id);
 bool are_objects_outside_area(LevelRuntimeData* level, int x, int y, int w, int h);
 void get_connected_level_exits(int current_level, const std::list<int>& levels, std::set<int>& connected, std::list<std::string>& problems);
-std::string get_editor_family_label(Order order, Sint32 family, char livings[][20], const char* treasures[], const char* weapons[]);
+std::string get_editor_family_label(Order order, Sint32 family, std::span<const std::string> livings, const char* treasures[], const char* weapons[]);
 std::string get_editor_level_label(Order order, Sint32 family, Sint32 level);
 void importCampaignPicker();
 void shareCampaign(screen* scr);
@@ -86,14 +88,14 @@ TEST(LevelEditorHelpers, level_editor_set_screen_pos_and_tile_matching)
     ASSERT_EQ(222, (int)t) << "unknown tiles should be returned unchanged";
 
     // Label helpers extracted from editor rendering path.
-    char test_livings[NUM_FAMILIES][20] = {};
+    std::array<std::string, NUM_FAMILIES> test_livings;
     const char* test_treasures[NUM_FAMILIES] = {};
     const char* test_weapons[NUM_FAMILIES] = {};
     for (int i = 0; i < NUM_FAMILIES; ++i) {
         test_treasures[i] = "TREASURE";
         test_weapons[i] = "WEAPON";
     }
-    snprintf(test_livings[FAMILY_SOLDIER], sizeof(test_livings[FAMILY_SOLDIER]), "SOLDIER");
+    test_livings[FAMILY_SOLDIER] = "SOLDIER";
 
     ASSERT_TRUE(get_editor_family_label(Order::Generator, FAMILY_TENT, test_livings, test_treasures, test_weapons) == "TENT") << "generator tent label";
     ASSERT_TRUE(get_editor_family_label(Order::Generator, FAMILY_TOWER, test_livings, test_treasures, test_weapons) == "MAGE TOWER") << "generator tower label";
