@@ -19,6 +19,7 @@
 #include <openglad/gameplay/sim_emit.h>
 
 #include <format>
+#include <iterator>
 #include <string>
 #include <list>
 
@@ -371,7 +372,7 @@ const FamilyDescriptor& describe_family_cleric()
                        "\n"
                        "Special: Heal",
         .name_pool = cleric_names,
-        .name_pool_size = sizeof(cleric_names) / sizeof(cleric_names[0]),
+        .name_pool_size = std::size(cleric_names),
         .is_playable = true,
         .playable_order = 5,
     };

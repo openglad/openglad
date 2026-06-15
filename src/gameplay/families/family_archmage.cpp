@@ -59,9 +59,7 @@ static void archmage_hit_response(statistics* stats, walker* foe)
     walker* controller = stats->controller();
     controller->set_busy(0); // yes, this is a cheat
 
-    std::int32_t possible_specials[NUM_SPECIALS];
-    for (int i = 0; i < NUM_SPECIALS; i++)
-        possible_specials[i] = 0;
+    std::int32_t possible_specials[NUM_SPECIALS] = {};
     for (int i = 0; i <= (stats->level() + 2) / 3; i++)
         if (i < NUM_SPECIALS && stats->magicpoints() >= stats->special_cost(i))
             possible_specials[i] = 1;

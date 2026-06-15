@@ -239,7 +239,7 @@ class BrowserEntry
     int num_enemies;
     float difficulty;
     std::list<int> exits;
-    std::string scentext[80];                       // Array to hold scenario information
+    std::array<std::string, 80> scentext;           // Array to hold scenario information
     int scentextlines = 0;                 // How many lines of text in scenario info
     
     BrowserEntry(screen* screenp, int index, int scen_num);
@@ -283,7 +283,7 @@ BrowserEntry::BrowserEntry(screen* screenp, int index, int scen_num)
     int i = 0;
     for(auto& line : level_data.description)
     {
-        scentext[i] = line;
+        scentext[static_cast<std::size_t>(i)] = line;
         i++;
         if(i >= 80)
             break;
@@ -685,7 +685,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
             {
                 if(prev.y + 20 + 10*i+1 > descbox.y + descbox.h)
                     break;
-                loadtext.write_xy(descbox.x, descbox.y + 10*i+1, entries[selected_entry]->scentext[i].c_str(), BLACK, 1);
+                loadtext.write_xy(descbox.x, descbox.y + 10*i+1, entries[selected_entry]->scentext[static_cast<std::size_t>(i)].c_str(), BLACK, 1);
             }
         }
         

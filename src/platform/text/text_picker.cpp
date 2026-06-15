@@ -21,6 +21,7 @@
 #include <openglad/interface/ui/text_protocol.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdio>
 #include <format>
 #include <iostream>
@@ -651,12 +652,13 @@ private:
 
             const auto val = parse_int_strict(line);
             if (val) {
-                S stats[] = {S::Strength, S::Dexterity, S::Constitution,
-                             S::Intelligence, S::Armor, S::Level};
+                const std::array<S, 6> stats = {S::Strength, S::Dexterity,
+                                                S::Constitution, S::Intelligence,
+                                                S::Armor, S::Level};
                 int idx = std::abs(*val) - 1;
-                if (idx >= 0 && idx < 6) {
-                    if (*val > 0) session.increase_stat(stats[idx]);
-                    else session.decrease_stat(stats[idx]);
+                if (idx >= 0 && static_cast<std::size_t>(idx) < stats.size()) {
+                    if (*val > 0) session.increase_stat(stats[static_cast<std::size_t>(idx)]);
+                    else session.decrease_stat(stats[static_cast<std::size_t>(idx)]);
                 }
             }
         }
