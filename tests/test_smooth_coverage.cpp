@@ -560,6 +560,34 @@ TEST(SmoothCoverage, smooth_grass_dark_wall_water_tree_dirt_and_unknown_deep_bra
         << "set_x_y without a target should keep the smoother in fallback mode";
 }
 
+TEST(SmoothCoverage, set_x_y_rejects_out_of_bounds_writes)
+{
+    // set_x_y() now mirrors query_x_y()'s bounds check; verify both new guard
+    // branches are no-ops and never store outside the grid span.
+    PixieData grid = make_grid(4, 4, PIX_GRASS1);
+    ExposedSmoother ex;
+    ex.set_target(grid);
+
+    // In-bounds write still takes effect.
+    ex.set_x_y(1, 1, PIX_WATER1);
+    ASSERT_EQ((int)PIX_WATER1, (int)ex.query_x_y(1, 1)) << "in-bounds set_x_y should write";
+
+    // Each out-of-range coordinate must be a silent no-op (no OOB store).
+    ex.set_x_y(-1, 1, PIX_WATER1);   // x < 0
+    ex.set_x_y(1, -1, PIX_WATER1);   // y < 0
+    ex.set_x_y(4, 1, PIX_WATER1);    // x >= maxx
+    ex.set_x_y(1, 4, PIX_WATER1);    // y >= maxy
+
+    // No stray write landed anywhere: only the one in-bounds cell changed.
+    for (int y = 0; y < 4; ++y)
+        for (int x = 0; x < 4; ++x)
+        {
+            int expected = (x == 1 && y == 1) ? (int)PIX_WATER1 : (int)PIX_GRASS1;
+            ASSERT_EQ(expected, (int)ex.query_x_y(x, y))
+                << "grid corrupted at (" << x << "," << y << ") after out-of-bounds writes";
+        }
+}
+
 
 TEST(SmoothCoverage, smooth_round13_dark_grass_targeted_338_448_branches)
 {

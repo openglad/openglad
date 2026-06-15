@@ -1258,24 +1258,26 @@ std::string detect_lan_ipv4_address()
         if (descriptor < 0)
             return std::nullopt;
 
+        // descriptor is provably >= 0 here, so close it exactly once at scope
+        // exit; this removes the three hand-placed close() calls and their
+        // associated leak hazard on any future early return.
+        struct FdCloser {
+            int fd;
+            ~FdCloser() noexcept { close(fd); }
+        } fd_guard{descriptor};
+
         sockaddr_in remote = {};
         remote.sin_family = AF_INET;
         remote.sin_port = htons(9);
         if (inet_pton(AF_INET, "198.18.0.1", &remote.sin_addr) != 1)
-        {
-            close(descriptor);
             return std::nullopt;
-        }
 
         const int connect_result = connect(
             descriptor,
             reinterpret_cast<const sockaddr*>(&remote),
             sizeof(remote));
         if (connect_result != 0)
-        {
-            close(descriptor);
             return std::nullopt;
-        }
 
         sockaddr_in local = {};
         socklen_t local_size = sizeof(local);
@@ -1283,7 +1285,6 @@ std::string detect_lan_ipv4_address()
             descriptor,
             reinterpret_cast<sockaddr*>(&local),
             &local_size);
-        close(descriptor);
         if (name_result != 0 || local.sin_family != AF_INET)
             return std::nullopt;
 

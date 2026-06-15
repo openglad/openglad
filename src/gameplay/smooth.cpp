@@ -643,5 +643,16 @@ void smoother::set_x_y(Sint32 x, Sint32 y, Sint32 whatvalue)
 	if (mygrid_span_.empty())
 		return;
 
+	// Mirror query_x_y()'s bounds check: the read path already rejects
+	// out-of-range coordinates, so the symmetric write must too. Without this
+	// guard a future caller could store past the end of the grid span (an OOB
+	// write into the level buffer); the index math below assumes 0<=x<maxx and
+	// 0<=y<maxy.
+	if ( (x < 0) || (y < 0) )
+		return;
+
+	if ( (x >= maxx) || (y >= maxy) )
+		return;
+
 	mygrid_span_[static_cast<std::size_t>(x+y*maxx)] = static_cast<unsigned char>(whatvalue);
 }

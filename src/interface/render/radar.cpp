@@ -222,7 +222,7 @@ short radar::draw(LevelRuntimeData* data)
     }
 	{
 		size_t offset = radarx + (radary * sizex);
-		auto radar_span = std::span<const unsigned char>{bmp.data() + offset, static_cast<size_t>(sizex * sizey) - offset};
+		auto radar_span = std::span<const unsigned char>{bmp.data() + offset, bmp.size() - offset};
 		og::runtime::current_session->myscreen_->putbuffer_alpha(xloc, yloc,
 		                   sizex,sizey,
 		                   xloc,yloc,xloc + xview,yloc + yview,
