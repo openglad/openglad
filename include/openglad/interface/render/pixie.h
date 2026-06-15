@@ -56,7 +56,7 @@ class pixie
 		void set_accel(int a);
 		void set_data(const PixieData& data);
 		short sizex, sizey;
-		short xpos, ypos;
+		short xpos = 0, ypos = 0;
 		//buffers: accelerated-surface path on/off, 1/0
 		int accel = 0;
 		short on_screen();                                                                // on ANY viewscreen?

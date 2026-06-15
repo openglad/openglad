@@ -665,9 +665,9 @@ bool SaveData::save(const std::string& filename)
     }
 	char filler[50] = "GTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTL"; // for RESERVED
 	char savedgame[41];
-	std::fill_n(savedgame, 41, '\0');
+	std::fill_n(savedgame, std::size(savedgame), '\0');
 	char temp_campaign[41];
-	std::fill_n(temp_campaign, 41, '\0');
+	std::fill_n(temp_campaign, std::size(temp_campaign), '\0');
 
 	char temptext[10] = "GTL";
 	std::uint8_t temp_version = 11;
@@ -912,7 +912,7 @@ bool SaveData::save(const std::string& filename)
         }
         // Campaign ID
         char campaign[41];
-        std::fill_n(campaign, 41, '\0');
+        std::fill_n(campaign, std::size(campaign), '\0');
         snprintf(campaign, sizeof(campaign), "%s", e->first.c_str());
         WRITE_OR_FAIL(campaign, 1, 40);
 

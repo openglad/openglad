@@ -1882,7 +1882,8 @@ Sint32 set_player_mode(Sint32 howmany)
     g_start_game_requested = false;
     picker_lobby_set_player_mode(howmany);
 
-	while (og::runtime::current_session->allbuttons_[count])
+	while (count < static_cast<Sint32>(og::runtime::current_session->allbuttons_.size())
+	       && og::runtime::current_session->allbuttons_[count])
 	{
 		og::runtime::current_session->allbuttons_[count]->vdisplay();
 		count++;
