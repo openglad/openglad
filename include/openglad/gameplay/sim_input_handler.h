@@ -12,6 +12,7 @@
 #include <list>
 #include <memory>
 #include <openglad/gameplay/input_state.h>
+#include <openglad/gameplay/statistics.h>  // NUM_SPECIALS
 
 class walker;
 class GameWorld;
@@ -64,7 +65,7 @@ SimInputResult sim_process_player_input(
     short player_num,
     short my_team,
     SimInputDebounce& debounce,
-    const std::string (*special_names)[6],
+    const std::string (*special_names)[NUM_SPECIALS],
     [[maybe_unused]] og::sim::SimEventLog* sim_events);
 
 // Find the next available control walker for a player.

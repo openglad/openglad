@@ -50,5 +50,6 @@ unsigned char our_pal_lookup(int index)
 	                  37,31,51,33,27,47,28,24,43,24,20,56,35,23,52,32,24,48,30,22,44,27,19,28,
 	                  18,18,30,20,20,32,22,22,34,24,24,36,26,26,38,28,28,40,30,30,42,32,32};
 
+	if (index < 0 || static_cast<std::size_t>(index) >= data.size()) return 0;
 	return data[static_cast<std::size_t>(index)];
 }

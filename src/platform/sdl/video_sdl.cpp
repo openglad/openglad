@@ -369,6 +369,8 @@ void sdl_video::putblack(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysiz
 	Sint32 curx, cury;
 	Sint32 curpoint;
 
+	if (!og::runtime::current_session->videoptr_) return;  // no direct video buffer to clear
+
 	for(cury = starty;cury < starty +ysize;cury++)
 	{
 		for (curx = startx; curx < startx +xsize; curx++)
@@ -2013,6 +2015,7 @@ int sdl_video::FadeBetween(
 		bOldNull = true;
 		pOldSurface = SDL_CreateRGBSurface(SDL_SWSURFACE,
 			CX_SCREEN, CY_SCREEN, 24, 0, 0, 0, 0);
+		if (!pOldSurface) return 0;  // OOM: nothing safely lockable below
 		SDL_FillRect(pOldSurface,nullptr,0);
 	}
 	if (!pNewSurface)
@@ -2020,6 +2023,7 @@ int sdl_video::FadeBetween(
 		bNewNull = true;
 		pNewSurface = SDL_CreateRGBSurface(SDL_SWSURFACE,
 			CX_SCREEN, CY_SCREEN, 24, 0, 0, 0, 0);
+		if (!pNewSurface) { if (bOldNull) SDL_FreeSurface(pOldSurface); return 0; }  // OOM: free the temp we just made
 		SDL_FillRect(pNewSurface,nullptr,0);
 	}
 	if (bOldNull && bNewNull) return 0;	//nothing to do

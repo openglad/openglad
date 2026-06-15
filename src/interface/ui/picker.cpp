@@ -2068,7 +2068,13 @@ Sint32 create_detail_menu(guy *arg1)
        picker_lobby_poll();
        guy* thisguy = arg1;
        if (!thisguy)
-           thisguy = og::runtime::current_session->myscreen_->save_data.team_list[og::runtime::current_session->editguy_].get();
+       {
+           auto& tl = og::runtime::current_session->myscreen_->save_data.team_list;
+           const int slot = og::runtime::current_session->editguy_;
+           if (slot < 0 || slot >= static_cast<int>(tl.size()))
+               return MENU_REDRAW;
+           thisguy = tl[slot].get();
+       }
        if (!thisguy)
            return MENU_REDRAW;
 
@@ -2115,7 +2121,8 @@ Sint32 create_detail_menu(guy *arg1)
        og::runtime::current_session->myscreen_->draw_text_bar(36, 10, 124, 22);
        
        text& mytext = og::runtime::current_session->myscreen_->text_normal;
-       mytext.write_xy(80 - mytext.query_width(og::runtime::current_session->current_guy_->name.c_str())/2, 14,
+       if (og::runtime::current_session->current_guy_)
+           mytext.write_xy(80 - mytext.query_width(og::runtime::current_session->current_guy_->name.c_str())/2, 14,
                         og::runtime::current_session->current_guy_->name.c_str(),static_cast<unsigned char>(DARK_BLUE), 1);
        og::runtime::current_session->myscreen_->draw_dialog(5, 68, 315, 167, "Character Special Abilities");
        og::runtime::current_session->myscreen_->draw_text_bar(160, 90, 162, 160);

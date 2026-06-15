@@ -507,7 +507,11 @@ walker  * walker::fire()
 	stats_->set_magicpoints(	stats_->magicpoints() - stats_->weapon_cost());
 
 	// Determine how much the thrown weapon can 'waver'
-	waver = static_cast<signed char>((weapon->stepsize())/2); // Absolute amount ..
+	// Clamp before the signed-char narrowing: stepsize is replicated from
+	// network snapshots, so a hostile value > 254 would make the float->signed
+	// char conversion undefined. Normal stepsizes are well under 254, so this
+	// is byte-identical for legitimate game data.
+	waver = static_cast<signed char>(std::clamp((weapon->stepsize())/2, 0.0f, 127.0f)); // Absolute amount ..
 	waver = static_cast<signed char>(current_game->world->rng_.next(waver+1) - waver/2);
 
 	switch (facing(lastx(), lasty()))
@@ -651,7 +655,11 @@ void walker::set_weapon_heading(walker *weapon)
 	signed char waver;
 
 	// Determine how much the thrown weapon can 'waver'
-	waver = static_cast<signed char>((weapon->stepsize())/2); // Absolute amount ..
+	// Clamp before the signed-char narrowing: stepsize is replicated from
+	// network snapshots, so a hostile value > 254 would make the float->signed
+	// char conversion undefined. Normal stepsizes are well under 254, so this
+	// is byte-identical for legitimate game data.
+	waver = static_cast<signed char>(std::clamp((weapon->stepsize())/2, 0.0f, 127.0f)); // Absolute amount ..
 	waver = static_cast<signed char>(current_game->world->rng_.next(waver+1) - waver/2);
 
 	switch (facing(lastx(), lasty()))  // these are from the 'owner'
@@ -1632,6 +1640,7 @@ void walker::generate_bloodspot()
 	set_dead(1); // just in case ..
 
 	bloodstain = current_game->world->add_fx_ob(Order::Treasure, FAMILY_STAIN);
+	if (!bloodstain) return;
 	bloodstain->set_ignore(1);
 	transfer_stats(bloodstain);
 

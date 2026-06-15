@@ -45,6 +45,6 @@ class smoother
 		void set_x_y(std::int32_t x, std::int32_t y, std::int32_t whatvalue);  // sets grid location to whatvalue
 
 		std::span<unsigned char> mygrid_span_{}; // our grid to change (non-owning view)
-		std::int32_t maxx, maxy;   // dimensions of our grid ..
-        IRandom* rng_;
+		std::int32_t maxx = 0, maxy = 0;   // dimensions of our grid ..
+        IRandom* rng_ = nullptr;
 };

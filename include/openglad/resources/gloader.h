@@ -61,7 +61,7 @@ class loader
 		std::vector<float> stepsizes;
 		std::vector<std::int32_t> lineofsight;
 
-		std::array<float, 200> hitpoints{}; // hack for now
+		std::vector<float> hitpoints; // sized to SIZE_ORDERS*SIZE_FAMILIES like its sibling tables
 		std::vector<char> act_types;
 		std::vector<float> damage;
 		std::vector<float> fire_frequency;

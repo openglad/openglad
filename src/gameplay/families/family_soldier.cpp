@@ -44,6 +44,7 @@ static bool soldier_do_special(walker* self)
             break;
         case 2: // boomerang
             newob = summon_entity(self, Order::FX, FAMILY_BOOMERANG);
+            if (!newob) return false;
             newob->set_ani_type(1);
             newob->set_lifetime(30 + self->stats()->level() * 12);
             newob->stats()->set_hitpoints(newob->stats()->hitpoints() + static_cast<float>(self->stats()->level()) * 12.0f);

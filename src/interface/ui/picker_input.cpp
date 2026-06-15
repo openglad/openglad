@@ -51,7 +51,8 @@ Sint32 leftmouse(button* buttons)
     MouseState& mymouse = query_mouse();
     InputHardwareState& input_hw = input_hardware_state();
 
-    while (og::runtime::current_session->allbuttons_[i])
+    while (i < static_cast<Sint32>(og::runtime::current_session->allbuttons_.size())
+           && og::runtime::current_session->allbuttons_[i])
     {
         if(buttons != nullptr && !buttons[i].hidden)
         {

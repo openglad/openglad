@@ -126,8 +126,7 @@ class viewscreen
 		std::string textlist[MAX_MESSAGES];
 		short textcycles[MAX_MESSAGES];  // duration in sim ticks
 		std::uint32_t text_expire_ticks[MAX_MESSAGES];
-		
-		char infotext[80]; // text to display
+
 		short mynum;     // # to id the viewscreen, 0, 1, 2 ...
 		short my_team;         // used for Player-v-Player mode
 			int* mykeys;     // holds the keyboard mapping
@@ -147,5 +146,4 @@ class viewscreen
 		options *prefsob;
 
 		short size = 0;
-		unsigned char  *bmp = nullptr,  *oldbmp = nullptr;
 };

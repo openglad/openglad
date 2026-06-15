@@ -123,7 +123,6 @@ struct SessionState {
 
     // Help UI state (Phase 12) — moved from help.cpp globals.
     short help_end_of_file_ = 0;
-    std::array<std::array<char, 100>, 100> helptext_ = {};
 
     // Test-only context override snapshot used by push_test_context/pop_test_context.
     bool test_context_active_ = false;

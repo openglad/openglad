@@ -125,7 +125,8 @@ void redraw_mainmenu()
     #endif
 
     count = 0;
-    while (og::runtime::current_session->allbuttons_[count])
+    while (count < static_cast<int>(og::runtime::current_session->allbuttons_.size())
+           && og::runtime::current_session->allbuttons_[count])
     {
         og::runtime::current_session->allbuttons_[count]->vdisplay();
         count++;

@@ -415,6 +415,7 @@ loader::loader(EntityFactory entity_factory)
       animation_counts(SIZE_ORDERS*SIZE_FAMILIES, 0),
       stepsizes(SIZE_ORDERS*SIZE_FAMILIES, 0.0f),
       lineofsight(SIZE_ORDERS*SIZE_FAMILIES, 0),
+      hitpoints(SIZE_ORDERS*SIZE_FAMILIES, 0.0f),
       act_types(SIZE_ORDERS*SIZE_FAMILIES, static_cast<char>(ACT_RANDOM)),
       damage(SIZE_ORDERS*SIZE_FAMILIES, 0.0f),
       fire_frequency(SIZE_ORDERS*SIZE_FAMILIES, 0.0f),

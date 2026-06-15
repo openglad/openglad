@@ -259,7 +259,8 @@ Sint32 vbutton::leftclick(button* buttons)
     Sint32 whichone=0;
     Sint32 retvalue=0;
     // First check hotkeys ...
-    while (og::runtime::current_session->allbuttons_[whichone])
+    while (whichone < static_cast<Sint32>(og::runtime::current_session->allbuttons_.size())
+           && og::runtime::current_session->allbuttons_[whichone])
     {
         if(buttons == nullptr || !buttons[whichone].hidden)
         {

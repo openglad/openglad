@@ -765,6 +765,7 @@ void JoyData::setKeyFromEvent(int key_enum, const void* native_event)
     og::input_native::EventData event;
     if (!as_event_data(native_event, event))
         return;
+    if (key_enum < 0 || key_enum >= NUM_KEYS) return;  // key_type/key_index are sized NUM_KEYS
 
     // Diagonals are ignored because they are combinations of the cardinals
     // Things get really messy when diagonals are assigned
@@ -1069,6 +1070,8 @@ bool isPlayerHoldingKey(int player_index, int key_enum)
     
     // FIXME: Enable gamepads for Android/iOS, but be careful not to use accelerometer...
     #ifdef USE_TOUCH_INPUT
+        if (player_index < 0 || player_index >= 4 || key_enum < 0 || key_enum >= NUM_KEYS)
+            return false;
         return hw().touch_keystate[player_index][key_enum];
     #else
     if(player_joy[player_index].hasButtonSet(key_enum))
