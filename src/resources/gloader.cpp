@@ -563,8 +563,13 @@ loader::loader(EntityFactory entity_factory)
 
 loader::~loader(void)
 {
-	for(int i=0;i<(SIZE_ORDERS*SIZE_FAMILIES);i++) {
-	    graphics[i].free();
+	// Derive the bound from the live container instead of re-stating the
+	// SIZE_ORDERS*SIZE_FAMILIES constant (which lives far from the vector's
+	// allocation at the top of the ctor); a range-for can never desync from
+	// graphics.size(), removing the over-/under-index hazard if that count
+	// ever changes. Same elements, same forward order — behavior-identical.
+	for (auto& g : graphics) {
+	    g.free();
 	}
 	// vectors clean up automatically
 }
