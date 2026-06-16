@@ -395,3 +395,26 @@ TEST(GloaderFuncs, custom_spritesheet_overrides_default_pix)
     apply_sprite_sheet_setting();
     std::filesystem::remove_all(pack_dir);
 }
+
+
+// A pack name with a path separator or ".." component must be rejected so a
+// hand-edited config can't mount an arbitrary host directory over pix/.
+TEST(GloaderFuncs, custom_spritesheet_rejects_path_traversal)
+{
+    const std::vector<std::uint8_t> standard_bytes = og::resources::read_file("pix/footman.png");
+    ASSERT_FALSE(standard_bytes.empty()) << "standard footman.png must be present";
+
+    const std::string orig = cfg.get_setting("graphics", "sprite_sheet");
+    cfg.apply_setting("graphics", "sprite_sheet", "");
+    apply_sprite_sheet_setting();
+
+    for (const char* bad : {"..", "../evil", "../../etc", "sub/dir", "a\\b", "."}) {
+        cfg.apply_setting("graphics", "sprite_sheet", bad);
+        apply_sprite_sheet_setting();
+        ASSERT_EQ(standard_bytes, og::resources::read_file("pix/footman.png"))
+            << "unsafe pack name '" << bad << "' must not mount anything over pix/";
+    }
+
+    cfg.apply_setting("graphics", "sprite_sheet", orig);
+    apply_sprite_sheet_setting();
+}

@@ -390,9 +390,24 @@ void io_exit()
 
 static std::string s_mounted_sprite_sheet_dir;
 
+// A sprite-sheet pack is always a single directory living directly under
+// extra_pix/. Reject any name containing a path separator or a "."/".."
+// component so a hand-edited config can't escape extra_pix/ and mount an
+// arbitrary host directory over pix/.
+static bool is_safe_sprite_sheet_name(const std::string& name)
+{
+    if (name.find('/') != std::string::npos || name.find('\\') != std::string::npos)
+        return false;
+    return name != "." && name != "..";
+}
+
 void apply_sprite_sheet_setting()
 {
-    const std::string name = cfg.get_setting("graphics", "sprite_sheet");
+    std::string name = cfg.get_setting("graphics", "sprite_sheet");
+    if (!name.empty() && !is_safe_sprite_sheet_name(name)) {
+        LogWarn("Sprite sheet '{}': invalid pack name, ignoring\n", name);
+        name.clear();
+    }
     const std::string new_dir = name.empty() ? "" : (get_user_path() + "extra_pix/" + name);
 
     if (s_mounted_sprite_sheet_dir == new_dir)
