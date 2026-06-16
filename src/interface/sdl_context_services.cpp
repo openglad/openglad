@@ -20,6 +20,9 @@
 #include <openglad/resources/gloader.h>
 #include <openglad/resources/gloader_ctf.h>
 
+#include <array>
+#include <cstddef>
+
 // myscreen and theprefs are now macros defined in base.h / view.h
 
 void input_state_from_sdl(InputState& out)
@@ -27,15 +30,15 @@ void input_state_from_sdl(InputState& out)
     out.timer_wait_request = kNoTimerWaitRequest;
     for (int p = 0; p < MAX_PLAYERS; p++) {
         // Save previous held state to detect press edges
-        bool was_held[NUM_INPUT_KEYS];
+        std::array<bool, NUM_INPUT_KEYS> was_held;
         for (int k = 0; k < NUM_INPUT_KEYS; k++)
-            was_held[k] = out.players[p].held[k];
+            was_held[static_cast<std::size_t>(k)] = out.players[p].held[k];
 
         // Sample current held state from SDL
         for (int k = 0; k < NUM_INPUT_KEYS; k++) {
             out.players[p].held[k] = isPlayerHoldingKey(p, k);
             // Pressed = held now but wasn't held last frame
-            out.players[p].pressed[k] = out.players[p].held[k] && !was_held[k];
+            out.players[p].pressed[k] = out.players[p].held[k] && !was_held[static_cast<std::size_t>(k)];
         }
 
         if (!player_allows_diagonal_movement(p))

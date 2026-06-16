@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <cstddef>
 
@@ -45,7 +46,7 @@ struct EventData
     int key_mod = 0;
     bool key_repeat = false;
 
-    char text[32] = {};
+    std::array<char, 32> text = {};
 
     int wheel_y = 0;
 

@@ -20,7 +20,7 @@
 
 inline constexpr int FD_NUM_SPECIALS = 6;
 
-enum FamilyAnimationType {
+enum class FamilyAnimationType : std::uint8_t {
     FAMILY_ANIM_STANDARD = 0,       // animan (most livings)
     FAMILY_ANIM_MAGE,               // animage (mage, archmage)
     FAMILY_ANIM_SKELETON,           // aniskel (skeleton with grow/shrink)
@@ -121,7 +121,7 @@ struct FamilyDescriptor {
 
     // Graphics / loader data (replaces hardcoded gloader.cpp arrays)
     const char* pix_filename;          // "monk.png", "footman.png", etc.
-    int animation_type;                // FamilyAnimationType enum
+    FamilyAnimationType animation_type;  // FamilyAnimationType enum
     int ai_line_of_sight;              // AI's understanding of ranged attack range
 
     // UI / picker data (replaces hardcoded switch statements)

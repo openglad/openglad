@@ -76,7 +76,7 @@ const FamilyDescriptor& describe_family_ghost()
         .on_ani_complete = nullptr,
         .on_melee_hit = nullptr,
         .pix_filename = "ghost.png",
-        .animation_type = FAMILY_ANIM_STANDARD,
+        .animation_type = FamilyAnimationType::FAMILY_ANIM_STANDARD,
         .ai_line_of_sight = 12,
         .description = "Ghosts can pass through   \n"
                        "walls, trees, and anything\n"

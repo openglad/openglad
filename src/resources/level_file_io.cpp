@@ -112,7 +112,7 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
     char templevel = 0;
     short shortlevel = 0;
     short listsize = 0;
-    char newgrid[9] = "grid";
+    std::array<char, 9> newgrid = {'g', 'r', 'i', 'd'};
     char new_scen_type = 0;
     std::array<char, 80> oneline{};
     char numlines = 0;
@@ -132,12 +132,12 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
         }                                                                       \
     } while (0)
 
-    READ_OR_FAIL(newgrid, 8, 1);
+    READ_OR_FAIL(newgrid.data(), 8, 1);
     newgrid[8] = '\0';
     // Zardus: FIX: make sure they're lowercased
     //buffers: PORT: make sure grid name is lowercase
-    lowercase(newgrid);
-    metadata.grid_file = newgrid;
+    lowercase(newgrid.data());
+    metadata.grid_file = newgrid.data();
     if (!is_safe_virtual_basename(metadata.grid_file, 32))
     {
         LogError("Rejected unsafe scenario grid file name: {}\n",
@@ -289,7 +289,7 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
         }
     }
 
-    const std::string gridpix = ensure_png_extension(newgrid);
+    const std::string gridpix = ensure_png_extension(newgrid.data());
     world.grid = read_pixie_file(gridpix.c_str());
     if (!world.grid.valid())
     {
@@ -371,15 +371,15 @@ bool load_level(const std::string& path,
         return false;
     }
 
-    char header[4] = {};
+    std::array<char, 4> header = {};
     char versionnumber = 0;
-    if (!rw_read_exact_or_log(*infile, header, 1, 3))
+    if (!rw_read_exact_or_log(*infile, header.data(), 1, 3))
     {
         set_error(out_error, LevelFileIoError::ParseFailed);
         return false;
     }
 
-    if (std::string(header, 3) != "FSS")
+    if (std::string(header.data(), 3) != "FSS")
     {
         LogError("File {} is not a valid scenario!\n", path);
         set_error(out_error, LevelFileIoError::InvalidHeader);
@@ -455,21 +455,22 @@ bool write_scenario_payload(og::io::OgFile& outfile,
         return true;
     };
 
-    const char header[3] = {'F', 'S', 'S'};
+    const std::array<char, 3> header = {'F', 'S', 'S'};
     char temp_version = kScenarioVersion;
-    char temp_grid[20] = {};
-    char scentitle[30] = {};
-    char filler[20] = "MSTRMSTRMSTRMSTR";
+    std::array<char, 20> temp_grid = {};
+    std::array<char, 30> scentitle = {};
+    std::array<char, 20> filler = {'M', 'S', 'T', 'R', 'M', 'S', 'T', 'R',
+                                   'M', 'S', 'T', 'R', 'M', 'S', 'T', 'R'};
 
-    if (!write_field(header, 3, 1) || !write_field(&temp_version, 1, 1))
+    if (!write_field(header.data(), 3, 1) || !write_field(&temp_version, 1, 1))
         return false;
 
-    fill_fixed_field(temp_grid, 8, metadata.grid_file, "grid_file");
-    if (!write_field(temp_grid, 8, 1))
+    fill_fixed_field(temp_grid.data(), 8, metadata.grid_file, "grid_file");
+    if (!write_field(temp_grid.data(), 8, 1))
         return false;
 
-    fill_fixed_field(scentitle, 30, world.title, "title");
-    if (!write_field(scentitle, 30, 1))
+    fill_fixed_field(scentitle.data(), 30, world.title, "title");
+    if (!write_field(scentitle.data(), 30, 1))
         return false;
 
     char temp_scen_type = world.type;
@@ -523,8 +524,8 @@ bool write_scenario_payload(og::io::OgFile& outfile,
             char tempfacing = ob->curdir();
             char tempcommand = static_cast<char>(ob->act_type());
             short shortlevel = static_cast<short>(ob->stats()->level());
-            char tempname[12] = {};
-            snprintf(tempname, sizeof(tempname), "%s", ob->stats()->name.c_str());
+            std::array<char, 12> tempname = {};
+            snprintf(tempname.data(), tempname.size(), "%s", ob->stats()->name.c_str());
 
             if (!write_field(&temporder, 1, 1) ||
                 !write_field(&tempfamily, 1, 1) ||
@@ -534,8 +535,8 @@ bool write_scenario_payload(og::io::OgFile& outfile,
                 !write_field(&tempfacing, 1, 1) ||
                 !write_field(&tempcommand, 1, 1) ||
                 !write_field(&shortlevel, 2, 1) ||
-                !write_field(tempname, 12, 1) ||
-                !write_field(filler, 10, 1))
+                !write_field(tempname.data(), 12, 1) ||
+                !write_field(filler.data(), 10, 1))
             {
                 return false;
             }
@@ -719,24 +720,24 @@ LevelFileIoError load_scenario_title_with_error(const char* filename,
     if (!infile)
         return LevelFileIoError::OpenReadFailed;
 
-    char header[4] = {};
+    std::array<char, 4> header = {};
     char versionnumber = 0;
-    char gridname[8] = {};
-    char buffer[31] = {};
+    std::array<char, 8> gridname = {};
+    std::array<char, 31> buffer = {};
 
-    if (!rw_read_exact_or_log(*infile, header, 1, 3))
+    if (!rw_read_exact_or_log(*infile, header.data(), 1, 3))
         return LevelFileIoError::ParseFailed;
-    if (std::string(header, 3) != "FSS")
+    if (std::string(header.data(), 3) != "FSS")
         return LevelFileIoError::InvalidHeader;
     if (!rw_read_exact_or_log(*infile, &versionnumber, 1, 1))
         return LevelFileIoError::ParseFailed;
     if (versionnumber < 6)
         return LevelFileIoError::UnsupportedVersion;
-    if (!rw_read_exact_or_log(*infile, gridname, 1, 8))
+    if (!rw_read_exact_or_log(*infile, gridname.data(), 1, 8))
         return LevelFileIoError::ParseFailed;
-    if (!rw_read_exact_or_log(*infile, buffer, 1, 30))
+    if (!rw_read_exact_or_log(*infile, buffer.data(), 1, 30))
         return LevelFileIoError::ParseFailed;
-    out_title = std::string(buffer);
+    out_title = std::string(buffer.data());
     return LevelFileIoError::None;
 }
 

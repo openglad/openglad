@@ -53,7 +53,7 @@ const FamilyDescriptor& describe_family_giant_skeleton()
         .on_ani_complete = nullptr,
         .on_melee_hit = nullptr,
         .pix_filename = "gs1.png",
-        .animation_type = FAMILY_ANIM_GIANT_SKELETON,
+        .animation_type = FamilyAnimationType::FAMILY_ANIM_GIANT_SKELETON,
         .ai_line_of_sight = 20,
         .description = nullptr,
         .name_pool = nullptr,

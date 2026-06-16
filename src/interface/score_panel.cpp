@@ -24,6 +24,7 @@
 
 #include <openglad/interface/game_context.h>
 
+#include <array>
 #include <cmath>
 #include <format>
 #include <string>
@@ -137,29 +138,29 @@ static void draw_ctf_panel(screen* s, walker* control, Sint32 lm, Sint32 tm,
     {
         // Full-width pane: one "<caps><flag-glyph>" segment per active team
         // in its team ramp color, 6px apart.
-        std::string segments[4];
+        std::array<std::string, 4> segments;
         Sint32 total_width = 0;
         for (int team = 0; team < 4; ++team)
         {
             if (!ctf.team_active[team])
                 continue;
-            segments[team] = std::format(
+            segments[static_cast<std::size_t>(team)] = std::format(
                 "{}{}",
                 ctf.captures[team],
                 ctf_flag_state_glyph(ctf.flags[team]));
             if (total_width > 0)
                 total_width += 6;
-            total_width += static_cast<Sint32>(segments[team].size()) * 6;
+            total_width += static_cast<Sint32>(segments[static_cast<std::size_t>(team)].size()) * 6;
         }
         Sint32 x = rm - 60 - total_width;
         for (int team = 0; team < 4; ++team)
         {
-            if (segments[team].empty())
+            if (segments[static_cast<std::size_t>(team)].empty())
                 continue;
-            mytext.write_xy(x, tm + 4, segments[team].c_str(),
+            mytext.write_xy(x, tm + 4, segments[static_cast<std::size_t>(team)].c_str(),
                             static_cast<unsigned char>(team * 16 + 40),
                             static_cast<short>(1));
-            x += static_cast<Sint32>(segments[team].size()) * 6 + 6;
+            x += static_cast<Sint32>(segments[static_cast<std::size_t>(team)].size()) * 6 + 6;
         }
     }
     else if (s->numviews == 2)
@@ -168,8 +169,8 @@ static void draw_ctf_panel(screen* s, walker* control, Sint32 lm, Sint32 tm,
         // compact digits-only group ("2:1:0:3", counts in team ramp colors,
         // neutral separators) on the tm+28 row, clear of the name and the
         // HP/MP rows. The carrier's FLAG! stays left at lm+2 on that row.
-        std::string pieces[7];
-        unsigned char piece_colors[7];
+        std::array<std::string, 7> pieces;
+        std::array<unsigned char, 7> piece_colors;
         int piece_count = 0;
         Sint32 total_width = 0;
         for (int team = 0; team < 4; ++team)
@@ -178,24 +179,25 @@ static void draw_ctf_panel(screen* s, walker* control, Sint32 lm, Sint32 tm,
                 continue;
             if (piece_count > 0)
             {
-                pieces[piece_count] = ":";
-                piece_colors[piece_count] = WHITE;
+                pieces[static_cast<std::size_t>(piece_count)] = ":";
+                piece_colors[static_cast<std::size_t>(piece_count)] = WHITE;
                 total_width += 6;
                 ++piece_count;
             }
-            pieces[piece_count] = std::format("{}", ctf.captures[team]);
-            piece_colors[piece_count] =
+            pieces[static_cast<std::size_t>(piece_count)] = std::format("{}", ctf.captures[team]);
+            piece_colors[static_cast<std::size_t>(piece_count)] =
                 static_cast<unsigned char>(team * 16 + 40);
             total_width +=
-                static_cast<Sint32>(pieces[piece_count].size()) * 6;
+                static_cast<Sint32>(pieces[static_cast<std::size_t>(piece_count)].size()) * 6;
             ++piece_count;
         }
         Sint32 x = rm - 60 - total_width;
         for (int i = 0; i < piece_count; ++i)
         {
-            mytext.write_xy(x, tm + 28, pieces[i].c_str(), piece_colors[i],
+            mytext.write_xy(x, tm + 28, pieces[static_cast<std::size_t>(i)].c_str(),
+                            piece_colors[static_cast<std::size_t>(i)],
                             static_cast<short>(1));
-            x += static_cast<Sint32>(pieces[i].size()) * 6;
+            x += static_cast<Sint32>(pieces[static_cast<std::size_t>(i)].size()) * 6;
         }
     }
 
@@ -280,7 +282,7 @@ short new_score_panel(screen* s, short /*do_it*/)
         };
 
     Uint32 myscore;
-    static Uint32 scorecountup[SCORE_TEAM_COUNT] = {
+    static std::array<Uint32, SCORE_TEAM_COUNT> scorecountup = {
         s->world_.m_score[0],
         s->world_.m_score[1],
         s->world_.m_score[2],

@@ -23,6 +23,7 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <string_view>
 #include <set>
 #include <cstdlib>
 #include <cstdio>
@@ -194,7 +195,7 @@ bool cfg_store::save_settings()
 
 void cfg_store::commandline(int &argc, char **&argv)
 {
-	const char helpmsg[] =
+	static constexpr std::string_view helpmsg =
 "Usage: openglad [-d -f ...]\n"
 "  -s		Turn sound on\n"
 "  -S		Turn sound off\n"
@@ -207,7 +208,7 @@ void cfg_store::commandline(int &argc, char **&argv)
 "  -v		Print the version number\n"
 "  --show-fps   Overlay render FPS in the top-right corner\n";
 
-	const char versmsg[] = "openglad version " OPENGLAD_VERSION_STRING "\n";
+	static constexpr std::string_view versmsg = "openglad version " OPENGLAD_VERSION_STRING "\n";
 
 	// Begin changes by David Storey (Deathifier)
 	// FIX: Handle mutually exclusive arguments being used at the same time?

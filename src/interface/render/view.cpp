@@ -48,6 +48,7 @@
 #include <format>
 #include <openglad/interface/view_sizes.h>
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <memory>
 #include <openglad/core/test_trace.h>
@@ -72,7 +73,7 @@ inline constexpr int VIEW_TEAM_RIGHT = 280;
 // Zardus: these were originally static chars but are now ints
 // Now define the arrays with their default values
 
-const int key1[] = {
+static constexpr std::array<int, 16> key1 = {
                  KEYCODE_w, KEYCODE_e, KEYCODE_d, KEYCODE_c,  // movements
                  KEYCODE_x, KEYCODE_z, KEYCODE_a, KEYCODE_q,
                  KEYCODE_LCTRL, KEYCODE_LALT,                    // fire & special
@@ -85,8 +86,8 @@ const int key1[] = {
 };
 
 void timed_dialog(const char* message, float delay_seconds = 3.0f);
-             
-const int key2[] = {
+
+static constexpr std::array<int, 16> key2 = {
                  KEYCODE_KP_8, KEYCODE_KP_9, KEYCODE_KP_6, KEYCODE_KP_3,  // movements
                  KEYCODE_KP_2, KEYCODE_KP_1, KEYCODE_KP_4, KEYCODE_KP_7,
                  KEYCODE_KP_0, KEYCODE_KP_ENTER,                    // fire & special
@@ -98,7 +99,7 @@ const int key2[] = {
                  KEYCODE_F8,                                    // Cheat key
              };
 
-const int key3[] = {
+static constexpr std::array<int, 16> key3 = {
                  KEYCODE_i, KEYCODE_o, KEYCODE_l, KEYCODE_PERIOD,  // movements
                  KEYCODE_COMMA, KEYCODE_m, KEYCODE_j, KEYCODE_u,
                  KEYCODE_SPACE, KEYCODE_SEMICOLON,                    // fire & special
@@ -110,7 +111,7 @@ const int key3[] = {
                  KEYCODE_F7,                                 // Cheat key
              };
 
-const int key4[] = {
+static constexpr std::array<int, 16> key4 = {
                  KEYCODE_t, KEYCODE_y, KEYCODE_h, KEYCODE_n,  // movements
                  KEYCODE_b, KEYCODE_v, KEYCODE_f, KEYCODE_r,
                  KEYCODE_5, KEYCODE_6,                    // fire & special
@@ -134,7 +135,8 @@ inline constexpr const char* KEY_FILE = "keyprefs.dat";
 // This only exists so we can use the array constructor
 //   for our prefs object (grumble grumble)
 // Zardus: these used to be static chars too
-const int *normalkeys[] = {key1,key2,key3,key4};
+static constexpr std::array<const int*, 4> normalkeys = {
+    key1.data(), key2.data(), key3.data(), key4.data()};
 // Zardus: keys is a sys var (apparently) so we'll use allkeys
 // allkeys now lives in GameSession::allkeys_ (Phase 5 migration).
 // File-local accessor for convenience.
@@ -1576,7 +1578,7 @@ Sint32 viewscreen::change_gamma(Sint32 whichway)
 void init_allkeys(int allkeys[][16])
 {
 	for (int i = 0; i < 4; i++)
-		std::copy_n(normalkeys[i], 16, allkeys[i]);
+		std::copy_n(normalkeys[static_cast<std::size_t>(i)], 16, allkeys[i]);
 
 	og::io::OgFilePtr infile = og::io::og_open_read(KEY_FILE);
 	if (!infile)

@@ -33,6 +33,7 @@
 #include <openglad/gameplay/weap.h>
 #include <openglad/gameplay/effect.h>
 #include <algorithm>
+#include <array>
 #include <cstring>
 
 #define SIZE_ORDERS 7 // see constants.h
@@ -46,92 +47,92 @@ static inline Order sanitize_order(Order order)
 }
 
 // These are for monsters and us
-const signed char bit1[] = {static_cast<char>(1),static_cast<char>(5),static_cast<char>(1),static_cast<char>(9),static_cast<signed char>(-1)};     // up
-const signed char bit2[] = {static_cast<char>(13),static_cast<char>(17),static_cast<char>(13),static_cast<char>(21),static_cast<signed char>(-1)}; // up-right
-const signed char bit3[] = {static_cast<char>(2),static_cast<char>(6),static_cast<char>(2),static_cast<char>(10),static_cast<signed char>(-1)};    // right
-const signed char bit4[] = {static_cast<char>(14),static_cast<char>(18),static_cast<char>(14),static_cast<char>(22),static_cast<signed char>(-1)}; // down-right
-const signed char bit5[] = {static_cast<char>(0),static_cast<char>(4),static_cast<char>(0),static_cast<char>(8),static_cast<signed char>(-1)};     // down
-const signed char bit6[] = {static_cast<char>(12),static_cast<char>(16),static_cast<char>(12),static_cast<char>(20),static_cast<signed char>(-1)}; // down-left
-const signed char bit7[] = {static_cast<char>(3),static_cast<char>(7),static_cast<char>(3),static_cast<char>(11),static_cast<signed char>(-1)};    // left
-const signed char bit8[] = {static_cast<char>(15),static_cast<char>(19),static_cast<char>(15),static_cast<char>(23),static_cast<signed char>(-1)}; // up-left
+static constexpr std::array<signed char, 5> bit1 = {static_cast<char>(1),static_cast<char>(5),static_cast<char>(1),static_cast<char>(9),static_cast<signed char>(-1)};     // up
+static constexpr std::array<signed char, 5> bit2 = {static_cast<char>(13),static_cast<char>(17),static_cast<char>(13),static_cast<char>(21),static_cast<signed char>(-1)}; // up-right
+static constexpr std::array<signed char, 5> bit3 = {static_cast<char>(2),static_cast<char>(6),static_cast<char>(2),static_cast<char>(10),static_cast<signed char>(-1)};    // right
+static constexpr std::array<signed char, 5> bit4 = {static_cast<char>(14),static_cast<char>(18),static_cast<char>(14),static_cast<char>(22),static_cast<signed char>(-1)}; // down-right
+static constexpr std::array<signed char, 5> bit5 = {static_cast<char>(0),static_cast<char>(4),static_cast<char>(0),static_cast<char>(8),static_cast<signed char>(-1)};     // down
+static constexpr std::array<signed char, 5> bit6 = {static_cast<char>(12),static_cast<char>(16),static_cast<char>(12),static_cast<char>(20),static_cast<signed char>(-1)}; // down-left
+static constexpr std::array<signed char, 5> bit7 = {static_cast<char>(3),static_cast<char>(7),static_cast<char>(3),static_cast<char>(11),static_cast<signed char>(-1)};    // left
+static constexpr std::array<signed char, 5> bit8 = {static_cast<char>(15),static_cast<char>(19),static_cast<char>(15),static_cast<char>(23),static_cast<signed char>(-1)}; // up-left
 
-const signed char att1[] = {1,5,1,-1};       // up
-const signed char att2[] = {13,17,13,-1};    // up-right
-const signed char att3[] = {2,6,2,-1};       // right
-const signed char att4[] = {14,18,14,-1};    // down-right
-const signed char att5[] = {0,4,0,-1};       // down
-const signed char att6[] = {12,16,12,-1};    // down-left
-const signed char att7[] = {3,7,3,-1};       // left
-const signed char att8[] = {15,19,15,-1};    // up-left
+static constexpr std::array<signed char, 4> att1 = {1,5,1,-1};       // up
+static constexpr std::array<signed char, 4> att2 = {13,17,13,-1};    // up-right
+static constexpr std::array<signed char, 4> att3 = {2,6,2,-1};       // right
+static constexpr std::array<signed char, 4> att4 = {14,18,14,-1};    // down-right
+static constexpr std::array<signed char, 4> att5 = {0,4,0,-1};       // down
+static constexpr std::array<signed char, 4> att6 = {12,16,12,-1};    // down-left
+static constexpr std::array<signed char, 4> att7 = {3,7,3,-1};       // left
+static constexpr std::array<signed char, 4> att8 = {15,19,15,-1};    // up-left
 
-const signed char bitm2[] = {21,25,21,29,-1};  // up-right
-const signed char bitm4[] = {22,26,22,30,-1};  // down-right
-const signed char bitm6[] = {20,24,20,28,-1};  // down-left
-const signed char bitm8[] = {23,27,23,31,-1};  // up-left
+static constexpr std::array<signed char, 5> bitm2 = {21,25,21,29,-1};  // up-right
+static constexpr std::array<signed char, 5> bitm4 = {22,26,22,30,-1};  // down-right
+static constexpr std::array<signed char, 5> bitm6 = {20,24,20,28,-1};  // down-left
+static constexpr std::array<signed char, 5> bitm8 = {23,27,23,31,-1};  // up-left
 
-const signed char mageatt1[] = {5,17,1,-1};    // up
-const signed char mageatt2[] = {25,33,21,-1};  // up-right
-const signed char mageatt3[] = {6,18,2,-1};    // right
-const signed char mageatt4[] = {26,34,22,-1};  // down-right
-const signed char mageatt5[] = {4,16,0,-1};    // down
-const signed char mageatt6[] = {24,32,20,-1};  // down-left
-const signed char mageatt7[] = {7,19,3,-1};    // left
-const signed char mageatt8[] = {27,35,23,-1};  // up-left
+static constexpr std::array<signed char, 4> mageatt1 = {5,17,1,-1};    // up
+static constexpr std::array<signed char, 4> mageatt2 = {25,33,21,-1};  // up-right
+static constexpr std::array<signed char, 4> mageatt3 = {6,18,2,-1};    // right
+static constexpr std::array<signed char, 4> mageatt4 = {26,34,22,-1};  // down-right
+static constexpr std::array<signed char, 4> mageatt5 = {4,16,0,-1};    // down
+static constexpr std::array<signed char, 4> mageatt6 = {24,32,20,-1};  // down-left
+static constexpr std::array<signed char, 4> mageatt7 = {7,19,3,-1};    // left
+static constexpr std::array<signed char, 4> mageatt8 = {27,35,23,-1};  // up-left
 
 
-const signed char tele_out1[] = {12,13,14,15,-1};
-const signed char tele_in1[] = {15,14,13,12,1,-1};  // up
-const signed char tele_in2[] = {15,14,13,12,2,-1};  // right
-const signed char tele_in3[] = {15,14,13,12,0,-1};  // down
-const signed char tele_in4[] = {15,14,13,12,3,-1};  // left
+static constexpr std::array<signed char, 5> tele_out1 = {12,13,14,15,-1};
+static constexpr std::array<signed char, 6> tele_in1 = {15,14,13,12,1,-1};  // up
+static constexpr std::array<signed char, 6> tele_in2 = {15,14,13,12,2,-1};  // right
+static constexpr std::array<signed char, 6> tele_in3 = {15,14,13,12,0,-1};  // down
+static constexpr std::array<signed char, 6> tele_in4 = {15,14,13,12,3,-1};  // left
 
 // Big skeleton, who is currently different ...
-const signed char gs_down[] = {0, 1, 2, 3, -1}; // true "down"
-const signed char gs_up[] = {3, 2, 1, 0, -1}; // faked up :)
+static constexpr std::array<signed char, 5> gs_down = {0, 1, 2, 3, -1}; // true "down"
+static constexpr std::array<signed char, 5> gs_up = {3, 2, 1, 0, -1}; // faked up :)
 
 // Skeleton growing
-const signed char skel_grow[] =   {27, 26, 25, 24, 0, -1};
-const signed char skel_shrink[] = {0, 24, 25, 26, 27, -1};
+static constexpr std::array<signed char, 6> skel_grow =   {27, 26, 25, 24, 0, -1};
+static constexpr std::array<signed char, 6> skel_shrink = {0, 24, 25, 26, 27, -1};
 
 // For slime unidirectional movement
-const signed char slime_pulse[] = { 0, 0, 1, 1, 2, 2, 1, 1, -1 };
+static constexpr std::array<signed char, 9> slime_pulse = { 0, 0, 1, 1, 2, 2, 1, 1, -1 };
 
-const signed char slime_split[] = { 8, 8, 9, 9, 10, 10,
+static constexpr std::array<signed char, 13> slime_split = { 8, 8, 9, 9, 10, 10,
                               11,11,12,12, 13, 13, -1 };
 
-const signed char small_slime[] = { 0, 0, 1, 1, 2, 2, 3, 3,
+static constexpr std::array<signed char, 29> small_slime = { 0, 0, 1, 1, 2, 2, 3, 3,
                               4, 4, 5, 5, 6, 6, 7, 7,
                               6, 6, 5, 5, 4 ,4, 3, 3,
                               2, 2, 1, 1, -1 };
 
 // These are for the 'effect' objects
-const signed char series_8[] = {0, 1, 2, 3, 4, 5, 6, 7, -1};
-const signed char * const aniexpand8[] = { series_8, series_8, series_8, series_8,
-                               series_8, series_8, series_8, series_8,
-                               series_8, series_8, series_8, series_8,
-                               series_8, series_8, series_8, series_8 };
+static constexpr std::array<signed char, 9> series_8 = {0, 1, 2, 3, 4, 5, 6, 7, -1};
+static constexpr std::array<const signed char*, 16> aniexpand8 = { series_8.data(), series_8.data(), series_8.data(), series_8.data(),
+                               series_8.data(), series_8.data(), series_8.data(), series_8.data(),
+                               series_8.data(), series_8.data(), series_8.data(), series_8.data(),
+                               series_8.data(), series_8.data(), series_8.data(), series_8.data() };
 
 //signed char series_16[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, -1};
-const signed char series_16[] = {0, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, -1};
-const signed char * const ani16[] = {series_16, series_16, series_16, series_16,
-                        series_16, series_16, series_16, series_16,
-                        series_16, series_16, series_16, series_16,
-                        series_16, series_16, series_16, series_16};
+static constexpr std::array<signed char, 17> series_16 = {0, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, -1};
+static constexpr std::array<const signed char*, 16> ani16 = {series_16.data(), series_16.data(), series_16.data(), series_16.data(),
+                        series_16.data(), series_16.data(), series_16.data(), series_16.data(),
+                        series_16.data(), series_16.data(), series_16.data(), series_16.data(),
+                        series_16.data(), series_16.data(), series_16.data(), series_16.data()};
 
-const signed char bomb1[] = {0, 1, 0, 1, 0, 1, 0, 1, 2, 3, 2, 3, 2, 3, 2, 3,
+static constexpr std::array<signed char, 51> bomb1 = {0, 1, 0, 1, 0, 1, 0, 1, 2, 3, 2, 3, 2, 3, 2, 3,
                        4, 5, 4, 5, 4, 5, 4, 5, 6, 7, 6, 7, 6, 7, 6, 7,
                        8, 9, 8, 9, 8, 9, 8, 9, 10, 11, 10, 11, 10, 11, 10, 11,
                        12, 12, -1};
-const signed char * const anibomb1[] = {bomb1, bomb1, bomb1, bomb1,
-                            bomb1, bomb1, bomb1, bomb1,
-                            bomb1, bomb1, bomb1, bomb1,
-                            bomb1, bomb1, bomb1, bomb1 };
+static constexpr std::array<const signed char*, 16> anibomb1 = {bomb1.data(), bomb1.data(), bomb1.data(), bomb1.data(),
+                            bomb1.data(), bomb1.data(), bomb1.data(), bomb1.data(),
+                            bomb1.data(), bomb1.data(), bomb1.data(), bomb1.data(),
+                            bomb1.data(), bomb1.data(), bomb1.data(), bomb1.data() };
 
-const signed char explosion1[] = {0, 1, 2, -1};
-const signed char * const aniexplosion1[] = {explosion1, explosion1, explosion1, explosion1,
-                                 explosion1, explosion1, explosion1, explosion1,
-                                 explosion1, explosion1, explosion1, explosion1,
-                                 explosion1, explosion1, explosion1, explosion1 };
+static constexpr std::array<signed char, 4> explosion1 = {0, 1, 2, -1};
+static constexpr std::array<const signed char*, 16> aniexplosion1 = {explosion1.data(), explosion1.data(), explosion1.data(), explosion1.data(),
+                                 explosion1.data(), explosion1.data(), explosion1.data(), explosion1.data(),
+                                 explosion1.data(), explosion1.data(), explosion1.data(), explosion1.data(),
+                                 explosion1.data(), explosion1.data(), explosion1.data(), explosion1.data() };
 
 /*
 How do animations work?
@@ -142,209 +143,206 @@ The animation can be directional due to the use of curdir.
 The signed char[] are the actual frame indices for the animation.  -1 means to end the animation.
 */
 
-const signed char hit1[] = {0, 1, -1};
-const signed char hit2[] = {0, 2, -1};
-const signed char hit3[] = {0, 3, -1};
-const signed char * const anihit[] = {hit1, hit1, hit1, hit1,
-                                 hit1, hit1, hit1, hit1,
-                                 hit1, hit1, hit1, hit1,
-                                 hit1, hit1, hit1, hit1,
-                                 hit2, hit2, hit2, hit2,
-                                 hit2, hit2, hit2, hit2,
-                                 hit3, hit3, hit3, hit3,
-                                 hit3, hit3, hit3, hit3 };
+static constexpr std::array<signed char, 3> hit1 = {0, 1, -1};
+static constexpr std::array<signed char, 3> hit2 = {0, 2, -1};
+static constexpr std::array<signed char, 3> hit3 = {0, 3, -1};
+static constexpr std::array<const signed char*, 32> anihit = {hit1.data(), hit1.data(), hit1.data(), hit1.data(),
+                                 hit1.data(), hit1.data(), hit1.data(), hit1.data(),
+                                 hit1.data(), hit1.data(), hit1.data(), hit1.data(),
+                                 hit1.data(), hit1.data(), hit1.data(), hit1.data(),
+                                 hit2.data(), hit2.data(), hit2.data(), hit2.data(),
+                                 hit2.data(), hit2.data(), hit2.data(), hit2.data(),
+                                 hit3.data(), hit3.data(), hit3.data(), hit3.data(),
+                                 hit3.data(), hit3.data(), hit3.data(), hit3.data() };
 
-const signed char cloud_cycle[] = {0, 1, 2, 3, 2, 1, -1};
-const signed char * const anicloud[] = {cloud_cycle, cloud_cycle, cloud_cycle, cloud_cycle,
-                           cloud_cycle, cloud_cycle, cloud_cycle, cloud_cycle,
-                           cloud_cycle, cloud_cycle, cloud_cycle, cloud_cycle,
-                           cloud_cycle, cloud_cycle, cloud_cycle, cloud_cycle};
+static constexpr std::array<signed char, 7> cloud_cycle = {0, 1, 2, 3, 2, 1, -1};
+static constexpr std::array<const signed char*, 16> anicloud = {cloud_cycle.data(), cloud_cycle.data(), cloud_cycle.data(), cloud_cycle.data(),
+                           cloud_cycle.data(), cloud_cycle.data(), cloud_cycle.data(), cloud_cycle.data(),
+                           cloud_cycle.data(), cloud_cycle.data(), cloud_cycle.data(), cloud_cycle.data(),
+                           cloud_cycle.data(), cloud_cycle.data(), cloud_cycle.data(), cloud_cycle.data()};
 
-const signed char marker_cycle[] = {0, 1, 2, 3, 4,      // mage TP marker
+static constexpr std::array<signed char, 21> marker_cycle = {0, 1, 2, 3, 4,      // mage TP marker
                               5, 6, 7, 8, 9,
                               10,11,12,13,14,
                               15,16,17,18,19,-1};
-const signed char * const animarker[] = {marker_cycle, marker_cycle, marker_cycle, marker_cycle,
-                            marker_cycle, marker_cycle, marker_cycle, marker_cycle,
-                            marker_cycle, marker_cycle, marker_cycle, marker_cycle,
-                            marker_cycle, marker_cycle, marker_cycle, marker_cycle };
+static constexpr std::array<const signed char*, 16> animarker = {marker_cycle.data(), marker_cycle.data(), marker_cycle.data(), marker_cycle.data(),
+                            marker_cycle.data(), marker_cycle.data(), marker_cycle.data(), marker_cycle.data(),
+                            marker_cycle.data(), marker_cycle.data(), marker_cycle.data(), marker_cycle.data(),
+                            marker_cycle.data(), marker_cycle.data(), marker_cycle.data(), marker_cycle.data() };
 
 // These are for livings now
-const signed char * const animan[] = {
-                             bit1, bit2, bit3, bit4, bit5, bit6, bit7, bit8,
-                             att1, att2, att3, att4, att5, att6, att7, att8,
+static constexpr std::array<const signed char*, 16> animan = {
+                             bit1.data(), bit2.data(), bit3.data(), bit4.data(), bit5.data(), bit6.data(), bit7.data(), bit8.data(),
+                             att1.data(), att2.data(), att3.data(), att4.data(), att5.data(), att6.data(), att7.data(), att8.data(),
                          };
 
-const signed char * const aniskel[] = {
-                              bit1, bit2, bit3, bit4,
-                              bit5, bit6, bit7, bit8,
-                              att1, att2, att3, att4,
-                              att5, att6, att7, att8,
-                              skel_shrink, skel_shrink, skel_shrink, skel_shrink,  // == tele_out
-                              skel_shrink, skel_shrink, skel_shrink, skel_shrink,
-                              skel_grow, skel_grow, skel_grow, skel_grow, // grow from ground (tele-in)
-                              skel_grow, skel_grow, skel_grow, skel_grow,
+static constexpr std::array<const signed char*, 32> aniskel = {
+                              bit1.data(), bit2.data(), bit3.data(), bit4.data(),
+                              bit5.data(), bit6.data(), bit7.data(), bit8.data(),
+                              att1.data(), att2.data(), att3.data(), att4.data(),
+                              att5.data(), att6.data(), att7.data(), att8.data(),
+                              skel_shrink.data(), skel_shrink.data(), skel_shrink.data(), skel_shrink.data(),  // == tele_out
+                              skel_shrink.data(), skel_shrink.data(), skel_shrink.data(), skel_shrink.data(),
+                              skel_grow.data(), skel_grow.data(), skel_grow.data(), skel_grow.data(), // grow from ground (tele-in)
+                              skel_grow.data(), skel_grow.data(), skel_grow.data(), skel_grow.data(),
 
                           };
 
-const signed char * const animage[] = {
-                              bit1, bitm2, bit3, bitm4,
-                              bit5, bitm6, bit7, bitm8,
-                              mageatt1, mageatt2, mageatt3, mageatt4,       // 8 == attack
-                              mageatt5, mageatt6, mageatt7, mageatt8,
-                              tele_out1, tele_out1, tele_out1, tele_out1,   // 16 == tele_out
-                              tele_out1, tele_out1, tele_out1, tele_out1,
-                              tele_in1, tele_in1, tele_in2, tele_in2,       // 24 == tele_in
-                              tele_in3, tele_in3, tele_in4, tele_in4,
+static constexpr std::array<const signed char*, 32> animage = {
+                              bit1.data(), bitm2.data(), bit3.data(), bitm4.data(),
+                              bit5.data(), bitm6.data(), bit7.data(), bitm8.data(),
+                              mageatt1.data(), mageatt2.data(), mageatt3.data(), mageatt4.data(),       // 8 == attack
+                              mageatt5.data(), mageatt6.data(), mageatt7.data(), mageatt8.data(),
+                              tele_out1.data(), tele_out1.data(), tele_out1.data(), tele_out1.data(),   // 16 == tele_out
+                              tele_out1.data(), tele_out1.data(), tele_out1.data(), tele_out1.data(),
+                              tele_in1.data(), tele_in1.data(), tele_in2.data(), tele_in2.data(),       // 24 == tele_in
+                              tele_in3.data(), tele_in3.data(), tele_in4.data(), tele_in4.data(),
                           };
 
 // giant skeleton ..
-const signed char * const anigs[] = {
-                           gs_down, gs_up, gs_down, gs_up,
-                           gs_down, gs_up, gs_down, gs_up,
-                           gs_down, gs_up, gs_down, gs_up,
-                           gs_down, gs_up, gs_down, gs_up,
+static constexpr std::array<const signed char*, 16> anigs = {
+                           gs_down.data(), gs_up.data(), gs_down.data(), gs_up.data(),
+                           gs_down.data(), gs_up.data(), gs_down.data(), gs_up.data(),
+                           gs_down.data(), gs_up.data(), gs_down.data(), gs_up.data(),
+                           gs_down.data(), gs_up.data(), gs_down.data(), gs_up.data(),
                        };
 
-const signed char * const anislime[] = {
-                               slime_pulse, slime_pulse, slime_pulse, slime_pulse, // 0 == walk
-                               slime_pulse, slime_pulse, slime_pulse, slime_pulse,
-                               slime_pulse, slime_pulse, slime_pulse, slime_pulse, // 8 == attack
-                               slime_pulse, slime_pulse, slime_pulse, slime_pulse,
-                               slime_pulse, slime_pulse, slime_pulse, slime_pulse, // 16 == tele_out (ignored)
-                               slime_pulse, slime_pulse, slime_pulse, slime_pulse,
+static constexpr std::array<const signed char*, 40> anislime = {
+                               slime_pulse.data(), slime_pulse.data(), slime_pulse.data(), slime_pulse.data(), // 0 == walk
+                               slime_pulse.data(), slime_pulse.data(), slime_pulse.data(), slime_pulse.data(),
+                               slime_pulse.data(), slime_pulse.data(), slime_pulse.data(), slime_pulse.data(), // 8 == attack
+                               slime_pulse.data(), slime_pulse.data(), slime_pulse.data(), slime_pulse.data(),
+                               slime_pulse.data(), slime_pulse.data(), slime_pulse.data(), slime_pulse.data(), // 16 == tele_out (ignored)
+                               slime_pulse.data(), slime_pulse.data(), slime_pulse.data(), slime_pulse.data(),
                                nullptr, nullptr, nullptr, nullptr,                             // 24 == tele_in (ignored)
                                nullptr, nullptr, nullptr, nullptr,
-                               slime_split, slime_split, slime_split, slime_split, // 32 == slime splits
-                               slime_split, slime_split, slime_split, slime_split,
+                               slime_split.data(), slime_split.data(), slime_split.data(), slime_split.data(), // 32 == slime splits
+                               slime_split.data(), slime_split.data(), slime_split.data(), slime_split.data(),
                            };
 
-const signed char * const ani_small_slime[] = {
-                                      small_slime, small_slime, small_slime, small_slime,
-                                      small_slime, small_slime, small_slime, small_slime,
-                                      small_slime, small_slime, small_slime, small_slime,
-                                      small_slime, small_slime, small_slime, small_slime,
+static constexpr std::array<const signed char*, 16> ani_small_slime = {
+                                      small_slime.data(), small_slime.data(), small_slime.data(), small_slime.data(),
+                                      small_slime.data(), small_slime.data(), small_slime.data(), small_slime.data(),
+                                      small_slime.data(), small_slime.data(), small_slime.data(), small_slime.data(),
+                                      small_slime.data(), small_slime.data(), small_slime.data(), small_slime.data(),
                                   };
 
 
 // These are for the knives
-const signed char kni1[] = {7,6,5,4,3,2,1,0,-1};  // clockwise?
-const signed char kni2[] = {0,1,2,3,4,5,6,7,-1};  // counter?
-const signed char * const anikni[] = { kni2, kni2, kni1, kni1,
-                           kni1, kni1, kni2, kni2,
-                           kni2, kni2, kni1, kni1,
-                           kni1, kni1, kni2, kni2 };
+static constexpr std::array<signed char, 9> kni1 = {7,6,5,4,3,2,1,0,-1};  // clockwise?
+static constexpr std::array<signed char, 9> kni2 = {0,1,2,3,4,5,6,7,-1};  // counter?
+static constexpr std::array<const signed char*, 16> anikni = { kni2.data(), kni2.data(), kni1.data(), kni1.data(),
+                           kni1.data(), kni1.data(), kni2.data(), kni2.data(),
+                           kni2.data(), kni2.data(), kni1.data(), kni1.data(),
+                           kni1.data(), kni1.data(), kni2.data(), kni2.data() };
 
 // These are for the rocks
-const signed char rock1[] = {0, -1};
-const signed char * const anirock[] = { rock1, rock1, rock1, rock1,
-                            rock1, rock1, rock1, rock1,
-                            rock1, rock1, rock1, rock1,
-                            rock1, rock1, rock1, rock1 };
+static constexpr std::array<signed char, 2> rock1 = {0, -1};
+static constexpr std::array<const signed char*, 16> anirock = { rock1.data(), rock1.data(), rock1.data(), rock1.data(),
+                            rock1.data(), rock1.data(), rock1.data(), rock1.data(),
+                            rock1.data(), rock1.data(), rock1.data(), rock1.data(),
+                            rock1.data(), rock1.data(), rock1.data(), rock1.data() };
 
-const signed char grow1[] = {4, 3, 2, 1, 0, -1};
-const signed char * const anitree[] = { rock1, rock1, rock1, rock1,
-                            rock1, rock1, rock1, rock1,
-                            grow1, grow1, grow1, grow1,
-                            grow1, grow1, grow1, grow1 };
+static constexpr std::array<signed char, 6> grow1 = {4, 3, 2, 1, 0, -1};
+static constexpr std::array<const signed char*, 16> anitree = { rock1.data(), rock1.data(), rock1.data(), rock1.data(),
+                            rock1.data(), rock1.data(), rock1.data(), rock1.data(),
+                            grow1.data(), grow1.data(), grow1.data(), grow1.data(),
+                            grow1.data(), grow1.data(), grow1.data(), grow1.data() };
 
-const signed char door1[] = {0, -1};
-const signed char door2[] = {1, -1};
-const signed char * const anidoor[] = { door1, door1, door2, door2,
-                           door1, door1, door2, door2,
-                           door1, door1, door2, door2,
-                           door1, door1, door2, door2 };
+static constexpr std::array<signed char, 2> door1 = {0, -1};
+static constexpr std::array<signed char, 2> door2 = {1, -1};
+static constexpr std::array<const signed char*, 16> anidoor = { door1.data(), door1.data(), door2.data(), door2.data(),
+                           door1.data(), door1.data(), door2.data(), door2.data(),
+                           door1.data(), door1.data(), door2.data(), door2.data(),
+                           door1.data(), door1.data(), door2.data(), door2.data() };
 
 
-const signed char dooropen1[] = {0, 2, 3, 4, 1, -1};
-const signed char dooropen2[] = {1, 4, 3, 2, 0, -1};
-const signed char * const anidooropen[] = { door2, door2, door1, door1,
-                               door2, door2, door1, door1,
-                               dooropen1, dooropen1, dooropen2, dooropen2,
-                               dooropen1, dooropen1, dooropen2, dooropen2 };
+static constexpr std::array<signed char, 6> dooropen1 = {0, 2, 3, 4, 1, -1};
+static constexpr std::array<signed char, 6> dooropen2 = {1, 4, 3, 2, 0, -1};
+static constexpr std::array<const signed char*, 16> anidooropen = { door2.data(), door2.data(), door1.data(), door1.data(),
+                               door2.data(), door2.data(), door1.data(), door1.data(),
+                               dooropen1.data(), dooropen1.data(), dooropen2.data(), dooropen2.data(),
+                               dooropen1.data(), dooropen1.data(), dooropen2.data(), dooropen2.data() };
 
-const signed char arrow1[] = {1, -1}; // up
-const signed char arrow2[] = {5, -1}; // up-right
-const signed char arrow3[] = {2, -1}; // right
-const signed char arrow4[] = {6, -1}; // down-right
-const signed char arrow5[] = {0, -1}; // down
-const signed char arrow6[] = {4, -1}; // down-left
-const signed char arrow7[] = {3, -1}; // left
-const signed char arrow8[] = {7, -1}; // up-left
-const signed char * const aniarrow[] = { arrow1, arrow2, arrow3, arrow4,
-                             arrow5, arrow6, arrow7, arrow8,
-                             arrow1, arrow2, arrow3, arrow4,
-                             arrow5, arrow6, arrow7, arrow8 };
+static constexpr std::array<signed char, 2> arrow1 = {1, -1}; // up
+static constexpr std::array<signed char, 2> arrow2 = {5, -1}; // up-right
+static constexpr std::array<signed char, 2> arrow3 = {2, -1}; // right
+static constexpr std::array<signed char, 2> arrow4 = {6, -1}; // down-right
+static constexpr std::array<signed char, 2> arrow5 = {0, -1}; // down
+static constexpr std::array<signed char, 2> arrow6 = {4, -1}; // down-left
+static constexpr std::array<signed char, 2> arrow7 = {3, -1}; // left
+static constexpr std::array<signed char, 2> arrow8 = {7, -1}; // up-left
+static constexpr std::array<const signed char*, 16> aniarrow = { arrow1.data(), arrow2.data(), arrow3.data(), arrow4.data(),
+                             arrow5.data(), arrow6.data(), arrow7.data(), arrow8.data(),
+                             arrow1.data(), arrow2.data(), arrow3.data(), arrow4.data(),
+                             arrow5.data(), arrow6.data(), arrow7.data(), arrow8.data() };
 
 // These are for the slimes' blobs
-const signed char blob1[] = {0, 1, 2, 3, 4, 5, 6, 5, 4, 3, 2, 1, 0, -1};
-const signed char * const aniblob1[] = { blob1, blob1, blob1, blob1,
-                             blob1, blob1, blob1, blob1,
-                             blob1, blob1, blob1, blob1,
-                             blob1, blob1, blob1, blob1 };
+static constexpr std::array<signed char, 14> blob1 = {0, 1, 2, 3, 4, 5, 6, 5, 4, 3, 2, 1, 0, -1};
+static constexpr std::array<const signed char*, 16> aniblob1 = { blob1.data(), blob1.data(), blob1.data(), blob1.data(),
+                             blob1.data(), blob1.data(), blob1.data(), blob1.data(),
+                             blob1.data(), blob1.data(), blob1.data(), blob1.data(),
+                             blob1.data(), blob1.data(), blob1.data(), blob1.data() };
 
-const signed char none1[] = {0, -1};
-const signed char * const aninone[] = { none1, none1, none1, none1,
-                            none1, none1, none1, none1,
-                            none1, none1, none1, none1,
-                            none1, none1, none1, none1 };
+static constexpr std::array<signed char, 2> none1 = {0, -1};
+static constexpr std::array<const signed char*, 16> aninone = { none1.data(), none1.data(), none1.data(), none1.data(),
+                            none1.data(), none1.data(), none1.data(), none1.data(),
+                            none1.data(), none1.data(), none1.data(), none1.data(),
+                            none1.data(), none1.data(), none1.data(), none1.data() };
 
 // for the tower generator
-const signed char towerglow1[] = { 1,1,1,2,2,0,-1 };
-const signed char * const anitower[] = { none1, none1, none1, none1,
-                            none1, none1, none1, none1,
-                            towerglow1, towerglow1, towerglow1, towerglow1,
-                            towerglow1, towerglow1, towerglow1, towerglow1 };
+static constexpr std::array<signed char, 7> towerglow1 = { 1,1,1,2,2,0,-1 };
+static constexpr std::array<const signed char*, 16> anitower = { none1.data(), none1.data(), none1.data(), none1.data(),
+                            none1.data(), none1.data(), none1.data(), none1.data(),
+                            towerglow1.data(), towerglow1.data(), towerglow1.data(), towerglow1.data(),
+                            towerglow1.data(), towerglow1.data(), towerglow1.data(), towerglow1.data() };
 
 // for tent generator
-const signed char tent1[] = { 1,1,1,2,2,2,3,3,3,4,4,4,0,-1 };
-const signed char * const anitent[] = { none1, none1, none1, none1,
-                           none1, none1, none1, none1,
-                           tent1, tent1, tent1, tent1,
-                           tent1, tent1, tent1, tent1 };
+static constexpr std::array<signed char, 14> tent1 = { 1,1,1,2,2,2,3,3,3,4,4,4,0,-1 };
+static constexpr std::array<const signed char*, 16> anitent = { none1.data(), none1.data(), none1.data(), none1.data(),
+                           none1.data(), none1.data(), none1.data(), none1.data(),
+                           tent1.data(), tent1.data(), tent1.data(), tent1.data(),
+                           tent1.data(), tent1.data(), tent1.data(), tent1.data() };
 
-const signed char blood1[] = {3,2,1,0,-1};
-const signed char * const aniblood[] = { rock1, rock1, rock1, rock1,
-                             rock1, rock1, rock1, rock1,
-                             blood1, blood1, blood1, blood1,
-                             blood1, blood1, blood1, blood1, };
+static constexpr std::array<signed char, 5> blood1 = {3,2,1,0,-1};
+static constexpr std::array<const signed char*, 16> aniblood = { rock1.data(), rock1.data(), rock1.data(), rock1.data(),
+                             rock1.data(), rock1.data(), rock1.data(), rock1.data(),
+                             blood1.data(), blood1.data(), blood1.data(), blood1.data(),
+                             blood1.data(), blood1.data(), blood1.data(), blood1.data(), };
 
 // These are for the cleric's glow thing
-const signed char glowgrow[] = {0, 1, 2, 3, -1};
-const signed char glowpulse[] = {4, 5, 6, 7, 8, 9, 8, 7, 6, 5, -1};
-const signed char * const aniglowgrow[] = { rock1, rock1, rock1, rock1,
-                                rock1, rock1, rock1, rock1,
-                                glowgrow, glowgrow, glowgrow, glowgrow,
-                                glowgrow, glowgrow, glowgrow, glowgrow,
-                                glowpulse, glowpulse, glowpulse, glowpulse,
-                                glowpulse, glowpulse, glowpulse, glowpulse, };
+static constexpr std::array<signed char, 5> glowgrow = {0, 1, 2, 3, -1};
+static constexpr std::array<signed char, 11> glowpulse = {4, 5, 6, 7, 8, 9, 8, 7, 6, 5, -1};
+static constexpr std::array<const signed char*, 24> aniglowgrow = { rock1.data(), rock1.data(), rock1.data(), rock1.data(),
+                                rock1.data(), rock1.data(), rock1.data(), rock1.data(),
+                                glowgrow.data(), glowgrow.data(), glowgrow.data(), glowgrow.data(),
+                                glowgrow.data(), glowgrow.data(), glowgrow.data(), glowgrow.data(),
+                                glowpulse.data(), glowpulse.data(), glowpulse.data(), glowpulse.data(),
+                                glowpulse.data(), glowpulse.data(), glowpulse.data(), glowpulse.data(), };
 
 // Treasure animations
 
-const signed char food1[] = {0, -1};
-const signed char * const anifood[] = { food1, food1, food1, food1,
-                            food1, food1, food1, food1,
-                            food1, food1, food1, food1,
-                            food1, food1, food1, food1 };
+static constexpr std::array<signed char, 2> food1 = {0, -1};
+static constexpr std::array<const signed char*, 16> anifood = { food1.data(), food1.data(), food1.data(), food1.data(),
+                            food1.data(), food1.data(), food1.data(), food1.data(),
+                            food1.data(), food1.data(), food1.data(), food1.data(),
+                            food1.data(), food1.data(), food1.data(), food1.data() };
 
 // Animation table lookup from FamilyAnimationType enum
-static const signed char * const * animation_for_type(int anim_type)
+static const signed char * const * animation_for_type(FamilyAnimationType anim_type)
 {
     switch (anim_type)
     {
-        case FAMILY_ANIM_STANDARD:        return animan;
-        case FAMILY_ANIM_MAGE:            return animage;
-        case FAMILY_ANIM_SKELETON:        return aniskel;
-        case FAMILY_ANIM_GIANT_SKELETON:  return anigs;
-        case FAMILY_ANIM_SLIME:           return anislime;
-        case FAMILY_ANIM_SMALL_SLIME:     return ani_small_slime;
-        case FAMILY_ANIM_STATIC:          return anifood;
-        default:                          return animan;
+        case FamilyAnimationType::FAMILY_ANIM_STANDARD:        return animan.data();
+        case FamilyAnimationType::FAMILY_ANIM_MAGE:            return animage.data();
+        case FamilyAnimationType::FAMILY_ANIM_SKELETON:        return aniskel.data();
+        case FamilyAnimationType::FAMILY_ANIM_GIANT_SKELETON:  return anigs.data();
+        case FamilyAnimationType::FAMILY_ANIM_SLIME:           return anislime.data();
+        case FamilyAnimationType::FAMILY_ANIM_SMALL_SLIME:     return ani_small_slime.data();
+        case FamilyAnimationType::FAMILY_ANIM_STATIC:          return anifood.data();
+        default:                                               return animan.data();
     }
 }
-
-template <typename T, std::size_t N>
-static constexpr int array_len(const T (&)[N]) { return static_cast<int>(N); }
 
 // Returns the number of (facing x ani_type) pointer entries in an animation
 // table, or 0 for nullptr / an unrecognized table. Animation tables vary in
@@ -357,32 +355,32 @@ static int anim_table_count(const signed char * const * t)
         return 0;
     struct Entry { const signed char * const * table; int count; };
     static const Entry kRegistry[] = {
-        { anihit,         array_len(anihit) },
-        { anicloud,       array_len(anicloud) },
-        { animarker,      array_len(animarker) },
-        { animan,         array_len(animan) },
-        { aniskel,        array_len(aniskel) },
-        { animage,        array_len(animage) },
-        { anigs,          array_len(anigs) },
-        { anislime,       array_len(anislime) },
-        { ani_small_slime,array_len(ani_small_slime) },
-        { anikni,         array_len(anikni) },
-        { anirock,        array_len(anirock) },
-        { anitree,        array_len(anitree) },
-        { anidoor,        array_len(anidoor) },
-        { anidooropen,    array_len(anidooropen) },
-        { aniarrow,       array_len(aniarrow) },
-        { aniblob1,       array_len(aniblob1) },
-        { aninone,        array_len(aninone) },
-        { anitower,       array_len(anitower) },
-        { anitent,        array_len(anitent) },
-        { aniblood,       array_len(aniblood) },
-        { aniglowgrow,    array_len(aniglowgrow) },
-        { anifood,        array_len(anifood) },
-        { aniexpand8,     array_len(aniexpand8) },
-        { ani16,          array_len(ani16) },
-        { anibomb1,       array_len(anibomb1) },
-        { aniexplosion1,  array_len(aniexplosion1) },
+        { anihit.data(),         static_cast<int>(anihit.size()) },
+        { anicloud.data(),       static_cast<int>(anicloud.size()) },
+        { animarker.data(),      static_cast<int>(animarker.size()) },
+        { animan.data(),         static_cast<int>(animan.size()) },
+        { aniskel.data(),        static_cast<int>(aniskel.size()) },
+        { animage.data(),        static_cast<int>(animage.size()) },
+        { anigs.data(),          static_cast<int>(anigs.size()) },
+        { anislime.data(),       static_cast<int>(anislime.size()) },
+        { ani_small_slime.data(),static_cast<int>(ani_small_slime.size()) },
+        { anikni.data(),         static_cast<int>(anikni.size()) },
+        { anirock.data(),        static_cast<int>(anirock.size()) },
+        { anitree.data(),        static_cast<int>(anitree.size()) },
+        { anidoor.data(),        static_cast<int>(anidoor.size()) },
+        { anidooropen.data(),    static_cast<int>(anidooropen.size()) },
+        { aniarrow.data(),       static_cast<int>(aniarrow.size()) },
+        { aniblob1.data(),       static_cast<int>(aniblob1.size()) },
+        { aninone.data(),        static_cast<int>(aninone.size()) },
+        { anitower.data(),       static_cast<int>(anitower.size()) },
+        { anitent.data(),        static_cast<int>(anitent.size()) },
+        { aniblood.data(),       static_cast<int>(aniblood.size()) },
+        { aniglowgrow.data(),    static_cast<int>(aniglowgrow.size()) },
+        { anifood.data(),        static_cast<int>(anifood.size()) },
+        { aniexpand8.data(),     static_cast<int>(aniexpand8.size()) },
+        { ani16.data(),          static_cast<int>(ani16.size()) },
+        { anibomb1.data(),       static_cast<int>(anibomb1.size()) },
+        { aniexplosion1.data(),  static_cast<int>(aniexplosion1.size()) },
     };
     for (const auto& e : kRegistry)
         if (e.table == t)
@@ -457,65 +455,65 @@ loader::loader(EntityFactory entity_factory)
 	static const EntityDef defs[] = {
 		// Weapon entities (BLOOD pix handled separately for gore toggle)
 		//                                                       hp  act         anim           step los  dmg freq
-		{Order::Weapon, FAMILY_KNIFE,             "knife.png",    6, ACT_FIRE, anikni,          5,  7,  6, 0},
-		{Order::Weapon, FAMILY_ROCK,              "rock.png",     4, ACT_FIRE, anirock,         5,  8,  4, 0},
-		{Order::Weapon, FAMILY_ARROW,             "arrow.png",    5, ACT_FIRE, aniarrow,        8, 12,  5, 0},
-		{Order::Weapon, FAMILY_FIRE_ARROW,        "farrow.png",   7, ACT_FIRE, aniarrow,        8, 12,  7, 0},
-		{Order::Weapon, FAMILY_FIREBALL,          "fire.png",     8, ACT_FIRE, aniarrow,        6,  7, 10, 0},
-		{Order::Weapon, FAMILY_TREE,              "tree.png",    50, ACT_SIT,  anitree,         0,  1,  0, 0},
-		{Order::Weapon, FAMILY_METEOR,            "meteor.png",  12, ACT_FIRE, aniarrow,        7,  9, 12, 0},
-		{Order::Weapon, FAMILY_SPRINKLE,          "sparkle.png",  1, ACT_FIRE, anikni,          6, 10,  1, 0},
-		{Order::Weapon, FAMILY_BLOOD,             nullptr,        0, ACT_DIE,  aniblood,        0,  1,  0, 0},
-		{Order::Weapon, FAMILY_BONE,              "bone1.png",    5, ACT_FIRE, anikni,          6,  6,  5, 0},
-		{Order::Weapon, FAMILY_BLOB,              "sl_ball.png",  1, ACT_FIRE, aniblob1,        2, 11,  1, 2},
-		{Order::Weapon, FAMILY_LIGHTNING,         "lightnin.png",60, ACT_FIRE, aniarrow,        9, 13,  6, 0},
-		{Order::Weapon, FAMILY_GLOW,              "clerglow.png",50, ACT_SIT,  aniglowgrow,    0,   1,  0, 0},
-		{Order::Weapon, FAMILY_WAVE,              "wave.png",    50, ACT_FIRE, aniarrow,        6,  3, 16, 0},
-		{Order::Weapon, FAMILY_WAVE2,             "wave2.png",   50, ACT_RANDOM, aniarrow,      4,  4, 12, 0},
-		{Order::Weapon, FAMILY_WAVE3,             "wave3.png",   50, ACT_FIRE, aniarrow,        3,  6, 10, 0},
-		{Order::Weapon, FAMILY_CIRCLE_PROTECTION, "wave2.png",   50, ACT_SIT,  anifood,         1,110,  0, 0},
-		{Order::Weapon, FAMILY_HAMMER,            "hammer.png",  10, ACT_FIRE, aniarrow,        6,  4,  9, 0},
-		{Order::Weapon, FAMILY_DOOR,              "door.png",  5000, ACT_SIT,  anidoor,         0,  1,  0, 0},
-		{Order::Weapon, FAMILY_BOULDER,           "boulder1.png",50, ACT_FIRE, aninone,        10,  9, 25, 0},
+		{Order::Weapon, FAMILY_KNIFE,             "knife.png",    6, ACT_FIRE, anikni.data(),          5,  7,  6, 0},
+		{Order::Weapon, FAMILY_ROCK,              "rock.png",     4, ACT_FIRE, anirock.data(),         5,  8,  4, 0},
+		{Order::Weapon, FAMILY_ARROW,             "arrow.png",    5, ACT_FIRE, aniarrow.data(),        8, 12,  5, 0},
+		{Order::Weapon, FAMILY_FIRE_ARROW,        "farrow.png",   7, ACT_FIRE, aniarrow.data(),        8, 12,  7, 0},
+		{Order::Weapon, FAMILY_FIREBALL,          "fire.png",     8, ACT_FIRE, aniarrow.data(),        6,  7, 10, 0},
+		{Order::Weapon, FAMILY_TREE,              "tree.png",    50, ACT_SIT,  anitree.data(),         0,  1,  0, 0},
+		{Order::Weapon, FAMILY_METEOR,            "meteor.png",  12, ACT_FIRE, aniarrow.data(),        7,  9, 12, 0},
+		{Order::Weapon, FAMILY_SPRINKLE,          "sparkle.png",  1, ACT_FIRE, anikni.data(),          6, 10,  1, 0},
+		{Order::Weapon, FAMILY_BLOOD,             nullptr,        0, ACT_DIE,  aniblood.data(),        0,  1,  0, 0},
+		{Order::Weapon, FAMILY_BONE,              "bone1.png",    5, ACT_FIRE, anikni.data(),          6,  6,  5, 0},
+		{Order::Weapon, FAMILY_BLOB,              "sl_ball.png",  1, ACT_FIRE, aniblob1.data(),        2, 11,  1, 2},
+		{Order::Weapon, FAMILY_LIGHTNING,         "lightnin.png",60, ACT_FIRE, aniarrow.data(),        9, 13,  6, 0},
+		{Order::Weapon, FAMILY_GLOW,              "clerglow.png",50, ACT_SIT,  aniglowgrow.data(),    0,   1,  0, 0},
+		{Order::Weapon, FAMILY_WAVE,              "wave.png",    50, ACT_FIRE, aniarrow.data(),        6,  3, 16, 0},
+		{Order::Weapon, FAMILY_WAVE2,             "wave2.png",   50, ACT_RANDOM, aniarrow.data(),      4,  4, 12, 0},
+		{Order::Weapon, FAMILY_WAVE3,             "wave3.png",   50, ACT_FIRE, aniarrow.data(),        3,  6, 10, 0},
+		{Order::Weapon, FAMILY_CIRCLE_PROTECTION, "wave2.png",   50, ACT_SIT,  anifood.data(),         1,110,  0, 0},
+		{Order::Weapon, FAMILY_HAMMER,            "hammer.png",  10, ACT_FIRE, aniarrow.data(),        6,  4,  9, 0},
+		{Order::Weapon, FAMILY_DOOR,              "door.png",  5000, ACT_SIT,  anidoor.data(),         0,  1,  0, 0},
+		{Order::Weapon, FAMILY_BOULDER,           "boulder1.png",50, ACT_FIRE, aninone.data(),        10,  9, 25, 0},
 
 		// Treasure entities (STAIN pix handled by gore toggle; data_copy entries have nullptr pix)
-		{Order::Treasure, FAMILY_STAIN,                nullptr,       0, ACT_CONTROL, aniblood, 0, 0, 0, 0},
-		{Order::Treasure, FAMILY_DRUMSTICK,            "food1.png",  10, ACT_CONTROL, anifood,  5, 0, 0, 0},
-		{Order::Treasure, FAMILY_GOLD_BAR,             "bar1.png", 1000, ACT_CONTROL, anifood,  0, 0, 0, 0},
-		{Order::Treasure, FAMILY_SILVER_BAR,           nullptr,     100, ACT_CONTROL, anifood,  0, 0, 0, 0},
-		{Order::Treasure, FAMILY_MAGIC_POTION,         "bottle.png",  0, ACT_CONTROL, anifood,  0, 0, 0, 0},
-		{Order::Treasure, FAMILY_INVIS_POTION,         nullptr,       0, ACT_CONTROL, anifood,  0, 0, 0, 0},
-		{Order::Treasure, FAMILY_INVULNERABLE_POTION,  nullptr,       0, ACT_CONTROL, anifood,  0, 0, 0, 0},
-		{Order::Treasure, FAMILY_FLIGHT_POTION,        nullptr,       0, ACT_CONTROL, anifood,  0, 0, 0, 0},
-		{Order::Treasure, FAMILY_EXIT,                 "16exit1.png", 0, ACT_CONTROL, anifood,  0, 0, 0, 0},
-		{Order::Treasure, FAMILY_TELEPORTER,           "teleport.png",0, ACT_CONTROL, anifood,  0, 0, 0, 0},
-		{Order::Treasure, FAMILY_LIFE_GEM,             "lifegem.png", 0, ACT_CONTROL, anifood,  0, 0, 0, 0},
-		{Order::Treasure, FAMILY_KEY,                  "key.png",     0, ACT_CONTROL, anifood,  0, 0, 0, 0},
-		{Order::Treasure, FAMILY_SPEED_POTION,         nullptr,       0, ACT_CONTROL, anifood,  0, 0, 0, 0},
+		{Order::Treasure, FAMILY_STAIN,                nullptr,       0, ACT_CONTROL, aniblood.data(), 0, 0, 0, 0},
+		{Order::Treasure, FAMILY_DRUMSTICK,            "food1.png",  10, ACT_CONTROL, anifood.data(),  5, 0, 0, 0},
+		{Order::Treasure, FAMILY_GOLD_BAR,             "bar1.png", 1000, ACT_CONTROL, anifood.data(),  0, 0, 0, 0},
+		{Order::Treasure, FAMILY_SILVER_BAR,           nullptr,     100, ACT_CONTROL, anifood.data(),  0, 0, 0, 0},
+		{Order::Treasure, FAMILY_MAGIC_POTION,         "bottle.png",  0, ACT_CONTROL, anifood.data(),  0, 0, 0, 0},
+		{Order::Treasure, FAMILY_INVIS_POTION,         nullptr,       0, ACT_CONTROL, anifood.data(),  0, 0, 0, 0},
+		{Order::Treasure, FAMILY_INVULNERABLE_POTION,  nullptr,       0, ACT_CONTROL, anifood.data(),  0, 0, 0, 0},
+		{Order::Treasure, FAMILY_FLIGHT_POTION,        nullptr,       0, ACT_CONTROL, anifood.data(),  0, 0, 0, 0},
+		{Order::Treasure, FAMILY_EXIT,                 "16exit1.png", 0, ACT_CONTROL, anifood.data(),  0, 0, 0, 0},
+		{Order::Treasure, FAMILY_TELEPORTER,           "teleport.png",0, ACT_CONTROL, anifood.data(),  0, 0, 0, 0},
+		{Order::Treasure, FAMILY_LIFE_GEM,             "lifegem.png", 0, ACT_CONTROL, anifood.data(),  0, 0, 0, 0},
+		{Order::Treasure, FAMILY_KEY,                  "key.png",     0, ACT_CONTROL, anifood.data(),  0, 0, 0, 0},
+		{Order::Treasure, FAMILY_SPEED_POTION,         nullptr,       0, ACT_CONTROL, anifood.data(),  0, 0, 0, 0},
 
 		// Generator entities
-		{Order::Generator, FAMILY_TENT,      "tent.png",    100, ACT_GENERATE, anitent,  0, 0, 0, 0},
-		{Order::Generator, FAMILY_TOWER,     "tower4.png",    0, ACT_GENERATE, anitower, 0, 0, 0, 0},
-		{Order::Generator, FAMILY_BONES,     "bonepile.png",  0, ACT_GENERATE, aninone,  0, 0, 2, 0},
-		{Order::Generator, FAMILY_TREEHOUSE, "bigtree.png",   0, ACT_GENERATE, aninone,  0, 0, 0, 0},
+		{Order::Generator, FAMILY_TENT,      "tent.png",    100, ACT_GENERATE, anitent.data(),  0, 0, 0, 0},
+		{Order::Generator, FAMILY_TOWER,     "tower4.png",    0, ACT_GENERATE, anitower.data(), 0, 0, 0, 0},
+		{Order::Generator, FAMILY_BONES,     "bonepile.png",  0, ACT_GENERATE, aninone.data(),  0, 0, 2, 0},
+		{Order::Generator, FAMILY_TREEHOUSE, "bigtree.png",   0, ACT_GENERATE, aninone.data(),  0, 0, 0, 0},
 
 		// Special
 		{Order::Special, FAMILY_RESERVED_TEAM, "team.png", 0, ACT_RANDOM, nullptr, 0, 0, 0, 0},
 
 		// FX entities
-		{Order::FX, FAMILY_EXPAND,       "expand8.png",    0, ACT_RANDOM, aniexpand8,    0,  0,  0, 0},
-		{Order::FX, FAMILY_GHOST_SCARE,  "expand8.png",    0, ACT_RANDOM, aniexpand8,    0,  0,  0, 0},
-		{Order::FX, FAMILY_BOMB,         "bomb1.png",      0, ACT_RANDOM, anibomb1,      0,  0,  0, 0},
-		{Order::FX, FAMILY_EXPLOSION,    "boom1.png",      0, ACT_RANDOM, aniexplosion1, 0,  0,  0, 0},
-		{Order::FX, FAMILY_FLASH,        "telflash.png",   0, ACT_RANDOM, aniexpand8,    0,  0,  0, 0},
-		{Order::FX, FAMILY_MAGIC_SHIELD, "mshield.png",  100, ACT_RANDOM, anikni,        0,  0, 10, 0},
-		{Order::FX, FAMILY_KNIFE_BACK,   "knife.png",      0, ACT_RANDOM, anikni,        0,  0,  0, 0},
-		{Order::FX, FAMILY_CLOUD,        "cloud.png",      0, ACT_RANDOM, anicloud,      4,  0, 20, 0},
-		{Order::FX, FAMILY_MARKER,       "marker.png",     0, ACT_RANDOM, animarker,     0,  0,  0, 0},
-		{Order::FX, FAMILY_BOOMERANG,    "boomer.png",    50, ACT_RANDOM, ani16,         0,  0,  8, 0},
-		{Order::FX, FAMILY_CHAIN,        "lightnin.png",   0, ACT_RANDOM, aniarrow,     12, 15,  0, 0},
-		{Order::FX, FAMILY_DOOR_OPEN,    "door.png",       0, ACT_RANDOM, anidooropen,   0,  0,  0, 0},
-		{Order::FX, FAMILY_HIT,          "hit.png",        0, ACT_RANDOM, anihit,        0,  0,  0, 0},
+		{Order::FX, FAMILY_EXPAND,       "expand8.png",    0, ACT_RANDOM, aniexpand8.data(),    0,  0,  0, 0},
+		{Order::FX, FAMILY_GHOST_SCARE,  "expand8.png",    0, ACT_RANDOM, aniexpand8.data(),    0,  0,  0, 0},
+		{Order::FX, FAMILY_BOMB,         "bomb1.png",      0, ACT_RANDOM, anibomb1.data(),      0,  0,  0, 0},
+		{Order::FX, FAMILY_EXPLOSION,    "boom1.png",      0, ACT_RANDOM, aniexplosion1.data(), 0,  0,  0, 0},
+		{Order::FX, FAMILY_FLASH,        "telflash.png",   0, ACT_RANDOM, aniexpand8.data(),    0,  0,  0, 0},
+		{Order::FX, FAMILY_MAGIC_SHIELD, "mshield.png",  100, ACT_RANDOM, anikni.data(),        0,  0, 10, 0},
+		{Order::FX, FAMILY_KNIFE_BACK,   "knife.png",      0, ACT_RANDOM, anikni.data(),        0,  0,  0, 0},
+		{Order::FX, FAMILY_CLOUD,        "cloud.png",      0, ACT_RANDOM, anicloud.data(),      4,  0, 20, 0},
+		{Order::FX, FAMILY_MARKER,       "marker.png",     0, ACT_RANDOM, animarker.data(),     0,  0,  0, 0},
+		{Order::FX, FAMILY_BOOMERANG,    "boomer.png",    50, ACT_RANDOM, ani16.data(),         0,  0,  8, 0},
+		{Order::FX, FAMILY_CHAIN,        "lightnin.png",   0, ACT_RANDOM, aniarrow.data(),     12, 15,  0, 0},
+		{Order::FX, FAMILY_DOOR_OPEN,    "door.png",       0, ACT_RANDOM, anidooropen.data(),   0,  0,  0, 0},
+		{Order::FX, FAMILY_HIT,          "hit.png",        0, ACT_RANDOM, anihit.data(),        0,  0,  0, 0},
 
 		// Button graphics (no gameplay properties)
 		{Order::Button1, FAMILY_NORMAL1, "normal1.png",  0, ACT_RANDOM, nullptr, 0, 0, 0, 0},

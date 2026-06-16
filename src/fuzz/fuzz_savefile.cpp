@@ -39,6 +39,7 @@
 // SaveData::load() without touching the filesystem or game state.
 
 #include <SDL2/SDL.h>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 
@@ -56,8 +57,8 @@ static void fuzz_parse_savefile(const uint8_t *data, size_t size)
         return;
 
     // Read and validate GTL header
-    char header[4] = {};
-    if (!rw_read_exact(rw, header, 3, 1))
+    std::array<char, 4> header = {};
+    if (!rw_read_exact(rw, header.data(), 3, 1))
     {
         SDL_RWclose(rw);
         return;
@@ -89,8 +90,8 @@ static void fuzz_parse_savefile(const uint8_t *data, size_t size)
     // Version 2+: saved game name
     if (version >= 2)
     {
-        char savedgame[40] = {};
-        if (!rw_read_exact(rw, savedgame, 40, 1))
+        std::array<char, 40> savedgame = {};
+        if (!rw_read_exact(rw, savedgame.data(), 40, 1))
         {
             SDL_RWclose(rw);
             return;
@@ -106,8 +107,8 @@ static void fuzz_parse_savefile(const uint8_t *data, size_t size)
     // Version 8+: campaign ID
     if (version >= 8)
     {
-        char campaign[41] = {};
-        if (!rw_read_exact(rw, campaign, 1, 40))
+        std::array<char, 41> campaign = {};
+        if (!rw_read_exact(rw, campaign.data(), 1, 40))
         {
             SDL_RWclose(rw);
             return;
@@ -179,8 +180,8 @@ static void fuzz_parse_savefile(const uint8_t *data, size_t size)
     }
 
     // Reserved (31 bytes)
-    char filler[31] = {};
-    if (!rw_read_exact(rw, filler, 31, 1))
+    std::array<char, 31> filler = {};
+    if (!rw_read_exact(rw, filler.data(), 31, 1))
     {
         SDL_RWclose(rw);
         return;
@@ -191,18 +192,18 @@ static void fuzz_parse_savefile(const uint8_t *data, size_t size)
     {
         uint8_t order = 0;
         char family = 0;
-        char name[12] = {};
+        std::array<char, 12> name = {};
         int16_t str = 0, dex = 0, con = 0, intel = 0, arm = 0, lev = 0;
         uint32_t exp = 0;
         int16_t kills = 0;
         int32_t level_kills = 0;
         int32_t td = 0, th = 0, ts = 0;
         int16_t teamnum = 0;
-        char reserved[8] = {};
+        std::array<char, 8> reserved = {};
 
         if (!rw_read_exact(rw, &order, 1, 1) ||
             !rw_read_exact(rw, &family, 1, 1) ||
-            !rw_read_exact(rw, name, 12, 1) ||
+            !rw_read_exact(rw, name.data(), 12, 1) ||
             !rw_read_exact(rw, &str, 2, 1) ||
             !rw_read_exact(rw, &dex, 2, 1) ||
             !rw_read_exact(rw, &con, 2, 1) ||
@@ -216,7 +217,7 @@ static void fuzz_parse_savefile(const uint8_t *data, size_t size)
             !rw_read_exact(rw, &th, 4, 1) ||
             !rw_read_exact(rw, &ts, 4, 1) ||
             !rw_read_exact(rw, &teamnum, 2, 1) ||
-            !rw_read_exact(rw, reserved, 8, 1))
+            !rw_read_exact(rw, reserved.data(), 8, 1))
         {
             SDL_RWclose(rw);
             return;
@@ -241,11 +242,11 @@ static void fuzz_parse_savefile(const uint8_t *data, size_t size)
 
         for (int16_t i = 0; i < num_campaigns; i++)
         {
-            char campaign[41] = {};
+            std::array<char, 41> campaign = {};
             int16_t current_level = 0;
             int16_t num_levels = 0;
 
-            if (!rw_read_exact(rw, campaign, 1, 40) ||
+            if (!rw_read_exact(rw, campaign.data(), 1, 40) ||
                 !rw_read_exact(rw, &current_level, 2, 1) ||
                 !rw_read_exact(rw, &num_levels, 2, 1))
             {
@@ -273,8 +274,8 @@ static void fuzz_parse_savefile(const uint8_t *data, size_t size)
     else if (version >= 5)
     {
         // Versions 5-7: flat 500-byte level status array
-        char levelstatus[500] = {};
-        if (!rw_read_exact(rw, levelstatus, 500, 1))
+        std::array<char, 500> levelstatus = {};
+        if (!rw_read_exact(rw, levelstatus.data(), 500, 1))
         {
             SDL_RWclose(rw);
             return;
@@ -283,8 +284,8 @@ static void fuzz_parse_savefile(const uint8_t *data, size_t size)
     else
     {
         // Versions 2-4: flat 200-byte level status array
-        char levelstatus[200] = {};
-        rw_read_exact(rw, levelstatus, 200, 1);
+        std::array<char, 200> levelstatus = {};
+        rw_read_exact(rw, levelstatus.data(), 200, 1);
     }
 
     SDL_RWclose(rw);

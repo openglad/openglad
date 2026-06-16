@@ -91,7 +91,7 @@ const FamilyDescriptor& describe_family_skeleton()
         .on_ani_complete = nullptr,
         .on_melee_hit = nullptr,
         .pix_filename = "skeleton.png",
-        .animation_type = FAMILY_ANIM_SKELETON,
+        .animation_type = FamilyAnimationType::FAMILY_ANIM_SKELETON,
         .ai_line_of_sight = 7,
         .description = "Skeletons are the pathetic\n"
                        "remains of those who once \n"

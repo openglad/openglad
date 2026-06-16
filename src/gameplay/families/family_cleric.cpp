@@ -361,7 +361,7 @@ const FamilyDescriptor& describe_family_cleric()
         .on_ani_complete = nullptr,
         .on_melee_hit = nullptr,
         .pix_filename = "cleric.png",
-        .animation_type = FAMILY_ANIM_STANDARD,
+        .animation_type = FamilyAnimationType::FAMILY_ANIM_STANDARD,
         .ai_line_of_sight = 4,
         .description = "Clerics, like mages, are  \n"
                        "slow, but have a stronger \n"

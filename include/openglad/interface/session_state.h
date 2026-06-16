@@ -68,8 +68,8 @@ struct SessionState {
     std::array<std::unique_ptr<::vbutton, VButtonDeleter>, kMaxButtons> owned_buttons_{};
 
     // Render/palette state (Batch 6) — moved from pal32.cpp/video.cpp.
-    unsigned char curpal_[768] = {};
-    unsigned char temppal_[768] = {};
+    std::array<unsigned char, 768> curpal_ = {};
+    std::array<unsigned char, 768> temppal_ = {};
     unsigned char* videoptr_ = nullptr;
 
     // Game speed + debug state (Batch 7) — moved from util.cpp/walker.cpp/obmap.cpp.
@@ -96,7 +96,7 @@ struct SessionState {
 
     // Entity-layer state (Phase 4) — moved from guy.cpp and cheat_handler.cpp.
     int guy_id_counter_ = 0;
-    short changedteam_[6] = {};
+    std::array<short, 6> changedteam_ = {};
 
     // Keybinding storage (Phase 5) — moved from view.cpp allkeys global.
     int allkeys_[4][kNumKeys] = {};

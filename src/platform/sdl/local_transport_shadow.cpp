@@ -24,6 +24,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 short load_saved_game(const char* filename, screen* scr);
@@ -41,7 +42,7 @@ struct LocalTransportClient {
     bool drives_display = false;
 };
 
-constexpr char kPauseOverlayEscHint[] = "ESC again: Quit?";
+constexpr std::string_view kPauseOverlayEscHint = "ESC again: Quit?";
 
 walker* resolve_control_from_entity_id(GameWorld& world, std::uint32_t entity_id);
 

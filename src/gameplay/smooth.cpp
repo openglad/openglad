@@ -134,19 +134,19 @@ static constexpr auto make_pix_to_genre() {
 static constexpr auto PIX_to_genre = make_pix_to_genre();
 
 // Random variant lookup tables for smooth()
-static constexpr Sint32 grass_variants[] = {PIX_GRASS1, PIX_GRASS2, PIX_GRASS3, PIX_GRASS4};
-static constexpr Sint32 grass_dark_variants[] = {PIX_GRASS_DARK_1, PIX_GRASS_DARK_2, PIX_GRASS_DARK_3, PIX_GRASS_DARK_4};
-static constexpr Sint32 grass_dark_right[] = {PIX_GRASS_DARK_R1, PIX_GRASS_DARK_R2};
-static constexpr Sint32 grass_dark_bottom[] = {PIX_GRASS_DARK_B1, PIX_GRASS_DARK_B2};
-static constexpr Sint32 water_variants[] = {PIX_WATER1, PIX_WATER2, PIX_WATER3};
-static constexpr Sint32 watergrass_up[] = {PIX_WATERGRASS_LL, PIX_WATERGRASS_LR};
-static constexpr Sint32 watergrass_down[] = {PIX_WATERGRASS_UL, PIX_WATERGRASS_UR};
-static constexpr Sint32 watergrass_left[] = {PIX_WATERGRASS_UR, PIX_WATERGRASS_LR};
-static constexpr Sint32 watergrass_right[] = {PIX_WATERGRASS_UL, PIX_WATERGRASS_LL};
-static constexpr Sint32 cobble_variants[] = {PIX_COBBLE_1, PIX_COBBLE_2, PIX_COBBLE_3, PIX_COBBLE_4};
+static constexpr std::array<Sint32, 4> grass_variants = {PIX_GRASS1, PIX_GRASS2, PIX_GRASS3, PIX_GRASS4};
+static constexpr std::array<Sint32, 4> grass_dark_variants = {PIX_GRASS_DARK_1, PIX_GRASS_DARK_2, PIX_GRASS_DARK_3, PIX_GRASS_DARK_4};
+static constexpr std::array<Sint32, 2> grass_dark_right = {PIX_GRASS_DARK_R1, PIX_GRASS_DARK_R2};
+static constexpr std::array<Sint32, 2> grass_dark_bottom = {PIX_GRASS_DARK_B1, PIX_GRASS_DARK_B2};
+static constexpr std::array<Sint32, 3> water_variants = {PIX_WATER1, PIX_WATER2, PIX_WATER3};
+static constexpr std::array<Sint32, 2> watergrass_up = {PIX_WATERGRASS_LL, PIX_WATERGRASS_LR};
+static constexpr std::array<Sint32, 2> watergrass_down = {PIX_WATERGRASS_UL, PIX_WATERGRASS_UR};
+static constexpr std::array<Sint32, 2> watergrass_left = {PIX_WATERGRASS_UR, PIX_WATERGRASS_LR};
+static constexpr std::array<Sint32, 2> watergrass_right = {PIX_WATERGRASS_UL, PIX_WATERGRASS_LL};
+static constexpr std::array<Sint32, 4> cobble_variants = {PIX_COBBLE_1, PIX_COBBLE_2, PIX_COBBLE_3, PIX_COBBLE_4};
 
 // Directional lookup tables: surround value (0-15) → PIX tile
-static constexpr Sint32 carpet_by_surround[] = {
+static constexpr std::array<Sint32, 16> carpet_by_surround = {
 	PIX_CARPET_SMALL_TINY,   // 0: all alone
 	PIX_CARPET_SMALL_CUP,    // 1: bottom cup
 	PIX_CARPET_SMALL_LEFT,   // 2: left edge
@@ -165,7 +165,7 @@ static constexpr Sint32 carpet_by_surround[] = {
 	PIX_CARPET_M,             // 15: surrounded
 };
 
-static constexpr Sint32 grass_light_by_surround[] = {
+static constexpr std::array<Sint32, 16> grass_light_by_surround = {
 	PIX_GRASS_LIGHT_RIGHT,          // 0: all alone
 	PIX_GRASS_LIGHT_RIGHT_BOTTOM,   // 1: bottom cup
 	PIX_GRASS_LIGHT_LEFT_TOP,       // 2: left edge
@@ -184,7 +184,7 @@ static constexpr Sint32 grass_light_by_surround[] = {
 	PIX_GRASS_LIGHT_1,              // 15: surrounded
 };
 
-static constexpr Sint32 dirt_by_surround[] = {
+static constexpr std::array<Sint32, 16> dirt_by_surround = {
 	PIX_DIRT_1,          // 0: all alone
 	PIX_DIRT_1,          // 1: TO_UP
 	PIX_DIRT_1,          // 2: TO_RIGHT
@@ -203,7 +203,7 @@ static constexpr Sint32 dirt_by_surround[] = {
 	PIX_DIRT_1,          // 15: all around
 };
 
-static constexpr Sint32 dirt_dark_by_surround[] = {
+static constexpr std::array<Sint32, 16> dirt_dark_by_surround = {
 	PIX_DIRT_DARK_1,          // 0: all alone
 	PIX_DIRT_DARK_1,          // 1: TO_UP
 	PIX_DIRT_DARK_1,          // 2: TO_RIGHT
@@ -445,10 +445,10 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 				newvalue = PIX_GRASS_DARK_1; // default case
 			break;
 		case TYPE_CARPET:
-			newvalue = carpet_by_surround[around];
+			newvalue = carpet_by_surround[static_cast<std::size_t>(around)];
 			break; // end of carpet case
 		case TYPE_GRASS_LIGHT:
-			newvalue = grass_light_by_surround[around];
+			newvalue = grass_light_by_surround[static_cast<std::size_t>(around)];
 			break; // end of light grass case
 		case TYPE_WALL:
 			if (herepix == PIX_WALL_ARROW_GRASS ||
@@ -605,10 +605,10 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 				newvalue = PIX_TREE_B1; // default case
 			break;
 		case TYPE_DIRT:
-			newvalue = dirt_by_surround[around];
+			newvalue = dirt_by_surround[static_cast<std::size_t>(around)];
 			break; // end of dirt cases
 		case TYPE_DIRT_DARK:
-			newvalue = dirt_dark_by_surround[around];
+			newvalue = dirt_dark_by_surround[static_cast<std::size_t>(around)];
 			break; // end of dark dirt cases
 		case TYPE_COBBLE: // cobblestone
 			newvalue = cobble_variants[next_random(4)];

@@ -27,6 +27,7 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/og_file.h>
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <iterator>
@@ -103,13 +104,16 @@ bool SaveData::load(const std::string& filename)
         last_io_error_ = SaveDataIoError::OpenReadFailed;
         return false;
     }
-	char filler[50] = "GTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTL"; // for RESERVED
+	std::array<char, 50> filler = {'G', 'T', 'L', 'G', 'T', 'L', 'G', 'T', 'L',
+		'G', 'T', 'L', 'G', 'T', 'L', 'G', 'T', 'L', 'G', 'T', 'L', 'G', 'T',
+		'L', 'G', 'T', 'L', 'G', 'T', 'L', 'G', 'T', 'L', 'G', 'T', 'L', 'G',
+		'T', 'L', 'G', 'T', 'L'}; // for RESERVED
 
-	char temptext[10] = "GTL";
-	char savedgame[41];
-	std::fill_n(savedgame, std::size(savedgame), '\0');
-	char temp_campaign[41];
-	snprintf(temp_campaign, sizeof(temp_campaign), "org.openglad.gladiator");
+	std::array<char, 10> temptext = {'G', 'T', 'L'};
+	std::array<char, 41> savedgame;
+	std::fill_n(savedgame.data(), savedgame.size(), '\0');
+	std::array<char, 41> temp_campaign;
+	snprintf(temp_campaign.data(), temp_campaign.size(), "org.openglad.gladiator");
 	temp_campaign[40] = '\0';
 	std::uint8_t temp_version = 9;
 	std::uint32_t newcash;
@@ -117,8 +121,8 @@ bool SaveData::load(const std::string& filename)
 	//  short numguys;
 	std::int16_t listsize = 0;
 
-	char tempname[12] = "FRED";
-	char guyname[12] = "JOE";
+	std::array<char, 12> tempname = {'F', 'R', 'E', 'D'};
+	std::array<char, 12> guyname = {'J', 'O', 'E'};
 	std::uint8_t temp_order = 0;
 	char temp_family;
 	std::int16_t temp_str = 0;
@@ -215,8 +219,8 @@ bool SaveData::load(const std::string& filename)
     team_size = 0;
 
 	// Read id header
-	READ_OR_FAIL(temptext, 3, 1);
-	if ( std::string(temptext) != "GTL")
+	READ_OR_FAIL(temptext.data(), 3, 1);
+	if ( std::string(temptext.data()) != "GTL")
 	{
 		LogError("Selected file is not a GTL file: {}\n", filename);
         last_io_error_ = SaveDataIoError::InvalidHeader;
@@ -237,7 +241,7 @@ bool SaveData::load(const std::string& filename)
 		{
 			if (temp_version >= 2)
 			{
-				READ_OR_FAIL(savedgame, 40, 1); // load save name from fixed-width (40-byte) field
+				READ_OR_FAIL(savedgame.data(), 40, 1); // load save name from fixed-width (40-byte) field
 				savedgame[40] = '\0';
 			}
 		else
@@ -247,14 +251,14 @@ bool SaveData::load(const std::string& filename)
 			return 0;
 		}
 	}
-	save_name = savedgame;
+	save_name = savedgame.data();
 
     // Read campaign ID
 	if (temp_version >= 8)
 	{
-		READ_OR_FAIL(temp_campaign, 1, 40);
+		READ_OR_FAIL(temp_campaign.data(), 1, 40);
 		temp_campaign[40] = '\0';
-        const std::string loaded_campaign = temp_campaign;
+        const std::string loaded_campaign = temp_campaign.data();
 		if(loaded_campaign.size() > 3 && is_safe_campaign_id(loaded_campaign))
             current_campaign = loaded_campaign;
         else
@@ -320,7 +324,7 @@ bool SaveData::load(const std::string& filename)
 	numplayers = temp_numplayers;
 
 	// Read the reserved area, 31 bytes
-	READ_OR_FAIL(filler, 31, 1);
+	READ_OR_FAIL(filler.data(), 31, 1);
 
 	// Okay, we've read header .. now read the team list data ..
     for(int i = 0; i < listsize; i++)
@@ -337,12 +341,12 @@ bool SaveData::load(const std::string& filename)
 		// Get temp values to be read
 		temp_order = static_cast<unsigned char>(Order::Living); // may be changed later
 		// Read name of current guy...
-		std::fill_n(guyname, 12, '\0');
-		snprintf(guyname, sizeof(guyname), "%s", tempname);
+		std::fill_n(guyname.data(), 12, '\0');
+		snprintf(guyname.data(), guyname.size(), "%s", tempname.data());
 		// Now write all those values
 		READ_OR_FAIL(&temp_order, 1, 1);
 		READ_OR_FAIL(&temp_family,1, 1);
-		READ_OR_FAIL(guyname, 12, 1);
+		READ_OR_FAIL(guyname.data(), 12, 1);
 		READ_OR_FAIL(&temp_str, 2, 1);
 		READ_OR_FAIL(&temp_dex, 2, 1);
 		READ_OR_FAIL(&temp_con, 2, 1);
@@ -360,12 +364,12 @@ bool SaveData::load(const std::string& filename)
 		READ_OR_FAIL(&temp_teamnum, 2, 1); // team number
 
 		// And the filler
-		READ_OR_FAIL(filler, 8, 1);
+		READ_OR_FAIL(filler.data(), 8, 1);
 			// Now set the values ..
             if (temp_guy_ptr != nullptr)
             {
 			    temp_guy_ptr->family       = temp_family;
-			    temp_guy_ptr->name.assign(guyname, strnlen(guyname, sizeof(guyname)));
+			    temp_guy_ptr->name.assign(guyname.data(), strnlen(guyname.data(), guyname.size()));
 			    temp_guy_ptr->strength     = temp_str;
 			    temp_guy_ptr->dexterity    = temp_dex;
 			    temp_guy_ptr->constitution = temp_con;
@@ -438,7 +442,7 @@ bool SaveData::load(const std::string& filename)
     else
     {
         short num_campaigns = 0;
-        char campaign[41];
+        std::array<char, 41> campaign;
         short num_levels = 0;
         constexpr short kMaxSavedCampaigns = 128;
         constexpr short kMaxSavedLevels = 1000;
@@ -456,11 +460,11 @@ bool SaveData::load(const std::string& filename)
         for(int i = 0; i < num_campaigns; i++)
         {
             // Get the campaign ID (40 chars)
-            READ_OR_FAIL(campaign, 1, 40);
+            READ_OR_FAIL(campaign.data(), 1, 40);
             campaign[40] = '\0';
-            if (!is_safe_campaign_id(campaign))
+            if (!is_safe_campaign_id(campaign.data()))
             {
-                LogError("Rejected unsafe campaign id in save: {}\n", campaign);
+                LogError("Rejected unsafe campaign id in save: {}\n", campaign.data());
                 last_io_error_ = SaveDataIoError::ReadFailed;
                 return false;
             }
@@ -468,7 +472,7 @@ bool SaveData::load(const std::string& filename)
             short index = 1;
             // Get the current level for this campaign
             READ_OR_FAIL(&index, 2, 1);
-            current_levels[campaign] = index;
+            current_levels[campaign.data()] = index;
 
             // Get the number of cleared levels
             READ_OR_FAIL(&num_levels, 2, 1);
@@ -487,7 +491,7 @@ bool SaveData::load(const std::string& filename)
                 READ_OR_FAIL(&index, 2, 1);
 
                 // Add it to our list
-                add_level_completed(campaign, index);
+                add_level_completed(campaign.data(), index);
             }
         }
     }
@@ -663,13 +667,16 @@ bool SaveData::save(const std::string& filename)
         last_io_error_ = SaveDataIoError::OpenWriteFailed;
         return false;
     }
-	char filler[50] = "GTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTL"; // for RESERVED
-	char savedgame[41];
-	std::fill_n(savedgame, std::size(savedgame), '\0');
-	char temp_campaign[41];
-	std::fill_n(temp_campaign, std::size(temp_campaign), '\0');
+	std::array<char, 50> filler = {'G', 'T', 'L', 'G', 'T', 'L', 'G', 'T', 'L',
+		'G', 'T', 'L', 'G', 'T', 'L', 'G', 'T', 'L', 'G', 'T', 'L', 'G', 'T',
+		'L', 'G', 'T', 'L', 'G', 'T', 'L', 'G', 'T', 'L', 'G', 'T', 'L', 'G',
+		'T', 'L', 'G', 'T', 'L'}; // for RESERVED
+	std::array<char, 41> savedgame;
+	std::fill_n(savedgame.data(), savedgame.size(), '\0');
+	std::array<char, 41> temp_campaign;
+	std::fill_n(temp_campaign.data(), temp_campaign.size(), '\0');
 
-	char temptext[10] = "GTL";
+	std::array<char, 10> temptext = {'G', 'T', 'L'};
 	std::uint8_t temp_version = 11;
 
 	std::uint32_t newcash = totalcash;
@@ -677,7 +684,7 @@ bool SaveData::save(const std::string& filename)
 	//  short numguys;
 	std::int16_t listsize = 0;
 
-	char guyname[12] = "JOE";
+	std::array<char, 12> guyname = {'J', 'O', 'E'};
 	std::uint8_t temp_order = 0;
 	char temp_family;
 	std::int16_t temp_str = 0;
@@ -767,7 +774,7 @@ bool SaveData::save(const std::string& filename)
     } while(0)
 
 	// Write id header
-	WRITE_OR_FAIL(temptext, 3, 1);
+	WRITE_OR_FAIL(temptext.data(), 3, 1);
 
 	// Write version number
 	WRITE_OR_FAIL(&temp_version, 1, 1);
@@ -777,8 +784,8 @@ bool SaveData::save(const std::string& filename)
 	WRITE_OR_FAIL(&temp_registered, 2, 1);
 
 	// Write the name
-	snprintf(savedgame, sizeof(savedgame), "%s", save_name.c_str());
-	WRITE_OR_FAIL(savedgame, 40, 1);
+	snprintf(savedgame.data(), savedgame.size(), "%s", save_name.c_str());
+	WRITE_OR_FAIL(savedgame.data(), 40, 1);
 
 	// Write current campaign
     if (!is_safe_campaign_id(current_campaign))
@@ -789,8 +796,8 @@ bool SaveData::save(const std::string& filename)
         return false;
     }
 	Log("Saving campaign status: {}\n", current_campaign);
-	snprintf(temp_campaign, sizeof(temp_campaign), "%s", current_campaign.c_str());
-	WRITE_OR_FAIL(temp_campaign, 40, 1);
+	snprintf(temp_campaign.data(), temp_campaign.size(), "%s", current_campaign.c_str());
+	WRITE_OR_FAIL(temp_campaign.data(), 40, 1);
 
 	// Write scenario number
 	short temp_scenario = scen_num;
@@ -824,7 +831,7 @@ bool SaveData::save(const std::string& filename)
 	WRITE_OR_FAIL(&numplayers_to_save, 1, 1);
 
 	// Write the reserved area, 31 bytes
-	WRITE_OR_FAIL(filler, 31, 1);
+	WRITE_OR_FAIL(filler.data(), 31, 1);
 
 	// Okay, we've written header .. now dump the data ..
 	for(int team_idx = 0; team_idx < team_size; team_idx++)
@@ -835,8 +842,8 @@ bool SaveData::save(const std::string& filename)
         temp_order = static_cast<unsigned char>(Order::Living);
         temp_family= temp_guy->family;
         // Write name of current guy...
-        std::fill_n(guyname, 12, '\0');
-        snprintf(guyname, sizeof(guyname), "%s", temp_guy->name.c_str());
+        std::fill_n(guyname.data(), 12, '\0');
+        snprintf(guyname.data(), guyname.size(), "%s", temp_guy->name.c_str());
         temp_str = temp_guy->strength;
         temp_dex = temp_guy->dexterity;
         temp_con = temp_guy->constitution;
@@ -858,7 +865,7 @@ bool SaveData::save(const std::string& filename)
         // Now write all those values
         WRITE_OR_FAIL(&temp_order, 1, 1);
         WRITE_OR_FAIL(&temp_family,1, 1);
-        WRITE_OR_FAIL(guyname, 12, 1);
+        WRITE_OR_FAIL(guyname.data(), 12, 1);
         WRITE_OR_FAIL(&temp_str, 2, 1);
         WRITE_OR_FAIL(&temp_dex, 2, 1);
         WRITE_OR_FAIL(&temp_con, 2, 1);
@@ -873,7 +880,7 @@ bool SaveData::save(const std::string& filename)
         WRITE_OR_FAIL(&temp_ts, 4, 1);
         WRITE_OR_FAIL(&temp_teamnum, 2, 1);
         // And the filler
-        WRITE_OR_FAIL(filler, 8, 1);
+        WRITE_OR_FAIL(filler.data(), 8, 1);
 	}
 
 	// Write the completed levels
@@ -911,10 +918,10 @@ bool SaveData::save(const std::string& filename)
             return false;
         }
         // Campaign ID
-        char campaign[41];
-        std::fill_n(campaign, std::size(campaign), '\0');
-        snprintf(campaign, sizeof(campaign), "%s", e->first.c_str());
-        WRITE_OR_FAIL(campaign, 1, 40);
+        std::array<char, 41> campaign;
+        std::fill_n(campaign.data(), campaign.size(), '\0');
+        snprintf(campaign.data(), campaign.size(), "%s", e->first.c_str());
+        WRITE_OR_FAIL(campaign.data(), 1, 40);
 
 	        short index = 1;
 	        auto g = current_levels.find(e->first);

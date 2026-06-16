@@ -2460,7 +2460,7 @@ std::string get_saved_name(const char * filename)
 {
 	std::string temp_filename;
 
-	char temptext[4] = {};
+	std::array<char, 4> temptext{};
     std::array<char, 40> savedgame{};
 	char temp_version = 1;
 	short temp_registered = 0;
@@ -2485,7 +2485,7 @@ std::string get_saved_name(const char * filename)
 	}
 
 	// Read id header
-	if (!og::io::og_read_exact(*infile, temptext, 1, 3) || std::string(temptext, 3) != "GTL")
+	if (!og::io::og_read_exact(*infile, temptext.data(), 1, 3) || std::string(temptext.data(), 3) != "GTL")
 	{
 		return std::string("EMPTY SLOT");
 	}

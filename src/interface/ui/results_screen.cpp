@@ -22,6 +22,7 @@
 #include <openglad/core/test_trace.h>
 #include <openglad/gameplay/ctf/ctf_state.h>
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <format>
@@ -492,25 +493,25 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
 
 	text& mytext = og::runtime::current_session->myscreen_->text_normal;
 	text& bigtext = og::runtime::current_session->myscreen_->text_big;
-	Uint32 bonuscash[4] = {0, 0, 0, 0};
+	std::array<Uint32, 4> bonuscash = {0, 0, 0, 0};
 	Uint32 allscore = 0, allbonuscash = 0;
 
 	for(int i = 0; i < 4; i++)
 		allscore += save_data.m_score[i];
-	
+
 	if(ending == 0)  // we won
 	{
 	    // Calculate bonuses
 		for (int i = 0; i < 4; i++)
 		{
-			bonuscash[i] = get_time_bonus(i);
-			
-			allbonuscash += bonuscash[i];
+			bonuscash[static_cast<std::size_t>(i)] = get_time_bonus(i);
+
+			allbonuscash += bonuscash[static_cast<std::size_t>(i)];
 		}
 		if (save_data.is_level_completed(save_data.scen_num)) // already won, no bonus
 		{
 			for(int i = 0; i < 4; i++)
-				bonuscash[i] = 0;
+				bonuscash[static_cast<std::size_t>(i)] = 0;
 			allbonuscash = 0;
 		}
 	}

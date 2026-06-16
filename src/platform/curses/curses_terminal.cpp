@@ -17,6 +17,7 @@
 #include <openglad/platform/curses/kitty_keys.h>
 #include <openglad/platform/curses/text_util.h>
 
+#include <array>
 #include <atomic>
 #include <cerrno>
 #include <clocale>
@@ -131,11 +132,11 @@ bool detect_kitty_support(int in_fd, int out_fd)
         }
         if (pr == 0)
             break; // no (more) data within this slice
-        char tmp[256];
-        const ssize_t n = ::read(in_fd, tmp, sizeof(tmp));
+        std::array<char, 256> tmp;
+        const ssize_t n = ::read(in_fd, tmp.data(), tmp.size());
         if (n <= 0)
             break;
-        reply.append(tmp, static_cast<std::size_t>(n));
+        reply.append(tmp.data(), static_cast<std::size_t>(n));
         supported = kitty::response_indicates_support(reply, done);
     }
     return supported;
@@ -305,10 +306,10 @@ Key CursesTerminal::poll_key(bool block)
                 return Key::none(); // nothing ready and not blocking
             continue;               // blocking: keep waiting
         }
-        char tmp[256];
-        const ssize_t n = ::read(impl_->in_fd, tmp, sizeof(tmp));
+        std::array<char, 256> tmp;
+        const ssize_t n = ::read(impl_->in_fd, tmp.data(), tmp.size());
         if (n > 0) {
-            impl_->decoder.feed(std::string_view(tmp, static_cast<std::size_t>(n)));
+            impl_->decoder.feed(std::string_view(tmp.data(), static_cast<std::size_t>(n)));
             continue; // try to decode what we just read
         }
         if (n == 0)

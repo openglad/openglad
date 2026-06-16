@@ -73,6 +73,8 @@ namespace {
 std::unique_ptr<og::runtime::GameSession> g_web_session;
 bool g_web_boot_started = false;
 std::optional<og::ui::PickerLobbyGameStartConfig> g_web_game_start_config;
+// Mutable C-array kept on purpose: it backs a char* argv[] handed to the C-style
+// io_init(argc, argv) entry point, so it must decay to a writable char*.
 char g_web_arg0[] = "/play.html";
 char* g_web_argv[] = {g_web_arg0, nullptr};
 } // namespace

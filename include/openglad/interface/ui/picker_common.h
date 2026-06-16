@@ -218,9 +218,9 @@ struct ScenarioRosterReport {
     short your_team = 0;            // 0 when allied, else save.my_team
     int cp_count = 0;
     int capture_limit = 0;          // effective: requested > map > default
-    bool team_has_flag[4] = {};
-    bool team_active[4] = {};       // mirror of the init clamp
-    int team_anchor_count[4] = {};
+    std::array<bool, 4> team_has_flag = {};
+    std::array<bool, 4> team_active = {}; // mirror of the init clamp
+    std::array<int, 4> team_anchor_count = {};
     std::vector<ScenarioRosterRow> rows; // grouped, team-major
     bool any_troops_off = false;
     bool any_inactive = false;

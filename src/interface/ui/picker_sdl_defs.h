@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include <cstdint>
 
 // Menu loop return value flags (bitmask).
@@ -106,10 +107,10 @@ struct TeamsMenuWiring
     bool show_ctf = false;        // CTF campaign + lobby host
     bool networked = false;       // genuine networked session (READY shown)
     bool guy_row = false;         // local session with a non-empty roster
-    bool join_visible[4] = {false, false, false, false};
+    std::array<bool, 4> join_visible = {false, false, false, false};
     // Per-team member pager ('>' at the row's right edge): shown only when
     // the team's detail line does not fit one slice.
-    bool pager_visible[4] = {false, false, false, false};
+    std::array<bool, 4> pager_visible = {false, false, false, false};
 };
 
 // Deterministically rewires the TEAMS subscreen nav graph so every visible

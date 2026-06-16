@@ -28,6 +28,7 @@
 // load_scenario_version() without creating game entities.
 
 #include <SDL2/SDL.h>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -45,8 +46,8 @@ static void fuzz_parse_scenario(const uint8_t *data, size_t size)
         return;
 
     // Read and validate FSS header
-    char header[4] = {};
-    if (!rw_read_exact(rw, header, 1, 3))
+    std::array<char, 4> header = {};
+    if (!rw_read_exact(rw, header.data(), 1, 3))
     {
         SDL_RWclose(rw);
         return;
@@ -70,8 +71,8 @@ static void fuzz_parse_scenario(const uint8_t *data, size_t size)
     }
 
     // Read grid name (8 bytes)
-    char gridname[9] = {};
-    if (!rw_read_exact(rw, gridname, 8, 1))
+    std::array<char, 9> gridname = {};
+    if (!rw_read_exact(rw, gridname.data(), 8, 1))
     {
         SDL_RWclose(rw);
         return;
@@ -123,11 +124,11 @@ static void fuzz_parse_scenario(const uint8_t *data, size_t size)
         if (version >= 6)
         {
             uint8_t level = 0;
-            char name[12] = {};
-            char reserved[10] = {};
+            std::array<char, 12> name = {};
+            std::array<char, 10> reserved = {};
             if (!rw_read_exact(rw, &level, 1, 1) ||
-                !rw_read_exact(rw, name, 12, 1) ||
-                !rw_read_exact(rw, reserved, 10, 1))
+                !rw_read_exact(rw, name.data(), 12, 1) ||
+                !rw_read_exact(rw, reserved.data(), 10, 1))
             {
                 SDL_RWclose(rw);
                 return;
@@ -136,8 +137,8 @@ static void fuzz_parse_scenario(const uint8_t *data, size_t size)
         else if (version >= 4)
         {
             // v4-5: extra reserved
-            char reserved[11] = {};
-            if (!rw_read_exact(rw, reserved, 11, 1))
+            std::array<char, 11> reserved = {};
+            if (!rw_read_exact(rw, reserved.data(), 11, 1))
             {
                 SDL_RWclose(rw);
                 return;
@@ -165,12 +166,12 @@ static void fuzz_parse_scenario(const uint8_t *data, size_t size)
             }
 
             // Read and discard line content
-            char buf[256];
+            std::array<char, 256> buf;
             int remaining = width;
             while (remaining > 0)
             {
-                int chunk = remaining < static_cast<int>(sizeof(buf)) ? remaining : static_cast<int>(sizeof(buf));
-                if (!rw_read_exact(rw, buf, static_cast<size_t>(chunk), 1))
+                int chunk = remaining < static_cast<int>(buf.size()) ? remaining : static_cast<int>(buf.size());
+                if (!rw_read_exact(rw, buf.data(), static_cast<size_t>(chunk), 1))
                 {
                     SDL_RWclose(rw);
                     return;

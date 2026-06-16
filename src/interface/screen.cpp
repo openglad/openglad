@@ -50,6 +50,7 @@
 #include <openglad/interface/platform_bridge.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <algorithm>
+#include <array>
 #include <string>
 #include <cstring>
 #include <format>
@@ -1277,9 +1278,9 @@ short screen::endgame(short ending, short nextlevel)
 	}
 	else if (ending == 0) // we won
 	{
-		Uint32 bonuscash[4] = {0, 0, 0, 0};
+		std::array<Uint32, 4> bonuscash = {0, 0, 0, 0};
 		Uint32 allbonuscash = 0;
-		
+
 		// Update all the money!
 		for (int i=0; i < 4; i++)
 		{
@@ -1289,14 +1290,14 @@ short screen::endgame(short ending, short nextlevel)
 		}
 		for (int i=0; i < 4; i++)
 		{
-            bonuscash[i] = get_time_bonus(i);
-			save_data.m_totalcash[i] += bonuscash[i];
-			allbonuscash += bonuscash[i];
+            bonuscash[static_cast<std::size_t>(i)] = get_time_bonus(i);
+			save_data.m_totalcash[i] += bonuscash[static_cast<std::size_t>(i)];
+			allbonuscash += bonuscash[static_cast<std::size_t>(i)];
 		}
 		if (save_data.is_level_completed(save_data.scen_num)) // already won, no bonus
 		{
 			for (int i=0; i < 4; i++)
-				bonuscash[i] = 0;
+				bonuscash[static_cast<std::size_t>(i)] = 0;
 			allbonuscash = 0;
 		}
 	    
@@ -1368,13 +1369,13 @@ screen::ScenarioTitleError screen::get_scen_title_with_error(const char *filenam
 const char* screen::get_scen_title(const char *filename, screen *master)
 {
     (void)master;
-    static char buffer[31] = {};
+    static std::array<char, 31> buffer = {};
     std::string out_title;
     const ScenarioTitleError err = get_scen_title_with_error(filename, out_title);
     if(err != ScenarioTitleError::None)
         out_title = "none";
-    std::snprintf(buffer, sizeof(buffer), "%s", out_title.c_str());
-    return buffer;
+    std::snprintf(buffer.data(), buffer.size(), "%s", out_title.c_str());
+    return buffer.data();
 
 }
 
