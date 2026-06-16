@@ -21,7 +21,7 @@ static bool skeleton_handle_teleport(walker* self)
     return true;
 }
 
-#define BASE_GUY_HP 30
+inline constexpr int BASE_GUY_HP = 30;
 
 static bool skeleton_check_special_ai(living* self)
 {

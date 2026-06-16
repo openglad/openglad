@@ -13,7 +13,9 @@
 #include <openglad/core/util.h>
 #include <openglad/gameplay/statistics.h>
 
-#define BASE_GUY_HP 30
+#include <iterator>
+
+inline constexpr int BASE_GUY_HP = 30;
 
 static void barbarian_level_up(guy* self, std::int32_t level_diff)
 {
@@ -120,7 +122,7 @@ const FamilyDescriptor& describe_family_barbarian()
                        "iron hammers.             \n"
                        "Special: Hurl Boulder",
         .name_pool = barbarian_names,
-        .name_pool_size = sizeof(barbarian_names) / sizeof(barbarian_names[0]),
+        .name_pool_size = std::size(barbarian_names),
         .is_playable = true,
         .playable_order = 1,
     };

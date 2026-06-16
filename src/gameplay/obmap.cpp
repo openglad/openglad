@@ -34,7 +34,7 @@ short collide(short x,  short y,  short xsize,  short ysize,
 
 //#define XRES GRID_SIZE
 //#define YRES GRID_SIZE
-#define OBRES 32 //GRID_SIZE
+inline constexpr int OBRES = 32; //GRID_SIZE
 
 // These are passed in as PIXEL coordinates now...
 obmap::obmap()

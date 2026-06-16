@@ -21,7 +21,7 @@
 #include <list>
 #include <string>
 
-#define BASE_GUY_HP 30
+inline constexpr int BASE_GUY_HP = 30;
 
 short exp_from_action(ExpAction action, walker* w, walker* target, short value);
 

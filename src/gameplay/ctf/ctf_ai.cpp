@@ -42,7 +42,7 @@ inline constexpr int kCtfDefendRadius = 96;
 
 // Manhattan distance, matching walker::distance_to_ob's metric so role
 // decisions agree with the chase logic they hand off to.
-int point_distance(const walker* w, int x, int y)
+[[nodiscard]] int point_distance(const walker* w, int x, int y)
 {
     return std::abs(static_cast<int>(w->xpos()) - x) +
            std::abs(static_cast<int>(w->ypos()) - y);
@@ -50,7 +50,7 @@ int point_distance(const walker* w, int x, int y)
 
 // Directable: a live, unfrozen AI living. Player-controlled walkers
 // (ACT_CONTROL or a bound user) are never touched.
-bool is_directable(const walker* w, int team)
+[[nodiscard]] bool is_directable(const walker* w, int team)
 {
     return w != nullptr && !w->dead() && w->query_order() == Order::Living &&
            w->team_num() == static_cast<unsigned char>(team) &&
@@ -58,7 +58,7 @@ bool is_directable(const walker* w, int team)
            w->stats() != nullptr && w->stats()->frozen_delay() <= 0;
 }
 
-bool carries_enemy_flag(const CtfState& ctf, int team, std::uint32_t entity_id)
+[[nodiscard]] bool carries_enemy_flag(const CtfState& ctf, int team, std::uint32_t entity_id)
 {
     for (int t = 0; t < kCtfMaxFlags; ++t)
     {
@@ -74,7 +74,7 @@ bool carries_enemy_flag(const CtfState& ctf, int team, std::uint32_t entity_id)
     return false;
 }
 
-bool leader_is_flag_entity(const CtfState& ctf, const walker* w)
+[[nodiscard]] bool leader_is_flag_entity(const CtfState& ctf, const walker* w)
 {
     const walker* leader = w->leader();
     if (leader == nullptr)

@@ -101,8 +101,8 @@ void update_overscan_setting()
     og::runtime::current_session->viewport_h_ = og::runtime::current_session->window_h_ * (1.0f - og::runtime::current_session->overscan_percentage_);
 }
 
-#define JOY_DEAD_ZONE 8000
-#define MAX_NUM_JOYSTICKS 10  // Just in case there are joysticks attached that are not useable (e.g. accelerometer)
+inline constexpr int JOY_DEAD_ZONE = 8000;
+inline constexpr int MAX_NUM_JOYSTICKS = 10;  // Just in case there are joysticks attached that are not useable (e.g. accelerometer)
 og::input_native::JoystickHandle joysticks[MAX_NUM_JOYSTICKS];
 
 namespace

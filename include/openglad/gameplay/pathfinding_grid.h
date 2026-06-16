@@ -11,7 +11,7 @@
 #include <cstdint>
 #include <openglad/core/constants.h>
 
-#define MAP_WIDTH 400
+inline constexpr int MAP_WIDTH = 400;
 #define GET_STATE_X(state) (static_cast<std::int32_t>(reinterpret_cast<intptr_t>(state) % MAP_WIDTH) * GRID_SIZE)
 #define GET_STATE_Y(state) (static_cast<std::int32_t>(reinterpret_cast<intptr_t>(state) / MAP_WIDTH) * GRID_SIZE)
 

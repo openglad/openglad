@@ -52,7 +52,7 @@ effect::~effect()
 
 void orbit_offset(int drawcycle, float &xd, float &yd)
 {
-    static const float orbit_table[16][2] = {
+    static constexpr float orbit_table[16][2] = {
         {  0, -24}, { -9, -22}, {-17, -17}, {-22,  -9},
         {-24,   0}, {-22,   9}, {-17,  17}, { -9,  22},
         {  0,  24}, {  9,  22}, { 17,  17}, { 22,   9},

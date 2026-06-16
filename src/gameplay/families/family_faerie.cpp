@@ -12,6 +12,8 @@
 #include <openglad/core/util.h>
 #include <openglad/gameplay/statistics.h>
 
+#include <iterator>
+
 #define BASE_GUY_HP 30
 
 static void faerie_level_up(guy* self, std::int32_t level_diff)
@@ -74,7 +76,7 @@ const FamilyDescriptor& describe_family_faerie()
                        "magic powder which freezes\n"
                        "their enemies.",
         .name_pool = faerie_names,
-        .name_pool_size = sizeof(faerie_names) / sizeof(faerie_names[0]),
+        .name_pool_size = std::size(faerie_names),
         .is_playable = true,
         .playable_order = 13,
     };

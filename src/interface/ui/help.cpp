@@ -426,10 +426,10 @@ static const char* get_content_line(const TabContent& content, int index)
 }
 
 // Tab button dimensions
-#define TAB_Y 20
-#define TAB_HEIGHT 12
-#define TAB_WIDTH 58
-#define TAB_SPACING 2
+inline constexpr Sint32 TAB_Y = 20;
+inline constexpr Sint32 TAB_HEIGHT = 12;
+inline constexpr Sint32 TAB_WIDTH = 58;
+inline constexpr Sint32 TAB_SPACING = 2;
 inline constexpr Sint32 TAB_START_X = HELPTEXT_LEFT + 10;
 inline constexpr Sint32 CONTENT_TOP = TAB_Y + TAB_HEIGHT + 4;  // Content starts below tabs
 

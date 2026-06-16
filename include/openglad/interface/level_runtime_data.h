@@ -194,9 +194,9 @@ public:
         SerializeFailed
     };
 
-    static const char TYPE_CAN_EXIT_WHENEVER = 0x1;  // Can exit without defeating all enemies
-    static const char TYPE_MUST_DESTROY_GENERATORS = 0x2;  // Must destroy generators to exit
-    static const char TYPE_MUST_PROTECT_NAMED_NPCS = 0x4;  // Must protect named NPCs or else you lose
+    static constexpr char TYPE_CAN_EXIT_WHENEVER = 0x1;  // Can exit without defeating all enemies
+    static constexpr char TYPE_MUST_DESTROY_GENERATORS = 0x2;  // Must destroy generators to exit
+    static constexpr char TYPE_MUST_PROTECT_NAMED_NPCS = 0x4;  // Must protect named NPCs or else you lose
 
     std::string grid_file;
     LevelDoneForwarder level_done;

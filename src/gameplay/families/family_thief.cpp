@@ -22,7 +22,7 @@
 #include <string>
 #include <list>
 
-#define BASE_GUY_HP 30
+inline constexpr int BASE_GUY_HP = 30;
 
 static bool thief_check_special_ai(living* self)
 {

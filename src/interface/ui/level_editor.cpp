@@ -57,7 +57,7 @@ void quit(Sint32 arg1);
  * 		Zardus: added scrolling-by-keyboard
  */
 
-#define OK 4 //this function was successful, continue normal operation
+inline constexpr Sint32 OK = 4; //this function was successful, continue normal operation
 
 #include <string>
 #include <vector>
@@ -65,13 +65,13 @@ void quit(Sint32 arg1);
 #define MINIMUM_TIME 0
 
 
-#define S_LEFT 1
-#define S_RIGHT 245
-#define S_UP 1
-#define S_DOWN 188
+inline constexpr Sint32 S_LEFT = 1;
+inline constexpr Sint32 S_RIGHT = 245;
+inline constexpr Sint32 S_UP = 1;
+inline constexpr Sint32 S_DOWN = 188;
 
 static constexpr char VERSION_NUM = 8; // save scenario type info
-#define SCROLLSIZE 8
+inline constexpr Sint32 SCROLLSIZE = 8;
 
 #define NUM_BACKGROUNDS PIX_MAX
 
@@ -793,9 +793,9 @@ bool LevelEditorData::saveLevelAs(int id)
 
 bool button_showing(const std::list<std::pair<SimpleButton*, std::set<SimpleButton*> > >& ls, SimpleButton* elem)
 {
-    for(std::list<std::pair<SimpleButton*, std::set<SimpleButton*> > >::const_iterator e = ls.begin(); e != ls.end(); e++)
+    for(const auto& e : ls)
     {
-        const std::set<SimpleButton*>& s = e->second;
+        const std::set<SimpleButton*>& s = e.second;
         if(s.find(elem) != s.end())
             return true;
     }
@@ -805,15 +805,15 @@ bool button_showing(const std::list<std::pair<SimpleButton*, std::set<SimpleButt
 // Wouldn't spatial partitioning be nice?  Too bad!
 bool LevelEditorData::mouse_on_menus(int mx, int my)
 {
-    for(std::set<SimpleButton*>::const_iterator e = menu_buttons.begin(); e != menu_buttons.end(); e++)
+    for(const SimpleButton* e : menu_buttons)
     {
-        if((*e)->contains(mx, my))
+        if(e->contains(mx, my))
             return true;
     }
-    
-    for(std::set<SimpleButton*>::const_iterator e = mode_buttons.begin(); e != mode_buttons.end(); e++)
+
+    for(const SimpleButton* e : mode_buttons)
     {
-        if((*e)->contains(mx, my))
+        if(e->contains(mx, my))
             return true;
     }
     
@@ -821,12 +821,12 @@ bool LevelEditorData::mouse_on_menus(int mx, int my)
     if(pan_buttons.size() > 0 && Rect(panLeftButton.area.x, panUpButton.area.y, panRightButton.area.x + panRightButton.area.w - panLeftButton.area.x, panDownButton.area.y + panDownButton.area.h - panUpButton.area.y).contains(mx, my))
         return true;
     
-    for(std::list<std::pair<SimpleButton*, std::set<SimpleButton*> > >::const_iterator e = current_menu.begin(); e != current_menu.end(); e++)
+    for(const auto& e : current_menu)
     {
-        const std::set<SimpleButton*>& s = e->second;
-        for(std::set<SimpleButton*>::const_iterator f = s.begin(); f != s.end(); f++)
+        const std::set<SimpleButton*>& s = e.second;
+        for(const SimpleButton* f : s)
         {
-            if((*f)->contains(mx, my))
+            if(f->contains(mx, my))
                 return true;
         }
     }
@@ -1690,9 +1690,9 @@ void LevelEditorData::mouse_motion(int mx, int my, int dx, int dy)
 
 bool is_in_selection(walker* w, const std::vector<SelectionInfo>& selection)
 {
-    for(std::vector<SelectionInfo>::const_iterator e = selection.begin(); e != selection.end(); e++)
+    for(const SelectionInfo& e : selection)
     {
-        if(e->target == w)
+        if(e.target == w)
             return true;
     }
     return false;

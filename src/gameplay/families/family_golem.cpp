@@ -12,7 +12,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 
-#define BASE_GUY_HP 30
+inline constexpr int BASE_GUY_HP = 30;
 
 static void golem_set_difficulty(living* self, std::uint32_t level)
 {

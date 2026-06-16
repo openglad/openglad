@@ -27,12 +27,12 @@ void clear_transport_only_world_state(GameWorld& world)
     world.clear_grid_dirty_tiles();
 }
 
-float clamp_alpha(float alpha)
+float clamp_alpha(float alpha) noexcept
 {
     return std::clamp(alpha, 0.0f, 1.0f);
 }
 
-float lerp(float start, float end, float alpha)
+float lerp(float start, float end, float alpha) noexcept
 {
     return start + (end - start) * alpha;
 }

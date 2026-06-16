@@ -43,7 +43,7 @@ class loader
 {
 	public:
 		explicit loader(EntityFactory entity_factory = {});
-		virtual ~loader(void);
+		virtual ~loader();
 		loader(const loader&) = delete;
 		loader& operator=(const loader&) = delete;
 		loader(loader&&) = delete;

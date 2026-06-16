@@ -66,8 +66,8 @@ walker* sanitize_radar_control(viewscreen* view, LevelRuntimeData& level)
 }
 } // namespace
 
-#define RADAR_X 60  // These are the dimensions of the radar
-#define RADAR_Y 44  // viewport
+inline constexpr int RADAR_X = 60;  // These are the dimensions of the radar
+inline constexpr int RADAR_Y = 44;  // viewport
 
 // ************************************************************
 //  RADAR -- It's nothing like pixie, it just looks like it
@@ -164,9 +164,7 @@ void radar::sync_to_grid(LevelRuntimeData* data)
 
 
 // Destruct the radar and its variables
-radar::~radar()
-{
-}
+radar::~radar() = default;
 
 short radar::draw()
 {

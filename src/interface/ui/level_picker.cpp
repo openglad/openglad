@@ -53,7 +53,7 @@ bool prompt_for_string(const std::string& message, std::string& result);
 void popup_dialog(const char* title, const char* message);
 
 
-#define OK 4
+inline constexpr int OK = 4;
 void draw_highlight_interior(const button& b);
 void draw_highlight(const button& b);
 bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue, bool use_global_vbuttons = true);
@@ -291,8 +291,7 @@ BrowserEntry::BrowserEntry(screen* screenp, int index, int scen_num)
 }
 
 
-BrowserEntry::~BrowserEntry()
-{}
+BrowserEntry::~BrowserEntry() = default;
 
 void BrowserEntry::updateIndex(int index)
 {
@@ -345,7 +344,7 @@ void BrowserEntry::draw(screen* screenp)
 }
 
 
-#define NUM_BROWSE_RADARS 3
+inline constexpr int NUM_BROWSE_RADARS = 3;
 
 // Load a scenario...
 int pick_level(screen *screenp, int default_level, bool enable_delete)
