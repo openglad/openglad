@@ -115,7 +115,7 @@ inline void log_formatted(void (*sink)(const char*),
 
 namespace og::core {
 
-inline float rounded_render_tick_interval_ms(short timer_wait, float speed_factor)
+[[nodiscard]] inline float rounded_render_tick_interval_ms(short timer_wait, float speed_factor)
 {
     constexpr float kTimerWaitToMs = 13.6f;
 

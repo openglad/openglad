@@ -104,9 +104,9 @@ void new_draw_value_bar(Sint32 left, Sint32 top,
 } // end of drawing routine ..
 
 #ifdef REDUCE_OVERSCAN
-#define OVERSCAN_PADDING 6
+inline constexpr int OVERSCAN_PADDING = 6;
 #else
-#define OVERSCAN_PADDING 0
+inline constexpr int OVERSCAN_PADDING = 0;
 #endif
 
 // Flag-state glyph for the per-team CTF readout: that team's flag is at

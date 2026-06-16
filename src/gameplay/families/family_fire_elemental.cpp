@@ -14,6 +14,8 @@
 #include <openglad/core/util.h>
 #include <openglad/gameplay/statistics.h>
 
+#include <iterator>
+
 #define BASE_GUY_HP 30
 
 static bool fire_elemental_check_special_ai(living* self)
@@ -135,7 +137,7 @@ const FamilyDescriptor& describe_family_fire_elemental()
                        "\n"
                        "Special: Starburst",
         .name_pool = elemental_names,
-        .name_pool_size = sizeof(elemental_names) / sizeof(elemental_names[0]),
+        .name_pool_size = std::size(elemental_names),
         .is_playable = true,
         .playable_order = 11,
     };

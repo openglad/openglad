@@ -19,7 +19,7 @@
 
 #include <cmath>
 
-#define BASE_GUY_HP 30
+inline constexpr int BASE_GUY_HP = 30;
 
 // RNG now comes from current_game->world->rng_.
 

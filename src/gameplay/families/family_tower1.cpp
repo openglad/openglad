@@ -9,7 +9,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 
-#define BASE_GUY_HP 30
+inline constexpr int BASE_GUY_HP = 30;
 
 const FamilyDescriptor& describe_family_tower1()
 {

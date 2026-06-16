@@ -294,9 +294,7 @@ viewscreen::viewscreen(short x, short y, short width,
 }
 
 // Destruct the viewscreen and its variables
-viewscreen::~viewscreen()
-{
-}
+viewscreen::~viewscreen() = default;
 
 void viewscreen::clear()
 {

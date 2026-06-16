@@ -19,6 +19,7 @@
 #include <openglad/gameplay/sim_emit.h>
 
 #include <format>
+#include <iterator>
 #include <string>
 #include <list>
 
@@ -212,7 +213,7 @@ const FamilyDescriptor& describe_family_druid()
                        "\n"
                        "Special: Plant Tree",
         .name_pool = druid_names,
-        .name_pool_size = sizeof(druid_names) / sizeof(druid_names[0]),
+        .name_pool_size = std::size(druid_names),
         .is_playable = true,
         .playable_order = 8,
     };

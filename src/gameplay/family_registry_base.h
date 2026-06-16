@@ -32,11 +32,11 @@ public:
         initialized_ = true;
     }
 
-    const Descriptor* get(int family_id) const {
+    [[nodiscard]] const Descriptor* get(int family_id) const {
         return (family_id >= 0 && family_id < NUM) ? &entries_[family_id] : nullptr;
     }
 
-    bool is_initialized() const { return initialized_; }
+    [[nodiscard]] bool is_initialized() const { return initialized_; }
 
 private:
     bool initialized_ = false;

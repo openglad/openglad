@@ -42,7 +42,7 @@ static inline Uint32 rng(Uint32 max_exclusive) {
     return current_game->world->rng_.next(max_exclusive);
 }
 
-#define CHECK_STEP_SIZE 1 // (controller->stepsize()) // was 1
+inline constexpr int CHECK_STEP_SIZE = 1; // (controller->stepsize()) // was 1
 
 // COMMAND declarations defined at bottom
 
@@ -982,10 +982,10 @@ bool statistics::direct_walk()
 
 }
 
-#define PATHING_MIN_DISTANCE 100
+inline constexpr int PATHING_MIN_DISTANCE = 100;
 
 // Note that obmap::size() counts dead things too, which don't do pathfinding
-#define PATHING_SHORT_CIRCUIT_OBJECT_LIMIT 200
+inline constexpr int PATHING_SHORT_CIRCUIT_OBJECT_LIMIT = 200;
 
 bool statistics::walk_to_foe()
 {

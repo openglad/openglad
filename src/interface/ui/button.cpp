@@ -157,10 +157,7 @@ vbutton::vbutton() //for pointers
     mypixie = nullptr;
 }
 
-vbutton::~vbutton()
-{
-    // No manual ownership; menu buttons are owned by `owned_buttons_` in GameSession.
-}
+vbutton::~vbutton() = default;
 
 void vbutton::set_graphic(char family)
 {

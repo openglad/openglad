@@ -39,7 +39,7 @@ bool no_or_yes_prompt(const char* title, const char* message, bool default_value
 
 bool prompt_for_string(const std::string& message, std::string& result);
 
-#define OG_OK 4
+inline constexpr int OG_OK = 4;
 void draw_highlight_interior(const button& b);
 void draw_highlight(const button& b);
 bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue, bool use_global_vbuttons = true);

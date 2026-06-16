@@ -13,6 +13,8 @@
 #include <openglad/core/util.h>
 #include <openglad/gameplay/statistics.h>
 
+#include <iterator>
+
 #define BASE_GUY_HP 30
 
 static bool ghost_check_special_ai(living* self)
@@ -85,7 +87,7 @@ const FamilyDescriptor& describe_family_ghost()
                        "\n"
                        "Special: Scare",
         .name_pool = ghost_names,
-        .name_pool_size = sizeof(ghost_names) / sizeof(ghost_names[0]),
+        .name_pool_size = std::size(ghost_names),
         .is_playable = true,
         .playable_order = 14,
     };

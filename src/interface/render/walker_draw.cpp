@@ -400,8 +400,8 @@ void draw_small_health_bar(walker* w, viewscreen* view_buf)
     }
 }
 
-#define ATTACK_LUNGE_SIZE 5
-#define HIT_RECOIL_SIZE 3
+inline constexpr int ATTACK_LUNGE_SIZE = 5;
+inline constexpr int HIT_RECOIL_SIZE = 3;
 
 // In genuine networked play, same-team peers' characters get a team-color
 // outline so you can tell which are human-controlled. Local split-screen does

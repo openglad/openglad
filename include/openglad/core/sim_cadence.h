@@ -20,7 +20,7 @@ struct SimCadenceResult {
     const char*   trace_event;
 };
 
-inline SimCadenceResult compute_sim_interval_ms(const SimCadenceInputs& in)
+[[nodiscard]] inline SimCadenceResult compute_sim_interval_ms(const SimCadenceInputs& in)
 {
     if (!in.enable_frame_timing) {
         return { 0u, true, true, "schedule_external_timing" };

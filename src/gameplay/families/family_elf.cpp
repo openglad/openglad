@@ -16,6 +16,8 @@
 #include <openglad/core/util.h>
 #include <openglad/gameplay/statistics.h>
 
+#include <iterator>
+
 #define BASE_GUY_HP 30
 
 namespace
@@ -169,7 +171,7 @@ const FamilyDescriptor& describe_family_elf()
                        "\n"
                        "Special: Rocks",
         .name_pool = elf_names,
-        .name_pool_size = sizeof(elf_names) / sizeof(elf_names[0]),
+        .name_pool_size = std::size(elf_names),
         .is_playable = true,
         .playable_order = 2,
     };

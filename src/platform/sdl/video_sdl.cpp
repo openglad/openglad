@@ -36,11 +36,11 @@ static inline Uint32 rng(Uint32 max_exclusive) {
     return ctx().rng->next(max_exclusive);
 }
 
-#define VIDEO_BUFFER_WIDTH 320
-#define VIDEO_WIDTH 320
-#define VIDEO_SIZE 64000
-#define CX_SCREEN 320
-#define CY_SCREEN 200
+inline constexpr int VIDEO_BUFFER_WIDTH = 320;
+inline constexpr int VIDEO_WIDTH = 320;
+inline constexpr int VIDEO_SIZE = 64000;
+inline constexpr int CX_SCREEN = 320;
+inline constexpr int CY_SCREEN = 200;
 
 
 // videoptr lives in GameSession — access via current_session->videoptr_.

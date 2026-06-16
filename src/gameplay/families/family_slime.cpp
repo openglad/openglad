@@ -17,7 +17,7 @@
 
 std::int32_t calculate_level(std::uint32_t temp_exp);
 
-#define BASE_GUY_HP 30
+inline constexpr int BASE_GUY_HP = 30;
 
 static bool slime_check_special_ai(living* self)
 {

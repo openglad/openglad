@@ -216,7 +216,7 @@ std::list<int> list_levels()
 {
     std::list<std::string> ls = list_files("scen/");
     std::list<int> result;
-    for(std::list<std::string>::iterator e = ls.begin(); e != ls.end(); )
+    for(auto e = ls.begin(); e != ls.end(); )
     {
         size_t pos = e->rfind(".fss");
         if(pos == std::string::npos)
@@ -248,7 +248,7 @@ std::vector<int> list_levels_v()
 {
     std::list<std::string> ls = list_files("scen/");
     std::vector<int> result;
-    for(std::list<std::string>::iterator e = ls.begin(); e != ls.end(); )
+    for(auto e = ls.begin(); e != ls.end(); )
     {
         size_t pos = e->rfind(".fss");
         if(pos == std::string::npos)

@@ -4,14 +4,14 @@
 
 namespace og::core {
 
-float render_tick_interval_ms(short timer_wait, float speed_factor);
+[[nodiscard]] float render_tick_interval_ms(short timer_wait, float speed_factor);
 
 // Returns the per-frame interval the browser pacer should target, derived from
 // the configured target_fps. The browser cannot present faster than the host
 // rAF cadence (~16 ms), so values below that floor are clamped up. When
 // `fps <= 0`, the legacy "fast mode" sentinel is preserved by returning 0,
 // which tells the pacer to run every callback without accumulating.
-std::uint32_t browser_frame_target_interval_ms(int fps);
+[[nodiscard]] std::uint32_t browser_frame_target_interval_ms(int fps);
 
 struct BrowserFramePacingResult
 {
@@ -26,7 +26,7 @@ struct BrowserFramePacingResult
     std::uint32_t accumulated_after_step_ms = 0;
 };
 
-BrowserFramePacingResult step_browser_frame_pacing(
+[[nodiscard]] BrowserFramePacingResult step_browser_frame_pacing(
     std::uint32_t accumulated_time_ms,
     std::uint32_t delta_ms,
     std::uint32_t sim_interval_ms);
@@ -45,7 +45,7 @@ public:
     void configure(std::uint32_t interval_ms, std::uint32_t now_ms);
     FrameDeadlineDecision tick(std::uint32_t now_ms);
     void reset(std::uint32_t now_ms);
-    std::uint32_t interval_ms() const { return interval_ms_; }
+    [[nodiscard]] std::uint32_t interval_ms() const { return interval_ms_; }
 
 private:
     std::uint32_t interval_ms_ = 0;

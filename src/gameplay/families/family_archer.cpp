@@ -14,7 +14,9 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 
-#define BASE_GUY_HP 30
+#include <iterator>
+
+inline constexpr int BASE_GUY_HP = 30;
 
 static bool archer_do_special(walker* self)
 {
@@ -163,7 +165,7 @@ const FamilyDescriptor& describe_family_archer()
                        "\n"
                        "Special: Fire Arrows",
         .name_pool = archer_names,
-        .name_pool_size = sizeof(archer_names) / sizeof(archer_names[0]),
+        .name_pool_size = std::size(archer_names),
         .is_playable = true,
         .playable_order = 3,
     };

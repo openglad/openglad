@@ -21,7 +21,7 @@ inline constexpr int kMaxTargetFps = 240;
 // include sandbox. Callers (glad.cpp, tests) instantiate with cfg_store,
 // which is a complete type at the call site.
 template <typename Cfg>
-int target_fps_from_cfg(Cfg& cfg)
+[[nodiscard]] int target_fps_from_cfg(Cfg& cfg)
 {
     const std::string raw = cfg.get_setting("graphics", "target_fps");
     const auto parsed = parse_int_strict(raw);
@@ -38,7 +38,7 @@ void apply_target_fps_to_cfg(Cfg& cfg, int fps)
 }
 
 // Rounds half-up: 60 fps -> 17 ms, 120 fps -> 8 ms, 30 fps -> 33 ms. Always >= 1 ms.
-inline std::uint32_t target_frame_interval_ms(int fps)
+[[nodiscard]] inline std::uint32_t target_frame_interval_ms(int fps)
 {
     if (fps <= 0)
         return 1u;

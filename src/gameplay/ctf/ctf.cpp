@@ -47,7 +47,7 @@ const char* team_color_name(int team)
 
 void fire_ai_respawn(GameWorld& world, const CtfRespawnEntry& entry);
 
-bool is_score_team(unsigned char team)
+[[nodiscard]] bool is_score_team(unsigned char team)
 {
     return team < SCORE_TEAM_COUNT;
 }
@@ -111,8 +111,8 @@ void send_flag_home(GameWorld& world, int team)
 // ob_pass_check, whose treasure overlap dispatches eat_me — a probe must
 // never eat a drumstick or pick up a flag at a position the walker is not
 // actually placed at. Grid check plus a manual blocking-entity scan instead.
-bool spawn_spot_blocked_by(const walker* other, const walker* w,
-                           short x, short y)
+[[nodiscard]] bool spawn_spot_blocked_by(const walker* other, const walker* w,
+                                         short x, short y)
 {
     if (other == nullptr || other == w || other->dead())
         return false;
@@ -130,7 +130,7 @@ bool spawn_spot_blocked_by(const walker* other, const walker* w,
            y < other->ypos() + other->sizey();
 }
 
-bool spawn_spot_clear(GameWorld& world, walker* w, short x, short y)
+[[nodiscard]] bool spawn_spot_clear(GameWorld& world, walker* w, short x, short y)
 {
     if (!world.query_grid_passable(x, y, w))
         return false;
@@ -241,7 +241,7 @@ void revive_player_walker(GameWorld& world, walker* w, int team)
     place_at_anchor(world, w, team);
 }
 
-bool already_scheduled(const CtfState& ctf, std::uint32_t entity_id)
+[[nodiscard]] bool already_scheduled(const CtfState& ctf, std::uint32_t entity_id)
 {
     for (const auto& entry : ctf.respawn_queue)
     {
@@ -256,7 +256,7 @@ bool already_scheduled(const CtfState& ctf, std::uint32_t entity_id)
 // Guy ids are only unique per owning player (each client numbers its roster
 // from its own counter), so identity is the (id, owner) pair — owner tags
 // are kNoOwner for everyone in local play, where bare ids suffice.
-bool live_duplicate_exists(GameWorld& world, const walker* corpse)
+[[nodiscard]] bool live_duplicate_exists(GameWorld& world, const walker* corpse)
 {
     if (corpse->myguy == nullptr)
         return false;

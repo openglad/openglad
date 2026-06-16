@@ -879,7 +879,7 @@ bool SaveData::save(const std::string& filename)
 	// Write the completed levels
 
 	// Make sure our current level is saved
-	std::map<std::string, int>::iterator cur = current_levels.find(current_campaign);
+	auto cur = current_levels.find(current_campaign);
 	if(cur != current_levels.end())
     {
         cur->second = scen_num;
@@ -901,7 +901,7 @@ bool SaveData::save(const std::string& filename)
 	}
 	short num_campaigns = static_cast<short>(raw_campaign_count);
     WRITE_OR_FAIL(&num_campaigns, 2, 1);
-	for(std::map<std::string, std::set<int> >::const_iterator e = completed_levels.begin(); e != completed_levels.end(); e++)
+	for(auto e = completed_levels.begin(); e != completed_levels.end(); e++)
     {
         if (!is_safe_campaign_id(e->first))
         {
@@ -917,7 +917,7 @@ bool SaveData::save(const std::string& filename)
         WRITE_OR_FAIL(campaign, 1, 40);
 
 	        short index = 1;
-	        std::map<std::string, int>::const_iterator g = current_levels.find(e->first);
+	        auto g = current_levels.find(e->first);
 	        if(g != current_levels.end())
 	            index = static_cast<short>(g->second);
 	        WRITE_OR_FAIL(&index, 2, 1);
@@ -934,7 +934,7 @@ bool SaveData::save(const std::string& filename)
 	        }
 	        short num_levels = static_cast<short>(raw_level_count);
 	        WRITE_OR_FAIL(&num_levels, 2, 1);
-        for(std::set<int>::const_iterator f = e->second.begin(); f != e->second.end(); f++)
+        for(auto f = e->second.begin(); f != e->second.end(); f++)
 	        {
 	            // Level index
 	            index = static_cast<short>(*f);
@@ -980,19 +980,19 @@ SaveDataIoError SaveData::save_with_error(const std::string& filename)
 
 bool SaveData::is_level_completed(int level_index) const
 {
-    std::map<std::string, std::set<int> >::const_iterator e = completed_levels.find(current_campaign);
+    auto e = completed_levels.find(current_campaign);
     // Campaign not found?  Then this level is not done.
     if(e == completed_levels.end())
         return false;
 
     // If the level is listed, then it is completed.
-    std::set<int>::const_iterator f = e->second.find(level_index);
+    auto f = e->second.find(level_index);
     return (f != e->second.end());
 }
 
 int SaveData::get_num_levels_completed(const std::string& campaign) const
 {
-    std::map<std::string, std::set<int> >::const_iterator e = completed_levels.find(campaign);
+    auto e = completed_levels.find(campaign);
     // Campaign not found?
     if(e == completed_levels.end())
         return 0;
@@ -1002,7 +1002,7 @@ int SaveData::get_num_levels_completed(const std::string& campaign) const
 
 void SaveData::add_level_completed(const std::string& campaign, int level_index)
 {
-    std::map<std::string, std::set<int> >::iterator e = completed_levels.find(campaign);
+    auto e = completed_levels.find(campaign);
 
     // Campaign not found?  Add it in.
     if(e == completed_levels.end())
@@ -1014,7 +1014,7 @@ void SaveData::add_level_completed(const std::string& campaign, int level_index)
 
 void SaveData::reset_campaign(const std::string& campaign)
 {
-    std::map<std::string, std::set<int> >::iterator e = completed_levels.find(campaign);
+    auto e = completed_levels.find(campaign);
 
     if(e != completed_levels.end())
         e->second.clear();

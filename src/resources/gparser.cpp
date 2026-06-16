@@ -52,18 +52,18 @@ void cfg_store::apply_override(const std::string& category, const std::string& s
 std::string cfg_store::get_setting(const std::string& category, const std::string& setting)
 {
 	// Transient overrides win over persisted settings and are never saved.
-	std::map<std::string, std::map<std::string, std::string> >::iterator o1 = overrides.find(category);
+	auto o1 = overrides.find(category);
 	if(o1 != overrides.end())
 	{
-		std::map<std::string, std::string>::iterator o2 = o1->second.find(setting);
+		auto o2 = o1->second.find(setting);
 		if(o2 != o1->second.end())
 			return o2->second;
 	}
 
-	std::map<std::string, std::map<std::string, std::string> >::iterator a1 = data.find(category);
+	auto a1 = data.find(category);
 	if(a1 != data.end())
 	{
-		std::map<std::string, std::string>::iterator a2 = a1->second.find(setting);
+		auto a2 = a1->second.find(setting);
 		if(a2 != a1->second.end())
 			return a2->second;
 	}
