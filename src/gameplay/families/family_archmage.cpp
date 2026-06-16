@@ -520,7 +520,7 @@ const FamilyDescriptor& describe_family_archmage()
         .on_ani_complete = nullptr,
         .on_melee_hit = nullptr,
         .pix_filename = "archmage.png",
-        .animation_type = FAMILY_ANIM_MAGE,
+        .animation_type = FamilyAnimationType::FAMILY_ANIM_MAGE,
         .ai_line_of_sight = 10,
         .description = "An Archmage takes the     \n"
                        "learnings of the Magi one \n"

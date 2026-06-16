@@ -506,6 +506,7 @@ std::unique_ptr<HostCursesSession> HostCursesSession::create(
     if (!server_transport || !host_client_transport)
         return set_error("host session: missing transport");
 
+    // factory: private ctor — make_unique not applicable
     std::unique_ptr<HostCursesSession> s(new HostCursesSession());
     s->server_transport_ = std::move(server_transport);
     s->host_client_transport_ = std::move(host_client_transport);
@@ -716,6 +717,7 @@ std::unique_ptr<JoinCursesSession> JoinCursesSession::create(
     if (!transport)
         return set_error("join session: missing transport");
 
+    // factory: private ctor — make_unique not applicable
     std::unique_ptr<JoinCursesSession> s(new JoinCursesSession());
     s->transport_ = std::move(transport);
     s->local_player_index_ = local_player_index;

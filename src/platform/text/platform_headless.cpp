@@ -17,6 +17,7 @@
 #include <openglad/interface/session_state.h>
 
 #include <algorithm>
+#include <array>
 #include <memory>
 #include <mutex>
 #include <cstdint>
@@ -62,10 +63,10 @@ std::string get_user_path()
     }
 
 #ifdef _WIN32
-    char path[MAX_PATH];
-    HRESULT hr = SHGetFolderPath(0, CSIDL_LOCAL_APPDATA, 0, 0, path);
+    std::array<char, MAX_PATH> path;
+    HRESULT hr = SHGetFolderPath(0, CSIDL_LOCAL_APPDATA, 0, 0, path.data());
     if (SUCCEEDED(hr)) {
-        std::string s = path;
+        std::string s = path.data();
         size_t pos = 0;
         do {
             pos = s.find_first_of('\\', pos);
@@ -88,17 +89,17 @@ std::string get_asset_path()
     return "";
 #else
     constexpr size_t maxPathSize = 512;
-    char path[maxPathSize];
-    std::fill_n(path, maxPathSize, '\0');
+    std::array<char, maxPathSize> path;
+    std::fill_n(path.data(), maxPathSize, '\0');
 
-    const ssize_t read_len = readlink("/proc/self/exe", path, maxPathSize - 1);
+    const ssize_t read_len = readlink("/proc/self/exe", path.data(), maxPathSize - 1);
     if (read_len < 0) {
         LogError("get_asset_path: readlink(/proc/self/exe) failed\n");
         return "./";
     }
     path[static_cast<size_t>(read_len)] = '\0';
 
-    std::string s = path;
+    std::string s = path.data();
     size_t slash = s.find_last_of('/');
     if (slash != std::string::npos)
         s = s.substr(0, slash);

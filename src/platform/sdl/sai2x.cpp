@@ -503,7 +503,7 @@ void Super2xSaI_ex(unsigned char *src, Uint32 src_pitch, unsigned char *unused, 
 	(void)unused;
 	//int j;
 	unsigned int x, y;
-	Uint32 color[16];
+	std::array<Uint32, 16> color{};
 
 	/* Point to the first 3 lines. */
 	src_line[0] = src;

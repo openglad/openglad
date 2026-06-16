@@ -5,6 +5,7 @@
 #include <openglad/interface/session_state.h>
 #include <openglad/core/util.h>
 
+#include <array>
 #include <format>
 #include <string>
 
@@ -158,7 +159,7 @@ constexpr int kDefaultEightDirKeys[4][NUM_KEYS] = {
         KEYCODE_g, KEYCODE_8, KEYCODE_4, KEYCODE_F8,
     }
 };
-constexpr int kDefaultControlModes[4] = {
+constexpr std::array<int, 4> kDefaultControlModes = {
     static_cast<int>(ControlDirectionMode::FourDirection),
     static_cast<int>(ControlDirectionMode::FourDirection),
     static_cast<int>(ControlDirectionMode::FourDirection),
@@ -197,9 +198,9 @@ void reset_default_player_controls()
             hw().player_mode_keys[p][kModeFourIndex][k] = kDefaultFourDirKeys[p][k];
             hw().player_mode_keys[p][kModeEightIndex][k] = kDefaultEightDirKeys[p][k];
         }
-        hw().player_control_modes[p] = kDefaultControlModes[p];
+        hw().player_control_modes[p] = kDefaultControlModes[static_cast<std::size_t>(p)];
         // Activate the default mode's keymap into player_keys
-        const int idx = control_mode_keymap_index(kDefaultControlModes[p]);
+        const int idx = control_mode_keymap_index(kDefaultControlModes[static_cast<std::size_t>(p)]);
         for (int k = 0; k < NUM_KEYS; ++k)
             og::runtime::current_session->player_keys_[p][k] = hw().player_mode_keys[p][idx][k];
     }

@@ -49,7 +49,7 @@ static void json_entity(std::ostream& os, const walker* w, int index)
 
 static void json_string(std::ostream& os, std::string_view value)
 {
-    static constexpr char kHex[] = "0123456789abcdef";
+    static constexpr std::string_view kHex = "0123456789abcdef";
 
     os << '"';
     for (unsigned char c : value) {
@@ -77,7 +77,8 @@ static void json_string(std::ostream& os, std::string_view value)
             break;
         default:
             if (c < 0x20) {
-                os << "\\u00" << kHex[c >> 4] << kHex[c & 0x0f];
+                os << "\\u00" << kHex[static_cast<std::size_t>(c >> 4)]
+                   << kHex[static_cast<std::size_t>(c & 0x0f)];
             } else {
                 os << static_cast<char>(c);
             }

@@ -249,7 +249,7 @@ TEST(InputKeybinds, native_input_decode_event_covers_non_keyboard_variants)
     SDL_strlcpy(e.text.text, "abc", sizeof(e.text.text));
     ASSERT_TRUE(og::input_native::decode_event(&e, out)) << "decode_event should accept text input";
     ASSERT_EQ((int)og::input_native::EventType::TextInput, (int)out.type) << "text input type should decode";
-    ASSERT_STREQ("abc", out.text) << "text payload should decode";
+    ASSERT_STREQ("abc", out.text.data()) << "text payload should decode";
 
     e = SDL_Event{};
     e.type = SDL_MOUSEWHEEL;

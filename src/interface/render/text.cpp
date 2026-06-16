@@ -20,6 +20,7 @@
 #include <openglad/interface/input.h>
 #include <openglad/interface/native_input.h>
 #include <openglad/interface/base.h>
+#include <array>
 #include <cstdarg>
 #include <cstring>
 #include <span>
@@ -135,39 +136,39 @@ Sint32 text::write_formatted(Sint32 x, Sint32 y, const char* str,
     return center ? 1 : static_cast<Sint32>(len) * static_cast<Sint32>(sizex + 1);
 }
 
-#define TEXT_VFORMAT()                                                     \
-    char text_buffer[256];                                                 \
-    do {                                                                   \
-        if (!formatted_string) return 0;                                   \
-        va_list lst;                                                       \
-        va_start(lst, formatted_string);                                   \
-        vsnprintf(text_buffer, sizeof(text_buffer), formatted_string, lst);\
-        va_end(lst);                                                       \
+#define TEXT_VFORMAT()                                                          \
+    std::array<char, 256> text_buffer;                                          \
+    do {                                                                        \
+        if (!formatted_string) return 0;                                        \
+        va_list lst;                                                            \
+        va_start(lst, formatted_string);                                        \
+        vsnprintf(text_buffer.data(), text_buffer.size(), formatted_string, lst);\
+        va_end(lst);                                                            \
     } while(0)
 
 Sint32 text::write_xy(Sint32 x, Sint32 y, unsigned char color, const char* formatted_string, ...) {
     TEXT_VFORMAT();
-    return write_formatted(x, y, text_buffer, color, false, false, false, 0);
+    return write_formatted(x, y, text_buffer.data(), color, false, false, false, 0);
 }
 
 Sint32 text::write_xy_shadow(Sint32 x, Sint32 y, unsigned char color, const char* formatted_string, ...) {
     TEXT_VFORMAT();
-    return write_formatted(x, y, text_buffer, color, false, true, false, 0);
+    return write_formatted(x, y, text_buffer.data(), color, false, true, false, 0);
 }
 
 Sint32 text::write_xy_center(Sint32 x, Sint32 y, unsigned char color, const char* formatted_string, ...) {
     TEXT_VFORMAT();
-    return write_formatted(x, y, text_buffer, color, true, false, false, 0);
+    return write_formatted(x, y, text_buffer.data(), color, true, false, false, 0);
 }
 
 Sint32 text::write_xy_center_alpha(Sint32 x, Sint32 y, unsigned char color, Uint8 alpha, const char* formatted_string, ...) {
     TEXT_VFORMAT();
-    return write_formatted(x, y, text_buffer, color, true, false, true, alpha);
+    return write_formatted(x, y, text_buffer.data(), color, true, false, true, alpha);
 }
 
 Sint32 text::write_xy_center_shadow(Sint32 x, Sint32 y, unsigned char color, const char* formatted_string, ...) {
     TEXT_VFORMAT();
-    return write_formatted(x, y, text_buffer, color, true, true, false, 0);
+    return write_formatted(x, y, text_buffer.data(), color, true, true, false, 0);
 }
 
 #undef TEXT_VFORMAT

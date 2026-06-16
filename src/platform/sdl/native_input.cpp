@@ -67,7 +67,7 @@ bool decode_event(const void* native_event, EventData& out)
         out.key_repeat = e.key.repeat != 0;
         break;
     case SDL_TEXTINPUT:
-        std::memcpy(out.text, e.text.text, sizeof(out.text));
+        std::memcpy(out.text.data(), e.text.text, out.text.size());
         break;
     case SDL_MOUSEWHEEL:
         out.wheel_y = e.wheel.y;

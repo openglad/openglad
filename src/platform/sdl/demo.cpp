@@ -77,7 +77,7 @@ static const std::array<int, 20> SCENARIO_POOL = {
 };
 
 // Playable families for random team generation.
-static constexpr int PLAYABLE_FAMILIES[] = {
+static constexpr std::array<int, 14> PLAYABLE_FAMILIES = {
     FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
     FAMILY_SKELETON, FAMILY_CLERIC, FAMILY_FIREELEMENTAL, FAMILY_FAERIE,
     FAMILY_SLIME, FAMILY_THIEF, FAMILY_GHOST, FAMILY_DRUID,
@@ -127,7 +127,7 @@ static void spawn_random_player_team(screen* s, std::mt19937& rng)
     std::uniform_int_distribution<int> fam_dist(0, NUM_PLAYABLE - 1);
 
     for (int enemy_level : enemy_levels) {
-        int fam = PLAYABLE_FAMILIES[fam_dist(rng)];
+        int fam = PLAYABLE_FAMILIES[static_cast<std::size_t>(fam_dist(rng))];
         guy g(fam);
         g.teamnum = 0;
         if (enemy_level > g.level)

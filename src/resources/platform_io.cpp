@@ -177,10 +177,10 @@ std::string get_asset_path()
     // WASM console with errors at startup. The buffer is bounded and always
     // explicitly null-terminated, so there is no overflow.
     constexpr size_t maxPathSize = 512;
-    char path[maxPathSize];
-    std::fill_n(path, maxPathSize, '\0');
+    std::array<char, maxPathSize> path;
+    std::fill_n(path.data(), maxPathSize, '\0');
 
-    const ssize_t read_len = readlink("/proc/self/exe", path, maxPathSize - 1);
+    const ssize_t read_len = readlink("/proc/self/exe", path.data(), maxPathSize - 1);
     if (read_len < 0)
     {
         LogError("get_asset_path: readlink(/proc/self/exe) failed\n");
@@ -188,7 +188,7 @@ std::string get_asset_path()
     }
     path[static_cast<size_t>(read_len)] = '\0';
 
-    std::string s = path;
+    std::string s = path.data();
     size_t slash = s.find_last_of('/');
     if(slash != std::string::npos)
     {
@@ -471,10 +471,10 @@ NewFileIoError create_new_map_pix_with_error(const std::string& filename, int w,
 
     static thread_local std::mt19937 grass_rng{std::random_device{}()};
     std::uniform_int_distribution<int> grass_dist(0, 3);
-    const unsigned char grass_tiles[] = {PIX_GRASS1, PIX_GRASS2, PIX_GRASS3, PIX_GRASS4};
+    const std::array<unsigned char, 4> grass_tiles = {PIX_GRASS1, PIX_GRASS2, PIX_GRASS3, PIX_GRASS4};
     for(int i = 0; i < size; i++)
     {
-        grid.data[i] = grass_tiles[grass_dist(grass_rng)];
+        grid.data[i] = grass_tiles[static_cast<size_t>(grass_dist(grass_rng))];
     }
 
     if (!write_pixie_png(filename.c_str(), grid))

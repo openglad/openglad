@@ -201,7 +201,7 @@ EM_JS(char*, current_browser_hostname_js, (), {
 
 std::string url_encode_component(std::string_view text)
 {
-    constexpr char hex_digits[] = "0123456789ABCDEF";
+    constexpr std::string_view hex_digits = "0123456789ABCDEF";
 
     std::string encoded;
     encoded.reserve(text.size());
@@ -216,8 +216,8 @@ std::string url_encode_component(std::string_view text)
         }
 
         encoded.push_back('%');
-        encoded.push_back(hex_digits[(ch >> 4) & 0x0f]);
-        encoded.push_back(hex_digits[ch & 0x0f]);
+        encoded.push_back(hex_digits[static_cast<std::size_t>((ch >> 4) & 0x0f)]);
+        encoded.push_back(hex_digits[static_cast<std::size_t>(ch & 0x0f)]);
     }
     return encoded;
 }
@@ -1247,10 +1247,11 @@ std::string detect_lan_ipv4_address()
         if (!is_usable_ipv4(address))
             return std::nullopt;
 
-        char buffer[INET_ADDRSTRLEN] = {};
-        if (inet_ntop(AF_INET, &address, buffer, sizeof(buffer)) == nullptr)
+        std::array<char, INET_ADDRSTRLEN> buffer = {};
+        if (inet_ntop(AF_INET, &address, buffer.data(),
+                      static_cast<socklen_t>(buffer.size())) == nullptr)
             return std::nullopt;
-        return std::string(buffer);
+        return std::string(buffer.data());
     };
 
     const auto detect_via_udp_socket = [&]() -> std::optional<std::string> {
@@ -1292,10 +1293,10 @@ std::string detect_lan_ipv4_address()
     };
 
     const auto detect_via_hostname = [&]() -> std::optional<std::string> {
-        char hostname[256] = {};
+        std::array<char, 256> hostname = {};
         // Reserve the final byte: POSIX leaves NUL-termination unspecified when
         // the name is truncated, but the zero-initialized buffer keeps [255]=='\0'.
-        if (gethostname(hostname, sizeof(hostname) - 1) != 0 || hostname[0] == '\0')
+        if (gethostname(hostname.data(), hostname.size() - 1) != 0 || hostname[0] == '\0')
             return std::nullopt;
 
         addrinfo hints = {};
@@ -1303,7 +1304,7 @@ std::string detect_lan_ipv4_address()
         hints.ai_socktype = SOCK_DGRAM;
 
         addrinfo* results = nullptr;
-        if (getaddrinfo(hostname, nullptr, &hints, &results) != 0 ||
+        if (getaddrinfo(hostname.data(), nullptr, &hints, &results) != 0 ||
             results == nullptr)
         {
             return std::nullopt;

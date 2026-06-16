@@ -21,6 +21,8 @@
 #include <openglad/gameplay/walker.h>
 
 #include <algorithm>
+#include <array>
+#include <cstddef>
 #include <cstdlib>
 #include <format>
 #include <string>
@@ -375,19 +377,19 @@ void run_respawn_timers(GameWorld& world)
     if (ctf.respawn_queue.empty())
         return;
 
-    bool team_owns_cp[4] = {};
+    std::array<bool, 4> team_owns_cp = {};
     for (int i = 0; i < ctf.cp_count; ++i)
     {
         const std::int8_t owner = ctf.cps[i].owner;
         if (owner >= 0 && owner < 4)
-            team_owns_cp[owner] = true;
+            team_owns_cp[static_cast<std::size_t>(owner)] = true;
     }
 
     for (std::size_t i = 0; i < ctf.respawn_queue.size();)
     {
         CtfRespawnEntry& entry = ctf.respawn_queue[i];
         const std::uint16_t dec =
-            (entry.team < 4 && team_owns_cp[entry.team]) ? 2 : 1;
+            (entry.team < 4 && team_owns_cp[static_cast<std::size_t>(entry.team)]) ? 2 : 1;
         entry.ticks_left -= std::min<std::uint16_t>(dec, entry.ticks_left);
         if (entry.ticks_left > 0)
         {
@@ -540,7 +542,7 @@ void run_control_points(GameWorld& world)
         CtfControlPoint& cp = ctf.cps[i];
         const std::int32_t radius = cp.radius_tiles * GRID_SIZE;
 
-        int present[4] = {};
+        std::array<int, 4> present = {};
         for (const auto& uptr : world.oblist)
         {
             walker* w = uptr.get();
@@ -552,7 +554,7 @@ void run_control_points(GameWorld& world)
             const std::int32_t dx = w->xpos() - cp.x;
             const std::int32_t dy = w->ypos() - cp.y;
             if (dx * dx + dy * dy <= radius * radius)
-                present[team]++;
+                present[static_cast<std::size_t>(team)]++;
         }
 
         // Majority-occupancy contender: the strongest team contests the
@@ -565,10 +567,10 @@ void run_control_points(GameWorld& world)
         int total_present = 0;
         for (int t = 0; t < 4; ++t)
         {
-            total_present += present[t];
-            if (present[t] > strongest_count)
+            total_present += present[static_cast<std::size_t>(t)];
+            if (present[static_cast<std::size_t>(t)] > strongest_count)
             {
-                strongest_count = present[t];
+                strongest_count = present[static_cast<std::size_t>(t)];
                 strongest = t;
             }
         }
@@ -713,8 +715,8 @@ void run_win_check(GameWorld& world)
 
 void spawn_bot_squad(GameWorld& world, int team)
 {
-    static constexpr int kSquad[5] = {FAMILY_SOLDIER, FAMILY_ARCHER,
-                                      FAMILY_ELF, FAMILY_MAGE, FAMILY_THIEF};
+    static constexpr std::array<int, 5> kSquad = {FAMILY_SOLDIER, FAMILY_ARCHER,
+                                                  FAMILY_ELF, FAMILY_MAGE, FAMILY_THIEF};
     const std::int32_t level = std::max(1, world.difficulty / 100 + 1);
     for (int member : kSquad)
     {
@@ -882,7 +884,7 @@ void ctf_initialize_for_level(GameWorld& world)
     // themselves are never stripped.
     if (world.ctf_requested_strip_scenario_troops != 0)
     {
-        bool team_has_myguy[4] = {};
+        std::array<bool, 4> team_has_myguy = {};
         for (const auto& uptr : world.oblist)
         {
             walker* w = uptr.get();
@@ -893,7 +895,7 @@ void ctf_initialize_for_level(GameWorld& world)
             }
             const unsigned char team = w->team_num();
             if (is_score_team(team))
-                team_has_myguy[team] = true;
+                team_has_myguy[static_cast<std::size_t>(team)] = true;
         }
         for (const auto& uptr : world.oblist)
         {
@@ -907,7 +909,7 @@ void ctf_initialize_for_level(GameWorld& world)
                 continue;
             const unsigned char team = w->team_num();
             if (!is_score_team(team) || !ctf.team_active[team] ||
-                !team_has_myguy[team])
+                !team_has_myguy[static_cast<std::size_t>(team)])
             {
                 continue;
             }
@@ -939,19 +941,19 @@ void ctf_initialize_for_level(GameWorld& world)
     ctf.team_count = static_cast<std::uint8_t>(active_count);
 
     // Bot squads for active teams that field no livings.
-    int living_per_team[4] = {};
+    std::array<int, 4> living_per_team = {};
     for (const auto& uptr : world.oblist)
     {
         walker* w = uptr.get();
         if (w != nullptr && !w->dead() && w->query_order() == Order::Living &&
             is_score_team(w->team_num()))
         {
-            living_per_team[w->team_num()]++;
+            living_per_team[static_cast<std::size_t>(w->team_num())]++;
         }
     }
     for (int t = 0; t < 4; ++t)
     {
-        if (ctf.team_active[t] && living_per_team[t] == 0)
+        if (ctf.team_active[t] && living_per_team[static_cast<std::size_t>(t)] == 0)
             spawn_bot_squad(world, t);
     }
 

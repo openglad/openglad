@@ -182,7 +182,7 @@ void handle_text_event(const void* native_event)
     og::input_native::EventData event;
     if (!as_event_data(native_event, event))
         return;
-    og::runtime::current_session->raw_text_input_ = event.text;
+    og::runtime::current_session->raw_text_input_ = event.text.data();
     og::runtime::current_session->text_input_event_ = 1;
 }
 

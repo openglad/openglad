@@ -266,6 +266,7 @@ std::unique_ptr<LocalCursesSession> LocalCursesSession::create(SaveData& save,
         return nullptr;
     };
 
+    // factory: private ctor — make_unique not applicable
     std::unique_ptr<LocalCursesSession> s(new LocalCursesSession(save));
     og::server::copy_headless_server_save_data(s->server_save_, save);
     og::server::copy_headless_server_save_data(s->client_save_, save);

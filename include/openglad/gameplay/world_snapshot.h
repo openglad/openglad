@@ -461,7 +461,7 @@ constexpr bool entity_snapshot_field_table_is_valid()
         return false;
     }
 
-    bool seen_bits[og::dirty::FIELD_COUNT] = {};
+    std::array<bool, og::dirty::FIELD_COUNT> seen_bits = {};
 
     for (std::size_t i = 0; i < kEntitySnapshotTableFieldCount; ++i) {
         const EntitySnapshotFieldDesc& field = kEntitySnapshotFields[i];

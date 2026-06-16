@@ -41,6 +41,7 @@
 #include <openglad/interface/ui/level_editor_state.h>
 #include <openglad/interface/session_state.h>
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <format>
@@ -171,7 +172,7 @@ bool Rectf::contains(float X, float Y) const
     return (x <= X && x + w >= X && y + h <= Y && y >= Y);
 }
 
-static constexpr Sint32 kDefaultBackgrounds[] = {
+static constexpr std::array<Sint32, 100> kDefaultBackgrounds = {
                          PIX_GRASS1, PIX_GRASS2, PIX_GRASS_DARK_1, PIX_GRASS_DARK_2,
                          //PIX_GRASS_DARK_B1, PIX_GRASS_DARK_BR, PIX_GRASS_DARK_R1, PIX_GRASS_DARK_R2,
                          PIX_BOULDER_1, PIX_GRASS_DARK_LL, PIX_GRASS_DARK_UR, PIX_GRASS_RUBBLE,
@@ -231,9 +232,6 @@ static constexpr Sint32 kDefaultBackgrounds[] = {
                          PIX_CLIFF_LEFT, PIX_CLIFF_BOTTOM, PIX_CLIFF_TOP, PIX_CLIFF_RIGHT,
                          PIX_CLIFF_LEFT, PIX_CLIFF_TOP_L, PIX_CLIFF_TOP_R, PIX_CLIFF_RIGHT,
                      };
-static constexpr std::size_t kNumBackgrounds =
-    sizeof(kDefaultBackgrounds) / sizeof(kDefaultBackgrounds[0]);
-
 static inline auto& backgrounds()
 {
     return eds().backgrounds;
@@ -2817,8 +2815,8 @@ int level_editor_test_exercise_internal_helpers()
     check(data.level != nullptr);
     if (data.level != nullptr)
     {
-        backgrounds().assign(kDefaultBackgrounds,
-                             kDefaultBackgrounds + kNumBackgrounds);
+        backgrounds().assign(kDefaultBackgrounds.begin(),
+                             kDefaultBackgrounds.end());
         object_pane().clear();
         object_pane().push_back({Order::Living, FAMILY_SOLDIER});
         object_pane().push_back({Order::Generator, FAMILY_TENT});
@@ -3515,7 +3513,7 @@ Sint32 level_editor()
     
     // Initialize palette for cycling
     load_and_set_palette("our.pal", eds().scenpalette);
-    backgrounds().assign(kDefaultBackgrounds, kDefaultBackgrounds + kNumBackgrounds);
+    backgrounds().assign(kDefaultBackgrounds.begin(), kDefaultBackgrounds.end());
     eds().maxrows = static_cast<std::int32_t>(backgrounds().size() / 4);
     
     if(data.reloadCampaign())

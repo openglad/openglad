@@ -58,6 +58,7 @@ PlatformBridge make_sdl_platform_bridge()
     bridge.stop_music = [] {};
 
     bridge.create_surface = [](int, int) -> video* {
+        // ownership transferred to caller's RAII immediately
         return new sdl_video(true);
     };
 
@@ -204,7 +205,7 @@ GameSession::GameSession(const Config& session_cfg)
         // demo sub-sessions).  Copy the authoritative palette here so that
         // rendering with this session active uses correct colors.
         std::copy(screen_owner_->ourpalette.begin(),
-                  screen_owner_->ourpalette.end(), curpal_);
+                  screen_owner_->ourpalette.end(), curpal_.begin());
     }
 
     // Create per-session render surface for sub-sessions sharing a display.

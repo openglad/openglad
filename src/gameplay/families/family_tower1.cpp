@@ -53,7 +53,7 @@ const FamilyDescriptor& describe_family_tower1()
         .on_ani_complete = nullptr,
         .on_melee_hit = nullptr,
         .pix_filename = "towersm1.png",
-        .animation_type = FAMILY_ANIM_STATIC,
+        .animation_type = FamilyAnimationType::FAMILY_ANIM_STATIC,
         .ai_line_of_sight = 10,
         .description = nullptr,
         .name_pool = nullptr,

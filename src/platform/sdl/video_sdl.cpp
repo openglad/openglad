@@ -25,6 +25,7 @@
 #include <openglad/legacy/base.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/resources/io.h>
+#include <array>
 #include <format>
 #include <cstring>
 #include <openglad/platform/game_context.h>
@@ -775,8 +776,8 @@ void sdl_video::do_cycle(Sint32 curmode, Sint32 maxmode)
 {
 	Sint32 i;
 	//buffers: PORT: changed these two arrays to ints
-	int tempcol[3];
-	int curcol[3];
+	std::array<int, 3> tempcol{};
+	std::array<int, 3> curcol{};
 
 	curmode %= maxmode;   // avoid over-runs
 
