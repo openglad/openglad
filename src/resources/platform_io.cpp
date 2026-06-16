@@ -16,6 +16,7 @@
  */
 
 #include <openglad/resources/io.h>
+#include <openglad/resources/gparser.h>
 #include <openglad/core/util.h>
 #include <openglad/resources/level_file_io.h>
 #include <openglad/gameplay/game_world.h>
@@ -260,6 +261,7 @@ static void create_dataopenglad()
     mkdir((user_path + "campaigns/").c_str(), 0770);
     mkdir((user_path + "save/").c_str(), 0770);
     mkdir((user_path + "cfg/").c_str(), 0770);
+    mkdir((user_path + "extra_pix/").c_str(), 0770);
 }
 
 #ifdef __EMSCRIPTEN__
@@ -384,6 +386,52 @@ void io_exit()
     sync_filesystem();
 #endif
     og::resources::deinit();
+}
+
+static std::string s_mounted_sprite_sheet_dir;
+
+// A sprite-sheet pack is always a single directory living directly under
+// extra_pix/. Reject any name containing a path separator or a "."/".."
+// component so a hand-edited config can't escape extra_pix/ and mount an
+// arbitrary host directory over pix/.
+static bool is_safe_sprite_sheet_name(const std::string& name)
+{
+    if (name.find('/') != std::string::npos || name.find('\\') != std::string::npos)
+        return false;
+    return name != "." && name != "..";
+}
+
+bool apply_sprite_sheet_setting()
+{
+    std::string name = cfg.get_setting("graphics", "sprite_sheet");
+    if (!name.empty() && !is_safe_sprite_sheet_name(name)) {
+        LogWarn("Sprite sheet '{}': invalid pack name, ignoring\n", name);
+        name.clear();
+    }
+    const std::string new_dir = name.empty() ? "" : (get_user_path() + "extra_pix/" + name);
+
+    if (s_mounted_sprite_sheet_dir == new_dir)
+        return true;
+
+    if (!s_mounted_sprite_sheet_dir.empty()) {
+        const std::string old_dir = s_mounted_sprite_sheet_dir;
+        if (!og::resources::unmount(old_dir.c_str())) {
+            LogWarn("Sprite sheet '{}': failed to unmount, keeping previous mount state\n", old_dir);
+            return false;
+        }
+        s_mounted_sprite_sheet_dir.clear();
+    }
+
+    if (!new_dir.empty()) {
+        if (!og::resources::mount(new_dir.c_str(), "pix/", 0)) {
+            LogWarn("Sprite sheet '{}': failed to mount\n", new_dir);
+            return false;
+        }
+        Log("Sprite sheet mounted: {}\n", new_dir);
+        s_mounted_sprite_sheet_dir = new_dir;
+    }
+
+    return true;
 }
 
 void sync_filesystem()

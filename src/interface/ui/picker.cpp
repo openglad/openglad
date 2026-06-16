@@ -47,10 +47,11 @@
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/screen_lifecycle.h>
 #include <array>
+#include <cctype>
 #include <cstddef>
 #include <cstring>
-#include <cctype>
 #include <exception>
+#include <filesystem>
 #include <format>
 #include <memory>
 #include <optional>
@@ -1054,9 +1055,9 @@ inline constexpr Sint32 BUTTON_PITCH = BUTTON_HEIGHT + BUTTON_PADDING;
 static const button k_main_options_buttons[] =
 {
     button("options_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=12, .down=1, .right=15}),
-    button("toggle_sound", "Sound", KEYSTATE_UNKNOWN, 135, 10 + BUTTON_PITCH, 50, 15, button_action_id(ButtonAction::ToggleSound), -1, MenuNav{.up=0, .down=2}),
+    button("toggle_sound", "Sound", KEYSTATE_UNKNOWN, 135, 10 + BUTTON_PITCH, 50, 15, button_action_id(ButtonAction::ToggleSound), -1, MenuNav{.up=0, .down=2, .right=16}),
     button("toggle_rendering", "NORMAL", KEYSTATE_UNKNOWN, 130, 10 + 2*BUTTON_PITCH, 60, 15, button_action_id(ButtonAction::ToggleRenderingEngine), -1, MenuNav{.up=1, .down=4, .right=3}),
-    button("toggle_fullscreen", "Fullscreen", KEYSTATE_UNKNOWN, 210, 10 + 2*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleFullscreen), -1, MenuNav{.up=1, .down=5, .left=2}),
+    button("toggle_fullscreen", "Fullscreen", KEYSTATE_UNKNOWN, 210, 10 + 2*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleFullscreen), -1, MenuNav{.up=16, .down=5, .left=2}),
     button("overscan_minus", "- ", KEYSTATE_UNKNOWN, 130, 10 + 3*BUTTON_PITCH, 30, 15, button_action_id(ButtonAction::OverscanAdjust), -1, MenuNav{.up=2, .down=6, .right=5}),
     button("overscan_plus", "+ ", KEYSTATE_UNKNOWN, 170, 10 + 3*BUTTON_PITCH, 30, 15, button_action_id(ButtonAction::OverscanAdjust), 1, MenuNav{.up=3, .down=7, .left=4}),
     button("toggle_mini_hp_bar", "Mini HP bar", KEYSTATE_UNKNOWN, 80, 10 + 4*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleMiniHpBar), -1, MenuNav{.up=4, .down=8, .right=7}),
@@ -1067,9 +1068,11 @@ static const button k_main_options_buttons[] =
     button("toggle_damage_numbers", "Damage numbers", KEYSTATE_UNKNOWN, 210, 10 + 6*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleDamageNumbers), -1, MenuNav{.up=9, .down=13, .left=10}),
     button("toggle_heal_numbers", "Healing numbers", KEYSTATE_UNKNOWN, 80, 10 + 7*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleHealNumbers), -1, MenuNav{.up=10, .down=0, .right=13}),
     button("toggle_gore", "Gore", KEYSTATE_UNKNOWN, 210, 10 + 7*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleGore), -1, MenuNav{.up=11, .down=14, .left=12}),
-    button("restore_defaults", "RESTORE DEFAULTS", KEYSTATE_UNKNOWN, 210, 10, 100, 15, button_action_id(ButtonAction::RestoreDefaultSettings), -1, MenuNav{.up=13, .down=1, .left=15}),
+    button("restore_defaults", "RESTORE DEFAULTS", KEYSTATE_UNKNOWN, 210, 10, 100, 15, button_action_id(ButtonAction::RestoreDefaultSettings), -1, MenuNav{.up=13, .down=16, .left=15}),
     button("player_controls", "CONTROLS", KEYSTATE_UNKNOWN, 100, 10, 80, 15,
         button_action_id(ButtonAction::OpenControlSettings), -1, MenuNav{.up=13, .down=1, .left=0, .right=14}),
+    button("pick_sprite_sheet", "Sprite Sheet", KEYSTATE_UNKNOWN, 210, 10 + BUTTON_PITCH, 90, 15,
+        button_action_id(ButtonAction::PickSpriteSheet), 0, MenuNav{.up=14, .down=3, .left=1}),
 };
 
 // Control options: 4 player sections at 28px pitch, each with mode + remap buttons.
@@ -1549,6 +1552,17 @@ void draw_toggle_effect_button(button& b, const std::string& category, const std
     mytext.write_xy_center(b.x + b.sizex/2, b.y + b.sizey/2 - 3, DARK_BLUE, "%s", b.label.c_str());
 }
 
+void draw_sprite_sheet_button(button& b)
+{
+    if (b.hidden || b.no_draw)
+        return;
+    if (cfg.get_setting("graphics", "sprite_sheet").empty())
+        return;
+    og::runtime::current_session->myscreen_->draw_button_colored(b.x-1, b.y-1, b.x + b.sizex, b.y + b.sizey, 1, LIGHT_GREEN);
+    text& mytext = og::runtime::current_session->myscreen_->text_normal;
+    mytext.write_xy_center(b.x + b.sizex/2, b.y + b.sizey/2 - 3, DARK_BLUE, "%s", b.label.c_str());
+}
+
 static std::string get_key_display_name_short(int keycode)
 {
     const char* key_name = og::input_native::key_name(keycode);
@@ -1824,6 +1838,10 @@ Sint32 main_options()
         reset_buttons(og::runtime::current_session->localbuttons_, buttons, num_buttons, retvalue);
         buttons[2].label = cfg.get_setting("graphics", "render");
         og::runtime::current_session->allbuttons_[2]->label = buttons[2].label;
+        {
+            buttons[16].label = "Sprite Sheet";
+            og::runtime::current_session->allbuttons_[16]->label = buttons[16].label;
+        }
 		
 		// Draw
 		og::runtime::current_session->myscreen_->clear_window();  // Clearing entire window because the overscan may have been adjusted.
@@ -1852,7 +1870,8 @@ Sint32 main_options()
 		draw_toggle_effect_button(buttons[11], "effects", "damage_numbers");
 		draw_toggle_effect_button(buttons[12], "effects", "heal_numbers");
 		draw_toggle_effect_button(buttons[13], "effects", "gore");
-        
+        draw_sprite_sheet_button(buttons[16]);
+
         draw_highlight(buttons[highlighted_button]);
         og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
         og::input_native::sleep_ms(10);
@@ -2165,6 +2184,158 @@ int get_scen_num_from_filename(const char* name)
    }
 }
 
+
+static void spritesheet_wait_for_mouse_release()
+{
+    MouseState& ms = query_mouse();
+    while (ms.left) {
+        get_input_events(true);
+        og::input_native::sleep_ms(10);
+    }
+}
+
+
+static std::string pick_spritesheet()
+{
+    std::string extra_dir = get_user_path() + "extra_pix/";
+    std::vector<std::string> packs;
+    {
+        std::error_code ec;
+        for (const auto& entry : std::filesystem::directory_iterator(extra_dir, ec))
+            if (entry.is_directory())
+                packs.push_back(entry.path().filename().string());
+    }
+    std::sort(packs.begin(), packs.end());
+
+    std::string selection = cfg.get_setting("graphics", "sprite_sheet");
+
+    constexpr int LIST_X      = 60;
+    constexpr int LIST_W      = 200;
+    constexpr int ROW_H       = 16;
+    constexpr int TITLE_Y     = 12;
+    constexpr int LIST_Y      = 32;
+    constexpr int BACK_Y      = 178;
+    constexpr int VISIBLE_ROWS = (BACK_Y - LIST_Y) / ROW_H;  // 9
+    constexpr int SCROLL_H    = VISIBLE_ROWS * ROW_H;
+    constexpr int SCROLL_X    = LIST_X + LIST_W + 2;
+    constexpr int SCROLL_W    = 8;
+
+    int scroll_top = 0;
+
+    button back_btn[] = {
+        button("ss_back", "BACK", KEYSTATE_ESCAPE, 10, BACK_Y, 50, 15,
+               button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{})
+    };
+    int highlighted = 0;
+    og::runtime::current_session->localbuttons_ = init_buttons(back_btn, 1);
+
+    while (true) {
+        Sint32 ret = 0;
+        if (leftmouse(back_btn)) {
+            if (og::runtime::current_session->localbuttons_->leftclick() & MENU_EXIT)
+                break;
+        }
+        handle_menu_nav(back_btn, highlighted, ret);
+        if (ret & MENU_EXIT)
+            break;
+
+        const int total_items = 1 + static_cast<int>(packs.size());
+        const bool need_scroll = total_items > VISIBLE_ROWS;
+
+        // Mouse wheel
+        short scroll_delta = get_and_reset_scroll_amount();
+        if (scroll_delta < 0 && scroll_top + VISIBLE_ROWS < total_items)
+            ++scroll_top;
+        if (scroll_delta > 0 && scroll_top > 0)
+            --scroll_top;
+
+        MouseState& ms = query_mouse();
+        if (ms.left) {
+            int mx = static_cast<int>(ms.x);
+            int my = static_cast<int>(ms.y);
+
+            if (need_scroll && mx >= SCROLL_X && mx < SCROLL_X + SCROLL_W
+                    && my >= LIST_Y && my < LIST_Y + SCROLL_H) {
+                int thumb_h = std::max(ROW_H, SCROLL_H * VISIBLE_ROWS / total_items);
+                int thumb_range = SCROLL_H - thumb_h;
+                int thumb_y = LIST_Y + scroll_top * thumb_range / (total_items - VISIBLE_ROWS);
+                if (my < thumb_y)
+                    scroll_top = std::max(0, scroll_top - 1);
+                else if (my >= thumb_y + thumb_h)
+                    scroll_top = std::min(total_items - VISIBLE_ROWS, scroll_top + 1);
+                spritesheet_wait_for_mouse_release();
+            } else if (mx >= LIST_X && mx < LIST_X + LIST_W
+                    && my >= LIST_Y && my < LIST_Y + SCROLL_H) {
+                int item = scroll_top + (my - LIST_Y) / ROW_H;
+                if (item == 0) {
+                    selection = "";
+                } else if (item - 1 < static_cast<int>(packs.size())) {
+                    const std::string& pack = packs[item - 1];
+                    selection = (selection == pack) ? "" : pack;
+                }
+                spritesheet_wait_for_mouse_release();
+            }
+        }
+
+        screen* scr = og::runtime::current_session->myscreen_;
+        text& mytext = scr->text_normal;
+        scr->clear_window();
+        scr->draw_button(0, 0, 320, 200, 0);
+        scr->draw_button_inverted(4, 4, 312, 192);
+        mytext.write_xy(LIST_X, TITLE_Y, DARK_BLUE, "Select Sprite Sheet");
+
+        auto draw_row = [&](int x, int y, int w, int h,
+                            const std::string& label, bool selected) {
+            if (selected)
+                scr->draw_button_colored(x-1, y-1, x+w, y+h, 1, LIGHT_GREEN);
+            else
+                scr->draw_button(x-1, y-1, x+w, y+h, 1);
+            mytext.write_xy_center(x + w/2, y + 3, DARK_BLUE, "%s", label.c_str());
+        };
+
+        for (int row = 0; row < VISIBLE_ROWS; ++row) {
+            int item = scroll_top + row;
+            if (item >= total_items) break;
+            int ry = LIST_Y + row * ROW_H;
+            if (item == 0)
+                draw_row(LIST_X, ry, LIST_W, ROW_H, "Standard", selection.empty());
+            else
+                draw_row(LIST_X, ry, LIST_W, ROW_H, packs[item - 1], selection == packs[item - 1]);
+        }
+        if (packs.empty())
+            mytext.write_xy(LIST_X + 4, LIST_Y + ROW_H + 3, GREY, "No packs in extra_pix/");
+
+        if (need_scroll) {
+            int thumb_h = std::max(ROW_H, SCROLL_H * VISIBLE_ROWS / total_items);
+            int thumb_range = SCROLL_H - thumb_h;
+            int thumb_y = LIST_Y + scroll_top * thumb_range / (total_items - VISIBLE_ROWS);
+            scr->draw_button(SCROLL_X - 1, LIST_Y - 1, SCROLL_X + SCROLL_W, LIST_Y + SCROLL_H, 0);
+            scr->draw_button_colored(SCROLL_X, thumb_y, SCROLL_X + SCROLL_W - 1, thumb_y + thumb_h, 1, GREY);
+        }
+
+        draw_buttons(back_btn, 1);
+        scr->buffer_to_screen(0, 0, 320, 200);
+        og::input_native::sleep_ms(10);
+    }
+
+    return selection;
+}
+
+Sint32 do_pick_spritesheet(Sint32)
+{
+    const std::string old_selection = cfg.get_setting("graphics", "sprite_sheet");
+    const std::string new_selection = pick_spritesheet();
+    cfg.apply_setting("graphics", "sprite_sheet", new_selection);
+    if (!apply_sprite_sheet_setting()) {
+        cfg.apply_setting("graphics", "sprite_sheet", old_selection);
+        if (apply_sprite_sheet_setting())
+            sdl_entity_loader()->reload_graphics();
+        popup_dialog("Sprite Sheet", "Could not load\nselected sprite sheet.");
+        return MENU_REDRAW;
+    }
+    sdl_entity_loader()->reload_graphics();
+    return MENU_REDRAW;
+}
 
 Sint32 do_pick_campaign(Sint32 arg1)
 {

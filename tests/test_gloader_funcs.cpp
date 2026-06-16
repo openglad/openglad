@@ -3,11 +3,17 @@
 #include <openglad/interface/render/pixien.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/resources/gloader.h>
+#include <openglad/core/ctf_constants.h>
 #include <openglad/resources/gparser.h>
+#include <openglad/resources/filesystem.h>
 #include <openglad/legacy/base.h>
 #include <openglad/interface/screen.h>
 #include <openglad/platform/game_context.h>
 #include <gtest/gtest.h>
+#include <filesystem>
+#include <fstream>
+
+bool apply_sprite_sheet_setting();
 
 #include <algorithm>
 #include <cstddef>
@@ -340,4 +346,205 @@ TEST(GloaderFuncs, gloader_active_config_branch_with_ctx_and_global_cfg)
         << "gore toggle should select distinct blood sprite data";
 
     cfg.apply_setting("effects", "gore", prev_global_gore);
+}
+
+
+// ---------------------------------------------------------------------------
+// Custom spritesheet PhysFS override
+// ---------------------------------------------------------------------------
+
+namespace {
+
+struct PixieSnapshot {
+    unsigned char frames = 0;
+    unsigned char w = 0;
+    unsigned char h = 0;
+    std::vector<unsigned char> pixels;
+};
+
+PixieSnapshot snapshot_pixie(const PixieData* pix)
+{
+    PixieSnapshot snap;
+    if (pix == nullptr || !pix->valid())
+        return snap;
+    snap.frames = pix->frames;
+    snap.w = pix->w;
+    snap.h = pix->h;
+    const std::size_t len =
+        static_cast<std::size_t>(pix->frames) * pix->w * pix->h;
+    snap.pixels.assign(pix->data.get(), pix->data.get() + len);
+    return snap;
+}
+
+bool operator==(const PixieSnapshot& lhs, const PixieSnapshot& rhs)
+{
+    return lhs.frames == rhs.frames && lhs.w == rhs.w && lhs.h == rhs.h &&
+        lhs.pixels == rhs.pixels;
+}
+
+bool operator!=(const PixieSnapshot& lhs, const PixieSnapshot& rhs)
+{
+    return !(lhs == rhs);
+}
+
+void write_file_bytes(const std::filesystem::path& path,
+                      const std::vector<std::uint8_t>& bytes)
+{
+    std::ofstream f(path, std::ios::binary);
+    f.write(reinterpret_cast<const char*>(bytes.data()),
+            static_cast<std::streamsize>(bytes.size()));
+}
+
+} // namespace
+
+TEST(GloaderFuncs, custom_spritesheet_overrides_default_pix)
+{
+    const char* config_dir = std::getenv("OPENGLAD_CONFIG_DIR");
+    ASSERT_TRUE(config_dir != nullptr) << "OPENGLAD_CONFIG_DIR must be set by the test harness";
+
+    // Read the standard footman.png so we have a baseline to compare against.
+    const std::vector<std::uint8_t> standard_bytes = og::resources::read_file("pix/footman.png");
+    ASSERT_FALSE(standard_bytes.empty()) << "standard footman.png must be present";
+
+    // Write a custom footman.png with distinct content into a temporary pack directory.
+    const std::filesystem::path pack_dir =
+        std::filesystem::path(config_dir) / "extra_pix" / "test_pack";
+    std::filesystem::create_directories(pack_dir);
+    const std::vector<std::uint8_t> custom_bytes = {0x00, 0x01, 0x02, 0x03, 0x04};
+    write_file_bytes(pack_dir / "footman.png", custom_bytes);
+
+    const std::string orig = cfg.get_setting("graphics", "sprite_sheet");
+
+    // Start from a clean (unmounted) state.
+    cfg.apply_setting("graphics", "sprite_sheet", "");
+    ASSERT_TRUE(apply_sprite_sheet_setting());
+
+    // Mount the custom pack — footman.png must now resolve to the custom version.
+    cfg.apply_setting("graphics", "sprite_sheet", "test_pack");
+    ASSERT_TRUE(apply_sprite_sheet_setting());
+    ASSERT_EQ(custom_bytes, og::resources::read_file("pix/footman.png"))
+        << "custom pack must shadow the standard footman.png";
+
+    // Unmount — standard footman.png must be visible again.
+    cfg.apply_setting("graphics", "sprite_sheet", "");
+    ASSERT_TRUE(apply_sprite_sheet_setting());
+    ASSERT_EQ(standard_bytes, og::resources::read_file("pix/footman.png"))
+        << "standard footman.png must be restored after unmounting the custom pack";
+
+    // Restore original setting and clean up.
+    cfg.apply_setting("graphics", "sprite_sheet", orig);
+    ASSERT_TRUE(apply_sprite_sheet_setting());
+    std::filesystem::remove_all(pack_dir);
+}
+
+
+TEST(GloaderFuncs, custom_spritesheet_failed_mount_can_be_retried)
+{
+    const char* config_dir = std::getenv("OPENGLAD_CONFIG_DIR");
+    ASSERT_TRUE(config_dir != nullptr) << "OPENGLAD_CONFIG_DIR must be set by the test harness";
+
+    const std::vector<std::uint8_t> standard_bytes = og::resources::read_file("pix/footman.png");
+    ASSERT_FALSE(standard_bytes.empty()) << "standard footman.png must be present";
+
+    const std::filesystem::path pack_dir =
+        std::filesystem::path(config_dir) / "extra_pix" / "retry_pack";
+    std::filesystem::remove_all(pack_dir);
+
+    const std::string orig = cfg.get_setting("graphics", "sprite_sheet");
+    cfg.apply_setting("graphics", "sprite_sheet", "");
+    ASSERT_TRUE(apply_sprite_sheet_setting());
+
+    cfg.apply_setting("graphics", "sprite_sheet", "retry_pack");
+    ASSERT_FALSE(apply_sprite_sheet_setting())
+        << "missing pack directory should fail to mount";
+    ASSERT_EQ(standard_bytes, og::resources::read_file("pix/footman.png"))
+        << "failed mount must leave standard assets visible";
+
+    std::filesystem::create_directories(pack_dir);
+    const std::vector<std::uint8_t> custom_bytes = {0x05, 0x04, 0x03, 0x02, 0x01};
+    write_file_bytes(pack_dir / "footman.png", custom_bytes);
+
+    ASSERT_TRUE(apply_sprite_sheet_setting())
+        << "same pack name should be retried after a mount failure";
+    ASSERT_EQ(custom_bytes, og::resources::read_file("pix/footman.png"))
+        << "successful retry must mount the custom pack";
+
+    cfg.apply_setting("graphics", "sprite_sheet", orig);
+    ASSERT_TRUE(apply_sprite_sheet_setting());
+    std::filesystem::remove_all(pack_dir);
+}
+
+
+TEST(GloaderFuncs, custom_spritesheet_reload_reapplies_ctf_entries)
+{
+    const char* config_dir = std::getenv("OPENGLAD_CONFIG_DIR");
+    ASSERT_TRUE(config_dir != nullptr) << "OPENGLAD_CONFIG_DIR must be set by the test harness";
+
+    loader* l = og::runtime::current_session->myscreen_->myloader;
+    ASSERT_TRUE(l != nullptr) << "loader exists";
+
+    const PixieSnapshot standard_flag =
+        snapshot_pixie(l->graphics_for(Order::Treasure, og::FAMILY_FLAG));
+    const PixieSnapshot key_sprite =
+        snapshot_pixie(l->graphics_for(Order::Treasure, FAMILY_KEY));
+    ASSERT_FALSE(standard_flag.pixels.empty()) << "standard flag sprite must be present";
+    ASSERT_FALSE(key_sprite.pixels.empty()) << "key sprite must be present";
+    ASSERT_NE(standard_flag, key_sprite)
+        << "test fixture expects key.png to be visually distinct from flag.png";
+
+    const std::vector<std::uint8_t> key_png = og::resources::read_file("pix/key.png");
+    ASSERT_FALSE(key_png.empty()) << "key.png must be present";
+
+    const std::filesystem::path pack_dir =
+        std::filesystem::path(config_dir) / "extra_pix" / "ctf_pack";
+    std::filesystem::create_directories(pack_dir);
+    write_file_bytes(pack_dir / "flag.png", key_png);
+    {
+        std::ofstream sidecar(pack_dir / "flag.json", std::ios::binary);
+        sidecar << R"({"frames":{"flag 0.aseprite":{"frame":{"x":0,"y":0,"w":10,"h":10}}},"meta":{"size":{"w":10,"h":10}}})";
+    }
+
+    const std::string orig = cfg.get_setting("graphics", "sprite_sheet");
+    cfg.apply_setting("graphics", "sprite_sheet", "");
+    ASSERT_TRUE(apply_sprite_sheet_setting());
+
+    cfg.apply_setting("graphics", "sprite_sheet", "ctf_pack");
+    ASSERT_TRUE(apply_sprite_sheet_setting());
+    l->reload_graphics();
+    EXPECT_EQ(key_sprite, snapshot_pixie(l->graphics_for(Order::Treasure, og::FAMILY_FLAG)))
+        << "hot reload must apply custom CTF flag graphics";
+
+    cfg.apply_setting("graphics", "sprite_sheet", "");
+    ASSERT_TRUE(apply_sprite_sheet_setting());
+    l->reload_graphics();
+    EXPECT_EQ(standard_flag, snapshot_pixie(l->graphics_for(Order::Treasure, og::FAMILY_FLAG)))
+        << "hot reload must restore standard CTF flag graphics after unmount";
+
+    cfg.apply_setting("graphics", "sprite_sheet", orig);
+    ASSERT_TRUE(apply_sprite_sheet_setting());
+    l->reload_graphics();
+    std::filesystem::remove_all(pack_dir);
+}
+
+
+// A pack name with a path separator or ".." component must be rejected so a
+// hand-edited config can't mount an arbitrary host directory over pix/.
+TEST(GloaderFuncs, custom_spritesheet_rejects_path_traversal)
+{
+    const std::vector<std::uint8_t> standard_bytes = og::resources::read_file("pix/footman.png");
+    ASSERT_FALSE(standard_bytes.empty()) << "standard footman.png must be present";
+
+    const std::string orig = cfg.get_setting("graphics", "sprite_sheet");
+    cfg.apply_setting("graphics", "sprite_sheet", "");
+    ASSERT_TRUE(apply_sprite_sheet_setting());
+
+    for (const char* bad : {"..", "../evil", "../../etc", "sub/dir", "a\\b", "."}) {
+        cfg.apply_setting("graphics", "sprite_sheet", bad);
+        ASSERT_TRUE(apply_sprite_sheet_setting());
+        ASSERT_EQ(standard_bytes, og::resources::read_file("pix/footman.png"))
+            << "unsafe pack name '" << bad << "' must not mount anything over pix/";
+    }
+
+    cfg.apply_setting("graphics", "sprite_sheet", orig);
+    ASSERT_TRUE(apply_sprite_sheet_setting());
 }

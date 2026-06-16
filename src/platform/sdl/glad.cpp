@@ -203,6 +203,7 @@ void initialize_runtime_config(int argc, char* argv[])
 
     cfg.load_settings();
     cfg.commandline(argc, argv);
+    apply_sprite_sheet_setting();
 }
 
 void bootstrap_runtime(int argc, char* argv[])

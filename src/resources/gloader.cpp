@@ -15,6 +15,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 #include <openglad/resources/gloader.h>
+#include <openglad/resources/gloader_ctf.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/og_file.h>
 #include <openglad/core/util.h>
@@ -428,6 +429,11 @@ loader::loader(EntityFactory entity_factory)
 		};
 	}
 
+	reload_graphics();
+}
+
+void loader::reload_graphics()
+{
 	std::fill(std::begin(hitpoints), std::end(hitpoints), 0.0f);
 
 	// Livings — all data driven from family descriptors
@@ -554,6 +560,8 @@ loader::loader(EntityFactory entity_factory)
 	graphics[PIX(Order::Treasure, FAMILY_INVULNERABLE_POTION)] = data_copy(graphics[PIX(Order::Treasure, FAMILY_MAGIC_POTION)]);
 	graphics[PIX(Order::Treasure, FAMILY_FLIGHT_POTION)] = data_copy(graphics[PIX(Order::Treasure, FAMILY_MAGIC_POTION)]);
 	graphics[PIX(Order::Treasure, FAMILY_SPEED_POTION)] = data_copy(graphics[PIX(Order::Treasure, FAMILY_MAGIC_POTION)]);
+
+	register_ctf_loader_entries(*this);
 
 	// Record each animation table's length (parallel to `animations`) so animate()
 	// can bound index math against short per-family tables.

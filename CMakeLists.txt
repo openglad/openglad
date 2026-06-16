@@ -558,6 +558,9 @@ set(PHYSFS_SOURCES
     ${THIRD_PARTY_DIR}/physfs/physfs_platform_unix.c
     ${THIRD_PARTY_DIR}/physfs/physfs_platform_windows.c
 )
+if(APPLE)
+    list(APPEND PHYSFS_SOURCES ${THIRD_PARTY_DIR}/physfs/physfs_platform_apple.m)
+endif()
 
 # External C sources - zlib
 set(ZLIB_SOURCES
@@ -949,6 +952,10 @@ endif()
 if(WIN32)
     # physfs_platform_windows.c needs shell32 for SHGetFolderPathW
     target_link_libraries(og_ext_physfs PRIVATE shell32)
+endif()
+if(APPLE)
+    # physfs_platform_apple.m needs Foundation for NSBundle/NSSearchPathForDirectoriesInDomains
+    target_link_libraries(og_ext_physfs PRIVATE "-framework Foundation")
 endif()
 # PhysFS 3.x uses built-in miniz for ZIP support; no external zlib/libzip needed
 

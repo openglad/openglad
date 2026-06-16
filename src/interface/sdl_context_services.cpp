@@ -18,7 +18,6 @@
 #include <openglad/interface/session_state.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/resources/gloader.h>
-#include <openglad/resources/gloader_ctf.h>
 
 // myscreen and theprefs are now macros defined in base.h / view.h
 
@@ -85,7 +84,6 @@ loader* sdl_entity_loader()
             };
             return factory;
         }());
-        register_ctf_loader_entries(*entity_loader);
         return entity_loader;
     }();
     return game_loader.get();

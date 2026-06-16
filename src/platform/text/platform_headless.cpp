@@ -340,7 +340,6 @@ void load_map_data(PixieData*)
 void io_init(int argc, char* argv[])
 {
     (void)argc;
-
     PlatformBridge bridge;
     bridge.present_frame = [] {};
     bridge.play_sound = [](int) {};
@@ -359,6 +358,7 @@ void io_init(int argc, char* argv[])
     create_dir(user_path + "campaigns/");
     create_dir(user_path + "save/");
     create_dir(user_path + "cfg/");
+    create_dir(user_path + "extra_pix/");
 
     // Initialize PhysFS
     if (!og::resources::init(argv[0])) {

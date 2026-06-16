@@ -66,6 +66,12 @@ class loader
 		std::vector<float> damage;
 		std::vector<float> fire_frequency;
 
+		// Replaces loader-owned sprite buffers. Call only when no live render
+		// component still points at graphics data from this loader.
+		void reload_graphics();
 	private:
 		EntityFactory entity_factory_;
 };
+
+// Link-time dispatch: SDL build provides the real instance; headless build provides nothing.
+loader* sdl_entity_loader();
