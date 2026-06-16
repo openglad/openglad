@@ -2323,9 +2323,16 @@ static std::string pick_spritesheet()
 
 Sint32 do_pick_spritesheet(Sint32)
 {
+    const std::string old_selection = cfg.get_setting("graphics", "sprite_sheet");
     const std::string new_selection = pick_spritesheet();
     cfg.apply_setting("graphics", "sprite_sheet", new_selection);
-    apply_sprite_sheet_setting();
+    if (!apply_sprite_sheet_setting()) {
+        cfg.apply_setting("graphics", "sprite_sheet", old_selection);
+        if (apply_sprite_sheet_setting())
+            sdl_entity_loader()->reload_graphics();
+        popup_dialog("Sprite Sheet", "Could not load\nselected sprite sheet.");
+        return MENU_REDRAW;
+    }
     sdl_entity_loader()->reload_graphics();
     return MENU_REDRAW;
 }

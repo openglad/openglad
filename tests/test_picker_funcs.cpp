@@ -24,7 +24,7 @@
 #include <vector>
 
 // Forward declaration from platform_io.cpp
-void apply_sprite_sheet_setting();
+bool apply_sprite_sheet_setting();
 
 // Forward declarations from picker.cpp
 std::string get_class_description(unsigned char family);

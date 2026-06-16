@@ -23,7 +23,7 @@ class PixieData;
 
 void io_init(int argc, char* argv[]);
 void io_exit();
-void apply_sprite_sheet_setting();
+bool apply_sprite_sheet_setting();
 
 std::string get_user_path();
 bool create_dir(const std::string& dirname);

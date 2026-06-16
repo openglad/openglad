@@ -401,7 +401,7 @@ static bool is_safe_sprite_sheet_name(const std::string& name)
     return name != "." && name != "..";
 }
 
-void apply_sprite_sheet_setting()
+bool apply_sprite_sheet_setting()
 {
     std::string name = cfg.get_setting("graphics", "sprite_sheet");
     if (!name.empty() && !is_safe_sprite_sheet_name(name)) {
@@ -411,19 +411,27 @@ void apply_sprite_sheet_setting()
     const std::string new_dir = name.empty() ? "" : (get_user_path() + "extra_pix/" + name);
 
     if (s_mounted_sprite_sheet_dir == new_dir)
-        return;
+        return true;
 
-    if (!s_mounted_sprite_sheet_dir.empty())
-        og::resources::unmount(s_mounted_sprite_sheet_dir.c_str());
-
-    if (!new_dir.empty()) {
-        if (!og::resources::mount(new_dir.c_str(), "pix/", 0))
-            LogWarn("Sprite sheet '{}': failed to mount\n", new_dir);
-        else
-            Log("Sprite sheet mounted: {}\n", new_dir);
+    if (!s_mounted_sprite_sheet_dir.empty()) {
+        const std::string old_dir = s_mounted_sprite_sheet_dir;
+        if (!og::resources::unmount(old_dir.c_str())) {
+            LogWarn("Sprite sheet '{}': failed to unmount, keeping previous mount state\n", old_dir);
+            return false;
+        }
+        s_mounted_sprite_sheet_dir.clear();
     }
 
-    s_mounted_sprite_sheet_dir = new_dir;
+    if (!new_dir.empty()) {
+        if (!og::resources::mount(new_dir.c_str(), "pix/", 0)) {
+            LogWarn("Sprite sheet '{}': failed to mount\n", new_dir);
+            return false;
+        }
+        Log("Sprite sheet mounted: {}\n", new_dir);
+        s_mounted_sprite_sheet_dir = new_dir;
+    }
+
+    return true;
 }
 
 void sync_filesystem()
