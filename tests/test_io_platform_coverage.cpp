@@ -3,6 +3,7 @@
 #include <openglad/legacy/base.h>
 #include <openglad/resources/ogfile_yaml.h>
 #include <openglad/resources/filesystem.h>
+#include <openglad/resources/io.h>
 #include <openglad/resources/physfs_api.h>
 #include <openglad/resources/yaml_stream.h>
 #include <openglad/resources/zip_api.h>
@@ -988,4 +989,103 @@ TEST(IoPlatformCoverage, zip_platform_round8_open_archive_and_mount_error_paths)
     std::map<std::string, int> current_levels;
     ASSERT_EQ(-2, load_campaign("definitely.not.a.campaign", current_levels, 5)) << "load_campaign should map mount failure to -2";
     set_mounted_campaign_for_testing(prev);
+}
+
+
+TEST(IoPlatformCoverage, rwops_handlers_and_open_read_debug_fallbacks)
+{
+    unsigned char buffer[8] = {};
+    RwopsPtr rwops{SDL_RWFromMem(buffer, sizeof(buffer))};
+    ASSERT_TRUE(rwops != nullptr) << "SDL_RWFromMem should create an RWops";
+    if (!rwops)
+        return;
+
+    unsigned char payload[] = {3, 1, 4, 1};
+    ASSERT_EQ(1, rwops_write_handler(rwops.get(), payload, sizeof(payload)))
+        << "rwops_write_handler should report success";
+    ASSERT_EQ(0, (int)SDL_RWseek(rwops.get(), 0, RW_SEEK_SET))
+        << "rewind memory RWops";
+
+    unsigned char got[4] = {};
+    std::size_t size_read = 0;
+    ASSERT_EQ(1, rwops_read_handler(rwops.get(), got, sizeof(got), &size_read))
+        << "rwops_read_handler should report success";
+    ASSERT_EQ(sizeof(got), size_read) << "handler should report bytes read";
+    ASSERT_TRUE(std::memcmp(got, payload, sizeof(got)) == 0)
+        << "rwops handlers should roundtrip payload through SDL_RWops";
+
+    RwopsPtr missing{open_read_file("definitely_missing_debug_fallback_110.bin", true)};
+    ASSERT_TRUE(missing == nullptr)
+        << "debug read of missing file should exhaust cwd/user/asset fallbacks";
+}
+
+
+TEST(IoPlatformCoverage, new_file_error_paths_report_write_failures)
+{
+    namespace fs = std::filesystem;
+    const fs::path base = fs::path("temp") / "io_platform_cov" / "new_file_errors";
+    const fs::path pix_blocker = base / "pix_blocker.png";
+    const fs::path map_blocker = base / "map_blocker.png";
+    const fs::path campaign_blocker = base / "campaign.yaml";
+    const fs::path scen_blocker = base / "scen1.fss";
+    std::error_code ec;
+
+    fs::remove_all(base, ec);
+    fs::create_directories(pix_blocker, ec);
+    fs::create_directories(map_blocker, ec);
+    fs::create_directories(campaign_blocker, ec);
+    fs::create_directories(scen_blocker, ec);
+
+    ASSERT_EQ(NewFileIoError::WriteFailed,
+              create_new_pix_with_error(pix_blocker.string(), 2, 2, 7))
+        << "writing a pix over a directory should report WriteFailed";
+    ASSERT_EQ(NewFileIoError::WriteFailed,
+              create_new_map_pix_with_error(map_blocker.string(), 2, 2))
+        << "writing a map pix over a directory should report WriteFailed";
+    ASSERT_EQ(NewFileIoError::OpenWriteFailed,
+              create_new_campaign_descriptor_with_error(campaign_blocker.string()))
+        << "campaign descriptor open should fail for a directory target";
+    ASSERT_EQ(NewFileIoError::OpenWriteFailed,
+              create_new_scen_file_with_error(scen_blocker.string(), "scen0001"))
+        << "scenario write should map open-write failure";
+
+    fs::remove_all(base, ec);
+}
+
+
+TEST(IoPlatformCoverage, sprite_sheet_apply_covers_same_pack_and_failed_unmount)
+{
+    const char* config_dir = std::getenv("OPENGLAD_CONFIG_DIR");
+    ASSERT_TRUE(config_dir != nullptr) << "OPENGLAD_CONFIG_DIR must be set by the test harness";
+
+    namespace fs = std::filesystem;
+    const fs::path pack_dir =
+        fs::path(config_dir) / "extra_pix" / "coverage_mount_state";
+    std::error_code ec;
+    fs::remove_all(pack_dir, ec);
+    fs::create_directories(pack_dir, ec);
+
+    const std::string orig = cfg.get_setting("graphics", "sprite_sheet");
+    cfg.apply_setting("graphics", "sprite_sheet", "");
+    ASSERT_TRUE(apply_sprite_sheet_setting()) << "start from standard sprite sheet";
+
+    cfg.apply_setting("graphics", "sprite_sheet", "coverage_mount_state");
+    ASSERT_TRUE(apply_sprite_sheet_setting()) << "mount coverage sprite sheet";
+    ASSERT_TRUE(apply_sprite_sheet_setting())
+        << "applying the same mounted sprite sheet should short-circuit";
+
+    ASSERT_TRUE(og::resources::unmount(pack_dir.string().c_str()))
+        << "external unmount should create stale mounted-state test condition";
+    cfg.apply_setting("graphics", "sprite_sheet", "");
+    ASSERT_FALSE(apply_sprite_sheet_setting())
+        << "stale mounted state should report failed unmount and keep state";
+
+    ASSERT_TRUE(og::resources::mount(pack_dir.string().c_str(), "pix/", 0))
+        << "restore physical mount so apply can clean up its remembered state";
+    ASSERT_TRUE(apply_sprite_sheet_setting())
+        << "second standard apply should unmount the restored pack";
+
+    cfg.apply_setting("graphics", "sprite_sheet", orig);
+    ASSERT_TRUE(apply_sprite_sheet_setting()) << "restore original sprite sheet";
+    fs::remove_all(pack_dir, ec);
 }

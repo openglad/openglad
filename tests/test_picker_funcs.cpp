@@ -2,6 +2,8 @@
 #include <openglad/interface/button.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/legacy/base.h>
+#include <openglad/interface/input.h>
+#include <openglad/interface/native_input.h>
 #include <openglad/interface/platform_bridge.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/picker_common.h>
@@ -11,11 +13,13 @@
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/filesystem.h>
 #include <gtest/gtest.h>
+#include <SDL.h>
 #include <array>
 #include <atomic>
 #include <cstdlib>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <memory>
 #include <stdexcept>
@@ -49,6 +53,7 @@ Sint32 return_menu(Sint32 arg);
 Sint32 name_guy(Sint32 arg);
 Sint32 edit_guy(Sint32 arg1);
 Sint32 create_train_menu(Sint32 arg1);
+Sint32 do_pick_spritesheet(Sint32 arg);
 void picker_prepare_async_team_build_start_request();
 void picker_lobby_initialize_from_save();
 void picker_lobby_sync_from_save();
@@ -164,6 +169,46 @@ struct PlatformBridgeGuard
         set_platform_bridge(std::move(saved));
     }
 };
+
+void inject_mouse_click(int x, int y, int delay_ms = 50)
+{
+    const int sx = static_cast<int>(
+        static_cast<float>(x) * og::runtime::current_session->viewport_w_ / 320.0f +
+        og::runtime::current_session->viewport_offset_x_);
+    const int sy = static_cast<int>(
+        static_cast<float>(y) * og::runtime::current_session->viewport_h_ / 200.0f +
+        og::runtime::current_session->viewport_offset_y_);
+
+    SDL_Event event;
+    std::memset(&event, 0, sizeof(event));
+    event.type = SDL_MOUSEBUTTONDOWN;
+    event.button.button = SDL_BUTTON_LEFT;
+    event.button.state = SDL_PRESSED;
+    event.button.clicks = 1;
+    event.button.x = sx;
+    event.button.y = sy;
+    SDL_PushEvent(&event);
+
+    SDL_Delay(delay_ms);
+
+    std::memset(&event, 0, sizeof(event));
+    event.type = SDL_MOUSEBUTTONUP;
+    event.button.button = SDL_BUTTON_LEFT;
+    event.button.state = SDL_RELEASED;
+    event.button.clicks = 1;
+    event.button.x = sx;
+    event.button.y = sy;
+    SDL_PushEvent(&event);
+}
+
+void prepare_picker_mouse()
+{
+    clear_events();
+    auto& input_hw = input_hardware_state();
+    input_hw.mouse = {};
+    input_hw.picker_was_left_down = false;
+    input_hw.picker_was_right_down = false;
+}
 
 struct PickerLobbyClientTrace
 {
@@ -2123,6 +2168,22 @@ protected:
     }
 };
 
+namespace {
+
+static int picker_spritesheet_select_first_pack_injector(void*)
+{
+    og::runtime::ensure_thread_session();
+    SDL_Delay(200);
+
+    // Row 0 is "Standard"; row 1 is the first sorted pack.
+    inject_mouse_click(80, 56, 60);
+    SDL_Delay(120);
+    inject_mouse_click(25, 185, 60);
+    return 0;
+}
+
+} // namespace
+
 
 TEST_F(SpriteSheetPicker, config_round_trip)
 {
@@ -2131,4 +2192,40 @@ TEST_F(SpriteSheetPicker, config_round_trip)
 
     cfg.apply_setting("graphics", "sprite_sheet", "");
     ASSERT_EQ("", cfg.get_setting("graphics", "sprite_sheet"));
+}
+
+
+TEST_F(SpriteSheetPicker, do_pick_spritesheet_selects_visible_pack)
+{
+    const char* config_dir = std::getenv("OPENGLAD_CONFIG_DIR");
+    ASSERT_TRUE(config_dir != nullptr) << "OPENGLAD_CONFIG_DIR must be set by the test harness";
+
+    namespace fs = std::filesystem;
+    const fs::path pack_dir =
+        fs::path(config_dir) / "extra_pix" / "000_picker_pack";
+    std::error_code ec;
+    fs::remove_all(pack_dir, ec);
+    fs::create_directories(pack_dir, ec);
+
+    prepare_picker_mouse();
+    SDL_Thread* th = SDL_CreateThread(
+        picker_spritesheet_select_first_pack_injector,
+        "picker_sprite_sheet",
+        nullptr);
+    ASSERT_TRUE(th != nullptr) << "injector thread started";
+
+    const Sint32 result = do_pick_spritesheet(0);
+
+    int code = 0;
+    if (th)
+        SDL_WaitThread(th, &code);
+    clear_events();
+
+    ASSERT_EQ(2, result) << "sprite sheet picker should redraw after selection";
+    ASSERT_EQ("000_picker_pack", cfg.get_setting("graphics", "sprite_sheet"))
+        << "clicking the first visible pack should apply that pack";
+
+    cfg.apply_setting("graphics", "sprite_sheet", "");
+    ASSERT_TRUE(apply_sprite_sheet_setting());
+    fs::remove_all(pack_dir, ec);
 }
