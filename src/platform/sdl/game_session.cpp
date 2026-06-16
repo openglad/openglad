@@ -17,6 +17,7 @@
 #include <openglad/interface/ui/level_editor_state.h>
 #include <openglad/interface/screen.h> // screen class
 #include <openglad/interface/sound.h> // soundob complete type for play_sound
+#include <openglad/core/sound_ids.h> // NUMSOUNDS bound for play_sound dispatch
 #include <openglad/platform/video_sdl.h>
 #include <openglad/interface/render/view.h>    // options class
 #include <openglad/platform/sai2x.h>   // E_Screen
@@ -42,7 +43,8 @@ PlatformBridge make_sdl_platform_bridge()
 
     bridge.play_sound = [](int sound_id) {
         if (!og::runtime::current_session || !og::runtime::current_session->myscreen_ ||
-            !og::runtime::current_session->myscreen_->soundp || sound_id < 0)
+            !og::runtime::current_session->myscreen_->soundp ||
+            sound_id < 0 || sound_id >= NUMSOUNDS)
         {
             return;
         }
@@ -126,8 +128,10 @@ GameSession::GameSession(const Config& session_cfg)
     // Set prefs before creating the screen; viewscreen construction reads it.
     theprefs_ = prefs_owner_.get();
 
-    // Initialize legacy video pointer (VGA linear buffer address from DOS era).
-    videoptr_ = reinterpret_cast<unsigned char*>(VIDEO_LINEAR);
+    // Legacy videoptr_ stays at its in-class nullptr default. It formerly held a
+    // fabricated DOS-era VGA linear address (0xA0000); that pointer was never
+    // written through in production (only putblack uses it, and only tests call
+    // putblack, after pointing videoptr_ at a real buffer).
 
     // Share SDL's keyboard state array. SDL_GetKeyboardState returns a pointer
     // to SDL's internal array — it's the same for all sessions.

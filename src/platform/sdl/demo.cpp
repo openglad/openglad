@@ -351,11 +351,13 @@ int main(int argc, char* argv[])
         load_player_control_settings_from_cfg(cfg);
 
         // Create composite surface and texture at the full display resolution.
-        SDL_Surface* composite_surface = SDL_CreateRGBSurface(
-            SDL_SWSURFACE, display_w, display_h, 32, 0, 0, 0, 0);
-        SDL_Texture* composite_tex = SDL_CreateTexture(
-            E_Screen->renderer, SDL_PIXELFORMAT_ARGB8888,
-            SDL_TEXTUREACCESS_STREAMING, display_w, display_h);
+        std::unique_ptr<SDL_Surface, decltype(&SDL_FreeSurface)> composite_surface(
+            SDL_CreateRGBSurface(SDL_SWSURFACE, display_w, display_h, 32, 0, 0, 0, 0),
+            SDL_FreeSurface);
+        std::unique_ptr<SDL_Texture, decltype(&SDL_DestroyTexture)> composite_tex(
+            SDL_CreateTexture(E_Screen->renderer, SDL_PIXELFORMAT_ARGB8888,
+                              SDL_TEXTUREACCESS_STREAMING, display_w, display_h),
+            SDL_DestroyTexture);
         if (!composite_surface || !composite_tex) {
             LogError("Failed to create composite surface/texture\n");
             return 1;
@@ -479,19 +481,19 @@ int main(int argc, char* argv[])
             E_Screen->suppress_present = false;
 
             // --- Phase 5: Composite and present (main thread only) ---
-            SDL_FillRect(composite_surface, nullptr, 0x000000);
+            SDL_FillRect(composite_surface.get(), nullptr, 0x000000);
             for (int i = 0; i < num_sessions; i++) {
                 SDL_Surface* src = demos[static_cast<size_t>(i)].session->session_surface_;
                 int col = i % grid_cols;
                 int row = i / grid_cols;
-                composite_session(composite_surface, src, col, row);
+                composite_session(composite_surface.get(), src, col, row);
             }
 
-            SDL_UpdateTexture(composite_tex, nullptr,
+            SDL_UpdateTexture(composite_tex.get(), nullptr,
                               composite_surface->pixels,
                               composite_surface->pitch);
             SDL_RenderClear(E_Screen->renderer);
-            SDL_RenderCopy(E_Screen->renderer, composite_tex,
+            SDL_RenderCopy(E_Screen->renderer, composite_tex.get(),
                            nullptr, nullptr);
             SDL_RenderPresent(E_Screen->renderer);
 
@@ -531,9 +533,9 @@ int main(int argc, char* argv[])
             if (w.joinable()) w.join();
         }
 
-        // Cleanup
-        SDL_DestroyTexture(composite_tex);
-        SDL_FreeSurface(composite_surface);
+        // Cleanup (the unique_ptr deleters also free on any early-return/throw path)
+        composite_tex.reset();
+        composite_surface.reset();
         for (auto& d : demos) {
             d.session.reset();
         }

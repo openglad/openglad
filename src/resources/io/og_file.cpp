@@ -20,6 +20,7 @@
 
 #include <cctype>
 #include <cstdio>
+#include <cstdint>
 #include <cstring>
 #include <memory>
 #include <optional>
@@ -295,6 +296,15 @@ bool write_pixie_png(const char* filepath, const PixieData& data)
 // ---------------------------------------------------------------------------
 struct FrameInfo { int frames; int frame_w; int frame_h; };
 
+constexpr std::int64_t kMaxSpritePngBytes = 16ll * 1024ll * 1024ll;
+constexpr std::int64_t kMaxAsepriteSidecarBytes = 1ll * 1024ll * 1024ll;
+constexpr unsigned kMaxPixieDimension = 255u;
+constexpr unsigned kMaxPixieStackedHeight = kMaxPixieDimension * kMaxPixieDimension;
+constexpr std::uint64_t kMaxPixiePixels =
+    static_cast<std::uint64_t>(kMaxPixieDimension) *
+    static_cast<std::uint64_t>(kMaxPixieDimension) *
+    static_cast<std::uint64_t>(kMaxPixieDimension);
+
 static std::string sidecar_path_for(const char* filename)
 {
     std::string s = filename ? filename : "";
@@ -565,7 +575,11 @@ private:
     {
         if (pos_ >= text_.size() || !std::isdigit(static_cast<unsigned char>(text_[pos_])))
             return fail("expected non-negative integer");
-        long v = 0;
+        // Use a 64-bit accumulator: on ILP32 targets (wasm32/Emscripten) `long`
+        // is 32-bit, so `v * 10` overflowed (signed UB) before the guard below
+        // could reject it. `long long` is >=64-bit everywhere; values that pass
+        // the <=1e9 guard still fit losslessly in the int result.
+        long long v = 0;
         while (pos_ < text_.size() && std::isdigit(static_cast<unsigned char>(text_[pos_]))) {
             v = v * 10 + (text_[pos_] - '0');
             if (v > 1'000'000'000L) return fail("integer overflow");
@@ -624,6 +638,10 @@ static std::optional<FrameInfo> load_aseprite_sidecar(const char* filename)
         warn("empty file");
         return std::nullopt;
     }
+    if (file_size > kMaxAsepriteSidecarBytes) {
+        warn("file too large");
+        return std::nullopt;
+    }
 
     std::string text(static_cast<std::size_t>(file_size), '\0');
     if (infile->read(text.data(), 1, static_cast<std::size_t>(file_size))
@@ -650,8 +668,15 @@ static std::optional<FrameInfo> load_aseprite_sidecar(const char* filename)
         warn("invalid frame dimensions");
         return std::nullopt;
     }
+    if (static_cast<unsigned>(meta.frame_w) > kMaxPixieDimension
+        || static_cast<unsigned>(meta.frame_h) > kMaxPixieDimension
+        || static_cast<unsigned>(meta.frame_count) > kMaxPixieDimension) {
+        warn("frame metadata out of range");
+        return std::nullopt;
+    }
     if (meta.meta_w != meta.frame_w
-        || meta.meta_h != meta.frame_h * meta.frame_count) {
+        || static_cast<long long>(meta.meta_h)
+               != static_cast<long long>(meta.frame_h) * meta.frame_count) {
         warn("size mismatch between meta.size and frames*frame");
         return std::nullopt;
     }
@@ -686,10 +711,15 @@ PixieData read_pixie_file(const char* filename)
         LogError("Empty sprite file: pix/{}\n", filename);
         return result;
     }
+    if (file_size > kMaxSpritePngBytes) {
+        LogError("Sprite PNG is too large: pix/{} ({} bytes)\n",
+                 filename, static_cast<long long>(file_size));
+        return result;
+    }
 
-    auto file_data = std::make_unique<unsigned char[]>(static_cast<std::size_t>(file_size));
-    if (infile->read(file_data.get(), 1, static_cast<std::size_t>(file_size))
-        != static_cast<std::size_t>(file_size))
+    const auto png_size = static_cast<std::size_t>(file_size);
+    auto file_data = std::make_unique<unsigned char[]>(png_size);
+    if (infile->read(file_data.get(), 1, png_size) != png_size)
     {
         LogError("Failed to read sprite file: pix/{}\n", filename);
         return result;
@@ -697,12 +727,27 @@ PixieData read_pixie_file(const char* filename)
 
     lodepng::State state;
     state.decoder.color_convert = 0;
-
-    std::vector<unsigned char> pixels;
     unsigned png_w = 0;
     unsigned png_h = 0;
+    const unsigned inspect_err =
+        lodepng_inspect(&png_w, &png_h, &state, file_data.get(), png_size);
+    if (inspect_err != 0) {
+        LogError("Failed to inspect PNG: pix/{}: {}\n", filename,
+                 lodepng_error_text(inspect_err));
+        return result;
+    }
+    const std::uint64_t pixel_count =
+        static_cast<std::uint64_t>(png_w) * static_cast<std::uint64_t>(png_h);
+    if (png_w > kMaxPixieDimension || png_h > kMaxPixieStackedHeight ||
+        pixel_count > kMaxPixiePixels) {
+        LogError("Sprite PNG dimensions too large: pix/{} ({}x{})\n",
+                 filename, png_w, png_h);
+        return result;
+    }
+
+    std::vector<unsigned char> pixels;
     const unsigned decode_err = lodepng::decode(
-        pixels, png_w, png_h, state, file_data.get(), static_cast<std::size_t>(file_size));
+        pixels, png_w, png_h, state, file_data.get(), png_size);
     if (decode_err != 0) {
         LogError("Failed to decode PNG: pix/{}: {}\n", filename, lodepng_error_text(decode_err));
         return result;

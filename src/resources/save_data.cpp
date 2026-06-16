@@ -24,6 +24,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/resources/campaign_io.h>
 #include <openglad/resources/filesystem_sync.h>
+#include <openglad/resources/io_common.h>
 #include <openglad/resources/og_file.h>
 #include <algorithm>
 #include <cstdint>
@@ -96,6 +97,12 @@ bool SaveData::load(const std::string& filename)
 {
     last_io_error_ = SaveDataIoError::None;
 	TRACE("load", "SaveData::load file=%s", filename.c_str());
+    if (!is_safe_virtual_basename(filename))
+    {
+        LogError("Rejected unsafe save file name for load: {}\n", filename);
+        last_io_error_ = SaveDataIoError::OpenReadFailed;
+        return false;
+    }
 	char filler[50] = "GTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTL"; // for RESERVED
 
 	char temptext[10] = "GTL";
@@ -247,8 +254,9 @@ bool SaveData::load(const std::string& filename)
 	{
 		READ_OR_FAIL(temp_campaign, 1, 40);
 		temp_campaign[40] = '\0';
-		if(std::string(temp_campaign).size() > 3)
-            current_campaign = temp_campaign;
+        const std::string loaded_campaign = temp_campaign;
+		if(loaded_campaign.size() > 3 && is_safe_campaign_id(loaded_campaign))
+            current_campaign = loaded_campaign;
         else
             current_campaign = "org.openglad.gladiator";
 	}
@@ -289,8 +297,12 @@ bool SaveData::load(const std::string& filename)
     const bool invalid_team_size = (listsize < 0) || (listsize > MAX_TEAM_SIZE);
     if (invalid_team_size)
     {
+        // GCOVR_EXCL_START -- defensive reject of a corrupt/hostile save header
         LogError("save_load_team_size_invalid file={} listsize={} max={}\n",
             filename, listsize, MAX_TEAM_SIZE);
+        last_io_error_ = SaveDataIoError::ReadFailed;
+        return false;
+        // GCOVR_EXCL_STOP
     }
 
 	// Read the # of players
@@ -353,7 +365,7 @@ bool SaveData::load(const std::string& filename)
             if (temp_guy_ptr != nullptr)
             {
 			    temp_guy_ptr->family       = temp_family;
-			    temp_guy_ptr->name = guyname;
+			    temp_guy_ptr->name.assign(guyname, strnlen(guyname, sizeof(guyname)));
 			    temp_guy_ptr->strength     = temp_str;
 			    temp_guy_ptr->dexterity    = temp_dex;
 			    temp_guy_ptr->constitution = temp_con;
@@ -428,13 +440,30 @@ bool SaveData::load(const std::string& filename)
         short num_campaigns = 0;
         char campaign[41];
         short num_levels = 0;
+        constexpr short kMaxSavedCampaigns = 128;
+        constexpr short kMaxSavedLevels = 1000;
         // How many campaigns are stored?
         READ_OR_FAIL(&num_campaigns, 2, 1);
+        if (num_campaigns < 0 || num_campaigns > kMaxSavedCampaigns)
+        {
+            // GCOVR_EXCL_START -- defensive reject of a corrupt/hostile save header
+            LogError("save_load_num_campaigns_invalid file={} num_campaigns={} max={}\n",
+                filename, num_campaigns, kMaxSavedCampaigns);
+            last_io_error_ = SaveDataIoError::ReadFailed;
+            return false;
+            // GCOVR_EXCL_STOP
+        }
         for(int i = 0; i < num_campaigns; i++)
         {
             // Get the campaign ID (40 chars)
             READ_OR_FAIL(campaign, 1, 40);
             campaign[40] = '\0';
+            if (!is_safe_campaign_id(campaign))
+            {
+                LogError("Rejected unsafe campaign id in save: {}\n", campaign);
+                last_io_error_ = SaveDataIoError::ReadFailed;
+                return false;
+            }
 
             short index = 1;
             // Get the current level for this campaign
@@ -443,6 +472,15 @@ bool SaveData::load(const std::string& filename)
 
             // Get the number of cleared levels
             READ_OR_FAIL(&num_levels, 2, 1);
+            if (num_levels < 0 || num_levels > kMaxSavedLevels)
+            {
+                // GCOVR_EXCL_START -- defensive reject of a corrupt/hostile save header
+                LogError("save_load_num_levels_invalid file={} num_levels={} max={}\n",
+                    filename, num_levels, kMaxSavedLevels);
+                last_io_error_ = SaveDataIoError::ReadFailed;
+                return false;
+                // GCOVR_EXCL_STOP
+            }
             for(int j = 0; j < num_levels; j++)
             {
                 // Get the level index
@@ -619,11 +657,17 @@ bool SaveData::save(const std::string& filename)
 {
     last_io_error_ = SaveDataIoError::None;
 	TRACE("save", "SaveData::save file=%s", filename.c_str());
+    if (!is_safe_virtual_basename(filename))
+    {
+        LogError("Rejected unsafe save file name for save: {}\n", filename);
+        last_io_error_ = SaveDataIoError::OpenWriteFailed;
+        return false;
+    }
 	char filler[50] = "GTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTL"; // for RESERVED
 	char savedgame[41];
-	std::fill_n(savedgame, 41, '\0');
+	std::fill_n(savedgame, std::size(savedgame), '\0');
 	char temp_campaign[41];
-	std::fill_n(temp_campaign, 41, '\0');
+	std::fill_n(temp_campaign, std::size(temp_campaign), '\0');
 
 	char temptext[10] = "GTL";
 	std::uint8_t temp_version = 11;
@@ -737,6 +781,13 @@ bool SaveData::save(const std::string& filename)
 	WRITE_OR_FAIL(savedgame, 40, 1);
 
 	// Write current campaign
+    if (!is_safe_campaign_id(current_campaign))
+    {
+        LogError("Rejected unsafe current campaign id for save: {}\n",
+                 current_campaign);
+        last_io_error_ = SaveDataIoError::WriteFailed;
+        return false;
+    }
 	Log("Saving campaign status: {}\n", current_campaign);
 	snprintf(temp_campaign, sizeof(temp_campaign), "%s", current_campaign.c_str());
 	WRITE_OR_FAIL(temp_campaign, 40, 1);
@@ -839,13 +890,29 @@ bool SaveData::save(const std::string& filename)
     }
 
 	// Number of campaigns
-	short num_campaigns = static_cast<short>(completed_levels.size());
+	const std::size_t raw_campaign_count = completed_levels.size();
+	if (raw_campaign_count > 32767)
+	{
+	    // GCOVR_EXCL_START -- defensive cap; real campaign maps never approach SHRT_MAX
+	    LogError("save_write_too_many_campaigns {}\n", raw_campaign_count);
+	    last_io_error_ = SaveDataIoError::WriteFailed;
+	    return false;
+	    // GCOVR_EXCL_STOP
+	}
+	short num_campaigns = static_cast<short>(raw_campaign_count);
     WRITE_OR_FAIL(&num_campaigns, 2, 1);
 	for(std::map<std::string, std::set<int> >::const_iterator e = completed_levels.begin(); e != completed_levels.end(); e++)
     {
+        if (!is_safe_campaign_id(e->first))
+        {
+            LogError("Rejected unsafe completed-level campaign id for save: {}\n",
+                     e->first);
+            last_io_error_ = SaveDataIoError::WriteFailed;
+            return false;
+        }
         // Campaign ID
         char campaign[41];
-        std::fill_n(campaign, 41, '\0');
+        std::fill_n(campaign, std::size(campaign), '\0');
         snprintf(campaign, sizeof(campaign), "%s", e->first.c_str());
         WRITE_OR_FAIL(campaign, 1, 40);
 
@@ -856,7 +923,16 @@ bool SaveData::save(const std::string& filename)
 	        WRITE_OR_FAIL(&index, 2, 1);
 
 	        // Number of levels
-	        short num_levels = static_cast<short>(e->second.size());
+	        const std::size_t raw_level_count = e->second.size();
+	        if (raw_level_count > 32767)
+	        {
+	            // GCOVR_EXCL_START -- defensive cap; real level sets never approach SHRT_MAX
+	            LogError("save_write_too_many_levels {}\n", raw_level_count);
+	            last_io_error_ = SaveDataIoError::WriteFailed;
+	            return false;
+	            // GCOVR_EXCL_STOP
+	        }
+	        short num_levels = static_cast<short>(raw_level_count);
 	        WRITE_OR_FAIL(&num_levels, 2, 1);
         for(std::set<int>::const_iterator f = e->second.begin(); f != e->second.end(); f++)
 	        {

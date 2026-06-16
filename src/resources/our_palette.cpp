@@ -8,12 +8,15 @@
 
 #include <openglad/resources/our_palette.h>
 
+#include <array>
+#include <cstddef>
+
 //buffers: this is the our.pal data in a function.
 //buffers: i thought having a seperate our.pal file was ugly so i just
 //buffers: put it all in this func
 unsigned char our_pal_lookup(int index)
 {
-	static const unsigned char data[] = {
+	static const std::array<unsigned char, 768> data = {
 		                  0,0,0,8,8,8,16,16,16,24,24,24,32,32,32,40,40,40,48,48,48,56,56,56,1,
 	                  1,1,9,9,9,17,17,17,25,25,25,33,33,33,41,41,41,49,49,49,57,57,57,0,
 	                  0,0,15,15,15,18,18,18,21,21,21,24,24,24,27,27,27,30,30,30,33,33,33,36,
@@ -47,5 +50,6 @@ unsigned char our_pal_lookup(int index)
 	                  37,31,51,33,27,47,28,24,43,24,20,56,35,23,52,32,24,48,30,22,44,27,19,28,
 	                  18,18,30,20,20,32,22,22,34,24,24,36,26,26,38,28,28,40,30,30,42,32,32};
 
-	return data[index];
+	if (index < 0 || static_cast<std::size_t>(index) >= data.size()) return 0;
+	return data[static_cast<std::size_t>(index)];
 }

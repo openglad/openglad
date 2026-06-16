@@ -20,6 +20,7 @@
 #include <climits>
 #include <cstddef>
 #include <format>
+#include <random>
 #include <stdexcept>
 #include <unordered_set>
 #include <utility>
@@ -739,12 +740,13 @@ void clear_pressed(PlayerInput& input)
         pressed = false;
 }
 
-std::uint64_t splitmix64(std::uint64_t value) noexcept
+bool session_tokens_equal(const og::sim::SessionToken& lhs,
+                          const og::sim::SessionToken& rhs) noexcept
 {
-    value += 0x9e3779b97f4a7c15ULL;
-    value = (value ^ (value >> 30)) * 0xbf58476d1ce4e5b9ULL;
-    value = (value ^ (value >> 27)) * 0x94d049bb133111ebULL;
-    return value ^ (value >> 31);
+    std::uint8_t diff = 0;
+    for (std::size_t index = 0; index < lhs.size(); ++index)
+        diff |= static_cast<std::uint8_t>(lhs[index] ^ rhs[index]);
+    return diff == 0;
 }
 
 } // namespace
@@ -902,19 +904,13 @@ std::uint64_t GameServer::now_ms() const
 SessionToken GameServer::allocate_session_token()
 {
     SessionToken token = kZeroSessionToken;
+    std::random_device random_device;
     while (is_zero_session_token(token))
     {
-        const std::uint64_t lo =
-            splitmix64(next_session_token_seed_++ ^ now_ms());
-        const std::uint64_t hi =
-            splitmix64(next_session_token_seed_++ ^
-                       (now_ms() + 0x9e3779b97f4a7c15ULL));
-        for (std::size_t index = 0; index < 8; ++index)
+        for (std::size_t index = 0; index < token.size(); ++index)
         {
             token[index] =
-                static_cast<std::uint8_t>((lo >> (index * 8)) & 0xffu);
-            token[8 + index] =
-                static_cast<std::uint8_t>((hi >> (index * 8)) & 0xffu);
+                static_cast<std::uint8_t>(random_device() & 0xffu);
         }
     }
     return token;
@@ -978,7 +974,8 @@ void GameServer::handle_transport_disconnect(
             disconnected_players_.end(),
             [&client](const DisconnectedPlayer& disconnected) {
                 return disconnected.player_index == client.player_index ||
-                    disconnected.session_token == client.session_token;
+                    session_tokens_equal(disconnected.session_token,
+                                         client.session_token);
             });
 
         DisconnectedPlayer replacement;
@@ -1236,7 +1233,7 @@ void GameServer::handle_hello(PeerId peer_id, const HelloMessage& message)
     {
         if (!is_zero_session_token(client.session_token) &&
             !is_zero_session_token(message.session_token) &&
-            message.session_token != client.session_token)
+            !session_tokens_equal(message.session_token, client.session_token))
         {
             handle_transport_disconnect(peer_id, true);
             return;
@@ -1259,7 +1256,8 @@ void GameServer::handle_hello(PeerId peer_id, const HelloMessage& message)
         disconnected_players_.begin(),
         disconnected_players_.end(),
         [&message](const DisconnectedPlayer& disconnected) {
-            return disconnected.session_token == message.session_token;
+            return session_tokens_equal(disconnected.session_token,
+                                        message.session_token);
         });
     if (disconnected_it == disconnected_players_.end())
     {
@@ -1509,7 +1507,8 @@ void GameServer::poll_incoming_messages(int max_messages)
             std::move(pending_inbound_messages_.front()));
         pending_inbound_messages_.pop_front();
     }
-    messages_drained_last_call_ = static_cast<int>(to_drain);
+    messages_drained_last_call_ = static_cast<int>(
+        std::min(to_drain, static_cast<std::size_t>(INT_MAX)));
 
     for (const PeerId peer_id : poll_result.malformed_peers)
     {
@@ -1596,6 +1595,32 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
                     0,
                     20));
             }
+            {
+                // The tick is attacker-controlled (raw wire u32). Drop inputs
+                // whose tick sits absurdly far ahead of the live window: only
+                // ticks <= expected_tick are ever consumed/erased by
+                // select_effective_input, so a flood of distinct far-future
+                // ticks would otherwise grow pending_inputs without bound
+                // (memory-exhaustion DoS). Compute the delta in 64-bit to avoid
+                // uint32 wraparound making a far-future tick look "recent".
+                constexpr std::int64_t kMaxFutureInputTicks =
+                    static_cast<std::int64_t>(KEYFRAME_INTERVAL_TICKS);
+                const std::int64_t tick_delta =
+                    static_cast<std::int64_t>(message.tick) -
+                    static_cast<std::int64_t>(expected_tick);
+                if (tick_delta > kMaxFutureInputTicks)
+                    break;
+                // Defense in depth: cap pending entries per client and ignore
+                // new keys once full, so the invariant holds even if the window
+                // logic above ever changes.
+                constexpr std::size_t kMaxPendingInputsPerClient = 256;
+                if (client.pending_inputs.size() >= kMaxPendingInputsPerClient &&
+                    client.pending_inputs.find(message.tick) ==
+                        client.pending_inputs.end())
+                {
+                    break;
+                }
+            }
             client.pending_inputs[message.tick] =
                 select_player_input(*message.input, client.player_index);
             client.last_received_input_tick = message.tick;
@@ -1627,10 +1652,28 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
             if (message.exit_prompt_response)
             {
                 if (message.exit_prompt_response->abort_request)
+                {
+                    // Abort ("Quit this mission") is intentionally any-player.
                     abort_level_for_all();
+                }
                 else if (pending_exit_prompt_state_.has_value())
-                    handle_exit_prompt_response(
-                        message.exit_prompt_response->accepted);
+                {
+                    // Only the player who was actually prompted may resolve the
+                    // exit/withdraw. The broadcast was restricted to the
+                    // triggering player; accept a response solely from that
+                    // bound peer. When the trigger couldn't be identified the
+                    // prompt was broadcast to everyone, so any bound peer may
+                    // answer in that fallback case.
+                    const auto trig =
+                        pending_exit_prompt_state_->triggering_player_index;
+                    if (client.has_player_binding &&
+                        (trig == static_cast<std::size_t>(-1) ||
+                         client.player_index == trig))
+                    {
+                        handle_exit_prompt_response(
+                            message.exit_prompt_response->accepted);
+                    }
+                }
             }
             break;
 

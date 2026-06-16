@@ -13,8 +13,10 @@
 #include <openglad/resources/campaign_io.h>
 #include <openglad/resources/filesystem_sync.h>
 
+#include <cstddef>
 #include <list>
 #include <string>
+#include <string_view>
 #include <vector>
 
 class PixieData;
@@ -33,6 +35,9 @@ std::string get_mounted_campaign();
 #ifdef TESTING
 void set_mounted_campaign_for_testing(const std::string& id);
 #endif
+bool is_safe_campaign_id(std::string_view id);
+bool is_safe_virtual_basename(std::string_view name,
+                              std::size_t max_length = 64);
 
 enum class CampaignPackageIoError {
     None = 0,
@@ -49,6 +54,7 @@ enum class ArchiveIoError {
     OpenOutputFailed,
     ReadEntryFailed,
     CloseArchiveFailed,
+    ResourceLimitExceeded,
 };
 
 [[nodiscard]] CampaignPackageIoError mount_campaign_package_with_error(const std::string& id);

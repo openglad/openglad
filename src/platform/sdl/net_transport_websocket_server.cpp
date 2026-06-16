@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <deque>
 #include <format>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
@@ -16,6 +17,13 @@
 #include <vector>
 
 namespace og::sim {
+namespace {
+
+constexpr std::size_t kMaxInboundFrameBytes = 128u * 1024u;
+constexpr std::size_t kMaxQueuedMessages = 1024u;
+constexpr std::size_t kMaxQueuedPayloadBytes = 16u * 1024u * 1024u;
+
+} // namespace
 
 struct WebSocketServerTransport::Impl
 {
@@ -77,12 +85,22 @@ struct WebSocketServerTransport::Impl
         {
             if (!message->binary)
                 return;
+            if (message->str.size() > kMaxInboundFrameBytes)
+            {
+                websocket.close(1009, "message too large");
+                enqueue_disconnect(connection_state->getId());
+                return;
+            }
 
             QueueEntry entry;
             entry.kind = QueueEntryKind::Message;
             entry.connection_id = connection_state->getId();
             entry.payload.assign(message->str.begin(), message->str.end());
-            enqueue(std::move(entry));
+            if (!enqueue(std::move(entry)))
+            {
+                websocket.close(1008, "receive queue full");
+                enqueue_disconnect(connection_state->getId());
+            }
             break;
         }
 
@@ -138,10 +156,9 @@ struct WebSocketServerTransport::Impl
         }
 
         const char* bytes = reinterpret_cast<const char*>(data);
-        const std::string payload =
-            (bytes == nullptr || len == 0) ? std::string()
-                                           : std::string(bytes, bytes + len);
-        const ix::WebSocketSendInfo send_info = socket->sendBinary(payload);
+        const std::size_t send_len = (bytes == nullptr || len == 0) ? 0 : len;
+        const ix::WebSocketSendInfo send_info =
+            socket->sendBinary(ix::IXWebSocketSendData(bytes, send_len));
         if (!send_info.success)
         {
             enqueue_disconnect(peer_it->second.connection_id);
@@ -161,6 +178,8 @@ struct WebSocketServerTransport::Impl
                 return {};
 
             queued_entries.swap(queue);
+            queued_message_count = 0;
+            queued_payload_bytes = 0;
         }
 
         std::vector<ReceivedMessage> drained_messages;
@@ -175,6 +194,14 @@ struct WebSocketServerTransport::Impl
                     connection_to_peer_id.contains(entry.connection_id))
                 {
                     break;
+                }
+
+                if (next_peer_id == std::numeric_limits<PeerId>::max())
+                {
+                    // PeerId space exhausted; the next increment would wrap to
+                    // the reserved 'no peer' sentinel (0). Drop the connection
+                    // rather than register a ghost peer.
+                    break; // GCOVR_EXCL_LINE -- unreachable without 2^32 live peers
                 }
 
                 const PeerId peer_id = next_peer_id++;
@@ -255,10 +282,24 @@ private:
         enqueue(std::move(entry));
     }
 
-    void enqueue(QueueEntry entry)
+    bool enqueue(QueueEntry entry)
     {
         std::lock_guard<std::mutex> lock(queue_mutex);
+        if (queue.size() >= kMaxQueuedMessages)
+            return false;
+        if (entry.kind == QueueEntryKind::Message)
+        {
+            if (queued_message_count >= kMaxQueuedMessages ||
+                entry.payload.size() >
+                    kMaxQueuedPayloadBytes - queued_payload_bytes)
+            {
+                return false;
+            }
+            ++queued_message_count;
+            queued_payload_bytes += entry.payload.size();
+        }
         queue.push_back(std::move(entry));
+        return true;
     }
 
     std::shared_ptr<ix::WebSocket> resolve_socket(ix::WebSocket& websocket)
@@ -279,6 +320,8 @@ private:
 
     std::mutex queue_mutex;
     std::deque<QueueEntry> queue;
+    std::size_t queued_message_count = 0;
+    std::size_t queued_payload_bytes = 0;
 
     PeerId next_peer_id = 1;
     std::unordered_map<std::string, PeerId> connection_to_peer_id;

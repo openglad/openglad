@@ -72,7 +72,7 @@ constexpr int kDefaultLobbyPollMs = 10;
 std::atomic<bool> g_shutdown_requested = false;
 
 struct ServerArgs {
-    std::string host = "0.0.0.0";
+    std::string host = "127.0.0.1";
     int port = kDefaultPort;
     int lobby_poll_ms = kDefaultLobbyPollMs;
     std::optional<int> target_fps;
@@ -88,7 +88,7 @@ void print_usage()
     std::fprintf(
         stderr,
         "Usage: openglad_server [options]\n"
-        "  --host <addr>         Listen address (default: 0.0.0.0)\n"
+        "  --host <addr>         Listen address (default: 127.0.0.1)\n"
         "  --port <num>          Listen port (default: 12345)\n"
         "  --lobby-poll-ms <n>   Lobby poll interval in ms (default: 10)\n"
         "  --fps <n>             Deprecated; no longer affects sim cadence (master semantics derived from world.timer_wait).\n"

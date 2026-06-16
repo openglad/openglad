@@ -15,6 +15,9 @@ namespace og::sim {
 namespace {
 
 constexpr unsigned short kWebSocketReadyStateOpen = 1;
+constexpr std::size_t kMaxInboundFrameBytes = 128u * 1024u;
+constexpr std::size_t kMaxQueuedMessages = 1024u;
+constexpr std::size_t kMaxQueuedPayloadBytes = 16u * 1024u * 1024u;
 
 #ifdef __EMSCRIPTEN__
 void default_init_create_attributes(
@@ -411,6 +414,8 @@ struct EmscriptenWebSocketTransport::Impl
                 return {};
 
             queued_entries.swap(queue);
+            queued_message_count = 0;
+            queued_payload_bytes = 0;
         }
 
         std::vector<ReceivedMessage> drained_messages;
@@ -537,6 +542,12 @@ private:
         {
             return;
         }
+        if (websocket_event->numBytes > kMaxInboundFrameBytes)
+        {
+            enqueue_disconnect(websocket_event->socket);
+            request_close_socket(websocket_event->socket, 1009, "message too large");
+            return;
+        }
 
         QueueEntry entry;
         entry.kind = QueueEntryKind::Message;
@@ -547,10 +558,14 @@ private:
                 return;
 
             entry.payload.assign(websocket_event->data,
-                                 websocket_event->data +
-                                     websocket_event->numBytes);
+                                     websocket_event->data +
+                                         websocket_event->numBytes);
         }
-        enqueue(std::move(entry));
+        if (!enqueue(std::move(entry)))
+        {
+            enqueue_disconnect(websocket_event->socket);
+            request_close_socket(websocket_event->socket, 1008, "receive queue full");
+        }
     }
 
     void handle_disconnect(WebSocketHandle socket_handle)
@@ -577,7 +592,20 @@ private:
         const detail::EmscriptenWebSocketApi& api =
             detail::emscripten_websocket_api();
         if (api.close != nullptr)
-            (void)api.close(socket_handle, 1000, nullptr);
+        (void)api.close(socket_handle, 1000, nullptr);
+    }
+
+    void request_close_socket(WebSocketHandle socket_handle,
+                              unsigned short code,
+                              const char* reason) const noexcept
+    {
+        if (socket_handle <= 0)
+            return;
+
+        const detail::EmscriptenWebSocketApi& api =
+            detail::emscripten_websocket_api();
+        if (api.close != nullptr)
+            (void)api.close(socket_handle, code, reason);
     }
 
     void dispose_socket() noexcept
@@ -599,12 +627,28 @@ private:
     {
         std::lock_guard<std::mutex> lock(queue_mutex);
         queue.clear();
+        queued_message_count = 0;
+        queued_payload_bytes = 0;
     }
 
-    void enqueue(QueueEntry entry)
+    bool enqueue(QueueEntry entry)
     {
         std::lock_guard<std::mutex> lock(queue_mutex);
+        if (queue.size() >= kMaxQueuedMessages)
+            return false;
+        if (entry.kind == QueueEntryKind::Message)
+        {
+            if (queued_message_count >= kMaxQueuedMessages ||
+                entry.payload.size() >
+                    kMaxQueuedPayloadBytes - queued_payload_bytes)
+            {
+                return false;
+            }
+            ++queued_message_count;
+            queued_payload_bytes += entry.payload.size();
+        }
         queue.push_back(std::move(entry));
+        return true;
     }
 
     std::string url;
@@ -615,6 +659,8 @@ private:
 
     std::mutex queue_mutex;
     std::deque<QueueEntry> queue;
+    std::size_t queued_message_count = 0;
+    std::size_t queued_payload_bytes = 0;
 };
 
 EmscriptenWebSocketTransport::EmscriptenWebSocketTransport(std::string url)

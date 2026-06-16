@@ -322,7 +322,14 @@ void sync_view_team_host_control_visibility(button* buttons,
 // Compute derived stats for a guy using the current screen's loader data.
 static og::ui::DerivedStats compute_guy_derived_stats(const guy& g)
 {
-    auto pix = PIX(Order::Living, g.family);
+    // guy::family comes verbatim from the .gtl save file with no range check;
+    // a malicious/negative value would index the loader stat arrays out of
+    // bounds. Clamp to a valid living family (matching the soldier fallback
+    // used by create_walker_owned / set_derived_stats) before indexing.
+    const int fam = (g.family < 0 || g.family >= NUM_FAMILIES)
+        ? FAMILY_SOLDIER
+        : static_cast<int>(g.family);
+    auto pix = PIX(Order::Living, fam);
 	return og::ui::compute_derived_stats(g,
 	    og::runtime::current_session->myscreen_->myloader->hitpoints[pix],
 	    og::runtime::current_session->myscreen_->myloader->damage[pix],
@@ -1557,7 +1564,7 @@ Sint32 create_progress_menu(Sint32 arg1)
         }
 
         // Scroll indicator
-        if (levels.size() > (size_t)visible_rows) {
+        if (levels.size() > static_cast<size_t>(visible_rows)) {
             std::string scroll_info = std::format("{}-{} of {}",
                      scroll_offset + 1,
                      std::min(scroll_offset + visible_rows, static_cast<int>(levels.size())),
@@ -1590,6 +1597,7 @@ std::string get_class_description(unsigned char family)
 	{
 	    const auto* fd = get_family_descriptor(family);
 	    if (!fd) return "";
+	    if (stat < 0 || stat >= 6 || fd->stat_costs[stat] == 0) return "";
 	    int value = 55/(fd->stat_costs[stat]);
 	    int rating = (value * 5) / 11;
 	    switch(rating)
@@ -1754,12 +1762,19 @@ Sint32 create_hire_menu(Sint32 arg1)
             cost_box_inner.x, cost_box_inner.y, cost_box_inner.w,
             cost_box_inner.h);
         
-        og::runtime::current_session->message_ = std::format("CASH: {}", og::runtime::current_session->myscreen_->save_data.m_totalcash[og::runtime::current_session->current_team_num_]);
+        // current_team_num_ is derived from a save-loaded guy::teamnum (which
+        // is unvalidated); clamp before indexing the MAX_PLAYERS-sized array.
+        const int hire_cash_team =
+            (og::runtime::current_session->current_team_num_ < 0 ||
+             og::runtime::current_session->current_team_num_ >= MAX_PLAYERS)
+                ? 0
+                : static_cast<int>(og::runtime::current_session->current_team_num_);
+        og::runtime::current_session->message_ = std::format("CASH: {}", og::runtime::current_session->myscreen_->save_data.m_totalcash[hire_cash_team]);
         mytext.write_xy(cost_box_content.x, cost_box_content.y, og::runtime::current_session->message_.c_str(),static_cast<unsigned char>(DARK_BLUE), 1);
         current_cost = pks().hire_session ? pks().hire_session->current_cost() : 0;
         mytext.write_xy(cost_box_content.x, cost_box_content.y + 10, "COST: ", DARK_BLUE, 1);
         og::runtime::current_session->message_ = std::format("      {}", current_cost );
-        if (current_cost > og::runtime::current_session->myscreen_->save_data.m_totalcash[og::runtime::current_session->current_team_num_])
+        if (current_cost > og::runtime::current_session->myscreen_->save_data.m_totalcash[hire_cash_team])
             mytext.write_xy(cost_box_content.x + 10, cost_box_content.y + 10, og::runtime::current_session->message_.c_str(), STAT_CHANGED, 1);
         else
             mytext.write_xy(cost_box_content.x + 10, cost_box_content.y + 10, og::runtime::current_session->message_.c_str(), STAT_COLOR, 1);
@@ -2063,13 +2078,21 @@ Sint32 create_train_menu(Sint32 arg1)
 				r2.x, r2.y, r2.w, r2.h);
         
         linesdown += 0.4f;
-        og::runtime::current_session->message_ = std::format("CASH: {}", og::runtime::current_session->myscreen_->save_data.m_totalcash[og::runtime::current_session->current_guy_->teamnum]);
+        // teamnum is loaded verbatim from the .gtl save file with no range
+        // check; m_totalcash has only MAX_PLAYERS slots, so a malicious value
+        // would index out of bounds. Clamp to a valid team before indexing.
+        const int train_cash_team =
+            (og::runtime::current_session->current_guy_->teamnum < 0 ||
+             og::runtime::current_session->current_guy_->teamnum >= MAX_PLAYERS)
+                ? 0
+                : static_cast<int>(og::runtime::current_session->current_guy_->teamnum);
+        og::runtime::current_session->message_ = std::format("CASH: {}", og::runtime::current_session->myscreen_->save_data.m_totalcash[train_cash_team]);
 	        mytext.write_xy(180, info_y(linesdown), og::runtime::current_session->message_.c_str(),static_cast<unsigned char>(DARK_BLUE), 1);
 
         linesdown++;
 	        mytext.write_xy(180, info_y(linesdown), "COST: ", DARK_BLUE, 1);
         og::runtime::current_session->message_ = std::format("      {}", current_cost );
-        if (current_cost > og::runtime::current_session->myscreen_->save_data.m_totalcash[og::runtime::current_session->current_guy_->teamnum])
+        if (current_cost > og::runtime::current_session->myscreen_->save_data.m_totalcash[train_cash_team])
 	            mytext.write_xy(180, info_y(linesdown), og::runtime::current_session->message_.c_str(), STAT_CHANGED, 1);
 	        else
 	            mytext.write_xy(180, info_y(linesdown), og::runtime::current_session->message_.c_str(), STAT_COLOR, 1);
@@ -2084,6 +2107,7 @@ Sint32 create_train_menu(Sint32 arg1)
         og::input_native::sleep_ms(10);
 	}
 	pks().train_session = nullptr;
+	pks().old_guy = nullptr;
 	og::runtime::current_session->myscreen_->clearbuffer();
 	//myscreen->clearscreen();
     if ((retvalue & MENU_EXIT) && team_build_start_selected())
@@ -2300,7 +2324,13 @@ Sint32 name_guy(Sint32 arg)  // 0 == current_guy, 1 == ourteam[editguy]
 		return MENU_REDRAW;
 
 	if (arg)
-		someguy = og::runtime::current_session->myscreen_->save_data.team_list[og::runtime::current_session->editguy_].get();
+	{
+		auto& team_list = og::runtime::current_session->myscreen_->save_data.team_list;
+		const int slot = og::runtime::current_session->editguy_;
+		if (slot < 0 || slot >= static_cast<int>(team_list.size()))
+			return MENU_REDRAW;
+		someguy = team_list[slot].get();
+	}
 	else
 		someguy = og::runtime::current_session->current_guy_.get();
 

@@ -369,6 +369,8 @@ void sdl_video::putblack(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysiz
 	Sint32 curx, cury;
 	Sint32 curpoint;
 
+	if (!og::runtime::current_session->videoptr_) return;  // no direct video buffer to clear
+
 	for(cury = starty;cury < starty +ysize;cury++)
 	{
 		for (curx = startx; curx < startx +xsize; curx++)
@@ -1804,7 +1806,7 @@ void sdl_video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 						}
 						if (curcolor > static_cast<unsigned char>(247))
 							curcolor = static_cast<unsigned char>(teamcolor+(255-curcolor));
-						videobuffer[buffoff++] = curcolor;
+						pointb(buffoff++, curcolor);
 					} //end each row
 
 					walkoff += walkshift;
@@ -1842,6 +1844,15 @@ void sdl_video::get_pixel(int x, int y, Uint8 *r, Uint8 *g, Uint8 *b)
 {
 	Uint32 col = 0;
 	Uint8 q=0,w=0,e=0;
+
+	//buffers: bound checking to prevent out-of-bounds reads (mirrors pointb)
+	if (x < 0 || x >= E_Screen->render->w || y < 0 || y >= E_Screen->render->h)
+	{
+		*r = 0;
+		*g = 0;
+		*b = 0;
+		return;
+	}
 
 	char *p = reinterpret_cast<char*>(E_Screen->render->pixels);
 	p += E_Screen->render->pitch*y;
@@ -1885,6 +1896,10 @@ int sdl_video::get_pixel(int x, int y, int *index)
 int sdl_video::get_pixel(int offset)
 {
 	int x,y,t;
+
+	//buffers: reject out-of-range offsets before converting (mirrors pointb bounds)
+	if (offset < 0 || offset >= E_Screen->render->w * E_Screen->render->h)
+		return 0;
 
 	y = offset/320;
 	x = offset-y*320;
@@ -2000,6 +2015,7 @@ int sdl_video::FadeBetween(
 		bOldNull = true;
 		pOldSurface = SDL_CreateRGBSurface(SDL_SWSURFACE,
 			CX_SCREEN, CY_SCREEN, 24, 0, 0, 0, 0);
+		if (!pOldSurface) return 0;  // OOM: nothing safely lockable below
 		SDL_FillRect(pOldSurface,nullptr,0);
 	}
 	if (!pNewSurface)
@@ -2007,6 +2023,7 @@ int sdl_video::FadeBetween(
 		bNewNull = true;
 		pNewSurface = SDL_CreateRGBSurface(SDL_SWSURFACE,
 			CX_SCREEN, CY_SCREEN, 24, 0, 0, 0, 0);
+		if (!pNewSurface) { if (bOldNull) SDL_FreeSurface(pOldSurface); return 0; }  // OOM: free the temp we just made
 		SDL_FillRect(pNewSurface,nullptr,0);
 	}
 	if (bOldNull && bNewNull) return 0;	//nothing to do
@@ -2043,6 +2060,12 @@ int sdl_video::FadeBetween(
         return fail("width mismatch");
 	if(pOldSurface->h != pNewSurface->h)
         return fail("height mismatch");
+	// DestSurface drives the FadeBetween24 write/read loop; colorsf/colorst are
+	// sized to pOldSurface, so a larger dest would read past them. Require an
+	// exact dimension match (and non-null dest) to bound the loop.
+	if(!DestSurface || DestSurface->pitch != pOldSurface->pitch
+	   || DestSurface->w != pOldSurface->w || DestSurface->h != pOldSurface->h)
+        return fail("dest size mismatch");
 	if(pOldSurface->format->Rmask != pNewSurface->format->Rmask)
         return fail("Rmask mismatch");
 	if(pOldSurface->format->Rshift != pNewSurface->format->Rshift)
@@ -2083,7 +2106,7 @@ int sdl_video::FadeBetween(
 #ifdef TESTING
 	// In test mode, just do a direct blit instead of animated fade
 	if(pNewSurface)
-		SDL_BlitSurface(pNewSurface, NULL, DestSurface, NULL);
+		SDL_BlitSurface(pNewSurface, nullptr, DestSurface, nullptr);
 	TRACE("video", "FadeBetween: skipping animation (test mode)");
 #else
 	Uint32

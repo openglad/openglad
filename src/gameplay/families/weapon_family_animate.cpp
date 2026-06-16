@@ -13,15 +13,58 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/core/sound_ids.h>
 
+// Advances `self`'s animation by one frame with full bounds checking. curdir,
+// ani_type and cycle may originate from an untrusted snapshot, so the facing,
+// the animation type (against this family's actual table length) and the cycle
+// (against the sequence sentinel) are all bounded before indexing — otherwise a
+// short animation table would be read out of bounds and a wild pointer
+// dereferenced. Returns true if the advanced cycle reached the end sentinel.
+static bool weapon_animate_step(weap* self)
+{
+    if (!self->ani)
+        return true;
+    int dir_index = static_cast<int>(static_cast<unsigned char>(self->curdir()));
+    if (dir_index < 0 || dir_index >= NUM_FACINGS)
+        dir_index = 0;
+    int type_index = static_cast<int>(self->ani_type());
+    if (type_index < 0)
+        type_index = 0;
+    // Callers (tree/blood, glow) already clamp ani_type to the small range their
+    // table supports, and dir_index is bounded above, so dir+type*NUM_FACINGS stays
+    // within the table. The real untrusted inputs here are curdir and cycle, which
+    // are bounded by the facing clamp above and the sentinel scan below.
+    const int ani_index = dir_index + type_index * NUM_FACINGS;
+    // For real entities the loader records this family's table length (ani_count).
+    // If a snapshot-driven ani_type drives ani_index past the end, treat it like
+    // "no such sequence" (stop) instead of dereferencing a wild pointer. ani_count
+    // is 0 only for test-constructed weapons that assign `ani` directly, which keep
+    // the legacy direct-index behavior. Mirrors walker::animate/effect::animate.
+    if (self->ani_count > 0 && ani_index >= self->ani_count) return true;
+    const signed char* seq = self->ani[ani_index];
+    if (!seq)
+        return true;
+    int seq_len = 0;
+    while (seq_len < 128 && seq[seq_len] != -1)
+        seq_len++;
+    if (seq_len <= 0 || seq_len >= 128)
+        return true;
+    int c = static_cast<int>(self->cycle());
+    if (c < 0 || c >= seq_len)
+        c = 0;
+    self->set_frame(seq[c]);
+    c++;                                // advance into [1, seq_len]; seq[seq_len] is the -1 sentinel
+    const bool ended = (seq[c] == -1);
+    self->set_cycle(static_cast<signed char>(c));
+    return ended;
+}
+
 // --- TREE and BLOOD: simple animation cycling ---
 
 static bool tree_blood_on_animate(weap* self)
 {
     if (self->ani_type() > 1)
         self->set_ani_type(0);
-    self->set_frame(self->ani[self->curdir()+self->ani_type()*NUM_FACINGS][self->cycle()]);
-    self->set_cycle(static_cast<signed char>(self->cycle() + 1));
-    if (self->ani[self->curdir()+self->ani_type()*NUM_FACINGS][self->cycle()] == -1)
+    if (weapon_animate_step(self))
     {
         self->set_ani_type(0);
         self->set_cycle(0);
@@ -48,9 +91,7 @@ static bool glow_on_animate(weap* self)
 {
     if (self->ani_type() > 2) // illegal case
         self->set_ani_type(2); // pulse case
-    self->set_frame(self->ani[self->curdir()+self->ani_type()*NUM_FACINGS][self->cycle()]);
-    self->set_cycle(static_cast<signed char>(self->cycle() + 1));
-    if (self->ani[self->curdir()+self->ani_type()*NUM_FACINGS][self->cycle()] == -1)
+    if (weapon_animate_step(self))
     {
         self->set_ani_type(2); // pulse
         self->set_cycle(0);

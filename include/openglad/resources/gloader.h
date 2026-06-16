@@ -55,10 +55,13 @@ class loader
 		walker *set_walker(walker *ob, Order order, std::int32_t family);
 		std::vector<PixieData> graphics;
 		std::vector<const signed char * const *> animations;
+		// Parallel to `animations`: number of (facing x ani_type) pointer entries
+		// in each table, used to bound animation index math against short tables.
+		std::vector<int> animation_counts;
 		std::vector<float> stepsizes;
 		std::vector<std::int32_t> lineofsight;
 
-		std::array<float, 200> hitpoints{}; // hack for now
+		std::vector<float> hitpoints; // sized to SIZE_ORDERS*SIZE_FAMILIES like its sibling tables
 		std::vector<char> act_types;
 		std::vector<float> damage;
 		std::vector<float> fire_frequency;

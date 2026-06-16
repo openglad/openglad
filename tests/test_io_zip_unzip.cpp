@@ -294,6 +294,51 @@ TEST(IoZipUnzip, io_unzip_rejects_zip_slip_paths)
 }
 
 
+TEST(IoZipUnzip, io_unzip_rejects_archives_exceeding_entry_limit)
+{
+    namespace fs = std::filesystem;
+    const fs::path base = fs::temp_directory_path() / ("openglad_io_zip_limit_" + std::to_string(::getpid()));
+    const fs::path zipfile = base / "too_many_entries.zip";
+    const fs::path outdir = base / "out";
+
+    ASSERT_TRUE(create_dir(base.string())) << "create base dir should succeed";
+
+    int err = 0;
+    zip* za = zip_open(zipfile.string().c_str(), ZIP_CREATE | ZIP_TRUNCATE, &err);
+    ASSERT_TRUE(za != nullptr) << "zip_open large-entry archive should succeed";
+    if (!za)
+        return;
+
+    // zip_source_buffer does not copy: it keeps the pointer and libzip reads it
+    // during zip_close() below. The buffer must therefore outlive zip_close(), so
+    // use one function-scoped buffer rather than a per-iteration stack array
+    // (which would be a stack-use-after-scope read at flush time).
+    static const char payload[] = "x";
+    for (int i = 0; i < 4097; ++i)
+    {
+        zip_source* src = zip_source_buffer(za, payload, 1, 0);
+        ASSERT_TRUE(src != nullptr) << "zip_source_buffer entry should succeed";
+        char name[64] = {};
+        std::snprintf(name, sizeof(name), "entry_%04d.txt", i);
+        if (src && zip_file_add(za, name, src, ZIP_FL_OVERWRITE) < 0)
+        {
+            zip_source_free(src);
+            ASSERT_TRUE(false) << "zip_file_add entry should succeed";
+        }
+    }
+
+    ASSERT_EQ(0, zip_close(za)) << "zip_close large-entry archive should succeed";
+
+    ASSERT_EQ(
+        static_cast<int>(ArchiveIoError::ResourceLimitExceeded),
+        static_cast<int>(unzip_into_with_error(zipfile.string(), outdir.string())))
+        << "archives above the extraction entry cap should be rejected";
+
+    std::error_code ec;
+    fs::remove_all(base, ec);
+}
+
+
 TEST(IoZipUnzip, io_unzip_reports_output_write_failure)
 {
 #if defined(__linux__)

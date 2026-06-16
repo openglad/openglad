@@ -186,13 +186,33 @@ bool weap::animate()
 	}
 	else
 	{
-		// Default animation
+		// Default animation. curdir/cycle may originate from an untrusted
+		// snapshot, so bound every index against the facing range, this
+		// family's table length, and the sequence sentinel before reading.
 			set_ani_type(0);
-			set_frame(ani[curdir()][cycle()]);
-			set_cycle(static_cast<signed char>(cycle() + 1));
-			if (ani[curdir()][cycle()] == -1)
+			int dir_index = static_cast<int>(static_cast<unsigned char>(curdir()));
+			if (dir_index < 0 || dir_index >= NUM_FACINGS)
+				dir_index = 0;
+			// ani_count>0 (real entities): bound the row; ani_count==0 (test
+			// weapons that assign `ani` directly): legacy direct index.
+			const signed char* seq =
+				(ani && (ani_count <= 0 || dir_index < ani_count)) ? ani[dir_index] : nullptr;
+			if (seq)
 			{
-				set_cycle(0);
+				int seq_len = 0;
+				while (seq_len < 128 && seq[seq_len] != -1)
+					seq_len++;
+				if (seq_len > 0 && seq_len < 128)
+				{
+					int c = static_cast<int>(cycle());
+					if (c < 0 || c >= seq_len)
+						c = 0;
+					set_frame(seq[c]);
+					c++;
+					if (seq[c] == -1)
+						c = 0;
+					set_cycle(static_cast<signed char>(c));
+				}
 			}
 	}
 

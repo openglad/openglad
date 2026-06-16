@@ -16,7 +16,7 @@
  */
 #pragma once
 
-char rainbow_pal[] =
+inline constexpr char rainbow_pal[] =
     {
         0, 0, 0, 1, 1, 0, 2, 2, 0, 3, 3, 0,
         4, 4, 0, 5, 5, 0, 6, 6, 0, 7, 7, 0,

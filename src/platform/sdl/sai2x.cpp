@@ -593,10 +593,10 @@ void Super2xSaI_ex(unsigned char *src, Uint32 src_pitch, unsigned char *unused, 
 			else
 				product1a = color[5];
 	
-			*((Uint32 *) (&dst_line[0][x * 8])) = product1a;
-			*((Uint32 *) (&dst_line[0][x * 8 + 4])) = product1b;
-			*((Uint32 *) (&dst_line[1][x * 8])) = product2a;
-			*((Uint32 *) (&dst_line[1][x * 8 + 4])) = product2b;
+			*reinterpret_cast<Uint32*>(&dst_line[0][x * 8]) = product1a;
+			*reinterpret_cast<Uint32*>(&dst_line[0][x * 8 + 4]) = product1b;
+			*reinterpret_cast<Uint32*>(&dst_line[1][x * 8]) = product2a;
+			*reinterpret_cast<Uint32*>(&dst_line[1][x * 8 + 4]) = product2b;
 			
 			/* Move color matrix forward */
 			color[0] = color[1]; color[4] = color[5]; color[8] = color[9];   color[12] = color[13];

@@ -241,10 +241,16 @@ std::filesystem::path campaign_archive_path(std::string_view campaign_id)
         (std::string(campaign_id) + ".glad");
 }
 
+struct FileCloser
+{
+    void operator()(std::FILE* f) const noexcept { if (f) std::fclose(f); }
+};
+
 std::optional<std::string> crc32_hex_for_file(const std::filesystem::path& path)
 {
-    std::FILE* const file = std::fopen(path.string().c_str(), "rb");
-    if (file == nullptr)
+    std::unique_ptr<std::FILE, FileCloser> file(
+        std::fopen(path.string().c_str(), "rb"));
+    if (!file)
         return std::nullopt;
 
     std::array<unsigned char, 4096> buffer{};
@@ -252,7 +258,7 @@ std::optional<std::string> crc32_hex_for_file(const std::filesystem::path& path)
     while (true)
     {
         const std::size_t read =
-            std::fread(buffer.data(), 1, buffer.size(), file);
+            std::fread(buffer.data(), 1, buffer.size(), file.get());
         if (read > 0)
         {
             crc = crc32(
@@ -263,16 +269,12 @@ std::optional<std::string> crc32_hex_for_file(const std::filesystem::path& path)
 
         if (read < buffer.size())
         {
-            if (std::ferror(file) != 0)
-            {
-                std::fclose(file);
+            if (std::ferror(file.get()) != 0)
                 return std::nullopt;
-            }
             break;
         }
     }
 
-    std::fclose(file);
     return std::format("{:08x}", static_cast<std::uint32_t>(crc));
 }
 
@@ -1226,12 +1228,11 @@ PendingLocalLobbyState build_pending_local_lobby_state(
 std::string detect_lan_ipv4_address()
 {
 #ifdef __EMSCRIPTEN__
-    char* const hostname = current_browser_hostname_js();
-    if (hostname == nullptr)
+    std::unique_ptr<char, decltype(&std::free)> hostname(current_browser_hostname_js(), &std::free);
+    if (!hostname)
         return "127.0.0.1";
 
-    std::string value = hostname;
-    std::free(hostname);
+    std::string value = hostname.get();
     if (value.empty())
         return "127.0.0.1";
     return value;
@@ -1257,24 +1258,26 @@ std::string detect_lan_ipv4_address()
         if (descriptor < 0)
             return std::nullopt;
 
+        // descriptor is provably >= 0 here, so close it exactly once at scope
+        // exit; this removes the three hand-placed close() calls and their
+        // associated leak hazard on any future early return.
+        struct FdCloser {
+            int fd;
+            ~FdCloser() noexcept { close(fd); }
+        } fd_guard{descriptor};
+
         sockaddr_in remote = {};
         remote.sin_family = AF_INET;
         remote.sin_port = htons(9);
         if (inet_pton(AF_INET, "198.18.0.1", &remote.sin_addr) != 1)
-        {
-            close(descriptor);
             return std::nullopt;
-        }
 
         const int connect_result = connect(
             descriptor,
             reinterpret_cast<const sockaddr*>(&remote),
             sizeof(remote));
         if (connect_result != 0)
-        {
-            close(descriptor);
             return std::nullopt;
-        }
 
         sockaddr_in local = {};
         socklen_t local_size = sizeof(local);
@@ -1282,7 +1285,6 @@ std::string detect_lan_ipv4_address()
             descriptor,
             reinterpret_cast<sockaddr*>(&local),
             &local_size);
-        close(descriptor);
         if (name_result != 0 || local.sin_family != AF_INET)
             return std::nullopt;
 
@@ -1291,7 +1293,9 @@ std::string detect_lan_ipv4_address()
 
     const auto detect_via_hostname = [&]() -> std::optional<std::string> {
         char hostname[256] = {};
-        if (gethostname(hostname, sizeof(hostname)) != 0 || hostname[0] == '\0')
+        // Reserve the final byte: POSIX leaves NUL-termination unspecified when
+        // the name is truncated, but the zero-initialized buffer keeps [255]=='\0'.
+        if (gethostname(hostname, sizeof(hostname) - 1) != 0 || hostname[0] == '\0')
             return std::nullopt;
 
         addrinfo hints = {};
@@ -1304,6 +1308,11 @@ std::string detect_lan_ipv4_address()
         {
             return std::nullopt;
         }
+
+        struct AddrInfoDeleter {
+            void operator()(addrinfo* p) const noexcept { freeaddrinfo(p); }
+        };
+        std::unique_ptr<addrinfo, AddrInfoDeleter> results_guard(results);
 
         std::optional<std::string> detected_address;
         for (addrinfo* current = results; current != nullptr;
@@ -1319,7 +1328,6 @@ std::string detect_lan_ipv4_address()
                 break;
         }
 
-        freeaddrinfo(results);
         return detected_address;
     };
 

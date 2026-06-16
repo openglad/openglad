@@ -385,6 +385,39 @@ TEST(EffectAct, effect_animate_magic_shield)
 }
 
 
+TEST(EffectAct, effect_animate_handles_malicious_indices_safely)
+{
+    // effect::animate() indexes its animation table with curdir/ani_type/cycle,
+    // which arrive straight off a snapshot. Out-of-range values must be bounded
+    // (facing, table length, sequence sentinel) instead of reading out of bounds
+    // and dereferencing a wild pointer.
+    walker* fx = og::runtime::current_session->myscreen_->world().add_fx_ob(Order::FX, FAMILY_EXPLOSION);
+    ASSERT_TRUE(fx != nullptr);
+    if (!fx)
+        return;
+    ASSERT_TRUE(fx->ani != nullptr);
+    ASSERT_GT(fx->ani_count, 0);
+
+    // ani_type far beyond the table + out-of-range facing and cycle.
+    fx->set_ani_type(static_cast<char>(40));
+    fx->set_curdir(static_cast<char>(100));
+    fx->set_cycle(static_cast<signed char>(120));
+    (void)fx->animate(); // must not crash / read OOB (verified under sanitizers)
+
+    // Negative facing and ani_type.
+    fx->set_ani_type(static_cast<char>(-1));
+    fx->set_curdir(static_cast<char>(-5));
+    fx->set_cycle(static_cast<signed char>(-9));
+    (void)fx->animate();
+
+    // A null animation table must be a graceful no-op, not a null deref.
+    fx->ani = nullptr;
+    ASSERT_TRUE(!fx->animate()) << "null ani must return false";
+
+    og::runtime::current_session->myscreen_->world().remove_ob(fx);
+}
+
+
 // ---------------------------------------------------------------------------
 // effect::death
 // ---------------------------------------------------------------------------

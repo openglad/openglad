@@ -13,6 +13,7 @@
 #include <array>
 #include <cstddef>
 #include <list>
+#include <span>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
@@ -1603,6 +1604,46 @@ TEST(WorldSnapshot, apply_snapshot_works_for_attached_external_worlds)
     EXPECT_NE(nullptr, mirror_level.world().find_by_id(actor_id));
 }
 
+TEST(WorldSnapshot, apply_snapshot_clamps_out_of_range_family_and_special)
+{
+    // Security: family/current_special arrive straight off the wire and are used
+    // to index per-family/per-special tables across the sim. A malicious peer can
+    // put any value here, so apply_snapshot must clamp them into range.
+    og::sim::WorldSnapshot snapshot;
+    std::uint32_t actor_id = 0;
+    {
+        TestGameWorld source_fx;
+        GameWorld& source = source_fx.world();
+        configure_snapshot_test_services(source);
+        walker* actor = source.add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, actor);
+        actor->setworldxy(64.0f, 96.0f);
+        actor_id = actor->entity_id();
+        snapshot = og::sim::capture_snapshot(source);
+    }
+    ASSERT_EQ(1u, snapshot.oblist.size());
+    // Forge attacker-controlled out-of-range indices.
+    snapshot.oblist[0].family = static_cast<std::int8_t>(99);
+    snapshot.oblist[0].current_special = static_cast<std::int8_t>(99);
+
+    TestGameWorld mirror_fx;
+    GameWorld& mirror = mirror_fx.world();
+    configure_snapshot_test_services(mirror);
+    GameplayContext* const previous_game = current_game;
+    current_game = nullptr;
+    og::sim::apply_snapshot(mirror, snapshot);
+    current_game = previous_game;
+
+    walker* applied = mirror.find_by_id(actor_id);
+    ASSERT_NE(nullptr, applied) << "entity should still be applied";
+    EXPECT_GE(static_cast<int>(applied->family()), 0);
+    EXPECT_LT(static_cast<int>(applied->family()), NUM_FAMILIES)
+        << "out-of-range family must be clamped";
+    EXPECT_GE(static_cast<int>(applied->current_special()), 0);
+    EXPECT_LT(static_cast<int>(applied->current_special()), NUM_SPECIALS)
+        << "out-of-range current_special must be clamped";
+}
+
 TEST(WorldSnapshot, apply_snapshot_keeps_dead_players_out_of_obmap)
 {
     TestGameWorld source_fx;
@@ -1728,7 +1769,7 @@ TEST(WorldSnapshot, serialize_snapshot_roundtrip_preserves_keyframe_and_compress
     EXPECT_LT(bytes.size(), keyframe.full_grid_data.size() / 2);
 
     const og::sim::WorldSnapshot decoded =
-        og::sim::deserialize_snapshot(bytes.data(), bytes.size());
+        og::sim::deserialize_snapshot(bytes);
     expect_world_snapshot_eq(keyframe, decoded);
 }
 
@@ -1760,7 +1801,7 @@ TEST(WorldSnapshot, guy_snapshot_roundtrip_preserves_owner_tags)
 
     const std::vector<std::uint8_t> bytes = og::sim::serialize_snapshot(keyframe);
     const og::sim::WorldSnapshot decoded =
-        og::sim::deserialize_snapshot(bytes.data(), bytes.size());
+        og::sim::deserialize_snapshot(bytes);
     ASSERT_EQ(1u, decoded.guy_snapshots.size());
     EXPECT_EQ(2u, decoded.guy_snapshots.front().owner_player_index)
         << "owner_player_index must survive the snapshot wire";
@@ -1844,7 +1885,7 @@ TEST(WorldSnapshot, serialize_delta_roundtrip_uses_uncompressed_bypass_when_smal
         EXPECT_LT(recompressed.size(), raw_payload.size());
 
     const og::sim::WorldSnapshot decoded =
-        og::sim::deserialize_delta(bytes.data(), bytes.size());
+        og::sim::deserialize_delta(bytes);
     expect_world_snapshot_eq(delta, decoded);
 }
 
@@ -1881,7 +1922,7 @@ TEST(WorldSnapshot, empty_delta_roundtrip_preserves_world_state_without_entities
 
     const std::vector<std::uint8_t> bytes = og::sim::serialize_delta(delta);
     const og::sim::WorldSnapshot decoded =
-        og::sim::deserialize_delta(bytes.data(), bytes.size());
+        og::sim::deserialize_delta(bytes);
     ASSERT_EQ(1u, decoded.oblist.size());
     EXPECT_EQ(actor_id, decoded.oblist.front().entity_id);
     EXPECT_EQ(1ULL << og::dirty::BIT_ENTITY_ID,
@@ -1913,7 +1954,7 @@ TEST(WorldSnapshot, serialize_delta_roundtrip_preserves_zero_mask_removal_sentin
 
     const std::vector<std::uint8_t> bytes = og::sim::serialize_delta(delta);
     const og::sim::WorldSnapshot decoded =
-        og::sim::deserialize_delta(bytes.data(), bytes.size());
+        og::sim::deserialize_delta(bytes);
 
     ASSERT_EQ(1u, decoded.oblist.size());
     EXPECT_EQ(77u, decoded.oblist.front().entity_id);
@@ -1936,7 +1977,7 @@ TEST(WorldSnapshot, deserialize_snapshot_rejects_bad_headers_and_format_version)
     bad_protocol[0] = static_cast<std::uint8_t>(og::sim::kSnapshotProtocolVersion + 1);
     try
     {
-        (void)og::sim::deserialize_snapshot(bad_protocol.data(), bad_protocol.size());
+        (void)og::sim::deserialize_snapshot(bad_protocol);
         FAIL() << "expected protocol mismatch";
     }
     catch (const std::runtime_error& error)
@@ -1948,14 +1989,14 @@ TEST(WorldSnapshot, deserialize_snapshot_rejects_bad_headers_and_format_version)
     std::vector<std::uint8_t> bad_type = bytes;
     bad_type[1] = og::sim::kDeltaSnapshotMessageType;
     EXPECT_THROW(
-        (void)og::sim::deserialize_snapshot(bad_type.data(), bad_type.size()),
+        (void)og::sim::deserialize_snapshot(bad_type),
         std::runtime_error);
 
     std::vector<std::uint8_t> bad_length = bytes;
     bad_length[2] = 0;
     bad_length[3] = 0;
     EXPECT_THROW(
-        (void)og::sim::deserialize_snapshot(bad_length.data(), bad_length.size()),
+        (void)og::sim::deserialize_snapshot(bad_length),
         std::runtime_error);
 
     const std::size_t payload_length = payload_length_from_header_for_test(bytes);
@@ -1977,7 +2018,7 @@ TEST(WorldSnapshot, deserialize_snapshot_rejects_bad_headers_and_format_version)
 
     try
     {
-        (void)og::sim::deserialize_snapshot(bad_format.data(), bad_format.size());
+        (void)og::sim::deserialize_snapshot(bad_format);
         FAIL() << "expected snapshot format mismatch";
     }
     catch (const std::runtime_error& error)
@@ -1989,7 +2030,7 @@ TEST(WorldSnapshot, deserialize_snapshot_rejects_bad_headers_and_format_version)
     std::vector<std::uint8_t> truncated = bytes;
     truncated.pop_back();
     EXPECT_THROW(
-        (void)og::sim::deserialize_snapshot(truncated.data(), truncated.size()),
+        (void)og::sim::deserialize_snapshot(truncated),
         std::runtime_error);
 }
 
@@ -2003,20 +2044,20 @@ TEST(WorldSnapshot, deserialize_delta_rejects_bad_headers_and_malformed_payloads
     std::vector<std::uint8_t> bad_protocol = bytes;
     bad_protocol[0] = static_cast<std::uint8_t>(og::sim::kSnapshotProtocolVersion + 1);
     EXPECT_THROW(
-        (void)og::sim::deserialize_delta(bad_protocol.data(), bad_protocol.size()),
+        (void)og::sim::deserialize_delta(bad_protocol),
         std::runtime_error);
 
     std::vector<std::uint8_t> bad_type = bytes;
     bad_type[1] = og::sim::kSnapshotMessageType;
     EXPECT_THROW(
-        (void)og::sim::deserialize_delta(bad_type.data(), bad_type.size()),
+        (void)og::sim::deserialize_delta(bad_type),
         std::runtime_error);
 
     std::vector<std::uint8_t> bad_length = bytes;
     bad_length[2] = 0;
     bad_length[3] = 0;
     EXPECT_THROW(
-        (void)og::sim::deserialize_delta(bad_length.data(), bad_length.size()),
+        (void)og::sim::deserialize_delta(bad_length),
         std::runtime_error);
 
     const bool payload_is_uncompressed =
@@ -2040,13 +2081,13 @@ TEST(WorldSnapshot, deserialize_delta_rejects_bad_headers_and_malformed_payloads
     bad_format.insert(bad_format.end(),
                       corrupted_payload.begin(), corrupted_payload.end());
     EXPECT_THROW(
-        (void)og::sim::deserialize_delta(bad_format.data(), bad_format.size()),
+        (void)og::sim::deserialize_delta(bad_format),
         std::runtime_error);
 
     std::vector<std::uint8_t> truncated = bytes;
     truncated.pop_back();
     EXPECT_THROW(
-        (void)og::sim::deserialize_delta(truncated.data(), truncated.size()),
+        (void)og::sim::deserialize_delta(truncated),
         std::runtime_error);
 }
 
@@ -2073,8 +2114,7 @@ TEST(WorldSnapshot, deserialize_snapshot_and_delta_reject_oversized_payloads_and
                               oversized_compressed.begin(),
                               oversized_compressed.end());
     EXPECT_THROW(
-        (void)og::sim::deserialize_snapshot(oversized_snapshot.data(),
-                                            oversized_snapshot.size()),
+        (void)og::sim::deserialize_snapshot(oversized_snapshot),
         std::runtime_error);
 
     og::sim::WorldSnapshot delta;
@@ -2104,8 +2144,7 @@ TEST(WorldSnapshot, deserialize_snapshot_and_delta_reject_oversized_payloads_and
     bad_count_delta.insert(bad_count_delta.end(),
                            raw_payload.begin(), raw_payload.end());
     EXPECT_THROW(
-        (void)og::sim::deserialize_delta(bad_count_delta.data(),
-                                         bad_count_delta.size()),
+        (void)og::sim::deserialize_delta(bad_count_delta),
         std::runtime_error);
 }
 
@@ -2161,38 +2200,35 @@ TEST(WorldSnapshot, event_batch_roundtrip_and_rejects_malformed_frames)
     const std::vector<std::uint8_t> bytes =
         og::sim::serialize_sim_event_batch(batch);
     const og::sim::SimEventBatch decoded =
-        og::sim::deserialize_sim_event_batch(bytes.data(), bytes.size());
+        og::sim::deserialize_sim_event_batch(bytes);
     EXPECT_EQ(batch.sequence, decoded.sequence);
     EXPECT_EQ(batch.events, decoded.events);
 
     const std::vector<std::uint8_t> flow_bytes =
         og::sim::serialize_game_flow_event_batch(batch);
     const og::sim::SimEventBatch decoded_flow =
-        og::sim::deserialize_game_flow_event_batch(flow_bytes.data(),
-                                                   flow_bytes.size());
+        og::sim::deserialize_game_flow_event_batch(flow_bytes);
     EXPECT_EQ(batch.events, decoded_flow.events);
 
-    EXPECT_THROW((void)og::sim::deserialize_sim_event_batch(nullptr, 0),
+    EXPECT_THROW((void)og::sim::deserialize_sim_event_batch(
+                     std::span<const std::uint8_t>{}),
                  std::runtime_error);
 
     std::vector<std::uint8_t> bad_protocol = bytes;
     bad_protocol[0] =
         static_cast<std::uint8_t>(og::sim::kSnapshotProtocolVersion + 1);
-    EXPECT_THROW((void)og::sim::deserialize_sim_event_batch(
-                     bad_protocol.data(), bad_protocol.size()),
+    EXPECT_THROW((void)og::sim::deserialize_sim_event_batch(bad_protocol),
                  std::runtime_error);
 
     std::vector<std::uint8_t> bad_type = bytes;
     bad_type[1] = og::sim::kGameFlowEventBatchMessageType;
-    EXPECT_THROW((void)og::sim::deserialize_sim_event_batch(
-                     bad_type.data(), bad_type.size()),
+    EXPECT_THROW((void)og::sim::deserialize_sim_event_batch(bad_type),
                  std::runtime_error);
 
     std::vector<std::uint8_t> bad_length = bytes;
     bad_length[2] = 0;
     bad_length[3] = 0;
-    EXPECT_THROW((void)og::sim::deserialize_sim_event_batch(
-                     bad_length.data(), bad_length.size()),
+    EXPECT_THROW((void)og::sim::deserialize_sim_event_batch(bad_length),
                  std::runtime_error);
 
     std::vector<std::uint8_t> too_many_events_payload;
@@ -2202,8 +2238,7 @@ TEST(WorldSnapshot, event_batch_roundtrip_and_rejects_malformed_frames)
         frame_event_batch_payload_for_test(
             og::sim::kSimEventBatchMessageType,
             too_many_events_payload);
-    EXPECT_THROW((void)og::sim::deserialize_sim_event_batch(
-                     too_many_events.data(), too_many_events.size()),
+    EXPECT_THROW((void)og::sim::deserialize_sim_event_batch(too_many_events),
                  std::runtime_error);
 
     std::vector<std::uint8_t> oversized_string_payload;
@@ -2219,8 +2254,7 @@ TEST(WorldSnapshot, event_batch_roundtrip_and_rejects_malformed_frames)
         frame_event_batch_payload_for_test(
             og::sim::kSimEventBatchMessageType,
             oversized_string_payload);
-    EXPECT_THROW((void)og::sim::deserialize_sim_event_batch(
-                     oversized_string.data(), oversized_string.size()),
+    EXPECT_THROW((void)og::sim::deserialize_sim_event_batch(oversized_string),
                  std::runtime_error);
 
     std::vector<std::uint8_t> truncated_string_payload;
@@ -2237,8 +2271,7 @@ TEST(WorldSnapshot, event_batch_roundtrip_and_rejects_malformed_frames)
         frame_event_batch_payload_for_test(
             og::sim::kSimEventBatchMessageType,
             truncated_string_payload);
-    EXPECT_THROW((void)og::sim::deserialize_sim_event_batch(
-                     truncated_string.data(), truncated_string.size()),
+    EXPECT_THROW((void)og::sim::deserialize_sim_event_batch(truncated_string),
                  std::runtime_error);
 
     std::vector<std::uint8_t> trailing_payload;
@@ -2249,8 +2282,7 @@ TEST(WorldSnapshot, event_batch_roundtrip_and_rejects_malformed_frames)
         frame_event_batch_payload_for_test(
             og::sim::kSimEventBatchMessageType,
             trailing_payload);
-    EXPECT_THROW((void)og::sim::deserialize_sim_event_batch(
-                     trailing.data(), trailing.size()),
+    EXPECT_THROW((void)og::sim::deserialize_sim_event_batch(trailing),
                  std::runtime_error);
 
     og::sim::SimEventBatch huge_text;
@@ -2363,7 +2395,7 @@ TEST(WorldSnapshot, apply_delta_with_all_fields_dirty_matches_current_world_stat
         og::sim::consume_delta_snapshot_for_client(client_state, current);
     const std::vector<std::uint8_t> bytes = og::sim::serialize_delta(delta);
     const og::sim::WorldSnapshot decoded =
-        og::sim::deserialize_delta(bytes.data(), bytes.size());
+        og::sim::deserialize_delta(bytes);
 
     og::sim::apply_delta(client_baseline, decoded);
     const og::sim::WorldSnapshot source_keyframe =
@@ -2413,7 +2445,7 @@ TEST(WorldSnapshot, consume_delta_snapshot_for_client_accumulates_grid_tiles_acr
 
     const std::vector<std::uint8_t> bytes = og::sim::serialize_delta(delta);
     const og::sim::WorldSnapshot decoded =
-        og::sim::deserialize_delta(bytes.data(), bytes.size());
+        og::sim::deserialize_delta(bytes);
 
     EXPECT_TRUE(decoded.grid_dirty);
     EXPECT_FALSE(decoded.grid_full_resend);
@@ -2483,7 +2515,7 @@ TEST(WorldSnapshot, consume_delta_snapshot_for_client_keeps_later_grid_tiles_aft
 
     const std::vector<std::uint8_t> bytes = og::sim::serialize_delta(delta);
     const og::sim::WorldSnapshot decoded =
-        og::sim::deserialize_delta(bytes.data(), bytes.size());
+        og::sim::deserialize_delta(bytes);
 
     EXPECT_TRUE(decoded.grid_dirty);
     EXPECT_TRUE(decoded.grid_full_resend);
@@ -2560,7 +2592,7 @@ TEST(WorldSnapshot, apply_delta_reorders_entity_lists_even_without_field_changes
     const og::sim::WorldSnapshot delta = og::sim::capture_snapshot(source);
     const std::vector<std::uint8_t> bytes = og::sim::serialize_delta(delta);
     const og::sim::WorldSnapshot decoded =
-        og::sim::deserialize_delta(bytes.data(), bytes.size());
+        og::sim::deserialize_delta(bytes);
 
     og::sim::apply_delta(client_baseline, decoded);
     const og::sim::WorldSnapshot source_keyframe =
@@ -2605,7 +2637,7 @@ TEST(WorldSnapshot,
 
     const std::vector<std::uint8_t> bytes = og::sim::serialize_delta(delta);
     const og::sim::WorldSnapshot decoded =
-        og::sim::deserialize_delta(bytes.data(), bytes.size());
+        og::sim::deserialize_delta(bytes);
 
     og::sim::apply_delta(client_baseline, decoded);
     expect_world_snapshot_eq(current, client_baseline, false);
@@ -2671,7 +2703,7 @@ TEST(WorldSnapshot, apply_delta_accumulates_multi_tick_changes_with_spawn_and_re
         og::sim::consume_delta_snapshot_for_client(client_state, tick_three);
     const std::vector<std::uint8_t> bytes = og::sim::serialize_delta(delta);
     const og::sim::WorldSnapshot decoded =
-        og::sim::deserialize_delta(bytes.data(), bytes.size());
+        og::sim::deserialize_delta(bytes);
 
     EXPECT_NE(decoded.removed_entity_ids.end(),
               std::find(decoded.removed_entity_ids.begin(),

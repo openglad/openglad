@@ -173,9 +173,9 @@ bool results_screen(int ending, int nextlevel)
 class TroopResult
 {
 public:
-    guy* before;
-    walker* after;
-    
+    guy* before = nullptr;
+    walker* after = nullptr;
+
     std::string get_name() const;
     std::string get_class_name() const;
     char get_family() const;
@@ -266,7 +266,9 @@ std::vector<std::string> TroopResult::get_gained_specials() const
     std::vector<std::string> result;
     
     int family = get_family();
-    
+    if (family < 0 || family >= NUM_FAMILIES)
+        return result;  // bogus family from an untrusted save -> no specials
+
     Sint32 test1 = get_level() - 1;
     if ( !(test1%3) ) // we're on a special-gaining level
     {
@@ -987,7 +989,9 @@ int results_screen_test_exercise_internal()
 
     // walker/pixie store raw pointers to PixieData buffers; keep the data alive
     // for the duration of this helper.
-    PixieData one_px(1, 1, 1, new unsigned char[1]{0});
+    auto one_px_buf = std::make_unique<unsigned char[]>(1);
+    one_px_buf[0] = 0;
+    PixieData one_px(1, 1, 1, one_px_buf.release());
 
     // Ending popup branches.
     og::runtime::current_session->myscreen_->save_data.scen_num = 1;

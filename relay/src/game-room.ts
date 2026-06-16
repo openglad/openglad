@@ -3,6 +3,7 @@ import { DurableObject } from "cloudflare:workers";
 import {
   EMPTY_ROOM_GRACE_MS,
   MAX_RELAY_PAYLOAD_BYTES,
+  MAX_RELAY_JSON_MESSAGE_BYTES,
   MAX_ROOM_PEERS,
   MESSAGE_RATE_LIMIT_MAX_MESSAGES,
   MESSAGE_RATE_LIMIT_WINDOW_MS,
@@ -183,6 +184,10 @@ export class GameRoom extends DurableObject {
     }
 
     if (typeof message === "string") {
+      if (message.length > MAX_RELAY_JSON_MESSAGE_BYTES) {
+        ws.close(1009, "Relay control message too large");
+        return;
+      }
       await this.handleJsonMessage(peerId, ws, message);
       return;
     }

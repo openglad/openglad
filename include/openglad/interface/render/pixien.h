@@ -36,5 +36,5 @@ class pixieN : public pixie
 		short frames; // total frames
 		short frame; // current frame
 	protected:
-		unsigned char * facings;
+		unsigned char * facings = nullptr;
 };

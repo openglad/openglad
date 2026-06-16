@@ -100,20 +100,58 @@ bool effect::act()
 
 bool effect::animate()
 {
-	const int ani_index = curdir() + ani_type() * NUM_FACINGS;
-	set_frame(ani[ani_index][cycle()]);
-	set_cycle(static_cast<signed char>(cycle() + 1));
+	if (!ani)
+		return 0;
+
+	// curdir/ani_type/cycle may originate from an untrusted snapshot. Bound the
+	// facing, the animation type against this family's actual table length, and
+	// the cycle against the sequence sentinel before indexing, to avoid reading
+	// past the end of a short animation table (and dereferencing a wild pointer).
+	int dir_index = static_cast<int>(static_cast<unsigned char>(curdir()));
+	if (dir_index < 0 || dir_index >= NUM_FACINGS)
+		dir_index = 0;
+	int type_index = static_cast<int>(ani_type());
+	if (type_index < ANI_WALK)
+		type_index = ANI_WALK;
+
+	int ani_index = dir_index + type_index * NUM_FACINGS;
+	// For real entities the loader records this family's table length (ani_count);
+	// reject an out-of-range row from an untrusted snapshot by falling back to the
+	// walk row (always < ani_count for real tables). ani_count == 0 only for
+	// test-built effects that assign `ani` directly (legacy direct-index behavior).
+	if (ani_count > 0 && ani_index >= ani_count)
+	{
+		set_ani_type(ANI_WALK);
+		ani_index = dir_index;
+	}
+	const signed char* seq = ani[ani_index];
+	if (!seq)
+		return 0;
+
+	int seq_len = 0;
+	while (seq_len < 128 && seq[seq_len] != -1)
+		seq_len++;
+	if (seq_len <= 0 || seq_len >= 128)
+		return 0;
+
+	int c = static_cast<int>(cycle());
+	if (c < 0 || c >= seq_len)
+		c = 0;
+	set_frame(seq[c]);
+	c++;                                 // advance into [1, seq_len]; seq[seq_len] is the -1 sentinel
 
 	const auto* efd = get_effect_family_descriptor(family());
 	if (efd && efd->loops_animation)
 	{
-		if (ani[ani_index][cycle()] == -1)
-			set_cycle(0);
+		if (seq[c] == -1)
+			c = 0;
+		set_cycle(static_cast<signed char>(c));
 	}
 	else
 	{
-		if (ani[ani_index][cycle()] == -1)
+		if (seq[c] == -1)
 			set_ani_type(ANI_WALK);
+		set_cycle(static_cast<signed char>(c));
 	}
 
 	return 1;

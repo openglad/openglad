@@ -95,7 +95,7 @@ statistics::statistics(walker  * someguy)
         old_family_ = FAMILY_SOLDIER;
     }
 
-	name[0] = 0; // set to null string
+	name.clear(); // set to null string
 }
 
 statistics::~statistics()
@@ -1090,45 +1090,45 @@ inline constexpr int GOTO_ARRIVAL_DISTANCE = 12;
 
 // Maps a facing direction to a unit step delta (the same table right_walk
 // builds inline with its turn switches).
-static void facing_step_delta(char dir, short* xdelta, short* ydelta)
+static void facing_step_delta(char dir, short& xdelta, short& ydelta)
 {
 	switch (dir)
 	{
 		case FACE_UP:
-			*xdelta = 0;
-			*ydelta = -1;
+			xdelta = 0;
+			ydelta = -1;
 			break;
 		case FACE_UP_RIGHT:
-			*xdelta = 1;
-			*ydelta = -1;
+			xdelta = 1;
+			ydelta = -1;
 			break;
 		case FACE_RIGHT:
-			*xdelta = 1;
-			*ydelta = 0;
+			xdelta = 1;
+			ydelta = 0;
 			break;
 		case FACE_DOWN_RIGHT:
-			*xdelta = 1;
-			*ydelta = 1;
+			xdelta = 1;
+			ydelta = 1;
 			break;
 		case FACE_DOWN:
-			*xdelta = 0;
-			*ydelta = 1;
+			xdelta = 0;
+			ydelta = 1;
 			break;
 		case FACE_DOWN_LEFT:
-			*xdelta = -1;
-			*ydelta = 1;
+			xdelta = -1;
+			ydelta = 1;
 			break;
 		case FACE_LEFT:
-			*xdelta = -1;
-			*ydelta = 0;
+			xdelta = -1;
+			ydelta = 0;
 			break;
 		case FACE_UP_LEFT:
-			*xdelta = -1;
-			*ydelta = -1;
+			xdelta = -1;
+			ydelta = -1;
 			break;
 		default:
-			*xdelta = 0;
-			*ydelta = 0;
+			xdelta = 0;
+			ydelta = 0;
 			break;
 	}
 }
@@ -1230,14 +1230,14 @@ bool statistics::right_walk_to_point(short x, short y)
 	else if (right_back_blocked())
 	{
 		controller_->set_enddir(static_cast<char>((controller_->enddir() + 2) % 8));  // turn right
-		facing_step_delta(controller_->enddir(), &xstep, &ystep);
+		facing_step_delta(controller_->enddir(), xstep, ystep);
 		add_command(COMMAND_WALK, 1, xstep, ystep);
 	}
 	else
 	{
 		if (!direct_walk_to_point(x, y)) // can't walk straight to the point
 		{
-			facing_step_delta(controller_->curdir(), &xstep, &ystep);
+			facing_step_delta(controller_->curdir(), xstep, ystep);
 			return controller_->walkstep(xstep, ystep);
 		}
 	}

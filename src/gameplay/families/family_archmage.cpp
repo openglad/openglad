@@ -59,9 +59,7 @@ static void archmage_hit_response(statistics* stats, walker* foe)
     walker* controller = stats->controller();
     controller->set_busy(0); // yes, this is a cheat
 
-    std::int32_t possible_specials[NUM_SPECIALS];
-    for (int i = 0; i < NUM_SPECIALS; i++)
-        possible_specials[i] = 0;
+    std::int32_t possible_specials[NUM_SPECIALS] = {};
     for (int i = 0; i <= (stats->level() + 2) / 3; i++)
         if (i < NUM_SPECIALS && stats->magicpoints() >= stats->special_cost(i))
             possible_specials[i] = 1;
@@ -261,6 +259,7 @@ static bool archmage_do_special(walker* self)
                         self->myguy->scen_shots++;
                     }
                     newob = summon_entity(self, Order::FX, FAMILY_CHAIN);
+                    if (!newob) return false;
                     generic = static_cast<std::int32_t>(self->stats()->magicpoints() - static_cast<float>(self->stats()->special_cost(2)));
                     generic /= 2;
                     self->stats()->set_magicpoints(self->stats()->magicpoints() - static_cast<float>(generic));

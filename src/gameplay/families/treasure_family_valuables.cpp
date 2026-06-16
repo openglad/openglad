@@ -64,8 +64,11 @@ static bool life_gem_on_eat(treasure* self, walker* eater)
     award_score(eater->team_num(),
                 static_cast<std::uint32_t>(std::max(0.0f, self->stats()->hitpoints())));
     walker* flash = current_game->world->add_ob(Order::FX, FAMILY_FLASH);
-    flash->set_ani_type(ANI_EXPAND_8);
-    flash->center_on(self);
+    if (flash)
+    {
+        flash->set_ani_type(ANI_EXPAND_8);
+        flash->center_on(self);
+    }
     self->set_dead(1);
     self->death();
     return true;

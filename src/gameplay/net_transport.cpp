@@ -3,6 +3,7 @@
 #include <openglad/gameplay/input_state_net.h>
 #include <openglad/gameplay/world_snapshot.h>
 
+#include <array>
 #include <cstring>
 #include <functional>
 #include <limits>
@@ -42,8 +43,11 @@ void append_i32(std::vector<std::uint8_t>& bytes, std::int32_t value)
 
 void append_f32(std::vector<std::uint8_t>& bytes, float value)
 {
-    const auto* raw = reinterpret_cast<const std::uint8_t*>(&value);
-    bytes.insert(bytes.end(), raw, raw + sizeof(value));
+    // Portable, alias-safe byte extraction (std::bit_cast is unavailable on the
+    // older Emscripten libc++ used by the ctest wasm build).
+    std::array<std::uint8_t, sizeof(float)> raw{};
+    std::memcpy(raw.data(), &value, sizeof(float));
+    bytes.insert(bytes.end(), raw.begin(), raw.end());
 }
 
 void append_string(std::vector<std::uint8_t>& bytes, const std::string& value)
@@ -180,7 +184,11 @@ public:
     std::string read_string()
     {
         const std::uint32_t size = read_u32();
-        if (!ok_ || offset_ + size > payload_.size())
+        // offset_ <= payload_.size() always holds (every read_* advances only
+        // after its own bounds check), so the subtractive comparison avoids the
+        // size_t overflow that `offset_ + size` suffers on 32-bit targets
+        // (wasm32) when `size` is an attacker-controlled uint32 near SIZE_MAX.
+        if (!ok_ || size > payload_.size() - offset_)
         {
             ok_ = false;
             return {};
@@ -1002,13 +1010,13 @@ TypedReceivedMessage decode_received_message(const ReceivedMessage& message)
         case kSnapshotMessageType:
             typed_message.kind = TypedReceivedMessageKind::Snapshot;
             typed_message.snapshot = std::make_shared<WorldSnapshot>(
-                deserialize_snapshot(message.data.data(), message.data.size()));
+                deserialize_snapshot(message.data));
             return typed_message;
 
         case kDeltaSnapshotMessageType:
             typed_message.kind = TypedReceivedMessageKind::DeltaSnapshot;
             typed_message.snapshot = std::make_shared<WorldSnapshot>(
-                deserialize_delta(message.data.data(), message.data.size()));
+                deserialize_delta(message.data));
             return typed_message;
 
         case kInputMessageType:
@@ -1027,14 +1035,13 @@ TypedReceivedMessage decode_received_message(const ReceivedMessage& message)
         case kSimEventBatchMessageType:
             typed_message.kind = TypedReceivedMessageKind::SimEventBatch;
             typed_message.event_batch = std::make_shared<SimEventBatch>(
-                deserialize_sim_event_batch(message.data.data(), message.data.size()));
+                deserialize_sim_event_batch(message.data));
             return typed_message;
 
         case kGameFlowEventBatchMessageType:
             typed_message.kind = TypedReceivedMessageKind::GameFlowEventBatch;
             typed_message.event_batch = std::make_shared<SimEventBatch>(
-                deserialize_game_flow_event_batch(message.data.data(),
-                                                  message.data.size()));
+                deserialize_game_flow_event_batch(message.data));
             return typed_message;
 
         case kLobbyMessageType:

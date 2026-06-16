@@ -14,7 +14,7 @@ class WebSocketServerTransport final : public ITransport
 {
 public:
     struct Options {
-        std::string host = "0.0.0.0";
+        std::string host = "127.0.0.1";
         int backlog = 5;
         std::size_t max_connections = static_cast<std::size_t>(MAX_PLAYERS);
     };

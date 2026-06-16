@@ -20,6 +20,7 @@
 #include <openglad/core/runtime_trace.h>
 #include <openglad/core/version.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/gameplay/input_state.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/render/view.h>
@@ -39,6 +40,7 @@
 #include <string>
 #include <cstring>
 #include <format>
+#include <algorithm>
 #include <memory>
 #include <limits>
 #include <optional>
@@ -165,7 +167,8 @@ short gameplay_numviews_for_start(
     const std::uint8_t player_count = lobby_config != nullptr
         ? lobby_config->save_data.numplayers
         : current_screen.save_data.numplayers;
-    return static_cast<short>(player_count == 0 ? 1 : player_count);
+    const int views = player_count == 0 ? 1 : player_count;
+    return static_cast<short>(std::clamp(views, 1, MAX_PLAYERS));
 }
 
 void ready_screen_for_game_start(

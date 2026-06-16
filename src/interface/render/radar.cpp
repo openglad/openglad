@@ -112,7 +112,7 @@ void radar::sync_to_grid(LevelRuntimeData* data)
 {
 	sizex = static_cast<unsigned short>(data->world().grid.w);
 	sizey = static_cast<unsigned short>(data->world().grid.h);
-	size = (unsigned short) ((static_cast<unsigned short>(sizex))*(static_cast<unsigned short>(sizey)));
+	size = static_cast<unsigned short>((static_cast<unsigned short>(sizex))*(static_cast<unsigned short>(sizey)));
 	xview = RADAR_X;
 	yview = RADAR_Y;
 	radarx = 0;
@@ -222,7 +222,7 @@ short radar::draw(LevelRuntimeData* data)
     }
 	{
 		size_t offset = radarx + (radary * sizex);
-		auto radar_span = std::span<const unsigned char>{bmp.data() + offset, static_cast<size_t>(sizex * sizey) - offset};
+		auto radar_span = std::span<const unsigned char>{bmp.data() + offset, bmp.size() - offset};
 		og::runtime::current_session->myscreen_->putbuffer_alpha(xloc, yloc,
 		                   sizex,sizey,
 		                   xloc,yloc,xloc + xview,yloc + yview,

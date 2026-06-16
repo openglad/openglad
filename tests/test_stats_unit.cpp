@@ -377,6 +377,30 @@ TEST(StatsUnit, stats_r12_command_and_hit_response_branches)
     self->stats()->set_bit_flags(BIT_FLYING, 0);
 }
 
+TEST(StatsUnit, special_cost_out_of_range_is_safe)
+{
+    // special_cost_/set_special_cost index a fixed NUM_SPECIALS array. Out-of-
+    // range indices (e.g. from corrupt snapshot/save data) must not read or
+    // write past the array; the getter returns 0 and the setter is a no-op.
+    statistics s(nullptr);
+
+    s.set_special_cost(0, 11);
+    s.set_special_cost(NUM_SPECIALS - 1, 22);
+    EXPECT_EQ(11, (int)s.special_cost(0)) << "in-range get/set still works";
+    EXPECT_EQ(22, (int)s.special_cost(NUM_SPECIALS - 1)) << "last valid index";
+
+    EXPECT_EQ(0, (int)s.special_cost(-1)) << "negative index returns 0";
+    EXPECT_EQ(0, (int)s.special_cost(NUM_SPECIALS)) << "one past end returns 0";
+    EXPECT_EQ(0, (int)s.special_cost(100000)) << "far out of range returns 0";
+
+    // Out-of-range setters are no-ops and must not corrupt valid entries.
+    s.set_special_cost(-1, 99);
+    s.set_special_cost(NUM_SPECIALS, 99);
+    s.set_special_cost(100000, 99);
+    EXPECT_EQ(11, (int)s.special_cost(0)) << "valid entry untouched by OOB set";
+    EXPECT_EQ(22, (int)s.special_cost(NUM_SPECIALS - 1)) << "valid entry untouched by OOB set";
+}
+
 TEST(StatsUnit, stats_r12_extra_command_switch_and_null_controller_paths)
 {
     StatsR12Fixture fx;

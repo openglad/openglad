@@ -127,8 +127,11 @@ static bool teleporter_on_eat(treasure* self, walker* eater)
     }
     // Now do special effects
     walker* flash = current_game->world->add_ob(Order::FX, FAMILY_FLASH);
-    flash->set_ani_type(ANI_EXPAND_8);
-    flash->center_on(self);
+    if (flash)
+    {
+        flash->set_ani_type(ANI_EXPAND_8);
+        flash->center_on(self);
+    }
     return true;
 }
 

@@ -21,6 +21,7 @@
 #include <openglad/core/pixdefs.h>
 #include <array>
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
 
 using Uint32 = std::uint32_t;
@@ -222,12 +223,12 @@ static constexpr Sint32 dirt_dark_by_surround[] = {
 };
 
 smoother::smoother()
-    : mygrid(nullptr), maxx(0), maxy(0), rng_(nullptr)
+    : maxx(0), maxy(0), rng_(nullptr)
 {}
 
 void smoother::reset()
 {
-    mygrid = nullptr;
+    mygrid_span_ = {};
     maxx = 0;
     maxy = 0;
 }
@@ -239,7 +240,7 @@ void smoother::set_rng(IRandom* rng)
 
 void smoother::set_target(const PixieData& data)
 {
-	mygrid = data.data.get();
+	mygrid_span_ = {data.data.get(), static_cast<std::size_t>(data.w) * data.h};
 	maxx = data.w;
 	maxy = data.h;
 }
@@ -257,7 +258,7 @@ Uint32 smoother::next_random(Uint32 max_exclusive) const
 Sint32 smoother::query_x_y(Sint32 x, Sint32 y)
 {
 	// Are we set up yet?
-	if (!mygrid)
+	if (mygrid_span_.empty())
 		return PIX_GRASS1;
 
 	// Check boundaries ..
@@ -268,7 +269,7 @@ Sint32 smoother::query_x_y(Sint32 x, Sint32 y)
 		return PIX_GRASS1;
 
 	// Else, return our simple grid data ..
-	return static_cast<Sint32>(mygrid[x + y*maxx]);
+	return static_cast<Sint32>(mygrid_span_[static_cast<std::size_t>(x + y*maxx)]);
 }
 
 Sint32 smoother::query_genre_x_y(Sint32 x, Sint32 y)
@@ -626,7 +627,7 @@ Sint32 smoother::smooth()
 {
 	Sint32 x, y;
 
-	if (!mygrid)
+	if (mygrid_span_.empty())
 		return 0;
 
 
@@ -639,8 +640,19 @@ Sint32 smoother::smooth()
 
 void smoother::set_x_y(Sint32 x, Sint32 y, Sint32 whatvalue)
 {
-	if (!mygrid)
+	if (mygrid_span_.empty())
 		return;
 
-	mygrid[x+y*maxx] = static_cast<char>(whatvalue);
+	// Mirror query_x_y()'s bounds check: the read path already rejects
+	// out-of-range coordinates, so the symmetric write must too. Without this
+	// guard a future caller could store past the end of the grid span (an OOB
+	// write into the level buffer); the index math below assumes 0<=x<maxx and
+	// 0<=y<maxy.
+	if ( (x < 0) || (y < 0) )
+		return;
+
+	if ( (x >= maxx) || (y >= maxy) )
+		return;
+
+	mygrid_span_[static_cast<std::size_t>(x+y*maxx)] = static_cast<unsigned char>(whatvalue);
 }

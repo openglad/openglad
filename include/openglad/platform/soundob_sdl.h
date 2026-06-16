@@ -22,6 +22,9 @@ public:
     explicit sdl_soundob(bool silent);
     ~sdl_soundob() override;
 
+    sdl_soundob(const sdl_soundob&) = delete;
+    sdl_soundob& operator=(const sdl_soundob&) = delete;
+
     int init();
     void shutdown();
     void play_sound(short whichsound) override;
@@ -33,7 +36,7 @@ public:
     void load_sound(SDL_AudioSpec, char*);
     std::string soundlist[NUMSOUNDS]; // Our list of sounds
     Mix_Chunk* sound[NUMSOUNDS];      // AudioSpec for loading sounds
-    int baseio, irq, dma, dma16;      // Card-specific information
-    int volume;                       // Volume: 0 - 255
+    int baseio = 0, irq = 0, dma = 0, dma16 = 0; // Card-specific information
+    int volume = 0;                   // Volume: 0 - 255
     unsigned char silence;            // 0 = on, 1 = silent
 };

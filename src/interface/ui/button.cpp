@@ -138,6 +138,21 @@ vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
 
 vbutton::vbutton() //for pointers
 {
+    // Zero-initialize every integral member so a default-constructed vbutton
+    // (intended only as a pointer placeholder) never carries indeterminate
+    // values into mouse_on()/vdisplay()/leftclick() if accidentally used.
+    xloc = 0;
+    yloc = 0;
+    width = 0;
+    height = 0;
+    xend = 0;
+    yend = 0;
+    myfunc = 0;
+    arg = 0;
+    hotkey = 0;
+    color = 0;
+    hidden = false;
+    no_draw = false;
     had_focus = do_outline = depressed = 0;
     mypixie = nullptr;
 }
@@ -244,7 +259,8 @@ Sint32 vbutton::leftclick(button* buttons)
     Sint32 whichone=0;
     Sint32 retvalue=0;
     // First check hotkeys ...
-    while (og::runtime::current_session->allbuttons_[whichone])
+    while (whichone < static_cast<Sint32>(og::runtime::current_session->allbuttons_.size())
+           && og::runtime::current_session->allbuttons_[whichone])
     {
         if(buttons == nullptr || !buttons[whichone].hidden)
         {
@@ -256,7 +272,8 @@ Sint32 vbutton::leftclick(button* buttons)
     }
     // Now normal click ..
     whichone = 0;
-    while (og::runtime::current_session->allbuttons_[whichone])
+    while (whichone < static_cast<Sint32>(og::runtime::current_session->allbuttons_.size())
+           && og::runtime::current_session->allbuttons_[whichone])
     {
         if(buttons == nullptr || !buttons[whichone].hidden)
         {
@@ -273,7 +290,8 @@ Sint32 vbutton::rightclick(button* buttons)
 {
     Sint32 whichone=0;
     Sint32 retvalue=0;
-    while (og::runtime::current_session->allbuttons_[whichone])
+    while (whichone < static_cast<Sint32>(og::runtime::current_session->allbuttons_.size())
+           && og::runtime::current_session->allbuttons_[whichone])
     {
         if(buttons == nullptr || !buttons[whichone].hidden)
         {
@@ -400,7 +418,12 @@ vbutton * init_buttons(button * buttons, Sint32 numbuttons)
 
     clear_allbuttons();
 
-    for (Sint32 i = 0; i < numbuttons; i++)
+    // allbuttons_/owned_buttons_ are fixed-capacity arrays. Every current caller
+    // passes a small literal count, but clamp to the real capacity so a future
+    // or garbage count can never drive an out-of-bounds store.
+    const Sint32 cap = static_cast<Sint32>(og::runtime::current_session->allbuttons_.size());
+    const Sint32 limit = (numbuttons < 0) ? 0 : (numbuttons > cap ? cap : numbuttons);
+    for (Sint32 i = 0; i < limit; i++)
     {
         std::unique_ptr<vbutton, og::runtime::VButtonDeleter> owned_button(
             new vbutton(buttons[i].x,buttons[i].y,

@@ -104,6 +104,7 @@ void handle_cheat_keys(walker*& control, short mynum,
 	if (query_key_event(KEYCODE_F2, native_event))
 	{
 		newob = game_screen->world().add_ob(Order::FX, FAMILY_MAGIC_SHIELD);
+		if (!newob) return;
 		newob->set_owner(control);
 		newob->set_team_num(control->team_num());
 		newob->set_ani_type(1);

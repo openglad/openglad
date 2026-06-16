@@ -14,6 +14,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -517,14 +518,13 @@ WorldSnapshot peek_keyframe_snapshot(GameWorld& world);
 void apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot);
 std::uint32_t compute_snapshot_hash(const WorldSnapshot& snapshot);
 std::vector<std::uint8_t> serialize_snapshot(const WorldSnapshot& snapshot);
-WorldSnapshot deserialize_snapshot(const std::uint8_t* data, std::size_t size);
+WorldSnapshot deserialize_snapshot(std::span<const std::uint8_t> data);
 std::vector<std::uint8_t> serialize_delta(const WorldSnapshot& delta);
-WorldSnapshot deserialize_delta(const std::uint8_t* data, std::size_t size);
+WorldSnapshot deserialize_delta(std::span<const std::uint8_t> data);
 std::vector<std::uint8_t> serialize_sim_event_batch(const SimEventBatch& batch);
-SimEventBatch deserialize_sim_event_batch(const std::uint8_t* data, std::size_t size);
+SimEventBatch deserialize_sim_event_batch(std::span<const std::uint8_t> data);
 std::vector<std::uint8_t> serialize_game_flow_event_batch(const SimEventBatch& batch);
-SimEventBatch deserialize_game_flow_event_batch(const std::uint8_t* data,
-                                                std::size_t size);
+SimEventBatch deserialize_game_flow_event_batch(std::span<const std::uint8_t> data);
 bool is_game_flow_event(EventKind kind) noexcept;
 void normalize_endgame_event_order(GameFlowEventBatch& batch);
 void split_event_batches(const SimEventBatch& source,

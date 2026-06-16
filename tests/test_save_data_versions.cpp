@@ -551,6 +551,21 @@ TEST(SaveDataVersions, save_data_load_with_error_truncated_file_reports_read_fai
 }
 
 
+TEST(SaveDataVersions, save_data_rejects_unsafe_save_slot_names)
+{
+    SaveData tmp;
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::OpenReadFailed),
+              static_cast<int>(tmp.load_with_error("../save0")))
+        << "load should reject traversal save slot names before path construction";
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::OpenWriteFailed),
+              static_cast<int>(tmp.save_with_error("../save0")))
+        << "save should reject traversal save slot names before path construction";
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::OpenWriteFailed),
+              static_cast<int>(tmp.save_with_error("nested/slot1")))
+        << "save should reject nested save slot names before path construction";
+}
+
+
 TEST(SaveDataVersions, save_data_load_with_error_campaign_mount_failure)
 {
     GuyRecord g{};

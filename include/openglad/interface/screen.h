@@ -42,6 +42,9 @@ class soundob;
 class DamageNumberRenderContext;
 namespace og::sim { class GameClient; }
 
+// Maximum number of split-screen viewscreens (one per local player).
+inline constexpr int MAX_VIEWS = 5;
+
 class screen : public video
 {
 private:
@@ -275,7 +278,7 @@ public:
     std::string alternate_name[NUM_FAMILIES][NUM_SPECIALS];
     std::unique_ptr<soundob> soundp;
     short redrawme;
-    std::unique_ptr<viewscreen> viewob[5];
+    std::unique_ptr<viewscreen> viewob[MAX_VIEWS];
     short numviews;
     Uint32 timerstart;
     Uint32 framecount;

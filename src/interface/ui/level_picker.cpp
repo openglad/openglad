@@ -120,6 +120,7 @@ void getLevelStats(LevelRuntimeData& level_data, int* max_enemy_level, float* av
 		for (auto& uptr : level_data.world().oblist)
 		{
 		    walker* ob = uptr.get();
+		    if (!ob) continue;
 	        switch(ob->query_order())
 	        {
 	            case Order::Living:
@@ -145,6 +146,7 @@ void getLevelStats(LevelRuntimeData& level_data, int* max_enemy_level, float* av
 		for (auto& uptr : level_data.world().fxlist)
 		{
 		    walker* ob = uptr.get();
+		    if (!ob) continue;
 	        switch(ob->query_order())
 	        {
 	            case Order::Treasure:
@@ -237,8 +239,8 @@ class BrowserEntry
     int num_enemies;
     float difficulty;
     std::list<int> exits;
-    std::string scentext[80];                       // Array to hold scenario information
-    char scentextlines;                    // How many lines of text in scenario info
+    std::array<std::string, 80> scentext;           // Array to hold scenario information
+    int scentextlines = 0;                 // How many lines of text in scenario info
     
     BrowserEntry(screen* screenp, int index, int scen_num);
     ~BrowserEntry();
@@ -277,11 +279,11 @@ BrowserEntry::BrowserEntry(screen* screenp, int index, int scen_num)
         level_name = level_name.substr(0, 20) + "...";
     }
     
-	    scentextlines = static_cast<char>(std::min<size_t>(level_data.description.size(), 80u));
+	    scentextlines = static_cast<int>(std::min<size_t>(level_data.description.size(), 80u));
     int i = 0;
     for(auto& line : level_data.description)
     {
-        scentext[i] = line;
+        scentext[static_cast<std::size_t>(i)] = line;
         i++;
         if(i >= 80)
             break;
@@ -368,11 +370,17 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
         if(level_list[i] == default_level)
             current_level_index = i;
     }
-    
+
+    // Clamp so a full NUM_BROWSE_RADARS window fits (mirrors the delete-reload
+    // clamp below); otherwise current_level_index + i can index past the end of
+    // level_list in the initial radar-load loop (out-of-bounds read).
+    if(current_level_index > level_list_length - NUM_BROWSE_RADARS)
+        current_level_index = std::max(0, level_list_length - NUM_BROWSE_RADARS);
+
     // Load the radars (minimaps)
     for(int i = 0; i < NUM_BROWSE_RADARS; i++)
     {
-        if(i < level_list_length)
+        if(current_level_index + i < level_list_length)
             entries[i] = std::make_unique<BrowserEntry>(og::runtime::current_session->myscreen_, i, level_list[current_level_index + i]);
         else
             entries[i].reset();
@@ -677,7 +685,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
             {
                 if(prev.y + 20 + 10*i+1 > descbox.y + descbox.h)
                     break;
-                loadtext.write_xy(descbox.x, descbox.y + 10*i+1, entries[selected_entry]->scentext[i].c_str(), BLACK, 1);
+                loadtext.write_xy(descbox.x, descbox.y + 10*i+1, entries[selected_entry]->scentext[static_cast<std::size_t>(i)].c_str(), BLACK, 1);
             }
         }
         

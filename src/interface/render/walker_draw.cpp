@@ -665,7 +665,7 @@ bool draw_walker_tile(walker& w, viewscreen* view_buf)
 		                        0, //outline
 		                        SHIFT_RANDOM); //type of phantom
 
-	else if (w.invisibility_left())  //WE ARE INVISIBLE
+	else if (w.invisibility_left() && view_buf->control != nullptr)  //WE ARE INVISIBLE
 	{
 		if (w.team_num() == view_buf->control->team_num())
 			og::runtime::current_session->myscreen_->walkputbuffer( xscreen, yscreen, w.sizex(), w.sizey(),

@@ -73,7 +73,14 @@ void parse_params(std::string_view params, long& p0, long& modifiers, long& even
     };
     for (char c : params) {
         if (c >= '0' && c <= '9') {
-            acc = acc * 10 + (c - '0');
+            // Saturate to avoid signed-overflow UB on an over-long digit run.
+            // 0x110000 is above every value the downstream decoders accept
+            // (codepoint ceiling, modifier/event/tilde ranges), so legitimate
+            // in-range inputs are unaffected.
+            if (acc < 0x110000)
+                acc = acc * 10 + (c - '0');
+            else
+                acc = 0x110000;
             have_digit = true;
         } else if (c == ':') {
             commit();

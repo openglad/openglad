@@ -343,6 +343,53 @@ static const signed char * const * animation_for_type(int anim_type)
     }
 }
 
+template <typename T, std::size_t N>
+static constexpr int array_len(const T (&)[N]) { return static_cast<int>(N); }
+
+// Returns the number of (facing x ani_type) pointer entries in an animation
+// table, or 0 for nullptr / an unrecognized table. Animation tables vary in
+// length (most are 16 = 2 ani_types x 8 facings; a few are 24/32; only
+// anislime is the full 40). animate() uses this to clamp index math so a
+// snapshot/save-controlled ani_type/curdir cannot read past a short table.
+static int anim_table_count(const signed char * const * t)
+{
+    if (!t)
+        return 0;
+    struct Entry { const signed char * const * table; int count; };
+    static const Entry kRegistry[] = {
+        { anihit,         array_len(anihit) },
+        { anicloud,       array_len(anicloud) },
+        { animarker,      array_len(animarker) },
+        { animan,         array_len(animan) },
+        { aniskel,        array_len(aniskel) },
+        { animage,        array_len(animage) },
+        { anigs,          array_len(anigs) },
+        { anislime,       array_len(anislime) },
+        { ani_small_slime,array_len(ani_small_slime) },
+        { anikni,         array_len(anikni) },
+        { anirock,        array_len(anirock) },
+        { anitree,        array_len(anitree) },
+        { anidoor,        array_len(anidoor) },
+        { anidooropen,    array_len(anidooropen) },
+        { aniarrow,       array_len(aniarrow) },
+        { aniblob1,       array_len(aniblob1) },
+        { aninone,        array_len(aninone) },
+        { anitower,       array_len(anitower) },
+        { anitent,        array_len(anitent) },
+        { aniblood,       array_len(aniblood) },
+        { aniglowgrow,    array_len(aniglowgrow) },
+        { anifood,        array_len(anifood) },
+        { aniexpand8,     array_len(aniexpand8) },
+        { ani16,          array_len(ani16) },
+        { anibomb1,       array_len(anibomb1) },
+        { aniexplosion1,  array_len(aniexplosion1) },
+    };
+    for (const auto& e : kRegistry)
+        if (e.table == t)
+            return e.count;
+    return 0;
+}
+
 PixieData data_copy(const PixieData& d)
 {
     PixieData result;
@@ -354,7 +401,7 @@ PixieData data_copy(const PixieData& d)
     result.w = d.w;
     result.h = d.h;
 
-    size_t len = d.w * d.h * d.frames;
+    size_t len = static_cast<std::size_t>(d.w) * d.h * d.frames;
     result.data = std::make_unique<unsigned char[]>(len);
     std::copy_n(d.data.get(), len, result.data.get());
 
@@ -365,8 +412,10 @@ PixieData data_copy(const PixieData& d)
 loader::loader(EntityFactory entity_factory)
     : graphics(SIZE_ORDERS*SIZE_FAMILIES),
       animations(SIZE_ORDERS*SIZE_FAMILIES, nullptr),
+      animation_counts(SIZE_ORDERS*SIZE_FAMILIES, 0),
       stepsizes(SIZE_ORDERS*SIZE_FAMILIES, 0.0f),
       lineofsight(SIZE_ORDERS*SIZE_FAMILIES, 0),
+      hitpoints(SIZE_ORDERS*SIZE_FAMILIES, 0.0f),
       act_types(SIZE_ORDERS*SIZE_FAMILIES, static_cast<char>(ACT_RANDOM)),
       damage(SIZE_ORDERS*SIZE_FAMILIES, 0.0f),
       fire_frequency(SIZE_ORDERS*SIZE_FAMILIES, 0.0f),
@@ -506,12 +555,21 @@ loader::loader(EntityFactory entity_factory)
 	graphics[PIX(Order::Treasure, FAMILY_FLIGHT_POTION)] = data_copy(graphics[PIX(Order::Treasure, FAMILY_MAGIC_POTION)]);
 	graphics[PIX(Order::Treasure, FAMILY_SPEED_POTION)] = data_copy(graphics[PIX(Order::Treasure, FAMILY_MAGIC_POTION)]);
 
+	// Record each animation table's length (parallel to `animations`) so animate()
+	// can bound index math against short per-family tables.
+	for (std::size_t i = 0; i < animations.size(); i++)
+		animation_counts[i] = anim_table_count(animations[i]);
 }
 
 loader::~loader(void)
 {
-	for(int i=0;i<(SIZE_ORDERS*SIZE_FAMILIES);i++) {
-	    graphics[i].free();
+	// Derive the bound from the live container instead of re-stating the
+	// SIZE_ORDERS*SIZE_FAMILIES constant (which lives far from the vector's
+	// allocation at the top of the ctor); a range-for can never desync from
+	// graphics.size(), removing the over-/under-index hazard if that count
+	// ever changes. Same elements, same forward order — behavior-identical.
+	for (auto& g : graphics) {
+	    g.free();
 	}
 	// vectors clean up automatically
 }
@@ -608,7 +666,8 @@ walker  *loader::set_walker(walker *ob,
 	ob->set_order_family(order, static_cast<char>(family));
 	ob->set_act_type(act_types[PIX(order, family)]);
 	ob->ani = animations[PIX(order, family)];
-	
+	ob->ani_count = animation_counts[PIX(order, family)];
+
 	set_derived_stats(ob, order, family);
 
 	for (i=0; i < NUM_SPECIALS; i++)

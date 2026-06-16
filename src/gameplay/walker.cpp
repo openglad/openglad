@@ -135,6 +135,7 @@ void walker_init_common(walker* w, IRandom& rng)
 	w->set_collide_ob_id(0);
 	w->set_cycle(0);
 	w->ani = nullptr;
+	w->ani_count = 0;
 	w->set_ani_type(0);
 	w->set_busy(0);
 	w->set_foe(nullptr);
@@ -201,6 +202,9 @@ walker::walker()
 
 short walker::next_frame()
 {
+	// frames is 0 for a default/test-built or moved-from walker; guard the
+	// modulo to avoid integer division-by-zero UB (mirrors pixieN::next_frame).
+	if (frames <= 0) return 0;
 	return set_frame(static_cast<short>(frame() % frames));
 }
 
@@ -503,7 +507,11 @@ walker  * walker::fire()
 	stats_->set_magicpoints(	stats_->magicpoints() - stats_->weapon_cost());
 
 	// Determine how much the thrown weapon can 'waver'
-	waver = static_cast<signed char>((weapon->stepsize())/2); // Absolute amount ..
+	// Clamp before the signed-char narrowing: stepsize is replicated from
+	// network snapshots, so a hostile value > 254 would make the float->signed
+	// char conversion undefined. Normal stepsizes are well under 254, so this
+	// is byte-identical for legitimate game data.
+	waver = static_cast<signed char>(std::clamp((weapon->stepsize())/2, 0.0f, 127.0f)); // Absolute amount ..
 	waver = static_cast<signed char>(current_game->world->rng_.next(waver+1) - waver/2);
 
 	switch (facing(lastx(), lasty()))
@@ -647,7 +655,11 @@ void walker::set_weapon_heading(walker *weapon)
 	signed char waver;
 
 	// Determine how much the thrown weapon can 'waver'
-	waver = static_cast<signed char>((weapon->stepsize())/2); // Absolute amount ..
+	// Clamp before the signed-char narrowing: stepsize is replicated from
+	// network snapshots, so a hostile value > 254 would make the float->signed
+	// char conversion undefined. Normal stepsizes are well under 254, so this
+	// is byte-identical for legitimate game data.
+	waver = static_cast<signed char>(std::clamp((weapon->stepsize())/2, 0.0f, 127.0f)); // Absolute amount ..
 	waver = static_cast<signed char>(current_game->world->rng_.next(waver+1) - waver/2);
 
 	switch (facing(lastx(), lasty()))  // these are from the 'owner'
@@ -969,6 +981,19 @@ bool walker::animate()
 	}
 
 	const int ani_index = dir_index + type_index * NUM_FACINGS;
+	// For real entities the loader records this family's table length (ani_count).
+	// Animation tables vary in length (most hold only ANI_WALK/ANI_ATTACK rows), so
+	// an untrusted snapshot/save can set an ani_type the short table doesn't contain
+	// and drive ani_index past the end. Treat that exactly like "no such sequence"
+	// (reset to walk, stop) instead of reading out of bounds. ani_count is 0 only
+	// for test-constructed walkers that assign `ani` directly; those keep the legacy
+	// direct-index behavior.
+	if (ani_count > 0 && ani_index >= ani_count)
+	{
+		set_ani_type(ANI_WALK);
+		set_cycle(0);
+		return 0;
+	}
 	const signed char* seq = ani[ani_index];
 	if (!seq)
 	{
@@ -1109,6 +1134,7 @@ walker  *walker::create_weapon()
 	if (query_order() == Order::Generator)
 	{
 			weapon = current_game->world->add_ob(Order::Living, static_cast<char>(default_weapon()));
+		if (!weapon) return nullptr;
 		weapon->set_team_num(team_num());
 		weapon->set_owner(this);
 		weapon->set_difficulty(static_cast<std::uint32_t>(stats_->level()));
@@ -1118,6 +1144,7 @@ walker  *walker::create_weapon()
 		weapon_type = current_weapon();
 
 	weapon = current_game->world->add_ob(Order::Weapon, static_cast<char>(weapon_type));
+	if (!weapon) return nullptr;
 	weapon->set_team_num(team_num());
 	weapon->set_owner(this);
 	weapon->set_difficulty(static_cast<std::uint32_t>(stats_->level()));
@@ -1184,7 +1211,7 @@ bool walker::fire_check(short xdelta, short ydelta)
 {
 	walker  *weapon = nullptr;
 	//  short newx=0, newy=0;
-	short i;
+	std::int32_t i;
 	std::int32_t distance;
 	short targetdir;
 
@@ -1537,11 +1564,14 @@ bool walker::death()
 	if (myguy) // were we a real character?  Then make a heart ..
 	{
 			newob = current_game->world->add_ob(Order::Treasure, FAMILY_LIFE_GEM);
+			if (newob)
+			{
 			newob->stats()->set_hitpoints(static_cast<float>(myguy->query_heart_value()));
 			newob->stats()->set_hitpoints(
 			    newob->stats()->hitpoints() * (0.75f / 2.0f));  // 75%, divided by 2, since score is doubled at end of level
 			newob->set_team_num(team_num());
 			newob->center_on(this);
+			}
 		}
 
 	switch (order())
@@ -1610,6 +1640,7 @@ void walker::generate_bloodspot()
 	set_dead(1); // just in case ..
 
 	bloodstain = current_game->world->add_fx_ob(Order::Treasure, FAMILY_STAIN);
+	if (!bloodstain) return;
 	bloodstain->set_ignore(1);
 	transfer_stats(bloodstain);
 

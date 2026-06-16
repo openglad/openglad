@@ -27,6 +27,8 @@
 #include <openglad/platform/local_transport_shadow.h>
 #include <openglad/platform/picker_lobby_network_runtime.h>
 
+#include <algorithm>
+#include <iterator>
 #include <optional>
 
 // theprefs is now a macro defined in view.h (via game_session.h)
@@ -123,7 +125,8 @@ void apply_lobby_game_start_config(
         save.team_list[slot.slot_index]->owner_player_index =
             slot.owner_player_index;
         save.team_list[slot.slot_index]->owner_save_slot = slot.owner_save_slot;
-        ++save.team_size;
+        if (static_cast<std::size_t>(save.team_size) < save.team_list.size())
+            ++save.team_size;  // cap so team_size can never exceed the fixed team_list
     }
 
     if (og::runtime::current_session != nullptr)
@@ -184,7 +187,9 @@ void glad_init(bool preserve_frame_timing,
     og::platform::web::finalize_jitter_capture_profile_after_load(
         *current_screen);
 #endif
-    for (short view_index = 0; view_index < current_screen->numviews; ++view_index)
+    const short safe_numviews = std::min<short>(
+        current_screen->numviews, static_cast<short>(std::size(current_screen->viewob)));
+    for (short view_index = 0; view_index < safe_numviews; ++view_index)
     {
         if (current_screen->viewob[view_index] != nullptr)
             current_screen->viewob[view_index]->clear_text();

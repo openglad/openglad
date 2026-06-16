@@ -28,6 +28,10 @@ constexpr std::uint8_t kRelaySendToPeerTag = 1u;
 constexpr std::uint8_t kRelayReceiveFromPeerTag = 2u;
 constexpr std::uint8_t kRelayBroadcastTag = 3u;
 constexpr std::size_t kRelayPeerHeaderSize = 5u;
+constexpr std::size_t kMaxInboundFrameBytes = 128u * 1024u;
+constexpr std::size_t kMaxInboundTextBytes = 8u * 1024u;
+constexpr std::size_t kMaxQueuedMessages = 1024u;
+constexpr std::size_t kMaxQueuedPayloadBytes = 16u * 1024u * 1024u;
 
 std::string trim_copy(std::string_view text)
 {
@@ -313,15 +317,34 @@ struct RelayWebSocketTransport::Impl
         case ix::WebSocketMessageType::Message:
             if (message->binary)
             {
+                if (message->str.size() > kMaxInboundFrameBytes)
+                {
+                    enqueue_disconnect(generation);
+                    if (websocket)
+                        websocket->close(1009, "message too large");
+                    return;
+                }
                 entry.kind = QueueEntryKind::BinaryMessage;
                 entry.payload.assign(message->str.begin(), message->str.end());
             }
             else
             {
+                if (message->str.size() > kMaxInboundTextBytes)
+                {
+                    enqueue_disconnect(generation);
+                    if (websocket)
+                        websocket->close(1009, "control message too large");
+                    return;
+                }
                 entry.kind = QueueEntryKind::TextMessage;
                 entry.text = message->str;
             }
-            enqueue(std::move(entry));
+            if (!enqueue(std::move(entry)))
+            {
+                enqueue_disconnect(generation);
+                if (websocket)
+                    websocket->close(1008, "receive queue full");
+            }
             break;
 
         case ix::WebSocketMessageType::Error:
@@ -366,9 +389,7 @@ struct RelayWebSocketTransport::Impl
 
         const std::vector<std::uint8_t> payload =
             encode_targeted_relay_payload(peer_id, data, len);
-        const char* bytes = reinterpret_cast<const char*>(payload.data());
-        const std::string binary(bytes, bytes + payload.size());
-        const ix::WebSocketSendInfo send_info = websocket->sendBinary(binary);
+        const ix::WebSocketSendInfo send_info = websocket->sendBinary(payload);
         if (!send_info.success)
         {
             enqueue_disconnect(active_generation);
@@ -389,9 +410,7 @@ struct RelayWebSocketTransport::Impl
 
         const std::vector<std::uint8_t> payload =
             encode_broadcast_relay_payload(data, len);
-        const char* bytes = reinterpret_cast<const char*>(payload.data());
-        const std::string binary(bytes, bytes + payload.size());
-        const ix::WebSocketSendInfo send_info = websocket->sendBinary(binary);
+        const ix::WebSocketSendInfo send_info = websocket->sendBinary(payload);
         if (!send_info.success)
         {
             enqueue_disconnect(active_generation);
@@ -407,6 +426,8 @@ struct RelayWebSocketTransport::Impl
             if (!lock.owns_lock() || queue.empty())
                 return {};
             queued_entries.swap(queue);
+            queued_message_count = 0;
+            queued_payload_bytes = 0;
         }
 
         std::vector<ReceivedMessage> received;
@@ -617,12 +638,32 @@ private:
     {
         std::lock_guard<std::mutex> lock(queue_mutex);
         queue.clear();
+        queued_message_count = 0;
+        queued_payload_bytes = 0;
     }
 
-    void enqueue(QueueEntry entry)
+    bool enqueue(QueueEntry entry)
     {
         std::lock_guard<std::mutex> lock(queue_mutex);
+        if (queue.size() >= kMaxQueuedMessages)
+            return false;
+        if (entry.kind == QueueEntryKind::TextMessage ||
+            entry.kind == QueueEntryKind::BinaryMessage)
+        {
+            const std::size_t entry_size =
+                entry.kind == QueueEntryKind::TextMessage
+                    ? entry.text.size()
+                    : entry.payload.size();
+            if (queued_message_count >= kMaxQueuedMessages ||
+                entry_size > kMaxQueuedPayloadBytes - queued_payload_bytes)
+            {
+                return false;
+            }
+            ++queued_message_count;
+            queued_payload_bytes += entry_size;
+        }
         queue.push_back(std::move(entry));
+        return true;
     }
 
     detail::IxNetSystemGuard net_system_guard;
@@ -636,6 +677,8 @@ private:
 
     mutable std::mutex queue_mutex;
     std::deque<QueueEntry> queue;
+    std::size_t queued_message_count = 0;
+    std::size_t queued_payload_bytes = 0;
 
     std::optional<PeerId> local_peer_id_;
     std::optional<PeerId> host_peer_id_;

@@ -300,12 +300,7 @@ viewscreen::~viewscreen()
 
 void viewscreen::clear()
 {
-	unsigned short i;
-
-	for (i=0;i<64000;i++)
-	{
-		active_screen()->videobuffer[i] = 0;
-	}
+	active_screen()->videobuffer.fill(0);
 }
 
 bool viewscreen::redraw()
@@ -1635,6 +1630,7 @@ options::options()
 short options::load(viewscreen *viewp)
 {
 	short prefnum = viewp->mynum;
+	if (prefnum < 0 || prefnum >= 4) return 0;  // prefs/allkeys are sized for 4 views
 	// Yes, we are ACTUALLY COPYING the data
 	std::copy_n(prefs[prefnum], 10, viewp->prefs);
 	std::copy_n(allkeys()[prefnum], 16, viewp->mykeys);

@@ -26,6 +26,7 @@
 #include <openglad/interface/input_hardware_state.h>
 #include <openglad/core/util.h>
 #include <openglad/core/test_trace.h>
+#include <algorithm> //buffers: for std::min when clamping joystick counts
 #include <cstdio>
 #include <ctime>
 #include <cstring> //buffers: for strlen
@@ -129,14 +130,15 @@ void init_input()
         joysticks[i] = nullptr;
     }
 
-    const int numjoy = og::input_native::num_joysticks();
+    const int numjoy = std::min(og::input_native::num_joysticks(), MAX_NUM_JOYSTICKS);
 
     for(int i = 0; i < numjoy; i++)
     {
         joysticks[i] = og::input_native::joystick_open(i);
         if(joysticks[i] == nullptr)
             continue;
-        player_joy[i] = JoyData(i);
+        if(i < 4) // player_joy has only 4 slots
+            player_joy[i] = JoyData(i);
     }
 
     og::input_native::joystick_set_event_state(true);
@@ -679,6 +681,8 @@ void wait_for_key(int somekey)
 JoyData::JoyData(int joy_index)
     : index(-1), numAxes(0), numButtons(0), numHats(0)
 {
+    if(joy_index < 0 || joy_index >= MAX_NUM_JOYSTICKS)
+        return;
     const og::input_native::JoystickHandle js = joysticks[joy_index];
     if(js == nullptr)
         return;
@@ -761,6 +765,7 @@ void JoyData::setKeyFromEvent(int key_enum, const void* native_event)
     og::input_native::EventData event;
     if (!as_event_data(native_event, event))
         return;
+    if (key_enum < 0 || key_enum >= NUM_KEYS) return;  // key_type/key_index are sized NUM_KEYS
 
     // Diagonals are ignored because they are combinations of the cardinals
     // Things get really messy when diagonals are assigned
@@ -827,7 +832,7 @@ void JoyData::setKeyFromEvent(int key_enum, const void* native_event)
 
 bool JoyData::getState(int key_enum) const
 {
-    if(index < 0)
+    if(index < 0 || index >= MAX_NUM_JOYSTICKS)
         return false;
     switch(key_type[key_enum])
     {
@@ -857,7 +862,7 @@ bool JoyData::getState(int key_enum) const
 
 bool JoyData::getPress(int key_enum, const void* native_event) const
 {
-    if(index < 0)
+    if(index < 0 || index >= MAX_NUM_JOYSTICKS)
         return false;
     og::input_native::EventData event;
     if (!as_event_data(native_event, event))
@@ -904,7 +909,7 @@ bool JoyData::getPress(int key_enum, const void* native_event) const
 
 bool JoyData::getRelease(int key_enum, const void* native_event) const
 {
-    if(index < 0)
+    if(index < 0 || index >= MAX_NUM_JOYSTICKS)
         return false;
     og::input_native::EventData event;
     if (!as_event_data(native_event, event))
@@ -968,7 +973,7 @@ void resetJoystick(int player_num)
         joysticks[i] = nullptr;
     }
 
-    int numjoy = og::input_native::num_joysticks();
+    int numjoy = std::min(og::input_native::num_joysticks(), MAX_NUM_JOYSTICKS);
     for(int i = 0; i < numjoy; i++)
     {
         joysticks[i] = og::input_native::joystick_open(i);
@@ -1065,6 +1070,8 @@ bool isPlayerHoldingKey(int player_index, int key_enum)
     
     // FIXME: Enable gamepads for Android/iOS, but be careful not to use accelerometer...
     #ifdef USE_TOUCH_INPUT
+        if (player_index < 0 || player_index >= 4 || key_enum < 0 || key_enum >= NUM_KEYS)
+            return false;
         return hw().touch_keystate[player_index][key_enum];
     #else
     if(player_joy[player_index].hasButtonSet(key_enum))

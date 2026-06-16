@@ -47,9 +47,7 @@ static void mage_hit_response(statistics* stats, walker* foe)
     else
         threshold = (3.0f * stats->max_hitpoints()) / 8.0f;
 
-    std::int32_t possible_specials[NUM_SPECIALS];
-    for (int i = 0; i < NUM_SPECIALS; i++)
-        possible_specials[i] = 0;
+    std::int32_t possible_specials[NUM_SPECIALS] = {};
     for (int i = 0; i <= (stats->level() + 2) / 3; i++)
         if (i < NUM_SPECIALS && stats->magicpoints() >= stats->special_cost(i))
             possible_specials[i] = 1;
@@ -224,6 +222,7 @@ static bool mage_do_special(walker* self)
             if (!newob)
                 return false;
             alive = current_game->world->add_ob(Order::Weapon, FAMILY_WAVE);
+            if (!alive) return false;
             alive->center_on(newob);
             alive->set_owner(self);
             alive->stats()->set_level(self->stats()->level());

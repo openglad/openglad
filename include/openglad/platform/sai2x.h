@@ -37,6 +37,14 @@ class Screen
 		Screen(RenderEngine engine, int width, int height, int fullscreen);
 		~Screen();
 
+		// Screen owns SDL handles (window/renderer/surfaces/textures) freed in
+		// the destructor; a shallow copy or move would double-free. It is owned
+		// via std::unique_ptr<Screen>, so make non-copyable/non-movable explicit.
+		Screen(const Screen&) = delete;
+		Screen& operator=(const Screen&) = delete;
+		Screen(Screen&&) = delete;
+		Screen& operator=(Screen&&) = delete;
+
 		void SaveBMP(SDL_Surface* screen, char* filename);
 
         void clear();

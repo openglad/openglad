@@ -21,6 +21,7 @@
 #include <cstring>
 #include <list>
 #include <string>
+#include <utility>
 #include <vector>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -333,7 +334,7 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
             if(temptext != nullptr)
             {
                 s->insert(cursor_pos, temptext);
-                cursor_pos += static_cast<int>(strlen(temptext));
+                cursor_pos += strlen(temptext);
             }
         }
 		
@@ -411,12 +412,12 @@ bool prompt_for_string(const std::string& message, std::string& result)
     
     screen_ctx->draw_button(x - 5, y - 20, x + w + 10, y + h + 10, 1);
     
-    char* str = screen_ctx->text_normal.input_string_ex(x, y, max_chars, message.c_str(), result.c_str());
-    
-    if(str == nullptr)
+    auto str_opt = screen_ctx->text_normal.input_string_ex_value(x, y, max_chars, message.c_str(), result.c_str());
+
+    if(!str_opt)
         return false;
-    
-    result = str;
+
+    result = std::move(*str_opt);
     return true;
 }
 

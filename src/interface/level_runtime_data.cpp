@@ -961,7 +961,10 @@ void LevelRuntimeData::draw(screen* screenp)
 
 std::string LevelRuntimeData::get_description_line(int i) const
 {
-    if(i >= int(description.size()))
+    // Guard the empty-list case explicitly: with a negative i the size check
+    // below is bypassed and *begin() would dereference end() on an empty list.
+    // A non-empty list with negative i still returns the first line (tested).
+    if(description.empty() || i >= int(description.size()))
         return "";
 
     std::list<std::string>::const_iterator e = description.begin();

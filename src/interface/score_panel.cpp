@@ -315,12 +315,25 @@ short new_score_panel(screen* s, short /*do_it*/)
             tempfoes = remaining_foes(s, control);
             tempallies = remaining_team(s, control->team_num());
 
+            // family()/current_special() may be attacker-controlled on a
+            // network mirror (set from raw int8 snapshot bytes), so they can be
+            // any value in [-128,127]. Clamp before using them to index the
+            // fixed namelist/special_name/alternate_name/special_cost arrays to
+            // prevent out-of-bounds reads. In-range values pass through
+            // unchanged.
+            int fam = static_cast<int>(control->family());
+            if (fam < 0 || fam >= NUM_FAMILIES)
+                fam = 0;
+            int spc = static_cast<int>(control->current_special());
+            if (spc < 0 || spc >= NUM_SPECIALS)
+                spc = 0;
+
             if (control->myguy)
                 tempname = control->myguy->name;
             else if (!control->stats()->name.empty())
                 tempname = control->stats()->name;
             else
-                tempname = namelist[static_cast<int>(control->family())];
+                tempname = namelist[fam];
 
             message = tempname;
 
@@ -406,21 +419,21 @@ short new_score_panel(screen* s, short /*do_it*/)
                 }
 
                 if (control->shifter_down() &&
-                    s->alternate_name[static_cast<int>(control->family())][static_cast<int>(control->current_special())] != "NONE")
-                    message = std::format("SPC: {}", s->alternate_name[static_cast<int>(control->family())][static_cast<int>(control->current_special())]);
+                    s->alternate_name[fam][spc] != "NONE")
+                    message = std::format("SPC: {}", s->alternate_name[fam][spc]);
                 else
-                    message = std::format("SPC: {}", s->special_name[static_cast<int>(control->family())][static_cast<int>(control->current_special())]);
+                    message = std::format("SPC: {}", s->special_name[fam][spc]);
 
-                if (control->stats()->magicpoints() >= control->stats()->special_cost(static_cast<int>(control->current_special())))
+                if (control->stats()->magicpoints() >= control->stats()->special_cost(spc))
                     mytext.write_xy(lm+2, special_y, message.c_str(), text_color, static_cast<short>(1));
                 else
                     mytext.write_xy(lm+2, special_y, message.c_str(), static_cast<unsigned char>(RED), static_cast<short>(1));
 
 #ifdef USE_TOUCH_INPUT
-                if (s->alternate_name[static_cast<int>(control->family())][static_cast<int>(control->current_special())] != "NONE")
+                if (s->alternate_name[fam][spc] != "NONE")
                 {
-                    message = std::format("ALT: {}", s->alternate_name[static_cast<int>(control->family())][static_cast<int>(control->current_special())]);
-                    if (control->stats()->magicpoints() >= control->stats()->special_cost(static_cast<int>(control->current_special())))
+                    message = std::format("ALT: {}", s->alternate_name[fam][spc]);
+                    if (control->stats()->magicpoints() >= control->stats()->special_cost(spc))
                         mytext.write_xy(lm+2, bm + special_offset + 8, message.c_str(), text_color, static_cast<short>(1));
                     else
                         mytext.write_xy(lm+2, bm + special_offset + 8, message.c_str(), static_cast<unsigned char>(RED), static_cast<short>(1));

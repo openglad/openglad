@@ -423,6 +423,63 @@ TEST(LevelDataErrorPaths, level_data_load_reports_parse_failed_when_grid_pix_mis
 }
 
 
+TEST(LevelDataErrorPaths, level_data_load_rejects_unsafe_grid_reference)
+{
+    constexpr int kUnsafeGridScenarioId = 19993;
+    constexpr std::array<char, 8> kUnsafeGridName = {
+        '.', '.', '/', 'e', 'v', 'i', 'l', '\0'};
+
+    const int old_id = og::runtime::current_session->myscreen_->world().id;
+    const std::string old_grid_file =
+        og::runtime::current_session->myscreen_->level_grid_file();
+    const std::string old_title =
+        og::runtime::current_session->myscreen_->world().title;
+    const std::list<std::string> old_description =
+        og::runtime::current_session->myscreen_->level_description();
+
+    std::string scenario_bytes;
+    scenario_bytes.append("FSS", 3);
+    scenario_bytes.push_back(static_cast<char>(9));
+    scenario_bytes.append(kUnsafeGridName.data(), kUnsafeGridName.size());
+    std::array<char, 30> title{};
+    std::memcpy(title.data(), "Unsafe Grid", std::strlen("Unsafe Grid"));
+    scenario_bytes.append(title.data(), title.size());
+    scenario_bytes.push_back(1); // scenario type
+    append_i16_native(scenario_bytes, 1);    // par value
+    append_i16_native(scenario_bytes, 4000); // time bonus limit
+    append_i16_native(scenario_bytes, 0);    // object count
+    scenario_bytes.push_back(0);             // description line count
+
+    const fs::path scen_path = fs::path("scen") / "scen19993.fss";
+    ASSERT_TRUE(write_file_bytes(scen_path, scenario_bytes))
+        << "unsafe-grid scenario fixture should be written";
+
+    og::runtime::current_session->myscreen_->world().id =
+        kUnsafeGridScenarioId;
+    og::runtime::current_session->myscreen_->world().title =
+        "before unsafe grid load";
+    og::runtime::current_session->myscreen_->level_grid_file() =
+        "preserve_grid";
+    og::runtime::current_session->myscreen_->level_description().clear();
+    og::runtime::current_session->myscreen_->level_description().push_back(
+        "preserve-line");
+
+    ASSERT_TRUE(!og::runtime::current_session->myscreen_->load_level())
+        << "load should fail when a scenario references an unsafe grid path";
+    ASSERT_EQ((int)LevelRuntimeData::IoError::ParseFailed,
+              (int)og::runtime::current_session->myscreen_->level_io_error())
+        << "unsafe grid path should map to ParseFailed";
+
+    std::error_code ec;
+    fs::remove(scen_path, ec);
+    og::runtime::current_session->myscreen_->world().id = old_id;
+    og::runtime::current_session->myscreen_->level_grid_file() = old_grid_file;
+    og::runtime::current_session->myscreen_->world().title = old_title;
+    og::runtime::current_session->myscreen_->level_description() =
+        old_description;
+}
+
+
 TEST(LevelDataErrorPaths, campaign_data_load_reports_open_read_failed_when_campaign_yaml_missing)
 {
     // Create a minimal zip campaign package with no campaign.yaml so CampaignData::load

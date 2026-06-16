@@ -129,10 +129,15 @@ bool lobby_messages_include_peer(
                        });
 }
 
-std::vector<std::pair<og::sim::PeerId, og::sim::LobbyMessage>>
+struct LobbyPollResult {
+    std::vector<std::pair<og::sim::PeerId, og::sim::LobbyMessage>> messages;
+    std::vector<og::sim::PeerId> malformed_peer_ids;
+};
+
+LobbyPollResult
 poll_lobby_messages(og::sim::ITransport& transport)
 {
-    std::vector<std::pair<og::sim::PeerId, og::sim::LobbyMessage>> messages;
+    LobbyPollResult result;
 
     if (transport.supports_typed_messages())
     {
@@ -140,8 +145,9 @@ poll_lobby_messages(og::sim::ITransport& transport)
         {
             if (typed_message.kind == og::sim::TypedReceivedMessageKind::Malformed)
             {
-                throw std::runtime_error(
-                    "LobbyServer received malformed transport header");
+                if (typed_message.peer_id != 0)
+                    result.malformed_peer_ids.push_back(typed_message.peer_id);
+                continue;
             }
             if (typed_message.kind != og::sim::TypedReceivedMessageKind::LobbyMessage ||
                 !typed_message.lobby_message)
@@ -149,10 +155,10 @@ poll_lobby_messages(og::sim::ITransport& transport)
                 continue;
             }
 
-            messages.emplace_back(typed_message.peer_id,
-                                  *typed_message.lobby_message);
+            result.messages.emplace_back(typed_message.peer_id,
+                                         *typed_message.lobby_message);
         }
-        return messages;
+        return result;
     }
 
     for (const auto& message : transport.poll())
@@ -160,20 +166,31 @@ poll_lobby_messages(og::sim::ITransport& transport)
         og::sim::TransportEnvelope envelope;
         if (!og::sim::decode_transport_envelope(message.data, envelope))
         {
-            throw std::runtime_error(
-                "LobbyServer received malformed transport header");
+            if (message.peer_id != 0)
+                result.malformed_peer_ids.push_back(message.peer_id);
+            continue;
         }
         if (envelope.message_type != og::sim::kLobbyMessageType)
             continue;
 
         const auto decoded = og::sim::deserialize_lobby_message(message.data);
         if (!decoded.has_value())
-            throw std::runtime_error("LobbyServer failed to deserialize lobby message");
+        {
+            if (message.peer_id != 0)
+                result.malformed_peer_ids.push_back(message.peer_id);
+            continue;
+        }
 
-        messages.emplace_back(message.peer_id, *decoded);
+        result.messages.emplace_back(message.peer_id, *decoded);
     }
 
-    return messages;
+    std::sort(result.malformed_peer_ids.begin(),
+              result.malformed_peer_ids.end());
+    result.malformed_peer_ids.erase(
+        std::unique(result.malformed_peer_ids.begin(),
+                    result.malformed_peer_ids.end()),
+        result.malformed_peer_ids.end());
+    return result;
 }
 
 struct OrderedLobbySlot {
@@ -593,10 +610,20 @@ void LobbyServer::poll_incoming_messages()
 {
     apply_transport_disconnects();
 
-    const auto messages = poll_lobby_messages(transport_);
-    synchronize_transport_peers(messages);
-    for (const auto& [peer_id, message] : messages)
+    const LobbyPollResult poll_result = poll_lobby_messages(transport_);
+    synchronize_transport_peers(poll_result.messages);
+    for (const PeerId peer_id : poll_result.malformed_peer_ids)
+        disconnect_client(peer_id);
+    for (const auto& [peer_id, message] : poll_result.messages)
+    {
+        if (std::binary_search(poll_result.malformed_peer_ids.begin(),
+                               poll_result.malformed_peer_ids.end(),
+                               peer_id))
+        {
+            continue;
+        }
         process_lobby_message(peer_id, message);
+    }
     apply_transport_disconnects();
 }
 

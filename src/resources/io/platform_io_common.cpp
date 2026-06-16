@@ -20,10 +20,12 @@
 #include <openglad/resources/zip_api.h>
 
 #include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <format>
 #include <map>
 #include <string>
+#include <string_view>
 
 // Path helpers (defined per-platform in platform_io.cpp or platform_headless.cpp)
 std::string get_user_path();
@@ -76,10 +78,41 @@ const char* campaign_io_error_string(CampaignPackageIoError err)
 }
 } // namespace
 
+bool is_safe_campaign_id(std::string_view id)
+{
+    if (id.empty() || id.size() > 64 || id == "." || id == ".." ||
+        id.find("..") != std::string_view::npos)
+    {
+        return false;
+    }
+
+    return std::all_of(id.begin(), id.end(), [](unsigned char ch) {
+        return std::isalnum(ch) || ch == '.' || ch == '_' || ch == '-';
+    });
+}
+
+bool is_safe_virtual_basename(std::string_view name, std::size_t max_length)
+{
+    if (name.empty() || name.size() > max_length || name == "." ||
+        name == ".." || name.find("..") != std::string_view::npos)
+    {
+        return false;
+    }
+
+    return std::all_of(name.begin(), name.end(), [](unsigned char ch) {
+        return std::isalnum(ch) || ch == '.' || ch == '_' || ch == '-';
+    });
+}
+
 CampaignPackageIoError mount_campaign_package_with_error(const std::string& id)
 {
     if(id.size() == 0)
         return CampaignPackageIoError::EmptyId;
+    if (!is_safe_campaign_id(id))
+    {
+        LogError("campaign_mount_failed id={} code=unsafe_id\n", id);
+        return CampaignPackageIoError::MountFailed;
+    }
 
     const std::string prev = get_mounted_campaign();
     if (!prev.empty() && prev == id)
@@ -112,6 +145,11 @@ CampaignPackageIoError unmount_campaign_package_with_error(const std::string& id
 {
     if(id.size() == 0)
         return CampaignPackageIoError::None;
+    if (!is_safe_campaign_id(id))
+    {
+        LogError("campaign_unmount_failed id={} code=unsafe_id\n", id);
+        return CampaignPackageIoError::UnmountFailed;
+    }
 
     std::string filename = get_user_path() + "campaigns/" + id + ".glad";
     if(!og::resources::unmount(filename.c_str()))
@@ -164,6 +202,11 @@ std::list<std::string> list_campaigns()
         }
         else
             *e = e->substr(0, pos);
+        if (!is_safe_campaign_id(*e))
+        {
+            e = ls.erase(e);
+            continue;
+        }
         ++e;
     }
     return ls;
@@ -286,11 +329,15 @@ ArchiveIoError unzip_into_with_error(const std::string& infile, const std::strin
 
 bool unpack_campaign(const std::string& campaign_id)
 {
+    if (!is_safe_campaign_id(campaign_id))
+        return false;
     return unzip_into_with_error(get_user_path() + "campaigns/" + campaign_id + ".glad", get_user_path() + "temp/") == ArchiveIoError::None;
 }
 
 bool repack_campaign(const std::string& campaign_id)
 {
+    if (!is_safe_campaign_id(campaign_id))
+        return false;
     std::string outfile = get_user_path() + "campaigns/" + campaign_id + ".glad";
     std::remove(outfile.c_str());
     og::data::clear_campaign_metadata_cache();
@@ -329,6 +376,8 @@ void delete_level(int id)
 
 void delete_campaign(const std::string& id)
 {
+    if (!is_safe_campaign_id(id))
+        return;
     std::string path = std::format("{}campaigns/{}.glad", get_user_path(), id);
     std::error_code ec;
     std::filesystem::remove(path, ec);

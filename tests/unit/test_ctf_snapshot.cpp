@@ -387,7 +387,7 @@ TEST(CtfSnapshot, full_state_survives_capture_serialize_apply_round_trip)
         bytes = og::sim::serialize_snapshot(snapshot);
 
         const og::sim::WorldSnapshot decoded =
-            og::sim::deserialize_snapshot(bytes.data(), bytes.size());
+            og::sim::deserialize_snapshot(bytes);
         const auto failure = og::sim::find_first_snapshot_difference(
             snapshot.tick_count, snapshot, decoded);
         ASSERT_FALSE(failure.has_value())
@@ -397,7 +397,7 @@ TEST(CtfSnapshot, full_state_survives_capture_serialize_apply_round_trip)
     }
 
     const og::sim::WorldSnapshot decoded =
-        og::sim::deserialize_snapshot(bytes.data(), bytes.size());
+        og::sim::deserialize_snapshot(bytes);
     CtfWorld target;
     og::sim::apply_snapshot(target.world(), decoded);
     expect_snapshot_matches_world(decoded, target.world());
@@ -416,7 +416,7 @@ TEST(CtfSnapshot, apply_clears_stale_ctf_state_from_default_snapshot)
 
     const std::vector<std::uint8_t> bytes = og::sim::serialize_snapshot(snapshot);
     const og::sim::WorldSnapshot decoded =
-        og::sim::deserialize_snapshot(bytes.data(), bytes.size());
+        og::sim::deserialize_snapshot(bytes);
     expect_snapshot_ctf_defaults(decoded);
 
     // A polluted target world must come back to defaults: the apply path
@@ -456,7 +456,7 @@ TEST(CtfSnapshot, delta_payload_carries_ctf_changes_onto_baseline)
     const std::vector<std::uint8_t> delta_bytes =
         og::sim::serialize_delta(delta_source);
     const og::sim::WorldSnapshot decoded_delta =
-        og::sim::deserialize_delta(delta_bytes.data(), delta_bytes.size());
+        og::sim::deserialize_delta(delta_bytes);
 
     og::sim::apply_delta(baseline, decoded_delta);
     EXPECT_TRUE(baseline.ctf_active);
@@ -509,22 +509,19 @@ TEST(CtfSnapshot, deserializer_rejects_oversized_counts_in_crafted_payloads)
     const std::vector<std::uint8_t> bad_cp_count =
         rebuild_patched_snapshot_message(raw_payload, kCpCountOffset, 0xffu);
     EXPECT_THROW(
-        (void)og::sim::deserialize_snapshot(bad_cp_count.data(),
-                                            bad_cp_count.size()),
+        (void)og::sim::deserialize_snapshot(bad_cp_count),
         std::runtime_error);
 
     const std::vector<std::uint8_t> bad_anchor_count =
         rebuild_patched_snapshot_message(raw_payload, kAnchorCountOffset, 0xffu);
     EXPECT_THROW(
-        (void)og::sim::deserialize_snapshot(bad_anchor_count.data(),
-                                            bad_anchor_count.size()),
+        (void)og::sim::deserialize_snapshot(bad_anchor_count),
         std::runtime_error);
 
     const std::vector<std::uint8_t> bad_queue_size =
         rebuild_patched_snapshot_message(raw_payload, kQueueSizeOffset, 0xffu);
     EXPECT_THROW(
-        (void)og::sim::deserialize_snapshot(bad_queue_size.data(),
-                                            bad_queue_size.size()),
+        (void)og::sim::deserialize_snapshot(bad_queue_size),
         std::runtime_error);
 }
 
@@ -655,7 +652,7 @@ TEST(CtfSnapshot, snapshot_restore_continuation_matches_uninterrupted_run)
 
     CtfWorld restored;
     const og::sim::WorldSnapshot mid_snapshot =
-        og::sim::deserialize_snapshot(mid_bytes.data(), mid_bytes.size());
+        og::sim::deserialize_snapshot(mid_bytes);
     og::sim::apply_snapshot(restored.world(), mid_snapshot);
     ASSERT_TRUE(restored.world().ctf.active);
     ASSERT_TRUE(restored.world().ctf.init_attempted);
@@ -666,10 +663,8 @@ TEST(CtfSnapshot, snapshot_restore_continuation_matches_uninterrupted_run)
     const std::vector<std::uint8_t> restored_end = og::sim::serialize_snapshot(
         og::sim::capture_keyframe_snapshot(restored.world()));
 
-    const og::sim::WorldSnapshot expected_end = og::sim::deserialize_snapshot(
-        uninterrupted_end.data(), uninterrupted_end.size());
-    const og::sim::WorldSnapshot actual_end = og::sim::deserialize_snapshot(
-        restored_end.data(), restored_end.size());
+    const og::sim::WorldSnapshot expected_end = og::sim::deserialize_snapshot(uninterrupted_end);
+    const og::sim::WorldSnapshot actual_end = og::sim::deserialize_snapshot(restored_end);
     const auto failure = og::sim::find_first_snapshot_difference(
         expected_end.tick_count, expected_end, actual_end);
     ASSERT_FALSE(failure.has_value())
@@ -750,7 +745,7 @@ TEST(CtfSnapshot, keyframe_at_blink_tick_boundary_continues_byte_equal)
 
     CtfWorld restored;
     const og::sim::WorldSnapshot mid_snapshot =
-        og::sim::deserialize_snapshot(mid_bytes.data(), mid_bytes.size());
+        og::sim::deserialize_snapshot(mid_bytes);
     og::sim::apply_snapshot(restored.world(), mid_snapshot);
     ASSERT_TRUE(restored.world().ctf.active);
     ASSERT_EQ(og::sim::CtfFlagState::Dropped,
@@ -760,10 +755,8 @@ TEST(CtfSnapshot, keyframe_at_blink_tick_boundary_continues_byte_equal)
     const std::vector<std::uint8_t> restored_end = og::sim::serialize_snapshot(
         og::sim::capture_keyframe_snapshot(restored.world()));
 
-    const og::sim::WorldSnapshot expected_end = og::sim::deserialize_snapshot(
-        uninterrupted_end.data(), uninterrupted_end.size());
-    const og::sim::WorldSnapshot actual_end = og::sim::deserialize_snapshot(
-        restored_end.data(), restored_end.size());
+    const og::sim::WorldSnapshot expected_end = og::sim::deserialize_snapshot(uninterrupted_end);
+    const og::sim::WorldSnapshot actual_end = og::sim::deserialize_snapshot(restored_end);
     const auto failure = og::sim::find_first_snapshot_difference(
         expected_end.tick_count, expected_end, actual_end);
     ASSERT_FALSE(failure.has_value())
@@ -792,7 +785,7 @@ TEST(CtfSnapshot, strip_scenario_troops_round_trips_and_changes_hash)
     EXPECT_EQ(1, snapshot.ctf_requested_strip_scenario_troops);
     const std::vector<std::uint8_t> bytes = og::sim::serialize_snapshot(snapshot);
     const og::sim::WorldSnapshot decoded =
-        og::sim::deserialize_snapshot(bytes.data(), bytes.size());
+        og::sim::deserialize_snapshot(bytes);
     EXPECT_EQ(1, decoded.ctf_requested_strip_scenario_troops);
 
     // Apply writes it back into a fresh world.
@@ -809,7 +802,7 @@ TEST(CtfSnapshot, strip_scenario_troops_round_trips_and_changes_hash)
     const std::vector<std::uint8_t> delta_bytes =
         og::sim::serialize_delta(delta_source);
     const og::sim::WorldSnapshot decoded_delta =
-        og::sim::deserialize_delta(delta_bytes.data(), delta_bytes.size());
+        og::sim::deserialize_delta(delta_bytes);
     og::sim::apply_delta(baseline, decoded_delta);
     EXPECT_EQ(1, baseline.ctf_requested_strip_scenario_troops);
 

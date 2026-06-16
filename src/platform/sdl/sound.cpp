@@ -167,6 +167,9 @@ void sdl_soundob::play_sound(short whichnum)
 	if (silence)         // If silent mode set, do nothing here
 		return;
 
+	if (whichnum < 0 || whichnum >= NUMSOUNDS || sound[whichnum] == nullptr)
+		return;
+
 	Mix_PlayChannel(-1,sound[whichnum],0);
 }
 

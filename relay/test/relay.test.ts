@@ -2,6 +2,10 @@ import { env, runDurableObjectAlarm, runInDurableObject, SELF } from "cloudflare
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  MAX_CAMPAIGN_HASH_LENGTH,
+  MAX_CAMPAIGN_NAME_LENGTH,
+  MAX_HOST_NAME_LENGTH,
+  MAX_RELAY_JSON_MESSAGE_BYTES,
   MAX_RELAY_PAYLOAD_BYTES,
   ROOM_INDEX_TTL_SECONDS,
   RELAY_BROADCAST_TAG,
@@ -791,6 +795,40 @@ describe("OpenGlad relay worker", () => {
 
     const closeEvent = await closePromise;
     expect(closeEvent.code).toBe(1008);
+  });
+
+  it("bounds persisted room metadata and websocket text control messages", async () => {
+    const longCampaign = `campaign.${"x".repeat(MAX_CAMPAIGN_HASH_LENGTH + 64)}`;
+    const longCampaignName = "Campaign ".repeat(40);
+    const longHostName = "Host ".repeat(40);
+    const room = await createRoom({
+      campaign: longCampaign,
+      campaignName: longCampaignName,
+      hostName: longHostName,
+    });
+
+    const hostSocket = await openRoomSocket(roomSocketPath(room, true));
+    await waitForMessage(hostSocket, "bounded host joined");
+    await waitForMessage(hostSocket, "bounded host peer list");
+
+    const response = await SELF.fetch("https://relay.test/api/rooms");
+    expect(response.status).toBe(200);
+    const rooms = (await response.json()) as Array<{
+      code: string;
+      campaign_hash: string;
+      campaign_name: string;
+      host_name: string;
+    }>;
+    const listedRoom = rooms.find((entry) => entry.code === room.code);
+    expect(listedRoom).toBeTruthy();
+    expect(listedRoom?.campaign_hash).toHaveLength(MAX_CAMPAIGN_HASH_LENGTH);
+    expect(listedRoom?.campaign_name).toHaveLength(MAX_CAMPAIGN_NAME_LENGTH);
+    expect(listedRoom?.host_name).toHaveLength(MAX_HOST_NAME_LENGTH);
+
+    const closePromise = waitForClose(hostSocket);
+    hostSocket.send("x".repeat(MAX_RELAY_JSON_MESSAGE_BYTES + 1));
+    const closeEvent = await closePromise;
+    expect(closeEvent.code).toBe(1009);
   });
 
   it("does not share websocket rate limits across peers behind the same nat", async () => {

@@ -98,16 +98,14 @@ ClientPollResult poll_client_messages(
             case og::sim::kSnapshotMessageType:
                 typed_message.kind = og::sim::TypedReceivedMessageKind::Snapshot;
                 typed_message.snapshot = std::make_shared<og::sim::WorldSnapshot>(
-                    og::sim::deserialize_snapshot(message.data.data(),
-                                                  message.data.size()));
+                    og::sim::deserialize_snapshot(message.data));
                 break;
 
             case og::sim::kDeltaSnapshotMessageType:
                 typed_message.kind =
                     og::sim::TypedReceivedMessageKind::DeltaSnapshot;
                 typed_message.snapshot = std::make_shared<og::sim::WorldSnapshot>(
-                    og::sim::deserialize_delta(message.data.data(),
-                                               message.data.size()));
+                    og::sim::deserialize_delta(message.data));
                 break;
 
             case og::sim::kSimEventBatchMessageType:
@@ -115,8 +113,7 @@ ClientPollResult poll_client_messages(
                     og::sim::TypedReceivedMessageKind::SimEventBatch;
                 typed_message.event_batch =
                     std::make_shared<og::sim::SimEventBatch>(
-                        og::sim::deserialize_sim_event_batch(message.data.data(),
-                                                             message.data.size()));
+                        og::sim::deserialize_sim_event_batch(message.data));
                 break;
 
             case og::sim::kGameFlowEventBatchMessageType:
@@ -125,8 +122,7 @@ ClientPollResult poll_client_messages(
                 typed_message.event_batch =
                     std::make_shared<og::sim::SimEventBatch>(
                         og::sim::deserialize_game_flow_event_batch(
-                            message.data.data(),
-                            message.data.size()));
+                            message.data));
                 break;
 
             case og::sim::kLobbyMessageType:

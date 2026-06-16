@@ -67,7 +67,6 @@ void intro_main(Sint32 argc, char** argv)
 	gladiator.drawMix(120,55,og::runtime::current_session->myscreen_->viewob[0].get());
 	mytext.write_y(100,"FORGOTTEN SAGES PRESENTS", 230, og::runtime::current_session->myscreen_->viewob[0].get());
 	//myscreen->refresh();
-	gladdata.free();
 
 	if (show() < 0)
 	{
@@ -84,9 +83,6 @@ void intro_main(Sint32 argc, char** argv)
 	//gladiator->drawMix(110,65,myscreen->viewob[0].get());
 	gladiator2.drawMix(100, 110, og::runtime::current_session->myscreen_->viewob[0].get());
 	//myscreen->refresh();
-
-	gladdata.free();
-	bigdata.free();
 
 	if (show() < 0)
 	{
@@ -124,25 +120,21 @@ void intro_main(Sint32 argc, char** argv)
 	pixie ul(uldata);
 	ul.setxy(41, 12);
 	ul.draw(og::runtime::current_session->myscreen_->viewob[0].get());
-	uldata.free();
 
 	urdata = read_pixie_file("game2ur.png");
 	pixie ur(urdata);
 	ur.setxy(160, 12);
 	ur.draw(og::runtime::current_session->myscreen_->viewob[0].get());
-	urdata.free();
 
 	lldata = read_pixie_file("game2ll.png");
 	pixie ll(lldata);
 	ll.setxy(41, 103);
 	ll.draw(og::runtime::current_session->myscreen_->viewob[0].get());
-	lldata.free();
 
 	lrdata = read_pixie_file("game2lr.png");
 	pixie lr(lrdata);
 	lr.setxy(160, 103);
 	lr.draw(og::runtime::current_session->myscreen_->viewob[0].get());
-	lrdata.free();
 
 	//myscreen->refresh();
 
@@ -171,13 +163,11 @@ void intro_main(Sint32 argc, char** argv)
 	pixie ul2(uldata);
 	ul2.setxy(0, 0);
 	ul2.draw(og::runtime::current_session->myscreen_->viewob[0].get());
-	uldata.free();
 
 	lldata = read_pixie_file("game5.png");
 	pixie ll2(lldata);
 	ll2.setxy(160, 78);
 	ll2.draw(og::runtime::current_session->myscreen_->viewob[0].get());
-	lldata.free();
 
 	message = "Additional Artwork By:";
 	mytext.write_xy(310-mytext.query_width(message),

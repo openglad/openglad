@@ -55,6 +55,18 @@ std::string safe_copy(const char* s)
 struct YamlParser::Impl {
     Yam yam;
     YamlEvent current;
+    // Thread the og::io::ReadHandler and user data through libyaml's single
+    // void* so we never have to reinterpret_cast between function-pointer types.
+    ReadHandler read_handler = nullptr;
+    void* read_data = nullptr;
+
+    // Trampoline whose type matches Yam_Read_Handler (yaml_read_handler_t)
+    // exactly; forwards to the stored og::io::ReadHandler.
+    static int read_trampoline(void* data, unsigned char* buffer, std::size_t size, std::size_t* size_read)
+    {
+        auto* self = static_cast<Impl*>(data);
+        return self->read_handler(self->read_data, buffer, size, size_read);
+    }
 };
 
 YamlParser::YamlParser() : impl_(std::make_unique<Impl>()) {}
@@ -64,7 +76,9 @@ YamlParser& YamlParser::operator=(YamlParser&&) noexcept = default;
 
 void YamlParser::set_input(ReadHandler handler, void* data)
 {
-    impl_->yam.set_input(reinterpret_cast<Yam_Read_Handler*>(handler), data);
+    impl_->read_handler = handler;
+    impl_->read_data = data;
+    impl_->yam.set_input(&Impl::read_trampoline, impl_.get());
 }
 
 void YamlParser::close_input()
@@ -88,6 +102,18 @@ const YamlEvent& YamlParser::event() const
 
 struct YamlEmitter::Impl {
     Yam yam;
+    // Thread the og::io::WriteHandler and user data through libyaml's single
+    // void* so we never have to reinterpret_cast between function-pointer types.
+    WriteHandler write_handler = nullptr;
+    void* write_data = nullptr;
+
+    // Trampoline whose type matches Yam_Write_Handler (yaml_write_handler_t)
+    // exactly; forwards to the stored og::io::WriteHandler.
+    static int write_trampoline(void* data, unsigned char* buffer, std::size_t size)
+    {
+        auto* self = static_cast<Impl*>(data);
+        return self->write_handler(self->write_data, buffer, size);
+    }
 };
 
 YamlEmitter::YamlEmitter() : impl_(std::make_unique<Impl>()) {}
@@ -97,7 +123,9 @@ YamlEmitter& YamlEmitter::operator=(YamlEmitter&&) noexcept = default;
 
 bool YamlEmitter::set_output(WriteHandler handler, void* data)
 {
-    return impl_->yam.set_output(reinterpret_cast<Yam_Write_Handler*>(handler), data);
+    impl_->write_handler = handler;
+    impl_->write_data = data;
+    return impl_->yam.set_output(&Impl::write_trampoline, impl_.get());
 }
 
 void YamlEmitter::close_output()

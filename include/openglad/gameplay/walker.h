@@ -264,6 +264,11 @@ class walker : public og::sim::SimEntity
 		// Public data members (fields NOT in SimEntity base)
 		guy  *myguy;                   // Non-owning view of character data; ownership, when present, lives in owned_myguy_
 		const signed char * const * ani;
+		// Number of (facing x ani_type) entries in `ani` for this family's table.
+		// Animation tables vary in length per family; this bounds index math in
+		// animate() so a snapshot/save-controlled ani_type/curdir cannot read past
+		// the end of a short table. Set by loader::set_walker; 0 until then.
+		int ani_count = 0;
 		std::vector<MicroPatherState> path_to_foe;  // Result from pathfinding
 		std::list<DamageNumber> damage_numbers;
 
@@ -273,7 +278,7 @@ class walker : public og::sim::SimEntity
 		bool act_guard();
 		virtual bool act_random();
 		std::int32_t regen_delay_ = 0;       // Delay after being hit
-		walker * myself_;
+		walker * myself_ = nullptr;
 		std::unique_ptr<statistics> stats_;
 		std::unique_ptr<guy> owned_myguy_;
 		std::unique_ptr<og::gameplay::IRenderComponent> render_;  // Optional render component (null for headless)

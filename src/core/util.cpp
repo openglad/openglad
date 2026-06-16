@@ -132,7 +132,7 @@ std::int32_t query_timer_control()
 void time_delay(std::int32_t delay)
 {
     if (delay <= 0) return;
-    auto target_us = static_cast<std::int64_t>(delay * 13600); // microseconds
+    auto target_us = static_cast<std::int64_t>(delay) * 13600; // microseconds
 #ifdef __EMSCRIPTEN__
   #ifdef __ASYNCIFY__
     emscripten_sleep(static_cast<unsigned int>(target_us / 1000));

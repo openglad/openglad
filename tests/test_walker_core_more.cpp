@@ -540,6 +540,11 @@ TEST(WalkerCoreMore, walker_round6_init_fire_animate_and_misc_guards)
     ASSERT_EQ(1, w->next_frame()) << "next_frame should report a successful frame set";
     ASSERT_EQ(before, w->frame()) << "next_frame should keep the wrapped frame selected";
 
+    // A default/test-built walker has frames==0; next_frame() must guard the
+    // modulo and return 0 rather than dividing by zero (UB).
+    walker zero_frames;
+    ASSERT_EQ(0, zero_frames.next_frame()) << "frames==0 must return 0, not divide by zero";
+
     // move_myguy_to nullptr guard.
     w->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     w->move_myguy_to(nullptr);
@@ -592,6 +597,46 @@ TEST(WalkerCoreMore, walker_round6_init_fire_animate_and_misc_guards)
     w->set_cycle(120);
     w->set_curdir(FACE_DOWN);
     ASSERT_TRUE(!w->animate()) << "ANI_TELE_OUT without handler should return false after reset";
+}
+
+
+TEST(WalkerCoreMore, walker_animate_rejects_ani_type_beyond_family_table)
+{
+    og::runtime::current_session->myscreen_->world().create_new_grid();
+    og::runtime::current_session->myscreen_->world().delete_objects();
+
+    // A real loader-built walker records its family's animation-table length in
+    // ani_count. FAMILY_SOLDIER uses a short table; a snapshot-forced high
+    // ani_type would index past it, so animate() must reject it (reset to walk,
+    // return false) rather than read out of bounds.
+    walker* w = og::runtime::current_session->myscreen_->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_TRUE(w != nullptr);
+    if (!w)
+        return;
+    ASSERT_TRUE(w->ani != nullptr) << "real walker has an animation table";
+    ASSERT_GT(w->ani_count, 0) << "loader records the table length";
+
+    if (FACE_DOWN + ANI_SLIME_SPLIT * NUM_FACINGS >= w->ani_count)
+    {
+        w->set_ani_type(static_cast<char>(ANI_SLIME_SPLIT));
+        w->set_curdir(static_cast<char>(FACE_DOWN));
+        w->set_cycle(0);
+        ASSERT_TRUE(!w->animate()) << "ani_type beyond the family table must be rejected";
+        ASSERT_EQ(ANI_WALK, (int)w->ani_type()) << "rejected animate resets to walk";
+    }
+
+    // ani_type beyond the global ANI range must be normalized to walk.
+    w->set_ani_type(static_cast<char>(99));
+    w->set_curdir(static_cast<char>(FACE_DOWN));
+    w->set_cycle(0);
+    (void)w->animate();
+    ASSERT_EQ(ANI_WALK, (int)w->ani_type()) << "out-of-range ani_type normalizes to walk";
+
+    // Out-of-range facing/cycle must also be handled without an out-of-bounds read.
+    w->set_ani_type(static_cast<char>(ANI_WALK));
+    w->set_curdir(static_cast<char>(100));
+    w->set_cycle(static_cast<signed char>(120));
+    (void)w->animate(); // must not crash / read OOB (verified under sanitizers)
 }
 
 

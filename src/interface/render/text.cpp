@@ -114,8 +114,6 @@ Sint32 text::write_xy(Sint32 x, Sint32 y, std::string_view string, unsigned char
 	return 1;
 }
 
-static char text_buffer[255];
-
 Sint32 text::write_formatted(Sint32 x, Sint32 y, const char* str,
                               unsigned char color, bool center, bool shadow,
                               bool use_alpha, Uint8 alpha)
@@ -138,6 +136,7 @@ Sint32 text::write_formatted(Sint32 x, Sint32 y, const char* str,
 }
 
 #define TEXT_VFORMAT()                                                     \
+    char text_buffer[256];                                                 \
     do {                                                                   \
         if (!formatted_string) return 0;                                   \
         va_list lst;                                                       \

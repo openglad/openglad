@@ -2,6 +2,7 @@
 
 #ifdef TESTING
 
+#include <array>
 #include <vector>
 #include <string>
 #include <cstdio>
@@ -32,15 +33,15 @@ inline bool trace_stderr_enabled() {
 }
 
 inline void trace_write(const char* category, const char* format, ...) {
-    char buf[1024];
+    std::array<char, 1024> buf{};
     va_list args;
     va_start(args, format);
-    vsnprintf(buf, sizeof(buf), format, args);
+    vsnprintf(buf.data(), buf.size(), format, args);
     va_end(args);
     std::lock_guard<std::mutex> lock(g_trace_mutex);
-    g_trace_buffer.push_back({category, buf});
+    g_trace_buffer.push_back({category, buf.data()});
     if (trace_stderr_enabled())
-        fprintf(stderr, "[TRACE:%s] %s\n", category, buf);
+        fprintf(stderr, "[TRACE:%s] %s\n", category, buf.data());
 }
 
 #define TRACE(cat, ...) trace_write(cat, __VA_ARGS__)

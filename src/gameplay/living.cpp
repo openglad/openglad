@@ -340,8 +340,12 @@ bool living::act()
 					if (stats_->magicpoints() >= stats_->special_cost(1))
 					{
 						set_current_special(static_cast<char>(current_game->world->rng_.next((stats_->level()+2)/3) + 1));
+						const FamilyDescriptor* special_fd = get_family_descriptor(family());
 						if ( (current_special() > 4) ||
-						        (strcmp(get_family_descriptor(family())->special_names[static_cast<int>(current_special())], "NONE") == 0)
+						        (current_special() < 1) ||
+						        (current_special() >= FD_NUM_SPECIALS) ||
+						        (special_fd == nullptr) ||
+						        (strcmp(special_fd->special_names[static_cast<int>(current_special())], "NONE") == 0)
 						   )
 							set_current_special(1);
 						if (check_special() )
@@ -514,6 +518,7 @@ walker* living::do_summon(char whatfamily, std::int32_t summon_lifetime)
 	walker  *newob;
 
 	newob = current_game->world->add_ob(Order::Living, whatfamily);
+	if (newob == nullptr) return nullptr;
 	newob->set_owner(this);
 		newob->set_lifetime(summon_lifetime);
 	newob->transform_to(Order::Living, whatfamily);
