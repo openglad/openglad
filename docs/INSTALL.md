@@ -20,6 +20,39 @@ brew install cmake ninja sdl2 sdl2_mixer pkg-config
 
 Install [vcpkg](https://github.com/microsoft/vcpkg) and use the vcpkg preset (see below), or install SDL2 and SDL2_mixer manually and ensure they are on the system `PKG_CONFIG_PATH`.
 
+### Nix
+
+OpenGlad includes a Nix flake for Linux development and packaged native builds.
+On a bare container with Nix flakes enabled, enter the development environment
+with:
+
+```bash
+nix develop
+```
+
+The shell provides the native CMake toolchain and dependencies used by the
+documented presets: CMake, Ninja, pkg-config, SDL2, SDL2_mixer, ncurses, GTest,
+coverage tools, debugger tools, and common script utilities.
+
+Inside the shell, use the standard CMake presets:
+
+```bash
+cmake --preset dev-debug
+cmake --build --preset dev-debug
+./build/dev-debug/openglad
+```
+
+The flake also exposes a packaged build that installs runtime assets and wraps
+the executables so they launch from the correct asset directory:
+
+```bash
+nix build .#openglad
+nix run .#
+```
+
+`nix build` produces wrappers for `openglad`, `openscen`, `openglad_text`,
+`openglad_server`, `openglad_curses`, and `openglad_demo`.
+
 ---
 
 ## Quick Start (CMake Presets)
