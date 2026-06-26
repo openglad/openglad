@@ -4,7 +4,7 @@
 #include <string>
 
 // PhysFS wrapper for OpenGlad.
-// Vendor headers (physfs.h/physfsrwops.h) must remain in .cpp files.
+// External PhysFS headers must remain in .cpp files.
 namespace og::io {
 
 // Returns a human-readable PhysFS error message for the last PhysFS error.

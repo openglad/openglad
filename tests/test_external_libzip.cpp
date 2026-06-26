@@ -1,5 +1,4 @@
 #include <cstring>
-#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -13,13 +12,6 @@
 #include "zip.h"
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
-#endif
-#ifdef __cplusplus
-extern "C" {
-#endif
-#include "zipint.h"
-#ifdef __cplusplus
-}
 #endif
 
 #include <gtest/gtest.h>
@@ -140,7 +132,9 @@ TEST(ExternalLibzip, rename_comments_and_stat_paths)
     ASSERT_TRUE(zip_file_set_comment(za, (zip_uint64_t)idx, "file-comment", 12, 0) == 0) << "zip_file_set_comment";
     ASSERT_TRUE(zip_file_rename(za, (zip_uint64_t)idx, "b.txt", 0) == 0) << "zip_file_rename";
     ASSERT_TRUE(zip_set_file_compression(za, (zip_uint64_t)idx, ZIP_CM_STORE, 0) == 0) << "zip_set_file_compression";
+#ifdef ZIP_AFL_WANT_TORRENTZIP
     ASSERT_TRUE(zip_set_archive_flag(za, ZIP_AFL_WANT_TORRENTZIP, 1) == 0) << "zip_set_archive_flag torrentzip";
+#endif
 
     ASSERT_TRUE(zip_close(za) == 0) << "zip_close";
 
@@ -266,48 +260,4 @@ TEST(ExternalLibzip, extra_field_api_paths)
         << "central extra-field delete should succeed after local delete";
 
     ASSERT_TRUE(zip_close(za) == 0) << "zip_close";
-
-    // Internal dirent/cdir APIs that remain compatible in libzip 1.11.x.
-    zip_error_t zerr;
-    zip_error_init(&zerr);
-
-    zip_dirent_t* de = _zip_dirent_new();
-    ASSERT_TRUE(de != nullptr) << "_zip_dirent_new";
-    de->comp_method = ZIP_CM_STORE;
-    de->version_madeby = 45;
-    de->version_needed = 45;
-    de->comp_size = static_cast<zip_uint64_t>(UINT32_MAX) + 1234;
-    de->uncomp_size = static_cast<zip_uint64_t>(UINT32_MAX) + 5678;
-    de->offset = static_cast<zip_uint64_t>(UINT32_MAX) + 999;
-
-    const char* utf8_name = "utf8-\xCE\xA9.txt";
-    const char* utf8_comment = "comment-\xCE\xA9";
-    de->filename = _zip_string_new(reinterpret_cast<const zip_uint8_t*>(utf8_name),
-                                   static_cast<zip_uint16_t>(strlen(utf8_name)),
-                                   ZIP_FL_ENC_GUESS, &zerr);
-    de->comment = _zip_string_new(reinterpret_cast<const zip_uint8_t*>(utf8_comment),
-                                  static_cast<zip_uint16_t>(strlen(utf8_comment)),
-                                  ZIP_FL_ENC_GUESS, &zerr);
-    ASSERT_TRUE(de->filename != nullptr && de->comment != nullptr) << "_zip_string_new for dirent";
-
-    const zip_uint8_t raw_ef[8] = {1,2,3,4,5,6,7,8};
-    de->extra_fields = _zip_ef_new(0xBEEF, 8, raw_ef, ZIP_EF_BOTH);
-    ASSERT_TRUE(de->extra_fields != nullptr) << "_zip_ef_new";
-
-    ASSERT_TRUE(_zip_dirent_needs_zip64(de, ZIP_FL_CENTRAL)) << "_zip_dirent_needs_zip64 central";
-    ASSERT_TRUE(_zip_dirent_needs_zip64(de, ZIP_FL_LOCAL)) << "_zip_dirent_needs_zip64 local";
-
-    zip_dirent_torrentzip_normalize(de);
-
-    zip_dirent_t* cloned = _zip_dirent_clone(de);
-    ASSERT_TRUE(cloned != nullptr) << "_zip_dirent_clone";
-    _zip_dirent_free(cloned);
-    _zip_dirent_free(de);
-
-    zip_cdir_t* cd = _zip_cdir_new(&zerr);
-    ASSERT_TRUE(cd != nullptr) << "_zip_cdir_new";
-    ASSERT_TRUE(_zip_cdir_grow(cd, 3, &zerr)) << "_zip_cdir_grow";
-    _zip_cdir_free(cd);
-
-    zip_error_fini(&zerr);
 }

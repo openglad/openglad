@@ -17,9 +17,8 @@
 
 #include <openglad/interface/ui/campaign_picker.h>
 #include <openglad/interface/ui/picker_common.h>
+#include <openglad/resources/campaign_yaml.h>
 #include <openglad/resources/io_common.h>
-#include <openglad/resources/og_file.h>
-#include <openglad/resources/yaml_stream.h>
 #include <openglad/interface/render/pixie.h>
 #include <openglad/interface/render/text.h>
 #include <openglad/gameplay/guy.h>
@@ -55,15 +54,6 @@ struct UiRect
 };
 
 constexpr std::int32_t kReleaseWaitPollLimit = 5000;
-
-int ogfile_read_handler(void* data, unsigned char* buffer, std::size_t size, std::size_t* size_read)
-{
-    auto* file = static_cast<og::io::OgFile*>(data);
-    if (!file || !size_read)
-        return 0;
-    *size_read = file->read(buffer, 1, size);
-    return 1;
-}
 
 void wait_for_mouse_release()
 {
@@ -144,51 +134,26 @@ public:
 CampaignEntry::CampaignEntry(const std::string& campaign_id, int levels_completed)
     : id(campaign_id), title("Untitled"), rating(0.0f), version("1.0"), description("No description."), suggested_power(0), first_level(1), num_levels(0), num_levels_completed(levels_completed)
 {
-    bool saw_version = false;
-    bool saw_first_level = false;
-
     // Load the campaign data from <user_data>/scen/<id>.glad
     if(mount_campaign_package_with_error(campaign_id) == CampaignPackageIoError::None)
     {
-        auto infile = og::io::og_open_read("campaign.yaml");
-        if (infile)
+        og::data::CampaignYaml metadata;
+        if(og::data::read_campaign_yaml("campaign.yaml", metadata) == og::data::CampaignYamlReadResult::Ok)
         {
-            og::io::YamlParser yaml;
-            yaml.set_input(ogfile_read_handler, infile.get());
-
-            while(yaml.parse_next() == og::io::YamlParseResult::Ok)
-            {
-                const og::io::YamlEvent& ev = yaml.event();
-                switch(ev.type)
-                {
-                    case og::io::YamlEventType::Pair:
-                        if(ev.scalar == "title")
-                            title = ev.value;
-                        else if(ev.scalar == "version")
-                        {
-                            version = ev.value;
-                            saw_version = true;
-                        }
-                        else if(ev.scalar == "authors")
-                            authors = ev.value;
-                        else if(ev.scalar == "contributors")
-                            contributors = ev.value;
-                        else if(ev.scalar == "description")
-                            description = ev.value;
-                        else if(ev.scalar == "suggested_power")
-                            suggested_power = toInt(ev.value);
-                        else if(ev.scalar == "first_level")
-                        {
-                            first_level = toInt(ev.value);
-                            saw_first_level = true;
-                        }
-                    break;
-                    default:
-                        break;
-                }
-            }
-
-            yaml.close_input();
+            if(metadata.saw_title)
+                title = metadata.title;
+            if(metadata.saw_version)
+                version = metadata.version;
+            if(metadata.saw_authors)
+                authors = metadata.authors;
+            if(metadata.saw_contributors)
+                contributors = metadata.contributors;
+            if(metadata.saw_description)
+                description = metadata.description;
+            if(metadata.saw_suggested_power)
+                suggested_power = metadata.suggested_power;
+            if(metadata.saw_first_level)
+                first_level = metadata.first_level;
         }
 
         // TODO: Get rating from website
@@ -206,9 +171,9 @@ CampaignEntry::CampaignEntry(const std::string& campaign_id, int levels_complete
         (void)unmount_campaign_package_with_error(campaign_id);
     }
 
-    if (!saw_version || version.empty())
+    if (version.empty())
         version = "1.0";
-    if (!saw_first_level || first_level <= 0)
+    if (first_level <= 0)
         first_level = 1;
 }
 

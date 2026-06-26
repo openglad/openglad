@@ -46,21 +46,11 @@ openglad/
 ├── tests/                  Integration test suite (SDL)
 │   └── unit/               Headless unit tests
 │
-├── third_party/            Vendored external libraries
-│   ├── physfs/             PhysicsFS 3.2.0 (virtual filesystem)
-│   │   └── zlib123/        zlib 1.3.1 (compression, used by libzip)
-│   ├── libzip/             libzip 1.11.3 (ZIP archive I/O)
-│   ├── libyaml/            libyaml 0.2.5 (YAML parser)
-│   ├── yam/                C++ adapter over libyaml
-│   ├── micropather/        MicroPather (A* pathfinding)
-│   ├── ixwebsocket/        IXWebSocket (networking transport)
-│   ├── lodepng/            LodePNG (PNG codec for indexed-color sprite assets)
-│   └── VENDORED_LIBS.md    Version tracking and upgrade policy
-│
 ├── cmake/                  CMake support files
 ├── scripts/                Build, test, and CI scripts
 ├── web/                    Emscripten HTML shell and landing page
 ├── docs/                   Architecture documentation
+│   └── external-dependencies.md  Package targets and FetchContent pins
 │
 ├── cfg/                    Runtime configuration (openglad.yaml)
 ├── pix/                    Indexed-color sprite PNGs + Aseprite JSON sidecars (see [docs/sprite-format.md](sprite-format.md))
@@ -141,10 +131,11 @@ SDL-specific platform/runtime wiring:
 This is the outermost layer and can include all component headers.
 
 Two thin transport libraries sit beside the SDL platform layer and link the
-WebSocket vendor:
+WebSocket dependency:
 
 - `og_platform_ws_transport` — native WebSocket client/server + relay transports
-  (links `ixwebsocket`)
+  (links `og_ext_ixwebsocket`, backed by a package-manager IXWebSocket or the
+  pinned upstream FetchContent dependency)
 - `og_platform_emscripten_transport` — browser WebSocket + relay transports
 
 ---
@@ -179,7 +170,7 @@ Each component target is built with restricted include roots:
 Build and CI checks enforce boundaries:
 
 1. CMake target-level include root restriction per component
-2. `scripts/check_vendor_leaks.sh` vendor include checks
+2. `scripts/check_vendor_leaks.sh` external dependency include checks
 3. `scripts/check_vendor_leaks.sh` component dependency include checks
 
 ### Runtime Context and Thread-Local Rules
@@ -712,7 +703,7 @@ ctest --preset ci-test         # Run tests
 `og_core`, `og_gameplay`, `og_resources`, `og_interface`, `og_platform_sdl`
 
 **External libraries:**
-`og_ext_micropather`, `og_ext_yam`, `og_ext_yaml`, `og_ext_zlib`, `og_ext_libzip`, `og_ext_physfs`
+`og_ext_micropather`, `og_ext_lodepng`, `og_ext_yaml`, `og_ext_zlib`, `og_ext_libzip`, `og_ext_physfs`, `og_ext_ixwebsocket`
 
 **Aggregate target:**
 `og_game` — INTERFACE library linking all component libraries with `--start-group`/`--end-group` for cyclic resolution.
@@ -738,9 +729,9 @@ ctest --preset ci-test         # Run tests
 ### Compiler Settings
 
 - **C++ Standard:** C++20 (`CMAKE_CXX_STANDARD 20`)
-- **C Standard:** C11 (for vendored C libraries)
+- **C Standard:** C11 (for fetched/package dependency C libraries)
 - **Warnings:** `-Wall -Wextra -Wpedantic -Wconversion -Wshadow` (project code only)
-- **Vendored code:** Compiled with `-w` (all warnings suppressed)
+- **Fetched compatibility code:** Compiled with `-w` (dependency warnings suppressed)
 - **Sanitizers:** Optional ASan + UBSan via `ENABLE_SANITIZERS`
 
 ### SDL and Headless Build Targets

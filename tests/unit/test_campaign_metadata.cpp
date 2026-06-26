@@ -174,8 +174,8 @@ TEST_F(CampaignMetadataTest, scenario_names_are_keyed_by_mounted_campaign)
 }
 
 // Malformed campaign.yaml must fail cleanly, not hang. Tab-indented block
-// scalars are illegal YAML; the vendored yam adapter used to miss libyaml's
-// error (it returns 0, not a negative value) and parse_next spun forever.
+// scalars are illegal YAML; the YAML stream wrapper must surface libyaml's
+// parser error instead of looping forever.
 // This content is byte-exact from a real third-party package
 // (org.openglad.tryxian): CRLF line endings, title BEFORE the broken
 // description — so the title parses, then the stream errors.

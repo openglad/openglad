@@ -65,7 +65,7 @@ boundary is the component.)
 ```
 include/openglad/<component>/   — public headers (stable API)
 src/<component>/                — private implementation
-third_party/<lib>/              — vendored external libraries
+docs/external-dependencies.md   — package targets and FetchContent pins
 ```
 
 ### Components
@@ -78,7 +78,7 @@ third_party/<lib>/              — vendored external libraries
 | `interface` | `og_interface` | UI/menus, rendering, input translation, level editor |
 | `platform` | `og_platform_sdl` | `GameSession`, loop/session bridges, SDL video/audio, lobby clients, local transport shadow |
 
-Two thin transport libraries link the WebSocket vendor: `og_platform_ws_transport`
+Two thin transport libraries link the WebSocket dependency: `og_platform_ws_transport`
 (native) and `og_platform_emscripten_transport` (browser). Headless binaries
 `openglad_text` (client) and `openglad_server` (dedicated host) link the SDL-free
 components only.
@@ -89,7 +89,9 @@ Dependencies flow inward: `og_platform_sdl → og_interface → og_resources →
 
 ### Key Rules
 
-- **Vendor headers stay in `src/resources/io/`** (PhysFS, libzip, libyaml) and `src/gameplay/` (micropather only). Enforced by `scripts/check_vendor_leaks.sh`.
+- **External dependency headers stay behind implementation boundaries.** PhysFS,
+  libzip, libyaml, and lodepng are isolated in resources IO; MicroPather is
+  isolated in gameplay. Enforced by `scripts/check_vendor_leaks.sh`.
 - **RAII ownership.** `GameSession` is the root owner of screen, prefs, RNG. Use `std::unique_ptr<T>` for owning pointers, `T&`/`T*` for non-owning borrows.
 
 ## Key Data Structures
@@ -110,20 +112,21 @@ GameContext (DI container) → screen*, prefs*, cfg*, IRandom*, InputState
 #include <openglad/core/util.h>
 ```
 
-## Vendored Libraries (third_party/)
+## External Dependencies
 
 | Library | Purpose |
 |---------|---------|
-| PhysFS 3.2.0 | Virtual filesystem, archive mounting |
-| zlib 1.3.1 | Compression (used by libzip) |
-| libzip 1.11.3 | ZIP archive I/O for campaigns |
+| PhysFS | Virtual filesystem, archive mounting |
+| zlib | Compression (used by libzip) |
+| libzip | ZIP archive I/O for campaigns |
 | libyaml 0.2.5 | YAML parser for configuration |
-| yam 0.1.0 | C++ adapter over libyaml |
+| libyaml users | Resource-level YAML readers/writers over libyaml |
 | MicroPather | A* pathfinding |
-| IXWebSocket 11.4.6 | WebSocket transport for networked multiplayer |
+| IXWebSocket | WebSocket transport for networked multiplayer |
 | LodePNG | PNG codec for indexed-color sprite assets |
 
-Version tracking and upgrade policy in `third_party/VENDORED_LIBS.md`.
+Package targets, FetchContent pins, and update policy are in
+`docs/external-dependencies.md`.
 
 ## Game Flow
 

@@ -504,6 +504,6 @@ TEST(LevelDataErrorPaths, campaign_data_load_reports_open_read_failed_when_campa
 }
 
 
-// Note: We intentionally do not test the "ParseFailed" path here because the
-// Yam parser can hang on certain malformed inputs. Coverage is better served
-// by deterministic, non-hanging tests (especially under global coverage runs).
+// Note: We intentionally leave detailed malformed-YAML coverage to the YAML
+// stream tests. The level-data tests focus on deterministic filesystem and
+// package error paths.

@@ -19,6 +19,7 @@
 #include <openglad/interface/base.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/resources/campaign_metadata.h>
+#include <openglad/resources/campaign_yaml.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/og_file.h>
 #include <openglad/resources/level_file_io.h>
@@ -31,8 +32,6 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 
-#include <openglad/resources/yaml_stream.h>
-#include <openglad/resources/ogfile_yaml.h>
 #include <openglad/interface/level_render.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <algorithm>
@@ -43,8 +42,6 @@
 #include <string_view>
 #include <utility>
 
-
-int toInt(const std::string& s);
 
 void LevelRuntimeData::set_sim_context(SaveData* save, std::int32_t* enemy_freeze,
                                 og::sim::SimEventLog* events, IRandom* rng,
@@ -91,6 +88,50 @@ static void wire_world_loader(GameWorld& world,
             return;
         game_loader->set_derived_stats(entity, order, family);
     };
+}
+
+static std::string join_description_lines(const std::list<std::string>& description)
+{
+    std::string result;
+    for(auto e = description.begin(); e != description.end();)
+    {
+        result += *e;
+        e++;
+        if(e != description.end())
+            result += '\n';
+    }
+    return result;
+}
+
+static og::data::CampaignYaml campaign_data_to_yaml(const CampaignData& campaign)
+{
+    og::data::CampaignYaml metadata;
+    metadata.title = campaign.title;
+    metadata.version = campaign.version;
+    metadata.first_level = campaign.first_level;
+    metadata.suggested_power = campaign.suggested_power;
+    metadata.authors = campaign.authors;
+    metadata.contributors = campaign.contributors;
+    metadata.description = join_description_lines(campaign.description);
+    return metadata;
+}
+
+static void apply_campaign_yaml(CampaignData& campaign, const og::data::CampaignYaml& metadata)
+{
+    if(metadata.saw_title)
+        campaign.title = metadata.title;
+    if(metadata.saw_version)
+        campaign.version = metadata.version;
+    if(metadata.saw_authors)
+        campaign.authors = metadata.authors;
+    if(metadata.saw_contributors)
+        campaign.contributors = metadata.contributors;
+    if(metadata.saw_description)
+        campaign.description = explode(metadata.description, '\n');
+    if(metadata.saw_suggested_power)
+        campaign.suggested_power = metadata.suggested_power;
+    if(metadata.saw_first_level)
+        campaign.first_level = metadata.first_level;
 }
 
 static void wire_world_entity_services(GameWorld* world,
@@ -270,8 +311,9 @@ bool CampaignData::load()
     // Load the campaign data from <user_data>/scen/<id>.glad
     if(mount_campaign_package_with_error(id) == CampaignPackageIoError::None)
     {
-        auto file = og::io::og_open_read("campaign.yaml", true);
-        if(!file)
+        og::data::CampaignYaml metadata;
+        const auto read_result = og::data::read_campaign_yaml("campaign.yaml", metadata, true);
+        if(read_result == og::data::CampaignYamlReadResult::OpenFailed)
         {
             last_io_error_ = IoError::OpenReadFailed;
             (void)unmount_campaign_package_with_error(id);
@@ -279,42 +321,9 @@ bool CampaignData::load()
             return false;
         }
 
-        og::io::YamlParser yaml;
-        yaml.set_input(ogfile_read_handler, file.get());
-
-        auto parse_result = og::io::YamlParseResult::Ok;
-        while((parse_result = yaml.parse_next()) == og::io::YamlParseResult::Ok)
-        {
-            const og::io::YamlEvent& ev = yaml.event();
-            switch(ev.type)
-            {
-                case og::io::YamlEventType::Pair:
-                    if(ev.scalar == "title")
-                        title = ev.value;
-                    else if(ev.scalar == "version")
-                        version = ev.value;
-                    else if(ev.scalar == "authors")
-                        authors = ev.value;
-                    else if(ev.scalar == "contributors")
-                        contributors = ev.value;
-                    else if(ev.scalar == "description")
-                    {
-                        std::string desc = ev.value;
-                        description = explode(desc, '\n');
-                    }
-                    else if(ev.scalar == "suggested_power")
-                        suggested_power = toInt(ev.value);
-                    else if(ev.scalar == "first_level")
-                        first_level = toInt(ev.value);
-                break;
-                default:
-                    break;
-            }
-        }
-        if(parse_result == og::io::YamlParseResult::Error)
+        apply_campaign_yaml(*this, metadata);
+        if(read_result == og::data::CampaignYamlReadResult::ParseFailed)
             last_io_error_ = IoError::ParseFailed;
-
-        yaml.close_input();
 
         // TODO: Get rating from website
         rating = 0.0f;
@@ -348,49 +357,12 @@ bool CampaignData::save()
         // Unmount campaign while it is changed
         //unmount_campaign_package(ascreen->current_campaign);
         
-        auto outfile = og::io::og_open_write("temp/campaign.yaml");
-        if(outfile)
+        if (!og::data::write_campaign_yaml("temp/campaign.yaml", campaign_data_to_yaml(*this)))
         {
-            og::io::YamlEmitter yaml;
-            if (!yaml.set_output(ogfile_write_handler, outfile.get()))
-            {
-                LogError("Couldn't initialize YAML emitter for temp/campaign.yaml.\n");
-                last_io_error_ = IoError::OpenWriteFailed;
-                cleanup_unpacked_campaign();
-                return false;
-            }
-
-            yaml.emit_pair("format_version", "1");
-            yaml.emit_pair("title", title.c_str());
-            yaml.emit_pair("version", version.c_str());
-
-            std::string buf = std::format("{}", first_level);
-            yaml.emit_pair("first_level", buf.c_str());
-
-            buf = std::format("{}", suggested_power);
-            yaml.emit_pair("suggested_power", buf.c_str());
-
-            yaml.emit_pair("authors", authors.c_str());
-            yaml.emit_pair("contributors", contributors.c_str());
-
-            std::string desc;
-            for(auto e = description.begin(); e != description.end();)
-            {
-                desc += *e;
-                e++;
-                if(e != description.end())
-                    desc += '\n';
-            }
-
-            yaml.emit_pair("description", desc.c_str());
-
-            yaml.close_output();
-        }
-        else
-        {
-            Log("Couldn't open temp/campaign.yaml for writing.\n");
-            result = false;
+            LogError("Couldn't write YAML descriptor for temp/campaign.yaml.\n");
             last_io_error_ = IoError::OpenWriteFailed;
+            cleanup_unpacked_campaign();
+            return false;
         }
 
         if(result)
@@ -433,49 +405,9 @@ bool CampaignData::save_as(const std::string& new_id)
     if(unpack_campaign(id))
     {
         // Save the descriptor file
-        auto outfile = og::io::og_open_write("temp/campaign.yaml");
-        if(outfile)
+        if (!og::data::write_campaign_yaml("temp/campaign.yaml", campaign_data_to_yaml(*this)))
         {
-            og::io::YamlEmitter yaml;
-            if (!yaml.set_output(ogfile_write_handler, outfile.get()))
-            {
-                LogError("Couldn't initialize YAML emitter for temp/campaign.yaml.\n");
-                result = false;
-                last_io_error_ = IoError::OpenWriteFailed;
-            }
-
-            if (result)
-            {
-                yaml.emit_pair("format_version", "1");
-                yaml.emit_pair("title", title.c_str());
-                yaml.emit_pair("version", version.c_str());
-
-                std::string buf = std::format("{}", first_level);
-                yaml.emit_pair("first_level", buf.c_str());
-
-                buf = std::format("{}", suggested_power);
-                yaml.emit_pair("suggested_power", buf.c_str());
-
-                yaml.emit_pair("authors", authors.c_str());
-                yaml.emit_pair("contributors", contributors.c_str());
-
-                std::string desc;
-                for(auto e = description.begin(); e != description.end();)
-                {
-                    desc += *e;
-                    e++;
-                    if(e != description.end())
-                        desc += '\n';
-                }
-
-                yaml.emit_pair("description", desc.c_str());
-
-                yaml.close_output();
-            }
-        }
-        else
-        {
-            Log("Couldn't open temp/campaign.yaml for writing.\n");
+            LogError("Couldn't write YAML descriptor for temp/campaign.yaml.\n");
             result = false;
             last_io_error_ = IoError::OpenWriteFailed;
         }

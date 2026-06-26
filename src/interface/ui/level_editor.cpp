@@ -2788,6 +2788,20 @@ int level_editor_test_exercise_internal_helpers()
         if (!condition && failed_check == 0)
             failed_check = check_index;
     };
+    const std::string helper_campaign_id = "org.openglad.coverage.editor_helper";
+    const std::string initially_mounted_campaign = get_mounted_campaign();
+    const auto mount_campaign_only = [](const std::string& campaign_id) {
+        const std::string mounted_campaign = get_mounted_campaign();
+        if (!mounted_campaign.empty())
+            (void)unmount_campaign_package_with_error(mounted_campaign);
+        if (!campaign_id.empty())
+            (void)mount_campaign_package_with_error(campaign_id);
+    };
+
+    mount_campaign_only("");
+    restore_default_campaigns();
+    mount_campaign_only("org.openglad.gladiator");
+    delete_campaign(helper_campaign_id);
 
     Rect r;
     check(!r.contains(1, 1));
@@ -3107,7 +3121,6 @@ int level_editor_test_exercise_internal_helpers()
         open_file_campaign_menu();
         check(!data.current_menu.empty());
 
-        const std::string helper_campaign_id = "org.openglad.coverage.editor_helper";
         const std::string previously_mounted_campaign = get_mounted_campaign();
         delete_campaign(helper_campaign_id);
 
@@ -3164,10 +3177,7 @@ int level_editor_test_exercise_internal_helpers()
         data.mouse_up(220, 170, 220, 170, drag_done);
         check(!drag_done && !data.dragging && data.current_menu.empty());
 
-        if (!previously_mounted_campaign.empty()) {
-            (void)unmount_campaign_package_with_error(get_mounted_campaign());
-            (void)mount_campaign_package_with_error(previously_mounted_campaign);
-        }
+        mount_campaign_only(previously_mounted_campaign);
 
         open_campaign_menu();
         click_button(data.campaignInfoButton);
@@ -3336,6 +3346,11 @@ int level_editor_test_exercise_internal_helpers()
             check(data.mode == Mode::Terrain);
         }
     }
+
+    delete_campaign(helper_campaign_id);
+    mount_campaign_only(initially_mounted_campaign.empty()
+        ? std::string("org.openglad.gladiator")
+        : initially_mounted_campaign);
 
     return failed_check == 0 ? 0 : -failed_check;
 }

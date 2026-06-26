@@ -1,3 +1,20 @@
 @PACKAGE_INIT@
 
+include(CMakeFindDependencyMacro)
+
+macro(_openglad_require_imported_target target package_hint)
+    if(NOT TARGET "${target}")
+        set(OpenGlad_NOT_FOUND_MESSAGE
+            "OpenGlad requires ${package_hint}, but target ${target} was not found"
+        )
+        set(OpenGlad_FOUND FALSE)
+    endif()
+endmacro()
+
+@OG_OPENGLAD_CONFIG_FIND_DEPENDENCIES@
+
+if(DEFINED OpenGlad_FOUND AND NOT OpenGlad_FOUND)
+    return()
+endif()
+
 include("${CMAKE_CURRENT_LIST_DIR}/OpenGladTargets.cmake")
