@@ -3,6 +3,11 @@ project(OpenGlad VERSION 1.0 LANGUAGES C CXX)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 include(CheckCXXSourceCompiles)
+include(FetchContent)
+
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "4.0" AND NOT DEFINED CMAKE_POLICY_VERSION_MINIMUM)
+    set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "Minimum CMake policy version for legacy fetched dependencies")
+endif()
 
 # Target C++20 (C++23 when toolchains catch up)
 set(CMAKE_CXX_STANDARD 20)
@@ -34,6 +39,31 @@ option(ENABLE_SANITIZERS "Enable compiler sanitizers for project targets" OFF)
 option(ENABLE_CLANG_TIDY "Enable clang-tidy analysis during C/C++ compilation (if found)" OFF)
 option(ENABLE_CPPCHECK "Enable cppcheck analysis during C/C++ compilation (if found)" OFF)
 option(VALIDATE_SERIALIZATION "Round-trip in-process transport typed messages through serializers" OFF)
+option(OPENGLAD_USE_SYSTEM_DEPS "Prefer system/package-manager dependencies over fetched upstream sources" ON)
+option(OPENGLAD_REQUIRE_SYSTEM_DEPS "Fail if OPENGLAD_USE_SYSTEM_DEPS cannot find a dependency package" OFF)
+option(OPENGLAD_FETCH_DEPS "Fetch missing upstream dependencies with CMake FetchContent" ON)
+option(OPENGLAD_FETCH_ZLIB "Fetch zlib from upstream when no package target is available" ${OPENGLAD_FETCH_DEPS})
+option(OPENGLAD_FETCH_LIBYAML "Fetch libyaml from upstream when no package target is available" ${OPENGLAD_FETCH_DEPS})
+option(OPENGLAD_FETCH_LIBZIP "Fetch libzip from upstream when no package target is available" ${OPENGLAD_FETCH_DEPS})
+option(OPENGLAD_FETCH_PHYSFS "Fetch PhysFS from upstream when no package target is available" ${OPENGLAD_FETCH_DEPS})
+option(OPENGLAD_FETCH_LODEPNG "Fetch lodepng from upstream when no package target is available" ${OPENGLAD_FETCH_DEPS})
+option(OPENGLAD_FETCH_MICROPATHER "Fetch MicroPather from upstream when no package target is available" ${OPENGLAD_FETCH_DEPS})
+option(OPENGLAD_FETCH_IXWEBSOCKET "Fetch IXWebSocket from upstream when no package target is available" ${OPENGLAD_FETCH_DEPS})
+option(OPENGLAD_USE_PACKAGED_IXWEBSOCKET "Prefer an installed IXWebSocket package over fetching the pinned upstream commit" ON)
+set(OPENGLAD_ZLIB_GIT_REPOSITORY "https://github.com/madler/zlib.git" CACHE STRING "zlib upstream repository")
+set(OPENGLAD_ZLIB_GIT_TAG "v1.3.2" CACHE STRING "zlib upstream tag/commit to use when fetching")
+set(OPENGLAD_LIBYAML_GIT_REPOSITORY "https://github.com/yaml/libyaml.git" CACHE STRING "libyaml upstream repository")
+set(OPENGLAD_LIBYAML_GIT_TAG "0.2.5" CACHE STRING "libyaml upstream tag/commit to use when fetching")
+set(OPENGLAD_LIBZIP_GIT_REPOSITORY "https://github.com/nih-at/libzip.git" CACHE STRING "libzip upstream repository")
+set(OPENGLAD_LIBZIP_GIT_TAG "v1.11.4" CACHE STRING "libzip upstream tag/commit to use when fetching")
+set(OPENGLAD_PHYSFS_GIT_REPOSITORY "https://github.com/icculus/physfs.git" CACHE STRING "PhysFS upstream repository")
+set(OPENGLAD_PHYSFS_GIT_TAG "release-3.2.0" CACHE STRING "PhysFS upstream tag/commit to use when fetching")
+set(OPENGLAD_LODEPNG_GIT_REPOSITORY "https://github.com/lvandeve/lodepng.git" CACHE STRING "lodepng upstream repository")
+set(OPENGLAD_LODEPNG_GIT_TAG "ed6fe5825c6a4fbb7f58ab35a4231c7543cd452a" CACHE STRING "lodepng upstream commit to use when fetching")
+set(OPENGLAD_MICROPATHER_GIT_REPOSITORY "https://github.com/leethomason/MicroPather.git" CACHE STRING "MicroPather upstream repository")
+set(OPENGLAD_MICROPATHER_GIT_TAG "33a3b8403f1bc3937c9d364fe6c3977169bee3b5" CACHE STRING "MicroPather upstream commit to use when fetching")
+set(OPENGLAD_IXWEBSOCKET_GIT_REPOSITORY "https://github.com/machinezone/IXWebSocket.git" CACHE STRING "IXWebSocket upstream repository")
+set(OPENGLAD_IXWEBSOCKET_GIT_TAG "64fae7676bd8fe31f7cb4bcde7a6841892dad65e" CACHE STRING "IXWebSocket upstream commit to use when fetching")
 set(SANITIZERS "address;undefined" CACHE STRING "Sanitizers to enable when ENABLE_SANITIZERS is ON")
 
 # Coverage runs are only meaningful if the tests are built and executed.
@@ -99,22 +129,6 @@ endif()
 # --------------------------------------------------------------------------
 
 set(SRC_DIR ${CMAKE_SOURCE_DIR}/src)
-set(THIRD_PARTY_DIR ${CMAKE_SOURCE_DIR}/third_party)
-
-# Vendor source: lodepng triggers -Wconversion narrowing warnings under the
-# project's -Wall/-Wextra/-Wconversion gate. Suppress warnings on this single
-# translation unit rather than patching upstream.
-if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    set_source_files_properties(
-        ${THIRD_PARTY_DIR}/lodepng/lodepng.cpp
-        PROPERTIES COMPILE_OPTIONS "-w"
-    )
-elseif(MSVC)
-    set_source_files_properties(
-        ${THIRD_PARTY_DIR}/lodepng/lodepng.cpp
-        PROPERTIES COMPILE_OPTIONS "/w"
-    )
-endif()
 
 set(OG_NETWORK_SOURCES)
 if(NOT EMSCRIPTEN)
@@ -231,12 +245,12 @@ set(GAME_SOURCES
 	    ${SRC_DIR}/platform/sdl/sai2x.cpp
 		    ${SRC_DIR}/core/util.cpp
 		    ${SRC_DIR}/resources/platform_io.cpp
-            ${THIRD_PARTY_DIR}/physfs/extras/physfsrwops.c
+            ${SRC_DIR}/platform/sdl/physfs_rwops_bridge.cpp
 		    ${SRC_DIR}/resources/io/platform_io_common.cpp
 		    ${SRC_DIR}/resources/io/filesystem.cpp
 		    ${SRC_DIR}/resources/io/physfs_api.cpp
 		    ${SRC_DIR}/resources/io/zip_api.cpp
-		    ${SRC_DIR}/resources/io/yaml_stream.cpp
+		    ${SRC_DIR}/resources/campaign_yaml.cpp
 		    ${SRC_DIR}/resources/io/og_file.cpp
 		    ${SRC_DIR}/resources/gparser.cpp
 		    ${SRC_DIR}/resources/gloader.cpp
@@ -275,7 +289,6 @@ set(GAME_SOURCES
     ${SRC_DIR}/interface/sdl_context_services.cpp
     ${SRC_DIR}/interface/cheat_handler.cpp
     ${SRC_DIR}/interface/render/sdl_level_render.cpp
-    ${THIRD_PARTY_DIR}/lodepng/lodepng.cpp
     ${SRC_DIR}/gameplay/input_state_net.cpp
     ${SRC_DIR}/gameplay/replay.cpp
 )
@@ -449,7 +462,7 @@ set(OG_UI_SOURCES
 
 set(OG_IO_SDL_SOURCES
     ${SRC_DIR}/resources/platform_io.cpp
-    ${THIRD_PARTY_DIR}/physfs/extras/physfsrwops.c
+    ${SRC_DIR}/platform/sdl/physfs_rwops_bridge.cpp
 )
 
 set(OG_IO_SOURCES
@@ -457,9 +470,8 @@ set(OG_IO_SOURCES
     ${SRC_DIR}/resources/io/filesystem.cpp
     ${SRC_DIR}/resources/io/physfs_api.cpp
     ${SRC_DIR}/resources/io/zip_api.cpp
-    ${SRC_DIR}/resources/io/yaml_stream.cpp
+    ${SRC_DIR}/resources/campaign_yaml.cpp
     ${SRC_DIR}/resources/io/og_file.cpp
-    ${THIRD_PARTY_DIR}/lodepng/lodepng.cpp
 )
 
 set(OG_PLATFORM_SOURCES
@@ -519,203 +531,11 @@ set(OG_PLATFORM_SDL_COMPONENT_SOURCES
     ${SRC_DIR}/platform/sdl/input_event_bridge.cpp
 )
 
-# External C++ sources
-set(EXT_CXX_SOURCES
-    ${THIRD_PARTY_DIR}/micropather/micropather.cpp
-    ${THIRD_PARTY_DIR}/yam/yam.cpp
-)
-
-# External C sources - libyaml
-set(LIBYAML_SOURCES
-    ${THIRD_PARTY_DIR}/libyaml/src/api.c
-    ${THIRD_PARTY_DIR}/libyaml/src/loader.c
-    ${THIRD_PARTY_DIR}/libyaml/src/parser.c
-    ${THIRD_PARTY_DIR}/libyaml/src/reader.c
-    ${THIRD_PARTY_DIR}/libyaml/src/scanner.c
-    ${THIRD_PARTY_DIR}/libyaml/src/emitter.c
-    ${THIRD_PARTY_DIR}/libyaml/src/dumper.c
-    ${THIRD_PARTY_DIR}/libyaml/src/writer.c
-)
-
-# External C sources - physfs (3.2.0)
-set(PHYSFS_SOURCES
-    ${THIRD_PARTY_DIR}/physfs/physfs.c
-    ${THIRD_PARTY_DIR}/physfs/physfs_byteorder.c
-    ${THIRD_PARTY_DIR}/physfs/physfs_unicode.c
-    ${THIRD_PARTY_DIR}/physfs/physfs_archiver_dir.c
-    ${THIRD_PARTY_DIR}/physfs/physfs_archiver_unpacked.c
-    ${THIRD_PARTY_DIR}/physfs/physfs_archiver_grp.c
-    ${THIRD_PARTY_DIR}/physfs/physfs_archiver_hog.c
-    ${THIRD_PARTY_DIR}/physfs/physfs_archiver_mvl.c
-    ${THIRD_PARTY_DIR}/physfs/physfs_archiver_qpak.c
-    ${THIRD_PARTY_DIR}/physfs/physfs_archiver_wad.c
-    ${THIRD_PARTY_DIR}/physfs/physfs_archiver_zip.c
-    ${THIRD_PARTY_DIR}/physfs/physfs_archiver_slb.c
-    ${THIRD_PARTY_DIR}/physfs/physfs_archiver_vdf.c
-    ${THIRD_PARTY_DIR}/physfs/physfs_archiver_iso9660.c
-    ${THIRD_PARTY_DIR}/physfs/physfs_archiver_7z.c
-    ${THIRD_PARTY_DIR}/physfs/physfs_platform_posix.c
-    ${THIRD_PARTY_DIR}/physfs/physfs_platform_unix.c
-    ${THIRD_PARTY_DIR}/physfs/physfs_platform_windows.c
-)
-if(APPLE)
-    list(APPEND PHYSFS_SOURCES ${THIRD_PARTY_DIR}/physfs/physfs_platform_apple.m)
-endif()
-
-# External C sources - zlib
-set(ZLIB_SOURCES
-    ${THIRD_PARTY_DIR}/physfs/zlib123/adler32.c
-    ${THIRD_PARTY_DIR}/physfs/zlib123/compress.c
-    ${THIRD_PARTY_DIR}/physfs/zlib123/crc32.c
-    ${THIRD_PARTY_DIR}/physfs/zlib123/deflate.c
-    ${THIRD_PARTY_DIR}/physfs/zlib123/inffast.c
-    ${THIRD_PARTY_DIR}/physfs/zlib123/inflate.c
-    ${THIRD_PARTY_DIR}/physfs/zlib123/inftrees.c
-    ${THIRD_PARTY_DIR}/physfs/zlib123/trees.c
-    ${THIRD_PARTY_DIR}/physfs/zlib123/zutil.c
-)
-
-# External C sources - libzip (1.11.3)
-set(LIBZIP_SOURCES
-    ${THIRD_PARTY_DIR}/libzip/zip_add.c
-    ${THIRD_PARTY_DIR}/libzip/zip_add_dir.c
-    ${THIRD_PARTY_DIR}/libzip/zip_add_entry.c
-    ${THIRD_PARTY_DIR}/libzip/zip_algorithm_deflate.c
-    ${THIRD_PARTY_DIR}/libzip/zip_buffer.c
-    ${THIRD_PARTY_DIR}/libzip/zip_close.c
-    ${THIRD_PARTY_DIR}/libzip/zip_delete.c
-    ${THIRD_PARTY_DIR}/libzip/zip_dir_add.c
-    ${THIRD_PARTY_DIR}/libzip/zip_dirent.c
-    ${THIRD_PARTY_DIR}/libzip/zip_discard.c
-    ${THIRD_PARTY_DIR}/libzip/zip_entry.c
-    ${THIRD_PARTY_DIR}/libzip/zip_error.c
-    ${THIRD_PARTY_DIR}/libzip/zip_error_clear.c
-    ${THIRD_PARTY_DIR}/libzip/zip_error_get.c
-    ${THIRD_PARTY_DIR}/libzip/zip_error_get_sys_type.c
-    ${THIRD_PARTY_DIR}/libzip/zip_error_strerror.c
-    ${THIRD_PARTY_DIR}/libzip/zip_error_to_str.c
-    ${THIRD_PARTY_DIR}/libzip/zip_extra_field.c
-    ${THIRD_PARTY_DIR}/libzip/zip_extra_field_api.c
-    ${THIRD_PARTY_DIR}/libzip/zip_fclose.c
-    ${THIRD_PARTY_DIR}/libzip/zip_fdopen.c
-    ${THIRD_PARTY_DIR}/libzip/zip_file_add.c
-    ${THIRD_PARTY_DIR}/libzip/zip_file_error_clear.c
-    ${THIRD_PARTY_DIR}/libzip/zip_file_error_get.c
-    ${THIRD_PARTY_DIR}/libzip/zip_file_get_comment.c
-    ${THIRD_PARTY_DIR}/libzip/zip_file_get_external_attributes.c
-    ${THIRD_PARTY_DIR}/libzip/zip_file_get_offset.c
-    ${THIRD_PARTY_DIR}/libzip/zip_file_rename.c
-    ${THIRD_PARTY_DIR}/libzip/zip_file_replace.c
-    ${THIRD_PARTY_DIR}/libzip/zip_file_set_comment.c
-    ${THIRD_PARTY_DIR}/libzip/zip_file_set_encryption.c
-    ${THIRD_PARTY_DIR}/libzip/zip_file_set_external_attributes.c
-    ${THIRD_PARTY_DIR}/libzip/zip_file_set_mtime.c
-    ${THIRD_PARTY_DIR}/libzip/zip_file_strerror.c
-    ${THIRD_PARTY_DIR}/libzip/zip_fopen.c
-    ${THIRD_PARTY_DIR}/libzip/zip_fopen_encrypted.c
-    ${THIRD_PARTY_DIR}/libzip/zip_fopen_index.c
-    ${THIRD_PARTY_DIR}/libzip/zip_fopen_index_encrypted.c
-    ${THIRD_PARTY_DIR}/libzip/zip_fread.c
-    ${THIRD_PARTY_DIR}/libzip/zip_fseek.c
-    ${THIRD_PARTY_DIR}/libzip/zip_ftell.c
-    ${THIRD_PARTY_DIR}/libzip/zip_get_archive_comment.c
-    ${THIRD_PARTY_DIR}/libzip/zip_get_archive_flag.c
-    ${THIRD_PARTY_DIR}/libzip/zip_get_encryption_implementation.c
-    ${THIRD_PARTY_DIR}/libzip/zip_get_file_comment.c
-    ${THIRD_PARTY_DIR}/libzip/zip_get_name.c
-    ${THIRD_PARTY_DIR}/libzip/zip_get_num_entries.c
-    ${THIRD_PARTY_DIR}/libzip/zip_get_num_files.c
-    ${THIRD_PARTY_DIR}/libzip/zip_hash.c
-    ${THIRD_PARTY_DIR}/libzip/zip_io_util.c
-    ${THIRD_PARTY_DIR}/libzip/zip_libzip_version.c
-    ${THIRD_PARTY_DIR}/libzip/zip_memdup.c
-    ${THIRD_PARTY_DIR}/libzip/zip_name_locate.c
-    ${THIRD_PARTY_DIR}/libzip/zip_new.c
-    ${THIRD_PARTY_DIR}/libzip/zip_open.c
-    ${THIRD_PARTY_DIR}/libzip/zip_pkware.c
-    ${THIRD_PARTY_DIR}/libzip/zip_progress.c
-    ${THIRD_PARTY_DIR}/libzip/zip_random_unix.c
-    ${THIRD_PARTY_DIR}/libzip/zip_rename.c
-    ${THIRD_PARTY_DIR}/libzip/zip_replace.c
-    ${THIRD_PARTY_DIR}/libzip/zip_set_archive_comment.c
-    ${THIRD_PARTY_DIR}/libzip/zip_set_archive_flag.c
-    ${THIRD_PARTY_DIR}/libzip/zip_set_default_password.c
-    ${THIRD_PARTY_DIR}/libzip/zip_set_file_comment.c
-    ${THIRD_PARTY_DIR}/libzip/zip_set_file_compression.c
-    ${THIRD_PARTY_DIR}/libzip/zip_set_name.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_accept_empty.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_begin_write.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_begin_write_cloning.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_buffer.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_call.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_close.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_commit_write.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_compress.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_crc.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_error.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_file_common.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_file_stdio.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_file_stdio_named.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_free.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_function.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_get_dostime.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_get_file_attributes.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_is_deleted.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_layered.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_open.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_pass_to_lower_layer.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_pkware_decode.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_pkware_encode.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_read.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_remove.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_rollback_write.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_seek.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_seek_write.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_stat.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_supports.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_tell.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_tell_write.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_window.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_write.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_zip.c
-    ${THIRD_PARTY_DIR}/libzip/zip_source_zip_new.c
-    ${THIRD_PARTY_DIR}/libzip/zip_stat.c
-    ${THIRD_PARTY_DIR}/libzip/zip_stat_index.c
-    ${THIRD_PARTY_DIR}/libzip/zip_stat_init.c
-    ${THIRD_PARTY_DIR}/libzip/zip_strerror.c
-    ${THIRD_PARTY_DIR}/libzip/zip_string.c
-    ${THIRD_PARTY_DIR}/libzip/zip_unchange.c
-    ${THIRD_PARTY_DIR}/libzip/zip_unchange_all.c
-    ${THIRD_PARTY_DIR}/libzip/zip_unchange_archive.c
-    ${THIRD_PARTY_DIR}/libzip/zip_unchange_data.c
-    ${THIRD_PARTY_DIR}/libzip/zip_utf-8.c
-    ${THIRD_PARTY_DIR}/libzip/zip_err_str.c
-)
-
-# All external C sources combined
-set(EXTERNAL_C_SOURCES
-    ${LIBYAML_SOURCES}
-    ${PHYSFS_SOURCES}
-    ${ZLIB_SOURCES}
-    ${LIBZIP_SOURCES}
-)
-
 # --------------------------------------------------------------------------
 # Common include directories and compile definitions
 # --------------------------------------------------------------------------
 
 set(OG_PUBLIC_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/include)
-set(OG_THIRD_PARTY_INCLUDE_DIRS
-    ${THIRD_PARTY_DIR}/ixwebsocket
-    ${THIRD_PARTY_DIR}/micropather
-    ${THIRD_PARTY_DIR}/yam
-    ${THIRD_PARTY_DIR}/libyaml/include
-    ${THIRD_PARTY_DIR}/physfs
-    ${THIRD_PARTY_DIR}/physfs/extras
-    ${THIRD_PARTY_DIR}/physfs/zlib123
-    ${THIRD_PARTY_DIR}/libzip
-    ${THIRD_PARTY_DIR}/lodepng
-)
 
 set(COMMON_DEFINITIONS
     USE_BMP_SCREENSHOT=1
@@ -732,7 +552,6 @@ set(COMMON_DEFINITIONS
     PHYSFS_SUPPORTS_SLB=0
     PHYSFS_SUPPORTS_ISO9660=0
     PHYSFS_SUPPORTS_VDF=0
-    YAML_DECLARE_STATIC
 )
 
 if(NOT OPENGLAD_HAS_WORKING_STD_FORMAT)
@@ -817,12 +636,10 @@ function(configure_openglad_runtime_target target)
 endfunction()
 
 function(configure_openglad_external_target target)
-    target_include_directories(${target} PRIVATE ${OG_THIRD_PARTY_INCLUDE_DIRS})
     target_compile_definitions(${target} PRIVATE ${COMMON_DEFINITIONS})
     if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-        # Vendored third-party code: keep warnings actionable in OpenGlad code by silencing
-        # warnings from upstream C/C++ sources. Track upstream versions in
-        # third_party/VENDORED_LIBS.md and prefer upgrades over refactors-in-place.
+        # Keep warnings actionable in OpenGlad code by silencing fetched or
+        # packaged compatibility-library sources.
         target_compile_options(${target} PRIVATE -w)
     endif()
 endfunction()
@@ -850,11 +667,11 @@ function(prepare_component_include_root out_var component_name)
     set(${out_var} "${root}" PARENT_SCOPE)
 endfunction()
 
-# Vendor header leak check: no third-party headers in public or internal code.
+# External dependency header leak check: no package headers in public or unrelated code.
 add_custom_target(check_vendor_leaks
     COMMAND ${CMAKE_SOURCE_DIR}/scripts/check_vendor_leaks.sh
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    COMMENT "Checking vendor header isolation"
+    COMMENT "Checking external dependency header isolation"
     VERBATIM
 )
 
@@ -873,7 +690,331 @@ add_custom_target(check_render_no_sim_writes
 
 if(NOT EMSCRIPTEN)
     find_package(PkgConfig QUIET)
+endif()
 
+set(OG_SYSTEM_ZLIB_TARGET "")
+set(OG_SYSTEM_LIBZIP_TARGET "")
+set(OG_SYSTEM_LIBYAML_TARGET "")
+set(OG_SYSTEM_PHYSFS_TARGET "")
+set(OG_ZLIB_FROM_FETCH OFF)
+set(OG_LIBYAML_FROM_FETCH OFF)
+set(OG_LIBZIP_FROM_FETCH OFF)
+set(OG_PHYSFS_FROM_FETCH OFF)
+set(OG_LODEPNG_FROM_FETCH OFF)
+set(OG_MICROPATHER_FROM_FETCH OFF)
+set(OG_ZLIB_FETCH_TARGET "")
+set(OG_LIBYAML_FETCH_TARGET "")
+set(OG_LIBZIP_FETCH_TARGET "")
+set(OG_PHYSFS_FETCH_TARGET "")
+set(OG_IXWEBSOCKET_TARGET "")
+set(OG_IXWEBSOCKET_FROM_PACKAGE OFF)
+set(OG_IXWEBSOCKET_FROM_FETCH OFF)
+
+if(OPENGLAD_USE_SYSTEM_DEPS AND NOT EMSCRIPTEN)
+    find_package(ZLIB QUIET)
+    if(TARGET ZLIB::ZLIB)
+        set(OG_SYSTEM_ZLIB_TARGET ZLIB::ZLIB)
+    endif()
+
+    if(PkgConfig_FOUND)
+        pkg_check_modules(OG_LIBZIP QUIET IMPORTED_TARGET libzip)
+        if(TARGET PkgConfig::OG_LIBZIP)
+            set(OG_SYSTEM_LIBZIP_TARGET PkgConfig::OG_LIBZIP)
+        endif()
+    endif()
+    if(NOT OG_SYSTEM_LIBZIP_TARGET)
+        find_package(libzip CONFIG QUIET)
+        foreach(candidate IN ITEMS libzip::zip libzip::libzip zip)
+            if(NOT OG_SYSTEM_LIBZIP_TARGET AND TARGET ${candidate})
+                set(OG_SYSTEM_LIBZIP_TARGET ${candidate})
+            endif()
+        endforeach()
+    endif()
+
+    if(PkgConfig_FOUND)
+        pkg_check_modules(OG_LIBYAML QUIET IMPORTED_TARGET yaml-0.1)
+        if(TARGET PkgConfig::OG_LIBYAML)
+            set(OG_SYSTEM_LIBYAML_TARGET PkgConfig::OG_LIBYAML)
+        endif()
+    endif()
+    if(NOT OG_SYSTEM_LIBYAML_TARGET)
+        find_package(yaml CONFIG QUIET)
+        foreach(candidate IN ITEMS yaml::yaml yaml)
+            if(NOT OG_SYSTEM_LIBYAML_TARGET AND TARGET ${candidate})
+                set(OG_SYSTEM_LIBYAML_TARGET ${candidate})
+            endif()
+        endforeach()
+    endif()
+
+    find_package(PhysFS CONFIG QUIET)
+    find_package(physfs CONFIG QUIET)
+    foreach(candidate IN ITEMS PhysFS::PhysFS PhysFS::physfs unofficial::physfs::physfs physfs)
+        if(NOT OG_SYSTEM_PHYSFS_TARGET AND TARGET ${candidate})
+            set(OG_SYSTEM_PHYSFS_TARGET ${candidate})
+        endif()
+    endforeach()
+    if(NOT OG_SYSTEM_PHYSFS_TARGET AND PkgConfig_FOUND)
+        pkg_check_modules(OG_PHYSFS QUIET IMPORTED_TARGET physfs)
+        if(TARGET PkgConfig::OG_PHYSFS)
+            set(OG_SYSTEM_PHYSFS_TARGET PkgConfig::OG_PHYSFS)
+        endif()
+    endif()
+
+    find_path(OG_SYSTEM_LODEPNG_INCLUDE_DIR NAMES lodepng.h)
+    find_library(OG_SYSTEM_LODEPNG_LIBRARY NAMES lodepng)
+
+    find_path(OG_SYSTEM_MICROPATHER_INCLUDE_DIR NAMES micropather.h)
+    find_library(OG_SYSTEM_MICROPATHER_LIBRARY NAMES micropather)
+    if(OG_SYSTEM_MICROPATHER_INCLUDE_DIR)
+        file(READ "${OG_SYSTEM_MICROPATHER_INCLUDE_DIR}/micropather.h" OG_MICROPATHER_HEADER)
+        if(OG_MICROPATHER_HEADER MATCHES "(^|\n)[ \t]*#[ \t]*define[ \t]+GRINLIZ_NO_STL")
+            message(STATUS "OpenGlad: ignoring system MicroPather because it is configured for MPVector instead of std::vector")
+            unset(OG_SYSTEM_MICROPATHER_INCLUDE_DIR CACHE)
+            unset(OG_SYSTEM_MICROPATHER_LIBRARY CACHE)
+            unset(OG_SYSTEM_MICROPATHER_INCLUDE_DIR)
+            unset(OG_SYSTEM_MICROPATHER_LIBRARY)
+        endif()
+    endif()
+endif()
+
+if(OPENGLAD_REQUIRE_SYSTEM_DEPS AND NOT OPENGLAD_USE_SYSTEM_DEPS AND NOT EMSCRIPTEN)
+    message(FATAL_ERROR "OPENGLAD_REQUIRE_SYSTEM_DEPS is ON but OPENGLAD_USE_SYSTEM_DEPS is OFF")
+endif()
+
+if(OPENGLAD_REQUIRE_SYSTEM_DEPS AND OPENGLAD_USE_SYSTEM_DEPS AND NOT EMSCRIPTEN)
+    if(NOT OG_SYSTEM_ZLIB_TARGET)
+        message(FATAL_ERROR "OPENGLAD_REQUIRE_SYSTEM_DEPS is ON but zlib was not found")
+    endif()
+    if(NOT OG_SYSTEM_LIBZIP_TARGET)
+        message(FATAL_ERROR "OPENGLAD_REQUIRE_SYSTEM_DEPS is ON but libzip was not found")
+    endif()
+    if(NOT OG_SYSTEM_LIBYAML_TARGET)
+        message(FATAL_ERROR "OPENGLAD_REQUIRE_SYSTEM_DEPS is ON but libyaml/yaml-0.1 was not found")
+    endif()
+    if(NOT OG_SYSTEM_PHYSFS_TARGET)
+        message(FATAL_ERROR "OPENGLAD_REQUIRE_SYSTEM_DEPS is ON but PhysFS was not found")
+    endif()
+    if(NOT OG_SYSTEM_LODEPNG_INCLUDE_DIR OR NOT OG_SYSTEM_LODEPNG_LIBRARY)
+        message(FATAL_ERROR "OPENGLAD_REQUIRE_SYSTEM_DEPS is ON but lodepng was not found")
+    endif()
+    if(NOT OG_SYSTEM_MICROPATHER_INCLUDE_DIR OR NOT OG_SYSTEM_MICROPATHER_LIBRARY)
+        message(FATAL_ERROR "OPENGLAD_REQUIRE_SYSTEM_DEPS is ON but MicroPather was not found")
+    endif()
+endif()
+
+if(OG_SYSTEM_ZLIB_TARGET)
+    add_library(og_ext_zlib INTERFACE)
+    target_link_libraries(og_ext_zlib INTERFACE ${OG_SYSTEM_ZLIB_TARGET})
+    message(STATUS "OpenGlad: using system zlib (${OG_SYSTEM_ZLIB_TARGET})")
+elseif(OPENGLAD_FETCH_ZLIB)
+    set(ZLIB_BUILD_TESTING OFF CACHE BOOL "Build zlib tests" FORCE)
+    set(ZLIB_BUILD_SHARED OFF CACHE BOOL "Build zlib shared library" FORCE)
+    set(ZLIB_BUILD_STATIC ON CACHE BOOL "Build zlib static library" FORCE)
+    set(ZLIB_INSTALL OFF CACHE BOOL "Install zlib" FORCE)
+    FetchContent_Declare(zlib
+        GIT_REPOSITORY ${OPENGLAD_ZLIB_GIT_REPOSITORY}
+        GIT_TAG ${OPENGLAD_ZLIB_GIT_TAG}
+        GIT_SHALLOW FALSE
+        GIT_PROGRESS TRUE
+    )
+    FetchContent_MakeAvailable(zlib)
+    if(NOT TARGET zlibstatic)
+        message(FATAL_ERROR "Fetched zlib did not define the expected zlibstatic target")
+    endif()
+    if(NOT TARGET ZLIB::ZLIB)
+        add_library(ZLIB::ZLIB ALIAS zlibstatic)
+    endif()
+    add_library(og_ext_zlib INTERFACE)
+    target_link_libraries(og_ext_zlib INTERFACE zlibstatic)
+    set(OG_ZLIB_FROM_FETCH ON)
+    set(OG_ZLIB_FETCH_TARGET zlibstatic)
+    message(STATUS "OpenGlad: using fetched zlib ${OPENGLAD_ZLIB_GIT_TAG}")
+else()
+    message(FATAL_ERROR "zlib was not found. Enable OPENGLAD_FETCH_ZLIB or provide a package.")
+endif()
+
+if(OG_SYSTEM_LIBYAML_TARGET)
+    add_library(og_ext_yaml INTERFACE)
+    target_link_libraries(og_ext_yaml INTERFACE ${OG_SYSTEM_LIBYAML_TARGET})
+    message(STATUS "OpenGlad: using system libyaml (${OG_SYSTEM_LIBYAML_TARGET})")
+elseif(OPENGLAD_FETCH_LIBYAML)
+    set(OG_SAVED_BUILD_TESTING "${BUILD_TESTING}")
+    set(OG_SAVED_BUILD_SHARED_LIBS "${BUILD_SHARED_LIBS}")
+    set(BUILD_TESTING OFF CACHE BOOL "Build tests" FORCE)
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build shared libraries" FORCE)
+    set(YAML_STATIC_LIB_NAME yaml CACHE STRING "libyaml static library name" FORCE)
+    FetchContent_Declare(libyaml
+        GIT_REPOSITORY ${OPENGLAD_LIBYAML_GIT_REPOSITORY}
+        GIT_TAG ${OPENGLAD_LIBYAML_GIT_TAG}
+        GIT_SHALLOW FALSE
+        GIT_PROGRESS TRUE
+    )
+    FetchContent_MakeAvailable(libyaml)
+    set(BUILD_TESTING "${OG_SAVED_BUILD_TESTING}" CACHE BOOL "Build the test suite" FORCE)
+    set(BUILD_SHARED_LIBS "${OG_SAVED_BUILD_SHARED_LIBS}" CACHE BOOL "Build shared libraries" FORCE)
+    if(NOT TARGET yaml)
+        message(FATAL_ERROR "Fetched libyaml did not define the expected yaml target")
+    endif()
+    add_library(og_ext_yaml INTERFACE)
+    target_link_libraries(og_ext_yaml INTERFACE yaml)
+    set(OG_LIBYAML_FROM_FETCH ON)
+    set(OG_LIBYAML_FETCH_TARGET yaml)
+    message(STATUS "OpenGlad: using fetched libyaml ${OPENGLAD_LIBYAML_GIT_TAG}")
+else()
+    message(FATAL_ERROR "libyaml was not found. Enable OPENGLAD_FETCH_LIBYAML or provide a package.")
+endif()
+
+if(OG_SYSTEM_LIBZIP_TARGET)
+    add_library(og_ext_libzip INTERFACE)
+    target_link_libraries(og_ext_libzip INTERFACE ${OG_SYSTEM_LIBZIP_TARGET})
+    message(STATUS "OpenGlad: using system libzip (${OG_SYSTEM_LIBZIP_TARGET})")
+elseif(OPENGLAD_FETCH_LIBZIP)
+    set(ENABLE_COMMONCRYPTO OFF CACHE BOOL "Build libzip with CommonCrypto" FORCE)
+    set(ENABLE_GNUTLS OFF CACHE BOOL "Build libzip with GnuTLS" FORCE)
+    set(ENABLE_MBEDTLS OFF CACHE BOOL "Build libzip with mbedTLS" FORCE)
+    set(ENABLE_OPENSSL OFF CACHE BOOL "Build libzip with OpenSSL" FORCE)
+    set(ENABLE_WINDOWS_CRYPTO OFF CACHE BOOL "Build libzip with Windows crypto" FORCE)
+    set(ENABLE_BZIP2 OFF CACHE BOOL "Build libzip with bzip2" FORCE)
+    set(ENABLE_LZMA OFF CACHE BOOL "Build libzip with lzma" FORCE)
+    set(ENABLE_ZSTD OFF CACHE BOOL "Build libzip with zstd" FORCE)
+    set(ENABLE_FDOPEN ON CACHE BOOL "Build libzip fdopen support" FORCE)
+    set(BUILD_TOOLS OFF CACHE BOOL "Build libzip tools" FORCE)
+    set(BUILD_REGRESS OFF CACHE BOOL "Build libzip regression tests" FORCE)
+    set(BUILD_OSSFUZZ OFF CACHE BOOL "Build libzip oss-fuzz targets" FORCE)
+    set(BUILD_EXAMPLES OFF CACHE BOOL "Build libzip examples" FORCE)
+    set(BUILD_DOC OFF CACHE BOOL "Build libzip docs" FORCE)
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build shared libraries" FORCE)
+    set(LIBZIP_DO_INSTALL OFF CACHE BOOL "Install libzip" FORCE)
+    set(ZLIB_LINK_LIBRARY_NAME z CACHE STRING "zlib pkg-config link name" FORCE)
+    FetchContent_Declare(libzip
+        GIT_REPOSITORY ${OPENGLAD_LIBZIP_GIT_REPOSITORY}
+        GIT_TAG ${OPENGLAD_LIBZIP_GIT_TAG}
+        GIT_SHALLOW FALSE
+        GIT_PROGRESS TRUE
+        PATCH_COMMAND
+            ${CMAKE_COMMAND}
+            -DOPENGLAD_LIBZIP_SOURCE_DIR=<SOURCE_DIR>
+            -DOPENGLAD_LIBZIP_USE_FETCHED_ZLIB=${OG_ZLIB_FROM_FETCH}
+            -P ${CMAKE_SOURCE_DIR}/cmake/OpenGladPatchLibzip.cmake
+    )
+    FetchContent_MakeAvailable(libzip)
+    if(NOT TARGET zip)
+        message(FATAL_ERROR "Fetched libzip did not define the expected zip target")
+    endif()
+    add_library(og_ext_libzip INTERFACE)
+    target_link_libraries(og_ext_libzip INTERFACE zip)
+    set(OG_LIBZIP_FROM_FETCH ON)
+    set(OG_LIBZIP_FETCH_TARGET zip)
+    message(STATUS "OpenGlad: using fetched libzip ${OPENGLAD_LIBZIP_GIT_TAG}")
+else()
+    message(FATAL_ERROR "libzip was not found. Enable OPENGLAD_FETCH_LIBZIP or provide a package.")
+endif()
+
+if(OG_SYSTEM_PHYSFS_TARGET)
+    add_library(og_ext_physfs INTERFACE)
+    target_link_libraries(og_ext_physfs INTERFACE ${OG_SYSTEM_PHYSFS_TARGET})
+    message(STATUS "OpenGlad: using system PhysFS (${OG_SYSTEM_PHYSFS_TARGET})")
+elseif(OPENGLAD_FETCH_PHYSFS)
+    set(PHYSFS_ARCHIVE_ZIP ON CACHE BOOL "Enable PhysFS ZIP support" FORCE)
+    set(PHYSFS_ARCHIVE_7Z OFF CACHE BOOL "Enable PhysFS 7z support" FORCE)
+    set(PHYSFS_ARCHIVE_GRP OFF CACHE BOOL "Enable PhysFS GRP support" FORCE)
+    set(PHYSFS_ARCHIVE_WAD OFF CACHE BOOL "Enable PhysFS WAD support" FORCE)
+    set(PHYSFS_ARCHIVE_HOG OFF CACHE BOOL "Enable PhysFS HOG support" FORCE)
+    set(PHYSFS_ARCHIVE_MVL OFF CACHE BOOL "Enable PhysFS MVL support" FORCE)
+    set(PHYSFS_ARCHIVE_QPAK OFF CACHE BOOL "Enable PhysFS QPAK support" FORCE)
+    set(PHYSFS_ARCHIVE_SLB OFF CACHE BOOL "Enable PhysFS SLB support" FORCE)
+    set(PHYSFS_ARCHIVE_ISO9660 OFF CACHE BOOL "Enable PhysFS ISO9660 support" FORCE)
+    set(PHYSFS_ARCHIVE_VDF OFF CACHE BOOL "Enable PhysFS VDF support" FORCE)
+    set(PHYSFS_BUILD_STATIC ON CACHE BOOL "Build PhysFS static library" FORCE)
+    set(PHYSFS_BUILD_SHARED OFF CACHE BOOL "Build PhysFS shared library" FORCE)
+    set(PHYSFS_BUILD_TEST OFF CACHE BOOL "Build PhysFS test program" FORCE)
+    set(PHYSFS_BUILD_DOCS OFF CACHE BOOL "Build PhysFS docs" FORCE)
+    set(PHYSFS_DISABLE_INSTALL ON CACHE BOOL "Disable PhysFS install rules" FORCE)
+    set(PHYSFS_TARGETNAME_DIST physfs-dist CACHE STRING "Name of PhysFS dist build target" FORCE)
+    set(PHYSFS_TARGETNAME_UNINSTALL physfs-uninstall CACHE STRING "Name of PhysFS uninstall build target" FORCE)
+    FetchContent_Declare(physfs
+        GIT_REPOSITORY ${OPENGLAD_PHYSFS_GIT_REPOSITORY}
+        GIT_TAG ${OPENGLAD_PHYSFS_GIT_TAG}
+        GIT_SHALLOW FALSE
+        GIT_PROGRESS TRUE
+    )
+    FetchContent_MakeAvailable(physfs)
+    if(NOT TARGET physfs-static)
+        message(FATAL_ERROR "Fetched PhysFS did not define the expected physfs-static target")
+    endif()
+    target_include_directories(physfs-static PUBLIC
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/openglad/external/physfs>
+    )
+    add_library(og_ext_physfs INTERFACE)
+    target_link_libraries(og_ext_physfs INTERFACE physfs-static)
+    set(OG_PHYSFS_FROM_FETCH ON)
+    set(OG_PHYSFS_FETCH_TARGET physfs-static)
+    message(STATUS "OpenGlad: using fetched PhysFS ${OPENGLAD_PHYSFS_GIT_TAG}")
+else()
+    message(FATAL_ERROR "PhysFS was not found. Enable OPENGLAD_FETCH_PHYSFS or provide a package.")
+endif()
+
+if(OG_SYSTEM_LODEPNG_INCLUDE_DIR AND OG_SYSTEM_LODEPNG_LIBRARY)
+    add_library(og_ext_lodepng INTERFACE)
+    target_include_directories(og_ext_lodepng INTERFACE "${OG_SYSTEM_LODEPNG_INCLUDE_DIR}")
+    target_link_libraries(og_ext_lodepng INTERFACE "${OG_SYSTEM_LODEPNG_LIBRARY}")
+    message(STATUS "OpenGlad: using system lodepng (${OG_SYSTEM_LODEPNG_LIBRARY})")
+elseif(OPENGLAD_FETCH_LODEPNG)
+    FetchContent_Declare(lodepng
+        GIT_REPOSITORY ${OPENGLAD_LODEPNG_GIT_REPOSITORY}
+        GIT_TAG ${OPENGLAD_LODEPNG_GIT_TAG}
+        GIT_SHALLOW FALSE
+        GIT_PROGRESS TRUE
+    )
+    FetchContent_MakeAvailable(lodepng)
+    FetchContent_GetProperties(lodepng)
+    add_library(og_ext_lodepng STATIC "${lodepng_SOURCE_DIR}/lodepng.cpp")
+    configure_openglad_external_target(og_ext_lodepng)
+    target_include_directories(og_ext_lodepng PUBLIC
+        $<BUILD_INTERFACE:${lodepng_SOURCE_DIR}>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/openglad/external/lodepng>
+    )
+    set(OG_LODEPNG_FROM_FETCH ON)
+    message(STATUS "OpenGlad: using fetched lodepng ${OPENGLAD_LODEPNG_GIT_TAG}")
+else()
+    message(FATAL_ERROR "lodepng was not found. Enable OPENGLAD_FETCH_LODEPNG or provide a package.")
+endif()
+
+if(OG_SYSTEM_MICROPATHER_INCLUDE_DIR AND OG_SYSTEM_MICROPATHER_LIBRARY)
+    add_library(og_ext_micropather INTERFACE)
+    target_include_directories(og_ext_micropather INTERFACE "${OG_SYSTEM_MICROPATHER_INCLUDE_DIR}")
+    target_link_libraries(og_ext_micropather INTERFACE "${OG_SYSTEM_MICROPATHER_LIBRARY}")
+    message(STATUS "OpenGlad: using system MicroPather (${OG_SYSTEM_MICROPATHER_LIBRARY})")
+elseif(OPENGLAD_FETCH_MICROPATHER)
+    FetchContent_Declare(micropather
+        GIT_REPOSITORY ${OPENGLAD_MICROPATHER_GIT_REPOSITORY}
+        GIT_TAG ${OPENGLAD_MICROPATHER_GIT_TAG}
+        GIT_SHALLOW FALSE
+        GIT_PROGRESS TRUE
+    )
+    FetchContent_MakeAvailable(micropather)
+    FetchContent_GetProperties(micropather)
+    file(READ "${micropather_SOURCE_DIR}/micropather.h" OG_MICROPATHER_HEADER)
+    string(REPLACE
+        "#define GRINLIZ_NO_STL"
+        "/* OpenGlad uses MicroPather's STL mode. */"
+        OG_MICROPATHER_HEADER
+        "${OG_MICROPATHER_HEADER}"
+    )
+    file(WRITE "${micropather_SOURCE_DIR}/micropather.h" "${OG_MICROPATHER_HEADER}")
+    add_library(og_ext_micropather STATIC "${micropather_SOURCE_DIR}/micropather.cpp")
+    configure_openglad_external_target(og_ext_micropather)
+    target_include_directories(og_ext_micropather PUBLIC
+        $<BUILD_INTERFACE:${micropather_SOURCE_DIR}>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/openglad/external/micropather>
+    )
+    set(OG_MICROPATHER_FROM_FETCH ON)
+    message(STATUS "OpenGlad: using fetched MicroPather ${OPENGLAD_MICROPATHER_GIT_TAG}")
+else()
+    message(FATAL_ERROR "MicroPather was not found. Enable OPENGLAD_FETCH_MICROPATHER or provide a package.")
+endif()
+
+if(NOT EMSCRIPTEN)
     set(OG_NATIVE_SDL_AVAILABLE OFF)
     set(OG_NATIVE_SDL_REQUESTED ON)
     if(CMAKE_DISABLE_FIND_PACKAGE_SDL2 OR
@@ -903,73 +1044,55 @@ if(NOT EMSCRIPTEN)
     endif()
 
     # Native-only WebSocket dependency. Emscripten uses the browser WebSocket API.
-    set(BUILD_DEMO OFF)
-    set(USE_TLS OFF)
-    set(USE_ZLIB OFF)
-    set(IXWEBSOCKET_INSTALL OFF)
-    add_subdirectory(${THIRD_PARTY_DIR}/ixwebsocket)
-    get_target_property(IXWEBSOCKET_PUBLIC_HEADERS ixwebsocket PUBLIC_HEADER)
-    if(IXWEBSOCKET_PUBLIC_HEADERS)
-        set(IXWEBSOCKET_PUBLIC_HEADERS_ABSOLUTE)
-        foreach(ixwebsocket_header IN LISTS IXWEBSOCKET_PUBLIC_HEADERS)
-            if(IS_ABSOLUTE "${ixwebsocket_header}")
-                list(APPEND IXWEBSOCKET_PUBLIC_HEADERS_ABSOLUTE "${ixwebsocket_header}")
-            else()
-                list(APPEND IXWEBSOCKET_PUBLIC_HEADERS_ABSOLUTE
-                    "${THIRD_PARTY_DIR}/ixwebsocket/${ixwebsocket_header}"
-                )
+    if(OPENGLAD_USE_PACKAGED_IXWEBSOCKET)
+        find_package(Threads QUIET)
+        find_package(ixwebsocket CONFIG QUIET)
+        foreach(candidate IN ITEMS ixwebsocket::ixwebsocket ixwebsocket)
+            if(NOT OG_IXWEBSOCKET_TARGET AND TARGET ${candidate})
+                set(OG_IXWEBSOCKET_TARGET ${candidate})
+                set(OG_IXWEBSOCKET_FROM_PACKAGE ON)
             endif()
         endforeach()
-        set_target_properties(ixwebsocket PROPERTIES
-            PUBLIC_HEADER "${IXWEBSOCKET_PUBLIC_HEADERS_ABSOLUTE}"
-        )
     endif()
-    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-        target_compile_options(ixwebsocket PRIVATE -w)
+
+    if(NOT OG_IXWEBSOCKET_TARGET AND OPENGLAD_FETCH_IXWEBSOCKET)
+        set(BUILD_DEMO OFF CACHE BOOL "Build IXWebSocket demo" FORCE)
+        set(USE_TLS OFF CACHE BOOL "Build IXWebSocket with TLS" FORCE)
+        set(USE_ZLIB OFF CACHE BOOL "Build IXWebSocket with zlib" FORCE)
+        set(IXWEBSOCKET_INSTALL OFF CACHE BOOL "Install IXWebSocket" FORCE)
+        FetchContent_Declare(ixwebsocket
+            GIT_REPOSITORY ${OPENGLAD_IXWEBSOCKET_GIT_REPOSITORY}
+            GIT_TAG ${OPENGLAD_IXWEBSOCKET_GIT_TAG}
+            GIT_SHALLOW FALSE
+            GIT_PROGRESS TRUE
+        )
+        FetchContent_MakeAvailable(ixwebsocket)
+        set(OG_IXWEBSOCKET_TARGET ixwebsocket)
+        set(OG_IXWEBSOCKET_FROM_FETCH ON)
+        if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+            target_compile_options(ixwebsocket PRIVATE -w)
+        endif()
+    endif()
+
+    if(NOT OG_IXWEBSOCKET_TARGET)
+        message(FATAL_ERROR "IXWebSocket was not found. Enable OPENGLAD_FETCH_IXWEBSOCKET or provide a package at the pinned upstream commit.")
     endif()
 
     add_library(og_ext_ixwebsocket INTERFACE)
-    target_link_libraries(og_ext_ixwebsocket INTERFACE ixwebsocket)
+    target_link_libraries(og_ext_ixwebsocket INTERFACE ${OG_IXWEBSOCKET_TARGET})
+    if(OG_IXWEBSOCKET_FROM_PACKAGE)
+        message(STATUS "OpenGlad: using packaged IXWebSocket (${OG_IXWEBSOCKET_TARGET})")
+    elseif(OG_IXWEBSOCKET_FROM_FETCH)
+        message(STATUS "OpenGlad: using fetched IXWebSocket ${OPENGLAD_IXWEBSOCKET_GIT_TAG}")
+    endif()
 endif()
-
-add_library(og_ext_yaml STATIC ${LIBYAML_SOURCES})
-configure_openglad_external_target(og_ext_yaml)
-target_compile_definitions(og_ext_yaml PRIVATE HAVE_CONFIG_H=1)
-
-add_library(og_ext_zlib STATIC ${ZLIB_SOURCES})
-configure_openglad_external_target(og_ext_zlib)
-
-add_library(og_ext_libzip STATIC ${LIBZIP_SOURCES})
-configure_openglad_external_target(og_ext_libzip)
-target_link_libraries(og_ext_libzip PUBLIC og_ext_zlib)
-
-add_library(og_ext_physfs STATIC ${PHYSFS_SOURCES})
-configure_openglad_external_target(og_ext_physfs)
-if(EMSCRIPTEN)
-    # physfsrwops.c needs SDL headers
-    target_compile_options(og_ext_physfs PRIVATE -sUSE_SDL=2)
-endif()
-if(WIN32)
-    # physfs_platform_windows.c needs shell32 for SHGetFolderPathW
-    target_link_libraries(og_ext_physfs PRIVATE shell32)
-endif()
-if(APPLE)
-    # physfs_platform_apple.m needs Foundation for NSBundle/NSSearchPathForDirectoriesInDomains
-    target_link_libraries(og_ext_physfs PRIVATE "-framework Foundation")
-endif()
-# PhysFS 3.x uses built-in miniz for ZIP support; no external zlib/libzip needed
-
-add_library(og_ext_micropather STATIC ${THIRD_PARTY_DIR}/micropather/micropather.cpp)
-configure_openglad_external_target(og_ext_micropather)
-
-add_library(og_ext_yam STATIC ${THIRD_PARTY_DIR}/yam/yam.cpp)
-configure_openglad_external_target(og_ext_yam)
 
 set(OG_IO_EXTERNAL_LIBS
-    og_ext_yam
     og_ext_yaml
+    og_ext_zlib
     og_ext_physfs
     og_ext_libzip
+    og_ext_lodepng
 )
 
 set(OG_EXTERNAL_LIBS
@@ -992,19 +1115,10 @@ if(NOT EMSCRIPTEN)
 
     add_library(og_gameplay STATIC ${OG_GAMEPLAY_COMPONENT_SOURCES})
     configure_component_library(og_gameplay "${OG_GAMEPLAY_INCLUDE_ROOT}")
-    target_include_directories(og_gameplay PRIVATE ${THIRD_PARTY_DIR}/micropather)
     target_link_libraries(og_gameplay PUBLIC og_core ${OG_EXTERNAL_LIBS} og_ext_zlib)
 
     add_library(og_resources STATIC ${OG_RESOURCES_COMPONENT_SOURCES})
     configure_component_library(og_resources "${OG_RESOURCES_INCLUDE_ROOT}")
-    target_include_directories(og_resources PRIVATE
-        ${THIRD_PARTY_DIR}/yam
-        ${THIRD_PARTY_DIR}/libyaml/include
-        ${THIRD_PARTY_DIR}/physfs
-        ${THIRD_PARTY_DIR}/physfs/extras
-        ${THIRD_PARTY_DIR}/libzip
-        ${THIRD_PARTY_DIR}/lodepng
-    )
     target_link_libraries(og_resources PUBLIC
         og_core
         og_gameplay
@@ -1027,7 +1141,7 @@ if(NOT EMSCRIPTEN)
         add_library(og_platform_ws_transport STATIC ${OG_NETWORK_SOURCES})
         configure_component_library(og_platform_ws_transport "${OG_PUBLIC_INCLUDE_DIR}")
         if(NOT EMSCRIPTEN)
-            target_link_libraries(og_platform_ws_transport PUBLIC ixwebsocket)
+            target_link_libraries(og_platform_ws_transport PUBLIC og_ext_ixwebsocket)
         endif()
         add_dependencies(og_platform_ws_transport check_vendor_leaks)
     endif()
@@ -1035,14 +1149,6 @@ if(NOT EMSCRIPTEN)
     add_library(og_platform_sdl STATIC ${OG_PLATFORM_SDL_COMPONENT_SOURCES})
     configure_component_library(og_platform_sdl "${OG_PUBLIC_INCLUDE_DIR}")
     configure_openglad_sdl_target(og_platform_sdl)
-    target_include_directories(og_platform_sdl PRIVATE
-        ${OG_THIRD_PARTY_INCLUDE_DIRS}
-        ${THIRD_PARTY_DIR}/yam
-        ${THIRD_PARTY_DIR}/libyaml/include
-        ${THIRD_PARTY_DIR}/physfs
-        ${THIRD_PARTY_DIR}/physfs/extras
-        ${THIRD_PARTY_DIR}/libzip
-    )
     target_link_libraries(og_platform_sdl PUBLIC
         og_core
         og_gameplay
@@ -1053,7 +1159,7 @@ if(NOT EMSCRIPTEN)
         target_link_libraries(og_platform_sdl PUBLIC og_platform_ws_transport)
     endif()
     if(NOT EMSCRIPTEN)
-        target_link_libraries(og_platform_sdl PRIVATE ixwebsocket)
+        target_link_libraries(og_platform_sdl PRIVATE og_ext_ixwebsocket)
     endif()
     add_dependencies(og_platform_sdl check_vendor_leaks)
 
@@ -1153,10 +1259,9 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/resources/io/filesystem.cpp
         ${SRC_DIR}/resources/io/physfs_api.cpp
         ${SRC_DIR}/resources/io/zip_api.cpp
-        ${SRC_DIR}/resources/io/yaml_stream.cpp
+        ${SRC_DIR}/resources/campaign_yaml.cpp
         ${SRC_DIR}/resources/io/og_file.cpp
         ${SRC_DIR}/resources/our_palette.cpp
-        ${THIRD_PARTY_DIR}/lodepng/lodepng.cpp
         # runtime (SDL-free subset)
         ${SRC_DIR}/platform/game_context.cpp
         ${SRC_DIR}/gameplay/gameplay_context.cpp
@@ -1196,15 +1301,6 @@ if(NOT EMSCRIPTEN)
     add_executable(openglad_text ${HEADLESS_SOURCES})
     target_include_directories(openglad_text PUBLIC
         $<BUILD_INTERFACE:${OG_PUBLIC_INCLUDE_DIR}>
-    )
-    target_include_directories(openglad_text PRIVATE
-        ${THIRD_PARTY_DIR}/micropather
-        ${THIRD_PARTY_DIR}/yam
-        ${THIRD_PARTY_DIR}/libyaml/include
-        ${THIRD_PARTY_DIR}/physfs
-        ${THIRD_PARTY_DIR}/physfs/extras
-        ${THIRD_PARTY_DIR}/libzip
-        ${THIRD_PARTY_DIR}/lodepng
     )
     target_compile_definitions(openglad_text PRIVATE
         ${COMMON_DEFINITIONS}
@@ -1354,11 +1450,12 @@ if(NOT EMSCRIPTEN)
         og_interface
         og_platform_sdl
         og_ext_micropather
-        og_ext_yam
+        og_ext_lodepng
         og_ext_yaml
         og_ext_zlib
         og_ext_libzip
         og_ext_physfs
+        og_ext_ixwebsocket
         openglad
         EXPORT OpenGladTargets
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -1366,7 +1463,71 @@ if(NOT EMSCRIPTEN)
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     )
 
-    if(NOT EMSCRIPTEN)
+    if(OG_ZLIB_FROM_FETCH AND TARGET ${OG_ZLIB_FETCH_TARGET})
+        install(TARGETS ${OG_ZLIB_FETCH_TARGET}
+            EXPORT OpenGladTargets
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        )
+        install(FILES
+            ${zlib_SOURCE_DIR}/zlib.h
+            ${zlib_BINARY_DIR}/zconf.h
+            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+        )
+    endif()
+
+    if(OG_LIBYAML_FROM_FETCH AND TARGET ${OG_LIBYAML_FETCH_TARGET})
+        install(TARGETS ${OG_LIBYAML_FETCH_TARGET}
+            EXPORT OpenGladTargets
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        )
+    endif()
+
+    if(OG_LIBZIP_FROM_FETCH AND TARGET ${OG_LIBZIP_FETCH_TARGET})
+        install(TARGETS ${OG_LIBZIP_FETCH_TARGET}
+            EXPORT OpenGladTargets
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        )
+        install(FILES
+            ${libzip_SOURCE_DIR}/lib/zip.h
+            ${libzip_BINARY_DIR}/zipconf.h
+            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+        )
+    endif()
+
+    if(OG_PHYSFS_FROM_FETCH AND TARGET ${OG_PHYSFS_FETCH_TARGET})
+        install(TARGETS ${OG_PHYSFS_FETCH_TARGET}
+            EXPORT OpenGladTargets
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        )
+        install(FILES
+            ${physfs_SOURCE_DIR}/src/physfs.h
+            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/openglad/external/physfs
+        )
+    endif()
+
+    if(OG_LODEPNG_FROM_FETCH)
+        install(FILES
+            ${lodepng_SOURCE_DIR}/lodepng.h
+            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/openglad/external/lodepng
+        )
+    endif()
+
+    if(OG_MICROPATHER_FROM_FETCH)
+        install(FILES
+            ${micropather_SOURCE_DIR}/micropather.h
+            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/openglad/external/micropather
+        )
+    endif()
+
+    if(OG_IXWEBSOCKET_FROM_FETCH AND TARGET ixwebsocket)
         install(TARGETS ixwebsocket
             EXPORT OpenGladTargets
             ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -1415,6 +1576,94 @@ if(NOT EMSCRIPTEN)
                 ${CMAKE_SOURCE_DIR}/builtin
             DESTINATION ${CMAKE_INSTALL_DATADIR}/openglad
         )
+    endif()
+
+    set(OG_OPENGLAD_CONFIG_FIND_DEPENDENCIES "")
+    if(OG_NATIVE_SDL_AVAILABLE)
+        string(APPEND OG_OPENGLAD_CONFIG_FIND_DEPENDENCIES
+"if(NOT TARGET PkgConfig::SDL2)
+    find_dependency(PkgConfig)
+    pkg_check_modules(SDL2 QUIET IMPORTED_TARGET sdl2 SDL2_mixer)
+endif()
+_openglad_require_imported_target(\"PkgConfig::SDL2\" \"SDL2/SDL2_mixer\")
+
+")
+    endif()
+    if(OG_SYSTEM_ZLIB_TARGET)
+        string(APPEND OG_OPENGLAD_CONFIG_FIND_DEPENDENCIES
+"find_dependency(ZLIB)
+_openglad_require_imported_target(\"${OG_SYSTEM_ZLIB_TARGET}\" \"zlib\")
+
+")
+    endif()
+    if(OG_SYSTEM_LIBYAML_TARGET STREQUAL "PkgConfig::OG_LIBYAML")
+        string(APPEND OG_OPENGLAD_CONFIG_FIND_DEPENDENCIES
+"if(NOT TARGET PkgConfig::OG_LIBYAML)
+    find_dependency(PkgConfig)
+    pkg_check_modules(OG_LIBYAML QUIET IMPORTED_TARGET yaml-0.1)
+endif()
+_openglad_require_imported_target(\"PkgConfig::OG_LIBYAML\" \"libyaml/yaml-0.1\")
+
+")
+    elseif(OG_SYSTEM_LIBYAML_TARGET)
+        string(APPEND OG_OPENGLAD_CONFIG_FIND_DEPENDENCIES
+"if(NOT TARGET ${OG_SYSTEM_LIBYAML_TARGET})
+    find_package(yaml CONFIG QUIET)
+endif()
+_openglad_require_imported_target(\"${OG_SYSTEM_LIBYAML_TARGET}\" \"libyaml\")
+
+")
+    endif()
+    if(OG_SYSTEM_LIBZIP_TARGET)
+        if(OG_SYSTEM_LIBZIP_TARGET MATCHES "^PkgConfig::")
+            string(APPEND OG_OPENGLAD_CONFIG_FIND_DEPENDENCIES
+"if(NOT TARGET ${OG_SYSTEM_LIBZIP_TARGET})
+    find_dependency(PkgConfig)
+    pkg_check_modules(OG_LIBZIP QUIET IMPORTED_TARGET libzip)
+endif()
+_openglad_require_imported_target(\"${OG_SYSTEM_LIBZIP_TARGET}\" \"libzip\")
+
+")
+        else()
+            string(APPEND OG_OPENGLAD_CONFIG_FIND_DEPENDENCIES
+"if(NOT TARGET ${OG_SYSTEM_LIBZIP_TARGET})
+    find_package(libzip CONFIG QUIET)
+endif()
+_openglad_require_imported_target(\"${OG_SYSTEM_LIBZIP_TARGET}\" \"libzip\")
+
+")
+        endif()
+    endif()
+    if(OG_SYSTEM_PHYSFS_TARGET)
+        if(OG_SYSTEM_PHYSFS_TARGET MATCHES "^PkgConfig::")
+            string(APPEND OG_OPENGLAD_CONFIG_FIND_DEPENDENCIES
+"if(NOT TARGET ${OG_SYSTEM_PHYSFS_TARGET})
+    find_dependency(PkgConfig)
+    pkg_check_modules(OG_PHYSFS QUIET IMPORTED_TARGET physfs)
+endif()
+_openglad_require_imported_target(\"${OG_SYSTEM_PHYSFS_TARGET}\" \"PhysFS\")
+
+")
+        else()
+            string(APPEND OG_OPENGLAD_CONFIG_FIND_DEPENDENCIES
+"if(NOT TARGET ${OG_SYSTEM_PHYSFS_TARGET})
+    find_package(PhysFS CONFIG QUIET)
+    find_package(physfs CONFIG QUIET)
+endif()
+_openglad_require_imported_target(\"${OG_SYSTEM_PHYSFS_TARGET}\" \"PhysFS\")
+
+")
+        endif()
+    endif()
+    if(OG_IXWEBSOCKET_FROM_PACKAGE)
+        string(APPEND OG_OPENGLAD_CONFIG_FIND_DEPENDENCIES
+"if(NOT TARGET ${OG_IXWEBSOCKET_TARGET})
+    find_dependency(Threads)
+    find_package(ixwebsocket CONFIG QUIET)
+endif()
+_openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
+
+")
     endif()
 
     write_basic_package_version_file(
@@ -1656,7 +1905,6 @@ if(NOT EMSCRIPTEN)
             target_compile_definitions(${NAME} PRIVATE TESTING)
             target_include_directories(${NAME} PRIVATE
                 ${CMAKE_SOURCE_DIR}/tests
-                ${OG_THIRD_PARTY_INCLUDE_DIRS}
             )
             target_link_libraries(${NAME} PRIVATE og_game_test GTest::gtest)
             configure_openglad_runtime_target(${NAME})
@@ -1720,11 +1968,10 @@ if(NOT EMSCRIPTEN)
         )
         configure_openglad_library(og_game_test)
         configure_openglad_sdl_target(og_game_test)
-        target_include_directories(og_game_test PRIVATE ${OG_THIRD_PARTY_INCLUDE_DIRS})
         target_compile_definitions(og_game_test PRIVATE TESTING)
         target_link_libraries(og_game_test PUBLIC ${OG_EXTERNAL_LIBS} ${OG_IO_EXTERNAL_LIBS} og_runtime_deps)
         if(NOT EMSCRIPTEN)
-            target_link_libraries(og_game_test PUBLIC ixwebsocket)
+            target_link_libraries(og_game_test PUBLIC og_ext_ixwebsocket)
         endif()
         add_dependencies(og_game_test check_vendor_leaks)
 
@@ -1999,7 +2246,6 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests
             ${CMAKE_SOURCE_DIR}/tests/parity
             ${CMAKE_SOURCE_DIR}/include
-            ${OG_THIRD_PARTY_INCLUDE_DIRS}
         )
         target_compile_features(scenario_facts_dump PRIVATE cxx_std_20)
         target_link_libraries(scenario_facts_dump PRIVATE og_game_test)
@@ -2047,7 +2293,6 @@ if(NOT EMSCRIPTEN)
         target_include_directories(parity_runner_smoke PRIVATE
             ${CMAKE_SOURCE_DIR}/tests
             ${CMAKE_SOURCE_DIR}/tests/parity
-            ${OG_THIRD_PARTY_INCLUDE_DIRS}
         )
         target_link_libraries(parity_runner_smoke PRIVATE og_game_test)
         configure_openglad_runtime_target(parity_runner_smoke)
@@ -2143,7 +2388,6 @@ if(NOT EMSCRIPTEN)
         target_compile_definitions(og_unit_server PRIVATE TESTING)
         target_include_directories(og_unit_server PRIVATE
             ${CMAKE_SOURCE_DIR}/tests
-            ${OG_THIRD_PARTY_INCLUDE_DIRS}
         )
         target_link_libraries(og_unit_server PRIVATE
             og_core
@@ -2177,13 +2421,6 @@ if(NOT EMSCRIPTEN)
         target_compile_definitions(og_unit_headless_platform PRIVATE TESTING)
         target_include_directories(og_unit_headless_platform PRIVATE
             ${CMAKE_SOURCE_DIR}/tests
-            ${THIRD_PARTY_DIR}/micropather
-            ${THIRD_PARTY_DIR}/yam
-            ${THIRD_PARTY_DIR}/libyaml/include
-            ${THIRD_PARTY_DIR}/physfs
-            ${THIRD_PARTY_DIR}/physfs/extras
-            ${THIRD_PARTY_DIR}/libzip
-            ${THIRD_PARTY_DIR}/lodepng
         )
         target_link_libraries(og_unit_headless_platform PRIVATE
             og_ext_micropather
@@ -2232,7 +2469,6 @@ if(NOT EMSCRIPTEN)
             target_compile_definitions(og_test_curses PRIVATE TESTING)
             target_include_directories(og_test_curses PRIVATE
                 ${CMAKE_SOURCE_DIR}/tests
-                ${OG_THIRD_PARTY_INCLUDE_DIRS}
             )
             if(OG_CURSES_NCURSES_LINK)
                 target_link_libraries(og_test_curses PRIVATE ${OG_CURSES_NCURSES_LINK})
@@ -2523,7 +2759,6 @@ if(ENABLE_FUZZING)
         if(NOT EMSCRIPTEN)
             target_include_directories(${name} SYSTEM PRIVATE ${SDL2_INCLUDE_DIRS})
         endif()
-        target_include_directories(${name} PRIVATE ${OG_THIRD_PARTY_INCLUDE_DIRS})
         target_compile_definitions(${name} PRIVATE ${COMMON_DEFINITIONS})
         target_compile_options(${name} PRIVATE ${FUZZ_SANITIZER_FLAGS})
         target_link_options(${name} PRIVATE ${FUZZ_LINK_FLAGS})
@@ -2547,7 +2782,6 @@ endif()
 	    add_library(og_game_web STATIC ${GAME_SOURCES_NO_MAIN})
 	    configure_openglad_library(og_game_web)
 	    configure_openglad_runtime_target(og_game_web)
-	    target_include_directories(og_game_web PRIVATE ${OG_THIRD_PARTY_INCLUDE_DIRS})
 	    target_link_libraries(og_game_web PUBLIC ${OG_EXTERNAL_LIBS} ${OG_IO_EXTERNAL_LIBS})
 	    # Define __ASYNCIFY__ so that YIELD_SLEEP expands to emscripten_sleep()
 	    # instead of a no-op.  The -sASYNCIFY linker flag below enables the

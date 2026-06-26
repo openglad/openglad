@@ -1,11 +1,10 @@
 #include <openglad/resources/pixie_data.h>
+#include <openglad/resources/campaign_yaml.h>
 #include <openglad/resources/og_file.h>
 #include <openglad/legacy/base.h>
-#include <openglad/resources/ogfile_yaml.h>
 #include <openglad/resources/filesystem.h>
 #include <openglad/resources/io.h>
 #include <openglad/resources/physfs_api.h>
-#include <openglad/resources/yaml_stream.h>
 #include <openglad/resources/zip_api.h>
 #include <openglad/resources/io_common.h>
 
@@ -14,6 +13,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <fstream>
 #include <filesystem>
 #include <physfs.h>
 #include <string>
@@ -22,23 +22,6 @@
 #include <vector>
 
 namespace {
-
-struct MemReadCtx {
-    std::string data;
-    std::size_t pos = 0;
-};
-
-int mem_read_handler(void* data, unsigned char* buffer, std::size_t size, std::size_t* size_read)
-{
-    auto* ctx = static_cast<MemReadCtx*>(data);
-    const std::size_t remain = (ctx->pos < ctx->data.size()) ? (ctx->data.size() - ctx->pos) : 0;
-    const std::size_t n = std::min(size, remain);
-    if (n > 0)
-        std::memcpy(buffer, ctx->data.data() + ctx->pos, n);
-    ctx->pos += n;
-    *size_read = n;
-    return 1;
-}
 
 } // namespace
 
@@ -163,146 +146,46 @@ TEST(IoPlatformCoverage, resources_filesystem_api_mount_read_write_exists)
 }
 
 
-TEST(IoPlatformCoverage, yaml_stream_emitter_and_parser_paths)
+TEST(IoPlatformCoverage, campaign_yaml_roundtrip_and_parse_error_paths)
 {
-    const std::string yaml_text =
-        "root:\n"
-        "  k1: v1\n"
-        "  k2: v2\n";
-    MemReadCtx reader{yaml_text, 0};
-    og::io::YamlParser parser;
-    parser.set_input(mem_read_handler, &reader);
+    namespace fs = std::filesystem;
+    fs::create_directories("temp");
 
-    bool saw_pair = false;
-    bool saw_scalar = false;
-    bool saw_begin_mapping = false;
-    og::io::YamlParseResult r = og::io::YamlParseResult::Error;
-    do
-    {
-        r = parser.parse_next();
-        const og::io::YamlEvent& ev = parser.event();
-        if (ev.type == og::io::YamlEventType::Pair)
-            saw_pair = true;
-        if (ev.type == og::io::YamlEventType::Scalar)
-            saw_scalar = true;
-        if (ev.type == og::io::YamlEventType::BeginMapping)
-            saw_begin_mapping = true;
-    } while (r == og::io::YamlParseResult::Ok);
+    og::data::CampaignYaml original;
+    original.title = "Round Trip";
+    original.version = "2";
+    original.first_level = 3;
+    original.suggested_power = 7;
+    original.authors = "Author";
+    original.contributors = "Contributor";
+    original.description = "Line one\nLine two";
 
-    parser.close_input();
-    ASSERT_TRUE(r == og::io::YamlParseResult::Done) << "parse should complete successfully";
-    ASSERT_TRUE(saw_pair) << "parser should see pair events";
-    ASSERT_TRUE(saw_scalar) << "parser should see scalar events";
-    ASSERT_TRUE(saw_begin_mapping) << "parser should see mapping events";
-}
+    const fs::path path = fs::path("temp") / "io_platform_campaign.yaml";
+    ASSERT_EQ(og::data::CampaignYamlWriteResult::Ok,
+              og::data::write_campaign_yaml_with_result(path.string().c_str(), original));
 
+    og::data::CampaignYaml parsed;
+    ASSERT_EQ(og::data::CampaignYamlReadResult::Ok,
+              og::data::read_campaign_yaml(path.string().c_str(), parsed));
+    ASSERT_TRUE(parsed.saw_title && parsed.saw_version && parsed.saw_first_level);
+    ASSERT_EQ("Round Trip", parsed.title);
+    ASSERT_EQ("2", parsed.version);
+    ASSERT_EQ(3, parsed.first_level);
+    ASSERT_EQ(7, parsed.suggested_power);
+    ASSERT_EQ("Author", parsed.authors);
+    ASSERT_EQ("Contributor", parsed.contributors);
+    ASSERT_EQ("Line one\nLine two", parsed.description);
 
-TEST(IoPlatformCoverage, yaml_stream_sequence_emit_and_parse_error_path)
-{
-    // Exercise emitter sequence APIs and parser error mapping.
-    auto out = og::io::og_open_write("temp/io_platform_cov_yaml_seq.yaml");
-    ASSERT_TRUE(out != nullptr) << "yaml output file should open";
-    if (!out)
-        return;
+    const fs::path bad_path = fs::path("temp") / "io_platform_campaign_bad.yaml";
+    std::ofstream bad(bad_path);
+    bad << "title: Partial\nbad: [unclosed\n";
+    bad.close();
 
-    og::io::YamlEmitter emitter;
-    ASSERT_TRUE(emitter.set_output(ogfile_write_handler, out.get())) << "yaml emitter set_output should succeed";
-    ASSERT_TRUE(emitter.emit_begin_sequence()) << "emit_begin_sequence should succeed";
-    ASSERT_TRUE(emitter.emit_scalar("entry")) << "emit_scalar in sequence should succeed";
-    ASSERT_TRUE(emitter.emit_end_sequence()) << "emit_end_sequence should succeed";
-    emitter.close_output();
-    out.reset();
-
-    // Parse malformed YAML as a smoke path; backend may return Done or Error.
-    MemReadCtx bad_reader{"bad: [unclosed", 0};
-    og::io::YamlParser parser;
-    parser.set_input(mem_read_handler, &bad_reader);
-    og::io::YamlParseResult r = og::io::YamlParseResult::Ok;
-    int guard = 0;
-    while (r == og::io::YamlParseResult::Ok && guard < 32)
-    {
-        r = parser.parse_next();
-        guard++;
-    }
-    parser.close_input();
-    ASSERT_TRUE(guard > 0) << "parser should process at least one malformed-yaml step";
-}
-
-
-TEST(IoPlatformCoverage, yaml_stream_alias_and_sequence_event_paths)
-{
-    const std::string yaml_text =
-        "a: &anchor 1\n"
-        "b: *anchor\n"
-        "c: [2, 3]\n";
-    MemReadCtx reader{yaml_text, 0};
-    og::io::YamlParser parser;
-    parser.set_input(mem_read_handler, &reader);
-
-    bool saw_alias = false;
-    bool saw_begin_sequence = false;
-    bool saw_end_sequence = false;
-    og::io::YamlParseResult r = og::io::YamlParseResult::Error;
-    do
-    {
-        r = parser.parse_next();
-        const og::io::YamlEvent& ev = parser.event();
-        if (ev.type == og::io::YamlEventType::Alias)
-            saw_alias = true;
-        if (ev.type == og::io::YamlEventType::BeginSequence)
-            saw_begin_sequence = true;
-        if (ev.type == og::io::YamlEventType::EndSequence)
-            saw_end_sequence = true;
-    } while (r == og::io::YamlParseResult::Ok);
-
-    parser.close_input();
-    ASSERT_TRUE(r == og::io::YamlParseResult::Done) << "alias/sequence parse should complete";
-    ASSERT_TRUE(saw_alias) << "parser should emit alias events";
-    ASSERT_TRUE(saw_begin_sequence && saw_end_sequence) << "parser should emit sequence begin/end events";
-}
-
-
-TEST(IoPlatformCoverage, yaml_stream_empty_input_and_read_failure_paths)
-{
-    MemReadCtx empty_reader{"", 0};
-    og::io::YamlParser parser;
-    parser.set_input(mem_read_handler, &empty_reader);
-    og::io::YamlParseResult empty_r = og::io::YamlParseResult::Ok;
-    int empty_steps = 0;
-    while (empty_r == og::io::YamlParseResult::Ok && empty_steps < 16)
-    {
-        empty_r = parser.parse_next();
-        empty_steps++;
-    }
-    ASSERT_TRUE(empty_steps > 0) << "empty input should produce at least one parser step";
-    ASSERT_EQ(og::io::YamlParseResult::Done, empty_r)
-        << "empty input should terminate cleanly";
-    parser.close_input();
-
-    struct FailReadCtx {
-    };
-    auto fail_read_handler = [](void*, unsigned char*, std::size_t, std::size_t*) -> int {
-        return 0;
-    };
-
-    og::io::YamlParser fail_parser;
-    FailReadCtx fail_ctx{};
-    fail_parser.set_input(fail_read_handler, &fail_ctx);
-    og::io::YamlParseResult fail_r = og::io::YamlParseResult::Ok;
-    int fail_steps = 0;
-    while (fail_r == og::io::YamlParseResult::Ok && fail_steps < 16)
-    {
-        fail_r = fail_parser.parse_next();
-        fail_steps++;
-    }
-    // A read-handler failure must surface as Error on the first step. The
-    // old yam adapter missed it (libyaml reports errors by returning 0, not
-    // a negative value) and callers looping on Ok never terminated — real
-    // malformed campaign.yaml files hung the campaign picker this way.
-    ASSERT_EQ(1, fail_steps) << "read failure should surface immediately";
-    ASSERT_EQ(og::io::YamlParseResult::Error, fail_r)
-        << "a failing read handler must surface as Error, not loop as Ok";
-    fail_parser.close_input();
+    og::data::CampaignYaml partial;
+    ASSERT_EQ(og::data::CampaignYamlReadResult::ParseFailed,
+              og::data::read_campaign_yaml(bad_path.string().c_str(), partial));
+    ASSERT_TRUE(partial.saw_title);
+    ASSERT_EQ("Partial", partial.title);
 }
 
 
@@ -933,6 +816,65 @@ TEST(IoPlatformCoverage, og_file_round6_physfs_zero_size_and_stdio_seek_failure_
     {
         ASSERT_EQ(-1, (int)in_stdio->seek(-1, 0)) << "stdio seek should fail for negative SET offset";
     }
+}
+
+
+TEST(IoPlatformCoverage, physfs_rwops_bridge_read_write_seek_paths)
+{
+    const std::string vdir = "physfs_rwops_bridge";
+    const std::string vpath = vdir + "/rwops.bin";
+    (void)PHYSFS_delete(vpath.c_str());
+
+    if (!PHYSFS_exists(vdir.c_str()))
+    {
+        ASSERT_TRUE(PHYSFS_mkdir(vdir.c_str()) != 0) << "create virtual dir for PhysFS RWops bridge";
+    }
+
+    const unsigned char payload[] = {9, 8, 7, 6, 5};
+    {
+        RwopsPtr out{open_write_file(vpath.c_str())};
+        ASSERT_TRUE(out != nullptr) << "open PhysFS-backed SDL_RWops output";
+        if (!out)
+            return;
+
+        ASSERT_EQ(0, static_cast<int>(SDL_RWwrite(out.get(), payload, 0, 1)))
+            << "PhysFS RWops write size=0 should return 0";
+        ASSERT_EQ(1, static_cast<int>(SDL_RWwrite(out.get(), payload, sizeof(payload), 1)))
+            << "PhysFS RWops should write one payload object";
+        ASSERT_EQ(-1, static_cast<int>(SDL_RWseek(out.get(), 0, 99)))
+            << "PhysFS RWops should reject invalid seek whence";
+        ASSERT_EQ(-1, static_cast<int>(SDL_RWseek(out.get(), -1, RW_SEEK_SET)))
+            << "PhysFS RWops should reject seeks before the start";
+    }
+
+    {
+        RwopsPtr in{open_read_file(vpath.c_str(), true)};
+        ASSERT_TRUE(in != nullptr) << "open PhysFS-backed SDL_RWops input";
+        if (!in)
+            return;
+
+        ASSERT_EQ(static_cast<Sint64>(sizeof(payload)), SDL_RWsize(in.get()))
+            << "PhysFS RWops size should report the file length";
+        unsigned char got[sizeof(payload)] = {};
+        ASSERT_EQ(0, static_cast<int>(SDL_RWread(in.get(), got, 0, 1)))
+            << "PhysFS RWops read size=0 should return 0";
+        ASSERT_EQ(1, static_cast<int>(SDL_RWread(in.get(), got, sizeof(got), 1)))
+            << "PhysFS RWops should read one payload object";
+        ASSERT_TRUE(std::memcmp(got, payload, sizeof(payload)) == 0)
+            << "PhysFS RWops should roundtrip payload bytes";
+        ASSERT_EQ(3, static_cast<int>(SDL_RWseek(in.get(), -2, RW_SEEK_END)))
+            << "PhysFS RWops should seek relative to end";
+        ASSERT_EQ(4, static_cast<int>(SDL_RWseek(in.get(), 1, RW_SEEK_CUR)))
+            << "PhysFS RWops should seek relative to current position";
+        ASSERT_EQ(0, static_cast<int>(SDL_RWseek(in.get(), 0, RW_SEEK_SET)))
+            << "PhysFS RWops should seek relative to the start";
+        ASSERT_EQ(-1, static_cast<int>(SDL_RWseek(in.get(), -99, RW_SEEK_CUR)))
+            << "PhysFS RWops should reject negative current-relative seeks";
+    }
+
+    RwopsPtr missing{open_read_file((vdir + "/missing.bin").c_str(), true)};
+    ASSERT_TRUE(missing == nullptr) << "missing PhysFS RWops input should return null";
+    (void)PHYSFS_delete(vpath.c_str());
 }
 
 

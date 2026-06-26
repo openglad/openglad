@@ -12,7 +12,6 @@
 #include <openglad/gameplay/weap.h>
 #include <openglad/interface/button.h>
 #include <openglad/resources/pixie_data.h>
-#include <openglad/resources/yaml_stream.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/legacy/colors.h>
 #include <openglad/resources/gparser.h>
@@ -85,31 +84,6 @@ PixieData make_test_pixie_data(unsigned char frames = 1,
     for (std::size_t i = 0; i < pixel_count; i++)
         raw[i] = static_cast<unsigned char>(base + (i % 8));
     return PixieData(frames, w, h, raw);
-}
-
-struct ReadBuf {
-    const unsigned char* data;
-    size_t len;
-    size_t pos;
-};
-
-int read_handler(void* data, unsigned char* buffer, std::size_t size, std::size_t* size_read)
-{
-    auto* rb = static_cast<ReadBuf*>(data);
-    const size_t rem = (rb->pos < rb->len) ? (rb->len - rb->pos) : 0;
-    const size_t n = (size < rem) ? size : rem;
-    if (n > 0)
-        std::memcpy(buffer, rb->data + rb->pos, n);
-    rb->pos += n;
-    *size_read = n;
-    return 1;
-}
-
-[[maybe_unused]] int write_handler(void* data, unsigned char* buffer, std::size_t size)
-{
-    auto* out = static_cast<std::vector<unsigned char>*>(data);
-    out->insert(out->end(), buffer, buffer + size);
-    return 1;
 }
 
 } // namespace
@@ -605,46 +579,6 @@ TEST(MassCoverage, text_write_y_view) { og::runtime::current_session->myscreen_-
 TEST(MassCoverage, text_write_char_xy_tobuffer) { og::runtime::current_session->myscreen_->text_normal.write_char_xy(5, 106, 'Q', static_cast<short>(1)); }
 TEST(MassCoverage, text_write_char_xy_default) { og::runtime::current_session->myscreen_->text_normal.write_char_xy(15, 106, 'R'); }
 TEST(MassCoverage, text_write_char_xy_view) { og::runtime::current_session->myscreen_->text_normal.write_char_xy(25, 106, 'S', og::runtime::current_session->myscreen_->viewob[0].get()); }
-
-// yaml_stream.cpp uncovered
-TEST(MassCoverage, yaml_parser_move_ctor) {
-    og::io::YamlParser p;
-    og::io::YamlParser p2(std::move(p));
-    (void)p2;
-}
-
-TEST(MassCoverage, yaml_parser_move_assign) {
-    og::io::YamlParser a;
-    og::io::YamlParser b;
-    b = std::move(a);
-}
-
-TEST(MassCoverage, yaml_emitter_move_ctor) {
-    og::io::YamlEmitter e;
-    og::io::YamlEmitter e2(std::move(e));
-    (void)e2;
-}
-
-TEST(MassCoverage, yaml_emitter_move_assign) {
-    og::io::YamlEmitter a;
-    og::io::YamlEmitter b;
-    b = std::move(a);
-}
-
-TEST(MassCoverage, yaml_parser_set_input) {
-    og::io::YamlParser p;
-    static const unsigned char data[] = "a: b\n";
-    ReadBuf rb{data, sizeof(data) - 1, 0};
-    p.set_input(read_handler, &rb);
-}
-
-TEST(MassCoverage, yaml_parser_close_input) {
-    og::io::YamlParser p;
-    static const unsigned char data[] = "x: y\n";
-    ReadBuf rb{data, sizeof(data) - 1, 0};
-    p.set_input(read_handler, &rb);
-    p.close_input();
-}
 
 // obmap_debug_draw.cpp uncovered file target
 TEST(MassCoverage, obmap_debug_draw) {

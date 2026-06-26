@@ -16,14 +16,13 @@
  */
 
 #include <openglad/resources/io.h>
+#include <openglad/resources/campaign_yaml.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/core/util.h>
 #include <openglad/resources/level_file_io.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/resources/filesystem.h>
-#include "physfsrwops.h"  // PhysFS SDL_RWops bridge
 #include <openglad/resources/zip_api.h>
-#include <openglad/resources/yaml_stream.h>
 #include <openglad/resources/pixie_data.h>
 #include <openglad/core/pixdefs.h>
 #include <cstring>
@@ -47,10 +46,9 @@ bool write_pixie_png(const char* filepath, const PixieData& data);
 #include <emscripten.h>
 #endif
 
-// SDL_RWops bridge for PhysFS (SDL-specific; not in headless builds)
 namespace og::io {
-SDL_RWops* physfsrw_open_read(const char* path) { return PHYSFSRWOPS_openRead(path); }
-SDL_RWops* physfsrw_open_write(const char* path) { return PHYSFSRWOPS_openWrite(path); }
+SDL_RWops* physfsrw_open_read(const char* path);
+SDL_RWops* physfsrw_open_write(const char* path);
 } // namespace og::io
 
 // remove_file_or_log, explode, list_files, campaign mount/unmount/list,
@@ -506,24 +504,12 @@ NewFileIoError create_new_pix_with_error(const std::string& filename, int w, int
 
 NewFileIoError create_new_campaign_descriptor_with_error(const std::string& filename)
 {
-	RwopsPtr outfile{open_write_file(filename.c_str())};
-	if (!outfile)
+    const auto result = og::data::write_default_campaign_yaml_with_result(filename.c_str());
+    if (result == og::data::CampaignYamlWriteResult::OpenFailed)
         return NewFileIoError::OpenWriteFailed;
-
-    og::io::YamlEmitter yaml;
-    if (!yaml.set_output(rwops_write_handler, outfile.get()))
+    if (result != og::data::CampaignYamlWriteResult::Ok)
         return NewFileIoError::WriteFailed;
 
-    yaml.emit_pair("format_version", "1");
-    yaml.emit_pair("title", "New Campaign");
-    yaml.emit_pair("version", "1");
-    yaml.emit_pair("first_level", "1");
-    yaml.emit_pair("suggested_power", "0");
-    yaml.emit_pair("authors", "");
-    yaml.emit_pair("contributors", "");
-    yaml.emit_pair("description", "A new campaign.");
-
-    yaml.close_output();
     return NewFileIoError::None;
 }
 

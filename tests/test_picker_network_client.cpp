@@ -4274,8 +4274,8 @@ TEST(PickerNetworkClient, host_and_join_team_change_and_ready_round_trip)
     cleanup.join_client = nullptr;
 }
 
-// Regression test for the vendored IXSocketServer local fix (see
-// third_party/VENDORED_LIBS.md): SocketServer::stop() used to close _serverFd
+// Regression test for the upstream IXSocketServer local fix (see
+// docs/external-dependencies.md): SocketServer::stop() used to close _serverFd
 // without resetting it to -1, so the destructor chain (~WebSocketServer ->
 // stop(), ~SocketServer -> stop()) re-closed the same fd number after it had
 // been freed. If another thread had reused the number in between (e.g. glibc

@@ -17,10 +17,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-
-      - name: Apply third-party build fixes
-        run: git apply third_party/build-fixes.patch
-
       - name: Set up Emscripten
         uses: mymindstorm/setup-emsdk@v14
         with:

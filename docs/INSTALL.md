@@ -7,13 +7,14 @@ OpenGlad uses **CMake 3.25+** as its primary build system. It targets **C++20** 
 ### Linux (Debian/Ubuntu)
 
 ```bash
-sudo apt-get install cmake ninja-build libsdl2-dev libsdl2-mixer-dev
+sudo apt-get install cmake ninja-build pkg-config libsdl2-dev libsdl2-mixer-dev \
+  libphysfs-dev libzip-dev libyaml-dev zlib1g-dev
 ```
 
 ### macOS (Homebrew)
 
 ```bash
-brew install cmake ninja sdl2 sdl2_mixer pkg-config
+brew install cmake ninja pkg-config sdl2 sdl2_mixer physfs libzip libyaml zlib
 ```
 
 ### Windows
@@ -186,6 +187,10 @@ ctest --test-dir build/ci-test -R og_test_walker
 | `ENABLE_SANITIZERS` | OFF | Enable AddressSanitizer + UBSan |
 | `ENABLE_CLANG_TIDY` | OFF | Enable clang-tidy during compilation |
 | `ENABLE_CPPCHECK` | OFF | Enable cppcheck during compilation |
+| `OPENGLAD_USE_SYSTEM_DEPS` | ON | Prefer system/package-manager dependencies over FetchContent fallbacks |
+| `OPENGLAD_REQUIRE_SYSTEM_DEPS` | OFF | Fail configure if package dependencies are unavailable |
+| `OPENGLAD_FETCH_DEPS` | ON | Fetch missing upstream dependencies with CMake FetchContent |
+| `OPENGLAD_FETCH_IXWEBSOCKET` | ON | Fetch pinned upstream IXWebSocket when no package is provided |
 
 ---
 

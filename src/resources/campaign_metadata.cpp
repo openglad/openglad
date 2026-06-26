@@ -12,12 +12,10 @@
 
 #include <openglad/resources/campaign_metadata.h>
 
+#include <openglad/resources/campaign_yaml.h>
 #include <openglad/resources/filesystem.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_file_io.h>
-#include <openglad/resources/og_file.h>
-#include <openglad/resources/ogfile_yaml.h>
-#include <openglad/resources/yaml_stream.h>
 
 #include <format>
 #include <map>
@@ -43,25 +41,12 @@ std::map<std::pair<std::string, int>, std::string>& scenario_name_cache()
 // Harvest the "title" scalar from a campaign.yaml visible at yaml_path.
 bool read_campaign_title(const char* yaml_path, std::string& out_title)
 {
-    auto infile = og::io::og_open_read(yaml_path);
-    if (!infile)
+    CampaignYaml metadata;
+    if (read_campaign_yaml(yaml_path, metadata) == CampaignYamlReadResult::OpenFailed)
         return false;
 
-    og::io::YamlParser yaml;
-    yaml.set_input(ogfile_read_handler, infile.get());
-
-    bool found = false;
-    while (yaml.parse_next() == og::io::YamlParseResult::Ok)
-    {
-        const og::io::YamlEvent& ev = yaml.event();
-        if (ev.type == og::io::YamlEventType::Pair && ev.scalar == "title")
-        {
-            out_title = ev.value;
-            found = true;
-        }
-    }
-    yaml.close_input();
-    return found;
+    out_title = metadata.title;
+    return metadata.saw_title;
 }
 
 std::string lookup_campaign_title(const std::string& campaign_id)
