@@ -22,7 +22,7 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/gameplay_context.h>
 
-#define MAKE_STATE(x, y) reinterpret_cast<MicroPatherState>(static_cast<intptr_t>(((y) / GRID_SIZE) * MAP_WIDTH + ((x) / GRID_SIZE)))
+#define MAKE_STATE(x, y) reinterpret_cast<PathState>(static_cast<intptr_t>(((y) / GRID_SIZE) * MAP_WIDTH + ((x) / GRID_SIZE)))
 #define ALIGN_TO_GRID(x) ((x) / GRID_SIZE * GRID_SIZE)
 
 void walker::find_path_to_foe()
@@ -35,8 +35,8 @@ void walker::find_path_to_foe()
         return;
 
     float total_cost = 0.0f;
-    const MicroPatherState start_state = MAKE_STATE(xpos(), ypos());
-    const MicroPatherState end_state = MAKE_STATE(foe()->xpos(), foe()->ypos());
+    const PathState start_state = MAKE_STATE(xpos(), ypos());
+    const PathState end_state = MAKE_STATE(foe()->xpos(), foe()->ypos());
 
     pathing->solve_for(this, start_state, end_state, path_to_foe, total_cost);
 }
@@ -53,8 +53,8 @@ void walker::find_path_to_point(short x, short y)
         return;
 
     float total_cost = 0.0f;
-    const MicroPatherState start_state = MAKE_STATE(xpos(), ypos());
-    const MicroPatherState end_state = MAKE_STATE(x, y);
+    const PathState start_state = MAKE_STATE(xpos(), ypos());
+    const PathState end_state = MAKE_STATE(x, y);
 
     pathing->solve_for_point(this, x, y, start_state, end_state, path_to_foe,
                              total_cost);
@@ -65,7 +65,7 @@ void walker::follow_path_to_foe()
     while (!path_to_foe.empty())
     {
         auto node = path_to_foe.begin();
-        const MicroPatherState state = *node;
+        const PathState state = *node;
         int dx = GET_STATE_X(state) - ALIGN_TO_GRID(xpos());
         int dy = GET_STATE_Y(state) - ALIGN_TO_GRID(ypos());
 

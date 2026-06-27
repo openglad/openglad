@@ -276,7 +276,7 @@ TEST(CtfAi, find_path_to_point_solves_around_wall)
     ASSERT_FALSE(runner->path_to_foe.empty()) << "a route around the wall exists";
 
     bool touches_wall = false;
-    for (const MicroPatherState state : runner->path_to_foe)
+    for (const PathState state : runner->path_to_foe)
     {
         const int gx = GET_STATE_X(state) / GRID_SIZE;
         const int gy = GET_STATE_Y(state) / GRID_SIZE;
@@ -285,7 +285,7 @@ TEST(CtfAi, find_path_to_point_solves_around_wall)
     }
     ASSERT_FALSE(touches_wall) << "no path node may sit on a wall tile";
 
-    const MicroPatherState last = runner->path_to_foe.back();
+    const PathState last = runner->path_to_foe.back();
     ASSERT_EQ(304 / GRID_SIZE, GET_STATE_X(last) / GRID_SIZE);
     ASSERT_EQ(160 / GRID_SIZE, GET_STATE_Y(last) / GRID_SIZE);
 
@@ -296,7 +296,7 @@ TEST(CtfAi, find_path_to_point_solves_around_wall)
     runner->set_foe(foe);
     runner->find_path_to_foe();
     ASSERT_FALSE(runner->path_to_foe.empty());
-    const MicroPatherState foe_last = runner->path_to_foe.back();
+    const PathState foe_last = runner->path_to_foe.back();
     ASSERT_EQ(480 / GRID_SIZE, GET_STATE_Y(foe_last) / GRID_SIZE);
 }
 

@@ -88,54 +88,11 @@
           };
         };
 
-      mkMicroPather =
-        pkgs:
-        pkgs.stdenv.mkDerivation {
-          pname = "micropather";
-          version = "2016-10-18-unstable";
-
-          src = pkgs.fetchFromGitHub {
-            owner = "leethomason";
-            repo = "MicroPather";
-            rev = "33a3b8403f1bc3937c9d364fe6c3977169bee3b5";
-            hash = "sha256-xfvzizUV53jrDc6IxPX0qAcbmhDMuOsolJwfO1jTxos=";
-          };
-
-          dontConfigure = true;
-
-          postPatch = ''
-            substituteInPlace micropather.h \
-              --replace-fail '#define GRINLIZ_NO_STL' '/* OpenGlad uses MicroPather STL mode. */'
-          '';
-
-          buildPhase = ''
-            runHook preBuild
-            $CXX -std=c++20 -O2 -fPIC -c micropather.cpp -o micropather.o
-            ar rcs libmicropather.a micropather.o
-            runHook postBuild
-          '';
-
-          installPhase = ''
-            runHook preInstall
-            install -Dm644 micropather.h "$out/include/micropather.h"
-            install -Dm644 libmicropather.a "$out/lib/libmicropather.a"
-            runHook postInstall
-          '';
-
-          meta = {
-            description = "Small A* pathfinding library";
-            homepage = "https://github.com/leethomason/MicroPather";
-            license = pkgs.lib.licenses.zlib;
-            platforms = systems;
-          };
-        };
-
       mkOpenGlad =
         pkgs:
         let
           ixwebsocketHead = mkIXWebSocket pkgs;
           lodepngHead = mkLodePNG pkgs;
-          microPatherHead = mkMicroPather pkgs;
         in
         pkgs.stdenv.mkDerivation {
           pname = "openglad";
@@ -162,7 +119,6 @@
             libzip
             lodepngHead
             libsndfile
-            microPatherHead
             ncurses
             physfs
             zlib
@@ -230,7 +186,6 @@
         let
           ixwebsocketHead = mkIXWebSocket pkgs;
           lodepngHead = mkLodePNG pkgs;
-          microPatherHead = mkMicroPather pkgs;
         in
         pkgs.mkShell {
           packages = with pkgs; [
@@ -254,7 +209,6 @@
             libsndfile
             lodepngHead
             lcov
-            microPatherHead
             ninja
             ncurses
             physfs
@@ -264,7 +218,7 @@
           ];
 
           shellHook = ''
-            export CMAKE_PREFIX_PATH="${lodepngHead}:${microPatherHead}''${CMAKE_PREFIX_PATH:+:}''${CMAKE_PREFIX_PATH:-}"
+            export CMAKE_PREFIX_PATH="${lodepngHead}''${CMAKE_PREFIX_PATH:+:}''${CMAKE_PREFIX_PATH:-}"
             echo "OpenGlad dev shell"
             echo "  Build:  cmake --preset dev-debug && cmake --build --preset dev-debug"
             echo "  Launch: ./build/dev-debug/openglad"
@@ -282,7 +236,6 @@
           default = mkOpenGlad pkgs;
           ixwebsocket = mkIXWebSocket pkgs;
           lodepng = mkLodePNG pkgs;
-          micropather = mkMicroPather pkgs;
           openglad = mkOpenGlad pkgs;
         }
       );

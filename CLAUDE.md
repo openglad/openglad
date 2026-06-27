@@ -90,8 +90,9 @@ Dependencies flow inward: `og_platform_sdl → og_interface → og_resources →
 ### Key Rules
 
 - **External dependency headers stay behind implementation boundaries.** PhysFS,
-  libzip, libyaml, and lodepng are isolated in resources IO; MicroPather is
-  isolated in gameplay. Enforced by `scripts/check_vendor_leaks.sh`.
+  libzip, libyaml, and lodepng are isolated in resources IO. Enforced by
+  `scripts/check_vendor_leaks.sh`. A* pathfinding is first-party
+  (`og::pathfinding::AStar` in gameplay), not a vendored library.
 - **RAII ownership.** `GameSession` is the root owner of screen, prefs, RNG. Use `std::unique_ptr<T>` for owning pointers, `T&`/`T*` for non-owning borrows.
 
 ## Key Data Structures
@@ -121,7 +122,6 @@ GameContext (DI container) → screen*, prefs*, cfg*, IRandom*, InputState
 | libzip | ZIP archive I/O for campaigns |
 | libyaml 0.2.5 | YAML parser for configuration |
 | libyaml users | Resource-level YAML readers/writers over libyaml |
-| MicroPather | A* pathfinding |
 | IXWebSocket | WebSocket transport for networked multiplayer |
 | LodePNG | PNG codec for indexed-color sprite assets |
 

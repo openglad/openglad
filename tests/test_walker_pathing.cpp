@@ -39,9 +39,9 @@ private:
     GameplayContext* previous_ = nullptr;
 };
 
-MicroPatherState make_state(int x, int y)
+PathState make_state(int x, int y)
 {
-    return reinterpret_cast<MicroPatherState>(
+    return reinterpret_cast<PathState>(
         static_cast<intptr_t>(((y / GRID_SIZE) * MAP_WIDTH) + (x / GRID_SIZE)));
 }
 } // namespace
@@ -146,7 +146,7 @@ TEST(WalkerPathing, direct_solver_returns_expected_route_and_cost)
     if (!pathing)
         return;
 
-    std::vector<MicroPatherState> path;
+    std::vector<PathState> path;
     float total_cost = 0.0f;
     pathing->solve_for(actor, make_state(actor->xpos(), actor->ypos()),
                        make_state(foe->xpos(), foe->ypos()), path, total_cost);
