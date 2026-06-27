@@ -38,10 +38,10 @@ namespace og::gameplay {
 class IRenderComponent;
 }
 
-// Opaque state type used by MicroPather for pathfinding nodes.
-// States are encoded grid coordinates (not real pointers), but the
-// micropather library API requires void*.
-using MicroPatherState = void*;
+// Opaque state type for pathfinding nodes. States are encoded grid coordinates
+// (not real pointers); the A* solver treats them as opaque handles and never
+// dereferences them. See <openglad/gameplay/astar.h>.
+using PathState = void*;
 
 class walker : public og::sim::SimEntity
 {
@@ -269,7 +269,7 @@ class walker : public og::sim::SimEntity
 		// animate() so a snapshot/save-controlled ani_type/curdir cannot read past
 		// the end of a short table. Set by loader::set_walker; 0 until then.
 		int ani_count = 0;
-		std::vector<MicroPatherState> path_to_foe;  // Result from pathfinding
+		std::vector<PathState> path_to_foe;  // Result from pathfinding
 		std::list<DamageNumber> damage_numbers;
 
 	protected:

@@ -20,8 +20,11 @@ package build configures with `OPENGLAD_REQUIRE_SYSTEM_DEPS=ON` and
 | libyaml | `PkgConfig::OG_LIBYAML`, `yaml::yaml`, or `yaml` | `0.2.5` | https://github.com/yaml/libyaml |
 | PhysFS | `PhysFS::PhysFS`, `PhysFS::physfs`, `unofficial::physfs::physfs`, `physfs`, or `PkgConfig::OG_PHYSFS` | `release-3.2.0` | https://github.com/icculus/physfs |
 | lodepng | `lodepng` library plus `lodepng.h` | `ed6fe5825c6a4fbb7f58ab35a4231c7543cd452a` | https://github.com/lvandeve/lodepng |
-| MicroPather | `micropather` library plus `micropather.h` | `33a3b8403f1bc3937c9d364fe6c3977169bee3b5` | https://github.com/leethomason/MicroPather |
 | IXWebSocket | `ixwebsocket::ixwebsocket` or `ixwebsocket` | `64fae7676bd8fe31f7cb4bcde7a6841892dad65e` | https://github.com/machinezone/IXWebSocket |
+
+A* pathfinding no longer depends on the third-party MicroPather library: it is
+provided by the first-party `og::pathfinding::AStar` solver in
+`src/gameplay/astar.cpp` (header `include/openglad/gameplay/astar.h`).
 
 `src/resources/campaign_yaml.cpp` and `src/resources/gparser.cpp` use libyaml
 directly so YAML mechanics stay behind resource-level APIs.

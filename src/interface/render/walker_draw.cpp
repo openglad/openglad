@@ -726,7 +726,7 @@ void draw_walker_path(walker& w, viewscreen* view_buf)
     const Sint32 offsetx = view_buf->topx - view_buf->xloc - 8;
     const Sint32 offsety = view_buf->topy - view_buf->yloc - 8;
 
-    std::vector<MicroPatherState>::iterator e = w.path_to_foe.begin();
+    std::vector<PathState>::iterator e = w.path_to_foe.begin();
     int px = GET_STATE_X(*e) - offsetx;
     int py = GET_STATE_Y(*e) - offsety;
     while (e != w.path_to_foe.end())

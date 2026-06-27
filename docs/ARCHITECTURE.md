@@ -703,7 +703,7 @@ ctest --preset ci-test         # Run tests
 `og_core`, `og_gameplay`, `og_resources`, `og_interface`, `og_platform_sdl`
 
 **External libraries:**
-`og_ext_micropather`, `og_ext_lodepng`, `og_ext_yaml`, `og_ext_zlib`, `og_ext_libzip`, `og_ext_physfs`, `og_ext_ixwebsocket`
+`og_ext_lodepng`, `og_ext_yaml`, `og_ext_zlib`, `og_ext_libzip`, `og_ext_physfs`, `og_ext_ixwebsocket`
 
 **Aggregate target:**
 `og_game` — INTERFACE library linking all component libraries with `--start-group`/`--end-group` for cyclic resolution.

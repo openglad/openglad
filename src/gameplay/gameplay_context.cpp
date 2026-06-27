@@ -8,12 +8,11 @@
 
 #include <openglad/gameplay/gameplay_context.h>
 
+#include <openglad/gameplay/astar.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/pathfinding_grid.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/game_world.h>
-
-#include "micropather.h"
 
 #include <cstdlib>
 
@@ -62,7 +61,7 @@ float deterministic_path_distance(std::int32_t dx, std::int32_t dy)
     return static_cast<float>(fixed_distance) * kSqrtFixedScaleInv;
 }
 
-class PathingMap final : public micropather::Graph
+class PathingMap final : public og::pathfinding::Graph
 {
 public:
     struct Owner
@@ -78,7 +77,7 @@ public:
     {
     }
 
-    float LeastCostEstimate(void* state_start, void* state_end) override
+    float least_cost_estimate(void* state_start, void* state_end) override
     {
         const int x1 = GET_STATE_X(state_start);
         const int y1 = GET_STATE_Y(state_start);
@@ -88,8 +87,8 @@ public:
         return deterministic_path_distance(x2 - x1, y2 - y1);
     }
 
-    void AdjacentCost(void* state,
-                      std::vector<micropather::StateCost>* adjacent) override
+    void adjacent_cost(void* state,
+                       std::vector<og::pathfinding::StateCost>& adjacent) override
     {
         if (!owner_ || !owner_->active_walker ||
             (owner_->active_walker->foe() == nullptr && !owner_->has_goal) ||
@@ -121,7 +120,7 @@ public:
                 const int adj_x = x1 + i * GRID_SIZE;
                 const int adj_y = y1 + j * GRID_SIZE;
 
-                micropather::StateCost cost;
+                og::pathfinding::StateCost cost;
                 cost.state = MAKE_STATE(adj_x, adj_y);
                 cost.cost = 0;
 
@@ -151,12 +150,10 @@ public:
                 const int cross = dx1 * dy2 - dx2 * dy1;
                 cost.cost += static_cast<float>(std::abs(cross)) * 0.01f;
 
-                adjacent->push_back(cost);
+                adjacent.push_back(cost);
             }
         }
     }
-
-    void PrintStateInfo(void* /*state*/) override {}
 
 private:
     Owner* owner_ = nullptr;
@@ -168,7 +165,7 @@ struct GameplayPathfindingState::Impl
 {
     PathingMap::Owner owner;
     PathingMap map{&owner};
-    micropather::MicroPather pather{&map};
+    og::pathfinding::AStar pather{map};
 };
 
 thread_local GameplayContext* current_game = nullptr;
@@ -199,8 +196,8 @@ void GameplayPathfindingState::solve_for(walker* owner,
 
     impl_->owner.active_walker = owner;
     impl_->owner.has_goal = false;
-    impl_->pather.Reset();
-    (void)impl_->pather.Solve(start_state, end_state, &path_out, &total_cost);
+    // solve() resets its own per-search state while retaining scratch capacity.
+    (void)impl_->pather.solve(start_state, end_state, path_out, total_cost);
 }
 
 void GameplayPathfindingState::solve_for_point(walker* owner,
@@ -221,8 +218,8 @@ void GameplayPathfindingState::solve_for_point(walker* owner,
     impl_->owner.goal_x = goal_x;
     impl_->owner.goal_y = goal_y;
     impl_->owner.has_goal = true;
-    impl_->pather.Reset();
-    (void)impl_->pather.Solve(start_state, end_state, &path_out, &total_cost);
+    // solve() resets its own per-search state while retaining scratch capacity.
+    (void)impl_->pather.solve(start_state, end_state, path_out, total_cost);
     impl_->owner.has_goal = false;
 }
 

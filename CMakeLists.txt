@@ -47,7 +47,6 @@ option(OPENGLAD_FETCH_LIBYAML "Fetch libyaml from upstream when no package targe
 option(OPENGLAD_FETCH_LIBZIP "Fetch libzip from upstream when no package target is available" ${OPENGLAD_FETCH_DEPS})
 option(OPENGLAD_FETCH_PHYSFS "Fetch PhysFS from upstream when no package target is available" ${OPENGLAD_FETCH_DEPS})
 option(OPENGLAD_FETCH_LODEPNG "Fetch lodepng from upstream when no package target is available" ${OPENGLAD_FETCH_DEPS})
-option(OPENGLAD_FETCH_MICROPATHER "Fetch MicroPather from upstream when no package target is available" ${OPENGLAD_FETCH_DEPS})
 option(OPENGLAD_FETCH_IXWEBSOCKET "Fetch IXWebSocket from upstream when no package target is available" ${OPENGLAD_FETCH_DEPS})
 option(OPENGLAD_USE_PACKAGED_IXWEBSOCKET "Prefer an installed IXWebSocket package over fetching the pinned upstream commit" ON)
 set(OPENGLAD_ZLIB_GIT_REPOSITORY "https://github.com/madler/zlib.git" CACHE STRING "zlib upstream repository")
@@ -60,8 +59,6 @@ set(OPENGLAD_PHYSFS_GIT_REPOSITORY "https://github.com/icculus/physfs.git" CACHE
 set(OPENGLAD_PHYSFS_GIT_TAG "release-3.2.0" CACHE STRING "PhysFS upstream tag/commit to use when fetching")
 set(OPENGLAD_LODEPNG_GIT_REPOSITORY "https://github.com/lvandeve/lodepng.git" CACHE STRING "lodepng upstream repository")
 set(OPENGLAD_LODEPNG_GIT_TAG "ed6fe5825c6a4fbb7f58ab35a4231c7543cd452a" CACHE STRING "lodepng upstream commit to use when fetching")
-set(OPENGLAD_MICROPATHER_GIT_REPOSITORY "https://github.com/leethomason/MicroPather.git" CACHE STRING "MicroPather upstream repository")
-set(OPENGLAD_MICROPATHER_GIT_TAG "33a3b8403f1bc3937c9d364fe6c3977169bee3b5" CACHE STRING "MicroPather upstream commit to use when fetching")
 set(OPENGLAD_IXWEBSOCKET_GIT_REPOSITORY "https://github.com/machinezone/IXWebSocket.git" CACHE STRING "IXWebSocket upstream repository")
 set(OPENGLAD_IXWEBSOCKET_GIT_TAG "64fae7676bd8fe31f7cb4bcde7a6841892dad65e" CACHE STRING "IXWebSocket upstream commit to use when fetching")
 set(SANITIZERS "address;undefined" CACHE STRING "Sanitizers to enable when ENABLE_SANITIZERS is ON")
@@ -278,6 +275,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/gameplay/net_transport.cpp
     ${SRC_DIR}/gameplay/net_transport_multiplex.cpp
     ${SRC_DIR}/gameplay/net_transport_inprocess.cpp
+    ${SRC_DIR}/gameplay/astar.cpp
     ${SRC_DIR}/gameplay/gameplay_context.cpp
     ${SRC_DIR}/gameplay/game_world.cpp
     ${SRC_DIR}/gameplay/ctf/ctf.cpp
@@ -407,6 +405,7 @@ set(OG_RUNTIME_SOURCES
     ${SRC_DIR}/interface/platform_bridge.cpp
     ${SRC_DIR}/interface/guy_create.cpp
     ${SRC_DIR}/gameplay/stats.cpp
+    ${SRC_DIR}/gameplay/astar.cpp
     ${SRC_DIR}/gameplay/gameplay_context.cpp
     ${SRC_DIR}/gameplay/game_world.cpp
     ${SRC_DIR}/gameplay/sim_input_handler.cpp
@@ -487,6 +486,7 @@ set(OG_GAMEPLAY_COMPONENT_SOURCES
     ${OG_ENTITIES_SOURCES}
     ${SRC_DIR}/gameplay/net_transport_multiplex.cpp
     ${SRC_DIR}/gameplay/stats.cpp
+    ${SRC_DIR}/gameplay/astar.cpp
     ${SRC_DIR}/gameplay/gameplay_context.cpp
     ${SRC_DIR}/gameplay/game_world.cpp
     ${SRC_DIR}/gameplay/ctf/ctf.cpp
@@ -701,7 +701,6 @@ set(OG_LIBYAML_FROM_FETCH OFF)
 set(OG_LIBZIP_FROM_FETCH OFF)
 set(OG_PHYSFS_FROM_FETCH OFF)
 set(OG_LODEPNG_FROM_FETCH OFF)
-set(OG_MICROPATHER_FROM_FETCH OFF)
 set(OG_ZLIB_FETCH_TARGET "")
 set(OG_LIBYAML_FETCH_TARGET "")
 set(OG_LIBZIP_FETCH_TARGET "")
@@ -763,18 +762,6 @@ if(OPENGLAD_USE_SYSTEM_DEPS AND NOT EMSCRIPTEN)
     find_path(OG_SYSTEM_LODEPNG_INCLUDE_DIR NAMES lodepng.h)
     find_library(OG_SYSTEM_LODEPNG_LIBRARY NAMES lodepng)
 
-    find_path(OG_SYSTEM_MICROPATHER_INCLUDE_DIR NAMES micropather.h)
-    find_library(OG_SYSTEM_MICROPATHER_LIBRARY NAMES micropather)
-    if(OG_SYSTEM_MICROPATHER_INCLUDE_DIR)
-        file(READ "${OG_SYSTEM_MICROPATHER_INCLUDE_DIR}/micropather.h" OG_MICROPATHER_HEADER)
-        if(OG_MICROPATHER_HEADER MATCHES "(^|\n)[ \t]*#[ \t]*define[ \t]+GRINLIZ_NO_STL")
-            message(STATUS "OpenGlad: ignoring system MicroPather because it is configured for MPVector instead of std::vector")
-            unset(OG_SYSTEM_MICROPATHER_INCLUDE_DIR CACHE)
-            unset(OG_SYSTEM_MICROPATHER_LIBRARY CACHE)
-            unset(OG_SYSTEM_MICROPATHER_INCLUDE_DIR)
-            unset(OG_SYSTEM_MICROPATHER_LIBRARY)
-        endif()
-    endif()
 endif()
 
 if(OPENGLAD_REQUIRE_SYSTEM_DEPS AND NOT OPENGLAD_USE_SYSTEM_DEPS AND NOT EMSCRIPTEN)
@@ -796,9 +783,6 @@ if(OPENGLAD_REQUIRE_SYSTEM_DEPS AND OPENGLAD_USE_SYSTEM_DEPS AND NOT EMSCRIPTEN)
     endif()
     if(NOT OG_SYSTEM_LODEPNG_INCLUDE_DIR OR NOT OG_SYSTEM_LODEPNG_LIBRARY)
         message(FATAL_ERROR "OPENGLAD_REQUIRE_SYSTEM_DEPS is ON but lodepng was not found")
-    endif()
-    if(NOT OG_SYSTEM_MICROPATHER_INCLUDE_DIR OR NOT OG_SYSTEM_MICROPATHER_LIBRARY)
-        message(FATAL_ERROR "OPENGLAD_REQUIRE_SYSTEM_DEPS is ON but MicroPather was not found")
     endif()
 endif()
 
@@ -980,40 +964,6 @@ else()
     message(FATAL_ERROR "lodepng was not found. Enable OPENGLAD_FETCH_LODEPNG or provide a package.")
 endif()
 
-if(OG_SYSTEM_MICROPATHER_INCLUDE_DIR AND OG_SYSTEM_MICROPATHER_LIBRARY)
-    add_library(og_ext_micropather INTERFACE)
-    target_include_directories(og_ext_micropather INTERFACE "${OG_SYSTEM_MICROPATHER_INCLUDE_DIR}")
-    target_link_libraries(og_ext_micropather INTERFACE "${OG_SYSTEM_MICROPATHER_LIBRARY}")
-    message(STATUS "OpenGlad: using system MicroPather (${OG_SYSTEM_MICROPATHER_LIBRARY})")
-elseif(OPENGLAD_FETCH_MICROPATHER)
-    FetchContent_Declare(micropather
-        GIT_REPOSITORY ${OPENGLAD_MICROPATHER_GIT_REPOSITORY}
-        GIT_TAG ${OPENGLAD_MICROPATHER_GIT_TAG}
-        GIT_SHALLOW FALSE
-        GIT_PROGRESS TRUE
-    )
-    FetchContent_MakeAvailable(micropather)
-    FetchContent_GetProperties(micropather)
-    file(READ "${micropather_SOURCE_DIR}/micropather.h" OG_MICROPATHER_HEADER)
-    string(REPLACE
-        "#define GRINLIZ_NO_STL"
-        "/* OpenGlad uses MicroPather's STL mode. */"
-        OG_MICROPATHER_HEADER
-        "${OG_MICROPATHER_HEADER}"
-    )
-    file(WRITE "${micropather_SOURCE_DIR}/micropather.h" "${OG_MICROPATHER_HEADER}")
-    add_library(og_ext_micropather STATIC "${micropather_SOURCE_DIR}/micropather.cpp")
-    configure_openglad_external_target(og_ext_micropather)
-    target_include_directories(og_ext_micropather PUBLIC
-        $<BUILD_INTERFACE:${micropather_SOURCE_DIR}>
-        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/openglad/external/micropather>
-    )
-    set(OG_MICROPATHER_FROM_FETCH ON)
-    message(STATUS "OpenGlad: using fetched MicroPather ${OPENGLAD_MICROPATHER_GIT_TAG}")
-else()
-    message(FATAL_ERROR "MicroPather was not found. Enable OPENGLAD_FETCH_MICROPATHER or provide a package.")
-endif()
-
 if(NOT EMSCRIPTEN)
     set(OG_NATIVE_SDL_AVAILABLE OFF)
     set(OG_NATIVE_SDL_REQUESTED ON)
@@ -1095,9 +1045,6 @@ set(OG_IO_EXTERNAL_LIBS
     og_ext_lodepng
 )
 
-set(OG_EXTERNAL_LIBS
-    og_ext_micropather
-)
 
 if(NOT EMSCRIPTEN)
     # --- component targets (Phase 12) ---
@@ -1115,7 +1062,7 @@ if(NOT EMSCRIPTEN)
 
     add_library(og_gameplay STATIC ${OG_GAMEPLAY_COMPONENT_SOURCES})
     configure_component_library(og_gameplay "${OG_GAMEPLAY_INCLUDE_ROOT}")
-    target_link_libraries(og_gameplay PUBLIC og_core ${OG_EXTERNAL_LIBS} og_ext_zlib)
+    target_link_libraries(og_gameplay PUBLIC og_core og_ext_zlib)
 
     add_library(og_resources STATIC ${OG_RESOURCES_COMPONENT_SOURCES})
     configure_component_library(og_resources "${OG_RESOURCES_INCLUDE_ROOT}")
@@ -1264,6 +1211,7 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/resources/our_palette.cpp
         # runtime (SDL-free subset)
         ${SRC_DIR}/platform/game_context.cpp
+        ${SRC_DIR}/gameplay/astar.cpp
         ${SRC_DIR}/gameplay/gameplay_context.cpp
         ${SRC_DIR}/gameplay/game_world.cpp
         ${SRC_DIR}/gameplay/ctf/ctf.cpp
@@ -1308,7 +1256,6 @@ if(NOT EMSCRIPTEN)
     target_link_libraries(openglad_text PRIVATE
         project_warnings
         project_sanitizers
-        og_ext_micropather
         ${OG_IO_EXTERNAL_LIBS}
         m
         pthread
@@ -1449,7 +1396,6 @@ if(NOT EMSCRIPTEN)
         og_resources
         og_interface
         og_platform_sdl
-        og_ext_micropather
         og_ext_lodepng
         og_ext_yaml
         og_ext_zlib
@@ -1517,13 +1463,6 @@ if(NOT EMSCRIPTEN)
         install(FILES
             ${lodepng_SOURCE_DIR}/lodepng.h
             DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/openglad/external/lodepng
-        )
-    endif()
-
-    if(OG_MICROPATHER_FROM_FETCH)
-        install(FILES
-            ${micropather_SOURCE_DIR}/micropather.h
-            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/openglad/external/micropather
         )
     endif()
 
@@ -1969,7 +1908,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
         configure_openglad_library(og_game_test)
         configure_openglad_sdl_target(og_game_test)
         target_compile_definitions(og_game_test PRIVATE TESTING)
-        target_link_libraries(og_game_test PUBLIC ${OG_EXTERNAL_LIBS} ${OG_IO_EXTERNAL_LIBS} og_runtime_deps)
+        target_link_libraries(og_game_test PUBLIC ${OG_IO_EXTERNAL_LIBS} og_runtime_deps)
         if(NOT EMSCRIPTEN)
             target_link_libraries(og_game_test PUBLIC og_ext_ixwebsocket)
         endif()
@@ -2302,6 +2241,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_frame_rate_config.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_frame_deadline_pacer.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_cadence.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_astar.cpp
         )
 
         og_add_unit_group(og_unit_sim FILES
@@ -2423,7 +2363,6 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests
         )
         target_link_libraries(og_unit_headless_platform PRIVATE
-            og_ext_micropather
             ${OG_IO_EXTERNAL_LIBS}
             GTest::gtest
             m
@@ -2782,7 +2721,7 @@ endif()
 	    add_library(og_game_web STATIC ${GAME_SOURCES_NO_MAIN})
 	    configure_openglad_library(og_game_web)
 	    configure_openglad_runtime_target(og_game_web)
-	    target_link_libraries(og_game_web PUBLIC ${OG_EXTERNAL_LIBS} ${OG_IO_EXTERNAL_LIBS})
+	    target_link_libraries(og_game_web PUBLIC ${OG_IO_EXTERNAL_LIBS})
 	    # Define __ASYNCIFY__ so that YIELD_SLEEP expands to emscripten_sleep()
 	    # instead of a no-op.  The -sASYNCIFY linker flag below enables the
 	    # Binaryen transform, but does not define the preprocessor macro.
