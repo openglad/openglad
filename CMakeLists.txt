@@ -609,6 +609,11 @@ function(configure_openglad_sdl_target target)
     if(NOT EMSCRIPTEN AND OG_NATIVE_SDL_AVAILABLE)
         # Opt-in SDL wiring: keeps gameplay-only targets free from platform deps.
         target_link_libraries(${target} PRIVATE PkgConfig::SDL2)
+        # Propagate the sdl2-compat detection (see the SDL2 find above) so test
+        # code can gate the SDL_TEXTINPUT-push workaround on OPENGLAD_SDL2_IS_COMPAT.
+        if(OG_SDL2_IS_COMPAT)
+            target_compile_definitions(${target} PRIVATE OPENGLAD_SDL2_IS_COMPAT)
+        endif()
     endif()
 endfunction()
 
@@ -976,6 +981,17 @@ if(NOT EMSCRIPTEN)
         pkg_check_modules(SDL2 QUIET IMPORTED_TARGET sdl2 SDL2_mixer)
         if(SDL2_FOUND)
             set(OG_NATIVE_SDL_AVAILABLE ON)
+            # sdl2-compat is an SDL2 API shim that runs on SDL3. Pushing a
+            # synthetic SDL_TEXTINPUT event onto its queue crashes the shim
+            # (SDL3 changed SDL_TextInputEvent::text from an inline char[32] to a
+            # heap const char*), so SDL-driven test code gates a direct-dispatch
+            # workaround on the OPENGLAD_SDL2_IS_COMPAT define. Detect the shim
+            # from the resolved package paths; real SDL2 never matches.
+            set(OG_SDL2_IS_COMPAT OFF)
+            if("${SDL2_INCLUDE_DIRS};${SDL2_LIBRARY_DIRS};${SDL2_LINK_LIBRARIES}" MATCHES "sdl2-compat")
+                set(OG_SDL2_IS_COMPAT ON)
+                message(STATUS "OpenGlad: detected sdl2-compat (SDL2-over-SDL3 shim); defining OPENGLAD_SDL2_IS_COMPAT for SDL targets")
+            endif()
         else()
             message(STATUS "SDL2/SDL2_mixer not found; SDL-native targets require SDL to build")
         endif()

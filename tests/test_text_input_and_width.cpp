@@ -1,6 +1,7 @@
 #include "SDL.h"
 #include <openglad/legacy/base.h>
 #include <openglad/interface/render/text.h>
+#include "test_input_helpers.h"
 #include <gtest/gtest.h>
 
 #include <optional>
@@ -14,13 +15,10 @@ static int injector_thread_return(void* data)
     SDL_Delay(50);
 
     // Enter some text, then commit with Return.
-    SDL_Event ev{};
-    ev.type = SDL_TEXTINPUT;
-    SDL_strlcpy(ev.text.text, "ab", sizeof(ev.text.text));
-    SDL_PushEvent(&ev);
+    inject_text_input("ab");
 
     SDL_Delay(20);
-    ev = SDL_Event{};
+    SDL_Event ev{};
     ev.type = SDL_KEYDOWN;
     ev.key.keysym.sym = SDLK_RETURN;
     SDL_PushEvent(&ev);
