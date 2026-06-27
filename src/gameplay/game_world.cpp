@@ -123,6 +123,17 @@ GameWorld::~GameWorld()
 {
     if (detach_callback_)
         detach_callback_();
+
+    // Destroy the entity lists here, in the destructor body, while myobmap is
+    // still alive: each ~walker deregisters from owning_world->myobmap, so the
+    // obmap must outlive the walkers. Member destruction order alone would free
+    // myobmap (declared last) before oblist, leaving ~walker to touch a freed
+    // obmap. Worlds torn down via delete_objects()/clear() first hit empty
+    // lists here, so this is a no-op for them.
+    oblist.clear();
+    fxlist.clear();
+    weaplist.clear();
+    dead_list.clear();
 }
 
 GameWorld::EntityList::EntityList(GameWorld* owner, bool participates_in_id_index)
