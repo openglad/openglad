@@ -176,10 +176,7 @@ static int editor_injector_thread(void* data)
     event.window.event = SDL_WINDOWEVENT_EXPOSED;
     SDL_PushEvent(&event);
 
-    event = SDL_Event{};
-    event.type = SDL_TEXTINPUT;
-    SDL_strlcpy(event.text.text, "x", sizeof(event.text.text));
-    SDL_PushEvent(&event);
+    inject_text_input("x");
 
     event = SDL_Event{};
     event.type = SDL_MOUSEWHEEL;

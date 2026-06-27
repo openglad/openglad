@@ -2,6 +2,7 @@
 #include <openglad/legacy/base.h>
 #include <gtest/gtest.h>
 #include <SDL.h>
+#include "test_input_helpers.h"
 
 #include <optional>
 #include <string>
@@ -28,10 +29,7 @@ static int injector_thread_backspace_text_and_return(void* data)
     SDL_PushEvent(&ev);
 
     SDL_Delay(10);
-    ev = SDL_Event{};
-    ev.type = SDL_TEXTINPUT;
-    SDL_strlcpy(ev.text.text, "xy", sizeof(ev.text.text));
-    SDL_PushEvent(&ev);
+    inject_text_input("xy");
 
     SDL_Delay(10);
     ev = SDL_Event{};

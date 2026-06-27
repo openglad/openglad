@@ -89,10 +89,7 @@ int prompt_block_editing_injector(void* data)
     inject_key_press(SDLK_LEFT, 20);
     inject_key_press(SDLK_DELETE, 20);
 
-    SDL_Event text_event{};
-    text_event.type = SDL_TEXTINPUT;
-    SDL_strlcpy(text_event.text.text, "Z", sizeof(text_event.text.text));
-    SDL_PushEvent(&text_event);
+    inject_text_input("Z");
 
     SDL_Delay(40);
     MouseState& m = query_mouse_no_poll();
