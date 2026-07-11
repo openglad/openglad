@@ -336,6 +336,14 @@ def main():
 </head>
 <body>
 <h1>OpenGlad &mdash; Multifloor Special Effects Review</h1>
+<p style="text-align:center;margin:0.2rem 0 0.8rem;">
+  <a href="play/play.html" style="display:inline-block;background:#f0c060;color:#14161a;
+     font-weight:bold;padding:0.55rem 1.6rem;border-radius:6px;text-decoration:none;
+     letter-spacing:.05em;">&#9654;&nbsp;PLAY THIS BUILD IN YOUR BROWSER</a>
+</p>
+<p class="sub" style="margin-top:0;">The Play link appears when a WebAssembly build
+(scripts/build_web.sh) has been copied to <code>site/play/</code>; it runs this exact
+branch, campaigns included.</p>
 <p class="sub">All frames come from the real engine at 320&times;200 (upscaled 2&times;) with live palette cycling. All animations loop.</p>
 {section_html}
 </body>
