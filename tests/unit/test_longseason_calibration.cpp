@@ -148,14 +148,21 @@ TEST_F(LongSeasonCalibration, curve_crew_survival_floors_at_600_ticks)
     // ThreadSanitizer (the one clang lane) the sim's floating-point codegen
     // diverges just enough that these chaotic 600-tick battles drift off the
     // pinned floors — a compiler-determinism property, not a thread-safety
-    // one. The suite finds no races (single-threaded sim) and costs ~4 min
-    // under TSan, so it is skipped there; the ci-test/coverage/ASan (GCC)
-    // lanes enforce the pins.
-#if defined(__SANITIZE_THREAD__)
-    GTEST_SKIP() << "balance pins are GCC-lane contracts; skipped under TSan";
+    // one. The suite finds no races (single-threaded sim), so it is skipped
+    // there; the ci-test and coverage (GCC) lanes enforce the pins.
+    //
+    // Also skipped under AddressSanitizer, for BUDGET not correctness: the
+    // guard wake rule (2026-07-11) made these battles converge instead of
+    // holding posts, and at ASan's ~20x sim cost the two calibration suites
+    // pushed the ASan+UBSan job past its 30-minute cap (see the identical
+    // block in test_westlands_calibration.cpp for the full accounting).
+#if defined(__SANITIZE_THREAD__) || defined(__SANITIZE_ADDRESS__)
+    GTEST_SKIP() << "balance pins are enforced on the ci-test/coverage lanes; "
+                    "skipped under TSan (float drift) and ASan (job budget)";
 #elif defined(__has_feature)
-#if __has_feature(thread_sanitizer)
-    GTEST_SKIP() << "balance pins are GCC-lane contracts; skipped under TSan";
+#if __has_feature(thread_sanitizer) || __has_feature(address_sanitizer)
+    GTEST_SKIP() << "balance pins are enforced on the ci-test/coverage lanes; "
+                    "skipped under TSan (float drift) and ASan (job budget)";
 #endif
 #endif
 

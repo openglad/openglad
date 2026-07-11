@@ -2661,6 +2661,15 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
         # deadlocking, so it completes given headroom). 600s keeps it green without
         # masking a genuine hang.
         set_tests_properties(og_unit_sim PROPERTIES RUN_SERIAL TRUE TIMEOUT 600)
+        # og_unit_data runs ~6s in ci-test but its campaign/battle/round-trip
+        # suites multiply under instrumentation: the sanitizer/validation lane
+        # needed 420s (block below), and the COVERAGE lane crossed the 180s
+        # default on 2026-07-11 when the sprite-footprint and guard-policy
+        # round-trip suites landed (og_unit_data (Timeout) on the Coverage CI
+        # job). Give it the 420s budget in every lane instead of chasing the
+        # threshold lane by lane — the standard lane finishes 70x under it,
+        # and a genuine hang still trips well before the job cap.
+        set_tests_properties(og_unit_data PROPERTIES TIMEOUT 420)
         # The dedicated picker-network suite is tiny when it runs alone, but
         # its live host/join transport handoff can stall on 4-core CI runners
         # when CTest overlaps it with the other long-running integration
