@@ -3,12 +3,21 @@ version: 1
 effects:
   attack_lunge: on
   damage_numbers: off
+  depth_tint: on
+  dust: on
+  fire_glow: on
   heal_numbers: on
   hit_anim: on
   hit_flash: on
   hit_recoil: off
   mini_hp_bar: on
   gore: on
+  reflections: on
+  ripples: on
+  screen_shake: on
+  weather: on
+  shadows: on
+  trails: on
 graphics:
   fullscreen: on
   overscan_percentage: 0

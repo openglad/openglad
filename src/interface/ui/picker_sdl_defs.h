@@ -30,6 +30,12 @@ inline constexpr int32_t PICKER_NETWORKING_ACTION_WIDTH = 74;
 inline constexpr int32_t PICKER_NETWORKING_LABEL_GAP = 8;
 inline constexpr int32_t PICKER_NETWORKING_INSTRUCTION_GAP = 8;
 
+// CONTROLS subscreen header text position. Must clear the BACK button's
+// animated keyboard highlight (which extends up to 3px beyond the bevel) and
+// stay above the first player row; pinned by test_menu_layout.
+inline constexpr int32_t PICKER_CONTROLS_HEADER_X = 10;
+inline constexpr int32_t PICKER_CONTROLS_HEADER_Y = 28;
+
 // Forward declare button for menu descriptor arrays.
 struct button;
 
@@ -49,6 +55,12 @@ button* picker_main_options_buttons();
 int picker_main_options_button_count();
 button* picker_control_options_buttons();
 int picker_control_options_button_count();
+button* picker_gameplay_fx_options_buttons();
+int picker_gameplay_fx_options_button_count();
+button* picker_ui_fx_options_buttons();
+int picker_ui_fx_options_button_count();
+button* picker_graphics_fx_options_buttons();
+int picker_graphics_fx_options_button_count();
 button* picker_trainmenu_buttons();
 int picker_trainmenu_button_count();
 button* picker_hiremenu_buttons();

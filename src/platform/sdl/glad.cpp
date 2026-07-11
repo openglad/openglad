@@ -19,6 +19,7 @@
 #include <openglad/core/frame_rate_config.h>
 #include <openglad/core/runtime_trace.h>
 #include <openglad/core/version.h>
+#include <openglad/core/weather.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/input_state.h>
 #include <openglad/gameplay/statistics.h>
@@ -35,6 +36,7 @@
 #endif
 
 #include <openglad/legacy/colors.h>
+#include <chrono>
 #include <ctime>
 #include <openglad/resources/gparser.h>
 #include <string>
@@ -442,6 +444,12 @@ extern "C" EMSCRIPTEN_KEEPALIVE void openglad_web_boot()
 
 int main(int argc, char *argv[])
 {
+    // One-shot clock sample for the per-level weather roll nonce: real
+    // sessions vary between launches while test builds (TESTING excludes
+    // this main) keep the default 0 and roll deterministically from the
+    // level id alone.
+    og::set_weather_roll_nonce(static_cast<std::uint32_t>(
+        std::chrono::steady_clock::now().time_since_epoch().count()));
 #ifdef __EMSCRIPTEN__
     (void)argc;
     (void)argv;

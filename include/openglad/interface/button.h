@@ -184,6 +184,9 @@ Sint32 teams_toggle_ready();
 Sint32 level_editor();
 Sint32 main_options();
 Sint32 main_controls_options();
+Sint32 gameplay_fx_options();
+Sint32 ui_fx_options();
+Sint32 graphics_fx_options();
 Sint32 toggle_player_control_mode(Sint32 arg);
 Sint32 edit_player_keymap(Sint32 arg);
 std::string build_player_control_summary(int player_index);
@@ -267,6 +270,22 @@ enum class ButtonAction : Sint32
     TeamsPageFlip = 71,
     PickSpriteSheet = 72,
     ToggleFloorGhosting = 73,
+    // Runtime-only ids (never serialized): 74 was OpenEffectsSettings before
+    // the EFFECTS screen split into the three FX subscreens.
+    OpenGraphicsFxSettings = 74,
+    ToggleShadows = 75,
+    ToggleReflections = 76,
+    ToggleWeather = 77,
+    // 78 was ToggleRain: the Clouds/Rain pair merged into the single
+    // Weather toggle (cfg effects/weather). Value retired, do not reuse.
+    ToggleDust = 79,
+    ToggleDepthTint = 80,
+    ToggleTrails = 81,
+    ToggleFireGlow = 82,
+    ToggleRipples = 83,
+    ToggleScreenShake = 84,
+    OpenGameplayFxSettings = 85,
+    OpenUiFxSettings = 86,
 };
 
 inline constexpr Sint32 button_action_id(ButtonAction action)

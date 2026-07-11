@@ -15,12 +15,14 @@
 #include <openglad/gameplay/game_client.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/pathfinding_grid.h>
+#include <openglad/interface/render/effects.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/gameplay/smooth.h>
+#include <algorithm>
 #include <span>
 #include <cmath>
 
@@ -644,6 +646,133 @@ bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha)
 	if(og::runtime::current_session->debug_draw_paths_)
         draw_walker_path(w, view_buf);
 	return 1;
+}
+
+// ---- Multifloor FX: ground shadows + glass reflections (render-only) ----
+
+// Consistent light from the upper-left: shadows nudge +2px right. Soft blends
+// so the terrain reads through both effects.
+inline constexpr Sint32 SHADOW_NUDGE_X = 2;
+inline constexpr Uint8 SHADOW_ALPHA = 90;
+inline constexpr Uint8 REFLECTION_ALPHA = 80;
+
+// Alive Living/Weapon walkers cast shadows and reflections; phantoms and
+// invisible units cast neither (their FX must not give them away).
+static bool casts_ground_effects(const walker& w)
+{
+    const Order order = w.query_order();
+    if (order != Order::Living && order != Order::Weapon)
+        return false;
+    if (w.dead())
+        return false;
+    if (w.stats()->query_bit_flags(BIT_PHANTOM))
+        return false;
+    if (w.invisibility_left() > 0)
+        return false;
+    return w.bmp_data() != nullptr && w.sizex() > 0 && w.sizey() > 0;
+}
+
+// draw_walker's screen anchor INCLUDING the lunge/recoil offsets but
+// EXCLUDING the worldz raise: the ground-plane effects (shadows, reflections,
+// water ripples) anchor to the entity's spot on the floor plane while the
+// sprite itself may arc above it.
+void ground_plane_anchor(walker& w, viewscreen* view_buf,
+                         Sint32& xscreen, Sint32& yscreen)
+{
+    const WalkerRenderPosition draw_pos =
+        resolve_walker_render_position(w, view_buf->interpolation_alpha);
+    xscreen = static_cast<Sint32>(
+        draw_pos.worldx - static_cast<float>(view_buf->topx) +
+        static_cast<float>(view_buf->xloc));
+    yscreen = static_cast<Sint32>(
+        draw_pos.worldy - static_cast<float>(view_buf->topy) +
+        static_cast<float>(view_buf->yloc));
+
+    if(cfg.is_on("effects", "attack_lunge") && w.attack_lunge() > 0.0f)
+    {
+        const float dx = w.attack_lunge() * ATTACK_LUNGE_SIZE * cosf(w.attack_lunge_angle());
+        const float dy = w.attack_lunge() * ATTACK_LUNGE_SIZE * sinf(w.attack_lunge_angle());
+        xscreen += static_cast<Sint32>(dx);
+        yscreen += static_cast<Sint32>(dy);
+    }
+
+    if(cfg.is_on("effects", "hit_recoil") && w.hit_recoil() > 0.0f)
+    {
+        const float dx = w.hit_recoil() * HIT_RECOIL_SIZE * cosf(w.hit_recoil_angle());
+        const float dy = w.hit_recoil() * HIT_RECOIL_SIZE * sinf(w.hit_recoil_angle());
+        xscreen += static_cast<Sint32>(dx);
+        yscreen += static_cast<Sint32>(dy);
+    }
+}
+
+bool draw_walker_shadow(walker& w, viewscreen* view_buf)
+{
+    if (!casts_ground_effects(w))
+        return false;
+
+    Sint32 xscreen, yscreen;
+    ground_plane_anchor(w, view_buf, xscreen, yscreen);
+
+    og::runtime::current_session->myscreen_->walkputbuffer_shadow(
+        xscreen + SHADOW_NUDGE_X, yscreen, w.sizex(), w.sizey(),
+        view_buf->xloc, view_buf->yloc, view_buf->endx, view_buf->endy,
+        {w.bmp_data(), static_cast<size_t>(w.sizex() * w.sizey())},
+        SHADOW_ALPHA);
+    return true;
+}
+
+bool draw_walker_reflection(walker& w, viewscreen* view_buf,
+                            const PixieData& camera_grid)
+{
+    if (!casts_ground_effects(w) || !camera_grid.valid())
+        return false;
+
+    Sint32 xscreen, yscreen;
+    ground_plane_anchor(w, view_buf, xscreen, yscreen);
+
+    // Mirror across the ground plane: the flipped sprite's top-left lands one
+    // row below the feet, pushed further down by the height above the floor.
+    const Sint32 spritew = w.sizex();
+    const Sint32 spriteh = w.sizey();
+    const Sint32 refly = yscreen + spriteh + static_cast<Sint32>(w.worldz());
+
+    // Cheap pre-check: skip the per-pixel blit unless the (port-clipped)
+    // reflection rect covers at least one reflective camera-floor tile
+    // (glass or pure water, per reflective_tiles()).
+    const std::array<bool, 256>& mask = reflective_tiles();
+    const Sint32 gridw = camera_grid.w;
+    const Sint32 gridh = camera_grid.h;
+    const Sint32 wox = view_buf->topx - view_buf->xloc;
+    const Sint32 woy = view_buf->topy - view_buf->yloc;
+    const Sint32 x0 = std::max(xscreen, view_buf->xloc);
+    const Sint32 x1 = std::min(xscreen + spritew, view_buf->endx);
+    const Sint32 y0 = std::max(refly, view_buf->yloc);
+    const Sint32 y1 = std::min(refly + spriteh, view_buf->endy);
+    if (x0 >= x1 || y0 >= y1)
+        return false;
+    const Sint32 gx0 = std::max((x0 + wox) / GRID_SIZE, 0);
+    const Sint32 gx1 = std::min((x1 - 1 + wox) / GRID_SIZE, gridw - 1);
+    const Sint32 gy0 = std::max((y0 + woy) / GRID_SIZE, 0);
+    const Sint32 gy1 = std::min((y1 - 1 + woy) / GRID_SIZE, gridh - 1);
+    bool has_reflective = false;
+    for (Sint32 gy = gy0; gy <= gy1 && !has_reflective; gy++)
+        for (Sint32 gx = gx0; gx <= gx1; gx++)
+            if (mask[camera_grid.data[gx + gridw * gy]])
+            {
+                has_reflective = true;
+                break;
+            }
+    if (!has_reflective)
+        return false;
+
+    og::runtime::current_session->myscreen_->walkputbuffer_reflect(
+        xscreen, refly, spritew, spriteh,
+        view_buf->xloc, view_buf->yloc, view_buf->endx, view_buf->endy,
+        {w.bmp_data(), static_cast<size_t>(spritew * spriteh)},
+        w.query_team_color(), REFLECTION_ALPHA,
+        {camera_grid.data.get(), static_cast<size_t>(gridw * gridh)},
+        gridw, gridh, wox, woy, mask);
+    return true;
 }
 
 bool draw_walker_tile(walker& w, viewscreen* view_buf)

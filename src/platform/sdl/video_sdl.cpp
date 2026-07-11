@@ -1224,7 +1224,8 @@ void sdl_video::floor_layer_begin(Sint32 x, Sint32 y, Sint32 w, Sint32 h)
 
 void sdl_video::floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
                                 float scale, Sint32 cx, Sint32 cy,
-                                unsigned char alpha)
+                                unsigned char alpha,
+                                unsigned char tint_strength)
 {
     if (!E_Screen)
         return;
@@ -1291,25 +1292,57 @@ void sdl_video::floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
     if (floor_layer_scaled_)
     {
         SDL_FillRect(floor_layer_scaled_, &out, 0x00000000u);
-        if (SDL_SoftStretchLinear(floor_layer_, &src, floor_layer_scaled_, &out) == 0)
-        {
-            SDL_SetSurfaceAlphaMod(floor_layer_scaled_, alpha);
-            SDL_SetSurfaceBlendMode(floor_layer_scaled_, SDL_BLENDMODE_BLEND);
-            SDL_Rect dstpos = out;
-            SDL_BlitSurface(floor_layer_scaled_, &out, E_Screen->render, &dstpos);
-            smooth_ok = true;
-        }
+        smooth_ok = SDL_SoftStretchLinear(floor_layer_, &src,
+                                          floor_layer_scaled_, &out) == 0;
     }
-    if (!smooth_ok)
+    SDL_Surface* const composited = smooth_ok ? floor_layer_scaled_ : floor_layer_;
+    // Depth tint: blend every drawn layer pixel toward a cold blue-grey
+    // BEFORE compositing. A multiplicative color mod cannot shift hue on
+    // low-blue content (pure-green grass stayed pure green — the "tint" was
+    // invisible); blending toward a reference color reads as cold
+    // atmospheric depth on anything. The layer is repainted from scratch
+    // every floor pass, so this mutation cannot leak into later composites.
+    if (tint_strength > 0)
+    {
+        constexpr Uint8 kTintR = 58, kTintG = 74, kTintB = 140;
+        const int t = tint_strength;
+        SDL_LockSurface(composited);
+        const SDL_Rect& region = smooth_ok ? out : src;
+        for (int py = region.y; py < region.y + region.h; py++)
+        {
+            Uint32* row = reinterpret_cast<Uint32*>(
+                static_cast<Uint8*>(composited->pixels) +
+                py * composited->pitch);
+            for (int px = region.x; px < region.x + region.w; px++)
+            {
+                const Uint32 c = row[px];
+                Uint8 pr, pg, pb, pa;
+                SDL_GetRGBA(c, composited->format, &pr, &pg, &pb, &pa);
+                if (pa == 0)
+                    continue;
+                pr = static_cast<Uint8>(pr + ((kTintR - pr) * t) / 255);
+                pg = static_cast<Uint8>(pg + ((kTintG - pg) * t) / 255);
+                pb = static_cast<Uint8>(pb + ((kTintB - pb) * t) / 255);
+                row[px] = SDL_MapRGBA(composited->format, pr, pg, pb, pa);
+            }
+        }
+        SDL_UnlockSurface(composited);
+    }
+    SDL_SetSurfaceAlphaMod(composited, alpha);
+    SDL_SetSurfaceBlendMode(composited, SDL_BLENDMODE_BLEND);
+    if (smooth_ok)
+    {
+        SDL_Rect dstpos = out;
+        SDL_BlitSurface(composited, &out, E_Screen->render, &dstpos);
+    }
+    else
     {
         // Fallback (SoftStretchLinear unsupported): nearest-neighbour scaled
         // alpha blit straight from the layer. Still seam-free (one bitmap).
-        SDL_SetSurfaceAlphaMod(floor_layer_, alpha);
-        SDL_SetSurfaceBlendMode(floor_layer_, SDL_BLENDMODE_BLEND);
         SDL_Rect dst = out;
-        SDL_BlitScaled(floor_layer_, &src, E_Screen->render, &dst);
-        SDL_SetSurfaceAlphaMod(floor_layer_, 255);
+        SDL_BlitScaled(composited, &src, E_Screen->render, &dst);
     }
+    SDL_SetSurfaceAlphaMod(composited, 255);
 }
 
 
@@ -1441,6 +1474,113 @@ void sdl_video::walkputbuffer_alpha(Sint32 walkerstartx, Sint32 walkerstarty,
 			pointb(walkerstartx+curx,walkerstarty+cury,curcolor,alpha);
 		}
 		walkoff += walkshift;
+	}
+}
+
+// Ground-shadow blit: a vertically squashed (half-height) black silhouette,
+// bottom row one pixel below the sprite's feet. Iterates TARGET rows (each
+// samples every other source row bottom-up) so each destination pixel blends
+// exactly once despite two source rows collapsing onto one.
+void sdl_video::walkputbuffer_shadow(Sint32 walkerstartx, Sint32 walkerstarty,
+                          Sint32 walkerwidth, Sint32 walkerheight,
+                          Sint32 portstartx, Sint32 portstarty,
+                          Sint32 portendx, Sint32 portendy,
+                          std::span<const unsigned char> sourceptr, Uint8 alpha)
+{
+	Sint32 curx, t;
+	Sint32 xmin = 0, xmax = walkerwidth;
+	Sint32 shadowrows = (walkerheight+1)/2;
+
+	if (walkerstartx >= portendx || walkerstartx + walkerwidth <= portstartx)
+		return;
+	if (walkerstartx < portstartx) //clip the left edge of the view
+		xmin = portstartx - walkerstartx;
+	else if (walkerstartx + walkerwidth > portendx) //clip the right edge
+		xmax = portendx - walkerstartx;
+	if (xmax <= xmin || walkerheight <= 0)
+		return;
+
+	for (t = 0; t < shadowrows; t++)
+	{
+		// t=0 is the feet row, landing one pixel below the sprite's bottom.
+		Sint32 desty = walkerstarty + walkerheight - t;
+		if (desty < portstarty || desty >= portendy)
+			continue;
+		Sint32 walkoff = (walkerheight-1 - t*2) * walkerwidth;
+		for (curx = xmin; curx < xmax; curx++)
+		{
+			if (!sourceptr[walkoff + curx])
+				continue;
+			pointb(walkerstartx+curx, desty, PURE_BLACK, alpha);
+		}
+	}
+}
+
+// Reflection blit: the sprite vertically flipped (top-left at walkerstartx,
+// walkerstarty), team-recolored and alpha-blended, but a pixel is plotted
+// only where the underlying grid tile's id is marked in reflect_mask (glass
+// + pure water in production, per reflective_tiles()). world_offset_x/y
+// convert screen px to world px (topx - xloc, topy - yloc) for the grid
+// lookup.
+void sdl_video::walkputbuffer_reflect(Sint32 walkerstartx, Sint32 walkerstarty,
+                          Sint32 walkerwidth, Sint32 walkerheight,
+                          Sint32 portstartx, Sint32 portstarty,
+                          Sint32 portendx, Sint32 portendy,
+                          std::span<const unsigned char> sourceptr,
+                          unsigned char teamcolor, Uint8 alpha,
+                          std::span<const unsigned char> grid,
+                          Sint32 gridw, Sint32 gridh,
+                          Sint32 world_offset_x, Sint32 world_offset_y,
+                          std::span<const bool, 256> reflect_mask)
+{
+	Sint32 curx, cury;
+	unsigned char curcolor;
+	Sint32 xmin = 0, xmax= walkerwidth , ymin= 0 , ymax= walkerheight;
+	Sint32 totrows,rowsize;
+
+	if (walkerstartx >= portendx || walkerstarty >= portendy)
+		return;
+	if (walkerstartx < portstartx)
+	{
+		xmin = portstartx-walkerstartx;
+		walkerstartx = portstartx;
+	}
+	else if (walkerstartx + walkerwidth > portendx)
+		xmax = portendx - walkerstartx;
+	if (walkerstarty < portstarty)
+	{
+		ymin = portstarty-walkerstarty;
+		walkerstarty = portstarty;
+	}
+	else if (walkerstarty + walkerheight > portendy)
+		ymax = portendy - walkerstarty;
+
+	totrows = (ymax-ymin);
+	rowsize = (xmax-xmin);
+	if (totrows <= 0 || rowsize <= 0)
+		return;
+
+	for(cury = 0; cury < totrows;cury++)
+	{
+		// Vertical flip: the first target row samples the sprite's LAST row.
+		Sint32 walkoff = (walkerheight-1 - (ymin+cury)) * walkerwidth + xmin;
+		Sint32 desty = walkerstarty + cury;
+		for(curx=0;curx<rowsize;curx++)
+		{
+			curcolor = sourceptr[walkoff + curx];
+			if (!curcolor)
+				continue;
+			Sint32 destx = walkerstartx + curx;
+			Sint32 gx = (destx + world_offset_x) / GRID_SIZE;
+			Sint32 gy = (desty + world_offset_y) / GRID_SIZE;
+			if (gx < 0 || gx >= gridw || gy < 0 || gy >= gridh)
+				continue;
+			if (!reflect_mask[grid[gx + gridw*gy]])
+				continue;
+			if (curcolor > static_cast<unsigned char>(247))
+				curcolor = static_cast<unsigned char>(teamcolor+(255-curcolor));
+			pointb(destx, desty, curcolor, alpha);
+		}
 	}
 }
 

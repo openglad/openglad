@@ -552,6 +552,7 @@ void expect_world_snapshot_eq(const og::sim::WorldSnapshot& expected,
     EXPECT_EQ(expected.pending_exit_prompt, actual.pending_exit_prompt);
     EXPECT_EQ(expected.paused, actual.paused);
     EXPECT_EQ(expected.pause_player_index, actual.pause_player_index);
+    EXPECT_EQ(expected.weather, actual.weather);
     EXPECT_EQ(expected.grid_width, actual.grid_width);
     EXPECT_EQ(expected.grid_height, actual.grid_height);
     EXPECT_EQ(expected.grid_dirty, actual.grid_dirty);
@@ -1030,6 +1031,7 @@ TEST(WorldSnapshot, capture_snapshot_matches_live_world_and_drains_bookkeeping)
     world.pending_exit_prompt = true;
     world.paused = true;
     world.pause_player_index = 2;
+    world.set_weather(WeatherKind::Rain);
     world.m_score[0] = 100;
     world.m_score[1] = 200;
     world.m_score[2] = 300;
@@ -1057,6 +1059,7 @@ TEST(WorldSnapshot, capture_snapshot_matches_live_world_and_drains_bookkeeping)
     EXPECT_EQ(world.pending_exit_prompt, snapshot.pending_exit_prompt);
     EXPECT_EQ(world.paused, snapshot.paused);
     EXPECT_EQ(world.pause_player_index, snapshot.pause_player_index);
+    EXPECT_EQ(static_cast<std::uint8_t>(world.weather()), snapshot.weather);
     EXPECT_EQ(world.m_score[0], snapshot.m_score[0]);
     EXPECT_EQ(world.m_score[3], snapshot.m_score[3]);
 
@@ -1411,6 +1414,7 @@ TEST(WorldSnapshot, apply_snapshot_replaces_state_reorders_lists_and_skips_death
     source.pending_exit_prompt = true;
     source.paused = true;
     source.pause_player_index = 2;
+    source.set_weather(WeatherKind::Clouds);
     source.m_score[0] = 100;
     source.m_score[1] = 200;
     source.m_score[2] = 300;
@@ -1505,6 +1509,8 @@ TEST(WorldSnapshot, apply_snapshot_replaces_state_reorders_lists_and_skips_death
     EXPECT_EQ(source.pending_exit_prompt, actual.pending_exit_prompt);
     EXPECT_EQ(source.paused, actual.paused);
     EXPECT_EQ(source.pause_player_index, actual.pause_player_index);
+    EXPECT_EQ(WeatherKind::Clouds, mirror.weather())
+        << "apply_snapshot must install the captured weather kind";
     EXPECT_EQ(source.m_score[0], actual.m_score[0]);
     EXPECT_EQ(source.m_score[3], actual.m_score[3]);
     EXPECT_TRUE(actual.grid_dirty_tiles.empty());
@@ -1752,6 +1758,7 @@ TEST(WorldSnapshot, serialize_snapshot_roundtrip_preserves_keyframe_and_compress
     world.pending_exit_prompt = true;
     world.paused = true;
     world.pause_player_index = 2;
+    world.set_weather(WeatherKind::Clouds);
     world.m_score[0] = 111;
     world.m_score[1] = 222;
 
@@ -1812,6 +1819,49 @@ TEST(WorldSnapshot, guy_snapshot_roundtrip_preserves_owner_tags)
     EXPECT_EQ(5u, decoded.guy_snapshots.front().owner_save_slot);
 }
 
+// The per-level weather kind is world state on the wire: an authoritative
+// roll must reach a mirror world through the exact capture -> serialize ->
+// deserialize -> apply path clients use, and unknown wire values must clamp
+// to None instead of being trusted.
+TEST(WorldSnapshot, weather_kind_round_trips_from_authoritative_roll_to_mirror)
+{
+    TestGameWorld source_fx;
+    GameWorld& source = source_fx.world();
+    configure_snapshot_test_services(source);
+    source.resize_grid(32, 32);
+    fill_world_grid(source, PIX_GRASS1);
+
+    // Level id 7 is a pinned Rain roll under the default-0 nonce (see
+    // tests/unit/test_weather.cpp).
+    source.id = 7;
+    source.roll_weather();
+    ASSERT_EQ(WeatherKind::Rain, source.weather());
+
+    const og::sim::WorldSnapshot keyframe =
+        og::sim::capture_keyframe_snapshot(source);
+    EXPECT_EQ(static_cast<std::uint8_t>(WeatherKind::Rain), keyframe.weather);
+
+    const std::vector<std::uint8_t> bytes = og::sim::serialize_snapshot(keyframe);
+    const og::sim::WorldSnapshot decoded = og::sim::deserialize_snapshot(bytes);
+    EXPECT_EQ(keyframe.weather, decoded.weather);
+
+    TestGameWorld mirror_fx;
+    GameWorld& mirror = mirror_fx.world();
+    configure_snapshot_test_services(mirror);
+    ASSERT_EQ(WeatherKind::None, mirror.weather())
+        << "mirror worlds start un-rolled";
+    og::sim::apply_snapshot(mirror, decoded);
+    EXPECT_EQ(WeatherKind::Rain, mirror.weather())
+        << "the client applies the server's rolled kind via set_weather";
+
+    // Untrusted wire byte beyond the enum: clamp to None on apply.
+    og::sim::WorldSnapshot hostile = decoded;
+    hostile.weather = 200;
+    og::sim::apply_snapshot(mirror, hostile);
+    EXPECT_EQ(WeatherKind::None, mirror.weather())
+        << "out-of-range weather bytes must clamp to None";
+}
+
 TEST(WorldSnapshot, serialize_delta_roundtrip_uses_uncompressed_bypass_when_smaller)
 {
     og::sim::WorldSnapshot delta;
@@ -1836,6 +1886,7 @@ TEST(WorldSnapshot, serialize_delta_roundtrip_uses_uncompressed_bypass_when_smal
     delta.pending_exit_prompt = true;
     delta.paused = true;
     delta.pause_player_index = 3;
+    delta.weather = 2;
     delta.grid_width = 9;
     delta.grid_height = 7;
     delta.grid_dirty = true;

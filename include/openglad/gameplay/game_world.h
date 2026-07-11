@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include <openglad/core/weather.h>
 #include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/pixie_data.h>
 #include <openglad/gameplay/smooth.h>
@@ -288,6 +289,16 @@ public:
     // Without this, same-level retries can inherit timeout progress.
     void reset_level_progress();
 
+    // Per-level weather: GAMEPLAY-INERT render hint (see core/weather.h).
+    // Defaults to None and resets on every level load; only the authoritative
+    // side rolls (roll_weather), clients receive the kind via WorldSnapshot.
+    // The sim must never branch on it.
+    [[nodiscard]] WeatherKind weather() const noexcept { return weather_; }
+    void set_weather(WeatherKind kind) noexcept { weather_ = kind; }
+    // Authoritative-only roll from (level id, process-wide nonce). Never
+    // called on client mirror worlds and never consumes the sim RNG.
+    void roll_weather();
+
     // Run one simulation tick.
     void tick();
 
@@ -342,6 +353,7 @@ private:
 
     std::uint32_t level_tick_count_ = 0;
     int last_level_id_ = -1;
+    WeatherKind weather_ = WeatherKind::None;
     std::function<void()> detach_callback_;
     std::uint32_t next_entity_id_ = 1;
     bool entity_tracking_dirty_ = false;

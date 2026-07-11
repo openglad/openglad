@@ -534,7 +534,8 @@ std::unique_ptr<HostCursesSession> HostCursesSession::create(
     s->saved_game_ = current_game;
     current_game = &s->server_ctx_;
     if (!og::server::load_headless_level_from_save(*s->server_level_, s->server_save_,
-                                                   difficulty, s->server_events_)) {
+                                                   difficulty, s->server_events_,
+                                                   /*authoritative=*/true)) {
         current_game = s->saved_game_;
         return set_error("failed to load level for host game");
     }
@@ -554,7 +555,8 @@ std::unique_ptr<HostCursesSession> HostCursesSession::create(
     s->client_ctx_.gameplay_active_ref = &s->client_active_;
     current_game = &s->client_ctx_;
     if (!og::server::load_headless_level_from_save(*s->client_level_, s->client_save_,
-                                                   difficulty, s->client_events_)) {
+                                                   difficulty, s->client_events_,
+                                                   /*authoritative=*/false)) {
         current_game = s->saved_game_;
         return set_error("failed to load mirror level for host game");
     }
@@ -743,7 +745,8 @@ std::unique_ptr<JoinCursesSession> JoinCursesSession::create(
     s->saved_game_ = current_game;
     current_game = &s->client_ctx_;
     if (!og::server::load_headless_level_from_save(*s->client_level_, s->client_save_,
-                                                   difficulty, s->client_events_)) {
+                                                   difficulty, s->client_events_,
+                                                   /*authoritative=*/false)) {
         current_game = s->saved_game_;
         return set_error("failed to load mirror level for join game");
     }

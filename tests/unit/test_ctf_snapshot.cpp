@@ -495,12 +495,13 @@ TEST(CtfSnapshot, deserializer_rejects_oversized_counts_in_crafted_payloads)
     const std::vector<std::uint8_t> raw_payload = zlib_decompress_for_test(
         bytes.data() + og::sim::kTransportHeaderSize, payload_length);
 
-    // CTF block layout in a default snapshot: format byte + 71 world-scalar
-    // bytes, then 28 scalar CTF bytes and 80 flag bytes put cp_count at 180,
-    // the four anchor counts at 181..184, and the queue size at 185.
-    constexpr std::size_t kCpCountOffset = 180;
-    constexpr std::size_t kAnchorCountOffset = 181;
-    constexpr std::size_t kQueueSizeOffset = 185;
+    // CTF block layout in a default snapshot: format byte + 72 world-scalar
+    // bytes (the weather kind byte joined them before snapshot_hash), then
+    // 28 scalar CTF bytes and 80 flag bytes put cp_count at 181, the four
+    // anchor counts at 182..185, and the queue size at 186.
+    constexpr std::size_t kCpCountOffset = 181;
+    constexpr std::size_t kAnchorCountOffset = 182;
+    constexpr std::size_t kQueueSizeOffset = 186;
     ASSERT_GE(raw_payload.size(), kQueueSizeOffset + 1 + 6);
     ASSERT_EQ(0, raw_payload[kCpCountOffset]);
     ASSERT_EQ(0, raw_payload[kAnchorCountOffset]);

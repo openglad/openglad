@@ -94,13 +94,16 @@ public:
     // backend's render surface) to a transparent off-screen layer covering the
     // viewport (x,y,w,h). floor_layer_end restores the real target and composites
     // that layer back, smoothly (bilinear) scaled by `scale` about (cx,cy) with a
-    // global `alpha` (the floor's depth fade/ghost). Default no-ops for backends
+    // global `alpha` (the floor's depth fade/ghost) and an RGB color mod
+    // (tint_strength 0 = untinted — the depth-tint effect passes a depth-scaled
+    // blue-grey for floors below the camera). Default no-ops for backends
     // without an off-screen surface. The caller gates these on floor_count()>1, so
     // single-floor / camera-floor rendering never enters this path.
     virtual void floor_layer_begin(Sint32 /*x*/, Sint32 /*y*/, Sint32 /*w*/, Sint32 /*h*/) {}
     virtual void floor_layer_end(Sint32 /*x*/, Sint32 /*y*/, Sint32 /*w*/, Sint32 /*h*/,
                                  float /*scale*/, Sint32 /*cx*/, Sint32 /*cy*/,
-                                 unsigned char /*alpha*/) {}
+                                 unsigned char /*alpha*/,
+                                 unsigned char /*tint_strength*/ = 0) {}
     virtual void walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
                                Sint32 walkerwidth, Sint32 walkerheight,
                                Sint32 portstartx, Sint32 portstarty,
@@ -130,6 +133,35 @@ public:
                                      Sint32 portstartx, Sint32 portstarty,
                                      Sint32 portendx, Sint32 portendy,
                                      std::span<const unsigned char> sourceptr, unsigned char teamcolor, Uint8 alpha) = 0;
+
+    // Ground-shadow blit: a vertically squashed (half-height) black
+    // silhouette of the sprite, bottom row one pixel below the sprite's feet.
+    // (walkerstartx, walkerstarty) is the SPRITE's screen anchor — the shadow
+    // rows run upward from walkerstarty + walkerheight. Source color 0 is
+    // transparent; each covered target pixel is blended exactly once.
+    virtual void walkputbuffer_shadow(Sint32 walkerstartx, Sint32 walkerstarty,
+                                      Sint32 walkerwidth, Sint32 walkerheight,
+                                      Sint32 portstartx, Sint32 portstarty,
+                                      Sint32 portendx, Sint32 portendy,
+                                      std::span<const unsigned char> sourceptr, Uint8 alpha) = 0;
+
+    // Reflection blit: the sprite vertically flipped (top-left at
+    // walkerstartx, walkerstarty), team-recolored (>247 rule) and blended at
+    // `alpha`, but a pixel is only plotted where the underlying grid tile's
+    // id is marked in reflect_mask (per-tile-id lookup; production passes
+    // reflective_tiles(): PIX_GLASS + pure water). world_offset_x/y convert
+    // screen px to world px for the grid lookup (topx - xloc, topy - yloc);
+    // grid is gridw x gridh tile ids.
+    virtual void walkputbuffer_reflect(Sint32 walkerstartx, Sint32 walkerstarty,
+                                       Sint32 walkerwidth, Sint32 walkerheight,
+                                       Sint32 portstartx, Sint32 portstarty,
+                                       Sint32 portendx, Sint32 portendy,
+                                       std::span<const unsigned char> sourceptr,
+                                       unsigned char teamcolor, Uint8 alpha,
+                                       std::span<const unsigned char> grid,
+                                       Sint32 gridw, Sint32 gridh,
+                                       Sint32 world_offset_x, Sint32 world_offset_y,
+                                       std::span<const bool, 256> reflect_mask) = 0;
 
     virtual void walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
                                Sint32 walkerwidth, Sint32 walkerheight,

@@ -153,6 +153,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/platform/sdl/screen_lifecycle.cpp
     ${SRC_DIR}/core/combat_math.cpp
     ${SRC_DIR}/core/runtime_trace.cpp
+    ${SRC_DIR}/core/weather.cpp
     ${SRC_DIR}/interface/ui/button.cpp
     ${SRC_DIR}/gameplay/effect.cpp
     ${SRC_DIR}/gameplay/family_registry.cpp
@@ -232,6 +233,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/platform/sdl/video_sdl.cpp
     ${SRC_DIR}/interface/render/view.cpp
     ${SRC_DIR}/interface/render/walker_draw.cpp
+    ${SRC_DIR}/interface/render/effects.cpp
     ${SRC_DIR}/interface/render/obmap_debug_draw.cpp
     ${SRC_DIR}/gameplay/walker.cpp
     ${SRC_DIR}/gameplay/walker_combat.cpp
@@ -278,6 +280,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/gameplay/astar.cpp
     ${SRC_DIR}/gameplay/gameplay_context.cpp
     ${SRC_DIR}/gameplay/game_world.cpp
+    ${SRC_DIR}/gameplay/game_world_weather.cpp
     ${SRC_DIR}/gameplay/ctf/ctf.cpp
     ${SRC_DIR}/gameplay/ctf/ctf_ai.cpp
     ${SRC_DIR}/gameplay/world_snapshot.cpp
@@ -309,6 +312,7 @@ set(OG_CORE_SOURCES
     ${SRC_DIR}/core/frame_rate_config.cpp
     ${SRC_DIR}/core/runtime_trace.cpp
     ${SRC_DIR}/core/util.cpp
+    ${SRC_DIR}/core/weather.cpp
 )
 
 set(OG_SIM_SOURCES
@@ -408,6 +412,7 @@ set(OG_RUNTIME_SOURCES
     ${SRC_DIR}/gameplay/astar.cpp
     ${SRC_DIR}/gameplay/gameplay_context.cpp
     ${SRC_DIR}/gameplay/game_world.cpp
+    ${SRC_DIR}/gameplay/game_world_weather.cpp
     ${SRC_DIR}/gameplay/sim_input_handler.cpp
     ${SRC_DIR}/platform/sdl/input_event_bridge.cpp
     ${SRC_DIR}/gameplay/smooth.cpp
@@ -426,6 +431,7 @@ set(OG_RENDER_SOURCES
     ${SRC_DIR}/interface/render/text.cpp
     ${SRC_DIR}/interface/render/view.cpp
     ${SRC_DIR}/interface/render/walker_draw.cpp
+    ${SRC_DIR}/interface/render/effects.cpp
     ${SRC_DIR}/interface/render/obmap_debug_draw.cpp
     ${SRC_DIR}/interface/render/sdl_level_render.cpp
 )
@@ -489,6 +495,7 @@ set(OG_GAMEPLAY_COMPONENT_SOURCES
     ${SRC_DIR}/gameplay/astar.cpp
     ${SRC_DIR}/gameplay/gameplay_context.cpp
     ${SRC_DIR}/gameplay/game_world.cpp
+    ${SRC_DIR}/gameplay/game_world_weather.cpp
     ${SRC_DIR}/gameplay/ctf/ctf.cpp
     ${SRC_DIR}/gameplay/ctf/ctf_ai.cpp
     ${SRC_DIR}/gameplay/sim_input_handler.cpp
@@ -1230,6 +1237,7 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/gameplay/astar.cpp
         ${SRC_DIR}/gameplay/gameplay_context.cpp
         ${SRC_DIR}/gameplay/game_world.cpp
+        ${SRC_DIR}/gameplay/game_world_weather.cpp
         ${SRC_DIR}/gameplay/ctf/ctf.cpp
         ${SRC_DIR}/gameplay/ctf/ctf_ai.cpp
         ${SRC_DIR}/gameplay/sim_input_handler.cpp
@@ -1724,6 +1732,8 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/test_io_filesystem.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_smoother.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_video_primitives.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_video_effects_prims.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_render_effects.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_text_rendering.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_campaign_and_level_picker.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_intro_smoke.cpp
@@ -2066,6 +2076,8 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             test_video_extra.cpp
             test_video_fade.cpp
             test_video_modes_more.cpp
+            test_video_effects_prims.cpp
+            test_render_effects.cpp
             test_video_pixel_ops.cpp
             test_video_primitives.cpp
             test_text_render.cpp
@@ -2300,6 +2312,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_entity.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_zaxis.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_game_world_entity_ids.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_weather.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_world_snapshot.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_sim_world.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_sim_input_unit.cpp

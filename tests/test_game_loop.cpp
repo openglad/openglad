@@ -2534,3 +2534,4 @@ TEST(GameLoop, exit_returns_to_continue_menu_local_two_player_second_player)
     og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
     game_screen->world().delete_objects();
 }
+

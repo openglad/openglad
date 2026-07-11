@@ -25,6 +25,7 @@
 #include <openglad/interface/cheat_handler.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/core/colors.h>
+#include <openglad/core/constants.h>
 #include <openglad/core/runtime_trace.h>
 #include <openglad/core/version.h>
 #include <openglad/core/util.h>
@@ -40,6 +41,7 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/level_render.h>
 #include <openglad/interface/render/walker_draw.h>
+#include <openglad/interface/render/effects.h>
 #include <openglad/interface/game_context.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/screen.h>
@@ -260,6 +262,54 @@ void publish_primary_render_sample(const viewscreen& view,
     trace.camera_topy_float = sample.camera_topy_float;
     og::runtime::emit_runtime_trace(std::move(trace));
 }
+
+// Screen shake: count the alive detonation FX (explosion / bomb families) on
+// the camera floor inside this viewport, then jolt topx/topy by a
+// deterministic hash-of-tick jitter of strength min(2, count). Render-only,
+// gated on cfg "effects" screen_shake, and never in the level editor's
+// floor-override path. The caller saves topx/topy first and restores them
+// after the shaken draw.
+void apply_screen_shake(viewscreen& view, GameWorld& world,
+                        const walker* controlob)
+{
+	if (view.editor_floor_override_ >= 0 ||
+	    !cfg.is_on("effects", "screen_shake"))
+		return;
+	const Sint32 camera_floor =
+	    controlob ? static_cast<Sint32>(controlob->floor()) : 0;
+	int booms = 0;
+	// Detonations spawn via add_ob (-> oblist); scan fxlist too for FX
+	// added through the dedicated fx path.
+	auto count_list = [&](auto& list)
+	{
+		for (auto& uptr : list)
+		{
+			walker* fx = uptr.get();
+			if (!fx || fx->dead() || fx->query_order() != Order::FX ||
+			    (fx->family() != FAMILY_EXPLOSION && fx->family() != FAMILY_BOMB))
+				continue;
+			if (static_cast<Sint32>(fx->floor()) != camera_floor)
+				continue;
+			if (fx->xpos() + fx->sizex() <= view.topx ||
+			    fx->xpos() >= view.topx + view.xview ||
+			    fx->ypos() + fx->sizey() <= view.topy ||
+			    fx->ypos() >= view.topy + view.yview)
+				continue; // outside this viewport: too far away to feel
+			++booms;
+		}
+	};
+	count_list(world.oblist);
+	count_list(world.fxlist);
+	if (booms == 0)
+		return;
+	const int strength = booms < 2 ? booms : 2;
+	int shake_dx = 0;
+	int shake_dy = 0;
+	effects_screen_shake_offset(strength, shake_dx, shake_dy);
+	view.topx += shake_dx;
+	view.topy += shake_dy;
+	TRACE("effects", "screen_shake s=%d", strength);
+}
 } // namespace
 
 // ************************************************************
@@ -373,6 +423,14 @@ bool viewscreen::redraw()
         camera_topy_float = static_cast<float>(topy);
 	}
 
+	// Screen shake: a detonation (explosion / bomb FX) on the camera floor
+	// inside this viewport jolts the whole draw by a deterministic
+	// hash-of-tick jitter on topx/topy (render-only; the level editor's
+	// floor-override path never shakes). Restored after the floor loop +
+	// weather draw, so the radar and publish_primary_render_sample report
+	// the UNSHAKEN camera (camera_topx_float above is captured pre-shake).
+	const Sint32 unshaken_topx = topx, unshaken_topy = topy;
+	apply_screen_shake(*this, vworld, controlob);
 
 	if (topx < 0)
 		xneg = 1;
@@ -402,6 +460,10 @@ bool viewscreen::redraw()
 			active_screen()->clearbuffer(xloc, yloc, xview, yview);
 		// With ghosting disabled, draw only floors 0..camera (no above-ghosts).
 		const bool ghosts_on = cfg.is_on("graphics", "floor_ghost");
+		// Depth tint: floors below the camera composite through a cold
+		// blue-grey color mod (deeper = colder); the camera floor and the
+		// ghosts above stay untinted. Strength 0 is bit-identical.
+		const bool tint_on = cfg.is_on("effects", "depth_tint");
 		const Sint32 floor_top = (vworld.floor_count() > 1 && ghosts_on)
 		    ? static_cast<Sint32>(vworld.floor_count() - 1) : current_floor_;
 		for (Sint32 f = 0; f <= floor_top; ++f)
@@ -464,10 +526,30 @@ bool viewscreen::redraw()
 			}
 			draw_floor_entities(&level, static_cast<int>(f), falpha); //radar drawn after
 			if (use_layer)
-				active_screen()->floor_layer_end(xloc, yloc, xview, yview, fscale, fcx, fcy, falpha);
+			{
+				// A floor d levels below the camera gets a cold blue-grey
+				// mod; 255s (tint off / ghosts above) composite bit-identically.
+				unsigned char tint_strength = 0;
+				if (tint_on && f < current_floor_)
+				{
+					const int d = static_cast<int>(current_floor_) - static_cast<int>(f);
+					tint_strength = static_cast<unsigned char>(d >= 2 ? 96 : 52);
+					TRACE("effects", "depth_tint floor=%d", static_cast<int>(f));
+				}
+				active_screen()->floor_layer_end(xloc, yloc, xview, yview,
+				                                 fscale, fcx, fcy, falpha,
+				                                 tint_strength);
+			}
 			topx = par_topx; topy = par_topy; // undo the parallax shift
 		}
 	}
+	// Weather (per the world's synced WeatherKind: cloud banks + ground
+	// shadows, or full-screen rain + lightning) wherever the camera sits
+	// under open sky: a multifloor TOP floor, or a single-floor level whose
+	// terrain reads outdoor (render-only; gated inside on the kind and cfg
+	// "effects" weather — off touches zero pixels).
+	draw_cloud_overlay(this, vworld);
+	topx = unshaken_topx; topy = unshaken_topy; // undo the shake
 	if (controlob && !controlob->dead() && controlob->user() == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
 		myradar->draw();
 	display_text();
@@ -529,6 +611,11 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
         camera_topy_float = static_cast<float>(topy);
 	}
 
+	// See the no-arg redraw(): shake the whole draw on nearby detonations,
+	// restored after the weather draw so the radar and the published render
+	// sample report the UNSHAKEN camera (the floats above are pre-shake).
+	const Sint32 unshaken_topx = topx, unshaken_topy = topy;
+	apply_screen_shake(*this, vworld, controlob);
 
 	if (topx < 0)
 		xneg = 1;
@@ -552,6 +639,10 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 			active_screen()->clearbuffer(xloc, yloc, xview, yview);
 		// With ghosting disabled, draw only floors 0..camera (no above-ghosts).
 		const bool ghosts_on = cfg.is_on("graphics", "floor_ghost");
+		// Depth tint: floors below the camera composite through a cold
+		// blue-grey color mod (deeper = colder); the camera floor and the
+		// ghosts above stay untinted. Strength 0 is bit-identical.
+		const bool tint_on = cfg.is_on("effects", "depth_tint");
 		const Sint32 floor_top = (vworld.floor_count() > 1 && ghosts_on)
 		    ? static_cast<Sint32>(vworld.floor_count() - 1) : current_floor_;
 		for (Sint32 f = 0; f <= floor_top; ++f)
@@ -614,10 +705,26 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 			}
 			draw_floor_entities(data, static_cast<int>(f), falpha);
 			if (use_layer)
-				active_screen()->floor_layer_end(xloc, yloc, xview, yview, fscale, fcx, fcy, falpha);
+			{
+				// A floor d levels below the camera gets a cold blue-grey
+				// mod; 255s (tint off / ghosts above) composite bit-identically.
+				unsigned char tint_strength = 0;
+				if (tint_on && f < current_floor_)
+				{
+					const int d = static_cast<int>(current_floor_) - static_cast<int>(f);
+					tint_strength = static_cast<unsigned char>(d >= 2 ? 96 : 52);
+					TRACE("effects", "depth_tint floor=%d", static_cast<int>(f));
+				}
+				active_screen()->floor_layer_end(xloc, yloc, xview, yview,
+				                                 fscale, fcx, fcy, falpha,
+				                                 tint_strength);
+			}
 			topx = par_topx; topy = par_topy; // undo the parallax shift
 		}
 	}
+	// See the no-arg redraw(): open-sky weather overlay, before radar/text.
+	draw_cloud_overlay(this, vworld);
+	topx = unshaken_topx; topy = unshaken_topy; // undo the shake
 	if (draw_radar && controlob && !controlob->dead() && controlob->user() == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
 		myradar->draw(data);
 	display_text();
@@ -912,9 +1019,145 @@ unsigned char viewscreen::floor_render_alpha(int f) const
 	return kFloorGhostAlpha; // floors above the camera: faint ghost
 }
 
+void viewscreen::draw_floor_effects(LevelRuntimeData* data, int floor)
+{
+	const bool multifloor = data->world().floor_count() > 1;
+	const bool shadows_on = cfg.is_on("effects", "shadows");
+	// Reflections, ripples, trails and dust belong to the camera floor, and
+	// only on the direct-draw pass (the camera floor never renders through
+	// the off-screen floor layer, so floor == current_floor_ implies alpha
+	// 255).
+	const bool camera_pass = floor == current_floor_;
+	const bool reflections_on = cfg.is_on("effects", "reflections") &&
+	    camera_pass;
+	const bool ripples_on = cfg.is_on("effects", "ripples") && camera_pass;
+	const bool trails_on = cfg.is_on("effects", "trails") && camera_pass;
+	// Dust falls only when some floor exists above the camera.
+	const bool dust_on = cfg.is_on("effects", "dust") && camera_pass &&
+	    multifloor &&
+	    current_floor_ < static_cast<Sint32>(data->world().floor_count() - 1);
+	if (!shadows_on && !reflections_on && !ripples_on && !trails_on &&
+	    !dust_on)
+		return;
+	// Ripples sit on the water surface, so they draw first: reflections and
+	// the entity sprites overdraw them.
+	if (ripples_on)
+	{
+		const PixieData& camera_grid = data->world().grid_for_floor(floor);
+		int n = 0;
+		for (auto& uptr : data->world().oblist)
+		{
+			walker* w = uptr.get();
+			if (w && !w->dead() && (!multifloor || static_cast<int>(w->floor()) == floor) &&
+			    draw_walker_ripples(*w, this, camera_grid))
+				++n;
+		}
+		if (n > 0)
+			TRACE("effects", "ripples floor=%d n=%d", floor, n);
+	}
+	if (reflections_on)
+	{
+		const PixieData& camera_grid = data->world().grid_for_floor(floor);
+		int n = 0;
+		for (auto& uptr : data->world().oblist)
+		{
+			walker* w = uptr.get();
+			if (w && !w->dead() && (!multifloor || static_cast<int>(w->floor()) == floor) &&
+			    draw_walker_reflection(*w, this, camera_grid))
+				++n;
+		}
+		for (auto& uptr : data->world().weaplist)
+		{
+			walker* w = uptr.get();
+			if (w && !w->dead() && (!multifloor || static_cast<int>(w->floor()) == floor) &&
+			    draw_walker_reflection(*w, this, camera_grid))
+				++n;
+		}
+		if (n > 0)
+			TRACE("effects", "reflections floor=%d n=%d", floor, n);
+	}
+	if (shadows_on)
+	{
+		int n = 0;
+		for (auto& uptr : data->world().oblist)
+		{
+			walker* w = uptr.get();
+			if (w && !w->dead() && (!multifloor || static_cast<int>(w->floor()) == floor) &&
+			    draw_walker_shadow(*w, this))
+				++n;
+		}
+		for (auto& uptr : data->world().weaplist)
+		{
+			walker* w = uptr.get();
+			if (w && !w->dead() && (!multifloor || static_cast<int>(w->floor()) == floor) &&
+			    draw_walker_shadow(*w, this))
+				++n;
+		}
+		if (n > 0)
+			TRACE("effects", "shadows floor=%d n=%d", floor, n);
+	}
+	// Trails sit above the ground effects but below the sprites; the drawer
+	// also pushes each weapon's visual position into the per-entity store.
+	if (trails_on)
+	{
+		int n = 0;
+		for (auto& uptr : data->world().weaplist)
+		{
+			walker* w = uptr.get();
+			if (w && !w->dead() && (!multifloor || static_cast<int>(w->floor()) == floor) &&
+			    draw_walker_trail(*w, this))
+				++n;
+		}
+		if (n > 0)
+			TRACE("effects", "trails floor=%d n=%d", floor, n);
+	}
+	// Dust shaken loose by movers on the floor DIRECTLY ABOVE the camera
+	// falls in this floor's space, under the sprites.
+	if (dust_on)
+	{
+		int n = 0;
+		for (auto& uptr : data->world().oblist)
+		{
+			walker* w = uptr.get();
+			if (w && !w->dead() && static_cast<int>(w->floor()) == floor + 1 &&
+			    draw_walker_dust(*w, this))
+				++n;
+		}
+		if (n > 0)
+			TRACE("effects", "dust floor=%d n=%d", floor, n);
+	}
+}
+
+void viewscreen::draw_floor_effects_post(LevelRuntimeData* data, int floor)
+{
+	// Fire glow reads as light, so it blends OVER the sprites — camera floor
+	// only (a glow composited into a faded floor layer would dim with it).
+	// The cfg gate makes "off" cost nothing.
+	if (floor != current_floor_ || !cfg.is_on("effects", "fire_glow"))
+		return;
+	const bool multifloor = data->world().floor_count() > 1;
+	int n = 0;
+	auto glow_list = [&](auto& list)
+	{
+		for (auto& uptr : list)
+		{
+			walker* w = uptr.get();
+			if (w && !w->dead() && (!multifloor || static_cast<int>(w->floor()) == floor) &&
+			    draw_walker_fire_glow(*w, this))
+				++n;
+		}
+	};
+	glow_list(data->world().fxlist);
+	glow_list(data->world().oblist);
+	glow_list(data->world().weaplist);
+	if (n > 0)
+		TRACE("effects", "fire_glow floor=%d n=%d", floor, n);
+}
+
 void viewscreen::draw_floor_entities(LevelRuntimeData* data, int floor, unsigned char alpha)
 {
 	const bool multifloor = data->world().floor_count() > 1;
+	draw_floor_effects(data, floor);
 	for (auto& uptr : data->world().fxlist)
 	{
 		walker* w = uptr.get();
@@ -933,6 +1176,7 @@ void viewscreen::draw_floor_entities(LevelRuntimeData* data, int floor, unsigned
 		if (w && !w->dead() && (!multifloor || static_cast<int>(w->floor()) == floor))
 			draw_walker(*w, this, alpha);
 	}
+	draw_floor_effects_post(data, floor);
 }
 
 bool viewscreen::draw_obs()
@@ -949,6 +1193,7 @@ bool viewscreen::draw_obs(LevelRuntimeData* data)
 	// (multifloor==false) draw every entity in one pass, exactly as before.
 	for (Sint32 f = 0; f <= cf; ++f)
 	{
+		draw_floor_effects(data, static_cast<int>(f));
 		// First draw the special effects
 		for (auto& uptr : data->world().fxlist)
 		{
@@ -972,6 +1217,8 @@ bool viewscreen::draw_obs(LevelRuntimeData* data)
 			if(w && !w->dead() && (!multifloor || w->floor() == f))
 				draw_walker(*w, this);
 		}
+
+		draw_floor_effects_post(data, static_cast<int>(f));
 	}
 
 	return 1;

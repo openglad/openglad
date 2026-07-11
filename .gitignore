@@ -66,3 +66,5 @@ core.*
 !/.claude/skills/
 
 .DS_Store
+
+.dsb.yml

@@ -361,7 +361,8 @@ void sync_headless_server_save_data_from_world(SaveData& save,
 bool load_headless_level_from_save(LevelRuntimeData& level_data,
                                    SaveData& save,
                                    int difficulty_setting,
-                                   og::sim::SimEventLog& events)
+                                   og::sim::SimEventLog& events,
+                                   bool authoritative)
 {
     const int current_level =
         load_campaign(save.current_campaign, save.current_levels, save.scen_num);
@@ -422,6 +423,11 @@ bool load_headless_level_from_save(LevelRuntimeData& level_data,
         apply_completed_level_cleanup(world);
 
     prepare_world_for_gameplay(level_data, events);
+    // The dedicated server (and any headless host) rolls this level's
+    // weather; mirror worlds stay at the load-reset None until the first
+    // snapshot applies the authoritative kind.
+    if (authoritative)
+        world.roll_weather();
     return true;
 }
 
@@ -471,7 +477,8 @@ bool complete_headless_level_and_load_next(LevelRuntimeData& level_data,
         level_data,
         active_save,
         difficulty_setting,
-        events);
+        events,
+        /*authoritative=*/true);
 }
 
 bool withdraw_headless_level(LevelRuntimeData& level_data,
@@ -490,7 +497,8 @@ bool withdraw_headless_level(LevelRuntimeData& level_data,
         level_data,
         active_save,
         difficulty_setting,
-        events);
+        events,
+        /*authoritative=*/true);
 }
 
 } // namespace og::server

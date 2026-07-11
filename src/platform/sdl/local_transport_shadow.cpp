@@ -916,6 +916,21 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
         og::sim::apply_snapshot(
             server_screen->world(),
             og::sim::capture_keyframe_snapshot(gameplay_screen.world()));
+        // Authoritative roll for this round's weather. AFTER the display-world
+        // seed snapshot above (which carries the display's un-rolled None) so
+        // it is not clobbered; the initial snapshots below sync it back to
+        // every client. Runs once per round — the return-to-team-build flow
+        // re-enters this install for the next level. Replay playback keeps
+        // the RECORDED kind the seed snapshot just carried in instead.
+        // NOTE: current_session is the SERVER session inside this scope —
+        // the playback flag lives on the outer gameplay session.
+        if (!session.replay_playback_active_)
+            server_screen->world().roll_weather();
+        // Mirror the kind onto the display world NOW (the first tick's
+        // snapshot would deliver it anyway): the replay recorder snapshots
+        // the display world right after this install, and the recording
+        // must carry the kind the session actually plays under.
+        gameplay_screen.world().set_weather(server_screen->world().weather());
         for (std::size_t index = 0; index < player_count; ++index)
         {
             if (server_screen->viewob[index] == nullptr)
@@ -1096,6 +1111,14 @@ void reset_network_host_transport_shadow(
         og::sim::apply_snapshot(
             server_screen->world(),
             og::sim::capture_keyframe_snapshot(gameplay_screen.world()));
+        // Authoritative roll (see reset_local_transport_shadow): after the
+        // display-world seed snapshot, once per hosted round.
+        // NOTE: current_session is the SERVER session inside this scope —
+        // the playback flag lives on the outer gameplay session.
+        if (!session.replay_playback_active_)
+            server_screen->world().roll_weather();
+        // See the local install above: display world mirrors the kind now.
+        gameplay_screen.world().set_weather(server_screen->world().weather());
         release_world_control_claims(server_screen->world());
         if (server_screen->viewob[0] != nullptr)
         {

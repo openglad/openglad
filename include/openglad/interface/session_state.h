@@ -132,6 +132,11 @@ struct SessionState {
     // Runtime replay recording state.
     std::optional<og::sim::ReplayRecorder> replay_recorder_ = std::nullopt;
     std::filesystem::path replay_output_path_;
+    // True while a loaded replay is being played back: the transport-shadow
+    // installs must NOT re-roll weather then — the recorded initial snapshot
+    // carries the kind the recording actually played under. Set by
+    // initialize_replay_screen, cleared when a live session starts.
+    bool replay_playback_active_ = false;
 
     GameContext ctx_;
     GameplayContext game_;

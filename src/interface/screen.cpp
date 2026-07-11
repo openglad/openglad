@@ -38,6 +38,7 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/smooth.h>
 #include <openglad/interface/render/walker_draw.h>
+#include <openglad/interface/render/effects.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/core/util.h>
 #include <openglad/interface/input.h>
@@ -605,9 +606,11 @@ void screen::floor_layer_begin(Sint32 x, Sint32 y, Sint32 w, Sint32 h)
 
 void screen::floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
                              float scale, Sint32 cx, Sint32 cy,
-                             unsigned char alpha)
+                             unsigned char alpha,
+                             unsigned char tint_strength)
 {
-    video_impl_->floor_layer_end(x, y, w, h, scale, cx, cy, alpha);
+    video_impl_->floor_layer_end(x, y, w, h, scale, cx, cy, alpha,
+                                 tint_strength);
 }
 
 void screen::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
@@ -670,6 +673,54 @@ void screen::walkputbuffer_alpha(Sint32 walkerstartx, Sint32 walkerstarty,
                                      walkerheight, portstartx, portstarty,
                                      portendx, portendy, sourceptr,
                                      teamcolor, alpha);
+}
+
+void screen::walkputbuffer_shadow(Sint32 walkerstartx, Sint32 walkerstarty,
+                                  Sint32 walkerwidth, Sint32 walkerheight,
+                                  Sint32 portstartx, Sint32 portstarty,
+                                  Sint32 portendx, Sint32 portendy,
+                                  std::span<const unsigned char> sourceptr,
+                                  Uint8 alpha)
+{
+    video_impl_->walkputbuffer_shadow(walkerstartx, walkerstarty, walkerwidth,
+                                      walkerheight, portstartx, portstarty,
+                                      portendx, portendy, sourceptr, alpha);
+}
+
+void screen::walkputbuffer_reflect(Sint32 walkerstartx, Sint32 walkerstarty,
+                                   Sint32 walkerwidth, Sint32 walkerheight,
+                                   Sint32 portstartx, Sint32 portstarty,
+                                   Sint32 portendx, Sint32 portendy,
+                                   std::span<const unsigned char> sourceptr,
+                                   unsigned char teamcolor, Uint8 alpha,
+                                   std::span<const unsigned char> grid,
+                                   Sint32 gridw, Sint32 gridh,
+                                   Sint32 world_offset_x, Sint32 world_offset_y,
+                                   std::span<const bool, 256> reflect_mask)
+{
+    video_impl_->walkputbuffer_reflect(walkerstartx, walkerstarty, walkerwidth,
+                                       walkerheight, portstartx, portstarty,
+                                       portendx, portendy, sourceptr,
+                                       teamcolor, alpha, grid, gridw, gridh,
+                                       world_offset_x, world_offset_y,
+                                       reflect_mask);
+}
+
+void screen::walkputbuffer_reflect(Sint32 walkerstartx, Sint32 walkerstarty,
+                                   Sint32 walkerwidth, Sint32 walkerheight,
+                                   Sint32 portstartx, Sint32 portstarty,
+                                   Sint32 portendx, Sint32 portendy,
+                                   std::span<const unsigned char> sourceptr,
+                                   unsigned char teamcolor, Uint8 alpha,
+                                   std::span<const unsigned char> grid,
+                                   Sint32 gridw, Sint32 gridh,
+                                   Sint32 world_offset_x, Sint32 world_offset_y)
+{
+    walkputbuffer_reflect(walkerstartx, walkerstarty, walkerwidth,
+                          walkerheight, portstartx, portstarty,
+                          portendx, portendy, sourceptr,
+                          teamcolor, alpha, grid, gridw, gridh,
+                          world_offset_x, world_offset_y, reflective_tiles());
 }
 
 void screen::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
@@ -1156,6 +1207,9 @@ void screen::clear()
 bool screen::redraw()
 {
 	short i;
+	// Advance all render-only effect state (weather drift, ripple/trail/dust
+	// phases, per-entity position history): exactly once per frame.
+	effects_advance_frame();
 	for (i=0; i < numviews; i++)
 		viewob[i]->redraw();
 

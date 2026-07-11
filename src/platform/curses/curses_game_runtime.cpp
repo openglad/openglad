@@ -292,7 +292,8 @@ std::unique_ptr<LocalCursesSession> LocalCursesSession::create(SaveData& save,
     current_game = &s->server_ctx_;
 
     if (!og::server::load_headless_level_from_save(*s->server_level_, s->server_save_,
-                                                   difficulty, s->server_events_)) {
+                                                   difficulty, s->server_events_,
+                                                   /*authoritative=*/true)) {
         current_game = s->saved_game_;
         return set_error("failed to load level for local game");
     }
@@ -315,7 +316,8 @@ std::unique_ptr<LocalCursesSession> LocalCursesSession::create(SaveData& save,
     // the mirror obmap (not the server's, which would collide with the player).
     current_game = &s->client_ctx_;
     if (!og::server::load_headless_level_from_save(*s->client_level_, s->client_save_,
-                                                   difficulty, s->client_events_)) {
+                                                   difficulty, s->client_events_,
+                                                   /*authoritative=*/false)) {
         current_game = s->saved_game_;
         return set_error("failed to load mirror level for local game");
     }

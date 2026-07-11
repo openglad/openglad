@@ -639,6 +639,29 @@ TEST(MenuLayout, control_options_buttons_no_overlap)
     check_bounds(buttons, count, "control_options");
 }
 
+// The header text ("Player control modes and key remapping") once started at
+// y=24, inside the BACK button's animated highlight box, which overwrote its
+// first characters. Pin that it clears the highlight (3px beyond the bevel)
+// and still sits above the first player row.
+TEST(MenuLayout, control_options_header_clears_back_button_and_player_rows)
+{
+    button* buttons = picker_control_options_buttons();
+    const int count = picker_control_options_button_count();
+    ASSERT_GE(count, 2);
+    const button& back = buttons[0];
+    ASSERT_EQ("controls_back", back.id);
+    const button& player1_mode = buttons[1];
+    ASSERT_EQ("player1_mode", player1_mode.id);
+
+    constexpr int kHighlightExtent = 3;  // draw_highlight animates 0..3px out
+    constexpr int kTextHeight = 8;       // small-font glyph rows + breathing room
+    EXPECT_GT(PICKER_CONTROLS_HEADER_Y, back.y + back.sizey + kHighlightExtent)
+        << "header must start below the BACK button's highlight box";
+    EXPECT_LE(PICKER_CONTROLS_HEADER_Y + kTextHeight, player1_mode.y)
+        << "header must finish above the P1 row";
+    EXPECT_GE(PICKER_CONTROLS_HEADER_X, 10) << "header stays inside the bevel";
+}
+
 
 TEST(MenuLayout, main_options_nav_indices_in_range)
 {
@@ -653,6 +676,151 @@ TEST(MenuLayout, control_options_nav_indices_in_range)
     button* buttons = picker_control_options_buttons();
     const int count = picker_control_options_button_count();
     check_nav_in_range(buttons, count, "control_options");
+}
+
+// The per-effect toggles live in the three FX subscreens; main options keeps
+// the sound/graphics settings plus the CONTROLS door and the three stacked
+// FX doors. Pin the index contract (main_options() writes labels by index)
+// and the nav graph.
+TEST(MenuLayout, main_options_index_contract_and_nav)
+{
+    button* buttons = picker_main_options_buttons();
+    const int count = picker_main_options_button_count();
+    ASSERT_EQ(12, count)
+        << "main options is BACK + 7 settings + CONTROLS door + 3 FX doors";
+
+    static const char* kExpectedIds[] = {
+        "options_back",       // 0
+        "toggle_sound",       // 1
+        "toggle_rendering",   // 2: label synced from graphics/render each frame
+        "toggle_fullscreen",  // 3
+        "overscan_minus",     // 4
+        "overscan_plus",      // 5
+        "gameplay_fx",        // 6: opens the GAMEPLAY FX subscreen
+        "restore_defaults",   // 7
+        "player_controls",    // 8
+        "pick_sprite_sheet",  // 9: label synced by index each frame
+        "ui_fx",              // 10: opens the UI FX subscreen
+        "graphics_fx",        // 11: opens the GRAPHICS FX subscreen
+    };
+    for (int i = 0; i < count; ++i)
+    {
+        EXPECT_EQ(kExpectedIds[i], buttons[i].id) << "index " << i;
+        EXPECT_FALSE(buttons[i].hidden) << buttons[i].id;
+        // Centered labels draw with no clipping at 6px/char.
+        EXPECT_LE(static_cast<int>(buttons[i].label.size()) * 6,
+                  buttons[i].sizex)
+            << buttons[i].id << " label '" << buttons[i].label
+            << "' escapes its face";
+    }
+    EXPECT_EQ("GAMEPLAY FX", buttons[6].label);
+    EXPECT_EQ("UI FX", buttons[10].label);
+    EXPECT_EQ("GRAPHICS FX", buttons[11].label);
+    // The three FX doors stack in one column at 23px pitch.
+    EXPECT_EQ(buttons[6].x, buttons[10].x);
+    EXPECT_EQ(buttons[6].x, buttons[11].x);
+    EXPECT_EQ(buttons[6].y + 23, buttons[10].y);
+    EXPECT_EQ(buttons[10].y + 23, buttons[11].y);
+
+    check_nav_closed_and_reachable(buttons, count, 0, "main_options");
+}
+
+namespace
+{
+struct ExpectedFxButton
+{
+    const char* id;
+    const char* label;
+    int x;
+    int y;
+};
+
+// Shared pin for the three FX subscreens: exact count/id/label/geometry,
+// label budgets (90px toggle faces fit 15 chars at 6px/char, drawn centered
+// with no clipping), faces inside the 4..196 inverted bevel, and — since no
+// FX button is visibility-gated — a closed, fully reachable static nav graph.
+void check_fx_options_screen(button* buttons, int count,
+                             const ExpectedFxButton* expected,
+                             int expected_count, const char* screen)
+{
+    ASSERT_EQ(expected_count, count) << screen;
+    for (int i = 0; i < count; ++i)
+    {
+        const ExpectedFxButton& want = expected[i];
+        const button& got = buttons[i];
+        EXPECT_EQ(want.id, got.id) << screen << " index " << i;
+        EXPECT_EQ(want.label, got.label) << screen << " " << got.id;
+        EXPECT_EQ(want.x, got.x) << screen << " " << got.id;
+        EXPECT_EQ(want.y, got.y) << screen << " " << got.id;
+        EXPECT_FALSE(got.hidden) << screen << " " << got.id;
+        EXPECT_LE(static_cast<int>(got.label.size()) * 6, got.sizex)
+            << screen << " " << got.id << " label '" << got.label
+            << "' escapes its face";
+        EXPECT_LE(got.y + got.sizey, 196)
+            << screen << " " << got.id << " face exits the bevel";
+    }
+
+    check_no_overlaps(buttons, count, screen);
+    check_bounds(buttons, count, screen);
+    check_nav_closed_and_reachable(buttons, count, 0, screen);
+}
+} // namespace
+
+// GAMEPLAY FX subscreen: unique BACK id + the two gameplay-feel toggles
+// (stable ids — injector flows click these by id) in a centered column.
+TEST(MenuLayout, gameplay_fx_options_layout_and_nav)
+{
+    static const ExpectedFxButton kExpected[] = {
+        {"gameplay_fx_back", "BACK", 10, 10},
+        {"toggle_hit_recoil", "Hit recoil", 115, 35},
+        {"toggle_attack_lunge", "Attack lunge", 115, 58},
+    };
+    button* buttons = picker_gameplay_fx_options_buttons();
+    const int count = picker_gameplay_fx_options_button_count();
+    check_fx_options_screen(buttons, count, kExpected, 3, "gameplay_fx_options");
+}
+
+// UI FX subscreen: unique BACK id + the three overlay toggles in a centered
+// column.
+TEST(MenuLayout, ui_fx_options_layout_and_nav)
+{
+    static const ExpectedFxButton kExpected[] = {
+        {"ui_fx_back", "BACK", 10, 10},
+        {"toggle_mini_hp_bar", "Mini HP bar", 115, 35},
+        {"toggle_damage_numbers", "Damage numbers", 115, 58},
+        {"toggle_heal_numbers", "Healing numbers", 115, 81},
+    };
+    button* buttons = picker_ui_fx_options_buttons();
+    const int count = picker_ui_fx_options_button_count();
+    check_fx_options_screen(buttons, count, kExpected, 4, "ui_fx_options");
+}
+
+// GRAPHICS FX subscreen: unique BACK id + 13 visual toggles (12 effects/*
+// plus Floor ghost, moved off main options with its graphics/floor_ghost cfg
+// pair intact) on the three-column x=15/115/215 grid (5 rows at 23px pitch
+// from y=35; the last row has one entry). Weather is the single display
+// opt-out for the per-level sim weather (the old Clouds/Rain pair merged).
+TEST(MenuLayout, graphics_fx_options_grid_geometry_and_nav)
+{
+    static const ExpectedFxButton kExpected[] = {
+        {"graphics_fx_back", "BACK", 10, 10},
+        {"toggle_hit_flash", "Hit flash", 15, 35},
+        {"toggle_hit_sparks", "Hit sparks", 115, 35},
+        {"toggle_gore", "Gore", 215, 35},
+        {"toggle_shadows", "Shadows", 15, 58},
+        {"toggle_reflections", "Reflections", 115, 58},
+        {"toggle_weather", "Weather", 215, 58},
+        {"toggle_dust", "Dust", 15, 81},
+        {"toggle_depth_tint", "Depth tint", 115, 81},
+        {"toggle_trails", "Trails", 215, 81},
+        {"toggle_fire_glow", "Fire glow", 15, 104},
+        {"toggle_ripples", "Ripples", 115, 104},
+        {"toggle_screen_shake", "Screen shake", 215, 104},
+        {"toggle_floor_ghost", "Floor ghost", 15, 127},
+    };
+    button* buttons = picker_graphics_fx_options_buttons();
+    const int count = picker_graphics_fx_options_button_count();
+    check_fx_options_screen(buttons, count, kExpected, 14, "graphics_fx_options");
 }
 
 TEST(MenuLayout, networking_buttons_no_overlap)

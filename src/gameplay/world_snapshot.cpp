@@ -793,6 +793,7 @@ void serialize_world_state(std::vector<std::uint8_t>& buffer,
     append_bool(buffer, snapshot.pending_exit_prompt);
     append_bool(buffer, snapshot.paused);
     append_u8(buffer, snapshot.pause_player_index);
+    append_u8(buffer, snapshot.weather);
     append_u32(buffer, snapshot.snapshot_hash);
     serialize_ctf_state(buffer, snapshot);
 }
@@ -824,6 +825,7 @@ void deserialize_world_state(ByteReader& reader, og::sim::WorldSnapshot& snapsho
     snapshot.pending_exit_prompt = reader.read_bool("world.pending_exit_prompt");
     snapshot.paused = reader.read_bool("world.paused");
     snapshot.pause_player_index = reader.read_u8("world.pause_player_index");
+    snapshot.weather = reader.read_u8("world.weather");
     snapshot.snapshot_hash = reader.read_u32("world.snapshot_hash");
     deserialize_ctf_state(reader, snapshot);
 }
@@ -2324,6 +2326,7 @@ og::sim::WorldSnapshot capture_snapshot_impl(GameWorld& world,
     snapshot.pending_exit_prompt = world.pending_exit_prompt;
     snapshot.paused = world.paused;
     snapshot.pause_player_index = world.pause_player_index;
+    snapshot.weather = static_cast<std::uint8_t>(world.weather());
     capture_ctf_state(world, snapshot);
 
     std::unordered_set<int> seen_guy_ids;
@@ -2762,6 +2765,12 @@ void apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot)
     world.pending_exit_prompt = snapshot.pending_exit_prompt;
     world.paused = snapshot.paused;
     world.pause_player_index = snapshot.pause_player_index;
+    // Weather is render-only world state; clamp unknown wire values to None
+    // rather than trusting the peer byte.
+    world.set_weather(
+        snapshot.weather <= static_cast<std::uint8_t>(WeatherKind::Rain)
+            ? static_cast<WeatherKind>(snapshot.weather)
+            : WeatherKind::None);
     apply_ctf_state(world, snapshot);
 
     GuyStorage guy_storage;
@@ -2852,6 +2861,7 @@ void apply_delta(WorldSnapshot& baseline, const WorldSnapshot& delta)
     baseline.pending_exit_prompt = delta.pending_exit_prompt;
     baseline.paused = delta.paused;
     baseline.pause_player_index = delta.pause_player_index;
+    baseline.weather = delta.weather;
     baseline.snapshot_hash = delta.snapshot_hash;
 
     baseline.ctf_active = delta.ctf_active;

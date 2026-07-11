@@ -33,11 +33,13 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
+#include <openglad/core/weather.h>
 #include <openglad/platform/game_context.h>
 #include <openglad/interface/input_state.h>
 #include <openglad/gameplay/family_registries.h>
 #include <openglad/interface/ui/picker.h>
 
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -151,6 +153,11 @@ static bool parse_args(int argc, char* argv[], TextClientArgs& args)
 
 int main(int argc, char* argv[])
 {
+    // One-shot clock sample for the per-level weather roll nonce (test
+    // builds bypass this main and keep the deterministic default 0).
+    og::set_weather_roll_nonce(static_cast<std::uint32_t>(
+        std::chrono::steady_clock::now().time_since_epoch().count()));
+
     TextClientArgs args;
     if (!parse_args(argc, argv, args))
         return 0;

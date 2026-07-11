@@ -1,6 +1,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/frame_rate_config.h>
 #include <openglad/core/util.h>
+#include <openglad/core/weather.h>
 #include <openglad/gameplay/family_registries.h>
 #include <openglad/gameplay/game_server.h>
 #include <openglad/gameplay/game_world.h>
@@ -225,6 +226,11 @@ private:
 
 int main(int argc, char* argv[])
 {
+    // One-shot clock sample for the per-level weather roll nonce (defaults
+    // to 0 in test builds, which link this runtime without this main).
+    og::set_weather_roll_nonce(static_cast<std::uint32_t>(
+        std::chrono::steady_clock::now().time_since_epoch().count()));
+
     ServerArgs args;
     switch (parse_args(argc, argv, args))
     {
@@ -322,7 +328,8 @@ int main(int argc, char* argv[])
                 level_data,
                 active_save,
                 session.current_difficulty_,
-                *session.ctx_.sim_events))
+                *session.ctx_.sim_events,
+                /*authoritative=*/true))
         {
             if (io_initialized)
                 io_exit();

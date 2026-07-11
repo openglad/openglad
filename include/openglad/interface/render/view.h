@@ -116,6 +116,17 @@ class viewscreen
 		// the camera floor occludes lower floors except through air holes.
 		// Single-floor levels collapse to one opaque pass (byte-identical).
 		void draw_floor_entities(LevelRuntimeData* data, int floor, unsigned char alpha);
+		// Effects pre-pass for one floor: water ripples, reflections, ground
+		// shadows, projectile trails and falling dust, drawn BEFORE the
+		// entity lists so the sprites overdraw them. Each is gated on its
+		// cfg key ("effects" ripples/reflections/shadows/trails/dust) — all
+		// off means zero extra work, so disabled effects render
+		// byte-identically.
+		void draw_floor_effects(LevelRuntimeData* data, int floor);
+		// Effects post-pass for one floor: the fire glow, blended AFTER the
+		// entity lists so it reads as light over the sprites. Camera floor
+		// only; gated on cfg "effects" fire_glow (off costs nothing).
+		void draw_floor_effects_post(LevelRuntimeData* data, int floor);
 		[[nodiscard]] unsigned char floor_render_alpha(int f) const;
 		static constexpr unsigned char kFloorBelowAlphaStep = 70;
 		static constexpr unsigned char kFloorBelowAlphaMin = 90;

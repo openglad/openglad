@@ -86,7 +86,8 @@ public:
     void floor_layer_begin(Sint32 x, Sint32 y, Sint32 w, Sint32 h) override;
     void floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
                          float scale, Sint32 cx, Sint32 cy,
-                         unsigned char alpha) override;
+                         unsigned char alpha,
+                         unsigned char tint_strength = 0) override;
     void putbuffer(Sint32 tilestartx, Sint32 tilestarty,
                    Sint32 tilewidth, Sint32 tileheight,
                    Sint32 portstartx, Sint32 portstarty,
@@ -117,6 +118,21 @@ public:
                              Sint32 portstartx, Sint32 portstarty,
                              Sint32 portendx, Sint32 portendy,
                              std::span<const unsigned char> sourceptr, unsigned char teamcolor, Uint8 alpha) override;
+    void walkputbuffer_shadow(Sint32 walkerstartx, Sint32 walkerstarty,
+                              Sint32 walkerwidth, Sint32 walkerheight,
+                              Sint32 portstartx, Sint32 portstarty,
+                              Sint32 portendx, Sint32 portendy,
+                              std::span<const unsigned char> sourceptr, Uint8 alpha) override;
+    void walkputbuffer_reflect(Sint32 walkerstartx, Sint32 walkerstarty,
+                               Sint32 walkerwidth, Sint32 walkerheight,
+                               Sint32 portstartx, Sint32 portstarty,
+                               Sint32 portendx, Sint32 portendy,
+                               std::span<const unsigned char> sourceptr,
+                               unsigned char teamcolor, Uint8 alpha,
+                               std::span<const unsigned char> grid,
+                               Sint32 gridw, Sint32 gridh,
+                               Sint32 world_offset_x, Sint32 world_offset_y,
+                               std::span<const bool, 256> reflect_mask) override;
 
     void walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
                        Sint32 walkerwidth, Sint32 walkerheight,

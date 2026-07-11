@@ -275,6 +275,9 @@ void replace_loaded_world_state(LevelRuntimeData* level, GameWorld& loaded_world
     dst.ctf = std::move(loaded_world.ctf);
     dst.current_scenario = loaded_world.current_scenario;
     dst.completed_levels = std::move(loaded_world.completed_levels);
+    // Fresh worlds carry WeatherKind::None: every level load resets the
+    // weather; only the authoritative side re-rolls it afterwards.
+    dst.set_weather(loaded_world.weather());
     dst.move_entities_from(loaded_world);
     dst.living_count = loaded_world.living_count;
     dst.grid = std::move(loaded_world.grid);

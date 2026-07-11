@@ -31,7 +31,7 @@ namespace og::sim {
 inline constexpr std::size_t kEntitySnapshotDirtyMaskWords = 2;
 inline constexpr std::int32_t kNoGuyId = -1;
 inline constexpr std::uint8_t kNoPausePlayerIndex = 0xff;
-inline constexpr std::uint8_t kSnapshotFormatVersion = 6;
+inline constexpr std::uint8_t kSnapshotFormatVersion = 7;
 inline constexpr std::uint8_t kSnapshotProtocolVersion = kNetworkProtocolVersion;
 inline constexpr std::uint8_t kDeltaPayloadUncompressedFlag = 0x01;
 inline constexpr std::size_t kDeltaPayloadHeaderSize = 1;
@@ -221,6 +221,11 @@ struct WorldSnapshot {
     bool pending_exit_prompt = false;
     bool paused = false;
     std::uint8_t pause_player_index = kNoPausePlayerIndex;
+    // Per-level weather kind (WeatherKind as a wire byte). Render-only world
+    // state: the authoritative side rolls it once per level and every client
+    // applies it via set_weather. Values above WeatherKind::Rain clamp to
+    // None on apply (untrusted-peer safety).
+    std::uint8_t weather = 0;
     std::uint32_t snapshot_hash = 0;
 
     // CTF match state (flattened og::sim::CtfState plus the lobby-requested

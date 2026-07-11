@@ -52,7 +52,10 @@ constexpr std::uint8_t net_message_type_value(NetMessageType message_type) noexc
 // snapshot format moved to v5 alongside it.
 // v4: entities carry Z-axis fields (worldz/vz/sizez/floor); snapshot format
 // moved to v6 and replay to v7 alongside it. See docs/z-axis-design.md.
-inline constexpr std::uint8_t kNetworkProtocolVersion = 4;
+// v5: WorldSnapshot carries the per-level weather kind (render-only sim
+// state, rolled by the authoritative side); snapshot format moved to v7 and
+// replay to v8 alongside it.
+inline constexpr std::uint8_t kNetworkProtocolVersion = 5;
 inline constexpr std::size_t kTransportHeaderSize = 4;
 inline constexpr std::size_t kSessionTokenSize = 16;
 using SessionToken = std::array<std::uint8_t, kSessionTokenSize>;

@@ -450,6 +450,7 @@ bool compare_world_snapshot(const WorldSnapshot& expected,
     OG_REPLAY_COMPARE(pending_exit_prompt);
     OG_REPLAY_COMPARE(paused);
     OG_REPLAY_COMPARE(pause_player_index);
+    OG_REPLAY_COMPARE(weather);
     OG_REPLAY_COMPARE(ctf_active);
     OG_REPLAY_COMPARE(ctf_init_attempted);
     OG_REPLAY_COMPARE(ctf_team_count);

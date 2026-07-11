@@ -217,6 +217,15 @@ bool cfg_store::load_settings()
     apply_setting("effects", "hit_anim", "on");
     apply_setting("effects", "damage_numbers", "off");
     apply_setting("effects", "heal_numbers", "on");
+    apply_setting("effects", "shadows", "on");
+    apply_setting("effects", "reflections", "on");
+    apply_setting("effects", "weather", "on");
+    apply_setting("effects", "dust", "on");
+    apply_setting("effects", "depth_tint", "on");
+    apply_setting("effects", "trails", "on");
+    apply_setting("effects", "fire_glow", "on");
+    apply_setting("effects", "ripples", "on");
+    apply_setting("effects", "screen_shake", "on");
 
     Log("Loading settings\n");
     auto file = og::io::og_open_read("cfg/openglad.yaml", true);

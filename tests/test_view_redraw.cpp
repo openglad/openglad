@@ -284,6 +284,49 @@ TEST(ViewRedraw, resolve_walker_render_position_uses_interpolated_snapshot_state
     EXPECT_FLOAT_EQ(72.0f, draw_pos.ypos);
 }
 
+// The per-level weather kind reaches a client world through the same
+// snapshot-apply path every other world field uses: capture the rolled
+// server state, wipe the local kind (an un-synced mirror), and let the
+// GameClient apply the received keyframe back into the render world.
+TEST(ViewRedraw, weather_kind_syncs_to_client_world_through_snapshot_apply)
+{
+    prepare_view_world();
+
+    screen* const active = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, active);
+    GameWorld& world = active->world();
+    world.tick_count_ = 1u;
+
+    // Authoritative roll (level id 7 pins Rain under the default-0 nonce —
+    // see tests/unit/test_weather.cpp).
+    const int saved_id = world.id;
+    world.id = 7;
+    og::set_weather_roll_sequence(0u);
+    world.roll_weather();
+    ASSERT_EQ(WeatherKind::Rain, world.weather());
+
+    const og::sim::WorldSnapshot keyframe =
+        og::sim::capture_keyframe_snapshot(world);
+    EXPECT_EQ(static_cast<std::uint8_t>(WeatherKind::Rain), keyframe.weather);
+
+    // Play the un-synced mirror: the kind arrives only via the snapshot.
+    world.set_weather(WeatherKind::None);
+
+    MockTransport transport;
+    constexpr og::sim::PeerId kPeerId = 7u;
+    // Bind the client to the render world (the display-client wiring): only
+    // a world-bound client applies received snapshots to it.
+    og::sim::GameClient client(transport, kPeerId, &world);
+    transport.queue_received(kPeerId, og::sim::serialize_snapshot(keyframe));
+    client.poll_messages();
+
+    EXPECT_EQ(WeatherKind::Rain, world.weather())
+        << "the snapshot-apply path must install the server's rolled kind";
+
+    world.set_weather(WeatherKind::None);
+    world.id = saved_id;
+}
+
 TEST(ViewRedraw,
      resolve_walker_render_position_keeps_local_render_anchors_on_world_position)
 {

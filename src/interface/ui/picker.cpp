@@ -55,6 +55,7 @@
 #include <format>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <set>
 #include <vector>
@@ -949,6 +950,9 @@ void picker_cleanup_resources()
     pks().loadteam_buttons.clear();
     pks().main_options_buttons.clear();
     pks().control_options_buttons.clear();
+    pks().gameplay_fx_options_buttons.clear();
+    pks().ui_fx_options_buttons.clear();
+    pks().graphics_fx_options_buttons.clear();
     pks().details_buttons.clear();
     pks().trainmenu_buttons.clear();
     pks().hiremenu_buttons.clear();
@@ -1052,29 +1056,78 @@ static const button k_mainmenu_buttons[] =
 inline constexpr Sint32 BUTTON_PADDING = 8;
 inline constexpr Sint32 BUTTON_PITCH = BUTTON_HEIGHT + BUTTON_PADDING;
 
+// Main options: sound/graphics settings plus doors into the CONTROLS screen
+// and the three FX subscreens (GAMEPLAY FX / UI FX / GRAPHICS FX), whose
+// toggles live in the k_*_fx_options_buttons tables below.
 static const button k_main_options_buttons[] =
 {
-    button("options_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=12, .down=1, .right=15}),
-    button("toggle_sound", "Sound", KEYSTATE_UNKNOWN, 135, 10 + BUTTON_PITCH, 50, 15, button_action_id(ButtonAction::ToggleSound), -1, MenuNav{.up=0, .down=2, .right=16}),
+    button("options_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=11, .down=1, .right=8}),
+    button("toggle_sound", "Sound", KEYSTATE_UNKNOWN, 135, 10 + BUTTON_PITCH, 50, 15, button_action_id(ButtonAction::ToggleSound), -1, MenuNav{.up=0, .down=2, .right=9}),
     button("toggle_rendering", "NORMAL", KEYSTATE_UNKNOWN, 130, 10 + 2*BUTTON_PITCH, 60, 15, button_action_id(ButtonAction::ToggleRenderingEngine), -1, MenuNav{.up=1, .down=4, .right=3}),
-    button("toggle_fullscreen", "Fullscreen", KEYSTATE_UNKNOWN, 210, 10 + 2*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleFullscreen), -1, MenuNav{.up=16, .down=17, .left=2}),
+    button("toggle_fullscreen", "Fullscreen", KEYSTATE_UNKNOWN, 210, 10 + 2*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleFullscreen), -1, MenuNav{.up=9, .down=7, .left=2}),
     button("overscan_minus", "- ", KEYSTATE_UNKNOWN, 130, 10 + 3*BUTTON_PITCH, 30, 15, button_action_id(ButtonAction::OverscanAdjust), -1, MenuNav{.up=2, .down=6, .right=5}),
-    button("overscan_plus", "+ ", KEYSTATE_UNKNOWN, 170, 10 + 3*BUTTON_PITCH, 30, 15, button_action_id(ButtonAction::OverscanAdjust), 1, MenuNav{.up=3, .down=7, .left=4, .right=17}),
-    button("toggle_mini_hp_bar", "Mini HP bar", KEYSTATE_UNKNOWN, 80, 10 + 4*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleMiniHpBar), -1, MenuNav{.up=4, .down=8, .right=7}),
-    button("toggle_hit_flash", "Hit flash", KEYSTATE_UNKNOWN, 210, 10 + 4*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleHitFlash), -1, MenuNav{.up=17, .down=9, .left=6}),
-    button("toggle_hit_recoil", "Hit recoil", KEYSTATE_UNKNOWN, 80, 10 + 5*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleHitRecoil), -1, MenuNav{.up=6, .down=10, .right=9}),
-    button("toggle_attack_lunge", "Attack lunge", KEYSTATE_UNKNOWN, 210, 10 + 5*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleAttackLunge), -1, MenuNav{.up=7, .down=11, .left=8}),
-    button("toggle_hit_sparks", "Hit sparks", KEYSTATE_UNKNOWN, 80, 10 + 6*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleHitAnim), -1, MenuNav{.up=8, .down=12, .right=11}),
-    button("toggle_damage_numbers", "Damage numbers", KEYSTATE_UNKNOWN, 210, 10 + 6*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleDamageNumbers), -1, MenuNav{.up=9, .down=13, .left=10}),
-    button("toggle_heal_numbers", "Healing numbers", KEYSTATE_UNKNOWN, 80, 10 + 7*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleHealNumbers), -1, MenuNav{.up=10, .down=0, .right=13}),
-    button("toggle_gore", "Gore", KEYSTATE_UNKNOWN, 210, 10 + 7*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleGore), -1, MenuNav{.up=11, .down=14, .left=12}),
-    button("restore_defaults", "RESTORE DEFAULTS", KEYSTATE_UNKNOWN, 210, 10, 100, 15, button_action_id(ButtonAction::RestoreDefaultSettings), -1, MenuNav{.up=13, .down=16, .left=15}),
+    button("overscan_plus", "+ ", KEYSTATE_UNKNOWN, 170, 10 + 3*BUTTON_PITCH, 30, 15, button_action_id(ButtonAction::OverscanAdjust), 1, MenuNav{.up=3, .down=6, .left=4}),
+    button("gameplay_fx", "GAMEPLAY FX", KEYSTATE_UNKNOWN, 130, 10 + 4*BUTTON_PITCH, 90, 15,
+        button_action_id(ButtonAction::OpenGameplayFxSettings), -1, MenuNav{.up=4, .down=10}),
+    button("restore_defaults", "RESTORE DEFAULTS", KEYSTATE_UNKNOWN, 210, 10, 100, 15, button_action_id(ButtonAction::RestoreDefaultSettings), -1, MenuNav{.up=3, .down=9, .left=8}),
     button("player_controls", "CONTROLS", KEYSTATE_UNKNOWN, 100, 10, 80, 15,
-        button_action_id(ButtonAction::OpenControlSettings), -1, MenuNav{.up=13, .down=1, .left=0, .right=14}),
+        button_action_id(ButtonAction::OpenControlSettings), -1, MenuNav{.up=11, .down=1, .left=0, .right=7}),
     button("pick_sprite_sheet", "Sprite Sheet", KEYSTATE_UNKNOWN, 210, 10 + BUTTON_PITCH, 90, 15,
-        button_action_id(ButtonAction::PickSpriteSheet), 0, MenuNav{.up=14, .down=3, .left=1}),
-    button("toggle_floor_ghost", "Floor ghost", KEYSTATE_UNKNOWN, 210, 10 + 3*BUTTON_PITCH, 90, 15,
-        button_action_id(ButtonAction::ToggleFloorGhosting), -1, MenuNav{.up=3, .down=7, .left=5}),
+        button_action_id(ButtonAction::PickSpriteSheet), 0, MenuNav{.up=7, .down=3, .left=1}),
+    button("ui_fx", "UI FX", KEYSTATE_UNKNOWN, 130, 10 + 5*BUTTON_PITCH, 90, 15,
+        button_action_id(ButtonAction::OpenUiFxSettings), -1, MenuNav{.up=6, .down=11}),
+    button("graphics_fx", "GRAPHICS FX", KEYSTATE_UNKNOWN, 130, 10 + 6*BUTTON_PITCH, 90, 15,
+        button_action_id(ButtonAction::OpenGraphicsFxSettings), -1, MenuNav{.up=10, .down=0}),
+};
+
+// FX subscreen toggle grid: columns x=15/115/215, 90px faces (15-char label
+// budget at 6px/char), rows at 23px pitch from y=35 (bottoms inside the
+// 4..196 bevel). All toggle button ids and (category, setting) cfg pairs are
+// unchanged from the single pre-split EFFECTS screen. Each BACK id is unique
+// (gameplay_fx_back / ui_fx_back / graphics_fx_back) because injector flows
+// disambiguate screens by button id.
+inline constexpr Sint32 effects_row_y(int row) { return 35 + row * 23; }
+
+// GAMEPLAY FX: toggles that change how the game feels to play. Single
+// centered column; nav is a vertical cycle through BACK.
+static const button k_gameplay_fx_options_buttons[] =
+{
+    button("gameplay_fx_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=2, .down=1}),
+    button("toggle_hit_recoil", "Hit recoil", KEYSTATE_UNKNOWN, 115, effects_row_y(0), 90, 15, button_action_id(ButtonAction::ToggleHitRecoil), -1, MenuNav{.up=0, .down=2}),
+    button("toggle_attack_lunge", "Attack lunge", KEYSTATE_UNKNOWN, 115, effects_row_y(1), 90, 15, button_action_id(ButtonAction::ToggleAttackLunge), -1, MenuNav{.up=1, .down=0}),
+};
+
+// UI FX: informational overlays. Same single-column idiom as GAMEPLAY FX.
+static const button k_ui_fx_options_buttons[] =
+{
+    button("ui_fx_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=3, .down=1}),
+    button("toggle_mini_hp_bar", "Mini HP bar", KEYSTATE_UNKNOWN, 115, effects_row_y(0), 90, 15, button_action_id(ButtonAction::ToggleMiniHpBar), -1, MenuNav{.up=0, .down=2}),
+    button("toggle_damage_numbers", "Damage numbers", KEYSTATE_UNKNOWN, 115, effects_row_y(1), 90, 15, button_action_id(ButtonAction::ToggleDamageNumbers), -1, MenuNav{.up=1, .down=3}),
+    button("toggle_heal_numbers", "Healing numbers", KEYSTATE_UNKNOWN, 115, effects_row_y(2), 90, 15, button_action_id(ButtonAction::ToggleHealNumbers), -1, MenuNav{.up=2, .down=0}),
+};
+
+// GRAPHICS FX: purely visual effects, including Floor ghost (moved off main
+// options; still cfg (graphics, floor_ghost)). 13 toggles on the 3-column
+// grid, 5 rows; the last row has one entry. Weather (cfg effects/weather) is
+// the client-side display opt-out for the per-level sim weather (the old
+// Clouds/Rain pair merged). Rows wrap left/right; the top row's up and the
+// bottom row's down land on BACK; BACK's up wraps to the bottom-left toggle.
+static const button k_graphics_fx_options_buttons[] =
+{
+    button("graphics_fx_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=13, .down=1}),
+    button("toggle_hit_flash", "Hit flash", KEYSTATE_UNKNOWN, 15, effects_row_y(0), 90, 15, button_action_id(ButtonAction::ToggleHitFlash), -1, MenuNav{.up=0, .down=4, .left=3, .right=2}),
+    button("toggle_hit_sparks", "Hit sparks", KEYSTATE_UNKNOWN, 115, effects_row_y(0), 90, 15, button_action_id(ButtonAction::ToggleHitAnim), -1, MenuNav{.up=0, .down=5, .left=1, .right=3}),
+    button("toggle_gore", "Gore", KEYSTATE_UNKNOWN, 215, effects_row_y(0), 90, 15, button_action_id(ButtonAction::ToggleGore), -1, MenuNav{.up=0, .down=6, .left=2, .right=1}),
+    button("toggle_shadows", "Shadows", KEYSTATE_UNKNOWN, 15, effects_row_y(1), 90, 15, button_action_id(ButtonAction::ToggleShadows), -1, MenuNav{.up=1, .down=7, .left=6, .right=5}),
+    button("toggle_reflections", "Reflections", KEYSTATE_UNKNOWN, 115, effects_row_y(1), 90, 15, button_action_id(ButtonAction::ToggleReflections), -1, MenuNav{.up=2, .down=8, .left=4, .right=6}),
+    button("toggle_weather", "Weather", KEYSTATE_UNKNOWN, 215, effects_row_y(1), 90, 15, button_action_id(ButtonAction::ToggleWeather), -1, MenuNav{.up=3, .down=9, .left=5, .right=4}),
+    button("toggle_dust", "Dust", KEYSTATE_UNKNOWN, 15, effects_row_y(2), 90, 15, button_action_id(ButtonAction::ToggleDust), -1, MenuNav{.up=4, .down=10, .left=9, .right=8}),
+    button("toggle_depth_tint", "Depth tint", KEYSTATE_UNKNOWN, 115, effects_row_y(2), 90, 15, button_action_id(ButtonAction::ToggleDepthTint), -1, MenuNav{.up=5, .down=11, .left=7, .right=9}),
+    button("toggle_trails", "Trails", KEYSTATE_UNKNOWN, 215, effects_row_y(2), 90, 15, button_action_id(ButtonAction::ToggleTrails), -1, MenuNav{.up=6, .down=12, .left=8, .right=7}),
+    button("toggle_fire_glow", "Fire glow", KEYSTATE_UNKNOWN, 15, effects_row_y(3), 90, 15, button_action_id(ButtonAction::ToggleFireGlow), -1, MenuNav{.up=7, .down=13, .left=12, .right=11}),
+    button("toggle_ripples", "Ripples", KEYSTATE_UNKNOWN, 115, effects_row_y(3), 90, 15, button_action_id(ButtonAction::ToggleRipples), -1, MenuNav{.up=8, .down=13, .left=10, .right=12}),
+    button("toggle_screen_shake", "Screen shake", KEYSTATE_UNKNOWN, 215, effects_row_y(3), 90, 15, button_action_id(ButtonAction::ToggleScreenShake), -1, MenuNav{.up=9, .down=13, .left=11, .right=10}),
+    button("toggle_floor_ghost", "Floor ghost", KEYSTATE_UNKNOWN, 15, effects_row_y(4), 90, 15, button_action_id(ButtonAction::ToggleFloorGhosting), -1, MenuNav{.up=10, .down=0}),
 };
 
 // Control options: 4 player sections at 28px pitch, each with mode + remap buttons.
@@ -1364,6 +1417,39 @@ button* picker_control_options_buttons()
 int picker_control_options_button_count()
 {
     return static_cast<int>(pks().control_options_buttons.size());
+}
+
+button* picker_gameplay_fx_options_buttons()
+{
+    reset_mutable_button_layout(pks().gameplay_fx_options_buttons, k_gameplay_fx_options_buttons);
+    return pks().gameplay_fx_options_buttons.data();
+}
+
+int picker_gameplay_fx_options_button_count()
+{
+    return static_cast<int>(pks().gameplay_fx_options_buttons.size());
+}
+
+button* picker_ui_fx_options_buttons()
+{
+    reset_mutable_button_layout(pks().ui_fx_options_buttons, k_ui_fx_options_buttons);
+    return pks().ui_fx_options_buttons.data();
+}
+
+int picker_ui_fx_options_button_count()
+{
+    return static_cast<int>(pks().ui_fx_options_buttons.size());
+}
+
+button* picker_graphics_fx_options_buttons()
+{
+    reset_mutable_button_layout(pks().graphics_fx_options_buttons, k_graphics_fx_options_buttons);
+    return pks().graphics_fx_options_buttons.data();
+}
+
+int picker_graphics_fx_options_button_count()
+{
+    return static_cast<int>(pks().graphics_fx_options_buttons.size());
 }
 
 button* picker_details_buttons()
@@ -1778,7 +1864,11 @@ Sint32 main_controls_options()
         og::runtime::current_session->myscreen_->draw_button_inverted(4, 4, 312, 192);
         draw_buttons(buttons, num_buttons);
 
-        mytext.write_xy(10, 24, DARK_BLUE, "Player control modes and key remapping");
+        // The header sits below the BACK button's animated highlight box
+        // (which reaches 3px past the bevel) and above the P1 row at y=40;
+        // drawing it any higher lets the highlight overwrite the first chars.
+        mytext.write_xy(PICKER_CONTROLS_HEADER_X, PICKER_CONTROLS_HEADER_Y,
+                        DARK_BLUE, "Player control modes and key remapping");
 
         for (int i = 0; i < 4; ++i)
         {
@@ -1798,6 +1888,115 @@ Sint32 main_controls_options()
     return MENU_REDRAW;
 }
 
+namespace {
+
+// One per-frame FX subscreen draw entry: which toggle button reflects which
+// cfg (category, setting) pair.
+struct FxToggleDraw
+{
+    int index;
+    const char* category;
+    const char* setting;
+};
+
+// Shared blocking loop for the three FX subscreens. Toggles only write cfg;
+// main_options() persists cfg when it exits, which is the only path back out
+// of these screens.
+Sint32 run_fx_options_screen(button* buttons, int num_buttons,
+                             std::span<const FxToggleDraw> toggles,
+                             const char* title)
+{
+    text& mytext = og::runtime::current_session->myscreen_->text_normal;
+    int highlighted_button = 0;
+    og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
+    clear_keyboard();
+
+    Sint32 retvalue = 0;
+	while(!(retvalue & MENU_EXIT))
+	{
+        picker_lobby_poll();
+        if(leftmouse(buttons))
+        {
+            const Sint32 click_result = og::runtime::current_session->localbuttons_->leftclick();
+            if(click_result == MENU_EXIT)
+                break;
+            if(click_result != 0)
+                retvalue = click_result;
+        }
+
+        handle_menu_nav(buttons, highlighted_button, retvalue);
+        if(retvalue == MENU_EXIT)
+            break;
+
+        reset_buttons(og::runtime::current_session->localbuttons_, buttons, num_buttons, retvalue);
+
+        og::runtime::current_session->myscreen_->clear_window();
+        og::runtime::current_session->myscreen_->draw_button(0, 0, 320, 200, 0);
+        og::runtime::current_session->myscreen_->draw_button_inverted(4, 4, 312, 192);
+        draw_buttons(buttons, num_buttons);
+
+        mytext.write_xy(80, 13, DARK_BLUE, "%s", title);
+
+        for (const FxToggleDraw& toggle : toggles)
+            draw_toggle_effect_button(buttons[toggle.index], toggle.category, toggle.setting);
+
+        draw_highlight(buttons[highlighted_button]);
+        og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
+        og::input_native::sleep_ms(10);
+    }
+
+    return MENU_REDRAW;
+}
+
+} // namespace
+
+Sint32 gameplay_fx_options()
+{
+    static constexpr FxToggleDraw kToggles[] = {
+        {1, "effects", "hit_recoil"},
+        {2, "effects", "attack_lunge"},
+    };
+    // Sequence the accessors: the count reads the vector the buttons
+    // accessor populates.
+    button* buttons = picker_gameplay_fx_options_buttons();
+    const int num_buttons = picker_gameplay_fx_options_button_count();
+    return run_fx_options_screen(buttons, num_buttons, kToggles, "Gameplay effects");
+}
+
+Sint32 ui_fx_options()
+{
+    static constexpr FxToggleDraw kToggles[] = {
+        {1, "effects", "mini_hp_bar"},
+        {2, "effects", "damage_numbers"},
+        {3, "effects", "heal_numbers"},
+    };
+    button* buttons = picker_ui_fx_options_buttons();
+    const int num_buttons = picker_ui_fx_options_button_count();
+    return run_fx_options_screen(buttons, num_buttons, kToggles, "Interface effects");
+}
+
+Sint32 graphics_fx_options()
+{
+    static constexpr FxToggleDraw kToggles[] = {
+        {1, "effects", "hit_flash"},
+        {2, "effects", "hit_anim"},
+        {3, "effects", "gore"},
+        {4, "effects", "shadows"},
+        {5, "effects", "reflections"},
+        {6, "effects", "weather"},
+        {7, "effects", "dust"},
+        {8, "effects", "depth_tint"},
+        {9, "effects", "trails"},
+        {10, "effects", "fire_glow"},
+        {11, "effects", "ripples"},
+        {12, "effects", "screen_shake"},
+        {13, "graphics", "floor_ghost"},
+    };
+    button* buttons = picker_graphics_fx_options_buttons();
+    const int num_buttons = picker_graphics_fx_options_button_count();
+    return run_fx_options_screen(buttons, num_buttons, kToggles, "Graphics effects");
+}
+
 Sint32 main_options()
 {
     text& mytext = og::runtime::current_session->myscreen_->text_normal;
@@ -1811,7 +2010,8 @@ Sint32 main_options()
     buttons[3].hidden = buttons[3].no_draw = true;
     buttons[2].nav.right = -1;
     buttons[5].nav.up = 2;
-    buttons[17].nav.up = 16;  // fullscreen[3] is hidden here; retarget UP to a visible button
+    buttons[9].nav.down = 7;  // fullscreen[3] is hidden here; wrap the right
+    buttons[7].nav.up = 9;    // column between sprite sheet and defaults
     #endif
 
 	int highlighted_button = 0;
@@ -1839,11 +2039,19 @@ Sint32 main_options()
         
         // Reset buttons
         reset_buttons(og::runtime::current_session->localbuttons_, buttons, num_buttons, retvalue);
-        buttons[2].label = cfg.get_setting("graphics", "render");
+        // cfg (graphics, render) is empty in any process that never ran
+        // load_settings() (and for any missing-key path); fall back to the
+        // default engine name so the button face never draws blank.
+        {
+            std::string render_engine = cfg.get_setting("graphics", "render");
+            if (render_engine.empty())
+                render_engine = "normal";
+            buttons[2].label = render_engine;
+        }
         og::runtime::current_session->allbuttons_[2]->label = buttons[2].label;
         {
-            buttons[16].label = "Sprite Sheet";
-            og::runtime::current_session->allbuttons_[16]->label = buttons[16].label;
+            buttons[9].label = "Sprite Sheet";
+            og::runtime::current_session->allbuttons_[9]->label = buttons[9].label;
         }
 		
 		// Draw
@@ -1861,20 +2069,11 @@ Sint32 main_options()
 		mytext.write_xy(20, buttons[2].y + 3, DARK_BLUE, "Rendering engine:");
 		mytext.write_xy(20, buttons[2].y + 3 + 10, DARK_BLUE, " (needs restart)");
 		draw_toggle_effect_button(buttons[3], "graphics", "fullscreen");
-		draw_toggle_effect_button(buttons[17], "graphics", "floor_ghost");
 		mytext.write_xy(20, buttons[4].y + 3, DARK_BLUE, "Overscan adjust:");
 		og::runtime::current_session->myscreen_->hor_line(60, buttons[6].y - BUTTON_PADDING/2, 200, PURE_WHITE);
-		
+
 		mytext.write_xy(20, buttons[6].y + 3, DARK_BLUE, "Effects:");
-		draw_toggle_effect_button(buttons[6], "effects", "mini_hp_bar");
-		draw_toggle_effect_button(buttons[7], "effects", "hit_flash");
-		draw_toggle_effect_button(buttons[8], "effects", "hit_recoil");
-		draw_toggle_effect_button(buttons[9], "effects", "attack_lunge");
-		draw_toggle_effect_button(buttons[10], "effects", "hit_anim");
-		draw_toggle_effect_button(buttons[11], "effects", "damage_numbers");
-		draw_toggle_effect_button(buttons[12], "effects", "heal_numbers");
-		draw_toggle_effect_button(buttons[13], "effects", "gore");
-        draw_sprite_sheet_button(buttons[16]);
+        draw_sprite_sheet_button(buttons[9]);
 
         draw_highlight(buttons[highlighted_button]);
         og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
