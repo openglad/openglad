@@ -81,6 +81,12 @@ bool living::act()
 	// effects are not dependent on a renderer-side draw path.
 	set_drawcycle(static_cast<unsigned char>(drawcycle() + 1));
 
+	// Z-axis: fall through air / take Z-stairs (multi-floor only; a cheap no-op
+	// on single-floor levels). May cause a pit death.
+	apply_z_motion();
+	if (dead())
+		return 0;
+
 	// Make sure everyone we're pointing to is valid
 	if (foe() && (foe()->dead() || (current_game->world->rng_.next(foe()->invisibility_left()/20) > 0) ) )
 		set_foe(nullptr);

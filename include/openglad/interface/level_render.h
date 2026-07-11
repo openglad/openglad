@@ -24,7 +24,8 @@ public:
 
     void init_tiles(PixieData pixdata[]);
     void reset_tiles(PixieData pixdata[]);
-    void draw_tile(int tile_index, int x, int y, viewscreen* view);
+    void draw_tile(int tile_index, int x, int y, viewscreen* view,
+                   unsigned char alpha = 255);
 
 private:
     struct Impl;

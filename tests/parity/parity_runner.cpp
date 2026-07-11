@@ -439,6 +439,11 @@ RunOutcome run_scenario(const ScenarioSpec& spec)
     if (spec.fresh_arena)
         clear_world_entities(world);
 
+    // Build the multi-floor arena (grids + floor paints) before spawning, so
+    // spawns can be relocated onto floors that exist. No-op for single-floor
+    // scenarios (floor_count == 1), keeping every existing golden byte-identical.
+    apply_floor_setup(world, spec);
+
     apply_post_load_spawns(world, spec);
     events.clear();
     std::srand(spec.rng_seed);

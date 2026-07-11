@@ -109,6 +109,15 @@ public:
                                          Sint32 portendx, Sint32 portendy,
                                          std::span<const unsigned char> sourceptr, unsigned char teamcolor, Uint8 alpha) = 0;
 
+    // Full-color, team-recolored sprite blit with a global alpha (for faded
+    // lower floors / ghosted upper floors). Unlike walkputbuffertext_alpha
+    // (single-color), this preserves the sprite's real colors.
+    virtual void walkputbuffer_alpha(Sint32 walkerstartx, Sint32 walkerstarty,
+                                     Sint32 walkerwidth, Sint32 walkerheight,
+                                     Sint32 portstartx, Sint32 portstarty,
+                                     Sint32 portendx, Sint32 portendy,
+                                     std::span<const unsigned char> sourceptr, unsigned char teamcolor, Uint8 alpha) = 0;
+
     virtual void walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
                                Sint32 walkerwidth, Sint32 walkerheight,
                                Sint32 portstartx, Sint32 portstarty,

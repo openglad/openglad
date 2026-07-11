@@ -1320,6 +1320,29 @@ if(NOT EMSCRIPTEN)
     )
     add_runtime_assets_dependency(ctf_mapgen)
 
+    # --- concept_mapgen (Z-axis "Concept Playground" campaign generator) ---
+    # SDL-free authoring tool that produces builtin/org.openglad.concept.glad.
+    # Not part of the default build; run via scripts/generate_concept_campaign.sh.
+    add_executable(concept_mapgen EXCLUDE_FROM_ALL
+        ${CMAKE_SOURCE_DIR}/tools/concept_mapgen/main.cpp
+        ${SRC_DIR}/platform/text/platform_headless.cpp
+        ${SRC_DIR}/platform/text/walker_headless.cpp
+        ${SRC_DIR}/interface/input/input_state.cpp
+        ${SRC_DIR}/platform/game_context.cpp
+        ${SRC_DIR}/interface/session_state.cpp
+        ${SRC_DIR}/interface/level_runtime_data.cpp
+        ${SRC_DIR}/interface/platform_bridge.cpp
+    )
+    configure_openglad_library(concept_mapgen)
+    target_link_libraries(concept_mapgen PRIVATE
+        og_core
+        og_gameplay
+        og_resources
+        m
+        pthread
+    )
+    add_runtime_assets_dependency(concept_mapgen)
+
     # --- openglad_curses (zero-SDL ncurses text client) ---
     # A different renderer/input backend for the same game. Built from the same
     # SDL-free sources as the headless server (sim + resources + networking core
@@ -2275,6 +2298,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_event_log.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_world_headless.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_entity.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_zaxis.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_game_world_entity_ids.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_world_snapshot.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_sim_world.cpp

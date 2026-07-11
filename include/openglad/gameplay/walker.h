@@ -91,6 +91,9 @@ class walker : public og::sim::SimEntity
 		bool reset(void);
 			short move(short x, short y);
 			void worldmove(float x, float y);
+			// Z-axis / multi-floor (no-ops / cheap on single-floor levels):
+			void change_floor(short new_floor); // relocate to a stacked floor + re-bucket in obmap
+			void apply_z_motion();              // per-tick fall-through-air / Z-stair transition
 			virtual bool setxy(short x, short y);
 			// Overloads to avoid implicit narrowing at call sites. These forward to the virtual short-based API.
 			bool setxy(std::int32_t x, std::int32_t y) { return setxy(static_cast<short>(x), static_cast<short>(y)); }
@@ -162,6 +165,9 @@ class walker : public og::sim::SimEntity
 		statistics* stats() const { return stats_.get(); }
 		OG_WALKER_DIRTY_FIELD(float, lastx, og::dirty::BIT_LASTX);
 		OG_WALKER_DIRTY_FIELD(float, lasty, og::dirty::BIT_LASTY);
+		// Vertical velocity for projectile arcs/gravity (pixels/tick). Only
+		// projectiles use it; 0 for everything else (legacy flat behavior).
+		OG_WALKER_DIRTY_FIELD(float, vz, og::dirty::BIT_VZ);
 		OG_WALKER_DIRTY_FIELD(float, stepsize, og::dirty::BIT_STEPSIZE);
 		OG_WALKER_DIRTY_FIELD(float, normal_stepsize, og::dirty::BIT_NORMAL_STEPSIZE);
 		OG_WALKER_DIRTY_FIELD(signed char, curdir, og::dirty::BIT_CURDIR);
@@ -286,6 +292,7 @@ class walker : public og::sim::SimEntity
 	private:
 		float lastx_ = 0.0f;
 		float lasty_ = 0.0f;
+		float vz_ = 0.0f;
 		float stepsize_ = 0.0f;
 		float normal_stepsize_ = 0.0f;
 		signed char curdir_ = 0;
@@ -328,6 +335,10 @@ class walker : public og::sim::SimEntity
 		std::uint32_t owner_id_ = 0;
 		std::uint32_t collide_ob_id_ = 0;
 		std::uint32_t last_self_teleport_tick_ = 0;
+		// Server-only transient (not replicated, like path_to_foe): ticks until
+		// the next Z transition is allowed, preventing stair/fall bounce. Always
+		// 0 on single-floor (apply_z_motion early-returns), so parity-neutral.
+		int z_cooldown_ = 0;
 		walker* foe_ = nullptr;
 		walker* leader_ = nullptr;
 		walker* owner_ = nullptr;

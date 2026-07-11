@@ -63,6 +63,33 @@ public:
         mark_dirty(og::dirty::BIT_SIZEY);
     }
 
+    // --- Z-axis / multi-floor (default 0 == legacy flat single-floor) -------
+    // worldz: authoritative sub-floor height in pixels (rendering subtracts it
+    // from the screen y). Public like xpos/sizex (no snapped counterpart, no
+    // setxy-style invariant to protect). floor: which stacked floor the entity
+    // occupies. sizez: cylinder height; 0 is the "full/unbounded height"
+    // sentinel so legacy entities always overlap in z (collision unchanged).
+    [[nodiscard]] float worldz() const noexcept { return worldz_value_; }
+    void set_worldz(float value) noexcept
+    {
+        worldz_value_ = value;
+        mark_dirty(og::dirty::BIT_WORLDZ);
+    }
+
+    [[nodiscard]] short floor() const noexcept { return floor_; }
+    void set_floor(short value) noexcept
+    {
+        floor_ = value;
+        mark_dirty(og::dirty::BIT_FLOOR);
+    }
+
+    [[nodiscard]] short sizez() const noexcept { return sizez_; }
+    void set_sizez(short value) noexcept
+    {
+        sizez_ = value;
+        mark_dirty(og::dirty::BIT_SIZEZ);
+    }
+
     [[nodiscard]] unsigned char team_num() const noexcept { return team_num_; }
     void set_team_num(unsigned char value) noexcept
     {
@@ -220,12 +247,16 @@ protected:
     // Position: floating-point authoritative, xpos/ypos are display-snapped
     float worldx_value_ = -1.0f;
     float worldy_value_ = -1.0f;
+    // Z height in pixels above the entity's current floor plane (0 == on floor).
+    float worldz_value_ = 0.0f;
 
 private:
     short xpos_ = 0;
     short ypos_ = 0;
     short sizex_ = 0;
     short sizey_ = 0;
+    short floor_ = 0;   // stacked floor index (0 == ground / single-floor)
+    short sizez_ = 0;   // cylinder height; 0 == full/unbounded sentinel
     unsigned char team_num_ = 0;
     unsigned char real_team_num_ = 255;
     signed char user_ = -1;

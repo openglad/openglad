@@ -22,7 +22,7 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/gameplay_context.h>
 
-#define MAKE_STATE(x, y) reinterpret_cast<PathState>(static_cast<intptr_t>(((y) / GRID_SIZE) * MAP_WIDTH + ((x) / GRID_SIZE)))
+#define MAKE_STATE(x, y, f) reinterpret_cast<PathState>(static_cast<intptr_t>(static_cast<intptr_t>(f) * FLOOR_STRIDE + ((y) / GRID_SIZE) * MAP_WIDTH + ((x) / GRID_SIZE)))
 #define ALIGN_TO_GRID(x) ((x) / GRID_SIZE * GRID_SIZE)
 
 void walker::find_path_to_foe()
@@ -35,8 +35,8 @@ void walker::find_path_to_foe()
         return;
 
     float total_cost = 0.0f;
-    const PathState start_state = MAKE_STATE(xpos(), ypos());
-    const PathState end_state = MAKE_STATE(foe()->xpos(), foe()->ypos());
+    const PathState start_state = MAKE_STATE(xpos(), ypos(), floor());
+    const PathState end_state = MAKE_STATE(foe()->xpos(), foe()->ypos(), foe()->floor());
 
     pathing->solve_for(this, start_state, end_state, path_to_foe, total_cost);
 }
@@ -53,8 +53,8 @@ void walker::find_path_to_point(short x, short y)
         return;
 
     float total_cost = 0.0f;
-    const PathState start_state = MAKE_STATE(xpos(), ypos());
-    const PathState end_state = MAKE_STATE(x, y);
+    const PathState start_state = MAKE_STATE(xpos(), ypos(), floor());
+    const PathState end_state = MAKE_STATE(x, y, floor());
 
     pathing->solve_for_point(this, x, y, start_state, end_state, path_to_foe,
                              total_cost);
@@ -62,6 +62,10 @@ void walker::find_path_to_point(short x, short y)
 
 void walker::follow_path_to_foe()
 {
+    const bool multifloor = current_game != nullptr &&
+        current_game->world != nullptr &&
+        current_game->world->floor_count() > 1;
+
     while (!path_to_foe.empty())
     {
         auto node = path_to_foe.begin();
@@ -81,6 +85,12 @@ void walker::follow_path_to_foe()
             walkstep(dx, dy);
             break;
         }
+
+        // Reached this node's (x,y). On a multi-floor path, if the node is on a
+        // different floor we're standing on the Z-stair cell — wait for
+        // apply_z_motion to lift us to that floor before consuming the node.
+        if (multifloor && GET_STATE_FLOOR(state) != floor())
+            break;
 
         // We already made it to this node, so remove it.
         path_to_foe.erase(node);

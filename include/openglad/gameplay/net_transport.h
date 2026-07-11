@@ -50,7 +50,9 @@ constexpr std::uint8_t net_message_type_value(NetMessageType message_type) noexc
 // respawn ticks) and the snapshot format moved to v4 alongside them.
 // v3: lobby settings carry the CTF scenario-troops strip flag and the
 // snapshot format moved to v5 alongside it.
-inline constexpr std::uint8_t kNetworkProtocolVersion = 3;
+// v4: entities carry Z-axis fields (worldz/vz/sizez/floor); snapshot format
+// moved to v6 and replay to v7 alongside it. See docs/z-axis-design.md.
+inline constexpr std::uint8_t kNetworkProtocolVersion = 4;
 inline constexpr std::size_t kTransportHeaderSize = 4;
 inline constexpr std::size_t kSessionTokenSize = 16;
 using SessionToken = std::array<std::uint8_t, kSessionTokenSize>;

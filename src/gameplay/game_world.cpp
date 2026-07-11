@@ -639,8 +639,15 @@ short GameWorld::remove_ob(walker* ob)
 
 bool GameWorld::query_grid_passable(float x, float y, walker* ob)
 {
+    return query_grid_passable(x, y, ob, ob != nullptr ? ob->floor() : 0);
+}
+
+bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor)
+{
     if (ob == nullptr)
         return false;
+
+    const PixieData& fg = grid_for_floor(floor);
 
     std::int32_t xtrax = 1;
     std::int32_t xtray = 1;
@@ -655,7 +662,7 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob)
     if (ob->stats()->query_bit_flags(BIT_ETHEREAL))
         return true;
 
-    if (!grid.valid())
+    if (!fg.valid())
         return false;
 
     if ((xover % GRID_SIZE) == 0)
@@ -670,7 +677,7 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob)
     {
         for (std::int32_t j = y_i / GRID_SIZE; j < ytarg; ++j)
         {
-            switch (static_cast<unsigned char>(grid.data[i + grid.w * j]))
+            switch (static_cast<unsigned char>(fg.data[i + fg.w * j]))
             {
                 case PIX_GRASS1:
                 case PIX_GRASS2:
@@ -843,6 +850,20 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob)
                     if (ob->stats()->query_bit_flags(BIT_FLYING) || ob->flight_left())
                         break;
                     return false;
+                case PIX_AIR:
+                case PIX_GLASS:
+                case PIX_DROPBLOCK_UP:
+                case PIX_DROPBLOCK_RIGHT:
+                case PIX_DROPBLOCK_DOWN:
+                case PIX_DROPBLOCK_LEFT:
+                case PIX_ZSTAIR_UP:
+                case PIX_ZSTAIR_DOWN:
+                    // Walkable at the grid layer. Air's fall, drop-block
+                    // direction, and stair floor-change are handled in movement
+                    // (apply_vertical); pathing avoids air for non-flyers
+                    // separately. Single-floor grids never contain these bytes,
+                    // so legacy levels take identical control flow.
+                    break;
                 default:
                     return false;
             }
@@ -854,21 +875,51 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob)
 
 bool GameWorld::query_object_passable(float x, float y, walker* ob)
 {
+    return query_object_passable(x, y, ob, ob != nullptr ? ob->floor() : 0);
+}
+
+bool GameWorld::query_object_passable(float x, float y, walker* ob, int floor)
+{
     if (ob == nullptr)
         return false;
 
     if (ob->dead())
         return true;
 
-    if (!myobmap)
+    obmap* om = obmap_for_floor(floor);
+    if (!om)
         return false;
 
-    return myobmap->query_list(ob, static_cast<short>(x), static_cast<short>(y));
+    return om->query_list(ob, static_cast<short>(x), static_cast<short>(y));
 }
 
 bool GameWorld::query_passable(float x, float y, walker* ob)
 {
-    return query_grid_passable(x, y, ob) && query_object_passable(x, y, ob);
+    return query_passable(x, y, ob, ob != nullptr ? ob->floor() : 0);
+}
+
+bool GameWorld::query_passable(float x, float y, walker* ob, int floor)
+{
+    return query_grid_passable(x, y, ob, floor) &&
+           query_object_passable(x, y, ob, floor);
+}
+
+void GameWorld::set_floor_count(int count)
+{
+    if (count < 1)
+        count = 1;
+    const std::size_t extra = static_cast<std::size_t>(count - 1);
+    if (extra < extra_floors_.size())
+    {
+        extra_floors_.resize(extra);
+        return;
+    }
+    while (extra_floors_.size() < extra)
+    {
+        ExtraFloor new_floor;
+        new_floor.floor_smoother.set_rng(&rng_);
+        extra_floors_.push_back(std::move(new_floor));
+    }
 }
 
 walker* GameWorld::find_near_foe(walker* ob)

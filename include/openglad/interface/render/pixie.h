@@ -45,6 +45,8 @@ class pixie
 		short draw (short x, short y, viewscreen  *view_buf);
 		short draw(Sint32 x, Sint32 y, viewscreen* view_buf) { return draw(static_cast<short>(x), static_cast<short>(y), view_buf); }
 		short draw(float x, float y, viewscreen* view_buf) { return draw(static_cast<Sint32>(x), static_cast<Sint32>(y), view_buf); }
+		// Alpha-blended draw for faded/ghosted floors; alpha>=255 takes the opaque path.
+		short draw(short x, short y, viewscreen* view_buf, unsigned char alpha);
 		short drawMix (viewscreen *view_buf);
 		short drawMix (short x, short y, viewscreen *view_buf);
 		short drawMix(Sint32 x, Sint32 y, viewscreen* view_buf) { return drawMix(static_cast<short>(x), static_cast<short>(y), view_buf); }

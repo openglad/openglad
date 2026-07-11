@@ -32,6 +32,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/obmap.h>
+#include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/render_component_base.h>
 #include <openglad/gameplay/sim_emit.h>
 #include <openglad/core/test_trace.h>
@@ -1137,6 +1138,7 @@ walker  *walker::create_weapon()
 		if (!weapon) return nullptr;
 		weapon->set_team_num(team_num());
 		weapon->set_owner(this);
+		weapon->set_floor(floor());  // summons spawn on the summoner's floor
 		weapon->set_difficulty(static_cast<std::uint32_t>(stats_->level()));
 		return weapon;
 	}
@@ -1147,6 +1149,7 @@ walker  *walker::create_weapon()
 	if (!weapon) return nullptr;
 	weapon->set_team_num(team_num());
 	weapon->set_owner(this);
+	weapon->set_floor(floor());  // projectile travels on the shooter's floor
 	weapon->set_difficulty(static_cast<std::uint32_t>(stats_->level()));
 	weapon->set_damage((weapon->damage() * (static_cast<float>(stats_->level()) + 3.0f)) / 4.0f);
 	if (myguy)
@@ -1316,6 +1319,47 @@ walker::act_generate()
 bool
 walker::act_fire()
 {
+	// Z-axis: arc the projectile's height (visual) and drop it through "air"
+	// holes to a lower floor (multi-floor). Strictly inert for flat weapons
+	// (vz==0, worldz==0) on single-floor levels — worldz never affects the 2D
+	// path and is not part of the parity dump.
+	GameWorld* const zw = (current_game != nullptr) ? current_game->world : nullptr;
+	if (vz() != 0.0f || worldz() != 0.0f)
+	{
+		set_worldz(worldz() + vz());
+		const WeaponFamilyDescriptor* wfd = get_weapon_family_descriptor(family());
+		set_vz(vz() - (wfd != nullptr ? wfd->gravity : 0.0f));
+		if (worldz() < 0.0f)
+		{
+			set_worldz(0.0f);
+			set_vz(0.0f);
+		}
+	}
+	if (zw != nullptr && zw->floor_count() > 1 && !dead())
+	{
+		const WeaponFamilyDescriptor* wfd = get_weapon_family_descriptor(family());
+		if (wfd != nullptr && wfd->can_drop_floors)
+		{
+			smoother& sm = zw->smoother_for_floor(floor());
+			const std::int32_t g = sm.query_genre_x_y(
+				(xpos() + sizex() / 2) / GRID_SIZE,
+				(ypos() + sizey() / 2) / GRID_SIZE);
+			if (g == TYPE_AIR)
+			{
+				if (floor() > 0)
+				{
+					change_floor(static_cast<short>(floor() - 1));
+				}
+				else
+				{
+					set_dead(1);
+					death();
+					return 1;
+				}
+			}
+		}
+	}
+
 	const auto remaining_range = lineofsight();
 	set_lineofsight(remaining_range - 1);
 	if (!remaining_range) // this is the range of the weapon
@@ -1685,6 +1729,83 @@ bool walker::check_special()
 }
 
 // Center us on target walker
+// Relocate this entity to a different stacked floor, re-bucketing it in the
+// single floor-keyed obmap (remove from the old floor's buckets, then re-add at
+// the new floor). Lands on the new floor plane (worldz 0).
+void walker::change_floor(short new_floor)
+{
+	if (new_floor == floor())
+		return;
+	GameWorld* w = (current_game != nullptr) ? current_game->world : nullptr;
+	obmap* m = (w != nullptr) ? w->myobmap.get() : nullptr;
+	if (m != nullptr)
+		m->remove(this);
+	set_floor(new_floor);
+	set_worldz(0.0f);
+	if (m != nullptr && !ignore())
+		m->add(this, xpos(), ypos());
+}
+
+// Per-tick vertical handling for stacked floors: fall through "air" tiles to the
+// floor below, and take Z-stairs up/down. Strictly a no-op on single-floor
+// levels (floor_count()<=1), so it never affects legacy levels or parity.
+void walker::apply_z_motion()
+{
+	GameWorld* w = (current_game != nullptr) ? current_game->world : nullptr;
+	if (w == nullptr || w->floor_count() <= 1)
+		return;
+	if (dead() || ignore())
+		return;
+
+	if (z_cooldown_ > 0)
+	{
+		--z_cooldown_;
+		return;
+	}
+
+	const bool flying = (stats_ != nullptr) &&
+		(stats_->query_bit_flags(BIT_FLYING) || flight_left() != 0);
+
+	smoother& sm = w->smoother_for_floor(floor());
+	const std::int32_t cx = (xpos() + sizex() / 2) / GRID_SIZE;
+	const std::int32_t cy = (ypos() + sizey() / 2) / GRID_SIZE;
+	const std::int32_t genre = sm.query_genre_x_y(cx, cy);
+
+	// Z-stairs: relocate one floor up/down (vertically aligned). Flyers never
+	// change floors (per design).
+	if (genre == TYPE_ZSTAIRS && !flying)
+	{
+		const std::int32_t tile = sm.query_x_y(cx, cy);
+		short target = floor();
+		if (tile == PIX_ZSTAIR_UP && (floor() + 1) < w->floor_count())
+			target = static_cast<short>(floor() + 1);
+		else if (tile == PIX_ZSTAIR_DOWN && floor() > 0)
+			target = static_cast<short>(floor() - 1);
+		if (target != floor())
+		{
+			change_floor(target);
+			z_cooldown_ = 6;
+		}
+		return;
+	}
+
+	// Air: non-flying livings fall to the floor below; falling past floor 0 is a
+	// pit death. Weapons get their own fall via act_fire (vz/gravity).
+	if (genre == TYPE_AIR && !flying && order() != Order::Weapon)
+	{
+		if (floor() > 0)
+		{
+			change_floor(static_cast<short>(floor() - 1));
+			z_cooldown_ = 2;
+		}
+		else if (!dead())
+		{
+			set_dead(1);
+			death();
+		}
+	}
+}
+
 void walker::center_on(walker  *target)
 {
 	// First get the center of our target ..

@@ -144,6 +144,20 @@ short pixie::draw(viewscreen * view_buf)
 	return 1;
 }
 
+short pixie::draw(short x, short y, viewscreen* view_buf, unsigned char alpha)
+{
+	if (alpha >= 255)
+		return draw(x, y, view_buf); // opaque path, byte-identical to before
+	setxy(x, y);
+	const Sint32 xscreen = static_cast<Sint32>(xpos - view_buf->topx + view_buf->xloc);
+	const Sint32 yscreen = static_cast<Sint32>(ypos - view_buf->topy + view_buf->yloc);
+	og::runtime::current_session->myscreen_->putbuffer_alpha(
+	    xscreen, yscreen, sizex, sizey,
+	    view_buf->xloc, view_buf->yloc, view_buf->endx, view_buf->endy,
+	    {bmp, static_cast<size_t>(sizex * sizey)}, alpha);
+	return 1;
+}
+
 // Allows the pixie to be placed using pixel coord data
 short pixie::drawMix(short x, short y, viewscreen  * view_buf)
 {

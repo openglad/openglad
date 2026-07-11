@@ -318,9 +318,7 @@ bool viewscreen::redraw()
 	walker  *controlob = sanitize_control_pointer(*this, level);
 	auto* renderer = active_screen()->level_visuals_.renderer_.get();
 	if (!renderer) return false;
-	PixieData& gridp = active_screen()->world().grid;
-	unsigned short maxx = gridp.w;
-	unsigned short maxy = gridp.h;
+	GameWorld& vworld = active_screen()->world();
     interpolation_alpha = query_render_interpolation_alpha();
 
 	// check if we are partially into a grid square and require
@@ -359,25 +357,55 @@ bool viewscreen::redraw()
 	//note  >> 4 is equivalent to /16 but faster, since it doesn't divide
 	//likewise <<4 is equivalent to *16, but faster
 
-	for (j=(topy/GRID_SIZE)-yneg;j < ((topy+(yview))/GRID_SIZE) +1; j++)
-		for (i=(topx/GRID_SIZE)-xneg;i < ((topx+(xview))/GRID_SIZE) +1; i++)
+	current_floor_ = (editor_floor_override_ >= 0)
+	    ? editor_floor_override_
+	    : (controlob ? static_cast<Sint32>(controlob->floor()) : 0);
+	// Multi-floor: draw stacked floors bottom-up, interleaving each floor's tiles
+	// + entities at a per-floor opacity (floors below fade with depth, the camera
+	// floor is opaque, floors above are faint ghosts). The opaque camera floor
+	// occludes lower floors except through "air" holes (empty graphics). Single-
+	// floor levels draw exactly one opaque pass (byte-identical to pre-Z).
+	{
+		// The render surface persists across frames and is never cleared per
+		// frame; the engine relies on opaque tiles overwriting every pixel. On an
+		// upper floor the out-of-bounds border (drawn only for floor 0) and the
+		// camera floor's air-hole cells are covered ONLY by sub-255 alpha blends,
+		// which read-modify-write and so compound against the previous frame ->
+		// flashing. Clear this view's viewport to a stable black base first.
+		// Gated floor_count>1 so single-floor stays byte-identical (opaque path).
+		if (vworld.floor_count() > 1)
+			active_screen()->clearbuffer(xloc, yloc, xview, yview);
+		const Sint32 floor_top = (vworld.floor_count() > 1)
+		    ? static_cast<Sint32>(vworld.floor_count() - 1) : current_floor_;
+		for (Sint32 f = 0; f <= floor_top; ++f)
 		{
-			// NOTE: back is a PIXIEN.
-			// background graphic [grid(x,y)] -> put in buffer
-			if (i<0 || j<0 || i>=maxx || j>=maxy)
+			const unsigned char falpha = floor_render_alpha(static_cast<int>(f));
+			const bool base_floor = (f == 0);
+			PixieData& gridp = vworld.grid_for_floor(static_cast<int>(f));
+			if (gridp.valid())
 			{
-				if (j == -1 && i>-1 && i<maxx)  // show side of wall
-					renderer->draw_tile(PIX_WALLSIDE1, i*GRID_SIZE, j*GRID_SIZE, this);
-				else if (j == -2 && i>-1 && i<maxx)  // show top side of wall
-					renderer->draw_tile(PIX_H_WALL1, i*GRID_SIZE, j*GRID_SIZE, this);
-				else                                                                  // show only top of wall
-					renderer->draw_tile(PIX_WALLTOP_H, i*GRID_SIZE, j*GRID_SIZE, this);
+				const unsigned short maxx = gridp.w;
+				const unsigned short maxy = gridp.h;
+				for (j=(topy/GRID_SIZE)-yneg;j < ((topy+(yview))/GRID_SIZE) +1; j++)
+					for (i=(topx/GRID_SIZE)-xneg;i < ((topx+(xview))/GRID_SIZE) +1; i++)
+					{
+						if (i<0 || j<0 || i>=maxx || j>=maxy)
+						{
+							if (!base_floor) continue; // upper floors: transparent border
+							if (j == -1 && i>-1 && i<maxx)
+								renderer->draw_tile(PIX_WALLSIDE1, i*GRID_SIZE, j*GRID_SIZE, this, falpha);
+							else if (j == -2 && i>-1 && i<maxx)
+								renderer->draw_tile(PIX_H_WALL1, i*GRID_SIZE, j*GRID_SIZE, this, falpha);
+							else
+								renderer->draw_tile(PIX_WALLTOP_H, i*GRID_SIZE, j*GRID_SIZE, this, falpha);
+						}
+						else
+							renderer->draw_tile(static_cast<int>(gridp.data[i + maxx * j]), i*GRID_SIZE, j*GRID_SIZE, this, falpha);
+					}
 			}
-			else if(gridp.valid())
-				renderer->draw_tile(static_cast<int>(gridp.data[i + maxx * j]), i*GRID_SIZE, j*GRID_SIZE, this);
+			draw_floor_entities(&level, static_cast<int>(f), falpha); //radar drawn after
+		}
 	}
-
-	draw_obs(); //moved here to put the radar on top of obs
 	if (controlob && !controlob->dead() && controlob->user() == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
 		myradar->draw();
 	display_text();
@@ -409,9 +437,7 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 	walker  *controlob = sanitize_control_pointer(*this, *data);
 	auto* renderer = data->level_visuals().renderer_.get();
 	if (!renderer) return false;
-	PixieData& gridp = data->world().grid;
-	unsigned short maxx = gridp.w;
-	unsigned short maxy = gridp.h;
+	GameWorld& vworld = data->world();
     interpolation_alpha = query_render_interpolation_alpha();
 
 	// check if we are partially into a grid square and require
@@ -450,25 +476,49 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 	//note  >> 4 is equivalent to /16 but faster, since it doesn't divide
 	//likewise <<4 is equivalent to *16, but faster
 
-	for (j=(topy/GRID_SIZE)-yneg;j < ((topy+(yview))/GRID_SIZE) +1; j++)
-		for (i=(topx/GRID_SIZE)-xneg;i < ((topx+(xview))/GRID_SIZE) +1; i++)
+	current_floor_ = (editor_floor_override_ >= 0)
+	    ? editor_floor_override_
+	    : (controlob ? static_cast<Sint32>(controlob->floor()) : 0);
+	// Multi-floor: draw stacked floors bottom-up with per-floor opacity and
+	// interleaved entities (see the no-arg redraw() for the rationale). Single-
+	// floor draws one opaque pass (byte-identical).
+	{
+		// See the no-arg redraw(): clear this view's viewport to black before the
+		// stacked-floor alpha blends so multi-floor composites against a stable
+		// base (else the OOB border / air holes shimmer). Gated floor_count>1.
+		if (vworld.floor_count() > 1)
+			active_screen()->clearbuffer(xloc, yloc, xview, yview);
+		const Sint32 floor_top = (vworld.floor_count() > 1)
+		    ? static_cast<Sint32>(vworld.floor_count() - 1) : current_floor_;
+		for (Sint32 f = 0; f <= floor_top; ++f)
 		{
-			// NOTE: back is a PIXIEN.
-			// background graphic [grid(x,y)] -> put in buffer
-			if (i<0 || j<0 || i>=maxx || j>=maxy)
+			const unsigned char falpha = floor_render_alpha(static_cast<int>(f));
+			const bool base_floor = (f == 0);
+			PixieData& gridp = vworld.grid_for_floor(static_cast<int>(f));
+			if (gridp.valid())
 			{
-				if (j == -1 && i>-1 && i<maxx)  // show side of wall
-					renderer->draw_tile(PIX_WALLSIDE1, i*GRID_SIZE, j*GRID_SIZE, this);
-				else if (j == -2 && i>-1 && i<maxx)  // show top side of wall
-					renderer->draw_tile(PIX_H_WALL1, i*GRID_SIZE, j*GRID_SIZE, this);
-				else                                                                  // show only top of wall
-					renderer->draw_tile(PIX_WALLTOP_H, i*GRID_SIZE, j*GRID_SIZE, this);
+				const unsigned short maxx = gridp.w;
+				const unsigned short maxy = gridp.h;
+				for (j=(topy/GRID_SIZE)-yneg;j < ((topy+(yview))/GRID_SIZE) +1; j++)
+					for (i=(topx/GRID_SIZE)-xneg;i < ((topx+(xview))/GRID_SIZE) +1; i++)
+					{
+						if (i<0 || j<0 || i>=maxx || j>=maxy)
+						{
+							if (!base_floor) continue; // upper floors: transparent border
+							if (j == -1 && i>-1 && i<maxx)
+								renderer->draw_tile(PIX_WALLSIDE1, i*GRID_SIZE, j*GRID_SIZE, this, falpha);
+							else if (j == -2 && i>-1 && i<maxx)
+								renderer->draw_tile(PIX_H_WALL1, i*GRID_SIZE, j*GRID_SIZE, this, falpha);
+							else
+								renderer->draw_tile(PIX_WALLTOP_H, i*GRID_SIZE, j*GRID_SIZE, this, falpha);
+						}
+						else
+							renderer->draw_tile(static_cast<int>(gridp.data[i + maxx * j]), i*GRID_SIZE, j*GRID_SIZE, this, falpha);
+					}
 			}
-			else if(gridp.valid())
-				renderer->draw_tile(static_cast<int>(gridp.data[i + maxx * j]), i*GRID_SIZE, j*GRID_SIZE, this);
+			draw_floor_entities(data, static_cast<int>(f), falpha);
+		}
 	}
-
-	draw_obs(data); //moved here to put the radar on top of obs
 	if (draw_radar && controlob && !controlob->dead() && controlob->user() == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
 		myradar->draw(data);
 	display_text();
@@ -749,6 +799,43 @@ void viewscreen::clear_text()
 	}
 }
 
+unsigned char viewscreen::floor_render_alpha(int f) const
+{
+	if (f == current_floor_)
+		return 255; // camera floor: opaque
+	if (f < current_floor_)
+	{
+		// Floors below the camera fade with depth.
+		const int a = 255 - (current_floor_ - f) * static_cast<int>(kFloorBelowAlphaStep);
+		return static_cast<unsigned char>(a < static_cast<int>(kFloorBelowAlphaMin)
+		                                      ? kFloorBelowAlphaMin : a);
+	}
+	return kFloorGhostAlpha; // floors above the camera: faint ghost
+}
+
+void viewscreen::draw_floor_entities(LevelRuntimeData* data, int floor, unsigned char alpha)
+{
+	const bool multifloor = data->world().floor_count() > 1;
+	for (auto& uptr : data->world().fxlist)
+	{
+		walker* w = uptr.get();
+		if (w && !w->dead() && (!multifloor || static_cast<int>(w->floor()) == floor))
+			draw_walker(*w, this, alpha);
+	}
+	for (auto& uptr : data->world().oblist)
+	{
+		walker* w = uptr.get();
+		if (w && !w->dead() && (!multifloor || static_cast<int>(w->floor()) == floor))
+			draw_walker(*w, this, alpha);
+	}
+	for (auto& uptr : data->world().weaplist)
+	{
+		walker* w = uptr.get();
+		if (w && !w->dead() && (!multifloor || static_cast<int>(w->floor()) == floor))
+			draw_walker(*w, this, alpha);
+	}
+}
+
 bool viewscreen::draw_obs()
 {
     return draw_obs(&active_screen()->level_runtime_data());
@@ -756,28 +843,36 @@ bool viewscreen::draw_obs()
 
 bool viewscreen::draw_obs(LevelRuntimeData* data)
 {
-	// First draw the special effects
-	for (auto& uptr : data->world().fxlist)
+	const bool multifloor = data->world().floor_count() > 1;
+	const Sint32 cf = current_floor_;
+	// Layer entities bottom-up to the camera floor so lower-floor entities show
+	// through air holes and the camera floor draws on top. Single-floor levels
+	// (multifloor==false) draw every entity in one pass, exactly as before.
+	for (Sint32 f = 0; f <= cf; ++f)
 	{
-	    walker* w = uptr.get();
-		if(w && !w->dead())
-			draw_walker(*w, this);
-	}
+		// First draw the special effects
+		for (auto& uptr : data->world().fxlist)
+		{
+		    walker* w = uptr.get();
+			if(w && !w->dead() && (!multifloor || w->floor() == f))
+				draw_walker(*w, this);
+		}
 
-	// Now do real objects
-	for (auto& uptr : data->world().oblist)
-	{
-	    walker* w = uptr.get();
-		if(w && !w->dead())
-			draw_walker(*w, this);
-	}
+		// Now do real objects
+		for (auto& uptr : data->world().oblist)
+		{
+		    walker* w = uptr.get();
+			if(w && !w->dead() && (!multifloor || w->floor() == f))
+				draw_walker(*w, this);
+		}
 
-	// Finally draw the weapons
-	for (auto& uptr : data->world().weaplist)
-	{
-	    walker* w = uptr.get();
-		if(w && !w->dead())
-			draw_walker(*w, this);
+		// Finally draw the weapons
+		for (auto& uptr : data->world().weaplist)
+		{
+		    walker* w = uptr.get();
+			if(w && !w->dead() && (!multifloor || w->floor() == f))
+				draw_walker(*w, this);
+		}
 	}
 
 	return 1;

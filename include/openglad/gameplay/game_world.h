@@ -155,12 +155,73 @@ public:
     EntityList weaplist;
     EntityList dead_list;
 
-    // Spatial data
+    // Spatial data. floors_[0] is represented by the legacy single
+    // grid/mysmoother/myobmap members below (kept as-is so single-floor levels
+    // run byte-identical code). Stacked floors 1..N live in extra_floors_;
+    // per-floor access goes through grid_for_floor/smoother_for_floor/
+    // obmap_for_floor. All floors share pixmaxx/pixmaxy (same footprint).
+    // See docs/z-axis-design.md.
     std::unique_ptr<obmap> myobmap;
     PixieData grid;
     smoother mysmoother;
     std::int32_t pixmaxx = 0;
     std::int32_t pixmaxy = 0;
+
+    // Additional stacked floors (index 1..N). Empty for single-floor levels.
+    // Collision uses ONE floor-keyed obmap (myobmap) whose spatial-hash buckets
+    // incorporate the entity's floor (see obmap.cpp), so floor 0's buckets stay
+    // byte-identical and entities on different floors never collide. Only grid +
+    // smoother are genuinely per-floor.
+    struct ExtraFloor {
+        PixieData grid;
+        smoother floor_smoother;
+    };
+    std::vector<ExtraFloor> extra_floors_;
+
+    [[nodiscard]] int floor_count() const noexcept
+    {
+        return 1 + static_cast<int>(extra_floors_.size());
+    }
+    [[nodiscard]] bool is_multifloor() const noexcept
+    {
+        return !extra_floors_.empty();
+    }
+
+    // Per-floor accessors. An out-of-range floor falls back to floor 0; this
+    // doubles as the untrusted-floor clamp for snapshot/save-supplied indices.
+    [[nodiscard]] bool valid_floor(int floor) const noexcept
+    {
+        return floor > 0 && floor <= static_cast<int>(extra_floors_.size());
+    }
+    [[nodiscard]] PixieData& grid_for_floor(int floor) noexcept
+    {
+        return valid_floor(floor)
+                   ? extra_floors_[static_cast<std::size_t>(floor - 1)].grid
+                   : grid;
+    }
+    [[nodiscard]] const PixieData& grid_for_floor(int floor) const noexcept
+    {
+        return valid_floor(floor)
+                   ? extra_floors_[static_cast<std::size_t>(floor - 1)].grid
+                   : grid;
+    }
+    [[nodiscard]] smoother& smoother_for_floor(int floor) noexcept
+    {
+        return valid_floor(floor)
+                   ? extra_floors_[static_cast<std::size_t>(floor - 1)].floor_smoother
+                   : mysmoother;
+    }
+    // Single floor-keyed obmap (the floor arg is accepted for symmetry but the
+    // one obmap buckets all floors via ob->floor()).
+    [[nodiscard]] obmap* obmap_for_floor(int /*floor*/) noexcept
+    {
+        return myobmap.get();
+    }
+
+    // Grow/shrink the floor stack to exactly `count` floors (>=1). Floor 0 is
+    // the legacy members; extra floors get a fresh obmap + RNG-wired smoother.
+    // Grids are sized/filled and smoothers re-targeted by the caller after.
+    void set_floor_count(int count);
 
     walker* add_ob(Order order, std::int32_t family, bool atstart = false);
     walker* add_fx_ob(Order order, std::int32_t family);
@@ -197,6 +258,11 @@ public:
     bool query_passable(float x, float y, walker* ob);
     bool query_object_passable(float x, float y, walker* ob);
     bool query_grid_passable(float x, float y, walker* ob);
+    // Floor-explicit variants. The 3-arg forms above forward with ob->floor();
+    // pathfinding uses these to probe a different target floor for stair edges.
+    bool query_passable(float x, float y, walker* ob, int floor);
+    bool query_object_passable(float x, float y, walker* ob, int floor);
+    bool query_grid_passable(float x, float y, walker* ob, int floor);
 
     walker* find_near_foe(walker* ob);
     walker* find_far_foe(walker* ob);

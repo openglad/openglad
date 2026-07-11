@@ -42,6 +42,10 @@ const WeaponFamilyDescriptor& describe_weapon_knife()
         .init_bit_flags = 0,
         .init_lifetime = 0,
         .init_ani_type = 0,
+        // Thrown knives drift up then settle (slight arc) and can drop through pits.
+        .init_vz = 0.35f,
+        .gravity = 0.05f,
+        .can_drop_floors = true,
         .on_death = knife_on_death,
         .on_animate = nullptr,
         .on_hit_target = nullptr,

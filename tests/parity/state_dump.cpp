@@ -288,6 +288,7 @@ void collect_walkers(const GameWorld::EntityList& list,
         }
         entry.weapons_left = static_cast<std::int32_t>(w->weapons_left());
         entry.alive        = w->dead() == 0;
+        entry.floor        = static_cast<std::int32_t>(w->floor());
         out.push_back(std::move(entry));
     }
 }
@@ -487,11 +488,19 @@ std::string canonical_serialize(const StateDump& dump)
     {
         if (i != 0) out.push_back(',');
         const auto& w = dump.walkers[i];
-        // Keys sorted: alive, family, hp, id, max_hp, team, weapons_left, xpos, ypos.
+        // Keys sorted: alive, family, [floor,] hp, id, max_hp, team,
+        // weapons_left, xpos, ypos. `floor` is emitted ONLY when non-zero so
+        // single-floor dumps stay byte-identical with pre-Z goldens.
+        // ("family" < "floor": 'a' < 'l'; "floor" < "hp": 'f' < 'h'.)
         out.append("{\"alive\":");
         append_bool(out, w.alive);
         out.append(",\"family\":");
         append_escaped_string(out, w.family);
+        if (w.floor != 0)
+        {
+            out.append(",\"floor\":");
+            append_int(out, w.floor);
+        }
         out.append(",\"hp\":");
         out.append(format_float(w.hp));
         out.append(",\"id\":");

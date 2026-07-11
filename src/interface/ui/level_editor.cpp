@@ -172,7 +172,7 @@ bool Rectf::contains(float X, float Y) const
     return (x <= X && x + w >= X && y + h <= Y && y >= Y);
 }
 
-static constexpr std::array<Sint32, 100> kDefaultBackgrounds = {
+static constexpr std::array<Sint32, 108> kDefaultBackgrounds = {
                          PIX_GRASS1, PIX_GRASS2, PIX_GRASS_DARK_1, PIX_GRASS_DARK_2,
                          //PIX_GRASS_DARK_B1, PIX_GRASS_DARK_BR, PIX_GRASS_DARK_R1, PIX_GRASS_DARK_R2,
                          PIX_BOULDER_1, PIX_GRASS_DARK_LL, PIX_GRASS_DARK_UR, PIX_GRASS_RUBBLE,
@@ -231,6 +231,10 @@ static constexpr std::array<Sint32, 100> kDefaultBackgrounds = {
                          PIX_CLIFF_BACK_L, PIX_CLIFF_BACK_1, PIX_CLIFF_BACK_2, PIX_CLIFF_BACK_R,
                          PIX_CLIFF_LEFT, PIX_CLIFF_BOTTOM, PIX_CLIFF_TOP, PIX_CLIFF_RIGHT,
                          PIX_CLIFF_LEFT, PIX_CLIFF_TOP_L, PIX_CLIFF_TOP_R, PIX_CLIFF_RIGHT,
+
+                         // Z-axis / multi-floor tiles (paint on the current floor).
+                         PIX_AIR, PIX_GLASS, PIX_DROPBLOCK_UP, PIX_DROPBLOCK_RIGHT,
+                         PIX_DROPBLOCK_DOWN, PIX_DROPBLOCK_LEFT, PIX_ZSTAIR_UP, PIX_ZSTAIR_DOWN,
                      };
 static inline auto& backgrounds()
 {
@@ -577,6 +581,7 @@ public:
     
     void clear_terrain();
     void resmooth_terrain();
+    void add_floor();
     void mouse_down(int mx, int my);
     void mouse_motion(int mx, int my, int dx, int dy);
     void mouse_up(int mx, int my, int old_mx, int old_my, bool& done);
@@ -728,6 +733,7 @@ bool LevelEditorData::loadLevel(int id)
 {
     level->world().id = id;
     bool result = level->load();
+    eds().current_floor = 0; // start on the ground floor after a load
     update_menu_buttons();
     return result;
 }
@@ -1250,8 +1256,12 @@ bool LevelEditorData::saveLevel()
 void LevelEditorData::draw(screen* s)
 {
     s->clearbuffer();
+    // The editor has no control walker, so force the viewscreen to render the
+    // floor we're editing (reset to -1 after so menus/gameplay are unaffected).
+    if (s->viewob[0])
+        s->viewob[0]->editor_floor_override_ = eds().current_floor;
     level->draw(s);
-    
+
     if(rect_selecting)
     {
         Rectf r(selection_rect.x - static_cast<float>(level->level_visuals().topx) + static_cast<float>(s->viewob[0]->xloc),
@@ -1276,7 +1286,9 @@ void LevelEditorData::draw(screen* s)
     }
     
     display_panel(s);
-    
+    if (s->viewob[0])
+        s->viewob[0]->editor_floor_override_ = -1;
+
 }
 
 Sint32 LevelEditorData::display_panel(screen* s)
@@ -1305,7 +1317,16 @@ Sint32 LevelEditorData::display_panel(screen* s)
     
     // Draw minimap
     myradar.draw(level.get());
-    
+
+    // Z-axis: show which floor is being edited (PageUp/PageDown to switch,
+    // Ctrl+PageUp on the top floor to add one).
+    if (level->world().is_multifloor())
+    {
+        std::string fl = "Floor " + std::to_string(eds().current_floor + 1) + "/" +
+                         std::to_string(level->world().floor_count());
+        scentext.write_xy(4, 190, fl.c_str(), DARK_BLUE, 1);
+    }
+
     // Draw mode-specific buttons
     for(auto* btn : mode_buttons)
         btn->draw(s);
@@ -1594,17 +1615,37 @@ Sint32 LevelEditorData::display_panel(screen* s)
 
 void LevelEditorData::clear_terrain()
 {
-    int w = level->world().grid.w;
-    int h = level->world().grid.h;
-    
-    std::fill_n(level->world().grid.data.get(), w*h, static_cast<unsigned char>(1));
+    PixieData& g = level->world().grid_for_floor(eds().current_floor);
+    int w = g.w;
+    int h = g.h;
+
+    std::fill_n(g.data.get(), w*h, static_cast<unsigned char>(1));
     resmooth_terrain();
 }
 
 void LevelEditorData::resmooth_terrain()
 {
-    level->world().mysmoother.smooth();
+    level->world().smoother_for_floor(eds().current_floor).smooth();
     myradar.update(level.get());
+}
+
+// Append a new stacked floor (filled with PIX_AIR so it's transparent over the
+// floor below) and switch the editor to it. set_floor_count only grows the
+// floor list, so we size + fill the grid and re-target its smoother here.
+void LevelEditorData::add_floor()
+{
+    GameWorld& w = level->world();
+    const int nf = w.floor_count();
+    w.set_floor_count(nf + 1);
+    const int gw = w.grid.w;
+    const int gh = w.grid.h;
+    auto* buf = new unsigned char[static_cast<std::size_t>(gw) * gh];
+    std::fill_n(buf, static_cast<std::size_t>(gw) * gh, static_cast<unsigned char>(PIX_AIR));
+    w.grid_for_floor(nf) = PixieData(1, static_cast<unsigned char>(gw),
+                                     static_cast<unsigned char>(gh), buf);
+    w.smoother_for_floor(nf).set_target(w.grid_for_floor(nf));
+    eds().current_floor = nf;
+    eds().levelchanged = 1;
 }
 
 // eds().mouse_up_button moved into LevelEditorState (per-session via eds())
@@ -2554,6 +2595,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                 {
                     newob = level->add_ob(Order::Living, FAMILY_ELF);
                     newob->setxy(windowx, windowy);
+                    newob->set_floor(static_cast<short>(eds().current_floor));
                     if (some_hit(windowx, windowy, newob, level.get()))
                     {
                         std::string name = newob->collide_ob()->stats()->name;
@@ -2572,6 +2614,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     {
                         newob = level->add_ob(Order::Living, FAMILY_ELF);
                         newob->setxy(windowx, windowy);
+                        newob->set_floor(static_cast<short>(eds().current_floor));
                         if (some_hit(windowx, windowy, newob, level.get()))
                         {
                             // Clicked on a guy
@@ -2633,6 +2676,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         eds().levelchanged = 1;
                         newob = level->add_ob(object_brush.order, object_brush.family);
                         newob->setxy(windowx, windowy);
+                        newob->set_floor(static_cast<short>(eds().current_floor));
                         newob->set_team_num(static_cast<unsigned char>(object_brush.team));
                         newob->stats()->set_level(object_brush.level);
                         newob->set_dead(0); // just in case
@@ -2741,7 +2785,8 @@ void LevelEditorData::pick_by_mouse(int mx, int my)
 
 bool LevelEditorData::is_in_grid(int x, int y)
 {
-    return (x >= 0 && y >= 0 && x < level->world().grid.w && y < level->world().grid.h);
+    const PixieData& g = level->world().grid_for_floor(eds().current_floor);
+    return (x >= 0 && y >= 0 && x < g.w && y < g.h);
 }
 
 unsigned char LevelEditorData::get_terrain(int x, int y)
@@ -2752,7 +2797,8 @@ unsigned char LevelEditorData::get_terrain(int x, int y)
     // Grid bytes come from untrusted scenario files and are not clamped on load
     // (the renderer guards tile_index < PIX_MAX, so out-of-range tiles survive).
     // Clamp here so a poisoned tile can never become an out-of-bounds pixdata[] index.
-    unsigned char t = level->world().grid.data[y*level->world().grid.w + x];
+    const PixieData& g = level->world().grid_for_floor(eds().current_floor);
+    unsigned char t = g.data[y*g.w + x];
     return (t < PIX_MAX) ? t : static_cast<unsigned char>(PIX_GRASS1);
 }
 
@@ -2760,8 +2806,9 @@ void LevelEditorData::set_terrain(int x, int y, unsigned char terrain)
 {
     if(!is_in_grid(x, y))
         return;
-    
-    level->world().grid.data[y*level->world().grid.w + x] = terrain;
+
+    PixieData& g = level->world().grid_for_floor(eds().current_floor);
+    g.data[y*g.w + x] = terrain;
 }
 
 walker* LevelEditorData::get_object(int x, int y)
@@ -2769,6 +2816,7 @@ walker* LevelEditorData::get_object(int x, int y)
     walker* result = nullptr;
     walker* newob = level->add_ob(Order::Living, FAMILY_ELF);
     newob->setxy(x, y);
+    newob->set_floor(static_cast<short>(eds().current_floor));
     if (some_hit(x, y, newob, level.get()))
     {
         result = newob->collide_ob();
@@ -2846,6 +2894,16 @@ int level_editor_test_exercise_internal_helpers()
         data.set_terrain(0, 0, PIX_GRASS2);
         check(data.get_terrain(0, 0) == PIX_GRASS2);
         check(data.get_terrain(-1, -1) == 0);
+        // Z-axis: add a floor, paint it, and confirm per-floor isolation.
+        eds().current_floor = 0;
+        data.add_floor();
+        check(data.level->world().floor_count() == 2);
+        check(data.level->world().is_multifloor());
+        check(eds().current_floor == 1);
+        data.set_terrain(1, 1, PIX_GLASS);
+        check(data.get_terrain(1, 1) == PIX_GLASS);     // floor 1
+        eds().current_floor = 0;
+        check(data.get_terrain(1, 1) != PIX_GLASS);     // floor 0 untouched
         data.clear_terrain();
 	        check(data.get_terrain(0, 0) == 1);
 	        data.level->world().id = 1;
@@ -3530,6 +3588,7 @@ Sint32 level_editor()
     load_and_set_palette("our.pal", eds().scenpalette);
     backgrounds().assign(kDefaultBackgrounds.begin(), kDefaultBackgrounds.end());
     eds().maxrows = static_cast<std::int32_t>(backgrounds().size() / 4);
+    eds().current_floor = 0;
     
     if(data.reloadCampaign())
         Log("Loaded campaign data successfully.\n");
@@ -3807,6 +3866,20 @@ Sint32 level_editor()
                 {
                     load_and_set_palette("our.pal", eds().scenpalette);
                 }
+                // Z-axis: PageUp/PageDown switch floors; Ctrl+PageUp on the top
+                // floor appends a new one.
+                else if(event_data.key_sym == KEYCODE_PAGEUP)
+                {
+                    if(eds().current_floor + 1 < data.level->world().floor_count())
+                        eds().current_floor++;
+                    else if(event_data.key_mod & KEYMOD_CTRL)
+                        data.add_floor();
+                }
+                else if(event_data.key_sym == KEYCODE_PAGEDOWN)
+                {
+                    if(eds().current_floor > 0)
+                        eds().current_floor--;
+                }
                 break;
             default:
                 break;
@@ -3997,11 +4070,13 @@ Sint32 level_editor()
                                 eds().levelchanged = 1;
                                 if (terrain_brush.use_smoothing) // smooth a few squares, if not control
                                 {
+                                    const int cf = eds().current_floor;
+                                    PixieData& fg = data.level->world().grid_for_floor(cf);
                                     for (i=windowx-1; i <= windowx+1; i++)
                                         for (j=windowy-1; j <=windowy+1; j++)
-                                            if (i >= 0 && i < data.level->world().grid.w &&
-                                                    j >= 0 && j < data.level->world().grid.h)
-                                                data.level->world().mysmoother.smooth(i, j);
+                                            if (i >= 0 && i < fg.w &&
+                                                    j >= 0 && j < fg.h)
+                                                data.level->world().smoother_for_floor(cf).smooth(i, j);
                                 }
                                 
                                 myradar.update(data.level.get());
@@ -4243,6 +4318,7 @@ walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelRuntimeData* data)
 	{
 	    walker* w = uptr.get();
 		if (w && w != ob
+            && w->floor() == ob->floor()
             && check_collide(x, y, ob->sizex(), ob->sizey(),
 			                  w->xpos(), w->ypos(),
 			                  w->sizex(), w->sizey()) )
@@ -4256,6 +4332,7 @@ walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelRuntimeData* data)
 	{
 	    walker* w = uptr.get();
 		if (w && w != ob
+            && w->floor() == ob->floor()
             && check_collide(x, y, ob->sizex(), ob->sizey(),
 			                  w->xpos(), w->ypos(),
 			                  w->sizex(), w->sizey()) )
@@ -4269,6 +4346,7 @@ walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelRuntimeData* data)
 	{
 	    walker* w = uptr.get();
 		if (w && w != ob
+            && w->floor() == ob->floor()
             && check_collide(x, y, ob->sizex(), ob->sizey(),
 			                  w->xpos(), w->ypos(),
 			                  w->sizex(), w->sizey()) )

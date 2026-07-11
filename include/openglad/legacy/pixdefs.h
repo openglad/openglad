@@ -194,6 +194,17 @@
 #define PIX_JAGGED_GROUND_3 125
 #define PIX_JAGGED_GROUND_4 126
 
+// Z-axis / multi-floor tiles (appended; mirror of core/pixdefs.h — keep in
+// sync). See docs/z-axis-design.md.
+#define PIX_AIR             134
+#define PIX_GLASS           135
+#define PIX_DROPBLOCK_UP    136
+#define PIX_DROPBLOCK_RIGHT 137
+#define PIX_DROPBLOCK_DOWN  138
+#define PIX_DROPBLOCK_LEFT  139
+#define PIX_ZSTAIR_UP       140
+#define PIX_ZSTAIR_DOWN     141
+
 // This should be the largest #defined pix +1
-#define PIX_MAX 134  //last currently = PIX_CARPET_SMALL_TINY
+#define PIX_MAX 142  //last currently = PIX_ZSTAIR_DOWN
 

@@ -550,6 +550,20 @@ FactEvalResult evaluate_one(const FactPredicate& p, const StateDump& dump)
                                       std::to_string(p.arg1)), r);
             }
         }
+        case FactKind::WalkerOnFloor:
+        {
+            const std::string sym = family_symbol_by_order(kLivingOrder, p.arg0);
+            std::size_t n = 0;
+            for (const auto& w : dump.walkers)
+                if (w.family == sym && w.alive &&
+                    w.floor >= p.arg1 && w.floor <= p.arg2)
+                    ++n;
+            if (n == 0)
+                return (make_fail(r, p, "no alive walker of family " + sym +
+                                  " with floor in [" + std::to_string(p.arg1) +
+                                  "," + std::to_string(p.arg2) + "]"), r);
+            return r;
+        }
     }
     return r;
 }
@@ -776,6 +790,7 @@ bool parse_walker(Parser& P, WalkerEntry& w)
     return P.parse_object([&](const std::string& key) -> bool {
         if (key == "alive")        return P.read_bool(w.alive);
         if (key == "family")       { auto s = P.read_string(); if (!s) return false; w.family = *s; return true; }
+        if (key == "floor")        { auto n = P.read_number(); if (!n) return false; w.floor = static_cast<std::int32_t>(*n); return true; }
         if (key == "hp")           { auto n = P.read_number(); if (!n) return false; w.hp = static_cast<float>(*n); return true; }
         if (key == "id")           { auto n = P.read_number(); if (!n) return false; w.id = static_cast<std::uint32_t>(*n); return true; }
         if (key == "max_hp")       { auto n = P.read_number(); if (!n) return false; w.max_hp = static_cast<float>(*n); return true; }

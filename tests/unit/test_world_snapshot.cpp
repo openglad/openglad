@@ -437,6 +437,8 @@ void expect_entity_snapshot_eq(const og::sim::EntitySnapshot& expected,
     EXPECT_EQ(expected.ypos, actual.ypos);
     EXPECT_EQ(expected.sizex, actual.sizex);
     EXPECT_EQ(expected.sizey, actual.sizey);
+    EXPECT_EQ(expected.sizez, actual.sizez);
+    EXPECT_EQ(expected.floor, actual.floor);
     EXPECT_EQ(expected.team_num, actual.team_num);
     EXPECT_EQ(expected.real_team_num, actual.real_team_num);
     EXPECT_EQ(expected.user, actual.user);
@@ -451,8 +453,10 @@ void expect_entity_snapshot_eq(const og::sim::EntitySnapshot& expected,
     EXPECT_EQ(expected.frame, actual.frame);
     EXPECT_FLOAT_EQ(expected.worldx, actual.worldx);
     EXPECT_FLOAT_EQ(expected.worldy, actual.worldy);
+    EXPECT_FLOAT_EQ(expected.worldz, actual.worldz);
     EXPECT_FLOAT_EQ(expected.lastx, actual.lastx);
     EXPECT_FLOAT_EQ(expected.lasty, actual.lasty);
+    EXPECT_FLOAT_EQ(expected.vz, actual.vz);
     EXPECT_FLOAT_EQ(expected.stepsize, actual.stepsize);
     EXPECT_FLOAT_EQ(expected.normal_stepsize, actual.normal_stepsize);
     EXPECT_EQ(expected.curdir, actual.curdir);
@@ -708,7 +712,7 @@ TEST(WorldSnapshot, entity_snapshot_layout_matches_dirty_field_table)
 {
     static_assert(std::is_standard_layout_v<og::sim::EntitySnapshot>);
     static_assert(std::is_trivially_copyable_v<og::sim::EntitySnapshot>);
-    EXPECT_EQ(84u, og::sim::kEntitySnapshotTableFieldCount);
+    EXPECT_EQ(88u, og::sim::kEntitySnapshotTableFieldCount);
     EXPECT_EQ(2u, og::sim::kEntitySnapshotManualFieldCount);
     EXPECT_EQ(og::dirty::FIELD_COUNT, og::sim::kEntitySnapshotTrackedFieldCount);
 

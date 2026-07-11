@@ -108,6 +108,11 @@ public:
                                  Sint32 portstartx, Sint32 portstarty,
                                  Sint32 portendx, Sint32 portendy,
                                  std::span<const unsigned char> sourceptr, unsigned char teamcolor, Uint8 alpha) override;
+    void walkputbuffer_alpha(Sint32 walkerstartx, Sint32 walkerstarty,
+                             Sint32 walkerwidth, Sint32 walkerheight,
+                             Sint32 portstartx, Sint32 portstarty,
+                             Sint32 portendx, Sint32 portendy,
+                             std::span<const unsigned char> sourceptr, unsigned char teamcolor, Uint8 alpha) override;
 
     void walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
                        Sint32 walkerwidth, Sint32 walkerheight,

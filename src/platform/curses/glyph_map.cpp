@@ -218,6 +218,10 @@ Glyph tile_glyph(int genre)
     case TYPE_WALL:        return Glyph{U'█', '#', Color::White, true, false};
     case TYPE_WATER:       return Glyph{U'≈', '~', Color::Blue, false, false};
     case TYPE_TREES:       return Glyph{U'♣', '&', Color::Green, false, false};
+    case TYPE_AIR:         return Glyph{U'▒', ':', Color::Blue, false, false};   // a hole you fall through
+    case TYPE_GLASS:       return Glyph{U'░', '"', Color::Cyan, false, false};   // see-through floor
+    case TYPE_DROP_BLOCK:  return Glyph{U'▔', '_', Color::White, false, false};  // edge guard
+    case TYPE_ZSTAIRS:     return Glyph{U'≡', 'H', Color::Yellow, true, false};  // Z-stairs
     case TYPE_UNKNOWN:
     default:               return Glyph{U' ', ' ', Color::Default, false, false};
     }

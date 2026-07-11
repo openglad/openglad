@@ -1256,6 +1256,62 @@ void sdl_video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 	}
 }
 
+// Full-color team-recolored blit with a global alpha (faded/ghosted floors).
+// Mirrors the simple walkputbuffer clip/recolor loop but blends each pixel via
+// the alpha pointb instead of an opaque write.
+void sdl_video::walkputbuffer_alpha(Sint32 walkerstartx, Sint32 walkerstarty,
+                          Sint32 walkerwidth, Sint32 walkerheight,
+                          Sint32 portstartx, Sint32 portstarty,
+                          Sint32 portendx, Sint32 portendy,
+                          std::span<const unsigned char> sourceptr,
+                          unsigned char teamcolor, Uint8 alpha)
+{
+	Sint32 curx, cury;
+	unsigned char curcolor;
+	Sint32 xmin = 0, xmax= walkerwidth , ymin= 0 , ymax= walkerheight;
+	Sint32 walkoff=0,walkshift=0;
+	Sint32 totrows,rowsize;
+
+	if (walkerstartx >= portendx || walkerstarty >= portendy)
+		return;
+	if (walkerstartx < portstartx)
+	{
+		xmin = portstartx-walkerstartx;
+		walkerstartx = portstartx;
+	}
+	else if (walkerstartx + walkerwidth > portendx)
+		xmax = portendx - walkerstartx;
+	if (walkerstarty < portstarty)
+	{
+		ymin = portstarty-walkerstarty;
+		walkerstarty = portstarty;
+	}
+	else if (walkerstarty + walkerheight > portendy)
+		ymax = portendy - walkerstarty;
+
+	totrows = (ymax-ymin);
+	rowsize = (xmax-xmin);
+	if (totrows <= 0 || rowsize <= 0)
+		return;
+
+	walkshift = walkerwidth - rowsize;
+	walkoff   = (ymin * walkerwidth) + xmin;
+
+	for(cury = 0; cury < totrows;cury++)
+	{
+		for(curx=0;curx<rowsize;curx++)
+		{
+			curcolor = sourceptr[walkoff++];
+			if (!curcolor)
+				continue;
+			if (curcolor > static_cast<unsigned char>(247))
+				curcolor = static_cast<unsigned char>(teamcolor+(255-curcolor));
+			pointb(walkerstartx+curx,walkerstarty+cury,curcolor,alpha);
+		}
+		walkoff += walkshift;
+	}
+}
+
 void sdl_video::walkputbuffer_flash(Sint32 walkerstartx, Sint32 walkerstarty,
                           Sint32 walkerwidth, Sint32 walkerheight,
                           Sint32 portstartx, Sint32 portstarty,

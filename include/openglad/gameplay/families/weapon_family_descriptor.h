@@ -22,6 +22,14 @@ struct WeaponFamilyDescriptor {
     short init_lifetime;      // 0 = no override; GLOW = 350
     char init_ani_type;       // 0 = default; CIRCLE_PROTECTION = 5
 
+    // Z-axis projectile physics (all default 0/false = legacy flat behavior).
+    // worldz/vz are visual + drop-enabling only: they never affect the 2D path
+    // and are not part of the parity dump. See docs/z-axis-design.md.
+    float init_vz = 0.0f;          // initial vertical velocity (px/tick), set in gloader
+    float gravity = 0.0f;          // per-tick decrease applied to vz (downward arc)
+    short init_sizez = 0;          // cylinder height (0 = full-height sentinel)
+    bool can_drop_floors = false;  // may fall through "air" to a lower floor
+
     bool (*on_death)(weap* self);
     bool (*on_animate)(weap* self);
     bool (*on_hit_target)(walker* weapon, walker* target, walker* owner);

@@ -34,7 +34,11 @@ namespace {
 using og::data::LevelFileIoError;
 using og::data::LevelFileMetadata;
 
-constexpr char kScenarioVersion = 9;
+// v10 adds multi-floor support: per-object floor/z packed into the existing
+// reserved/filler bytes, a trailing floor_count byte, and derived-name extra
+// floor grid PNGs ("{grid}_f{N}.png"). v2-9 read paths are untouched and
+// single-floor levels still save as v9 (byte-identical). See docs/z-axis-design.md.
+constexpr char kScenarioVersion = 10;
 constexpr short kMaxScenarioObjects = 4096;
 
 bool rw_read_exact_or_log(og::io::OgFile& file, void* dst, size_t size,
@@ -248,6 +252,18 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
             if (new_guy->stats()->name.size() > 1)
                 new_guy->stats()->set_bit_flags(BIT_NAMED, 1);
         }
+
+        if (version >= 10)
+        {
+            // v10 repurposes the first 3 reserved/filler bytes for the object's
+            // floor + sub-floor z. v2-9 leave these as legacy filler, so
+            // floor/z default to 0 (legacy flat behavior).
+            new_guy->set_floor(static_cast<short>(
+                static_cast<unsigned char>(reserved[0])));
+            short obj_z = 0;
+            std::memcpy(&obj_z, &reserved[1], sizeof(short));
+            new_guy->set_worldz(static_cast<float>(obj_z));
+        }
     }
 
     metadata.description.clear();
@@ -289,6 +305,14 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
         }
     }
 
+    short loaded_floor_count = 1;
+    if (version >= 10)
+    {
+        unsigned char fc = 1;
+        READ_OR_FAIL(&fc, 1, 1);
+        loaded_floor_count = (fc < 1) ? 1 : static_cast<short>(fc);
+    }
+
     const std::string gridpix = ensure_png_extension(newgrid.data());
     world.grid = read_pixie_file(gridpix.c_str());
     if (!world.grid.valid())
@@ -322,6 +346,23 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
                 {
                     w->set_frame(1);
                 }
+            }
+        }
+    }
+
+    if (version >= 10 && loaded_floor_count > 1)
+    {
+        world.set_floor_count(loaded_floor_count);
+        for (int f = 1; f < loaded_floor_count; ++f)
+        {
+            const std::string fname =
+                std::string(newgrid.data()) + "_f" + std::to_string(f);
+            const std::string fpix = ensure_png_extension(fname.c_str());
+            PixieData fg = read_pixie_file(fpix.c_str());
+            if (fg.valid())
+            {
+                world.grid_for_floor(f) = std::move(fg);
+                world.smoother_for_floor(f).set_target(world.grid_for_floor(f));
             }
         }
     }
@@ -456,7 +497,11 @@ bool write_scenario_payload(og::io::OgFile& outfile,
     };
 
     const std::array<char, 3> header = {'F', 'S', 'S'};
-    char temp_version = kScenarioVersion;
+    // Single-floor levels save as v9 (byte-identical to pre-Z); only genuine
+    // multi-floor levels emit v10. This is the key guard against re-encoding the
+    // ~180 parity scenarios.
+    char temp_version = world.is_multifloor() ? static_cast<char>(10)
+                                              : static_cast<char>(9);
     std::array<char, 20> temp_grid = {};
     std::array<char, 30> scentitle = {};
     std::array<char, 20> filler = {'M', 'S', 'T', 'R', 'M', 'S', 'T', 'R',
@@ -527,6 +572,17 @@ bool write_scenario_payload(og::io::OgFile& outfile,
             std::array<char, 12> tempname = {};
             snprintf(tempname.data(), tempname.size(), "%s", ob->stats()->name.c_str());
 
+            // v9: legacy "MSTR" filler (byte-identical). v10: first 3 bytes hold
+            // the object's floor + sub-floor z.
+            std::array<char, 10> obj_reserved{};
+            std::memcpy(obj_reserved.data(), filler.data(), obj_reserved.size());
+            if (temp_version >= 10)
+            {
+                obj_reserved[0] = static_cast<char>(ob->floor());
+                short zval = static_cast<short>(ob->worldz());
+                std::memcpy(&obj_reserved[1], &zval, sizeof(short));
+            }
+
             if (!write_field(&temporder, 1, 1) ||
                 !write_field(&tempfamily, 1, 1) ||
                 !write_field(&currentx, 2, 1) ||
@@ -536,7 +592,7 @@ bool write_scenario_payload(og::io::OgFile& outfile,
                 !write_field(&tempcommand, 1, 1) ||
                 !write_field(&shortlevel, 2, 1) ||
                 !write_field(tempname.data(), 12, 1) ||
-                !write_field(filler.data(), 10, 1))
+                !write_field(obj_reserved.data(), 10, 1))
             {
                 return false;
             }
@@ -569,6 +625,14 @@ bool write_scenario_payload(og::io::OgFile& outfile,
         {
             return false;
         }
+    }
+
+    if (temp_version >= 10)
+    {
+        std::uint8_t floor_count_byte =
+            static_cast<std::uint8_t>(world.floor_count());
+        if (!write_field(&floor_count_byte, 1, 1))
+            return false;
     }
 
     return true;
@@ -641,6 +705,17 @@ bool save_level(GameWorld& world,
     {
         set_error(out_error, LevelFileIoError::OpenWriteFailed);
         return false;
+    }
+
+    // Extra floor grids use derived names "{grid}_f{N}".
+    for (int f = 1; f < world.floor_count(); ++f)
+    {
+        const std::string fname = metadata.grid_file + "_f" + std::to_string(f);
+        if (!save_grid_file(fname.c_str(), world.grid_for_floor(f)))
+        {
+            set_error(out_error, LevelFileIoError::OpenWriteFailed);
+            return false;
+        }
     }
 
     Log("Scenario saved.\n");

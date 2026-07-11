@@ -164,6 +164,11 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 				replace_walker = screenp->first_of(Order::Special, FAMILY_RESERVED_TEAM);
 		if (replace_walker)
 		{
+			// Inherit the start marker's floor so the player spawns on the
+			// authored floor in multi-floor levels. set_floor MUST precede setxy:
+			// setxy re-buckets the floor-keyed obmap at the walker's current
+			// floor. Single-floor safe: legacy markers are floor 0 (a no-op).
+			temp_walker->set_floor(replace_walker->floor());
 			temp_walker->setxy(replace_walker->xpos(), replace_walker->ypos());
 			replace_walker->set_dead(1);
 		}

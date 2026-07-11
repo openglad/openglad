@@ -79,6 +79,7 @@ const char* kind_name(og::parity::FactKind k)
         case FactKind::WeaponSpeed:                     return "WeaponSpeed";
         case FactKind::WeaponNetTravel:                 return "WeaponNetTravel";
         case FactKind::EffectNetTravel:                 return "EffectNetTravel";
+        case FactKind::WalkerOnFloor:                   return "WalkerOnFloor";
         case FactKind::TreasureFamilyOfOrderRemovedFromOblist:
             return "TreasureFamilyOfOrderRemovedFromOblist";
     }
@@ -202,6 +203,7 @@ int arg0_order_for_symbol(og::parity::FactKind k)
         case FactKind::WalkerPositionMoved:
         case FactKind::WalkerDiedByFinal:
         case FactKind::WalkerAliveAtFinal:
+        case FactKind::WalkerOnFloor:
             return og::parity::kOrderLiving;
         case FactKind::TreasureFamilyRemovedFromOblist:
         case FactKind::TreasureFamilyOfOrderRemovedFromOblist:
@@ -379,6 +381,10 @@ std::string predicate_expression(const og::parity::FactPredicate& p)
         case FactKind::EffectNetTravel:
             std::snprintf(buf, sizeof(buf), "EffectNetTravel(%s, %d, %d)",
                           fx(p.arg0).c_str(), p.arg1, p.arg2);
+            return buf;
+        case FactKind::WalkerOnFloor:
+            std::snprintf(buf, sizeof(buf), "WalkerOnFloor(%s, %d, %d)",
+                          living(p.arg0).c_str(), p.arg1, p.arg2);
             return buf;
     }
     return "Unknown()";

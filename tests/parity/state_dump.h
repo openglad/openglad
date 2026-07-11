@@ -29,6 +29,7 @@ struct WalkerEntry
     float         max_hp       = 0.0f;
     std::int32_t  weapons_left = 0;     // branch-side analogue of "ammo"
     bool          alive        = true;  // walker::dead() == 0
+    std::int32_t  floor        = 0;     // walker::floor() (stacked-floor index)
 };
 
 struct EffectEntry

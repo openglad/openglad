@@ -195,6 +195,8 @@ bool compare_entity_snapshot(const EntitySnapshot& expected,
     OG_REPLAY_COMPARE(ypos);
     OG_REPLAY_COMPARE(sizex);
     OG_REPLAY_COMPARE(sizey);
+    OG_REPLAY_COMPARE(sizez);
+    OG_REPLAY_COMPARE(floor);
     OG_REPLAY_COMPARE(team_num);
     OG_REPLAY_COMPARE(real_team_num);
     OG_REPLAY_COMPARE(user);
@@ -209,8 +211,10 @@ bool compare_entity_snapshot(const EntitySnapshot& expected,
     OG_REPLAY_COMPARE(frame);
     OG_REPLAY_COMPARE(worldx);
     OG_REPLAY_COMPARE(worldy);
+    OG_REPLAY_COMPARE(worldz);
     OG_REPLAY_COMPARE(lastx);
     OG_REPLAY_COMPARE(lasty);
+    OG_REPLAY_COMPARE(vz);
     OG_REPLAY_COMPARE(stepsize);
     OG_REPLAY_COMPARE(normal_stepsize);
     OG_REPLAY_COMPARE(curdir);

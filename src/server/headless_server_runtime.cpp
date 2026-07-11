@@ -170,6 +170,10 @@ void spawn_team_from_save(GameWorld& world, const SaveData& save)
 
         if (marker != nullptr)
         {
+            // Inherit the marker's floor so the team spawns on the authored floor
+            // in multi-floor levels. set_floor MUST precede setxy (setxy re-buckets
+            // the floor-keyed obmap). Single-floor safe: markers are floor 0.
+            created->set_floor(marker->floor());
             created->setxy(marker->xpos(), marker->ypos());
             marker->set_dead(1);
         }

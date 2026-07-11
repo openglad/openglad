@@ -149,6 +149,9 @@ void CursesRenderer::draw_viewport(ITerminal& term, const GameWorld& world,
         world_to_tile(world.pixmaxx / 2, world.pixmaxy / 2, center_tx, center_ty);
     }
 
+    // Multi-floor: render the followed walker's floor (terrain + entities).
+    const int cam_floor = followed ? static_cast<int>(followed->floor()) : 0;
+
     // Top-left tile of the viewport, so the camera tile lands in the middle.
     const int cam_x = center_tx - width / 2;
     const int cam_y = center_ty - height / 2;
@@ -157,9 +160,10 @@ void CursesRenderer::draw_viewport(ITerminal& term, const GameWorld& world,
     // query_genre_x_y() is total: out-of-range tiles report grass, which would
     // hide the arena edge. So when the grid size is known, tiles outside
     // [0,grid.w) x [0,grid.h) are drawn as a distinct border instead.
-    smoother& sm = const_cast<smoother&>(world.mysmoother);
-    const int grid_w = world.grid.w;
-    const int grid_h = world.grid.h;
+    smoother& sm = const_cast<GameWorld&>(world).smoother_for_floor(cam_floor);
+    const PixieData& cam_grid = world.grid_for_floor(cam_floor);
+    const int grid_w = cam_grid.w;
+    const int grid_h = cam_grid.h;
     const bool have_bounds = grid_w > 0 && grid_h > 0;
     for (int row = 0; row < height; ++row) {
         const int ty = cam_y + row;
@@ -193,6 +197,11 @@ void CursesRenderer::draw_viewport(ITerminal& term, const GameWorld& world,
             // Invisible dudes vanish from the map, except the player's own
             // followed avatar (you always see yourself).
             if (w->invisibility_left() > 0 && !is_followed)
+                continue;
+
+            // Multi-floor: only entities on the followed walker's floor show.
+            if (world.floor_count() > 1 && !is_followed &&
+                static_cast<int>(w->floor()) != cam_floor)
                 continue;
 
             int tx = 0;

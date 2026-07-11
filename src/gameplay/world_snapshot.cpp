@@ -1567,8 +1567,13 @@ void apply_entity_snapshot_fields(GameWorld& world,
     entity.set_order_family(snapshot.order, static_cast<char>(safe_family));
     entity.set_snapshot_position(snapshot.xpos, snapshot.ypos,
                                  snapshot.worldx, snapshot.worldy);
+    entity.set_worldz(snapshot.worldz);
     entity.set_sizex(snapshot.sizex);
     entity.set_sizey(snapshot.sizey);
+    entity.set_sizez(snapshot.sizez);
+    // snapshot.floor is uint8 (>= 0); Phase 2 adds the upper clamp to
+    // [0, floor_count) once GameWorld tracks a floor count.
+    entity.set_floor(static_cast<short>(snapshot.floor));
     entity.set_team_num(snapshot.team_num);
     entity.set_real_team_num(snapshot.real_team_num);
     entity.set_user(snapshot.user);
@@ -1580,6 +1585,7 @@ void apply_entity_snapshot_fields(GameWorld& world,
     entity.set_bonus_rounds(snapshot.bonus_rounds);
     entity.set_lastx(snapshot.lastx);
     entity.set_lasty(snapshot.lasty);
+    entity.set_vz(snapshot.vz);
     entity.set_stepsize(snapshot.stepsize);
     entity.set_normal_stepsize(snapshot.normal_stepsize);
     entity.set_curdir(snapshot.curdir);
@@ -2064,6 +2070,8 @@ og::sim::EntitySnapshot capture_entity_snapshot(walker& entity,
     snapshot.ypos = entity.ypos();
     snapshot.sizex = entity.sizex();
     snapshot.sizey = entity.sizey();
+    snapshot.sizez = entity.sizez();
+    snapshot.floor = static_cast<std::uint8_t>(entity.floor());
     snapshot.team_num = entity.team_num();
     snapshot.real_team_num = entity.real_team_num();
     snapshot.user = entity.user();
@@ -2078,9 +2086,11 @@ og::sim::EntitySnapshot capture_entity_snapshot(walker& entity,
     snapshot.frame = entity.frame();
     snapshot.worldx = entity.worldx();
     snapshot.worldy = entity.worldy();
+    snapshot.worldz = entity.worldz();
 
     snapshot.lastx = entity.lastx();
     snapshot.lasty = entity.lasty();
+    snapshot.vz = entity.vz();
     snapshot.stepsize = entity.stepsize();
     snapshot.normal_stepsize = entity.normal_stepsize();
     snapshot.curdir = entity.curdir();

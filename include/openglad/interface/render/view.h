@@ -110,6 +110,16 @@ class viewscreen
 		void clear_text(void); // clear all text in buffer
 		bool draw_obs(); //moved here to fix radar
 		bool draw_obs(LevelRuntimeData* data);
+		// Multi-floor rendering: draw stacked floors bottom-up with per-floor
+		// opacity (camera floor opaque, floors below fade with depth, floors
+		// above are faint ghosts), interleaving each floor's tiles + entities so
+		// the camera floor occludes lower floors except through air holes.
+		// Single-floor levels collapse to one opaque pass (byte-identical).
+		void draw_floor_entities(LevelRuntimeData* data, int floor, unsigned char alpha);
+		[[nodiscard]] unsigned char floor_render_alpha(int f) const;
+		static constexpr unsigned char kFloorBelowAlphaStep = 70;
+		static constexpr unsigned char kFloorBelowAlphaMin = 90;
+		static constexpr unsigned char kFloorGhostAlpha = 48;
 		void resize(short x, short y, short length, short height);
 		void resize(char whatmode); // set according to preferences ..
 		void view_team();
@@ -141,6 +151,13 @@ class viewscreen
 			Sint32 xview;
 			Sint32 yview;
 			float interpolation_alpha = 1.0f;
+			// Floor the camera-followed walker is on; the background draws floors
+			// 0..current_floor_ bottom-up (air reveals lower floors) and draw_obs
+			// layers entities the same way. 0 for single-floor levels.
+			Sint32 current_floor_ = 0;
+		// Editor-only: when >= 0, forces the rendered floor (the editor has no
+		// control walker). -1 in gameplay so the control walker's floor is used.
+		Sint32 editor_floor_override_ = -1;
 
 	protected:
 		options *prefsob;

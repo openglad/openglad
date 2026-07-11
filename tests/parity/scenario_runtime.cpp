@@ -2,14 +2,24 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/core/order.h>
+#include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/families/family_descriptor.h>
 #include <openglad/gameplay/families/family_registry.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/pixie_data.h>
+#include <openglad/gameplay/smooth.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 
+#include <algorithm>
 #include <cstring>
 #include <string>
+
+// The scenario table mirrors the PIX_* tile ids numerically (it must not
+// include pixdefs.h to stay byte-mirrorable to the master companion). Pin the
+// mirrors to the real macros here, where pixdefs.h is available.
+static_assert(PIX_AIR == 134 && PIX_ZSTAIR_UP == 140 && PIX_GRASS1 == 1,
+              "scenario_table.h kPix* mirrors drifted from core/pixdefs.h");
 
 namespace og::parity {
 
@@ -56,6 +66,11 @@ void apply_post_load_spawns(GameWorld& world, const ScenarioSpec& spec)
         w->setxy(static_cast<short>(s.x), static_cast<short>(s.y));
         w->set_team_num(s.team);
         w->set_real_team_num(s.team);
+        // Z-axis: relocate to a stacked floor (re-buckets in the floor-keyed
+        // obmap). floor_count was already raised by apply_floor_setup, so a
+        // non-zero target floor is valid here. No-op for floor 0 (the default).
+        if (s.floor != 0)
+            w->change_floor(static_cast<short>(s.floor));
         // Leave user_ at the SimEntity default (-1, NPC). The first call to
         // sim_process_player_input for the player_team walker takes ownership
         // and sets user_ = player_num + act_type = ACT_CONTROL — exactly the
@@ -81,6 +96,57 @@ void apply_post_load_spawns(GameWorld& world, const ScenarioSpec& spec)
         }
         if (s.precompleted_level != 0)
             world.completed_levels.insert(s.precompleted_level);
+    }
+}
+
+void apply_floor_setup(GameWorld& world, const ScenarioSpec& spec)
+{
+    if (spec.floor_count <= 1)
+        return;
+
+    // scen9301.fss is a 3-byte stub whose load fails, leaving floor 0 with an
+    // empty 0x0 grid (the smoother then reads everything as grass and a paint
+    // would be both out-of-bounds and invisible). Establish a grass field so
+    // the painted Z tiles are in bounds and the smoother reads them live.
+    // Single-floor parity rows never reach here (early-return above), so this
+    // is parity-neutral.
+    if (world.grid.w == 0 || world.grid.h == 0)
+    {
+        constexpr int kDim = 20;
+        auto* buf = new unsigned char[static_cast<std::size_t>(kDim) * kDim];
+        std::fill(buf, buf + static_cast<std::size_t>(kDim) * kDim,
+                  static_cast<unsigned char>(PIX_GRASS1));
+        world.grid = PixieData(1, static_cast<unsigned char>(kDim),
+                               static_cast<unsigned char>(kDim), buf);
+        world.pixmaxx = kDim * GRID_SIZE;
+        world.pixmaxy = kDim * GRID_SIZE;
+        world.mysmoother.set_target(world.grid);
+    }
+
+    world.set_floor_count(spec.floor_count);
+
+    const int gw = world.grid.w;
+    const int gh = world.grid.h;
+    for (int f = 1; f < spec.floor_count; ++f)
+    {
+        auto* buf = new unsigned char[static_cast<std::size_t>(gw) * gh];
+        std::fill(buf, buf + static_cast<std::size_t>(gw) * gh,
+                  static_cast<unsigned char>(PIX_GRASS1));
+        world.grid_for_floor(f) = PixieData(1, static_cast<unsigned char>(gw),
+                                            static_cast<unsigned char>(gh), buf);
+        world.smoother_for_floor(f).set_target(world.grid_for_floor(f));
+    }
+
+    for (std::size_t i = 0; i < spec.floor_paint_count; ++i)
+    {
+        const FloorPaint& p = spec.floor_paints[i];
+        PixieData& g = world.grid_for_floor(p.floor);
+        if (p.tile_x >= 0 && p.tile_y >= 0 &&
+            p.tile_x < g.w && p.tile_y < g.h)
+            g.data[static_cast<std::size_t>(p.tile_x) +
+                   static_cast<std::size_t>(p.tile_y) *
+                       static_cast<std::size_t>(g.w)] =
+                static_cast<unsigned char>(p.pix);
     }
 }
 

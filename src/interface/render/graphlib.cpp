@@ -215,4 +215,14 @@ void load_map_data(PixieData* whereto)
 	whereto[PIX_JAGGED_GROUND_3] = read_pixie_file("16jwg3.png");
 	whereto[PIX_JAGGED_GROUND_4] = read_pixie_file("16jwg1.png");
 
+	// Z-axis Z-stairs are SOLID, stood-on floor tiles and need visible art; without
+	// an entry here pixdata[140/141] stay empty, draw_tile() blits nothing, and the
+	// cleared (black) cell shows through. Reuse the existing pavestep art.
+	// IMPORTANT: do NOT add PIX_AIR/PIX_GLASS here — the multi-floor renderer relies
+	// on those tiles staying empty so the floor below shows through (docs/z-axis-
+	// design.md P9 "air = empty graphics"; the editor's add_floor() fills whole
+	// floors with PIX_AIR to be transparent over the floor beneath).
+	whereto[PIX_ZSTAIR_UP]   = read_pixie_file("16pstep.png");
+	whereto[PIX_ZSTAIR_DOWN] = read_pixie_file("16ptest.png");
+
 }

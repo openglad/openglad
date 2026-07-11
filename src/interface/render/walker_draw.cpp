@@ -414,7 +414,7 @@ static bool mark_player_controls_outline()
         og::runtime::current_session->networked_session_;
 }
 
-bool draw_walker(walker& w, viewscreen* view_buf)
+bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha)
 {
     const bool show_attack_lunge = cfg.is_on("effects", "attack_lunge");
     const bool show_hit_recoil = cfg.is_on("effects", "hit_recoil");
@@ -451,6 +451,9 @@ bool draw_walker(walker& w, viewscreen* view_buf)
 	yscreen = static_cast<Sint32>(
         draw_pos.worldy - static_cast<float>(view_buf->topy) +
         static_cast<float>(view_buf->yloc));
+	// Z-axis: draw the entity raised by its height above the floor plane (a
+	// thrown rock arcing, a fireball drifting). worldz==0 leaves output unchanged.
+	yscreen -= static_cast<Sint32>(w.worldz());
 
 		if(show_attack_lunge && w.attack_lunge() > 0.0f)
 	    {
@@ -467,6 +470,21 @@ bool draw_walker(walker& w, viewscreen* view_buf)
 	        xscreen += static_cast<Sint32>(dx);
 	        yscreen += static_cast<Sint32>(dy);
 	    }
+
+	// Faded (lower) / ghosted (upper) non-camera floor: draw just the sprite at
+	// the given alpha, skipping flash/outline/mode and the HP bar / damage
+	// numbers. The camera floor (alpha 255) takes the full path below.
+	if (alpha < 255)
+	{
+		const unsigned char* bmp = w.bmp_data();
+		if (bmp)
+			og::runtime::current_session->myscreen_->walkputbuffer_alpha(
+			    xscreen, yscreen, w.sizex(), w.sizey(),
+			    view_buf->xloc, view_buf->yloc, view_buf->endx, view_buf->endy,
+			    {bmp, static_cast<size_t>(w.sizex() * w.sizey())},
+			    w.query_team_color(), alpha);
+		return true;
+	}
 
 	w.compute_outline(view_buf->control, mark_player_controls_outline());
 

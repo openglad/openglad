@@ -66,7 +66,9 @@ private:
 float query_render_interpolation_alpha();
 WalkerRenderPosition resolve_walker_render_position(const walker& w,
                                                     float alpha);
-bool draw_walker(walker& w, viewscreen* view_buf);
+// alpha<255 draws a faded/ghosted sprite only (for non-camera floors): no
+// flash/outline/mode/HP-bar/damage-number embellishments.
+bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha = 255);
 bool draw_walker_tile(walker& w, viewscreen* view_buf);
 void draw_walker_path(walker& w, viewscreen* view_buf);
 void draw_small_health_bar(walker* w, viewscreen* view_buf);

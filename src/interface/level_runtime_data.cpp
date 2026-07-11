@@ -287,6 +287,12 @@ void replace_loaded_world_state(LevelRuntimeData* level, GameWorld& loaded_world
         dst.mysmoother.set_target(dst.grid);
     else
         dst.mysmoother.reset();
+    // Z-axis: carry the loaded stacked floors across too, re-targeting each
+    // floor smoother at its moved-in grid (the span must follow the buffer).
+    dst.extra_floors_ = std::move(loaded_world.extra_floors_);
+    for (auto& fl : dst.extra_floors_)
+        if (fl.grid.valid())
+            fl.floor_smoother.set_target(fl.grid);
 }
 
 

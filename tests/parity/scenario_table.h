@@ -184,6 +184,31 @@ struct SpawnSpec
     std::int32_t  stats_level        = 0;
     std::int32_t  magicpoints        = 0;
     std::int32_t  precompleted_level = 0;
+    // Z-axis / multi-floor (branch-internal Invariant scenarios only). The
+    // walker is created on floor 0 and apply_post_load_spawns relocates it via
+    // walker::change_floor when floor != 0. Trailing + defaulted so every
+    // existing row compiles unchanged.
+    std::int32_t  floor              = 0;
+};
+
+// Numeric mirrors of the PIX_* tile ids used by FloorPaint. scenario_table.h
+// deliberately does NOT include <openglad/core/pixdefs.h> (it stays byte-
+// mirrorable to the master companion), so these are spelled numerically and
+// guarded by a static_assert against the real PIX_* macros in
+// scenario_runtime.cpp.
+inline constexpr std::int32_t kPixGrass1   = 1;   // PIX_GRASS1
+inline constexpr std::int32_t kPixAir      = 134; // PIX_AIR
+inline constexpr std::int32_t kPixZStairUp = 140; // PIX_ZSTAIR_UP
+
+// One grid-cell overwrite applied to a floor after the multi-floor arena is
+// built (see apply_floor_setup). `floor` selects the stacked floor (0 ==
+// ground); (tile_x, tile_y) is a grid cell; `pix` is one of the kPix* mirrors.
+struct FloorPaint
+{
+    std::int32_t floor;
+    std::int32_t tile_x;
+    std::int32_t tile_y;
+    std::int32_t pix;
 };
 
 // Discriminating mutation declaration: a single source-line edit that
@@ -230,6 +255,13 @@ struct ScenarioSpec
     std::size_t          fact_count     = 0;
     Mutation             discriminating_mutation = {};
     std::string_view     coverage_audit = {};
+    // Z-axis / multi-floor arena setup (branch-internal Invariant scenarios).
+    // floor_count > 1 makes apply_floor_setup build the extra floor grids and
+    // apply floor_paints[] before the spawns. All trailing + defaulted so the
+    // single-floor rows above are byte-identical (floor_count == 1 -> no-op).
+    std::int32_t         floor_count       = 1;
+    const FloorPaint*    floor_paints      = nullptr;
+    std::size_t          floor_paint_count = 0;
 };
 
 // --- Per-scenario input scripts (constexpr, no file I/O at test time) ---
@@ -4787,6 +4819,38 @@ inline constexpr Mutation kMut_consumable_inventory_state_scen99 = {
     "No-ops the drumstick heal so the arrow-wounded player never recovers; its final HP stays at the lower wounded value, below the WalkerHpRangeAtFinalTick lower bound -- flipping it."
 };
 
+// --- Z-axis / multi-floor arenas (branch-internal Invariant) ---------------
+//
+// GRID_SIZE is 16, so pixel 112 == tile 7. A FAMILY_SOLDIER sprite is well
+// under 32px, so its centre cell ((xpos+sizex/2)/16) is (7,7) — exactly the
+// cell apply_floor_setup paints the Z tile into. apply_z_motion (run at the top
+// of living::act every tick, gated floor_count>1) reads the genre under the
+// walker's centre cell and performs the floor transition.
+
+// Z-stair: soldier stands on a PIX_ZSTAIR_UP on floor 0 and climbs to floor 1.
+inline constexpr SpawnSpec kZStairSpawns[] = {
+    { FAMILY_SOLDIER, 0, kOrderLiving, 112, 112, 0, 0, 0, 0, 0, /*floor=*/0 },
+};
+inline constexpr FloorPaint kZStairPaints[] = {
+    { /*floor=*/0, 7, 7, kPixZStairUp }, // stair under the soldier's centre cell
+    { /*floor=*/0, 8, 7, kPixGrass1 },   // grass footprint around the stair
+    { /*floor=*/0, 7, 8, kPixGrass1 },
+    { /*floor=*/0, 8, 8, kPixGrass1 },
+};
+
+// Fall-through-air: soldier spawns on floor 1 over a PIX_AIR hole and falls to
+// the solid grass floor 0 below.
+inline constexpr SpawnSpec kZFallSpawns[] = {
+    { FAMILY_SOLDIER, 0, kOrderLiving, 112, 112, 0, 0, 0, 0, 0, /*floor=*/1 },
+};
+inline constexpr FloorPaint kZFallPaints[] = {
+    { /*floor=*/0, 7, 7, kPixGrass1 },   // solid landing pad on floor 0
+    { /*floor=*/0, 8, 7, kPixGrass1 },
+    { /*floor=*/0, 7, 8, kPixGrass1 },
+    { /*floor=*/0, 8, 8, kPixGrass1 },
+    { /*floor=*/1, 7, 7, kPixAir },      // air hole under the soldier on floor 1
+};
+
 // --- Scenario table --------------------------------------------------------
 
 inline constexpr ScenarioSpec kScenarios[] = {
@@ -4929,6 +4993,26 @@ inline constexpr ScenarioSpec kScenarios[] = {
       nullptr, 0,                                                       50,  CompareMode::Invariant, true,
       nullptr, 0, 0, false, false, Exercises::None,
       nullptr, 0, kMut_snapshot_dirty },
+
+    // Z-axis / multi-floor (branch-internal Invariant; no master companion can
+    // model stacked floors). fresh_arena drops scen9301's (empty) population;
+    // apply_floor_setup builds the 2-floor grass arena and paints the Z tiles
+    // before the soldier spawns. The teethed WalkerOnFloor predicate is checked
+    // in Parity.z_multifloor_walker_floor_transitions; the Invariant rows
+    // themselves rely on the dual-capture determinism check. Lint exempts
+    // Invariant rows from fact/mutation requirements (expected_facts nullptr,
+    // discriminating_mutation {}).
+    { "z_stair_up_scen9301", "scen/scen9301.fss", 0x00000055u,
+      nullptr, 0, 50, CompareMode::Invariant, true,
+      kZStairSpawns, std::size(kZStairSpawns), 0, false, true, Exercises::None,
+      nullptr, 0, {}, {},
+      2, kZStairPaints, std::size(kZStairPaints) },
+
+    { "z_fall_through_air_scen9301", "scen/scen9301.fss", 0x00000055u,
+      nullptr, 0, 50, CompareMode::Invariant, true,
+      kZFallSpawns, std::size(kZFallSpawns), 0, false, true, Exercises::None,
+      nullptr, 0, {}, {},
+      2, kZFallPaints, std::size(kZFallPaints) },
 
     // Phase 02 smoke scenarios. fresh_arena drops any walkers the loaded
     // scen file may have produced and replaces them with kSmokeArenaSpawns,

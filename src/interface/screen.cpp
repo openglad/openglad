@@ -647,6 +647,19 @@ void screen::walkputbuffertext_alpha(Sint32 walkerstartx, Sint32 walkerstarty,
                                          teamcolor, alpha);
 }
 
+void screen::walkputbuffer_alpha(Sint32 walkerstartx, Sint32 walkerstarty,
+                                 Sint32 walkerwidth, Sint32 walkerheight,
+                                 Sint32 portstartx, Sint32 portstarty,
+                                 Sint32 portendx, Sint32 portendy,
+                                 std::span<const unsigned char> sourceptr,
+                                 unsigned char teamcolor, Uint8 alpha)
+{
+    video_impl_->walkputbuffer_alpha(walkerstartx, walkerstarty, walkerwidth,
+                                     walkerheight, portstartx, portstarty,
+                                     portendx, portendy, sourceptr,
+                                     teamcolor, alpha);
+}
+
 void screen::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
                            Sint32 walkerwidth, Sint32 walkerheight,
                            Sint32 portstartx, Sint32 portstarty,

@@ -50,10 +50,11 @@ void LevelRender::reset_tiles(PixieData pixdata[])
         impl_->back[i].reset();
 }
 
-void LevelRender::draw_tile(int tile_index, int x, int y, viewscreen* view)
+void LevelRender::draw_tile(int tile_index, int x, int y, viewscreen* view,
+                            unsigned char alpha)
 {
     if (tile_index >= 0 && tile_index < PIX_MAX && impl_->back[tile_index])
-        impl_->back[tile_index]->draw(static_cast<short>(x), static_cast<short>(y), view);
+        impl_->back[tile_index]->draw(static_cast<short>(x), static_cast<short>(y), view, alpha);
 }
 
 std::unique_ptr<LevelRender> create_sdl_level_render(PixieData pixdata[])

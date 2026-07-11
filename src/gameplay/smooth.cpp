@@ -129,6 +129,17 @@ static constexpr auto make_pix_to_genre() {
 	table[PIX_COBBLE_3] = TYPE_COBBLE;
 	table[PIX_COBBLE_4] = TYPE_COBBLE;
 
+	// Z-axis / multi-floor tiles. Mapped for query_genre_x_y consumers but kept
+	// out of smooth()'s autotiler switch (inert default branch).
+	table[PIX_AIR] = TYPE_AIR;
+	table[PIX_GLASS] = TYPE_GLASS;
+	table[PIX_DROPBLOCK_UP] = TYPE_DROP_BLOCK;
+	table[PIX_DROPBLOCK_RIGHT] = TYPE_DROP_BLOCK;
+	table[PIX_DROPBLOCK_DOWN] = TYPE_DROP_BLOCK;
+	table[PIX_DROPBLOCK_LEFT] = TYPE_DROP_BLOCK;
+	table[PIX_ZSTAIR_UP] = TYPE_ZSTAIRS;
+	table[PIX_ZSTAIR_DOWN] = TYPE_ZSTAIRS;
+
 	return table;
 }
 static constexpr auto PIX_to_genre = make_pix_to_genre();

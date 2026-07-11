@@ -36,6 +36,19 @@ short collide(short x,  short y,  short xsize,  short ysize,
 //#define YRES GRID_SIZE
 inline constexpr int OBRES = 32; //GRID_SIZE
 
+// Floor-keyed bucketing for multi-floor levels: each floor occupies a distinct
+// numx band [floor*OB_FLOOR_STRIDE, floor*OB_FLOOR_STRIDE+199] so entities on
+// different floors never share a collision pile. Floor 0 maps to [0,199],
+// byte-identical to pre-Z. Clamped to keep the pos_to_walker short key in range.
+inline constexpr int OB_FLOOR_STRIDE = 256;
+static short floor_numx_offset(const walker* ob)
+{
+	int f = ob ? static_cast<int>(ob->floor()) : 0;
+	if (f < 0) f = 0;
+	if (f > 120) f = 120;
+	return static_cast<short>(f * OB_FLOOR_STRIDE);
+}
+
 // These are passed in as PIXEL coordinates now...
 obmap::obmap()
 {
@@ -62,8 +75,9 @@ short obmap::query_list(walker  *ob, short x, short y)
 		Log("Bad ob to query_list.\n");
 		return 1;
 	}
-	startnumx = hash(x);
-	endnumx   = hash( static_cast<short>(x+ob->sizex()) );
+	const short fo = floor_numx_offset(ob);
+	startnumx = static_cast<short>(hash(x) + fo);
+	endnumx   = static_cast<short>(hash( static_cast<short>(x+ob->sizex()) ) + fo);
 	startnumy = hash(y);
 	endnumy   = hash( static_cast<short>(y+ob->sizey()) );
 
@@ -109,8 +123,9 @@ short obmap::remove(walker  *ob)  // This goes in walker's destructor
 
         short numx, startnumx, endnumx;
         short numy, startnumy, endnumy;
-        startnumx = hash(ob->xpos());
-        endnumx = hash(static_cast<short>(ob->xpos() + ob->sizex()));
+        const short fo = floor_numx_offset(ob);
+        startnumx = static_cast<short>(hash(ob->xpos()) + fo);
+        endnumx = static_cast<short>(hash(static_cast<short>(ob->xpos() + ob->sizex())) + fo);
         startnumy = hash(ob->ypos());
         endnumy = hash(static_cast<short>(ob->ypos() + ob->sizey()));
 
@@ -165,8 +180,9 @@ short obmap::add(walker  *ob, short x, short y)  // This goes in walker's constr
 	if (walker_to_pos.find(ob) != walker_to_pos.end())
 		(void)remove(ob);
 
-	startnumx = hash(x);
-	endnumx   = hash( static_cast<short>(x + ob->sizex()) );
+	const short fo = floor_numx_offset(ob);
+	startnumx = static_cast<short>(hash(x) + fo);
+	endnumx   = static_cast<short>(hash( static_cast<short>(x + ob->sizex()) ) + fo);
 	startnumy = hash(y);
 	endnumy   = hash( static_cast<short>(y + ob->sizey()) );
 
@@ -223,9 +239,12 @@ short obmap::unhash(short y)
     return y*OBRES;
 }
 
-std::list<walker*>& obmap::obmap_get_list(short x, short y)
+std::list<walker*>& obmap::obmap_get_list(short x, short y, int floor)
 {
-	return pos_to_walker[std::make_pair(hash(x), hash(y))];
+	if (floor < 0) floor = 0;
+	if (floor > 120) floor = 120;
+	const short fo = static_cast<short>(floor * OB_FLOOR_STRIDE);
+	return pos_to_walker[std::make_pair(static_cast<short>(hash(x) + fo), hash(y))];
 }
 
 /***********************************************
@@ -280,6 +299,18 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
                 continue;
             else
             {
+                // Cylinder z-overlap: skip pairs whose height ranges don't
+                // overlap. sizez()==0 is the full-height sentinel (legacy
+                // entities), so single-floor collision is unchanged.
+                if (ob->sizez() > 0 && w->sizez() > 0)
+                {
+                    const float oz1 = ob->worldz();
+                    const float oz2 = oz1 + static_cast<float>(ob->sizez());
+                    const float wz1 = w->worldz();
+                    const float wz2 = wz1 + static_cast<float>(w->sizez());
+                    if (oz2 <= wz1 || wz2 <= oz1)
+                        continue;
+                }
                 x2 = w->xpos();
                 y2 = w->ypos();
                 xsize2 = w->sizex();

@@ -247,7 +247,10 @@ short radar::draw(LevelRuntimeData* data)
         for(auto e = ls->begin(); e != ls->end(); e++)
 		{
 		    walker* ob = e->get();
-		    
+		    // Multi-floor: only blip entities on the control walker's floor.
+		    if (control && ob && data->world().floor_count() > 1 &&
+		        static_cast<int>(ob->floor()) != static_cast<int>(control->floor()))
+		        continue;
             oborder = ob->query_order();
 			do_show = 0; // don't show, by default
 			if ((oborder == Order::Living || oborder == Order::Weapon
@@ -328,6 +331,9 @@ short radar::draw(LevelRuntimeData* data)
 	    walker* ob = uptr.get();
 		if (ob && !ob->dead())
 		{
+			if (control && data->world().floor_count() > 1 &&
+			    static_cast<int>(ob->floor()) != static_cast<int>(control->floor()))
+				continue;
 			oborder  = ob->query_order();
 			obfamily = ob->family();
 

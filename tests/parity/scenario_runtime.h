@@ -38,6 +38,13 @@ int scenario_level_id(std::string_view scenario_file);
 // placing each walker at (x, y) with the requested team and weapon.
 void apply_post_load_spawns(GameWorld& world, const ScenarioSpec& spec);
 
+// Build the multi-floor arena for a Z-axis scenario: raise the floor count,
+// fill the extra floor grids with grass, re-target their smoothers, and apply
+// `spec.floor_paints[]`. A no-op when `spec.floor_count <= 1`, so single-floor
+// scenarios are byte-identical. Must run AFTER the fresh_arena clear and BEFORE
+// apply_post_load_spawns (which relocates spawns onto the now-existing floors).
+void apply_floor_setup(GameWorld& world, const ScenarioSpec& spec);
+
 // Drive scripted inputs at `tick` through the same direct shim used by the
 // e761 golden recorder. The driver tracks edge transitions (`pressed` vs
 // `held`) across calls and picks up the player walker the first time it is

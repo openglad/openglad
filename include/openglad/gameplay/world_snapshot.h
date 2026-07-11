@@ -31,7 +31,7 @@ namespace og::sim {
 inline constexpr std::size_t kEntitySnapshotDirtyMaskWords = 2;
 inline constexpr std::int32_t kNoGuyId = -1;
 inline constexpr std::uint8_t kNoPausePlayerIndex = 0xff;
-inline constexpr std::uint8_t kSnapshotFormatVersion = 5;
+inline constexpr std::uint8_t kSnapshotFormatVersion = 6;
 inline constexpr std::uint8_t kSnapshotProtocolVersion = kNetworkProtocolVersion;
 inline constexpr std::uint8_t kDeltaPayloadUncompressedFlag = 0x01;
 inline constexpr std::size_t kDeltaPayloadHeaderSize = 1;
@@ -138,6 +138,15 @@ struct EntitySnapshot {
     std::uint32_t controller_id = 0;
 
     std::int32_t do_bounce = 0;
+
+    // Z-axis / multi-floor (dirty bits 86-89). Defaults 0 so single-floor
+    // capture + serialization is byte-identical to pre-Z. floor is uint8 (caps
+    // at 255 floors, saves a wire byte) and is clamped to the valid range on
+    // apply for untrusted-peer safety.
+    float worldz = 0.0f;
+    float vz = 0.0f;
+    std::int16_t sizez = 0;
+    std::uint8_t floor = 0;
 };
 
 struct GuySnapshot {
@@ -448,6 +457,14 @@ inline constexpr EntitySnapshotFieldDesc kEntitySnapshotFields[] = {
      static_cast<std::uint16_t>(offsetof(EntitySnapshot, current_distance))},
     {og::dirty::BIT_CONTROLLER_ID, sizeof(std::uint32_t),
      static_cast<std::uint16_t>(offsetof(EntitySnapshot, controller_id))},
+    {og::dirty::BIT_WORLDZ, sizeof(float),
+     static_cast<std::uint16_t>(offsetof(EntitySnapshot, worldz))},
+    {og::dirty::BIT_VZ, sizeof(float),
+     static_cast<std::uint16_t>(offsetof(EntitySnapshot, vz))},
+    {og::dirty::BIT_SIZEZ, sizeof(std::int16_t),
+     static_cast<std::uint16_t>(offsetof(EntitySnapshot, sizez))},
+    {og::dirty::BIT_FLOOR, sizeof(std::uint8_t),
+     static_cast<std::uint16_t>(offsetof(EntitySnapshot, floor))},
 };
 
 inline constexpr std::size_t kEntitySnapshotTableFieldCount =

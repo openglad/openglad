@@ -150,7 +150,7 @@ LevelRender::LevelRender() {}
 LevelRender::~LevelRender() = default;
 void LevelRender::init_tiles(PixieData[]) {}
 void LevelRender::reset_tiles(PixieData[]) {}
-void LevelRender::draw_tile(int, int, int, viewscreen*) {}
+void LevelRender::draw_tile(int, int, int, viewscreen*, unsigned char) {}
 
 std::unique_ptr<LevelRender> headless_create_level_render(PixieData[])
 {

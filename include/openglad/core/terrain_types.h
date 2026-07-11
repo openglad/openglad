@@ -29,4 +29,11 @@ inline constexpr int TYPE_DIRT_DARK = 7;
 inline constexpr int TYPE_WALL = 8;
 inline constexpr int TYPE_CARPET = 9;
 inline constexpr int TYPE_GRASS_LIGHT = 10;
+// Z-axis / multi-floor genres (see docs/z-axis-design.md). Deliberately omitted
+// from smoother::smooth()'s genre switch so they route to the default branch
+// (inert, never autotiled), mirroring the cliff/jagged precedent.
+inline constexpr int TYPE_AIR = 11;
+inline constexpr int TYPE_GLASS = 12;
+inline constexpr int TYPE_DROP_BLOCK = 13;
+inline constexpr int TYPE_ZSTAIRS = 14;
 inline constexpr int TYPE_UNKNOWN = 50;
