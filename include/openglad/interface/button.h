@@ -193,6 +193,7 @@ Sint32 change_respawn_delay();
 Sint32 change_permadeath();
 Sint32 change_generator_rate();
 Sint32 change_depth_fx(); // GRAPHICS FX depth selector (cfg effects/depth_fx)
+Sint32 change_world_scale(); // OPTIONS world-scale selector (cfg graphics/scale)
 Sint32 toggle_player_control_mode(Sint32 arg);
 Sint32 edit_player_keymap(Sint32 arg);
 std::string build_player_control_summary(int player_index);
@@ -307,6 +308,11 @@ enum class ButtonAction : Sint32
     // GRAPHICS FX depth selector: cycles cfg effects/depth_fx through
     // fog -> haze -> mist -> tint -> off (replaces ToggleDepthTint = 80).
     CycleDepthFx = 92,
+    // OPTIONS world-scale selector: cycles cfg graphics/scale through
+    // off -> 1 -> 2 -> sai -> eagle -> 3 -> 4 -> 8 -> off and live-applies
+    // it to the world canvas. Independent of ToggleRenderingEngine (the
+    // legacy graphics/render present engine).
+    CycleWorldScale = 93,
 };
 
 inline constexpr Sint32 button_action_id(ButtonAction action)

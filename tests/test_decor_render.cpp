@@ -615,7 +615,7 @@ TEST(DecorRender, zz_capture_decor_sampler)
         {-6, 1, PIX_GRASS_DARK_1, DECOR_PEBBLES},
         {-4, 1, PIX_GRASS2, DECOR_PEBBLES},
         {-2, 1, PIX_SNOW1, DECOR_PEBBLES},
-        // columns (transparent legacy art): plank floor + grass
+        // columns (dual-use tile art, corner transparency): plank floor + grass
         {0, 1, PIX_FLOOR1, DECOR_COLUMN_BOTTOM},
         {1, 1, PIX_GRASS1, DECOR_COLUMN_TOP},
         // shrub + bones: grass, snow, ash

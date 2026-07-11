@@ -543,6 +543,52 @@ bool depth_fx_is_active(const std::string& value)
     return normalize_depth_fx_value(value) != "off";
 }
 
+// --- OPTIONS world-scale selector (cfg graphics/scale) ---
+
+// Out-of-set values (including the empty string an absent key reads as, and
+// the documented explicit "off") count as Legacy — the same rule
+// parse_world_scale_setting applies in the renderer, so the label always
+// names what is presented.
+static std::string normalize_world_scale_value(const std::string& value)
+{
+    if (value == "1" || value == "2" || value == "3" || value == "4" ||
+        value == "8" || value == "sai" || value == "eagle")
+        return value;
+    return "off";
+}
+
+std::string cycle_world_scale(const std::string& current)
+{
+    const std::string value = normalize_world_scale_value(current);
+    if (value == "off")
+        return "1";
+    if (value == "1")
+        return "2";
+    if (value == "2")
+        return "sai";
+    if (value == "sai")
+        return "eagle";
+    if (value == "eagle")
+        return "3";
+    if (value == "3")
+        return "4";
+    if (value == "4")
+        return "8";
+    return "off"; // 8 wraps back to the Legacy default
+}
+
+std::string format_world_scale_label(const std::string& value)
+{
+    const std::string v = normalize_world_scale_value(value);
+    if (v == "sai")
+        return "Scale: SAI";
+    if (v == "eagle")
+        return "Scale: Eagle";
+    if (v == "off")
+        return "Scale: Off";
+    return "Scale: " + v + "x";
+}
+
 // --- Team choice helpers (local seats) ---
 
 bool team_has_members(const SaveData& save, short team)

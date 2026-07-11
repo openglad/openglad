@@ -127,6 +127,7 @@ struct OptionsState {
     bool entered_fx[kFxScreenCount];
     bool exited_fx[kFxScreenCount];
     bool toggled_fx[kFxScreenCount][kFxMaxToggles];
+    bool cycled_world_scale;
     bool used_options_back;
     // Label the RENDERING ENGINE button shows while cfg (graphics, render) is
     // the empty string (as in any process that never ran load_settings()).
@@ -192,6 +193,34 @@ static bool cycle_effect_and_check_lap(const char* button_id, const char* catego
 
     const Uint32 deadline = SDL_GetTicks() + 5000;
     while (cfg.get_setting(category, cfg_key) != expected) {
+        if (SDL_GetTicks() >= deadline)
+            return false;
+        interact(button_id);
+        SDL_Delay(300);
+    }
+    return true;
+}
+
+// The world-scale selector is an eight-way cycle over cfg graphics/scale
+// (off -> 1 -> 2 -> sai -> eagle -> 3 -> 4 -> 8 -> off), each click
+// live-applied to the renderer's world canvas. Same lap discipline as the
+// depth selector above: the absent-key start ("") normalizes to off, so
+// compare against eight pure cycle_world_scale steps, and finish the lap
+// deadline-bounded if a re-click double-steps. The lap ends back on the
+// Legacy default, so the rest of the flow (and binary) keeps the classic
+// canvas.
+static bool cycle_world_scale_and_check_lap(const char* button_id)
+{
+    std::string expected = cfg.get_setting("graphics", "scale");
+    for (int i = 0; i < 8; ++i)
+        expected = og::ui::cycle_world_scale(expected);
+
+    for (int i = 0; i < 8; ++i)
+        if (!click_cycle_step(button_id, "graphics", "scale"))
+            return false;
+
+    const Uint32 deadline = SDL_GetTicks() + 5000;
+    while (cfg.get_setting("graphics", "scale") != expected) {
         if (SDL_GetTicks() >= deadline)
             return false;
         interact(button_id);
@@ -267,6 +296,12 @@ static int options_injector(void* data)
         SDL_Delay(80);
         interact("overscan_minus");
         SDL_Delay(80);
+
+        // A full verified lap of the world-scale cycle: every click steps
+        // cfg graphics/scale AND live-applies it to the world canvas (the
+        // menu keeps presenting the untouched 320x200 UI canvas throughout).
+        fprintf(stderr, "  [test] cycling world scale through a full lap\n");
+        state->cycled_world_scale = cycle_world_scale_and_check_lap("world_scale");
 
         // Enter each FX subscreen in turn, flip every toggle it hosts
         // (asserting the cfg key actually changed), and leave via the
@@ -381,6 +416,19 @@ TEST(OptionsMenu, options_menu) {
     ASSERT_TRUE(state.used_options_back) << "should have exited options via options_back";
     EXPECT_EQ("normal", state.render_label_when_unset)
         << "empty cfg (graphics, render) must fall back to 'normal' on the button face";
+    ASSERT_TRUE(state.cycled_world_scale)
+        << "world_scale must step cfg graphics/scale around the full eight-value lap";
+    // Each click live-applies the value: the integer / SAI / Eagle modes and
+    // the closing Legacy wrap must all have reached the renderer
+    // (apply_world_scale_from_cfg traces the parsed mode).
+    EXPECT_TRUE(trace_contains("canvas", "world_scale mode=1"))
+        << "an integer scale step must re-derive the world canvas";
+    EXPECT_TRUE(trace_contains("canvas", "world_scale mode=2"))
+        << "the sai step must re-derive the world canvas";
+    EXPECT_TRUE(trace_contains("canvas", "world_scale mode=3"))
+        << "the eagle step must re-derive the world canvas";
+    EXPECT_TRUE(trace_contains("canvas", "world_scale mode=0"))
+        << "the closing wrap to off must restore the Legacy canvas";
 }
 
 

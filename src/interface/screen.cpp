@@ -42,7 +42,7 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/core/util.h>
 #include <openglad/interface/input.h>
-#include <openglad/interface/view_sizes.h>
+#include <openglad/interface/render/view_layout.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/interface/ui/results_screen.h>
 #include <openglad/gameplay/sim_event_log.h>
@@ -390,13 +390,9 @@ bool dispatch_game_flow_screen_events(screen& self,
 } // namespace
 loader* sdl_entity_loader();
 
-// Screen window boundries
-inline constexpr int S_UP = 0;
-inline constexpr int S_LEFT = 0;
-inline constexpr int S_DOWN = 200;
-inline constexpr int S_RIGHT = 320;
-inline constexpr int S_WIDTH = (S_RIGHT - S_LEFT);
-inline constexpr int S_HEIGHT = (S_DOWN - S_UP);
+// Screen window boundaries now come from the world canvas dims via
+// og::view_layout::compute_view_layout (320x200 by default) instead of the
+// retired S_* / T_* absolute constants.
 inline constexpr int MAX_SPREAD = 10; // this controls find_near_foe
 
 // load_version_* functions now live in level_runtime_data.cpp and take
@@ -600,17 +596,19 @@ void screen::destroy_accel_surface(void* surface)
     video_impl_->destroy_accel_surface(surface);
 }
 
-void screen::floor_layer_begin(Sint32 x, Sint32 y, Sint32 w, Sint32 h)
+bool screen::floor_layer_begin(Sint32 x, Sint32 y, Sint32 w, Sint32 h)
 {
-    video_impl_->floor_layer_begin(x, y, w, h);
+    return video_impl_->floor_layer_begin(x, y, w, h);
 }
 
 void screen::floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
                              float scale, Sint32 cx, Sint32 cy,
                              unsigned char alpha,
-                             DepthFxParams fx)
+                             DepthFxParams fx,
+                             Sint32 pad_x, Sint32 pad_y)
 {
-    video_impl_->floor_layer_end(x, y, w, h, scale, cx, cy, alpha, fx);
+    video_impl_->floor_layer_end(x, y, w, h, scale, cx, cy, alpha, fx,
+                                 pad_x, pad_y);
 }
 
 void screen::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
@@ -940,10 +938,10 @@ void screen::init_common(short howmany, bool has_display)
 		load_text.write_y(56, "Loading Gladiator..Please Wait", RED, 1);
 		draw_text_bar(64, 64, 256, 106);
 		load_text.write_xy(load_left, 70, "Loading Graphics...", DARK_BLUE, 1);
-		buffer_to_screen(0, 0, 320, 200);
+		buffer_to_screen(0, 0, canvas_w(), canvas_h());
 		load_text.write_xy(load_left, 70, "Loading Graphics...Done", DARK_BLUE, 1);
 		load_text.write_xy(load_left, 78, "Loading Gameplay Info...", DARK_BLUE, 1);
-		buffer_to_screen(0, 0, 320, 200);
+		buffer_to_screen(0, 0, canvas_w(), canvas_h());
 	}
 
 	update_overscan_setting();
@@ -966,7 +964,7 @@ void screen::init_common(short howmany, bool has_display)
 		load_text.write_xy(load_left, 78, "Loading Gameplay Info...Done", DARK_BLUE, 1);
 		load_text.write_xy(load_left, 86, "Initializing Display...Done", DARK_BLUE, 1);
 		load_text.write_xy(load_left, 94, "Initializing Sound...", DARK_BLUE, 1);
-		buffer_to_screen(0, 0, 320, 200);
+		buffer_to_screen(0, 0, canvas_w(), canvas_h());
 	}
 
     soundp = create_soundob(false);
@@ -976,7 +974,7 @@ void screen::init_common(short howmany, bool has_display)
 
 	if (has_display) {
 		load_text.write_xy(load_left, 94, "Initializing Sound...Done", DARK_BLUE, 1);
-		buffer_to_screen(0, 0, 320, 200);
+		buffer_to_screen(0, 0, canvas_w(), canvas_h());
 	}
 
 	init_all_registries();
@@ -1038,34 +1036,44 @@ void screen::initialize_views()
     // startup must clear it before creating a new view set.
     reset_viewscreen_input_debounce();
 
-    // Even though it looks okay here, these positions and sizes are overridden by viewscreen::resize() later.
-	if (numviews == 1)
+    // The constructor rects are computed from the world canvas dims (FULL
+    // layout); they are then immediately overridden by the constructor's own
+    // resize(prefs[PREF_VIEW]) call, which re-derives the geometry from the
+    // same canvas dims plus the player's saved view mode.
+	if (numviews >= 1 && numviews <= MAX_VIEWS)
 	{
-		viewob[0] = std::make_unique<viewscreen>( S_LEFT, S_UP, S_WIDTH, S_HEIGHT, 0);
-	}
-	else if (numviews == 2)
-	{
-		viewob[0] = std::make_unique<viewscreen>( T_LEFT_ONE, T_UP_ONE, T_HALF_WIDTH, T_HEIGHT, 0);
-		viewob[1] = std::make_unique<viewscreen>( T_LEFT_TWO, T_UP_TWO, T_HALF_WIDTH, T_HEIGHT, 1);
-	}
-	else if (numviews == 3)
-	{
-		viewob[0] = std::make_unique<viewscreen>( T_LEFT_ONE, T_UP_ONE, T_HALF_WIDTH, T_HALF_HEIGHT, 0);
-		viewob[1] = std::make_unique<viewscreen>( T_LEFT_TWO, T_UP_TWO, T_HALF_WIDTH, T_HALF_HEIGHT, 1);
-		viewob[2] = std::make_unique<viewscreen>( T_LEFT_THREE, T_UP_THREE, T_HALF_WIDTH, T_HALF_HEIGHT, 2);
-	}
-	else if (numviews == 4)
-	{
-		viewob[0] = std::make_unique<viewscreen>( T_LEFT_ONE, T_UP_ONE, T_HALF_WIDTH, T_HALF_HEIGHT, 0);
-		viewob[1] = std::make_unique<viewscreen>( T_LEFT_TWO, T_UP_TWO, T_HALF_WIDTH, T_HALF_HEIGHT, 1);
-		viewob[2] = std::make_unique<viewscreen>( T_LEFT_THREE, T_UP_THREE, T_HALF_WIDTH, T_HALF_HEIGHT, 2);
-		viewob[3] = std::make_unique<viewscreen>( T_LEFT_FOUR, T_UP_FOUR, T_HALF_WIDTH, T_HALF_HEIGHT, 3);
+		for (Sint32 i = 0; i < numviews; i++)
+		{
+			const og::view_layout::ViewLayout r =
+			    og::view_layout::compute_view_layout(
+			        numviews, static_cast<int>(i), og::view_layout::kModeFull,
+			        world_canvas_w(), world_canvas_h());
+			viewob[i] = std::make_unique<viewscreen>(
+			    static_cast<short>(r.x), static_cast<short>(r.y),
+			    static_cast<short>(r.w), static_cast<short>(r.h),
+			    static_cast<short>(i));
+		}
 	}
 	else
     {
         LogError("screen_init_views_failed numviews={}\n", numviews);
         numviews = 0; // no views created for an unsupported count; keep per-frame loops in-bounds
     }
+}
+
+// Re-derives every live viewscreen's geometry from the current world canvas
+// dimensions. Called after the world canvas changes size (a window resize
+// under cfg graphics/scale, or the level editor pinning the classic canvas):
+// resize(whatmode) recomputes the pane layout via compute_view_layout and
+// restarts each started radar.
+void screen::relayout_views()
+{
+	for (Sint32 i = 0; i < numviews && i < MAX_VIEWS; i++)
+	{
+		if (viewob[i])
+			viewob[i]->resize(viewob[i]->prefs[PREF_VIEW]);
+	}
+	redrawme = 1;
 }
 
 void screen::cleanup(short howmany)
@@ -1116,27 +1124,25 @@ void screen::reset(short howmany)
 	// Clean stuff up
 	cleanup(howmany);
 
-	if (numviews == 1)
+    // PvP reset: same canvas-derived FULL rects as initialize_views (also
+    // immediately overridden by the constructor's resize(prefs[PREF_VIEW])),
+    // but preserving the historical construction ORDER — viewob[1] before
+    // viewob[0] — since per-player pref loading happens at construction.
+	if (numviews >= 1 && numviews <= MAX_VIEWS)
 	{
-		viewob[0] = std::make_unique<viewscreen>( S_LEFT, S_UP, S_WIDTH, S_HEIGHT, 0);
-	}
-	else if (numviews == 2)
-	{
-		viewob[1] = std::make_unique<viewscreen>( T_LEFT_ONE, T_UP_ONE, T_WIDTH, T_HEIGHT, 1);
-		viewob[0] = std::make_unique<viewscreen>( T_LEFT_TWO, T_UP_TWO, T_WIDTH, T_HEIGHT, 0);
-	}
-	else if (numviews == 3)
-	{
-		viewob[1] = std::make_unique<viewscreen>( T_LEFT_ONE, T_UP_ONE, T_WIDTH, T_HEIGHT, 1);
-		viewob[0] = std::make_unique<viewscreen>( T_LEFT_TWO, T_UP_TWO, T_WIDTH, T_HEIGHT, 0);
-		viewob[2] = std::make_unique<viewscreen>( 112, 16, 100, 168, 2);
-	}
-	else if (numviews == 4)
-	{
-		viewob[1] = std::make_unique<viewscreen>( T_LEFT_ONE, T_UP_ONE, T_WIDTH, T_HEIGHT, 1);
-		viewob[0] = std::make_unique<viewscreen>( T_LEFT_TWO, T_UP_TWO, T_WIDTH, T_HEIGHT, 0);
-		viewob[2] = std::make_unique<viewscreen>( 112, 16, 100, 168, 2);
-		viewob[3] = std::make_unique<viewscreen>( 112, 16, 100, 168, 3);
+		static constexpr std::array<short, 4> kPvpConstructionOrder = {1, 0, 2, 3};
+		for (Sint32 n = 0; n < numviews; n++)
+		{
+			const short i = (numviews == 1) ? static_cast<short>(0)
+			                                : kPvpConstructionOrder[static_cast<size_t>(n)];
+			const og::view_layout::ViewLayout r =
+			    og::view_layout::compute_view_layout(
+			        numviews, static_cast<int>(i), og::view_layout::kModeFull,
+			        world_canvas_w(), world_canvas_h());
+			viewob[i] = std::make_unique<viewscreen>(
+			    static_cast<short>(r.x), static_cast<short>(r.y),
+			    static_cast<short>(r.w), static_cast<short>(r.h), i);
+		}
 	}
 	else
 	{

@@ -23,6 +23,7 @@
 
 #include <array>
 #include <span>
+#include <vector>
 
 class sdl_video final : public video
 {
@@ -83,11 +84,12 @@ public:
     void* create_accel_surface(std::span<const unsigned char> indexed_pixels,
                                Sint32 width, Sint32 height) override;
     void destroy_accel_surface(void* surface) override;
-    void floor_layer_begin(Sint32 x, Sint32 y, Sint32 w, Sint32 h) override;
+    bool floor_layer_begin(Sint32 x, Sint32 y, Sint32 w, Sint32 h) override;
     void floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
                          float scale, Sint32 cx, Sint32 cy,
                          unsigned char alpha,
-                         DepthFxParams fx = {}) override;
+                         DepthFxParams fx = {},
+                         Sint32 pad_x = 0, Sint32 pad_y = 0) override;
     void putbuffer(Sint32 tilestartx, Sint32 tilestarty,
                    Sint32 tilewidth, Sint32 tileheight,
                    Sint32 portstartx, Sint32 portstarty,
@@ -162,6 +164,16 @@ public:
 
     void swap() override;
 
+    // Canvas routing: delegated to the Screen (E_Screen) two-canvas split.
+    int canvas_w() const override;
+    int canvas_h() const override;
+    int world_canvas_w() const override;
+    int world_canvas_h() const override;
+    void set_active_canvas(CanvasTarget target) override;
+    CanvasTarget active_canvas() const override;
+    void set_world_canvas_pinned_classic(bool pinned) override;
+    void reapply_world_scale() override;
+
     void get_pixel(int x, int y, Uint8* r, Uint8* g, Uint8* b) override;
     int get_pixel(int x, int y, int* index) override;
     int get_pixel(int offset) override;
@@ -178,7 +190,7 @@ public:
     std::array<unsigned char, 768>& redpalette_ref() override { return redpalette; }
     std::array<unsigned char, 768>& bluepalette_ref() override { return bluepalette; }
     std::array<unsigned char, 768>& dospalette_ref() override { return dospalette; }
-    std::array<unsigned char, 64000>& videobuffer_ref() override { return videobuffer; }
+    std::vector<unsigned char>& videobuffer_ref() override { return videobuffer; }
     short& cyclemode_ref() override { return cyclemode; }
     text& text_normal_ref() override { return text_normal; }
     text& text_big_ref() override { return text_big; }
@@ -190,7 +202,11 @@ public:
     std::array<unsigned char, 768> bluepalette{};
     std::array<unsigned char, 768> dospalette{};
 
-    std::array<unsigned char, 64000> videobuffer{};
+    // Legacy scratch sized to the canvas area (kUiCanvasW*kUiCanvasH).
+    std::vector<unsigned char> videobuffer =
+        std::vector<unsigned char>(static_cast<std::size_t>(kUiCanvasW) *
+                                       static_cast<std::size_t>(kUiCanvasH),
+                                   0);
     short cyclemode = 0;
 
     //buffers: screen vars
@@ -213,3 +229,11 @@ private:
     SDL_Surface* floor_layer_scaled_ = nullptr;  // bilinear-stretched scratch
     SDL_Surface* floor_layer_saved_render_ = nullptr; // E_Screen->render while redirected
 };
+
+// Installs the cfg graphics/scale world-canvas mode on the live display
+// (E_Screen): parses the key, picks the world present engine, and sizes the
+// world canvas from the current window. Called once by display creation;
+// split out so tests can re-apply a changed setting. On Emscripten this is a
+// no-op — the wasm build keeps the classic single-canvas path (its window is
+// forced to 320x200; a variable world canvas there is a follow-up).
+void apply_world_scale_from_cfg();

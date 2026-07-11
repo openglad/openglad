@@ -51,9 +51,10 @@
 #include <openglad/gameplay/sim_input_handler.h>
 #include <string>
 #include <format>
-#include <openglad/interface/view_sizes.h>
+#include <openglad/interface/render/view_layout.h>
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstring>
 #include <memory>
 #include <openglad/core/test_trace.h>
@@ -180,6 +181,13 @@ inline constexpr float kParallaxScroll = 0.05f;
 // off-screen layer (video::floor_layer_begin/end), smoothly (bilinear) scaled,
 // so there are no inter-tile seams — a more pronounced step now reads cleanly.
 inline constexpr float kParallaxScale = 0.10f;
+
+// Floor of the below-camera composite scale. A floor at scale s < 1 draws a
+// 1/s-larger world window into a padded off-screen layer that floor_layer_end
+// squeezes onto the FULL viewport (no black ring); clamping s bounds that pad
+// — and the layer allocation — at one extra viewport (s = 0.5 = 2x window)
+// no matter how high the camera floor sits.
+inline constexpr float kMinBelowFloorScale = 0.5f;
 
 inline options* active_prefs()
 {
@@ -396,7 +404,8 @@ viewscreen::~viewscreen() = default;
 
 void viewscreen::clear()
 {
-	active_screen()->videobuffer.fill(0);
+	auto& vb = active_screen()->videobuffer;
+	vb.assign(vb.size(), 0);
 }
 
 bool viewscreen::redraw()
@@ -514,6 +523,8 @@ bool viewscreen::redraw()
 				topx = par_topx + static_cast<Sint32>(static_cast<float>(par_topx) * pf);
 				topy = par_topy + static_cast<Sint32>(static_cast<float>(par_topy) * pf);
 				fscale = 1.0f + static_cast<float>(f - current_floor_) * kParallaxScale;
+				if (fscale < kMinBelowFloorScale)
+					fscale = kMinBelowFloorScale;
 			}
 			// A faded/ghosted non-camera floor (alpha<255) renders 1:1 onto an
 			// off-screen layer, then composites back smoothly scaled about the
@@ -521,8 +532,36 @@ bool viewscreen::redraw()
 			// (ghosting-off) floors draw straight to the screen, byte-identical.
 			const bool use_layer = (vworld.floor_count() > 1 && falpha < 255);
 			const unsigned char tile_alpha = use_layer ? 255 : falpha;
-			if (use_layer)
-				active_screen()->floor_layer_begin(xloc, yloc, xview, yview);
+			// A below-camera floor (fscale<1) shrunk about the centre from a
+			// viewport-sized layer would leave a black ring around the
+			// composite: instead draw a 1/fscale-larger world window (pad on
+			// each side, on top of the parallax scroll shift) into a padded
+			// layer, which floor_layer_end squeezes onto the FULL viewport.
+			Sint32 pad_x = 0, pad_y = 0;
+			if (use_layer && fscale < 1.0f)
+			{
+				const float grow = (1.0f / fscale - 1.0f) * 0.5f;
+				pad_x = static_cast<Sint32>(std::ceil(static_cast<float>(xview) * grow));
+				pad_y = static_cast<Sint32>(std::ceil(static_cast<float>(yview) * grow));
+			}
+			if (use_layer && !active_screen()->floor_layer_begin(
+			        xloc, yloc, xview + 2 * pad_x, yview + 2 * pad_y))
+				pad_x = pad_y = 0; // no layer redirect: keep the plain viewport clip
+			if (pad_x > 0 || pad_y > 0)
+			{
+				// Widen this pass's world window + clip so the tile loop, the
+				// OOB wall border, decor and draw_floor_entities naturally
+				// cover the padded window; restored after the pass below
+				// (topx/topy come back via the par_topx/par_topy restore).
+				topx -= pad_x;      topy -= pad_y;
+				xview += 2 * pad_x; yview += 2 * pad_y;
+				endx += 2 * pad_x;  endy += 2 * pad_y;
+			}
+			// The pad shift can push topx/topy newly negative mid-pass; the
+			// parallax shift alone preserves sign, so unpadded passes keep the
+			// camera's xneg/yneg (byte-identical).
+			const Sint32 pass_xneg = (topx < 0) ? 1 : xneg;
+			const Sint32 pass_yneg = (topy < 0) ? 1 : yneg;
 			PixieData& gridp = vworld.grid_for_floor(static_cast<int>(f));
 			// Decor plane (BASE+DECOR layering): gated on validity + matching
 			// dims, so a level without decor renders through exactly the
@@ -535,8 +574,8 @@ bool viewscreen::redraw()
 				const bool has_decor = decorp.valid()
 				    && static_cast<unsigned short>(decorp.w) == maxx
 				    && static_cast<unsigned short>(decorp.h) == maxy;
-				for (j=(topy/GRID_SIZE)-yneg;j < ((topy+(yview))/GRID_SIZE) +1; j++)
-					for (i=(topx/GRID_SIZE)-xneg;i < ((topx+(xview))/GRID_SIZE) +1; i++)
+				for (j=(topy/GRID_SIZE)-pass_yneg;j < ((topy+(yview))/GRID_SIZE) +1; j++)
+					for (i=(topx/GRID_SIZE)-pass_xneg;i < ((topx+(xview))/GRID_SIZE) +1; i++)
 					{
 						if (i<0 || j<0 || i>=maxx || j>=maxy)
 						{
@@ -588,10 +627,19 @@ bool viewscreen::redraw()
 					TRACE("effects", "depth_fx mode=%d floor=%d",
 					      static_cast<int>(depth_mode), static_cast<int>(f));
 				}
+				if (pad_x > 0 || pad_y > 0)
+				{
+					// Un-widen before compositing: the (x,y,w,h) passed to
+					// floor_layer_end is the real viewport (the dst rect);
+					// the pads name the extra source ring on the layer.
+					xview -= 2 * pad_x; yview -= 2 * pad_y;
+					endx -= 2 * pad_x;  endy -= 2 * pad_y;
+				}
 				active_screen()->floor_layer_end(xloc, yloc, xview, yview,
-				                                 fscale, fcx, fcy, falpha, fx);
+				                                 fscale, fcx, fcy, falpha, fx,
+				                                 pad_x, pad_y);
 			}
-			topx = par_topx; topy = par_topy; // undo the parallax shift
+			topx = par_topx; topy = par_topy; // undo the parallax (+ pad) shift
 		}
 		// Default (ghosts-off) multifloor look: floors above the camera are
 		// NOT drawn; their solid tiles + entities cast shadows down onto the
@@ -727,6 +775,8 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 				topx = par_topx + static_cast<Sint32>(static_cast<float>(par_topx) * pf);
 				topy = par_topy + static_cast<Sint32>(static_cast<float>(par_topy) * pf);
 				fscale = 1.0f + static_cast<float>(f - current_floor_) * kParallaxScale;
+				if (fscale < kMinBelowFloorScale)
+					fscale = kMinBelowFloorScale;
 			}
 			// A faded/ghosted non-camera floor (alpha<255) renders 1:1 onto an
 			// off-screen layer, then composites back smoothly scaled about the
@@ -734,8 +784,36 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 			// (ghosting-off) floors draw straight to the screen, byte-identical.
 			const bool use_layer = (vworld.floor_count() > 1 && falpha < 255);
 			const unsigned char tile_alpha = use_layer ? 255 : falpha;
-			if (use_layer)
-				active_screen()->floor_layer_begin(xloc, yloc, xview, yview);
+			// A below-camera floor (fscale<1) shrunk about the centre from a
+			// viewport-sized layer would leave a black ring around the
+			// composite: instead draw a 1/fscale-larger world window (pad on
+			// each side, on top of the parallax scroll shift) into a padded
+			// layer, which floor_layer_end squeezes onto the FULL viewport.
+			Sint32 pad_x = 0, pad_y = 0;
+			if (use_layer && fscale < 1.0f)
+			{
+				const float grow = (1.0f / fscale - 1.0f) * 0.5f;
+				pad_x = static_cast<Sint32>(std::ceil(static_cast<float>(xview) * grow));
+				pad_y = static_cast<Sint32>(std::ceil(static_cast<float>(yview) * grow));
+			}
+			if (use_layer && !active_screen()->floor_layer_begin(
+			        xloc, yloc, xview + 2 * pad_x, yview + 2 * pad_y))
+				pad_x = pad_y = 0; // no layer redirect: keep the plain viewport clip
+			if (pad_x > 0 || pad_y > 0)
+			{
+				// Widen this pass's world window + clip so the tile loop, the
+				// OOB wall border, decor and draw_floor_entities naturally
+				// cover the padded window; restored after the pass below
+				// (topx/topy come back via the par_topx/par_topy restore).
+				topx -= pad_x;      topy -= pad_y;
+				xview += 2 * pad_x; yview += 2 * pad_y;
+				endx += 2 * pad_x;  endy += 2 * pad_y;
+			}
+			// The pad shift can push topx/topy newly negative mid-pass; the
+			// parallax shift alone preserves sign, so unpadded passes keep the
+			// camera's xneg/yneg (byte-identical).
+			const Sint32 pass_xneg = (topx < 0) ? 1 : xneg;
+			const Sint32 pass_yneg = (topy < 0) ? 1 : yneg;
 			PixieData& gridp = vworld.grid_for_floor(static_cast<int>(f));
 			// Decor plane (BASE+DECOR layering): gated on validity + matching
 			// dims, so a level without decor renders through exactly the
@@ -748,8 +826,8 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 				const bool has_decor = decorp.valid()
 				    && static_cast<unsigned short>(decorp.w) == maxx
 				    && static_cast<unsigned short>(decorp.h) == maxy;
-				for (j=(topy/GRID_SIZE)-yneg;j < ((topy+(yview))/GRID_SIZE) +1; j++)
-					for (i=(topx/GRID_SIZE)-xneg;i < ((topx+(xview))/GRID_SIZE) +1; i++)
+				for (j=(topy/GRID_SIZE)-pass_yneg;j < ((topy+(yview))/GRID_SIZE) +1; j++)
+					for (i=(topx/GRID_SIZE)-pass_xneg;i < ((topx+(xview))/GRID_SIZE) +1; i++)
 					{
 						if (i<0 || j<0 || i>=maxx || j>=maxy)
 						{
@@ -801,10 +879,19 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 					TRACE("effects", "depth_fx mode=%d floor=%d",
 					      static_cast<int>(depth_mode), static_cast<int>(f));
 				}
+				if (pad_x > 0 || pad_y > 0)
+				{
+					// Un-widen before compositing: the (x,y,w,h) passed to
+					// floor_layer_end is the real viewport (the dst rect);
+					// the pads name the extra source ring on the layer.
+					xview -= 2 * pad_x; yview -= 2 * pad_y;
+					endx -= 2 * pad_x;  endy -= 2 * pad_y;
+				}
 				active_screen()->floor_layer_end(xloc, yloc, xview, yview,
-				                                 fscale, fcx, fcy, falpha, fx);
+				                                 fscale, fcx, fcy, falpha, fx,
+				                                 pad_x, pad_y);
 			}
-			topx = par_topx; topy = par_topy; // undo the parallax shift
+			topx = par_topx; topy = par_topy; // undo the parallax (+ pad) shift
 		}
 		// See the no-arg redraw(): the ghosts-off upper-floor shadow pass.
 		if (!ghosts_on && !editor_authoring_view_)
@@ -1368,165 +1455,17 @@ void viewscreen::resize(short x, short y, short length, short height)
 
 void viewscreen::resize(char whatmode)
 {
-	switch (active_screen()->numviews)
-	{
-		case 1: //  one-player mode
-			switch (whatmode)
-			{
-				case PREF_VIEW_PANELS:
-					resize(44, 12, 232, 176); // room for score panel ..
-					break;
-				case PREF_VIEW_1:
-					resize(64, 28, 192, 144);
-					break;
-				case PREF_VIEW_2:
-					resize(86, 44, 148, 112);
-					break;
-				case PREF_VIEW_3:
-					resize(106, 60, 108, 80);
-					break;
-				case PREF_VIEW_FULL:
-				default:
-					resize(T_LEFT_ONE, T_UP_ONE, T_WIDTH, T_HEIGHT);
-					break;
-			}
-			break;
-		case 2: // two-player mode
-			switch (mynum)  // left or right view?
-			{
-				case 0:
-					switch (whatmode)
-					{
-						case PREF_VIEW_PANELS:
-							resize(4, 16, 152, 168); // room for score panel ..
-							break;
-						case PREF_VIEW_1:
-							resize(4, 32, 152, 136);
-							break;
-						case PREF_VIEW_2:
-							resize(4, 48, 152, 104);
-							break;
-						case PREF_VIEW_3:
-							resize(4, 64, 152, 72);
-							break;
-						case PREF_VIEW_FULL:
-						default:
-							resize(T_LEFT_ONE, T_UP_ONE, T_HALF_WIDTH, T_HEIGHT);
-							break;
-					}
-					break;
-				case 1:
-					switch (whatmode)
-					{
-						case PREF_VIEW_PANELS:
-							resize(164, 16, 152, 168); // room for score panel ..
-							break;
-						case PREF_VIEW_1:
-							resize(164, 32, 152, 136);
-							break;
-						case PREF_VIEW_2:
-							resize(164, 48, 152, 104);
-							break;
-						case PREF_VIEW_3:
-							resize(164, 64, 152, 72);
-							break;
-						case PREF_VIEW_FULL:
-						default:
-							resize(T_LEFT_TWO, T_UP_TWO, T_HALF_WIDTH, T_HEIGHT);
-							break;
-					}
-					break;
-			} // end of mynum switch
-			break;
-		case 3: // 3-player mode
-			switch (mynum)  // left or right view?
-			{
-				case 0:
-					switch (whatmode)
-					{
-						case PREF_VIEW_PANELS:
-							resize(4, 16, 100, 168); // room for score panel ..
-							break;
-						case PREF_VIEW_1:
-							resize(4, 32, 100, 136);
-							break;
-						case PREF_VIEW_2:
-							resize(4, 48, 100, 104);
-							break;
-						case PREF_VIEW_3:
-							resize(4, 64, 100, 72);
-							break;
-						case PREF_VIEW_FULL:
-						default:
-							resize(T_LEFT_ONE, T_UP_ONE, T_HALF_WIDTH, T_HEIGHT);
-							break;
-					}
-					break;
-				case 1:
-					switch (whatmode)
-					{
-						case PREF_VIEW_PANELS:
-							resize(216, 16, 100, 168); // room for score panel ..
-							break;
-						case PREF_VIEW_1:
-							resize(216, 32, 100, 136);
-							break;
-						case PREF_VIEW_2:
-							resize(216, 48, 100, 104);
-							break;
-						case PREF_VIEW_3:
-							resize(216, 64, 100, 72);
-							break;
-						case PREF_VIEW_FULL:
-						default:
-							resize(T_LEFT_TWO, T_UP_TWO, T_HALF_WIDTH, T_HALF_HEIGHT);
-							break;
-					}
-					break;
-				case 2:  // 3rd player
-					switch (whatmode)
-					{
-						case PREF_VIEW_PANELS:
-							resize(112, 16, 100, 168); // room for score panel ..
-							break;
-						case PREF_VIEW_1:
-							resize(112, 32, 100, 136);
-							break;
-						case PREF_VIEW_2:
-							resize(112, 48, 100, 104);
-							break;
-						case PREF_VIEW_3:
-							resize(112, 64, 100, 72);
-							break;
-						case PREF_VIEW_FULL:
-						default:
-							resize(T_LEFT_THREE, T_UP_THREE, T_HALF_WIDTH, T_HALF_HEIGHT);
-							break;
-					}
-					break;
-			} // end of mynum switch
-			break;
-		case 4: // 4-player mode
-		default:
-			switch (mynum)  // left or right view?
-			{
-				case 0:
-                    resize(T_LEFT_ONE, T_UP_ONE, T_HALF_WIDTH, T_HALF_HEIGHT);
-					break;
-				case 1:
-                    resize(T_LEFT_TWO, T_UP_TWO, T_HALF_WIDTH, T_HALF_HEIGHT);
-					break;
-				case 2:
-                    resize(T_LEFT_THREE_FOUR, T_UP_THREE, T_HALF_WIDTH, T_HALF_HEIGHT);
-					break;
-				case 3:
-				default:
-                    resize(T_LEFT_FOUR, T_UP_FOUR, T_HALF_WIDTH, T_HALF_HEIGHT);
-					break;
-			} // end of mynum switch
-			break;
-	} // end of numviews switch
-
+	// The pane geometry is a pure function of the WORLD canvas dimensions
+	// (compute_view_layout reproduces the historical hardcoded 320x200 table
+	// verbatim at the default canvas — see view_layout.h for the formulas
+	// and the chrome-inset rationale).
+	const og::view_layout::ViewLayout r = og::view_layout::compute_view_layout(
+	    active_screen()->numviews, mynum, whatmode,
+	    active_screen()->world_canvas_w(), active_screen()->world_canvas_h());
+	if (!r.applies)
+		return; // no table entry for this numviews/mynum: keep the old geometry
+	resize(static_cast<short>(r.x), static_cast<short>(r.y),
+	       static_cast<short>(r.w), static_cast<short>(r.h));
 } // end of resize(whatmode)
 
 unsigned char compute_hp_color(float hp, float maxhp)

@@ -21,7 +21,16 @@ effects:
 graphics:
   fullscreen: on
   overscan_percentage: 0
+  # render: the legacy present engine for the classic 320x200 canvas —
+  # normal (unfiltered), sai, eagle (software 2x smoothing).
   render: normal
+  # scale: OPTIONAL world-canvas scale factor (docs/resolution-and-scaling.md),
+  # also cycled by the Scale button on the in-game OPTIONS screen.
+  # Omitted (or "off"): classic behavior — one 320x200 canvas presented via
+  # `render` above. "1"/"2"/"3"/"4"/"8": gameplay renders at window/N pixels
+  # (min 320x200) with an unfiltered stretch; "sai"/"eagle": window/2 with
+  # software 2x smoothing. Menus always stay on the classic 320x200 canvas.
+  # scale: "2"
   target_fps: 72
 sound:
   sound: on

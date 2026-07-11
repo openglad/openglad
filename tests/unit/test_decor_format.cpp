@@ -28,6 +28,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <string>
 #include <vector>
@@ -328,4 +329,237 @@ TEST_F(DecorFormatTest, version_12_refused_cleanly_version_11_is_current)
     EXPECT_FALSE(og::data::load_level("dfmt_v12.fss", loaded, metadata, &err));
     EXPECT_EQ(LevelFileIoError::UnsupportedVersion, err)
         << "one version past current must refuse with the clean log path";
+}
+
+// ---------------------------------------------------------------------------
+// Sprite footprint scaling — read_pixie_file + the optional sidecar
+// "footprint": {"w": W, "h": H} extension. A PNG whose pixel dims differ from
+// the declared world footprint is nearest-neighbor resampled IN INDEX SPACE
+// at load time, so everything downstream (sim sizex/sizey, walkputbuffer,
+// parity, wire) sees footprint-sized data. The integer mapping is pinned
+// here: sx = x*src_w/dst_w, sy = y*src_h/dst_h. Footprint absent (or equal
+// to the frame dims) must be byte-identical to today's loader.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Minimal Aseprite "Hash"-format sidecar text (the exact subset the loader's
+// JSON reader accepts), with an optional extra top-level member appended
+// (e.g. "\"footprint\": {\"w\": 16, \"h\": 16}").
+std::string sprite_sidecar_json(int frames, int frame_w, int frame_h,
+                                const std::string& extra_member)
+{
+    std::string s = "{\n \"frames\": {\n";
+    for (int f = 0; f < frames; ++f)
+    {
+        s += "  \"fp " + std::to_string(f) + ".aseprite\": { \"frame\": "
+             "{ \"x\": 0, \"y\": " + std::to_string(f * frame_h)
+           + ", \"w\": " + std::to_string(frame_w)
+           + ", \"h\": " + std::to_string(frame_h) + " } }";
+        s += (f + 1 < frames) ? ",\n" : "\n";
+    }
+    s += " },\n \"meta\": { \"size\": { \"w\": " + std::to_string(frame_w)
+       + ", \"h\": " + std::to_string(frame_h * frames) + " } }";
+    if (!extra_member.empty())
+        s += ",\n " + extra_member;
+    s += "\n}\n";
+    return s;
+}
+
+// Write pix/<name>.png (+ sidecar unless empty) into the write-dir temp
+// tree. `pixel(frame, y, x)` supplies each SOURCE pixel's palette index.
+template <typename PixelFn>
+void write_sprite_asset(const std::string& name, int frames, int w, int h,
+                        PixelFn pixel, const std::string& sidecar_text)
+{
+    create_dir(get_user_path() + "temp");
+    create_dir(get_user_path() + "temp/pix");
+
+    const std::size_t n = static_cast<std::size_t>(w)
+        * static_cast<std::size_t>(h) * static_cast<std::size_t>(frames);
+    auto* buf = new unsigned char[n];
+    for (int f = 0; f < frames; ++f)
+        for (int y = 0; y < h; ++y)
+            for (int x = 0; x < w; ++x)
+                buf[(static_cast<std::size_t>(f) * static_cast<std::size_t>(h)
+                     + static_cast<std::size_t>(y))
+                        * static_cast<std::size_t>(w)
+                    + static_cast<std::size_t>(x)] = pixel(f, y, x);
+    PixieData p(static_cast<unsigned char>(frames),
+                static_cast<unsigned char>(w),
+                static_cast<unsigned char>(h), buf);
+    ASSERT_TRUE(write_pixie_png(
+        (get_user_path() + "temp/pix/" + name + ".png").c_str(), p))
+        << name;
+    if (!sidecar_text.empty())
+    {
+        ASSERT_TRUE(og::resources::write_file(
+            ("temp/pix/" + name + ".json").c_str(), sidecar_text.data(),
+            sidecar_text.size()))
+            << name;
+    }
+}
+
+// A source pattern that encodes its own (frame, y, x) coordinates in the
+// index byte so the resample mapping can be asserted pixel-by-pixel. Stays
+// in 1..247: never index 0 (transparency) and never the >=248 recolor band.
+unsigned char coord_pixel(int f, int y, int x)
+{
+    return static_cast<unsigned char>(1 + ((f * 89 + y * 13 + x) % 246));
+}
+
+using SpriteFootprintTest = DecorFormatTest;
+
+} // namespace
+
+// (a) Identity pin: footprint == frame dims loads byte-identical to the same
+// PNG with a no-footprint sidecar (which is itself today's exact path).
+TEST_F(SpriteFootprintTest, footprint_equal_to_dims_is_byte_identical)
+{
+    ASSERT_NO_FATAL_FAILURE(write_sprite_asset(
+        "fp_ident_none", 2, 16, 12, coord_pixel,
+        sprite_sidecar_json(2, 16, 12, "")));
+    ASSERT_NO_FATAL_FAILURE(write_sprite_asset(
+        "fp_ident_same", 2, 16, 12, coord_pixel,
+        sprite_sidecar_json(2, 16, 12,
+                            "\"footprint\": { \"w\": 16, \"h\": 12 }")));
+
+    ScopedTempMount mount;
+    ASSERT_TRUE(mount.ok());
+
+    PixieData plain = read_pixie_file("fp_ident_none.png");
+    PixieData footed = read_pixie_file("fp_ident_same.png");
+    ASSERT_TRUE(plain.valid());
+    ASSERT_TRUE(footed.valid());
+    ASSERT_EQ(2, static_cast<int>(plain.frames));
+    EXPECT_EQ(static_cast<int>(plain.frames), static_cast<int>(footed.frames));
+    EXPECT_EQ(static_cast<int>(plain.w), static_cast<int>(footed.w));
+    EXPECT_EQ(static_cast<int>(plain.h), static_cast<int>(footed.h));
+    const std::size_t total = static_cast<std::size_t>(16) * 12 * 2;
+    EXPECT_EQ(0, std::memcmp(plain.data.get(), footed.data.get(), total))
+        << "identity footprint must not disturb one byte";
+}
+
+// (b) Downsample pin: 32x32 source, 16x16 footprint. The mapping is EXACTLY
+// sx = x*32/16 = 2x, sy = 2y — pinned pixel-by-pixel plus literal spots.
+TEST_F(SpriteFootprintTest, downsample_32_to_16_uses_the_pinned_mapping)
+{
+    ASSERT_NO_FATAL_FAILURE(write_sprite_asset(
+        "fp_down", 1, 32, 32, coord_pixel,
+        sprite_sidecar_json(1, 32, 32,
+                            "\"footprint\": { \"w\": 16, \"h\": 16 }")));
+
+    ScopedTempMount mount;
+    ASSERT_TRUE(mount.ok());
+
+    PixieData p = read_pixie_file("fp_down.png");
+    ASSERT_TRUE(p.valid());
+    ASSERT_EQ(1, static_cast<int>(p.frames));
+    ASSERT_EQ(16, static_cast<int>(p.w));
+    ASSERT_EQ(16, static_cast<int>(p.h));
+    for (int y = 0; y < 16; ++y)
+        for (int x = 0; x < 16; ++x)
+            ASSERT_EQ(coord_pixel(0, 2 * y, 2 * x),
+                      p.data[y * 16 + x])
+                << "dst(" << x << "," << y << ") must sample src(2x,2y)";
+    // Literal spot checks of the pinned mapping.
+    EXPECT_EQ(coord_pixel(0, 0, 0), p.data[0]);
+    EXPECT_EQ(coord_pixel(0, 14, 6), p.data[7 * 16 + 3]);
+    EXPECT_EQ(coord_pixel(0, 30, 30), p.data[15 * 16 + 15]);
+}
+
+// (c) Upsample: 8x8 source, 16x16 footprint — each source pixel becomes a
+// 2x2 block (sx = x*8/16 = x/2).
+TEST_F(SpriteFootprintTest, upsample_8_to_16_replicates_each_pixel_2x2)
+{
+    ASSERT_NO_FATAL_FAILURE(write_sprite_asset(
+        "fp_up", 1, 8, 8, coord_pixel,
+        sprite_sidecar_json(1, 8, 8,
+                            "\"footprint\": { \"w\": 16, \"h\": 16 }")));
+
+    ScopedTempMount mount;
+    ASSERT_TRUE(mount.ok());
+
+    PixieData p = read_pixie_file("fp_up.png");
+    ASSERT_TRUE(p.valid());
+    ASSERT_EQ(16, static_cast<int>(p.w));
+    ASSERT_EQ(16, static_cast<int>(p.h));
+    for (int y = 0; y < 16; ++y)
+        for (int x = 0; x < 16; ++x)
+            ASSERT_EQ(coord_pixel(0, y / 2, x / 2), p.data[y * 16 + x])
+                << "dst(" << x << "," << y
+                << ") must replicate src(x/2,y/2)";
+}
+
+// (d) Multi-frame assets resample per-frame with correct frame addressing:
+// frame f's destination block must sample only frame f's source pixels.
+TEST_F(SpriteFootprintTest, multiframe_resamples_each_frame_independently)
+{
+    ASSERT_NO_FATAL_FAILURE(write_sprite_asset(
+        "fp_frames", 3, 32, 32, coord_pixel,
+        sprite_sidecar_json(3, 32, 32,
+                            "\"footprint\": { \"w\": 16, \"h\": 16 }")));
+
+    ScopedTempMount mount;
+    ASSERT_TRUE(mount.ok());
+
+    PixieData p = read_pixie_file("fp_frames.png");
+    ASSERT_TRUE(p.valid());
+    ASSERT_EQ(3, static_cast<int>(p.frames));
+    ASSERT_EQ(16, static_cast<int>(p.w));
+    ASSERT_EQ(16, static_cast<int>(p.h));
+    for (int f = 0; f < 3; ++f)
+        for (int y = 0; y < 16; ++y)
+            for (int x = 0; x < 16; ++x)
+                ASSERT_EQ(coord_pixel(f, 2 * y, 2 * x),
+                          p.data[(f * 16 + y) * 16 + x])
+                    << "frame " << f << " dst(" << x << "," << y << ")";
+}
+
+// (e) Rejections: footprint dims of 0 or >255 and malformed footprint values
+// must fail the LOAD (no silent single-frame fallback — that would ship the
+// sprite at the wrong world size).
+TEST_F(SpriteFootprintTest, invalid_footprints_reject_the_sprite)
+{
+    const struct
+    {
+        const char* name;
+        const char* member;
+    } bad[] = {
+        {"fp_bad_zero_w", "\"footprint\": { \"w\": 0, \"h\": 16 }"},
+        {"fp_bad_zero_h", "\"footprint\": { \"w\": 16, \"h\": 0 }"},
+        {"fp_bad_huge", "\"footprint\": { \"w\": 16, \"h\": 300 }"},
+        {"fp_bad_missing_h", "\"footprint\": { \"w\": 16 }"},
+        {"fp_bad_not_object", "\"footprint\": \"16x16\""},
+        {"fp_bad_string_dim", "\"footprint\": { \"w\": \"16\", \"h\": 16 }"},
+        {"fp_bad_empty", "\"footprint\": { }"},
+        {"fp_bad_unknown_key",
+         "\"footprint\": { \"w\": 16, \"h\": 16, \"d\": 16 }"},
+    };
+    for (const auto& row : bad)
+        ASSERT_NO_FATAL_FAILURE(write_sprite_asset(
+            row.name, 1, 32, 32, coord_pixel,
+            sprite_sidecar_json(1, 32, 32, row.member)))
+            << row.name;
+
+    ScopedTempMount mount;
+    ASSERT_TRUE(mount.ok());
+
+    for (const auto& row : bad)
+    {
+        PixieData p = read_pixie_file((std::string(row.name) + ".png").c_str());
+        EXPECT_FALSE(p.valid())
+            << row.name << ": invalid footprint must reject the sprite, "
+                           "not fall back to single-frame";
+    }
+
+    // Control: the same PNG with a well-formed footprint loads fine.
+    ASSERT_NO_FATAL_FAILURE(write_sprite_asset(
+        "fp_good_control", 1, 32, 32, coord_pixel,
+        sprite_sidecar_json(1, 32, 32,
+                            "\"footprint\": { \"w\": 255, \"h\": 1 }")));
+    PixieData ok = read_pixie_file("fp_good_control.png");
+    ASSERT_TRUE(ok.valid());
+    EXPECT_EQ(255, static_cast<int>(ok.w));
+    EXPECT_EQ(1, static_cast<int>(ok.h));
 }

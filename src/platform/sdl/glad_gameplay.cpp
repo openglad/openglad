@@ -273,6 +273,23 @@ void glad_main(Sint32 playermode)
         }
     } gameplay_scope;
 
+    // Route draws to the WORLD canvas for the whole gameplay session and
+    // restore the UI canvas for the picker/menus on exit. At the default
+    // 320x200 world dims both targets share one surface (pure routing
+    // bookkeeping). On Emscripten glad_main returns right after init and the
+    // per-present World assert in render_pending_redraw covers the frames.
+    struct WorldCanvasScope final {
+        screen* scr_;
+        explicit WorldCanvasScope(screen* scr) : scr_(scr)
+        {
+            scr_->set_active_canvas(CanvasTarget::World);
+        }
+        ~WorldCanvasScope()
+        {
+            scr_->set_active_canvas(CanvasTarget::UI);
+        }
+    } world_canvas_scope(current_screen);
+
     glad_init(false);
 
 #ifdef __EMSCRIPTEN__

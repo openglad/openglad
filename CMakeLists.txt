@@ -1829,6 +1829,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/test_intro_smoke.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_dirty_tracking_safety.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_sai2x_scaler.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_canvas_scale.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_view_menu_driven.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_view_options_menu_driven.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_more.cpp
@@ -2161,6 +2162,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
         )
 
         og_add_test_group(og_test_rendering FILES
+            test_canvas_scale.cpp
             test_video_buffers.cpp
             test_video_draw.cpp
             test_video_extended.cpp
@@ -2384,6 +2386,8 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
 
         og_add_unit_group(og_unit_core FILES
             ${CMAKE_SOURCE_DIR}/tests/unit/test_frame_rate_config.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_view_layout.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_scale_mode.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_frame_deadline_pacer.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_cadence.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_astar.cpp
@@ -2948,6 +2952,17 @@ endif()
     target_link_libraries(play PRIVATE og_game_web)
     configure_openglad_runtime_target(play)
     target_compile_definitions(play PRIVATE __ASYNCIFY__)
+
+    # Emscripten 6.0.2 flipped GROWABLE_ARRAYBUFFERS to default-on; with
+    # ALLOW_MEMORY_GROWTH the heap becomes a resizable ArrayBuffer and Chrome's
+    # TextDecoder.decode throws "ArrayBuffer must not be resizable" inside
+    # UTF8ArrayToString (getUnsharedTextDecoderView only guards SHARED_MEMORY),
+    # aborting boot. Force it off to restore pre-6.0.2 behavior; drop this once
+    # upstream fixes the decode path. Guarded: the setting first appears in
+    # emscripten 6.0.x and older SDKs (e.g. CI's 3.1.51) error on unknown -s flags.
+    if(EMSCRIPTEN_VERSION VERSION_GREATER_EQUAL "6.0.1")
+        target_link_options(play PRIVATE -sGROWABLE_ARRAYBUFFERS=0)
+    endif()
 
     target_link_options(play PRIVATE
         "SHELL:--bind"

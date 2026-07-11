@@ -7,6 +7,7 @@
 #include <openglad/interface/base.h>
 #include <openglad/interface/render/effects.h>
 #include <openglad/interface/render/depth_fx.h>
+#include <openglad/platform/sai2x.h>
 #include <gtest/gtest.h>
 
 #include <array>
@@ -673,4 +674,267 @@ TEST(VideoEffectsPrims, floor_layer_end_fog_drifts_with_the_tick_over_a_haze_bas
         << "some bank core must exceed the 1-story alpha cap";
     ASSERT_GE(a1_cap, 40) << "the 1-story cap must sit in the spec'd "
                              "~40-60 patch-alpha band";
+}
+
+// The padded below-floor composite (scale<1): the caller draws a
+// (w+2*pad)x(h+2*pad) world window into the layer and floor_layer_end must
+// squeeze it onto the FULL viewport — zero black ring — mapping the padded
+// source down (the window's left half lands on the viewport's left half).
+TEST(VideoEffectsPrims, floor_layer_end_padded_below_floor_fills_the_full_viewport)
+{
+    screen* s = scr();
+    s->clearbuffer();
+    // Reference swatches straight on the render surface.
+    s->fastbox(0, 0, 4, 4, kBrightBG, 1);
+    s->fastbox(8, 0, 4, 4, kDarkSprite, 1);
+    const RGB bright = px(1, 1);
+    const RGB dark = px(9, 1);
+    s->clearbuffer();
+    const RGB black = px(200, 100);
+    ASSERT_FALSE(same(bright, black));
+    ASSERT_FALSE(same(dark, black));
+
+    // Scale 0.5 => pad = half a viewport per side (a 2x source window).
+    constexpr Sint32 kPad = kFxLW / 2;
+    constexpr Sint32 kSrcW = kFxLW + 2 * kPad;
+    constexpr Sint32 kSrcH = kFxLH + 2 * kPad;
+    ASSERT_TRUE(s->floor_layer_begin(kFxLX, kFxLY, kSrcW, kSrcH))
+        << "begin must install the layer redirect";
+    // Left half of the padded window bright, right half dark (both opaque).
+    s->fastbox(kFxLX, kFxLY, kSrcW / 2, kSrcH, kBrightBG, 1);
+    s->fastbox(kFxLX + kSrcW / 2, kFxLY, kSrcW / 2, kSrcH, kDarkSprite, 1);
+    s->floor_layer_end(kFxLX, kFxLY, kFxLW, kFxLH, 0.5f,
+                       kFxLX + kFxLW / 2, kFxLY + kFxLH / 2, 255, {},
+                       kPad, kPad);
+
+    // FULL viewport coverage: every pixel is real composited content — the
+    // centred-shrink black ring must be gone, corners included.
+    for (int y = 0; y < kFxLH; y++)
+        for (int x = 0; x < kFxLW; x++)
+        {
+            const RGB got = px(kFxLX + x, kFxLY + y);
+            ASSERT_FALSE(same(got, black))
+                << "black-ring pixel at " << x << "," << y;
+            if (x < kFxLW / 2 - 2)
+            {
+                ASSERT_TRUE(same(got, bright))
+                    << "the viewport's left half must sample the padded "
+                       "window's left half at " << x << "," << y;
+            }
+            else if (x > kFxLW / 2 + 2)
+            {
+                ASSERT_TRUE(same(got, dark))
+                    << "the viewport's right half must sample the padded "
+                       "window's right half at " << x << "," << y;
+            }
+        }
+    // The viewport corners now carry the padded window's far corners.
+    ASSERT_TRUE(same(px(kFxLX, kFxLY), bright));
+    ASSERT_TRUE(same(px(kFxLX, kFxLY + kFxLH - 1), bright));
+    ASSERT_TRUE(same(px(kFxLX + kFxLW - 1, kFxLY), dark));
+    ASSERT_TRUE(same(px(kFxLX + kFxLW - 1, kFxLY + kFxLH - 1), dark));
+    // Nothing bleeds outside the viewport (split-screen safety).
+    ASSERT_TRUE(same(px(kFxLX - 1, kFxLY + kFxLH / 2), black));
+    ASSERT_TRUE(same(px(kFxLX + kFxLW, kFxLY + kFxLH / 2), black));
+    ASSERT_TRUE(same(px(kFxLX + kFxLW / 2, kFxLY - 1), black));
+    ASSERT_TRUE(same(px(kFxLX + kFxLW / 2, kFxLY + kFxLH), black));
+}
+
+// A full-render viewport at scale 0.5 needs a padded window LARGER than the
+// render surface: floor_layer_begin must grow the layer on demand so the
+// whole window is drawable, and the composite still covers the full viewport.
+TEST(VideoEffectsPrims, floor_layer_padded_window_grows_the_layer_beyond_the_render)
+{
+    screen* s = scr();
+    s->clearbuffer();
+    s->fastbox(0, 0, 4, 4, kBrightBG, 1);
+    const RGB bright = px(1, 1);
+    s->clearbuffer();
+
+    const Sint32 vw = kPortX1, vh = kPortY1; // 320x200 render
+    const Sint32 padx = vw / 2, pady = vh / 2;
+    ASSERT_TRUE(s->floor_layer_begin(0, 0, vw + 2 * padx, vh + 2 * pady))
+        << "begin must grow the layer for the padded window";
+    s->fastbox(0, 0, vw + 2 * padx, vh + 2 * pady, kBrightBG, 1);
+    // Overwrite the bottom-right pad-ring corner through the per-pixel blit
+    // path (putbuffer -> pointb): the game's tile/sprite draws go through
+    // pointb, whose clip must follow the GROWN layer — a legacy hardcoded
+    // 320x200 clip would silently drop everything past the render size and
+    // leave this block bright (regression: the Frozen Wall black band).
+    std::vector<unsigned char> block(static_cast<size_t>(padx) * pady,
+                                     kDarkSprite);
+    s->putbuffer(vw + padx, vh + pady, padx, pady,
+                 0, 0, vw + 2 * padx, vh + 2 * pady, block);
+    const RGB dark = [&] {
+        // Sample the dark color from a swatch drawn inside the legacy area.
+        s->putbuffer(0, 0, 2, 2, 0, 0, vw, vh, block);
+        return px(1, 1);
+    }();
+    s->floor_layer_end(0, 0, vw, vh, 0.5f, vw / 2, vh / 2, 255, {},
+                       padx, pady);
+
+    // Corners + centre all carry the composite: the grown layer absorbed the
+    // whole padded window (no clamp-truncated edge, no black ring)...
+    ASSERT_TRUE(same(px(vw - 1, 0), bright));
+    ASSERT_TRUE(same(px(0, vh - 1), bright));
+    ASSERT_TRUE(same(px(vw / 2, vh / 2), bright));
+    // ...including the pad-ring block drawn via pointb past 320x200, which
+    // the squeeze maps onto the viewport's bottom-right corner.
+    ASSERT_TRUE(same(px(vw - 4, vh - 4), dark))
+        << "per-pixel blits must reach the grown layer's pad ring";
+}
+
+// ---- Canvas plumbing (stages 1+2 of the resolution decoupling) ------------
+//
+// Screen owns a WORLD canvas (gameplay, variable dims in principle) and a UI
+// canvas (menus, pinned 320x200). At the default 320x200 world dims the two
+// share ONE surface, keeping the renderer byte-identical to the historical
+// single-canvas setup; set_world_canvas_size with non-default dims splits
+// them, and all offset plot arithmetic follows the active canvas width.
+
+namespace
+{
+// RAII: every canvas test restores the default shared 320x200 world canvas,
+// UI routing, the render engine and a cleared buffer for subsequent tests.
+struct CanvasStateGuard
+{
+    RenderEngine saved_engine = E_Screen->Engine;
+    ~CanvasStateGuard()
+    {
+        E_Screen->Engine = saved_engine;
+        E_Screen->set_active_canvas(CanvasTarget::UI);
+        E_Screen->set_world_canvas_size(kUiCanvasW, kUiCanvasH);
+        scr()->clearbuffer();
+    }
+};
+} // namespace
+
+TEST(VideoEffectsPrims, canvas_dims_default_pins)
+{
+    // Default canvas dims: the classic 320x200 everywhere, and the world
+    // canvas shares the UI surface (byte-identity mode).
+    ASSERT_EQ(320, E_Screen->canvas_w());
+    ASSERT_EQ(200, E_Screen->canvas_h());
+    ASSERT_EQ(320, E_Screen->world_w());
+    ASSERT_EQ(200, E_Screen->world_h());
+    ASSERT_EQ(320, E_Screen->ui_w());
+    ASSERT_EQ(200, E_Screen->ui_h());
+    ASSERT_EQ(320, E_Screen->render->w) << "active draw target is the canvas";
+    ASSERT_EQ(200, E_Screen->render->h);
+
+    // The interface-level accessors forward through screen -> sdl_video.
+    ASSERT_EQ(320, scr()->canvas_w());
+    ASSERT_EQ(200, scr()->canvas_h());
+    ASSERT_EQ(320, scr()->world_canvas_w());
+    ASSERT_EQ(200, scr()->world_canvas_h());
+
+    // The legacy scratch buffer is sized to the canvas area (the old 64000).
+    ASSERT_EQ(static_cast<std::size_t>(320) * 200, scr()->videobuffer.size());
+}
+
+TEST(VideoEffectsPrims, world_ui_canvas_routing_isolates_draws_at_split_dims)
+{
+    CanvasStateGuard guard;
+    screen* s = scr();
+    s->set_active_canvas(CanvasTarget::UI);
+    s->clearbuffer();
+
+    // Non-default world dims split the canvases into separate surfaces.
+    E_Screen->set_world_canvas_size(384, 240);
+    ASSERT_EQ(384, s->world_canvas_w());
+    ASSERT_EQ(240, s->world_canvas_h());
+    ASSERT_EQ(320, s->canvas_w()) << "active target is still the UI canvas";
+    ASSERT_TRUE(CanvasTarget::UI == s->active_canvas());
+
+    // Draw a bright box at (10,10) on the UI canvas only.
+    s->fastbox(10, 10, 2, 2, kBrightBG, 1);
+    const RGB ui_px = px(10, 10);
+
+    // Switch to the world canvas: draw primitives and dims must follow.
+    s->set_active_canvas(CanvasTarget::World);
+    ASSERT_TRUE(CanvasTarget::World == s->active_canvas());
+    ASSERT_EQ(384, s->canvas_w());
+    ASSERT_EQ(240, s->canvas_h());
+    ASSERT_EQ(384, E_Screen->render->w) << "draw target follows the routing";
+    ASSERT_EQ(240, E_Screen->render->h);
+    s->clearbuffer();
+    const RGB world_bg = px(10, 10);
+    ASSERT_FALSE(same(ui_px, world_bg))
+        << "the UI draw must not appear on the split world canvas";
+
+    // World-only region: x/y beyond the UI extent exist only here.
+    s->fastbox(350, 210, 2, 2, kBrightBG, 1);
+    ASSERT_FALSE(same(px(350, 210), world_bg));
+
+    // Back to UI: its pixels survived the world drawing untouched.
+    s->set_active_canvas(CanvasTarget::UI);
+    ASSERT_TRUE(same(px(10, 10), ui_px)) << "the UI canvas kept its pixels";
+
+    // Re-sharing at the default dims routes world reads to the UI surface.
+    E_Screen->set_world_canvas_size(kUiCanvasW, kUiCanvasH);
+    s->set_active_canvas(CanvasTarget::World);
+    ASSERT_EQ(320, s->canvas_w());
+    ASSERT_TRUE(same(px(10, 10), ui_px))
+        << "default dims must re-share one surface (byte-identity mode)";
+
+    // Degenerate resizes are rejected and leave the shared state intact.
+    // (The allocation-failure fallback inside set_world_canvas_size is not
+    // probed here: sdl2-compat happily attempts arbitrarily large surface
+    // allocations, so there is no portable way to force SDL failure.)
+    E_Screen->set_world_canvas_size(0, 200);
+    ASSERT_EQ(320, s->world_canvas_w());
+    E_Screen->set_world_canvas_size(320, -1);
+    ASSERT_EQ(200, s->world_canvas_h());
+    ASSERT_TRUE(same(px(10, 10), ui_px)) << "still reading the UI surface";
+}
+
+TEST(VideoEffectsPrims, offset_plot_arithmetic_follows_the_active_canvas_width)
+{
+    CanvasStateGuard guard;
+    screen* s = scr();
+
+    // Default (320-wide): offset = x + y*320 — pin the legacy decode.
+    s->set_active_canvas(CanvasTarget::UI);
+    s->clearbuffer();
+    const RGB black = px(0, 0);
+    s->pointb(7 + 5 * 320, kBrightBG);
+    ASSERT_FALSE(same(px(7, 5), black)) << "320-wide offset decode";
+
+    // Split world canvas (384-wide): the same primitive decodes with 384.
+    E_Screen->set_world_canvas_size(384, 240);
+    s->set_active_canvas(CanvasTarget::World);
+    s->clearbuffer();
+    const int x = 337, y = 123; // x > 320: only reachable with the new width
+    const int off = x + y * 384;
+    s->pointb(off, kBrightBG);
+    ASSERT_FALSE(same(px(x, y), black)) << "384-wide offset decode";
+    // The retired 320-wide decode of that offset must NOT have been plotted.
+    ASSERT_TRUE(same(px(off % 320, off / 320), black))
+        << "offset must not decode with the retired 320 constant";
+    // get_pixel(offset) round-trips through the same canvas width.
+    ASSERT_EQ(static_cast<int>(kBrightBG), s->get_pixel(off));
+}
+
+TEST(VideoEffectsPrims, swap_scaler_scratch_resizes_with_the_active_canvas)
+{
+    CanvasStateGuard guard;
+    screen* s = scr();
+
+    // The doubling scratch for SAI/Eagle sizes itself to 2x the active
+    // canvas: the classic 640x400 at the default 320x200...
+    E_Screen->Engine = RenderEngine::SAI;
+    s->set_active_canvas(CanvasTarget::UI);
+    s->clearbuffer();
+    s->buffer_to_screen(0, 0, s->canvas_w(), s->canvas_h());
+    ASSERT_TRUE(E_Screen->render2 != nullptr);
+    ASSERT_EQ(640, E_Screen->render2->w);
+    ASSERT_EQ(400, E_Screen->render2->h);
+
+    // ...and recreated at 2x the split world canvas when that presents.
+    E_Screen->set_world_canvas_size(384, 240);
+    s->set_active_canvas(CanvasTarget::World);
+    s->clearbuffer();
+    s->buffer_to_screen(0, 0, s->canvas_w(), s->canvas_h());
+    ASSERT_EQ(768, E_Screen->render2->w);
+    ASSERT_EQ(480, E_Screen->render2->h);
 }

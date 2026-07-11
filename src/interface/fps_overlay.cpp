@@ -83,6 +83,7 @@ void draw_fps_overlay(screen& s)
     const int fps = c.update(now_ms);
     const std::string msg = std::format("FPS: {}", fps);
     const int w = s.text_normal.query_width(msg);
-    s.text_normal.write_xy(320 - w - 2, kFpsOverlayY, msg, YELLOW,
+    // Right-anchored to the active canvas (world during gameplay frames).
+    s.text_normal.write_xy(s.canvas_w() - w - 2, kFpsOverlayY, msg, YELLOW,
                            static_cast<short>(1));
 }

@@ -3600,3 +3600,275 @@ TEST(GameLoop, switch_char_over_dormant_ally_never_blanks_view_control)
     game_screen->world().end = 0;
     game_screen->world().delete_objects();
 }
+
+// ---------------------------------------------------------------------------
+// cfg graphics/scale in REAL gameplay: the grown world canvas must carry real
+// rendered world (not clipped 320x200 content plus black filler), the panes
+// must be laid out from the canvas dims in split-screen, and a mid-game
+// window resize must retrack everything. All of it is non-default behavior:
+// the guard restores the Legacy classic canvas so the rest of the binary
+// keeps the byte-identical default setup.
+// ---------------------------------------------------------------------------
+#include <openglad/platform/video_sdl.h> // apply_world_scale_from_cfg
+#include <openglad/interface/render/view_layout.h>
+#include <openglad/interface/render/radar.h>
+
+namespace canvas_scale_gameplay {
+
+// RAII: tear the game down and restore the Legacy classic canvas + UI routing.
+struct WorldScaleGameGuard
+{
+    screen* s;
+    explicit WorldScaleGameGuard(screen* scr) : s(scr) {}
+    ~WorldScaleGameGuard()
+    {
+        if (og::runtime::current_game_session)
+            og::runtime::clear_local_transport_shadow(
+                *og::runtime::current_game_session);
+        s->world().end = 0;
+        s->world().delete_objects();
+        cfg.apply_setting("graphics", "scale", "off");
+        apply_world_scale_from_cfg();
+        s->set_active_canvas(CanvasTarget::UI);
+        s->relayout_views();
+    }
+};
+
+// Sparse-sampled count of non-black pixels in [x0,x1) x [y0,y1).
+int nonblack_samples(screen* s, int x0, int y0, int x1, int y1)
+{
+    int n = 0;
+    for (int y = y0; y < y1; y += 8)
+        for (int x = x0; x < x1; x += 8)
+        {
+            Uint8 r = 0, g = 0, b = 0;
+            s->get_pixel(x, y, &r, &g, &b);
+            if ((r | g | b) != 0)
+                n++;
+        }
+    return n;
+}
+
+void run_frames(screen* s, int frames)
+{
+    GameLoopFrameState st;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.enable_frame_timing = false;
+    for (int f = 0; f < frames; f++)
+        ASSERT_EQ(GameFrameResult::Continue, game_frame_with_result(*s, st, deps));
+}
+
+// Pane geometry pinned against compute_view_layout at the CURRENT world
+// canvas dims, plus containment inside the canvas.
+void expect_pane_matches_layout(screen* s, int i, int canvas_w, int canvas_h)
+{
+    viewscreen* vs = s->viewob[static_cast<size_t>(i)].get();
+    ASSERT_TRUE(vs) << "view " << i;
+    const og::view_layout::ViewLayout want = og::view_layout::compute_view_layout(
+        s->numviews, vs->mynum, vs->prefs[PREF_VIEW], canvas_w, canvas_h);
+    ASSERT_TRUE(want.applies) << "view " << i;
+    EXPECT_EQ(want.x, vs->xloc) << "view " << i;
+    EXPECT_EQ(want.y, vs->yloc) << "view " << i;
+    EXPECT_EQ(want.w, vs->xview) << "view " << i;
+    EXPECT_EQ(want.h, vs->yview) << "view " << i;
+    EXPECT_GE(vs->xloc, 0) << "view " << i;
+    EXPECT_GE(vs->yloc, 0) << "view " << i;
+    EXPECT_LE(vs->endx, canvas_w) << "view " << i;
+    EXPECT_LE(vs->endy, canvas_h) << "view " << i;
+}
+
+// The fixed 60x44 radar block must land inside its pane at any pane size.
+void expect_radar_inside_pane(viewscreen* vs)
+{
+    vs->myradar->start();
+    EXPECT_GE(vs->myradar->xloc, vs->xloc);
+    EXPECT_GE(vs->myradar->yloc, vs->yloc);
+    EXPECT_LE(vs->myradar->xloc + vs->myradar->xview, vs->endx);
+    EXPECT_LE(vs->myradar->yloc + vs->myradar->yview, vs->endy);
+}
+
+// Full world-canvas frame dump for the visual review flow (P6 PPM), gated on
+// OG_FX_CAPTURE_DIR like the other capture scenes.
+void dump_canvas(screen* s, const char* scene, int frame)
+{
+    char dir[512];
+    gameplay_rec::dump_dir_for(scene, dir, sizeof(dir));
+    char path[544];
+    snprintf(path, sizeof(path), "%s/%03d.ppm", dir, frame);
+    FILE* fp = fopen(path, "wb");
+    ASSERT_NE(nullptr, fp);
+    const int w = s->canvas_w();
+    const int h = s->canvas_h();
+    fprintf(fp, "P6\n%d %d\n255\n", w, h);
+    for (int j = 0; j < h; j++)
+        for (int i = 0; i < w; i++)
+        {
+            Uint8 r, g, b;
+            s->get_pixel(i, j, &r, &g, &b);
+            fputc(r, fp);
+            fputc(g, fp);
+            fputc(b, fp);
+        }
+    fclose(fp);
+}
+
+} // namespace canvas_scale_gameplay
+
+TEST(GameLoop, world_scale_gameplay_draws_real_world_on_the_grown_canvas)
+{
+    screen* const s = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(s != nullptr);
+
+    // scale=1 on the default 640x400 test window: the world canvas IS the
+    // window — four times the classic pixel count.
+    cfg.apply_setting("graphics", "scale", "1");
+    apply_world_scale_from_cfg();
+    if (s->world_canvas_w() != 640 || s->world_canvas_h() != 400)
+        GTEST_SKIP() << "test window is not the expected default 640x400";
+    canvas_scale_gameplay::WorldScaleGameGuard guard(s);
+
+    gameplay_rec::build_save(s, "org.openglad.gladiator", 1, 1,
+                             {FAMILY_SOLDIER, FAMILY_ELF, FAMILY_MAGE}, 4);
+    glad_init();
+    s->set_active_canvas(CanvasTarget::World);
+    ASSERT_EQ(1, static_cast<int>(s->numviews));
+    viewscreen* vs = s->viewob[0].get();
+    ASSERT_TRUE(vs != nullptr);
+    canvas_scale_gameplay::expect_pane_matches_layout(s, 0, 640, 400);
+
+    // More world visible than the classic canvas would show in the same
+    // mode: the pane's world window grew with the canvas (tiles smaller
+    // relative to the frame).
+    const og::view_layout::ViewLayout classic =
+        og::view_layout::compute_view_layout(1, 0, vs->prefs[PREF_VIEW], 320, 200);
+    EXPECT_GT(vs->xview, classic.w);
+    EXPECT_GT(vs->yview, classic.h);
+
+    canvas_scale_gameplay::run_frames(s, 8);
+    ASSERT_FALSE(::testing::Test::HasFatalFailure());
+    s->redraw();
+    score_panel(s);
+    s->refresh();
+    s->swap();
+
+    // Real rendered world beyond the classic 320x200 area on both axes —
+    // right of x=320 and below y=200 (a clipped legacy draw would leave
+    // black filler there).
+    EXPECT_GT(canvas_scale_gameplay::nonblack_samples(s, 330, 20, 636, 190), 60)
+        << "the canvas right of the classic 320px must carry rendered world";
+    EXPECT_GT(canvas_scale_gameplay::nonblack_samples(s, 20, 210, 310, 396), 60)
+        << "the canvas below the classic 200px must carry rendered world";
+    canvas_scale_gameplay::expect_radar_inside_pane(vs);
+
+    // Optional frame dump for the visual review flow.
+    if (getenv("OG_FX_CAPTURE_DIR"))
+        canvas_scale_gameplay::dump_canvas(s, "worldscale_640", 0);
+}
+
+TEST(GameLoop, world_scale_splitscreen_panes_fit_the_grown_canvas)
+{
+    screen* const s = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(s != nullptr);
+
+    cfg.apply_setting("graphics", "scale", "1");
+    apply_world_scale_from_cfg();
+    if (s->world_canvas_w() != 640 || s->world_canvas_h() != 400)
+        GTEST_SKIP() << "test window is not the expected default 640x400";
+    canvas_scale_gameplay::WorldScaleGameGuard guard(s);
+
+    // ---- 2 players on the grown canvas ------------------------------------
+    gameplay_rec::build_save(s, "org.openglad.gladiator", 2, 2,
+                             {FAMILY_SOLDIER, FAMILY_BARBARIAN,
+                              FAMILY_ELF, FAMILY_MAGE}, 6);
+    glad_init();
+    s->set_active_canvas(CanvasTarget::World);
+    ASSERT_EQ(2, static_cast<int>(s->numviews));
+    for (int i = 0; i < 2; i++)
+        canvas_scale_gameplay::expect_pane_matches_layout(s, i, 640, 400);
+    // The two panes may not overlap (the classic 2px seam scales its position,
+    // not its width).
+    EXPECT_LE(s->viewob[0]->endx, s->viewob[1]->xloc)
+        << "left pane must end before the right pane starts";
+
+    canvas_scale_gameplay::run_frames(s, 8);
+    ASSERT_FALSE(::testing::Test::HasFatalFailure());
+    s->redraw();
+    score_panel(s);
+    s->refresh();
+    s->swap();
+    // Both panes carry rendered world; the right pane lives ENTIRELY beyond
+    // the classic 320px boundary.
+    EXPECT_GT(canvas_scale_gameplay::nonblack_samples(
+                  s, s->viewob[0]->xloc + 8, s->viewob[0]->yloc + 8,
+                  s->viewob[0]->endx - 8, s->viewob[0]->endy - 8), 60);
+    EXPECT_GT(canvas_scale_gameplay::nonblack_samples(
+                  s, s->viewob[1]->xloc + 8, s->viewob[1]->yloc + 8,
+                  s->viewob[1]->endx - 8, s->viewob[1]->endy - 8), 60);
+    canvas_scale_gameplay::expect_radar_inside_pane(s->viewob[0].get());
+    canvas_scale_gameplay::expect_radar_inside_pane(s->viewob[1].get());
+    if (getenv("OG_FX_CAPTURE_DIR"))
+        canvas_scale_gameplay::dump_canvas(s, "worldscale_640_2p", 0);
+
+    // ---- Mid-game window resize during split-screen ------------------------
+    SDL_Event ev{};
+    ev.type = SDL_WINDOWEVENT;
+    ev.window.event = SDL_WINDOWEVENT_RESIZED;
+    ev.window.data1 = 1280;
+    ev.window.data2 = 800;
+    handle_window_event(ev);
+    EXPECT_EQ(1280, s->world_canvas_w());
+    EXPECT_EQ(800, s->world_canvas_h());
+    for (int i = 0; i < 2; i++)
+        canvas_scale_gameplay::expect_pane_matches_layout(s, i, 1280, 800);
+    canvas_scale_gameplay::run_frames(s, 2);
+    ASSERT_FALSE(::testing::Test::HasFatalFailure());
+    s->redraw();
+    s->swap();
+    canvas_scale_gameplay::expect_radar_inside_pane(s->viewob[1].get());
+    // ...and back down.
+    ev.window.data1 = 640;
+    ev.window.data2 = 400;
+    handle_window_event(ev);
+    EXPECT_EQ(640, s->world_canvas_w());
+    for (int i = 0; i < 2; i++)
+        canvas_scale_gameplay::expect_pane_matches_layout(s, i, 640, 400);
+
+    // ---- 4 players: quadrants on the grown canvas --------------------------
+    s->world().end = 0;
+    s->world().delete_objects();
+    gameplay_rec::build_save(s, "org.openglad.gladiator", 2, 4,
+                             {FAMILY_SOLDIER, FAMILY_BARBARIAN,
+                              FAMILY_ELF, FAMILY_MAGE}, 6);
+    glad_init();
+    s->set_active_canvas(CanvasTarget::World);
+    ASSERT_EQ(4, static_cast<int>(s->numviews));
+    for (int i = 0; i < 4; i++)
+        canvas_scale_gameplay::expect_pane_matches_layout(s, i, 640, 400);
+    // Quadrants are pairwise disjoint.
+    for (int a = 0; a < 4; a++)
+        for (int b = a + 1; b < 4; b++)
+        {
+            viewscreen* va = s->viewob[static_cast<size_t>(a)].get();
+            viewscreen* vb = s->viewob[static_cast<size_t>(b)].get();
+            const bool disjoint = va->endx <= vb->xloc || vb->endx <= va->xloc ||
+                                  va->endy <= vb->yloc || vb->endy <= va->yloc;
+            EXPECT_TRUE(disjoint) << "panes " << a << " and " << b << " overlap";
+        }
+
+    canvas_scale_gameplay::run_frames(s, 4);
+    ASSERT_FALSE(::testing::Test::HasFatalFailure());
+    s->redraw();
+    s->swap();
+    // The fourth quadrant lives entirely beyond the classic 320x200 corner
+    // and still carries rendered world.
+    EXPECT_GT(canvas_scale_gameplay::nonblack_samples(
+                  s, s->viewob[3]->xloc + 8, s->viewob[3]->yloc + 8,
+                  s->viewob[3]->endx - 8, s->viewob[3]->endy - 8), 40);
+    for (int i = 0; i < 4; i++)
+        canvas_scale_gameplay::expect_radar_inside_pane(
+            s->viewob[static_cast<size_t>(i)].get());
+    if (getenv("OG_FX_CAPTURE_DIR"))
+        canvas_scale_gameplay::dump_canvas(s, "worldscale_640_4p", 0);
+}

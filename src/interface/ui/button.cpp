@@ -694,6 +694,8 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         return REDRAW;
     case ButtonAction::CycleDepthFx:
         return change_depth_fx();
+    case ButtonAction::CycleWorldScale:
+        return change_world_scale();
     case ButtonAction::ToggleTrails:
         toggle_effect("effects", "trails");
         return REDRAW;
@@ -715,6 +717,17 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         og::runtime::current_session->overscan_percentage_ = static_cast<float>(
             parse_int_strict(cfg.get_setting("graphics", "overscan_percentage")).value_or(0)) / 100.0f;
         update_overscan_setting();
+        // The restored cfg has no graphics/scale key: re-derive the world
+        // canvas so the live renderer matches (a pure routing no-op when the
+        // canvas is already the classic default, i.e. every default run).
+        {
+            screen* scr = og::runtime::current_session->myscreen_;
+            const int old_w = scr->world_canvas_w();
+            const int old_h = scr->world_canvas_h();
+            scr->reapply_world_scale();
+            if (scr->world_canvas_w() != old_w || scr->world_canvas_h() != old_h)
+                scr->relayout_views();
+        }
         return REDRAW;
     case ButtonAction::RestoreDefaultControls:
         reset_default_player_controls();

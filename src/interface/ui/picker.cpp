@@ -183,6 +183,11 @@ void picker_mainmenu_loop()
 {
     while(true) {
         TRACE("picker", "mainmenu_loop_iteration");
+        // Menus draw and present on the fixed 320x200 UI canvas. Re-assert it
+        // each pass: on Emscripten the Playing->Picker state transition does
+        // not unwind glad_main's world-canvas scope.
+        if (og::runtime::current_session && og::runtime::current_session->myscreen_)
+            og::runtime::current_session->myscreen_->set_active_canvas(CanvasTarget::UI);
         mainmenu(1);
 #ifdef TESTING
         g_picker_mainmenu_calls++;
@@ -1065,12 +1070,12 @@ static const button k_main_options_buttons[] =
     button("options_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=11, .down=1, .right=8}),
     button("toggle_sound", "Sound", KEYSTATE_UNKNOWN, 135, 10 + BUTTON_PITCH, 50, 15, button_action_id(ButtonAction::ToggleSound), -1, MenuNav{.up=0, .down=2, .right=9}),
     button("toggle_rendering", "NORMAL", KEYSTATE_UNKNOWN, 130, 10 + 2*BUTTON_PITCH, 60, 15, button_action_id(ButtonAction::ToggleRenderingEngine), -1, MenuNav{.up=1, .down=4, .right=3}),
-    button("toggle_fullscreen", "Fullscreen", KEYSTATE_UNKNOWN, 210, 10 + 2*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleFullscreen), -1, MenuNav{.up=9, .down=7, .left=2}),
+    button("toggle_fullscreen", "Fullscreen", KEYSTATE_UNKNOWN, 210, 10 + 2*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleFullscreen), -1, MenuNav{.up=9, .down=12, .left=2}),
     button("overscan_minus", "- ", KEYSTATE_UNKNOWN, 130, 10 + 3*BUTTON_PITCH, 30, 15, button_action_id(ButtonAction::OverscanAdjust), -1, MenuNav{.up=2, .down=6, .right=5}),
-    button("overscan_plus", "+ ", KEYSTATE_UNKNOWN, 170, 10 + 3*BUTTON_PITCH, 30, 15, button_action_id(ButtonAction::OverscanAdjust), 1, MenuNav{.up=3, .down=6, .left=4}),
+    button("overscan_plus", "+ ", KEYSTATE_UNKNOWN, 170, 10 + 3*BUTTON_PITCH, 30, 15, button_action_id(ButtonAction::OverscanAdjust), 1, MenuNav{.up=3, .down=6, .left=4, .right=12}),
     button("gameplay_fx", "GAMEPLAY FX", KEYSTATE_UNKNOWN, 130, 10 + 4*BUTTON_PITCH, 90, 15,
         button_action_id(ButtonAction::OpenGameplayFxSettings), -1, MenuNav{.up=4, .down=10}),
-    button("restore_defaults", "RESTORE DEFAULTS", KEYSTATE_UNKNOWN, 210, 10, 100, 15, button_action_id(ButtonAction::RestoreDefaultSettings), -1, MenuNav{.up=3, .down=9, .left=8}),
+    button("restore_defaults", "RESTORE DEFAULTS", KEYSTATE_UNKNOWN, 210, 10, 100, 15, button_action_id(ButtonAction::RestoreDefaultSettings), -1, MenuNav{.up=12, .down=9, .left=8}),
     button("player_controls", "CONTROLS", KEYSTATE_UNKNOWN, 100, 10, 80, 15,
         button_action_id(ButtonAction::OpenControlSettings), -1, MenuNav{.up=11, .down=1, .left=0, .right=7}),
     button("pick_sprite_sheet", "Sprite Sheet", KEYSTATE_UNKNOWN, 210, 10 + BUTTON_PITCH, 90, 15,
@@ -1079,6 +1084,14 @@ static const button k_main_options_buttons[] =
         button_action_id(ButtonAction::OpenUiFxSettings), -1, MenuNav{.up=6, .down=11}),
     button("graphics_fx", "GRAPHICS FX", KEYSTATE_UNKNOWN, 130, 10 + 6*BUTTON_PITCH, 90, 15,
         button_action_id(ButtonAction::OpenGraphicsFxSettings), -1, MenuNav{.up=10, .down=0}),
+    // World-scale cycle (cfg graphics/scale): gameplay canvas = window/N (or
+    // the window/2 SAI/EAGLE smoothers), applied live on click. Independent
+    // of the legacy rendering-engine cycle at [2], which keeps presenting the
+    // menus (and, with scale off, the world too). Label re-derived from cfg
+    // each frame like [2]; appended at the end per the index contract
+    // (kMainOptionsWorldScaleIndex). Right column wrap: 7 -> 9 -> 3 -> 12.
+    button("world_scale", "Scale: Off", KEYSTATE_UNKNOWN, 210, 10 + 3*BUTTON_PITCH, 90, 15,
+        button_action_id(ButtonAction::CycleWorldScale), -1, MenuNav{.up=3, .down=7, .left=5}),
 };
 
 // FX subscreen toggle grid: columns x=15/115/215, 90px faces (15-char label
@@ -2166,8 +2179,10 @@ Sint32 main_options()
     buttons[3].hidden = buttons[3].no_draw = true;
     buttons[2].nav.right = -1;
     buttons[5].nav.up = 2;
-    buttons[9].nav.down = 7;  // fullscreen[3] is hidden here; wrap the right
-    buttons[7].nav.up = 9;    // column between sprite sheet and defaults
+    // fullscreen[3] is hidden here; wrap the right column around it between
+    // sprite sheet and the world-scale row (defaults[7].up = 12 already).
+    buttons[9].nav.down = kMainOptionsWorldScaleIndex;
+    buttons[kMainOptionsWorldScaleIndex].nav.up = 9;
     #endif
 
 	int highlighted_button = 0;
@@ -2208,6 +2223,15 @@ Sint32 main_options()
         {
             buttons[9].label = "Sprite Sheet";
             og::runtime::current_session->allbuttons_[9]->label = buttons[9].label;
+        }
+        // World-scale label re-derived from cfg each frame (both surfaces),
+        // same idiom as the rendering-engine face above; the empty string an
+        // absent key reads as formats to the "Scale: Off" default.
+        {
+            buttons[kMainOptionsWorldScaleIndex].label =
+                og::ui::format_world_scale_label(cfg.get_setting("graphics", "scale"));
+            og::runtime::current_session->allbuttons_[kMainOptionsWorldScaleIndex]->label =
+                buttons[kMainOptionsWorldScaleIndex].label;
         }
 		
 		// Draw
@@ -2982,6 +3006,33 @@ Sint32 change_depth_fx()
        og::runtime::current_session->allbuttons_[kGraphicsFxDepthFxIndex]->label = label;
    if (static_cast<int>(pks().graphics_fx_options_buttons.size()) > kGraphicsFxDepthFxIndex)
        pks().graphics_fx_options_buttons[kGraphicsFxDepthFxIndex].label = label;
+
+   return MENU_OK;
+}
+
+// OPTIONS world-scale selector: step cfg graphics/scale one value, apply it
+// to the live world canvas (safe mid-menu: menus draw and present on the UI
+// canvas, which the scale key never touches; the resize only reallocates the
+// world surface/texture and re-lays-out the idle viewscreens), and rewrite
+// the row's label on both surfaces. main_options() persists cfg on exit.
+Sint32 change_world_scale()
+{
+   const std::string next =
+       og::ui::cycle_world_scale(cfg.get_setting("graphics", "scale"));
+   cfg.apply_setting("graphics", "scale", next);
+
+   screen* scr = og::runtime::current_session->myscreen_;
+   const int old_w = scr->world_canvas_w();
+   const int old_h = scr->world_canvas_h();
+   scr->reapply_world_scale();
+   if (scr->world_canvas_w() != old_w || scr->world_canvas_h() != old_h)
+       scr->relayout_views();
+
+   const std::string label = og::ui::format_world_scale_label(next);
+   if (og::runtime::current_session->allbuttons_[kMainOptionsWorldScaleIndex] != nullptr)
+       og::runtime::current_session->allbuttons_[kMainOptionsWorldScaleIndex]->label = label;
+   if (static_cast<int>(pks().main_options_buttons.size()) > kMainOptionsWorldScaleIndex)
+       pks().main_options_buttons[kMainOptionsWorldScaleIndex].label = label;
 
    return MENU_OK;
 }

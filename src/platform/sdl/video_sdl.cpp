@@ -40,11 +40,14 @@ static inline Uint32 rng(Uint32 max_exclusive) {
     return ctx().rng->next(max_exclusive);
 }
 
-inline constexpr int VIDEO_BUFFER_WIDTH = 320;
-inline constexpr int VIDEO_WIDTH = 320;
-inline constexpr int VIDEO_SIZE = 64000;
-inline constexpr int CX_SCREEN = 320;
-inline constexpr int CY_SCREEN = 200;
+// Dimensions of the ACTIVE canvas (world or UI; see CanvasTarget in
+// video.h). Every offset conversion (offset = x + y*width), full-frame
+// present rect and fade-surface size derives from these — byte-identical to
+// the retired VIDEO_WIDTH/VIDEO_SIZE/CX_SCREEN/CY_SCREEN 320x200 constants
+// while the canvases are at their default dims. The kUiCanvas fallbacks only
+// matter for display-less (headless test) sessions, which never plot.
+static inline int active_canvas_w() { return E_Screen ? E_Screen->canvas_w() : kUiCanvasW; }
+static inline int active_canvas_h() { return E_Screen ? E_Screen->canvas_h() : kUiCanvasH; }
 
 
 // videoptr lives in GameSession — access via current_session->videoptr_.
@@ -101,6 +104,37 @@ static void video_create_display()
 	Log("Creating screen {}x{}\n", w, h);
 	E_Screen = std::make_unique<Screen>(render, w, h, fullscreen_flag);
 	TRACE("init", "video initialized: %dx%d", w, h);
+	apply_world_scale_from_cfg();
+}
+
+void apply_world_scale_from_cfg()
+{
+#ifndef __EMSCRIPTEN__
+	if (!E_Screen)
+		return;
+	const std::string value = cfg.get_setting("graphics", "scale");
+	const og::WorldScaleSetting setting = og::parse_world_scale_setting(value);
+	// A present-but-unrecognized value falls back to Legacy (the classic
+	// byte-identical canvas) — say so, since the user asked for SOMETHING.
+	// The empty string (absent key) and the documented "off" stay silent.
+	if (setting.mode == og::WorldScaleMode::Legacy && !value.empty() &&
+	    value != "off")
+	{
+		LogWarn("Unrecognized graphics/scale value \"{}\"; using classic "
+		        "scaling (off). Accepted: off, 1, 2, 3, 4, 8, sai, eagle.\n",
+		        value);
+		TRACE("canvas", "world_scale unrecognized value=%s", value.c_str());
+	}
+	int win_w = 0;
+	int win_h = 0;
+	SDL_GetWindowSize(E_Screen->window, &win_w, &win_h);
+	E_Screen->set_world_scale(setting, win_w, win_h);
+	if (setting.mode != og::WorldScaleMode::Legacy)
+		Log("World canvas {}x{} (graphics/scale={})\n",
+		    E_Screen->world_w(), E_Screen->world_h(), value);
+	TRACE("canvas", "world_scale mode=%d canvas=%dx%d",
+	      static_cast<int>(setting.mode), E_Screen->world_w(), E_Screen->world_h());
+#endif
 }
 
 sdl_video::sdl_video()
@@ -362,9 +396,11 @@ void sdl_video::draw_text_bar(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2)
 
 void sdl_video::darken_screen()
 {
-    for(int i = 0; i < 320; i++)
+    const int cw = active_canvas_w();
+    const int ch = active_canvas_h();
+    for(int i = 0; i < cw; i++)
     {
-        for(int j = 0; j < 200; j++)
+        for(int j = 0; j < ch; j++)
         {
             pointb(i, j, PURE_BLACK, 100);
         }
@@ -380,12 +416,14 @@ void sdl_video::putblack(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysiz
 
 	if (!og::runtime::current_session->videoptr_) return;  // no direct video buffer to clear
 
+	const Sint32 cw = active_canvas_w();
+	const Sint32 canvas_size = cw * active_canvas_h();
 	for(cury = starty;cury < starty +ysize;cury++)
 	{
 		for (curx = startx; curx < startx +xsize; curx++)
 		{
-			curpoint = (curx + (cury*VIDEO_WIDTH));
-			if (curpoint > 0 && curpoint < VIDEO_SIZE)
+			curpoint = (curx + (cury*cw));
+			if (curpoint > 0 && curpoint < canvas_size)
 				og::runtime::current_session->videoptr_[curpoint] = 0;
 		}
 	}
@@ -497,8 +535,11 @@ void sdl_video::pointb(Sint32 x, Sint32 y, unsigned char color)
 	int r,g,b;
 	int c;
 
-	//buffers: this does bound checking (just to be safe)
-	if(x<0 || x>319 || y<0 || y>199)
+	//buffers: bound check against the CURRENT render target (mirrors
+	// get_pixel). During a padded floor-layer redirect the target is the
+	// grown off-screen layer, which extends past the legacy 320x200 logical
+	// screen; a hardcoded 319/199 clip would truncate the padded window.
+	if (x < 0 || y < 0 || x >= E_Screen->render->w || y >= E_Screen->render->h)
 		return;
 
 	query_palette_reg(color,&r,&g,&b);
@@ -619,8 +660,11 @@ void sdl_video::pointb(Sint32 x, Sint32 y, unsigned char color, unsigned char al
 	int r,g,b;
 	int c;
 
-	//buffers: this does bound checking (just to be safe)
-	if(x<0 || x>319 || y<0 || y>199)
+	//buffers: bound check against the CURRENT render target (mirrors
+	// get_pixel). During a padded floor-layer redirect the target is the
+	// grown off-screen layer, which extends past the legacy 320x200 logical
+	// screen; a hardcoded 319/199 clip would truncate the padded window.
+	if (x < 0 || y < 0 || x >= E_Screen->render->w || y >= E_Screen->render->h)
 		return;
 
 	query_palette_reg(color,&r,&g,&b);
@@ -655,8 +699,9 @@ void sdl_video::pointb(int offset, unsigned char color)
 {
 	int x, y;
 
-	y = offset/320;
-	x = offset - y*320;
+	const int cw = active_canvas_w();
+	y = offset/cw;
+	x = offset - y*cw;
 
 	pointb(x,y,color);
 }
@@ -1196,19 +1241,31 @@ void sdl_video::destroy_accel_surface(void* surface)
 // smoothly (bilinear) scaled about the viewport centre and faded by the
 // floor's depth alpha. Un-drawn cells (air holes / out-of-map) stay
 // transparent and reveal the floors below.
-void sdl_video::floor_layer_begin(Sint32 x, Sint32 y, Sint32 w, Sint32 h)
+bool sdl_video::floor_layer_begin(Sint32 x, Sint32 y, Sint32 w, Sint32 h)
 {
     if (!E_Screen || !E_Screen->render)
-        return;
+        return false;
+    // A below-camera floor draws a pad-widened window, so (x+w, y+h) can
+    // exceed the render size: grow the layer on demand (never shrink — other
+    // viewports may still need the full render extent this frame). The pad is
+    // bounded by the caller's scale clamp (kMinBelowFloorScale), so the layer
+    // tops out at ~2x the render dimensions.
+    const int need_w = std::max(E_Screen->render->w, static_cast<int>(x + w));
+    const int need_h = std::max(E_Screen->render->h, static_cast<int>(y + h));
+    if (floor_layer_ && (floor_layer_->w < need_w || floor_layer_->h < need_h))
+    {
+        SDL_FreeSurface(floor_layer_);
+        floor_layer_ = nullptr;
+    }
     if (!floor_layer_)
     {
         floor_layer_ = SDL_CreateRGBSurfaceWithFormat(
-            0, E_Screen->render->w, E_Screen->render->h, 32, SDL_PIXELFORMAT_ARGB8888);
+            0, need_w, need_h, 32, SDL_PIXELFORMAT_ARGB8888);
         if (floor_layer_)
             SDL_SetSurfaceBlendMode(floor_layer_, SDL_BLENDMODE_BLEND);
     }
     if (!floor_layer_)
-        return; // allocation failed: leave E_Screen->render untouched (no redirect)
+        return false; // allocation failed: leave E_Screen->render untouched (no redirect)
 
     // Clear just this viewport's region to fully transparent (ARGB = 0). Opaque
     // tile/sprite blits below go through SDL_MapRGB on this alpha-capable format,
@@ -1221,12 +1278,14 @@ void sdl_video::floor_layer_begin(Sint32 x, Sint32 y, Sint32 w, Sint32 h)
     // layer; floor_layer_end restores the saved surface.
     floor_layer_saved_render_ = E_Screen->render;
     E_Screen->render = floor_layer_;
+    return true;
 }
 
 void sdl_video::floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
                                 float scale, Sint32 cx, Sint32 cy,
                                 unsigned char alpha,
-                                DepthFxParams fx)
+                                DepthFxParams fx,
+                                Sint32 pad_x, Sint32 pad_y)
 {
     if (!E_Screen)
         return;
@@ -1239,6 +1298,28 @@ void sdl_video::floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
     if (!floor_layer_ || !E_Screen->render || scale <= 0.0f)
         return;
 
+    SDL_Rect out;
+    SDL_Rect src;
+    if (pad_x > 0 || pad_y > 0)
+    {
+        // Padded below-floor composite (scale<1): the caller drew a
+        // (w+2*pad_x) x (h+2*pad_y) world window at (x,y) on the layer;
+        // squeeze that whole window down onto the FULL (x,y,w,h) viewport.
+        // The old centred-shrink dst left a black ring around the composite
+        // — with the expanded source window that ring is real drawn content.
+        out.x = x;
+        out.y = y;
+        out.w = w;
+        out.h = h;
+        src.x = x;
+        src.y = y;
+        src.w = w + 2 * pad_x;
+        src.h = h + 2 * pad_y;
+        if (out.w <= 0 || out.h <= 0)
+            return;
+    }
+    else
+    {
     // Centred scale: source pixel p maps to dst = centre + (p - centre)*scale.
     // Clip the visible output to the viewport so a zoomed (scale>1) upper floor
     // cannot bleed into adjacent split-screen panes and the sampled source stays
@@ -1257,7 +1338,6 @@ void sdl_video::floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
     if (ox1 <= ox0 || oy1 <= oy0)
         return;
 
-    SDL_Rect out;
     out.x = static_cast<int>(std::lround(ox0));
     out.y = static_cast<int>(std::lround(oy0));
     out.w = static_cast<int>(std::lround(ox1 - ox0));
@@ -1267,11 +1347,11 @@ void sdl_video::floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
 
     // Inverse-map the (viewport-clipped) output rect back to the source region.
     const float inv = 1.0f / scale;
-    SDL_Rect src;
     src.x = static_cast<int>(std::lround(fcx + (static_cast<float>(out.x) - fcx) * inv));
     src.y = static_cast<int>(std::lround(fcy + (static_cast<float>(out.y) - fcy) * inv));
     src.w = static_cast<int>(std::lround(static_cast<float>(out.w) * inv));
     src.h = static_cast<int>(std::lround(static_cast<float>(out.h) * inv));
+    }
     // Clamp the source to the layer bounds (defensive against rounding).
     if (src.x < 0) { src.w += src.x; src.x = 0; }
     if (src.y < 0) { src.h += src.y; src.y = 0; }
@@ -1284,6 +1364,13 @@ void sdl_video::floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
     // alpha-blend composite that scratch (at the floor's depth alpha) over the
     // real render surface. SDL_SoftStretchLinear ignores blend/alpha, so the
     // fade is applied on the second (blend) blit.
+    if (floor_layer_scaled_ && (floor_layer_scaled_->w < floor_layer_->w ||
+                                floor_layer_scaled_->h < floor_layer_->h))
+    {
+        // The layer grew (padded below-floor window): match the scratch.
+        SDL_FreeSurface(floor_layer_scaled_);
+        floor_layer_scaled_ = nullptr;
+    }
     if (!floor_layer_scaled_)
     {
         floor_layer_scaled_ = SDL_CreateRGBSurfaceWithFormat(
@@ -1466,10 +1553,10 @@ void sdl_video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 	// the view it will be clipped to in either dimension!!!
 
 	walkshift = walkerwidth - rowsize;
-	buffshift = VIDEO_BUFFER_WIDTH - rowsize;
+	buffshift = active_canvas_w() - rowsize;
 
 	walkoff   = (ymin * walkerwidth) + xmin;
-	buffoff   = (walkerstarty*VIDEO_BUFFER_WIDTH) + walkerstartx;
+	buffoff   = (walkerstarty*active_canvas_w()) + walkerstartx;
 
 
 	for(cury = 0; cury < totrows;cury++)
@@ -1711,10 +1798,10 @@ void sdl_video::walkputbuffer_flash(Sint32 walkerstartx, Sint32 walkerstarty,
 	// the view it will be clipped to in either dimension!!!
 
 	walkshift = walkerwidth - rowsize;
-	buffshift = VIDEO_BUFFER_WIDTH - rowsize;
+	buffshift = active_canvas_w() - rowsize;
 
 	walkoff   = (ymin * walkerwidth) + xmin;
-	buffoff   = (walkerstarty*VIDEO_BUFFER_WIDTH) + walkerstartx;
+	buffoff   = (walkerstarty*active_canvas_w()) + walkerstartx;
 
 
 	for(cury = 0; cury < totrows;cury++)
@@ -1804,10 +1891,10 @@ void sdl_video::walkputbuffertext(Sint32 walkerstartx, Sint32 walkerstarty,
         // the view it will be clipped to in either dimension!!!
 
         walkshift = walkerwidth - rowsize;
-        buffshift = VIDEO_BUFFER_WIDTH - rowsize;
+        buffshift = active_canvas_w() - rowsize;
 
         walkoff   = (ymin * walkerwidth) + xmin;
-        buffoff   = (walkerstarty*VIDEO_BUFFER_WIDTH) + walkerstartx;
+        buffoff   = (walkerstarty*active_canvas_w()) + walkerstartx;
 
         for(cury = 0; cury < totrows;cury++)
         {
@@ -1881,10 +1968,10 @@ void sdl_video::walkputbuffertext_alpha(Sint32 walkerstartx, Sint32 walkerstarty
         // the view it will be clipped to in either dimension!!!
 
         walkshift = walkerwidth - rowsize;
-        buffshift = VIDEO_BUFFER_WIDTH - rowsize;
+        buffshift = active_canvas_w() - rowsize;
 
         walkoff   = (ymin * walkerwidth) + xmin;
-        buffoff   = (walkerstarty*VIDEO_BUFFER_WIDTH) + walkerstartx;
+        buffoff   = (walkerstarty*active_canvas_w()) + walkerstartx;
 
         for(cury = 0; cury < totrows;cury++)
         {
@@ -1955,10 +2042,10 @@ void sdl_video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 	// the view it will be clipped to in either dimension!!!
 
 	walkshift = walkerwidth - rowsize;
-	buffshift = VIDEO_BUFFER_WIDTH - rowsize;
+	buffshift = active_canvas_w() - rowsize;
 
 	walkoff   = (ymin * walkerwidth) + xmin;
-	buffoff   = (walkerstarty*VIDEO_BUFFER_WIDTH) + walkerstartx;
+	buffoff   = (walkerstarty*active_canvas_w()) + walkerstartx;
 	xval = walkerstartx;
 	yval = walkerstarty;
 
@@ -2150,12 +2237,12 @@ void sdl_video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 					{
 						//pointb(buffoff++,get_pixel(buffoff+rng(2)));
 						tempbuf = buffoff+rng(2);
-						ty = tempbuf/320;
-						tx = tempbuf-ty*320;
+						ty = tempbuf/active_canvas_w();
+						tx = tempbuf-ty*active_canvas_w();
 						get_pixel(tx,ty,&r,&g,&b);
 
-						ty = buffoff/320;
-						tx = buffoff-ty*320;
+						ty = buffoff/active_canvas_w();
+						tx = buffoff-ty*active_canvas_w();
 						;
 						pointb(tx,ty,static_cast<int>(r),static_cast<int>(g),static_cast<int>(b));
 						buffoff++;
@@ -2185,7 +2272,7 @@ void sdl_video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 					else if (shifttype == SHIFT_BLOCKY)
 					{
 							if (cury%2) //buffers:videobuffer[buffoff++] = videobuffer[buffoff-VIDEO_BUFFER_WIDTH];
-								pointb(buffoff, static_cast<unsigned char>(get_pixel(buffoff-320)));
+								pointb(buffoff, static_cast<unsigned char>(get_pixel(buffoff-active_canvas_w())));
 							else if (curx%2) //videobuffer[buffoff++] = videobuffer[buffoff-1];
 								pointb(buffoff, static_cast<unsigned char>(get_pixel(buffoff-2)));
                         buffoff++;
@@ -2250,7 +2337,52 @@ void sdl_video::buffer_to_screen(Sint32 viewstartx,Sint32 viewstarty,
 //buffers: like buffer_to_screen but automaticaly swaps the entire screen
 void sdl_video::swap(void)
 {
-	buffer_to_screen(0,0,320,200);
+	buffer_to_screen(0,0,active_canvas_w(),active_canvas_h());
+}
+
+int sdl_video::canvas_w() const
+{
+	return active_canvas_w();
+}
+
+int sdl_video::canvas_h() const
+{
+	return active_canvas_h();
+}
+
+int sdl_video::world_canvas_w() const
+{
+	return E_Screen ? E_Screen->world_w() : kUiCanvasW;
+}
+
+int sdl_video::world_canvas_h() const
+{
+	return E_Screen ? E_Screen->world_h() : kUiCanvasH;
+}
+
+void sdl_video::set_active_canvas(CanvasTarget target)
+{
+	if (E_Screen)
+		E_Screen->set_active_canvas(target);
+}
+
+CanvasTarget sdl_video::active_canvas() const
+{
+	return E_Screen ? E_Screen->active_canvas() : CanvasTarget::UI;
+}
+
+void sdl_video::set_world_canvas_pinned_classic(bool pinned)
+{
+	if (E_Screen)
+		E_Screen->set_world_canvas_pinned_classic(pinned);
+}
+
+void sdl_video::reapply_world_scale()
+{
+	// The OPTIONS Scale button / RESTORE DEFAULTS live-apply path: re-parse
+	// cfg graphics/scale and re-derive the world canvas from the current
+	// window (a routing no-op when nothing changed — every default run).
+	apply_world_scale_from_cfg();
 }
 
 //buffers: get pixel's RGB values if you have XY
@@ -2315,8 +2447,9 @@ int sdl_video::get_pixel(int offset)
 	if (offset < 0 || offset >= E_Screen->render->w * E_Screen->render->h)
 		return 0;
 
-	y = offset/320;
-	x = offset-y*320;
+	const int cw = active_canvas_w();
+	y = offset/cw;
+	x = offset-y*cw;
 
 	return get_pixel(x,y,&t);
 }
@@ -2428,7 +2561,7 @@ int sdl_video::FadeBetween(
 	{
 		bOldNull = true;
 		pOldSurface = SDL_CreateRGBSurface(SDL_SWSURFACE,
-			CX_SCREEN, CY_SCREEN, 24, 0, 0, 0, 0);
+			active_canvas_w(), active_canvas_h(), 24, 0, 0, 0, 0);
 		if (!pOldSurface) return 0;  // OOM: nothing safely lockable below
 		SDL_FillRect(pOldSurface,nullptr,0);
 	}
@@ -2436,7 +2569,7 @@ int sdl_video::FadeBetween(
 	{
 		bNewNull = true;
 		pNewSurface = SDL_CreateRGBSurface(SDL_SWSURFACE,
-			CX_SCREEN, CY_SCREEN, 24, 0, 0, 0, 0);
+			active_canvas_w(), active_canvas_h(), 24, 0, 0, 0, 0);
 		if (!pNewSurface) { if (bOldNull) SDL_FreeSurface(pOldSurface); return 0; }  // OOM: free the temp we just made
 		SDL_FillRect(pNewSurface,nullptr,0);
 	}
@@ -2529,7 +2662,7 @@ int sdl_video::FadeBetween(
 	do {
 		FadeBetween24(DestSurface,colorsf.data(),colorst.data(),
 				dwNow - dwFirstPaint + 50);	//allow first frame to show some change
-		E_Screen->swap(0,0,320,200);
+		E_Screen->swap(0,0,active_canvas_w(),active_canvas_h());
 		dwNow = SDL_GetTicks();
 
 		get_input_events(POLL);
@@ -2548,7 +2681,7 @@ int sdl_video::FadeBetween(
 	//Show new screen entirely.
 	SDL_BlitSurface(pNewSurface, nullptr, pOldSurface, nullptr);
 	// Screen::Swap() does the work
-	E_Screen->swap(0,0,320,200);
+	E_Screen->swap(0,0,active_canvas_w(),active_canvas_h());
 	
 	//Clean up.
 	if (bOldNull)
@@ -2575,7 +2708,9 @@ int sdl_video::fade_between(void* old_surface, void* new_surface,
 
 int sdl_video::fadeblack(bool fade_in)
 {
-	SDL_Surface* black = SDL_CreateRGBSurface(SDL_SWSURFACE, 320, 200, 32, 0, 0, 0, 0);
+	// Sized to the active canvas: FadeBetween requires exact dim matches
+	// with E_Screen->render.
+	SDL_Surface* black = SDL_CreateRGBSurface(SDL_SWSURFACE, active_canvas_w(), active_canvas_h(), 32, 0, 0, 0, 0);
     if (!black)
         return -1;
     SDL_FillRect(black, nullptr, SDL_MapRGB(black->format, 0, 0, 0));

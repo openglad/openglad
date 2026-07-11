@@ -690,8 +690,8 @@ TEST(MenuLayout, main_options_index_contract_and_nav)
 {
     button* buttons = picker_main_options_buttons();
     const int count = picker_main_options_button_count();
-    ASSERT_EQ(12, count)
-        << "main options is BACK + 7 settings + CONTROLS door + 3 FX doors";
+    ASSERT_EQ(13, count)
+        << "main options is BACK + 8 settings + CONTROLS door + 3 FX doors";
 
     static const char* kExpectedIds[] = {
         "options_back",       // 0
@@ -706,6 +706,7 @@ TEST(MenuLayout, main_options_index_contract_and_nav)
         "pick_sprite_sheet",  // 9: label synced by index each frame
         "ui_fx",              // 10: opens the UI FX subscreen
         "graphics_fx",        // 11: opens the GRAPHICS FX subscreen
+        "world_scale",        // 12: label synced from graphics/scale each frame
     };
     for (int i = 0; i < count; ++i)
     {
@@ -725,6 +726,17 @@ TEST(MenuLayout, main_options_index_contract_and_nav)
     EXPECT_EQ(buttons[6].x, buttons[11].x);
     EXPECT_EQ(buttons[6].y + 23, buttons[10].y);
     EXPECT_EQ(buttons[10].y + 23, buttons[11].y);
+    // The world-scale cycle extends the right column below fullscreen at the
+    // same 23px pitch, on the overscan row; the two settings are independent
+    // (rendering engine cycles graphics/render, this cycles graphics/scale),
+    // so both faces must be present and separately clickable.
+    ASSERT_EQ(kMainOptionsWorldScaleIndex, 12);
+    EXPECT_EQ(buttons[3].x, buttons[12].x);
+    EXPECT_EQ(buttons[3].y + 23, buttons[12].y);
+    EXPECT_EQ(buttons[4].y, buttons[12].y);
+    EXPECT_EQ("Scale: Off", buttons[12].label);
+    EXPECT_EQ(button_action_id(ButtonAction::CycleWorldScale), buttons[12].myfun);
+    EXPECT_EQ(button_action_id(ButtonAction::ToggleRenderingEngine), buttons[2].myfun);
 
     check_nav_closed_and_reachable(buttons, count, 0, "main_options");
 }

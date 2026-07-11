@@ -2249,3 +2249,62 @@ TEST(PickerCommon, depth_fx_is_active_only_off_is_inactive)
     EXPECT_TRUE(og::ui::depth_fx_is_active(""));
     EXPECT_TRUE(og::ui::depth_fx_is_active("bogus"));
 }
+
+// --- OPTIONS world-scale selector (cfg graphics/scale) ---
+
+TEST(PickerCommon, cycle_world_scale_sequence)
+{
+    // The eight-way selector lap, starting from the Legacy default.
+    ASSERT_EQ("1", og::ui::cycle_world_scale("off"));
+    ASSERT_EQ("2", og::ui::cycle_world_scale("1"));
+    ASSERT_EQ("sai", og::ui::cycle_world_scale("2"));
+    ASSERT_EQ("eagle", og::ui::cycle_world_scale("sai"));
+    ASSERT_EQ("3", og::ui::cycle_world_scale("eagle"));
+    ASSERT_EQ("4", og::ui::cycle_world_scale("3"));
+    ASSERT_EQ("8", og::ui::cycle_world_scale("4"));
+    ASSERT_EQ("off", og::ui::cycle_world_scale("8"));
+
+    // Eight clicks restore any in-set starting value.
+    std::string value = "sai";
+    for (int i = 0; i < 8; ++i)
+        value = og::ui::cycle_world_scale(value);
+    ASSERT_EQ("sai", value);
+
+    // Out-of-set values — including the empty string an absent cfg key reads
+    // as — normalize to "off" (Legacy) before stepping, matching
+    // parse_world_scale_setting in the renderer.
+    ASSERT_EQ("1", og::ui::cycle_world_scale(""));
+    ASSERT_EQ("1", og::ui::cycle_world_scale("normal"));
+    ASSERT_EQ("1", og::ui::cycle_world_scale("bogus"));
+}
+
+TEST(PickerCommon, format_world_scale_label_exact_strings)
+{
+    ASSERT_EQ("Scale: Off", og::ui::format_world_scale_label("off"));
+    ASSERT_EQ("Scale: 1x", og::ui::format_world_scale_label("1"));
+    ASSERT_EQ("Scale: 2x", og::ui::format_world_scale_label("2"));
+    ASSERT_EQ("Scale: SAI", og::ui::format_world_scale_label("sai"));
+    ASSERT_EQ("Scale: Eagle", og::ui::format_world_scale_label("eagle"));
+    ASSERT_EQ("Scale: 3x", og::ui::format_world_scale_label("3"));
+    ASSERT_EQ("Scale: 4x", og::ui::format_world_scale_label("4"));
+    ASSERT_EQ("Scale: 8x", og::ui::format_world_scale_label("8"));
+
+    // Unknown/absent values read as the Legacy default.
+    ASSERT_EQ("Scale: Off", og::ui::format_world_scale_label(""));
+    ASSERT_EQ("Scale: Off", og::ui::format_world_scale_label("double"));
+}
+
+TEST(PickerCommon, world_scale_labels_fit_the_button_face)
+{
+    // The options row draws a 90px face at 6px/char = 15-character budget
+    // (labels are centered with no clipping); every label also fits the
+    // tighter 12-character budget of an 80px face.
+    std::string value = "off";
+    for (int step = 0; step < 8; ++step)
+    {
+        const std::string label = og::ui::format_world_scale_label(value);
+        EXPECT_LE(label.size(), 12u) << label;
+        value = og::ui::cycle_world_scale(value);
+    }
+    ASSERT_EQ("off", value) << "eight steps must complete the lap";
+}

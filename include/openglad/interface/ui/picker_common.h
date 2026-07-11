@@ -311,6 +311,22 @@ std::string format_depth_fx_label(const std::string& value);
 // True for every value but "off" (the button's green/red backing state).
 bool depth_fx_is_active(const std::string& value);
 
+// --- OPTIONS world-scale selector (cfg graphics/scale) ---
+// Pure string helpers over the world-canvas scale values
+// {off, 1, 2, sai, eagle, 3, 4, 8}. Any value outside the set — including
+// the empty string an absent cfg key reads as — normalizes to "off"
+// (Legacy), matching parse_world_scale_setting in the renderer. Independent
+// of the legacy graphics/render engine setting, which keeps its own button.
+
+// Step to the next selector value:
+// off -> 1 -> 2 -> sai -> eagle -> 3 -> 4 -> 8 -> off.
+std::string cycle_world_scale(const std::string& current);
+
+// "Scale: Off" / "Scale: 1x" / "Scale: 2x" / "Scale: SAI" / "Scale: Eagle" /
+// "Scale: 3x" / "Scale: 4x" / "Scale: 8x" — every label fits the 90px
+// options button face (15 chars).
+std::string format_world_scale_label(const std::string& value);
+
 // --- Team family extraction ---
 
 // Collect family IDs from non-null team slots into a vector.

@@ -21,8 +21,34 @@
 
 #include <array>
 #include <span>
+#include <vector>
 
 class text;
+
+// ---- Logical canvas targets -------------------------------------------------
+//
+// The renderer owns TWO logical canvases:
+//  * the WORLD canvas — gameplay (viewscreens, HUD panels, level editor map
+//    view). Its dimensions are variable in principle (default kUiCanvasW x
+//    kUiCanvasH); nothing in the deterministic sim may ever read them.
+//  * the UI canvas — menus, picker, help, intro, dialogs. PINNED at
+//    kUiCanvasW x kUiCanvasH (320x200) forever, so every classic menu layout,
+//    pixel pin and capture stays valid regardless of the world canvas size.
+//
+// Draw primitives route to the ACTIVE canvas; each canvas is presented with
+// its own stretch to the window viewport at swap time. While the world canvas
+// is at the default 320x200 the two canvases share ONE surface, which keeps
+// swap (and every cross-mode flow: fades, in-game dialogs drawn over gameplay
+// pixels, the demo compositor) byte-identical to the single-canvas renderer.
+enum class CanvasTarget
+{
+    World,
+    UI
+};
+
+// The fixed UI canvas dimensions — also the default world canvas dimensions.
+inline constexpr int kUiCanvasW = 320;
+inline constexpr int kUiCanvasH = 200;
 
 // Abstract interface-layer rendering surface.
 // Platform backends implement this contract (SDL in Phase 10).
@@ -92,20 +118,32 @@ public:
 
     // Off-screen floor-layer compositing for the multi-floor vertical parallax.
     // floor_layer_begin redirects subsequent tile/sprite blits (which target the
-    // backend's render surface) to a transparent off-screen layer covering the
-    // viewport (x,y,w,h). floor_layer_end restores the real target and composites
-    // that layer back, smoothly (bilinear) scaled by `scale` about (cx,cy) with a
-    // global `alpha` (the floor's depth fade/ghost) and the depth-effect
-    // treatment picked by `fx` (a default-constructed params object — mode Off
-    // — composites bit-identically; floors below the camera pass the cfg'd
-    // mode + their depth in stories). Default no-ops for backends without an
-    // off-screen surface. The caller gates these on floor_count()>1, so
-    // single-floor / camera-floor rendering never enters this path.
-    virtual void floor_layer_begin(Sint32 /*x*/, Sint32 /*y*/, Sint32 /*w*/, Sint32 /*h*/) {}
+    // backend's render surface) to a transparent off-screen layer covering
+    // (x,y,w,h) — the viewport, or a pad-widened window for a below-camera
+    // floor — returning true iff the redirect is installed (so the caller may
+    // only widen its clip when the layer really absorbs the extra pixels).
+    // floor_layer_end restores the real target and composites that layer back
+    // onto the (x,y,w,h) viewport, smoothly (bilinear) scaled with a global
+    // `alpha` (the floor's depth fade/ghost) and the depth-effect treatment
+    // picked by `fx` (a default-constructed params object — mode Off —
+    // composites bit-identically; floors below the camera pass the cfg'd mode
+    // + their depth in stories). With pad_x/pad_y == 0 (the default; ghost
+    // floors above, scale>=1) the layer holds the viewport 1:1 and is scaled
+    // by `scale` about (cx,cy). With pads > 0 (a below floor, scale<1) the
+    // layer holds a (w+2*pad_x)x(h+2*pad_y) window at (x,y) that is squeezed
+    // onto the FULL viewport, so no black ring remains. Default no-ops for
+    // backends without an off-screen surface. The caller gates these on
+    // floor_count()>1, so single-floor / camera-floor rendering never enters
+    // this path.
+    virtual bool floor_layer_begin(Sint32 /*x*/, Sint32 /*y*/, Sint32 /*w*/, Sint32 /*h*/)
+    {
+        return false;
+    }
     virtual void floor_layer_end(Sint32 /*x*/, Sint32 /*y*/, Sint32 /*w*/, Sint32 /*h*/,
                                  float /*scale*/, Sint32 /*cx*/, Sint32 /*cy*/,
                                  unsigned char /*alpha*/,
-                                 DepthFxParams /*fx*/ = {}) {}
+                                 DepthFxParams /*fx*/ = {},
+                                 Sint32 /*pad_x*/ = 0, Sint32 /*pad_y*/ = 0) {}
     virtual void walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
                                Sint32 walkerwidth, Sint32 walkerheight,
                                Sint32 portstartx, Sint32 portstarty,
@@ -196,6 +234,31 @@ public:
 
     virtual void swap() = 0;
 
+    // Canvas routing (see the CanvasTarget block above).
+    // canvas_w/canvas_h are the ACTIVE canvas dimensions: all offset-based
+    // plot arithmetic (offset = x + y*canvas_w) and full-frame present rects
+    // derive from them. world_canvas_w/world_canvas_h are the WORLD canvas
+    // dimensions regardless of the active target (viewscreen layout sizing).
+    // Defaults are the classic 320x200 in every implementation today.
+    virtual int canvas_w() const = 0;
+    virtual int canvas_h() const = 0;
+    virtual int world_canvas_w() const = 0;
+    virtual int world_canvas_h() const = 0;
+    virtual void set_active_canvas(CanvasTarget target) = 0;
+    virtual CanvasTarget active_canvas() const = 0;
+    // Pin (true) the world canvas to the classic 320x200 dims, or restore
+    // (false) the cfg graphics/scale-derived dims. The level editor pins for
+    // its whole session: its panel chrome and mouse mapping still assume the
+    // classic coordinate space. No-op for backends without a resizable world
+    // canvas (and while pinned dims == current dims, i.e. every default run).
+    virtual void set_world_canvas_pinned_classic(bool /*pinned*/) {}
+    // Re-reads cfg graphics/scale and re-derives the world canvas from the
+    // current window (the OPTIONS Scale button's live-apply seam; the caller
+    // relayouts viewscreens when the dims moved). No-op for backends without
+    // a scalable world canvas — and a routing no-op whenever the re-derived
+    // dims match the current ones, i.e. every default run.
+    virtual void reapply_world_scale() {}
+
     virtual void get_pixel(int x, int y, Uint8* r, Uint8* g, Uint8* b) = 0;
     virtual int get_pixel(int x, int y, int* index) = 0;
     virtual int get_pixel(int offset) = 0;
@@ -210,7 +273,9 @@ public:
     virtual std::array<unsigned char, 768>& redpalette_ref() = 0;
     virtual std::array<unsigned char, 768>& bluepalette_ref() = 0;
     virtual std::array<unsigned char, 768>& dospalette_ref() = 0;
-    virtual std::array<unsigned char, 64000>& videobuffer_ref() = 0;
+    // Legacy scratch buffer sized to the canvas area (kUiCanvasW*kUiCanvasH
+    // by default) — a vector so a future world-canvas resize can re-size it.
+    virtual std::vector<unsigned char>& videobuffer_ref() = 0;
     virtual short& cyclemode_ref() = 0;
     virtual text& text_normal_ref() = 0;
     virtual text& text_big_ref() = 0;
