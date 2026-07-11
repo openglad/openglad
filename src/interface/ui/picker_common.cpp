@@ -1139,6 +1139,21 @@ bool TrainSession::accept(bool force)
     return true;
 }
 
+bool TrainSession::resync_if_promoted()
+{
+    const guy* const original = original_member();
+    if (!working_ || !original)
+        return false;
+    if (working_->family == original->family)
+        return false;
+
+    // The real team member changed family underneath us (DETAILS promote
+    // button). Discard the stale working copy — pending unaccepted stat
+    // edits are meaningless across a class change anyway (bug A9).
+    select_current_slot();
+    return true;
+}
+
 const guy& TrainSession::working_copy() const
 {
     return *working_;

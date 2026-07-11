@@ -31,6 +31,7 @@ static bool barbarian_do_special(walker* self)
         return false;
     walker* alive = current_game->world->add_ob(Order::Weapon, FAMILY_BOULDER);
     if (!alive) return false;
+    alive->set_floor(newob->floor());  // boulder rolls on the thrower's floor (A8)
     alive->center_on(newob);
     alive->set_owner(self);
     alive->stats()->set_level(self->stats()->level());

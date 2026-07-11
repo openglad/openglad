@@ -22,6 +22,7 @@ static bool knife_on_death(weap* self)
     walker* newob = current_game->world->add_ob(Order::FX, FAMILY_KNIFE_BACK);
     if (!newob) return true;
     newob->set_owner(self->owner());
+    newob->set_floor(self->floor());  // return flight starts on the knife's floor (A8)
     newob->center_on(self);
     newob->set_lastx(self->lastx());
     newob->set_lasty(self->lasty());

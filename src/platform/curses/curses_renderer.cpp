@@ -10,6 +10,8 @@
 #include <openglad/platform/curses/glyph_map.h>
 
 #include <openglad/core/constants.h>
+#include <openglad/core/pixdefs.h>
+#include <openglad/core/terrain_types.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
 #include <openglad/gameplay/game_world.h>
@@ -171,8 +173,22 @@ void CursesRenderer::draw_viewport(ITerminal& term, const GameWorld& world,
             const int tx = cam_x + col;
             const bool outside =
                 have_bounds && (tx < 0 || ty < 0 || tx >= grid_w || ty >= grid_h);
-            const Glyph g = outside ? border_glyph()
-                                    : tile_glyph(sm.query_genre_x_y(tx, ty));
+            Glyph g;
+            if (outside) {
+                g = border_glyph();
+            } else {
+                const int genre = sm.query_genre_x_y(tx, ty);
+                // Z-stairs: the genre is direction-less, but the raw tile id
+                // knows which way they go — show '<' (up) vs '>' (down).
+                if (genre == TYPE_ZSTAIRS && cam_grid.valid() &&
+                    tx >= 0 && ty >= 0 && tx < grid_w && ty < grid_h) {
+                    const unsigned char pix =
+                        cam_grid.data[tx + grid_w * ty];
+                    g = zstair_glyph(pix == PIX_ZSTAIR_UP);
+                } else {
+                    g = tile_glyph(genre);
+                }
+            }
             if (g.skip)
                 continue;
             term.put(top + row, left + col, g.pick(allow_unicode),

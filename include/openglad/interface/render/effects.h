@@ -45,6 +45,16 @@ const std::array<bool, 256>& reflective_tiles();
 bool draw_walker_ripples(walker& w, viewscreen* vs,
                          const PixieData& camera_grid);
 
+// Stair direction affordance: a soft alpha-pulsed double chevron blended
+// over every visible PIX_ZSTAIR_UP (pointing up) / PIX_ZSTAIR_DOWN
+// (pointing down) tile of camera_grid (the camera floor's tile grid).
+// Core usability, NOT an "effects" cfg toggle: it is always on in play.
+// The level editor never draws it (its floor-override path is excluded by
+// the caller), and levels without stair tiles render byte-identically.
+// The pulse phase is a pure function of the render tick. Returns true
+// when at least one chevron pixel was blended.
+bool draw_stair_overlays(viewscreen* vs, const PixieData& camera_grid);
+
 // Weather overlay over vs's viewport, keyed on the WORLD's per-level
 // WeatherKind (rolled once per level by the authoritative side and synced
 // through WorldSnapshot — a render-only READ here): None draws nothing,

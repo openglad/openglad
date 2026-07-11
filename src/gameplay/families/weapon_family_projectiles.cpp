@@ -25,6 +25,7 @@ static bool projectile_explode_on_death(weap* self)
     newob->stats()->set_hitpoints(0);
     newob->stats()->set_level(self->owner()->stats()->level());
     newob->set_ani_type(ANI_EXPLODE);
+    newob->set_floor(self->floor());  // explode on the projectile's floor (A8)
     newob->center_on(self);
     newob->set_damage(self->damage()*2);
     return true;

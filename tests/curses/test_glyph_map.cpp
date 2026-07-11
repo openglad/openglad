@@ -122,6 +122,27 @@ TEST(GlyphMap, tile_genres_map_to_expected_glyphs)
     EXPECT_EQ(tile_glyph(12345).ascii, ' ');
 }
 
+TEST(GlyphMap, zstair_glyphs_show_direction)
+{
+    // B1: the direction-aware stair glyphs (roguelike convention '<' up,
+    // '>' down) — bold yellow like the direction-less TYPE_ZSTAIRS fallback.
+    const Glyph up = zstair_glyph(true);
+    const Glyph down = zstair_glyph(false);
+    EXPECT_EQ(up.ascii, '<');
+    EXPECT_EQ(down.ascii, '>');
+    EXPECT_EQ(up.unicode, U'▲');
+    EXPECT_EQ(down.unicode, U'▼');
+    EXPECT_NE(up.unicode, down.unicode);
+    EXPECT_EQ(up.fg, Color::Yellow);
+    EXPECT_EQ(down.fg, Color::Yellow);
+    EXPECT_TRUE(up.bold);
+    EXPECT_TRUE(down.bold);
+    EXPECT_FALSE(up.skip);
+    EXPECT_FALSE(down.skip);
+    // The genre-only fallback stays available for direction-less callers.
+    EXPECT_EQ(tile_glyph(TYPE_ZSTAIRS).ascii, 'H');
+}
+
 TEST(GlyphMap, westlands_tile_genres_map_to_expected_glyphs)
 {
     // Snowfield: white asterisks.

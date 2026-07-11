@@ -527,6 +527,7 @@ walker* living::do_summon(char whatfamily, std::int32_t summon_lifetime)
 	if (newob == nullptr) return nullptr;
 	newob->set_owner(this);
 		newob->set_lifetime(summon_lifetime);
+	newob->set_floor(floor());  // summons appear on the summoner's floor (A8)
 	newob->transform_to(Order::Living, whatfamily);
 	//  Log("\n\nSummoned %d, life %d\n", whatfamily, lifetime);
 
@@ -579,8 +580,25 @@ void living::set_difficulty(std::uint32_t whatlevel)
 	}
 
 	// Adjust for difficulty settings now...
-	if (team_num() != 0)  // do all EXCEPT player characters
+	if (team_num() != 0)  // hostile/neutral teams: legacy path, untouched
 	{
+		const float dif = static_cast<float>(dif1);
+		stats_->set_max_hitpoints((stats_->max_hitpoints() * dif) / 100.0f);
+		stats_->set_max_magicpoints((stats_->max_magicpoints() * dif) / 100.0f);
+		set_damage((damage() * dif) / 100.0f);
+	}
+	else if (myguy == nullptr && dif1 != 100)
+	{
+		// A12a: placed team-0 NPCs (the SAVE_ALL Bearer, allied war-hosts,
+		// rearguards...) scale with the difficulty setting exactly like their
+		// foes — the legacy team!=0 gate was meant to exempt PLAYER
+		// characters, but player crews never pass through set_difficulty
+		// (they derive stats via guy::update_derived_stats), so it silently
+		// froze allied NPCs at 100% while enemies doubled on Hard. Only a
+		// walker actually carrying a player guy (myguy) is exempt.
+		// Gated on dif1 != 100: parity goldens and the harness run at 100%,
+		// and (x*100.0f)/100.0f is NOT bit-exact for every float, so the
+		// skip — not a multiply-by-1 — is what preserves byte-identity.
 		const float dif = static_cast<float>(dif1);
 		stats_->set_max_hitpoints((stats_->max_hitpoints() * dif) / 100.0f);
 		stats_->set_max_magicpoints((stats_->max_magicpoints() * dif) / 100.0f);

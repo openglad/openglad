@@ -221,7 +221,7 @@ Glyph tile_glyph(int genre)
     case TYPE_AIR:         return Glyph{U'▒', ':', Color::Blue, false, false};   // a hole you fall through
     case TYPE_GLASS:       return Glyph{U'░', '"', Color::Cyan, false, false};   // see-through floor
     case TYPE_DROP_BLOCK:  return Glyph{U'▔', '_', Color::White, false, false};  // edge guard
-    case TYPE_ZSTAIRS:     return Glyph{U'≡', 'H', Color::Yellow, true, false};  // Z-stairs
+    case TYPE_ZSTAIRS:     return Glyph{U'≡', 'H', Color::Yellow, true, false};  // Z-stairs (direction unknown; see zstair_glyph)
     case TYPE_SNOW:        return Glyph{U'*', '*', Color::White, false, false};  // snowfield
     case TYPE_LAVA:        return Glyph{U'≈', '~', Color::Red, true, false};     // molten (bold; water ≈ is blue)
     case TYPE_MARSH:       return Glyph{U'"', '"', Color::Green, false, false};  // bog reeds
@@ -229,6 +229,17 @@ Glyph tile_glyph(int genre)
     case TYPE_UNKNOWN:
     default:               return Glyph{U' ', ' ', Color::Default, false, false};
     }
+}
+
+Glyph zstair_glyph(bool up)
+{
+    // Roguelike convention: '<' goes up, '>' goes down. Bold yellow like the
+    // direction-less TYPE_ZSTAIRS fallback, so stairs keep their color even
+    // when the direction is known. (The FAMILY_EXIT ENTITY also uses '>',
+    // but entities draw over tiles and carry their own color/blink.)
+    if (up)
+        return Glyph{U'▲', '<', Color::Yellow, true, false};
+    return Glyph{U'▼', '>', Color::Yellow, true, false};
 }
 
 } // namespace og::curses

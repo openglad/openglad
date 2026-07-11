@@ -846,6 +846,63 @@ TEST(PickerCommon, train_session_accept_force)
     ASSERT_TRUE(save.m_totalcash[0] == 0); // gold unchanged
 }
 
+// Bug A9: the DETAILS submenu's promote button mutates the REAL team member
+// (family + level) while a TrainSession working copy is live. Without a
+// resync, the stale working copy hides the promotion on screen and a later
+// accept() statscopy()s the old family back over it.
+TEST(PickerCommon, train_session_resync_if_promoted_adopts_external_promotion)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_MAGE);
+    save.team_list[0]->level = 6;
+    save.team_size = 1;
+    save.m_totalcash[0] = 999999;
+
+    og::ui::TrainSession session(save);
+    ASSERT_EQ(FAMILY_MAGE, static_cast<int>(session.working_copy().family));
+
+    // External promotion, exactly as create_detail_menu does it.
+    save.team_list[0]->upgrade_to_level(1);
+    save.team_list[0]->family = FAMILY_ARCHMAGE;
+
+    ASSERT_TRUE(session.resync_if_promoted()) << "family mismatch must reload";
+    ASSERT_EQ(FAMILY_ARCHMAGE, static_cast<int>(session.working_copy().family));
+    ASSERT_EQ(1, static_cast<int>(session.working_copy().level));
+
+    // The regression: accept() after a promotion must NOT revert the family.
+    ASSERT_TRUE(session.accept());
+    ASSERT_EQ(FAMILY_ARCHMAGE, static_cast<int>(save.team_list[0]->family));
+    ASSERT_EQ(1, static_cast<int>(save.team_list[0]->level));
+}
+
+TEST(PickerCommon, train_session_resync_if_promoted_noop_preserves_pending_edits)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_size = 1;
+    save.m_totalcash[0] = 999999;
+
+    og::ui::TrainSession session(save);
+    const short orig_str = session.original().strength;
+    session.increase_stat(og::ui::TrainSession::Stat::Strength, 3);
+
+    // No family change -> no reload; pending unaccepted edits survive.
+    ASSERT_FALSE(session.resync_if_promoted());
+    ASSERT_EQ(orig_str + 3, static_cast<int>(session.working_copy().strength));
+}
+
+TEST(PickerCommon, train_session_resync_if_promoted_handles_empty_session)
+{
+    SaveData save;
+    save.team_size = 0;
+
+    og::ui::TrainSession session(save);
+    ASSERT_TRUE(session.empty());
+    ASSERT_FALSE(session.resync_if_promoted());
+}
+
 TEST(PickerCommon, train_session_set_team_clamps_and_lobby_revocation_invalidates_original)
 {
     init_family_registry();

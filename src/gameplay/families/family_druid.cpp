@@ -73,6 +73,7 @@ static bool druid_do_special(walker* self)
                 return false;
             alive->set_owner(self);
             alive->set_team_num(self->team_num());
+            alive->set_floor(newob->floor());  // faerie on the caster's floor (A8)
             alive->setxy(newob->xpos(), newob->ypos());
             alive->set_lifetime(50 + self->stats()->level() * 40);
             newob->set_dead(1);

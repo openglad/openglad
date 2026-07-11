@@ -211,7 +211,9 @@ TEST(NewTiles, grounder_routes_around_lava_strip_flyer_crosses)
 //  - LAVA flows via the ORANGE cycled band 224-231 (do_cycle IS the
 //    animation) with static crust 232/233 + crack 134, and never touches
 //    the WATER band;
-//  - MARSH carries 1-8 WATER-band glint pixels (208/209 only);
+//  - MARSH carries 1-8 STATIC pale-cyan glint pixels (117/118) and never
+//    touches a cycled band — cycled glints blinked and tiled as a grid of
+//    dots (playtest bug #13);
 //  - SNOW stays inside the white/grey ramp 27-31 and ASH never enters any
 //    cycled band;
 //  - index 0 (transparent-by-convention) never appears in an opaque floor.
@@ -274,11 +276,13 @@ TEST(NewTiles, committed_tile_art_loads_and_pins_palette_budgets)
         }
         case Biome::Marsh:
         {
-            const int glints = hist[208] + hist[209];
-            EXPECT_GE(glints, 1) << label << ": marsh needs a moving glint";
+            const int glints = hist[117] + hist[118];
+            EXPECT_GE(glints, 1) << label << ": marsh needs a pale glint";
             EXPECT_LE(glints, 8) << label << ": glints stay sparse";
-            EXPECT_EQ(glints, water_band)
-                << label << ": only 208/209 may shimmer";
+            EXPECT_EQ(0, water_band)
+                << label
+                << ": marsh may not touch the WATER cycled band — cycled "
+                   "glints blink and tile as a dot grid (bug #13)";
             EXPECT_EQ(0, orange_band)
                 << label << ": marsh never touches the ORANGE band";
             break;

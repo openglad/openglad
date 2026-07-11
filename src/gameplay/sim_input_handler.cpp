@@ -181,7 +181,12 @@ SimInputResult sim_process_player_input(
         control = nullptr;
 
         auto filter = [oldcontrol, my_team](const walker* w) {
-            return w->query_order() == Order::Living &&
+            // Never hand control to a dead or dormant (delayed-spawn) ally:
+            // dormant walkers are invisible, out of the obmap, skipped by the
+            // act phase, and excluded from snapshots, so selecting one strands
+            // the player on a ghost and blanks the HUD (bugs A1/A10).
+            return !w->dead() && !w->dormant() &&
+                   w->query_order() == Order::Living &&
                    w->is_friendly(oldcontrol) && w->team_num() == my_team &&
                    w->real_team_num() == 255 && w->user() == -1;
         };

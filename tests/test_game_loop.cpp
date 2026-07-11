@@ -3387,3 +3387,99 @@ TEST(GameLoop, classic_respawn_e2e_revives_hero_at_entry_point_and_reclaims_cont
     game_screen->world().respawn_mode = 0;
     EXPECT_TRUE(save.save("save0"));
 }
+
+// A10 pin: dormant (delayed-spawn) allies are absent from snapshots, so if
+// the server-side SwitchChar cycle ever hands control to one (bug A1), the
+// display mirror cannot resolve the ControlChange id, viewob[0]->control goes
+// null, and the whole HUD (name, HP/MP, SPC line, FOES) vanishes. Drive
+// switches through the REAL local-transport-shadow stack with a dormant ally
+// on the roster and pin that the view control stays live and HUD-eligible on
+// every tick.
+TEST(GameLoop, switch_char_over_dormant_ally_never_blanks_view_control)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, game_screen);
+
+    SaveData& save = game_screen->save_data;
+    prepare_dense_allied_alpha_bravo_charlie_save(save);
+    ASSERT_TRUE(save.save("save0"));
+
+    glad_init();
+    ASSERT_NE(nullptr, og::runtime::current_game_session);
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(og::runtime::local_transport_active(session));
+    ASSERT_NE(nullptr, game_screen->viewob[0]);
+
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(session);
+    ASSERT_NE(nullptr, server_screen);
+    GameWorld& server_world = server_screen->world();
+
+    walker* const alpha = find_named_team_member(server_world, "Alpha");
+    walker* const bravo = find_named_team_member(server_world, "Bravo");
+    walker* const charlie = find_named_team_member(server_world, "Charlie");
+    ASSERT_NE(nullptr, alpha);
+    ASSERT_NE(nullptr, bravo);
+    ASSERT_NE(nullptr, charlie);
+    ASSERT_EQ(0, static_cast<int>(alpha->user())) << "player 0 claims Alpha";
+    const std::uint32_t alpha_id = alpha->entity_id();
+    const std::uint32_t bravo_id = bravo->entity_id();
+    const std::uint32_t charlie_id = charlie->entity_id();
+
+    // Turn Bravo into a delayed-entry (dormant) ally, like the westlands
+    // levels author with spawn_delay. Server-world mutation needs the server
+    // gameplay context (obmap re-bucketing on set_dormant).
+    {
+        ScopedServerWorldContext server_ctx(*server_screen);
+        bravo->set_spawn_delay(60000);
+        bravo->set_dormant(true);
+    }
+
+    std::set<std::uint32_t> seen_control_ids;
+    const auto drive_tick = [&](bool press_switch) {
+        const InputState input =
+            press_switch ? make_switch_char_input(0u) : InputState{};
+        og::runtime::local_transport_shadow_send_input(
+            session, input, game_screen->world().tick_count_ + 1u);
+        og::runtime::local_transport_shadow_finish_tick(session);
+
+        walker* const control = game_screen->viewob[0]->control;
+        ASSERT_NE(nullptr, control)
+            << "the view control (and with it the HUD) must never blank";
+        ASSERT_FALSE(control->dormant())
+            << "the view must never follow a dormant walker";
+        ASSERT_NE(bravo_id, control->entity_id())
+            << "the switch cycle must skip the dormant ally";
+        ASSERT_NE(-1, static_cast<int>(control->user()))
+            << "score-panel HUD gate: control must stay human-claimed on the "
+               "switch tick itself (the ControlChange mapping is authoritative; "
+               "the user tag must not lag it)";
+        ASSERT_FALSE(control->dead());
+        seen_control_ids.insert(control->entity_id());
+    };
+
+    // A couple of neutral warm-up ticks, then several full switch cycles
+    // (press + release per switch).
+    for (int i = 0; i < 2; ++i)
+        drive_tick(false);
+    for (int i = 0; i < 8 && !::testing::Test::HasFatalFailure(); ++i)
+    {
+        drive_tick(true);
+        if (::testing::Test::HasFatalFailure())
+            break;
+        drive_tick(false);
+    }
+    ASSERT_FALSE(::testing::Test::HasFatalFailure());
+
+    EXPECT_TRUE(seen_control_ids.contains(alpha_id))
+        << "the cycle should pass through Alpha";
+    EXPECT_TRUE(seen_control_ids.contains(charlie_id))
+        << "the cycle should reach the awake ally Charlie";
+    EXPECT_FALSE(seen_control_ids.contains(bravo_id));
+    EXPECT_TRUE(bravo->dormant())
+        << "the delayed ally must still be pending at test end";
+
+    og::runtime::clear_local_transport_shadow(session);
+    game_screen->world().end = 0;
+    game_screen->world().delete_objects();
+}

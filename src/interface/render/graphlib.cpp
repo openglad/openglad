@@ -266,7 +266,7 @@ void load_map_data(PixieData* whereto)
 
 	// Westlands terrain (procedurally authored, scripts/generate_tile_art.py).
 	// LAVA art deliberately uses the ORANGE cycled band 224-231 (do_cycle IS the
-	// flow animation); MARSH carries a few WATER-band glint pixels. Headless
+	// flow animation); MARSH glints are static pale cyans (117/118). Headless
 	// builds never load these — all behavior keys off tile IDs.
 	whereto[PIX_SNOW1]  = read_pixie_file("16snow1.png");
 	whereto[PIX_SNOW2]  = read_pixie_file("16snow2.png");

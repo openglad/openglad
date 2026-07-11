@@ -1243,10 +1243,40 @@ bool screen::redraw()
 	// Advance all render-only effect state (weather drift, ripple/trail/dust
 	// phases, per-entity position history): exactly once per frame.
 	effects_advance_frame();
+	announce_way_clear_if_needed();
 	for (i=0; i < numviews; i++)
 		viewob[i]->redraw();
 
 	return 1;
+}
+
+// B4: one-shot on-screen notice when the exit conditions become satisfied.
+// The sim recomputes world.level_done every tick: 0 while live hostile
+// livings (including dormant delayed spawns) remain, 1 once they are gone
+// AND a live exit is present (the ==1 assignment is only reachable from the
+// exit scan, so "with a live exit" is implied). Pure render-side read —
+// networked-safe because level_done is part of the world snapshot mirrors
+// receive; nothing is written back to the sim.
+void screen::announce_way_clear_if_needed()
+{
+	// New level (id change) or level (re)start (tick counter rewound by
+	// glad_init): re-arm the latch.
+	if (world_.id != way_clear_level_id_ || world_.tick_count_ == 0)
+	{
+		way_clear_level_id_ = world_.id;
+		way_clear_last_level_done_ = -1;
+		way_clear_announced_ = false;
+	}
+
+	const short done = world_.level_done;
+	if (!way_clear_announced_ && way_clear_last_level_done_ == 0 && done == 1)
+	{
+		way_clear_announced_ = true;
+		do_notify("The way is clear -- you may exit", nullptr);
+		TRACE("hud", "way_clear level=%d tick=%u",
+		      world_.id, static_cast<unsigned>(world_.tick_count_));
+	}
+	way_clear_last_level_done_ = done;
 }
 
 

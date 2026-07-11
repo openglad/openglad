@@ -63,6 +63,7 @@ static bool knife_back_on_act(effect* self)
         newob->set_owner(self->owner());
         newob->set_team_num(self->team_num());
         newob->set_death_called(1); // to ensure no spawning of more ..
+        newob->set_floor(self->floor());  // collision probe on our floor (A8)
         newob->setworldxy(self->worldx(), self->worldy());
         if (!current_game->world->query_object_passable(self->xpos()+xd, self->ypos()+yd, newob))
         {

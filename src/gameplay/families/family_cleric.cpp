@@ -197,6 +197,7 @@ static bool cleric_do_special(walker* self)
                         alive->set_team_num(self->team_num());
                         alive->stats()->set_level(current_game->world->rng_.next(self->stats()->level()) + 1);
                         alive->set_difficulty(static_cast<std::uint32_t>(alive->stats()->level()));
+                        alive->set_floor(newob->floor());  // rise at the bloodstain's floor (A8)
                         alive->setxy(newob->xpos(), newob->ypos());
                         alive->set_owner(self);
                         newob->set_dead(1);
@@ -251,6 +252,7 @@ static bool cleric_do_special(walker* self)
                         alive->stats()->set_level(current_game->world->rng_.next(self->stats()->level()) + 1);
                         alive->set_difficulty(static_cast<std::uint32_t>(alive->stats()->level()));
                         alive->set_team_num(self->team_num());
+                        alive->set_floor(newob->floor());  // rise at the bloodstain's floor (A8)
                         alive->setxy(newob->xpos(), newob->ypos());
                         alive->set_owner(self);
                         newob->set_dead(1);
@@ -302,6 +304,7 @@ static bool cleric_do_special(walker* self)
                         alive->set_difficulty(static_cast<std::uint32_t>(alive->stats()->level()));
                         alive->set_owner(self);
                     }
+                    alive->set_floor(newob->floor());  // return at the bloodstain's floor (A8)
                     alive->setxy(newob->xpos(), newob->ypos());
                     newob->set_dead(1);
                     if (self->myguy)

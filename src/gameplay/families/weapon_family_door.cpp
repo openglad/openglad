@@ -17,6 +17,7 @@ static bool door_on_death(weap* self)
     if (!newob)
         return false;
     newob->set_ani_type(ANI_DOOR_OPEN);
+    newob->set_floor(self->floor());  // opened door stays on its floor (A8)
     newob->setxy(self->xpos(), self->ypos());
     newob->stats()->set_level(self->stats()->level());
     newob->set_team_num(self->team_num());

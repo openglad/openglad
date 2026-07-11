@@ -382,6 +382,15 @@ public:
     // force=true skips the cost check (for cheat mode).
     bool accept(bool force = false);
 
+    // Re-snapshot the working copy when the real team member was promoted
+    // (family changed) underneath this session — e.g. by the DETAILS
+    // submenu's promote button, which mutates the real guy in place.
+    // Training never edits family, so a family mismatch always means an
+    // external promotion; without the resync the stale working copy hides
+    // the promotion on screen and accept() statscopy()s the old family
+    // back over it. Returns true if the working copy was reloaded.
+    bool resync_if_promoted();
+
     // State queries (for rendering)
     const guy& working_copy() const;
     const guy& original() const;

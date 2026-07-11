@@ -75,6 +75,7 @@ static bool thief_do_special(walker* self)
                 self->myguy->scen_shots++;
             }
             newob->set_damage(static_cast<float>(self->stats()->level() + 1) * 15.0f);
+            newob->set_floor(self->floor());  // bomb armed on the thief's floor (A8)
             newob->setxy(self->xpos() + self->sizex()/2 - newob->sizex()/2,
                          self->ypos() + self->sizey()/2 - newob->sizey()/2);
             newob->set_owner(self);

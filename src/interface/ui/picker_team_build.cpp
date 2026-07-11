@@ -1978,6 +1978,12 @@ Sint32 create_train_menu(Sint32 arg1)
 					else
 						og::runtime::current_session->allbuttons_[i]->set_graphic(FAMILY_PLUS);
 				}
+				// The DETAILS submenu can promote (family-change) the REAL
+				// team member in place. Re-snapshot the working copy first
+				// or the stale copy hides the promotion on screen and a
+				// later ACCEPT statscopy()s the old family back (bug A9).
+				if (pks().train_session)
+					pks().train_session->resync_if_promoted();
 				sync_current_guy_from_train();
             }
 

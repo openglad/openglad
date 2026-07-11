@@ -130,6 +130,7 @@ static bool teleporter_on_eat(treasure* self, walker* eater)
     if (flash)
     {
         flash->set_ani_type(ANI_EXPAND_8);
+        flash->set_floor(self->floor());  // flash at the departure pad (A8)
         flash->center_on(self);
     }
     return true;

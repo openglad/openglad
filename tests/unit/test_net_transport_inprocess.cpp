@@ -757,7 +757,8 @@ TEST(NetTransportInProcess, raw_empty_send_and_disconnect_paths)
     EXPECT_EQ(peer_id, raw_messages[0].peer_id);
     EXPECT_TRUE(raw_messages[0].data.empty());
 
-    EXPECT_THROW(client->create_client_transport(), std::runtime_error);
+    EXPECT_THROW(static_cast<void>(client->create_client_transport()),
+                 std::runtime_error);
     server->disconnect(peer_id + 99u);
     EXPECT_EQ((std::vector<og::sim::PeerId>{peer_id}),
               server->connected_peers());

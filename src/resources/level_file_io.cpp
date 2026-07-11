@@ -244,6 +244,20 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
         new_guy->setxy(currentx, currenty);
         new_guy->set_team_num(sanitize_loaded_team_num(tempteam));
 
+        // Honor the authored per-object command byte — for Livings, and only
+        // the GUARD command (A11). The byte has been round-tripped by the
+        // writer since the original 2002 format but was read-and-dropped by
+        // every loader, so authored guards roamed for 24 years. Restoring is
+        // deliberately narrow: no stock campaign ships a non-zero Living
+        // command (scan: 0 across gladiator/tryxian/arenas/ctf/concept), so
+        // legacy levels and parity goldens are byte-identical; non-Living
+        // command bytes are serialization noise (e.g. treasures default act
+        // 2) and stay ignored; ACT_CONTROL is never applied from files (a
+        // hostile level could steal player control).
+        if (static_cast<Order>(temporder) == Order::Living &&
+            tempcommand == ACT_GUARD)
+            new_guy->set_act_type(ACT_GUARD);
+
         if (version >= 7)
             new_guy->stats()->set_level(shortlevel);
         else if (version >= 3)

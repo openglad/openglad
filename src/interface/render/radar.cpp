@@ -64,6 +64,28 @@ walker* sanitize_radar_control(viewscreen* view, LevelRuntimeData& level)
         view->control = nullptr;
     return view->control;
 }
+
+// Which floor's terrain (and blips) the radar should show: the level
+// editor's floor override when active, else the control walker's floor.
+// Single-floor levels always report 0, so the legacy radar path is
+// untouched (pixel-identical).
+short radar_terrain_floor(viewscreen* view, walker* control,
+                          LevelRuntimeData& level)
+{
+    const int floors = level.world().floor_count();
+    if (floors <= 1)
+        return 0;
+    int f = 0;
+    if (view != nullptr && view->editor_floor_override_ >= 0)
+        f = static_cast<int>(view->editor_floor_override_);
+    else if (control != nullptr)
+        f = static_cast<int>(control->floor());
+    if (f < 0)
+        f = 0;
+    if (f >= floors)
+        f = floors - 1;
+    return static_cast<short>(f);
+}
 } // namespace
 
 inline constexpr int RADAR_X = 60;  // These are the dimensions of the radar
@@ -212,6 +234,16 @@ short radar::draw(LevelRuntimeData* data)
 		radarx = 0;
 	if (radary < 0)
 		radary = 0;
+
+	// Multi-floor: the minimap tracks the floor being played (or edited).
+	// Re-bake the terrain bmp only when that floor changes — update() is
+	// slow — and never on single-floor levels (radar_terrain_floor pins 0).
+	const short terrain_floor = radar_terrain_floor(viewscreenp, control, *data);
+	if (terrain_floor != bmp_floor_)
+	{
+		bmp_floor_ = terrain_floor;
+		update(data);
+	}
     
     unsigned char alpha = 255;
     if(og::runtime::current_session->myscreen_->numviews > 2 && !(og::runtime::current_session->myscreen_->numviews == 3 && mynum == 0))
@@ -250,9 +282,10 @@ short radar::draw(LevelRuntimeData* data)
 		    // Delayed spawns: dormant walkers are not in the world yet.
 		    if (ob && ob->dormant())
 		        continue;
-		    // Multi-floor: only blip entities on the control walker's floor.
-		    if (control && ob && data->world().floor_count() > 1 &&
-		        static_cast<int>(ob->floor()) != static_cast<int>(control->floor()))
+		    // Multi-floor: only blip entities on the floor the radar shows
+		    // (the terrain floor baked just above).
+		    if (ob && data->world().floor_count() > 1 &&
+		        static_cast<int>(ob->floor()) != static_cast<int>(bmp_floor_))
 		        continue;
             oborder = ob->query_order();
 			do_show = 0; // don't show, by default
@@ -334,8 +367,8 @@ short radar::draw(LevelRuntimeData* data)
 	    walker* ob = uptr.get();
 		if (ob && !ob->dead() && !ob->dormant())
 		{
-			if (control && data->world().floor_count() > 1 &&
-			    static_cast<int>(ob->floor()) != static_cast<int>(control->floor()))
+			if (data->world().floor_count() > 1 &&
+			    static_cast<int>(ob->floor()) != static_cast<int>(bmp_floor_))
 				continue;
 			oborder  = ob->query_order();
 			obfamily = ob->family();
@@ -451,11 +484,22 @@ void radar::update(LevelRuntimeData* data)
 		sync_to_grid(data);
 	}
 
+	// Multi-floor: bake the terrain of the floor the radar shows. Fall back
+	// to the base grid when that floor's grid is missing or of a different
+	// size (extents above were derived from the base grid). bmp_floor_ never
+	// leaves 0 on single-floor levels, so this reads the legacy grid there.
+	const PixieData& floor_grid = data->world().grid_for_floor(bmp_floor_);
+	const bool use_floor_grid = floor_grid.valid()
+	    && static_cast<short>(floor_grid.w) == sizex
+	    && static_cast<short>(floor_grid.h) == sizey;
+	const PixieData& baked_grid =
+	    use_floor_grid ? floor_grid : data->world().grid;
+
 	for (i = 0; i < sizex; i++)
 		for (j = 0; j < sizey; j++)
 		{
 			// Check if item in background grid
-			switch (static_cast<unsigned char>(data->world().grid.data[i+sizex*j]))
+			switch (static_cast<unsigned char>(baked_grid.data[i+sizex*j]))
 			{
 				case PIX_GRASS1:  // grass is green
 				case PIX_GRASS_DARK_1:
@@ -624,10 +668,10 @@ void radar::update(LevelRuntimeData* data)
 				case PIX_SNOW2:
 					temp = COLOR_WHITE;
 					break;
-				case PIX_LAVA1:       // lava shimmers orange (torch precedent: cycled)
-				case PIX_LAVA2:
-					temp = COLOR_FIRE;
-					break;
+				case PIX_LAVA1:       // lava: static ember orange. COLOR_FIRE
+				case PIX_LAVA2:       // (224) sits in the cycled ORANGE band
+					temp = 233;       // 224-231 and strobes every frame on
+					break;            // large lava fields; 233 never cycles.
 				case PIX_MARSH1:      // bog is dark green (distinct from the trees ramp)
 				case PIX_MARSH2:
 					temp = COLOR_GREEN+7;

@@ -41,6 +41,12 @@ Glyph tile_glyph(int genre);
 // reports out-of-range tiles as grass, which would otherwise hide the edge).
 Glyph border_glyph();
 
+// Direction-aware Z-stair glyph (roguelike convention: '<' ascends, '>'
+// descends). Renderers that can read the raw tile id (PIX_ZSTAIR_UP vs
+// PIX_ZSTAIR_DOWN) use this instead of the direction-less
+// tile_glyph(TYPE_ZSTAIRS) fallback.
+Glyph zstair_glyph(bool up);
+
 // --- Entities ------------------------------------------------------------
 
 // Glyph for a living creature by family id (FAMILY_SOLDIER..FAMILY_TOWER1).

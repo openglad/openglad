@@ -148,6 +148,17 @@ identical numeric value and the mask is a no-op → A\* node expansion byte-iden
   lands on the first solid tile below; falling past floor 0 = pit death.
 - **Z-stairs**: after a successful `walk()`, if the destination tile is a Z-stair
   and `floor_count>1`, move the entity to the linked floor/cell.
+- **Teleport** (`walker::teleport`, bugfix A6/A7, 2026-07): destination probing
+  is ground-rules (the transient `flight_left` bypass is masked, so a blink can
+  never park the caster inside trees/boulders/water) and eat-free (a local
+  no-side-effect obmap scan replaces `query_object_passable`/`ob_pass_check`,
+  which consumed treasures at merely-probed spots). On `floor_count>1` levels the
+  no-marker random blink draws a uniform target floor per attempt (extra RNG draw
+  gated on `floor_count()>1`, same pattern as `apply_z_motion`, so single-floor
+  levels stay byte-identical), and the marker path lands on the MARKER's floor
+  (`change_floor` before `setxy`). `teleport_ranged` (skeleton escape hop) stays
+  on the caster's floor by design. Verified byte-identical across all 158 parity
+  scenarios (A/B `parity_runner_smoke` dump diff, incl. `rng_state`).
 
 ## Pathfinding (cross-floor)
 
@@ -212,7 +223,13 @@ All additive, double-gated (`floor_count>1` and tile data):
   `walkputbuffer` clip/recolor loop but blend with alpha). Tiles reuse
   `putbuffer_alpha`; accel path uses `SDL_SetSurfaceAlphaMod` on the cached surface.
 - Curses renderer + radar made floor-aware in the same changeset (new air/glass
-  glyphs; restrict to active floor).
+  glyphs; restrict to active floor). Follow-ups from playtest: the radar
+  TERRAIN now also re-bakes per floor (blips were filtered but the map showed
+  floor 0 — `radar::bmp_floor_`, editor override honored, single-floor
+  pixel-identical), Z-stair tiles get an always-on alpha-pulsed up/down
+  chevron overlay in play (`draw_stair_overlays`, camera floor only, not an
+  effects toggle, suppressed in the editor), and the curses client renders
+  direction-aware stair glyphs ('<' up / '>' down via `zstair_glyph`).
 - All gated `floor_count>1`. Defer the optional per-floor y-sort.
 
 ## Level format v10 (gated)

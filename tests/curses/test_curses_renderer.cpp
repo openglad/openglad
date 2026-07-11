@@ -284,6 +284,34 @@ TEST(CursesRenderer, painted_water_and_wall_tiles_show_their_glyphs)
     EXPECT_EQ(term.char_at(center_row - 1, center_col), U'#') << "wall above";
 }
 
+TEST(CursesRenderer, zstair_tiles_render_with_direction_glyphs)
+{
+    // B1: Z-stairs must read as '<' (up) / '>' (down) — the genre-only 'H'
+    // hid which way the stairs went.
+    HandWorld hw(20, 20);
+    hw.add_creature(10, 10, FAMILY_SOLDIER, /*team*/ 0);
+    walker* hero = hw.world().oblist.front().get();
+    const std::uint32_t id = hero->entity_id();
+
+    hw.paint(11, 10, PIX_ZSTAIR_UP);   // one tile right of the hero
+    hw.paint(9, 10, PIX_ZSTAIR_DOWN);  // one tile left of the hero
+
+    HeadlessTerminal term(21, 41);
+    term.set_unicode(false); // assert the ASCII glyphs
+    CursesRenderer renderer;
+    renderer.draw(term, hw.world(), id);
+
+    const int vp_top = 2;
+    const int vp_h = 21 - 2 - 6;
+    const int center_row = vp_top + vp_h / 2;
+    const int center_col = 41 / 2;
+
+    EXPECT_EQ(term.char_at(center_row, center_col + 1), U'<')
+        << "up-stair to the right renders '<'";
+    EXPECT_EQ(term.char_at(center_row, center_col - 1), U'>')
+        << "down-stair to the left renders '>'";
+}
+
 TEST(CursesRenderer, ascii_fallback_downgrades_unicode_tiles)
 {
     HandWorld hw(12, 12);

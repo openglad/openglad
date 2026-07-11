@@ -182,6 +182,7 @@ static bool archmage_do_special(walker* self)
                 if (!newob)
                     return false;
                 newob->set_owner(self);
+                newob->set_floor(self->floor());  // marker on the caster's floor (A8)
                 newob->center_on(self);
                 if (self->myguy)
                     newob->set_lifetime(self->myguy->intelligence / 33);
@@ -242,6 +243,9 @@ static bool archmage_do_special(walker* self)
                             return false;
                         newob->stats()->set_bit_flags(BIT_MAGICAL, 1);
                         newob->set_damage(static_cast<float>(generic));
+                        // Burst materializes ON the acquired foe: take its
+                        // floor (A8); blast damage stays same-floor.
+                        newob->set_floor(ob->floor());
                         newob->center_on(ob);
                         og::sim::emit_sound(current_game->sim_events, SOUND_EXPLODE);
                         newob->set_ani_type(ANI_EXPLODE);
@@ -267,6 +271,11 @@ static bool archmage_do_special(walker* self)
                     generic = 30000;
                     for (auto* w : newlist)
                     {
+                        // Chain lightning cannot arc through solid floors:
+                        // only same-floor foes are valid first strikes (A8;
+                        // byte-identical on single-floor levels).
+                        if (w->floor() != self->floor())
+                            continue;
                         std::int32_t dist = self->distance_to_ob_center(w);
                         if (generic > dist)
                         {
@@ -294,6 +303,10 @@ static bool archmage_do_special(walker* self)
                 newob = current_game->world->add_ob(Order::Living, FAMILY_FIREELEMENTAL);
                 if (!newob)
                     return false;
+                // Summon appears beside the caster, on the caster's floor
+                // (A8); must precede the query_passable probes and setxy so
+                // both use the right floor.
+                newob->set_floor(self->floor());
                 generic = 0;
                 for (i = -1; i <= 1; i++)
                     for (j = -1; j <= 1; j++)
@@ -380,6 +393,9 @@ static bool archmage_do_special(walker* self)
                 newob = current_game->world->add_ob(Order::Living, person);
                 if (!newob)
                     return false;
+                // Illusion appears beside the caster, on the caster's floor
+                // (A8); must precede the query_passable probes and setxy.
+                newob->set_floor(self->floor());
                 generic = 0;
                 for (i = -1; i <= 1; i++)
                     for (j = -1; j <= 1; j++)

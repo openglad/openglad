@@ -40,6 +40,7 @@ static bool chain_on_act(effect* self)
         newob->stats()->set_level(self->stats()->level());
         newob->set_damage(self->damage());
         newob->set_ani_type(ANI_EXPLODE);
+        newob->set_floor(self->floor());  // strike on the bolt's floor (A8)
         newob->center_on(self);
         self->leader()->set_skip_exit(self->leader()->skip_exit() + 3);
         og::sim::emit_sound(current_game->sim_events, SOUND_EXPLODE);
@@ -59,6 +60,11 @@ static bool chain_on_act(effect* self)
             for(auto* w : foelist)
             {
                 if (numfoes <= 0) break;
+                // Chain lightning must not arc through solid floors: skip
+                // foes on other floors (A8; all-floor-0 on legacy levels so
+                // single-floor behavior is byte-identical).
+                if (w->floor() != self->floor())
+                    continue;
                 if (w != self->leader() && w->skip_exit()<1)
                 {
                     newob = current_game->world->add_ob(Order::FX, FAMILY_CHAIN);
@@ -70,6 +76,7 @@ static bool chain_on_act(effect* self)
                     newob->stats()->set_bit_flags(BIT_MAGICAL, 1);
                     newob->set_damage(generic);
                     newob->set_team_num(self->team_num());
+                    newob->set_floor(self->floor());  // seek on our floor (A8)
                     newob->center_on(self);
                 }
                 numfoes--;

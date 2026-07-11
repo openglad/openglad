@@ -1763,6 +1763,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/test_video_primitives.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_video_effects_prims.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_render_effects.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stair_overlay.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_text_rendering.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_campaign_and_level_picker.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_intro_smoke.cpp
@@ -2107,6 +2108,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             test_video_modes_more.cpp
             test_video_effects_prims.cpp
             test_render_effects.cpp
+            test_stair_overlay.cpp
             test_video_pixel_ops.cpp
             test_video_primitives.cpp
             test_text_render.cpp
@@ -2340,9 +2342,12 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_world_headless.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_entity.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_zaxis.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_zaxis_fx_floor.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_new_tiles.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_new_tiles_legacy_ids.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_npc_scenario_flags.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_guard_act_type.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_difficulty_scaling.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_game_world_entity_ids.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_weather.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_world_snapshot.cpp

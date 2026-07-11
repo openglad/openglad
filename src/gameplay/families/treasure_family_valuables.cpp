@@ -67,6 +67,7 @@ static bool life_gem_on_eat(treasure* self, walker* eater)
     if (flash)
     {
         flash->set_ani_type(ANI_EXPAND_8);
+        flash->set_floor(self->floor());  // flash where the gem sat (A8)
         flash->center_on(self);
     }
     self->set_dead(1);

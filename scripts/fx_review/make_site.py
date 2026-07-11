@@ -179,6 +179,10 @@ SCENES = [
      "Same mirror effect on open water: walking the shoreline paints a shimmering flipped reflection in the (palette-animated) lake."),
     ("ripples", "Water ripples",
      "Expanding elliptical rings under units standing or wading in water, phased per-entity so the two walkers do not pulse in sync."),
+    ("marsh_ripples", "Marsh — static glints, wading-only ripples",
+     "The bog under live palette cycling: the pale glint pixels never blink "
+     "(they left the cycled water band) and rings appear ONLY under the "
+     "wading mover — the standing unit's marsh stays quiet."),
     ("clouds", "Clouds + ground shadows",
      "Weather kind: Clouds. Soft banks drift over the field while their displaced dark shadows sweep the ground (sun from the northwest). No rain in this mode."),
     ("rain", "Rain + lightning",

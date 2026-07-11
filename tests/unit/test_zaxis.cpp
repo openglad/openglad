@@ -58,6 +58,20 @@ unsigned char* set_floor1_all_air(GameWorld& w)
     return w.grid_for_floor(1).data.get();
 }
 
+// Replace floor 1's grid with a uniform `tile` fill (e.g. all walls); returns
+// the buffer so callers can paint individual cells on top.
+unsigned char* set_floor1_fill(GameWorld& w, unsigned char tile)
+{
+    const int gw = w.grid.w;
+    const int gh = w.grid.h;
+    auto* buf = new unsigned char[static_cast<std::size_t>(gw) * gh];
+    std::fill(buf, buf + static_cast<std::size_t>(gw) * gh, tile);
+    w.grid_for_floor(1) = PixieData(1, static_cast<unsigned char>(gw),
+                                    static_cast<unsigned char>(gh), buf);
+    w.smoother_for_floor(1).set_target(w.grid_for_floor(1));
+    return w.grid_for_floor(1).data.get();
+}
+
 } // namespace
 
 TEST(ZAxis, floor_count_defaults_to_one)
@@ -149,6 +163,10 @@ TEST(ZAxis, zstair_up_moves_to_floor_above)
     int cx, cy;
     center_cell(a, cx, cy);
     w.grid.data[cx + cy * w.grid.w] = PIX_ZSTAIR_UP; // paint stair under it
+    // Author the destination floor (all grass): set_floor_count leaves extra
+    // floors' grids for the caller, and the landing validation correctly
+    // refuses to transition onto a floor with no grid.
+    set_floor1_grid(w, cx, cy, PIX_GRASS1);
 
     a->apply_z_motion();
     EXPECT_EQ(1, a->floor())
@@ -562,4 +580,234 @@ TEST(ZAxis, cylinder_zoverlap_lets_high_projectile_pass)
     proj->set_worldz(40.0f);
     EXPECT_TRUE(w.query_object_passable(100, 100, proj))
         << "projectile above the target's cylinder should pass over";
+}
+
+// --- Floor-transition destination validation (bugs A2-A5) -------------------
+//
+// walker::apply_z_motion validates every landing with
+// GameWorld::floor_landing_clear (grid-passable + no blocking entity, no-eat)
+// before change_floor. These pin the four reported failure modes: climbing
+// into an occupied cell (A2), stepping off a stair onto a walker (A3), a
+// runner crossing a stair whose destination is inside walls (A4), and an air
+// fall onto a wall top (A5).
+
+// A2: climbing a Z-stair whose paired destination cell is occupied is DENIED —
+// the climber stays on its floor (the old code teleported it into the
+// occupant, wedged both, then bounced it back down after the cooldown) — and
+// the stair works again as soon as the occupant leaves.
+TEST(ZAxis, stair_up_into_occupied_cell_denied_until_clear)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.set_floor_count(2);
+
+    walker* a = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* b = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(a, nullptr);
+    ASSERT_NE(b, nullptr);
+
+    a->set_floor(0);
+    a->setxy(8 * GRID_SIZE, 8 * GRID_SIZE);
+    int cx, cy;
+    center_cell(a, cx, cy);
+    // Stairs are authored as vertically aligned pairs: UP on floor 0, DOWN at
+    // the same cell on floor 1 — with B standing ON the pair cell.
+    w.grid.data[cx + cy * w.grid.w] = PIX_ZSTAIR_UP;
+    set_floor1_grid(w, cx, cy, PIX_ZSTAIR_DOWN);
+    b->set_floor(1);
+    b->setxy(a->xpos(), a->ypos());
+
+    for (int t = 0; t < 20; ++t)
+    {
+        a->apply_z_motion();
+        ASSERT_EQ(0, a->floor())
+            << "climb into an occupied destination must be denied (tick "
+            << t << ")";
+    }
+
+    // Occupant leaves: the next probe after the cooldown takes the stair.
+    b->setxy(14 * GRID_SIZE, 8 * GRID_SIZE);
+    for (int t = 0; t < 8 && a->floor() == 0; ++t)
+        a->apply_z_motion();
+    EXPECT_EQ(1, a->floor())
+        << "stair must work again once the far side clears";
+    EXPECT_TRUE(w.query_object_passable(a->xpos(), a->ypos(), a))
+        << "arrival must not overlap any other walker";
+}
+
+// A3: stepping off a stair (descending) onto a walker standing at the aligned
+// cell below is DENIED — the old code dropped the arriver INTO the occupant
+// and both wedged permanently (every step of each still overlapped the other).
+TEST(ZAxis, stepping_off_stair_onto_walker_denied_no_entanglement)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.set_floor_count(2);
+
+    walker* a = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* b = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(a, nullptr);
+    ASSERT_NE(b, nullptr);
+
+    a->set_floor(1);
+    a->setxy(8 * GRID_SIZE, 8 * GRID_SIZE);
+    int cx, cy;
+    center_cell(a, cx, cy);
+    set_floor1_grid(w, cx, cy, PIX_ZSTAIR_DOWN); // A stands on the DOWN stair
+    b->set_floor(0);
+    b->setxy(a->xpos(), a->ypos()); // B occupies the landing below
+
+    for (int t = 0; t < 20; ++t)
+    {
+        a->apply_z_motion();
+        ASSERT_EQ(1, a->floor())
+            << "descent onto an occupied landing must be denied (tick "
+            << t << ")";
+    }
+
+    // No entanglement: the blocked-arrival walker never overlaps B, so B (and
+    // A) can still move freely.
+    EXPECT_TRUE(b->walkstep(1.0f, 0.0f)) << "occupant must not be wedged";
+    b->setxy(14 * GRID_SIZE, 8 * GRID_SIZE);
+
+    for (int t = 0; t < 8 && a->floor() == 1; ++t)
+        a->apply_z_motion();
+    EXPECT_EQ(0, a->floor())
+        << "descent must resume once the landing clears";
+    EXPECT_TRUE(w.query_object_passable(a->xpos(), a->ypos(), a))
+        << "arrival must not overlap any other walker";
+}
+
+// A4: a walker running at full speed across a Z-stair whose destination floor
+// is inside walls must NOT transition — the old code keyed only on the stair
+// tile under the centre cell and materialized the runner inside PIX_H_WALL*
+// tiles on the other floor, where it bled 1 hp/tick, stuck.
+TEST(ZAxis, running_over_stair_with_walled_destination_never_lands_in_walls)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.set_floor_count(2);
+
+    // Floor 0: grass with a ZSTAIR_UP at (8,8). Floor 1: solid walls.
+    w.grid.data[8 + 8 * w.grid.w] = PIX_ZSTAIR_UP;
+    set_floor1_fill(w, PIX_H_WALL1);
+
+    walker* a = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(a, nullptr);
+    a->set_floor(0);
+    a->setxy(2 * GRID_SIZE, 8 * GRID_SIZE); // west of the stair, same row
+
+    // Sprint east straight across the stair cell (apply_z_motion first, then
+    // the step — the same order as living::act).
+    for (int t = 0; t < 400 && a->xpos() < 14 * GRID_SIZE; ++t)
+    {
+        a->apply_z_motion();
+        ASSERT_EQ(0, a->floor())
+            << "transition into a walled destination must be denied (tick "
+            << t << ")";
+        ASSERT_TRUE(w.query_grid_passable(a->xpos(), a->ypos(), a, a->floor()))
+            << "runner must never stand inside an impassable tile (tick "
+            << t << ")";
+        a->walkstep(1.0f, 0.0f);
+    }
+    EXPECT_GE(a->xpos(), 10 * GRID_SIZE)
+        << "runner should cross the stair cell and keep going on its floor";
+    EXPECT_EQ(0, a->flight_left())
+        << "runner must never trip the stuck-in-wall flight self-regrant";
+}
+
+// A5: falling through PIX_AIR onto a wall top is nudged to the NEAREST clear
+// cell of the floor below (deterministic ring probe) instead of landing inside
+// the wall. Ring 1's first candidate (row-major) is the north-west neighbor.
+TEST(ZAxis, air_fall_over_wall_lands_on_nearest_passable_cell)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.set_floor_count(2);
+
+    walker* a = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(a, nullptr);
+    // The exact-landing pin below assumes the 1-tile soldier footprint.
+    ASSERT_EQ(16, a->sizex());
+    ASSERT_EQ(16, a->sizey());
+
+    a->set_floor(1);
+    a->setxy(7 * GRID_SIZE, 7 * GRID_SIZE);
+    int cx, cy;
+    center_cell(a, cx, cy);
+    ASSERT_EQ(7, cx);
+    ASSERT_EQ(7, cy);
+
+    set_floor1_grid(w, cx, cy, PIX_AIR);            // air hole under the walker
+    w.grid.data[cx + cy * w.grid.w] = PIX_H_WALL1;  // wall top directly below
+
+    a->apply_z_motion();
+    EXPECT_EQ(0, a->floor()) << "faller must still reach the floor below";
+    EXPECT_EQ(6 * GRID_SIZE, a->xpos())
+        << "deterministic nudge: ring 1, first row-major candidate (6,6)";
+    EXPECT_EQ(6 * GRID_SIZE, a->ypos());
+    EXPECT_TRUE(w.query_grid_passable(a->xpos(), a->ypos(), a, a->floor()))
+        << "faller must never come to rest inside an impassable tile";
+}
+
+// A5 (ring order): with the whole 3x3 block around the fall line walled, the
+// landing is ring 2's first row-major candidate — pinning the fixed spiral
+// order (no RNG) that keeps replays and parity captures deterministic.
+TEST(ZAxis, air_fall_nudge_probes_rings_outward_deterministically)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.set_floor_count(2);
+
+    walker* a = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(a, nullptr);
+    ASSERT_EQ(16, a->sizex());
+    ASSERT_EQ(16, a->sizey());
+
+    a->set_floor(1);
+    a->setxy(7 * GRID_SIZE, 7 * GRID_SIZE);
+    set_floor1_grid(w, 7, 7, PIX_AIR);
+    for (int dy = -1; dy <= 1; ++dy)
+        for (int dx = -1; dx <= 1; ++dx)
+            w.grid.data[(7 + dx) + (7 + dy) * w.grid.w] = PIX_H_WALL1;
+
+    a->apply_z_motion();
+    EXPECT_EQ(0, a->floor());
+    EXPECT_EQ(5 * GRID_SIZE, a->xpos())
+        << "deterministic nudge: ring 2, first row-major candidate (5,5)";
+    EXPECT_EQ(5 * GRID_SIZE, a->ypos());
+    EXPECT_TRUE(w.query_grid_passable(a->xpos(), a->ypos(), a, a->floor()));
+}
+
+// A5 (no landing at all): when every cell within the nudge radius is blocked,
+// the faller does NOT fall — it hovers on the air tile (alive, on its own
+// floor) instead of materializing inside a wall.
+TEST(ZAxis, air_fall_with_no_clear_landing_hovers_instead_of_falling)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.set_floor_count(2);
+
+    walker* a = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(a, nullptr);
+
+    a->set_floor(1);
+    a->setxy(7 * GRID_SIZE, 7 * GRID_SIZE);
+    int cx, cy;
+    center_cell(a, cx, cy);
+    set_floor1_grid(w, cx, cy, PIX_AIR);
+
+    // Floor 0 is solid wall everywhere: nowhere to land.
+    const int cells = w.grid.w * w.grid.h;
+    std::fill(w.grid.data.get(), w.grid.data.get() + cells,
+              static_cast<unsigned char>(PIX_H_WALL1));
+
+    for (int t = 0; t < 30; ++t)
+    {
+        a->apply_z_motion();
+        ASSERT_EQ(1, a->floor())
+            << "with no clear landing below, the faller must hold its floor "
+               "(tick " << t << ")";
+        ASSERT_FALSE(a->dead());
+    }
 }

@@ -264,6 +264,12 @@ public:
     bool query_passable(float x, float y, walker* ob, int floor);
     bool query_object_passable(float x, float y, walker* ob, int floor);
     bool query_grid_passable(float x, float y, walker* ob, int floor);
+    // Side-effect-free landing probe for floor transitions (Z-stairs, air
+    // falls, cross-floor teleports): true when ob's bbox at (x, y) on
+    // target_floor is grid-passable AND overlaps no blocking entity there.
+    // Unlike query_object_passable it never routes through ob_pass_check, so
+    // probing cannot eat treasures or fire collide() side effects ("no-eat").
+    bool floor_landing_clear(walker* ob, float x, float y, int target_floor);
 
     walker* find_near_foe(walker* ob);
     walker* find_far_foe(walker* ob);

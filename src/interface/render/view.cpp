@@ -263,12 +263,14 @@ void publish_primary_render_sample(const viewscreen& view,
     og::runtime::emit_runtime_trace(std::move(trace));
 }
 
-// Screen shake: count the alive detonation FX (explosion / bomb families) on
+// Screen shake: count the alive detonation FX (FAMILY_EXPLOSION only) on
 // the camera floor inside this viewport, then jolt topx/topy by a
-// deterministic hash-of-tick jitter of strength min(2, count). Render-only,
-// gated on cfg "effects" screen_shake, and never in the level editor's
-// floor-override path. The caller saves topx/topy first and restores them
-// after the shaken draw.
+// deterministic hash-of-tick jitter of strength min(2, count). An ARMED
+// thief bomb (FAMILY_BOMB) is inert while its fuse burns — it must not
+// shake; its detonation spawns a FAMILY_EXPLOSION child (bomb_on_death)
+// which does. Render-only, gated on cfg "effects" screen_shake, and never
+// in the level editor's floor-override path. The caller saves topx/topy
+// first and restores them after the shaken draw.
 void apply_screen_shake(viewscreen& view, GameWorld& world,
                         const walker* controlob)
 {
@@ -286,7 +288,7 @@ void apply_screen_shake(viewscreen& view, GameWorld& world,
 		{
 			walker* fx = uptr.get();
 			if (!fx || fx->dead() || fx->query_order() != Order::FX ||
-			    (fx->family() != FAMILY_EXPLOSION && fx->family() != FAMILY_BOMB))
+			    fx->family() != FAMILY_EXPLOSION)
 				continue;
 			if (static_cast<Sint32>(fx->floor()) != camera_floor)
 				continue;
@@ -879,7 +881,11 @@ void viewscreen::process_input(const InputState& input_state)
 			bool reverse = pi.is_held(InputAction::Shift);
 			short team = my_team;
 			auto filter = [team](const walker* w) {
-				return !w->dead() && w->query_order() == Order::Living
+				// Skip dormant (delayed-spawn) walkers: they are invisible
+				// and absent from snapshots, so a camera pinned to one shows
+				// nothing (bug A1, spectator variant).
+				return !w->dead() && !w->dormant()
+				       && w->query_order() == Order::Living
 				       && w->team_num() == team;
 			};
 			walker* found = sim_cycle_next_character(
@@ -1028,6 +1034,14 @@ void viewscreen::draw_floor_effects(LevelRuntimeData* data, int floor)
 	// the off-screen floor layer, so floor == current_floor_ implies alpha
 	// 255).
 	const bool camera_pass = floor == current_floor_;
+	// Stair direction affordance (B1): pulse an up/down chevron over the
+	// camera floor's PIX_ZSTAIR tiles, under the sprites. Core usability —
+	// deliberately NOT an "effects" cfg toggle — but never in the level
+	// editor (its floor-override draw keeps authoring pixels untouched).
+	// Levels without stair tiles render byte-identically.
+	if (camera_pass && editor_floor_override_ < 0 &&
+	    draw_stair_overlays(this, data->world().grid_for_floor(floor)))
+		TRACE("render", "stair_overlay floor=%d", floor);
 	const bool reflections_on = cfg.is_on("effects", "reflections") &&
 	    camera_pass;
 	const bool ripples_on = cfg.is_on("effects", "ripples") && camera_pass;

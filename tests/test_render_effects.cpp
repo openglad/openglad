@@ -1016,10 +1016,10 @@ TEST(RenderEffects, reflection_absent_on_snow_and_ash)
     }
 }
 
-// A wader in the bog makes ripple rings exactly like pure water; lava makes
-// none (nothing stands on it — a flyer hovering over it fails the feet-tile
-// check).
-TEST(RenderEffects, ripples_draw_on_marsh_but_never_on_lava)
+// Marsh is thick bog: only a MOVING wader makes ripple rings (playtest bug
+// #14 — a standing unit ringed forever); lava makes none (nothing stands on
+// it — a flyer hovering over it fails the feet-tile check).
+TEST(RenderEffects, ripples_draw_on_marsh_only_while_wading_never_on_lava)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -1038,10 +1038,28 @@ TEST(RenderEffects, ripples_draw_on_marsh_but_never_on_lava)
         w->setxy(160, 120);
         vs->control = w;
         effects_reset_for_testing();
+        // Frame 0 primes the motion history; frame 1 still standing: the
+        // bog stays quiet.
+        trace_clear();
+        ASSERT_TRUE(do_redraw(vs));
+        effects_advance_frame();
+        ASSERT_TRUE(do_redraw(vs));
+        ASSERT_FALSE(trace_contains("effects", "ripples"))
+            << "standing on marsh tile id " << pix_id << " must not ripple";
+        // Wading (2px per frame) makes rings.
+        w->setxy(static_cast<short>(w->xpos() + 2), w->ypos());
+        effects_advance_frame();
         trace_clear();
         ASSERT_TRUE(do_redraw(vs));
         ASSERT_TRUE(trace_contains("effects", "ripples floor=0 n=1"))
-            << "the wader must ripple on marsh tile id " << pix_id;
+            << "the moving wader must ripple on marsh tile id " << pix_id;
+        // Stopping again silences the bog on the next frame.
+        effects_advance_frame();
+        trace_clear();
+        ASSERT_TRUE(do_redraw(vs));
+        ASSERT_FALSE(trace_contains("effects", "ripples"))
+            << "a wader that stopped on marsh tile id " << pix_id
+            << " must stop rippling";
         scr()->world().delete_objects();
         vs->control = nullptr;
     }
@@ -3087,21 +3105,32 @@ TEST(RenderEffects, screen_shake_gates_editor_other_floors_and_off_screen)
     ASSERT_FALSE(trace_contains("effects", "screen_shake"))
         << "an off-screen detonation must not shake";
 
-    // Three on-screen detonations cap the strength at 2.
+    // An ARMED thief bomb (FAMILY_BOMB, fuse burning) must NOT add shake:
+    // one explosion + one armed bomb on-screen jolt at strength 1, not 2.
+    // (The bomb's detonation spawns a FAMILY_EXPLOSION child that shakes.)
     world.set_floor_count(1);
     w->set_floor(0);
     boom->set_floor(0);
     boom->setxy(200, 100);
+    walker* armed_bomb = world.add_ob(Order::FX, FAMILY_BOMB);
+    ASSERT_NE(nullptr, armed_bomb);
+    armed_bomb->setxy(170, 90);
+    trace_clear();
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_TRUE(trace_contains("effects", "screen_shake s=1"))
+        << "an armed bomb must not shake — only its explosion child does";
+
+    // Three on-screen explosions cap the strength at 2.
     walker* boom2 = world.add_ob(Order::FX, FAMILY_EXPLOSION);
-    walker* boom3 = world.add_ob(Order::FX, FAMILY_BOMB);
+    walker* boom3 = world.add_ob(Order::FX, FAMILY_EXPLOSION);
     ASSERT_NE(nullptr, boom2);
     ASSERT_NE(nullptr, boom3);
     boom2->setxy(190, 140);
-    boom3->setxy(170, 90);
+    boom3->setxy(210, 130);
     trace_clear();
     ASSERT_TRUE(do_redraw(vs));
     ASSERT_TRUE(trace_contains("effects", "screen_shake s=2"))
-        << "explosion + bomb FX count together, capped at strength 2";
+        << "multiple explosions cap the shake at strength 2";
 
     effects_reset_for_testing();
     restore_world(vs);
@@ -3250,6 +3279,25 @@ TEST(RenderEffects, zz_capture_effect_scenes)
             extra->setxy(static_cast<short>(200), static_cast<short>(120));
         },
         [&](int f) { mover->setxy(static_cast<short>(70 + f), static_cast<short>(140)); });
+
+    // Marsh (bugs #13/#14): static pale glints under live palette cycling
+    // (nothing may blink) and rings ONLY under the wading mover — the
+    // standing unit's bog stays quiet.
+    run_scene("marsh_ripples", 36,
+        [&] {
+            cfg.apply_setting("effects", "ripples", "on");
+            fill_camera_grid(static_cast<unsigned char>(PIX_MARSH1));
+            for (int j = 0; j < static_cast<int>(world.grid.h); j++)
+                for (int i = 0; i < static_cast<int>(world.grid.w); i++)
+                    if ((i + j) % 2)
+                        world.grid.data[i + world.grid.w * j] =
+                            static_cast<unsigned char>(PIX_MARSH2);
+            mover = world.add_ob(Order::Living, FAMILY_SOLDIER);
+            mover->setxy(static_cast<short>(70), static_cast<short>(140));
+            extra = world.add_ob(Order::Living, FAMILY_SOLDIER);
+            extra->setxy(static_cast<short>(200), static_cast<short>(120));
+        },
+        [&](int f) { mover->setxy(static_cast<short>(70 + f * 2), static_cast<short>(140)); });
 
     run_scene("clouds", 144,
         [&] {

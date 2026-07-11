@@ -108,7 +108,20 @@ walker* select_control_for_view(
         walker* const mapped =
             resolve_control_from_entity_id(*world, controlled_entity_ids[*player_index]);
         if (mapped != nullptr)
+        {
+            // On the tick a switch happens the ControlChange mapping arrives
+            // ahead of the delta snapshot carrying the new control's user
+            // tag, so the mirror walker still wears user == -1 for one tick
+            // and the HUD (gated on a human-claimed control) blinks off.
+            // The mapping IS the authority on who player_index controls;
+            // stamp the tag now — the next snapshot writes the same value
+            // (display-mirror-only state, never fed back to the sim). (A10)
+            const signed char player_tag =
+                static_cast<signed char>(static_cast<int>(*player_index));
+            if (mapped->user() != player_tag)
+                mapped->set_user(player_tag);
             return mapped;
+        }
     }
 
     // Respawn keep-alive (CTF match or classic respawn mode): while a player

@@ -344,6 +344,20 @@ inline constexpr int kDustDropStart = 10; // specks appear this far above wy
 inline constexpr unsigned char kDustColor = 22; // static mid-grey (120,120,120)
 inline constexpr float kDustMoveSq = 0.25f; // moved > 0.5px since last tick
 
+// Push the walker's visual position into the render store for this frame
+// (idempotent per tick) and report whether it moved more than half a pixel
+// since the previous frame. Shared motion gate for dust and marsh ripples.
+bool push_and_query_motion(walker& w, const viewscreen* vs)
+{
+	const auto [vx, vy] = visual_world_pos(w, vs);
+	const RenderHistory& h = store_push(w.entity_id(), vx, vy);
+	if (h.count < 2)
+		return false; // no motion history yet
+	const float dx = h.pos[0].first - h.pos[1].first;
+	const float dy = h.pos[0].second - h.pos[1].second;
+	return dx * dx + dy * dy > kDustMoveSq;
+}
+
 // Fire glow: a radial kernel of kFireStableColor with quadratic falloff,
 // center kGlowAlphaCenter fading to zero at the rim. The radius reaches
 // well past the fire sprites (~16-18px wide) — the kernel's core lands ON
@@ -456,6 +470,14 @@ bool draw_walker_ripples(walker& w, viewscreen* vs,
 	    tile != PIX_MARSH1 && tile != PIX_MARSH2)
 		return false;
 
+	// Marsh is thick bog, not open water: it only ripples around a walker
+	// that is actually WADING (playtest bug #14 — a standing unit ringed
+	// forever). Motion comes from the render store's per-frame visual
+	// positions; open water keeps its constant lap.
+	if ((tile == PIX_MARSH1 || tile == PIX_MARSH2) &&
+	    !push_and_query_motion(w, vs))
+		return false;
+
 	if (!ripple_rings_ready)
 		generate_ripple_rings();
 
@@ -486,6 +508,81 @@ bool draw_walker_ripples(walker& w, viewscreen* vs,
 			drew = true;
 		}
 	}
+	return drew;
+}
+
+bool draw_stair_overlays(viewscreen* vs, const PixieData& camera_grid)
+{
+	if (!vs || !camera_grid.valid())
+		return false;
+
+	// Subtle triangle-wave alpha pulse (period 64 render frames) so the
+	// affordance breathes instead of blinking: 96..192 out of 255.
+	const std::uint32_t p = frame_tick % 64u;
+	const std::uint32_t tri = p < 32u ? p : 64u - p; // 0..32
+	const unsigned char pulse_alpha =
+	    static_cast<unsigned char>(96u + tri * 3u);
+	const unsigned char shadow_alpha =
+	    static_cast<unsigned char>(pulse_alpha / 2u);
+
+	screen* dest = og::runtime::current_session->myscreen_;
+
+	// Visible tile range of the camera floor (same derivation as the
+	// redraw tile loop, clamped to the grid).
+	Sint32 gx0 = vs->topx / GRID_SIZE - (vs->topx < 0 ? 1 : 0);
+	Sint32 gy0 = vs->topy / GRID_SIZE - (vs->topy < 0 ? 1 : 0);
+	Sint32 gx1 = (vs->topx + vs->xview) / GRID_SIZE + 1;
+	Sint32 gy1 = (vs->topy + vs->yview) / GRID_SIZE + 1;
+	gx0 = std::max<Sint32>(gx0, 0);
+	gy0 = std::max<Sint32>(gy0, 0);
+	gx1 = std::min<Sint32>(gx1, camera_grid.w - 1);
+	gy1 = std::min<Sint32>(gy1, camera_grid.h - 1);
+
+	bool drew = false;
+	auto plot = [&](Sint32 x, Sint32 y, unsigned char color,
+	                unsigned char alpha, bool count)
+	{
+		if (x < vs->xloc || x >= vs->endx || y < vs->yloc || y >= vs->endy)
+			return;
+		dest->pointb(x, y, color, alpha);
+		drew = drew || count;
+	};
+
+	for (Sint32 gj = gy0; gj <= gy1; ++gj)
+		for (Sint32 gi = gx0; gi <= gx1; ++gi)
+		{
+			const unsigned char tile =
+			    camera_grid.data[gi + camera_grid.w * gj];
+			if (tile != PIX_ZSTAIR_UP && tile != PIX_ZSTAIR_DOWN)
+				continue;
+			const bool up = (tile == PIX_ZSTAIR_UP);
+			// Tile's top-left corner in screen space.
+			const Sint32 tx = gi * GRID_SIZE - vs->topx + vs->xloc;
+			const Sint32 ty = gj * GRID_SIZE - vs->topy + vs->yloc;
+			// Double chevron, 2px-thick 45-degree strokes, centered in the
+			// 16x16 tile: apexes at rows 3/8 (up) or 12/7 (down). Pass 0
+			// lays every (+1,+1) drop-shadow pixel, pass 1 the white
+			// strokes, so no shadow ever darkens a stroke pixel.
+			for (const int pass : {0, 1})
+				for (const Sint32 apex : {up ? 3 : 12, up ? 8 : 7})
+					for (Sint32 dx = -4; dx <= 4; ++dx)
+					{
+						const Sint32 ax = tx + 8 + dx;
+						const Sint32 ay = ty +
+						    (up ? apex + (dx < 0 ? -dx : dx)
+						        : apex - (dx < 0 ? -dx : dx));
+						if (pass == 0)
+						{
+							plot(ax + 1, ay + 1, PURE_BLACK, shadow_alpha, false);
+							plot(ax + 1, ay + 2, PURE_BLACK, shadow_alpha, false);
+						}
+						else
+						{
+							plot(ax, ay, PURE_WHITE, pulse_alpha, true);
+							plot(ax, ay + 1, PURE_WHITE, pulse_alpha, true);
+						}
+					}
+		}
 	return drew;
 }
 

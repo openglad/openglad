@@ -1501,6 +1501,7 @@ void GameWorld::tick()
         if (flash != nullptr)
         {
             flash->set_ani_type(ANI_EXPAND_8);
+            flash->set_floor(ob->floor());  // flash on the waker's floor (A8)
             flash->center_on(ob);
         }
         TRACE("game", "delayed spawn: family=%d team=%d delay=%u tick=%u",
@@ -1729,4 +1730,74 @@ void GameWorld::tick()
         remove_from_id_index(ob);
         return true;
     });
+}
+
+// --- Floor-transition landing probe (Z-axis / multi-floor) ------------------
+//
+// Side-effect-free "can ob stand at (x, y) on target_floor?" used by
+// walker::apply_z_motion before every change_floor (and available to any
+// other cross-floor arrival). Mirrors the CTF spawn probe (ctf.cpp
+// spawn_spot_clear / classic_spot_clear): query_passable would route through
+// ob_pass_check, which EATS treasures on overlap and fires collide() side
+// effects — a probe must never do either. Grid probe plus a manual
+// blocking-entity sweep over the TARGET floor's obmap buckets instead.
+// Only ever called on multi-floor code paths, so single-floor levels stay
+// byte-identical.
+
+namespace
+{
+
+[[nodiscard]] bool landing_blocked_by(const walker* other, const walker* ob,
+                                      std::int32_t x, std::int32_t y)
+{
+    if (other == nullptr || other == ob || other->dead())
+        return false;
+    const Order order = other->query_order();
+    const bool blocking =
+        order == Order::Living || order == Order::Generator ||
+        (order == Order::Weapon &&
+         (other->family() == FAMILY_DOOR || other->family() == FAMILY_TREE ||
+          other->family() == FAMILY_BOULDER));
+    if (!blocking)
+        return false;
+    return x + ob->sizex() > other->xpos() &&
+           x < other->xpos() + other->sizex() &&
+           y + ob->sizey() > other->ypos() &&
+           y < other->ypos() + other->sizey();
+}
+
+} // namespace
+
+bool GameWorld::floor_landing_clear(walker* ob, float x, float y,
+                                    int target_floor)
+{
+    if (ob == nullptr)
+        return false;
+    if (!query_grid_passable(x, y, ob, target_floor))
+        return false;
+    if (myobmap == nullptr)
+        return true;
+
+    const std::int32_t xi = static_cast<std::int32_t>(x);
+    const std::int32_t yi = static_cast<std::int32_t>(y);
+    // Walkers register in every 32px obmap bucket their bbox spans; scan all
+    // buckets the landing bbox touches on the target floor (a boolean check
+    // needs no dedup). Dormant walkers are out of the obmap by design and
+    // correctly never block a landing.
+    constexpr std::int32_t kBucket = 32;
+    for (std::int32_t bx = xi; bx < xi + ob->sizex() + kBucket; bx += kBucket)
+    {
+        for (std::int32_t by = yi; by < yi + ob->sizey() + kBucket;
+             by += kBucket)
+        {
+            const std::list<walker*>& pile = myobmap->obmap_get_list(
+                static_cast<short>(bx), static_cast<short>(by), target_floor);
+            for (const walker* other : pile)
+            {
+                if (landing_blocked_by(other, ob, xi, yi))
+                    return false;
+            }
+        }
+    }
+    return true;
 }

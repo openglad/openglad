@@ -25,6 +25,9 @@ void draw_percentage_bar(Sint32 left, Sint32 top, unsigned char somecolor, short
 short score_panel(screen* scr);
 short score_panel(screen* scr, short do_it);
 short new_score_panel(screen* scr, short do_it);
+// From score_panel.cpp (B5)
+void pending_hostile_wave_counts(const GameWorld& world, walker* viewer,
+                                 short& pending, std::uint32_t& next_wake_ticks);
 
 static bool control_pointer_is_live(LevelRuntimeData& level_data, const walker* candidate)
 {
@@ -567,4 +570,213 @@ TEST(GladHud, render_pending_redraw_presents_hud_overlay_in_single_frame)
         score_panel(&spy_screen, 1);
         EXPECT_EQ(capture_rendered_frame(spy_screen), spy_screen.presented_frame);
     }
+}
+
+
+// ---------------------------------------------------------------------------
+// B5: pending-wave HUD (dormant delayed-spawn hostiles)
+// ---------------------------------------------------------------------------
+
+namespace {
+// Isolate the oblist so prior game state doesn't affect counts.
+struct HudObListSwap {
+    std::list<std::unique_ptr<walker>> saved;
+    HudObListSwap()
+    {
+        og::runtime::current_session->myscreen_->world().oblist.splice_into(saved);
+    }
+    ~HudObListSwap()
+    {
+        og::runtime::current_session->myscreen_->world().oblist.clear();
+        og::runtime::current_session->myscreen_->world().oblist.splice(
+            og::runtime::current_session->myscreen_->world().oblist.end(), saved);
+    }
+};
+} // namespace
+
+TEST(GladHud, pending_hostile_wave_counts_splits_dormant_and_counts_down)
+{
+    HudObListSwap swap;
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    const std::uint32_t saved_ltc = world.level_tick_count();
+
+    auto control = make_player(0);
+    auto ally = make_living(FAMILY_ELF, 0);
+    auto awake_foe = make_living(FAMILY_ORC, 1);
+    auto wave1 = make_living(FAMILY_ORC, 1);
+    auto wave2 = make_living(FAMILY_SKELETON, 1);
+    ASSERT_TRUE(control && ally && awake_foe && wave1 && wave2);
+
+    // A dormant ALLY must not count as a pending hostile.
+    ally->set_spawn_delay(200);
+    ally->set_dormant(true);
+    wave1->set_spawn_delay(100);
+    wave1->set_dormant(true);
+    wave2->set_spawn_delay(60);
+    wave2->set_dormant(true);
+
+    walker* const controlp = control.get();
+    walker* const wave2p = wave2.get();
+    world.oblist.push_back(std::move(control));
+    world.oblist.push_back(std::move(ally));
+    world.oblist.push_back(std::move(awake_foe));
+    world.oblist.push_back(std::move(wave1));
+    world.oblist.push_back(std::move(wave2));
+
+    // Wake rule is level_tick_count > spawn_delay, i.e. wake tick is
+    // spawn_delay + 1. At tick 12 the nearest wave (delay 60) is 49 away.
+    world.set_level_tick_count(12);
+    short pending = 0;
+    std::uint32_t ticks = 0;
+    pending_hostile_wave_counts(world, controlp, pending, ticks);
+    EXPECT_EQ(2, static_cast<int>(pending));
+    EXPECT_EQ(49u, ticks);
+
+    // Dead dormant hostiles are not pending; the min moves to delay 100.
+    wave2p->set_dead(1);
+    pending_hostile_wave_counts(world, controlp, pending, ticks);
+    EXPECT_EQ(1, static_cast<int>(pending));
+    EXPECT_EQ(89u, ticks);
+
+    // Past the wake tick already: the countdown clamps to zero.
+    world.set_level_tick_count(500);
+    pending_hostile_wave_counts(world, controlp, pending, ticks);
+    EXPECT_EQ(1, static_cast<int>(pending));
+    EXPECT_EQ(0u, ticks);
+
+    // Null viewer guard.
+    pending_hostile_wave_counts(world, nullptr, pending, ticks);
+    EXPECT_EQ(0, static_cast<int>(pending));
+    EXPECT_EQ(0u, ticks);
+
+    world.set_level_tick_count(saved_ltc);
+}
+
+TEST(GladHud, score_panel_shows_next_wave_countdown_for_dormant_hostiles)
+{
+    screen* s = og::runtime::current_session->myscreen_;
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_TRUE(v != nullptr);
+
+    HudObListSwap swap;
+    GameWorld& world = s->world();
+    const std::uint32_t saved_ltc = world.level_tick_count();
+
+    auto control = make_player(0);
+    auto awake_foe = make_living(FAMILY_ORC, 1);
+    auto wave = make_living(FAMILY_ORC, 1);
+    ASSERT_TRUE(control && awake_foe && wave);
+    wave->set_spawn_delay(60);
+    wave->set_dormant(true);
+
+    walker* const controlp = control.get();
+    walker* const wavep = wave.get();
+    controlp->stats()->set_hitpoints(50);
+    controlp->stats()->set_max_hitpoints(100);
+    controlp->stats()->set_magicpoints(30);
+    controlp->stats()->set_max_magicpoints(80);
+    world.oblist.push_back(std::move(control));
+    world.oblist.push_back(std::move(awake_foe));
+    world.oblist.push_back(std::move(wave));
+
+    walker* const old_control = v->control;
+    const char old_pref_life = v->prefs[PREF_LIFE];
+    const char old_pref_score = v->prefs[PREF_SCORE];
+    const char old_pref_foes = v->prefs[PREF_FOES];
+    v->control = controlp;
+    v->prefs[PREF_LIFE] = PREF_LIFE_TEXT;
+    v->prefs[PREF_SCORE] = PREF_SCORE_OFF; // score count-up uses rng(); keep off
+    v->prefs[PREF_FOES] = PREF_FOES_ON;
+
+    world.set_level_tick_count(12);
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    EXPECT_TRUE(trace_contains("hud", "next_wave awake=1 pending=1 secs=5"))
+        << "one awake foe, one pending wave, 49 ticks -> 5 s at 12 Hz";
+
+    // Once the wave wakes there is nothing pending: classic FOES readout,
+    // no NEXT WAVE line.
+    wavep->set_dormant(false);
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    EXPECT_FALSE(trace_contains("hud", "next_wave"));
+
+    v->control = old_control;
+    v->prefs[PREF_LIFE] = old_pref_life;
+    v->prefs[PREF_SCORE] = old_pref_score;
+    v->prefs[PREF_FOES] = old_pref_foes;
+    world.set_level_tick_count(saved_ltc);
+}
+
+// ---------------------------------------------------------------------------
+// B4: one-shot "the way is clear" notice on level_done 0 -> 1
+// ---------------------------------------------------------------------------
+
+TEST(GladHud, way_clear_notice_fires_once_per_level_and_rearms_on_new_level)
+{
+    screen* s = og::runtime::current_session->myscreen_;
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_TRUE(v != nullptr);
+
+    GameWorld& world = s->world();
+    const int saved_id = world.id;
+    const std::uint32_t saved_tick = world.tick_count_;
+    const short saved_done = world.level_done;
+
+    for (short i = 0; i < s->numviews; i++)
+        s->viewob[i]->clear_text();
+    trace_clear();
+
+    static const char* const kWayClearText = "The way is clear -- you may exit";
+    const auto view_has_way_clear_text = [&]() {
+        for (int slot = 0; slot < MAX_MESSAGES; ++slot)
+            if (v->textlist[slot] == kWayClearText)
+                return true;
+        return false;
+    };
+
+    // Mid-level: hostiles alive (level_done == 0). No announcement.
+    world.id = 4242;
+    world.tick_count_ = 10;
+    world.level_done = 0;
+    ASSERT_TRUE(s->redraw());
+    EXPECT_FALSE(trace_contains("hud", "way_clear"));
+    EXPECT_FALSE(view_has_way_clear_text());
+
+    // Foes cleared with a live exit: the sim flips level_done to 1.
+    world.level_done = 1;
+    world.tick_count_ = 11;
+    ASSERT_TRUE(s->redraw());
+    EXPECT_TRUE(trace_contains("hud", "way_clear"));
+    EXPECT_TRUE(view_has_way_clear_text())
+        << "the one-shot notice must be queued on the view";
+
+    // One-shot: another 0 -> 1 swing on the SAME level must not re-fire.
+    trace_clear();
+    world.level_done = 0;
+    world.tick_count_ = 12;
+    ASSERT_TRUE(s->redraw());
+    world.level_done = 1;
+    world.tick_count_ = 13;
+    ASSERT_TRUE(s->redraw());
+    EXPECT_FALSE(trace_contains("hud", "way_clear"));
+
+    // A new level id re-arms the latch.
+    trace_clear();
+    world.id = 4243;
+    world.tick_count_ = 5;
+    world.level_done = 0;
+    ASSERT_TRUE(s->redraw());
+    world.level_done = 1;
+    world.tick_count_ = 6;
+    ASSERT_TRUE(s->redraw());
+    EXPECT_TRUE(trace_contains("hud", "way_clear"));
+
+    for (short i = 0; i < s->numviews; i++)
+        s->viewob[i]->clear_text();
+    world.id = saved_id;
+    world.tick_count_ = saved_tick;
+    world.level_done = saved_done;
 }

@@ -322,6 +322,16 @@ public:
     float render_interpolation_speed_factor_ = 1.0f;
     std::unique_ptr<DamageNumberRenderContext> damage_number_render_context_;
 
+    // One-shot "the way is clear" announcement latch (bug B4). Render-only
+    // state fed by redraw() from the world's level_done (which the sim
+    // recomputes every tick and snapshots sync to network mirrors): when it
+    // transitions 0 -> 1 (live hostiles cleared, a live exit present), each
+    // view gets a one-time on-screen notice. Never written back to the sim.
+    int way_clear_level_id_ = -1;
+    short way_clear_last_level_done_ = -1;
+    bool way_clear_announced_ = false;
+    void announce_way_clear_if_needed();
+
 private:
     void init_common(short howmany, bool has_display);
 };

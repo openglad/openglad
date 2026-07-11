@@ -1151,7 +1151,13 @@ walker  *walker::create_weapon()
 		weapon->set_team_num(team_num());
 		weapon->set_owner(this);
 		weapon->set_floor(floor());  // summons spawn on the summoner's floor
-		weapon->set_difficulty(static_cast<std::uint32_t>(stats_->level()));
+		// A12b: no set_difficulty here. fire()'s Order::Generator branch rolls
+		// the spawn's real level and applies set_difficulty once; the legacy
+		// 2002 code ALSO applied it here at the generator's own level, so
+		// every spawn compounded two additive hp/regen boosts and a squared
+		// difficulty multiplier (e.g. genL=5 rolled L3 base-10hp: 384 vs the
+		// intended 109). Deliberate semantic fix; affected parity goldens
+		// regenerated (see commit).
 		return weapon;
 	}
 	// Normally, only livings fire
@@ -1637,6 +1643,7 @@ bool walker::death()
 			newob->stats()->set_hitpoints(
 			    newob->stats()->hitpoints() * (0.75f / 2.0f));  // 75%, divided by 2, since score is doubled at end of level
 			newob->set_team_num(team_num());
+			newob->set_floor(floor());  // heart drops on the floor we died on (A8)
 			newob->center_on(this);
 			}
 		}
@@ -1680,6 +1687,7 @@ bool walker::death()
 				newob->set_team_num(team_num());
 				newob->stats()->set_level(stats_->level());
 				newob->set_ani_type(ANI_EXPLODE);
+				newob->set_floor(floor());  // burn on the generator's floor (A8)
 				newob->setxy(xpos()+current_game->world->rng_.next(sizex()-8)+4, ypos()+4+current_game->world->rng_.next(sizey()-8) );
 					newob->set_damage(static_cast<float>(stats_->level()) * 2.0f);
 					newob->set_frame(static_cast<short>(current_game->world->rng_.next(3)));
@@ -1718,6 +1726,7 @@ void walker::generate_bloodspot()
 
 	bloodstain->set_team_num(team_num());
 	bloodstain->set_dead(0);
+	bloodstain->set_floor(floor());  // stain marks the floor we died on (A8)
 	bloodstain->setxy(xpos(), ypos());
 	//data = myscreen->myloader->graphics[PIX(Order::Treasure, FAMILY_STAIN)];
 	// We can't select other 'bloodspot' frames, because set_frame
@@ -1795,9 +1804,55 @@ void walker::change_floor(short new_floor)
 		m->add(this, xpos(), ypos());
 }
 
+// A5: deterministic landing nudge for air falls. When the spot directly below
+// a faller is blocked (wall top on the lower floor, or an occupant), probe
+// outward from the faller's centre cell in a FIXED ring-by-ring order
+// (row-major within each ring — no RNG, so replays and parity captures stay
+// deterministic) for the nearest clear cell on the target floor, out to
+// kFallNudgeRadius rings. Performs the floor change + nudge (set_floor before
+// setxy: the obmap is floor-keyed) and returns true when a cell is found.
+static bool land_on_nearest_clear_cell(GameWorld& w, walker& faller,
+                                       short target_floor,
+                                       std::int32_t cx, std::int32_t cy)
+{
+	constexpr std::int32_t kFallNudgeRadius = 4;
+	const PixieData& g = w.grid_for_floor(target_floor);
+	if (!g.valid())
+		return false;
+	for (std::int32_t r = 0; r <= kFallNudgeRadius; ++r)
+	{
+		for (std::int32_t dy = -r; dy <= r; ++dy)
+		{
+			for (std::int32_t dx = -r; dx <= r; ++dx)
+			{
+				if (std::max(std::abs(dx), std::abs(dy)) != r)
+					continue; // ring perimeter only
+				const std::int32_t nx = cx + dx;
+				const std::int32_t ny = cy + dy;
+				if (nx < 0 || ny < 0 || nx >= g.w || ny >= g.h)
+					continue;
+				const std::int32_t px = nx * GRID_SIZE;
+				const std::int32_t py = ny * GRID_SIZE;
+				if (!w.floor_landing_clear(&faller, static_cast<float>(px),
+				                           static_cast<float>(py),
+				                           target_floor))
+					continue;
+				faller.change_floor(target_floor);
+				faller.setxy(px, py);
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 // Per-tick vertical handling for stacked floors: fall through "air" tiles to the
 // floor below, and take Z-stairs up/down. Strictly a no-op on single-floor
 // levels (floor_count()<=1), so it never affects legacy levels or parity.
+// Every floor change validates its destination with floor_landing_clear —
+// unvalidated arrivals used to bounce climbers off occupied stairs (A2),
+// entangle walkers in unresolvable obmap overlaps (A3), and let running
+// walkers materialize inside walls/torches on the other floor (A4/A5).
 void walker::apply_z_motion()
 {
 	GameWorld* w = (current_game != nullptr) ? current_game->world : nullptr;
@@ -1832,7 +1887,14 @@ void walker::apply_z_motion()
 			target = static_cast<short>(floor() - 1);
 		if (target != floor())
 		{
-			change_floor(target);
+			// A2/A3/A4: the aligned landing spot on the target floor must
+			// be grid-passable and free of blocking entities, else the
+			// transition is DENIED — the walker stays on its current floor
+			// (free to walk off the stair) and re-probes after the same
+			// cooldown, taking the stair as soon as the far side clears.
+			if (w->floor_landing_clear(this, static_cast<float>(xpos()),
+			                           static_cast<float>(ypos()), target))
+				change_floor(target);
 			z_cooldown_ = 6;
 		}
 		return;
@@ -1844,8 +1906,27 @@ void walker::apply_z_motion()
 	{
 		if (floor() > 0)
 		{
-			change_floor(static_cast<short>(floor() - 1));
-			z_cooldown_ = 2;
+			const short below = static_cast<short>(floor() - 1);
+			if (w->floor_landing_clear(this, static_cast<float>(xpos()),
+			                           static_cast<float>(ypos()), below))
+			{
+				// The spot straight down is clear: land in place.
+				change_floor(below);
+				z_cooldown_ = 2;
+			}
+			else if (land_on_nearest_clear_cell(*w, *this, below, cx, cy))
+			{
+				// A5: straight down is a wall top / occupied — nudged to
+				// the nearest clear cell of the floor below instead of
+				// materializing inside the blockage.
+				z_cooldown_ = 2;
+			}
+			else
+			{
+				// No clear landing within the nudge radius: do not fall
+				// at all (hover on the air tile) and re-probe later.
+				z_cooldown_ = 6;
+			}
 		}
 		else if (!dead())
 		{

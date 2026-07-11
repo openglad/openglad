@@ -927,3 +927,64 @@ TEST_F(WestlandsCampaignTest, high_pass_always_snows)
     EXPECT_NE(WeatherKind::Snow, vale.world().weather())
         << "Snow comes only from the terrain override";
 }
+
+// ---------------------------------------------------------------------------
+// (A11) Authored guards: the shipped package carries 184 Living GUARD command
+// bytes (the mapgen's place_living(guard=true) posts). The loader now honors
+// them, so garrison sentries hold their posts instead of roaming. Pin the
+// per-level counts for two representative levels and prove the posts hold:
+// act_guard() never walks, so with the crew absent (scen14 authors no team-0
+// livings) every guard must sit at its authored spot through a real sim run.
+// ---------------------------------------------------------------------------
+TEST_F(WestlandsCampaignTest, authored_guards_load_as_guards_and_hold_post)
+{
+    // scen14 "The Wizard's Vale": 23 tower-garrison guards, team 2 only.
+    LoadedWestlandsLevel fx(14, /*seed=*/42);
+    ASSERT_TRUE(fx.loaded);
+    GameWorld& world = fx.world();
+
+    std::vector<walker*> guards;
+    for (const auto& uptr : world.oblist)
+    {
+        walker* ob = uptr.get();
+        if (ob != nullptr && ob->query_order() == Order::Living &&
+            ob->act_type() == ACT_GUARD)
+            guards.push_back(ob);
+    }
+    ASSERT_EQ(23u, guards.size())
+        << "scen14 authors 23 Living GUARD commands (mapgen guard posts)";
+
+    std::vector<std::pair<float, float>> posts;
+    posts.reserve(guards.size());
+    for (const walker* g : guards)
+        posts.emplace_back(g->xpos(), g->ypos());
+
+    for (int t = 0; t < 60; ++t)
+        world.tick();
+    ASSERT_GE(world.level_tick_count(), 60u) << "the sim must actually run";
+
+    for (std::size_t i = 0; i < guards.size(); ++i)
+    {
+        if (guards[i]->dead())
+            continue; // (defensive; no foes exist on this run)
+        EXPECT_EQ(posts[i].first, guards[i]->xpos())
+            << "guard " << i << " left its post";
+        EXPECT_EQ(posts[i].second, guards[i]->ypos())
+            << "guard " << i << " left its post";
+        EXPECT_EQ(ACT_GUARD, guards[i]->act_type());
+    }
+
+    // Cross-check a second level's authored count: scen2 "The Forest Road"
+    // posts 20 guards across the ambushes (teams 0 and 2).
+    LoadedWestlandsLevel road(2);
+    ASSERT_TRUE(road.loaded);
+    int road_guards = 0;
+    for (const auto& uptr : road.world().oblist)
+    {
+        const walker* ob = uptr.get();
+        if (ob != nullptr && ob->query_order() == Order::Living &&
+            ob->act_type() == ACT_GUARD)
+            ++road_guards;
+    }
+    EXPECT_EQ(20, road_guards);
+}

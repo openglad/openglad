@@ -24,8 +24,12 @@
 
 #include <openglad/interface/game_context.h>
 
+#include <openglad/core/test_trace.h>
+
+#include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <format>
 #include <string>
 
@@ -43,6 +47,42 @@ bool float_eq(float a, float b);
 
 short remaining_foes(screen* s, walker* myguy);
 short remaining_team(screen* s, char myteam);
+
+// B5: dormant (delayed-spawn) hostiles pending for this viewer, plus the sim
+// ticks until the earliest of them wakes (wake rule in the act phase:
+// level_tick_count > spawn_delay). Snapshot mirrors keep their own level-load
+// copies of dormant walkers (reconcile never erases them), so this is
+// readable render-side in every mode. Non-static for the HUD tests.
+void pending_hostile_wave_counts(const GameWorld& world, walker* viewer,
+                                 short& pending, std::uint32_t& next_wake_ticks)
+{
+    pending = 0;
+    next_wake_ticks = 0;
+    if (viewer == nullptr)
+        return;
+
+    const std::uint32_t now = world.level_tick_count();
+    bool have_min = false;
+    std::uint32_t min_ticks = 0;
+    for (const auto& uptr : world.oblist)
+    {
+        walker* const w = uptr.get();
+        if (w == nullptr || w->dead() || !w->dormant() ||
+            w->query_order() != Order::Living || viewer->is_friendly(w))
+            continue;
+
+        pending = static_cast<short>(pending + 1);
+        const std::uint32_t wake_tick =
+            static_cast<std::uint32_t>(w->spawn_delay()) + 1u;
+        const std::uint32_t remaining = wake_tick > now ? wake_tick - now : 0u;
+        if (!have_min || remaining < min_ticks)
+        {
+            have_min = true;
+            min_ticks = remaining;
+        }
+    }
+    next_wake_ticks = min_ticks;
+}
 
 short score_panel(screen* s, short do_it);
 
@@ -445,8 +485,21 @@ short new_score_panel(screen* s, short /*do_it*/)
 
             if (s->viewob[players]->prefs[PREF_FOES] == PREF_FOES_ON)
             {
+                // B5: split pending (dormant delayed-spawn) hostiles out of
+                // the foe count and show a countdown to the next wave, so
+                // "FOES: 3" over an empty map reads as "3 foes are coming",
+                // not as a bug. remaining_foes counts dormant hostiles too
+                // (they are alive), so awake = total - pending.
+                short pending_foes = 0;
+                std::uint32_t next_wake_ticks = 0;
+                pending_hostile_wave_counts(
+                    s->world_, control, pending_foes, next_wake_ticks);
+                const int awake_foes = std::max(
+                    0, static_cast<int>(tempfoes) - static_cast<int>(pending_foes));
+                const bool show_wave = pending_foes > 0;
+
                 if (draw_button)
-                    s->draw_button(rm-57, tm+1, rm-2, tm+16, 1, 1);
+                    s->draw_button(rm-57, tm+1, rm-2, tm + (show_wave ? 24 : 16), 1, 1);
 
                 message = std::format("TEAM: {}", tempallies);
 #ifndef USE_TOUCH_INPUT
@@ -455,12 +508,39 @@ short new_score_panel(screen* s, short /*do_it*/)
                 mytext.write_xy(rm - 55, tm+2 + 44 + 8, message.c_str(), text_color, static_cast<short>(1));
 #endif
 
-                message = std::format("FOES: {}", tempfoes);
+                if (show_wave)
+                    message = std::format("FOES: {} (+{})",
+                                          awake_foes, pending_foes);
+                else
+                    message = std::format("FOES: {}", tempfoes);
+                // Right-align when the (+m) suffix is shown so it stays
+                // inside the viewport; the classic position is byte-identical
+                // otherwise.
+                const Sint32 foes_x = show_wave
+                    ? std::max<Sint32>(lm, rm - 2 - 6 * static_cast<Sint32>(message.size()))
+                    : rm - 55;
 #ifndef USE_TOUCH_INPUT
-                mytext.write_xy(rm-55, tm+10, message.c_str(), text_color, static_cast<short>(1));
+                mytext.write_xy(foes_x, tm+10, message.c_str(), text_color, static_cast<short>(1));
 #else
-                mytext.write_xy(rm-55, tm+10 + 44 + 8, message.c_str(), text_color, static_cast<short>(1));
+                mytext.write_xy(foes_x, tm+10 + 44 + 8, message.c_str(), text_color, static_cast<short>(1));
 #endif
+
+                if (show_wave)
+                {
+                    const std::uint32_t wave_seconds = (next_wake_ticks + 11u) / 12u;
+                    message = std::format("NEXT WAVE: {}s", wave_seconds);
+                    const Sint32 wave_x = std::max<Sint32>(
+                        lm, rm - 2 - 6 * static_cast<Sint32>(message.size()));
+#ifndef USE_TOUCH_INPUT
+                    mytext.write_xy(wave_x, tm+18, message.c_str(), text_color, static_cast<short>(1));
+#else
+                    mytext.write_xy(wave_x, tm+18 + 44 + 8, message.c_str(), text_color, static_cast<short>(1));
+#endif
+                    TRACE("hud", "next_wave awake=%d pending=%d secs=%u",
+                          awake_foes,
+                          static_cast<int>(pending_foes),
+                          static_cast<unsigned>(wave_seconds));
+                }
             }
         }
     }

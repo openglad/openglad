@@ -11,8 +11,9 @@ Design: scratchpad westlands tiles design (see docs/z-axis-design.md for the
 add-a-tile engine checklist). Key palette facts (our.pal, 6-bit RGB):
   - 208-223 WATER cycled band, 224-231 ORANGE cycled band: do_cycle rotates
     these every frame. LAVA deliberately lives in 224-231 (the rotation IS the
-    flow animation); MARSH carries a couple of 208/209 glint pixels; nothing
-    else may touch 208-231.
+    flow animation); nothing else may touch 208-231. MARSH glints are STATIC
+    pale cyans (117/118) — cycled glints blinked and tiled as a dot grid
+    (playtest bug #13).
   - 232-233 static copy of the fire ramp (lava crust), 134 dark brown (cracks).
   - 27-31 white/grey ramp (snow), 139-142 mud browns + 160-165 murky greens
     (marsh), 248-253 warm dark grey-browns + 3 cold dark grey (ash).
@@ -112,8 +113,8 @@ MARSH_BOG_TABLE = [
     (900, 164),   # deep murk (0,8,3)
     (955, 140),   # mud fleck
     (990, 165),   # black-green pit (0,6,2)
-    (995, 208),   # WATER-band glint (cycled -- deliberate)
-    (1000, 209),  # WATER-band glint
+    (995, 118),   # static pale-cyan glint (28,39,39) -- wet sheen
+    (1000, 117),  # static pale-cyan glint (26,42,42), brighter
 ]
 
 
@@ -202,10 +203,10 @@ def check(name, rows):
         assert orange >= len(flat) * 40 // 100, f"{name}: <40% flowing pixels"
         assert water == 0, f"{name}: lava may not touch the WATER band"
     elif "marsh" in name:
-        glints = sum(1 for v in flat if v in (208, 209))
+        glints = sum(1 for v in flat if v in (117, 118))
         assert 1 <= glints <= 8, f"{name}: want 1..8 glints, got {glints}"
-        assert all(not (210 <= v <= 231) for v in flat), \
-            f"{name}: only 208/209 may shimmer"
+        assert water == 0 and orange == 0, \
+            f"{name}: marsh may not touch a cycled band (blinking dot grid)"
     elif "ash" in name:
         assert water == 0 and orange == 0, f"{name}: ash must not shimmer"
 

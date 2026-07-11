@@ -20,12 +20,106 @@
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/obmap.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/gameplay/sim_emit.h>
 
 #include <list>
+
+namespace
+{
+
+// Eat-free teleport destination probe (bug A6/A7 fix; a DELIBERATE semantic
+// change, parity-audited). The legacy probe was GameWorld::query_passable,
+// which had two defects:
+//  (a) its grid half accepts trees/boulders/water/lava under the TRANSIENT
+//      flight bypass (flight potion / stuck-rule flight_left), so a blink
+//      cast mid-flight parked the caster permanently inside impassable
+//      scenery once the flight ticks ran out — probe under ground rules
+//      instead (permanent BIT_FLYING/BIT_FORESTWALK/BIT_ETHEREAL still
+//      apply, so genuine flyers keep their landing rights);
+//  (b) its obmap half routes through ob_pass_check, whose overlap scan EATS
+//      any treasure at the probed spot and fires collide() handlers — a
+//      REJECTED destination must not consume potions/gold the caster never
+//      touched.
+// Blocking-entity shape matches the CTF spawn probe (spawn_spot_clear,
+// src/gameplay/ctf/ctf.cpp): livings, generators, and solid weapon-order
+// scenery (doors/trees/boulders) block; treasures and FX do not. The A2-A4
+// stair-landing fix is expected to promote a shared floor-aware helper onto
+// GameWorld; fold this local copy into it once that exists.
+bool teleport_spot_blocked_by(const walker* other, const walker* self,
+                              std::int32_t x, std::int32_t y, float self_z)
+{
+	if (other == nullptr || other == self || other->dead())
+		return false;
+	const Order order = other->query_order();
+	const bool blocking =
+		order == Order::Living || order == Order::Generator ||
+		(order == Order::Weapon &&
+		 (other->family() == FAMILY_DOOR || other->family() == FAMILY_TREE ||
+		  other->family() == FAMILY_BOULDER));
+	if (!blocking)
+		return false;
+	// Cylinder z-overlap gate, mirroring ob_pass_check: height-disjoint pairs
+	// (e.g. a flyer hovering above the landing spot) never collide.
+	// sizez()==0 is the full-height sentinel.
+	if (self->sizez() > 0 && other->sizez() > 0)
+	{
+		const float sz2 = self_z + static_cast<float>(self->sizez());
+		const float oz1 = other->worldz();
+		const float oz2 = oz1 + static_cast<float>(other->sizez());
+		if (sz2 <= oz1 || oz2 <= self_z)
+			return false;
+	}
+	return x + self->sizex() > other->xpos() &&
+	       x < other->xpos() + other->sizex() &&
+	       y + self->sizey() > other->ypos() &&
+	       y < other->ypos() + other->sizey();
+}
+
+bool teleport_landing_clear(GameWorld& world, walker* self,
+                            std::int32_t x, std::int32_t y, int target_floor)
+{
+	// Ground-rules grid probe: mask the transient flight ticks for the
+	// duration of the query so the flight bypass cannot bless the landing.
+	const short saved_flight = self->flight_left();
+	self->set_flight_left(0);
+	const bool grid_ok = world.query_grid_passable(
+		static_cast<float>(x), static_cast<float>(y), self, target_floor);
+	self->set_flight_left(saved_flight);
+	if (!grid_ok)
+		return false;
+	if (world.myobmap == nullptr)
+		return true;
+	// ob_pass_check lets BIT_NO_COLLIDE walkers through every overlap; keep
+	// that: they may blink onto occupied ground exactly as before.
+	if (self->stats() != nullptr &&
+	    self->stats()->query_bit_flags(BIT_NO_COLLIDE))
+		return true;
+	const float self_z =
+		(target_floor == self->floor()) ? self->worldz() : 0.0f;
+	// Walkers register in every 32px obmap bucket their bbox spans; scan all
+	// buckets the landing bbox touches (a boolean check needs no dedup).
+	constexpr std::int32_t kBucket = 32;
+	for (std::int32_t bx = x; bx < x + self->sizex() + kBucket; bx += kBucket)
+	{
+		for (std::int32_t by = y; by < y + self->sizey() + kBucket; by += kBucket)
+		{
+			const std::list<walker*>& pile = world.myobmap->obmap_get_list(
+				static_cast<short>(bx), static_cast<short>(by), target_floor);
+			for (const walker* other : pile)
+			{
+				if (teleport_spot_blocked_by(other, self, x, y, self_z))
+					return false;
+			}
+		}
+	}
+	return true;
+}
+
+} // namespace
 
 bool walker::special()
 {
@@ -81,11 +175,11 @@ bool walker::teleport()
 	std::int32_t distance = 0;
 
 	// Stamp the self-teleport marker the moment the blink begins, BEFORE
-	// any destination probing: query_passable fires eat_me on whatever
-	// overlaps the probed spot, and consumers (the CTF flag rules) must be
-	// able to tell those probe-eats — and the blink itself — apart from
-	// real movement within this same tick. Server-only transient, stale at
-	// every tick boundary; nothing outside CTF reads it.
+	// any destination probing: consumers (the CTF flag rules) must be able
+	// to tell the blink apart from real movement within this same tick.
+	// Server-only transient, stale at every tick boundary; nothing outside
+	// CTF reads it. (The probe itself is eat-free nowadays — see
+	// teleport_landing_clear — but the blink/movement distinction remains.)
 	if (current_game != nullptr && current_game->world != nullptr)
 		set_last_self_teleport_tick(current_game->world->tick_count_);
 
@@ -101,15 +195,28 @@ bool walker::teleport()
 		        !ob->dead()
 		   )
 		{
-			// Found our marker!
-				distance = distance_to_ob(ob);
-					if (current_game->world->query_passable(ob->xpos(), ob->ypos(), this) && (distance > 64))
-					{
-						center_on(ob);
-						ob->set_lifetime(ob->lifetime() - 1);
-					if (ob->lifetime() < 1)
-					{
-						ob->set_dead(1);
+			// Found our marker! We land centered on it (same math as
+			// center_on), on the MARKER's floor, provided the landing spot
+			// is genuinely clear: ground-rules grid + eat-free occupancy
+			// probe (bug A6), floor-aware for stacked levels (bug A7).
+			distance = distance_to_ob(ob);
+			const std::int32_t landx = ob->xpos() + ob->sizex() / 2 - sizex() / 2;
+			const std::int32_t landy = ob->ypos() + ob->sizey() / 2 - sizey() / 2;
+			const short marker_floor = ob->floor();
+			if ((distance > 64) &&
+			    teleport_landing_clear(*current_game->world, this,
+			                           landx, landy, marker_floor))
+			{
+				// Floor first, then position: change_floor re-buckets the
+				// obmap at the walker's CURRENT coordinates (no-op when
+				// already on the marker's floor), then center_on/setxy
+				// moves it within that floor.
+				change_floor(marker_floor);
+				center_on(ob);
+				ob->set_lifetime(ob->lifetime() - 1);
+				if (ob->lifetime() < 1)
+				{
+					ob->set_dead(1);
 					ob->death();
 				}
 				return 1;
@@ -130,17 +237,29 @@ bool walker::teleport()
 	    current_game->world->pixmaxx <= 0 || current_game->world->pixmaxy <= 0)
 		return 0;
 
+	GameWorld& world = *current_game->world;
+	const int floors = world.floor_count();
+	short target_floor = floor();
 	std::int32_t keep_going = 200; // maxtries
 	do
 	{
-		newx = static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(current_game->world->grid.w))) * GRID_SIZE;
-		newy = static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(current_game->world->grid.h))) * GRID_SIZE;
+		newx = static_cast<std::int32_t>(world.rng_.next(static_cast<std::uint32_t>(world.grid.w))) * GRID_SIZE;
+		newy = static_cast<std::int32_t>(world.rng_.next(static_cast<std::uint32_t>(world.grid.h))) * GRID_SIZE;
+		// Stacked-floor levels (bug A7): the blink considers EVERY floor —
+		// one uniform floor draw per attempt; floors with no clear cell at
+		// the drawn spot simply reject and retry. The extra draw is GATED on
+		// floor_count() > 1 so single-floor levels keep a byte-identical
+		// RNG stream (same gating pattern as apply_z_motion).
+		if (floors > 1)
+			target_floor = static_cast<short>(world.rng_.next(static_cast<std::uint32_t>(floors)));
 		keep_going--;
 	} while (keep_going > 0 &&
-	         !current_game->world->query_passable(static_cast<float>(newx), static_cast<float>(newy), this));
+	         !teleport_landing_clear(world, this, newx, newy, target_floor));
 
 	if (keep_going > 0)
 	{
+		// Floor before position (see the marker path above).
+		change_floor(target_floor);
 		setxy(newx, newy);
 		return 1;
 	}
@@ -160,7 +279,11 @@ bool walker::teleport_ranged(std::int32_t range)
 	newx = static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(2 * range))) - range + xpos();
 	newy = static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(2 * range))) - range + ypos();
 
-	while(!current_game->world->query_passable(static_cast<float>(newx), static_cast<float>(newy), this) && keep_going)
+	// Same-floor by design: this is a short-range tactical escape hop (the
+	// range is 2D), not the mage's full blink — cross-floor travel stays the
+	// business of walker::teleport. The destination probe is the shared
+	// ground-rules + eat-free one (bug A6).
+	while(!teleport_landing_clear(*current_game->world, this, newx, newy, floor()) && keep_going)
 	{
 		newx = static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(2 * range))) - range + xpos();
 		newy = static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(2 * range))) - range + ypos();
