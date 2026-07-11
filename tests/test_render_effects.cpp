@@ -2690,3 +2690,309 @@ TEST(RenderEffects, screen_shake_gates_editor_other_floors_and_off_screen)
 }
 
 
+
+// ---------------------------------------------------------------------------
+// FX-capture: effect close-up scenes for the visual review site
+// (scripts/fx_review). Skipped unless OG_FX_CAPTURE_DIR is set, so it costs
+// nothing in normal ctest runs. Each scene renders through the real
+// renderer with live palette cycling and dumps P6 PPM frames to
+// $OG_FX_CAPTURE_DIR/<scene>/NNN.ppm; encode with scripts/fx_review/make_site.py.
+// Run standalone with OG_FX_CAPTURE_DIR=<dir>:
+//   ./build/ci-test/og_test_rendering --gtest_filter='RenderEffects.zz_capture_effect_scenes'
+// ---------------------------------------------------------------------------
+
+namespace fx_capture
+{
+
+void dump_frame(viewscreen* vs, const char* scene, int frame)
+{
+    const char* base = getenv("OG_FX_CAPTURE_DIR");
+    ASSERT_NE(nullptr, base);
+    const int vw = vs->endx - vs->xloc;
+    const int vh = vs->endy - vs->yloc;
+    const std::vector<RGB> shot = grab_viewport(vs);
+    char dir[512];
+    snprintf(dir, sizeof(dir), "%s/%s", base, scene);
+    std::filesystem::create_directories(dir);
+    char path[512];
+    snprintf(path, sizeof(path), "%s/%s/%03d.ppm", base, scene, frame);
+    FILE* fp = fopen(path, "wb");
+    ASSERT_NE(nullptr, fp);
+    fprintf(fp, "P6\n%d %d\n255\n", vw, vh);
+    for (const RGB& p : shot)
+    {
+        fputc(p.r, fp);
+        fputc(p.g, fp);
+        fputc(p.b, fp);
+    }
+    fclose(fp);
+}
+
+} // namespace fx_capture
+
+TEST(RenderEffects, zz_capture_effect_scenes)
+{
+    if (!getenv("OG_FX_CAPTURE_DIR"))
+        GTEST_SKIP() << "set OG_FX_CAPTURE_DIR to record";
+
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    GameWorld& world = scr()->world();
+    EffectsCfgGuard guard;
+    Sint32 cyc = 0;
+
+    const auto run_scene = [&](const char* name, int frames,
+                               const std::function<void()>& setup,
+                               const std::function<void(int)>& per_frame) {
+        prepare_world();
+        all_effects_off();
+        world.set_weather(WeatherKind::None);
+        fill_camera_grid(static_cast<unsigned char>(PIX_GRASS1));
+        walker* control = world.add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, control);
+        control->setxy(static_cast<short>(160), static_cast<short>(120));
+        vs->control = control;
+        setup();
+        effects_reset_for_testing();
+        ASSERT_TRUE(do_redraw(vs)); // settle the camera
+        for (int wu = 0; wu < 8; wu++) // warmup: converge alpha surfaces
+        {
+            effects_advance_frame();
+            ASSERT_TRUE(do_redraw(vs));
+            scr()->do_cycle(cyc++, 3);
+        }
+        for (int f = 0; f < frames; f++)
+        {
+            per_frame(f);
+            effects_advance_frame();
+            ASSERT_TRUE(do_redraw(vs));
+            scr()->do_cycle(cyc++, 3); // real-loop palette cycling
+            fx_capture::dump_frame(vs, name, f);
+        }
+        world.delete_objects();
+        world.set_floor_count(1);
+        vs->control = nullptr;
+        effects_reset_for_testing();
+    };
+
+    walker* mover = nullptr;
+    walker* arc = nullptr;
+    walker* extra = nullptr;
+    // Fire sprites spawn on a grey frame; advance them onto the flame art.
+    const auto fire_frame = [&](walker* w) { if (w) w->set_frame(1); };
+
+    run_scene("shadows", 72,
+        [&] {
+            cfg.apply_setting("effects", "shadows", "on");
+            mover = world.add_ob(Order::Living, FAMILY_SOLDIER);
+            mover->setxy(static_cast<short>(90), static_cast<short>(90));
+            arc = world.add_ob(Order::Weapon, FAMILY_KNIFE);
+            arc->setxy(static_cast<short>(110), static_cast<short>(150));
+        },
+        [&](int f) {
+            mover->setxy(static_cast<short>(90 + f * 2), static_cast<short>(90));
+            arc->setxy(static_cast<short>(110 + f * 2), static_cast<short>(150));
+            arc->set_worldz(24.0f * std::abs(std::sin(static_cast<float>(f) * 0.13f)));
+        });
+
+    run_scene("glass_reflections", 72,
+        [&] {
+            cfg.apply_setting("effects", "reflections", "on");
+            for (int j = 5; j < 11; j++)
+                for (int i = 5; i < 15; i++)
+                    world.grid.data[i + world.grid.w * j] =
+                        static_cast<unsigned char>(PIX_GLASS);
+            mover = world.add_ob(Order::Living, FAMILY_SOLDIER);
+            mover->setxy(static_cast<short>(70), static_cast<short>(100));
+        },
+        [&](int f) { mover->setxy(static_cast<short>(70 + f * 2), static_cast<short>(100)); });
+
+    run_scene("water_reflections", 72,
+        [&] {
+            cfg.apply_setting("effects", "reflections", "on");
+            for (int j = 8; j < 13; j++)
+                for (int i = 2; i < 22; i++)
+                    world.grid.data[i + world.grid.w * j] =
+                        static_cast<unsigned char>(PIX_WATER1);
+            mover = world.add_ob(Order::Living, FAMILY_SOLDIER);
+            mover->setxy(static_cast<short>(70), static_cast<short>(118));
+        },
+        [&](int f) { mover->setxy(static_cast<short>(70 + f * 2), static_cast<short>(118)); });
+
+    run_scene("ripples", 96,
+        [&] {
+            cfg.apply_setting("effects", "ripples", "on");
+            for (int j = 5; j < 13; j++)
+                for (int i = 3; i < 19; i++)
+                    world.grid.data[i + world.grid.w * j] =
+                        static_cast<unsigned char>(PIX_WATER1);
+            mover = world.add_ob(Order::Living, FAMILY_SOLDIER);
+            mover->setxy(static_cast<short>(70), static_cast<short>(140));
+            extra = world.add_ob(Order::Living, FAMILY_SOLDIER);
+            extra->setxy(static_cast<short>(200), static_cast<short>(120));
+        },
+        [&](int f) { mover->setxy(static_cast<short>(70 + f), static_cast<short>(140)); });
+
+    run_scene("clouds", 144,
+        [&] {
+            cfg.apply_setting("effects", "weather", "on");
+            for (int j = 9; j < 14; j++)
+                for (int i = 12; i < 21; i++)
+                    world.grid.data[i + world.grid.w * j] =
+                        static_cast<unsigned char>(PIX_WATER1);
+            world.set_weather(WeatherKind::Clouds);
+        },
+        [&](int) {});
+
+    run_scene("rain", 128,
+        [&] {
+            cfg.apply_setting("effects", "weather", "on");
+            for (int j = 9; j < 14; j++)
+                for (int i = 12; i < 21; i++)
+                    world.grid.data[i + world.grid.w * j] =
+                        static_cast<unsigned char>(PIX_WATER1);
+            world.set_weather(WeatherKind::Rain);
+            // Wind the deterministic weather clock so the scheduled
+            // lightning flash lands early in the recorded loop.
+            for (int t = 0; t < 592; t++)
+                effects_advance_frame();
+        },
+        [&](int) {});
+
+    run_scene("fire_glow", 160,
+        [&] {
+            cfg.apply_setting("effects", "fire_glow", "on");
+            mover = world.add_ob(Order::Living, FAMILY_FIREELEMENTAL);
+            mover->setxy(static_cast<short>(110), static_cast<short>(90));
+            arc = world.add_ob(Order::Weapon, FAMILY_FIREBALL);
+            arc->setxy(static_cast<short>(210), static_cast<short>(130));
+            fire_frame(arc);
+        },
+        [&](int) {});
+
+    run_scene("trails", 72,
+        [&] {
+            cfg.apply_setting("effects", "trails", "on");
+            arc = world.add_ob(Order::Weapon, FAMILY_FIREBALL);
+            arc->setxy(static_cast<short>(60), static_cast<short>(80));
+            fire_frame(arc);
+            extra = world.add_ob(Order::Weapon, FAMILY_KNIFE);
+            extra->setxy(static_cast<short>(260), static_cast<short>(150));
+        },
+        [&](int f) {
+            arc->setxy(static_cast<short>(60 + f * 3), static_cast<short>(80 + f));
+            extra->setxy(static_cast<short>(260 - f * 3), static_cast<short>(150));
+        });
+
+    run_scene("dust", 96,
+        [&] {
+            cfg.apply_setting("effects", "dust", "on");
+            world.set_floor_count(2);
+            fill_floor_grid(world, 1, static_cast<unsigned char>(PIX_GRASS1));
+            mover = world.add_ob(Order::Living, FAMILY_SOLDIER);
+            mover->set_floor(1);
+            mover->setxy(static_cast<short>(140), static_cast<short>(110));
+        },
+        [&](int f) {
+            mover->setxy(static_cast<short>(140 + ((f % 40) < 20 ? f % 20 : 20 - f % 20) * 2), static_cast<short>(110));
+        });
+
+    run_scene("depth_tint", 96,
+        [&] {
+            cfg.apply_setting("effects", "depth_tint", "on");
+            cfg.apply_setting("effects", "shadows", "on");
+            cfg.apply_setting("graphics", "floor_ghost", "on");
+            world.set_floor_count(3);
+            for (int fl = 1; fl < 3; fl++)
+            {
+                fill_floor_grid(world, fl, static_cast<unsigned char>(PIX_GRASS1));
+                PixieData& g = world.grid_for_floor(fl);
+                for (int j = 4; j < 10; j++)
+                    for (int i = 5; i < 13; i++)
+                        g.data[i + g.w * j] = static_cast<unsigned char>(PIX_AIR);
+            }
+            vs->control->set_floor(2);
+            // Characters on the exposed lower floors: one pacing one floor
+            // down, one two floors down — both must read progressively colder.
+            mover = world.add_ob(Order::Living, FAMILY_SOLDIER);
+            mover->set_floor(1);
+            mover->setxy(static_cast<short>(90), static_cast<short>(90));
+            extra = world.add_ob(Order::Living, FAMILY_SOLDIER);
+            extra->set_floor(0);
+            extra->setxy(static_cast<short>(150), static_cast<short>(110));
+        },
+        [&](int f) {
+            mover->setxy(static_cast<short>(90 + ((f % 48) < 24 ? f % 24 : 24 - f % 24) * 2),
+                         static_cast<short>(90));
+            vs->control->setxy(static_cast<short>(150 + f / 4), static_cast<short>(120));
+        });
+
+    run_scene("screen_shake", 48,
+        [&] {
+            cfg.apply_setting("effects", "screen_shake", "on");
+            extra = world.add_ob(Order::FX, FAMILY_EXPLOSION);
+            extra->setxy(static_cast<short>(170), static_cast<short>(110));
+        },
+        [&](int) {});
+
+    run_scene("all_together", 144,
+        [&] {
+            for (const char* key : {"shadows", "reflections", "weather",
+                                    "ripples", "trails", "fire_glow",
+                                    "screen_shake"})
+                cfg.apply_setting("effects", key, "on");
+            for (int j = 9; j < 14; j++)
+                for (int i = 2; i < 22; i++)
+                    world.grid.data[i + world.grid.w * j] =
+                        static_cast<unsigned char>(PIX_WATER1);
+            world.set_weather(WeatherKind::Clouds);
+            mover = world.add_ob(Order::Living, FAMILY_SOLDIER);
+            mover->setxy(static_cast<short>(70), static_cast<short>(130));
+            arc = world.add_ob(Order::Weapon, FAMILY_FIREBALL);
+            arc->setxy(static_cast<short>(40), static_cast<short>(60));
+            fire_frame(arc);
+            extra = world.add_ob(Order::FX, FAMILY_EXPLOSION);
+            extra->setxy(static_cast<short>(250), static_cast<short>(90));
+        },
+        [&](int f) {
+            mover->setxy(static_cast<short>(70 + f), static_cast<short>(130));
+            arc->setxy(static_cast<short>(40 + f * 2), static_cast<short>(60 + f / 2));
+            arc->set_worldz(18.0f * std::abs(std::sin(static_cast<float>(f) * 0.1f)));
+        });
+}
+
+// Pin the TESTING capture hook in screen::buffer_to_screen: with OG_DUMP_DIR
+// set, every 3rd presented frame lands as a P6 PPM. scripts/fx_review's menu
+// tours depend on this (blocking menu loops never return to a test loop).
+#include <fstream>
+
+TEST(RenderEffects, capture_dump_hook_writes_ppm_frames)
+{
+    const std::string dir =
+        std::string(::testing::TempDir()) + "og_dump_hook_pin";
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
+    setenv("OG_DUMP_DIR", dir.c_str(), 1);
+    for (int i = 0; i < 3; i++)
+        scr()->buffer_to_screen(0, 0, 320, 200);
+    unsetenv("OG_DUMP_DIR");
+
+    // 3 presents guarantee at least one dump regardless of the every-3rd
+    // counter's phase.
+    int frames = 0;
+    std::string first;
+    for (const auto& e : std::filesystem::directory_iterator(dir))
+        if (e.path().extension() == ".ppm")
+        {
+            frames++;
+            if (first.empty() || e.path().string() < first)
+                first = e.path().string();
+        }
+    ASSERT_GE(frames, 1) << "hook should write every 3rd presented frame";
+    std::ifstream f(first, std::ios::binary);
+    char header[2] = {0, 0};
+    f.read(header, 2);
+    ASSERT_EQ('P', header[0]);
+    ASSERT_EQ('6', header[1]);
+    std::filesystem::remove_all(dir);
+}

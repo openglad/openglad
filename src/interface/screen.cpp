@@ -744,6 +744,36 @@ void screen::buffer_to_screen(Sint32 viewstartx, Sint32 viewstarty,
     TRACE("present", "buffer_to_screen %d %d %d %d",
           viewstartx, viewstarty, viewwidth, viewheight);
     video_impl_->buffer_to_screen(viewstartx, viewstarty, viewwidth, viewheight);
+#ifdef TESTING
+    // FX-capture hook (scripts/fx_review): with OG_DUMP_DIR set, every 3rd
+    // presented frame is written as a P6 PPM so blocking menu flows — which
+    // never return control to a test loop — can be filmed live.
+    if (const char* dump_dir = getenv("OG_DUMP_DIR"))
+    {
+        static int dump_counter = 0;
+        if (dump_counter++ % 3 == 0)
+        {
+            static int dump_frame = 0;
+            char path[512];
+            snprintf(path, sizeof(path), "%s/%03d.ppm", dump_dir, dump_frame++);
+            FILE* fp = fopen(path, "wb");
+            if (fp)
+            {
+                fprintf(fp, "P6\n320 200\n255\n");
+                for (int j = 0; j < 200; j++)
+                    for (int i = 0; i < 320; i++)
+                    {
+                        Uint8 r, g, b;
+                        get_pixel(i, j, &r, &g, &b);
+                        fputc(r, fp);
+                        fputc(g, fp);
+                        fputc(b, fp);
+                    }
+                fclose(fp);
+            }
+        }
+    }
+#endif
 }
 
 void screen::draw_box(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2,

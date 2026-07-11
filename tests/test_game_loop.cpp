@@ -2535,3 +2535,471 @@ TEST(GameLoop, exit_returns_to_continue_menu_local_two_player_second_player)
     game_screen->world().delete_objects();
 }
 
+
+// ---------------------------------------------------------------------------
+// FX-capture: live-simulation recordings for the visual review site
+// (scripts/fx_review). All three tests skip unless OG_FX_CAPTURE_DIR is set,
+// so they cost nothing in normal ctest runs. Frames land in
+// $OG_FX_CAPTURE_DIR/<scene>/NNN.ppm as P6 PPMs.
+//
+// Everything here runs the REAL game: glad_init + game_frame_with_result
+// (AI acts, walk animations advance, palette cycling runs, the transport
+// shadow syncs client and server worlds every tick).
+// ---------------------------------------------------------------------------
+#include <cstring>
+#include <openglad/core/weather.h>
+#include <openglad/interface/render/effects.h>
+#include <openglad/interface/button.h>
+
+namespace gameplay_rec {
+
+void dump_dir_for(const char* scene, char* dir, size_t n)
+{
+    const char* base = getenv("OG_FX_CAPTURE_DIR");
+    snprintf(dir, n, "%s/%s", base, scene);
+    std::filesystem::create_directories(dir);
+}
+
+// Primary viewport only (single-player gameplay scenes).
+void dump_viewport(screen* s, const char* scene, int frame)
+{
+    viewscreen* vs = s->viewob[0].get();
+    const int x0 = vs->xloc, y0 = vs->yloc, w = vs->xview, h = vs->yview;
+    char dir[512];
+    dump_dir_for(scene, dir, sizeof(dir));
+    char path[544];
+    snprintf(path, sizeof(path), "%s/%03d.ppm", dir, frame);
+    FILE* fp = fopen(path, "wb");
+    ASSERT_NE(nullptr, fp);
+    fprintf(fp, "P6\n%d %d\n255\n", w, h);
+    for (int j = 0; j < h; j++)
+        for (int i = 0; i < w; i++)
+        {
+            Uint8 r, g, b;
+            s->get_pixel(x0 + i, y0 + j, &r, &g, &b);
+            fputc(r, fp);
+            fputc(g, fp);
+            fputc(b, fp);
+        }
+    fclose(fp);
+}
+
+// Full 320x200 screen (split-screen and cinematic scenes).
+void dump_screen(screen* s, const char* scene, int frame)
+{
+    char dir[512];
+    dump_dir_for(scene, dir, sizeof(dir));
+    char path[544];
+    snprintf(path, sizeof(path), "%s/%03d.ppm", dir, frame);
+    FILE* fp = fopen(path, "wb");
+    ASSERT_NE(nullptr, fp);
+    fprintf(fp, "P6\n320 200\n255\n");
+    for (int j = 0; j < 200; j++)
+        for (int i = 0; i < 320; i++)
+        {
+            Uint8 r, g, b;
+            s->get_pixel(i, j, &r, &g, &b);
+            fputc(r, fp);
+            fputc(g, fp);
+            fputc(b, fp);
+        }
+    fclose(fp);
+}
+
+void build_save(screen* s, const char* campaign, int scen, int numplayers,
+                const std::vector<int>& roster, int level)
+{
+    s->save_data.reset();
+    s->save_data.current_campaign = campaign;
+    s->save_data.current_levels[s->save_data.current_campaign] =
+        static_cast<short>(scen);
+    s->save_data.scen_num = static_cast<short>(scen);
+    s->save_data.numplayers = static_cast<unsigned char>(numplayers);
+    for (size_t i = 0; i < roster.size(); i++)
+    {
+        auto g = std::make_unique<guy>(roster[i]);
+        g->upgrade_to_level(static_cast<short>(level));
+        g->teamnum = 0;
+        s->save_data.team_list[i] = std::move(g);
+    }
+    s->save_data.team_size = static_cast<unsigned char>(roster.size());
+    ASSERT_TRUE(s->save_data.save("save0"));
+}
+
+void all_capture_effects_on()
+{
+    for (const char* key : {"shadows", "reflections", "weather", "ripples",
+                            "trails", "dust", "fire_glow", "depth_tint",
+                            "screen_shake"})
+        cfg.apply_setting("effects", key, "on");
+    cfg.apply_setting("graphics", "floor_ghost", "on");
+}
+
+// The per-level weather roll is world state; force the requested kind on
+// BOTH worlds (authoritative server + display mirror) so the scene shows it.
+void force_weather(WeatherKind kind)
+{
+    screen* const s = og::runtime::current_session->myscreen_;
+    screen* const server =
+        og::runtime::local_transport_shadow_testing_server_screen(
+            *og::runtime::current_game_session);
+    ASSERT_NE(nullptr, server);
+    server->world().set_weather(kind);
+    s->world().set_weather(kind);
+}
+
+void record(const char* name, int scen, WeatherKind kind, int frames,
+            int warmup_ticks)
+{
+    screen* const s = og::runtime::current_session->myscreen_;
+    build_save(s, "org.openglad.gladiator", scen, 1,
+               {FAMILY_SOLDIER, FAMILY_ELF, FAMILY_MAGE}, 4);
+    glad_init();
+    all_capture_effects_on();
+    force_weather(kind);
+    // Wind the deterministic weather clock (rain's lightning flash is
+    // scheduled; 560 ticks puts it early in the recorded loop).
+    for (int t = 0; t < warmup_ticks; t++)
+        effects_advance_frame();
+
+    GameLoopFrameState st;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.enable_frame_timing = false;
+    for (int f = 0; f < frames; f++)
+    {
+        if (game_frame_with_result(*s, st, deps) != GameFrameResult::Continue)
+            break;
+        s->redraw();
+        s->swap();
+        dump_viewport(s, name, f);
+        if (::testing::Test::HasFatalFailure())
+            break;
+    }
+    s->world().end = 0;
+    s->world().delete_objects();
+}
+
+} // namespace gameplay_rec
+
+TEST(GameLoop, zz_capture_real_gameplay)
+{
+    if (!getenv("OG_FX_CAPTURE_DIR"))
+        GTEST_SKIP() << "set OG_FX_CAPTURE_DIR to record";
+    gameplay_rec::record("gameplay_clouds", 1, WeatherKind::Clouds, 200, 0);
+    gameplay_rec::record("gameplay_rain", 1, WeatherKind::Rain, 200, 560);
+    gameplay_rec::record("gameplay_combat", 3, WeatherKind::None, 200, 0);
+    // Level 6 is the wateriest early level (terrain-scanned): shoreline
+    // ripples and reflections show up in real combat there.
+    gameplay_rec::record("gameplay_water", 6, WeatherKind::Clouds, 200, 0);
+}
+
+TEST(GameLoop, zz_capture_splitscreen_gameplay)
+{
+    if (!getenv("OG_FX_CAPTURE_DIR"))
+        GTEST_SKIP() << "set OG_FX_CAPTURE_DIR to record";
+
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, game_screen);
+
+    SaveData& save = game_screen->save_data;
+    save.reset();
+    save.current_campaign = "org.openglad.gladiator";
+    save.current_levels.clear();
+    save.current_levels[save.current_campaign] = 2;
+    save.scen_num = 2;
+    save.numplayers = 2;
+    save.allied_mode = 1;
+    save.my_team = 0;
+    for (auto& member : save.team_list)
+        member.reset();
+    struct RosterEntry { int family; const char* name; };
+    const RosterEntry roster[4] = {
+        {FAMILY_SOLDIER, "Blade"},
+        {FAMILY_BARBARIAN, "Crusher"},
+        {FAMILY_ELF, "Sharpeye"},
+        {FAMILY_MAGE, "Zapp"},
+    };
+    for (int i = 0; i < 4; ++i)
+    {
+        auto member = std::make_unique<guy>(roster[i].family);
+        member->name = roster[i].name;
+        member->teamnum = 0;
+        member->upgrade_to_level(6);
+        save.team_list[static_cast<std::size_t>(i)] = std::move(member);
+    }
+    save.team_size = 4;
+    ASSERT_TRUE(save.save("save0"));
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(
+        og::runtime::local_transport_active(*og::runtime::current_session));
+    ASSERT_EQ(2u, og::runtime::local_transport_client_count(session));
+    ASSERT_EQ(2, game_screen->numviews);
+    ASSERT_TRUE(game_screen->viewob[0] != nullptr);
+    ASSERT_TRUE(game_screen->viewob[1] != nullptr);
+
+    gameplay_rec::all_capture_effects_on();
+    gameplay_rec::force_weather(WeatherKind::Clouds);
+
+    // Rebind the two local players' direction keys to keycodes no default
+    // layout uses, then drive them via faked SDL keystates so the two claimed
+    // heroes walk apart (proving the viewports track independent cameras).
+    SessionKeyStateGuard keystates;
+    const SDL_Keycode p0_up = SDLK_F13, p0_down = SDLK_F14,
+                      p0_left = SDLK_F15, p0_right = SDLK_F16;
+    const SDL_Keycode p1_up = SDLK_F17, p1_down = SDLK_F18,
+                      p1_left = SDLK_F19, p1_right = SDLK_F20;
+    og::runtime::current_session->player_keys_[0][KEY_UP] = p0_up;
+    og::runtime::current_session->player_keys_[0][KEY_DOWN] = p0_down;
+    og::runtime::current_session->player_keys_[0][KEY_LEFT] = p0_left;
+    og::runtime::current_session->player_keys_[0][KEY_RIGHT] = p0_right;
+    og::runtime::current_session->player_keys_[1][KEY_UP] = p1_up;
+    og::runtime::current_session->player_keys_[1][KEY_DOWN] = p1_down;
+    og::runtime::current_session->player_keys_[1][KEY_LEFT] = p1_left;
+    og::runtime::current_session->player_keys_[1][KEY_RIGHT] = p1_right;
+
+    GameLoopFrameState st;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.enable_frame_timing = false;
+
+    const int total_frames = 280;
+    for (int frame = 0; frame < total_frames; ++frame)
+    {
+        // Steering script: split apart, then drift back while battle rages.
+        keystates.set(p0_left, frame >= 10 && frame < 55);
+        keystates.set(p0_up, frame >= 55 && frame < 90);
+        keystates.set(p1_right, frame >= 10 && frame < 55);
+        keystates.set(p1_down, frame >= 55 && frame < 90);
+        keystates.set(p0_right, frame >= 150 && frame < 190);
+        keystates.set(p1_left, frame >= 150 && frame < 190);
+
+        if (game_frame_with_result(*game_screen, st, deps) !=
+            GameFrameResult::Continue)
+            break;
+
+        game_screen->redraw();
+        score_panel(game_screen);
+        game_screen->refresh();
+        game_screen->swap();
+        gameplay_rec::dump_screen(game_screen, "splitscreen_gameplay", frame);
+        if (::testing::Test::HasFatalFailure())
+            break;
+    }
+
+    // Both viewports must be tracking different heroes.
+    ASSERT_TRUE(game_screen->viewob[0]->control != nullptr);
+    ASSERT_TRUE(game_screen->viewob[1]->control != nullptr);
+    EXPECT_NE(game_screen->viewob[0]->control,
+              game_screen->viewob[1]->control);
+
+    game_screen->world().end = 0;
+    og::runtime::clear_local_transport_shadow(session);
+    game_screen->world().delete_objects();
+}
+
+// ---------------------------------------------------------------------------
+// Epic spectator battles: the Concept Playground war levels (605-610) with a
+// hero crew deployed at the level start markers and a mode-seeking cinematic
+// camera. The centroid of two distant fights is the empty field between
+// them — so the camera seeks the densest hostile NEIGHBORHOOD instead, with
+// scripted keyframes for floor cuts and establishing shots.
+// ---------------------------------------------------------------------------
+namespace epic_rec {
+
+struct Key { int frame; int cx; int cy; int floor; bool forced; };
+
+bool action_center(GameWorld& w, int floor, float& out_x, float& out_y)
+{
+    std::vector<walker*> alive;
+    for (auto& up : w.oblist)
+        if (walker* a = up.get();
+            a != nullptr && !a->dead() && !a->dormant() &&
+            a->query_order() == Order::Living &&
+            static_cast<int>(a->floor()) == floor)
+            alive.push_back(a);
+    if (alive.empty())
+        return false;
+    walker* best = nullptr;
+    int best_score = -1;
+    for (walker* a : alive)
+    {
+        int score = 0;
+        for (walker* b : alive)
+        {
+            if (a == b)
+                continue;
+            const long dx = static_cast<long>(a->xpos()) - b->xpos();
+            const long dy = static_cast<long>(a->ypos()) - b->ypos();
+            if (dx * dx + dy * dy < 160L * 160L)
+                score += a->is_friendly(b) ? 1 : 3;
+        }
+        if (score > best_score)
+        {
+            best_score = score;
+            best = a;
+        }
+    }
+    long sx = 0, sy = 0;
+    int n = 0;
+    for (walker* b : alive)
+    {
+        const long dx = static_cast<long>(best->xpos()) - b->xpos();
+        const long dy = static_cast<long>(best->ypos()) - b->ypos();
+        if (dx * dx + dy * dy < 160L * 160L)
+        {
+            sx += static_cast<long>(b->xpos());
+            sy += static_cast<long>(b->ypos());
+            n++;
+        }
+    }
+    out_x = static_cast<float>(sx) / static_cast<float>(n > 0 ? n : 1);
+    out_y = static_cast<float>(sy) / static_cast<float>(n > 0 ? n : 1);
+    return true;
+}
+
+void record(const char* scene, int scen, WeatherKind kind,
+            const std::vector<int>& roster,
+            const std::vector<Key>& keys)
+{
+    screen* const s = og::runtime::current_session->myscreen_;
+    // The crew deploys at the level's team-0 start position markers.
+    gameplay_rec::build_save(s, "org.openglad.concept", scen, 1, roster, 7);
+    glad_init();
+    gameplay_rec::all_capture_effects_on();
+    gameplay_rec::force_weather(kind);
+    screen* const server =
+        og::runtime::local_transport_shadow_testing_server_screen(
+            *og::runtime::current_game_session);
+    // Free the player-controlled hero to fight with the rest of the crew.
+    for (auto& uptr : server->world().oblist)
+        if (walker* wk = uptr.get(); wk != nullptr && wk->user() != -1)
+            wk->set_act_type(ACT_RANDOM);
+    viewscreen* vs = s->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+
+    const int world_w = static_cast<int>(s->world().grid.w) * GRID_SIZE;
+    const int world_h = static_cast<int>(s->world().grid.h) * GRID_SIZE;
+    const int total = keys.back().frame;
+
+    GameLoopFrameState st;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.enable_frame_timing = false;
+    size_t seg = 0;
+    float cam_x = static_cast<float>(keys[0].cx);
+    float cam_y = static_cast<float>(keys[0].cy);
+    int last_floor = keys[0].floor;
+    for (int f = 0; f < total; f++)
+    {
+        while (seg + 1 < keys.size() && keys[seg + 1].frame <= f)
+            seg++;
+        const Key& a = keys[seg];
+        float tx = static_cast<float>(a.cx), ty = static_cast<float>(a.cy);
+        if (!a.forced)
+            action_center(s->world(), a.floor, tx, ty);
+        if (a.floor != last_floor || a.forced)
+        {
+            cam_x = tx; // snap on a floor cut or scripted anchor
+            cam_y = ty;
+            last_floor = a.floor;
+        }
+        cam_x += (tx - cam_x) * 0.05f; // eased drift toward the action
+        cam_y += (ty - cam_y) * 0.05f;
+        const int cx = static_cast<int>(cam_x);
+        const int cy = static_cast<int>(cam_y);
+        int topx = cx - 160, topy = cy - 100;
+        if (topx < 0) topx = 0;
+        if (topy < 0) topy = 0;
+        if (topx > world_w - 320) topx = world_w - 320;
+        if (topy > world_h - 200) topy = world_h - 200;
+        // The transport shadow re-assigns viewport control every tick; the
+        // manual camera only holds while control is null, so clear it both
+        // before the sim tick and before the redraw.
+        vs->editor_floor_override_ = static_cast<Sint32>(a.floor);
+        vs->control = nullptr;
+        s->set_level_draw_pos(topx, topy);
+        if (game_frame_with_result(*s, st, deps) != GameFrameResult::Continue)
+            break;
+        vs->control = nullptr;
+        s->set_level_draw_pos(topx, topy);
+        s->redraw();
+        s->swap();
+        gameplay_rec::dump_screen(s, scene, f);
+        if (::testing::Test::HasFatalFailure())
+            break;
+    }
+    vs->editor_floor_override_ = -1;
+    s->world().end = 0;
+    s->world().delete_objects();
+}
+
+} // namespace epic_rec
+
+TEST(GameLoop, zz_capture_epic_battles)
+{
+    if (!getenv("OG_FX_CAPTURE_DIR"))
+        GTEST_SKIP() << "set OG_FX_CAPTURE_DIR to record";
+    using epic_rec::Key;
+    // OG_FX_CAPTURE_ONLY=<level id> records a single level (fast iteration).
+    const char* only = getenv("OG_FX_CAPTURE_ONLY");
+    const auto want = [&](const char* n) {
+        return only == nullptr || strcmp(only, n) == 0;
+    };
+    // The Wall Watch — and at frame ~500, look to the east: the Grey Wizard
+    // arrives behind the flank in a teleport flash (delayed spawn).
+    if (want("605"))
+        epic_rec::record("epic_605", 605, WeatherKind::Rain,
+            {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_ELF,
+             FAMILY_ELF, FAMILY_CLERIC, FAMILY_BARBARIAN, FAMILY_MAGE},
+            {{0, 610, 660, 0, false}, {80, 610, 420, 0, false},
+             {84, 260, 310, 1, false}, {170, 1020, 310, 1, false},
+             {174, 632, 330, 0, false}, {495, 632, 360, 0, false},
+             {500, 1216, 540, 0, true}, {575, 1216, 540, 0, true},
+             {580, 900, 420, 0, false}, {800, 700, 380, 0, false}});
+    if (want("606"))
+        epic_rec::record("epic_606", 606, WeatherKind::Clouds,
+            {FAMILY_DRUID, FAMILY_DRUID, FAMILY_ELF, FAMILY_ELF, FAMILY_ELF,
+             FAMILY_BARBARIAN, FAMILY_BARBARIAN, FAMILY_ARCHMAGE},
+            {{0, 120, 480, 0, false}, {110, 480, 470, 0, false},
+             {114, 480, 480, 1, false}, {190, 480, 480, 1, false},
+             {194, 480, 480, 2, false}, {270, 480, 480, 2, false},
+             {274, 480, 480, 3, false}, {370, 480, 480, 3, false},
+             {374, 480, 300, 0, false}, {480, 480, 640, 0, false}});
+    if (want("607"))
+        epic_rec::record("epic_607", 607, WeatherKind::None,
+            {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER,
+             FAMILY_BARBARIAN, FAMILY_BARBARIAN, FAMILY_CLERIC, FAMILY_ELF,
+             FAMILY_ELF},
+            {{0, 120, 320, 1, false}, {250, 560, 320, 1, false},
+             {350, 560, 320, 1, false},
+             {354, 560, 320, 0, false}, {440, 760, 320, 0, false}});
+    if (want("608"))
+        epic_rec::record("epic_608", 608, WeatherKind::None,
+            {FAMILY_THIEF, FAMILY_THIEF, FAMILY_ELF, FAMILY_ELF,
+             FAMILY_BARBARIAN, FAMILY_BARBARIAN, FAMILY_CLERIC,
+             FAMILY_SOLDIER},
+            {{0, 180, 180, 2, false}, {130, 760, 240, 2, false},
+             {134, 760, 240, 1, false}, {270, 200, 660, 1, false},
+             {274, 280, 660, 0, false}, {460, 480, 620, 0, false}});
+    if (want("609"))
+        epic_rec::record("epic_609", 609, WeatherKind::Clouds,
+            {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_ELF,
+             FAMILY_ELF, FAMILY_MAGE, FAMILY_MAGE, FAMILY_CLERIC},
+            {{0, 160, 300, 0, false}, {110, 400, 450, 0, false},
+             {240, 730, 400, 0, false}, {400, 730, 400, 0, false},
+             {404, 730, 300, 1, false}, {500, 730, 300, 1, false}});
+    if (want("610"))
+        epic_rec::record("epic_610", 610, WeatherKind::Rain,
+            {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER,
+             FAMILY_ELF, FAMILY_ELF, FAMILY_BARBARIAN, FAMILY_BARBARIAN},
+            {{0, 160, 330, 2, false}, {250, 1120, 330, 2, false},
+             {254, 640, 180, 0, false}, {350, 640, 180, 0, false},
+             {354, 640, 330, 2, false}, {480, 640, 330, 2, false}});
+}

@@ -132,15 +132,26 @@ struct OptionsState {
 };
 
 // Click an FX-subscreen toggle and report whether its cfg key flipped.
+// Under machine load a single click can be dropped (the press is still held
+// when the handler samples the mouse), so poll for the flip and re-click
+// until a deadline. Net flip parity doesn't matter: the flow ends with
+// RESTORE DEFAULTS, which reloads cfg from disk and undoes every toggle.
 static bool toggle_effect_and_check_flip(const char* button_id, const char* category,
                                          const char* cfg_key)
 {
     const bool before = cfg.is_on(category, cfg_key);
+    const Uint32 deadline = SDL_GetTicks() + 5000;
     interact(button_id);
-    // 300ms per the menu-test discipline: a shorter gap can land the next
-    // click while this one's press is still held, and it gets dropped.
-    SDL_Delay(300);
-    return cfg.is_on(category, cfg_key) != before;
+    for (;;) {
+        // 300ms per the menu-test discipline: a shorter gap can land the next
+        // click while this one's press is still held, and it gets dropped.
+        SDL_Delay(300);
+        if (cfg.is_on(category, cfg_key) != before)
+            return true;
+        if (SDL_GetTicks() >= deadline)
+            return false;
+        interact(button_id);
+    }
 }
 
 static int options_injector(void* data)
@@ -343,4 +354,269 @@ TEST(OptionsMenu, edit_player_keymap_exercises_four_and_eight_direction_prompts)
         << "invalid player index should be ignored safely";
     ASSERT_EQ(kMenuRedraw, edit_player_keymap(4))
         << "out-of-range player index should be ignored safely";
+}
+
+// ---------------------------------------------------------------------------
+// FX-capture: menu tours for the visual review site (scripts/fx_review).
+// Skipped unless OG_FX_CAPTURE_DIR is set. Frames are produced by the
+// TESTING dump hook in screen::buffer_to_screen (OG_DUMP_DIR, every 3rd
+// present); keyboard-highlight steps are driven through the TESTING nav
+// hook in handle_menu_nav (g_test_menu_nav_key) because real key events
+// can't be injected from another thread mid-press.
+// Run standalone with OG_FX_CAPTURE_DIR=<dir>:
+//   ./build/ci-test/og_test_menu_ui --gtest_filter='OptionsMenu.zz_capture_*'
+// ---------------------------------------------------------------------------
+#include <cstdlib>
+#include <filesystem>
+
+extern int g_test_menu_nav_key;
+
+namespace menu_capture {
+
+struct CaptureState {
+    bool started;
+    bool finished;
+    bool saw_options;
+    bool entered_controls;
+    bool exited_controls;
+    bool toured_fx;
+    bool used_options_back;
+    bool clicked_quit;
+};
+
+// Click a toggle, dwell so the color flip is on-camera for several frames.
+void capture_toggle(const char* button_id)
+{
+    interact(button_id);
+    SDL_Delay(380);
+}
+
+void capture_quit_main_menu(CaptureState* state)
+{
+    const Uint32 quit_deadline = SDL_GetTicks() + 5000;
+    while (SDL_GetTicks() < quit_deadline) {
+        if (has_interactable("quit")) {
+            SDL_Delay(600); // dwell on the main menu before leaving
+            interact("quit");
+            state->clicked_quit = true;
+            break;
+        }
+        inject_key_press(SDLK_ESCAPE, 20);
+        SDL_Delay(150);
+    }
+}
+
+// menu_tour: main menu (keyboard-nav highlight walk) -> SETTINGS -> CONTROLS
+// (flip P1 mode twice: 4-DIRECTION <-> 8-DIRECTION) -> back -> back -> quit.
+int menu_tour_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    CaptureState* state = static_cast<CaptureState*>(data);
+    state->started = true;
+
+    if (!wait_for_interactable("options", 10000)) {
+        state->finished = true;
+        return 0;
+    }
+    SDL_Delay(1000);
+
+    // Keyboard-nav highlight walk on the main menu.
+    for (int i = 0; i < 3; i++) {
+        g_test_menu_nav_key = KEY_DOWN;
+        SDL_Delay(480);
+    }
+    g_test_menu_nav_key = KEY_UP;
+    SDL_Delay(480);
+
+    bool in_options = click_until_interactable("options", "player_controls", 10000);
+    SDL_Delay(900);
+    if (in_options || wait_for_interactable("player_controls", 10000)) {
+        state->saw_options = true;
+
+        // Two nav steps inside SETTINGS so the highlight is seen moving.
+        g_test_menu_nav_key = KEY_DOWN;
+        SDL_Delay(480);
+        g_test_menu_nav_key = KEY_RIGHT;
+        SDL_Delay(480);
+
+        bool in_controls = click_until_interactable("player_controls", "player1_mode", 5000);
+        SDL_Delay(900);
+        if (in_controls || wait_for_interactable("player1_mode", 5000)) {
+            state->entered_controls = true;
+            g_test_menu_nav_key = KEY_DOWN;
+            SDL_Delay(480);
+            capture_toggle("player1_mode"); // 4-DIRECTION -> 8-DIRECTION
+            capture_toggle("player1_mode"); // flip back: settings unchanged
+            state->exited_controls =
+                click_until_interactable("controls_back", "player_controls", 5000);
+            wait_for_interactable("player_controls", 10000);
+            SDL_Delay(700);
+        }
+
+        if (wait_for_interactable("options_back", 5000)) {
+            SDL_Delay(300);
+            interact("options_back");
+            state->used_options_back = true;
+            SDL_Delay(700);
+        }
+    }
+
+    capture_quit_main_menu(state);
+    state->finished = true;
+    return 0;
+}
+
+// menu_effects: SETTINGS -> GAMEPLAY FX -> UI FX -> GRAPHICS FX, flipping
+// each showcased toggle TWICE (visible red/green flip, settings unchanged),
+// then back out and quit.
+int menu_effects_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    CaptureState* state = static_cast<CaptureState*>(data);
+    state->started = true;
+
+    if (!wait_for_interactable("options", 10000)) {
+        state->finished = true;
+        return 0;
+    }
+    SDL_Delay(1000);
+
+    bool in_options = click_until_interactable("options", "gameplay_fx", 10000);
+    SDL_Delay(900);
+    if (in_options || wait_for_interactable("gameplay_fx", 10000)) {
+        state->saw_options = true;
+        bool all_screens = true;
+
+        struct ScreenPlan {
+            const char* opener;
+            const char* back;
+            const char* toggles[4];
+            int toggle_count;
+        };
+        static const ScreenPlan kPlan[3] = {
+            {"gameplay_fx", "gameplay_fx_back",
+                {"toggle_hit_recoil", "toggle_attack_lunge"}, 2},
+            {"ui_fx", "ui_fx_back",
+                {"toggle_mini_hp_bar", "toggle_damage_numbers", "toggle_heal_numbers"}, 3},
+            {"graphics_fx", "graphics_fx_back",
+                {"toggle_weather", "toggle_shadows", "toggle_fire_glow", "toggle_screen_shake"}, 4},
+        };
+
+        for (const ScreenPlan& plan : kPlan) {
+            bool in_screen = click_until_interactable(plan.opener, plan.toggles[0], 5000);
+            SDL_Delay(750);
+            if (!in_screen && !wait_for_interactable(plan.toggles[0], 5000)) {
+                all_screens = false;
+                continue;
+            }
+            SDL_Delay(300);
+            for (int t = 0; t < plan.toggle_count; ++t) {
+                capture_toggle(plan.toggles[t]); // flip (color changes)
+                capture_toggle(plan.toggles[t]); // flip back (restored)
+            }
+            if (!click_until_interactable(plan.back, plan.opener, 5000))
+                all_screens = false;
+            wait_for_interactable(plan.opener, 10000);
+            SDL_Delay(400);
+        }
+        state->toured_fx = all_screens;
+
+        if (wait_for_interactable("options_back", 5000)) {
+            SDL_Delay(300);
+            interact("options_back");
+            state->used_options_back = true;
+            SDL_Delay(700);
+        }
+    }
+
+    capture_quit_main_menu(state);
+    state->finished = true;
+    return 0;
+}
+
+// The cfg keys menu_effects flips; snapshot them around the flow to prove
+// the flip-twice discipline left settings untouched.
+const std::array<std::pair<const char*, const char*>, 9> kEffectsCfgKeys = {{
+    {"effects", "hit_recoil"}, {"effects", "attack_lunge"},
+    {"effects", "mini_hp_bar"}, {"effects", "damage_numbers"},
+    {"effects", "heal_numbers"}, {"effects", "weather"},
+    {"effects", "shadows"}, {"effects", "fire_glow"},
+    {"effects", "screen_shake"},
+}};
+
+void run_capture_flow(const char* scene, int (*injector)(void*),
+                      CaptureState& state)
+{
+    trace_clear();
+
+    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
+    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
+    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
+    og::runtime::current_session->myscreen_->save_data.save("save0");
+
+    char scene_dir[512];
+    snprintf(scene_dir, sizeof(scene_dir), "%s/%s",
+             getenv("OG_FX_CAPTURE_DIR"), scene);
+    std::filesystem::create_directories(scene_dir);
+    setenv("OG_DUMP_DIR", scene_dir, 1);
+
+    SDL_Thread* thread = SDL_CreateThread(injector, "capture_injector", &state);
+    ASSERT_TRUE(thread != nullptr);
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 2; // the SETTINGS click exits mainmenu() once
+
+    picker_main(0, nullptr);
+
+    int thread_result;
+    SDL_WaitThread(thread, &thread_result);
+    unsetenv("OG_DUMP_DIR");
+
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+}
+
+} // namespace menu_capture
+
+TEST(OptionsMenu, zz_capture_menu_tour)
+{
+    if (!getenv("OG_FX_CAPTURE_DIR"))
+        GTEST_SKIP() << "set OG_FX_CAPTURE_DIR to record";
+    menu_capture::CaptureState state = {};
+    menu_capture::run_capture_flow("menu_tour",
+                                   menu_capture::menu_tour_injector, state);
+
+    ASSERT_TRUE(state.started);
+    ASSERT_TRUE(state.finished);
+    ASSERT_TRUE(state.saw_options) << "should have entered the options menu";
+    ASSERT_TRUE(state.entered_controls) << "should have entered controls";
+    ASSERT_TRUE(state.exited_controls) << "should have returned from controls";
+    ASSERT_TRUE(state.used_options_back) << "should have exited settings";
+}
+
+TEST(OptionsMenu, zz_capture_menu_effects)
+{
+    if (!getenv("OG_FX_CAPTURE_DIR"))
+        GTEST_SKIP() << "set OG_FX_CAPTURE_DIR to record";
+    std::array<bool, menu_capture::kEffectsCfgKeys.size()> before{};
+    for (size_t i = 0; i < menu_capture::kEffectsCfgKeys.size(); ++i)
+        before[i] = cfg.is_on(menu_capture::kEffectsCfgKeys[i].first,
+                              menu_capture::kEffectsCfgKeys[i].second);
+
+    menu_capture::CaptureState state = {};
+    menu_capture::run_capture_flow("menu_effects",
+                                   menu_capture::menu_effects_injector, state);
+
+    ASSERT_TRUE(state.started);
+    ASSERT_TRUE(state.finished);
+    ASSERT_TRUE(state.saw_options) << "should have entered the options menu";
+    ASSERT_TRUE(state.toured_fx) << "should have toured all three FX subscreens";
+    ASSERT_TRUE(state.used_options_back) << "should have exited settings";
+
+    for (size_t i = 0; i < menu_capture::kEffectsCfgKeys.size(); ++i)
+        EXPECT_EQ(before[i], cfg.is_on(menu_capture::kEffectsCfgKeys[i].first,
+                                       menu_capture::kEffectsCfgKeys[i].second))
+            << menu_capture::kEffectsCfgKeys[i].first << "/"
+            << menu_capture::kEffectsCfgKeys[i].second
+            << " must end unchanged (flip-twice discipline)";
 }

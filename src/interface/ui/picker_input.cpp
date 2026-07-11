@@ -117,11 +117,31 @@ void draw_highlight(const button& b)
                        0);
 }
 
+#ifdef TESTING
+// FX-capture hook (scripts/fx_review): injector threads set this to a KEY_*
+// direction to drive one keyboard-nav step, so captures show the highlight
+// box moving. Real key events can't be used from an injector thread — the
+// blocking hold-and-release loops below eat them mid-press.
+int g_test_menu_nav_key = -1;
+#endif
+
 bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue, bool use_global_vbuttons)
 {
     int next_button = -1;
     bool pressed = false;
     bool activated = false;
+#ifdef TESTING
+    if (g_test_menu_nav_key >= 0)
+    {
+        const int k = g_test_menu_nav_key;
+        g_test_menu_nav_key = -1;
+        if (k == KEY_UP) next_button = buttons[highlighted_button].nav.up;
+        if (k == KEY_DOWN) next_button = buttons[highlighted_button].nav.down;
+        if (k == KEY_LEFT) next_button = buttons[highlighted_button].nav.left;
+        if (k == KEY_RIGHT) next_button = buttons[highlighted_button].nav.right;
+        pressed = true;
+    }
+#endif
     if(isPlayerHoldingKey(0, KEY_UP))
     {
         while(isPlayerHoldingKey(0, KEY_UP))
