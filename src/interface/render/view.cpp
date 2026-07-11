@@ -43,6 +43,7 @@
 #include <openglad/interface/level_render.h>
 #include <openglad/interface/render/walker_draw.h>
 #include <openglad/interface/render/effects.h>
+#include <openglad/interface/render/depth_fx.h>
 #include <openglad/interface/game_context.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/screen.h>
@@ -313,6 +314,23 @@ void apply_screen_shake(viewscreen& view, GameWorld& world,
 	view.topy += shake_dy;
 	TRACE("effects", "screen_shake s=%d", strength);
 }
+
+// Look-up hold: true while THIS viewport's player physically holds their
+// KEY_LOOKUP binding. Read at render time only (KEY_LOOKUP is client-side —
+// it never enters InputState or the wire), and never in the editor's
+// floor-override draw (the editor owns its own floor navigation). keystates_
+// can be null in headless/early-boot paths — treat as released.
+bool look_up_key_held(const viewscreen& view)
+{
+	if (view.editor_floor_override_ >= 0)
+		return false;
+	if (og::runtime::current_session == nullptr ||
+	    og::runtime::current_session->keystates_ == nullptr)
+		return false;
+	if (view.mynum < 0 || view.mynum >= 4)
+		return false;
+	return isPlayerHoldingKey(view.mynum, KEY_LOOKUP);
+}
 } // namespace
 
 // ************************************************************
@@ -461,12 +479,20 @@ bool viewscreen::redraw()
 		// Gated floor_count>1 so single-floor stays byte-identical (opaque path).
 		if (vworld.floor_count() > 1)
 			active_screen()->clearbuffer(xloc, yloc, xview, yview);
-		// With ghosting disabled, draw only floors 0..camera (no above-ghosts).
-		const bool ghosts_on = cfg.is_on("graphics", "floor_ghost");
-		// Depth tint: floors below the camera composite through a cold
-		// blue-grey color mod (deeper = colder); the camera floor and the
-		// ghosts above stay untinted. Strength 0 is bit-identical.
-		const bool tint_on = cfg.is_on("effects", "depth_tint");
+		// Floors below the camera always render through the fade layer
+		// (depth fade + the depth-fx treatment — see floor_render_alpha), so
+		// air holes read as height in normal play. HOLDING the look-up key
+		// ADDS the floors above as faint ghosts for this frame (recomputed
+		// every redraw; floor_render_alpha reads current_floor_ only — the
+		// hold gates nothing but the floor_top extension below).
+		ghost_hold_override_ = look_up_key_held(*this);
+		const bool ghosts_on = ghost_hold_override_;
+		// Depth effect (cfg effects/depth_fx): floors below the camera
+		// composite through the selected treatment (tint/haze/mist/fog,
+		// deeper = stronger); the camera floor and the ghosts above always
+		// pass mode Off, which composites bit-identically.
+		const DepthFxMode depth_mode =
+		    depth_fx_mode_from_setting(cfg.get_setting("effects", "depth_fx"));
 		const Sint32 floor_top = (vworld.floor_count() > 1 && ghosts_on)
 		    ? static_cast<Sint32>(vworld.floor_count() - 1) : current_floor_;
 		for (Sint32 f = 0; f <= floor_top; ++f)
@@ -549,21 +575,31 @@ bool viewscreen::redraw()
 			draw_floor_entities(&level, static_cast<int>(f), falpha); //radar drawn after
 			if (use_layer)
 			{
-				// A floor d levels below the camera gets a cold blue-grey
-				// mod; 255s (tint off / ghosts above) composite bit-identically.
-				unsigned char tint_strength = 0;
-				if (tint_on && f < current_floor_)
+				// A floor d levels below the camera composites through the
+				// depth treatment; defaults (off / ghosts above) composite
+				// bit-identically.
+				DepthFxParams fx;
+				if (depth_mode != DepthFxMode::Off && f < current_floor_)
 				{
-					const int d = static_cast<int>(current_floor_) - static_cast<int>(f);
-					tint_strength = static_cast<unsigned char>(d >= 2 ? 96 : 52);
-					TRACE("effects", "depth_tint floor=%d", static_cast<int>(f));
+					fx.mode = depth_mode;
+					fx.stories = static_cast<int>(current_floor_) -
+					    static_cast<int>(f);
+					fx.frame = effects_frame_tick();
+					TRACE("effects", "depth_fx mode=%d floor=%d",
+					      static_cast<int>(depth_mode), static_cast<int>(f));
 				}
 				active_screen()->floor_layer_end(xloc, yloc, xview, yview,
-				                                 fscale, fcx, fcy, falpha,
-				                                 tint_strength);
+				                                 fscale, fcx, fcy, falpha, fx);
 			}
 			topx = par_topx; topy = par_topy; // undo the parallax shift
 		}
+		// Default (ghosts-off) multifloor look: floors above the camera are
+		// NOT drawn; their solid tiles + entities cast shadows down onto the
+		// camera floor instead — after the camera floor's entities, before
+		// weather/HUD. Render-only; never in the editor's authoring draw; a
+		// single-floor world short-circuits inside (byte-identical).
+		if (!ghosts_on && !editor_authoring_view_)
+			draw_upper_floor_shadows(this, vworld);
 	}
 	// Weather (per the world's synced WeatherKind: cloud banks + ground
 	// shadows, or full-screen rain + lightning) wherever the camera sits
@@ -659,12 +695,17 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 		// base (else the OOB border / air holes shimmer). Gated floor_count>1.
 		if (vworld.floor_count() > 1)
 			active_screen()->clearbuffer(xloc, yloc, xview, yview);
-		// With ghosting disabled, draw only floors 0..camera (no above-ghosts).
-		const bool ghosts_on = cfg.is_on("graphics", "floor_ghost");
-		// Depth tint: floors below the camera composite through a cold
-		// blue-grey color mod (deeper = colder); the camera floor and the
-		// ghosts above stay untinted. Strength 0 is bit-identical.
-		const bool tint_on = cfg.is_on("effects", "depth_tint");
+		// Floors below the camera always render through the fade layer
+		// (depth fade + the depth-fx treatment — see floor_render_alpha), so
+		// air holes read as height in normal play. HOLDING the look-up key
+		// ADDS the floors above as faint ghosts for this frame (recomputed
+		// every redraw; the hold gates only the floor_top extension below).
+		ghost_hold_override_ = look_up_key_held(*this);
+		const bool ghosts_on = ghost_hold_override_;
+		// Depth effect (cfg effects/depth_fx): floors below composite through
+		// the selected treatment; camera floor / ghosts pass mode Off.
+		const DepthFxMode depth_mode =
+		    depth_fx_mode_from_setting(cfg.get_setting("effects", "depth_fx"));
 		const Sint32 floor_top = (vworld.floor_count() > 1 && ghosts_on)
 		    ? static_cast<Sint32>(vworld.floor_count() - 1) : current_floor_;
 		for (Sint32 f = 0; f <= floor_top; ++f)
@@ -747,21 +788,27 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 			draw_floor_entities(data, static_cast<int>(f), falpha);
 			if (use_layer)
 			{
-				// A floor d levels below the camera gets a cold blue-grey
-				// mod; 255s (tint off / ghosts above) composite bit-identically.
-				unsigned char tint_strength = 0;
-				if (tint_on && f < current_floor_)
+				// A floor d levels below the camera composites through the
+				// depth treatment; defaults (off / ghosts above) composite
+				// bit-identically.
+				DepthFxParams fx;
+				if (depth_mode != DepthFxMode::Off && f < current_floor_)
 				{
-					const int d = static_cast<int>(current_floor_) - static_cast<int>(f);
-					tint_strength = static_cast<unsigned char>(d >= 2 ? 96 : 52);
-					TRACE("effects", "depth_tint floor=%d", static_cast<int>(f));
+					fx.mode = depth_mode;
+					fx.stories = static_cast<int>(current_floor_) -
+					    static_cast<int>(f);
+					fx.frame = effects_frame_tick();
+					TRACE("effects", "depth_fx mode=%d floor=%d",
+					      static_cast<int>(depth_mode), static_cast<int>(f));
 				}
 				active_screen()->floor_layer_end(xloc, yloc, xview, yview,
-				                                 fscale, fcx, fcy, falpha,
-				                                 tint_strength);
+				                                 fscale, fcx, fcy, falpha, fx);
 			}
 			topx = par_topx; topy = par_topy; // undo the parallax shift
 		}
+		// See the no-arg redraw(): the ghosts-off upper-floor shadow pass.
+		if (!ghosts_on && !editor_authoring_view_)
+			draw_upper_floor_shadows(this, vworld);
 	}
 	// See the no-arg redraw(): open-sky weather overlay, before radar/text.
 	draw_cloud_overlay(this, vworld);
@@ -1052,16 +1099,29 @@ void viewscreen::clear_text()
 
 unsigned char viewscreen::floor_render_alpha(int f) const
 {
-	if (f == current_floor_ || !cfg.is_on("graphics", "floor_ghost"))
-		return 255; // camera floor (or ghosting disabled): opaque
+	if (f == current_floor_)
+		return 255; // camera floor: opaque
 	if (f < current_floor_)
 	{
-		// Floors below the camera fade with depth.
+		// Floors below the camera ALWAYS fade with depth — that is how air
+		// holes read as height in normal play, and the fade layer is what
+		// carries the depth-fx treatment through floor_layer_end. It is
+		// deliberately NOT gated on ghost_hold_override_: latching the fade
+		// behind the look-up hold once rendered lower floors opaque and
+		// full-brightness through air holes (regression). The same applies
+		// in the editor's authoring view: before the shadow rework
+		// (graphics/floor_ghost default-on) the editor faded below-floors
+		// too, so the unconditional fade keeps it consistent.
 		const int a = 255 - (current_floor_ - f) * static_cast<int>(kFloorBelowAlphaStep);
 		return static_cast<unsigned char>(a < static_cast<int>(kFloorBelowAlphaMin)
 		                                      ? kFloorBelowAlphaMin : a);
 	}
-	return kFloorGhostAlpha; // floors above the camera: faint ghost
+	// Floors above the camera: the faint ghost alpha. WHETHER an above-floor
+	// draws at all is the redraw loop's floor_top gate (only while the
+	// look-up hold is latched, and never in the editor where
+	// look_up_key_held() is false); this is just the alpha it composites at
+	// when it does.
+	return kFloorGhostAlpha;
 }
 
 void viewscreen::draw_floor_effects(LevelRuntimeData* data, int floor)
@@ -2392,6 +2452,9 @@ void viewscreen::view_key_bindings()
 
 	msg = std::format("Shifter: {}", get_key_display_name(og::runtime::current_session->player_keys_[mynum][KEY_SHIFTER]));
 	keytext.write_xy(165, 90, msg.c_str(), static_cast<unsigned char>(BLACK), 1);
+
+	msg = std::format("Look Up: {}", get_key_display_name(og::runtime::current_session->player_keys_[mynum][KEY_LOOKUP]));
+	keytext.write_xy(165, 102, msg.c_str(), static_cast<unsigned char>(BLACK), 1);
 
 	// Switching keys
 	keytext.write_xy(55, 105, "-- Switching --", static_cast<unsigned char>(COLOR_BLUE), 1);

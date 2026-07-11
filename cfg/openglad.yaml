@@ -3,7 +3,7 @@ version: 1
 effects:
   attack_lunge: on
   damage_numbers: off
-  depth_tint: on
+  depth_fx: fog
   dust: on
   fire_glow: on
   heal_numbers: on

@@ -22,8 +22,15 @@
 
 namespace og::curses {
 
+// player_keys_[0] holds NUM_KEYS (17) entries, but only the first
+// kInputActionCount (16) are InputActions — the tail (KEY_LOOKUP) is a
+// render-time hold for the SDL client's upper-floor ghost overlay. The curses
+// client renders only the followed walker's floor (it has no ghost view), so
+// KEY_LOOKUP is deliberately not translated here.
 CursesInput::CursesInput()
-    : keybindings_(og::runtime::current_session->player_keys_[0])
+    : keybindings_(std::span<const int, kInputActionCount>(
+          og::runtime::current_session->player_keys_[0],
+          static_cast<std::size_t>(kInputActionCount)))
 {
 }
 

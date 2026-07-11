@@ -15,6 +15,7 @@
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/interface/input.h>
 #include <openglad/interface/level_render.h>
 #include <openglad/interface/level_visuals.h>
 #include <openglad/interface/render/radar.h>
@@ -24,8 +25,10 @@
 #include <openglad/resources/gparser.h>
 
 #include <gtest/gtest.h>
+#include <SDL.h>
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
@@ -152,6 +155,41 @@ bool do_redraw_data(viewscreen* vs)
     return vs->redraw(&scr()->level_runtime_data(), false);
 }
 
+// Simulate the look-up hold (the only way to see floors ABOVE the camera;
+// floors below render depth-faded regardless): bind P1's KEY_LOOKUP to 'v'
+// and swap the session's SDL keystate pointer for a writable fake with that
+// key down — redraw() recomputes ghost_hold_override_ from the real key
+// state every frame. Same shape as test_render_effects' guards.
+struct LookUpHoldGuard
+{
+    const Uint8* old_keystates;
+    int old_binding;
+    std::array<Uint8, SDL_NUM_SCANCODES> fake{};
+
+    LookUpHoldGuard()
+        : old_keystates(og::runtime::current_session->keystates_)
+        , old_binding(og::runtime::current_session->player_keys_[0][KEY_LOOKUP])
+    {
+        og::runtime::current_session->player_keys_[0][KEY_LOOKUP] = KEYCODE_v;
+        og::runtime::current_session->keystates_ = fake.data();
+        set(true);
+    }
+    ~LookUpHoldGuard()
+    {
+        og::runtime::current_session->keystates_ = old_keystates;
+        og::runtime::current_session->player_keys_[0][KEY_LOOKUP] = old_binding;
+    }
+    LookUpHoldGuard(const LookUpHoldGuard&) = delete;
+    LookUpHoldGuard& operator=(const LookUpHoldGuard&) = delete;
+
+    void set(bool held)
+    {
+        const SDL_Scancode sc = SDL_GetScancodeFromKey(SDLK_v);
+        if (sc >= 0 && sc < SDL_NUM_SCANCODES)
+            fake[static_cast<std::size_t>(sc)] = held ? 1 : 0;
+    }
+};
+
 struct GlobalContextGuard
 {
     explicit GlobalContextGuard(GameContext* c) { push_test_context(c); }
@@ -192,7 +230,7 @@ private:
         {"shadows", "on"},      {"reflections", "on"}, {"weather", "on"},
         {"attack_lunge", "on"}, {"hit_recoil", "off"}, {"ripples", "on"},
         {"trails", "on"},       {"dust", "on"},        {"fire_glow", "on"},
-        {"depth_tint", "on"},   {"screen_shake", "on"},
+        {"depth_fx", "fog"},    {"screen_shake", "on"},
     };
     std::vector<std::pair<std::string, std::string>> saved_;
 };
@@ -260,10 +298,10 @@ TEST(DecorRender, boulder_decor_matches_legacy_combined_tile_in_both_redraws)
     restore_world(vs);
 }
 
-// Ghosted multifloor: with floor ghosts on, decor on the floor above the
-// camera composites through the floor layer (visible ghost); with ghosts off
-// that floor is not drawn at all.
-TEST(DecorRender, upper_floor_decor_ghosts_with_floor_ghost_on)
+// Ghosted multifloor: under the look-up hold, decor on the floor above the
+// camera composites through the floor layer (visible ghost); with the hold
+// released that floor is not drawn at all.
+TEST(DecorRender, upper_floor_decor_ghosts_under_look_up_hold)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -274,8 +312,7 @@ TEST(DecorRender, upper_floor_decor_ghosts_with_floor_ghost_on)
     world.set_floor_count(2);
     fill_floor_grid(world, 1, PIX_AIR); // empty above, except one plank cell
 
-    const std::string saved_ghost = cfg.get_setting("graphics", "floor_ghost");
-    cfg.apply_setting("graphics", "floor_ghost", "on");
+    LookUpHoldGuard hold; // ghost path for the captures below
 
     walker* w = world.add_ob(Order::Living, FAMILY_SOLDIER);
     ASSERT_NE(nullptr, w);
@@ -300,18 +337,16 @@ TEST(DecorRender, upper_floor_decor_ghosts_with_floor_ghost_on)
     EXPECT_GT(count_diff(ghosted, no_decor), 0)
         << "ghosted upper-floor decor must show through the floor layer";
 
-    cfg.apply_setting("graphics", "floor_ghost", "off");
+    hold.set(false); // release: the default (no-ghost) presentation
     ASSERT_TRUE(do_redraw_data(vs));
     const std::vector<RGB> unghosted = grab_rect(sx, sy, GRID_SIZE, GRID_SIZE);
     ASSERT_TRUE(do_redraw_data(vs));
     const std::vector<RGB> unghosted2 = grab_rect(sx, sy, GRID_SIZE, GRID_SIZE);
     EXPECT_EQ(0, count_diff(unghosted, unghosted2))
-        << "with ghosts off the cell must be stable frame to frame";
+        << "with the hold released the cell must be stable frame to frame";
     EXPECT_GT(count_diff(unghosted, ghosted), 0)
-        << "ghosts off must not draw the floor-above decor";
+        << "the released frame must not draw the floor-above decor";
 
-    cfg.apply_setting("graphics", "floor_ghost",
-                      saved_ghost.empty() ? "on" : saved_ghost);
     restore_world(vs);
 }
 

@@ -1,3 +1,5 @@
+#include <openglad/gameplay/input_action.h>
+#include <openglad/gameplay/input_state.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/native_input.h>
@@ -696,4 +698,73 @@ TEST(InputKeybinds, four_direction_defaults_unchanged_wasd)
     ASSERT_EQ(static_cast<int>(SDLK_a), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::FourDirection), KEY_LEFT)) << "P1 4-dir Left should be A";
     ASSERT_EQ(static_cast<int>(SDLK_s), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::FourDirection), KEY_DOWN)) << "P1 4-dir Down should be S";
     ASSERT_EQ(static_cast<int>(SDLK_d), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::FourDirection), KEY_RIGHT)) << "P1 4-dir Right should be D";
+}
+
+
+// ---------------------------------------------------------------------------
+// KEY_LOOKUP (the render-time look-up hold): client-side keymap slot 16.
+// ---------------------------------------------------------------------------
+
+TEST(InputKeybinds, lookup_key_is_client_side_only_and_not_an_input_action)
+{
+    // KEY_LOOKUP is appended AFTER the 16 wire-visible actions: the
+    // InputAction enum / InputState wire stay untouched at 16.
+    static_assert(kInputActionCount == 16,
+                  "the InputAction wire enum must stay at 16 actions");
+    static_assert(NUM_INPUT_KEYS == 16,
+                  "the InputState wire format must stay at 16 keys");
+    static_assert(KEY_LOOKUP == kInputActionCount,
+                  "KEY_LOOKUP sits just past the wire-visible actions");
+    static_assert(NUM_KEYS == NUM_INPUT_KEYS + 1,
+                  "the client keymap is the 16 wire actions + KEY_LOOKUP");
+    SUCCEED();
+}
+
+TEST(InputKeybinds, lookup_key_defaults_to_v_for_p1_and_unbound_for_p2_to_p4)
+{
+    FullControlSnapshotGuard guard;
+    reset_default_player_controls();
+
+    for (const int mode : {static_cast<int>(ControlDirectionMode::FourDirection),
+                           static_cast<int>(ControlDirectionMode::EightDirection)})
+    {
+        ASSERT_EQ(static_cast<int>(SDLK_v),
+                  get_player_key_binding_for_mode(0, mode, KEY_LOOKUP))
+            << "P1 look-up should default to V in mode " << mode;
+        for (int p = 1; p < 4; ++p)
+            ASSERT_EQ(static_cast<int>(SDLK_UNKNOWN),
+                      get_player_key_binding_for_mode(p, mode, KEY_LOOKUP))
+                << "P" << (p + 1) << " look-up should default unbound in mode "
+                << mode;
+    }
+    ASSERT_EQ(static_cast<int>(SDLK_v),
+              og::runtime::current_session->player_keys_[0][KEY_LOOKUP])
+        << "the active keymap should carry the P1 default";
+}
+
+TEST(InputKeybinds, lookup_key_binding_persists_through_cfg_roundtrip)
+{
+    FullControlSnapshotGuard guard;
+    cfg_store config;
+    config.load_settings();
+
+    reset_default_player_controls();
+    set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
+    set_player_key_binding(0, KEY_LOOKUP, SDLK_b);
+    save_player_control_settings_to_cfg(config);
+
+    // Wipe the binding, then reload: the saved value must come back.
+    reset_default_player_controls();
+    ASSERT_EQ(static_cast<int>(SDLK_v),
+              og::runtime::current_session->player_keys_[0][KEY_LOOKUP])
+        << "reset should restore the default before the reload";
+    load_player_control_settings_from_cfg(config);
+    ASSERT_EQ(static_cast<int>(SDLK_b),
+              og::runtime::current_session->player_keys_[0][KEY_LOOKUP])
+        << "the look-up binding should reload from config";
+    ASSERT_EQ(static_cast<int>(SDLK_b),
+              get_player_key_binding_for_mode(
+                  0, static_cast<int>(ControlDirectionMode::FourDirection),
+                  KEY_LOOKUP))
+        << "the 4-direction keymap should hold the reloaded binding";
 }

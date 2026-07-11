@@ -734,6 +734,36 @@ bool draw_walker_shadow(walker& w, viewscreen* view_buf)
     return true;
 }
 
+// Upper-floor blob shadow parameters: the SE displacement per story of
+// height (matches the overhang tile shadows' NW sun), and the per-story
+// squash/trim/fade — one story squashes the silhouette to a third of the
+// sprite height, two (the cap) to a quarter, each trimming 2px more off the
+// sides and fading further below the ground shadow's SHADOW_ALPHA (90).
+inline constexpr Sint32 BLOB_SHADOW_OFFSET_PER_STORY = 2;
+inline constexpr Sint32 BLOB_SHADOW_STORY_CAP = 2;
+inline constexpr Uint8 BLOB_SHADOW_ALPHA[BLOB_SHADOW_STORY_CAP] = {84, 63};
+
+bool draw_walker_blob_shadow(walker& w, viewscreen* view_buf, Sint32 stories)
+{
+    if (stories < 1 || !casts_ground_effects(w))
+        return false;
+
+    Sint32 xscreen, yscreen;
+    ground_plane_anchor(w, view_buf, xscreen, yscreen);
+
+    // The SE offset tracks the TRUE height difference; the shrink/fade cap
+    // keeps a very distant blob readable instead of vanishing.
+    const Sint32 offset = stories * BLOB_SHADOW_OFFSET_PER_STORY;
+    const Sint32 capped = stories > BLOB_SHADOW_STORY_CAP
+        ? BLOB_SHADOW_STORY_CAP : stories;
+    og::runtime::current_session->myscreen_->walkputbuffer_shadow(
+        xscreen + offset, yscreen + offset, w.sizex(), w.sizey(),
+        view_buf->xloc, view_buf->yloc, view_buf->endx, view_buf->endy,
+        {w.bmp_data(), static_cast<size_t>(w.sizex() * w.sizey())},
+        BLOB_SHADOW_ALPHA[capped - 1], 2 + capped, 2 * capped);
+    return true;
+}
+
 bool draw_walker_reflection(walker& w, viewscreen* view_buf,
                             const PixieData& camera_grid)
 {

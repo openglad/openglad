@@ -1313,7 +1313,10 @@ void LevelEditorData::draw(screen* s)
     // The editor has no control walker, so force the viewscreen to render the
     // floor we're editing (reset to -1 after so menus/gameplay are unaffected).
     if (s->viewob[0])
+    {
         s->viewob[0]->editor_floor_override_ = eds().current_floor;
+        s->viewob[0]->editor_authoring_view_ = true;
+    }
     level->draw(s);
 
     if(rect_selecting)
@@ -1341,8 +1344,10 @@ void LevelEditorData::draw(screen* s)
     
     display_panel(s);
     if (s->viewob[0])
+    {
         s->viewob[0]->editor_floor_override_ = -1;
-
+        s->viewob[0]->editor_authoring_view_ = false;
+    }
 }
 
 Sint32 LevelEditorData::display_panel(screen* s)

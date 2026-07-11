@@ -65,7 +65,9 @@ public:
     static MetaAction meta_for_key(const Key& k);
 
 private:
-    std::span<const int, kInputActionCount> keybindings_; // 16 SDL keycodes indexed by InputAction (player_keys_[0])
+    // 16 SDL keycodes indexed by InputAction (the first kInputActionCount
+    // entries of player_keys_[0]; the tail KEY_LOOKUP slot is SDL-client-only).
+    std::span<const int, kInputActionCount> keybindings_;
     std::array<bool, kInputActionCount> held_{};
     std::array<bool, kInputActionCount> pressed_edge_{};
 };

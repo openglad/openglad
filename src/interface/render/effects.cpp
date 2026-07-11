@@ -67,6 +67,18 @@ inline constexpr int kCloudShadowOffsetX = 40;
 inline constexpr int kCloudShadowOffsetY = 24;
 inline constexpr int kCloudShadowScale = 55;
 
+// Overhang shadows (ghosts-off multifloor look): each solid upper-floor tile
+// darkens its footprint on the camera floor, displaced SE +2px per story of
+// height (the same NW sun as the cloud shadows above), one flat alpha-70
+// black blend per upper floor with a 1px checkerboard-dithered rim.
+inline constexpr Sint32 kOverhangShadowOffsetPerStory = 2;
+inline constexpr unsigned char kOverhangShadowAlpha = 70;
+// Extra darkening for the inner band along a footprint boundary: slab edges
+// stay readable even when the floor above covers most of the viewport (a
+// uniform 27% darkening reads as nothing without a visible edge).
+inline constexpr unsigned char kOverhangShadowEdgeAlpha = 50;
+inline constexpr Sint32 kOverhangShadowEdgeBand = 4;
+
 // Rain: FULL-SCREEN vertical streaks falling kRainFallSpeed px per tick —
 // a WeatherKind::Rain level rains over the whole open sky (the old
 // wet-threshold coupling to the cloud field is gone along with the mixed
@@ -117,6 +129,28 @@ std::array<unsigned char, static_cast<std::size_t>(kNoiseSize) * kNoiseSize>
 bool cloud_noise_ready = false;
 std::uint32_t frame_tick = 0;
 
+// Depth-fog patches (DepthFxMode::Fog): a SECOND value-noise field over the
+// same 256x256 wraparound lattice machinery as the sky clouds, but with its
+// own seed and a coarser octave mix (128/32 px cells), so the fog banks
+// drifting across a below-floor composite never mirror the sky. Sampled in
+// SCREEN space — fog hangs between the camera and the floor, so it must not
+// be glued to the parallax-sliding floor beneath it.
+// Alpha curve: the two-sample average narrows the field to roughly 106..181
+// (mean ~139), so the threshold sits just above the mean — about half the
+// area stays clear — and the gentle 3/2 gain grades a bank from its edge
+// all the way to its core instead of plateauing at the cap (which read as
+// flat blobs). Deeper floors cap higher (heavier fog).
+inline constexpr std::uint32_t kDepthFogSeed = 0x5EAF0061u;
+inline constexpr int kFogThreshold = 134;
+inline constexpr int kFogGainNum = 3;
+inline constexpr int kFogGainDen = 2;
+inline constexpr int kFogMinAlpha = 8;
+inline constexpr int kFogAlphaCap = 58;      // one story down
+inline constexpr int kFogAlphaCapDeep = 84;  // two or more stories down
+std::array<unsigned char, static_cast<std::size_t>(kNoiseSize) * kNoiseSize>
+    depth_noise;
+bool depth_noise_ready = false;
+
 unsigned char lcg_byte(std::uint32_t& state)
 {
 	state = state * 1664525u + 1013904223u;
@@ -134,19 +168,21 @@ int lerp8(int a, int b, int u)
 	return a + (((b - a) * u) >> 8);
 }
 
-// Build the field once: three octaves of value noise (lattice cells 64/32/16
-// px, amplitudes 128/64/32) over LCG lattices, smooth-interpolated with
-// wraparound so every octave tiles.
-void generate_cloud_noise()
+// Build a tiling value-noise field once: the given octaves (lattice cell
+// sizes + amplitudes) over LCG lattices seeded from `seed`, smooth-
+// interpolated with wraparound so every octave tiles.
+template <std::size_t N>
+void generate_value_noise(
+    std::array<unsigned char, static_cast<std::size_t>(kNoiseSize) * kNoiseSize>& field,
+    std::uint32_t seed,
+    const std::array<int, N>& cells, const std::array<int, N>& amps)
 {
-	cloud_noise.fill(0);
-	std::uint32_t state = kNoiseSeed;
-	constexpr std::array<int, 3> kCell = {64, 32, 16};
-	constexpr std::array<int, 3> kAmp = {128, 64, 32};
-	for (std::size_t oct = 0; oct < kCell.size(); oct++)
+	field.fill(0);
+	std::uint32_t state = seed;
+	for (std::size_t oct = 0; oct < cells.size(); oct++)
 	{
-		const int cell = kCell[oct];
-		const int lat_size = kNoiseSize / cell; // power of two: 4/8/16
+		const int cell = cells[oct];
+		const int lat_size = kNoiseSize / cell; // power of two: 2..16
 		std::array<unsigned char, 256> lat{};   // 16x16 max lattice
 		for (int i = 0; i < lat_size * lat_size; i++)
 			lat[static_cast<std::size_t>(i)] = lcg_byte(state);
@@ -166,12 +202,29 @@ void generate_cloud_noise()
 				const int d = lat[static_cast<std::size_t>(xi1 + lat_size * yi1)];
 				const int v = lerp8(lerp8(a, b, xf), lerp8(c, d, xf), yf);
 				const std::size_t idx = static_cast<std::size_t>(x + kNoiseSize * y);
-				cloud_noise[idx] = static_cast<unsigned char>(
-				    cloud_noise[idx] + ((v * kAmp[oct]) >> 8));
+				field[idx] = static_cast<unsigned char>(
+				    field[idx] + ((v * amps[oct]) >> 8));
 			}
 		}
 	}
+}
+
+// The sky field: three octaves, cells 64/32/16 px, amplitudes 128/64/32.
+void generate_cloud_noise()
+{
+	generate_value_noise(cloud_noise, kNoiseSeed,
+	                     std::array<int, 3>{64, 32, 16},
+	                     std::array<int, 3>{128, 64, 32});
 	cloud_noise_ready = true;
+}
+
+// The depth-fog field: two coarser octaves (128/32 px), its own seed.
+void generate_depth_noise()
+{
+	generate_value_noise(depth_noise, kDepthFogSeed,
+	                     std::array<int, 2>{128, 32},
+	                     std::array<int, 2>{160, 96});
+	depth_noise_ready = true;
 }
 
 // Two drift layers: layer 1 scrolls the field slowly, layer 2 samples at
@@ -187,6 +240,21 @@ int cloud_sample(int wx, int wy, std::uint32_t tick)
 	const int y2 = ((wy >> 1) - t / 8) & kNoiseMask;
 	const int s1 = cloud_noise[static_cast<std::size_t>(x1 + kNoiseSize * y1)];
 	const int s2 = cloud_noise[static_cast<std::size_t>(x2 + kNoiseSize * y2)];
+	return (s1 + s2) / 2;
+}
+
+// Depth-fog drift: like cloud_sample, two layers of the depth field evolve
+// against each other, but slower and along different headings (E+N vs the
+// clouds' W+S), so fog banks crawl rather than race and never track the sky.
+int depth_fog_sample(int x, int y, std::uint32_t tick)
+{
+	const int t = static_cast<int>(tick & 0x0FFFFFFFu);
+	const int x1 = (x + t / 3) & kNoiseMask;
+	const int y1 = (y - t / 5) & kNoiseMask;
+	const int x2 = ((x >> 1) - t / 2) & kNoiseMask;
+	const int y2 = ((y >> 1) + t / 7) & kNoiseMask;
+	const int s1 = depth_noise[static_cast<std::size_t>(x1 + kNoiseSize * y1)];
+	const int s2 = depth_noise[static_cast<std::size_t>(x2 + kNoiseSize * y2)];
 	return (s1 + s2) / 2;
 }
 
@@ -586,6 +654,122 @@ bool draw_stair_overlays(viewscreen* vs, const PixieData& camera_grid)
 	return drew;
 }
 
+bool draw_upper_floor_shadows(viewscreen* vs, GameWorld& world)
+{
+	if (!vs || world.floor_count() <= 1)
+		return false; // single-floor: byte-identical short-circuit
+	const Sint32 top_floor = static_cast<Sint32>(world.floor_count()) - 1;
+	if (vs->current_floor_ >= top_floor)
+		return false; // camera on the top floor: nothing overhead
+
+	screen* dest = og::runtime::current_session->myscreen_;
+	bool drew = false;
+	for (Sint32 f = vs->current_floor_ + 1; f <= top_floor; ++f)
+	{
+		const Sint32 stories = f - vs->current_floor_;
+		const Sint32 offset = stories * kOverhangShadowOffsetPerStory;
+		const PixieData& grid = world.grid_for_floor(static_cast<int>(f));
+		if (grid.valid())
+		{
+			const Sint32 gw = static_cast<Sint32>(grid.w);
+			const Sint32 gh = static_cast<Sint32>(grid.h);
+			// Is this camera-floor world pixel inside the SE-displaced
+			// footprint of a solid tile of floor f? Testing coverage (not
+			// blending per tile) merges adjacent tiles into ONE flat region,
+			// so overlaps within a floor never double-darken.
+			auto covered = [&](Sint32 wx, Sint32 wy)
+			{
+				const Sint32 sx = wx - offset;
+				const Sint32 sy = wy - offset;
+				if (sx < 0 || sy < 0)
+					return false;
+				const Sint32 gi = sx / GRID_SIZE;
+				const Sint32 gj = sy / GRID_SIZE;
+				if (gi >= gw || gj >= gh)
+					return false;
+				return grid.data[gi + gw * gj] !=
+				    static_cast<unsigned char>(PIX_AIR);
+			};
+			bool floor_drew = false;
+			for (Sint32 y = vs->yloc; y < vs->endy; y++)
+			{
+				const Sint32 wy = y - vs->yloc + vs->topy;
+				for (Sint32 x = vs->xloc; x < vs->endx; x++)
+				{
+					const Sint32 wx = x - vs->xloc + vs->topx;
+					if (!covered(wx, wy))
+						continue;
+					// Soft edge: the 1px rim keeps only its checkerboard
+					// half (a dither, not an extra alpha level — no requant).
+					const bool rim = !covered(wx - 1, wy) ||
+					    !covered(wx + 1, wy) || !covered(wx, wy - 1) ||
+					    !covered(wx, wy + 1);
+					if (rim && (((x + y) & 1) != 0))
+						continue;
+					dest->pointb(x, y, PURE_BLACK, kOverhangShadowAlpha);
+					// Inner emphasis band: pixels within kOverhangShadowEdgeBand
+					// of the boundary darken again, so the slab edge pops even
+					// under near-total coverage (interiors, ramparts).
+					const bool band = !covered(wx - kOverhangShadowEdgeBand, wy) ||
+					    !covered(wx + kOverhangShadowEdgeBand, wy) ||
+					    !covered(wx, wy - kOverhangShadowEdgeBand) ||
+					    !covered(wx, wy + kOverhangShadowEdgeBand);
+					if (band)
+						dest->pointb(x, y, PURE_BLACK, kOverhangShadowEdgeAlpha);
+					floor_drew = true;
+				}
+			}
+			if (floor_drew)
+			{
+				TRACE("render", "overhang_shadow floor=%d",
+				      static_cast<int>(f));
+				drew = true;
+			}
+		}
+		// Entities living on (or flying across) floor f read as blob
+		// shadows at their spot on the camera floor.
+		int blobs = 0;
+		auto blob_list = [&](auto& list)
+		{
+			for (auto& uptr : list)
+			{
+				walker* w = uptr.get();
+				if (w && !w->dead() && static_cast<Sint32>(w->floor()) == f &&
+				    draw_walker_blob_shadow(*w, vs, stories))
+					++blobs;
+			}
+		};
+		blob_list(world.oblist);
+		blob_list(world.weaplist);
+		if (blobs > 0)
+		{
+			TRACE("render", "blob_shadow floor=%d n=%d",
+			      static_cast<int>(f), blobs);
+			drew = true;
+		}
+	}
+	return drew;
+}
+
+std::uint32_t effects_frame_tick()
+{
+	return frame_tick;
+}
+
+int depth_fog_alpha_at(int x, int y, std::uint32_t tick, int stories)
+{
+	if (!depth_noise_ready)
+		generate_depth_noise();
+	const int cap = stories >= 2 ? kFogAlphaCapDeep : kFogAlphaCap;
+	int a = (depth_fog_sample(x, y, tick) - kFogThreshold) * kFogGainNum /
+	    kFogGainDen;
+	if (a < kFogMinAlpha)
+		return 0;
+	if (a > cap)
+		a = cap;
+	return a;
+}
+
 void effects_advance_frame()
 {
 	++frame_tick;
@@ -974,6 +1158,7 @@ void effects_reset_for_testing()
 {
 	frame_tick = 0;
 	cloud_noise_ready = false;
+	depth_noise_ready = false;
 	glow_kernel_ready = false;
 	outdoor_memo_valid = false;
 	render_store.clear();

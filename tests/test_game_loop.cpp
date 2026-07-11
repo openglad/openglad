@@ -2629,10 +2629,11 @@ void build_save(screen* s, const char* campaign, int scen, int numplayers,
 void all_capture_effects_on()
 {
     for (const char* key : {"shadows", "reflections", "weather", "ripples",
-                            "trails", "dust", "fire_glow", "depth_tint",
-                            "screen_shake"})
+                            "trails", "dust", "fire_glow", "screen_shake"})
         cfg.apply_setting("effects", key, "on");
-    cfg.apply_setting("graphics", "floor_ghost", "on");
+    cfg.apply_setting("effects", "depth_fx", "fog"); // the selector's default
+    // The DEFAULT floor presentation (overhang/blob shadows) films itself:
+    // the ghost view exists only while a player holds the look-up key.
 }
 
 // The per-level weather roll is world state; force the requested kind on

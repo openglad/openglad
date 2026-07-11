@@ -83,6 +83,11 @@ inline auto& hw() { return input_hardware_state(); }
 constexpr int kModeFourIndex = 0;
 constexpr int kModeEightIndex = 1;
 
+// KEY_LOOKUP (the render-time look-up hold) defaults to 'v' for player 1
+// only: players 2-4 share the same physical keyboard, and every unclaimed
+// key near their movement clusters risks colliding with another player's
+// bindings (P4's 8-direction layout already uses 'v' for DOWN-LEFT). They
+// start unbound and can bind it on the CONTROLS remap screen.
 constexpr int kDefaultFourDirKeys[4][NUM_KEYS] = {
     {
         KEYCODE_w, KEYCODE_UNKNOWN, KEYCODE_d, KEYCODE_UNKNOWN,  // movements
@@ -94,6 +99,7 @@ constexpr int kDefaultFourDirKeys[4][NUM_KEYS] = {
         KEYCODE_LSHIFT,                            // Shifter
         KEYCODE_1,                                 // Options menu
         KEYCODE_F5,                                // Cheat key
+        KEYCODE_v,                                 // Look up (hold)
     },
     {
         KEYCODE_UP, KEYCODE_UNKNOWN, KEYCODE_RIGHT, KEYCODE_UNKNOWN,  // movements
@@ -105,6 +111,7 @@ constexpr int kDefaultFourDirKeys[4][NUM_KEYS] = {
         KEYCODE_RSHIFT,                            // Shifter
         KEYCODE_2,                                 // Options menu
         KEYCODE_F6,                                // Cheat key
+        KEYCODE_UNKNOWN,                           // Look up (unbound)
     },
     {
         KEYCODE_i, KEYCODE_UNKNOWN, KEYCODE_l, KEYCODE_UNKNOWN,  // movements
@@ -116,6 +123,7 @@ constexpr int kDefaultFourDirKeys[4][NUM_KEYS] = {
         KEYCODE_0,                                 // Shifter
         KEYCODE_3,                                 // Options menu
         KEYCODE_F7,                                // Cheat key
+        KEYCODE_UNKNOWN,                           // Look up (unbound)
     },
     {
         KEYCODE_t, KEYCODE_UNKNOWN, KEYCODE_h, KEYCODE_UNKNOWN,  // movements
@@ -127,6 +135,7 @@ constexpr int kDefaultFourDirKeys[4][NUM_KEYS] = {
         KEYCODE_8,                                 // Shifter
         KEYCODE_4,                                 // Options menu
         KEYCODE_F8,                                // Cheat key
+        KEYCODE_UNKNOWN,                           // Look up (unbound)
     }
 };
 constexpr int kDefaultEightDirKeys[4][NUM_KEYS] = {
@@ -136,6 +145,7 @@ constexpr int kDefaultEightDirKeys[4][NUM_KEYS] = {
         KEYCODE_LCTRL, KEYCODE_LALT,
         KEYCODE_BACKQUOTE, KEYCODE_TAB,
         KEYCODE_s, KEYCODE_LSHIFT, KEYCODE_1, KEYCODE_F5,
+        KEYCODE_v,                                 // Look up (hold)
     },
     {   // P2: arrows, no diagonal keys
         KEYCODE_UP, KEYCODE_UNKNOWN, KEYCODE_RIGHT, KEYCODE_UNKNOWN,
@@ -143,6 +153,7 @@ constexpr int kDefaultEightDirKeys[4][NUM_KEYS] = {
         KEYCODE_PERIOD, KEYCODE_SLASH,
         KEYCODE_RETURN, KEYCODE_QUOTE,
         KEYCODE_BACKSLASH, KEYCODE_RSHIFT, KEYCODE_2, KEYCODE_F6,
+        KEYCODE_UNKNOWN,                           // Look up (unbound)
     },
     {   // P3: clockwise I/O/L/./,/M/J/U, Yell=K
         KEYCODE_i, KEYCODE_o, KEYCODE_l, KEYCODE_PERIOD,
@@ -150,6 +161,7 @@ constexpr int kDefaultEightDirKeys[4][NUM_KEYS] = {
         KEYCODE_SPACE, KEYCODE_SEMICOLON,
         KEYCODE_MINUS, KEYCODE_9,
         KEYCODE_k, KEYCODE_0, KEYCODE_3, KEYCODE_F7,
+        KEYCODE_UNKNOWN,                           // Look up (unbound)
     },
     {   // P4: clockwise T/Y/H/N/B/V/F/R, Yell=G
         KEYCODE_t, KEYCODE_y, KEYCODE_h, KEYCODE_n,
@@ -157,6 +169,7 @@ constexpr int kDefaultEightDirKeys[4][NUM_KEYS] = {
         KEYCODE_5, KEYCODE_6,
         KEYCODE_EQUALS, KEYCODE_7,
         KEYCODE_g, KEYCODE_8, KEYCODE_4, KEYCODE_F8,
+        KEYCODE_UNKNOWN,                           // Look up (unbound)
     }
 };
 constexpr std::array<int, 4> kDefaultControlModes = {

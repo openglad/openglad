@@ -192,6 +192,7 @@ Sint32 change_respawn_mode();
 Sint32 change_respawn_delay();
 Sint32 change_permadeath();
 Sint32 change_generator_rate();
+Sint32 change_depth_fx(); // GRAPHICS FX depth selector (cfg effects/depth_fx)
 Sint32 toggle_player_control_mode(Sint32 arg);
 Sint32 edit_player_keymap(Sint32 arg);
 std::string build_player_control_summary(int player_index);
@@ -274,7 +275,9 @@ enum class ButtonAction : Sint32
     CreateScenarioMenu = 70,
     TeamsPageFlip = 71,
     PickSpriteSheet = 72,
-    ToggleFloorGhosting = 73,
+    // 73 was ToggleFloorGhosting: the graphics/floor_ghost cfg toggle was
+    // removed — the ghost view is now hold-look-up only (KEY_LOOKUP).
+    // Value retired, do not reuse.
     // Runtime-only ids (never serialized): 74 was OpenEffectsSettings before
     // the EFFECTS screen split into the three FX subscreens.
     OpenGraphicsFxSettings = 74,
@@ -284,7 +287,9 @@ enum class ButtonAction : Sint32
     // 78 was ToggleRain: the Clouds/Rain pair merged into the single
     // Weather toggle (cfg effects/weather). Value retired, do not reuse.
     ToggleDust = 79,
-    ToggleDepthTint = 80,
+    // 80 was ToggleDepthTint: the boolean effects/depth_tint toggle became
+    // the five-way CycleDepthFx selector (cfg effects/depth_fx, value 92).
+    // Value retired, do not reuse.
     ToggleTrails = 81,
     ToggleFireGlow = 82,
     ToggleRipples = 83,
@@ -299,6 +304,9 @@ enum class ButtonAction : Sint32
     CycleRespawnDelay = 89,
     TogglePermadeath = 90,
     CycleGeneratorRate = 91,
+    // GRAPHICS FX depth selector: cycles cfg effects/depth_fx through
+    // fog -> haze -> mist -> tint -> off (replaces ToggleDepthTint = 80).
+    CycleDepthFx = 92,
 };
 
 inline constexpr Sint32 button_action_id(ButtonAction action)

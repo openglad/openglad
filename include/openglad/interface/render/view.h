@@ -166,9 +166,24 @@ class viewscreen
 			// 0..current_floor_ bottom-up (air reveals lower floors) and draw_obs
 			// layers entities the same way. 0 for single-floor levels.
 			Sint32 current_floor_ = 0;
-		// Editor-only: when >= 0, forces the rendered floor (the editor has no
-		// control walker). -1 in gameplay so the control walker's floor is used.
+		// When >= 0, forces the rendered floor. Set by the level editor (which
+		// has no control walker) and by capture/spectator cameras. -1 in
+		// gameplay so the control walker's floor is used.
 		Sint32 editor_floor_override_ = -1;
+		// True only for the level editor's authoring view: suppresses the
+		// ghosts-off upper-floor shadow pass so the floor being edited renders
+		// clean. Spectator/capture cameras leave this false — they use
+		// editor_floor_override_ for the floor cut but must render the real
+		// gameplay presentation (shadows included).
+		bool editor_authoring_view_ = false;
+		// Look-up hold (KEY_LOOKUP): true while this viewport's player holds
+		// the key, ADDING the floors above the camera to this frame as faint
+		// alpha ghosts. This hold is the ONLY way to see floors above — there
+		// is no cfg setting for it. It gates nothing else: floors BELOW the
+		// camera always render depth-faded (+ depth-tintable) whether or not
+		// the key is held (see floor_render_alpha). Recomputed at the top of
+		// every redraw; render-only, never fed into the sim.
+		bool ghost_hold_override_ = false;
 
 	protected:
 		options *prefsob;

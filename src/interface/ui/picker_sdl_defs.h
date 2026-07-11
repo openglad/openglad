@@ -150,6 +150,13 @@ inline constexpr int kViewScenarioPrevIndex = 1;
 inline constexpr int kViewScenarioNextIndex = 2;
 inline constexpr int kViewScenarioRowsPerPage = 23;
 
+// --- GRAPHICS FX subscreen layout contract ----------------------------------
+// Positional index of the depth-selector cycle row (id "depth_fx") in
+// k_graphics_fx_options_buttons / picker_graphics_fx_options_buttons()
+// (BACK = 0, the twelve grid entries are 1..12). change_depth_fx() writes
+// the row's label by this index on both surfaces.
+inline constexpr int kGraphicsFxDepthFxIndex = 8;
+
 // --- DIFFICULTY subscreen layout contract -----------------------------------
 // Positional indices into k_difficulty_menu_buttons /
 // picker_difficulty_menu_buttons(). Single 140px column (23-char label budget

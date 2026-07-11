@@ -799,11 +799,10 @@ TEST(MenuLayout, ui_fx_options_layout_and_nav)
     check_fx_options_screen(buttons, count, kExpected, 4, "ui_fx_options");
 }
 
-// GRAPHICS FX subscreen: unique BACK id + 13 visual toggles (12 effects/*
-// plus Floor ghost, moved off main options with its graphics/floor_ghost cfg
-// pair intact) on the three-column x=15/115/215 grid (5 rows at 23px pitch
-// from y=35; the last row has one entry). Weather is the single display
-// opt-out for the per-level sim weather (the old Clouds/Rain pair merged).
+// GRAPHICS FX subscreen: unique BACK id + 12 effects/* visual toggles on the
+// three-column x=15/115/215 grid (4 full rows at 23px pitch from y=35).
+// Weather is the single display opt-out for the per-level sim weather (the
+// old Clouds/Rain pair merged).
 TEST(MenuLayout, graphics_fx_options_grid_geometry_and_nav)
 {
     static const ExpectedFxButton kExpected[] = {
@@ -815,16 +814,31 @@ TEST(MenuLayout, graphics_fx_options_grid_geometry_and_nav)
         {"toggle_reflections", "Reflections", 115, 58},
         {"toggle_weather", "Weather", 215, 58},
         {"toggle_dust", "Dust", 15, 81},
-        {"toggle_depth_tint", "Depth tint", 115, 81},
+        {"depth_fx", "Depth: Fog", 115, 81},
         {"toggle_trails", "Trails", 215, 81},
         {"toggle_fire_glow", "Fire glow", 15, 104},
         {"toggle_ripples", "Ripples", 115, 104},
         {"toggle_screen_shake", "Screen shake", 215, 104},
-        {"toggle_floor_ghost", "Floor ghost", 15, 127},
     };
     button* buttons = picker_graphics_fx_options_buttons();
     const int count = picker_graphics_fx_options_button_count();
-    check_fx_options_screen(buttons, count, kExpected, 14, "graphics_fx_options");
+    check_fx_options_screen(buttons, count, kExpected, 13, "graphics_fx_options");
+
+    // The depth row is a five-way CYCLE (id "depth_fx"), addressed by index
+    // from change_depth_fx(); pin the index contract and that every label
+    // the cycle can produce fits the 90px face (15 chars at 6px/char).
+    EXPECT_EQ("depth_fx", buttons[kGraphicsFxDepthFxIndex].id);
+    const int face_width = buttons[kGraphicsFxDepthFxIndex].sizex;
+    ASSERT_EQ(90, face_width);
+    std::string value = "fog";
+    for (int step = 0; step < 5; ++step)
+    {
+        EXPECT_LE(static_cast<int>(og::ui::format_depth_fx_label(value).size()) * 6,
+                  face_width)
+            << og::ui::format_depth_fx_label(value);
+        value = og::ui::cycle_depth_fx(value);
+    }
+    EXPECT_EQ("fog", value) << "five clicks must restore the selector";
 }
 
 // DIFFICULTY subscreen (the main-menu DIFFICULTY door): unique BACK id + the
@@ -1184,4 +1198,35 @@ TEST(MenuLayout, controls_summary_remap_mode_uses_two_lines)
     ASSERT_TRUE(remap_summary[0].find("Dir:W/A/S/D") != std::string::npos) << "remap summary first line should contain directional keys";
     ASSERT_TRUE(remap_summary[1].find("Y:E") != std::string::npos) << "remap summary second line should contain action keys";
     ASSERT_TRUE(remap_summary[1].find("SW:`") != std::string::npos) << "remap summary second line should display backtick character";
+}
+
+
+TEST(MenuLayout, controls_summary_shows_look_up_binding)
+{
+    PlayerControlSnapshotGuard guard(0);
+
+    set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
+    set_player_key_binding(0, KEY_LOOKUP, SDLK_v);
+    const std::string summary = build_player_control_summary(0);
+    ASSERT_TRUE(summary.find("L:V") != std::string::npos)
+        << "controls summary should show the look-up binding: " << summary;
+
+    // Unbound (the players 2-4 default) reads as "--", not an empty label.
+    set_player_key_binding(0, KEY_LOOKUP, SDLK_UNKNOWN);
+    const std::string unbound = build_player_control_summary(0);
+    ASSERT_TRUE(unbound.find("L:--") != std::string::npos)
+        << "unbound look-up should display as --: " << unbound;
+
+    // The action line stays inside the 48-char row the controls screen draws
+    // it into (x=30, 6px/char, 320px wide) with typical worst-case names.
+    set_player_key_binding(0, KEY_YELL, SDLK_BACKSPACE);       // "Bk"
+    set_player_key_binding(0, KEY_FIRE, SDLK_LCTRL);           // "LC"
+    set_player_key_binding(0, KEY_SPECIAL, SDLK_LALT);         // "LA"
+    set_player_key_binding(0, KEY_SPECIAL_SWITCH, SDLK_TAB);   // "Tab"
+    set_player_key_binding(0, KEY_SWITCH, SDLK_RETURN);        // "Return"
+    set_player_key_binding(0, KEY_SHIFTER, SDLK_RSHIFT);       // "RS"
+    set_player_key_binding(0, KEY_LOOKUP, SDLK_CAPSLOCK);      // "Cap"
+    const auto lines = build_player_control_summary_lines(0, false);
+    EXPECT_LE(lines[1].size(), 48u)
+        << "action summary line must fit the controls row: " << lines[1];
 }

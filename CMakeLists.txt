@@ -234,6 +234,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/interface/render/view.cpp
     ${SRC_DIR}/interface/render/walker_draw.cpp
     ${SRC_DIR}/interface/render/effects.cpp
+    ${SRC_DIR}/interface/render/depth_fx.cpp
     ${SRC_DIR}/interface/render/obmap_debug_draw.cpp
     ${SRC_DIR}/gameplay/walker.cpp
     ${SRC_DIR}/gameplay/walker_combat.cpp
@@ -432,6 +433,7 @@ set(OG_RENDER_SOURCES
     ${SRC_DIR}/interface/render/view.cpp
     ${SRC_DIR}/interface/render/walker_draw.cpp
     ${SRC_DIR}/interface/render/effects.cpp
+    ${SRC_DIR}/interface/render/depth_fx.cpp
     ${SRC_DIR}/interface/render/obmap_debug_draw.cpp
     ${SRC_DIR}/interface/render/sdl_level_render.cpp
 )

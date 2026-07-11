@@ -498,6 +498,51 @@ void cycle_generator_rate(SaveData& save)
     }
 }
 
+// --- GRAPHICS FX depth selector (cfg effects/depth_fx) ---
+
+// Out-of-set values (including the empty string an absent key reads as)
+// count as the default, fog — the same rule depth_fx_mode_from_setting
+// applies in the renderer, so the label always names what is drawn.
+static std::string normalize_depth_fx_value(const std::string& value)
+{
+    if (value == "off" || value == "tint" || value == "haze" || value == "mist")
+        return value;
+    return "fog";
+}
+
+std::string cycle_depth_fx(const std::string& current)
+{
+    const std::string value = normalize_depth_fx_value(current);
+    if (value == "fog")
+        return "haze";
+    if (value == "haze")
+        return "mist";
+    if (value == "mist")
+        return "tint";
+    if (value == "tint")
+        return "off";
+    return "fog"; // off wraps back to the default
+}
+
+std::string format_depth_fx_label(const std::string& value)
+{
+    const std::string v = normalize_depth_fx_value(value);
+    if (v == "off")
+        return "Depth: Off";
+    if (v == "tint")
+        return "Depth: Tint";
+    if (v == "haze")
+        return "Depth: Haze";
+    if (v == "mist")
+        return "Depth: Mist";
+    return "Depth: Fog";
+}
+
+bool depth_fx_is_active(const std::string& value)
+{
+    return normalize_depth_fx_value(value) != "off";
+}
+
 // --- Team choice helpers (local seats) ---
 
 bool team_has_members(const SaveData& save, short team)

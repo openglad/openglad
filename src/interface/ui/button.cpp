@@ -680,9 +680,6 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
     case ButtonAction::ToggleGore:
         toggle_effect("effects", "gore");
         return REDRAW;
-    case ButtonAction::ToggleFloorGhosting:
-        toggle_effect("graphics", "floor_ghost");
-        return REDRAW;
     case ButtonAction::ToggleShadows:
         toggle_effect("effects", "shadows");
         return REDRAW;
@@ -695,9 +692,8 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
     case ButtonAction::ToggleDust:
         toggle_effect("effects", "dust");
         return REDRAW;
-    case ButtonAction::ToggleDepthTint:
-        toggle_effect("effects", "depth_tint");
-        return REDRAW;
+    case ButtonAction::CycleDepthFx:
+        return change_depth_fx();
     case ButtonAction::ToggleTrails:
         toggle_effect("effects", "trails");
         return REDRAW;

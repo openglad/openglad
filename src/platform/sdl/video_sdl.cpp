@@ -17,6 +17,7 @@
 // Video object code
 
 #include <openglad/platform/video_sdl.h>
+#include <openglad/interface/render/effects.h>
 #include <openglad/interface/render/pal32.h>
 #include <openglad/platform/sai2x.h>
 #include <openglad/resources/gparser.h>
@@ -1225,7 +1226,7 @@ void sdl_video::floor_layer_begin(Sint32 x, Sint32 y, Sint32 w, Sint32 h)
 void sdl_video::floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
                                 float scale, Sint32 cx, Sint32 cy,
                                 unsigned char alpha,
-                                unsigned char tint_strength)
+                                DepthFxParams fx)
 {
     if (!E_Screen)
         return;
@@ -1296,16 +1297,32 @@ void sdl_video::floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
                                           floor_layer_scaled_, &out) == 0;
     }
     SDL_Surface* const composited = smooth_ok ? floor_layer_scaled_ : floor_layer_;
-    // Depth tint: blend every drawn layer pixel toward a cold blue-grey
-    // BEFORE compositing. A multiplicative color mod cannot shift hue on
-    // low-blue content (pure-green grass stayed pure green — the "tint" was
-    // invisible); blending toward a reference color reads as cold
-    // atmospheric depth on anything. The layer is repainted from scratch
-    // every floor pass, so this mutation cannot leak into later composites.
-    if (tint_strength > 0)
+    // Depth-effect treatment (cfg effects/depth_fx): mutate every drawn
+    // (coverage alpha > 0) layer pixel BEFORE compositing, on the already-
+    // scaled surface — so tiles, decor and entities of the below floor are
+    // treated together, screen-space patterns (the mist dither, the fog
+    // noise) stay period-correct after the parallax scale, and un-drawn air
+    // holes stay untouched. Blending toward a reference color (rather than a
+    // multiplicative mod) shifts hue on anything — pure-green grass visibly
+    // cools/pales. The layer is repainted from scratch every floor pass, so
+    // these mutations cannot leak into later composites. Mode Off touches
+    // nothing: bit-identical to the plain faded composite.
+    if (fx.mode != DepthFxMode::Off && fx.stories > 0)
     {
+        // Legacy cold blue-grey (Tint) — strengths 52/96 per depth, pinned
+        // byte-identical to the retired boolean effects/depth_tint.
         constexpr Uint8 kTintR = 58, kTintG = 74, kTintB = 140;
-        const int t = tint_strength;
+        const int tint_t = fx.stories >= 2 ? 96 : 52;
+        // Pale steel (Haze / the Mist dither color / Fog's base wash):
+        // aerial perspective — contrast lifts toward it, ~30% per story
+        // (tuned up from the spec's 20% starting point: the unconditional
+        // depth fade composites the treated layer down over black, which
+        // eats a weaker wash).
+        constexpr Uint8 kHazeR = 150, kHazeG = 160, kHazeB = 175;
+        const int haze_t = fx.stories >= 3 ? 210 : fx.stories * 77;
+        // Fog patch color: a lighter fog-white so the drifting banks read
+        // over the haze wash beneath them.
+        constexpr Uint8 kFogR = 204, kFogG = 211, kFogB = 222;
         SDL_LockSurface(composited);
         const SDL_Rect& region = smooth_ok ? out : src;
         for (int py = region.y; py < region.y + region.h; py++)
@@ -1320,9 +1337,54 @@ void sdl_video::floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
                 SDL_GetRGBA(c, composited->format, &pr, &pg, &pb, &pa);
                 if (pa == 0)
                     continue;
-                pr = static_cast<Uint8>(pr + ((kTintR - pr) * t) / 255);
-                pg = static_cast<Uint8>(pg + ((kTintG - pg) * t) / 255);
-                pb = static_cast<Uint8>(pb + ((kTintB - pb) * t) / 255);
+                switch (fx.mode)
+                {
+                case DepthFxMode::Tint:
+                    pr = static_cast<Uint8>(pr + ((kTintR - pr) * tint_t) / 255);
+                    pg = static_cast<Uint8>(pg + ((kTintG - pg) * tint_t) / 255);
+                    pb = static_cast<Uint8>(pb + ((kTintB - pb) * tint_t) / 255);
+                    break;
+                case DepthFxMode::Haze:
+                    pr = static_cast<Uint8>(pr + ((kHazeR - pr) * haze_t) / 255);
+                    pg = static_cast<Uint8>(pg + ((kHazeG - pg) * haze_t) / 255);
+                    pb = static_cast<Uint8>(pb + ((kHazeB - pb) * haze_t) / 255);
+                    break;
+                case DepthFxMode::Mist:
+                    // Checkerboard dither, NO alpha blending: every output
+                    // pixel is either the original or exactly the mist
+                    // (haze) color — zero requantization. Density rises
+                    // with depth: 1 story = every 4th diagonal, 2+ = true
+                    // checkerboard.
+                    if (fx.stories >= 2 ? (((px + py) & 1) != 0)
+                                        : (((px + py) & 3) == 0))
+                    {
+                        pr = kHazeR;
+                        pg = kHazeG;
+                        pb = kHazeB;
+                    }
+                    break;
+                case DepthFxMode::Fog:
+                {
+                    // Haze wash + drifting fog patches from the dedicated
+                    // fixed-seed noise field (screen-space: fog hangs
+                    // between the camera and the floor, so it must not ride
+                    // the parallax-sliding floor beneath it).
+                    pr = static_cast<Uint8>(pr + ((kHazeR - pr) * haze_t) / 255);
+                    pg = static_cast<Uint8>(pg + ((kHazeG - pg) * haze_t) / 255);
+                    pb = static_cast<Uint8>(pb + ((kHazeB - pb) * haze_t) / 255);
+                    const int a =
+                        depth_fog_alpha_at(px, py, fx.frame, fx.stories);
+                    if (a > 0)
+                    {
+                        pr = static_cast<Uint8>(pr + ((kFogR - pr) * a) / 255);
+                        pg = static_cast<Uint8>(pg + ((kFogG - pg) * a) / 255);
+                        pb = static_cast<Uint8>(pb + ((kFogB - pb) * a) / 255);
+                    }
+                    break;
+                }
+                case DepthFxMode::Off:
+                    break; // unreachable: gated above
+                }
                 row[px] = SDL_MapRGBA(composited->format, pr, pg, pb, pa);
             }
         }
@@ -1477,19 +1539,26 @@ void sdl_video::walkputbuffer_alpha(Sint32 walkerstartx, Sint32 walkerstarty,
 	}
 }
 
-// Ground-shadow blit: a vertically squashed (half-height) black silhouette,
-// bottom row one pixel below the sprite's feet. Iterates TARGET rows (each
-// samples every other source row bottom-up) so each destination pixel blends
-// exactly once despite two source rows collapsing onto one.
+// Ground-shadow blit: a vertically squashed black silhouette, bottom row one
+// pixel below the sprite's feet. Iterates TARGET rows (each samples every
+// height_divisor'th source row bottom-up) so each destination pixel blends
+// exactly once despite several source rows collapsing onto one. The classic
+// unit shadow uses height_divisor 2 (half height) and inset 0 — for those
+// arguments this is byte-identical to the pre-parameterized blit; the
+// upper-floor blob shadows squash harder (3-4) and trim `inset` columns off
+// each side so distance reads as a smaller, flatter blob.
 void sdl_video::walkputbuffer_shadow(Sint32 walkerstartx, Sint32 walkerstarty,
                           Sint32 walkerwidth, Sint32 walkerheight,
                           Sint32 portstartx, Sint32 portstarty,
                           Sint32 portendx, Sint32 portendy,
-                          std::span<const unsigned char> sourceptr, Uint8 alpha)
+                          std::span<const unsigned char> sourceptr, Uint8 alpha,
+                          Sint32 height_divisor, Sint32 inset)
 {
 	Sint32 curx, t;
 	Sint32 xmin = 0, xmax = walkerwidth;
-	Sint32 shadowrows = (walkerheight+1)/2;
+	if (height_divisor < 1)
+		height_divisor = 1;
+	Sint32 shadowrows = (walkerheight + height_divisor - 1) / height_divisor;
 
 	if (walkerstartx >= portendx || walkerstartx + walkerwidth <= portstartx)
 		return;
@@ -1497,6 +1566,13 @@ void sdl_video::walkputbuffer_shadow(Sint32 walkerstartx, Sint32 walkerstarty,
 		xmin = portstartx - walkerstartx;
 	else if (walkerstartx + walkerwidth > portendx) //clip the right edge
 		xmax = portendx - walkerstartx;
+	if (inset > 0) // trim columns off both sides (smaller blob)
+	{
+		if (xmin < inset)
+			xmin = inset;
+		if (xmax > walkerwidth - inset)
+			xmax = walkerwidth - inset;
+	}
 	if (xmax <= xmin || walkerheight <= 0)
 		return;
 
@@ -1506,7 +1582,7 @@ void sdl_video::walkputbuffer_shadow(Sint32 walkerstartx, Sint32 walkerstarty,
 		Sint32 desty = walkerstarty + walkerheight - t;
 		if (desty < portstarty || desty >= portendy)
 			continue;
-		Sint32 walkoff = (walkerheight-1 - t*2) * walkerwidth;
+		Sint32 walkoff = (walkerheight-1 - t*height_divisor) * walkerwidth;
 		for (curx = xmin; curx < xmax; curx++)
 		{
 			if (!sourceptr[walkoff + curx])

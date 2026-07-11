@@ -12,6 +12,7 @@
 #include "test_input_helpers.h"
 #include "test_interact.h"
 #include <openglad/resources/save_data.h>
+#include <openglad/interface/ui/picker_common.h>
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 // Forward declarations from picker.cpp
@@ -65,12 +66,14 @@ static bool click_until_interactable(const std::string& click_id, const std::str
 //   3. Returns cleanly to main menu
 
 // The three FX subscreens: main-options opener id, unique BACK id, and every
-// toggle each screen hosts with its cfg (category, key) pair. Floor ghost
-// lives in GRAPHICS FX now (still cfg graphics/floor_ghost).
+// toggle each screen hosts with its cfg (category, key) pair. A cycle entry
+// (the depth selector) stores a value string instead of an on/off flag and
+// gets the five-step lap check instead of the flip check.
 struct FxToggleSpec {
     const char* button_id;
     const char* category;
     const char* key;
+    bool cycle = false;
 };
 
 struct FxScreenSpec {
@@ -99,21 +102,20 @@ static const FxToggleSpec kGraphicsFxToggles[] = {
     {"toggle_reflections", "effects", "reflections"},
     {"toggle_weather", "effects", "weather"},
     {"toggle_dust", "effects", "dust"},
-    {"toggle_depth_tint", "effects", "depth_tint"},
+    {"depth_fx", "effects", "depth_fx", true},
     {"toggle_trails", "effects", "trails"},
     {"toggle_fire_glow", "effects", "fire_glow"},
     {"toggle_ripples", "effects", "ripples"},
     {"toggle_screen_shake", "effects", "screen_shake"},
-    {"toggle_floor_ghost", "graphics", "floor_ghost"},
 };
 
 inline constexpr int kFxScreenCount = 3;
-inline constexpr int kFxMaxToggles = 13;
+inline constexpr int kFxMaxToggles = 12;
 
 static const FxScreenSpec kFxScreens[kFxScreenCount] = {
     {"gameplay_fx", "gameplay_fx_back", kGameplayFxToggles, 2},
     {"ui_fx", "ui_fx_back", kUiFxToggles, 3},
-    {"graphics_fx", "graphics_fx_back", kGraphicsFxToggles, 13},
+    {"graphics_fx", "graphics_fx_back", kGraphicsFxToggles, 12},
 };
 
 struct OptionsState {
@@ -152,6 +154,50 @@ static bool toggle_effect_and_check_flip(const char* button_id, const char* cate
             return false;
         interact(button_id);
     }
+}
+
+// One verified step of a cycle button: click and poll (re-clicking on the
+// dropped-click pattern above) until the stored value string moves.
+static bool click_cycle_step(const char* button_id, const char* category,
+                             const char* cfg_key)
+{
+    const std::string before = cfg.get_setting(category, cfg_key);
+    const Uint32 deadline = SDL_GetTicks() + 5000;
+    interact(button_id);
+    for (;;) {
+        SDL_Delay(300);
+        if (cfg.get_setting(category, cfg_key) != before)
+            return true;
+        if (SDL_GetTicks() >= deadline)
+            return false;
+        interact(button_id);
+    }
+}
+
+// The depth selector is a five-way cycle: every verified click must land on
+// a new effects/depth_fx value, and a full lap of five restores the setting
+// (an out-of-set start normalizes to the default, so compare against five
+// pure cycle_depth_fx steps rather than the raw start). A re-click racing a
+// slow handler can double-step; finish the lap if so — deadline-bounded.
+static bool cycle_effect_and_check_lap(const char* button_id, const char* category,
+                                       const char* cfg_key)
+{
+    std::string expected = cfg.get_setting(category, cfg_key);
+    for (int i = 0; i < 5; ++i)
+        expected = og::ui::cycle_depth_fx(expected);
+
+    for (int i = 0; i < 5; ++i)
+        if (!click_cycle_step(button_id, category, cfg_key))
+            return false;
+
+    const Uint32 deadline = SDL_GetTicks() + 5000;
+    while (cfg.get_setting(category, cfg_key) != expected) {
+        if (SDL_GetTicks() >= deadline)
+            return false;
+        interact(button_id);
+        SDL_Delay(300);
+    }
+    return true;
 }
 
 static int options_injector(void* data)
@@ -241,8 +287,11 @@ static int options_injector(void* data)
             fprintf(stderr, "  [test] toggling %s effects\n", screen.opener_id);
             for (int t = 0; t < screen.toggle_count; ++t) {
                 const FxToggleSpec& toggle = screen.toggles[t];
-                state->toggled_fx[s][t] = toggle_effect_and_check_flip(
-                    toggle.button_id, toggle.category, toggle.key);
+                state->toggled_fx[s][t] = toggle.cycle
+                    ? cycle_effect_and_check_lap(
+                          toggle.button_id, toggle.category, toggle.key)
+                    : toggle_effect_and_check_flip(
+                          toggle.button_id, toggle.category, toggle.key);
             }
 
             fprintf(stderr, "  [test] leaving %s subscreen\n", screen.opener_id);

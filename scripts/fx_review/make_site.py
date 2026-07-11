@@ -217,12 +217,47 @@ SCENES = [
      "Fading dot trails behind the flying projectiles: fire-colored behind the fireball, pale behind the knife."),
     ("dust", "Falling dust (multifloor)",
      "The camera is on the lower floor; someone pacing on the floor above sheds grey specks that drift down into your space — a cross-floor presence cue."),
-    ("depth_tint", "Depth tint (multifloor)",
-     "Looking down through air holes from two floors up. The tint covers EVERYTHING on a lower floor — tiles and characters alike: the soldier one floor down is cold-muted, the one two floors down colder still, while the camera-floor soldier stays untinted."),
     ("screen_shake", "Screen shake",
      "A detonation is active mid-screen: the whole camera jitters 1-2px with deterministic decaying jolts while the explosion lives."),
     ("all_together", "Everything at once",
      "The full ensemble: clouds + ground shadows overhead, shoreline reflections and ripples, an arcing fireball with trail, glow and ground shadow, plus screen shake from the detonation."),
+]
+
+
+DEPTH_INTRO = (
+    "One setting, four looks: effects/depth_fx picks how floors BELOW the "
+    "camera are treated when an air hole exposes them — fog (the default), "
+    "haze, mist, tint, or off. All four scenes share the same vantage: "
+    "looking down through air holes from two floors up, in normal play (no "
+    "key needed — lower floors always render depth-faded in the standing "
+    "view, and the chosen treatment rides that fade; the hold-look-up key "
+    "only ghosts floors ABOVE you and never touches these). Every mode "
+    "covers everything on a lower floor — tiles and characters alike — and "
+    "deepens per story: the soldier one floor down reads muted, the one two "
+    "floors down more so, while the camera-floor soldier stays untouched. "
+    "Off keeps just the fade.")
+
+DEPTH = [
+    ("depth_fog", "Depth fog — the default",
+     "Aerial haze plus slow-drifting fog patches pooling over the exposed "
+     "lower floors — the banks visibly crawl while everything else holds "
+     "still. The drift is deterministic value-noise on the render-only "
+     "effects clock (a different seed and scale than the sky clouds, so the "
+     "depths never mirror the weather). This is what shipping players see: "
+     "fog is what depth_fx means when the setting was never touched."),
+    ("depth_haze", "Depth haze",
+     "Pure aerial perspective: each story down blends further toward a pale "
+     "steel grey, washing out contrast the way distance does. Static by "
+     "construction — no animation, just depth you can read at a glance."),
+    ("depth_mist", "Depth mist",
+     "A checkerboard dither of the haze color instead of any alpha blend — "
+     "every pixel is either the floor's own color or the exact mist entry, "
+     "period-correct with zero requantization. The weave tightens per "
+     "story: sparse one floor down, full checkerboard two floors down."),
+    ("depth_tint", "Depth tint — the legacy look",
+     "The original cold blue-grey blend, preserved byte-for-byte from when "
+     "depth_tint was its own toggle: lower floors chill toward slate, "
+     "colder per story. Pick it if you liked the old look."),
 ]
 
 
@@ -271,6 +306,8 @@ def main():
          cards_for(GAMEPLAY)),
         ("Effect close-ups (real renderer, scripted scenes)", '',
          cards_for(SCENES)),
+        ("Depth effects (multifloor, one setting — four looks)", DEPTH_INTRO,
+         cards_for(DEPTH)),
     ]
     section_html = ''.join(
         f'\n<h2 style="text-align:center;color:#f0c060;font-weight:normal;'

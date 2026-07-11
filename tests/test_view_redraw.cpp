@@ -223,26 +223,30 @@ TEST(ViewRedraw, multifloor_renders_faded_below_and_ghost_above)
     {
         vs->control = mid;
 
-        // Ghosting ON (forced via the new global cfg flag so the multi-floor
-        // depth path is deterministic regardless of ambient cfg state): floor
-        // below fades, the camera floor stays opaque, the floor above is a
-        // faint ghost.
-        const std::string saved_ghost = cfg.get_setting("graphics", "floor_ghost");
-        cfg.apply_setting("graphics", "floor_ghost", "on");
         bool ok = vs->redraw(&og::runtime::current_session->myscreen_->level_runtime_data(), false);
         EXPECT_TRUE(ok) << "multi-floor redraw should succeed";
         EXPECT_EQ(1, vs->current_floor_) << "camera follows the control's floor";
+
+        // floor_render_alpha no longer reads the look-up hold at all: the
+        // floor below ALWAYS fades (regression pin — air holes must show a
+        // depth-faded lower floor in normal play), the camera floor stays
+        // opaque, and floors above report the ghost alpha they'd composite
+        // at (whether they draw is the redraw loop's floor_top gate on
+        // ghost_hold_override_). Drive the flag both ways to prove it.
+        vs->ghost_hold_override_ = true;
         EXPECT_EQ(255, vs->floor_render_alpha(1)) << "camera floor opaque";
         EXPECT_LT(vs->floor_render_alpha(0), 255) << "floor below faded";
         EXPECT_LT(vs->floor_render_alpha(2), 255) << "floor above ghosted";
 
-        // Ghosting OFF: every floor is opaque (floor_render_alpha returns 255) and
-        // the loop draws only floors 0..camera. Exercise that path too.
-        cfg.apply_setting("graphics", "floor_ghost", "off");
-        EXPECT_EQ(255, vs->floor_render_alpha(0));
-        EXPECT_EQ(255, vs->floor_render_alpha(2));
+        // Hold released: identical alphas — the released frame simply never
+        // iterates floors above the camera (and adds the upper-floor shadow
+        // pass instead). Exercise that path too.
+        vs->ghost_hold_override_ = false;
+        EXPECT_EQ(255 - viewscreen::kFloorBelowAlphaStep,
+                  vs->floor_render_alpha(0))
+            << "the below-floor fade must not need the look-up hold";
+        EXPECT_EQ(viewscreen::kFloorGhostAlpha, vs->floor_render_alpha(2));
         EXPECT_TRUE(vs->redraw(&og::runtime::current_session->myscreen_->level_runtime_data(), false));
-        cfg.apply_setting("graphics", "floor_ghost", saved_ghost.empty() ? "on" : saved_ghost);
 
         vs->control = nullptr;
     }

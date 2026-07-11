@@ -207,7 +207,6 @@ bool cfg_store::load_settings()
     apply_setting("graphics", "render", "normal");
     apply_setting("graphics", "fullscreen", "on");
     apply_setting("graphics", "overscan_percentage", "0");
-    apply_setting("graphics", "floor_ghost", "on");
 
     apply_setting("effects", "gore", "on");
     apply_setting("effects", "mini_hp_bar", "on");
@@ -221,7 +220,10 @@ bool cfg_store::load_settings()
     apply_setting("effects", "reflections", "on");
     apply_setting("effects", "weather", "on");
     apply_setting("effects", "dust", "on");
-    apply_setting("effects", "depth_tint", "on");
+    // effects/depth_fx (the depth-effect selector, default "fog") is
+    // deliberately NOT defaulted here: migrate_depth_fx() must still see
+    // whether the parsed file carried the key, so the default — and the
+    // legacy effects/depth_tint migration — are applied after parsing.
     apply_setting("effects", "trails", "on");
     apply_setting("effects", "fire_glow", "on");
     apply_setting("effects", "ripples", "on");
@@ -232,6 +234,7 @@ bool cfg_store::load_settings()
     if(!file)
 	{
 		Log("Could not open config file. Using defaults.");
+		migrate_depth_fx();
 		return false;
 	}
 
@@ -240,6 +243,7 @@ bool cfg_store::load_settings()
     if(!yaml_parser_initialize(&parser))
     {
         LogError("Couldn't initialize YAML parser for cfg/openglad.yaml.\n");
+        migrate_depth_fx();
         return true;
     }
 
@@ -268,7 +272,26 @@ bool cfg_store::load_settings()
 
     yaml_parser_delete(&parser);
 
+	migrate_depth_fx();
 	return true;
+}
+
+void cfg_store::migrate_depth_fx()
+{
+    // effects/depth_fx replaced the boolean effects/depth_tint. When the
+    // parsed settings never mentioned depth_fx, derive it: a legacy
+    // depth_tint carries its intent over (off stays off, on gets the new
+    // default treatment, fog), and a config that knew neither key gets the
+    // plain default. Once depth_fx exists the legacy key is inert — it is
+    // carried (and re-saved) as stale data nothing reads.
+    auto& effects = data["effects"];
+    if (effects.find("depth_fx") != effects.end())
+        return;
+    const auto legacy = effects.find("depth_tint");
+    if (legacy != effects.end())
+        effects["depth_fx"] = (legacy->second == "on") ? "fog" : "off";
+    else
+        effects["depth_fx"] = "fog";
 }
 
 

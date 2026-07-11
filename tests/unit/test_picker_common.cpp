@@ -2119,3 +2119,66 @@ TEST(PickerCommon, difficulty_submenu_labels_fit_140px_rows)
     for (const std::string& label : labels)
         EXPECT_LE(label.size(), 23u) << label;
 }
+
+// --- GRAPHICS FX depth selector (cfg effects/depth_fx) ---
+
+TEST(PickerCommon, cycle_depth_fx_sequence)
+{
+    // The five-way selector lap, starting from the default.
+    ASSERT_EQ("haze", og::ui::cycle_depth_fx("fog"));
+    ASSERT_EQ("mist", og::ui::cycle_depth_fx("haze"));
+    ASSERT_EQ("tint", og::ui::cycle_depth_fx("mist"));
+    ASSERT_EQ("off", og::ui::cycle_depth_fx("tint"));
+    ASSERT_EQ("fog", og::ui::cycle_depth_fx("off"));
+
+    // Five clicks restore any in-set starting value.
+    std::string value = "mist";
+    for (int i = 0; i < 5; ++i)
+        value = og::ui::cycle_depth_fx(value);
+    ASSERT_EQ("mist", value);
+
+    // Out-of-set values — including the empty string an absent cfg key
+    // reads as — normalize to the default (fog) before stepping, matching
+    // depth_fx_mode_from_setting in the renderer.
+    ASSERT_EQ("haze", og::ui::cycle_depth_fx(""));
+    ASSERT_EQ("haze", og::ui::cycle_depth_fx("on"));
+    ASSERT_EQ("haze", og::ui::cycle_depth_fx("bogus"));
+}
+
+TEST(PickerCommon, format_depth_fx_label_exact_strings)
+{
+    ASSERT_EQ("Depth: Fog", og::ui::format_depth_fx_label("fog"));
+    ASSERT_EQ("Depth: Haze", og::ui::format_depth_fx_label("haze"));
+    ASSERT_EQ("Depth: Mist", og::ui::format_depth_fx_label("mist"));
+    ASSERT_EQ("Depth: Tint", og::ui::format_depth_fx_label("tint"));
+    ASSERT_EQ("Depth: Off", og::ui::format_depth_fx_label("off"));
+
+    // Unknown/absent values read as the default treatment.
+    ASSERT_EQ("Depth: Fog", og::ui::format_depth_fx_label(""));
+    ASSERT_EQ("Depth: Fog", og::ui::format_depth_fx_label("on"));
+}
+
+TEST(PickerCommon, depth_fx_labels_fit_90px_button_face)
+{
+    // The GRAPHICS FX grid draws 90px faces at 6px/char = 15-character
+    // budget; labels are centered with no clipping.
+    std::string value = "fog";
+    for (int step = 0; step < 5; ++step)
+    {
+        const std::string label = og::ui::format_depth_fx_label(value);
+        EXPECT_LE(label.size(), 15u) << label;
+        value = og::ui::cycle_depth_fx(value);
+    }
+}
+
+TEST(PickerCommon, depth_fx_is_active_only_off_is_inactive)
+{
+    EXPECT_FALSE(og::ui::depth_fx_is_active("off"));
+    EXPECT_TRUE(og::ui::depth_fx_is_active("fog"));
+    EXPECT_TRUE(og::ui::depth_fx_is_active("haze"));
+    EXPECT_TRUE(og::ui::depth_fx_is_active("mist"));
+    EXPECT_TRUE(og::ui::depth_fx_is_active("tint"));
+    // Unknown/absent values normalize to fog, which is active.
+    EXPECT_TRUE(og::ui::depth_fx_is_active(""));
+    EXPECT_TRUE(og::ui::depth_fx_is_active("bogus"));
+}

@@ -28,8 +28,15 @@ Add a Z (height) axis and stacked floors to OpenGlad:
 2. **Projectiles drop floors** — per-weapon `can_drop_floors` flag (true for
    thrown/rock families, false for orbit FX like boomerang/shield). Deterministic
    `vz`/gravity, **no new RNG draw**.
-3. **Rendering:** camera floor fully opaque; floors below fade with depth; floors
-   above near-invisible ghost (still drawn). Exposed as an options toggle.
+3. **Rendering:** the camera floor is fully opaque; floors BELOW always
+   render depth-faded (and take the optional cold depth tint) so air holes
+   read as height in normal play; floors above are NOT drawn in the standing
+   presentation (v2): solid upper tiles cast soft SE-offset overhang shadows
+   and upper entities cast blob shadows onto the camera floor. HOLDING the
+   per-player look-up key (`KEY_LOOKUP`, default `v` for P1) ADDS the floors
+   above to that viewport's frame as faint alpha ghosts for as long as the
+   key is held. The hold is the ONLY way to see floors above — there is no
+   cfg setting or menu toggle for it — and it gates nothing else.
 4. **Cross-floor AI = yes.** Ground enemies may chase foes onto other floors via
    Z-stairs. Consequence: there is **no same-floor foe filter** — foe acquisition
    stays floor-agnostic (byte-identical to today on single-floor levels); the
@@ -394,10 +401,16 @@ a brush Z height (keys **.** raise / **,** lower, shown in the panel) applied on
 placement, so objects can be elevated on a floor (renders higher; the cylinder
 lets low shots pass under).
 
-DONE since: a per-player *Options* toggle (the in-game options menu, key **G**)
-disables floor ghosting/fade — `PREF_FLOOR_GHOST` (0 = on, so existing prefs
-files keep ghosting), read by `viewscreen::floor_render_alpha` (returns 255 when
-off) and the floor-draw loop (draws only `0..camera`, no above-ghosts, when off).
+DONE since (and since superseded): floor ghosting stopped being a persistent
+option. It started as a per-player prefs toggle (`PREF_FLOOR_GHOST`), became
+the `graphics/floor_ghost` cfg toggle, and both are gone: the ghosts-ABOVE
+view now exists only while the look-up key is held (see "Floor presentation
+v2" below). The below-floor depth fade is NOT part of that hold — it renders
+unconditionally (`viewscreen::floor_render_alpha` no longer reads the hold at
+all; the hold only extends the floor loop's `floor_top` past the camera).
+Briefly the fade WAS latched behind the hold too, which rendered lower floors
+opaque/full-brightness through air holes in normal play — fixed, pinned by
+`RenderEffects.lower_floor_fades_and_tints_without_look_up`.
 
 DONE since: glass now reads as glass, not air — `graphlib.cpp::load_map_data`
 loads a floor graphic for `PIX_GLASS` and the floor draw loop renders it at a
@@ -436,3 +449,32 @@ bit more 3D. Visual-only (gated `floor_count()>1`; single-floor byte-identical;
   to the screen (no layer), so single-floor is byte-identical (og_test_parity).
   kParallaxScale=0.10, kParallaxScroll=0.05.
   Combined with the shift + alpha ghosting, the stack now reads clearly 2.5D.
+
+### Floor presentation v2: overhang shadows + look-up hold (DONE)
+
+The always-on translucent upper floors read poorly in play, so the default
+presentation no longer draws floors above the camera at all. Their presence is
+diegetic instead (all render-only, `floor_count()>1`-gated, editor excluded):
+
+- **Overhang shadows** (`draw_upper_floor_shadows`, effects.cpp): every solid
+  (non-`PIX_AIR`) tile of each floor above the camera darkens its footprint on
+  the camera floor, displaced SE `+2px` per story (the NW sun shared with the
+  cloud/unit shadows), as ONE flat `pointb(PURE_BLACK, 70)` coverage pass per
+  upper floor (adjacent tiles merge; no double-darkening within a floor) with a
+  1px checkerboard-dithered rim for a soft edge.
+- **Blob shadows** (`draw_walker_blob_shadow`, walker_draw.cpp): alive
+  Living/Weapon entities up there (same eligibility as the unit ground shadows:
+  not dormant/phantom/invisible) cast a squashed-silhouette blob via the
+  parameterized `walkputbuffer_shadow` (height divisor 3-4, 2-4px side inset,
+  alpha 60/44) at their ground anchor + the same SE offset; shrink/fade caps at
+  2 stories, the offset does not.
+- **Look-up hold**: the per-player `KEY_LOOKUP` (client-side keymap slot 16 —
+  NOT an `InputAction`; the wire stays at 16) ADDS the floors above the
+  camera to that viewport's frame as faint ghosts while held
+  (`viewscreen::ghost_hold_override_`, read only by the floor loop's
+  `floor_top` gate). The held frame is the pre-v2 always-ghost stack byte for
+  byte (the below-floor fade is in every frame; the hold contributes exactly
+  the ghosts above), and the ONLY way to see floors above. The
+  `graphics/floor_ghost` cfg toggle and its GRAPHICS FX button were removed
+  (stale cfg keys are ignored). Default binding `v` for P1, unbound for P2-4
+  (remappable on CONTROLS).

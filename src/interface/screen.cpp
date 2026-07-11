@@ -608,10 +608,9 @@ void screen::floor_layer_begin(Sint32 x, Sint32 y, Sint32 w, Sint32 h)
 void screen::floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
                              float scale, Sint32 cx, Sint32 cy,
                              unsigned char alpha,
-                             unsigned char tint_strength)
+                             DepthFxParams fx)
 {
-    video_impl_->floor_layer_end(x, y, w, h, scale, cx, cy, alpha,
-                                 tint_strength);
+    video_impl_->floor_layer_end(x, y, w, h, scale, cx, cy, alpha, fx);
 }
 
 void screen::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
@@ -681,11 +680,13 @@ void screen::walkputbuffer_shadow(Sint32 walkerstartx, Sint32 walkerstarty,
                                   Sint32 portstartx, Sint32 portstarty,
                                   Sint32 portendx, Sint32 portendy,
                                   std::span<const unsigned char> sourceptr,
-                                  Uint8 alpha)
+                                  Uint8 alpha, Sint32 height_divisor,
+                                  Sint32 inset)
 {
     video_impl_->walkputbuffer_shadow(walkerstartx, walkerstarty, walkerwidth,
                                       walkerheight, portstartx, portstarty,
-                                      portendx, portendy, sourceptr, alpha);
+                                      portendx, portendy, sourceptr, alpha,
+                                      height_divisor, inset);
 }
 
 void screen::walkputbuffer_reflect(Sint32 walkerstartx, Sint32 walkerstarty,

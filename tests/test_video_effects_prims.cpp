@@ -2,10 +2,11 @@
 // walkputbuffer_shadow (squashed black ground shadow), walkputbuffer_reflect
 // (vertically flipped reflection masked to the reflective tiles — glass +
 // pure water by default, caller-supplied LUT), and floor_layer_end's
-// depth-tint color mod (apply for one composite, reset after).
+// per-mode depth treatments (apply for one composite, reset after).
 #include <openglad/interface/screen.h>
 #include <openglad/interface/base.h>
 #include <openglad/interface/render/effects.h>
+#include <openglad/interface/render/depth_fx.h>
 #include <gtest/gtest.h>
 
 #include <array>
@@ -411,57 +412,244 @@ TEST(VideoEffectsPrims, reflect_honors_caller_supplied_mask)
     ASSERT_EQ(8, marked) << "default LUT must mark exactly the 8 tiles";
 }
 
-TEST(VideoEffectsPrims, floor_layer_end_cold_tint_shifts_hue_and_never_leaks)
+namespace
+{
+// The shared depth-fx composite fixture: draw an opaque uniform box into the
+// redirected off-screen layer, then composite it back 1:1. Alpha 255 makes
+// the final blend a plain copy, so the read-back IS the treated layer pixel
+// — every per-mode formula below pins exact bytes.
+constexpr int kFxLX = 40, kFxLY = 40, kFxLW = 32, kFxLH = 32;
+
+void depth_composite(DepthFxParams fx, unsigned char alpha = 255,
+                     unsigned char color = kBrightBG)
 {
     screen* s = scr();
-    const int lx = 40, ly = 40, lw = 32, lh = 32;
-    const int cx = lx + lw / 2, cy = ly + lh / 2;
+    s->clearbuffer();
+    s->floor_layer_begin(kFxLX, kFxLY, kFxLW, kFxLH);
+    s->fastbox(kFxLX, kFxLY, kFxLW, kFxLH, color, 1); // into the layer
+    s->floor_layer_end(kFxLX, kFxLY, kFxLW, kFxLH, 1.0f,
+                       kFxLX + kFxLW / 2, kFxLY + kFxLH / 2, alpha, fx);
+}
 
-    // One faded-floor composite: draw an opaque bright box into the
-    // redirected off-screen layer, then composite it back 1:1 at alpha 200
-    // with the given tint strength.
-    auto composite = [&](unsigned char strength)
-    {
-        s->clearbuffer();
-        s->floor_layer_begin(lx, ly, lw, lh);
-        s->fastbox(lx, ly, lw, lh, kBrightBG, 1); // redirected into the layer
-        s->floor_layer_end(lx, ly, lw, lh, 1.0f, cx, cy, 200, strength);
-    };
+// The legacy blend-toward-target step, exactly as floor_layer_end computes
+// it (integer, truncating division).
+Uint8 blend_toward(Uint8 c, int target, int t)
+{
+    return static_cast<Uint8>(c + ((target - c) * t) / 255);
+}
+} // namespace
 
-    // Baseline: an untinted composite over the cleared surface.
-    composite(0);
+TEST(VideoEffectsPrims, floor_layer_end_tint_pins_legacy_bytes_and_never_leaks)
+{
+    const int cx = kFxLX + kFxLW / 2, cy = kFxLY + kFxLH / 2;
+
+    // Baseline: an untreated composite (mode Off) is a plain copy of the
+    // layer color.
+    depth_composite({});
     const RGB base = px(cx, cy);
     ASSERT_TRUE(base.r > 0 && base.g > 0 && base.b > 0)
         << "the composite must land on the render surface";
 
-    // Tinted: the blend must SHIFT HUE toward the cold target, not merely
-    // scale channels — blue must move toward the target even when the source
-    // has more blue than the target scales to (the old multiplicative mod
-    // could never raise a low channel, which made the tint invisible on
-    // pure-green terrain).
-    composite(96);
-    const RGB tinted = px(cx, cy);
-    ASSERT_LT(tinted.r, base.r) << "warm channels must fall toward the cold target";
-    ASSERT_LT(tinted.g, base.g) << "green must fall toward the cold target";
-    ASSERT_NE(tinted.b, base.b) << "blue must move toward the target share";
-    const int base_blue_share = static_cast<int>(base.b) * 100 /
-        (base.r + base.g + base.b);
-    const int tint_blue_share = static_cast<int>(tinted.b) * 100 /
-        (tinted.r + tinted.g + tinted.b);
-    ASSERT_GT(tint_blue_share, base_blue_share)
-        << "the tinted pixel must read COLDER (larger blue share)";
+    // Tint one story down: EXACTLY the retired depth_tint pixels — the
+    // strength-52 blend toward (58,74,140), truncating integer math.
+    depth_composite({DepthFxMode::Tint, 1, 0});
+    const RGB t1 = px(cx, cy);
+    ASSERT_EQ(blend_toward(base.r, 58, 52), t1.r) << "legacy tint red, 1 story";
+    ASSERT_EQ(blend_toward(base.g, 74, 52), t1.g) << "legacy tint green, 1 story";
+    ASSERT_EQ(blend_toward(base.b, 140, 52), t1.b) << "legacy tint blue, 1 story";
 
-    // Stronger tint pulls further.
-    composite(200);
-    const RGB deep = px(cx, cy);
-    const int deep_blue_share = static_cast<int>(deep.b) * 100 /
-        (deep.r + deep.g + deep.b);
-    ASSERT_GT(deep_blue_share, tint_blue_share)
-        << "tint strength must scale the shift";
+    // Two (and more) stories down: the legacy strength-96 blend.
+    depth_composite({DepthFxMode::Tint, 2, 0});
+    const RGB t2 = px(cx, cy);
+    ASSERT_EQ(blend_toward(base.r, 58, 96), t2.r) << "legacy tint red, 2 stories";
+    ASSERT_EQ(blend_toward(base.g, 74, 96), t2.g) << "legacy tint green, 2 stories";
+    ASSERT_EQ(blend_toward(base.b, 140, 96), t2.b) << "legacy tint blue, 2 stories";
 
-    // Leak check: the layer is repainted per pass, so a strength-0 composite
-    // right after a deep tint must reproduce the baseline exactly.
-    composite(0);
+    // The tick must not matter: tint is static by construction.
+    depth_composite({DepthFxMode::Tint, 1, 1234});
+    ASSERT_TRUE(same(px(cx, cy), t1)) << "tint must ignore the frame tick";
+
+    // Leak check: the layer is repainted per pass, so an Off composite right
+    // after a deep tint must reproduce the baseline exactly.
+    depth_composite({});
     ASSERT_TRUE(same(px(cx, cy), base))
-        << "a strength-0 composite must be bit-identical to the baseline";
+        << "a mode-Off composite must be bit-identical to the baseline";
+    // ...including at a fade alpha (the old default-arg path).
+    depth_composite({}, 200);
+    const RGB faded_off = px(cx, cy);
+    depth_composite({DepthFxMode::Off, 3, 77}, 200);
+    ASSERT_TRUE(same(px(cx, cy), faded_off))
+        << "mode Off must be a no-op regardless of stories/frame";
+}
+
+TEST(VideoEffectsPrims, floor_layer_end_haze_lifts_toward_pale_steel)
+{
+    const int cx = kFxLX + kFxLW / 2, cy = kFxLY + kFxLH / 2;
+
+    depth_composite({});
+    const RGB base = px(cx, cy);
+
+    // One story: the 77/255 (~30%) blend toward (150,160,175), exact bytes.
+    depth_composite({DepthFxMode::Haze, 1, 0});
+    const RGB h1 = px(cx, cy);
+    ASSERT_EQ(blend_toward(base.r, 150, 77), h1.r) << "haze red, 1 story";
+    ASSERT_EQ(blend_toward(base.g, 160, 77), h1.g) << "haze green, 1 story";
+    ASSERT_EQ(blend_toward(base.b, 175, 77), h1.b) << "haze blue, 1 story";
+
+    // Deeper pulls harder (2 stories = 154), and haze ignores the tick.
+    depth_composite({DepthFxMode::Haze, 2, 0});
+    const RGB h2 = px(cx, cy);
+    ASSERT_EQ(blend_toward(base.r, 150, 154), h2.r) << "haze red, 2 stories";
+    depth_composite({DepthFxMode::Haze, 2, 999});
+    ASSERT_TRUE(same(px(cx, cy), h2)) << "haze must ignore the frame tick";
+
+    // The strength ramp caps at 3+ stories (210) instead of overshooting.
+    depth_composite({DepthFxMode::Haze, 5, 0});
+    const RGB h5 = px(cx, cy);
+    ASSERT_EQ(blend_toward(base.r, 150, 210), h5.r) << "haze caps at 210";
+}
+
+TEST(VideoEffectsPrims, floor_layer_end_mist_dithers_exact_color_no_blends)
+{
+    depth_composite({});
+    std::vector<RGB> base(static_cast<std::size_t>(kFxLW) * kFxLH);
+    for (int y = 0; y < kFxLH; y++)
+        for (int x = 0; x < kFxLW; x++)
+            base[static_cast<std::size_t>(y * kFxLW + x)] =
+                px(kFxLX + x, kFxLY + y);
+
+    // Story 1: every 4th diagonal ((x+y)&3 == 0, screen coordinates) is
+    // EXACTLY the mist color (150,160,175); every other pixel is EXACTLY the
+    // original. No alpha blending anywhere: zero in-between colors.
+    const RGB mist{150, 160, 175};
+    depth_composite({DepthFxMode::Mist, 1, 0});
+    for (int y = 0; y < kFxLH; y++)
+        for (int x = 0; x < kFxLW; x++)
+        {
+            const RGB got = px(kFxLX + x, kFxLY + y);
+            const bool lattice = (((kFxLX + x) + (kFxLY + y)) & 3) == 0;
+            const RGB want =
+                lattice ? mist
+                        : base[static_cast<std::size_t>(y * kFxLW + x)];
+            ASSERT_TRUE(same(got, want))
+                << "mist(1 story) at " << x << "," << y
+                << " must be " << (lattice ? "the exact mist entry"
+                                           : "the untouched original");
+        }
+
+    // Story 2+: the true checkerboard ((x+y)&1), same exact two-value rule.
+    depth_composite({DepthFxMode::Mist, 2, 0});
+    int replaced = 0;
+    for (int y = 0; y < kFxLH; y++)
+        for (int x = 0; x < kFxLW; x++)
+        {
+            const RGB got = px(kFxLX + x, kFxLY + y);
+            const bool lattice = (((kFxLX + x) + (kFxLY + y)) & 1) != 0;
+            const RGB want =
+                lattice ? mist
+                        : base[static_cast<std::size_t>(y * kFxLW + x)];
+            ASSERT_TRUE(same(got, want))
+                << "mist(2 stories) at " << x << "," << y;
+            replaced += lattice ? 1 : 0;
+        }
+    ASSERT_EQ(kFxLW * kFxLH / 2, replaced)
+        << "2 stories must mist exactly half the pixels";
+
+    // Mist ignores the tick.
+    depth_composite({DepthFxMode::Mist, 2, 4321});
+    for (int y = 0; y < kFxLH; y += 5)
+        for (int x = 0; x < kFxLW; x += 5)
+        {
+            const bool lattice = (((kFxLX + x) + (kFxLY + y)) & 1) != 0;
+            const RGB want =
+                lattice ? mist
+                        : base[static_cast<std::size_t>(y * kFxLW + x)];
+            ASSERT_TRUE(same(px(kFxLX + x, kFxLY + y), want))
+                << "mist must ignore the frame tick";
+        }
+}
+
+TEST(VideoEffectsPrims, floor_layer_end_fog_drifts_with_the_tick_over_a_haze_base)
+{
+    // Fog = the haze wash plus noise-driven patches toward a lighter
+    // fog-white: on a DARK base (so the fog color sits above the hazed
+    // pixels in every channel) no channel can land below the plain haze
+    // bytes, and the patch field must both repeat exactly for one tick and
+    // move across ticks.
+    depth_composite({DepthFxMode::Haze, 1, 0}, 255, kDarkSprite);
+    std::vector<RGB> haze(static_cast<std::size_t>(kFxLW) * kFxLH);
+    for (int y = 0; y < kFxLH; y++)
+        for (int x = 0; x < kFxLW; x++)
+            haze[static_cast<std::size_t>(y * kFxLW + x)] =
+                px(kFxLX + x, kFxLY + y);
+
+    depth_composite({DepthFxMode::Fog, 1, 0}, 255, kDarkSprite);
+    std::vector<RGB> fog0(haze.size());
+    int brightened = 0;
+    std::array<bool, 256> red_levels{};
+    for (int y = 0; y < kFxLH; y++)
+        for (int x = 0; x < kFxLW; x++)
+        {
+            const std::size_t i = static_cast<std::size_t>(y * kFxLW + x);
+            fog0[i] = px(kFxLX + x, kFxLY + y);
+            const RGB& hz = haze[i];
+            ASSERT_TRUE(fog0[i].r >= hz.r && fog0[i].g >= hz.g &&
+                        fog0[i].b >= hz.b)
+                << "fog patches only lift the haze base, never darken";
+            if (!same(fog0[i], hz))
+                brightened++;
+            red_levels[fog0[i].r] = true;
+        }
+    ASSERT_GT(brightened, 0) << "some fog patch must cover the box";
+    int distinct_reds = 0;
+    for (bool hit : red_levels)
+        distinct_reds += hit ? 1 : 0;
+    ASSERT_GE(distinct_reds, 3)
+        << "the fog load must VARY across the box (noise-patch structure), "
+           "not land as one uniform second wash";
+
+    // Determinism: the same tick reproduces the same bytes.
+    depth_composite({DepthFxMode::Fog, 1, 0}, 255, kDarkSprite);
+    for (int y = 0; y < kFxLH; y += 3)
+        for (int x = 0; x < kFxLW; x += 3)
+            ASSERT_TRUE(same(px(kFxLX + x, kFxLY + y),
+                             fog0[static_cast<std::size_t>(y * kFxLW + x)]))
+                << "fog at one tick must replay identically";
+
+    // Drift: 8 ticks later the patch field has moved.
+    depth_composite({DepthFxMode::Fog, 1, 8}, 255, kDarkSprite);
+    bool moved = false;
+    for (int y = 0; y < kFxLH && !moved; y++)
+        for (int x = 0; x < kFxLW && !moved; x++)
+            moved = !same(px(kFxLX + x, kFxLY + y),
+                          fog0[static_cast<std::size_t>(y * kFxLW + x)]);
+    ASSERT_TRUE(moved) << "fog must drift with the effects frame tick";
+
+    // Deeper floors fog harder: the per-pixel patch alpha caps HIGHER at 2+
+    // stories. Pin it on the sampler itself — scan for a bank-core pixel
+    // that saturates the 1-story cap and check the 2-story value passes it,
+    // while clear and unsaturated pixels agree between depths.
+    bool found_saturated = false;
+    int a1_cap = 0;
+    for (int y = 0; y < 256 && !found_saturated; y++)
+        for (int x = 0; x < 256 && !found_saturated; x++)
+        {
+            const int a1 = depth_fog_alpha_at(x, y, 0, 1);
+            const int a2 = depth_fog_alpha_at(x, y, 0, 2);
+            ASSERT_GE(a2, a1) << "depth can only add fog, never remove it";
+            if (a1 == 0)
+            {
+                ASSERT_EQ(0, a2)
+                    << "clear sky at one story must stay clear deeper down";
+            }
+            if (a2 > a1)
+            {
+                found_saturated = true;
+                a1_cap = a1;
+            }
+        }
+    ASSERT_TRUE(found_saturated)
+        << "some bank core must exceed the 1-story alpha cap";
+    ASSERT_GE(a1_cap, 40) << "the 1-story cap must sit in the spec'd "
+                             "~40-60 patch-alpha band";
 }

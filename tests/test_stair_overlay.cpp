@@ -187,7 +187,7 @@ public:
 private:
     static constexpr const char* kKeys[] = {
         "shadows", "reflections", "weather", "ripples",
-        "trails",  "dust",        "fire_glow", "depth_tint",
+        "trails",  "dust",        "fire_glow", "depth_fx",
         "screen_shake",
     };
     std::vector<std::pair<std::string, std::string>> saved_;

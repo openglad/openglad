@@ -29,6 +29,19 @@ class walker;
 // (screen::redraw); never read by the sim.
 void effects_advance_frame();
 
+// The current render-only effects frame tick, for callers that thread it
+// into stateless per-pixel effects (the depth-fog drift in DepthFxParams).
+// Never read by the sim.
+std::uint32_t effects_frame_tick();
+
+// Depth-fog patch alpha (0..255; 0 = clear) at screen pixel (x, y) for the
+// given effects frame tick, `stories` floors below the camera. Samples a
+// dedicated fixed-seed value-noise field (its own seed and a coarser octave
+// mix than the sky clouds) drifting slowly with the tick; deeper floors fog
+// up to a higher alpha cap. Deterministic and replayable after
+// effects_reset_for_testing(). Backs DepthFxMode::Fog in floor_layer_end.
+int depth_fog_alpha_at(int x, int y, std::uint32_t tick, int stories);
+
 // Per-tile-id mask of the tiles that mirror entities: PIX_GLASS plus the
 // pure water tiles PIX_WATER1/2/3, plus the Westlands lava (PIX_LAVA1/2)
 // and marsh (PIX_MARSH1/2) tiles. Edge tiles (watergrass/grasswater) stay
@@ -54,6 +67,22 @@ bool draw_walker_ripples(walker& w, viewscreen* vs,
 // The pulse phase is a pure function of the render tick. Returns true
 // when at least one chevron pixel was blended.
 bool draw_stair_overlays(viewscreen* vs, const PixieData& camera_grid);
+
+// Upper-floor shadow pass (the DEFAULT multifloor look): unless the player
+// holds the look-up key, floors above the camera are not rendered — their
+// presence reads through shadows cast down onto the camera floor instead.
+// For each floor above the camera, every solid (non-PIX_AIR) tile darkens
+// its footprint displaced SE by +2px per story of height (the same NW sun
+// as the cloud/unit shadows) in ONE flat black blend per floor (overlapping
+// tiles of one floor never double-darken; stacked floors darken additively
+// and clamp in the blend). The footprint's 1px rim is dithered (checkerboard
+// skip) for a soft edge. Entities on those floors cast blob shadows
+// (draw_walker_blob_shadow). Called by viewscreen::redraw after the camera
+// floor's entities, before weather/HUD/radar; the caller gates it to the
+// ghosts-off path outside the editor's floor-override draw, and a
+// floor_count<=1 world short-circuits here (single-floor byte-identity).
+// Returns true when any shadow pixel was blended.
+bool draw_upper_floor_shadows(viewscreen* vs, GameWorld& world);
 
 // Weather overlay over vs's viewport, keyed on the WORLD's per-level
 // WeatherKind (rolled once per level by the authoritative side and synced

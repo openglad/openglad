@@ -14,8 +14,10 @@
 #include <openglad/core/pixdefs.h>
 #include <openglad/core/runtime_trace.h>
 #include <openglad/core/test_trace.h>
+#include <openglad/interface/input.h>
 #include <openglad/interface/render/pal32.h>
 #include <gtest/gtest.h>
+#include <SDL.h>
 
 #include <algorithm>
 #include <cmath>
@@ -71,7 +73,7 @@ private:
         {"shadows", "on"},        {"reflections", "on"}, {"weather", "on"},
         {"attack_lunge", "on"},   {"hit_recoil", "off"}, {"ripples", "on"},
         {"trails", "on"},         {"dust", "on"},        {"fire_glow", "on"},
-        {"depth_tint", "on"},     {"screen_shake", "on"},
+        {"depth_fx", "fog"},      {"screen_shake", "on"},
     };
     std::vector<std::pair<std::string, std::string>> saved_;
 };
@@ -188,6 +190,54 @@ void fill_floor_grid(GameWorld& world, int f, unsigned char tile)
                                         static_cast<unsigned char>(gh), buf);
     world.smoother_for_floor(f).set_target(world.grid_for_floor(f));
 }
+
+// Swap the session's SDL keystate pointer for a writable fake so redraw sees
+// chosen keys "physically held" (KEY_LOOKUP is read through
+// isPlayerHoldingKey at render time). Same shape as test_game_loop's guard.
+struct SessionKeyStateGuard
+{
+    const Uint8* old_keystates = nullptr;
+    std::array<Uint8, SDL_NUM_SCANCODES> fake_keystates{};
+
+    SessionKeyStateGuard()
+        : old_keystates(og::runtime::current_session->keystates_)
+    {
+        fake_keystates.fill(0);
+        og::runtime::current_session->keystates_ = fake_keystates.data();
+    }
+
+    ~SessionKeyStateGuard()
+    {
+        og::runtime::current_session->keystates_ = old_keystates;
+    }
+
+    void set(SDL_Keycode key, bool pressed)
+    {
+        const SDL_Scancode scancode = SDL_GetScancodeFromKey(key);
+        if (scancode >= 0 && scancode < SDL_NUM_SCANCODES)
+            fake_keystates[static_cast<std::size_t>(scancode)] = pressed ? 1 : 0;
+    }
+};
+
+struct KeyBindingGuard
+{
+    int player;
+    int key_enum;
+    int old_key;
+
+    KeyBindingGuard(int player_, int key_enum_, int new_key)
+        : player(player_)
+        , key_enum(key_enum_)
+        , old_key(og::runtime::current_session->player_keys_[player_][key_enum_])
+    {
+        og::runtime::current_session->player_keys_[player][key_enum] = new_key;
+    }
+
+    ~KeyBindingGuard()
+    {
+        og::runtime::current_session->player_keys_[player][key_enum] = old_key;
+    }
+};
 
 } // namespace
 
@@ -321,8 +371,6 @@ TEST(RenderEffects, reflection_draws_on_camera_floor_glass)
     EffectsCfgGuard guard;
     cfg.apply_setting("effects", "shadows", "off");
     cfg.apply_setting("effects", "weather", "off");
-    const std::string saved_ghost = cfg.get_setting("graphics", "floor_ghost");
-    cfg.apply_setting("graphics", "floor_ghost", "on");
 
     // Two floors: grass below, an all-glass camera floor above the walker.
     GameWorld& world = scr()->world();
@@ -364,8 +412,6 @@ TEST(RenderEffects, reflection_draws_on_camera_floor_glass)
     ASSERT_FALSE(rects_equal(off_rect, on_rect))
         << "reflection must alter pixels in the glass below the walker";
 
-    cfg.apply_setting("graphics", "floor_ghost",
-                      saved_ghost.empty() ? "on" : saved_ghost);
     restore_world(vs);
 }
 
@@ -377,8 +423,6 @@ TEST(RenderEffects, reflection_absent_without_glass)
     EffectsCfgGuard guard;
     cfg.apply_setting("effects", "shadows", "off");
     cfg.apply_setting("effects", "weather", "off");
-    const std::string saved_ghost = cfg.get_setting("graphics", "floor_ghost");
-    cfg.apply_setting("graphics", "floor_ghost", "on");
 
     // Same two-floor scene, but the camera floor holds no glass at all: the
     // cheap grid pre-check must skip the blit, so nothing traces or changes.
@@ -410,8 +454,6 @@ TEST(RenderEffects, reflection_absent_without_glass)
     ASSERT_TRUE(rects_equal(off_rect, on_rect))
         << "reflections on over no glass must render byte-identically";
 
-    cfg.apply_setting("graphics", "floor_ghost",
-                      saved_ghost.empty() ? "on" : saved_ghost);
     restore_world(vs);
 }
 
@@ -1210,8 +1252,6 @@ TEST(RenderEffects, ripples_absent_on_noncamera_floors)
     cfg.apply_setting("effects", "reflections", "off");
     cfg.apply_setting("effects", "weather", "off");
     cfg.apply_setting("effects", "ripples", "on");
-    const std::string saved_ghost = cfg.get_setting("graphics", "floor_ghost");
-    cfg.apply_setting("graphics", "floor_ghost", "on");
 
     // Water on floor 0, grass camera floor above: the wader below the camera
     // must not ripple (its floor never runs the camera pass).
@@ -1242,8 +1282,6 @@ TEST(RenderEffects, ripples_absent_on_noncamera_floors)
     ASSERT_TRUE(trace_contains("effects", "ripples floor=0 n=1"))
         << "the same wader ripples once its floor is the camera floor";
 
-    cfg.apply_setting("graphics", "floor_ghost",
-                      saved_ghost.empty() ? "on" : saved_ghost);
     effects_reset_for_testing();
     restore_world(vs);
 }
@@ -2140,7 +2178,7 @@ void all_effects_off()
 {
     for (const char* key : {"shadows", "reflections", "weather",
                             "ripples", "trails", "dust", "fire_glow",
-                            "depth_tint", "screen_shake"})
+                            "depth_fx", "screen_shake"})
         cfg.apply_setting("effects", key, "off");
 }
 
@@ -2360,11 +2398,9 @@ TEST(RenderEffects, dust_specks_fall_under_movers_on_the_floor_above)
     prepare_world();
     EffectsCfgGuard guard;
     all_effects_off();
-    const std::string saved_ghost = cfg.get_setting("graphics", "floor_ghost");
-    cfg.apply_setting("graphics", "floor_ghost", "off");
 
-    // Camera floor 0, a mover on floor 1 overhead (invisible: ghosts off),
-    // so the ONLY on-vs-off delta can be its falling dust.
+    // Camera floor 0, a mover on floor 1 overhead (invisible: no look-up
+    // hold), so the ONLY on-vs-off delta can be its falling dust.
     GameWorld& world = scr()->world();
     world.set_floor_count(2);
     fill_camera_grid(static_cast<unsigned char>(PIX_GRASS1));
@@ -2427,8 +2463,6 @@ TEST(RenderEffects, dust_specks_fall_under_movers_on_the_floor_above)
     }
     ASSERT_GT(changed, 0u) << "at least one speck pixel must draw";
 
-    cfg.apply_setting("graphics", "floor_ghost",
-                      saved_ghost.empty() ? "on" : saved_ghost);
     effects_reset_for_testing();
     restore_world(vs);
 }
@@ -2441,8 +2475,6 @@ TEST(RenderEffects, dust_absent_when_still_on_top_floor_or_single_floor)
     EffectsCfgGuard guard;
     all_effects_off();
     cfg.apply_setting("effects", "dust", "on");
-    const std::string saved_ghost = cfg.get_setting("graphics", "floor_ghost");
-    cfg.apply_setting("graphics", "floor_ghost", "off");
 
     GameWorld& world = scr()->world();
     world.set_floor_count(2);
@@ -2503,9 +2535,271 @@ TEST(RenderEffects, dust_absent_when_still_on_top_floor_or_single_floor)
     ASSERT_FALSE(trace_contains("effects", "dust"))
         << "single-floor levels never shed dust";
 
-    cfg.apply_setting("graphics", "floor_ghost",
-                      saved_ghost.empty() ? "on" : saved_ghost);
     effects_reset_for_testing();
+    restore_world(vs);
+}
+
+// ---------------------------------------------------------------------------
+// Upper-floor shadow pass (the DEFAULT multifloor look): solid tiles of
+// floors above the camera cast flat SE-offset footprint shadows and entities
+// up there cast blob shadows; holding KEY_LOOKUP ADDS the floors above as
+// faint ghosts (the only way to see them). Floors BELOW the camera always
+// render depth-faded, held or not; single-floor stays byte-identical.
+// ---------------------------------------------------------------------------
+
+TEST(RenderEffects, overhang_shadow_darkens_camera_floor_under_solid_upper_tiles)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    EffectsCfgGuard guard;
+    all_effects_off();
+
+    GameWorld& world = scr()->world();
+    world.set_floor_count(2);
+    fill_camera_grid(static_cast<unsigned char>(PIX_GRASS1));
+    fill_floor_grid(world, 1, static_cast<unsigned char>(PIX_AIR));
+
+    walker* w = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, w);
+    w->setxy(160, 120);
+    vs->control = w;
+
+    // All-air floor above: no shadow pass output, remember the clean frame.
+    trace_clear();
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_FALSE(trace_contains("render", "overhang_shadow"))
+        << "an all-air upper floor must cast nothing";
+    const std::vector<RGB> air = grab_viewport(vs);
+
+    // Solidify a 2x2 tile block on floor 1 to the right of the camera center.
+    PixieData& upper = world.grid_for_floor(1);
+    const Sint32 gi = (vs->topx + vs->xview / 2 + 48) / GRID_SIZE;
+    const Sint32 gj = (vs->topy + vs->yview / 2) / GRID_SIZE;
+    ASSERT_GE(gi, 0);
+    ASSERT_GE(gj, 0);
+    ASSERT_LT(gi + 1, static_cast<Sint32>(upper.w));
+    ASSERT_LT(gj + 1, static_cast<Sint32>(upper.h));
+    for (Sint32 j = gj; j <= gj + 1; j++)
+        for (Sint32 i = gi; i <= gi + 1; i++)
+            upper.data[i + static_cast<Sint32>(upper.w) * j] =
+                static_cast<unsigned char>(PIX_GRASS1);
+
+    trace_clear();
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_TRUE(trace_contains("render", "overhang_shadow floor=1"))
+        << "solid upper tiles must cast the overhang shadow";
+    ASSERT_FALSE(trace_contains("render", "blob_shadow"))
+        << "no entities live on the upper floor";
+    const std::vector<RGB> on = grab_viewport(vs);
+
+    auto rect_index = [&](int wx, int wy) -> size_t
+    {
+        const int sx = world_to_screen_x(vs, wx) - static_cast<int>(vs->xloc);
+        const int sy = world_to_screen_y(vs, wy) - static_cast<int>(vs->yloc);
+        EXPECT_GE(sx, 0);
+        EXPECT_LT(sx, static_cast<int>(vs->xview));
+        EXPECT_GE(sy, 0);
+        EXPECT_LT(sy, static_cast<int>(vs->yview));
+        return static_cast<size_t>(sy) * static_cast<size_t>(vs->xview) +
+            static_cast<size_t>(sx);
+    };
+
+    // Interior of the footprint (block center + the 1-story SE offset of
+    // 2px): a flat darkened blend, never dithered away (14px from any rim).
+    const size_t inside =
+        rect_index(gi * GRID_SIZE + GRID_SIZE + 2, gj * GRID_SIZE + GRID_SIZE + 2);
+    ASSERT_TRUE(darkened(on[inside], air[inside]))
+        << "the footprint interior must darken under a solid upper tile";
+    // Well away from the block the upper floor is still air: untouched.
+    const size_t outside =
+        rect_index((gi - 4) * GRID_SIZE + 8, gj * GRID_SIZE + 8);
+    ASSERT_TRUE(same(on[outside], air[outside]))
+        << "pixels under upper-floor AIR must not darken";
+
+    restore_world(vs);
+}
+
+TEST(RenderEffects, blob_shadow_marks_upper_floor_walker_on_camera_floor)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    EffectsCfgGuard guard;
+    all_effects_off();
+
+    // An all-AIR floor above isolates the blob: no overhang footprints, and
+    // without the look-up hold the upper-floor sprite itself is never drawn.
+    GameWorld& world = scr()->world();
+    world.set_floor_count(2);
+    fill_camera_grid(static_cast<unsigned char>(PIX_GRASS1));
+    fill_floor_grid(world, 1, static_cast<unsigned char>(PIX_AIR));
+
+    walker* w = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, w);
+    w->setxy(160, 120);
+    vs->control = w;
+
+    trace_clear();
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_FALSE(trace_contains("render", "blob_shadow"))
+        << "nobody is upstairs yet";
+    const std::vector<RGB> before = grab_viewport(vs);
+
+    walker* upper = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, upper);
+    upper->set_floor(1);
+    upper->setxy(200, 120);
+
+    trace_clear();
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_TRUE(trace_contains("render", "blob_shadow floor=1 n=1"))
+        << "the upstairs walker must cast one blob shadow";
+    const std::vector<RGB> after = grab_viewport(vs);
+
+    // Every changed pixel is a darkened blob pixel inside the squashed
+    // footprint: anchor + the 1-story SE offset (2px), height <= 1/3 of the
+    // sprite rising from one row below the feet, 2px trimmed off each side.
+    const Sint32 spritew = upper->sizex();
+    const Sint32 spriteh = upper->sizey();
+    const int bx0 = world_to_screen_x(vs, 200) + 2 + 2;
+    const int bx1 = world_to_screen_x(vs, 200) + 2 + static_cast<int>(spritew) - 2;
+    const int feet = world_to_screen_y(vs, 120) + 2 + static_cast<int>(spriteh);
+    const int by0 = feet - (static_cast<int>(spriteh) + 2) / 3;
+    size_t changed = 0;
+    for (size_t i = 0; i < before.size(); i++)
+    {
+        if (same(before[i], after[i]))
+            continue;
+        changed++;
+        const int x = static_cast<int>(vs->xloc) +
+            static_cast<int>(i % static_cast<size_t>(vs->xview));
+        const int y = static_cast<int>(vs->yloc) +
+            static_cast<int>(i / static_cast<size_t>(vs->xview));
+        ASSERT_GE(x, bx0) << "blob pixel left of the trimmed footprint, y=" << y;
+        ASSERT_LT(x, bx1) << "blob pixel right of the trimmed footprint, y=" << y;
+        ASSERT_GE(y, by0) << "blob pixel above the squashed height, x=" << x;
+        ASSERT_LE(y, feet) << "blob pixel below the feet row, x=" << x;
+        ASSERT_TRUE(darkened(after[i], before[i]))
+            << "a blob pixel must darken, (" << x << "," << y << ")";
+    }
+    ASSERT_GT(changed, 0u) << "the blob shadow must touch at least one pixel";
+
+    restore_world(vs);
+}
+
+TEST(RenderEffects, look_up_hold_swaps_shadow_frame_for_ghost_frame)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    EffectsCfgGuard guard;
+    all_effects_off();
+
+    // Camera on the middle floor of three so BOTH ghost effects exist: the
+    // faded floor below and the ghost floor above (with an air hole).
+    GameWorld& world = scr()->world();
+    world.set_floor_count(3);
+    fill_camera_grid(static_cast<unsigned char>(PIX_GRASS1));
+    fill_floor_grid(world, 1, static_cast<unsigned char>(PIX_COBBLE_1));
+    fill_floor_grid(world, 2, static_cast<unsigned char>(PIX_GRASS1));
+    PixieData& top = world.grid_for_floor(2);
+    top.data[5 + static_cast<Sint32>(top.w) * 5] =
+        static_cast<unsigned char>(PIX_AIR);
+
+    walker* w = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, w);
+    w->set_floor(1);
+    w->setxy(160, 120);
+    vs->control = w;
+    walker* below = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, below);
+    below->setxy(140, 100);
+    walker* above = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, above);
+    above->set_floor(2);
+    above->setxy(190, 130);
+
+    // Default (no hold): the standing presentation — floors BELOW the camera
+    // already faded (the fade never needs the hold), the floor above absent,
+    // its solid tiles shadow-cast instead.
+    trace_clear();
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_TRUE(trace_contains("render", "overhang_shadow floor=2"));
+    EXPECT_FALSE(vs->ghost_hold_override_);
+    EXPECT_EQ(255, vs->floor_render_alpha(1)) << "camera floor opaque";
+    EXPECT_EQ(255 - static_cast<int>(viewscreen::kFloorBelowAlphaStep),
+              static_cast<int>(vs->floor_render_alpha(0)))
+        << "the floor below fades even with the look-up key released";
+    const std::vector<RGB> shadow_frame = grab_viewport(vs);
+
+    // HOLD the look-up key: ADDS the floor above as a ghost.
+    KeyBindingGuard bind(0, KEY_LOOKUP, KEYCODE_v);
+    SessionKeyStateGuard keystates;
+    keystates.set(SDLK_v, true);
+    trace_clear();
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_FALSE(trace_contains("render", "overhang_shadow"))
+        << "the held frame draws the ghost above, not the shadow pass";
+    EXPECT_TRUE(vs->ghost_hold_override_)
+        << "redraw must latch the hold for the floor_top extension";
+    // Pin the held rendering: camera floor opaque, the floor below one fade
+    // step down (identical to the released frame), the floor above at the
+    // ghost alpha.
+    EXPECT_EQ(255, vs->floor_render_alpha(1));
+    EXPECT_EQ(255 - static_cast<int>(viewscreen::kFloorBelowAlphaStep),
+              static_cast<int>(vs->floor_render_alpha(0)));
+    EXPECT_EQ(static_cast<int>(viewscreen::kFloorGhostAlpha),
+              static_cast<int>(vs->floor_render_alpha(2)));
+    const std::vector<RGB> ghost_frame = grab_viewport(vs);
+    ASSERT_FALSE(rects_equal(ghost_frame, shadow_frame))
+        << "ghost and shadow presentations must render differently";
+
+    // Held frames replay byte-identically (the pinned ghost rendering).
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_TRUE(rects_equal(ghost_frame, grab_viewport(vs)))
+        << "a second held frame must equal the first byte for byte";
+
+    // Release: straight back to the shadow look, byte for byte (the fade
+    // below is in BOTH frames — only the ghost above comes and goes).
+    keystates.set(SDLK_v, false);
+    ASSERT_TRUE(do_redraw(vs));
+    EXPECT_FALSE(vs->ghost_hold_override_);
+    ASSERT_TRUE(rects_equal(shadow_frame, grab_viewport(vs)))
+        << "releasing the key must restore the default shadow frame";
+
+    restore_world(vs);
+}
+
+TEST(RenderEffects, single_floor_renders_byte_identical_in_all_floor_view_modes)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    EffectsCfgGuard guard;
+    all_effects_off();
+
+    GameWorld& world = scr()->world();
+    world.set_floor_count(1);
+    fill_camera_grid(static_cast<unsigned char>(PIX_GRASS1));
+    walker* w = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, w);
+    w->setxy(160, 120);
+    vs->control = w;
+
+    trace_clear();
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_FALSE(trace_contains("render", "overhang_shadow"))
+        << "single-floor worlds short-circuit the shadow pass";
+    const std::vector<RGB> baseline = grab_viewport(vs);
+
+    KeyBindingGuard bind(0, KEY_LOOKUP, KEYCODE_v);
+    SessionKeyStateGuard keystates;
+    keystates.set(SDLK_v, true);
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_TRUE(rects_equal(baseline, grab_viewport(vs)))
+        << "single-floor: the look-up hold must change nothing";
+
     restore_world(vs);
 }
 
@@ -2782,15 +3076,16 @@ TEST(RenderEffects, fire_glow_deterministic_flicker_and_camera_floor_gate)
     restore_world(vs);
 }
 
-TEST(RenderEffects, depth_tint_cools_below_floor_pixels)
+TEST(RenderEffects, depth_fx_tint_cools_below_floor_pixels)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
     prepare_world();
     EffectsCfgGuard guard;
     all_effects_off();
-    const std::string saved_ghost = cfg.get_setting("graphics", "floor_ghost");
-    cfg.apply_setting("graphics", "floor_ghost", "on");
+    // No look-up hold anywhere in this test: the fade-below floor layer that
+    // carries the tint renders unconditionally, so depth tint is visible in
+    // NORMAL play whenever an air hole exposes a lower floor.
 
     // Two floors; the camera floor has one air hole at grid (5,5) — world px
     // 80..95 — revealing the faded floor-0 composite beneath it.
@@ -2806,12 +3101,12 @@ TEST(RenderEffects, depth_tint_cools_below_floor_pixels)
     vs->control = w;
 
     // OFF: no trace; capture the below-floor content through the hole.
-    cfg.apply_setting("effects", "depth_tint", "off");
+    cfg.apply_setting("effects", "depth_fx", "off");
     effects_reset_for_testing();
     trace_clear();
     ASSERT_TRUE(do_redraw(vs));
-    ASSERT_FALSE(trace_contains("effects", "depth_tint"))
-        << "depth tint off must not trace";
+    ASSERT_FALSE(trace_contains("effects", "depth_fx"))
+        << "depth_fx off must not trace";
     const int hx = world_to_screen_x(vs, 88);
     const int hy = world_to_screen_y(vs, 88);
     const RGB off = px(hx, hy);
@@ -2823,11 +3118,11 @@ TEST(RenderEffects, depth_tint_cools_below_floor_pixels)
     // grass (b == 0) the blue channel must actually RISE (the retired
     // multiplicative mod could never do that, which made the "tint"
     // invisible on green terrain).
-    cfg.apply_setting("effects", "depth_tint", "on");
+    cfg.apply_setting("effects", "depth_fx", "tint");
     effects_reset_for_testing();
     trace_clear();
     ASSERT_TRUE(do_redraw(vs));
-    ASSERT_TRUE(trace_contains("effects", "depth_tint floor=0"))
+    ASSERT_TRUE(trace_contains("effects", "depth_fx mode=1 floor=0"))
         << "the below floor's composite must be tinted";
     const RGB on = px(hx, hy);
     ASSERT_LT(on.g, off.g) << "green must fall toward the cold target";
@@ -2847,7 +3142,7 @@ TEST(RenderEffects, depth_tint_cools_below_floor_pixels)
     ASSERT_NE(nullptr, below_guy);
     below_guy->set_floor(0);
     below_guy->setxy(static_cast<short>(80), static_cast<short>(80));
-    cfg.apply_setting("effects", "depth_tint", "off");
+    cfg.apply_setting("effects", "depth_fx", "off");
     effects_reset_for_testing();
     ASSERT_TRUE(do_redraw(vs));
     // Find a strong red sprite pixel through the hole.
@@ -2868,7 +3163,7 @@ TEST(RenderEffects, depth_tint_cools_below_floor_pixels)
             }
         }
     ASSERT_GE(sx, 0) << "the below-floor soldier must be visible in the hole";
-    cfg.apply_setting("effects", "depth_tint", "on");
+    cfg.apply_setting("effects", "depth_fx", "tint");
     effects_reset_for_testing();
     ASSERT_TRUE(do_redraw(vs));
     const RGB sprite_on = px(sx, sy);
@@ -2886,20 +3181,103 @@ TEST(RenderEffects, depth_tint_cools_below_floor_pixels)
     ASSERT_TRUE(rects_equal(box, grab_rect(hx - 4, hy - 4, 9, 9)))
         << "the tinted composite must replay identically";
 
-    cfg.apply_setting("graphics", "floor_ghost",
-                      saved_ghost.empty() ? "on" : saved_ghost);
     restore_world(vs);
 }
 
-TEST(RenderEffects, depth_tint_leaves_ghost_floors_above_untinted)
+// REGRESSION PIN: lower floors seen through PIX_AIR holes must render
+// depth-faded (and depth-tintable) in NORMAL play — no look-up hold anywhere
+// in this test. Latching the fade-below layer behind the hold once made
+// lower floors render opaque and full-brightness through air holes.
+TEST(RenderEffects, lower_floor_fades_and_tints_without_look_up)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
     prepare_world();
     EffectsCfgGuard guard;
     all_effects_off();
-    const std::string saved_ghost = cfg.get_setting("graphics", "floor_ghost");
-    cfg.apply_setting("graphics", "floor_ghost", "on");
+
+    // Single-floor baseline: the same grass field the hole will expose,
+    // rendered opaque at full brightness (camera on it).
+    GameWorld& world = scr()->world();
+    fill_camera_grid(static_cast<unsigned char>(PIX_GRASS1));
+    walker* w = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, w);
+    w->setxy(160, 120);
+    vs->control = w;
+    ASSERT_TRUE(do_redraw(vs)); // settle the camera before world_to_screen
+    ASSERT_TRUE(do_redraw(vs));
+    // Probe box centered on world (88,88): grid cell (5,5), world px 80..95.
+    const int hx = world_to_screen_x(vs, 88);
+    const int hy = world_to_screen_y(vs, 88);
+    const std::vector<RGB> flat = grab_rect(hx - 4, hy - 4, 9, 9);
+
+    // 3-floor world, camera on TOP: one air hole in the camera floor exposes
+    // floor 1 one story down (uniform grass, so the parallax shift/scale of
+    // the below-floor composite still samples grass in the probe box).
+    world.set_floor_count(3);
+    fill_floor_grid(world, 1, static_cast<unsigned char>(PIX_GRASS1));
+    fill_floor_grid(world, 2, static_cast<unsigned char>(PIX_GRASS1));
+    PixieData& top = world.grid_for_floor(2);
+    top.data[5 + top.w * 5] = static_cast<unsigned char>(PIX_AIR);
+    w->set_floor(2);
+
+    cfg.apply_setting("effects", "depth_fx", "off");
+    effects_reset_for_testing();
+    trace_clear();
+    ASSERT_TRUE(do_redraw(vs));
+    EXPECT_FALSE(vs->ghost_hold_override_) << "nothing holds the look-up key";
+    const std::vector<RGB> faded = grab_rect(hx - 4, hy - 4, 9, 9);
+    auto sums = [](const std::vector<RGB>& v, long& r, long& g, long& b)
+    {
+        r = g = b = 0;
+        for (const RGB& c : v)
+        {
+            r += c.r;
+            g += c.g;
+            b += c.b;
+        }
+    };
+    long fr = 0, fg = 0, fb = 0, dr = 0, dg = 0, db = 0;
+    sums(flat, fr, fg, fb);
+    sums(faded, dr, dg, db);
+    ASSERT_GT(dr + dg + db, 0L)
+        << "the air hole must reveal visible (not black) lower-floor content";
+    ASSERT_LT(dr + dg + db, (fr + fg + fb) * 9 / 10)
+        << "the lower floor must render DARKER than the same grass rendered "
+           "single-floor: the depth fade must not need the look-up hold";
+
+    // Depth tint on: the same released frame goes cold (green falls, blue
+    // share rises) — the tint rides the always-on fade layer.
+    cfg.apply_setting("effects", "depth_fx", "tint");
+    effects_reset_for_testing();
+    trace_clear();
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_TRUE(trace_contains("effects", "depth_fx mode=1 floor=1"))
+        << "the exposed below floor must composite tinted without any hold";
+    const std::vector<RGB> tinted = grab_rect(hx - 4, hy - 4, 9, 9);
+    long tr = 0, tg = 0, tb = 0;
+    sums(tinted, tr, tg, tb);
+    ASSERT_LT(tg, dg) << "green must fall toward the cold target";
+    const long off_blue_share = db * 100 / std::max(1L, dr + dg + db);
+    const long on_blue_share = tb * 100 / std::max(1L, tr + tg + tb);
+    ASSERT_GT(on_blue_share, off_blue_share + 5)
+        << "the exposed lower floor must read COLDER under depth_fx tint";
+
+    restore_world(vs);
+}
+
+TEST(RenderEffects, depth_fx_leaves_ghost_floors_above_untinted)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    EffectsCfgGuard guard;
+    all_effects_off();
+    // Ghost floors above exist only under the look-up hold now: hold
+    // KEY_LOOKUP for the whole scene.
+    KeyBindingGuard bind(0, KEY_LOOKUP, KEYCODE_v);
+    SessionKeyStateGuard keystates;
+    keystates.set(SDLK_v, true);
 
     // Camera on floor 1 of 3: floor 0 composites tinted, floor 2 ghosts
     // above through the SAME cached layer surface right after it. The
@@ -2916,24 +3294,216 @@ TEST(RenderEffects, depth_tint_leaves_ghost_floors_above_untinted)
     w->setxy(160, 120);
     vs->control = w;
 
-    cfg.apply_setting("effects", "depth_tint", "off");
+    cfg.apply_setting("effects", "depth_fx", "off");
     effects_reset_for_testing();
     ASSERT_TRUE(do_redraw(vs));
     const std::vector<RGB> off = grab_viewport(vs);
 
-    cfg.apply_setting("effects", "depth_tint", "on");
+    cfg.apply_setting("effects", "depth_fx", "tint");
     effects_reset_for_testing();
     trace_clear();
     ASSERT_TRUE(do_redraw(vs));
-    ASSERT_TRUE(trace_contains("effects", "depth_tint floor=0"))
+    ASSERT_TRUE(trace_contains("effects", "depth_fx mode=1 floor=0"))
         << "the occluded below floor still composites tinted";
-    ASSERT_FALSE(trace_contains("effects", "depth_tint floor=2"))
+    ASSERT_FALSE(trace_contains("effects", "depth_fx mode=1 floor=2"))
         << "ghost floors above the camera must never tint";
     ASSERT_TRUE(rects_equal(off, grab_viewport(vs)))
         << "a leaked color mod would tint the ghost floor above";
 
-    cfg.apply_setting("graphics", "floor_ghost",
-                      saved_ghost.empty() ? "on" : saved_ghost);
+    restore_world(vs);
+}
+
+namespace
+{
+
+// The shared depth-fx scene: camera on the top of 3 floors, an air hole at
+// grid (5,5) punched through BOTH upper floors, so the probe box reads the
+// bottom floor two stories down (the strongest treatment). The MIDDLE
+// floor's hole is widened to 3x3 cells: its rim (which composites at a
+// different fade alpha and parallax scale) stays well clear of the probe
+// box, so every probed pixel belongs to the bottom floor's composite over
+// the black-cleared base. Returns the hole-centre screen coords in hx/hy.
+void setup_depth_fx_scene(viewscreen* vs, int& hx, int& hy)
+{
+    GameWorld& world = scr()->world();
+    world.set_floor_count(3);
+    fill_floor_grid(world, 1, static_cast<unsigned char>(PIX_GRASS1));
+    fill_floor_grid(world, 2, static_cast<unsigned char>(PIX_GRASS1));
+    PixieData& mid = world.grid_for_floor(1);
+    for (int j = 4; j <= 6; j++)
+        for (int i = 4; i <= 6; i++)
+            mid.data[i + mid.w * j] = static_cast<unsigned char>(PIX_AIR);
+    PixieData& top = world.grid_for_floor(2);
+    top.data[5 + top.w * 5] = static_cast<unsigned char>(PIX_AIR);
+    walker* w = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, w);
+    w->set_floor(2);
+    w->setxy(160, 120);
+    vs->control = w;
+    ASSERT_TRUE(do_redraw(vs)); // settle the camera before world_to_screen
+    hx = world_to_screen_x(vs, 88);
+    hy = world_to_screen_y(vs, 88);
+}
+
+// One deterministic frame of the scene at effects tick `tick` under depth
+// mode `mode` ("" = leave the key ABSENT), returning the hole probe box.
+std::vector<RGB> depth_fx_frame(viewscreen* vs, const char* mode,
+                                std::uint32_t tick, int hx, int hy)
+{
+    if (*mode)
+        cfg.apply_setting("effects", "depth_fx", mode);
+    else
+        cfg.data["effects"].erase("depth_fx");
+    effects_reset_for_testing();
+    for (std::uint32_t t = 0; t < tick; t++)
+        effects_advance_frame();
+    do_redraw(vs);
+    return grab_rect(hx - 6, hy - 6, 13, 13);
+}
+
+} // namespace
+
+// The headline animation pin: fog is the only depth mode whose pixels move
+// with the effects frame tick — tint/haze/mist render the same bytes at
+// tick 0 and tick 8, fog does not.
+TEST(RenderEffects, depth_fx_fog_animates_while_the_other_modes_hold_still)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    EffectsCfgGuard guard;
+    all_effects_off();
+    int hx = 0, hy = 0;
+    setup_depth_fx_scene(vs, hx, hy);
+
+    for (const char* mode : {"tint", "haze", "mist"})
+    {
+        const std::vector<RGB> t0 = depth_fx_frame(vs, mode, 0, hx, hy);
+        const std::vector<RGB> t8 = depth_fx_frame(vs, mode, 8, hx, hy);
+        ASSERT_TRUE(rects_equal(t0, t8))
+            << "mode '" << mode << "' must be static across the frame tick";
+    }
+
+    trace_clear();
+    const std::vector<RGB> f0 = depth_fx_frame(vs, "fog", 0, hx, hy);
+    ASSERT_TRUE(trace_contains("effects", "depth_fx mode=4 floor=0"))
+        << "fog must treat the bottom floor's composite";
+    ASSERT_TRUE(trace_contains("effects", "depth_fx mode=4 floor=1"))
+        << "fog must treat the middle floor's composite";
+    const std::vector<RGB> f8 = depth_fx_frame(vs, "fog", 8, hx, hy);
+    ASSERT_FALSE(rects_equal(f0, f8))
+        << "fog must DRIFT: 8 ticks later the patches have moved";
+    // Deterministic: replaying tick 0 reproduces frame 0 exactly.
+    ASSERT_TRUE(rects_equal(f0, depth_fx_frame(vs, "fog", 0, hx, hy)))
+        << "the fog frame must replay byte-identically at the same tick";
+
+    restore_world(vs);
+}
+
+// An ABSENT effects/depth_fx key must render exactly the default, fog —
+// the runtime mirror of the cfg loader's default/migration.
+TEST(RenderEffects, depth_fx_absent_key_renders_as_fog)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    EffectsCfgGuard guard;
+    all_effects_off();
+    int hx = 0, hy = 0;
+    setup_depth_fx_scene(vs, hx, hy);
+
+    const std::vector<RGB> fog = depth_fx_frame(vs, "fog", 4, hx, hy);
+    const std::vector<RGB> absent = depth_fx_frame(vs, "", 4, hx, hy);
+    ASSERT_TRUE(rects_equal(fog, absent))
+        << "a missing depth_fx key must render byte-identical to fog";
+    // ...and a junk value falls back to the default too, instead of
+    // rendering as some accidental mode.
+    const std::vector<RGB> junk = depth_fx_frame(vs, "purple", 4, hx, hy);
+    ASSERT_TRUE(rects_equal(fog, junk))
+        << "an unrecognized depth_fx value must read as the default (fog)";
+
+    restore_world(vs);
+}
+
+// Scene-level mist pin: through the air hole, every pixel of the mist frame
+// is either the untouched off-frame pixel or ONE exact mist color — no
+// alpha-blended in-betweens anywhere, and the checkerboard density lands
+// near its nominal share.
+TEST(RenderEffects, depth_fx_mist_scene_has_no_blended_in_between_colors)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    EffectsCfgGuard guard;
+    all_effects_off();
+    int hx = 0, hy = 0;
+    setup_depth_fx_scene(vs, hx, hy);
+
+    const std::vector<RGB> off = depth_fx_frame(vs, "off", 0, hx, hy);
+    const std::vector<RGB> mist = depth_fx_frame(vs, "mist", 0, hx, hy);
+    ASSERT_EQ(off.size(), mist.size());
+    int changed = 0;
+    RGB mist_color{};
+    for (std::size_t i = 0; i < mist.size(); i++)
+    {
+        if (same(mist[i], off[i]))
+            continue;
+        if (changed == 0)
+            mist_color = mist[i];
+        else
+            ASSERT_TRUE(same(mist[i], mist_color))
+                << "every misted pixel must be the SAME exact color (index "
+                << i << "): the dither never blends";
+        changed++;
+    }
+    // Two stories down = the (x+y)&1 checkerboard: about half the box.
+    // (The box is 169 px; the composite's parallax scale can slide a couple
+    // of border pixels in or out, so pin a loose band around 50%.)
+    ASSERT_GT(changed, static_cast<int>(mist.size()) * 3 / 10)
+        << "the 2-story checkerboard must mist roughly half the hole";
+    ASSERT_LT(changed, static_cast<int>(mist.size()) * 7 / 10)
+        << "mist must never flood the hole solid";
+
+    restore_world(vs);
+}
+
+// Single-floor levels must render byte-identically in EVERY depth mode: the
+// below-floor layer path never runs, so the selector cannot touch a classic
+// level no matter its value.
+TEST(RenderEffects, depth_fx_single_floor_byte_identity_in_every_mode)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    EffectsCfgGuard guard;
+    all_effects_off();
+
+    GameWorld& world = scr()->world();
+    fill_camera_grid(static_cast<unsigned char>(PIX_GRASS1));
+    walker* w = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, w);
+    w->setxy(160, 120);
+    vs->control = w;
+    ASSERT_TRUE(do_redraw(vs)); // settle the camera
+
+    cfg.apply_setting("effects", "depth_fx", "off");
+    effects_reset_for_testing();
+    ASSERT_TRUE(do_redraw(vs));
+    const std::vector<RGB> base = grab_viewport(vs);
+
+    for (const char* mode : {"tint", "haze", "mist", "fog"})
+    {
+        cfg.apply_setting("effects", "depth_fx", mode);
+        effects_reset_for_testing();
+        trace_clear();
+        ASSERT_TRUE(do_redraw(vs));
+        ASSERT_FALSE(trace_contains("effects", "depth_fx"))
+            << "mode '" << mode << "' must never trace on a single floor";
+        ASSERT_TRUE(rects_equal(base, grab_viewport(vs)))
+            << "mode '" << mode
+            << "' must render a single-floor level byte-identically";
+    }
+
     restore_world(vs);
 }
 
@@ -3363,35 +3933,49 @@ TEST(RenderEffects, zz_capture_effect_scenes)
             mover->setxy(static_cast<short>(140 + ((f % 40) < 20 ? f % 20 : 20 - f % 20) * 2), static_cast<short>(110));
         });
 
-    run_scene("depth_tint", 96,
-        [&] {
-            cfg.apply_setting("effects", "depth_tint", "on");
-            cfg.apply_setting("effects", "shadows", "on");
-            cfg.apply_setting("graphics", "floor_ghost", "on");
-            world.set_floor_count(3);
-            for (int fl = 1; fl < 3; fl++)
-            {
-                fill_floor_grid(world, fl, static_cast<unsigned char>(PIX_GRASS1));
-                PixieData& g = world.grid_for_floor(fl);
-                for (int j = 4; j < 10; j++)
-                    for (int i = 5; i < 13; i++)
-                        g.data[i + g.w * j] = static_cast<unsigned char>(PIX_AIR);
-            }
-            vs->control->set_floor(2);
-            // Characters on the exposed lower floors: one pacing one floor
-            // down, one two floors down — both must read progressively colder.
-            mover = world.add_ob(Order::Living, FAMILY_SOLDIER);
-            mover->set_floor(1);
-            mover->setxy(static_cast<short>(90), static_cast<short>(90));
-            extra = world.add_ob(Order::Living, FAMILY_SOLDIER);
-            extra->set_floor(0);
-            extra->setxy(static_cast<short>(150), static_cast<short>(110));
-        },
-        [&](int f) {
-            mover->setxy(static_cast<short>(90 + ((f % 48) < 24 ? f % 24 : 24 - f % 24) * 2),
-                         static_cast<short>(90));
-            vs->control->setxy(static_cast<short>(150 + f / 4), static_cast<short>(120));
-        });
+    // The depth close-ups read through the fade-below floor layers, which
+    // render unconditionally (no look-up hold): this is the normal-play view
+    // straight down through the air holes. One scene per depth_fx mode, all
+    // from the same 3-floor vantage; fog (the default) is the hero and runs
+    // longer so its drift reads on the review site.
+    const auto depth_scene = [&](const char* scene, const char* mode,
+                                 int frames) {
+        run_scene(scene, frames,
+            [&] {
+                cfg.apply_setting("effects", "depth_fx", mode);
+                cfg.apply_setting("effects", "shadows", "on");
+                world.set_floor_count(3);
+                for (int fl = 1; fl < 3; fl++)
+                {
+                    fill_floor_grid(world, fl,
+                                    static_cast<unsigned char>(PIX_GRASS1));
+                    PixieData& g = world.grid_for_floor(fl);
+                    for (int j = 4; j < 10; j++)
+                        for (int i = 5; i < 13; i++)
+                            g.data[i + g.w * j] =
+                                static_cast<unsigned char>(PIX_AIR);
+                }
+                vs->control->set_floor(2);
+                // Characters on the exposed lower floors: one pacing one
+                // floor down, one two floors down — both must read
+                // progressively deeper.
+                mover = world.add_ob(Order::Living, FAMILY_SOLDIER);
+                mover->set_floor(1);
+                mover->setxy(static_cast<short>(90), static_cast<short>(90));
+                extra = world.add_ob(Order::Living, FAMILY_SOLDIER);
+                extra->set_floor(0);
+                extra->setxy(static_cast<short>(150), static_cast<short>(110));
+            },
+            [&](int f) {
+                mover->setxy(static_cast<short>(90 + ((f % 48) < 24 ? f % 24 : 24 - f % 24) * 2),
+                             static_cast<short>(90));
+                vs->control->setxy(static_cast<short>(150 + f / 4), static_cast<short>(120));
+            });
+    };
+    depth_scene("depth_fog", "fog", 60);
+    depth_scene("depth_haze", "haze", 30);
+    depth_scene("depth_mist", "mist", 30);
+    depth_scene("depth_tint", "tint", 30);
 
     run_scene("screen_shake", 48,
         [&] {
@@ -3461,4 +4045,50 @@ TEST(RenderEffects, capture_dump_hook_writes_ppm_frames)
     ASSERT_EQ('P', header[0]);
     ASSERT_EQ('6', header[1]);
     std::filesystem::remove_all(dir);
+}
+
+// Floor-presentation v2 gate regressions: capture/spectator cameras (which
+// drive the floor via editor_floor_override_) MUST render the overhang
+// shadows — only the level editor's authoring view suppresses them.
+TEST(RenderEffects, overhang_shadows_render_under_spectator_floor_override)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    GameWorld& world = scr()->world();
+    EffectsCfgGuard guard;
+    prepare_world();
+    all_effects_off();
+    fill_camera_grid(static_cast<unsigned char>(PIX_GRASS1));
+    world.set_floor_count(2);
+    fill_floor_grid(world, 1, static_cast<unsigned char>(PIX_AIR));
+    PixieData& up = world.grid_for_floor(1);
+    for (int j = 4; j < 8; j++)
+        for (int i = 4; i < 10; i++)
+            up.data[i + up.w * j] = static_cast<unsigned char>(PIX_GRASS1);
+    walker* control = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, control);
+    control->setxy(static_cast<short>(160), static_cast<short>(120));
+    vs->control = nullptr;
+    vs->editor_floor_override_ = 0; // spectator/capture camera on floor 0
+    vs->editor_authoring_view_ = false;
+    effects_reset_for_testing();
+    ASSERT_TRUE(do_redraw(vs));
+    trace_clear();
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_TRUE(trace_contains("render", "overhang_shadow"))
+        << "spectator floor-override draws must include the shadow pass";
+
+    // The editor's authoring view suppresses it.
+    vs->editor_authoring_view_ = true;
+    trace_clear();
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_FALSE(trace_contains("render", "overhang_shadow"))
+        << "the editor authoring view must stay clean";
+
+    vs->editor_floor_override_ = -1;
+    vs->editor_authoring_view_ = false;
+    world.delete_objects();
+    world.set_floor_count(1);
+    effects_reset_for_testing();
+    restore_world(vs);
 }

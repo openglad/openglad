@@ -295,6 +295,22 @@ std::string format_permadeath_label(const SaveData& save);
 // "Generators: Normal" / "Generators: Calm" / "Generators: Frenzy".
 std::string format_generator_rate_label(const SaveData& save);
 
+// --- GRAPHICS FX depth selector (cfg effects/depth_fx) ---
+// Pure string helpers over the depth-effect selector values
+// {fog, haze, mist, tint, off}. Any value outside the set — including the
+// empty string an absent cfg key reads as — normalizes to the default,
+// "fog", matching depth_fx_mode_from_setting in the renderer.
+
+// Step to the next selector value: fog -> haze -> mist -> tint -> off -> fog.
+std::string cycle_depth_fx(const std::string& current);
+
+// "Depth: Fog" / "Depth: Haze" / "Depth: Mist" / "Depth: Tint" /
+// "Depth: Off" — every label fits the 90px FX button face (15 chars).
+std::string format_depth_fx_label(const std::string& value);
+
+// True for every value but "off" (the button's green/red backing state).
+bool depth_fx_is_active(const std::string& value);
+
 // --- Team family extraction ---
 
 // Collect family IDs from non-null team slots into a vector.

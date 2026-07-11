@@ -85,6 +85,13 @@ bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha = 255);
 bool draw_walker_shadow(walker& w, viewscreen* view_buf);
 bool draw_walker_reflection(walker& w, viewscreen* view_buf,
                             const PixieData& camera_grid);
+// Blob shadow cast onto the CAMERA floor by an entity `stories` floors above
+// it (default ghosts-off multifloor look; the upper floor itself is not
+// drawn). Same eligibility as draw_walker_shadow, but offset SE +2px per
+// story (matching the NW sun of the overhang/cloud shadows) and rendered
+// slightly smaller + fainter per story (size/alpha capped at 2 stories).
+bool draw_walker_blob_shadow(walker& w, viewscreen* view_buf,
+                             std::int32_t stories);
 // Ground-plane screen anchor shared by the FX pre-pass (shadows, reflections,
 // water ripples): draw_walker's screen position INCLUDING the lunge/recoil
 // offsets but EXCLUDING the worldz raise. (Sint32 aliases std::int32_t.)

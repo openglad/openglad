@@ -27,6 +27,13 @@ public:
 	void commandline(int &argc, char **&argv);
     bool save_settings();
 
+    // Legacy-key shim, run by load_settings() after parsing (on every exit
+    // path): when the settings never mentioned effects/depth_fx, derive it
+    // from the retired boolean effects/depth_tint (off -> off, on -> fog)
+    // or fall back to the default, "fog". A present depth_fx always wins;
+    // a leftover depth_tint key is inert stale data.
+    void migrate_depth_fx();
+
     void apply_setting(const std::string& category, const std::string& setting, const std::string& value);
     // Set a transient, in-memory-only override (e.g. a developer command-line
     // flag). Overrides take precedence over `data` for reads but are never
