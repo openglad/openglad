@@ -264,12 +264,12 @@ void build_last_ford(const LevelDataHooks& hooks)
     paint_path(w.grid, 30, 21, 39, 23); // THE FORD: the only crossing
     paint_path(w.grid, 2, 21, 29, 23);  // west approach
     paint_path(w.grid, 40, 21, 66, 23); // east road
-    paint(w.grid, 24, 19, PIX_TORCH1);  // torch standards on the approach
-    paint(w.grid, 24, 25, PIX_TORCH1);
-    paint(w.grid, 27, 19, PIX_TORCH1);
-    paint(w.grid, 27, 25, PIX_TORCH1);
-    paint(w.grid, 43, 17, PIX_BRAZIER1); // watch fires on the earthworks'
-    paint(w.grid, 43, 27, PIX_BRAZIER1); // inner lips
+    paint_decor(w, 0, 24, 19, DECOR_TORCH1);  // torch standards on the approach
+    paint_decor(w, 0, 24, 25, DECOR_TORCH1);
+    paint_decor(w, 0, 27, 19, DECOR_TORCH1);
+    paint_decor(w, 0, 27, 25, DECOR_TORCH1);
+    paint_decor(w, 0, 43, 17, DECOR_BRAZIER); // watch fires on the earthworks'
+    paint_decor(w, 0, 43, 27, DECOR_BRAZIER); // inner lips
 
     // The waves (team 2), sized for an entry-power lvl-2 crew that must
     // eventually EXTERMINATE them (scenario NPCs carry full level-derived
@@ -380,10 +380,10 @@ void build_hidden_refuge(const LevelDataHooks& hooks)
     paint_pavement(w.grid, 45, 23, 48, 27);
     paint_pavement(w.grid, 54, 23, 57, 27);
     paint_pavement(w.grid, 44, 24, 44, 26); // hall door, west face
-    paint(w.grid, 46, 20, PIX_BRAZIER1);
-    paint(w.grid, 56, 20, PIX_BRAZIER1);
-    paint(w.grid, 46, 30, PIX_BRAZIER1);
-    paint(w.grid, 56, 30, PIX_BRAZIER1);
+    paint_decor(w, 0, 46, 20, DECOR_BRAZIER);
+    paint_decor(w, 0, 56, 20, DECOR_BRAZIER);
+    paint_decor(w, 0, 46, 30, DECOR_BRAZIER);
+    paint_decor(w, 0, 56, 30, DECOR_BRAZIER);
     paint_pavement(w.grid, 21, 15, 23, 16); // hut hearths and doors
     paint_pavement(w.grid, 22, 17, 22, 17);
     paint_pavement(w.grid, 19, 31, 21, 32);
@@ -403,8 +403,8 @@ void build_hidden_refuge(const LevelDataHooks& hooks)
     paint_pavement(w.grid_for_floor(1), 45, 30, 57, 31);
     paint_pavement(w.grid_for_floor(1), 45, 21, 46, 29);
     paint_pavement(w.grid_for_floor(1), 56, 21, 57, 29);
-    paint(w.grid_for_floor(1), 53, 19, PIX_BRAZIER1);
-    paint(w.grid_for_floor(1), 53, 31, PIX_BRAZIER1);
+    paint_decor(w, 1, 53, 19, DECOR_BRAZIER);
+    paint_decor(w, 1, 53, 31, DECOR_BRAZIER);
     stair_pair(w, 0, 46, 28); // SW corner of the hall interior
 
     // The refuge's wardens (team 0): archers on the gallery over the door,
@@ -492,8 +492,12 @@ void build_scouring(const LevelDataHooks& hooks)
     GameWorld& w = level.world();
 
     paint_quiet_vale_base(w);
-    // V1: hut B is BURNED — rubble where its walls stood.
-    paint_rect(w.grid, 30, 10, 34, 13, PIX_GRASS_RUBBLE);
+    // V1: hut B is BURNED — rubble where its walls stood: dark scorched
+    // grass (same TYPE_GRASS_DARK genre the legacy combined rubble tile
+    // had, so the autotiler shapes the patch identically) under a PEBBLES
+    // decor plane.
+    paint_rect(w.grid, 30, 10, 34, 13, PIX_GRASS_DARK_1);
+    paint_decor_rect(w, 0, 30, 10, 34, 13, DECOR_PEBBLES);
     // V2: hut D grows into THE OLD HALL, the chief's den.
     paint_rect(w.grid, 32, 25, 38, 30, PIX_WALL2);
     // V3: the ruffians' stockade astride the east road (gap rows 19-20).
@@ -501,14 +505,14 @@ void build_scouring(const LevelDataHooks& hooks)
     paint_rect(w.grid, 38, 21, 38, 24, PIX_WALL2);
     smooth_world(w);
     paint_quiet_vale_decor(w); // no lane B — the hut it served is ash
-    paint(w.grid, 31, 11, PIX_BOULDER_2); // charred beams in the burned lot
-    paint(w.grid, 33, 12, PIX_BOULDER_3);
+    paint_decor(w, 0, 31, 11, DECOR_BOULDER_2); // charred beams in the burned lot
+    paint_decor(w, 0, 33, 12, DECOR_BOULDER_3);
     paint_pavement(w.grid, 33, 26, 37, 29); // the old hall's floor
     paint_pavement(w.grid, 35, 25, 35, 25); // and north door
     paint_path(w.grid, 35, 21, 35, 24);     // the hall lane
     // V5: torches at the stockade gate — their watch.
-    paint(w.grid, 39, 16, PIX_TORCH1);
-    paint(w.grid, 39, 23, PIX_TORCH1);
+    paint_decor(w, 0, 39, 16, DECOR_TORCH1);
+    paint_decor(w, 0, 39, 23, DECOR_TORCH1);
 
     // The ruffians (team 2): enforcers flanking the stockade gap...
     place_living(w, FAMILY_BIG_ORC, 2, 0, 39, 18, 4, true);
@@ -592,13 +596,13 @@ void build_grey_ships(const LevelDataHooks& hooks)
     paint_rect(w.grid, 40, 22, 48, 26, PIX_GRASS_LIGHT_1);
     smooth_world(w);
     paint_pavement(w.grid, 6, 16, 20, 18); // THE PIER, shore to sea
-    paint(w.grid, 6, 16, PIX_TORCH1);      // gangplank posts framing the
-    paint(w.grid, 6, 18, PIX_TORCH1);      // boarding cell
+    paint_decor(w, 0, 6, 16, DECOR_TORCH1);      // gangplank posts framing the
+    paint_decor(w, 0, 6, 18, DECOR_TORCH1);      // boarding cell
     paint_path(w.grid, 21, 16, 58, 17);    // the last road
-    paint(w.grid, 30, 12, PIX_BOULDER_1);  // the farewell stones
-    paint(w.grid, 34, 20, PIX_BOULDER_1);
-    paint(w.grid, 38, 12, PIX_BOULDER_1);
-    paint(w.grid, 42, 19, PIX_BOULDER_1);
+    paint_decor(w, 0, 30, 12, DECOR_BOULDER_1);  // the farewell stones
+    paint_decor(w, 0, 34, 20, DECOR_BOULDER_1);
+    paint_decor(w, 0, 38, 12, DECOR_BOULDER_1);
+    paint_decor(w, 0, 42, 19, DECOR_BOULDER_1);
 
     // Token stragglers only, placed directly on the walk to the pier.
     place_living(w, FAMILY_ORC, 2, 0, 36, 15, 2);

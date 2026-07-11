@@ -140,10 +140,10 @@ void build_mountain_of_fire(const LevelDataHooks& hooks)
     // The pinch spurs squeeze the Undergate approach into a six-wide throat.
     paint_lava(w.grid, 43, 19, 48, 21);
     paint_lava(w.grid, 43, 28, 48, 30);
-    paint(w.grid, 53, 20, PIX_BRAZIER1); // braziers at the chamber corners
-    paint(w.grid, 60, 20, PIX_BRAZIER1); // (the walk to the stair, y 22..27,
-    paint(w.grid, 53, 29, PIX_BRAZIER1); // stays clear)
-    paint(w.grid, 60, 29, PIX_BRAZIER1);
+    paint_decor(w, 0, 53, 20, DECOR_BRAZIER); // braziers at the chamber corners
+    paint_decor(w, 0, 60, 20, DECOR_BRAZIER); // (the walk to the stair, y 22..27,
+    paint_decor(w, 0, 53, 29, DECOR_BRAZIER); // stays clear)
+    paint_decor(w, 0, 60, 29, DECOR_BRAZIER);
 
     // Floor 1 after smoothing: carve the terrace — a four-wide walkable
     // ledge around a solid rock core — and the summit-stair landing notch
@@ -154,8 +154,8 @@ void build_mountain_of_fire(const LevelDataHooks& hooks)
     paint_ash(w.grid_for_floor(1), 72, 23, 76, 26);
     paint_lava(w.grid_for_floor(1), 65, 12, 68, 13); // north fall (lip y 14..16)
     paint_lava(w.grid_for_floor(1), 65, 36, 68, 37); // south fall (lip y 33..35)
-    paint(w.grid_for_floor(1), 58, 17, PIX_BRAZIER1); // watch fires
-    paint(w.grid_for_floor(1), 58, 31, PIX_BRAZIER1);
+    paint_decor(w, 1, 58, 17, DECOR_BRAZIER); // watch fires
+    paint_decor(w, 1, 58, 31, DECOR_BRAZIER);
 
     // Floor 2 after smoothing: the three-wide rim walk around a lake of
     // fire. No decor here — the rim stays clean for the final fight.

@@ -70,21 +70,31 @@ struct AdaptedSpec
     std::vector<std::string> description;
 };
 
+// A painted level: the BASE grid plus an optional DECOR plane (BASE + DECOR
+// tile layering, .fss v11). `decor` is invalid when the painter placed no
+// decor; when valid it has the base grid's dims and carries decor ids from
+// core/decordefs.h (boulder cover is decor over the grass it sits on).
+struct PaintedLevel
+{
+    PixieData base;
+    PixieData decor;
+};
+
 struct OriginalSpec
 {
     int out_id;
     const char* title;
-    PixieData (*paint)();                // grid painter
+    PaintedLevel (*paint)();             // grid painter
     short par_value = 5;
     Dressing dress;
     std::vector<std::string> description;
 };
 
 // Original grid painters (grid_painters.cpp).
-PixieData paint_first_blood();   // 500, 40x30, 2 teams
-PixieData paint_river_run();     // 504, 60x40, 2 teams
-PixieData paint_triad();         // 505, 51x51, 3 teams
-PixieData paint_crossfire();     // 509, 60x60, 4 teams
+PaintedLevel paint_first_blood();   // 500, 40x30, 2 teams
+PaintedLevel paint_river_run();     // 504, 60x40, 2 teams
+PaintedLevel paint_triad();         // 505, 51x51, 3 teams
+PaintedLevel paint_crossfire();     // 509, 60x60, 4 teams
 
 // Original specs incl. dressing/spice tables (grid_painters.cpp).
 std::vector<OriginalSpec> original_specs();

@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include <openglad/core/decordefs.h>
 #include <openglad/core/weather.h>
 #include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/pixie_data.h>
@@ -164,6 +165,11 @@ public:
     // See docs/z-axis-design.md.
     std::unique_ptr<obmap> myobmap;
     PixieData grid;
+    // Decor plane for floor 0: bytes are decor ids (core/decordefs.h), 0 =
+    // none, same dims as the floor's grid. Invalid (unallocated) for levels
+    // without decor — every consumer gates on validity, so a no-decor level
+    // runs byte-identical sim and render. See docs (tile layering, .fss v11).
+    PixieData decor;
     smoother mysmoother;
     std::int32_t pixmaxx = 0;
     std::int32_t pixmaxy = 0;
@@ -175,6 +181,7 @@ public:
     // smoother are genuinely per-floor.
     struct ExtraFloor {
         PixieData grid;
+        PixieData decor;
         smoother floor_smoother;
     };
     std::vector<ExtraFloor> extra_floors_;
@@ -205,6 +212,36 @@ public:
         return valid_floor(floor)
                    ? extra_floors_[static_cast<std::size_t>(floor - 1)].grid
                    : grid;
+    }
+    [[nodiscard]] PixieData& decor_for_floor(int floor) noexcept
+    {
+        return valid_floor(floor)
+                   ? extra_floors_[static_cast<std::size_t>(floor - 1)].decor
+                   : decor;
+    }
+    [[nodiscard]] const PixieData& decor_for_floor(int floor) const noexcept
+    {
+        return valid_floor(floor)
+                   ? extra_floors_[static_cast<std::size_t>(floor - 1)].decor
+                   : decor;
+    }
+    // True when the decor plane for `floor` is valid and the cell (grid
+    // coords) carries a concealing decor id (registry `conceals`; SHRUB only
+    // in v1). Shared by the four TYPE_TREES concealment consumers (living
+    // forestwalk, weapon lineofsight decay, and the two draw-suppression
+    // sites). Gated on plane validity + bounds: zero cost and zero RNG on
+    // no-decor levels.
+    [[nodiscard]] bool decor_conceals_at(int floor, std::int32_t grid_x,
+                                         std::int32_t grid_y) const noexcept
+    {
+        const PixieData& dec = decor_for_floor(floor);
+        if (!dec.valid())
+            return false;
+        if (grid_x < 0 || grid_y < 0 || grid_x >= dec.w || grid_y >= dec.h)
+            return false;
+        const unsigned char d =
+            dec.data[static_cast<std::size_t>(grid_x + dec.w * grid_y)];
+        return d < DECOR_MAX && kDecorRegistry[d].conceals;
     }
     [[nodiscard]] smoother& smoother_for_floor(int floor) noexcept
     {

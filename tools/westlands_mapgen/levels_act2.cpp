@@ -71,12 +71,12 @@ void build_under_the_mountain(const LevelDataHooks& hooks)
     paint_pavement(w.grid_for_floor(2), 5, 5, 54, 17);   // hall interior
     paint_rect(w.grid_for_floor(2), 6, 10, 50, 12, PIX_CARPET_M); // runner
     smooth_world(w);
-    paint(w.grid, 17, 29, PIX_BRAZIER1); // braziers frame the hoard
-    paint(w.grid, 42, 29, PIX_BRAZIER1);
-    paint(w.grid, 17, 48, PIX_BRAZIER1);
-    paint(w.grid, 42, 48, PIX_BRAZIER1);
+    paint_decor(w, 0, 17, 29, DECOR_BRAZIER); // braziers frame the hoard
+    paint_decor(w, 0, 42, 29, DECOR_BRAZIER);
+    paint_decor(w, 0, 17, 48, DECOR_BRAZIER);
+    paint_decor(w, 0, 42, 48, DECOR_BRAZIER);
     for (int px = 6; px <= 54; px += 8)  // torches down the vault's north wall
-        paint(w.grid, px, 21, PIX_TORCH1);
+        paint_decor(w, 0, px, 21, DECOR_TORCH1);
     // The twin colonnades flanking the gallery nave, and corner braziers.
     for (int px = 12; px <= 48; px += 6)
     {
@@ -85,10 +85,10 @@ void build_under_the_mountain(const LevelDataHooks& hooks)
         paint(w.grid_for_floor(1), px, 29,
               (px % 12 == 0) ? PIX_COLUMN2 : PIX_COLUMN1);
     }
-    paint(w.grid_for_floor(1), 6, 6, PIX_BRAZIER1);
-    paint(w.grid_for_floor(1), 53, 6, PIX_BRAZIER1);
-    paint(w.grid_for_floor(1), 6, 42, PIX_BRAZIER1);
-    paint(w.grid_for_floor(1), 53, 42, PIX_BRAZIER1);
+    paint_decor(w, 1, 6, 6, DECOR_BRAZIER);
+    paint_decor(w, 1, 53, 6, DECOR_BRAZIER);
+    paint_decor(w, 1, 6, 42, DECOR_BRAZIER);
+    paint_decor(w, 1, 53, 42, DECOR_BRAZIER);
     for (int px = 20; px <= 44; px += 6) // hall columns march to the stair
     {
         paint(w.grid_for_floor(2), px, 9, PIX_COLUMN1);
@@ -234,7 +234,7 @@ void build_frozen_wall(const LevelDataHooks& hooks)
     static constexpr int gallery_braziers[6][2] = {
         {8, 19}, {18, 22}, {28, 19}, {38, 22}, {58, 19}, {68, 22}};
     for (const auto& b : gallery_braziers) // hearth-light room to room
-        paint(w.grid_for_floor(1), b[0], b[1], PIX_BRAZIER1);
+        paint_decor(w, 1, b[0], b[1], DECOR_BRAZIER);
     paint_rect(w.grid_for_floor(1), 33, 20, 37, 21, PIX_CARPET_M); // barracks rug
     paint_pavement(w.grid_for_floor(2), 0, 18, 79, 23);
     for (int px = 0; px <= 79; ++px) // stone/glass ribbon under open sky
@@ -243,7 +243,7 @@ void build_frozen_wall(const LevelDataHooks& hooks)
                 paint(w.grid_for_floor(2), px, py, PIX_GLASS);
     static constexpr int top_braziers[5] = {13, 23, 33, 53, 63};
     for (const int px : top_braziers) // fire posts between the watch posts
-        paint(w.grid_for_floor(2), px, 18, PIX_BRAZIER1);
+        paint_decor(w, 2, px, 18, DECOR_BRAZIER);
     stair_pair(w, 0, 1, 20);  // climber stairs at both wall ends: 0 -> 1
     stair_pair(w, 0, 78, 20);
     stair_pair(w, 1, 4, 20);  // and up again: 1 -> 2
@@ -438,10 +438,10 @@ void build_high_pass(const LevelDataHooks& hooks)
     smooth_world(w);
     paint_pavement(w.grid, 23, 35, 25, 36);          // waystation interior
     paint_pavement(w.grid, 24, 37, 24, 37);          // and its door gap
-    paint(w.grid, 24, 35, PIX_BRAZIER1);             // the last warm fire
+    paint_decor(w, 0, 24, 35, DECOR_BRAZIER);             // the last warm fire
     paint_pavement(w.grid, 8, 7, 14, 11);            // mine forecourt
-    paint(w.grid, 7, 8, PIX_TORCH1);                 // gate torches
-    paint(w.grid, 15, 8, PIX_TORCH1);
+    paint_decor(w, 0, 7, 8, DECOR_TORCH1);                 // gate torches
+    paint_decor(w, 0, 15, 8, DECOR_TORCH1);
     paint_path(w.grid, 51, 47, 52, 58);  // the worn trail: south approach,
     paint_path(w.grid, 51, 44, 52, 46);  // through gap A,
     paint_path(w.grid, 6, 38, 52, 39);   // terrace 1 traverse west,
@@ -544,12 +544,12 @@ void build_lost_delve(const LevelDataHooks& hooks)
     paint_pavement(w.grid, 12, 23, 12, 26);          // west door (4 tiles)
     paint_rect(w.grid, 2, 44, 7, 48, PIX_VOID1);     // chasms the light
     paint_rect(w.grid, 54, 2, 58, 5, PIX_VOID1);     // abandons
-    paint(w.grid, 19, 13, PIX_BRAZIER1);             // braziers frame the hoard
-    paint(w.grid, 42, 13, PIX_BRAZIER1);
-    paint(w.grid, 19, 34, PIX_BRAZIER1);
-    paint(w.grid, 42, 34, PIX_BRAZIER1);
+    paint_decor(w, 0, 19, 13, DECOR_BRAZIER);             // braziers frame the hoard
+    paint_decor(w, 0, 42, 13, DECOR_BRAZIER);
+    paint_decor(w, 0, 19, 34, DECOR_BRAZIER);
+    paint_decor(w, 0, 42, 34, DECOR_BRAZIER);
     for (int px = 14; px <= 46; px += 8)             // the vault's north row
-        paint(w.grid, px, 9, PIX_TORCH1);
+        paint_decor(w, 0, px, 9, DECOR_TORCH1);
     paint_pavement(w.grid_for_floor(1), 45, 18, 56, 31); // hall interior
     paint_pavement(w.grid_for_floor(1), 44, 24, 44, 25); // hall west door
     paint_pavement(w.grid_for_floor(1), 10, 23, 44, 26); // the broken gallery
@@ -568,10 +568,10 @@ void build_lost_delve(const LevelDataHooks& hooks)
         paint(w.grid_for_floor(1), colonnade[i], 26,
               (i % 2 == 0) ? PIX_COLUMN2 : PIX_COLUMN1);
     }
-    paint(w.grid_for_floor(1), 46, 19, PIX_BRAZIER1); // hall braziers
-    paint(w.grid_for_floor(1), 55, 19, PIX_BRAZIER1);
-    paint(w.grid_for_floor(1), 46, 30, PIX_BRAZIER1);
-    paint(w.grid_for_floor(1), 55, 30, PIX_BRAZIER1);
+    paint_decor(w, 1, 46, 19, DECOR_BRAZIER); // hall braziers
+    paint_decor(w, 1, 55, 19, DECOR_BRAZIER);
+    paint_decor(w, 1, 46, 30, DECOR_BRAZIER);
+    paint_decor(w, 1, 55, 30, DECOR_BRAZIER);
     stair_pair(w, 0, 8, 24);  // west landing down before the vault door
     stair_pair(w, 0, 54, 20); // the entry hall down to the east cavern
 
@@ -699,7 +699,7 @@ void build_golden_wood(const LevelDataHooks& hooks)
     static constexpr int lanterns[6][2] = {{40, 12}, {46, 18}, {56, 14},
                                            {62, 20}, {48, 28}, {54, 34}};
     for (const auto& l : lanterns)
-        paint(w.grid_for_floor(1), l[0], l[1], PIX_TORCH2);
+        paint_decor(w, 1, l[0], l[1], DECOR_TORCH2);
     stair_pair(w, 0, 41, 17); // the great trees: up into each platform
     stair_pair(w, 0, 61, 19);
     stair_pair(w, 0, 49, 33);
@@ -814,7 +814,7 @@ void build_great_river(const LevelDataHooks& hooks)
     smooth_world(w);
     paint_pavement(w.grid, 4, 6, 12, 11);            // the landing quay
     paint_path(w.grid, 12, 11, 13, 12);              // connector to F1
-    paint(w.grid, 4, 6, PIX_TORCH1);
+    paint_decor(w, 0, 4, 6, DECOR_TORCH1);
 
     // The banks and isles (team 2): the F1 ambush, Isle B's undead, guarded
     // archers raking F2/F3 over the water, the Isle C southrons, treasure
@@ -935,14 +935,14 @@ void build_the_falls(const LevelDataHooks& hooks)
     smooth_world(w);
     paint_pavement(w.grid_for_floor(1), 34, 9, 45, 10); // the stone bridge
     paint_pavement(w.grid_for_floor(1), 10, 6, 16, 12); // the seat of seeing
-    paint(w.grid_for_floor(1), 13, 9, PIX_BOULDER_1);   // the seat itself
+    paint_decor(w, 1, 13, 9, DECOR_BOULDER_1);   // the seat itself
     paint(w.grid_for_floor(1), 10, 6, PIX_COLUMN1);
     paint(w.grid_for_floor(1), 16, 6, PIX_COLUMN2);
     paint(w.grid_for_floor(1), 10, 12, PIX_COLUMN2);
     paint(w.grid_for_floor(1), 16, 12, PIX_COLUMN1);
     paint_pavement(w.grid, 52, 28, 60, 33);          // the landing quay
-    paint(w.grid, 52, 28, PIX_TORCH1);
-    paint(w.grid, 60, 28, PIX_TORCH1);
+    paint_decor(w, 0, 52, 28, DECOR_TORCH1);
+    paint_decor(w, 0, 60, 28, DECOR_TORCH1);
     paint_path(w.grid, 2, 34, 30, 35);               // the war-road west
     paint_path(w.grid, 30, 30, 31, 33);              // pool rim connector
     stair_pair(w, 0, 4, 18);  // the shelf ends: west descent

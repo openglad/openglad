@@ -21,6 +21,7 @@
 */
 #include <openglad/core/colors.h>
 #include <openglad/core/ctf_constants.h>
+#include <openglad/core/decordefs.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/render/radar.h>
 #include <openglad/interface/render/view.h>
@@ -467,6 +468,37 @@ void radar::update()
     update(&og::runtime::current_session->myscreen_->level_runtime_data());
 }
 
+// Radar color for a decor id, or `base` (the cell's base-tile color) for ids
+// that inherit (DECOR_NONE, BONES, out-of-range bytes). The overrides
+// reproduce the legacy combined tiles' radar colors exactly: TORCH*/BRAZIER
+// -> COLOR_FIRE, BOULDER_* (and COLUMN_*) -> 24 (wall grey), PEBBLES -> the
+// legacy randomized-green rubble arm (the GRASS_DARK_1 base alone would give
+// the fixed GREEN+3), SHRUB -> the trees green.
+static short decor_radar_color(unsigned char d, short base)
+{
+	switch (d)
+	{
+		case DECOR_TORCH1:
+		case DECOR_TORCH2:
+		case DECOR_TORCH3:
+		case DECOR_BRAZIER:
+			return COLOR_FIRE;
+		case DECOR_BOULDER_1:
+		case DECOR_BOULDER_2:
+		case DECOR_BOULDER_3:
+		case DECOR_BOULDER_4:
+		case DECOR_COLUMN_BOTTOM:
+		case DECOR_COLUMN_TOP:
+			return 24;
+		case DECOR_PEBBLES:
+			return static_cast<short>(COLOR_GREEN + rng(3) + 3);
+		case DECOR_SHRUB:
+			return COLOR_TREES;
+		default:
+			return base;
+	}
+}
+
 // This function re-initializes the radar map data.  Do not
 // call it often, as it is very slow ..
 void radar::update(LevelRuntimeData* data)
@@ -494,6 +526,15 @@ void radar::update(LevelRuntimeData* data)
 	    && static_cast<short>(floor_grid.h) == sizey;
 	const PixieData& baked_grid =
 	    use_floor_grid ? floor_grid : data->world().grid;
+
+	// Decor plane of the same floor (BASE+DECOR layering): where a cell
+	// carries decor with a defined radar color, the decor wins over the base
+	// tile color (see decor_radar_color). Gated on validity + matching dims,
+	// so no-decor levels bake through exactly the legacy switch below.
+	const PixieData& decor_plane = data->world().decor_for_floor(bmp_floor_);
+	const bool has_decor = decor_plane.valid()
+	    && static_cast<short>(decor_plane.w) == sizex
+	    && static_cast<short>(decor_plane.h) == sizey;
 
 	for (i = 0; i < sizex; i++)
 		for (j = 0; j < sizey; j++)
@@ -684,6 +725,10 @@ void radar::update(LevelRuntimeData* data)
 				default:
 					temp =  0;
 			}
+			if (has_decor)
+				temp = decor_radar_color(
+				    static_cast<unsigned char>(decor_plane.data[i + sizex * j]),
+				    temp);
 			bmp[i+sizex*j] = static_cast<unsigned char>(temp);
 		}
 

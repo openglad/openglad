@@ -209,6 +209,15 @@ bool living::act()
 	            || current_game->world->mysmoother.query_genre_x_y((xpos() + sizex()) / GRID_SIZE, ypos() / GRID_SIZE) == TYPE_TREES
 	            || current_game->world->mysmoother.query_genre_x_y((xpos() + sizex()) / GRID_SIZE, (ypos() + sizey()) / GRID_SIZE) == TYPE_TREES
 	            || current_game->world->mysmoother.query_genre_x_y(xpos() / GRID_SIZE, (ypos() + sizey()) / GRID_SIZE) == TYPE_TREES
+	            // Concealing decor (SHRUB): same four corner probes, on the
+	            // walker's own floor (identical to floor 0 on single-floor
+	            // levels). Gated on plane validity — no-decor levels take the
+	            // legacy condition byte-identically, and no MIGRATED decor
+	            // conceals, so stock behavior is unchanged.
+	            || current_game->world->decor_conceals_at(floor(), xpos() / GRID_SIZE, ypos() / GRID_SIZE)
+	            || current_game->world->decor_conceals_at(floor(), (xpos() + sizex()) / GRID_SIZE, ypos() / GRID_SIZE)
+	            || current_game->world->decor_conceals_at(floor(), (xpos() + sizex()) / GRID_SIZE, (ypos() + sizey()) / GRID_SIZE)
+	            || current_game->world->decor_conceals_at(floor(), xpos() / GRID_SIZE, (ypos() + sizey()) / GRID_SIZE)
 	        )
 	   )
 	{

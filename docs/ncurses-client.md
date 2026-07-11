@@ -243,6 +243,15 @@ Tiles (`TYPE_*` → glyph; Unicode with ASCII fallback in parentheses):
 | TYPE_DIRT_DARK | `;` | TYPE_UNKNOWN | (space) |
 | TYPE_COBBLE | `▒` (`%`) | | |
 
+Decor (tile layering, `decor_glyph(id)` — the per-floor decor plane drawn over
+the base tile): decor **wins** when it defines a glyph — torches → `!` bold
+yellow; brazier → `☼` (`o`) bold red; boulders → `o` white; columns → `|`
+white; shrub → `"` bold green (marsh reeds are the same shape non-bold).
+Ground litter (pebbles, bones) returns `nullopt` and inherits the base tile
+glyph, as do `DECOR_NONE` and out-of-registry bytes. Legacy combined
+torch/boulder tiles were genre-`TYPE_UNKNOWN` blanks, so the override is a
+strict information improvement.
+
 Team → color (`team_num`): 0 red, 1 green, 2 blue, 3 yellow, 4 magenta, 5 cyan,
 6 white, 7 bright-black. `world.my_team` is the player's side; the followed
 avatar is `@` bold in the player color.

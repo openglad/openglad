@@ -50,6 +50,16 @@ void paint_ring(PixieData& g, double cx, double cy, double r0, double r1,
 // A vertically-aligned Z-stair pair: UP on floor f, DOWN on floor f+1 at the
 // SAME cell (Z-stairs are positional; see docs/z-axis-design.md).
 void stair_pair(GameWorld& w, int f, int tx, int ty);
+// DECOR plane authoring (BASE + DECOR tile layering, .fss v11): set the
+// decor id at a tile, leaving the base byte alone — the whole point is that
+// the ground under a torch or boulder keeps autotiling as ground. Allocates
+// the floor's plane lazily. Refuses (hard fail) decor over air / Z-stair /
+// void bases: decor floating over a hole is nonsense and the passability
+// composition (base AND decor) would be misleading there.
+void paint_decor(GameWorld& w, int floor, int tx, int ty,
+                 unsigned char decor_id);
+void paint_decor_rect(GameWorld& w, int floor, int tx0, int ty0, int tx1,
+                      int ty1, unsigned char decor_id);
 // Run the genre autotiler over every floor (grass/water/tree/wall/cobble/
 // carpet shaping). The Z tiles and pavement/boulder decor are genre-inert.
 void smooth_world(GameWorld& w);
@@ -89,8 +99,10 @@ void place_exit(GameWorld& w, int floor, int tx, int ty, int destination);
 bool cell_near_entity(GameWorld& w, int floor, int tx, int ty, int margin);
 // Boulder / jagged-litter scatter over a rectangle. Runs AFTER army placement
 // and keeps one tile of clearance around every entity (and never covers a
-// Z-stair). NOTE: jagged tiles block ALL movement (even projectiles), so keep
-// the litter modulus high.
+// Z-stair). Boulders are DECOR (DECOR_BOULDER_1..4 over the existing biome
+// ground — snow stays snow under the rock); jagged litter stays a BASE tile
+// (full-tile terrain art, blocks even projectiles — nothing to cut out), so
+// keep the litter modulus high.
 void scatter_boulders(GameWorld& w, int floor, int tx0, int ty0, int tx1,
                       int ty1, int modulus);
 void scatter_litter(GameWorld& w, int floor, int tx0, int ty0, int tx1,

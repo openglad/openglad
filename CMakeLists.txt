@@ -1380,6 +1380,33 @@ if(NOT EMSCRIPTEN)
     )
     add_runtime_assets_dependency(westlands_mapgen)
 
+    # --- grid_migrate (BASE + DECOR migration for hand-authored packages) ---
+    # SDL-free tool that rewrites a stock .glad so legacy combined tiles
+    # (torches/brazier/boulders/rubble) become base ground + a decor plane
+    # (.fss v11), with an in-memory old-vs-new equivalence proof (passability
+    # matrix, concealment, damage, door genre, entity streams, footing) that
+    # exits nonzero on any mismatch. Not part of the default build; run via
+    # scripts/migrate_stock_campaigns.sh.
+    add_executable(grid_migrate EXCLUDE_FROM_ALL
+        ${CMAKE_SOURCE_DIR}/tools/grid_migrate/main.cpp
+        ${SRC_DIR}/platform/text/platform_headless.cpp
+        ${SRC_DIR}/platform/text/walker_headless.cpp
+        ${SRC_DIR}/interface/input/input_state.cpp
+        ${SRC_DIR}/platform/game_context.cpp
+        ${SRC_DIR}/interface/session_state.cpp
+        ${SRC_DIR}/interface/level_runtime_data.cpp
+        ${SRC_DIR}/interface/platform_bridge.cpp
+    )
+    configure_openglad_library(grid_migrate)
+    target_link_libraries(grid_migrate PRIVATE
+        og_core
+        og_gameplay
+        og_resources
+        m
+        pthread
+    )
+    add_runtime_assets_dependency(grid_migrate)
+
     # --- openglad_curses (zero-SDL ncurses text client) ---
     # A different renderer/input backend for the same game. Built from the same
     # SDL-free sources as the headless server (sim + resources + networking core
@@ -1763,6 +1790,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/test_video_primitives.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_video_effects_prims.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_render_effects.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_decor_render.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_stair_overlay.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_text_rendering.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_campaign_and_level_picker.cpp
@@ -2108,6 +2136,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             test_video_modes_more.cpp
             test_video_effects_prims.cpp
             test_render_effects.cpp
+            test_decor_render.cpp
             test_stair_overlay.cpp
             test_video_pixel_ops.cpp
             test_video_primitives.cpp
@@ -2345,6 +2374,8 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_zaxis_fx_floor.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_new_tiles.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_new_tiles_legacy_ids.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_decor.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_decor_art.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_npc_scenario_flags.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_guard_act_type.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_difficulty_scaling.cpp
@@ -2399,6 +2430,8 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_spectator_mode.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_concept_levels.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_westlands_levels.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_decor_format.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_migrated_campaigns.cpp
         )
 
         og_add_unit_group(og_unit_ctf FILES

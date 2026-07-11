@@ -70,11 +70,11 @@ void build_plains_of_horse_lords(const LevelDataHooks& hooks)
     paint_path(w.grid, 2, 24, 87, 25);
     paint_pavement(w.grid, 59, 33, 62, 35); // ruin interior
     paint_pavement(w.grid, 60, 36, 61, 36); // its door gap
-    paint(w.grid, 59, 33, PIX_BRAZIER1);    // the hearth
+    paint_decor(w, 0, 59, 33, DECOR_BRAZIER);    // the hearth
     for (int x : {30, 38, 46, 54})
     {
-        paint(w.grid, x, 22, PIX_TORCH1);
-        paint(w.grid, x, 27, PIX_TORCH1);
+        paint_decor(w, 0, x, 22, DECOR_TORCH1);
+        paint_decor(w, 0, x, 27, DECOR_TORCH1);
     }
 
     // The orc column (team 2): the main lattice astride the road, big-orc
@@ -210,12 +210,12 @@ void build_wizards_vale(const LevelDataHooks& hooks)
     paint(w.grid, 26, 44, PIX_COLUMN2);
     paint(w.grid, 33, 44, PIX_COLUMN1);
     for (const auto& c : glades) // the standing stones
-        paint(w.grid, c[0], c[1], PIX_BOULDER_1);
+        paint_decor(w, 0, c[0], c[1], DECOR_BOULDER_1);
     // Tower interiors: pavement on floor 1, a pavement gallery around the
     // library carpet on floor 2, glass under the sky on floor 3.
     paint_pavement(w.grid_for_floor(1), 24, 24, 35, 35);
-    paint(w.grid_for_floor(1), 27, 27, PIX_BRAZIER1);
-    paint(w.grid_for_floor(1), 32, 32, PIX_BRAZIER1);
+    paint_decor(w, 1, 27, 27, DECOR_BRAZIER);
+    paint_decor(w, 1, 32, 32, DECOR_BRAZIER);
     paint_pavement(w.grid_for_floor(2), 24, 24, 35, 25);
     paint_pavement(w.grid_for_floor(2), 24, 34, 35, 35);
     paint_pavement(w.grid_for_floor(2), 24, 26, 25, 33);
@@ -323,16 +323,16 @@ void build_deeping_wall(const LevelDataHooks& hooks)
     paint_pavement(w.grid, 46, 2, 48, 4);
     paint_pavement(w.grid, 38, 6, 41, 6);                // keep door
     paint_pavement(w.grid, 39, 7, 40, 17);               // processional way
-    paint(w.grid, 37, 7, PIX_BRAZIER1);                  // keep-door braziers
-    paint(w.grid, 42, 7, PIX_BRAZIER1);
+    paint_decor(w, 0, 37, 7, DECOR_BRAZIER);                  // keep-door braziers
+    paint_decor(w, 0, 42, 7, DECOR_BRAZIER);
     paint_pavement(w.grid, 38, 18, 41, 21);              // the gate gap
     paint_path(w.grid, 38, 22, 41, 25);                  // the war-road, worn
     paint_path(w.grid, 39, 26, 40, 49);                  // to the gate
     paint_pavement(w.grid_for_floor(1), 0, 18, 79, 21);  // the rampart
-    paint(w.grid_for_floor(1), 10, 18, PIX_BRAZIER1);    // rampart fire posts
-    paint(w.grid_for_floor(1), 30, 18, PIX_BRAZIER1);
-    paint(w.grid_for_floor(1), 50, 18, PIX_BRAZIER1);
-    paint(w.grid_for_floor(1), 70, 18, PIX_BRAZIER1);
+    paint_decor(w, 1, 10, 18, DECOR_BRAZIER);    // rampart fire posts
+    paint_decor(w, 1, 30, 18, DECOR_BRAZIER);
+    paint_decor(w, 1, 50, 18, DECOR_BRAZIER);
+    paint_decor(w, 1, 70, 18, DECOR_BRAZIER);
     stair_pair(w, 0, 20, 17); // up onto the rampart, north (courtyard) side
     stair_pair(w, 0, 60, 17);
 
@@ -449,8 +449,8 @@ void build_white_city(const LevelDataHooks& hooks)
     paint_path(w.grid, 2, 24, 39, 25);      // the approach road
     for (int x : {8, 15, 22, 29, 36})
     {
-        paint(w.grid, x, 21, PIX_TORCH1);
-        paint(w.grid, x, 28, PIX_TORCH1);
+        paint_decor(w, 0, x, 21, DECOR_TORCH1);
+        paint_decor(w, 0, x, 28, DECOR_TORCH1);
     }
     paint_pavement(w.grid, 45, 22, 69, 27); // the main street
     paint_pavement(w.grid, 55, 2, 56, 47);  // the cross street
@@ -463,20 +463,23 @@ void build_white_city(const LevelDataHooks& hooks)
     paint_pavement(w.grid, 78, 24, 78, 25); // tower door, west face
     paint_pavement(w.grid, 79, 19, 86, 31); // tower interior
     paint_rect(w.grid, 81, 21, 84, 29, PIX_CARPET_M); // the hall carpet
-    paint(w.grid, 77, 23, PIX_BRAZIER1);    // door braziers
-    paint(w.grid, 77, 26, PIX_BRAZIER1);
+    // (Historical note: "door braziers" at (77, 23)/(77, 26) were authored
+    // here as combined tiles, but the citadel-court pavement on the next
+    // line always painted straight over them — the shipped level never had
+    // them. Decor would resurrect two blocking cells by the courtyard
+    // door, so they stay dropped to preserve the balanced shipped layout.)
     paint_pavement(w.grid, 74, 20, 77, 30); // the citadel court
     // Floor 1: the two wall ramparts (the outer one arches over the gate),
     // fire posts, and the tower's first-storey interior.
     paint_pavement(f1, 40, 0, 44, 49); // outer rampart
     for (int y : {2, 8, 20, 29, 41, 47})
-        paint(f1, 42, y, PIX_BRAZIER1);
+        paint_decor(w, 1, 42, y, DECOR_BRAZIER);
     paint_pavement(f1, 70, 0, 73, 49); // inner rampart
     for (int y : {2, 14, 35, 47})
-        paint(f1, 71, y, PIX_BRAZIER1);
+        paint_decor(w, 1, 71, y, DECOR_BRAZIER);
     paint_pavement(f1, 79, 19, 86, 31); // tower first storey
-    paint(f1, 80, 20, PIX_BRAZIER1);
-    paint(f1, 85, 30, PIX_BRAZIER1);
+    paint_decor(w, 1, 80, 20, DECOR_BRAZIER);
+    paint_decor(w, 1, 85, 30, DECOR_BRAZIER);
     // Floor 2: the tower-top platform, its glass crown, the four corner
     // columns, and THE BEACON.
     paint_pavement(f2, 78, 18, 87, 32);
@@ -485,7 +488,7 @@ void build_white_city(const LevelDataHooks& hooks)
     paint(f2, 87, 18, PIX_COLUMN2);
     paint(f2, 78, 32, PIX_COLUMN2);
     paint(f2, 87, 32, PIX_COLUMN1);
-    paint(f2, 82, 25, PIX_BRAZIER1); // the beacon
+    paint_decor(w, 2, 82, 25, DECOR_BRAZIER); // the beacon
     // Stairs (after decor; the cells above are kept clear). The floor-0
     // wall stairs sit on the cobble beside the wall faces; their floor-1
     // twins are DOWN cells adjoining the rampart pavement (the same
@@ -627,17 +630,17 @@ void build_black_gate(const LevelDataHooks& hooks)
     // Torch standards line the legion's approach like banners.
     for (int px = 54; px <= 75; px += 7)
     {
-        paint(w.grid, px, 21, PIX_TORCH1);
-        paint(w.grid, px, 28, PIX_TORCH1);
+        paint_decor(w, 0, px, 21, DECOR_TORCH1);
+        paint_decor(w, 0, px, 28, DECOR_TORCH1);
     }
-    paint(w.grid, 51, 21, PIX_TORCH1); // flanking the gate mouth
-    paint(w.grid, 51, 28, PIX_TORCH1);
+    paint_decor(w, 0, 51, 21, DECOR_TORCH1); // flanking the gate mouth
+    paint_decor(w, 0, 51, 28, DECOR_TORCH1);
     paint_pavement(w.grid_for_floor(1), 43, 15, 50, 20); // north gatehouse
     paint_pavement(w.grid_for_floor(1), 43, 29, 50, 34); // south gatehouse
-    paint(w.grid_for_floor(1), 44, 15, PIX_BRAZIER1);    // watch fires
-    paint(w.grid_for_floor(1), 49, 15, PIX_BRAZIER1);
-    paint(w.grid_for_floor(1), 44, 34, PIX_BRAZIER1);
-    paint(w.grid_for_floor(1), 49, 34, PIX_BRAZIER1);
+    paint_decor(w, 1, 44, 15, DECOR_BRAZIER);    // watch fires
+    paint_decor(w, 1, 49, 15, DECOR_BRAZIER);
+    paint_decor(w, 1, 44, 34, DECOR_BRAZIER);
+    paint_decor(w, 1, 49, 34, DECOR_BRAZIER);
     stair_pair(w, 0, 50, 17); // into the gatehouses from the east side
     stair_pair(w, 0, 50, 32);
 

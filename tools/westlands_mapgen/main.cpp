@@ -27,6 +27,7 @@
 #include "builders.h"
 
 #include <openglad/core/constants.h>
+#include <openglad/core/decordefs.h>
 #include <openglad/core/irandom.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/core/terrain_types.h>
@@ -165,6 +166,53 @@ void stair_pair(GameWorld& w, int f, int tx, int ty)
     paint(w.grid_for_floor(f + 1), tx, ty, PIX_ZSTAIR_DOWN);
 }
 
+void paint_decor(GameWorld& w, int floor, int tx, int ty,
+                 unsigned char decor_id)
+{
+    PixieData& g = w.grid_for_floor(floor);
+    if (tx < 0 || ty < 0 || tx >= g.w || ty >= g.h)
+    {
+        fail(std::format("paint_decor: tile ({}, {}) outside floor {} grid",
+                         tx, ty, floor));
+        return;
+    }
+    if (decor_id >= DECOR_MAX)
+    {
+        fail(std::format("paint_decor: decor id {} out of range", decor_id));
+        return;
+    }
+    const unsigned char base = g.data[tx + ty * g.w];
+    if (base == PIX_AIR || base == PIX_ZSTAIR_UP || base == PIX_ZSTAIR_DOWN ||
+        base == PIX_VOID1)
+    {
+        fail(std::format("paint_decor: decor {} over air/stair/void base {} "
+                         "at ({}, {}) floor {}", decor_id, base, tx, ty,
+                         floor));
+        return;
+    }
+    PixieData& dec = w.decor_for_floor(floor);
+    if (!dec.valid())
+    {
+        // Lazy plane allocation, zero-filled (same pattern as add_floor's
+        // grid allocation): an untouched floor keeps an invalid plane and
+        // the level saves without it.
+        auto* buf = new unsigned char[static_cast<std::size_t>(g.w) * g.h];
+        std::fill(buf, buf + static_cast<std::size_t>(g.w) * g.h,
+                  static_cast<unsigned char>(DECOR_NONE));
+        dec = PixieData(1, static_cast<unsigned char>(g.w),
+                        static_cast<unsigned char>(g.h), buf);
+    }
+    dec.data[tx + ty * dec.w] = decor_id;
+}
+
+void paint_decor_rect(GameWorld& w, int floor, int tx0, int ty0, int tx1,
+                      int ty1, unsigned char decor_id)
+{
+    for (int y = ty0; y <= ty1; ++y)
+        for (int x = tx0; x <= tx1; ++x)
+            paint_decor(w, floor, x, y, decor_id);
+}
+
 void smooth_world(GameWorld& w)
 {
     for (int f = 0; f < w.floor_count(); ++f)
@@ -265,11 +313,16 @@ bool cell_near_entity(GameWorld& w, int floor, int tx, int ty, int margin)
 
 namespace {
 
-// Scatter a 4-variant decor tile set over a rectangle. Runs AFTER army
-// placement and keeps one tile of clearance around every entity (and never
-// covers a Z-stair) so no one spawns wedged in the scenery.
-void scatter_decor(GameWorld& w, int floor, int tx0, int ty0, int tx1,
-                   int ty1, int modulus, const unsigned char (&variants)[4])
+// Scatter a 4-variant BASE tile set over a rectangle (jagged litter — a
+// full-tile terrain, not decor). Runs AFTER army placement and keeps one
+// tile of clearance around every entity (and never covers a Z-stair) so no
+// one spawns wedged in the scenery. A full-tile base replaces the whole
+// cell, decor included — legacy overwrite semantics: when litter lands on
+// a cell an earlier scatter gave a boulder, the boulder goes away exactly
+// as it did when both were base tiles.
+void scatter_base_tiles(GameWorld& w, int floor, int tx0, int ty0, int tx1,
+                        int ty1, int modulus,
+                        const unsigned char (&variants)[4])
 {
     PixieData& g = w.grid_for_floor(floor);
     for (int y = ty0; y <= ty1; ++y)
@@ -285,6 +338,9 @@ void scatter_decor(GameWorld& w, int floor, int tx0, int ty0, int tx1,
             if (cell_near_entity(w, floor, x, y, 1))
                 continue;
             paint(g, x, y, variants[(x + y) % 4]);
+            PixieData& dec = w.decor_for_floor(floor);
+            if (dec.valid() && x < dec.w && y < dec.h)
+                dec.data[x + y * dec.w] = DECOR_NONE;
         }
 }
 
@@ -293,9 +349,65 @@ void scatter_decor(GameWorld& w, int floor, int tx0, int ty0, int tx1,
 void scatter_boulders(GameWorld& w, int floor, int tx0, int ty0, int tx1,
                       int ty1, int modulus)
 {
-    static constexpr unsigned char boulders[4] = {PIX_BOULDER_1, PIX_BOULDER_2,
-                                                  PIX_BOULDER_3, PIX_BOULDER_4};
-    scatter_decor(w, floor, tx0, ty0, tx1, ty1, modulus, boulders);
+    // Same cell hash and variant pick as the legacy base-tile scatter, but
+    // the rock is now DECOR over the existing biome ground (snow stays snow
+    // under it). An AIR cell keeps the legacy base-tile boulder instead: a
+    // decor rock cannot plug a fall-through hole the way a base tile could
+    // (paint_decor hard-fails over air by design), and the shipped levels
+    // rely on the scatter sealing the odd upper-floor hole. Bases that block
+    // weapons or flyers (walls, mid-canopy trees) are skipped outright: the
+    // legacy scatter ERODED such cells into weapon-permeable rock, silently
+    // breaching authored walls — the composition invariant (a BlocksGround
+    // decor must reproduce the combined tile's "weapons and flyers pass"
+    // semantics exactly, pinned by tests/unit/test_migrated_campaigns.cpp)
+    // keeps the structures intact instead.
+    static constexpr unsigned char decor_boulders[4] = {
+        DECOR_BOULDER_1, DECOR_BOULDER_2, DECOR_BOULDER_3, DECOR_BOULDER_4};
+    static constexpr unsigned char base_boulders[4] = {
+        PIX_BOULDER_1, PIX_BOULDER_2, PIX_BOULDER_3, PIX_BOULDER_4};
+    auto blocks_weapons_or_flyers = [](unsigned char t) {
+        switch (t)
+        {
+            case PIX_H_WALL1:
+            case PIX_WALL2:
+            case PIX_WALL3:
+            case PIX_WALL4:
+            case PIX_WALL5:
+            case PIX_WALL_LL:
+            case PIX_WALLTOP_H:
+            case PIX_WALL_ARROW_GRASS:
+            case PIX_WALL_ARROW_FLOOR:
+            case PIX_WALL_ARROW_GRASS_DARK:
+            case PIX_TREE_M1:
+            case PIX_TREE_ML:
+            case PIX_TREE_MR:
+            case PIX_TREE_MT:
+            case PIX_TREE_T1:
+                return true;
+            default:
+                return false;
+        }
+    };
+    PixieData& g = w.grid_for_floor(floor);
+    for (int y = ty0; y <= ty1; ++y)
+        for (int x = tx0; x <= tx1; ++x)
+        {
+            if ((x * 7 + y * 11) % modulus != 0)
+                continue;
+            if (x < 0 || y < 0 || x >= g.w || y >= g.h)
+                continue;
+            const unsigned char t = g.data[x + y * g.w];
+            if (t == PIX_ZSTAIR_UP || t == PIX_ZSTAIR_DOWN || t == PIX_VOID1)
+                continue;
+            if (blocks_weapons_or_flyers(t))
+                continue;
+            if (cell_near_entity(w, floor, x, y, 1))
+                continue;
+            if (t == PIX_AIR)
+                paint(g, x, y, base_boulders[(x + y) % 4]);
+            else
+                paint_decor(w, floor, x, y, decor_boulders[(x + y) % 4]);
+        }
 }
 
 void scatter_litter(GameWorld& w, int floor, int tx0, int ty0, int tx1,
@@ -304,7 +416,7 @@ void scatter_litter(GameWorld& w, int floor, int tx0, int ty0, int tx1,
     static constexpr unsigned char litter[4] = {
         PIX_JAGGED_GROUND_1, PIX_JAGGED_GROUND_2, PIX_JAGGED_GROUND_3,
         PIX_JAGGED_GROUND_4};
-    scatter_decor(w, floor, tx0, ty0, tx1, ty1, modulus, litter);
+    scatter_base_tiles(w, floor, tx0, ty0, tx1, ty1, modulus, litter);
 }
 
 void save_level_files(GameWorld& world, int id, const char* title,
@@ -336,6 +448,26 @@ void save_level_files(GameWorld& world, int id, const char* title,
     {
         const std::string p = std::format("{}_f{}.png", base, f);
         if (!write_pixie_png(p.c_str(), world.grid_for_floor(f)))
+            fail(std::format("failed to write {}", p));
+    }
+    // Decor planes by derived name "{grid}_d{N}" (including floor 0), for
+    // exactly the floors the .fss payload flags as present: the writer's
+    // predicate is "valid plane with at least one nonzero byte", so an
+    // all-zero plane is treated as absent on both sides.
+    for (int f = 0; f < world.floor_count(); ++f)
+    {
+        const PixieData& dec = world.decor_for_floor(f);
+        if (!dec.valid())
+            continue;
+        const std::size_t cells =
+            static_cast<std::size_t>(dec.w) * static_cast<std::size_t>(dec.h);
+        bool nonzero = false;
+        for (std::size_t c = 0; c < cells && !nonzero; ++c)
+            nonzero = dec.data[c] != 0;
+        if (!nonzero)
+            continue;
+        const std::string p = std::format("{}_d{}.png", base, f);
+        if (!write_pixie_png(p.c_str(), dec))
             fail(std::format("failed to write {}", p));
     }
     std::printf("westlands_mapgen: built %d '%s' (%d floors)\n", id, title,
@@ -480,6 +612,41 @@ void self_check_level(const ExpectedLevel& ex, const std::set<int>& registered)
     for (int f = 0; f < world.floor_count(); ++f)
         if (!world.grid_for_floor(f).valid())
             fail(std::format("self-check scen{}: floor {} grid invalid", ex.id, f));
+
+    // Decor plane audit (BASE + DECOR layering, .fss v11): planes that
+    // round-tripped must match their floor grid's dims, carry only known
+    // decor ids, and never sit over air / Z-stair / void bases.
+    for (int f = 0; f < world.floor_count(); ++f)
+    {
+        const PixieData& dec = world.decor_for_floor(f);
+        if (!dec.valid())
+            continue;
+        const PixieData& g = world.grid_for_floor(f);
+        if (!g.valid() || dec.w != g.w || dec.h != g.h)
+        {
+            fail(std::format("self-check scen{}: floor {} decor plane dims "
+                             "mismatch", ex.id, f));
+            continue;
+        }
+        for (int ty = 0; ty < dec.h; ++ty)
+            for (int tx = 0; tx < dec.w; ++tx)
+            {
+                const unsigned char d = dec.data[tx + ty * dec.w];
+                if (d >= DECOR_MAX)
+                    fail(std::format("self-check scen{}: floor {} cell "
+                                     "({}, {}) decor id {} out of range",
+                                     ex.id, f, tx, ty, d));
+                const unsigned char base = g.data[tx + ty * g.w];
+                if (d != DECOR_NONE &&
+                    (base == PIX_AIR || base == PIX_ZSTAIR_UP ||
+                     base == PIX_ZSTAIR_DOWN || base == PIX_VOID1))
+                {
+                    fail(std::format("self-check scen{}: floor {} cell "
+                                     "({}, {}) decor {} over air/stair/void",
+                                     ex.id, f, tx, ty, d));
+                }
+            }
+    }
 
     for (const std::string& line : level.description)
         if (line.size() > kBriefingLineBudget)
@@ -628,6 +795,23 @@ void self_check_level(const ExpectedLevel& ex, const std::set<int>& registered)
                     "self-check scen{}: ground unit family {} at tile ({}, {}) "
                     "floor {} spawns over air", ex.id,
                     static_cast<int>(ob->family()), tx, ty, ob->floor()));
+            }
+            // No ground footprint on BlocksGround decor: the scatter keeps
+            // entity clearance and hand-placed decor must not pin troops.
+            const PixieData& dec = world.decor_for_floor(ob->floor());
+            if (dec.valid() && tx >= 0 && ty >= 0 && tx < dec.w &&
+                ty < dec.h)
+            {
+                const unsigned char d = dec.data[tx + ty * dec.w];
+                if (d < DECOR_MAX &&
+                    kDecorRegistry[d].pass == DecorPassability::BlocksGround)
+                {
+                    fail(std::format(
+                        "self-check scen{}: ground unit family {} at tile "
+                        "({}, {}) floor {} spawns on blocking decor {}",
+                        ex.id, static_cast<int>(ob->family()), tx, ty,
+                        ob->floor(), d));
+                }
             }
         }
     };

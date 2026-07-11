@@ -32,6 +32,7 @@ void importCampaignPicker();
 void shareCampaign(screen* scr);
 bool prompt_for_string(const std::string& message, std::string& result);
 int level_editor_test_exercise_internal_helpers();
+int level_editor_test_decor_migrated_roundtrip();
 
 static bool in_set(unsigned char v, unsigned char a, unsigned char b, unsigned char c, unsigned char d)
 {
@@ -128,6 +129,16 @@ TEST(LevelEditorHelpers, level_editor_set_screen_pos_and_tile_matching)
     ASSERT_EQ(0, level_editor_test_exercise_internal_helpers())
         << "internal helper exerciser should report the first failed check as a negative index";
 
+}
+
+// BASE + DECOR tile layering, migrated-content e2e: a grid_migrate-produced
+// gladiator level loads with its decor plane, one decor cell is repainted
+// through the editor, and the edit survives the editor's save/reload cycle
+// (in an isolated copy campaign — the stock package is never rewritten).
+TEST(LevelEditorHelpers, level_editor_decor_migrated_gladiator_roundtrip)
+{
+    ASSERT_EQ(0, level_editor_test_decor_migrated_roundtrip())
+        << "migrated-decor editor round-trip failed at the negated check index";
 }
 
 

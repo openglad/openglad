@@ -26,6 +26,7 @@
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/core/colors.h>
 #include <openglad/core/constants.h>
+#include <openglad/core/decordefs.h>
 #include <openglad/core/runtime_trace.h>
 #include <openglad/core/version.h>
 #include <openglad/core/util.h>
@@ -497,10 +498,17 @@ bool viewscreen::redraw()
 			if (use_layer)
 				active_screen()->floor_layer_begin(xloc, yloc, xview, yview);
 			PixieData& gridp = vworld.grid_for_floor(static_cast<int>(f));
+			// Decor plane (BASE+DECOR layering): gated on validity + matching
+			// dims, so a level without decor renders through exactly the
+			// legacy tile loop below.
+			const PixieData& decorp = vworld.decor_for_floor(static_cast<int>(f));
 			if (gridp.valid())
 			{
 				const unsigned short maxx = gridp.w;
 				const unsigned short maxy = gridp.h;
+				const bool has_decor = decorp.valid()
+				    && static_cast<unsigned short>(decorp.w) == maxx
+				    && static_cast<unsigned short>(decorp.h) == maxy;
 				for (j=(topy/GRID_SIZE)-yneg;j < ((topy+(yview))/GRID_SIZE) +1; j++)
 					for (i=(topx/GRID_SIZE)-xneg;i < ((topx+(xview))/GRID_SIZE) +1; i++)
 					{
@@ -523,6 +531,18 @@ bool viewscreen::redraw()
 						const unsigned char talpha = use_layer ? 255
 						    : ((tile == PIX_GLASS && falpha > kGlassAlpha) ? kGlassAlpha : falpha);
 						renderer->draw_tile(tile, i*GRID_SIZE, j*GRID_SIZE, this, talpha);
+						// Decor rides right on top of its base tile, through the
+						// TRANSPARENT sprite path, at the FLOOR alpha — deliberately
+						// not talpha: decor on glass draws at floor alpha, not the
+						// glass clamp. On the layer path the composite applies
+						// fade/tint/parallax to base+decor together.
+						if (has_decor)
+						{
+							const int d = static_cast<int>(decorp.data[i + maxx * j]);
+							if (d != DECOR_NONE)
+								renderer->draw_decor(d, i*GRID_SIZE, j*GRID_SIZE, this,
+								                     use_layer ? 255 : falpha);
+						}
 					}
 					}
 			}
@@ -676,10 +696,17 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 			if (use_layer)
 				active_screen()->floor_layer_begin(xloc, yloc, xview, yview);
 			PixieData& gridp = vworld.grid_for_floor(static_cast<int>(f));
+			// Decor plane (BASE+DECOR layering): gated on validity + matching
+			// dims, so a level without decor renders through exactly the
+			// legacy tile loop below.
+			const PixieData& decorp = vworld.decor_for_floor(static_cast<int>(f));
 			if (gridp.valid())
 			{
 				const unsigned short maxx = gridp.w;
 				const unsigned short maxy = gridp.h;
+				const bool has_decor = decorp.valid()
+				    && static_cast<unsigned short>(decorp.w) == maxx
+				    && static_cast<unsigned short>(decorp.h) == maxy;
 				for (j=(topy/GRID_SIZE)-yneg;j < ((topy+(yview))/GRID_SIZE) +1; j++)
 					for (i=(topx/GRID_SIZE)-xneg;i < ((topx+(xview))/GRID_SIZE) +1; i++)
 					{
@@ -702,6 +729,18 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 						const unsigned char talpha = use_layer ? 255
 						    : ((tile == PIX_GLASS && falpha > kGlassAlpha) ? kGlassAlpha : falpha);
 						renderer->draw_tile(tile, i*GRID_SIZE, j*GRID_SIZE, this, talpha);
+						// Decor rides right on top of its base tile, through the
+						// TRANSPARENT sprite path, at the FLOOR alpha — deliberately
+						// not talpha: decor on glass draws at floor alpha, not the
+						// glass clamp. On the layer path the composite applies
+						// fade/tint/parallax to base+decor together.
+						if (has_decor)
+						{
+							const int d = static_cast<int>(decorp.data[i + maxx * j]);
+							if (d != DECOR_NONE)
+								renderer->draw_decor(d, i*GRID_SIZE, j*GRID_SIZE, this,
+								                     use_layer ? 255 : falpha);
+						}
 					}
 					}
 			}

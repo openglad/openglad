@@ -666,6 +666,14 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor)
     if (!fg.valid())
         return false;
 
+    // Decor plane consult (core/decordefs.h) is gated on validity + matching
+    // dims (the loader drops mismatched planes; the dim check also makes the
+    // per-cell index provably in-bounds). No-decor levels pay one valid()
+    // check and take identical control flow — parity-byte-identical.
+    const PixieData& dec = decor_for_floor(floor);
+    const bool has_decor =
+        dec.valid() && dec.w == fg.w && dec.h == fg.h;
+
     if ((xover % GRID_SIZE) == 0)
         xtrax = 0;
     if ((yover % GRID_SIZE) == 0)
@@ -883,6 +891,39 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor)
                     return false;
                 default:
                     return false;
+            }
+
+            // Decor consultation, immediately AFTER the base switch so it
+            // only runs for cells whose base tile did not already return
+            // false. Decor only RESTRICTS (never grants passage) and consumes
+            // no RNG; the arrow-wall gamble above is unreachable for decor
+            // cells (the mapping never touches arrow walls). The id is
+            // bounds-gated before subscripting the registry (plane bytes are
+            // file data; the loader clamps, this guards hostile planes).
+            if (has_decor)
+            {
+                const unsigned char d =
+                    dec.data[static_cast<std::size_t>(i + dec.w * j)];
+                if (d != DECOR_NONE && d < DECOR_MAX)
+                {
+                    switch (kDecorRegistry[d].pass)
+                    {
+                        case DecorPassability::None:
+                            break;
+                        case DecorPassability::BlocksAll:
+                            return false;
+                        case DecorPassability::BlocksGround:
+                            // Exactly the legacy water/torch arm: weapons
+                            // pass, flyers (permanent or temporary) pass,
+                            // ground walkers are blocked.
+                            if (ob->query_order() == Order::Weapon)
+                                break;
+                            if (ob->stats()->query_bit_flags(BIT_FLYING) ||
+                                ob->flight_left())
+                                break;
+                            return false;
+                    }
+                }
             }
         }
     }
@@ -1208,6 +1249,7 @@ void GameWorld::delete_grid()
 {
     clear_grid_dirty_tiles();
     grid.free();
+    decor.free();
     pixmaxx = 0;
     pixmaxy = 0;
     mysmoother.reset();
@@ -1217,6 +1259,7 @@ void GameWorld::create_new_grid()
 {
     clear_grid_dirty_tiles();
     grid.free();
+    decor.free();
 
     grid.frames = 1;
     grid.w = 40;
@@ -1393,6 +1436,17 @@ char GameWorld::damage_tile(short xloc, short yloc)
         return 0;
 
     const int gridloc = yover * grid.w + xover;
+
+    // Decor shields the ground: a decorated cell is exempt from the
+    // grass->charred transform. Legacy combined tiles (PIX_BOULDER_* etc.)
+    // never transformed under bombs; after base+decor migration their base
+    // byte is grass and WOULD — this gated skip restores exact legacy
+    // behavior and defines the semantic for new levels. Returning 0 also
+    // skips the caller's no-op dirty-tile fold (game_server truthiness gate).
+    if (decor.valid() && decor.w == grid.w && decor.h == grid.h &&
+        decor.data[static_cast<std::size_t>(gridloc)] != DECOR_NONE)
+        return 0;
+
     unsigned char next_value = grid.data[gridloc];
     switch (static_cast<unsigned char>(grid.data[gridloc]))
     {

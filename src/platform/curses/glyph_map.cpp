@@ -13,10 +13,12 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/core/ctf_constants.h>
+#include <openglad/core/decordefs.h>
 #include <openglad/core/order.h>
 #include <openglad/core/terrain_types.h>
 
 #include <array>
+#include <optional>
 
 namespace og::curses {
 
@@ -228,6 +230,35 @@ Glyph tile_glyph(int genre)
     case TYPE_ASH:         return Glyph{U'░', '-', Color::White, false, false};  // ash field (glass ░ is cyan)
     case TYPE_UNKNOWN:
     default:               return Glyph{U' ', ' ', Color::Default, false, false};
+    }
+}
+
+std::optional<Glyph> decor_glyph(unsigned char decor_id)
+{
+    switch (decor_id) {
+    // Wall torches: bold yellow flame. ('!' is also the potion ENTITY glyph,
+    // but that one is magenta and entities draw over tiles anyway.)
+    case DECOR_TORCH1:
+    case DECOR_TORCH2:
+    case DECOR_TORCH3:        return Glyph{U'!', '!', Color::Yellow, true, false};
+    // Fire bowl: bold red.
+    case DECOR_BRAZIER:       return Glyph{U'☼', 'o', Color::Red, true, false};
+    // Boulders: white rock lump.
+    case DECOR_BOULDER_1:
+    case DECOR_BOULDER_2:
+    case DECOR_BOULDER_3:
+    case DECOR_BOULDER_4:     return Glyph{U'o', 'o', Color::White, false, false};
+    // Columns: white pillar.
+    case DECOR_COLUMN_BOTTOM:
+    case DECOR_COLUMN_TOP:    return Glyph{U'|', '|', Color::White, false, false};
+    // Shrub (conceals like trees): bold green tuft — marsh reeds use the same
+    // '"' shape but green non-bold, so the two stay distinguishable.
+    case DECOR_SHRUB:         return Glyph{U'"', '"', Color::Green, true, false};
+    // Ground litter reads as its ground: pebbles/bones inherit the base tile,
+    // as do DECOR_NONE and any out-of-registry byte.
+    case DECOR_PEBBLES:
+    case DECOR_BONES:
+    default:                  return std::nullopt;
     }
 }
 

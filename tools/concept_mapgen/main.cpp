@@ -20,6 +20,7 @@
  * (at your option) any later version.
  */
 #include <openglad/core/constants.h>
+#include <openglad/core/decordefs.h>
 #include <openglad/core/irandom.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/core/terrain_types.h>
@@ -115,6 +116,46 @@ void paint_rect(PixieData& g, int tx0, int ty0, int tx1, int ty1, unsigned char 
             paint(g, x, y, tile);
 }
 
+} // namespace — the decor hook below gets external linkage on purpose
+
+// DECOR plane authoring hook (BASE + DECOR tile layering, .fss v11; mirrors
+// westlands_mapgen::paint_decor). No concept level places decor today — the
+// playground predates the decor plane and regenerates byte-identically — but
+// the hook keeps the three mapgens' authoring vocabulary uniform for future
+// levels. External linkage on purpose: an anonymous-namespace helper with no
+// caller would trip -Wunused-function.
+void paint_decor(GameWorld& w, int floor, int tx, int ty,
+                 unsigned char decor_id)
+{
+    PixieData& g = w.grid_for_floor(floor);
+    if (tx < 0 || ty < 0 || tx >= g.w || ty >= g.h)
+    {
+        fail(std::format("paint_decor: tile ({}, {}) outside floor {} grid",
+                         tx, ty, floor));
+        return;
+    }
+    const unsigned char base = g.data[tx + ty * g.w];
+    if (decor_id >= DECOR_MAX || base == PIX_AIR || base == PIX_ZSTAIR_UP ||
+        base == PIX_ZSTAIR_DOWN || base == PIX_VOID1)
+    {
+        fail(std::format("paint_decor: decor {} rejected over base {} at "
+                         "({}, {}) floor {}", decor_id, base, tx, ty, floor));
+        return;
+    }
+    PixieData& dec = w.decor_for_floor(floor);
+    if (!dec.valid())
+    {
+        auto* buf = new unsigned char[static_cast<std::size_t>(g.w) * g.h];
+        std::fill(buf, buf + static_cast<std::size_t>(g.w) * g.h,
+                  static_cast<unsigned char>(DECOR_NONE));
+        dec = PixieData(1, static_cast<unsigned char>(g.w),
+                        static_cast<unsigned char>(g.h), buf);
+    }
+    dec.data[tx + ty * dec.w] = decor_id;
+}
+
+namespace {
+
 walker* place(GameWorld& world, Order order, int family, int team, int floor,
               int tx, int ty)
 {
@@ -161,6 +202,26 @@ void save_level_files(GameWorld& world, int id, const char* title,
     {
         const std::string p = std::format("{}_f{}.png", base, f);
         if (!write_pixie_png(p.c_str(), world.grid_for_floor(f)))
+            fail(std::format("failed to write {}", p));
+    }
+    // Decor planes by derived name "{grid}_d{N}" (including floor 0), for
+    // exactly the floors the .fss v11 payload flags as present (valid plane
+    // with a nonzero byte). No concept level places decor today, so this
+    // loop is a no-op that keeps the package byte-identical.
+    for (int f = 0; f < world.floor_count(); ++f)
+    {
+        const PixieData& dec = world.decor_for_floor(f);
+        if (!dec.valid())
+            continue;
+        const std::size_t cells =
+            static_cast<std::size_t>(dec.w) * static_cast<std::size_t>(dec.h);
+        bool nonzero = false;
+        for (std::size_t c = 0; c < cells && !nonzero; ++c)
+            nonzero = dec.data[c] != 0;
+        if (!nonzero)
+            continue;
+        const std::string p = std::format("{}_d{}.png", base, f);
+        if (!write_pixie_png(p.c_str(), dec))
             fail(std::format("failed to write {}", p));
     }
     std::printf("concept_mapgen: built %d '%s' (%d floors)\n", id, title,
@@ -423,6 +484,42 @@ void self_check_level(const ExpectedLevel& ex)
     if (total_livings > MAXOBS)
         fail(std::format("self-check scen{}: {} seeded livings exceed the "
                          "MAXOBS={} living cap", ex.id, total_livings, MAXOBS));
+
+    // Decor plane audit (BASE + DECOR layering): a plane that round-tripped
+    // must match its floor grid's dims, carry only known decor ids, and
+    // never sit over air / Z-stair / void bases. (Concept levels ship no
+    // decor today; the audit guards future authoring.)
+    for (int f = 0; f < world.floor_count(); ++f)
+    {
+        const PixieData& dec = world.decor_for_floor(f);
+        if (!dec.valid())
+            continue;
+        const PixieData& g = world.grid_for_floor(f);
+        if (!g.valid() || dec.w != g.w || dec.h != g.h)
+        {
+            fail(std::format("self-check scen{}: floor {} decor plane dims "
+                             "mismatch", ex.id, f));
+            continue;
+        }
+        for (int ty = 0; ty < dec.h; ++ty)
+            for (int tx = 0; tx < dec.w; ++tx)
+            {
+                const unsigned char d = dec.data[tx + ty * dec.w];
+                if (d >= DECOR_MAX)
+                    fail(std::format("self-check scen{}: floor {} cell "
+                                     "({}, {}) decor id {} out of range",
+                                     ex.id, f, tx, ty, d));
+                const unsigned char base_tile = g.data[tx + ty * g.w];
+                if (d != DECOR_NONE &&
+                    (base_tile == PIX_AIR || base_tile == PIX_ZSTAIR_UP ||
+                     base_tile == PIX_ZSTAIR_DOWN || base_tile == PIX_VOID1))
+                {
+                    fail(std::format("self-check scen{}: floor {} cell "
+                                     "({}, {}) decor {} over air/stair/void",
+                                     ex.id, f, tx, ty, d));
+                }
+            }
+    }
 
     // Stair audit: each floor boundary reachable through at least one
     // vertically-aligned UP/DOWN pair.

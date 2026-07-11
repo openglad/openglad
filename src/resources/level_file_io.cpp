@@ -9,6 +9,7 @@
 #include <openglad/resources/level_file_io.h>
 
 #include <openglad/core/constants.h>
+#include <openglad/core/decordefs.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/core/util.h>
 #include <openglad/resources/pixie_data.h>
@@ -28,6 +29,7 @@ bool write_pixie_png(const char* filepath, const PixieData& data);
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace {
 
@@ -41,7 +43,16 @@ using og::data::LevelFileMetadata;
 // a uint16 delayed-spawn tick count at [4..5]; the rest of the block is
 // zero-filled. v2-9 read paths are untouched and all-default levels still save
 // as v9 (byte-identical). See docs/z-axis-design.md.
-constexpr char kScenarioVersion = 10;
+//
+// v11 adds per-floor DECOR planes (BASE + DECOR tile layering): a uint8
+// decor_present[floor_count] array immediately after the floor_count byte,
+// plus a derived-name indexed PNG "{grid}_d{N}.png" per flagged floor
+// (INCLUDING floor 0; byte = decor id from core/decordefs.h, 0 = none, same
+// dims as that floor's grid). The writer downgrades to v10/v9 whenever every
+// decor plane is empty, so decor-free levels re-save byte-identical (the
+// parity/round-trip pin), and old engines refuse v11 cleanly instead of
+// silently dropping blocking decor.
+constexpr char kScenarioVersion = 11;
 constexpr short kMaxScenarioObjects = 4096;
 
 bool rw_read_exact_or_log(og::io::OgFile& file, void* dst, size_t size,
@@ -411,6 +422,48 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
         }
     }
 
+    // v11: decor planes. The file carries uint8 decor_present[floor_count]
+    // immediately after the floor_count byte (nothing else is read from the
+    // .fss stream between there and here — grids come from separate PNGs —
+    // so consuming the flags after the grid block is stream-equivalent), then
+    // each flagged floor loads "{grid}_dN.png". Hostile-file hardening
+    // (mirrors the editor's out-of-range grid clamp / ani_count posture):
+    // planes whose dims mismatch the floor's grid are dropped with a log, and
+    // any byte >= DECOR_MAX clamps to DECOR_NONE. v2..v10 files never reach
+    // this arm, so their decor planes stay invalid — byte-identical behavior.
+    if (version >= 11)
+    {
+        std::vector<unsigned char> decor_present(
+            static_cast<std::size_t>(loaded_floor_count), 0);
+        READ_OR_FAIL(decor_present.data(), 1,
+                     static_cast<std::size_t>(loaded_floor_count));
+        for (int f = 0; f < loaded_floor_count; ++f)
+        {
+            if (decor_present[static_cast<std::size_t>(f)] == 0)
+                continue;
+            const std::string dname =
+                std::string(newgrid.data()) + "_d" + std::to_string(f);
+            const std::string dpix = ensure_png_extension(dname.c_str());
+            PixieData dp = read_pixie_file(dpix.c_str());
+            const PixieData& floor_grid = world.grid_for_floor(f);
+            if (!dp.valid() || !floor_grid.valid() ||
+                dp.w != floor_grid.w || dp.h != floor_grid.h)
+            {
+                Log("Dropping decor plane {}: missing or dims mismatch\n",
+                    dpix);
+                continue;
+            }
+            const std::size_t cells =
+                static_cast<std::size_t>(dp.w) * static_cast<std::size_t>(dp.h);
+            for (std::size_t c = 0; c < cells; ++c)
+            {
+                if (dp.data[c] >= DECOR_MAX)
+                    dp.data[c] = DECOR_NONE;
+            }
+            world.decor_for_floor(f) = std::move(dp);
+        }
+    }
+
 #undef READ_OR_FAIL
     return true;
 }
@@ -523,6 +576,36 @@ bool load_level(const std::string& path,
 
 namespace {
 
+// True when `floor`'s decor plane is valid AND carries at least one nonzero
+// byte. Shared by the writer's version cascade / presence flags and by
+// save_level's "_dN" plane emission so the two always agree. An allocated
+// all-zero plane counts as empty: erasing decor in the editor downgrades the
+// format again (parity-friendly byte-identity for decor-free levels).
+bool floor_decor_nonempty(const GameWorld& world, int floor)
+{
+    const PixieData& dp = world.decor_for_floor(floor);
+    if (!dp.valid())
+        return false;
+    const std::size_t cells =
+        static_cast<std::size_t>(dp.w) * static_cast<std::size_t>(dp.h);
+    for (std::size_t c = 0; c < cells; ++c)
+    {
+        if (dp.data[c] != 0)
+            return true;
+    }
+    return false;
+}
+
+bool world_has_decor(const GameWorld& world)
+{
+    for (int f = 0; f < world.floor_count(); ++f)
+    {
+        if (floor_decor_nonempty(world, f))
+            return true;
+    }
+    return false;
+}
+
 bool write_scenario_payload(og::io::OgFile& outfile,
                             std::string_view path_for_log,
                             GameWorld& world,
@@ -559,9 +642,15 @@ bool write_scenario_payload(og::io::OgFile& outfile,
     const bool has_npc_extras = list_has_npc_extras(world.oblist) ||
                                 list_has_npc_extras(world.fxlist) ||
                                 list_has_npc_extras(world.weaplist);
-    char temp_version = (world.is_multifloor() || has_npc_extras)
-        ? static_cast<char>(10)
-        : static_cast<char>(9);
+    // Version cascade: v11 only when some floor carries decor; otherwise the
+    // v10/v9 downgrade above keeps decor-free levels emitting today's exact
+    // bytes (protects the parity scenarios and every editor round-trip).
+    const bool has_decor = world_has_decor(world);
+    char temp_version = has_decor
+        ? static_cast<char>(11)
+        : ((world.is_multifloor() || has_npc_extras)
+               ? static_cast<char>(10)
+               : static_cast<char>(9));
     std::array<char, 20> temp_grid = {};
     std::array<char, 30> scentitle = {};
     std::array<char, 20> filler = {'M', 'S', 'T', 'R', 'M', 'S', 'T', 'R',
@@ -707,6 +796,20 @@ bool write_scenario_payload(og::io::OgFile& outfile,
             return false;
     }
 
+    // v11: uint8 decor_present[floor_count] immediately after the floor_count
+    // byte. save_level writes a "{grid}_dN.png" plane for exactly the flagged
+    // floors (same floor_decor_nonempty predicate).
+    if (temp_version >= 11)
+    {
+        for (int f = 0; f < world.floor_count(); ++f)
+        {
+            const std::uint8_t present =
+                floor_decor_nonempty(world, f) ? 1 : 0;
+            if (!write_field(&present, 1, 1))
+                return false;
+        }
+    }
+
     return true;
 }
 
@@ -790,6 +893,22 @@ bool save_level(GameWorld& world,
         }
     }
 
+    // v11 decor planes use derived names "{grid}_d{N}" (including floor 0),
+    // written for exactly the floors the payload flagged as present. A level
+    // whose decor was erased downgrades below v11 and simply stops writing
+    // planes; any previously written "_dN" file is inert to v<=10 loaders.
+    for (int f = 0; f < world.floor_count(); ++f)
+    {
+        if (!floor_decor_nonempty(world, f))
+            continue;
+        const std::string dname = metadata.grid_file + "_d" + std::to_string(f);
+        if (!save_grid_file(dname.c_str(), world.decor_for_floor(f)))
+        {
+            set_error(out_error, LevelFileIoError::OpenWriteFailed);
+            return false;
+        }
+    }
+
     Log("Scenario saved.\n");
     set_error(out_error, LevelFileIoError::None);
     return true;
@@ -846,8 +965,9 @@ short load_scenario_version(og::io::OgFile& infile, GameWorld* world,
     case 8:
     case 9:
     case 10:
+    case 11:
         // read_level_body branches on the version it is handed, so the v6
-        // bridge covers every later single-pass layout including v10.
+        // bridge covers every later single-pass layout including v10/v11.
         return load_version_6(infile, world, metadata, version);
     default:
         Log("Scenario {} is version-level {}, and cannot be read.\n", world->id,

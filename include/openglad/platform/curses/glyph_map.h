@@ -9,6 +9,8 @@
 
 #include <openglad/platform/curses/terminal.h>
 
+#include <optional>
+
 // Order is the entity-kind enum (Living/Weapon/Treasure/Generator/FX/...).
 enum class Order : unsigned char;
 
@@ -46,6 +48,14 @@ Glyph border_glyph();
 // PIX_ZSTAIR_DOWN) use this instead of the direction-less
 // tile_glyph(TYPE_ZSTAIRS) fallback.
 Glyph zstair_glyph(bool up);
+
+// Glyph override for a DECOR id (core/decordefs.h) occupying the cell.
+// Decor wins over the base tile when a glyph is defined — a strict
+// information improvement: legacy combined torch/boulder tiles were
+// genre-UNKNOWN and rendered blank. std::nullopt means "inherit the base
+// tile glyph" (pebbles/bones read as their ground; DECOR_NONE and
+// out-of-registry bytes inherit too).
+std::optional<Glyph> decor_glyph(unsigned char decor_id);
 
 // --- Entities ------------------------------------------------------------
 

@@ -283,6 +283,9 @@ void replace_loaded_world_state(LevelRuntimeData* level, GameWorld& loaded_world
     dst.move_entities_from(loaded_world);
     dst.living_count = loaded_world.living_count;
     dst.grid = std::move(loaded_world.grid);
+    // Floor-0 decor plane rides along with its grid (extra-floor decor moves
+    // inside extra_floors_ below). dst.decor was released by delete_grid().
+    dst.decor = std::move(loaded_world.decor);
     dst.pixmaxx = loaded_world.pixmaxx;
     dst.pixmaxy = loaded_world.pixmaxy;
     dst.myobmap = std::move(loaded_world.myobmap);
@@ -536,8 +539,11 @@ LevelRuntimeData::LevelRuntimeData(int level_id, bool headless,
     if (!headless)
     {
         load_map_data(level_visuals().pixdata);
+        load_decor_data(level_visuals().decor_pixdata);
         if (hooks_ && hooks_->create_level_render)
             level_visuals().renderer_ = hooks_->create_level_render(level_visuals().pixdata);
+        if (level_visuals().renderer_)
+            level_visuals().renderer_->init_decor(level_visuals().decor_pixdata);
     }
 }
 
@@ -556,6 +562,8 @@ LevelRuntimeData::~LevelRuntimeData()
     level_visuals().renderer_.reset();
     for (int i = 0; i < PIX_MAX; i++)
         level_visuals().pixdata[i].free();
+    for (int i = 0; i < DECOR_MAX; i++)
+        level_visuals().decor_pixdata[i].free();
 }
 
 void LevelRuntimeData::clear()
@@ -838,10 +846,15 @@ bool LevelRuntimeData::load()
         level_visuals().renderer_.reset();
         for (int i = 0; i < PIX_MAX; i++)
             level_visuals().pixdata[i].free();
+        for (int i = 0; i < DECOR_MAX; i++)
+            level_visuals().decor_pixdata[i].free();
 
         load_map_data(level_visuals().pixdata);
+        load_decor_data(level_visuals().decor_pixdata);
         if (hooks_ && hooks_->create_level_render)
             level_visuals().renderer_ = hooks_->create_level_render(level_visuals().pixdata);
+        if (level_visuals().renderer_)
+            level_visuals().renderer_->init_decor(level_visuals().decor_pixdata);
     }
 
 	TRACE("game", "LevelRuntimeData::load complete");

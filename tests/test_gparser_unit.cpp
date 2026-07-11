@@ -1,4 +1,6 @@
 #include <openglad/resources/gparser.h>
+#include <openglad/resources/filesystem.h>
+#include <openglad/resources/io_common.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -73,6 +75,21 @@ std::filesystem::path unit_config_dir()
 std::filesystem::path unit_config_file()
 {
     return unit_config_dir() / "cfg" / "openglad.yaml";
+}
+
+// Another suite in this binary (test_physfs_wrappers) deliberately leaves
+// PhysFS sabotaged (mounts destroyed, write dir redirected) to simulate a
+// fatal-assert bail. cfg load/save resolves "cfg/openglad.yaml" through
+// PhysFS first and falls back to the cwd (the REPO checkout under ctest) —
+// so a sabotaged predecessor makes these tests read/clobber the repo's
+// cfg/openglad.yaml under --gtest_shuffle. Re-establish the unit_main
+// contract before any test that loads or saves settings.
+void heal_unit_filesystem()
+{
+    const std::string user_path = get_user_path();
+    ASSERT_TRUE(og::resources::set_write_dir(user_path));
+    // Fails harmlessly when the user dir is still mounted.
+    (void)og::resources::mount(user_path.c_str(), nullptr, 1);
 }
 
 void write_unit_config(const char* text)
@@ -212,6 +229,7 @@ TEST(GparserUnit, gparser_load_settings_reports_missing_config_and_keeps_default
 
 TEST(GparserUnit, gparser_load_settings_parses_mapping_sequence_and_alias)
 {
+    heal_unit_filesystem();
     const char* valid_yaml =
         "sound:\n"
         "  sound: off\n"
@@ -235,6 +253,7 @@ TEST(GparserUnit, gparser_load_settings_parses_mapping_sequence_and_alias)
 
 TEST(GparserUnit, gparser_save_settings_writes_only_persisted_data_and_reports_open_failure)
 {
+    heal_unit_filesystem();
     namespace fs = std::filesystem;
     ASSERT_FALSE(unit_config_dir().empty()) << "unit runner should set OPENGLAD_CONFIG_DIR";
 

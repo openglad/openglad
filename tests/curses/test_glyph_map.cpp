@@ -4,6 +4,7 @@
 #include <openglad/platform/curses/glyph_map.h>
 
 #include <openglad/core/constants.h>
+#include <openglad/core/decordefs.h>
 #include <openglad/core/order.h>
 #include <openglad/core/terrain_types.h>
 
@@ -178,6 +179,63 @@ TEST(GlyphMap, westlands_tile_genres_map_to_expected_glyphs)
     EXPECT_FALSE(ash.bold);
     EXPECT_EQ(tile_glyph(TYPE_GLASS).unicode, ash.unicode);
     EXPECT_NE(tile_glyph(TYPE_GLASS).fg, ash.fg);
+}
+
+// Decor overrides (tile layering): decor wins over the base tile when it
+// defines a glyph; ground litter (pebbles/bones) inherits the base instead.
+TEST(GlyphMap, decor_glyph_overrides_are_pinned)
+{
+    // Torches: bold yellow '!'.
+    for (unsigned char t : {DECOR_TORCH1, DECOR_TORCH2, DECOR_TORCH3}) {
+        const auto g = decor_glyph(t);
+        ASSERT_TRUE(g.has_value()) << "torch id " << int(t) << " must override";
+        EXPECT_EQ(g->ascii, '!');
+        EXPECT_EQ(g->fg, Color::Yellow);
+        EXPECT_TRUE(g->bold);
+        EXPECT_FALSE(g->skip);
+    }
+    // Brazier: bold red fire bowl.
+    const auto braz = decor_glyph(DECOR_BRAZIER);
+    ASSERT_TRUE(braz.has_value());
+    EXPECT_EQ(braz->ascii, 'o');
+    EXPECT_EQ(braz->unicode, U'☼');
+    EXPECT_EQ(braz->fg, Color::Red);
+    EXPECT_TRUE(braz->bold);
+    // Boulders: white 'o'.
+    for (unsigned char b : {DECOR_BOULDER_1, DECOR_BOULDER_2, DECOR_BOULDER_3,
+                            DECOR_BOULDER_4}) {
+        const auto g = decor_glyph(b);
+        ASSERT_TRUE(g.has_value()) << "boulder id " << int(b) << " must override";
+        EXPECT_EQ(g->ascii, 'o');
+        EXPECT_EQ(g->fg, Color::White);
+    }
+    // Columns: white '|'.
+    for (unsigned char c : {DECOR_COLUMN_BOTTOM, DECOR_COLUMN_TOP}) {
+        const auto g = decor_glyph(c);
+        ASSERT_TRUE(g.has_value());
+        EXPECT_EQ(g->ascii, '|');
+        EXPECT_EQ(g->fg, Color::White);
+    }
+    // Shrub: bold green '"' — same shape as marsh reeds, disambiguated by
+    // bold (marsh is non-bold).
+    const auto shrub = decor_glyph(DECOR_SHRUB);
+    ASSERT_TRUE(shrub.has_value());
+    EXPECT_EQ(shrub->ascii, '"');
+    EXPECT_EQ(shrub->fg, Color::Green);
+    EXPECT_TRUE(shrub->bold);
+    EXPECT_FALSE(tile_glyph(TYPE_MARSH).bold);
+}
+
+TEST(GlyphMap, decor_ground_litter_and_unknown_ids_inherit_base)
+{
+    EXPECT_FALSE(decor_glyph(DECOR_NONE).has_value());
+    EXPECT_FALSE(decor_glyph(DECOR_PEBBLES).has_value())
+        << "pebbles read as their ground tile";
+    EXPECT_FALSE(decor_glyph(DECOR_BONES).has_value())
+        << "bones read as their ground tile";
+    EXPECT_FALSE(decor_glyph(DECOR_MAX).has_value())
+        << "out-of-registry bytes inherit (hostile-plane hardening)";
+    EXPECT_FALSE(decor_glyph(255).has_value());
 }
 
 TEST(GlyphMap, ascii_fallback_differs_from_unicode_for_some_tiles)

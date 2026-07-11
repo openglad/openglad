@@ -522,7 +522,12 @@ bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha)
         }
 	}
 	else if (w.stats()->query_bit_flags(BIT_FORESTWALK) &&
-	         og::runtime::current_session->myscreen_->world().mysmoother.query_genre_x_y(draw_x / GRID_SIZE, draw_y / GRID_SIZE) == TYPE_TREES
+	         (og::runtime::current_session->myscreen_->world().mysmoother.query_genre_x_y(draw_x / GRID_SIZE, draw_y / GRID_SIZE) == TYPE_TREES
+	          // Concealing decor (SHRUB): same cell probe, on the walker's own
+	          // floor. Gated on plane validity, so no-decor levels take the
+	          // legacy TREES check byte-identically; keeps the draw suppression
+	          // in lockstep with the sim's forestwalk hide (living.cpp).
+	          || og::runtime::current_session->myscreen_->world().decor_conceals_at(w.floor(), draw_x / GRID_SIZE, draw_y / GRID_SIZE))
 	         && !w.stats()->query_bit_flags(BIT_FLYING)
 	         && (w.flight_left() < 1) )
     {
@@ -836,7 +841,12 @@ bool draw_walker_tile(walker& w, viewscreen* view_buf)
 			                        0 ); //type of phantom
 	}
 	else if (w.stats()->query_bit_flags(BIT_FORESTWALK) &&
-	         og::runtime::current_session->myscreen_->world().mysmoother.query_genre_x_y(draw_x / GRID_SIZE, draw_y / GRID_SIZE) == TYPE_TREES
+	         (og::runtime::current_session->myscreen_->world().mysmoother.query_genre_x_y(draw_x / GRID_SIZE, draw_y / GRID_SIZE) == TYPE_TREES
+	          // Concealing decor (SHRUB): same cell probe, on the walker's own
+	          // floor. Gated on plane validity, so no-decor levels take the
+	          // legacy TREES check byte-identically; keeps the draw suppression
+	          // in lockstep with the sim's forestwalk hide (living.cpp).
+	          || og::runtime::current_session->myscreen_->world().decor_conceals_at(w.floor(), draw_x / GRID_SIZE, draw_y / GRID_SIZE))
 	         && !w.stats()->query_bit_flags(BIT_FLYING)
 	         && (w.flight_left() < 1) )
 		og::runtime::current_session->myscreen_->walkputbuffer( xscreen, yscreen, w.sizex(), w.sizey(),

@@ -224,7 +224,7 @@ void build_crossroads(const LevelDataHooks& hooks)
     // plinth, and the fallen, crowned head on the east verge.
     paint_pavement(w.grid, 37, 23, 42, 27);
     paint(w.grid, 36, 22, PIX_COLUMN1);
-    paint(w.grid, 43, 28, PIX_BOULDER_2);
+    paint_decor(w, 0, 43, 28, DECOR_BOULDER_2);
 
     // The southron column (team 2), marching north up the road. The
     // war-beasts are 48px wide (3x3 tiles): the van pair anchors at
@@ -325,8 +325,8 @@ void build_pass_of_the_spider(const LevelDataHooks& hooks)
     paint_path(w.grid, 51, 24, 52, 30); // up into H from the C5 junction
     paint_path(w.grid, 52, 21, 68, 22); // across H
     paint_path(w.grid, 69, 20, 89, 21); // out C7 to the east mouth
-    paint(w.grid, 12, 17, PIX_TORCH1);  // guttering torches at the
-    paint(w.grid, 12, 24, PIX_TORCH1);  // C1 -> C2 narrowing
+    paint_decor(w, 0, 12, 17, DECOR_TORCH1);  // guttering torches at the
+    paint_decor(w, 0, 12, 24, DECOR_TORCH1);  // C1 -> C2 narrowing
 
     // THE LURKER (team 2, named): it does not chase; the brood does, and
     // every slime killed splits into medium then small — the chamber fight
@@ -455,24 +455,24 @@ void build_tower_of_the_moon(const LevelDataHooks& hooks)
     paint_pavement(w.grid, 10, 40, 49, 41);
     paint_pavement(w.grid, 28, 42, 31, 43); // the south gate gap
     paint_pavement(w.grid, 28, 31, 31, 31); // the tower door, south face
-    paint(w.grid, 27, 41, PIX_BRAZIER1);    // moon braziers at the gate
-    paint(w.grid, 32, 41, PIX_BRAZIER1);
-    paint(w.grid, 27, 32, PIX_TORCH1);      // torches flanking the door
-    paint(w.grid, 32, 32, PIX_TORCH1);
+    paint_decor(w, 0, 27, 41, DECOR_BRAZIER);    // moon braziers at the gate
+    paint_decor(w, 0, 32, 41, DECOR_BRAZIER);
+    paint_decor(w, 0, 27, 32, DECOR_TORCH1);      // torches flanking the door
+    paint_decor(w, 0, 32, 32, DECOR_TORCH1);
     paint_path(w.grid, 28, 44, 31, 47); // the approach road, south from the
     paint_path(w.grid, 2, 46, 31, 47);  // gate, west along the pass road
     // Tower interiors: pavement halls on floors 0 and 1; floor 2's pavement
     // frames the scriptorium carpet.
     paint_pavement(w.grid, 23, 17, 36, 30);
     paint_pavement(w.grid_for_floor(1), 23, 17, 36, 30);
-    paint(w.grid_for_floor(1), 24, 18, PIX_BRAZIER1);
-    paint(w.grid_for_floor(1), 35, 29, PIX_BRAZIER1);
+    paint_decor(w, 1, 24, 18, DECOR_BRAZIER);
+    paint_decor(w, 1, 35, 29, DECOR_BRAZIER);
     paint_pavement(w.grid_for_floor(2), 23, 17, 36, 19);
     paint_pavement(w.grid_for_floor(2), 23, 28, 36, 30);
     paint_pavement(w.grid_for_floor(2), 23, 20, 25, 27);
     paint_pavement(w.grid_for_floor(2), 34, 20, 36, 27);
-    paint(w.grid_for_floor(2), 24, 29, PIX_BRAZIER1);
-    paint(w.grid_for_floor(2), 35, 18, PIX_BRAZIER1);
+    paint_decor(w, 2, 24, 29, DECOR_BRAZIER);
+    paint_decor(w, 2, 35, 18, DECOR_BRAZIER);
     // Floor 3, the moon-court: an open roof, the glass moon-disc looking
     // down into the scriptorium, corner finials.
     paint_pavement(w.grid_for_floor(3), 22, 16, 37, 31);
@@ -598,11 +598,11 @@ void build_ash_plains(const LevelDataHooks& hooks)
     paint_path(w.grid, 47, 9, 73, 10);  // connector C (river 2 north ford)
     paint_path(w.grid, 47, 31, 73, 32); // connector D (river 2 south ford)
     // The host's banner-poles: torch standards along the central lane.
-    paint(w.grid, 43, 8, PIX_TORCH1);
-    paint(w.grid, 47, 14, PIX_TORCH1);
-    paint(w.grid, 43, 20, PIX_TORCH1);
-    paint(w.grid, 47, 28, PIX_TORCH1);
-    paint(w.grid, 43, 34, PIX_TORCH1);
+    paint_decor(w, 0, 43, 8, DECOR_TORCH1);
+    paint_decor(w, 0, 47, 14, DECOR_TORCH1);
+    paint_decor(w, 0, 43, 20, DECOR_TORCH1);
+    paint_decor(w, 0, 47, 28, DECOR_TORCH1);
+    paint_decor(w, 0, 43, 34, DECOR_TORCH1);
 
     // The patrol columns (team 2), free to roam. The west column marches
     // the west lane...

@@ -21,6 +21,7 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/render/radar.h>
 #include <openglad/core/ctf_constants.h>
+#include <openglad/core/decordefs.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
@@ -245,6 +246,27 @@ static inline auto& backgrounds()
     return eds().backgrounds;
 }
 
+// Short on-tile labels for the decor picker pane: the eraser entry (which
+// has no art by definition) always shows its label; other entries draw the
+// real cutout sprite over a PIX_GRASS1 base and fall back to the label only
+// when the decor art is unavailable (headless-ish setups).
+static const char* decor_short_label(Sint32 id)
+{
+    static constexpr std::array<const char*, DECOR_MAX> kLabels = {
+        "DEL",                      // DECOR_NONE — the eraser
+        "TR1", "TR2", "TR3",        // torches
+        "BRZ",                      // brazier
+        "BO1", "BO2", "BO3", "BO4", // boulders
+        "PEB",                      // pebbles
+        "CLB", "CLT",               // column bottom / top
+        "SHR",                      // shrub
+        "BON",                      // bones
+    };
+    if (id < 0 || id >= static_cast<Sint32>(kLabels.size()))
+        return "?";
+    return kLabels[static_cast<std::size_t>(id)];
+}
+
 static inline auto& object_pane()
 {
     return eds().object_pane;
@@ -367,13 +389,16 @@ void SimpleButton::set_colors_active()
 class EditorTerrainBrush
 {
 public:
-    
+
     Sint32 terrain;
+    // Decor id (core/decordefs.h) painted when eds().decor_mode is on.
+    // DECOR_NONE is the eraser.
+    Sint32 decor;
     bool use_smoothing;
     bool picking;
-    
+
     EditorTerrainBrush()
-        : terrain(PIX_GRASS1), use_smoothing(true), picking(false)
+        : terrain(PIX_GRASS1), decor(DECOR_TORCH1), use_smoothing(true), picking(false)
     {}
 };
 
@@ -541,6 +566,7 @@ public:
 	SimpleButton pickerButton;
 	SimpleButton gridSnapButton;
 	SimpleButton terrainSmoothButton;
+	SimpleButton decorButton;
 	
 	SimpleButton setNameButton;
 	SimpleButton prevTeamButton, nextTeamButton;
@@ -596,6 +622,9 @@ public:
     bool is_in_grid(int x, int y);
     unsigned char get_terrain(int x, int y);
     void set_terrain(int x, int y, unsigned char terrain);
+    unsigned char get_decor(int x, int y);
+    bool set_decor(int x, int y, unsigned char decor_id);
+    void drop_mismatched_decor_planes();
     walker* get_object(int x, int y);
 };
 
@@ -678,6 +707,7 @@ LevelEditorData::LevelEditorData()
     , pickerButton("Pick", OVERSCAN_PADDING, 20, 27, 15)
     , gridSnapButton("Snap", pickerButton.area.x+pickerButton.area.w+2, 20, 27, 15)
     , terrainSmoothButton("Smooth", pickerButton.area.x+pickerButton.area.w+2, 20, 39, 15)  // Same place as gridSnapButton
+    , decorButton("Decor", terrainSmoothButton.area.x+terrainSmoothButton.area.w+2, 20, 35, 15)  // Terrain mode: toggle base/decor painting
     , setNameButton("Set Name", OVERSCAN_PADDING, 10+gridSnapButton.area.y+gridSnapButton.area.h, 52, 15)
     , prevTeamButton("< Team", OVERSCAN_PADDING, setNameButton.area.y+setNameButton.area.h, 40, 15)
     , nextTeamButton("Team >", prevTeamButton.area.x + prevTeamButton.area.w, prevTeamButton.area.y, 40, 15)
@@ -864,10 +894,15 @@ void LevelEditorData::reset_mode_buttons()
         case Mode::Terrain:
         mode_buttons.insert(&pickerButton);
         mode_buttons.insert(&terrainSmoothButton);
+        mode_buttons.insert(&decorButton);
         if(terrain_brush.picking)
             pickerButton.set_colors_active();
         else
             pickerButton.set_colors_normal();
+        if(eds().decor_mode)
+            decorButton.set_colors_active();
+        else
+            decorButton.set_colors_normal();
         break;
         case Mode::Object:
         mode_buttons.insert(&pickerButton);
@@ -936,6 +971,19 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
             terrainSmoothButton.set_colors_enabled();
         else
             terrainSmoothButton.set_colors_normal();
+    }
+    else if(button == &decorButton)
+    {
+        // Tile layering: flip the terrain brush between the base grid and the
+        // current floor's decor plane (Terrain mode only).
+        if(mode == Mode::Terrain)
+        {
+            eds().decor_mode = !eds().decor_mode;
+            if(eds().decor_mode)
+                decorButton.set_colors_active();
+            else
+                decorButton.set_colors_normal();
+        }
     }
     else if(button == &setNameButton)
     {
@@ -1475,14 +1523,67 @@ Sint32 LevelEditorData::display_panel(screen* s)
             // Defensive: never index pixdata[] (size PIX_MAX) out of bounds.
             if(terrain_brush.terrain < 0 || terrain_brush.terrain >= PIX_MAX)
                 terrain_brush.terrain = PIX_GRASS1;
-            auto& pix = s->level_visuals_.pixdata[terrain_brush.terrain];
+            if(terrain_brush.decor < 0 || terrain_brush.decor >= DECOR_MAX)
+                terrain_brush.decor = DECOR_NONE;
+            // Decor mode: the brush is a decor id — preview its cutout sprite
+            // over a grass base cell (cutouts always sit on some base).
+            const Sint32 brush_tile = eds().decor_mode ? PIX_GRASS1
+                                                       : terrain_brush.terrain;
+            auto& pix = s->level_visuals_.pixdata[brush_tile];
             s->putbuffer(lm+25, PIX_TOP-16-1, GRID_SIZE, GRID_SIZE,
                                 0, 0, 320, 200, {pix.data.get(), static_cast<size_t>(pix.w * pix.h * pix.frames)});
+            if(eds().decor_mode)
+            {
+                LevelRender* renderer = s->level_visuals_.renderer_.get();
+                const bool has_art = terrain_brush.decor > 0 &&
+                    s->level_visuals_.decor_pixdata[terrain_brush.decor].valid();
+                if(has_art && renderer != nullptr)
+                    renderer->draw_decor(terrain_brush.decor,
+                        lm+25 + level->level_visuals().topx,
+                        PIX_TOP-16-1 + level->level_visuals().topy,
+                        s->viewob[0].get());
+                else
+                    scentext.write_xy(lm+25+1, PIX_TOP-16-1+6,
+                                      decor_short_label(terrain_brush.decor),
+                                      static_cast<unsigned char>(terrain_brush.decor == DECOR_NONE ? RED : WHITE), 1);
+            }
         }
         // Border
         s->draw_box(lm+25, PIX_TOP-16-1, lm+25+GRID_SIZE, PIX_TOP-16-1+GRID_SIZE, RED, 0, 1);
-        
-        // Show the background grid
+
+        // Show the picker pane: the base-tile palette, or (decor mode) the
+        // decor registry with entry 0 as the eraser.
+        if(eds().decor_mode)
+        {
+            auto& grass = s->level_visuals_.pixdata[PIX_GRASS1];
+            LevelRender* renderer = s->level_visuals_.renderer_.get();
+            for (i=0; i < PIX_OVER; i++)
+            {
+                for (j=0; j < 4; j++)
+                {
+                    const Sint32 which = (i + (j + eds().rowsdown) * PIX_OVER)
+                        % static_cast<Sint32>(DECOR_MAX);
+                    s->putbuffer(S_RIGHT+i*GRID_SIZE, PIX_TOP+j*GRID_SIZE,
+                                        GRID_SIZE, GRID_SIZE,
+                                        0, 0, 320, 200,
+                                        {grass.data.get(), static_cast<size_t>(grass.w * grass.h * grass.frames)});
+                    // Real cutout sprite over the base so the transparency is
+                    // visible; label fallback for the eraser / missing art.
+                    const bool has_art = which > 0 &&
+                        s->level_visuals_.decor_pixdata[which].valid();
+                    if(has_art && renderer != nullptr)
+                        renderer->draw_decor(which,
+                            S_RIGHT+i*GRID_SIZE + level->level_visuals().topx,
+                            PIX_TOP+j*GRID_SIZE + level->level_visuals().topy,
+                            s->viewob[0].get());
+                    else
+                        scentext.write_xy(S_RIGHT+i*GRID_SIZE+1, PIX_TOP+j*GRID_SIZE+6,
+                                          decor_short_label(which),
+                                          static_cast<unsigned char>(which == DECOR_NONE ? RED : WHITE), 1);
+                }
+            }
+        }
+        else
         for (i=0; i < PIX_OVER; i++)
         {
             for (j=0; j < 4; j++)
@@ -1634,6 +1735,14 @@ void LevelEditorData::clear_terrain()
     int h = g.h;
 
     std::fill_n(g.data.get(), w*h, static_cast<unsigned char>(1));
+    // Tile layering: terrain wipe also wipes this floor's decor. The plane
+    // stays allocated but all-zero, which the writer treats as "no decor"
+    // (version cascade downgrades below v11 again).
+    PixieData& dp = level->world().decor_for_floor(eds().current_floor);
+    if (dp.valid())
+        std::fill_n(dp.data.get(),
+                    static_cast<std::size_t>(dp.w) * static_cast<std::size_t>(dp.h),
+                    static_cast<unsigned char>(DECOR_NONE));
     resmooth_terrain();
 }
 
@@ -2436,7 +2545,10 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         {
                             // Now change it
                             level->resize_grid(w, h);
-                            
+                            // Decor planes don't survive a resize (see
+                            // drop_mismatched_decor_planes).
+                            drop_mismatched_decor_planes();
+
                             // Reset the minimap
                             myradar.start(level.get());
                             
@@ -2759,10 +2871,21 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     //windowx = (mx - PIX_LEFT) / GRID_SIZE;
                     windowx = (mx-S_RIGHT) / GRID_SIZE;
                     windowy = (my - PIX_TOP) / GRID_SIZE;
-                    terrain_brush.terrain = backgrounds()[
-                        (windowx + ((windowy + eds().rowsdown) * PIX_OVER))
-                        % static_cast<Sint32>(backgrounds().size())];
-                    terrain_brush.terrain %= NUM_BACKGROUNDS;
+                    if(eds().decor_mode)
+                    {
+                        // Decor pane: same cell layout, indexed into the decor
+                        // registry (entry 0 = eraser). Mirrors display_panel.
+                        terrain_brush.decor =
+                            (windowx + ((windowy + eds().rowsdown) * PIX_OVER))
+                            % static_cast<Sint32>(DECOR_MAX);
+                    }
+                    else
+                    {
+                        terrain_brush.terrain = backgrounds()[
+                            (windowx + ((windowy + eds().rowsdown) * PIX_OVER))
+                            % static_cast<Sint32>(backgrounds().size())];
+                        terrain_brush.terrain %= NUM_BACKGROUNDS;
+                    }
                 } // end of background grid window
                 else
                 {
@@ -2799,10 +2922,15 @@ void LevelEditorData::pick_by_mouse(int mx, int my)
         // Reduce to array dims
         windowx /= GRID_SIZE;
         windowy /= GRID_SIZE;
-        
+
         // Get tile from grid array
         if(is_in_grid(windowx, windowy))
-            terrain_brush.terrain = get_terrain(windowx, windowy);
+        {
+            if(eds().decor_mode)
+                terrain_brush.decor = get_decor(windowx, windowy);
+            else
+                terrain_brush.terrain = get_terrain(windowx, windowy);
+        }
     }
     else if(mode == Mode::Object)
     {
@@ -2849,6 +2977,78 @@ void LevelEditorData::set_terrain(int x, int y, unsigned char terrain)
 
     PixieData& g = level->world().grid_for_floor(eds().current_floor);
     g.data[y*g.w + x] = terrain;
+}
+
+// Decor byte at a cell of the current floor's decor plane (0 when the plane
+// is unallocated / out of range). Out-of-registry bytes clamp to 0 — same
+// hostile-file hardening posture as get_terrain's PIX_MAX clamp.
+unsigned char LevelEditorData::get_decor(int x, int y)
+{
+    if(!is_in_grid(x, y))
+        return DECOR_NONE;
+
+    const PixieData& dp = level->world().decor_for_floor(eds().current_floor);
+    if(!dp.valid())
+        return DECOR_NONE;
+    const PixieData& g = level->world().grid_for_floor(eds().current_floor);
+    if(dp.w != g.w || dp.h != g.h)
+        return DECOR_NONE; // stale plane (e.g. after a resize) — treat as empty
+    const unsigned char d = dp.data[y*dp.w + x];
+    return (d < DECOR_MAX) ? d : static_cast<unsigned char>(DECOR_NONE);
+}
+
+// Paint a decor id (DECOR_NONE = erase) onto the current floor's decor plane.
+// The plane is allocated lazily on the first real paint (an erase on a level
+// with no plane stays a no-op so decor-free levels keep re-saving
+// byte-identical). Decor is refused on TYPE_AIR / Z-stair base cells — decor
+// floating over a hole is nonsense, and neither migration nor the generators
+// ever produce it. Returns true when a byte was written (callers key
+// levelchanged / radar refresh off this).
+bool LevelEditorData::set_decor(int x, int y, unsigned char decor_id)
+{
+    if(!is_in_grid(x, y))
+        return false;
+    if(decor_id >= DECOR_MAX)
+        return false;
+
+    GameWorld& w = level->world();
+    const PixieData& g = w.grid_for_floor(eds().current_floor);
+    const unsigned char base = g.data[y*g.w + x];
+    if(decor_id != DECOR_NONE &&
+       (base == PIX_AIR || base == PIX_ZSTAIR_UP || base == PIX_ZSTAIR_DOWN))
+        return false;
+
+    PixieData& dp = w.decor_for_floor(eds().current_floor);
+    if(dp.valid() && (dp.w != g.w || dp.h != g.h))
+        dp.free(); // stale plane from a grid resize — drop it (loader posture)
+    if(!dp.valid())
+    {
+        if(decor_id == DECOR_NONE)
+            return false; // nothing to erase; don't allocate a plane
+        const std::size_t cells =
+            static_cast<std::size_t>(g.w) * static_cast<std::size_t>(g.h);
+        auto* buf = new unsigned char[cells];
+        std::fill_n(buf, cells, static_cast<unsigned char>(DECOR_NONE));
+        dp = PixieData(1, g.w, g.h, buf);
+    }
+    dp.data[y*dp.w + x] = decor_id;
+    return true;
+}
+
+// After a grid resize the decor planes keep their old dimensions; drop any
+// plane that no longer matches its floor's grid (same rule the loader applies
+// to dim-mismatched "_dN" files). Cropping would be nicer, but a resize is a
+// destructive layout edit already and stale-stride writes are worse.
+void LevelEditorData::drop_mismatched_decor_planes()
+{
+    GameWorld& w = level->world();
+    for (int f = 0; f < w.floor_count(); ++f)
+    {
+        PixieData& dp = w.decor_for_floor(f);
+        const PixieData& g = w.grid_for_floor(f);
+        if (dp.valid() && (dp.w != g.w || dp.h != g.h))
+            dp.free();
+    }
 }
 
 walker* LevelEditorData::get_object(int x, int y)
@@ -2962,8 +3162,60 @@ int level_editor_test_exercise_internal_helpers()
                             pix) != kDefaultBackgrounds.end());
         data.set_terrain(2, 2, PIX_LAVA1);
         check(data.get_terrain(2, 2) == PIX_LAVA1);
+        // Tile layering: decor brush plumbing.
+        // Erase with no plane allocated stays a no-op and does NOT allocate —
+        // decor-free levels keep re-saving byte-identical (v9/v10 cascade).
+        check(!data.level->world().decor.valid());
+        check(!data.set_decor(0, 0, DECOR_NONE));
+        check(!data.level->world().decor.valid());
+        check(data.get_decor(0, 0) == DECOR_NONE);
+        // First real paint lazily allocates the plane and writes the byte.
+        check(data.set_decor(3, 3, DECOR_BOULDER_2));
+        check(data.level->world().decor.valid());
+        check(data.get_decor(3, 3) == DECOR_BOULDER_2);
+        check(data.get_decor(4, 3) == DECOR_NONE);
+        // Painting base under existing decor keeps the decor byte — the core
+        // workflow the layering exists for (autotile ground under a torch).
+        data.set_terrain(3, 3, PIX_DIRT_1);
+        check(data.get_decor(3, 3) == DECOR_BOULDER_2);
+        check(data.get_terrain(3, 3) == PIX_DIRT_1);
+        // Guards: out-of-registry ids, and air/Z-stair base cells, refused.
+        check(!data.set_decor(3, 3, DECOR_MAX));
+        check(!data.set_decor(-1, -1, DECOR_TORCH1));
+        data.set_terrain(5, 5, PIX_AIR);
+        check(!data.set_decor(5, 5, DECOR_TORCH1));
+        check(data.get_decor(5, 5) == DECOR_NONE);
+        data.set_terrain(5, 5, PIX_ZSTAIR_UP);
+        check(!data.set_decor(5, 5, DECOR_TORCH1));
+        data.set_terrain(5, 5, PIX_ZSTAIR_DOWN);
+        check(!data.set_decor(5, 5, DECOR_TORCH1));
+        // ... but erasing those cells still works (writes 0).
+        check(data.set_decor(5, 5, DECOR_NONE));
+        data.set_terrain(5, 5, PIX_GRASS1);
+        // Erase brings a painted byte back to 0.
+        check(data.set_decor(3, 3, DECOR_NONE));
+        check(data.get_decor(3, 3) == DECOR_NONE);
+        // Per-floor isolation: each floor paints its own plane, lazily.
+        check(data.set_decor(3, 3, DECOR_PEBBLES));
+        data.add_floor();
+        check(eds().current_floor == 1);
+        check(!data.level->world().decor_for_floor(1).valid());
+        check(data.get_decor(3, 3) == DECOR_NONE);          // floor 1: empty
+        // add_floor fills the new floor with PIX_AIR: decor refused until a
+        // solid base is painted there.
+        check(!data.set_decor(2, 2, DECOR_SHRUB));
+        data.set_terrain(2, 2, PIX_GRASS1);
+        check(data.set_decor(2, 2, DECOR_SHRUB));
+        check(data.get_decor(2, 2) == DECOR_SHRUB);
+        eds().current_floor = 0;
+        check(data.get_decor(2, 2) == DECOR_NONE);          // floor 0 untouched
+        check(data.get_decor(3, 3) == DECOR_PEBBLES);
+        data.remove_floor();  // drops floor 1's decor plane with its ExtraFloor
+        check(data.level->world().floor_count() == 1);
         data.clear_terrain();
 	        check(data.get_terrain(0, 0) == 1);
+	        // clear_terrain also zeroes this floor's decor plane.
+	        check(data.get_decor(3, 3) == DECOR_NONE);
 	        data.level->world().id = 1;
 	        check(data.loadLevel(1));
 	        check(data.reloadLevel());
@@ -3009,6 +3261,18 @@ int level_editor_test_exercise_internal_helpers()
         check(!data.terrain_brush.use_smoothing);
         data.activate_mode_button(&data.terrainSmoothButton);
         check(data.terrain_brush.use_smoothing);
+        // Decor toggle: Terrain-mode button flipping eds().decor_mode.
+        check(data.mode_buttons.find(&data.decorButton) != data.mode_buttons.end());
+        eds().decor_mode = false;
+        data.activate_mode_button(&data.decorButton);
+        check(eds().decor_mode);
+        data.activate_mode_button(&data.decorButton);
+        check(!eds().decor_mode);
+        // Outside Terrain mode the decor toggle is inert.
+        data.mode = Mode::Object;
+        data.activate_mode_button(&data.decorButton);
+        check(!eds().decor_mode);
+        data.mode = Mode::Terrain;
 
         data.mode = Mode::Object;
         data.object_brush.snap_to_grid = true;
@@ -3156,6 +3420,23 @@ int level_editor_test_exercise_internal_helpers()
         data.mouse_up(S_RIGHT + 1, PIX_TOP + 1, S_RIGHT + 1, PIX_TOP + 1, done);
         check(data.terrain_brush.terrain >= 0);
 
+        // Decor mode: right-click pick reads the decor plane, and a click on
+        // the picker pane selects a decor id (cell 0 with rowsdown 0 is the
+        // eraser). Water base takes decor fine — decor only ever restricts.
+        eds().decor_mode = true;
+        const Sint32 base_brush_before_decor = data.terrain_brush.terrain;
+        check(data.set_decor(2, 2, DECOR_BRAZIER));
+        data.terrain_brush.picking = true;
+        data.pick_by_mouse(GRID_SIZE * 2, GRID_SIZE * 2);
+        check(data.terrain_brush.decor == DECOR_BRAZIER);
+        eds().rowsdown = 0;
+        data.mouse_up(S_RIGHT + 1, PIX_TOP + 1, S_RIGHT + 1, PIX_TOP + 1, done);
+        check(data.terrain_brush.decor == DECOR_NONE);
+        // Decor pick + pane click never touch the base brush.
+        check(data.terrain_brush.terrain == base_brush_before_decor);
+        check(data.set_decor(2, 2, DECOR_NONE)); // clean the loaded level again
+        eds().decor_mode = false;
+
         data.mode = Mode::Object;
         data.reset_mode_buttons();
         data.object_brush.order = Order::Living;
@@ -3260,6 +3541,22 @@ int level_editor_test_exercise_internal_helpers()
 	        check(data.campaign->id == helper_campaign_id);
 	        check(data.saveCampaignAs(helper_campaign_id));
 	        check(data.saveLevelAs(3));
+
+	        // Decor paint → save → reload round-trip through the editor save
+	        // path (paint promotes the file to v11; erasing downgrades it again
+	        // and the reloaded level carries no plane). The byte-level format
+	        // pins live in test_decor_format; this pins the editor plumbing.
+	        eds().current_floor = 0;
+	        check(data.set_decor(4, 4, DECOR_TORCH2));
+	        check(data.saveLevel());
+	        check(data.reloadLevel());
+	        check(data.get_decor(4, 4) == DECOR_TORCH2);
+	        check(data.get_decor(5, 4) == DECOR_NONE);
+	        check(data.set_decor(4, 4, DECOR_NONE));
+	        check(data.saveLevel());
+	        check(data.reloadLevel());
+	        check(!data.level->world().decor.valid());
+	        check(data.get_decor(4, 4) == DECOR_NONE);
 
 	        open_file_campaign_menu();
         click_button(data.fileCampaignSaveButton);
@@ -3472,10 +3769,121 @@ int level_editor_test_exercise_internal_helpers()
             data.reset_mode_buttons();
             data.display_panel(scr);
             check(data.mode == Mode::Terrain);
+
+            // Decor mode: draw the decor picker pane + brush preview (sprite
+            // when the decor art is loaded, label fallback otherwise) for
+            // both a normal id and the eraser.
+            eds().decor_mode = true;
+            data.reset_mode_buttons();
+            data.terrain_brush.decor = DECOR_TORCH1;
+            data.display_panel(scr);
+            data.terrain_brush.decor = DECOR_NONE;
+            data.display_panel(scr);
+            eds().decor_mode = false;
+            data.reset_mode_buttons();
+            check(data.mode == Mode::Terrain);
         }
     }
 
     delete_campaign(helper_campaign_id);
+    mount_campaign_only(initially_mounted_campaign.empty()
+        ? std::string("org.openglad.gladiator")
+        : initially_mounted_campaign);
+
+    return failed_check == 0 ? 0 : -failed_check;
+}
+
+// End-to-end round-trip on MIGRATED stock content: load a gladiator level
+// whose decor plane was produced by tools/grid_migrate (scen1 carries exactly
+// 20 DECOR_BOULDER_1 cells over contextual grass bases), repaint one decor
+// cell through the editor brush plumbing, save through the editor's
+// unpack/save_level/repack path, reload, and verify. All edits land in an
+// isolated COPY campaign: saveCampaignAs never switches the PhysFS mount, so
+// the copy is mounted explicitly before the first save — otherwise saveLevel
+// would repack the user's gladiator shadow and contaminate every later test.
+int level_editor_test_decor_migrated_roundtrip()
+{
+    int check_index = 0;
+    int failed_check = 0;
+    const auto check = [&check_index, &failed_check](bool condition) {
+        ++check_index;
+        if (!condition && failed_check == 0)
+            failed_check = check_index;
+    };
+    const std::string copy_id = "org.openglad.coverage.decor_migrated";
+    const std::string initially_mounted_campaign = get_mounted_campaign();
+    const auto mount_campaign_only = [](const std::string& campaign_id) {
+        const std::string mounted_campaign = get_mounted_campaign();
+        if (!mounted_campaign.empty())
+            (void)unmount_campaign_package_with_error(mounted_campaign);
+        if (!campaign_id.empty())
+            (void)mount_campaign_package_with_error(campaign_id);
+    };
+
+    mount_campaign_only("");
+    restore_default_campaigns();
+    mount_campaign_only("org.openglad.gladiator");
+    delete_campaign(copy_id);
+
+    {
+        LevelEditorData data;
+        check(data.level != nullptr);
+        if (data.level != nullptr)
+        {
+            check(data.loadCampaign("org.openglad.gladiator"));
+            check(data.loadLevel(1));
+            eds().current_floor = 0;
+            eds().decor_mode = false;
+
+            // Migrated package pins: scen1's 20 legacy PIX_BOULDER_1 tiles
+            // became DECOR_BOULDER_1 cells, the first at tile (10, 0).
+            check(data.level->world().decor.valid());
+            const auto count_decor = [&data](unsigned char id) {
+                const PixieData& g = data.level->world().grid;
+                int n = 0;
+                for (int y = 0; y < g.h; ++y)
+                    for (int x = 0; x < g.w; ++x)
+                        if (data.get_decor(x, y) == id)
+                            ++n;
+                return n;
+            };
+            check(count_decor(DECOR_BOULDER_1) == 20);
+            check(data.get_decor(10, 0) == DECOR_BOULDER_1);
+            // The base under the boulder is a mapping product (the boulder
+            // contextual-base whitelist), never the legacy combined byte.
+            const unsigned char base = data.get_terrain(10, 0);
+            check(base == PIX_GRASS2 || base == PIX_GRASS3 ||
+                  base == PIX_GRASS_DARK_1 || base == PIX_GRASS_LIGHT_1 ||
+                  base == PIX_DIRT_1 || base == PIX_DIRT_DARK_1 ||
+                  base == PIX_SNOW1 || base == PIX_ASH1);
+
+            // Isolate, then switch the mount to the copy (see header note).
+            check(data.saveCampaignAs(copy_id));
+            mount_campaign_only(copy_id);
+            check(get_mounted_campaign() == copy_id);
+
+            // Repaint one decor cell, then round-trip the editor save path.
+            check(data.set_decor(10, 0, DECOR_BOULDER_2));
+            check(data.saveLevel());
+            check(data.reloadLevel());
+            check(data.get_decor(10, 0) == DECOR_BOULDER_2);
+            check(data.get_terrain(10, 0) == base);     // base grid untouched
+            check(count_decor(DECOR_BOULDER_1) == 19);  // the rest survived
+            check(count_decor(DECOR_BOULDER_2) == 1);
+            check(data.get_decor(4, 6) == DECOR_BOULDER_1);
+
+            // Erase the repainted cell: the other 19 keep the file at v11,
+            // and the erase itself round-trips.
+            check(data.set_decor(10, 0, DECOR_NONE));
+            check(data.saveLevel());
+            check(data.reloadLevel());
+            check(data.get_decor(10, 0) == DECOR_NONE);
+            check(count_decor(DECOR_BOULDER_1) == 19);
+            check(data.level->world().decor.valid());
+        }
+    }
+
+    delete_campaign(copy_id);
     mount_campaign_only(initially_mounted_campaign.empty()
         ? std::string("org.openglad.gladiator")
         : initially_mounted_campaign);
@@ -3659,6 +4067,7 @@ Sint32 level_editor()
     backgrounds().assign(kDefaultBackgrounds.begin(), kDefaultBackgrounds.end());
     eds().maxrows = static_cast<std::int32_t>(backgrounds().size() / 4);
     eds().current_floor = 0;
+    eds().decor_mode = false; // always enter the editor painting base tiles
     
     if(data.reloadCampaign())
         Log("Loaded campaign data successfully.\n");
@@ -3849,6 +4258,12 @@ Sint32 level_editor()
                 {
                     if(mode == Mode::Object || mode == Mode::Select)
                         data.activate_mode_button(&data.gridSnapButton);
+                }
+                // Toggle base/decor terrain painting (tile layering)
+                else if(event_data.key_sym == KEYCODE_b)
+                {
+                    if(mode == Mode::Terrain)
+                        data.activate_mode_button(&data.decorButton);
                 }
                 // Save scenario
                 else if(event_data.key_sym == KEYCODE_s && (event_data.key_mod & KEYMOD_CTRL))
@@ -4152,6 +4567,21 @@ Sint32 level_editor()
                             
                             if(!terrain_brush.picking)
                             {
+                                if(eds().decor_mode)
+                                {
+                                    // Decor brush: write the current floor's
+                                    // decor plane (no smoothing — the smoother
+                                    // never sees the decor plane). Refusals
+                                    // (air/Z-stair base) are silent no-ops.
+                                    if(data.set_decor(windowx, windowy,
+                                            static_cast<unsigned char>(terrain_brush.decor)))
+                                    {
+                                        eds().levelchanged = 1;
+                                        myradar.update(data.level.get());
+                                    }
+                                }
+                                else
+                                {
                                 // Set to our current selection (apply brush)
                                 data.set_terrain(windowx, windowy, static_cast<unsigned char>(get_random_matching_tile(terrain_brush.terrain)));
                                 eds().levelchanged = 1;
@@ -4165,8 +4595,9 @@ Sint32 level_editor()
                                                     j >= 0 && j < fg.h)
                                                 data.level->world().smoother_for_floor(cf).smooth(i, j);
                                 }
-                                
+
                                 myradar.update(data.level.get());
+                                }
                             }
                         }
                     }  // end of setting grid square

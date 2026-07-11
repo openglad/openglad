@@ -10,6 +10,7 @@
 #include <openglad/platform/curses/glyph_map.h>
 
 #include <openglad/core/constants.h>
+#include <openglad/core/decordefs.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/core/terrain_types.h>
 #include <openglad/gameplay/family_descriptor.h>
@@ -167,6 +168,12 @@ void CursesRenderer::draw_viewport(ITerminal& term, const GameWorld& world,
     const int grid_w = cam_grid.w;
     const int grid_h = cam_grid.h;
     const bool have_bounds = grid_w > 0 && grid_h > 0;
+    // Decor plane (tile layering): decor wins over the base tile when it
+    // defines a glyph. Gated on validity + matching dims, so no-decor levels
+    // render exactly as before.
+    const PixieData& cam_decor = world.decor_for_floor(cam_floor);
+    const bool have_decor = cam_decor.valid() && cam_decor.w == grid_w &&
+                            cam_decor.h == grid_h;
     for (int row = 0; row < height; ++row) {
         const int ty = cam_y + row;
         for (int col = 0; col < width; ++col) {
@@ -187,6 +194,15 @@ void CursesRenderer::draw_viewport(ITerminal& term, const GameWorld& world,
                     g = zstair_glyph(pix == PIX_ZSTAIR_UP);
                 } else {
                     g = tile_glyph(genre);
+                }
+                // Decor override (in-bounds here: `outside` is false and
+                // have_decor implies have_bounds via the dims match).
+                if (have_decor) {
+                    const unsigned char d = cam_decor.data[tx + grid_w * ty];
+                    if (d != DECOR_NONE) {
+                        if (const auto dg = decor_glyph(d))
+                            g = *dg;
+                    }
                 }
             }
             if (g.skip)

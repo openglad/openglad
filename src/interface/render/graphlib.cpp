@@ -23,6 +23,7 @@
 #include <openglad/interface/base.h> // PixieData + PIX_* indices + read_pixie_file decls
 #include <string>
 #include <memory>
+#include <openglad/core/decordefs.h>
 #include <openglad/core/util.h>
 
 // Use this for globally setting the graphics dir, etc..
@@ -276,4 +277,29 @@ void load_map_data(PixieData* whereto)
 	whereto[PIX_MARSH2] = read_pixie_file("16marsh2.png");
 	whereto[PIX_ASH1]   = read_pixie_file("16ash1.png");
 	whereto[PIX_ASH2]   = read_pixie_file("16ash2.png");
+}
+
+// Decor cut-out sprites, indexed by decor id (core/decordefs.h). The 16d*
+// files are procedurally authored (scripts/generate_decor_art.py) cut-outs of
+// the legacy combined tiles: index 0 is TRANSPARENT (the renderer blits decor
+// through the sprite path, never the opaque tile path). Torch/brazier flame
+// pixels keep the cycled ORANGE band 224-231, so do_cycle keeps animating the
+// fire exactly like the legacy combined tiles. Columns reuse their existing
+// art unchanged (already transparent). Slot 0 (DECOR_NONE) stays empty.
+// Headless builds never load these — all behavior keys off ids, never art.
+void load_decor_data(PixieData* whereto)
+{
+	whereto[DECOR_TORCH1]        = read_pixie_file("16dtorch1.png");
+	whereto[DECOR_TORCH2]        = read_pixie_file("16dtorch2.png");
+	whereto[DECOR_TORCH3]        = read_pixie_file("16dtorch3.png");
+	whereto[DECOR_BRAZIER]       = read_pixie_file("16dbraz.png");
+	whereto[DECOR_BOULDER_1]     = read_pixie_file("16dstone1.png");
+	whereto[DECOR_BOULDER_2]     = read_pixie_file("16dstone2.png");
+	whereto[DECOR_BOULDER_3]     = read_pixie_file("16dstone3.png");
+	whereto[DECOR_BOULDER_4]     = read_pixie_file("16dstone4.png");
+	whereto[DECOR_PEBBLES]       = read_pixie_file("16dpebble.png");
+	whereto[DECOR_COLUMN_BOTTOM] = read_pixie_file("16colm0.png");
+	whereto[DECOR_COLUMN_TOP]    = read_pixie_file("16colm1.png");
+	whereto[DECOR_SHRUB]         = read_pixie_file("16dshrub.png");
+	whereto[DECOR_BONES]         = read_pixie_file("16dbones.png");
 }
