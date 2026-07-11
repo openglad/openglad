@@ -100,12 +100,13 @@ void walker::follow_path_to_foe()
             // strictly positive toward +axis), so the slide is grid-safe by
             // construction; per-pixel query_passable keeps entity collision
             // semantics identical to a normal walk. No RNG; a pure function
-            // of position. GATED on multifloor (like the graph's
-            // no-corner-cut rule): un-stalling the classic single-floor
-            // approach moved first-hit timing in 18 parity goldens and would
-            // shift calibrated campaign balance, so single-floor levels KEEP
-            // the classic wedge behavior deliberately.
-            if (multifloor && (dx == 0) != (dy == 0) &&
+            // of position. 2026-07-10: the multifloor gate is REMOVED —
+            // single-floor corridor mazes (Westlands L2 "The Forest Road")
+            // pin chasers in the same deterministic 2-tick corner dance the
+            // gate was preserving. Audited single-floor parity rebaseline
+            // (first-hit timing moves in the chase-heavy goldens; see the
+            // docs/GAMEPLAY_FIXES_FROM_CLASSIC.md row).
+            if ((dx == 0) != (dy == 0) && current_game != nullptr &&
                 current_game->world != nullptr)
             {
                 const int mis = (dx != 0)

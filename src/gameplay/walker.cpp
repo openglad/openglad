@@ -1449,7 +1449,21 @@ walker::act_guard()
 	set_foe(current_game->world->find_near_foe(this));
 	if (foe())
 	{
-		set_curdir(static_cast<signed char>(facing(foe()->xpos() - xpos(), foe()->ypos()-ypos())));
+		// 2026-07-10 guard facing gate (docs/GAMEPLAY_FIXES_FROM_CLASSIC.md).
+		// find_near_foe has no range or sight limit, so a guard posted
+		// beside a tree band pivoted to face the 2D-nearest foe THROUGH the
+		// wall — the "orc nose-to-trees" statue look (14% of all guard
+		// ticks on Westlands L2). Gate ONLY the facing turn: foe
+		// acquisition, the COMMAND_FIRE attempt, and every RNG draw are
+		// unchanged; the guard just keeps its prior facing unless the foe
+		// is within its family sight range AND the straight cell ray to it
+		// is clear (both deterministic and RNG-free). Any foe the guard
+		// could actually engage has a clear ray, so firing is unaffected.
+		if (distance_to_ob(foe()) <= lineofsight() * GRID_SIZE &&
+		    current_game->world->clear_sight_line(this, foe()))
+		{
+			set_curdir(static_cast<signed char>(facing(foe()->xpos() - xpos(), foe()->ypos()-ypos())));
+		}
 		stats_->try_command(COMMAND_FIRE,current_game->world->rng_.next(30));
 		return 1;
 	}

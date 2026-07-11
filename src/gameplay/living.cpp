@@ -418,6 +418,25 @@ short living::shove(walker  *target, short x, short y)
 		// Make sure WE don't get shoved
 		if (current_game->world->rng_.next(3) && target->act_type() != ACT_CONTROL)
 		{
+			// 2026-07-10 shove command-theft livelock fix (see
+			// docs/GAMEPLAY_FIXES_FROM_CLASSIC.md). Classic cleared the
+			// target's queue and injected COMMAND_WALK(x, y) even when that
+			// walk was wall-blocked; a shover re-colliding every tick then
+			// refilled the injected command forever, so the target never
+			// re-ran its own COMMAND_SEARCH — three interlocked bodies on a
+			// one-cell strip froze for 350+ ticks (Westlands L2 bend-1).
+			// Probe the injected walk's baby step (walkstep's last resort,
+			// walk(x, y)) against the GRID only before stealing the queue:
+			// if even that step is terrain-blocked the inject provably
+			// cannot move the target, so leave its queue alone and let its
+			// own search re-path. Grid-only (no obmap) keeps ally-chain
+			// shoving intact and cannot eat treasures or fire collide()
+			// side effects. The rng_.next(3) draw above stays unconditional,
+			// so the RNG stream is unchanged on every path.
+			if (!current_game->world->query_grid_passable(
+			        target->xpos() + static_cast<float>(x),
+			        target->ypos() + static_cast<float>(y), target))
+				return 0;
 			// We have to prevent a build-up of shoves which is
 			//   caused by a blocked target.  We do so for now by clearing
 			//   all commands

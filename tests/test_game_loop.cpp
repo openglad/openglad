@@ -3159,13 +3159,15 @@ TEST(GameLoop, zz_capture_westlands)
     // 2 The Forest Road — THE FLIGHT: rain over the corridor maze, the
     // Pale Riders waking behind the crew in waves (250/550/900). The
     // camera rides with the thief; the Bearer runs in the column with him
-    // (Wave E1).
+    // (Wave E1). 700 frames so the film reaches past the tick-500 wave —
+    // a 420-frame cut ended before any pursuit orc woke, so the card
+    // structurally could not show the chase (forest-pathing RCA note).
     if (want("2"))
         gameplay_rec::record_story(
             "westlands_flight", 2, WeatherKind::Rain,
             {FAMILY_THIEF, FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_ELF,
              FAMILY_ELF, FAMILY_BARBARIAN, FAMILY_CLERIC, FAMILY_MAGE},
-            6, 420);
+            6, 700);
     // 19 The Dead Marshes: the new MARSH tiles (shimmer + ripples) with
     // ghost-lights drifting off every mere at the firm-shelf line.
     if (want("19"))

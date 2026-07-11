@@ -160,7 +160,15 @@ void build_forest_road(const LevelDataHooks& hooks)
     paint_rect(w.grid, 2, 16, 10, 25, PIX_GRASS1);   // west muster clearing
     paint_rect(w.grid, 2, 27, 6, 30, PIX_GRASS1);    // the rider den
     paint_rect(w.grid, 3, 25, 4, 27, PIX_GRASS1);    // and its connector
-    paint_rect(w.grid, 11, 19, 25, 22, PIX_GRASS1);  // seg A, east
+    // Seg A runs one column further east (x=26) than the original cut so
+    // it meets bend 1's east column FLUSH (2026-07-10, forest-pathing RCA
+    // 4.5i): the old junction left a one-cell grass strip at bend-1 SE —
+    // column x=26 pinched between the x=27 tree wall and the tree band
+    // below y=19 — which was the anchor geometry of the shove-theft column
+    // livelock (three crew bodies frozen 350+ ticks). The engine fix
+    // (living.cpp shove probe) breaks the livelock itself; widening the
+    // junction removes the pocket so columns never form there at all.
+    paint_rect(w.grid, 11, 19, 26, 22, PIX_GRASS1);  // seg A, east
     paint_rect(w.grid, 23, 8, 26, 19, PIX_GRASS1);   // bend 1, north
     paint_rect(w.grid, 26, 8, 45, 11, PIX_GRASS1);   // seg B, east
     paint_rect(w.grid, 43, 11, 46, 28, PIX_GRASS1);  // bend 2, south
@@ -232,7 +240,12 @@ void build_forest_road(const LevelDataHooks& hooks)
     // shift (the guard-standoff engine quirk — see the Wave E report).
     // For a human runner they are the mid-run scare beats. All wake well
     // after a nonstop crew would have passed their cell.
-    place_living(w, FAMILY_ORC, 2, 0, 48, 26, 1, false, false, 500);
+    // First shadow-pack wolf wakes at 400 (was 500; 2026-07-10, RCA 4.5iii)
+    // so the level's opening minutes — and the preview-card capture window —
+    // show a moving hunter on the road. Intercept contract holds: a nonstop
+    // crew passes its cell (x=48, ~seg C mouth) by ~tick 200, well before
+    // the wake, and the wake still trails the 342-tick road time margin.
+    place_living(w, FAMILY_ORC, 2, 0, 48, 26, 1, false, false, 400);
     place_living(w, FAMILY_ORC, 2, 0, 58, 27, 1, false, false, 1100);
     place_living(w, FAMILY_ORC, 2, 0, 67, 20, 1, false, false, 1700);
     place_living(w, FAMILY_ORC, 2, 0, 76, 15, 2, false, false, 2300);

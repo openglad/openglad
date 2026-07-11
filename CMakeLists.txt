@@ -2412,6 +2412,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_decor_art.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_npc_scenario_flags.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_guard_act_type.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_forest_pathing.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_melee_standoff.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_westlands_calibration.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_longseason_calibration.cpp

@@ -316,6 +316,15 @@ public:
     // probing cannot eat treasures or fire collide() side effects ("no-eat").
     bool floor_landing_clear(walker* ob, float x, float y, int target_floor);
 
+    // 2026-07-10 guard facing gate (docs/GAMEPLAY_FIXES_FROM_CLASSIC.md).
+    // True when the straight cell ray between the two walkers' centers
+    // crosses no sight-opaque tile (tree crowns/trunks and wall faces — the
+    // grid bytes an unowned projectile can never pass). Water, lava,
+    // boulders, columns and torches stay transparent (projectiles fly over
+    // them), so ranged guards keep engaging across them. Deterministic and
+    // RNG-free; cross-floor pairs are never in sight.
+    bool clear_sight_line(const walker* from, const walker* to);
+
     walker* find_near_foe(walker* ob);
     walker* find_far_foe(walker* ob);
     walker* find_nearest_blood(walker* who);

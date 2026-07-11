@@ -894,7 +894,13 @@ inline constexpr FactPredicate kFacts_family_mage_scen99[] = {
     pred::TickReached(600),
     pred::WalkerFamilyCount(FAMILY_MAGE, 1, 1),
     pred::WalkerOfTeamAlive(/*enemy team=*/1, 1, 1),
-    pred::WalkerPositionMoved(FAMILY_MAGE, 224, 85),
+    // 2026-07-10 forest-pathing wave (single-floor corner-cut prune +
+    // alignment assist; docs/GAMEPLAY_FIXES_FROM_CLASSIC.md): the chaser no
+    // longer corner-dances on scen99's terrain and presses to engagement
+    // range of the player soldier at (224,120) — repinned to the engaged
+    // endpoint region. The spawn-identity mutation still flips the
+    // WalkerFamilyCount pin above.
+    pred::WalkerPositionMoved(FAMILY_MAGE, 200, 110),
     pred::WalkerHpRangeAtFinalTick(FAMILY_MAGE, 8900, 9100),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
 };
@@ -910,7 +916,13 @@ inline constexpr FactPredicate kFacts_family_cleric_scen99[] = {
     pred::TickReached(600),
     pred::WalkerFamilyCount(FAMILY_CLERIC, 1, 1),
     pred::WalkerOfTeamAlive(/*enemy team=*/1, 1, 1),
-    pred::WalkerPositionMoved(FAMILY_CLERIC, 207, 132),
+    // 2026-07-10 forest-pathing wave (single-floor corner-cut prune +
+    // alignment assist; docs/GAMEPLAY_FIXES_FROM_CLASSIC.md): the chaser no
+    // longer corner-dances on scen99's terrain and presses to engagement
+    // range of the player soldier at (224,120) — repinned to the engaged
+    // endpoint region. The spawn-identity mutation still flips the
+    // WalkerFamilyCount pin above.
+    pred::WalkerPositionMoved(FAMILY_CLERIC, 200, 110),
     pred::WalkerHpRangeAtFinalTick(FAMILY_CLERIC, 11900, 12100),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
 };
@@ -918,7 +930,13 @@ inline constexpr FactPredicate kFacts_family_fireelemental_scen99[] = {
     pred::TickReached(600),
     pred::WalkerFamilyCount(FAMILY_FIREELEMENTAL, 1, 1),
     pred::WalkerOfTeamAlive(/*enemy team=*/1, 1, 1),
-    pred::WalkerPositionMoved(FAMILY_FIREELEMENTAL, 205, 105),
+    // 2026-07-10 forest-pathing wave (single-floor corner-cut prune +
+    // alignment assist; docs/GAMEPLAY_FIXES_FROM_CLASSIC.md): the chaser no
+    // longer corner-dances on scen99's terrain and presses to engagement
+    // range of the player soldier at (224,120) — repinned to the engaged
+    // endpoint region. The spawn-identity mutation still flips the
+    // WalkerFamilyCount pin above.
+    pred::WalkerPositionMoved(FAMILY_FIREELEMENTAL, 220, 80),
     pred::WalkerHpRangeAtFinalTick(FAMILY_FIREELEMENTAL, 9900, 10100),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
 };
@@ -958,7 +976,13 @@ inline constexpr FactPredicate kFacts_family_thief_scen99[] = {
     pred::TickReached(600),
     pred::WalkerFamilyCount(FAMILY_THIEF, 1, 1),
     pred::WalkerOfTeamAlive(/*enemy team=*/1, 1, 1),
-    pred::WalkerPositionMoved(FAMILY_THIEF, 128, 120),
+    // 2026-07-10 forest-pathing wave (single-floor corner-cut prune +
+    // alignment assist; docs/GAMEPLAY_FIXES_FROM_CLASSIC.md): the chaser no
+    // longer corner-dances on scen99's terrain and presses to engagement
+    // range of the player soldier at (224,120) — repinned to the engaged
+    // endpoint region. The spawn-identity mutation still flips the
+    // WalkerFamilyCount pin above.
+    pred::WalkerPositionMoved(FAMILY_THIEF, 200, 110),
     pred::WalkerHpRangeAtFinalTick(FAMILY_THIEF, 7400, 7600),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
 };
@@ -980,7 +1004,13 @@ inline constexpr FactPredicate kFacts_family_druid_scen99[] = {
     pred::TickReached(600),
     pred::WalkerFamilyCount(FAMILY_DRUID, 1, 1),
     pred::WalkerOfTeamAlive(/*enemy team=*/1, 1, 1),
-    pred::WalkerPositionMoved(FAMILY_DRUID, 220, 129),
+    // 2026-07-10 forest-pathing wave (single-floor corner-cut prune +
+    // alignment assist; docs/GAMEPLAY_FIXES_FROM_CLASSIC.md): the chaser no
+    // longer corner-dances on scen99's terrain and presses to engagement
+    // range of the player soldier at (224,120) — repinned to the engaged
+    // endpoint region. The spawn-identity mutation still flips the
+    // WalkerFamilyCount pin above.
+    pred::WalkerPositionMoved(FAMILY_DRUID, 200, 110),
     pred::WalkerHpRangeAtFinalTick(FAMILY_DRUID, 10900, 11100),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
 };
@@ -1012,7 +1042,13 @@ inline constexpr FactPredicate kFacts_family_archmage_scen99[] = {
     pred::TickReached(600),
     pred::WalkerFamilyCount(FAMILY_ARCHMAGE, 1, 1),
     pred::WalkerOfTeamAlive(/*enemy team=*/1, 1, 1),
-    pred::WalkerPositionMoved(FAMILY_ARCHMAGE, 128, 120),
+    // 2026-07-10 forest-pathing wave (single-floor corner-cut prune +
+    // alignment assist; docs/GAMEPLAY_FIXES_FROM_CLASSIC.md): the chaser no
+    // longer corner-dances on scen99's terrain and presses to engagement
+    // range of the player soldier at (224,120) — repinned to the engaged
+    // endpoint region. The spawn-identity mutation still flips the
+    // WalkerFamilyCount pin above.
+    pred::WalkerPositionMoved(FAMILY_ARCHMAGE, 200, 110),
     pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHMAGE, 14900, 15100),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
 };
@@ -1126,7 +1162,7 @@ inline constexpr Mutation kMut_smoke_inputs_no_move = {
 };
 
 inline constexpr Mutation kMut_smoke_empty_tick_count = {
-    "src/gameplay/game_world.cpp", 1531,
+    "src/gameplay/game_world.cpp", 1622,
     "tick_count_++;",
     "tick_count_ += 0;",
     "Stops the per-tick world counter from advancing. The empty smoke row has no gameplay entities by design, but its schema-v1 dump still records tick=1 after one tick; this mutation changes that field and flips the byte-level empty-dump canary without inventing gameplay predicates."
@@ -1154,7 +1190,7 @@ inline constexpr Mutation kMut_exit_neuter = {
 };
 
 inline constexpr Mutation kMut_snapshot_dirty = {
-    "src/gameplay/game_world.cpp", 1529,
+    "src/gameplay/game_world.cpp", 1620,
     "level_done = 2;",
     "level_done = []{ static int _n = 0; return _n++; }();",
     "state_dump.cpp (the original Phase 01 target) lives under tests/parity/ which the canary refuses to mutate; the next-best upstream subject is the game_world per-tick level_done assignment that flows straight into the snapshot dump. A static-counter lambda persists across run_scenario() invocations and breaks dual-capture byte equality, flipping the Invariant determinism check."
@@ -3243,11 +3279,19 @@ inline constexpr FactPredicate kFacts_event_set_end_emission_scen99[] = {
     pred::EventKindAtLeast(/*play_sound*/1, 5),
 };
 
+// 2026-07-10: retargeted from 1694 (and 1603 before the forest-pathing
+// wave) back onto the AWAKE-enemy guard in the living act phase — the
+// occurrence master pins. An earlier mechanical line-shift landed this
+// pin on the branch-only DORMANT-spawn guard (same "level_done = 0;"
+// text, 16 lines above), which never executes in this arena (no parity
+// arena spawns dormant walkers), leaving the canary silently toothless.
+// Verified: the awake-guard mutation flips EventKindExactly(set_end, 0);
+// the dormant-guard mutation leaves the dump byte-identical.
 inline constexpr Mutation kMut_event_set_end_emission = {
-    "src/gameplay/game_world.cpp", 1603,
+    "src/gameplay/game_world.cpp", 1710,
     "level_done = 0;",
     "level_done = 2;",
-    "Neuters the enemy-alive guard in GameWorld::tick: instead of resetting level_done to 0 when a live non-friendly Living enemy is found, it forces level_done to stay 2. With enemies still alive the level_done==2 completion branch (game_world.cpp:1515) fires and pushes EventKind::SetEnd, so the arena's set_end suppression is broken and the event sneaks through."
+    "Neuters the enemy-alive guard in GameWorld::tick: instead of resetting level_done to 0 when a live non-friendly Living enemy is found, it forces level_done to stay 2. With enemies still alive the level_done==2 completion branch (game_world.cpp:1800) fires and pushes EventKind::SetEnd, so the arena's set_end suppression is broken and the event sneaks through."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_special_soldier_1_scen99[] = {
@@ -4758,7 +4802,7 @@ inline constexpr FactPredicate kFacts_multiplayer_two_teams_scen99[] = {
 };
 
 inline constexpr Mutation kMut_multiplayer_two_teams_scen99 = {
-    "src/gameplay/walker.cpp", 2149,
+    "src/gameplay/walker.cpp", 2163,
     "return headus->team_num() == headtarget->team_num();",
     "return 1;",
     "Replaces the no-myguy team-number friendliness comparison with an unconditional `return 1`, so every pair of walkers is friendly regardless of team; the three-team melee never starts, every walker keeps full HP, and the combat play_sound stream collapses from ~10 to 1 — below the EventKindAtLeast(play_sound, 4) floor (verified: mutated branch dump emits play_sound == 1)."

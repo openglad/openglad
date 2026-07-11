@@ -169,10 +169,13 @@ public:
                 // wedge). Flanks impose the same rules as targets: grid
                 // passability plus the non-flyer air skip (a body swept over
                 // an air flank can clip its center into the hole and fall).
-                // GATED on multifloor so single-floor A* expansion stays
-                // byte-identical for the parity goldens; single-floor levels
-                // keep the (rare) classic corner-cut behavior deliberately.
-                if (multifloor && i != 0 && j != 0)
+                // 2026-07-10: the multifloor gate is REMOVED — single-floor
+                // corridor mazes (Westlands L2 "The Forest Road") exhibit the
+                // same permanent corner seizures the gate was preserving, so
+                // corner-cut edges are now pruned on every level. This is an
+                // audited single-floor parity rebaseline (see the doc row);
+                // the rule consumes no RNG, so drift is position/timing only.
+                if (i != 0 && j != 0)
                 {
                     bool flanks_open = true;
                     const int flank[2][2] = {{x1 + i * GRID_SIZE, y1},

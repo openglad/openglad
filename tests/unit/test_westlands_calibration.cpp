@@ -75,11 +75,26 @@ struct CurvePin
 // within its existing floor, including the war levels 13/15/16/17 whose
 // new NAMED captains rename existing posts and are sim-inert by
 // construction.)
+// (Recalibrated 2026-07-10 for the forest-pathing wave — the single-floor
+// un-gating of the A* no-corner-cut + follow-path alignment assist, the
+// shove command-theft probe, and the guard facing gate (see
+// docs/GAMEPLAY_FIXES_FROM_CLASSIC.md): enemy companies that used to wedge
+// on convex corners, X-pinches and allied columns now actually arrive and
+// fight, so the army-heavy levels got genuinely hotter for the pessimistic
+// brawler stand-in crew (which cannot kite, heal, or exit). Re-measured
+// minima across seeds {42, 1337, 2025}: 3: 8->7, 7: 1->0, 8: 4->0,
+// 15: 1->0, 17: 4->2, 19: 6->5, 22: 8->5, 23: 7->5, 24: 4->2, 25: 8->7;
+// levels 7/8/15 join the 0-floor war class where placed allies and waves
+// carry the fight. The Forest Road (scen2) re-measured 8/8/8 with its
+// RCA-4.5 content fix (flush bend-1 SE junction, first shadow wolf at
+// tick 400). The F4 win/hold contract on the hotter levels should be
+// re-swept with scripts/westlands_playtest.sh before the next balance
+// pass.)
 constexpr CurvePin kCurve[] = {
-    {1, 1, 8},  {2, 2, 8},  {3, 2, 8},  {4, 3, 7},  {5, 3, 7},  {6, 4, 6},
-    {7, 4, 1},  {8, 5, 4},  {9, 6, 0},  {10, 5, 0}, {11, 6, 5}, {12, 6, 0},
-    {13, 6, 0}, {14, 7, 7}, {15, 7, 1}, {16, 8, 3}, {17, 8, 4}, {19, 6, 6},
-    {20, 7, 0}, {21, 7, 7}, {22, 8, 8}, {23, 8, 7}, {24, 8, 4}, {25, 9, 8},
+    {1, 1, 8},  {2, 2, 8},  {3, 2, 7},  {4, 3, 7},  {5, 3, 7},  {6, 4, 6},
+    {7, 4, 0},  {8, 5, 0},  {9, 6, 0},  {10, 5, 0}, {11, 6, 5}, {12, 6, 0},
+    {13, 6, 0}, {14, 7, 7}, {15, 7, 0}, {16, 8, 3}, {17, 8, 2}, {19, 6, 5},
+    {20, 7, 0}, {21, 7, 7}, {22, 8, 5}, {23, 8, 5}, {24, 8, 2}, {25, 9, 7},
     {26, 9, 8},
 };
 

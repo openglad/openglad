@@ -969,6 +969,97 @@ bool GameWorld::query_passable(float x, float y, walker* ob, int floor)
            query_object_passable(x, y, ob, floor);
 }
 
+namespace {
+
+// 2026-07-10 guard facing gate (docs/GAMEPLAY_FIXES_FROM_CLASSIC.md).
+// Sight-opaque grid bytes: exactly the tiles an UNOWNED Order::Weapon probe
+// can never pass in query_grid_passable — tree crowns/trunks (the base
+// PIX_TREE_B1 lets weapons through) and the wall faces (the unconditional
+// walls plus the arrow-wall family, which is solid for owner-less probes;
+// classifying it opaque here avoids the shooter-distance RNG gamble
+// entirely). Everything weapons fly over — water, lava, boulders, columns,
+// torches, wallside cells — is sight-transparent. Unknown bytes default to
+// TRANSPARENT: the gate is facing-only, so an exotic tile keeps the classic
+// always-face behavior instead of freezing a guard.
+bool sight_opaque_tile(unsigned char tile)
+{
+    switch (tile)
+    {
+        case PIX_TREE_M1:
+        case PIX_TREE_ML:
+        case PIX_TREE_MR:
+        case PIX_TREE_MT:
+        case PIX_TREE_T1:
+        case PIX_H_WALL1:
+        case PIX_WALL2:
+        case PIX_WALL3:
+        case PIX_WALL_LL:
+        case PIX_WALLTOP_H:
+        case PIX_WALL4:
+        case PIX_WALL5:
+        case PIX_WALL_ARROW_GRASS:
+        case PIX_WALL_ARROW_FLOOR:
+        case PIX_WALL_ARROW_GRASS_DARK:
+            return true;
+        default:
+            return false;
+    }
+}
+
+} // namespace
+
+bool GameWorld::clear_sight_line(const walker* from, const walker* to)
+{
+    if (from == nullptr || to == nullptr)
+        return false;
+    if (from->floor() != to->floor())
+        return false;
+
+    const PixieData& fg = grid_for_floor(from->floor());
+    if (!fg.valid())
+        return true; // no grid to occlude (synthetic test worlds)
+
+    const int w = fg.w;
+    const int h = fg.h;
+    int x0 = (static_cast<int>(from->xpos()) + from->sizex() / 2) / GRID_SIZE;
+    int y0 = (static_cast<int>(from->ypos()) + from->sizey() / 2) / GRID_SIZE;
+    const int x1 = (static_cast<int>(to->xpos()) + to->sizex() / 2) / GRID_SIZE;
+    const int y1 = (static_cast<int>(to->ypos()) + to->sizey() / 2) / GRID_SIZE;
+
+    // Bresenham over cells, testing the intermediate cells only (both
+    // endpoints are the walkers' own — necessarily walkable — cells).
+    const int adx = x1 > x0 ? x1 - x0 : x0 - x1;
+    const int ady = y1 > y0 ? y0 - y1 : y1 - y0; // -abs(dy)
+    const int sx = x0 < x1 ? 1 : -1;
+    const int sy = y0 < y1 ? 1 : -1;
+    int err = adx + ady;
+
+    while (x0 != x1 || y0 != y1)
+    {
+        const int e2 = 2 * err;
+        if (e2 >= ady)
+        {
+            err += ady;
+            x0 += sx;
+        }
+        if (e2 <= adx)
+        {
+            err += adx;
+            y0 += sy;
+        }
+        if (x0 == x1 && y0 == y1)
+            break;
+        if (x0 < 0 || y0 < 0 || x0 >= w || y0 >= h)
+            return false;
+        if (sight_opaque_tile(static_cast<unsigned char>(
+                fg.data[static_cast<std::size_t>(x0) +
+                        static_cast<std::size_t>(w) *
+                            static_cast<std::size_t>(y0)])))
+            return false;
+    }
+    return true;
+}
+
 void GameWorld::set_floor_count(int count)
 {
     if (count < 1)

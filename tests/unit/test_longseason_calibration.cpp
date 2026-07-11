@@ -87,10 +87,20 @@ struct CurvePin
 // where they stand, so multi-floor scen11 runs hotter (6 -> 5 across the
 // three seeds) while scen10 actually eased (measured min 7; its pin keeps
 // the older minimum). Single-floor levels re-measured identical again.)
+// (Recalibrated 2026-07-10 for the forest-pathing wave — the SINGLE-floor
+// un-gating of the A* no-corner-cut + alignment assist, the shove
+// command-theft probe, and the guard facing gate (see
+// docs/GAMEPLAY_FIXES_FROM_CLASSIC.md): enemy packs that used to wedge on
+// corners and allied columns now arrive and fight on every level, so the
+// brawl levels got hotter for the pessimistic stand-in crew. Re-measured
+// minima across seeds {42, 1337, 2025}: 8: 8->3 (the summer line's flank
+// now closes), 10: 4->3, 12: 8->7. All other levels re-measured at or
+// above their pinned floors. Re-sweep the win/hold gates with
+// scripts/longseason_playtest.sh before the next balance pass.)
 constexpr CurvePin kCurve[] = {
     {1, 1, 8},  {2, 1, 6},  {3, 2, 7},  {4, 2, 7},  {5, 3, 5},
-    {6, 3, 7},  {7, 4, 6},  {8, 4, 8},  {9, 5, 7},  {10, 5, 4},
-    {11, 5, 5}, {12, 6, 8}, {13, 6, 4}, {14, 7, 7}, {15, 7, 8},
+    {6, 3, 7},  {7, 4, 6},  {8, 4, 3},  {9, 5, 7},  {10, 5, 3},
+    {11, 5, 5}, {12, 6, 7}, {13, 6, 4}, {14, 7, 7}, {15, 7, 8},
     {16, 7, 8}, {17, 8, 7}, {18, 8, 0}, {19, 8, 8},
 };
 
