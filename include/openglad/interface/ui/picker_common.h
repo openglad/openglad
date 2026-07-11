@@ -388,6 +388,9 @@ public:
     //  - Can't modify level if any stat increased above original
     //  - Stats clamped to not go below original
     //  - Level decrease clamped to original level
+    // Both editors (and accept()) first self-heal via resync_if_promoted()
+    // so an external promotion is never clamped/copied against stale
+    // cross-family stats (issue #133).
     enum class Stat { Strength, Dexterity, Constitution, Intelligence, Armor, Level };
     void increase_stat(Stat stat, int amount = 1);
     void decrease_stat(Stat stat, int amount = 1);
@@ -404,7 +407,9 @@ public:
     // Training never edits family, so a family mismatch always means an
     // external promotion; without the resync the stale working copy hides
     // the promotion on screen and accept() statscopy()s the old family
-    // back over it. Returns true if the working copy was reloaded.
+    // back over it. increase_stat/decrease_stat/accept() also call this
+    // internally as a self-heal. Returns true if the working copy was
+    // reloaded.
     bool resync_if_promoted();
 
     // State queries (for rendering)

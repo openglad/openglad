@@ -144,6 +144,50 @@ TEST(SaveLoadTeam, save_team_then_load) {
 
 
 
+// Issue #133 follow-through: a promoted (mage -> archmage) character must
+// round-trip through the on-disk save format with the upgraded family AND the
+// post-promotion stats intact.
+TEST(SaveLoadTeam, promoted_archmage_round_trips_through_save) {
+    auto& save_data = og::runtime::current_session->myscreen_->save_data;
+    save_data.reset();
+    save_data.numplayers = 1;
+    save_data.current_campaign = "org.openglad.gladiator";
+
+    auto mage = std::make_unique<guy>(FAMILY_MAGE);
+    mage->name = "PROMOTEME";
+    mage->upgrade_to_level(6);
+    // Promote exactly as create_detail_menu's promote button does it:
+    // upgrade_to_level(new_level) first, then flip the family.
+    mage->upgrade_to_level(1);
+    mage->family = FAMILY_ARCHMAGE;
+    const short expect_str = mage->strength;
+    const short expect_int = mage->intelligence;
+    const short expect_level = mage->level;
+
+    save_data.team_list[0] = std::move(mage);
+    save_data.team_size = 1;
+
+    ASSERT_TRUE(save_data.save("save6")) << "save should succeed";
+    save_data.reset();
+    ASSERT_EQ(0, static_cast<int>(save_data.team_size));
+
+    ASSERT_TRUE(save_data.load("save6")) << "load should succeed";
+    ASSERT_EQ(1, static_cast<int>(save_data.team_size));
+    ASSERT_TRUE(save_data.team_list[0] != nullptr);
+    EXPECT_STREQ("PROMOTEME", save_data.team_list[0]->name.c_str());
+    EXPECT_EQ(FAMILY_ARCHMAGE, static_cast<int>(save_data.team_list[0]->family))
+        << "the upgraded class must survive the save/load round trip";
+    EXPECT_EQ(static_cast<int>(expect_level),
+              static_cast<int>(save_data.team_list[0]->level));
+    EXPECT_EQ(static_cast<int>(expect_str),
+              static_cast<int>(save_data.team_list[0]->strength))
+        << "post-promotion stats must survive the round trip";
+    EXPECT_EQ(static_cast<int>(expect_int),
+              static_cast<int>(save_data.team_list[0]->intelligence));
+
+    save_data.reset();
+}
+
 // Test: the networked "as if played alone" per-player merge save.
 //
 // SaveData::merge_owned_guys_from must write progress back ONLY for characters

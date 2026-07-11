@@ -89,6 +89,26 @@ short score_panel(screen* s, short do_it);
 void draw_percentage_bar(Sint32 left, Sint32 top, unsigned char somecolor,
                          short somelength, screen* s);
 
+// Scared/fleeing countdown source: an external fright — the ghost's SCARE
+// special or a shove — force-queues a COMMAND_WALK the walker must run off
+// before the player regains control (living::act consumes queued commands
+// before the ACT_CONTROL branch). Player-controlled walkers never queue
+// their own commands, so a front walk command IS the fleeing state, and its
+// commandcount is the sim ticks left until the player is back in charge.
+// Read-only render-side probe. Non-static for the HUD tests.
+int hud_scared_flee_ticks(walker* viewer)
+{
+    if (viewer == nullptr || viewer->dead())
+        return 0;
+    statistics* const st = viewer->stats();
+    if (st == nullptr || st->commands.empty())
+        return 0;
+    const command& front = st->commands.front();
+    if (front.commandtype != COMMAND_WALK)
+        return 0;
+    return front.commandcount > 0 ? static_cast<int>(front.commandcount) : 0;
+}
+
 void new_draw_value_bar(Sint32 left, Sint32 top,
                         walker* control, short mode, screen* s)
 {
@@ -412,6 +432,23 @@ short new_score_panel(screen* s, short /*do_it*/)
                     break;
             }
 
+            // Scared/fleeing countdown: while a fright (the ghost's scare, a
+            // shove) has force-queued a walk this walker must run off, the
+            // player has no control — say so instead of feeling broken, with
+            // the seconds left at the 12 Hz sim rate. Drawn just below the
+            // HP/MP rows (tm+10/tm+18); disappears the tick the queue drains.
+            const int scared_ticks = hud_scared_flee_ticks(control);
+            if (scared_ticks > 0)
+            {
+                const int scared_seconds = (scared_ticks + 11) / 12;
+                message = std::format("SCARED: {}s", scared_seconds);
+                mytext.write_xy(lm+2, tm+28, message.c_str(),
+                                static_cast<unsigned char>(RED),
+                                static_cast<short>(1));
+                TRACE("hud", "scared ticks=%d secs=%d",
+                      scared_ticks, scared_seconds);
+            }
+
             if (s->viewob[players]->prefs[PREF_SCORE] == PREF_SCORE_ON)
             {
                 int special_offset = -24;
@@ -466,7 +503,16 @@ short new_score_panel(screen* s, short /*do_it*/)
                 else
                     message = std::format("SPC: {}", s->special_name[fam][spc]);
 
-                if (control->stats()->magicpoints() >= control->stats()->special_cost(spc))
+                // Disabled-special signifier: a walker whose specials are
+                // switched off (the level's NPC flag) can NEVER fire the
+                // listed special, no matter its MP — grey the line out so it
+                // reads as unavailable rather than merely unaffordable (RED).
+                if (control->specials_disabled())
+                {
+                    mytext.write_xy(lm+2, special_y, message.c_str(), static_cast<unsigned char>(GREY), static_cast<short>(1));
+                    TRACE("hud", "spc_disabled fam=%d spc=%d", fam, spc);
+                }
+                else if (control->stats()->magicpoints() >= control->stats()->special_cost(spc))
                     mytext.write_xy(lm+2, special_y, message.c_str(), text_color, static_cast<short>(1));
                 else
                     mytext.write_xy(lm+2, special_y, message.c_str(), static_cast<unsigned char>(RED), static_cast<short>(1));
@@ -475,7 +521,9 @@ short new_score_panel(screen* s, short /*do_it*/)
                 if (s->alternate_name[fam][spc] != "NONE")
                 {
                     message = std::format("ALT: {}", s->alternate_name[fam][spc]);
-                    if (control->stats()->magicpoints() >= control->stats()->special_cost(spc))
+                    if (control->specials_disabled())
+                        mytext.write_xy(lm+2, bm + special_offset + 8, message.c_str(), static_cast<unsigned char>(GREY), static_cast<short>(1));
+                    else if (control->stats()->magicpoints() >= control->stats()->special_cost(spc))
                         mytext.write_xy(lm+2, bm + special_offset + 8, message.c_str(), text_color, static_cast<short>(1));
                     else
                         mytext.write_xy(lm+2, bm + special_offset + 8, message.c_str(), static_cast<unsigned char>(RED), static_cast<short>(1));

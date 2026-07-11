@@ -1906,6 +1906,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/test_level_editor_helpers.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_help_smoke.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_input_keybinds.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_input_direction_grace.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_pathing.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_external_yaml_more.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_external_physfs_ops.cpp
@@ -2222,6 +2223,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
 
         og_add_test_group(og_test_input FILES
             test_input.cpp
+            test_input_direction_grace.cpp
             test_input_event_dispatch.cpp
             test_input_joystick.cpp
             test_input_keybinds.cpp

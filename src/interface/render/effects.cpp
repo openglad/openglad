@@ -412,6 +412,55 @@ inline constexpr int kDustDropStart = 10; // specks appear this far above wy
 inline constexpr unsigned char kDustColor = 22; // static mid-grey (120,120,120)
 inline constexpr float kDustMoveSq = 0.25f; // moved > 0.5px since last tick
 
+// ---- Falling cue (render-only air-fall transition) ----
+// The sim resolves an air fall INSTANTLY (walker::apply_z_motion:
+// change_floor + setxy in one tick), which on screen reads as a teleport.
+// This cue is pure presentation on top of that: a per-frame floor tracker
+// (its own store, beside the position history) notices a Living entity's
+// floor DROPPING between consecutive render frames, and — unless the old
+// spot was a Z-stair tile (a deliberate descent) or the entity landed far
+// away (a cross-floor teleport, beyond the sim's 4-cell A5 landing nudge) —
+// plays a short smear: a grey streak sliding down-screen from "above the
+// hole" to the landing feet, finished by an expanding landing dust puff
+// (the ripple ring tables + the dust grey, no new primitives). Entirely
+// deterministic from the effects frame tick; the sim never changes.
+inline constexpr std::uint32_t kFallCueFrames = 8;
+inline constexpr Sint32 kFallCueDropPx = 24;      // smear starts this far up
+inline constexpr Sint32 kFallCueStreakLen = 14;   // px of fading tail
+inline constexpr int kFallCueAlphaHead = 150;
+inline constexpr int kFallCueAlphaStep = 9;
+inline constexpr std::uint32_t kFallPuffStartAge = 5; // puff on ages 5..7
+inline constexpr int kFallPuffAlphaTop = 110;
+inline constexpr int kFallPuffAlphaStep = 30;
+// Landing farther than the A5 nudge radius (4 cells) + a cell of slack from
+// the hole is no fall — walker::teleport can change floors too.
+inline constexpr float kFallCueMaxNudgePx = 5.0f * GRID_SIZE;
+
+struct FloorTrack
+{
+	short floor = 0;
+	float x = 0.0f;
+	float y = 0.0f;
+	std::uint32_t tick = 0;
+};
+
+struct FallCue
+{
+	std::uint32_t start_tick = 0;
+	short to_floor = 0;
+	float hole_x = 0.0f;  // entity top-left when it fell through (world px)
+	float hole_y = 0.0f;
+	float land_x = 0.0f;  // entity top-left where it landed (world px)
+	float land_y = 0.0f;
+	Sint32 size_x = 0;
+	Sint32 size_y = 0;
+};
+
+std::unordered_map<std::uint32_t, FloorTrack> floor_track_store;
+std::unordered_map<std::uint32_t, FallCue> fall_cues;
+bool fall_track_ran = false;
+std::uint32_t fall_track_tick = 0;
+
 // Push the walker's visual position into the render store for this frame
 // (idempotent per tick) and report whether it moved more than half a pixel
 // since the previous frame. Shared motion gate for dust and marsh ripples.
@@ -783,6 +832,22 @@ void effects_advance_frame()
 		else
 			++it;
 	}
+	// Same for the fall tracker (entities gone from the world), and expired
+	// falling cues (their smear + puff have fully played out).
+	for (auto it = floor_track_store.begin(); it != floor_track_store.end();)
+	{
+		if (frame_tick - it->second.tick > kStoreMaxAge)
+			it = floor_track_store.erase(it);
+		else
+			++it;
+	}
+	for (auto it = fall_cues.begin(); it != fall_cues.end();)
+	{
+		if (frame_tick - it->second.start_tick >= kFallCueFrames)
+			it = fall_cues.erase(it);
+		else
+			++it;
+	}
 }
 
 bool draw_walker_trail(walker& w, viewscreen* vs)
@@ -884,6 +949,153 @@ bool draw_walker_dust(walker& w, viewscreen* vs)
 				dest->pointb(x, y, kDustColor, a);
 				drew = true;
 			}
+	}
+	return drew;
+}
+
+void effects_track_air_falls(GameWorld& world)
+{
+	if (fall_track_ran && fall_track_tick == frame_tick)
+		return; // once per frame: every viewport must see the same cues
+	fall_track_ran = true;
+	fall_track_tick = frame_tick;
+
+	for (auto& uptr : world.oblist)
+	{
+		walker* const w = uptr.get();
+		if (w == nullptr || w->dead() || w->dormant() ||
+		    w->query_order() != Order::Living)
+			continue;
+		const std::uint32_t id = w->entity_id();
+		if (id == 0)
+			continue;
+		const short f = w->floor();
+		const float wx = static_cast<float>(w->xpos());
+		const float wy = static_cast<float>(w->ypos());
+
+		auto it = floor_track_store.find(id);
+		if (it == floor_track_store.end())
+		{
+			floor_track_store.emplace(id, FloorTrack{f, wx, wy, frame_tick});
+			continue; // first sighting: baseline only, never a cue
+		}
+		FloorTrack& prev = it->second;
+		// A floor DROP between consecutive frames (a stale track means the
+		// entity was untracked meanwhile — a level load, not a fall).
+		if (f < prev.floor && frame_tick - prev.tick <= 2)
+		{
+			// Not a Z-stair descent: the descender relocates IN PLACE from a
+			// stair tile, so its previous center cell smooths to TYPE_ZSTAIRS.
+			// (An air faller's previous cell is the hole or the walk tile
+			// right before it — never a stair.) And not a teleport: air falls
+			// land straight down or within the sim's 4-cell landing nudge.
+			smoother& sm = world.smoother_for_floor(prev.floor);
+			const std::int32_t cx =
+			    (static_cast<std::int32_t>(prev.x) + w->sizex() / 2) /
+			    GRID_SIZE;
+			const std::int32_t cy =
+			    (static_cast<std::int32_t>(prev.y) + w->sizey() / 2) /
+			    GRID_SIZE;
+			const bool from_stair = sm.query_genre_x_y(cx, cy) == TYPE_ZSTAIRS;
+			const bool near_hole =
+			    wx - prev.x <= kFallCueMaxNudgePx &&
+			    prev.x - wx <= kFallCueMaxNudgePx &&
+			    wy - prev.y <= kFallCueMaxNudgePx &&
+			    prev.y - wy <= kFallCueMaxNudgePx;
+			if (!from_stair && near_hole)
+			{
+				FallCue& cue = fall_cues[id];
+				cue.start_tick = frame_tick;
+				cue.to_floor = f;
+				cue.hole_x = prev.x;
+				cue.hole_y = prev.y;
+				cue.land_x = wx;
+				cue.land_y = wy;
+				cue.size_x = w->sizex();
+				cue.size_y = w->sizey();
+				TRACE("effects", "fall_cue start id=%u from=%d to=%d",
+				      id, static_cast<int>(prev.floor), static_cast<int>(f));
+			}
+		}
+		prev = {f, wx, wy, frame_tick};
+	}
+}
+
+bool draw_fall_cues(viewscreen* vs, int floor)
+{
+	if (vs == nullptr || fall_cues.empty())
+		return false;
+	if (!ripple_rings_ready)
+		generate_ripple_rings();
+
+	screen* dest = og::runtime::current_session->myscreen_;
+	bool drew = false;
+	for (const auto& [id, cue] : fall_cues)
+	{
+		(void)id;
+		if (static_cast<int>(cue.to_floor) != floor)
+			continue;
+		const std::uint32_t age = frame_tick - cue.start_tick;
+		if (age >= kFallCueFrames)
+			continue; // expired; effects_advance_frame prunes it
+
+		auto plot2 = [&](Sint32 sx, Sint32 sy, unsigned char alpha)
+		{
+			for (Sint32 y = sy; y < sy + 2; y++)
+				for (Sint32 x = sx; x < sx + 2; x++)
+				{
+					if (x < vs->xloc || x >= vs->endx ||
+					    y < vs->yloc || y >= vs->endy)
+						continue;
+					dest->pointb(x, y, kDustColor, alpha);
+					drew = true;
+				}
+		};
+
+		// Motion smear: the streak head slides from kFallCueDropPx above the
+		// hole down to the landing feet across the cue, x lerped hole ->
+		// landing (the A5 nudge can displace the landing sideways), with a
+		// fading tail trailing UP toward where it fell from.
+		const float hole_cx =
+		    cue.hole_x + static_cast<float>(cue.size_x) / 2.0f;
+		const float land_cx =
+		    cue.land_x + static_cast<float>(cue.size_x) / 2.0f;
+		const Sint32 feet_wy =
+		    static_cast<Sint32>(cue.land_y) + cue.size_y;
+		const Sint32 step = static_cast<Sint32>(age) + 1; // 1..kFallCueFrames
+		const Sint32 head_wy = feet_wy - kFallCueDropPx +
+		    step * kFallCueDropPx / static_cast<Sint32>(kFallCueFrames);
+		const Sint32 head_wx = static_cast<Sint32>(
+		    hole_cx + (land_cx - hole_cx) * static_cast<float>(step) /
+		        static_cast<float>(kFallCueFrames));
+		for (Sint32 t = 0; t < kFallCueStreakLen; t++)
+		{
+			const int a = kFallCueAlphaHead - static_cast<int>(t) *
+			    kFallCueAlphaStep;
+			if (a <= 0)
+				break;
+			plot2(head_wx - 1 - vs->topx + vs->xloc,
+			      head_wy - t - vs->topy + vs->yloc,
+			      static_cast<unsigned char>(a));
+		}
+
+		// Landing dust puff: an expanding grey ring (the ripple ellipse
+		// tables, 2x2 blocks like the dust specks so it survives the dark
+		// overhang-shadowed ground) around the feet over the last three
+		// cue frames.
+		if (age >= kFallPuffStartAge)
+		{
+			const int ridx = static_cast<int>(age - kFallPuffStartAge); // 0..2
+			const int rx = 4 + 2 * ridx; // 4, 6, 8: inside the ring tables
+			const int a = kFallPuffAlphaTop - ridx * kFallPuffAlphaStep;
+			const Sint32 pcx = static_cast<Sint32>(land_cx) - vs->topx +
+			    vs->xloc;
+			const Sint32 pcy = feet_wy - vs->topy + vs->yloc;
+			const auto& points =
+			    ripple_rings[static_cast<std::size_t>(rx - kRippleMinRx)];
+			for (const auto& [dx, dy] : points)
+				plot2(pcx + dx, pcy + dy, static_cast<unsigned char>(a));
+		}
 	}
 	return drew;
 }
@@ -1162,6 +1374,10 @@ void effects_reset_for_testing()
 	glow_kernel_ready = false;
 	outdoor_memo_valid = false;
 	render_store.clear();
+	floor_track_store.clear();
+	fall_cues.clear();
+	fall_track_ran = false;
+	fall_track_tick = 0;
 }
 
 std::size_t effects_store_size()
@@ -1173,5 +1389,14 @@ std::size_t effects_store_depth(std::uint32_t entity_id)
 {
 	const auto it = render_store.find(entity_id);
 	return it == render_store.end() ? 0 : it->second.count;
+}
+
+std::uint32_t effects_fall_cue_frames_left(std::uint32_t entity_id)
+{
+	const auto it = fall_cues.find(entity_id);
+	if (it == fall_cues.end())
+		return 0;
+	const std::uint32_t age = frame_tick - it->second.start_tick;
+	return age >= kFallCueFrames ? 0 : kFallCueFrames - age;
 }
 #endif

@@ -1021,7 +1021,16 @@ walker* GameWorld::find_near_foe(walker* ob)
                     return find_far_foe(ob);
             }
 
-            std::list<walker*>& ls = myobmap->obmap_get_list(targx, targy);
+            // Probe the SEARCHER's floor. obmap_get_list's floor parameter
+            // defaults to 0, so this spiral used to scan the ground floor's
+            // piles no matter where `ob` stood: upper-floor walkers were
+            // blind to foes standing beside them and latched whatever was on
+            // the ground floor beneath their 2D position instead. Cross-floor
+            // acquisition stays available via find_far_foe (the floor-blind
+            // full-list scan). ob->floor()==0 on single-floor levels, so
+            // legacy behavior is byte-identical.
+            std::list<walker*>& ls =
+                myobmap->obmap_get_list(targx, targy, ob->floor());
 	            for (auto it = ls.begin(); it != ls.end(); )
             {
                 walker* w = *it;

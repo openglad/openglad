@@ -157,6 +157,44 @@ public:
                 {
                     continue;
                 }
+                // No corner cutting (2026-07, deliberate fix; see
+                // docs/GAMEPLAY_FIXES_FROM_CLASSIC.md). A full-cell body can
+                // only make a diagonal cell transition when BOTH flanking
+                // orthogonal cells are open: its swept box necessarily
+                // overlaps them, so a diagonal past a blocked flank is
+                // pixel-impassable at EVERY offset. The classic graph emitted
+                // such hops anyway; when the map pinched (lava + scree
+                // boulder in an X around the hop) the follower seized on an
+                // edge it could never take — permanently (the L24 terrace
+                // wedge). Flanks impose the same rules as targets: grid
+                // passability plus the non-flyer air skip (a body swept over
+                // an air flank can clip its center into the hole and fall).
+                // GATED on multifloor so single-floor A* expansion stays
+                // byte-identical for the parity goldens; single-floor levels
+                // keep the (rare) classic corner-cut behavior deliberately.
+                if (multifloor && i != 0 && j != 0)
+                {
+                    bool flanks_open = true;
+                    const int flank[2][2] = {{x1 + i * GRID_SIZE, y1},
+                                             {x1, y1 + j * GRID_SIZE}};
+                    for (const auto& fc : flank)
+                    {
+                        if (!current_game->world->query_grid_passable(
+                                static_cast<float>(fc[0]),
+                                static_cast<float>(fc[1]), aw, f) ||
+                            (nonflyer &&
+                             current_game->world->smoother_for_floor(f)
+                                     .query_genre_x_y(fc[0] / GRID_SIZE,
+                                                      fc[1] / GRID_SIZE) ==
+                                 TYPE_AIR))
+                        {
+                            flanks_open = false;
+                            break;
+                        }
+                    }
+                    if (!flanks_open)
+                        continue;
+                }
                 if (current_game->world->myobmap
                              ->obmap_get_list(static_cast<short>(adj_x),
                                               static_cast<short>(adj_y), f)

@@ -720,26 +720,149 @@ TEST(InputKeybinds, lookup_key_is_client_side_only_and_not_an_input_action)
     SUCCEED();
 }
 
-TEST(InputKeybinds, lookup_key_defaults_to_v_for_p1_and_unbound_for_p2_to_p4)
+TEST(InputKeybinds, lookup_key_defaults_per_player_per_mode)
 {
     FullControlSnapshotGuard guard;
     reset_default_player_controls();
 
-    for (const int mode : {static_cast<int>(ControlDirectionMode::FourDirection),
-                           static_cast<int>(ControlDirectionMode::EightDirection)})
-    {
-        ASSERT_EQ(static_cast<int>(SDLK_v),
-                  get_player_key_binding_for_mode(0, mode, KEY_LOOKUP))
-            << "P1 look-up should default to V in mode " << mode;
-        for (int p = 1; p < 4; ++p)
-            ASSERT_EQ(static_cast<int>(SDLK_UNKNOWN),
-                      get_player_key_binding_for_mode(p, mode, KEY_LOOKUP))
-                << "P" << (p + 1) << " look-up should default unbound in mode "
-                << mode;
-    }
-    ASSERT_EQ(static_cast<int>(SDLK_v),
-              og::runtime::current_session->player_keys_[0][KEY_LOOKUP])
+    constexpr int kFour = static_cast<int>(ControlDirectionMode::FourDirection);
+    constexpr int kEight = static_cast<int>(ControlDirectionMode::EightDirection);
+
+    // P1: V in both modes. P2: Right Ctrl in both modes (its arrow layout is
+    // identical across modes). P3: P in both modes. P4: B in 4-direction only
+    // (its own 8-direction cluster claims 'b' for DOWN, so 8-dir is unbound).
+    ASSERT_EQ(static_cast<int>(SDLK_v), get_player_key_binding_for_mode(0, kFour, KEY_LOOKUP))
+        << "P1 4-dir look-up should default to V";
+    ASSERT_EQ(static_cast<int>(SDLK_v), get_player_key_binding_for_mode(0, kEight, KEY_LOOKUP))
+        << "P1 8-dir look-up should default to V";
+    ASSERT_EQ(static_cast<int>(SDLK_RCTRL), get_player_key_binding_for_mode(1, kFour, KEY_LOOKUP))
+        << "P2 4-dir look-up should default to Right Ctrl";
+    ASSERT_EQ(static_cast<int>(SDLK_RCTRL), get_player_key_binding_for_mode(1, kEight, KEY_LOOKUP))
+        << "P2 8-dir look-up should default to Right Ctrl";
+    ASSERT_EQ(static_cast<int>(SDLK_p), get_player_key_binding_for_mode(2, kFour, KEY_LOOKUP))
+        << "P3 4-dir look-up should default to P";
+    ASSERT_EQ(static_cast<int>(SDLK_p), get_player_key_binding_for_mode(2, kEight, KEY_LOOKUP))
+        << "P3 8-dir look-up should default to P";
+    ASSERT_EQ(static_cast<int>(SDLK_b), get_player_key_binding_for_mode(3, kFour, KEY_LOOKUP))
+        << "P4 4-dir look-up should default to B";
+    ASSERT_EQ(static_cast<int>(SDLK_UNKNOWN), get_player_key_binding_for_mode(3, kEight, KEY_LOOKUP))
+        << "P4 8-dir look-up should default unbound (own cluster uses B for DOWN)";
+
+    // The default control mode is 4-direction; the active keymap must carry
+    // each player's 4-direction look-up default.
+    ASSERT_EQ(static_cast<int>(SDLK_v), og::runtime::current_session->player_keys_[0][KEY_LOOKUP])
         << "the active keymap should carry the P1 default";
+    ASSERT_EQ(static_cast<int>(SDLK_RCTRL), og::runtime::current_session->player_keys_[1][KEY_LOOKUP])
+        << "the active keymap should carry the P2 default";
+    ASSERT_EQ(static_cast<int>(SDLK_p), og::runtime::current_session->player_keys_[2][KEY_LOOKUP])
+        << "the active keymap should carry the P3 default";
+    ASSERT_EQ(static_cast<int>(SDLK_b), og::runtime::current_session->player_keys_[3][KEY_LOOKUP])
+        << "the active keymap should carry the P4 default";
+}
+
+
+TEST(InputKeybinds, yell_key_defaults_per_player_per_mode)
+{
+    FullControlSnapshotGuard guard;
+    reset_default_player_controls();
+
+    constexpr int kFour = static_cast<int>(ControlDirectionMode::FourDirection);
+    constexpr int kEight = static_cast<int>(ControlDirectionMode::EightDirection);
+
+    constexpr int expected_four[4] = {SDLK_e, SDLK_BACKSLASH, SDLK_u, SDLK_y};
+    constexpr int expected_eight[4] = {SDLK_s, SDLK_BACKSLASH, SDLK_k, SDLK_g};
+    for (int p = 0; p < 4; ++p)
+    {
+        ASSERT_EQ(expected_four[p], get_player_key_binding_for_mode(p, kFour, KEY_YELL))
+            << "P" << (p + 1) << " 4-dir yell default";
+        ASSERT_EQ(expected_eight[p], get_player_key_binding_for_mode(p, kEight, KEY_YELL))
+            << "P" << (p + 1) << " 8-dir yell default";
+        ASSERT_EQ(expected_four[p], og::runtime::current_session->player_keys_[p][KEY_YELL])
+            << "P" << (p + 1) << " active keymap should carry the 4-dir yell default";
+    }
+}
+
+
+TEST(InputKeybinds, lookup_key_defaults_do_not_collide_with_any_player_mode)
+{
+    // All four players share one physical keyboard and control modes are
+    // per-player, so a look-up default must not appear anywhere else in ANY
+    // player's keymap in EITHER mode. Sole grandfathered exception: P1's 'v'
+    // overlaps P4's 8-direction DOWN-LEFT 'v' (pre-existing, documented in
+    // input_state.cpp). P4's own 4-dir 'b' vs its own 8-dir DOWN 'b' is not
+    // a collision — a player's two mode keymaps are never active together.
+    FullControlSnapshotGuard guard;
+    reset_default_player_controls();
+
+    constexpr int kModes[2] = {static_cast<int>(ControlDirectionMode::FourDirection),
+                               static_cast<int>(ControlDirectionMode::EightDirection)};
+    for (int p = 0; p < 4; ++p)
+    {
+        for (const int lookup_mode : kModes)
+        {
+            const int lookup = get_player_key_binding_for_mode(p, lookup_mode, KEY_LOOKUP);
+            if (lookup == SDLK_UNKNOWN)
+                continue;
+            for (int q = 0; q < 4; ++q)
+            {
+                for (const int other_mode : kModes)
+                {
+                    if (q == p && other_mode != lookup_mode)
+                        continue; // own other-mode map is never co-active
+                    for (int k = 0; k < NUM_KEYS; ++k)
+                    {
+                        if (q == p && k == KEY_LOOKUP)
+                            continue; // the binding itself
+                        if (p == 0 && q == 3 && k == KEY_DOWN_LEFT &&
+                            other_mode == static_cast<int>(ControlDirectionMode::EightDirection))
+                            continue; // grandfathered P1 'v' vs P4 8-dir down-left
+                        ASSERT_NE(lookup, get_player_key_binding_for_mode(q, other_mode, k))
+                            << "P" << (p + 1) << " look-up default (mode " << lookup_mode
+                            << ") collides with P" << (q + 1) << " key " << k
+                            << " in mode " << other_mode;
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+TEST(InputKeybinds, lookup_key_defaults_survive_cfg_roundtrip_for_all_players)
+{
+    FullControlSnapshotGuard guard;
+    cfg_store config;
+    config.load_settings();
+
+    reset_default_player_controls();
+    save_player_control_settings_to_cfg(config);
+
+    // Scribble over every look-up slot, then reload: the saved defaults must
+    // come back for every player in both mode keymaps.
+    for (int p = 0; p < 4; ++p)
+    {
+        set_player_control_mode(p, static_cast<int>(ControlDirectionMode::FourDirection));
+        set_player_key_binding(p, KEY_LOOKUP, SDLK_F9);
+        set_player_control_mode(p, static_cast<int>(ControlDirectionMode::EightDirection));
+        set_player_key_binding(p, KEY_LOOKUP, SDLK_F10);
+        set_player_control_mode(p, static_cast<int>(ControlDirectionMode::FourDirection));
+    }
+
+    load_player_control_settings_from_cfg(config);
+
+    constexpr int expected_four[4] = {SDLK_v, SDLK_RCTRL, SDLK_p, SDLK_b};
+    constexpr int expected_eight[4] = {SDLK_v, SDLK_RCTRL, SDLK_p, SDLK_UNKNOWN};
+    for (int p = 0; p < 4; ++p)
+    {
+        ASSERT_EQ(expected_four[p],
+                  get_player_key_binding_for_mode(
+                      p, static_cast<int>(ControlDirectionMode::FourDirection), KEY_LOOKUP))
+            << "P" << (p + 1) << " 4-dir look-up should reload from config";
+        ASSERT_EQ(expected_eight[p],
+                  get_player_key_binding_for_mode(
+                      p, static_cast<int>(ControlDirectionMode::EightDirection), KEY_LOOKUP))
+            << "P" << (p + 1) << " 8-dir look-up should reload from config";
+    }
 }
 
 TEST(InputKeybinds, lookup_key_binding_persists_through_cfg_roundtrip)

@@ -1058,6 +1058,12 @@ void TrainSession::increase_stat(Stat stat, int amount)
     if (!working_)
         return;
 
+    // Self-heal before editing: if the real member was promoted (family
+    // changed) since the working copy was snapshotted, edit the fresh
+    // post-promotion stats. Editing the stale copy would clamp against
+    // cross-family values and "put the old stats back" (issue #133).
+    resync_if_promoted();
+
     const short delta = static_cast<short>(amount);
 
     if (stat == Stat::Level) {
@@ -1096,6 +1102,9 @@ void TrainSession::decrease_stat(Stat stat, int amount)
 {
     if (!working_)
         return;
+
+    // See increase_stat: never edit a working copy whose family went stale.
+    resync_if_promoted();
 
     const short delta = static_cast<short>(amount);
 
@@ -1147,6 +1156,12 @@ void TrainSession::set_team(int team_num)
 
 bool TrainSession::accept(bool force)
 {
+    // A family mismatch always means an external promotion (training never
+    // edits family). Never statscopy stale cross-family stats over the
+    // promoted member (bug A9 / issue #133) — resync first, which discards
+    // pending edits and turns this into a no-op accept of the promotion.
+    resync_if_promoted();
+
     guy* const original = original_member();
     if (!working_ || !original)
         return false;

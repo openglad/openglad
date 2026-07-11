@@ -1878,7 +1878,14 @@ void rebuild_obmap(GameWorld& world)
         {
             if (entry == nullptr)
                 continue;
-            if (!entry->ignore() && !entry->dead())
+            // Dormant (delayed-spawn) walkers survive reconciliation (see
+            // remove_missing_entities) but must stay OUT of the collision
+            // map until they wake: re-adding them here made not-yet-spawned
+            // foes collidable in every apply_snapshot-seeded world (the
+            // local transport shadow's server seed, mirrors, replays) —
+            // walking into their spawn cell triggered melee against an
+            // invisible body. set_dormant(false) re-registers them on wake.
+            if (!entry->ignore() && !entry->dead() && !entry->dormant())
                 world.myobmap->add(entry.get(), entry->xpos(), entry->ypos());
             else
                 world.myobmap->remove(entry.get());

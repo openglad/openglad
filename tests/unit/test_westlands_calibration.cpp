@@ -56,10 +56,29 @@ struct CurvePin
 // war/ambush levels where placed allies and delayed waves carry the fight
 // and the stand-in crew's own 600-tick survival is not the contract —
 // their gates live in the harness sweeps, not here.)
+// (Recalibrated 2026-07-10 for the B1/B2 stair fixes — the re-trigger
+// latch + blocked-arrival nudge, docs/z-axis-design.md: enemies that used
+// to bounce back down 6 ticks after climbing now COMMIT to floor
+// crossings, so the multi-floor levels 6, 7, 15 and 17 got genuinely
+// hotter for a fresh crew. New floors are the re-measured minima across
+// seeds {42, 1337, 2025}; every single-floor level re-measured identical,
+// as the floor_count>1 gate guarantees. The F4 win/hold contract on the
+// hotter levels should be re-swept with scripts/westlands_playtest.sh
+// before the next balance pass.)
+// (Re-pinned 2026-07 for the content batch that scaled the Ford (scen3,
+// 19 -> 39 foes) and Refuge (scen4, 23 -> 38 foes) waves up to the
+// briefings' flood, with the matching defense levers — the Ford's ally
+// camp 6 -> 7, the Refuge's porch ward + lvl-3 garden muster: the mixed
+// curve crew re-measured 8/8/8 and 7/8/8 — the act-1 ally rosters absorb
+// the first two beats, which is exactly why the waves had to grow.
+// Minima across the same three seeds; every other level re-measured
+// within its existing floor, including the war levels 13/15/16/17 whose
+// new NAMED captains rename existing posts and are sim-inert by
+// construction.)
 constexpr CurvePin kCurve[] = {
-    {1, 1, 8},  {2, 2, 8},  {3, 2, 7},  {4, 3, 7},  {5, 3, 7},  {6, 4, 7},
-    {7, 4, 4},  {8, 5, 4},  {9, 6, 0},  {10, 5, 0}, {11, 6, 5}, {12, 6, 0},
-    {13, 6, 0}, {14, 7, 7}, {15, 7, 2}, {16, 8, 3}, {17, 8, 5}, {19, 6, 6},
+    {1, 1, 8},  {2, 2, 8},  {3, 2, 8},  {4, 3, 7},  {5, 3, 7},  {6, 4, 6},
+    {7, 4, 1},  {8, 5, 4},  {9, 6, 0},  {10, 5, 0}, {11, 6, 5}, {12, 6, 0},
+    {13, 6, 0}, {14, 7, 7}, {15, 7, 1}, {16, 8, 3}, {17, 8, 4}, {19, 6, 6},
     {20, 7, 0}, {21, 7, 7}, {22, 8, 8}, {23, 8, 7}, {24, 8, 4}, {25, 9, 8},
     {26, 9, 8},
 };

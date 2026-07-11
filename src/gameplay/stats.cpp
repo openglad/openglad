@@ -1117,8 +1117,24 @@ bool statistics::walk_to_foe()
 	// floor-blind melee/direct chase that just runs under the target — nor
 	// abandon the chase when the 2D distance gets tiny (we still have to climb).
 	// Gated on floor_count()>1, so single-floor behavior is byte-identical.
-	const bool cross_floor =
-	    current_game->world->floor_count() > 1 &&
+	//
+	// EXCEPT flyers. A flyer never changes floors (apply_z_motion skips it and
+	// the pathing graph gives it no Z-stair edges), so a cross-floor foe is
+	// unreachable for it BY DESIGN. Routing a flyer through the cross-floor
+	// machinery (a) forced a stair-aware A* that had to exhaust every reachable
+	// cell before failing — re-run EVERY tick once the empty path forced the
+	// per-tick checks below — and (b) path_toward_stair then parked it ON a
+	// stair tile the Z-lift will never take it through, where it hovered
+	// pinned for the rest of the level (the Westlands L24 caldera-ghost
+	// wedge). A flyer keeps the classic floor-blind 2D chase instead: it
+	// shadows the foe from its own floor and engages whatever it meets there.
+	// Same flying predicate as apply_z_motion (permanent BIT_FLYING or
+	// transient flight ticks). Multifloor-gated, so single-floor levels are
+	// byte-identical.
+	const bool multifloor = current_game->world->floor_count() > 1;
+	const bool flyer = multifloor &&
+	    (query_bit_flags(BIT_FLYING) || controller_->flight_left() != 0);
+	const bool cross_floor = multifloor && !flyer &&
 	    foe->floor() != controller_->floor();
 
 	controller_->set_path_check_counter(controller_->path_check_counter() - 1);
@@ -1180,7 +1196,7 @@ bool statistics::walk_to_foe()
 					commands.front().commandcount = 0;
 			}
 		}
-		else
+		else if (!flyer || foe->floor() == controller_->floor())
         {
             controller_->find_path_to_foe();
             // Cross-floor foe whose exact cell A* cannot reach (sparse upper
@@ -1191,6 +1207,11 @@ bool statistics::walk_to_foe()
             if (cross_floor && controller_->path_to_foe.empty())
                 path_toward_stair(foe->floor());
         }
+        // else: flyer with a cross-floor foe. No stair-aware A* (it can only
+        // exhaust the map and fail: flyers get no stair edges) and no
+        // path_toward_stair (a stair can never lift a flyer). The path stays
+        // empty, so the direct_walk/right_walk fallbacks below shadow the
+        // foe's 2D position from our own floor — the classic chase.
 	} //end if do_check
 
     if(controller_->path_to_foe.size() > 0)

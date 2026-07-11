@@ -1837,26 +1837,34 @@ void walker::change_floor(short new_floor)
 		m->remove(this);
 	set_floor(new_floor);
 	set_worldz(0.0f);
-	if (m != nullptr && !ignore())
+	if (m != nullptr && !ignore() && !dormant()) // dormant: stay unregistered
 		m->add(this, xpos(), ypos());
 }
 
-// A5: deterministic landing nudge for air falls. When the spot directly below
-// a faller is blocked (wall top on the lower floor, or an occupant), probe
-// outward from the faller's centre cell in a FIXED ring-by-ring order
-// (row-major within each ring — no RNG, so replays and parity captures stay
-// deterministic) for the nearest clear cell on the target floor, out to
-// kFallNudgeRadius rings. Performs the floor change + nudge (set_floor before
-// setxy: the obmap is floor-keyed) and returns true when a cell is found.
+// A5/B2: deterministic arrival nudge for cross-floor landings. When the
+// aligned arrival spot on the target floor is blocked (wall top, or an
+// occupant), probe outward from the walker's centre cell in a FIXED
+// ring-by-ring order (row-major within each ring — no RNG, so replays and
+// parity captures stay deterministic) for the nearest clear cell on the
+// target floor, out to `radius` rings (A5 air falls use kFallNudgeRadius;
+// B2 blocked stair arrivals use the tighter kStairNudgeRadius). `avoid_air`
+// (stairs only) additionally skips PIX_AIR cells: air is grid-passable by
+// design, but a stair arrival nudged onto it would immediately fall back to
+// the source floor — an up-fall loop that defeats the ascent. Falls keep air
+// candidates (cascading further down is their normal behavior). Performs the
+// floor change + nudge (set_floor before setxy: the obmap is floor-keyed)
+// and returns true when a cell is found.
+inline constexpr std::int32_t kFallNudgeRadius = 4;
+inline constexpr std::int32_t kStairNudgeRadius = 2;
 static bool land_on_nearest_clear_cell(GameWorld& w, walker& faller,
                                        short target_floor,
-                                       std::int32_t cx, std::int32_t cy)
+                                       std::int32_t cx, std::int32_t cy,
+                                       std::int32_t radius, bool avoid_air)
 {
-	constexpr std::int32_t kFallNudgeRadius = 4;
 	const PixieData& g = w.grid_for_floor(target_floor);
 	if (!g.valid())
 		return false;
-	for (std::int32_t r = 0; r <= kFallNudgeRadius; ++r)
+	for (std::int32_t r = 0; r <= radius; ++r)
 	{
 		for (std::int32_t dy = -r; dy <= r; ++dy)
 		{
@@ -1867,6 +1875,8 @@ static bool land_on_nearest_clear_cell(GameWorld& w, walker& faller,
 				const std::int32_t nx = cx + dx;
 				const std::int32_t ny = cy + dy;
 				if (nx < 0 || ny < 0 || nx >= g.w || ny >= g.h)
+					continue;
+				if (avoid_air && g.data[nx + ny * g.w] == PIX_AIR)
 					continue;
 				const std::int32_t px = nx * GRID_SIZE;
 				const std::int32_t py = ny * GRID_SIZE;
@@ -1881,6 +1891,19 @@ static bool land_on_nearest_clear_cell(GameWorld& w, walker& faller,
 		}
 	}
 	return false;
+}
+
+// B1: arm the stair re-trigger latch at the walker's CURRENT centre cell —
+// called immediately after a stair transition moves the walker (aligned
+// arrival keeps the departure cell; a B2 nudge lands elsewhere, so the cell is
+// recomputed from the post-move position rather than assumed). See the
+// z_stair_latched_ field comment in walker.h for the persistence contract
+// (server-only transient, the z_cooldown_ precedent).
+void walker::latch_stair_arrival()
+{
+	z_stair_latched_ = true;
+	z_latch_cx_ = (xpos() + sizex() / 2) / GRID_SIZE;
+	z_latch_cy_ = (ypos() + sizey() / 2) / GRID_SIZE;
 }
 
 // Per-tick vertical handling for stacked floors: fall through "air" tiles to the
@@ -1910,12 +1933,27 @@ void walker::apply_z_motion()
 	smoother& sm = w->smoother_for_floor(floor());
 	const std::int32_t cx = (xpos() + sizex() / 2) / GRID_SIZE;
 	const std::int32_t cy = (ypos() + sizey() / 2) / GRID_SIZE;
+
+	// B1: the stair re-trigger latch clears the tick the walker's centre
+	// FULLY leaves the arrival cell — the same centre-cell criterion the
+	// stair trigger below uses, so latch and trigger can never disagree.
+	if (z_stair_latched_ && (cx != z_latch_cx_ || cy != z_latch_cy_))
+		z_stair_latched_ = false;
+
 	const std::int32_t genre = sm.query_genre_x_y(cx, cy);
 
 	// Z-stairs: relocate one floor up/down (vertically aligned). Flyers never
 	// change floors (per design).
 	if (genre == TYPE_ZSTAIRS && !flying)
 	{
+		// B1: freshly arrived — a stair transition lands you standing on the
+		// vertically-aligned PAIRED stair tile, which used to bounce you
+		// straight back once z_cooldown_ expired (even standing still, and
+		// any tiny in-cell movement re-triggered it). Latched: no re-trigger
+		// until the centre cell leaves the stair cell; stepping back on is a
+		// deliberate act and triggers normally.
+		if (z_stair_latched_)
+			return;
 		const std::int32_t tile = sm.query_x_y(cx, cy);
 		short target = floor();
 		if (tile == PIX_ZSTAIR_UP && (floor() + 1) < w->floor_count())
@@ -1924,14 +1962,29 @@ void walker::apply_z_motion()
 			target = static_cast<short>(floor() - 1);
 		if (target != floor())
 		{
-			// A2/A3/A4: the aligned landing spot on the target floor must
-			// be grid-passable and free of blocking entities, else the
-			// transition is DENIED — the walker stays on its current floor
-			// (free to walk off the stair) and re-probes after the same
-			// cooldown, taking the stair as soon as the far side clears.
+			// A2/A3/A4 + B2: the aligned landing spot on the target floor
+			// must be grid-passable and free of blocking entities. When it
+			// is blocked (e.g. a guard posted ON the paired stair tile), the
+			// walker is nudged to the nearest clear cell of the target floor
+			// within kStairNudgeRadius rings (deterministic spiral, passable
+			// + obmap-clear, no-eat — the same probe as the A5 fall nudge),
+			// so a blocker can no longer permanently seal a staircase. Only
+			// when NO clear cell exists within the radius is the transition
+			// DENIED — the walker stays on its current floor (free to walk
+			// off the stair) and re-probes after the cooldown, taking the
+			// stair as soon as the far side clears.
 			if (w->floor_landing_clear(this, static_cast<float>(xpos()),
 			                           static_cast<float>(ypos()), target))
+			{
 				change_floor(target);
+				latch_stair_arrival();
+			}
+			else if (land_on_nearest_clear_cell(*w, *this, target, cx, cy,
+			                                    kStairNudgeRadius,
+			                                    /*avoid_air=*/true))
+			{
+				latch_stair_arrival();
+			}
 			z_cooldown_ = 6;
 		}
 		return;
@@ -1951,7 +2004,9 @@ void walker::apply_z_motion()
 				change_floor(below);
 				z_cooldown_ = 2;
 			}
-			else if (land_on_nearest_clear_cell(*w, *this, below, cx, cy))
+			else if (land_on_nearest_clear_cell(*w, *this, below, cx, cy,
+			                                    kFallNudgeRadius,
+			                                    /*avoid_air=*/false))
 			{
 				// A5: straight down is a wall top / occupied — nudged to
 				// the nearest clear cell of the floor below instead of

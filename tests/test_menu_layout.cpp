@@ -1211,7 +1211,7 @@ TEST(MenuLayout, controls_summary_shows_look_up_binding)
     ASSERT_TRUE(summary.find("L:V") != std::string::npos)
         << "controls summary should show the look-up binding: " << summary;
 
-    // Unbound (the players 2-4 default) reads as "--", not an empty label.
+    // Unbound (the P4 8-direction default) reads as "--", not an empty label.
     set_player_key_binding(0, KEY_LOOKUP, SDLK_UNKNOWN);
     const std::string unbound = build_player_control_summary(0);
     ASSERT_TRUE(unbound.find("L:--") != std::string::npos)

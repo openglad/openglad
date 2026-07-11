@@ -187,8 +187,12 @@ const std::vector<ShippedLevel>& shipped_levels()
     static const std::vector<ShippedLevel> levels = {
         {1, "The Quiet Vale", 1, 60, 40, 0, 10, 1, 0, 9, 0, 2, 0, {2}},
         {2, "The Forest Road", 1, 90, 40, 5, 9, 1, 0, 30, 0, 11, 7, {3, 1}},
-        {3, "The Last Ford", 1, 70, 45, 4, 10, 7, 1, 19, 2, 14, 1, {4, 2}},
-        {4, "The Hidden Refuge", 2, 70, 50, 4, 10, 8, 0, 23, 2, 19, 1,
+        // (Content batch 2026-07: the Ford and Refuge waves scaled up to a
+        // real flood — the act-1 defenses carry a lvl-6 ally skeleton camp
+        // and lvl-9 door-wards respectively; counts moved 19->39 / 23->38,
+        // beat ticks and per-walker levels unchanged.)
+        {3, "The Last Ford", 1, 70, 45, 4, 10, 7, 1, 39, 2, 30, 1, {4, 2}},
+        {4, "The Hidden Refuge", 2, 70, 50, 4, 10, 9, 1, 38, 2, 32, 1,
          {5, 7, 3}},
         {5, "The High Pass", 1, 60, 60, 4, 10, 4, 0, 25, 1, 4, 1, {6, 4}},
         {6, "Under the Mountain", 3, 60, 60, 5, 28, 1, 0, 21, 1, 1, 0, {8, 9}},
@@ -792,10 +796,20 @@ TEST_F(WestlandsCampaignTest, named_cast_extras_round_trip)
         {21, "Sneak", FAMILY_THIEF, 2, 8, true, 0},
         {21, "The Lurker", FAMILY_SLIME, 2, 10, false, 0},
         // The grey one rides again: at dawn on the Wall, late at the finale.
+        // (The White Rider is the ARCHMAGE — the campaign's returned grey
+        // wizard, not a rank mage; both placements pin the family.)
         {15, "White Rider", FAMILY_ARCHMAGE, 0, 10, false, 500},
         {24, "White Rider", FAMILY_ARCHMAGE, 0, 10, false, 900},
         // The muster holds the plain from tick 0 (the briefing's promise).
         {24, "Ranger-King", FAMILY_SOLDIER, 0, 9, false, 0},
+        // The war levels' named orc captains (content batch 2026-07): each
+        // names the design doc's existing champion/vanguard post — same
+        // family, level and posture as the unnamed post it replaces, so
+        // every census and balance pin is untouched.
+        {13, "Herd-Reaver", FAMILY_BIG_ORC, 2, 8, false, 0},
+        {15, "Ram-Captain", FAMILY_BIG_ORC, 2, 6, false, 0},
+        {16, "Breach-Lord", FAMILY_BIG_ORC, 2, 8, false, 0},
+        {17, "Gate-Warden", FAMILY_ORC, 2, 8, false, 0},
     };
 
     for (const NamedPin& pin : kCast)
@@ -891,6 +905,84 @@ TEST_F(WestlandsCampaignTest, stairs_on_every_floor_boundary)
             }
             EXPECT_GE(pairs, 1) << "floor boundary " << f << "<->" << f + 1
                                 << " needs an aligned UP/DOWN stair pair";
+        }
+    }
+}
+
+// Stair-clearance audit (B2 tooling rule, docs/z-axis-design.md; mirrors
+// tools/westlands_mapgen's self-check): neither a stair-pair cell nor any of
+// its 4-neighborhood arrival cells, on EITHER floor of the pair, may hold an
+// ACT_GUARD post, a generator, or ground-blocking decor. An immobile blocker
+// there used to seal the staircase outright ("the stairs are blocked from
+// above so I can't ascend"); the engine's blocked-arrival nudge now rescues
+// it at runtime, but no shipped level may RELY on the nudge. Roaming livings
+// are fine (they move off; the nudge covers the transient).
+TEST_F(WestlandsCampaignTest, stair_cells_and_arrivals_clear_of_immobile_blockers)
+{
+    static constexpr int kArrivalOffsets[5][2] = {
+        {0, 0}, {0, -1}, {-1, 0}, {1, 0}, {0, 1}};
+    for (const ShippedLevel& expected : shipped_levels())
+    {
+        if (expected.floors < 2)
+            continue;
+        SCOPED_TRACE("scen" + std::to_string(expected.id));
+        LoadedWestlandsLevel fx(expected.id);
+        ASSERT_TRUE(fx.loaded);
+        GameWorld& world = fx.world();
+
+        auto audit_arrival_cell = [&](int pf, int nx, int ny)
+        {
+            const PixieData& g = world.grid_for_floor(pf);
+            if (!g.valid() || nx < 0 || ny < 0 || nx >= g.w || ny >= g.h)
+                return;
+            const PixieData& dec = world.decor_for_floor(pf);
+            if (dec.valid() && nx < dec.w && ny < dec.h)
+            {
+                const unsigned char d = dec.data[nx + ny * dec.w];
+                EXPECT_FALSE(
+                    d < DECOR_MAX &&
+                    kDecorRegistry[d].pass == DecorPassability::BlocksGround)
+                    << "blocking decor " << static_cast<int>(d)
+                    << " on stair cell/arrival (" << nx << ", " << ny
+                    << ") floor " << pf;
+            }
+            const int x0 = nx * GRID_SIZE;
+            const int y0 = ny * GRID_SIZE;
+            for (const auto& uptr : world.oblist)
+            {
+                walker* ob = uptr.get();
+                if (ob == nullptr || ob->floor() != pf)
+                    continue;
+                const Order order = ob->query_order();
+                const bool immobile_post =
+                    order == Order::Generator ||
+                    (order == Order::Living &&
+                     ob->act_type() == ACT_GUARD);
+                if (!immobile_post)
+                    continue;
+                EXPECT_FALSE(ob->xpos() + ob->sizex() > x0 &&
+                             ob->xpos() < x0 + GRID_SIZE &&
+                             ob->ypos() + ob->sizey() > y0 &&
+                             ob->ypos() < y0 + GRID_SIZE)
+                    << (order == Order::Generator ? "generator"
+                                                  : "ACT_GUARD post")
+                    << " (family " << static_cast<int>(ob->family())
+                    << ") posted on stair cell/arrival (" << nx << ", " << ny
+                    << ") floor " << pf << " would seal the staircase";
+            }
+        };
+
+        const std::vector<StairPair> pairs = find_stair_pairs(world);
+        ASSERT_FALSE(pairs.empty());
+        for (const StairPair& stair : pairs)
+        {
+            for (const auto& off : kArrivalOffsets)
+            {
+                audit_arrival_cell(stair.floor, stair.tx + off[0],
+                                   stair.ty + off[1]);
+                audit_arrival_cell(stair.floor + 1, stair.tx + off[0],
+                                   stair.ty + off[1]);
+            }
         }
     }
 }

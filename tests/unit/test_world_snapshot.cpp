@@ -2893,6 +2893,84 @@ TEST(WorldSnapshot, apply_preserves_dormant_walkers_and_wakes_on_presence)
         << "presence in a snapshot implies awake — mirrors must reveal";
 }
 
+// Regression: a dormant walker survives apply_snapshot (above) but must stay
+// OUT of the collision map. rebuild_obmap used to re-add every non-dead
+// entity, so the local transport shadow's install seed (apply a display-world
+// capture onto the freshly loaded server world) made every not-yet-spawned
+// foe collidable — walking into its spawn cell triggered melee against an
+// invisible body, and weapons could strike it. Intangible-until-wake is the
+// contract: absent from the obmap (no collide, no melee, no eat dispatch —
+// they all consult obmap piles), untargetable, then solid after the wake tick.
+TEST(WorldSnapshot, install_seed_apply_keeps_dormant_walkers_out_of_the_obmap)
+{
+    TestGameWorld fx;
+    GameWorld& world = fx.world();
+    world.rng_.state_ = 1u;
+    world.my_team = 0;
+
+    walker* hero = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, hero);
+    hero->setxy(3 * GRID_SIZE, 3 * GRID_SIZE);
+    hero->set_team_num(0);
+    hero->set_real_team_num(0);
+    hero->set_act_type(ACT_GUARD);
+
+    walker* lurker = world.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, lurker);
+    lurker->setxy(12 * GRID_SIZE, 10 * GRID_SIZE);
+    lurker->set_team_num(1);
+    lurker->set_real_team_num(1);
+    lurker->set_act_type(ACT_GUARD);
+    lurker->set_spawn_delay(2);
+    lurker->set_dormant(true);
+    const std::uint32_t lurker_id = lurker->entity_id();
+
+    ASSERT_NE(nullptr, world.myobmap.get());
+    ASSERT_EQ(world.myobmap->walker_to_pos.end(),
+              world.myobmap->walker_to_pos.find(lurker))
+        << "set_dormant(true) must deregister the walker up front";
+
+    // The install seed pattern: capture (which excludes dormant walkers) and
+    // apply straight back onto the same world.
+    og::sim::apply_snapshot(world, og::sim::capture_keyframe_snapshot(world));
+
+    walker* survivor = world.find_by_id(lurker_id);
+    ASSERT_NE(nullptr, survivor) << "reconcile must keep the dormant walker";
+    ASSERT_TRUE(survivor->dormant());
+
+    // THE regression: rebuild_obmap must not re-register a dormant walker.
+    EXPECT_EQ(world.myobmap->walker_to_pos.end(),
+              world.myobmap->walker_to_pos.find(survivor))
+        << "a dormant walker must stay out of the obmap through apply";
+    EXPECT_TRUE(world.query_object_passable(
+        static_cast<float>(survivor->xpos()),
+        static_cast<float>(survivor->ypos()), hero))
+        << "its spawn cell must read as free to a walker crossing it";
+    walker* rehero = world.find_by_id(hero->entity_id());
+    ASSERT_NE(nullptr, rehero);
+    EXPECT_EQ(nullptr, world.find_far_foe(rehero))
+        << "a dormant walker must not be targetable";
+
+    // NEXT WAVE HUD inputs are untouched by intangibility: the walker is
+    // still oblist-resident, dormant, with its authored delay (that is all
+    // pending_hostile_wave_counts reads).
+    EXPECT_EQ(2u, static_cast<unsigned>(survivor->spawn_delay()));
+
+    // Wake normally: tick past the delay; the wake path re-registers it.
+    world.tick(); // level tick 1
+    world.tick(); // level tick 2
+    world.tick(); // level tick 3 > delay 2: wake
+    ASSERT_FALSE(survivor->dormant()) << "the wake tick must still fire";
+    EXPECT_NE(world.myobmap->walker_to_pos.end(),
+              world.myobmap->walker_to_pos.find(survivor))
+        << "an awakened walker re-enters the obmap";
+    EXPECT_FALSE(world.query_object_passable(
+        static_cast<float>(survivor->xpos()),
+        static_cast<float>(survivor->ypos()), rehero))
+        << "an awakened walker is solid again";
+    EXPECT_EQ(survivor, world.find_far_foe(rehero));
+}
+
 // The difficulty-submenu world scalars (respawn_mode / generator_rate) are
 // world state on the wire: they must survive the exact capture -> serialize
 // -> deserialize -> apply path clients use, and the delta merge.

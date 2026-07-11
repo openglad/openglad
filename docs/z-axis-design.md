@@ -155,6 +155,47 @@ identical numeric value and the mask is a no-op → A\* node expansion byte-iden
   lands on the first solid tile below; falling past floor 0 = pit death.
 - **Z-stairs**: after a successful `walk()`, if the destination tile is a Z-stair
   and `floor_count>1`, move the entity to the linked floor/cell.
+- **Stair feel fixes** (`walker::apply_z_motion`, bugfix B1/B2, 2026-07 — the
+  "stairs finicky" playtest report):
+  - **B1 re-trigger latch.** A stair transition lands you standing on the
+    vertically-aligned PAIRED stair tile; the old `z_cooldown_`-only guard
+    expired after 6 ticks and bounced you straight back (even standing still —
+    "I end up going back down"). Now every stair transition arms a per-walker
+    latch with the ARRIVAL centre cell (`z_stair_latched_`/`z_latch_cx_`/
+    `z_latch_cy_`, walker.h): while the centre stays in that cell, stair tiles
+    do not trigger. The latch clears on the first post-cooldown Z-probe that
+    finds the centre outside the cell — the same centre-cell criterion the
+    trigger uses, with the cooldown adding a few ticks of hysteresis against
+    cell-boundary jitter. Stepping back on afterwards is a deliberate act and
+    triggers normally. Persistence: SAME non-replicated server-transient
+    precedent as `z_cooldown_`/`path_to_foe` (the ani_count rule) — snapshots
+    never carry it; a late joiner re-arms cleared, worst case one deliberate
+    re-step, never a wedge. Never armed single-floor, so parity-neutral.
+    Pinned by `ZAxis.arrival_on_paired_stair_does_not_bounce_back` /
+    `leaving_the_stair_cell_rearms_the_transition`.
+  - **B2 blocked-arrival nudge.** The A2/A3 wedge fix denied a blocked stair
+    arrival outright, which let a guard posted ON the stair top permanently
+    seal a staircase ("in the final mountain the stairs are blocked from above
+    so I can't ascend"). Now a blocked aligned arrival is nudged to the nearest
+    clear cell of the target floor (the A5 deterministic ring probe —
+    row-major within fixed rings, passable + obmap-clear, no-eat — shared via
+    `land_on_nearest_clear_cell`, radius `kStairNudgeRadius=2` vs the fall's
+    4 — and, stairs only, `avoid_air`: a PIX_AIR candidate is skipped because
+    landing on it would fall straight back, an up-fall loop that defeats the
+    ascent; falls keep air candidates and cascade normally), so ascent/descent
+    succeeds BESIDE the blocker; denial remains only when no clear cell exists
+    within the radius (then the old deny-and-re-probe behavior holds). A
+    nudged arrival latches its own landing cell, leaving the paired stair
+    armed. Pinned by
+    `ZAxis.stair_up_into_occupied_cell_lands_beside_the_blocker` /
+    `stepping_off_stair_onto_walker_lands_beside_no_entanglement` /
+    `stair_with_no_clear_arrival_within_radius_denied_until_clear` /
+    `stair_nudge_never_lands_on_air`.
+  - **Authoring rule (lockstep tooling).** `tools/westlands_mapgen` self-checks
+    — and `tests/unit/test_westlands_levels.cpp` mirrors — that no ACT_GUARD
+    post, generator, or ground-blocking decor sits ON a stair-pair cell or its
+    4-neighborhood arrival cells on either floor of the pair, so shipped levels
+    never rely on the engine nudge to keep a staircase usable.
 - **Teleport** (`walker::teleport`, bugfix A6/A7, 2026-07): destination probing
   is ground-rules (the transient `flight_left` bypass is masked, so a blink can
   never park the caster inside trees/boulders/water) and eat-free (a local
@@ -180,6 +221,30 @@ All additive, double-gated (`floor_count>1` and tile data):
   single-floor); add an admissible floor-transition term only when floors differ.
 - `follow_path_to_foe`: when the next node's floor differs, invoke the
   floor-transition mover; else the existing walkstep logic runs verbatim.
+
+Pathing-wedge fixes (2026-07, all `floor_count>1` gated — single-floor stays
+byte-identical; see docs/GAMEPLAY_FIXES_FROM_CLASSIC.md for the full audit):
+- **No corner cutting** (`adjacent_cost`): diagonal expansion requires BOTH
+  flanking orthogonal cells open (grid-passable + the non-flyer air skip). A
+  full-cell body's swept box always overlaps the flanks, so a diagonal past a
+  blocked flank is pixel-impassable at every offset — the graph used to emit
+  such hops and followers seized on them (L24 lava/scree X-pinches).
+- **Alignment assist** (`follow_path_to_foe`): when the next hop is cardinal,
+  the body is misaligned on the perpendicular axis (node-reached is
+  cell-quantized, so up to 15px of spill), and the direct step is
+  pixel-blocked, slide toward exact alignment one collision-checked pixel at a
+  time instead of letting walkstep's fixed fallback bounce the walker back out
+  of alignment forever (the L24 tower-terrace wedge).
+- **Flyer cross-floor bypass** (`walk_to_foe`): a flyer can never change
+  floors, so a cross-floor foe is unreachable by design — no stair-seek, no
+  full-map A* exhaustion; it keeps the classic floor-blind 2D chase and
+  shadows the foe from its own floor (previously it parked on a stair it
+  could never take).
+- **Floor-keyed `find_near_foe`**: the spiral probe passes the searcher's
+  floor to `obmap_get_list` (the parameter defaults to 0, which left
+  upper-floor walkers blind to adjacent foes and latching ground-floor foes
+  under their 2D position). Cross-floor acquisition intentionally remains via
+  `find_far_foe`.
 
 ## Projectiles
 
@@ -476,5 +541,7 @@ diegetic instead (all render-only, `floor_count()>1`-gated, editor excluded):
   byte (the below-floor fade is in every frame; the hold contributes exactly
   the ghosts above), and the ONLY way to see floors above. The
   `graphics/floor_ghost` cfg toggle and its GRAPHICS FX button were removed
-  (stale cfg keys are ignored). Default binding `v` for P1, unbound for P2-4
-  (remappable on CONTROLS).
+  (stale cfg keys are ignored). Default bindings: P1 `v` (both modes),
+  P2 Right Ctrl (both modes), P3 `p` (both modes), P4 `b` in 4-direction
+  mode only (its 8-direction cluster consumes every key around T/F/G/H, so
+  8-dir starts unbound); all remappable on CONTROLS.

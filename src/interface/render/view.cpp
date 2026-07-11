@@ -1149,6 +1149,19 @@ void viewscreen::draw_floor_effects(LevelRuntimeData* data, int floor)
 	const bool dust_on = cfg.is_on("effects", "dust") && camera_pass &&
 	    multifloor &&
 	    current_floor_ < static_cast<Sint32>(data->world().floor_count() - 1);
+	// The falling cue rides the dust key (it IS falling debris): a landing
+	// floor always has the from-floor above it, so the extra top-floor
+	// condition on dust_on would be redundant here. Spectator/capture
+	// cameras keep it; only the editor's authoring view stays clean (same
+	// gate as the overhang shadows — nothing falls in the editor anyway).
+	const bool fall_cue_on = cfg.is_on("effects", "dust") && camera_pass &&
+	    multifloor && !editor_authoring_view_;
+	if (fall_cue_on)
+	{
+		effects_track_air_falls(data->world());
+		if (draw_fall_cues(this, floor))
+			TRACE("effects", "fall_cue floor=%d", floor);
+	}
 	if (!shadows_on && !reflections_on && !ripples_on && !trails_on &&
 	    !dust_on)
 		return;

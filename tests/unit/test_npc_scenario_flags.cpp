@@ -24,7 +24,9 @@
 #include "../test_game_world_fixture.h"
 
 #include <openglad/core/constants.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/living.h>
+#include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/world_snapshot.h>
@@ -338,6 +340,149 @@ TEST(NpcScenarioFlags, dormant_walker_hidden_until_spawn_tick_then_enters_world)
     EXPECT_TRUE(w.game_ended)
         << "with the activated invader dead, no live or dormant foes remain";
     EXPECT_EQ(2, w.level_done);
+}
+
+// Regression (PR playtest): dormant walkers were interactable before their
+// spawn tick — walking into a dormant foe's cell collided with an invisible
+// body and triggered melee. Every interaction (collision blocking, melee
+// collide_ob, weapon hits, treasure eat dispatch) routes through the obmap
+// piles in ob_pass_check, so the contract is a single invariant: a dormant
+// walker is NEVER obmap-registered. This test drives the real movement code:
+// a soldier physically walks straight through the dormant foe's cell with no
+// collision, a projectile probe passes over it, and after the wake tick the
+// same walk is blocked with collide_ob set (the melee trigger) again.
+TEST(NpcScenarioFlags, dormant_foe_cell_is_walk_through_until_wake)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.rng_.state_ = 1u;
+    w.my_team = 0;
+
+    walker* hero = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* lurker = w.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, hero);
+    ASSERT_NE(nullptr, lurker);
+
+    hero->set_team_num(0);
+    hero->set_real_team_num(0);
+    hero->set_act_type(ACT_GUARD);
+
+    lurker->setxy(10 * GRID_SIZE, 8 * GRID_SIZE);
+    lurker->set_team_num(1);
+    lurker->set_real_team_num(1);
+    lurker->set_act_type(ACT_GUARD);
+    lurker->set_spawn_delay(2);
+    lurker->set_dormant(true);
+
+    // The terrain is all-grass (create_new_grid), so any blocked step below
+    // can only come from an obmap occupant.
+    ASSERT_NE(nullptr, w.myobmap.get());
+    EXPECT_EQ(w.myobmap->walker_to_pos.end(),
+              w.myobmap->walker_to_pos.find(lurker))
+        << "a dormant walker must not be obmap-registered";
+
+    const float step = hero->stepsize();
+    ASSERT_GT(step, 0.0f);
+
+    // Walk the hero eastwards straight through the dormant foe's cell: every
+    // step must succeed and none may set collide_ob (no melee trigger, and no
+    // eat/door dispatch either — those fire from the same obmap pile scan).
+    hero->setxy(static_cast<short>(lurker->xpos() - 2 * GRID_SIZE),
+                lurker->ypos());
+    hero->set_curdir(static_cast<signed char>(FACE_RIGHT));
+    const short beyond =
+        static_cast<short>(lurker->xpos() + lurker->sizex() + GRID_SIZE);
+    int guard = 0;
+    while (hero->xpos() < beyond && guard++ < 300)
+    {
+        EXPECT_TRUE(hero->walk(step, 0.0f))
+            << "walking through a dormant foe's cell must be free (x="
+            << hero->xpos() << ")";
+        EXPECT_EQ(nullptr, hero->collide_ob())
+            << "no collision may be recorded against a dormant walker (x="
+            << hero->xpos() << ")";
+    }
+    ASSERT_LT(guard, 300) << "the hero must actually cross the cell";
+
+    // A projectile probe over the cell: weapons hit via the same obmap query,
+    // so a hostile arrow's path across the dormant foe must read as clear.
+    walker* arrow = w.add_ob(Order::Weapon, FAMILY_ARROW);
+    ASSERT_NE(nullptr, arrow);
+    arrow->set_team_num(0);
+    arrow->set_owner(hero);
+    EXPECT_TRUE(w.query_object_passable(
+        static_cast<float>(lurker->xpos()),
+        static_cast<float>(lurker->ypos()), arrow))
+        << "attacks must not be able to hit a dormant walker";
+    arrow->set_dead(1); // probe done: keep it out of the wake ticks below
+
+    // The walk-through changed nothing the NEXT WAVE HUD reads: still
+    // oblist-resident, dormant, authored delay intact.
+    EXPECT_TRUE(lurker->dormant());
+    EXPECT_EQ(2u, static_cast<unsigned>(lurker->spawn_delay()));
+
+    // Park the hero away from the spawn cell and let the delay elapse.
+    hero->setxy(3 * GRID_SIZE, 14 * GRID_SIZE);
+    w.tick(); // level tick 1
+    w.tick(); // level tick 2
+    w.tick(); // level tick 3 > delay 2: wake
+    ASSERT_FALSE(lurker->dormant());
+    EXPECT_NE(w.myobmap->walker_to_pos.end(),
+              w.myobmap->walker_to_pos.find(lurker))
+        << "waking must re-register the walker in the obmap";
+
+    // The same eastward walk is now blocked, and the block records the melee
+    // collision target — solid exactly like a normally spawned foe.
+    hero->setxy(static_cast<short>(lurker->xpos() - hero->sizex()),
+                lurker->ypos());
+    hero->set_curdir(static_cast<signed char>(FACE_RIGHT));
+    bool blocked = false;
+    for (int i = 0; i < 8 && !blocked; ++i)
+        blocked = !hero->walk(step, 0.0f);
+    EXPECT_TRUE(blocked) << "an awakened walker must block movement";
+    EXPECT_EQ(lurker, hero->collide_ob())
+        << "the blocked step must record the melee collision target";
+}
+
+// The intangibility invariant must survive repositioning: setxy/setworldxy/
+// change_floor route obmap bookkeeping, and none of them may re-register a
+// dormant walker (pre-fix, obmap::move re-added it). Waking afterwards
+// registers it at wherever it ended up.
+TEST(NpcScenarioFlags, repositioning_a_dormant_walker_keeps_it_unregistered)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.set_floor_count(2);
+
+    walker* lurker = w.add_ob(Order::Living, FAMILY_SKELETON);
+    ASSERT_NE(nullptr, lurker);
+    lurker->setxy(8 * GRID_SIZE, 8 * GRID_SIZE);
+    lurker->set_team_num(1);
+    lurker->set_spawn_delay(100);
+    lurker->set_dormant(true);
+
+    ASSERT_NE(nullptr, w.myobmap.get());
+    auto registered = [&]() {
+        return w.myobmap->walker_to_pos.find(lurker) !=
+               w.myobmap->walker_to_pos.end();
+    };
+    ASSERT_FALSE(registered());
+
+    lurker->setxy(11 * GRID_SIZE, 9 * GRID_SIZE);
+    EXPECT_FALSE(registered()) << "setxy must not re-register a dormant walker";
+
+    lurker->setworldxy(12.0f * GRID_SIZE, 10.0f * GRID_SIZE);
+    EXPECT_FALSE(registered())
+        << "setworldxy must not re-register a dormant walker";
+
+    lurker->change_floor(1);
+    EXPECT_FALSE(registered())
+        << "change_floor must not re-register a dormant walker";
+
+    // Waking is the single re-entry point — at the final spot and floor.
+    lurker->set_dormant(false);
+    EXPECT_TRUE(registered());
+    EXPECT_EQ(1, static_cast<int>(lurker->floor()));
 }
 
 // ---------------------------------------------------------------------------

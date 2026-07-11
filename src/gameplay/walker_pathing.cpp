@@ -81,6 +81,60 @@ void walker::follow_path_to_foe()
             if (dy != 0)
                 dy /= abs(dy);
 
+            // Convex-corner alignment assist (2026-07; see
+            // docs/GAMEPLAY_FIXES_FROM_CLASSIC.md). The node-reached test
+            // below is cell-quantized (ALIGN_TO_GRID), so a node counts as
+            // reached while the body still spills up to GRID_SIZE-1 px into
+            // the next row/column. When the following hop is CARDINAL and
+            // hugs an impassable cell on the spill side (a convex wall
+            // corner — the A* diagonal bias produces these constantly), the
+            // direct step stays pixel-blocked at EVERY misaligned offset, and
+            // walkstep's fixed NPC fallback (e.g. LEFT-blocked -> step DOWN)
+            // marches the walker back OUT of alignment: a deterministic
+            // 2-tick oscillation that pinned chasers at corridor corners
+            // forever (the Westlands L24 terrace wedges). When that exact
+            // shape occurs — cardinal hop, perpendicular misalignment, direct
+            // step pixel-blocked — slide toward exact alignment instead, one
+            // checked pixel at a time. The swept band stays inside
+            // rows/columns the body already occupies (the remainder is
+            // strictly positive toward +axis), so the slide is grid-safe by
+            // construction; per-pixel query_passable keeps entity collision
+            // semantics identical to a normal walk. No RNG; a pure function
+            // of position. GATED on multifloor (like the graph's
+            // no-corner-cut rule): un-stalling the classic single-floor
+            // approach moved first-hit timing in 18 parity goldens and would
+            // shift calibrated campaign balance, so single-floor levels KEEP
+            // the classic wedge behavior deliberately.
+            if (multifloor && (dx == 0) != (dy == 0) &&
+                current_game->world != nullptr)
+            {
+                const int mis = (dx != 0)
+                    ? ypos() - ALIGN_TO_GRID(ypos())
+                    : xpos() - ALIGN_TO_GRID(xpos());
+                if (mis > 0 &&
+                    !current_game->world->query_passable(
+                        xpos() + static_cast<float>(dx) * stepsize(),
+                        ypos() + static_cast<float>(dy) * stepsize(), this))
+                {
+                    int budget = static_cast<int>(stepsize());
+                    if (budget > mis)
+                        budget = mis;
+                    bool slid = false;
+                    const float sx = (dx != 0) ? 0.0f : -1.0f;
+                    const float sy = (dx != 0) ? -1.0f : 0.0f;
+                    for (int i = 0; i < budget; i++)
+                    {
+                        if (!current_game->world->query_passable(
+                                xpos() + sx, ypos() + sy, this))
+                            break;
+                        worldmove(sx, sy);
+                        slid = true;
+                    }
+                    if (slid)
+                        break; // this tick's move went to aligning
+                }
+            }
+
             // Move toward this node and stop.
             walkstep(dx, dy);
             break;

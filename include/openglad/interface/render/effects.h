@@ -114,6 +114,25 @@ bool draw_walker_trail(walker& w, viewscreen* vs);
 // true when at least one speck pixel was blended.
 bool draw_walker_dust(walker& w, viewscreen* vs);
 
+// Falling-cue tracker: once per frame tick (idempotent across viewports),
+// compare every alive Living entity's floor against the previous frame's and
+// start a falling cue where it DROPPED via an air fall — i.e. not a Z-stair
+// descent (previous cell smooths to TYPE_ZSTAIRS) and not a cross-floor
+// teleport (landed beyond the sim's 4-cell landing nudge). RENDER-ONLY state
+// beside the position store; the sim is never touched. Shares the "dust"
+// effects key with draw_walker_dust (the caller gates both), so the OFF path
+// stays byte-identical.
+void effects_track_air_falls(GameWorld& world);
+
+// Draw the active falling cues that landed on `floor` (the camera floor):
+// for ~8 frames after the fall, a grey 2px motion smear slides down-screen
+// from above the hole to the landing feet, and the last three frames add an
+// expanding landing dust puff (the ripple ellipse tables in the dust grey).
+// A pure function of (cue, effects frame tick): deterministic and replayable
+// after effects_reset_for_testing(). Returns true when at least one pixel
+// was blended.
+bool draw_fall_cues(viewscreen* vs, int floor);
+
 // Radial fire glow blended OVER the sprite of an alive fire-family entity
 // (Living fire elemental, Weapon fireball/meteor/fire arrow, FX explosion):
 // a precomputed 25x25 quadratic-falloff kernel of COLOR_FIRE, scaled by a
@@ -137,4 +156,7 @@ void effects_reset_for_testing();
 // number of stored positions for one entity id.
 std::size_t effects_store_size();
 std::size_t effects_store_depth(std::uint32_t entity_id);
+// Falling-cue introspection: frames of the entity's cue still to play
+// (0 = no active cue).
+std::uint32_t effects_fall_cue_frames_left(std::uint32_t entity_id);
 #endif

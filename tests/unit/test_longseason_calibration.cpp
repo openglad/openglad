@@ -69,11 +69,29 @@ struct CurvePin
 // fights, the Undermill, the wagon run, and above all the Warm Mint's
 // three-way gatehall) where the stand-in crew bleeds by design — their
 // win/hold gates live in the harness sweeps, not here.
+// (Recalibrated 2026-07-10 for the B1/B2 stair fixes — the re-trigger
+// latch + blocked-arrival nudge, docs/z-axis-design.md: enemies that used
+// to bounce back down 6 ticks after climbing now COMMIT to floor
+// crossings, so the multi-floor levels 10, 11 and 18 got genuinely hotter
+// for a fresh crew (18 the Warm Mint drops to a war-level 0 — its win
+// gate lives in the harness sweeps, like the westlands war levels). New
+// floors are the re-measured minima across seeds {42, 1337, 2025}; every
+// single-floor level re-measured identical, as the floor_count>1 gate
+// guarantees. Re-sweep with scripts/longseason_playtest.sh before the
+// next balance pass.)
+// (Recalibrated again 2026-07-10 for the multi-floor pathing fixes —
+// A* no-corner-cut, the follow-path alignment assist, floor-keyed
+// find_near_foe, and the flyer cross-floor bypass (all floor_count>1
+// gated; docs/GAMEPLAY_FIXES_FROM_CLASSIC.md): upper-floor enemies that
+// used to wedge on convex corners or hunt ground-floor shadows now fight
+// where they stand, so multi-floor scen11 runs hotter (6 -> 5 across the
+// three seeds) while scen10 actually eased (measured min 7; its pin keeps
+// the older minimum). Single-floor levels re-measured identical again.)
 constexpr CurvePin kCurve[] = {
     {1, 1, 8},  {2, 1, 6},  {3, 2, 7},  {4, 2, 7},  {5, 3, 5},
-    {6, 3, 7},  {7, 4, 6},  {8, 4, 8},  {9, 5, 7},  {10, 5, 5},
-    {11, 5, 7}, {12, 6, 8}, {13, 6, 4}, {14, 7, 7}, {15, 7, 8},
-    {16, 7, 8}, {17, 8, 7}, {18, 8, 1}, {19, 8, 8},
+    {6, 3, 7},  {7, 4, 6},  {8, 4, 8},  {9, 5, 7},  {10, 5, 4},
+    {11, 5, 5}, {12, 6, 8}, {13, 6, 4}, {14, 7, 7}, {15, 7, 8},
+    {16, 7, 8}, {17, 8, 7}, {18, 8, 0}, {19, 8, 8},
 };
 
 constexpr int kCalibrationTicks = 600;

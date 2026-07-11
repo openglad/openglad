@@ -434,9 +434,27 @@ class walker : public og::sim::SimEntity
 		std::uint8_t spawn_floor_ = 0;
 		std::uint32_t last_self_teleport_tick_ = 0;
 		// Server-only transient (not replicated, like path_to_foe): ticks until
-		// the next Z transition is allowed, preventing stair/fall bounce. Always
-		// 0 on single-floor (apply_z_motion early-returns), so parity-neutral.
+		// the next Z transition is allowed, throttling fall/denial re-probes.
+		// Always 0 on single-floor (apply_z_motion early-returns), so
+		// parity-neutral.
 		int z_cooldown_ = 0;
+		// Stair re-trigger LATCH (B1). Ships with the same non-replicated
+		// server-transient precedent as z_cooldown_/path_to_foe (and the
+		// ani_count rule): snapshots never carry it, so a mirror/late joiner
+		// re-arms cleared — worst case the walker can take the stair again one
+		// deliberate step early, never a wedge. Armed with the ARRIVAL centre
+		// cell on every stair transition; while the walker's centre stays in
+		// that cell, stair tiles do not trigger (the paired vertically-aligned
+		// stair you arrive on used to bounce you straight back once
+		// z_cooldown_ expired — even standing still). Cleared on the first
+		// Z-probe tick (cooldown expired) that finds the centre outside the
+		// cell — the same centre-cell criterion the trigger itself uses, with
+		// the cooldown adding a few ticks of hysteresis against cell-boundary
+		// jitter. Never armed on single-floor levels, so parity-neutral.
+		void latch_stair_arrival();
+		bool z_stair_latched_ = false;
+		std::int32_t z_latch_cx_ = -1;
+		std::int32_t z_latch_cy_ = -1;
 		// Per-placed-NPC scenario extras (see the public accessors above).
 		// Defaults reproduce legacy behavior exactly; every consumer branch is
 		// gated on a non-default value, keeping parity goldens byte-identical.

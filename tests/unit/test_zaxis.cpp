@@ -591,11 +591,95 @@ TEST(ZAxis, cylinder_zoverlap_lets_high_projectile_pass)
 // runner crossing a stair whose destination is inside walls (A4), and an air
 // fall onto a wall top (A5).
 
-// A2: climbing a Z-stair whose paired destination cell is occupied is DENIED —
-// the climber stays on its floor (the old code teleported it into the
-// occupant, wedged both, then bounced it back down after the cooldown) — and
-// the stair works again as soon as the occupant leaves.
-TEST(ZAxis, stair_up_into_occupied_cell_denied_until_clear)
+// A2 -> B2 (was the "guard seals the staircase" bug): climbing a Z-stair whose
+// paired destination cell is occupied used to be DENIED outright, which let a
+// guard standing on the stair top PERMANENTLY seal a staircase. Now the
+// climber ascends and is nudged to the nearest clear cell of the target floor
+// beside the blocker (deterministic ring probe: ring 1's first row-major
+// candidate is the north-west neighbor), never overlapping it.
+TEST(ZAxis, stair_up_into_occupied_cell_lands_beside_the_blocker)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.set_floor_count(2);
+
+    walker* a = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* b = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(a, nullptr);
+    ASSERT_NE(b, nullptr);
+    // The exact-landing pin below assumes the 1-tile soldier footprint.
+    ASSERT_EQ(16, a->sizex());
+    ASSERT_EQ(16, a->sizey());
+
+    a->set_floor(0);
+    a->setxy(8 * GRID_SIZE, 8 * GRID_SIZE);
+    int cx, cy;
+    center_cell(a, cx, cy);
+    ASSERT_EQ(8, cx);
+    ASSERT_EQ(8, cy);
+    // Stairs are authored as vertically aligned pairs: UP on floor 0, DOWN at
+    // the same cell on floor 1 — with B standing ON the pair cell.
+    w.grid.data[cx + cy * w.grid.w] = PIX_ZSTAIR_UP;
+    set_floor1_grid(w, cx, cy, PIX_ZSTAIR_DOWN);
+    b->set_floor(1);
+    b->setxy(a->xpos(), a->ypos());
+
+    a->apply_z_motion();
+    EXPECT_EQ(1, a->floor())
+        << "ascent must SUCCEED beside the blocker (the old outright denial "
+           "let a guard on the stair top seal the staircase forever)";
+    EXPECT_EQ(7 * GRID_SIZE, a->xpos())
+        << "deterministic nudge: ring 1, first row-major candidate (7,7)";
+    EXPECT_EQ(7 * GRID_SIZE, a->ypos());
+    EXPECT_TRUE(w.query_object_passable(a->xpos(), a->ypos(), a))
+        << "arrival must not overlap the blocker";
+}
+
+// A3 -> B2 (descent flavor): stepping off a DOWN stair onto a walker standing
+// at the aligned cell below used to be DENIED outright (after the original
+// entanglement fix); now the arriver descends beside the occupant instead —
+// still never overlapping it, so nobody wedges.
+TEST(ZAxis, stepping_off_stair_onto_walker_lands_beside_no_entanglement)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.set_floor_count(2);
+
+    walker* a = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* b = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(a, nullptr);
+    ASSERT_NE(b, nullptr);
+    ASSERT_EQ(16, a->sizex());
+    ASSERT_EQ(16, a->sizey());
+
+    a->set_floor(1);
+    a->setxy(8 * GRID_SIZE, 8 * GRID_SIZE);
+    int cx, cy;
+    center_cell(a, cx, cy);
+    ASSERT_EQ(8, cx);
+    ASSERT_EQ(8, cy);
+    set_floor1_grid(w, cx, cy, PIX_ZSTAIR_DOWN); // A stands on the DOWN stair
+    b->set_floor(0);
+    b->setxy(a->xpos(), a->ypos()); // B occupies the landing below
+
+    a->apply_z_motion();
+    EXPECT_EQ(0, a->floor())
+        << "descent must SUCCEED beside the occupant instead of being denied";
+    EXPECT_EQ(7 * GRID_SIZE, a->xpos())
+        << "deterministic nudge: ring 1, first row-major candidate (7,7)";
+    EXPECT_EQ(7 * GRID_SIZE, a->ypos());
+    EXPECT_TRUE(w.query_object_passable(a->xpos(), a->ypos(), a))
+        << "arrival must not overlap any other walker";
+
+    // No entanglement: the occupant was never overlapped and can still move.
+    EXPECT_TRUE(b->walkstep(1.0f, 0.0f)) << "occupant must not be wedged";
+}
+
+// B2 (denial is the last resort, small radius pinned): when the aligned cell
+// is occupied AND every cell within the kStairNudgeRadius=2 rings is walled,
+// the transition is DENIED — even though clear ground exists at ring 3. The
+// stair works again (via the aligned cell) once the occupant steps away.
+TEST(ZAxis, stair_with_no_clear_arrival_within_radius_denied_until_clear)
 {
     TestGameWorld tw;
     GameWorld& w = tw.world();
@@ -610,10 +694,18 @@ TEST(ZAxis, stair_up_into_occupied_cell_denied_until_clear)
     a->setxy(8 * GRID_SIZE, 8 * GRID_SIZE);
     int cx, cy;
     center_cell(a, cx, cy);
-    // Stairs are authored as vertically aligned pairs: UP on floor 0, DOWN at
-    // the same cell on floor 1 — with B standing ON the pair cell.
+    ASSERT_EQ(8, cx);
+    ASSERT_EQ(8, cy);
     w.grid.data[cx + cy * w.grid.w] = PIX_ZSTAIR_UP;
-    set_floor1_grid(w, cx, cy, PIX_ZSTAIR_DOWN);
+
+    // Floor 1: walls on rings 1..2 around the stair, the aligned DOWN stair
+    // at the center (occupied by B), clear grass from ring 3 outward.
+    unsigned char* f1 = set_floor1_fill(w, PIX_GRASS1);
+    for (int dy = -2; dy <= 2; ++dy)
+        for (int dx = -2; dx <= 2; ++dx)
+            f1[(cx + dx) + (cy + dy) * w.grid.w] = PIX_H_WALL1;
+    f1[cx + cy * w.grid.w] = PIX_ZSTAIR_DOWN;
+    w.smoother_for_floor(1).set_target(w.grid_for_floor(1));
     b->set_floor(1);
     b->setxy(a->xpos(), a->ypos());
 
@@ -621,24 +713,28 @@ TEST(ZAxis, stair_up_into_occupied_cell_denied_until_clear)
     {
         a->apply_z_motion();
         ASSERT_EQ(0, a->floor())
-            << "climb into an occupied destination must be denied (tick "
-            << t << ")";
+            << "with no clear arrival within the nudge radius the climb must "
+               "be denied (tick " << t << ")";
     }
 
-    // Occupant leaves: the next probe after the cooldown takes the stair.
-    b->setxy(14 * GRID_SIZE, 8 * GRID_SIZE);
+    // The occupant steps off the pair cell (walls everywhere nearby, so park
+    // it far away on grass): the aligned arrival clears and the next probe
+    // after the cooldown takes the stair.
+    b->setxy(14 * GRID_SIZE, 14 * GRID_SIZE);
     for (int t = 0; t < 8 && a->floor() == 0; ++t)
         a->apply_z_motion();
     EXPECT_EQ(1, a->floor())
-        << "stair must work again once the far side clears";
-    EXPECT_TRUE(w.query_object_passable(a->xpos(), a->ypos(), a))
-        << "arrival must not overlap any other walker";
+        << "stair must work again once the aligned far side clears";
+    EXPECT_EQ(8 * GRID_SIZE, a->xpos()) << "aligned arrival, no nudge needed";
+    EXPECT_EQ(8 * GRID_SIZE, a->ypos());
 }
 
-// A3: stepping off a stair (descending) onto a walker standing at the aligned
-// cell below is DENIED — the old code dropped the arriver INTO the occupant
-// and both wedged permanently (every step of each still overlapped the other).
-TEST(ZAxis, stepping_off_stair_onto_walker_denied_no_entanglement)
+// B2 (avoid-air): the stair nudge must never pick a PIX_AIR cell of the
+// target floor — air is grid-passable by design, but landing on it would
+// immediately fall back to the source floor (an up-fall loop that defeats
+// the ascent). With the aligned cell occupied on a 1-cell platform in open
+// sky, the climb is DENIED instead, and resumes aligned once the cell clears.
+TEST(ZAxis, stair_nudge_never_lands_on_air)
 {
     TestGameWorld tw;
     GameWorld& w = tw.world();
@@ -649,33 +745,162 @@ TEST(ZAxis, stepping_off_stair_onto_walker_denied_no_entanglement)
     ASSERT_NE(a, nullptr);
     ASSERT_NE(b, nullptr);
 
-    a->set_floor(1);
+    a->set_floor(0);
     a->setxy(8 * GRID_SIZE, 8 * GRID_SIZE);
     int cx, cy;
     center_cell(a, cx, cy);
-    set_floor1_grid(w, cx, cy, PIX_ZSTAIR_DOWN); // A stands on the DOWN stair
-    b->set_floor(0);
-    b->setxy(a->xpos(), a->ypos()); // B occupies the landing below
+    ASSERT_EQ(8, cx);
+    ASSERT_EQ(8, cy);
+    w.grid.data[cx + cy * w.grid.w] = PIX_ZSTAIR_UP;
+
+    // Floor 1: open sky except the 1-cell stair platform — occupied by B.
+    unsigned char* f1 = set_floor1_all_air(w);
+    f1[cx + cy * w.grid.w] = PIX_ZSTAIR_DOWN;
+    b->set_floor(1);
+    b->setxy(a->xpos(), a->ypos());
 
     for (int t = 0; t < 20; ++t)
     {
         a->apply_z_motion();
+        ASSERT_EQ(0, a->floor())
+            << "nudging onto open air would fall straight back — the climb "
+               "must be denied instead (tick " << t << ")";
+    }
+
+    // The occupant leaves the platform: the aligned arrival clears.
+    b->setxy(14 * GRID_SIZE, 14 * GRID_SIZE);
+    for (int t = 0; t < 8 && a->floor() == 0; ++t)
+        a->apply_z_motion();
+    EXPECT_EQ(1, a->floor()) << "aligned climb resumes once the cell clears";
+    EXPECT_EQ(8 * GRID_SIZE, a->xpos());
+    EXPECT_EQ(8 * GRID_SIZE, a->ypos());
+}
+
+// B1 (was the reported "I end up going back down" bug): a stair transition
+// lands you standing on the vertically-aligned PAIRED stair tile. The old
+// z_cooldown_-only guard expired after 6 ticks and bounced you straight back
+// down — even standing perfectly still, and any tiny in-cell movement
+// re-triggered it too. The latch holds until the walker's centre FULLY leaves
+// the arrival cell.
+TEST(ZAxis, arrival_on_paired_stair_does_not_bounce_back)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.set_floor_count(2);
+
+    walker* a = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(a, nullptr);
+    a->set_floor(0);
+    a->setxy(8 * GRID_SIZE, 8 * GRID_SIZE);
+    int cx, cy;
+    center_cell(a, cx, cy);
+    // The authored aligned pair: UP on floor 0, DOWN on floor 1.
+    w.grid.data[cx + cy * w.grid.w] = PIX_ZSTAIR_UP;
+    set_floor1_grid(w, cx, cy, PIX_ZSTAIR_DOWN);
+
+    a->apply_z_motion();
+    ASSERT_EQ(1, a->floor()) << "the climb itself must still work";
+
+    // Standing still on the arrival stair: NEVER bounces back (the old code
+    // returned to floor 0 on tick 7, once the cooldown expired).
+    for (int t = 0; t < 30; ++t)
+    {
+        a->apply_z_motion();
         ASSERT_EQ(1, a->floor())
-            << "descent onto an occupied landing must be denied (tick "
+            << "standing on the arrival stair must not re-trigger (tick "
             << t << ")";
     }
 
-    // No entanglement: the blocked-arrival walker never overlaps B, so B (and
-    // A) can still move freely.
-    EXPECT_TRUE(b->walkstep(1.0f, 0.0f)) << "occupant must not be wedged";
-    b->setxy(14 * GRID_SIZE, 8 * GRID_SIZE);
+    // Tiny movement WITHIN the arrival cell (a couple of pixels — the centre
+    // cell is unchanged): still latched, still no re-trigger.
+    a->setxy(a->xpos() + 2, a->ypos() + 2);
+    for (int t = 0; t < 30; ++t)
+    {
+        a->apply_z_motion();
+        ASSERT_EQ(1, a->floor())
+            << "in-cell movement must not re-trigger the stair (tick "
+            << t << ")";
+    }
+}
 
+// B1 (re-arm): once the walker's centre fully leaves the arrival cell the
+// latch clears, and stepping back onto the stair is a deliberate act that
+// triggers normally — then the return arrival latches too (no down-up bounce).
+TEST(ZAxis, leaving_the_stair_cell_rearms_the_transition)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.set_floor_count(2);
+
+    walker* a = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(a, nullptr);
+    a->set_floor(0);
+    a->setxy(8 * GRID_SIZE, 8 * GRID_SIZE);
+    int cx, cy;
+    center_cell(a, cx, cy);
+    w.grid.data[cx + cy * w.grid.w] = PIX_ZSTAIR_UP;
+    set_floor1_grid(w, cx, cy, PIX_ZSTAIR_DOWN);
+
+    a->apply_z_motion();
+    ASSERT_EQ(1, a->floor());
+
+    // Step fully off the arrival cell (centre leaves), then walk back on.
+    a->setxy(10 * GRID_SIZE, 8 * GRID_SIZE);
+    for (int t = 0; t < 8; ++t)
+        a->apply_z_motion(); // latch clears; grass cell, nothing triggers
+    ASSERT_EQ(1, a->floor());
+
+    a->setxy(8 * GRID_SIZE, 8 * GRID_SIZE); // deliberately back onto DOWN
     for (int t = 0; t < 8 && a->floor() == 1; ++t)
         a->apply_z_motion();
     EXPECT_EQ(0, a->floor())
-        << "descent must resume once the landing clears";
-    EXPECT_TRUE(w.query_object_passable(a->xpos(), a->ypos(), a))
-        << "arrival must not overlap any other walker";
+        << "stepping back onto the stair after leaving it must descend";
+
+    // And the descent arrival (on the UP stair) latches as well: no bounce.
+    for (int t = 0; t < 30; ++t)
+    {
+        a->apply_z_motion();
+        ASSERT_EQ(0, a->floor())
+            << "the descent arrival must not bounce back up (tick " << t
+            << ")";
+    }
+}
+
+// B1 + B2 interplay: a NUDGED arrival latches its own landing cell (beside
+// the stair), NOT the stair cell — so deliberately stepping from the nudged
+// landing onto the paired stair triggers a normal descent at once.
+TEST(ZAxis, nudged_arrival_leaves_the_paired_stair_armed)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.set_floor_count(2);
+
+    walker* a = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* b = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(a, nullptr);
+    ASSERT_NE(b, nullptr);
+
+    a->set_floor(0);
+    a->setxy(8 * GRID_SIZE, 8 * GRID_SIZE);
+    int cx, cy;
+    center_cell(a, cx, cy);
+    w.grid.data[cx + cy * w.grid.w] = PIX_ZSTAIR_UP;
+    set_floor1_grid(w, cx, cy, PIX_ZSTAIR_DOWN);
+    b->set_floor(1);
+    b->setxy(a->xpos(), a->ypos()); // blocker on the pair cell
+
+    a->apply_z_motion();
+    ASSERT_EQ(1, a->floor());
+    ASSERT_EQ(7 * GRID_SIZE, a->xpos()) << "nudged beside the blocker";
+
+    // The blocker walks away; A deliberately steps onto the DOWN stair.
+    b->setxy(14 * GRID_SIZE, 8 * GRID_SIZE);
+    a->setxy(8 * GRID_SIZE, 8 * GRID_SIZE);
+    for (int t = 0; t < 8 && a->floor() == 1; ++t)
+        a->apply_z_motion();
+    EXPECT_EQ(0, a->floor())
+        << "the stair cell itself was never latched by a nudged arrival, so "
+           "stepping onto it must trigger the descent";
 }
 
 // A4: a walker running at full speed across a Z-stair whose destination floor
@@ -810,4 +1035,291 @@ TEST(ZAxis, air_fall_with_no_clear_landing_hovers_instead_of_falling)
                "(tick " << t << ")";
         ASSERT_FALSE(a->dead());
     }
+}
+
+// ---------------------------------------------------------------------------
+// Multi-floor pathing fixes (2026-07): flyer cross-floor bypass, A* no-corner-
+// cut, follow-path alignment assist, floor-keyed find_near_foe. All four are
+// floor_count()>1 gated, so og_test_parity pins the single-floor behavior and
+// these tests pin the multi-floor behavior directly (the parity harness is
+// blind to it — both sides run the same sim).
+// ---------------------------------------------------------------------------
+
+#include <openglad/gameplay/pathfinding_grid.h>
+
+// A flyer can never change floors (apply_z_motion skips it; the A* graph has
+// no stair edges for it), so a cross-floor foe is unreachable BY DESIGN.
+// Regression: the cross-floor machinery used to route the flyer to a Z-stair
+// it could never take and pin it there for the rest of the level (the L24
+// caldera-ghost wedge), running a full-map A* exhaustion every tick. Now it
+// keeps the classic floor-blind 2D chase: shadow the foe from its own floor.
+TEST(ZAxis, flyer_with_cross_floor_foe_shadows_it_and_never_parks_on_stair)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.set_floor_count(2);
+
+    // Stair pair at (10,8); floor 1 is grass with the paired DOWN stair.
+    w.grid.data[10 + 8 * w.grid.w] = PIX_ZSTAIR_UP;
+    set_floor1_grid(w, 10, 8, PIX_ZSTAIR_DOWN);
+
+    w.rng_.state_ = 0x9E3779B9u; // live LCG: walk_to_foe's rng guards must run
+
+    walker* ghost = w.add_ob(Order::Living, FAMILY_ORC); // melee: must close in
+    walker* target = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(ghost, nullptr);
+    ASSERT_NE(target, nullptr);
+    ghost->stats()->set_bit_flags(BIT_FLYING, 1);
+
+    ghost->set_team_num(1);
+    ghost->set_real_team_num(1);
+    ghost->set_floor(0);
+    ghost->setxy(12 * GRID_SIZE, 10 * GRID_SIZE);
+    ghost->set_act_type(ACT_RANDOM);
+
+    // Foe on floor 1, 2D-far from the stair: the shadow spot and the stair
+    // cell are cleanly distinguishable.
+    target->set_team_num(0);
+    target->set_real_team_num(0);
+    target->set_floor(1);
+    target->setxy(3 * GRID_SIZE, 3 * GRID_SIZE);
+
+    ghost->set_foe(target);
+    ghost->stats()->try_command(COMMAND_SEARCH, 100000, 0, 0);
+
+    int best_2d = 1 << 30;
+    int stair_park_ticks = 0;
+    const int total_ticks = 2000;
+    const int tail_start = total_ticks - 600;
+    for (int t = 0; t < total_ticks; ++t)
+    {
+        ghost->act();
+        if (ghost->dead())
+            break;
+        ASSERT_EQ(0, ghost->floor())
+            << "flyers never change floors (tick " << t << ")";
+        const int d2d =
+            std::abs(ghost->xpos() - target->xpos()) +
+            std::abs(ghost->ypos() - target->ypos());
+        best_2d = std::min(best_2d, d2d);
+        if (t >= tail_start)
+        {
+            int cx, cy;
+            center_cell(ghost, cx, cy);
+            if (cx == 10 && cy == 8)
+                ++stair_park_ticks;
+        }
+        if (!ghost->foe() && !target->dead())
+            ghost->set_foe(target);
+        if (!ghost->stats()->has_commands() && ghost->foe())
+            ghost->stats()->try_command(COMMAND_SEARCH, 100000, 0, 0);
+    }
+
+    EXPECT_LT(best_2d, 4 * GRID_SIZE)
+        << "flyer never closed on its cross-floor foe's 2D shadow — the "
+           "stair-seek machinery is routing it somewhere it can never go";
+    EXPECT_LT(stair_park_ticks, 300)
+        << "flyer spent the endgame parked on the Z-stair cell — the "
+           "pre-fix caldera-ghost wedge is back";
+}
+
+// No corner cutting (multi-floor gate): a full-cell body cannot make a
+// diagonal cell transition when either flanking orthogonal cell is blocked —
+// its swept box necessarily overlaps the flank. Regression: A* emitted such
+// hops; in an X-pinch (wall west + wall north, both flanks of the north-west
+// diagonal) the follower seized on the impossible edge forever (the L24
+// terrace scree/lava pockets).
+TEST(ZAxis, multifloor_astar_never_emits_diagonals_past_blocked_flanks)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.set_floor_count(2); // arms the multi-floor pathing rules
+    set_floor1_grid(w, 0, 0, PIX_GRASS1);
+
+    // X-pinch at (10,10): west and north are walls, so the NW diagonal to
+    // (9,9) is pixel-impassable at every offset; the only real route is
+    // around, through row 11.
+    w.grid.data[9 + 10 * w.grid.w] = PIX_H_WALL1;
+    w.grid.data[10 + 9 * w.grid.w] = PIX_H_WALL1;
+
+    w.rng_.state_ = 0x9E3779B9u;
+
+    walker* orc = w.add_ob(Order::Living, FAMILY_ORC);
+    walker* target = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(orc, nullptr);
+    ASSERT_NE(target, nullptr);
+    ASSERT_EQ(16, orc->sizex());
+
+    orc->set_team_num(1);
+    orc->set_real_team_num(1);
+    orc->set_floor(0);
+    orc->setxy(10 * GRID_SIZE, 10 * GRID_SIZE);
+    orc->set_act_type(ACT_RANDOM);
+
+    target->set_team_num(0);
+    target->set_real_team_num(0);
+    target->set_floor(0);
+    target->setxy(3 * GRID_SIZE, 10 * GRID_SIZE);
+    if (target->stats())
+        target->stats()->set_hitpoints(30000); // outlive the whole chase
+
+    orc->set_foe(target);
+    orc->find_path_to_foe();
+    ASSERT_FALSE(orc->path_to_foe.empty())
+        << "a walkable detour around the X-pinch exists; A* must find it";
+
+    // The path must never contain a diagonal hop past a blocked flank.
+    int prev_cx = orc->xpos() / GRID_SIZE;
+    int prev_cy = orc->ypos() / GRID_SIZE;
+    for (void* state : orc->path_to_foe)
+    {
+        const int cx = GET_STATE_X(state) / GRID_SIZE;
+        const int cy = GET_STATE_Y(state) / GRID_SIZE;
+        if (std::abs(cx - prev_cx) == 1 && std::abs(cy - prev_cy) == 1)
+        {
+            EXPECT_TRUE(w.query_grid_passable(
+                static_cast<float>(cx * GRID_SIZE),
+                static_cast<float>(prev_cy * GRID_SIZE), orc, 0))
+                << "diagonal hop (" << prev_cx << "," << prev_cy << ")->("
+                << cx << "," << cy << ") cuts a blocked x-flank corner";
+            EXPECT_TRUE(w.query_grid_passable(
+                static_cast<float>(prev_cx * GRID_SIZE),
+                static_cast<float>(cy * GRID_SIZE), orc, 0))
+                << "diagonal hop (" << prev_cx << "," << prev_cy << ")->("
+                << cx << "," << cy << ") cuts a blocked y-flank corner";
+        }
+        prev_cx = cx;
+        prev_cy = cy;
+    }
+
+    // End to end: the orc must actually get around the pinch to its foe.
+    orc->stats()->try_command(COMMAND_SEARCH, 100000, 0, 0);
+    int best = 1 << 30;
+    for (int t = 0; t < 2000; ++t)
+    {
+        orc->act();
+        if (orc->dead())
+            break;
+        best = std::min(best,
+                        static_cast<int>(orc->distance_to_ob(target)));
+        if (!orc->foe() && !target->dead())
+            orc->set_foe(target);
+        if (!orc->stats()->has_commands() && orc->foe())
+            orc->stats()->try_command(COMMAND_SEARCH, 100000, 0, 0);
+    }
+    EXPECT_LT(best, 4 * GRID_SIZE)
+        << "orc never made it around the X-pinch to its foe — it is seized "
+           "on an impossible diagonal edge";
+}
+
+// Follow-path alignment assist (multi-floor gate): a node counts as reached
+// while the body still spills up to 15px into the next row, and a cardinal
+// hop hugging an impassable cell on the spill side stays pixel-blocked at
+// every misaligned offset. Regression: walkstep's fixed fallback bounced the
+// walker OUT of alignment each tick — a deterministic oscillation that pinned
+// chasers at convex corners forever (the L24 tower-terrace wedge). The assist
+// slides toward exact alignment instead; the walker turns the corner.
+TEST(ZAxis, misaligned_walker_aligns_and_turns_a_one_lane_corner)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.set_floor_count(2); // arms the multi-floor pathing rules
+    set_floor1_grid(w, 0, 0, PIX_GRASS1);
+
+    // A single-file lane along row 10: rows 9 and 11 are solid wall, except
+    // (10,11) — the cell the chaser's misaligned body currently spills into.
+    for (int x = 0; x < w.grid.w; ++x)
+    {
+        w.grid.data[x + 9 * w.grid.w] = PIX_H_WALL1;
+        if (x != 10)
+            w.grid.data[x + 11 * w.grid.w] = PIX_H_WALL1;
+    }
+
+    w.rng_.state_ = 0x9E3779B9u;
+
+    walker* orc = w.add_ob(Order::Living, FAMILY_ORC);
+    walker* target = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(orc, nullptr);
+    ASSERT_NE(target, nullptr);
+    ASSERT_EQ(16, orc->sizex());
+    ASSERT_EQ(16, orc->sizey());
+
+    orc->set_team_num(1);
+    orc->set_real_team_num(1);
+    orc->set_floor(0);
+    // 14px below the lane line: body spans rows 10 AND 11. Every westward
+    // step is pixel-blocked by the wall at (9,11) until the body is EXACTLY
+    // aligned into row 10.
+    orc->setxy(static_cast<short>(10 * GRID_SIZE),
+               static_cast<short>(10 * GRID_SIZE + 14));
+    orc->set_act_type(ACT_RANDOM);
+
+    target->set_team_num(0);
+    target->set_real_team_num(0);
+    target->set_floor(0);
+    target->setxy(4 * GRID_SIZE, 10 * GRID_SIZE);
+    if (target->stats())
+        target->stats()->set_hitpoints(30000);
+
+    orc->set_foe(target);
+    orc->stats()->try_command(COMMAND_SEARCH, 100000, 0, 0);
+
+    int best = 1 << 30;
+    for (int t = 0; t < 1500; ++t)
+    {
+        orc->act();
+        if (orc->dead())
+            break;
+        best = std::min(best,
+                        static_cast<int>(orc->distance_to_ob(target)));
+        if (!orc->foe() && !target->dead())
+            orc->set_foe(target);
+        if (!orc->stats()->has_commands() && orc->foe())
+            orc->stats()->try_command(COMMAND_SEARCH, 100000, 0, 0);
+    }
+    EXPECT_LT(best, 4 * GRID_SIZE)
+        << "orc never aligned into the one-tile lane — the corner-wedge "
+           "oscillation is back";
+}
+
+// find_near_foe's spiral probes the obmap; its floor parameter used to
+// default to 0, so upper-floor walkers were blind to foes standing beside
+// them and latched whatever stood on the GROUND floor beneath their 2D
+// position instead. It must probe the searcher's own floor. (Cross-floor
+// acquisition intentionally remains available via find_far_foe.)
+TEST(ZAxis, find_near_foe_probes_the_searchers_floor)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.set_floor_count(2);
+    set_floor1_grid(w, 0, 0, PIX_GRASS1);
+
+    walker* searcher = w.add_ob(Order::Living, FAMILY_ORC);
+    walker* below = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* beside = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(searcher, nullptr);
+    ASSERT_NE(below, nullptr);
+    ASSERT_NE(beside, nullptr);
+
+    searcher->set_team_num(1);
+    searcher->set_real_team_num(1);
+    searcher->set_floor(1);
+    searcher->setxy(100, 100);
+
+    // Ground-floor foe in the FIRST bucket the spiral probes (east +32px):
+    // the pre-fix floor-0 default found this one.
+    below->set_team_num(0);
+    below->set_real_team_num(0);
+    below->set_floor(0);
+    below->setxy(132, 100);
+
+    // Same-floor foe one bucket further out: the correct near foe.
+    beside->set_team_num(0);
+    beside->set_real_team_num(0);
+    beside->set_floor(1);
+    beside->setxy(164, 100);
+
+    walker* found = w.find_near_foe(searcher);
+    EXPECT_EQ(beside, found)
+        << "find_near_foe must probe the searcher's floor, not floor 0";
 }

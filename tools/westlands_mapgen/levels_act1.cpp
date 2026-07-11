@@ -332,6 +332,11 @@ void build_forest_road(const LevelDataHooks& hooks)
 // west — skeletons at once, flying Riders over open water at 400 and 1200,
 // ground waves funneling through the ford at 800 and 1600 — and the two
 // west-bank camps keep spawning until the crew crosses and burns them.
+// (Content batch 2026-07: every beat roughly doubled — 39 placed foes, the
+// Rider wings 2 -> 5 each — because the rearguard's lvl-6 skeleton camp
+// plus the four lvl-9 wards made the designed 19 feel like a skirmish, not
+// the briefing's flood. The beat ticks and the five-beat shape are the
+// design contract and stay exactly as drafted.)
 // Extermination win: hold the east bank, break every wave, none may pass.
 // The Bearer shelters behind the shield-line (SAVE_ALL from here east).
 void build_last_ford(const LevelDataHooks& hooks)
@@ -380,31 +385,40 @@ void build_last_ford(const LevelDataHooks& hooks)
     paint(w.grid, 56, 27, PIX_WALL2);
     paint_rect(w.grid, 51, 28, 56, 28, PIX_WALL2); // south wall
 
-    // The waves (team 2), sized for an entry-power lvl-2 crew that must
-    // eventually EXTERMINATE them (scenario NPCs carry full level-derived
-    // stats — a lvl-4 ghost outweighs a lvl-2 crew soldier one on one, so
-    // the beats stay small and the levels stay low). Wave 0 hits the ford
-    // immediately.
-    static constexpr int wave0[5][2] = {{14, 21}, {14, 23}, {16, 20},
-                                        {16, 24}, {18, 22}};
+    // The waves (team 2), sized against the WHOLE defense — the crew, the
+    // two rearguard soldiers, the four lvl-9 door-wards, and above all the
+    // rearguard's lvl-6 skeleton camp that keeps feeding the line (scenario
+    // NPCs carry full level-derived stats — a lvl-4 ghost outweighs a lvl-2
+    // crew soldier one on one, so the LEVELS stay low and the COUNTS carry
+    // the flood). Wave 0 hits the ford immediately.
+    static constexpr int wave0[9][2] = {{14, 21}, {14, 23}, {16, 20},
+                                        {16, 24}, {18, 22}, {12, 20},
+                                        {12, 24}, {18, 18}, {18, 26}};
     for (const auto& c : wave0)
         place_living(w, FAMILY_SKELETON, 2, 0, c[0], c[1], 2);
     // Beats land every ~400 ticks, not every 300: defense here is
     // attrition, and the line needs a recovery window between waves.
-    static constexpr int wave1[2][2] = {{10, 18}, {10, 26}};
+    static constexpr int wave1[5][2] = {{10, 18}, {10, 26}, {10, 22},
+                                        {12, 16}, {12, 28}};
     for (const auto& c : wave1) // Riders fly: they cross anywhere
         place_living(w, FAMILY_GHOST, 2, 0, c[0], c[1], 4, false, false, 400);
-    static constexpr int wave2[5][2] = {{4, 21}, {4, 23},  {6, 20},
-                                        {6, 24}, {8, 22}};
-    for (int i = 0; i < 5; ++i)
+    static constexpr int wave2[10][2] = {{4, 21}, {4, 23}, {6, 20}, {6, 24},
+                                         {8, 22}, {2, 19}, {4, 18}, {4, 26},
+                                         {6, 18}, {6, 26}};
+    for (int i = 0; i < 10; ++i)
         place_living(w, FAMILY_ORC, 2, 0, wave2[i][0], wave2[i][1],
                      2 + (i % 2), false, false, 800);
-    static constexpr int wave3[2][2] = {{2, 16}, {2, 28}};
+    static constexpr int wave3[5][2] = {{2, 16}, {2, 28}, {4, 15},
+                                        {4, 29}, {6, 16}};
     for (const auto& c : wave3)
         place_living(w, FAMILY_GHOST, 2, 0, c[0], c[1], 4, false, false, 1200);
-    place_living(w, FAMILY_BIG_ORC, 2, 0, 2, 20, 3, false, false, 1600);
-    place_living(w, FAMILY_BIG_ORC, 2, 0, 2, 24, 3, false, false, 1600);
-    static constexpr int last_push[3][2] = {{5, 18}, {5, 26}, {7, 19}};
+    static constexpr int last_bigs[4][2] = {{2, 20}, {2, 24}, {4, 20},
+                                            {4, 24}};
+    for (const auto& c : last_bigs)
+        place_living(w, FAMILY_BIG_ORC, 2, 0, c[0], c[1], 3, false, false,
+                     1600);
+    static constexpr int last_push[6][2] = {{5, 18}, {5, 26}, {7, 19},
+                                            {7, 25}, {9, 20}, {9, 24}};
     for (const auto& c : last_push)
         place_living(w, FAMILY_SKELETON, 2, 0, c[0], c[1], 3, false, false,
                      1600);
@@ -455,7 +469,11 @@ void build_last_ford(const LevelDataHooks& hooks)
     // take set_difficulty once now too, and this camp is load-bearing for
     // the cargo — the bump keeps the defense/offense ratio where the
     // pass-1 harness left it, with margin for the mid-game surge.
-    place_generator(w, FAMILY_TENT, 0, 0, 58, 26, 6);
+    // (Content batch 2026-07: 6 -> 7 alongside the doubled waves — with
+    // ten Riders across the two wings, the unattended-run wail-trickle
+    // cracked the redoubt by ~4800 on one seed in three; the hotter camp
+    // restores the 3/3 Bearer gate the F4 pass shipped with.)
+    place_generator(w, FAMILY_TENT, 0, 0, 58, 26, 7);
 
     // The quartermaster's cache, behind the line.
     place(w, Order::Treasure, FAMILY_DRUMSTICK, 0, 0, 55, 20);
@@ -573,11 +591,31 @@ void build_hidden_refuge(const LevelDataHooks& hooks)
     place_living(w, FAMILY_ELF, 0, 1, 50, 19, 4, true);
     place_living(w, FAMILY_ELF, 0, 1, 50, 30, 4, true);
     place_living(w, FAMILY_CLERIC, 0, 0, 51, 28, 6, true);
+    // The refuge MUSTERS (content batch 2026-07, with the scaled waves):
+    // a treehouse in the north garden — the sanctuary's own kin answering
+    // the horn, the Deeping Wall's courtyard-muster pattern at act-1
+    // weight. It is the Ford's load-bearing-ally-camp lesson applied here:
+    // static wards alone cannot hold a doubled flood after the line falls,
+    // and the widened north descent took the Bearer's hut on one seed in
+    // three without it. Its roaming elves also finish what the guards
+    // cannot — the west-valley camp trickle that used to stall the
+    // kill-all endgame at ~16 foes. Lvl 3, NOT the Wall's 7: at 5 the
+    // muster measured hotter than the whole flood (foes swept by ~1800,
+    // the trivial fight the batch exists to fix); at 3 the horde still
+    // owns the valley to ~2700 and the muster mops up, not takes over.
+    place_generator(w, FAMILY_TREEHOUSE, 0, 0, 42, 13, 3);
 
     // The dawn assault (team 2): scouts prowl now; the horn sounds at 500.
     // (F4 batch 4: horn back at 500 — retiming to 650 traded one losing
     // seed for another; the whole wave at lvl 2 is the stable fix.)
-    static constexpr int scouts[4][2] = {{10, 23}, {10, 26}, {14, 22}, {14, 27}};
+    // (Content batch 2026-07: every wave scaled up — 38 placed foes, dawn
+    // 9 -> 16, the north descent 10 -> 16 — because the refuge's own
+    // wardens (the gallery elves, the lvl-6 cleric, the lvl-9 king and
+    // door-wards) made the designed 23 a mop-up. The F4 lesson holds: the
+    // per-walker LEVELS stay exactly at the F4 floor — the cascade wiped
+    // crews when the waves got HOTTER, not when they got wider.)
+    static constexpr int scouts[6][2] = {{10, 23}, {10, 26}, {14, 22},
+                                         {14, 27}, {12, 20}, {12, 29}};
     for (const auto& c : scouts)
         place_living(w, FAMILY_ORC, 2, 0, c[0], c[1], 2);
     // (F4 fresh-team calibration: the whole assault dropped one level —
@@ -585,22 +623,26 @@ void build_hidden_refuge(const LevelDataHooks& hooks)
     // The obmap context-before-load fix made harness collision production-
     // accurate, and the two-wave cascade wiped a curve-3 crew by ~1300;
     // one level off each wave lets the curve crew clear the vale.)
-    static constexpr int dawn_orcs[7][2] = {{1, 22}, {1, 24}, {1, 26},
-                                            {3, 22}, {3, 24}, {3, 26},
-                                            {5, 24}};
+    static constexpr int dawn_orcs[12][2] = {{1, 22}, {1, 24}, {1, 26},
+                                             {3, 22}, {3, 24}, {3, 26},
+                                             {5, 24}, {1, 23}, {1, 25},
+                                             {3, 23}, {3, 25}, {5, 22}};
     for (const auto& c : dawn_orcs)
         place_living(w, FAMILY_ORC, 2, 0, c[0], c[1], 2, false, false, 500);
-    static constexpr int dawn_bigs[2][2] = {{2, 23}, {2, 25}};
+    static constexpr int dawn_bigs[4][2] = {{2, 23}, {2, 25}, {5, 23},
+                                            {5, 25}};
     for (const auto& c : dawn_bigs)
         place_living(w, FAMILY_BIG_ORC, 2, 0, c[0], c[1], 2, false, false, 500);
     // The north wave lands at 1000 — the second act of the assault, against
     // a defense that just survived the dawn horn, not a coup de grace.
-    static constexpr int north_ghosts[4][2] = {{50, 3}, {53, 3}, {50, 5},
-                                               {53, 5}};
+    static constexpr int north_ghosts[6][2] = {{50, 3}, {53, 3}, {50, 5},
+                                               {53, 5}, {51, 1}, {52, 1}};
     for (const auto& c : north_ghosts)
         place_living(w, FAMILY_GHOST, 2, 0, c[0], c[1], 3, false, false, 1000);
-    static constexpr int north_skels[6][2] = {{51, 2}, {52, 2}, {51, 4},
-                                              {52, 4}, {51, 6}, {52, 6}};
+    static constexpr int north_skels[10][2] = {{51, 2}, {52, 2}, {51, 4},
+                                               {52, 4}, {51, 6}, {52, 6},
+                                               {50, 2}, {53, 2}, {50, 4},
+                                               {53, 4}};
     for (const auto& c : north_skels)
         place_living(w, FAMILY_SKELETON, 2, 0, c[0], c[1], 2, false, false,
                      1000);
@@ -627,7 +669,12 @@ void build_hidden_refuge(const LevelDataHooks& hooks)
     // corridor through the hall. A door-ward body-blocks the hut's only
     // door; the hardened south face keeps the flying Riders out. SAVE_ALL
     // rides on him.
-    // (Ward weight follows the finale's door-wards — lvl-9, in series.)
+    // (Ward weight follows the finale's door-wards — lvl-9, in series.
+    // Content batch 2026-07: a fourth ward on the porch, one step up the
+    // hut lane — the same fix as the Ford's E6 mouth post: the widened
+    // north descent broke a three-ward hut on one seed in three once the
+    // stand-in crew wiped, and the wards must hold without them.)
+    place_living(w, FAMILY_SOLDIER, 0, 0, 32, 35, 9, true); // the porch
     place_living(w, FAMILY_SOLDIER, 0, 0, 32, 37, 9, true); // the door-ward
     place_living(w, FAMILY_SOLDIER, 0, 0, 32, 38, 9, true); // the hearth
     place_living(w, FAMILY_SOLDIER, 0, 0, 33, 37, 9, true); // the corner
@@ -865,8 +912,8 @@ std::vector<ExpectedLevel> act1_expectations()
     return {
         {1, 1, "The Quiet Vale", 10, 1, 0, 0, 0, 9, 0, 2, 0, true, {2}},
         {2, 1, "The Forest Road", 9, 1, 0, 0, 0, 30, 0, 11, 7, true, {3, 1}},
-        {3, 1, "The Last Ford", 10, 7, 1, 0, 0, 19, 2, 14, 1, true, {4, 2}},
-        {4, 2, "The Hidden Refuge", 10, 8, 0, 0, 0, 23, 2, 19, 1, true,
+        {3, 1, "The Last Ford", 10, 7, 1, 0, 0, 39, 2, 30, 1, true, {4, 2}},
+        {4, 2, "The Hidden Refuge", 10, 9, 1, 0, 0, 38, 2, 32, 1, true,
          {5, 7, 3}},
         {25, 1, "The Scouring", 9, 1, 0, 0, 0, 15, 2, 0, 0, true, {26, 24}},
         {26, 1, "The Grey Ships", 9, 0, 0, 0, 0, 3, 0, 0, 0, true, {1}},

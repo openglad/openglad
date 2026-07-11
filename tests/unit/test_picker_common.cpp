@@ -903,6 +903,73 @@ TEST(PickerCommon, train_session_resync_if_promoted_handles_empty_session)
     ASSERT_FALSE(session.resync_if_promoted());
 }
 
+// Issue #133 (self-heal): a stat edit made AFTER an external promotion must
+// compose on the fresh post-promotion stats — no explicit resync call. Before
+// the self-heal, the edit clamped the stale mage working copy against the
+// promoted original and "put the old mage stats back" on accept.
+TEST(PickerCommon, train_session_stat_edit_after_external_promotion_self_heals)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_MAGE);
+    save.team_list[0]->upgrade_to_level(6);
+    save.team_size = 1;
+    save.m_totalcash[0] = 999999;
+
+    og::ui::TrainSession session(save);
+    ASSERT_EQ(FAMILY_MAGE, static_cast<int>(session.working_copy().family));
+
+    // External promotion, exactly as create_detail_menu does it.
+    save.team_list[0]->upgrade_to_level(1);
+    save.team_list[0]->family = FAMILY_ARCHMAGE;
+    const short promoted_str = save.team_list[0]->strength;
+    const short promoted_lvl = save.team_list[0]->level;
+
+    // No explicit resync_if_promoted() — the edit itself must self-heal.
+    session.increase_stat(og::ui::TrainSession::Stat::Strength, 1);
+
+    ASSERT_EQ(FAMILY_ARCHMAGE, static_cast<int>(session.working_copy().family));
+    ASSERT_EQ(promoted_str + 1, static_cast<int>(session.working_copy().strength));
+    ASSERT_EQ(static_cast<int>(promoted_lvl),
+              static_cast<int>(session.working_copy().level));
+
+    // And the composed edit commits on top of the promotion.
+    ASSERT_TRUE(session.accept());
+    ASSERT_EQ(FAMILY_ARCHMAGE, static_cast<int>(save.team_list[0]->family));
+    ASSERT_EQ(promoted_str + 1, static_cast<int>(save.team_list[0]->strength));
+    ASSERT_EQ(static_cast<int>(promoted_lvl),
+              static_cast<int>(save.team_list[0]->level));
+}
+
+// Issue #133 (self-heal): accept() reached with a stale (pre-promotion)
+// working copy must not statscopy the old family/stats back over the
+// promotion. The pending stale edit is discarded and the accept is free.
+TEST(PickerCommon, train_session_accept_after_external_promotion_self_heals)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_MAGE);
+    save.team_list[0]->upgrade_to_level(6);
+    save.team_size = 1;
+    save.m_totalcash[0] = 999999;
+
+    og::ui::TrainSession session(save);
+    session.increase_stat(og::ui::TrainSession::Stat::Strength, 2); // pending edit
+
+    save.team_list[0]->upgrade_to_level(1);
+    save.team_list[0]->family = FAMILY_ARCHMAGE;
+    const short promoted_str = save.team_list[0]->strength;
+
+    const std::uint32_t gold_before = save.m_totalcash[0];
+    ASSERT_TRUE(session.accept());
+    ASSERT_EQ(FAMILY_ARCHMAGE, static_cast<int>(save.team_list[0]->family));
+    ASSERT_EQ(static_cast<int>(promoted_str),
+              static_cast<int>(save.team_list[0]->strength))
+        << "stale pending edit must be discarded, not composed";
+    ASSERT_EQ(1, static_cast<int>(save.team_list[0]->level));
+    ASSERT_EQ(gold_before, save.m_totalcash[0]) << "no-op accept must be free";
+}
+
 TEST(PickerCommon, train_session_set_team_clamps_and_lobby_revocation_invalidates_original)
 {
     init_family_registry();

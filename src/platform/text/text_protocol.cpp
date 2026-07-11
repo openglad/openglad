@@ -20,6 +20,10 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/platform/game_context.h>
 
+#include <openglad/gameplay/pathfinding_grid.h>
+#include <openglad/gameplay/obmap.h>
+#include <openglad/gameplay/smooth.h>
+
 #include <cstdio>
 #include <format>
 #include <iostream>
@@ -36,6 +40,7 @@ namespace {
 static void json_entity(std::ostream& os, const walker* w, int index)
 {
     os << "{\"id\":" << index
+       << ",\"eid\":" << w->entity_id()
        << ",\"order\":" << static_cast<int>(w->query_order())
        << ",\"family\":" << static_cast<int>(w->family())
        << ",\"team\":" << static_cast<int>(w->team_num())
@@ -44,6 +49,16 @@ static void json_entity(std::ostream& os, const walker* w, int index)
        << ",\"floor\":" << w->floor()
        << ",\"hp\":" << (w->stats() ? w->stats()->hitpoints() : 0)
        << ",\"max_hp\":" << (w->stats() ? w->stats()->max_hitpoints() : 0)
+       << ",\"act\":" << static_cast<int>(w->act_type())
+       << ",\"ani\":" << static_cast<int>(w->ani_type())
+       << ",\"busy\":" << static_cast<int>(w->busy())
+       << ",\"frozen\":" << (w->stats() ? w->stats()->frozen_delay() : 0)
+       << ",\"curdir\":" << static_cast<int>(w->curdir())
+       << ",\"enddir\":" << static_cast<int>(w->enddir())
+       << ",\"ncmd\":" << (w->stats() ? (w->stats()->has_commands() ? 1 : 0) : -1)
+       << ",\"path_len\":" << w->path_to_foe.size()
+       << ",\"dormant\":" << (w->dormant() ? "true" : "false")
+       << ",\"foe\":" << (w->foe() != nullptr ? w->foe()->entity_id() : 0)
        << ",\"dead\":" << (w->dead() ? "true" : "false")
        << "}";
 }
@@ -266,6 +281,143 @@ static void cmd_census(GameWorld& world)
     std::cout.flush();
 }
 
+// Diagnostic: run the stair-aware A* for a walker (by entity id) toward its
+// current foe WITHOUT mutating the walker (solves into a local vector), and
+// dump the resulting path cells. Debug-harness-only introspection.
+static void cmd_path(GameWorld& world, std::uint32_t eid)
+{
+    walker* w = nullptr;
+    for (auto& uptr : world.oblist)
+        if (uptr != nullptr && uptr->entity_id() == eid)
+        {
+            w = uptr.get();
+            break;
+        }
+    std::ostringstream os;
+    os << "{\"cmd\":\"path\",\"eid\":" << eid;
+    if (w == nullptr || current_game == nullptr)
+    {
+        os << ",\"error\":\"no such entity or no game\"}";
+        std::cout << os.str() << "\n";
+        std::cout.flush();
+        return;
+    }
+    os << ",\"x\":" << w->xpos() << ",\"y\":" << w->ypos()
+       << ",\"floor\":" << w->floor();
+    walker* foe = w->foe();
+    if (foe == nullptr)
+    {
+        os << ",\"foe\":null}";
+        std::cout << os.str() << "\n";
+        std::cout.flush();
+        return;
+    }
+    os << ",\"foe\":{\"eid\":" << foe->entity_id()
+       << ",\"x\":" << foe->xpos() << ",\"y\":" << foe->ypos()
+       << ",\"floor\":" << foe->floor() << "}";
+
+    GameplayPathfindingState* pathing = ensure_pathfinding_state(*current_game);
+    std::vector<void*> path;
+    float cost = 0.0f;
+    const auto make_state = [](int x, int y, int f) {
+        return reinterpret_cast<void*>(static_cast<intptr_t>(
+            static_cast<intptr_t>(f) * FLOOR_STRIDE +
+            (y / GRID_SIZE) * MAP_WIDTH + (x / GRID_SIZE)));
+    };
+    pathing->solve_for(w, make_state(w->xpos(), w->ypos(), w->floor()),
+                       make_state(foe->xpos(), foe->ypos(), foe->floor()),
+                       path, cost);
+    os << ",\"path_len\":" << path.size() << ",\"cost\":" << cost
+       << ",\"path\":[";
+    for (size_t i = 0; i < path.size(); i++)
+    {
+        if (i > 0) os << ",";
+        os << "[" << GET_STATE_X(path[i]) / GRID_SIZE << ","
+           << GET_STATE_Y(path[i]) / GRID_SIZE << ","
+           << GET_STATE_FLOOR(path[i]) << "]";
+    }
+    os << "]}";
+    std::cout << os.str() << "\n";
+    std::cout.flush();
+}
+
+// Diagnostic: dump grid tile ids, walker-blind grid passability, and obmap
+// occupancy counts for a rect of cells on one floor.
+static void cmd_grid(GameWorld& world, int floor, int x0, int y0, int x1,
+                     int y1)
+{
+    const PixieData& g = world.grid_for_floor(static_cast<short>(floor));
+    std::ostringstream os;
+    os << "{\"cmd\":\"grid\",\"floor\":" << floor << ",\"rows\":[";
+    bool first_row = true;
+    for (int y = y0; y <= y1 && y < g.h; y++)
+    {
+        if (y < 0) continue;
+        if (!first_row) os << ",";
+        first_row = false;
+        os << "{\"y\":" << y << ",\"cells\":[";
+        bool first_cell = true;
+        for (int x = x0; x <= x1 && x < g.w; x++)
+        {
+            if (x < 0) continue;
+            if (!first_cell) os << ",";
+            first_cell = false;
+            const int tile = g.data[x + y * g.w];
+            const bool pass = world.query_grid_passable(
+                static_cast<float>(x * GRID_SIZE),
+                static_cast<float>(y * GRID_SIZE), nullptr,
+                static_cast<short>(floor));
+            size_t occupancy = 0;
+            if (world.myobmap != nullptr)
+                occupancy = world.myobmap
+                    ->obmap_get_list(static_cast<short>(x * GRID_SIZE),
+                                     static_cast<short>(y * GRID_SIZE),
+                                     static_cast<short>(floor))
+                    .size();
+            os << "[" << x << "," << tile << "," << (pass ? 1 : 0) << ","
+               << occupancy << "]";
+        }
+        os << "]}";
+    }
+    os << "]}";
+    std::cout << os.str() << "\n";
+    std::cout.flush();
+}
+
+// Diagnostic: dump the identities registered in one obmap cell.
+static void cmd_obat(GameWorld& world, int floor, int cx, int cy)
+{
+    std::ostringstream os;
+    os << "{\"cmd\":\"obat\",\"floor\":" << floor << ",\"cx\":" << cx
+       << ",\"cy\":" << cy << ",\"entries\":[";
+    if (world.myobmap != nullptr)
+    {
+        const auto& list = world.myobmap->obmap_get_list(
+            static_cast<short>(cx * GRID_SIZE),
+            static_cast<short>(cy * GRID_SIZE), static_cast<short>(floor));
+        bool first = true;
+        for (walker* e : list)
+        {
+            if (!first) os << ",";
+            first = false;
+            if (e == nullptr)
+            {
+                os << "null";
+                continue;
+            }
+            os << "{\"eid\":" << e->entity_id()
+               << ",\"order\":" << static_cast<int>(e->query_order())
+               << ",\"family\":" << static_cast<int>(e->family())
+               << ",\"x\":" << e->xpos() << ",\"y\":" << e->ypos()
+               << ",\"floor\":" << e->floor()
+               << ",\"dead\":" << (e->dead() ? "true" : "false") << "}";
+        }
+    }
+    os << "]}";
+    std::cout << os.str() << "\n";
+    std::cout.flush();
+}
+
 static void cmd_events(og::sim::SimEventLog& events)
 {
     auto drained = events.drain();
@@ -480,6 +632,18 @@ int run_text_protocol_session(const TextProtocolArgs& args)
             cmd_state(level);
         } else if (cmd == "census") {
             cmd_census(world);
+        } else if (cmd == "path") {
+            std::uint32_t eid = 0;
+            iss >> eid;
+            cmd_path(world, eid);
+        } else if (cmd == "grid") {
+            int floor = 0, x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+            iss >> floor >> x0 >> y0 >> x1 >> y1;
+            cmd_grid(world, floor, x0, y0, x1, y1);
+        } else if (cmd == "obat") {
+            int floor = 0, cx = 0, cy = 0;
+            iss >> floor >> cx >> cy;
+            cmd_obat(world, floor, cx, cy);
         } else if (cmd == "events") {
             cmd_events(events);
         } else if (cmd == "quit") {

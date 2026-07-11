@@ -170,6 +170,18 @@ void build_mountain_of_fire(const LevelDataHooks& hooks)
     // edge, so it opens no fall line.
     paint_ash(w.grid_for_floor(1), 75, 18, 78, 21);
     paint_ash(w.grid_for_floor(1), 72, 23, 76, 26);
+    // The tower-pocket carve (pathing handoff): the smoothed core's east
+    // face is jagged, so a wedge of walk cells dead-ends between the core
+    // and the tower's west face — a cul-de-sac narrowing to the one-wide
+    // tail at (74, 20) that the tower spawned mages straight into (the
+    // engine's alignment assist now un-wedges them, but a spawn pocket
+    // with no through-route is still a defect). Sealing the pocket is
+    // ILLEGAL — its cells catch fallers stepping off the summit rim (the
+    // fall-line rule hard-fails a rock fill) — so the fix runs the other
+    // way: carve the core's jags into a two-wide lane past the tower's
+    // west face, joining the pocket to the south shelf at y 22. Spawns
+    // and fallers both walk out.
+    paint_ash(w.grid_for_floor(1), 73, 20, 74, 22);
     paint_lava(w.grid_for_floor(1), 65, 12, 68, 13); // north fall (lip y 14..16)
     paint_lava(w.grid_for_floor(1), 65, 36, 68, 37); // south fall (lip y 33..35)
     paint_decor(w, 1, 58, 17, DECOR_BRAZIER); // watch fires
@@ -331,6 +343,41 @@ void build_mountain_of_fire(const LevelDataHooks& hooks)
     // the scatter skips those landing cells itself now (Wave E5
     // fall-line rule), so the ring stays clear of blocking rocks.
     scatter_boulders(w, 1, 60, 14, 78, 35, 31);
+    // Terrace-circuit rule (pathing handoff): the generic scatter obeys the
+    // fall-line rule but not the circuit — its rocks landed on the two- to
+    // three-wide ring walk exactly where the lava sheet flanks it, leaving
+    // X-pinch diagonals (boulder and lava flanking the same walk cell —
+    // observed at (69, 35) against the south-fall lava) that a full-cell
+    // body can only detour around, and one rock standing ON the lava sheet
+    // itself. On this shoulder no boulder may stand on lava nor within one
+    // cell (8-neighborhood) of it: the circuit keeps a continuous clear
+    // walk where it meets the fire.
+    {
+        PixieData& g1 = w.grid_for_floor(1);
+        PixieData& d1 = w.decor_for_floor(1);
+        const auto is_lava = [](unsigned char t) {
+            return t == PIX_LAVA1 || t == PIX_LAVA2;
+        };
+        for (int y = 0; y < g1.h; ++y)
+            for (int x = 0; x < g1.w; ++x)
+            {
+                const unsigned char dec = d1.data[x + y * d1.w];
+                if (dec < DECOR_BOULDER_1 || dec > DECOR_BOULDER_4)
+                    continue;
+                bool near_lava = is_lava(g1.data[x + y * g1.w]);
+                for (int dy = -1; dy <= 1 && !near_lava; ++dy)
+                    for (int dx = -1; dx <= 1 && !near_lava; ++dx)
+                    {
+                        const int nx = x + dx;
+                        const int ny = y + dy;
+                        if (nx >= 0 && ny >= 0 && nx < g1.w && ny < g1.h &&
+                            is_lava(g1.data[nx + ny * g1.w]))
+                            near_lava = true;
+                    }
+                if (near_lava)
+                    d1.data[x + y * d1.w] = DECOR_NONE;
+            }
+    }
     // E7 ambience: the plain has been a battlefield for an age — the old
     // dead on the ash, thickening toward the Undergate throat, and
     // cinder-grit across the plain and through the carved chamber. All

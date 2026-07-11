@@ -18,6 +18,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/statistics.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/resources/level_data_hooks.h>
 
@@ -102,7 +103,15 @@ void build_plains_of_horse_lords(const LevelDataHooks& hooks)
     place_living(w, FAMILY_GHOST, 2, 0, 26, 38, 3);
     place_living(w, FAMILY_GHOST, 2, 0, 20, 20, 3);
     place_living(w, FAMILY_GHOST, 2, 0, 20, 30, 3);
-    place_living(w, FAMILY_BIG_ORC, 2, 0, 46, 23, 8); // the column-masters
+    // The column-masters on the road itself; the northern one is NAMED —
+    // "Herd-Reaver", the captain who drives the stolen herds (content
+    // batch 2026-07: the war levels each carry one named orc captain at
+    // the design doc's champion/vanguard post; naming the post leaves
+    // every census and balance number untouched). Names serialize through
+    // a 12-byte buffer — 11 chars exactly fills it.
+    walker* herd_reaver = place_living(w, FAMILY_BIG_ORC, 2, 0, 46, 23, 8);
+    if (herd_reaver != nullptr)
+        herd_reaver->stats()->name = "Herd-Reaver";
     place_living(w, FAMILY_BIG_ORC, 2, 0, 46, 26, 8);
     place_generator(w, FAMILY_TENT, 2, 0, 6, 10, 3); // the column's camp
     place_generator(w, FAMILY_TENT, 2, 0, 6, 38, 3);
@@ -423,7 +432,12 @@ void build_deeping_wall(const LevelDataHooks& hooks)
         place_living(w, FAMILY_BIG_ORC, 2, 0, 22 + i * 6, 41, 3);
         place_living(w, FAMILY_BIG_ORC, 2, 0, 25 + i * 6, 43, 3);
     }
-    place_living(w, FAMILY_BIG_ORC, 2, 0, 38, 28, 6); // the champions
+    // The champions before the gate; the western one is NAMED —
+    // "Ram-Captain", who leads the ram to the gate (the war levels' named
+    // orc captains, content batch 2026-07; see the Plains note).
+    walker* ram_captain = place_living(w, FAMILY_BIG_ORC, 2, 0, 38, 28, 6);
+    if (ram_captain != nullptr)
+        ram_captain->stats()->name = "Ram-Captain";
     place_living(w, FAMILY_BIG_ORC, 2, 0, 42, 28, 6);
     // (F4: siege camp 7 -> 5 — the E6 lvl-7 bump refilled the field to a
     // standing ~55 against the whole garrison; at 5 the horde still owns
@@ -566,7 +580,13 @@ void build_white_city(const LevelDataHooks& hooks)
         place_living(w, FAMILY_ORC, 2, 0, 36, 22 + i, 3); // the breach
         place_living(w, FAMILY_ORC, 2, 0, 38, 22 + i, 3); // column
     }
-    place_living(w, FAMILY_BIG_ORC, 2, 0, 34, 20, 8); // breach champions
+    // The breach champions; the northern one is NAMED — "Breach-Lord",
+    // the captain who tore the gate and now drives the column through it
+    // (the war levels' named orc captains, content batch 2026-07; the
+    // briefing's sixth line names him in-fiction).
+    walker* breach_lord = place_living(w, FAMILY_BIG_ORC, 2, 0, 34, 20, 8);
+    if (breach_lord != nullptr)
+        breach_lord->stats()->name = "Breach-Lord";
     place_living(w, FAMILY_BIG_ORC, 2, 0, 34, 29, 8);
     for (int row = 0; row < 6; ++row) // the plain lattice
         for (int col = 0; col < 5; ++col)
@@ -615,7 +635,11 @@ void build_white_city(const LevelDataHooks& hooks)
     for (const auto& r : riders16) // lvl 7 (E6): the dawn relief charges
         place_living(w, FAMILY_BARBARIAN, 0, 0, r[0], r[1], 7, false, false,
                      700); // straight into the hotter lvl-7 camps
-    place_generator(w, FAMILY_TOWER, 0, 0, 75, 34, 5);
+    // (75,33), not the drafted (75,34): the tower generator stands 4x4
+    // tiles, and at y34 its south row sat on (75,37) — the east ARRIVAL
+    // cell of the citadel-south rampart stair (74,37) — sealing it for
+    // anyone stepping down (the B2 stair-clearance audit flags it).
+    place_generator(w, FAMILY_TOWER, 0, 0, 75, 33, 5);
     place_hero(w, FAMILY_SOLDIER, 0, 46, 24, 9, "Ranger-King", true, false,
                0);
     place_hero(w, FAMILY_BARBARIAN, 0, 10, 4, 9, "Horse-lord", false, false,
@@ -669,7 +693,8 @@ void build_white_city(const LevelDataHooks& hooks)
                       "is breached; the war-beasts",
                       "are through. Hold the walls,",
                       "clear the streets, and climb",
-                      "to the Tower. Light the beacon."},
+                      "to the Tower. Light the beacon.",
+                      "The Breach-Lord drives them on."},
                      8, 10000);
 }
 
@@ -789,7 +814,14 @@ void build_black_gate(const LevelDataHooks& hooks)
     place_living(w, FAMILY_GHOST, 2, 0, 60, 42, 3);
     place_living(w, FAMILY_GHOST, 2, 0, 68, 10, 3);
     place_living(w, FAMILY_GHOST, 2, 0, 68, 40, 3);
-    place_living(w, FAMILY_ORC, 2, 1, 46, 17, 8, true); // rampart champions
+    // The rampart champions hold the gatehouses as ACT_GUARD posts; the
+    // northern one is NAMED — "Gate-Warden", the captain of the Black
+    // Gate itself (the war levels' named orc captains, content batch
+    // 2026-07). Both posts sit 4 tiles west of the (50,17)/(50,32) stair
+    // arrivals — clear of the B2 stair-clearance audit's guard rule.
+    walker* gate_warden = place_living(w, FAMILY_ORC, 2, 1, 46, 17, 8, true);
+    if (gate_warden != nullptr)
+        gate_warden->stats()->name = "Gate-Warden";
     place_living(w, FAMILY_ORC, 2, 1, 46, 32, 8, true);
     // E6 post-single-scaling bump (see the Deeping Wall note): the legion's
     // TENT camps keep the eastern waste a grind at lvl 7 now that spawns

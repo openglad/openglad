@@ -45,7 +45,10 @@ bool walker::setxy(short x, short y)
         : nullptr;
     if (map != nullptr)
     {
-        if (!ignore())
+        // Dormant (delayed-spawn) walkers hold the "never in the obmap"
+        // invariant: repositioning one must not re-register it. Waking
+        // (walker::set_dormant(false)) is the only re-entry point.
+        if (!ignore() && !dormant())
             map->move(this, x, y);
         else // just remove us, in case :)
             map->remove(this);
@@ -66,7 +69,8 @@ void walker::setworldxy(float x, float y)
         : nullptr;
     if (map != nullptr)
     {
-        if (!ignore())
+        // Same dormancy rule as setxy: never re-register a delayed spawn.
+        if (!ignore() && !dormant())
             map->move(this, static_cast<short>(x), static_cast<short>(y));
         else // just remove us, in case :)
             map->remove(this);

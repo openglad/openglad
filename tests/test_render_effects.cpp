@@ -2539,6 +2539,210 @@ TEST(RenderEffects, dust_absent_when_still_on_top_floor_or_single_floor)
     restore_world(vs);
 }
 
+// ---- Falling cue: render-only air-fall transition (shares the dust key) ----
+
+TEST(RenderEffects, fall_cue_plays_smear_then_puff_after_an_air_fall)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    EffectsCfgGuard guard;
+    all_effects_off();
+
+    // Camera floor 0, a faller overhead on floor 1. The sim's air fall is an
+    // instant floor teleport (change_floor + same x/y); the render-only cue
+    // must play a short smear + landing puff at the landing spot.
+    GameWorld& world = scr()->world();
+    world.set_floor_count(2);
+    fill_camera_grid(static_cast<unsigned char>(PIX_GRASS1));
+    fill_floor_grid(world, 1, static_cast<unsigned char>(PIX_GRASS1));
+    walker* w = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, w);
+    w->setxy(160, 120);
+    vs->control = w;
+    walker* faller = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, faller);
+    faller->set_floor(1);
+    faller->setxy(200, 120);
+    const std::uint32_t id = faller->entity_id();
+    ASSERT_NE(0u, id);
+
+    // OFF run: the identical fall with the dust key off — no trace, no cue
+    // state, capture the landed frame as the byte-identity baseline.
+    cfg.apply_setting("effects", "dust", "off");
+    effects_reset_for_testing();
+    faller->set_floor(1);
+    trace_clear();
+    ASSERT_TRUE(do_redraw(vs));
+    effects_advance_frame();
+    faller->set_floor(0); // the instant fall, straight down
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_FALSE(trace_contains("effects", "fall_cue"))
+        << "dust off must not track or draw falling cues";
+    ASSERT_EQ(0u, effects_fall_cue_frames_left(id));
+    const std::vector<RGB> off = grab_viewport(vs);
+
+    // ON run: same fall. The landing frame starts an 8-frame cue.
+    cfg.apply_setting("effects", "dust", "on");
+    effects_reset_for_testing();
+    faller->set_floor(1);
+    trace_clear();
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_FALSE(trace_contains("effects", "fall_cue"))
+        << "no cue before the floor drops";
+    effects_advance_frame();
+    faller->set_floor(0);
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_TRUE(trace_contains("effects", "fall_cue start id="))
+        << "the floor drop must start a cue";
+    ASSERT_TRUE(trace_contains("effects", "fall_cue floor=0"))
+        << "the cue must draw on the landing floor";
+    ASSERT_EQ(8u, effects_fall_cue_frames_left(id));
+    const std::vector<RGB> on = grab_viewport(vs);
+
+    // Geometry: every changed pixel belongs to the smear column above the
+    // faller (2px wide around its center x, from kFallCueDropPx + streak
+    // above the feet down to the feet). The puff hasn't started yet.
+    const int cx = world_to_screen_x(vs, 200 + faller->sizex() / 2);
+    const int feet = world_to_screen_y(vs, 120 + faller->sizey());
+    size_t changed = 0;
+    for (size_t i = 0; i < off.size(); i++)
+    {
+        if (same(off[i], on[i]))
+            continue;
+        changed++;
+        const int x = static_cast<int>(vs->xloc) +
+            static_cast<int>(i % static_cast<size_t>(vs->xview));
+        const int y = static_cast<int>(vs->yloc) +
+            static_cast<int>(i / static_cast<size_t>(vs->xview));
+        ASSERT_GE(x, cx - 2) << "smear pixel left of the column at y=" << y;
+        ASSERT_LE(x, cx + 2) << "smear pixel right of the column at y=" << y;
+        ASSERT_GE(y, feet - 24 - 10) << "smear pixel above the drop at x=" << x;
+        ASSERT_LE(y, feet) << "smear pixel below the feet at x=" << x;
+    }
+    ASSERT_GT(changed, 0u) << "the landing frame must draw smear pixels";
+
+    // The last three cue frames add the landing puff: pixels appear beside
+    // the smear column (the expanding ring reaches rx=8 around the feet).
+    for (int i = 0; i < 6; i++)
+        effects_advance_frame();
+    ASSERT_EQ(2u, effects_fall_cue_frames_left(id));
+    trace_clear();
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_TRUE(trace_contains("effects", "fall_cue floor=0"));
+    const std::vector<RGB> puff = grab_viewport(vs);
+    bool puff_ring_pixel = false;
+    for (size_t i = 0; i < off.size(); i++)
+    {
+        if (same(off[i], puff[i]))
+            continue;
+        const int x = static_cast<int>(vs->xloc) +
+            static_cast<int>(i % static_cast<size_t>(vs->xview));
+        if (x < cx - 3 || x > cx + 3)
+            puff_ring_pixel = true;
+    }
+    ASSERT_TRUE(puff_ring_pixel)
+        << "the landing puff must spread wider than the smear column";
+
+    // Played out: the cue expires, draws nothing, and is pruned.
+    for (int i = 0; i < 2; i++)
+        effects_advance_frame();
+    ASSERT_EQ(0u, effects_fall_cue_frames_left(id));
+    trace_clear();
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_FALSE(trace_contains("effects", "fall_cue"))
+        << "an expired cue must not draw";
+    ASSERT_TRUE(rects_equal(off, grab_viewport(vs)))
+        << "after the cue expires the scene must match the dust-off baseline";
+
+    effects_reset_for_testing();
+    restore_world(vs);
+}
+
+TEST(RenderEffects, fall_cue_absent_for_stair_descents_teleports_and_dust_off)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    EffectsCfgGuard guard;
+    all_effects_off();
+    cfg.apply_setting("effects", "dust", "on");
+
+    GameWorld& world = scr()->world();
+    world.set_floor_count(2);
+    fill_camera_grid(static_cast<unsigned char>(PIX_GRASS1));
+    fill_floor_grid(world, 1, static_cast<unsigned char>(PIX_GRASS1));
+    walker* w = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, w);
+    w->setxy(160, 120);
+    vs->control = w;
+    walker* mover = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, mover);
+    const std::uint32_t id = mover->entity_id();
+
+    // A Z-stair descent: the mover relocates in place FROM a stair tile of
+    // floor 1 — a deliberate move down, not a fall. No cue may start.
+    PixieData& upper = world.grid_for_floor(1);
+    const Sint32 gi = (200 + mover->sizex() / 2) / GRID_SIZE;
+    const Sint32 gj = (120 + mover->sizey() / 2) / GRID_SIZE;
+    upper.data[gi + static_cast<Sint32>(upper.w) * gj] =
+        static_cast<unsigned char>(PIX_ZSTAIR_DOWN);
+    mover->set_floor(1);
+    mover->setxy(200, 120);
+    effects_reset_for_testing();
+    trace_clear();
+    ASSERT_TRUE(do_redraw(vs));
+    effects_advance_frame();
+    mover->set_floor(0);
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_FALSE(trace_contains("effects", "fall_cue"))
+        << "a stair descent must not read as a fall";
+    ASSERT_EQ(0u, effects_fall_cue_frames_left(id));
+    upper.data[gi + static_cast<Sint32>(upper.w) * gj] =
+        static_cast<unsigned char>(PIX_GRASS1);
+
+    // A cross-floor teleport: the landing lies far beyond the sim's 4-cell
+    // A5 landing nudge, so it cannot be an air fall.
+    mover->set_floor(1);
+    mover->setxy(200, 120);
+    effects_reset_for_testing();
+    trace_clear();
+    ASSERT_TRUE(do_redraw(vs));
+    effects_advance_frame();
+    mover->set_floor(0);
+    mover->setxy(40, 40);
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_FALSE(trace_contains("effects", "fall_cue"))
+        << "a far cross-floor teleport must not read as a fall";
+    ASSERT_EQ(0u, effects_fall_cue_frames_left(id));
+
+    // Dust off: the whole pass is gated — the identical fall scene renders
+    // byte-identically to a baseline with no fall machinery at all.
+    mover->set_floor(1);
+    mover->setxy(200, 120);
+    cfg.apply_setting("effects", "dust", "off");
+    effects_reset_for_testing();
+    ASSERT_TRUE(do_redraw(vs));
+    effects_advance_frame();
+    mover->set_floor(0);
+    ASSERT_TRUE(do_redraw(vs));
+    const std::vector<RGB> off = grab_viewport(vs);
+    // Replay with dust on but WITHOUT a floor change: no cue, identical too.
+    cfg.apply_setting("effects", "dust", "on");
+    effects_reset_for_testing();
+    trace_clear();
+    ASSERT_TRUE(do_redraw(vs));
+    effects_advance_frame();
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_FALSE(trace_contains("effects", "fall_cue"))
+        << "no floor change: no cue";
+    ASSERT_TRUE(rects_equal(off, grab_viewport(vs)))
+        << "dust on without a fall must render byte-identically";
+
+    effects_reset_for_testing();
+    restore_world(vs);
+}
+
 // ---------------------------------------------------------------------------
 // Upper-floor shadow pass (the DEFAULT multifloor look): solid tiles of
 // floors above the camera cast flat SE-offset footprint shadows and entities
@@ -3931,6 +4135,39 @@ TEST(RenderEffects, zz_capture_effect_scenes)
         },
         [&](int f) {
             mover->setxy(static_cast<short>(140 + ((f % 40) < 20 ? f % 20 : 20 - f % 20) * 2), static_cast<short>(110));
+        });
+
+    // Falling cue: a walker strides along a solid upper-floor platform (its
+    // overhang shadow + dust read overhead), walks off its edge onto air at
+    // frame 16 (the sim's instant floor drop, replicated here), and the
+    // render-only cue smears its descent + puffs the landing. A second lap
+    // repeats the fall so the loop reads on the review site.
+    run_scene("fall_cue", 64,
+        [&] {
+            cfg.apply_setting("effects", "dust", "on");
+            world.set_floor_count(2);
+            fill_floor_grid(world, 1, static_cast<unsigned char>(PIX_AIR));
+            PixieData& platform = world.grid_for_floor(1);
+            for (int j = 5; j < 8; j++)
+                for (int i = 5; i < 12; i++)
+                    platform.data[i + platform.w * j] =
+                        static_cast<unsigned char>(PIX_GRASS1);
+            mover = world.add_ob(Order::Living, FAMILY_SOLDIER);
+            mover->set_floor(1);
+            mover->setxy(static_cast<short>(88), static_cast<short>(100));
+        },
+        [&](int f) {
+            const int lap = f % 32;
+            if (lap == 0)
+            {
+                mover->set_floor(1);
+                mover->setxy(static_cast<short>(88), static_cast<short>(100));
+            }
+            else if (lap < 16)
+                mover->setxy(static_cast<short>(88 + lap * 6),
+                             static_cast<short>(100));
+            else if (lap == 16)
+                mover->set_floor(0); // walked off the platform edge: the fall
         });
 
     // The depth close-ups read through the fade-below floor layers, which

@@ -1104,6 +1104,88 @@ void self_check_level(const ExpectedLevel& ex, const std::set<int>& registered)
         }
     }
 
+    // Stair-clearance audit (B2 tooling rule, docs/z-axis-design.md): the
+    // engine's blocked-arrival nudge rescues a blocked stair at runtime, but
+    // no shipped level may RELY on it — and before the nudge an IMMOBILE
+    // blocker (an ACT_GUARD post, a generator, or ground-blocking decor)
+    // sitting on a stair cell sealed the staircase outright ("the stairs are
+    // blocked from above so I can't ascend"). Rule: neither the stair-pair
+    // cell nor any of its 4-neighborhood arrival cells, on EITHER floor of
+    // the pair, may hold an ACT_GUARD post, a generator, or BlocksGround
+    // decor. Roaming livings are fine (they move off; the nudge covers the
+    // transient). Mirrored by tests/unit/test_westlands_levels.cpp.
+    {
+        static constexpr int kArrivalOffsets[5][2] = {
+            {0, 0}, {0, -1}, {-1, 0}, {1, 0}, {0, 1}};
+        auto audit_arrival_cell = [&](int pf, int nx, int ny)
+        {
+            const PixieData& g = world.grid_for_floor(pf);
+            if (!g.valid() || nx < 0 || ny < 0 || nx >= g.w || ny >= g.h)
+                return;
+            const PixieData& dec = world.decor_for_floor(pf);
+            if (dec.valid() && nx < dec.w && ny < dec.h)
+            {
+                const unsigned char d = dec.data[nx + ny * dec.w];
+                if (d < DECOR_MAX &&
+                    kDecorRegistry[d].pass == DecorPassability::BlocksGround)
+                {
+                    fail(std::format(
+                        "self-check scen{}: blocking decor {} on stair "
+                        "cell/arrival ({}, {}) floor {}", ex.id, d, nx, ny,
+                        pf));
+                }
+            }
+            const int x0 = nx * GRID_SIZE;
+            const int y0 = ny * GRID_SIZE;
+            for (const auto& uptr : world.oblist)
+            {
+                walker* ob = uptr.get();
+                if (ob == nullptr || ob->floor() != pf)
+                    continue;
+                const Order order = ob->query_order();
+                const bool immobile_post =
+                    order == Order::Generator ||
+                    (order == Order::Living &&
+                     ob->act_type() == ACT_GUARD);
+                if (!immobile_post)
+                    continue;
+                if (ob->xpos() + ob->sizex() > x0 &&
+                    ob->xpos() < x0 + GRID_SIZE &&
+                    ob->ypos() + ob->sizey() > y0 &&
+                    ob->ypos() < y0 + GRID_SIZE)
+                {
+                    fail(std::format(
+                        "self-check scen{}: {} (family {}) posted on stair "
+                        "cell/arrival ({}, {}) floor {} would seal the "
+                        "staircase", ex.id,
+                        order == Order::Generator ? "generator"
+                                                  : "ACT_GUARD post",
+                        static_cast<int>(ob->family()), nx, ny, pf));
+                }
+            }
+        };
+        for (int f = 0; f + 1 < world.floor_count(); ++f)
+        {
+            const PixieData& lo = world.grid_for_floor(f);
+            const PixieData& hi = world.grid_for_floor(f + 1);
+            if (!lo.valid() || !hi.valid())
+                continue;
+            for (int ty = 0; ty < lo.h; ++ty)
+                for (int tx = 0; tx < lo.w; ++tx)
+                {
+                    const int i = tx + ty * lo.w;
+                    if (lo.data[i] != PIX_ZSTAIR_UP ||
+                        hi.data[i] != PIX_ZSTAIR_DOWN)
+                        continue;
+                    for (const auto& off : kArrivalOffsets)
+                    {
+                        audit_arrival_cell(f, tx + off[0], ty + off[1]);
+                        audit_arrival_cell(f + 1, tx + off[0], ty + off[1]);
+                    }
+                }
+        }
+    }
+
     // Fall-line audit (Wave E5): any AIR cell a ground walker can actually
     // step into — 8-adjacent to a standable cell of the SAME floor — must
     // land its faller cleanly. Chase the column down through stacked AIR;

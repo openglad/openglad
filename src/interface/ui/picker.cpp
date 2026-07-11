@@ -1737,8 +1737,8 @@ std::array<std::string, 2> build_player_control_summary_lines(int player_index, 
         get_key_display_name_short(og::runtime::current_session->player_keys_[player_index][KEY_SPECIAL_SWITCH]);
     const std::string switch_s = get_key_display_name_short(og::runtime::current_session->player_keys_[player_index][KEY_SWITCH]);
     const std::string shifter_s = get_key_display_name_short(og::runtime::current_session->player_keys_[player_index][KEY_SHIFTER]);
-    // Unbound look-up (the P2-4 default) shows "--" instead of the empty
-    // string SDL names keycode 0 with.
+    // Unbound look-up (the P4 8-direction default, or user-cleared) shows
+    // "--" instead of the empty string SDL names keycode 0 with.
     const int lookup_key = og::runtime::current_session->player_keys_[player_index][KEY_LOOKUP];
     const std::string lookup_s = lookup_key == KEYCODE_UNKNOWN
         ? "--" : get_key_display_name_short(lookup_key);
@@ -2482,6 +2482,14 @@ Sint32 create_detail_menu(guy *arg1)
                short new_level = fd->promotion_new_level ? fd->promotion_new_level(thisguy->level) : 1;
                thisguy->upgrade_to_level(new_level);
                thisguy->family = static_cast<unsigned char>(fd->promotes_to);
+               // The promotion mutated the REAL team member in place, so push
+               // the roster to the lobby client now — the same commit path the
+               // train menu's ACCEPT uses. Every picker menu loop starts with
+               // picker_lobby_poll(), which rewrites save.team_list from the
+               // lobby's cached roster; without this push the very next poll
+               // reverts the promotion (issue #133: the Archmage upgrade only
+               // "stuck" if a stat edit re-synced the roster afterwards).
+               picker_lobby_sync_roster_from_save();
                og::runtime::current_session->myscreen_->soundp->play_sound(SOUND_EXPLODE);
                og::runtime::current_session->myscreen_->soundp->play_sound(SOUND_EXPLODE);
                og::runtime::current_session->myscreen_->soundp->play_sound(SOUND_EXPLODE);

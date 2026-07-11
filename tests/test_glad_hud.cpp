@@ -5,6 +5,7 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/view.h>
+#include <openglad/interface/render/pal32.h>
 #include <openglad/legacy/base.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/platform/game_loop.h>
@@ -28,6 +29,8 @@ short new_score_panel(screen* scr, short do_it);
 // From score_panel.cpp (B5)
 void pending_hostile_wave_counts(const GameWorld& world, walker* viewer,
                                  short& pending, std::uint32_t& next_wake_ticks);
+// From score_panel.cpp: forced-flee (scared) countdown source.
+int hud_scared_flee_ticks(walker* viewer);
 
 static bool control_pointer_is_live(LevelRuntimeData& level_data, const walker* candidate)
 {
@@ -76,6 +79,24 @@ static std::unique_ptr<walker> make_living(unsigned char family, unsigned char t
     w->set_user(-1);
     w->setxy(120, 100);
     return w;
+}
+
+// get_pixel's index read-back returns the FIRST palette index matching the
+// pixel's RGB, so any index whose RGB duplicates an earlier entry (the grey
+// ramp does) reads back as that earlier alias. Canonicalize expectations the
+// same way before comparing against captured frames.
+static unsigned char canonical_palette_index(unsigned char color)
+{
+    int r = 0, g = 0, b = 0;
+    query_palette_reg(color, &r, &g, &b);
+    for (int i = 0; i < 256; ++i)
+    {
+        int tr = 0, tg = 0, tb = 0;
+        query_palette_reg(static_cast<unsigned char>(i), &tr, &tg, &tb);
+        if (r == tr && g == tg && b == tb)
+            return static_cast<unsigned char>(i);
+    }
+    return color;
 }
 
 static std::array<unsigned char, 64000> capture_rendered_frame(screen& scr)
@@ -708,6 +729,190 @@ TEST(GladHud, score_panel_shows_next_wave_countdown_for_dormant_hostiles)
     v->prefs[PREF_SCORE] = old_pref_score;
     v->prefs[PREF_FOES] = old_pref_foes;
     world.set_level_tick_count(saved_ltc);
+}
+
+// ---------------------------------------------------------------------------
+// Disabled-special signifier: specials_disabled greys the SPC line
+// ---------------------------------------------------------------------------
+
+TEST(GladHud, score_panel_greys_special_line_when_specials_disabled)
+{
+    screen* s = og::runtime::current_session->myscreen_;
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_TRUE(v != nullptr);
+
+    auto control = make_player(0);
+    ASSERT_TRUE(control != nullptr);
+    walker* controlp = control.get();
+    controlp->set_user(0);
+    controlp->set_team_num(0);
+    controlp->set_dead(0);
+    controlp->stats()->set_hitpoints(50);
+    controlp->stats()->set_max_hitpoints(100);
+    // MP well above the special cost: without the disabled flag this line
+    // would draw in the normal text color, never RED, never GREY.
+    controlp->stats()->set_magicpoints(80);
+    controlp->stats()->set_max_magicpoints(80);
+    controlp->stats()->set_special_cost(
+        static_cast<int>(controlp->current_special()), 10);
+
+    walker* const old_control = v->control;
+    const char old_pref_life = v->prefs[PREF_LIFE];
+    const char old_pref_score = v->prefs[PREF_SCORE];
+    const char old_pref_foes = v->prefs[PREF_FOES];
+    const char old_pref_overlay = v->prefs[PREF_OVERLAY];
+    v->control = controlp;
+    v->prefs[PREF_OVERLAY] = PREF_OVERLAY_OFF; // no button box pixels
+    v->prefs[PREF_LIFE] = PREF_LIFE_OFF;
+    v->prefs[PREF_SCORE] = PREF_SCORE_ON;      // the SPC line lives here
+    v->prefs[PREF_FOES] = PREF_FOES_OFF;
+
+    // The SPC line draws at (lm+2, bm-24) = (2, 176) for the full pane.
+    const int spc_y = v->endy - 24;
+    auto count_color_in_spc_row = [&](const std::array<unsigned char, 64000>& frame,
+                                      unsigned char color) {
+        int n = 0;
+        for (int y = spc_y; y < spc_y + 8; ++y)
+            for (int x = 2; x < 100; ++x)
+                if (frame[static_cast<std::size_t>(y * 320 + x)] == color)
+                    ++n;
+        return n;
+    };
+
+    const unsigned char grey = canonical_palette_index(GREY);
+    const unsigned char yellow = canonical_palette_index(YELLOW);
+
+    // Baseline: specials enabled, plenty of MP -> normal color, no grey.
+    controlp->set_specials_disabled(false);
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    EXPECT_FALSE(trace_contains("hud", "spc_disabled"));
+    const auto enabled_frame = capture_rendered_frame(*s);
+    EXPECT_EQ(0, count_color_in_spc_row(enabled_frame, grey))
+        << "an enabled special must not draw grey";
+    EXPECT_GT(count_color_in_spc_row(enabled_frame, yellow), 0)
+        << "an enabled, affordable special draws in the normal text color";
+
+    // Disabled: the same line renders GREY regardless of the full MP pool.
+    controlp->set_specials_disabled(true);
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    EXPECT_TRUE(trace_contains("hud", "spc_disabled"))
+        << "the grey path must be taken for a specials-disabled walker";
+    const auto disabled_frame = capture_rendered_frame(*s);
+    EXPECT_GT(count_color_in_spc_row(disabled_frame, grey), 0)
+        << "the SPC line must render in GREY";
+    EXPECT_EQ(0, count_color_in_spc_row(disabled_frame, yellow))
+        << "no normal-color SPC pixels may remain when disabled";
+
+    controlp->set_specials_disabled(false);
+    v->control = old_control;
+    v->prefs[PREF_LIFE] = old_pref_life;
+    v->prefs[PREF_SCORE] = old_pref_score;
+    v->prefs[PREF_FOES] = old_pref_foes;
+    v->prefs[PREF_OVERLAY] = old_pref_overlay;
+}
+
+// ---------------------------------------------------------------------------
+// SCARED countdown: a forced flee (front COMMAND_WALK) shows its seconds left
+// ---------------------------------------------------------------------------
+
+TEST(GladHud, hud_scared_flee_ticks_reads_front_walk_command_only)
+{
+    auto control = make_player(0);
+    ASSERT_TRUE(control != nullptr);
+    walker* controlp = control.get();
+
+    // Calm walker: no commands, no countdown.
+    controlp->stats()->clear_command();
+    EXPECT_EQ(0, hud_scared_flee_ticks(controlp));
+
+    // A forced walk (the ghost-scare / yell-for-help shape) is the state.
+    controlp->stats()->force_command(COMMAND_WALK, 25, 1, 0);
+    EXPECT_EQ(25, hud_scared_flee_ticks(controlp));
+    controlp->stats()->clear_command();
+
+    // A non-walk front command is not fear.
+    controlp->stats()->force_command(COMMAND_FIRE, 10, 0, 0);
+    EXPECT_EQ(0, hud_scared_flee_ticks(controlp));
+    controlp->stats()->clear_command();
+
+    // Dead and null viewers are calm.
+    controlp->stats()->force_command(COMMAND_WALK, 25, 1, 0);
+    controlp->set_dead(1);
+    EXPECT_EQ(0, hud_scared_flee_ticks(controlp));
+    controlp->set_dead(0);
+    controlp->stats()->clear_command();
+    EXPECT_EQ(0, hud_scared_flee_ticks(nullptr));
+}
+
+TEST(GladHud, score_panel_shows_scared_countdown_while_fleeing)
+{
+    screen* s = og::runtime::current_session->myscreen_;
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_TRUE(v != nullptr);
+
+    auto control = make_player(0);
+    ASSERT_TRUE(control != nullptr);
+    walker* controlp = control.get();
+    controlp->set_user(0);
+    controlp->set_team_num(0);
+    controlp->set_dead(0);
+    controlp->stats()->set_hitpoints(50);
+    controlp->stats()->set_max_hitpoints(100);
+    controlp->stats()->set_magicpoints(30);
+    controlp->stats()->set_max_magicpoints(80);
+
+    walker* const old_control = v->control;
+    const char old_pref_life = v->prefs[PREF_LIFE];
+    const char old_pref_score = v->prefs[PREF_SCORE];
+    const char old_pref_foes = v->prefs[PREF_FOES];
+    const char old_pref_overlay = v->prefs[PREF_OVERLAY];
+    v->control = controlp;
+    v->prefs[PREF_OVERLAY] = PREF_OVERLAY_OFF;
+    v->prefs[PREF_LIFE] = PREF_LIFE_TEXT;
+    v->prefs[PREF_SCORE] = PREF_SCORE_OFF; // score count-up uses rng(); keep off
+    v->prefs[PREF_FOES] = PREF_FOES_OFF;
+
+    // The countdown draws at (lm+2, tm+28), just below the HP/MP rows.
+    const unsigned char red = canonical_palette_index(RED);
+    auto count_red_in_row = [&](const std::array<unsigned char, 64000>& frame) {
+        int n = 0;
+        for (int y = 28; y < 36; ++y)
+            for (int x = 2; x < 90; ++x)
+                if (frame[static_cast<std::size_t>(y * 320 + x)] == red)
+                    ++n;
+        return n;
+    };
+
+    // Scared: a ghost-scare-shaped forced walk with 25 sim ticks left reads
+    // as ceil(25 / 12) = 3 seconds at the 12 Hz sim rate.
+    controlp->stats()->force_command(COMMAND_WALK, 25, 1, 0);
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    EXPECT_TRUE(trace_contains("hud", "scared ticks=25 secs=3"))
+        << "25 forced-walk ticks -> 3 s at 12 Hz";
+    EXPECT_GT(count_red_in_row(capture_rendered_frame(*s)), 0)
+        << "the SCARED line must paint red pixels below the status rows";
+
+    // Calm again: the line disappears with the drained command queue.
+    controlp->stats()->clear_command();
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    EXPECT_FALSE(trace_contains("hud", "scared"))
+        << "no countdown once the flee command is gone";
+    EXPECT_EQ(0, count_red_in_row(capture_rendered_frame(*s)))
+        << "the SCARED row must be clean when calm";
+
+    v->control = old_control;
+    v->prefs[PREF_LIFE] = old_pref_life;
+    v->prefs[PREF_SCORE] = old_pref_score;
+    v->prefs[PREF_FOES] = old_pref_foes;
+    v->prefs[PREF_OVERLAY] = old_pref_overlay;
 }
 
 // ---------------------------------------------------------------------------

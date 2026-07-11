@@ -129,11 +129,19 @@ const std::vector<PackagePins>& package_pins()
           {115, 266}}},
         {"org.openglad.arenas", true,
          {{300, 1}, {301, 1}, {302, 26}, {303, 34}, {304, 16}, {305, 24}}},
+        // (scen3 75 -> 74 and scen4 49 -> 46: the 2026-07 content batch
+        // scaled the Ford/Refuge waves and added the Refuge muster — the
+        // ambience scatters skip cells near entities, so the bigger armies
+        // suppress a few dressing cells. Re-pinned from the regen.)
+        // (scen24 273 -> 270: the terrace-circuit scree rule — no boulder
+        // on or within one cell of the shoulder's lava — removed the three
+        // ring-walk rocks that pinched the circuit against the lava sheet.
+        // See levels_finale.cpp; re-pinned from the regen.)
         {"org.openglad.westlands", false,
-         {{1, 65},  {2, 44},  {3, 75},  {4, 49},  {5, 135}, {6, 174},
+         {{1, 65},  {2, 44},  {3, 74},  {4, 46},  {5, 135}, {6, 174},
           {7, 96},  {8, 277}, {9, 270}, {10, 92}, {11, 105}, {12, 143},
           {13, 71}, {14, 70}, {15, 147}, {16, 77}, {17, 187}, {19, 397},
-          {20, 114}, {21, 91}, {22, 145}, {23, 417}, {24, 273}, {25, 88},
+          {20, 114}, {21, 91}, {22, 145}, {23, 417}, {24, 270}, {25, 88},
           {26, 38}}},
         {"org.openglad.ctf", false,
          {{500, 8}, {501, 4}, {502, 10}, {503, 10}, {504, 30}, {505, 0},

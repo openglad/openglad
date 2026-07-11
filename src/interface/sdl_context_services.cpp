@@ -21,6 +21,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 
 // myscreen and theprefs are now macros defined in base.h / view.h
 
@@ -34,11 +35,8 @@ void input_state_from_sdl(InputState& out)
             was_held[static_cast<std::size_t>(k)] = out.players[p].held[k];
 
         // Sample current held state from SDL
-        for (int k = 0; k < NUM_INPUT_KEYS; k++) {
+        for (int k = 0; k < NUM_INPUT_KEYS; k++)
             out.players[p].held[k] = isPlayerHoldingKey(p, k);
-            // Pressed = held now but wasn't held last frame
-            out.players[p].pressed[k] = out.players[p].held[k] && !was_held[static_cast<std::size_t>(k)];
-        }
 
         if (!player_allows_diagonal_movement(p))
         {
@@ -46,11 +44,29 @@ void input_state_from_sdl(InputState& out)
             out.players[p].held[KEY_DOWN_RIGHT] = false;
             out.players[p].held[KEY_DOWN_LEFT] = false;
             out.players[p].held[KEY_UP_LEFT] = false;
-            out.players[p].pressed[KEY_UP_RIGHT] = false;
-            out.players[p].pressed[KEY_DOWN_RIGHT] = false;
-            out.players[p].pressed[KEY_DOWN_LEFT] = false;
-            out.players[p].pressed[KEY_UP_LEFT] = false;
         }
+
+        // Diagonal release retention: a sloppy two-key diagonal release
+        // (one key clearing 1-3 samples before the other) keeps reporting
+        // the diagonal for a short grace window so the control walker's
+        // facing does not snap to the surviving cardinal. Client-side
+        // shaping only — the InputState wire format and the sim are
+        // untouched. See input_direction_grace.h.
+        std::uint8_t raw_mask = 0;
+        for (int d = KEY_UP; d <= KEY_UP_LEFT; d++)
+            if (out.players[p].held[d])
+                raw_mask = static_cast<std::uint8_t>(raw_mask | (1u << d));
+        const std::uint8_t shaped = coalesce_direction_release(
+            raw_mask, input_hardware_state().direction_grace[p]);
+        if (shaped != raw_mask)
+            for (int d = KEY_UP; d <= KEY_UP_LEFT; d++)
+                out.players[p].held[d] = (shaped & (1u << d)) != 0;
+
+        // Pressed = held now but wasn't held last frame. Edges are computed
+        // from the shaped output so held/pressed stay mutually consistent.
+        for (int k = 0; k < NUM_INPUT_KEYS; k++)
+            out.players[p].pressed[k] =
+                out.players[p].held[k] && !was_held[static_cast<std::size_t>(k)];
     }
 
     if (og::runtime::current_session != nullptr)
