@@ -726,15 +726,33 @@ std::vector<std::string> paginate_team_detail_pages(
 
 void order_campaigns_for_select(std::list<std::string>& campaign_ids)
 {
-    const auto glad = std::find(campaign_ids.begin(), campaign_ids.end(),
-                                og::kDefaultCampaignId);
-    if (glad != campaign_ids.end() && glad != campaign_ids.begin())
-        campaign_ids.splice(campaign_ids.begin(), campaign_ids, glad);
-
-    const auto ctf = std::find(campaign_ids.begin(), campaign_ids.end(),
-                               og::kCtfCampaignId);
-    if (ctf != campaign_ids.end() && std::next(ctf) != campaign_ids.end())
-        campaign_ids.splice(campaign_ids.end(), campaign_ids, ctf);
+    // The shipped shelf order: the classics lead (gladiator, then tryxian),
+    // the two original story campaigns follow, then the multiplayer
+    // packages, with the concept playground trailing. Campaigns not on the
+    // shelf (user-made packages) keep their incoming enumeration order and
+    // follow every shelved id.
+    static constexpr std::string_view kShelf[] = {
+        og::kDefaultCampaignId, // org.openglad.gladiator
+        "org.openglad.tryxian",
+        "org.openglad.westlands",
+        "org.openglad.longseason",
+        og::kCtfCampaignId,     // org.openglad.ctf (multiplayer)
+        "org.openglad.arenas",  // multiplayer arenas
+        "org.openglad.concept",
+    };
+    auto anchor = campaign_ids.begin();
+    for (const std::string_view id : kShelf)
+    {
+        const auto it = std::find(anchor, campaign_ids.end(), id);
+        if (it == campaign_ids.end())
+            continue;
+        if (it == anchor)
+        {
+            ++anchor;
+            continue;
+        }
+        campaign_ids.splice(anchor, campaign_ids, it);
+    }
 }
 
 std::vector<std::string> format_campaign_select_labels(

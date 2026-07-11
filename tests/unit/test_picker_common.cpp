@@ -1521,36 +1521,53 @@ TEST(PickerCommon, format_team_row_label_variants_fit_budget)
 
 // --- Campaign ordering ---
 
-TEST(PickerCommon, order_campaigns_for_select_glad_first_ctf_last)
+TEST(PickerCommon, order_campaigns_for_select_uses_the_shelf_order)
 {
-    // The alphabetical list_campaigns() order: gladiator leads, CTF trails,
-    // extra campaigns keep their alphabetical order in between.
+    // The full shipped set arrives in alphabetical list_campaigns() order
+    // and leaves in shelf order: classics, the two original story
+    // campaigns, the multiplayer packages, concept trailing.
     std::list<std::string> ids = {
         "org.openglad.arenas",
+        "org.openglad.concept",
         "org.openglad.ctf",
         "org.openglad.gladiator",
+        "org.openglad.longseason",
         "org.openglad.tryxian",
+        "org.openglad.westlands",
+    };
+    const std::list<std::string> shelf = {
+        "org.openglad.gladiator",
+        "org.openglad.tryxian",
+        "org.openglad.westlands",
+        "org.openglad.longseason",
+        "org.openglad.ctf",
+        "org.openglad.arenas",
+        "org.openglad.concept",
     };
     og::ui::order_campaigns_for_select(ids);
-    ASSERT_EQ((std::list<std::string>{
-                  "org.openglad.gladiator",
-                  "org.openglad.arenas",
-                  "org.openglad.tryxian",
-                  "org.openglad.ctf",
-              }),
-              ids);
+    ASSERT_EQ(shelf, ids);
 
     // Already ordered: stable no-op.
     og::ui::order_campaigns_for_select(ids);
+    ASSERT_EQ(shelf, ids);
+
+    // User-made packages keep their relative order after every shelved id.
+    std::list<std::string> with_extras = {
+        "a.campaign",
+        "org.openglad.ctf",
+        "b.campaign",
+        "org.openglad.gladiator",
+    };
+    og::ui::order_campaigns_for_select(with_extras);
     ASSERT_EQ((std::list<std::string>{
                   "org.openglad.gladiator",
-                  "org.openglad.arenas",
-                  "org.openglad.tryxian",
                   "org.openglad.ctf",
+                  "a.campaign",
+                  "b.campaign",
               }),
-              ids);
+              with_extras);
 
-    // Both anchors absent: untouched.
+    // No shelved ids at all: untouched.
     std::list<std::string> no_anchors = {"a.campaign", "b.campaign"};
     og::ui::order_campaigns_for_select(no_anchors);
     ASSERT_EQ((std::list<std::string>{"a.campaign", "b.campaign"}), no_anchors);
