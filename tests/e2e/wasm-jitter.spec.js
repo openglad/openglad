@@ -46,6 +46,29 @@ test('captures browser timing and verifies jitter does not reproduce', async ({ 
 
   await focusCanvas(page);
 
+  // Capture with the canvas FULLSCREENED, matching the conditions this
+  // gate's baseline was recorded under. History: the game used to request
+  // browser fullscreen itself (SDL_WINDOW_FULLSCREEN_DESKTOP, deferred to
+  // the first input), and every baseline/verdict for this gate was captured
+  // that way. The engine no longer touches the Fullscreen API (user
+  // decision: no auto-fullscreen), and that exposed a headless-compositor
+  // artifact: swiftshader-backed headless chromium delivers rAF at ~30Hz
+  // (33.3ms median deltas) to a windowed CSS-scaled canvas but the full
+  // 60Hz to a fullscreened one — measured across CI runs 29154248607
+  // (green, 16.7ms) vs 29166181661 (red, 33.3ms) with the engine publishing
+  // a fresh frame on ~100% of rAF turns in BOTH. At 30Hz the analyzer's
+  // snapped-camera cadence math (calibrated for the 72fps-on-60Hz beat)
+  // flags every capture, halving the gate's sensitivity to the actual
+  // engine bug it pins. Entering fullscreen from the test (trusted
+  // gesture: focusCanvas just clicked) restores the baseline's 60Hz
+  // measurement environment without re-introducing auto-fullscreen for
+  // users. Real-GPU browsers deliver 60Hz either way (verified locally,
+  // including under 4x CPU throttle).
+  await page.evaluate(() => document.querySelector('#canvas').requestFullscreen());
+  await page.waitForFunction(
+    () => document.fullscreenElement && document.fullscreenElement.id === 'canvas',
+  );
+
   const startRenderSampleSeq = await page.evaluate(() => {
     window.__opengladRuntimeTraceEvents = [];
     return window.__opengladLatestRenderSample

@@ -76,6 +76,15 @@ static void video_create_display()
 	if(cfg.is_on("graphics","fullscreen"))
 		fullscreen_flag = 1;
 
+#ifdef __EMSCRIPTEN__
+	// Never honor the fullscreen cfg in the browser: the shipped default
+	// (graphics/fullscreen: on) made SDL request browser fullscreen at
+	// boot via SDL_WINDOW_FULLSCREEN_DESKTOP — obnoxious, and the
+	// Fullscreen API is meant to be a user gesture. The page/CSS owns
+	// how big the canvas appears; users can fullscreen the tab themselves.
+	fullscreen_flag = 0;
+#endif
+
 	std::string qresult = cfg.get_setting("graphics", "render");
 	if(qresult == "normal")
 		render = RenderEngine::NoZoom;
