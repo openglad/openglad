@@ -577,14 +577,16 @@ bool viewscreen::redraw()
 				for (j=(topy/GRID_SIZE)-pass_yneg;j < ((topy+(yview))/GRID_SIZE) +1; j++)
 					for (i=(topx/GRID_SIZE)-pass_xneg;i < ((topx+(xview))/GRID_SIZE) +1; i++)
 					{
+						// NOTE: back is a PIXIEN.
+						// background graphic [grid(x,y)] -> put in buffer
 						if (i<0 || j<0 || i>=maxx || j>=maxy)
 						{
 							if (!base_floor) continue; // upper floors: transparent border
-							if (j == -1 && i>-1 && i<maxx)
+							if (j == -1 && i>-1 && i<maxx)  // show side of wall
 								renderer->draw_tile(PIX_WALLSIDE1, i*GRID_SIZE, j*GRID_SIZE, this, tile_alpha);
-							else if (j == -2 && i>-1 && i<maxx)
+							else if (j == -2 && i>-1 && i<maxx)  // show top side of wall
 								renderer->draw_tile(PIX_H_WALL1, i*GRID_SIZE, j*GRID_SIZE, this, tile_alpha);
-							else
+							else                                 // show only top of wall
 								renderer->draw_tile(PIX_WALLTOP_H, i*GRID_SIZE, j*GRID_SIZE, this, tile_alpha);
 						}
 						else
@@ -656,6 +658,7 @@ bool viewscreen::redraw()
 	// "effects" weather — off touches zero pixels).
 	draw_cloud_overlay(this, vworld);
 	topx = unshaken_topx; topy = unshaken_topy; // undo the shake
+	//moved here to put the radar on top of obs
 	if (controlob && !controlob->dead() && controlob->user() == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
 		myradar->draw();
 	display_text();
@@ -829,14 +832,16 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 				for (j=(topy/GRID_SIZE)-pass_yneg;j < ((topy+(yview))/GRID_SIZE) +1; j++)
 					for (i=(topx/GRID_SIZE)-pass_xneg;i < ((topx+(xview))/GRID_SIZE) +1; i++)
 					{
+						// NOTE: back is a PIXIEN.
+						// background graphic [grid(x,y)] -> put in buffer
 						if (i<0 || j<0 || i>=maxx || j>=maxy)
 						{
 							if (!base_floor) continue; // upper floors: transparent border
-							if (j == -1 && i>-1 && i<maxx)
+							if (j == -1 && i>-1 && i<maxx)  // show side of wall
 								renderer->draw_tile(PIX_WALLSIDE1, i*GRID_SIZE, j*GRID_SIZE, this, tile_alpha);
-							else if (j == -2 && i>-1 && i<maxx)
+							else if (j == -2 && i>-1 && i<maxx)  // show top side of wall
 								renderer->draw_tile(PIX_H_WALL1, i*GRID_SIZE, j*GRID_SIZE, this, tile_alpha);
-							else
+							else                                 // show only top of wall
 								renderer->draw_tile(PIX_WALLTOP_H, i*GRID_SIZE, j*GRID_SIZE, this, tile_alpha);
 						}
 						else
@@ -900,6 +905,7 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 	// See the no-arg redraw(): open-sky weather overlay, before radar/text.
 	draw_cloud_overlay(this, vworld);
 	topx = unshaken_topx; topy = unshaken_topy; // undo the shake
+	//moved here to put the radar on top of obs
 	if (draw_radar && controlob && !controlob->dead() && controlob->user() == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
 		myradar->draw(data);
 	display_text();

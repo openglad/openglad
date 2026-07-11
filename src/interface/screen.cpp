@@ -1040,6 +1040,7 @@ void screen::initialize_views()
     // layout); they are then immediately overridden by the constructor's own
     // resize(prefs[PREF_VIEW]) call, which re-derives the geometry from the
     // same canvas dims plus the player's saved view mode.
+    // Even though it looks okay here, these positions and sizes are overridden by viewscreen::resize() later.
 	if (numviews >= 1 && numviews <= MAX_VIEWS)
 	{
 		for (Sint32 i = 0; i < numviews; i++)

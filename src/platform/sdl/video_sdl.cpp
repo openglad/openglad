@@ -544,6 +544,7 @@ void sdl_video::pointb(Sint32 x, Sint32 y, unsigned char color)
 	int r,g,b;
 	int c;
 
+	//buffers: this does bound checking (just to be safe)
 	//buffers: bound check against the CURRENT render target (mirrors
 	// get_pixel). During a padded floor-layer redirect the target is the
 	// grown off-screen layer, which extends past the legacy 320x200 logical
@@ -669,6 +670,7 @@ void sdl_video::pointb(Sint32 x, Sint32 y, unsigned char color, unsigned char al
 	int r,g,b;
 	int c;
 
+	//buffers: this does bound checking (just to be safe)
 	//buffers: bound check against the CURRENT render target (mirrors
 	// get_pixel). During a padded floor-layer redirect the target is the
 	// grown off-screen layer, which extends past the legacy 320x200 logical

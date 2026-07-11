@@ -311,7 +311,7 @@ short radar::draw(LevelRuntimeData* data)
 				{
 					// Offset sanity check against the active canvas area
 					// (the legacy 320/64000 constants at default dims).
-					tempz = (tempx+(tempy*og::runtime::current_session->myscreen_->canvas_w()));
+					tempz = (tempx+(tempy*og::runtime::current_session->myscreen_->canvas_w())); //this may need fixing
 					if (tempz > og::runtime::current_session->myscreen_->canvas_w() * og::runtime::current_session->myscreen_->canvas_h() || tempz < 0)
 					{
 						Log("bad radar, bad\n");
@@ -426,7 +426,7 @@ short radar::draw(LevelRuntimeData* data)
 				{
 					// Offset sanity check against the active canvas area
 					// (the legacy 320/64000 constants at default dims).
-					tempz = (tempx+(tempy*og::runtime::current_session->myscreen_->canvas_w()));
+					tempz = (tempx+(tempy*og::runtime::current_session->myscreen_->canvas_w())); //this may need fixing
 					if (tempz > og::runtime::current_session->myscreen_->canvas_w() * og::runtime::current_session->myscreen_->canvas_h() || tempz < 0)
 					{
 						Log("bad radar, bad\n");

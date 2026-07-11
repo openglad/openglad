@@ -1647,6 +1647,7 @@ Sint32 LevelEditorData::display_panel(screen* s)
             }
         }
         else
+        // Show the background grid
         for (i=0; i < PIX_OVER; i++)
         {
             for (j=0; j < 4; j++)
