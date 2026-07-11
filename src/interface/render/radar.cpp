@@ -620,6 +620,23 @@ void radar::update(LevelRuntimeData* data)
 					temp = COLOR_FIRE;
 					break;
 
+				case PIX_SNOW1:       // snow is white
+				case PIX_SNOW2:
+					temp = COLOR_WHITE;
+					break;
+				case PIX_LAVA1:       // lava shimmers orange (torch precedent: cycled)
+				case PIX_LAVA2:
+					temp = COLOR_FIRE;
+					break;
+				case PIX_MARSH1:      // bog is dark green (distinct from the trees ramp)
+				case PIX_MARSH2:
+					temp = COLOR_GREEN+7;
+					break;
+				case PIX_ASH1:        // ash is warm dark grey (vs pavement 17 / walls 24)
+				case PIX_ASH2:
+					temp = 249;
+					break;
+
 				default:
 					temp =  0;
 			}

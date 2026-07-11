@@ -140,6 +140,17 @@ static constexpr auto make_pix_to_genre() {
 	table[PIX_ZSTAIR_UP] = TYPE_ZSTAIRS;
 	table[PIX_ZSTAIR_DOWN] = TYPE_ZSTAIRS;
 
+	// Westlands terrain. Genre-inert in the autotiler (no smooth() arms);
+	// the mapgen paints variants deterministically, pavement-style.
+	table[PIX_SNOW1] = TYPE_SNOW;
+	table[PIX_SNOW2] = TYPE_SNOW;
+	table[PIX_LAVA1] = TYPE_LAVA;
+	table[PIX_LAVA2] = TYPE_LAVA;
+	table[PIX_MARSH1] = TYPE_MARSH;
+	table[PIX_MARSH2] = TYPE_MARSH;
+	table[PIX_ASH1] = TYPE_ASH;
+	table[PIX_ASH2] = TYPE_ASH;
+
 	return table;
 }
 static constexpr auto PIX_to_genre = make_pix_to_genre();

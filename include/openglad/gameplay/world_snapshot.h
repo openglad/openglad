@@ -230,7 +230,7 @@ struct WorldSnapshot {
     std::uint8_t pause_player_index = kNoPausePlayerIndex;
     // Per-level weather kind (WeatherKind as a wire byte). Render-only world
     // state: the authoritative side rolls it once per level and every client
-    // applies it via set_weather. Values above WeatherKind::Rain clamp to
+    // applies it via set_weather. Values above WeatherKind::Snow clamp to
     // None on apply (untrusted-peer safety).
     std::uint8_t weather = 0;
     std::uint32_t snapshot_hash = 0;

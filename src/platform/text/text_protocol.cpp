@@ -41,6 +41,7 @@ static void json_entity(std::ostream& os, const walker* w, int index)
        << ",\"team\":" << static_cast<int>(w->team_num())
        << ",\"x\":" << w->xpos()
        << ",\"y\":" << w->ypos()
+       << ",\"floor\":" << w->floor()
        << ",\"hp\":" << (w->stats() ? w->stats()->hitpoints() : 0)
        << ",\"max_hp\":" << (w->stats() ? w->stats()->max_hitpoints() : 0)
        << ",\"dead\":" << (w->dead() ? "true" : "false")
@@ -188,6 +189,81 @@ static void cmd_state(const LevelRuntimeData& level)
     std::cout.flush();
 }
 
+static void json_census_named(std::ostream& os, const walker* w, bool& first)
+{
+    if (w == nullptr || w->query_order() != Order::Living)
+        return;
+    if (w->stats() == nullptr || w->stats()->name.empty())
+        return;
+    if (!first) os << ",";
+    first = false;
+    os << "{\"name\":";
+    json_string(os, w->stats()->name);
+    os << ",\"team\":" << static_cast<int>(w->team_num())
+       << ",\"hp\":" << w->stats()->hitpoints()
+       << ",\"dead\":" << (w->dead() ? "true" : "false")
+       << "}";
+}
+
+// Balance-playtest snapshot: per-team alive/dormant Living counts, every
+// named Living (placed heroes -- the ones SAVE_ALL watches -- including
+// dead ones swept to dead_list), and the spawned crew (myguy-bearing
+// walkers, whose corpses persist in oblist).
+static void cmd_census(GameWorld& world)
+{
+    int alive[8] = {};
+    int dormant[8] = {};
+    for (const auto& uptr : world.oblist) {
+        const walker* w = uptr.get();
+        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
+            continue;
+        const int team = w->team_num() & 7;
+        if (w->dormant())
+            dormant[team]++;
+        else
+            alive[team]++;
+    }
+
+    std::ostringstream os;
+    os << "{\"cmd\":\"census\",\"tick\":" << world.tick_count_
+       << ",\"team_counts\":[";
+    for (int team = 0; team < 8; team++) {
+        if (team > 0) os << ",";
+        os << alive[team];
+    }
+    os << "],\"dormant_counts\":[";
+    for (int team = 0; team < 8; team++) {
+        if (team > 0) os << ",";
+        os << dormant[team];
+    }
+    os << "],\"named\":[";
+    bool first = true;
+    for (const auto& uptr : world.oblist)
+        json_census_named(os, uptr.get(), first);
+    for (const auto& uptr : world.dead_list)
+        json_census_named(os, uptr.get(), first);
+    os << "],\"crew\":[";
+    first = true;
+    for (const auto& uptr : world.oblist) {
+        const walker* w = uptr.get();
+        if (w == nullptr || w->myguy == nullptr)
+            continue;
+        if (!first) os << ",";
+        first = false;
+        os << "{\"name\":";
+        json_string(os, w->myguy->name);
+        os << ",\"family\":" << static_cast<int>(w->family())
+           << ",\"level\":" << static_cast<int>(w->myguy->level)
+           << ",\"hp\":" << (w->stats() ? w->stats()->hitpoints() : 0)
+           << ",\"max_hp\":" << (w->stats() ? w->stats()->max_hitpoints() : 0)
+           << ",\"dead\":" << (w->dead() ? "true" : "false")
+           << "}";
+    }
+    os << "]}";
+    std::cout << os.str() << "\n";
+    std::cout.flush();
+}
+
 static void cmd_events(og::sim::SimEventLog& events)
 {
     auto drained = events.drain();
@@ -263,7 +339,31 @@ int run_text_protocol_session(const TextProtocolArgs& args)
         return 1;
     }
 
+    // Install the gameplay context before spawning the crew: guy stat
+    // derivation (--team-level) reads current_game->world.
+    GameplayContext text_game_ctx;
+    text_game_ctx.world = &world;
+    text_game_ctx.save = &save;
+    text_game_ctx.sim_events = &events;
+    text_game_ctx.config = &cfg;
+    GameplayContext* prev_game = current_game;
+    current_game = &text_game_ctx;
+
+    // Derive placed-walker stats from their authored levels, exactly like
+    // the production loaders (game.cpp load_saved_game and
+    // load_headless_level_from_save). Without this pass every placed Living
+    // keeps base-family hitpoints while generator SPAWNS get fully leveled
+    // stats via create_weapon — which silently skews balance playtests.
+    // Runs before the crew spawns so crew walkers (leveled through
+    // guy::update_derived_stats) are never touched.
+    for (auto& uptr : world.oblist) {
+        walker* w = uptr.get();
+        if (w != nullptr)
+            w->set_difficulty(static_cast<std::uint32_t>(w->stats()->level()));
+    }
+
     // Create team walkers and add to the level
+    std::vector<walker*> crew;
     for (size_t i = 0; i < args.team_families.size(); i++) {
         int family = args.team_families[i];
         walker* w = level.add_ob(Order::Living, family);
@@ -272,24 +372,69 @@ int run_text_protocol_session(const TextProtocolArgs& args)
             w->set_real_team_num(0);
             w->set_user(static_cast<signed char>(i < 4 ? i : -1));
 
-            auto g = std::make_unique<guy>();
+            // Playtest crews (--team-level > 0) use the family ctor so the
+            // guy carries the family baseline attributes a hired character
+            // gets; the legacy default-guy path is kept byte-identical.
+            auto g = args.team_level > 0
+                ? std::make_unique<guy>(family)
+                : std::make_unique<guy>();
             g->family = static_cast<char>(family);
             g->name = std::format("Player{}", i + 1);
             w->set_owned_myguy(std::move(g));
+            if (args.team_level > 0) {
+                // Level the guy up and recompute the walker's derived
+                // stats (same sequence as the headless server's
+                // create_team_walker).
+                w->myguy->upgrade_to_level(
+                    static_cast<short>(args.team_level));
+                if (w->stats() != nullptr)
+                    w->stats()->set_level(w->myguy->level);
+                w->myguy->update_derived_stats(w);
+            }
+            crew.push_back(w);
         }
     }
+
+    // Deploy the crew onto the authored team start markers, the way the
+    // production spawn path (spawn_team_from_save) does. Without this the
+    // crew stacks at the add_ob default position, which makes balance runs
+    // meaningless. Falls back to a random teleport when markers run out.
+    auto find_team_marker = [&world](int team) -> walker* {
+        for (const auto& entity : world.oblist) {
+            walker* const m = entity.get();
+            if (m == nullptr || m->dead())
+                continue;
+            if (m->query_order() != Order::Special ||
+                m->family() != FAMILY_RESERVED_TEAM)
+                continue;
+            if (team != -1 && m->team_num() != team)
+                continue;
+            return m;
+        }
+        return nullptr;
+    };
+    auto next_team_marker = [&find_team_marker]() -> walker* {
+        if (walker* m = find_team_marker(0))
+            return m;
+        return find_team_marker(-1);
+    };
+    for (walker* w : crew) {
+        if (walker* marker = next_team_marker()) {
+            // set_floor MUST precede setxy (setxy re-buckets the
+            // floor-keyed obmap).
+            w->set_floor(marker->floor());
+            w->setxy(marker->xpos(), marker->ypos());
+            marker->set_dead(1);
+        } else {
+            w->teleport();
+        }
+    }
+    while (walker* leftover = next_team_marker())
+        leftover->set_dead(1);
 
     // Wire up sim pointers on all entities
     world.enemy_freeze = 0;
     world.end = 0;
-
-    GameplayContext text_game_ctx;
-    text_game_ctx.world = &world;
-    text_game_ctx.save = &save;
-    text_game_ctx.sim_events = &events;
-    text_game_ctx.config = &cfg;
-    GameplayContext* prev_game = current_game;
-    current_game = &text_game_ctx;
 
     // Output ready message
     std::cout << "{\"status\":\"ready\""
@@ -319,6 +464,8 @@ int run_text_protocol_session(const TextProtocolArgs& args)
             cmd_tick(world, count);
         } else if (cmd == "state") {
             cmd_state(level);
+        } else if (cmd == "census") {
+            cmd_census(world);
         } else if (cmd == "events") {
             cmd_events(events);
         } else if (cmd == "quit") {

@@ -122,6 +122,43 @@ TEST(GlyphMap, tile_genres_map_to_expected_glyphs)
     EXPECT_EQ(tile_glyph(12345).ascii, ' ');
 }
 
+TEST(GlyphMap, westlands_tile_genres_map_to_expected_glyphs)
+{
+    // Snowfield: white asterisks.
+    const Glyph snow = tile_glyph(TYPE_SNOW);
+    EXPECT_EQ(snow.unicode, U'*');
+    EXPECT_EQ(snow.ascii, '*');
+    EXPECT_EQ(snow.fg, Color::White);
+    EXPECT_FALSE(snow.bold);
+
+    // Molten lava: bold red waves (water's identical wave shape is blue and
+    // not bold, so the two stay distinguishable).
+    const Glyph lava = tile_glyph(TYPE_LAVA);
+    EXPECT_EQ(lava.unicode, U'≈');
+    EXPECT_EQ(lava.ascii, '~');
+    EXPECT_EQ(lava.fg, Color::Red);
+    EXPECT_TRUE(lava.bold);
+    EXPECT_EQ(tile_glyph(TYPE_WATER).unicode, lava.unicode);
+    EXPECT_NE(tile_glyph(TYPE_WATER).fg, lava.fg);
+
+    // Bog reeds: green quotes.
+    const Glyph marsh = tile_glyph(TYPE_MARSH);
+    EXPECT_EQ(marsh.unicode, U'"');
+    EXPECT_EQ(marsh.ascii, '"');
+    EXPECT_EQ(marsh.fg, Color::Green);
+    EXPECT_FALSE(marsh.bold);
+
+    // Ash field: white light-shade (glass uses the same shade in Cyan —
+    // color disambiguates them).
+    const Glyph ash = tile_glyph(TYPE_ASH);
+    EXPECT_EQ(ash.unicode, U'░');
+    EXPECT_EQ(ash.ascii, '-');
+    EXPECT_EQ(ash.fg, Color::White);
+    EXPECT_FALSE(ash.bold);
+    EXPECT_EQ(tile_glyph(TYPE_GLASS).unicode, ash.unicode);
+    EXPECT_NE(tile_glyph(TYPE_GLASS).fg, ash.fg);
+}
+
 TEST(GlyphMap, ascii_fallback_differs_from_unicode_for_some_tiles)
 {
     // Wall is a solid block in Unicode but '#' in ASCII.

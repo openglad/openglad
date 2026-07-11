@@ -4,6 +4,7 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/statistics.h>
+#include <openglad/core/colors.h>
 #include <openglad/legacy/base.h>
 #include <gtest/gtest.h>
 
@@ -133,5 +134,46 @@ TEST(RadarMore, radar_start_default_uses_myscreen_level_data)
     radar r(vs, og::runtime::current_session->myscreen_, 0);
     r.start(); // wrapper path start(&myscreen->level_runtime_data())
     (void)r.draw(&og::runtime::current_session->myscreen_->level_runtime_data());
+}
+
+// Westlands terrain radar colors: snow reads white, lava fire-orange (cycled,
+// torch precedent), marsh dark green (distinct from the trees ramp), ash a
+// warm dark grey (distinct from pavement 17 and walls 24).
+TEST(RadarMore, westlands_tiles_map_to_pinned_radar_colors)
+{
+    FixedRandom fixed_rng(1);
+    GameContext c;
+    c.rng = &fixed_rng;
+    GlobalContextGuard guard(&c);
+
+    LevelRuntimeData d(1);
+    d.create_new_grid();
+
+    const std::vector<unsigned char> tiles = {
+        PIX_SNOW1, PIX_SNOW2, PIX_LAVA1, PIX_LAVA2,
+        PIX_MARSH1, PIX_MARSH2, PIX_ASH1, PIX_ASH2,
+    };
+    for (int i = 0; i < static_cast<int>(tiles.size()); i++)
+        set_tile(d, i, 0, tiles[static_cast<size_t>(i)]);
+
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_TRUE(vs != nullptr) << "viewscreen exists";
+    radar r(vs, og::runtime::current_session->myscreen_, 0);
+    r.start(&d);
+    r.update(&d);
+    ASSERT_GE(static_cast<int>(r.bmp.size()), 8)
+        << "radar bmp must cover the painted row";
+
+    const std::vector<unsigned char> expected = {
+        COLOR_WHITE,    COLOR_WHITE,    // snow
+        COLOR_FIRE,     COLOR_FIRE,     // lava
+        COLOR_GREEN + 7, COLOR_GREEN + 7, // marsh
+        249,            249,            // ash
+    };
+    for (int i = 0; i < 8; i++)
+        EXPECT_EQ(static_cast<int>(expected[static_cast<size_t>(i)]),
+                  static_cast<int>(r.bmp[static_cast<size_t>(i)]))
+            << "radar color for tile id "
+            << static_cast<int>(tiles[static_cast<size_t>(i)]);
 }
 

@@ -9,6 +9,7 @@
  * Commands (stdin):
  *   tick [N]     - advance N ticks (default 1), print tick results
  *   state        - dump all entity positions/status as JSON
+ *   census       - per-team alive counts + named-hero and crew status
  *   events       - drain and print accumulated sim events
  *   input <player> <key> - inject a player input
  *   quit         - exit
@@ -100,6 +101,7 @@ struct TextClientArgs {
     int level = 1;
     std::vector<int> team_families; // family IDs
     std::uint32_t seed = 42;
+    int team_level = 0; // 0 = loader-default stats (legacy)
     bool protocol_mode = false;
     bool probe_unsupported_warnings = false;
 };
@@ -121,6 +123,8 @@ static bool parse_args(int argc, char* argv[], TextClientArgs& args)
             }
         } else if (arg == "--seed" && i + 1 < argc) {
             args.seed = static_cast<std::uint32_t>(std::atol(argv[++i]));
+        } else if (arg == "--team-level" && i + 1 < argc) {
+            args.team_level = std::atoi(argv[++i]);
         } else if (arg == "--protocol") {
             args.protocol_mode = true;
         } else if (arg == "--probe-unsupported-warnings") {
@@ -132,11 +136,13 @@ static bool parse_args(int argc, char* argv[], TextClientArgs& args)
                 "  --level <num>       Level number (default: 1)\n"
                 "  --team <f1,f2,...>  Team family IDs, comma-separated (default: 0 = soldier)\n"
                 "  --seed <num>        RNG seed (default: 42)\n"
+                "  --team-level <n>    Upgrade each spawned team guy to level n (default: 0 = family defaults)\n"
                 "  --protocol          Run JSON protocol mode directly (no picker)\n"
                 "  --probe-unsupported-warnings  Emit one-time headless unsupported warnings and exit\n"
                 "\nCommands (stdin):\n"
                 "  tick [N]   Advance N simulation ticks\n"
                 "  state      Dump entity state as JSON\n"
+                "  census     Per-team alive counts + named-hero and crew status\n"
                 "  events     Drain and print sim events\n"
                 "  quit       Exit\n");
             return false;
@@ -180,6 +186,7 @@ int main(int argc, char* argv[])
     picker_config.level = args.level;
     picker_config.team_families = args.team_families;
     picker_config.seed = args.seed;
+    picker_config.team_level = args.team_level;
 
     int rc = 0;
     if (args.protocol_mode) {

@@ -63,6 +63,7 @@ int run_text_picker_protocol_session(const TextPickerConfig& config)
     protocol_args.level = config.level;
     protocol_args.team_families = config.team_families;
     protocol_args.seed = config.seed;
+    protocol_args.team_level = config.team_level;
     return run_text_protocol_session(protocol_args);
 }
 

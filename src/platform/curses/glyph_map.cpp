@@ -222,6 +222,10 @@ Glyph tile_glyph(int genre)
     case TYPE_GLASS:       return Glyph{U'░', '"', Color::Cyan, false, false};   // see-through floor
     case TYPE_DROP_BLOCK:  return Glyph{U'▔', '_', Color::White, false, false};  // edge guard
     case TYPE_ZSTAIRS:     return Glyph{U'≡', 'H', Color::Yellow, true, false};  // Z-stairs
+    case TYPE_SNOW:        return Glyph{U'*', '*', Color::White, false, false};  // snowfield
+    case TYPE_LAVA:        return Glyph{U'≈', '~', Color::Red, true, false};     // molten (bold; water ≈ is blue)
+    case TYPE_MARSH:       return Glyph{U'"', '"', Color::Green, false, false};  // bog reeds
+    case TYPE_ASH:         return Glyph{U'░', '-', Color::White, false, false};  // ash field (glass ░ is cyan)
     case TYPE_UNKNOWN:
     default:               return Glyph{U' ', ' ', Color::Default, false, false};
     }

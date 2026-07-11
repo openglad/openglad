@@ -865,6 +865,22 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor)
                     // separately. Single-floor grids never contain these bytes,
                     // so legacy levels take identical control flow.
                     break;
+                case PIX_SNOW1:
+                case PIX_SNOW2:
+                case PIX_MARSH1:
+                case PIX_MARSH2:
+                case PIX_ASH1:
+                case PIX_ASH2:
+                    break; // plain walkable ground
+                case PIX_LAVA1:
+                case PIX_LAVA2:
+                    // Molten: solid to ground walkers; projectiles fly over
+                    // and flyers cross (same conditional arm as water above).
+                    if (ob->query_order() == Order::Weapon)
+                        break;
+                    if (ob->stats()->query_bit_flags(BIT_FLYING) || ob->flight_left())
+                        break;
+                    return false;
                 default:
                     return false;
             }

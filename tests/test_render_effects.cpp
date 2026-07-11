@@ -764,7 +764,8 @@ TEST(RenderEffects, weather_blends_survive_palette_cycling)
             world.grid.data[i + world.grid.w * j] =
                 static_cast<unsigned char>(PIX_WATER1);
 
-    for (const WeatherKind kind : {WeatherKind::Clouds, WeatherKind::Rain})
+    for (const WeatherKind kind :
+         {WeatherKind::Clouds, WeatherKind::Rain, WeatherKind::Snow})
     {
         world.set_weather(kind);
         effects_reset_for_testing();
@@ -772,10 +773,10 @@ TEST(RenderEffects, weather_blends_survive_palette_cycling)
         effects_advance_frame(); // tick 2: past the lightning flash
         trace_clear();
         ASSERT_TRUE(do_redraw(vs));
-        ASSERT_TRUE(trace_contains("effects",
-                                   kind == WeatherKind::Clouds
-                                       ? "clouds floor=0"
-                                       : "rain floor=0"))
+        const char* expected_trace = kind == WeatherKind::Clouds
+            ? "clouds floor=0"
+            : (kind == WeatherKind::Rain ? "rain floor=0" : "snow floor=0");
+        ASSERT_TRUE(trace_contains("effects", expected_trace))
             << "the overlay must draw for this scene to prove anything";
         const std::vector<RGB> before = grab_viewport(vs);
 
@@ -933,6 +934,133 @@ TEST(RenderEffects, water_reflection_absent_on_watergrass_edge_tiles)
     ASSERT_TRUE(rects_equal(off, on))
         << "reflections on over edge tiles must render byte-identically";
 
+    restore_world(vs);
+}
+
+// Westlands reflective tiles: molten lava and marsh pools mirror entities
+// through the same LUT/blit path as water and glass.
+TEST(RenderEffects, reflection_draws_on_lava_and_marsh)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    EffectsCfgGuard guard;
+    cfg.apply_setting("effects", "shadows", "off");
+    cfg.apply_setting("effects", "weather", "off");
+    cfg.apply_setting("effects", "ripples", "off");
+
+    for (const int pix_id : {PIX_LAVA1, PIX_MARSH2})
+    {
+        prepare_world();
+        fill_camera_grid(static_cast<unsigned char>(pix_id));
+        walker* w = scr()->world().add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, w);
+        // Flyer: nothing stands ON lava, but a flyer crossing it must still
+        // mirror (reflections key on the tile, not on passability).
+        w->stats()->set_bit_flags(BIT_FLYING, 1);
+        w->setxy(160, 120);
+        vs->control = w;
+
+        cfg.apply_setting("effects", "reflections", "off");
+        ASSERT_TRUE(do_redraw(vs));
+        Sint32 sx = 0, sy = 0;
+        ground_anchor(*w, vs, sx, sy);
+        const int rect_y = sy + w->sizey();
+        const std::vector<RGB> off_rect =
+            grab_rect(sx, rect_y, w->sizex(), w->sizey());
+
+        cfg.apply_setting("effects", "reflections", "on");
+        trace_clear();
+        ASSERT_TRUE(do_redraw(vs));
+        ASSERT_TRUE(trace_contains("effects", "reflections floor=0 n=1"))
+            << "the walker must reflect over tile id " << pix_id;
+        ASSERT_FALSE(rects_equal(off_rect,
+                                 grab_rect(sx, rect_y, w->sizex(), w->sizey())))
+            << "reflection must alter pixels below the walker on tile id "
+            << pix_id;
+        restore_world(vs);
+    }
+}
+
+// Snow and ash are dry ground: no reflection may draw there.
+TEST(RenderEffects, reflection_absent_on_snow_and_ash)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    EffectsCfgGuard guard;
+    cfg.apply_setting("effects", "shadows", "off");
+    cfg.apply_setting("effects", "weather", "off");
+    cfg.apply_setting("effects", "ripples", "off");
+
+    for (const int pix_id : {PIX_SNOW1, PIX_ASH2})
+    {
+        prepare_world();
+        fill_camera_grid(static_cast<unsigned char>(pix_id));
+        walker* w = scr()->world().add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, w);
+        w->setxy(160, 120);
+        vs->control = w;
+
+        cfg.apply_setting("effects", "reflections", "off");
+        ASSERT_TRUE(do_redraw(vs));
+        const std::vector<RGB> off = grab_viewport(vs);
+
+        cfg.apply_setting("effects", "reflections", "on");
+        trace_clear();
+        ASSERT_TRUE(do_redraw(vs));
+        ASSERT_FALSE(trace_contains("effects", "reflections"))
+            << "tile id " << pix_id << " must not mirror";
+        ASSERT_TRUE(rects_equal(off, grab_viewport(vs)))
+            << "reflections on over tile id " << pix_id
+            << " must render byte-identically";
+        restore_world(vs);
+    }
+}
+
+// A wader in the bog makes ripple rings exactly like pure water; lava makes
+// none (nothing stands on it — a flyer hovering over it fails the feet-tile
+// check).
+TEST(RenderEffects, ripples_draw_on_marsh_but_never_on_lava)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    EffectsCfgGuard guard;
+    cfg.apply_setting("effects", "shadows", "off");
+    cfg.apply_setting("effects", "reflections", "off");
+    cfg.apply_setting("effects", "weather", "off");
+    cfg.apply_setting("effects", "ripples", "on");
+
+    for (const int pix_id : {PIX_MARSH1, PIX_MARSH2})
+    {
+        fill_camera_grid(static_cast<unsigned char>(pix_id));
+        walker* w = scr()->world().add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, w);
+        w->setxy(160, 120);
+        vs->control = w;
+        effects_reset_for_testing();
+        trace_clear();
+        ASSERT_TRUE(do_redraw(vs));
+        ASSERT_TRUE(trace_contains("effects", "ripples floor=0 n=1"))
+            << "the wader must ripple on marsh tile id " << pix_id;
+        scr()->world().delete_objects();
+        vs->control = nullptr;
+    }
+
+    // Lava: a flyer hovers over it, but the feet tile is not in the ripple
+    // set — no rings betray it.
+    fill_camera_grid(static_cast<unsigned char>(PIX_LAVA1));
+    walker* flyer = scr()->world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, flyer);
+    flyer->stats()->set_bit_flags(BIT_FLYING, 1);
+    flyer->setxy(160, 120);
+    vs->control = flyer;
+    effects_reset_for_testing();
+    trace_clear();
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_FALSE(trace_contains("effects", "ripples"))
+        << "no ripple rings may draw over lava";
+
+    effects_reset_for_testing();
     restore_world(vs);
 }
 
@@ -1659,6 +1787,296 @@ TEST(RenderEffects, rain_falls_across_the_full_viewport_not_a_wet_mask)
     for (size_t q = 0; q < quadrant_hits.size(); q++)
         EXPECT_GT(quadrant_hits[q], 0u)
             << "quadrant " << q << " must see rain (no dry wet-mask zones)";
+
+    effects_reset_for_testing();
+    teardown_cloud_scene(vs);
+}
+
+// ---------------------------------------------------------------------------
+// Snow (WeatherKind::Snow): the gentle sibling of rain — 4px streaks at
+// 1px/tick, half slant alternating per 32px world-column band, occupancy 3/8,
+// no lightning. The rain pins above must keep passing untouched (the shared
+// streak path computes bit-identical rain).
+// ---------------------------------------------------------------------------
+
+// The engine's streak hash, replicated for the slant-band sign (the test
+// derives each 32px column band's lean direction exactly as the shader does).
+std::uint32_t test_hash_u32(std::uint32_t v)
+{
+    v ^= v >> 16;
+    v *= 0x7FEB352Du;
+    v ^= v >> 15;
+    v *= 0x846CA68Bu;
+    v ^= v >> 16;
+    return v;
+}
+
+TEST(RenderEffects, snow_streaks_fall_sparsely)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    EffectsCfgGuard guard;
+    all_effects_off();
+    setup_cloud_scene(vs, 2, 1); // camera on the TOP floor
+    scr()->world().set_weather(WeatherKind::Snow);
+
+    // cfg OFF baseline: no trace, byte-identical frame to frame.
+    cfg.apply_setting("effects", "weather", "off");
+    effects_reset_for_testing();
+    effects_advance_frame();
+    effects_advance_frame();
+    trace_clear();
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_FALSE(trace_contains("effects", "snow"))
+        << "weather off must not trace";
+    const std::vector<RGB> off = grab_viewport(vs);
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_TRUE(rects_equal(off, grab_viewport(vs)))
+        << "weather off must render byte-identically frame to frame";
+
+    // ON: pale streaks over the whole sky, softer than rain (occupancy 3/8
+    // x streak 4/64 = ~2.3% lit).
+    cfg.apply_setting("effects", "weather", "on");
+    effects_reset_for_testing();
+    effects_advance_frame();
+    effects_advance_frame();
+    trace_clear();
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_TRUE(trace_contains("effects", "snow floor=1"))
+        << "snow must trace when flakes drew";
+    ASSERT_FALSE(trace_contains("effects", "rain"))
+        << "a Snow sky must not trace rain";
+    const std::vector<RGB> on = grab_viewport(vs);
+    const size_t changed = count_changed(off, on);
+    ASSERT_GT(changed, off.size() / 200)
+        << "snow density must exceed 0.5% of the viewport";
+    ASSERT_LT(changed, off.size() * 35 / 1000)
+        << "snow must stay a soft fall (under 3.5% of the viewport)";
+    ASSERT_GT(count_lightened(off, on), 0u)
+        << "white flake heads must read as lighter pixels";
+
+    effects_reset_for_testing();
+    teardown_cloud_scene(vs);
+}
+
+TEST(RenderEffects, snow_absent_below_top_floor)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    EffectsCfgGuard guard;
+    all_effects_off();
+    setup_cloud_scene(vs, 2, 0); // a floor overhead
+    scr()->world().set_weather(WeatherKind::Snow);
+
+    cfg.apply_setting("effects", "weather", "off");
+    effects_reset_for_testing();
+    ASSERT_TRUE(do_redraw(vs));
+    const std::vector<RGB> covered_off = grab_viewport(vs);
+    cfg.apply_setting("effects", "weather", "on");
+    trace_clear();
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_FALSE(trace_contains("effects", "snow"))
+        << "no snow may fall under a floor overhead";
+    ASSERT_TRUE(rects_equal(covered_off, grab_viewport(vs)))
+        << "a Snow kind on a lower floor must render byte-identically";
+
+    effects_reset_for_testing();
+    teardown_cloud_scene(vs);
+}
+
+// Snow must read as FALLING: a 4px streak at 1px/tick relights 3 of its 4
+// pixels on the next tick (75% theoretical overlap; rain pins 70%).
+TEST(RenderEffects, snow_streaks_overlap_frame_to_frame)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    EffectsCfgGuard guard;
+    all_effects_off();
+    setup_cloud_scene(vs, 2, 1); // camera on the TOP floor
+    scr()->world().set_weather(WeatherKind::Snow);
+
+    const auto snow_pixels_at_tick = [&](int tick) {
+        cfg.apply_setting("effects", "weather", "off");
+        effects_reset_for_testing();
+        for (int t = 0; t < tick; t++)
+            effects_advance_frame();
+        do_redraw(vs);
+        const std::vector<RGB> off = grab_viewport(vs);
+        cfg.apply_setting("effects", "weather", "on");
+        effects_reset_for_testing();
+        for (int t = 0; t < tick; t++)
+            effects_advance_frame();
+        do_redraw(vs);
+        const std::vector<RGB> on = grab_viewport(vs);
+        std::vector<bool> snow(on.size(), false);
+        for (size_t i = 0; i < on.size(); i++)
+            snow[i] = !same(off[i], on[i]);
+        return snow;
+    };
+
+    const std::vector<bool> a = snow_pixels_at_tick(2);
+    const std::vector<bool> b = snow_pixels_at_tick(3);
+    size_t lit = 0, still_lit = 0;
+    for (size_t i = 0; i < a.size(); i++)
+        if (a[i])
+        {
+            lit++;
+            if (b[i])
+                still_lit++;
+        }
+    ASSERT_GT(lit, 0u) << "tick 2 must have snow pixels to measure";
+    const double overlap =
+        static_cast<double>(still_lit) / static_cast<double>(lit);
+    fprintf(stderr, "  [snow overlap] %zu/%zu = %.2f\n", still_lit, lit,
+            overlap);
+    EXPECT_GE(overlap, 0.6)
+        << "consecutive frames must relight most flake pixels (drifting "
+           "motes, not twinkle)";
+
+    effects_reset_for_testing();
+    teardown_cloud_scene(vs);
+}
+
+// Snow leans HALF as hard as rain (1px per 8px down) and each 32px
+// world-column band alternates lean direction by hash: shifting tick-T's
+// mask by each band's own (s, 8) vector must reproduce tick-T+8's mask,
+// while a global straight-down shift must not.
+TEST(RenderEffects, snow_falls_at_a_gentle_slant)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    EffectsCfgGuard guard;
+    all_effects_off();
+    cfg.apply_setting("effects", "weather", "on");
+    setup_cloud_scene(vs, 2, 1); // camera on the TOP floor
+
+    const int vw = vs->endx - vs->xloc;
+    const auto snow_mask_at_tick = [&](int tick) {
+        scr()->world().set_weather(WeatherKind::None);
+        effects_reset_for_testing();
+        for (int t = 0; t < tick; t++)
+            effects_advance_frame();
+        do_redraw(vs);
+        const std::vector<RGB> off = grab_viewport(vs);
+        scr()->world().set_weather(WeatherKind::Snow);
+        effects_reset_for_testing();
+        for (int t = 0; t < tick; t++)
+            effects_advance_frame();
+        do_redraw(vs);
+        const std::vector<RGB> on = grab_viewport(vs);
+        std::vector<bool> snow(on.size(), false);
+        for (size_t i = 0; i < on.size(); i++)
+            snow[i] = !same(off[i], on[i]);
+        return snow;
+    };
+
+    const std::vector<bool> a = snow_mask_at_tick(2);
+    const std::vector<bool> b = snow_mask_at_tick(10); // T + 8
+    // 8 ticks at fall speed 1 = 8px down; each band adds its sign's 1px lean.
+    const int vh = static_cast<int>(a.size()) / vw;
+    const auto match_fraction = [&](bool per_band, int fixed_dx) {
+        size_t lit = 0, hit = 0;
+        for (size_t i = 0; i < a.size(); i++)
+        {
+            if (!a[i])
+                continue;
+            const int x = static_cast<int>(i) % vw;
+            const int y = static_cast<int>(i) / vw;
+            const int wx = x + static_cast<int>(vs->topx);
+            const int s =
+                (test_hash_u32(static_cast<std::uint32_t>(wx >> 5)) & 1u)
+                    ? 1 : -1;
+            const int dx = per_band ? s : fixed_dx;
+            const int tx = x + dx;
+            const int ty = y + 8;
+            if (tx < 0 || tx >= vw || ty < 0 || ty >= vh)
+                continue;
+            lit++;
+            if (b[static_cast<size_t>(ty) * static_cast<size_t>(vw) +
+                  static_cast<size_t>(tx)])
+                hit++;
+        }
+        return lit == 0 ? 0.0 : static_cast<double>(hit) /
+                                    static_cast<double>(lit);
+    };
+    const double along_bands = match_fraction(true, 0);
+    const double straight_down = match_fraction(false, 0);
+    fprintf(stderr, "  [snow slant] bands=%.2f down=%.2f\n", along_bands,
+            straight_down);
+    EXPECT_GE(along_bands, 0.75)
+        << "the snow pattern must translate along each band's slant vector";
+    EXPECT_LT(straight_down, along_bands - 0.3)
+        << "a straight-down shift must NOT reproduce the pattern (snow "
+           "drifts at a gentle slant)";
+
+    scr()->world().set_weather(WeatherKind::None);
+    effects_reset_for_testing();
+    teardown_cloud_scene(vs);
+}
+
+// No lightning under snow: ticks 0/1 are the Rain flash window; a Snow sky
+// crossing the same schedule boundary must neither trace nor flash.
+TEST(RenderEffects, snow_has_no_lightning)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    EffectsCfgGuard guard;
+    all_effects_off();
+    setup_cloud_scene(vs, 2, 1); // camera on the TOP floor
+    scr()->world().set_weather(WeatherKind::Snow);
+
+    for (int tick = 0; tick < 2; tick++)
+    {
+        cfg.apply_setting("effects", "weather", "off");
+        effects_reset_for_testing();
+        for (int i = 0; i < tick; i++)
+            effects_advance_frame();
+        ASSERT_TRUE(do_redraw(vs));
+        const std::vector<RGB> off = grab_viewport(vs);
+
+        cfg.apply_setting("effects", "weather", "on");
+        effects_reset_for_testing();
+        for (int i = 0; i < tick; i++)
+            effects_advance_frame();
+        trace_clear();
+        ASSERT_TRUE(do_redraw(vs));
+        ASSERT_FALSE(trace_contains("effects", "lightning"))
+            << "snow must never flash (schedule tick " << tick << ")";
+        ASSERT_TRUE(trace_contains("effects", "snow floor=1"))
+            << "flakes still fall on the flash-window ticks";
+        ASSERT_LT(count_lightened(off, grab_viewport(vs)), off.size() * 9 / 10)
+            << "no full-viewport flash blend may fire under snow";
+    }
+
+    effects_reset_for_testing();
+    teardown_cloud_scene(vs);
+}
+
+// All four Westlands terrains are open country: a single-floor map of each
+// must vote outdoor so weather reaches it (otherwise the blizzard override
+// would never show its own snowfall).
+TEST(RenderEffects, westlands_terrains_vote_outdoor)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    EffectsCfgGuard guard;
+    all_effects_off();
+    cfg.apply_setting("effects", "weather", "on");
+    setup_cloud_scene(vs, 1, 0);
+    scr()->world().set_weather(WeatherKind::Clouds);
+
+    for (const int pix_id : {PIX_SNOW1, PIX_LAVA1, PIX_MARSH1, PIX_ASH1,
+                             PIX_SNOW2, PIX_LAVA2, PIX_MARSH2, PIX_ASH2})
+    {
+        fill_camera_grid(static_cast<unsigned char>(pix_id));
+        effects_reset_for_testing();
+        trace_clear();
+        ASSERT_TRUE(do_redraw(vs));
+        ASSERT_TRUE(trace_contains("effects", "verdict=1"))
+            << "tile id " << pix_id << " must vote outdoor";
+        ASSERT_TRUE(trace_contains("effects", "clouds floor=0"))
+            << "weather must reach a single-floor map of tile id " << pix_id;
+    }
 
     effects_reset_for_testing();
     teardown_cloud_scene(vs);

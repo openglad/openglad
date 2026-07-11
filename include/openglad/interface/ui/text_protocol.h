@@ -16,6 +16,10 @@ struct TextProtocolArgs {
     int level = 1;
     std::vector<int> team_families;
     std::uint32_t seed = 42;
+    // When > 0, each spawned team guy is upgraded to this level and its
+    // derived walker stats recomputed (playtest crews). 0 keeps the legacy
+    // loader-default stats untouched.
+    int team_level = 0;
 };
 
 // Run a single headless protocol session (until game ends or user quits).

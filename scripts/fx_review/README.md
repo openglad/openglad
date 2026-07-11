@@ -20,10 +20,14 @@ Frames and the site are build artifacts — regenerate them; don't commit them.
    - `RenderEffects.zz_capture_effect_scenes` (`tests/test_render_effects.cpp`)
      — 12 scripted close-ups, one per effect.
    - `GameLoop.zz_capture_real_gameplay` / `zz_capture_splitscreen_gameplay` /
-     `zz_capture_epic_battles` (`tests/test_game_loop.cpp`) — live sim on
-     campaign levels, a real 2-player split-screen session, and the epic
-     levels 605-610 in spectator mode with a mode-seeking cinematic camera.
-     `OG_FX_CAPTURE_ONLY=<605..610>` records a single epic level.
+     `zz_capture_epic_battles` / `zz_capture_westlands`
+     (`tests/test_game_loop.cpp`) — live sim on campaign levels, a real
+     2-player split-screen session, and the War of the Westlands story
+     levels: the six war epics plus the new showpieces (16 The White City,
+     24 The Mountain of Fire) and the High Pass blizzard (5) in spectator
+     mode with a mode-seeking cinematic camera, plus the Forest Road flight
+     (2) and the Dead Marshes (19) as real gameplay.
+     `OG_FX_CAPTURE_ONLY=<level id>` records a single scene.
    - `OptionsMenu.zz_capture_menu_tour` / `zz_capture_menu_effects`
      (`tests/test_options_menu.cpp`) — injector-driven menu walkthroughs.
 2. **TESTING hooks** make the blocking menu flows filmable:

@@ -172,7 +172,7 @@ bool Rectf::contains(float X, float Y) const
     return (x <= X && x + w >= X && y + h <= Y && y >= Y);
 }
 
-static constexpr std::array<Sint32, 108> kDefaultBackgrounds = {
+static constexpr std::array<Sint32, 116> kDefaultBackgrounds = {
                          PIX_GRASS1, PIX_GRASS2, PIX_GRASS_DARK_1, PIX_GRASS_DARK_2,
                          //PIX_GRASS_DARK_B1, PIX_GRASS_DARK_BR, PIX_GRASS_DARK_R1, PIX_GRASS_DARK_R2,
                          PIX_BOULDER_1, PIX_GRASS_DARK_LL, PIX_GRASS_DARK_UR, PIX_GRASS_RUBBLE,
@@ -235,6 +235,10 @@ static constexpr std::array<Sint32, 108> kDefaultBackgrounds = {
                          // Z-axis / multi-floor tiles (paint on the current floor).
                          PIX_AIR, PIX_GLASS, PIX_DROPBLOCK_UP, PIX_DROPBLOCK_RIGHT,
                          PIX_DROPBLOCK_DOWN, PIX_DROPBLOCK_LEFT, PIX_ZSTAIR_UP, PIX_ZSTAIR_DOWN,
+
+                         // Westlands terrain.
+                         PIX_SNOW1, PIX_SNOW2, PIX_LAVA1, PIX_LAVA2,
+                         PIX_MARSH1, PIX_MARSH2, PIX_ASH1, PIX_ASH2,
                      };
 static inline auto& backgrounds()
 {
@@ -2948,6 +2952,16 @@ int level_editor_test_exercise_internal_helpers()
         check(eds().current_floor == 0);                // clamped off the removed floor
         data.remove_floor();                            // base floor: no-op
         check(data.level->world().floor_count() == 1);
+        // Westlands tiles: the default brush palette carries all 8 new ids
+        // (grown 108 -> 116) and painting one round-trips the byte.
+        check(kDefaultBackgrounds.size() == 116);
+        for (const Sint32 pix : {PIX_SNOW1, PIX_SNOW2, PIX_LAVA1, PIX_LAVA2,
+                                 PIX_MARSH1, PIX_MARSH2, PIX_ASH1, PIX_ASH2})
+            check(std::find(kDefaultBackgrounds.begin(),
+                            kDefaultBackgrounds.end(),
+                            pix) != kDefaultBackgrounds.end());
+        data.set_terrain(2, 2, PIX_LAVA1);
+        check(data.get_terrain(2, 2) == PIX_LAVA1);
         data.clear_terrain();
 	        check(data.get_terrain(0, 0) == 1);
 	        data.level->world().id = 1;

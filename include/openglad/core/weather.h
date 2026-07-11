@@ -18,9 +18,16 @@ enum class WeatherKind : unsigned char {
     None = 0,
     Clouds = 1,
     Rain = 2,
+    // Never rolled by the decile hash: Snow is applied exclusively by the
+    // terrain override (kSnowWeatherTileThreshold) AFTER the roll.
+    Snow = 3,
 };
 
 namespace og {
+
+// Terrain override: a level whose grids carry at least this many snow tiles
+// (any floor, PIX_SNOW1/2 combined) is blizzard country — always snowing.
+inline constexpr int kSnowWeatherTileThreshold = 40;
 
 // Decile residue -> kind: 0-4 None (50%), 5-7 Clouds (30%), 8-9 Rain (20%).
 // Split out so tests can pin the boundary mapping directly.

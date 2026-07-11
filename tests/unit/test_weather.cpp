@@ -4,9 +4,11 @@
 // touches the sim RNG stream and nothing in the sim reads the result.
 #include <gtest/gtest.h>
 
+#include <openglad/core/pixdefs.h>
 #include <openglad/core/weather.h>
 #include <openglad/gameplay/game_world.h>
 
+#include <algorithm>
 #include <cstdint>
 
 namespace {
@@ -34,6 +36,19 @@ private:
     std::uint32_t saved_seq_;
 };
 
+// Give a bare GameWorld a 32x32 grass floor-`floor` grid carrying
+// `snow_tiles` PIX_SNOW bytes (alternating SNOW1/SNOW2 to prove the count
+// is joint across both variants).
+void paint_snow_grid(GameWorld& world, int floor, int snow_tiles)
+{
+    constexpr int kW = 32, kH = 32;
+    auto* buf = new unsigned char[kW * kH];
+    std::fill(buf, buf + kW * kH, static_cast<unsigned char>(PIX_GRASS1));
+    for (int i = 0; i < snow_tiles; i++)
+        buf[i] = static_cast<unsigned char>((i % 2) ? PIX_SNOW2 : PIX_SNOW1);
+    world.grid_for_floor(floor) = PixieData(1, kW, kH, buf);
+}
+
 } // namespace
 
 // The residue table is the locked design: 0-4 None (50%), 5-7 Clouds (30%),
@@ -50,6 +65,9 @@ TEST(Weather, residue_boundaries_map_to_kinds)
     for (std::uint32_t r = 0; r < 10u; ++r)
     {
         const WeatherKind kind = og::weather_kind_from_residue(r);
+        EXPECT_NE(WeatherKind::Snow, kind)
+            << "Snow is never rolled by the decile hash (residue " << r
+            << ") — it comes exclusively from the terrain override";
         if (r < 5u)
             EXPECT_EQ(WeatherKind::None, kind) << "residue " << r;
         else if (r < 8u)
@@ -78,6 +96,9 @@ TEST(Weather, roll_distribution_over_first_thousand_seeds_is_pinned)
         case WeatherKind::Rain:
             ++rain;
             break;
+        case WeatherKind::Snow:
+            FAIL() << "the decile hash must never produce Snow (seed " << seed
+                   << ")";
         }
     }
     EXPECT_EQ(477, none);
@@ -112,6 +133,8 @@ TEST(Weather, world_defaults_to_none_and_accessors_round_trip)
     EXPECT_EQ(WeatherKind::Rain, world.weather());
     world.set_weather(WeatherKind::Clouds);
     EXPECT_EQ(WeatherKind::Clouds, world.weather());
+    world.set_weather(WeatherKind::Snow);
+    EXPECT_EQ(WeatherKind::Snow, world.weather());
     world.set_weather(WeatherKind::None);
     EXPECT_EQ(WeatherKind::None, world.weather());
 }
@@ -204,4 +227,80 @@ TEST(Weather, world_roll_leaves_sim_rng_state_untouched)
     const std::uint32_t rng_before = world.rng_.state_;
     world.roll_weather();
     EXPECT_EQ(rng_before, world.rng_.state_);
+}
+
+// Terrain override: a grid carrying kSnowWeatherTileThreshold snow tiles
+// (SNOW1/SNOW2 jointly — paint_snow_grid alternates them) flips the rolled
+// kind to Snow AFTER the hash roll, whatever the base kind was. Level ids
+// 1/2/7 pin one base kind each (None/Clouds/Rain, see the pins above).
+TEST(Weather, snowy_grid_overrides_any_base_roll_to_snow)
+{
+    WeatherNonceGuard guard;
+    og::set_weather_roll_nonce(0u);
+
+    for (const int id : {1, 2, 7})
+    {
+        GameWorld world;
+        world.id = id;
+        paint_snow_grid(world, 0, og::kSnowWeatherTileThreshold);
+        og::set_weather_roll_sequence(0u);
+        world.roll_weather();
+        EXPECT_EQ(WeatherKind::Snow, world.weather())
+            << "level id " << id << " with a snowy grid must snow";
+    }
+}
+
+// One tile below the threshold the base roll stands (level id 7 pins Rain).
+TEST(Weather, below_threshold_snow_count_keeps_the_base_roll)
+{
+    WeatherNonceGuard guard;
+    og::set_weather_roll_nonce(0u);
+
+    GameWorld world;
+    world.id = 7;
+    paint_snow_grid(world, 0, og::kSnowWeatherTileThreshold - 1);
+    og::set_weather_roll_sequence(0u);
+    world.roll_weather();
+    EXPECT_EQ(WeatherKind::Rain, world.weather())
+        << "39 snow tiles are scenery, not blizzard country";
+}
+
+// The count is summed across floors: 25 + 15 tiles split over two floors
+// reach the threshold together.
+TEST(Weather, snow_tiles_count_jointly_across_floors)
+{
+    WeatherNonceGuard guard;
+    og::set_weather_roll_nonce(0u);
+
+    GameWorld world;
+    world.id = 7;
+    world.set_floor_count(2);
+    paint_snow_grid(world, 0, 25);
+    paint_snow_grid(world, 1, 15);
+    og::set_weather_roll_sequence(0u);
+    world.roll_weather();
+    EXPECT_EQ(WeatherKind::Snow, world.weather());
+
+    // 25 + 14 stays below the threshold: base roll (Rain for id 7).
+    paint_snow_grid(world, 1, 14);
+    og::set_weather_roll_sequence(0u);
+    world.roll_weather();
+    EXPECT_EQ(WeatherKind::Rain, world.weather());
+}
+
+// The override happens AFTER the roll: the golden-ratio sequence is consumed
+// identically whether or not the override fires (reproducibility contract).
+TEST(Weather, override_still_consumes_the_roll_sequence)
+{
+    WeatherNonceGuard guard;
+    og::set_weather_roll_nonce(0u);
+    og::set_weather_roll_sequence(0u);
+
+    GameWorld world;
+    world.id = 7;
+    paint_snow_grid(world, 0, og::kSnowWeatherTileThreshold);
+    world.roll_weather();
+    EXPECT_EQ(WeatherKind::Snow, world.weather());
+    EXPECT_EQ(1u, og::weather_roll_sequence())
+        << "an overridden roll must still bump the sequence by exactly 1";
 }

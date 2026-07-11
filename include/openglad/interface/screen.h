@@ -167,7 +167,7 @@ public:
                                Sint32 world_offset_x, Sint32 world_offset_y,
                                std::span<const bool, 256> reflect_mask) override;
     // Default-mask convenience: reflects over the production reflective
-    // tiles (reflective_tiles(): PIX_GLASS + pure water).
+    // tiles (reflective_tiles(): PIX_GLASS + pure water + lava/marsh).
     void walkputbuffer_reflect(Sint32 walkerstartx, Sint32 walkerstarty,
                                Sint32 walkerwidth, Sint32 walkerheight,
                                Sint32 portstartx, Sint32 portstarty,

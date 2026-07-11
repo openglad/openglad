@@ -81,7 +81,7 @@ bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha = 255);
 //   so an arcing projectile's height reads from the sprite/shadow gap.
 // - Reflection: vertically flipped sprite mirrored below the feet, masked to
 //   the reflective tiles of camera_grid (the camera floor's tile grid) per
-//   reflective_tiles(): PIX_GLASS + pure water.
+//   reflective_tiles(): PIX_GLASS + pure water + lava/marsh.
 bool draw_walker_shadow(walker& w, viewscreen* view_buf);
 bool draw_walker_reflection(walker& w, viewscreen* view_buf,
                             const PixieData& camera_grid);

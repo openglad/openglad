@@ -205,6 +205,16 @@
 #define PIX_ZSTAIR_UP       140
 #define PIX_ZSTAIR_DOWN     141
 
+// Westlands terrain (appended; mirror of core/pixdefs.h — keep in sync).
+#define PIX_SNOW1  142
+#define PIX_SNOW2  143
+#define PIX_LAVA1  144
+#define PIX_LAVA2  145
+#define PIX_MARSH1 146
+#define PIX_MARSH2 147
+#define PIX_ASH1   148
+#define PIX_ASH2   149
+
 // This should be the largest #defined pix +1
-#define PIX_MAX 142  //last currently = PIX_ZSTAIR_DOWN
+#define PIX_MAX 150  //last currently = PIX_ASH2
 

@@ -2825,7 +2825,7 @@ void apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot)
     // Weather is render-only world state; clamp unknown wire values to None
     // rather than trusting the peer byte.
     world.set_weather(
-        snapshot.weather <= static_cast<std::uint8_t>(WeatherKind::Rain)
+        snapshot.weather <= static_cast<std::uint8_t>(WeatherKind::Snow)
             ? static_cast<WeatherKind>(snapshot.weather)
             : WeatherKind::None);
     apply_ctf_state(world, snapshot);

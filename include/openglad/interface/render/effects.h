@@ -30,7 +30,8 @@ class walker;
 void effects_advance_frame();
 
 // Per-tile-id mask of the tiles that mirror entities: PIX_GLASS plus the
-// pure water tiles PIX_WATER1/2/3. Edge tiles (watergrass/grasswater) stay
+// pure water tiles PIX_WATER1/2/3, plus the Westlands lava (PIX_LAVA1/2)
+// and marsh (PIX_MARSH1/2) tiles. Edge tiles (watergrass/grasswater) stay
 // out — the mask is per-tile, so they would put reflections on their grass
 // pixels. Shared by draw_walker_reflection's pre-check and the
 // walkputbuffer_reflect blit.

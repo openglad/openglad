@@ -149,7 +149,8 @@ public:
     // walkerstartx, walkerstarty), team-recolored (>247 rule) and blended at
     // `alpha`, but a pixel is only plotted where the underlying grid tile's
     // id is marked in reflect_mask (per-tile-id lookup; production passes
-    // reflective_tiles(): PIX_GLASS + pure water). world_offset_x/y convert
+    // reflective_tiles(): PIX_GLASS + pure water + lava/marsh).
+    // world_offset_x/y convert
     // screen px to world px for the grid lookup (topx - xloc, topy - yloc);
     // grid is gridw x gridh tile ids.
     virtual void walkputbuffer_reflect(Sint32 walkerstartx, Sint32 walkerstarty,

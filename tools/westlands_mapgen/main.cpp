@@ -1,16 +1,21 @@
-/* Concept Playground campaign generator.
+/* War of the Westlands campaign generator.
  *
- * Produces builtin/org.openglad.concept.glad: five small multi-floor scenarios
- * that show off the Z-axis feature (levels 600-604 — stacked floors joined by
- * Z-stairs, "air" holes you fall through, see-through "glass" floors, and
- * projectile arcs). The six epic multifloor war stories that once shipped here
- * as levels 605-610 moved to the "War of the Westlands" story campaign
- * (tools/westlands_mapgen, builtin/org.openglad.westlands.glad). SDL-free;
- * reuses the headless platform glue, mirrors tools/ctf_mapgen. Builds the v10
- * multi-floor scenario format (docs/z-axis-design.md), zips a campaign
- * package, mounts it, and self-checks every level by reloading it.
+ * Produces builtin/org.openglad.westlands.glad: a 26-level story campaign
+ * (docs at scratch design + docs/z-axis-design.md) built act by act — the
+ * flight east, the dark road, the war in the west, the burden's road, and
+ * the convergence at the Mountain of Fire. In every battle the player's
+ * crew IS the defense: team-0 start markers arranged in a tactical
+ * formation deploy the whole team, a few placed team-0 allies (named
+ * heroes, defender generators) fight alongside, and the enemy host is
+ * team 2. SDL-free; reuses the headless platform glue, mirrors
+ * tools/concept_mapgen (where the six epic war stories now numbered
+ * 6, 7, 8, 14, 15 and 17 were first authored). Builds the v10 multi-floor
+ * scenario format, zips a campaign package, mounts it, and self-checks
+ * every registered level by reloading it — including exit-destination
+ * validation against the registered id set.
  *
- * Usage: concept_mapgen [output.glad]   (default: builtin/org.openglad.concept.glad)
+ * Usage: westlands_mapgen [output.glad]
+ *        (default: builtin/org.openglad.westlands.glad)
  *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *
@@ -19,6 +24,8 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include "builders.h"
+
 #include <openglad/core/constants.h>
 #include <openglad/core/irandom.h>
 #include <openglad/core/pixdefs.h>
@@ -49,6 +56,7 @@
 #include <format>
 #include <fstream>
 #include <memory>
+#include <set>
 #include <string>
 #include <unistd.h>
 #include <vector>
@@ -80,16 +88,21 @@ std::uint32_t random(std::uint32_t x)
     return (state >> 16) % x;
 }
 
-namespace conceptgen {
-namespace {
+namespace westlands {
 
-namespace fs = std::filesystem;
+namespace {
 int g_errors = 0;
+} // namespace
 
 void fail(const std::string& message)
 {
-    std::fprintf(stderr, "concept_mapgen: ERROR: %s\n", message.c_str());
+    std::fprintf(stderr, "westlands_mapgen: ERROR: %s\n", message.c_str());
     ++g_errors;
+}
+
+void warn(const std::string& message)
+{
+    std::fprintf(stderr, "westlands_mapgen: WARNING: %s\n", message.c_str());
 }
 
 // A grass field of (tw x th) tiles; PixieData owns the heap buffer.
@@ -107,12 +120,55 @@ void paint(PixieData& g, int tx, int ty, unsigned char tile)
         g.data[tx + ty * g.w] = tile;
 }
 
-// Fill a rectangle [tx0,tx1] x [ty0,ty1] (inclusive) with a tile.
 void paint_rect(PixieData& g, int tx0, int ty0, int tx1, int ty1, unsigned char tile)
 {
     for (int y = ty0; y <= ty1; ++y)
         for (int x = tx0; x <= tx1; ++x)
             paint(g, x, y, tile);
+}
+
+void paint_pavement(PixieData& g, int tx0, int ty0, int tx1, int ty1)
+{
+    static constexpr unsigned char variants[3] = {PIX_PAVEMENT1, PIX_PAVEMENT2,
+                                                  PIX_PAVEMENT3};
+    for (int y = ty0; y <= ty1; ++y)
+        for (int x = tx0; x <= tx1; ++x)
+            paint(g, x, y, variants[(x * 7 + y * 13) % 3]);
+}
+
+void paint_path(PixieData& g, int tx0, int ty0, int tx1, int ty1)
+{
+    static constexpr unsigned char variants[4] = {PIX_PATH_1, PIX_PATH_2,
+                                                  PIX_PATH_3, PIX_PATH_4};
+    for (int y = ty0; y <= ty1; ++y)
+        for (int x = tx0; x <= tx1; ++x)
+            paint(g, x, y, variants[(x * 5 + y * 3) % 4]);
+}
+
+void paint_ring(PixieData& g, double cx, double cy, double r0, double r1,
+                unsigned char tile)
+{
+    for (int y = 0; y < g.h; ++y)
+        for (int x = 0; x < g.w; ++x)
+        {
+            const double dx = x - cx;
+            const double dy = y - cy;
+            const double d = std::sqrt(dx * dx + dy * dy);
+            if (d >= r0 && d < r1)
+                paint(g, x, y, tile);
+        }
+}
+
+void stair_pair(GameWorld& w, int f, int tx, int ty)
+{
+    paint(w.grid_for_floor(f), tx, ty, PIX_ZSTAIR_UP);
+    paint(w.grid_for_floor(f + 1), tx, ty, PIX_ZSTAIR_DOWN);
+}
+
+void smooth_world(GameWorld& w)
+{
+    for (int f = 0; f < w.floor_count(); ++f)
+        w.smoother_for_floor(f).smooth();
 }
 
 walker* place(GameWorld& world, Order order, int family, int team, int floor,
@@ -133,12 +189,131 @@ walker* place(GameWorld& world, Order order, int family, int team, int floor,
     return w;
 }
 
+void set_npc_extras(walker* ob, bool specials_disabled, int spawn_delay)
+{
+    if (ob == nullptr)
+        return;
+    ob->set_specials_disabled(specials_disabled);
+    ob->set_spawn_delay(static_cast<std::uint16_t>(spawn_delay));
+}
+
+walker* place_living(GameWorld& w, int family, int team, int floor, int tx,
+                     int ty, int level, bool guard, bool specials_disabled,
+                     int spawn_delay)
+{
+    walker* ob = place(w, Order::Living, family, team, floor, tx, ty);
+    if (ob == nullptr)
+        return nullptr;
+    ob->stats()->set_level(level);
+    if (guard)
+        ob->set_act_type(ACT_GUARD);
+    set_npc_extras(ob, specials_disabled, spawn_delay);
+    return ob;
+}
+
+walker* place_generator(GameWorld& w, int family, int team, int floor, int tx,
+                        int ty, int level)
+{
+    walker* ob = place(w, Order::Generator, family, team, floor, tx, ty);
+    if (ob != nullptr)
+        ob->stats()->set_level(level);
+    return ob;
+}
+
+void place_start(GameWorld& w, int floor, int tx, int ty)
+{
+    place(w, Order::Special, FAMILY_RESERVED_TEAM, 0, floor, tx, ty);
+}
+
+walker* place_hero(GameWorld& w, int family, int floor, int tx, int ty,
+                   int level, const char* name, bool guard,
+                   bool specials_disabled, int spawn_delay)
+{
+    walker* ob = place_living(w, family, 0, floor, tx, ty, level, guard,
+                              specials_disabled, spawn_delay);
+    if (ob != nullptr)
+        ob->stats()->name = name;
+    return ob;
+}
+
+void place_exit(GameWorld& w, int floor, int tx, int ty, int destination)
+{
+    walker* e = place(w, Order::Treasure, FAMILY_EXIT, 0, floor, tx, ty);
+    if (e != nullptr)
+        e->stats()->set_level(destination);
+}
+
+bool cell_near_entity(GameWorld& w, int floor, int tx, int ty, int margin)
+{
+    auto overlaps = [&](walker* ob) {
+        if (ob == nullptr || ob->floor() != floor)
+            return false;
+        const int x0 = ob->xpos() / GRID_SIZE - margin;
+        const int y0 = ob->ypos() / GRID_SIZE - margin;
+        const int x1 = (ob->xpos() + ob->sizex() - 1) / GRID_SIZE + margin;
+        const int y1 = (ob->ypos() + ob->sizey() - 1) / GRID_SIZE + margin;
+        return tx >= x0 && tx <= x1 && ty >= y0 && ty <= y1;
+    };
+    for (const auto& uptr : w.oblist)
+        if (overlaps(uptr.get()))
+            return true;
+    for (const auto& uptr : w.fxlist)
+        if (overlaps(uptr.get()))
+            return true;
+    return false;
+}
+
+namespace {
+
+// Scatter a 4-variant decor tile set over a rectangle. Runs AFTER army
+// placement and keeps one tile of clearance around every entity (and never
+// covers a Z-stair) so no one spawns wedged in the scenery.
+void scatter_decor(GameWorld& w, int floor, int tx0, int ty0, int tx1,
+                   int ty1, int modulus, const unsigned char (&variants)[4])
+{
+    PixieData& g = w.grid_for_floor(floor);
+    for (int y = ty0; y <= ty1; ++y)
+        for (int x = tx0; x <= tx1; ++x)
+        {
+            if ((x * 7 + y * 11) % modulus != 0)
+                continue;
+            if (x < 0 || y < 0 || x >= g.w || y >= g.h)
+                continue;
+            const unsigned char t = g.data[x + y * g.w];
+            if (t == PIX_ZSTAIR_UP || t == PIX_ZSTAIR_DOWN || t == PIX_VOID1)
+                continue;
+            if (cell_near_entity(w, floor, x, y, 1))
+                continue;
+            paint(g, x, y, variants[(x + y) % 4]);
+        }
+}
+
+} // namespace
+
+void scatter_boulders(GameWorld& w, int floor, int tx0, int ty0, int tx1,
+                      int ty1, int modulus)
+{
+    static constexpr unsigned char boulders[4] = {PIX_BOULDER_1, PIX_BOULDER_2,
+                                                  PIX_BOULDER_3, PIX_BOULDER_4};
+    scatter_decor(w, floor, tx0, ty0, tx1, ty1, modulus, boulders);
+}
+
+void scatter_litter(GameWorld& w, int floor, int tx0, int ty0, int tx1,
+                    int ty1, int modulus)
+{
+    static constexpr unsigned char litter[4] = {
+        PIX_JAGGED_GROUND_1, PIX_JAGGED_GROUND_2, PIX_JAGGED_GROUND_3,
+        PIX_JAGGED_GROUND_4};
+    scatter_decor(w, floor, tx0, ty0, tx1, ty1, modulus, litter);
+}
+
 void save_level_files(GameWorld& world, int id, const char* title,
-                      const std::vector<std::string>& description)
+                      const std::vector<std::string>& description,
+                      int par_value, int time_bonus_limit)
 {
     world.title = title;
-    world.par_value = 3;
-    world.time_bonus_limit = 4000;
+    world.par_value = static_cast<short>(par_value);
+    world.time_bonus_limit = static_cast<short>(time_bonus_limit);
 
     og::data::LevelFileMetadata metadata;
     metadata.grid_file = std::format("scen{:04d}", id);
@@ -163,12 +338,10 @@ void save_level_files(GameWorld& world, int id, const char* title,
         if (!write_pixie_png(p.c_str(), world.grid_for_floor(f)))
             fail(std::format("failed to write {}", p));
     }
-    std::printf("concept_mapgen: built %d '%s' (%d floors)\n", id, title,
+    std::printf("westlands_mapgen: built %d '%s' (%d floors)\n", id, title,
                 world.floor_count());
 }
 
-// Common world bootstrap: a LevelRuntimeData with N floors all sized tw x th,
-// floor 0 filled grass; extra floors filled grass too (callers paint specials).
 void init_world(LevelRuntimeData& level, int floors, int tw, int th)
 {
     GameWorld& world = level.world();
@@ -187,162 +360,108 @@ void init_world(LevelRuntimeData& level, int floors, int tw, int th)
     }
 }
 
-// --- The five demo levels. --------------------------------------------------
-
-// 600 STAIRS: floor 0 and floor 1 joined by a vertically-aligned Z-stair.
-void build_stairs()
-{
-    LevelRuntimeData level(600, true, &headless_level_data_hooks());
-    init_world(level, 2, 24, 18);
-    GameWorld& w = level.world();
-    const int sx = 12, sy = 9;
-    paint(w.grid, sx, sy, PIX_ZSTAIR_UP);            // floor 0 -> up
-    paint(w.grid_for_floor(1), sx, sy, PIX_ZSTAIR_DOWN); // floor 1 -> down
-    place(w, Order::Special, FAMILY_RESERVED_TEAM, 0, 0, 3, 3);   // player start, floor 0
-    place(w, Order::Living, FAMILY_ORC, 1, 1, 20, 14);     // foe waiting upstairs
-    place(w, Order::Treasure, FAMILY_EXIT, 0, 1, 20, 3);   // exit on floor 1
-    save_level_files(w, 600, "Stairs",
-                     {"Climb the stairs to the upper", "floor and reach the exit."});
-}
-
-// 601 MIND THE GAP: an "air" chasm on the upper floor that ground units must
-// path around (or fall through to floor 0); a flyer can cross straight over.
-void build_mind_the_gap()
-{
-    LevelRuntimeData level(601, true, &headless_level_data_hooks());
-    init_world(level, 2, 28, 18);
-    GameWorld& w = level.world();
-    // A horizontal air band across the upper floor with a walkable lip on the
-    // right edge so ground pathing can route around it.
-    paint_rect(w.grid_for_floor(1), 4, 9, 22, 10, PIX_AIR);
-    place(w, Order::Special, FAMILY_RESERVED_TEAM, 0, 1, 4, 3);   // start above the gap
-    place(w, Order::Living, FAMILY_ELF, 1, 1, 4, 15);      // foe below the gap
-    place(w, Order::Treasure, FAMILY_EXIT, 0, 1, 22, 15);  // exit past the gap
-    place(w, Order::Treasure, FAMILY_FLIGHT_POTION, 0, 1, 6, 3); // fly over!
-    save_level_files(w, 601, "Mind the Gap",
-                     {"Path around the chasm, or grab",
-                      "flight to soar across it."});
-}
-
-// 602 GLASSHOUSE: a glass upper floor you walk on while seeing and dropping in
-// on foes on the floor below.
-void build_glasshouse()
-{
-    LevelRuntimeData level(602, true, &headless_level_data_hooks());
-    init_world(level, 2, 22, 16);
-    GameWorld& w = level.world();
-    paint_rect(w.grid_for_floor(1), 6, 4, 15, 11, PIX_GLASS); // see-through floor
-    paint(w.grid_for_floor(1), 10, 8, PIX_ZSTAIR_DOWN);       // drop in on them
-    paint(w.grid, 10, 8, PIX_ZSTAIR_UP);
-    place(w, Order::Special, FAMILY_RESERVED_TEAM, 0, 1, 3, 3);   // start on glass floor
-    place(w, Order::Living, FAMILY_SKELETON, 1, 0, 10, 8); // foe below the glass
-    place(w, Order::Treasure, FAMILY_EXIT, 0, 0, 18, 12);  // exit on lower floor
-    save_level_files(w, 602, "Glasshouse",
-                     {"Spot the foe through the glass,", "then drop in to finish it."});
-}
-
-// 603 DROP ZONE: an open pit of air on the upper floor — walk in and fall.
-void build_drop_zone()
-{
-    LevelRuntimeData level(603, true, &headless_level_data_hooks());
-    init_world(level, 2, 22, 16);
-    GameWorld& w = level.world();
-    paint_rect(w.grid_for_floor(1), 8, 5, 13, 10, PIX_AIR); // the pit
-    place(w, Order::Special, FAMILY_RESERVED_TEAM, 0, 1, 3, 3);    // start up top
-    place(w, Order::Living, FAMILY_BARBARIAN, 1, 0, 10, 8); // foe at the bottom
-    place(w, Order::Treasure, FAMILY_EXIT, 0, 0, 18, 12);   // exit below
-    save_level_files(w, 603, "Drop Zone",
-                     {"Step into the pit and drop to", "the arena floor below."});
-}
-
-// 604 ARC RANGE: an open arena to show projectile arcs (knife/rock/fireball)
-// and a pit so projectiles can drop a floor.
-void build_arc_range()
-{
-    LevelRuntimeData level(604, true, &headless_level_data_hooks());
-    init_world(level, 2, 30, 16);
-    GameWorld& w = level.world();
-    paint_rect(w.grid_for_floor(1), 14, 6, 16, 9, PIX_AIR); // a small pit mid-arena
-    paint(w.grid, 15, 12, PIX_ZSTAIR_UP);               // floor 0 -> climb back out of the pit
-    paint(w.grid_for_floor(1), 15, 12, PIX_ZSTAIR_DOWN); // floor 1 -> a second, deliberate way down
-    place(w, Order::Special, FAMILY_RESERVED_TEAM, 0, 1, 4, 8);        // player start (floor 1)
-    place(w, Order::Living, FAMILY_ARCHER, 1, 1, 26, 8);    // foe across the arena
-    place(w, Order::Living, FAMILY_SKELETON, 1, 0, 15, 8);  // foe under the pit
-    // The tour's last stop loops home to 600 so the exit stays within the
-    // demo set (the war stories that used to follow live in the Westlands
-    // campaign now).
-    walker* arc_exit = place(w, Order::Treasure, FAMILY_EXIT, 0, 1, 26, 3);
-    if (arc_exit != nullptr)
-        arc_exit->stats()->set_level(600);
-    save_level_files(w, 604, "Arc Range",
-                     {"Watch thrown weapons arc — and", "drop through the pit below."});
-}
+namespace {
 
 void write_campaign_yaml(const std::string& path)
 {
     std::ofstream out(path);
     out << "format_version:  1\n"
-        << "title:           Concept Playground\n"
+        << "title:           War of the Westlands\n"
         << "version:         1\n"
-        << "first_level:     600\n"
+        << "first_level:     1\n"
         << "suggested_power: 0\n"
         << "authors:         OpenGlad\n"
         << "contributors:    \n"
         << "\n"
         << "description:     |\n"
-        << "    A sampler of the Z-axis: stacked\n"
-        << "    floors and stairs, air holes you\n"
-        << "    fall through, see-through glass\n"
-        << "    floors, and arcing projectiles —\n"
-        << "    five small demos, one concept\n"
-        << "    each, looping back to the start.\n";
+        << "    The Westlands burn. A small\n"
+        << "    burden must cross a great war:\n"
+        << "    the flight through the forest,\n"
+        << "    the dark road under the mountain,\n"
+        << "    sieges of wall and gate and city,\n"
+        << "    marsh and spider-pass and ash —\n"
+        << "    until two roads meet again at\n"
+        << "    the Mountain of Fire, and all\n"
+        << "    is weighed in the crack of the\n"
+        << "    world.\n";
     if (!out)
         fail(std::format("cannot write {}", path));
 }
 
-// A 32x32 icon: two stacked floor bands with a stairway, in the engine palette.
+// A 32x32 icon: the White Tree — a bare white tree with three tiers of
+// upswept branches on a pure black field. Painted in the engine palette's
+// grey ramp (16..31 runs dark -> bright; 31 is the brightest white). No
+// cycled palette bands anywhere: the sigil must not shimmer.
 void write_icon(const std::string& path)
 {
     constexpr int kSize = 32;
-    PixieData icon = make_grid(kSize, kSize, 0);
+    PixieData icon = make_grid(kSize, kSize, 0); // the black field
     auto put = [&](int x, int y, unsigned char c) { paint(icon, x, y, c); };
-    for (int x = 3; x < 29; ++x)            // lower floor band
-        for (int y = 20; y < 27; ++y) put(x, y, 5);
-    for (int x = 3; x < 29; ++x)            // upper floor band
-        for (int y = 6; y < 13; ++y) put(x, y, 10);
-    for (int i = 0; i < 6; ++i)             // stairway
-        for (int x = 14 + i; x < 18; ++x)
-            put(x, 19 - i, 88);
+    for (int x = 11; x <= 20; ++x)              // the root mound
+        for (int y = 28; y <= 29; ++y)
+            put(x, y, 24);
+    for (int y = 10; y <= 27; ++y)              // the trunk, two shaded columns
+    {
+        put(15, y, 28);
+        put(16, y, 31);
+    }
+    for (int i = 0; i <= 6; ++i)                // lower branch pair
+    {
+        put(14 - i, 21 - i, 30);
+        put(17 + i, 21 - i, 30);
+    }
+    for (int i = 0; i <= 5; ++i)                // middle branch pair
+    {
+        put(14 - i, 17 - i, 30);
+        put(17 + i, 17 - i, 30);
+    }
+    for (int i = 0; i <= 4; ++i)                // upper branch pair
+    {
+        put(14 - i, 13 - i, 30);
+        put(17 + i, 13 - i, 30);
+    }
+    static constexpr int tips[6][2] = {{8, 15}, {23, 15}, {9, 12},
+                                       {22, 12}, {10, 9}, {21, 9}};
+    for (const auto& t : tips)                  // brightest buds at the tips
+        put(t[0], t[1], 31);
+    put(15, 7, 31);                             // the crown
+    put(16, 7, 31);
+    put(14, 8, 31);
+    put(17, 8, 31);
+    put(15, 6, 26);                             // a faint taper above it
+    put(16, 6, 26);
+    put(13, 27, 26);                            // root flare
+    put(18, 27, 26);
     if (!write_pixie_png(path.c_str(), icon))
         fail(std::format("cannot write {}", path));
 }
 
-struct ExpectedLevel
+// The full designed level graph: ids 1-26, contiguous except 18 (act gap).
+// Every level is now registered, so exit-destination validation is a hard
+// failure: any exit naming a level absent from the package fails the build.
+constexpr bool kRequireAllDestinationsBuilt = true;
+
+bool is_planned_level(int id)
 {
-    int id;
-    int floors;
-    const char* title;
-    // Team-0 start markers (the player crew's authored formation) plus the
-    // placed team-0 allies (named heroes, defender generators).
-    int start_markers;
-    int team0_livings;
-    int team0_generators;
-    int team1_livings;
-    int team1_generators;
-    int team2_livings;
-    int team2_generators;
-    // Per-NPC v10 extras that must round-trip through the package.
-    int delayed_spawns;
-    int specials_disabled;
-    // When set, every floor boundary must have >= 1 aligned UP/DOWN stair pair
-    // (601/603 traverse floors by falling, so they opt out).
-    bool stairs_every_boundary;
-};
+    return (id >= 1 && id <= 17) || (id >= 19 && id <= 26);
+}
+
+std::string join_ids(const std::vector<int>& ids)
+{
+    std::string out;
+    for (const int id : ids)
+    {
+        if (!out.empty())
+            out += ", ";
+        out += std::to_string(id);
+    }
+    return out;
+}
 
 // SCENARIO INFORMATION dialog budget (33 glyphs per briefing line).
 constexpr std::size_t kBriefingLineBudget = 33;
 
-void self_check_level(const ExpectedLevel& ex)
+void self_check_level(const ExpectedLevel& ex, const std::set<int>& registered)
 {
     LevelRuntimeData level(ex.id, true, &headless_level_data_hooks());
     if (!level.load())
@@ -424,6 +543,42 @@ void self_check_level(const ExpectedLevel& ex)
         fail(std::format("self-check scen{}: {} seeded livings exceed the "
                          "MAXOBS={} living cap", ex.id, total_livings, MAXOBS));
 
+    // Exit audit: the authored destination set must match the design graph
+    // exactly, and every destination must exist in the package (warn-only
+    // for planned-but-not-yet-built levels until the final integrate phase).
+    std::vector<int> destinations;
+    for (const auto& uptr : world.fxlist)
+    {
+        walker* ob = uptr.get();
+        if (ob != nullptr && ob->query_order() == Order::Treasure &&
+            ob->family() == FAMILY_EXIT)
+        {
+            destinations.push_back(static_cast<int>(ob->stats()->level()));
+        }
+    }
+    std::vector<int> expected_dests = ex.exit_destinations;
+    std::sort(destinations.begin(), destinations.end());
+    std::sort(expected_dests.begin(), expected_dests.end());
+    if (destinations != expected_dests)
+        fail(std::format("self-check scen{}: exit destinations [{}] != "
+                         "expected [{}]", ex.id, join_ids(destinations),
+                         join_ids(expected_dests)));
+    for (const int dest : destinations)
+    {
+        if (registered.count(dest) != 0)
+            continue;
+        if (!kRequireAllDestinationsBuilt && is_planned_level(dest))
+        {
+            warn(std::format("scen{}: exit destination {} is planned but not "
+                             "yet built", ex.id, dest));
+        }
+        else
+        {
+            fail(std::format("self-check scen{}: exit destination {} does not "
+                             "exist in the package", ex.id, dest));
+        }
+    }
+
     // Stair audit: each floor boundary reachable through at least one
     // vertically-aligned UP/DOWN pair.
     if (ex.stairs_every_boundary)
@@ -483,15 +638,15 @@ void self_check_level(const ExpectedLevel& ex)
 }
 
 } // namespace
-} // namespace conceptgen
+} // namespace westlands
 
 int main(int argc, char* argv[])
 {
-    using namespace conceptgen;
+    using namespace westlands;
     namespace fs = std::filesystem;
 
     const std::string out_glad =
-        (argc > 1) ? argv[1] : "builtin/org.openglad.concept.glad";
+        (argc > 1) ? argv[1] : "builtin/org.openglad.westlands.glad";
     const fs::path out_abs = fs::absolute(out_glad);
 
     fs::path scratch;
@@ -499,7 +654,7 @@ int main(int argc, char* argv[])
         preset == nullptr || preset[0] == '\0')
     {
         scratch = fs::temp_directory_path() /
-                  ("concept_mapgen_" + std::to_string(getpid()));
+                  ("westlands_mapgen_" + std::to_string(getpid()));
         fs::create_directories(scratch);
         setenv("OPENGLAD_CONFIG_DIR", scratch.c_str(), 1);
     }
@@ -508,8 +663,8 @@ int main(int argc, char* argv[])
     io_init(argc, argv);
     if (get_mounted_campaign() != "org.openglad.gladiator")
     {
-        std::fprintf(stderr, "concept_mapgen: ERROR: stock campaign not mounted; "
-                             "run next to staged assets (build dir)\n");
+        std::fprintf(stderr, "westlands_mapgen: ERROR: stock campaign not "
+                             "mounted; run next to staged assets (build dir)\n");
         io_exit();
         return 1;
     }
@@ -537,38 +692,47 @@ int main(int argc, char* argv[])
     write_campaign_yaml(user + "temp/campaign.yaml");
     write_icon(user + "temp/icon.png");
 
-    build_stairs();
-    build_mind_the_gap();
-    build_glasshouse();
-    build_drop_zone();
-    build_arc_range();
+    const LevelDataHooks& hooks = headless_level_data_hooks();
+    build_act1(hooks);
+    build_act2(hooks);
+    build_act3a(hooks);
+    build_act3b(hooks);
+    build_finale(hooks);
 
-    const std::string glad_path = user + "campaigns/org.openglad.concept.glad";
+    std::vector<ExpectedLevel> expectations;
+    for (auto rows : {act1_expectations(), act2_expectations(),
+                      act3a_expectations(), act3b_expectations(),
+                      finale_expectations()})
+    {
+        for (ExpectedLevel& row : rows)
+            expectations.push_back(std::move(row));
+    }
+    std::set<int> registered;
+    for (const ExpectedLevel& e : expectations)
+    {
+        if (!is_planned_level(e.id))
+            fail(std::format("scen{} is not in the planned level graph", e.id));
+        if (!registered.insert(e.id).second)
+            fail(std::format("scen{} registered twice", e.id));
+    }
+
+    const std::string glad_path = user + "campaigns/org.openglad.westlands.glad";
     std::remove(glad_path.c_str());
     if (zip_contents_with_error(user + "temp/", glad_path) != ArchiveIoError::None)
         fail(std::format("failed to zip campaign into {}", glad_path));
 
     if (g_errors == 0)
     {
-        if (mount_campaign_package_with_error("org.openglad.concept") !=
+        if (mount_campaign_package_with_error("org.openglad.westlands") !=
             CampaignPackageIoError::None)
         {
             fail("failed to mount the produced campaign");
         }
         else
         {
-            // {id, floors, title, starts, t0 liv/gen, t1 liv/gen, t2 liv/gen,
-            //  delayed spawns, specials-disabled, stairs-every-boundary}
-            const ExpectedLevel expectations[] = {
-                {600, 2, "Stairs", 1, 0, 0, 1, 0, 0, 0, 0, 0, true},
-                {601, 2, "Mind the Gap", 1, 0, 0, 1, 0, 0, 0, 0, 0, false},
-                {602, 2, "Glasshouse", 1, 0, 0, 1, 0, 0, 0, 0, 0, true},
-                {603, 2, "Drop Zone", 1, 0, 0, 1, 0, 0, 0, 0, 0, false},
-                {604, 2, "Arc Range", 1, 0, 0, 2, 0, 0, 0, 0, 0, true},
-            };
             for (const ExpectedLevel& e : expectations)
-                self_check_level(e);
-            (void)unmount_campaign_package_with_error("org.openglad.concept");
+                self_check_level(e, registered);
+            (void)unmount_campaign_package_with_error("org.openglad.westlands");
         }
     }
 
@@ -583,7 +747,7 @@ int main(int argc, char* argv[])
                              out_abs.string(), ec.message()));
         else
         {
-            std::printf("concept_mapgen: wrote %s\n", out_abs.c_str());
+            std::printf("westlands_mapgen: wrote %s\n", out_abs.c_str());
             result = 0;
         }
     }
@@ -596,6 +760,7 @@ int main(int argc, char* argv[])
         fs::remove_all(scratch, ec);
     }
     if (result != 0)
-        std::fprintf(stderr, "concept_mapgen: FAILED with %d error(s)\n", g_errors);
+        std::fprintf(stderr, "westlands_mapgen: FAILED with %d error(s)\n",
+                     g_errors);
     return result;
 }

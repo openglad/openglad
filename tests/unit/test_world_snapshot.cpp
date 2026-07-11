@@ -1867,6 +1867,55 @@ TEST(WorldSnapshot, weather_kind_round_trips_from_authoritative_roll_to_mirror)
         << "out-of-range weather bytes must clamp to None";
 }
 
+// WeatherKind::Snow (wire byte 3, produced only by the terrain override)
+// survives the same capture -> serialize -> deserialize -> apply path, and
+// the apply-side clamp boundary sits exactly above it: byte 3 is valid,
+// byte 4 clamps to None.
+TEST(WorldSnapshot, snow_weather_kind_survives_the_wire_and_pins_the_clamp)
+{
+    // Stay neutral to the process-wide roll sequence (other tests pin rolls
+    // at specific sequence values).
+    const std::uint32_t saved_seq = og::weather_roll_sequence();
+
+    TestGameWorld source_fx;
+    GameWorld& source = source_fx.world();
+    configure_snapshot_test_services(source);
+    source.resize_grid(32, 32);
+    fill_world_grid(source, PIX_GRASS1);
+    // Blizzard country: enough snow tiles to trip the after-roll override,
+    // whatever the base roll was.
+    for (int i = 0; i < og::kSnowWeatherTileThreshold; ++i)
+        source.grid.data[i] = static_cast<unsigned char>(PIX_SNOW1);
+    source.id = 7;
+    source.roll_weather();
+    og::set_weather_roll_sequence(saved_seq);
+    ASSERT_EQ(WeatherKind::Snow, source.weather())
+        << "the terrain override must flip a snowy grid to Snow";
+
+    const og::sim::WorldSnapshot keyframe =
+        og::sim::capture_keyframe_snapshot(source);
+    EXPECT_EQ(static_cast<std::uint8_t>(WeatherKind::Snow), keyframe.weather);
+
+    const std::vector<std::uint8_t> bytes =
+        og::sim::serialize_snapshot(keyframe);
+    const og::sim::WorldSnapshot decoded = og::sim::deserialize_snapshot(bytes);
+    EXPECT_EQ(keyframe.weather, decoded.weather);
+
+    TestGameWorld mirror_fx;
+    GameWorld& mirror = mirror_fx.world();
+    configure_snapshot_test_services(mirror);
+    og::sim::apply_snapshot(mirror, decoded);
+    EXPECT_EQ(WeatherKind::Snow, mirror.weather())
+        << "wire byte 3 (Snow) must apply, not clamp";
+
+    // The clamp boundary: 4 (one past Snow) is the first invalid byte.
+    og::sim::WorldSnapshot hostile = decoded;
+    hostile.weather = 4;
+    og::sim::apply_snapshot(mirror, hostile);
+    EXPECT_EQ(WeatherKind::None, mirror.weather())
+        << "bytes above WeatherKind::Snow must clamp to None";
+}
+
 TEST(WorldSnapshot, serialize_delta_roundtrip_uses_uncompressed_bypass_when_smaller)
 {
     og::sim::WorldSnapshot delta;

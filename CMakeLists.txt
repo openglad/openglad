@@ -1351,6 +1351,35 @@ if(NOT EMSCRIPTEN)
     )
     add_runtime_assets_dependency(concept_mapgen)
 
+    # --- westlands_mapgen ("War of the Westlands" campaign generator) ---
+    # SDL-free authoring tool that produces builtin/org.openglad.westlands.glad,
+    # the 26-level story campaign built act by act (one source file per act).
+    # Not part of the default build; run via scripts/generate_westlands_campaign.sh.
+    add_executable(westlands_mapgen EXCLUDE_FROM_ALL
+        ${CMAKE_SOURCE_DIR}/tools/westlands_mapgen/main.cpp
+        ${CMAKE_SOURCE_DIR}/tools/westlands_mapgen/levels_act1.cpp
+        ${CMAKE_SOURCE_DIR}/tools/westlands_mapgen/levels_act2.cpp
+        ${CMAKE_SOURCE_DIR}/tools/westlands_mapgen/levels_act3a.cpp
+        ${CMAKE_SOURCE_DIR}/tools/westlands_mapgen/levels_act3b.cpp
+        ${CMAKE_SOURCE_DIR}/tools/westlands_mapgen/levels_finale.cpp
+        ${SRC_DIR}/platform/text/platform_headless.cpp
+        ${SRC_DIR}/platform/text/walker_headless.cpp
+        ${SRC_DIR}/interface/input/input_state.cpp
+        ${SRC_DIR}/platform/game_context.cpp
+        ${SRC_DIR}/interface/session_state.cpp
+        ${SRC_DIR}/interface/level_runtime_data.cpp
+        ${SRC_DIR}/interface/platform_bridge.cpp
+    )
+    configure_openglad_library(westlands_mapgen)
+    target_link_libraries(westlands_mapgen PRIVATE
+        og_core
+        og_gameplay
+        og_resources
+        m
+        pthread
+    )
+    add_runtime_assets_dependency(westlands_mapgen)
+
     # --- openglad_curses (zero-SDL ncurses text client) ---
     # A different renderer/input backend for the same game. Built from the same
     # SDL-free sources as the headless server (sim + resources + networking core
@@ -2311,6 +2340,8 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_world_headless.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_entity.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_zaxis.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_new_tiles.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_new_tiles_legacy_ids.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_npc_scenario_flags.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_game_world_entity_ids.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_weather.cpp
@@ -2362,6 +2393,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_input_actions.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_spectator_mode.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_concept_levels.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_westlands_levels.cpp
         )
 
         og_add_unit_group(og_unit_ctf FILES

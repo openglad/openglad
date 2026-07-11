@@ -474,6 +474,67 @@ TEST(PlatformHeadless, text_protocol_session_covers_commands_and_load_failure)
     }
 }
 
+TEST(PlatformHeadless, text_protocol_census_reports_teams_named_heroes_and_crew)
+{
+    // Westlands level 2 (The Forest Road) carries a PLACED named hero
+    // ("The Bearer", the entity SAVE_ALL actually watches) plus hostile
+    // delayed spawns, so one level exercises team_counts, dormant_counts,
+    // named, and crew in a single census. --team-level=5 must show up as
+    // the crew guys' level.
+    restore_default_campaigns();
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("org.openglad.westlands"));
+
+    {
+        StdinRedirect input("census\ntick 3\ncensus\nquit\n");
+        CoutRedirect output;
+
+        og::ui::TextProtocolArgs args;
+        args.campaign = "org.openglad.westlands";
+        args.level = 2;
+        args.team_families = {FAMILY_SOLDIER, FAMILY_ELF};
+        args.seed = 7;
+        args.team_level = 5;
+        EXPECT_EQ(0, og::ui::run_text_protocol_session(args));
+
+        const std::string text = output.str();
+        EXPECT_NE(std::string::npos, text.find("\"cmd\":\"census\""));
+        EXPECT_NE(std::string::npos, text.find("\"team_counts\":["));
+        EXPECT_NE(std::string::npos, text.find("\"dormant_counts\":["));
+        EXPECT_NE(std::string::npos, text.find("\"named\":["))
+            << "census must list placed named heroes";
+        EXPECT_NE(std::string::npos, text.find("\"name\":\"The Bearer\""))
+            << "the placed SAVE_ALL hero must appear in the census";
+        EXPECT_NE(std::string::npos, text.find("\"crew\":["));
+        EXPECT_NE(std::string::npos, text.find("\"name\":\"Player1\""));
+        EXPECT_NE(std::string::npos, text.find("\"level\":5"))
+            << "--team-level must upgrade the spawned crew";
+        EXPECT_NE(std::string::npos, text.find("\"dead\":false"));
+    }
+
+    {
+        // team_level=0 keeps the legacy loader-default guy (level 1).
+        StdinRedirect input("census\nquit\n");
+        CoutRedirect output;
+
+        og::ui::TextProtocolArgs args;
+        args.campaign = "org.openglad.westlands";
+        args.level = 2;
+        args.team_families = {FAMILY_SOLDIER};
+        args.seed = 7;
+        EXPECT_EQ(0, og::ui::run_text_protocol_session(args));
+
+        const std::string text = output.str();
+        EXPECT_NE(std::string::npos, text.find("\"name\":\"Player1\""));
+        EXPECT_NE(std::string::npos, text.find("\"level\":1"));
+        EXPECT_EQ(std::string::npos, text.find("\"level\":5"));
+    }
+
+    // Leave the default campaign mounted for order-independence.
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error("org.openglad.gladiator"));
+}
+
 TEST(PlatformHeadless, text_protocol_event_text_is_valid_json_escaped)
 {
     const std::string encoded = og::ui::text_protocol_testing_format_event_text(

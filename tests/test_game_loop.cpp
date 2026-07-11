@@ -2804,9 +2804,9 @@ TEST(GameLoop, zz_capture_splitscreen_gameplay)
 }
 
 // ---------------------------------------------------------------------------
-// Epic spectator battles: the Concept Playground war levels (605-610) with a
-// hero crew deployed at the level start markers and a mode-seeking cinematic
-// camera. The centroid of two distant fights is the empty field between
+// Epic spectator battles: the War of the Westlands war levels (6/7/8/14/15/17,
+// moved from the Concept Playground's 605-610) with a hero crew deployed at
+// the level start markers and a mode-seeking cinematic camera. The centroid of two distant fights is the empty field between
 // them — so the camera seeks the densest hostile NEIGHBORHOOD instead, with
 // scripted keyframes for floor cuts and establishing shots.
 // ---------------------------------------------------------------------------
@@ -2869,7 +2869,7 @@ void record(const char* scene, int scen, WeatherKind kind,
 {
     screen* const s = og::runtime::current_session->myscreen_;
     // The crew deploys at the level's team-0 start position markers.
-    gameplay_rec::build_save(s, "org.openglad.concept", scen, 1, roster, 7);
+    gameplay_rec::build_save(s, "org.openglad.westlands", scen, 1, roster, 7);
     glad_init();
     gameplay_rec::all_capture_effects_on();
     gameplay_rec::force_weather(kind);
@@ -2879,7 +2879,25 @@ void record(const char* scene, int scen, WeatherKind kind,
     // Free the player-controlled hero to fight with the rest of the crew.
     for (auto& uptr : server->world().oblist)
         if (walker* wk = uptr.get(); wk != nullptr && wk->user() != -1)
+        {
             wk->set_act_type(ACT_RANDOM);
+            // Film-armor the player's lead: a full team-0 wipe is an
+            // EndGame loss (the Bridge of Shadow's undead tide ate the
+            // whole crew at tick ~327 and cut the film). One immortal
+            // extra keeps the bound team alive; everyone else stays
+            // mortal — the deaths ARE the battle.
+            wk->stats()->set_max_hitpoints(30000.0f);
+            wk->stats()->set_hitpoints(30000.0f);
+        }
+    // A named hero's death ends a SAVE_ALL level (EndGame loss) — right in
+    // gameplay, wrong for a fixed-length spectator film (the Mountain of
+    // Fire cut at tick ~366 when the Ranger-King fell): strip the bit so
+    // the war plays to the last scheduled frame. Server first — the mirror
+    // re-syncs type from the authoritative snapshots.
+    server->world().type = static_cast<char>(
+        server->world().type & ~SCEN_TYPE_SAVE_ALL);
+    s->world().type = static_cast<char>(
+        s->world().type & ~SCEN_TYPE_SAVE_ALL);
     viewscreen* vs = s->viewob[0].get();
     ASSERT_NE(nullptr, vs);
 
@@ -2952,10 +2970,13 @@ TEST(GameLoop, zz_capture_epic_battles)
     const auto want = [&](const char* n) {
         return only == nullptr || strcmp(only, n) == 0;
     };
-    // The Wall Watch — and at frame ~500, look to the east: the Grey Wizard
-    // arrives behind the flank in a teleport flash (delayed spawn).
-    if (want("605"))
-        epic_rec::record("epic_605", 605, WeatherKind::Rain,
+    // The six war stories live in War of the Westlands now (moved from the
+    // concept package: 605->15, 606->14, 607->8, 608->6, 609->17, 610->7);
+    // the keyframe scripts are unchanged — the battlefields moved intact.
+    // The Deeping Wall — and at frame ~500, look to the east: the White
+    // Rider arrives behind the flank in a teleport flash (delayed spawn).
+    if (want("15"))
+        epic_rec::record("epic_15", 15, WeatherKind::Rain,
             {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_ELF,
              FAMILY_ELF, FAMILY_CLERIC, FAMILY_BARBARIAN, FAMILY_MAGE},
             {{0, 610, 660, 0, false}, {80, 610, 420, 0, false},
@@ -2963,8 +2984,8 @@ TEST(GameLoop, zz_capture_epic_battles)
              {174, 632, 330, 0, false}, {495, 632, 360, 0, false},
              {500, 1216, 540, 0, true}, {575, 1216, 540, 0, true},
              {580, 900, 420, 0, false}, {800, 700, 380, 0, false}});
-    if (want("606"))
-        epic_rec::record("epic_606", 606, WeatherKind::Clouds,
+    if (want("14"))
+        epic_rec::record("epic_14", 14, WeatherKind::Clouds,
             {FAMILY_DRUID, FAMILY_DRUID, FAMILY_ELF, FAMILY_ELF, FAMILY_ELF,
              FAMILY_BARBARIAN, FAMILY_BARBARIAN, FAMILY_ARCHMAGE},
             {{0, 120, 480, 0, false}, {110, 480, 470, 0, false},
@@ -2972,36 +2993,183 @@ TEST(GameLoop, zz_capture_epic_battles)
              {194, 480, 480, 2, false}, {270, 480, 480, 2, false},
              {274, 480, 480, 3, false}, {370, 480, 480, 3, false},
              {374, 480, 300, 0, false}, {480, 480, 640, 0, false}});
-    if (want("607"))
-        epic_rec::record("epic_607", 607, WeatherKind::None,
+    if (want("8"))
+        epic_rec::record("epic_8", 8, WeatherKind::None,
             {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER,
              FAMILY_BARBARIAN, FAMILY_BARBARIAN, FAMILY_CLERIC, FAMILY_ELF,
              FAMILY_ELF},
             {{0, 120, 320, 1, false}, {250, 560, 320, 1, false},
              {350, 560, 320, 1, false},
              {354, 560, 320, 0, false}, {440, 760, 320, 0, false}});
-    if (want("608"))
-        epic_rec::record("epic_608", 608, WeatherKind::None,
+    if (want("6"))
+        epic_rec::record("epic_6", 6, WeatherKind::None,
             {FAMILY_THIEF, FAMILY_THIEF, FAMILY_ELF, FAMILY_ELF,
              FAMILY_BARBARIAN, FAMILY_BARBARIAN, FAMILY_CLERIC,
              FAMILY_SOLDIER},
             {{0, 180, 180, 2, false}, {130, 760, 240, 2, false},
              {134, 760, 240, 1, false}, {270, 200, 660, 1, false},
              {274, 280, 660, 0, false}, {460, 480, 620, 0, false}});
-    if (want("609"))
-        epic_rec::record("epic_609", 609, WeatherKind::Clouds,
+    if (want("17"))
+        epic_rec::record("epic_17", 17, WeatherKind::Clouds,
             {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_ELF,
              FAMILY_ELF, FAMILY_MAGE, FAMILY_MAGE, FAMILY_CLERIC},
             {{0, 160, 300, 0, false}, {110, 400, 450, 0, false},
              {240, 730, 400, 0, false}, {400, 730, 400, 0, false},
              {404, 730, 300, 1, false}, {500, 730, 300, 1, false}});
-    if (want("610"))
-        epic_rec::record("epic_610", 610, WeatherKind::Rain,
+    if (want("7"))
+        epic_rec::record("epic_7", 7, WeatherKind::Rain,
             {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER,
              FAMILY_ELF, FAMILY_ELF, FAMILY_BARBARIAN, FAMILY_BARBARIAN},
             {{0, 160, 330, 2, false}, {250, 1120, 330, 2, false},
              {254, 640, 180, 0, false}, {350, 640, 180, 0, false},
              {354, 640, 330, 2, false}, {480, 640, 330, 2, false}});
+    // --- The new Westlands showpiece levels (built for this campaign). ---
+    // The White City: open on the torn gate where the war-beast columns push
+    // the breach, follow the street fighting, cut up to the wall-top
+    // ramparts, hold the beacon on the tower's glass crown, then return to
+    // the battle until the Horse-lord's dawn relief flashes in on the
+    // north-west plain at tick 700.
+    if (want("16"))
+        epic_rec::record("epic_16", 16, WeatherKind::Clouds,
+            {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_ELF,
+             FAMILY_ELF, FAMILY_CLERIC, FAMILY_MAGE, FAMILY_BARBARIAN},
+            {{0, 672, 392, 0, true}, {70, 672, 392, 0, false},
+             {150, 672, 100, 1, false}, {240, 1320, 408, 2, true},
+             {330, 672, 392, 0, false}, {690, 168, 80, 0, true},
+             {760, 168, 80, 0, true}});
+    // The Mountain of Fire: establish the war host's wedge (the Bearer's
+    // warded cleft sits at the west map edge), follow the plain battle,
+    // hold the Undergate throat, then climb the cone — terrace ring, the
+    // north lava fall, the summit rim over the caldera and the twin summit
+    // cracks — and come back down to the war. The wild-men relief wakes at
+    // tick 400 on the south-west plain.
+    if (want("24"))
+        epic_rec::record("epic_24", 24, WeatherKind::None,
+            {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_BARBARIAN,
+             FAMILY_BARBARIAN, FAMILY_ELF, FAMILY_ELF, FAMILY_CLERIC,
+             FAMILY_MAGE},
+            {{0, 130, 380, 0, true}, {80, 400, 390, 0, false},
+             {250, 880, 392, 0, true}, {320, 1064, 240, 1, false},
+             {400, 150, 530, 0, true}, {460, 400, 390, 0, false},
+             {560, 1064, 200, 1, true}, {610, 1064, 392, 2, false},
+             {700, 1008, 392, 2, true}, {760, 500, 390, 0, false},
+             {800, 500, 390, 0, false}});
+    // The High Pass tiles showcase: the new SNOW ground under the new Snow
+    // weather kind (on this level snowfall is the terrain override —
+    // blizzard country is always snowing; the force below just makes the
+    // scene independent of that heuristic). Establish the muster on the
+    // south apron by the frozen tarn, follow the tarn-pack fight, cut to
+    // the chief's band at the mine gate, then drift back to the action.
+    if (want("5"))
+        epic_rec::record("epic_5", 5, WeatherKind::Snow,
+            {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_BARBARIAN,
+             FAMILY_BARBARIAN, FAMILY_ELF, FAMILY_ELF, FAMILY_CLERIC,
+             FAMILY_THIEF},
+            {{0, 808, 888, 0, true}, {60, 808, 888, 0, false},
+             {180, 392, 168, 0, true}, {240, 808, 880, 0, false},
+             {300, 808, 880, 0, false}});
+}
+
+// ---------------------------------------------------------------------------
+// War of the Westlands story gameplay: the two Bearer's-road levels captured
+// as REAL gameplay (single viewport, the camera bound to the company's
+// thief). The crew deploys at the level start markers; the claimed hero is
+// freed to AI because no live input arrives in a capture and a statue lead
+// makes a dull chase.
+// ---------------------------------------------------------------------------
+namespace gameplay_rec {
+
+void record_story(const char* name, int scen, WeatherKind kind,
+                  const std::vector<int>& roster, int level, int frames)
+{
+    screen* const s = og::runtime::current_session->myscreen_;
+    build_save(s, "org.openglad.westlands", scen, 1, roster, level);
+    glad_init();
+    all_capture_effects_on();
+    force_weather(kind);
+    screen* const server =
+        og::runtime::local_transport_shadow_testing_server_screen(
+            *og::runtime::current_game_session);
+    ASSERT_NE(nullptr, server);
+    for (auto& uptr : server->world().oblist)
+        if (walker* wk = uptr.get(); wk != nullptr && wk->user() != -1)
+        {
+            wk->set_act_type(ACT_RANDOM);
+            // Camera armor: when the lead falls, the display rebinds
+            // control and the viewport has been seen drifting onto the
+            // map-border bricks. The camera walker survives the scene;
+            // the escort remains mortal (their deaths are the story).
+            wk->stats()->set_max_hitpoints(30000.0f);
+            wk->stats()->set_hitpoints(30000.0f);
+        }
+    // Roster guys carry default names ("SOLDIER", family names), and on a
+    // SAVE_ALL level ANY named team-0 death is an EndGame loss — the Forest
+    // Road film cut at tick ~150 when an escort fell. Strip the bit so the
+    // scene runs its scheduled length (server first; the mirror re-syncs
+    // type from the authoritative snapshots).
+    server->world().type = static_cast<char>(
+        server->world().type & ~SCEN_TYPE_SAVE_ALL);
+    s->world().type = static_cast<char>(
+        s->world().type & ~SCEN_TYPE_SAVE_ALL);
+    // The Bearer is story cargo, parked far from the escort: the road
+    // pickets can wear the level-3 thief down while the camera is with the
+    // fighting, and "THE BEARER DIED" in the kill feed rather spoils the
+    // campaign's premise. Film-armor him.
+    for (auto& uptr : server->world().oblist)
+        if (walker* wk = uptr.get();
+            wk != nullptr && wk->stats() != nullptr &&
+            wk->stats()->name == "The Bearer")
+        {
+            wk->stats()->set_max_hitpoints(30000.0f);
+            wk->stats()->set_hitpoints(30000.0f);
+        }
+
+    GameLoopFrameState st;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.enable_frame_timing = false;
+    for (int f = 0; f < frames; f++)
+    {
+        if (game_frame_with_result(*s, st, deps) != GameFrameResult::Continue)
+            break;
+        s->redraw();
+        s->swap();
+        dump_viewport(s, name, f);
+        if (::testing::Test::HasFatalFailure())
+            break;
+    }
+    s->world().end = 0;
+    s->world().delete_objects();
+}
+
+} // namespace gameplay_rec
+
+TEST(GameLoop, zz_capture_westlands)
+{
+    if (!getenv("OG_FX_CAPTURE_DIR"))
+        GTEST_SKIP() << "set OG_FX_CAPTURE_DIR to record";
+    const char* only = getenv("OG_FX_CAPTURE_ONLY");
+    const auto want = [&](const char* n) {
+        return only == nullptr || strcmp(only, n) == 0;
+    };
+    // 2 The Forest Road — THE FLIGHT: rain over the corridor maze, the
+    // Pale Riders waking behind the crew at ticks 150/400 while the rider
+    // den never stops feeding. The camera rides with the thief.
+    if (want("2"))
+        gameplay_rec::record_story(
+            "westlands_flight", 2, WeatherKind::Rain,
+            {FAMILY_THIEF, FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_ELF,
+             FAMILY_ELF, FAMILY_BARBARIAN, FAMILY_CLERIC, FAMILY_MAGE},
+            6, 420);
+    // 19 The Dead Marshes: the new MARSH tiles (shimmer + ripples) with
+    // ghost-lights drifting off every mere at the firm-shelf line.
+    if (want("19"))
+        gameplay_rec::record_story(
+            "westlands_marshes", 19, WeatherKind::Clouds,
+            {FAMILY_THIEF, FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_ELF,
+             FAMILY_ELF, FAMILY_BARBARIAN, FAMILY_CLERIC, FAMILY_MAGE},
+            6, 360);
 }
 
 // ---------------------------------------------------------------------------

@@ -36,4 +36,10 @@ inline constexpr int TYPE_AIR = 11;
 inline constexpr int TYPE_GLASS = 12;
 inline constexpr int TYPE_DROP_BLOCK = 13;
 inline constexpr int TYPE_ZSTAIRS = 14;
+// Westlands terrain genres. Like the Z genres, deliberately omitted from
+// smoother::smooth()'s autotile switch (inert; variants painted by mapgen).
+inline constexpr int TYPE_SNOW = 15;
+inline constexpr int TYPE_LAVA = 16;
+inline constexpr int TYPE_MARSH = 17;
+inline constexpr int TYPE_ASH = 18;
 inline constexpr int TYPE_UNKNOWN = 50;

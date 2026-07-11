@@ -88,6 +88,24 @@ inline constexpr unsigned char kRainColorTail = 64;
 inline constexpr int kRainAlphaHead = 130;
 inline constexpr int kRainAlphaStep = 9;
 
+// Snow (WeatherKind::Snow): the gentle sibling of rain. Shorter streaks
+// falling slowly — a 4px streak at 1px/tick overlaps its previous position
+// by 3px (75%, above rain's 70%), so flakes read as drifting motes, not
+// twinkle. Slant is HALF rain's (1px per 8px down) and ALTERNATES direction
+// per 32px world-column band (hash-picked), so neighboring bands drift
+// opposite ways like wind eddies. Occupancy 3/8 of cells (vs rain 2/8) but
+// the short streak keeps lit density ~2.3% (vs rain ~3.9%): a soft fall,
+// not a downpour. Colors sit OUTSIDE the cycled bands 208-231: head
+// PURE_WHITE (15), tail palette 30 (54,54,54 pale grey, static). No
+// lightning — the flash block stays rain-only.
+// (kRainPeriodMask and kRainCellStride are shared.)
+inline constexpr std::uint32_t kSnowFallSpeed = 1;
+inline constexpr std::uint32_t kSnowStreakLen = 4;
+inline constexpr unsigned char kSnowColorHead = PURE_WHITE;
+inline constexpr unsigned char kSnowColorTail = 30;
+inline constexpr int kSnowAlphaHead = 140;
+inline constexpr int kSnowAlphaStep = 15;
+
 // Lightning (part of WeatherKind::Rain): a 2-tick full-viewport white flash
 // on a fixed schedule — full strike then a fading afterglow.
 inline constexpr std::uint32_t kLightningPeriod = 628;
@@ -406,6 +424,11 @@ const std::array<bool, 256>& reflective_tiles()
 		mask[PIX_WATER1] = true;
 		mask[PIX_WATER2] = true;
 		mask[PIX_WATER3] = true;
+		// Westlands: molten lava and marsh pools mirror entities too.
+		mask[PIX_LAVA1] = true;
+		mask[PIX_LAVA2] = true;
+		mask[PIX_MARSH1] = true;
+		mask[PIX_MARSH2] = true;
 		return mask;
 	}();
 	return lut;
@@ -429,7 +452,8 @@ bool draw_walker_ripples(walker& w, viewscreen* vs,
 	if (gx < 0 || gx >= camera_grid.w || gy < 0 || gy >= camera_grid.h)
 		return false;
 	const unsigned char tile = camera_grid.data[gx + camera_grid.w * gy];
-	if (tile != PIX_WATER1 && tile != PIX_WATER2 && tile != PIX_WATER3)
+	if (tile != PIX_WATER1 && tile != PIX_WATER2 && tile != PIX_WATER3 &&
+	    tile != PIX_MARSH1 && tile != PIX_MARSH2)
 		return false;
 
 	if (!ripple_rings_ready)
@@ -695,6 +719,12 @@ static bool single_floor_reads_outdoor(GameWorld& world)
 			case TYPE_TREES:
 			case TYPE_DIRT:
 			case TYPE_DIRT_DARK:
+			// Westlands open-country genres: snowfields, lava plains,
+			// bogs, and ash wastes all read as open sky.
+			case TYPE_SNOW:
+			case TYPE_LAVA:
+			case TYPE_MARSH:
+			case TYPE_ASH:
 				outdoor++;
 				break;
 			default:
@@ -730,12 +760,23 @@ void draw_cloud_overlay(viewscreen* vs, GameWorld& world)
 		return; // single-floor: weather only over outdoor terrain
 	const bool clouds_on = (kind == WeatherKind::Clouds);
 	const bool rain_on = (kind == WeatherKind::Rain);
+	const bool snow_on = (kind == WeatherKind::Snow);
 	if (clouds_on)
 	{
 		if (!cloud_noise_ready)
 			generate_cloud_noise();
 		TRACE("effects", "clouds floor=%d", static_cast<int>(vs->current_floor_));
 	}
+	// Per-kind streak parameters, resolved once. With the rain values every
+	// expression below computes exactly the pre-snow rain arithmetic —
+	// bit-identical rain is a hard requirement (render pins).
+	const std::uint32_t fall = rain_on ? kRainFallSpeed : kSnowFallSpeed;
+	const std::uint32_t streak_len = rain_on ? kRainStreakLen : kSnowStreakLen;
+	const unsigned char color_head = rain_on ? kRainColorHead : kSnowColorHead;
+	const unsigned char color_tail = rain_on ? kRainColorTail : kSnowColorTail;
+	const int alpha_head = rain_on ? kRainAlphaHead : kSnowAlphaHead;
+	const int alpha_step = rain_on ? kRainAlphaStep : kSnowAlphaStep;
+	const std::uint32_t occupancy = rain_on ? 2u : 3u;
 	screen* dest = og::runtime::current_session->myscreen_;
 	bool rained = false;
 	// World-anchored sampling: a world pixel keeps its cloud regardless of
@@ -763,36 +804,55 @@ void draw_cloud_overlay(viewscreen* vs, GameWorld& world)
 					dest->pointb(x, y, PURE_WHITE,
 					             static_cast<unsigned char>(a));
 			}
-			if (rain_on)
+			if (rain_on || snow_on)
 			{
-				// Full-screen downpour: density comes from the cell-occupancy
-				// hash alone. Streaks lean ~14 degrees (1px right per 4 down,
-				// wind from the left): q = 4*wx - wy is constant along that
-				// slant, so hashing q's cell keys whole slanted rails, and the
-				// falling phase below makes each segment slide DOWN-ALONG its
-				// rail — angled fall for free. The per-rail hash de-phases
-				// neighbors and the per-cell hash leaves most cells dry.
-				const int q = 4 * wx - wy;
-				const std::uint32_t col =
-				    hash_u32(static_cast<std::uint32_t>(q >> 2));
+				// Full-screen fall: density comes from the cell-occupancy
+				// hash alone. Rain streaks lean ~14 degrees (1px right per 4
+				// down, wind from the left): q = 4*wx - wy is constant along
+				// that slant, so hashing q's cell keys whole slanted rails,
+				// and the falling phase below makes each segment slide
+				// DOWN-ALONG its rail — angled fall for free. The per-rail
+				// hash de-phases neighbors and the per-cell hash leaves most
+				// cells dry. Snow rails are twice as steep (1px per 8 down)
+				// and alternate lean direction per 32px world-column band.
+				int q;
+				if (rain_on)
+					q = 4 * wx - wy;
+				else
+				{
+					const int s =
+					    (hash_u32(static_cast<std::uint32_t>(wx >> 5)) & 1u)
+					        ? 1 : -1;
+					q = 8 * wx - s * wy;
+				}
+				const std::uint32_t col = hash_u32(
+				    static_cast<std::uint32_t>(rain_on ? (q >> 2) : (q >> 3)));
 				const std::uint32_t v = static_cast<std::uint32_t>(wy) -
-				    frame_tick * kRainFallSpeed + col;
+				    frame_tick * fall + col;
 				const std::uint32_t pos = v & kRainPeriodMask;
-				if (pos < kRainStreakLen &&
-				    (hash_u32(col + (v >> 6) * kRainCellStride) & 7u) < 2u)
+				if (pos < streak_len &&
+				    (hash_u32(col + (v >> 6) * kRainCellStride) & 7u) <
+				        occupancy)
 				{
 					dest->pointb(x, y,
-					             pos == 0 ? kRainColorHead : kRainColorTail,
+					             pos == 0 ? color_head : color_tail,
 					             static_cast<unsigned char>(
-					                 kRainAlphaHead -
-					                 static_cast<int>(pos) * kRainAlphaStep));
+					                 alpha_head -
+					                 static_cast<int>(pos) * alpha_step));
 					rained = true;
 				}
 			}
 		}
 	}
 	if (rained)
-		TRACE("effects", "rain floor=%d", static_cast<int>(vs->current_floor_));
+	{
+		if (rain_on)
+			TRACE("effects", "rain floor=%d",
+			      static_cast<int>(vs->current_floor_));
+		else
+			TRACE("effects", "snow floor=%d",
+			      static_cast<int>(vs->current_floor_));
+	}
 	if (rain_on)
 	{
 		// Deterministic lightning schedule: one 2-tick flash per period,

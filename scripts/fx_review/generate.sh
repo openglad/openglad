@@ -8,8 +8,8 @@
 #   <output-dir>/site. Serve it with:
 #     python3 -m http.server -d <output-dir>/site 8790
 #
-# Iterating on one epic level: OG_FX_CAPTURE_ONLY=<605..610> limits
-# GameLoop.zz_capture_epic_battles to a single scene.
+# Iterating on one Westlands level: OG_FX_CAPTURE_ONLY=<level id> limits
+# GameLoop.zz_capture_epic_battles / zz_capture_westlands to that scene.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 

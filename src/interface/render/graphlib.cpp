@@ -264,4 +264,16 @@ void load_map_data(PixieData* whereto)
 	// the editor's add_floor() fills whole floors with PIX_AIR).
 	whereto[PIX_GLASS]       = make_glass_tile();
 
+	// Westlands terrain (procedurally authored, scripts/generate_tile_art.py).
+	// LAVA art deliberately uses the ORANGE cycled band 224-231 (do_cycle IS the
+	// flow animation); MARSH carries a few WATER-band glint pixels. Headless
+	// builds never load these — all behavior keys off tile IDs.
+	whereto[PIX_SNOW1]  = read_pixie_file("16snow1.png");
+	whereto[PIX_SNOW2]  = read_pixie_file("16snow2.png");
+	whereto[PIX_LAVA1]  = read_pixie_file("16lava1.png");
+	whereto[PIX_LAVA2]  = read_pixie_file("16lava2.png");
+	whereto[PIX_MARSH1] = read_pixie_file("16marsh1.png");
+	whereto[PIX_MARSH2] = read_pixie_file("16marsh2.png");
+	whereto[PIX_ASH1]   = read_pixie_file("16ash1.png");
+	whereto[PIX_ASH2]   = read_pixie_file("16ash2.png");
 }

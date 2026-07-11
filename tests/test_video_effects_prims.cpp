@@ -399,10 +399,16 @@ TEST(VideoEffectsPrims, reflect_honors_caller_supplied_mask)
     ASSERT_TRUE(lut[PIX_GLASS] && lut[PIX_WATER1] && lut[PIX_WATER2] &&
                 lut[PIX_WATER3])
         << "default LUT must mark glass + pure water";
+    ASSERT_TRUE(lut[PIX_LAVA1] && lut[PIX_LAVA2] && lut[PIX_MARSH1] &&
+                lut[PIX_MARSH2])
+        << "default LUT must mark the Westlands lava + marsh tiles";
+    ASSERT_FALSE(lut[PIX_SNOW1] || lut[PIX_SNOW2] || lut[PIX_ASH1] ||
+                 lut[PIX_ASH2])
+        << "snow and ash are dry ground: never reflective";
     int marked = 0;
     for (bool b : lut)
         marked += b ? 1 : 0;
-    ASSERT_EQ(4, marked) << "default LUT must mark exactly the 4 tiles";
+    ASSERT_EQ(8, marked) << "default LUT must mark exactly the 8 tiles";
 }
 
 TEST(VideoEffectsPrims, floor_layer_end_cold_tint_shifts_hue_and_never_leaks)

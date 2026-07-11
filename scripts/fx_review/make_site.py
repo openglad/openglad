@@ -101,19 +101,41 @@ def compose_side_by_side(dir_a, dir_b, out_dir, divider=4):
     return n
 
 
-EPICS = [
-    ("epic_605", "The Deeping Wall",
-     "Level 605. The Wall Watch (a hero crew deployed at the level start markers) holds the rampart and gate against the horde. At frame 500, look to the east: the Grey Wizard arrives at dawn behind the flank in a teleport flash (the delayed-spawn feature) and the battle turns. Live simulation, spectator camera."),
-    ("epic_606", "The Wizard's Vale",
-     "Level 606. Tree-folk and druids march from the forest ring across the moat bridges while mages hold a four-floor tower — the cut to the glass observatory looks straight down through the fights below."),
-    ("epic_607", "The Bridge of Shadow",
-     "Level 607. The rearguard crosses the causeway while the Grey Wizard holds mid-span against the fire elemental and the undead tide. His teleport is disabled by the per-NPC scenario flag: he cannot leave the bridge. He shall not pass; he also, presumably, shall not survive."),
-    ("epic_608", "Under the Mountain",
-     "Level 608. Raiders descend three floors — entry hall, pillared gallery, treasure vault — where golems, giant skeletons and a sleeping keeper ward the hoard."),
-    ("epic_609", "The Black Gate",
-     "Level 609. The biggest battle in the set: ~115 living fighters plus reinforcement generators on both sides, meeting at a fortified gate. The camera sweeps the full mile of the field before settling on the clash."),
-    ("epic_610", "The Frozen Wall",
-     "Level 610. The wall itself is the arena — a tracking shot along the walkable top under the open storm, wildlings and worse climbing from the north, the Watch holding the line."),
+WESTLANDS_INTRO = (
+    "A 26-level story campaign (org.openglad.westlands): a burdened thief "
+    "and his escort flee east out of a burning vale while the war for the "
+    "Westlands breaks behind them. Act I is the flight, Act II the dark "
+    "road under and over the mountains; at the Falls the road forks — the "
+    "war in the west for the armies, the Burden's Road through marsh and "
+    "ash for the Bearer — and every road ends at the Mountain of Fire. "
+    "Eleven of the twenty-six levels are captured below, in story order: "
+    "the six war epics in spectator mode, the two new giants (the White "
+    "City and the finale), the High Pass blizzard on the new snow terrain, "
+    "and two Bearer's-road levels filmed as real gameplay.")
+
+WESTLANDS = [
+    ("westlands_flight", "The Forest Road — the flight (level 2)",
+     "Real gameplay, the camera riding with the company's thief. The vale is burning behind them and the Pale Riders wake on the road at their backs (tick 150, and again at 400) while wolf pockets guard every wrong turn of a corridor maze cut through wall-to-wall trees, rain coming down through the canopy. The briefing says it plainly: do not fight — RUN. The Bearer waits at the road's end, and he must not fall."),
+    ("epic_5", "The High Pass — blizzard (level 5)",
+     "The new SNOW terrain under the new Snow weather kind — this level never rolls dry, because blizzard country is always snowing (the terrain override). Spectator camera: the crew musters on the south apron by the frozen tarn, the tarn wolf-pack hits first, then a cut to the wild men and the chief's band holding the mine gate at the head wall before the camera drifts back down to the fight. The summit road is buried; the only way on is under the mountain."),
+    ("epic_6", "Under the Mountain (level 6)",
+     "Through the mine gate and down: three floors — entry hall, pillared gallery, treasure vault — where golems, giant skeletons and a sleeping keeper ward the hoard. The camera descends floor by floor with the raid."),
+    ("epic_7", "The Frozen Wall (level 7, the northern plea)",
+     "The northern watch begs aid, and the road makes its one cold detour. The wall itself is the arena — a tracking shot along the walkable top under the open storm, wild men and worse climbing from the north, the Watch holding the line. Optional level; it rejoins the road at the High Pass."),
+    ("epic_8", "The Bridge of Shadow (level 8)",
+     "Out of the deep it came, a shadow wreathed in flame. The rearguard runs the causeway while the Grey Wizard holds mid-span against the fire elemental and the undead tide — his teleport disabled by the per-NPC scenario flag: he cannot leave the bridge. He does not pass; neither does he survive. His last word: run. Grieve later."),
+    ("epic_14", "The Wizard's Vale (level 14)",
+     "The war in the west opens at the traitor's tower: tree-folk and druids march from the forest ring across the moat bridges while the turncoat's mages hold four floors — the cut to the glass observatory looks straight down through the fights below."),
+    ("epic_15", "The Deeping Wall (level 15)",
+     "The night-siege in the rain. The Wall Watch (a hero crew deployed at the level start markers) holds the rampart and gate against the horde. At frame ~500, look to the east: the White Rider — the Grey Wizard, returned — arrives at dawn behind the flank in a teleport flash (a delayed spawn), and the battle turns. Live simulation, spectator camera."),
+    ("epic_16", "The White City (level 16)",
+     "The biggest siege of the campaign, on three floors. The gate is already breached and two giant-skeleton war-beasts lead the columns through; ghosts drift over the walls; fires burn in the lower town. The camera opens on the breach, follows the street fighting, cuts up to the wall-top ramparts, holds the beacon on the White Tower's glass crown — then catches the Horse-lord's dawn relief flashing in on the north-west plain at tick 700."),
+    ("epic_17", "The Black Gate (level 17)",
+     "The feint before the gate, fought to turn every eye from the Bearer. Still the biggest single battle in the set: ~115 living fighters plus reinforcement generators on both sides, meeting at a fortified gate. The camera sweeps the full mile of the field before settling on the clash, then climbs to the gatehouse ramparts."),
+    ("westlands_marshes", "The Dead Marshes (level 19)",
+     "Real gameplay on the new MARSH tiles: a drowned battlefield of six meres, dead faces burning in the pools. Ghost-lights rise off every mere — their bone-pile wellsprings are sunk on the bog islands, so extermination is impossible by design — while the escort holds the firm shelf and the Bearer shelters behind the line. Marsh glints, ripples, and a great deal of the restless dead."),
+    ("epic_24", "The Mountain of Fire (level 24)",
+     "The finale: a three-floor volcano cone over an ash plain cut by lava rivers, the war host and the dark host meeting below while the summit waits above. The camera establishes the wedge (the Bearer's warded cleft at the map's west edge), follows the line-brawl, holds the Undergate throat, then climbs the cone — terrace ring, the north lava fall, the summit rim over a caldera of fire, the twin summit cracks — before coming back down to the war. The wild-men relief wakes at tick 400. The point is the climb, not extermination."),
 ]
 
 MENUS = [
@@ -211,19 +233,21 @@ def main():
         return ''.join(cards)
 
     sections = [
-        ("Epic levels (spectator mode, AI armies, cinematic camera)",
-         cards_for(EPICS)),
-        ("Multiplayer (live simulation)", cards_for(MULTI)),
-        ("Menu system", cards_for(MENUS)),
-        ("Actual gameplay (live simulation, campaign levels)",
+        ("War of the Westlands (the campaign)", WESTLANDS_INTRO,
+         cards_for(WESTLANDS)),
+        ("Multiplayer (live simulation)", '', cards_for(MULTI)),
+        ("Menu system", '', cards_for(MENUS)),
+        ("Actual gameplay (live simulation, campaign levels)", '',
          cards_for(GAMEPLAY)),
-        ("Effect close-ups (real renderer, scripted scenes)",
+        ("Effect close-ups (real renderer, scripted scenes)", '',
          cards_for(SCENES)),
     ]
     section_html = ''.join(
         f'\n<h2 style="text-align:center;color:#f0c060;font-weight:normal;'
-        f'margin-top:2.5rem;">{title}</h2>\n<div class="grid">{cards}</div>'
-        for title, cards in sections if cards)
+        f'margin-top:2.5rem;">{title}</h2>'
+        + (f'\n<p class="intro">{intro}</p>' if intro else '')
+        + f'\n<div class="grid">{cards}</div>'
+        for title, intro, cards in sections if cards)
 
     html = f'''<!DOCTYPE html>
 <html lang="en">
@@ -235,6 +259,7 @@ def main():
   body {{ background:#14161a; color:#e8e6e0; font-family: Georgia, serif; margin:0; padding:2rem; }}
   h1 {{ text-align:center; font-weight:normal; letter-spacing:.06em; }}
   .sub {{ text-align:center; color:#9a978e; margin-bottom:2rem; }}
+  .intro {{ max-width:900px; margin:0 auto 1.5rem; color:#b8b5aa; font-size:.95rem; line-height:1.5; text-align:center; }}
   .grid {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(680px,1fr)); gap:2rem; max-width:1500px; margin:0 auto; }}
   .card {{ background:#1d2026; border:1px solid #2c3038; border-radius:8px; padding:1rem; }}
   .card img {{ width:640px; max-width:100%; image-rendering:pixelated; border-radius:4px; display:block; margin:0 auto; }}
