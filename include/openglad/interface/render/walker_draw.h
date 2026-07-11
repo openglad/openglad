@@ -66,8 +66,11 @@ private:
 float query_render_interpolation_alpha();
 WalkerRenderPosition resolve_walker_render_position(const walker& w,
                                                     float alpha);
-// alpha<255 draws a faded/ghosted sprite only (for non-camera floors): no
-// flash/outline/mode/HP-bar/damage-number embellishments.
+// alpha<255 marks a non-camera (faded/ghosted) floor: the sprite is drawn ONLY
+// (no flash/outline/mode/HP-bar/damage-number embellishments) and OPAQUELY onto
+// the off-screen floor layer — the per-floor fade + shrink/zoom is applied by the
+// layer composite (video::floor_layer_*), so this no longer per-sprite blends or
+// position-scales (which left sub-pixel seams). alpha==255 = camera floor (full).
 bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha = 255);
 bool draw_walker_tile(walker& w, viewscreen* view_buf);
 void draw_walker_path(walker& w, viewscreen* view_buf);

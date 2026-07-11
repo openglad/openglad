@@ -1057,11 +1057,11 @@ static const button k_main_options_buttons[] =
     button("options_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=12, .down=1, .right=15}),
     button("toggle_sound", "Sound", KEYSTATE_UNKNOWN, 135, 10 + BUTTON_PITCH, 50, 15, button_action_id(ButtonAction::ToggleSound), -1, MenuNav{.up=0, .down=2, .right=16}),
     button("toggle_rendering", "NORMAL", KEYSTATE_UNKNOWN, 130, 10 + 2*BUTTON_PITCH, 60, 15, button_action_id(ButtonAction::ToggleRenderingEngine), -1, MenuNav{.up=1, .down=4, .right=3}),
-    button("toggle_fullscreen", "Fullscreen", KEYSTATE_UNKNOWN, 210, 10 + 2*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleFullscreen), -1, MenuNav{.up=16, .down=5, .left=2}),
+    button("toggle_fullscreen", "Fullscreen", KEYSTATE_UNKNOWN, 210, 10 + 2*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleFullscreen), -1, MenuNav{.up=16, .down=17, .left=2}),
     button("overscan_minus", "- ", KEYSTATE_UNKNOWN, 130, 10 + 3*BUTTON_PITCH, 30, 15, button_action_id(ButtonAction::OverscanAdjust), -1, MenuNav{.up=2, .down=6, .right=5}),
-    button("overscan_plus", "+ ", KEYSTATE_UNKNOWN, 170, 10 + 3*BUTTON_PITCH, 30, 15, button_action_id(ButtonAction::OverscanAdjust), 1, MenuNav{.up=3, .down=7, .left=4}),
+    button("overscan_plus", "+ ", KEYSTATE_UNKNOWN, 170, 10 + 3*BUTTON_PITCH, 30, 15, button_action_id(ButtonAction::OverscanAdjust), 1, MenuNav{.up=3, .down=7, .left=4, .right=17}),
     button("toggle_mini_hp_bar", "Mini HP bar", KEYSTATE_UNKNOWN, 80, 10 + 4*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleMiniHpBar), -1, MenuNav{.up=4, .down=8, .right=7}),
-    button("toggle_hit_flash", "Hit flash", KEYSTATE_UNKNOWN, 210, 10 + 4*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleHitFlash), -1, MenuNav{.up=5, .down=9, .left=6}),
+    button("toggle_hit_flash", "Hit flash", KEYSTATE_UNKNOWN, 210, 10 + 4*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleHitFlash), -1, MenuNav{.up=17, .down=9, .left=6}),
     button("toggle_hit_recoil", "Hit recoil", KEYSTATE_UNKNOWN, 80, 10 + 5*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleHitRecoil), -1, MenuNav{.up=6, .down=10, .right=9}),
     button("toggle_attack_lunge", "Attack lunge", KEYSTATE_UNKNOWN, 210, 10 + 5*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleAttackLunge), -1, MenuNav{.up=7, .down=11, .left=8}),
     button("toggle_hit_sparks", "Hit sparks", KEYSTATE_UNKNOWN, 80, 10 + 6*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleHitAnim), -1, MenuNav{.up=8, .down=12, .right=11}),
@@ -1073,6 +1073,8 @@ static const button k_main_options_buttons[] =
         button_action_id(ButtonAction::OpenControlSettings), -1, MenuNav{.up=13, .down=1, .left=0, .right=14}),
     button("pick_sprite_sheet", "Sprite Sheet", KEYSTATE_UNKNOWN, 210, 10 + BUTTON_PITCH, 90, 15,
         button_action_id(ButtonAction::PickSpriteSheet), 0, MenuNav{.up=14, .down=3, .left=1}),
+    button("toggle_floor_ghost", "Floor ghost", KEYSTATE_UNKNOWN, 210, 10 + 3*BUTTON_PITCH, 90, 15,
+        button_action_id(ButtonAction::ToggleFloorGhosting), -1, MenuNav{.up=3, .down=7, .left=5}),
 };
 
 // Control options: 4 player sections at 28px pitch, each with mode + remap buttons.
@@ -1809,6 +1811,7 @@ Sint32 main_options()
     buttons[3].hidden = buttons[3].no_draw = true;
     buttons[2].nav.right = -1;
     buttons[5].nav.up = 2;
+    buttons[17].nav.up = 16;  // fullscreen[3] is hidden here; retarget UP to a visible button
     #endif
 
 	int highlighted_button = 0;
@@ -1858,6 +1861,7 @@ Sint32 main_options()
 		mytext.write_xy(20, buttons[2].y + 3, DARK_BLUE, "Rendering engine:");
 		mytext.write_xy(20, buttons[2].y + 3 + 10, DARK_BLUE, " (needs restart)");
 		draw_toggle_effect_button(buttons[3], "graphics", "fullscreen");
+		draw_toggle_effect_button(buttons[17], "graphics", "floor_ghost");
 		mytext.write_xy(20, buttons[4].y + 3, DARK_BLUE, "Overscan adjust:");
 		og::runtime::current_session->myscreen_->hor_line(60, buttons[6].y - BUTTON_PADDING/2, 200, PURE_WHITE);
 		

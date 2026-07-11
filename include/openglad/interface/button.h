@@ -266,6 +266,7 @@ enum class ButtonAction : Sint32
     CreateScenarioMenu = 70,
     TeamsPageFlip = 71,
     PickSpriteSheet = 72,
+    ToggleFloorGhosting = 73,
 };
 
 inline constexpr Sint32 button_action_id(ButtonAction action)

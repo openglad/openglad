@@ -598,6 +598,18 @@ void screen::destroy_accel_surface(void* surface)
     video_impl_->destroy_accel_surface(surface);
 }
 
+void screen::floor_layer_begin(Sint32 x, Sint32 y, Sint32 w, Sint32 h)
+{
+    video_impl_->floor_layer_begin(x, y, w, h);
+}
+
+void screen::floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
+                             float scale, Sint32 cx, Sint32 cy,
+                             unsigned char alpha)
+{
+    video_impl_->floor_layer_end(x, y, w, h, scale, cx, cy, alpha);
+}
+
 void screen::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
                            Sint32 walkerwidth, Sint32 walkerheight,
                            Sint32 portstartx, Sint32 portstarty,

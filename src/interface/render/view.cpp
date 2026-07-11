@@ -33,6 +33,7 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/base.h>
 #include <openglad/resources/og_file.h>
+#include <openglad/resources/gparser.h>
 #include <openglad/interface/render/pal32.h>
 #include <openglad/interface/render/pixien.h>
 #include <openglad/interface/render/radar.h>
@@ -151,6 +152,30 @@ inline screen* active_screen()
 {
     return og::runtime::current_session->myscreen_;
 }
+
+// Glass tiles draw faint so the floor below still shows through, but the tile is
+// visibly present — distinguishing glass from an empty air hole (which draws
+// nothing). The PIX_GLASS bitmap is a synthesized glass pane (cyan-blue body +
+// bright frame + diagonal sheen, see graphlib make_glass_tile); at this alpha
+// (~39%) its tint/frame/glint read as glass while ~61% of the floor below still
+// shows through. Capped at the floor's own per-floor alpha so ghosted/faded
+// floors don't get brighter glass than their surroundings.
+inline constexpr unsigned char kGlassAlpha = 100;
+
+// Vertical parallax: a non-camera floor scrolls at (1 + floor_delta*kParallax)
+// of the camera floor's scroll rate, so it slides relative to the camera floor
+// as the player moves (a fake-3D depth cue — floors below lag, floors above
+// lead, as if the camera hung high on the Z axis). Subtle by design; gated
+// multifloor so single-floor rendering is byte-identical.
+inline constexpr float kParallaxScroll = 0.05f;
+
+// Per-floor scale step for vertical parallax: a floor `d` levels from the camera
+// renders at scale (1 + d*kParallaxScale) about the viewport centre — floors
+// below the camera shrink (d<0), floors above enlarge (d>0), as if seen from a
+// high camera looking down. The faded floor is composited as ONE bitmap via an
+// off-screen layer (video::floor_layer_begin/end), smoothly (bilinear) scaled,
+// so there are no inter-tile seams — a more pronounced step now reads cleanly.
+inline constexpr float kParallaxScale = 0.10f;
 
 inline options* active_prefs()
 {
@@ -375,12 +400,38 @@ bool viewscreen::redraw()
 		// Gated floor_count>1 so single-floor stays byte-identical (opaque path).
 		if (vworld.floor_count() > 1)
 			active_screen()->clearbuffer(xloc, yloc, xview, yview);
-		const Sint32 floor_top = (vworld.floor_count() > 1)
+		// With ghosting disabled, draw only floors 0..camera (no above-ghosts).
+		const bool ghosts_on = cfg.is_on("graphics", "floor_ghost");
+		const Sint32 floor_top = (vworld.floor_count() > 1 && ghosts_on)
 		    ? static_cast<Sint32>(vworld.floor_count() - 1) : current_floor_;
 		for (Sint32 f = 0; f <= floor_top; ++f)
 		{
 			const unsigned char falpha = floor_render_alpha(static_cast<int>(f));
 			const bool base_floor = (f == 0);
+			// Vertical parallax: non-camera floors scroll at a slightly different
+			// rate (shift, via topx/topy) AND, when faded, composite at a per-floor
+			// scale about the viewport centre (shrink below / zoom above) through the
+			// off-screen layer below, so they slide + recede as the player moves.
+			// topx/topy restored after this floor draws; fscale/fcx/fcy -> layer_end.
+			const Sint32 par_topx = topx, par_topy = topy;
+			float fscale = 1.0f;
+			const Sint32 fcx = xloc + xview / 2;
+			const Sint32 fcy = yloc + yview / 2;
+			if (vworld.floor_count() > 1 && f != current_floor_)
+			{
+				const float pf = static_cast<float>(f - current_floor_) * kParallaxScroll;
+				topx = par_topx + static_cast<Sint32>(static_cast<float>(par_topx) * pf);
+				topy = par_topy + static_cast<Sint32>(static_cast<float>(par_topy) * pf);
+				fscale = 1.0f + static_cast<float>(f - current_floor_) * kParallaxScale;
+			}
+			// A faded/ghosted non-camera floor (alpha<255) renders 1:1 onto an
+			// off-screen layer, then composites back smoothly scaled about the
+			// viewport centre + faded (seam-free). The camera floor and opaque
+			// (ghosting-off) floors draw straight to the screen, byte-identical.
+			const bool use_layer = (vworld.floor_count() > 1 && falpha < 255);
+			const unsigned char tile_alpha = use_layer ? 255 : falpha;
+			if (use_layer)
+				active_screen()->floor_layer_begin(xloc, yloc, xview, yview);
 			PixieData& gridp = vworld.grid_for_floor(static_cast<int>(f));
 			if (gridp.valid())
 			{
@@ -393,17 +444,28 @@ bool viewscreen::redraw()
 						{
 							if (!base_floor) continue; // upper floors: transparent border
 							if (j == -1 && i>-1 && i<maxx)
-								renderer->draw_tile(PIX_WALLSIDE1, i*GRID_SIZE, j*GRID_SIZE, this, falpha);
+								renderer->draw_tile(PIX_WALLSIDE1, i*GRID_SIZE, j*GRID_SIZE, this, tile_alpha);
 							else if (j == -2 && i>-1 && i<maxx)
-								renderer->draw_tile(PIX_H_WALL1, i*GRID_SIZE, j*GRID_SIZE, this, falpha);
+								renderer->draw_tile(PIX_H_WALL1, i*GRID_SIZE, j*GRID_SIZE, this, tile_alpha);
 							else
-								renderer->draw_tile(PIX_WALLTOP_H, i*GRID_SIZE, j*GRID_SIZE, this, falpha);
+								renderer->draw_tile(PIX_WALLTOP_H, i*GRID_SIZE, j*GRID_SIZE, this, tile_alpha);
 						}
 						else
-							renderer->draw_tile(static_cast<int>(gridp.data[i + maxx * j]), i*GRID_SIZE, j*GRID_SIZE, this, falpha);
+						{
+						const int tile = static_cast<int>(gridp.data[i + maxx * j]);
+						// On a layer the composite fades the whole floor, so tiles draw
+						// opaque (full coverage); glass stays faint only on the directly
+						// drawn camera floor (so the floor below shows through it).
+						const unsigned char talpha = use_layer ? 255
+						    : ((tile == PIX_GLASS && falpha > kGlassAlpha) ? kGlassAlpha : falpha);
+						renderer->draw_tile(tile, i*GRID_SIZE, j*GRID_SIZE, this, talpha);
+					}
 					}
 			}
 			draw_floor_entities(&level, static_cast<int>(f), falpha); //radar drawn after
+			if (use_layer)
+				active_screen()->floor_layer_end(xloc, yloc, xview, yview, fscale, fcx, fcy, falpha);
+			topx = par_topx; topy = par_topy; // undo the parallax shift
 		}
 	}
 	if (controlob && !controlob->dead() && controlob->user() == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
@@ -488,12 +550,38 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 		// base (else the OOB border / air holes shimmer). Gated floor_count>1.
 		if (vworld.floor_count() > 1)
 			active_screen()->clearbuffer(xloc, yloc, xview, yview);
-		const Sint32 floor_top = (vworld.floor_count() > 1)
+		// With ghosting disabled, draw only floors 0..camera (no above-ghosts).
+		const bool ghosts_on = cfg.is_on("graphics", "floor_ghost");
+		const Sint32 floor_top = (vworld.floor_count() > 1 && ghosts_on)
 		    ? static_cast<Sint32>(vworld.floor_count() - 1) : current_floor_;
 		for (Sint32 f = 0; f <= floor_top; ++f)
 		{
 			const unsigned char falpha = floor_render_alpha(static_cast<int>(f));
 			const bool base_floor = (f == 0);
+			// Vertical parallax: non-camera floors scroll at a slightly different
+			// rate (shift, via topx/topy) AND, when faded, composite at a per-floor
+			// scale about the viewport centre (shrink below / zoom above) through the
+			// off-screen layer below, so they slide + recede as the player moves.
+			// topx/topy restored after this floor draws; fscale/fcx/fcy -> layer_end.
+			const Sint32 par_topx = topx, par_topy = topy;
+			float fscale = 1.0f;
+			const Sint32 fcx = xloc + xview / 2;
+			const Sint32 fcy = yloc + yview / 2;
+			if (vworld.floor_count() > 1 && f != current_floor_)
+			{
+				const float pf = static_cast<float>(f - current_floor_) * kParallaxScroll;
+				topx = par_topx + static_cast<Sint32>(static_cast<float>(par_topx) * pf);
+				topy = par_topy + static_cast<Sint32>(static_cast<float>(par_topy) * pf);
+				fscale = 1.0f + static_cast<float>(f - current_floor_) * kParallaxScale;
+			}
+			// A faded/ghosted non-camera floor (alpha<255) renders 1:1 onto an
+			// off-screen layer, then composites back smoothly scaled about the
+			// viewport centre + faded (seam-free). The camera floor and opaque
+			// (ghosting-off) floors draw straight to the screen, byte-identical.
+			const bool use_layer = (vworld.floor_count() > 1 && falpha < 255);
+			const unsigned char tile_alpha = use_layer ? 255 : falpha;
+			if (use_layer)
+				active_screen()->floor_layer_begin(xloc, yloc, xview, yview);
 			PixieData& gridp = vworld.grid_for_floor(static_cast<int>(f));
 			if (gridp.valid())
 			{
@@ -506,17 +594,28 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 						{
 							if (!base_floor) continue; // upper floors: transparent border
 							if (j == -1 && i>-1 && i<maxx)
-								renderer->draw_tile(PIX_WALLSIDE1, i*GRID_SIZE, j*GRID_SIZE, this, falpha);
+								renderer->draw_tile(PIX_WALLSIDE1, i*GRID_SIZE, j*GRID_SIZE, this, tile_alpha);
 							else if (j == -2 && i>-1 && i<maxx)
-								renderer->draw_tile(PIX_H_WALL1, i*GRID_SIZE, j*GRID_SIZE, this, falpha);
+								renderer->draw_tile(PIX_H_WALL1, i*GRID_SIZE, j*GRID_SIZE, this, tile_alpha);
 							else
-								renderer->draw_tile(PIX_WALLTOP_H, i*GRID_SIZE, j*GRID_SIZE, this, falpha);
+								renderer->draw_tile(PIX_WALLTOP_H, i*GRID_SIZE, j*GRID_SIZE, this, tile_alpha);
 						}
 						else
-							renderer->draw_tile(static_cast<int>(gridp.data[i + maxx * j]), i*GRID_SIZE, j*GRID_SIZE, this, falpha);
+						{
+						const int tile = static_cast<int>(gridp.data[i + maxx * j]);
+						// On a layer the composite fades the whole floor, so tiles draw
+						// opaque (full coverage); glass stays faint only on the directly
+						// drawn camera floor (so the floor below shows through it).
+						const unsigned char talpha = use_layer ? 255
+						    : ((tile == PIX_GLASS && falpha > kGlassAlpha) ? kGlassAlpha : falpha);
+						renderer->draw_tile(tile, i*GRID_SIZE, j*GRID_SIZE, this, talpha);
+					}
 					}
 			}
 			draw_floor_entities(data, static_cast<int>(f), falpha);
+			if (use_layer)
+				active_screen()->floor_layer_end(xloc, yloc, xview, yview, fscale, fcx, fcy, falpha);
+			topx = par_topx; topy = par_topy; // undo the parallax shift
 		}
 	}
 	if (draw_radar && controlob && !controlob->dead() && controlob->user() == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
@@ -801,8 +900,8 @@ void viewscreen::clear_text()
 
 unsigned char viewscreen::floor_render_alpha(int f) const
 {
-	if (f == current_floor_)
-		return 255; // camera floor: opaque
+	if (f == current_floor_ || !cfg.is_on("graphics", "floor_ghost"))
+		return 255; // camera floor (or ghosting disabled): opaque
 	if (f < current_floor_)
 	{
 		// Floors below the camera fade with depth.
@@ -1216,7 +1315,6 @@ void viewscreen::options_menu()
 	active_screen()->draw_text_bar(40+4, 40+4, 280-4, 40+12);
 	std::string title = std::format("Options Menu ({})", mynum+1);
 	optiontext.write_xy(160-6*6, OPLINES(0)+2, title.c_str(), static_cast<unsigned char>(RED), 1);
-
 
 	gamespeed = change_speed(0);
 	message = std::format("Change Game Speed (+/-): {:2d}  ", gamespeed);

@@ -86,11 +86,31 @@ void walker::follow_path_to_foe()
             break;
         }
 
-        // Reached this node's (x,y). On a multi-floor path, if the node is on a
-        // different floor we're standing on the Z-stair cell — wait for
-        // apply_z_motion to lift us to that floor before consuming the node.
+        // Reached this node's (x,y) by our top-left corner. On a multi-floor
+        // path, a node on a different floor means this cell is the Z-stair we
+        // must take. apply_z_motion (which performs the floor change) probes our
+        // CENTER cell, not our corner — so for a sized walker the corner can sit
+        // on the stair cell while the center is one cell off, and the lift never
+        // fires (the walker deadlocks at the stair edge). Nudge until our center
+        // is over the stair cell, then wait a tick for apply_z_motion to change
+        // our floor before consuming the node. Gated on multifloor so
+        // single-floor following stays byte-identical.
         if (multifloor && GET_STATE_FLOOR(state) != floor())
+        {
+            const int center_cx = (xpos() + sizex() / 2) / GRID_SIZE;
+            const int center_cy = (ypos() + sizey() / 2) / GRID_SIZE;
+            int sdx = (GET_STATE_X(state) / GRID_SIZE) - center_cx;
+            int sdy = (GET_STATE_Y(state) / GRID_SIZE) - center_cy;
+            if (sdx != 0 || sdy != 0)
+            {
+                if (sdx != 0)
+                    sdx /= abs(sdx);
+                if (sdy != 0)
+                    sdy /= abs(sdy);
+                walkstep(sdx, sdy);
+            }
             break;
+        }
 
         // We already made it to this node, so remove it.
         path_to_foe.erase(node);

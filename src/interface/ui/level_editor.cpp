@@ -382,10 +382,11 @@ public:
     Sint32 family;
     char team;
     Sint32 level;
+    Sint32 worldz;   // authored sub-floor Z height (pixels) for placed objects
     bool picking;
-    
+
     EditorObjectBrush()
-        : snap_to_grid(true), order(Order::Living), family(0), team(1), level(1), picking(false)
+        : snap_to_grid(true), order(Order::Living), family(0), team(1), level(1), worldz(0), picking(false)
     {}
     
     void set(walker* target)
@@ -582,6 +583,7 @@ public:
     void clear_terrain();
     void resmooth_terrain();
     void add_floor();
+    void remove_floor();
     void mouse_down(int mx, int my);
     void mouse_motion(int mx, int my, int dx, int dy);
     void mouse_up(int mx, int my, int old_mx, int old_my, bool& done);
@@ -1448,6 +1450,14 @@ Sint32 LevelEditorData::display_panel(screen* s)
         if(!message.empty())
             scentext.write_xy(lm, L_D(curline++), message.c_str(), DARK_BLUE, 1);
 
+        // Authored sub-floor Z height for placed objects (. / , to change). Only
+        // shown when non-zero to avoid clutter on flat levels.
+        if(object_brush.worldz != 0)
+        {
+            message = std::format("Z: {}", object_brush.worldz);
+            scentext.write_xy(lm, L_D(curline++), message.c_str(), DARK_BLUE, 1);
+        }
+
         numobs = s->world().living_count;
         //myscreen->fastbox(lm,L_D(curline),55,7,27, 1);
         message = std::format("OB: {}", numobs);
@@ -1645,6 +1655,31 @@ void LevelEditorData::add_floor()
                                      static_cast<unsigned char>(gh), buf);
     w.smoother_for_floor(nf).set_target(w.grid_for_floor(nf));
     eds().current_floor = nf;
+    eds().levelchanged = 1;
+}
+
+// Drop the top stacked floor (LIFO with add_floor). set_floor_count frees that
+// floor's grid/smoother but leaves its objects, so we remove them first. No-op on
+// a single-floor level (the base floor can't be removed).
+void LevelEditorData::remove_floor()
+{
+    GameWorld& w = level->world();
+    const int n = w.floor_count();
+    if (n <= 1)
+        return;
+    const int top = n - 1;
+    std::vector<walker*> doomed;
+    for (auto& up : w.oblist)   if (up && static_cast<int>(up->floor()) == top) doomed.push_back(up.get());
+    for (auto& up : w.fxlist)   if (up && static_cast<int>(up->floor()) == top) doomed.push_back(up.get());
+    for (auto& up : w.weaplist) if (up && static_cast<int>(up->floor()) == top) doomed.push_back(up.get());
+    for (walker* d : doomed)
+        level->remove_ob(d);
+    w.set_floor_count(top);
+    if (eds().current_floor > top - 1)
+        eds().current_floor = top - 1;
+    // No resmooth: removing the top floor leaves the remaining grids unchanged,
+    // and smoothing here would advance floor 0's smoother RNG. The next redraw
+    // refreshes the view (mirrors add_floor, which also doesn't resmooth).
     eds().levelchanged = 1;
 }
 
@@ -2679,6 +2714,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         newob->set_floor(static_cast<short>(eds().current_floor));
                         newob->set_team_num(static_cast<unsigned char>(object_brush.team));
                         newob->stats()->set_level(object_brush.level);
+                        newob->set_worldz(static_cast<float>(object_brush.worldz));
                         newob->set_dead(0); // just in case
                         newob->set_collide_ob(nullptr);
                         // Is there already something there?
@@ -2904,6 +2940,14 @@ int level_editor_test_exercise_internal_helpers()
         check(data.get_terrain(1, 1) == PIX_GLASS);     // floor 1
         eds().current_floor = 0;
         check(data.get_terrain(1, 1) != PIX_GLASS);     // floor 0 untouched
+        // remove_floor drops the top floor back to single-floor (LIFO).
+        eds().current_floor = 1;
+        data.remove_floor();
+        check(data.level->world().floor_count() == 1);
+        check(!data.level->world().is_multifloor());
+        check(eds().current_floor == 0);                // clamped off the removed floor
+        data.remove_floor();                            // base floor: no-op
+        check(data.level->world().floor_count() == 1);
         data.clear_terrain();
 	        check(data.get_terrain(0, 0) == 1);
 	        data.level->world().id = 1;
@@ -2969,6 +3013,18 @@ int level_editor_test_exercise_internal_helpers()
         check(data.object_brush.team == 0);
         data.activate_mode_button(&data.nextTeamButton);
         check(data.object_brush.team == 1);
+
+        // Per-object Z: the brush's authored worldz transfers to placed objects.
+        data.object_brush.worldz = GRID_SIZE;
+        walker* zob = data.level->add_ob(Order::Living, FAMILY_SOLDIER);
+        check(zob != nullptr);
+        if (zob)
+        {
+            zob->set_worldz(static_cast<float>(data.object_brush.worldz));
+            check(zob->worldz() == static_cast<float>(GRID_SIZE));
+            data.level->remove_ob(zob);
+        }
+        data.object_brush.worldz = 0;
 
         data.mode = Mode::Select;
         data.level->delete_objects();
@@ -3822,6 +3878,19 @@ Sint32 level_editor()
                     if(mode == Mode::Object && object_brush.level > 1)
                         object_brush.level--;
                 }
+                // Raise/lower the authored sub-floor Z height of placed objects
+                // (. raises, , lowers). Objects sit at z 0 by default; an elevated
+                // object renders higher and its cylinder lets low shots pass under.
+                else if(event_data.key_sym == KEYCODE_PERIOD)
+                {
+                    if(mode == Mode::Object)
+                        object_brush.worldz += GRID_SIZE / 2;
+                }
+                else if(event_data.key_sym == KEYCODE_COMMA)
+                {
+                    if(mode == Mode::Object && object_brush.worldz >= GRID_SIZE / 2)
+                        object_brush.worldz -= GRID_SIZE / 2;
+                }
                 else if(event_data.key_sym == KEYCODE_DELETE)
                 {
                     if(mode == Mode::Select)
@@ -3877,7 +3946,11 @@ Sint32 level_editor()
                 }
                 else if(event_data.key_sym == KEYCODE_PAGEDOWN)
                 {
-                    if(eds().current_floor > 0)
+                    // Ctrl+PageDown drops the top floor (LIFO with Ctrl+PageUp);
+                    // plain PageDown switches down a floor.
+                    if(event_data.key_mod & KEYMOD_CTRL)
+                        data.remove_floor();
+                    else if(eds().current_floor > 0)
                         eds().current_floor--;
                 }
                 break;

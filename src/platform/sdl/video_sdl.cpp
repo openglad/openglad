@@ -25,7 +25,9 @@
 #include <openglad/legacy/base.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/resources/io.h>
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <format>
 #include <cstring>
 #include <openglad/platform/game_context.h>
@@ -126,6 +128,11 @@ sdl_video::sdl_video(bool create_display)
 
 sdl_video::~sdl_video()
 {
+	// Free the multi-floor compositing scratch surfaces (independent of the
+	// display) before any SDL_Quit below.
+	if (floor_layer_) { SDL_FreeSurface(floor_layer_); floor_layer_ = nullptr; }
+	if (floor_layer_scaled_) { SDL_FreeSurface(floor_layer_scaled_); floor_layer_scaled_ = nullptr; }
+
 	// Only the display-owning video instance tears down SDL.
 	// IMPORTANT: All non-owning video instances (sub-sessions with
 	// owns_display_=false) must be destroyed BEFORE the owning instance,
@@ -1178,6 +1185,131 @@ void sdl_video::destroy_accel_surface(void* surface)
     if (!surface)
         return;
     SDL_FreeSurface(static_cast<SDL_Surface*>(surface));
+}
+
+// ---- Multi-floor vertical-parallax off-screen layer compositing ----
+//
+// A non-camera floor that is faded/ghosted is drawn 1:1 onto a transparent
+// off-screen layer (so adjacent tiles abut exactly — no per-tile sub-pixel
+// seams), then composited back onto the real render surface as ONE bitmap,
+// smoothly (bilinear) scaled about the viewport centre and faded by the
+// floor's depth alpha. Un-drawn cells (air holes / out-of-map) stay
+// transparent and reveal the floors below.
+void sdl_video::floor_layer_begin(Sint32 x, Sint32 y, Sint32 w, Sint32 h)
+{
+    if (!E_Screen || !E_Screen->render)
+        return;
+    if (!floor_layer_)
+    {
+        floor_layer_ = SDL_CreateRGBSurfaceWithFormat(
+            0, E_Screen->render->w, E_Screen->render->h, 32, SDL_PIXELFORMAT_ARGB8888);
+        if (floor_layer_)
+            SDL_SetSurfaceBlendMode(floor_layer_, SDL_BLENDMODE_BLEND);
+    }
+    if (!floor_layer_)
+        return; // allocation failed: leave E_Screen->render untouched (no redirect)
+
+    // Clear just this viewport's region to fully transparent (ARGB = 0). Opaque
+    // tile/sprite blits below go through SDL_MapRGB on this alpha-capable format,
+    // which yields A=0xFF, so drawn pixels become opaque coverage while un-drawn
+    // cells remain transparent.
+    SDL_Rect r{ x, y, w, h };
+    SDL_FillRect(floor_layer_, &r, 0x00000000u);
+
+    // Redirect every tile/sprite blit (they hardcode E_Screen->render) to the
+    // layer; floor_layer_end restores the saved surface.
+    floor_layer_saved_render_ = E_Screen->render;
+    E_Screen->render = floor_layer_;
+}
+
+void sdl_video::floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
+                                float scale, Sint32 cx, Sint32 cy,
+                                unsigned char alpha)
+{
+    if (!E_Screen)
+        return;
+    // Restore the real render target (mirror floor_layer_begin's redirect).
+    if (floor_layer_saved_render_)
+    {
+        E_Screen->render = floor_layer_saved_render_;
+        floor_layer_saved_render_ = nullptr;
+    }
+    if (!floor_layer_ || !E_Screen->render || scale <= 0.0f)
+        return;
+
+    // Centred scale: source pixel p maps to dst = centre + (p - centre)*scale.
+    // Clip the visible output to the viewport so a zoomed (scale>1) upper floor
+    // cannot bleed into adjacent split-screen panes and the sampled source stays
+    // within the layer bounds.
+    const float fcx = static_cast<float>(cx);
+    const float fcy = static_cast<float>(cy);
+    const float fdx = fcx + (static_cast<float>(x) - fcx) * scale;
+    const float fdy = fcy + (static_cast<float>(y) - fcy) * scale;
+    const float fdw = static_cast<float>(w) * scale;
+    const float fdh = static_cast<float>(h) * scale;
+
+    const float ox0 = std::max(static_cast<float>(x), fdx);
+    const float oy0 = std::max(static_cast<float>(y), fdy);
+    const float ox1 = std::min(static_cast<float>(x + w), fdx + fdw);
+    const float oy1 = std::min(static_cast<float>(y + h), fdy + fdh);
+    if (ox1 <= ox0 || oy1 <= oy0)
+        return;
+
+    SDL_Rect out;
+    out.x = static_cast<int>(std::lround(ox0));
+    out.y = static_cast<int>(std::lround(oy0));
+    out.w = static_cast<int>(std::lround(ox1 - ox0));
+    out.h = static_cast<int>(std::lround(oy1 - oy0));
+    if (out.w <= 0 || out.h <= 0)
+        return;
+
+    // Inverse-map the (viewport-clipped) output rect back to the source region.
+    const float inv = 1.0f / scale;
+    SDL_Rect src;
+    src.x = static_cast<int>(std::lround(fcx + (static_cast<float>(out.x) - fcx) * inv));
+    src.y = static_cast<int>(std::lround(fcy + (static_cast<float>(out.y) - fcy) * inv));
+    src.w = static_cast<int>(std::lround(static_cast<float>(out.w) * inv));
+    src.h = static_cast<int>(std::lround(static_cast<float>(out.h) * inv));
+    // Clamp the source to the layer bounds (defensive against rounding).
+    if (src.x < 0) { src.w += src.x; src.x = 0; }
+    if (src.y < 0) { src.h += src.y; src.y = 0; }
+    if (src.x + src.w > floor_layer_->w) src.w = floor_layer_->w - src.x;
+    if (src.y + src.h > floor_layer_->h) src.h = floor_layer_->h - src.y;
+    if (src.w <= 0 || src.h <= 0)
+        return;
+
+    // Smooth path: bilinear-stretch the layer into a scratch surface, then
+    // alpha-blend composite that scratch (at the floor's depth alpha) over the
+    // real render surface. SDL_SoftStretchLinear ignores blend/alpha, so the
+    // fade is applied on the second (blend) blit.
+    if (!floor_layer_scaled_)
+    {
+        floor_layer_scaled_ = SDL_CreateRGBSurfaceWithFormat(
+            0, floor_layer_->w, floor_layer_->h, 32, SDL_PIXELFORMAT_ARGB8888);
+    }
+    bool smooth_ok = false;
+    if (floor_layer_scaled_)
+    {
+        SDL_FillRect(floor_layer_scaled_, &out, 0x00000000u);
+        if (SDL_SoftStretchLinear(floor_layer_, &src, floor_layer_scaled_, &out) == 0)
+        {
+            SDL_SetSurfaceAlphaMod(floor_layer_scaled_, alpha);
+            SDL_SetSurfaceBlendMode(floor_layer_scaled_, SDL_BLENDMODE_BLEND);
+            SDL_Rect dstpos = out;
+            SDL_BlitSurface(floor_layer_scaled_, &out, E_Screen->render, &dstpos);
+            smooth_ok = true;
+        }
+    }
+    if (!smooth_ok)
+    {
+        // Fallback (SoftStretchLinear unsupported): nearest-neighbour scaled
+        // alpha blit straight from the layer. Still seam-free (one bitmap).
+        SDL_SetSurfaceAlphaMod(floor_layer_, alpha);
+        SDL_SetSurfaceBlendMode(floor_layer_, SDL_BLENDMODE_BLEND);
+        SDL_Rect dst = out;
+        SDL_BlitScaled(floor_layer_, &src, E_Screen->render, &dst);
+        SDL_SetSurfaceAlphaMod(floor_layer_, 255);
+    }
 }
 
 

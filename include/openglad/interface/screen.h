@@ -121,6 +121,10 @@ public:
     void* create_accel_surface(std::span<const unsigned char> indexed_pixels,
                                Sint32 width, Sint32 height) override;
     void destroy_accel_surface(void* surface) override;
+    void floor_layer_begin(Sint32 x, Sint32 y, Sint32 w, Sint32 h) override;
+    void floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
+                         float scale, Sint32 cx, Sint32 cy,
+                         unsigned char alpha) override;
     void walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
                        Sint32 walkerwidth, Sint32 walkerheight,
                        Sint32 portstartx, Sint32 portstarty,

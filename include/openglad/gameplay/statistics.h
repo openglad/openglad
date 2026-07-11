@@ -104,6 +104,11 @@ class statistics
 		bool right_walk_to_point(short x, short y); // right-hand rule toward a point
 		bool direct_walk_to_point(short x, short y); // walk in a line toward a point
 		bool walk_to_point(short x, short y); // walk intelligently toward a point
+		// Cross-floor fallback: when a foe on another floor has no A*-reachable
+		// cell (common on sparse upper floors), route toward the nearest Z-stair
+		// leading toward foe_floor instead of chasing the foe's x/y on our own
+		// floor. Populates path_to_foe and returns true if a stair route exists.
+		bool path_toward_stair(int foe_floor);
 
 		std::string name; // for NPC's, normally ..
         OG_STATS_DIRTY_FIELD(Order, old_order, og::dirty::BIT_OLD_ORDER);

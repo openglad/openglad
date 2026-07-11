@@ -20,6 +20,9 @@
 
 #include <openglad/gameplay/statistics.h>      // for bit flags, etc.
 #include <openglad/core/util.h>
+#include <openglad/core/pixdefs.h>
+#include <openglad/gameplay/pixie_data.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/dirty_field_bits.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/family_descriptor.h>
@@ -982,6 +985,57 @@ bool statistics::direct_walk()
 
 }
 
+// When a cross-floor foe has no A*-reachable cell (e.g. it is standing on a
+// sparse upper-floor platform that is not ground-connected to the Z-stair
+// landing), chasing foe->xpos()/ypos() on OUR floor just mirrors the foe on the
+// wrong level. Instead, route to the nearest Z-stair that leads toward the foe's
+// floor: scan our floor for the appropriate stair tile (UP if the foe is above,
+// DOWN if below) and run the stair-aware A* (find_path_to_point) to it. Walking
+// onto the stair triggers apply_z_motion's floor change, after which cross_floor
+// flips false and the normal chase resumes on the correct floor. Returns true
+// (and leaves a path in path_to_foe) when a stair route exists.
+bool statistics::path_toward_stair(int foe_floor)
+{
+	if (!current_game || !current_game->world)
+		return false;
+	GameWorld* world = current_game->world;
+	const int myfloor = controller_->floor();
+	if (foe_floor == myfloor)
+		return false;
+
+	const unsigned char want = (foe_floor > myfloor)
+	    ? static_cast<unsigned char>(PIX_ZSTAIR_UP)
+	    : static_cast<unsigned char>(PIX_ZSTAIR_DOWN);
+
+	const PixieData& g = world->grid_for_floor(myfloor);
+	if (!g.valid())
+		return false;
+
+	const int mygx = controller_->xpos() / GRID_SIZE;
+	const int mygy = controller_->ypos() / GRID_SIZE;
+	int best_x = -1, best_y = -1;
+	long best_d = -1;
+	for (int y = 0; y < g.h; ++y)
+		for (int x = 0; x < g.w; ++x)
+		{
+			if (g.data[x + y * g.w] != want)
+				continue;
+			const long d = std::abs(x - mygx) + std::abs(y - mygy);
+			if (best_x < 0 || d < best_d)
+			{
+				best_d = d;
+				best_x = x;
+				best_y = y;
+			}
+		}
+	if (best_x < 0)
+		return false; // no stair toward the foe's floor on our level
+
+	controller_->find_path_to_point(static_cast<short>(best_x * GRID_SIZE),
+	                                static_cast<short>(best_y * GRID_SIZE));
+	return !controller_->path_to_foe.empty();
+}
+
 inline constexpr int PATHING_MIN_DISTANCE = 100;
 
 // Note that obmap::size() counts dead things too, which don't do pathfinding
@@ -1002,10 +1056,30 @@ bool statistics::walk_to_foe()
 		return 0;
 	}
 
+	// Cross-floor foe: distance_to_ob is a floor-blind 2D (Manhattan) measure,
+	// so a foe directly above/below reads as "close" even though the only route
+	// to it is a Z-stair. For such a foe we must always run the full,
+	// stair-edge-aware A* (find_path_to_foe) and never short-circuit into the
+	// floor-blind melee/direct chase that just runs under the target — nor
+	// abandon the chase when the 2D distance gets tiny (we still have to climb).
+	// Gated on floor_count()>1, so single-floor behavior is byte-identical.
+	const bool cross_floor =
+	    current_game->world->floor_count() > 1 &&
+	    foe->floor() != controller_->floor();
+
 	controller_->set_path_check_counter(controller_->path_check_counter() - 1);
-	// This makes us only check every few rounds, to save
-	// processing time
-	if(controller_->path_check_counter() <= 0)
+	// This makes us only check every few rounds, to save processing time.
+	// EXCEPTION: a cross-floor foe with no current path. The path check is
+	// throttled to every 5-14 ticks; until the first stair-aware A* runs we have
+	// no path and fall through to direct_walk(), which charges the foe's x/y on
+	// OUR floor — i.e. the baddie tracks the player on the wrong level for up to a
+	// full cadence before "eventually" pathing through the stairs. Force the check
+	// the moment we acquire (or exhaust the path to) a cross-floor foe so it heads
+	// for the stairs immediately. Once a path exists this is false again, so the
+	// normal throttle resumes (no A*-every-tick except for a truly unreachable foe).
+	const bool need_cross_floor_path =
+	    cross_floor && controller_->path_to_foe.empty();
+	if(controller_->path_check_counter() <= 0 || need_cross_floor_path)
 	{
 	    // Cosmetic AI-recheck cadence: master draws it from libc rand
 	    // (`5 + rand()%10`), NOT the gameplay rng() helper it uses for every
@@ -1026,7 +1100,8 @@ bool statistics::walk_to_foe()
         
 		tempdistance = static_cast<Uint32>(controller_->distance_to_ob(foe));
 		// Do simpler pathing if the distance is short or if there are too many walkers (pathfinding is expensive)
-		if (tempdistance < PATHING_MIN_DISTANCE || current_game->world->myobmap->size() > PATHING_SHORT_CIRCUIT_OBJECT_LIMIT)
+		if (!cross_floor &&
+		    (tempdistance < PATHING_MIN_DISTANCE || current_game->world->myobmap->size() > PATHING_SHORT_CIRCUIT_OBJECT_LIMIT))
 		{
 			std::list<walker*> foelist = current_game->world->find_foes_in_range(current_game->world->oblist,
 			          PATHING_MIN_DISTANCE, &howmany, controller_);
@@ -1054,6 +1129,13 @@ bool statistics::walk_to_foe()
 		else
         {
             controller_->find_path_to_foe();
+            // Cross-floor foe whose exact cell A* cannot reach (sparse upper
+            // floor / disconnected platform). Don't let the empty-path fallback
+            // below chase the foe's x/y on OUR floor — head for the nearest
+            // Z-stair toward the foe's floor and climb. Gated on cross_floor, so
+            // single-floor pathing is untouched (byte-identical for parity).
+            if (cross_floor && controller_->path_to_foe.empty())
+                path_toward_stair(foe->floor());
         }
 	} //end if do_check
 
@@ -1074,8 +1156,10 @@ bool statistics::walk_to_foe()
 	else
 		right_walk();
 
-	// Are we really really close? Stop searching, then :)
-	if (tempdistance < 30 && !commands.empty())
+	// Are we really really close? Stop searching, then :)  But never abandon a
+	// cross-floor chase on 2D proximity — the foe is on another floor and we
+	// still need to reach the Z-stair and climb.
+	if (!cross_floor && tempdistance < 30 && !commands.empty())
 	{
 		commands.front().commandcount = 0;
 	}

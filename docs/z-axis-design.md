@@ -187,6 +187,16 @@ All additive, double-gated (`floor_count>1` and tile data):
   reorder `find_far_foe` selection and break parity).
 - Cross-floor chase emerges from the A\* stair-edges: an enemy acquires a foe on
   another floor, can't shoot it (different floor), paths to a stair, climbs, engages.
+  **Subtlety (fixed):** `statistics::walk_to_foe` gates the expensive A* behind a
+  *2D* proximity short-circuit (`distance_to_ob`, which has no floor term). A foe
+  directly above/below reads as "close", so the AI skipped A* and fell back to
+  `direct_walk` — running *under* the target on its own floor. Fix: a `cross_floor`
+  flag (`floor_count()>1 && foe->floor()!=floor()`) forces `find_path_to_foe` and
+  never abandons the chase on 2D proximity. And `follow_path_to_foe` nudges the
+  walker's *center* (not corner) onto the Z-stair cell, since `apply_z_motion`
+  probes the center — else a sized walker deadlocks at the stair edge. Both gated
+  `floor_count()>1`; single-floor is byte-identical (`og_test_parity`). Regression:
+  `ZAxis.cross_floor_ai_chases_foe_through_stair`.
 
 ## Rendering (outside the parity gate; read-only Z)
 
@@ -346,12 +356,52 @@ All originally-deferred caveats are now implemented (see the checklist above):
 multi-floor editor authoring (P10), upper-floor alpha ghosting + lower-floor
 fade, curses/radar floor-awareness, and Invariant Z parity scenarios.
 
-Remaining minor niceties (not blocking; intentionally not done to avoid
-prefs/cfg-format risk this late):
-- A player-facing *Options* toggle to disable floor ghosting/fade. Ghosting is
-  currently default-on whenever `floor_count() > 1`. Adding the toggle means a new
-  `PREF_*` slot + an options-menu entry + persistence; the render already reads a
-  single decision point (`viewscreen::floor_render_alpha`) so wiring a pref there
-  is a one-line change once the pref exists.
-- Editor remove-floor (add-floor + switch exist); per-object explicit Z within a
-  floor (objects currently sit at `worldz == 0` on their floor).
+DONE since: per-object explicit Z within a floor. The v10 level format already
+round-trips each object's `worldz` (sub-floor z, save/load in `level_file_io`);
+`apply_z_motion` never resets it, so an authored height persists. The editor adds
+a brush Z height (keys **.** raise / **,** lower, shown in the panel) applied on
+placement, so objects can be elevated on a floor (renders higher; the cylinder
+lets low shots pass under).
+
+DONE since: a per-player *Options* toggle (the in-game options menu, key **G**)
+disables floor ghosting/fade — `PREF_FLOOR_GHOST` (0 = on, so existing prefs
+files keep ghosting), read by `viewscreen::floor_render_alpha` (returns 255 when
+off) and the floor-draw loop (draws only `0..camera`, no above-ghosts, when off).
+
+DONE since: glass now reads as glass, not air — `graphlib.cpp::load_map_data`
+loads a floor graphic for `PIX_GLASS` and the floor draw loop renders it at a
+faint `kGlassAlpha` (capped at the floor's own alpha) so the floor below still
+shows through (`view.cpp`). A bespoke glass texture (glints/edges) instead of the
+reused floor tile would be a nicer future asset, but the cue exists.
+
+### Vertical parallax (fake-3D floor depth)
+
+Render the stacked floors with a sense of camera height, so the 2D game reads a
+bit more 3D. Visual-only (gated `floor_count()>1`; single-floor byte-identical;
+**no sim/parity impact** — parity is render-blind).
+
+- **DONE — parallax shift.** Each non-camera floor scrolls at
+  `(1 + (f-current_floor_)*kParallaxScroll)` of the camera floor's rate (the
+  per-floor `topx/topy` is scaled in the bottom-up floor loop in
+  `viewscreen::redraw` and restored after that floor's tiles + entities draw).
+  Floors below lag, floors above lead, so they slide relative to the camera floor
+  as the player moves (e.g. around a pit) — the depth/angle cue the player sees.
+  `kParallaxScroll = 0.05` (subtle); camera floor stays 1:1. Combines with the
+  existing alpha ghosting (`floor_render_alpha`) — shift + fade convey depth.
+  Seam-free because the whole floor shifts uniformly.
+- **DONE — per-floor scale by Z distance (smooth, off-screen layer).** Each
+  non-camera floor renders at `(1 + (f-current_floor_)*kParallaxScale)`
+  (=0.10/floor) about the viewport centre — floors below shrink, floors above
+  enlarge, as if seen from a high camera. Implemented as off-screen-layer
+  compositing (NOT a per-tile position scale, which left sub-pixel "weird lines
+  on grass" seams): when `floor_count>1 && falpha<255`, `video::floor_layer_begin`
+  lazily allocates an alpha-capable ARGB layer, clears the viewport region to
+  transparent, and redirects the tile/sprite blits to it (they draw OPAQUE, so
+  un-drawn cells stay transparent and air holes still reveal floors below);
+  `floor_layer_end` bilinear-stretches the layer about the centre with
+  `SDL_SoftStretchLinear` (seam-free smooth scaling) and alpha-blends it over the
+  real surface at the floor's depth alpha. Layer surfaces are cached members
+  (freed in `~sdl_video`). The camera floor and ghosting-off floors draw straight
+  to the screen (no layer), so single-floor is byte-identical (og_test_parity).
+  kParallaxScale=0.10, kParallaxScroll=0.05.
+  Combined with the shift + alpha ghosting, the stack now reads clearly 2.5D.

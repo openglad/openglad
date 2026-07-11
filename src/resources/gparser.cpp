@@ -207,6 +207,7 @@ bool cfg_store::load_settings()
     apply_setting("graphics", "render", "normal");
     apply_setting("graphics", "fullscreen", "on");
     apply_setting("graphics", "overscan_percentage", "0");
+    apply_setting("graphics", "floor_ghost", "on");
 
     apply_setting("effects", "gore", "on");
     apply_setting("effects", "mini_hp_bar", "on");

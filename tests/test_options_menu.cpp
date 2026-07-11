@@ -146,6 +146,8 @@ static int options_injector(void* data)
         SDL_Delay(80);
         interact("toggle_heal_numbers");
         SDL_Delay(80);
+        interact("toggle_floor_ghost");
+        SDL_Delay(80);
 
         fprintf(stderr, "  [test] restoring defaults\n");
         interact("restore_defaults");

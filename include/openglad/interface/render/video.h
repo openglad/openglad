@@ -88,6 +88,19 @@ public:
     virtual void* create_accel_surface(std::span<const unsigned char> indexed_pixels,
                                        Sint32 width, Sint32 height) = 0;
     virtual void destroy_accel_surface(void* surface) = 0;
+
+    // Off-screen floor-layer compositing for the multi-floor vertical parallax.
+    // floor_layer_begin redirects subsequent tile/sprite blits (which target the
+    // backend's render surface) to a transparent off-screen layer covering the
+    // viewport (x,y,w,h). floor_layer_end restores the real target and composites
+    // that layer back, smoothly (bilinear) scaled by `scale` about (cx,cy) with a
+    // global `alpha` (the floor's depth fade/ghost). Default no-ops for backends
+    // without an off-screen surface. The caller gates these on floor_count()>1, so
+    // single-floor / camera-floor rendering never enters this path.
+    virtual void floor_layer_begin(Sint32 /*x*/, Sint32 /*y*/, Sint32 /*w*/, Sint32 /*h*/) {}
+    virtual void floor_layer_end(Sint32 /*x*/, Sint32 /*y*/, Sint32 /*w*/, Sint32 /*h*/,
+                                 float /*scale*/, Sint32 /*cx*/, Sint32 /*cy*/,
+                                 unsigned char /*alpha*/) {}
     virtual void walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
                                Sint32 walkerwidth, Sint32 walkerheight,
                                Sint32 portstartx, Sint32 portstarty,

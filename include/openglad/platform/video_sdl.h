@@ -83,6 +83,10 @@ public:
     void* create_accel_surface(std::span<const unsigned char> indexed_pixels,
                                Sint32 width, Sint32 height) override;
     void destroy_accel_surface(void* surface) override;
+    void floor_layer_begin(Sint32 x, Sint32 y, Sint32 w, Sint32 h) override;
+    void floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
+                         float scale, Sint32 cx, Sint32 cy,
+                         unsigned char alpha) override;
     void putbuffer(Sint32 tilestartx, Sint32 tilestarty,
                    Sint32 tilewidth, Sint32 tileheight,
                    Sint32 portstartx, Sint32 portstarty,
@@ -182,4 +186,13 @@ public:
 
 private:
     bool owns_display_ = true;
+
+    // Off-screen compositing scratch for the multi-floor vertical parallax
+    // (floor_layer_begin/floor_layer_end). Lazily created at the render size,
+    // reused across frames, freed in the destructor. ARGB8888 (alpha-capable)
+    // so un-drawn tile cells / air holes stay transparent and reveal the floors
+    // below in the scaled composite.
+    SDL_Surface* floor_layer_ = nullptr;         // transparent 1:1 draw target
+    SDL_Surface* floor_layer_scaled_ = nullptr;  // bilinear-stretched scratch
+    SDL_Surface* floor_layer_saved_render_ = nullptr; // E_Screen->render while redirected
 };

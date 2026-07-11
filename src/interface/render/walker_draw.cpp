@@ -471,18 +471,21 @@ bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha)
 	        yscreen += static_cast<Sint32>(dy);
 	    }
 
-	// Faded (lower) / ghosted (upper) non-camera floor: draw just the sprite at
-	// the given alpha, skipping flash/outline/mode and the HP bar / damage
-	// numbers. The camera floor (alpha 255) takes the full path below.
+	// Faded (lower) / ghosted (upper) non-camera floor: draw just the sprite,
+	// skipping flash/outline/mode and the HP bar / damage numbers. The caller has
+	// redirected blits to the off-screen floor layer (video::floor_layer_begin),
+	// which composites the whole floor back smoothly scaled + faded at the floor's
+	// depth alpha — so draw the sprite OPAQUE here (full coverage on the layer).
+	// The camera floor (alpha 255) takes the full path below.
 	if (alpha < 255)
 	{
 		const unsigned char* bmp = w.bmp_data();
 		if (bmp)
-			og::runtime::current_session->myscreen_->walkputbuffer_alpha(
+			og::runtime::current_session->myscreen_->walkputbuffer(
 			    xscreen, yscreen, w.sizex(), w.sizey(),
 			    view_buf->xloc, view_buf->yloc, view_buf->endx, view_buf->endy,
 			    {bmp, static_cast<size_t>(w.sizex() * w.sizey())},
-			    w.query_team_color(), alpha);
+			    w.query_team_color());
 		return true;
 	}
 

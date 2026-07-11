@@ -45,7 +45,11 @@ class pixie
 		short draw (short x, short y, viewscreen  *view_buf);
 		short draw(Sint32 x, Sint32 y, viewscreen* view_buf) { return draw(static_cast<short>(x), static_cast<short>(y), view_buf); }
 		short draw(float x, float y, viewscreen* view_buf) { return draw(static_cast<Sint32>(x), static_cast<Sint32>(y), view_buf); }
-		// Alpha-blended draw for faded/ghosted floors; alpha>=255 takes the opaque path.
+		// Alpha-blended draw for faded/ghosted floors; alpha>=255 takes the opaque
+		// path. Used for camera-floor glass (faint, reveals the floor below) and any
+		// directly drawn faded tile. The multi-floor per-floor shrink/zoom is now
+		// done by the off-screen floor-layer composite (video::floor_layer_*), not
+		// here, so this no longer position-scales (which left sub-pixel tile seams).
 		short draw(short x, short y, viewscreen* view_buf, unsigned char alpha);
 		short drawMix (viewscreen *view_buf);
 		short drawMix (short x, short y, viewscreen *view_buf);
