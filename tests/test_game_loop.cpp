@@ -2865,11 +2865,12 @@ bool action_center(GameWorld& w, int floor, float& out_x, float& out_y)
 
 void record(const char* scene, int scen, WeatherKind kind,
             const std::vector<int>& roster,
-            const std::vector<Key>& keys)
+            const std::vector<Key>& keys,
+            const char* campaign = "org.openglad.westlands")
 {
     screen* const s = og::runtime::current_session->myscreen_;
     // The crew deploys at the level's team-0 start position markers.
-    gameplay_rec::build_save(s, "org.openglad.westlands", scen, 1, roster, 7);
+    gameplay_rec::build_save(s, campaign, scen, 1, roster, 7);
     glad_init();
     gameplay_rec::all_capture_effects_on();
     gameplay_rec::force_weather(kind);
@@ -3080,10 +3081,11 @@ TEST(GameLoop, zz_capture_epic_battles)
 namespace gameplay_rec {
 
 void record_story(const char* name, int scen, WeatherKind kind,
-                  const std::vector<int>& roster, int level, int frames)
+                  const std::vector<int>& roster, int level, int frames,
+                  const char* campaign = "org.openglad.westlands")
 {
     screen* const s = og::runtime::current_session->myscreen_;
-    build_save(s, "org.openglad.westlands", scen, 1, roster, level);
+    build_save(s, campaign, scen, 1, roster, level);
     glad_init();
     all_capture_effects_on();
     force_weather(kind);
@@ -3203,6 +3205,85 @@ TEST(GameLoop, zz_capture_westlands_decor)
     if (want("d10")) // the west road under the eaves, undergrowth off it
         epic_rec::record("decor_10_wood", 10, WeatherKind::Clouds, crew,
                          {{0, 320, 320, 0, true}, {20, 320, 320, 0, true}});
+}
+
+// ---------------------------------------------------------------------------
+// The Long Season (org.openglad.longseason): four scenes from the Brass
+// Kettle Company's year. Ferry Right is real gameplay (the camera rides the
+// lead soldier plugging the causeway mouth); the other three are keyframed
+// spectator films per the epic_rec pattern. Keyframe pixel anchors come
+// straight from the tools/longseason_mapgen builders (tile * 16).
+// ---------------------------------------------------------------------------
+TEST(GameLoop, zz_capture_longseason)
+{
+    if (!getenv("OG_FX_CAPTURE_DIR"))
+        GTEST_SKIP() << "set OG_FX_CAPTURE_DIR to record";
+    using epic_rec::Key;
+    const char* only = getenv("OG_FX_CAPTURE_ONLY");
+    const auto want = [&](const char* n) {
+        return only == nullptr || strcmp(only, n) == 0;
+    };
+    const char* const ls = "org.openglad.longseason";
+    // 2 The Ferry Right — spring flood, rain over the drowned river. Real
+    // gameplay: the company holds the causeway's east mouth so the toll
+    // runs. Knifemen open on the span; the boat wave beaches on the north
+    // shallows at tick 400 and hits the landing's rear rank on camera.
+    if (want("ls_2"))
+        gameplay_rec::record_story(
+            "ls_2", 2, WeatherKind::Rain,
+            {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ELF,
+             FAMILY_BARBARIAN, FAMILY_THIEF, FAMILY_CLERIC, FAMILY_MAGE},
+            4, 460, ls);
+    // 14 The Long Toll — the Grey Tolls fort in winter, forced blizzard.
+    // Establish the courtyard (braziers, the strongroom, the watch), follow
+    // the wolf probe, cut to the west mouth for wave 1's wake flash (300),
+    // ride that fight up the road, cut east for the 700 wave, then back to
+    // the fort for the hold.
+    if (want("ls_14"))
+        epic_rec::record("ls_14", 14, WeatherKind::Snow,
+            {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_BARBARIAN,
+             FAMILY_BARBARIAN, FAMILY_ELF, FAMILY_ELF, FAMILY_CLERIC,
+             FAMILY_MAGE},
+            {{0, 480, 480, 0, true}, {60, 480, 480, 0, false},
+             {270, 64, 464, 0, true}, {340, 300, 470, 0, false},
+             {660, 912, 464, 0, true}, {730, 700, 460, 0, false},
+             {860, 480, 480, 0, false}, {960, 480, 480, 0, false}},
+            ls);
+    // 17 Ashfall Gate — the creditors' camps on the ash plain. Open on the
+    // company's wedge under the banner, tour the three camps (palisades,
+    // cook-fires, the tent and tower trickles), hold the gate throat's
+    // golem wards and slag runnels, then settle on the wagon-corridor spine
+    // fight; at 660 cut back west onto the north cut-purse trio (tiles
+    // 10-14, y 6-13) for their tick-700 wake flash behind the crew's line.
+    if (want("ls_17"))
+        epic_rec::record("ls_17", 17, WeatherKind::None,
+            {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_ELF,
+             FAMILY_ELF, FAMILY_MAGE, FAMILY_CLERIC, FAMILY_BARBARIAN},
+            {{0, 96, 336, 0, true}, {60, 352, 128, 0, true},
+             {130, 352, 544, 0, true}, {200, 976, 336, 0, true},
+             {270, 640, 336, 0, false}, {430, 640, 336, 0, false},
+             {660, 192, 160, 0, true}, {760, 400, 340, 0, false},
+             {860, 640, 336, 0, false}, {940, 640, 336, 0, false}},
+            ls);
+    // 18 The Warm Mint — the keyframed three-floor foundry climb. Floor 0:
+    // the gatehall door war (Kettle holds the west wall at tile 3,21), the
+    // casting floor's lava channels, the golem-warded stair chamber. Cut UP
+    // at the aligned stair (57,21): the vault floor's collapse holes, melt
+    // pools and warded heaps, then the counting rooms. Cut UP again (9,21):
+    // the crucible lake, the rim elementals and ghosts, and The Founder on
+    // the dais beside the master ledger — brazier-lit end to end.
+    if (want("ls_18"))
+        epic_rec::record("ls_18", 18, WeatherKind::None,
+            {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_BARBARIAN, FAMILY_ELF,
+             FAMILY_ELF, FAMILY_CLERIC, FAMILY_MAGE, FAMILY_ARCHMAGE},
+            {{0, 96, 336, 0, true}, {70, 96, 336, 0, false},
+             {200, 560, 336, 0, true}, {270, 560, 336, 0, false},
+             {430, 912, 336, 0, true}, {500, 912, 336, 1, true},
+             {570, 560, 320, 1, true}, {640, 560, 320, 1, false},
+             {710, 144, 336, 1, true}, {780, 144, 336, 2, true},
+             {850, 504, 344, 2, true}, {920, 832, 336, 2, true},
+             {990, 832, 336, 2, false}, {1050, 832, 336, 2, false}},
+            ls);
 }
 
 // ---------------------------------------------------------------------------

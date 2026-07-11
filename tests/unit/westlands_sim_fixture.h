@@ -88,29 +88,47 @@ inline const LevelDataHooks& sim_hooks()
     return hooks;
 }
 
-// gtest fixture: mounts the builtin Westlands package for the test's
-// lifetime and restores the previously mounted campaign afterwards.
-class WestlandsCampaignTest : public ::testing::Test
+// gtest fixture: mounts a builtin campaign package for the test's lifetime
+// and restores the previously mounted campaign afterwards. The sim wiring
+// above is campaign-agnostic (stock families only), so any builtin package
+// can ride the same fixture; the Long Season calibration test derives from
+// this with its own id.
+class MountedCampaignTest : public ::testing::Test
 {
 protected:
+    explicit MountedCampaignTest(const char* campaign_id)
+        : campaign_id_(campaign_id)
+    {
+    }
+
     void SetUp() override
     {
         restore_default_campaigns();
         previous_ = get_mounted_campaign();
         ASSERT_EQ(CampaignPackageIoError::None,
-                  mount_campaign_package_with_error("org.openglad.westlands"))
-            << "builtin/org.openglad.westlands.glad should restore and mount";
+                  mount_campaign_package_with_error(campaign_id_))
+            << "builtin/" << campaign_id_ << ".glad should restore and mount";
     }
 
     void TearDown() override
     {
-        (void)unmount_campaign_package_with_error("org.openglad.westlands");
+        (void)unmount_campaign_package_with_error(campaign_id_);
         if (!previous_.empty())
             (void)mount_campaign_package_with_error(previous_);
     }
 
 private:
+    std::string campaign_id_;
     std::string previous_;
+};
+
+class WestlandsCampaignTest : public MountedCampaignTest
+{
+protected:
+    WestlandsCampaignTest()
+        : MountedCampaignTest("org.openglad.westlands")
+    {
+    }
 };
 
 struct LoadedWestlandsLevel

@@ -1380,6 +1380,36 @@ if(NOT EMSCRIPTEN)
     )
     add_runtime_assets_dependency(westlands_mapgen)
 
+    # --- longseason_mapgen ("The Long Season" campaign generator) ---
+    # SDL-free authoring tool that produces builtin/org.openglad.longseason.glad,
+    # the 19-level Brass Kettle Company story campaign built season by season
+    # (one source file per season). Not part of the default build; run via
+    # scripts/generate_longseason_campaign.sh.
+    add_executable(longseason_mapgen EXCLUDE_FROM_ALL
+        ${CMAKE_SOURCE_DIR}/tools/longseason_mapgen/main.cpp
+        ${CMAKE_SOURCE_DIR}/tools/longseason_mapgen/levels_spring.cpp
+        ${CMAKE_SOURCE_DIR}/tools/longseason_mapgen/levels_summer.cpp
+        ${CMAKE_SOURCE_DIR}/tools/longseason_mapgen/levels_autumn.cpp
+        ${CMAKE_SOURCE_DIR}/tools/longseason_mapgen/levels_winter.cpp
+        ${CMAKE_SOURCE_DIR}/tools/longseason_mapgen/levels_reckoning.cpp
+        ${SRC_DIR}/platform/text/platform_headless.cpp
+        ${SRC_DIR}/platform/text/walker_headless.cpp
+        ${SRC_DIR}/interface/input/input_state.cpp
+        ${SRC_DIR}/platform/game_context.cpp
+        ${SRC_DIR}/interface/session_state.cpp
+        ${SRC_DIR}/interface/level_runtime_data.cpp
+        ${SRC_DIR}/interface/platform_bridge.cpp
+    )
+    configure_openglad_library(longseason_mapgen)
+    target_link_libraries(longseason_mapgen PRIVATE
+        og_core
+        og_gameplay
+        og_resources
+        m
+        pthread
+    )
+    add_runtime_assets_dependency(longseason_mapgen)
+
     # --- grid_migrate (BASE + DECOR migration for hand-authored packages) ---
     # SDL-free tool that rewrites a stock .glad so legacy combined tiles
     # (torches/brazier/boulders/rubble) become base ground + a decor plane
@@ -2380,6 +2410,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_guard_act_type.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_melee_standoff.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_westlands_calibration.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_longseason_calibration.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_difficulty_scaling.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_game_world_entity_ids.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_weather.cpp
@@ -2432,6 +2463,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_spectator_mode.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_concept_levels.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_westlands_levels.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_longseason_levels.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_decor_format.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_migrated_campaigns.cpp
         )

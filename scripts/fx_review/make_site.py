@@ -138,6 +138,30 @@ WESTLANDS = [
      "The finale: a three-floor volcano cone over an ash plain cut by lava rivers, the war host and the dark host meeting below while the summit waits above. The camera establishes the wedge (the Bearer's warded cleft at the map's west edge), follows the line-brawl, holds the Undergate throat, then climbs the cone — terrace ring, the north lava fall, the summit rim over a caldera of fire, the twin summit cracks — before coming back down to the war. The wild-men relief wakes at tick 400. The point is the climb, not extermination."),
 ]
 
+LONGSEASON_INTRO = (
+    "A 19-level original campaign (org.openglad.longseason): the ledger of "
+    "the Brass Kettle Company, hired blades, across one bad-luck year. Every "
+    "briefing is a ledger entry — spring flood work, summer contracts, "
+    "autumn on the Smelter's Road, a winter of holding passes for pay — and "
+    "from the second job onward the pay keeps coming up wrong: coin warm as "
+    "bread, in every chest the company opens. The thread runs to a "
+    "foundry-city that has been striking its money from its own melted "
+    "foundations. Four scenes are captured below, in ledger order: the "
+    "spring causeway hold as real gameplay, and three spectator films — the "
+    "blizzard toll fort, the creditors' camps at the ash gate, and the "
+    "three-floor climb through the mint itself.")
+
+LONGSEASON = [
+    ("ls_2", "The Ferry Right (level 2)",
+     "Real gameplay in the spring flood, rain coming down on a drowned river. The company plugs the causeway's east mouth so the toll-ferry keeps running: knifemen come over the span first, brigands behind them, and at tick 400 the bandits' boats beach on the north shallows and hit the ferry landing from behind — the level's lesson, learned on camera, is that someone has to hold the rear rank. The ledger notes the job was paid in advance, and that one coin in the pay came warm as bread. The mystery opens here."),
+    ("ls_14", "The Long Toll — blizzard (level 14)",
+     "Winter work: the Grey Tolls fort astride the pass road, snow wall to wall — this map never rolls dry weather. Spectator camera: establish the courtyard (the watch's braziers, the strongroom with the year's takings), follow the wolf strays probing the gates, then cut to the west mouth as the first toll-breaker wave wakes in a flash at tick 300 and ride that fight back up the road; the east mouth answers at 700. The frozen watch drifts in its gully north of the pass, and the toll chest is warm coin to the last penny."),
+    ("ls_17", "Ashfall Gate (level 17)",
+     "The reckoning begins: every company the year stiffed is camped on the ash before the foundry-city's west gate, howling for pay, and the Brass Kettle Company has to fight through its own kind to present its bill first. The camera tours the camps — the horse companies' palisade, the hired bows and casters, the wagon-wall corridor of the foot companies — then holds the gate throat, where slag runnels leak out under the city wall (the first sight of the melt) and two golems cast from the warm metal ward the door. At tick 700 the cut-purses wake behind the crew, on the crew's own treasure line."),
+    ("ls_18", "The Warm Mint — the finale climb (level 18)",
+     "The last entry of the year, on three floors. The mint has been striking coin from the city's own foundations and the vault floor is falling into the melt as it is stripped; the creditor companies force the doors below while the mint's furnace-men, elementals and warm-metal golems hold the works — a three-way war the company climbs through rather than wins. Kettle holds the door pocket, literally. Up the first stair past the casting channels; across the vault floor, threading collapse holes that drop straight into the war below and treasure heaps each warded by a golem; up again to the crucible floor — a lake of melt, ghosts hovering over it, a fire elemental on each rim walk, and The Founder waiting on the dais. The master ledger beside him is the exit: reading the book is the settlement."),
+]
+
 MENUS = [
     ("menu_tour", "Menu system tour",
      "The picker driven by a scripted session: main menu into SETTINGS, the controls screen, and back. Watch buttons highlight and screens swap — this is the real SDL menu loop, captured live."),
@@ -239,6 +263,8 @@ def main():
     sections = [
         ("War of the Westlands (the campaign)", WESTLANDS_INTRO,
          cards_for(WESTLANDS)),
+        ("The Long Season (an original campaign)", LONGSEASON_INTRO,
+         cards_for(LONGSEASON)),
         ("Multiplayer (live simulation)", '', cards_for(MULTI)),
         ("Menu system", '', cards_for(MENUS)),
         ("Actual gameplay (live simulation, campaign levels)", '',
