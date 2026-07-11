@@ -51,6 +51,8 @@ void apply_initial_setup_to_world(GameWorld& world,
     world.my_team = message.my_team;
     world.allied_mode = message.allied_mode;
     world.current_scenario = message.current_scenario;
+    world.respawn_mode = message.respawn_mode;
+    world.generator_rate = message.generator_rate;
     world.completed_levels.clear();
     for (const std::int32_t level_id : message.completed_levels)
         world.completed_levels.insert(level_id);

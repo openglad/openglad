@@ -35,6 +35,14 @@ walker* select_control_for_view(
     GameWorld* world,
     std::optional<std::size_t> player_index = std::nullopt);
 
+// Networked "as if played alone" persist: merge only the characters owned by
+// own_player_index from world_screen's world back into this peer's on-disk
+// save0. The permadeath rule (keep_fallen_heroes) is read from the SESSION
+// save carried on world_screen — the lobby-negotiated setting — never from
+// the stale on-disk copy. Exposed here so tests can pin that contract.
+void persist_owned_characters_to_save0(const screen& world_screen,
+                                       std::uint8_t own_player_index);
+
 } // namespace detail
 
 void reset_network_host_transport_shadow(

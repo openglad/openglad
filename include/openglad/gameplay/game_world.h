@@ -327,6 +327,13 @@ public:
     short ctf_requested_capture_limit = 0;
     short ctf_requested_respawn_ticks = 0;
     short ctf_requested_strip_scenario_troops = 0;
+    // Classic (non-CTF) respawn mode: 0 = off (legacy), 1 = heroes respawn,
+    // 2 = heroes + level-authored AI livings respawn ("endless battle").
+    short respawn_mode = 0;
+    // Generator spawn-rate percent: 0 = default (100). Scales the level-side
+    // Bernoulli bound in walker::act_generate; 100 is an exact integer
+    // identity, keeping the default RNG stream byte-identical.
+    short generator_rate = 0;
     og::sim::CtfState ctf;
     short current_scenario = 0;
     int guy_id_counter = 0;

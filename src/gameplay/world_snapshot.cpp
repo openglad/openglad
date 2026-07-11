@@ -663,6 +663,9 @@ void serialize_ctf_state(std::vector<std::uint8_t>& buffer,
         append_u8(buffer, entry.level);
         append_u16(buffer, entry.ticks_left);
         append_u32(buffer, entry.walker_entity_id);
+        append_i16(buffer, entry.x);
+        append_i16(buffer, entry.y);
+        append_u8(buffer, entry.floor);
     }
 
     append_i16(buffer, snapshot.ctf_requested_team_count);
@@ -752,6 +755,9 @@ void deserialize_ctf_state(ByteReader& reader, og::sim::WorldSnapshot& snapshot)
         entry.level = reader.read_u8("ctf_respawn.level");
         entry.ticks_left = reader.read_u16("ctf_respawn.ticks_left");
         entry.walker_entity_id = reader.read_u32("ctf_respawn.walker_entity_id");
+        entry.x = reader.read_i16("ctf_respawn.x");
+        entry.y = reader.read_i16("ctf_respawn.y");
+        entry.floor = reader.read_u8("ctf_respawn.floor");
         snapshot.ctf_respawn_queue.push_back(entry);
     }
 
@@ -796,6 +802,10 @@ void serialize_world_state(std::vector<std::uint8_t>& buffer,
     append_u8(buffer, snapshot.weather);
     append_u32(buffer, snapshot.snapshot_hash);
     serialize_ctf_state(buffer, snapshot);
+    // Appended AFTER the CTF block so the raw CTF payload-offset pins in
+    // test_ctf_snapshot.cpp stay valid.
+    append_i16(buffer, snapshot.respawn_mode);
+    append_i16(buffer, snapshot.generator_rate);
 }
 
 void deserialize_world_state(ByteReader& reader, og::sim::WorldSnapshot& snapshot)
@@ -828,6 +838,8 @@ void deserialize_world_state(ByteReader& reader, og::sim::WorldSnapshot& snapsho
     snapshot.weather = reader.read_u8("world.weather");
     snapshot.snapshot_hash = reader.read_u32("world.snapshot_hash");
     deserialize_ctf_state(reader, snapshot);
+    snapshot.respawn_mode = reader.read_i16("world.respawn_mode");
+    snapshot.generator_rate = reader.read_i16("world.generator_rate");
 }
 
 void serialize_grid_state(std::vector<std::uint8_t>& buffer,
@@ -1589,6 +1601,20 @@ void apply_entity_snapshot_fields(GameWorld& world,
     // snapshot.floor is uint8 (>= 0); Phase 2 adds the upper clamp to
     // [0, floor_count) once GameWorld tracks a floor count.
     entity.set_floor(static_cast<short>(snapshot.floor));
+    // spawn_x/spawn_y use -1/-1 as the "never recorded" sentinel; collapse any
+    // wire value with a negative half to the full sentinel so a crafted
+    // snapshot cannot invent a partially-set spawn point. spawn_floor is uint8
+    // (>= 0) like floor; the respawn fire path re-validates the spot anyway.
+    std::int16_t safe_spawn_x = snapshot.spawn_x;
+    std::int16_t safe_spawn_y = snapshot.spawn_y;
+    if (safe_spawn_x < 0 || safe_spawn_y < 0)
+    {
+        safe_spawn_x = -1;
+        safe_spawn_y = -1;
+    }
+    entity.set_spawn_x(safe_spawn_x);
+    entity.set_spawn_y(safe_spawn_y);
+    entity.set_spawn_floor(snapshot.spawn_floor);
     // A walker present in a snapshot is by construction awake (capture
     // excludes dormant walkers): clear dormancy so a mirror whose own level
     // load created the same delayed walker reveals it when the authoritative
@@ -2093,6 +2119,9 @@ og::sim::EntitySnapshot capture_entity_snapshot(walker& entity,
     snapshot.sizey = entity.sizey();
     snapshot.sizez = entity.sizez();
     snapshot.floor = static_cast<std::uint8_t>(entity.floor());
+    snapshot.spawn_x = entity.spawn_x();
+    snapshot.spawn_y = entity.spawn_y();
+    snapshot.spawn_floor = entity.spawn_floor();
     snapshot.team_num = entity.team_num();
     snapshot.real_team_num = entity.real_team_num();
     snapshot.user = entity.user();
@@ -2354,6 +2383,8 @@ og::sim::WorldSnapshot capture_snapshot_impl(GameWorld& world,
     snapshot.pause_player_index = world.pause_player_index;
     snapshot.weather = static_cast<std::uint8_t>(world.weather());
     capture_ctf_state(world, snapshot);
+    snapshot.respawn_mode = world.respawn_mode;
+    snapshot.generator_rate = world.generator_rate;
 
     std::unordered_set<int> seen_guy_ids;
     capture_entity_list(world.oblist, snapshot.oblist, snapshot.guy_snapshots,
@@ -2798,6 +2829,8 @@ void apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot)
             ? static_cast<WeatherKind>(snapshot.weather)
             : WeatherKind::None);
     apply_ctf_state(world, snapshot);
+    world.respawn_mode = snapshot.respawn_mode;
+    world.generator_rate = snapshot.generator_rate;
 
     GuyStorage guy_storage;
     GuyLookup guy_lookup;
@@ -2926,6 +2959,8 @@ void apply_delta(WorldSnapshot& baseline, const WorldSnapshot& delta)
     baseline.ctf_requested_respawn_ticks = delta.ctf_requested_respawn_ticks;
     baseline.ctf_requested_strip_scenario_troops =
         delta.ctf_requested_strip_scenario_troops;
+    baseline.respawn_mode = delta.respawn_mode;
+    baseline.generator_rate = delta.generator_rate;
 
     apply_delta_grid(baseline, delta);
     baseline.guy_snapshots = delta.guy_snapshots;

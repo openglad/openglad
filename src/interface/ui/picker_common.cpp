@@ -460,6 +460,44 @@ void toggle_ctf_scenario_troops(SaveData& save)
         static_cast<short>(save.ctf_strip_scenario_troops != 0 ? 0 : 1);
 }
 
+// --- Difficulty submenu match rules ---
+
+void cycle_respawn_mode(SaveData& save)
+{
+    switch (save.respawn_mode)
+    {
+        case 0: save.respawn_mode = 1; break;
+        case 1: save.respawn_mode = 2; break;
+        default: save.respawn_mode = 0; break;
+    }
+}
+
+void cycle_respawn_delay(SaveData& save)
+{
+    switch (save.ctf_respawn_ticks)
+    {
+        case 0: save.ctf_respawn_ticks = 60; break;
+        case 60: save.ctf_respawn_ticks = 360; break;
+        default: save.ctf_respawn_ticks = 0; break;
+    }
+}
+
+void toggle_permadeath(SaveData& save)
+{
+    save.keep_fallen_heroes =
+        static_cast<short>(save.keep_fallen_heroes != 0 ? 0 : 1);
+}
+
+void cycle_generator_rate(SaveData& save)
+{
+    switch (save.generator_rate)
+    {
+        case 0: save.generator_rate = 50; break;
+        case 50: save.generator_rate = 200; break;
+        default: save.generator_rate = 0; break;
+    }
+}
+
 // --- Team choice helpers (local seats) ---
 
 bool team_has_members(const SaveData& save, short team)
@@ -687,6 +725,40 @@ std::string format_ctf_caps_label(const SaveData& save)
 std::string format_ctf_troops_label(const SaveData& save)
 {
     return save.ctf_strip_scenario_troops != 0 ? "Troops: Own" : "Troops: Scen";
+}
+
+std::string format_respawn_mode_label(const SaveData& save)
+{
+    if (save.respawn_mode <= 0)
+        return "Respawns: Off";
+    if (save.respawn_mode == 1)
+        return "Respawns: Heroes";
+    return "Respawns: Everyone";
+}
+
+std::string format_respawn_delay_label(const SaveData& save)
+{
+    // Anything outside the cycle set (including the 0 map-default sentinel)
+    // reads as the default delay.
+    if (save.ctf_respawn_ticks == 60)
+        return "Spawn Delay: Fast";
+    if (save.ctf_respawn_ticks == 360)
+        return "Spawn Delay: Slow";
+    return "Spawn Delay: Normal";
+}
+
+std::string format_permadeath_label(const SaveData& save)
+{
+    return save.keep_fallen_heroes != 0 ? "Permadeath: Off" : "Permadeath: On";
+}
+
+std::string format_generator_rate_label(const SaveData& save)
+{
+    if (save.generator_rate == 50)
+        return "Generators: Calm";
+    if (save.generator_rate == 200)
+        return "Generators: Frenzy";
+    return "Generators: Normal";
 }
 
 // --- Team family extraction ---

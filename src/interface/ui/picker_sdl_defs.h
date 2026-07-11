@@ -73,6 +73,8 @@ button* picker_viewscenario_buttons();
 int picker_viewscenario_button_count();
 button* picker_scenariomenu_buttons();
 int picker_scenariomenu_button_count();
+button* picker_difficulty_menu_buttons();
+int picker_difficulty_menu_button_count();
 
 // --- Team-build layout contract -------------------------------------------
 // 3x3 grid: VIEW/TRAIN/HIRE (y=70), LOAD/SAVE/GO (y=100),
@@ -147,3 +149,29 @@ inline constexpr int kViewScenarioBackIndex = 0;
 inline constexpr int kViewScenarioPrevIndex = 1;
 inline constexpr int kViewScenarioNextIndex = 2;
 inline constexpr int kViewScenarioRowsPerPage = 23;
+
+// --- DIFFICULTY subscreen layout contract -----------------------------------
+// Positional indices into k_difficulty_menu_buttons /
+// picker_difficulty_menu_buttons(). Single 140px column (23-char label budget
+// at 6px/char); every row's label is re-derived per frame from session/save.
+inline constexpr int kDifficultyMenuBackIndex = 0;
+inline constexpr int kDifficultyMenuDifficultyIndex = 1;
+inline constexpr int kDifficultyMenuRespawnModeIndex = 2;
+inline constexpr int kDifficultyMenuRespawnDelayIndex = 3;
+inline constexpr int kDifficultyMenuPermadeathIndex = 4;
+inline constexpr int kDifficultyMenuGeneratorRateIndex = 5;
+inline constexpr int kDifficultyMenuButtonCount = 6;
+
+// Per-frame host gating for the DIFFICULTY subscreen: every settings row is
+// LobbySettings-backed (difficulty included), so a non-host joiner sees only
+// BACK; BACK's vertical cycle is rewired so nav never targets a hidden row.
+void sync_difficulty_menu_visibility(button* buttons, int num_buttons,
+                                     int& highlighted_button);
+
+// A remote (host) GO landing while this peer is parked on the main menu or
+// one of its subscreens: select the Main CONTINUE item and exit, so the
+// shared picker state machine re-enters team build, whose loop-top
+// remote-start check launches the game (team_build_remote_start_requested's
+// main-menu-scope sibling). Returns true and sets retvalue to MENU_EXIT when
+// the start should preempt the current loop.
+bool picker_main_scope_remote_start_requested(int32_t& retvalue);

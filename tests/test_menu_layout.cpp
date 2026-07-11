@@ -1,11 +1,15 @@
 #include <openglad/interface/button.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/interface/screen.h>
+#include <openglad/interface/ui/picker_common.h>
+#include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/picker_lobby_network_client.h>
+#include <openglad/resources/save_data.h>
 #include "../src/interface/ui/picker_sdl_defs.h"
 #include <gtest/gtest.h>
 #include <SDL.h>
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -821,6 +825,117 @@ TEST(MenuLayout, graphics_fx_options_grid_geometry_and_nav)
     button* buttons = picker_graphics_fx_options_buttons();
     const int count = picker_graphics_fx_options_button_count();
     check_fx_options_screen(buttons, count, kExpected, 14, "graphics_fx_options");
+}
+
+// DIFFICULTY subscreen (the main-menu DIFFICULTY door): unique BACK id + the
+// five match-rule rows in one centered 140px column on the FX row pitch.
+// Static labels are the default-state formatter outputs; the screen re-derives
+// every row from session/save each frame, so also pin that every label the
+// formatters can produce fits the 140px face (23 chars at 6px/char).
+TEST(MenuLayout, difficulty_menu_layout_and_nav)
+{
+    static const ExpectedFxButton kExpected[] = {
+        {"difficulty_back", "BACK", 10, 10},
+        {"difficulty", "Difficulty: Battle", 90, 35},
+        {"respawn_mode", "Respawns: Off", 90, 58},
+        {"respawn_delay", "Spawn Delay: Normal", 90, 81},
+        {"permadeath", "Permadeath: On", 90, 104},
+        {"generator_rate", "Generators: Normal", 90, 127},
+    };
+    button* buttons = picker_difficulty_menu_buttons();
+    const int count = picker_difficulty_menu_button_count();
+    ASSERT_EQ(kDifficultyMenuButtonCount, count);
+    check_fx_options_screen(buttons, count, kExpected,
+                            kDifficultyMenuButtonCount, "difficulty_menu");
+
+    // The index contract the label-writing callbacks depend on.
+    EXPECT_EQ("difficulty_back", buttons[kDifficultyMenuBackIndex].id);
+    EXPECT_EQ("difficulty", buttons[kDifficultyMenuDifficultyIndex].id);
+    EXPECT_EQ("respawn_mode", buttons[kDifficultyMenuRespawnModeIndex].id);
+    EXPECT_EQ("respawn_delay", buttons[kDifficultyMenuRespawnDelayIndex].id);
+    EXPECT_EQ("permadeath", buttons[kDifficultyMenuPermadeathIndex].id);
+    EXPECT_EQ("generator_rate", buttons[kDifficultyMenuGeneratorRateIndex].id);
+
+    // Every dynamic label across the full value cycles stays within the
+    // 140px face budget.
+    const int face_width = buttons[kDifficultyMenuDifficultyIndex].sizex;
+    ASSERT_EQ(140, face_width);
+    SaveData save;
+    for (int step = 0; step < 3; ++step)
+    {
+        EXPECT_LE(static_cast<int>(og::ui::format_difficulty_label(step).size()) * 6,
+                  face_width)
+            << og::ui::format_difficulty_label(step);
+        EXPECT_LE(static_cast<int>(og::ui::format_respawn_mode_label(save).size()) * 6,
+                  face_width)
+            << og::ui::format_respawn_mode_label(save);
+        EXPECT_LE(static_cast<int>(og::ui::format_respawn_delay_label(save).size()) * 6,
+                  face_width)
+            << og::ui::format_respawn_delay_label(save);
+        EXPECT_LE(static_cast<int>(og::ui::format_permadeath_label(save).size()) * 6,
+                  face_width)
+            << og::ui::format_permadeath_label(save);
+        EXPECT_LE(static_cast<int>(og::ui::format_generator_rate_label(save).size()) * 6,
+                  face_width)
+            << og::ui::format_generator_rate_label(save);
+        og::ui::cycle_respawn_mode(save);
+        og::ui::cycle_respawn_delay(save);
+        og::ui::toggle_permadeath(save);
+        og::ui::cycle_generator_rate(save);
+    }
+
+    // Non-host (networked joiner) variant: every settings row is
+    // LobbySettings-backed and hides; BACK's vertical cycle is rewired, the
+    // highlight is pulled onto BACK, and the nav graph stays closed and
+    // reachable in BOTH variants.
+    struct FakeLobbyClient final : og::ui::IPickerLobbyClient
+    {
+        bool host = false;
+        void initialize_from_save() override {}
+        void shutdown() override {}
+        void sync_from_save() override {}
+        void sync_roster_from_save() override {}
+        void sync_settings_from_save() override {}
+        void poll_and_apply() override {}
+        void set_player_mode(int) override {}
+        bool request_start_game() override { return false; }
+        std::optional<og::ui::PickerLobbyGameStartConfig>
+        build_game_start_config() const override { return std::nullopt; }
+        std::optional<og::ui::PickerLobbyGameStartConfig>
+        consume_game_start_config() override { return std::nullopt; }
+        [[nodiscard]] bool start_request_pending() const noexcept override
+        {
+            return false;
+        }
+        [[nodiscard]] bool host_controls_visible() const noexcept override
+        {
+            return host;
+        }
+    };
+    FakeLobbyClient lobby;
+    og::ui::IPickerLobbyClient* saved_client =
+        og::ui::active_picker_lobby_client();
+    og::ui::install_active_picker_lobby_client(&lobby);
+
+    lobby.host = false;
+    int highlighted = kDifficultyMenuGeneratorRateIndex;
+    sync_difficulty_menu_visibility(buttons, count, highlighted);
+    for (int i = kDifficultyMenuDifficultyIndex; i < count; ++i)
+        EXPECT_TRUE(buttons[i].hidden) << buttons[i].id;
+    EXPECT_FALSE(buttons[kDifficultyMenuBackIndex].hidden);
+    EXPECT_EQ(kDifficultyMenuBackIndex, highlighted)
+        << "the highlight must be pulled off the hidden rows";
+    check_nav_closed_and_reachable(buttons, count, kDifficultyMenuBackIndex,
+                                   "difficulty_menu_joiner");
+
+    // Host / local variant restores the full column.
+    lobby.host = true;
+    sync_difficulty_menu_visibility(buttons, count, highlighted);
+    og::ui::install_active_picker_lobby_client(saved_client);
+    for (int i = 0; i < count; ++i)
+        EXPECT_FALSE(buttons[i].hidden) << buttons[i].id;
+    check_nav_closed_and_reachable(buttons, count, kDifficultyMenuBackIndex,
+                                   "difficulty_menu_host");
 }
 
 TEST(MenuLayout, networking_buttons_no_overlap)

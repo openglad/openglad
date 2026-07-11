@@ -296,6 +296,9 @@ void append_lobby_settings(std::vector<std::uint8_t>& payload,
     append_i16(payload, settings.ctf_capture_limit);
     append_i16(payload, settings.ctf_respawn_ticks);
     append_i16(payload, settings.ctf_strip_scenario_troops);
+    append_i16(payload, settings.respawn_mode);
+    append_i16(payload, settings.generator_rate);
+    append_i16(payload, settings.keep_fallen_heroes);
 }
 
 og::sim::LobbySettings read_lobby_settings(PayloadReader& reader)
@@ -309,6 +312,9 @@ og::sim::LobbySettings read_lobby_settings(PayloadReader& reader)
     settings.ctf_capture_limit = reader.read_i16();
     settings.ctf_respawn_ticks = reader.read_i16();
     settings.ctf_strip_scenario_troops = reader.read_i16();
+    settings.respawn_mode = reader.read_i16();
+    settings.generator_rate = reader.read_i16();
+    settings.keep_fallen_heroes = reader.read_i16();
     return settings;
 }
 
@@ -407,6 +413,8 @@ std::vector<std::uint8_t> serialize_initial_setup_message(
     append_i16(payload, message.my_team);
     append_i16(payload, message.allied_mode);
     append_i16(payload, message.current_scenario);
+    append_i16(payload, message.respawn_mode);
+    append_i16(payload, message.generator_rate);
     append_u32(payload, static_cast<std::uint32_t>(message.guys.size()));
     for (const auto& guy : message.guys)
         append_initial_setup_guy(payload, guy);
@@ -435,6 +443,8 @@ std::optional<InitialSetupMessage> deserialize_initial_setup_message(
             message.my_team = reader.read_i16();
             message.allied_mode = reader.read_i16();
             message.current_scenario = reader.read_i16();
+            message.respawn_mode = reader.read_i16();
+            message.generator_rate = reader.read_i16();
             const std::uint32_t guy_count = reader.read_u32();
             if (!reader.ok() ||
                 guy_count >

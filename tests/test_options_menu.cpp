@@ -576,7 +576,99 @@ void run_capture_flow(const char* scene, int (*injector)(void*),
     g_picker_max_mainmenu_calls = 0;
 }
 
+// menu_difficulty: main menu -> DIFFICULTY door -> cycle every setting through
+// a FULL loop (3-value cycles get 3 clicks, permadeath 2) so each row visibly
+// changes and every setting ends exactly where it started, then back and quit.
+int menu_difficulty_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    CaptureState* state = static_cast<CaptureState*>(data);
+    state->started = true;
+
+    if (!wait_for_interactable("difficulty", 10000)) {
+        state->finished = true;
+        return 0;
+    }
+    SDL_Delay(1000);
+
+    // Highlight walk down to the DIFFICULTY door before opening it.
+    g_test_menu_nav_key = KEY_DOWN;
+    SDL_Delay(480);
+    g_test_menu_nav_key = KEY_DOWN;
+    SDL_Delay(480);
+
+    bool in_menu = click_until_interactable("difficulty", "difficulty_back", 10000);
+    SDL_Delay(900);
+    if (in_menu || wait_for_interactable("difficulty_back", 10000)) {
+        state->saw_options = true;
+
+        struct RowPlan { const char* id; int clicks; };
+        static const RowPlan kRows[5] = {
+            {"difficulty", 3},     // Battle -> Slaughter -> Skirmish -> Battle
+            {"respawn_mode", 3},   // Off -> Heroes -> Everyone -> Off
+            {"respawn_delay", 3},  // Normal -> Fast -> Slow -> Normal
+            {"permadeath", 2},     // On -> Off -> On
+            {"generator_rate", 3}, // Normal -> Calm -> Frenzy -> Normal
+        };
+        bool all_rows = true;
+        for (const RowPlan& row : kRows) {
+            if (!wait_for_interactable(row.id, 5000)) {
+                all_rows = false;
+                continue;
+            }
+            g_test_menu_nav_key = KEY_DOWN; // walk the highlight row to row
+            SDL_Delay(420);
+            for (int c = 0; c < row.clicks; ++c)
+                capture_toggle(row.id);
+        }
+        state->toured_fx = all_rows;
+
+        if (wait_for_interactable("difficulty_back", 5000)) {
+            SDL_Delay(400);
+            interact("difficulty_back");
+            state->used_options_back = true;
+            SDL_Delay(700);
+        }
+    }
+
+    capture_quit_main_menu(state);
+    state->finished = true;
+    return 0;
+}
+
 } // namespace menu_capture
+
+TEST(OptionsMenu, zz_capture_menu_difficulty)
+{
+    if (!getenv("OG_FX_CAPTURE_DIR"))
+        GTEST_SKIP() << "set OG_FX_CAPTURE_DIR to record";
+    // Session difficulty + save-backed settings must end where they started
+    // (full-cycle discipline).
+    const int diff_before = og::runtime::current_session->current_difficulty_;
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    const short respawn_before = save.respawn_mode;
+    const short delay_before = save.ctf_respawn_ticks;
+    const short keep_before = save.keep_fallen_heroes;
+    const short rate_before = save.generator_rate;
+
+    menu_capture::CaptureState state = {};
+    menu_capture::run_capture_flow("menu_difficulty",
+                                   menu_capture::menu_difficulty_injector,
+                                   state);
+
+    ASSERT_TRUE(state.started);
+    ASSERT_TRUE(state.finished);
+    ASSERT_TRUE(state.saw_options) << "should have entered the difficulty menu";
+    ASSERT_TRUE(state.toured_fx) << "should have cycled every settings row";
+    ASSERT_TRUE(state.used_options_back) << "should have exited via difficulty_back";
+
+    EXPECT_EQ(diff_before, og::runtime::current_session->current_difficulty_);
+    SaveData& after = og::runtime::current_session->myscreen_->save_data;
+    EXPECT_EQ(respawn_before, after.respawn_mode);
+    EXPECT_EQ(delay_before, after.ctf_respawn_ticks);
+    EXPECT_EQ(keep_before, after.keep_fallen_heroes);
+    EXPECT_EQ(rate_before, after.generator_rate);
+}
 
 TEST(OptionsMenu, zz_capture_menu_tour)
 {

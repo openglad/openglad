@@ -19,6 +19,10 @@ struct LobbySaveDataEquivalent {
     std::int16_t ctf_capture_limit = 0;
     std::int16_t ctf_respawn_ticks = 0;
     std::int16_t ctf_strip_scenario_troops = 0;
+    // Difficulty submenu settings (0 = legacy default behavior for all three).
+    std::int16_t respawn_mode = 0;
+    std::int16_t generator_rate = 0;
+    std::int16_t keep_fallen_heroes = 0;
     std::vector<LobbyCharacterSlot> team_list;
 
     bool operator==(const LobbySaveDataEquivalent&) const = default;

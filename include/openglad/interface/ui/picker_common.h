@@ -132,6 +132,25 @@ bool is_ctf_campaign(const SaveData& save);
 // Toggle the CTF scenario-troops strip flag (0 = keep authored troops).
 void toggle_ctf_scenario_troops(SaveData& save);
 
+// --- Difficulty submenu match rules ---
+// Every default (0) is bit-identical classic behavior; the cyclers walk the
+// small closed value sets and normalize any out-of-set stored value back to
+// the default on the next step.
+
+// Cycle respawn mode: 0 (off) -> 1 (heroes) -> 2 (everyone) -> 0.
+void cycle_respawn_mode(SaveData& save);
+
+// Cycle the respawn delay ticks: 0 (normal/map default) -> 60 (fast)
+// -> 360 (slow) -> 0. Rides the existing ctf_respawn_ticks field.
+void cycle_respawn_delay(SaveData& save);
+
+// Toggle permadeath: keep_fallen_heroes 0 (permadeath ON, classic) <-> 1.
+void toggle_permadeath(SaveData& save);
+
+// Cycle the generator rate percent: 0 (normal/100) -> 50 (calm)
+// -> 200 (frenzy) -> 0.
+void cycle_generator_rate(SaveData& save);
+
 // --- Team choice helpers (local seats) ---
 
 // True when any roster slot is on the given team.
@@ -263,6 +282,18 @@ std::string format_ctf_caps_label(const SaveData& save);
 // Format the scenario-troops label ("Troops: Scen" when keeping authored
 // troops, "Troops: Own" when stripping them).
 std::string format_ctf_troops_label(const SaveData& save);
+
+// "Respawns: Off" / "Respawns: Heroes" / "Respawns: Everyone".
+std::string format_respawn_mode_label(const SaveData& save);
+
+// "Spawn Delay: Normal" / "Spawn Delay: Fast" / "Spawn Delay: Slow".
+std::string format_respawn_delay_label(const SaveData& save);
+
+// "Permadeath: On" / "Permadeath: Off" (On == keep_fallen_heroes == 0).
+std::string format_permadeath_label(const SaveData& save);
+
+// "Generators: Normal" / "Generators: Calm" / "Generators: Frenzy".
+std::string format_generator_rate_label(const SaveData& save);
 
 // --- Team family extraction ---
 

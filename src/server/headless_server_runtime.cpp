@@ -81,6 +81,8 @@ void sync_world_from_save_data(GameWorld& world, const SaveData& save)
     world.ctf_requested_capture_limit = save.ctf_capture_limit;
     world.ctf_requested_respawn_ticks = save.ctf_respawn_ticks;
     world.ctf_requested_strip_scenario_troops = save.ctf_strip_scenario_troops;
+    world.respawn_mode = save.respawn_mode;
+    world.generator_rate = save.generator_rate;
     world.current_scenario = save.scen_num;
     for (int index = 0; index < MAX_PLAYERS; ++index)
         world.m_score[index] = save.m_score[index];
@@ -181,6 +183,11 @@ void spawn_team_from_save(GameWorld& world, const SaveData& save)
         {
             created->teleport();
         }
+        // Record the level-entry spawn point (the classic respawn feature
+        // revives heroes here). Read back from the walker so the RNG teleport
+        // fallback position is captured exactly.
+        created->set_spawn_point(created->xpos(), created->ypos(),
+                                 static_cast<std::uint8_t>(created->floor()));
     }
 
     while (walker* marker = find_first_of(
@@ -325,6 +332,9 @@ void apply_headless_lobby_game_start_config(
     save.ctf_respawn_ticks = static_cast<short>(config_save.ctf_respawn_ticks);
     save.ctf_strip_scenario_troops =
         static_cast<short>(config_save.ctf_strip_scenario_troops);
+    save.respawn_mode = static_cast<short>(config_save.respawn_mode);
+    save.generator_rate = static_cast<short>(config_save.generator_rate);
+    save.keep_fallen_heroes = static_cast<short>(config_save.keep_fallen_heroes);
     save.my_team = 0;
 
     for (auto& member : save.team_list)

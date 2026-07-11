@@ -119,6 +119,8 @@ EPICS = [
 MENUS = [
     ("menu_tour", "Menu system tour",
      "The picker driven by a scripted session: main menu into SETTINGS, the controls screen, and back. Watch buttons highlight and screens swap — this is the real SDL menu loop, captured live."),
+    ("menu_difficulty", "Difficulty submenu walkthrough",
+     "The DIFFICULTY door on the main menu opens the new submenu: Difficulty (Battle/Skirmish/Slaughter), Respawns (Off/Heroes/Everyone), Respawn Delay (Normal/Fast/Slow), Permadeath (On/Off) and Generators (Normal/Calm/Frenzy). Every row is cycled through a full loop — labels change live and every setting ends where it started."),
     ("menu_effects", "Effects settings walkthrough",
      "The three-way FX split: GAMEPLAY FX, UI FX and GRAPHICS FX subscreens, with toggles flipping red/green live (each is flipped twice so your saved settings are untouched)."),
 ]

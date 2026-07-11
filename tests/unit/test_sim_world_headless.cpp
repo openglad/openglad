@@ -2,12 +2,15 @@
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/sim_emit.h>
 #include <openglad/gameplay/game_world.h>
+#include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/pixdefs.h>
 #include "../test_game_world_fixture.h"
 
 #include <gtest/gtest.h>
+
+#include <vector>
 
 // --- EventKind values ---
 
@@ -330,4 +333,91 @@ TEST(SimWorldHeadless, arrow_wall_is_solid_for_unowned_special)
     EXPECT_FALSE(t.world().query_grid_passable(
         static_cast<float>(gx * GRID_SIZE),
         static_cast<float>(gy * GRID_SIZE), special));
+}
+
+// --- Generator spawn-rate multiplier (difficulty submenu) ---
+
+// The generator cadence gate scales the Bernoulli COMPARISON by
+// world.generator_rate percent (level_draw * rate > threshold_draw * 100);
+// the draw bounds themselves never change. At the defaults (0 = unset and
+// the explicit 100) both sides carry the same factor, so the world RNG
+// stream must be byte-identical draw for draw. A non-default rate must
+// diverge (different success odds -> extra direction draws on success).
+TEST(SimWorldHeadless, generator_rate_default_keeps_rng_stream_identical)
+{
+    constexpr int kTicks = 400;
+    const auto run = [](short rate) {
+        TestGameWorld t;
+        GameWorld& world = t.world();
+        world.generator_rate = rate;
+
+        walker* generator = world.add_ob(Order::Generator, FAMILY_TOWER);
+        EXPECT_NE(nullptr, generator);
+        generator->setxy(80, 80);
+        generator->stats()->set_level(5);
+        generator->set_act_type(ACT_GENERATE);
+
+        world.rng_.state_ = 0xC0FFEE42u;
+        std::vector<std::uint32_t> states;
+        states.reserve(kTicks);
+        for (int i = 0; i < kTicks; ++i)
+        {
+            generator->act();
+            // Test-built walkers carry no animation table, so a successful
+            // roll would otherwise wedge in ANI_ATTACK; reset symmetrically
+            // in every run so the cadence gate rolls each tick.
+            generator->set_ani_type(ANI_WALK);
+            states.push_back(world.rng_.state_);
+        }
+        return states;
+    };
+
+    const std::vector<std::uint32_t> baseline = run(0);
+    EXPECT_EQ(baseline, run(100))
+        << "rate 100 must be an exact integer identity with the legacy bound";
+    EXPECT_NE(baseline, run(200))
+        << "a non-default rate must change the generator RNG stream";
+}
+
+// Calm (rate 50) must REDUCE a generator's cadence, never silence it: the
+// rate scales the comparison, not the draw bound, so even a level-1
+// generator (level_draw in {0,1,2}) can still win the roll. A scaled BOUND
+// would collapse to next(1) == 0 at level 1 and never fire — and the
+// sanitize floor (25) would reach the forbidden SimRandom::next(0). Success
+// is observed via the +1 self-heal on every successful roll.
+TEST(SimWorldHeadless, generator_rate_calm_keeps_level1_generators_live)
+{
+    constexpr int kTicks = 8000;
+    const auto successes = [](short rate) {
+        TestGameWorld t;
+        GameWorld& world = t.world();
+        world.generator_rate = rate;
+
+        walker* generator = world.add_ob(Order::Generator, FAMILY_TOWER);
+        EXPECT_NE(nullptr, generator);
+        generator->setxy(80, 80);
+        generator->stats()->set_level(1);
+        generator->set_act_type(ACT_GENERATE);
+        generator->stats()->set_max_hitpoints(30000);
+        generator->stats()->set_hitpoints(100);
+
+        world.rng_.state_ = 0xC0FFEE42u;
+        for (int i = 0; i < kTicks; ++i)
+        {
+            generator->act();
+            generator->set_ani_type(ANI_WALK); // keep the cadence gate rolling
+        }
+        return generator->stats()->hitpoints() - 100;
+    };
+
+    const auto baseline = successes(0);
+    const auto calm = successes(50);
+    const auto sanitize_floor = successes(25);
+    ASSERT_GT(baseline, 0) << "a level-1 generator fires on the default rate";
+    EXPECT_GT(calm, 0) << "Calm halves the odds; it must not go silent";
+    EXPECT_LT(calm, baseline) << "Calm fires less often than the default";
+    EXPECT_GT(sanitize_floor, 0)
+        << "the lobby-sanitize floor (25) must keep level-1 generators live";
+    EXPECT_LE(sanitize_floor, calm)
+        << "a lower rate can never out-fire a higher one on the same stream";
 }

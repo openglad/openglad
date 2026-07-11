@@ -20,7 +20,9 @@ constexpr std::array<PickerMenuItem, 11> kMainMenuItems = {{
     {"3_player", "3 Player", PickerMenuCommand::SetPlayerMode, 3},
     {"2_player", "2 Player", PickerMenuCommand::SetPlayerMode, 2},
     {"1_player", "1 Player", PickerMenuCommand::SetPlayerMode, 1},
-    {"difficulty", "Difficulty", PickerMenuCommand::SetDifficulty},
+    // The DIFFICULTY entry is a door into the DIFFICULTY submenu
+    // (kDifficultyMenuItems below); the in-place cycle moved in there.
+    {"difficulty", "Difficulty", PickerMenuCommand::OpenDifficultyMenu},
     {"pvp_allied", "PVP Mode", PickerMenuCommand::ToggleAlliedMode},
     {"level_edit", "Level Edit", PickerMenuCommand::LevelEdit},
     {"options", "Options", PickerMenuCommand::Options},
@@ -62,6 +64,18 @@ constexpr std::array<PickerMenuItem, 6> kScenarioItems = {{
     {"back", "Back", PickerMenuCommand::Back},
 }};
 
+// The DIFFICULTY submenu: session difficulty plus the match rules that ride
+// SaveData (respawns, respawn delay, permadeath, generator rate). Defaults
+// keep classic behavior; the terminal clients present it as a nested list.
+constexpr std::array<PickerMenuItem, 6> kDifficultyMenuItems = {{
+    {"difficulty", "Difficulty", PickerMenuCommand::SetDifficulty},
+    {"respawn_mode", "Respawns", PickerMenuCommand::CycleRespawnMode},
+    {"respawn_delay", "Respawn Delay", PickerMenuCommand::CycleRespawnDelay},
+    {"permadeath", "Permadeath", PickerMenuCommand::TogglePermadeath},
+    {"generator_rate", "Generators", PickerMenuCommand::CycleGeneratorRate},
+    {"back", "Back", PickerMenuCommand::Back},
+}};
+
 constexpr PickerMenuDefinition kMainMenu{
     PickerMenuId::Main,
     "OpenGlad Main Menu",
@@ -80,6 +94,12 @@ constexpr PickerMenuDefinition kScenarioMenu{
     std::span<const PickerMenuItem>(kScenarioItems),
 };
 
+constexpr PickerMenuDefinition kDifficultyMenu{
+    PickerMenuId::Difficulty,
+    "Difficulty",
+    std::span<const PickerMenuItem>(kDifficultyMenuItems),
+};
+
 } // namespace
 
 const PickerMenuDefinition& picker_menu_definition(PickerMenuId menu)
@@ -91,6 +111,8 @@ const PickerMenuDefinition& picker_menu_definition(PickerMenuId menu)
         return kTeamBuildMenu;
     case PickerMenuId::Scenario:
         return kScenarioMenu;
+    case PickerMenuId::Difficulty:
+        return kDifficultyMenu;
     }
     return kMainMenu;
 }

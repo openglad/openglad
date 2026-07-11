@@ -921,7 +921,7 @@ void viewscreen::process_input(const InputState& input_state)
 
 	// Handle render-layer effects from the sim result
 	if (result.endgame_requested &&
-	    !og::sim::ctf_suppress_team_wipe_endgame(active_screen()->world()))
+	    !og::sim::respawn_suppress_team_wipe_endgame(active_screen()->world()))
 	{
 		active_screen()->endgame(result.endgame_type);
 		return;

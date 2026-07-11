@@ -91,6 +91,18 @@ std::uint32_t query_difficulty_percent()
     return (difficulty > 0) ? static_cast<std::uint32_t>(difficulty) : 100u;
 }
 
+std::uint32_t query_generator_rate_percent()
+{
+    if (current_game == nullptr || current_game->world == nullptr)
+        return 100u;
+    const int rate = current_game->world->generator_rate;
+    if (rate <= 0)
+        return 100u;
+    // Sim-side robustness clamp mirroring the lobby sanitize range: the value
+    // also arrives unclamped from hand-edited v12 saves and crafted snapshots.
+    return static_cast<std::uint32_t>(std::clamp(rate, 25, 400));
+}
+
 IRandom& walker_rng()
 {
     if (IRandom* override_rng = gameplay_rng_override())
@@ -1298,8 +1310,19 @@ bool walker::fire_check(short xdelta, short ydelta)
 bool
 walker::act_generate()
 {
+	// Generator spawn-rate percent scales the cadence COMPARISON, not the
+	// draw bounds: `level_draw * rate > threshold_draw * 100`. At the default
+	// (100) both sides carry the same factor, so the outcome AND the whole
+	// RNG stream are byte-identical to the legacy `level_draw >
+	// threshold_draw` form. A non-default rate leaves every draw bound
+	// untouched too, so there is no SimRandom::next(0) trap at any rate and
+	// level-1 generators stay live on Calm (a scaled BOUND of level*3*50/100
+	// == 1 could only ever draw 0 and never fire). uint64 keeps the products
+	// exact even for crafted stats levels. Never changes the number or order
+	// of rng_ draws.
+	const std::uint64_t generator_rate_percent = query_generator_rate_percent();
 	if ( current_game->world->living_count < MAXOBS &&
-	        (current_game->world->rng_.next(static_cast<std::uint32_t>(stats_->level() * 3)) > current_game->world->rng_.next(static_cast<std::uint32_t>(300 + (current_game->world->living_count * 8))) )
+	        (current_game->world->rng_.next(static_cast<std::uint32_t>(stats_->level() * 3)) * generator_rate_percent > current_game->world->rng_.next(static_cast<std::uint32_t>(300 + (current_game->world->living_count * 8))) * std::uint64_t{100} )
 	   )
 	{
 		set_lastx(static_cast<float>(1 - static_cast<std::int32_t>(current_game->world->rng_.next(3))));

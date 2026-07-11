@@ -494,10 +494,18 @@ TEST(PlatformHeadless, text_picker_drives_menu_options_team_and_campaign_paths)
     // Team Build is 12 items now (7=back, 8=networking, 9=Scenario); the
     // scenario-shaped commands nest under the Scenario submenu
     // (1=set_campaign, 2=set_level, 3=view_scenario, 4=teams, 5=progress,
-    // 6=back).
+    // 6=back). Main 7=difficulty opens the DIFFICULTY submenu
+    // (1=difficulty, 2=respawns, 3=respawn delay, 4=permadeath,
+    // 5=generators, 6=back).
     const std::string input =
         "bad\n"     // main: invalid choice
-        "7\n"       // main: difficulty
+        "7\n"       // main: difficulty -> DIFFICULTY submenu
+        "1\n"       // difficulty: cycle difficulty
+        "2\n"       // difficulty: cycle respawns
+        "3\n"       // difficulty: cycle respawn delay
+        "4\n"       // difficulty: toggle permadeath
+        "5\n"       // difficulty: cycle generators
+        "6\n"       // difficulty: back -> main
         "3\n"       // main: 4 player
         "4\n"       // main: 3 player
         "5\n"       // main: 2 player

@@ -62,6 +62,15 @@ og::sim::LobbySettings sanitize_settings(const og::sim::LobbySettings& requested
     {
         sanitized.ctf_strip_scenario_troops = fallback.ctf_strip_scenario_troops;
     }
+    if (sanitized.respawn_mode < 0 || sanitized.respawn_mode > 2)
+        sanitized.respawn_mode = fallback.respawn_mode;
+    if (sanitized.generator_rate != 0)
+    {
+        sanitized.generator_rate =
+            std::clamp<std::int16_t>(sanitized.generator_rate, 25, 400);
+    }
+    if (sanitized.keep_fallen_heroes != 0 && sanitized.keep_fallen_heroes != 1)
+        sanitized.keep_fallen_heroes = fallback.keep_fallen_heroes;
     return sanitized;
 }
 
@@ -678,6 +687,9 @@ LobbySaveDataEquivalent LobbyServer::build_save_data_equivalent() const
     equivalent.ctf_capture_limit = state_.settings.ctf_capture_limit;
     equivalent.ctf_respawn_ticks = state_.settings.ctf_respawn_ticks;
     equivalent.ctf_strip_scenario_troops = state_.settings.ctf_strip_scenario_troops;
+    equivalent.respawn_mode = state_.settings.respawn_mode;
+    equivalent.generator_rate = state_.settings.generator_rate;
+    equivalent.keep_fallen_heroes = state_.settings.keep_fallen_heroes;
     equivalent.current_campaign = state_.settings.campaign_id.empty()
         ? std::string(kDefaultCampaignId)
         : state_.settings.campaign_id;

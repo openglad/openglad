@@ -177,6 +177,11 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 			// Scatter the overflowing characters..
 			temp_walker->teleport();
 		}
+		// Record the level-entry spawn point (the classic respawn feature
+		// revives heroes here). Read back from the walker so the RNG teleport
+		// fallback position is captured exactly.
+		temp_walker->set_spawn_point(temp_walker->xpos(), temp_walker->ypos(),
+		                             static_cast<std::uint8_t>(temp_walker->floor()));
 	}
     
 	    // Destroy all player markers (by setting them to dead)

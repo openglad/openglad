@@ -111,18 +111,20 @@ walker* select_control_for_view(
             return mapped;
     }
 
-    // CTF respawn keep-alive: while a player is dead the server nulls its
-    // control (ControlChange entity 0), but the view must keep following the
-    // corpse so the camera holds and the RESPAWN IN countdown renders. Retain
-    // the previous control when it still resolves in this display world
-    // (re-verified by id every sync — clients can receive removals) and is
-    // either a dead myguy corpse with a pending revive entry, or already
-    // alive wearing this player's user tag (the one-tick window between the
-    // mirror's revive snapshot and the server's reclaim ControlChange). An
-    // explicit nonzero mapped id above always wins, so a player who switched
-    // bodies never has the old corpse steal the view back; once the pending
-    // entry disappears without a revive, this falls through to nullptr.
-    if ((world->type & GameWorld::TYPE_CTF) && world->ctf.active &&
+    // Respawn keep-alive (CTF match or classic respawn mode): while a player
+    // is dead the server nulls its control (ControlChange entity 0), but the
+    // view must keep following the corpse so the camera holds and the
+    // RESPAWN IN countdown renders. Retain the previous control when it
+    // still resolves in this display world (re-verified by id every sync —
+    // clients can receive removals) and is either a dead myguy corpse with a
+    // pending revive entry, or already alive wearing this player's user tag
+    // (the one-tick window between the mirror's revive snapshot and the
+    // server's reclaim ControlChange). An explicit nonzero mapped id above
+    // always wins, so a player who switched bodies never has the old corpse
+    // steal the view back; once the pending entry disappears without a
+    // revive, this falls through to nullptr.
+    if ((((world->type & GameWorld::TYPE_CTF) && world->ctf.active) ||
+         og::sim::classic_respawn_active(*world)) &&
         view->control != nullptr &&
         world->find_by_id(view->control->entity_id()) == view->control)
     {
@@ -148,6 +150,52 @@ walker* select_control_for_view(
     }
 
     return nullptr;
+}
+
+// Networked "as if played alone" persist: write only the characters owned by
+// own_player_index back into this peer's real save0, leaving every other slot
+// (other players' characters, this player's not-brought characters) intact.
+// world_screen is the authoritative server world on the host, or the snapshot
+// mirror on a client; both carry owner tags on each myguy.
+void persist_owned_characters_to_save0(const screen& world_screen,
+                                       std::uint8_t own_player_index)
+{
+    if (own_player_index == guy::kNoOwner)
+        return;
+
+    SaveData merged;
+    if (merged.load_with_error("save0") != SaveDataIoError::None)
+    {
+        // No untouched pre-session roster to merge into; skip rather than
+        // clobber save0 with a partial team.
+        LogError("net_persist_skipped reason=no_presession_save0 player={}\n",
+                 own_player_index);
+        return;
+    }
+
+    // The permadeath rule is a lobby-negotiated MATCH setting: read it from
+    // the session save (which carries the negotiated flag), never from
+    // whatever the on-disk save0 last stored — the lobby apply-back only
+    // updates in-memory saves, so the disk copy is stale for this session.
+    // Deliberately persisted below with the rest of the merged save (like
+    // the campaign cursor), so save0 reflects the last session's rules.
+    merged.keep_fallen_heroes = world_screen.save_data.keep_fallen_heroes;
+
+    merged.merge_owned_guys_from(world_screen.world().oblist, own_player_index);
+
+    // Advance this player's OWN campaign cursor to match the just-finished
+    // transition (scen_num + completed levels), so save0 reflects solo progress
+    // "as if they played alone". The team-build menu reloads save0 between
+    // levels and the lobby re-broadcasts this scen_num, so the next level is
+    // chosen from each peer's own advanced save — not the combined netsession
+    // roster. (world_screen.save_data already holds the advanced cursor: the
+    // server's finalize set it, and the client display's endgame() advanced it.)
+    merged.current_campaign = world_screen.save_data.current_campaign;
+    merged.scen_num = world_screen.save_data.scen_num;
+    merged.completed_levels = world_screen.save_data.completed_levels;
+
+    if (merged.save_with_error("save0") != SaveDataIoError::None)
+        LogError("net_persist_save_failed player={}\n", own_player_index);
 }
 
 } // namespace og::runtime::detail
@@ -270,44 +318,6 @@ bool save_shadow_save_data(screen& gameplay_screen,
     return false;
 }
 
-// Networked "as if played alone" persist: write only the characters owned by
-// own_player_index back into this peer's real save0, leaving every other slot
-// (other players' characters, this player's not-brought characters) intact.
-// world_screen is the authoritative server world on the host, or the snapshot
-// mirror on a client; both carry owner tags on each myguy.
-void persist_owned_characters_to_save0(const screen& world_screen,
-                                       std::uint8_t own_player_index)
-{
-    if (own_player_index == guy::kNoOwner)
-        return;
-
-    SaveData merged;
-    if (merged.load_with_error("save0") != SaveDataIoError::None)
-    {
-        // No untouched pre-session roster to merge into; skip rather than
-        // clobber save0 with a partial team.
-        LogError("net_persist_skipped reason=no_presession_save0 player={}\n",
-                 own_player_index);
-        return;
-    }
-
-    merged.merge_owned_guys_from(world_screen.world().oblist, own_player_index);
-
-    // Advance this player's OWN campaign cursor to match the just-finished
-    // transition (scen_num + completed levels), so save0 reflects solo progress
-    // "as if they played alone". The team-build menu reloads save0 between
-    // levels and the lobby re-broadcasts this scen_num, so the next level is
-    // chosen from each peer's own advanced save — not the combined netsession
-    // roster. (world_screen.save_data already holds the advanced cursor: the
-    // server's finalize set it, and the client display's endgame() advanced it.)
-    merged.current_campaign = world_screen.save_data.current_campaign;
-    merged.scen_num = world_screen.save_data.scen_num;
-    merged.completed_levels = world_screen.save_data.completed_levels;
-
-    if (merged.save_with_error("save0") != SaveDataIoError::None)
-        LogError("net_persist_save_failed player={}\n", own_player_index);
-}
-
 // Tally the just-finished level into the save (scores/cash/time bonus, mark it
 // completed, advance scen_num to next_level, rebuild the team roster) and persist
 // it — to the transient "netsession" slot for networked play (plus this peer's
@@ -359,7 +369,8 @@ bool finalize_level_and_advance_cursor(screen& gameplay_screen,
         if (!save_shadow_save_data(gameplay_screen, "complete_level",
                                    "netsession"))
             return false;
-        persist_owned_characters_to_save0(gameplay_screen, own_player_index);
+        og::runtime::detail::persist_owned_characters_to_save0(
+            gameplay_screen, own_player_index);
         return true;
     }
 
@@ -628,7 +639,11 @@ void configure_display_game_client(og::runtime::LocalTransportRuntime& runtime,
                     og::runtime::LocalTransportRuntime::Mode::ClientOnly &&
                 display_player_index.has_value())
             {
-                persist_owned_characters_to_save0(
+                // The mirror's last snapshot can predate the server's
+                // synchronous exit-accept revive-all; flush the queue here
+                // so the merge below never sees a mid-respawn hero as dead.
+                og::sim::classic_respawn_flush_pending(gameplay_screen.world());
+                og::runtime::detail::persist_owned_characters_to_save0(
                     gameplay_screen,
                     static_cast<std::uint8_t>(*display_player_index));
             }
@@ -667,6 +682,15 @@ void configure_display_game_client(og::runtime::LocalTransportRuntime& runtime,
     display_client.set_game_flow_event_batch_callback(
         [&gameplay_screen, runtime_ptr = &runtime, display_player_index](
             const og::sim::SimEventBatch& batch) {
+            // A won level can end while heroes sit in the classic respawn
+            // queue (the synchronous exit-accept path fires the EndGame
+            // before any post-flush snapshot reaches this mirror). Revive
+            // them on the mirror BEFORE any display-side roster persist —
+            // screen::endgame's solo save0 autosave inside the dispatch, and
+            // the client save0 merge below. Idempotent: on in-tick end
+            // shapes the flushed queue already arrived empty.
+            if (batch_is_level_won(batch))
+                og::sim::classic_respawn_flush_pending(gameplay_screen.world());
             dispatch_display_event_batch(gameplay_screen, batch);
             if (runtime_ptr != nullptr &&
                 (gameplay_screen.world().end != 0 ||
@@ -682,7 +706,7 @@ void configure_display_game_client(og::runtime::LocalTransportRuntime& runtime,
                     display_player_index.has_value() &&
                     batch_is_level_won(batch))
                 {
-                    persist_owned_characters_to_save0(
+                    og::runtime::detail::persist_owned_characters_to_save0(
                         gameplay_screen,
                         static_cast<std::uint8_t>(*display_player_index));
                 }

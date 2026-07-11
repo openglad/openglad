@@ -117,9 +117,15 @@ inline constexpr std::uint8_t BIT_VZ = 87;
 inline constexpr std::uint8_t BIT_SIZEZ = 88;
 inline constexpr std::uint8_t BIT_FLOOR = 89;
 
-inline constexpr std::uint8_t FIELD_COUNT = 90;
+// Level-entry spawn point (90-92). Recorded once at the deploy sites and
+// consumed by the classic respawn engine; -1/-1 x/y sentinel = never set.
+inline constexpr std::uint8_t BIT_SPAWN_X = 90;
+inline constexpr std::uint8_t BIT_SPAWN_Y = 91;
+inline constexpr std::uint8_t BIT_SPAWN_FLOOR = 92;
 
-static_assert(BIT_FLOOR + 1 == FIELD_COUNT,
+inline constexpr std::uint8_t FIELD_COUNT = 93;
+
+static_assert(BIT_SPAWN_FLOOR + 1 == FIELD_COUNT,
               "Dirty field bit count drift -- update dirty_field_bits.h");
 
 static_assert(FIELD_COUNT <= 128,

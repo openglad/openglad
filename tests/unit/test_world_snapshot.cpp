@@ -523,6 +523,9 @@ void expect_entity_snapshot_eq(const og::sim::EntitySnapshot& expected,
     EXPECT_EQ(expected.current_distance, actual.current_distance);
     EXPECT_EQ(expected.controller_id, actual.controller_id);
     EXPECT_EQ(expected.do_bounce, actual.do_bounce);
+    EXPECT_EQ(expected.spawn_x, actual.spawn_x);
+    EXPECT_EQ(expected.spawn_y, actual.spawn_y);
+    EXPECT_EQ(expected.spawn_floor, actual.spawn_floor);
 }
 
 void expect_world_snapshot_eq(const og::sim::WorldSnapshot& expected,
@@ -553,6 +556,8 @@ void expect_world_snapshot_eq(const og::sim::WorldSnapshot& expected,
     EXPECT_EQ(expected.paused, actual.paused);
     EXPECT_EQ(expected.pause_player_index, actual.pause_player_index);
     EXPECT_EQ(expected.weather, actual.weather);
+    EXPECT_EQ(expected.respawn_mode, actual.respawn_mode);
+    EXPECT_EQ(expected.generator_rate, actual.generator_rate);
     EXPECT_EQ(expected.grid_width, actual.grid_width);
     EXPECT_EQ(expected.grid_height, actual.grid_height);
     EXPECT_EQ(expected.grid_dirty, actual.grid_dirty);
@@ -713,7 +718,7 @@ TEST(WorldSnapshot, entity_snapshot_layout_matches_dirty_field_table)
 {
     static_assert(std::is_standard_layout_v<og::sim::EntitySnapshot>);
     static_assert(std::is_trivially_copyable_v<og::sim::EntitySnapshot>);
-    EXPECT_EQ(88u, og::sim::kEntitySnapshotTableFieldCount);
+    EXPECT_EQ(91u, og::sim::kEntitySnapshotTableFieldCount);
     EXPECT_EQ(2u, og::sim::kEntitySnapshotManualFieldCount);
     EXPECT_EQ(og::dirty::FIELD_COUNT, og::sim::kEntitySnapshotTrackedFieldCount);
 
@@ -2179,8 +2184,9 @@ TEST(WorldSnapshot, deserialize_snapshot_and_delta_reject_oversized_payloads_and
         decode_delta_payload_for_test(delta_bytes);
 
     // Offset of grid.full_grid_size in a default delta payload: format byte +
-    // 191 bytes of world scalars (the CTF block adds 120) + 4 grid bytes.
-    constexpr std::size_t kEntityCountOffset = 196;
+    // 195 bytes of world scalars (the CTF block adds 120, the difficulty
+    // submenu scalars 4) + 4 grid bytes.
+    constexpr std::size_t kEntityCountOffset = 200;
     ASSERT_GE(raw_payload.size(), kEntityCountOffset + sizeof(std::uint32_t));
     raw_payload[kEntityCountOffset + 0] = 0xffu;
     raw_payload[kEntityCountOffset + 1] = 0xffu;
@@ -2836,4 +2842,112 @@ TEST(WorldSnapshot, apply_preserves_dormant_walkers_and_wakes_on_presence)
     ASSERT_NE(nullptr, woken);
     ASSERT_FALSE(woken->dormant())
         << "presence in a snapshot implies awake — mirrors must reveal";
+}
+
+// The difficulty-submenu world scalars (respawn_mode / generator_rate) are
+// world state on the wire: they must survive the exact capture -> serialize
+// -> deserialize -> apply path clients use, and the delta merge.
+TEST(WorldSnapshot, difficulty_submenu_world_scalars_round_trip_to_mirror)
+{
+    TestGameWorld source_fx;
+    GameWorld& source = source_fx.world();
+    configure_snapshot_test_services(source);
+    source.resize_grid(32, 32);
+    fill_world_grid(source, PIX_GRASS1);
+
+    source.respawn_mode = 2;
+    source.generator_rate = 200;
+
+    const og::sim::WorldSnapshot keyframe =
+        og::sim::capture_keyframe_snapshot(source);
+    EXPECT_EQ(2, keyframe.respawn_mode);
+    EXPECT_EQ(200, keyframe.generator_rate);
+
+    const std::vector<std::uint8_t> bytes = og::sim::serialize_snapshot(keyframe);
+    const og::sim::WorldSnapshot decoded = og::sim::deserialize_snapshot(bytes);
+    EXPECT_EQ(2, decoded.respawn_mode);
+    EXPECT_EQ(200, decoded.generator_rate);
+
+    TestGameWorld mirror_fx;
+    GameWorld& mirror = mirror_fx.world();
+    configure_snapshot_test_services(mirror);
+    ASSERT_EQ(0, mirror.respawn_mode);
+    ASSERT_EQ(0, mirror.generator_rate);
+    og::sim::apply_snapshot(mirror, decoded);
+    EXPECT_EQ(2, mirror.respawn_mode)
+        << "respawn_mode must reach the mirror world through apply";
+    EXPECT_EQ(200, mirror.generator_rate)
+        << "generator_rate must reach the mirror world through apply";
+
+    // Delta merge carries the scalars onto a stale baseline.
+    og::sim::WorldSnapshot baseline;
+    og::sim::apply_delta(baseline, decoded);
+    EXPECT_EQ(2, baseline.respawn_mode);
+    EXPECT_EQ(200, baseline.generator_rate);
+}
+
+// Level-entry spawn points ride the entity snapshot: recorded values must
+// survive the wire, and a crafted snapshot with a half-set spawn point must
+// collapse to the -1/-1 sentinel on apply.
+TEST(WorldSnapshot, spawn_point_fields_round_trip_and_clamp_on_apply)
+{
+    TestGameWorld fx;
+    GameWorld& world = fx.world();
+    configure_snapshot_test_services(world);
+    world.resize_grid(32, 32);
+    fill_world_grid(world, PIX_GRASS1);
+
+    walker* actor = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, actor);
+    actor->setxy(80, 80);
+    actor->set_spawn_point(120, 88, 1);
+    const std::uint32_t actor_id = actor->entity_id();
+
+    const og::sim::WorldSnapshot keyframe =
+        og::sim::capture_keyframe_snapshot(world);
+    const og::sim::EntitySnapshot* captured = nullptr;
+    for (const auto& entity : keyframe.oblist)
+        if (entity.entity_id == actor_id)
+            captured = &entity;
+    ASSERT_NE(nullptr, captured);
+    EXPECT_EQ(120, captured->spawn_x);
+    EXPECT_EQ(88, captured->spawn_y);
+    EXPECT_EQ(1, static_cast<int>(captured->spawn_floor));
+
+    const std::vector<std::uint8_t> bytes = og::sim::serialize_snapshot(keyframe);
+    const og::sim::WorldSnapshot decoded = og::sim::deserialize_snapshot(bytes);
+
+    TestGameWorld mirror_fx;
+    GameWorld& mirror = mirror_fx.world();
+    configure_snapshot_test_services(mirror);
+    og::sim::apply_snapshot(mirror, decoded);
+    walker* mirrored = nullptr;
+    for (auto& uptr : mirror.oblist)
+        if (walker* w = uptr.get(); w != nullptr && w->entity_id() == actor_id)
+            mirrored = w;
+    ASSERT_NE(nullptr, mirrored);
+    EXPECT_EQ(120, static_cast<int>(mirrored->spawn_x()))
+        << "spawn_x must survive the snapshot wire";
+    EXPECT_EQ(88, static_cast<int>(mirrored->spawn_y()));
+    EXPECT_EQ(1, static_cast<int>(mirrored->spawn_floor()));
+
+    // Hostile: a negative half collapses the whole spawn point to the sentinel.
+    og::sim::WorldSnapshot hostile = decoded;
+    for (auto& entity : hostile.oblist)
+    {
+        if (entity.entity_id == actor_id)
+        {
+            entity.spawn_x = -5;
+            entity.spawn_y = 200;
+        }
+    }
+    og::sim::apply_snapshot(mirror, hostile);
+    walker* clamped = nullptr;
+    for (auto& uptr : mirror.oblist)
+        if (walker* w = uptr.get(); w != nullptr && w->entity_id() == actor_id)
+            clamped = w;
+    ASSERT_NE(nullptr, clamped);
+    EXPECT_EQ(-1, static_cast<int>(clamped->spawn_x()))
+        << "half-set spawn points must collapse to the sentinel";
+    EXPECT_EQ(-1, static_cast<int>(clamped->spawn_y()));
 }

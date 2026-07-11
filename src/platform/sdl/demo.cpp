@@ -137,6 +137,10 @@ static void spawn_random_player_team(screen* s, std::mt19937& rng)
         if (w) {
             w->set_team_num(0);
             w->teleport();
+            // Record the level-entry spawn point (mirrors the game.cpp deploy
+            // loop; the demo's teleport scatter is the entry position).
+            w->set_spawn_point(w->xpos(), w->ypos(),
+                               static_cast<std::uint8_t>(w->floor()));
         }
     }
 }

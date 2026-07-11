@@ -310,6 +310,33 @@ void sync_view_team_host_control_visibility(button* buttons,
     ensure_highlighted_button_visible(buttons, num_buttons, highlighted_button);
 }
 
+void sync_difficulty_menu_visibility(button* buttons,
+                                     int num_buttons,
+                                     int& highlighted_button)
+{
+    if (buttons == nullptr || num_buttons < kDifficultyMenuButtonCount)
+        return;
+
+    // Every settings row on this screen is LobbySettings-backed (difficulty
+    // included): a joiner's click would be rejected by the server and the
+    // per-frame label re-derive would immediately restore the host's value.
+    // Hide the rows for non-hosts (the GO / SET LEVEL precedent) and rewire
+    // BACK's vertical cycle so nav never lands on a hidden button.
+    const bool host_controls_visible = picker_lobby_host_controls_visible();
+    for (int index = kDifficultyMenuDifficultyIndex;
+         index < kDifficultyMenuButtonCount; ++index)
+    {
+        buttons[index].hidden = !host_controls_visible;
+        sync_button_hidden_state(buttons, index);
+    }
+    buttons[kDifficultyMenuBackIndex].nav.up =
+        host_controls_visible ? kDifficultyMenuGeneratorRateIndex : -1;
+    buttons[kDifficultyMenuBackIndex].nav.down =
+        host_controls_visible ? kDifficultyMenuDifficultyIndex : -1;
+
+    ensure_highlighted_button_visible(buttons, num_buttons, highlighted_button);
+}
+
 // Per-session picker message buffer: access via current_session->message_.
 
 #define STAT_NUM_OFFSET 42
@@ -2802,6 +2829,34 @@ int picker_team_build_testing_exercise_internal_paths()
     sync_view_team_host_control_visibility(buttons, 1, highlighted);
     check(!buttons[kViewTeamGoButtonIndex].hidden);
 
+    // DIFFICULTY subscreen gating: every settings row hides for a non-host;
+    // BACK's vertical cycle is rewired and the highlight is pulled onto BACK.
+    for (int i = 0; i < 11; ++i)
+        buttons[i].hidden = false;
+    buttons[kDifficultyMenuBackIndex].nav.up = kDifficultyMenuGeneratorRateIndex;
+    buttons[kDifficultyMenuBackIndex].nav.down = kDifficultyMenuDifficultyIndex;
+    int diff_highlight = kDifficultyMenuGeneratorRateIndex;
+    client.host_visible = false;
+    sync_difficulty_menu_visibility(buttons, kDifficultyMenuButtonCount,
+                                    diff_highlight);
+    check(buttons[kDifficultyMenuDifficultyIndex].hidden &&
+        buttons[kDifficultyMenuRespawnModeIndex].hidden &&
+        buttons[kDifficultyMenuRespawnDelayIndex].hidden &&
+        buttons[kDifficultyMenuPermadeathIndex].hidden &&
+        buttons[kDifficultyMenuGeneratorRateIndex].hidden &&
+        buttons[kDifficultyMenuBackIndex].nav.up == -1 &&
+        buttons[kDifficultyMenuBackIndex].nav.down == -1 &&
+        diff_highlight == kDifficultyMenuBackIndex);
+    client.host_visible = true;
+    sync_difficulty_menu_visibility(buttons, kDifficultyMenuButtonCount,
+                                    diff_highlight);
+    check(!buttons[kDifficultyMenuDifficultyIndex].hidden &&
+        !buttons[kDifficultyMenuGeneratorRateIndex].hidden &&
+        buttons[kDifficultyMenuBackIndex].nav.up ==
+            kDifficultyMenuGeneratorRateIndex &&
+        buttons[kDifficultyMenuBackIndex].nav.down ==
+            kDifficultyMenuDifficultyIndex);
+
     g_start_game_requested = false;
     Sint32 retvalue = 0;
     check(!team_build_remote_start_requested(retvalue));
@@ -2813,6 +2868,23 @@ int picker_team_build_testing_exercise_internal_paths()
     check(team_build_start_selected());
     pks().selected_menu_item = nullptr;
     check(!team_build_start_selected());
+    g_start_game_requested = false;
+
+    // Main-menu-scope remote start (mainmenu + the DIFFICULTY subscreen):
+    // exits with the Main CONTINUE item selected so the state machine
+    // re-enters team build, which consumes the start.
+    retvalue = 0;
+    check(!picker_main_scope_remote_start_requested(retvalue));
+    g_start_game_requested = true;
+    client.has_start_config = false;
+    check(!picker_main_scope_remote_start_requested(retvalue));
+    client.has_start_config = true;
+    check(picker_main_scope_remote_start_requested(retvalue) &&
+        (retvalue & MENU_EXIT));
+    check(pks().selected_menu_item != nullptr &&
+        pks().selected_menu_item->command ==
+            og::ui::PickerMenuCommand::ContinueGame);
+    pks().selected_menu_item = nullptr;
     g_start_game_requested = false;
     picker_prepare_async_team_build_start_request();
     check(client.requested);

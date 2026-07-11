@@ -1887,3 +1887,178 @@ TEST(PickerCommon, paginate_team_detail_edge_cases)
     EXPECT_EQ("a", tiny[0]);
     EXPECT_EQ("c", tiny[1]);
 }
+
+// --- Difficulty submenu match rules (cyclers + exact label pins) ---
+
+TEST(PickerCommon, cycle_respawn_mode_sequence)
+{
+    SaveData save;
+    ASSERT_EQ(0, (int)save.respawn_mode) << "default is Off (classic behavior)";
+
+    og::ui::cycle_respawn_mode(save);
+    ASSERT_EQ(1, (int)save.respawn_mode) << "Off -> Heroes";
+    og::ui::cycle_respawn_mode(save);
+    ASSERT_EQ(2, (int)save.respawn_mode) << "Heroes -> Everyone";
+    og::ui::cycle_respawn_mode(save);
+    ASSERT_EQ(0, (int)save.respawn_mode) << "Everyone wraps back to Off";
+    og::ui::cycle_respawn_mode(save);
+    ASSERT_EQ(1, (int)save.respawn_mode) << "the cycle repeats";
+
+    // Out-of-set stored values normalize back to the Off default.
+    save.respawn_mode = 7;
+    og::ui::cycle_respawn_mode(save);
+    ASSERT_EQ(0, (int)save.respawn_mode);
+    save.respawn_mode = -3;
+    og::ui::cycle_respawn_mode(save);
+    ASSERT_EQ(0, (int)save.respawn_mode);
+}
+
+TEST(PickerCommon, cycle_respawn_delay_sequence)
+{
+    SaveData save;
+    ASSERT_EQ(0, (int)save.ctf_respawn_ticks)
+        << "default is 0 (normal = map/default delay)";
+
+    og::ui::cycle_respawn_delay(save);
+    ASSERT_EQ(60, (int)save.ctf_respawn_ticks) << "Normal -> Fast";
+    og::ui::cycle_respawn_delay(save);
+    ASSERT_EQ(360, (int)save.ctf_respawn_ticks) << "Fast -> Slow";
+    og::ui::cycle_respawn_delay(save);
+    ASSERT_EQ(0, (int)save.ctf_respawn_ticks) << "Slow wraps back to Normal";
+    og::ui::cycle_respawn_delay(save);
+    ASSERT_EQ(60, (int)save.ctf_respawn_ticks) << "the cycle repeats";
+
+    // A stored non-cycle tick count (e.g. the 120 CTF engine default) steps
+    // back to the 0 sentinel rather than jumping to an arbitrary set member.
+    save.ctf_respawn_ticks = 120;
+    og::ui::cycle_respawn_delay(save);
+    ASSERT_EQ(0, (int)save.ctf_respawn_ticks);
+}
+
+TEST(PickerCommon, toggle_permadeath)
+{
+    SaveData save;
+    ASSERT_EQ(0, (int)save.keep_fallen_heroes)
+        << "default is permadeath ON (classic drop-dead-heroes behavior)";
+
+    og::ui::toggle_permadeath(save);
+    ASSERT_EQ(1, (int)save.keep_fallen_heroes) << "On -> Off keeps fallen heroes";
+    og::ui::toggle_permadeath(save);
+    ASSERT_EQ(0, (int)save.keep_fallen_heroes) << "Off -> On restores the default";
+
+    // Any nonzero stored value toggles back to permadeath ON.
+    save.keep_fallen_heroes = 5;
+    og::ui::toggle_permadeath(save);
+    ASSERT_EQ(0, (int)save.keep_fallen_heroes);
+}
+
+TEST(PickerCommon, cycle_generator_rate_sequence)
+{
+    SaveData save;
+    ASSERT_EQ(0, (int)save.generator_rate)
+        << "default is 0 (normal = 100 percent)";
+
+    og::ui::cycle_generator_rate(save);
+    ASSERT_EQ(50, (int)save.generator_rate) << "Normal -> Calm";
+    og::ui::cycle_generator_rate(save);
+    ASSERT_EQ(200, (int)save.generator_rate) << "Calm -> Frenzy";
+    og::ui::cycle_generator_rate(save);
+    ASSERT_EQ(0, (int)save.generator_rate) << "Frenzy wraps back to Normal";
+    og::ui::cycle_generator_rate(save);
+    ASSERT_EQ(50, (int)save.generator_rate) << "the cycle repeats";
+
+    // An explicit 100 (or any out-of-set value) normalizes to the 0 sentinel.
+    save.generator_rate = 100;
+    og::ui::cycle_generator_rate(save);
+    ASSERT_EQ(0, (int)save.generator_rate);
+}
+
+TEST(PickerCommon, format_respawn_mode_label)
+{
+    SaveData save;
+    save.respawn_mode = 0;
+    ASSERT_EQ("Respawns: Off", og::ui::format_respawn_mode_label(save));
+    save.respawn_mode = 1;
+    ASSERT_EQ("Respawns: Heroes", og::ui::format_respawn_mode_label(save));
+    save.respawn_mode = 2;
+    ASSERT_EQ("Respawns: Everyone", og::ui::format_respawn_mode_label(save));
+
+    // Out-of-set values render as the nearest sane end of the range.
+    save.respawn_mode = -1;
+    ASSERT_EQ("Respawns: Off", og::ui::format_respawn_mode_label(save));
+    save.respawn_mode = 9;
+    ASSERT_EQ("Respawns: Everyone", og::ui::format_respawn_mode_label(save));
+}
+
+TEST(PickerCommon, format_respawn_delay_label)
+{
+    SaveData save;
+    save.ctf_respawn_ticks = 0;
+    ASSERT_EQ("Spawn Delay: Normal", og::ui::format_respawn_delay_label(save));
+    save.ctf_respawn_ticks = 60;
+    ASSERT_EQ("Spawn Delay: Fast", og::ui::format_respawn_delay_label(save));
+    save.ctf_respawn_ticks = 360;
+    ASSERT_EQ("Spawn Delay: Slow", og::ui::format_respawn_delay_label(save));
+
+    // Non-cycle tick counts (a map-authored 120, say) read as Normal.
+    save.ctf_respawn_ticks = 120;
+    ASSERT_EQ("Spawn Delay: Normal", og::ui::format_respawn_delay_label(save));
+}
+
+TEST(PickerCommon, format_permadeath_label)
+{
+    SaveData save;
+    save.keep_fallen_heroes = 0;
+    ASSERT_EQ("Permadeath: On", og::ui::format_permadeath_label(save));
+    save.keep_fallen_heroes = 1;
+    ASSERT_EQ("Permadeath: Off", og::ui::format_permadeath_label(save));
+}
+
+TEST(PickerCommon, format_generator_rate_label)
+{
+    SaveData save;
+    save.generator_rate = 0;
+    ASSERT_EQ("Generators: Normal", og::ui::format_generator_rate_label(save));
+    save.generator_rate = 50;
+    ASSERT_EQ("Generators: Calm", og::ui::format_generator_rate_label(save));
+    save.generator_rate = 200;
+    ASSERT_EQ("Generators: Frenzy", og::ui::format_generator_rate_label(save));
+
+    // A raw 100 percent (or any out-of-set value) reads as Normal.
+    save.generator_rate = 100;
+    ASSERT_EQ("Generators: Normal", og::ui::format_generator_rate_label(save));
+}
+
+TEST(PickerCommon, difficulty_submenu_labels_fit_140px_rows)
+{
+    // The SDL DIFFICULTY subscreen draws 140px-wide single-column rows at
+    // 6px/char = 23-character budget; labels are centered with no clipping,
+    // so every variant of every row label must fit.
+    SaveData save;
+    std::vector<std::string> labels;
+    for (short mode : {short(0), short(1), short(2)})
+    {
+        save.respawn_mode = mode;
+        labels.push_back(og::ui::format_respawn_mode_label(save));
+    }
+    for (short ticks : {short(0), short(60), short(360)})
+    {
+        save.ctf_respawn_ticks = ticks;
+        labels.push_back(og::ui::format_respawn_delay_label(save));
+    }
+    for (short keep : {short(0), short(1)})
+    {
+        save.keep_fallen_heroes = keep;
+        labels.push_back(og::ui::format_permadeath_label(save));
+    }
+    for (short rate : {short(0), short(50), short(200)})
+    {
+        save.generator_rate = rate;
+        labels.push_back(og::ui::format_generator_rate_label(save));
+    }
+    for (int difficulty : {0, 1, 2})
+        labels.push_back(og::ui::format_difficulty_label(difficulty));
+
+    for (const std::string& label : labels)
+        EXPECT_LE(label.size(), 23u) << label;
+}

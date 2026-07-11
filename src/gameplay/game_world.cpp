@@ -1461,6 +1461,10 @@ void GameWorld::tick()
         ending = 1;
         next_level = -1;
         events.push_notification("Mission timed out. Retreating.", 40);
+        // A loss persists nothing, but flush pending classic respawns anyway
+        // so the results screen shows revived heroes instead of mid-respawn
+        // corpses. No-op (and RNG-free) when respawn_mode == 0.
+        og::sim::classic_respawn_flush_pending(*this);
         return;
     }
 
@@ -1609,12 +1613,34 @@ void GameWorld::tick()
         if (game_ended)
             return;
     }
-    else if (level_done == 2)
+    else
     {
-        game_ended = true;
-        ending = 0;
-        next_level = static_cast<short>(id + 1);
-        return;
+        // A foe merely awaiting a classic respawn (queued, or a corpse the
+        // death scan below will queue) still counts as alive: "endless
+        // battle" (respawn_mode 2) cannot be won by killing every live foe
+        // inside one respawn window. Always false when the engine is off.
+        if (level_done == 2 &&
+            !og::sim::classic_respawn_pending_hostile_foe(*this))
+        {
+            game_ended = true;
+            ending = 0;
+            next_level = static_cast<short>(id + 1);
+        }
+        // A session-layer end (world.end) latches game_ended below; fold it
+        // in here so the classic end-of-level revive-all covers end-driven
+        // completions too (observable state is unchanged: the fold only
+        // reorders the same latch+return ahead of a no-op hook by default).
+        if (end)
+            game_ended = true;
+        // Classic respawn engine: AFTER the completion decision (its
+        // end-of-level revive-all must observe game_ended this same tick,
+        // before the session layer stops ticking and persists the roster)
+        // and BEFORE the dead sweep (the death scan needs this tick's
+        // corpses). No-op when respawn_mode == 0, so the default path stays
+        // byte-identical.
+        og::sim::classic_respawn_run_tick(*this);
+        if (game_ended)
+            return;
     }
 
     if (end)

@@ -427,6 +427,9 @@ private:
         settings.ctf_capture_limit = save.ctf_capture_limit;
         settings.ctf_respawn_ticks = save.ctf_respawn_ticks;
         settings.ctf_strip_scenario_troops = save.ctf_strip_scenario_troops;
+        settings.respawn_mode = save.respawn_mode;
+        settings.generator_rate = save.generator_rate;
+        settings.keep_fallen_heroes = save.keep_fallen_heroes;
 
         og::sim::LobbyMessage message;
         message.payload = og::sim::LobbySettingsChangeMessage{
@@ -531,6 +534,9 @@ private:
         save.ctf_capture_limit = state_->settings.ctf_capture_limit;
         save.ctf_respawn_ticks = state_->settings.ctf_respawn_ticks;
         save.ctf_strip_scenario_troops = state_->settings.ctf_strip_scenario_troops;
+        save.respawn_mode = state_->settings.respawn_mode;
+        save.generator_rate = state_->settings.generator_rate;
+        save.keep_fallen_heroes = state_->settings.keep_fallen_heroes;
         save.numplayers = static_cast<unsigned char>(
             spectator_mode_
                 ? 0

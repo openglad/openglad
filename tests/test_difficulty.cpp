@@ -34,22 +34,36 @@ static void cleanup_picker_state()
     pks().main_title_logo_data.free();
 }
 
-// Test: Toggle difficulty from main menu
+// Test: The main-menu DIFFICULTY button is a DOOR into the blocking
+// DIFFICULTY subscreen (unique BACK id "difficulty_back"), which holds the
+// difficulty cycler plus the four match-rule settings.
 //
-// Flow: Main Menu -> click "difficulty" a few times -> Continue -> Back
-//
-// The difficulty button cycles through: "Skirmish", "Battle", "Slaughter"
+// Flow: Main Menu -> DIFFICULTY door -> cycle every setting a full cycle
+// (difficulty x3, respawns x3, delay x3, permadeath x2, generators x3 — all
+// back to their defaults) -> BACK -> player modes -> Continue -> Back
 //
 // Verifies:
-//   1. Difficulty button is clickable
-//   2. Doesn't crash when toggled
-//   3. Main menu still works after toggling
+//   1. The door opens the subscreen (its rows become interactable)
+//   2. Every settings row is clickable and a full cycle restores defaults
+//   3. BACK returns to a working main menu (player modes / continue still work)
 
 struct DifficultyState {
     bool started;
     bool finished;
-    bool clicked_difficulty;
+    bool entered_submenu;
+    bool cycled_settings;
 };
+
+// Click `id` `times` times, spacing the clicks so each press/release pair is
+// consumed before the next (a second press without a release is dropped).
+static void interact_times(const std::string& id, int times)
+{
+    for (int i = 0; i < times; ++i) {
+        fprintf(stderr, "  [test] clicking %s (%d/%d)\n", id.c_str(), i + 1, times);
+        interact(id);
+        SDL_Delay(300);
+    }
+}
 
 static int difficulty_injector(void* data)
 {
@@ -60,18 +74,28 @@ static int difficulty_injector(void* data)
     wait_for_interactable("difficulty", 5000);
     SDL_Delay(750);
 
-    // Toggle difficulty a few times
-    fprintf(stderr, "  [test] clicking difficulty (toggle 1)\n");
+    // Open the DIFFICULTY door.
+    fprintf(stderr, "  [test] clicking difficulty (door)\n");
     interact("difficulty");
+    if (!wait_for_interactable("difficulty_back", 5000)) {
+        fprintf(stderr, "  [test] DIFFICULTY subscreen never appeared\n");
+        return 0;
+    }
+    state->entered_submenu = true;
     SDL_Delay(300);
 
-    fprintf(stderr, "  [test] clicking difficulty (toggle 2)\n");
-    interact("difficulty");
-    SDL_Delay(300);
+    // Full cycle on every row: each setting ends back at its default.
+    interact_times("difficulty", 3);     // Battle -> Slaughter -> Skirmish -> Battle
+    interact_times("respawn_mode", 3);   // Off -> Heroes -> Everyone -> Off
+    interact_times("respawn_delay", 3);  // Normal -> Fast -> Slow -> Normal
+    interact_times("permadeath", 2);     // On -> Off -> On
+    interact_times("generator_rate", 3); // Normal -> Calm -> Frenzy -> Normal
+    state->cycled_settings = true;
 
-    fprintf(stderr, "  [test] clicking difficulty (toggle 3)\n");
-    interact("difficulty");
-    state->clicked_difficulty = true;
+    // Leave the subscreen.
+    fprintf(stderr, "  [test] clicking difficulty_back\n");
+    interact("difficulty_back");
+    wait_for_interactable("continue_game", 5000);
     SDL_Delay(300);
 
     // Exercise all multiplayer player-count redraw branches.
@@ -108,15 +132,21 @@ static int difficulty_injector(void* data)
     return 0;
 }
 
-TEST(Difficulty, toggle) {
+TEST(Difficulty, submenu_door_flow) {
     trace_clear();
 
-    og::runtime::current_session->myscreen_->save_data.scen_num = 1;
-    og::runtime::current_session->myscreen_->save_data.numplayers = 1;
-    og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
-    og::runtime::current_session->myscreen_->save_data.save("save0");
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.current_campaign = "org.openglad.gladiator";
+    save.respawn_mode = 0;
+    save.ctf_respawn_ticks = 0;
+    save.keep_fallen_heroes = 0;
+    save.generator_rate = 0;
+    save.save("save0");
+    og::runtime::current_session->current_difficulty_ = 1;
 
-    DifficultyState state = { false, false, false };
+    DifficultyState state = { false, false, false, false };
     SDL_Thread* thread = SDL_CreateThread(difficulty_injector, "difficulty_test", &state);
     ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
 
@@ -132,6 +162,15 @@ TEST(Difficulty, toggle) {
     g_picker_max_mainmenu_calls = 0;
 
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
-    ASSERT_TRUE(state.clicked_difficulty) << "should have toggled difficulty";
-}
+    ASSERT_TRUE(state.entered_submenu) << "DIFFICULTY door should open the subscreen";
+    ASSERT_TRUE(state.cycled_settings) << "should have cycled every setting";
 
+    // Full cycles restore every setting to its default.
+    SaveData& after = og::runtime::current_session->myscreen_->save_data;
+    EXPECT_EQ(1, og::runtime::current_session->current_difficulty_)
+        << "difficulty should be back at Battle after a full cycle";
+    EXPECT_EQ(0, after.respawn_mode) << "respawns should be back at Off";
+    EXPECT_EQ(0, after.ctf_respawn_ticks) << "respawn delay should be back at Normal";
+    EXPECT_EQ(0, after.keep_fallen_heroes) << "permadeath should be back at On";
+    EXPECT_EQ(0, after.generator_rate) << "generators should be back at Normal";
+}

@@ -187,6 +187,11 @@ Sint32 main_controls_options();
 Sint32 gameplay_fx_options();
 Sint32 ui_fx_options();
 Sint32 graphics_fx_options();
+Sint32 run_difficulty_menu(); // Blocking DIFFICULTY subscreen (match rules)
+Sint32 change_respawn_mode();
+Sint32 change_respawn_delay();
+Sint32 change_permadeath();
+Sint32 change_generator_rate();
 Sint32 toggle_player_control_mode(Sint32 arg);
 Sint32 edit_player_keymap(Sint32 arg);
 std::string build_player_control_summary(int player_index);
@@ -286,6 +291,14 @@ enum class ButtonAction : Sint32
     ToggleScreenShake = 84,
     OpenGameplayFxSettings = 85,
     OpenUiFxSettings = 86,
+    // DIFFICULTY subscreen: the main-menu DIFFICULTY door plus the four
+    // match-rule cyclers that live inside it (the difficulty cycler itself
+    // reuses SetDifficulty = 24).
+    OpenDifficultyMenu = 87,
+    CycleRespawnMode = 88,
+    CycleRespawnDelay = 89,
+    TogglePermadeath = 90,
+    CycleGeneratorRate = 91,
 };
 
 inline constexpr Sint32 button_action_id(ButtonAction action)

@@ -214,6 +214,19 @@ class walker : public og::sim::SimEntity
 		OG_WALKER_DIRTY_FIELD(std::uint32_t, leader_id, og::dirty::BIT_LEADER_ID);
 		OG_WALKER_DIRTY_FIELD(std::uint32_t, owner_id, og::dirty::BIT_OWNER_ID);
 		OG_WALKER_DIRTY_FIELD(std::uint32_t, collide_ob_id, og::dirty::BIT_COLLIDE_OB_ID);
+		// Level-entry spawn point: where this walker was deployed at level
+		// start (marker, teleport scatter, or authored placement). Recorded
+		// once at the deploy sites; the classic respawn engine revives
+		// eligible walkers here. -1/-1 = never recorded (legacy default).
+		OG_WALKER_DIRTY_FIELD(std::int16_t, spawn_x, og::dirty::BIT_SPAWN_X);
+		OG_WALKER_DIRTY_FIELD(std::int16_t, spawn_y, og::dirty::BIT_SPAWN_Y);
+		OG_WALKER_DIRTY_FIELD(std::uint8_t, spawn_floor, og::dirty::BIT_SPAWN_FLOOR);
+		void set_spawn_point(short x, short y, std::uint8_t floor)
+		{
+			set_spawn_x(static_cast<std::int16_t>(x));
+			set_spawn_y(static_cast<std::int16_t>(y));
+			set_spawn_floor(floor);
+		}
 		std::int32_t regen_delay() const { return regen_delay_; }
 		void set_regen_delay(std::int32_t value)
 		{
@@ -368,6 +381,9 @@ class walker : public og::sim::SimEntity
 		std::uint32_t leader_id_ = 0;
 		std::uint32_t owner_id_ = 0;
 		std::uint32_t collide_ob_id_ = 0;
+		std::int16_t spawn_x_ = -1;
+		std::int16_t spawn_y_ = -1;
+		std::uint8_t spawn_floor_ = 0;
 		std::uint32_t last_self_teleport_tick_ = 0;
 		// Server-only transient (not replicated, like path_to_foe): ticks until
 		// the next Z transition is allowed, preventing stair/fall bounce. Always

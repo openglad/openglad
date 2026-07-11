@@ -18,6 +18,7 @@ enum class PickerMenuId : std::int32_t
     Main,
     TeamBuild,
     Scenario,
+    Difficulty,
 };
 
 enum class PickerMenuCommand : std::int32_t
@@ -50,6 +51,11 @@ enum class PickerMenuCommand : std::int32_t
     ViewScenario,
     Teams,
     Scenario,
+    OpenDifficultyMenu,
+    CycleRespawnMode,
+    CycleRespawnDelay,
+    TogglePermadeath,
+    CycleGeneratorRate,
 };
 
 struct PickerMenuItem

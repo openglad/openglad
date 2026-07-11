@@ -99,6 +99,9 @@ void apply_lobby_game_start_config(
     save.ctf_respawn_ticks = static_cast<short>(config_save.ctf_respawn_ticks);
     save.ctf_strip_scenario_troops =
         static_cast<short>(config_save.ctf_strip_scenario_troops);
+    save.respawn_mode = static_cast<short>(config_save.respawn_mode);
+    save.generator_rate = static_cast<short>(config_save.generator_rate);
+    save.keep_fallen_heroes = static_cast<short>(config_save.keep_fallen_heroes);
     if (save.allied_mode != 0)
     {
         save.my_team = 0;

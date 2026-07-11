@@ -111,17 +111,14 @@ void redraw_mainmenu()
     og::runtime::current_session->allbuttons_[4]->vdisplay();
     og::runtime::current_session->allbuttons_[5]->vdisplay();
 
-    og::runtime::current_session->allbuttons_[6]->label = og::ui::format_difficulty_label(og::runtime::current_session->current_difficulty_);
+    // The DIFFICULTY button keeps its static door label; the difficulty
+    // cycler (and its dynamic label) lives inside the DIFFICULTY subscreen.
 
     // Show the allied mode or spectator label
     if (game->save_data.numplayers == 0)
         og::runtime::current_session->allbuttons_[7]->label = "SPECTATOR";
     else
         og::runtime::current_session->allbuttons_[7]->label = og::ui::format_allied_mode_label(game->save_data);
-    #else
-
-    og::runtime::current_session->allbuttons_[2]->label = og::ui::format_difficulty_label(og::runtime::current_session->current_difficulty_);
-    
     #endif
 
     count = 0;
@@ -180,6 +177,12 @@ Sint32 mainmenu(Sint32 arg1)
 	while(!(retvalue & MENU_EXIT))
 	{
         picker_lobby_poll();
+        // A host GO while this joiner is parked on the main menu: leave with
+        // CONTINUE selected so present_menu() routes the shared state machine
+        // into team build, whose loop-top remote-start check launches the
+        // game (mirrors team_build_remote_start_requested).
+        if (picker_main_scope_remote_start_requested(retvalue))
+            break;
 	    // Input
 		{
 			Sint32 click = leftmouse(buttons);

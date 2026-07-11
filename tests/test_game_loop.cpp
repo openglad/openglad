@@ -3003,3 +3003,219 @@ TEST(GameLoop, zz_capture_epic_battles)
              {254, 640, 180, 0, false}, {350, 640, 180, 0, false},
              {354, 640, 330, 2, false}, {480, 640, 330, 2, false}});
 }
+
+// ---------------------------------------------------------------------------
+// Classic respawn e2e (difficulty submenu "Respawns: Heroes"): on a real
+// level driven through the full local-transport game loop (authoritative
+// server sim + display mirror), a hero killed through the sim damage path
+// must schedule a classic respawn, hold the camera on the pending corpse,
+// revive at its recorded level-entry point, and get its player control
+// reclaimed by the server and rebound on the display.
+// ---------------------------------------------------------------------------
+
+#include <openglad/gameplay/gameplay_context.h>
+#include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/ctf/ctf_state.h>
+#include <openglad/gameplay/statistics.h>
+
+namespace {
+
+// Install a gameplay context bound to the authoritative server world so
+// direct sim calls (attack, setxy) run against the right world/obmap and
+// have an event log to write to (the shadow's own server context is
+// installed only inside finish_tick).
+struct ScopedServerWorldContext
+{
+    GameplayContext context;
+    GameplayContext* previous;
+    og::sim::SimEventLog events;
+
+    explicit ScopedServerWorldContext(screen& server_screen)
+        : previous(current_game)
+    {
+        context.world = &server_screen.world();
+        context.save = &server_screen.save_data;
+        context.sim_events = &events;
+        current_game = &context;
+    }
+    ~ScopedServerWorldContext() { current_game = previous; }
+
+    ScopedServerWorldContext(const ScopedServerWorldContext&) = delete;
+    ScopedServerWorldContext& operator=(const ScopedServerWorldContext&) = delete;
+};
+
+walker* find_server_hero(GameWorld& world)
+{
+    for (const auto& uptr : world.oblist)
+    {
+        walker* w = uptr.get();
+        if (w != nullptr && !w->dead() && w->query_order() == Order::Living &&
+            w->myguy != nullptr)
+        {
+            return w;
+        }
+    }
+    return nullptr;
+}
+
+walker* find_server_enemy(GameWorld& world, unsigned char hero_team)
+{
+    for (const auto& uptr : world.oblist)
+    {
+        walker* w = uptr.get();
+        if (w != nullptr && !w->dead() && w->query_order() == Order::Living &&
+            w->team_num() != hero_team && w->myguy == nullptr)
+        {
+            return w;
+        }
+    }
+    return nullptr;
+}
+
+} // namespace
+
+TEST(GameLoop, classic_respawn_e2e_revives_hero_at_entry_point_and_reclaims_control)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, game_screen);
+
+    SaveData& save = game_screen->save_data;
+    save.reset();
+    save.current_campaign = "org.openglad.gladiator";
+    save.current_levels[save.current_campaign] = 1;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.allied_mode = 1;
+    save.my_team = 0;
+    save.respawn_mode = 1;       // Respawns: Heroes
+    save.ctf_respawn_ticks = 12; // fastest legal delay: quick revive
+    auto leader = std::make_unique<guy>(FAMILY_SOLDIER);
+    leader->name = "Leader";
+    leader->teamnum = 0;
+    save.team_list[0] = std::move(leader);
+    save.team_size = 1;
+    ASSERT_TRUE(save.save("save0"));
+
+    glad_init();
+    ASSERT_NE(nullptr, og::runtime::current_game_session);
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(
+        og::runtime::local_transport_active(*og::runtime::current_session));
+    ASSERT_NE(nullptr, game_screen->viewob[0]);
+
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(session);
+    ASSERT_NE(nullptr, server_screen);
+    GameWorld& server_world = server_screen->world();
+    ASSERT_EQ(1, static_cast<int>(server_world.respawn_mode))
+        << "SaveData.respawn_mode must reach the authoritative world";
+
+    walker* const hero = find_server_hero(server_world);
+    ASSERT_NE(nullptr, hero);
+    const std::uint32_t hero_id = hero->entity_id();
+    const short entry_x = hero->spawn_x();
+    const short entry_y = hero->spawn_y();
+    const std::uint8_t entry_floor = hero->spawn_floor();
+    ASSERT_GE(entry_x, 0) << "the level deploy must record the entry point";
+    ASSERT_EQ(entry_x, hero->xpos())
+        << "the recorded entry point is where the hero was deployed";
+    ASSERT_EQ(entry_y, hero->ypos());
+
+    walker* const enemy = find_server_enemy(server_world, hero->team_num());
+    ASSERT_NE(nullptr, enemy) << "the level must field an enemy living";
+
+    // Kill the hero through the real combat damage path, after moving it off
+    // its entry point so the revive-at-entry move is observable.
+    {
+        ScopedServerWorldContext server_ctx(*server_screen);
+        // Make the hero the SOLE living of its team (the solo shape): with a
+        // fallback body the player would simply switch bodies on death and
+        // the null-control -> revive -> reclaim path would never engage.
+        for (const auto& uptr : server_world.oblist)
+        {
+            walker* const w = uptr.get();
+            if (w != nullptr && w != hero && !w->dead() &&
+                w->query_order() == Order::Living &&
+                w->team_num() == hero->team_num())
+            {
+                w->set_team_num(enemy->team_num());
+            }
+        }
+        hero->setxy(static_cast<short>(entry_x + 64),
+                    static_cast<short>(entry_y + 48));
+        enemy->set_damage(500.0f);
+        hero->stats()->set_hitpoints(1.0f);
+        ASSERT_TRUE(enemy->attack(hero)) << "the attack must land";
+        ASSERT_TRUE(hero->dead()) << "sim damage must kill the 1-hp hero";
+    }
+
+    GameLoopFrameState st;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.enable_frame_timing = false;
+
+    // The level must keep running through the death (team-wipe endgame is
+    // suppressed while a classic respawn mode is active) until the revive.
+    bool saw_pending_corpse_keepalive = false;
+    bool revived = false;
+    for (int frame = 0; frame < 400 && !revived; ++frame)
+    {
+        ASSERT_EQ(GameFrameResult::Continue,
+                  game_frame_with_result(*game_screen, st, deps))
+            << "a pending classic respawn must not end the level (frame "
+            << frame << ")";
+        walker* const server_hero = server_world.find_by_id(hero_id);
+        ASSERT_NE(nullptr, server_hero)
+            << "the myguy corpse must survive the dead sweep";
+        revived = !server_hero->dead();
+        walker* const view_control = game_screen->viewob[0]->control;
+        if (!revived && view_control != nullptr && view_control->dead() &&
+            view_control->entity_id() == hero_id)
+        {
+            saw_pending_corpse_keepalive = true;
+        }
+    }
+    ASSERT_TRUE(revived) << "the classic respawn must revive the hero";
+    EXPECT_TRUE(saw_pending_corpse_keepalive)
+        << "the view must hold on the corpse while the respawn is pending";
+
+    walker* const server_hero = server_world.find_by_id(hero_id);
+    ASSERT_NE(nullptr, server_hero);
+    ASSERT_EQ(hero, server_hero) << "player revive keeps the same walker";
+    EXPECT_EQ(entry_x, server_hero->xpos())
+        << "the revive must pull the hero back to its level-entry point";
+    EXPECT_EQ(entry_y, server_hero->ypos());
+    EXPECT_EQ(static_cast<int>(entry_floor),
+              static_cast<int>(server_hero->floor()));
+    EXPECT_EQ(server_hero->stats()->max_hitpoints(),
+              server_hero->stats()->hitpoints())
+        << "the revive restores full hitpoints";
+
+    // Control reclaim: the server rebinds the revived walker by user tag and
+    // the ControlChange rebinds the display view to the live hero.
+    bool reclaimed = false;
+    for (int frame = 0; frame < 60 && !reclaimed; ++frame)
+    {
+        ASSERT_EQ(GameFrameResult::Continue,
+                  game_frame_with_result(*game_screen, st, deps));
+        walker* const view_control = game_screen->viewob[0]->control;
+        reclaimed = view_control != nullptr && !view_control->dead() &&
+            view_control->entity_id() == hero_id;
+    }
+    ASSERT_TRUE(reclaimed)
+        << "player control must be reclaimed after the classic revive";
+    EXPECT_EQ(0, static_cast<int>(server_hero->user()))
+        << "the revive preserves the player's user tag";
+
+    og::runtime::clear_local_transport_shadow(session);
+    game_screen->world().end = 0;
+    game_screen->world().delete_objects();
+    // SaveData::reset() deliberately leaves the match-rule fields alone (the
+    // CTF-trio precedent), so scrub them here — and rewrite save0 — to keep
+    // later tests (and other binaries loading save0) on classic behavior.
+    save.respawn_mode = 0;
+    save.ctf_respawn_ticks = 0;
+    game_screen->world().respawn_mode = 0;
+    EXPECT_TRUE(save.save("save0"));
+}

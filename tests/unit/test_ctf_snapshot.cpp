@@ -174,6 +174,9 @@ void populate_full_ctf_state(GameWorld& world)
         entry.level = static_cast<std::uint8_t>((i % 9) + 1);
         entry.ticks_left = static_cast<std::uint16_t>(100 + i);
         entry.walker_entity_id = static_cast<std::uint32_t>(1000 + i);
+        entry.x = static_cast<std::int16_t>(500 + i);
+        entry.y = static_cast<std::int16_t>(600 + i);
+        entry.floor = static_cast<std::uint8_t>(i % 3);
         ctf.respawn_queue.push_back(entry);
     }
     world.ctf_requested_team_count = 4;
@@ -251,6 +254,9 @@ void expect_snapshot_matches_world(const og::sim::WorldSnapshot& snapshot,
         EXPECT_EQ(expected.ticks_left, actual.ticks_left) << "entry " << i;
         EXPECT_EQ(expected.walker_entity_id, actual.walker_entity_id)
             << "entry " << i;
+        EXPECT_EQ(expected.x, actual.x) << "entry " << i;
+        EXPECT_EQ(expected.y, actual.y) << "entry " << i;
+        EXPECT_EQ(expected.floor, actual.floor) << "entry " << i;
     }
     EXPECT_EQ(world.ctf_requested_team_count, snapshot.ctf_requested_team_count);
     EXPECT_EQ(world.ctf_requested_capture_limit,

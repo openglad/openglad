@@ -2370,6 +2370,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_ctf_ai.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_ctf_snapshot.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_ctf_levels.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_classic_respawn.cpp
         )
 
         add_executable(og_unit_server

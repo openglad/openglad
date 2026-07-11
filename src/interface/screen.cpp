@@ -173,19 +173,20 @@ namespace
 
 void cleanup_dead_view_controls(screen& self)
 {
-    // During an active CTF match a dead player corpse with a pending revive
-    // entry stays bound: the camera holds on the corpse and the score panel
-    // renders the RESPAWN IN countdown. Strictly CTF-gated so non-CTF
-    // behavior is byte-identical.
+    // During an active CTF match — or an active classic respawn mode — a
+    // dead player corpse with a pending revive entry stays bound: the camera
+    // holds on the corpse until the revive. Strictly gated on those modes so
+    // plain non-respawning behavior is byte-identical.
     const GameWorld& world = self.world();
-    const bool ctf_active =
-        (world.type & GameWorld::TYPE_CTF) && world.ctf.active;
+    const bool respawn_keepalive =
+        ((world.type & GameWorld::TYPE_CTF) && world.ctf.active) ||
+        og::sim::classic_respawn_active(world);
     for (int i = 0; i < self.numviews; i++)
     {
         walker* const control = self.viewob[i]->control;
         if (control == nullptr || !control->dead())
             continue;
-        if (ctf_active && control->myguy != nullptr &&
+        if (respawn_keepalive && control->myguy != nullptr &&
             og::sim::ctf_pending_player_respawn(world.ctf,
                                                 control->entity_id()))
         {
@@ -1171,6 +1172,8 @@ void screen::sync_world_from_save_data()
     world_.ctf_requested_capture_limit = save_data.ctf_capture_limit;
     world_.ctf_requested_respawn_ticks = save_data.ctf_respawn_ticks;
     world_.ctf_requested_strip_scenario_troops = save_data.ctf_strip_scenario_troops;
+    world_.respawn_mode = save_data.respawn_mode;
+    world_.generator_rate = save_data.generator_rate;
     world_.current_scenario = save_data.scen_num;
     for (int i = 0; i < 4; ++i)
         world_.m_score[i] = save_data.m_score[i];

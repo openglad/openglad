@@ -55,7 +55,13 @@ constexpr std::uint8_t net_message_type_value(NetMessageType message_type) noexc
 // v5: WorldSnapshot carries the per-level weather kind (render-only sim
 // state, rolled by the authoritative side); snapshot format moved to v7 and
 // replay to v8 alongside it.
-inline constexpr std::uint8_t kNetworkProtocolVersion = 5;
+// v6: difficulty submenu — lobby settings carry respawn_mode/generator_rate/
+// keep_fallen_heroes, InitialSetup carries respawn_mode/generator_rate,
+// WorldSnapshot carries the respawn_mode/generator_rate world scalars (after
+// the CTF block), entities carry the spawn-point fields (spawn_x/spawn_y/
+// spawn_floor), and CTF respawn entries carry x/y/floor; snapshot format
+// moved to v8 and replay to v9 alongside them.
+inline constexpr std::uint8_t kNetworkProtocolVersion = 6;
 inline constexpr std::size_t kTransportHeaderSize = 4;
 inline constexpr std::size_t kSessionTokenSize = 16;
 using SessionToken = std::array<std::uint8_t, kSessionTokenSize>;
@@ -161,6 +167,8 @@ struct InitialSetupMessage {
     std::int16_t my_team = 0;
     std::int16_t allied_mode = 0;
     std::int16_t current_scenario = 0;
+    std::int16_t respawn_mode = 0;
+    std::int16_t generator_rate = 0;
     std::vector<InitialSetupGuyData> guys;
     std::vector<std::int32_t> completed_levels;
     std::array<std::uint32_t, MAX_PLAYERS> controlled_entity_ids = {};

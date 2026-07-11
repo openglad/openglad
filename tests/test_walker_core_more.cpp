@@ -1381,3 +1381,74 @@ TEST(WalkerCoreMore, walker_round19_move_myguy_fire_callback_and_act_random_no_f
 
     og::runtime::current_session->myscreen_->world().delete_objects();
 }
+
+// ---------------------------------------------------------------------------
+// Generator spawn-rate multiplier (difficulty submenu "Generators"): on a
+// fixed world RNG seed, a Frenzy-rate (200%) generator must emit strictly
+// more spawns than the default rate by a fixed tick horizon, and the
+// explicit 100% rate must be spawn-for-spawn identical with the unset (0)
+// default. The rate scales the cadence comparison (level_draw * rate >
+// threshold_draw * 100), never the draw bounds. Runs the real emission
+// machinery: act_generate cadence roll -> init_fire -> attack animation ->
+// fire -> create_weapon.
+// ---------------------------------------------------------------------------
+TEST(WalkerCoreMore, generator_rate_200_spawns_more_than_rate_100_by_fixed_tick)
+{
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    world.create_new_grid();
+    world.delete_objects();
+    ASSERT_TRUE(current_game != nullptr && current_game->world == &world)
+        << "the ambient integration context must drive the screen world";
+
+    constexpr int kTicks = 800;
+    constexpr std::uint32_t kSeed = 0x5EED5EEDu;
+
+    const auto spawned_mages_by_tick = [&](short rate) {
+        world.delete_objects();
+        world.generator_rate = rate;
+        world.rng_.state_ = kSeed;
+
+        walker* gen = world.add_ob(Order::Generator, FAMILY_TOWER);
+        EXPECT_TRUE(gen != nullptr) << "generator created";
+        if (gen == nullptr)
+            return -1;
+        gen->setxy(160, 160);
+        gen->set_team_num(1);
+        gen->stats()->set_level(5);
+        gen->set_act_type(ACT_GENERATE);
+        gen->set_default_weapon(FAMILY_MAGE);
+        gen->set_current_weapon(FAMILY_MAGE);
+
+        for (int tick = 0; tick < kTicks; ++tick)
+            (void)gen->act();
+
+        // Count every mage the generator created (blocked newborns die in
+        // place but stay in the un-swept oblist, so this is the emission
+        // count, not the survivor count).
+        int count = 0;
+        for (const auto& uptr : world.oblist)
+        {
+            const walker* w = uptr.get();
+            if (w != nullptr && w->query_order() == Order::Living &&
+                w->family() == FAMILY_MAGE)
+            {
+                ++count;
+            }
+        }
+        world.delete_objects();
+        return count;
+    };
+
+    const int spawned_default = spawned_mages_by_tick(0);
+    const int spawned_100 = spawned_mages_by_tick(100);
+    const int spawned_200 = spawned_mages_by_tick(200);
+    world.generator_rate = 0;
+
+    ASSERT_GT(spawned_default, 0)
+        << "the level-5 tower must emit on the default rate within "
+        << kTicks << " ticks";
+    EXPECT_EQ(spawned_default, spawned_100)
+        << "rate 100 is an exact integer identity with the default stream";
+    EXPECT_GT(spawned_200, spawned_100)
+        << "Frenzy (200%) must out-spawn the default rate by tick " << kTicks;
+}

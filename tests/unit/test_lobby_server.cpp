@@ -993,6 +993,88 @@ TEST(LobbyServer, sanitize_strip_flag_accepts_binary_and_rejects_junk)
     EXPECT_EQ(0, server.state().settings.ctf_strip_scenario_troops);
 }
 
+TEST(LobbyServer, sanitize_difficulty_submenu_settings)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host", 0,
+                          {make_slot(0u, 100, "Soldier", FAMILY_SOLDIER)}));
+    server.poll_incoming_messages();
+
+    // Defaults are 0 (legacy behavior).
+    EXPECT_EQ(0, server.state().settings.respawn_mode);
+    EXPECT_EQ(0, server.state().settings.generator_rate);
+    EXPECT_EQ(0, server.state().settings.keep_fallen_heroes);
+
+    // In-range values pass through and reach the game-start equivalent.
+    og::sim::LobbySettings valid = make_ctf_lobby_settings();
+    valid.respawn_mode = 2;
+    valid.generator_rate = 200;
+    valid.keep_fallen_heroes = 1;
+    transport.queue_lobby_message(11u, make_settings_change_message(valid));
+    server.poll_incoming_messages();
+    EXPECT_EQ(2, server.state().settings.respawn_mode);
+    EXPECT_EQ(200, server.state().settings.generator_rate);
+    EXPECT_EQ(1, server.state().settings.keep_fallen_heroes);
+    EXPECT_EQ(2, server.build_save_data_equivalent().respawn_mode);
+    EXPECT_EQ(200, server.build_save_data_equivalent().generator_rate);
+    EXPECT_EQ(1, server.build_save_data_equivalent().keep_fallen_heroes);
+
+    // respawn_mode outside {0,1,2} falls back to the current value.
+    og::sim::LobbySettings junk_mode = make_ctf_lobby_settings();
+    junk_mode.respawn_mode = 3;
+    junk_mode.generator_rate = 200;
+    junk_mode.keep_fallen_heroes = 1;
+    transport.queue_lobby_message(11u, make_settings_change_message(junk_mode));
+    server.poll_incoming_messages();
+    EXPECT_EQ(2, server.state().settings.respawn_mode);
+
+    og::sim::LobbySettings negative_mode = make_ctf_lobby_settings();
+    negative_mode.respawn_mode = -1;
+    transport.queue_lobby_message(11u,
+                                  make_settings_change_message(negative_mode));
+    server.poll_incoming_messages();
+    EXPECT_EQ(2, server.state().settings.respawn_mode);
+
+    // generator_rate: 0 = default passes through; nonzero clamps to [25,400].
+    og::sim::LobbySettings low_rate = make_ctf_lobby_settings();
+    low_rate.generator_rate = 3;
+    transport.queue_lobby_message(11u, make_settings_change_message(low_rate));
+    server.poll_incoming_messages();
+    EXPECT_EQ(25, server.state().settings.generator_rate);
+
+    og::sim::LobbySettings high_rate = make_ctf_lobby_settings();
+    high_rate.generator_rate = 5000;
+    transport.queue_lobby_message(11u, make_settings_change_message(high_rate));
+    server.poll_incoming_messages();
+    EXPECT_EQ(400, server.state().settings.generator_rate);
+
+    og::sim::LobbySettings default_rate = make_ctf_lobby_settings();
+    default_rate.generator_rate = 0;
+    transport.queue_lobby_message(11u,
+                                  make_settings_change_message(default_rate));
+    server.poll_incoming_messages();
+    EXPECT_EQ(0, server.state().settings.generator_rate);
+
+    // keep_fallen_heroes is binary-or-fallback.
+    og::sim::LobbySettings keep_on = make_ctf_lobby_settings();
+    keep_on.keep_fallen_heroes = 1;
+    transport.queue_lobby_message(11u, make_settings_change_message(keep_on));
+    server.poll_incoming_messages();
+    EXPECT_EQ(1, server.state().settings.keep_fallen_heroes);
+
+    og::sim::LobbySettings junk_keep = make_ctf_lobby_settings();
+    junk_keep.keep_fallen_heroes = 7;
+    junk_keep.respawn_mode = 2;
+    transport.queue_lobby_message(11u, make_settings_change_message(junk_keep));
+    server.poll_incoming_messages();
+    EXPECT_EQ(1, server.state().settings.keep_fallen_heroes)
+        << "junk falls back to the previously accepted value";
+}
+
 TEST(LobbyServer, ctf_lobby_allows_shared_teams)
 {
     MockLobbyTransport transport;

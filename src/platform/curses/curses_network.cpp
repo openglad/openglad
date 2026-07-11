@@ -61,6 +61,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace og::curses {
@@ -224,6 +225,9 @@ og::sim::LobbyMessage make_settings_message(const SaveData& save, int difficulty
     settings.ctf_capture_limit = save.ctf_capture_limit;
     settings.ctf_respawn_ticks = save.ctf_respawn_ticks;
     settings.ctf_strip_scenario_troops = save.ctf_strip_scenario_troops;
+    settings.respawn_mode = save.respawn_mode;
+    settings.generator_rate = save.generator_rate;
+    settings.keep_fallen_heroes = save.keep_fallen_heroes;
 
     og::sim::LobbyMessage message;
     message.payload = og::sim::LobbySettingsChangeMessage{
@@ -1267,6 +1271,9 @@ private:
         eq.ctf_capture_limit = state_->settings.ctf_capture_limit;
         eq.ctf_respawn_ticks = state_->settings.ctf_respawn_ticks;
         eq.ctf_strip_scenario_troops = state_->settings.ctf_strip_scenario_troops;
+        eq.respawn_mode = state_->settings.respawn_mode;
+        eq.generator_rate = state_->settings.generator_rate;
+        eq.keep_fallen_heroes = state_->settings.keep_fallen_heroes;
         eq.numplayers = static_cast<std::uint8_t>(
             std::min<std::size_t>(state_->players.size(), MAX_PLAYERS));
 
@@ -1397,6 +1404,26 @@ int curses_network_testing_exercise_internal_helpers()
     og::sim::LobbyMessage settings_message = make_settings_message(save, 5);
     check(join_message.kind() == og::sim::LobbyMessageKind::Join &&
         settings_message.kind() == og::sim::LobbyMessageKind::SettingsChange);
+
+    // The settings message carries the difficulty-submenu match rules from
+    // the save: respawn mode/delay, permadeath, and the generator rate.
+    save.ctf_respawn_ticks = 60;
+    save.respawn_mode = 2;
+    save.generator_rate = 50;
+    save.keep_fallen_heroes = 1;
+    const og::sim::LobbyMessage rules_message = make_settings_message(save, 5);
+    const auto* rules = std::get_if<og::sim::LobbySettingsChangeMessage>(
+        &rules_message.payload);
+    check(rules != nullptr &&
+        rules->settings.difficulty == 5 &&
+        rules->settings.ctf_respawn_ticks == 60 &&
+        rules->settings.respawn_mode == 2 &&
+        rules->settings.generator_rate == 50 &&
+        rules->settings.keep_fallen_heroes == 1);
+    save.ctf_respawn_ticks = 0;
+    save.respawn_mode = 0;
+    save.generator_rate = 0;
+    save.keep_fallen_heroes = 0;
 
     og::sim::LobbyState state;
     state.settings.campaign_id = "";

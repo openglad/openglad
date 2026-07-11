@@ -68,13 +68,17 @@ public:
     short ctf_capture_limit = 0;
     short ctf_respawn_ticks = 0;
     short ctf_strip_scenario_troops = 0; // 0 = keep authored troops (classic)
+    // Difficulty submenu settings (0 = legacy default behavior for all three).
+    short respawn_mode = 0;       // 0 = off, 1 = heroes, 2 = everyone
+    short generator_rate = 0;     // percent; 0 = default (100)
+    short keep_fallen_heroes = 0; // 0 = permadeath on win (classic), 1 = keep
 
     SaveData();
     ~SaveData();
     
     void reset();
     
-    void update_guys(const std::list<std::unique_ptr<walker>>& oblist);  // Copy team from the guys in an oblist
+    void update_guys(const std::list<std::unique_ptr<walker>>& oblist);  // Copy team from the guys in an oblist (dead heroes dropped unless keep_fallen_heroes)
     // Networked "as if played alone" save: overlay only the characters owned by
     // owner_player_index (matched via guy::owner_player_index) back into their
     // own save slots (guy::owner_save_slot), updating progress while leaving

@@ -31,7 +31,7 @@ namespace og::sim {
 inline constexpr std::size_t kEntitySnapshotDirtyMaskWords = 2;
 inline constexpr std::int32_t kNoGuyId = -1;
 inline constexpr std::uint8_t kNoPausePlayerIndex = 0xff;
-inline constexpr std::uint8_t kSnapshotFormatVersion = 7;
+inline constexpr std::uint8_t kSnapshotFormatVersion = 8;
 inline constexpr std::uint8_t kSnapshotProtocolVersion = kNetworkProtocolVersion;
 inline constexpr std::uint8_t kDeltaPayloadUncompressedFlag = 0x01;
 inline constexpr std::size_t kDeltaPayloadHeaderSize = 1;
@@ -147,6 +147,13 @@ struct EntitySnapshot {
     float vz = 0.0f;
     std::int16_t sizez = 0;
     std::uint8_t floor = 0;
+
+    // Level-entry spawn point (dirty bits 90-92). Defaults match the walker
+    // defaults (-1/-1 x/y sentinel = never recorded, floor 0), so capturing a
+    // pre-feature walker produces the sentinel and apply restores it exactly.
+    std::int16_t spawn_x = -1;
+    std::int16_t spawn_y = -1;
+    std::uint8_t spawn_floor = 0;
 };
 
 struct GuySnapshot {
@@ -255,6 +262,10 @@ struct WorldSnapshot {
     std::int16_t ctf_requested_capture_limit = 0;
     std::int16_t ctf_requested_respawn_ticks = 0;
     std::int16_t ctf_requested_strip_scenario_troops = 0;
+    // Classic respawn / generator knobs (GameWorld scalars). Serialized AFTER
+    // the CTF block so the CTF payload-offset pins stay valid.
+    std::int16_t respawn_mode = 0;
+    std::int16_t generator_rate = 0;
 
     std::uint8_t grid_width = 0;
     std::uint8_t grid_height = 0;
@@ -470,6 +481,12 @@ inline constexpr EntitySnapshotFieldDesc kEntitySnapshotFields[] = {
      static_cast<std::uint16_t>(offsetof(EntitySnapshot, sizez))},
     {og::dirty::BIT_FLOOR, sizeof(std::uint8_t),
      static_cast<std::uint16_t>(offsetof(EntitySnapshot, floor))},
+    {og::dirty::BIT_SPAWN_X, sizeof(std::int16_t),
+     static_cast<std::uint16_t>(offsetof(EntitySnapshot, spawn_x))},
+    {og::dirty::BIT_SPAWN_Y, sizeof(std::int16_t),
+     static_cast<std::uint16_t>(offsetof(EntitySnapshot, spawn_y))},
+    {og::dirty::BIT_SPAWN_FLOOR, sizeof(std::uint8_t),
+     static_cast<std::uint16_t>(offsetof(EntitySnapshot, spawn_floor))},
 };
 
 inline constexpr std::size_t kEntitySnapshotTableFieldCount =

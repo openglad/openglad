@@ -287,6 +287,13 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
                 loaded_order != Order::Treasure)
                 new_guy->set_dormant(true);
         }
+
+        // Record the authored placement as the object's level-entry spawn
+        // point (the classic respawn feature revives level-authored livings
+        // here). Uses the final floor: v10+ files set it above, older files
+        // leave the default floor 0.
+        new_guy->set_spawn_point(currentx, currenty,
+                                 static_cast<std::uint8_t>(new_guy->floor()));
     }
 
     metadata.description.clear();

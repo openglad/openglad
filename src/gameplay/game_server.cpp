@@ -1193,6 +1193,8 @@ InitialSetupMessage GameServer::build_initial_setup(PeerId peer_id) const
     message.my_team = client_it->second.team_num;
     message.allied_mode = world_.allied_mode;
     message.current_scenario = world_.current_scenario;
+    message.respawn_mode = world_.respawn_mode;
+    message.generator_rate = world_.generator_rate;
     message.guys = collect_initial_setup_guys(world_);
     message.completed_levels.assign(world_.completed_levels.begin(),
                                     world_.completed_levels.end());
@@ -1410,7 +1412,7 @@ bool GameServer::process_disconnected_players(std::uint32_t expected_tick)
         if (result.control_hp_changed)
             world_.control_hp = result.control_hp;
         if (result.endgame_requested &&
-            !og::sim::ctf_suppress_team_wipe_endgame(world_))
+            !og::sim::respawn_suppress_team_wipe_endgame(world_))
         {
             if (has_living_member_for_any_bound_team(
                     world_, clients_, disconnected_players_))
@@ -1844,6 +1846,12 @@ void GameServer::handle_exit_prompt_response(bool accepted)
     }
     else
     {
+        // An accepted exit completes the level like a win, but synchronously:
+        // this path never ticks the world between the accept and the roster
+        // persist inside on_exit_accepted, so the in-tick end-of-level
+        // revive-all cannot cover it. Revive every hero still awaiting a
+        // classic respawn first, or the finalize would drop it as dead.
+        og::sim::classic_respawn_flush_pending(world_);
         handled = on_exit_accepted
             ? on_exit_accepted(prompt.destination_level)
             : false;
@@ -2138,7 +2146,7 @@ bool GameServer::apply_polled_inputs(std::uint32_t expected_tick)
         if (result.control_hp_changed)
             world_.control_hp = result.control_hp;
         if (result.endgame_requested &&
-            !og::sim::ctf_suppress_team_wipe_endgame(world_))
+            !og::sim::respawn_suppress_team_wipe_endgame(world_))
         {
             if (has_living_member_for_any_bound_team(
                     world_, clients_, disconnected_players_))
@@ -2267,8 +2275,11 @@ void GameServer::remember_snapshot_hash(ConnectedClientState& client,
 
 walker* GameServer::find_ctf_reclaim_control(std::size_t player_index) const
 {
-    // Gate strictly on an active CTF match so non-CTF behavior is untouched.
-    if (!(world_.type & GameWorld::TYPE_CTF) || !world_.ctf.active)
+    // Gate on an active CTF match or an active classic respawn mode so plain
+    // non-respawning behavior is untouched.
+    const bool ctf_active =
+        (world_.type & GameWorld::TYPE_CTF) != 0 && world_.ctf.active;
+    if (!ctf_active && !og::sim::classic_respawn_active(world_))
         return nullptr;
 
     for (const auto& uptr : world_.oblist)

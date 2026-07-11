@@ -289,6 +289,9 @@ bool compare_entity_snapshot(const EntitySnapshot& expected,
     OG_REPLAY_COMPARE(current_distance);
     OG_REPLAY_COMPARE(controller_id);
     OG_REPLAY_COMPARE(do_bounce);
+    OG_REPLAY_COMPARE(spawn_x);
+    OG_REPLAY_COMPARE(spawn_y);
+    OG_REPLAY_COMPARE(spawn_floor);
 
 #undef OG_REPLAY_COMPARE
     return true;
@@ -409,6 +412,9 @@ bool compare_ctf_snapshot_state(const WorldSnapshot& expected,
         OG_REPLAY_COMPARE(level);
         OG_REPLAY_COMPARE(ticks_left);
         OG_REPLAY_COMPARE(walker_entity_id);
+        OG_REPLAY_COMPARE(x);
+        OG_REPLAY_COMPARE(y);
+        OG_REPLAY_COMPARE(floor);
 
 #undef OG_REPLAY_COMPARE
     }
@@ -466,6 +472,8 @@ bool compare_world_snapshot(const WorldSnapshot& expected,
     OG_REPLAY_COMPARE(ctf_requested_capture_limit);
     OG_REPLAY_COMPARE(ctf_requested_respawn_ticks);
     OG_REPLAY_COMPARE(ctf_requested_strip_scenario_troops);
+    OG_REPLAY_COMPARE(respawn_mode);
+    OG_REPLAY_COMPARE(generator_rate);
     OG_REPLAY_COMPARE(grid_width);
     OG_REPLAY_COMPARE(grid_height);
     OG_REPLAY_COMPARE(grid_dirty);

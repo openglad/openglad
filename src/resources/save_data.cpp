@@ -188,6 +188,10 @@ bool SaveData::load(const std::string& filename)
 	// 2-bytes CTF team count                   // Version 10+
 	// 2-bytes CTF capture limit (0 = map/default)   // Version 10+
 	// 2-bytes CTF respawn ticks (0 = default)  // Version 10+
+	// 2-bytes CTF strip-scenario-troops flag   // Version 11+
+	// 2-bytes respawn mode (0 = off)           // Version 12+
+	// 2-bytes generator rate (0 = default)     // Version 12+
+	// 2-bytes keep-fallen-heroes flag (0 = permadeath)  // Version 12+
 
     Log("Loading save: {}\n", filename);
 	std::string temp_filename = std::format("{}.gtl", filename); // gladiator team list
@@ -528,6 +532,26 @@ bool SaveData::load(const std::string& filename)
         ctf_strip_scenario_troops = 0; // keep authored troops
     }
 
+    // Versions 12+ append the difficulty submenu settings
+    if (temp_version >= 12)
+    {
+        std::int16_t temp_respawn_mode = 0;
+        std::int16_t temp_generator_rate = 0;
+        std::int16_t temp_keep_fallen = 0;
+        READ_OR_FAIL(&temp_respawn_mode, 2, 1);
+        READ_OR_FAIL(&temp_generator_rate, 2, 1);
+        READ_OR_FAIL(&temp_keep_fallen, 2, 1);
+        respawn_mode = temp_respawn_mode;
+        generator_rate = temp_generator_rate;
+        keep_fallen_heroes = temp_keep_fallen;
+    }
+    else
+    {
+        respawn_mode = 0;       // respawns off
+        generator_rate = 0;     // default rate
+        keep_fallen_heroes = 0; // permadeath on win
+    }
+
 	Log("Loading campaign: {}\n", current_campaign);
     int current_level = load_campaign(current_campaign, current_levels);
     if(current_level < 0)
@@ -564,10 +588,12 @@ void SaveData::update_guys(const std::list<std::unique_ptr<walker>>& oblist)
 
 
     // Remove new (or existing) "guys" from the list and store them in this SaveData to be saved and trained.
+    // Permadeath (keep_fallen_heroes == 0, the default) keeps only living guys;
+    // with the toggle set, fallen heroes stay on the roster too.
     for(auto& uptr : oblist)
 	{
 	    walker* ob = uptr.get();
-        if (ob && !ob->dead() && ob->myguy)
+        if (ob && ob->myguy && (!ob->dead() || keep_fallen_heroes != 0))
 		{
             if (team_size >= MAX_TEAM_SIZE)
             {
@@ -596,7 +622,9 @@ void SaveData::merge_owned_guys_from(
     // keyed by each brought character's original save slot (owner_save_slot):
     //   - a brought character that SURVIVED overlays its slot with its grown self
     //   - a brought character that DIED is DROPPED — death sticks across a win,
-    //     matching solo update_guys (which keeps only living guys)
+    //     matching solo update_guys (which keeps only living guys) — UNLESS
+    //     keep_fallen_heroes is set, in which case the pre-merge roster entry
+    //     is preserved (pre-level stats; the fallen hero's growth is lost)
     //   - a character that was never brought is preserved exactly
     // The result is re-densified, because SaveData::save dereferences
     // team_list[i] for i < team_size without a null check.
@@ -633,13 +661,15 @@ void SaveData::merge_owned_guys_from(
                 static_cast<short>(calculate_level(entry->exp)));
             entry->exp = exp;
         }
-        else if (died[static_cast<std::size_t>(slot)])
+        else if (died[static_cast<std::size_t>(slot)] && keep_fallen_heroes == 0)
         {
             continue; // brought and died -> drop so the death sticks
         }
         else
         {
-            entry = std::move(team_list[static_cast<std::size_t>(slot)]); // not brought -> keep
+            // not brought -> keep; brought-and-died with keep_fallen_heroes
+            // set -> keep the pre-merge (pre-level) roster entry
+            entry = std::move(team_list[static_cast<std::size_t>(slot)]);
             if (entry == nullptr)
                 continue;
         }
@@ -677,7 +707,7 @@ bool SaveData::save(const std::string& filename)
 	std::fill_n(temp_campaign.data(), temp_campaign.size(), '\0');
 
 	std::array<char, 10> temptext = {'G', 'T', 'L'};
-	std::uint8_t temp_version = 11;
+	std::uint8_t temp_version = 12;
 
 	std::uint32_t newcash = totalcash;
 	std::uint32_t newscore = totalscore;
@@ -751,6 +781,10 @@ bool SaveData::save(const std::string& filename)
 	// 2-bytes CTF team count                   // Version 10+
 	// 2-bytes CTF capture limit (0 = map/default)   // Version 10+
 	// 2-bytes CTF respawn ticks (0 = default)  // Version 10+
+	// 2-bytes CTF strip-scenario-troops flag   // Version 11+
+	// 2-bytes respawn mode (0 = off)           // Version 12+
+	// 2-bytes generator rate (0 = default)     // Version 12+
+	// 2-bytes keep-fallen-heroes flag (0 = permadeath)  // Version 12+
 
 	//strcpy(temp_filename, scen_directory);
 	Log("Saving save: {}\n", filename);
@@ -960,6 +994,14 @@ bool SaveData::save(const std::string& filename)
 	// Versions 11+ append the CTF scenario-troops strip flag
 	std::int16_t temp_ctf_strip = ctf_strip_scenario_troops;
 	WRITE_OR_FAIL(&temp_ctf_strip, 2, 1);
+
+	// Versions 12+ append the difficulty submenu settings
+	std::int16_t temp_respawn_mode = respawn_mode;
+	std::int16_t temp_generator_rate = generator_rate;
+	std::int16_t temp_keep_fallen = keep_fallen_heroes;
+	WRITE_OR_FAIL(&temp_respawn_mode, 2, 1);
+	WRITE_OR_FAIL(&temp_generator_rate, 2, 1);
+	WRITE_OR_FAIL(&temp_keep_fallen, 2, 1);
 
     // unique_ptr auto-closes outfile
 

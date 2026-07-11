@@ -237,7 +237,7 @@ TEST(NetTransport, header_helpers_roundtrip_envelope)
     std::vector<std::uint8_t> bytes;
     og::sim::append_transport_header(bytes, og::sim::kHelloMessageType, 0x2211u);
 
-    const std::vector<std::uint8_t> expected = {0x05, 0x01, 0x11, 0x22};
+    const std::vector<std::uint8_t> expected = {0x06, 0x01, 0x11, 0x22};
     EXPECT_EQ(expected, bytes);
 
     og::sim::TransportEnvelope envelope;
@@ -826,8 +826,8 @@ TEST(NetTransport, serialize_hello_emits_expected_wire_format)
 
     constexpr std::array<std::uint8_t, og::sim::kSerializedHelloMessageSize>
         expected = {
-            0x05, 0x01, 0x17, 0x00,
-            0x05, 0x05, 0x03,
+            0x06, 0x01, 0x17, 0x00,
+            0x06, 0x06, 0x03,
             0x00, 0x01, 0x02, 0x03,
             0x04, 0x05, 0x06, 0x07,
             0x08, 0x09, 0x0a, 0x0b,
@@ -870,7 +870,7 @@ TEST(NetTransport, decode_rejects_truncated_and_wrong_version_headers)
     const std::array<std::uint8_t, 3> truncated = {0x03, 0x01, 0x00};
     EXPECT_FALSE(og::sim::decode_transport_envelope(truncated, envelope));
 
-    const std::array<std::uint8_t, 4> wrong_version = {0x06, 0x01, 0x00, 0x00};
+    const std::array<std::uint8_t, 4> wrong_version = {0x07, 0x01, 0x00, 0x00};
     EXPECT_FALSE(og::sim::decode_transport_envelope(wrong_version, envelope));
 }
 
@@ -880,13 +880,13 @@ TEST(NetTransport, deserialize_initial_setup_rejects_oversized_counts)
         og::sim::InitialSetupMessage{});
 
     auto oversized_guy_count = std::vector<std::uint8_t>(bytes.begin(), bytes.end());
-    write_u32_le(oversized_guy_count, 33, 0xffffffffu);
+    write_u32_le(oversized_guy_count, 37, 0xffffffffu);
     EXPECT_FALSE(
         og::sim::deserialize_initial_setup_message(oversized_guy_count)
             .has_value());
 
     auto oversized_level_count = std::vector<std::uint8_t>(bytes.begin(), bytes.end());
-    write_u32_le(oversized_level_count, 37, 0xffffffffu);
+    write_u32_le(oversized_level_count, 41, 0xffffffffu);
     EXPECT_FALSE(
         og::sim::deserialize_initial_setup_message(oversized_level_count)
             .has_value());
@@ -1903,15 +1903,16 @@ TEST(NetTransport,
      deserialize_lobby_messages_rejects_unknown_kinds_and_oversized_counts)
 {
     // Wire layout of an empty LobbyState: 4-byte transport header, then the
-    // settings block (4-byte empty campaign string + 7 i16 fields: scenario,
-    // difficulty, allied mode, and the three CTF settings = 18 bytes), then
-    // the 1-byte host player id — so the player-count u32 sits at offset 21.
+    // settings block (4-byte empty campaign string + 10 i16 fields: scenario,
+    // difficulty, allied mode, the four CTF settings, and the three difficulty
+    // submenu settings = 24 bytes), then the 1-byte host player id — so the
+    // player-count u32 sits at offset 29.
     const auto empty_state_bytes =
         og::sim::serialize_lobby_state_message(og::sim::LobbyState{});
     auto oversized_player_count =
         std::vector<std::uint8_t>(empty_state_bytes.begin(),
                                   empty_state_bytes.end());
-    write_u32_le(oversized_player_count, 21, 0xffffffffu);
+    write_u32_le(oversized_player_count, 29, 0xffffffffu);
     EXPECT_FALSE(
         og::sim::deserialize_lobby_state_message(oversized_player_count)
             .has_value());
@@ -1926,8 +1927,8 @@ TEST(NetTransport,
         std::vector<std::uint8_t>(player_state_bytes.begin(),
                                   player_state_bytes.end());
     // First player record: index u8 + empty-name u32 + team i16 + ready/host
-    // bools = 9 bytes after the count, putting its slot-count u32 at 34.
-    write_u32_le(oversized_slot_count, 34, 0xffffffffu);
+    // bools = 9 bytes after the count, putting its slot-count u32 at 42.
+    write_u32_le(oversized_slot_count, 42, 0xffffffffu);
     EXPECT_FALSE(
         og::sim::deserialize_lobby_state_message(oversized_slot_count)
             .has_value());
