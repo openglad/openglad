@@ -622,17 +622,50 @@ private:
             return;
         }
 
-        ASSERT_TRUE(wait_until(
-            [&] {
-                poll_all_clients();
-                return std::all_of(
-                    clients_.begin(), clients_.end(),
-                    [target_tick](const std::unique_ptr<ClientState>& client) {
-                        return client->game_client != nullptr &&
-                            client->game_client->last_seen_server_tick() >= target_tick;
-                    });
-            },
-            config_.network_timeout))
+        const auto all_clients_caught_up = [&] {
+            return std::all_of(
+                clients_.begin(), clients_.end(),
+                [target_tick](const std::unique_ptr<ClientState>& client) {
+                    return client->game_client != nullptr &&
+                        client->game_client->last_seen_server_tick() >= target_tick;
+                });
+        };
+
+        // Lockstep catch-up loop. The production server pumps its transport every
+        // frame and re-keyframes lagging clients; this harness must do the same
+        // while it waits, otherwise a client that (under load/scheduler jitter)
+        // missed the one-shot per-tick broadcast has no way to recover and stalls
+        // for the whole timeout. So each iteration we (a) service the server +
+        // client transports and (b) periodically re-deliver the current
+        // authoritative state. broadcast_current_state(Peek, Skip) is
+        // non-destructive: Peek does not consume snapshot delta state and Skip
+        // does not drain pending events, so re-sending is safe and idempotent;
+        // a far-behind client receives a fresh keyframe and catches up.
+        const auto deadline =
+            std::chrono::steady_clock::now() + config_.network_timeout;
+        auto next_resync = std::chrono::steady_clock::now();
+        while (std::chrono::steady_clock::now() < deadline)
+        {
+            (void)server_transport_->poll();
+            with_server_context([&] { server_->poll_incoming_messages(); });
+            poll_all_clients();
+            if (all_clients_caught_up())
+                return;
+
+            const auto now = std::chrono::steady_clock::now();
+            if (now >= next_resync)
+            {
+                with_server_context([&] {
+                    server_->broadcast_current_state(SnapshotCaptureMode::Peek,
+                                                     EventDeliveryMode::Skip);
+                });
+                next_resync = now + std::chrono::milliseconds(100);
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+
+        poll_all_clients();
+        ASSERT_TRUE(all_clients_caught_up())
             << "websocket clients should catch up to authoritative tick "
             << target_tick;
     }
