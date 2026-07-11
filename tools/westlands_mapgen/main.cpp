@@ -256,7 +256,22 @@ walker* place_living(GameWorld& w, int family, int team, int floor, int tx,
         return nullptr;
     ob->stats()->set_level(level);
     if (guard)
+    {
         ob->set_act_type(ACT_GUARD);
+        // Guard wake policy (npc_flags bit 1): enemy guards are ambush
+        // posts — they hold until a foe walks into genuine sight (range +
+        // clear ray, walker::act_guard) and then hunt. Allied guards
+        // (teams 0/1) are the opposite kind of post: Bearer escorts,
+        // door-wards, redoubt garrisons — waking would march them off the
+        // very chokepoint they exist to hold, so they keep the classic
+        // stationary-sentry policy. Audited placement-by-placement
+        // (2026-07-11): every allied guard in this campaign is a posted
+        // NPC/garrison, every enemy guard an ambusher. A future exception
+        // can override on the returned walker; self_check_level enforces
+        // the allied rule on the reloaded package either way.
+        if (team <= 1)
+            ob->set_guard_hold_post(true);
+    }
     set_npc_extras(ob, specials_disabled, spawn_delay);
     return ob;
 }
@@ -989,6 +1004,20 @@ void self_check_level(const ExpectedLevel& ex, const std::set<int>& registered)
             ++delayed;
         if (ob->specials_disabled())
             ++no_specials;
+        // Guard wake-policy audit: an allied (team 0/1) guard exists to hold
+        // a post — Bearer escorts, door-wards, garrison lines. If the
+        // hold-post bit failed to round-trip, the wake rule would march the
+        // whole garrison off its chokepoint at first sight of the enemy.
+        // Enemy guards are deliberately left waking (ambush posts); an
+        // authored enemy statue is legal but must be set explicitly.
+        if (ob->query_order() == Order::Living &&
+            ob->act_type() == ACT_GUARD && ob->team_num() <= 1 &&
+            !ob->guard_hold_post())
+            fail(std::format("self-check scen{}: allied guard (family {}, "
+                             "team {}) at ({}, {}) is missing hold-post",
+                             ex.id, static_cast<int>(ob->family()),
+                             static_cast<int>(ob->team_num()),
+                             ob->xpos() / GRID_SIZE, ob->ypos() / GRID_SIZE));
         if (ob->save_all_protected())
         {
             ++protected_walkers;

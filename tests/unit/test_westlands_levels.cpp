@@ -866,6 +866,10 @@ TEST_F(WestlandsCampaignTest, grey_wizard_falls_unnamed)
     EXPECT_TRUE(wizard->stats()->name.empty());
     EXPECT_EQ(9, static_cast<int>(wizard->stats()->level()));
     EXPECT_EQ(ACT_GUARD, wizard->act_type()) << "he holds mid-span";
+    EXPECT_TRUE(wizard->guard_hold_post())
+        << "allied guards ship hold-post (npc_flags bit 1): without it the "
+           "wake rule would march him off the span at first sight of the "
+           "pursuit";
     EXPECT_TRUE(wizard->specials_disabled()) << "he cannot teleport away";
 }
 
@@ -1380,10 +1384,15 @@ TEST_F(WestlandsCampaignTest, high_pass_always_snows)
 // ---------------------------------------------------------------------------
 // (A11) Authored guards: the shipped package carries 184 Living GUARD command
 // bytes (the mapgen's place_living(guard=true) posts). The loader now honors
-// them, so garrison sentries hold their posts instead of roaming. Pin the
-// per-level counts for two representative levels and prove the posts hold:
-// act_guard() never walks, so with the crew absent (scen14 authors no team-0
-// livings) every guard must sit at its authored spot through a real sim run.
+// them, so garrison sentries hold their posts instead of roaming. Since the
+// guard wake rule (walker.cpp act_guard, 2026-07-11) the package authors a
+// per-guard policy: ENEMY guards ship wake-enabled ambush posts
+// (guard_hold_post()==false — they hunt once a foe walks into genuine
+// sight), allied guards ship hold-post sentries. Pin the per-level counts
+// for two representative levels and prove the enemy posts still hold when
+// nothing is sighted: with the crew absent (scen14 authors no team-0
+// livings) act_guard never acquires a foe, so no wake fires and every guard
+// must sit at its authored spot through a real sim run.
 // ---------------------------------------------------------------------------
 TEST_F(WestlandsCampaignTest, authored_guards_load_as_guards_and_hold_post)
 {
@@ -1402,6 +1411,14 @@ TEST_F(WestlandsCampaignTest, authored_guards_load_as_guards_and_hold_post)
     }
     ASSERT_EQ(23u, guards.size())
         << "scen14 authors 23 Living GUARD commands (mapgen guard posts)";
+    for (std::size_t i = 0; i < guards.size(); ++i)
+    {
+        EXPECT_EQ(2, static_cast<int>(guards[i]->team_num()))
+            << "guard " << i << ": scen14's garrison is team 2 only";
+        EXPECT_FALSE(guards[i]->guard_hold_post())
+            << "guard " << i
+            << ": enemy guards ship wake-enabled (ambush posts)";
+    }
 
     std::vector<std::pair<float, float>> posts;
     posts.reserve(guards.size());
@@ -1420,7 +1437,10 @@ TEST_F(WestlandsCampaignTest, authored_guards_load_as_guards_and_hold_post)
             << "guard " << i << " left its post";
         EXPECT_EQ(posts[i].second, guards[i]->ypos())
             << "guard " << i << " left its post";
-        EXPECT_EQ(ACT_GUARD, guards[i]->act_type());
+        EXPECT_EQ(ACT_GUARD, guards[i]->act_type())
+            << "guard " << i
+            << " woke with no foe on the level — no wake without a genuine "
+               "sighting";
     }
 
     // Cross-check a second level's authored count: scen2 "The Forest Road"
@@ -1431,14 +1451,21 @@ TEST_F(WestlandsCampaignTest, authored_guards_load_as_guards_and_hold_post)
     LoadedWestlandsLevel road(2);
     ASSERT_TRUE(road.loaded);
     int road_guards = 0;
+    int road_wakers = 0;
     for (const auto& uptr : road.world().oblist)
     {
         const walker* ob = uptr.get();
         if (ob != nullptr && ob->query_order() == Order::Living &&
             ob->act_type() == ACT_GUARD)
+        {
             ++road_guards;
+            if (!ob->guard_hold_post())
+                ++road_wakers;
+        }
     }
     EXPECT_EQ(19, road_guards);
+    EXPECT_EQ(19, road_wakers)
+        << "all 19 wolf-pocket guards are team-2 ambushers: wake-enabled";
     walker* road_bearer = find_named_living(road.world(), "The Bearer");
     ASSERT_NE(nullptr, road_bearer);
     EXPECT_NE(ACT_GUARD, road_bearer->act_type())

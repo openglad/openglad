@@ -51,10 +51,24 @@ container — mtimes differ).
   ("protected"), ONLY bit2 walkers are watched — set bit2 on exactly the
   characters whose death should end the mission (else every named ally is a
   loss condition; archmage summons are literally named "Phantom").
-- npc_flags (v10+ reserved[3]): bit0 specials_disabled, bit1 start-as-guard
-  (ACT_GUARD holds posts), bit2 protected. spawn_delay (reserved[4-5]) makes
-  dormant walkers: they hold level_done open, show in the NEXT WAVE HUD, are
-  not switchable/targetable, and wake with a flash.
+- npc_flags (v10+ reserved[3]): bit0 specials_disabled, bit1 guard hold-post,
+  bit2 protected. Start-as-guard is NOT a flag bit — it rides the per-object
+  command byte (writer round-trips act_type; loader applies only
+  Living+ACT_GUARD). spawn_delay (reserved[4-5]) makes dormant walkers: they
+  hold level_done open, show in the NEXT WAVE HUD, are not
+  switchable/targetable, and wake with a flash.
+- Guard wake policy (2026-07-11): a plain ACT_GUARD is an AMBUSH post — it
+  holds until a foe is inside lineofsight() range with a clear sight ray
+  (same-floor Bresenham over opaque tiles), then converts to ACT_RANDOM and
+  hunts, permanently. Design consequence: room-by-room encounters survive
+  (no aggro through walls), but every wakeable guard the crew can see WILL
+  join the fight — guard-dense open levels get much hotter than their posted
+  layout suggests. npc_flags bit1 ("hold post") keeps the classic never-move
+  sentry: REQUIRED for allied-team (0/1) guards — escorts, door-wards,
+  garrisons — or the wake rule marches them off the chokepoint they exist to
+  hold (both mapgen self-checks enforce allied⟹hold-post on the reloaded
+  package). The openscen SELECT panel authors this as the AI cycler
+  ROAM/GUARD/HOLD.
 - Weather: ≥40 snow tiles on any floor forces WeatherKind::Snow after the roll.
 - Decor layer (v11): paint ambience decor (torches/braziers/shrubs/bones/
   pebbles/stones) on the decor plane; base autotiles underneath. Blocking decor

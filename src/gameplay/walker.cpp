@@ -1463,6 +1463,16 @@ walker::act_guard()
 		    current_game->world->clear_sight_line(this, foe()))
 		{
 			set_curdir(static_cast<signed char>(facing(foe()->xpos() - xpos(), foe()->ypos()-ypos())));
+			// 2026-07-11 guard wake rule (docs/GAMEPLAY_FIXES_FROM_CLASSIC.md).
+			// Genuine sighting — the same deterministic range+ray test as
+			// the facing gate — WAKES the guard: it converts to ACT_RANDOM
+			// and fights like any other AI from the next tick on (this tick
+			// still runs the classic face+fire below, so the wake itself
+			// draws no extra RNG). A hold-post guard (npc_flags bit 1, the
+			// per-guard policy selector) never converts: it is the classic
+			// stationary sentry, used to pin posted NPCs in place.
+			if (!guard_hold_post())
+				set_act_type(ACT_RANDOM);
 		}
 		stats_->try_command(COMMAND_FIRE,current_game->world->rng_.next(30));
 		return 1;

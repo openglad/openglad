@@ -93,6 +93,12 @@ StandoffPair make_pair(GameWorld& w, float dx, float dy)
     p.guard->set_team_num(2);
     p.guard->set_real_team_num(2);
     p.guard->set_act_type(ACT_GUARD);
+    // These tests pin the F1 standoff fix against a STATIONARY guard post
+    // (the wedge geometry). The newer guard wake rule (walker.cpp act_guard,
+    // 2026-07-11) would convert a sighted guard to ACT_RANDOM pursuit and
+    // dissolve the post, so author the hold-post policy bit — the classic
+    // sentry the F1 fix was measured against.
+    p.guard->set_guard_hold_post(true);
     p.guard->stats()->set_level(2);
     p.guard->set_difficulty(2);
     return p;
@@ -253,17 +259,29 @@ TEST_F(WestlandsStandoffTest, l2_forest_road_crew_fights_past_mid_road)
         GameWorld& world = fx.world();
 
         // The backlog's repro coordinates: the bend-1 picket guard post.
+        // The shipped level authors its team-2 guards as WAKING ambushers
+        // (guard wake rule, walker.cpp act_guard 2026-07-11): on a genuine
+        // sighting they convert to ACT_RANDOM and charge. This test pins the
+        // F1 standoff fix against POSTED guards — the crew must consume a
+        // stationary picket instead of parking on it, at the timings the
+        // pre-wake baselines were measured under — so re-post every road
+        // guard as a hold-post sentry before the sim runs.
         walker* picket = nullptr;
         for (const auto& uptr : world.oblist)
         {
             walker* ob = uptr.get();
-            if (ob != nullptr && ob->query_order() == Order::Living &&
-                ob->team_num() == 2 && ob->xpos() == 23 * GRID_SIZE &&
+            if (ob == nullptr || ob->query_order() != Order::Living)
+                continue;
+            if (ob->team_num() == 2 && ob->act_type() == ACT_GUARD)
+                ob->set_guard_hold_post(true);
+            if (ob->team_num() == 2 && ob->xpos() == 23 * GRID_SIZE &&
                 ob->ypos() == 17 * GRID_SIZE)
                 picket = ob;
         }
         ASSERT_NE(nullptr, picket) << "the bend-1 picket at (368,272)";
         ASSERT_EQ(ACT_GUARD, picket->act_type());
+        ASSERT_TRUE(picket->guard_hold_post())
+            << "the picket must be re-posted for the wedge geometry to exist";
 
         std::vector<walker*> crew =
             deploy_crew(fx.level, world, {0, 0, 0, 0}, 2);

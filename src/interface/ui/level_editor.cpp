@@ -20,8 +20,10 @@
 #include <openglad/interface/render/pixien.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/render/radar.h>
+#include <openglad/core/constants.h>
 #include <openglad/core/ctf_constants.h>
 #include <openglad/core/decordefs.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
@@ -501,6 +503,7 @@ public:
 
 std::string get_editor_family_label(Order order, Sint32 family, std::span<const std::string> livings, const char* treasures[], const char* weapons[]);
 std::string get_editor_level_label(Order order, Sint32 family, Sint32 level);
+const char* editor_ai_policy_label(char act_type, bool hold_post);
 
 class LevelEditorData
 {
@@ -573,7 +576,8 @@ public:
 	SimpleButton prevLevelButton, nextLevelButton;
 	SimpleButton prevClassButton, nextClassButton;
 	SimpleButton facingButton;
-	
+	SimpleButton aiButton;
+
 	SimpleButton deleteButton;
 	
 	SimpleButton panUpButton, panDownButton, panLeftButton, panRightButton;
@@ -716,6 +720,7 @@ LevelEditorData::LevelEditorData()
     , prevClassButton("< Class", OVERSCAN_PADDING, prevLevelButton.area.y+prevLevelButton.area.h, 48, 15)
     , nextClassButton("Class >", prevClassButton.area.x + prevClassButton.area.w, prevClassButton.area.y, 48, 15)
     , facingButton("Facing >", OVERSCAN_PADDING, prevClassButton.area.y+prevClassButton.area.h, 52, 15)
+    , aiButton("AI >", facingButton.area.x+facingButton.area.w, facingButton.area.y, 30, 15)
     , deleteButton("Delete", OVERSCAN_PADDING, 10+facingButton.area.y+facingButton.area.h, 40, 15)
     , panUpButton("U", OVERSCAN_PADDING + 18, 200 - 51, 15, 15)
     , panDownButton("D", OVERSCAN_PADDING + 18, 200 - 21, 15, 15)
@@ -929,6 +934,7 @@ void LevelEditorData::reset_mode_buttons()
             mode_buttons.insert(&prevClassButton);
             mode_buttons.insert(&nextClassButton);
             mode_buttons.insert(&facingButton);
+            mode_buttons.insert(&aiButton);
             mode_buttons.insert(&deleteButton);
         }
         break;
@@ -1138,6 +1144,47 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
                     obj->set_curdir(FACE_UP);
 				obj->set_frame(obj->ani[obj->curdir()][0]);
                 eds().levelchanged = 1;
+            }
+        }
+    }
+    else if(button == &aiButton)
+    {
+        // Cycle the AI policy of every selected Living. ROAM wanders and
+        // pursues (ACT_RANDOM), GUARD stands until its first clear-LOS foe
+        // contact and then pursues (ACT_GUARD), HOLD is the classic
+        // stationary sentry (ACT_GUARD + guard_hold_post). The target state
+        // is one step past the first selected Living's current state.
+        int next_ai = -1;  // 0=ROAM, 1=GUARD, 2=HOLD
+        for(auto& sel : selection)
+        {
+            walker* obj = sel.get_object(level.get());
+            if(obj == nullptr || obj->query_order() != Order::Living)
+                continue;
+            if(obj->act_type() != ACT_GUARD)
+                next_ai = 1;
+            else if(!obj->guard_hold_post())
+                next_ai = 2;
+            else
+                next_ai = 0;
+            break;
+        }
+        if(next_ai >= 0)
+        {
+            for(auto& sel : selection)
+            {
+                walker* obj = sel.get_object(level.get());
+                if(obj == nullptr || obj->query_order() != Order::Living)
+                    continue;
+                // set_act_type_state authors the placed state without
+                // stamping old_act_type (set_act_type is the runtime
+                // conversion path).
+                obj->set_act_type_state(static_cast<char>(next_ai == 0 ? ACT_RANDOM : ACT_GUARD));
+                obj->set_guard_hold_post(next_ai == 2);
+                eds().levelchanged = 1;
+                TRACE("editor", "ai_cycle to=%s act=%d hold=%d",
+                      editor_ai_policy_label(obj->act_type(), obj->guard_hold_post()),
+                      static_cast<int>(obj->act_type()),
+                      obj->guard_hold_post() ? 1 : 0);
             }
         }
     }
@@ -1488,6 +1535,17 @@ Sint32 LevelEditorData::display_panel(screen* s)
 
             if(!message.empty())
                 scentext.write_xy(lm, L_D(curline++), message.c_str(), DARK_BLUE, 1);
+
+            // AI policy for placed Livings — mirrors the "AI >" cycle button.
+            if(sel.order == Order::Living)
+            {
+                walker* sel_obj = sel.get_object(level.get());
+                if(sel_obj != nullptr)
+                {
+                    message = std::string("AI: ") + editor_ai_policy_label(sel_obj->act_type(), sel_obj->guard_hold_post());
+                    scentext.write_xy(lm, L_D(curline++), message.c_str(), DARK_BLUE, 1);
+                }
+            }
         }
         
     }
@@ -3363,6 +3421,43 @@ int level_editor_test_exercise_internal_helpers()
 	            data.activate_mode_button(&data.facingButton);
 	            check(selected->curdir() != FACE_UP);
 
+	            // AI policy cycle button: ROAM -> GUARD -> HOLD -> ROAM on the
+	            // authored act_type/guard_hold_post pair.
+	            check(data.mode_buttons.find(&data.aiButton) != data.mode_buttons.end());
+	            selected->set_act_type_state(ACT_RANDOM);
+	            selected->set_guard_hold_post(false);
+	            data.activate_mode_button(&data.aiButton);
+	            check(selected->act_type() == ACT_GUARD && !selected->guard_hold_post());
+	            data.activate_mode_button(&data.aiButton);
+	            check(selected->act_type() == ACT_GUARD && selected->guard_hold_post());
+	            data.activate_mode_button(&data.aiButton);
+	            check(selected->act_type() == ACT_RANDOM && !selected->guard_hold_post());
+	            // The select-panel info box shows the same three states.
+	            check(std::string("ROAM") == editor_ai_policy_label(ACT_RANDOM, false));
+	            check(std::string("GUARD") == editor_ai_policy_label(ACT_GUARD, false));
+	            check(std::string("HOLD") == editor_ai_policy_label(ACT_GUARD, true));
+	            // Non-Living selections neither drive nor receive the cycle:
+	            // a weapon first in the list is skipped over.
+	            walker* ai_weap = data.level->add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+	            check(ai_weap != nullptr);
+	            if (ai_weap != nullptr)
+	            {
+	                ai_weap->setxy(GRID_SIZE * 5, GRID_SIZE * 5);
+	                data.selection.insert(data.selection.begin(), SelectionInfo(ai_weap));
+	                data.activate_mode_button(&data.aiButton);  // first Living drives: ROAM -> GUARD
+	                check(selected->act_type() == ACT_GUARD && !selected->guard_hold_post());
+	                check(ai_weap->act_type() != ACT_GUARD && !ai_weap->guard_hold_post());
+	                // A selection with no Living at all is a no-op.
+	                data.selection.erase(data.selection.begin() + 1);
+	                data.activate_mode_button(&data.aiButton);
+	                check(ai_weap->act_type() != ACT_GUARD && !ai_weap->guard_hold_post());
+	                data.selection.clear();
+	                data.selection.push_back(SelectionInfo(selected));
+	                data.level->remove_ob(ai_weap);
+	            }
+	            selected->set_act_type_state(ACT_RANDOM);
+	            selected->set_guard_hold_post(false);
+
 	            MouseState& mouse = query_mouse_no_poll();
 	            mouse.left = true;
 	            data.rect_selecting = false;
@@ -3955,6 +4050,16 @@ std::string get_editor_level_label(Order order, Sint32 family, Sint32 level)
         default:
             return "";
     }
+}
+
+// The three authorable AI policies for a placed Living, as cycled by the
+// select-panel "AI >" button: ROAM (ACT_RANDOM), GUARD (ACT_GUARD that wakes
+// to pursuit on first clear-LOS foe contact), HOLD (ACT_GUARD +
+// guard_hold_post, the classic stationary sentry).
+const char* editor_ai_policy_label(char act_type, bool hold_post)
+{
+    if(act_type != ACT_GUARD) return "ROAM";
+    return hold_post ? "HOLD" : "GUARD";
 }
 
 enum class EventType { Handled, Text, Scroll, MouseMotion, MouseDown, MouseUp, KeyDown };

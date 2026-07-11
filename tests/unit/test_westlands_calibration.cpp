@@ -90,11 +90,22 @@ struct CurvePin
 // tick 400). The F4 win/hold contract on the hotter levels should be
 // re-swept with scripts/westlands_playtest.sh before the next balance
 // pass.)
+// (Recalibrated 2026-07-11 for the guard wake rule (wake-on-sight +
+// hold-post policy, docs/GAMEPLAY_FIXES_FROM_CLASSIC.md): allied garrisons
+// now provably hold their posts (hold-post bit), which made the escorted
+// act-1 beats slightly SAFER (4: 7->8, 6: 6->7), while enemy ambush posts
+// spring and hunt once sighted, which made warden-dense levels hotter
+// (11: 5->4, 16: 3->2, 25: 7->5) and dropped the two mage-tower levels
+// into the 0-floor war class (14: 7->0, 22: 5->0 — a dozen-plus waking
+// mage wards converge on the pessimistic brawler crew; playable levels for
+// a real crew that kites and heals, but the stand-in cannot). The F4
+// win/hold contract on 14 and 22 should be re-swept with
+// scripts/westlands_playtest.sh before the next balance pass.)
 constexpr CurvePin kCurve[] = {
-    {1, 1, 8},  {2, 2, 8},  {3, 2, 7},  {4, 3, 7},  {5, 3, 7},  {6, 4, 6},
-    {7, 4, 0},  {8, 5, 0},  {9, 6, 0},  {10, 5, 0}, {11, 6, 5}, {12, 6, 0},
-    {13, 6, 0}, {14, 7, 7}, {15, 7, 0}, {16, 8, 3}, {17, 8, 2}, {19, 6, 5},
-    {20, 7, 0}, {21, 7, 7}, {22, 8, 5}, {23, 8, 5}, {24, 8, 2}, {25, 9, 7},
+    {1, 1, 8},  {2, 2, 8},  {3, 2, 7},  {4, 3, 8},  {5, 3, 7},  {6, 4, 7},
+    {7, 4, 0},  {8, 5, 0},  {9, 6, 0},  {10, 5, 0}, {11, 6, 4}, {12, 6, 0},
+    {13, 6, 0}, {14, 7, 0}, {15, 7, 0}, {16, 8, 2}, {17, 8, 2}, {19, 6, 5},
+    {20, 7, 0}, {21, 7, 7}, {22, 8, 0}, {23, 8, 5}, {24, 8, 2}, {25, 9, 5},
     {26, 9, 8},
 };
 

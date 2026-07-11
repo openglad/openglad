@@ -1,6 +1,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/level_editor_state.h>
 #include <openglad/platform/game_session.h>
+#include <openglad/core/test_trace.h>
 #include <gtest/gtest.h>
 #include <SDL.h>
 #include "test_input_helpers.h"
@@ -11,6 +12,10 @@ static inline LevelEditorState& eds() { return *og::runtime::current_session->ed
 
 // From level_editor.cpp
 Sint32 level_editor();
+
+// From picker_dialogs.cpp (TESTING): queue answers for yes_or_no_prompt().
+void picker_testing_yes_or_no_queue_clear();
+void picker_testing_yes_or_no_queue_push(bool value);
 
 struct EditorThreadState {
     bool started;
@@ -350,5 +355,130 @@ TEST(LevelEditorInteractions, level_editor_edits_terrain_and_places_objects_smok
 
     ASSERT_TRUE(st.started) << "injector thread should have started";
     ASSERT_TRUE(st.finished) << "injector thread should have finished";
+}
+
+
+namespace
+{
+// Injected SDL mouse events carry *window* coordinates; the input layer maps
+// them back to 320x200 game coordinates through the viewport transform. The
+// default test window is 640x400, so raw game coordinates would land at half
+// position. These helpers apply the same game->window mapping the editor's
+// controller-input path uses, so callers can think in game coordinates.
+static int game_to_window_x(int gx)
+{
+    auto* ses = og::runtime::current_session;
+    return static_cast<int>(static_cast<float>(gx) * (ses->viewport_w_ / 320.0f)
+                            + ses->viewport_offset_x_);
+}
+
+static int game_to_window_y(int gy)
+{
+    auto* ses = og::runtime::current_session;
+    return static_cast<int>(static_cast<float>(gy) * (ses->viewport_h_ / 200.0f)
+                            + ses->viewport_offset_y_);
+}
+
+static void inject_click_game(int gx, int gy, int delay_ms = 20)
+{
+    inject_click(game_to_window_x(gx), game_to_window_y(gy), delay_ms);
+}
+
+static void push_mouse_motion_game(int gx, int gy, int gxrel, int gyrel)
+{
+    push_mouse_motion(game_to_window_x(gx), game_to_window_y(gy),
+                      game_to_window_x(gxrel) - game_to_window_x(0),
+                      game_to_window_y(gyrel) - game_to_window_y(0));
+}
+
+static int editor_ai_cycle_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    EditorThreadState* st = static_cast<EditorThreadState*>(data);
+    st->started = true;
+
+    SDL_Delay(300);
+
+    // Clear the stock level objects so the rect-select below grabs exactly
+    // the soldier this test places (queued answer accepts the prompt).
+    picker_testing_yes_or_no_queue_clear();
+    picker_testing_yes_or_no_queue_push(true);
+    inject_click_game(90, 10, 20);   // Level (top menu)
+    SDL_Delay(30);
+    inject_click_game(90, 145, 20);  // Clear all objects
+    SDL_Delay(30);
+
+    // Object mode with a known brush: click the picker pane's first cell
+    // (Living / soldier), regardless of what earlier tests left behind.
+    inject_key_press(SDLK_t, 10);   // -> Terrain
+    inject_key_press(SDLK_o, 10);   // Terrain -> Object
+    eds().rowsdown = 0;
+    SDL_Delay(30);
+    inject_click_game(246, 81, 20); // object pane cell (0,0): soldier brush
+    SDL_Delay(30);
+
+    // Place the soldier. The first click either places a decoy far from the
+    // select rect or disarms a leftover pick toggle; the second click always
+    // places a fresh (ROAM) soldier near game coords (160,120).
+    inject_click_game(120, 60, 20);
+    SDL_Delay(30);
+    inject_click_game(160, 120, 20);
+    SDL_Delay(30);
+
+    // Select mode: rect-select the placed soldier. The first small motion
+    // anchors the rectangle near the press before stretching it.
+    inject_key_press(SDLK_o, 10);   // Object -> Select
+    SDL_Delay(30);
+    inject_mouse_down(game_to_window_x(130), game_to_window_y(95));
+    SDL_Delay(20);
+    push_mouse_motion_game(135, 100, 5, 5);
+    SDL_Delay(20);
+    push_mouse_motion_game(200, 155, 65, 55);
+    SDL_Delay(20);
+    inject_mouse_up(game_to_window_x(200), game_to_window_y(155));
+    SDL_Delay(60);
+
+    // The "AI >" cycle button sits right of "Facing >" in the select panel.
+    // Three clicks walk ROAM -> GUARD -> HOLD -> ROAM.
+    inject_click_game(60, 112, 20);
+    SDL_Delay(100);
+    inject_click_game(60, 112, 20);
+    SDL_Delay(100);
+    inject_click_game(60, 112, 20);
+    SDL_Delay(100);
+
+    SDL_Delay(200);
+    og::runtime::current_session->myscreen_->world().end = 1;
+
+    st->finished = true;
+    return 0;
+}
+} // namespace
+
+TEST(LevelEditorInteractions, level_editor_ai_button_cycles_roam_guard_hold)
+{
+    og::runtime::current_session->myscreen_->world().end = 0;
+    trace_clear();
+
+    EditorThreadState st{false, false};
+    SDL_Thread* thread = SDL_CreateThread(editor_ai_cycle_injector, "editor_ai_cycle", &st);
+    ASSERT_TRUE(thread != nullptr) << "failed to create injector thread";
+
+    (void)level_editor();
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+
+    og::runtime::current_session->myscreen_->world().end = 0;
+
+    ASSERT_TRUE(st.started) << "injector thread should have started";
+    ASSERT_TRUE(st.finished) << "injector thread should have finished";
+
+    ASSERT_TRUE(trace_contains("editor", "ai_cycle to=GUARD act=3 hold=0"))
+        << "first AI click should author GUARD (ACT_GUARD, wake-on-sight)";
+    ASSERT_TRUE(trace_contains("editor", "ai_cycle to=HOLD act=3 hold=1"))
+        << "second AI click should author HOLD (ACT_GUARD + guard_hold_post)";
+    ASSERT_TRUE(trace_contains("editor", "ai_cycle to=ROAM act=0 hold=0"))
+        << "third AI click should return to ROAM (ACT_RANDOM)";
 }
 

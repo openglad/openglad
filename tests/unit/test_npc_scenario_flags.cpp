@@ -4,6 +4,8 @@
  * These are the direct sim/serialization tests for the v10 reserved-block
  * fields (npc_flags at reserved[3], spawn_delay at reserved[4..5]):
  *   - loader/saver round-trip through the real .fss writer/reader,
+ *   - guard hold-post (npc_flags bit 1) round-trip: waking guard, hold-post
+ *     guard, and the inert hold-post non-guard,
  *   - the all-default writer still emitting v9 (the parity byte-identity pin),
  *   - walker::special()/living::check_special() gating (no fire, no charge),
  *   - a deterministic twin-mage run: the enabled twin initiates its teleport
@@ -160,6 +162,92 @@ TEST(NpcScenarioFlags, round_trip_v10_specials_disabled_and_spawn_delay)
     EXPECT_EQ(1234u, loaded_delayed->spawn_delay());
     EXPECT_TRUE(loaded_delayed->dormant())
         << "a loaded walker with spawn_delay > 0 must start the level dormant";
+}
+
+TEST(NpcScenarioFlags, round_trip_v10_guard_hold_post)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+
+    // (a) a waking guard: GUARD command byte, hold-post clear (the default) —
+    //     the ambush-post policy both regenerated campaigns ship for enemy
+    //     guards (they wake into ACT_RANDOM on a genuine sighting).
+    walker* waking = w.add_ob(Order::Living, FAMILY_ORC);
+    // (b) a hold-post guard: GUARD byte + npc_flags bit 1 — the classic
+    //     stationary sentry (the allied-post policy).
+    walker* posted = w.add_ob(Order::Living, FAMILY_SKELETON);
+    // (c) a hold-post NON-guard: bit 1 set on an ACT_RANDOM living — the bit
+    //     must round-trip but is inert (walker::act_guard is its only reader).
+    walker* roamer = w.add_ob(Order::Living, FAMILY_ELF);
+    ASSERT_NE(waking, nullptr);
+    ASSERT_NE(posted, nullptr);
+    ASSERT_NE(roamer, nullptr);
+
+    waking->setxy(64, 64);
+    waking->set_team_num(2);
+    waking->set_act_type(ACT_GUARD);
+
+    posted->setxy(128, 128);
+    posted->set_team_num(2);
+    posted->set_act_type(ACT_GUARD);
+    posted->set_guard_hold_post(true);
+
+    roamer->setxy(192, 192);
+    roamer->set_team_num(1);
+    roamer->set_act_type(ACT_RANDOM);
+    roamer->set_guard_hold_post(true);
+
+    // The hold-post bits are non-default extras: the file must go v10.
+    const std::string file = "npcflags_holdpost.fss";
+    ASSERT_EQ(10, save_and_read_version(w, file));
+
+    // Reload through the production version-bridge reader.
+    TestGameWorld tw2(2);
+    GameWorld& w2 = tw2.world();
+    auto infile = og::io::og_open_read(file.c_str());
+    ASSERT_TRUE(infile);
+    char skip[4] = {};
+    ASSERT_EQ(4u, infile->read(skip, 1, 4)); // FSS header + version byte
+    og::data::LevelFileMetadata metadata;
+    ASSERT_EQ(1, og::data::load_scenario_version(*infile, &w2, &metadata, 10));
+
+    const walker* loaded_waking = nullptr;
+    const walker* loaded_posted = nullptr;
+    const walker* loaded_roamer = nullptr;
+    for (const auto& uptr : w2.oblist)
+    {
+        const walker* ob = uptr.get();
+        if (ob == nullptr)
+            continue;
+        if (ob->family() == FAMILY_ORC)
+            loaded_waking = ob;
+        else if (ob->family() == FAMILY_SKELETON)
+            loaded_posted = ob;
+        else if (ob->family() == FAMILY_ELF)
+            loaded_roamer = ob;
+    }
+    ASSERT_NE(loaded_waking, nullptr) << "orc should survive the round trip";
+    ASSERT_NE(loaded_posted, nullptr)
+        << "skeleton should survive the round trip";
+    ASSERT_NE(loaded_roamer, nullptr) << "elf should survive the round trip";
+
+    EXPECT_EQ(ACT_GUARD, loaded_waking->act_type());
+    EXPECT_FALSE(loaded_waking->guard_hold_post())
+        << "a waking guard must reload with the hold-post bit clear";
+
+    EXPECT_EQ(ACT_GUARD, loaded_posted->act_type());
+    EXPECT_TRUE(loaded_posted->guard_hold_post())
+        << "npc_flags bit 1 must survive the round trip";
+    EXPECT_FALSE(loaded_posted->specials_disabled())
+        << "bit 1 must not bleed into bit 0";
+    EXPECT_FALSE(loaded_posted->save_all_protected())
+        << "bit 1 must not bleed into bit 2";
+
+    EXPECT_NE(ACT_GUARD, loaded_roamer->act_type())
+        << "the hold-post bit must not smuggle in a GUARD act type";
+    EXPECT_TRUE(loaded_roamer->guard_hold_post())
+        << "bit 1 round-trips on a non-guard too (inert: act_guard is its "
+           "only reader)";
 }
 
 TEST(NpcScenarioFlags, specials_disabled_gates_direct_special_and_ai_check)

@@ -299,6 +299,21 @@ class walker : public og::sim::SimEntity
 		{
 			save_all_protected_ = value;
 		}
+		// guard_hold_post: npc_flags bit 1 ("hold post") from the level file.
+		// Selects the per-guard wake policy: an ACT_GUARD living normally
+		// converts to ACT_RANDOM pursuit the first time a foe is inside its
+		// sight range with a clear sight line (walker::act_guard); a
+		// hold-post guard never converts — it keeps the classic stationary
+		// sentry behavior. Meaningless for non-guards. Authoritative-side
+		// sim state only, like the other per-placed-NPC extras above.
+		[[nodiscard]] bool guard_hold_post() const noexcept
+		{
+			return guard_hold_post_;
+		}
+		void set_guard_hold_post(bool value) noexcept
+		{
+			guard_hold_post_ = value;
+		}
 		// summoned: a runtime-conjured living (archmage illusion/elemental,
 		// cleric raise — living::do_summon and friends). Ammunition, not a
 		// character: never a SCEN_TYPE_SAVE_ALL mission loss, no matter how
@@ -461,6 +476,7 @@ class walker : public og::sim::SimEntity
 		bool specials_disabled_ = false;
 		std::uint16_t spawn_delay_ = 0;
 		bool save_all_protected_ = false;
+		bool guard_hold_post_ = false;
 		bool summoned_ = false;
 		bool dormant_ = false;
 		walker* foe_ = nullptr;

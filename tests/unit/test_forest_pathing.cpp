@@ -16,10 +16,15 @@
  *      clear the target's command queue to inject a walk the target provably
  *      cannot take (terrain-blocked); the stolen queue froze 3-walker
  *      columns on L2's one-cell grass strips for 350+ ticks.
- *   4. Guard facing gate (walker.cpp act_guard + GameWorld::clear_sight_line)
- *      — an ACT_GUARD must not pivot to face a foe through a tree band, but
- *      must keep facing (and thus engaging) foes with a clear sight ray,
- *      including across water (projectiles fly over it).
+ *   4. Guard facing gate + wake rule (walker.cpp act_guard +
+ *      GameWorld::clear_sight_line) — an ACT_GUARD must not pivot to face a
+ *      foe through a tree band, but must keep facing (and thus engaging)
+ *      foes with a clear sight ray, including across water (projectiles fly
+ *      over it). A genuine sighting (in range AND clear ray) also WAKES the
+ *      guard (2026-07-11): unless guard_hold_post() is set, act_guard
+ *      converts it to ACT_RANDOM — same tick still runs the classic
+ *      face+fire, pursuit starts next tick. Hold-post guards keep the
+ *      classic stationary-sentry behavior forever.
  *
  * Decor-blocked cells were investigated and REFUTED as a cause (PathingMap
  * uses the same query_grid_passable predicate movement uses, decor included),
@@ -38,6 +43,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <cstdio>
 #include <map>
 #include <utility>
@@ -485,7 +491,9 @@ TEST(GuardFacing, guard_does_not_pivot_to_face_foe_through_tree_band)
     guard->set_enddir(static_cast<char>(FACE_LEFT));
 
     // With curdir == enddir the living turn step never rotates the guard, so
-    // ONLY act_guard's facing pivot could move curdir. It must not.
+    // ONLY act_guard's facing pivot could move curdir. It must not — and the
+    // wake rule shares the same range+ray test, so a wall-blocked foe must
+    // never wake the guard either.
     for (int t = 0; t < 12; ++t)
     {
         guard->act();
@@ -493,6 +501,9 @@ TEST(GuardFacing, guard_does_not_pivot_to_face_foe_through_tree_band)
             << "tick " << t
             << ": guard pivoted to face a foe it cannot see through the "
                "tree band";
+        EXPECT_EQ(ACT_GUARD, guard->act_type())
+            << "tick " << t
+            << ": guard woke on a foe it cannot see through the tree band";
     }
     ASSERT_NE(guard->foe(), nullptr)
         << "guard never acquired the foe — the facing gate must not touch "
@@ -500,6 +511,7 @@ TEST(GuardFacing, guard_does_not_pivot_to_face_foe_through_tree_band)
 }
 
 // With a clear ray the guard must keep the classic behavior: turn to track.
+// The same genuine sighting also wakes it into ACT_RANDOM pursuit.
 TEST(GuardFacing, guard_faces_foe_with_clear_sight)
 {
     TestGameWorld tw;
@@ -520,7 +532,9 @@ TEST(GuardFacing, guard_faces_foe_with_clear_sight)
 
     // act_guard snap-faces the foe on its acting ticks (the living turn step
     // rotates back toward enddir between them — the classic facing flip), so
-    // assert the guard EVER faces the foe.
+    // assert the guard EVER faces the foe. The same genuine sighting must
+    // also wake the guard: act_guard converts it to ACT_RANDOM (2026-07-11
+    // wake rule) so pursuit starts on the next tick.
     bool faced = false;
     for (int t = 0; t < 12 && !faced; ++t)
     {
@@ -531,6 +545,8 @@ TEST(GuardFacing, guard_faces_foe_with_clear_sight)
     EXPECT_TRUE(faced)
         << "guard failed to face a foe in plain sight — the gate is "
            "over-blocking";
+    EXPECT_EQ(ACT_RANDOM, guard->act_type())
+        << "a clear-sight foe in range must wake the guard into ACT_RANDOM";
 }
 
 // Water is sight-transparent (projectiles fly over it): ranged guards on the
@@ -566,6 +582,9 @@ TEST(GuardFacing, guard_faces_foe_across_water)
     EXPECT_TRUE(faced)
         << "guard refused to face a foe across water — water must stay "
            "sight-transparent";
+    EXPECT_EQ(ACT_RANDOM, guard->act_type())
+        << "water is sight-transparent, so the sighting must wake the guard "
+           "too";
 }
 
 // Beyond the family sight range the guard keeps its post facing even on
@@ -597,5 +616,115 @@ TEST(GuardFacing, guard_ignores_foe_beyond_sight_range)
                 << "tick " << t
                 << ": guard pivoted to face a foe beyond its sight range";
         }
+        EXPECT_EQ(ACT_GUARD, guard->act_type())
+            << "tick " << t
+            << ": guard woke on a foe beyond its sight range — no wake "
+               "without a genuine sighting";
     }
+}
+
+// Hold-post policy (npc_flags bit 1): a guard_hold_post() guard NEVER wakes,
+// no matter how long a clear-sight foe stands in range — it is the classic
+// stationary sentry, still facing and still firing from its post.
+TEST(GuardFacing, hold_post_guard_keeps_its_post_but_still_faces_and_fires)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    all_grass(w);
+
+    w.rng_.state_ = 0x9E3779B9u;
+
+    walker* guard = spawn_living(w, FAMILY_ORC, 1, 10, 10);
+    walker* foe = spawn_living(w, FAMILY_SOLDIER, 0, 14, 10);
+    ASSERT_NE(guard, nullptr);
+    ASSERT_NE(foe, nullptr);
+    if (foe->stats())
+        foe->stats()->set_hitpoints(30000); // outlive the fire cycles
+
+    guard->set_act_type(ACT_GUARD);
+    guard->set_guard_hold_post(true);
+    guard->set_lineofsight(20);
+    guard->set_curdir(static_cast<signed char>(FACE_LEFT));
+    guard->set_enddir(static_cast<char>(FACE_LEFT));
+
+    const float post_x = guard->xpos();
+    const float post_y = guard->ypos();
+
+    bool faced = false;
+    bool tried_fire = false;
+    for (int t = 0; t < 40; ++t)
+    {
+        guard->act();
+        faced = faced || guard->curdir() == FACE_RIGHT;
+        tried_fire = tried_fire ||
+                     (!guard->stats()->commands.empty() &&
+                      guard->stats()->commands.front().commandtype ==
+                          COMMAND_FIRE);
+        ASSERT_EQ(ACT_GUARD, guard->act_type())
+            << "tick " << t
+            << ": a hold-post guard must NEVER wake, even with a clear-sight "
+               "foe in range";
+        EXPECT_EQ(post_x, guard->xpos())
+            << "tick " << t << ": a hold-post guard must never leave its post";
+        EXPECT_EQ(post_y, guard->ypos())
+            << "tick " << t << ": a hold-post guard must never leave its post";
+    }
+    ASSERT_NE(guard->foe(), nullptr);
+    EXPECT_TRUE(faced)
+        << "hold-post must not disable the classic facing snap";
+    EXPECT_TRUE(tried_fire)
+        << "hold-post must not disable the classic COMMAND_FIRE attempt";
+}
+
+// Wake rule end to end: a plain (non-hold-post) guard that genuinely sights
+// a foe converts to ACT_RANDOM and, driven only by its own AI from then on,
+// leaves its post and closes to engagement range.
+TEST(GuardFacing, woken_guard_pursues_its_foe)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    all_grass(w);
+
+    w.rng_.state_ = 0x9E3779B9u;
+
+    walker* guard = spawn_living(w, FAMILY_ORC, 1, 10, 10);
+    walker* foe = spawn_living(w, FAMILY_SOLDIER, 0, 16, 10);
+    ASSERT_NE(guard, nullptr);
+    ASSERT_NE(foe, nullptr);
+    if (foe->stats())
+        foe->stats()->set_hitpoints(30000); // outlive the whole pursuit
+
+    guard->set_act_type(ACT_GUARD);
+    guard->set_lineofsight(20);
+    guard->set_curdir(static_cast<signed char>(FACE_LEFT));
+    guard->set_enddir(static_cast<char>(FACE_LEFT));
+
+    // The wake tick: act_guard still runs the classic face+fire on the very
+    // tick it converts the act type.
+    guard->act();
+    EXPECT_EQ(FACE_RIGHT, guard->curdir())
+        << "the wake tick must still run the classic facing snap";
+    EXPECT_TRUE(!guard->stats()->commands.empty() &&
+                guard->stats()->commands.front().commandtype == COMMAND_FIRE)
+        << "the wake tick must still run the classic fire attempt";
+    ASSERT_EQ(ACT_RANDOM, guard->act_type())
+        << "a clear-sight foe in range must wake the guard";
+
+    // Pursuit: no injected commands — the woken guard's own ACT_RANDOM AI
+    // (search / walk-toward-foe) must leave the post and close in.
+    const std::int32_t d0 = guard->distance_to_ob(foe);
+    std::int32_t best = d0;
+    for (int t = 0; t < 400 && best >= 3 * GRID_SIZE; ++t)
+    {
+        guard->act();
+        if (guard->dead())
+            break;
+        best = std::min(best, guard->distance_to_ob(foe));
+    }
+    EXPECT_LT(best, 3 * GRID_SIZE)
+        << "the woken guard never pursued its foe (started at " << d0
+        << "px, best " << best << "px)";
+    EXPECT_TRUE(guard->xpos() != static_cast<float>(10 * GRID_SIZE) ||
+                guard->ypos() != static_cast<float>(10 * GRID_SIZE))
+        << "pursuit must actually leave the post";
 }

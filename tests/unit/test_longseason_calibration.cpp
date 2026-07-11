@@ -97,11 +97,23 @@ struct CurvePin
 // now closes), 10: 4->3, 12: 8->7. All other levels re-measured at or
 // above their pinned floors. Re-sweep the win/hold gates with
 // scripts/longseason_playtest.sh before the next balance pass.)
+// (Recalibrated 2026-07-11 for the guard wake rule (wake-on-sight +
+// hold-post policy, docs/GAMEPLAY_FIXES_FROM_CLASSIC.md): allied posts —
+// the Assessor's door-wards, ferrymen, fort garrisons, the winter watch —
+// now provably hold (hold-post bit), easing the escort beats they anchor
+// (3: 7->8, 9: 7->8), while enemy ambush posts spring and hunt once
+// sighted. The guard-dense encounter levels got sharply hotter for the
+// pessimistic stand-in crew: 4: 7->1 (the toll ambush now closes on the
+// Assessor's porch), 6: 7->4, 12: 7->2, 13: 4->2, 16: 8->2, and 17: 7->0
+// joins 18 in the 0-floor war class (its 34 mixed posts converge once the
+// crew is seen; a real crew that kites and heals plays it, the stand-in
+// cannot). Re-sweep the F4 win/hold gates on 4/12/16/17 with
+// scripts/longseason_playtest.sh before the next balance pass.)
 constexpr CurvePin kCurve[] = {
-    {1, 1, 8},  {2, 1, 6},  {3, 2, 7},  {4, 2, 7},  {5, 3, 5},
-    {6, 3, 7},  {7, 4, 6},  {8, 4, 3},  {9, 5, 7},  {10, 5, 3},
-    {11, 5, 5}, {12, 6, 7}, {13, 6, 4}, {14, 7, 7}, {15, 7, 8},
-    {16, 7, 8}, {17, 8, 7}, {18, 8, 0}, {19, 8, 8},
+    {1, 1, 8},  {2, 1, 6},  {3, 2, 8},  {4, 2, 1},  {5, 3, 5},
+    {6, 3, 4},  {7, 4, 6},  {8, 4, 3},  {9, 5, 8},  {10, 5, 3},
+    {11, 5, 5}, {12, 6, 2}, {13, 6, 2}, {14, 7, 7}, {15, 7, 8},
+    {16, 7, 2}, {17, 8, 0}, {18, 8, 0}, {19, 8, 8},
 };
 
 constexpr int kCalibrationTicks = 600;

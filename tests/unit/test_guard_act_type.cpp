@@ -120,6 +120,12 @@ TEST(GuardActType, loaded_guard_holds_position_while_roamers_may_move)
     guard->setxy(10 * GRID_SIZE, 10 * GRID_SIZE);
     guard->set_team_num(2);
     guard->set_act_type(ACT_GUARD);
+    // The hero below is inside this guard's clear sight, and a plain guard
+    // now WAKES into ACT_RANDOM pursuit on a genuine sighting (walker.cpp
+    // act_guard, 2026-07-11). This test pins the classic stationary-sentry
+    // contract, so author the hold-post policy bit (npc_flags bit 1) — it
+    // must round-trip through the writer/loader with the GUARD byte.
+    guard->set_guard_hold_post(true);
 
     // A distant hostile keeps the level alive and gives AI a foe to seek.
     walker* hero = w.add_ob(Order::Living, FAMILY_SOLDIER);
@@ -140,6 +146,8 @@ TEST(GuardActType, loaded_guard_holds_position_while_roamers_may_move)
     }
     ASSERT_NE(loaded_guard, nullptr);
     ASSERT_EQ(ACT_GUARD, loaded_guard->act_type());
+    ASSERT_TRUE(loaded_guard->guard_hold_post())
+        << "the hold-post bit must survive the round trip with the GUARD byte";
 
     const float gx = loaded_guard->xpos();
     const float gy = loaded_guard->ypos();
@@ -151,6 +159,6 @@ TEST(GuardActType, loaded_guard_holds_position_while_roamers_may_move)
         << "a guard must hold its post (act_guard never walks)";
     EXPECT_EQ(gy, loaded_guard->ypos());
     EXPECT_EQ(ACT_GUARD, loaded_guard->act_type())
-        << "nothing in the tick loop may demote a loaded guard";
+        << "nothing in the tick loop may demote a loaded hold-post guard";
     EXPECT_GE(w2.level_tick_count(), 80u) << "the sim must actually have run";
 }
