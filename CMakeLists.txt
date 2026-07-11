@@ -2515,6 +2515,23 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             og_unit_sim
             PROPERTIES RESOURCE_LOCK native_network_stack
         )
+        # og_unit_sim now bundles the live IXWebSocket/relay transport tests. Run
+        # alone it finishes in ~1s (loopback handshakes are instant), but the
+        # RESOURCE_LOCK above only keeps it off the OTHER network suites — CTest
+        # still overlaps it with the heavy non-network integration binaries
+        # (og_test_view, og_test_game_core, og_test_level). Under that CPU
+        # contention the loopback websocket handshake starves and waits out the
+        # transport's network_timeout, blowing past the 180s CTest budget (observed
+        # at both -j6 and -j4). RUN_SERIAL takes it off the contended schedule so
+        # the transports connect promptly in every lane.
+        # ...and give it the same 600s budget the coverage lane uses. The bundled
+        # at_12hz loopback-websocket sync test is wall-clock-bound with a 90s
+        # internal network_timeout that assumes a generous ctest cap; the default
+        # 180s is too tight when a sync stalls and waits that timeout out (the test
+        # then blocks — main thread in the 12hz pacing sleep — rather than
+        # deadlocking, so it completes given headroom). 600s keeps it green without
+        # masking a genuine hang.
+        set_tests_properties(og_unit_sim PROPERTIES RUN_SERIAL TRUE TIMEOUT 600)
         # The dedicated picker-network suite is tiny when it runs alone, but
         # its live host/join transport handoff can stall on 4-core CI runners
         # when CTest overlaps it with the other long-running integration

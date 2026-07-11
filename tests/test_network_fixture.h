@@ -112,6 +112,30 @@ public:
         return error_;
     }
 
+    // Production websocket clients auto-reconnect when a connection errors
+    // out, and GameClient reacts to the transport's disconnected->connected
+    // edge by resending its hello (session token), which makes the server
+    // re-bind the player and re-keyframe. This minimal loopback wrapper
+    // disables IX auto-reconnection for deterministic teardown, so a
+    // connection that WEDGES while still claiming Open — observed rarely on
+    // loaded runners: the socket stops delivering frames (rx froze at the
+    // baseline burst while siblings kept streaming) but never errors — would
+    // starve its client forever. drop()+redial() force the production
+    // recovery path. They are separate calls (not one kick()) so the caller
+    // can let GameClient OBSERVE the disconnected state in between: a
+    // stop+start pair that completes within one poll interval races the
+    // GameClient's edge detection, and a missed edge means the hello is never
+    // resent and the fresh server-side peer never gets bound or keyframed.
+    void drop()
+    {
+        stop();
+    }
+    void redial()
+    {
+        websocket_.start();
+        started_ = true;
+    }
+
     void send(PeerId peer_id,
               const std::uint8_t* data,
               std::size_t len) override
@@ -120,8 +144,11 @@ public:
             std::lock_guard<std::mutex> lock(state_mutex_);
             if (!open_)
             {
-                throw std::runtime_error(
-                    "WebSocketLoopbackClientTransport is not connected");
+                // Production parity (WebSocketClientTransport): a send while
+                // disconnected/reconnecting is a no-op, not a game-thread
+                // throw. Matters during a kick(): GameClient::send_input sends
+                // unconditionally and must not abort the test mid-recovery.
+                return;
             }
             if (remote_peer_id_ != 0 && peer_id != remote_peer_id_)
             {
@@ -398,6 +425,11 @@ public:
             send_client_inputs(next_tick);
             step_server_once();
             poll_clients_for_server_tick();
+            // A failed catch-up wait already burned the full network timeout;
+            // repeating it for every remaining tick would turn one failure
+            // into an hour-long run. Stop at the first fatal failure.
+            if (::testing::Test::HasFatalFailure())
+                return;
         }
     }
 
@@ -644,6 +676,17 @@ private:
         const auto deadline =
             std::chrono::steady_clock::now() + config_.network_timeout;
         auto next_resync = std::chrono::steady_clock::now();
+        // Watchdog for silently wedged websocket connections: a client whose
+        // socket hangs while still claiming Open (rare under runner load)
+        // receives nothing — no re-broadcast can heal it and no error ever
+        // fires (IX auto-reconnection is disabled in the loopback wrapper).
+        // If a client makes no progress for kSilentClientKick while its
+        // siblings advance, kick() its socket: the reconnect + hello resend +
+        // server re-keyframe path recovers it within a few ticks.
+        constexpr std::chrono::seconds kSilentClientKick{3};
+        std::vector<std::uint32_t> last_ticks(clients_.size(), 0u);
+        std::vector<std::chrono::steady_clock::time_point> last_progress(
+            clients_.size(), std::chrono::steady_clock::now());
         while (std::chrono::steady_clock::now() < deadline)
         {
             (void)server_transport_->poll();
@@ -660,6 +703,29 @@ private:
                                                      EventDeliveryMode::Skip);
                 });
                 next_resync = now + std::chrono::milliseconds(100);
+            }
+            for (std::size_t ci = 0; ci < clients_.size(); ++ci)
+            {
+                const auto& c = clients_[ci];
+                if (!c->game_client)
+                    continue;
+                const std::uint32_t seen =
+                    c->game_client->last_seen_server_tick();
+                if (seen != last_ticks[ci])
+                {
+                    last_ticks[ci] = seen;
+                    last_progress[ci] = now;
+                }
+                else if (seen < target_tick && c->websocket_transport &&
+                         now - last_progress[ci] >= kSilentClientKick)
+                {
+                    std::fprintf(stderr,
+                                 "[network_fixture] client %zu silent at tick "
+                                 "%u (target %u) — kicking wedged websocket\n",
+                                 ci, seen, target_tick);
+                    kick_wedged_websocket_client(ci);
+                    last_progress[ci] = now;
+                }
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
@@ -834,6 +900,75 @@ private:
                             std::back_inserter(added_peers));
         connected_server_peers_ = std::move(current_peers);
         return added_peers;
+    }
+
+    // Recovery for a silently wedged loopback websocket connection (it stops
+    // delivering frames while still claiming Open; no error ever fires, so
+    // neither IX auto-reconnection nor the server's re-broadcasts can heal
+    // it). Force the full production-equivalent rejoin, using the fixture's
+    // server-side authority instead of the hello/session-token dance (this
+    // harness binds players directly and never runs that handshake):
+    //   1. drop + re-dial the client socket (fresh connection),
+    //   2. discover the fresh connection's new server-side peer id,
+    //   3. re-bind the SAME player slot + control walker to the new peer, and
+    //   4. recreate the GameClient against the new peer id (it is baked into
+    //      the client at construction).
+    // The catch-up loop's periodic broadcast_current_state then sends the new
+    // peer its initial setup + keyframe, the client acks ready, and per-tick
+    // snapshots resume.
+    void kick_wedged_websocket_client(std::size_t client_index)
+    {
+        ClientState& c = *clients_.at(client_index);
+        if (!c.websocket_transport)
+            return;
+
+        c.websocket_transport->drop();
+        c.websocket_transport->redial();
+        if (!c.websocket_transport->wait_until_open(std::chrono::seconds(2)))
+        {
+            std::fprintf(stderr,
+                         "[network_fixture] client %zu re-dial failed: %s\n",
+                         client_index,
+                         c.websocket_transport->error().c_str());
+            return;
+        }
+
+        PeerId new_peer_id = 0;
+        wait_until(
+            [&] {
+                const std::vector<PeerId> added =
+                    poll_websocket_server_peers();
+                if (!added.empty())
+                    new_peer_id = added.back();
+                return new_peer_id != 0;
+            },
+            std::chrono::seconds(2));
+        if (new_peer_id == 0)
+        {
+            std::fprintf(stderr,
+                         "[network_fixture] client %zu reconnected but no new "
+                         "server peer appeared\n",
+                         client_index);
+            return;
+        }
+
+        walker* const control = server_->player_control(client_index);
+        with_server_context([&] {
+            server_->poll_incoming_messages();
+            // bind_player refreshes world_.control_hp from the control's
+            // current hitpoints — a mid-stream write to snapshot-hashed world
+            // state that would break every in-flight client's hash check.
+            // This heal must be side-effect-free on the sim: restore it.
+            GameWorld& world = server_world();
+            const float prior_control_hp = world.control_hp;
+            server_->bind_player(new_peer_id, client_index,
+                                 player_team(client_index), control);
+            world.control_hp = prior_control_hp;
+        });
+        c.peer_id_value = new_peer_id;
+        c.websocket_transport->set_remote_peer_id(new_peer_id);
+        c.game_client = std::make_unique<GameClient>(*c.transport, new_peer_id,
+                                                     &c.world.world());
     }
 
     PeerId wait_for_next_websocket_peer()
