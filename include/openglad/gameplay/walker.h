@@ -128,7 +128,33 @@ class walker : public og::sim::SimEntity
 			return order();
 		}
 		walker  *create_weapon();
-		bool fire_check(short xdelta, short ydelta);
+		// Why a fire_check() attempt was denied. Callers that care (the
+		// COMMAND_ATTACK melee loop) distinguish the orientation denials —
+		// Facing, and NoRanged at bump range ("the foe is in weapon reach
+		// but we are pointed the wrong way / can only hit by facing") —
+		// from every other denial, because the classic response to ANY
+		// denial (walk toward the foe, sliding perpendicular when blocked)
+		// deadlocks two adjacent fighters forever. The reach gate runs
+		// before the NoRanged/NoMagic gates so those two denials imply the
+		// foe is within reach. See docs/GAMEPLAY_FIXES_FROM_CLASSIC.md
+		// (guard-standoff melee deadlock, 2026-07-07).
+		enum class FireCheckDenial : std::uint8_t
+		{
+			None,        // check passed
+			NoFoe,       // nothing to fire at
+			NoRanged,    // BIT_NO_RANGED family (melee-only)
+			NoMagic,     // weapon costs more magic than we have
+			OutOfRange,  // foe beyond weapon stepsize*lineofsight
+			Facing,      // in reach, but curdir is not toward the foe
+			WallBlocked, // the shot ray hits terrain first
+			RayMiss,     // the shot ray ran full range without a hit
+		};
+		bool fire_check(short xdelta, short ydelta,
+		                FireCheckDenial* denial = nullptr);
+		// Snap-face a (foe) direction: sets curdir AND enddir (so the
+		// act() pre-turn doesn't fight it) AND lastx/lasty (the thrown-
+		// weapon heading that set_weapon_heading() reads).
+		void face_delta(short xdelta, short ydelta);
 		bool query_next_to();
 		bool special();
 		bool teleport();
@@ -259,6 +285,28 @@ class walker : public og::sim::SimEntity
 		{
 			spawn_delay_ = value;
 		}
+		// save_all_protected: npc_flags bit 2 ("protected") from the level
+		// file. When ANY placed walker on the level carries it, the
+		// SCEN_TYPE_SAVE_ALL death check watches ONLY flagged walkers (the
+		// mission-critical cast); when none does, the legacy rule applies
+		// (any named team-0 living). Authoritative-side sim state only, like
+		// the other per-placed-NPC extras above.
+		[[nodiscard]] bool save_all_protected() const noexcept
+		{
+			return save_all_protected_;
+		}
+		void set_save_all_protected(bool value) noexcept
+		{
+			save_all_protected_ = value;
+		}
+		// summoned: a runtime-conjured living (archmage illusion/elemental,
+		// cleric raise — living::do_summon and friends). Ammunition, not a
+		// character: never a SCEN_TYPE_SAVE_ALL mission loss, no matter how
+		// it is named or teamed. Sticky for the walker's whole life — the
+		// owner() link is severed when the summoner dies, so the exemption
+		// cannot ride on it.
+		[[nodiscard]] bool summoned() const noexcept { return summoned_; }
+		void set_summoned(bool value) noexcept { summoned_ = value; }
 		// dormant: a delayed-spawn walker that has not activated yet. It does
 		// not act, is not drawn, sits outside the obmap (uncollidable and
 		// untargetable), and is excluded from snapshot capture — but its team
@@ -394,6 +442,8 @@ class walker : public og::sim::SimEntity
 		// gated on a non-default value, keeping parity goldens byte-identical.
 		bool specials_disabled_ = false;
 		std::uint16_t spawn_delay_ = 0;
+		bool save_all_protected_ = false;
+		bool summoned_ = false;
 		bool dormant_ = false;
 		walker* foe_ = nullptr;
 		walker* leader_ = nullptr;

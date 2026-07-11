@@ -15,6 +15,7 @@
 #include "builders.h"
 
 #include <openglad/core/constants.h>
+#include <openglad/core/decordefs.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/interface/level_runtime_data.h>
@@ -116,6 +117,17 @@ void build_quiet_vale(const LevelDataHooks& hooks)
     place_exit(w, 0, 57, 19, 2); // the east road, on to the forest
     scatter_boulders(w, 0, 8, 0, 19, 16, 21);  // stony wood margins, north
     scatter_boulders(w, 0, 8, 24, 19, 39, 21); // and south
+    // E7 ambience: the vale while it still lives — hedgerow shrubs on the
+    // wood margins, pond-fringe brush, scrub on the north edge, and the
+    // roads' worn pebbles. The Scouring re-dresses this same ground,
+    // thinner, when the crew comes home.
+    scatter_decor(w, 0, 8, 0, 19, 39, 13, DECOR_SHRUB, {ScatterGround::Grass});
+    scatter_decor(w, 0, 42, 2, 52, 10, 9, DECOR_SHRUB,
+                  {ScatterGround::LightGrass});
+    scatter_decor(w, 0, 20, 1, 30, 4, 7, DECOR_SHRUB,
+                  {ScatterGround::DarkGrass});
+    scatter_decor(w, 0, 2, 16, 57, 24, 11, DECOR_PEBBLES,
+                  {ScatterGround::Path});
     save_level_files(w, 1, "The Quiet Vale",
                      {"Night falls on the quiet vale.",
                       "Wolves howl in the west wood.",
@@ -126,10 +138,17 @@ void build_quiet_vale(const LevelDataHooks& hooks)
 }
 
 // 2 THE FOREST ROAD (THE FLIGHT): a winding corridor maze carved through
-// wall-to-wall trees. Pursuit ghosts wake behind the crew (150/400) and the
-// rider den never stops feeding; guard-orc pockets sit at chokepoint EDGES
-// so a sprinting crew can slip past. CAN_EXIT + SAVE_ALL: the Bearer has
-// gone ahead to the hollow by the road's end — run, don't win.
+// wall-to-wall trees. The Bearer starts IN the crew's column at the west
+// muster clearing and runs the gauntlet east with the company (non-guard:
+// team-0 AI hunts the same pockets the crew fights through, so he moves
+// with the line). Pursuit riders wake BEHIND the runners (250/550) and the
+// rider den starts feeding at 400; every wolf pocket is a working GUARD
+// post anchored at a chokepoint EDGE — never across the road centerline —
+// so a sprinting crew can slip past and only wrong turns get punished.
+// CAN_EXIT + SAVE_ALL: run, don't win. Intercept geometry (see the design
+// doc's table): every rider spawn is west of the lead marker, and its
+// delay + straight-line flight to the east gate exceeds the crew's
+// nonstop road time, so the hunt can chase but never cut ahead.
 void build_forest_road(const LevelDataHooks& hooks)
 {
     LevelRuntimeData level(2, true, &hooks);
@@ -145,16 +164,22 @@ void build_forest_road(const LevelDataHooks& hooks)
     paint_rect(w.grid, 23, 8, 26, 19, PIX_GRASS1);   // bend 1, north
     paint_rect(w.grid, 26, 8, 45, 11, PIX_GRASS1);   // seg B, east
     paint_rect(w.grid, 43, 11, 46, 28, PIX_GRASS1);  // bend 2, south
-    paint_rect(w.grid, 39, 25, 42, 27, PIX_GRASS1);  // dead-end glade connector
-    paint_rect(w.grid, 28, 24, 38, 28, PIX_GRASS1);  // the loot glade
+    paint_rect(w.grid, 39, 25, 42, 27, PIX_GRASS1);  // glade east connector
+    paint_rect(w.grid, 28, 24, 38, 28, PIX_GRASS1);  // the wolf glade
+    // The glade's WEST door (Wave E1): a 2-wide cut from seg A's east end.
+    // With one door off bend 2 the glade was a pure dead end whose wolves
+    // sat 7 Euclidean tiles from the road across an uncrossable tree band
+    // — the classic nearest-foe lure that wedged AI companies (and tempts
+    // players) into grinding at the wall. Two doors make it a RISKY
+    // SHORTCUT instead: brave the wolves and the pool bank, skip bend 1
+    // and seg B entirely.
+    paint_rect(w.grid, 26, 22, 27, 24, PIX_GRASS1);
     paint_rect(w.grid, 46, 25, 68, 28, PIX_GRASS1);  // seg C, east
     paint_rect(w.grid, 56, 18, 57, 24, PIX_GRASS1);  // pocket 2 connector
     paint_rect(w.grid, 52, 13, 61, 18, PIX_GRASS1);  // pocket 2
     paint_rect(w.grid, 66, 14, 69, 25, PIX_GRASS1);  // bend 3, north
     paint_rect(w.grid, 69, 14, 86, 17, PIX_GRASS1);  // seg D, east
     paint_rect(w.grid, 80, 10, 87, 20, PIX_GRASS1);  // east clearing
-    paint_rect(w.grid, 76, 6, 80, 9, PIX_GRASS1);    // the Bearer's hollow
-    paint_rect(w.grid, 78, 10, 79, 13, PIX_GRASS1);  // and its connector
     paint_rect(w.grid, 31, 25, 34, 27, PIX_WATER1);  // the glade pool
     smooth_world(w);
     // The worn road, following the corridor centerlines.
@@ -166,40 +191,71 @@ void build_forest_road(const LevelDataHooks& hooks)
     paint_path(w.grid, 67, 15, 68, 25);
     paint_path(w.grid, 69, 15, 85, 16);
 
-    // The hunt (team 2): pursuit ghosts wake behind the crew...
-    place_living(w, FAMILY_GHOST, 2, 0, 3, 18, 5, false, false, 150);
-    place_living(w, FAMILY_GHOST, 2, 0, 3, 22, 5, false, false, 150);
-    place_living(w, FAMILY_GHOST, 2, 0, 2, 20, 6, false, false, 400);
-    place_living(w, FAMILY_GHOST, 2, 0, 5, 20, 6, false, false, 400);
-    // ...while wolf pockets hold the chokepoint edges (guards punish the
-    // wrong turn, not the runner) and one pack roams seg C.
-    static constexpr int bend1[3][2] = {{24, 10}, {24, 14}, {24, 17}};
+    // The hunt (team 2): pursuit riders wake BEHIND the company — waves 1
+    // and 2 in the muster clearing, wave 3 riding out of the den. With
+    // ghost flight at soldier speed, delay + straight flight to the gate
+    // beats the crew's ~342-tick road time on every wave (worst margin
+    // x1.69; see the design doc's intercept table) — the riders hunt the
+    // runners, they never hold the finish line. Rider levels stay low
+    // (2/2/3) and their scare special is SHEATHED (a frozen or fleeing
+    // company mid-melee is a death sentence): an entry-power company must
+    // survive being CAUGHT once and still run on.
+    place_living(w, FAMILY_GHOST, 2, 0, 3, 18, 2, false, true, 250);
+    place_living(w, FAMILY_GHOST, 2, 0, 3, 22, 2, false, true, 250);
+    place_living(w, FAMILY_GHOST, 2, 0, 2, 20, 2, false, true, 550);
+    place_living(w, FAMILY_GHOST, 2, 0, 4, 20, 2, false, true, 550);
+    // ...while wolf pockets hold the chokepoint EDGES (2x2 guards anchored
+    // off the centerline of every 4-wide corridor, so 2 clear tiles always
+    // remain for a 2x2 runner) and one pack roams seg C. Guards hold their
+    // posts now (restored Living GUARD command byte): the pockets punish
+    // wrong turns and looting, not the road itself. Wolf levels climb 1..2
+    // west to east — scenario NPCs carry full level-derived stats, and the
+    // whole company (Bearer included) must be able to FIGHT its way east
+    // when the road cannot simply be sprinted (Wave E1 playtest: an
+    // AI-driven entry-power crew has to make the east clearing alive).
+    static constexpr int bend1[3][2] = {{23, 10}, {25, 14}, {23, 17}};
     for (const auto& c : bend1)
-        place_living(w, FAMILY_ORC, 2, 0, c[0], c[1], 2, true);
-    place_living(w, FAMILY_ORC, 2, 0, 33, 9, 3, true);  // seg B watchers
-    place_living(w, FAMILY_ORC, 2, 0, 38, 10, 3, true);
+        place_living(w, FAMILY_ORC, 2, 0, c[0], c[1], 1, true);
+    place_living(w, FAMILY_ORC, 2, 0, 33, 8, 1, true);  // seg B watchers
+    place_living(w, FAMILY_ORC, 2, 0, 38, 10, 1, true);
     static constexpr int glade[4][2] = {{29, 25}, {30, 27}, {35, 24}, {36, 26}};
     for (const auto& c : glade)
-        place_living(w, FAMILY_ORC, 2, 0, c[0], c[1], 3, true);
-    static constexpr int bend2[3][2] = {{44, 13}, {44, 19}, {44, 24}};
+        place_living(w, FAMILY_ORC, 2, 0, c[0], c[1], 1, true);
+    static constexpr int bend2[3][2] = {{43, 13}, {45, 19}, {43, 24}};
     for (const auto& c : bend2)
-        place_living(w, FAMILY_ORC, 2, 0, c[0], c[1], 3, true);
-    static constexpr int roamers[4][2] = {{50, 26}, {55, 26}, {60, 27}, {64, 26}};
-    for (const auto& c : roamers)
-        place_living(w, FAMILY_ORC, 2, 0, c[0], c[1], 2);
+        place_living(w, FAMILY_ORC, 2, 0, c[0], c[1], 1, true);
+    // The pack that SHADOWS the road (Wave E1): four runners wake in
+    // sequence ever further east, so from the mid-run on there is always
+    // a live wolf somewhere ahead. They are the AI company's forward
+    // pull: guards hold their posts by design, and a fight-through crew
+    // needs moving foes to chase or it parks at the first post it cannot
+    // shift (the guard-standoff engine quirk — see the Wave E report).
+    // For a human runner they are the mid-run scare beats. All wake well
+    // after a nonstop crew would have passed their cell.
+    place_living(w, FAMILY_ORC, 2, 0, 48, 26, 1, false, false, 500);
+    place_living(w, FAMILY_ORC, 2, 0, 58, 27, 1, false, false, 1100);
+    place_living(w, FAMILY_ORC, 2, 0, 67, 20, 1, false, false, 1700);
+    place_living(w, FAMILY_ORC, 2, 0, 76, 15, 2, false, false, 2300);
+    // ...and the last straggler crossing the east clearing itself.
+    place_living(w, FAMILY_ORC, 2, 0, 83, 15, 1, false, false, 2900);
     static constexpr int pocket2[3][2] = {{54, 15}, {56, 16}, {59, 14}};
     for (const auto& c : pocket2)
-        place_living(w, FAMILY_ORC, 2, 0, c[0], c[1], 4, true);
-    place_living(w, FAMILY_ORC, 2, 0, 67, 17, 4, true); // bend 3 watchers
-    place_living(w, FAMILY_ORC, 2, 0, 67, 22, 4, true);
-    // The seg-D rider picket wakes at 600: ghosts fly and chase on sight,
-    // and the Bearer's hollow is minutes past a sprinting crew's reach
-    // (lead -> exit is ~444 nonstop soldier ticks) — a tick-0 picket
-    // corners the cargo before any player could matter.
-    place_living(w, FAMILY_GHOST, 2, 0, 72, 15, 5, true, false, 600);
-    place_living(w, FAMILY_GHOST, 2, 0, 75, 16, 5, true, false, 600);
-    // The rider den: endless pursuit pressure — standing still bleeds you.
-    place_generator(w, FAMILY_BONES, 2, 0, 3, 28, 4);
+        place_living(w, FAMILY_ORC, 2, 0, c[0], c[1], 2, true);
+    place_living(w, FAMILY_ORC, 2, 0, 66, 17, 2, true); // bend 3 watchers
+    place_living(w, FAMILY_ORC, 2, 0, 68, 22, 2, true);
+    // The last watch: wolves on seg D's edges — the road's end has teeth,
+    // but the gate itself stays open (nothing camps the east clearing).
+    place_living(w, FAMILY_ORC, 2, 0, 72, 14, 2, true);
+    place_living(w, FAMILY_ORC, 2, 0, 78, 16, 2, true);
+    // The rider den empties in a LAST wave at 900 rather than hosting a
+    // generator: authored when every crew death ended a SAVE_ALL mission
+    // (pre-F2 legacy rule; the Bearer alone is watched now), and
+    // an endless den guarantees eventual attrition in any long fight —
+    // the E1 playtest needs the whole company able to reach the road's
+    // end alive. Three bounded waves keep the "riders behind you" dread;
+    // the den pocket itself stays as scenery (old bones).
+    place_living(w, FAMILY_GHOST, 2, 0, 3, 28, 3, false, true, 900);
+    place_living(w, FAMILY_GHOST, 2, 0, 5, 29, 3, false, true, 900);
 
     // The crew at the road mouth, lead first, facing east.
     static constexpr int starts[9][2] = {{8, 20}, {5, 17}, {5, 23},
@@ -207,12 +263,14 @@ void build_forest_road(const LevelDataHooks& hooks)
                                          {9, 23}, {3, 16}, {3, 24}};
     for (const auto& s : starts)
         place_start(w, 0, s[0], s[1]);
-    // The Bearer is still AHEAD of the hunt: he reaches the hollow at tick
-    // 450, about when a running crew makes the road's end (lead -> exit is
-    // ~444 nonstop soldier ticks) — dormant cargo cannot be cornered by
-    // whatever roams the east half before then. SAVE_ALL protects him from
-    // the moment he arrives.
-    place_hero(w, FAMILY_THIEF, 0, 77, 7, 3, "The Bearer", true, false, 450);
+    // The Bearer runs WITH the crew: he starts inside the marker wedge
+    // (heart of the column, behind the lead) and is NOT a guard — team-0
+    // AI chases the same foes the crew fights through, so the cargo moves
+    // east with the line instead of holding a post the pursuit would
+    // overrun. Thief speed (5) lets him keep up with soldiers (4) and
+    // outrun the wolves (3). Specials sheathed: no bombs in the column.
+    // SAVE_ALL rides on him from tick 0.
+    place_hero(w, FAMILY_THIEF, 0, 6, 21, 4, "The Bearer", false, true, 0);
 
     // Bait: stopping for it costs you.
     place(w, Order::Treasure, FAMILY_GOLD_BAR, 0, 0, 32, 24);
@@ -221,17 +279,50 @@ void build_forest_road(const LevelDataHooks& hooks)
     place(w, Order::Treasure, FAMILY_SILVER_BAR, 0, 0, 53, 14);
     place(w, Order::Treasure, FAMILY_SILVER_BAR, 0, 0, 60, 16);
     place(w, Order::Treasure, FAMILY_DRUMSTICK, 0, 0, 57, 14);
+    // Dropped supplies ON the road (the refugees before you left in haste):
+    // a fighting company can eat mid-run without leaving the gauntlet.
+    place(w, Order::Treasure, FAMILY_DRUMSTICK, 0, 0, 20, 21);
+    place(w, Order::Treasure, FAMILY_DRUMSTICK, 0, 0, 58, 27);
 
     place_exit(w, 0, 85, 14, 3); // the road's end, east clearing
     place_exit(w, 0, 2, 16, 1);  // backtrack, NW corner of the muster clearing
+    // Forest texture, all of it passable: shrubs on the open grass off the
+    // road (DECOR_SHRUB blocks nothing), a few pebbles worn into the path,
+    // and old bones around the rider den and the wolf pockets. Nothing on
+    // this map's decor plane blocks ground — the road must stay runnable.
+    for (int y = 0; y < w.grid.h; ++y)
+    {
+        for (int x = 0; x < w.grid.w; ++x)
+        {
+            const unsigned char t = w.grid.data[x + y * w.grid.w];
+            const bool plain_grass = (t == PIX_GRASS1 || t == PIX_GRASS2 ||
+                                      t == PIX_GRASS3 || t == PIX_GRASS4);
+            const bool worn_path = (t == PIX_PATH_1 || t == PIX_PATH_2 ||
+                                    t == PIX_PATH_3 || t == PIX_PATH_4);
+            if (plain_grass && (x * 5 + y * 11) % 17 == 0 &&
+                !cell_near_entity(w, 0, x, y, 0))
+            {
+                paint_decor(w, 0, x, y, DECOR_SHRUB);
+            }
+            else if (worn_path && (x * 7 + y * 3) % 23 == 0 &&
+                     !cell_near_entity(w, 0, x, y, 0))
+            {
+                paint_decor(w, 0, x, y, DECOR_PEBBLES);
+            }
+        }
+    }
+    static constexpr int bones[6][2] = {{4, 26}, {5, 30}, {25, 12},
+                                        {37, 27}, {60, 13}, {69, 24}};
+    for (const auto& b : bones)
+        paint_decor(w, 0, b[0], b[1], DECOR_BONES);
     // Clearing rubble only: no litter anywhere — this is a chase map and
     // the road must stay runnable.
     scatter_boulders(w, 0, 2, 16, 10, 25, 23);
     save_level_files(w, 2, "The Forest Road",
                      {"Do not fight. RUN.",
-                      "The riders are behind you.",
-                      "The Bearer waits at the road's",
-                      "end. He must not fall.",
+                      "The riders wake behind you.",
+                      "The Bearer runs at your side;",
+                      "he must not fall.",
                       "The east gate is always open."},
                      3, 3500);
 }
@@ -242,11 +333,15 @@ void build_forest_road(const LevelDataHooks& hooks)
 // ground waves funneling through the ford at 800 and 1600 — and the two
 // west-bank camps keep spawning until the crew crosses and burns them.
 // Extermination win: hold the east bank, break every wave, none may pass.
+// The Bearer shelters behind the shield-line (SAVE_ALL from here east).
 void build_last_ford(const LevelDataHooks& hooks)
 {
     LevelRuntimeData level(3, true, &hooks);
     init_world(level, 1, 70, 45);
     GameWorld& w = level.world();
+    // Extermination win stays (no CAN_EXIT), but from the Forest Road on
+    // the cargo travels with the company: SAVE_ALL rides on the Bearer.
+    w.type = static_cast<char>(SCEN_TYPE_SAVE_ALL);
 
     paint_rect(w.grid, 30, 0, 39, 44, PIX_WATER1);         // the river
     paint_rect(w.grid, 0, 0, 10, 8, PIX_TREE_M1);          // west-bank woods
@@ -270,6 +365,20 @@ void build_last_ford(const LevelDataHooks& hooks)
     paint_decor(w, 0, 27, 25, DECOR_TORCH1);
     paint_decor(w, 0, 43, 17, DECOR_BRAZIER); // watch fires on the earthworks'
     paint_decor(w, 0, 43, 27, DECOR_BRAZIER); // inner lips
+    // The cargo redoubt: a raw-rock dogleg off the east road behind the
+    // shield-line (the finale-cleft pattern, painted AFTER smoothing on
+    // purpose — smoothed wallside faces are flyer-passable and the Riders
+    // FLY; raw rock blocks every mover and every shot). The mouth opens
+    // north at (55,25), the shelf row 26 makes the turn, and the lane runs
+    // west along row 27 to the Bearer: nothing outside has line of sight
+    // on the cargo, and the way in is one body at a time past the wards.
+    paint_rect(w.grid, 51, 25, 56, 25, PIX_WALL2); // north wall
+    paint(w.grid, 55, 25, PIX_GRASS1);             // the mouth
+    paint_rect(w.grid, 51, 26, 54, 26, PIX_WALL2); // the dogleg shelf
+    paint(w.grid, 56, 26, PIX_WALL2);
+    paint(w.grid, 51, 27, PIX_WALL2);
+    paint(w.grid, 56, 27, PIX_WALL2);
+    paint_rect(w.grid, 51, 28, 56, 28, PIX_WALL2); // south wall
 
     // The waves (team 2), sized for an entry-power lvl-2 crew that must
     // eventually EXTERMINATE them (scenario NPCs carry full level-derived
@@ -299,10 +408,15 @@ void build_last_ford(const LevelDataHooks& hooks)
     for (const auto& c : last_push)
         place_living(w, FAMILY_SKELETON, 2, 0, c[0], c[1], 3, false, false,
                      1600);
-    // The camps: crossing to smash them is the endgame. Both are lvl 2:
-    // generator cadence is rng(level*3), and a hotter camp refills the
-    // field faster than a lvl-2 crew can drain it.
-    place_generator(w, FAMILY_TENT, 2, 0, 15, 5, 2);   // north camp
+    // The camps: crossing to smash them is the endgame — the trickle must
+    // stay worth crossing for. The north TENT at lvl 3 (E6): generator
+    // spawns take set_difficulty once now, and its GROUND spawns must
+    // funnel through the held ford, so the designed level is safe to
+    // restore. The south BONES den stays at the pass-1 lvl 2: its FLYING
+    // Riders cross the river anywhere, and every hotter setting measured
+    // (3 and the designed 4) wail-trickles the cargo redoubt open by tick
+    // 6000 (Bearer gate 2/3 and 0/3 vs the required 3/3).
+    place_generator(w, FAMILY_TENT, 2, 0, 15, 5, 3);   // north camp
     place_generator(w, FAMILY_BONES, 2, 0, 14, 36, 2); // south camp
 
     // The shield-line at the ford mouth, ranks behind, flank posts on the
@@ -318,6 +432,30 @@ void build_last_ford(const LevelDataHooks& hooks)
     // because the flying Riders ignore the ford funnel entirely.
     place_living(w, FAMILY_SOLDIER, 0, 0, 43, 19, 3, true);
     place_living(w, FAMILY_SOLDIER, 0, 0, 43, 25, 3, true);
+    // The Bearer shelters in the redoubt behind the shield-line, its
+    // door-wards body-blocking the turn and the lane in series (the
+    // finale's warded-corridor pattern): SAVE_ALL rides on him from here
+    // east, and anything that wants the cargo kills the wards one at a
+    // time in a lane no bow or Rider can cross.
+    // (Ward weight follows the finale's door-wards — lvl-9, four deep,
+    // mouth/turn/lane/gate in series: a ward that falls to the wave-trickle
+    // is no ward at all, and the wards never leave the redoubt. The mouth
+    // post is E6's: the tick-1350..3300 surge — waves 3/4 landing on top of
+    // the camps' trickle — broke a three-ward lane about one seed in three.)
+    place_living(w, FAMILY_SOLDIER, 0, 0, 55, 24, 9, true); // the mouth
+    place_living(w, FAMILY_SOLDIER, 0, 0, 55, 26, 9, true); // the turn
+    place_living(w, FAMILY_SOLDIER, 0, 0, 54, 27, 9, true); // the lane
+    place_living(w, FAMILY_SOLDIER, 0, 0, 53, 27, 9, true); // the gate
+    place_hero(w, FAMILY_THIEF, 0, 52, 27, 4, "The Bearer", true, true, 0);
+    // The rearguard's own camp beside the redoubt: the flying Riders'
+    // scare-wail force-marches whatever it touches (through walls — it is
+    // a wail), so no static ward line is enough on a Rider level. The
+    // camp keeps the east road MANNED: its soldiers run down anything
+    // that slips or scatters past the earthworks. Lvl 6 (E6): its spawns
+    // take set_difficulty once now too, and this camp is load-bearing for
+    // the cargo — the bump keeps the defense/offense ratio where the
+    // pass-1 harness left it, with margin for the mid-game surge.
+    place_generator(w, FAMILY_TENT, 0, 0, 58, 26, 6);
 
     // The quartermaster's cache, behind the line.
     place(w, Order::Treasure, FAMILY_DRUMSTICK, 0, 0, 55, 20);
@@ -329,6 +467,16 @@ void build_last_ford(const LevelDataHooks& hooks)
     place_exit(w, 0, 1, 22, 2);  // backtrack, west road end
     scatter_boulders(w, 0, 0, 9, 29, 15, 21);  // stony west bank, north
     scatter_boulders(w, 0, 13, 35, 29, 44, 21); // and south
+    // E7 ambience: the ford has been fought over before — old bones on
+    // the west-bank flood meadows the waves march across, pebbles their
+    // boots grind into the road, and field-hedge brush behind the
+    // east-bank shield-line.
+    scatter_decor(w, 0, 0, 9, 29, 44, 23, DECOR_BONES,
+                  {ScatterGround::Grass, ScatterGround::DarkGrass});
+    scatter_decor(w, 0, 2, 20, 66, 24, 13, DECOR_PEBBLES,
+                  {ScatterGround::Path});
+    scatter_decor(w, 0, 48, 8, 60, 34, 15, DECOR_SHRUB,
+                  {ScatterGround::LightGrass});
     save_level_files(w, 3, "The Last Ford",
                      {"The river is the last line.",
                       "They must cross at the ford.",
@@ -348,6 +496,8 @@ void build_hidden_refuge(const LevelDataHooks& hooks)
     LevelRuntimeData level(4, true, &hooks);
     init_world(level, 2, 70, 50);
     GameWorld& w = level.world();
+    // Kill-all win stays; SAVE_ALL protects the named cargo (Burden's Road).
+    w.type = static_cast<char>(SCEN_TYPE_SAVE_ALL);
 
     // Floor 0: the valley walls with three gaps, the hall, huts, pool,
     // gardens.
@@ -384,12 +534,20 @@ void build_hidden_refuge(const LevelDataHooks& hooks)
     paint_decor(w, 0, 56, 20, DECOR_BRAZIER);
     paint_decor(w, 0, 46, 30, DECOR_BRAZIER);
     paint_decor(w, 0, 56, 30, DECOR_BRAZIER);
+    paint_decor(w, 0, 43, 23, DECOR_TORCH1); // torch posts flanking the
+    paint_decor(w, 0, 43, 27, DECOR_TORCH1); // hall door's road approach
+                                             // (rows 24-26 stay open)
     paint_pavement(w.grid, 21, 15, 23, 16); // hut hearths and doors
     paint_pavement(w.grid, 22, 17, 22, 17);
     paint_pavement(w.grid, 19, 31, 21, 32);
     paint_pavement(w.grid, 20, 30, 20, 30);
     paint_pavement(w.grid, 31, 37, 33, 38);
     paint_pavement(w.grid, 32, 36, 32, 36);
+    // Harden hut 3 into the cargo's bolt-hole: re-paint its south face as
+    // raw rock AFTER smoothing (smoothed wallside faces are flyer-passable
+    // and the north-gap Riders FLY; raw rock blocks every mover and shot),
+    // so the hearth's only way in is the one-tile north door.
+    paint_rect(w.grid, 30, 39, 34, 39, PIX_WALL2);
     paint_path(w.grid, 2, 24, 43, 25);   // vale road, mouth to hall door
     paint_path(w.grid, 51, 7, 52, 23);   // north path (through the hall's
                                          // north door, up to the gap)
@@ -408,36 +566,48 @@ void build_hidden_refuge(const LevelDataHooks& hooks)
     stair_pair(w, 0, 46, 28); // SW corner of the hall interior
 
     // The refuge's wardens (team 0): archers on the gallery over the door,
-    // a cleric at the chamber's edge.
-    place_living(w, FAMILY_ELF, 0, 1, 50, 19, 3, true);
-    place_living(w, FAMILY_ELF, 0, 1, 50, 30, 3, true);
-    place_living(w, FAMILY_CLERIC, 0, 0, 51, 28, 4, true);
+    // a cleric at the chamber's edge. Lvl 4/6 (E6): with the Ranger-King
+    // holding the carpet from tick 0 the hall's wardens are his line of
+    // sustain through the dawn and north waves — the lvl-6 cleric in
+    // particular keeps the SAVE_ALL-fatal king's post standing.
+    place_living(w, FAMILY_ELF, 0, 1, 50, 19, 4, true);
+    place_living(w, FAMILY_ELF, 0, 1, 50, 30, 4, true);
+    place_living(w, FAMILY_CLERIC, 0, 0, 51, 28, 6, true);
 
     // The dawn assault (team 2): scouts prowl now; the horn sounds at 500.
+    // (F4 batch 4: horn back at 500 — retiming to 650 traded one losing
+    // seed for another; the whole wave at lvl 2 is the stable fix.)
     static constexpr int scouts[4][2] = {{10, 23}, {10, 26}, {14, 22}, {14, 27}};
     for (const auto& c : scouts)
         place_living(w, FAMILY_ORC, 2, 0, c[0], c[1], 2);
+    // (F4 fresh-team calibration: the whole assault dropped one level —
+    // dawn orcs 3->2, dawn bigs 4->3, north ghosts 5->4, north skels 3->2.
+    // The obmap context-before-load fix made harness collision production-
+    // accurate, and the two-wave cascade wiped a curve-3 crew by ~1300;
+    // one level off each wave lets the curve crew clear the vale.)
     static constexpr int dawn_orcs[7][2] = {{1, 22}, {1, 24}, {1, 26},
                                             {3, 22}, {3, 24}, {3, 26},
                                             {5, 24}};
     for (const auto& c : dawn_orcs)
-        place_living(w, FAMILY_ORC, 2, 0, c[0], c[1], 3, false, false, 500);
+        place_living(w, FAMILY_ORC, 2, 0, c[0], c[1], 2, false, false, 500);
     static constexpr int dawn_bigs[2][2] = {{2, 23}, {2, 25}};
     for (const auto& c : dawn_bigs)
-        place_living(w, FAMILY_BIG_ORC, 2, 0, c[0], c[1], 4, false, false, 500);
+        place_living(w, FAMILY_BIG_ORC, 2, 0, c[0], c[1], 2, false, false, 500);
     // The north wave lands at 1000 — the second act of the assault, against
     // a defense that just survived the dawn horn, not a coup de grace.
     static constexpr int north_ghosts[4][2] = {{50, 3}, {53, 3}, {50, 5},
                                                {53, 5}};
     for (const auto& c : north_ghosts)
-        place_living(w, FAMILY_GHOST, 2, 0, c[0], c[1], 5, false, false, 1000);
+        place_living(w, FAMILY_GHOST, 2, 0, c[0], c[1], 3, false, false, 1000);
     static constexpr int north_skels[6][2] = {{51, 2}, {52, 2}, {51, 4},
                                               {52, 4}, {51, 6}, {52, 6}};
     for (const auto& c : north_skels)
-        place_living(w, FAMILY_SKELETON, 2, 0, c[0], c[1], 3, false, false,
+        place_living(w, FAMILY_SKELETON, 2, 0, c[0], c[1], 2, false, false,
                      1000);
-    place_generator(w, FAMILY_TENT, 2, 0, 9, 9, 2);    // the raiders' camps
-    place_generator(w, FAMILY_BONES, 2, 0, 12, 11, 2); // in the west valley
+    // (F4 batch 2: camps 2 -> 1 — the AI-run endgame ground the last two
+    // camp spawns for 3000 ticks; a lvl-1 trickle ends when the war does.)
+    place_generator(w, FAMILY_TENT, 2, 0, 9, 9, 1);    // the raiders' camps
+    place_generator(w, FAMILY_BONES, 2, 0, 12, 11, 1); // in the west valley
 
     // The crew camps on the road before the hall door, facing the mouth.
     static constexpr int starts[10][2] = {{40, 24}, {36, 24}, {38, 21},
@@ -446,12 +616,22 @@ void build_hidden_refuge(const LevelDataHooks& hooks)
                                           {33, 28}};
     for (const auto& s : starts)
         place_start(w, 0, s[0], s[1]);
-    // The Ranger-King takes the field at the council carpet's heart when
-    // the dawn horn sounds (tick 550) — arriving with the assault keeps
-    // the roaming king out of 500 ticks of pre-battle drift, so the story
-    // still meets him AT the hall when the line breaks.
-    place_hero(w, FAMILY_SOLDIER, 0, 50, 25, 9, "Ranger-King", true, false,
-               550);
+    // The Ranger-King at the council carpet's heart, holding it from tick 0
+    // (the intended design, restored by E6): authored ACT_GUARD is honored
+    // now, so he stands where the story meets him instead of needing the
+    // pass-1 spawn-delay workaround that kept a ROAMING king from drifting
+    // out of the hall before the horn.
+    place_hero(w, FAMILY_SOLDIER, 0, 50, 25, 9, "Ranger-King", true, false, 0);
+    // The Bearer shelters at hut 3's hearth, down the lane behind the
+    // crew's whole line — off the vale-road axis AND off the north-wave
+    // corridor through the hall. A door-ward body-blocks the hut's only
+    // door; the hardened south face keeps the flying Riders out. SAVE_ALL
+    // rides on him.
+    // (Ward weight follows the finale's door-wards — lvl-9, in series.)
+    place_living(w, FAMILY_SOLDIER, 0, 0, 32, 37, 9, true); // the door-ward
+    place_living(w, FAMILY_SOLDIER, 0, 0, 32, 38, 9, true); // the hearth
+    place_living(w, FAMILY_SOLDIER, 0, 0, 33, 37, 9, true); // the corner
+    place_hero(w, FAMILY_THIEF, 0, 33, 38, 4, "The Bearer", true, true, 0);
 
     // Council gifts on the carpet corners, gold on the hall ring, hearth
     // provisions in the huts.
@@ -470,6 +650,17 @@ void build_hidden_refuge(const LevelDataHooks& hooks)
     place_exit(w, 0, 51, 0, 7);  // the north path: the northern plea
     place_exit(w, 0, 0, 27, 3);  // backtrack, the vale mouth
     scatter_boulders(w, 0, 7, 7, 24, 12, 21); // scree under the north rim
+    // E7 ambience: the sanctuary in bloom — garden shrubs in the
+    // light-grass beds and around the pool, and pebbles worn down the
+    // vale road and the hut lanes.
+    scatter_decor(w, 0, 40, 12, 60, 16, 7, DECOR_SHRUB,
+                  {ScatterGround::LightGrass});
+    scatter_decor(w, 0, 40, 34, 60, 38, 7, DECOR_SHRUB,
+                  {ScatterGround::LightGrass});
+    scatter_decor(w, 0, 25, 13, 34, 21, 9, DECOR_SHRUB,
+                  {ScatterGround::LightGrass});
+    scatter_decor(w, 0, 2, 7, 52, 43, 15, DECOR_PEBBLES,
+                  {ScatterGround::Path});
     save_level_files(w, 4, "The Hidden Refuge",
                      {"The refuge sleeps. The council",
                       "argues till dawn. Then horns:",
@@ -531,10 +722,12 @@ void build_scouring(const LevelDataHooks& hooks)
         place_living(w, FAMILY_ORC, 2, 0, bullies[i][0], bullies[i][1],
                      2 + (i % 2));
     // ...and THE CHIEF, squatting inside the old hall (deliberately unnamed:
-    // a plain team-2 boss, per the cast list). He wakes at tick 400 — the
-    // door-boss beat happens when the crew reaches his door, instead of him
-    // wandering into the stockade scrum and dying off-screen by 200.
-    place_living(w, FAMILY_BIG_ORC, 2, 0, 35, 27, 7, true, false, 400);
+    // a plain team-2 boss, per the cast list). Guard holds him at his den's
+    // heart now (E6: the pass-1 wake-at-400 workaround existed only because
+    // a roaming chief wandered into the stockade scrum and died off-screen),
+    // so the door-boss beat lands when the crew reaches his door — at the
+    // designed lvl 8: a lvl-9 victory-lap crew meets him on its own terms.
+    place_living(w, FAMILY_BIG_ORC, 2, 0, 35, 27, 8, true);
     place_generator(w, FAMILY_TENT, 2, 0, 27, 17, 1); // squatting on the green
     place_generator(w, FAMILY_TENT, 2, 0, 10, 19, 1); // west road picket camp
 
@@ -544,12 +737,12 @@ void build_scouring(const LevelDataHooks& hooks)
                                          {49, 17}, {49, 21}, {57, 19}};
     for (const auto& s : starts)
         place_start(w, 0, s[0], s[1]);
-    // The Bearer, home again and grown (lvl 5), walking in the heart of the
-    // crew's column — and a few steps behind it (tick 350): the fastest
-    // team-0 walker must not sprint ahead and die at the stockade gate in
-    // the epilogue. NOT SAVE_ALL: the burden is gone — his death no longer
-    // ends the world.
-    place_hero(w, FAMILY_THIEF, 0, 55, 17, 5, "The Bearer", true, false, 350);
+    // The Bearer, home again and grown (lvl 5), standing beside the crew's
+    // road at his designed post (E6: guard holds him there now — the pass-1
+    // arrive-at-350 workaround only existed because a roaming Bearer would
+    // sprint ahead and die at the stockade gate). NOT SAVE_ALL: the burden
+    // is gone — his death no longer ends the world.
+    place_hero(w, FAMILY_THIEF, 0, 52, 18, 5, "The Bearer", true, false, 0);
 
     // What they stole, stacked in the old hall — plus the hearths and the
     // pond cache, where it always was.
@@ -568,6 +761,16 @@ void build_scouring(const LevelDataHooks& hooks)
     scatter_litter(w, 0, 26, 16, 34, 23, 31);
     scatter_boulders(w, 0, 8, 0, 19, 16, 21);
     scatter_boulders(w, 0, 8, 24, 19, 39, 21);
+    // E7 ambience: level 1's dressing come home wrong — the hedgerows
+    // gone ragged (thinner than the living vale's), the same worn road
+    // pebbles, and the ruffians' gnawed bones flung around the green.
+    scatter_decor(w, 0, 8, 0, 19, 39, 17, DECOR_SHRUB, {ScatterGround::Grass});
+    scatter_decor(w, 0, 42, 2, 52, 10, 13, DECOR_SHRUB,
+                  {ScatterGround::LightGrass});
+    scatter_decor(w, 0, 2, 16, 57, 24, 11, DECOR_PEBBLES,
+                  {ScatterGround::Path});
+    scatter_decor(w, 0, 18, 14, 46, 28, 19, DECOR_BONES,
+                  {ScatterGround::Grass, ScatterGround::LightGrass});
     save_level_files(w, 25, "The Scouring",
                      {"Home again. Smoke on the vale.",
                       "Ruffians hold the well and the",
@@ -624,6 +827,16 @@ void build_grey_ships(const LevelDataHooks& hooks)
     // THE SHIP: the pier's end, between the torch posts. Sails home to 1.
     place_exit(w, 0, 6, 17, 1);
     scatter_boulders(w, 0, 15, 0, 22, 34, 27); // driftwood on the strand
+    // E7 ambience: the quiet shore — dune-grass tufts, shingle on the
+    // strand, and the last road's worn grit. Nothing blocks; quiet.
+    scatter_decor(w, 0, 22, 5, 30, 11, 5, DECOR_SHRUB,
+                  {ScatterGround::LightGrass});
+    scatter_decor(w, 0, 40, 21, 48, 27, 5, DECOR_SHRUB,
+                  {ScatterGround::LightGrass});
+    scatter_decor(w, 0, 15, 0, 20, 34, 11, DECOR_PEBBLES,
+                  {ScatterGround::LightGrass});
+    scatter_decor(w, 0, 21, 15, 58, 18, 9, DECOR_PEBBLES,
+                  {ScatterGround::Path});
     save_level_files(w, 26, "The Grey Ships",
                      {"The war is over. The wound",
                       "remains. At the grey havens",
@@ -651,11 +864,11 @@ std::vector<ExpectedLevel> act1_expectations()
     //  delayed spawns, specials-disabled, stairs-every-boundary, exit dests}
     return {
         {1, 1, "The Quiet Vale", 10, 1, 0, 0, 0, 9, 0, 2, 0, true, {2}},
-        {2, 1, "The Forest Road", 9, 1, 0, 0, 0, 27, 1, 7, 0, true, {3, 1}},
-        {3, 1, "The Last Ford", 10, 2, 0, 0, 0, 19, 2, 14, 0, true, {4, 2}},
-        {4, 2, "The Hidden Refuge", 10, 4, 0, 0, 0, 23, 2, 20, 0, true,
+        {2, 1, "The Forest Road", 9, 1, 0, 0, 0, 30, 0, 11, 7, true, {3, 1}},
+        {3, 1, "The Last Ford", 10, 7, 1, 0, 0, 19, 2, 14, 1, true, {4, 2}},
+        {4, 2, "The Hidden Refuge", 10, 8, 0, 0, 0, 23, 2, 19, 1, true,
          {5, 7, 3}},
-        {25, 1, "The Scouring", 9, 1, 0, 0, 0, 15, 2, 2, 0, true, {26, 24}},
+        {25, 1, "The Scouring", 9, 1, 0, 0, 0, 15, 2, 0, 0, true, {26, 24}},
         {26, 1, "The Grey Ships", 9, 0, 0, 0, 0, 3, 0, 0, 0, true, {1}},
     };
 }

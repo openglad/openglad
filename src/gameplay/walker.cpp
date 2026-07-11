@@ -1228,7 +1228,7 @@ bool walker::query_next_to()
 	}
 }
 
-bool walker::fire_check(short xdelta, short ydelta)
+bool walker::fire_check(short xdelta, short ydelta, FireCheckDenial* denial)
 {
 	walker  *weapon = nullptr;
 	//  short newx=0, newy=0;
@@ -1236,13 +1236,24 @@ bool walker::fire_check(short xdelta, short ydelta)
 	std::int32_t distance;
 	short targetdir;
 
+	// Reports the denial stage to callers that ask (default: nobody).
+	// Same checks, same order, same RNG draws as always.
+	const auto deny = [denial](FireCheckDenial why) {
+		if (denial != nullptr)
+			*denial = why;
+	};
+	deny(FireCheckDenial::None);
+
 	// Allow generators to 'always' succeed
 	if (order() == Order::Generator)
 		return 1;
 
 	weapon = create_weapon();
 	if (!weapon)
+	{
+		deny(FireCheckDenial::NoFoe);
 		return 0;
+	}
 	set_weapon_heading(weapon); // set lastx, lasty based on our facing...
 	weapon->set_collide_ob(nullptr);
 	// Based on facing, we alter the weapon's proposed
@@ -1253,25 +1264,35 @@ bool walker::fire_check(short xdelta, short ydelta)
 	{
 		//Log("fire check, no foe.\n");
 		//this does happen! but it appears harmless
+		deny(FireCheckDenial::NoFoe);
+		return 0;
+	}
+
+	// The reach gate runs before the NO_RANGED / magic gates so that a
+	// NoRanged or NoMagic denial always means "the foe IS within this
+	// weapon's reach" — the COMMAND_ATTACK melee loop keys off that to
+	// face a bump-range foe instead of sliding around it (guard-standoff
+	// fix, 2026-07-07). Every reordered gate returns the same 0 and no
+	// gate consumes RNG, so all other callers see identical behavior.
+	distance = distance_to_ob(foe());
+	if (distance > static_cast<std::int32_t>( static_cast<std::int32_t>(weapon->stepsize()) * static_cast<std::int32_t>(weapon->lineofsight())) )
+	{
+		weapon->set_dead(1);
+		deny(FireCheckDenial::OutOfRange);
 		return 0;
 	}
 
 	if (stats_->query_bit_flags(BIT_NO_RANGED))
 	{
 		weapon->set_dead(1);
+		deny(FireCheckDenial::NoRanged);
 		return 0;
 	}
 
 	if (stats_->weapon_cost() > stats_->magicpoints())
 	{
 		weapon->set_dead(1);
-		return 0;
-	}
-
-	distance = distance_to_ob(foe());
-	if (distance > static_cast<std::int32_t>( static_cast<std::int32_t>(weapon->stepsize()) * static_cast<std::int32_t>(weapon->lineofsight())) )
-	{
-		weapon->set_dead(1);
+		deny(FireCheckDenial::NoMagic);
 		return 0;
 	}
 
@@ -1280,6 +1301,7 @@ bool walker::fire_check(short xdelta, short ydelta)
 	{
 		//         turn(targetdir);
 		weapon->set_dead(1);
+		deny(FireCheckDenial::Facing);
 		return 0;
 	}
 
@@ -1292,6 +1314,7 @@ bool walker::fire_check(short xdelta, short ydelta)
 		{
 			// we hit a wall, so fail
 			weapon->set_dead(1);
+			deny(FireCheckDenial::WallBlocked);
 			return 0;
 		}
 		if ( !current_game->world->query_object_passable(weapon->xpos(), weapon->ypos(), weapon) )
@@ -1304,6 +1327,7 @@ bool walker::fire_check(short xdelta, short ydelta)
 	// By this point, we should have won or lost .. fail if we went our
 	// range and didn't hit anyone ..
 	weapon->set_dead(1);
+	deny(FireCheckDenial::RayMiss);
 	return 0;
 }
 
@@ -1651,9 +1675,22 @@ bool walker::death()
 	switch (order())
 	{
 		case Order::Living:
-			if (   (team_num() == 0 || myguy) // our team
-			        && (current_game->world->type & SCEN_TYPE_SAVE_ALL)
-			        && (stats_->name.size()) // we were named
+			// SCEN_TYPE_SAVE_ALL mission-loss check. Two scopes (Wave F2):
+			// summoned walkers (archmage "Phantom" illusions, elementals,
+			// cleric raises) and charmed foes (real_team_num != 255) are
+			// ammunition, never characters — their deaths never fail the
+			// mission. When any placed NPC carries npc_flags bit 2
+			// ("protected"), ONLY flagged walkers are watched; when none
+			// does, the legacy rule applies (any named team-0 living).
+			// (The charm exemption lives in the legacy branch only: a
+			// protected walker stays mission-critical even while charmed.)
+			if (   (current_game->world->type & SCEN_TYPE_SAVE_ALL)
+			        && !summoned()               // conjured ammunition
+			        && (current_game->world->has_save_all_protected()
+			                ? save_all_protected()
+			                : ((team_num() == 0 || myguy) // our team
+			                   && real_team_num() == 255  // not a charmed foe
+			                   && stats_->name.size()))   // we were named
 			   )
 			{
 				// Emit EndGame event instead of calling screen directly.

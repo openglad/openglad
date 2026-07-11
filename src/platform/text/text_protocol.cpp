@@ -206,9 +206,11 @@ static void json_census_named(std::ostream& os, const walker* w, bool& first)
 }
 
 // Balance-playtest snapshot: per-team alive/dormant Living counts, every
-// named Living (placed heroes -- the ones SAVE_ALL watches -- including
-// dead ones swept to dead_list), and the spawned crew (myguy-bearing
-// walkers, whose corpses persist in oblist).
+// named Living (placed heroes -- the legacy SAVE_ALL watch set; with
+// npc_flags bit2 "protected" present, SAVE_ALL narrows to flagged walkers
+// only, but the census still reports all named heroes -- including dead
+// ones swept to dead_list), and the spawned crew (myguy-bearing walkers,
+// whose corpses persist in oblist).
 static void cmd_census(GameWorld& world)
 {
     int alive[8] = {};
@@ -332,15 +334,19 @@ int run_text_protocol_session(const TextProtocolArgs& args)
 
     level.set_sim_context(&save, &world.enemy_freeze, &events, &world.rng_, &cfg);
 
-    if (!level.load()) {
-        std::fprintf(stderr, "Failed to load level %d\n", args.level);
-        text_ctx.rng = prev_rng;
-        set_gameplay_rng_override(nullptr);
-        return 1;
-    }
-
-    // Install the gameplay context before spawning the crew: guy stat
-    // derivation (--team-level) reads current_game->world.
+    // Install the gameplay context BEFORE level.load(), not merely before the
+    // crew spawns. walker::setxy registers a walker in the collision obmap
+    // only while a gameplay context is active (walker_movement.cpp), so
+    // loading without one leaves every placed walker OUT of the obmap.
+    // Movers self-heal on their first step, but ACT_GUARD posts that never
+    // move stayed collision-ghosts for the whole run: weapons flew through
+    // them (fire_check ray and real projectiles alike) and other walkers
+    // walked into them, forming the interpenetrating "frozen pair" mode.
+    // This was the text-harness-only divergence from the production loaders
+    // (game.cpp, server_main.cpp GameplayContextGuard-before-load, the curses
+    // runtime's explicit "activate the server context for the level load")
+    // and from the og_unit_sim fixtures — the same seed/level/crew simulated
+    // macroscopically differently under openglad_text.
     GameplayContext text_game_ctx;
     text_game_ctx.world = &world;
     text_game_ctx.save = &save;
@@ -348,6 +354,14 @@ int run_text_protocol_session(const TextProtocolArgs& args)
     text_game_ctx.config = &cfg;
     GameplayContext* prev_game = current_game;
     current_game = &text_game_ctx;
+
+    if (!level.load()) {
+        std::fprintf(stderr, "Failed to load level %d\n", args.level);
+        current_game = prev_game;
+        text_ctx.rng = prev_rng;
+        set_gameplay_rng_override(nullptr);
+        return 1;
+    }
 
     // Derive placed-walker stats from their authored levels, exactly like
     // the production loaders (game.cpp load_saved_game and

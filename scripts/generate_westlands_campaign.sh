@@ -25,3 +25,14 @@ fi
 cmake --build "${BUILD_DIR}" --target westlands_mapgen -- -j8
 
 "${BUILD_DIR}/westlands_mapgen" "${OUTPUT}"
+
+# Restage the freshly generated package into the build tree (Wave F3). The
+# test binaries and the playtest harness read the STAGED copy under
+# build/ci-test/builtin/, which the build system only refreshes on the next
+# build — without this, every harness run after a regen exercised the
+# PREVIOUS generation's package (a one-generation-stale race).
+STAGED_DIR="${BUILD_DIR}/builtin"
+if [ -d "${STAGED_DIR}" ]; then
+    cp -f "${OUTPUT}" "${STAGED_DIR}/$(basename "${OUTPUT}")"
+    echo "restaged $(basename "${OUTPUT}") into ${STAGED_DIR}"
+fi

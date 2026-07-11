@@ -29,6 +29,7 @@
 #include <gtest/gtest.h>
 
 #include <openglad/core/constants.h>
+#include <openglad/core/decordefs.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/core/weather.h>
 #include <openglad/gameplay/game_world.h>
@@ -185,18 +186,18 @@ const std::vector<ShippedLevel>& shipped_levels()
 {
     static const std::vector<ShippedLevel> levels = {
         {1, "The Quiet Vale", 1, 60, 40, 0, 10, 1, 0, 9, 0, 2, 0, {2}},
-        {2, "The Forest Road", 1, 90, 40, 5, 9, 1, 0, 27, 1, 7, 0, {3, 1}},
-        {3, "The Last Ford", 1, 70, 45, 0, 10, 2, 0, 19, 2, 14, 0, {4, 2}},
-        {4, "The Hidden Refuge", 2, 70, 50, 0, 10, 4, 0, 23, 2, 20, 0,
+        {2, "The Forest Road", 1, 90, 40, 5, 9, 1, 0, 30, 0, 11, 7, {3, 1}},
+        {3, "The Last Ford", 1, 70, 45, 4, 10, 7, 1, 19, 2, 14, 1, {4, 2}},
+        {4, "The Hidden Refuge", 2, 70, 50, 4, 10, 8, 0, 23, 2, 19, 1,
          {5, 7, 3}},
-        {5, "The High Pass", 1, 60, 60, 0, 10, 0, 0, 25, 1, 4, 0, {6, 4}},
-        {6, "Under the Mountain", 3, 60, 60, 1, 28, 1, 0, 14, 1, 5, 0, {8, 9}},
-        {7, "The Frozen Wall", 3, 80, 45, 0, 25, 0, 1, 37, 2, 0, 0, {5}},
-        {8, "The Bridge of Shadow", 2, 70, 40, 0, 17, 1, 0, 33, 1, 0, 1, {10}},
-        {9, "The Lost Delve", 2, 60, 50, 0, 10, 0, 0, 37, 2, 4, 0, {8, 6}},
-        {10, "The Golden Wood", 2, 70, 50, 0, 12, 7, 4, 40, 1, 14, 0, {11, 8}},
-        {11, "The Great River", 1, 60, 80, 0, 10, 0, 0, 42, 2, 4, 0, {12, 10}},
-        {12, "The Falls", 2, 80, 50, 0, 10, 1, 0, 40, 2, 20, 0, {13, 19}},
+        {5, "The High Pass", 1, 60, 60, 4, 10, 4, 0, 25, 1, 4, 1, {6, 4}},
+        {6, "Under the Mountain", 3, 60, 60, 5, 28, 1, 0, 21, 1, 1, 0, {8, 9}},
+        {7, "The Frozen Wall", 3, 80, 45, 0, 25, 2, 1, 37, 2, 0, 0, {5}},
+        {8, "The Bridge of Shadow", 2, 70, 40, 4, 17, 4, 0, 33, 1, 0, 2, {10}},
+        {9, "The Lost Delve", 2, 60, 50, 4, 10, 1, 0, 37, 0, 4, 1, {8, 6}},
+        {10, "The Golden Wood", 2, 70, 50, 4, 12, 8, 4, 40, 1, 14, 1, {11, 8}},
+        {11, "The Great River", 1, 60, 80, 4, 10, 4, 1, 38, 2, 4, 1, {12, 10}},
+        {12, "The Falls", 2, 80, 50, 4, 8, 4, 0, 40, 2, 20, 1, {13, 19}},
         {13, "The Plains of the Horse-lords", 1, 90, 50, 0, 15, 14, 0, 54, 3,
          9, 0, {14, 12}},
         {14, "The Wizard's Vale", 4, 60, 60, 0, 23, 0, 0, 23, 2, 0, 1,
@@ -204,18 +205,18 @@ const std::vector<ShippedLevel>& shipped_levels()
         {15, "The Deeping Wall", 2, 80, 50, 0, 26, 1, 1, 47, 2, 1, 0,
          {16, 14}},
         {16, "The White City", 3, 90, 50, 0, 17, 18, 1, 80, 5, 7, 0, {17, 15}},
-        {17, "The Black Gate", 2, 90, 50, 0, 30, 1, 0, 58, 3, 0, 0, {24, 16}},
+        {17, "The Black Gate", 2, 90, 50, 0, 30, 7, 0, 58, 3, 0, 0, {24, 16}},
         {19, "The Dead Marshes", 1, 90, 50, 5, 10, 1, 0, 45, 4, 6, 1,
          {20, 12}},
-        {20, "The Crossroads", 1, 80, 50, 0, 12, 8, 0, 33, 1, 8, 0, {21, 19}},
+        {20, "The Crossroads", 1, 80, 50, 4, 12, 9, 0, 33, 1, 18, 1, {21, 19}},
         {21, "The Pass of the Spider", 1, 90, 40, 5, 9, 1, 0, 28, 1, 0, 2,
          {22, 20}},
-        {22, "The Tower of the Moon", 4, 60, 50, 5, 8, 1, 0, 24, 2, 2, 1,
+        {22, "The Tower of the Moon", 4, 60, 50, 5, 8, 3, 0, 23, 2, 2, 1,
          {23, 21}},
-        {23, "The Ash Plains", 1, 90, 50, 5, 9, 1, 0, 57, 3, 6, 1, {24, 22}},
-        {24, "The Mountain of Fire", 3, 90, 50, 5, 14, 22, 0, 74, 3, 9, 0,
+        {23, "The Ash Plains", 1, 90, 50, 5, 9, 3, 0, 57, 3, 6, 1, {24, 22}},
+        {24, "The Mountain of Fire", 3, 90, 50, 5, 14, 24, 0, 74, 3, 13, 0,
          {25, 26}},
-        {25, "The Scouring", 1, 60, 40, 0, 9, 1, 0, 15, 2, 2, 0, {26, 24}},
+        {25, "The Scouring", 1, 60, 40, 0, 9, 1, 0, 15, 2, 0, 0, {26, 24}},
         {26, "The Grey Ships", 1, 60, 35, 0, 9, 0, 0, 3, 0, 0, 0, {1}},
     };
     return levels;
@@ -408,6 +409,138 @@ std::vector<StairPair> find_stair_pairs(GameWorld& world)
     return pairs;
 }
 
+// --- Fall-line audit support (Wave E5). --------------------------------------
+// Single-cell ground passability: the Living arm of
+// GameWorld::query_grid_passable with none of the flyer / forestwalk /
+// ethereal escapes — the tiles a plain ground walker can STAND on. A fall
+// landing must be immediately standable; water, lava, boulder and torch
+// bases all bounce the faller into the engine's A5 landing nudge, and
+// levels must not rely on the nudge. Keep in lockstep with the classifier
+// in tools/westlands_mapgen/main.cpp.
+bool ground_cell_standable(unsigned char tile)
+{
+    switch (tile)
+    {
+        case PIX_GRASS1:
+        case PIX_GRASS2:
+        case PIX_GRASS3:
+        case PIX_GRASS4:
+        case PIX_GRASS_DARK_1:
+        case PIX_GRASS_DARK_2:
+        case PIX_GRASS_DARK_3:
+        case PIX_GRASS_DARK_4:
+        case PIX_GRASS_DARK_LL:
+        case PIX_GRASS_DARK_UR:
+        case PIX_GRASS_DARK_B1:
+        case PIX_GRASS_DARK_B2:
+        case PIX_GRASS_DARK_BR:
+        case PIX_GRASS_DARK_R1:
+        case PIX_GRASS_DARK_R2:
+        case PIX_GRASS_RUBBLE:
+        case PIX_GRASS1_DAMAGED:
+        case PIX_GRASS_LIGHT_1:
+        case PIX_GRASS_LIGHT_TOP:
+        case PIX_GRASS_LIGHT_RIGHT_TOP:
+        case PIX_GRASS_LIGHT_RIGHT:
+        case PIX_GRASS_LIGHT_RIGHT_BOTTOM:
+        case PIX_GRASS_LIGHT_BOTTOM:
+        case PIX_GRASS_LIGHT_LEFT_BOTTOM:
+        case PIX_GRASS_LIGHT_LEFT:
+        case PIX_GRASS_LIGHT_LEFT_TOP:
+        case PIX_GRASSWATER_LL:
+        case PIX_GRASSWATER_LR:
+        case PIX_GRASSWATER_UL:
+        case PIX_GRASSWATER_UR:
+        case PIX_PAVEMENT1:
+        case PIX_PAVEMENT2:
+        case PIX_PAVEMENT3:
+        case PIX_COBBLE_1:
+        case PIX_COBBLE_2:
+        case PIX_COBBLE_3:
+        case PIX_COBBLE_4:
+        case PIX_FLOOR_PAVEL:
+        case PIX_FLOOR_PAVER:
+        case PIX_FLOOR_PAVEU:
+        case PIX_FLOOR_PAVED:
+        case PIX_PAVESTEPS1:
+        case PIX_PAVESTEPS2:
+        case PIX_PAVESTEPS2L:
+        case PIX_PAVESTEPS2R:
+        case PIX_FLOOR1:
+        case PIX_CARPET_LL:
+        case PIX_CARPET_B:
+        case PIX_CARPET_LR:
+        case PIX_CARPET_UR:
+        case PIX_CARPET_U:
+        case PIX_CARPET_UL:
+        case PIX_CARPET_L:
+        case PIX_CARPET_M:
+        case PIX_CARPET_M2:
+        case PIX_CARPET_R:
+        case PIX_CARPET_SMALL_HOR:
+        case PIX_CARPET_SMALL_VER:
+        case PIX_CARPET_SMALL_CUP:
+        case PIX_CARPET_SMALL_CAP:
+        case PIX_CARPET_SMALL_LEFT:
+        case PIX_CARPET_SMALL_RIGHT:
+        case PIX_CARPET_SMALL_TINY:
+        case PIX_DIRT_1:
+        case PIX_DIRTGRASS_UL1:
+        case PIX_DIRTGRASS_UR1:
+        case PIX_DIRTGRASS_LL1:
+        case PIX_DIRTGRASS_LR1:
+        case PIX_DIRT_DARK_1:
+        case PIX_DIRTGRASS_DARK_UL1:
+        case PIX_DIRTGRASS_DARK_UR1:
+        case PIX_DIRTGRASS_DARK_LL1:
+        case PIX_DIRTGRASS_DARK_LR1:
+        case PIX_PATH_1:
+        case PIX_PATH_2:
+        case PIX_PATH_3:
+        case PIX_PATH_4:
+        case PIX_SNOW1:
+        case PIX_SNOW2:
+        case PIX_MARSH1:
+        case PIX_MARSH2:
+        case PIX_ASH1:
+        case PIX_ASH2:
+        // Z tiles a ground walker occupies at the grid layer (stairs carry
+        // you off; glass and drop blocks resolve in movement) — all legal
+        // landings. PIX_AIR is deliberately NOT here: the audit chases air
+        // columns itself.
+        case PIX_ZSTAIR_UP:
+        case PIX_ZSTAIR_DOWN:
+        case PIX_GLASS:
+        case PIX_DROPBLOCK_UP:
+        case PIX_DROPBLOCK_RIGHT:
+        case PIX_DROPBLOCK_DOWN:
+        case PIX_DROPBLOCK_LEFT:
+            return true;
+        default:
+            return false; // walls, trees, water, lava, boulders, torches,
+                          // braziers, columns, jagged litter, void, air
+    }
+}
+
+// Base tile AND decor plane both standable for a ground walker.
+bool cell_standable(GameWorld& world, int floor, int tx, int ty)
+{
+    const PixieData& g = world.grid_for_floor(floor);
+    if (!g.valid() || tx < 0 || ty < 0 || tx >= g.w || ty >= g.h)
+        return false;
+    if (!ground_cell_standable(g.data[tx + ty * g.w]))
+        return false;
+    const PixieData& dec = world.decor_for_floor(floor);
+    if (dec.valid() && dec.w == g.w && dec.h == g.h)
+    {
+        const unsigned char d = dec.data[tx + ty * dec.w];
+        if (d < DECOR_MAX &&
+            kDecorRegistry[d].pass == DecorPassability::BlocksGround)
+            return false;
+    }
+    return true;
+}
+
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -574,13 +707,21 @@ TEST_F(WestlandsCampaignTest, save_all_levels_guard_the_named_bearer)
         bool specials_disabled;
         int spawn_delay;
     };
-    // On the Forest Road the cargo has gone AHEAD: he reaches the hollow at
-    // tick 450 (about when a sprinting crew makes the road's end), dormant
-    // — and unkillable — until then. Everywhere else he is on the map from
-    // tick 0.
+    // On the Forest Road (Wave E1) the cargo runs WITH the company from
+    // tick 0: a NON-guard lvl-4 thief inside the crew's marker wedge, so
+    // team-0 AI moves him east with the fighting line (specials sheathed —
+    // no bombs in the column). Under the Mountain he catches the company
+    // up at tick 600 and keeps the entry hall. Everywhere else he is on
+    // the map from tick 0, sheltered behind the crew's marker line (Wave
+    // E4: the whole Burden's Road — 2..12 and 19..24 — carries him under
+    // SAVE_ALL; only the war-path 13..17 goes without).
     static constexpr BearerPin kBearer[] = {
-        {2, 3, false, 450}, {19, 5, true, 0}, {21, 5, true, 0},
-        {22, 5, true, 0},   {23, 5, true, 0}, {24, 5, false, 0},
+        {2, 4, true, 0},    {3, 4, true, 0},  {4, 4, true, 0},
+        {5, 4, true, 0},    {6, 5, false, 600}, {8, 5, true, 0},
+        {9, 5, true, 0},    {10, 5, true, 0}, {11, 5, true, 0},
+        {12, 5, true, 0},   {19, 5, true, 0}, {20, 5, true, 0},
+        {21, 5, true, 0},   {22, 5, true, 0}, {23, 5, true, 0},
+        {24, 5, false, 0},
     };
 
     std::set<int> save_all_ids;
@@ -611,6 +752,21 @@ TEST_F(WestlandsCampaignTest, save_all_levels_guard_the_named_bearer)
         EXPECT_EQ(pin.specials_disabled, bearer->specials_disabled());
         EXPECT_EQ(pin.spawn_delay, static_cast<int>(bearer->spawn_delay()))
             << "the cargo's authored arrival tick must round-trip";
+
+        // Wave F2: the Bearer alone carries npc_flags bit 2 ("protected"),
+        // scoping the SAVE_ALL watch to him — named allies dying no longer
+        // fail the mission. Exactly one protected walker per SAVE_ALL level.
+        EXPECT_TRUE(bearer->save_all_protected())
+            << "the Bearer must carry the protected flag";
+        int protected_count = 0;
+        for (const auto& uptr : world.oblist)
+        {
+            const walker* ob = uptr.get();
+            if (ob != nullptr && ob->save_all_protected())
+                ++protected_count;
+        }
+        EXPECT_EQ(1, protected_count)
+            << "the SAVE_ALL watch must cover the Bearer and ONLY him";
     }
 }
 
@@ -627,8 +783,11 @@ TEST_F(WestlandsCampaignTest, named_cast_extras_round_trip)
         int spawn_delay;
     };
     static constexpr NamedPin kCast[] = {
-        // The Grey Wizard bars the span: his special stays sheathed.
-        {8, "Grey Wizard", FAMILY_MAGE, 0, 9, true, 0},
+        // (The Grey Wizard bars the span at scen8 UNNAMED: he is fated to
+        // fall there, and scen8 was authored pre-F2, when a named team-0
+        // death ended a SAVE_ALL mission — the F2 protected-flag scoping
+        // watches the Bearer alone now, but the stand-in ships as-built.
+        // See grey_wizard_falls_unnamed below.)
         // The betrayal at the throat, and the brood-mother that won't chase.
         {21, "Sneak", FAMILY_THIEF, 2, 8, true, 0},
         {21, "The Lurker", FAMILY_SLIME, 2, 10, false, 0},
@@ -656,7 +815,44 @@ TEST_F(WestlandsCampaignTest, named_cast_extras_round_trip)
             << "specials_disabled must round-trip";
         EXPECT_EQ(pin.spawn_delay, static_cast<int>(npc->spawn_delay()))
             << "spawn_delay must round-trip";
+        EXPECT_FALSE(npc->save_all_protected())
+            << "named cast members other than the Bearer stay non-critical "
+               "(Wave F2 SAVE_ALL scoping)";
     }
+}
+
+// The Grey Wizard is FATED to fall at the Bridge of Shadow, and scen8 is a
+// SAVE_ALL level (the Bearer crosses it): under the pre-F2 legacy rule the
+// mission ended when any named team-0 living died, so his name field stays
+// empty — the same deliberate-unnamed rule as the finale's door-wards.
+// (Since Wave F2 the protected flag scopes the watch to the Bearer alone,
+// so the guard is no longer load-bearing, but the stand-in ships as-built.)
+// The briefing still names him; the placed stand-in (lvl-9 team-0 mage,
+// guard, special sheathed) must round-trip unnamed.
+TEST_F(WestlandsCampaignTest, grey_wizard_falls_unnamed)
+{
+    LoadedWestlandsLevel fx(8);
+    ASSERT_TRUE(fx.loaded);
+    GameWorld& world = fx.world();
+    EXPECT_EQ(nullptr, find_named_living(world, "Grey Wizard"))
+        << "the as-built package ships the span's stand-in unnamed";
+
+    walker* wizard = nullptr;
+    for (const auto& uptr : world.oblist)
+    {
+        walker* ob = uptr.get();
+        if (ob != nullptr && ob->query_order() == Order::Living &&
+            ob->family() == FAMILY_MAGE && ob->team_num() == 0)
+        {
+            wizard = ob;
+            break;
+        }
+    }
+    ASSERT_NE(nullptr, wizard) << "the span must still be barred";
+    EXPECT_TRUE(wizard->stats()->name.empty());
+    EXPECT_EQ(9, static_cast<int>(wizard->stats()->level()));
+    EXPECT_EQ(ACT_GUARD, wizard->act_type()) << "he holds mid-span";
+    EXPECT_TRUE(wizard->specials_disabled()) << "he cannot teleport away";
 }
 
 // ---------------------------------------------------------------------------
@@ -740,6 +936,62 @@ TEST_F(WestlandsCampaignTest, entities_stand_on_passable_ground)
     }
 }
 
+// Fall-line audit (Wave E5, mirrors tools/westlands_mapgen's self-check):
+// any AIR cell a ground walker can actually step into — 8-adjacent to a
+// standable cell of the SAME floor — must land its faller cleanly. Chase
+// the column down through stacked AIR; the landing cell must be standable
+// (base AND decor): never a wall top, water, lava or blocking decor.
+// Falling past floor 0 is a pit death, a designed mechanic, and stays
+// legal. The engine's A5 nudge can rescue a blocked landing, but no
+// shipped level may RELY on the nudge.
+TEST_F(WestlandsCampaignTest, air_fall_lines_land_on_standable_ground)
+{
+    for (const ShippedLevel& expected : shipped_levels())
+    {
+        if (expected.floors < 2)
+            continue;
+        SCOPED_TRACE("scen" + std::to_string(expected.id));
+        LoadedWestlandsLevel fx(expected.id);
+        ASSERT_TRUE(fx.loaded);
+        GameWorld& world = fx.world();
+
+        for (int f = 1; f < world.floor_count(); ++f)
+        {
+            const PixieData& g = world.grid_for_floor(f);
+            ASSERT_TRUE(g.valid());
+            for (int ty = 0; ty < g.h; ++ty)
+            {
+                for (int tx = 0; tx < g.w; ++tx)
+                {
+                    if (g.data[tx + ty * g.w] != PIX_AIR)
+                        continue;
+                    bool fall_entry = false;
+                    for (int dy = -1; dy <= 1 && !fall_entry; ++dy)
+                        for (int dx = -1; dx <= 1 && !fall_entry; ++dx)
+                            if ((dx != 0 || dy != 0) &&
+                                cell_standable(world, f, tx + dx, ty + dy))
+                                fall_entry = true;
+                    if (!fall_entry)
+                        continue; // open sky no walker can step into
+                    int lf = f - 1;
+                    while (lf > 0 && world.grid_for_floor(lf)
+                                             .data[tx + ty * g.w] == PIX_AIR)
+                        --lf;
+                    if (world.grid_for_floor(lf).data[tx + ty * g.w] ==
+                        PIX_AIR)
+                        continue; // fell past floor 0: pit death by design
+                    EXPECT_TRUE(cell_standable(world, lf, tx, ty))
+                        << "fall line at tile (" << tx << ", " << ty
+                        << ") floor " << f
+                        << " lands on impassable ground of floor " << lf
+                        << " (the level must not rely on the engine's "
+                           "landing nudge)";
+                }
+            }
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // (5) A*-reachability: from the lead start marker (the spot the player's
 // first character takes) a ground probe must be able to path to every exit
@@ -802,6 +1054,111 @@ TEST_F(WestlandsCampaignTest, exits_and_stairs_reachable_from_the_lead_start)
         {
             expect_reachable(stair.tx * GRID_SIZE, stair.ty * GRID_SIZE,
                              stair.floor, "stair pair");
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// (5b) A*-reachability of the ARMIES (Wave E3, the trapped-orc rule): every
+// living and every generator must be reachable from the lead start marker by
+// a ground probe — kill-all levels demand the player can close with every
+// foe, and CAN_EXIT levels promise no foe is sealed away. Flyers are exempt
+// (ghosts hover over lava, meres and air pits by design). Any DELIBERATE
+// ground exception needs an entry here WITH a comment, kept in lockstep with
+// tools/westlands_mapgen/main.cpp's reachability_exceptions().
+// ---------------------------------------------------------------------------
+namespace {
+
+struct ReachabilityException
+{
+    int id;
+    int floor;
+    int tx;
+    int ty;
+};
+
+const std::vector<ReachabilityException>& reachability_exceptions()
+{
+    static const std::vector<ReachabilityException> exceptions = {
+        // (none: every ground living and generator in the shipped package
+        //  is reachable from the lead start marker.)
+    };
+    return exceptions;
+}
+
+bool reachability_exception_allowed(int id, int floor, int tx, int ty)
+{
+    for (const ReachabilityException& e : reachability_exceptions())
+        if (e.id == id && e.floor == floor && e.tx == tx && e.ty == ty)
+            return true;
+    return false;
+}
+
+} // namespace
+
+TEST_F(WestlandsCampaignTest, livings_and_generators_reachable_from_the_lead_start)
+{
+    for (const ShippedLevel& expected : shipped_levels())
+    {
+        SCOPED_TRACE("scen" + std::to_string(expected.id));
+        LoadedWestlandsLevel fx(expected.id);
+        ASSERT_TRUE(fx.loaded);
+        GameWorld& world = fx.world();
+        ASSERT_NE(nullptr, world.myobmap.get());
+
+        walker* lead = find_lead_start_marker(world);
+        ASSERT_NE(nullptr, lead) << "the crew's lead start marker";
+
+        // A ground probe on the lead marker; removed from the obmap so it
+        // never self-blocks a solve.
+        walker* probe = world.add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, probe);
+        probe->set_team_num(0);
+        probe->set_real_team_num(0);
+        probe->set_floor(lead->floor());
+        ASSERT_TRUE(probe->setxy(lead->xpos(), lead->ypos()));
+        (void)world.myobmap->remove(probe);
+
+        ASSERT_NE(nullptr, current_game);
+        GameplayPathfindingState* pathing =
+            ensure_pathfinding_state(*current_game);
+        ASSERT_NE(nullptr, pathing);
+
+        const PathState start = make_path_state(
+            probe->xpos(), probe->ypos(), probe->floor());
+        for (const auto& uptr : world.oblist)
+        {
+            walker* ob = uptr.get();
+            if (ob == nullptr || ob == probe)
+                continue;
+            const Order order = ob->query_order();
+            if (order != Order::Living && order != Order::Generator)
+                continue;
+            if (order == Order::Living &&
+                ob->stats()->query_bit_flags(BIT_FLYING))
+            {
+                continue; // flyers cross lava/water/pits by design
+            }
+            const int tx = ob->xpos() / GRID_SIZE;
+            const int ty = ob->ypos() / GRID_SIZE;
+            if (reachability_exception_allowed(expected.id, ob->floor(), tx,
+                                               ty))
+                continue;
+            const PathState goal =
+                make_path_state(ob->xpos(), ob->ypos(), ob->floor());
+            if (goal == start)
+                continue; // shares the lead marker's cell
+            std::vector<PathState> path;
+            float total_cost = 0.0f;
+            pathing->solve_for_point(probe, static_cast<short>(ob->xpos()),
+                                     static_cast<short>(ob->ypos()), start,
+                                     goal, path, total_cost);
+            EXPECT_FALSE(path.empty())
+                << "order " << static_cast<int>(order) << " family "
+                << static_cast<int>(ob->family()) << " at tile (" << tx
+                << ", " << ty << ") floor " << ob->floor()
+                << " is unreachable from the lead start marker (fix the "
+                   "map or add a reachability-allowlist entry)";
         }
     }
 }
@@ -975,7 +1332,10 @@ TEST_F(WestlandsCampaignTest, authored_guards_load_as_guards_and_hold_post)
     }
 
     // Cross-check a second level's authored count: scen2 "The Forest Road"
-    // posts 20 guards across the ambushes (teams 0 and 2).
+    // posts 19 team-2 wolf-pocket guards across the ambushes (Wave E1: the
+    // Bearer is deliberately NOT a guard there — he runs east with the
+    // crew's fighting line instead of holding a post the pursuit would
+    // overrun).
     LoadedWestlandsLevel road(2);
     ASSERT_TRUE(road.loaded);
     int road_guards = 0;
@@ -986,5 +1346,9 @@ TEST_F(WestlandsCampaignTest, authored_guards_load_as_guards_and_hold_post)
             ob->act_type() == ACT_GUARD)
             ++road_guards;
     }
-    EXPECT_EQ(20, road_guards);
+    EXPECT_EQ(19, road_guards);
+    walker* road_bearer = find_named_living(road.world(), "The Bearer");
+    ASSERT_NE(nullptr, road_bearer);
+    EXPECT_NE(ACT_GUARD, road_bearer->act_type())
+        << "the Forest Road Bearer must RUN with the crew, not hold a post";
 }

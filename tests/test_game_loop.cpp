@@ -3154,8 +3154,9 @@ TEST(GameLoop, zz_capture_westlands)
         return only == nullptr || strcmp(only, n) == 0;
     };
     // 2 The Forest Road — THE FLIGHT: rain over the corridor maze, the
-    // Pale Riders waking behind the crew at ticks 150/400 while the rider
-    // den never stops feeding. The camera rides with the thief.
+    // Pale Riders waking behind the crew in waves (250/550/900). The
+    // camera rides with the thief; the Bearer runs in the column with him
+    // (Wave E1).
     if (want("2"))
         gameplay_rec::record_story(
             "westlands_flight", 2, WeatherKind::Rain,
@@ -3170,6 +3171,38 @@ TEST(GameLoop, zz_capture_westlands)
             {FAMILY_THIEF, FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_ELF,
              FAMILY_ELF, FAMILY_BARBARIAN, FAMILY_CLERIC, FAMILY_MAGE},
             6, 360);
+}
+
+// Wave E7 decor-ambience spot checks: short forced-camera establishing
+// shots of the four representative dressings — marsh bones on the drowned
+// battlefield, cinder grit + the march's dead on the ash, war-road pebbles
+// and trampled-swathe bones on the plains, and forest-shrub undergrowth in
+// the Golden Wood. Each scene is a 20-frame hold so sprites settle; the
+// point is to LOOK at the frames.
+TEST(GameLoop, zz_capture_westlands_decor)
+{
+    if (!getenv("OG_FX_CAPTURE_DIR"))
+        GTEST_SKIP() << "set OG_FX_CAPTURE_DIR to record";
+    using epic_rec::Key;
+    const char* only = getenv("OG_FX_CAPTURE_ONLY");
+    const auto want = [&](const char* n) {
+        return only == nullptr || strcmp(only, n) == 0;
+    };
+    const std::vector<int> crew = {FAMILY_SOLDIER, FAMILY_SOLDIER,
+                                   FAMILY_BARBARIAN, FAMILY_ELF, FAMILY_ELF,
+                                   FAMILY_CLERIC, FAMILY_MAGE, FAMILY_THIEF};
+    if (want("d19")) // bog island I1, the sunken dead among the meres
+        epic_rec::record("decor_19_marshes", 19, WeatherKind::Clouds, crew,
+                         {{0, 288, 272, 0, true}, {20, 288, 272, 0, true}});
+    if (want("d23")) // the central lane: banner torches, grit, old bones
+        epic_rec::record("decor_23_ash", 23, WeatherKind::None, crew,
+                         {{0, 720, 320, 0, true}, {20, 720, 320, 0, true}});
+    if (want("d13")) // the war-road through the column's trampled swathes
+        epic_rec::record("decor_13_plains", 13, WeatherKind::Clouds, crew,
+                         {{0, 672, 384, 0, true}, {20, 672, 384, 0, true}});
+    if (want("d10")) // the west road under the eaves, undergrowth off it
+        epic_rec::record("decor_10_wood", 10, WeatherKind::Clouds, crew,
+                         {{0, 320, 320, 0, true}, {20, 320, 320, 0, true}});
 }
 
 // ---------------------------------------------------------------------------

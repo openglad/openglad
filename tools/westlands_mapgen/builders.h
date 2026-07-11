@@ -18,6 +18,7 @@
 #include <openglad/core/order.h>
 #include <openglad/gameplay/pixie_data.h>
 
+#include <initializer_list>
 #include <string>
 #include <vector>
 
@@ -107,6 +108,32 @@ void scatter_boulders(GameWorld& w, int floor, int tx0, int ty0, int tx1,
                       int ty1, int modulus);
 void scatter_litter(GameWorld& w, int floor, int tx0, int ty0, int tx1,
                     int ty1, int modulus);
+// Ambience-decor scatter (Wave E7): NON-BLOCKING set dressing — pebbles,
+// bones, shrubs — hashed over a rectangle, restricted to the ground classes
+// the art reads on. Non-blocking ids leave passability untouched by
+// construction (the helper hard-fails a blocking id), so routes, footing,
+// fall lines and reachability are unaffected; cells that already carry decor
+// (hand-placed torches, scattered rocks) keep it, and entity cells are
+// skipped so nothing spawns standing in a bone pile. Runs AFTER army
+// placement and AFTER the base-tile scatters (litter replaces its cells'
+// bases, so dressed cells stay dressed).
+enum class ScatterGround : unsigned char
+{
+    Grass,      // plain grass, all four smoothed variants
+    LightGrass, // meadow / garden / field sheen (interior tile only)
+    DarkGrass,  // scrub, moss beds, trampled ground (interior variants)
+    Dirt,       // packed earth (fords, camp grounds, the eastern waste)
+    DarkDirt,   // carved cavern floor
+    Snow,       // both drift variants
+    Marsh,      // both bog variants
+    Ash,        // both cinder variants
+    Path,       // the worn-track variants
+    Pavement,   // dressed stone floors
+    Cobble,     // street cobbles
+};
+void scatter_decor(GameWorld& w, int floor, int tx0, int ty0, int tx1,
+                   int ty1, int modulus, unsigned char decor_id,
+                   std::initializer_list<ScatterGround> grounds);
 
 // --- Level bootstrap / save. --------------------------------------------------
 // Common world bootstrap: a LevelRuntimeData with N floors all sized tw x th,

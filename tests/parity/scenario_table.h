@@ -966,7 +966,13 @@ inline constexpr FactPredicate kFacts_family_ghost_scen99[] = {
     pred::TickReached(600),
     pred::WalkerFamilyCount(FAMILY_GHOST, 1, 1),
     pred::WalkerOfTeamAlive(/*enemy team=*/1, 1, 1),
-    pred::WalkerPositionMoved(FAMILY_GHOST, 0, 115),
+    // 2026-07-07 guard-standoff fix: the ghost (BIT_NO_RANGED) now
+    // snap-faces its prey at bump range instead of orbit-sliding, so the
+    // duel stays engaged next to the soldier's arena corner — final pos
+    // (241,103) vs the classic wander endpoint (0,115). Repinned to the
+    // engaged-duel region; the spawn-identity mutation still flips the
+    // WalkerFamilyCount pin above.
+    pred::WalkerPositionMoved(FAMILY_GHOST, 200, 90),
     pred::WalkerHpRangeAtFinalTick(FAMILY_GHOST, 4900, 5100),
     pred::EventKindAtLeast(/*play_sound*/1, 1),
 };
@@ -1160,7 +1166,7 @@ inline constexpr Mutation kMut_snapshot_dirty = {
 // EventKindAtLeast predicates these flip on canary run.
 
 inline constexpr Mutation kMut_special_archmage_do_special = {
-    "src/gameplay/families/family_archmage.cpp", 524,
+    "src/gameplay/families/family_archmage.cpp", 528,
     ".do_special = archmage_do_special,",
     ".do_special = (true ? nullptr : archmage_do_special),",
     "Descriptor sets archmage do_special to nullptr while still referencing the function symbol (silences -Wunused-function). Any scenario that actually invokes the archmage special sees the gating play_sound suppressed, flipping EventKindExactly(play_sound, 0) / LevelDoneEquals predicates."
@@ -1333,7 +1339,7 @@ inline constexpr Mutation kMut_family_barbarian_init = {
 };
 
 inline constexpr Mutation kMut_family_archmage_init = {
-    "src/gameplay/families/family_archmage.cpp", 505,
+    "src/gameplay/families/family_archmage.cpp", 509,
     "BASE_GUY_HP+120",
     "10",
     "ARCHMAGE HP cranked down to 10 so the sparring soldier kills it on first hit; flips WalkerAliveAtFinal(ARCHMAGE,1) and WalkerOfTeamAlive(team=0,1,1)."
@@ -1422,10 +1428,33 @@ inline constexpr InputEvent kInputsEffectCombat[] = {
     {5, 0, K_FIRE}, {149, 0, K_NONE},
 };
 
+// Event-arena twin of kInputsEffectCombat (2026-07-07 guard-standoff fix
+// audit): the arena's team-1 line approaches from the EAST but a freshly
+// spawned player faces UP, so a bare K_FIRE hold threw every knife due
+// north. Master's score_change events came from enemies chaotically
+// orbit-sliding through that north lane; with the wedge fixed the approach
+// is clean and nothing ever crossed it, zeroing the arena's ScoreChange
+// canary teeth. Three ticks of K_RIGHT turn the player onto the incoming
+// line before the same tick-5 fire hold begins.
+inline constexpr InputEvent kInputsEventArena[] = {
+    {1, 0, K_RIGHT}, {4, 0, K_NONE}, {5, 0, K_FIRE}, {149, 0, K_NONE},
+};
+
 inline constexpr SpawnSpec kFamilySpawns_event_arena[] = {
     {  0, 0, kOrderLiving, 120, 120, 0, 0 },
-    {  0, 1, kOrderLiving, 180, 120, 0, 0 },
-    { 14, 1, kOrderLiving, 220, 120, 0, 0 },
+    // 2026-07-07 guard-standoff fix audit: the team-1 soldier used to lead
+    // this line from x=180 and CHARGE down the player's due-east knife lane
+    // (its denied fire_checks always answered "walk"), eating scoring hits
+    // on the way in. Post-fix it stops at weapon reach, snap-faces, and
+    // counter-fires — the two knife streams interdicted each other and
+    // score_change dropped to zero, killing this arena's ScoreChange canary
+    // teeth. The line now LEADS with the orc (BIT_NO_RANGED: it can never
+    // counter-fire, so the player's opening throws land and score) and the
+    // soldier duels from the second rank, surviving to keep the
+    // WalkerFamilyCount(FAMILY_SOLDIER) pin satisfied after the player
+    // falls to the melee.
+    { 14, 1, kOrderLiving, 150, 120, 0, 0 },
+    {  0, 1, kOrderLiving, 220, 120, 0, 0 },
     {  4, 1, kOrderLiving, 260, 120, 0, 0 },
 };
 
@@ -3947,7 +3976,7 @@ inline constexpr FactPredicate kFacts_special_archmage_2_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archmage_2_scen99 = {
-    "src/gameplay/families/family_archmage.cpp", 505,
+    "src/gameplay/families/family_archmage.cpp", 509,
     "BASE_GUY_HP+120",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_ARCHMAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3966,7 +3995,7 @@ inline constexpr FactPredicate kFacts_special_archmage_3_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archmage_3_scen99 = {
-    "src/gameplay/families/family_archmage.cpp", 505,
+    "src/gameplay/families/family_archmage.cpp", 509,
     "BASE_GUY_HP+120",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_ARCHMAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -3998,7 +4027,7 @@ inline constexpr FactPredicate kFacts_special_archmage_4_scen99[] = {
 };
 
 inline constexpr Mutation kMut_special_archmage_4_scen99 = {
-    "src/gameplay/families/family_archmage.cpp", 505,
+    "src/gameplay/families/family_archmage.cpp", 509,
     "BASE_GUY_HP+120",
     "BASE_GUY_HP+9000",
     "Cranks the FAMILY_ARCHMAGE init HP; the caster no longer dies during the per-slot cycle/fire dance, flipping any predicate that depends on the caster's post-special HP / position / death state."
@@ -4213,7 +4242,7 @@ inline constexpr FactPredicate kFacts_generator_saturation_scen99[] = {
 };
 
 inline constexpr Mutation kMut_generator_saturation_scen99 = {
-    "src/gameplay/walker.cpp", 1330,
+    "src/gameplay/walker.cpp", 1354,
     "if ( current_game->world->living_count < MAXOBS &&",
     "if ( false &&",
     "Replaces the `living_count < MAXOBS` half of the act_generate gate with `false`, making the conjunction always false; the generator never fires, zero FAMILY_MAGE spawn, and WalkerFamilyCount(FAMILY_MAGE, 3, 30) fails on its lower bound."
@@ -4415,13 +4444,20 @@ inline constexpr SpawnSpec kFamilySpawns_effect_protection_emit_scen99[] = {
     // The friendly soldier is spawned FIRST so the druid — spawned next — lands
     // ahead of it in oblist (add_ob prepends), making the druid the walker that
     // find_player_walker binds and the special input drives. No enemies are
-    // spawned: with no foe to charge, the AI friendly idles next to the druid
-    // and stays well inside range 60 at the tick-20 cast on BOTH branch and
-    // master, so PROTECTION's howmany>1 gate opens deterministically (whether a
-    // foe is in range at the exact cast tick is RNG/AI-movement sensitive and
-    // diverges between branch and master). With no incoming damage the emitted
-    // circle is never consumed as a shield, so it persists in weaplist.
-    { FAMILY_SOLDIER, 0, kOrderLiving, 130, 120, 0, 0 },          // second team-0 friendly, 10px from the druid -> inside range 60 throughout
+    // spawned: with no foe to charge, the AI friendly idles near the druid
+    // and stays inside range 60 at the tick-20 cast, so PROTECTION's
+    // howmany>1 gate opens deterministically (whether a foe is in range at
+    // the exact cast tick is RNG/AI-movement sensitive and diverges between
+    // branch and master). With no incoming damage the emitted circle is
+    // never consumed as a shield, so it persists in weaplist.
+    // 2026-07-07 guard-standoff fix audit: the friendly originally spawned
+    // 10px from the druid — INTERPENETRATED — and only "idled next to it"
+    // because the classic absorbing interpenetration trap blocked its every
+    // step; with the escape rule the trapped walker wanders off (SE on this
+    // seed) and left range before the cast. Spawned at a LEGAL separation
+    // NW of the druid instead so its (deterministic, SE-trending) idle
+    // wander keeps it inside range 60 through the cast tick.
+    { FAMILY_SOLDIER, 0, kOrderLiving, 85, 90, 0, 0 },            // team-0 friendly, Manhattan 65->wanders SE into range by the cast, no body overlap
     { FAMILY_DRUID,   0, kOrderLiving, 120, 120, 0, 0, 10, 300 }, // druid caster (level 10 + 300 magicpoints -> slot 4 PROTECTION affordable); the player-controlled walker
 };
 
@@ -4711,13 +4747,18 @@ inline constexpr FactPredicate kFacts_multiplayer_two_teams_scen99[] = {
     pred::TickReached(44),
     pred::WalkerFamilyCount(FAMILY_SOLDIER, 1, 1),
     pred::WalkerFamilyCount(FAMILY_THIEF, 1, 1),
-    pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 7800, 7800),
+    // 2026-07-07 guard-standoff fix: the three-way melee resolves along a
+    // different (snap-faced, non-orbiting) path; the archer finishes the
+    // 44-tick budget at 90.0 hp instead of 78.0. Exact pin moved with the
+    // golden rebaseline; the friendliness mutation's teeth live in the
+    // play_sound floor below, unaffected.
+    pred::WalkerHpRangeAtFinalTick(FAMILY_ARCHER, 9000, 9000),
     pred::EventKindAtLeast(/*play_sound*/1, 4,
         "consequence: the soldier (team 0), thief (team 2), and archer (team 1) carry three distinct team_nums and none holds a myguy pointer, so is_friendly takes the no-myguy branch and the verdict reduces to the team_num comparison on walker.cpp:1723; because the numbers differ every pair is hostile and the units trade blows, emitting a stream of combat play_sound events (branch ~10, master ~12). The mutation rewrites line 1723 to `return 1`, making every pair friendly: combat ceases, only the player's lone scripted fire remains, and the play_sound count collapses to 1 — below this floor of 4."),
 };
 
 inline constexpr Mutation kMut_multiplayer_two_teams_scen99 = {
-    "src/gameplay/walker.cpp", 2057,
+    "src/gameplay/walker.cpp", 2094,
     "return headus->team_num() == headtarget->team_num();",
     "return 1;",
     "Replaces the no-myguy team-number friendliness comparison with an unconditional `return 1`, so every pair of walkers is friendly regardless of team; the three-team melee never starts, every walker keeps full HP, and the combat play_sound stream collapses from ~10 to 1 — below the EventKindAtLeast(play_sound, 4) floor (verified: mutated branch dump emits play_sound == 1)."
@@ -5648,7 +5689,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
 
     // Phase 04 — event-kind emission scenarios
     { "event_notification_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsEffectCombat, std::size(kInputsEffectCombat), 150,
+      kInputsEventArena, std::size(kInputsEventArena), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_event_arena, std::size(kFamilySpawns_event_arena),
       0, false, true, Exercises::None,
@@ -5656,7 +5697,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_event_notification_emission },
 
     { "event_set_palette_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsEffectCombat, std::size(kInputsEffectCombat), 150,
+      kInputsEventArena, std::size(kInputsEventArena), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_event_arena, std::size(kFamilySpawns_event_arena),
       0, false, true, Exercises::None,
@@ -5664,7 +5705,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_event_set_palette_emission },
 
     { "event_request_redraw_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsEffectCombat, std::size(kInputsEffectCombat), 150,
+      kInputsEventArena, std::size(kInputsEventArena), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_event_arena, std::size(kFamilySpawns_event_arena),
       0, false, true, Exercises::None,
@@ -5672,7 +5713,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_event_request_redraw_emission },
 
     { "event_end_game_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsEffectCombat, std::size(kInputsEffectCombat), 150,
+      kInputsEventArena, std::size(kInputsEventArena), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_event_arena, std::size(kFamilySpawns_event_arena),
       0, false, true, Exercises::None,
@@ -5680,7 +5721,7 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kMut_event_end_game_emission },
 
     { "event_set_end_emission_scen99", "scen/scen1.fss", 0x00000042u,
-      kInputsEffectCombat, std::size(kInputsEffectCombat), 150,
+      kInputsEventArena, std::size(kInputsEventArena), 150,
       CompareMode::SemanticParity, false,
       kFamilySpawns_event_arena, std::size(kFamilySpawns_event_arena),
       0, false, true, Exercises::None,

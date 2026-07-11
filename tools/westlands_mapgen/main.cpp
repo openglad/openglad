@@ -35,6 +35,8 @@
 #include <openglad/gameplay/family_registries.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/gameplay_context.h>
+#include <openglad/gameplay/obmap.h>
+#include <openglad/gameplay/pathfinding_grid.h>
 #include <openglad/gameplay/smooth.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
@@ -313,6 +315,163 @@ bool cell_near_entity(GameWorld& w, int floor, int tx, int ty, int margin)
 
 namespace {
 
+// --- Fall-line support (Wave E5). --------------------------------------------
+// Single-cell ground passability: the Living arm of
+// GameWorld::query_grid_passable with none of the flyer / forestwalk /
+// ethereal escapes — the tiles a plain ground walker can STAND on. A fall
+// landing must be immediately standable; water, lava, boulder and torch
+// bases all bounce the faller into the engine's A5 landing nudge, and
+// levels must not rely on the nudge. Keep in lockstep with the mirrored
+// classifier in tests/unit/test_westlands_levels.cpp.
+bool ground_cell_standable(unsigned char tile)
+{
+    switch (tile)
+    {
+        case PIX_GRASS1:
+        case PIX_GRASS2:
+        case PIX_GRASS3:
+        case PIX_GRASS4:
+        case PIX_GRASS_DARK_1:
+        case PIX_GRASS_DARK_2:
+        case PIX_GRASS_DARK_3:
+        case PIX_GRASS_DARK_4:
+        case PIX_GRASS_DARK_LL:
+        case PIX_GRASS_DARK_UR:
+        case PIX_GRASS_DARK_B1:
+        case PIX_GRASS_DARK_B2:
+        case PIX_GRASS_DARK_BR:
+        case PIX_GRASS_DARK_R1:
+        case PIX_GRASS_DARK_R2:
+        case PIX_GRASS_RUBBLE:
+        case PIX_GRASS1_DAMAGED:
+        case PIX_GRASS_LIGHT_1:
+        case PIX_GRASS_LIGHT_TOP:
+        case PIX_GRASS_LIGHT_RIGHT_TOP:
+        case PIX_GRASS_LIGHT_RIGHT:
+        case PIX_GRASS_LIGHT_RIGHT_BOTTOM:
+        case PIX_GRASS_LIGHT_BOTTOM:
+        case PIX_GRASS_LIGHT_LEFT_BOTTOM:
+        case PIX_GRASS_LIGHT_LEFT:
+        case PIX_GRASS_LIGHT_LEFT_TOP:
+        case PIX_GRASSWATER_LL:
+        case PIX_GRASSWATER_LR:
+        case PIX_GRASSWATER_UL:
+        case PIX_GRASSWATER_UR:
+        case PIX_PAVEMENT1:
+        case PIX_PAVEMENT2:
+        case PIX_PAVEMENT3:
+        case PIX_COBBLE_1:
+        case PIX_COBBLE_2:
+        case PIX_COBBLE_3:
+        case PIX_COBBLE_4:
+        case PIX_FLOOR_PAVEL:
+        case PIX_FLOOR_PAVER:
+        case PIX_FLOOR_PAVEU:
+        case PIX_FLOOR_PAVED:
+        case PIX_PAVESTEPS1:
+        case PIX_PAVESTEPS2:
+        case PIX_PAVESTEPS2L:
+        case PIX_PAVESTEPS2R:
+        case PIX_FLOOR1:
+        case PIX_CARPET_LL:
+        case PIX_CARPET_B:
+        case PIX_CARPET_LR:
+        case PIX_CARPET_UR:
+        case PIX_CARPET_U:
+        case PIX_CARPET_UL:
+        case PIX_CARPET_L:
+        case PIX_CARPET_M:
+        case PIX_CARPET_M2:
+        case PIX_CARPET_R:
+        case PIX_CARPET_SMALL_HOR:
+        case PIX_CARPET_SMALL_VER:
+        case PIX_CARPET_SMALL_CUP:
+        case PIX_CARPET_SMALL_CAP:
+        case PIX_CARPET_SMALL_LEFT:
+        case PIX_CARPET_SMALL_RIGHT:
+        case PIX_CARPET_SMALL_TINY:
+        case PIX_DIRT_1:
+        case PIX_DIRTGRASS_UL1:
+        case PIX_DIRTGRASS_UR1:
+        case PIX_DIRTGRASS_LL1:
+        case PIX_DIRTGRASS_LR1:
+        case PIX_DIRT_DARK_1:
+        case PIX_DIRTGRASS_DARK_UL1:
+        case PIX_DIRTGRASS_DARK_UR1:
+        case PIX_DIRTGRASS_DARK_LL1:
+        case PIX_DIRTGRASS_DARK_LR1:
+        case PIX_PATH_1:
+        case PIX_PATH_2:
+        case PIX_PATH_3:
+        case PIX_PATH_4:
+        case PIX_SNOW1:
+        case PIX_SNOW2:
+        case PIX_MARSH1:
+        case PIX_MARSH2:
+        case PIX_ASH1:
+        case PIX_ASH2:
+        // Z tiles a ground walker occupies at the grid layer (stairs carry
+        // you off; glass and drop blocks resolve in movement) — all legal
+        // landings. PIX_AIR is deliberately NOT here: the fall audit chases
+        // air columns itself.
+        case PIX_ZSTAIR_UP:
+        case PIX_ZSTAIR_DOWN:
+        case PIX_GLASS:
+        case PIX_DROPBLOCK_UP:
+        case PIX_DROPBLOCK_RIGHT:
+        case PIX_DROPBLOCK_DOWN:
+        case PIX_DROPBLOCK_LEFT:
+            return true;
+        default:
+            return false; // walls, trees, water, lava, boulders, torches,
+                          // braziers, columns, jagged litter, void, air
+    }
+}
+
+// Base tile AND decor plane both standable for a ground walker.
+bool cell_standable(GameWorld& world, int floor, int tx, int ty)
+{
+    const PixieData& g = world.grid_for_floor(floor);
+    if (!g.valid() || tx < 0 || ty < 0 || tx >= g.w || ty >= g.h)
+        return false;
+    if (!ground_cell_standable(g.data[tx + ty * g.w]))
+        return false;
+    const PixieData& dec = world.decor_for_floor(floor);
+    if (dec.valid() && dec.w == g.w && dec.h == g.h)
+    {
+        const unsigned char d = dec.data[tx + ty * dec.w];
+        if (d < DECOR_MAX &&
+            kDecorRegistry[d].pass == DecorPassability::BlocksGround)
+            return false;
+    }
+    return true;
+}
+
+// True when (tx, ty) on 'floor' is the LANDING cell of some fall line
+// above: scan up through stacked AIR cells; any air floor a ground walker
+// can step into (an 8-adjacent standable cell of that same floor) drops
+// its faller here. The scatters must never mine such a landing with
+// blocking litter or boulders (Wave E5 fall-line rule) — the same way
+// they never cover a Z-stair. On levels whose upper floors are untouched
+// grass fills this is always false, so single-floor scatters are
+// unaffected.
+bool cell_is_fall_landing(GameWorld& w, int floor, int tx, int ty)
+{
+    for (int g = floor + 1; g < w.floor_count(); ++g)
+    {
+        const PixieData& gg = w.grid_for_floor(g);
+        if (!gg.valid() || tx >= gg.w || ty >= gg.h ||
+            gg.data[tx + ty * gg.w] != PIX_AIR)
+            return false; // solid above: no fall reaches this cell
+        for (int dy = -1; dy <= 1; ++dy)
+            for (int dx = -1; dx <= 1; ++dx)
+                if ((dx != 0 || dy != 0) &&
+                    cell_standable(w, g, tx + dx, ty + dy))
+                    return true;
+    }
+    return false;
+}
+
 // Scatter a 4-variant BASE tile set over a rectangle (jagged litter — a
 // full-tile terrain, not decor). Runs AFTER army placement and keeps one
 // tile of clearance around every entity (and never covers a Z-stair) so no
@@ -335,6 +494,8 @@ void scatter_base_tiles(GameWorld& w, int floor, int tx0, int ty0, int tx1,
             const unsigned char t = g.data[x + y * g.w];
             if (t == PIX_ZSTAIR_UP || t == PIX_ZSTAIR_DOWN || t == PIX_VOID1)
                 continue;
+            if (cell_is_fall_landing(w, floor, x, y))
+                continue; // never mine a fall landing (Wave E5)
             if (cell_near_entity(w, floor, x, y, 1))
                 continue;
             paint(g, x, y, variants[(x + y) % 4]);
@@ -401,6 +562,10 @@ void scatter_boulders(GameWorld& w, int floor, int tx0, int ty0, int tx1,
                 continue;
             if (blocks_weapons_or_flyers(t))
                 continue;
+            if (cell_is_fall_landing(w, floor, x, y))
+                continue; // never mine a fall landing (Wave E5) — and never
+                          // PLUG an air hole into one (a base-boulder plug
+                          // under a fall entry would be a blocked landing)
             if (cell_near_entity(w, floor, x, y, 1))
                 continue;
             if (t == PIX_AIR)
@@ -419,6 +584,92 @@ void scatter_litter(GameWorld& w, int floor, int tx0, int ty0, int tx1,
     scatter_base_tiles(w, floor, tx0, ty0, tx1, ty1, modulus, litter);
 }
 
+namespace {
+
+// The exact base tiles each ScatterGround class dresses. Interior tiles
+// only: the smoothed edge/corner variants (shorelines, tree eaves, dirt
+// aprons) are deliberately excluded so the dressing hugs the middle of a
+// zone instead of crowding its seams.
+bool scatter_ground_matches(unsigned char t, ScatterGround g)
+{
+    switch (g)
+    {
+        case ScatterGround::Grass:
+            return t == PIX_GRASS1 || t == PIX_GRASS2 || t == PIX_GRASS3 ||
+                   t == PIX_GRASS4;
+        case ScatterGround::LightGrass:
+            return t == PIX_GRASS_LIGHT_1;
+        case ScatterGround::DarkGrass:
+            return t == PIX_GRASS_DARK_1 || t == PIX_GRASS_DARK_2 ||
+                   t == PIX_GRASS_DARK_3 || t == PIX_GRASS_DARK_4;
+        case ScatterGround::Dirt:
+            return t == PIX_DIRT_1;
+        case ScatterGround::DarkDirt:
+            return t == PIX_DIRT_DARK_1;
+        case ScatterGround::Snow:
+            return t == PIX_SNOW1 || t == PIX_SNOW2;
+        case ScatterGround::Marsh:
+            return t == PIX_MARSH1 || t == PIX_MARSH2;
+        case ScatterGround::Ash:
+            return t == PIX_ASH1 || t == PIX_ASH2;
+        case ScatterGround::Path:
+            return t == PIX_PATH_1 || t == PIX_PATH_2 || t == PIX_PATH_3 ||
+                   t == PIX_PATH_4;
+        case ScatterGround::Pavement:
+            return t == PIX_PAVEMENT1 || t == PIX_PAVEMENT2 ||
+                   t == PIX_PAVEMENT3;
+        case ScatterGround::Cobble:
+            return t == PIX_COBBLE_1 || t == PIX_COBBLE_2 ||
+                   t == PIX_COBBLE_3 || t == PIX_COBBLE_4;
+    }
+    return false;
+}
+
+} // namespace
+
+void scatter_decor(GameWorld& w, int floor, int tx0, int ty0, int tx1,
+                   int ty1, int modulus, unsigned char decor_id,
+                   std::initializer_list<ScatterGround> grounds)
+{
+    // Ambience only: a blocking id here could mine a route or a fall
+    // landing the audits would then have to re-prove — refuse it outright.
+    if (decor_id >= DECOR_MAX ||
+        kDecorRegistry[decor_id].pass != DecorPassability::None)
+    {
+        fail(std::format("scatter_decor: id {} is not non-blocking ambience "
+                         "decor", decor_id));
+        return;
+    }
+    const PixieData& g = w.grid_for_floor(floor);
+    for (int y = ty0; y <= ty1; ++y)
+        for (int x = tx0; x <= tx1; ++x)
+        {
+            // A different cell hash than the boulder/litter scatters so the
+            // dressings interleave instead of stacking on the same cells.
+            if ((x * 5 + y * 7) % modulus != 0)
+                continue;
+            if (x < 0 || y < 0 || x >= g.w || y >= g.h)
+                continue;
+            const unsigned char t = g.data[x + y * g.w];
+            bool allowed = false;
+            for (const ScatterGround ground : grounds)
+                if (scatter_ground_matches(t, ground))
+                {
+                    allowed = true;
+                    break;
+                }
+            if (!allowed)
+                continue;
+            const PixieData& dec = w.decor_for_floor(floor);
+            if (dec.valid() && x < dec.w && y < dec.h &&
+                dec.data[x + y * dec.w] != DECOR_NONE)
+                continue; // hand-placed decor keeps its cell
+            if (cell_near_entity(w, floor, x, y, 0))
+                continue; // no one spawns standing in the set dressing
+            paint_decor(w, floor, x, y, decor_id);
+        }
+}
+
 void save_level_files(GameWorld& world, int id, const char* title,
                       const std::vector<std::string>& description,
                       int par_value, int time_bonus_limit)
@@ -426,6 +677,31 @@ void save_level_files(GameWorld& world, int id, const char* title,
     world.title = title;
     world.par_value = static_cast<short>(par_value);
     world.time_bonus_limit = static_cast<short>(time_bonus_limit);
+
+    // SAVE_ALL scoping (Wave F2): on every SAVE_ALL level the Bearer — and
+    // ONLY him — carries npc_flags bit 2 ("protected"). With any flagged
+    // NPC placed, the engine watches ONLY flagged walkers, so the other
+    // named allies (Ranger-King, The Lady, White Rider) and any archmage
+    // summons are no longer mission-fail conditions. Centralized here so a
+    // level builder cannot forget the flag or hand it to anyone else.
+    if ((world.type & SCEN_TYPE_SAVE_ALL) != 0)
+    {
+        int flagged = 0;
+        for (auto& uptr : world.oblist)
+        {
+            walker* ob = uptr.get();
+            if (ob == nullptr || ob->query_order() != Order::Living)
+                continue;
+            if (ob->stats()->name == "The Bearer")
+            {
+                ob->set_save_all_protected(true);
+                ++flagged;
+            }
+        }
+        if (flagged != 1)
+            fail(std::format("scen{}: a SAVE_ALL level must carry exactly one "
+                             "'The Bearer' to protect, found {}", id, flagged));
+    }
 
     og::data::LevelFileMetadata metadata;
     metadata.grid_file = std::format("scen{:04d}", id);
@@ -593,6 +869,45 @@ std::string join_ids(const std::vector<int>& ids)
 // SCENARIO INFORMATION dialog budget (33 glyphs per briefing line).
 constexpr std::size_t kBriefingLineBudget = 33;
 
+// --- Reachability audit (Wave E3). -----------------------------------------
+// Multi-floor A* path-state encoding (walker_pathing.cpp's MAKE_STATE).
+PathState make_path_state(int x, int y, int floor)
+{
+    return reinterpret_cast<PathState>(
+        static_cast<intptr_t>(floor) * FLOOR_STRIDE +
+        static_cast<intptr_t>(y / GRID_SIZE) * MAP_WIDTH + (x / GRID_SIZE));
+}
+
+// DELIBERATELY ground-unreachable placements, matched by (level, floor,
+// tile). Flyers are already exempt (ghosts hover over lava, meres and air
+// pits by design); everything ELSE a ground probe cannot reach from the
+// lead start marker fails the build unless it is listed here with a reason.
+// Keep this table in lockstep with tests/unit/test_westlands_levels.cpp.
+struct ReachabilityException
+{
+    int id;
+    int floor;
+    int tx;
+    int ty;
+};
+const std::vector<ReachabilityException>& reachability_exceptions()
+{
+    static const std::vector<ReachabilityException> exceptions = {
+        // (none: every ground living and generator in the shipped package
+        //  must be reachable — the kill-all levels demand it, and the
+        //  CAN_EXIT levels promise the player no foe is sealed away.)
+    };
+    return exceptions;
+}
+
+bool reachability_exception_allowed(int id, int floor, int tx, int ty)
+{
+    for (const ReachabilityException& e : reachability_exceptions())
+        if (e.id == id && e.floor == floor && e.tx == tx && e.ty == ty)
+            return true;
+    return false;
+}
+
 void self_check_level(const ExpectedLevel& ex, const std::set<int>& registered)
 {
     LevelRuntimeData level(ex.id, true, &headless_level_data_hooks());
@@ -663,6 +978,8 @@ void self_check_level(const ExpectedLevel& ex, const std::set<int>& registered)
     int starts = 0;
     int delayed = 0;
     int no_specials = 0;
+    int protected_walkers = 0;
+    bool protected_is_the_bearer = true;
     for (const auto& uptr : world.oblist)
     {
         walker* ob = uptr.get();
@@ -672,6 +989,13 @@ void self_check_level(const ExpectedLevel& ex, const std::set<int>& registered)
             ++delayed;
         if (ob->specials_disabled())
             ++no_specials;
+        if (ob->save_all_protected())
+        {
+            ++protected_walkers;
+            if (ob->query_order() != Order::Living ||
+                ob->stats()->name != "The Bearer")
+                protected_is_the_bearer = false;
+        }
         const int team = ob->team_num();
         if (team < 0 || team > MAX_TEAM)
             continue;
@@ -709,6 +1033,21 @@ void self_check_level(const ExpectedLevel& ex, const std::set<int>& registered)
     if (total_livings > MAXOBS)
         fail(std::format("self-check scen{}: {} seeded livings exceed the "
                          "MAXOBS={} living cap", ex.id, total_livings, MAXOBS));
+
+    // SAVE_ALL scoping audit (Wave F2): npc_flags bit 2 must round-trip
+    // through the package on exactly the Bearer — one protected Living named
+    // "The Bearer" on every SAVE_ALL level, zero protected walkers anywhere
+    // else. (The engine narrows the SAVE_ALL watch to flagged walkers the
+    // moment any is present, so a stray flag would silently rewrite a
+    // level's loss condition.)
+    const int expected_protected =
+        ((world.type & SCEN_TYPE_SAVE_ALL) != 0) ? 1 : 0;
+    if (protected_walkers != expected_protected || !protected_is_the_bearer)
+        fail(std::format("self-check scen{}: {} protected walkers (bearer-only "
+                         "{}), expected {} on a {} level", ex.id,
+                         protected_walkers, protected_is_the_bearer,
+                         expected_protected,
+                         expected_protected == 1 ? "SAVE_ALL" : "non-SAVE_ALL"));
 
     // Exit audit: the authored destination set must match the design graph
     // exactly, and every destination must exist in the package (warn-only
@@ -762,6 +1101,51 @@ void self_check_level(const ExpectedLevel& ex, const std::set<int>& registered)
             if (pairs < 1)
                 fail(std::format("self-check scen{}: no aligned stair pair on "
                                  "floor boundary {}<->{}", ex.id, f, f + 1));
+        }
+    }
+
+    // Fall-line audit (Wave E5): any AIR cell a ground walker can actually
+    // step into — 8-adjacent to a standable cell of the SAME floor — must
+    // land its faller cleanly. Chase the column down through stacked AIR;
+    // the landing cell must be standable (base AND decor): never a wall
+    // top, water, lava or blocking decor. Falling past floor 0 is a pit
+    // death, a designed mechanic, and stays legal. The engine's A5 nudge
+    // can rescue a blocked landing, but no level may RELY on the nudge.
+    // Mirrored by tests/unit/test_westlands_levels.cpp.
+    for (int f = 1; f < world.floor_count(); ++f)
+    {
+        const PixieData& g = world.grid_for_floor(f);
+        if (!g.valid())
+            continue;
+        for (int ty = 0; ty < g.h; ++ty)
+        {
+            for (int tx = 0; tx < g.w; ++tx)
+            {
+                if (g.data[tx + ty * g.w] != PIX_AIR)
+                    continue;
+                bool fall_entry = false;
+                for (int dy = -1; dy <= 1 && !fall_entry; ++dy)
+                    for (int dx = -1; dx <= 1 && !fall_entry; ++dx)
+                        if ((dx != 0 || dy != 0) &&
+                            cell_standable(world, f, tx + dx, ty + dy))
+                            fall_entry = true;
+                if (!fall_entry)
+                    continue; // open sky no walker can step into
+                int lf = f - 1;
+                while (lf > 0 &&
+                       world.grid_for_floor(lf).data[tx + ty * g.w] == PIX_AIR)
+                    --lf;
+                if (world.grid_for_floor(lf).data[tx + ty * g.w] == PIX_AIR)
+                    continue; // fell past floor 0: pit death by design
+                if (!cell_standable(world, lf, tx, ty))
+                {
+                    fail(std::format(
+                        "self-check scen{}: fall line at tile ({}, {}) floor "
+                        "{} lands on impassable ground of floor {} (the level "
+                        "must not rely on the engine's landing nudge)",
+                        ex.id, tx, ty, f, lf));
+                }
+            }
         }
     }
 
@@ -819,6 +1203,88 @@ void self_check_level(const ExpectedLevel& ex, const std::set<int>& registered)
         check_footing(uptr.get());
     for (const auto& uptr : world.fxlist)
         check_footing(uptr.get());
+
+    // Reachability audit (Wave E3): every living and every generator must
+    // be A*-reachable from the crew's lead start marker by a ground probe,
+    // respecting passability, air holes, lava and Z-stairs. Kill-all
+    // levels demand the player can close with every foe; the allowlist
+    // above is the only escape hatch for deliberate exceptions.
+    walker* lead = nullptr;
+    for (const auto& uptr : world.oblist)
+    {
+        walker* ob = uptr.get();
+        if (ob != nullptr && ob->query_order() == Order::Special &&
+            ob->family() == FAMILY_RESERVED_TEAM && ob->team_num() == 0)
+        {
+            lead = ob;
+            break;
+        }
+    }
+    if (lead == nullptr || current_game == nullptr ||
+        world.myobmap == nullptr)
+    {
+        fail(std::format("self-check scen{}: reachability audit needs a lead "
+                         "start marker, a gameplay context and an obmap",
+                         ex.id));
+        return;
+    }
+    GameWorld* const prev_world = current_game->world;
+    current_game->world = &world;
+    // A ground probe on the lead marker; removed from the obmap so it
+    // never self-blocks a solve.
+    walker* probe = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    if (probe == nullptr)
+    {
+        fail(std::format("self-check scen{}: could not seed the reachability "
+                         "probe", ex.id));
+        current_game->world = prev_world;
+        return;
+    }
+    probe->set_team_num(0);
+    probe->set_real_team_num(0);
+    probe->set_floor(lead->floor());
+    probe->setxy(lead->xpos(), lead->ypos());
+    (void)world.myobmap->remove(probe);
+    GameplayPathfindingState* pathing = ensure_pathfinding_state(*current_game);
+    const PathState start =
+        make_path_state(probe->xpos(), probe->ypos(), probe->floor());
+    for (const auto& uptr : world.oblist)
+    {
+        walker* ob = uptr.get();
+        if (ob == nullptr || ob == probe)
+            continue;
+        const Order order = ob->query_order();
+        if (order != Order::Living && order != Order::Generator)
+            continue;
+        if (order == Order::Living &&
+            ob->stats()->query_bit_flags(BIT_FLYING))
+        {
+            continue; // flyers cross lava/water/pits by design
+        }
+        const int tx = ob->xpos() / GRID_SIZE;
+        const int ty = ob->ypos() / GRID_SIZE;
+        if (reachability_exception_allowed(ex.id, ob->floor(), tx, ty))
+            continue;
+        const PathState goal =
+            make_path_state(ob->xpos(), ob->ypos(), ob->floor());
+        if (goal == start)
+            continue;
+        std::vector<PathState> path;
+        float total_cost = 0.0f;
+        pathing->solve_for_point(probe, static_cast<short>(ob->xpos()),
+                                 static_cast<short>(ob->ypos()), start, goal,
+                                 path, total_cost);
+        if (path.empty())
+        {
+            fail(std::format(
+                "self-check scen{}: order {} family {} at tile ({}, {}) "
+                "floor {} is unreachable from the lead start marker "
+                "(fix the map or add a reachability-allowlist entry)",
+                ex.id, static_cast<int>(order),
+                static_cast<int>(ob->family()), tx, ty, ob->floor()));
+        }
+    }
+    current_game->world = prev_world;
 }
 
 } // namespace

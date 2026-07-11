@@ -2,11 +2,11 @@
  *
  * The quiet half of the great branch: 19 The Dead Marshes, 20 The
  * Crossroads, 21 The Pass of the Spider, 22 The Tower of the Moon, 23 The
- * Ash Plains. Except for the Crossroads ambush (the branch's one pitched
- * battle) every level is CAN_EXIT | SAVE_ALL — the Burden's Road is about
- * passage, not extermination, and the named Bearer must live through all
- * of it. 19 walks the new MARSH tiles; 23 crosses ASH plains threaded by
- * impassable LAVA rivers.
+ * Ash Plains. Every level carries SAVE_ALL — the named Bearer must live
+ * through all of it. All but the Crossroads ambush (the branch's one
+ * pitched battle, a kill-all) are also CAN_EXIT: the Burden's Road is
+ * about passage, not extermination. 19 walks the new MARSH tiles; 23
+ * crosses ASH plains threaded by impassable LAVA rivers.
  *
  * Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
  *
@@ -117,52 +117,58 @@ void build_dead_marshes(const LevelDataHooks& hooks)
     paint_marsh(w.grid, 48, 34, 49, 37); // I3, north to the ground south of C
     paint_marsh(w.grid, 76, 39, 77, 44); // I4, south to the P6 south shore
 
-    // Marsh-lights (team 2): ghosts drifting over every mere, levels 4/5
+    // Marsh-lights (team 2): ghosts drifting over every mere, levels 3/4
     // alternating, with one elder light in the great mere and one in P6.
+    // (F4 fresh-team calibration: 4/5 -> 3/4, elders 6 -> 5, the second
+    // rising 5 -> 4 and its hour 400 -> 600 — every light on the map
+    // converges on the causeway fight, and at the old levels the curve-6
+    // company was extinct by tick 1500 with the Bearer dead first.)
     static constexpr int p1[5][2] = {{12, 15}, {24, 20}, {14, 22}, {26, 14},
                                      {22, 12}};
     for (int i = 0; i < 5; ++i)
-        place_living(w, FAMILY_GHOST, 2, 0, p1[i][0], p1[i][1], 4 + (i % 2));
+        place_living(w, FAMILY_GHOST, 2, 0, p1[i][0], p1[i][1], 3 + (i % 2));
     static constexpr int p2[6][2] = {{40, 8},  {44, 18}, {52, 6},
                                      {56, 16}, {42, 14}, {54, 20}};
     for (int i = 0; i < 6; ++i)
         place_living(w, FAMILY_GHOST, 2, 0, p2[i][0], p2[i][1],
-                     (i == 2) ? 6 : 4 + (i % 2));
+                     (i == 2) ? 5 : 3 + (i % 2));
     static constexpr int p3[4][2] = {{10, 34}, {18, 40}, {24, 32}, {14, 42}};
     static constexpr int p4[4][2] = {{42, 36}, {56, 40}, {44, 44}, {54, 36}};
     for (int i = 0; i < 4; ++i)
     {
-        place_living(w, FAMILY_GHOST, 2, 0, p3[i][0], p3[i][1], 4 + (i % 2));
-        place_living(w, FAMILY_GHOST, 2, 0, p4[i][0], p4[i][1], 4 + (i % 2));
+        place_living(w, FAMILY_GHOST, 2, 0, p3[i][0], p3[i][1], 3 + (i % 2));
+        place_living(w, FAMILY_GHOST, 2, 0, p4[i][0], p4[i][1], 3 + (i % 2));
     }
-    place_living(w, FAMILY_GHOST, 2, 0, 72, 20, 5); // P5, the small mere
-    place_living(w, FAMILY_GHOST, 2, 0, 80, 22, 5);
+    place_living(w, FAMILY_GHOST, 2, 0, 72, 20, 4); // P5, the small mere
+    place_living(w, FAMILY_GHOST, 2, 0, 80, 22, 4);
     static constexpr int p6[4][2] = {{70, 32}, {82, 40}, {72, 42}, {84, 34}};
     for (int i = 0; i < 4; ++i)
         place_living(w, FAMILY_GHOST, 2, 0, p6[i][0], p6[i][1],
-                     (i == 1) ? 6 : 4 + (i % 2));
-    // The marsh wakes: a second rising at tick 400 punishes dawdling.
+                     (i == 1) ? 5 : 3 + (i % 2));
+    // The marsh wakes: a second rising at tick 800 punishes dawdling.
     static constexpr int wake[6][2] = {{42, 6},  {50, 12}, {56, 8},
                                        {46, 40}, {52, 44}, {78, 36}};
     for (const auto& c : wake)
-        place_living(w, FAMILY_GHOST, 2, 0, c[0], c[1], 5, false, false, 400);
+        place_living(w, FAMILY_GHOST, 2, 0, c[0], c[1], 4, false, false, 800);
     // The sunken dead: guard skeletons anchoring every shoreline pinch.
     static constexpr int watchers[10][2] = {
         {9, 13},  {29, 17}, {37, 10}, {59, 16}, {36, 25},
         {27, 32}, {39, 47}, {66, 22}, {85, 28}, {67, 38}};
     for (const auto& c : watchers)
-        place_living(w, FAMILY_SKELETON, 2, 0, c[0], c[1], 3, true);
+        place_living(w, FAMILY_SKELETON, 2, 0, c[0], c[1], 2, true);
     // Mire-crawlers wandering the open bog.
     static constexpr int crawlers[4][2] = {{30, 40}, {50, 25}, {70, 15},
                                            {16, 28}};
     for (const auto& c : crawlers)
         place_living(w, FAMILY_SLIME, 2, 0, c[0], c[1], 3);
     // Ghost-light wellsprings, sunk on the bog islands (each 50x40 pile
-    // exactly fills its island's interior).
-    place_generator(w, FAMILY_BONES, 2, 0, 17, 17, 5); // I1
-    place_generator(w, FAMILY_BONES, 2, 0, 47, 11, 5); // I2
-    place_generator(w, FAMILY_BONES, 2, 0, 47, 39, 6); // I3
-    place_generator(w, FAMILY_BONES, 2, 0, 75, 35, 6); // I4
+    // exactly fills its island's interior). (F4: 5/6 -> 3/4 — the old
+    // wellsprings GREW the marsh from 45 lights to 90+ over a run; low
+    // pressure forever is the design, not a rising tide.)
+    place_generator(w, FAMILY_BONES, 2, 0, 17, 17, 3); // I1
+    place_generator(w, FAMILY_BONES, 2, 0, 47, 11, 3); // I2
+    place_generator(w, FAMILY_BONES, 2, 0, 47, 39, 4); // I3
+    place_generator(w, FAMILY_BONES, 2, 0, 75, 35, 4); // I4
 
     // The crew on the firm shelf, lead at the causeway mouth. ((8,11) sits
     // one tile west of the designed post: a 2x2 marker at (9,11) would clip
@@ -186,6 +192,21 @@ void build_dead_marshes(const LevelDataHooks& hooks)
     // Leaning grave-stones and the bones of the old battle.
     scatter_boulders(w, 0, 0, 0, 89, 49, 31);
     scatter_litter(w, 0, 0, 0, 89, 49, 41);
+    // E7 ambience: the drowned battlefield shows its dead — bones sunk
+    // through the open bog (thickest on the islands the ghost-wellsprings
+    // crown) and reed clumps rising from the marsh. Sneak's causeway is
+    // path, not marsh, so the secret way itself stays clean and readable.
+    scatter_decor(w, 0, 0, 0, 89, 49, 13, DECOR_BONES,
+                  {ScatterGround::Marsh, ScatterGround::DarkGrass});
+    static constexpr int isles[4][4] = {{16, 16, 20, 20},
+                                        {46, 10, 50, 14},
+                                        {46, 38, 50, 42},
+                                        {74, 34, 78, 38}};
+    for (const auto& r : isles)
+        scatter_decor(w, 0, r[0], r[1], r[2], r[3], 3, DECOR_BONES,
+                      {ScatterGround::DarkGrass});
+    scatter_decor(w, 0, 0, 0, 89, 49, 17, DECOR_SHRUB,
+                  {ScatterGround::Marsh});
     save_level_files(w, 19, "The Dead Marshes",
                      {"The straight road drowned here",
                       "an age ago. Dead faces burn",
@@ -199,12 +220,17 @@ void build_dead_marshes(const LevelDataHooks& hooks)
 // golem war-beasts in the van, sixteen ranks of southrons behind, orc
 // outriders on the glades. At tick 250 the rangers of the wood spring from
 // the east glade and catch the column in a crossfire. The branch's one
-// pitched battle: classic kill-all (type 0), then take the north road.
+// pitched battle: kill-all, then take the north road — with SAVE_ALL
+// riding on the Bearer (he hides at the ambush line, not the baggage).
+// The picket glades hang off the roads by trodden trails (E3: every
+// picket must be reachable — no orc trapped behind unbroken trees).
 void build_crossroads(const LevelDataHooks& hooks)
 {
     LevelRuntimeData level(20, true, &hooks);
     init_world(level, 1, 80, 50);
     GameWorld& w = level.world();
+    // Kill-all win stays; SAVE_ALL protects the named cargo (Burden's Road).
+    w.type = static_cast<char>(SCEN_TYPE_SAVE_ALL);
 
     paint_rect(w.grid, 0, 0, 79, 49, PIX_TREE_M1);  // forest everywhere
     paint_rect(w.grid, 30, 18, 50, 32, PIX_GRASS1); // the crossroads clearing
@@ -216,10 +242,17 @@ void build_crossroads(const LevelDataHooks& hooks)
     paint_rect(w.grid, 34, 44, 46, 48, PIX_GRASS1); // S camp clearing
     paint_rect(w.grid, 37, 0, 42, 49, PIX_GRASS1);  // N-S road bed
     paint_rect(w.grid, 0, 23, 79, 27, PIX_GRASS1);  // E-W road bed
+    // Picket trails: the NW glade drops to the E-W road, the SE glade
+    // joins the rear camp — the glades hang OFF the road net, no picket
+    // is sealed behind trees (the trapped-orc fix).
+    paint_rect(w.grid, 22, 13, 23, 22, PIX_GRASS1);
+    paint_rect(w.grid, 47, 43, 51, 44, PIX_GRASS1);
     paint_rect(w.grid, 46, 6, 52, 10, PIX_WATER1);  // the pond
     smooth_world(w);
     paint_path(w.grid, 38, 0, 41, 49); // the north-south road
     paint_path(w.grid, 0, 24, 79, 26); // the east-west road
+    paint_path(w.grid, 22, 13, 23, 22); // the picket trails, worn like the
+    paint_path(w.grid, 47, 43, 51, 44); // roads that feed them
     // The old crossroads king: broken paving at the crossing, the headless
     // plinth, and the fallen, crowned head on the east verge.
     paint_pavement(w.grid, 37, 23, 42, 27);
@@ -231,22 +264,34 @@ void build_crossroads(const LevelDataHooks& hooks)
     // (37,14)/(40,14) so both fit the carved road bed, and the mid-column
     // beast sits at (39,31), one tile north of the designed cell, clear of
     // the rank at (41,34).
-    place_living(w, FAMILY_GOLEM, 2, 0, 37, 14, 7); // war-beasts, van
-    place_living(w, FAMILY_GOLEM, 2, 0, 40, 14, 7);
-    place_living(w, FAMILY_GOLEM, 2, 0, 39, 31, 7); // mid-column
+    // (F4 fresh-team calibration: war-beasts 7 -> 6, captains 5 -> 4 —
+    // the column erased a curve-7 crew by tick 600-1500; the ambush must
+    // be winnable BECAUSE it is an ambush.)
+    place_living(w, FAMILY_GOLEM, 2, 0, 37, 14, 4); // war-beasts, van
+    place_living(w, FAMILY_GOLEM, 2, 0, 40, 14, 4);
+    place_living(w, FAMILY_GOLEM, 2, 0, 39, 31, 4); // mid-column
+    // (F4 batch 2: the column is STRUNG ALONG the road — its rear half
+    // (files south of the crossing, y >= 34, and their two captains)
+    // marches into the fight at tick 350 instead of converging as one
+    // mass. The whole column still fights; it just fights in marching
+    // order, which is what an ambush on a column IS.)
     for (int y = 18; y <= 46; y += 4) // paired southron files, ranks 3/4
     {
-        place_living(w, FAMILY_BARBARIAN, 2, 0, 38, y, 3 + ((y / 4) % 2));
-        place_living(w, FAMILY_BARBARIAN, 2, 0, 41, y, 3 + ((y / 4) % 2));
+        const int rear_delay = (y >= 34) ? 350 : 0;
+        place_living(w, FAMILY_BARBARIAN, 2, 0, 38, y, 3, false, false,
+                     rear_delay);
+        place_living(w, FAMILY_BARBARIAN, 2, 0, 41, y, 3, false, false,
+                     rear_delay);
     }
     static constexpr int captains[4][2] = {{39, 20}, {40, 28}, {39, 36},
                                            {40, 44}};
     for (const auto& c : captains)
-        place_living(w, FAMILY_BIG_ORC, 2, 0, c[0], c[1], 5);
+        place_living(w, FAMILY_BIG_ORC, 2, 0, c[0], c[1], 3, false, false,
+                     (c[1] >= 34) ? 350 : 0);
     static constexpr int outriders[4][2] = {{30, 24}, {30, 26}, {48, 24},
                                             {48, 26}};
     for (const auto& c : outriders) // outriders on the W+E road
-        place_living(w, FAMILY_ORC, 2, 0, c[0], c[1], 4);
+        place_living(w, FAMILY_ORC, 2, 0, c[0], c[1], 3);
     static constexpr int pickets[4][2] = {{20, 8}, {24, 10}, {54, 40},
                                           {58, 42}};
     for (const auto& c : pickets)   // glade pickets
@@ -256,16 +301,22 @@ void build_crossroads(const LevelDataHooks& hooks)
     // The rear camp trickles reinforcements until stormed. (One tile south
     // of the designed cell: the 2x2 tent at (40,46) would sit on the
     // barbarian rank at (41,46).)
-    place_generator(w, FAMILY_TENT, 2, 0, 40, 47, 4);
+    // (F4: camp 4 -> 3 — the trickle must lose to the crossfire, not
+    // replace the column.)
+    place_generator(w, FAMILY_TENT, 2, 0, 40, 47, 2);
 
     // The rangers of the wood (team 0): delayed-spawn friendlies who spring
-    // from the east glade at tick 250 — the story beat and the balance valve.
-    static constexpr int rangers[6][2] = {{63, 22}, {66, 22}, {69, 22},
-                                          {63, 28}, {66, 28}, {69, 28}};
+    // onto the east road at tick 150 — the story beat and the balance valve.
+    // (F4 batch 4: posts moved from the deep east glade onto the road just
+    // east of the crossing, wake 200 -> 150, levels 5/6 — from the glade
+    // the crossfire arrived ~500, two hundred ticks after the ambush line
+    // had already died; the valve must land while it still matters.)
+    static constexpr int rangers[6][2] = {{52, 24}, {54, 26}, {56, 24},
+                                          {52, 26}, {54, 24}, {56, 26}};
     for (const auto& c : rangers)
-        place_living(w, FAMILY_ARCHER, 0, 0, c[0], c[1], 4, false, false, 250);
-    place_living(w, FAMILY_ARCHER, 0, 0, 71, 24, 5, false, false, 250);
-    place_living(w, FAMILY_ARCHER, 0, 0, 71, 26, 5, false, false, 250);
+        place_living(w, FAMILY_ARCHER, 0, 0, c[0], c[1], 6, false, false, 150);
+    place_living(w, FAMILY_ARCHER, 0, 0, 58, 24, 7, false, false, 150);
+    place_living(w, FAMILY_ARCHER, 0, 0, 58, 26, 7, false, false, 150);
 
     // The crew in the west glade, lead on the glade lip facing the crossing.
     place_start(w, 0, 14, 24);
@@ -275,14 +326,37 @@ void build_crossroads(const LevelDataHooks& hooks)
                                           {6, 23},  {6, 27}};
     for (const auto& s : starts)
         place_start(w, 0, s[0], s[1]);
+    // The Bearer lies flat on the road behind the whole ambush line, the
+    // backtrack exit at his back. SAVE_ALL rides on him even here, in the
+    // branch's one pitched battle.
+    place_hero(w, FAMILY_THIEF, 0, 3, 25, 5, "The Bearer", true, true, 0);
 
     place_exit(w, 0, 39, 1, 21); // the head of the north road
     place_exit(w, 0, 1, 25, 19); // backtrack, west end of the E-W road
     // Old ambush wrack on the EAST verge only (litter blocks all movement:
-    // both roads and the west approach stay clean), stones in the clearing
-    // margins.
+    // both roads, the west approach, and the SE picket trail rows 43-44
+    // stay clean), stones in the clearing margins.
     scatter_boulders(w, 0, 30, 18, 50, 32, 27);
-    scatter_litter(w, 0, 44, 30, 60, 44, 33);
+    scatter_litter(w, 0, 44, 30, 60, 42, 33);
+    // E7 ambience: the trodden crossing — hoof-worn pebbles down both
+    // roads and the picket trails, old fight-wrack bones on the east verge
+    // where the litter drifts, and brush in every glade (the rangers
+    // spring from cover, and the pickets prowl scrub, not lawn). All of
+    // it non-blocking: the roads stay marchable.
+    scatter_decor(w, 0, 0, 0, 79, 49, 9, DECOR_PEBBLES,
+                  {ScatterGround::Path});
+    scatter_decor(w, 0, 44, 28, 62, 44, 11, DECOR_BONES,
+                  {ScatterGround::Grass});
+    scatter_decor(w, 0, 62, 20, 72, 30, 5, DECOR_SHRUB,
+                  {ScatterGround::Grass}); // the ranger glade, thickest
+    scatter_decor(w, 0, 6, 20, 16, 30, 7, DECOR_SHRUB,
+                  {ScatterGround::Grass}); // the west ambush glade
+    scatter_decor(w, 0, 18, 6, 26, 12, 5, DECOR_SHRUB,
+                  {ScatterGround::Grass}); // NW picket glade
+    scatter_decor(w, 0, 52, 38, 60, 44, 5, DECOR_SHRUB,
+                  {ScatterGround::Grass}); // SE picket glade
+    scatter_decor(w, 0, 44, 4, 54, 12, 7, DECOR_SHRUB,
+                  {ScatterGround::Grass}); // the pond glade
     save_level_files(w, 20, "The Crossroads",
                      {"Sneak spies them out: a",
                       "southron column crawling",
@@ -327,6 +401,10 @@ void build_pass_of_the_spider(const LevelDataHooks& hooks)
     paint_path(w.grid, 69, 20, 89, 21); // out C7 to the east mouth
     paint_decor(w, 0, 12, 17, DECOR_TORCH1);  // guttering torches at the
     paint_decor(w, 0, 12, 24, DECOR_TORCH1);  // C1 -> C2 narrowing
+    paint_decor(w, 0, 69, 18, DECOR_TORCH1);  // and at the Hollow -> C7
+    paint_decor(w, 0, 69, 23, DECOR_TORCH1);  // throat (the last light
+                                              // before Sneak; track rows
+                                              // 19-22 stay clear)
 
     // THE LURKER (team 2, named): it does not chase; the brood does, and
     // every slime killed splits into medium then small — the chamber fight
@@ -394,6 +472,15 @@ void build_pass_of_the_spider(const LevelDataHooks& hooks)
     scatter_litter(w, 0, 66, 24, 67, 27, 2); // east rim, below the throat
     scatter_litter(w, 0, 16, 2, 31, 4, 6);   // bone drifts
     scatter_boulders(w, 0, 13, 18, 52, 34, 17);
+    // E7 ambience: what the webs dropped — bones thick across the larder
+    // floor and strewn along the Hollow, and grit worn off the track
+    // through the low corridors (the path stays the readable route).
+    scatter_decor(w, 0, 16, 2, 31, 8, 3, DECOR_BONES,
+                  {ScatterGround::DarkDirt});
+    scatter_decor(w, 0, 50, 12, 68, 30, 9, DECOR_BONES,
+                  {ScatterGround::DarkDirt});
+    scatter_decor(w, 0, 0, 0, 89, 39, 11, DECOR_PEBBLES,
+                  {ScatterGround::Path});
     save_level_files(w, 21, "The Pass of the Spider",
                      {"Sneak swears the pass is safe.",
                       "The dark here is old and",
@@ -457,8 +544,13 @@ void build_tower_of_the_moon(const LevelDataHooks& hooks)
     paint_pavement(w.grid, 28, 31, 31, 31); // the tower door, south face
     paint_decor(w, 0, 27, 41, DECOR_BRAZIER);    // moon braziers at the gate
     paint_decor(w, 0, 32, 41, DECOR_BRAZIER);
-    paint_decor(w, 0, 27, 32, DECOR_TORCH1);      // torches flanking the door
-    paint_decor(w, 0, 32, 32, DECOR_TORCH1);
+    // Torches flanking the door, mounted on the tower's face (Wave E5:
+    // the court row y 32 lies in the moon-court roof's fall shadow — a
+    // blocking torch there would be a wedged landing for whatever steps
+    // off the parapet three floors up; the wall cells cannot be landed on
+    // or walked at all, so the sconces are safe there).
+    paint_decor(w, 0, 27, 31, DECOR_TORCH1);
+    paint_decor(w, 0, 32, 31, DECOR_TORCH1);
     paint_path(w.grid, 28, 44, 31, 47); // the approach road, south from the
     paint_path(w.grid, 2, 46, 31, 47);  // gate, west along the pass road
     // Tower interiors: pavement halls on floors 0 and 1; floor 2's pavement
@@ -487,10 +579,12 @@ void build_tower_of_the_moon(const LevelDataHooks& hooks)
 
     // The garrison (team 2), sparse and elite. Court sentries drift; the
     // tower wakes (alarm-echo ghosts) at tick 300.
-    static constexpr int sentries[4][2] = {{14, 20}, {45, 20}, {14, 33},
-                                           {45, 33}};
+    // (F4: sentries 6 -> 5 — a drifting lvl-6 pale rider ran down the
+    // waiting Bearer while the squad climbed; at 5 the gate brawl holds
+    // them long enough for a live squad to come back out.)
+    static constexpr int sentries[3][2] = {{14, 20}, {45, 20}, {45, 33}};
     for (const auto& c : sentries)
-        place_living(w, FAMILY_GHOST, 2, 0, c[0], c[1], 6);
+        place_living(w, FAMILY_GHOST, 2, 0, c[0], c[1], 5);
     place_living(w, FAMILY_GHOST, 2, 0, 20, 25, 7, false, false, 300);
     place_living(w, FAMILY_GHOST, 2, 0, 39, 25, 7, false, false, 300);
     place_living(w, FAMILY_GOLEM, 2, 0, 26, 33, 6, true); // door wards; the
@@ -518,9 +612,12 @@ void build_tower_of_the_moon(const LevelDataHooks& hooks)
     place_living(w, FAMILY_GHOST, 2, 3, 25, 25, 8);
     place_living(w, FAMILY_GHOST, 2, 3, 34, 21, 8);
     // The TOWER alarms: each musters mages while it stands — the longer the
-    // squad lingers, the thicker the tower's answer.
-    place_generator(w, FAMILY_TOWER, 2, 1, 29, 23, 5);
-    place_generator(w, FAMILY_TOWER, 2, 2, 29, 23, 6);
+    // squad lingers, the thicker the tower's answer. (F4: 5/6 -> 3/4 — the
+    // old alarms QUADRUPLED the garrison over a run, 31 foes to 110+, and
+    // the spillover hunted the road-side Bearer; the alarm should punish
+    // lingering, not make the tower stronger than the act's field armies.)
+    place_generator(w, FAMILY_TOWER, 2, 1, 29, 23, 3);
+    place_generator(w, FAMILY_TOWER, 2, 2, 29, 23, 4);
 
     // The squad on the south road outside the gate, lead at the gate's
     // mouth — eight markers only, the small-squad level. (The rear pair
@@ -533,6 +630,11 @@ void build_tower_of_the_moon(const LevelDataHooks& hooks)
     for (const auto& s : starts)
         place_start(w, 0, s[0], s[1]);
     place_hero(w, FAMILY_THIEF, 0, 29, 48, 5, "The Bearer", true, true, 0);
+    // His door-wards (F4): the Burden's Road ward pattern — the drifting
+    // court sentries found the waiting cargo before the squad came back
+    // out; two lvl-9 posts flank him on the road.
+    place_living(w, FAMILY_SOLDIER, 0, 0, 28, 48, 9, true);
+    place_living(w, FAMILY_SOLDIER, 0, 0, 30, 48, 9, true);
 
     // The infiltrator's draught in the ground hall, provisions above, and
     // moon-silver on the scriptorium carpet.
@@ -550,6 +652,18 @@ void build_tower_of_the_moon(const LevelDataHooks& hooks)
     scatter_boulders(w, 0, 52, 0, 59, 49, 21);
     scatter_boulders(w, 0, 8, 0, 51, 5, 21);
     scatter_boulders(w, 0, 8, 44, 51, 49, 21);
+    // E7 ambience: the pale court — wind-blown grit across the bailey
+    // pavement and the approach road, and the withered garths gone to
+    // bone (nothing grows in the tower's cold shadow).
+    scatter_decor(w, 0, 10, 8, 49, 41, 19, DECOR_PEBBLES,
+                  {ScatterGround::Pavement});
+    static constexpr int garths[4][2] = {{12, 10}, {41, 10},
+                                         {12, 35}, {41, 35}};
+    for (const auto& c : garths)
+        scatter_decor(w, 0, c[0], c[1], c[0] + 6, c[1] + 4, 5, DECOR_BONES,
+                      {ScatterGround::DarkGrass});
+    scatter_decor(w, 0, 2, 44, 31, 47, 9, DECOR_PEBBLES,
+                  {ScatterGround::Path});
     save_level_files(w, 22, "The Tower of the Moon",
                      {"The pale tower never sleeps.",
                       "Its cold eye sweeps the road.",
@@ -608,49 +722,59 @@ void build_ash_plains(const LevelDataHooks& hooks)
     // the west lane...
     static constexpr int west_ys[8] = {6, 10, 14, 18, 22, 28, 32, 36};
     for (const int y : west_ys)
-        place_living(w, FAMILY_ORC, 2, 0, 13, y, 3);
-    place_living(w, FAMILY_BIG_ORC, 2, 0, 13, 25, 5); // its captain
+        place_living(w, FAMILY_ORC, 2, 0, 13, y, 2);
+    place_living(w, FAMILY_BIG_ORC, 2, 0, 13, 25, 4); // its captain
     // ...the central host in paired files with two captains...
+    // (F4 batch 5: the central and east columns GUARD their lanes — "own
+    // the lanes" made literal. Every column converging on first contact
+    // turned the stealth-march into a 35-foe brawl at the west edge; now
+    // the west column hunts, the lanes hold their ground, and the fords
+    // stay the fights you MUST take.)
     for (int i = 0; i < 6; ++i)
     {
-        place_living(w, FAMILY_ORC, 2, 0, 44, 6 + i * 6, 3 + (i % 2));
-        place_living(w, FAMILY_ORC, 2, 0, 46, 6 + i * 6, 3 + (i % 2));
+        place_living(w, FAMILY_ORC, 2, 0, 44, 6 + i * 6, 3, true);
+        place_living(w, FAMILY_ORC, 2, 0, 46, 6 + i * 6, 3, true);
     }
-    place_living(w, FAMILY_BIG_ORC, 2, 0, 45, 15, 6);
-    place_living(w, FAMILY_BIG_ORC, 2, 0, 45, 33, 6);
+    place_living(w, FAMILY_BIG_ORC, 2, 0, 45, 15, 5, true);
+    place_living(w, FAMILY_BIG_ORC, 2, 0, 45, 33, 5, true);
     // ...runners on the connectors...
     static constexpr int runners[6][2] = {{34, 37}, {40, 38}, {50, 31},
                                           {54, 32}, {36, 16}, {52, 10}};
     for (const auto& c : runners)
-        place_living(w, FAMILY_SKELETON, 2, 0, c[0], c[1], 3);
+        place_living(w, FAMILY_SKELETON, 2, 0, c[0], c[1], 2);
     // ...and the east legion filing down the east lane.
+    // (F4 fresh-team calibration, the whole plain one notch down: legion
+    // skeletons 4 -> 3, captains 6 -> 5, ford watches 7 -> 5, wraiths
+    // 5/6 -> 4/5 with the mid-river wraith moved off the crew's doorstep,
+    // relief 350 -> 500, camps 5 -> 4. A curve-8 party was extinct by 900
+    // on every seed with the Bearer dead first; the march must be
+    // survivable long enough to reach the first ford.)
     static constexpr int legion_ys[8] = {14, 18, 22, 26, 30, 34, 38, 42};
     for (const int y : legion_ys)
-        place_living(w, FAMILY_SKELETON, 2, 0, 75, y, 4);
-    place_living(w, FAMILY_SKELETON, 2, 0, 73, 20, 4);
-    place_living(w, FAMILY_SKELETON, 2, 0, 77, 28, 4);
-    place_living(w, FAMILY_BIG_ORC, 2, 0, 75, 12, 6); // legion captains
-    place_living(w, FAMILY_BIG_ORC, 2, 0, 75, 45, 6);
+        place_living(w, FAMILY_SKELETON, 2, 0, 75, y, 3, true);
+    place_living(w, FAMILY_SKELETON, 2, 0, 73, 20, 3, true);
+    place_living(w, FAMILY_SKELETON, 2, 0, 77, 28, 3, true);
+    place_living(w, FAMILY_BIG_ORC, 2, 0, 75, 12, 5, true); // legion captains
+    place_living(w, FAMILY_BIG_ORC, 2, 0, 75, 45, 5, true);
     // The ford watches: the fights you MUST take.
-    place_living(w, FAMILY_ORC, 2, 0, 32, 15, 7, true); // river 1 north ford
-    place_living(w, FAMILY_ORC, 2, 0, 32, 17, 7, true);
+    place_living(w, FAMILY_ORC, 2, 0, 32, 15, 5, true); // river 1 north ford
+    place_living(w, FAMILY_ORC, 2, 0, 32, 17, 5, true);
     place_living(w, FAMILY_SKELETON, 2, 0, 62, 31, 5, true); // river 2 south
     place_living(w, FAMILY_SKELETON, 2, 0, 62, 33, 5, true); // ford
     // Wraiths riding the fire-rivers, where ground crews cannot answer.
-    static constexpr int wraiths[6][2] = {{28, 25}, {58, 20}, {58, 44},
+    static constexpr int wraiths[6][2] = {{28, 7},  {58, 20}, {58, 44},
                                           {28, 45}, {80, 7},  {46, 25}};
     for (int i = 0; i < 6; ++i)
-        place_living(w, FAMILY_GHOST, 2, 0, wraiths[i][0], wraiths[i][1],
-                     5 + (i % 2));
-    // The relief column rises from the south camps at tick 350.
+        place_living(w, FAMILY_GHOST, 2, 0, wraiths[i][0], wraiths[i][1], 4);
+    // The relief column rises from the south camps at tick 700.
     static constexpr int relief[6][2] = {{44, 42}, {46, 42}, {44, 45},
                                          {46, 45}, {42, 44}, {48, 44}};
     for (const auto& c : relief)
-        place_living(w, FAMILY_ORC, 2, 0, c[0], c[1], 4, false, false, 350);
+        place_living(w, FAMILY_ORC, 2, 0, c[0], c[1], 3, false, false, 700);
     // The plain never empties: two camps and the SE bone-yard.
-    place_generator(w, FAMILY_TENT, 2, 0, 48, 4, 5);   // north camp
-    place_generator(w, FAMILY_TENT, 2, 0, 18, 34, 5);  // west camp
-    place_generator(w, FAMILY_BONES, 2, 0, 80, 40, 5); // the dead also march
+    place_generator(w, FAMILY_TENT, 2, 0, 48, 4, 3);   // north camp
+    place_generator(w, FAMILY_TENT, 2, 0, 18, 34, 3);  // west camp
+    place_generator(w, FAMILY_BONES, 2, 0, 80, 40, 4); // the dead also march
 
     // The crew on the west edge, on open ash, lead first.
     place_start(w, 0, 4, 25);
@@ -659,6 +783,11 @@ void build_ash_plains(const LevelDataHooks& hooks)
     for (const auto& s : starts)
         place_start(w, 0, s[0], s[1]);
     place_hero(w, FAMILY_THIEF, 0, 0, 25, 5, "The Bearer", true, true, 0);
+    // His door-wards (F4): the Burden's Road ward pattern (8/11/24) —
+    // two lvl-9 posts shielding the west-edge hollow where he lies, so
+    // the plain's leakage kills wards one at a time, not the cargo.
+    place_living(w, FAMILY_SOLDIER, 0, 0, 1, 25, 9, true); // the lane
+    place_living(w, FAMILY_SOLDIER, 0, 0, 1, 24, 9, true); // the mouth
 
     place_exit(w, 0, 88, 25, 24); // the east edge: the mountain's feet
     place_exit(w, 0, 1, 20, 22);  // backtrack, the west edge
@@ -668,6 +797,16 @@ void build_ash_plains(const LevelDataHooks& hooks)
     scatter_litter(w, 0, 2, 2, 10, 38, 31);
     scatter_litter(w, 0, 32, 2, 42, 46, 31);
     scatter_litter(w, 0, 62, 12, 72, 46, 31);
+    // E7 ambience: the host's passage — cinder-grit ground into every
+    // lane, ford and connector, and the march's dead on the open ash,
+    // thickest around the SE bone-yard. Non-blocking throughout: the
+    // stealth-march's lanes stay marchable.
+    scatter_decor(w, 0, 0, 0, 89, 49, 9, DECOR_PEBBLES,
+                  {ScatterGround::Path});
+    scatter_decor(w, 0, 0, 0, 89, 49, 21, DECOR_BONES,
+                  {ScatterGround::Ash});
+    scatter_decor(w, 0, 74, 34, 88, 46, 5, DECOR_BONES,
+                  {ScatterGround::Ash});
     save_level_files(w, 23, "The Ash Plains",
                      {"No water. No shade. The air",
                       "itself is cinders. Between",
@@ -695,12 +834,12 @@ std::vector<ExpectedLevel> act3b_expectations()
     //  delayed spawns, specials-disabled, stairs-every-boundary, exit dests}
     return {
         {19, 1, "The Dead Marshes", 10, 1, 0, 0, 0, 45, 4, 6, 1, true, {20, 12}},
-        {20, 1, "The Crossroads", 12, 8, 0, 0, 0, 33, 1, 8, 0, true, {21, 19}},
+        {20, 1, "The Crossroads", 12, 9, 0, 0, 0, 33, 1, 18, 1, true, {21, 19}},
         {21, 1, "The Pass of the Spider", 9, 1, 0, 0, 0, 28, 1, 0, 2, true,
          {22, 20}},
-        {22, 4, "The Tower of the Moon", 8, 1, 0, 0, 0, 24, 2, 2, 1, true,
+        {22, 4, "The Tower of the Moon", 8, 3, 0, 0, 0, 23, 2, 2, 1, true,
          {23, 21}},
-        {23, 1, "The Ash Plains", 9, 1, 0, 0, 0, 57, 3, 6, 1, true, {24, 22}},
+        {23, 1, "The Ash Plains", 9, 3, 0, 0, 0, 57, 3, 6, 1, true, {24, 22}},
     };
 }
 

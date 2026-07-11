@@ -16,6 +16,7 @@
 #include "builders.h"
 
 #include <openglad/core/constants.h>
+#include <openglad/core/decordefs.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/interface/level_runtime_data.h>
@@ -103,8 +104,10 @@ void build_mountain_of_fire(const LevelDataHooks& hooks)
     paint_ring(w.grid, cx, cy, 0.0, 17.5, PIX_WALL2);
     paint_rect(w.grid, 49, 22, 53, 27, PIX_GRASS1); // the cleft
     paint_rect(w.grid, 53, 20, 60, 29, PIX_GRASS1); // the Undergate chamber
-    // Floor 1: open sky — whatever steps off the ledge falls to the plain —
-    // around the cone at shoulder height. Floor 2: the summit cap.
+    // Floor 1: open sky around the cone at shoulder height (the sky beyond
+    // the slopes; the ledge rim itself is sealed by the E5 lava sheet
+    // below, so no fall from this floor ever lands on cone rock). Floor 2:
+    // the summit cap — its rim DOES drop onto the terrace.
     paint_rect(w.grid_for_floor(1), 0, 0, 89, 49, PIX_AIR);
     paint_ring(w.grid_for_floor(1), cx, cy, 0.0, 12.5, PIX_WALL2);
     paint_rect(w.grid_for_floor(2), 0, 0, 89, 49, PIX_AIR);
@@ -151,6 +154,21 @@ void build_mountain_of_fire(const LevelDataHooks& hooks)
     // outer rows of the ring, leaving the two- to three-wide inner lips that
     // pinch the circuit.
     ring_ash(w.grid_for_floor(1), cx, cy, 8.5, 12.5);
+    // Fall-line fix (Wave E5): the terrace's outer edge used to border open
+    // sky whose one-floor drop landed on the CONE ROCK of floor 0 (the
+    // r 12.5..17.5 annulus is solid WALL2 down there) — a wedged landing
+    // only the engine's A5 nudge could rescue. The upper slopes now run
+    // with fire instead: a lava sheet seals the ledge rim out to the foot
+    // of the cone (nothing steps off it, flyers still cross), and the only
+    // surviving fall line is the summit rim dropping onto the terrace ash.
+    ring_lava(w.grid_for_floor(1), cx, cy, 12.5, 17.5);
+    // The mage tower's shelf: its 4x4 footprint at (75, 18) reaches r ~13.2,
+    // so the lava sheet would lap two of its cells (they were open sky
+    // before E5 and passed the footing audit only because air is walkable
+    // at the grid layer). A small ash apron juts from the terrace instead —
+    // a battlement shelf over the fire; the lava around it still seals the
+    // edge, so it opens no fall line.
+    paint_ash(w.grid_for_floor(1), 75, 18, 78, 21);
     paint_ash(w.grid_for_floor(1), 72, 23, 76, 26);
     paint_lava(w.grid_for_floor(1), 65, 12, 68, 13); // north fall (lip y 14..16)
     paint_lava(w.grid_for_floor(1), 65, 36, 68, 37); // south fall (lip y 33..35)
@@ -169,28 +187,33 @@ void build_mountain_of_fire(const LevelDataHooks& hooks)
 
     // The dark host (team 2) on the plain: orc ranks in the center band,
     // big-orc wings, skeletons massed before the throat, ghost outriders.
+    // (F4 batch 2: plain ranks 3-5 -> 3/4 and the big-orc wings flat 5 —
+    // the horde must be a battle the WHOLE war host wins, not a wedge
+    // execution before the relief hour.)
     for (int row = 0; row < 5; ++row)
         for (int col = 0; col < 6; ++col)
             place_living(w, FAMILY_ORC, 2, 0, 26 + col * 3, 14 + row * 5,
-                         3 + ((row + col) % 3));
+                         3 + ((row + col) % 2));
     static constexpr int wings[8][2] = {{22, 15}, {22, 33}, {26, 13}, {26, 35},
                                         {34, 13}, {34, 35}, {38, 15}, {38, 33}};
     for (int i = 0; i < 8; ++i)
-        place_living(w, FAMILY_BIG_ORC, 2, 0, wings[i][0], wings[i][1],
-                     5 + (i % 2));
+        place_living(w, FAMILY_BIG_ORC, 2, 0, wings[i][0], wings[i][1], 4);
+    // (F4 fresh-team calibration: throat skeletons 4-6 -> 4/5 — the
+    // center push met the wedge before any relief existed.)
     for (int i = 0; i < 10; ++i)
         place_living(w, FAMILY_SKELETON, 2, 0, 42 + (i % 5),
-                     (i < 5) ? 23 : 26, 4 + (i % 3));
+                     (i < 5) ? 23 : 26, 4);
     static constexpr int outriders[6][2] = {{15, 5},  {35, 5},  {15, 44},
                                             {35, 44}, {14, 20}, {14, 29}};
     for (int i = 0; i < 6; ++i)
     {
-        // The two center-band outriders ride with the tick-400 push: at
-        // tick 0 they would start fights at the crew's wedge (and pull the
-        // cleft wards off their posts) long before any relief exists.
-        const int delay = (i >= 4) ? 400 : 0;
+        // The outriders ride with the tick-400 push (F4 batch 4: ALL of
+        // them, corners included — at tick 0 they started fights at the
+        // crew's wedge and pulled the cleft wards off their posts long
+        // before any relief existed).
+        const int delay = 400;
         place_living(w, FAMILY_GHOST, 2, 0, outriders[i][0], outriders[i][1],
-                     6 + (i % 2), false, false, delay);
+                     5 + (i % 2), false, false, delay);
     }
     // The cone guards hold their posts (ACT_GUARD) so the climb stays fresh
     // for the endgame. The golem wards bar the cleft — a golem stands three
@@ -237,11 +260,18 @@ void build_mountain_of_fire(const LevelDataHooks& hooks)
         place_living(w, FAMILY_SOLDIER, 0, 0, 5 + i * 3, 13, 5);
     for (int i = 0; i < 4; ++i)
         place_living(w, FAMILY_ELF, 0, 0, 5 + i * 6, 15, 5);
+    // (F4: the wild-men relief rides at 250, not 400 — post-obmap-fix
+    // physics broke the wedge by ~600, before the old relief hour; the
+    // White Rider still turns the field at 900. Two of the King's south
+    // pickets stand from tick 0 so the wedge's open flank is a fight,
+    // not a corridor.)
     for (int i = 0; i < 4; ++i)
         place_living(w, FAMILY_BARBARIAN, 0, 0, 5 + i * 3, 34, 6, false, false,
-                     400);
-    place_living(w, FAMILY_CLERIC, 0, 0, 5, 32, 5, false, false, 400);
-    place_living(w, FAMILY_CLERIC, 0, 0, 11, 32, 5, false, false, 400);
+                     200);
+    place_living(w, FAMILY_CLERIC, 0, 0, 5, 32, 5, false, false, 200);
+    place_living(w, FAMILY_CLERIC, 0, 0, 11, 32, 5, false, false, 200);
+    place_living(w, FAMILY_SOLDIER, 0, 0, 9, 33, 6);
+    place_living(w, FAMILY_SOLDIER, 0, 0, 12, 30, 6);
     // The Bearer holds the back of his cleft (ACT_GUARD, so team-0 AI never
     // marches him into the horde; the rock keeps the ghost outriders off
     // his back and the dogleg keeps every thrown rock out); SAVE_ALL rides
@@ -249,8 +279,9 @@ void build_mountain_of_fire(const LevelDataHooks& hooks)
     // exits. The King's door-wards body-block the mouth and the turn in
     // series — the mouth, the turn, and the gate cell itself — so anything
     // that wants the cargo kills all three, strictly one at a time.
-    // (Deliberately unnamed — on SAVE_ALL maps a named team-0 death ends
-    // the mission.)
+    // (Deliberately unnamed — authored pre-F2, when any named team-0
+    // death ended a SAVE_ALL mission; the F2 protected-flag scoping now
+    // watches the Bearer alone, and the wards ship as-built.)
     place_hero(w, FAMILY_THIEF, 0, 0, 24, 5, "The Bearer", true, false, 0);
     place_living(w, FAMILY_SOLDIER, 0, 0, 3, 23, 9, true); // the mouth
     place_living(w, FAMILY_SOLDIER, 0, 0, 2, 23, 9, true); // the turn
@@ -295,7 +326,20 @@ void build_mountain_of_fire(const LevelDataHooks& hooks)
     scatter_boulders(w, 0, 0, 40, 48, 49, 21); // and south strip
     scatter_boulders(w, 0, 0, 13, 20, 36, 33); // sparse west-margin rocks
     scatter_litter(w, 0, 42, 22, 48, 27, 17);  // old bones in the throat
-    scatter_boulders(w, 1, 60, 14, 78, 35, 31); // scree on the shoulder
+    // Scree on the shoulder. The summit rim borders open sky from r 8.5
+    // out and drops its fallers onto the terrace ring below (r < ~10);
+    // the scatter skips those landing cells itself now (Wave E5
+    // fall-line rule), so the ring stays clear of blocking rocks.
+    scatter_boulders(w, 1, 60, 14, 78, 35, 31);
+    // E7 ambience: the plain has been a battlefield for an age — the old
+    // dead on the ash, thickening toward the Undergate throat, and
+    // cinder-grit across the plain and through the carved chamber. All
+    // non-blocking; the summit rim keeps its design rule (NO decor on
+    // the 3-wide walk — the final fight stays clean).
+    scatter_decor(w, 0, 0, 0, 48, 49, 19, DECOR_BONES, {ScatterGround::Ash});
+    scatter_decor(w, 0, 42, 14, 48, 35, 7, DECOR_BONES, {ScatterGround::Ash});
+    scatter_decor(w, 0, 0, 0, 60, 49, 23, DECOR_PEBBLES,
+                  {ScatterGround::Ash});
 
     w.type = static_cast<char>(SCEN_TYPE_CAN_EXIT | SCEN_TYPE_SAVE_ALL);
     save_level_files(w, 24, "The Mountain of Fire",
@@ -319,7 +363,7 @@ std::vector<ExpectedLevel> finale_expectations()
     // {id, floors, title, starts, t0 liv/gen, t1 liv/gen, t2 liv/gen,
     //  delayed spawns, specials-disabled, stairs-every-boundary, exit dests}
     return {
-        {24, 3, "The Mountain of Fire", 14, 22, 0, 0, 0, 74, 3, 9, 0, true,
+        {24, 3, "The Mountain of Fire", 14, 24, 0, 0, 0, 74, 3, 13, 0, true,
          {25, 26}},
     };
 }

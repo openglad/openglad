@@ -29,7 +29,20 @@
 #
 # Env knobs: BUILD_DIR (build/ci-test), OUT ($TMPDIR/westlands_playtest_results.jsonl),
 #            SEEDS ("42 1337 2025"), JOBS (4), CREW ("0,0,0,0" = 4 soldiers),
-#            SLICE (300), MAX_SLICES (20), RUN_TIMEOUT (300s per run).
+#            SLICE (300), MAX_SLICES (20), RUN_TIMEOUT (300s per run),
+#            CL_DELTA (0) — added to every level's curve crew level (clamped
+#            to >= 1); the F4 bracket sweeps run CL_DELTA in {-1, 0, +1}.
+#
+# F4 additions to the summary line (death ordering for the SAVE_ALL gates):
+#   crew_wipe_tick    — first census tick with every crew member dead (null
+#                       if any crew survived to the end)
+#   bearer_death_tick — first census tick with the placed Bearer dead (null)
+#   named[*].death_tick — same per named hero
+#   foes_cleared_tick — first census tick with zero alive+dormant livings on
+#                       teams 1..7 (generators NOT counted; level_done is
+#                       the authoritative kill-all bit)
+#   level_done_tick   — first tick-slice boundary reporting level_done == 1
+#   crew_alive_at     — {tick: alive_count} at every census (escape gates)
 
 set -euo pipefail
 
@@ -43,6 +56,7 @@ CREW="${CREW:-0,0,0,0}"          # 4x FAMILY_SOLDIER: the balance-smoke stand-in
 SLICE="${SLICE:-300}"
 MAX_SLICES="${MAX_SLICES:-20}"   # 20 x 300 = 6000 ticks max
 RUN_TIMEOUT="${RUN_TIMEOUT:-300}"
+CL_DELTA="${CL_DELTA:-0}"        # bracket-sweep offset from the curve level
 CAMPAIGN="org.openglad.westlands"
 
 # Crew power entering each level, per scratchpad westlands campaign_meta.md
@@ -65,7 +79,8 @@ cd "$ROOT"
 
 run_one() {
     local level="$1" seed="$2"
-    local crew_level="${CREW_LEVEL[$level]}"
+    local crew_level=$(( CREW_LEVEL[$level] + CL_DELTA ))
+    if [ "$crew_level" -lt 1 ]; then crew_level=1; fi
     local tmphome tmpout
     tmphome=$(mktemp -d)
     tmpout=$(mktemp)
@@ -94,12 +109,16 @@ path, level, seed, crew_level = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]),
 title = None
 last_tick = {}
 timeline = []
-named = {}          # name -> {team, min_hp, dead}
+named = {}          # name -> {team, min_hp, dead, death_tick}
 crew_final = []
 teams_final = [0] * 8
 dormant_final = [0] * 8
 save_all_loss = False
 endgame_events = 0
+crew_wipe_tick = None
+foes_cleared_tick = None
+level_done_tick = None
+crew_alive_at = {}
 
 with open(path, encoding="utf-8") as f:
     for raw in f:
@@ -116,19 +135,35 @@ with open(path, encoding="utf-8") as f:
             results = msg.get("results", [])
             if results:
                 last_tick = results[-1]
+            if level_done_tick is None:
+                for r in results:
+                    if r.get("level_done") == 1:
+                        level_done_tick = r.get("tick", 0)
+                        break
         elif msg.get("cmd") == "census":
             teams = msg.get("team_counts", [0] * 8)
             dormant = msg.get("dormant_counts", [0] * 8)
             teams_final, dormant_final = teams, dormant
-            timeline.append([msg.get("tick", 0)] + teams + dormant)
+            tick = msg.get("tick", 0)
+            timeline.append([tick] + teams + dormant)
+            if foes_cleared_tick is None and \
+                    sum(teams[1:]) + sum(dormant[1:]) == 0:
+                foes_cleared_tick = tick
             for entry in msg.get("named", []):
                 name = entry.get("name", "")
                 rec = named.setdefault(
                     name, {"team": entry.get("team", -1),
-                           "min_hp": entry.get("hp", 0), "dead": False})
+                           "min_hp": entry.get("hp", 0), "dead": False,
+                           "death_tick": None})
                 rec["min_hp"] = min(rec["min_hp"], entry.get("hp", 0))
+                if entry.get("dead") and not rec["dead"]:
+                    rec["death_tick"] = tick
                 rec["dead"] = rec["dead"] or bool(entry.get("dead"))
             crew_final = msg.get("crew", [])
+            alive_now = sum(1 for c in crew_final if not c.get("dead"))
+            crew_alive_at[str(tick)] = alive_now
+            if crew_wipe_tick is None and crew_final and alive_now == 0:
+                crew_wipe_tick = tick
         elif msg.get("cmd") == "events":
             for ev in msg.get("events", []):
                 if ev.get("kind") == 13:  # EventKind::EndGame
@@ -153,9 +188,14 @@ summary = {
     "level_done": last_tick.get("level_done", -1),
     "save_all_loss": save_all_loss,
     "endgame_events": endgame_events,
-    "bearer": ({"min_hp": bearer["min_hp"], "dead": bearer["dead"]}
+    "bearer": ({"min_hp": bearer["min_hp"], "dead": bearer["dead"],
+                "death_tick": bearer["death_tick"]}
                if bearer else None),
     "named": [{"name": k, **v} for k, v in sorted(named.items())],
+    "crew_wipe_tick": crew_wipe_tick,
+    "foes_cleared_tick": foes_cleared_tick,
+    "level_done_tick": level_done_tick,
+    "crew_alive_at": crew_alive_at,
     "crew_alive": crew_alive,
     "crew_dead": crew_dead,
     "crew_min_hp": crew_min_hp,

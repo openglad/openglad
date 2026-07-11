@@ -351,6 +351,42 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
                     } // end of door case
                     else
                     {
+                        // Interpenetration escape rule (2026-07-07, part of
+                        // the guard-standoff wedge fix — see
+                        // docs/GAMEPLAY_FIXES_FROM_CLASSIC.md). A transient
+                        // pass-through can leave two livings overlapped;
+                        // classically that state was ABSORBING: every step
+                        // the trapped walker tried still collided with the
+                        // body around it, so the pair stood merged forever —
+                        // an unkillable shield (weapons died on whichever of
+                        // the two they met first). If we ALREADY overlap this
+                        // living where we stand, let any strictly separating
+                        // move pass (it may still be blocked by someone
+                        // else); only non-separating moves collide. Purely
+                        // integer arithmetic, no RNG, and inert unless the
+                        // boxes already interpenetrate.
+                        if (myorder == Order::Living &&
+                            targetorder == Order::Living &&
+                            collide(ob->xpos(), ob->ypos(), oxsize, oysize,
+                                    x2, y2, xsize2, ysize2))
+                        {
+                            const std::int32_t tx = 2 * x2 + xsize2;
+                            const std::int32_t ty = 2 * y2 + ysize2;
+                            const std::int32_t nx = 2 * x + oxsize - tx;
+                            const std::int32_t ny = 2 * y + oysize - ty;
+                            const std::int32_t oxc =
+                                2 * ob->xpos() + oxsize - tx;
+                            const std::int32_t oyc =
+                                2 * ob->ypos() + oysize - ty;
+                            const std::int64_t d_new =
+                                static_cast<std::int64_t>(nx) * nx +
+                                static_cast<std::int64_t>(ny) * ny;
+                            const std::int64_t d_old =
+                                static_cast<std::int64_t>(oxc) * oxc +
+                                static_cast<std::int64_t>(oyc) * oyc;
+                            if (d_new > d_old)
+                                continue; // separating: not blocked by w
+                        }
                         ob->collide(w);
                         if (ob->stats()->query_bit_flags(BIT_NO_COLLIDE))
                             return 1;

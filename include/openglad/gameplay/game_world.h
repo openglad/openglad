@@ -195,6 +195,14 @@ public:
         return !extra_floors_.empty();
     }
 
+    // True when any walker on the level carries the npc_flags bit-2
+    // "protected" mark (loaded from v10+ level files). Scopes the
+    // SCEN_TYPE_SAVE_ALL death check: with any protected walker present,
+    // ONLY flagged walkers are mission-critical; with none, the legacy
+    // any-named-team-0 rule applies. Scans oblist + dead_list (a corpse
+    // keeps its flag), so the answer is stable across the fatal tick.
+    [[nodiscard]] bool has_save_all_protected() const;
+
     // Per-floor accessors. An out-of-range floor falls back to floor 0; this
     // doubles as the untrusted-floor clamp for snapshot/save-supplied indices.
     [[nodiscard]] bool valid_floor(int floor) const noexcept

@@ -2378,6 +2378,8 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_decor_art.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_npc_scenario_flags.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_guard_act_type.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_melee_standoff.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_westlands_calibration.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_difficulty_scaling.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_game_world_entity_ids.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_weather.cpp

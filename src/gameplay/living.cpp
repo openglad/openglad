@@ -535,6 +535,7 @@ walker* living::do_summon(char whatfamily, std::int32_t summon_lifetime)
 	newob = current_game->world->add_ob(Order::Living, whatfamily);
 	if (newob == nullptr) return nullptr;
 	newob->set_owner(this);
+	newob->set_summoned(true);  // ammunition: never a SAVE_ALL loss
 		newob->set_lifetime(summon_lifetime);
 	newob->set_floor(floor());  // summons appear on the summoner's floor (A8)
 	newob->transform_to(Order::Living, whatfamily);

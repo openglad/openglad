@@ -39,10 +39,11 @@ using og::data::LevelFileMetadata;
 // v10 adds multi-floor support: per-object floor/z packed into the existing
 // reserved/filler bytes, a trailing floor_count byte, and derived-name extra
 // floor grid PNGs ("{grid}_f{N}.png"). v10 also carries per-placed-NPC extras
-// in the same reserved block: npc_flags at [3] (bit 0 = specials disabled) and
-// a uint16 delayed-spawn tick count at [4..5]; the rest of the block is
-// zero-filled. v2-9 read paths are untouched and all-default levels still save
-// as v9 (byte-identical). See docs/z-axis-design.md.
+// in the same reserved block: npc_flags at [3] (bit 0 = specials disabled,
+// bit 2 = SAVE_ALL "protected") and a uint16 delayed-spawn tick count at
+// [4..5]; the rest of the block is zero-filled. v2-9 read paths are untouched
+// and all-default levels still save as v9 (byte-identical). See
+// docs/z-axis-design.md.
 //
 // v11 adds per-floor DECOR planes (BASE + DECOR tile layering): a uint8
 // decor_present[floor_count] array immediately after the floor_count byte,
@@ -293,12 +294,14 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
             new_guy->set_worldz(static_cast<float>(obj_z));
 
             // v10 also carries per-placed-NPC extras: npc_flags at reserved[3]
-            // (bit 0 = specials disabled) and a uint16 delayed-spawn tick count
-            // at reserved[4..5]. The v10 writer zero-fills the reserved tail,
-            // so files authored before these fields read back as defaults.
+            // (bit 0 = specials disabled, bit 2 = SAVE_ALL "protected") and a
+            // uint16 delayed-spawn tick count at reserved[4..5]. The v10
+            // writer zero-fills the reserved tail, so files authored before
+            // these fields read back as defaults.
             const unsigned char npc_flags =
                 static_cast<unsigned char>(reserved[3]);
             new_guy->set_specials_disabled((npc_flags & 0x01u) != 0u);
+            new_guy->set_save_all_protected((npc_flags & 0x04u) != 0u);
             std::uint16_t spawn_delay = 0;
             std::memcpy(&spawn_delay, &reserved[4], sizeof(spawn_delay));
             new_guy->set_spawn_delay(spawn_delay);
@@ -634,7 +637,8 @@ bool write_scenario_payload(og::io::OgFile& outfile,
             {
                 const walker* ob = uptr.get();
                 if (ob != nullptr &&
-                    (ob->specials_disabled() || ob->spawn_delay() > 0))
+                    (ob->specials_disabled() || ob->save_all_protected() ||
+                     ob->spawn_delay() > 0))
                     return true;
             }
             return false;
@@ -723,16 +727,18 @@ bool write_scenario_payload(og::io::OgFile& outfile,
 
             // v9: legacy "MSTR" filler (byte-identical). v10 owns the whole
             // block: [0] floor, [1..2] sub-floor z, [3] npc_flags (bit 0 =
-            // specials disabled), [4..5] uint16 delayed-spawn ticks, [6..9]
-            // zero padding reserved for future per-object fields.
+            // specials disabled, bit 2 = SAVE_ALL "protected"), [4..5] uint16
+            // delayed-spawn ticks, [6..9] zero padding reserved for future
+            // per-object fields.
             std::array<char, 10> obj_reserved{};
             if (temp_version >= 10)
             {
                 obj_reserved[0] = static_cast<char>(ob->floor());
                 short zval = static_cast<short>(ob->worldz());
                 std::memcpy(&obj_reserved[1], &zval, sizeof(short));
-                const unsigned char npc_flags =
-                    ob->specials_disabled() ? 0x01 : 0x00;
+                const unsigned char npc_flags = static_cast<unsigned char>(
+                    (ob->specials_disabled() ? 0x01u : 0x00u) |
+                    (ob->save_all_protected() ? 0x04u : 0x00u));
                 obj_reserved[3] = static_cast<char>(npc_flags);
                 const std::uint16_t spawn_delay = ob->spawn_delay();
                 std::memcpy(&obj_reserved[4], &spawn_delay,

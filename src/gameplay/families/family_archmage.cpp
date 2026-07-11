@@ -307,6 +307,7 @@ static bool archmage_do_special(walker* self)
                 // (A8); must precede the query_passable probes and setxy so
                 // both use the right floor.
                 newob->set_floor(self->floor());
+                newob->set_summoned(true);  // ammunition: never a SAVE_ALL loss
                 generic = 0;
                 for (i = -1; i <= 1; i++)
                     for (j = -1; j <= 1; j++)
@@ -396,6 +397,9 @@ static bool archmage_do_special(walker* self)
                 // Illusion appears beside the caster, on the caster's floor
                 // (A8); must precede the query_passable probes and setxy.
                 newob->set_floor(self->floor());
+                // Named "Phantom" below, but conjured ammunition must never
+                // fail a SAVE_ALL mission when it expires (Wave F2).
+                newob->set_summoned(true);
                 generic = 0;
                 for (i = -1; i <= 1; i++)
                     for (j = -1; j <= 1; j++)

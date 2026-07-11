@@ -1855,3 +1855,22 @@ bool GameWorld::floor_landing_clear(walker* ob, float x, float y,
     }
     return true;
 }
+
+// SCEN_TYPE_SAVE_ALL scoping probe (see game_world.h). Only ever consulted
+// when a Living dies on a SAVE_ALL level, so the linear scan is cheap; the
+// flag is only ever set by the level loader (npc_flags bit 2), never at
+// runtime, so summons/generator output can never widen the watched set.
+bool GameWorld::has_save_all_protected() const
+{
+    for (const auto& uptr : oblist)
+    {
+        if (uptr != nullptr && uptr->save_all_protected())
+            return true;
+    }
+    for (const auto& uptr : dead_list)
+    {
+        if (uptr != nullptr && uptr->save_all_protected())
+            return true;
+    }
+    return false;
+}

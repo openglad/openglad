@@ -248,6 +248,10 @@ void statistics::set_command(Sint32 whatcommand, Sint32 iterations,
 
 }
 
+// Defined below (the right-hand-walk section); COMMAND_ATTACK's coincident-
+// foe clinch breaker reuses the same facing->unit-step table.
+static void facing_step_delta(char dir, short& xdelta, short& ydelta);
+
 // Do the current command
 short statistics::do_command()
 {
@@ -432,12 +436,62 @@ short statistics::do_command()
 					deltax = (deltax > 0) ? 1 : -1;
 				if (deltay)
 					deltay = (deltay > 0) ? 1 : -1;
-				if (!controller_->fire_check(deltax,deltay))
-					controller_->walkstep(deltax, deltay);
+			{
+				walker::FireCheckDenial denial = walker::FireCheckDenial::None;
+				if (!controller_->fire_check(deltax, deltay, &denial))
+				{
+					// Guard-standoff melee deadlock fix (2026-07-07, see
+					// docs/GAMEPLAY_FIXES_FROM_CLASSIC.md): when the shot at
+					// an IN-REACH foe is denied only by our orientation, turn
+					// to face the foe and swing next tick. Two denials mean
+					// exactly that:
+					//  - Facing: a thrown-weapon family pointed off the foe;
+					//  - NoRanged: a melee-only family (orc, ghost, slime) at
+					//    bump range — its hit lands through fire()'s blocked
+					//    weapon-spawn cell, which also requires facing.
+					// The classic fallback walked instead; with the foe's own
+					// body blocking that step, walkstep's blocked-NPC branch
+					// set curdir PERPENDICULAR (the wall-slide), the orbit
+					// re-collapsed the approach delta every tick, and two
+					// adjacent fighters could face-dance forever without one
+					// landed swing (Westlands L25's eternal last foe / L2's
+					// parked companies). OutOfRange/WallBlocked keep the
+					// classic walk-toward-the-foe response (they need
+					// repositioning), as does NoMagic (regen while closing).
+					if (deltax == 0 && deltay == 0)
+					{
+						// Exactly coincident with the foe (a transient
+						// pass-through left us inside its body). The classic
+						// walkstep(0,0) is a no-op, freezing the clinch
+						// forever; and no swing can land — a weapon always
+						// spawns just OUTSIDE the merged box. Step along our
+						// facing instead: any direction separates (see the
+						// interpenetration escape rule in obmap.cpp), and
+						// curdir keeps the choice deterministic. No RNG.
+						short stepx = 0, stepy = 0;
+						facing_step_delta(static_cast<char>(controller_->curdir()),
+						                  stepx, stepy);
+						controller_->walkstep(stepx, stepy);
+					}
+					else if (denial == walker::FireCheckDenial::Facing ||
+					         denial == walker::FireCheckDenial::NoRanged)
+						// Note for NoRanged (melee-only) families: this only
+						// FACES the bump-range foe; their actual swings keep
+						// coming from the classic walk_to_foe() init_fire()
+						// cadence between ATTACK windows. Wiring init_fire()
+						// here as well was tried and rejected: it roughly
+						// doubles melee swing rate over classic and swung
+						// campaign balance hard (Westlands L2's fight-through
+						// crew started losing members).
+						controller_->face_delta(deltax, deltay);
+					else
+						controller_->walkstep(deltax, deltay);
+				}
 				else // (controller_->fire_check(deltax, deltay))
 				{
 					force_command(COMMAND_FIRE,static_cast<short>(rng(5)),deltax,deltay);
 					controller_->init_fire(deltax,deltay);
+				}
 			}
 			break;
 		case COMMAND_UNCHARM:

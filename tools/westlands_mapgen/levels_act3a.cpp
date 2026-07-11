@@ -90,10 +90,13 @@ void build_plains_of_horse_lords(const LevelDataHooks& hooks)
         place_living(w, FAMILY_BIG_ORC, 2, 0, 34 + i * 3, 34, 4 + (i % 2));
         place_living(w, FAMILY_BIG_ORC, 2, 0, 34 + i * 3, 37, 4 + (i % 2));
     }
+    // (F4 fresh-team calibration: skeleton flankers 2-4 -> 2-3 and the
+    // west camps 5 -> 3 — at lvl 5 the camps re-filled the plain as fast
+    // as the horn's riders could clear it; at 3 the west push can finish.)
     for (int i = 0; i < 5; ++i)
     {
-        place_living(w, FAMILY_SKELETON, 2, 0, 34 + i * 5, 9, 2 + (i % 3));
-        place_living(w, FAMILY_SKELETON, 2, 0, 36 + i * 5, 12, 2 + (i % 3));
+        place_living(w, FAMILY_SKELETON, 2, 0, 34 + i * 5, 9, 2 + (i % 2));
+        place_living(w, FAMILY_SKELETON, 2, 0, 36 + i * 5, 12, 2 + (i % 2));
     }
     place_living(w, FAMILY_GHOST, 2, 0, 26, 10, 3); // west outriders
     place_living(w, FAMILY_GHOST, 2, 0, 26, 38, 3);
@@ -101,9 +104,9 @@ void build_plains_of_horse_lords(const LevelDataHooks& hooks)
     place_living(w, FAMILY_GHOST, 2, 0, 20, 30, 3);
     place_living(w, FAMILY_BIG_ORC, 2, 0, 46, 23, 8); // the column-masters
     place_living(w, FAMILY_BIG_ORC, 2, 0, 46, 26, 8);
-    place_generator(w, FAMILY_TENT, 2, 0, 6, 10, 5); // the column's camp
-    place_generator(w, FAMILY_TENT, 2, 0, 6, 38, 5);
-    place_generator(w, FAMILY_BONES, 2, 0, 8, 30, 5);
+    place_generator(w, FAMILY_TENT, 2, 0, 6, 10, 3); // the column's camp
+    place_generator(w, FAMILY_TENT, 2, 0, 6, 38, 3);
+    place_generator(w, FAMILY_BONES, 2, 0, 8, 30, 3);
 
     // The allies (team 0): elf outriders screening the deployment, and the
     // Horse-lord's eight riders on the NE horizon — dormant until the
@@ -112,10 +115,12 @@ void build_plains_of_horse_lords(const LevelDataHooks& hooks)
     place_living(w, FAMILY_ELF, 0, 0, 72, 36, 4);
     place_living(w, FAMILY_ELF, 0, 0, 68, 8, 4);
     place_living(w, FAMILY_ELF, 0, 0, 68, 40, 4);
+    // (F4: riders 5 -> 6 — the horn's relief must be able to TURN the
+    // column, not merely join the grind; the tick-600 story beat stays.)
     static constexpr int riders13[8][2] = {{62, 2}, {65, 2}, {68, 2}, {74, 2},
                                            {77, 2}, {80, 2}, {65, 4}, {74, 4}};
     for (const auto& r : riders13)
-        place_living(w, FAMILY_BARBARIAN, 0, 0, r[0], r[1], 5, false, false,
+        place_living(w, FAMILY_BARBARIAN, 0, 0, r[0], r[1], 6, false, false,
                      600);
     place_hero(w, FAMILY_SOLDIER, 0, 76, 24, 9, "Ranger-King", false, false,
                0);
@@ -150,6 +155,20 @@ void build_plains_of_horse_lords(const LevelDataHooks& hooks)
     scatter_boulders(w, 0, 0, 0, 89, 6, 17);
     scatter_litter(w, 0, 30, 18, 58, 21, 31);
     scatter_litter(w, 0, 30, 28, 58, 31, 31);
+    // E7 ambience: cavalry country — tall meadow brush on the light-grass
+    // sheens, the column's dead on the trampled swathes (real bone art on
+    // the dark cells the litter left open), and the war-road's hoof-worn
+    // pebbles edge to edge.
+    scatter_decor(w, 0, 12, 12, 26, 18, 11, DECOR_SHRUB,
+                  {ScatterGround::LightGrass});
+    scatter_decor(w, 0, 60, 32, 74, 40, 11, DECOR_SHRUB,
+                  {ScatterGround::LightGrass});
+    scatter_decor(w, 0, 64, 8, 76, 14, 13, DECOR_SHRUB,
+                  {ScatterGround::LightGrass});
+    scatter_decor(w, 0, 28, 18, 58, 31, 13, DECOR_BONES,
+                  {ScatterGround::DarkGrass});
+    scatter_decor(w, 0, 2, 24, 87, 25, 11, DECOR_PEBBLES,
+                  {ScatterGround::Path});
     save_level_files(w, 13, "The Plains of the Horse-lords",
                      {"The war-road runs west through",
                       "burning grass. An orc column",
@@ -238,22 +257,29 @@ void build_wizards_vale(const LevelDataHooks& hooks)
                                           {34, 34}, {25, 30}, {34, 30}};
     static constexpr int mage_f2[6][2] = {{25, 25}, {34, 25}, {25, 34},
                                           {34, 34}, {25, 29}, {34, 29}};
+    // (F4 batch 2: floor mages 3-5/4-6 -> 3-4/4-5 and door golems 5 -> 4
+    // — the ring must be breakable by a curve-7 crew fighting door by
+    // door; the traitor on the glass keeps his lvl 10.)
     for (int i = 0; i < 6; ++i)
     {
         place_living(w, FAMILY_MAGE, 2, 0, mage_f0[i][0], mage_f0[i][1],
-                     3 + (i % 3), true);
+                     3 + (i % 2), true);
         place_living(w, FAMILY_MAGE, 2, 1, mage_f1[i][0], mage_f1[i][1],
-                     3 + (i % 3), true);
+                     3 + (i % 2), true);
         place_living(w, FAMILY_MAGE, 2, 2, mage_f2[i][0], mage_f2[i][1],
-                     4 + (i % 3), true);
+                     4 + (i % 2), true);
     }
     place_living(w, FAMILY_ARCHMAGE, 2, 3, 29, 29, 10, true, true); // the traitor
-    place_living(w, FAMILY_GOLEM, 2, 0, 26, 20, 5, true); // door wards
-    place_living(w, FAMILY_GOLEM, 2, 0, 31, 20, 5, true);
-    place_living(w, FAMILY_GOLEM, 2, 0, 26, 37, 5, true);
-    place_living(w, FAMILY_GOLEM, 2, 0, 31, 37, 5, true);
-    place_generator(w, FAMILY_TOWER, 2, 1, 28, 26, 5);
-    place_generator(w, FAMILY_TOWER, 2, 2, 28, 30, 5);
+    place_living(w, FAMILY_GOLEM, 2, 0, 26, 20, 4, true); // door wards
+    place_living(w, FAMILY_GOLEM, 2, 0, 31, 20, 4, true);
+    place_living(w, FAMILY_GOLEM, 2, 0, 26, 37, 4, true);
+    place_living(w, FAMILY_GOLEM, 2, 0, 31, 37, 4, true);
+    // (F4 fresh-team calibration: the tower musters 5 -> 3 — at lvl 5 the
+    // pair OUTBRED the siege, 35 foes at contact growing to ~97 by tick
+    // 6000; a besieged tower that multiplies is unwinnable at any power.
+    // At 3 the answer thickens but the ring can still be broken.)
+    place_generator(w, FAMILY_TOWER, 2, 1, 28, 26, 3);
+    place_generator(w, FAMILY_TOWER, 2, 2, 28, 30, 3);
 
     // The player's crew: the lead pair on the south causeway (stacked — the
     // causeway is exactly one 2x2 marker wide), then a besieging ring through
@@ -282,6 +308,17 @@ void build_wizards_vale(const LevelDataHooks& hooks)
     // Plains of the Horse-lords.
     place_exit(w, 3, 31, 31, 15);
     place_exit(w, 0, 29, 51, 13);
+    // E7 ambience: the cage of rings in untended bloom — garden brush on
+    // the light-grass annulus (the LightGrass ground picks the ring out
+    // of the enclosing rect by itself), thick growth in the waystone
+    // glades, and worn grit on the cobble ring at the tower's foot.
+    scatter_decor(w, 0, 7, 7, 52, 52, 9, DECOR_SHRUB,
+                  {ScatterGround::LightGrass});
+    for (const auto& c : glades)
+        scatter_decor(w, 0, c[0] - 1, c[1] - 1, c[0] + 2, c[1] + 2, 3,
+                      DECOR_SHRUB, {ScatterGround::Grass});
+    scatter_decor(w, 0, 9, 9, 50, 50, 21, DECOR_PEBBLES,
+                  {ScatterGround::Cobble});
     save_level_files(w, 14, "The Wizard's Vale",
                      {"The traitor watches the war",
                       "from his glass crown. His vale",
@@ -364,24 +401,35 @@ void build_deeping_wall(const LevelDataHooks& hooks)
     // again — arrives at the east edge of the field, behind the horde's
     // flank. ("White Wizard" is 12 chars and overflows the name field;
     // the briefing sells the identity.)
-    place_generator(w, FAMILY_TREEHOUSE, 0, 0, 35, 9, 4);
+    // (Generator levels here and below carry the E6 post-single-scaling
+    // bump: spawns take set_difficulty once now, so the lvl the camps were
+    // designed at — against double-scaled spawns — no longer buys the same
+    // pressure. Level ~7 restores a lvl-5 camp's old rate x strength.)
+    // (F4: the courtyard muster 5 -> 6 — the wall's own sustain has to
+    // carry the garrison through the night the briefing promises.)
+    place_generator(w, FAMILY_TREEHOUSE, 0, 0, 35, 9, 7);
     place_hero(w, FAMILY_ARCHMAGE, 0, 76, 33, 10, "White Rider", false, false,
                500);
 
     // The horde (team 2): orc ranks, big-orc flank, champions, siege camp.
+    // (F4 batch 2: ranks 2-4 -> 2-3, flank bigs 3/4 -> 3, champions
+    // 8 -> 7 — the wall's own garrison has to live to see the dawn beat.)
     for (int row = 0; row < 5; ++row)
         for (int col = 0; col < 7; ++col)
             place_living(w, FAMILY_ORC, 2, 0, 20 + col * 5, 30 + row * 2,
-                         2 + ((row + col) % 3));
+                         2 + ((row + col) % 2));
     for (int i = 0; i < 5; ++i)
     {
-        place_living(w, FAMILY_BIG_ORC, 2, 0, 22 + i * 6, 41, 3 + (i % 2));
-        place_living(w, FAMILY_BIG_ORC, 2, 0, 25 + i * 6, 43, 3 + (i % 2));
+        place_living(w, FAMILY_BIG_ORC, 2, 0, 22 + i * 6, 41, 3);
+        place_living(w, FAMILY_BIG_ORC, 2, 0, 25 + i * 6, 43, 3);
     }
-    place_living(w, FAMILY_BIG_ORC, 2, 0, 38, 28, 8); // the champions
-    place_living(w, FAMILY_BIG_ORC, 2, 0, 42, 28, 8);
-    place_generator(w, FAMILY_TENT, 2, 0, 30, 46, 5); // the siege camp
-    place_generator(w, FAMILY_TENT, 2, 0, 48, 46, 5);
+    place_living(w, FAMILY_BIG_ORC, 2, 0, 38, 28, 6); // the champions
+    place_living(w, FAMILY_BIG_ORC, 2, 0, 42, 28, 6);
+    // (F4: siege camp 7 -> 5 — the E6 lvl-7 bump refilled the field to a
+    // standing ~55 against the whole garrison; at 5 the horde still owns
+    // the night but the dawn can actually break it.)
+    place_generator(w, FAMILY_TENT, 2, 0, 30, 46, 4); // the siege camp
+    place_generator(w, FAMILY_TENT, 2, 0, 48, 46, 4);
 
     // The keep exit leads on to the White City; the backtrack exit at the
     // south end of the war-road withdraws through the horde to the Vale.
@@ -389,6 +437,13 @@ void build_deeping_wall(const LevelDataHooks& hooks)
     place_exit(w, 0, 40, 48, 14);
     scatter_boulders(w, 0, 0, 22, 18, 49, 17);  // rocky field margins
     scatter_boulders(w, 0, 52, 22, 79, 49, 13);
+    // E7 ambience: the field has drunk sieges before this one — the last
+    // war's dead across the trampled ground, and the war-road to the gate
+    // stamped down to grit.
+    scatter_decor(w, 0, 14, 22, 66, 44, 19, DECOR_BONES,
+                  {ScatterGround::Grass, ScatterGround::DarkGrass});
+    scatter_decor(w, 0, 38, 22, 41, 49, 9, DECOR_PEBBLES,
+                  {ScatterGround::Path});
     save_level_files(w, 15, "The Deeping Wall",
                      {"Rain and drums in the dark.",
                       "The horde is come to the wall.",
@@ -535,9 +590,15 @@ void build_white_city(const LevelDataHooks& hooks)
                                                {30, 35}};
     for (const auto& g : plain_ghosts)
         place_living(w, FAMILY_GHOST, 2, 0, g[0], g[1], 3);
-    place_generator(w, FAMILY_TENT, 2, 0, 4, 12, 5); // the siege camp
-    place_generator(w, FAMILY_TENT, 2, 0, 4, 36, 5);
-    place_generator(w, FAMILY_TENT, 2, 0, 4, 44, 5);
+    // E6 post-single-scaling bump (see the Deeping Wall note): lvl-7 TENT
+    // camps restore the ground pressure the lvl-5 design bought from
+    // double-scaled spawns — silencing them stays the battle's second act.
+    // The BONES dens stay at lvl 5 (the flyer-den rule, as at the Black
+    // Gate): their ghosts skip every wall and at 7 they swarm the
+    // Horse-lord's dawn relief to a man before it ever reaches the camps.
+    place_generator(w, FAMILY_TENT, 2, 0, 4, 12, 7); // the siege camp
+    place_generator(w, FAMILY_TENT, 2, 0, 4, 36, 7);
+    place_generator(w, FAMILY_TENT, 2, 0, 4, 44, 7);
     place_generator(w, FAMILY_BONES, 2, 0, 8, 16, 5);
     place_generator(w, FAMILY_BONES, 2, 0, 8, 33, 5);
 
@@ -551,10 +612,10 @@ void build_white_city(const LevelDataHooks& hooks)
         place_living(w, FAMILY_ARCHER, 0, 1, 71, y, 4, true);
     static constexpr int riders16[6][2] = {{4, 3}, {7, 3}, {13, 3},
                                            {16, 3}, {7, 6}, {13, 6}};
-    for (const auto& r : riders16)
-        place_living(w, FAMILY_BARBARIAN, 0, 0, r[0], r[1], 6, false, false,
-                     700);
-    place_generator(w, FAMILY_TOWER, 0, 0, 75, 34, 4);
+    for (const auto& r : riders16) // lvl 7 (E6): the dawn relief charges
+        place_living(w, FAMILY_BARBARIAN, 0, 0, r[0], r[1], 7, false, false,
+                     700); // straight into the hotter lvl-7 camps
+    place_generator(w, FAMILY_TOWER, 0, 0, 75, 34, 5);
     place_hero(w, FAMILY_SOLDIER, 0, 46, 24, 9, "Ranger-King", true, false,
                0);
     place_hero(w, FAMILY_BARBARIAN, 0, 10, 4, 9, "Horse-lord", false, false,
@@ -591,6 +652,18 @@ void build_white_city(const LevelDataHooks& hooks)
     scatter_litter(w, 0, 46, 2, 69, 20, 33);
     scatter_litter(w, 0, 46, 30, 69, 47, 33);
     scatter_boulders(w, 0, 16, 2, 38, 47, 21);
+    // E7 ambience: the sack in progress — the burned dead on the cobbles
+    // beside each fire patch (hand-set, one per blaze), rubble-grit
+    // across the citadel court, and the approach road stamped by the
+    // siege columns.
+    static constexpr int fallen16[6][2] = {{52, 10}, {59, 19}, {52, 31},
+                                           {62, 39}, {46, 46}, {65, 5}};
+    for (const auto& b : fallen16)
+        paint_decor(w, 0, b[0], b[1], DECOR_BONES);
+    scatter_decor(w, 0, 74, 0, 89, 49, 21, DECOR_PEBBLES,
+                  {ScatterGround::Cobble});
+    scatter_decor(w, 0, 2, 24, 39, 25, 13, DECOR_PEBBLES,
+                  {ScatterGround::Path});
     save_level_files(w, 16, "The White City",
                      {"The White City burns. The gate",
                       "is breached; the war-beasts",
@@ -633,10 +706,22 @@ void build_black_gate(const LevelDataHooks& hooks)
         paint_decor(w, 0, px, 21, DECOR_TORCH1);
         paint_decor(w, 0, px, 28, DECOR_TORCH1);
     }
-    paint_decor(w, 0, 51, 21, DECOR_TORCH1); // flanking the gate mouth
-    paint_decor(w, 0, 51, 28, DECOR_TORCH1);
+    // Gate-mouth torches stand a step east at x 52 (Wave E5): x 51 sits in
+    // the ramparts' fall shadow, and a blocking torch there would be a
+    // wedged landing for anyone stepping off a gatehouse corner.
+    paint_decor(w, 0, 52, 21, DECOR_TORCH1); // flanking the gate mouth
+    paint_decor(w, 0, 52, 28, DECOR_TORCH1);
     paint_pavement(w.grid_for_floor(1), 43, 15, 50, 20); // north gatehouse
     paint_pavement(w.grid_for_floor(1), 43, 29, 50, 34); // south gatehouse
+    // End parapets (Wave E5): where a gatehouse floor ends over the WALL
+    // (x 44..49), stepping off would drop the faller onto the wall top —
+    // an unstandable landing. A battlement wall closes those two ends of
+    // each rampart; the meadow (west, x 43) and waste (east, x 50) edges
+    // stay open sky, so wall-jumping off the gatehouse flanks still works.
+    paint_rect(w.grid_for_floor(1), 44, 14, 49, 14, PIX_WALL2);
+    paint_rect(w.grid_for_floor(1), 44, 21, 49, 21, PIX_WALL2);
+    paint_rect(w.grid_for_floor(1), 44, 28, 49, 28, PIX_WALL2);
+    paint_rect(w.grid_for_floor(1), 44, 35, 49, 35, PIX_WALL2);
     paint_decor(w, 1, 44, 15, DECOR_BRAZIER);    // watch fires
     paint_decor(w, 1, 49, 15, DECOR_BRAZIER);
     paint_decor(w, 1, 44, 34, DECOR_BRAZIER);
@@ -667,6 +752,15 @@ void build_black_gate(const LevelDataHooks& hooks)
     // banner pair, marching with it (not a guard; and not SAVE_ALL — if he
     // falls, the feint still holds).
     place_hero(w, FAMILY_SOLDIER, 0, 41, 20, 9, "Ranger-King", false, false, 0);
+    // The host of the West itself (F4 fresh-team calibration): the parade
+    // posture always DREW a host — thirty posts — but only the crew ever
+    // stood in it, and a curve-8 party of eight was erased by tick 1500.
+    // Six veteran banner-soldiers now march in the ranks; the feint stays
+    // desperate (the legion still outnumbers the host four to one).
+    static constexpr int host17[6][2] = {{36, 17}, {34, 24}, {36, 31},
+                                         {33, 15}, {31, 22}, {33, 33}};
+    for (const auto& h : host17)
+        place_living(w, FAMILY_SOLDIER, 0, 0, h[0], h[1], 6);
 
     // The legion (team 2): orcs in and around the gate, big-orc wings,
     // skeletons and ghosts behind, champions on the ramparts, the east camp.
@@ -697,6 +791,14 @@ void build_black_gate(const LevelDataHooks& hooks)
     place_living(w, FAMILY_GHOST, 2, 0, 68, 40, 3);
     place_living(w, FAMILY_ORC, 2, 1, 46, 17, 8, true); // rampart champions
     place_living(w, FAMILY_ORC, 2, 1, 46, 32, 8, true);
+    // E6 post-single-scaling bump (see the Deeping Wall note): the legion's
+    // TENT camps keep the eastern waste a grind at lvl 7 now that spawns
+    // take set_difficulty once. The BONES den stays at lvl 5: it spawns
+    // FLYING Riders that skip the gate funnel and reach the western line
+    // early, and any hotter wipes the smoke's stand-in crew before tick
+    // 300 — the feint must feel desperate, not be a massacre.
+    // (F4: tents 7 -> 5 alongside the six placed host soldiers — the waste
+    // stays a grind, but a grind the war-road host can survive.)
     place_generator(w, FAMILY_TENT, 2, 0, 83, 13, 5);
     place_generator(w, FAMILY_BONES, 2, 0, 83, 23, 5);
     place_generator(w, FAMILY_TENT, 2, 0, 83, 34, 5);
@@ -708,6 +810,16 @@ void build_black_gate(const LevelDataHooks& hooks)
     place_exit(w, 0, 2, 24, 16);
     scatter_boulders(w, 0, 51, 0, 89, 49, 23); // the blasted waste
     scatter_litter(w, 0, 52, 0, 89, 49, 29);   // strewn with old bones
+    // E7 ambience: the briefing's "old bones" made literal — real bone
+    // art on the waste dirt between the litter drifts, the war-road's
+    // grit on both sides of the gate, and meadow brush on the host's own
+    // green edge behind the deployment.
+    scatter_decor(w, 0, 51, 0, 89, 49, 17, DECOR_BONES,
+                  {ScatterGround::Dirt});
+    scatter_decor(w, 0, 2, 24, 86, 25, 13, DECOR_PEBBLES,
+                  {ScatterGround::Path});
+    scatter_decor(w, 0, 2, 12, 10, 36, 15, DECOR_SHRUB,
+                  {ScatterGround::LightGrass});
     save_level_files(w, 17, "The Black Gate",
                      {"We cannot win this fight, and",
                       "need not. Every eye of the",
@@ -739,7 +851,7 @@ std::vector<ExpectedLevel> act3a_expectations()
         {14, 4, "The Wizard's Vale", 23, 0, 0, 0, 0, 23, 2, 0, 1, true, {15, 13}},
         {15, 2, "The Deeping Wall", 26, 1, 1, 0, 0, 47, 2, 1, 0, true, {16, 14}},
         {16, 3, "The White City", 17, 18, 1, 0, 0, 80, 5, 7, 0, true, {17, 15}},
-        {17, 2, "The Black Gate", 30, 1, 0, 0, 0, 58, 3, 0, 0, true, {24, 16}},
+        {17, 2, "The Black Gate", 30, 7, 0, 0, 0, 58, 3, 0, 0, true, {24, 16}},
     };
 }
 
