@@ -16,6 +16,7 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/core/pixdefs.h>
+#include <openglad/core/test_trace.h>
 
 #include <algorithm>
 #include <format>
@@ -1007,7 +1008,7 @@ walker* GameWorld::find_far_foe(walker* ob)
     for (auto& uptr : oblist)
     {
         walker* foe = uptr.get();
-        if (foe == nullptr || foe->dead())
+        if (foe == nullptr || foe->dead() || foe->dormant())
             continue;
 
         sanitize_owner_chain_link(*this, foe);
@@ -1067,7 +1068,7 @@ walker* GameWorld::find_nearest_player(walker* ob)
     for (auto& uptr : oblist)
     {
         walker* w = uptr.get();
-        if (w && w->user() != -1)
+        if (w && !w->dormant() && w->user() != -1)
         {
             const std::uint32_t tempdistance = ob->distance_to_ob(w);
             if (tempdistance < distance)
@@ -1095,7 +1096,7 @@ std::list<walker*> GameWorld::find_in_range(const std::list<std::unique_ptr<walk
     for (auto& uptr : somelist)
     {
         walker* w = uptr.get();
-        if (w && !w->dead() && ob->distance_to_ob(w) <= range)
+        if (w && !w->dead() && !w->dormant() && ob->distance_to_ob(w) <= range)
         {
             result.push_back(w);
             (*howmany)++;
@@ -1119,7 +1120,7 @@ std::list<walker*> GameWorld::find_foes_in_range(const std::list<std::unique_ptr
     for (auto& uptr : somelist)
     {
         walker* w = uptr.get();
-        if (w && !w->dead() &&
+        if (w && !w->dead() && !w->dormant() &&
             (w->query_order() == Order::Living ||
              w->query_order() == Order::Generator) &&
             (ob->is_friendly(w) == 0) &&
@@ -1147,7 +1148,7 @@ std::list<walker*> GameWorld::find_foe_weapons_in_range(const std::list<std::uni
     for (auto& uptr : somelist)
     {
         walker* w = uptr.get();
-        if (w && !w->dead() &&
+        if (w && !w->dead() && !w->dormant() &&
             w->query_order() == Order::Weapon &&
             ob->is_friendly(w) &&
             ob->distance_to_ob(w) <= range)
@@ -1174,7 +1175,7 @@ std::list<walker*> GameWorld::find_friends_in_range(const std::list<std::unique_
     for (auto& uptr : somelist)
     {
         walker* w = uptr.get();
-        if (w && !w->dead() &&
+        if (w && !w->dead() && !w->dormant() &&
             w->query_order() == Order::Living &&
             ob->is_friendly(w) &&
             ob->distance_to_ob(w) <= range)
@@ -1471,6 +1472,23 @@ void GameWorld::tick()
         events.push(og::sim::EventKind::SetPalette, 0, 0);
     }
 
+    // Wake a delayed-spawn walker: re-enter the obmap the way a spawned unit
+    // does, then emit the teleporter-pad flash flourish at its spot. Only ever
+    // reached when spawn_delay > 0 (non-default), so parity is untouched.
+    auto wake_delayed_spawn = [this](walker* ob) {
+        ob->set_dormant(false);
+        walker* flash = add_ob(Order::FX, FAMILY_FLASH);
+        if (flash != nullptr)
+        {
+            flash->set_ani_type(ANI_EXPAND_8);
+            flash->center_on(ob);
+        }
+        TRACE("game", "delayed spawn: family=%d team=%d delay=%u tick=%u",
+              static_cast<int>(ob->family()), static_cast<int>(ob->team_num()),
+              static_cast<unsigned>(ob->spawn_delay()),
+              static_cast<unsigned>(level_tick_count_));
+    };
+
     // --- Entity act phase ---
     bool printed_time = false;
     for (auto& uptr : oblist)
@@ -1479,6 +1497,23 @@ void GameWorld::tick()
             break;
 
         walker* ob = uptr.get();
+
+        // Delayed spawns: dormant walkers do not act (and are absent from the
+        // obmap, draw, and snapshots), but their team still counts as alive so
+        // a defenders-arrive-later scenario doesn't end before they appear.
+        if (ob != nullptr && !ob->dead() && ob->dormant())
+        {
+            if (level_tick_count_ > ob->spawn_delay())
+                wake_delayed_spawn(ob);
+            if (ob->dormant())
+            {
+                if (!ob->is_friendly_to_team(static_cast<unsigned char>(my_team)) &&
+                    ob->query_order() == Order::Living)
+                    level_done = 0;
+                continue;
+            }
+        }
+
         if (!enemy_freeze) // normal functionality
         {
             if (ob && !ob->dead())

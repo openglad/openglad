@@ -29,7 +29,14 @@
 
 bool walker::special()
 {
-		TRACE("walker", "special: family=%d current_special=%d", family(), current_special());
+	// Per-placed-NPC scenario flag: a specials-disabled walker never executes
+	// its special, whatever the caller (player input, AI act logic, hit
+	// responses, archmage scripting). Bail before the trace and before any
+	// cost is charged so a disabled special simply does not fire.
+	if (specials_disabled())
+		return false;
+
+	TRACE("walker", "special: family=%d current_special=%d", family(), current_special());
 
 	if (dead())
 	{

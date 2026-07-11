@@ -437,6 +437,12 @@ bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha)
 		Log("drawing a dead guy!\n");
 		return 0;
 	}
+
+	// Delayed spawns: a dormant walker has not entered the world yet, so
+	// gameplay never draws it. The level editor still renders it for authoring
+	// (the editor always draws with editor_floor_override_ set).
+	if (w.dormant() && view_buf->editor_floor_override_ < 0)
+		return false;
 	// drawcycle is advanced by the authoritative sim (effect::act / living::act),
 	// NOT here — render must not write sim-read entity state (it freezes in the
 	// headless server). Enforced by scripts/check_render_no_sim_writes.sh.
@@ -664,6 +670,8 @@ static bool casts_ground_effects(const walker& w)
     if (order != Order::Living && order != Order::Weapon)
         return false;
     if (w.dead())
+        return false;
+    if (w.dormant()) // delayed spawn: not in the world yet
         return false;
     if (w.stats()->query_bit_flags(BIT_PHANTOM))
         return false;

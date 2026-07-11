@@ -537,6 +537,12 @@ walker* living::do_summon(char whatfamily, std::int32_t summon_lifetime)
 // the special or not ..
 bool living::check_special()
 {
+	// Per-placed-NPC scenario flag: the AI never decides to use a special on
+	// a specials-disabled walker (walker::special() is gated too, so direct
+	// callers that skip this check still cannot fire one).
+	if (specials_disabled())
+		return false;
+
 	set_shifter_down(static_cast<short>(current_game->world->rng_.next(2))); // on or off, randomly ..
 
 	// Make sure we have enough ..

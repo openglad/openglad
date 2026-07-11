@@ -2311,6 +2311,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_world_headless.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_entity.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_zaxis.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_npc_scenario_flags.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_game_world_entity_ids.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_weather.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_world_snapshot.cpp
@@ -2360,6 +2361,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_physfs_wrappers.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_input_actions.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_spectator_mode.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_concept_levels.cpp
         )
 
         og_add_unit_group(og_unit_ctf FILES

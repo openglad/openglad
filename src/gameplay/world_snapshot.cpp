@@ -1520,6 +1520,19 @@ void remove_missing_entities(GameWorld& world,
             continue;
         }
 
+        // Dormant (delayed-spawn) walkers are EXCLUDED from snapshot capture
+        // by design, so their absence from a snapshot is expected — never
+        // reconcile them away. This keeps them alive through the local
+        // transport shadow's seed apply (server world) and through replay
+        // playback's initial-snapshot apply; the moment the authoritative
+        // side wakes one, it appears in snapshots and rule two in
+        // apply_entity_snapshot_fields wakes the mirror's copy.
+        if (entity->dormant())
+        {
+            ++it;
+            continue;
+        }
+
         if (world.myobmap != nullptr)
             world.myobmap->remove(entity);
         it = entities.erase(it);
@@ -1576,6 +1589,12 @@ void apply_entity_snapshot_fields(GameWorld& world,
     // snapshot.floor is uint8 (>= 0); Phase 2 adds the upper clamp to
     // [0, floor_count) once GameWorld tracks a floor count.
     entity.set_floor(static_cast<short>(snapshot.floor));
+    // A walker present in a snapshot is by construction awake (capture
+    // excludes dormant walkers): clear dormancy so a mirror whose own level
+    // load created the same delayed walker reveals it when the authoritative
+    // side wakes it.
+    if (entity.dormant())
+        entity.set_dormant(false);
     entity.set_team_num(snapshot.team_num);
     entity.set_real_team_num(snapshot.real_team_num);
     entity.set_user(snapshot.user);
@@ -2166,6 +2185,13 @@ void capture_entity_list(EntityList& entities,
     {
         walker* const entity = entry.get();
         if (entity == nullptr)
+            continue;
+
+        // Delayed spawns: a dormant walker has not entered the world yet, so
+        // it is invisible to snapshots (mirrors, replays and the wire format
+        // first see it when it activates). Its dirty state is left alone; the
+        // activation capture carries the full entity.
+        if (entity->dormant())
             continue;
 
         if (entity->myguy != nullptr &&

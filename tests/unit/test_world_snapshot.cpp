@@ -2784,3 +2784,56 @@ TEST(WorldSnapshot, apply_delta_accumulates_multi_tick_changes_with_spawn_and_re
         og::sim::capture_keyframe_snapshot(mirror);
     expect_world_snapshot_eq(source_keyframe, mirror_keyframe);
 }
+
+// Dormant (delayed-spawn) walkers are excluded from snapshot capture, so
+// apply must (1) never reconcile them away when a snapshot lacks them — the
+// local transport shadow seeds the SERVER world by applying a display-world
+// snapshot at install, which silently deleted every not-yet-spawned walker —
+// and (2) clear dormancy on any walker a snapshot DOES contain (presence
+// implies awake), so a mirror that loaded the same level reveals its copy
+// when the authoritative side wakes.
+TEST(WorldSnapshot, apply_preserves_dormant_walkers_and_wakes_on_presence)
+{
+    TestGameWorld fx;
+    GameWorld& world = fx.world();
+    walker* soldier = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, soldier);
+    soldier->setxy(80, 80);
+    walker* wizard = world.add_ob(Order::Living, FAMILY_ARCHMAGE);
+    ASSERT_NE(nullptr, wizard);
+    wizard->setxy(160, 120);
+    wizard->set_spawn_delay(500);
+    wizard->set_dormant(true);
+    const std::uint32_t wizard_id = wizard->entity_id();
+
+    // Capture excludes the dormant wizard; applying that snapshot back onto
+    // the same world (the install seed pattern) must keep him.
+    const og::sim::WorldSnapshot seed = og::sim::capture_keyframe_snapshot(world);
+    bool in_snapshot = false;
+    for (const auto& g : seed.oblist)
+        in_snapshot |= (g.entity_id == wizard_id);
+    ASSERT_FALSE(in_snapshot) << "dormant walkers stay out of capture";
+    og::sim::apply_snapshot(world, seed);
+    walker* survivor = nullptr;
+    for (auto& uptr : world.oblist)
+        if (walker* w = uptr.get(); w != nullptr && w->entity_id() == wizard_id)
+            survivor = w;
+    ASSERT_NE(nullptr, survivor)
+        << "apply must not reconcile away a dormant walker";
+    ASSERT_TRUE(survivor->dormant());
+    ASSERT_EQ(500, static_cast<int>(survivor->spawn_delay()));
+
+    // Wake it authoritatively and capture again: a mirror world holding its
+    // own dormant copy must be woken by the snapshot's presence.
+    survivor->set_dormant(false);
+    const og::sim::WorldSnapshot awake = og::sim::capture_keyframe_snapshot(world);
+    survivor->set_dormant(true); // pretend this world is the mirror now
+    og::sim::apply_snapshot(world, awake);
+    walker* woken = nullptr;
+    for (auto& uptr : world.oblist)
+        if (walker* w = uptr.get(); w != nullptr && w->entity_id() == wizard_id)
+            woken = w;
+    ASSERT_NE(nullptr, woken);
+    ASSERT_FALSE(woken->dormant())
+        << "presence in a snapshot implies awake — mirrors must reveal";
+}

@@ -267,6 +267,14 @@ All additive, double-gated (`floor_count>1` and tile data):
 - Linked with `FAMILY_EXIT` treasures so `picker_accessible_levels` unlocks them in
   order. Campaign picker needs no change (metadata-driven discovery, as CTF=500
   proves). **Not** added to `tests/parity/scenario_table.h`.
+- DONE since: six epic multifloor war stories, levels **605-610** (605 The
+  Deeping Wall, 606 The Wizard's Vale, 607 The Bridge of Shadow, 608 Under the
+  Mountain, 609 The Black Gate, 610 The Frozen Wall), each staging two hostile
+  AI armies (team 1 vs team 2) so the level plays as a battle with or without a
+  player. Built by the same tool; levels 600-604 stay byte-identical. The tool's
+  self-check audits per-team army counts, aligned stair pairs on every floor
+  boundary, and entity footing; `tests/unit/test_concept_levels.cpp`
+  (og_unit_data) is the committed-package regression pin.
 
 ## Phase checklist
 

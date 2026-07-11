@@ -189,7 +189,10 @@ void CursesRenderer::draw_viewport(ITerminal& term, const GameWorld& world,
     const auto draw_entities = [&](const GameWorld::EntityList& list) {
         for (const auto& up : list) {
             const walker* w = up.get();
-            if (!w || w->dead())
+            // dormant(): a delayed spawn not in the world yet (mirror worlds
+            // never contain one — snapshots exclude them — but a locally
+            // rendered authoritative world must hide them too).
+            if (!w || w->dead() || w->dormant())
                 continue;
 
             const bool is_followed = (followed_id != 0 && w->entity_id() == followed_id);

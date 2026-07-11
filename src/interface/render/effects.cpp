@@ -414,7 +414,7 @@ const std::array<bool, 256>& reflective_tiles()
 bool draw_walker_ripples(walker& w, viewscreen* vs,
                          const PixieData& camera_grid)
 {
-	if (!vs || !makes_ripples(w) || !camera_grid.valid())
+	if (!vs || w.dormant() || !makes_ripples(w) || !camera_grid.valid())
 		return false;
 
 	Sint32 xscreen = 0, yscreen = 0;
@@ -482,7 +482,7 @@ void effects_advance_frame()
 
 bool draw_walker_trail(walker& w, viewscreen* vs)
 {
-	if (!vs || w.query_order() != Order::Weapon || w.dead() ||
+	if (!vs || w.query_order() != Order::Weapon || w.dead() || w.dormant() ||
 	    w.invisibility_left() > 0)
 		return false;
 
@@ -533,7 +533,7 @@ bool draw_walker_trail(walker& w, viewscreen* vs)
 
 bool draw_walker_dust(walker& w, viewscreen* vs)
 {
-	if (!vs || w.query_order() != Order::Living || w.dead())
+	if (!vs || w.query_order() != Order::Living || w.dead() || w.dormant())
 		return false;
 
 	const auto [vx, vy] = visual_world_pos(w, vs);
@@ -585,7 +585,7 @@ bool draw_walker_dust(walker& w, viewscreen* vs)
 
 bool draw_walker_fire_glow(walker& w, viewscreen* vs)
 {
-	if (!vs || !glows(w))
+	if (!vs || w.dormant() || !glows(w))
 		return false;
 	if (!glow_kernel_ready)
 		generate_glow_kernel();

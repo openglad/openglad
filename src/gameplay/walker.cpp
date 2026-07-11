@@ -1728,6 +1728,32 @@ bool walker::check_special()
 	return 0;
 }
 
+// Delayed-spawn dormancy (see walker.h). Mirrors setxy's obmap bookkeeping:
+// entering dormancy pulls the walker out of the collision table (it cannot be
+// hit, collided with, or block movement), and waking re-registers it the same
+// way a freshly spawned unit enters — an obmap registration at its spot.
+void walker::set_dormant(bool value)
+{
+	if (dormant_ == value)
+		return;
+	dormant_ = value;
+
+	obmap* map = (current_game != nullptr && current_game->world != nullptr)
+	    ? current_game->world->myobmap.get()
+	    : nullptr;
+	if (map == nullptr)
+		return;
+	if (dormant_)
+		map->remove(this);
+	else if (!ignore())
+	{
+		// add(), not move(): move() short-circuits when the coordinates are
+		// unchanged, and a waking walker re-enters at the spot it already
+		// occupies (add de-duplicates any stale registration first).
+		map->add(this, xpos(), ypos());
+	}
+}
+
 // Center us on target walker
 // Relocate this entity to a different stacked floor, re-bucketing it in the
 // single floor-keyed obmap (remove from the old floor's buckets, then re-add at

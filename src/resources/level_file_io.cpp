@@ -36,8 +36,11 @@ using og::data::LevelFileMetadata;
 
 // v10 adds multi-floor support: per-object floor/z packed into the existing
 // reserved/filler bytes, a trailing floor_count byte, and derived-name extra
-// floor grid PNGs ("{grid}_f{N}.png"). v2-9 read paths are untouched and
-// single-floor levels still save as v9 (byte-identical). See docs/z-axis-design.md.
+// floor grid PNGs ("{grid}_f{N}.png"). v10 also carries per-placed-NPC extras
+// in the same reserved block: npc_flags at [3] (bit 0 = specials disabled) and
+// a uint16 delayed-spawn tick count at [4..5]; the rest of the block is
+// zero-filled. v2-9 read paths are untouched and all-default levels still save
+// as v9 (byte-identical). See docs/z-axis-design.md.
 constexpr char kScenarioVersion = 10;
 constexpr short kMaxScenarioObjects = 4096;
 
@@ -263,6 +266,26 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
             short obj_z = 0;
             std::memcpy(&obj_z, &reserved[1], sizeof(short));
             new_guy->set_worldz(static_cast<float>(obj_z));
+
+            // v10 also carries per-placed-NPC extras: npc_flags at reserved[3]
+            // (bit 0 = specials disabled) and a uint16 delayed-spawn tick count
+            // at reserved[4..5]. The v10 writer zero-fills the reserved tail,
+            // so files authored before these fields read back as defaults.
+            const unsigned char npc_flags =
+                static_cast<unsigned char>(reserved[3]);
+            new_guy->set_specials_disabled((npc_flags & 0x01u) != 0u);
+            std::uint16_t spawn_delay = 0;
+            std::memcpy(&spawn_delay, &reserved[4], sizeof(spawn_delay));
+            new_guy->set_spawn_delay(spawn_delay);
+            // A delayed walker starts the level dormant. Only oblist-resident
+            // orders ever go dormant: GameWorld::tick's oblist act phase is
+            // what wakes them, so a weapon (weaplist) or treasure (fxlist)
+            // carrying a delay would sleep forever. (The level editor still
+            // draws and edits dormant walkers; only gameplay hides them.)
+            const Order loaded_order = static_cast<Order>(temporder);
+            if (spawn_delay > 0 && loaded_order != Order::Weapon &&
+                loaded_order != Order::Treasure)
+                new_guy->set_dormant(true);
         }
     }
 
@@ -497,11 +520,27 @@ bool write_scenario_payload(og::io::OgFile& outfile,
     };
 
     const std::array<char, 3> header = {'F', 'S', 'S'};
-    // Single-floor levels save as v9 (byte-identical to pre-Z); only genuine
-    // multi-floor levels emit v10. This is the key guard against re-encoding the
-    // ~180 parity scenarios.
-    char temp_version = world.is_multifloor() ? static_cast<char>(10)
-                                              : static_cast<char>(9);
+    // Levels with all-default data save as v9 (byte-identical to pre-Z); only
+    // genuine multi-floor levels — or levels using the per-NPC extras stored in
+    // the v10 reserved-block layout (specials-disabled / delayed spawn) — emit
+    // v10. This is the key guard against re-encoding the ~180 parity scenarios.
+    auto list_has_npc_extras =
+        [](const std::list<std::unique_ptr<walker>>& list) {
+            for (const auto& uptr : list)
+            {
+                const walker* ob = uptr.get();
+                if (ob != nullptr &&
+                    (ob->specials_disabled() || ob->spawn_delay() > 0))
+                    return true;
+            }
+            return false;
+        };
+    const bool has_npc_extras = list_has_npc_extras(world.oblist) ||
+                                list_has_npc_extras(world.fxlist) ||
+                                list_has_npc_extras(world.weaplist);
+    char temp_version = (world.is_multifloor() || has_npc_extras)
+        ? static_cast<char>(10)
+        : static_cast<char>(9);
     std::array<char, 20> temp_grid = {};
     std::array<char, 30> scentitle = {};
     std::array<char, 20> filler = {'M', 'S', 'T', 'R', 'M', 'S', 'T', 'R',
@@ -572,15 +611,27 @@ bool write_scenario_payload(og::io::OgFile& outfile,
             std::array<char, 12> tempname = {};
             snprintf(tempname.data(), tempname.size(), "%s", ob->stats()->name.c_str());
 
-            // v9: legacy "MSTR" filler (byte-identical). v10: first 3 bytes hold
-            // the object's floor + sub-floor z.
+            // v9: legacy "MSTR" filler (byte-identical). v10 owns the whole
+            // block: [0] floor, [1..2] sub-floor z, [3] npc_flags (bit 0 =
+            // specials disabled), [4..5] uint16 delayed-spawn ticks, [6..9]
+            // zero padding reserved for future per-object fields.
             std::array<char, 10> obj_reserved{};
-            std::memcpy(obj_reserved.data(), filler.data(), obj_reserved.size());
             if (temp_version >= 10)
             {
                 obj_reserved[0] = static_cast<char>(ob->floor());
                 short zval = static_cast<short>(ob->worldz());
                 std::memcpy(&obj_reserved[1], &zval, sizeof(short));
+                const unsigned char npc_flags =
+                    ob->specials_disabled() ? 0x01 : 0x00;
+                obj_reserved[3] = static_cast<char>(npc_flags);
+                const std::uint16_t spawn_delay = ob->spawn_delay();
+                std::memcpy(&obj_reserved[4], &spawn_delay,
+                            sizeof(spawn_delay));
+            }
+            else
+            {
+                std::memcpy(obj_reserved.data(), filler.data(),
+                            obj_reserved.size());
             }
 
             if (!write_field(&temporder, 1, 1) ||
@@ -773,6 +824,9 @@ short load_scenario_version(og::io::OgFile& infile, GameWorld* world,
     case 7:
     case 8:
     case 9:
+    case 10:
+        // read_level_body branches on the version it is handed, so the v6
+        // bridge covers every later single-pass layout including v10.
         return load_version_6(infile, world, metadata, version);
     default:
         Log("Scenario {} is version-level {}, and cannot be read.\n", world->id,

@@ -29,7 +29,7 @@ walker* sim_find_next_control(GameWorld& level, short my_team)
     for (auto& uptr : level.oblist)
     {
         walker* w = uptr.get();
-        if (w && !w->dead() &&
+        if (w && !w->dead() && !w->dormant() &&
             w->query_order() == Order::Living &&
             w->user() == -1 &&
             w->myguy &&
@@ -44,7 +44,7 @@ walker* sim_find_next_control(GameWorld& level, short my_team)
     for (auto& uptr : level.oblist)
     {
         walker* w = uptr.get();
-        if (w && !w->dead() &&
+        if (w && !w->dead() && !w->dormant() &&
             w->query_order() == Order::Living &&
             w->user() == -1 &&
             w->team_num() == my_team)

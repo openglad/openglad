@@ -220,6 +220,40 @@ class walker : public og::sim::SimEntity
 			regen_delay_ = value;
 			mark_dirty(og::dirty::BIT_REGEN_DELAY);
 		}
+		// Per-placed-NPC scenario extras (level file v10, reserved[3..5]).
+		// Authoritative-side sim state only: mirrors never simulate, so these
+		// are never replicated (no dirty bit, not in EntitySnapshot).
+		//
+		// specials_disabled: the walker never uses its family special — both
+		// the direct walker::special() execution path and the AI's
+		// living::check_special() decision are gated on it.
+		[[nodiscard]] bool specials_disabled() const noexcept
+		{
+			return specials_disabled_;
+		}
+		void set_specials_disabled(bool value) noexcept
+		{
+			specials_disabled_ = value;
+		}
+		// spawn_delay: sim ticks past level start before a placed walker
+		// enters the world. While the delay has not elapsed the walker is
+		// dormant (see dormant()).
+		[[nodiscard]] std::uint16_t spawn_delay() const noexcept
+		{
+			return spawn_delay_;
+		}
+		void set_spawn_delay(std::uint16_t value) noexcept
+		{
+			spawn_delay_ = value;
+		}
+		// dormant: a delayed-spawn walker that has not activated yet. It does
+		// not act, is not drawn, sits outside the obmap (uncollidable and
+		// untargetable), and is excluded from snapshot capture — but its team
+		// still counts as alive for level-completion checks. set_dormant
+		// maintains obmap membership (see walker.cpp); GameWorld::tick wakes
+		// it once the level tick counter passes spawn_delay().
+		[[nodiscard]] bool dormant() const noexcept { return dormant_; }
+		void set_dormant(bool value);
 		// Server-only transient (like path_to_foe): the world tick on which
 		// this walker last began a SELF-teleport — walker::teleport /
 		// teleport_ranged, i.e. spell blinks and marker beacons; map
@@ -339,6 +373,12 @@ class walker : public og::sim::SimEntity
 		// the next Z transition is allowed, preventing stair/fall bounce. Always
 		// 0 on single-floor (apply_z_motion early-returns), so parity-neutral.
 		int z_cooldown_ = 0;
+		// Per-placed-NPC scenario extras (see the public accessors above).
+		// Defaults reproduce legacy behavior exactly; every consumer branch is
+		// gated on a non-default value, keeping parity goldens byte-identical.
+		bool specials_disabled_ = false;
+		std::uint16_t spawn_delay_ = 0;
+		bool dormant_ = false;
 		walker* foe_ = nullptr;
 		walker* leader_ = nullptr;
 		walker* owner_ = nullptr;

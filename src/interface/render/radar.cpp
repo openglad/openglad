@@ -247,6 +247,9 @@ short radar::draw(LevelRuntimeData* data)
         for(auto e = ls->begin(); e != ls->end(); e++)
 		{
 		    walker* ob = e->get();
+		    // Delayed spawns: dormant walkers are not in the world yet.
+		    if (ob && ob->dormant())
+		        continue;
 		    // Multi-floor: only blip entities on the control walker's floor.
 		    if (control && ob && data->world().floor_count() > 1 &&
 		        static_cast<int>(ob->floor()) != static_cast<int>(control->floor()))
@@ -329,7 +332,7 @@ short radar::draw(LevelRuntimeData* data)
     for (auto& uptr : data->world().fxlist)
 	{
 	    walker* ob = uptr.get();
-		if (ob && !ob->dead())
+		if (ob && !ob->dead() && !ob->dormant())
 		{
 			if (control && data->world().floor_count() > 1 &&
 			    static_cast<int>(ob->floor()) != static_cast<int>(control->floor()))
