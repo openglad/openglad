@@ -2630,6 +2630,21 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             TIMEOUT 420
         )
 
+        # og_test_menu_ui is the slowest integration binary: its injector flows
+        # gate on fadeblack animations (~0.75-1s wall clock each), so it runs
+        # ~148s standalone against the 180s group default — only ~18% headroom.
+        # The difficulty/FX-menu work added ~31 more such waits. In a full
+        # parallel ctest run it overlaps the other heavy integration binaries
+        # (og_test_view/og_test_game_core/og_test_level) with no serialization,
+        # blowing the 180s budget under load and making the standard pre-commit
+        # gate (ctest --preset ci-test) intermittently red. The coverage and
+        # sanitizer lanes already protect it below; give it the same dedicated
+        # budget in EVERY lane, mirroring og_test_picker_network above.
+        set_tests_properties(og_test_menu_ui PROPERTIES
+            RUN_SERIAL TRUE
+            TIMEOUT 420
+        )
+
         if(ENABLE_COVERAGE)
             # Coverage-instrumented UI-heavy binaries can time out on 4-core CI
             # runners when CTest schedules them all at once.
@@ -2674,7 +2689,26 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             # round-trips every message there too, which can push CI's
             # generic 180s budget over the edge when CTest schedules it
             # beside the heavyweight integration binaries.
+            #
+            # Match the 600s budget the non-sanitizer (line ~2622) and coverage
+            # (line ~2666) lanes already give this binary: the bundled at_12hz
+            # loopback-websocket sync test is wall-clock-bound with a 90s
+            # internal network_timeout, and under TSan's thread serialization a
+            # stalled handshake waits that timeout out — 420s left no headroom
+            # for even one stall on top of the sanitizer compute cost, so the
+            # TSan lane timed out here while ci-test/coverage stayed green.
             set_tests_properties(og_unit_sim PROPERTIES
+                PROCESSORS 2
+                TIMEOUT 600
+            )
+            # og_unit_data bundles the campaign level suites, whose battle
+            # smokes and calibration cases run many-tick headless sims. Under
+            # ASan/UBSan plus serialization round-tripping (which re-serializes
+            # every snapshot each tick) the group's cost multiplies ~30x, so it
+            # ran ~6s in ci-test but overran the generic 180s CTest budget in
+            # the sanitizer/validation lane. Give it headroom there (the
+            # standard lane stays at the 180s default, where it is comfortable).
+            set_tests_properties(og_unit_data PROPERTIES
                 PROCESSORS 2
                 TIMEOUT 420
             )
