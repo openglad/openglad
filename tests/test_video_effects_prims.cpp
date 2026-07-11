@@ -518,16 +518,27 @@ TEST(VideoEffectsPrims, floor_layer_end_mist_dithers_exact_color_no_blends)
             base[static_cast<std::size_t>(y * kFxLW + x)] =
                 px(kFxLX + x, kFxLY + y);
 
-    // Story 1: every 4th diagonal ((x+y)&3 == 0, screen coordinates) is
-    // EXACTLY the mist color (150,160,175); every other pixel is EXACTLY the
-    // original. No alpha blending anywhere: zero in-between colors.
+    // The mist mask mirrors the renderer's hash stipple exactly (screen
+    // coordinates; deterministic; NOT an ordered lattice — (x+y) masks read
+    // as diagonal stripes). 1 story ~25% density, 2+ stories ~50%.
+    const auto mist_hash = [](int sx, int sy) {
+        Uint32 m = (static_cast<Uint32>(sx) * 0x9E3779B1u) ^
+                   (static_cast<Uint32>(sy) * 0x85EBCA77u);
+        m ^= m >> 15;
+        m *= 0x2C1B3C6Du;
+        m ^= m >> 12;
+        return m & 3u;
+    };
+    // Story 1: hash-selected ~25% of pixels are EXACTLY the mist color
+    // (150,160,175); every other pixel is EXACTLY the original. No alpha
+    // blending anywhere: zero in-between colors.
     const RGB mist{150, 160, 175};
     depth_composite({DepthFxMode::Mist, 1, 0});
     for (int y = 0; y < kFxLH; y++)
         for (int x = 0; x < kFxLW; x++)
         {
             const RGB got = px(kFxLX + x, kFxLY + y);
-            const bool lattice = (((kFxLX + x) + (kFxLY + y)) & 3) == 0;
+            const bool lattice = mist_hash(kFxLX + x, kFxLY + y) < 1u;
             const RGB want =
                 lattice ? mist
                         : base[static_cast<std::size_t>(y * kFxLW + x)];
@@ -537,14 +548,14 @@ TEST(VideoEffectsPrims, floor_layer_end_mist_dithers_exact_color_no_blends)
                                            : "the untouched original");
         }
 
-    // Story 2+: the true checkerboard ((x+y)&1), same exact two-value rule.
+    // Story 2+: ~50% hash density, same exact two-value rule.
     depth_composite({DepthFxMode::Mist, 2, 0});
     int replaced = 0;
     for (int y = 0; y < kFxLH; y++)
         for (int x = 0; x < kFxLW; x++)
         {
             const RGB got = px(kFxLX + x, kFxLY + y);
-            const bool lattice = (((kFxLX + x) + (kFxLY + y)) & 1) != 0;
+            const bool lattice = mist_hash(kFxLX + x, kFxLY + y) < 2u;
             const RGB want =
                 lattice ? mist
                         : base[static_cast<std::size_t>(y * kFxLW + x)];
@@ -552,15 +563,25 @@ TEST(VideoEffectsPrims, floor_layer_end_mist_dithers_exact_color_no_blends)
                 << "mist(2 stories) at " << x << "," << y;
             replaced += lattice ? 1 : 0;
         }
-    ASSERT_EQ(kFxLW * kFxLH / 2, replaced)
-        << "2 stories must mist exactly half the pixels";
+    // Hash density: ~50% with binomial spread, and NOT the ordered diagonal
+    // lattice (the stripe-pattern regression this replaced).
+    ASSERT_NEAR(kFxLW * kFxLH / 2, replaced, kFxLW * kFxLH / 10)
+        << "2 stories must mist about half the pixels";
+    int diag_matches = 0;
+    for (int y = 0; y < kFxLH; y++)
+        for (int x = 0; x < kFxLW; x++)
+            if ((mist_hash(kFxLX + x, kFxLY + y) < 2u) ==
+                ((((kFxLX + x) + (kFxLY + y)) & 1) != 0))
+                diag_matches++;
+    ASSERT_LT(diag_matches, (kFxLW * kFxLH * 3) / 4)
+        << "the stipple must not degenerate into the old diagonal lattice";
 
     // Mist ignores the tick.
     depth_composite({DepthFxMode::Mist, 2, 4321});
     for (int y = 0; y < kFxLH; y += 5)
         for (int x = 0; x < kFxLW; x += 5)
         {
-            const bool lattice = (((kFxLX + x) + (kFxLY + y)) & 1) != 0;
+            const bool lattice = mist_hash(kFxLX + x, kFxLY + y) < 2u;
             const RGB want =
                 lattice ? mist
                         : base[static_cast<std::size_t>(y * kFxLW + x)];

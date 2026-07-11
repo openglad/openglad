@@ -1350,19 +1350,28 @@ void sdl_video::floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
                     pb = static_cast<Uint8>(pb + ((kHazeB - pb) * haze_t) / 255);
                     break;
                 case DepthFxMode::Mist:
-                    // Checkerboard dither, NO alpha blending: every output
-                    // pixel is either the original or exactly the mist
-                    // (haze) color — zero requantization. Density rises
-                    // with depth: 1 story = every 4th diagonal, 2+ = true
-                    // checkerboard.
-                    if (fx.stories >= 2 ? (((px + py) & 1) != 0)
-                                        : (((px + py) & 3) == 0))
+                {
+                    // Hash stipple, NO alpha blending: every output pixel is
+                    // either the original or exactly the mist (haze) color —
+                    // zero requantization. An ordered (px+py) lattice reads
+                    // as diagonal stripes at these densities (user report),
+                    // so the mask is a cheap integer hash of the screen cell:
+                    // even random-looking grain, fully deterministic, static
+                    // across frames (mist ignores the tick; Fog is the
+                    // animated mode). Density: 1 story ~25%, 2+ ~50%.
+                    Uint32 m = (static_cast<Uint32>(px) * 0x9E3779B1u) ^
+                               (static_cast<Uint32>(py) * 0x85EBCA77u);
+                    m ^= m >> 15;
+                    m *= 0x2C1B3C6Du;
+                    m ^= m >> 12;
+                    if ((m & 3u) < (fx.stories >= 2 ? 2u : 1u))
                     {
                         pr = kHazeR;
                         pg = kHazeG;
                         pb = kHazeB;
                     }
                     break;
+                }
                 case DepthFxMode::Fog:
                 {
                     // Haze wash + drifting fog patches from the dedicated
