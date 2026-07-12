@@ -219,6 +219,27 @@ SCENES = [
      "The camera is on the lower floor; someone pacing on the floor above sheds grey specks that drift down into your space — a cross-floor presence cue."),
     ("screen_shake", "Screen shake",
      "A detonation is active mid-screen: the whole camera jitters 1-2px with deterministic decaying jolts while the explosion lives."),
+    ("floor_glide_stairs", "Floor glide — stairs",
+     "Z-stair transitions no longer snap: the scene eases through a ~267 ms "
+     "rise or descent using the exact alpha/scale/parallax depth grammar the "
+     "standing view already uses — the destination floor grows and brightens "
+     "into place while the departed floor lifts and fades. Mid-way up there "
+     "is a short look-up-hold blip (ghost alpha re-bases instantly, no "
+     "cancel). REVIEW QUESTION (a): on the down-stair leg the pacing "
+     "monsters on the departed floor vanish at glide frame 1 while their "
+     "terrain fades out over the full glide — does the vanish read "
+     "acceptably, or should the pre-approved fallback ladder (4-frame entity "
+     "fade, then a full entity pass) kick in?"),
+    ("floor_glide_fall", "Floor glide — two-story fall",
+     "Falling through air is a fast (~200 ms) accelerating drop: the "
+     "intermediate floor rushes past in one continuous sweep, the camera "
+     "overshoots a quarter floor past the landing — the squash 'thud': the "
+     "destination dips to ~75% brightness and kicks ~6% larger — then "
+     "settles, composing with the existing grey landing smear. The lap reset "
+     "(a stairless rise) snaps: teleports keep their discontinuity by "
+     "design. REVIEW QUESTION (b): does the fall squash still read at "
+     "quarter-pane size (4-player split), or should the pre-approved F2 "
+     "landing shake ship?"),
     ("all_together", "Everything at once",
      "The full ensemble: clouds + ground shadows overhead, shoreline reflections and ripples, an arcing fireball with trail, glow and ground shadow, plus screen shake from the detonation."),
 ]

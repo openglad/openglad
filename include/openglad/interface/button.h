@@ -313,6 +313,9 @@ enum class ButtonAction : Sint32
     // it to the world canvas. Independent of ToggleRenderingEngine (the
     // legacy graphics/render present engine).
     CycleWorldScale = 93,
+    // GRAPHICS FX floor-glide toggle: cfg effects/floor_glide, the animated
+    // floor-transition camera dolly (docs/floor-glide-design.md).
+    ToggleFloorGlide = 94,
 };
 
 inline constexpr Sint32 button_action_id(ButtonAction action)

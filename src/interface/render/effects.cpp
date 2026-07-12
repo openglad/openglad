@@ -460,6 +460,13 @@ std::unordered_map<std::uint32_t, FloorTrack> floor_track_store;
 std::unordered_map<std::uint32_t, FallCue> fall_cues;
 bool fall_track_ran = false;
 std::uint32_t fall_track_tick = 0;
+// Floor-change classification store (floor glide): every fresh floor diff
+// the tracker sees — both directions — lands here as Stairs/Fall/Teleport,
+// queried by viewscreen::update_floor_glide the same frame. Pruned a few
+// frames later in effects_advance_frame; purely additive beside the
+// FallCue outputs, which stay byte-identical.
+inline constexpr std::uint32_t kFloorChangeMaxAge = 4;
+std::unordered_map<std::uint32_t, FloorChange> floor_change_store;
 
 // Push the walker's visual position into the render store for this frame
 // (idempotent per tick) and report whether it moved more than half a pixel
@@ -848,6 +855,15 @@ void effects_advance_frame()
 		else
 			++it;
 	}
+	// And the floor-change classifications (the glide trigger reads them the
+	// same frame; anything older is a stale record, never animated).
+	for (auto it = floor_change_store.begin(); it != floor_change_store.end();)
+	{
+		if (frame_tick - it->second.tick > kFloorChangeMaxAge)
+			it = floor_change_store.erase(it);
+		else
+			++it;
+	}
 }
 
 bool draw_walker_trail(walker& w, viewscreen* vs)
@@ -980,12 +996,14 @@ void effects_track_air_falls(GameWorld& world)
 			continue; // first sighting: baseline only, never a cue
 		}
 		FloorTrack& prev = it->second;
-		// A floor DROP between consecutive frames (a stale track means the
+		// A floor CHANGE between consecutive frames (a stale track means the
 		// entity was untracked meanwhile — a level load, not a fall).
-		if (f < prev.floor && frame_tick - prev.tick <= 2)
+		if (f != prev.floor && frame_tick - prev.tick <= 2)
 		{
-			// Not a Z-stair descent: the descender relocates IN PLACE from a
-			// stair tile, so its previous center cell smooths to TYPE_ZSTAIRS.
+			// Not a Z-stair step: the stair user relocates IN PLACE from a
+			// stair tile, so its previous center cell smooths to TYPE_ZSTAIRS
+			// — the identical departure-cell probe reads both descents and
+			// ascents (the climber departed from the stair tile too).
 			// (An air faller's previous cell is the hole or the walk tile
 			// right before it — never a stair.) And not a teleport: air falls
 			// land straight down or within the sim's 4-cell landing nudge.
@@ -1002,7 +1020,30 @@ void effects_track_air_falls(GameWorld& world)
 			    prev.x - wx <= kFallCueMaxNudgePx &&
 			    wy - prev.y <= kFallCueMaxNudgePx &&
 			    prev.y - wy <= kFallCueMaxNudgePx;
-			if (!from_stair && near_hole)
+			// Classify the change for the floor-glide camera (additive store;
+			// the FallCue grey smear below is untouched): a one-story stair
+			// step is Stairs, a no-stair drop landing near the hole is a Fall
+			// (any magnitude — multi-story falls), everything else (rise
+			// without a stair, drop beyond the nudge, multi-story stair jump)
+			// is a Teleport.
+			const int delta = static_cast<int>(f) - static_cast<int>(prev.floor);
+			FloorChangeKind kind = FloorChangeKind::Teleport;
+			if (delta == 1)
+				kind = from_stair ? FloorChangeKind::Stairs
+				                  : FloorChangeKind::Teleport;
+			else if (delta == -1 && from_stair)
+				kind = FloorChangeKind::Stairs;
+			else if (delta < 0 && !from_stair && near_hole)
+				kind = FloorChangeKind::Fall;
+			floor_change_store[id] = FloorChange{frame_tick, prev.floor, f, kind};
+			// Cue RECORDING keeps its pre-glide gate: before floor_glide, the
+			// tracker only ever ran under the dust toggle (the draw_floor_effects
+			// call site), so with dust off no cue state existed. The glide's own
+			// call site would otherwise warm this store with dust off, and a
+			// mid-session dust toggle could draw a smear the pre-feature tree
+			// never would.
+			if (f < prev.floor && !from_stair && near_hole &&
+			    cfg.is_on("effects", "dust"))
 			{
 				FallCue& cue = fall_cues[id];
 				cue.start_tick = frame_tick;
@@ -1019,6 +1060,16 @@ void effects_track_air_falls(GameWorld& world)
 		}
 		prev = {f, wx, wy, frame_tick};
 	}
+}
+
+bool effects_last_floor_change(std::uint32_t entity_id, FloorChange* out)
+{
+	const auto it = floor_change_store.find(entity_id);
+	if (it == floor_change_store.end())
+		return false;
+	if (out != nullptr)
+		*out = it->second;
+	return true;
 }
 
 bool draw_fall_cues(viewscreen* vs, int floor)
@@ -1376,6 +1427,7 @@ void effects_reset_for_testing()
 	render_store.clear();
 	floor_track_store.clear();
 	fall_cues.clear();
+	floor_change_store.clear();
 	fall_track_ran = false;
 	fall_track_tick = 0;
 }

@@ -2629,7 +2629,8 @@ void build_save(screen* s, const char* campaign, int scen, int numplayers,
 void all_capture_effects_on()
 {
     for (const char* key : {"shadows", "reflections", "weather", "ripples",
-                            "trails", "dust", "fire_glow", "screen_shake"})
+                            "trails", "dust", "fire_glow", "screen_shake",
+                            "floor_glide"})
         cfg.apply_setting("effects", key, "on");
     cfg.apply_setting("effects", "depth_fx", "fog"); // the selector's default
     // The DEFAULT floor presentation (overhang/blob shadows) films itself:

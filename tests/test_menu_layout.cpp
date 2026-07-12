@@ -811,10 +811,10 @@ TEST(MenuLayout, ui_fx_options_layout_and_nav)
     check_fx_options_screen(buttons, count, kExpected, 4, "ui_fx_options");
 }
 
-// GRAPHICS FX subscreen: unique BACK id + 12 effects/* visual toggles on the
-// three-column x=15/115/215 grid (4 full rows at 23px pitch from y=35).
-// Weather is the single display opt-out for the per-level sim weather (the
-// old Clouds/Rain pair merged).
+// GRAPHICS FX subscreen: unique BACK id + 13 effects/* visual toggles on the
+// three-column x=15/115/215 grid (4 full rows at 23px pitch from y=35, plus
+// the lone floor-glide toggle on a fifth row). Weather is the single display
+// opt-out for the per-level sim weather (the old Clouds/Rain pair merged).
 TEST(MenuLayout, graphics_fx_options_grid_geometry_and_nav)
 {
     static const ExpectedFxButton kExpected[] = {
@@ -831,10 +831,11 @@ TEST(MenuLayout, graphics_fx_options_grid_geometry_and_nav)
         {"toggle_fire_glow", "Fire glow", 15, 104},
         {"toggle_ripples", "Ripples", 115, 104},
         {"toggle_screen_shake", "Screen shake", 215, 104},
+        {"toggle_floor_glide", "Floor glide", 15, 127},
     };
     button* buttons = picker_graphics_fx_options_buttons();
     const int count = picker_graphics_fx_options_button_count();
-    check_fx_options_screen(buttons, count, kExpected, 13, "graphics_fx_options");
+    check_fx_options_screen(buttons, count, kExpected, 14, "graphics_fx_options");
 
     // The depth row is a five-way CYCLE (id "depth_fx"), addressed by index
     // from change_depth_fx(); pin the index contract and that every label

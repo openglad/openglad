@@ -60,6 +60,7 @@ inline constexpr int PREF_MAX = 8;  // == 1 + highest pref ..
 inline constexpr int MAX_MESSAGES = 5;  // max of 5 lines, currently
 
 struct InputState;
+class GameWorld;
 class viewscreen;
 class walker;
 class radar;
@@ -116,6 +117,26 @@ class viewscreen
 		// the camera floor occludes lower floors except through air holes.
 		// Single-floor levels collapse to one opaque pass (byte-identical).
 		void draw_floor_entities(LevelRuntimeData* data, int floor, unsigned char alpha);
+		// Floor-glide trigger + suppression ladder: the ONE place (both redraw
+		// overloads call it) that assigns current_floor_ from the control
+		// walker / editor override, starting or advancing the render-only
+		// camera dolly on a classified floor change (Stairs/Fall animate,
+		// Teleport and every suppression rung snap — today's behavior).
+		void update_floor_glide(GameWorld& vworld, walker* controlob);
+		// Per-floor presentation for one pass of the redraw floor loop.
+		struct FloorPassParams {
+			unsigned char falpha; float fscale; float pf;
+			bool shift;      // apply the parallax topx/topy shift this pass
+			bool skip;       // alpha==0: render nothing for this floor
+			bool entities;   // false => terrain+decor only
+		};
+		// While a glide is inactive this returns the pre-glide integer math
+		// verbatim (floor_render_alpha + the fixed parallax step), so OFF /
+		// idle / single-floor frames are identical arithmetic. Mid-glide it
+		// evaluates the same depth grammar continuously from
+		// dz = f - glide_camera_z_.
+		[[nodiscard]] FloorPassParams compute_floor_pass(Sint32 f, const GameWorld& vworld,
+		                                                 bool ghosts_on) const;
 		// Effects pre-pass for one floor: water ripples, reflections, ground
 		// shadows, projectile trails and falling dust, drawn BEFORE the
 		// entity lists so the sprites overdraw them. Each is gated on its
@@ -184,6 +205,32 @@ class viewscreen
 		// the key is held (see floor_render_alpha). Recomputed at the top of
 		// every redraw; render-only, never fed into the sim.
 		bool ghost_hold_override_ = false;
+
+		// ---- Floor-glide transition (render-only; per-viewport => mirror-safe and
+		// split-screen-independent, exactly like current_floor_). Inactive whenever
+		// glide_frames_left_ == 0; the inactive render path is the pre-glide integer
+		// code, so cfg-off / idle / single-floor frames are byte-identical.
+		enum class FloorGlideCause : std::int8_t { None, Stairs, Fall };
+		float           glide_camera_z_      = 0.0f;  // valid while active
+		float           glide_from_z_        = 0.0f;
+		Sint32          glide_to_floor_      = 0;
+		Sint32          glide_frames_left_   = 0;
+		Sint32          glide_total_         = 0;
+		FloorGlideCause glide_cause_         = FloorGlideCause::None;
+		// Trigger baseline (previous redraw's view of the world)
+		std::uint32_t   glide_prev_control_id_ = 0;
+		std::uint32_t   glide_last_seen_frame_ = 0;   // effects_frame_tick() at last update
+		const void*     glide_world_key_       = nullptr;  // &GameWorld identity
+		std::uint32_t   glide_world_tick_      = 0;   // world tick monotonicity check
+
+		// Glide introspection (unconditional, for tests and instrumentation).
+		[[nodiscard]] Sint32 floor_glide_frames_left() const { return glide_frames_left_; }
+		[[nodiscard]] float  floor_glide_camera_z()   const
+		{
+			return glide_frames_left_ > 0 ? glide_camera_z_
+			                              : static_cast<float>(current_floor_);
+		}
+		[[nodiscard]] Sint32 floor_glide_cause()      const { return static_cast<Sint32>(glide_cause_); }
 
 	protected:
 		options *prefsob;

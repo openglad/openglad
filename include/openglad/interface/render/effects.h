@@ -121,8 +121,29 @@ bool draw_walker_dust(walker& w, viewscreen* vs);
 // teleport (landed beyond the sim's 4-cell landing nudge). RENDER-ONLY state
 // beside the position store; the sim is never touched. Shares the "dust"
 // effects key with draw_walker_dust (the caller gates both), so the OFF path
-// stays byte-identical.
+// stays byte-identical. Also records EVERY observed floor change (both
+// directions) into the classification store behind
+// effects_last_floor_change below, feeding the floor-glide camera.
 void effects_track_air_falls(GameWorld& world);
+
+// Classification of an entity's last observed floor change, recorded by
+// effects_track_air_falls: a deliberate Z-stair step (departure cell smooths
+// to TYPE_ZSTAIRS, |delta| == 1), an air fall (drop, no stair, landed within
+// the sim's landing nudge — any magnitude), or a teleport (everything else).
+// Render-only, like the fall cues; drives the floor-glide camera's
+// per-cause easing (Teleport ⇒ snap).
+enum class FloorChangeKind : std::int8_t { Stairs, Fall, Teleport };
+struct FloorChange
+{
+	std::uint32_t tick; // effects frame tick when the change was seen
+	short from;
+	short to;
+	FloorChangeKind kind;
+};
+
+// Last observed floor change for entity_id, classified Stairs/Fall/Teleport.
+// Returns false if none recorded. Records are pruned after a few frames.
+bool effects_last_floor_change(std::uint32_t entity_id, FloorChange* out);
 
 // Draw the active falling cues that landed on `floor` (the camera floor):
 // for ~8 frames after the fall, a grey 2px motion smear slides down-screen

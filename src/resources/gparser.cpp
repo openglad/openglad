@@ -228,6 +228,7 @@ bool cfg_store::load_settings()
     apply_setting("effects", "fire_glow", "on");
     apply_setting("effects", "ripples", "on");
     apply_setting("effects", "screen_shake", "on");
+    apply_setting("effects", "floor_glide", "on");
 
     Log("Loading settings\n");
     auto file = og::io::og_open_read("cfg/openglad.yaml", true);

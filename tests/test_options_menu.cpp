@@ -107,15 +107,16 @@ static const FxToggleSpec kGraphicsFxToggles[] = {
     {"toggle_fire_glow", "effects", "fire_glow"},
     {"toggle_ripples", "effects", "ripples"},
     {"toggle_screen_shake", "effects", "screen_shake"},
+    {"toggle_floor_glide", "effects", "floor_glide"},
 };
 
 inline constexpr int kFxScreenCount = 3;
-inline constexpr int kFxMaxToggles = 12;
+inline constexpr int kFxMaxToggles = 13;
 
 static const FxScreenSpec kFxScreens[kFxScreenCount] = {
     {"gameplay_fx", "gameplay_fx_back", kGameplayFxToggles, 2},
     {"ui_fx", "ui_fx_back", kUiFxToggles, 3},
-    {"graphics_fx", "graphics_fx_back", kGraphicsFxToggles, 12},
+    {"graphics_fx", "graphics_fx_back", kGraphicsFxToggles, 13},
 };
 
 struct OptionsState {

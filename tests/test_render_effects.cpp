@@ -15,6 +15,7 @@
 #include <openglad/core/runtime_trace.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/game_context.h>
 #include <openglad/interface/render/pal32.h>
 #include <gtest/gtest.h>
 #include <SDL.h>
@@ -74,6 +75,7 @@ private:
         {"attack_lunge", "on"},   {"hit_recoil", "off"}, {"ripples", "on"},
         {"trails", "on"},         {"dust", "on"},        {"fire_glow", "on"},
         {"depth_fx", "fog"},      {"screen_shake", "on"},
+        {"floor_glide", "on"},
     };
     std::vector<std::pair<std::string, std::string>> saved_;
 };
@@ -2178,7 +2180,7 @@ void all_effects_off()
 {
     for (const char* key : {"shadows", "reflections", "weather",
                             "ripples", "trails", "dust", "fire_glow",
-                            "depth_fx", "screen_shake"})
+                            "depth_fx", "screen_shake", "floor_glide"})
         cfg.apply_setting("effects", key, "off");
 }
 
@@ -3910,7 +3912,891 @@ TEST(RenderEffects, screen_shake_gates_editor_other_floors_and_off_screen)
     restore_world(vs);
 }
 
+// ---------------------------------------------------------------------------
+// Floor glide: the continuous-Z camera dolly across classified floor changes
+// (docs/floor-glide-design.md). cfg "effects" floor_glide, default ON.
+//
+// Trigger recipe used throughout: the classifier baselines an entity's floor
+// once per effects_frame_tick, so a glide needs (1) a settled redraw that
+// baselines the tracker, (2) one frame-clock advance, (3) an in-place
+// set_floor + redraw — that redraw is the trigger frame (frames_left == N-1,
+// camera feedback at render frame i = 1). Later redraws at a frozen tick
+// advance the glide one render frame each (the S8 staleness rung tolerates a
+// tick diff <= 2, and 0 always passes). No wall clock anywhere.
+// ---------------------------------------------------------------------------
 
+namespace
+{
+
+// Grass world with `floors` stacked floors and the control walker standing
+// still at (160,120) on `control_floor`.
+walker* setup_glide_world(viewscreen* vs, int floors, int control_floor)
+{
+    prepare_world();
+    GameWorld& world = scr()->world();
+    world.set_floor_count(floors);
+    fill_camera_grid(static_cast<unsigned char>(PIX_GRASS1));
+    for (int f = 1; f < floors; f++)
+        fill_floor_grid(world, f, static_cast<unsigned char>(PIX_GRASS1));
+    walker* control = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    if (control == nullptr)
+        return nullptr;
+    control->set_floor(static_cast<short>(control_floor));
+    control->setxy(160, 120);
+    vs->control = control;
+    return control;
+}
+
+// Stamp `pix` on `floor`'s grid at the walker's center cell. The classifier's
+// departure-cell probe reads this cell on the floor the walker LEFT, so an
+// in-place +/-1 step over a Z-stair tile classifies as Stairs.
+void put_tile_under(GameWorld& world, const walker* w, int floor,
+                    unsigned char pix)
+{
+    PixieData& g = world.grid_for_floor(floor);
+    const Sint32 cx =
+        (static_cast<Sint32>(w->xpos()) + w->sizex() / 2) / GRID_SIZE;
+    const Sint32 cy =
+        (static_cast<Sint32>(w->ypos()) + w->sizey() / 2) / GRID_SIZE;
+    g.data[cx + static_cast<Sint32>(g.w) * cy] = pix;
+}
+
+// One redraw snaps whatever glide state the viewscreen carried over (S8's
+// unsigned staleness wraps after effects_reset_for_testing), settles the
+// camera, and first-sights the fall tracker; the second redraw re-baselines
+// on a steady frame; the final advance leaves the NEXT in-place floor change
+// exactly 1 tick fresh — classifiable — when the caller redraws.
+void settle_glide_baseline(viewscreen* vs)
+{
+    effects_reset_for_testing();
+    ASSERT_TRUE(do_redraw(vs));
+    effects_advance_frame();
+    ASSERT_TRUE(do_redraw(vs));
+    effects_advance_frame();
+}
+
+// The render sample publishes only for viewport 0 during active gameplay.
+struct GameplayActiveGuard
+{
+    bool prev;
+    GameplayActiveGuard()
+        : prev(og::runtime::current_session->gameplay_active_)
+    {
+        og::runtime::current_session->gameplay_active_ = true;
+    }
+    ~GameplayActiveGuard()
+    {
+        og::runtime::current_session->gameplay_active_ = prev;
+    }
+    GameplayActiveGuard(const GameplayActiveGuard&) = delete;
+    GameplayActiveGuard& operator=(const GameplayActiveGuard&) = delete;
+};
+
+} // namespace
+
+// 10.2-1: the headline OFF byte-identity pair. (a) two identical cfg-off
+// stair crossings render byte-identically frame for frame; (b) the cfg-on
+// run diverges on at least one mid-glide frame while OFF never activates.
+TEST(RenderEffects, floor_glide_off_is_byte_identical_and_on_diverges)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    EffectsCfgGuard guard;
+    all_effects_off();
+
+    GameWorld& world = scr()->world();
+    walker* control = setup_glide_world(vs, 2, 0);
+    ASSERT_NE(nullptr, control);
+    put_tile_under(world, control, 0,
+                   static_cast<unsigned char>(PIX_ZSTAIR_UP));
+
+    // One stair-up crossing, replayed identically: grab the trigger frame
+    // and the 7 frames after it (mid-glide when ON: N = 16).
+    const auto run = [&](const char* mode, std::vector<std::vector<RGB>>* out,
+                         bool expect_active) {
+        cfg.apply_setting("effects", "floor_glide", mode);
+        control->set_floor(0);
+        control->setxy(160, 120);
+        settle_glide_baseline(vs);
+        control->set_floor(1); // the in-place Z-stair step
+        out->clear();
+        for (int f = 0; f < 8; f++)
+        {
+            ASSERT_TRUE(do_redraw(vs));
+            if (!expect_active)
+            {
+                ASSERT_EQ(0, vs->floor_glide_frames_left())
+                    << mode << " run must never activate, frame " << f;
+            }
+            out->push_back(grab_viewport(vs));
+        }
+        if (expect_active)
+        {
+            ASSERT_GT(vs->floor_glide_frames_left(), 0)
+                << "the ON run must still be mid-glide at frame 8 of 16";
+        }
+    };
+
+    std::vector<std::vector<RGB>> off_a, off_b, on;
+    run("off", &off_a, false);
+    run("off", &off_b, false);
+    ASSERT_EQ(off_a.size(), off_b.size());
+    for (size_t f = 0; f < off_a.size(); f++)
+        ASSERT_TRUE(rects_equal(off_a[f], off_b[f]))
+            << "cfg-off replays must be byte-identical, frame " << f;
+
+    run("on", &on, true);
+    bool diverged = false;
+    for (size_t f = 0; f < on.size(); f++)
+        diverged = diverged || !rects_equal(off_a[f], on[f]);
+    ASSERT_TRUE(diverged)
+        << "the ON run must differ from OFF on some mid-glide frame";
+
+    effects_reset_for_testing();
+    restore_world(vs);
+}
+
+// 10.2-2: single-floor structural gate (S2). cfg ON renders byte-identically
+// to cfg OFF on a 1-floor level, and even a forced floor hop snaps.
+TEST(RenderEffects, floor_glide_single_floor_structural_gate)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    EffectsCfgGuard guard;
+    all_effects_off();
+
+    GameWorld& world = scr()->world();
+    walker* control = setup_glide_world(vs, 1, 0);
+    ASSERT_NE(nullptr, control);
+    put_tile_under(world, control, 0,
+                   static_cast<unsigned char>(PIX_ZSTAIR_UP));
+
+    const auto run = [&](const char* mode,
+                         std::vector<std::vector<RGB>>* out) {
+        cfg.apply_setting("effects", "floor_glide", mode);
+        control->setxy(120, 120);
+        settle_glide_baseline(vs);
+        out->clear();
+        for (int f = 0; f < 4; f++)
+        {
+            // Stride across the stair tile: the only would-be trigger a
+            // single-floor level can offer.
+            control->setxy(static_cast<std::int32_t>(120 + f * 8),
+                           std::int32_t{120});
+            effects_advance_frame();
+            ASSERT_TRUE(do_redraw(vs));
+            ASSERT_EQ(0, vs->floor_glide_frames_left())
+                << mode << " run frame " << f;
+            out->push_back(grab_viewport(vs));
+        }
+    };
+    std::vector<std::vector<RGB>> off, on;
+    run("off", &off);
+    run("on", &on);
+    ASSERT_EQ(off.size(), on.size());
+    for (size_t f = 0; f < off.size(); f++)
+        ASSERT_TRUE(rects_equal(off[f], on[f]))
+            << "single-floor ON must equal OFF byte for byte, frame " << f;
+
+    // A forced floor hop in a floor_count()==1 world: S2 snaps with cfg ON
+    // (driven through the trigger helper directly — the out-of-range floor
+    // is never rendered).
+    cfg.apply_setting("effects", "floor_glide", "on");
+    settle_glide_baseline(vs);
+    control->set_floor(1);
+    vs->update_floor_glide(world, control);
+    EXPECT_EQ(0, vs->floor_glide_frames_left());
+    EXPECT_EQ(1, vs->current_floor_) << "S2 still snaps current_floor_";
+    EXPECT_EQ(0, vs->floor_glide_cause());
+    control->set_floor(0);
+    vs->update_floor_glide(world, control);
+    EXPECT_EQ(0, vs->current_floor_);
+
+    effects_reset_for_testing();
+    restore_world(vs);
+}
+
+// 10.2-3: endpoint exactness — the no-pop pin. Frame N of a stair glide is
+// byte-identical to the snap-constructed steady state (the final frame takes
+// the untouched integer path, structurally). The penultimate frame is
+// deliberately NOT pinned byte-wise (<= 1-quantum residual by design).
+TEST(RenderEffects, floor_glide_endpoint_frame_matches_snapped_steady_state)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    EffectsCfgGuard guard;
+    all_effects_off();
+    cfg.apply_setting("effects", "floor_glide", "on");
+
+    GameWorld& world = scr()->world();
+    walker* control = setup_glide_world(vs, 2, 0);
+    ASSERT_NE(nullptr, control);
+    put_tile_under(world, control, 0,
+                   static_cast<unsigned char>(PIX_ZSTAIR_UP));
+
+    settle_glide_baseline(vs);
+    control->set_floor(1);
+    trace_clear();
+    ASSERT_TRUE(do_redraw(vs)); // trigger: render frame i = 1
+    ASSERT_EQ(15, vs->floor_glide_frames_left());
+    ASSERT_EQ(1, vs->floor_glide_cause()) << "cause Stairs";
+    ASSERT_TRUE(trace_contains("effects", "floor_glide start cause=1"));
+    for (int f = 0; f < 15; f++)
+        ASSERT_TRUE(do_redraw(vs));
+    ASSERT_EQ(0, vs->floor_glide_frames_left())
+        << "redraw 16 of 16 must render the untouched integer path";
+    const std::vector<RGB> end_frame = grab_viewport(vs);
+
+    // Snap-construct the identical steady state: cfg OFF renders the
+    // pre-glide integer path over the same scene at the same frame_tick.
+    cfg.apply_setting("effects", "floor_glide", "off");
+    ASSERT_TRUE(do_redraw(vs));
+    const std::vector<RGB> steady = grab_viewport(vs);
+    ASSERT_TRUE(rects_equal(end_frame, steady))
+        << "the final glide frame must equal steady state byte for byte";
+
+    // Twin-drift pin (R1): the no-arg gameplay overload drives the same
+    // trigger through the shared helper.
+    cfg.apply_setting("effects", "floor_glide", "on");
+    control->set_floor(0);
+    effects_reset_for_testing();
+    ASSERT_TRUE(vs->redraw());
+    effects_advance_frame();
+    ASSERT_TRUE(vs->redraw());
+    effects_advance_frame();
+    control->set_floor(1);
+    ASSERT_TRUE(vs->redraw());
+    ASSERT_EQ(15, vs->floor_glide_frames_left())
+        << "the no-arg redraw overload must start the same glide";
+
+    effects_reset_for_testing();
+    restore_world(vs);
+}
+
+// 10.2-4: cause/duration matrix via introspection. Stairs = 16 frames both
+// directions; falls scale 9/12/14 with the story count (clamped at 3);
+// teleports (rise without stair, multi-floor stair jump, drop beyond the
+// landing nudge) never animate.
+TEST(RenderEffects, floor_glide_cause_and_duration_matrix)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    EffectsCfgGuard guard;
+    all_effects_off();
+    cfg.apply_setting("effects", "floor_glide", "on");
+    GameWorld& world = scr()->world();
+
+    struct Case
+    {
+        const char* name;
+        int floors;
+        int from;
+        int to;
+        bool stair_under; // Z-stair on the departure floor's cell
+        bool xy_jump;     // relocate beyond the fall nudge => Teleport
+        Sint32 want_left; // frames_left on the trigger frame (N - 1)
+        Sint32 want_cause; // 0 None / 1 Stairs / 2 Fall
+    };
+    const Case cases[] = {
+        {"stair_up", 2, 0, 1, true, false, 15, 1},
+        {"stair_down", 2, 1, 0, true, false, 15, 1},
+        {"fall_1_story", 2, 1, 0, false, false, 8, 2},
+        {"fall_2_stories", 3, 2, 0, false, false, 11, 2},
+        {"fall_3_stories_clamps_n", 4, 3, 0, false, false, 13, 2},
+        {"fall_4_stories_still_clamped", 5, 4, 0, false, false, 13, 2},
+        {"teleport_drop_beyond_nudge", 2, 1, 0, false, true, 0, 0},
+        {"rise_without_stair", 2, 0, 1, false, false, 0, 0},
+        {"stair_jump_2_up", 3, 0, 2, true, false, 0, 0},
+    };
+    for (const Case& c : cases)
+    {
+        SCOPED_TRACE(c.name);
+        walker* control = setup_glide_world(vs, c.floors, c.from);
+        ASSERT_NE(nullptr, control);
+        if (c.stair_under)
+            put_tile_under(world, control, c.from,
+                           static_cast<unsigned char>(
+                               c.to > c.from ? PIX_ZSTAIR_UP
+                                             : PIX_ZSTAIR_DOWN));
+        settle_glide_baseline(vs);
+        control->set_floor(static_cast<short>(c.to));
+        if (c.xy_jump) // 6 cells > the 5-cell kFallCueMaxNudgePx
+            control->setxy(static_cast<std::int32_t>(160 + 6 * GRID_SIZE),
+                           std::int32_t{120});
+        ASSERT_TRUE(do_redraw(vs));
+        EXPECT_EQ(c.want_left, vs->floor_glide_frames_left());
+        EXPECT_EQ(c.want_cause, vs->floor_glide_cause());
+        EXPECT_EQ(c.to, vs->current_floor_)
+            << "integer current_floor_ snaps to the destination at frame 0";
+        effects_reset_for_testing();
+        restore_world(vs);
+    }
+}
+
+// 10.2-5: table-driven suppression ladder. Every rung snaps (frames_left 0,
+// cause None, current_floor_ assigned exactly as the pre-glide code did);
+// the unsuppressed control row proves the shared attempt is glide-worthy.
+TEST(RenderEffects, floor_glide_suppression_ladder_snaps)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    EffectsCfgGuard guard;
+    all_effects_off();
+    GameWorld& world = scr()->world();
+
+    enum class Rung
+    {
+        None,        // control row: the attempt must actually glide
+        CfgOff,      // S1
+        EditorOverride, // S3 (S2 is covered by the structural-gate test)
+        Authoring,   // S4
+        ControlNull, // S5
+        ControlSwap, // S6
+        WorldKey,    // S7 identity
+        WorldTick,   // S7 tick monotonicity
+        Stale,       // S8
+        NoRecord,    // S10 classification absent
+    };
+    struct Row
+    {
+        const char* name;
+        Rung rung;
+    };
+    const Row rows[] = {
+        {"control_row_glides", Rung::None},
+        {"s1_cfg_off", Rung::CfgOff},
+        {"s3_editor_override", Rung::EditorOverride},
+        {"s4_authoring_view", Rung::Authoring},
+        {"s5_control_null", Rung::ControlNull},
+        {"s6_control_id_swap", Rung::ControlSwap},
+        {"s7_world_key_swap", Rung::WorldKey},
+        {"s7_world_tick_reset", Rung::WorldTick},
+        {"s8_staleness", Rung::Stale},
+        {"s10_classification_absent", Rung::NoRecord},
+    };
+    for (const Row& row : rows)
+    {
+        SCOPED_TRACE(row.name);
+        cfg.apply_setting("effects", "floor_glide", "on");
+        walker* control = setup_glide_world(vs, 2, 0);
+        ASSERT_NE(nullptr, control);
+        put_tile_under(world, control, 0,
+                       static_cast<unsigned char>(PIX_ZSTAIR_UP));
+        if (row.rung == Rung::WorldTick)
+            world.tick_count_ = 100; // baselined during settle
+        settle_glide_baseline(vs);
+
+        Sint32 want_floor = 1;
+        switch (row.rung)
+        {
+        case Rung::None:
+            control->set_floor(1);
+            break;
+        case Rung::CfgOff:
+            cfg.apply_setting("effects", "floor_glide", "off");
+            control->set_floor(1);
+            break;
+        case Rung::EditorOverride:
+            vs->editor_floor_override_ = 0;
+            control->set_floor(1);
+            want_floor = 0; // the override IS the floor
+            break;
+        case Rung::Authoring:
+            vs->editor_authoring_view_ = true;
+            control->set_floor(1);
+            break;
+        case Rung::ControlNull:
+            control->set_floor(1);
+            vs->control = nullptr;
+            want_floor = 0; // no control walker => floor 0
+            break;
+        case Rung::ControlSwap:
+        {
+            walker* other = world.add_ob(Order::Living, FAMILY_SOLDIER);
+            ASSERT_NE(nullptr, other);
+            other->set_floor(1);
+            other->setxy(160, 120);
+            vs->control = other; // possession/handoff: id mismatch
+            break;
+        }
+        case Rung::WorldKey:
+            vs->glide_world_key_ = nullptr; // level-load identity change
+            control->set_floor(1);
+            break;
+        case Rung::WorldTick:
+            world.tick_count_ = 50; // ran backwards: restart/reset
+            control->set_floor(1);
+            break;
+        case Rung::Stale:
+            effects_advance_frame(); // settle left diff 1; push it to 3
+            effects_advance_frame();
+            control->set_floor(1);
+            break;
+        case Rung::NoRecord:
+            // Burn the tick's tracker run BEFORE the hop: the once-per-frame
+            // guard then skips it on the trigger redraw => no record => S10.
+            ASSERT_TRUE(do_redraw(vs));
+            control->set_floor(1);
+            break;
+        }
+
+        trace_clear();
+        ASSERT_TRUE(do_redraw(vs));
+        if (row.rung == Rung::None)
+        {
+            EXPECT_EQ(15, vs->floor_glide_frames_left());
+            EXPECT_EQ(1, vs->floor_glide_cause());
+            EXPECT_TRUE(trace_contains("effects", "floor_glide start"));
+        }
+        else
+        {
+            EXPECT_EQ(0, vs->floor_glide_frames_left());
+            EXPECT_EQ(0, vs->floor_glide_cause());
+            EXPECT_FALSE(trace_contains("effects", "floor_glide start"));
+        }
+        EXPECT_EQ(want_floor, vs->current_floor_);
+
+        // Undo the rung's world/view mutations.
+        vs->editor_floor_override_ = -1;
+        vs->editor_authoring_view_ = false;
+        world.tick_count_ = 0;
+        effects_reset_for_testing();
+        restore_world(vs);
+    }
+}
+
+// 10.2-6: newest-event-wins retarget. A fall triggered mid-stair-glide
+// switches the cause and duration and continues from the live fractional
+// camera height — never a snap-back to an integer.
+TEST(RenderEffects, floor_glide_retarget_switches_cause_and_stays_continuous)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    EffectsCfgGuard guard;
+    all_effects_off();
+    cfg.apply_setting("effects", "floor_glide", "on");
+
+    GameWorld& world = scr()->world();
+    walker* control = setup_glide_world(vs, 2, 0);
+    ASSERT_NE(nullptr, control);
+    put_tile_under(world, control, 0,
+                   static_cast<unsigned char>(PIX_ZSTAIR_UP));
+
+    settle_glide_baseline(vs);
+    control->set_floor(1);
+    ASSERT_TRUE(do_redraw(vs)); // stair-up trigger, i = 1 of 16
+    ASSERT_EQ(15, vs->floor_glide_frames_left());
+    ASSERT_EQ(1, vs->floor_glide_cause());
+
+    // Advance to mid-glide, checking the per-frame step stays bounded.
+    float prev_z = vs->floor_glide_camera_z();
+    for (int f = 0; f < 4; f++)
+    {
+        ASSERT_TRUE(do_redraw(vs));
+        const float z = vs->floor_glide_camera_z();
+        ASSERT_LE(std::fabs(z - prev_z), 0.35f)
+            << "stair easing must move in bounded per-frame steps";
+        prev_z = z;
+    }
+    ASSERT_EQ(11, vs->floor_glide_frames_left());
+    const float z_before = vs->floor_glide_camera_z();
+    ASSERT_GT(z_before, 0.0f);
+    ASSERT_LT(z_before, 1.0f);
+
+    // Retarget: an in-place fall back to floor 0 (grass departure cell on
+    // floor 1, zero XY nudge). Newest event wins uniformly.
+    effects_advance_frame();
+    control->set_floor(0);
+    ASSERT_TRUE(do_redraw(vs));
+    EXPECT_EQ(2, vs->floor_glide_cause()) << "cause switches to Fall";
+    EXPECT_EQ(8, vs->floor_glide_frames_left())
+        << "duration resets to the fall N (9) at trigger";
+    EXPECT_EQ(0, vs->current_floor_);
+    const float z_after = vs->floor_glide_camera_z();
+    EXPECT_LE(std::fabs(z_after - z_before), 0.35f)
+        << "retarget continues from the live fractional height";
+    EXPECT_GT(z_after, 0.0f) << "never snaps back to an integer";
+    EXPECT_LT(z_after, 1.0f);
+
+    effects_reset_for_testing();
+    restore_world(vs);
+}
+
+// 10.2-7: ghost-hold invariant. While the look-up hold is active, every
+// drawn above-camera floor keeps alpha >= kFloorGhostAlpha through the whole
+// glide, and the final frame equals the settled steady hold frame.
+TEST(RenderEffects, floor_glide_ghost_hold_keeps_above_floor_alpha)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    EffectsCfgGuard guard;
+    all_effects_off();
+    cfg.apply_setting("effects", "floor_glide", "on");
+
+    GameWorld& world = scr()->world();
+    walker* control = setup_glide_world(vs, 2, 0);
+    ASSERT_NE(nullptr, control);
+    put_tile_under(world, control, 0,
+                   static_cast<unsigned char>(PIX_ZSTAIR_UP));
+
+    KeyBindingGuard bind(0, KEY_LOOKUP, KEYCODE_v);
+    SessionKeyStateGuard keystates;
+    keystates.set(SDLK_v, true);
+
+    settle_glide_baseline(vs);
+    control->set_floor(1);
+    ASSERT_TRUE(do_redraw(vs)); // stair-up trigger under the hold
+    ASSERT_EQ(15, vs->floor_glide_frames_left());
+    ASSERT_TRUE(vs->ghost_hold_override_);
+
+    // Every glide frame: the destination floor is above the fractional
+    // camera (dz > 0) until the sweep completes; base-anchored curves keep
+    // its drawn alpha at or above the steady ghost value.
+    while (vs->floor_glide_frames_left() > 0)
+    {
+        const viewscreen::FloorPassParams fp =
+            vs->compute_floor_pass(1, world, true);
+        if (!fp.skip)
+        {
+            EXPECT_GE(static_cast<int>(fp.falpha),
+                      static_cast<int>(viewscreen::kFloorGhostAlpha))
+                << "hold-active above-floor alpha fell below the ghost floor";
+        }
+        EXPECT_TRUE(fp.entities)
+            << "the hold keeps the full entity pass, exactly as steady holds";
+        ASSERT_TRUE(do_redraw(vs));
+    }
+    const std::vector<RGB> end_frame = grab_viewport(vs);
+
+    // The settled steady hold frame, snap-constructed with cfg OFF at the
+    // same frame_tick, must match byte for byte.
+    cfg.apply_setting("effects", "floor_glide", "off");
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_TRUE(rects_equal(end_frame, grab_viewport(vs)))
+        << "glide end under the hold must equal the steady hold frame";
+
+    effects_reset_for_testing();
+    restore_world(vs);
+}
+
+// 10.2-8a: the departing floor renders terrain-only during a no-hold
+// down-glide — a monster on it contributes ZERO pixels from the trigger
+// frame on (the frame-1 entity vanish, deliberate and fx-review-gated).
+TEST(RenderEffects, floor_glide_departing_pass_is_terrain_only)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    EffectsCfgGuard guard;
+    all_effects_off();
+    cfg.apply_setting("effects", "floor_glide", "on");
+
+    GameWorld& world = scr()->world();
+
+    // Two runs of the same stairs-down descent (floor 1 -> 0), with and
+    // without a monster on the departure floor; grab the steady frame plus
+    // the trigger + 4 mid-glide frames.
+    Sint32 spritew = 0, spriteh = 0;
+    const auto run = [&](bool with_monster, std::vector<RGB>* steady,
+                         std::vector<std::vector<RGB>>* glide_frames) {
+        walker* control = setup_glide_world(vs, 2, 1);
+        ASSERT_NE(nullptr, control);
+        put_tile_under(world, control, 1,
+                       static_cast<unsigned char>(PIX_ZSTAIR_DOWN));
+        if (with_monster)
+        {
+            walker* monster = world.add_ob(Order::Living, FAMILY_SOLDIER);
+            ASSERT_NE(nullptr, monster);
+            monster->set_floor(1);
+            monster->setxy(200, 120);
+            spritew = monster->sizex();
+            spriteh = monster->sizey();
+        }
+        settle_glide_baseline(vs);
+        ASSERT_TRUE(do_redraw(vs));
+        *steady = grab_viewport(vs);
+        effects_advance_frame(); // the extra steady redraw burned tick 2
+        control->set_floor(0);   // the in-place stair descent
+        trace_clear();
+        glide_frames->clear();
+        for (int f = 0; f < 5; f++)
+        {
+            ASSERT_TRUE(do_redraw(vs));
+            ASSERT_GT(vs->floor_glide_frames_left(), 0)
+                << "frame " << f << " of 5 must be mid-glide (N = 16)";
+            glide_frames->push_back(grab_viewport(vs));
+        }
+        ASSERT_TRUE(trace_contains("effects", "floor_glide start cause=1"));
+        effects_reset_for_testing();
+        restore_world(vs);
+    };
+
+    std::vector<RGB> steady_with, steady_without;
+    std::vector<std::vector<RGB>> glide_with, glide_without;
+    run(true, &steady_with, &glide_with);
+    run(false, &steady_without, &glide_without);
+
+    ASSERT_FALSE(rects_equal(steady_with, steady_without))
+        << "the probe is meaningless unless the monster shows up steady";
+    ASSERT_EQ(glide_with.size(), glide_without.size());
+
+    // Mid-glide the monster may contribute exactly ONE thing: its blob
+    // shadow (the deliberate <=16-frame double representation — the shadow
+    // pass keys off the already-snapped integer floor and draws post-loop at
+    // unscaled screen coords). Its SPRITE must contribute nothing: every
+    // with/without difference must sit inside the squashed shadow footprint
+    // at the monster's feet, never in the body rows above it.
+    viewscreen* vsp = view0();
+    ASSERT_GT(spritew, 0);
+    ASSERT_GT(spriteh, 0);
+    const int mx = world_to_screen_x(vsp, 200);
+    const int my = world_to_screen_y(vsp, 120);
+    const int feet = my + 2 + static_cast<int>(spriteh); // 1-story SE nudge
+    const int shadow_top = feet - (static_cast<int>(spriteh) + 2) / 3 - 2;
+    const int sx0 = mx;
+    const int sx1 = mx + 2 + static_cast<int>(spritew) + 2;
+    for (size_t f = 0; f < glide_with.size(); f++)
+    {
+        size_t changed = 0;
+        for (size_t i = 0; i < glide_with[f].size(); i++)
+        {
+            if (same(glide_with[f][i], glide_without[f][i]))
+                continue;
+            changed++;
+            const int x = static_cast<int>(vsp->xloc) +
+                static_cast<int>(i % static_cast<size_t>(vsp->xview));
+            const int y = static_cast<int>(vsp->yloc) +
+                static_cast<int>(i / static_cast<size_t>(vsp->xview));
+            ASSERT_GE(y, shadow_top)
+                << "sprite pixel above the shadow band leaked into glide "
+                << "frame " << f << " at (" << x << "," << y
+                << ") — the departing pass must be terrain-only";
+            ASSERT_LE(y, feet + 1) << "stray pixel below the feet, frame " << f;
+            ASSERT_GE(x, sx0) << "stray pixel left of the footprint, frame " << f;
+            ASSERT_LE(x, sx1) << "stray pixel right of the footprint, frame " << f;
+        }
+        ASSERT_GT(changed, 0u)
+            << "the blob shadow (deliberate double representation) must "
+            << "still anchor the monster, frame " << f;
+    }
+}
+
+// 10.2-8b: rng-invariance companion, pinned on the invariant the design
+// actually guarantees: the glide's EXTRA passes (the terrain-only departing
+// floor) add ZERO rng draws. An INVISIBLE-mode entity consumes one ctx rng
+// draw per opaque pixel when drawn on the direct camera-floor path, so we
+// park one on the DEPARTING floor: cfg-off frames never draw that floor
+// after the snap, and glide frames render it terrain-only — both must
+// consume exactly zero rng.
+//
+// (Deliberately narrower than a strict ON-vs-OFF cursor-equality pin: an
+// entity on the DESTINATION floor mid-glide takes the pre-existing
+// faded-floor layer path — plain sprite, no INVISIBLE_MODE, no rng — so
+// cursor equality against the cfg-off camera-floor frame does NOT hold
+// there. That mode switch is the shipped below-floor grammar, not a new
+// entity pass; recorded as an accepted exposure in
+// docs/floor-glide-design.md §2.4 / R2.)
+TEST(RenderEffects, floor_glide_adds_zero_render_rng_draws)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    EffectsCfgGuard guard;
+    all_effects_off();
+
+    struct CountingRandom : public IRandom
+    {
+        std::uint64_t calls = 0;
+        std::uint32_t next(std::uint32_t) override
+        {
+            ++calls;
+            return 0; // deterministic: every invisible pixel draws
+        }
+    };
+    // RAII: a fatal ASSERT anywhere below must not leave the global rng
+    // dangling at a dead stack object and poison every later test.
+    struct RngSwapGuard
+    {
+        IRandom* saved;
+        explicit RngSwapGuard(IRandom* replacement) : saved(ctx().rng)
+        {
+            ctx().rng = replacement;
+        }
+        ~RngSwapGuard() { ctx().rng = saved; }
+    };
+    CountingRandom counter;
+    RngSwapGuard rng_swap(&counter);
+
+    GameWorld& world = scr()->world();
+
+    // Sanity for the counter itself: an invisible ally on the CAMERA floor
+    // takes the direct INVISIBLE_MODE path and consumes rng draws.
+    {
+        cfg.apply_setting("effects", "floor_glide", "on");
+        walker* control = setup_glide_world(vs, 2, 0);
+        ASSERT_NE(nullptr, control);
+        walker* ghost = world.add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, ghost);
+        ghost->setxy(120, 120);
+        ghost->set_invisibility_left(100);
+        settle_glide_baseline(vs);
+        const std::uint64_t before = counter.calls;
+        ASSERT_TRUE(do_redraw(vs));
+        ASSERT_GT(counter.calls, before)
+            << "the probe entity must consume rng on the camera floor";
+        effects_reset_for_testing();
+        restore_world(vs);
+    }
+
+    const auto run = [&](const char* mode, std::vector<std::uint64_t>* out,
+                         bool expect_active) {
+        cfg.apply_setting("effects", "floor_glide", mode);
+        walker* control = setup_glide_world(vs, 2, 1);
+        ASSERT_NE(nullptr, control);
+        put_tile_under(world, control, 1,
+                       static_cast<unsigned char>(PIX_ZSTAIR_DOWN));
+        walker* ghost = world.add_ob(Order::Living, FAMILY_SOLDIER);
+        ASSERT_NE(nullptr, ghost);
+        ghost->set_floor(1); // DEPARTING floor after the descent below
+        ghost->setxy(120, 120);
+        ghost->set_invisibility_left(100);
+        settle_glide_baseline(vs);
+        control->set_floor(0); // the in-place stair descent
+        out->clear();
+        for (int f = 0; f < 5; f++)
+        {
+            const std::uint64_t before = counter.calls;
+            ASSERT_TRUE(do_redraw(vs));
+            out->push_back(counter.calls - before);
+            if (expect_active)
+            {
+                ASSERT_GT(vs->floor_glide_frames_left(), 0)
+                    << "the ON run must be mid-glide at frame " << f;
+            }
+            else
+            {
+                ASSERT_EQ(0, vs->floor_glide_frames_left());
+            }
+        }
+        effects_reset_for_testing();
+        restore_world(vs);
+    };
+
+    std::vector<std::uint64_t> off_calls, on_calls;
+    run("off", &off_calls, false);
+    run("on", &on_calls, true);
+
+    ASSERT_EQ(off_calls.size(), on_calls.size());
+    for (size_t f = 0; f < off_calls.size(); f++)
+    {
+        EXPECT_EQ(0u, off_calls[f])
+            << "cfg-off must not draw the vacated floor, frame " << f;
+        EXPECT_EQ(0u, on_calls[f])
+            << "the terrain-only departing pass added rng draws, frame " << f;
+    }
+}
+
+// 10.2-9: multi-story fall = one continuous sweep. Delta 2 runs 12 frames,
+// the camera height crosses the intermediate floor mid-sweep and overshoots
+// past the destination (the landing squash) before settling.
+TEST(RenderEffects, floor_glide_multistory_fall_sweeps_through_and_overshoots)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    EffectsCfgGuard guard;
+    all_effects_off();
+    cfg.apply_setting("effects", "floor_glide", "on");
+
+    walker* control = setup_glide_world(vs, 3, 2);
+    ASSERT_NE(nullptr, control);
+
+    settle_glide_baseline(vs);
+    control->set_floor(0); // two-story in-place air fall
+    ASSERT_TRUE(do_redraw(vs));
+    ASSERT_EQ(11, vs->floor_glide_frames_left()) << "N = 12 for 2 stories";
+    ASSERT_EQ(2, vs->floor_glide_cause());
+
+    std::vector<float> zs;
+    zs.push_back(vs->floor_glide_camera_z());
+    int extra = 0;
+    while (vs->floor_glide_frames_left() > 0 && extra < 32)
+    {
+        ASSERT_TRUE(do_redraw(vs));
+        zs.push_back(vs->floor_glide_camera_z());
+        extra++;
+    }
+    ASSERT_EQ(11, extra) << "total glide = 12 render frames";
+    EXPECT_GT(zs.front(), 1.8f) << "the sweep starts just below floor 2";
+    bool crossed_intermediate = false;
+    float min_z = 99.0f;
+    for (size_t k = 0; k + 1 < zs.size(); k++)
+        if (zs[k] >= 1.0f && zs[k + 1] <= 1.0f)
+            crossed_intermediate = true;
+    for (const float z : zs)
+        min_z = std::min(min_z, z);
+    EXPECT_TRUE(crossed_intermediate)
+        << "one continuous sweep must pass the intermediate floor's height";
+    EXPECT_LE(min_z, -0.2f)
+        << "the fall must overshoot 0.25 floors past the destination";
+    EXPECT_EQ(0.0f, vs->floor_glide_camera_z())
+        << "inactive accessor reports the integer floor";
+
+    effects_reset_for_testing();
+    restore_world(vs);
+}
+
+// 10.2-10: camera and render-sample pins. Every glide frame restores
+// topx/topy to the unshifted camera (the per-floor parallax shift never
+// leaks out of the floor loop) and publishes exactly one primary render
+// sample per redraw.
+TEST(RenderEffects, floor_glide_restores_camera_and_publishes_one_sample)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    EffectsCfgGuard guard;
+    all_effects_off();
+    cfg.apply_setting("effects", "floor_glide", "on");
+
+    GameWorld& world = scr()->world();
+    walker* control = setup_glide_world(vs, 2, 0);
+    ASSERT_NE(nullptr, control);
+    put_tile_under(world, control, 0,
+                   static_cast<unsigned char>(PIX_ZSTAIR_UP));
+
+    GameplayActiveGuard active;
+    og::runtime::reset_runtime_trace_capture_state();
+
+    settle_glide_baseline(vs);
+    const Sint32 steady_topx = vs->topx;
+    const Sint32 steady_topy = vs->topy;
+    ASSERT_TRUE(do_redraw(vs)); // sample-seq baseline (burns tick 2's tracker)
+    const auto base = og::runtime::latest_runtime_render_sample();
+    ASSERT_TRUE(base.has_value());
+    std::uint64_t prev_seq = base->render_sample_seq;
+
+    effects_advance_frame(); // fresh tick so the hop classifies
+    control->set_floor(1);
+    for (int f = 0; f < 6; f++)
+    {
+        ASSERT_TRUE(do_redraw(vs));
+        if (f == 0)
+        {
+            ASSERT_EQ(15, vs->floor_glide_frames_left());
+        }
+        EXPECT_EQ(steady_topx, vs->topx)
+            << "glide frame " << f << " leaked a shifted topx";
+        EXPECT_EQ(steady_topy, vs->topy)
+            << "glide frame " << f << " leaked a shifted topy";
+        const auto sample = og::runtime::latest_runtime_render_sample();
+        ASSERT_TRUE(sample.has_value());
+        EXPECT_EQ(prev_seq + 1u, sample->render_sample_seq)
+            << "exactly one render sample per redraw, frame " << f;
+        EXPECT_EQ(steady_topx, sample->camera_topx);
+        EXPECT_EQ(steady_topy, sample->camera_topy);
+        prev_seq = sample->render_sample_seq;
+    }
+
+    effects_reset_for_testing();
+    restore_world(vs);
+}
 
 // ---------------------------------------------------------------------------
 // FX-capture: effect close-up scenes for the visual review site
@@ -4168,6 +5054,105 @@ TEST(RenderEffects, zz_capture_effect_scenes)
                              static_cast<short>(100));
             else if (lap == 16)
                 mover->set_floor(0); // walked off the platform edge: the fall
+        });
+
+    // Floor-glide close-ups (docs/floor-glide-design.md §10.3), split so each
+    // review question gets its own loop: the stairs read (with the departing-
+    // floor entity vanish to judge) and the fall read (with the squash
+    // strength to judge at pane sizes).
+    {
+        KeyBindingGuard bind(0, KEY_LOOKUP, KEYCODE_v);
+        SessionKeyStateGuard keystates;
+        run_scene("floor_glide_stairs", 96,
+            [&] {
+                cfg.apply_setting("effects", "floor_glide", "on");
+                world.set_floor_count(3);
+                fill_floor_grid(world, 1, static_cast<unsigned char>(PIX_AIR));
+                fill_floor_grid(world, 2, static_cast<unsigned char>(PIX_AIR));
+                PixieData& mid = world.grid_for_floor(1);
+                for (int j = 4; j < 11; j++)
+                    for (int i = 4; i < 16; i++)
+                        mid.data[i + mid.w * j] =
+                            static_cast<unsigned char>(PIX_GRASS1);
+                // Stair pair at the hero's destination cell: UP on floor 0,
+                // DOWN directly above it on floor 1.
+                vs->control->setxy(static_cast<short>(168),
+                                   static_cast<short>(120));
+                put_tile_under(world, vs->control, 0,
+                               static_cast<unsigned char>(PIX_ZSTAIR_UP));
+                put_tile_under(world, vs->control, 1,
+                               static_cast<unsigned char>(PIX_ZSTAIR_DOWN));
+                vs->control->setxy(static_cast<short>(120),
+                                   static_cast<short>(120));
+                // Pacing monsters on floor 1 — the departure floor of the
+                // down-stair leg: they vanish at glide frame 1 while their
+                // terrain fades (the fx-review question).
+                mover = world.add_ob(Order::Living, FAMILY_SOLDIER);
+                mover->set_floor(1);
+                mover->setxy(static_cast<short>(200), static_cast<short>(130));
+                extra = world.add_ob(Order::Living, FAMILY_ELF);
+                extra->set_floor(1);
+                extra->setxy(static_cast<short>(130), static_cast<short>(90));
+            },
+            [&](int f) {
+                const int pace = (f % 32) < 16 ? (f % 16) : 16 - (f % 16);
+                mover->setxy(static_cast<short>(200 + pace * 2),
+                             static_cast<short>(130));
+                extra->setxy(static_cast<short>(130 + pace * 2),
+                             static_cast<short>(90));
+                if (f < 8) // approach the stair
+                    vs->control->setxy(static_cast<short>(120 + f * 6),
+                                       static_cast<short>(120));
+                else if (f == 8)
+                    vs->control->setxy(static_cast<short>(168),
+                                       static_cast<short>(120));
+                else if (f == 10)
+                    vs->control->set_floor(1); // the up-glide (16 frames)
+                // A short look-up-hold blip mid-up-glide: the above-floor
+                // alpha re-bases to the ghost curve instantly, no cancel.
+                keystates.set(SDLK_v, f >= 13 && f < 21);
+                if (f == 55)
+                    vs->control->set_floor(0); // the down-glide: entity vanish
+            });
+    }
+
+    run_scene("floor_glide_fall", 56,
+        [&] {
+            cfg.apply_setting("effects", "floor_glide", "on");
+            cfg.apply_setting("effects", "dust", "on"); // landing smear rides dust
+            world.set_floor_count(3);
+            fill_floor_grid(world, 1, static_cast<unsigned char>(PIX_AIR));
+            fill_floor_grid(world, 2, static_cast<unsigned char>(PIX_AIR));
+            // Offset platforms: the top platform's east edge hangs over air
+            // on BOTH floors below, so the two-story drop reads clean.
+            PixieData& mid = world.grid_for_floor(1);
+            for (int j = 4; j < 9; j++)
+                for (int i = 3; i < 9; i++)
+                    mid.data[i + mid.w * j] =
+                        static_cast<unsigned char>(PIX_GRASS1);
+            PixieData& top = world.grid_for_floor(2);
+            for (int j = 5; j < 8; j++)
+                for (int i = 4; i < 9; i++)
+                    top.data[i + top.w * j] =
+                        static_cast<unsigned char>(PIX_GRASS1);
+            vs->control->set_floor(2);
+            vs->control->setxy(static_cast<short>(80), static_cast<short>(96));
+        },
+        [&](int f) {
+            const int lap = f % 28;
+            if (lap == 0)
+            {
+                // Reset for the second lap: a stairless two-story rise is a
+                // Teleport — it snaps by design (discontinuity is the message).
+                vs->control->set_floor(2);
+                vs->control->setxy(static_cast<short>(80),
+                                   static_cast<short>(96));
+            }
+            else if (lap < 10)
+                vs->control->setxy(static_cast<short>(80 + lap * 7),
+                                   static_cast<short>(96));
+            else if (lap == 10)
+                vs->control->set_floor(0); // off the edge: two stories down
         });
 
     // The depth close-ups read through the fade-below floor layers, which

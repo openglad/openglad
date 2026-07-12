@@ -1120,14 +1120,15 @@ static const button k_ui_fx_options_buttons[] =
     button("toggle_heal_numbers", "Healing numbers", KEYSTATE_UNKNOWN, 115, effects_row_y(2), 90, 15, button_action_id(ButtonAction::ToggleHealNumbers), -1, MenuNav{.up=2, .down=0}),
 };
 
-// GRAPHICS FX: purely visual effects. 12 toggles on the 3-column grid,
-// 4 rows. Weather (cfg effects/weather) is the client-side display opt-out
-// for the per-level sim weather (the old Clouds/Rain pair merged). Rows wrap
-// left/right; the top row's up and the bottom row's down land on BACK;
-// BACK's up wraps to the bottom-left toggle.
+// GRAPHICS FX: purely visual effects. 13 toggles on the 3-column grid:
+// 4 full rows plus a single-button fifth row (floor glide, the
+// generator_rate lone-row idiom). Weather (cfg effects/weather) is the
+// client-side display opt-out for the per-level sim weather (the old
+// Clouds/Rain pair merged). Rows wrap left/right; the top row's up and the
+// bottom row's down land on BACK; BACK's up wraps to the bottom toggle.
 static const button k_graphics_fx_options_buttons[] =
 {
-    button("graphics_fx_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=10, .down=1}),
+    button("graphics_fx_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=13, .down=1}),
     button("toggle_hit_flash", "Hit flash", KEYSTATE_UNKNOWN, 15, effects_row_y(0), 90, 15, button_action_id(ButtonAction::ToggleHitFlash), -1, MenuNav{.up=0, .down=4, .left=3, .right=2}),
     button("toggle_hit_sparks", "Hit sparks", KEYSTATE_UNKNOWN, 115, effects_row_y(0), 90, 15, button_action_id(ButtonAction::ToggleHitAnim), -1, MenuNav{.up=0, .down=5, .left=1, .right=3}),
     button("toggle_gore", "Gore", KEYSTATE_UNKNOWN, 215, effects_row_y(0), 90, 15, button_action_id(ButtonAction::ToggleGore), -1, MenuNav{.up=0, .down=6, .left=2, .right=1}),
@@ -1137,9 +1138,10 @@ static const button k_graphics_fx_options_buttons[] =
     button("toggle_dust", "Dust", KEYSTATE_UNKNOWN, 15, effects_row_y(2), 90, 15, button_action_id(ButtonAction::ToggleDust), -1, MenuNav{.up=4, .down=10, .left=9, .right=8}),
     button("depth_fx", "Depth: Fog", KEYSTATE_UNKNOWN, 115, effects_row_y(2), 90, 15, button_action_id(ButtonAction::CycleDepthFx), -1, MenuNav{.up=5, .down=11, .left=7, .right=9}),
     button("toggle_trails", "Trails", KEYSTATE_UNKNOWN, 215, effects_row_y(2), 90, 15, button_action_id(ButtonAction::ToggleTrails), -1, MenuNav{.up=6, .down=12, .left=8, .right=7}),
-    button("toggle_fire_glow", "Fire glow", KEYSTATE_UNKNOWN, 15, effects_row_y(3), 90, 15, button_action_id(ButtonAction::ToggleFireGlow), -1, MenuNav{.up=7, .down=0, .left=12, .right=11}),
-    button("toggle_ripples", "Ripples", KEYSTATE_UNKNOWN, 115, effects_row_y(3), 90, 15, button_action_id(ButtonAction::ToggleRipples), -1, MenuNav{.up=8, .down=0, .left=10, .right=12}),
-    button("toggle_screen_shake", "Screen shake", KEYSTATE_UNKNOWN, 215, effects_row_y(3), 90, 15, button_action_id(ButtonAction::ToggleScreenShake), -1, MenuNav{.up=9, .down=0, .left=11, .right=10}),
+    button("toggle_fire_glow", "Fire glow", KEYSTATE_UNKNOWN, 15, effects_row_y(3), 90, 15, button_action_id(ButtonAction::ToggleFireGlow), -1, MenuNav{.up=7, .down=13, .left=12, .right=11}),
+    button("toggle_ripples", "Ripples", KEYSTATE_UNKNOWN, 115, effects_row_y(3), 90, 15, button_action_id(ButtonAction::ToggleRipples), -1, MenuNav{.up=8, .down=13, .left=10, .right=12}),
+    button("toggle_screen_shake", "Screen shake", KEYSTATE_UNKNOWN, 215, effects_row_y(3), 90, 15, button_action_id(ButtonAction::ToggleScreenShake), -1, MenuNav{.up=9, .down=13, .left=11, .right=10}),
+    button("toggle_floor_glide", "Floor glide", KEYSTATE_UNKNOWN, 15, effects_row_y(4), 90, 15, button_action_id(ButtonAction::ToggleFloorGlide), -1, MenuNav{.up=10, .down=0}),
 };
 
 // Control options: 4 player sections at 28px pitch, each with mode + remap buttons.
@@ -2061,6 +2063,7 @@ Sint32 graphics_fx_options()
         {10, "effects", "fire_glow"},
         {11, "effects", "ripples"},
         {12, "effects", "screen_shake"},
+        {13, "effects", "floor_glide"},
     };
     button* buttons = picker_graphics_fx_options_buttons();
     const int num_buttons = picker_graphics_fx_options_button_count();

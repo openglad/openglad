@@ -189,6 +189,21 @@ inline constexpr float kParallaxScale = 0.10f;
 // no matter how high the camera floor sits.
 inline constexpr float kMinBelowFloorScale = 0.5f;
 
+// ---- Floor glide (render-only camera dolly between floors) ----
+// When the camera's floor changes via a classified Z-stair step or air fall,
+// a fractional camera height sweeps old floor -> new floor over these many
+// RENDER frames (never wall clock), and every floor's alpha/scale/scroll is
+// evaluated continuously from dz = f - camera_z through the exact steady-state
+// depth grammar above. Teleports and every suppression rung snap (today's
+// behavior); the final frame takes the untouched integer path by construction.
+inline constexpr Sint32 kGlideStairFrames    = 16;    // ~267ms @60fps
+inline constexpr Sint32 kGlideFallBaseFrames = 9;     // ~150ms
+inline constexpr Sint32 kGlideFallPerStory   = 3;
+inline constexpr Sint32 kGlideFallMaxFrames  = 14;    // ~233ms
+inline constexpr float  kGlideFallOvershoot  = 0.25f; // floors past destination
+inline constexpr float  kGlideFallAboveSlope = 0.25f; // boosted above-scale slope, falls only
+inline constexpr float  kGlideSpanClamp      = 3.0f;  // max fractional span
+
 inline options* active_prefs()
 {
     return og::runtime::current_session->theprefs_;
@@ -408,6 +423,256 @@ void viewscreen::clear()
 	vb.assign(vb.size(), 0);
 }
 
+// Fractional camera height at render frame i of n (i in 1..n-1; t = 1 is
+// never evaluated — the final frame takes the untouched integer path, so
+// endpoint exactness is structural, not numeric).
+static float floor_glide_z_at(Sint32 i, Sint32 n, float from_eff, float to,
+                              viewscreen::FloorGlideCause cause)
+{
+	if (cause == viewscreen::FloorGlideCause::Fall)
+	{
+		// Two segments: gravity-shaped ease-in quadratic into an overshoot
+		// kGlideFallOvershoot floors PAST the destination (downward), then an
+		// ease-out settle back up to it — the landing "thud" squash.
+		Sint32 m = static_cast<Sint32>(std::lround(0.7 * static_cast<double>(n)));
+		if (m > n - 3)
+			m = n - 3; // always >= 3 settle frames
+		const float z_ov = to - kGlideFallOvershoot;
+		if (i <= m)
+		{
+			const float s = static_cast<float>(i) / static_cast<float>(m);
+			return from_eff + (z_ov - from_eff) * s * s;
+		}
+		const float s = static_cast<float>(i - m) / static_cast<float>(n - m);
+		const float inv = 1.0f - s;
+		return z_ov + (to - z_ov) * (1.0f - inv * inv);
+	}
+	// Stairs: ease-out cubic — decisive launch, soft settle. Penultimate
+	// residual (1/16)^3 ≈ 2.4e-4 floors rounds to steady alpha (invisible).
+	const float t = static_cast<float>(i) / static_cast<float>(n);
+	const float inv = 1.0f - t;
+	return to - (to - from_eff) * inv * inv * inv;
+}
+
+// The ONE floor trigger for both redraw overloads: assigns current_floor_
+// exactly as the old inline expression did, and starts / retargets /
+// advances the render-only floor-glide dolly around it. Every suppression
+// rung and every unclassified (Teleport/Unknown) change snaps — i.e. is
+// byte-identical to the pre-glide behavior.
+void viewscreen::update_floor_glide(GameWorld& vworld, walker* controlob)
+{
+	const Sint32 prev_floor = current_floor_;
+	const Sint32 new_floor = (editor_floor_override_ >= 0)
+	    ? editor_floor_override_
+	    : (controlob ? static_cast<Sint32>(controlob->floor()) : 0);
+	const std::uint32_t frame = effects_frame_tick();
+	const std::uint32_t control_id = controlob ? controlob->entity_id() : 0;
+
+	const auto rebaseline = [&]() {
+		glide_prev_control_id_ = control_id;
+		glide_last_seen_frame_ = frame;
+		glide_world_key_ = &vworld;
+		glide_world_tick_ = vworld.tick_count_;
+	};
+	const auto snap = [&]() {
+		current_floor_ = new_floor;
+		glide_frames_left_ = 0;
+		glide_total_ = 0;
+		glide_cause_ = FloorGlideCause::None;
+		rebaseline();
+	};
+
+	// Suppression ladder (in order): any rung = snap + re-baseline, exactly
+	// today's behavior.
+	const bool s1_cfg_off = !cfg.is_on("effects", "floor_glide");
+	const bool s2_single_floor = vworld.floor_count() <= 1;
+	const bool s3_editor_override = editor_floor_override_ >= 0;
+	const bool s4_authoring = editor_authoring_view_;
+	// The dust path calls the fall tracker only when cfg "dust" is on, so the
+	// classifier would silently never baseline with dust off: run it here
+	// under the glide's own gate (the once-per-frame guard makes the later
+	// dust-path call a no-op; effects_advance_frame ran before all viewports).
+	if (!s1_cfg_off && !s2_single_floor && !s3_editor_override && !s4_authoring)
+		effects_track_air_falls(vworld);
+	const bool suppressed =
+	    s1_cfg_off ||                                    // S1 cfg toggle
+	    s2_single_floor ||                               // S2 structural gate
+	    s3_editor_override ||                            // S3 editor floor cut
+	    s4_authoring ||                                  // S4 authoring view
+	    controlob == nullptr ||                          // S5 (baseline id -> 0)
+	    control_id != glide_prev_control_id_ ||          // S6 possession/handoff
+	    &vworld != glide_world_key_ ||                   // S7 world identity...
+	    vworld.tick_count_ < glide_world_tick_ ||        //    ...or tick reset
+	    frame - glide_last_seen_frame_ > 2;              // S8 staleness (pause/menu)
+	if (suppressed)
+	{
+		snap();
+		return;
+	}
+
+	if (new_floor == prev_floor)
+	{
+		// No trigger; advance an active glide (render-frame clock, §2.2:
+		// when the counter reaches 0 THIS frame renders the untouched
+		// integer path — t = 1 is never evaluated).
+		if (glide_frames_left_ > 0)
+		{
+			--glide_frames_left_;
+			if (glide_frames_left_ > 0)
+			{
+				const Sint32 i = glide_total_ - glide_frames_left_;
+				glide_camera_z_ = floor_glide_z_at(
+				    i, glide_total_, glide_from_z_,
+				    static_cast<float>(glide_to_floor_), glide_cause_);
+			}
+			else
+				glide_cause_ = FloorGlideCause::None;
+		}
+		current_floor_ = new_floor;
+		rebaseline();
+		return;
+	}
+
+	// Floor changed: only a fresh classification matching exactly this
+	// transition animates; anything else (Unknown) snaps.
+	FloorChange rec{};
+	const bool have = effects_last_floor_change(control_id, &rec);
+	if (!have || frame - rec.tick > 1 ||
+	    static_cast<Sint32>(rec.to) != new_floor ||
+	    static_cast<Sint32>(rec.from) != prev_floor ||
+	    rec.kind == FloorChangeKind::Teleport)
+	{
+		TRACE("effects", "floor_glide snap kind=%d",
+		      have ? static_cast<int>(rec.kind) : -1);
+		snap();
+		return;
+	}
+
+	// Start / retarget (newest event wins, uniformly): continue from the
+	// live fractional height mid-glide — never snap back — clamped to
+	// +/- kGlideSpanClamp floors of the destination.
+	const bool was_active = glide_frames_left_ > 0;
+	const float to = static_cast<float>(new_floor);
+	float from_eff = was_active ? glide_camera_z_ : static_cast<float>(prev_floor);
+	from_eff = std::clamp(from_eff, to - kGlideSpanClamp, to + kGlideSpanClamp);
+	const Sint32 span = std::abs(new_floor - prev_floor);
+	Sint32 n;
+	FloorGlideCause cause;
+	if (rec.kind == FloorChangeKind::Stairs)
+	{
+		cause = FloorGlideCause::Stairs;
+		n = kGlideStairFrames;
+	}
+	else
+	{
+		cause = FloorGlideCause::Fall;
+		const Sint32 stories = std::min(span, Sint32{3});
+		n = std::min(kGlideFallBaseFrames + kGlideFallPerStory * (stories - 1),
+		             kGlideFallMaxFrames);
+	}
+	glide_from_z_ = from_eff;
+	glide_to_floor_ = new_floor;
+	glide_cause_ = cause;
+	glide_total_ = n;
+	glide_frames_left_ = n - 1;
+	// Render frame i = 1 immediately: feedback on the trigger frame itself.
+	glide_camera_z_ = floor_glide_z_at(1, n, from_eff, to, cause);
+	current_floor_ = new_floor;
+	rebaseline();
+	TRACE("effects", "floor_glide start cause=%d from=%d to=%d n=%d",
+	      static_cast<int>(cause), static_cast<int>(prev_floor),
+	      static_cast<int>(new_floor), static_cast<int>(n));
+}
+
+// Per-floor presentation for one floor-loop pass. Inactive (the common
+// case): the pre-glide integer math VERBATIM, so cfg-off / idle /
+// single-floor frames are identical arithmetic. Active: the same depth
+// grammar evaluated continuously at dz = f - glide_camera_z_ (§2.1) — a
+// branch, never a blend, so the two paths cannot drift apart at dz = 0.
+viewscreen::FloorPassParams viewscreen::compute_floor_pass(
+    Sint32 f, const GameWorld& vworld, bool ghosts_on) const
+{
+	FloorPassParams p{};
+	const bool multi = vworld.floor_count() > 1;
+	if (glide_frames_left_ <= 0)
+	{
+		p.falpha = floor_render_alpha(static_cast<int>(f));
+		p.fscale = 1.0f;
+		p.pf = 0.0f;
+		p.shift = multi && f != current_floor_;
+		if (p.shift)
+		{
+			p.pf = static_cast<float>(f - current_floor_) * kParallaxScroll;
+			p.fscale = 1.0f + static_cast<float>(f - current_floor_) * kParallaxScale;
+			if (p.fscale < kMinBelowFloorScale)
+				p.fscale = kMinBelowFloorScale;
+		}
+		p.skip = false;
+		p.entities = true;
+		return p;
+	}
+	const float dz = static_cast<float>(f) - glide_camera_z_;
+	// Alpha: equals floor_render_alpha at every integer dz. Near the glide's
+	// end the residual dz rounds falpha to 255 and use_layer collapses to the
+	// direct-draw path a frame or two early — desirable (no bilinear residue)
+	// and harmless (sub-pixel scale/scroll error).
+	int falpha;
+	if (dz <= 0.0f)
+	{
+		// At/below the camera: 255 + dz*70, clamped to [90, 255].
+		falpha = static_cast<int>(std::lround(
+		    255.0f + dz * static_cast<float>(kFloorBelowAlphaStep)));
+		if (falpha < static_cast<int>(kFloorBelowAlphaMin))
+			falpha = static_cast<int>(kFloorBelowAlphaMin);
+		if (falpha > 255)
+			falpha = 255;
+	}
+	else
+	{
+		// Above the camera: base-anchored ghost curve — endpoint-exact at
+		// both hold states (dz=1: 48 under the look-up hold, 0 without it;
+		// dz->0+: 255, continuous with the camera floor).
+		const int base = ghosts_on ? static_cast<int>(kFloorGhostAlpha) : 0;
+		falpha = (dz >= 1.0f)
+		    ? base
+		    : static_cast<int>(std::lround(
+		          static_cast<float>(base) +
+		          static_cast<float>(255 - base) * (1.0f - dz)));
+	}
+	p.falpha = static_cast<unsigned char>(falpha);
+	p.skip = (falpha == 0); // draws nothing: the pop-free "not drawn" handoff
+	// Scale about the viewport centre. Above-floor slope is boosted during a
+	// no-hold fall so the departing floor RUSHES overhead while fading to 0;
+	// legal because those frames' alpha heads to 0 (departing floor) or dz
+	// returns to <= 0 before the glide ends (overshoot) — it never has to
+	// reconcile with a drawn steady state.
+	if (dz <= 0.0f)
+	{
+		p.fscale = 1.0f + dz * kParallaxScale;
+		if (p.fscale < kMinBelowFloorScale)
+			p.fscale = kMinBelowFloorScale;
+	}
+	else
+	{
+		const float slope = (glide_cause_ == FloorGlideCause::Fall && !ghosts_on)
+		    ? kGlideFallAboveSlope : kParallaxScale;
+		p.fscale = 1.0f + slope * dz;
+	}
+	// Parallax scroll, applied by the caller exactly as today.
+	p.pf = dz * kParallaxScroll;
+	p.shift = multi && dz != 0.0f;
+	// Terrain-only departing pass: impossible to violate in steady state
+	// (without the hold, floors above current_floor_ are never in the loop),
+	// and during a down-glide it keeps the extra passes entity-free — zero
+	// NEW walkputbuffer rng draws. (Not strict ON-vs-OFF rng identity: mid-
+	// glide the destination floor renders at falpha<255, so its entities take
+	// draw_walker's faded-floor layer path and invisible/phantom fills skip
+	// their per-pixel rng draws — accepted exposure, scoped in
+	// docs/floor-glide-design.md §2.4 / R2.)
+	p.entities = ghosts_on || f <= current_floor_;
+	return p;
+}
+
 bool viewscreen::redraw()
 {
 	Sint32 i,j;
@@ -470,9 +735,7 @@ bool viewscreen::redraw()
 	//note  >> 4 is equivalent to /16 but faster, since it doesn't divide
 	//likewise <<4 is equivalent to *16, but faster
 
-	current_floor_ = (editor_floor_override_ >= 0)
-	    ? editor_floor_override_
-	    : (controlob ? static_cast<Sint32>(controlob->floor()) : 0);
+	update_floor_glide(vworld, controlob);
 	// Multi-floor: draw stacked floors bottom-up, interleaving each floor's tiles
 	// + entities at a per-floor opacity (floors below fade with depth, the camera
 	// floor is opaque, floors above are faint ghosts). The opaque camera floor
@@ -502,11 +765,26 @@ bool viewscreen::redraw()
 		// pass mode Off, which composites bit-identically.
 		const DepthFxMode depth_mode =
 		    depth_fx_mode_from_setting(cfg.get_setting("effects", "depth_fx"));
-		const Sint32 floor_top = (vworld.floor_count() > 1 && ghosts_on)
+		const Sint32 steady_top = (vworld.floor_count() > 1 && ghosts_on)
 		    ? static_cast<Sint32>(vworld.floor_count() - 1) : current_floor_;
+		// Floor glide: keep the departing floor in the loop exactly while its
+		// dz < 1 (alpha > 0) — the falpha==0 skip rule covers the boundary;
+		// up-glides never extend (ceil(z) <= current_floor_).
+		const Sint32 floor_top = (glide_frames_left_ > 0)
+		    ? std::max(steady_top,
+		               std::min(static_cast<Sint32>(vworld.floor_count() - 1),
+		                        static_cast<Sint32>(std::ceil(glide_camera_z_))))
+		    : steady_top;
 		for (Sint32 f = 0; f <= floor_top; ++f)
 		{
-			const unsigned char falpha = floor_render_alpha(static_cast<int>(f));
+			// Per-floor presentation (alpha/scale/scroll + the skip and
+			// terrain-only gates) comes from compute_floor_pass: the integer
+			// parallax math verbatim while no glide is active, the continuous
+			// dz laws mid-glide.
+			const FloorPassParams fp = compute_floor_pass(f, vworld, ghosts_on);
+			if (fp.skip)
+				continue; // alpha 0 — BEFORE any topx/topy shift
+			const unsigned char falpha = fp.falpha;
 			const bool base_floor = (f == 0);
 			// Vertical parallax: non-camera floors scroll at a slightly different
 			// rate (shift, via topx/topy) AND, when faded, composite at a per-floor
@@ -514,17 +792,13 @@ bool viewscreen::redraw()
 			// off-screen layer below, so they slide + recede as the player moves.
 			// topx/topy restored after this floor draws; fscale/fcx/fcy -> layer_end.
 			const Sint32 par_topx = topx, par_topy = topy;
-			float fscale = 1.0f;
+			float fscale = fp.fscale;
 			const Sint32 fcx = xloc + xview / 2;
 			const Sint32 fcy = yloc + yview / 2;
-			if (vworld.floor_count() > 1 && f != current_floor_)
+			if (fp.shift)
 			{
-				const float pf = static_cast<float>(f - current_floor_) * kParallaxScroll;
-				topx = par_topx + static_cast<Sint32>(static_cast<float>(par_topx) * pf);
-				topy = par_topy + static_cast<Sint32>(static_cast<float>(par_topy) * pf);
-				fscale = 1.0f + static_cast<float>(f - current_floor_) * kParallaxScale;
-				if (fscale < kMinBelowFloorScale)
-					fscale = kMinBelowFloorScale;
+				topx = par_topx + static_cast<Sint32>(static_cast<float>(par_topx) * fp.pf);
+				topy = par_topy + static_cast<Sint32>(static_cast<float>(par_topy) * fp.pf);
 			}
 			// A faded/ghosted non-camera floor (alpha<255) renders 1:1 onto an
 			// off-screen layer, then composites back smoothly scaled about the
@@ -613,7 +887,8 @@ bool viewscreen::redraw()
 					}
 					}
 			}
-			draw_floor_entities(&level, static_cast<int>(f), falpha); //radar drawn after
+			if (fp.entities)
+				draw_floor_entities(&level, static_cast<int>(f), falpha); //radar drawn after
 			if (use_layer)
 			{
 				// A floor d levels below the camera composites through the
@@ -734,9 +1009,7 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 	//note  >> 4 is equivalent to /16 but faster, since it doesn't divide
 	//likewise <<4 is equivalent to *16, but faster
 
-	current_floor_ = (editor_floor_override_ >= 0)
-	    ? editor_floor_override_
-	    : (controlob ? static_cast<Sint32>(controlob->floor()) : 0);
+	update_floor_glide(vworld, controlob);
 	// Multi-floor: draw stacked floors bottom-up with per-floor opacity and
 	// interleaved entities (see the no-arg redraw() for the rationale). Single-
 	// floor draws one opaque pass (byte-identical).
@@ -757,11 +1030,26 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 		// the selected treatment; camera floor / ghosts pass mode Off.
 		const DepthFxMode depth_mode =
 		    depth_fx_mode_from_setting(cfg.get_setting("effects", "depth_fx"));
-		const Sint32 floor_top = (vworld.floor_count() > 1 && ghosts_on)
+		const Sint32 steady_top = (vworld.floor_count() > 1 && ghosts_on)
 		    ? static_cast<Sint32>(vworld.floor_count() - 1) : current_floor_;
+		// Floor glide: keep the departing floor in the loop exactly while its
+		// dz < 1 (alpha > 0) — the falpha==0 skip rule covers the boundary;
+		// up-glides never extend (ceil(z) <= current_floor_).
+		const Sint32 floor_top = (glide_frames_left_ > 0)
+		    ? std::max(steady_top,
+		               std::min(static_cast<Sint32>(vworld.floor_count() - 1),
+		                        static_cast<Sint32>(std::ceil(glide_camera_z_))))
+		    : steady_top;
 		for (Sint32 f = 0; f <= floor_top; ++f)
 		{
-			const unsigned char falpha = floor_render_alpha(static_cast<int>(f));
+			// Per-floor presentation (alpha/scale/scroll + the skip and
+			// terrain-only gates) comes from compute_floor_pass: the integer
+			// parallax math verbatim while no glide is active, the continuous
+			// dz laws mid-glide.
+			const FloorPassParams fp = compute_floor_pass(f, vworld, ghosts_on);
+			if (fp.skip)
+				continue; // alpha 0 — BEFORE any topx/topy shift
+			const unsigned char falpha = fp.falpha;
 			const bool base_floor = (f == 0);
 			// Vertical parallax: non-camera floors scroll at a slightly different
 			// rate (shift, via topx/topy) AND, when faded, composite at a per-floor
@@ -769,17 +1057,13 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 			// off-screen layer below, so they slide + recede as the player moves.
 			// topx/topy restored after this floor draws; fscale/fcx/fcy -> layer_end.
 			const Sint32 par_topx = topx, par_topy = topy;
-			float fscale = 1.0f;
+			float fscale = fp.fscale;
 			const Sint32 fcx = xloc + xview / 2;
 			const Sint32 fcy = yloc + yview / 2;
-			if (vworld.floor_count() > 1 && f != current_floor_)
+			if (fp.shift)
 			{
-				const float pf = static_cast<float>(f - current_floor_) * kParallaxScroll;
-				topx = par_topx + static_cast<Sint32>(static_cast<float>(par_topx) * pf);
-				topy = par_topy + static_cast<Sint32>(static_cast<float>(par_topy) * pf);
-				fscale = 1.0f + static_cast<float>(f - current_floor_) * kParallaxScale;
-				if (fscale < kMinBelowFloorScale)
-					fscale = kMinBelowFloorScale;
+				topx = par_topx + static_cast<Sint32>(static_cast<float>(par_topx) * fp.pf);
+				topy = par_topy + static_cast<Sint32>(static_cast<float>(par_topy) * fp.pf);
 			}
 			// A faded/ghosted non-camera floor (alpha<255) renders 1:1 onto an
 			// off-screen layer, then composites back smoothly scaled about the
@@ -868,7 +1152,8 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 					}
 					}
 			}
-			draw_floor_entities(data, static_cast<int>(f), falpha);
+			if (fp.entities)
+				draw_floor_entities(data, static_cast<int>(f), falpha);
 			if (use_layer)
 			{
 				// A floor d levels below the camera composites through the
@@ -1221,10 +1506,12 @@ void viewscreen::draw_floor_effects(LevelRuntimeData* data, int floor)
 {
 	const bool multifloor = data->world().floor_count() > 1;
 	const bool shadows_on = cfg.is_on("effects", "shadows");
-	// Reflections, ripples, trails and dust belong to the camera floor, and
-	// only on the direct-draw pass (the camera floor never renders through
-	// the off-screen floor layer, so floor == current_floor_ implies alpha
-	// 255).
+	// Reflections, ripples, trails, dust and the stair overlays key on
+	// floor == current_floor_. During a floor glide that pass renders
+	// through the off-screen floor layer; these draws are redirected into
+	// it automatically (all pointb/blit paths write through
+	// E_Screen->render, which floor_layer_begin swaps), so they fade
+	// coherently with their floor — no gating needed.
 	const bool camera_pass = floor == current_floor_;
 	// Stair direction affordance (B1): pulse an up/down chevron over the
 	// camera floor's PIX_ZSTAIR tiles, under the sprites. Core usability —

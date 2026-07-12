@@ -708,6 +708,9 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
     case ButtonAction::ToggleScreenShake:
         toggle_effect("effects", "screen_shake");
         return REDRAW;
+    case ButtonAction::ToggleFloorGlide:
+        toggle_effect("effects", "floor_glide");
+        return REDRAW;
     case ButtonAction::PickSpriteSheet:
         return do_pick_spritesheet(arg);
     case ButtonAction::RestoreDefaultSettings:
