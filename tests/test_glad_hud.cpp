@@ -26,9 +26,12 @@ void draw_percentage_bar(Sint32 left, Sint32 top, unsigned char somecolor, short
 short score_panel(screen* scr);
 short score_panel(screen* scr, short do_it);
 short new_score_panel(screen* scr, short do_it);
-// From score_panel.cpp (B5)
+// From score_panel.cpp (B5). pending = dormant delayed-spawn hostiles
+// (alive, so subtractable from remaining_foes); pending_respawn = hostile
+// classic-respawn queue entries (corpses, display-only).
 void pending_hostile_wave_counts(const GameWorld& world, walker* viewer,
-                                 short& pending, std::uint32_t& next_wake_ticks);
+                                 short& pending, short& pending_respawn,
+                                 std::uint32_t& next_wake_ticks);
 // From score_panel.cpp: forced-flee (scared) countdown source.
 int hud_scared_flee_ticks(walker* viewer);
 
@@ -648,28 +651,102 @@ TEST(GladHud, pending_hostile_wave_counts_splits_dormant_and_counts_down)
     // spawn_delay + 1. At tick 12 the nearest wave (delay 60) is 49 away.
     world.set_level_tick_count(12);
     short pending = 0;
+    short respawn = 0;
     std::uint32_t ticks = 0;
-    pending_hostile_wave_counts(world, controlp, pending, ticks);
+    pending_hostile_wave_counts(world, controlp, pending, respawn, ticks);
     EXPECT_EQ(2, static_cast<int>(pending));
+    EXPECT_EQ(0, static_cast<int>(respawn));
     EXPECT_EQ(49u, ticks);
 
     // Dead dormant hostiles are not pending; the min moves to delay 100.
     wave2p->set_dead(1);
-    pending_hostile_wave_counts(world, controlp, pending, ticks);
+    pending_hostile_wave_counts(world, controlp, pending, respawn, ticks);
     EXPECT_EQ(1, static_cast<int>(pending));
     EXPECT_EQ(89u, ticks);
 
     // Past the wake tick already: the countdown clamps to zero.
     world.set_level_tick_count(500);
-    pending_hostile_wave_counts(world, controlp, pending, ticks);
+    pending_hostile_wave_counts(world, controlp, pending, respawn, ticks);
     EXPECT_EQ(1, static_cast<int>(pending));
     EXPECT_EQ(0u, ticks);
 
     // Null viewer guard.
-    pending_hostile_wave_counts(world, nullptr, pending, ticks);
+    pending_hostile_wave_counts(world, nullptr, pending, respawn, ticks);
     EXPECT_EQ(0, static_cast<int>(pending));
+    EXPECT_EQ(0, static_cast<int>(respawn));
     EXPECT_EQ(0u, ticks);
 
+    world.set_level_tick_count(saved_ltc);
+}
+
+// End-of-scenario honesty for the difficulty respawn modes: a hostile foe
+// merely awaiting its respawn timer blocks the extermination win
+// (classic_respawn_pending_hostile_foe), so it must show up in the (+x) and
+// the countdown instead of leaving "FOES: 0" over a map that refuses to end.
+TEST(GladHud, pending_hostile_wave_counts_includes_classic_respawn_queue)
+{
+    HudObListSwap swap;
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    const std::uint32_t saved_ltc = world.level_tick_count();
+    const short saved_mode = world.respawn_mode;
+    const short saved_allied = world.allied_mode;
+    const auto saved_queue = world.ctf.respawn_queue;
+
+    auto control = make_player(0);
+    auto dormant_foe = make_living(FAMILY_ORC, 1);
+    ASSERT_TRUE(control && dormant_foe);
+    dormant_foe->set_spawn_delay(100);
+    dormant_foe->set_dormant(true);
+    walker* const controlp = control.get();
+    world.oblist.push_back(std::move(control));
+    world.oblist.push_back(std::move(dormant_foe));
+
+    world.set_level_tick_count(12);
+    world.respawn_mode = 2;
+    world.allied_mode = 1;
+    world.ctf.respawn_queue.clear();
+
+    og::sim::CtfRespawnEntry ai_foe; // mode-2 AI replacement: hostile
+    ai_foe.kind = 1;
+    ai_foe.team = 1;
+    ai_foe.ticks_left = 30;
+    og::sim::CtfRespawnEntry same_team; // the viewer's own team: never hostile
+    same_team.kind = 1;
+    same_team.team = 0;
+    same_team.ticks_left = 5;
+    og::sim::CtfRespawnEntry hero; // hero corpse: friendly to a team-0
+    hero.kind = 0;                 // viewer while allied mode is on
+    hero.team = 2;
+    hero.ticks_left = 3;
+    world.ctf.respawn_queue.push_back(ai_foe);
+    world.ctf.respawn_queue.push_back(same_team);
+    world.ctf.respawn_queue.push_back(hero);
+
+    short pending = 0;
+    short respawn = 0;
+    std::uint32_t ticks = 0;
+    pending_hostile_wave_counts(world, controlp, pending, respawn, ticks);
+    EXPECT_EQ(1, static_cast<int>(pending)) << "the dormant foe";
+    EXPECT_EQ(1, static_cast<int>(respawn)) << "only the hostile AI entry";
+    EXPECT_EQ(30u, ticks) << "queue timer beats the dormant wake (89)";
+
+    // Competitive (allied off): the enemy hero corpse turns hostile and its
+    // shorter timer wins the countdown.
+    world.allied_mode = 0;
+    pending_hostile_wave_counts(world, controlp, pending, respawn, ticks);
+    EXPECT_EQ(2, static_cast<int>(respawn));
+    EXPECT_EQ(3u, ticks);
+
+    // Engine off: leftover queue entries are ignored entirely.
+    world.respawn_mode = 0;
+    pending_hostile_wave_counts(world, controlp, pending, respawn, ticks);
+    EXPECT_EQ(1, static_cast<int>(pending));
+    EXPECT_EQ(0, static_cast<int>(respawn));
+    EXPECT_EQ(89u, ticks);
+
+    world.ctf.respawn_queue = saved_queue;
+    world.respawn_mode = saved_mode;
+    world.allied_mode = saved_allied;
     world.set_level_tick_count(saved_ltc);
 }
 
@@ -729,6 +806,68 @@ TEST(GladHud, score_panel_shows_next_wave_countdown_for_dormant_hostiles)
     v->prefs[PREF_SCORE] = old_pref_score;
     v->prefs[PREF_FOES] = old_pref_foes;
     world.set_level_tick_count(saved_ltc);
+}
+
+// The endgame moment in respawn mode 2: the last live foe is dead, an AI
+// replacement sits in the queue. The panel must show it as a pending wave
+// (with the countdown) rather than a bare "FOES: 0" that never ends.
+TEST(GladHud, score_panel_counts_respawn_pending_foe_in_wave)
+{
+    screen* s = og::runtime::current_session->myscreen_;
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_TRUE(v != nullptr);
+
+    HudObListSwap swap;
+    GameWorld& world = s->world();
+    const short saved_mode = world.respawn_mode;
+    const auto saved_queue = world.ctf.respawn_queue;
+
+    auto control = make_player(0);
+    ASSERT_TRUE(control != nullptr);
+    walker* const controlp = control.get();
+    controlp->stats()->set_hitpoints(50);
+    controlp->stats()->set_max_hitpoints(100);
+    controlp->stats()->set_magicpoints(30);
+    controlp->stats()->set_max_magicpoints(80);
+    world.oblist.push_back(std::move(control));
+
+    world.respawn_mode = 2;
+    world.ctf.respawn_queue.clear();
+    og::sim::CtfRespawnEntry entry;
+    entry.kind = 1;
+    entry.team = 1;
+    entry.ticks_left = 55; // (55 + 11) / 12 -> 5 s at 12 Hz
+    world.ctf.respawn_queue.push_back(entry);
+
+    walker* const old_control = v->control;
+    const char old_pref_life = v->prefs[PREF_LIFE];
+    const char old_pref_score = v->prefs[PREF_SCORE];
+    const char old_pref_foes = v->prefs[PREF_FOES];
+    v->control = controlp;
+    v->prefs[PREF_LIFE] = PREF_LIFE_TEXT;
+    v->prefs[PREF_SCORE] = PREF_SCORE_OFF; // score count-up uses rng(); keep off
+    v->prefs[PREF_FOES] = PREF_FOES_ON;
+
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    EXPECT_TRUE(trace_contains("hud", "next_wave awake=0 pending=1 secs=5"))
+        << "a foe awaiting its respawn timer is a pending wave, not FOES: 0";
+
+    // The end-of-level flush clears the queue (every end shape does): the
+    // classic FOES readout returns with no NEXT WAVE line.
+    world.ctf.respawn_queue.clear();
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    EXPECT_FALSE(trace_contains("hud", "next_wave"));
+
+    v->control = old_control;
+    v->prefs[PREF_LIFE] = old_pref_life;
+    v->prefs[PREF_SCORE] = old_pref_score;
+    v->prefs[PREF_FOES] = old_pref_foes;
+    world.ctf.respawn_queue = saved_queue;
+    world.respawn_mode = saved_mode;
 }
 
 // ---------------------------------------------------------------------------

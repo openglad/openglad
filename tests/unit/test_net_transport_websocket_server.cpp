@@ -505,21 +505,28 @@ TEST(NetTransportWebSocketServer,
         EXPECT_EQ(server_hash, client_snapshot.snapshot_hash) << "client " << index;
     }
 
-    fixture.with_server_context([&] {
-        fixture.server().poll_incoming_messages();
-    });
-
+    // The four hash-check ACKs ride real loopback websockets and can straggle
+    // in behind initial_sync() under machine load, and every
+    // poll_incoming_messages() call CLEARS the server inbox — so a single poll
+    // races the slowest client (observed 3/4 under contention). Accumulate
+    // per-poll counts until all four arrive, bounded by wait_until's deadline.
     std::size_t snapshot_hash_checks = 0;
-    for (const auto& message : fixture.server_inbox())
-    {
-        if (!message.snapshot_hash_check)
-            continue;
+    wait_until([&] {
+        fixture.with_server_context([&] {
+            fixture.server().poll_incoming_messages();
+        });
+        for (const auto& message : fixture.server_inbox())
+        {
+            if (!message.snapshot_hash_check)
+                continue;
 
-        ++snapshot_hash_checks;
-        EXPECT_EQ(0u, message.snapshot_hash_check->tick);
-        EXPECT_EQ(server_hash, message.snapshot_hash_check->snapshot_hash)
-            << "peer " << message.peer_id;
-    }
+            ++snapshot_hash_checks;
+            EXPECT_EQ(0u, message.snapshot_hash_check->tick);
+            EXPECT_EQ(server_hash, message.snapshot_hash_check->snapshot_hash)
+                << "peer " << message.peer_id;
+        }
+        return snapshot_hash_checks >= 4u;
+    });
     EXPECT_EQ(4u, snapshot_hash_checks);
 }
 

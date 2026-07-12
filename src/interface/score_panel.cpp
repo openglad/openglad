@@ -19,6 +19,7 @@
 #include <openglad/interface/session_state.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/statistics.h>
+#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/guy.h>
 
@@ -53,10 +54,22 @@ short remaining_team(screen* s, char myteam);
 // level_tick_count > spawn_delay). Snapshot mirrors keep their own level-load
 // copies of dormant walkers (reconcile never erases them), so this is
 // readable render-side in every mode. Non-static for the HUD tests.
+//
+// pending_respawn adds the classic-respawn engine's hostile queue entries
+// (difficulty respawns): a foe merely awaiting its respawn timer blocks the
+// extermination win exactly like a dormant delayed spawn does
+// (classic_respawn_pending_hostile_foe), so without it the end of the level
+// reads "FOES: 0" over an empty map that refuses to finish. Unlike dormant
+// walkers these are corpses — remaining_foes does not count them — so they
+// belong in the (+x) display and the countdown but NOT in the
+// awake = total - pending subtraction. The queue is snapshot-synced, so
+// mirrors read it the same way.
 void pending_hostile_wave_counts(const GameWorld& world, walker* viewer,
-                                 short& pending, std::uint32_t& next_wake_ticks)
+                                 short& pending, short& pending_respawn,
+                                 std::uint32_t& next_wake_ticks)
 {
     pending = 0;
+    pending_respawn = 0;
     next_wake_ticks = 0;
     if (viewer == nullptr)
         return;
@@ -64,6 +77,13 @@ void pending_hostile_wave_counts(const GameWorld& world, walker* viewer,
     const std::uint32_t now = world.level_tick_count();
     bool have_min = false;
     std::uint32_t min_ticks = 0;
+    const auto fold_min = [&](std::uint32_t remaining) {
+        if (!have_min || remaining < min_ticks)
+        {
+            have_min = true;
+            min_ticks = remaining;
+        }
+    };
     for (const auto& uptr : world.oblist)
     {
         walker* const w = uptr.get();
@@ -74,11 +94,24 @@ void pending_hostile_wave_counts(const GameWorld& world, walker* viewer,
         pending = static_cast<short>(pending + 1);
         const std::uint32_t wake_tick =
             static_cast<std::uint32_t>(w->spawn_delay()) + 1u;
-        const std::uint32_t remaining = wake_tick > now ? wake_tick - now : 0u;
-        if (!have_min || remaining < min_ticks)
+        fold_min(wake_tick > now ? wake_tick - now : 0u);
+    }
+
+    if (og::sim::classic_respawn_active(world))
+    {
+        const unsigned char viewer_team = viewer->team_num();
+        for (const og::sim::CtfRespawnEntry& entry : world.ctf.respawn_queue)
         {
-            have_min = true;
-            min_ticks = remaining;
+            // Viewer-relative mirror of the engine's classic_team_hostile
+            // rule: entry.team is the corpse's true (charm-broken) team
+            // recorded at schedule time; a hero corpse (kind 0) is
+            // additionally friendly to a team-0 viewer in allied mode.
+            if (entry.team == viewer_team)
+                continue;
+            if (entry.kind == 0 && world.allied_mode != 0 && viewer_team == 0)
+                continue;
+            pending_respawn = static_cast<short>(pending_respawn + 1);
+            fold_min(entry.ticks_left);
         }
     }
     next_wake_ticks = min_ticks;
@@ -537,14 +570,20 @@ short new_score_panel(screen* s, short /*do_it*/)
                 // the foe count and show a countdown to the next wave, so
                 // "FOES: 3" over an empty map reads as "3 foes are coming",
                 // not as a bug. remaining_foes counts dormant hostiles too
-                // (they are alive), so awake = total - pending.
+                // (they are alive), so awake = total - pending; foes merely
+                // awaiting a classic respawn are corpses (not in the total),
+                // so they only join the displayed wave count.
                 short pending_foes = 0;
+                short pending_respawn_foes = 0;
                 std::uint32_t next_wake_ticks = 0;
                 pending_hostile_wave_counts(
-                    s->world_, control, pending_foes, next_wake_ticks);
+                    s->world_, control, pending_foes, pending_respawn_foes,
+                    next_wake_ticks);
                 const int awake_foes = std::max(
                     0, static_cast<int>(tempfoes) - static_cast<int>(pending_foes));
-                const bool show_wave = pending_foes > 0;
+                const int wave_foes = static_cast<int>(pending_foes) +
+                    static_cast<int>(pending_respawn_foes);
+                const bool show_wave = wave_foes > 0;
 
                 if (draw_button)
                     s->draw_button(rm-57, tm+1, rm-2, tm + (show_wave ? 24 : 16), 1, 1);
@@ -558,7 +597,7 @@ short new_score_panel(screen* s, short /*do_it*/)
 
                 if (show_wave)
                     message = std::format("FOES: {} (+{})",
-                                          awake_foes, pending_foes);
+                                          awake_foes, wave_foes);
                 else
                     message = std::format("FOES: {}", tempfoes);
                 // Right-align when the (+m) suffix is shown so it stays
@@ -586,7 +625,7 @@ short new_score_panel(screen* s, short /*do_it*/)
 #endif
                     TRACE("hud", "next_wave awake=%d pending=%d secs=%u",
                           awake_foes,
-                          static_cast<int>(pending_foes),
+                          wave_foes,
                           static_cast<unsigned>(wave_seconds));
                 }
             }
