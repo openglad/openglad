@@ -19,6 +19,7 @@
 #include <vector>
 
 #include <openglad/core/decordefs.h>
+#include <openglad/core/tower_constants.h>
 #include <openglad/core/weather.h>
 #include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/pixie_data.h>
@@ -135,6 +136,11 @@ public:
     static constexpr char TYPE_MUST_DESTROY_GENERATORS = 0x2;
     static constexpr char TYPE_MUST_PROTECT_NAMED_NPCS = 0x4;
     static constexpr char TYPE_CTF = 0x8;
+    // Tower-authored level (SCEN_TYPE_TOWER in .fss files). Display-only in
+    // v1 — the sole reader is floor_hud_label; never runtime-mutated. A level
+    // authored with both TYPE_CTF and TYPE_TOWER resolves CTF-first (v1
+    // content never authors both).
+    static constexpr char TYPE_TOWER = 0x10;
 
     explicit GameWorld(std::uint32_t seed = 0);
     ~GameWorld();
@@ -434,3 +440,12 @@ private:
     og::sim::SimEventLog* gameplay_sim_events_ = nullptr;
     cfg_store* gameplay_config_ = nullptr;
 };
+
+// Floor-awareness HUD label. Empty => call sites draw NOTHING (single-floor
+// frames stay byte-identical). Game modes re-label by editing ONLY this
+// function; every surface (SDL FOES-box row, curses status line) updates
+// automatically. Call sites key on non-empty, never on floor_count.
+// walker_floor is clamped to [0, floor_count-1] (mirror int8 safety —
+// attacker-controllable on a network mirror). Pure display: no RNG, no
+// mutation, never on the tick path.
+std::string floor_hud_label(const GameWorld& world, int walker_floor);

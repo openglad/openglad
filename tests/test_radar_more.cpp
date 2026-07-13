@@ -413,3 +413,56 @@ TEST(RadarMore, radar_blips_filter_to_the_shown_floor)
     vs->editor_floor_override_ = saved_override;
 }
 
+
+// Feature B: Z-stair tiles bake two STATIC pinned radar colors — YELLOW (88,
+// the climb objective pops even on snow) for PIX_ZSTAIR_UP and LIGHT_BLUE
+// (120, the exit-idiom cyan) for PIX_ZSTAIR_DOWN. No pulse, never ctx().rng:
+// a cycled or random index would strobe the bake. Tile bytes 140/141 are
+// branch-new and absent from all legacy content, so single-floor radars stay
+// byte-identical by tile absence.
+TEST(RadarMore, zstair_tiles_bake_pinned_radar_colors)
+{
+    FixedRandom fixed_rng(1);
+    GameContext c;
+    c.rng = &fixed_rng;
+    GlobalContextGuard guard(&c);
+
+    LevelRuntimeData d(1);
+    d.create_new_grid();
+
+    set_tile(d, 0, 0, PIX_ZSTAIR_UP);
+    set_tile(d, 1, 0, PIX_ZSTAIR_DOWN);
+    d.world().set_floor_count(2);
+    fill_floor_grid(d.world(), 1, PIX_ZSTAIR_DOWN);
+
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    walker* saved_control = vs->control;
+    const short saved_radarstart = vs->radarstart;
+    const Sint32 saved_override = vs->editor_floor_override_;
+    vs->control = nullptr;
+    vs->radarstart = 1;
+    vs->editor_floor_override_ = -1;
+
+    radar r(vs, og::runtime::current_session->myscreen_, 0);
+    r.force_lower_position = true;
+    r.start(&d);
+    ASSERT_GE(static_cast<int>(r.bmp.size()), 2)
+        << "radar bmp must cover the painted tiles";
+    EXPECT_EQ(88, static_cast<int>(r.bmp[0]))
+        << "PIX_ZSTAIR_UP bakes YELLOW (static, pinned)";
+    EXPECT_EQ(120, static_cast<int>(r.bmp[1]))
+        << "PIX_ZSTAIR_DOWN bakes LIGHT_BLUE (static, pinned)";
+
+    // Forced re-bake onto floor 1 (editor override): the stair colors bake
+    // identically on stacked floors.
+    vs->editor_floor_override_ = 1;
+    ASSERT_EQ(1, r.draw(&d));
+    EXPECT_EQ(1, static_cast<int>(r.bmp_floor_)) << "override picks floor 1";
+    EXPECT_EQ(120, static_cast<int>(r.bmp[0]))
+        << "floor 1's PIX_ZSTAIR_DOWN fill baked after the re-bake";
+
+    vs->control = saved_control;
+    vs->radarstart = saved_radarstart;
+    vs->editor_floor_override_ = saved_override;
+}

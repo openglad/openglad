@@ -315,6 +315,15 @@ void CursesRenderer::draw_hud(ITerminal& term, const GameWorld& world,
                          std::to_string(static_cast<int>(st->max_magicpoints()));
             }
             line1 += "  Lv " + std::to_string(static_cast<int>(st->level()));
+            // Floor field (feature B): the shared HUD label — empty on
+            // single-floor levels, "FLR: f/n" on multifloor, tower relabeling
+            // flows automatically (D5). Placed before the CTF group so an
+            // 80-column clip() eats Score/Sp first: floor is
+            // navigation-critical.
+            const std::string flr = floor_hud_label(
+                world, static_cast<int>(followed->floor()));
+            if (!flr.empty())
+                line1 += "  " + flr;
         }
         if (world.ctf.active) {
             // Per-team capture counts (replicated CtfState; the mirror world

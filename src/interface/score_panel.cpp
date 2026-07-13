@@ -382,6 +382,12 @@ short new_score_panel(screen* s, short /*do_it*/)
         s->world_.m_score[3],
     };
 
+    // Bottom edge of the top viewport's TEAM/FOES counter box, for the FPS
+    // overlay's dynamic placement (the box grows with the NEXT WAVE and FLR
+    // rows). Default = the classic FOES-off geometry, so FOES-off frames are
+    // byte-identical.
+    Sint32 fps_below_y = OVERSCAN_PADDING + 16;
+
     for (players = 0; players < s->numviews; players++)
     {
         control = s->viewob[players]->control;
@@ -585,8 +591,22 @@ short new_score_panel(screen* s, short /*do_it*/)
                     static_cast<int>(pending_respawn_foes);
                 const bool show_wave = wave_foes > 0;
 
+                // Floor row (feature B): drawn only when the shared label is
+                // non-empty, so single-floor frames stay byte-identical. Call
+                // sites key on non-empty, never on floor_count (game modes
+                // re-label inside floor_hud_label).
+                const std::string floor_label = floor_hud_label(
+                    s->world_, static_cast<int>(control->floor()));
+                const bool show_floor = !floor_label.empty();
+
+                Sint32 box_bottom = show_wave ? 24 : 16;
+                if (show_floor)
+                    box_bottom += 8;
+                if (players == 0)
+                    fps_below_y = tm + box_bottom;
+
                 if (draw_button)
-                    s->draw_button(rm-57, tm+1, rm-2, tm + (show_wave ? 24 : 16), 1, 1);
+                    s->draw_button(rm-57, tm+1, rm-2, tm + box_bottom, 1, 1);
 
                 message = std::format("TEAM: {}", tempallies);
 #ifndef USE_TOUCH_INPUT
@@ -628,6 +648,19 @@ short new_score_panel(screen* s, short /*do_it*/)
                           wave_foes,
                           static_cast<unsigned>(wave_seconds));
                 }
+
+                if (show_floor)
+                {
+                    const Sint32 floor_y = tm + (show_wave ? 26 : 18);
+                    const Sint32 floor_x = std::max<Sint32>(
+                        lm, rm - 2 - 6 * static_cast<Sint32>(floor_label.size()));
+#ifndef USE_TOUCH_INPUT
+                    mytext.write_xy(floor_x, floor_y, floor_label.c_str(), text_color, static_cast<short>(1));
+#else
+                    mytext.write_xy(floor_x, floor_y + 44 + 8, floor_label.c_str(), text_color, static_cast<short>(1));
+#endif
+                    TRACE("hud", "floor %s", floor_label.c_str());
+                }
             }
         }
     }
@@ -635,7 +668,7 @@ short new_score_panel(screen* s, short /*do_it*/)
     if (og::runtime::current_session != nullptr &&
         og::runtime::current_session->show_fps_)
     {
-        draw_fps_overlay(*s);
+        draw_fps_overlay(*s, static_cast<int>(fps_below_y));
     }
 
     return 1;

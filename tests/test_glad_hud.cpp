@@ -1124,3 +1124,267 @@ TEST(GladHud, way_clear_notice_fires_once_per_level_and_rearms_on_new_level)
     world.tick_count_ = saved_tick;
     world.level_done = saved_done;
 }
+
+// ---------------------------------------------------------------------------
+// floor_hud_label (feature B): the pure shared formatter (D5). Every HUD
+// surface (SDL FOES-box row, curses status line) draws exactly this string,
+// so the format pins live here once.
+
+TEST(FloorHudLabel, empty_on_single_floor)
+{
+    GameWorld w(0);
+    ASSERT_EQ(1, w.floor_count());
+    EXPECT_EQ("", floor_hud_label(w, 0));
+}
+
+TEST(FloorHudLabel, multifloor_is_one_indexed)
+{
+    GameWorld w(0);
+    w.set_floor_count(3);
+    EXPECT_EQ("FLR: 1/3", floor_hud_label(w, 0))
+        << "floor 0 reads as 1/3 (players count from one)";
+    EXPECT_EQ("FLR: 2/3", floor_hud_label(w, 1));
+    EXPECT_EQ("FLR: 3/3", floor_hud_label(w, 2));
+}
+
+TEST(FloorHudLabel, clamps_out_of_range_walker_floor)
+{
+    // Mirror int8 safety: walker_floor is attacker-controllable on a network
+    // mirror, so the label clamps instead of printing garbage.
+    GameWorld w(0);
+    w.set_floor_count(3);
+    EXPECT_EQ("FLR: 1/3", floor_hud_label(w, -5));
+    EXPECT_EQ("FLR: 3/3", floor_hud_label(w, 99));
+}
+
+TEST(FloorHudLabel, tower_single_story_shows_absolute_floor)
+{
+    GameWorld w(0);
+    w.type = SCEN_TYPE_TOWER;
+    w.id = 723; // Tower floor 23 (id = kTowerGateLevel + N)
+    ASSERT_EQ(1, w.floor_count());
+    EXPECT_EQ("FLR: 23", floor_hud_label(w, 0));
+}
+
+TEST(FloorHudLabel, tower_multi_story_combines_floor_and_story)
+{
+    GameWorld w(0);
+    w.type = SCEN_TYPE_TOWER;
+    w.id = 723;
+    w.set_floor_count(3);
+    EXPECT_EQ("F23: 2/3", floor_hud_label(w, 1))
+        << "8 chars for 2-digit floors -- fits the 53px box right-aligned";
+}
+
+TEST(FloorHudLabel, tower_gate_is_unlabeled)
+{
+    // The Gate (id == kTowerGateLevel) is floor 0 of the climb, not a
+    // numbered floor: it falls through to the non-tower branch.
+    GameWorld w(0);
+    w.type = SCEN_TYPE_TOWER;
+    w.id = og::kTowerGateLevel;
+    ASSERT_EQ(1, w.floor_count());
+    EXPECT_EQ("", floor_hud_label(w, 0));
+}
+
+// ---------------------------------------------------------------------------
+// The FLR row in the PREF_FOES box (feature B, SDL surface).
+
+TEST(GladHud, score_panel_shows_floor_indicator_on_multifloor)
+{
+    screen* s = og::runtime::current_session->myscreen_;
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_TRUE(v != nullptr);
+
+    HudObListSwap swap;
+    GameWorld& world = s->world();
+
+    auto control = make_player(0);
+    ASSERT_TRUE(control != nullptr);
+    walker* const controlp = control.get();
+    controlp->stats()->set_hitpoints(50);
+    controlp->stats()->set_max_hitpoints(100);
+    controlp->stats()->set_magicpoints(30);
+    controlp->stats()->set_max_magicpoints(80);
+    world.oblist.push_back(std::move(control));
+
+    world.set_floor_count(3);
+    controlp->set_floor(1);
+
+    walker* const old_control = v->control;
+    const char old_pref_life = v->prefs[PREF_LIFE];
+    const char old_pref_score = v->prefs[PREF_SCORE];
+    const char old_pref_foes = v->prefs[PREF_FOES];
+    const char old_pref_overlay = v->prefs[PREF_OVERLAY];
+    v->control = controlp;
+    v->prefs[PREF_LIFE] = PREF_LIFE_TEXT;
+    v->prefs[PREF_SCORE] = PREF_SCORE_OFF; // score count-up uses rng(); keep off
+    v->prefs[PREF_FOES] = PREF_FOES_ON;
+    v->prefs[PREF_OVERLAY] = PREF_OVERLAY_ON;
+
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    EXPECT_TRUE(trace_contains("hud", "FLR: 2/3"))
+        << "the shared label for floor 1 of 3 reaches the panel";
+
+    // The box grows one row (bottom edge 16 -> 24) and the FLR text renders
+    // in the new last row: pixels must appear in the extension band.
+    const auto frame = capture_rendered_frame(*s);
+    // Zero overscan in the default build: tm == yloc == 0, rm == 320.
+    const int tm = 0;
+    const int rm = 320;
+    bool extension_has_pixels = false;
+    for (int y = tm + 17; y <= tm + 24 && !extension_has_pixels; ++y)
+        for (int x = rm - 57; x <= rm - 2; ++x)
+            if (frame[static_cast<std::size_t>(y * 320 + x)] != 0)
+            {
+                extension_has_pixels = true;
+                break;
+            }
+    EXPECT_TRUE(extension_has_pixels)
+        << "FLR row (box extension y[" << tm + 17 << "," << tm + 24
+        << "]) should have drawn";
+
+    v->control = old_control;
+    v->prefs[PREF_LIFE] = old_pref_life;
+    v->prefs[PREF_SCORE] = old_pref_score;
+    v->prefs[PREF_FOES] = old_pref_foes;
+    v->prefs[PREF_OVERLAY] = old_pref_overlay;
+    controlp->set_floor(0);
+    world.set_floor_count(1);
+}
+
+TEST(GladHud, score_panel_floor_row_absent_single_floor)
+{
+    // Byte-identity witness: on a single-floor level the label is empty, the
+    // box keeps its classic 16px height, and the extension band stays clean.
+    screen* s = og::runtime::current_session->myscreen_;
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_TRUE(v != nullptr);
+
+    HudObListSwap swap;
+    GameWorld& world = s->world();
+    ASSERT_EQ(1, world.floor_count()) << "fixture must be single-floor";
+
+    auto control = make_player(0);
+    ASSERT_TRUE(control != nullptr);
+    walker* const controlp = control.get();
+    controlp->stats()->set_hitpoints(50);
+    controlp->stats()->set_max_hitpoints(100);
+    controlp->stats()->set_magicpoints(30);
+    controlp->stats()->set_max_magicpoints(80);
+    world.oblist.push_back(std::move(control));
+
+    walker* const old_control = v->control;
+    const char old_pref_life = v->prefs[PREF_LIFE];
+    const char old_pref_score = v->prefs[PREF_SCORE];
+    const char old_pref_foes = v->prefs[PREF_FOES];
+    const char old_pref_overlay = v->prefs[PREF_OVERLAY];
+    v->control = controlp;
+    v->prefs[PREF_LIFE] = PREF_LIFE_TEXT;
+    v->prefs[PREF_SCORE] = PREF_SCORE_OFF; // score count-up uses rng(); keep off
+    v->prefs[PREF_FOES] = PREF_FOES_ON;
+    v->prefs[PREF_OVERLAY] = PREF_OVERLAY_ON;
+
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    EXPECT_FALSE(trace_contains("hud", "floor "))
+        << "no floor row trace on single-floor levels";
+
+    const auto frame = capture_rendered_frame(*s);
+    // Zero overscan in the default build: tm == yloc == 0, rm == 320.
+    const int tm = 0;
+    const int rm = 320;
+    for (int y = tm + 17; y <= tm + 24; ++y)
+        for (int x = rm - 57; x <= rm - 2; ++x)
+            ASSERT_EQ(0, static_cast<int>(
+                          frame[static_cast<std::size_t>(y * 320 + x)]))
+                << "pixel at (" << x << "," << y
+                << ") must stay clean: single-floor frames are byte-identical";
+
+    v->control = old_control;
+    v->prefs[PREF_LIFE] = old_pref_life;
+    v->prefs[PREF_SCORE] = old_pref_score;
+    v->prefs[PREF_FOES] = old_pref_foes;
+    v->prefs[PREF_OVERLAY] = old_pref_overlay;
+}
+
+TEST(GladHud, fps_overlay_clears_extended_foes_counter)
+{
+    // Clone of fps_overlay_clears_foes_counter on a 2-floor fixture: the FLR
+    // row grows the counter box to tm+24, and the dynamically-placed FPS
+    // overlay must move strictly below the taller box.
+    struct ShowFpsGuard {
+        ~ShowFpsGuard() { og::runtime::current_session->show_fps_ = false; }
+    } guard;
+
+    screen* s = og::runtime::current_session->myscreen_;
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_TRUE(v != nullptr);
+
+    HudObListSwap swap;
+    GameWorld& world = s->world();
+
+    auto control = make_player(0);
+    ASSERT_TRUE(control != nullptr);
+    walker* const controlp = control.get();
+    controlp->stats()->set_hitpoints(50);
+    controlp->stats()->set_max_hitpoints(100);
+    controlp->stats()->set_magicpoints(30);
+    controlp->stats()->set_max_magicpoints(80);
+    world.oblist.push_back(std::move(control));
+
+    world.set_floor_count(2);
+    controlp->set_floor(0);
+
+    walker* const old_control = v->control;
+    const char old_pref_life = v->prefs[PREF_LIFE];
+    const char old_pref_score = v->prefs[PREF_SCORE];
+    const char old_pref_foes = v->prefs[PREF_FOES];
+    const char old_pref_overlay = v->prefs[PREF_OVERLAY];
+    v->control = controlp;
+    v->prefs[PREF_LIFE] = PREF_LIFE_TEXT;
+    v->prefs[PREF_SCORE] = PREF_SCORE_OFF; // score count-up uses rng(); keep off
+    v->prefs[PREF_FOES] = PREF_FOES_ON;
+    v->prefs[PREF_OVERLAY] = PREF_OVERLAY_ON;
+
+    // Extended box bottom: 16 (classic) + 8 (FLR row) with no wave pending.
+    const int kExtendedBoxBottom = 24; // zero overscan in the default build
+
+    og::runtime::current_session->show_fps_ = false;
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    const auto frame_without = capture_rendered_frame(*s);
+
+    og::runtime::current_session->show_fps_ = true;
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    const auto frame_with = capture_rendered_frame(*s);
+
+    bool overlay_drew = false;
+    for (int y = 0; y < 200; ++y)
+    {
+        for (int x = 0; x < 320; ++x)
+        {
+            const std::size_t i = static_cast<std::size_t>(y * 320 + x);
+            if (frame_with[i] == frame_without[i])
+                continue;
+            overlay_drew = true;
+            ASSERT_GT(y, kExtendedBoxBottom)
+                << "FPS overlay pixel at (" << x << "," << y
+                << ") overlaps the extended counter box (bottom "
+                << kExtendedBoxBottom << ")";
+        }
+    }
+    ASSERT_TRUE(overlay_drew) << "FPS overlay should have rendered some pixels";
+
+    og::runtime::current_session->show_fps_ = false;
+    v->control = old_control;
+    v->prefs[PREF_LIFE] = old_pref_life;
+    v->prefs[PREF_SCORE] = old_pref_score;
+    v->prefs[PREF_FOES] = old_pref_foes;
+    v->prefs[PREF_OVERLAY] = old_pref_overlay;
+    world.set_floor_count(1);
+}

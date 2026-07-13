@@ -725,6 +725,16 @@ void radar::update(LevelRuntimeData* data)
 				case PIX_ASH2:
 					temp = 249;
 					break;
+				// Z-stairs: two STATIC pinned colors (no pulse, never
+				// ctx().rng — a cycled/random index would strobe the bake).
+				// Tile bytes 140/141 are branch-new and absent from all
+				// legacy content, so single-floor radars stay byte-identical.
+				case PIX_ZSTAIR_UP:   // climb objective pops (reads on snow)
+					temp = YELLOW;      // 88
+					break;
+				case PIX_ZSTAIR_DOWN: // exit-idiom cyan
+					temp = LIGHT_BLUE;  // 120
+					break;
 
 				default:
 					temp =  0;

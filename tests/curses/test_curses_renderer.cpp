@@ -904,3 +904,48 @@ TEST(CursesRenderer, renders_real_level_one_without_crashing)
 
     level.delete_objects();
 }
+
+// Feature B: the status line (row 1) appends the shared floor_hud_label after
+// the Lv field — empty on single-floor levels (no "FLR" anywhere), "FLR: f/n"
+// on multifloor. Tower relabeling flows through the same shared helper, so
+// this surface needs no tower-specific test.
+TEST(CursesRenderer, hud_line1_shows_floor_on_multifloor)
+{
+    HandWorld hw(20, 20);
+    walker* hero = hw.add_creature(10, 10, FAMILY_SOLDIER, 0);
+    ASSERT_NE(nullptr, hero);
+    hero->set_user(0);
+
+    // Single-floor: no floor field on the status line.
+    {
+        HeadlessTerminal term(24, 60);
+        CursesRenderer renderer;
+        renderer.draw(term, hw.world(), hero->entity_id());
+        EXPECT_EQ(term.text_row(1).find("FLR"), std::string::npos)
+            << "single-floor row1 must not carry a floor field; got: "
+            << term.text_row(1);
+    }
+
+    // Three stacked stories, hero on the middle one: "FLR: 2/3".
+    GameWorld& w = hw.world();
+    w.set_floor_count(3);
+    {
+        // Give the hero's floor a real grid + smoother target so the tile
+        // pass renders (the HUD is what we assert on).
+        const int gw = w.grid.w;
+        const int gh = w.grid.h;
+        auto* cells = new unsigned char[static_cast<std::size_t>(gw) * gh];
+        for (int i = 0; i < gw * gh; ++i)
+            cells[i] = PIX_GRASS1;
+        w.grid_for_floor(1) = PixieData(1, static_cast<unsigned char>(gw),
+                                        static_cast<unsigned char>(gh), cells);
+        w.smoother_for_floor(1).set_target(w.grid_for_floor(1));
+    }
+    hero->set_floor(1);
+
+    HeadlessTerminal term(24, 60);
+    CursesRenderer renderer;
+    renderer.draw(term, hw.world(), hero->entity_id());
+    EXPECT_NE(term.text_row(1).find("FLR: 2/3"), std::string::npos)
+        << "row 1 shows the shared floor label; got: " << term.text_row(1);
+}

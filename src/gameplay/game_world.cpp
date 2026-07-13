@@ -1981,3 +1981,30 @@ bool GameWorld::has_save_all_protected() const
     }
     return false;
 }
+
+// Floor-awareness HUD label (contract in game_world.h). D5: game modes
+// re-label by branching HERE and only here — both inputs (world.type,
+// world.id) are GameWorld-visible, so no campaign lookup is ever needed.
+// Formats: "" (single-floor non-tower, and the Gate); "FLR: f/n" (normal
+// multifloor, 1-indexed); "FLR: N" (tower single-story floor N); "F N: f/n"
+// as "F{N}: {f}/{n}" (tower multi-story). Appended at EOF: the parity canary
+// pins in this file (1620/1622/1710) sit far above and must never shift.
+std::string floor_hud_label(const GameWorld& world, int walker_floor)
+{
+    const int floors = world.floor_count();
+    // The Gate (id == kTowerGateLevel) deliberately falls through to the
+    // non-tower branch: it is floor 0 of the climb, not a numbered floor.
+    const bool tower = (world.type & GameWorld::TYPE_TOWER) != 0
+        && world.id > og::kTowerGateLevel;
+    const int f = std::clamp(walker_floor, 0, floors - 1);
+    if (!tower)
+    {
+        if (floors <= 1)
+            return "";
+        return std::format("FLR: {}/{}", f + 1, floors);
+    }
+    if (floors <= 1)
+        return std::format("FLR: {}", world.id - og::kTowerGateLevel);
+    return std::format("F{}: {}/{}", world.id - og::kTowerGateLevel,
+                       f + 1, floors);
+}
