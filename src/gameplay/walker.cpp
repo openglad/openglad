@@ -1691,6 +1691,13 @@ bool walker::death()
 			newob->stats()->set_hitpoints(static_cast<float>(myguy->query_heart_value()));
 			newob->stats()->set_hitpoints(
 			    newob->stats()->hitpoints() * (0.75f / 2.0f));  // 75%, divided by 2, since score is doubled at end of level
+			// Permadeath off (keep_fallen_heroes mirror on the world): the
+			// fallen hero returns with their growth intact, so the gem is
+			// consolation, not salvage — half value. Default 0 (permadeath
+			// on) keeps the legacy full-value math byte-identical.
+			if (current_game->world->keep_fallen_heroes != 0)
+				newob->stats()->set_hitpoints(
+				    newob->stats()->hitpoints() * 0.5f);
 			newob->set_team_num(team_num());
 			newob->set_floor(floor());  // heart drops on the floor we died on (A8)
 			newob->center_on(this);

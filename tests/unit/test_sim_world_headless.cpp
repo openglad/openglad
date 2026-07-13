@@ -1,4 +1,5 @@
 #include <openglad/gameplay/event.h>
+#include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/sim_emit.h>
 #include <openglad/gameplay/game_world.h>
@@ -484,4 +485,42 @@ TEST(SimWorldHeadless, exit_with_foes_alive_says_foes_remain)
     ASSERT_TRUE(exit_pad->eat_me(hero));
     EXPECT_EQ(1, notifications("Foes remain"));
     EXPECT_EQ(2, exit_prompts());
+}
+
+// Life-gem value vs permadeath: with keep_fallen_heroes set (permadeath off)
+// the fallen hero returns with their growth intact, so the gem drops at HALF
+// the legacy value — full salvage would double-dip. Default (0) is the
+// byte-identical legacy math: heart_value * 0.75 / 2.
+TEST(SimWorldHeadless, life_gem_halves_when_permadeath_is_off)
+{
+    const auto dropped_gem_value = [](short keep_fallen) -> float {
+        TestGameWorld t;
+        t.world().keep_fallen_heroes = keep_fallen;
+
+        walker* hero = t.world().add_ob(Order::Living, FAMILY_SOLDIER);
+        if (hero == nullptr)
+            return -1.0f;
+        hero->setxy(120, 120);
+        hero->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+        hero->myguy->exp = 4000; // non-trivial heart value
+
+        hero->set_dead(1);
+        hero->death();
+
+        for (const auto& uptr : t.world().oblist)
+        {
+            walker* w = uptr.get();
+            if (w != nullptr && w->query_order() == Order::Treasure &&
+                w->family() == FAMILY_LIFE_GEM)
+                return w->stats()->hitpoints();
+        }
+        return -1.0f;
+    };
+
+    const float full = dropped_gem_value(0);
+    const float halved = dropped_gem_value(1);
+    ASSERT_GT(full, 0.0f) << "permadeath-on death must drop a valued gem";
+    ASSERT_GT(halved, 0.0f);
+    EXPECT_FLOAT_EQ(full * 0.5f, halved)
+        << "permadeath-off gems carry exactly half the legacy value";
 }

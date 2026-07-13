@@ -400,6 +400,13 @@ public:
     // Bernoulli bound in walker::act_generate; 100 is an exact integer
     // identity, keeping the default RNG stream byte-identical.
     short generator_rate = 0;
+    // Session permadeath mirror (SaveData::keep_fallen_heroes, synced by both
+    // sync_world_from_save_data twins). 0 = permadeath on win (legacy): a
+    // fallen hero is lost, so the life gem carries full salvage value.
+    // Nonzero = fallen heroes return, so death() drops the gem at HALF value
+    // (the hero's growth already survives — full salvage would double-dip).
+    // Default 0 keeps parity scenarios and legacy content byte-identical.
+    short keep_fallen_heroes = 0;
     og::sim::CtfState ctf;
     short current_scenario = 0;
     int guy_id_counter = 0;

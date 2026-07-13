@@ -1186,6 +1186,7 @@ void screen::sync_world_from_save_data()
     world_.respawn_mode =
         og::mode::current_progression().clamp_respawn_mode(save_data.respawn_mode);
     world_.generator_rate = save_data.generator_rate;
+    world_.keep_fallen_heroes = save_data.keep_fallen_heroes;
     world_.current_scenario = save_data.scen_num;
     for (int i = 0; i < 4; ++i)
         world_.m_score[i] = save_data.m_score[i];

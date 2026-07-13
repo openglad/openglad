@@ -87,6 +87,7 @@ void sync_world_from_save_data(GameWorld& world, const SaveData& save)
     world.respawn_mode =
         og::mode::current_progression().clamp_respawn_mode(save.respawn_mode);
     world.generator_rate = save.generator_rate;
+    world.keep_fallen_heroes = save.keep_fallen_heroes;
     world.current_scenario = save.scen_num;
     for (int index = 0; index < MAX_PLAYERS; ++index)
         world.m_score[index] = save.m_score[index];
