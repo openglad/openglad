@@ -256,6 +256,12 @@ set(GAME_SOURCES
 		    ${SRC_DIR}/resources/gloader.cpp
     ${SRC_DIR}/resources/gloader_ctf.cpp
     ${SRC_DIR}/resources/campaign_metadata.cpp
+    ${SRC_DIR}/resources/game_mode.cpp
+    ${SRC_DIR}/resources/progression.cpp
+    ${SRC_DIR}/resources/tower_progression.cpp
+    ${SRC_DIR}/resources/mapgen/tower_floor_gen.cpp
+    ${SRC_DIR}/gameplay/mapgen/builders.cpp
+    ${SRC_DIR}/gameplay/mapgen/audits.cpp
     ${SRC_DIR}/resources/level_file_io.cpp
     ${SRC_DIR}/resources/our_palette.cpp
     ${SRC_DIR}/resources/pixie_data.cpp
@@ -334,6 +340,10 @@ set(OG_DATA_SOURCES
     ${SRC_DIR}/resources/gloader.cpp
     ${SRC_DIR}/resources/gloader_ctf.cpp
     ${SRC_DIR}/resources/campaign_metadata.cpp
+    ${SRC_DIR}/resources/game_mode.cpp
+    ${SRC_DIR}/resources/progression.cpp
+    ${SRC_DIR}/resources/tower_progression.cpp
+    ${SRC_DIR}/resources/mapgen/tower_floor_gen.cpp
     ${SRC_DIR}/resources/level_file_io.cpp
     ${SRC_DIR}/resources/our_palette.cpp
     ${SRC_DIR}/resources/pixie_data.cpp
@@ -502,6 +512,8 @@ set(OG_GAMEPLAY_COMPONENT_SOURCES
     ${SRC_DIR}/gameplay/ctf/ctf_ai.cpp
     ${SRC_DIR}/gameplay/sim_input_handler.cpp
     ${SRC_DIR}/gameplay/smooth.cpp
+    ${SRC_DIR}/gameplay/mapgen/builders.cpp
+    ${SRC_DIR}/gameplay/mapgen/audits.cpp
 )
 
 set(OG_RESOURCES_COMPONENT_SOURCES
@@ -1220,6 +1232,10 @@ if(NOT EMSCRIPTEN)
         ${OG_CORE_SOURCES}
         # sim
         ${OG_SIM_SOURCES}
+        # mapgen builder lib (tower_floor_gen in OG_DATA_SOURCES needs it;
+        # component-linking targets get it from og_gameplay instead)
+        ${SRC_DIR}/gameplay/mapgen/builders.cpp
+        ${SRC_DIR}/gameplay/mapgen/audits.cpp
         # data
         ${OG_DATA_SOURCES}
         # entities
@@ -1411,6 +1427,32 @@ if(NOT EMSCRIPTEN)
         pthread
     )
     add_runtime_assets_dependency(longseason_mapgen)
+
+    # --- tower_mapgen ("The Endless Tower" Gate-only package generator) ---
+    # SDL-free authoring tool that produces builtin/org.openglad.tower.glad:
+    # campaign.yaml (`mode: tower`) + icon + the authored Gate (scen700)
+    # ONLY — generated floors are written to the user path at run time and
+    # must never ship in the package (tower-triple spec D7). Not part of the
+    # default build; run via scripts/generate_tower_campaign.sh.
+    add_executable(tower_mapgen EXCLUDE_FROM_ALL
+        ${CMAKE_SOURCE_DIR}/tools/tower_mapgen/main.cpp
+        ${SRC_DIR}/platform/text/platform_headless.cpp
+        ${SRC_DIR}/platform/text/walker_headless.cpp
+        ${SRC_DIR}/interface/input/input_state.cpp
+        ${SRC_DIR}/platform/game_context.cpp
+        ${SRC_DIR}/interface/session_state.cpp
+        ${SRC_DIR}/interface/level_runtime_data.cpp
+        ${SRC_DIR}/interface/platform_bridge.cpp
+    )
+    configure_openglad_library(tower_mapgen)
+    target_link_libraries(tower_mapgen PRIVATE
+        og_core
+        og_gameplay
+        og_resources
+        m
+        pthread
+    )
+    add_runtime_assets_dependency(tower_mapgen)
 
     # --- grid_migrate (BASE + DECOR migration for hand-authored packages) ---
     # SDL-free tool that rewrites a stock .glad so legacy combined tiles
@@ -1963,6 +2005,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_scenarios.cpp
             ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_coverage_gate.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_ctf_ui.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_tower_run.cpp
         )
 
         function(og_add_test_group NAME)
@@ -2133,6 +2176,10 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
 
         og_add_test_group(og_test_snapshot_safety FILES
             test_dirty_tracking_safety.cpp
+        )
+
+        og_add_test_group(og_test_tower_run FILES
+            test_tower_run.cpp
         )
 
         og_add_test_group(og_test_screen FILES
@@ -2467,6 +2514,8 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/test_gparser_unit.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_zip_api.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_campaign_metadata.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_game_mode.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_progression.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_physfs_wrappers.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_input_actions.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_spectator_mode.cpp
@@ -2484,6 +2533,22 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_ctf_snapshot.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_ctf_levels.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_classic_respawn.cpp
+        )
+
+        og_add_unit_group(og_unit_mapgen FILES
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_mapgen_builders.cpp
+        )
+
+        og_add_unit_group(og_unit_tower_gen FILES
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_tower_floor_gen.cpp
+        )
+
+        og_add_unit_group(og_unit_tower_progression FILES
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_tower_progression.cpp
+        )
+
+        og_add_unit_group(og_unit_tower_calibration FILES
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_tower_calibration.cpp
         )
 
         add_executable(og_unit_server

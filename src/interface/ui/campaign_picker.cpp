@@ -17,7 +17,9 @@
 
 #include <openglad/interface/ui/campaign_picker.h>
 #include <openglad/interface/ui/picker_common.h>
+#include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/resources/campaign_yaml.h>
+#include <openglad/resources/game_mode.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/interface/render/pixie.h>
 #include <openglad/interface/render/text.h>
@@ -28,6 +30,7 @@
 #include <openglad/core/util.h>
 #include <format>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <vector>
 #include <string>
@@ -54,6 +57,18 @@ struct UiRect
 };
 
 constexpr std::int32_t kReleaseWaitPollLimit = 5000;
+
+// True while a genuine networked session is live at campaign-pick time:
+// a hosted/joined lobby (SET CAMPAIGN while hosting) or a between-level
+// team-build over the persistent connection (networked_session_ stays set
+// through the return-to-menu round trip). Gates the tower off the shelf —
+// the Endless Tower is local-only in v1.
+bool networked_campaign_select()
+{
+    return picker_lobby_is_networked() ||
+           (og::runtime::current_session != nullptr &&
+            og::runtime::current_session->networked_session_);
+}
 
 void wait_for_mouse_release()
 {
@@ -307,6 +322,8 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
     // Load campaigns (default campaign first; remainder stays alphabetical).
     std::list<std::string> campaign_ids = list_campaigns();
     og::ui::order_campaigns_for_select(campaign_ids);
+    og::ui::filter_campaigns_for_networked_lobby(campaign_ids,
+                                                 networked_campaign_select());
     int i = 0;
     for(auto& cid : campaign_ids)
     {
@@ -481,6 +498,8 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
                
                campaign_ids = list_campaigns();
                og::ui::order_campaigns_for_select(campaign_ids);
+               og::ui::filter_campaigns_for_networked_lobby(
+                   campaign_ids, networked_campaign_select());
 
                 for(auto& cid : campaign_ids)
                 {
@@ -596,7 +615,31 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
     {
         ret_value.id = result->id;
         ret_value.first_level = result->first_level;
+
+        // Campaign-select completion heal (tower-triple §5.9, risk R9):
+        // mount the selection and resolve its cursor exactly as the caller's
+        // load_campaign will, then let the mounted mode regenerate any
+        // missing generated level BEFORE any preview reads it (a tower
+        // resume can point at a floor whose user-dir files are gone; the
+        // missing-file fallback would silently wrap the run to the Gate).
+        // Classic campaigns: ensure_level_available is a no-op. The caller's
+        // own load_campaign then finds the selection already mounted and
+        // just reads the cursor, so the early mount is invisible to it.
+        if(save_data != nullptr &&
+           load_campaign_with_error(ret_value.id, save_data->current_levels,
+                                    ret_value.first_level).error ==
+               CampaignLoadError::None)
+        {
+            const short kept_cursor = save_data->scen_num;
+            std::map<std::string, int>::const_iterator cursor =
+                save_data->current_levels.find(ret_value.id);
+            save_data->scen_num = static_cast<short>(
+                cursor != save_data->current_levels.end() ? cursor->second
+                                                          : ret_value.first_level);
+            og::mode::current_progression().ensure_level_available(*save_data);
+            save_data->scen_num = kept_cursor;
+        }
     }
-    
+
 	    return ret_value;
 }

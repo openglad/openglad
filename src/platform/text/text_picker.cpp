@@ -146,6 +146,12 @@ public:
     {
         std::list<std::string> campaigns = list_campaigns();
         order_campaigns_for_select(campaigns);
+        // Kept in lockstep with the SDL/curses shelves: networked lobbies
+        // must not offer the (local-only) tower. The text client cannot
+        // currently enter a networked session — configure_networking is a
+        // stub — so the flag is always false here today.
+        filter_campaigns_for_networked_lobby(campaigns,
+                                             /*networked_session=*/false);
         std::vector<std::string> entries(campaigns.begin(), campaigns.end());
 
         if (entries.empty()) {

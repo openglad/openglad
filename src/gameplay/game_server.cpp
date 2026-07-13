@@ -2,6 +2,7 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/core/runtime_trace.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/core/util.h>
 #include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/families/family_descriptor.h>
@@ -1691,45 +1692,62 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
         case TypedReceivedMessageKind::SnapshotHashCheck:
             if (message.snapshot_hash_check)
             {
+                bool mismatch = false;
+                std::uint32_t expected_hash = 0;
                 auto hash_it =
                     client.expected_snapshot_hashes.find(message.snapshot_hash_check->tick);
                 if (hash_it == client.expected_snapshot_hashes.end() ||
                     hash_it->second.empty())
                 {
-                    ++snapshot_hash_mismatch_count_;
-                    client.budget_pending_keyframe = true;
-                    client.force_keyframe = true;
-                    LogError(
-                        "snapshot_hash_mismatch peer={} tick={} server={} client={} entities={}\n",
-                        message.peer_id,
-                        message.snapshot_hash_check->tick,
-                        0u,
-                        message.snapshot_hash_check->snapshot_hash,
-                        world_.oblist.size() + world_.fxlist.size() +
-                            world_.weaplist.size());
+                    mismatch = true;
                 }
                 else
                 {
-                    const std::uint32_t expected_hash = hash_it->second.front();
+                    expected_hash = hash_it->second.front();
                     if (expected_hash != message.snapshot_hash_check->snapshot_hash)
                     {
-                        ++snapshot_hash_mismatch_count_;
-                        client.budget_pending_keyframe = true;
-                        client.force_keyframe = true;
-                        LogError(
-                            "snapshot_hash_mismatch peer={} tick={} server={} client={} entities={}\n",
-                            message.peer_id,
-                            message.snapshot_hash_check->tick,
-                            expected_hash,
-                            message.snapshot_hash_check->snapshot_hash,
-                            world_.oblist.size() + world_.fxlist.size() +
-                                world_.weaplist.size());
+                        mismatch = true;
                     }
                     else
                     {
                         hash_it->second.pop_front();
                         if (hash_it->second.empty())
                             client.expected_snapshot_hashes.erase(hash_it);
+                        client.consecutive_hash_mismatches = 0;
+                    }
+                }
+                if (mismatch)
+                {
+                    ++snapshot_hash_mismatch_count_;
+                    ++client.consecutive_hash_mismatches;
+                    client.budget_pending_keyframe = true;
+                    client.force_keyframe = true;
+                    LogError(
+                        "snapshot_hash_mismatch peer={} tick={} server={} client={} entities={}\n",
+                        message.peer_id,
+                        message.snapshot_hash_check->tick,
+                        expected_hash,
+                        message.snapshot_hash_check->snapshot_hash,
+                        world_.oblist.size() + world_.fxlist.size() +
+                            world_.weaplist.size());
+                    if (client.consecutive_hash_mismatches >=
+                        kMaxConsecutiveSnapshotHashMismatches)
+                    {
+                        // Bounded loud failure: no number of keyframes has
+                        // healed this client — cut the infinite force-
+                        // keyframe rubber-band instead of retrying forever.
+                        // (A true resync would need an InitialSetup
+                        // re-handshake; the reconnect path provides one.)
+                        LogError(
+                            "snapshot_hash_mismatch_limit peer={} strikes={} "
+                            "— disconnecting desynced client\n",
+                            message.peer_id,
+                            client.consecutive_hash_mismatches);
+                        TRACE("net", "server_desync_disconnect peer=%u",
+                              static_cast<unsigned>(message.peer_id));
+                        // Invalidates `client`; nothing may touch it after.
+                        handle_transport_disconnect(message.peer_id,
+                                                    /*close_transport=*/true);
                     }
                 }
             }

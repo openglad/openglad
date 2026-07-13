@@ -850,6 +850,14 @@ std::string CursesPickerClient::show_campaign_select()
     Menu menu(term_, clock_);
     std::list<std::string> campaigns = list_campaigns();
     og::ui::order_campaigns_for_select(campaigns);
+    // Kept in lockstep with the SDL/curses shelves: networked lobbies must
+    // not offer the (local-only) tower. The curses network lobby fixes its
+    // campaign from the save at host/join time (this picker screen is only
+    // reachable locally), so the flag is always false here today; the
+    // LobbyServer sanitize backstop covers a tower save carried into a
+    // hosted lobby.
+    og::ui::filter_campaigns_for_networked_lobby(campaigns,
+                                                 /*networked_session=*/false);
     std::vector<std::string> ids(campaigns.begin(), campaigns.end());
 
     if (ids.empty()) {

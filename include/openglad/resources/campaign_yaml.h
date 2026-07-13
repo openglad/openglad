@@ -17,6 +17,10 @@ struct CampaignYaml {
     std::string authors;
     std::string contributors;
     std::string description;
+    // Game-mode identity (og::mode seam): absent/"classic" -> Classic,
+    // "tower" -> Tower. The writer emits the key ONLY when non-empty so
+    // every existing (mode-less) campaign repack stays byte-stable.
+    std::string mode;
     int suggested_power = 0;
     int first_level = 1;
     bool saw_title = false;
@@ -24,6 +28,7 @@ struct CampaignYaml {
     bool saw_authors = false;
     bool saw_contributors = false;
     bool saw_description = false;
+    bool saw_mode = false;
     bool saw_suggested_power = false;
     bool saw_first_level = false;
 };

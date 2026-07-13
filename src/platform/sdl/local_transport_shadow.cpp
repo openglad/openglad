@@ -1,6 +1,7 @@
 #include <openglad/platform/local_transport_shadow.h>
 
 #include <openglad/core/runtime_trace.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/core/util.h>
 #include <openglad/gameplay/game_client.h>
 #include <openglad/gameplay/gameplay_context.h>
@@ -18,6 +19,7 @@
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/platform/game_session.h>
+#include <openglad/resources/progression.h>
 
 #include <algorithm>
 #include <climits>
@@ -343,36 +345,33 @@ bool finalize_level_and_advance_cursor(screen& gameplay_screen,
 {
     gameplay_screen.sync_save_data_from_world();
 
+    // The shared win fold (og::progression::apply_win_fold) is the canonical
+    // tally: this site donated its ordering. Time bonus is caller-computed
+    // from the LIVE m_score before the fold zeroes it; the CTF rematch shape
+    // (which this site historically missed) is evaluated before the cursor
+    // moves.
+    og::progression::WinFoldContext fold_ctx;
     for (std::size_t team_index = 0;
-         team_index < std::size(gameplay_screen.save_data.m_score);
+         team_index < fold_ctx.time_bonus.size();
          ++team_index)
     {
-        gameplay_screen.save_data.m_totalscore[team_index] +=
-            gameplay_screen.save_data.m_score[team_index];
-        gameplay_screen.save_data.m_totalcash[team_index] +=
-            gameplay_screen.save_data.m_score[team_index] * 2u;
+        fold_ctx.time_bonus[team_index] =
+            get_time_bonus(static_cast<int>(team_index));
     }
+    fold_ctx.rematch_shape = og::progression::ctf_rematch_shape(
+        gameplay_screen.world(),
+        gameplay_screen.save_data,
+        static_cast<short>(next_level));
+    fold_ctx.finished_level = gameplay_screen.save_data.scen_num;
+    fold_ctx.outcome.ending = 0;
+    fold_ctx.outcome.next_level = static_cast<short>(next_level);
+    fold_ctx.outcome.networked = networked;
+    og::progression::apply_win_fold(
+        gameplay_screen.save_data, gameplay_screen.world(), fold_ctx);
 
-    const bool already_completed =
-        gameplay_screen.save_data.is_level_completed(
-            gameplay_screen.save_data.scen_num);
-    for (std::size_t team_index = 0;
-         team_index < std::size(gameplay_screen.save_data.m_score);
-         ++team_index)
-    {
-        if (!already_completed)
-        {
-            gameplay_screen.save_data.m_totalcash[team_index] +=
-                get_time_bonus(static_cast<int>(team_index));
-        }
-        gameplay_screen.save_data.m_score[team_index] = 0;
-    }
-
-    gameplay_screen.save_data.add_level_completed(
-        gameplay_screen.save_data.current_campaign,
-        gameplay_screen.save_data.scen_num);
-    gameplay_screen.save_data.scen_num = static_cast<short>(next_level);
-    gameplay_screen.save_data.update_guys(gameplay_screen.world().oblist);
+    // Persist tail (site-owned policy), gated on the mode's win persistence.
+    if (!og::mode::current_progression().persist_after_win())
+        return true;
 
     // For a networked session the combined roster goes to the transient slot,
     // never the player's real save0. Each completed level we also merge this
@@ -400,6 +399,19 @@ bool finalize_withdraw_and_advance_cursor(screen& gameplay_screen,
                                           int destination_level,
                                           bool networked)
 {
+    // Withdraw/quit-mission is a run-ending, non-win exit: route the mode's
+    // run-end policy (Classic: no-op) before the roster reload discards the
+    // level's state. Idempotent with the display-side screen::endgame hook.
+    {
+        og::mode::LevelOutcome run_outcome;
+        run_outcome.ending = 1;
+        run_outcome.next_level = static_cast<short>(destination_level);
+        run_outcome.networked = networked;
+        run_outcome.withdrawn = true;
+        og::mode::current_progression().on_run_ended(
+            gameplay_screen.save_data, gameplay_screen.world(), run_outcome);
+    }
+
     const char* const slot = networked ? "netsession" : "save0";
     const SaveDataIoError load_error =
         gameplay_screen.save_data.load_with_error(slot);
@@ -477,6 +489,38 @@ bool prepare_display_level_for_initial_setup(
     sync_single_display_team_from_save(gameplay_screen);
     gameplay_screen.redrawme = 1;
     return true;
+}
+
+// Level-transition load with ONE heal attempt: the mounted mode may be able
+// to regenerate the level's files (tower floors are derived from (seed, N) in
+// the save), so ask it to make the level available and retry once. Returns
+// false only when the retry also fails — the caller must then END the display
+// session loudly instead of silently keeping the stale world (the previous
+// level would keep rendering while the authoritative sim runs the next one:
+// an unrecoverable ghost session).
+bool prepare_display_level_with_heal(
+    screen& gameplay_screen,
+    const og::sim::InitialSetupMessage& message)
+{
+    if (prepare_display_level_for_initial_setup(gameplay_screen, message))
+        return true;
+
+    og::mode::current_progression().ensure_level_available(
+        gameplay_screen.save_data);
+    if (prepare_display_level_for_initial_setup(gameplay_screen, message))
+    {
+        TRACE("net", "display_transition_healed level=%d",
+              static_cast<int>(message.level_id));
+        return true;
+    }
+
+    LogError(
+        "local_transport_shadow_display_transition_failed level={} — "
+        "ending the session instead of keeping the stale world\n",
+        message.level_id);
+    TRACE("net", "display_transition_failed level=%d",
+          static_cast<int>(message.level_id));
+    return false;
 }
 
 walker* resolve_control_from_entity_id(GameWorld& world, std::uint32_t entity_id)
@@ -670,9 +714,16 @@ void configure_display_game_client(og::runtime::LocalTransportRuntime& runtime,
                 return;
             }
 
-            if (!prepare_display_level_for_initial_setup(
-                    gameplay_screen, message))
+            if (!prepare_display_level_with_heal(gameplay_screen, message))
             {
+                // Fail LOUDLY: a swallowed transition failure used to keep
+                // the stale world on screen while the authoritative sim
+                // moved on — surface it and end the display session.
+                popup_dialog("Level Load Failed",
+                             "Could not load the next level.");
+                gameplay_screen.redrawme = 1;
+                if (runtime_ptr != nullptr)
+                    runtime_ptr->display_session_finished = true;
                 return;
             }
 
@@ -820,6 +871,36 @@ bool local_transport_shadow_testing_server_pending_exit_prompt(
         return false;
     return runtime->server->pending_exit_prompt();
 }
+
+bool local_transport_shadow_testing_finalize_win(screen& gameplay_screen,
+                                                 int next_level,
+                                                 bool networked,
+                                                 std::uint8_t own_player_index)
+{
+    return finalize_level_and_advance_cursor(
+        gameplay_screen, next_level, networked, own_player_index);
+}
+
+bool local_transport_shadow_testing_finalize_withdraw(screen& gameplay_screen,
+                                                      int destination_level,
+                                                      bool networked)
+{
+    return finalize_withdraw_and_advance_cursor(
+        gameplay_screen, destination_level, networked);
+}
+
+bool local_transport_shadow_testing_display_transition(screen& gameplay_screen,
+                                                       int level_id)
+{
+    og::sim::InitialSetupMessage message;
+    message.level_id = level_id;
+    message.current_scenario = static_cast<std::int16_t>(level_id);
+    message.my_team =
+        static_cast<std::int16_t>(gameplay_screen.save_data.my_team);
+    message.allied_mode =
+        static_cast<std::int16_t>(gameplay_screen.save_data.allied_mode);
+    return prepare_display_level_with_heal(gameplay_screen, message);
+}
 #endif
 
 bool local_transport_shadow_is_paused(const GameSession& session) noexcept
@@ -872,6 +953,21 @@ bool local_transport_shadow_abort_level(GameSession& session)
 
         auto server_scope = runtime->server_session->activate();
         GameplayContextGuard server_gameplay_scope(&runtime->server_session->game_);
+        // Esc-abort ends the run without passing screen::endgame or the
+        // withdraw finalize (the display ends on the mirrored world.end, and
+        // the caller shows results directly), so this is a run-end routing
+        // site of its own: route the mode's policy (Classic: no-op) exactly
+        // once, on the authoritative save.
+        {
+            og::mode::LevelOutcome run_outcome;
+            run_outcome.ending = 1;
+            run_outcome.next_level =
+                static_cast<short>(server_screen->world().current_scenario);
+            run_outcome.networked = runtime->networked;
+            run_outcome.withdrawn = true;
+            og::mode::current_progression().on_run_ended(
+                server_screen->save_data, server_screen->world(), run_outcome);
+        }
         server_screen->world().end = 1;
         runtime->server->broadcast_current_state(
             og::sim::SnapshotCaptureMode::Peek,

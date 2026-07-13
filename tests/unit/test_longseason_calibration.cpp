@@ -109,9 +109,18 @@ struct CurvePin
 // crew is seen; a real crew that kites and heals plays it, the stand-in
 // cannot). Re-sweep the F4 win/hold gates on 4/12/16/17 with
 // scripts/longseason_playtest.sh before the next balance pass.)
+//
+// (Recalibrated 2026-07-13 for the v10 loader obmap fix: loaded
+// upper-story objects used to be bucketed in the FLOOR-0 collision piles
+// (setxy ran before set_floor), so enemies authored on upper stories were
+// collision ghosts. With the fix they engage for real and the multi-story
+// levels got hotter for the stand-in: 3: 8->7, 10: 3->1 (the tower's
+// upper garrison now fires down the stair line). Re-sweep the F4 gates on
+// 3/10/18 with scripts/longseason_playtest.sh before the next balance
+// pass — their shipped balance was measured under ghost physics.)
 constexpr CurvePin kCurve[] = {
-    {1, 1, 8},  {2, 1, 6},  {3, 2, 8},  {4, 2, 1},  {5, 3, 5},
-    {6, 3, 4},  {7, 4, 6},  {8, 4, 3},  {9, 5, 8},  {10, 5, 3},
+    {1, 1, 8},  {2, 1, 6},  {3, 2, 7},  {4, 2, 1},  {5, 3, 5},
+    {6, 3, 4},  {7, 4, 6},  {8, 4, 3},  {9, 5, 8},  {10, 5, 1},
     {11, 5, 5}, {12, 6, 2}, {13, 6, 2}, {14, 7, 7}, {15, 7, 8},
     {16, 7, 2}, {17, 8, 0}, {18, 8, 0}, {19, 8, 8},
 };

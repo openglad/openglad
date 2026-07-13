@@ -64,11 +64,20 @@ void accumulate_snapshot_for_client(PerClientState& client_state,
 WorldSnapshot consume_delta_snapshot_for_client(PerClientState& client_state,
                                                 const WorldSnapshot& snapshot);
 
+// Consecutive snapshot-hash mismatches (no intervening success) from one
+// client before the server declares it unrecoverably desynced and disconnects
+// it. Every mismatch forces a full keyframe, so an unbounded mismatch stream
+// is both an infinite rubber-band for the client and a bandwidth
+// amplification lever for a crafted one. A healthy heal clears within a few
+// in-flight ticks; 120 (~4 seconds of ticks) is decisively pathological.
+inline constexpr std::uint32_t kMaxConsecutiveSnapshotHashMismatches = 120;
+
 struct ConnectedClientState {
     PerClientState snapshot_state;
     // Keep hashes in send order so same-tick keyframe resends remain strict.
     std::unordered_map<std::uint32_t, std::deque<std::uint32_t>>
         expected_snapshot_hashes;
+    std::uint32_t consecutive_hash_mismatches = 0;
     std::size_t player_index = 0;
     short team_num = 0;
     walker* control = nullptr;

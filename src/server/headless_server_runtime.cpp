@@ -10,6 +10,7 @@
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/resources/campaign_io.h>
 #include <openglad/resources/io_common.h>
+#include <openglad/resources/progression.h>
 #include <openglad/resources/save_data.h>
 
 #include <algorithm>
@@ -81,7 +82,10 @@ void sync_world_from_save_data(GameWorld& world, const SaveData& save)
     world.ctf_requested_capture_limit = save.ctf_capture_limit;
     world.ctf_requested_respawn_ticks = save.ctf_respawn_ticks;
     world.ctf_requested_strip_scenario_troops = save.ctf_strip_scenario_troops;
-    world.respawn_mode = save.respawn_mode;
+    // Modes may clamp world knobs (Classic: identity). Applied in BOTH
+    // sync_world_from_save_data twins (see screen.cpp).
+    world.respawn_mode =
+        og::mode::current_progression().clamp_respawn_mode(save.respawn_mode);
     world.generator_rate = save.generator_rate;
     world.current_scenario = save.scen_num;
     for (int index = 0; index < MAX_PLAYERS; ++index)
@@ -305,6 +309,13 @@ void copy_headless_server_save_data(SaveData& destination,
     destination.ctf_capture_limit = source.ctf_capture_limit;
     destination.ctf_respawn_ticks = source.ctf_respawn_ticks;
     destination.ctf_strip_scenario_troops = source.ctf_strip_scenario_troops;
+    // Tower run state (GTL v13) must ride the server/checkpoint copies:
+    // advance_cursor regenerates floors from tower_run_seed and merges
+    // tower_best_floor, and on_run_ended re-writes both to save0 — a copy
+    // that dropped them would clobber the on-disk seed to 0 and lose the
+    // best-floor merge on the curses/headless paths.
+    destination.tower_best_floor = source.tower_best_floor;
+    destination.tower_run_seed = source.tower_run_seed;
 
     for (std::size_t index = 0; index < destination.team_list.size(); ++index)
     {
@@ -451,35 +462,27 @@ bool complete_headless_level_and_load_next(LevelRuntimeData& level_data,
     GameWorld& world = level_data.world();
     sync_headless_server_save_data_from_world(active_save, world);
 
+    // The shared win fold (og::progression::apply_win_fold) tallies the
+    // money, marks completion, and advances the cursor; this site keeps its
+    // headless time-bonus source and its checkpoint/reload tail.
+    og::progression::WinFoldContext fold_ctx;
     for (std::size_t team_index = 0;
-         team_index < std::size(active_save.m_score);
+         team_index < fold_ctx.time_bonus.size();
          ++team_index)
     {
-        active_save.m_totalscore[team_index] += active_save.m_score[team_index];
-        active_save.m_totalcash[team_index] += active_save.m_score[team_index] * 2u;
+        fold_ctx.time_bonus[team_index] = calculate_headless_time_bonus(
+            world,
+            active_save,
+            static_cast<int>(team_index));
     }
+    fold_ctx.rematch_shape = og::progression::ctf_rematch_shape(
+        world, active_save, static_cast<short>(next_level));
+    fold_ctx.finished_level = active_save.scen_num;
+    fold_ctx.outcome.ending = 0;
+    fold_ctx.outcome.next_level = static_cast<short>(next_level);
+    fold_ctx.outcome.networked = true;
+    og::progression::apply_win_fold(active_save, world, fold_ctx);
 
-    const bool already_completed = active_save.is_level_completed(active_save.scen_num);
-    for (std::size_t team_index = 0;
-         team_index < std::size(active_save.m_score);
-         ++team_index)
-    {
-        if (!already_completed)
-        {
-            active_save.m_totalcash[team_index] += calculate_headless_time_bonus(
-                world,
-                active_save,
-                static_cast<int>(team_index));
-        }
-        active_save.m_score[team_index] = 0;
-    }
-
-    active_save.add_level_completed(
-        active_save.current_campaign,
-        active_save.scen_num);
-    active_save.scen_num = static_cast<short>(next_level);
-    active_save.current_levels[active_save.current_campaign] = active_save.scen_num;
-    active_save.update_guys(world.oblist);
     update_primary_team_totals(active_save);
     copy_headless_server_save_data(checkpoint_save, active_save);
 
@@ -498,6 +501,20 @@ bool withdraw_headless_level(LevelRuntimeData& level_data,
                              og::sim::SimEventLog& events,
                              int destination_level)
 {
+    // Withdraw/quit-mission is a run-ending, non-win exit: route the mode's
+    // run-end policy (Classic: no-op) before the checkpoint restore discards
+    // the level's state. (A headless team-wipe loss has no server-side save
+    // mutation at all — each display client routes its own run-end hook.)
+    {
+        og::mode::LevelOutcome run_outcome;
+        run_outcome.ending = 1;
+        run_outcome.next_level = static_cast<short>(destination_level);
+        run_outcome.networked = true;
+        run_outcome.withdrawn = true;
+        og::mode::current_progression().on_run_ended(
+            active_save, level_data.world(), run_outcome);
+    }
+
     copy_headless_server_save_data(active_save, checkpoint_save);
     active_save.scen_num = static_cast<short>(destination_level);
     active_save.current_levels[active_save.current_campaign] = active_save.scen_num;

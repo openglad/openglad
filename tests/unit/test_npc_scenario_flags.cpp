@@ -32,8 +32,10 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/world_snapshot.h>
+#include <openglad/core/pixdefs.h>
 #include <openglad/resources/level_file_io.h>
 #include <openglad/resources/og_file.h>
+#include <openglad/resources/pixie_data.h>
 
 #include <gtest/gtest.h>
 
@@ -776,4 +778,113 @@ TEST(SaveAllScoping, protected_flag_scopes_the_watch_to_flagged_walkers)
     kill(bearer);
     EXPECT_EQ(1, save_all_losses(tw))
         << "the flagged walker is exactly the mission-critical one";
+}
+
+// Regression (Endless Tower playtest verification): the v10 loader applied
+// the object's floor AFTER setxy, but setxy is what registers the walker in
+// the floor-KEYED collision obmap — so every upper-story object loaded from
+// a file sat in the floor-0 piles while logically living on floor N. A
+// never-moving treasure there (the tower's top-story EXIT — the generator
+// places the exit on the top story by rule) could not be eaten from its own
+// floor, so multi-story tower floors were unwinnable; a hold-post guard was
+// a collision ghost (weapons flew through it). Movers self-healed on their
+// first worldmove, which is why the bug hid behind livings that roam.
+TEST(NpcScenarioFlags, loaded_upper_story_objects_register_on_their_floor)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.set_floor_count(2);
+
+    // A real floor-1 story (all grass) so the upper placements are legal.
+    {
+        const int gw = w.grid.w;
+        const int gh = w.grid.h;
+        auto* buf = new unsigned char[static_cast<std::size_t>(gw) * gh];
+        std::fill(buf, buf + static_cast<std::size_t>(gw) * gh,
+                  static_cast<unsigned char>(PIX_GRASS1));
+        w.grid_for_floor(1) = PixieData(1, static_cast<unsigned char>(gw),
+                                        static_cast<unsigned char>(gh), buf);
+        w.smoother_for_floor(1).set_target(w.grid_for_floor(1));
+    }
+
+    // Author an upper-story exit + a hold-post guard (set_floor BEFORE setxy,
+    // the editor/mapgen discipline), plus a ground-floor control treasure.
+    walker* exit_t = w.add_fx_ob(Order::Treasure, FAMILY_EXIT);
+    ASSERT_NE(nullptr, exit_t);
+    exit_t->set_floor(1);
+    exit_t->setxy(8 * GRID_SIZE, 8 * GRID_SIZE);
+    exit_t->stats()->set_level(7);
+
+    walker* guard = w.add_ob(Order::Living, FAMILY_ORC);
+    ASSERT_NE(nullptr, guard);
+    guard->set_floor(1);
+    guard->setxy(12 * GRID_SIZE, 8 * GRID_SIZE);
+    guard->set_team_num(2);
+    guard->set_act_type(ACT_GUARD);
+
+    walker* ground_t = w.add_fx_ob(Order::Treasure, FAMILY_EXIT);
+    ASSERT_NE(nullptr, ground_t);
+    ground_t->setxy(4 * GRID_SIZE, 4 * GRID_SIZE);
+    ground_t->stats()->set_level(3);
+
+    // Multi-floor forces the v10 reserved-block layout.
+    const std::string file = "npcflags_upper_story.fss";
+    ASSERT_EQ(10, save_and_read_version(w, file));
+
+    // Reload through the production version bridge.
+    TestGameWorld tw2(2);
+    GameWorld& w2 = tw2.world();
+    auto infile = og::io::og_open_read(file.c_str());
+    ASSERT_TRUE(infile);
+    char skip[4] = {};
+    ASSERT_EQ(4u, infile->read(skip, 1, 4)); // FSS header + version byte
+    og::data::LevelFileMetadata metadata;
+    ASSERT_EQ(1, og::data::load_scenario_version(*infile, &w2, &metadata, 10));
+
+    const walker* loaded_upper_exit = nullptr;
+    const walker* loaded_ground_exit = nullptr;
+    for (const auto& uptr : w2.fxlist)
+    {
+        const walker* ob = uptr.get();
+        if (ob == nullptr || ob->query_order() != Order::Treasure ||
+            ob->family() != FAMILY_EXIT)
+            continue;
+        if (ob->floor() == 1)
+            loaded_upper_exit = ob;
+        else
+            loaded_ground_exit = ob;
+    }
+    const walker* loaded_guard = nullptr;
+    for (const auto& uptr : w2.oblist)
+    {
+        const walker* ob = uptr.get();
+        if (ob != nullptr && ob->family() == FAMILY_ORC)
+            loaded_guard = ob;
+    }
+    ASSERT_NE(nullptr, loaded_upper_exit) << "upper exit must round-trip with floor 1";
+    ASSERT_NE(nullptr, loaded_ground_exit);
+    ASSERT_NE(nullptr, loaded_guard);
+    EXPECT_EQ(1, loaded_guard->floor());
+
+    // THE invariant: each loaded object is registered in ITS OWN floor's
+    // obmap pile. (Eat/melee/weapon-hit dispatch all scan these piles.)
+    ASSERT_NE(nullptr, w2.myobmap.get());
+    auto pile_contains = [&w2](const walker* ob, short floor) {
+        const auto& pile = w2.myobmap->obmap_get_list(
+            static_cast<short>(ob->xpos()), static_cast<short>(ob->ypos()),
+            floor);
+        for (walker* e : pile)
+            if (e == ob)
+                return true;
+        return false;
+    };
+    EXPECT_TRUE(pile_contains(loaded_upper_exit, 1))
+        << "a loaded upper-story exit must be eatable on its own floor";
+    EXPECT_FALSE(pile_contains(loaded_upper_exit, 0))
+        << "the upper exit must NOT ghost-collide on floor 0";
+    EXPECT_TRUE(pile_contains(loaded_guard, 1))
+        << "a loaded upper-story guard must collide on its own floor";
+    EXPECT_FALSE(pile_contains(loaded_guard, 0));
+    EXPECT_TRUE(pile_contains(loaded_ground_exit, 0))
+        << "ground-floor objects keep their legacy bucketing";
 }

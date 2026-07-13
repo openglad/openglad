@@ -198,6 +198,15 @@ std::vector<std::string> paginate_team_detail_pages(
 // pickers only; list_campaigns() itself stays honest.
 void order_campaigns_for_select(std::list<std::string>& campaign_ids);
 
+// Networked lobbies must not offer local-only mode campaigns (v1: the
+// Endless Tower — its run state lives in one player's save0 and its floors
+// in one player's user dir). Removes those ids from a campaign-select list
+// when networked_session is true; a no-op for local shelves. All three
+// picker clients call this in lockstep at their shelf call sites; the
+// prepare_launch veto and LobbyServer::sanitize_settings back it up.
+void filter_campaigns_for_networked_lobby(std::list<std::string>& campaign_ids,
+                                          bool networked_session);
+
 // Index-aligned display labels for a campaign-select list: the packages'
 // human titles, with the raw id appended ("Forest [org.x.forest]") when two
 // packages share a title so they stay distinguishable.

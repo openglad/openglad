@@ -15,15 +15,21 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/core/order.h>
+#include <openglad/core/tower_constants.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/input_state.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/ui/picker_common.h>
+#include <openglad/resources/game_mode.h>
+#include <openglad/resources/io_common.h>
+#include <openglad/resources/level_file_io.h>
 #include <openglad/resources/save_data.h>
 
+#include <filesystem>
 #include <memory>
+#include <string>
 
 using namespace og::curses;
 
@@ -559,7 +565,107 @@ TEST(CursesGameRuntimeLocal, harder_difficulty_scales_enemy_hp_in_the_mirror)
     EXPECT_EQ(easy_count, hard_count)
         << "difficulty changes enemy stats, not the number of enemies";
     EXPECT_GT(hard_hp, easy_hp)
-        << "difficulty 2 (200%) enemies have more max-HP than difficulty 0 (50%); "
+        << "difficulty 2 (200%) enemies have more max-HP than easy difficulty 0 (50%); "
            "easy=" << easy_hp << " hard=" << hard_hp;
+}
+
+// [run-end routing, curses site] commit_result_to_save's loss branch is one of
+// the five on_run_ended routing sites (docs/game-modes.md). Under the tower
+// mount a mid-run loss must reset the ON-DISK cursor to the Gate while
+// retaining best/seed — driven end-to-end through a REAL generated floor, a
+// real in-process server loss (mission-timeout safety net), and the real
+// commit path. A curses runtime that dropped the hook would leave the death
+// floor resumable (infinite retries) with every fold-layer unit test green.
+TEST(CursesGameRuntimeLocal, tower_loss_resets_disk_cursor_via_run_end_hook)
+{
+    namespace fs = std::filesystem;
+    const fs::path save0 = fs::path(get_user_path()) / "save" / "save0.gtl";
+
+    // Mount/save hygiene (tower spec §1.10): preserve save0 and the mount,
+    // prune generated floors, and restore everything on every exit path.
+    std::error_code ec;
+    const bool had_save0 = fs::exists(save0, ec);
+    if (had_save0)
+        fs::copy_file(save0, save0.string() + ".towerbak",
+                      fs::copy_options::overwrite_existing, ec);
+    const std::string mounted_before = get_mounted_campaign();
+    struct Restore
+    {
+        fs::path save0;
+        bool had_save0;
+        std::string remount;
+        ~Restore()
+        {
+            for (int id = og::kTowerFirstFloorLevel; id <= 760; ++id)
+                (void)og::data::delete_tower_floor_files(id);
+            std::error_code ec2;
+            if (had_save0)
+            {
+                fs::copy_file(save0.string() + ".towerbak", save0,
+                              fs::copy_options::overwrite_existing, ec2);
+                fs::remove(save0.string() + ".towerbak", ec2);
+            }
+            else
+            {
+                fs::remove(save0, ec2);
+            }
+            (void)unmount_campaign_package_with_error(get_mounted_campaign());
+            (void)mount_campaign_package_with_error(
+                remount.empty() ? "org.openglad.gladiator" : remount);
+        }
+    } restore{save0, had_save0, mounted_before};
+
+    (void)unmount_campaign_package_with_error(mounted_before);
+    ASSERT_EQ(CampaignPackageIoError::None,
+              mount_campaign_package_with_error(
+                  std::string(og::kTowerCampaignId)));
+    ASSERT_EQ(og::mode::ProgressionKind::Tower,
+              og::mode::current_progression().kind());
+
+    // Mid-run save on floor 1 with a real generated floor and a disk
+    // checkpoint carrying best/seed.
+    SaveData save;
+    save.current_campaign = std::string(og::kTowerCampaignId);
+    save.scen_num = static_cast<short>(og::kTowerFirstFloorLevel);
+    save.numplayers = 1;
+    save.my_team = 0;
+    save.tower_run_seed = 99u;
+    save.tower_best_floor = 1;
+    og::ui::initialize_starting_team(save, {FAMILY_SOLDIER});
+    og::mode::current_progression().ensure_level_available(save);
+    ASSERT_TRUE(og::data::tower_floor_files_exist(og::kTowerFirstFloorLevel));
+    ASSERT_TRUE(save.save("save0"));
+
+    std::string err;
+    auto session = make_local_session(save, /*difficulty=*/1, &err);
+    ASSERT_NE(session, nullptr) << "tower floor must load headlessly: " << err;
+
+    // A genuine server-authoritative loss: the mission-tick safety net.
+    og::sim::g_test_level_tick_limit_override = 1;
+    struct OverrideGuard {
+        ~OverrideGuard() { og::sim::g_test_level_tick_limit_override = 0; }
+    } override_guard;
+    for (int i = 0; i < 15; ++i) {
+        InputState st;
+        session->send_input(st);
+        session->advance();
+    }
+    ASSERT_TRUE(session->ended());
+    ASSERT_NE(session->ending(), 0) << "the timeout is a loss, never a win";
+
+    session->commit_result_to_save();
+
+    // The loss branch routed on_run_ended on the server save: disk cursor
+    // reset to the Gate, best/seed retained (the field-merge D10 write).
+    SaveData disk;
+    ASSERT_TRUE(disk.load("save0"));
+    EXPECT_EQ(static_cast<short>(og::kTowerGateLevel), disk.scen_num)
+        << "a relaunch must not resume the death floor";
+    EXPECT_EQ(1, disk.tower_best_floor) << "best survives the loss";
+    EXPECT_EQ(99u, disk.tower_run_seed) << "seed survives (shareable)";
+    EXPECT_EQ(static_cast<short>(og::kTowerFirstFloorLevel), save.scen_num)
+        << "the caller's save is otherwise untouched on a loss";
+    EXPECT_EQ(static_cast<int>(save.team_size), 1)
+        << "losses persist nothing else: the roster the player entered with";
 }
 

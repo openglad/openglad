@@ -554,7 +554,13 @@ WorldSnapshot capture_keyframe_snapshot(GameWorld& world);
 // preserve entity dirty masks and transient bookkeeping in the live world.
 WorldSnapshot peek_snapshot(GameWorld& world);
 WorldSnapshot peek_keyframe_snapshot(GameWorld& world);
-void apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot);
+// Returns false when the snapshot could not be faithfully applied — a
+// full-grid resend whose payload size mismatches the target world's grid
+// (the world is running a DIFFERENT map than the sender: the unrecoverable
+// desync shape), or a world with no bound gameplay context. Entity/scalar
+// state is still applied best-effort; callers bound their retries on the
+// signal instead of rubber-banding forever.
+bool apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot);
 std::uint32_t compute_snapshot_hash(const WorldSnapshot& snapshot);
 std::vector<std::uint8_t> serialize_snapshot(const WorldSnapshot& snapshot);
 WorldSnapshot deserialize_snapshot(std::span<const std::uint8_t> data);

@@ -72,6 +72,12 @@ public:
     short respawn_mode = 0;       // 0 = off, 1 = heroes, 2 = everyone
     short generator_rate = 0;     // percent; 0 = default (100)
     short keep_fallen_heroes = 0; // 0 = permadeath on win (classic), 1 = keep
+    // Tower Climb persistence (GTL v13; docs/tower-triple-design.md D2/D6).
+    // Floors climbed is DERIVED (scen_num - kTowerGateLevel), never stored as
+    // a run counter; only the lifetime best and the current run's generation
+    // seed persist. The seed is serialized as 2 x int16 (lo, hi).
+    short tower_best_floor = 0;         // highest floor ever REACHED
+    std::uint32_t tower_run_seed = 0;   // current run's generation seed
 
     SaveData();
     ~SaveData();

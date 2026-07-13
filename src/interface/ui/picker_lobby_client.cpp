@@ -1,5 +1,6 @@
 #include <openglad/interface/ui/picker_lobby_client.h>
 
+#include <openglad/core/util.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/lobby_server.h>
 #include <openglad/gameplay/lobby_state.h>
@@ -7,6 +8,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/ui/picker_common.h>
+#include <openglad/resources/io_common.h>
 
 #include <algorithm>
 #include <format>
@@ -204,7 +206,11 @@ public:
 
         server_transport_ = og::sim::InProcessTransport::create_server();
         server_transport_->accept_connections();
-        server_ = std::make_unique<og::sim::LobbyServer>(*server_transport_);
+        // local_session: this in-process server echoes the SOLO picker's own
+        // settings back to it; the tower (local-only) must survive the echo
+        // (tower-triple §5.9 — networked servers keep the rejection backstop).
+        server_ = std::make_unique<og::sim::LobbyServer>(*server_transport_,
+                                                         /*local_session=*/true);
         spectator_mode_ =
             og::runtime::current_session->myscreen_->save_data.numplayers == 0;
 
@@ -523,12 +529,37 @@ private:
         std::vector<PreservedSaveSlot> preserved_slots =
             take_preserved_save_slots(save, active_teams);
 
+        const std::string previous_campaign = save.current_campaign;
+        const short previous_scen_num = save.scen_num;
         save.current_campaign = state_->settings.campaign_id.empty()
             ? std::string("org.openglad.gladiator")
             : state_->settings.campaign_id;
         save.scen_num = state_->settings.scenario_id > 0
             ? state_->settings.scenario_id
             : 1;
+
+        // Mount/save coherence: whatever campaign the lobby state settles on
+        // must also be the MOUNTED campaign — a cursor rewrite without a
+        // remount leaves the display bootstrapping levels from one package
+        // while the authoritative sim loads another (the tower ghost-session
+        // shape). sync_campaign_mount_to_save no-ops when already coherent;
+        // if the package cannot be mounted, refuse the override and keep the
+        // save on the campaign that IS mounted.
+        if (!og::ui::sync_campaign_mount_to_save(save))
+        {
+            // The failed mount put the previously mounted package back;
+            // follow it (falling back to the save's previous pair if the
+            // mount query comes back empty) so mount == save holds either way.
+            const std::string mounted = get_mounted_campaign();
+            LogError(
+                "picker_lobby_apply_state_remount_failed campaign={} — "
+                "keeping {}\n",
+                save.current_campaign,
+                mounted.empty() ? previous_campaign : mounted);
+            save.current_campaign =
+                mounted.empty() ? previous_campaign : mounted;
+            save.scen_num = previous_scen_num;
+        }
         save.allied_mode = state_->settings.allied_mode;
         save.ctf_team_count = state_->settings.ctf_team_count;
         save.ctf_capture_limit = state_->settings.ctf_capture_limit;

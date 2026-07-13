@@ -44,6 +44,7 @@
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/campaign_metadata.h>
+#include <openglad/resources/game_mode.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/core/test_trace.h>
 #include <algorithm>
@@ -2579,6 +2580,28 @@ Sint32 go_menu(Sint32 arg1)
     {
         popup_dialog("NEED A TEAM!", "Please hire a\nteam before\nstarting the level");
 
+        return MENU_REDRAW;
+    }
+
+    // Tier-B progression hook (tower-triple §5.9): the mounted mode
+    // provisions its content BEFORE the pre-launch save0 writes below, so a
+    // freshly drawn tower run seed rides that write (D8: floor prefetch at
+    // GO time, the safest generation window). Classic returns true
+    // untouched. A veto (the tower in a networked session — the backstop
+    // behind the shelf filter) aborts the GO with the shared reason string.
+    if (!og::mode::current_progression().prepare_launch(
+            og::runtime::current_session->myscreen_->save_data,
+            picker_lobby_is_networked()))
+    {
+        // Two veto shapes share the return: the networked-session gate and
+        // a local provisioning failure (the mode could not write its
+        // generated content — e.g. a tower floor). Local sessions can only
+        // hit the latter, so key the message on the session, not the mode.
+        if (picker_lobby_is_networked())
+            popup_dialog("TOWER CLIMB", "TOWER CLIMB is local-only");
+        else
+            popup_dialog("TOWER CLIMB",
+                         "Could not prepare\nthe tower's floors.\nGO aborted.");
         return MENU_REDRAW;
     }
 

@@ -1532,6 +1532,7 @@ TEST(PickerCommon, order_campaigns_for_select_uses_the_shelf_order)
         "org.openglad.ctf",
         "org.openglad.gladiator",
         "org.openglad.longseason",
+        "org.openglad.tower",
         "org.openglad.tryxian",
         "org.openglad.westlands",
     };
@@ -1542,6 +1543,7 @@ TEST(PickerCommon, order_campaigns_for_select_uses_the_shelf_order)
         "org.openglad.longseason",
         "org.openglad.ctf",
         "org.openglad.arenas",
+        "org.openglad.tower",
         "org.openglad.concept",
     };
     og::ui::order_campaigns_for_select(ids);
@@ -1580,6 +1582,43 @@ TEST(PickerCommon, order_campaigns_for_select_uses_the_shelf_order)
     // Empty list survives.
     std::list<std::string> empty;
     og::ui::order_campaigns_for_select(empty);
+    ASSERT_TRUE(empty.empty());
+}
+
+// The networked-lobby filter drops ONLY the tower (local-only mode) and only
+// when the session is actually networked; local shelves keep everything.
+TEST(PickerCommon, filter_campaigns_for_networked_lobby_drops_tower_only)
+{
+    const std::list<std::string> full = {
+        "org.openglad.gladiator",
+        "org.openglad.tower",
+        "org.openglad.ctf",
+        "a.campaign",
+    };
+
+    // Local session: untouched (tower is playable locally).
+    std::list<std::string> local = full;
+    og::ui::filter_campaigns_for_networked_lobby(local, false);
+    ASSERT_EQ(full, local);
+
+    // Networked session: tower removed, everything else keeps its order.
+    std::list<std::string> networked = full;
+    og::ui::filter_campaigns_for_networked_lobby(networked, true);
+    ASSERT_EQ((std::list<std::string>{
+                  "org.openglad.gladiator",
+                  "org.openglad.ctf",
+                  "a.campaign",
+              }),
+              networked);
+
+    // No tower present: a networked filter is a no-op.
+    og::ui::filter_campaigns_for_networked_lobby(networked, true);
+    ASSERT_EQ(3u, networked.size());
+
+    // Empty list survives both ways.
+    std::list<std::string> empty;
+    og::ui::filter_campaigns_for_networked_lobby(empty, true);
+    og::ui::filter_campaigns_for_networked_lobby(empty, false);
     ASSERT_TRUE(empty.empty());
 }
 

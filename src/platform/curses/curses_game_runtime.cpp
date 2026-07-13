@@ -32,6 +32,7 @@
 #include <openglad/interface/session_state.h>
 #include <openglad/resources/gparser.h> // cfg
 #include <openglad/resources/level_data_hooks.h>
+#include <openglad/resources/progression.h>
 #include <openglad/resources/save_data.h>
 #include <openglad/server/headless_server_runtime.h>
 #include <openglad/server/headless_tick_interval.h>
@@ -198,7 +199,22 @@ public:
         // roster they entered the level with (a defeat would otherwise persist an
         // empty team, since update_guys() drops dead members).
         if (!ended() || ending() != 0)
+        {
+            // Non-win exit (team wipe / timeout / quit-mission / withdraw —
+            // the abort round-trips through the in-process server before the
+            // loop breaks, so it latches ending==1 here): route the mode's
+            // run-end policy exactly once (Classic: no-op).
+            if (ended())
+            {
+                og::mode::LevelOutcome run_outcome;
+                run_outcome.ending = static_cast<short>(ending());
+                run_outcome.next_level = static_cast<short>(next_level());
+                run_outcome.withdrawn = next_level() >= 0;
+                og::mode::current_progression().on_run_ended(
+                    server_save_, server_world(), run_outcome);
+            }
             return; // only a win advances the campaign and persists earned XP/gold
+        }
 
         // The CTF loss/rematch shape rides the classic WIN shape (ending==0,
         // next_level == this level) but the match was LOST: treat it like
@@ -387,36 +403,61 @@ std::unique_ptr<CursesGameSession> make_local_session(SaveData& save, int diffic
     return LocalCursesSession::create(save, difficulty, error);
 }
 
-std::string mission_verdict_line(const GameRunResult& result)
+std::string mission_verdict_line(const GameRunResult& result,
+                                 const SaveData* save, const GameWorld* world)
 {
+    std::string verdict;
     if (result.ctf_match) {
         if (result.ctf_winner_team < 0 || result.local_team < 0)
-            return "Match over.";
-        return result.local_team == result.ctf_winner_team ? "Victory!"
-                                                           : "Defeat.";
+            verdict = "Match over.";
+        else
+            verdict = result.local_team == result.ctf_winner_team ? "Victory!"
+                                                                  : "Defeat.";
+    } else {
+        verdict = result.ending == 0 ? "Victory!" : "Defeat.";
     }
-    return result.ending == 0 ? "Victory!" : "Defeat.";
+
+    // Mode summary hook (Classic: empty). Appended, space-joined, when the
+    // caller supplies the finished save/world pair.
+    if (save != nullptr && world != nullptr) {
+        for (const std::string& line :
+             og::mode::current_progression().results_summary_lines(*save, *world))
+        {
+            if (line.empty())
+                continue;
+            verdict += ' ';
+            verdict += line;
+        }
+    }
+    return verdict;
 }
 
 bool is_ctf_rematch_end(const GameWorld& world, int ending, int next_level)
 {
-    return ending == 0 && (world.type & GameWorld::TYPE_CTF) &&
-           world.ctf.active && world.ctf.winner_team >= 0 &&
-           next_level == world.id;
+    // Thin (world, ending, next) adapter over the shared predicate: the
+    // curses call sites read the finished level id from the mirror world.
+    return ending == 0 &&
+           og::progression::ctf_rematch_shape(world,
+                                              static_cast<short>(world.id),
+                                              static_cast<short>(next_level));
 }
 
 void advance_save_after_win(SaveData& save, const GameWorld& finished_world, int next_level)
 {
     og::server::sync_headless_server_save_data_from_world(save, finished_world);
-    for (int t = 0; t < MAX_PLAYERS; ++t) {
-        save.m_totalscore[t] += save.m_score[t];
-        save.m_totalcash[t] += save.m_score[t] * 2u;
-        save.m_score[t] = 0;
-    }
-    save.add_level_completed(save.current_campaign, save.scen_num);
-    save.scen_num = static_cast<short>(next_level >= 0 ? next_level : (save.scen_num + 1));
-    save.current_levels[save.current_campaign] = save.scen_num;
-    save.update_guys(finished_world.oblist);
+
+    // The shared win fold with this site's quirks preserved: a ZERO time
+    // bonus (the curses client never awarded one — do not unify bonus math
+    // here) and caller-resolved next_level < 0 -> scen_num + 1.
+    og::progression::WinFoldContext fold_ctx;
+    fold_ctx.rematch_shape = og::progression::ctf_rematch_shape(
+        finished_world, save, static_cast<short>(next_level));
+    fold_ctx.finished_level = save.scen_num; // pre-advance cursor
+    fold_ctx.outcome.ending = 0;
+    fold_ctx.outcome.next_level = static_cast<short>(
+        next_level >= 0 ? next_level : (save.scen_num + 1));
+    og::progression::apply_win_fold(save, finished_world, fold_ctx);
+
     update_primary_team_totals(save);
 }
 

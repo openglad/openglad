@@ -95,7 +95,9 @@ static void write_save_file(const std::string& filename_no_ext,
                             short ctf_strip_scenario_troops = 0,
                             short respawn_mode = 0,
                             short generator_rate = 0,
-                            short keep_fallen_heroes = 0)
+                            short keep_fallen_heroes = 0,
+                            short tower_best_floor = 0,
+                            uint32_t tower_run_seed = 0)
 {
     std::string fname = filename_no_ext + ".gtl";
     SDL_RWops* out = open_write_file("save/", fname.c_str());
@@ -205,6 +207,17 @@ static void write_save_file(const std::string& filename_no_ext,
         rw_write_val(out, respawn_mode);
         rw_write_val(out, generator_rate);
         rw_write_val(out, keep_fallen_heroes);
+    }
+
+    // Version 13+ appends the Tower Climb fields (seed as 2 x int16 lo/hi).
+    if (version >= 13) {
+        rw_write_val(out, tower_best_floor);
+        const short seed_lo =
+            static_cast<short>(static_cast<uint16_t>(tower_run_seed & 0xFFFFu));
+        const short seed_hi =
+            static_cast<short>(static_cast<uint16_t>(tower_run_seed >> 16));
+        rw_write_val(out, seed_lo);
+        rw_write_val(out, seed_hi);
     }
 
     SDL_RWclose(out);
@@ -466,7 +479,7 @@ TEST(SaveDataVersions, save_data_v11_roundtrip_preserves_strip_flag_and_version_
               static_cast<int>(src.save_with_error("typed_save_strip_roundtrip")))
         << "v11 writer should succeed";
 
-    // The writer must stamp version 12 in the GTL header.
+    // The writer must stamp version 13 in the GTL header.
     SDL_RWops* in = open_read_file("save/", "typed_save_strip_roundtrip.gtl");
     ASSERT_TRUE(in != nullptr) << "saved file should be readable";
     char header[3] = {};
@@ -475,7 +488,7 @@ TEST(SaveDataVersions, save_data_v11_roundtrip_preserves_strip_flag_and_version_
     SDL_RWread(in, &version_byte, 1, 1);
     SDL_RWclose(in);
     ASSERT_EQ(0, std::memcmp(header, "GTL", 3)) << "GTL header expected";
-    ASSERT_EQ(12, (int)version_byte) << "writer should stamp version 12";
+    ASSERT_EQ(13, (int)version_byte) << "writer should stamp version 13";
 
     SaveData loaded;
     ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
@@ -573,6 +586,113 @@ TEST(SaveDataVersions, save_data_v12_roundtrip_preserves_difficulty_submenu_sett
     ASSERT_EQ(50, (int)loaded.generator_rate) << "generator_rate should roundtrip";
     ASSERT_EQ(1, (int)loaded.keep_fallen_heroes)
         << "keep_fallen_heroes should roundtrip";
+}
+
+
+TEST(SaveDataVersions, save_data_load_v13_reads_tower_fields)
+{
+    write_save_file("ver13_tower",
+                    /*version=*/13,
+                    /*campaign_id=*/"org.openglad.gladiator",
+                    /*scen_num=*/1,
+                    /*cash=*/100,
+                    /*score=*/200,
+                    /*allied_mode=*/1,
+                    /*numplayers=*/1,
+                    /*guys=*/nullptr,
+                    /*listsize=*/0,
+                    /*use_v8plus_campaigns=*/true,
+                    /*v5plus_levelstatus=*/true,
+                    /*levelstatus_500=*/nullptr,
+                    /*levelstatus_200=*/nullptr,
+                    /*ctf_team_count=*/2,
+                    /*ctf_capture_limit=*/0,
+                    /*ctf_respawn_ticks=*/0,
+                    /*ctf_strip_scenario_troops=*/0,
+                    /*respawn_mode=*/0,
+                    /*generator_rate=*/0,
+                    /*keep_fallen_heroes=*/0,
+                    /*tower_best_floor=*/23,
+                    /*tower_run_seed=*/0xDEADBEEFu);
+
+    SaveData tmp;
+    ASSERT_TRUE(tmp.load("ver13_tower")) << "v13 load should succeed";
+    ASSERT_EQ(23, (int)tmp.tower_best_floor) << "v13 should read tower_best_floor";
+    ASSERT_EQ(0xDEADBEEFu, tmp.tower_run_seed)
+        << "v13 should reassemble tower_run_seed from the 2 int16 halves";
+}
+
+
+TEST(SaveDataVersions, save_data_load_v12_payload_defaults_tower_fields)
+{
+    write_save_file("ver12_no_tower",
+                    /*version=*/12,
+                    /*campaign_id=*/"org.openglad.gladiator",
+                    /*scen_num=*/1,
+                    /*cash=*/100,
+                    /*score=*/200,
+                    /*allied_mode=*/1,
+                    /*numplayers=*/1,
+                    /*guys=*/nullptr,
+                    /*listsize=*/0,
+                    /*use_v8plus_campaigns=*/true,
+                    /*v5plus_levelstatus=*/true,
+                    /*levelstatus_500=*/nullptr,
+                    /*levelstatus_200=*/nullptr,
+                    /*ctf_team_count=*/2,
+                    /*ctf_capture_limit=*/0,
+                    /*ctf_respawn_ticks=*/0,
+                    /*ctf_strip_scenario_troops=*/0,
+                    /*respawn_mode=*/1,
+                    /*generator_rate=*/50,
+                    /*keep_fallen_heroes=*/1);
+
+    SaveData tmp;
+    // Poison the in-memory fields: a v12 payload must restore the defaults.
+    tmp.tower_best_floor = 42;
+    tmp.tower_run_seed = 0x12345678u;
+    ASSERT_TRUE(tmp.load("ver12_no_tower")) << "v12 load should succeed";
+    ASSERT_EQ(0, (int)tmp.tower_best_floor)
+        << "v12 saves default tower_best_floor to 0 (no climb recorded)";
+    ASSERT_EQ(0u, tmp.tower_run_seed)
+        << "v12 saves default tower_run_seed to 0 (no run in progress)";
+    ASSERT_EQ(1, (int)tmp.respawn_mode) << "v12 fields still read";
+    ASSERT_EQ(50, (int)tmp.generator_rate) << "v12 fields still read";
+}
+
+
+TEST(SaveDataVersions, save_data_v13_roundtrip_preserves_tower_fields)
+{
+    SaveData src;
+    src.current_campaign = "org.openglad.gladiator";
+    src.tower_best_floor = 17;
+    // Both int16 halves nontrivial AND the high bit of each half set, so the
+    // lo/hi reassembly and the unsigned carriage are both exercised.
+    src.tower_run_seed = 0xCAFEBABEu;
+
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+              static_cast<int>(src.save_with_error("typed_save_tower_roundtrip")))
+        << "v13 writer should succeed";
+
+    // The writer must stamp version 13 in the GTL header.
+    SDL_RWops* in = open_read_file("save/", "typed_save_tower_roundtrip.gtl");
+    ASSERT_TRUE(in != nullptr) << "saved file should be readable";
+    char header[3] = {};
+    unsigned char version_byte = 0;
+    SDL_RWread(in, header, 1, 3);
+    SDL_RWread(in, &version_byte, 1, 1);
+    SDL_RWclose(in);
+    ASSERT_EQ(0, std::memcmp(header, "GTL", 3)) << "GTL header expected";
+    ASSERT_EQ(13, (int)version_byte) << "writer should stamp version 13";
+
+    SaveData loaded;
+    ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+              static_cast<int>(loaded.load_with_error("typed_save_tower_roundtrip")))
+        << "v13 reader should succeed";
+    ASSERT_EQ(17, (int)loaded.tower_best_floor)
+        << "tower_best_floor should roundtrip";
+    ASSERT_EQ(0xCAFEBABEu, loaded.tower_run_seed)
+        << "tower_run_seed should roundtrip through the 2 int16 halves";
 }
 
 

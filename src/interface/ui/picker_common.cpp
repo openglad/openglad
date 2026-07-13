@@ -10,6 +10,7 @@
 #include <openglad/resources/save_data.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/core/ctf_constants.h>
+#include <openglad/core/tower_constants.h>
 #include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
@@ -728,9 +729,10 @@ void order_campaigns_for_select(std::list<std::string>& campaign_ids)
 {
     // The shipped shelf order: the classics lead (gladiator, then tryxian),
     // the two original story campaigns follow, then the multiplayer
-    // packages, with the concept playground trailing. Campaigns not on the
-    // shelf (user-made packages) keep their incoming enumeration order and
-    // follow every shelved id.
+    // packages, then the tower (single-player mode package, owner-placed
+    // after the MP block), with the concept playground trailing. Campaigns
+    // not on the shelf (user-made packages) keep their incoming enumeration
+    // order and follow every shelved id.
     static constexpr std::string_view kShelf[] = {
         og::kDefaultCampaignId, // org.openglad.gladiator
         "org.openglad.tryxian",
@@ -738,6 +740,7 @@ void order_campaigns_for_select(std::list<std::string>& campaign_ids)
         "org.openglad.longseason",
         og::kCtfCampaignId,     // org.openglad.ctf (multiplayer)
         "org.openglad.arenas",  // multiplayer arenas
+        og::kTowerCampaignId,   // org.openglad.tower (The Endless Tower)
         "org.openglad.concept",
     };
     auto anchor = campaign_ids.begin();
@@ -753,6 +756,19 @@ void order_campaigns_for_select(std::list<std::string>& campaign_ids)
         }
         campaign_ids.splice(anchor, campaign_ids, it);
     }
+}
+
+void filter_campaigns_for_networked_lobby(std::list<std::string>& campaign_ids,
+                                          bool networked_session)
+{
+    if (!networked_session)
+        return; // local shelves keep every campaign (tower is local-only)
+    // v1 keys on the tower id directly (the kCtfCampaignId precedent); the
+    // documented upgrade is a yaml-driven campaign_mode(id) accessor once a
+    // second mode campaign exists. The prepare_launch veto and the
+    // LobbyServer sanitize backstop enforce the same rule below the UI.
+    campaign_ids.remove_if([](const std::string& id)
+                           { return id == og::kTowerCampaignId; });
 }
 
 std::vector<std::string> format_campaign_select_labels(

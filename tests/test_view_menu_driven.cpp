@@ -72,8 +72,16 @@ TEST(ViewMenuDriven, viewscreen_options_menu_exercises_key_paths)
     walker* controlp = control.get();
     v->control = controlp;
 
-    // Save prefs that options_menu() may mutate and persist to keyprefs.dat.
-    const signed char saved_view = v->prefs[PREF_VIEW];
+    // Save ALL per-view prefs: the driven hotkeys mutate several of them —
+    // view size via the ]/[ pair (pulsed ] FIRST, so the pair nets
+    // prefs[PREF_VIEW] 0 -> 1, clamped at 0 on the way down) plus the
+    // r/h/f/s/c toggles — and options_menu() persists the final values into
+    // the session prefs store (prefsob->save) on every exit. A poisoned
+    // store leaks into every later-constructed viewscreen (the ctor loads
+    // from it), so the store must be re-synced after the restore below.
+    signed char saved_prefs[10];
+    for (int i = 0; i < 10; i++)
+        saved_prefs[i] = v->prefs[i];
 
     KeystateOverride ks;
     std::atomic<bool> options_done{false};
@@ -132,9 +140,16 @@ TEST(ViewMenuDriven, viewscreen_options_menu_exercises_key_paths)
     og::runtime::current_session->player_keys_[v->mynum][KEY_YELL] = saved_yell;
     og::runtime::current_session->player_keys_[v->mynum][KEY_SHIFTER] = saved_shifter;
 
-    // Restore view pref that was mutated by the ] and [ hotkeys.
-    v->prefs[PREF_VIEW] = saved_view;
-    v->resize(saved_view);
+    // Restore every pref the menu mutated, re-derive the geometry, and
+    // re-sync the session prefs store options_menu persisted on exit —
+    // otherwise a later viewscreen recreation (any picker game start)
+    // reloads the stale view size and a subsequent resize(prefs[PREF_VIEW])
+    // shifts the shared viewport geometry for the rest of the binary (the
+    // og_test_view --gtest_shuffle seed-27 failure chain).
+    for (int i = 0; i < 10; i++)
+        v->prefs[i] = saved_prefs[i];
+    v->resize(v->prefs[PREF_VIEW]);
+    og::runtime::current_session->theprefs_->save(v);
 
     v->control = nullptr;
 }

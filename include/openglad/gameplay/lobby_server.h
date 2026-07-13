@@ -39,7 +39,13 @@ struct LobbyPlayerBinding {
 class LobbyServer
 {
 public:
-    explicit LobbyServer(ITransport& transport);
+    // `local_session` marks a single-machine lobby (the solo picker's
+    // in-process settings echo): local-only mode campaigns (the Endless
+    // Tower) survive sanitize_settings there. The default (false) keeps the
+    // crafted-client rejection backstop for every networked construction
+    // site (tower-triple §5.9 layer 3) — a networked host must opt nothing
+    // in to stay protected.
+    explicit LobbyServer(ITransport& transport, bool local_session = false);
 
     void connect_client(PeerId peer_id);
     void disconnect_client(PeerId peer_id);
@@ -96,6 +102,7 @@ private:
     void process_lobby_message(PeerId peer_id, const LobbyMessage& message);
 
     ITransport& transport_;
+    bool local_session_ = false;
     LobbyState state_;
     std::vector<PeerId> connected_transport_peers_;
     std::vector<PeerId> pending_transport_disconnects_;

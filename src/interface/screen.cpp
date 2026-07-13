@@ -50,6 +50,7 @@
 #include <openglad/interface/render/pal32.h>
 #include <openglad/interface/platform_bridge.h>
 #include <openglad/resources/level_data_hooks.h>
+#include <openglad/resources/progression.h>
 #include <algorithm>
 #include <array>
 #include <string>
@@ -1180,7 +1181,10 @@ void screen::sync_world_from_save_data()
     world_.ctf_requested_capture_limit = save_data.ctf_capture_limit;
     world_.ctf_requested_respawn_ticks = save_data.ctf_respawn_ticks;
     world_.ctf_requested_strip_scenario_troops = save_data.ctf_strip_scenario_troops;
-    world_.respawn_mode = save_data.respawn_mode;
+    // Modes may clamp world knobs (Classic: identity). Applied in BOTH
+    // sync_world_from_save_data twins (see headless_server_runtime.cpp).
+    world_.respawn_mode =
+        og::mode::current_progression().clamp_respawn_mode(save_data.respawn_mode);
     world_.generator_rate = save_data.generator_rate;
     world_.current_scenario = save_data.scen_num;
     for (int i = 0; i < 4; ++i)
@@ -1400,6 +1404,23 @@ short screen::endgame(short ending, short nextlevel)
 			after.insert(std::make_pair(ob->myguy->id, ob));
 	}
 	
+	const bool networked = og::runtime::current_session != nullptr &&
+		og::runtime::current_session->networked_session_;
+
+	// Non-win exits route the mode's run-end policy (Classic: no-op) BEFORE
+	// the results screen, so mode popups/summaries read post-reset save
+	// state (they derive the death floor from world.id, never the cursor).
+	if (ending != 0)
+	{
+		og::mode::LevelOutcome run_outcome;
+		run_outcome.ending = ending;
+		run_outcome.next_level = nextlevel;
+		run_outcome.networked = networked;
+		run_outcome.withdrawn = (ending == 1 && nextlevel != -1);
+		og::mode::current_progression().on_run_ended(
+			save_data, world_, run_outcome);
+	}
+
 	// Let's show the results!
     world_.retry = results_screen(ending, nextlevel, before, after);
     
@@ -1428,54 +1449,32 @@ short screen::endgame(short ending, short nextlevel)
 	}
 	else if (ending == 0) // we won
 	{
-		std::array<Uint32, 4> bonuscash = {0, 0, 0, 0};
-		Uint32 allbonuscash = 0;
+		// The shared win fold (og::progression::apply_win_fold) tallies the
+		// money, marks completion, and advances the cursor for all four
+		// finalize sites. The time bonus is caller-computed from the LIVE
+		// m_score BEFORE the fold zeroes it, and the CTF rematch shape is
+		// evaluated before the cursor moves.
+		og::progression::WinFoldContext fold_ctx;
+		for (int i=0; i < 4; i++)
+			fold_ctx.time_bonus[static_cast<std::size_t>(i)] = get_time_bonus(i);
+		fold_ctx.rematch_shape =
+			og::progression::ctf_rematch_shape(world_, save_data, nextlevel);
+		fold_ctx.finished_level = save_data.scen_num; // pre-advance cursor
+		fold_ctx.outcome.ending = 0;
+		fold_ctx.outcome.next_level = nextlevel;
+		fold_ctx.outcome.networked = networked;
+		og::progression::apply_win_fold(save_data, world_, fold_ctx);
 
-		// Update all the money!
-		for (int i=0; i < 4; i++)
-		{
-			save_data.m_totalscore[i] += save_data.m_score[i];
-			save_data.m_totalcash[i] += (save_data.m_score[i]*2);
-			save_data.m_score[i] = 0;
-		}
-		for (int i=0; i < 4; i++)
-		{
-            bonuscash[static_cast<std::size_t>(i)] = get_time_bonus(i);
-			save_data.m_totalcash[i] += bonuscash[static_cast<std::size_t>(i)];
-			allbonuscash += bonuscash[static_cast<std::size_t>(i)];
-		}
-		if (save_data.is_level_completed(save_data.scen_num)) // already won, no bonus
-		{
-			for (int i=0; i < 4; i++)
-				bonuscash[static_cast<std::size_t>(i)] = 0;
-			allbonuscash = 0;
-		}
-	    
-		// Beat that level — except the CTF loss/rematch shape (a decided
-		// match whose next level IS this level): the map was not beaten, so
-		// keep level select honest and preserve the first-real-win time
-		// bonus. Every other side effect (score/cash accrual, roster
-		// update, autosave, world.end) stays.
-		const bool ctf_rematch_shape =
-			(world_.type & GameWorld::TYPE_CTF) && world_.ctf.active &&
-			world_.ctf.winner_team >= 0 && nextlevel == save_data.scen_num;
-		if (!ctf_rematch_shape)
-			save_data.add_level_completed(save_data.current_campaign, save_data.scen_num); // this scenario is completed ..
-		if (nextlevel != -1)
-			save_data.scen_num = nextlevel;    // Fake jumping to next level ..
-        
 		// In a networked session this display screen holds the COMBINED roster
 		// (every player's characters). Autosaving it here would clobber this
 		// player's save0 with everyone's gladiators — the networked per-player
 		// save path persists only this player's own characters (owner-filtered),
-		// so the display must not touch save0. Local/single-player still autosaves.
-		const bool networked = og::runtime::current_session != nullptr &&
-			og::runtime::current_session->networked_session_;
-		if (!networked)
+		// so the display must not touch save0. Local/single-player still
+		// autosaves — unless the mode's persistence policy says otherwise.
+		// (The fold already ran update_guys; this is the save-only tail.)
+		if (!networked &&
+		    og::mode::current_progression().persist_after_win())
 		{
-			// Grab our team out of the level
-			save_data.update_guys(world_.oblist);
-
 			// Autosave because we won
 			save_data.save("save0");
 		}

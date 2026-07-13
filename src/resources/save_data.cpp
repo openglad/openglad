@@ -192,6 +192,9 @@ bool SaveData::load(const std::string& filename)
 	// 2-bytes respawn mode (0 = off)           // Version 12+
 	// 2-bytes generator rate (0 = default)     // Version 12+
 	// 2-bytes keep-fallen-heroes flag (0 = permadeath)  // Version 12+
+	// 2-bytes Tower best floor climbed         // Version 13+
+	// 2-bytes Tower run seed, low 16 bits      // Version 13+
+	// 2-bytes Tower run seed, high 16 bits     // Version 13+
 
     Log("Loading save: {}\n", filename);
 	std::string temp_filename = std::format("{}.gtl", filename); // gladiator team list
@@ -552,6 +555,30 @@ bool SaveData::load(const std::string& filename)
         keep_fallen_heroes = 0; // permadeath on win
     }
 
+    // Versions 13+ append the Tower Climb fields (best floor + run seed,
+    // seed carried as 2 x int16 lo/hi)
+    if (temp_version >= 13)
+    {
+        std::int16_t temp_tower_best = 0;
+        std::int16_t temp_tower_seed_lo = 0;
+        std::int16_t temp_tower_seed_hi = 0;
+        READ_OR_FAIL(&temp_tower_best, 2, 1);
+        READ_OR_FAIL(&temp_tower_seed_lo, 2, 1);
+        READ_OR_FAIL(&temp_tower_seed_hi, 2, 1);
+        tower_best_floor = temp_tower_best;
+        tower_run_seed =
+            static_cast<std::uint32_t>(
+                static_cast<std::uint16_t>(temp_tower_seed_lo)) |
+            (static_cast<std::uint32_t>(
+                 static_cast<std::uint16_t>(temp_tower_seed_hi))
+             << 16);
+    }
+    else
+    {
+        tower_best_floor = 0; // no climb recorded
+        tower_run_seed = 0;   // no run in progress
+    }
+
 	Log("Loading campaign: {}\n", current_campaign);
     int current_level = load_campaign(current_campaign, current_levels);
     if(current_level < 0)
@@ -707,7 +734,7 @@ bool SaveData::save(const std::string& filename)
 	std::fill_n(temp_campaign.data(), temp_campaign.size(), '\0');
 
 	std::array<char, 10> temptext = {'G', 'T', 'L'};
-	std::uint8_t temp_version = 12;
+	std::uint8_t temp_version = 13;
 
 	std::uint32_t newcash = totalcash;
 	std::uint32_t newscore = totalscore;
@@ -785,6 +812,9 @@ bool SaveData::save(const std::string& filename)
 	// 2-bytes respawn mode (0 = off)           // Version 12+
 	// 2-bytes generator rate (0 = default)     // Version 12+
 	// 2-bytes keep-fallen-heroes flag (0 = permadeath)  // Version 12+
+	// 2-bytes Tower best floor climbed         // Version 13+
+	// 2-bytes Tower run seed, low 16 bits      // Version 13+
+	// 2-bytes Tower run seed, high 16 bits     // Version 13+
 
 	//strcpy(temp_filename, scen_directory);
 	Log("Saving save: {}\n", filename);
@@ -1002,6 +1032,16 @@ bool SaveData::save(const std::string& filename)
 	WRITE_OR_FAIL(&temp_respawn_mode, 2, 1);
 	WRITE_OR_FAIL(&temp_generator_rate, 2, 1);
 	WRITE_OR_FAIL(&temp_keep_fallen, 2, 1);
+
+	// Versions 13+ append the Tower Climb fields (seed as 2 x int16 lo/hi)
+	std::int16_t temp_tower_best = tower_best_floor;
+	std::int16_t temp_tower_seed_lo = static_cast<std::int16_t>(
+	    static_cast<std::uint16_t>(tower_run_seed & 0xFFFFu));
+	std::int16_t temp_tower_seed_hi = static_cast<std::int16_t>(
+	    static_cast<std::uint16_t>(tower_run_seed >> 16));
+	WRITE_OR_FAIL(&temp_tower_best, 2, 1);
+	WRITE_OR_FAIL(&temp_tower_seed_lo, 2, 1);
+	WRITE_OR_FAIL(&temp_tower_seed_hi, 2, 1);
 
     // unique_ptr auto-closes outfile
 

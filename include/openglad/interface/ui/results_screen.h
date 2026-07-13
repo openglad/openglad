@@ -23,4 +23,9 @@ std::vector<CtfCapsSegment> format_ctf_caps_segments(const og::sim::CtfState& ct
 #ifdef TESTING
 void results_screen_testing_set_force_full(bool enabled);
 int results_screen_test_exercise_internal();
+// Injector-thread sync for the full results UI (no wall-clock pacing): true
+// while the modal button loop is running, and a monotonically increasing
+// loop-iteration counter (reset by results_screen_testing_set_force_full).
+bool results_screen_testing_loop_live();
+int results_screen_testing_frame_count();
 #endif

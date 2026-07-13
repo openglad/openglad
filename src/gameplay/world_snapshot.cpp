@@ -1897,20 +1897,26 @@ void rebuild_obmap(GameWorld& world)
     readd_list(world.weaplist);
 }
 
-void apply_grid_snapshot(GameWorld& world, const og::sim::WorldSnapshot& snapshot)
+// Returns false when a full-grid resend had to be REJECTED (size mismatch):
+// the target world is running a different map than the snapshot's sender —
+// the unrecoverable desync shape. Callers use the signal to bound retries
+// instead of rubber-banding forever.
+bool apply_grid_snapshot(GameWorld& world, const og::sim::WorldSnapshot& snapshot)
 {
     if (!world.grid.valid())
-        return;
+        return true;
 
     const std::size_t grid_size =
         static_cast<std::size_t>(world.grid.w) * world.grid.h;
 
+    bool grid_applied = true;
     if (snapshot.grid_full_resend)
     {
         if (snapshot.full_grid_data.size() != grid_size)
         {
             LogError("apply_snapshot: full grid size mismatch (got {}, expected {})\n",
                      snapshot.full_grid_data.size(), grid_size);
+            grid_applied = false;
         }
         else
         {
@@ -1932,6 +1938,7 @@ void apply_grid_snapshot(GameWorld& world, const og::sim::WorldSnapshot& snapsho
             static_cast<std::size_t>(tile.y) * world.grid.w + tile.x;
         world.grid.data[grid_index] = tile.value;
     }
+    return grid_applied;
 }
 
 void apply_delta_grid(og::sim::WorldSnapshot& baseline,
@@ -2754,7 +2761,7 @@ void split_event_batches(const SimEventBatch& source,
     normalize_endgame_event_order(game_flow_batch);
 }
 
-void apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot)
+bool apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot)
 {
     ApplyingSnapshotGuard applying_guard(world);
 
@@ -2766,7 +2773,7 @@ void apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot)
     {
         LogError("apply_snapshot: missing gameplay context bindings for world {}\n",
                  world.id);
-        return;
+        return false;
     }
 
     GameplayContext* installed_context = &gameplay_context;
@@ -2886,7 +2893,7 @@ void apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot)
     rebind_guys(world, ob_snapshots, fx_snapshots, weap_snapshots,
                 guy_storage, guy_lookup);
     rebuild_obmap(world);
-    apply_grid_snapshot(world, snapshot);
+    const bool grid_applied = apply_grid_snapshot(world, snapshot);
     reorder_entity_list(world.oblist, snapshot.oblist);
     reorder_entity_list(world.fxlist, snapshot.fxlist);
     reorder_entity_list(world.weaplist, snapshot.weaplist);
@@ -2898,6 +2905,7 @@ void apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot)
     // walker construction rolls path_check_counter from the world RNG, so
     // restore the authoritative snapshot state after all apply-side effects.
     world.rng_.state_ = snapshot.rng_state;
+    return grid_applied;
 }
 
 void apply_delta(WorldSnapshot& baseline, const WorldSnapshot& delta)

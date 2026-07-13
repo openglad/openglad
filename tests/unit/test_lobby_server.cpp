@@ -1,4 +1,5 @@
 #include <openglad/core/constants.h>
+#include <openglad/core/tower_constants.h>
 #include <openglad/gameplay/lobby_server.h>
 
 #include <gtest/gtest.h>
@@ -375,6 +376,79 @@ TEST(LobbyServer, sanitize_clamps_ctf_settings_and_equivalent_carries_them)
     EXPECT_EQ(3, equivalent.ctf_team_count);
     EXPECT_EQ(0, equivalent.ctf_capture_limit);
     EXPECT_EQ(0, equivalent.ctf_respawn_ticks);
+}
+
+TEST(LobbyServer, local_session_sanitize_preserves_tower_campaign_pair)
+{
+    // Tower-triple §5.9 layer 3, locality amendment: the solo picker
+    // round-trips its OWN settings through an in-process LobbyServer built
+    // with local_session=true — the tower pick must survive that echo (the
+    // unconditional rejection silently reverted a just-picked tower to
+    // gladiator/scen1 without a remount: the ghost-session regression).
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport, /*local_session=*/true);
+    server.connect_client(11u);
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host", 0,
+                          {make_slot(0u, 100, "Soldier", FAMILY_SOLDIER)}));
+    server.poll_incoming_messages();
+
+    og::sim::LobbySettings tower;
+    tower.campaign_id = std::string(og::kTowerCampaignId);
+    tower.scenario_id = 700;
+    tower.difficulty = 1;
+    tower.allied_mode = 1;
+    og::sim::LobbyMessage tower_message;
+    tower_message.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 0u,
+        .settings = tower,
+    };
+    transport.queue_lobby_message(11u, tower_message);
+    server.poll_incoming_messages();
+
+    const og::sim::LobbyState state = server.state();
+    EXPECT_EQ(std::string(og::kTowerCampaignId), state.settings.campaign_id);
+    EXPECT_EQ(700, state.settings.scenario_id);
+
+    const og::sim::LobbySaveDataEquivalent equivalent =
+        server.build_save_data_equivalent();
+    EXPECT_EQ(std::string(og::kTowerCampaignId), equivalent.current_campaign);
+    EXPECT_EQ(700, equivalent.scen_num);
+}
+
+TEST(LobbyServer, default_networked_sanitize_still_rejects_tower_campaign)
+{
+    // The flag defaults to false: every networked construction site keeps
+    // the crafted-client backstop without opting into anything.
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host", 0,
+                          {make_slot(0u, 100, "Soldier", FAMILY_SOLDIER)}));
+    server.poll_incoming_messages();
+
+    const og::sim::LobbySettings before = server.state().settings;
+    ASSERT_NE(std::string(og::kTowerCampaignId), before.campaign_id);
+
+    og::sim::LobbySettings tower;
+    tower.campaign_id = std::string(og::kTowerCampaignId);
+    tower.scenario_id = 700;
+    tower.difficulty = 1;
+    tower.allied_mode = 1;
+    og::sim::LobbyMessage tower_message;
+    tower_message.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 0u,
+        .settings = tower,
+    };
+    transport.queue_lobby_message(11u, tower_message);
+    server.poll_incoming_messages();
+
+    const og::sim::LobbyState state = server.state();
+    EXPECT_EQ(before.campaign_id, state.settings.campaign_id);
+    EXPECT_EQ(before.scenario_id, state.settings.scenario_id);
 }
 
 TEST(LobbyServer, build_save_data_equivalent_tags_owner_and_origin_slot)
