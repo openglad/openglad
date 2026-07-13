@@ -101,10 +101,25 @@ struct CurvePin
 // a real crew that kites and heals, but the stand-in cannot). The F4
 // win/hold contract on 14 and 22 should be re-swept with
 // scripts/westlands_playtest.sh before the next balance pass.)
+// (Recalibrated 2026-07-13 for the runaway-specials fix
+// (docs/runaway-effects-design.md §5 WP-5): the all-level mechanism fixes
+// — the ghost-scare fright MERGE (stacked scares collapse into one
+// bounded fright) and the orc-yell stun stack cap (150) — bind in-battle
+// on every ghost/orc level, so their chaotic 600-tick outcomes drift by a
+// survivor or two in EITHER direction (merged scares keep crews engaged:
+// they flee less, so they fight more — and sometimes die more). Deliberate
+// re-measure across seeds {42, 1337, 2025}: 3: 7->6 (Last Ford, ghosts +
+// orcs) and 19: 5->4 (Dead Marshes, L6-8 ghosts) dipped below their pinned
+// minima and are re-pinned to the new minima; 11/17/22/24 churned within
+// their existing floors; 13/16/23 moved UP (slack kept, floors not
+// raised). Every no-ghost/no-orc level re-measured identical, as the
+// below-knee identity construction guarantees. Tower and Long Season
+// floors did not move (Long Season scen11's seed-1337 measure healed
+// 3->5, back at its pin).)
 constexpr CurvePin kCurve[] = {
-    {1, 1, 8},  {2, 2, 8},  {3, 2, 7},  {4, 3, 8},  {5, 3, 7},  {6, 4, 7},
+    {1, 1, 8},  {2, 2, 8},  {3, 2, 6},  {4, 3, 8},  {5, 3, 7},  {6, 4, 7},
     {7, 4, 0},  {8, 5, 0},  {9, 6, 0},  {10, 5, 0}, {11, 6, 4}, {12, 6, 0},
-    {13, 6, 0}, {14, 7, 0}, {15, 7, 0}, {16, 8, 2}, {17, 8, 2}, {19, 6, 5},
+    {13, 6, 0}, {14, 7, 0}, {15, 7, 0}, {16, 8, 2}, {17, 8, 2}, {19, 6, 4},
     {20, 7, 0}, {21, 7, 7}, {22, 8, 0}, {23, 8, 5}, {24, 8, 2}, {25, 9, 5},
     {26, 9, 8},
 };

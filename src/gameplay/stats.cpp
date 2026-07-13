@@ -21,6 +21,8 @@
 #include <openglad/gameplay/statistics.h>      // for bit flags, etc.
 #include <openglad/core/util.h>
 #include <openglad/core/pixdefs.h>
+#include <openglad/core/combat_math.h>         // kFreezeThawImmunityTicks
+#include <openglad/core/test_trace.h>
 #include <openglad/gameplay/pixie_data.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/dirty_field_bits.h>
@@ -145,6 +147,59 @@ void statistics::clear_command()
 	controller_->set_leader(nullptr);
 }
 
+// Character-switch / control-claim variant of clear_command (runaway-specials
+// §4). The legacy blanket clear on switch was the laundering exploit: two
+// SwitchChar presses wiped any scare/knockback and silently un-charmed.
+//  1. The LEADING run of forced COMMAND_WALK entries (fright/knockback/flee)
+//     is preserved — a front walk command IS the fleeing state (see
+//     score_panel.cpp), so the HUD flee countdown keeps working and now
+//     survives switches. Everything queued behind the run is erased.
+//  2. The weapon reset and leader clear are KEPT (legacy switch hygiene).
+//  3. real_team_num is NOT restored — charm survives control switches; charm
+//     expiry belongs solely to charm_left decay (living.cpp), and the
+//     switch-cycle filter already refuses to switch INTO a charmed walker.
+// Extensionally identical to clear_command whenever the queue has no leading
+// forced entries AND real_team_num == 255 (true at every golden's switch and
+// at every scenario-start claim).
+void statistics::clear_command_for_control_switch()
+{
+	int preserved = 0;
+	auto keep_end = commands.begin();
+	while (keep_end != commands.end() && keep_end->forced
+	       && keep_end->commandtype == COMMAND_WALK)
+	{
+		++keep_end;
+		++preserved;
+	}
+	if (preserved > 0)
+		TRACE("stats", "selective clear preserved %d forced entries", preserved);
+	commands.erase(keep_end, commands.end());
+	// Make sure our weapon type is restored to normal ..
+	controller_->set_current_weapon(controller_->default_weapon());
+	controller_->set_leader(nullptr);
+}
+
+// Player-side frozen_delay drain step (sim_input_handler.cpp). Identical
+// 1/tick decrement to the AI drains, EXCEPT the 1 -> 0 transition writes
+// -kFreezeThawImmunityTicks (runaway-specials §3.3): the negative raw phase
+// is a thaw-immunity window — the masked getter reads 0 (the hero can act),
+// freeze re-application is refused at the apply sites, and living::act
+// climbs the raw value +1/tick back to 0. Only this player-side drain writes
+// the negative phase; the AI drains (living.cpp/walker.cpp) thaw to 0 as
+// always and their masked-getter guards skip negatives with zero edits.
+void statistics::player_thaw_tick()
+{
+	const short cur = frozen_delay(); // masked; call site guards cur > 0
+	if (cur > 1)
+		set_frozen_delay(static_cast<short>(cur - 1));
+	else if (cur == 1)
+	{
+		TRACE("stats", "thaw immunity: wrote -%d on the 1->0 transition",
+		      og::combat::kFreezeThawImmunityTicks);
+		set_frozen_delay(static_cast<short>(-og::combat::kFreezeThawImmunityTicks));
+	}
+}
+
 void statistics::add_command(Sint32 whatcommand, Sint32 iterations,
                              Sint32 info1, Sint32 info2)
 {
@@ -204,6 +259,56 @@ void statistics::force_command(Sint32 whatcommand, Sint32 iterations,
 	commands.front().com2 = info2;
 	commands.front().commandtype = whatcommand;
 	commands.front().commandcount = iterations;
+	// Externally-forced entry (fright/knockback/flee/shove). ONLY this
+	// injector sets the flag; add_command leaves it false. The flag is never
+	// serialized (WP-2 audit: snapshots clear queues on apply, saves/replays
+	// never persist commands).
+	commands.front().forced = true;
+}
+
+// Ghost-scare fright injection (runaway-specials §3.2). If the queue front is
+// already an externally-forced walk (a prior scare, a bomb knockback, a
+// yell-flee), a fresh scare MERGES into it: the remaining count refreshes to
+// max(existing, new) and the flee direction re-points to the new (dx,dy) —
+// overlapping scares never sum end-to-end, so the TOTAL queued fright can
+// never exceed one cast's value. Otherwise this falls through to the exact
+// legacy force_command prepend (including degenerate iteration values after
+// the myguy rng(con) subtraction), so single casts on fresh victims stay
+// byte-identical to master.
+//
+// Documented cross-effect collateral: a scare landing while a bomb-knockback
+// entry sits at front merges into it — the count becomes the scare value and
+// the direction becomes away-from-ghost. Accepted on purpose: replace
+// semantics would let an 8-tick knock truncate a 364-tick scare, and a new
+// command type has too much blast radius. ONLY ghost scare calls this; every
+// other forced-walk user keeps exact legacy prepend behavior.
+void statistics::force_fright(Sint32 iterations, Sint32 info1, Sint32 info2)
+{
+	if (!commands.empty() && commands.front().forced
+	    && commands.front().commandtype == COMMAND_WALK)
+	{
+		// Clamp the deltas exactly like force_command's COMMAND_WALK branch.
+		if (info1 > 1)
+			info1 = 1;
+		if (info1 < -1)
+			info1 = -1;
+		if (info2 > 1)
+			info2 = 1;
+		if (info2 < -1)
+			info2 = -1;
+		if (!info1 && !info2)
+			info1 = info2 = 1;
+		command& front = commands.front();
+		if (iterations > front.commandcount)
+			front.commandcount = iterations;
+		front.com1 = info1;
+		front.com2 = info2;
+		TRACE("stats", "force_fright merged: count=%d dir=(%d,%d)",
+		      static_cast<int>(front.commandcount), static_cast<int>(front.com1),
+		      static_cast<int>(front.com2));
+		return;
+	}
+	force_command(COMMAND_WALK, iterations, info1, info2);
 }
 
 bool statistics::has_commands() const

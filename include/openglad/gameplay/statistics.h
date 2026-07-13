@@ -79,8 +79,20 @@ class statistics
 		void set_command(std::int32_t whatcommand, std::int32_t iterations, std::int32_t info1, std::int32_t info2);
 		void add_command(std::int32_t whatcommand, std::int32_t iterations, std::int32_t info1, std::int32_t info2);
 		void force_command(std::int32_t whatcommand, std::int32_t iterations, std::int32_t info1, std::int32_t info2);
+		// Ghost-scare fright injection: merges into an existing forced walk
+		// at the queue front instead of prepending (runaway-specials §3.2);
+		// falls through to force_command(COMMAND_WALK, ...) otherwise.
+		void force_fright(std::int32_t iterations, std::int32_t info1, std::int32_t info2);
 		bool has_commands() const;
 		void clear_command();
+		// Character-switch / control-claim variant: preserves the leading run
+		// of forced walk entries (fright/knockback) and does NOT un-charm
+		// (runaway-specials §4); keeps the weapon reset and leader clear.
+		void clear_command_for_control_switch();
+		// Player-side frozen_delay drain step: decrements like the AI drains,
+		// but the 1 -> 0 transition writes -kFreezeThawImmunityTicks
+		// (runaway-specials §3.3 thaw immunity).
+		void player_thaw_tick();
 		short do_command();
 		void hit_response(walker * who);
 		void yell_for_help(walker *foe);  // yell and run away
@@ -131,7 +143,31 @@ class statistics
         OG_STATS_DIRTY_FIELD(float, armor, og::dirty::BIT_ARMOR);
 
         OG_STATS_DIRTY_FIELD(std::int32_t, level, og::dirty::BIT_LEVEL);
-        OG_STATS_DIRTY_FIELD(short, frozen_delay, og::dirty::BIT_FROZEN_DELAY);
+        // frozen_delay: freeze/paralysis timer. NEGATIVE = thaw-immunity phase
+        // (runaway-specials §3.3), written ONLY by the player-side drain.
+        // ALWAYS read via frozen_delay() (masked — never returns negatives, so
+        // every legacy guard/drain/HUD/snapshot/replay reader sees
+        // master-identical values) or frozen_delay_raw(). Manual unpick of
+        // OG_STATS_DIRTY_FIELD preserving dirty-bit semantics byte-for-byte
+        // on set; negatives never reach the wire (snapshot capture reads the
+        // masked getter).
+        [[nodiscard]] short frozen_delay() const noexcept
+        {
+            return frozen_delay_ < 0 ? static_cast<short>(0) : frozen_delay_;
+        }
+        [[nodiscard]] short frozen_delay_raw() const noexcept { return frozen_delay_; }
+        void set_frozen_delay(short value)
+        {
+            frozen_delay_ = value;
+            mark_dirty(og::dirty::BIT_FROZEN_DELAY);
+        }
+        // Immunity climb: raw +1/tick toward 0. Called from living::act while
+        // frozen_delay_raw() < 0, so a walker switched away mid-immunity
+        // keeps climbing.
+        void tick_freeze_immunity()
+        {
+            set_frozen_delay(static_cast<short>(frozen_delay_ + 1));
+        }
         OG_STATS_DIRTY_FIELD(short, weapon_cost, og::dirty::BIT_WEAPON_COST);
         OG_STATS_DIRTY_FIELD(std::uint32_t, controller_id, og::dirty::BIT_CONTROLLER_ID);
         [[nodiscard]] unsigned short special_cost(int index) const noexcept
@@ -202,4 +238,10 @@ class command
 		std::int32_t commandcount;
 		std::int32_t com1;
 		std::int32_t com2;
+		// True only for entries injected via statistics::force_command
+		// (fright/knockback/flee/shove); add_command leaves it false.
+		// Never serialized: snapshot apply clears the queue
+		// (world_snapshot.cpp) and no save/replay path persists commands
+		// (runaway-specials WP-2 audit), so the flag is wire/dump-free.
+		bool forced = false;
 };

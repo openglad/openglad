@@ -16,7 +16,7 @@
 #include <openglad/core/sound_ids.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/sim_emit.h>
-
+#include <openglad/core/test_trace.h>
 #include <format>
 #include <list>
 #include <string>
@@ -43,7 +43,7 @@ static bool orc_do_special(walker* self)
             {
                 std::list<walker*> newlist = current_game->world->find_foes_in_range(
                     current_game->world->oblist,
-                    160 + (20 * self->stats()->level()), &howmany, self);
+                    og::combat::yell_radius(self->stats()->level()), &howmany, self); // §2.5: legacy 160 + 20*L, flat cap 420 = f(13)
 
                 for (auto* ob : newlist)
                 {
@@ -57,9 +57,9 @@ static bool orc_do_special(walker* self)
                         tempy = 10
                             + static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(self->stats()->level() * 10)))
                             - static_cast<std::int32_t>(current_game->world->rng_.next(static_cast<std::uint32_t>(tempx_clamped * 10)));
-                        if (tempy < 0)
-                            tempy = 0;
-                        ob->stats()->set_frozen_delay(static_cast<short>(ob->stats()->frozen_delay() + tempy));
+                        if (tempy < 0) tempy = 0;
+                        if (ob->stats()->frozen_delay_raw() < 0) { TRACE("combat", "orc yell stun add discarded: thaw immunity"); }
+                        ob->stats()->set_frozen_delay(static_cast<short>(og::combat::stun_total(ob->stats()->frozen_delay_raw(), tempy))); // §2.4: both rng draws above are verbatim; victim TOTAL from yells capped at 150
                     }
                 }
 

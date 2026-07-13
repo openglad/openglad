@@ -61,7 +61,14 @@ std::int32_t compute_freeze_duration(std::int32_t level, std::int32_t constituti
         return 0;
 
     std::int32_t result = static_cast<std::int32_t>(rng.next(static_cast<std::uint32_t>(max_time)));
-    return (result < 0) ? 0 : result;
+    if (result < 0)
+        result = 0;
+    // Post-draw soft cap (runaway-specials spec §2.6a): the rng draw above
+    // keeps its legacy bound at ALL levels — only the resulting roll is
+    // softened. Every roll 0..79 (all an L20-or-below con-0 wielder can
+    // produce) maps to itself, so below-knee behavior is bit-identical.
+    return og::combat::soften(result, og::combat::kSprinkleRollKnee,
+                              og::combat::kSprinkleRollCeiling);
 }
 
 HealResult compute_heal_amount(std::int32_t magicpoints, std::int32_t level, IRandom& rng)
@@ -76,7 +83,11 @@ HealResult compute_heal_amount(std::int32_t magicpoints, std::int32_t level, IRa
 std::int32_t compute_charm_duration(std::int32_t level_diff, IRandom& rng)
 {
     std::int32_t generic = (level_diff > 0) ? level_diff : 0;
-    return 25 + static_cast<std::int32_t>(rng.next(static_cast<std::uint32_t>(generic * 20)));
+    std::int32_t result = 25 + static_cast<std::int32_t>(rng.next(static_cast<std::uint32_t>(generic * 20)));
+    // Post-draw soft cap (runaway-specials spec §2.9): the draw bound 20*diff
+    // is untouched. Knee 264 = the exact max result at diff 12 (caster L13 vs
+    // L1), so caster level <= 13 is identity even in the distribution tail.
+    return og::combat::soften(result, og::combat::kCharmKnee, og::combat::kCharmCeiling);
 }
 
 RegenTickResult compute_regen_tick(float current, float max_val, float per_round,

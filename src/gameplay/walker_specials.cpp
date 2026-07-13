@@ -21,6 +21,7 @@
 #include <openglad/gameplay/family_registry.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/obmap.h>
+#include <openglad/core/combat_math.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 #include <openglad/core/test_trace.h>
@@ -165,6 +166,19 @@ bool walker::special()
 		did_special = fd->do_special(this);
 		if (did_special)
 			stats_->set_magicpoints(	stats_->magicpoints() - stats_->special_cost(special_index));
+	}
+	// Runaway-specials §3.1: bound the world's pending time-stop bank. The
+	// per-cast freeze formula (family_mage.cpp case 3) is untouched — only
+	// the ACCUMULATED bank is clamped post-cast, so every golden's single
+	// cast (max L13 = 163 <= 300) is the identity map, and chain-casting at
+	// the cap just wastes the 500 MP. Every do_special routes through here;
+	// the clamp is a no-op for non-freeze specials.
+	if (current_game != nullptr && current_game->world != nullptr &&
+	    current_game->world->enemy_freeze > og::combat::kEnemyFreezeBankCap)
+	{
+		TRACE("walker", "enemy_freeze bank clamped %d -> %d",
+		      current_game->world->enemy_freeze, og::combat::kEnemyFreezeBankCap);
+		current_game->world->enemy_freeze = og::combat::kEnemyFreezeBankCap;
 	}
 	return did_special;
 }

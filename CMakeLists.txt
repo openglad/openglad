@@ -2438,6 +2438,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_frame_deadline_pacer.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_cadence.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_astar.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_combat_softcap.cpp
         )
 
         og_add_unit_group(og_unit_sim FILES
@@ -2504,6 +2505,8 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/test_walker_specials_unit.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_living_unit.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_stats_unit.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_stats_fright.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_silliness_battery.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_smooth_unit.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_coverage_misc.cpp
         )

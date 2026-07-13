@@ -1141,7 +1141,7 @@ inline constexpr Mutation kMut_walker_ai_wander = {
 };
 
 inline constexpr Mutation kMut_exit_withdraw_path = {
-    "src/gameplay/families/treasure_family_navigation.cpp", 84,
+    "src/gameplay/families/treasure_family_navigation.cpp", 85,
     "    if (can_withdraw)",
     "    if (false)",
     "Forces the withdraw branch of exit_on_eat (the FAMILY_EXIT treasure's on_eat) to be skipped. When the player steps on an EXIT whose destination level is already completed while enemies remain on the current level, the game normally emits WithdrawToLevel + RequestExitConfirmation and sets world.withdraw_requested. Disabling can_withdraw suppresses BOTH events, flipping EventKindExactly(withdraw_to_level=8,1) and EventKindExactly(request_exit_confirmation=7,1) from count=1 to count=0. This is the behavior scripted_input_scen9301 is named for; the prior shared kMut_walker_ai_wander (combat-damage zeroing) is toothless here because the scenario never lands a melee hit (both soldiers end at full 120/120 HP)."
@@ -1818,7 +1818,7 @@ inline constexpr FactPredicate kFacts_treasure_teleporter_pickup_scen99[] = {
     // Structural coverage anchor: keeps FAMILY_TELEPORTER bound to
     // TreasureFamilyOfOrderRemovedFromOblist for behavioural_coverage_gate_
     // treasures. The co-located teleporter only bumps the eater's skip_exit
-    // (treasure_family_navigation.cpp:113); it is never set_dead, so the
+    // (treasure_family_navigation.cpp:125); it is never set_dead, so the
     // literal stays alive in oblist (hp 0) on BOTH branch and master. With a
     // single alive instance and no consumed one, the Order-aware evaluator
     // returns indeterminate (non-failing) on both arms — a passing anchor,
@@ -1827,7 +1827,7 @@ inline constexpr FactPredicate kFacts_treasure_teleporter_pickup_scen99[] = {
 };
 
 inline constexpr Mutation kMut_treasure_teleporter_pickup = {
-    "src/gameplay/families/treasure_family_navigation.cpp", 158,
+    "src/gameplay/families/treasure_family_navigation.cpp", 170,
     ".on_eat = teleporter_on_eat,",
     ".on_eat = nullptr,",
     "Neuters the FAMILY_TELEPORTER treasure-family on_eat hook. Unmutated, teleporter_on_eat bumps the eating soldier's skip_exit by +20 ahead of its no-target early-return, so the co-located withdraw EXIT (eaten next in the same obmap pile) hits exit_on_eat's skip_exit()>1 guard and emits no withdraw events (kind 7/8 count 0 on branch+master). Neutered, the bump is gone: the soldier reaches the EXIT with skip_exit=0 while ACT_CONTROL and not in_act, takes the withdraw branch, and emits WithdrawToLevel(8) + RequestExitConfirmation(7) once each -- flipping EventKindExactly(7,0) and (8,0) from 0 to 1. The teleporter is spawned TEAM 2 so it does not steal the player-control takeover from the team-0 soldier (a team-0 teleporter left the soldier an NPC and no withdraw ever fired). Byte-accurate hook target so the canary applies cleanly."
@@ -1915,9 +1915,9 @@ inline constexpr FactPredicate kFacts_treasure_exit_pickup_scen99[] = {
     // The player SOLDIER (team 0) walks onto a co-located FAMILY_EXIT whose
     // destination (scen2) is already completed while a live team-1 foe remains,
     // so exit_on_eat takes the withdraw branch (treasure_family_navigation.cpp:
-    // 84-96) and emits BOTH WithdrawToLevel and the withdraw-flavoured
+    // 85-97) and emits BOTH WithdrawToLevel and the withdraw-flavoured
     // RequestExitConfirmation exactly once. The discriminating mutation neuters
-    // .on_eat = exit_on_eat (line 142) -> the dispatcher at treasure.cpp:61-62
+    // .on_eat = exit_on_eat (line 158) -> the dispatcher at treasure.cpp:61-62
     // ("if (tfd && tfd->on_eat)") skips the callback entirely, so NEITHER event
     // is emitted: both EventKindExactly predicates flip 1 -> 0. These are the
     // teeth.
@@ -1938,7 +1938,7 @@ inline constexpr FactPredicate kFacts_treasure_exit_pickup_scen99[] = {
 };
 
 inline constexpr Mutation kMut_treasure_exit_pickup = {
-    "src/gameplay/families/treasure_family_navigation.cpp", 146,
+    "src/gameplay/families/treasure_family_navigation.cpp", 158,
     ".on_eat = exit_on_eat,",
     ".on_eat = nullptr,",
     "Neuters the FAMILY_EXIT treasure-family on_eat hook (treasure.cpp:61-62 dispatches it behind `if (tfd && tfd->on_eat)`, so nullptr means the callback never runs). With the player SOLDIER walking onto an EXIT whose destination (scen2) is already completed while a live team-1 foe remains, exit_on_eat normally takes the withdraw branch and emits WithdrawToLevel + the withdraw-flavoured RequestExitConfirmation exactly once each; neutering the hook suppresses both, flipping EventKindExactly(request_exit_confirmation=7,1) and EventKindExactly(withdraw_to_level=8,1) from count=1 to count=0. The hook target is byte-accurate so the canary applies cleanly."
@@ -4136,9 +4136,9 @@ inline constexpr FactPredicate kFacts_invisibility_thief_scen99[] = {
 
 inline constexpr Mutation kMut_invisibility_thief_scen99 = {
     "src/gameplay/families/family_thief.cpp", 95,
-    "            self->set_invisibility_left(static_cast<short>(self->invisibility_left() + 20 + static_cast<std::int32_t>(current_game->world->rng_.next(20)) * self->stats()->level()));",
+    "            self->set_invisibility_left(static_cast<short>(og::combat::cloak_total(self->invisibility_left(), 20 + static_cast<std::int32_t>(current_game->world->rng_.next(20)) * self->stats()->level())));",
     "            self->set_invisibility_left(0);",
-    "Forces invisibility_left to 0 so the slot-2 CLOAK cast never grants cover; the team-1 soldier keeps engaging the level-4 thief for the full 150-tick window, killing the thief and dropping its HP outside the (1300, 2500) cent band — flipping WalkerHpRangeAtFinalTick."
+    "Forces invisibility_left to 0 so the slot-2 CLOAK cast never grants cover (zeroing the whole cloak_total gain; the runaway-specials 350-tick accumulator cap never binds at L4, where the max single cast is 96); the team-1 soldier keeps engaging the level-4 thief for the full 150-tick window, killing the thief and dropping its HP outside the (1300, 2500) cent band — flipping WalkerHpRangeAtFinalTick."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_speed_potion_movement_scen99[] = {
@@ -4187,8 +4187,9 @@ inline constexpr Mutation kMut_invulnerable_potion_scen99 = {
 // --- Summon-lifecycle scenarios --------------------------------------------
 //
 // Druid slot-2 SUMMON FAERIE deterministically spawns a FAMILY_FAERIE walker
-// owned by the caster with lifetime = 50 + level*40 (family_druid.cpp:71). At
-// level 4 that is 210 ticks. The faerie is reaped by the per-tick lifetime
+// owned by the caster with lifetime = druid_faerie_lifetime(level)
+// (family_druid.cpp:78) — bit-exact legacy 50 + level*40 below the 570-tick
+// soft-cap knee. At level 4 that is 210 ticks. The faerie is reaped by the per-tick lifetime
 // decrement in living.cpp:104-109 once its counter hits zero. Both rows place
 // the team-1 enemy far off-map (2000,2000) so range-gated AI targeting
 // (game_world.cpp:1078-1103) never reaches the faerie or the druid: the druid
@@ -4217,9 +4218,9 @@ inline constexpr FactPredicate kFacts_summon_lifetime_faerie_scen99[] = {
 
 inline constexpr Mutation kMut_summon_lifetime_faerie_scen99 = {
     "src/gameplay/families/family_druid.cpp", 78,
-    "            alive->set_lifetime(50 + self->stats()->level() * 40);",
+    "            alive->set_lifetime(og::combat::druid_faerie_lifetime(self->stats()->level()));",
     "            alive->set_lifetime(99999);",
-    "Replaces the spawn-time lifetime initialisation with an effectively-infinite value; the faerie is still alive at tick 650 so WalkerDiedByFinal(FAMILY_FAERIE) fails because an alive FAMILY_FAERIE remains."
+    "Replaces the spawn-time lifetime initialisation (druid_faerie_lifetime — legacy 50+40*L bit-exact below the 570-tick knee, so 210 at this L4 caster) with an effectively-infinite value; the faerie is still alive at tick 650 so WalkerDiedByFinal(FAMILY_FAERIE) fails because an alive FAMILY_FAERIE remains."
 };
 
 inline constexpr SpawnSpec kFamilySpawns_summon_lifetime_decrement_faerie_scen99[] = {
@@ -4815,7 +4816,7 @@ inline constexpr Mutation kMut_multiplayer_two_teams_scen99 = {
 // its input script (kInputsScripted9301: UP→RIGHT→FIRE) which walks the player
 // onto the exit. Because the destination level is completed but the current one
 // is not, exit_on_eat takes the withdraw branch
-// (treasure_family_navigation.cpp:84-96): it sets world.withdraw_requested=true
+// (treasure_family_navigation.cpp:85-97): it sets world.withdraw_requested=true
 // and emits WithdrawToLevel. From the next tick on, the early-break guards at
 // game_world.cpp:1393/1438/etc fire before any living foe can set level_done=0,
 // so level_done holds at its default 2 (game_world.cpp:1357) — the loop never
@@ -4835,7 +4836,7 @@ inline constexpr FactPredicate kFacts_level_withdraw_scen99[] = {
 };
 
 inline constexpr Mutation kMut_level_withdraw_scen99 = {
-    "src/gameplay/families/treasure_family_navigation.cpp", 86,
+    "src/gameplay/families/treasure_family_navigation.cpp", 87,
     "        world.withdraw_requested = true;",
     "        world.withdraw_requested = false;",
     "Forces the withdraw-request flag false at the instant the player eats the FAMILY_EXIT treasure on a completed destination level; the early-break guards at game_world.cpp:1393/1438 never fire, the entity-act loop runs to completion, the surviving team-1 enemy sets level_done=0 at game_world.cpp:1408, and the level_done==2 completion branch at 1484 is skipped — so LevelDoneEquals(2) flips to level_done==0 (verified against the mutated branch dump)."

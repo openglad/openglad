@@ -16,7 +16,7 @@
 #include <openglad/core/sound_ids.h>
 #include <openglad/gameplay/sim_emit.h>
 #include <openglad/gameplay/foe_query.h>
-
+#include <openglad/core/combat_math.h>
 #include <format>
 #include <string>
 #include <list>
@@ -165,7 +165,7 @@ static bool mage_do_special(walker* self)
             generic = static_cast<std::int32_t>(self->stats()->magicpoints() - static_cast<float>(self->stats()->special_cost(static_cast<int>(self->current_special()))));
             if (generic > 0)
             {
-                generic = generic / 15;
+                generic = (generic / 15 < og::combat::kStarburstAddCap) ? generic / 15 : og::combat::kStarburstAddCap; // §2.12: per-fireball add binds only above 660 MP; lineofsight add/3 inherits the bound
                 self->stats()->set_magicpoints(self->stats()->magicpoints() - static_cast<float>(generic));
             }
             else
@@ -240,7 +240,7 @@ static bool mage_do_special(walker* self)
             if (!howmany)
                 return false;
             generic = static_cast<std::int32_t>(self->stats()->magicpoints() - static_cast<float>(self->stats()->special_cost(5)));
-            generic /= 2;
+            generic = (generic / 2 < og::combat::kMpPoolDamageCap) ? generic / 2 : og::combat::kMpPoolDamageCap; // §2.12: heartburst pool binds only above ~1300 MP
             generic /= howmany;
             if (self->myguy)
             {

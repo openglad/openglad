@@ -120,6 +120,14 @@ bool living::act()
 		}
 	}  // end of summoned monster stuff
 
+	// Thaw-immunity climb (runaway-specials §3.3): the negative frozen_delay
+	// phase — written only by the player-side drain in sim_input_handler —
+	// recovers +1/tick toward 0 here, so a walker switched away mid-immunity
+	// keeps climbing. Sits before the animate/frozen early-returns; the
+	// frozen drains below skip the negative phase via the masked getter.
+	if (stats_->frozen_delay_raw() < 0)
+		stats_->tick_freeze_immunity();
+
 
 	set_collide_ob(nullptr); // always start with no collison..
 

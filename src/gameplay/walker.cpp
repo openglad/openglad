@@ -1582,7 +1582,7 @@ void walker::transfer_stats(walker  *newob)
 	newob->stats()->set_max_magic_delay(stats_->max_magic_delay());
 
 	newob->stats()->set_level(stats_->level());
-	newob->stats()->set_frozen_delay(stats_->frozen_delay());
+	newob->stats()->set_frozen_delay(stats_->frozen_delay_raw()); // raw: thaw immunity transfers with the body (§3.3)
 	for (i=0; i < 5; i++)
 		newob->stats()->set_special_cost(i, stats_->special_cost(i));
 	newob->stats()->set_weapon_cost(stats_->weapon_cost());
