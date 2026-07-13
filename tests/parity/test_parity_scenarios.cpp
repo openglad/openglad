@@ -202,6 +202,7 @@ OG_PARITY_TEST(scripted_input_scen9301)
 OG_PARITY_TEST(snapshot_dirty_bits_scen9301)
 OG_PARITY_TEST(z_stair_up_scen9301)
 OG_PARITY_TEST(z_fall_through_air_scen9301)
+OG_PARITY_TEST(z_fall_two_story_scen9301)
 OG_PARITY_TEST(smoke_empty_scen99)
 OG_PARITY_TEST(smoke_nonempty_scen99)
 OG_PARITY_TEST(smoke_nonempty_scen99_inputs)
@@ -439,6 +440,42 @@ TEST(Parity, z_multifloor_walker_floor_transitions)
     EXPECT_FALSE(
         evaluate_one(pred::WalkerOnFloor(FAMILY_SOLDIER, 1, 1), fall_out.dump).ok)
         << "z_fall_through_air: soldier unexpectedly still on floor 1";
+
+    // Fall DAMAGE teeth (walker::resolve_fall_landing). One story is FREE:
+    // the existing 1-story fall soldier must finish at FULL HP (120.00 ->
+    // 12000 cents, exact — no damage, no regen in play).
+    const auto fall_full_hp = evaluate_one(
+        pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000),
+        fall_out.dump);
+    EXPECT_TRUE(fall_full_hp.ok)
+        << "z_fall_through_air: a 1-story fall must be free (full HP): "
+        << fall_full_hp.message;
+
+    // Two stories cost 15% of max HP: 120 - 18 = 102.00. regen_delay (50)
+    // exceeds the remaining tick budget, so the value is exact; the band
+    // [10199, 10201] absorbs float-formatting jitter only.
+    const og::parity::ScenarioSpec* fall2 =
+        find_scenario("z_fall_two_story_scen9301");
+    ASSERT_NE(fall2, nullptr)
+        << "z_fall_two_story_scen9301 missing from kScenarios";
+    const auto fall2_out = og::parity::run_scenario(*fall2);
+    const auto fall2_on_0 =
+        evaluate_one(pred::WalkerOnFloor(FAMILY_SOLDIER, 0, 0), fall2_out.dump);
+    EXPECT_TRUE(fall2_on_0.ok)
+        << "z_fall_two_story: soldier should be alive on floor 0: "
+        << fall2_on_0.message;
+    const auto fall2_hp = evaluate_one(
+        pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 10199, 10201),
+        fall2_out.dump);
+    EXPECT_TRUE(fall2_hp.ok)
+        << "z_fall_two_story: soldier must land at 85% max HP (15% fall "
+           "damage for the second story): "
+        << fall2_hp.message;
+    // Teeth: the band rejects the free-fall outcome.
+    EXPECT_FALSE(evaluate_one(
+        pred::WalkerHpRangeAtFinalTick(FAMILY_SOLDIER, 12000, 12000),
+        fall2_out.dump).ok)
+        << "z_fall_two_story: soldier unexpectedly took no fall damage";
 }
 
 // Phase 01 new gtests --------------------------------------------------------

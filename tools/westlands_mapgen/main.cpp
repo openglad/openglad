@@ -1223,6 +1223,16 @@ void self_check_level(const ExpectedLevel& ex, const std::set<int>& registered)
     // death, a designed mechanic, and stays legal. The engine's A5 nudge
     // can rescue a blocked landing, but no level may RELY on the nudge.
     // Mirrored by tests/unit/test_westlands_levels.cpp.
+    //
+    // Fall-DEPTH audit (fall damage, docs/z-axis-design.md): the same walk
+    // now also measures each designed fall line's depth in stories (entry
+    // floor minus landing floor). Report-only for the per-level max and the
+    // >= 2-story count (those lines now cost HP — each gets a design
+    // ruling: optional-shortcut keeps, mandatory-path reroutes); a line
+    // deeper than 4 stories (the 50%-cap knee) is a self-check failure.
+    // Generation is untouched: committed .glads stay byte-identical.
+    int max_fall_depth = 0;
+    int damaging_fall_lines = 0;
     for (int f = 1; f < world.floor_count(); ++f)
     {
         const PixieData& g = world.grid_for_floor(f);
@@ -1256,8 +1266,26 @@ void self_check_level(const ExpectedLevel& ex, const std::set<int>& registered)
                         "must not rely on the engine's landing nudge)",
                         ex.id, tx, ty, f, lf));
                 }
+                const int depth = f - lf;
+                max_fall_depth = std::max(max_fall_depth, depth);
+                if (depth >= 2)
+                    ++damaging_fall_lines;
+                if (depth > 4)
+                {
+                    fail(std::format(
+                        "self-check scen{}: fall line at tile ({}, {}) floor "
+                        "{} drops {} stories to floor {} — deeper than the "
+                        "4-story fall-damage cap knee (reroute or shallow "
+                        "the shaft)", ex.id, tx, ty, f, depth, lf));
+                }
             }
         }
+    }
+    if (world.floor_count() > 1)
+    {
+        std::printf("westlands_mapgen: scen%d fall-depth: max %d stories, "
+                    "%d damaging (>=2-story) fall line(s)\n",
+                    ex.id, max_fall_depth, damaging_fall_lines);
     }
 
     // Footing audit: every authored entity stands on a tile of its own floor

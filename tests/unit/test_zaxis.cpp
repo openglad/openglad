@@ -10,6 +10,7 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/statistics.h>
+#include <openglad/gameplay/guy.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/core/constants.h>
 
@@ -17,6 +18,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <memory>
 
 namespace {
 
@@ -1322,4 +1324,354 @@ TEST(ZAxis, find_near_foe_probes_the_searchers_floor)
     walker* found = w.find_near_foe(searcher);
     EXPECT_EQ(beside, found)
         << "find_near_foe must probe the searcher's floor, not floor 0";
+}
+
+// ---------------------------------------------------------------------------
+// Fall damage (docs/z-axis-design.md "Fall damage"): a fall cascade charges
+// min(15% x (stories - 1), 50%) of max HP ONCE at settle. First story free,
+// invulnerability respected, armor not applied, flyers exempt, pit death
+// unchanged. All damage flows through walker::resolve_fall_landing (zero RNG
+// draws — parity streams untouched).
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Replace floor `f`'s (f >= 1) grid with a uniform `tile` fill; returns the
+// buffer so callers can paint individual cells on top.
+unsigned char* set_upper_floor_fill(GameWorld& w, int f, unsigned char tile)
+{
+    const int gw = w.grid.w;
+    const int gh = w.grid.h;
+    auto* buf = new unsigned char[static_cast<std::size_t>(gw) * gh];
+    std::fill(buf, buf + static_cast<std::size_t>(gw) * gh, tile);
+    w.grid_for_floor(f) = PixieData(1, static_cast<unsigned char>(gw),
+                                    static_cast<unsigned char>(gh), buf);
+    w.smoother_for_floor(f).set_target(w.grid_for_floor(f));
+    return w.grid_for_floor(f).data.get();
+}
+
+// N-floor shaft world: floors 1..N-1 all grass except a stacked PIX_AIR
+// column at cell (sx, sy) on floors `lowest_air`..N-1. Floor 0 keeps the
+// fixture's grass grid. A walker whose centre sits at (sx, sy) on the top
+// floor cascades one story per completed probe down to the first non-air
+// cell of the column.
+void build_shaft(GameWorld& w, int floors, int sx, int sy, int lowest_air)
+{
+    w.set_floor_count(floors);
+    for (int f = 1; f < floors; ++f)
+    {
+        unsigned char* buf = set_upper_floor_fill(
+            w, f, static_cast<unsigned char>(PIX_GRASS1));
+        if (f >= lowest_air)
+            buf[sx + sy * w.grid.w] = static_cast<unsigned char>(PIX_AIR);
+    }
+}
+
+// Drive apply_z_motion through its z_cooldown_ pacing until any cascade in
+// flight has completed (tick-count driven, no wall clock).
+void run_z(walker* a, int probes = 60)
+{
+    for (int i = 0; i < probes; ++i)
+        a->apply_z_motion();
+}
+
+// Spawn a soldier with its centre on grid cell (sx, sy) of `floor`.
+walker* spawn_on_cell(GameWorld& w, int floor, int sx, int sy)
+{
+    walker* a = w.add_ob(Order::Living, FAMILY_SOLDIER);
+    if (a == nullptr)
+        return nullptr;
+    a->set_floor(static_cast<short>(floor));
+    // setxy places the top-left corner; centre cell = (pos + size/2) / GRID.
+    a->setxy(sx * GRID_SIZE + GRID_SIZE / 2 - a->sizex() / 2,
+             sy * GRID_SIZE + GRID_SIZE / 2 - a->sizey() / 2);
+    return a;
+}
+
+// FAMILY_LIFE_GEM heart search across both world entity lists.
+bool world_has_heart(GameWorld& w)
+{
+    for (const auto& uptr : w.oblist)
+        if (uptr && uptr->query_order() == Order::Treasure &&
+            uptr->family() == FAMILY_LIFE_GEM)
+            return true;
+    for (const auto& uptr : w.fxlist)
+        if (uptr && uptr->query_order() == Order::Treasure &&
+            uptr->family() == FAMILY_LIFE_GEM)
+            return true;
+    return false;
+}
+
+} // namespace
+
+TEST(ZAxis, fall_one_story_free)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    build_shaft(w, 2, 7, 7, /*lowest_air=*/1);
+
+    walker* a = spawn_on_cell(w, 1, 7, 7);
+    ASSERT_NE(a, nullptr);
+    const float max_hp = a->stats()->max_hitpoints();
+    ASSERT_GT(max_hp, 0.0f);
+
+    run_z(a);
+    EXPECT_EQ(0, a->floor());
+    EXPECT_EQ(max_hp, a->stats()->hitpoints())
+        << "a 1-story fall is free — designed traversal must cost nothing";
+    EXPECT_TRUE(a->damage_numbers.empty())
+        << "a free settle must not push a damage number";
+    EXPECT_EQ(0, a->fall_stories_for_test());
+}
+
+TEST(ZAxis, fall_two_stories_costs_15pct)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    build_shaft(w, 3, 7, 7, /*lowest_air=*/1);
+
+    walker* a = spawn_on_cell(w, 2, 7, 7);
+    ASSERT_NE(a, nullptr);
+    const float max_hp = a->stats()->max_hitpoints();
+
+    run_z(a);
+    EXPECT_EQ(0, a->floor());
+    EXPECT_NEAR(max_hp * 0.85f, a->stats()->hitpoints(), 0.01f)
+        << "2 stories = 15% of max HP, applied once at settle";
+    ASSERT_EQ(1u, a->damage_numbers.size());
+    EXPECT_EQ(RED, a->damage_numbers.back().color);
+    EXPECT_NEAR(max_hp * 0.15f, a->damage_numbers.back().value, 0.01f);
+    EXPECT_EQ(50, a->regen_delay());
+}
+
+TEST(ZAxis, fall_caps_at_50pct)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    build_shaft(w, 6, 7, 7, /*lowest_air=*/1); // 5-story shaft to floor 0
+
+    walker* a = spawn_on_cell(w, 5, 7, 7);
+    ASSERT_NE(a, nullptr);
+    const float max_hp = a->stats()->max_hitpoints();
+
+    run_z(a);
+    EXPECT_EQ(0, a->floor());
+    EXPECT_NEAR(max_hp * 0.50f, a->stats()->hitpoints(), 0.01f)
+        << "5 stories: 15% x 4 = 60% clamps to the 50% cap — a full-HP unit "
+           "survives ANY fall";
+    EXPECT_FALSE(a->dead());
+}
+
+TEST(ZAxis, cascade_no_partial_damage)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    build_shaft(w, 3, 7, 7, /*lowest_air=*/1);
+
+    walker* a = spawn_on_cell(w, 2, 7, 7);
+    ASSERT_NE(a, nullptr);
+    const float max_hp = a->stats()->max_hitpoints();
+
+    a->apply_z_motion(); // exactly one probe: first landing, mid-cascade
+    EXPECT_EQ(1, a->floor());
+    EXPECT_EQ(1, a->fall_stories_for_test())
+        << "mid-cascade the accumulator holds the stories fallen so far";
+    EXPECT_EQ(max_hp, a->stats()->hitpoints())
+        << "no partial damage mid-cascade — the charge lands once at settle";
+    EXPECT_TRUE(a->damage_numbers.empty());
+}
+
+TEST(ZAxis, hover_walkoff_silent_reset)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    build_shaft(w, 3, 7, 7, /*lowest_air=*/1);
+
+    walker* a = spawn_on_cell(w, 2, 7, 7);
+    ASSERT_NE(a, nullptr);
+    const float max_hp = a->stats()->max_hitpoints();
+
+    a->apply_z_motion(); // land on floor 1's air cell, cascade in flight
+    ASSERT_EQ(1, a->floor());
+    ASSERT_EQ(1, a->fall_stories_for_test());
+
+    // The walker moves off the air column onto ordinary ground of the same
+    // floor before the cascade resumes (the stale hover-walk-off case).
+    a->setxy(10 * GRID_SIZE + GRID_SIZE / 2 - a->sizex() / 2,
+             10 * GRID_SIZE + GRID_SIZE / 2 - a->sizey() / 2);
+    run_z(a);
+    EXPECT_EQ(1, a->floor());
+    EXPECT_EQ(0, a->fall_stories_for_test())
+        << "non-air footing silently ends the cascade (forgiving by design)";
+    EXPECT_EQ(max_hp, a->stats()->hitpoints());
+    EXPECT_TRUE(a->damage_numbers.empty());
+}
+
+TEST(ZAxis, stair_reset_next_fall_charges_only_its_own_stories)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    build_shaft(w, 3, 7, 7, /*lowest_air=*/1);
+    // A stair on floor 1 away from the shaft (its floor-2 landing is grass).
+    w.grid_for_floor(1).data[10 + 10 * w.grid.w] =
+        static_cast<unsigned char>(PIX_ZSTAIR_UP);
+
+    walker* a = spawn_on_cell(w, 2, 7, 7);
+    ASSERT_NE(a, nullptr);
+    const float max_hp = a->stats()->max_hitpoints();
+
+    a->apply_z_motion(); // mid-cascade on floor 1
+    ASSERT_EQ(1, a->fall_stories_for_test());
+
+    // Step onto the Z-stair before the cascade resumes: stair footing resets
+    // the accumulator (and the stair triggers normally).
+    a->setxy(10 * GRID_SIZE + GRID_SIZE / 2 - a->sizex() / 2,
+             10 * GRID_SIZE + GRID_SIZE / 2 - a->sizey() / 2);
+    run_z(a);
+    EXPECT_EQ(0, a->fall_stories_for_test());
+    EXPECT_EQ(max_hp, a->stats()->hitpoints());
+
+    // A fresh 2-story fall afterwards charges only its own 15% — not the
+    // abandoned story from before the stair.
+    a->change_floor(2);
+    a->setxy(7 * GRID_SIZE + GRID_SIZE / 2 - a->sizex() / 2,
+             7 * GRID_SIZE + GRID_SIZE / 2 - a->sizey() / 2);
+    run_z(a);
+    EXPECT_EQ(0, a->floor());
+    EXPECT_NEAR(max_hp * 0.85f, a->stats()->hitpoints(), 0.01f);
+}
+
+TEST(ZAxis, teleport_reset_next_fall_charges_only_its_own_stories)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    build_shaft(w, 3, 7, 7, /*lowest_air=*/1);
+
+    walker* a = spawn_on_cell(w, 2, 7, 7);
+    ASSERT_NE(a, nullptr);
+    const float max_hp = a->stats()->max_hitpoints();
+
+    a->apply_z_motion(); // mid-cascade on floor 1
+    ASSERT_EQ(1, a->fall_stories_for_test());
+
+    ASSERT_TRUE(a->teleport());
+    EXPECT_EQ(0, a->fall_stories_for_test())
+        << "teleport ends any fall cascade uncharged";
+
+    // A fresh 2-story fall afterwards charges only its own 15%.
+    a->change_floor(2);
+    a->setxy(7 * GRID_SIZE + GRID_SIZE / 2 - a->sizex() / 2,
+             7 * GRID_SIZE + GRID_SIZE / 2 - a->sizey() / 2);
+    run_z(a);
+    EXPECT_EQ(0, a->floor());
+    EXPECT_NEAR(max_hp * 0.85f, a->stats()->hitpoints(), 0.01f);
+}
+
+TEST(ZAxis, invulnerable_skip)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    build_shaft(w, 3, 7, 7, /*lowest_air=*/1);
+
+    walker* potion = spawn_on_cell(w, 2, 7, 7);
+    ASSERT_NE(potion, nullptr);
+    potion->set_invulnerable_left(100);
+    const float max_hp = potion->stats()->max_hitpoints();
+
+    run_z(potion);
+    EXPECT_EQ(0, potion->floor());
+    EXPECT_EQ(max_hp, potion->stats()->hitpoints())
+        << "the potion's promise is 'no damage', and fall damage is damage";
+    EXPECT_TRUE(potion->damage_numbers.empty());
+
+    walker* innate = spawn_on_cell(w, 2, 7, 7);
+    ASSERT_NE(innate, nullptr);
+    innate->stats()->set_bit_flags(BIT_INVINCIBLE, 1);
+    run_z(innate);
+    EXPECT_EQ(0, innate->floor());
+    EXPECT_EQ(innate->stats()->max_hitpoints(), innate->stats()->hitpoints())
+        << "BIT_INVINCIBLE walkers take no fall damage";
+}
+
+TEST(ZAxis, lethal_when_wounded)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    build_shaft(w, 3, 7, 7, /*lowest_air=*/1);
+
+    walker* a = spawn_on_cell(w, 2, 7, 7);
+    ASSERT_NE(a, nullptr);
+    a->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    const float max_hp = a->stats()->max_hitpoints();
+    a->stats()->set_hitpoints(max_hp * 0.10f); // wounded below the 15% charge
+
+    run_z(a);
+    EXPECT_TRUE(a->dead())
+        << "a wounded unit dies to a 2-story fall (15% > 10% remaining)";
+    EXPECT_EQ(1u, a->damage_numbers.size());
+    EXPECT_TRUE(world_has_heart(w))
+        << "a real character's death drops its heart, fall or otherwise";
+}
+
+TEST(ZAxis, knockback_off_ledge_kill)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    build_shaft(w, 3, 7, 7, /*lowest_air=*/1);
+
+    // The walker starts on solid ground beside the shaft; a shove is
+    // indistinguishable from a walk-off at the sim layer (cause-agnostic —
+    // fall damage attributes no attacker and awards no kill credit).
+    walker* a = spawn_on_cell(w, 2, 9, 7);
+    ASSERT_NE(a, nullptr);
+    const float max_hp = a->stats()->max_hitpoints();
+    a->stats()->set_hitpoints(max_hp * 0.10f);
+    run_z(a, 5);
+    ASSERT_EQ(2, a->floor()); // solid footing: nothing happens
+
+    // The "shove": displaced over the shaft cell.
+    a->setxy(7 * GRID_SIZE + GRID_SIZE / 2 - a->sizex() / 2,
+             7 * GRID_SIZE + GRID_SIZE / 2 - a->sizey() / 2);
+    run_z(a);
+    EXPECT_TRUE(a->dead())
+        << "knockback-off-ledge is a finisher on wounded units";
+}
+
+TEST(ZAxis, flyer_exempt_hp)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    build_shaft(w, 3, 7, 7, /*lowest_air=*/1);
+
+    walker* a = spawn_on_cell(w, 2, 7, 7);
+    ASSERT_NE(a, nullptr);
+    a->stats()->set_bit_flags(BIT_FLYING, 1);
+    const float max_hp = a->stats()->max_hitpoints();
+
+    run_z(a);
+    EXPECT_EQ(2, a->floor()) << "flyers never enter the air branch";
+    EXPECT_EQ(max_hp, a->stats()->hitpoints());
+    EXPECT_EQ(0, a->fall_stories_for_test());
+}
+
+TEST(ZAxis, pit_death_unchanged)
+{
+    TestGameWorld tw;
+    GameWorld& w = tw.world();
+    w.set_floor_count(2);
+    set_upper_floor_fill(w, 1, static_cast<unsigned char>(PIX_GRASS1));
+
+    walker* a = spawn_on_cell(w, 0, 7, 7);
+    ASSERT_NE(a, nullptr);
+    a->set_invulnerable_left(100); // invulnerability does NOT save pit death
+    // Paint the pit (air on floor 0) in place, under the walker's centre.
+    w.grid.data[7 + 7 * w.grid.w] = static_cast<unsigned char>(PIX_AIR);
+
+    run_z(a, 5);
+    EXPECT_TRUE(a->dead())
+        << "falling past floor 0 stays an unconditional pit death (a void, "
+           "not damage)";
+    EXPECT_TRUE(a->damage_numbers.empty())
+        << "pit death is byte-for-byte the pre-fall-damage branch: no "
+           "damage number";
 }

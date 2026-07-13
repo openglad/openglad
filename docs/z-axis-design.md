@@ -208,6 +208,64 @@ identical numeric value and the mask is a no-op → A\* node expansion byte-iden
   on the caster's floor by design. Verified byte-identical across all 158 parity
   scenarios (A/B `parity_runner_smoke` dump diff, incl. `rng_state`).
 
+## Fall damage (2026-07, always-on — owner sign-off D4)
+
+- **The rule.** `damage = min(0.15 × (N − 1), 0.50) × max_hitpoints`, where N
+  is the total stories fallen in one uninterrupted cascade; clamped to ≥ 1.0 hp
+  when nonzero; applied ONCE at settle (the first landing whose recomputed
+  post-move centre cell is non-air — the A5 nudge can move the landing up to 4
+  cells, and a nudge onto air keeps the cascade alive). Float math end-to-end.
+  1 story is **free**: campaign fall routes are designed traversal (the
+  Westlands E5 fall-line rule) and pursuing AI pays nothing for a designed
+  drop. 2/3/4 stories cost 15%/30%/45% of max HP; 5+ caps at **50%**, so a
+  full-health unit survives ANY fall — a fall has no attributable attacker
+  (no kill credit possible), so an instant-kill would be a degenerate MP
+  tactic; knockback-off-ledge stays a *finisher* against wounded units.
+  Always-on, no knob (percent-of-max needs no per-family table and is
+  symmetric across difficulty/level/family).
+- **Mechanism.** `walker::fall_stories_` accumulates at each air-branch
+  landing in `apply_z_motion` and `walker::resolve_fall_landing()` charges the
+  damage at settle with the flight-expiry idiom (plain hp deduction + RED
+  `DamageNumber` + `regen_delay(50)` + inline `set_dead(1)+death()` when
+  lethal), NOT `do_combat_damage` — its FAMILY_HIT FX consumes one
+  `rng_.next(3)` per landing, and this path deliberately draws **zero RNG**.
+  One `SOUND_CLANG` sim event per damaging settle. The accumulator resets on
+  any non-air footing (stairs, ordinary ground, the hover-walk-off stale case
+  — forgiving by design), on both teleport `change_floor` sites, and in
+  `walker::death()`.
+- **Invulnerability is RESPECTED** (`BIT_INVINCIBLE` / `invulnerable_left`):
+  a deliberate divergence from the environmental precedents (pit death and
+  flight expiry check nothing) — the potion's promise is "no damage", and
+  fall damage is damage.
+- **Armor is NOT applied**: percent-of-max already scales with toughness;
+  stacking `get_damage_reduction` would double-scale and muddy the rule.
+- **Pit death is unchanged**, byte-for-byte: falling past floor 0 remains an
+  unconditional kill with no invulnerability check and no damage number — a
+  void, not damage.
+- **Exempt by construction** (no code): flyers (`BIT_FLYING`/`flight_left`)
+  never enter the air branch; weapons fall via `act_fire` separately; only
+  livings call `apply_z_motion`. Enemies take fall damage symmetrically.
+- **Replication.** `fall_stories_` ships with the same non-replicated
+  server-transient acceptance as `z_cooldown_`/`z_stair_latched_`: a mirror or
+  late joiner mid-cascade resolves a shorter fall and hp self-corrects on the
+  next snapshot; remote clients also miss the DamageNumber (matches flight
+  expiry today). No wire bump.
+- **Parity.** Single-floor levels can never see any of this
+  (`apply_z_motion`'s `floor_count()<=1` early-return). Pinned by the
+  Invariant row `z_fall_two_story_scen9301` (3-floor shaft, 85%-max-HP band)
+  plus the full-HP pin on the existing 1-story fall row, both teethed in
+  `Parity.z_multifloor_walker_floor_transitions`; the unit battery lives in
+  `tests/unit/test_zaxis.cpp` (`ZAxis.fall_*`, `cascade_no_partial_damage`,
+  `hover_walkoff_silent_reset`, the stair/teleport resets,
+  `invulnerable_skip`, `lethal_when_wounded`, `knockback_off_ledge_kill`,
+  `flyer_exempt_hp`, `pit_death_unchanged`).
+- **Tooling.** Both mapgen fall audits (`tools/westlands_mapgen`,
+  `tools/longseason_mapgen`) measure each designed fall line's depth in
+  stories, report the per-level max and ≥2-story (damaging) count, and
+  self-check-fail any line deeper than 4 stories (the cap knee); the ≤4-story
+  bound is mirrored in `tests/unit/test_westlands_levels.cpp`. The audits are
+  report-only — generation and committed .glads are untouched.
+
 ## Pathfinding (cross-floor)
 
 All additive, double-gated (`floor_count>1` and tile data):

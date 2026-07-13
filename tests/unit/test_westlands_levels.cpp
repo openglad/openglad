@@ -1082,6 +1082,14 @@ TEST_F(WestlandsCampaignTest, air_fall_lines_land_on_standable_ground)
                         << " lands on impassable ground of floor " << lf
                         << " (the level must not rely on the engine's "
                            "landing nudge)";
+                    // Fall-DEPTH bound (fall damage, mirrors the mapgen
+                    // fall-depth audit): no shipped fall line may drop more
+                    // than 4 stories — the knee of the 50% damage cap.
+                    EXPECT_LE(f - lf, 4)
+                        << "fall line at tile (" << tx << ", " << ty
+                        << ") floor " << f << " drops " << (f - lf)
+                        << " stories to floor " << lf
+                        << " — deeper than the 4-story fall-damage cap knee";
                 }
             }
         }

@@ -1672,6 +1672,7 @@ bool walker::death()
 		return 0;
 
 	set_death_called(1);
+	fall_stories_ = 0; // a corpse's cascade ends here (classic respawn revives this same object)
 
 	// Ensure we are removed from collision bookkeeping as soon as we "die".
 	// This prevents stale pointers in the obmap when callers manage walker
@@ -1930,6 +1931,65 @@ void walker::latch_stair_arrival()
 	z_latch_cy_ = (ypos() + sizey() / 2) / GRID_SIZE;
 }
 
+// Fall-damage settle: called ONCE when an air cascade ends on a non-air cell
+// of the arrival floor. The first story is free (campaign fall routes are
+// designed traversal — the Westlands E5 fall-line rule); deeper falls cost
+// min(15% x (stories-1), 50%) of max HP, clamped up to at least 1 hp, so a
+// full-health unit survives ANY fall (a fall has no attributable attacker —
+// no kill credit is possible — so an instant-kill would be a degenerate MP
+// tactic; knockback-off-ledge stays a finisher, not a one-shot). Damage uses
+// the flight-expiry idiom (living.cpp), NOT do_combat_damage: its FAMILY_HIT
+// FX consumes one rng_.next(3) per landing, which would perturb every
+// multifloor RNG stream for a cosmetic — this path draws ZERO RNG. Armor is
+// deliberately NOT applied (percent-of-max already scales with toughness;
+// stacking get_damage_reduction would double-scale). Invulnerability is
+// deliberately RESPECTED — a divergence from the environmental precedents
+// (pit death / flight expiry check nothing): the potion's promise is "no
+// damage", and fall damage is damage; pit death stays unprotected (a void,
+// not damage). See docs/z-axis-design.md.
+void walker::resolve_fall_landing()
+{
+	const int extra = fall_stories_ - 1; // first story is free
+	fall_stories_ = 0;                   // reset first, unconditionally
+	if (extra <= 0)
+	{
+		TRACE("zaxis", "fall settle: 1 story, free, hp %.2f",
+		      static_cast<double>(stats_->hitpoints()));
+		return;
+	}
+	if (stats_->query_bit_flags(BIT_INVINCIBLE) || invulnerable_left() != 0)
+	{
+		TRACE("zaxis", "fall settle: %d stories, invulnerable, no damage",
+		      extra + 1);
+		return;
+	}
+	float dmg = std::min(0.15f * static_cast<float>(extra), 0.50f) *
+	            stats_->max_hitpoints();
+	if (dmg < 1.0f)
+		dmg = 1.0f; // nonzero fall damage never rounds away to nothing
+	set_last_hitpoints(stats_->hitpoints());
+	stats_->set_hitpoints(stats_->hitpoints() - dmg);
+	damage_numbers.push_back(DamageNumber(
+	    static_cast<float>(xpos() + sizex() / 2), static_cast<float>(ypos()),
+	    dmg, RED, current_game->world->tick_count_));
+	set_regen_delay(50);
+	if (myguy != nullptr)
+	{
+		myguy->scen_damage_taken += dmg;
+		if (myguy->scen_min_hp > stats_->hitpoints())
+			myguy->scen_min_hp = stats_->hitpoints();
+	}
+	og::sim::emit_sound(current_game->sim_events, SOUND_CLANG);
+	TRACE("zaxis", "fall settle: %d stories, dmg %.2f, hp %.2f", extra + 1,
+	      static_cast<double>(dmg), static_cast<double>(stats_->hitpoints()));
+	if (stats_->hitpoints() <= 0)
+	{
+		TRACE("zaxis", "fall lethal");
+		set_dead(1);
+		death(); // no score, no kill credit; unwinds via living::act's dead() gate
+	}
+}
+
 // Per-tick vertical handling for stacked floors: fall through "air" tiles to the
 // floor below, and take Z-stairs up/down. Strictly a no-op on single-floor
 // levels (floor_count()<=1), so it never affects legacy levels or parity.
@@ -1965,6 +2025,12 @@ void walker::apply_z_motion()
 		z_stair_latched_ = false;
 
 	const std::int32_t genre = sm.query_genre_x_y(cx, cy);
+
+	// Fall-damage bookkeeping: any non-air footing (stairs, ordinary ground,
+	// the hover-walk-off stale case) ends a cascade with no settle charge —
+	// forgiving by design. See resolve_fall_landing above.
+	if (genre != TYPE_AIR)
+		fall_stories_ = 0;
 
 	// Z-stairs: relocate one floor up/down (vertically aligned). Flyers never
 	// change floors (per design).
@@ -2021,12 +2087,14 @@ void walker::apply_z_motion()
 		if (floor() > 0)
 		{
 			const short below = static_cast<short>(floor() - 1);
+			bool landed = false;
 			if (w->floor_landing_clear(this, static_cast<float>(xpos()),
 			                           static_cast<float>(ypos()), below))
 			{
 				// The spot straight down is clear: land in place.
 				change_floor(below);
 				z_cooldown_ = 2;
+				landed = true;
 			}
 			else if (land_on_nearest_clear_cell(*w, *this, below, cx, cy,
 			                                    kFallNudgeRadius,
@@ -2036,12 +2104,26 @@ void walker::apply_z_motion()
 				// the nearest clear cell of the floor below instead of
 				// materializing inside the blockage.
 				z_cooldown_ = 2;
+				landed = true;
 			}
 			else
 			{
 				// No clear landing within the nudge radius: do not fall
 				// at all (hover on the air tile) and re-probe later.
 				z_cooldown_ = 6;
+			}
+			if (landed)
+			{
+				// One story fallen. Settle-probe the RECOMPUTED post-move
+				// centre cell (the A5 nudge moves up to 4 cells): non-air
+				// settles the cascade here; air keeps accumulating after
+				// z_cooldown_ (the cascade continues).
+				++fall_stories_;
+				const std::int32_t lcx = (xpos() + sizex() / 2) / GRID_SIZE;
+				const std::int32_t lcy = (ypos() + sizey() / 2) / GRID_SIZE;
+				if (w->smoother_for_floor(floor()).query_genre_x_y(lcx, lcy) !=
+				    TYPE_AIR)
+					resolve_fall_landing();
 			}
 		}
 		else if (!dead())

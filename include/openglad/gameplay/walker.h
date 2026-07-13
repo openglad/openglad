@@ -94,6 +94,11 @@ class walker : public og::sim::SimEntity
 			// Z-axis / multi-floor (no-ops / cheap on single-floor levels):
 			void change_floor(short new_floor); // relocate to a stacked floor + re-bucket in obmap
 			void apply_z_motion();              // per-tick fall-through-air / Z-stair transition
+#ifdef TESTING
+			// Test-only oracle for the fall-damage accumulator (fall_stories_
+			// below); compiled out of production builds.
+			int fall_stories_for_test() const { return fall_stories_; }
+#endif
 			virtual bool setxy(short x, short y);
 			// Overloads to avoid implicit narrowing at call sites. These forward to the virtual short-based API.
 			bool setxy(std::int32_t x, std::int32_t y) { return setxy(static_cast<short>(x), static_cast<short>(y)); }
@@ -470,6 +475,15 @@ class walker : public og::sim::SimEntity
 		bool z_stair_latched_ = false;
 		std::int32_t z_latch_cx_ = -1;
 		std::int32_t z_latch_cy_ = -1;
+		// Fall-damage accumulator: stories fallen in one uninterrupted air
+		// cascade, resolved ONCE at settle by resolve_fall_landing(). Same
+		// non-replicated server-transient acceptance as z_cooldown_ /
+		// z_stair_latched_: snapshots never carry it, so a mirror or late
+		// joiner mid-cascade resolves a shorter fall; hp self-corrects on the
+		// next snapshot — no wire bump. Always 0 on single-floor levels
+		// (apply_z_motion early-returns), so parity-neutral.
+		int fall_stories_ = 0;
+		void resolve_fall_landing();
 		// Per-placed-NPC scenario extras (see the public accessors above).
 		// Defaults reproduce legacy behavior exactly; every consumer branch is
 		// gated on a non-default value, keeping parity goldens byte-identical.

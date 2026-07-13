@@ -4802,7 +4802,7 @@ inline constexpr FactPredicate kFacts_multiplayer_two_teams_scen99[] = {
 };
 
 inline constexpr Mutation kMut_multiplayer_two_teams_scen99 = {
-    "src/gameplay/walker.cpp", 2173,
+    "src/gameplay/walker.cpp", 2255,
     "return headus->team_num() == headtarget->team_num();",
     "return 1;",
     "Replaces the no-myguy team-number friendliness comparison with an unconditional `return 1`, so every pair of walkers is friendly regardless of team; the three-team melee never starts, every walker keeps full HP, and the combat play_sound stream collapses from ~10 to 1 — below the EventKindAtLeast(play_sound, 4) floor (verified: mutated branch dump emits play_sound == 1)."
@@ -4945,6 +4945,23 @@ inline constexpr FloorPaint kZFallPaints[] = {
     { /*floor=*/0, 7, 8, kPixGrass1 },
     { /*floor=*/0, 8, 8, kPixGrass1 },
     { /*floor=*/1, 7, 7, kPixAir },      // air hole under the soldier on floor 1
+};
+
+// Two-story fall (fall DAMAGE teeth): soldier spawns on floor 2 over a stacked
+// PIX_AIR shaft (air at (7,7) on floors 2 AND 1) and cascades down to the
+// solid grass pad on floor 0. Two stories fallen -> the first is free, the
+// second costs 15% of max HP (walker::resolve_fall_landing), pinned by
+// WalkerHpRangeAtFinalTick in Parity.z_multifloor_walker_floor_transitions.
+inline constexpr SpawnSpec kZFall2Spawns[] = {
+    { FAMILY_SOLDIER, 0, kOrderLiving, 112, 112, 0, 0, 0, 0, 0, /*floor=*/2 },
+};
+inline constexpr FloorPaint kZFall2Paints[] = {
+    { /*floor=*/0, 7, 7, kPixGrass1 },   // solid landing pad on floor 0
+    { /*floor=*/0, 8, 7, kPixGrass1 },
+    { /*floor=*/0, 7, 8, kPixGrass1 },
+    { /*floor=*/0, 8, 8, kPixGrass1 },
+    { /*floor=*/1, 7, 7, kPixAir },      // shaft continues through floor 1
+    { /*floor=*/2, 7, 7, kPixAir },      // air hole under the soldier on floor 2
 };
 
 // --- Scenario table --------------------------------------------------------
@@ -5109,6 +5126,12 @@ inline constexpr ScenarioSpec kScenarios[] = {
       kZFallSpawns, std::size(kZFallSpawns), 0, false, true, Exercises::None,
       nullptr, 0, {}, {},
       2, kZFallPaints, std::size(kZFallPaints) },
+
+    { "z_fall_two_story_scen9301", "scen/scen9301.fss", 0x00000055u,
+      nullptr, 0, 50, CompareMode::Invariant, true,
+      kZFall2Spawns, std::size(kZFall2Spawns), 0, false, true, Exercises::None,
+      nullptr, 0, {}, {},
+      3, kZFall2Paints, std::size(kZFall2Paints) },
 
     // Phase 02 smoke scenarios. fresh_arena drops any walkers the loaded
     // scen file may have produced and replaces them with kSmokeArenaSpawns,

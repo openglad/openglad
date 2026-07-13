@@ -212,6 +212,8 @@ bool walker::teleport()
 				// already on the marker's floor), then center_on/setxy
 				// moves it within that floor.
 				change_floor(marker_floor);
+				fall_stories_ = 0; // teleport ends any fall cascade uncharged
+				TRACE("zaxis", "teleport reset fall accumulator");
 				center_on(ob);
 				ob->set_lifetime(ob->lifetime() - 1);
 				if (ob->lifetime() < 1)
@@ -260,6 +262,8 @@ bool walker::teleport()
 	{
 		// Floor before position (see the marker path above).
 		change_floor(target_floor);
+		fall_stories_ = 0; // teleport ends any fall cascade uncharged
+		TRACE("zaxis", "teleport reset fall accumulator");
 		setxy(newx, newy);
 		return 1;
 	}
