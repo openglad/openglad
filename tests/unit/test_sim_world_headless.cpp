@@ -421,3 +421,67 @@ TEST(SimWorldHeadless, generator_rate_calm_keeps_level1_generators_live)
     EXPECT_LE(sanitize_floor, calm)
         << "a lower rate can never out-fire a higher one on the same stream";
 }
+
+// The exit pad's third branch: foes alive AND destination unearned used to be
+// completely SILENT — the player walked over the exit with no acknowledgment
+// (the tower playtest's "exit seems blocked" report). It now says why, on the
+// existing skip_exit(10) cadence, without touching the two event-emitting
+// branches (both parity-pinned: exit prompt + withdraw pair).
+TEST(SimWorldHeadless, exit_with_foes_alive_says_foes_remain)
+{
+    TestGameWorld t;
+    const auto notifications = [&](const char* needle) {
+        int count = 0;
+        for (const auto& ev : t.events.events())
+            if (ev.kind == og::sim::EventKind::Notification &&
+                ev.text.find(needle) != std::string::npos)
+                count++;
+        return count;
+    };
+    const auto exit_prompts = [&] {
+        int count = 0;
+        for (const auto& ev : t.events.events())
+            if (ev.kind == og::sim::EventKind::RequestExitConfirmation)
+                count++;
+        return count;
+    };
+
+    walker* exit_pad = t.world().add_fx_ob(Order::Treasure, FAMILY_EXIT);
+    ASSERT_NE(nullptr, exit_pad);
+    exit_pad->setxy(120, 120);
+    ASSERT_NE(nullptr, exit_pad->stats());
+    exit_pad->stats()->set_level(2); // destination level id
+
+    walker* hero = t.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, hero);
+    hero->setxy(120, 120);
+    hero->set_act_type(ACT_CONTROL);
+
+    // Foes alive, destination unearned: the toast fires, no prompt.
+    t.world().level_done = 0;
+    ASSERT_TRUE(exit_pad->eat_me(hero));
+    EXPECT_EQ(1, notifications("Foes remain"));
+    EXPECT_EQ(0, exit_prompts());
+
+    // The skip_exit throttle bounds the cadence while standing on the pad.
+    ASSERT_TRUE(exit_pad->eat_me(hero));
+    EXPECT_EQ(1, notifications("Foes remain"))
+        << "an immediate re-eat must be swallowed by set_skip_exit(10)";
+
+    // Withdraw shape (destination already completed): the withdraw pair
+    // fires, never the toast.
+    hero->set_skip_exit(0);
+    t.world().completed_levels.insert(2);
+    ASSERT_TRUE(exit_pad->eat_me(hero));
+    EXPECT_EQ(1, notifications("Foes remain"));
+    EXPECT_EQ(1, exit_prompts()) << "withdraw emits RequestExitConfirmation";
+    t.world().completed_levels.erase(2);
+
+    // Cleared level: the normal exit prompt, no new toast.
+    hero->set_skip_exit(0);
+    t.world().level_done = 2;
+    t.world().withdraw_requested = false;
+    ASSERT_TRUE(exit_pad->eat_me(hero));
+    EXPECT_EQ(1, notifications("Foes remain"));
+    EXPECT_EQ(2, exit_prompts());
+}
