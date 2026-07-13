@@ -56,6 +56,7 @@ void apply_win_fold(SaveData& save, const GameWorld& world,
     const bool already_completed = save.is_level_completed(finished);
 
     // 2. Fold the level score into the running totals (cash pays 2x score).
+    // Update all the money!
     for (std::size_t team_index = 0; team_index < std::size(save.m_score);
          ++team_index)
     {
@@ -89,12 +90,13 @@ void apply_win_fold(SaveData& save, const GameWorld& world,
     {
         const short next =
             progression.advance_cursor(save, world, ctx.outcome.next_level);
-        save.scen_num = next;
+        save.scen_num = next;    // Fake jumping to next level ..
         save.current_levels[save.current_campaign] = next;
     }
 
     // 6. Rebuild the roster from the finished level (dead heroes dropped
     //    unless keep_fallen_heroes).
+    // Grab our team out of the level
     save.update_guys(world.oblist);
 }
 
