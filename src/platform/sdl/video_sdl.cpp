@@ -2480,6 +2480,29 @@ void sdl_video::reapply_world_scale()
 	apply_world_scale_from_cfg();
 }
 
+void sdl_video::apply_window_size_from_cfg()
+{
+#ifndef __EMSCRIPTEN__
+	// The OPTIONS Window button live-apply path: resize the real window to
+	// cfg graphics/width+height, then re-derive everything the window size
+	// feeds (overscan viewport, then the world canvas, which may be
+	// window-sized). The SDL_EVENT_WINDOW_RESIZED this raises re-runs the
+	// same derivations idempotently.
+	const int w = std::clamp(
+	    parse_int_strict(cfg.get_setting("graphics", "width")).value_or(640), 320, 3840);
+	const int h = std::clamp(
+	    parse_int_strict(cfg.get_setting("graphics", "height")).value_or(400), 200, 2400);
+	SDL_SetWindowSize(E_Screen->window, w, h);
+	og::runtime::current_session->window_w_ = static_cast<float>(w);
+	og::runtime::current_session->window_h_ = static_cast<float>(h);
+	update_overscan_setting();
+	apply_world_scale_from_cfg();
+#else
+	// The browser page/CSS owns the canvas box, and the backing is pinned to
+	// the logical size (see Screen()); nothing to resize on web.
+#endif
+}
+
 //buffers: get pixel's RGB values if you have XY
 void sdl_video::get_pixel(int x, int y, Uint8 *r, Uint8 *g, Uint8 *b)
 {

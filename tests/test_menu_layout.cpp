@@ -690,8 +690,8 @@ TEST(MenuLayout, main_options_index_contract_and_nav)
 {
     button* buttons = picker_main_options_buttons();
     const int count = picker_main_options_button_count();
-    ASSERT_EQ(13, count)
-        << "main options is BACK + 8 settings + CONTROLS door + 3 FX doors";
+    ASSERT_EQ(14, count)
+        << "main options is BACK + 9 settings + CONTROLS door + 3 FX doors";
 
     static const char* kExpectedIds[] = {
         "options_back",       // 0
@@ -707,6 +707,7 @@ TEST(MenuLayout, main_options_index_contract_and_nav)
         "ui_fx",              // 10: opens the UI FX subscreen
         "graphics_fx",        // 11: opens the GRAPHICS FX subscreen
         "world_scale",        // 12: label synced from graphics/scale each frame
+        "window_size",        // 13: label synced from graphics/width+height each frame
     };
     for (int i = 0; i < count; ++i)
     {

@@ -173,6 +173,7 @@ public:
     CanvasTarget active_canvas() const override;
     void set_world_canvas_pinned_classic(bool pinned) override;
     void reapply_world_scale() override;
+    void apply_window_size_from_cfg() override;
 
     void get_pixel(int x, int y, Uint8* r, Uint8* g, Uint8* b) override;
     int get_pixel(int x, int y, int* index) override;

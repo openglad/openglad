@@ -696,6 +696,8 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         return change_depth_fx();
     case ButtonAction::CycleWorldScale:
         return change_world_scale();
+    case ButtonAction::CycleWindowSize:
+        return change_window_size();
     case ButtonAction::ToggleTrails:
         toggle_effect("effects", "trails");
         return REDRAW;

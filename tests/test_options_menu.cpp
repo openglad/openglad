@@ -129,6 +129,7 @@ struct OptionsState {
     bool exited_fx[kFxScreenCount];
     bool toggled_fx[kFxScreenCount][kFxMaxToggles];
     bool cycled_world_scale;
+    bool cycled_window_size;
     bool used_options_back;
     // Label the RENDERING ENGINE button shows while cfg (graphics, render) is
     // the empty string (as in any process that never ran load_settings()).
@@ -230,6 +231,33 @@ static bool cycle_world_scale_and_check_lap(const char* button_id)
     return true;
 }
 
+// Click the window-size selector around its full five-step lap and verify
+// cfg graphics/width follows the pure next_window_size_multiplier orbit.
+// The lap ends back on the starting multiplier (the 640x400 boot default in
+// this binary), so the flow leaves the real window where it began.
+static bool cycle_window_size_and_check_lap(const char* button_id)
+{
+    int expected = og::ui::window_size_multiplier(
+        cfg.get_setting("graphics", "width"),
+        cfg.get_setting("graphics", "height"));
+    for (int i = 0; i < 5; ++i)
+        expected = og::ui::next_window_size_multiplier(expected);
+    const std::string expected_width = std::to_string(320 * expected);
+
+    for (int i = 0; i < 5; ++i)
+        if (!click_cycle_step(button_id, "graphics", "width"))
+            return false;
+
+    const Uint64 deadline = SDL_GetTicks() + 5000;
+    while (cfg.get_setting("graphics", "width") != expected_width) {
+        if (SDL_GetTicks() >= deadline)
+            return false;
+        interact(button_id);
+        SDL_Delay(300);
+    }
+    return true;
+}
+
 static int options_injector(void* data)
 {
     og::runtime::ensure_thread_session();
@@ -303,6 +331,8 @@ static int options_injector(void* data)
         // menu keeps presenting the untouched 320x200 UI canvas throughout).
         fprintf(stderr, "  [test] cycling world scale through a full lap\n");
         state->cycled_world_scale = cycle_world_scale_and_check_lap("world_scale");
+        SDL_Delay(300);
+        state->cycled_window_size = cycle_window_size_and_check_lap("window_size");
 
         // Enter each FX subscreen in turn, flip every toggle it hosts
         // (asserting the cfg key actually changed), and leave via the
@@ -419,6 +449,8 @@ TEST(OptionsMenu, options_menu) {
         << "empty cfg (graphics, render) must fall back to 'normal' on the button face";
     ASSERT_TRUE(state.cycled_world_scale)
         << "world_scale must step cfg graphics/scale around the full eight-value lap";
+    ASSERT_TRUE(state.cycled_window_size)
+        << "window_size must step cfg graphics/width around the full five-multiple lap";
     // Each click live-applies the value: the integer / SAI / Eagle modes and
     // the closing Legacy wrap must all have reached the renderer
     // (apply_world_scale_from_cfg traces the parsed mode).

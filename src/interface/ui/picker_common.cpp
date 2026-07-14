@@ -590,6 +590,34 @@ std::string format_world_scale_label(const std::string& value)
     return "Scale: " + v + "x";
 }
 
+int window_size_multiplier(const std::string& width, const std::string& height)
+{
+    // Absent keys mean the 640x400 boot default in video_init.
+    if (width.empty() && height.empty())
+        return 2;
+    for (int k = 1; k <= 5; ++k)
+    {
+        if (width == std::to_string(320 * k) && height == std::to_string(200 * k))
+            return k;
+    }
+    return 0; // hand-edited cfg: a custom size the selector re-enters at 2x
+}
+
+int next_window_size_multiplier(int multiplier)
+{
+    if (multiplier < 1 || multiplier >= 5)
+        return multiplier == 0 ? 2 : 1; // custom re-enters the lap; 5 wraps
+    return multiplier + 1;
+}
+
+std::string format_window_size_label(const std::string& width, const std::string& height)
+{
+    const int k = window_size_multiplier(width, height);
+    if (k == 0)
+        return "Window: custom";
+    return "Window: " + std::to_string(k) + "x";
+}
+
 // --- Team choice helpers (local seats) ---
 
 bool team_has_members(const SaveData& save, short team)

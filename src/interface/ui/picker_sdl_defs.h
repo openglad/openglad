@@ -163,6 +163,7 @@ inline constexpr int kGraphicsFxDepthFxIndex = 8;
 // re-derives its label from cfg graphics/scale each frame (both surfaces);
 // change_world_scale() also writes it by this index on click.
 inline constexpr int kMainOptionsWorldScaleIndex = 12;
+inline constexpr int kMainOptionsWindowSizeIndex = 13;
 
 // --- DIFFICULTY subscreen layout contract -----------------------------------
 // Positional indices into k_difficulty_menu_buttons /

@@ -720,8 +720,8 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
     window_flags |= SDL_WINDOW_BORDERLESS;
     #endif
 
-    const int logical_w = w;
-    const int logical_h = h;
+    [[maybe_unused]] const int logical_w = w;
+    [[maybe_unused]] const int logical_h = h;
     window = SDL_CreateWindow("Gladiator", w, h, window_flags);
     if(window == nullptr)
         throw std::runtime_error(std::string("Fatal: SDL_CreateWindow failed: ") + SDL_GetError());

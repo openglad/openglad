@@ -336,6 +336,15 @@ std::string cycle_world_scale(const std::string& current);
 // options button face (15 chars).
 std::string format_world_scale_label(const std::string& value);
 
+// Window-size selector (cfg graphics/width + graphics/height). The window is
+// modeled as an integer multiple of the classic 320x200: multiplier() maps a
+// cfg pair to 1..5 (empty = the 640x400 boot default = 2; anything else is 0,
+// "custom"), next() steps the 1..5 lap (custom re-enters at 2), and the label
+// formatter names the multiple ("Window: 2x", or "Window: custom").
+int window_size_multiplier(const std::string& width, const std::string& height);
+int next_window_size_multiplier(int multiplier);
+std::string format_window_size_label(const std::string& width, const std::string& height);
+
 // --- Team family extraction ---
 
 // Collect family IDs from non-null team slots into a vector.

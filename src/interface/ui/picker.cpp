@@ -1074,8 +1074,8 @@ static const button k_main_options_buttons[] =
     button("overscan_minus", "- ", KEYSTATE_UNKNOWN, 130, 10 + 3*BUTTON_PITCH, 30, 15, button_action_id(ButtonAction::OverscanAdjust), -1, MenuNav{.up=2, .down=6, .right=5}),
     button("overscan_plus", "+ ", KEYSTATE_UNKNOWN, 170, 10 + 3*BUTTON_PITCH, 30, 15, button_action_id(ButtonAction::OverscanAdjust), 1, MenuNav{.up=3, .down=6, .left=4, .right=12}),
     button("gameplay_fx", "GAMEPLAY FX", KEYSTATE_UNKNOWN, 130, 10 + 4*BUTTON_PITCH, 90, 15,
-        button_action_id(ButtonAction::OpenGameplayFxSettings), -1, MenuNav{.up=4, .down=10}),
-    button("restore_defaults", "RESTORE DEFAULTS", KEYSTATE_UNKNOWN, 210, 10, 100, 15, button_action_id(ButtonAction::RestoreDefaultSettings), -1, MenuNav{.up=12, .down=9, .left=8}),
+        button_action_id(ButtonAction::OpenGameplayFxSettings), -1, MenuNav{.up=4, .down=10, .right=13}),
+    button("restore_defaults", "RESTORE DEFAULTS", KEYSTATE_UNKNOWN, 210, 10, 100, 15, button_action_id(ButtonAction::RestoreDefaultSettings), -1, MenuNav{.up=13, .down=9, .left=8}),
     button("player_controls", "CONTROLS", KEYSTATE_UNKNOWN, 100, 10, 80, 15,
         button_action_id(ButtonAction::OpenControlSettings), -1, MenuNav{.up=11, .down=1, .left=0, .right=7}),
     button("pick_sprite_sheet", "Sprite Sheet", KEYSTATE_UNKNOWN, 210, 10 + BUTTON_PITCH, 90, 15,
@@ -1091,7 +1091,15 @@ static const button k_main_options_buttons[] =
     // each frame like [2]; appended at the end per the index contract
     // (kMainOptionsWorldScaleIndex). Right column wrap: 7 -> 9 -> 3 -> 12.
     button("world_scale", "Scale: Off", KEYSTATE_UNKNOWN, 210, 10 + 3*BUTTON_PITCH, 90, 15,
-        button_action_id(ButtonAction::CycleWorldScale), -1, MenuNav{.up=3, .down=7, .left=5}),
+        button_action_id(ButtonAction::CycleWorldScale), -1, MenuNav{.up=3, .down=13, .left=5}),
+    // Window-size cycle (cfg graphics/width+height): the native window as an
+    // integer multiple of the classic 320x200 (1x..5x), applied live on
+    // click. Hidden on web, where the page/CSS owns the canvas box (the
+    // create function closes the right-column wrap back over it). Appended
+    // at the end per the index contract (kMainOptionsWindowSizeIndex).
+    // Right column wrap: 7 -> 9 -> 3 -> 12 -> 13.
+    button("window_size", "Window: 2x", KEYSTATE_UNKNOWN, 220, 10 + 4*BUTTON_PITCH, 90, 15,
+        button_action_id(ButtonAction::CycleWindowSize), -1, MenuNav{.up=12, .down=7, .left=6}),
 };
 
 // FX subscreen toggle grid: columns x=15/115/215, 90px faces (15-char label
@@ -2188,6 +2196,17 @@ Sint32 main_options()
     buttons[kMainOptionsWorldScaleIndex].nav.up = 9;
     #endif
 
+    #ifdef __EMSCRIPTEN__
+    // The browser page/CSS owns the window size (and the canvas backing is
+    // pinned to the logical 320x200): hide the window-size selector and
+    // close the right-column wrap back over it (scale -> restore defaults).
+    buttons[kMainOptionsWindowSizeIndex].hidden = true;
+    buttons[kMainOptionsWindowSizeIndex].no_draw = true;
+    buttons[kMainOptionsWorldScaleIndex].nav.down = 7;
+    buttons[7].nav.up = kMainOptionsWorldScaleIndex;
+    buttons[6].nav.right = -1;
+    #endif
+
 	int highlighted_button = 0;
 	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
 
@@ -2235,6 +2254,17 @@ Sint32 main_options()
                 og::ui::format_world_scale_label(cfg.get_setting("graphics", "scale"));
             og::runtime::current_session->allbuttons_[kMainOptionsWorldScaleIndex]->label =
                 buttons[kMainOptionsWorldScaleIndex].label;
+        }
+        // Window-size label re-derived from cfg each frame (both surfaces),
+        // same idiom as the scale face above; absent keys format as the
+        // 640x400 boot default ("Window: 2x").
+        {
+            buttons[kMainOptionsWindowSizeIndex].label =
+                og::ui::format_window_size_label(
+                    cfg.get_setting("graphics", "width"),
+                    cfg.get_setting("graphics", "height"));
+            og::runtime::current_session->allbuttons_[kMainOptionsWindowSizeIndex]->label =
+                buttons[kMainOptionsWindowSizeIndex].label;
         }
 		
 		// Draw
@@ -3036,6 +3066,34 @@ Sint32 change_world_scale()
        og::runtime::current_session->allbuttons_[kMainOptionsWorldScaleIndex]->label = label;
    if (static_cast<int>(pks().main_options_buttons.size()) > kMainOptionsWorldScaleIndex)
        pks().main_options_buttons[kMainOptionsWorldScaleIndex].label = label;
+
+   return MENU_OK;
+}
+
+Sint32 change_window_size()
+{
+   const int next = og::ui::next_window_size_multiplier(
+       og::ui::window_size_multiplier(cfg.get_setting("graphics", "width"),
+                                      cfg.get_setting("graphics", "height")));
+   cfg.apply_setting("graphics", "width", std::to_string(320 * next));
+   cfg.apply_setting("graphics", "height", std::to_string(200 * next));
+
+   // Live-apply: resize the window and re-derive viewport + world canvas
+   // (window-sized scale modes track the new window). Mirrors
+   // change_world_scale's relayout-on-change contract.
+   screen* scr = og::runtime::current_session->myscreen_;
+   const int old_w = scr->world_canvas_w();
+   const int old_h = scr->world_canvas_h();
+   scr->apply_window_size_from_cfg();
+   if (scr->world_canvas_w() != old_w || scr->world_canvas_h() != old_h)
+       scr->relayout_views();
+
+   const std::string label = og::ui::format_window_size_label(
+       cfg.get_setting("graphics", "width"), cfg.get_setting("graphics", "height"));
+   if (og::runtime::current_session->allbuttons_[kMainOptionsWindowSizeIndex] != nullptr)
+       og::runtime::current_session->allbuttons_[kMainOptionsWindowSizeIndex]->label = label;
+   if (static_cast<int>(pks().main_options_buttons.size()) > kMainOptionsWindowSizeIndex)
+       pks().main_options_buttons[kMainOptionsWindowSizeIndex].label = label;
 
    return MENU_OK;
 }

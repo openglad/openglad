@@ -2334,6 +2334,60 @@ TEST(PickerCommon, cycle_world_scale_sequence)
     ASSERT_EQ("1", og::ui::cycle_world_scale("bogus"));
 }
 
+TEST(PickerCommon, window_size_multiplier_mapping)
+{
+    // Absent keys are the 640x400 boot default in video_init.
+    ASSERT_EQ(2, og::ui::window_size_multiplier("", ""));
+    ASSERT_EQ(1, og::ui::window_size_multiplier("320", "200"));
+    ASSERT_EQ(2, og::ui::window_size_multiplier("640", "400"));
+    ASSERT_EQ(3, og::ui::window_size_multiplier("960", "600"));
+    ASSERT_EQ(4, og::ui::window_size_multiplier("1280", "800"));
+    ASSERT_EQ(5, og::ui::window_size_multiplier("1600", "1000"));
+    // Hand-edited sizes (or a mismatched pair) are "custom".
+    ASSERT_EQ(0, og::ui::window_size_multiplier("800", "600"));
+    ASSERT_EQ(0, og::ui::window_size_multiplier("640", "600"));
+    ASSERT_EQ(0, og::ui::window_size_multiplier("640", ""));
+}
+
+TEST(PickerCommon, next_window_size_multiplier_lap)
+{
+    ASSERT_EQ(2, og::ui::next_window_size_multiplier(1));
+    ASSERT_EQ(3, og::ui::next_window_size_multiplier(2));
+    ASSERT_EQ(4, og::ui::next_window_size_multiplier(3));
+    ASSERT_EQ(5, og::ui::next_window_size_multiplier(4));
+    ASSERT_EQ(1, og::ui::next_window_size_multiplier(5));
+    // Custom sizes re-enter the lap at the boot default's step.
+    ASSERT_EQ(2, og::ui::next_window_size_multiplier(0));
+
+    // Five clicks restore any in-lap starting multiplier.
+    int k = 3;
+    for (int i = 0; i < 5; ++i)
+        k = og::ui::next_window_size_multiplier(k);
+    ASSERT_EQ(3, k);
+}
+
+TEST(PickerCommon, format_window_size_label_exact_strings)
+{
+    ASSERT_EQ("Window: 2x", og::ui::format_window_size_label("", ""));
+    ASSERT_EQ("Window: 1x", og::ui::format_window_size_label("320", "200"));
+    ASSERT_EQ("Window: 5x", og::ui::format_window_size_label("1600", "1000"));
+    ASSERT_EQ("Window: custom", og::ui::format_window_size_label("800", "600"));
+
+    // 90px button face at 6px/char: every label must fit 15 characters.
+    for (const auto& pair : {std::pair<const char*, const char*>{"", ""},
+                             {"320", "200"},
+                             {"640", "400"},
+                             {"960", "600"},
+                             {"1280", "800"},
+                             {"1600", "1000"},
+                             {"800", "600"}})
+    {
+        const std::string label =
+            og::ui::format_window_size_label(pair.first, pair.second);
+        ASSERT_LE(label.size(), 15u) << label;
+    }
+}
+
 TEST(PickerCommon, format_world_scale_label_exact_strings)
 {
     ASSERT_EQ("Scale: Off", og::ui::format_world_scale_label("off"));
