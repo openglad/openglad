@@ -23,6 +23,7 @@
 #include <openglad/resources/gparser.h>
 #include <openglad/core/util.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/session_state.h>
 #include <openglad/legacy/base.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/resources/io.h>
@@ -475,15 +476,40 @@ static inline Uint32 map_surface_rgb_fast(SDL_Surface* surface, Uint8 r, Uint8 g
                       SDL_GetSurfacePalette(surface), r, g, b);
 }
 
+
+// Per-pixel palette conversion (query_palette_reg + SDL_MapRGB pairs) still
+// dominates the sprite/text blit loops (~5M pixels/s at 72fps full-screen).
+// Cache the 256-entry mapped-color table; the palette lives in session state
+// and only changes on loads/fades, so a 768-byte compare per blit call keeps
+// the table fresh at negligible cost.
+static const Uint32* palette_color_lut(SDL_Surface* target)
+{
+    static std::array<unsigned char, 768> cached_pal{};
+    static std::array<Uint32, 256> lut{};
+    static SDL_PixelFormat cached_format = SDL_PIXELFORMAT_UNKNOWN;
+    const unsigned char* cur = og::runtime::current_session->curpal_.data();
+    if (target->format != cached_format ||
+        std::memcmp(cached_pal.data(), cur, cached_pal.size()) != 0)
+    {
+        std::memcpy(cached_pal.data(), cur, cached_pal.size());
+        cached_format = target->format;
+        const SDL_PixelFormatDetails* det = cached_format_details(cached_format);
+        SDL_Palette* pal = SDL_GetSurfacePalette(target);
+        for (int i = 0; i < 256; ++i)
+        {
+            lut[static_cast<std::size_t>(i)] = SDL_MapRGB(
+                det, pal,
+                static_cast<Uint8>(cached_pal[static_cast<std::size_t>(i) * 3] * 4),
+                static_cast<Uint8>(cached_pal[static_cast<std::size_t>(i) * 3 + 1] * 4),
+                static_cast<Uint8>(cached_pal[static_cast<std::size_t>(i) * 3 + 2] * 4));
+        }
+    }
+    return lut.data();
+}
+
 Uint32 get_Uint32_color(unsigned char color)
 {
-    int r,g,b;
-	query_palette_reg(color,&r,&g,&b);
-		
-	return map_surface_rgb_fast(E_Screen->render,
-	                  static_cast<Uint8>(r * 4),
-	                  static_cast<Uint8>(g * 4),
-	                  static_cast<Uint8>(b * 4));
+	return palette_color_lut(E_Screen->render)[color];
 }
 
 // This is the version which writes to the buffer..
@@ -947,7 +973,7 @@ void sdl_video::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 y
         Sint32 curx, cury;
         unsigned char curcolor;
        	Uint32 num = 0;
-	int r,g,b,color;
+	int color;
 	SDL_Rect rect;
 
 	for(cury = starty;cury < starty +ysize;cury++)
@@ -958,11 +984,7 @@ void sdl_video::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 y
 			if (!curcolor)
 		        	continue;
 			//point(curx,cury,curcolor);//buffers: PORT: draw the poin
-			query_palette_reg(curcolor,&r,&g,&b);
-			color = map_surface_rgb_fast(E_Screen->render,
-			                   static_cast<Uint8>(r * 4),
-			                   static_cast<Uint8>(g * 4),
-			                   static_cast<Uint8>(b * 4));
+			color = static_cast<int>(palette_color_lut(E_Screen->render)[curcolor]);
 
 			rect.x = curx;
 			rect.y = cury;
@@ -1004,7 +1026,7 @@ void sdl_video::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 y
         Sint32 curx, cury;
         unsigned char curcolor;
         Uint32 num = 0;
-	int r,g,b,scolor;
+	int scolor;
 	SDL_Rect rect;
 
        for(cury = starty;cury < starty +ysize;cury++)
@@ -1018,11 +1040,7 @@ void sdl_video::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 y
 	        {
 		        curcolor = color;
 	        }
-			query_palette_reg(curcolor,&r,&g,&b);
-			scolor = map_surface_rgb_fast(E_Screen->render,
-			                    static_cast<Uint8>(r * 4),
-			                    static_cast<Uint8>(g * 4),
-			                    static_cast<Uint8>(b * 4));
+			scolor = static_cast<int>(palette_color_lut(E_Screen->render)[curcolor]);
 
             rect.x = curx;
             rect.y = cury;
@@ -1086,6 +1104,32 @@ void sdl_video::putbuffer(Sint32 tilestartx, Sint32 tilestarty,
 	//offssource = (ymin * tilewidth) + xmin; //start at u-l position
 
 	//buffers: draws graphic. actually uses the above bound checking now (7/18/02)
+	SDL_Surface* target = E_Screen->render;
+	if (cached_format_details(target->format)->bytes_per_pixel == 4)
+	{
+		// Fast path: palette-LUT convert straight into the 32bpp canvas.
+		// pointb's per-pixel palette query + format map + putpixel dispatch
+		// dominated frame time on the throttled web profile; tiles are
+		// opaque, so this is a plain converting row copy.
+		const Uint32* lut = palette_color_lut(target);
+		for (i = ymin; i < ymax; i++)
+		{
+			const Sint32 dy = tilestarty + (i - ymin);
+			if (dy < 0 || dy >= target->h)
+				continue;
+			Uint32* row = reinterpret_cast<Uint32*>(
+				static_cast<Uint8*>(target->pixels) +
+				static_cast<std::size_t>(dy) * static_cast<std::size_t>(target->pitch));
+			for (j = xmin; j < xmax; j++)
+			{
+				const Sint32 dx = tilestartx + (j - xmin);
+				if (dx < 0 || dx >= target->w)
+					continue;
+				row[dx] = lut[sourcebufptr[i * tilewidth + j]];
+			}
+		}
+		return;
+	}
 	num=0;
 	for(i=ymin;i<ymax;i++)
 	{
@@ -1249,14 +1293,9 @@ void* sdl_video::create_accel_surface(std::span<const unsigned char> indexed_pix
     {
         for (Sint32 x = 0; x < width; ++x, ++src_index)
         {
-            int r, g, b;
-            query_palette_reg(indexed_pixels[src_index], &r, &g, &b);
             pixels[static_cast<std::size_t>(y) * pitch_pixels +
                    static_cast<std::size_t>(x)] =
-                map_surface_rgb_fast(surface,
-                           static_cast<Uint8>(r * 4),
-                           static_cast<Uint8>(g * 4),
-                           static_cast<Uint8>(b * 4));
+                palette_color_lut(surface)[indexed_pixels[src_index]];
         }
     }
 
@@ -1904,7 +1943,7 @@ void sdl_video::walkputbuffertext(Sint32 walkerstartx, Sint32 walkerstarty,
         Sint32 xmin = 0, xmax= walkerwidth , ymin= 0 , ymax= walkerheight;
         Sint32 walkoff=0,buffoff=0,walkshift=0,buffshift=0;
         Sint32 totrows,rowsize;
-	int r,g,b,color;
+	int color;
 	SDL_Rect rect;
 
         if (walkerstartx >= portendx || walkerstarty >= portendy)
@@ -1955,11 +1994,7 @@ void sdl_video::walkputbuffertext(Sint32 walkerstartx, Sint32 walkerstarty,
 		        {
 		                curcolor = static_cast<unsigned char>(teamcolor+(255-curcolor));
 		        }
-				query_palette_reg(curcolor,&r,&g,&b);
-                        color = map_surface_rgb_fast(E_Screen->render,
-                                           static_cast<Uint8>(r * 4),
-                                           static_cast<Uint8>(g * 4),
-                                           static_cast<Uint8>(b * 4));
+                        color = static_cast<int>(palette_color_lut(E_Screen->render)[curcolor]);
 
                         rect.x = (curx + walkerstartx);
                         rect.y = (cury + walkerstarty);
