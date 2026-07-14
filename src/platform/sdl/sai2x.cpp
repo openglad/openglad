@@ -5,7 +5,7 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
-#include "SDL.h"
+#include <SDL3/SDL.h>
 #include <openglad/platform/sai2x.h>
 #include <openglad/core/util.h>
 #include <openglad/interface/input.h>
@@ -755,13 +755,13 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
 Screen::~Screen()
 {
 	SDL_DestroyTexture(render2_tex);
-	SDL_FreeSurface(render2);
+	SDL_DestroySurface(render2);
 	if (world_tex_ != ui_tex_)
 		SDL_DestroyTexture(world_tex_);
 	if (world_surf_ != ui_surf_)
-		SDL_FreeSurface(world_surf_);
+		SDL_DestroySurface(world_surf_);
 	SDL_DestroyTexture(ui_tex_);
-	SDL_FreeSurface(ui_surf_);
+	SDL_DestroySurface(ui_surf_);
 
 	SDL_DestroyRenderer(renderer);
 	SDL_DestroyWindow(window);
@@ -793,7 +793,7 @@ void Screen::set_world_canvas_size(int w, int h)
 	if (world_tex_ != ui_tex_)
 		SDL_DestroyTexture(world_tex_);
 	if (world_surf_ != ui_surf_)
-		SDL_FreeSurface(world_surf_);
+		SDL_DestroySurface(world_surf_);
 	world_surf_ = nullptr;
 	world_tex_ = nullptr;
 
@@ -811,7 +811,7 @@ void Screen::set_world_canvas_size(int w, int h)
 		{
 			LogError("set_world_canvas_size({}x{}) allocation failed: {}\n", w, h, SDL_GetError());
 			if (world_tex_) { SDL_DestroyTexture(world_tex_); }
-			if (world_surf_) { SDL_FreeSurface(world_surf_); }
+			if (world_surf_) { SDL_DestroySurface(world_surf_); }
 			world_surf_ = ui_surf_;
 			world_tex_ = ui_tex_;
 			w = kUiCanvasW;
@@ -823,7 +823,7 @@ void Screen::set_world_canvas_size(int w, int h)
 			// render-scale-quality hint asks for linear filtering. Only the
 			// split world texture is touched: the shared/default texture (and
 			// therefore every default run) keeps SDL's stock behavior.
-			SDL_SetTextureScaleMode(world_tex_, SDL_ScaleModeNearest);
+			SDL_SetTextureScaleMode(world_tex_, SDL_SCALEMODE_NEAREST);
 		}
 	}
 	world_w_ = w;
@@ -885,7 +885,7 @@ bool Screen::ensure_render2(int need_w, int need_h)
 	{
 		// The active canvas changed size since the scaler scratch was made.
 		SDL_DestroyTexture(render2_tex);
-		SDL_FreeSurface(render2);
+		SDL_DestroySurface(render2);
 		render2 = nullptr;
 		render2_tex = nullptr;
 	}
@@ -905,13 +905,13 @@ void Screen::SaveBMP(SDL_Surface* screen, char* filename)
 
 void Screen::clear()
 {
-	SDL_FillRect(render, nullptr, 0x000000);
+	SDL_FillSurfaceRect(render, nullptr, 0x000000);
 }
 
 void Screen::clear(int x, int y, int w, int h)
 {
     SDL_Rect r = {x, y, w, h};
-	SDL_FillRect(render, &r, 0x000000);
+	SDL_FillSurfaceRect(render, &r, 0x000000);
 }
 
 void Screen::swap(int x, int y, int w, int h)
@@ -974,7 +974,7 @@ void Screen::swap(int x, int y, int w, int h)
 
     SDL_Rect dest = {int(og::runtime::current_session->viewport_offset_x_), int(og::runtime::current_session->viewport_offset_y_), int(og::runtime::current_session->viewport_w_), int(og::runtime::current_session->viewport_h_)};
 
-    SDL_RenderCopy(renderer, dest_texture, nullptr, &dest);
+    SDL_RenderTexture(renderer, dest_texture, nullptr, &dest);
     SDL_RenderPresent(renderer);
 }
 
@@ -983,13 +983,13 @@ void Screen::clear_window()
     SDL_Surface* source_surface = render;
     SDL_Texture* dest_texture = render_tex;
     
-    SDL_FillRect(source_surface, nullptr, 0x000000);
+    SDL_FillSurfaceRect(source_surface, nullptr, 0x000000);
     
     SDL_UpdateTexture(dest_texture, nullptr, source_surface->pixels, source_surface->pitch);
     
     SDL_Rect dest = {0, 0, int(og::runtime::current_session->window_w_), int(og::runtime::current_session->window_h_)};
 
-    SDL_RenderCopy(renderer, dest_texture, nullptr, &dest);
+    SDL_RenderTexture(renderer, dest_texture, nullptr, &dest);
 }
 
 #undef GET_RESULT

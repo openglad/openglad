@@ -1,31 +1,31 @@
-#include "SDL.h"
+#include <SDL3/SDL.h>
 #include "physfs.h"
 
 #include <cstddef>
 
 namespace {
 
-PHYSFS_File* physfs_file(SDL_RWops* rw)
+PHYSFS_File* physfs_file(SDL_IOStream* rw)
 {
     return static_cast<PHYSFS_File*>(rw->hidden.unknown.data1);
 }
 
-Sint64 SDLCALL physfsrw_size(SDL_RWops* rw)
+Sint64 SDLCALL physfsrw_size(SDL_IOStream* rw)
 {
     PHYSFS_File* handle = physfs_file(rw);
     return static_cast<Sint64>(PHYSFS_fileLength(handle));
 }
 
-Sint64 SDLCALL physfsrw_seek(SDL_RWops* rw, Sint64 offset, int whence)
+Sint64 SDLCALL physfsrw_seek(SDL_IOStream* rw, Sint64 offset, int whence)
 {
     PHYSFS_File* handle = physfs_file(rw);
     PHYSFS_sint64 pos = 0;
 
-    if (whence == RW_SEEK_SET)
+    if (whence == SDL_IO_SEEK_SET)
     {
         pos = static_cast<PHYSFS_sint64>(offset);
     }
-    else if (whence == RW_SEEK_CUR)
+    else if (whence == SDL_IO_SEEK_CUR)
     {
         const PHYSFS_sint64 current = PHYSFS_tell(handle);
         if (current == -1)
@@ -36,7 +36,7 @@ Sint64 SDLCALL physfsrw_seek(SDL_RWops* rw, Sint64 offset, int whence)
         }
         pos = current + static_cast<PHYSFS_sint64>(offset);
     }
-    else if (whence == RW_SEEK_END)
+    else if (whence == SDL_IO_SEEK_END)
     {
         const PHYSFS_sint64 len = PHYSFS_fileLength(handle);
         if (len == -1)
@@ -69,7 +69,7 @@ Sint64 SDLCALL physfsrw_seek(SDL_RWops* rw, Sint64 offset, int whence)
     return static_cast<Sint64>(pos);
 }
 
-std::size_t SDLCALL physfsrw_read(SDL_RWops* rw, void* ptr, std::size_t size, std::size_t maxnum)
+std::size_t SDLCALL physfsrw_read(SDL_IOStream* rw, void* ptr, std::size_t size, std::size_t maxnum)
 {
     if (size == 0 || maxnum == 0)
         return 0;
@@ -86,7 +86,7 @@ std::size_t SDLCALL physfsrw_read(SDL_RWops* rw, void* ptr, std::size_t size, st
     return static_cast<std::size_t>(rc) / size;
 }
 
-std::size_t SDLCALL physfsrw_write(SDL_RWops* rw, const void* ptr, std::size_t size, std::size_t num)
+std::size_t SDLCALL physfsrw_write(SDL_IOStream* rw, const void* ptr, std::size_t size, std::size_t num)
 {
     if (size == 0 || num == 0)
         return 0;
@@ -103,7 +103,7 @@ std::size_t SDLCALL physfsrw_write(SDL_RWops* rw, const void* ptr, std::size_t s
     return static_cast<std::size_t>(rc) / size;
 }
 
-int SDLCALL physfsrw_close(SDL_RWops* rw)
+int SDLCALL physfsrw_close(SDL_IOStream* rw)
 {
     PHYSFS_File* handle = physfs_file(rw);
     if (PHYSFS_close(handle) == 0)
@@ -117,7 +117,7 @@ int SDLCALL physfsrw_close(SDL_RWops* rw)
     return 0;
 }
 
-SDL_RWops* make_rwops(PHYSFS_File* handle)
+SDL_IOStream* make_rwops(PHYSFS_File* handle)
 {
     if (handle == nullptr)
     {
@@ -126,7 +126,7 @@ SDL_RWops* make_rwops(PHYSFS_File* handle)
         return nullptr;
     }
 
-    SDL_RWops* rw = SDL_AllocRW();
+    SDL_IOStream* rw = SDL_AllocRW();
     if (rw == nullptr)
     {
         (void)PHYSFS_close(handle);
@@ -146,12 +146,12 @@ SDL_RWops* make_rwops(PHYSFS_File* handle)
 
 namespace og::io {
 
-SDL_RWops* physfsrw_open_read(const char* path)
+SDL_IOStream* physfsrw_open_read(const char* path)
 {
     return make_rwops(PHYSFS_openRead(path));
 }
 
-SDL_RWops* physfsrw_open_write(const char* path)
+SDL_IOStream* physfsrw_open_write(const char* path)
 {
     return make_rwops(PHYSFS_openWrite(path));
 }

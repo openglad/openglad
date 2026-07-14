@@ -31,7 +31,7 @@
 #include "test_input_helpers.h"
 #include "test_interact.h"
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include <array>
 #include <memory>

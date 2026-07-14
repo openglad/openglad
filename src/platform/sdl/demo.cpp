@@ -43,7 +43,7 @@
 #include <openglad/platform/local_transport_shadow.h>
 #include <openglad/interface/guy_create.h>
 #include <openglad/interface/screen.h>
-#include "SDL.h"
+#include <SDL3/SDL.h>
 
 #include <algorithm>
 #include <array>
@@ -363,9 +363,9 @@ int main(int argc, char* argv[])
         load_player_control_settings_from_cfg(cfg);
 
         // Create composite surface and texture at the full display resolution.
-        std::unique_ptr<SDL_Surface, decltype(&SDL_FreeSurface)> composite_surface(
+        std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)> composite_surface(
             SDL_CreateRGBSurface(SDL_SWSURFACE, display_w, display_h, 32, 0, 0, 0, 0),
-            SDL_FreeSurface);
+            SDL_DestroySurface);
         std::unique_ptr<SDL_Texture, decltype(&SDL_DestroyTexture)> composite_tex(
             SDL_CreateTexture(E_Screen->renderer, SDL_PIXELFORMAT_ARGB8888,
                               SDL_TEXTUREACCESS_STREAMING, display_w, display_h),
@@ -445,12 +445,12 @@ int main(int argc, char* argv[])
             // to handle_events() which would call exit(0) via quit().
             SDL_Event event;
             while (SDL_PollEvent(&event)) {
-                if (event.type == SDL_QUIT) {
+                if (event.type == SDL_EVENT_QUIT) {
                     running = false;
                     continue;
                 }
-                if (event.type == SDL_KEYDOWN &&
-                    event.key.keysym.sym == SDLK_ESCAPE) {
+                if (event.type == SDL_EVENT_KEY_DOWN &&
+                    event.key.key == SDLK_ESCAPE) {
                     running = false;
                     continue;
                 }
@@ -493,7 +493,7 @@ int main(int argc, char* argv[])
             E_Screen->suppress_present = false;
 
             // --- Phase 5: Composite and present (main thread only) ---
-            SDL_FillRect(composite_surface.get(), nullptr, 0x000000);
+            SDL_FillSurfaceRect(composite_surface.get(), nullptr, 0x000000);
             for (int i = 0; i < num_sessions; i++) {
                 SDL_Surface* src = demos[static_cast<size_t>(i)].session->session_surface_;
                 int col = i % grid_cols;
@@ -505,7 +505,7 @@ int main(int argc, char* argv[])
                               composite_surface->pixels,
                               composite_surface->pitch);
             SDL_RenderClear(E_Screen->renderer);
-            SDL_RenderCopy(E_Screen->renderer, composite_tex.get(),
+            SDL_RenderTexture(E_Screen->renderer, composite_tex.get(),
                            nullptr, nullptr);
             SDL_RenderPresent(E_Screen->renderer);
 

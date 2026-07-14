@@ -1,6 +1,6 @@
 #include <openglad/interface/screen.h>
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include <memory>
 #include <vector>
@@ -10,7 +10,7 @@
 namespace
 {
 struct SurfaceDeleter {
-    void operator()(SDL_Surface* s) const { if (s) SDL_FreeSurface(s); }
+    void operator()(SDL_Surface* s) const { if (s) SDL_DestroySurface(s); }
 };
 using SurfacePtr = std::unique_ptr<SDL_Surface, SurfaceDeleter>;
 
@@ -99,8 +99,8 @@ TEST(VideoFade, video_fadebetween_success_path_smoke)
     if (!(dest && old_ok && new_ok))
         return;
 
-    SDL_FillRect(old_ok.get(), nullptr, SDL_MapRGB(old_ok->format, 10, 20, 30));
-    SDL_FillRect(new_ok.get(), nullptr, SDL_MapRGB(new_ok->format, 200, 180, 160));
+    SDL_FillSurfaceRect(old_ok.get(), nullptr, SDL_MapRGB(old_ok->format, 10, 20, 30));
+    SDL_FillSurfaceRect(new_ok.get(), nullptr, SDL_MapRGB(new_ok->format, 200, 180, 160));
 
     int r = og::runtime::current_session->myscreen_->fade_between(old_ok.get(), new_ok.get(), dest.get());
     ASSERT_TRUE(r != 0) << "FadeBetween should succeed for matching 32bpp surfaces";

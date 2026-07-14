@@ -1,7 +1,7 @@
 #ifndef _TEST_INPUT_HELPERS_H__
 #define _TEST_INPUT_HELPERS_H__
 
-#include "SDL.h"
+#include <SDL3/SDL.h>
 #include <cstring>
 
 #ifdef OPENGLAD_SDL2_IS_COMPAT
@@ -15,7 +15,7 @@ inline void inject_mouse_down(int x, int y)
 {
     SDL_Event event;
     memset(&event, 0, sizeof(event));
-    event.type = SDL_MOUSEBUTTONDOWN;
+    event.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
     event.button.button = SDL_BUTTON_LEFT;
     event.button.state = SDL_PRESSED;
     event.button.clicks = 1;
@@ -29,7 +29,7 @@ inline void inject_mouse_up(int x, int y)
 {
     SDL_Event event;
     memset(&event, 0, sizeof(event));
-    event.type = SDL_MOUSEBUTTONUP;
+    event.type = SDL_EVENT_MOUSE_BUTTON_UP;
     event.button.button = SDL_BUTTON_LEFT;
     event.button.state = SDL_RELEASED;
     event.button.clicks = 1;
@@ -53,11 +53,11 @@ inline void inject_key_down(int keycode)
 {
     SDL_Event event;
     memset(&event, 0, sizeof(event));
-    event.type = SDL_KEYDOWN;
+    event.type = SDL_EVENT_KEY_DOWN;
     event.key.repeat = false;
-    event.key.keysym.sym = keycode;
-    event.key.keysym.mod = 0;
-    event.key.keysym.scancode = SDL_GetScancodeFromKey(keycode);
+    event.key.key = keycode;
+    event.key.mod = 0;
+    event.key.scancode = SDL_GetScancodeFromKey(keycode);
     SDL_PushEvent(&event);
 }
 
@@ -66,11 +66,11 @@ inline void inject_key_up(int keycode)
 {
     SDL_Event event;
     memset(&event, 0, sizeof(event));
-    event.type = SDL_KEYUP;
+    event.type = SDL_EVENT_KEY_UP;
     event.key.repeat = false;
-    event.key.keysym.sym = keycode;
-    event.key.keysym.mod = 0;
-    event.key.keysym.scancode = SDL_GetScancodeFromKey(keycode);
+    event.key.key = keycode;
+    event.key.mod = 0;
+    event.key.scancode = SDL_GetScancodeFromKey(keycode);
     SDL_PushEvent(&event);
 }
 
@@ -84,10 +84,10 @@ inline void inject_key_press(int keycode, int delay_ms = 50)
 
 // Inject a synthetic text-input event (e.g. "a", "ab") into the input pipeline.
 //
-// On real SDL2 this pushes a genuine SDL_TEXTINPUT onto the event queue,
+// On real SDL2 this pushes a genuine SDL_EVENT_TEXT_INPUT onto the event queue,
 // exercising the full SDL_PushEvent -> get_input_events -> handle_text_event
 // path. Under sdl2-compat (an SDL2 API shim over SDL3, detected by CMake which
-// defines OPENGLAD_SDL2_IS_COMPAT) pushing an SDL_TEXTINPUT crashes the shim --
+// defines OPENGLAD_SDL2_IS_COMPAT) pushing an SDL_EVENT_TEXT_INPUT crashes the shim --
 // SDL3 changed SDL_TextInputEvent::text from an inline char[32] to a heap
 // const char* -- so dispatch straight to handle_text_event, the same call the
 // event drain makes. The text lands in the shared (cross-thread) session state,
@@ -98,7 +98,7 @@ inline void inject_text_input(const char* utf8)
 {
     SDL_Event event;
     memset(&event, 0, sizeof(event));
-    event.type = SDL_TEXTINPUT;
+    event.type = SDL_EVENT_TEXT_INPUT;
     SDL_strlcpy(event.text.text, utf8, sizeof(event.text.text));
 #ifdef OPENGLAD_SDL2_IS_COMPAT
     handle_text_event(event);

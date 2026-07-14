@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include <openglad/interface/input.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include <cstring>
 
 extern void intro_main(Sint32 argc, char** argv);
@@ -10,17 +10,17 @@ static void push_any_keypress()
     SDL_Event e;
     memset(&e, 0, sizeof(e));
 
-    e.type = SDL_KEYDOWN;
+    e.type = SDL_EVENT_KEY_DOWN;
     e.key.state = SDL_PRESSED;
-    e.key.keysym.sym = SDLK_SPACE;
-    e.key.keysym.scancode = SDL_SCANCODE_SPACE;
+    e.key.key = SDLK_SPACE;
+    e.key.scancode = SDL_SCANCODE_SPACE;
     SDL_PushEvent(&e);
 
     memset(&e, 0, sizeof(e));
-    e.type = SDL_KEYUP;
+    e.type = SDL_EVENT_KEY_UP;
     e.key.state = SDL_RELEASED;
-    e.key.keysym.sym = SDLK_SPACE;
-    e.key.keysym.scancode = SDL_SCANCODE_SPACE;
+    e.key.key = SDLK_SPACE;
+    e.key.scancode = SDL_SCANCODE_SPACE;
     SDL_PushEvent(&e);
 }
 

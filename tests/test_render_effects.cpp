@@ -18,7 +18,7 @@
 #include <openglad/interface/game_context.h>
 #include <openglad/interface/render/pal32.h>
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include <algorithm>
 #include <cmath>
@@ -199,7 +199,7 @@ void fill_floor_grid(GameWorld& world, int f, unsigned char tile)
 struct SessionKeyStateGuard
 {
     const Uint8* old_keystates = nullptr;
-    std::array<Uint8, SDL_NUM_SCANCODES> fake_keystates{};
+    std::array<Uint8, SDL_SCANCODE_COUNT> fake_keystates{};
 
     SessionKeyStateGuard()
         : old_keystates(og::runtime::current_session->keystates_)
@@ -216,7 +216,7 @@ struct SessionKeyStateGuard
     void set(SDL_Keycode key, bool pressed)
     {
         const SDL_Scancode scancode = SDL_GetScancodeFromKey(key);
-        if (scancode >= 0 && scancode < SDL_NUM_SCANCODES)
+        if (scancode >= 0 && scancode < SDL_SCANCODE_COUNT)
             fake_keystates[static_cast<std::size_t>(scancode)] = pressed ? 1 : 0;
     }
 };
@@ -2942,7 +2942,7 @@ TEST(RenderEffects, look_up_hold_swaps_shadow_frame_for_ghost_frame)
     // HOLD the look-up key: ADDS the floor above as a ghost.
     KeyBindingGuard bind(0, KEY_LOOKUP, KEYCODE_v);
     SessionKeyStateGuard keystates;
-    keystates.set(SDLK_v, true);
+    keystates.set(SDLK_V, true);
     trace_clear();
     ASSERT_TRUE(do_redraw(vs));
     ASSERT_FALSE(trace_contains("render", "overhang_shadow"))
@@ -2968,7 +2968,7 @@ TEST(RenderEffects, look_up_hold_swaps_shadow_frame_for_ghost_frame)
 
     // Release: straight back to the shadow look, byte for byte (the fade
     // below is in BOTH frames — only the ghost above comes and goes).
-    keystates.set(SDLK_v, false);
+    keystates.set(SDLK_V, false);
     ASSERT_TRUE(do_redraw(vs));
     EXPECT_FALSE(vs->ghost_hold_override_);
     ASSERT_TRUE(rects_equal(shadow_frame, grab_viewport(vs)))
@@ -3001,7 +3001,7 @@ TEST(RenderEffects, single_floor_renders_byte_identical_in_all_floor_view_modes)
 
     KeyBindingGuard bind(0, KEY_LOOKUP, KEYCODE_v);
     SessionKeyStateGuard keystates;
-    keystates.set(SDLK_v, true);
+    keystates.set(SDLK_V, true);
     ASSERT_TRUE(do_redraw(vs));
     ASSERT_TRUE(rects_equal(baseline, grab_viewport(vs)))
         << "single-floor: the look-up hold must change nothing";
@@ -3483,7 +3483,7 @@ TEST(RenderEffects, depth_fx_leaves_ghost_floors_above_untinted)
     // KEY_LOOKUP for the whole scene.
     KeyBindingGuard bind(0, KEY_LOOKUP, KEYCODE_v);
     SessionKeyStateGuard keystates;
-    keystates.set(SDLK_v, true);
+    keystates.set(SDLK_V, true);
 
     // Camera on floor 1 of 3: floor 0 composites tinted, floor 2 ghosts
     // above through the SAME cached layer surface right after it. The
@@ -4441,7 +4441,7 @@ TEST(RenderEffects, floor_glide_ghost_hold_keeps_above_floor_alpha)
 
     KeyBindingGuard bind(0, KEY_LOOKUP, KEYCODE_v);
     SessionKeyStateGuard keystates;
-    keystates.set(SDLK_v, true);
+    keystates.set(SDLK_V, true);
 
     settle_glide_baseline(vs);
     control->set_floor(1);
@@ -5110,7 +5110,7 @@ TEST(RenderEffects, zz_capture_effect_scenes)
                     vs->control->set_floor(1); // the up-glide (16 frames)
                 // A short look-up-hold blip mid-up-glide: the above-floor
                 // alpha re-bases to the ghost curve instantly, no cancel.
-                keystates.set(SDLK_v, f >= 13 && f < 21);
+                keystates.set(SDLK_V, f >= 13 && f < 21);
                 if (f == 55)
                     vs->control->set_floor(0); // the down-glide: entity vanish
             });

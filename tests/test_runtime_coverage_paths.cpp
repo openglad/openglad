@@ -16,7 +16,7 @@
 #include <openglad/gameplay/game_world.h>
 
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include "test_network_fixture.h"
 
@@ -129,14 +129,14 @@ TEST(RuntimeCoveragePaths, input_bridge_window_and_key_paths)
     // persist SaveData directly and not overwrite it from stale GameWorld.
     og::runtime::current_session->gameplay_active_ = false;
 
-    e.window.event = SDL_WINDOWEVENT_MINIMIZED;
+    e.window.event = SDL_EVENT_WINDOW_MINIMIZED;
     handle_window_event(e);
     ASSERT_EQ(2, static_cast<int>(s->save_data.scen_num)) << "minimize autosave should preserve menu scen_num when gameplay is inactive";
     ASSERT_EQ(0, static_cast<int>(s->save_data.allied_mode)) << "minimize autosave should preserve menu allied_mode when gameplay is inactive";
     ASSERT_EQ(11, static_cast<int>(s->save_data.m_score[0])) << "minimize autosave should preserve menu score when gameplay is inactive";
     ASSERT_TRUE(s->save_data.completed_levels[s->save_data.current_campaign].empty()) << "minimize autosave should preserve menu completed levels when gameplay is inactive";
 
-    e.window.event = SDL_WINDOWEVENT_CLOSE;
+    e.window.event = SDL_EVENT_WINDOW_CLOSE_REQUESTED;
     handle_window_event(e);
     ASSERT_EQ(2, static_cast<int>(s->save_data.scen_num)) << "close autosave should preserve menu scen_num when gameplay is inactive";
     ASSERT_EQ(0, static_cast<int>(s->save_data.allied_mode)) << "close autosave should preserve menu allied_mode when gameplay is inactive";
@@ -151,7 +151,7 @@ TEST(RuntimeCoveragePaths, input_bridge_window_and_key_paths)
     s->world_.m_score[0] = 77;
     s->world_.completed_levels = {1, 2, 4};
 
-    e.window.event = SDL_WINDOWEVENT_MINIMIZED;
+    e.window.event = SDL_EVENT_WINDOW_MINIMIZED;
     handle_window_event(e);
     ASSERT_EQ(12, static_cast<int>(s->save_data.scen_num)) << "minimize autosave should sync scen_num from world during gameplay";
     ASSERT_EQ(1, static_cast<int>(s->save_data.allied_mode)) << "minimize autosave should sync allied_mode from world during gameplay";
@@ -162,18 +162,18 @@ TEST(RuntimeCoveragePaths, input_bridge_window_and_key_paths)
     s->world_.allied_mode = 2;
     s->world_.m_score[0] = 99;
     s->world_.completed_levels = {2, 6};
-    e.window.event = SDL_WINDOWEVENT_CLOSE;
+    e.window.event = SDL_EVENT_WINDOW_CLOSE_REQUESTED;
     handle_window_event(e);
     ASSERT_EQ(14, static_cast<int>(s->save_data.scen_num)) << "close autosave should sync scen_num from world during gameplay";
     ASSERT_EQ(2, static_cast<int>(s->save_data.allied_mode)) << "close autosave should sync allied_mode from world during gameplay";
     ASSERT_EQ(99, static_cast<int>(s->save_data.m_score[0])) << "close autosave should sync score from world during gameplay";
     ASSERT_TRUE(s->save_data.completed_levels[s->save_data.current_campaign] == s->world_.completed_levels) << "close autosave should sync completed levels from world during gameplay";
 
-    e.window.event = SDL_WINDOWEVENT_RESTORED;
+    e.window.event = SDL_EVENT_WINDOW_RESTORED;
     handle_window_event(e);
 
     og::runtime::current_session->overscan_percentage_ = -1.0f;
-    e.window.event = SDL_WINDOWEVENT_RESIZED;
+    e.window.event = SDL_EVENT_WINDOW_RESIZED;
     e.window.data1 = 1280;
     e.window.data2 = 720;
     handle_window_event(e);
@@ -182,31 +182,31 @@ TEST(RuntimeCoveragePaths, input_bridge_window_and_key_paths)
     ASSERT_TRUE(og::runtime::current_session->overscan_percentage_ == 0.0f) << "resize path should clamp overscan";
 
     SDL_Event key{};
-    key.type = SDL_KEYDOWN;
-    key.key.keysym.sym = SDLK_F10;
-    key.key.keysym.mod = 0;
+    key.type = SDL_EVENT_KEY_DOWN;
+    key.key.key = SDLK_F10;
+    key.key.mod = 0;
     handle_key_event(key);
 
     cfg.apply_setting("graphics", "overscan_percentage", "25");
     og::runtime::current_session->overscan_percentage_ = 0.0f;
-    key.type = SDL_KEYDOWN;
-    key.key.keysym.sym = SDLK_F12;
-    key.key.keysym.mod = KMOD_CTRL;
+    key.type = SDL_EVENT_KEY_DOWN;
+    key.key.key = SDLK_F12;
+    key.key.mod = SDL_KMOD_CTRL;
     handle_key_event(key);
     ASSERT_TRUE(og::runtime::current_session->overscan_percentage_ >= 0.0f && og::runtime::current_session->overscan_percentage_ <= 0.25f) << "F12+Ctrl should reload and clamp overscan";
 
     og::runtime::current_session->input_continue_ = false;
     og::runtime::current_session->key_press_event_ = 0;
-    key.type = SDL_KEYDOWN;
-    key.key.keysym.sym = SDLK_ESCAPE;
-    key.key.keysym.mod = 0;
+    key.type = SDL_EVENT_KEY_DOWN;
+    key.key.key = SDLK_ESCAPE;
+    key.key.mod = 0;
     handle_key_event(key);
     ASSERT_TRUE(og::runtime::current_session->input_continue_) << "escape keydown should set continue";
     ASSERT_EQ(1, static_cast<int>(og::runtime::current_session->key_press_event_)) << "keydown should set key_press_event";
     ASSERT_EQ(static_cast<int>(SDLK_ESCAPE), og::runtime::current_session->raw_key_) << "keydown should update raw_key";
 
-    key.type = SDL_KEYUP;
-    key.key.keysym.sym = SDLK_ESCAPE;
+    key.type = SDL_EVENT_KEY_UP;
+    key.key.key = SDLK_ESCAPE;
     handle_key_event(key);
 
     og::runtime::current_session->window_w_ = saved_window_w;

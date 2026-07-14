@@ -3,7 +3,7 @@
 #include <openglad/platform/game_session.h>
 #include <openglad/core/test_trace.h>
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include "test_input_helpers.h"
 
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -104,19 +104,19 @@ static int editor_injector_thread(void* data)
 
     // Mode toggles and a couple keypaths.
     SDL_Delay(30);
-    inject_key_press(SDLK_o, 10); // Terrain -> Object
-    inject_key_press(SDLK_t, 10); // Object -> Terrain
-    inject_key_press(SDLK_o, 10); // Terrain -> Object
+    inject_key_press(SDLK_O, 10); // Terrain -> Object
+    inject_key_press(SDLK_T, 10); // Object -> Terrain
+    inject_key_press(SDLK_O, 10); // Terrain -> Object
     inject_key_press(SDLK_RIGHTBRACKET, 10);
     inject_key_press(SDLK_LEFTBRACKET, 10);
 
-    inject_key_press(SDLK_o, 10); // Object -> Select
+    inject_key_press(SDLK_O, 10); // Object -> Select
     inject_key_press(SDLK_DELETE, 10);
 
     // Trigger resmooth (F5) and palette load (F9) paths.
     inject_key_press(SDLK_F5, 10);
     inject_key_press(SDLK_F9, 10);
-    inject_key_press(SDLK_g, 10);
+    inject_key_press(SDLK_G, 10);
     inject_key_press(SDLK_0, 10);
     inject_key_press(SDLK_1, 10);
     inject_key_press(SDLK_2, 10);
@@ -125,10 +125,10 @@ static int editor_injector_thread(void* data)
     inject_key_press(SDLK_5, 10);
     inject_key_press(SDLK_6, 10);
     inject_key_press(SDLK_7, 10);
-    inject_key_press(SDLK_w, 10);
-    inject_key_press(SDLK_a, 10);
-    inject_key_press(SDLK_s, 10);
-    inject_key_press(SDLK_d, 10);
+    inject_key_press(SDLK_W, 10);
+    inject_key_press(SDLK_A, 10);
+    inject_key_press(SDLK_S, 10);
+    inject_key_press(SDLK_D, 10);
 
     // File menu paths.
     SDL_Delay(30);
@@ -158,7 +158,7 @@ static int editor_injector_thread(void* data)
 
     // Right-click pick path.
     SDL_Event right_down{};
-    right_down.type = SDL_MOUSEBUTTONDOWN;
+    right_down.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
     right_down.button.button = SDL_BUTTON_RIGHT;
     right_down.button.state = SDL_PRESSED;
     right_down.button.x = 120;
@@ -166,7 +166,7 @@ static int editor_injector_thread(void* data)
     SDL_PushEvent(&right_down);
     SDL_Delay(10);
     SDL_Event right_up{};
-    right_up.type = SDL_MOUSEBUTTONUP;
+    right_up.type = SDL_EVENT_MOUSE_BUTTON_UP;
     right_up.button.button = SDL_BUTTON_RIGHT;
     right_up.button.state = SDL_RELEASED;
     right_up.button.x = 120;
@@ -178,53 +178,53 @@ static int editor_injector_thread(void* data)
     // Push direct SDL event variants to cover handle_basic_editor_event branches.
     SDL_Event event{};
     event.type = SDL_WINDOWEVENT;
-    event.window.event = SDL_WINDOWEVENT_EXPOSED;
+    event.window.event = SDL_EVENT_WINDOW_EXPOSED;
     SDL_PushEvent(&event);
 
     inject_text_input("x");
 
     event = SDL_Event{};
-    event.type = SDL_MOUSEWHEEL;
+    event.type = SDL_EVENT_MOUSE_WHEEL;
     event.wheel.y = 1;
     SDL_PushEvent(&event);
 
     event = SDL_Event{};
-    event.type = SDL_FINGERDOWN;
+    event.type = SDL_EVENT_FINGER_DOWN;
     event.tfinger.dx = 0.1f;
     event.tfinger.dy = 0.1f;
     SDL_PushEvent(&event);
 
     event = SDL_Event{};
-    event.type = SDL_FINGERMOTION;
+    event.type = SDL_EVENT_FINGER_MOTION;
     event.tfinger.dx = 0.2f;
     event.tfinger.dy = -0.15f;
     SDL_PushEvent(&event);
 
     event = SDL_Event{};
-    event.type = SDL_FINGERUP;
+    event.type = SDL_EVENT_FINGER_UP;
     event.tfinger.dx = 0.0f;
     event.tfinger.dy = 0.0f;
     SDL_PushEvent(&event);
 
     event = SDL_Event{};
-    event.type = SDL_MOUSEMOTION;
+    event.type = SDL_EVENT_MOUSE_MOTION;
     event.motion.xrel = 2;
     event.motion.yrel = -3;
     SDL_PushEvent(&event);
 
     event = SDL_Event{};
-    event.type = SDL_JOYAXISMOTION;
+    event.type = SDL_EVENT_JOYSTICK_AXIS_MOTION;
     event.jaxis.axis = 0;
     event.jaxis.value = 10000;
     SDL_PushEvent(&event);
 
     event = SDL_Event{};
-    event.type = SDL_JOYBUTTONDOWN;
+    event.type = SDL_EVENT_JOYSTICK_BUTTON_DOWN;
     event.jbutton.button = 0;
     SDL_PushEvent(&event);
 
     event = SDL_Event{};
-    event.type = SDL_JOYBUTTONUP;
+    event.type = SDL_EVENT_JOYSTICK_BUTTON_UP;
     event.jbutton.button = 0;
     SDL_PushEvent(&event);
 
@@ -267,7 +267,7 @@ namespace
 static void push_mouse_motion(int x, int y, int xrel = 0, int yrel = 0)
 {
     SDL_Event e{};
-    e.type = SDL_MOUSEMOTION;
+    e.type = SDL_EVENT_MOUSE_MOTION;
     e.motion.x = x;
     e.motion.y = y;
     e.motion.xrel = xrel;
@@ -278,7 +278,7 @@ static void push_mouse_motion(int x, int y, int xrel = 0, int yrel = 0)
 static void push_mouse_drag(int x0, int y0, int x1, int y1)
 {
     SDL_Event down{};
-    down.type = SDL_MOUSEBUTTONDOWN;
+    down.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
     down.button.button = SDL_BUTTON_LEFT;
     down.button.state = SDL_PRESSED;
     down.button.x = x0;
@@ -290,7 +290,7 @@ static void push_mouse_drag(int x0, int y0, int x1, int y1)
     SDL_Delay(10);
 
     SDL_Event up{};
-    up.type = SDL_MOUSEBUTTONUP;
+    up.type = SDL_EVENT_MOUSE_BUTTON_UP;
     up.button.button = SDL_BUTTON_LEFT;
     up.button.state = SDL_RELEASED;
     up.button.x = x1;
@@ -307,8 +307,8 @@ static int editor_edit_smoke_injector(void* data)
     SDL_Delay(300);
 
     // Enter terrain mode and paint a couple of tiles.
-    inject_key_press(SDLK_t, 10);
-    inject_key_press(SDLK_g, 10);  // toggle grid alignment
+    inject_key_press(SDLK_T, 10);
+    inject_key_press(SDLK_G, 10);  // toggle grid alignment
     inject_key_press(SDLK_1, 10);
     inject_click(160, 120, 10);
     inject_key_press(SDLK_2, 10);
@@ -316,16 +316,16 @@ static int editor_edit_smoke_injector(void* data)
 
     // Smooth current map path (F5), then toggle grid again.
     inject_key_press(SDLK_F5, 10);
-    inject_key_press(SDLK_g, 10);
+    inject_key_press(SDLK_G, 10);
 
     // Switch to object mode, cycle brush, and place an object.
-    inject_key_press(SDLK_o, 10);
+    inject_key_press(SDLK_O, 10);
     inject_key_press(SDLK_RIGHTBRACKET, 10);
     inject_key_press(SDLK_LEFTBRACKET, 10);
     inject_click(200, 130, 10);
 
     // Select mode: click/drag selection area and delete selection/object.
-    inject_key_press(SDLK_o, 10);  // object -> select
+    inject_key_press(SDLK_O, 10);  // object -> select
     push_mouse_drag(190, 120, 210, 140);
     inject_key_press(SDLK_DELETE, 10);
 
@@ -410,8 +410,8 @@ static int editor_ai_cycle_injector(void* data)
 
     // Object mode with a known brush: click the picker pane's first cell
     // (Living / soldier), regardless of what earlier tests left behind.
-    inject_key_press(SDLK_t, 10);   // -> Terrain
-    inject_key_press(SDLK_o, 10);   // Terrain -> Object
+    inject_key_press(SDLK_T, 10);   // -> Terrain
+    inject_key_press(SDLK_O, 10);   // Terrain -> Object
     eds().rowsdown = 0;
     SDL_Delay(30);
     inject_click_game(246, 81, 20); // object pane cell (0,0): soldier brush
@@ -427,7 +427,7 @@ static int editor_ai_cycle_injector(void* data)
 
     // Select mode: rect-select the placed soldier. The first small motion
     // anchors the rectangle near the press before stretching it.
-    inject_key_press(SDLK_o, 10);   // Object -> Select
+    inject_key_press(SDLK_O, 10);   // Object -> Select
     SDL_Delay(30);
     inject_mouse_down(game_to_window_x(130), game_to_window_y(95));
     SDL_Delay(20);

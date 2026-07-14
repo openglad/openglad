@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include <csignal>
 #include <cstdio>
@@ -50,7 +50,7 @@ namespace {
 
 void reset_integration_ui_state()
 {
-    SDL_FlushEvents(SDL_FIRSTEVENT, SDL_LASTEVENT);
+    SDL_FlushEvents(SDL_EVENT_FIRST, SDL_EVENT_LAST);
     clear_keyboard();
     clear_key_press_event();
     set_game_speed(1.0f);
@@ -217,11 +217,11 @@ int main(int argc, char** argv)
     // (SDL_VIDEODRIVER=dummy is the pure-software escape hatch). offscreen
     // requires OpenGL, which is unavailable on macOS, so default to dummy there.
 #if defined(__APPLE__)
-    SDL_setenv("SDL_VIDEODRIVER", "dummy", 0);
+    SDL_setenv_unsafe("SDL_VIDEODRIVER", "dummy", 0);
 #else
-    SDL_setenv("SDL_VIDEODRIVER", "offscreen", 0);
+    SDL_setenv_unsafe("SDL_VIDEODRIVER", "offscreen", 0);
 #endif
-    SDL_setenv("SDL_AUDIODRIVER", "dummy", 0);
+    SDL_setenv_unsafe("SDL_AUDIODRIVER", "dummy", 0);
 
     init_logging();
     SDL_Init(SDL_INIT_VIDEO);

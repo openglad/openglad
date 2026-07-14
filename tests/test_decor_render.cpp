@@ -25,7 +25,7 @@
 #include <openglad/resources/gparser.h>
 
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include <algorithm>
 #include <array>
@@ -164,7 +164,7 @@ struct LookUpHoldGuard
 {
     const Uint8* old_keystates;
     int old_binding;
-    std::array<Uint8, SDL_NUM_SCANCODES> fake{};
+    std::array<Uint8, SDL_SCANCODE_COUNT> fake{};
 
     LookUpHoldGuard()
         : old_keystates(og::runtime::current_session->keystates_)
@@ -184,8 +184,8 @@ struct LookUpHoldGuard
 
     void set(bool held)
     {
-        const SDL_Scancode sc = SDL_GetScancodeFromKey(SDLK_v);
-        if (sc >= 0 && sc < SDL_NUM_SCANCODES)
+        const SDL_Scancode sc = SDL_GetScancodeFromKey(SDLK_V);
+        if (sc >= 0 && sc < SDL_SCANCODE_COUNT)
             fake[static_cast<std::size_t>(sc)] = held ? 1 : 0;
     }
 };

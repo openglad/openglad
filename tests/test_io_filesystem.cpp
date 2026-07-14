@@ -2,12 +2,12 @@
 #include <openglad/resources/io_common.h>
 #include <gtest/gtest.h>
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include <filesystem>
 #include <cstring>
 #include <string>
 
-static void write_all(SDL_RWops* rw, const void* data, size_t len)
+static void write_all(SDL_IOStream* rw, const void* data, size_t len)
 {
     const unsigned char* p = reinterpret_cast<const unsigned char*>(data);
     size_t total = 0;
@@ -26,20 +26,20 @@ TEST(IoFilesystem, io_user_path_and_rwops_roundtrip)
     ASSERT_TRUE(!user.empty()) << "get_user_path should return a non-empty path";
 
     const char* filename = "codex_io_rwops_test.txt";
-    SDL_RWops* out = open_write_file(filename);
+    SDL_IOStream* out = open_write_file(filename);
     ASSERT_TRUE(out != nullptr) << "open_write_file should succeed";
 
     const char payload[] = "hello-openglad-io";
     write_all(out, payload, strlen(payload));
-    SDL_RWclose(out);
+    SDL_CloseIO(out);
 
-    SDL_RWops* in = open_read_file(filename);
+    SDL_IOStream* in = open_read_file(filename);
     ASSERT_TRUE(in != nullptr) << "open_read_file should succeed";
 
     char buf[64];
     memset(buf, 0, sizeof(buf));
     size_t n = SDL_RWread(in, buf, 1, sizeof(buf) - 1);
-    SDL_RWclose(in);
+    SDL_CloseIO(in);
 
     ASSERT_TRUE(n == strlen(payload)) << "read back should match payload length";
     ASSERT_STREQ(payload, buf) << "read back should match payload contents";

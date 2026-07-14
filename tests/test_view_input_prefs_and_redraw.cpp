@@ -4,7 +4,7 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include <array>
 
@@ -31,9 +31,9 @@ struct KeyStateGuard
 static SDL_Event keydown(SDL_Keycode key)
 {
     SDL_Event e{};
-    e.type = SDL_KEYDOWN;
-    e.key.keysym.sym = key;
-    e.key.keysym.scancode = SDL_GetScancodeFromKey(key);
+    e.type = SDL_EVENT_KEY_DOWN;
+    e.key.key = key;
+    e.key.scancode = SDL_GetScancodeFromKey(key);
     e.key.repeat = 0;
     return e;
 }

@@ -7,7 +7,7 @@
 #include <openglad/resources/save_data.h>
 #include "../src/interface/ui/picker_sdl_defs.h"
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include <optional>
 #include <string>
@@ -1127,15 +1127,15 @@ TEST(MenuLayout, controls_summary_switches_between_four_and_eight_direction_form
     PlayerControlSnapshotGuard guard(0);
 
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
-    set_player_key_binding(0, KEY_UP, SDLK_w);
-    set_player_key_binding(0, KEY_LEFT, SDLK_a);
-    set_player_key_binding(0, KEY_DOWN, SDLK_s);
-    set_player_key_binding(0, KEY_RIGHT, SDLK_d);
-    set_player_key_binding(0, KEY_YELL, SDLK_q);
+    set_player_key_binding(0, KEY_UP, SDLK_W);
+    set_player_key_binding(0, KEY_LEFT, SDLK_A);
+    set_player_key_binding(0, KEY_DOWN, SDLK_S);
+    set_player_key_binding(0, KEY_RIGHT, SDLK_D);
+    set_player_key_binding(0, KEY_YELL, SDLK_Q);
     set_player_key_binding(0, KEY_FIRE, SDLK_1);
     set_player_key_binding(0, KEY_SPECIAL, SDLK_2);
     set_player_key_binding(0, KEY_SPECIAL_SWITCH, SDLK_EQUALS);
-    set_player_key_binding(0, KEY_SWITCH, SDLK_BACKQUOTE);
+    set_player_key_binding(0, KEY_SWITCH, SDLK_GRAVE);
     set_player_key_binding(0, KEY_SHIFTER, SDLK_F8);
 
     const std::string summary_four = build_player_control_summary(0);
@@ -1149,10 +1149,10 @@ TEST(MenuLayout, controls_summary_switches_between_four_and_eight_direction_form
     ASSERT_TRUE(summary_four.find("Dir:") == std::string::npos) << "4-direction summary should not include diagonal keys";
 
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::EightDirection));
-    set_player_key_binding(0, KEY_UP_RIGHT, SDLK_e);
-    set_player_key_binding(0, KEY_DOWN_RIGHT, SDLK_c);
-    set_player_key_binding(0, KEY_DOWN_LEFT, SDLK_z);
-    set_player_key_binding(0, KEY_UP_LEFT, SDLK_q);
+    set_player_key_binding(0, KEY_UP_RIGHT, SDLK_E);
+    set_player_key_binding(0, KEY_DOWN_RIGHT, SDLK_C);
+    set_player_key_binding(0, KEY_DOWN_LEFT, SDLK_Z);
+    set_player_key_binding(0, KEY_UP_LEFT, SDLK_Q);
 
     const std::string summary_eight = build_player_control_summary(0);
     ASSERT_TRUE(summary_eight.find("D:WEDCXZAQ") != std::string::npos) << "8-direction summary should include compact clockwise direction order";
@@ -1165,15 +1165,15 @@ TEST(MenuLayout, eight_direction_summary_clockwise_order)
     PlayerControlSnapshotGuard guard(0);
 
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::EightDirection));
-    set_player_key_binding(0, KEY_UP, SDLK_w);
-    set_player_key_binding(0, KEY_UP_RIGHT, SDLK_e);
-    set_player_key_binding(0, KEY_RIGHT, SDLK_d);
-    set_player_key_binding(0, KEY_DOWN_RIGHT, SDLK_c);
-    set_player_key_binding(0, KEY_DOWN, SDLK_x);
-    set_player_key_binding(0, KEY_DOWN_LEFT, SDLK_z);
-    set_player_key_binding(0, KEY_LEFT, SDLK_a);
-    set_player_key_binding(0, KEY_UP_LEFT, SDLK_q);
-    set_player_key_binding(0, KEY_YELL, SDLK_s);
+    set_player_key_binding(0, KEY_UP, SDLK_W);
+    set_player_key_binding(0, KEY_UP_RIGHT, SDLK_E);
+    set_player_key_binding(0, KEY_RIGHT, SDLK_D);
+    set_player_key_binding(0, KEY_DOWN_RIGHT, SDLK_C);
+    set_player_key_binding(0, KEY_DOWN, SDLK_X);
+    set_player_key_binding(0, KEY_DOWN_LEFT, SDLK_Z);
+    set_player_key_binding(0, KEY_LEFT, SDLK_A);
+    set_player_key_binding(0, KEY_UP_LEFT, SDLK_Q);
+    set_player_key_binding(0, KEY_YELL, SDLK_S);
     set_player_key_binding(0, KEY_FIRE, SDLK_1);
     set_player_key_binding(0, KEY_SPECIAL, SDLK_2);
     set_player_key_binding(0, KEY_SPECIAL_SWITCH, SDLK_EQUALS);
@@ -1196,15 +1196,15 @@ TEST(MenuLayout, controls_summary_remap_mode_uses_two_lines)
     PlayerControlSnapshotGuard guard(0);
 
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
-    set_player_key_binding(0, KEY_UP, SDLK_w);
-    set_player_key_binding(0, KEY_LEFT, SDLK_a);
-    set_player_key_binding(0, KEY_DOWN, SDLK_s);
-    set_player_key_binding(0, KEY_RIGHT, SDLK_d);
-    set_player_key_binding(0, KEY_YELL, SDLK_e);
+    set_player_key_binding(0, KEY_UP, SDLK_W);
+    set_player_key_binding(0, KEY_LEFT, SDLK_A);
+    set_player_key_binding(0, KEY_DOWN, SDLK_S);
+    set_player_key_binding(0, KEY_RIGHT, SDLK_D);
+    set_player_key_binding(0, KEY_YELL, SDLK_E);
     set_player_key_binding(0, KEY_FIRE, SDLK_LCTRL);
     set_player_key_binding(0, KEY_SPECIAL, SDLK_LALT);
     set_player_key_binding(0, KEY_SPECIAL_SWITCH, SDLK_TAB);
-    set_player_key_binding(0, KEY_SWITCH, SDLK_BACKQUOTE);
+    set_player_key_binding(0, KEY_SWITCH, SDLK_GRAVE);
     set_player_key_binding(0, KEY_SHIFTER, SDLK_LSHIFT);
 
     const std::array<std::string, 2> remap_summary = build_player_control_summary_lines(0, true);
@@ -1219,7 +1219,7 @@ TEST(MenuLayout, controls_summary_shows_look_up_binding)
     PlayerControlSnapshotGuard guard(0);
 
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
-    set_player_key_binding(0, KEY_LOOKUP, SDLK_v);
+    set_player_key_binding(0, KEY_LOOKUP, SDLK_V);
     const std::string summary = build_player_control_summary(0);
     ASSERT_TRUE(summary.find("L:V") != std::string::npos)
         << "controls summary should show the look-up binding: " << summary;

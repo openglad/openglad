@@ -1,4 +1,4 @@
-#include "SDL.h"
+#include <SDL3/SDL.h>
 #include <gtest/gtest.h>
 
 #include <openglad/interface/screen.h>
@@ -18,7 +18,7 @@ extern void blend_pixel(SDL_Surface* surface, int x, int y, Uint32 color, Uint8 
 namespace
 {
 struct SurfaceDeleter {
-    void operator()(SDL_Surface* s) const { if (s) SDL_FreeSurface(s); }
+    void operator()(SDL_Surface* s) const { if (s) SDL_DestroySurface(s); }
 };
 using SurfacePtr = std::unique_ptr<SDL_Surface, SurfaceDeleter>;
 

@@ -1,4 +1,4 @@
-#include "SDL.h"
+#include <SDL3/SDL.h>
 #include <gtest/gtest.h>
 #include <openglad/platform/game_context.h>
 #include <openglad/interface/screen.h>
@@ -17,7 +17,7 @@ struct SurfaceDeleter
     void operator()(SDL_Surface* s) const
     {
         if (s)
-            SDL_FreeSurface(s);
+            SDL_DestroySurface(s);
     }
 };
 using SurfacePtr = std::unique_ptr<SDL_Surface, SurfaceDeleter>;
@@ -52,7 +52,7 @@ TEST(VideoModesMore, video_putbuffer_surface_clipping_and_blit)
         return;
 
     // Fill with a non-zero pattern so the blit does something.
-    SDL_FillRect(surf.get(), nullptr, SDL_MapRGB(surf->format, 10, 20, 30));
+    SDL_FillSurfaceRect(surf.get(), nullptr, SDL_MapRGB(surf->format, 10, 20, 30));
 
     // Early-out: tile outside clipping region.
     og::runtime::current_session->myscreen_->putbuffer_surface(500, 500, 16, 16, 0, 0, 319, 199, surf.get());

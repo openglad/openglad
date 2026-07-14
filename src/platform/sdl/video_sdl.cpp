@@ -174,8 +174,8 @@ sdl_video::~sdl_video()
 {
 	// Free the multi-floor compositing scratch surfaces (independent of the
 	// display) before any SDL_Quit below.
-	if (floor_layer_) { SDL_FreeSurface(floor_layer_); floor_layer_ = nullptr; }
-	if (floor_layer_scaled_) { SDL_FreeSurface(floor_layer_scaled_); floor_layer_scaled_ = nullptr; }
+	if (floor_layer_) { SDL_DestroySurface(floor_layer_); floor_layer_ = nullptr; }
+	if (floor_layer_scaled_) { SDL_DestroySurface(floor_layer_scaled_); floor_layer_scaled_ = nullptr; }
 
 	// Only the display-owning video instance tears down SDL.
 	// IMPORTANT: All non-owning video instances (sub-sessions with
@@ -475,14 +475,14 @@ void sdl_video::fastbox(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize
 		return ;
 	}
 
-	//buffers: create the rect to fill with SDL_FillRect
+	//buffers: create the rect to fill with SDL_FillSurfaceRect
 	rect.x = startx;
 	rect.y = starty;
 	rect.w = xsize;
 	rect.h = ysize;
 
 	query_palette_reg(color,&r,&g,&b);
-	SDL_FillRect(E_Screen->render, &rect, SDL_MapRGB(E_Screen->render->format,
+	SDL_FillSurfaceRect(E_Screen->render, &rect, SDL_MapRGB(E_Screen->render->format,
 	                                                 static_cast<Uint8>(r * 4),
 	                                                 static_cast<Uint8>(g * 4),
 	                                                 static_cast<Uint8>(b * 4)));
@@ -702,7 +702,7 @@ void sdl_video::pointb(Sint32 x, Sint32 y, int r, int g, int b)
 	rect.y = y;
 	rect.w = 1;
 	rect.h = 1;
-	SDL_FillRect(E_Screen->render,&rect,c);
+	SDL_FillSurfaceRect(E_Screen->render,&rect,c);
 }
 
 //buffers: draw color using an offset
@@ -939,7 +939,7 @@ void sdl_video::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 y
 			rect.w = 1;
 			rect.h = 1;
 			Log("test\n");
-			SDL_FillRect(E_Screen->render,&rect,color);
+			SDL_FillSurfaceRect(E_Screen->render,&rect,color);
 		}
     	}
 }
@@ -998,7 +998,7 @@ void sdl_video::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 y
             rect.y = cury;
 			rect.w = 1;	
 			rect.h = 1;
-			SDL_FillRect(E_Screen->render,&rect,scolor);
+			SDL_FillSurfaceRect(E_Screen->render,&rect,scolor);
 		}
 }
 
@@ -1208,7 +1208,7 @@ void* sdl_video::create_accel_surface(std::span<const unsigned char> indexed_pix
     if (SDL_MUSTLOCK(surface) && SDL_LockSurface(surface) != 0) {
         LogError("sdl_video::create_accel_surface: SDL_LockSurface failed: {}\n",
                  SDL_GetError());
-        SDL_FreeSurface(surface);
+        SDL_DestroySurface(surface);
         return nullptr;
     }
 
@@ -1241,7 +1241,7 @@ void sdl_video::destroy_accel_surface(void* surface)
 {
     if (!surface)
         return;
-    SDL_FreeSurface(static_cast<SDL_Surface*>(surface));
+    SDL_DestroySurface(static_cast<SDL_Surface*>(surface));
 }
 
 // ---- Multi-floor vertical-parallax off-screen layer compositing ----
@@ -1265,7 +1265,7 @@ bool sdl_video::floor_layer_begin(Sint32 x, Sint32 y, Sint32 w, Sint32 h)
     const int need_h = std::max(E_Screen->render->h, static_cast<int>(y + h));
     if (floor_layer_ && (floor_layer_->w < need_w || floor_layer_->h < need_h))
     {
-        SDL_FreeSurface(floor_layer_);
+        SDL_DestroySurface(floor_layer_);
         floor_layer_ = nullptr;
     }
     if (!floor_layer_)
@@ -1283,7 +1283,7 @@ bool sdl_video::floor_layer_begin(Sint32 x, Sint32 y, Sint32 w, Sint32 h)
     // which yields A=0xFF, so drawn pixels become opaque coverage while un-drawn
     // cells remain transparent.
     SDL_Rect r{ x, y, w, h };
-    SDL_FillRect(floor_layer_, &r, 0x00000000u);
+    SDL_FillSurfaceRect(floor_layer_, &r, 0x00000000u);
 
     // Redirect every tile/sprite blit (they hardcode E_Screen->render) to the
     // layer; floor_layer_end restores the saved surface.
@@ -1379,7 +1379,7 @@ void sdl_video::floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
                                 floor_layer_scaled_->h < floor_layer_->h))
     {
         // The layer grew (padded below-floor window): match the scratch.
-        SDL_FreeSurface(floor_layer_scaled_);
+        SDL_DestroySurface(floor_layer_scaled_);
         floor_layer_scaled_ = nullptr;
     }
     if (!floor_layer_scaled_)
@@ -1390,7 +1390,7 @@ void sdl_video::floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
     bool smooth_ok = false;
     if (floor_layer_scaled_)
     {
-        SDL_FillRect(floor_layer_scaled_, &out, 0x00000000u);
+        SDL_FillSurfaceRect(floor_layer_scaled_, &out, 0x00000000u);
         smooth_ok = SDL_SoftStretchLinear(floor_layer_, &src,
                                           floor_layer_scaled_, &out) == 0;
     }
@@ -1931,7 +1931,7 @@ void sdl_video::walkputbuffertext(Sint32 walkerstartx, Sint32 walkerstarty,
                         rect.y = (cury + walkerstarty);
                         rect.w = 1;
                         rect.h = 1;
-                        SDL_FillRect(E_Screen->render,&rect,color);
+                        SDL_FillSurfaceRect(E_Screen->render,&rect,color);
                 }
                 walkoff += walkshift;
                 buffoff += buffshift;
@@ -2492,7 +2492,7 @@ bool sdl_video::save_screenshot()
 	#endif
 	i++;
 
-	SDL_RWops* rwops = open_write_file(buf.c_str());
+	SDL_IOStream* rwops = open_write_file(buf.c_str());
 	if(rwops == nullptr)
     {
         LogError("Failed to open file for screenshot: {}\n", buf);
@@ -2507,7 +2507,7 @@ bool sdl_video::save_screenshot()
     
     // Save it
     bool result = (SDL_SavePNG_RW(surf, rwops, 1) >= 0);
-    SDL_FreeSurface(surf);
+    SDL_DestroySurface(surf);
     #else
     bool result = (SDL_SaveBMP_RW(surf, rwops, 1) >= 0);
     
@@ -2574,15 +2574,15 @@ int sdl_video::FadeBetween(
 		pOldSurface = SDL_CreateRGBSurface(SDL_SWSURFACE,
 			active_canvas_w(), active_canvas_h(), 24, 0, 0, 0, 0);
 		if (!pOldSurface) return 0;  // OOM: nothing safely lockable below
-		SDL_FillRect(pOldSurface,nullptr,0);
+		SDL_FillSurfaceRect(pOldSurface,nullptr,0);
 	}
 	if (!pNewSurface)
 	{
 		bNewNull = true;
 		pNewSurface = SDL_CreateRGBSurface(SDL_SWSURFACE,
 			active_canvas_w(), active_canvas_h(), 24, 0, 0, 0, 0);
-		if (!pNewSurface) { if (bOldNull) SDL_FreeSurface(pOldSurface); return 0; }  // OOM: free the temp we just made
-		SDL_FillRect(pNewSurface,nullptr,0);
+		if (!pNewSurface) { if (bOldNull) SDL_DestroySurface(pOldSurface); return 0; }  // OOM: free the temp we just made
+		SDL_FillSurfaceRect(pNewSurface,nullptr,0);
 	}
 	if (bOldNull && bNewNull) return 0;	//nothing to do
 
@@ -2601,9 +2601,9 @@ int sdl_video::FadeBetween(
         if(old_locked)
             SDL_UnlockSurface(pOldSurface);
         if(bOldNull)
-            SDL_FreeSurface(pOldSurface);
+            SDL_DestroySurface(pOldSurface);
         if(bNewNull)
-            SDL_FreeSurface(pNewSurface);
+            SDL_DestroySurface(pNewSurface);
         return 0;
     };
 	
@@ -2696,9 +2696,9 @@ int sdl_video::FadeBetween(
 	
 	//Clean up.
 	if (bOldNull)
-		SDL_FreeSurface(pOldSurface);
+		SDL_DestroySurface(pOldSurface);
 	if (bNewNull)
-		SDL_FreeSurface(pNewSurface);
+		SDL_DestroySurface(pNewSurface);
 
 	return i;
 }
@@ -2724,7 +2724,7 @@ int sdl_video::fadeblack(bool fade_in)
 	SDL_Surface* black = SDL_CreateRGBSurface(SDL_SWSURFACE, active_canvas_w(), active_canvas_h(), 32, 0, 0, 0, 0);
     if (!black)
         return -1;
-    SDL_FillRect(black, nullptr, SDL_MapRGB(black->format, 0, 0, 0));
+    SDL_FillSurfaceRect(black, nullptr, SDL_MapRGB(black->format, 0, 0, 0));
 	int i;
 
 	if(fade_in)
@@ -2732,6 +2732,6 @@ int sdl_video::fadeblack(bool fade_in)
 	else
         i = FadeBetween(E_Screen->render, black, E_Screen->render); // fade to black
 
-	SDL_FreeSurface(black);
+	SDL_DestroySurface(black);
 	return i;
 }

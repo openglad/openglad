@@ -129,7 +129,7 @@ int sdl_soundob::init()
 
 void sdl_soundob::load_sound(Mix_Chunk **audio, const char * file)
 {
-    SDL_RWops* rw = open_read_file("sound/", file);
+    SDL_IOStream* rw = open_read_file("sound/", file);
 	
 	*audio = Mix_LoadWAV_RW(rw, 0);
 	if(!*audio)
@@ -137,7 +137,7 @@ void sdl_soundob::load_sound(Mix_Chunk **audio, const char * file)
 		LogError("Mix_LoadWAV failed: {}\n", Mix_GetError());
 		exit(0);
 	}
-	SDL_RWclose(rw);
+	SDL_CloseIO(rw);
 
 	Mix_VolumeChunk(*audio,MIX_MAX_VOLUME/2);
 }

@@ -2,7 +2,7 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
 #include <openglad/legacy/colors.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include <gtest/gtest.h>
 
 #include "test_input_helpers.h"

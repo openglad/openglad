@@ -1,4 +1,4 @@
-#include "SDL.h"
+#include <SDL3/SDL.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/input.h>
 #include <openglad/legacy/base.h>
@@ -16,7 +16,7 @@ namespace
 struct KeystateOverride
 {
     const Uint8* prev = nullptr;
-    std::array<Uint8, SDL_NUM_SCANCODES> fake{};
+    std::array<Uint8, SDL_SCANCODE_COUNT> fake{};
 
     KeystateOverride()
     {
@@ -34,16 +34,16 @@ struct KeystateOverride
 static SDL_Event keydown(SDL_Keycode key)
 {
     SDL_Event e{};
-    e.type = SDL_KEYDOWN;
-    e.key.keysym.sym = key;
-    e.key.keysym.scancode = SDL_GetScancodeFromKey(key);
+    e.type = SDL_EVENT_KEY_DOWN;
+    e.key.key = key;
+    e.key.scancode = SDL_GetScancodeFromKey(key);
     return e;
 }
 
 static SDL_Event dummy_event()
 {
     SDL_Event e{};
-    e.type = SDL_USEREVENT;
+    e.type = SDL_EVENT_USER;
     return e;
 }
 } // namespace

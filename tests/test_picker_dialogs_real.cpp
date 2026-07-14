@@ -1,6 +1,6 @@
 #include <openglad/interface/screen.h>
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include "test_input_helpers.h"
 
 // picker_dialogs.cpp symbols

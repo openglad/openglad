@@ -1,6 +1,6 @@
 #include <openglad/resources/io.h>
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include <filesystem>
 #include <string>
@@ -29,12 +29,12 @@ void teardown_new_file_fixture()
 
 bool read_header(const std::filesystem::path& file, std::string* out)
 {
-    SDL_RWops* rw = SDL_RWFromFile(file.string().c_str(), "rb");
+    SDL_IOStream* rw = SDL_IOFromFile(file.string().c_str(), "rb");
     if (!rw)
         return false;
     char buf[3] = {};
     size_t got = SDL_RWread(rw, buf, 1, 3);
-    SDL_RWclose(rw);
+    SDL_CloseIO(rw);
     if (got != 3)
         return false;
     if (out)
@@ -46,17 +46,17 @@ bool read_version(const std::filesystem::path& file, unsigned char* out)
 {
     if (out == nullptr)
         return false;
-    SDL_RWops* rw = SDL_RWFromFile(file.string().c_str(), "rb");
+    SDL_IOStream* rw = SDL_IOFromFile(file.string().c_str(), "rb");
     if (!rw)
         return false;
-    if (SDL_RWseek(rw, 3, RW_SEEK_SET) < 0)
+    if (SDL_SeekIO(rw, 3, SDL_IO_SEEK_SET) < 0)
     {
-        SDL_RWclose(rw);
+        SDL_CloseIO(rw);
         return false;
     }
     unsigned char version = 0;
     const size_t got = SDL_RWread(rw, &version, 1, 1);
-    SDL_RWclose(rw);
+    SDL_CloseIO(rw);
     if (got != 1)
         return false;
     *out = version;

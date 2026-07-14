@@ -1,4 +1,4 @@
-#include "SDL.h"
+#include <SDL3/SDL.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/resources/gloader.h>
@@ -20,7 +20,7 @@
 // myscreen is now a macro defined in base.h (via game_session.h)
 short load_scenario_version(og::io::OgFile& infile, LevelRuntimeData* data, short version);
 
-// Memory-backed OgFile for testing (replaces SDL_RWFromConstMem)
+// Memory-backed OgFile for testing (replaces SDL_IOFromConstMem)
 class MemoryOgFile final : public og::io::OgFile {
 public:
     MemoryOgFile(const void* data, std::size_t size)

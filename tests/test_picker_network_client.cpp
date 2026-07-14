@@ -2232,8 +2232,8 @@ TEST(PickerNetworkClient, host_escape_abort_signals_join_runtime_to_end_session)
         const auto run_host_escape_frame = [&]() -> EscapeFrameOutcome {
             EventScript script;
             SDL_Event event{};
-            event.type = SDL_KEYDOWN;
-            event.key.keysym.sym = SDLK_ESCAPE;
+            event.type = SDL_EVENT_KEY_DOWN;
+            event.key.key = SDLK_ESCAPE;
             script.events.push_back(event);
             g_script = &script;
             host_gameplay_screen->redrawme = 0;

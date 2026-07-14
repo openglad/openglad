@@ -1,4 +1,4 @@
-#include "SDL.h"
+#include <SDL3/SDL.h>
 #include <openglad/interface/input.h>
 #include <openglad/resources/gloader.h>
 #include <openglad/gameplay/walker.h>
@@ -122,7 +122,7 @@ TEST(ViewMenuDriven, viewscreen_options_menu_exercises_key_paths)
     og::runtime::current_session->player_keys_[v->mynum][KEY_FIRE] = SDLK_LCTRL;        // "LCtrl"
     og::runtime::current_session->player_keys_[v->mynum][KEY_SPECIAL] = SDLK_RALT;      // "RAlt"
     og::runtime::current_session->player_keys_[v->mynum][KEY_YELL] = SDLK_CAPSLOCK;     // "Caps"
-    og::runtime::current_session->player_keys_[v->mynum][KEY_SHIFTER] = SDLK_AUDIONEXT; // long key name -> truncation
+    og::runtime::current_session->player_keys_[v->mynum][KEY_SHIFTER] = SDLK_MEDIA_NEXT_TRACK; // long key name -> truncation
 
     KeystateOverride ks2;
     std::atomic<bool> bindings_done{false};

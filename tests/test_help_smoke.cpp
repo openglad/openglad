@@ -1,7 +1,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/input.h>
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include "test_input_helpers.h"
 
 #include <string>
@@ -55,7 +55,7 @@ static int help_injector_thread(void* data)
 
     // Scroll a little.
     SDL_Event wheel{};
-    wheel.type = SDL_MOUSEWHEEL;
+    wheel.type = SDL_EVENT_MOUSE_WHEEL;
     wheel.wheel.y = -1;
     SDL_PushEvent(&wheel);
 
@@ -137,7 +137,7 @@ static int scenario_injector_thread(void* data)
     SDL_Delay(80);
 
     SDL_Event wheel{};
-    wheel.type = SDL_MOUSEWHEEL;
+    wheel.type = SDL_EVENT_MOUSE_WHEEL;
     wheel.wheel.y = -3;
     SDL_PushEvent(&wheel);
 

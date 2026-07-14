@@ -7,7 +7,7 @@
 #include <openglad/platform/game_session.h>
 #include <openglad/resources/gparser.h>
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include <cstring>
 
@@ -143,9 +143,9 @@ struct FullControlSnapshotGuard
 TEST(InputKeybinds, input_isPlayerHoldingKey_uses_keyboard_state_when_no_joystick_mapping)
 {
     disablePlayerJoystick(0);
-    KeyBindingGuard bind(0, KEY_FIRE, SDLK_v);
+    KeyBindingGuard bind(0, KEY_FIRE, SDLK_V);
 
-    const SDL_Scancode sc = SDL_GetScancodeFromKey(SDLK_v);
+    const SDL_Scancode sc = SDL_GetScancodeFromKey(SDLK_V);
     KeyStateGuard ks(sc);
 
     ks.set(false);
@@ -159,11 +159,11 @@ TEST(InputKeybinds, input_isPlayerHoldingKey_uses_keyboard_state_when_no_joystic
 TEST(InputKeybinds, input_didPlayerPressKey_matches_keydown_and_ignores_repeats)
 {
     disablePlayerJoystick(0);
-    KeyBindingGuard bind(0, KEY_SPECIAL, SDLK_x);
+    KeyBindingGuard bind(0, KEY_SPECIAL, SDLK_X);
 
     SDL_Event e{};
-    e.type = SDL_KEYDOWN;
-    e.key.keysym.sym = SDLK_x;
+    e.type = SDL_EVENT_KEY_DOWN;
+    e.key.key = SDLK_X;
     e.key.repeat = 0;
     ASSERT_TRUE(didPlayerPressKey(0, KEY_SPECIAL, e)) << "matching keydown should be recognized";
 
@@ -171,11 +171,11 @@ TEST(InputKeybinds, input_didPlayerPressKey_matches_keydown_and_ignores_repeats)
     ASSERT_TRUE(!didPlayerPressKey(0, KEY_SPECIAL, e)) << "repeat keydown should be ignored";
 
     e.key.repeat = 0;
-    e.key.keysym.sym = SDLK_y;
+    e.key.key = SDLK_Y;
     ASSERT_TRUE(!didPlayerPressKey(0, KEY_SPECIAL, e)) << "non-matching keydown should be ignored";
 
-    e.type = SDL_KEYUP;
-    e.key.keysym.sym = SDLK_x;
+    e.type = SDL_EVENT_KEY_UP;
+    e.key.key = SDLK_X;
     ASSERT_TRUE(!didPlayerPressKey(0, KEY_SPECIAL, e)) << "keyup should not be treated as press";
 }
 
@@ -183,18 +183,18 @@ TEST(InputKeybinds, input_didPlayerPressKey_matches_keydown_and_ignores_repeats)
 TEST(InputKeybinds, input_didPlayerReleaseKey_matches_keyup)
 {
     disablePlayerJoystick(0);
-    KeyBindingGuard bind(1, KEY_YELL, SDLK_q);
+    KeyBindingGuard bind(1, KEY_YELL, SDLK_Q);
 
     SDL_Event e{};
-    e.type = SDL_KEYUP;
-    e.key.keysym.sym = SDLK_q;
+    e.type = SDL_EVENT_KEY_UP;
+    e.key.key = SDLK_Q;
     ASSERT_TRUE(didPlayerReleaseKey(1, KEY_YELL, e)) << "matching keyup should be recognized";
 
-    e.key.keysym.sym = SDLK_w;
+    e.key.key = SDLK_W;
     ASSERT_TRUE(!didPlayerReleaseKey(1, KEY_YELL, e)) << "non-matching keyup should be ignored";
 
-    e.type = SDL_KEYDOWN;
-    e.key.keysym.sym = SDLK_q;
+    e.type = SDL_EVENT_KEY_DOWN;
+    e.key.key = SDLK_Q;
     ASSERT_TRUE(!didPlayerReleaseKey(1, KEY_YELL, e)) << "keydown should not be treated as release";
 }
 
@@ -216,8 +216,8 @@ TEST(InputKeybinds, input_key_binding_helpers_isAnyPlayerKey_and_isPlayerKey)
 TEST(InputKeybinds, input_wait_for_key_event_returns_fake_escape_in_test_mode)
 {
     const SDL_Event& e = *static_cast<const SDL_Event*>(wait_for_key_event());
-    ASSERT_EQ((int)SDL_KEYDOWN, (int)e.type) << "wait_for_key_event should return keydown in test mode";
-    ASSERT_EQ((int)SDLK_ESCAPE, (int)e.key.keysym.sym) << "wait_for_key_event should return escape in test mode";
+    ASSERT_EQ((int)SDL_EVENT_KEY_DOWN, (int)e.type) << "wait_for_key_event should return keydown in test mode";
+    ASSERT_EQ((int)SDLK_ESCAPE, (int)e.key.key) << "wait_for_key_event should return escape in test mode";
 }
 
 
@@ -229,16 +229,16 @@ TEST(InputKeybinds, native_input_decode_event_ignores_malformed_scancode_payload
 
     SDL_Event e{};
     std::memset(&e, 0x01, sizeof(e));
-    e.type = SDL_KEYDOWN;
-    e.key.type = SDL_KEYDOWN;
-    e.key.keysym.sym = SDLK_q;
+    e.type = SDL_EVENT_KEY_DOWN;
+    e.key.type = SDL_EVENT_KEY_DOWN;
+    e.key.key = SDLK_Q;
     e.key.repeat = 0;
 
     og::input_native::EventData out{};
     ASSERT_TRUE(og::input_native::decode_event(&e, out)) << "decode_event should accept keydown payloads";
     ASSERT_EQ((int)og::input_native::EventType::KeyDown, (int)out.type) << "decoded event type should be keydown";
-    ASSERT_EQ((int)SDLK_q, out.key_sym) << "decoded key symbol should match payload";
-    ASSERT_EQ((int)SDL_GetScancodeFromKey(SDLK_q), out.key_scancode) << "decoded scancode should derive from key symbol, not raw enum payload";
+    ASSERT_EQ((int)SDLK_Q, out.key_sym) << "decoded key symbol should match payload";
+    ASSERT_EQ((int)SDL_GetScancodeFromKey(SDLK_Q), out.key_scancode) << "decoded scancode should derive from key symbol, not raw enum payload";
 }
 
 
@@ -247,21 +247,21 @@ TEST(InputKeybinds, native_input_decode_event_covers_non_keyboard_variants)
     SDL_Event e{};
     og::input_native::EventData out{};
 
-    e.type = SDL_TEXTINPUT;
+    e.type = SDL_EVENT_TEXT_INPUT;
     SDL_strlcpy(e.text.text, "abc", sizeof(e.text.text));
     ASSERT_TRUE(og::input_native::decode_event(&e, out)) << "decode_event should accept text input";
     ASSERT_EQ((int)og::input_native::EventType::TextInput, (int)out.type) << "text input type should decode";
     ASSERT_STREQ("abc", out.text.data()) << "text payload should decode";
 
     e = SDL_Event{};
-    e.type = SDL_MOUSEWHEEL;
+    e.type = SDL_EVENT_MOUSE_WHEEL;
     e.wheel.y = -3;
     ASSERT_TRUE(og::input_native::decode_event(&e, out)) << "decode_event should accept mouse wheel";
     ASSERT_EQ((int)og::input_native::EventType::MouseWheel, (int)out.type) << "mouse wheel type should decode";
     ASSERT_EQ(-3, out.wheel_y) << "mouse wheel delta should decode";
 
     e = SDL_Event{};
-    e.type = SDL_MOUSEMOTION;
+    e.type = SDL_EVENT_MOUSE_MOTION;
     e.motion.x = 12;
     e.motion.y = 34;
     e.motion.xrel = -5;
@@ -274,7 +274,7 @@ TEST(InputKeybinds, native_input_decode_event_covers_non_keyboard_variants)
     ASSERT_EQ(6, out.motion_dy) << "mouse motion dy should decode";
 
     e = SDL_Event{};
-    e.type = SDL_MOUSEBUTTONDOWN;
+    e.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
     e.button.button = SDL_BUTTON_LEFT;
     e.button.x = 44;
     e.button.y = 55;
@@ -285,12 +285,12 @@ TEST(InputKeybinds, native_input_decode_event_covers_non_keyboard_variants)
     ASSERT_EQ(55, out.button_y) << "mouse button y should decode";
 
     e = SDL_Event{};
-    e.type = SDL_FINGERDOWN;
+    e.type = SDL_EVENT_FINGER_DOWN;
     e.tfinger.x = 0.25f;
     e.tfinger.y = 0.5f;
     e.tfinger.dx = 0.1f;
     e.tfinger.dy = -0.2f;
-    e.tfinger.fingerId = 77;
+    e.tfinger.fingerID = 77;
     ASSERT_TRUE(og::input_native::decode_event(&e, out)) << "decode_event should accept finger events";
     ASSERT_EQ((int)og::input_native::EventType::FingerDown, (int)out.type) << "finger type should decode";
     ASSERT_FLOAT_EQ(0.25f, out.finger_x) << "finger x should decode";
@@ -300,7 +300,7 @@ TEST(InputKeybinds, native_input_decode_event_covers_non_keyboard_variants)
     ASSERT_EQ(77, out.finger_id) << "finger id should decode";
 
     e = SDL_Event{};
-    e.type = SDL_JOYAXISMOTION;
+    e.type = SDL_EVENT_JOYSTICK_AXIS_MOTION;
     e.jaxis.which = 2;
     e.jaxis.axis = 1;
     e.jaxis.value = 12000;
@@ -311,7 +311,7 @@ TEST(InputKeybinds, native_input_decode_event_covers_non_keyboard_variants)
     ASSERT_EQ(12000, out.joy_axis_value) << "joy axis value should decode";
 
     e = SDL_Event{};
-    e.type = SDL_JOYBUTTONDOWN;
+    e.type = SDL_EVENT_JOYSTICK_BUTTON_DOWN;
     e.jbutton.which = 3;
     e.jbutton.button = 4;
     ASSERT_TRUE(og::input_native::decode_event(&e, out)) << "decode_event should accept joystick button events";
@@ -320,7 +320,7 @@ TEST(InputKeybinds, native_input_decode_event_covers_non_keyboard_variants)
     ASSERT_EQ(4, out.joy_button_button) << "joy button index should decode";
 
     e = SDL_Event{};
-    e.type = SDL_JOYHATMOTION;
+    e.type = SDL_EVENT_JOYSTICK_HAT_MOTION;
     e.jhat.which = 5;
     e.jhat.hat = 1;
     e.jhat.value = SDL_HAT_RIGHT;
@@ -332,13 +332,13 @@ TEST(InputKeybinds, native_input_decode_event_covers_non_keyboard_variants)
 
     e = SDL_Event{};
     e.type = SDL_WINDOWEVENT;
-    e.window.event = SDL_WINDOWEVENT_MINIMIZED;
+    e.window.event = SDL_EVENT_WINDOW_MINIMIZED;
     ASSERT_TRUE(og::input_native::decode_event(&e, out)) << "decode_event should accept window minimize";
     ASSERT_EQ((int)og::input_native::WindowEventType::Minimized, (int)out.window_event) << "window minimize should decode";
 
     e = SDL_Event{};
     e.type = SDL_WINDOWEVENT;
-    e.window.event = SDL_WINDOWEVENT_RESIZED;
+    e.window.event = SDL_EVENT_WINDOW_RESIZED;
     e.window.data1 = 640;
     e.window.data2 = 400;
     ASSERT_TRUE(og::input_native::decode_event(&e, out)) << "decode_event should accept window events";
@@ -349,13 +349,13 @@ TEST(InputKeybinds, native_input_decode_event_covers_non_keyboard_variants)
 
     e = SDL_Event{};
     e.type = SDL_WINDOWEVENT;
-    e.window.event = SDL_WINDOWEVENT_CLOSE;
+    e.window.event = SDL_EVENT_WINDOW_CLOSE_REQUESTED;
     ASSERT_TRUE(og::input_native::decode_event(&e, out)) << "decode_event should accept window close";
     ASSERT_EQ((int)og::input_native::WindowEventType::Close, (int)out.window_event) << "window close should decode";
 
     e = SDL_Event{};
     e.type = SDL_WINDOWEVENT;
-    e.window.event = SDL_WINDOWEVENT_RESTORED;
+    e.window.event = SDL_EVENT_WINDOW_RESTORED;
     ASSERT_TRUE(og::input_native::decode_event(&e, out)) << "decode_event should accept window restored";
     ASSERT_EQ((int)og::input_native::WindowEventType::Restored, (int)out.window_event) << "window restore should decode";
 
@@ -366,7 +366,7 @@ TEST(InputKeybinds, native_input_decode_event_covers_non_keyboard_variants)
     ASSERT_EQ((int)og::input_native::WindowEventType::Unknown, (int)out.window_event) << "unknown window event should map to Unknown";
 
     e = SDL_Event{};
-    e.type = SDL_USEREVENT;
+    e.type = SDL_EVENT_USER;
     e.user.code = 42;
     e.user.data1 = reinterpret_cast<void*>(static_cast<std::intptr_t>(1234));
     ASSERT_TRUE(og::input_native::decode_event(&e, out)) << "decode_event should accept user events";
@@ -386,8 +386,8 @@ TEST(InputKeybinds, native_input_push_helpers_and_wrappers_smoke)
 
     const std::uint32_t ticks_before = og::input_native::ticks_ms();
     ASSERT_TRUE(og::input_native::keyboard_state() != nullptr) << "keyboard_state should return SDL state buffer";
-    ASSERT_TRUE(og::input_native::scancode_from_key(SDLK_q) >= 0) << "scancode lookup should succeed";
-    ASSERT_TRUE(og::input_native::key_name(SDLK_q) != nullptr) << "key_name should return a string";
+    ASSERT_TRUE(og::input_native::scancode_from_key(SDLK_Q) >= 0) << "scancode lookup should succeed";
+    ASSERT_TRUE(og::input_native::key_name(SDLK_Q) != nullptr) << "key_name should return a string";
     ASSERT_TRUE(og::input_native::num_joysticks() >= 0) << "num_joysticks should be non-negative";
     ASSERT_EQ(nullptr, og::input_native::joystick_open(-1)) << "opening an invalid joystick should fail cleanly";
     ASSERT_LE(og::input_native::joystick_num_axes(nullptr), 0) << "null joystick should not report axes";
@@ -410,7 +410,7 @@ TEST(InputKeybinds, native_input_push_helpers_and_wrappers_smoke)
     ASSERT_TRUE(og::input_native::ticks_ms() >= ticks_before) << "ticks_ms should advance monotonically";
 
     while (og::input_native::poll_event() != nullptr) {}
-    og::input_native::push_key_event(true, SDLK_q);
+    og::input_native::push_key_event(true, SDLK_Q);
     const void* key_event = og::input_native::wait_event();
     ASSERT_TRUE(key_event != nullptr) << "wait_event should return the queued key event";
     og::input_native::EventData out{};
@@ -458,14 +458,14 @@ TEST(InputKeybinds, input_state_from_sdl_respects_four_direction_mode)
 {
     disablePlayerJoystick(0);
     ModeKeyBindingGuard bind_diag(0, KEY_UP_RIGHT);
-    KeyStateGuard ks(SDL_GetScancodeFromKey(SDLK_v));
+    KeyStateGuard ks(SDL_GetScancodeFromKey(SDLK_V));
     ControlModeGuard mode_guard(0);
 
     InputState input{};
     input.clear();
 
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::EightDirection));
-    set_player_key_binding(0, KEY_UP_RIGHT, SDLK_v);
+    set_player_key_binding(0, KEY_UP_RIGHT, SDLK_V);
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
     ks.set(true);
     input_state_from_sdl(input);
@@ -511,7 +511,7 @@ TEST(InputKeybinds, input_control_settings_cfg_roundtrip)
     ControlModeGuard mode_guard(0);
 
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::EightDirection));
-    og::runtime::current_session->player_keys_[0][KEY_YELL] = SDLK_z;
+    og::runtime::current_session->player_keys_[0][KEY_YELL] = SDLK_Z;
     save_player_control_settings_to_cfg(config);
 
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
@@ -519,7 +519,7 @@ TEST(InputKeybinds, input_control_settings_cfg_roundtrip)
     load_player_control_settings_from_cfg(config);
 
     ASSERT_EQ(static_cast<int>(ControlDirectionMode::EightDirection), get_player_control_mode(0)) << "control mode should reload from config";
-    ASSERT_EQ(static_cast<int>(SDLK_z), og::runtime::current_session->player_keys_[0][KEY_YELL]) << "keybind should reload from config";
+    ASSERT_EQ(static_cast<int>(SDLK_Z), og::runtime::current_session->player_keys_[0][KEY_YELL]) << "keybind should reload from config";
 
     og::runtime::current_session->player_keys_[0][KEY_YELL] = old_yell;
 }
@@ -637,15 +637,15 @@ TEST(InputKeybinds, eight_direction_defaults_p1_clockwise_from_up)
     reset_default_player_controls();
 
     // P1 8-dir defaults clockwise from Up: W, E, D, C, X, Z, A, Q
-    ASSERT_EQ(static_cast<int>(SDLK_w), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP)) << "P1 8-dir Up should be W";
-    ASSERT_EQ(static_cast<int>(SDLK_e), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP_RIGHT)) << "P1 8-dir Up-Right should be E";
-    ASSERT_EQ(static_cast<int>(SDLK_d), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_RIGHT)) << "P1 8-dir Right should be D";
-    ASSERT_EQ(static_cast<int>(SDLK_c), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_DOWN_RIGHT)) << "P1 8-dir Down-Right should be C";
-    ASSERT_EQ(static_cast<int>(SDLK_x), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_DOWN)) << "P1 8-dir Down should be X";
-    ASSERT_EQ(static_cast<int>(SDLK_z), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_DOWN_LEFT)) << "P1 8-dir Down-Left should be Z";
-    ASSERT_EQ(static_cast<int>(SDLK_a), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_LEFT)) << "P1 8-dir Left should be A";
-    ASSERT_EQ(static_cast<int>(SDLK_q), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP_LEFT)) << "P1 8-dir Up-Left should be Q";
-    ASSERT_EQ(static_cast<int>(SDLK_s), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_YELL)) << "P1 8-dir Yell should be S";
+    ASSERT_EQ(static_cast<int>(SDLK_W), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP)) << "P1 8-dir Up should be W";
+    ASSERT_EQ(static_cast<int>(SDLK_E), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP_RIGHT)) << "P1 8-dir Up-Right should be E";
+    ASSERT_EQ(static_cast<int>(SDLK_D), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_RIGHT)) << "P1 8-dir Right should be D";
+    ASSERT_EQ(static_cast<int>(SDLK_C), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_DOWN_RIGHT)) << "P1 8-dir Down-Right should be C";
+    ASSERT_EQ(static_cast<int>(SDLK_X), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_DOWN)) << "P1 8-dir Down should be X";
+    ASSERT_EQ(static_cast<int>(SDLK_Z), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_DOWN_LEFT)) << "P1 8-dir Down-Left should be Z";
+    ASSERT_EQ(static_cast<int>(SDLK_A), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_LEFT)) << "P1 8-dir Left should be A";
+    ASSERT_EQ(static_cast<int>(SDLK_Q), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP_LEFT)) << "P1 8-dir Up-Left should be Q";
+    ASSERT_EQ(static_cast<int>(SDLK_S), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_YELL)) << "P1 8-dir Yell should be S";
 }
 
 
@@ -659,16 +659,16 @@ TEST(InputKeybinds, eight_direction_defaults_other_players)
     ASSERT_EQ(static_cast<int>(SDLK_UNKNOWN), get_player_key_binding_for_mode(1, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP_RIGHT)) << "P2 8-dir Up-Right should be UNKNOWN";
 
     // P3: clockwise I/O/L/./,/M/J/U, Yell=K
-    ASSERT_EQ(static_cast<int>(SDLK_i), get_player_key_binding_for_mode(2, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP)) << "P3 8-dir Up should be I";
-    ASSERT_EQ(static_cast<int>(SDLK_o), get_player_key_binding_for_mode(2, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP_RIGHT)) << "P3 8-dir Up-Right should be O";
-    ASSERT_EQ(static_cast<int>(SDLK_l), get_player_key_binding_for_mode(2, static_cast<int>(ControlDirectionMode::EightDirection), KEY_RIGHT)) << "P3 8-dir Right should be L";
-    ASSERT_EQ(static_cast<int>(SDLK_k), get_player_key_binding_for_mode(2, static_cast<int>(ControlDirectionMode::EightDirection), KEY_YELL)) << "P3 8-dir Yell should be K";
+    ASSERT_EQ(static_cast<int>(SDLK_I), get_player_key_binding_for_mode(2, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP)) << "P3 8-dir Up should be I";
+    ASSERT_EQ(static_cast<int>(SDLK_O), get_player_key_binding_for_mode(2, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP_RIGHT)) << "P3 8-dir Up-Right should be O";
+    ASSERT_EQ(static_cast<int>(SDLK_L), get_player_key_binding_for_mode(2, static_cast<int>(ControlDirectionMode::EightDirection), KEY_RIGHT)) << "P3 8-dir Right should be L";
+    ASSERT_EQ(static_cast<int>(SDLK_K), get_player_key_binding_for_mode(2, static_cast<int>(ControlDirectionMode::EightDirection), KEY_YELL)) << "P3 8-dir Yell should be K";
 
     // P4: clockwise T/Y/H/N/B/V/F/R, Yell=G
-    ASSERT_EQ(static_cast<int>(SDLK_t), get_player_key_binding_for_mode(3, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP)) << "P4 8-dir Up should be T";
-    ASSERT_EQ(static_cast<int>(SDLK_y), get_player_key_binding_for_mode(3, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP_RIGHT)) << "P4 8-dir Up-Right should be Y";
-    ASSERT_EQ(static_cast<int>(SDLK_h), get_player_key_binding_for_mode(3, static_cast<int>(ControlDirectionMode::EightDirection), KEY_RIGHT)) << "P4 8-dir Right should be H";
-    ASSERT_EQ(static_cast<int>(SDLK_g), get_player_key_binding_for_mode(3, static_cast<int>(ControlDirectionMode::EightDirection), KEY_YELL)) << "P4 8-dir Yell should be G";
+    ASSERT_EQ(static_cast<int>(SDLK_T), get_player_key_binding_for_mode(3, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP)) << "P4 8-dir Up should be T";
+    ASSERT_EQ(static_cast<int>(SDLK_Y), get_player_key_binding_for_mode(3, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP_RIGHT)) << "P4 8-dir Up-Right should be Y";
+    ASSERT_EQ(static_cast<int>(SDLK_H), get_player_key_binding_for_mode(3, static_cast<int>(ControlDirectionMode::EightDirection), KEY_RIGHT)) << "P4 8-dir Right should be H";
+    ASSERT_EQ(static_cast<int>(SDLK_G), get_player_key_binding_for_mode(3, static_cast<int>(ControlDirectionMode::EightDirection), KEY_YELL)) << "P4 8-dir Yell should be G";
 }
 
 
@@ -678,13 +678,13 @@ TEST(InputKeybinds, eight_direction_defaults_differ_from_four_direction)
     reset_default_player_controls();
 
     // P1 4-dir Yell should be E, but 8-dir Yell should be S
-    ASSERT_EQ(static_cast<int>(SDLK_e), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::FourDirection), KEY_YELL)) << "P1 4-dir Yell should be E";
-    ASSERT_EQ(static_cast<int>(SDLK_s), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_YELL)) << "P1 8-dir Yell should be S";
+    ASSERT_EQ(static_cast<int>(SDLK_E), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::FourDirection), KEY_YELL)) << "P1 4-dir Yell should be E";
+    ASSERT_EQ(static_cast<int>(SDLK_S), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_YELL)) << "P1 8-dir Yell should be S";
 
     // P1 4-dir diagonals should be UNKNOWN
     ASSERT_EQ(static_cast<int>(SDLK_UNKNOWN), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::FourDirection), KEY_UP_RIGHT)) << "P1 4-dir Up-Right should be UNKNOWN";
     // P1 8-dir diagonals should be set
-    ASSERT_EQ(static_cast<int>(SDLK_e), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP_RIGHT)) << "P1 8-dir Up-Right should be E";
+    ASSERT_EQ(static_cast<int>(SDLK_E), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP_RIGHT)) << "P1 8-dir Up-Right should be E";
 }
 
 
@@ -694,10 +694,10 @@ TEST(InputKeybinds, four_direction_defaults_unchanged_wasd)
     reset_default_player_controls();
 
     // P1 4-dir should still be WASD
-    ASSERT_EQ(static_cast<int>(SDLK_w), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::FourDirection), KEY_UP)) << "P1 4-dir Up should be W";
-    ASSERT_EQ(static_cast<int>(SDLK_a), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::FourDirection), KEY_LEFT)) << "P1 4-dir Left should be A";
-    ASSERT_EQ(static_cast<int>(SDLK_s), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::FourDirection), KEY_DOWN)) << "P1 4-dir Down should be S";
-    ASSERT_EQ(static_cast<int>(SDLK_d), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::FourDirection), KEY_RIGHT)) << "P1 4-dir Right should be D";
+    ASSERT_EQ(static_cast<int>(SDLK_W), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::FourDirection), KEY_UP)) << "P1 4-dir Up should be W";
+    ASSERT_EQ(static_cast<int>(SDLK_A), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::FourDirection), KEY_LEFT)) << "P1 4-dir Left should be A";
+    ASSERT_EQ(static_cast<int>(SDLK_S), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::FourDirection), KEY_DOWN)) << "P1 4-dir Down should be S";
+    ASSERT_EQ(static_cast<int>(SDLK_D), get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::FourDirection), KEY_RIGHT)) << "P1 4-dir Right should be D";
 }
 
 
@@ -731,32 +731,32 @@ TEST(InputKeybinds, lookup_key_defaults_per_player_per_mode)
     // P1: V in both modes. P2: Right Ctrl in both modes (its arrow layout is
     // identical across modes). P3: P in both modes. P4: B in 4-direction only
     // (its own 8-direction cluster claims 'b' for DOWN, so 8-dir is unbound).
-    ASSERT_EQ(static_cast<int>(SDLK_v), get_player_key_binding_for_mode(0, kFour, KEY_LOOKUP))
+    ASSERT_EQ(static_cast<int>(SDLK_V), get_player_key_binding_for_mode(0, kFour, KEY_LOOKUP))
         << "P1 4-dir look-up should default to V";
-    ASSERT_EQ(static_cast<int>(SDLK_v), get_player_key_binding_for_mode(0, kEight, KEY_LOOKUP))
+    ASSERT_EQ(static_cast<int>(SDLK_V), get_player_key_binding_for_mode(0, kEight, KEY_LOOKUP))
         << "P1 8-dir look-up should default to V";
     ASSERT_EQ(static_cast<int>(SDLK_RCTRL), get_player_key_binding_for_mode(1, kFour, KEY_LOOKUP))
         << "P2 4-dir look-up should default to Right Ctrl";
     ASSERT_EQ(static_cast<int>(SDLK_RCTRL), get_player_key_binding_for_mode(1, kEight, KEY_LOOKUP))
         << "P2 8-dir look-up should default to Right Ctrl";
-    ASSERT_EQ(static_cast<int>(SDLK_p), get_player_key_binding_for_mode(2, kFour, KEY_LOOKUP))
+    ASSERT_EQ(static_cast<int>(SDLK_P), get_player_key_binding_for_mode(2, kFour, KEY_LOOKUP))
         << "P3 4-dir look-up should default to P";
-    ASSERT_EQ(static_cast<int>(SDLK_p), get_player_key_binding_for_mode(2, kEight, KEY_LOOKUP))
+    ASSERT_EQ(static_cast<int>(SDLK_P), get_player_key_binding_for_mode(2, kEight, KEY_LOOKUP))
         << "P3 8-dir look-up should default to P";
-    ASSERT_EQ(static_cast<int>(SDLK_b), get_player_key_binding_for_mode(3, kFour, KEY_LOOKUP))
+    ASSERT_EQ(static_cast<int>(SDLK_B), get_player_key_binding_for_mode(3, kFour, KEY_LOOKUP))
         << "P4 4-dir look-up should default to B";
     ASSERT_EQ(static_cast<int>(SDLK_UNKNOWN), get_player_key_binding_for_mode(3, kEight, KEY_LOOKUP))
         << "P4 8-dir look-up should default unbound (own cluster uses B for DOWN)";
 
     // The default control mode is 4-direction; the active keymap must carry
     // each player's 4-direction look-up default.
-    ASSERT_EQ(static_cast<int>(SDLK_v), og::runtime::current_session->player_keys_[0][KEY_LOOKUP])
+    ASSERT_EQ(static_cast<int>(SDLK_V), og::runtime::current_session->player_keys_[0][KEY_LOOKUP])
         << "the active keymap should carry the P1 default";
     ASSERT_EQ(static_cast<int>(SDLK_RCTRL), og::runtime::current_session->player_keys_[1][KEY_LOOKUP])
         << "the active keymap should carry the P2 default";
-    ASSERT_EQ(static_cast<int>(SDLK_p), og::runtime::current_session->player_keys_[2][KEY_LOOKUP])
+    ASSERT_EQ(static_cast<int>(SDLK_P), og::runtime::current_session->player_keys_[2][KEY_LOOKUP])
         << "the active keymap should carry the P3 default";
-    ASSERT_EQ(static_cast<int>(SDLK_b), og::runtime::current_session->player_keys_[3][KEY_LOOKUP])
+    ASSERT_EQ(static_cast<int>(SDLK_B), og::runtime::current_session->player_keys_[3][KEY_LOOKUP])
         << "the active keymap should carry the P4 default";
 }
 
@@ -769,8 +769,8 @@ TEST(InputKeybinds, yell_key_defaults_per_player_per_mode)
     constexpr int kFour = static_cast<int>(ControlDirectionMode::FourDirection);
     constexpr int kEight = static_cast<int>(ControlDirectionMode::EightDirection);
 
-    constexpr int expected_four[4] = {SDLK_e, SDLK_BACKSLASH, SDLK_u, SDLK_y};
-    constexpr int expected_eight[4] = {SDLK_s, SDLK_BACKSLASH, SDLK_k, SDLK_g};
+    constexpr int expected_four[4] = {SDLK_E, SDLK_BACKSLASH, SDLK_U, SDLK_Y};
+    constexpr int expected_eight[4] = {SDLK_S, SDLK_BACKSLASH, SDLK_K, SDLK_G};
     for (int p = 0; p < 4; ++p)
     {
         ASSERT_EQ(expected_four[p], get_player_key_binding_for_mode(p, kFour, KEY_YELL))
@@ -850,8 +850,8 @@ TEST(InputKeybinds, lookup_key_defaults_survive_cfg_roundtrip_for_all_players)
 
     load_player_control_settings_from_cfg(config);
 
-    constexpr int expected_four[4] = {SDLK_v, SDLK_RCTRL, SDLK_p, SDLK_b};
-    constexpr int expected_eight[4] = {SDLK_v, SDLK_RCTRL, SDLK_p, SDLK_UNKNOWN};
+    constexpr int expected_four[4] = {SDLK_V, SDLK_RCTRL, SDLK_P, SDLK_B};
+    constexpr int expected_eight[4] = {SDLK_V, SDLK_RCTRL, SDLK_P, SDLK_UNKNOWN};
     for (int p = 0; p < 4; ++p)
     {
         ASSERT_EQ(expected_four[p],
@@ -873,19 +873,19 @@ TEST(InputKeybinds, lookup_key_binding_persists_through_cfg_roundtrip)
 
     reset_default_player_controls();
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
-    set_player_key_binding(0, KEY_LOOKUP, SDLK_b);
+    set_player_key_binding(0, KEY_LOOKUP, SDLK_B);
     save_player_control_settings_to_cfg(config);
 
     // Wipe the binding, then reload: the saved value must come back.
     reset_default_player_controls();
-    ASSERT_EQ(static_cast<int>(SDLK_v),
+    ASSERT_EQ(static_cast<int>(SDLK_V),
               og::runtime::current_session->player_keys_[0][KEY_LOOKUP])
         << "reset should restore the default before the reload";
     load_player_control_settings_from_cfg(config);
-    ASSERT_EQ(static_cast<int>(SDLK_b),
+    ASSERT_EQ(static_cast<int>(SDLK_B),
               og::runtime::current_session->player_keys_[0][KEY_LOOKUP])
         << "the look-up binding should reload from config";
-    ASSERT_EQ(static_cast<int>(SDLK_b),
+    ASSERT_EQ(static_cast<int>(SDLK_B),
               get_player_key_binding_for_mode(
                   0, static_cast<int>(ControlDirectionMode::FourDirection),
                   KEY_LOOKUP))

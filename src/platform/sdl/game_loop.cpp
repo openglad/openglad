@@ -327,13 +327,13 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
         while (poll_event(&event))
         {
             handle_event(event);
-            if (event.type == SDL_KEYDOWN)
+            if (event.type == SDL_EVENT_KEY_DOWN)
             {
-                if (event.key.keysym.sym == SDLK_F11)
+                if (event.key.key == SDLK_F11)
                     og::runtime::current_session->debug_draw_paths_ = !og::runtime::current_session->debug_draw_paths_;
-                else if (event.key.keysym.sym == SDLK_F12)
+                else if (event.key.key == SDLK_F12)
                     og::runtime::current_session->debug_draw_obmap_ = !og::runtime::current_session->debug_draw_obmap_;
-                else if (event.key.keysym.sym == SDLK_ESCAPE)
+                else if (event.key.key == SDLK_ESCAPE)
                 {
                     if (!og::runtime::local_transport_shadow_is_paused(
                             *gameplay_session) &&

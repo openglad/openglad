@@ -5,7 +5,7 @@
 #include <openglad/interface/ui/picker_ui_state.h>
 
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #if !defined(__EMSCRIPTEN__)
 #include <ixwebsocket/IXGetFreePort.h>

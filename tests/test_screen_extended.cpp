@@ -5,7 +5,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/legacy/base.h>
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include <cstring>
 #include <filesystem>
@@ -323,11 +323,11 @@ struct ScenTitleFixture
 
 void write_bytes(const std::filesystem::path& file, const void* data, size_t size)
 {
-    SDL_RWops* out = SDL_RWFromFile(file.string().c_str(), "wb");
+    SDL_IOStream* out = SDL_IOFromFile(file.string().c_str(), "wb");
     if(out == nullptr)
         return;
     SDL_RWwrite(out, data, 1, size);
-    SDL_RWclose(out);
+    SDL_CloseIO(out);
 }
 
 void setup_scen_title_fixture()

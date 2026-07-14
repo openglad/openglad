@@ -6,7 +6,7 @@
 //    the variable canvas; sai/eagle = software 2x into a canvas*2 render2),
 //  * viewscreen relayout from the live canvas dims (screen::relayout_views
 //    and viewscreen::resize(whatmode)),
-//  * the SDL_WINDOWEVENT_RESIZED bridge hook,
+//  * the SDL_EVENT_WINDOW_RESIZED bridge hook,
 //  * the level editor's classic-canvas pin.
 //
 // Every test restores the Legacy default (shared 320x200 canvas, UI target)
@@ -22,7 +22,7 @@
 #include <openglad/core/test_trace.h>
 #include <openglad/resources/gparser.h>
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 // Implemented in src/interface/ui/level_editor.cpp
 Sint32 level_editor();
@@ -239,7 +239,7 @@ TEST(CanvasScale, window_resize_event_retracks_the_canvas)
 
     SDL_Event ev{};
     ev.type = SDL_WINDOWEVENT;
-    ev.window.event = SDL_WINDOWEVENT_RESIZED;
+    ev.window.event = SDL_EVENT_WINDOW_RESIZED;
     ev.window.data1 = 1280;
     ev.window.data2 = 800;
     handle_window_event(ev);
@@ -304,8 +304,8 @@ TEST(CanvasScale, mouse_mapping_divides_by_the_active_canvas_dims)
     ASSERT_EQ(400, E_Screen->world_h());
 
     SDL_Event ev{};
-    ev.type = SDL_MOUSEMOTION;
-    ev.motion.type = SDL_MOUSEMOTION;
+    ev.type = SDL_EVENT_MOUSE_MOTION;
+    ev.motion.type = SDL_EVENT_MOUSE_MOTION;
     ev.motion.x = 320; // window center
     ev.motion.y = 200;
 
@@ -505,14 +505,14 @@ TEST(CanvasScale, mouse_clicks_land_on_the_active_canvas_at_two_scales)
     update_overscan_setting();
 
     SDL_Event down{};
-    down.type = SDL_MOUSEBUTTONDOWN;
-    down.button.type = SDL_MOUSEBUTTONDOWN;
+    down.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
+    down.button.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
     down.button.button = SDL_BUTTON_LEFT;
     down.button.x = 640; // window center
     down.button.y = 400;
     SDL_Event up = down;
-    up.type = SDL_MOUSEBUTTONUP;
-    up.button.type = SDL_MOUSEBUTTONUP;
+    up.type = SDL_EVENT_MOUSE_BUTTON_UP;
+    up.button.type = SDL_EVENT_MOUSE_BUTTON_UP;
 
     MouseState& mymouse = query_mouse_no_poll();
 

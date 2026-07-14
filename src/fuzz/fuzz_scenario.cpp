@@ -27,21 +27,21 @@
 // This harness exercises the binary read/parse logic from
 // load_scenario_version() without creating game entities.
 
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <string>
 
-static bool rw_read_exact(SDL_RWops *rw, void *dst, size_t sz, size_t count)
+static bool rw_read_exact(SDL_IOStream *rw, void *dst, size_t sz, size_t count)
 {
     return rw && SDL_RWread(rw, dst, sz, count) == count;
 }
 
 static void fuzz_parse_scenario(const uint8_t *data, size_t size)
 {
-    SDL_RWops *rw = SDL_RWFromConstMem(data, static_cast<int>(size));
+    SDL_IOStream *rw = SDL_IOFromConstMem(data, static_cast<int>(size));
     if (!rw)
         return;
 
@@ -49,24 +49,24 @@ static void fuzz_parse_scenario(const uint8_t *data, size_t size)
     std::array<char, 4> header = {};
     if (!rw_read_exact(rw, header.data(), 1, 3))
     {
-        SDL_RWclose(rw);
+        SDL_CloseIO(rw);
         return;
     }
     if (header[0] != 'F' || header[1] != 'S' || header[2] != 'S')
     {
-        SDL_RWclose(rw);
+        SDL_CloseIO(rw);
         return;
     }
 
     char version = 0;
     if (!rw_read_exact(rw, &version, 1, 1))
     {
-        SDL_RWclose(rw);
+        SDL_CloseIO(rw);
         return;
     }
     if (version < 2 || version > 9)
     {
-        SDL_RWclose(rw);
+        SDL_CloseIO(rw);
         return;
     }
 
@@ -74,7 +74,7 @@ static void fuzz_parse_scenario(const uint8_t *data, size_t size)
     std::array<char, 9> gridname = {};
     if (!rw_read_exact(rw, gridname.data(), 8, 1))
     {
-        SDL_RWclose(rw);
+        SDL_CloseIO(rw);
         return;
     }
     gridname[8] = '\0';
@@ -85,7 +85,7 @@ static void fuzz_parse_scenario(const uint8_t *data, size_t size)
     {
         if (!rw_read_exact(rw, &scen_type, 1, 1))
         {
-            SDL_RWclose(rw);
+            SDL_CloseIO(rw);
             return;
         }
     }
@@ -94,12 +94,12 @@ static void fuzz_parse_scenario(const uint8_t *data, size_t size)
     int16_t listsize = 0;
     if (!rw_read_exact(rw, &listsize, 2, 1))
     {
-        SDL_RWclose(rw);
+        SDL_CloseIO(rw);
         return;
     }
     if (listsize < 0 || listsize > 4096)
     {
-        SDL_RWclose(rw);
+        SDL_CloseIO(rw);
         return;
     }
 
@@ -117,7 +117,7 @@ static void fuzz_parse_scenario(const uint8_t *data, size_t size)
             !rw_read_exact(rw, &facing, 1, 1) ||
             !rw_read_exact(rw, &command, 1, 1))
         {
-            SDL_RWclose(rw);
+            SDL_CloseIO(rw);
             return;
         }
 
@@ -130,7 +130,7 @@ static void fuzz_parse_scenario(const uint8_t *data, size_t size)
                 !rw_read_exact(rw, name.data(), 12, 1) ||
                 !rw_read_exact(rw, reserved.data(), 10, 1))
             {
-                SDL_RWclose(rw);
+                SDL_CloseIO(rw);
                 return;
             }
         }
@@ -140,7 +140,7 @@ static void fuzz_parse_scenario(const uint8_t *data, size_t size)
             std::array<char, 11> reserved = {};
             if (!rw_read_exact(rw, reserved.data(), 11, 1))
             {
-                SDL_RWclose(rw);
+                SDL_CloseIO(rw);
                 return;
             }
         }
@@ -152,7 +152,7 @@ static void fuzz_parse_scenario(const uint8_t *data, size_t size)
     {
         if (!rw_read_exact(rw, &numlines, 1, 1))
         {
-            SDL_RWclose(rw);
+            SDL_CloseIO(rw);
             return;
         }
 
@@ -161,7 +161,7 @@ static void fuzz_parse_scenario(const uint8_t *data, size_t size)
             uint8_t width = 0;
             if (!rw_read_exact(rw, &width, 1, 1))
             {
-                SDL_RWclose(rw);
+                SDL_CloseIO(rw);
                 return;
             }
 
@@ -173,7 +173,7 @@ static void fuzz_parse_scenario(const uint8_t *data, size_t size)
                 int chunk = remaining < static_cast<int>(buf.size()) ? remaining : static_cast<int>(buf.size());
                 if (!rw_read_exact(rw, buf.data(), static_cast<size_t>(chunk), 1))
                 {
-                    SDL_RWclose(rw);
+                    SDL_CloseIO(rw);
                     return;
                 }
                 remaining -= chunk;
@@ -190,7 +190,7 @@ static void fuzz_parse_scenario(const uint8_t *data, size_t size)
         rw_read_exact(rw, &time_limit, 2, 1);
     }
 
-    SDL_RWclose(rw);
+    SDL_CloseIO(rw);
 }
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)

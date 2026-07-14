@@ -1,4 +1,4 @@
-#include "SDL.h"
+#include <SDL3/SDL.h>
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -71,7 +71,7 @@ struct KeyBindingGuard
 struct SessionKeyStateGuard
 {
     const Uint8* old_keystates = nullptr;
-    std::array<Uint8, SDL_NUM_SCANCODES> fake_keystates{};
+    std::array<Uint8, SDL_SCANCODE_COUNT> fake_keystates{};
 
     SessionKeyStateGuard()
         : old_keystates(og::runtime::current_session->keystates_)
@@ -88,7 +88,7 @@ struct SessionKeyStateGuard
     void set(SDL_Keycode key, bool pressed)
     {
         const SDL_Scancode scancode = SDL_GetScancodeFromKey(key);
-        if (scancode >= 0 && scancode < SDL_NUM_SCANCODES)
+        if (scancode >= 0 && scancode < SDL_SCANCODE_COUNT)
             fake_keystates[static_cast<std::size_t>(scancode)] = pressed ? 1 : 0;
     }
 };
@@ -590,10 +590,10 @@ TEST(GameLoop, game_frame_toggles_debug_hotkeys)
 
     EventScript script;
     SDL_Event e{};
-    e.type = SDL_KEYDOWN;
-    e.key.keysym.sym = SDLK_F11;
+    e.type = SDL_EVENT_KEY_DOWN;
+    e.key.key = SDLK_F11;
     script.events.push_back(e);
-    e.key.keysym.sym = SDLK_F12;
+    e.key.key = SDLK_F12;
     script.events.push_back(e);
 
     g_script = &script;
@@ -1848,8 +1848,8 @@ TEST(GameLoop, game_frame_with_result_processes_input_before_same_call_tick)
     ASSERT_TRUE(view->control != nullptr);
 
     SessionKeyStateGuard keystates;
-    KeyBindingGuard bind_yell(0, KEY_YELL, SDLK_y);
-    keystates.set(SDLK_y, true);
+    KeyBindingGuard bind_yell(0, KEY_YELL, SDLK_Y);
+    keystates.set(SDLK_Y, true);
     ctx().input = {};
     view->control->set_yo_delay(0);
 
@@ -2125,7 +2125,7 @@ TEST(GameLoop, game_frame_options_menu_via_key_prefs_completes)
 
     // Override keystates so we can inject ESC from a background thread.
     const Uint8* saved_keystates = og::runtime::current_session->keystates_;
-    std::array<Uint8, SDL_NUM_SCANCODES> fake_keystates{};
+    std::array<Uint8, SDL_SCANCODE_COUNT> fake_keystates{};
     fake_keystates.fill(0);
     og::runtime::current_session->keystates_ = fake_keystates.data();
 
@@ -2140,9 +2140,9 @@ TEST(GameLoop, game_frame_options_menu_via_key_prefs_completes)
     // Build a scripted KEY_PREFS event (SDLK_1 for player 0).
     EventScript script;
     SDL_Event e{};
-    e.type = SDL_KEYDOWN;
-    e.key.keysym.sym = og::runtime::current_session->player_keys_[0][KEY_PREFS];
-    e.key.keysym.scancode = SDL_GetScancodeFromKey(e.key.keysym.sym);
+    e.type = SDL_EVENT_KEY_DOWN;
+    e.key.key = og::runtime::current_session->player_keys_[0][KEY_PREFS];
+    e.key.scancode = SDL_GetScancodeFromKey(e.key.key);
     e.key.repeat = 0;
     script.events.push_back(e);
 
@@ -2204,8 +2204,8 @@ TEST(GameLoop, game_frame_escape_toggles_network_pause_when_local_transport_is_a
     const auto run_escape_frame = [&]() -> EscapeFrameOutcome {
         EventScript script;
         SDL_Event e{};
-        e.type = SDL_KEYDOWN;
-        e.key.keysym.sym = SDLK_ESCAPE;
+        e.type = SDL_EVENT_KEY_DOWN;
+        e.key.key = SDLK_ESCAPE;
         script.events.push_back(e);
         g_script = &script;
         game_screen->redrawme = 0;
@@ -2276,8 +2276,8 @@ TEST(GameLoop, game_frame_escape_abort_returns_aborted_mission_when_network_paus
     const auto run_escape_frame = [&]() -> EscapeFrameOutcome {
         EventScript script;
         SDL_Event e{};
-        e.type = SDL_KEYDOWN;
-        e.key.keysym.sym = SDLK_ESCAPE;
+        e.type = SDL_EVENT_KEY_DOWN;
+        e.key.key = SDLK_ESCAPE;
         script.events.push_back(e);
         g_script = &script;
         game_screen->redrawme = 0;
@@ -3815,7 +3815,7 @@ TEST(GameLoop, world_scale_splitscreen_panes_fit_the_grown_canvas)
     // ---- Mid-game window resize during split-screen ------------------------
     SDL_Event ev{};
     ev.type = SDL_WINDOWEVENT;
-    ev.window.event = SDL_WINDOWEVENT_RESIZED;
+    ev.window.event = SDL_EVENT_WINDOW_RESIZED;
     ev.window.data1 = 1280;
     ev.window.data2 = 800;
     handle_window_event(ev);

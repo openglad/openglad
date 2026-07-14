@@ -6,7 +6,7 @@
 #include <openglad/interface/render/pixien.h>
 #include <openglad/interface/screen.h>
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include "test_input_helpers.h"
 #include "test_interact.h"
 #include <openglad/resources/save_data.h>

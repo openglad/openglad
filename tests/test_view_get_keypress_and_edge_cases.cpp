@@ -7,7 +7,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/platform/game_context.h>
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include <array>
 #include <atomic>
@@ -38,7 +38,7 @@ struct KeyBindingGuard
 struct KeystateOverride
 {
     const Uint8* prev = nullptr;
-    std::array<Uint8, SDL_NUM_SCANCODES> fake{};
+    std::array<Uint8, SDL_SCANCODE_COUNT> fake{};
     KeystateOverride()
     {
         prev = og::runtime::current_session->keystates_;
@@ -54,16 +54,16 @@ struct KeystateOverride
 static SDL_Event keydown(SDL_Keycode key)
 {
     SDL_Event e{};
-    e.type = SDL_KEYDOWN;
-    e.key.keysym.sym = key;
-    e.key.keysym.scancode = SDL_GetScancodeFromKey(key);
+    e.type = SDL_EVENT_KEY_DOWN;
+    e.key.key = key;
+    e.key.scancode = SDL_GetScancodeFromKey(key);
     e.key.repeat = 0;
     return e;
 }
 
 struct EscapePulseState
 {
-    std::array<Uint8, SDL_NUM_SCANCODES>* keys;
+    std::array<Uint8, SDL_SCANCODE_COUNT>* keys;
     std::atomic<bool>* done;
 };
 
@@ -87,9 +87,9 @@ static int injector_pulse_escape(void* data)
 TEST(ViewGetKeypressAndEdgeCases, view_get_keypress_consumes_next_key_event)
 {
     // Queue a keydown event so get_keypress() can read it deterministically.
-    sendFakeKeyDownEvent(SDLK_a);
+    sendFakeKeyDownEvent(SDLK_A);
     const int k = get_keypress();
-    ASSERT_EQ(static_cast<int>(SDLK_a), k) << "get_keypress should return queued SDL key";
+    ASSERT_EQ(static_cast<int>(SDLK_A), k) << "get_keypress should return queued SDL key";
 }
 
 
@@ -118,7 +118,7 @@ TEST(ViewGetKeypressAndEdgeCases, viewscreen_input_switch_control_not_in_oblist_
 
     KeyBindingGuard bind_switch(0, KEY_SWITCH, SDLK_TAB);
     KeyBindingGuard bind_shifter(0, KEY_SHIFTER, SDLK_LSHIFT);
-    KeyBindingGuard bind_cheat(0, KEY_CHEAT, SDLK_c);
+    KeyBindingGuard bind_cheat(0, KEY_CHEAT, SDLK_C);
 
     // Create a control walker not present in level_data.oblist.
     PixieData px(1, 1, 1, new unsigned char[1]{0});

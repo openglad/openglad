@@ -4,7 +4,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include "test_input_helpers.h"
 
 #include <string>

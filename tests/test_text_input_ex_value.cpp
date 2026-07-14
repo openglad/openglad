@@ -1,7 +1,7 @@
 #include <openglad/interface/render/text.h>
 #include <openglad/legacy/base.h>
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include "test_input_helpers.h"
 
 #include <optional>
@@ -18,14 +18,14 @@ static int injector_thread_backspace_text_and_return(void* data)
     // Force "first key is backspace" branch (has_typed=0, current_length>0 when begin is non-empty),
     // then type a few characters and commit with Return.
     SDL_Event ev{};
-    ev.type = SDL_KEYDOWN;
-    ev.key.keysym.sym = SDLK_BACKSPACE;
+    ev.type = SDL_EVENT_KEY_DOWN;
+    ev.key.key = SDLK_BACKSPACE;
     SDL_PushEvent(&ev);
 
     SDL_Delay(10);
     ev = SDL_Event{};
-    ev.type = SDL_KEYDOWN;
-    ev.key.keysym.sym = SDLK_LEFT; // deselect whole line path
+    ev.type = SDL_EVENT_KEY_DOWN;
+    ev.key.key = SDLK_LEFT; // deselect whole line path
     SDL_PushEvent(&ev);
 
     SDL_Delay(10);
@@ -33,8 +33,8 @@ static int injector_thread_backspace_text_and_return(void* data)
 
     SDL_Delay(10);
     ev = SDL_Event{};
-    ev.type = SDL_KEYDOWN;
-    ev.key.keysym.sym = SDLK_RETURN;
+    ev.type = SDL_EVENT_KEY_DOWN;
+    ev.key.key = SDLK_RETURN;
     SDL_PushEvent(&ev);
     return 0;
 }
@@ -45,8 +45,8 @@ static int injector_thread_escape(void* data)
     (void)data;
     SDL_Delay(50);
     SDL_Event ev{};
-    ev.type = SDL_KEYDOWN;
-    ev.key.keysym.sym = SDLK_ESCAPE;
+    ev.type = SDL_EVENT_KEY_DOWN;
+    ev.key.key = SDLK_ESCAPE;
     SDL_PushEvent(&ev);
     return 0;
 }

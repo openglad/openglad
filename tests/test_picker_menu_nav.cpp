@@ -1,7 +1,7 @@
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include <chrono>
 #include <thread>

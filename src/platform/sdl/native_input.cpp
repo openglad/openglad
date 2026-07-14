@@ -1,6 +1,6 @@
 #include <openglad/interface/native_input.h>
 
-#include "SDL.h"
+#include <SDL3/SDL.h>
 
 #include <cstring>
 
@@ -13,21 +13,21 @@ EventType map_event_type(Uint32 type)
     switch (type)
     {
     case SDL_WINDOWEVENT: return EventType::Window;
-    case SDL_TEXTINPUT: return EventType::TextInput;
-    case SDL_MOUSEWHEEL: return EventType::MouseWheel;
-    case SDL_FINGERMOTION: return EventType::FingerMotion;
-    case SDL_FINGERUP: return EventType::FingerUp;
-    case SDL_FINGERDOWN: return EventType::FingerDown;
-    case SDL_KEYDOWN: return EventType::KeyDown;
-    case SDL_KEYUP: return EventType::KeyUp;
-    case SDL_MOUSEMOTION: return EventType::MouseMotion;
-    case SDL_MOUSEBUTTONUP: return EventType::MouseButtonUp;
-    case SDL_MOUSEBUTTONDOWN: return EventType::MouseButtonDown;
-    case SDL_JOYAXISMOTION: return EventType::JoyAxisMotion;
-    case SDL_JOYHATMOTION: return EventType::JoyHatMotion;
-    case SDL_JOYBUTTONDOWN: return EventType::JoyButtonDown;
-    case SDL_JOYBUTTONUP: return EventType::JoyButtonUp;
-    case SDL_QUIT: return EventType::Quit;
+    case SDL_EVENT_TEXT_INPUT: return EventType::TextInput;
+    case SDL_EVENT_MOUSE_WHEEL: return EventType::MouseWheel;
+    case SDL_EVENT_FINGER_MOTION: return EventType::FingerMotion;
+    case SDL_EVENT_FINGER_UP: return EventType::FingerUp;
+    case SDL_EVENT_FINGER_DOWN: return EventType::FingerDown;
+    case SDL_EVENT_KEY_DOWN: return EventType::KeyDown;
+    case SDL_EVENT_KEY_UP: return EventType::KeyUp;
+    case SDL_EVENT_MOUSE_MOTION: return EventType::MouseMotion;
+    case SDL_EVENT_MOUSE_BUTTON_UP: return EventType::MouseButtonUp;
+    case SDL_EVENT_MOUSE_BUTTON_DOWN: return EventType::MouseButtonDown;
+    case SDL_EVENT_JOYSTICK_AXIS_MOTION: return EventType::JoyAxisMotion;
+    case SDL_EVENT_JOYSTICK_HAT_MOTION: return EventType::JoyHatMotion;
+    case SDL_EVENT_JOYSTICK_BUTTON_DOWN: return EventType::JoyButtonDown;
+    case SDL_EVENT_JOYSTICK_BUTTON_UP: return EventType::JoyButtonUp;
+    case SDL_EVENT_QUIT: return EventType::Quit;
     default: return EventType::Unknown;
     }
 }
@@ -36,10 +36,10 @@ WindowEventType map_window_event(Uint8 event)
 {
     switch (event)
     {
-    case SDL_WINDOWEVENT_MINIMIZED: return WindowEventType::Minimized;
-    case SDL_WINDOWEVENT_CLOSE: return WindowEventType::Close;
-    case SDL_WINDOWEVENT_RESTORED: return WindowEventType::Restored;
-    case SDL_WINDOWEVENT_RESIZED: return WindowEventType::Resized;
+    case SDL_EVENT_WINDOW_MINIMIZED: return WindowEventType::Minimized;
+    case SDL_EVENT_WINDOW_CLOSE_REQUESTED: return WindowEventType::Close;
+    case SDL_EVENT_WINDOW_RESTORED: return WindowEventType::Restored;
+    case SDL_EVENT_WINDOW_RESIZED: return WindowEventType::Resized;
     default: return WindowEventType::Unknown;
     }
 }
@@ -57,53 +57,53 @@ bool decode_event(const void* native_event, EventData& out)
 
     switch (e.type)
     {
-    case SDL_KEYDOWN:
-    case SDL_KEYUP:
-        out.key_sym = e.key.keysym.sym;
+    case SDL_EVENT_KEY_DOWN:
+    case SDL_EVENT_KEY_UP:
+        out.key_sym = e.key.key;
         // Some synthetic events only initialize keycode; derive scancode from
         // keycode to avoid loading a potentially invalid enum payload.
         out.key_scancode = static_cast<int>(SDL_GetScancodeFromKey(out.key_sym));
-        out.key_mod = e.key.keysym.mod;
+        out.key_mod = e.key.mod;
         out.key_repeat = e.key.repeat != 0;
         break;
-    case SDL_TEXTINPUT:
+    case SDL_EVENT_TEXT_INPUT:
         std::memcpy(out.text.data(), e.text.text, out.text.size());
         break;
-    case SDL_MOUSEWHEEL:
+    case SDL_EVENT_MOUSE_WHEEL:
         out.wheel_y = e.wheel.y;
         break;
-    case SDL_MOUSEMOTION:
+    case SDL_EVENT_MOUSE_MOTION:
         out.motion_x = e.motion.x;
         out.motion_y = e.motion.y;
         out.motion_dx = e.motion.xrel;
         out.motion_dy = e.motion.yrel;
         break;
-    case SDL_MOUSEBUTTONUP:
-    case SDL_MOUSEBUTTONDOWN:
+    case SDL_EVENT_MOUSE_BUTTON_UP:
+    case SDL_EVENT_MOUSE_BUTTON_DOWN:
         out.button = e.button.button;
         out.button_x = e.button.x;
         out.button_y = e.button.y;
         break;
-    case SDL_FINGERMOTION:
-    case SDL_FINGERUP:
-    case SDL_FINGERDOWN:
+    case SDL_EVENT_FINGER_MOTION:
+    case SDL_EVENT_FINGER_UP:
+    case SDL_EVENT_FINGER_DOWN:
         out.finger_x = e.tfinger.x;
         out.finger_y = e.tfinger.y;
         out.finger_dx = e.tfinger.dx;
         out.finger_dy = e.tfinger.dy;
-        out.finger_id = static_cast<std::int64_t>(e.tfinger.fingerId);
+        out.finger_id = static_cast<std::int64_t>(e.tfinger.fingerID);
         break;
-    case SDL_JOYAXISMOTION:
+    case SDL_EVENT_JOYSTICK_AXIS_MOTION:
         out.joy_axis_which = e.jaxis.which;
         out.joy_axis_axis = e.jaxis.axis;
         out.joy_axis_value = e.jaxis.value;
         break;
-    case SDL_JOYBUTTONDOWN:
-    case SDL_JOYBUTTONUP:
+    case SDL_EVENT_JOYSTICK_BUTTON_DOWN:
+    case SDL_EVENT_JOYSTICK_BUTTON_UP:
         out.joy_button_which = e.jbutton.which;
         out.joy_button_button = e.jbutton.button;
         break;
-    case SDL_JOYHATMOTION:
+    case SDL_EVENT_JOYSTICK_HAT_MOTION:
         out.joy_hat_which = e.jhat.which;
         out.joy_hat_hat = e.jhat.hat;
         out.joy_hat_value = e.jhat.value;
@@ -113,7 +113,7 @@ bool decode_event(const void* native_event, EventData& out)
         out.window_data1 = e.window.data1;
         out.window_data2 = e.window.data2;
         break;
-    case SDL_USEREVENT:
+    case SDL_EVENT_USER:
         out.user_code = e.user.code;
         // intptr_t is defined to round-trip a void* losslessly; this is the
         // canonical, portable idiom (std::bit_cast needs a newer libc++ than the
@@ -146,11 +146,11 @@ const void* make_test_keydown_event(int keycode, int scancode)
 {
     static thread_local SDL_Event event;
     std::memset(&event, 0, sizeof(event));
-    event.type = SDL_KEYDOWN;
+    event.type = SDL_EVENT_KEY_DOWN;
     event.key.repeat = 0;
-    event.key.keysym.sym = keycode;
-    event.key.keysym.mod = 0;
-    event.key.keysym.scancode = static_cast<SDL_Scancode>(scancode);
+    event.key.key = keycode;
+    event.key.mod = 0;
+    event.key.scancode = static_cast<SDL_Scancode>(scancode);
     return &event;
 }
 
@@ -158,11 +158,11 @@ void push_key_event(bool down, int keycode)
 {
     SDL_Event event;
     std::memset(&event, 0, sizeof(event));
-    event.type = down ? SDL_KEYDOWN : SDL_KEYUP;
+    event.type = down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
     event.key.repeat = 0;
-    event.key.keysym.sym = keycode;
-    event.key.keysym.mod = 0;
-    event.key.keysym.scancode = SDL_GetScancodeFromKey(keycode);
+    event.key.key = keycode;
+    event.key.mod = 0;
+    event.key.scancode = SDL_GetScancodeFromKey(keycode);
     SDL_PushEvent(&event);
 }
 
@@ -173,9 +173,9 @@ void push_touch_event(EventType type, float x, float y, float dx, float dy, std:
 
     switch (type)
     {
-    case EventType::FingerMotion: event.type = SDL_FINGERMOTION; break;
-    case EventType::FingerUp: event.type = SDL_FINGERUP; break;
-    case EventType::FingerDown: event.type = SDL_FINGERDOWN; break;
+    case EventType::FingerMotion: event.type = SDL_EVENT_FINGER_MOTION; break;
+    case EventType::FingerUp: event.type = SDL_EVENT_FINGER_UP; break;
+    case EventType::FingerDown: event.type = SDL_EVENT_FINGER_DOWN; break;
     default: return;
     }
 
@@ -183,8 +183,8 @@ void push_touch_event(EventType type, float x, float y, float dx, float dy, std:
     event.tfinger.y = y;
     event.tfinger.dx = dx;
     event.tfinger.dy = dy;
-    event.tfinger.touchId = 1;
-    event.tfinger.fingerId = static_cast<SDL_FingerID>(finger_id);
+    event.tfinger.touchID = 1;
+    event.tfinger.fingerID = static_cast<SDL_FingerID>(finger_id);
     SDL_PushEvent(&event);
 }
 
@@ -192,7 +192,7 @@ void push_mouse_button_event(bool down, int button, int x, int y)
 {
     SDL_Event event;
     std::memset(&event, 0, sizeof(event));
-    event.type = down ? SDL_MOUSEBUTTONDOWN : SDL_MOUSEBUTTONUP;
+    event.type = down ? SDL_EVENT_MOUSE_BUTTON_DOWN : SDL_EVENT_MOUSE_BUTTON_UP;
     event.button.button = static_cast<Uint8>(button);
     event.button.x = x;
     event.button.y = y;
@@ -231,32 +231,32 @@ JoystickHandle joystick_open(int index)
 
 int joystick_num_axes(JoystickHandle joystick)
 {
-    return SDL_JoystickNumAxes(static_cast<SDL_Joystick*>(joystick));
+    return SDL_GetNumJoystickAxes(static_cast<SDL_Joystick*>(joystick));
 }
 
 int joystick_num_buttons(JoystickHandle joystick)
 {
-    return SDL_JoystickNumButtons(static_cast<SDL_Joystick*>(joystick));
+    return SDL_GetNumJoystickButtons(static_cast<SDL_Joystick*>(joystick));
 }
 
 int joystick_num_hats(JoystickHandle joystick)
 {
-    return SDL_JoystickNumHats(static_cast<SDL_Joystick*>(joystick));
+    return SDL_GetNumJoystickHats(static_cast<SDL_Joystick*>(joystick));
 }
 
 int joystick_get_axis(JoystickHandle joystick, int axis)
 {
-    return SDL_JoystickGetAxis(static_cast<SDL_Joystick*>(joystick), axis);
+    return SDL_GetJoystickAxis(static_cast<SDL_Joystick*>(joystick), axis);
 }
 
 int joystick_get_button(JoystickHandle joystick, int button)
 {
-    return SDL_JoystickGetButton(static_cast<SDL_Joystick*>(joystick), button);
+    return SDL_GetJoystickButton(static_cast<SDL_Joystick*>(joystick), button);
 }
 
 int joystick_get_hat(JoystickHandle joystick, int hat)
 {
-    return SDL_JoystickGetHat(static_cast<SDL_Joystick*>(joystick), hat);
+    return SDL_GetJoystickHat(static_cast<SDL_Joystick*>(joystick), hat);
 }
 
 void joystick_set_event_state(bool enabled)

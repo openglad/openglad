@@ -29,7 +29,7 @@
  */
 #include <gtest/gtest.h>
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include <openglad/core/constants.h>
 #include <openglad/core/test_trace.h>

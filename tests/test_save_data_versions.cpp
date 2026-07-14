@@ -11,20 +11,20 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/guy.h>
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
-static void rw_write(SDL_RWops* out, const void* data, size_t len)
+static void rw_write(SDL_IOStream* out, const void* data, size_t len)
 {
     SDL_RWwrite(out, data, 1, len);
 }
 
 template <typename T>
-static void rw_write_val(SDL_RWops* out, const T& v)
+static void rw_write_val(SDL_IOStream* out, const T& v)
 {
     SDL_RWwrite(out, &v, sizeof(T), 1);
 }
 
-static void rw_write_padded(SDL_RWops* out, const std::string& s, size_t len)
+static void rw_write_padded(SDL_IOStream* out, const std::string& s, size_t len)
 {
     std::string tmp = s;
     tmp.resize(len, '\0');
@@ -46,7 +46,7 @@ struct GuyRecord
     short teamnum = 1;
 };
 
-static void write_guy(SDL_RWops* out, const GuyRecord& g)
+static void write_guy(SDL_IOStream* out, const GuyRecord& g)
 {
     rw_write_val(out, g.order);
     rw_write_val(out, g.family);
@@ -100,7 +100,7 @@ static void write_save_file(const std::string& filename_no_ext,
                             uint32_t tower_run_seed = 0)
 {
     std::string fname = filename_no_ext + ".gtl";
-    SDL_RWops* out = open_write_file("save/", fname.c_str());
+    SDL_IOStream* out = open_write_file("save/", fname.c_str());
     ASSERT_TRUE(out != nullptr) << "open_write_file for save";
 
     // Header + version
@@ -220,17 +220,17 @@ static void write_save_file(const std::string& filename_no_ext,
         rw_write_val(out, seed_hi);
     }
 
-    SDL_RWclose(out);
+    SDL_CloseIO(out);
 }
 
 TEST(SaveDataVersions, save_data_load_rejects_bad_header)
 {
-    SDL_RWops* out = open_write_file("save/", "bad_header.gtl");
+    SDL_IOStream* out = open_write_file("save/", "bad_header.gtl");
     ASSERT_TRUE(out != nullptr) << "open_write_file bad header";
     rw_write(out, "BAD", 3);
     char v = 9;
     rw_write_val(out, v);
-    SDL_RWclose(out);
+    SDL_CloseIO(out);
 
     SaveData tmp;
     ASSERT_TRUE(!tmp.load("bad_header")) << "bad header should fail load";
@@ -480,13 +480,13 @@ TEST(SaveDataVersions, save_data_v11_roundtrip_preserves_strip_flag_and_version_
         << "v11 writer should succeed";
 
     // The writer must stamp version 13 in the GTL header.
-    SDL_RWops* in = open_read_file("save/", "typed_save_strip_roundtrip.gtl");
+    SDL_IOStream* in = open_read_file("save/", "typed_save_strip_roundtrip.gtl");
     ASSERT_TRUE(in != nullptr) << "saved file should be readable";
     char header[3] = {};
     unsigned char version_byte = 0;
     SDL_RWread(in, header, 1, 3);
     SDL_RWread(in, &version_byte, 1, 1);
-    SDL_RWclose(in);
+    SDL_CloseIO(in);
     ASSERT_EQ(0, std::memcmp(header, "GTL", 3)) << "GTL header expected";
     ASSERT_EQ(13, (int)version_byte) << "writer should stamp version 13";
 
@@ -675,13 +675,13 @@ TEST(SaveDataVersions, save_data_v13_roundtrip_preserves_tower_fields)
         << "v13 writer should succeed";
 
     // The writer must stamp version 13 in the GTL header.
-    SDL_RWops* in = open_read_file("save/", "typed_save_tower_roundtrip.gtl");
+    SDL_IOStream* in = open_read_file("save/", "typed_save_tower_roundtrip.gtl");
     ASSERT_TRUE(in != nullptr) << "saved file should be readable";
     char header[3] = {};
     unsigned char version_byte = 0;
     SDL_RWread(in, header, 1, 3);
     SDL_RWread(in, &version_byte, 1, 1);
-    SDL_RWclose(in);
+    SDL_CloseIO(in);
     ASSERT_EQ(0, std::memcmp(header, "GTL", 3)) << "GTL header expected";
     ASSERT_EQ(13, (int)version_byte) << "writer should stamp version 13";
 
@@ -698,7 +698,7 @@ TEST(SaveDataVersions, save_data_v13_roundtrip_preserves_tower_fields)
 
 TEST(SaveDataVersions, save_data_load_non_nul_terminated_save_name_is_bounded)
 {
-    SDL_RWops* out = open_write_file("save/", "ver9_non_nul_name.gtl");
+    SDL_IOStream* out = open_write_file("save/", "ver9_non_nul_name.gtl");
     ASSERT_TRUE(out != nullptr) << "open_write_file non-nul save-name";
     if (!out)
         return;
@@ -746,7 +746,7 @@ TEST(SaveDataVersions, save_data_load_non_nul_terminated_save_name_is_bounded)
     rw_write_val(out, cur_level);
     rw_write_val(out, num_levels);
 
-    SDL_RWclose(out);
+    SDL_CloseIO(out);
 
     SaveData tmp;
     ASSERT_TRUE(tmp.load("ver9_non_nul_name")) << "v9 load with non-nul save-name should succeed";
@@ -757,13 +757,13 @@ TEST(SaveDataVersions, save_data_load_non_nul_terminated_save_name_is_bounded)
 
 TEST(SaveDataVersions, save_data_load_with_error_truncated_file_reports_read_failed)
 {
-    SDL_RWops* out = open_write_file("save/", "truncated_read_fail.gtl");
+    SDL_IOStream* out = open_write_file("save/", "truncated_read_fail.gtl");
     ASSERT_TRUE(out != nullptr) << "open_write_file truncated save";
     // Valid header + version, then truncate before required fields.
     rw_write(out, "GTL", 3);
     char version = 9;
     rw_write_val(out, version);
-    SDL_RWclose(out);
+    SDL_CloseIO(out);
 
     SaveData tmp;
     SaveDataIoError err = tmp.load_with_error("truncated_read_fail");
@@ -942,14 +942,14 @@ TEST(SaveDataVersions, save_data_update_guys_copies_only_live_entries_with_myguy
 
 TEST(SaveDataVersions, save_data_unsupported_version_and_campaign_helper_branches)
 {
-    SDL_RWops* out = open_write_file("save/", "unsupported_ver0.gtl");
+    SDL_IOStream* out = open_write_file("save/", "unsupported_ver0.gtl");
     ASSERT_TRUE(out != nullptr) << "open_write_file unsupported version";
     if (!out)
         return;
     rw_write(out, "GTL", 3);
     unsigned char version0 = 0;
     rw_write_val(out, version0);
-    SDL_RWclose(out);
+    SDL_CloseIO(out);
 
     SaveData tmp;
     ASSERT_EQ(static_cast<int>(SaveDataIoError::UnsupportedVersion), static_cast<int>(tmp.load_with_error("unsupported_ver0"))) << "version 0 save should report UnsupportedVersion";

@@ -5,7 +5,7 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/legacy/base.h>
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include <array>
 #include <cstring>

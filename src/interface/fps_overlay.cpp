@@ -4,7 +4,7 @@
 #include <openglad/interface/render/text.h>
 #include <openglad/interface/screen.h>
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include <algorithm>
 #include <array>

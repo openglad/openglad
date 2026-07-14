@@ -8,7 +8,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/platform/game_context.h>
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include <list>
 #include <memory>
@@ -205,9 +205,9 @@ TEST(ViewInputPaths, view_input_yell_and_shift_yell_team_actions)
     TeamListSwap swap;
     disablePlayerJoystick(0);
 
-    KeyBindingGuard bind_yell(0, KEY_YELL, SDLK_y);
+    KeyBindingGuard bind_yell(0, KEY_YELL, SDLK_Y);
     KeyBindingGuard bind_shifter(0, KEY_SHIFTER, SDLK_LSHIFT);
-    KeyBindingGuard bind_cheat(0, KEY_CHEAT, SDLK_c);
+    KeyBindingGuard bind_cheat(0, KEY_CHEAT, SDLK_C);
     KeyStateGuard ks;
 
     viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
@@ -258,7 +258,7 @@ TEST(ViewInputPaths, view_input_cheat_mode_switch_team_kill_and_level_keys)
     disablePlayerJoystick(0);
 
     KeyBindingGuard bind_switch(0, KEY_SWITCH, SDLK_TAB);
-    KeyBindingGuard bind_cheat(0, KEY_CHEAT, SDLK_c);
+    KeyBindingGuard bind_cheat(0, KEY_CHEAT, SDLK_C);
     KeyStateGuard ks;
 
     viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
@@ -286,16 +286,16 @@ TEST(ViewInputPaths, view_input_cheat_mode_switch_team_kill_and_level_keys)
 
     // Hold cheat key so cheat branch executes.
     // input() now reads from ctx().input, so populate it.
-    ks.set(SDLK_c, true);
+    ks.set(SDLK_C, true);
     ctx().input.players[0].held[static_cast<int>(InputAction::Cheat)] = true;
     ctx().input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
 
     SDL_Event e{};
-    e.type = SDL_KEYDOWN;
+    e.type = SDL_EVENT_KEY_DOWN;
     e.key.repeat = 0;
 
     // Cheat+switch: rotate to next team that has a living unit.
-    e.key.keysym.sym = SDLK_TAB;
+    e.key.key = SDLK_TAB;
     v->input(e);
     ASSERT_TRUE(v->control != nullptr) << "control should remain valid after cheat-switch";
 
@@ -304,56 +304,56 @@ TEST(ViewInputPaths, view_input_cheat_mode_switch_team_kill_and_level_keys)
 
     // Cheat+F12: eliminate enemy living units.
     enemyp->stats()->set_hitpoints(25);
-    e.key.keysym.sym = SDLK_F12;
+    e.key.key = SDLK_F12;
     v->input(e);
     ASSERT_TRUE(v->control != nullptr) << "cheat F12 path should keep control valid";
 
     // Cheat level tuning keys.
     const int level_before = v->control->stats()->level();
-    e.key.keysym.sym = SDLK_RIGHTBRACKET;
+    e.key.key = SDLK_RIGHTBRACKET;
     v->input(e);
     ASSERT_TRUE(v->control->stats()->level() >= level_before) << "right bracket should not lower level";
 
-    e.key.keysym.sym = SDLK_LEFTBRACKET;
+    e.key.key = SDLK_LEFTBRACKET;
     v->input(e);
     ASSERT_TRUE(v->control->stats()->level() >= 1) << "left bracket should keep level >= 1";
 
     // Extra cheat keys for additional input branches.
     const int freeze_before = og::runtime::current_session->myscreen_->world().enemy_freeze;
-    e.key.keysym.sym = SDLK_F1;
+    e.key.key = SDLK_F1;
     v->input(e);
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world().enemy_freeze >= freeze_before + 50) << "F1 should increase enemy freeze time";
 
     const size_t ob_count_before = og::runtime::current_session->myscreen_->world().oblist.size();
-    e.key.keysym.sym = SDLK_F2;
+    e.key.key = SDLK_F2;
     v->input(e);
     ASSERT_TRUE(og::runtime::current_session->myscreen_->world().oblist.size() >= ob_count_before) << "F2 should keep oblist valid";
 
     const bool flying_before = v->control->stats()->query_bit_flags(BIT_FLYING) != 0;
-    e.key.keysym.sym = SDLK_f;
+    e.key.key = SDLK_F;
     v->input(e);
     ASSERT_TRUE((v->control->stats()->query_bit_flags(BIT_FLYING) != 0) != flying_before) << "f key should toggle flying bit";
 
     const float hp_before = v->control->stats()->hitpoints();
-    e.key.keysym.sym = SDLK_h;
+    e.key.key = SDLK_H;
     v->input(e);
     ASSERT_TRUE(v->control->stats()->hitpoints() >= hp_before + 100.0f) << "h key should increase hitpoints";
 
     const bool inv_before = v->control->stats()->query_bit_flags(BIT_INVINCIBLE) != 0;
-    e.key.keysym.sym = SDLK_i;
+    e.key.key = SDLK_I;
     v->input(e);
     ASSERT_TRUE((v->control->stats()->query_bit_flags(BIT_INVINCIBLE) != 0) != inv_before) << "i key should toggle invincible bit";
 
     const float mp_before = v->control->stats()->magicpoints();
-    e.key.keysym.sym = SDLK_m;
+    e.key.key = SDLK_M;
     v->input(e);
     ASSERT_TRUE(v->control->stats()->magicpoints() >= mp_before + 150.0f) << "m key should increase magicpoints";
 
     const int speed_bonus_before = v->control->speed_bonus_left();
-    e.key.keysym.sym = SDLK_s;
+    e.key.key = SDLK_S;
     v->input(e);
     ASSERT_TRUE(v->control->speed_bonus_left() >= speed_bonus_before + 20) << "s key should increase speed bonus";
 
-    ks.set(SDLK_c, false);
+    ks.set(SDLK_C, false);
     ctx().input.players[0].held[static_cast<int>(InputAction::Cheat)] = false;
 }

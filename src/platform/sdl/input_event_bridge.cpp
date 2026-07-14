@@ -13,7 +13,7 @@
 #include <openglad/resources/io.h>
 #include <openglad/legacy/base.h>
 #include <openglad/platform/sai2x.h>
-#include "SDL.h"
+#include <SDL3/SDL.h>
 
 static inline screen* active_screen()
 {
@@ -51,23 +51,23 @@ void handle_window_event(const void* native_event)
 
     switch(event.window.event)
     {
-        case SDL_WINDOWEVENT_MINIMIZED:
+        case SDL_EVENT_WINDOW_MINIMIZED:
             // Save state here on Android
             if(screen* s = active_screen())
                 autosave_active_screen(*s, "minimized");
             break;
-        case SDL_WINDOWEVENT_CLOSE:
+        case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
             // Save state here on Android
             if(screen* s = active_screen())
                 autosave_active_screen(*s, "close");
             break;
-        case SDL_WINDOWEVENT_RESTORED:
+        case SDL_EVENT_WINDOW_RESTORED:
             // Restore state here on Android.
             // Redraw the screen so it's not blank
             if(screen* s = active_screen())
                 s->refresh();
             break;
-        case SDL_WINDOWEVENT_RESIZED:
+        case SDL_EVENT_WINDOW_RESIZED:
             og::runtime::current_session->window_w_ = static_cast<float>(event.window.data1);
             og::runtime::current_session->window_h_ = static_cast<float>(event.window.data2);
             update_overscan_setting();
@@ -102,26 +102,26 @@ void handle_key_event(const void* native_event)
 
     switch (event.type)
     {
-    case SDL_KEYDOWN:
+    case SDL_EVENT_KEY_DOWN:
         #ifdef USE_TOUCH_INPUT
         // Back button faking Escape key
-        if(event.key.keysym.scancode == SDL_SCANCODE_AC_BACK)
+        if(event.key.scancode == SDL_SCANCODE_AC_BACK)
         {
             sendFakeKeyDownEvent(SDLK_ESCAPE);
             break;
         }
         #endif
-        og::runtime::current_session->raw_key_ = event.key.keysym.sym;
+        og::runtime::current_session->raw_key_ = event.key.key;
         if(og::runtime::current_session->raw_key_ == SDLK_ESCAPE)
             og::runtime::current_session->input_continue_ = true;
         og::runtime::current_session->key_press_event_ = 1;
 
-        if(event.key.keysym.sym == SDLK_F10)
+        if(event.key.key == SDLK_F10)
         {
             if(screen* s = active_screen())
                 s->save_screenshot();
         }
-        else if(event.key.keysym.sym == SDLK_F12 && event.key.keysym.mod & KMOD_CTRL)
+        else if(event.key.key == SDLK_F12 && event.key.mod & SDL_KMOD_CTRL)
         {
             restore_default_settings();
             cfg.load_settings();
@@ -131,10 +131,10 @@ void handle_key_event(const void* native_event)
             update_overscan_setting();
         }
         break;
-    case SDL_KEYUP:
+    case SDL_EVENT_KEY_UP:
         #ifdef USE_TOUCH_INPUT
         // Back button faking Escape key
-        if(event.key.keysym.scancode == SDL_SCANCODE_AC_BACK)
+        if(event.key.scancode == SDL_SCANCODE_AC_BACK)
         {
             sendFakeKeyUpEvent(SDLK_ESCAPE);
             break;

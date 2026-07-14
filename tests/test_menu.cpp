@@ -1,4 +1,4 @@
-#include "SDL.h"
+#include <SDL3/SDL.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/core/test_trace.h>
 #include <gtest/gtest.h>
@@ -31,8 +31,8 @@ static Sint32 passthrough_cb(Sint32 arg)
 static void push_mouse_motion_game_coords(int game_x, int game_y)
 {
     SDL_Event event{};
-    event.type = SDL_MOUSEMOTION;
-    event.motion.type = SDL_MOUSEMOTION;
+    event.type = SDL_EVENT_MOUSE_MOTION;
+    event.motion.type = SDL_EVENT_MOUSE_MOTION;
     event.motion.x = static_cast<int>(og::runtime::current_session->viewport_offset_x_ + (static_cast<float>(game_x) * og::runtime::current_session->viewport_w_ / 320.0f));
     event.motion.y = static_cast<int>(og::runtime::current_session->viewport_offset_y_ + (static_cast<float>(game_y) * og::runtime::current_session->viewport_h_ / 200.0f));
     SDL_PushEvent(&event);
@@ -41,9 +41,9 @@ static void push_mouse_motion_game_coords(int game_x, int game_y)
 TEST(Menu, mainmenu_buttons) {
     // Create a simple button array using the button struct constructor
     button test_buttons[3] = {
-        button("begin", "BEGIN",   SDLK_b, 80, 60,  80, 20, 0, 0, MenuNav{}),
-        button("options", "OPTIONS", SDLK_o, 80, 90,  80, 20, 0, 0, MenuNav{}),
-        button("quit", "QUIT",    SDLK_q, 80, 120, 80, 20, 0, 0, MenuNav{}),
+        button("begin", "BEGIN",   SDLK_B, 80, 60,  80, 20, 0, 0, MenuNav{}),
+        button("options", "OPTIONS", SDLK_O, 80, 90,  80, 20, 0, 0, MenuNav{}),
+        button("quit", "QUIT",    SDLK_Q, 80, 120, 80, 20, 0, 0, MenuNav{}),
     };
 
     trace_clear();
@@ -107,7 +107,7 @@ TEST(Menu, button_misc_paths)
 
     int numkeys = 0;
     Uint8* keys = const_cast<Uint8*>(SDL_GetKeyboardState(&numkeys));
-    SDL_Scancode q = SDL_GetScancodeFromKey(SDLK_q);
+    SDL_Scancode q = SDL_GetScancodeFromKey(SDLK_Q);
     ASSERT_TRUE(q >= 0 && q < numkeys) << "q scancode should be valid";
     keys[q] = 1;
     SDL_Thread* releaser = SDL_CreateThread(release_scancode_after_delay, "release_q_for_button", &q);
@@ -129,7 +129,7 @@ TEST(Menu, button_misc_paths)
 TEST(Menu, hover_highlight_draws_without_click_and_persists)
 {
     button test_buttons[1] = {
-        button("hover", "HOVER", SDLK_h, 10, 10, 30, 10, 0, 0, MenuNav{}),
+        button("hover", "HOVER", SDLK_H, 10, 10, 30, 10, 0, 0, MenuNav{}),
     };
 
     vbutton* local_btns = init_buttons(test_buttons, 1);

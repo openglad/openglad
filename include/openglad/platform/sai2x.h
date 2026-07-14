@@ -1,6 +1,6 @@
 #pragma once
 
-#include "SDL.h"
+#include <SDL3/SDL.h>
 #include <openglad/interface/render/video.h> // CanvasTarget, kUiCanvasW/H
 #include <openglad/platform/scale_mode.h>    // WorldScaleSetting (cfg graphics/scale)
 #include <memory>

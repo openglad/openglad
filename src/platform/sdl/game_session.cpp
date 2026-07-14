@@ -26,7 +26,7 @@
 #include <openglad/interface/platform_bridge.h>
 #include <openglad/interface/ui/picker_lobby_network_client.h>
 #include <openglad/platform/picker_lobby_network_runtime.h>
-#include "SDL.h"
+#include <SDL3/SDL.h>
 
 // Defined in view.cpp — loads allkeys from defaults + keyprefs.dat.
 void init_allkeys(int allkeys[][16]);
@@ -258,7 +258,7 @@ GameSession::~GameSession()
     seeded_rng_.reset();
 
     if (session_surface_) {
-        SDL_FreeSurface(session_surface_);
+        SDL_DestroySurface(session_surface_);
         session_surface_ = nullptr;
     }
 }

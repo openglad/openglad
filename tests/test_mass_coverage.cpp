@@ -17,7 +17,7 @@
 #include <openglad/resources/gparser.h>
 
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include <array>
 #include <cstddef>
@@ -494,7 +494,7 @@ TEST(MassCoverage, video_putbuffer_surface) {
     SDL_Surface* surf = SDL_CreateRGBSurface(SDL_SWSURFACE, 8, 8, 32, 0, 0, 0, 0);
     ASSERT_TRUE(surf != nullptr) << "surface alloc";
     og::runtime::current_session->myscreen_->putbuffer_surface(5, 5, 8, 8, 0, 0, 320, 200, surf);
-    SDL_FreeSurface(surf);
+    SDL_DestroySurface(surf);
 }
 
 TEST(MassCoverage, video_walkputbuffer) {
@@ -543,7 +543,7 @@ TEST(MassCoverage, video_fade_between24) {
     std::array<Uint8, 4 * 4 * 4> from{};
     std::array<Uint8, 4 * 4 * 4> to{};
     og::runtime::current_session->myscreen_->fade_between24(s, from.data(), to.data(), 10);
-    SDL_FreeSurface(s);
+    SDL_DestroySurface(s);
 }
 
 TEST(MassCoverage, video_fade_between) {
@@ -552,9 +552,9 @@ TEST(MassCoverage, video_fade_between) {
     SDL_Surface* d = SDL_CreateRGBSurface(SDL_SWSURFACE, 4, 4, 32, 0, 0, 0, 0);
     ASSERT_TRUE(a && b && d) << "surfaces alloc";
     (void)og::runtime::current_session->myscreen_->fade_between(a, b, d);
-    SDL_FreeSurface(a);
-    SDL_FreeSurface(b);
-    SDL_FreeSurface(d);
+    SDL_DestroySurface(a);
+    SDL_DestroySurface(b);
+    SDL_DestroySurface(d);
 }
 
 TEST(MassCoverage, video_fadeblack) { (void)og::runtime::current_session->myscreen_->fadeblack(true); }

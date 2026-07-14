@@ -1,6 +1,6 @@
 #include <openglad/resources/io.h>
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include <cstdint>
 #include <cstdio>
@@ -81,11 +81,11 @@ TEST(IoZipUnzip, io_open_read_file_prefers_cwd_fallback)
     std::string fname = std::string("io_tmp_") + std::to_string(::getpid()) + ".txt";
     ASSERT_TRUE(write_file_bytes(fname, "cwd")) << "write temp file in cwd";
 
-    SDL_RWops* rw = open_read_file(fname.c_str(), true);
+    SDL_IOStream* rw = open_read_file(fname.c_str(), true);
     ASSERT_TRUE(rw != nullptr) << "open_read_file should open cwd file";
     char buf[8] = {0};
     size_t got = SDL_RWread(rw, buf, 1, 3);
-    SDL_RWclose(rw);
+    SDL_CloseIO(rw);
     ASSERT_EQ(3, (int)got) << "should read 3 bytes";
     ASSERT_STREQ("cwd", buf) << "contents should match";
 

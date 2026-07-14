@@ -47,8 +47,8 @@ bool write_pixie_png(const char* filepath, const PixieData& data);
 #endif
 
 namespace og::io {
-SDL_RWops* physfsrw_open_read(const char* path);
-SDL_RWops* physfsrw_open_write(const char* path);
+SDL_IOStream* physfsrw_open_read(const char* path);
+SDL_IOStream* physfsrw_open_write(const char* path);
 } // namespace og::io
 
 // remove_file_or_log, explode, list_files, campaign mount/unmount/list,
@@ -72,7 +72,7 @@ SDL_RWops* physfsrw_open_write(const char* path);
 /*
 File I/O strategy:
 PhysicsFS is set up to look in the scen, pix, and sound directories and in the current scenario package (campaign).
-SDL_RWops is used to access the data in the files retrieved from PhysFS.
+SDL_IOStream is used to access the data in the files retrieved from PhysFS.
 
 Scenario packages are stored in the user directory so more can be installed, etc.
 The default pix and sound assets are installed with the rest of the program, presumably without write access.
@@ -81,7 +81,7 @@ The default pix and sound assets are installed with the rest of the program, pre
 
 int rwops_read_handler(void *data, unsigned char *buffer, size_t size, size_t *size_read)
 {
-    SDL_RWops *rwops = static_cast<SDL_RWops*>(data);
+    SDL_IOStream *rwops = static_cast<SDL_IOStream*>(data);
 
     *size_read = SDL_RWread(rwops, buffer, 1, size);
     return 1;
@@ -90,7 +90,7 @@ int rwops_read_handler(void *data, unsigned char *buffer, size_t size, size_t *s
 
 int rwops_write_handler(void *data, unsigned char *buffer, size_t size)
 {
-    SDL_RWops *rwops = static_cast<SDL_RWops*>(data);
+    SDL_IOStream *rwops = static_cast<SDL_IOStream*>(data);
 
     SDL_RWwrite(rwops, buffer, 1, size);
     return 1;
@@ -121,7 +121,7 @@ std::string get_user_path()
     // Use IDBFS mount point for persistent storage in browser
     return "/persist/";
 #elif defined(ANDROID)
-    std::string path = SDL_AndroidGetInternalStoragePath();
+    std::string path = SDL_GetAndroidInternalStoragePath();
     return path + "/";
 #elif defined(__IPHONEOS__)
     return "../";
@@ -198,9 +198,9 @@ std::string get_asset_path()
 #endif
 }
 
-	SDL_RWops* open_read_file(const char* file, bool debug)
+	SDL_IOStream* open_read_file(const char* file, bool debug)
 	{
-	    SDL_RWops* rwops = nullptr;
+	    SDL_IOStream* rwops = nullptr;
 	    
 	    if(debug)
 		    Log("Trying via PHYSFS: {}", file);
@@ -210,19 +210,19 @@ std::string get_asset_path()
     // now try opening in the current directory
     if(debug)
 	    Log("Trying to open: {}", file);
-    rwops = SDL_RWFromFile(file, "rb");
+    rwops = SDL_IOFromFile(file, "rb");
     if(rwops != nullptr) return rwops;
 
     // now try opening in the user directory
     if(debug)
 	    Log("Trying to open: {}{}", get_user_path(), file);
-    rwops = SDL_RWFromFile((get_user_path() + std::string("/") + file).c_str(), "rb");
+    rwops = SDL_IOFromFile((get_user_path() + std::string("/") + file).c_str(), "rb");
     if(rwops != nullptr) return rwops;
 
     // now try opening in the asset directory
     if(debug)
 	    Log("Trying to open: {}{}", get_asset_path(), file);
-    rwops = SDL_RWFromFile((get_asset_path() + std::string("/") + file).c_str(), "rb");
+    rwops = SDL_IOFromFile((get_asset_path() + std::string("/") + file).c_str(), "rb");
     if(rwops != nullptr) return rwops;
 
     // File not found - this may be expected (e.g., keyprefs.dat on first run)
@@ -231,20 +231,20 @@ std::string get_asset_path()
     return nullptr;
 }
 
-SDL_RWops* open_read_file(const char* path, const char* file)
+SDL_IOStream* open_read_file(const char* path, const char* file)
 {
     return open_read_file((std::string(path) + file).c_str());
 }
 
-	SDL_RWops* open_write_file(const char* file)
+	SDL_IOStream* open_write_file(const char* file)
 	{
-	    SDL_RWops* rwops = og::io::physfsrw_open_write(file);
+	    SDL_IOStream* rwops = og::io::physfsrw_open_write(file);
 	    if(rwops != nullptr)
 	        return rwops;
-	    return SDL_RWFromFile(file, "wb");
+	    return SDL_IOFromFile(file, "wb");
 	}
 
-SDL_RWops* open_write_file(const char* path, const char* file)
+SDL_IOStream* open_write_file(const char* path, const char* file)
 {
     return open_write_file((std::string(path) + file).c_str());
 }
@@ -345,11 +345,11 @@ void io_init(int argc, char* argv[])
     
     // NOTES!
     // PhysFS cannot grab files from the assets folder because they're actually inside the apk.
-    // SDL_RWops does some magic to figure out a file descriptor from JNI.
+    // SDL_IOStream does some magic to figure out a file descriptor from JNI.
     // This means that I cannot use PhysFS to get any assets at all.
-    // So for simple assets, I need to check PhysFS first, then fall back to SDL_RWops from the assets folder.
+    // So for simple assets, I need to check PhysFS first, then fall back to SDL_IOStream from the assets folder.
     // For campaign packages, I can copy them to the internal storage and they'll live happily there, accessed by PhysFS.
-    // SDL_RWops size checking on Android doesn't seem to work!
+    // SDL_IOStream size checking on Android doesn't seem to work!
     
     // Open up the default campaign
     Log("Mounting default campaign...\n");

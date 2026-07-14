@@ -18,25 +18,25 @@
 #pragma once
 
 // Full platform I/O header (SDL build).
-// Includes SDL-free declarations plus SDL_RWops helpers.
+// Includes SDL-free declarations plus SDL_IOStream helpers.
 
 #include <openglad/resources/io_common.h>
-#include "SDL.h"
+#include <SDL3/SDL.h>
 #include <memory>
 
 struct SDLRWopsCloser {
-    void operator()(SDL_RWops* rwops) const
+    void operator()(SDL_IOStream* rwops) const
     {
         if (rwops != nullptr)
-            SDL_RWclose(rwops);
+            SDL_CloseIO(rwops);
     }
 };
-using RwopsPtr = std::unique_ptr<SDL_RWops, SDLRWopsCloser>;
+using RwopsPtr = std::unique_ptr<SDL_IOStream, SDLRWopsCloser>;
 
-SDL_RWops* open_read_file(const char* file, bool debug = false);
-SDL_RWops* open_read_file(const char* path, const char* file);
-SDL_RWops* open_write_file(const char* file);
-SDL_RWops* open_write_file(const char* path, const char* file);
+SDL_IOStream* open_read_file(const char* file, bool debug = false);
+SDL_IOStream* open_read_file(const char* path, const char* file);
+SDL_IOStream* open_write_file(const char* file);
+SDL_IOStream* open_write_file(const char* path, const char* file);
 
 int rwops_read_handler(void *data, unsigned char *buffer, size_t size, size_t *size_read);
 int rwops_write_handler(void *data, unsigned char *buffer, size_t size);

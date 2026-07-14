@@ -9,7 +9,7 @@
 #include <openglad/interface/ui/results_screen.h>
 
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include "test_input_helpers.h"
 
 #include <map>
@@ -50,7 +50,7 @@ static int results_ui_injector(void* data)
     SDL_Delay(140);
 
     SDL_Event wheel{};
-    wheel.type = SDL_MOUSEWHEEL;
+    wheel.type = SDL_EVENT_MOUSE_WHEEL;
     wheel.wheel.y = 1;
     SDL_PushEvent(&wheel);
 
@@ -92,7 +92,7 @@ static int results_ui_scroll_injector(void* data)
     for (int i = 0; i < 12; ++i)
     {
         SDL_Event wheel{};
-        wheel.type = SDL_MOUSEWHEEL;
+        wheel.type = SDL_EVENT_MOUSE_WHEEL;
         wheel.wheel.y = -1;
         SDL_PushEvent(&wheel);
         SDL_Delay(15);
@@ -101,7 +101,7 @@ static int results_ui_scroll_injector(void* data)
     for (int i = 0; i < 4; ++i)
     {
         SDL_Event wheel{};
-        wheel.type = SDL_MOUSEWHEEL;
+        wheel.type = SDL_EVENT_MOUSE_WHEEL;
         wheel.wheel.y = 1;
         SDL_PushEvent(&wheel);
         SDL_Delay(15);

@@ -19,7 +19,7 @@
 #include <openglad/interface/render/video.h>
 #include <openglad/interface/render/text.h>
 
-#include "SDL.h"
+#include <SDL3/SDL.h>
 
 #include <array>
 #include <span>
