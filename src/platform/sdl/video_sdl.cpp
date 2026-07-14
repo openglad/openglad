@@ -41,6 +41,9 @@ static inline Uint32 rng(Uint32 max_exclusive) {
     return ctx().rng->next(max_exclusive);
 }
 
+// Defined with the pixel-format memo below; must run alongside SDL_Quit.
+static void reset_format_detail_cache();
+
 // Dimensions of the ACTIVE canvas (world or UI; see CanvasTarget in
 // video.h). Every offset conversion (offset = x + y*width), full-frame
 // present rect and fade-surface size derives from these — byte-identical to
@@ -185,6 +188,7 @@ sdl_video::~sdl_video()
 	// enforces this by destroying sub-sessions before the host session.
 	if (owns_display_) {
 		E_Screen.reset();
+		reset_format_detail_cache();
 		SDL_Quit();
 	}
 }
@@ -457,15 +461,27 @@ void sdl_video::fastbox(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize
 // sprite blit loops), where the lookup dominated browser frame time under
 // software GL and starved CI's sanitizer runners. SDL interns the details
 // structs for the process lifetime, so memoizing per format is safe.
+static SDL_PixelFormat og_cached_details_format = SDL_PIXELFORMAT_UNKNOWN;
+static const SDL_PixelFormatDetails* og_cached_details = nullptr;
+static SDL_PixelFormat og_cached_lut_format = SDL_PIXELFORMAT_UNKNOWN;
+
+// SDL frees the interned SDL_PixelFormatDetails structs in SDL_Quit(), so the
+// memo below must not outlive the library: sessions churn SDL_Init/SDL_Quit
+// (tests do so constantly) and a stale pointer is a use-after-free.
+static void reset_format_detail_cache()
+{
+    og_cached_details_format = SDL_PIXELFORMAT_UNKNOWN;
+    og_cached_details = nullptr;
+    og_cached_lut_format = SDL_PIXELFORMAT_UNKNOWN;
+}
+
 static const SDL_PixelFormatDetails* cached_format_details(SDL_PixelFormat format)
 {
-    static SDL_PixelFormat last_format = SDL_PIXELFORMAT_UNKNOWN;
-    static const SDL_PixelFormatDetails* last_details = nullptr;
-    if (format != last_format || last_details == nullptr) {
-        last_details = SDL_GetPixelFormatDetails(format);
-        last_format = format;
+    if (format != og_cached_details_format || og_cached_details == nullptr) {
+        og_cached_details = SDL_GetPixelFormatDetails(format);
+        og_cached_details_format = format;
     }
-    return last_details;
+    return og_cached_details;
 }
 
 // SDL_MapSurfaceRGB without the per-call hash lookup (SDL_GetSurfacePalette
@@ -486,14 +502,13 @@ static const Uint32* palette_color_lut(SDL_Surface* target)
 {
     static std::array<unsigned char, 768> cached_pal{};
     static std::array<Uint32, 256> lut{};
-    static SDL_PixelFormat cached_format = SDL_PIXELFORMAT_UNKNOWN;
     const unsigned char* cur = og::runtime::current_session->curpal_.data();
-    if (target->format != cached_format ||
+    if (target->format != og_cached_lut_format ||
         std::memcmp(cached_pal.data(), cur, cached_pal.size()) != 0)
     {
         std::memcpy(cached_pal.data(), cur, cached_pal.size());
-        cached_format = target->format;
-        const SDL_PixelFormatDetails* det = cached_format_details(cached_format);
+        og_cached_lut_format = target->format;
+        const SDL_PixelFormatDetails* det = cached_format_details(target->format);
         SDL_Palette* pal = SDL_GetSurfacePalette(target);
         for (int i = 0; i < 256; ++i)
         {
