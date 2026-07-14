@@ -818,8 +818,14 @@ void Screen::set_world_canvas_size(int w, int h)
 	}
 	else
 	{
-		world_surf_ = SDL_CreateSurface(w, h, SDL_PIXELFORMAT_XRGB8888);
-		world_tex_ = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, w, h);
+		// SDL2 rejected any surface whose byte size overflowed int before
+		// allocating; SDL3's guard is size_t-wide, so a hostile canvas size
+		// would reach the real allocator (hundreds of GB, an abort under
+		// ASan) before failing. Keep the SDL2-era 2 GiB bound here.
+		const bool size_ok =
+			static_cast<Sint64>(w) * h <= static_cast<Sint64>(SDL_MAX_SINT32) / 4;
+		world_surf_ = size_ok ? SDL_CreateSurface(w, h, SDL_PIXELFORMAT_XRGB8888) : nullptr;
+		world_tex_ = size_ok ? SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, w, h) : nullptr;
 		if (world_tex_ != nullptr)
 			SDL_SetTextureBlendMode(world_tex_, SDL_BLENDMODE_NONE);
 		if (world_surf_ == nullptr || world_tex_ == nullptr)

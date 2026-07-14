@@ -478,9 +478,11 @@ TEST(CanvasScale, allocation_failure_falls_back_to_the_shared_classic_pair)
     ASSERT_TRUE(E_Screen);
     ClassicCanvasRestore restore;
 
-    // A width whose 32bpp pitch overflows int: SDL rejects the surface and
-    // set_world_canvas_size must fall back to the shared classic pair — a
-    // usable (if coarse) renderer — never a null render target.
+    // A width whose 32bpp byte size blows the SDL2-era 2 GiB surface bound:
+    // set_world_canvas_size must reject it before SDL ever allocates (SDL3's
+    // own guard is size_t-wide, so the request would otherwise reach the
+    // real allocator) and fall back to the shared classic pair — a usable
+    // (if coarse) renderer — never a null render target.
     E_Screen->set_world_canvas_size(1 << 30, 64);
     EXPECT_EQ(320, E_Screen->world_w());
     EXPECT_EQ(200, E_Screen->world_h());
