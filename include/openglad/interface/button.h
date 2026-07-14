@@ -194,7 +194,9 @@ Sint32 change_permadeath();
 Sint32 change_generator_rate();
 Sint32 change_depth_fx(); // GRAPHICS FX depth selector (cfg effects/depth_fx)
 Sint32 change_world_scale(); // OPTIONS world-scale selector (cfg graphics/scale)
-Sint32 change_window_size(); // OPTIONS window-size selector (cfg graphics/width+height)
+Sint32 change_resolution(); // DISPLAY resolution selector (cfg graphics/width+height)
+Sint32 change_display_mode(); // DISPLAY mode selector (cfg graphics/fullscreen)
+Sint32 display_settings_options(); // the DISPLAY subscreen blocking loop
 Sint32 toggle_player_control_mode(Sint32 arg);
 Sint32 edit_player_keymap(Sint32 arg);
 std::string build_player_control_summary(int player_index);
@@ -317,10 +319,15 @@ enum class ButtonAction : Sint32
     // GRAPHICS FX floor-glide toggle: cfg effects/floor_glide, the animated
     // floor-transition camera dolly (docs/floor-glide-design.md).
     ToggleFloorGlide = 94,
-    // OPTIONS window-size selector: cycles cfg graphics/width+height through
-    // the 320x200 integer multiples (1x..5x) and live-applies the new window
-    // size. Native only; the browser page/CSS owns the canvas box on web.
-    CycleWindowSize = 95,
+    // DISPLAY subscreen: the main-options DISPLAY door plus its two mode
+    // cyclers. Resolution cycles cfg graphics/width+height through the real
+    // display mode list and live-applies it (window size when windowed, the
+    // closest exclusive mode when fullscreen); Mode cycles cfg
+    // graphics/fullscreen through windowed -> borderless -> exclusive.
+    // Native only; the browser page/CSS owns the canvas box on web.
+    CycleResolution = 95,
+    OpenDisplaySettings = 96,
+    CycleDisplayMode = 97,
 };
 
 inline constexpr Sint32 button_action_id(ButtonAction action)

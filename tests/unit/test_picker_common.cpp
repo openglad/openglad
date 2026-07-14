@@ -2334,58 +2334,64 @@ TEST(PickerCommon, cycle_world_scale_sequence)
     ASSERT_EQ("1", og::ui::cycle_world_scale("bogus"));
 }
 
-TEST(PickerCommon, window_size_multiplier_mapping)
+TEST(PickerCommon, display_mode_parse_cycle_and_labels)
 {
-    // Absent keys are the 640x400 boot default in video_init.
-    ASSERT_EQ(2, og::ui::window_size_multiplier("", ""));
-    ASSERT_EQ(1, og::ui::window_size_multiplier("320", "200"));
-    ASSERT_EQ(2, og::ui::window_size_multiplier("640", "400"));
-    ASSERT_EQ(3, og::ui::window_size_multiplier("960", "600"));
-    ASSERT_EQ(4, og::ui::window_size_multiplier("1280", "800"));
-    ASSERT_EQ(5, og::ui::window_size_multiplier("1600", "1000"));
-    // Hand-edited sizes (or a mismatched pair) are "custom".
-    ASSERT_EQ(0, og::ui::window_size_multiplier("800", "600"));
-    ASSERT_EQ(0, og::ui::window_size_multiplier("640", "600"));
-    ASSERT_EQ(0, og::ui::window_size_multiplier("640", ""));
+    using og::ui::DisplayMode;
+    // Legacy boolean cfg: "on" was the borderless desktop fullscreen.
+    ASSERT_EQ(DisplayMode::Borderless, og::ui::parse_display_mode("on"));
+    ASSERT_EQ(DisplayMode::Borderless, og::ui::parse_display_mode("borderless"));
+    ASSERT_EQ(DisplayMode::Exclusive, og::ui::parse_display_mode("exclusive"));
+    ASSERT_EQ(DisplayMode::Exclusive, og::ui::parse_display_mode("fullscreen"));
+    ASSERT_EQ(DisplayMode::Windowed, og::ui::parse_display_mode("off"));
+    ASSERT_EQ(DisplayMode::Windowed, og::ui::parse_display_mode(""));
+    ASSERT_EQ(DisplayMode::Windowed, og::ui::parse_display_mode("bogus"));
+
+    ASSERT_EQ(DisplayMode::Borderless, og::ui::next_display_mode(DisplayMode::Windowed));
+    ASSERT_EQ(DisplayMode::Exclusive, og::ui::next_display_mode(DisplayMode::Borderless));
+    ASSERT_EQ(DisplayMode::Windowed, og::ui::next_display_mode(DisplayMode::Exclusive));
+
+    ASSERT_EQ("off", og::ui::display_mode_cfg_value(DisplayMode::Windowed));
+    ASSERT_EQ("borderless", og::ui::display_mode_cfg_value(DisplayMode::Borderless));
+    ASSERT_EQ("exclusive", og::ui::display_mode_cfg_value(DisplayMode::Exclusive));
+
+    ASSERT_EQ("Mode: Windowed", og::ui::format_display_mode_label(""));
+    ASSERT_EQ("Mode: Borderless", og::ui::format_display_mode_label("on"));
+    ASSERT_EQ("Mode: Borderless", og::ui::format_display_mode_label("borderless"));
+    ASSERT_EQ("Mode: Fullscreen", og::ui::format_display_mode_label("exclusive"));
+    // 102px button face at 6px/char: every label must fit 17 characters.
+    for (const char* v : {"", "on", "borderless", "exclusive", "bogus"})
+        ASSERT_LE(og::ui::format_display_mode_label(v).size(), 17u) << v;
 }
 
-TEST(PickerCommon, next_window_size_multiplier_lap)
+TEST(PickerCommon, resolution_parse_next_and_labels)
 {
-    ASSERT_EQ(2, og::ui::next_window_size_multiplier(1));
-    ASSERT_EQ(3, og::ui::next_window_size_multiplier(2));
-    ASSERT_EQ(4, og::ui::next_window_size_multiplier(3));
-    ASSERT_EQ(5, og::ui::next_window_size_multiplier(4));
-    ASSERT_EQ(1, og::ui::next_window_size_multiplier(5));
-    // Custom sizes re-enter the lap at the boot default's step.
-    ASSERT_EQ(2, og::ui::next_window_size_multiplier(0));
+    // Absent/garbage cfg reads as the 640x400 boot default.
+    ASSERT_EQ(std::make_pair(640, 400), og::ui::parse_resolution("", ""));
+    ASSERT_EQ(std::make_pair(640, 400), og::ui::parse_resolution("abc", "400"));
+    ASSERT_EQ(std::make_pair(640, 400), og::ui::parse_resolution("100", "80"));
+    ASSERT_EQ(std::make_pair(1920, 1200), og::ui::parse_resolution("1920", "1200"));
 
-    // Five clicks restore any in-lap starting multiplier.
-    int k = 3;
-    for (int i = 0; i < 5; ++i)
-        k = og::ui::next_window_size_multiplier(k);
-    ASSERT_EQ(3, k);
-}
+    const std::vector<std::pair<int, int>> list = og::ui::fallback_resolutions();
+    ASSERT_GE(list.size(), 2u);
 
-TEST(PickerCommon, format_window_size_label_exact_strings)
-{
-    ASSERT_EQ("Window: 2x", og::ui::format_window_size_label("", ""));
-    ASSERT_EQ("Window: 1x", og::ui::format_window_size_label("320", "200"));
-    ASSERT_EQ("Window: 5x", og::ui::format_window_size_label("1600", "1000"));
-    ASSERT_EQ("Window: custom", og::ui::format_window_size_label("800", "600"));
+    // The lap walks the list in order and wraps.
+    ASSERT_EQ(std::make_pair(960, 600), og::ui::next_resolution(list, "640", "400"));
+    ASSERT_EQ(std::make_pair(640, 400), og::ui::next_resolution(list, "1920", "1200"));
+    // A hand-edited size re-enters at the first entry; an empty list echoes
+    // the current resolution back.
+    ASSERT_EQ(list.front(), og::ui::next_resolution(list, "800", "600"));
+    ASSERT_EQ(std::make_pair(800, 600), og::ui::next_resolution({}, "800", "600"));
 
-    // 90px button face at 6px/char: every label must fit 15 characters.
-    for (const auto& pair : {std::pair<const char*, const char*>{"", ""},
-                             {"320", "200"},
-                             {"640", "400"},
-                             {"960", "600"},
-                             {"1280", "800"},
-                             {"1600", "1000"},
-                             {"800", "600"}})
-    {
-        const std::string label =
-            og::ui::format_window_size_label(pair.first, pair.second);
-        ASSERT_LE(label.size(), 15u) << label;
-    }
+    // One full lap of clicks restores any in-list starting point.
+    std::pair<int, int> r{1280, 800};
+    for (std::size_t i = 0; i < list.size(); ++i)
+        r = og::ui::next_resolution(list, std::to_string(r.first), std::to_string(r.second));
+    ASSERT_EQ(std::make_pair(1280, 800), r);
+
+    ASSERT_EQ("Res: 640x400", og::ui::format_resolution_label("", ""));
+    ASSERT_EQ("Res: 2560x1440", og::ui::format_resolution_label("2560", "1440"));
+    // 102px face at 6px/char: 17 characters, even for 8K-wide values.
+    ASSERT_LE(og::ui::format_resolution_label("7680", "4800").size(), 17u);
 }
 
 TEST(PickerCommon, format_world_scale_label_exact_strings)

@@ -14,6 +14,7 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
+#include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/native_input.h>
@@ -651,8 +652,17 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         toggle_rendering_engine();
         return REDRAW;
     case ButtonAction::ToggleFullscreen:
-        toggle_effect("graphics", "fullscreen");
-        og::runtime::current_session->myscreen_->set_fullscreen(cfg.is_on("graphics", "fullscreen"));
+        // Legacy binding (no button uses it since the DISPLAY subscreen):
+        // any fullscreen mode drops to windowed, windowed goes borderless,
+        // through the modern apply path. (cfg.is_on would only match the
+        // legacy literal "on" and latch forever against the tri-state
+        // values change_display_mode writes.)
+        cfg.apply_setting("graphics", "fullscreen",
+                          og::ui::parse_display_mode(cfg.get_setting("graphics", "fullscreen")) !=
+                                  og::ui::DisplayMode::Windowed
+                              ? "off"
+                              : "borderless");
+        og::runtime::current_session->myscreen_->apply_display_settings_from_cfg();
         return REDRAW;
     case ButtonAction::OverscanAdjust:
         return overscan_adjust(arg);
@@ -696,8 +706,12 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         return change_depth_fx();
     case ButtonAction::CycleWorldScale:
         return change_world_scale();
-    case ButtonAction::CycleWindowSize:
-        return change_window_size();
+    case ButtonAction::CycleResolution:
+        return change_resolution();
+    case ButtonAction::CycleDisplayMode:
+        return change_display_mode();
+    case ButtonAction::OpenDisplaySettings:
+        return display_settings_options();
     case ButtonAction::ToggleTrails:
         toggle_effect("effects", "trails");
         return REDRAW;
@@ -729,7 +743,9 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
             screen* scr = og::runtime::current_session->myscreen_;
             const int old_w = scr->world_canvas_w();
             const int old_h = scr->world_canvas_h();
-            scr->reapply_world_scale();
+            // Re-derives the window (mode + resolution), the overscan
+            // viewport and the world canvas from the restored cfg.
+            scr->apply_display_settings_from_cfg();
             if (scr->world_canvas_w() != old_w || scr->world_canvas_h() != old_h)
                 scr->relayout_views();
         }

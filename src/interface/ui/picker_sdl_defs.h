@@ -52,6 +52,8 @@ button* picker_loadteam_buttons();
 int picker_loadteam_button_count();
 
 button* picker_main_options_buttons();
+button* picker_display_settings_buttons();
+int picker_display_settings_button_count();
 int picker_main_options_button_count();
 button* picker_control_options_buttons();
 int picker_control_options_button_count();
@@ -157,13 +159,17 @@ inline constexpr int kViewScenarioRowsPerPage = 23;
 // the row's label by this index on both surfaces.
 inline constexpr int kGraphicsFxDepthFxIndex = 8;
 
-// --- MAIN OPTIONS layout contract --------------------------------------------
-// Positional index of the world-scale cycle row (id "world_scale") in
-// k_main_options_buttons / picker_main_options_buttons(). main_options()
-// re-derives its label from cfg graphics/scale each frame (both surfaces);
-// change_world_scale() also writes it by this index on click.
-inline constexpr int kMainOptionsWorldScaleIndex = 12;
-inline constexpr int kMainOptionsWindowSizeIndex = 13;
+// --- DISPLAY subscreen layout contract ---------------------------------------
+// Rows of k_display_settings_buttons / picker_display_settings_buttons(). The
+// display_settings_options() loop addresses labels and platform nav rewires
+// through these; keep them in lockstep with the table.
+inline constexpr int kDisplayMenuBackIndex = 0;
+inline constexpr int kDisplayMenuModeIndex = 1;
+inline constexpr int kDisplayMenuResolutionIndex = 2;
+inline constexpr int kDisplayMenuOverscanMinusIndex = 3;
+inline constexpr int kDisplayMenuOverscanPlusIndex = 4;
+inline constexpr int kDisplayMenuScaleIndex = 5;
+inline constexpr int kDisplayMenuFilterIndex = 6;
 
 // --- DIFFICULTY subscreen layout contract -----------------------------------
 // Positional indices into k_difficulty_menu_buttons /

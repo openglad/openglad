@@ -955,6 +955,7 @@ void picker_cleanup_resources()
     pks().loadteam_buttons.clear();
     pks().main_options_buttons.clear();
     pks().control_options_buttons.clear();
+    pks().display_settings_buttons.clear();
     pks().gameplay_fx_options_buttons.clear();
     pks().ui_fx_options_buttons.clear();
     pks().graphics_fx_options_buttons.clear();
@@ -1067,39 +1068,46 @@ inline constexpr Sint32 BUTTON_PITCH = BUTTON_HEIGHT + BUTTON_PADDING;
 // toggles live in the k_*_fx_options_buttons tables below.
 static const button k_main_options_buttons[] =
 {
-    button("options_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=11, .down=1, .right=8}),
-    button("toggle_sound", "Sound", KEYSTATE_UNKNOWN, 135, 10 + BUTTON_PITCH, 50, 15, button_action_id(ButtonAction::ToggleSound), -1, MenuNav{.up=0, .down=2, .right=9}),
-    button("toggle_rendering", "NORMAL", KEYSTATE_UNKNOWN, 130, 10 + 2*BUTTON_PITCH, 60, 15, button_action_id(ButtonAction::ToggleRenderingEngine), -1, MenuNav{.up=1, .down=4, .right=3}),
-    button("toggle_fullscreen", "Fullscreen", KEYSTATE_UNKNOWN, 210, 10 + 2*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleFullscreen), -1, MenuNav{.up=9, .down=12, .left=2}),
-    button("overscan_minus", "- ", KEYSTATE_UNKNOWN, 130, 10 + 3*BUTTON_PITCH, 30, 15, button_action_id(ButtonAction::OverscanAdjust), -1, MenuNav{.up=2, .down=6, .right=5}),
-    button("overscan_plus", "+ ", KEYSTATE_UNKNOWN, 170, 10 + 3*BUTTON_PITCH, 30, 15, button_action_id(ButtonAction::OverscanAdjust), 1, MenuNav{.up=3, .down=6, .left=4, .right=12}),
-    button("gameplay_fx", "GAMEPLAY FX", KEYSTATE_UNKNOWN, 130, 10 + 4*BUTTON_PITCH, 90, 15,
-        button_action_id(ButtonAction::OpenGameplayFxSettings), -1, MenuNav{.up=4, .down=10, .right=13}),
-    button("restore_defaults", "RESTORE DEFAULTS", KEYSTATE_UNKNOWN, 210, 10, 100, 15, button_action_id(ButtonAction::RestoreDefaultSettings), -1, MenuNav{.up=13, .down=9, .left=8}),
+    button("options_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=8, .down=1, .right=5}),
+    button("toggle_sound", "Sound", KEYSTATE_UNKNOWN, 135, 10 + BUTTON_PITCH, 50, 15, button_action_id(ButtonAction::ToggleSound), -1, MenuNav{.up=0, .down=2, .right=6}),
+    // Door into the DISPLAY subscreen (mode / resolution / overscan /
+    // scaling / filter live there; k_display_settings_buttons below).
+    button("display_settings", "DISPLAY", KEYSTATE_UNKNOWN, 130, 10 + 2*BUTTON_PITCH, 90, 15,
+        button_action_id(ButtonAction::OpenDisplaySettings), -1, MenuNav{.up=1, .down=3, .right=6}),
+    button("gameplay_fx", "GAMEPLAY FX", KEYSTATE_UNKNOWN, 130, 10 + 3*BUTTON_PITCH, 90, 15,
+        button_action_id(ButtonAction::OpenGameplayFxSettings), -1, MenuNav{.up=2, .down=7}),
+    button("restore_defaults", "RESTORE DEFAULTS", KEYSTATE_UNKNOWN, 210, 10, 100, 15, button_action_id(ButtonAction::RestoreDefaultSettings), -1, MenuNav{.up=8, .down=6, .left=5}),
     button("player_controls", "CONTROLS", KEYSTATE_UNKNOWN, 100, 10, 80, 15,
-        button_action_id(ButtonAction::OpenControlSettings), -1, MenuNav{.up=11, .down=1, .left=0, .right=7}),
+        button_action_id(ButtonAction::OpenControlSettings), -1, MenuNav{.up=8, .down=1, .left=0, .right=4}),
     button("pick_sprite_sheet", "Sprite Sheet", KEYSTATE_UNKNOWN, 210, 10 + BUTTON_PITCH, 90, 15,
-        button_action_id(ButtonAction::PickSpriteSheet), 0, MenuNav{.up=7, .down=3, .left=1}),
-    button("ui_fx", "UI FX", KEYSTATE_UNKNOWN, 130, 10 + 5*BUTTON_PITCH, 90, 15,
-        button_action_id(ButtonAction::OpenUiFxSettings), -1, MenuNav{.up=6, .down=11}),
-    button("graphics_fx", "GRAPHICS FX", KEYSTATE_UNKNOWN, 130, 10 + 6*BUTTON_PITCH, 90, 15,
-        button_action_id(ButtonAction::OpenGraphicsFxSettings), -1, MenuNav{.up=10, .down=0}),
-    // World-scale cycle (cfg graphics/scale): gameplay canvas = window/N (or
-    // the window/2 SAI/EAGLE smoothers), applied live on click. Independent
-    // of the legacy rendering-engine cycle at [2], which keeps presenting the
-    // menus (and, with scale off, the world too). Label re-derived from cfg
-    // each frame like [2]; appended at the end per the index contract
-    // (kMainOptionsWorldScaleIndex). Right column wrap: 7 -> 9 -> 3 -> 12.
-    button("world_scale", "Scale: Off", KEYSTATE_UNKNOWN, 210, 10 + 3*BUTTON_PITCH, 90, 15,
-        button_action_id(ButtonAction::CycleWorldScale), -1, MenuNav{.up=3, .down=13, .left=5}),
-    // Window-size cycle (cfg graphics/width+height): the native window as an
-    // integer multiple of the classic 320x200 (1x..5x), applied live on
-    // click. Hidden on web, where the page/CSS owns the canvas box (the
-    // create function closes the right-column wrap back over it). Appended
-    // at the end per the index contract (kMainOptionsWindowSizeIndex).
-    // Right column wrap: 7 -> 9 -> 3 -> 12 -> 13.
-    button("window_size", "Window: 2x", KEYSTATE_UNKNOWN, 220, 10 + 4*BUTTON_PITCH, 90, 15,
-        button_action_id(ButtonAction::CycleWindowSize), -1, MenuNav{.up=12, .down=7, .left=6}),
+        button_action_id(ButtonAction::PickSpriteSheet), 0, MenuNav{.up=4, .down=2, .left=1}),
+    button("ui_fx", "UI FX", KEYSTATE_UNKNOWN, 130, 10 + 4*BUTTON_PITCH, 90, 15,
+        button_action_id(ButtonAction::OpenUiFxSettings), -1, MenuNav{.up=3, .down=8}),
+    button("graphics_fx", "GRAPHICS FX", KEYSTATE_UNKNOWN, 130, 10 + 5*BUTTON_PITCH, 90, 15,
+        button_action_id(ButtonAction::OpenGraphicsFxSettings), -1, MenuNav{.up=7, .down=0}),
+};
+
+inline constexpr Sint32 effects_row_y(int row) { return 35 + row * 23; }
+
+// DISPLAY subscreen: the window/presentation settings a normal game keeps
+// together — mode (windowed / borderless / exclusive fullscreen), a real
+// WxH resolution that sizes the window when windowed and picks the closest
+// exclusive video mode when fullscreen, the overscan trim, the sprite/world
+// scale, and the present filter. 102px faces (17-char label budget) so
+// "Mode: Borderless" and "Res: 2560x1440" fit. Rows on the effects grid.
+static const button k_display_settings_buttons[] =
+{
+    button("display_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=6, .down=1}),
+    button("display_mode", "Mode: Windowed", KEYSTATE_UNKNOWN, 115, effects_row_y(0), 102, 15,
+        button_action_id(ButtonAction::CycleDisplayMode), -1, MenuNav{.up=0, .down=2}),
+    button("display_resolution", "Res: 640x400", KEYSTATE_UNKNOWN, 115, effects_row_y(1), 102, 15,
+        button_action_id(ButtonAction::CycleResolution), -1, MenuNav{.up=1, .down=3}),
+    button("overscan_minus", "- ", KEYSTATE_UNKNOWN, 115, effects_row_y(2), 30, 15, button_action_id(ButtonAction::OverscanAdjust), -1, MenuNav{.up=2, .down=5, .right=4}),
+    button("overscan_plus", "+ ", KEYSTATE_UNKNOWN, 159, effects_row_y(2), 30, 15, button_action_id(ButtonAction::OverscanAdjust), 1, MenuNav{.up=2, .down=5, .left=3}),
+    button("world_scale", "Scale: Off", KEYSTATE_UNKNOWN, 115, effects_row_y(3), 102, 15,
+        button_action_id(ButtonAction::CycleWorldScale), -1, MenuNav{.up=3, .down=6}),
+    button("toggle_rendering", "Filter: normal", KEYSTATE_UNKNOWN, 115, effects_row_y(4), 102, 15,
+        button_action_id(ButtonAction::ToggleRenderingEngine), -1, MenuNav{.up=5, .down=0}),
 };
 
 // FX subscreen toggle grid: columns x=15/115/215, 90px faces (15-char label
@@ -1108,7 +1116,6 @@ static const button k_main_options_buttons[] =
 // unchanged from the single pre-split EFFECTS screen. Each BACK id is unique
 // (gameplay_fx_back / ui_fx_back / graphics_fx_back) because injector flows
 // disambiguate screens by button id.
-inline constexpr Sint32 effects_row_y(int row) { return 35 + row * 23; }
 
 // GAMEPLAY FX: toggles that change how the game feels to play. Single
 // centered column; nav is a vertical cycle through BACK.
@@ -1459,6 +1466,17 @@ button* picker_control_options_buttons()
 int picker_control_options_button_count()
 {
     return static_cast<int>(pks().control_options_buttons.size());
+}
+
+button* picker_display_settings_buttons()
+{
+    reset_mutable_button_layout(pks().display_settings_buttons, k_display_settings_buttons);
+    return pks().display_settings_buttons.data();
+}
+
+int picker_display_settings_button_count()
+{
+    return static_cast<int>(pks().display_settings_buttons.size());
 }
 
 button* picker_gameplay_fx_options_buttons()
@@ -2186,26 +2204,6 @@ Sint32 main_options()
 	button* buttons = picker_main_options_buttons();
 	int num_buttons = picker_main_options_button_count();
 
-    #if defined(OUYA) || defined(ANDROID)
-    buttons[3].hidden = buttons[3].no_draw = true;
-    buttons[2].nav.right = -1;
-    buttons[5].nav.up = 2;
-    // fullscreen[3] is hidden here; wrap the right column around it between
-    // sprite sheet and the world-scale row (defaults[7].up = 12 already).
-    buttons[9].nav.down = kMainOptionsWorldScaleIndex;
-    buttons[kMainOptionsWorldScaleIndex].nav.up = 9;
-    #endif
-
-    #ifdef __EMSCRIPTEN__
-    // The browser page/CSS owns the window size (and the canvas backing is
-    // pinned to the logical 320x200): hide the window-size selector and
-    // close the right-column wrap back over it (scale -> restore defaults).
-    buttons[kMainOptionsWindowSizeIndex].hidden = true;
-    buttons[kMainOptionsWindowSizeIndex].no_draw = true;
-    buttons[kMainOptionsWorldScaleIndex].nav.down = 7;
-    buttons[7].nav.up = kMainOptionsWorldScaleIndex;
-    buttons[6].nav.right = -1;
-    #endif
 
 	int highlighted_button = 0;
 	og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
@@ -2232,39 +2230,9 @@ Sint32 main_options()
         
         // Reset buttons
         reset_buttons(og::runtime::current_session->localbuttons_, buttons, num_buttons, retvalue);
-        // cfg (graphics, render) is empty in any process that never ran
-        // load_settings() (and for any missing-key path); fall back to the
-        // default engine name so the button face never draws blank.
         {
-            std::string render_engine = cfg.get_setting("graphics", "render");
-            if (render_engine.empty())
-                render_engine = "normal";
-            buttons[2].label = render_engine;
-        }
-        og::runtime::current_session->allbuttons_[2]->label = buttons[2].label;
-        {
-            buttons[9].label = "Sprite Sheet";
-            og::runtime::current_session->allbuttons_[9]->label = buttons[9].label;
-        }
-        // World-scale label re-derived from cfg each frame (both surfaces),
-        // same idiom as the rendering-engine face above; the empty string an
-        // absent key reads as formats to the "Scale: Off" default.
-        {
-            buttons[kMainOptionsWorldScaleIndex].label =
-                og::ui::format_world_scale_label(cfg.get_setting("graphics", "scale"));
-            og::runtime::current_session->allbuttons_[kMainOptionsWorldScaleIndex]->label =
-                buttons[kMainOptionsWorldScaleIndex].label;
-        }
-        // Window-size label re-derived from cfg each frame (both surfaces),
-        // same idiom as the scale face above; absent keys format as the
-        // 640x400 boot default ("Window: 2x").
-        {
-            buttons[kMainOptionsWindowSizeIndex].label =
-                og::ui::format_window_size_label(
-                    cfg.get_setting("graphics", "width"),
-                    cfg.get_setting("graphics", "height"));
-            og::runtime::current_session->allbuttons_[kMainOptionsWindowSizeIndex]->label =
-                buttons[kMainOptionsWindowSizeIndex].label;
+            buttons[6].label = "Sprite Sheet";
+            og::runtime::current_session->allbuttons_[6]->label = buttons[6].label;
         }
 		
 		// Draw
@@ -2277,16 +2245,11 @@ Sint32 main_options()
         draw_buttons(buttons, num_buttons);
         
 		draw_toggle_effect_button(buttons[1], "sound", "sound");
+		// Section rule between the sound row and the DISPLAY/effects doors.
 		og::runtime::current_session->myscreen_->hor_line(60, buttons[2].y - BUTTON_PADDING/2, 200, PURE_WHITE);
-		
-		mytext.write_xy(20, buttons[2].y + 3, DARK_BLUE, "Rendering engine:");
-		mytext.write_xy(20, buttons[2].y + 3 + 10, DARK_BLUE, " (needs restart)");
-		draw_toggle_effect_button(buttons[3], "graphics", "fullscreen");
-		mytext.write_xy(20, buttons[4].y + 3, DARK_BLUE, "Overscan adjust:");
-		og::runtime::current_session->myscreen_->hor_line(60, buttons[6].y - BUTTON_PADDING/2, 200, PURE_WHITE);
-
-		mytext.write_xy(20, buttons[6].y + 3, DARK_BLUE, "Effects:");
-        draw_sprite_sheet_button(buttons[9]);
+		mytext.write_xy(20, buttons[2].y + 3, DARK_BLUE, "Display:");
+		mytext.write_xy(20, buttons[3].y + 3, DARK_BLUE, "Effects:");
+        draw_sprite_sheet_button(buttons[6]);
 
         draw_highlight(buttons[highlighted_button]);
         og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
@@ -3062,40 +3025,165 @@ Sint32 change_world_scale()
        scr->relayout_views();
 
    const std::string label = og::ui::format_world_scale_label(next);
-   if (og::runtime::current_session->allbuttons_[kMainOptionsWorldScaleIndex] != nullptr)
-       og::runtime::current_session->allbuttons_[kMainOptionsWorldScaleIndex]->label = label;
-   if (static_cast<int>(pks().main_options_buttons.size()) > kMainOptionsWorldScaleIndex)
-       pks().main_options_buttons[kMainOptionsWorldScaleIndex].label = label;
+   if (og::runtime::current_session->allbuttons_[kDisplayMenuScaleIndex] != nullptr)
+       og::runtime::current_session->allbuttons_[kDisplayMenuScaleIndex]->label = label;
+   if (static_cast<int>(pks().display_settings_buttons.size()) > kDisplayMenuScaleIndex)
+       pks().display_settings_buttons[kDisplayMenuScaleIndex].label = label;
 
    return MENU_OK;
 }
 
-Sint32 change_window_size()
+Sint32 change_display_mode()
 {
-   const int next = og::ui::next_window_size_multiplier(
-       og::ui::window_size_multiplier(cfg.get_setting("graphics", "width"),
-                                      cfg.get_setting("graphics", "height")));
-   cfg.apply_setting("graphics", "width", std::to_string(320 * next));
-   cfg.apply_setting("graphics", "height", std::to_string(200 * next));
+   const std::string next = og::ui::display_mode_cfg_value(
+       og::ui::next_display_mode(og::ui::parse_display_mode(
+           cfg.get_setting("graphics", "fullscreen"))));
+   cfg.apply_setting("graphics", "fullscreen", next);
 
-   // Live-apply: resize the window and re-derive viewport + world canvas
-   // (window-sized scale modes track the new window). Mirrors
-   // change_world_scale's relayout-on-change contract.
    screen* scr = og::runtime::current_session->myscreen_;
    const int old_w = scr->world_canvas_w();
    const int old_h = scr->world_canvas_h();
-   scr->apply_window_size_from_cfg();
+   scr->apply_display_settings_from_cfg();
    if (scr->world_canvas_w() != old_w || scr->world_canvas_h() != old_h)
        scr->relayout_views();
 
-   const std::string label = og::ui::format_window_size_label(
-       cfg.get_setting("graphics", "width"), cfg.get_setting("graphics", "height"));
-   if (og::runtime::current_session->allbuttons_[kMainOptionsWindowSizeIndex] != nullptr)
-       og::runtime::current_session->allbuttons_[kMainOptionsWindowSizeIndex]->label = label;
-   if (static_cast<int>(pks().main_options_buttons.size()) > kMainOptionsWindowSizeIndex)
-       pks().main_options_buttons[kMainOptionsWindowSizeIndex].label = label;
-
+   const std::string label = og::ui::format_display_mode_label(next);
+   if (og::runtime::current_session->allbuttons_[kDisplayMenuModeIndex] != nullptr)
+       og::runtime::current_session->allbuttons_[kDisplayMenuModeIndex]->label = label;
+   if (static_cast<int>(pks().display_settings_buttons.size()) > kDisplayMenuModeIndex)
+       pks().display_settings_buttons[kDisplayMenuModeIndex].label = label;
    return MENU_OK;
+}
+
+// The resolution lap: the primary display's real mode list when it offers a
+// choice, the classic 16:10 presets when it doesn't (headless drivers list
+// one mode; web lists none).
+static std::vector<std::pair<int, int>> resolution_choices()
+{
+    std::vector<std::pair<int, int>> list =
+        og::runtime::current_session->myscreen_->display_resolutions();
+    if (list.size() < 2)
+        list = og::ui::fallback_resolutions();
+    // Keep the CURRENT resolution on the lap (the 640x400 boot default is
+    // rarely in a real display's mode list): the first click then steps to
+    // a neighbor instead of jumping to the largest mode.
+    const std::pair<int, int> current = og::ui::parse_resolution(
+        cfg.get_setting("graphics", "width"), cfg.get_setting("graphics", "height"));
+    if (std::find(list.begin(), list.end(), current) == list.end())
+    {
+        list.push_back(current);
+        std::sort(list.begin(), list.end(), std::greater<>());
+    }
+    return list;
+}
+
+Sint32 change_resolution()
+{
+   const std::pair<int, int> next = og::ui::next_resolution(
+       resolution_choices(),
+       cfg.get_setting("graphics", "width"),
+       cfg.get_setting("graphics", "height"));
+   cfg.apply_setting("graphics", "width", std::to_string(next.first));
+   cfg.apply_setting("graphics", "height", std::to_string(next.second));
+
+   screen* scr = og::runtime::current_session->myscreen_;
+   const int old_w = scr->world_canvas_w();
+   const int old_h = scr->world_canvas_h();
+   scr->apply_display_settings_from_cfg();
+   if (scr->world_canvas_w() != old_w || scr->world_canvas_h() != old_h)
+       scr->relayout_views();
+
+   const std::string label = og::ui::format_resolution_label(
+       cfg.get_setting("graphics", "width"), cfg.get_setting("graphics", "height"));
+   if (og::runtime::current_session->allbuttons_[kDisplayMenuResolutionIndex] != nullptr)
+       og::runtime::current_session->allbuttons_[kDisplayMenuResolutionIndex]->label = label;
+   if (static_cast<int>(pks().display_settings_buttons.size()) > kDisplayMenuResolutionIndex)
+       pks().display_settings_buttons[kDisplayMenuResolutionIndex].label = label;
+   return MENU_OK;
+}
+
+// The DISPLAY subscreen blocking loop. Same shape as the FX subscreens
+// (poll, click, nav, per-frame label sync, draw); cfg persists when
+// main_options() exits, which is the only path back out.
+Sint32 display_settings_options()
+{
+    button* buttons = picker_display_settings_buttons();
+    const int num_buttons = picker_display_settings_button_count();
+
+    #if defined(OUYA) || defined(ANDROID) || defined(__EMSCRIPTEN__)
+    // No window to size or mode to pick: TV/mobile targets are always
+    // fullscreen, and on web the page/CSS owns the window (the fullscreen
+    // cfg is also deliberately ignored at boot there). Hide both rows and
+    // route the vertical cycle around them (BACK <-> overscan pair).
+    buttons[kDisplayMenuModeIndex].hidden = buttons[kDisplayMenuModeIndex].no_draw = true;
+    buttons[kDisplayMenuResolutionIndex].hidden = buttons[kDisplayMenuResolutionIndex].no_draw = true;
+    buttons[kDisplayMenuBackIndex].nav.down = kDisplayMenuOverscanMinusIndex;
+    buttons[kDisplayMenuOverscanMinusIndex].nav.up = kDisplayMenuBackIndex;
+    buttons[kDisplayMenuOverscanPlusIndex].nav.up = kDisplayMenuBackIndex;
+    #endif
+
+    text& mytext = og::runtime::current_session->myscreen_->text_normal;
+    int highlighted_button = 0;
+    og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
+    clear_keyboard();
+
+    Sint32 retvalue = 0;
+    while(!(retvalue & MENU_EXIT))
+    {
+        picker_lobby_poll();
+        if(leftmouse(buttons))
+        {
+            const Sint32 click_result = og::runtime::current_session->localbuttons_->leftclick();
+            if(click_result == MENU_EXIT)
+                break;
+            if(click_result != 0)
+                retvalue = click_result;
+        }
+
+        handle_menu_nav(buttons, highlighted_button, retvalue);
+        if(retvalue == MENU_EXIT)
+            break;
+
+        reset_buttons(og::runtime::current_session->localbuttons_, buttons, num_buttons, retvalue);
+
+        // Every face is cfg-derived: re-derive all four each frame on both
+        // label surfaces (the click callbacks also write them, but RESTORE
+        // DEFAULTS or a lobby-applied cfg must reflect here too).
+        const auto sync_label = [&](int index, std::string label) {
+            buttons[index].label = label;
+            og::runtime::current_session->allbuttons_[index]->label = std::move(label);
+        };
+        sync_label(kDisplayMenuModeIndex,
+                   og::ui::format_display_mode_label(cfg.get_setting("graphics", "fullscreen")));
+        sync_label(kDisplayMenuResolutionIndex,
+                   og::ui::format_resolution_label(cfg.get_setting("graphics", "width"),
+                                                   cfg.get_setting("graphics", "height")));
+        sync_label(kDisplayMenuScaleIndex,
+                   og::ui::format_world_scale_label(cfg.get_setting("graphics", "scale")));
+        {
+            std::string engine = cfg.get_setting("graphics", "render");
+            if (engine.empty())
+                engine = "normal";
+            sync_label(kDisplayMenuFilterIndex, "Filter: " + engine);
+        }
+
+        og::runtime::current_session->myscreen_->clear_window();
+        og::runtime::current_session->myscreen_->draw_button(0, 0, 320, 200, 0);
+        og::runtime::current_session->myscreen_->draw_button_inverted(4, 4, 312, 192);
+        draw_buttons(buttons, num_buttons);
+
+        mytext.write_xy(80, 13, DARK_BLUE, "%s", "Display");
+        // Live overscan percentage next to its +/- pair.
+        mytext.write_xy(200, effects_row_y(2) + 4, DARK_BLUE, "Overscan: %d%%",
+                        static_cast<int>(
+                            og::runtime::current_session->overscan_percentage_ * 100.0f + 0.5f));
+
+        draw_highlight(buttons[highlighted_button]);
+        og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
+        og::input_native::sleep_ms(10);
+    }
+
+    return MENU_REDRAW;
 }
 
 Sint32 teams_join_team(Sint32 team)

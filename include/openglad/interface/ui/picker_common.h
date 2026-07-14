@@ -12,6 +12,7 @@
 #include <list>
 #include <memory>
 #include <string>
+#include <utility>
 #include <string_view>
 #include <vector>
 
@@ -336,14 +337,28 @@ std::string cycle_world_scale(const std::string& current);
 // options button face (15 chars).
 std::string format_world_scale_label(const std::string& value);
 
-// Window-size selector (cfg graphics/width + graphics/height). The window is
-// modeled as an integer multiple of the classic 320x200: multiplier() maps a
-// cfg pair to 1..5 (empty = the 640x400 boot default = 2; anything else is 0,
-// "custom"), next() steps the 1..5 lap (custom re-enters at 2), and the label
-// formatter names the multiple ("Window: 2x", or "Window: custom").
-int window_size_multiplier(const std::string& width, const std::string& height);
-int next_window_size_multiplier(int multiplier);
-std::string format_window_size_label(const std::string& width, const std::string& height);
+// DISPLAY settings (cfg graphics/fullscreen + graphics/width/height).
+//
+// Display mode: "off" (windowed), "borderless" (desktop fullscreen) and
+// "exclusive" (a real fullscreen video mode). The legacy boolean "on" reads
+// as borderless so old configs keep their meaning.
+enum class DisplayMode { Windowed, Borderless, Exclusive };
+DisplayMode parse_display_mode(const std::string& value);
+std::string display_mode_cfg_value(DisplayMode mode);
+DisplayMode next_display_mode(DisplayMode mode);
+std::string format_display_mode_label(const std::string& value);
+
+// Resolution: cfg width/height as a real WxH picked from the display's mode
+// list (the platform supplies it; fallback_resolutions() is the 16:10 preset
+// list used when the platform has fewer than two real modes, e.g. the dummy
+// driver). next_resolution steps the list; a cfg pair not on the list (hand
+// edited) re-enters at the first entry. Absent keys mean the 640x400 boot
+// default.
+std::vector<std::pair<int, int>> fallback_resolutions();
+std::pair<int, int> parse_resolution(const std::string& width, const std::string& height);
+std::pair<int, int> next_resolution(const std::vector<std::pair<int, int>>& list,
+                                    const std::string& width, const std::string& height);
+std::string format_resolution_label(const std::string& width, const std::string& height);
 
 // --- Team family extraction ---
 

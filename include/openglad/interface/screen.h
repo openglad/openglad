@@ -225,7 +225,8 @@ public:
     // Re-reads cfg graphics/scale into the live world canvas (the OPTIONS
     // Scale button / RESTORE DEFAULTS live-apply path).
     void reapply_world_scale() override { video_impl_->reapply_world_scale(); }
-    void apply_window_size_from_cfg() override { video_impl_->apply_window_size_from_cfg(); }
+    void apply_display_settings_from_cfg() override { video_impl_->apply_display_settings_from_cfg(); }
+    std::vector<std::pair<int, int>> display_resolutions() override { return video_impl_->display_resolutions(); }
 
     void get_pixel(int x, int y, Uint8* r, Uint8* g, Uint8* b) override;
     int get_pixel(int x, int y, int* index) override;

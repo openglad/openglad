@@ -24,10 +24,13 @@
 #include <openglad/core/util.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/session_state.h>
+#include <openglad/interface/ui/picker_common.h>
 #include <openglad/legacy/base.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/resources/io.h>
 #include <algorithm>
+#include <functional>
+#include <utility>
 #include <array>
 #include <cmath>
 #include <format>
@@ -43,6 +46,9 @@ static inline Uint32 rng(Uint32 max_exclusive) {
 
 // Defined with the pixel-format memo below; must run alongside SDL_Quit.
 static void reset_format_detail_cache();
+// Defined with the display-settings apply below; shared with the boot path.
+static SDL_DisplayID display_for_window();
+static void apply_exclusive_mode(int w, int h);
 
 // Dimensions of the ACTIVE canvas (world or UI; see CanvasTarget in
 // video.h). Every offset conversion (offset = x + y*width), full-frame
@@ -77,7 +83,13 @@ static void video_create_display()
 	RenderEngine render = RenderEngine::NoZoom;
 	int fullscreen_flag = 0;
 
-	if(cfg.is_on("graphics","fullscreen"))
+	// graphics/fullscreen: "off" | "borderless" | "exclusive" (legacy "on"
+	// reads as borderless). Both fullscreen modes create the window with the
+	// FULLSCREEN flag; the exclusive video mode is applied right after
+	// creation (below), once the window exists to attach it to.
+	const og::ui::DisplayMode boot_display_mode =
+	    og::ui::parse_display_mode(cfg.get_setting("graphics", "fullscreen"));
+	if (boot_display_mode != og::ui::DisplayMode::Windowed)
 		fullscreen_flag = 1;
 
 #ifdef __EMSCRIPTEN__
@@ -117,6 +129,20 @@ static void video_create_display()
 	Log("Creating screen {}x{}\n", w, h);
 	E_Screen = std::make_unique<Screen>(render, w, h, fullscreen_flag);
 	TRACE("init", "video initialized: %dx%d", w, h);
+#ifndef __EMSCRIPTEN__
+	// The ctor honors windowed/borderless via the FULLSCREEN flag; an
+	// exclusive cfg still needs its video mode attached to the new window.
+	if (boot_display_mode == og::ui::DisplayMode::Exclusive)
+	{
+		apply_exclusive_mode(w, h);
+		SDL_SyncWindow(E_Screen->window);
+		int aw = w, ah = h;
+		SDL_GetWindowSize(E_Screen->window, &aw, &ah);
+		og::runtime::current_session->window_w_ = static_cast<float>(aw);
+		og::runtime::current_session->window_h_ = static_cast<float>(ah);
+		update_overscan_setting();
+	}
+#endif
 	apply_world_scale_from_cfg();
 }
 
@@ -2480,27 +2506,120 @@ void sdl_video::reapply_world_scale()
 	apply_world_scale_from_cfg();
 }
 
-void sdl_video::apply_window_size_from_cfg()
+// The display every display-settings decision should target: the one the
+// window actually sits on (the user may have dragged it to a secondary
+// monitor); primary only as the fallback headless drivers need.
+static SDL_DisplayID display_for_window()
+{
+	const SDL_DisplayID display = SDL_GetDisplayForWindow(E_Screen->window);
+	return display != 0 ? display : SDL_GetPrimaryDisplay();
+}
+
+// Attach the closest real low-density video mode for w x h to the window
+// (exclusive fullscreen); shared by the boot path and the live apply so a
+// headless test run covers both. Falls back to borderless (NULL mode) when
+// the display offers nothing suitable.
+static void apply_exclusive_mode(int w, int h)
+{
+	SDL_DisplayMode closest;
+	if (SDL_GetClosestFullscreenDisplayMode(display_for_window(), w, h,
+	                                        0.0f, false, &closest))
+		SDL_SetWindowFullscreenMode(E_Screen->window, &closest);
+	else
+		SDL_SetWindowFullscreenMode(E_Screen->window, nullptr);
+}
+
+void sdl_video::apply_display_settings_from_cfg()
 {
 #ifndef __EMSCRIPTEN__
-	// The OPTIONS Window button live-apply path: resize the real window to
-	// cfg graphics/width+height, then re-derive everything the window size
-	// feeds (overscan viewport, then the world canvas, which may be
-	// window-sized). The SDL_EVENT_WINDOW_RESIZED this raises re-runs the
-	// same derivations idempotently.
-	const int w = std::clamp(
-	    parse_int_strict(cfg.get_setting("graphics", "width")).value_or(640), 320, 3840);
-	const int h = std::clamp(
-	    parse_int_strict(cfg.get_setting("graphics", "height")).value_or(400), 200, 2400);
-	SDL_SetWindowSize(E_Screen->window, w, h);
-	og::runtime::current_session->window_w_ = static_cast<float>(w);
-	og::runtime::current_session->window_h_ = static_cast<float>(h);
+	// The DISPLAY screen's live-apply path (and RESTORE DEFAULTS): read the
+	// mode + resolution out of cfg, drive the real window, then re-derive
+	// everything the window size feeds (overscan viewport, then the world
+	// canvas, which may be window-sized). The SDL_EVENT_WINDOW_RESIZED this
+	// raises re-runs the same derivations idempotently.
+	const og::ui::DisplayMode mode =
+	    og::ui::parse_display_mode(cfg.get_setting("graphics", "fullscreen"));
+	const std::pair<int, int> res = og::ui::parse_resolution(
+	    cfg.get_setting("graphics", "width"), cfg.get_setting("graphics", "height"));
+	const int w = std::clamp(res.first, 320, 7680);
+	const int h = std::clamp(res.second, 200, 4800);
+
+	switch (mode)
+	{
+	case og::ui::DisplayMode::Windowed:
+	{
+		const bool was_fullscreen =
+		    (SDL_GetWindowFlags(E_Screen->window) & SDL_WINDOW_FULLSCREEN) != 0;
+		SDL_SetWindowFullscreen(E_Screen->window, false);
+		int cur_w = 0, cur_h = 0;
+		SDL_GetWindowSize(E_Screen->window, &cur_w, &cur_h);
+		if (was_fullscreen || cur_w != w || cur_h != h)
+		{
+			// Only disturb the user's window placement when the size (or
+			// mode) actually changes.
+			SDL_SetWindowSize(E_Screen->window, w, h);
+			SDL_SetWindowPosition(E_Screen->window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+		}
+		break;
+	}
+	case og::ui::DisplayMode::Borderless:
+		// NULL fullscreen mode = borderless desktop (the SDL2
+		// FULLSCREEN_DESKTOP behavior). The chosen resolution still sizes
+		// the window whenever the user drops back to Windowed.
+		SDL_SetWindowFullscreenMode(E_Screen->window, nullptr);
+		SDL_SetWindowFullscreen(E_Screen->window, true);
+		break;
+	case og::ui::DisplayMode::Exclusive:
+		apply_exclusive_mode(w, h);
+		SDL_SetWindowFullscreen(E_Screen->window, true);
+		break;
+	}
+	// Fullscreen transitions are asynchronous on some backends; settle
+	// before reading the real size back (a no-op under headless drivers).
+	SDL_SyncWindow(E_Screen->window);
+
+	int actual_w = w, actual_h = h;
+	SDL_GetWindowSize(E_Screen->window, &actual_w, &actual_h);
+	og::runtime::current_session->window_w_ = static_cast<float>(actual_w);
+	og::runtime::current_session->window_h_ = static_cast<float>(actual_h);
 	update_overscan_setting();
 	apply_world_scale_from_cfg();
 #else
 	// The browser page/CSS owns the canvas box, and the backing is pinned to
-	// the logical size (see Screen()); nothing to resize on web.
+	// the logical size (see Screen()); nothing to apply on web.
 #endif
+}
+
+std::vector<std::pair<int, int>> sdl_video::display_resolutions()
+{
+	std::vector<std::pair<int, int>> out;
+#ifndef __EMSCRIPTEN__
+	int count = 0;
+	SDL_DisplayMode** modes =
+	    SDL_GetFullscreenDisplayModes(display_for_window(), &count);
+	if (modes != nullptr)
+	{
+		for (int i = 0; i < count; ++i)
+		{
+			// Skip high-pixel-density variants: the exclusive apply asks
+			// SDL_GetClosestFullscreenDisplayMode for low-density modes
+			// only, so offering a density-only size here would silently
+			// match a different mode on click.
+			if (modes[i]->pixel_density > 1.0f)
+				continue;
+			const std::pair<int, int> wh{modes[i]->w, modes[i]->h};
+			if (wh.first < 640 || wh.second < 400)
+				continue; // smaller than the classic 2x window: not useful
+			if (std::find(out.begin(), out.end(), wh) == out.end())
+				out.push_back(wh);
+		}
+		SDL_free(modes);
+	}
+	std::sort(out.begin(), out.end(), std::greater<>());
+	if (out.size() > 10)
+		out.resize(10); // keep the cycler lap walkable
+#endif
+	return out;
 }
 
 //buffers: get pixel's RGB values if you have XY

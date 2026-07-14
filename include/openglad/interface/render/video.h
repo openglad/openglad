@@ -19,6 +19,7 @@
 #include <openglad/interface/base.h>
 #include <openglad/interface/render/depth_fx.h>
 
+#include <utility>
 #include <array>
 #include <span>
 #include <vector>
@@ -258,7 +259,13 @@ public:
     // a scalable world canvas — and a routing no-op whenever the re-derived
     // dims match the current ones, i.e. every default run.
     virtual void reapply_world_scale() {}
-    virtual void apply_window_size_from_cfg() {}
+    // DISPLAY settings live-apply: cfg graphics/fullscreen (windowed /
+    // borderless / exclusive) + graphics/width/height, then re-derive the
+    // overscan viewport and world canvas. No-op off the SDL display target.
+    virtual void apply_display_settings_from_cfg() {}
+    // Distinct WxH video modes of the primary display, largest first; empty
+    // when the platform can't enumerate (headless drivers, web).
+    virtual std::vector<std::pair<int, int>> display_resolutions() { return {}; }
 
     virtual void get_pixel(int x, int y, Uint8* r, Uint8* g, Uint8* b) = 0;
     virtual int get_pixel(int x, int y, int* index) = 0;

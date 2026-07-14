@@ -129,7 +129,11 @@ struct OptionsState {
     bool exited_fx[kFxScreenCount];
     bool toggled_fx[kFxScreenCount][kFxMaxToggles];
     bool cycled_world_scale;
-    bool cycled_window_size;
+    bool entered_display;
+    bool cycled_display_mode;
+    bool cycled_resolution;
+    bool resolution_applied_to_window;
+    bool exited_display;
     bool used_options_back;
     // Label the RENDERING ENGINE button shows while cfg (graphics, render) is
     // the empty string (as in any process that never ran load_settings()).
@@ -231,20 +235,51 @@ static bool cycle_world_scale_and_check_lap(const char* button_id)
     return true;
 }
 
-// Click the window-size selector around its full five-step lap and verify
-// cfg graphics/width follows the pure next_window_size_multiplier orbit.
-// The lap ends back on the starting multiplier (the 640x400 boot default in
-// this binary), so the flow leaves the real window where it began.
-static bool cycle_window_size_and_check_lap(const char* button_id)
+// Click the display-mode selector around its full three-step lap
+// (windowed -> borderless -> exclusive -> windowed) and verify cfg
+// graphics/fullscreen follows the pure next_display_mode orbit.
+static bool cycle_display_mode_and_check_lap(const char* button_id)
 {
-    int expected = og::ui::window_size_multiplier(
-        cfg.get_setting("graphics", "width"),
-        cfg.get_setting("graphics", "height"));
-    for (int i = 0; i < 5; ++i)
-        expected = og::ui::next_window_size_multiplier(expected);
-    const std::string expected_width = std::to_string(320 * expected);
+    og::ui::DisplayMode expected =
+        og::ui::parse_display_mode(cfg.get_setting("graphics", "fullscreen"));
+    for (int i = 0; i < 3; ++i)
+        expected = og::ui::next_display_mode(expected);
+    const std::string expected_value = og::ui::display_mode_cfg_value(expected);
 
-    for (int i = 0; i < 5; ++i)
+    for (int i = 0; i < 3; ++i)
+        if (!click_cycle_step(button_id, "graphics", "fullscreen"))
+            return false;
+
+    const Uint64 deadline = SDL_GetTicks() + 5000;
+    while (og::ui::display_mode_cfg_value(og::ui::parse_display_mode(
+               cfg.get_setting("graphics", "fullscreen"))) != expected_value) {
+        if (SDL_GetTicks() >= deadline)
+            return false;
+        interact(button_id);
+        SDL_Delay(300);
+    }
+    return true;
+}
+
+// Click the resolution selector around one full lap of the fallback list
+// (headless drivers report ZERO fullscreen modes, so resolution_choices()
+// falls back to the five 16:10 presets — and the 640x400 start is already
+// on that list, so the lap length is exactly the list length) and verify
+// cfg graphics/width follows the pure next_resolution orbit.
+static bool cycle_resolution_and_check_lap(const char* button_id)
+{
+    const std::vector<std::pair<int, int>> list = og::ui::fallback_resolutions();
+    std::string w = cfg.get_setting("graphics", "width");
+    std::string h = cfg.get_setting("graphics", "height");
+    std::pair<int, int> expected = og::ui::parse_resolution(w, h);
+    for (std::size_t i = 0; i < list.size(); ++i)
+    {
+        expected = og::ui::next_resolution(list, std::to_string(expected.first),
+                                           std::to_string(expected.second));
+    }
+    const std::string expected_width = std::to_string(expected.first);
+
+    for (std::size_t i = 0; i < list.size(); ++i)
         if (!click_cycle_step(button_id, "graphics", "width"))
             return false;
 
@@ -280,24 +315,6 @@ static int options_injector(void* data)
         state->saw_options = true;
         SDL_Delay(150);
 
-        // With cfg (graphics, render) empty, the per-frame label sync must
-        // fall back to "normal" instead of drawing a blank button face.
-        fprintf(stderr, "  [test] checking rendering-engine label fallback\n");
-        {
-            const std::string prev_render = cfg.get_setting("graphics", "render");
-            cfg.apply_setting("graphics", "render", "");
-            SDL_Delay(300);  // let main_options() run a few label-sync frames
-            for (const Interactable& item : get_interactables()) {
-                if (item.id == "toggle_rendering") {
-                    state->render_label_when_unset = item.label;
-                    break;
-                }
-            }
-            cfg.apply_setting("graphics", "render",
-                              prev_render.empty() ? "normal" : prev_render);
-            SDL_Delay(150);
-        }
-
         fprintf(stderr, "  [test] entering player controls\n");
         bool in_controls = click_until_interactable("player_controls", "player1_mode", 5000);
         SDL_Delay(150);
@@ -312,27 +329,68 @@ static int options_injector(void* data)
             SDL_Delay(150);
         }
 
-        fprintf(stderr, "  [test] toggling sound/render/fullscreen\n");
+        fprintf(stderr, "  [test] toggling sound\n");
         interact("toggle_sound");
         SDL_Delay(80);
-        interact("toggle_rendering");
-        SDL_Delay(80);
-        interact("toggle_fullscreen");
-        SDL_Delay(80);
 
-        fprintf(stderr, "  [test] adjusting overscan\n");
-        interact("overscan_plus");
-        SDL_Delay(80);
-        interact("overscan_minus");
-        SDL_Delay(80);
+        // Everything window/presentation related lives in the DISPLAY
+        // subscreen: enter it, exercise every row, and leave via its BACK.
+        fprintf(stderr, "  [test] entering display settings\n");
+        if (click_until_interactable("display_settings", "display_mode", 5000)) {
+            state->entered_display = true;
+            SDL_Delay(300);
 
-        // A full verified lap of the world-scale cycle: every click steps
-        // cfg graphics/scale AND live-applies it to the world canvas (the
-        // menu keeps presenting the untouched 320x200 UI canvas throughout).
-        fprintf(stderr, "  [test] cycling world scale through a full lap\n");
-        state->cycled_world_scale = cycle_world_scale_and_check_lap("world_scale");
-        SDL_Delay(300);
-        state->cycled_window_size = cycle_window_size_and_check_lap("window_size");
+            // With cfg (graphics, render) empty, the per-frame label sync
+            // must fall back to "Filter: normal", never a blank face.
+            {
+                const std::string prev_render = cfg.get_setting("graphics", "render");
+                cfg.apply_setting("graphics", "render", "");
+                SDL_Delay(300);  // let the display loop run label-sync frames
+                for (const Interactable& item : get_interactables()) {
+                    if (item.id == "toggle_rendering") {
+                        state->render_label_when_unset = item.label;
+                        break;
+                    }
+                }
+                cfg.apply_setting("graphics", "render",
+                                  prev_render.empty() ? "normal" : prev_render);
+                SDL_Delay(150);
+            }
+
+            fprintf(stderr, "  [test] cycling display mode\n");
+            state->cycled_display_mode = cycle_display_mode_and_check_lap("display_mode");
+            SDL_Delay(300);
+            fprintf(stderr, "  [test] cycling resolution\n");
+            state->cycled_resolution = cycle_resolution_and_check_lap("display_resolution");
+            SDL_Delay(300);
+            // The lap ends back on 640x400 and each click live-applies:
+            // the REAL window (session bookkeeping fed from
+            // SDL_GetWindowSize after the apply) must have followed.
+            state->resolution_applied_to_window =
+                static_cast<int>(og::runtime::current_session->window_w_) == 640 &&
+                static_cast<int>(og::runtime::current_session->window_h_) == 400;
+
+            fprintf(stderr, "  [test] adjusting overscan\n");
+            interact("overscan_plus");
+            SDL_Delay(80);
+            interact("overscan_minus");
+            SDL_Delay(80);
+
+            interact("toggle_rendering");
+            SDL_Delay(80);
+
+            // A full verified lap of the world-scale cycle: every click
+            // steps cfg graphics/scale AND live-applies it to the world
+            // canvas (the menu keeps presenting the 320x200 UI canvas).
+            fprintf(stderr, "  [test] cycling world scale through a full lap\n");
+            state->cycled_world_scale = cycle_world_scale_and_check_lap("world_scale");
+            SDL_Delay(300);
+
+            fprintf(stderr, "  [test] leaving display settings\n");
+            state->exited_display =
+                click_until_interactable("display_back", "display_settings", 5000);
+            SDL_Delay(300);
+        }
 
         // Enter each FX subscreen in turn, flip every toggle it hosts
         // (asserting the cfg key actually changed), and leave via the
@@ -402,6 +460,54 @@ static int options_injector(void* data)
     return 0;
 }
 
+// Direct coverage of the display-settings apply: all three mode branches and
+// the mode enumeration run headlessly (fullscreen requests fail gracefully
+// under the offscreen/dummy drivers; the cfg -> window -> session bookkeeping
+// still executes).
+TEST(OptionsMenu, apply_display_settings_covers_all_modes) {
+    const std::string prev_mode = cfg.get_setting("graphics", "fullscreen");
+    const std::string prev_w = cfg.get_setting("graphics", "width");
+    const std::string prev_h = cfg.get_setting("graphics", "height");
+
+    screen* scr = og::runtime::current_session->myscreen_;
+
+    cfg.apply_setting("graphics", "width", "960");
+    cfg.apply_setting("graphics", "height", "600");
+    for (const char* mode : {"off", "borderless", "exclusive"}) {
+        cfg.apply_setting("graphics", "fullscreen", mode);
+        scr->apply_display_settings_from_cfg();
+        // The session must always track the REAL window afterwards.
+        EXPECT_GT(og::runtime::current_session->window_w_, 0.0f) << mode;
+        EXPECT_GT(og::runtime::current_session->window_h_, 0.0f) << mode;
+    }
+    // Windowed sizing does reach the real window headlessly.
+    cfg.apply_setting("graphics", "fullscreen", "off");
+    scr->apply_display_settings_from_cfg();
+    EXPECT_EQ(960, static_cast<int>(og::runtime::current_session->window_w_));
+    EXPECT_EQ(600, static_cast<int>(og::runtime::current_session->window_h_));
+
+    // Headless drivers enumerate no fullscreen modes; the accessor must
+    // return an empty (not crashing) list for the picker's fallback to kick
+    // in.
+    const std::vector<std::pair<int, int>> modes = scr->display_resolutions();
+    for (const auto& m : modes) {
+        EXPECT_GE(m.first, 640);
+        EXPECT_GE(m.second, 400);
+    }
+
+    // Restore boot state (640x400 windowed) through the same live path.
+    cfg.apply_setting("graphics", "fullscreen", prev_mode);
+    cfg.apply_setting("graphics", "width", prev_w.empty() ? "640" : prev_w);
+    cfg.apply_setting("graphics", "height", prev_h.empty() ? "400" : prev_h);
+    scr->apply_display_settings_from_cfg();
+    if (prev_w.empty()) {
+        cfg.apply_setting("graphics", "width", "");
+        cfg.apply_setting("graphics", "height", "");
+    }
+    if (prev_mode.empty())
+        cfg.apply_setting("graphics", "fullscreen", "");
+}
+
 TEST(OptionsMenu, options_menu) {
     trace_clear();
 
@@ -445,12 +551,19 @@ TEST(OptionsMenu, options_menu) {
             << "should have returned to main options via " << screen.back_id;
     }
     ASSERT_TRUE(state.used_options_back) << "should have exited options via options_back";
-    EXPECT_EQ("normal", state.render_label_when_unset)
-        << "empty cfg (graphics, render) must fall back to 'normal' on the button face";
+    EXPECT_EQ("Filter: normal", state.render_label_when_unset)
+        << "empty cfg (graphics, render) must fall back to 'Filter: normal' on the button face";
+    ASSERT_TRUE(state.entered_display) << "should have entered the DISPLAY subscreen";
+    ASSERT_TRUE(state.cycled_display_mode)
+        << "display_mode must step cfg graphics/fullscreen around windowed/borderless/exclusive";
+    ASSERT_TRUE(state.cycled_resolution)
+        << "display_resolution must step cfg graphics/width around the preset lap";
+    EXPECT_TRUE(state.resolution_applied_to_window)
+        << "each resolution click must live-apply to the real window "
+           "(session window_w_/h_ re-read from SDL after the apply)";
     ASSERT_TRUE(state.cycled_world_scale)
         << "world_scale must step cfg graphics/scale around the full eight-value lap";
-    ASSERT_TRUE(state.cycled_window_size)
-        << "window_size must step cfg graphics/width around the full five-multiple lap";
+    ASSERT_TRUE(state.exited_display) << "should have returned via display_back";
     // Each click live-applies the value: the integer / SAI / Eagle modes and
     // the closing Legacy wrap must all have reached the renderer
     // (apply_world_scale_from_cfg traces the parsed mode).

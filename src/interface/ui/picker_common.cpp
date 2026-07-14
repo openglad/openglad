@@ -10,6 +10,8 @@
 #include <openglad/resources/save_data.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/core/ctf_constants.h>
+#include <openglad/core/util.h>
+#include <optional>
 #include <openglad/core/tower_constants.h>
 #include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/family_descriptor.h>
@@ -590,32 +592,92 @@ std::string format_world_scale_label(const std::string& value)
     return "Scale: " + v + "x";
 }
 
-int window_size_multiplier(const std::string& width, const std::string& height)
+DisplayMode parse_display_mode(const std::string& value)
 {
-    // Absent keys mean the 640x400 boot default in video_init.
-    if (width.empty() && height.empty())
-        return 2;
-    for (int k = 1; k <= 5; ++k)
+    // Legacy boolean cfg: "on" meant the borderless desktop fullscreen that
+    // SDL_WINDOW_FULLSCREEN(_DESKTOP) provided.
+    if (value == "on" || value == "borderless")
+        return DisplayMode::Borderless;
+    if (value == "exclusive" || value == "fullscreen")
+        return DisplayMode::Exclusive;
+    return DisplayMode::Windowed; // "off", absent, or anything unrecognized
+}
+
+std::string display_mode_cfg_value(DisplayMode mode)
+{
+    switch (mode)
     {
-        if (width == std::to_string(320 * k) && height == std::to_string(200 * k))
-            return k;
+    case DisplayMode::Borderless:
+        return "borderless";
+    case DisplayMode::Exclusive:
+        return "exclusive";
+    case DisplayMode::Windowed:
+    default:
+        return "off";
     }
-    return 0; // hand-edited cfg: a custom size the selector re-enters at 2x
 }
 
-int next_window_size_multiplier(int multiplier)
+DisplayMode next_display_mode(DisplayMode mode)
 {
-    if (multiplier < 1 || multiplier >= 5)
-        return multiplier == 0 ? 2 : 1; // custom re-enters the lap; 5 wraps
-    return multiplier + 1;
+    switch (mode)
+    {
+    case DisplayMode::Windowed:
+        return DisplayMode::Borderless;
+    case DisplayMode::Borderless:
+        return DisplayMode::Exclusive;
+    case DisplayMode::Exclusive:
+    default:
+        return DisplayMode::Windowed;
+    }
 }
 
-std::string format_window_size_label(const std::string& width, const std::string& height)
+std::string format_display_mode_label(const std::string& value)
 {
-    const int k = window_size_multiplier(width, height);
-    if (k == 0)
-        return "Window: custom";
-    return "Window: " + std::to_string(k) + "x";
+    switch (parse_display_mode(value))
+    {
+    case DisplayMode::Borderless:
+        return "Mode: Borderless";
+    case DisplayMode::Exclusive:
+        return "Mode: Fullscreen";
+    case DisplayMode::Windowed:
+    default:
+        return "Mode: Windowed";
+    }
+}
+
+std::vector<std::pair<int, int>> fallback_resolutions()
+{
+    // 16:10 multiples of the classic 320x200 canvas.
+    return {{640, 400}, {960, 600}, {1280, 800}, {1600, 1000}, {1920, 1200}};
+}
+
+std::pair<int, int> parse_resolution(const std::string& width, const std::string& height)
+{
+    const std::optional<int> w = parse_int_strict(width);
+    const std::optional<int> h = parse_int_strict(height);
+    if (!w || !h || *w < 320 || *h < 200)
+        return {640, 400}; // the video_init boot default
+    return {*w, *h};
+}
+
+std::pair<int, int> next_resolution(const std::vector<std::pair<int, int>>& list,
+                                    const std::string& width, const std::string& height)
+{
+    if (list.empty())
+        return parse_resolution(width, height);
+    const std::pair<int, int> current = parse_resolution(width, height);
+    for (std::size_t i = 0; i < list.size(); ++i)
+    {
+        if (list[i] == current)
+            return list[(i + 1) % list.size()];
+    }
+    return list.front(); // hand-edited size re-enters the list
+}
+
+std::string format_resolution_label(const std::string& width, const std::string& height)
+{
+    const std::pair<int, int> r = parse_resolution(width, height);
+    return "Res: " + std::to_string(r.first) + "x" + std::to_string(r.second);
 }
 
 // --- Team choice helpers (local seats) ---
