@@ -744,6 +744,20 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
     SDL_SetRenderVSync(renderer, 1);
     #endif
 
+    #ifdef __EMSCRIPTEN__
+    // SDL3's Emscripten backend adopts the canvas CSS box as the window and
+    // canvas-backing size (SDL2 kept the requested logical size and let CSS
+    // stretch the presented canvas). A CSS-sized backing store multiplies
+    // the per-frame raster cost under software GL — measured 320x200 ->
+    // 1152x720, which turns CI's SwiftShader runners into periodic frame
+    // drops (the wasm-jitter gate). Pin the backing back to the logical
+    // size; CSS still scales the displayed canvas exactly as under SDL2.
+    // The pin must come AFTER SDL_CreateRenderer: attaching a GL renderer
+    // recreates the window (adds the OPENGL flag), and the recreation
+    // re-runs the CSS-size adoption, clobbering any earlier pin.
+    SDL_SetWindowSize(window, w, h);
+    #endif
+
     // The UI canvas is pinned at kUiCanvasW x kUiCanvasH; the world canvas
     // starts shared with it (aliased) at the same default dims, keeping the
     // renderer byte-identical to the historical single-canvas setup.
