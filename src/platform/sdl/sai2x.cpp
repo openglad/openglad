@@ -720,17 +720,13 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
     window_flags |= SDL_WINDOW_BORDERLESS;
     #endif
 
+    const int logical_w = w;
+    const int logical_h = h;
     window = SDL_CreateWindow("Gladiator", w, h, window_flags);
     if(window == nullptr)
         throw std::runtime_error(std::string("Fatal: SDL_CreateWindow failed: ") + SDL_GetError());
     SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
 
-	    SDL_GetWindowSize(window, &w, &h);
-	    og::runtime::current_session->window_w_ = static_cast<float>(w);
-	    og::runtime::current_session->window_h_ = static_cast<float>(h);
-	    
-	    update_overscan_setting();
-    
     // SDL3 defaults SDL_GL_ALPHA_SIZE to 8 (SDL2: 0). On Emscripten that
     // creates a translucent WebGL canvas (alpha:true, premultiplied), and the
     // XRGB canvas pixels carry alpha=0, so the browser composites the whole
@@ -754,9 +750,17 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
     // size; CSS still scales the displayed canvas exactly as under SDL2.
     // The pin must come AFTER SDL_CreateRenderer: attaching a GL renderer
     // recreates the window (adds the OPENGL flag), and the recreation
-    // re-runs the CSS-size adoption, clobbering any earlier pin.
-    SDL_SetWindowSize(window, w, h);
+    // re-runs the CSS-size adoption, clobbering any earlier pin. Use the
+    // LOGICAL size captured before creation — the adoption overwrites the
+    // window size, so re-reading it here would just write the CSS box back.
+    SDL_SetWindowSize(window, logical_w, logical_h);
     #endif
+
+	    SDL_GetWindowSize(window, &w, &h);
+	    og::runtime::current_session->window_w_ = static_cast<float>(w);
+	    og::runtime::current_session->window_h_ = static_cast<float>(h);
+
+	    update_overscan_setting();
 
     // The UI canvas is pinned at kUiCanvasW x kUiCanvasH; the world canvas
     // starts shared with it (aliased) at the same default dims, keeping the
@@ -766,8 +770,11 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
     // SDL3 defaults alpha-format textures to SDL_BLENDMODE_BLEND (the canvas
     // pixels have alpha=0, so blending would draw nothing). The canvas
     // present is an opaque full-frame copy: force NONE on every canvas
-    // texture.
+    // texture. SDL3 also defaults texture filtering to LINEAR where SDL2's
+    // render-scale-quality default was nearest — the canvas upscale must
+    // stay chunky-crisp, not smoothed.
     SDL_SetTextureBlendMode(ui_tex_, SDL_BLENDMODE_NONE);
+    SDL_SetTextureScaleMode(ui_tex_, SDL_SCALEMODE_NEAREST);
     world_surf_ = ui_surf_;
     world_tex_ = ui_tex_;
     render = ui_surf_;      // boot in UI mode (intro/menus draw first)
@@ -929,7 +936,10 @@ bool Screen::ensure_render2(int need_w, int need_h)
 		render2 = SDL_CreateSurface(need_w, need_h, SDL_PIXELFORMAT_XRGB8888);
 		render2_tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, need_w, need_h);
 		if (render2_tex != nullptr)
+		{
 			SDL_SetTextureBlendMode(render2_tex, SDL_BLENDMODE_NONE);
+			SDL_SetTextureScaleMode(render2_tex, SDL_SCALEMODE_NEAREST);
+		}
 	}
 	return render2 != nullptr && render2_tex != nullptr;
 }
