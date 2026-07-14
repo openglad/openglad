@@ -45,7 +45,7 @@ jobs:
           exit 1
 
       - name: Copy web assets to dist
-        run: cp web/index.html web/hero.png web/help.html dist/
+        run: cp web/index.html web/help.html dist/
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
