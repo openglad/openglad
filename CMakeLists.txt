@@ -1653,6 +1653,22 @@ if(NOT EMSCRIPTEN)
         )
     endif()
 
+    if(OG_SDL3_FROM_FETCH AND TARGET SDL3-static)
+        # og_interface/og_platform_sdl carry SDL3-static as a $<LINK_ONLY:>
+        # dep in the export set, so the fetched target must be exported too
+        # (same treatment as the other fetched static deps above), along
+        # with the SDL3_Headers INTERFACE target it links.
+        install(TARGETS SDL3-static SDL3_Headers
+            EXPORT OpenGladTargets
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        )
+        install(DIRECTORY ${sdl3_SOURCE_DIR}/include/SDL3
+            DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+        )
+    endif()
+
     if(OG_LODEPNG_FROM_FETCH)
         install(FILES
             ${lodepng_SOURCE_DIR}/lodepng.h
