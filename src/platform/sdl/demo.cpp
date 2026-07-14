@@ -375,6 +375,9 @@ int main(int argc, char* argv[])
             LogError("Failed to create composite surface/texture\n");
             return 1;
         }
+        // SDL3 defaults alpha-format textures to BLEND; the composite pixels
+        // are XRGB (alpha=0), so blending would present nothing.
+        SDL_SetTextureBlendMode(composite_tex.get(), SDL_BLENDMODE_NONE);
 
         // --- Create sub-sessions (main thread) ---
         std::vector<DemoSession> demos(static_cast<size_t>(num_sessions));

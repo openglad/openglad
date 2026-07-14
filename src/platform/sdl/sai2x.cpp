@@ -731,18 +731,29 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
 	    
 	    update_overscan_setting();
     
+    // SDL3 defaults SDL_GL_ALPHA_SIZE to 8 (SDL2: 0). On Emscripten that
+    // creates a translucent WebGL canvas (alpha:true, premultiplied), and the
+    // XRGB canvas pixels carry alpha=0, so the browser composites the whole
+    // game away to black. Request the SDL2-default opaque context everywhere.
+    SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);
+
     #ifdef TESTING
     renderer = SDL_CreateRenderer(window, nullptr);
     #else
     renderer = SDL_CreateRenderer(window, nullptr);
     SDL_SetRenderVSync(renderer, 1);
     #endif
-    
+
     // The UI canvas is pinned at kUiCanvasW x kUiCanvasH; the world canvas
     // starts shared with it (aliased) at the same default dims, keeping the
     // renderer byte-identical to the historical single-canvas setup.
     ui_surf_ = SDL_CreateSurface(kUiCanvasW, kUiCanvasH, SDL_PIXELFORMAT_XRGB8888);
 	ui_tex_ = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, kUiCanvasW, kUiCanvasH);
+    // SDL3 defaults alpha-format textures to SDL_BLENDMODE_BLEND (the canvas
+    // pixels have alpha=0, so blending would draw nothing). The canvas
+    // present is an opaque full-frame copy: force NONE on every canvas
+    // texture.
+    SDL_SetTextureBlendMode(ui_tex_, SDL_BLENDMODE_NONE);
     world_surf_ = ui_surf_;
     world_tex_ = ui_tex_;
     render = ui_surf_;      // boot in UI mode (intro/menus draw first)
@@ -809,6 +820,8 @@ void Screen::set_world_canvas_size(int w, int h)
 	{
 		world_surf_ = SDL_CreateSurface(w, h, SDL_PIXELFORMAT_XRGB8888);
 		world_tex_ = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, w, h);
+		if (world_tex_ != nullptr)
+			SDL_SetTextureBlendMode(world_tex_, SDL_BLENDMODE_NONE);
 		if (world_surf_ == nullptr || world_tex_ == nullptr)
 		{
 			LogError("set_world_canvas_size({}x{}) allocation failed: {}\n", w, h, SDL_GetError());
@@ -895,6 +908,8 @@ bool Screen::ensure_render2(int need_w, int need_h)
 	{
 		render2 = SDL_CreateSurface(need_w, need_h, SDL_PIXELFORMAT_XRGB8888);
 		render2_tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, need_w, need_h);
+		if (render2_tex != nullptr)
+			SDL_SetTextureBlendMode(render2_tex, SDL_BLENDMODE_NONE);
 	}
 	return render2 != nullptr && render2_tex != nullptr;
 }

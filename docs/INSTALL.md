@@ -7,19 +7,22 @@ OpenGlad uses **CMake 3.25+** as its primary build system. It targets **C++20** 
 ### Linux (Debian/Ubuntu)
 
 ```bash
-sudo apt-get install cmake ninja-build pkg-config libsdl2-dev libsdl2-mixer-dev \
+sudo apt-get install cmake ninja-build pkg-config \
   libphysfs-dev libzip-dev libyaml-dev zlib1g-dev
 ```
+
+SDL3 is auto-fetched (pinned `release-3.4.8`) when no system sdl3 is found;
+install `libsdl3-dev` where available (Ubuntu 25.04+) to use a system copy.
 
 ### macOS (Homebrew)
 
 ```bash
-brew install cmake ninja pkg-config sdl2 sdl2_mixer physfs libzip libyaml zlib
+brew install cmake ninja pkg-config sdl3 physfs libzip libyaml zlib
 ```
 
 ### Windows
 
-Install [vcpkg](https://github.com/microsoft/vcpkg) and use the vcpkg preset (see below), or install SDL2 and SDL2_mixer manually and ensure they are on the system `PKG_CONFIG_PATH`.
+Install [vcpkg](https://github.com/microsoft/vcpkg) and use the vcpkg preset (see below), or install SDL3 manually and ensure it is on the system `PKG_CONFIG_PATH`.
 
 ### Nix
 
