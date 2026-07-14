@@ -448,12 +448,39 @@ void sdl_video::fastbox(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize
 	fastbox(startx,starty,xsize,ysize,color,1);
 }
 
+
+// SDL3's per-surface color helpers (SDL_MapSurfaceRGB & co.) and
+// SDL_GetPixelFormatDetails resolve the pixel format through a global hash
+// table on every call; SDL2 read a cached pointer straight off the surface.
+// These sit on per-pixel paths (point/pointb/putpixel/blend_pixel and the
+// sprite blit loops), where the lookup dominated browser frame time under
+// software GL and starved CI's sanitizer runners. SDL interns the details
+// structs for the process lifetime, so memoizing per format is safe.
+static const SDL_PixelFormatDetails* cached_format_details(SDL_PixelFormat format)
+{
+    static SDL_PixelFormat last_format = SDL_PIXELFORMAT_UNKNOWN;
+    static const SDL_PixelFormatDetails* last_details = nullptr;
+    if (format != last_format || last_details == nullptr) {
+        last_details = SDL_GetPixelFormatDetails(format);
+        last_format = format;
+    }
+    return last_details;
+}
+
+// SDL_MapSurfaceRGB without the per-call hash lookup (SDL_GetSurfacePalette
+// is a plain field read).
+static inline Uint32 map_surface_rgb_fast(SDL_Surface* surface, Uint8 r, Uint8 g, Uint8 b)
+{
+    return SDL_MapRGB(cached_format_details(surface->format),
+                      SDL_GetSurfacePalette(surface), r, g, b);
+}
+
 Uint32 get_Uint32_color(unsigned char color)
 {
     int r,g,b;
 	query_palette_reg(color,&r,&g,&b);
 		
-	return SDL_MapSurfaceRGB(E_Screen->render,
+	return map_surface_rgb_fast(E_Screen->render,
 	                  static_cast<Uint8>(r * 4),
 	                  static_cast<Uint8>(g * 4),
 	                  static_cast<Uint8>(b * 4));
@@ -482,7 +509,7 @@ void sdl_video::fastbox(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize
 	rect.h = ysize;
 
 	query_palette_reg(color,&r,&g,&b);
-	SDL_FillSurfaceRect(E_Screen->render, &rect, SDL_MapSurfaceRGB(E_Screen->render,
+	SDL_FillSurfaceRect(E_Screen->render, &rect, map_surface_rgb_fast(E_Screen->render,
 	                                                 static_cast<Uint8>(r * 4),
 	                                                 static_cast<Uint8>(g * 4),
 	                                                 static_cast<Uint8>(b * 4)));
@@ -506,7 +533,7 @@ void putpixel(SDL_Surface *surface, int x, int y, Uint32 pixel)
     if(x < 0 || y < 0 || x >= surface->w || y >= surface->h)
         return;
     
-    const SDL_PixelFormatDetails* d = SDL_GetPixelFormatDetails(surface->format);
+    const SDL_PixelFormatDetails* d = cached_format_details(surface->format);
     int bpp = d->bytes_per_pixel;
     /* Here p is the address to the pixel we want to set */
     Uint8 *p = static_cast<Uint8*>(surface->pixels) + y * surface->pitch + x * bpp;
@@ -555,7 +582,7 @@ void sdl_video::pointb(Sint32 x, Sint32 y, unsigned char color)
 
 	query_palette_reg(color,&r,&g,&b);
 
-	c = SDL_MapSurfaceRGB(E_Screen->render,
+	c = map_surface_rgb_fast(E_Screen->render,
 	               static_cast<Uint8>(r * 4),
 	               static_cast<Uint8>(g * 4),
 	               static_cast<Uint8>(b * 4));
@@ -565,7 +592,7 @@ void sdl_video::pointb(Sint32 x, Sint32 y, unsigned char color)
 
 void blend_pixel(SDL_Surface* surface, int x, int y, Uint32 color, Uint8 alpha)
 {
-    const SDL_PixelFormatDetails* d = SDL_GetPixelFormatDetails(surface->format);
+    const SDL_PixelFormatDetails* d = cached_format_details(surface->format);
     Uint32 Rmask = d->Rmask, Gmask = d->Gmask, Bmask = d->Bmask, Amask = d->Amask;
     Uint32 R,G,B,A=0;//SDL_ALPHA_OPAQUE;
     Uint32* pixel;
@@ -587,7 +614,7 @@ void blend_pixel(SDL_Surface* surface, int x, int y, Uint32 color, Uint8 alpha)
                 dG = static_cast<Uint8>(dG + (((sG - dG) * alpha) >> 8));
                 dB = static_cast<Uint8>(dB + (((sB - dB) * alpha) >> 8));
             
-                *pixel8 = static_cast<Uint8>(SDL_MapSurfaceRGB(surface, dR, dG, dB));
+                *pixel8 = static_cast<Uint8>(map_surface_rgb_fast(surface, dR, dG, dB));
                 
         }
         break;
@@ -683,7 +710,7 @@ void sdl_video::pointb(Sint32 x, Sint32 y, unsigned char color, unsigned char al
 
 	query_palette_reg(color,&r,&g,&b);
 
-	c = SDL_MapSurfaceRGB(E_Screen->render,
+	c = map_surface_rgb_fast(E_Screen->render,
 	               static_cast<Uint8>(r * 4),
 	               static_cast<Uint8>(g * 4),
 	               static_cast<Uint8>(b * 4));
@@ -696,7 +723,7 @@ void sdl_video::pointb(Sint32 x, Sint32 y, int r, int g, int b)
 {
 	SDL_Rect  rect;
 	int c;
-	c = SDL_MapSurfaceRGB(E_Screen->render,
+	c = map_surface_rgb_fast(E_Screen->render,
 	               static_cast<Uint8>(r),
 	               static_cast<Uint8>(g),
 	               static_cast<Uint8>(b));
@@ -932,7 +959,7 @@ void sdl_video::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 y
 		        	continue;
 			//point(curx,cury,curcolor);//buffers: PORT: draw the poin
 			query_palette_reg(curcolor,&r,&g,&b);
-			color = SDL_MapSurfaceRGB(E_Screen->render,
+			color = map_surface_rgb_fast(E_Screen->render,
 			                   static_cast<Uint8>(r * 4),
 			                   static_cast<Uint8>(g * 4),
 			                   static_cast<Uint8>(b * 4));
@@ -992,7 +1019,7 @@ void sdl_video::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 y
 		        curcolor = color;
 	        }
 			query_palette_reg(curcolor,&r,&g,&b);
-			scolor = SDL_MapSurfaceRGB(E_Screen->render,
+			scolor = map_surface_rgb_fast(E_Screen->render,
 			                    static_cast<Uint8>(r * 4),
 			                    static_cast<Uint8>(g * 4),
 			                    static_cast<Uint8>(b * 4));
@@ -1226,7 +1253,7 @@ void* sdl_video::create_accel_surface(std::span<const unsigned char> indexed_pix
             query_palette_reg(indexed_pixels[src_index], &r, &g, &b);
             pixels[static_cast<std::size_t>(y) * pitch_pixels +
                    static_cast<std::size_t>(x)] =
-                SDL_MapSurfaceRGB(surface,
+                map_surface_rgb_fast(surface,
                            static_cast<Uint8>(r * 4),
                            static_cast<Uint8>(g * 4),
                            static_cast<Uint8>(b * 4));
@@ -1929,7 +1956,7 @@ void sdl_video::walkputbuffertext(Sint32 walkerstartx, Sint32 walkerstarty,
 		                curcolor = static_cast<unsigned char>(teamcolor+(255-curcolor));
 		        }
 				query_palette_reg(curcolor,&r,&g,&b);
-                        color = SDL_MapSurfaceRGB(E_Screen->render,
+                        color = map_surface_rgb_fast(E_Screen->render,
                                            static_cast<Uint8>(r * 4),
                                            static_cast<Uint8>(g * 4),
                                            static_cast<Uint8>(b * 4));
@@ -2418,7 +2445,7 @@ void sdl_video::get_pixel(int x, int y, Uint8 *r, Uint8 *g, Uint8 *b)
 		return;
 	}
 
-	const SDL_PixelFormatDetails* det = SDL_GetPixelFormatDetails(E_Screen->render->format);
+	const SDL_PixelFormatDetails* det = cached_format_details(E_Screen->render->format);
 	char *p = reinterpret_cast<char*>(E_Screen->render->pixels);
 	p += E_Screen->render->pitch*y;
 	p += det->bytes_per_pixel*x;
@@ -2714,7 +2741,7 @@ int sdl_video::fadeblack(bool fade_in)
 	SDL_Surface* black = SDL_CreateSurface(active_canvas_w(), active_canvas_h(), SDL_PIXELFORMAT_XRGB8888);
     if (!black)
         return -1;
-    SDL_FillSurfaceRect(black, nullptr, SDL_MapSurfaceRGB(black, 0, 0, 0));
+    SDL_FillSurfaceRect(black, nullptr, map_surface_rgb_fast(black, 0, 0, 0));
 	int i;
 
 	if(fade_in)
