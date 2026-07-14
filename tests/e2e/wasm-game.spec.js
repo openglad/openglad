@@ -59,12 +59,12 @@ test.describe('Landing Page', () => {
     await page.goto('/');
 
     // Verify the page title
-    await expect(page).toHaveTitle('Huddle Dungeon');
+    await expect(page).toHaveTitle('Openglad');
 
     // Verify the heading is visible
     const heading = page.locator('h1');
     await expect(heading).toBeVisible();
-    await expect(heading).toHaveText('Huddle Dungeon');
+    await expect(heading).toHaveText('Openglad');
 
     // Verify the Play button exists and links to play.html
     const playButton = page.locator('a.play-button');
