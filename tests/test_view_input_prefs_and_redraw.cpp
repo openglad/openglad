@@ -14,12 +14,12 @@ namespace
 {
 struct KeyStateGuard
 {
-    const Uint8* saved = nullptr;
-    std::array<Uint8, MAXKEYS> fake{};
+    const bool* saved = nullptr;
+    std::array<bool, MAXKEYS> fake{};
     KeyStateGuard()
     {
         saved = og::runtime::current_session->keystates_;
-        fake.fill(0);
+        fake.fill(false);
         og::runtime::current_session->keystates_ = fake.data();
     }
     ~KeyStateGuard()
@@ -33,8 +33,8 @@ static SDL_Event keydown(SDL_Keycode key)
     SDL_Event e{};
     e.type = SDL_EVENT_KEY_DOWN;
     e.key.key = key;
-    e.key.scancode = SDL_GetScancodeFromKey(key);
-    e.key.repeat = 0;
+    e.key.scancode = SDL_GetScancodeFromKey(key, nullptr);
+    e.key.repeat = false;
     return e;
 }
 
@@ -43,9 +43,9 @@ static int injector_press_and_release_escape(void* data)
     og::runtime::ensure_thread_session();
     auto* ks = static_cast<KeyStateGuard*>(data);
     SDL_Delay(40);
-    ks->fake[KEYSTATE_ESCAPE] = 1;
+    ks->fake[KEYSTATE_ESCAPE] = true;
     SDL_Delay(30);
-    ks->fake[KEYSTATE_ESCAPE] = 0;
+    ks->fake[KEYSTATE_ESCAPE] = false;
     SDL_Delay(10);
     return 0;
 }
@@ -112,9 +112,9 @@ TEST(ViewInputPrefsAndRedraw, viewscreen_input_shift_slash_triggers_read_scenari
 
     KeyStateGuard ks;
     // Hold the shifter key (LSHIFT by default for player 0).
-    ks.fake[SDL_GetScancodeFromKey(og::runtime::current_session->player_keys_[0][KEY_SHIFTER])] = 1;
+    ks.fake[SDL_GetScancodeFromKey(og::runtime::current_session->player_keys_[0][KEY_SHIFTER], nullptr)] = true;
     (void)vs->input(keydown(SDLK_SLASH));
-    ks.fake[SDL_GetScancodeFromKey(og::runtime::current_session->player_keys_[0][KEY_SHIFTER])] = 0;
+    ks.fake[SDL_GetScancodeFromKey(og::runtime::current_session->player_keys_[0][KEY_SHIFTER], nullptr)] = false;
 }
 
 

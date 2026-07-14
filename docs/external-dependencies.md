@@ -15,12 +15,18 @@ package build configures with `OPENGLAD_REQUIRE_SYSTEM_DEPS=ON` and
 
 | Dependency | Package target | FetchContent pin | Upstream |
 |------------|----------------|------------------|----------|
+| SDL3 | `SDL3::SDL3` (or `PkgConfig::OG_SDL3`) | `release-3.4.8` | https://github.com/libsdl-org/SDL |
 | zlib | `ZLIB::ZLIB` | `v1.3.2` | https://github.com/madler/zlib |
 | libzip | `libzip::zip` or `PkgConfig::OG_LIBZIP` | `v1.11.4` | https://github.com/nih-at/libzip |
 | libyaml | `PkgConfig::OG_LIBYAML`, `yaml::yaml`, or `yaml` | `0.2.5` | https://github.com/yaml/libyaml |
 | PhysFS | `PhysFS::PhysFS`, `PhysFS::physfs`, `unofficial::physfs::physfs`, `physfs`, or `PkgConfig::OG_PHYSFS` | `release-3.2.0` | https://github.com/icculus/physfs |
 | lodepng | `lodepng` library plus `lodepng.h` | `ed6fe5825c6a4fbb7f58ab35a4231c7543cd452a` | https://github.com/lvandeve/lodepng |
 | IXWebSocket | `ixwebsocket::ixwebsocket` or `ixwebsocket` | `64fae7676bd8fe31f7cb4bcde7a6841892dad65e` | https://github.com/machinezone/IXWebSocket |
+
+SDL2_mixer was removed with the SDL3 migration: audio is implemented directly
+on SDL3 audio streams in `src/platform/sdl/sound.cpp`, so there is no separate
+mixer dependency. The Emscripten build uses the upstream emscripten-ports SDL3
+(`--use-port=sdl3`) rather than the FetchContent pin.
 
 A* pathfinding no longer depends on the third-party MicroPather library: it is
 provided by the first-party `og::pathfinding::AStar` solver in

@@ -10,9 +10,12 @@ namespace
 {
 EventType map_event_type(Uint32 type)
 {
+    // SDL3 flattened window events into first-class event types occupying a
+    // contiguous range; map the whole range to Window.
+    if (type >= SDL_EVENT_WINDOW_FIRST && type <= SDL_EVENT_WINDOW_LAST)
+        return EventType::Window;
     switch (type)
     {
-    case SDL_WINDOWEVENT: return EventType::Window;
     case SDL_EVENT_TEXT_INPUT: return EventType::TextInput;
     case SDL_EVENT_MOUSE_WHEEL: return EventType::MouseWheel;
     case SDL_EVENT_FINGER_MOTION: return EventType::FingerMotion;
@@ -32,16 +35,43 @@ EventType map_event_type(Uint32 type)
     }
 }
 
-WindowEventType map_window_event(Uint8 event)
+WindowEventType map_window_event(Uint32 type)
 {
-    switch (event)
+    switch (type)
     {
     case SDL_EVENT_WINDOW_MINIMIZED: return WindowEventType::Minimized;
     case SDL_EVENT_WINDOW_CLOSE_REQUESTED: return WindowEventType::Close;
     case SDL_EVENT_WINDOW_RESTORED: return WindowEventType::Restored;
     case SDL_EVENT_WINDOW_RESIZED: return WindowEventType::Resized;
+    // Any other type in the window range (e.g. SDL_EVENT_WINDOW_OCCLUDED)
+    // stays Unknown, matching the SDL2 unknown-subtype behavior.
     default: return WindowEventType::Unknown;
     }
+}
+
+// SDL3 joystick events carry instance ids (starting at 1); the seam contract
+// is "which == 0-based device index" (input.cpp matches it against
+// JoyData::index). Translate exactly once, here at decode time. Ids not in
+// the current device list (test-constructed events under the dummy driver, or
+// a device unplugged before decode) pass through unchanged so injected
+// index-style values keep working.
+int joystick_index_from_id(SDL_JoystickID which)
+{
+    int count = 0;
+    SDL_JoystickID* ids = SDL_GetJoysticks(&count);
+    if (ids != nullptr)
+    {
+        for (int i = 0; i < count; ++i)
+        {
+            if (ids[i] == which)
+            {
+                SDL_free(ids);
+                return i;
+            }
+        }
+        SDL_free(ids);
+    }
+    return static_cast<int>(which);
 }
 } // namespace
 
@@ -55,34 +85,46 @@ bool decode_event(const void* native_event, EventData& out)
     out.type = map_event_type(e.type);
     out.raw_type = static_cast<int>(e.type);
 
+    if (e.type >= SDL_EVENT_WINDOW_FIRST && e.type <= SDL_EVENT_WINDOW_LAST)
+    {
+        out.window_event = map_window_event(e.type);
+        out.window_data1 = e.window.data1;
+        out.window_data2 = e.window.data2;
+        return true;
+    }
+
     switch (e.type)
     {
     case SDL_EVENT_KEY_DOWN:
     case SDL_EVENT_KEY_UP:
-        out.key_sym = e.key.key;
+        out.key_sym = static_cast<int>(e.key.key);
         // Some synthetic events only initialize keycode; derive scancode from
         // keycode to avoid loading a potentially invalid enum payload.
-        out.key_scancode = static_cast<int>(SDL_GetScancodeFromKey(out.key_sym));
+        out.key_scancode = static_cast<int>(SDL_GetScancodeFromKey(e.key.key, nullptr));
         out.key_mod = e.key.mod;
-        out.key_repeat = e.key.repeat != 0;
+        out.key_repeat = e.key.repeat;
         break;
     case SDL_EVENT_TEXT_INPUT:
-        std::memcpy(out.text.data(), e.text.text, out.text.size());
+        // SDL3 text is a const char* of arbitrary length — copying
+        // out.text.size() bytes from it would read out of bounds.
+        SDL_strlcpy(out.text.data(), e.text.text != nullptr ? e.text.text : "", out.text.size());
         break;
     case SDL_EVENT_MOUSE_WHEEL:
-        out.wheel_y = e.wheel.y;
+        // integer_y accumulates whole scroll "ticks" (Sint32, since 3.2.12) —
+        // the exact SDL2 semantics for real wheel events.
+        out.wheel_y = e.wheel.integer_y;
         break;
     case SDL_EVENT_MOUSE_MOTION:
-        out.motion_x = e.motion.x;
-        out.motion_y = e.motion.y;
-        out.motion_dx = e.motion.xrel;
-        out.motion_dy = e.motion.yrel;
+        out.motion_x = static_cast<int>(e.motion.x);
+        out.motion_y = static_cast<int>(e.motion.y);
+        out.motion_dx = static_cast<int>(e.motion.xrel);
+        out.motion_dy = static_cast<int>(e.motion.yrel);
         break;
     case SDL_EVENT_MOUSE_BUTTON_UP:
     case SDL_EVENT_MOUSE_BUTTON_DOWN:
         out.button = e.button.button;
-        out.button_x = e.button.x;
-        out.button_y = e.button.y;
+        out.button_x = static_cast<int>(e.button.x);
+        out.button_y = static_cast<int>(e.button.y);
         break;
     case SDL_EVENT_FINGER_MOTION:
     case SDL_EVENT_FINGER_UP:
@@ -94,24 +136,19 @@ bool decode_event(const void* native_event, EventData& out)
         out.finger_id = static_cast<std::int64_t>(e.tfinger.fingerID);
         break;
     case SDL_EVENT_JOYSTICK_AXIS_MOTION:
-        out.joy_axis_which = e.jaxis.which;
+        out.joy_axis_which = joystick_index_from_id(e.jaxis.which);
         out.joy_axis_axis = e.jaxis.axis;
         out.joy_axis_value = e.jaxis.value;
         break;
     case SDL_EVENT_JOYSTICK_BUTTON_DOWN:
     case SDL_EVENT_JOYSTICK_BUTTON_UP:
-        out.joy_button_which = e.jbutton.which;
+        out.joy_button_which = joystick_index_from_id(e.jbutton.which);
         out.joy_button_button = e.jbutton.button;
         break;
     case SDL_EVENT_JOYSTICK_HAT_MOTION:
-        out.joy_hat_which = e.jhat.which;
+        out.joy_hat_which = joystick_index_from_id(e.jhat.which);
         out.joy_hat_hat = e.jhat.hat;
         out.joy_hat_value = e.jhat.value;
-        break;
-    case SDL_WINDOWEVENT:
-        out.window_event = map_window_event(e.window.event);
-        out.window_data1 = e.window.data1;
-        out.window_data2 = e.window.data2;
         break;
     case SDL_EVENT_USER:
         out.user_code = e.user.code;
@@ -147,8 +184,9 @@ const void* make_test_keydown_event(int keycode, int scancode)
     static thread_local SDL_Event event;
     std::memset(&event, 0, sizeof(event));
     event.type = SDL_EVENT_KEY_DOWN;
-    event.key.repeat = 0;
-    event.key.key = keycode;
+    event.key.down = true;
+    event.key.repeat = false;
+    event.key.key = static_cast<SDL_Keycode>(keycode);
     event.key.mod = 0;
     event.key.scancode = static_cast<SDL_Scancode>(scancode);
     return &event;
@@ -159,10 +197,11 @@ void push_key_event(bool down, int keycode)
     SDL_Event event;
     std::memset(&event, 0, sizeof(event));
     event.type = down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
-    event.key.repeat = 0;
-    event.key.key = keycode;
+    event.key.down = down;
+    event.key.repeat = false;
+    event.key.key = static_cast<SDL_Keycode>(keycode);
     event.key.mod = 0;
-    event.key.scancode = SDL_GetScancodeFromKey(keycode);
+    event.key.scancode = SDL_GetScancodeFromKey(static_cast<SDL_Keycode>(keycode), nullptr);
     SDL_PushEvent(&event);
 }
 
@@ -194,39 +233,52 @@ void push_mouse_button_event(bool down, int button, int x, int y)
     std::memset(&event, 0, sizeof(event));
     event.type = down ? SDL_EVENT_MOUSE_BUTTON_DOWN : SDL_EVENT_MOUSE_BUTTON_UP;
     event.button.button = static_cast<Uint8>(button);
-    event.button.x = x;
-    event.button.y = y;
+    event.button.x = static_cast<float>(x);
+    event.button.y = static_cast<float>(y);
+    event.button.down = down;
     SDL_PushEvent(&event);
 }
 
 std::uint32_t ticks_ms()
 {
-    return SDL_GetTicks();
+    // The seam stays 32-bit: producers truncate SDL3's Uint64 ticks and
+    // consumers rely on modulo-2^32 elapsed arithmetic.
+    return static_cast<std::uint32_t>(SDL_GetTicks());
 }
 
-const std::uint8_t* keyboard_state()
+const bool* keyboard_state()
 {
     return SDL_GetKeyboardState(nullptr);
 }
 
 int scancode_from_key(int keycode)
 {
-    return SDL_GetScancodeFromKey(keycode);
+    return static_cast<int>(SDL_GetScancodeFromKey(static_cast<SDL_Keycode>(keycode), nullptr));
 }
 
 const char* key_name(int keycode)
 {
-    return SDL_GetKeyName(keycode);
+    return SDL_GetKeyName(static_cast<SDL_Keycode>(keycode));
 }
 
 int num_joysticks()
 {
-    return SDL_NumJoysticks();
+    int count = 0;
+    SDL_JoystickID* ids = SDL_GetJoysticks(&count);
+    if (ids == nullptr)
+        return 0;
+    SDL_free(ids);
+    return count;
 }
 
 JoystickHandle joystick_open(int index)
 {
-    return SDL_JoystickOpen(index);
+    int count = 0;
+    SDL_JoystickID* ids = SDL_GetJoysticks(&count);
+    SDL_Joystick* joystick =
+        (ids != nullptr && index >= 0 && index < count) ? SDL_OpenJoystick(ids[index]) : nullptr;
+    SDL_free(ids);
+    return joystick;
 }
 
 int joystick_num_axes(JoystickHandle joystick)
@@ -251,7 +303,8 @@ int joystick_get_axis(JoystickHandle joystick, int axis)
 
 int joystick_get_button(JoystickHandle joystick, int button)
 {
-    return SDL_GetJoystickButton(static_cast<SDL_Joystick*>(joystick), button);
+    // SDL3 returns bool; the seam keeps the SDL2-style int.
+    return SDL_GetJoystickButton(static_cast<SDL_Joystick*>(joystick), button) ? 1 : 0;
 }
 
 int joystick_get_hat(JoystickHandle joystick, int hat)
@@ -261,7 +314,7 @@ int joystick_get_hat(JoystickHandle joystick, int hat)
 
 void joystick_set_event_state(bool enabled)
 {
-    SDL_JoystickEventState(enabled ? SDL_ENABLE : SDL_DISABLE);
+    SDL_SetJoystickEventsEnabled(enabled);
 }
 
 bool joystick_subsystem_initialized()
@@ -286,16 +339,43 @@ void sleep_ms(int ms)
 
 void show_cursor(bool show)
 {
-    SDL_ShowCursor(show ? SDL_ENABLE : SDL_DISABLE);
+    if (show)
+        SDL_ShowCursor();
+    else
+        SDL_HideCursor();
 }
+
+namespace
+{
+// SDL3's SDL_StartTextInput/SDL_StopTextInput take an SDL_Window*. Prefer the
+// keyboard-focus window (NULL under the dummy driver), falling back to the
+// first open window. A null result makes start/stop a silent no-op — pushed
+// test events bypass the text-input gate anyway (gating lives only in
+// SDL_SendKeyboardText).
+SDL_Window* text_input_window()
+{
+    SDL_Window* w = SDL_GetKeyboardFocus();
+    if (w != nullptr)
+        return w;
+    int count = 0;
+    SDL_Window** windows = SDL_GetWindows(&count);
+    if (windows == nullptr)
+        return nullptr;
+    w = (count > 0) ? windows[0] : nullptr;
+    SDL_free(windows);
+    return w;
+}
+} // namespace
 
 void start_text_input()
 {
-    SDL_StartTextInput();
+    if (SDL_Window* w = text_input_window())
+        SDL_StartTextInput(w);
 }
 
 void stop_text_input()
 {
-    SDL_StopTextInput();
+    if (SDL_Window* w = text_input_window())
+        SDL_StopTextInput(w);
 }
 } // namespace og::input_native

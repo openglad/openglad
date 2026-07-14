@@ -210,10 +210,9 @@ GameSession::GameSession(const Config& session_cfg)
 
     // Create per-session render surface for sub-sessions sharing a display.
     if (cfg_.allocate_screen && !cfg_.create_display) {
-        session_surface_ = SDL_CreateRGBSurface(
-            SDL_SWSURFACE, 320, 200, 32, 0, 0, 0, 0);
+        session_surface_ = SDL_CreateSurface(320, 200, SDL_PIXELFORMAT_XRGB8888);
         if (!session_surface_) {
-            LogError("GameSession: SDL_CreateRGBSurface failed: {}\n",
+            LogError("GameSession: SDL_CreateSurface failed: {}\n",
                      SDL_GetError());
         }
     }

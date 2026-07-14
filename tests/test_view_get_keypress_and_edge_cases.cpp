@@ -37,12 +37,12 @@ struct KeyBindingGuard
 
 struct KeystateOverride
 {
-    const Uint8* prev = nullptr;
-    std::array<Uint8, SDL_SCANCODE_COUNT> fake{};
+    const bool* prev = nullptr;
+    std::array<bool, SDL_SCANCODE_COUNT> fake{};
     KeystateOverride()
     {
         prev = og::runtime::current_session->keystates_;
-        fake.fill(0);
+        fake.fill(false);
         og::runtime::current_session->keystates_ = fake.data();
     }
     ~KeystateOverride()
@@ -56,14 +56,14 @@ static SDL_Event keydown(SDL_Keycode key)
     SDL_Event e{};
     e.type = SDL_EVENT_KEY_DOWN;
     e.key.key = key;
-    e.key.scancode = SDL_GetScancodeFromKey(key);
-    e.key.repeat = 0;
+    e.key.scancode = SDL_GetScancodeFromKey(key, nullptr);
+    e.key.repeat = false;
     return e;
 }
 
 struct EscapePulseState
 {
-    std::array<Uint8, SDL_SCANCODE_COUNT>* keys;
+    std::array<bool, SDL_SCANCODE_COUNT>* keys;
     std::atomic<bool>* done;
 };
 
@@ -74,12 +74,12 @@ static int injector_pulse_escape(void* data)
     SDL_Delay(25);
     while (!state->done->load(std::memory_order_relaxed))
     {
-        (*state->keys)[KEYSTATE_ESCAPE] = 1;
+        (*state->keys)[KEYSTATE_ESCAPE] = true;
         SDL_Delay(25);
-        (*state->keys)[KEYSTATE_ESCAPE] = 0;
+        (*state->keys)[KEYSTATE_ESCAPE] = false;
         SDL_Delay(10);
     }
-    (*state->keys)[KEYSTATE_ESCAPE] = 0;
+    (*state->keys)[KEYSTATE_ESCAPE] = false;
     return 0;
 }
 } // namespace
@@ -139,9 +139,9 @@ TEST(ViewGetKeypressAndEdgeCases, viewscreen_input_switch_control_not_in_oblist_
 
     // Reverse switch error: hold shifter and try again (debounce reset by non-switch event).
     (void)v->input(keydown(SDLK_F1));
-    ks.fake[SDL_SCANCODE_LSHIFT] = 1;
+    ks.fake[SDL_SCANCODE_LSHIFT] = true;
     (void)v->input(keydown(SDLK_TAB));
-    ks.fake[SDL_SCANCODE_LSHIFT] = 0;
+    ks.fake[SDL_SCANCODE_LSHIFT] = false;
 
     v->control = saved_control;
 }
@@ -190,7 +190,7 @@ TEST(ViewGetKeypressAndEdgeCases, viewscreen_options_menu_covers_view_size_label
         int code = 0;
         if (th)
             SDL_WaitThread(th, &code);
-        ks.fake[KEYSTATE_ESCAPE] = 0;
+        ks.fake[KEYSTATE_ESCAPE] = false;
     }
 
     // Restore original pref — options_menu() persists prefs into the session

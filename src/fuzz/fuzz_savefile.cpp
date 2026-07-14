@@ -47,12 +47,12 @@ static constexpr int MAX_TEAM_SIZE = 24;
 
 static bool rw_read_exact(SDL_IOStream *rw, void *dst, size_t sz, size_t count)
 {
-    return rw && SDL_RWread(rw, dst, sz, count) == count;
+    return rw && SDL_ReadIO(rw, dst, sz * count) == sz * count;
 }
 
 static void fuzz_parse_savefile(const uint8_t *data, size_t size)
 {
-    SDL_IOStream *rw = SDL_IOFromConstMem(data, static_cast<int>(size));
+    SDL_IOStream *rw = SDL_IOFromConstMem(data, size);
     if (!rw)
         return;
 

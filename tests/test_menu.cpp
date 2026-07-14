@@ -17,9 +17,9 @@ static int release_scancode_after_delay(void* data)
     SDL_Scancode scancode = *static_cast<SDL_Scancode*>(data);
     SDL_Delay(20);
     int numkeys = 0;
-    Uint8* keys = const_cast<Uint8*>(SDL_GetKeyboardState(&numkeys));
+    bool* keys = const_cast<bool*>(SDL_GetKeyboardState(&numkeys));
     if (scancode >= 0 && scancode < numkeys)
-        keys[scancode] = 0;
+        keys[scancode] = false;
     return 0;
 }
 
@@ -33,8 +33,8 @@ static void push_mouse_motion_game_coords(int game_x, int game_y)
     SDL_Event event{};
     event.type = SDL_EVENT_MOUSE_MOTION;
     event.motion.type = SDL_EVENT_MOUSE_MOTION;
-    event.motion.x = static_cast<int>(og::runtime::current_session->viewport_offset_x_ + (static_cast<float>(game_x) * og::runtime::current_session->viewport_w_ / 320.0f));
-    event.motion.y = static_cast<int>(og::runtime::current_session->viewport_offset_y_ + (static_cast<float>(game_y) * og::runtime::current_session->viewport_h_ / 200.0f));
+    event.motion.x = og::runtime::current_session->viewport_offset_x_ + (static_cast<float>(game_x) * og::runtime::current_session->viewport_w_ / 320.0f);
+    event.motion.y = og::runtime::current_session->viewport_offset_y_ + (static_cast<float>(game_y) * og::runtime::current_session->viewport_h_ / 200.0f);
     SDL_PushEvent(&event);
 }
 
@@ -106,10 +106,10 @@ TEST(Menu, button_misc_paths)
     og::runtime::current_session->allbuttons_[0] = nullptr;
 
     int numkeys = 0;
-    Uint8* keys = const_cast<Uint8*>(SDL_GetKeyboardState(&numkeys));
-    SDL_Scancode q = SDL_GetScancodeFromKey(SDLK_Q);
+    bool* keys = const_cast<bool*>(SDL_GetKeyboardState(&numkeys));
+    SDL_Scancode q = SDL_GetScancodeFromKey(SDLK_Q, nullptr);
     ASSERT_TRUE(q >= 0 && q < numkeys) << "q scancode should be valid";
-    keys[q] = 1;
+    keys[q] = true;
     SDL_Thread* releaser = SDL_CreateThread(release_scancode_after_delay, "release_q_for_button", &q);
     ASSERT_TRUE(releaser != nullptr) << "key release helper thread should start";
     ASSERT_EQ(0, (int)b.leftclick(1)) << "leftclick hotkey path should return with myfunc=0";

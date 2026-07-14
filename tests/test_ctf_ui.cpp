@@ -1095,11 +1095,11 @@ struct PagerFlowState
 void hold_nav_key(SDL_Keycode key, bool down)
 {
     int numkeys = 0;
-    const Uint8* ro = SDL_GetKeyboardState(&numkeys);
-    Uint8* keys = const_cast<Uint8*>(ro);
-    const SDL_Scancode sc = SDL_GetScancodeFromKey(key);
+    const bool* ro = SDL_GetKeyboardState(&numkeys);
+    bool* keys = const_cast<bool*>(ro);
+    const SDL_Scancode sc = SDL_GetScancodeFromKey(key, nullptr);
     if (keys != nullptr && sc >= 0 && sc < numkeys)
-        keys[sc] = down ? 1 : 0;
+        keys[sc] = down;
 }
 
 void press_nav_key(SDL_Keycode key, int hold_ms)

@@ -320,7 +320,7 @@ static void emscripten_frame_wrapper() {
 			if (current_screen == nullptr || g_frame_state().done)
 				break;
 			{
-				const Uint32 current_time = SDL_GetTicks();
+				const Uint32 current_time = static_cast<Uint32>(SDL_GetTicks());
 				std::uint32_t sim_interval = 0u;
 				if (current_screen != nullptr &&
 				    og::runtime::current_session->g_game_speed_factor_ > 0.0f)
@@ -424,7 +424,7 @@ extern "C" EMSCRIPTEN_KEEPALIVE void openglad_web_boot()
         }
 
         // Initialize timing
-        g_frame_state().last_frame_time = SDL_GetTicks();
+        g_frame_state().last_frame_time = static_cast<std::uint32_t>(SDL_GetTicks());
         g_frame_state().accumulated_time = 0;
         publish_web_game_state();
 

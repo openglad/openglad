@@ -28,7 +28,7 @@ void ensure_game_loop_wrapper_test_runtime()
     SDL_setenv_unsafe("SDL_AUDIODRIVER", "dummy", 1);
 
     if ((SDL_WasInit(SDL_INIT_VIDEO) & SDL_INIT_VIDEO) == 0) {
-        ASSERT_EQ(0, SDL_Init(SDL_INIT_VIDEO))
+        ASSERT_TRUE(SDL_Init(SDL_INIT_VIDEO))
             << "SDL video init should succeed for wrapper test";
     }
 

@@ -981,7 +981,7 @@ bool JoyData::hasButtonSet(int key_enum) const
 
 void resetJoystick(int player_num)
 {
-    // FIXME: SDL2 supports hotplugging, so I don't need to restart the joystick subsystem
+    // FIXME: SDL supports hotplugging, so I don't need to restart the joystick subsystem
     // Reset joystick subsystem
     if(og::input_native::joystick_subsystem_initialized())
         og::input_native::joystick_quit_subsystem();

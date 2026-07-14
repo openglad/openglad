@@ -100,7 +100,7 @@ void push_touch_event(EventType type, float x, float y, float dx, float dy, std:
 void push_mouse_button_event(bool down, int button, int x, int y);
 std::uint32_t ticks_ms();
 
-const std::uint8_t* keyboard_state();
+const bool* keyboard_state();
 int scancode_from_key(int keycode);
 const char* key_name(int keycode);
 

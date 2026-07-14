@@ -46,7 +46,9 @@ static void default_handle(const SDL_Event& e)
 
 static std::uint32_t default_now_ms()
 {
-    return SDL_GetTicks();
+    // SDL3 SDL_GetTicks returns Uint64; the frame pacer works in uint32
+    // modulo-2^32 elapsed arithmetic, so truncate at the seam.
+    return static_cast<std::uint32_t>(SDL_GetTicks());
 }
 
 namespace

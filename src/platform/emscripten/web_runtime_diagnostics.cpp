@@ -603,7 +603,8 @@ void finalize_jitter_capture_profile_after_load(screen& current_screen)
     }
 
     state.input_hold.playwright_key = playwright_key_for_sdl_keycode(
-        og::runtime::current_session->player_keys_[0][KEY_RIGHT]);
+        static_cast<SDL_Keycode>(
+            og::runtime::current_session->player_keys_[0][KEY_RIGHT]));
     state.post_load_applied_at_ms = kSinglePlayerRightRunPostLoadAppliedAtMs;
     publish_applied_jitter_capture_profile();
 }

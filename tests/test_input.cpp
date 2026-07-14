@@ -34,8 +34,7 @@ TEST(Input, handle_text_event_sets_raw_text)
 
     SDL_Event e{};
     e.type = SDL_EVENT_TEXT_INPUT;
-    std::strncpy(e.text.text, "abc", sizeof(e.text.text));
-    e.text.text[sizeof(e.text.text) - 1] = '\0';
+    e.text.text = "abc";
 
     handle_text_event(e);
 
@@ -86,8 +85,7 @@ TEST(Input, overscan_clamps_and_updates_viewport)
     og::runtime::current_session->overscan_percentage_ = -1.0f;
     // Trigger update via resize event (calls update_overscan_setting internally).
     SDL_Event e{};
-    e.type = SDL_WINDOWEVENT;
-    e.window.event = SDL_EVENT_WINDOW_RESIZED;
+    e.type = SDL_EVENT_WINDOW_RESIZED;
     e.window.data1 = (int)og::runtime::current_session->window_w_;
     e.window.data2 = (int)og::runtime::current_session->window_h_;
     handle_window_event(e);

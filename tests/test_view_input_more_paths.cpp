@@ -15,13 +15,13 @@ namespace
 {
 struct KeystateOverride
 {
-    const Uint8* prev = nullptr;
-    std::array<Uint8, SDL_SCANCODE_COUNT> fake{};
+    const bool* prev = nullptr;
+    std::array<bool, SDL_SCANCODE_COUNT> fake{};
 
     KeystateOverride()
     {
         prev = og::runtime::current_session->keystates_;
-        fake.fill(0);
+        fake.fill(false);
         og::runtime::current_session->keystates_ = fake.data();
     }
 
@@ -35,8 +35,9 @@ static SDL_Event keydown(SDL_Keycode key)
 {
     SDL_Event e{};
     e.type = SDL_EVENT_KEY_DOWN;
+    e.key.down = true;
     e.key.key = key;
-    e.key.scancode = SDL_GetScancodeFromKey(key);
+    e.key.scancode = SDL_GetScancodeFromKey(key, nullptr);
     return e;
 }
 
@@ -89,7 +90,7 @@ TEST(ViewInputMorePaths, viewscreen_input_switch_yell_and_special_switch_paths)
     KeystateOverride ks;
 
     // Switch control forward (KEY_SWITCH is backquote for player 0).
-    ks.fake[SDL_SCANCODE_LSHIFT] = 0;
+    ks.fake[SDL_SCANCODE_LSHIFT] = false;
     (void)vs->input(keydown(static_cast<SDL_Keycode>(og::runtime::current_session->player_keys_[0][KEY_SWITCH])));
     ASSERT_TRUE(vs->control != nullptr) << "control should remain valid after switch";
 
@@ -97,10 +98,10 @@ TEST(ViewInputMorePaths, viewscreen_input_switch_yell_and_special_switch_paths)
     (void)vs->input(dummy_event());
 
     // Switch control reverse by holding shifter.
-    ks.fake[SDL_SCANCODE_LSHIFT] = 1;
+    ks.fake[SDL_SCANCODE_LSHIFT] = true;
     (void)vs->input(keydown(static_cast<SDL_Keycode>(og::runtime::current_session->player_keys_[0][KEY_SWITCH])));
     ASSERT_TRUE(vs->control != nullptr) << "control should remain valid after reverse switch";
-    ks.fake[SDL_SCANCODE_LSHIFT] = 0;
+    ks.fake[SDL_SCANCODE_LSHIFT] = false;
 
     // Yell for help: KEY_YELL is 's' for player 0, requires not holding shifter.
     if (vs->control)
@@ -110,19 +111,19 @@ TEST(ViewInputMorePaths, viewscreen_input_switch_yell_and_special_switch_paths)
 
     // Summon defense: hold shifter + KEY_YELL (case 0).
     (void)vs->input(dummy_event());
-    ks.fake[SDL_SCANCODE_LSHIFT] = 1;
+    ks.fake[SDL_SCANCODE_LSHIFT] = true;
     if (vs->control)
         vs->control->set_action(0);
     (void)vs->input(keydown(static_cast<SDL_Keycode>(og::runtime::current_session->player_keys_[0][KEY_YELL])));
-    ks.fake[SDL_SCANCODE_LSHIFT] = 0;
+    ks.fake[SDL_SCANCODE_LSHIFT] = false;
 
     // Release men: case ACTION_FOLLOW.
     (void)vs->input(dummy_event());
-    ks.fake[SDL_SCANCODE_LSHIFT] = 1;
+    ks.fake[SDL_SCANCODE_LSHIFT] = true;
     if (vs->control)
         vs->control->set_action(ACTION_FOLLOW);
     (void)vs->input(keydown(static_cast<SDL_Keycode>(og::runtime::current_session->player_keys_[0][KEY_YELL])));
-    ks.fake[SDL_SCANCODE_LSHIFT] = 0;
+    ks.fake[SDL_SCANCODE_LSHIFT] = false;
 
     // Special switch: cycle current special (TAB for player 0).
     (void)vs->input(dummy_event());

@@ -40,18 +40,18 @@ struct KeyBindingGuard
 struct KeyStateGuard
 {
     int numkeys = 0;
-    Uint8* keys = nullptr;
+    bool* keys = nullptr;
     explicit KeyStateGuard()
     {
-        const Uint8* ro = SDL_GetKeyboardState(&numkeys);
-        keys = const_cast<Uint8*>(ro);
+        const bool* ro = SDL_GetKeyboardState(&numkeys);
+        keys = const_cast<bool*>(ro);
     }
     void set(SDL_Keycode key, bool pressed)
     {
         if (!keys) return;
-        const SDL_Scancode sc = SDL_GetScancodeFromKey(key);
+        const SDL_Scancode sc = SDL_GetScancodeFromKey(key, nullptr);
         if (sc >= 0 && sc < numkeys)
-            keys[sc] = pressed ? 1 : 0;
+            keys[sc] = pressed;
     }
 };
 
@@ -292,7 +292,7 @@ TEST(ViewInputPaths, view_input_cheat_mode_switch_team_kill_and_level_keys)
 
     SDL_Event e{};
     e.type = SDL_EVENT_KEY_DOWN;
-    e.key.repeat = 0;
+    e.key.repeat = false;
 
     // Cheat+switch: rotate to next team that has a living unit.
     e.key.key = SDLK_TAB;

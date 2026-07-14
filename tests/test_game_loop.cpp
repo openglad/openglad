@@ -70,13 +70,13 @@ struct KeyBindingGuard
 
 struct SessionKeyStateGuard
 {
-    const Uint8* old_keystates = nullptr;
-    std::array<Uint8, SDL_SCANCODE_COUNT> fake_keystates{};
+    const bool* old_keystates = nullptr;
+    std::array<bool, SDL_SCANCODE_COUNT> fake_keystates{};
 
     SessionKeyStateGuard()
         : old_keystates(og::runtime::current_session->keystates_)
     {
-        fake_keystates.fill(0);
+        fake_keystates.fill(false);
         og::runtime::current_session->keystates_ = fake_keystates.data();
     }
 
@@ -87,9 +87,9 @@ struct SessionKeyStateGuard
 
     void set(SDL_Keycode key, bool pressed)
     {
-        const SDL_Scancode scancode = SDL_GetScancodeFromKey(key);
+        const SDL_Scancode scancode = SDL_GetScancodeFromKey(key, nullptr);
         if (scancode >= 0 && scancode < SDL_SCANCODE_COUNT)
-            fake_keystates[static_cast<std::size_t>(scancode)] = pressed ? 1 : 0;
+            fake_keystates[static_cast<std::size_t>(scancode)] = pressed;
     }
 };
 
@@ -2124,17 +2124,17 @@ TEST(GameLoop, game_frame_options_menu_via_key_prefs_completes)
     }
 
     // Override keystates so we can inject ESC from a background thread.
-    const Uint8* saved_keystates = og::runtime::current_session->keystates_;
-    std::array<Uint8, SDL_SCANCODE_COUNT> fake_keystates{};
-    fake_keystates.fill(0);
+    const bool* saved_keystates = og::runtime::current_session->keystates_;
+    std::array<bool, SDL_SCANCODE_COUNT> fake_keystates{};
+    fake_keystates.fill(false);
     og::runtime::current_session->keystates_ = fake_keystates.data();
 
     // Background thread: press ESC after a short delay to exit options_menu().
     std::thread esc_thread([&fake_keystates]() {
         SDL_Delay(50);
-        fake_keystates[SDL_SCANCODE_ESCAPE] = 1;
+        fake_keystates[SDL_SCANCODE_ESCAPE] = true;
         SDL_Delay(30);
-        fake_keystates[SDL_SCANCODE_ESCAPE] = 0;
+        fake_keystates[SDL_SCANCODE_ESCAPE] = false;
     });
 
     // Build a scripted KEY_PREFS event (SDLK_1 for player 0).
@@ -2142,8 +2142,8 @@ TEST(GameLoop, game_frame_options_menu_via_key_prefs_completes)
     SDL_Event e{};
     e.type = SDL_EVENT_KEY_DOWN;
     e.key.key = og::runtime::current_session->player_keys_[0][KEY_PREFS];
-    e.key.scancode = SDL_GetScancodeFromKey(e.key.key);
-    e.key.repeat = 0;
+    e.key.scancode = SDL_GetScancodeFromKey(e.key.key, nullptr);
+    e.key.repeat = false;
     script.events.push_back(e);
 
     g_script = &script;
@@ -3814,8 +3814,7 @@ TEST(GameLoop, world_scale_splitscreen_panes_fit_the_grown_canvas)
 
     // ---- Mid-game window resize during split-screen ------------------------
     SDL_Event ev{};
-    ev.type = SDL_WINDOWEVENT;
-    ev.window.event = SDL_EVENT_WINDOW_RESIZED;
+    ev.type = SDL_EVENT_WINDOW_RESIZED;
     ev.window.data1 = 1280;
     ev.window.data2 = 800;
     handle_window_event(ev);

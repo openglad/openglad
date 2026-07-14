@@ -8,10 +8,10 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/build_common.sh"
 
-require_sdl2
+require_sdl3
 
 echo "Building test binaries..."
-echo "Using SDL2: $(pkg-config --modversion sdl2)"
+echo "Using SDL3: $(pkg-config --modversion sdl3 2>/dev/null || echo 'fetched release-3.4.8')"
 
 # ----------------------------------------------------------------------------
 # Build with CMake preset

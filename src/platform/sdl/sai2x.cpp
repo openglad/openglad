@@ -651,8 +651,8 @@ void Super2xSaI(SDL_Surface *src, SDL_Surface *dest, int s_x, int s_y, int d_x, 
 		return;
 	}
 
-	sbpp = src->format->BitsPerPixel;
-	dbpp = dest->format->BitsPerPixel;
+	sbpp = SDL_BITSPERPIXEL(src->format);
+	dbpp = SDL_BITSPERPIXEL(dest->format);
 
 	if ((sbpp != xsai_depth) || (sbpp != dbpp))	/* Must be same color depth */
 	{
@@ -660,8 +660,8 @@ void Super2xSaI(SDL_Surface *src, SDL_Surface *dest, int s_x, int s_y, int d_x, 
 		return;
 	}
 
-	sbpp = src->format->BytesPerPixel;
-	dbpp = dest->format->BytesPerPixel;
+	sbpp = SDL_BYTESPERPIXEL(src->format);
+	dbpp = SDL_BYTESPERPIXEL(dest->format);
 
 	if (w < 4 || h < 4)
 	{
@@ -709,21 +709,22 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
     h = height;
     #endif
 
-    Uint32 window_flags = SDL_WINDOW_SHOWN;
+    // SDL3: windows are shown by default; SDL_WINDOW_FULLSCREEN with no
+    // exclusive mode set is borderless fullscreen-desktop (the SDL2
+    // SDL_WINDOW_FULLSCREEN_DESKTOP behavior).
+    SDL_WindowFlags window_flags = 0;
     if(fullscreen)
-        window_flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
-    
+        window_flags |= SDL_WINDOW_FULLSCREEN;
+
     #ifdef __IPHONEOS__
     window_flags |= SDL_WINDOW_BORDERLESS;
     #endif
-    
-    window = SDL_CreateWindow("Gladiator",
-                        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                        w, h,
-                        window_flags);
+
+    window = SDL_CreateWindow("Gladiator", w, h, window_flags);
     if(window == nullptr)
         throw std::runtime_error(std::string("Fatal: SDL_CreateWindow failed: ") + SDL_GetError());
-    
+    SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+
 	    SDL_GetWindowSize(window, &w, &h);
 	    og::runtime::current_session->window_w_ = static_cast<float>(w);
 	    og::runtime::current_session->window_h_ = static_cast<float>(h);
@@ -731,15 +732,16 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
 	    update_overscan_setting();
     
     #ifdef TESTING
-    renderer = SDL_CreateRenderer(window, -1, 0);
+    renderer = SDL_CreateRenderer(window, nullptr);
     #else
-    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_PRESENTVSYNC);
+    renderer = SDL_CreateRenderer(window, nullptr);
+    SDL_SetRenderVSync(renderer, 1);
     #endif
     
     // The UI canvas is pinned at kUiCanvasW x kUiCanvasH; the world canvas
     // starts shared with it (aliased) at the same default dims, keeping the
     // renderer byte-identical to the historical single-canvas setup.
-    ui_surf_ = SDL_CreateRGBSurface(SDL_SWSURFACE, kUiCanvasW, kUiCanvasH, 32, 0, 0, 0, 0);
+    ui_surf_ = SDL_CreateSurface(kUiCanvasW, kUiCanvasH, SDL_PIXELFORMAT_XRGB8888);
 	ui_tex_ = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, kUiCanvasW, kUiCanvasH);
     world_surf_ = ui_surf_;
     world_tex_ = ui_tex_;
@@ -805,7 +807,7 @@ void Screen::set_world_canvas_size(int w, int h)
 	}
 	else
 	{
-		world_surf_ = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h, 32, 0, 0, 0, 0);
+		world_surf_ = SDL_CreateSurface(w, h, SDL_PIXELFORMAT_XRGB8888);
 		world_tex_ = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, w, h);
 		if (world_surf_ == nullptr || world_tex_ == nullptr)
 		{
@@ -891,7 +893,7 @@ bool Screen::ensure_render2(int need_w, int need_h)
 	}
 	if (render2 == nullptr)
 	{
-		render2 = SDL_CreateRGBSurface(SDL_SWSURFACE, need_w, need_h, 32, 0, 0, 0, 0);
+		render2 = SDL_CreateSurface(need_w, need_h, SDL_PIXELFORMAT_XRGB8888);
 		render2_tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, need_w, need_h);
 	}
 	return render2 != nullptr && render2_tex != nullptr;
@@ -972,7 +974,9 @@ void Screen::swap(int x, int y, int w, int h)
 
     SDL_UpdateTexture(dest_texture, nullptr, source_surface->pixels, source_surface->pitch);
 
-    SDL_Rect dest = {int(og::runtime::current_session->viewport_offset_x_), int(og::runtime::current_session->viewport_offset_y_), int(og::runtime::current_session->viewport_w_), int(og::runtime::current_session->viewport_h_)};
+    // SDL3 SDL_RenderTexture takes float rects; keep the SDL2 int-rect
+    // truncation so the presented viewport stays pixel-identical.
+    SDL_FRect dest = {float(int(og::runtime::current_session->viewport_offset_x_)), float(int(og::runtime::current_session->viewport_offset_y_)), float(int(og::runtime::current_session->viewport_w_)), float(int(og::runtime::current_session->viewport_h_))};
 
     SDL_RenderTexture(renderer, dest_texture, nullptr, &dest);
     SDL_RenderPresent(renderer);
@@ -987,7 +991,7 @@ void Screen::clear_window()
     
     SDL_UpdateTexture(dest_texture, nullptr, source_surface->pixels, source_surface->pitch);
     
-    SDL_Rect dest = {0, 0, int(og::runtime::current_session->window_w_), int(og::runtime::current_session->window_h_)};
+    SDL_FRect dest = {0.0f, 0.0f, float(int(og::runtime::current_session->window_w_)), float(int(og::runtime::current_session->window_h_))};
 
     SDL_RenderTexture(renderer, dest_texture, nullptr, &dest);
 }

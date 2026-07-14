@@ -33,7 +33,7 @@ bool read_header(const std::filesystem::path& file, std::string* out)
     if (!rw)
         return false;
     char buf[3] = {};
-    size_t got = SDL_RWread(rw, buf, 1, 3);
+    size_t got = SDL_ReadIO(rw, buf, 3);
     SDL_CloseIO(rw);
     if (got != 3)
         return false;
@@ -55,7 +55,7 @@ bool read_version(const std::filesystem::path& file, unsigned char* out)
         return false;
     }
     unsigned char version = 0;
-    const size_t got = SDL_RWread(rw, &version, 1, 1);
+    const size_t got = SDL_ReadIO(rw, &version, 1);
     SDL_CloseIO(rw);
     if (got != 1)
         return false;

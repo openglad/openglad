@@ -15,13 +15,13 @@
 
 static void rw_write(SDL_IOStream* out, const void* data, size_t len)
 {
-    SDL_RWwrite(out, data, 1, len);
+    SDL_WriteIO(out, data, len);
 }
 
 template <typename T>
 static void rw_write_val(SDL_IOStream* out, const T& v)
 {
-    SDL_RWwrite(out, &v, sizeof(T), 1);
+    SDL_WriteIO(out, &v, sizeof(T));
 }
 
 static void rw_write_padded(SDL_IOStream* out, const std::string& s, size_t len)
@@ -484,8 +484,8 @@ TEST(SaveDataVersions, save_data_v11_roundtrip_preserves_strip_flag_and_version_
     ASSERT_TRUE(in != nullptr) << "saved file should be readable";
     char header[3] = {};
     unsigned char version_byte = 0;
-    SDL_RWread(in, header, 1, 3);
-    SDL_RWread(in, &version_byte, 1, 1);
+    SDL_ReadIO(in, header, 3);
+    SDL_ReadIO(in, &version_byte, 1);
     SDL_CloseIO(in);
     ASSERT_EQ(0, std::memcmp(header, "GTL", 3)) << "GTL header expected";
     ASSERT_EQ(13, (int)version_byte) << "writer should stamp version 13";
@@ -679,8 +679,8 @@ TEST(SaveDataVersions, save_data_v13_roundtrip_preserves_tower_fields)
     ASSERT_TRUE(in != nullptr) << "saved file should be readable";
     char header[3] = {};
     unsigned char version_byte = 0;
-    SDL_RWread(in, header, 1, 3);
-    SDL_RWread(in, &version_byte, 1, 1);
+    SDL_ReadIO(in, header, 3);
+    SDL_ReadIO(in, &version_byte, 1);
     SDL_CloseIO(in);
     ASSERT_EQ(0, std::memcmp(header, "GTL", 3)) << "GTL header expected";
     ASSERT_EQ(13, (int)version_byte) << "writer should stamp version 13";

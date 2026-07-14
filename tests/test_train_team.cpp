@@ -120,7 +120,7 @@ static int train_injector(void* data)
 
     // Occasionally the final BACK click can be missed (menu-loop timing). Keep
     // nudging Escape/BACK until we see main menu again so the test can't hang.
-    const Uint32 deadline = SDL_GetTicks() + 8000;
+    const Uint64 deadline = SDL_GetTicks() + 8000;
     while (SDL_GetTicks() < deadline)
     {
         // If the main menu is back, we are done.

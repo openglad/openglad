@@ -24,7 +24,7 @@ using SurfacePtr = std::unique_ptr<SDL_Surface, SurfaceDeleter>;
 
 static SurfacePtr make_surface(int w, int h)
 {
-    SDL_Surface* s = SDL_CreateRGBSurfaceWithFormat(0, w, h, 32, SDL_PIXELFORMAT_ARGB8888);
+    SDL_Surface* s = SDL_CreateSurface(w, h, SDL_PIXELFORMAT_ARGB8888);
     return SurfacePtr(s);
 }
 
@@ -52,7 +52,7 @@ TEST(VideoModesMore, video_putbuffer_surface_clipping_and_blit)
         return;
 
     // Fill with a non-zero pattern so the blit does something.
-    SDL_FillSurfaceRect(surf.get(), nullptr, SDL_MapRGB(surf->format, 10, 20, 30));
+    SDL_FillSurfaceRect(surf.get(), nullptr, SDL_MapSurfaceRGB(surf.get(), 10, 20, 30));
 
     // Early-out: tile outside clipping region.
     og::runtime::current_session->myscreen_->putbuffer_surface(500, 500, 16, 16, 0, 0, 319, 199, surf.get());

@@ -17,16 +17,16 @@ namespace {
 
 struct FpsCounter {
     static constexpr std::size_t kCap = 256;
-    static constexpr std::uint32_t kWindowMs = 500;
-    std::array<std::uint32_t, kCap> ts{};
+    static constexpr std::uint64_t kWindowMs = 500;
+    std::array<std::uint64_t, kCap> ts{};
     std::size_t head = 0;
     std::size_t size = 0;
-    std::uint32_t first_seen_ms = 0;
+    std::uint64_t first_seen_ms = 0;
     bool initialized = false;
-    int update(std::uint32_t now_ms);
+    int update(std::uint64_t now_ms);
 };
 
-int FpsCounter::update(std::uint32_t now_ms)
+int FpsCounter::update(std::uint64_t now_ms)
 {
     if (!initialized)
     {
@@ -41,7 +41,7 @@ int FpsCounter::update(std::uint32_t now_ms)
 
     if (now_ms >= kWindowMs)
     {
-        const std::uint32_t cutoff = now_ms - kWindowMs;
+        const std::uint64_t cutoff = now_ms - kWindowMs;
         while (size > 0)
         {
             const std::size_t tail = (head + kCap - size) % kCap;
@@ -52,11 +52,11 @@ int FpsCounter::update(std::uint32_t now_ms)
         }
     }
 
-    const std::uint32_t elapsed = now_ms - first_seen_ms;
+    const std::uint64_t elapsed = now_ms - first_seen_ms;
     if (elapsed < 250)
     {
         return static_cast<int>(size * 1000 /
-            std::max<std::uint32_t>(1, elapsed));
+            std::max<std::uint64_t>(1, elapsed));
     }
     return static_cast<int>(size * 1000 / kWindowMs);
 }
@@ -70,7 +70,7 @@ int FpsCounter::update(std::uint32_t now_ms)
 void draw_fps_overlay(screen& s, int counter_bottom_y)
 {
     static FpsCounter c;
-    const std::uint32_t now_ms = SDL_GetTicks();
+    const std::uint64_t now_ms = SDL_GetTicks();
     const int fps = c.update(now_ms);
     const std::string msg = std::format("FPS: {}", fps);
     const int w = s.text_normal.query_width(msg);

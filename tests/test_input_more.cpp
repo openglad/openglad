@@ -15,6 +15,7 @@ TEST(InputMore, input_mouse_wheel_sets_scroll_amount_and_keypress_flag)
     SDL_Event e{};
     e.type = SDL_EVENT_MOUSE_WHEEL;
     e.wheel.y = 1;
+    e.wheel.integer_y = 1;
     handle_mouse_event(e);
 
     ASSERT_EQ(5, (int)get_and_reset_scroll_amount()) << "mouse wheel y=1 should set scroll_amount to 5";
@@ -28,7 +29,7 @@ TEST(InputMore, input_clear_events_drains_queue)
     SDL_Event e{};
     e.type = SDL_EVENT_KEY_DOWN;
     e.key.key = SDLK_A;
-    e.key.scancode = SDL_GetScancodeFromKey(SDLK_A);
+    e.key.scancode = SDL_GetScancodeFromKey(SDLK_A, nullptr);
     SDL_PushEvent(&e);
 
     clear_events();
@@ -62,7 +63,7 @@ TEST(InputMore, input_send_fake_key_events_flow_through_get_input_events)
 
     sendFakeKeyUpEvent(SDLK_C);
     get_input_events(POLL);
-    ASSERT_EQ(0, og::runtime::current_session->keystates_[SDL_GetScancodeFromKey(SDLK_C)])
+    ASSERT_EQ(0, og::runtime::current_session->keystates_[SDL_GetScancodeFromKey(SDLK_C, nullptr)])
         << "fake keyup should clear the key state";
 
     clear_keyboard();
@@ -84,7 +85,7 @@ TEST(InputMore, input_null_and_wrong_event_paths_are_ignored)
 
     SDL_Event text{};
     text.type = SDL_EVENT_TEXT_INPUT;
-    std::strncpy(text.text.text, "abc", sizeof(text.text.text) - 1);
+    text.text.text = "abc";
     ASSERT_TRUE(!query_key_event(SDLK_A, text)) << "text event should not match keydown";
 
     ASSERT_TRUE(!isKeyboardEvent(nullptr)) << "null event is not keyboard";

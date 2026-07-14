@@ -198,13 +198,13 @@ void fill_floor_grid(GameWorld& world, int f, unsigned char tile)
 // isPlayerHoldingKey at render time). Same shape as test_game_loop's guard.
 struct SessionKeyStateGuard
 {
-    const Uint8* old_keystates = nullptr;
-    std::array<Uint8, SDL_SCANCODE_COUNT> fake_keystates{};
+    const bool* old_keystates = nullptr;
+    std::array<bool, SDL_SCANCODE_COUNT> fake_keystates{};
 
     SessionKeyStateGuard()
         : old_keystates(og::runtime::current_session->keystates_)
     {
-        fake_keystates.fill(0);
+        fake_keystates.fill(false);
         og::runtime::current_session->keystates_ = fake_keystates.data();
     }
 
@@ -215,9 +215,9 @@ struct SessionKeyStateGuard
 
     void set(SDL_Keycode key, bool pressed)
     {
-        const SDL_Scancode scancode = SDL_GetScancodeFromKey(key);
+        const SDL_Scancode scancode = SDL_GetScancodeFromKey(key, nullptr);
         if (scancode >= 0 && scancode < SDL_SCANCODE_COUNT)
-            fake_keystates[static_cast<std::size_t>(scancode)] = pressed ? 1 : 0;
+            fake_keystates[static_cast<std::size_t>(scancode)] = pressed;
     }
 };
 

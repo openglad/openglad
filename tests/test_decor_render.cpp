@@ -162,9 +162,9 @@ bool do_redraw_data(viewscreen* vs)
 // state every frame. Same shape as test_render_effects' guards.
 struct LookUpHoldGuard
 {
-    const Uint8* old_keystates;
+    const bool* old_keystates;
     int old_binding;
-    std::array<Uint8, SDL_SCANCODE_COUNT> fake{};
+    std::array<bool, SDL_SCANCODE_COUNT> fake{};
 
     LookUpHoldGuard()
         : old_keystates(og::runtime::current_session->keystates_)
@@ -184,9 +184,9 @@ struct LookUpHoldGuard
 
     void set(bool held)
     {
-        const SDL_Scancode sc = SDL_GetScancodeFromKey(SDLK_V);
+        const SDL_Scancode sc = SDL_GetScancodeFromKey(SDLK_V, nullptr);
         if (sc >= 0 && sc < SDL_SCANCODE_COUNT)
-            fake[static_cast<std::size_t>(sc)] = held ? 1 : 0;
+            fake[static_cast<std::size_t>(sc)] = held;
     }
 };
 

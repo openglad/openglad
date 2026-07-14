@@ -47,8 +47,8 @@ bool write_pixie_png(const char* filepath, const PixieData& data);
 #endif
 
 namespace og::io {
-SDL_IOStream* physfsrw_open_read(const char* path);
-SDL_IOStream* physfsrw_open_write(const char* path);
+SDL_IOStream* physfsio_open_read(const char* path);
+SDL_IOStream* physfsio_open_write(const char* path);
 } // namespace og::io
 
 // remove_file_or_log, explode, list_files, campaign mount/unmount/list,
@@ -83,7 +83,7 @@ int rwops_read_handler(void *data, unsigned char *buffer, size_t size, size_t *s
 {
     SDL_IOStream *rwops = static_cast<SDL_IOStream*>(data);
 
-    *size_read = SDL_RWread(rwops, buffer, 1, size);
+    *size_read = SDL_ReadIO(rwops, buffer, size);
     return 1;
 }
 
@@ -92,7 +92,7 @@ int rwops_write_handler(void *data, unsigned char *buffer, size_t size)
 {
     SDL_IOStream *rwops = static_cast<SDL_IOStream*>(data);
 
-    SDL_RWwrite(rwops, buffer, 1, size);
+    SDL_WriteIO(rwops, buffer, size);
     return 1;
 }
 
@@ -160,7 +160,7 @@ std::string get_user_path()
 std::string get_asset_path()
 {
 #ifdef ANDROID
-    // RWops will look in the app's assets directory for this path
+    // SDL_IOStream will look in the app's assets directory for this path
     return "";
 #elif defined(__IPHONEOS__)
     // Assuming the cwd is set to the program's installation directory
@@ -204,7 +204,7 @@ std::string get_asset_path()
 	    
 	    if(debug)
 		    Log("Trying via PHYSFS: {}", file);
-	    rwops = og::io::physfsrw_open_read(file);
+	    rwops = og::io::physfsio_open_read(file);
 	    if(rwops != nullptr) return rwops;
 
     // now try opening in the current directory
@@ -238,7 +238,7 @@ SDL_IOStream* open_read_file(const char* path, const char* file)
 
 	SDL_IOStream* open_write_file(const char* file)
 	{
-	    SDL_IOStream* rwops = og::io::physfsrw_open_write(file);
+	    SDL_IOStream* rwops = og::io::physfsio_open_write(file);
 	    if(rwops != nullptr)
 	        return rwops;
 	    return SDL_IOFromFile(file, "wb");

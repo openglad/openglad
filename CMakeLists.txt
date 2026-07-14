@@ -48,6 +48,7 @@ option(OPENGLAD_FETCH_LIBZIP "Fetch libzip from upstream when no package target 
 option(OPENGLAD_FETCH_PHYSFS "Fetch PhysFS from upstream when no package target is available" ${OPENGLAD_FETCH_DEPS})
 option(OPENGLAD_FETCH_LODEPNG "Fetch lodepng from upstream when no package target is available" ${OPENGLAD_FETCH_DEPS})
 option(OPENGLAD_FETCH_IXWEBSOCKET "Fetch IXWebSocket from upstream when no package target is available" ${OPENGLAD_FETCH_DEPS})
+option(OPENGLAD_FETCH_SDL3 "Fetch SDL3 from upstream when no package target is available" ${OPENGLAD_FETCH_DEPS})
 option(OPENGLAD_USE_PACKAGED_IXWEBSOCKET "Prefer an installed IXWebSocket package over fetching the pinned upstream commit" ON)
 set(OPENGLAD_ZLIB_GIT_REPOSITORY "https://github.com/madler/zlib.git" CACHE STRING "zlib upstream repository")
 set(OPENGLAD_ZLIB_GIT_TAG "v1.3.2" CACHE STRING "zlib upstream tag/commit to use when fetching")
@@ -61,6 +62,8 @@ set(OPENGLAD_LODEPNG_GIT_REPOSITORY "https://github.com/lvandeve/lodepng.git" CA
 set(OPENGLAD_LODEPNG_GIT_TAG "ed6fe5825c6a4fbb7f58ab35a4231c7543cd452a" CACHE STRING "lodepng upstream commit to use when fetching")
 set(OPENGLAD_IXWEBSOCKET_GIT_REPOSITORY "https://github.com/machinezone/IXWebSocket.git" CACHE STRING "IXWebSocket upstream repository")
 set(OPENGLAD_IXWEBSOCKET_GIT_TAG "64fae7676bd8fe31f7cb4bcde7a6841892dad65e" CACHE STRING "IXWebSocket upstream commit to use when fetching")
+set(OPENGLAD_SDL3_GIT_REPOSITORY "https://github.com/libsdl-org/SDL.git" CACHE STRING "SDL3 upstream repository")
+set(OPENGLAD_SDL3_GIT_TAG "release-3.4.8" CACHE STRING "SDL3 upstream tag/commit to use when fetching")
 set(SANITIZERS "address;undefined" CACHE STRING "Sanitizers to enable when ENABLE_SANITIZERS is ON")
 
 # Coverage runs are only meaningful if the tests are built and executed.
@@ -629,12 +632,7 @@ endfunction()
 function(configure_openglad_sdl_target target)
     if(NOT EMSCRIPTEN AND OG_NATIVE_SDL_AVAILABLE)
         # Opt-in SDL wiring: keeps gameplay-only targets free from platform deps.
-        target_link_libraries(${target} PRIVATE PkgConfig::SDL2)
-        # Propagate the sdl2-compat detection (see the SDL2 find above) so test
-        # code can gate the SDL_TEXTINPUT-push workaround on OPENGLAD_SDL2_IS_COMPAT.
-        if(OG_SDL2_IS_COMPAT)
-            target_compile_definitions(${target} PRIVATE OPENGLAD_SDL2_IS_COMPAT)
-        endif()
+        target_link_libraries(${target} PRIVATE ${OG_SDL3_TARGET})
     endif()
 endfunction()
 
@@ -642,17 +640,13 @@ function(configure_openglad_runtime_target target)
     target_link_libraries(${target} PRIVATE project_warnings project_sanitizers)
     if(EMSCRIPTEN)
         target_compile_options(${target} PRIVATE
-            -sUSE_SDL=2
-            -sUSE_SDL_MIXER=2
-            "SHELL:-sSDL2_MIXER_FORMATS=[\"wav\"]"
+            --use-port=sdl3
             -Wno-constant-conversion
             -Wno-parentheses-equality
             -Wno-pointer-bool-conversion
         )
         target_link_options(${target} PRIVATE
-            -sUSE_SDL=2
-            -sUSE_SDL_MIXER=2
-            "SHELL:-sSDL2_MIXER_FORMATS=[\"wav\"]"
+            --use-port=sdl3
         )
     else()
         # Native builds link SDL/system deps via og_runtime_deps, typically pulled
@@ -993,39 +987,62 @@ endif()
 if(NOT EMSCRIPTEN)
     set(OG_NATIVE_SDL_AVAILABLE OFF)
     set(OG_NATIVE_SDL_REQUESTED ON)
-    if(CMAKE_DISABLE_FIND_PACKAGE_SDL2 OR
-       CMAKE_DISABLE_FIND_PACKAGE_SDL2_MIXER OR
-       CMAKE_DISABLE_FIND_PACKAGE_SDL2_mixer)
+    set(OG_SDL3_TARGET "")
+    set(OG_SDL3_FROM_PACKAGE OFF)
+    set(OG_SDL3_FROM_FETCH OFF)
+    if(CMAKE_DISABLE_FIND_PACKAGE_SDL3)
         set(OG_NATIVE_SDL_REQUESTED OFF)
     endif()
-    if(OG_NATIVE_SDL_REQUESTED AND PkgConfig_FOUND)
-        pkg_check_modules(SDL2 QUIET IMPORTED_TARGET sdl2 SDL2_mixer)
-        if(SDL2_FOUND)
-            set(OG_NATIVE_SDL_AVAILABLE ON)
-            # sdl2-compat is an SDL2 API shim that runs on SDL3. Pushing a
-            # synthetic SDL_TEXTINPUT event onto its queue crashes the shim
-            # (SDL3 changed SDL_TextInputEvent::text from an inline char[32] to a
-            # heap const char*), so SDL-driven test code gates a direct-dispatch
-            # workaround on the OPENGLAD_SDL2_IS_COMPAT define. Detect the shim
-            # from the resolved package paths; real SDL2 never matches.
-            set(OG_SDL2_IS_COMPAT OFF)
-            if("${SDL2_INCLUDE_DIRS};${SDL2_LIBRARY_DIRS};${SDL2_LINK_LIBRARIES}" MATCHES "sdl2-compat")
-                set(OG_SDL2_IS_COMPAT ON)
-                message(STATUS "OpenGlad: detected sdl2-compat (SDL2-over-SDL3 shim); defining OPENGLAD_SDL2_IS_COMPAT for SDL targets")
+    if(OG_NATIVE_SDL_REQUESTED)
+        if(OPENGLAD_USE_SYSTEM_DEPS)
+            find_package(SDL3 CONFIG QUIET)
+            if(TARGET SDL3::SDL3)
+                set(OG_SDL3_TARGET SDL3::SDL3)
+                set(OG_SDL3_FROM_PACKAGE ON)
+                message(STATUS "OpenGlad: using system SDL3 (SDL3::SDL3)")
+            elseif(PkgConfig_FOUND)
+                pkg_check_modules(OG_SDL3 QUIET IMPORTED_TARGET sdl3)
+                if(TARGET PkgConfig::OG_SDL3)
+                    set(OG_SDL3_TARGET PkgConfig::OG_SDL3)
+                    set(OG_SDL3_FROM_PACKAGE ON)
+                    message(STATUS "OpenGlad: using system SDL3 (PkgConfig::OG_SDL3)")
+                endif()
             endif()
-        else()
-            message(STATUS "SDL2/SDL2_mixer not found; SDL-native targets require SDL to build")
         endif()
-    elseif(OG_NATIVE_SDL_REQUESTED)
-        message(STATUS "PkgConfig not found; SDL-native targets require SDL to build")
+        if(NOT OG_SDL3_TARGET AND OPENGLAD_REQUIRE_SYSTEM_DEPS)
+            message(FATAL_ERROR "OPENGLAD_REQUIRE_SYSTEM_DEPS is ON but SDL3 was not found")
+        endif()
+        if(NOT OG_SDL3_TARGET AND OPENGLAD_FETCH_SDL3)
+            set(SDL_SHARED OFF CACHE BOOL "Build SDL3 shared library" FORCE)
+            set(SDL_STATIC ON CACHE BOOL "Build SDL3 static library" FORCE)
+            set(SDL_TEST_LIBRARY OFF CACHE BOOL "Build SDL3 test library" FORCE)
+            FetchContent_Declare(sdl3
+                GIT_REPOSITORY ${OPENGLAD_SDL3_GIT_REPOSITORY}
+                GIT_TAG ${OPENGLAD_SDL3_GIT_TAG}
+                GIT_SHALLOW FALSE
+                GIT_PROGRESS TRUE
+            )
+            FetchContent_MakeAvailable(sdl3)
+            if(NOT TARGET SDL3::SDL3)
+                message(FATAL_ERROR "Fetched SDL3 did not define the expected SDL3::SDL3 target")
+            endif()
+            set(OG_SDL3_TARGET SDL3::SDL3)
+            set(OG_SDL3_FROM_FETCH ON)
+            message(STATUS "OpenGlad: using fetched SDL3 ${OPENGLAD_SDL3_GIT_TAG}")
+        endif()
+        if(OG_SDL3_TARGET)
+            set(OG_NATIVE_SDL_AVAILABLE ON)
+        else()
+            message(STATUS "SDL3 not found; SDL-native targets require SDL3 to build")
+        endif()
     else()
-        message(STATUS "SDL2 lookup disabled; configuring headless/native non-SDL targets")
+        message(STATUS "SDL3 lookup disabled; configuring headless/native non-SDL targets")
     endif()
 
     # System/runtime link deps (kept as a target so we can control ordering).
     add_library(og_runtime_deps INTERFACE)
     if(OG_NATIVE_SDL_AVAILABLE)
-        target_link_libraries(og_runtime_deps INTERFACE PkgConfig::SDL2 m pthread)
+        target_link_libraries(og_runtime_deps INTERFACE ${OG_SDL3_TARGET} m pthread)
     else()
         target_link_libraries(og_runtime_deps INTERFACE m pthread)
     endif()
@@ -1695,13 +1712,12 @@ if(NOT EMSCRIPTEN)
     endif()
 
     set(OG_OPENGLAD_CONFIG_FIND_DEPENDENCIES "")
-    if(OG_NATIVE_SDL_AVAILABLE)
+    if(OG_NATIVE_SDL_AVAILABLE AND OG_SDL3_FROM_PACKAGE)
         string(APPEND OG_OPENGLAD_CONFIG_FIND_DEPENDENCIES
-"if(NOT TARGET PkgConfig::SDL2)
-    find_dependency(PkgConfig)
-    pkg_check_modules(SDL2 QUIET IMPORTED_TARGET sdl2 SDL2_mixer)
+"if(NOT TARGET SDL3::SDL3)
+    find_dependency(SDL3 CONFIG)
 endif()
-_openglad_require_imported_target(\"PkgConfig::SDL2\" \"SDL2/SDL2_mixer\")
+_openglad_require_imported_target(\"SDL3::SDL3\" \"SDL3\")
 
 ")
     endif()
@@ -2676,7 +2692,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             endif()
 
             # Enforce the zero-SDL invariant of the ncurses client in CI: the
-            # binary must contain no SDL symbols and not link libSDL2.
+            # binary must contain no SDL symbols and not link libSDL3.
             add_test(NAME openglad_curses_link_no_sdl
                 COMMAND ${CMAKE_COMMAND} -E env bash
                     ${CMAKE_SOURCE_DIR}/scripts/test_curses_no_sdl.sh
@@ -2984,7 +3000,7 @@ if(ENABLE_FUZZING)
     set(FUZZ_LINK_FLAGS -fsanitize=fuzzer,address,undefined)
 
     # Each fuzz target is a standalone executable that links only what it needs.
-    # The harnesses use SDL_RWFromConstMem to feed data, so they need SDL2 but
+    # The harnesses use SDL_IOFromConstMem to feed data, so they need SDL3 but
     # not the full game engine.
 
     function(add_fuzz_target name source)
@@ -2992,9 +3008,6 @@ if(ENABLE_FUZZING)
         target_include_directories(${name} PRIVATE
             $<BUILD_INTERFACE:${OG_PUBLIC_INCLUDE_DIR}>
         )
-        if(NOT EMSCRIPTEN)
-            target_include_directories(${name} SYSTEM PRIVATE ${SDL2_INCLUDE_DIRS})
-        endif()
         target_compile_definitions(${name} PRIVATE ${COMMON_DEFINITIONS})
         target_compile_options(${name} PRIVATE ${FUZZ_SANITIZER_FLAGS})
         target_link_options(${name} PRIVATE ${FUZZ_LINK_FLAGS})
@@ -3002,11 +3015,11 @@ if(ENABLE_FUZZING)
 
     # fuzz_scenario: exercises .fss scenario binary parsing
     add_fuzz_target(fuzz_scenario ${SRC_DIR}/fuzz/fuzz_scenario.cpp)
-    target_link_libraries(fuzz_scenario PRIVATE ${SDL2_LIBRARIES})
+    target_link_libraries(fuzz_scenario PRIVATE ${OG_SDL3_TARGET})
 
     # fuzz_savefile: exercises .gtl save file binary parsing
     add_fuzz_target(fuzz_savefile ${SRC_DIR}/fuzz/fuzz_savefile.cpp)
-    target_link_libraries(fuzz_savefile PRIVATE ${SDL2_LIBRARIES})
+    target_link_libraries(fuzz_savefile PRIVATE ${OG_SDL3_TARGET})
 
 endif()
 
@@ -3036,7 +3049,8 @@ endif()
     # UTF8ArrayToString (getUnsharedTextDecoderView only guards SHARED_MEMORY),
     # aborting boot. Force it off to restore pre-6.0.2 behavior; drop this once
     # upstream fixes the decode path. Guarded: the setting first appears in
-    # emscripten 6.0.x and older SDKs (e.g. CI's 3.1.51) error on unknown -s flags.
+    # emscripten 6.0.x and older SDKs error on unknown -s flags (CI now pins
+    # emsdk 6.0.3, so this guard is active there).
     if(EMSCRIPTEN_VERSION VERSION_GREATER_EQUAL "6.0.1")
         target_link_options(play PRIVATE -sGROWABLE_ARRAYBUFFERS=0)
     endif()

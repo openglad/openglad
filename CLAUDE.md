@@ -42,8 +42,11 @@ cmake --build --preset dev-debug
 ### Dependencies (Debian/Ubuntu)
 
 ```bash
-sudo apt-get install cmake ninja-build libsdl2-dev libsdl2-mixer-dev libgtest-dev
+sudo apt-get install cmake ninja-build libgtest-dev
 ```
+
+SDL3 is auto-fetched (pinned `release-3.4.8`) when no system sdl3 is found;
+install `libsdl3-dev` (where available) or nix `sdl3` to use a system copy.
 
 ### Web Build
 

@@ -67,13 +67,13 @@ struct TeamSlotGuard
 
 struct KeyStateGuard
 {
-    const Uint8* saved = nullptr;
-    std::array<Uint8, MAXKEYS> fake{};
+    const bool* saved = nullptr;
+    std::array<bool, MAXKEYS> fake{};
 
     KeyStateGuard()
     {
         saved = og::runtime::current_session->keystates_;
-        fake.fill(0);
+        fake.fill(false);
         og::runtime::current_session->keystates_ = fake.data();
     }
 
@@ -84,9 +84,9 @@ struct KeyStateGuard
 
     void pulse(SDL_Scancode sc, int down_ms = 25, int up_ms = 10)
     {
-        fake[sc] = 1;
+        fake[sc] = true;
         SDL_Delay(down_ms);
-        fake[sc] = 0;
+        fake[sc] = false;
         SDL_Delay(up_ms);
     }
 };
@@ -104,7 +104,7 @@ static int injector_thread_exit_detail_menu(void* data)
     InjectorArgs* a = static_cast<InjectorArgs*>(data);
     // Wait until init_buttons has created vbuttons for this menu. If we pulse too
     // early, handle_menu_nav/leftmouse won't observe the press.
-    const Uint32 deadline = SDL_GetTicks() + 5000;
+    const Uint64 deadline = SDL_GetTicks() + 5000;
     while (SDL_GetTicks() < deadline)
     {
         if (og::runtime::current_session->allbuttons_[0] != nullptr) // "back" is index 0 in details_buttons

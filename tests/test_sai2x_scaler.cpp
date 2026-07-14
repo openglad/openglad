@@ -124,8 +124,8 @@ static void run_sai2x_surface_wrapper_guards_and_scaling()
     // Guard path: null surfaces should return without crashing.
     Super2xSaI(nullptr, nullptr, 0, 0, 0, 0, 8, 8);
 
-    SDL_Surface* src = SDL_CreateRGBSurfaceWithFormat(0, 8, 8, 32, SDL_PIXELFORMAT_ARGB8888);
-    SDL_Surface* dst = SDL_CreateRGBSurfaceWithFormat(0, 16, 16, 32, SDL_PIXELFORMAT_ARGB8888);
+    SDL_Surface* src = SDL_CreateSurface(8, 8, SDL_PIXELFORMAT_ARGB8888);
+    SDL_Surface* dst = SDL_CreateSurface(16, 16, SDL_PIXELFORMAT_ARGB8888);
     ASSERT_TRUE(src != nullptr && dst != nullptr) << "surfaces should allocate";
     if (!src || !dst)
         return;

@@ -18,11 +18,11 @@
  *
  * SDL thread safety:
  *   - SDL_PollEvent: main thread only
- *   - SDL_RenderPresent/Copy/Clear: main thread only
+ *   - SDL_RenderPresent/SDL_RenderTexture/SDL_RenderClear: main thread only
  *   - SDL_UpdateTexture: main thread only
  *   - E_Screen->render swap: main thread only (via SessionScope)
  *   - Per-session SDL_Surface pixel writes: each worker writes only to its own surface
- *   - SDL_mixer (Mix_PlayChannel): thread-safe in SDL_mixer 2.x
+ *   - Audio (SDL_PutAudioStreamData etc.): SDL3 audio streams lock internally
  */
 
 #include <openglad/core/constants.h>
@@ -303,13 +303,14 @@ int main(int argc, char* argv[])
             display_w = CELL_W;
             display_h = CELL_H;
         } else {
-            SDL_DisplayMode dm;
-            if (SDL_GetDesktopDisplayMode(0, &dm) != 0) {
+            const SDL_DisplayMode* dm =
+                SDL_GetDesktopDisplayMode(SDL_GetPrimaryDisplay());
+            if (!dm) {
                 LogError("SDL_GetDesktopDisplayMode failed: {}\n", SDL_GetError());
                 return 1;
             } else {
-                display_w = dm.w;
-                display_h = dm.h;
+                display_w = dm->w;
+                display_h = dm->h;
             }
         }
         int grid_cols = display_w / CELL_W;
@@ -364,7 +365,7 @@ int main(int argc, char* argv[])
 
         // Create composite surface and texture at the full display resolution.
         std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)> composite_surface(
-            SDL_CreateRGBSurface(SDL_SWSURFACE, display_w, display_h, 32, 0, 0, 0, 0),
+            SDL_CreateSurface(display_w, display_h, SDL_PIXELFORMAT_XRGB8888),
             SDL_DestroySurface);
         std::unique_ptr<SDL_Texture, decltype(&SDL_DestroyTexture)> composite_tex(
             SDL_CreateTexture(E_Screen->renderer, SDL_PIXELFORMAT_ARGB8888,

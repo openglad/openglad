@@ -47,7 +47,7 @@ struct SessionState {
     short text_input_event_ = 0;
     short scroll_amount_ = 0;
     bool input_continue_ = false;
-    const std::uint8_t* keystates_ = nullptr;
+    const bool* keystates_ = nullptr;  // SDL3 SDL_GetKeyboardState buffer
     // == NUM_KEYS from input.h (16 wire-visible actions + the client-side
     // KEY_LOOKUP hold; enforced by input_player_keys()'s reference return).
     static constexpr int kNumKeys = 17;

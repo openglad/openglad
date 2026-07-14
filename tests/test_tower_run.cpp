@@ -597,10 +597,10 @@ struct ResultsThreadState
 template <typename Pred>
 bool tower_results_wait(Pred pred, int timeout_ms = 30000)
 {
-    const Uint32 start = SDL_GetTicks();
+    const Uint64 start = SDL_GetTicks();
     while (!pred())
     {
-        if (SDL_GetTicks() - start > static_cast<Uint32>(timeout_ms))
+        if (SDL_GetTicks() - start > static_cast<Uint64>(timeout_ms))
             return false;
         SDL_Delay(2);
     }

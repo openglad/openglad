@@ -15,7 +15,7 @@ if [[ -z "${link_cmd:-}" ]]; then
     exit 1
 fi
 
-if grep -Eq '(^|[[:space:]])-lSDL2([[:space:]]|$)|(^|[[:space:]])-lSDL2_mixer([[:space:]]|$)|/libSDL2(\.so([.0-9]+)?|-[^[:space:]]+\.so([.0-9]+)?)|/libSDL2_mixer(\.so([.0-9]+)?|-[^[:space:]]+\.so([.0-9]+)?)' <<<"$link_cmd"; then
+if grep -Eq '(^|[[:space:]])-lSDL3([[:space:]]|$)|/libSDL3(\.so([.0-9]+)?|-[^[:space:]]+\.so([.0-9]+)?|\.a)' <<<"$link_cmd"; then
     printf 'openglad_server link command unexpectedly references SDL:\n%s\n' "$link_cmd" >&2
     exit 1
 fi

@@ -1,5 +1,6 @@
 #include <openglad/interface/button.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/native_input.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
@@ -32,18 +33,18 @@ struct KeyBindingGuard
 struct KeyStateGuard
 {
     int numkeys = 0;
-    Uint8* keys = nullptr;
+    bool* keys = nullptr;
     KeyStateGuard()
     {
-        const Uint8* ro = SDL_GetKeyboardState(&numkeys);
-        keys = const_cast<Uint8*>(ro);
+        const bool* ro = SDL_GetKeyboardState(&numkeys);
+        keys = const_cast<bool*>(ro);
     }
     void set(SDL_Keycode key, bool pressed)
     {
         if (!keys) return;
-        SDL_Scancode sc = SDL_GetScancodeFromKey(key);
+        SDL_Scancode sc = SDL_GetScancodeFromKey(key, nullptr);
         if (sc >= 0 && sc < numkeys)
-            keys[sc] = pressed ? 1 : 0;
+            keys[sc] = pressed;
     }
 };
 
@@ -158,7 +159,7 @@ TEST(PickerMenuNav, picker_handle_menu_nav_fire_paths_and_highlight_draw_smoke)
 
     // Expiry branch (no press + timeout).
     pks().menu_nav_enabled = true;
-    pks().menu_nav_enabled_time = SDL_GetTicks() - 6000;
+    pks().menu_nav_enabled_time = og::input_native::ticks_ms() - 6000;
     ks.set(SDLK_SPACE, false);
     (void)handle_menu_nav(buttons, highlighted, retvalue, false);
 }

@@ -51,15 +51,15 @@ struct ControlModeGuard
 struct KeyStateGuard
 {
     SDL_Scancode sc;
-    Uint8 old_value;
+    bool old_value;
     int numkeys;
-    Uint8* keys;
+    bool* keys;
 
     explicit KeyStateGuard(SDL_Scancode sc_)
-        : sc(sc_), old_value(0), numkeys(0), keys(nullptr)
+        : sc(sc_), old_value(false), numkeys(0), keys(nullptr)
     {
-        const Uint8* read_only = SDL_GetKeyboardState(&numkeys);
-        keys = const_cast<Uint8*>(read_only);
+        const bool* read_only = SDL_GetKeyboardState(&numkeys);
+        keys = const_cast<bool*>(read_only);
         if (keys && sc >= 0 && sc < numkeys)
             old_value = keys[sc];
     }
@@ -67,7 +67,7 @@ struct KeyStateGuard
     void set(bool pressed)
     {
         if (keys && sc >= 0 && sc < numkeys)
-            keys[sc] = pressed ? 1 : 0;
+            keys[sc] = pressed;
     }
 
     ~KeyStateGuard()
@@ -145,7 +145,7 @@ TEST(InputKeybinds, input_isPlayerHoldingKey_uses_keyboard_state_when_no_joystic
     disablePlayerJoystick(0);
     KeyBindingGuard bind(0, KEY_FIRE, SDLK_V);
 
-    const SDL_Scancode sc = SDL_GetScancodeFromKey(SDLK_V);
+    const SDL_Scancode sc = SDL_GetScancodeFromKey(SDLK_V, nullptr);
     KeyStateGuard ks(sc);
 
     ks.set(false);
@@ -238,7 +238,7 @@ TEST(InputKeybinds, native_input_decode_event_ignores_malformed_scancode_payload
     ASSERT_TRUE(og::input_native::decode_event(&e, out)) << "decode_event should accept keydown payloads";
     ASSERT_EQ((int)og::input_native::EventType::KeyDown, (int)out.type) << "decoded event type should be keydown";
     ASSERT_EQ((int)SDLK_Q, out.key_sym) << "decoded key symbol should match payload";
-    ASSERT_EQ((int)SDL_GetScancodeFromKey(SDLK_Q), out.key_scancode) << "decoded scancode should derive from key symbol, not raw enum payload";
+    ASSERT_EQ((int)SDL_GetScancodeFromKey(SDLK_Q, nullptr), out.key_scancode) << "decoded scancode should derive from key symbol, not raw enum payload";
 }
 
 
@@ -248,7 +248,7 @@ TEST(InputKeybinds, native_input_decode_event_covers_non_keyboard_variants)
     og::input_native::EventData out{};
 
     e.type = SDL_EVENT_TEXT_INPUT;
-    SDL_strlcpy(e.text.text, "abc", sizeof(e.text.text));
+    e.text.text = "abc";
     ASSERT_TRUE(og::input_native::decode_event(&e, out)) << "decode_event should accept text input";
     ASSERT_EQ((int)og::input_native::EventType::TextInput, (int)out.type) << "text input type should decode";
     ASSERT_STREQ("abc", out.text.data()) << "text payload should decode";
@@ -256,6 +256,7 @@ TEST(InputKeybinds, native_input_decode_event_covers_non_keyboard_variants)
     e = SDL_Event{};
     e.type = SDL_EVENT_MOUSE_WHEEL;
     e.wheel.y = -3;
+    e.wheel.integer_y = -3;
     ASSERT_TRUE(og::input_native::decode_event(&e, out)) << "decode_event should accept mouse wheel";
     ASSERT_EQ((int)og::input_native::EventType::MouseWheel, (int)out.type) << "mouse wheel type should decode";
     ASSERT_EQ(-3, out.wheel_y) << "mouse wheel delta should decode";
@@ -331,14 +332,12 @@ TEST(InputKeybinds, native_input_decode_event_covers_non_keyboard_variants)
     ASSERT_EQ((int)SDL_HAT_RIGHT, out.joy_hat_value) << "joy hat value should decode";
 
     e = SDL_Event{};
-    e.type = SDL_WINDOWEVENT;
-    e.window.event = SDL_EVENT_WINDOW_MINIMIZED;
+    e.type = SDL_EVENT_WINDOW_MINIMIZED;
     ASSERT_TRUE(og::input_native::decode_event(&e, out)) << "decode_event should accept window minimize";
     ASSERT_EQ((int)og::input_native::WindowEventType::Minimized, (int)out.window_event) << "window minimize should decode";
 
     e = SDL_Event{};
-    e.type = SDL_WINDOWEVENT;
-    e.window.event = SDL_EVENT_WINDOW_RESIZED;
+    e.type = SDL_EVENT_WINDOW_RESIZED;
     e.window.data1 = 640;
     e.window.data2 = 400;
     ASSERT_TRUE(og::input_native::decode_event(&e, out)) << "decode_event should accept window events";
@@ -348,20 +347,17 @@ TEST(InputKeybinds, native_input_decode_event_covers_non_keyboard_variants)
     ASSERT_EQ(400, out.window_data2) << "window data2 should decode";
 
     e = SDL_Event{};
-    e.type = SDL_WINDOWEVENT;
-    e.window.event = SDL_EVENT_WINDOW_CLOSE_REQUESTED;
+    e.type = SDL_EVENT_WINDOW_CLOSE_REQUESTED;
     ASSERT_TRUE(og::input_native::decode_event(&e, out)) << "decode_event should accept window close";
     ASSERT_EQ((int)og::input_native::WindowEventType::Close, (int)out.window_event) << "window close should decode";
 
     e = SDL_Event{};
-    e.type = SDL_WINDOWEVENT;
-    e.window.event = SDL_EVENT_WINDOW_RESTORED;
+    e.type = SDL_EVENT_WINDOW_RESTORED;
     ASSERT_TRUE(og::input_native::decode_event(&e, out)) << "decode_event should accept window restored";
     ASSERT_EQ((int)og::input_native::WindowEventType::Restored, (int)out.window_event) << "window restore should decode";
 
     e = SDL_Event{};
-    e.type = SDL_WINDOWEVENT;
-    e.window.event = 0x7f;
+    e.type = SDL_EVENT_WINDOW_OCCLUDED; // in the window-event range but unmapped by decode
     ASSERT_TRUE(og::input_native::decode_event(&e, out)) << "decode_event should accept unknown window events";
     ASSERT_EQ((int)og::input_native::WindowEventType::Unknown, (int)out.window_event) << "unknown window event should map to Unknown";
 
@@ -458,7 +454,7 @@ TEST(InputKeybinds, input_state_from_sdl_respects_four_direction_mode)
 {
     disablePlayerJoystick(0);
     ModeKeyBindingGuard bind_diag(0, KEY_UP_RIGHT);
-    KeyStateGuard ks(SDL_GetScancodeFromKey(SDLK_V));
+    KeyStateGuard ks(SDL_GetScancodeFromKey(SDLK_V, nullptr));
     ControlModeGuard mode_guard(0);
 
     InputState input{};

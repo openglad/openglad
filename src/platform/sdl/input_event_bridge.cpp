@@ -49,7 +49,9 @@ void handle_window_event(const void* native_event)
         return;
     const SDL_Event& event = as_sdl_event(native_event);
 
-    switch(event.window.event)
+    // SDL3: window events are first-class event types; switch on event.type
+    // (unhandled window subtypes fall through harmlessly).
+    switch(event.type)
     {
         case SDL_EVENT_WINDOW_MINIMIZED:
             // Save state here on Android
@@ -111,7 +113,7 @@ void handle_key_event(const void* native_event)
             break;
         }
         #endif
-        og::runtime::current_session->raw_key_ = event.key.key;
+        og::runtime::current_session->raw_key_ = static_cast<int>(event.key.key);
         if(og::runtime::current_session->raw_key_ == SDLK_ESCAPE)
             og::runtime::current_session->input_continue_ = true;
         og::runtime::current_session->key_press_event_ = 1;

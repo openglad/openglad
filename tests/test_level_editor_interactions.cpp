@@ -160,7 +160,7 @@ static int editor_injector_thread(void* data)
     SDL_Event right_down{};
     right_down.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
     right_down.button.button = SDL_BUTTON_RIGHT;
-    right_down.button.state = SDL_PRESSED;
+    right_down.button.down = true;
     right_down.button.x = 120;
     right_down.button.y = 100;
     SDL_PushEvent(&right_down);
@@ -168,7 +168,7 @@ static int editor_injector_thread(void* data)
     SDL_Event right_up{};
     right_up.type = SDL_EVENT_MOUSE_BUTTON_UP;
     right_up.button.button = SDL_BUTTON_RIGHT;
-    right_up.button.state = SDL_RELEASED;
+    right_up.button.down = false;
     right_up.button.x = 120;
     right_up.button.y = 100;
     SDL_PushEvent(&right_up);
@@ -177,8 +177,7 @@ static int editor_injector_thread(void* data)
 
     // Push direct SDL event variants to cover handle_basic_editor_event branches.
     SDL_Event event{};
-    event.type = SDL_WINDOWEVENT;
-    event.window.event = SDL_EVENT_WINDOW_EXPOSED;
+    event.type = SDL_EVENT_WINDOW_EXPOSED;
     SDL_PushEvent(&event);
 
     inject_text_input("x");
@@ -186,6 +185,7 @@ static int editor_injector_thread(void* data)
     event = SDL_Event{};
     event.type = SDL_EVENT_MOUSE_WHEEL;
     event.wheel.y = 1;
+    event.wheel.integer_y = 1;
     SDL_PushEvent(&event);
 
     event = SDL_Event{};
@@ -268,10 +268,10 @@ static void push_mouse_motion(int x, int y, int xrel = 0, int yrel = 0)
 {
     SDL_Event e{};
     e.type = SDL_EVENT_MOUSE_MOTION;
-    e.motion.x = x;
-    e.motion.y = y;
-    e.motion.xrel = xrel;
-    e.motion.yrel = yrel;
+    e.motion.x = static_cast<float>(x);
+    e.motion.y = static_cast<float>(y);
+    e.motion.xrel = static_cast<float>(xrel);
+    e.motion.yrel = static_cast<float>(yrel);
     SDL_PushEvent(&e);
 }
 
@@ -280,9 +280,9 @@ static void push_mouse_drag(int x0, int y0, int x1, int y1)
     SDL_Event down{};
     down.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
     down.button.button = SDL_BUTTON_LEFT;
-    down.button.state = SDL_PRESSED;
-    down.button.x = x0;
-    down.button.y = y0;
+    down.button.down = true;
+    down.button.x = static_cast<float>(x0);
+    down.button.y = static_cast<float>(y0);
     SDL_PushEvent(&down);
 
     SDL_Delay(10);
@@ -292,9 +292,9 @@ static void push_mouse_drag(int x0, int y0, int x1, int y1)
     SDL_Event up{};
     up.type = SDL_EVENT_MOUSE_BUTTON_UP;
     up.button.button = SDL_BUTTON_LEFT;
-    up.button.state = SDL_RELEASED;
-    up.button.x = x1;
-    up.button.y = y1;
+    up.button.down = false;
+    up.button.x = static_cast<float>(x1);
+    up.button.y = static_cast<float>(y1);
     SDL_PushEvent(&up);
 }
 

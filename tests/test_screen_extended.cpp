@@ -326,7 +326,7 @@ void write_bytes(const std::filesystem::path& file, const void* data, size_t siz
     SDL_IOStream* out = SDL_IOFromFile(file.string().c_str(), "wb");
     if(out == nullptr)
         return;
-    SDL_RWwrite(out, data, 1, size);
+    SDL_WriteIO(out, data, size);
     SDL_CloseIO(out);
 }
 

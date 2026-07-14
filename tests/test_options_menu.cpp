@@ -42,7 +42,7 @@ static void cleanup_picker_state()
 
 static bool click_until_interactable(const std::string& click_id, const std::string& next_id, int timeout_ms)
 {
-    const Uint32 deadline = SDL_GetTicks() + static_cast<Uint32>(timeout_ms);
+    const Uint64 deadline = SDL_GetTicks() + static_cast<Uint64>(timeout_ms);
     while (SDL_GetTicks() < deadline) {
         if (has_interactable(next_id))
             return true;
@@ -144,7 +144,7 @@ static bool toggle_effect_and_check_flip(const char* button_id, const char* cate
                                          const char* cfg_key)
 {
     const bool before = cfg.is_on(category, cfg_key);
-    const Uint32 deadline = SDL_GetTicks() + 5000;
+    const Uint64 deadline = SDL_GetTicks() + 5000;
     interact(button_id);
     for (;;) {
         // 300ms per the menu-test discipline: a shorter gap can land the next
@@ -164,7 +164,7 @@ static bool click_cycle_step(const char* button_id, const char* category,
                              const char* cfg_key)
 {
     const std::string before = cfg.get_setting(category, cfg_key);
-    const Uint32 deadline = SDL_GetTicks() + 5000;
+    const Uint64 deadline = SDL_GetTicks() + 5000;
     interact(button_id);
     for (;;) {
         SDL_Delay(300);
@@ -192,7 +192,7 @@ static bool cycle_effect_and_check_lap(const char* button_id, const char* catego
         if (!click_cycle_step(button_id, category, cfg_key))
             return false;
 
-    const Uint32 deadline = SDL_GetTicks() + 5000;
+    const Uint64 deadline = SDL_GetTicks() + 5000;
     while (cfg.get_setting(category, cfg_key) != expected) {
         if (SDL_GetTicks() >= deadline)
             return false;
@@ -220,7 +220,7 @@ static bool cycle_world_scale_and_check_lap(const char* button_id)
         if (!click_cycle_step(button_id, "graphics", "scale"))
             return false;
 
-    const Uint32 deadline = SDL_GetTicks() + 5000;
+    const Uint64 deadline = SDL_GetTicks() + 5000;
     while (cfg.get_setting("graphics", "scale") != expected) {
         if (SDL_GetTicks() >= deadline)
             return false;
@@ -355,7 +355,7 @@ static int options_injector(void* data)
     // Ensure mainmenu() returns so picker_main() can complete. Coverage builds
     // can redraw the main menu slowly after leaving options, so use Escape to
     // unwind whichever menu is currently active.
-    const Uint32 quit_deadline = SDL_GetTicks() + 3000;
+    const Uint64 quit_deadline = SDL_GetTicks() + 3000;
     while (SDL_GetTicks() < quit_deadline) {
         if (has_interactable("quit")) {
             SDL_Delay(80);
@@ -491,7 +491,7 @@ void capture_toggle(const char* button_id)
 
 void capture_quit_main_menu(CaptureState* state)
 {
-    const Uint32 quit_deadline = SDL_GetTicks() + 5000;
+    const Uint64 quit_deadline = SDL_GetTicks() + 5000;
     while (SDL_GetTicks() < quit_deadline) {
         if (has_interactable("quit")) {
             SDL_Delay(600); // dwell on the main menu before leaving

@@ -13,7 +13,7 @@ static void write_all(SDL_IOStream* rw, const void* data, size_t len)
     size_t total = 0;
     while (total < len)
     {
-        size_t wrote = SDL_RWwrite(rw, p + total, 1, len - total);
+        size_t wrote = SDL_WriteIO(rw, p + total, len - total);
         if (wrote == 0)
             break;
         total += wrote;
@@ -38,7 +38,7 @@ TEST(IoFilesystem, io_user_path_and_rwops_roundtrip)
 
     char buf[64];
     memset(buf, 0, sizeof(buf));
-    size_t n = SDL_RWread(in, buf, 1, sizeof(buf) - 1);
+    size_t n = SDL_ReadIO(in, buf, sizeof(buf) - 1);
     SDL_CloseIO(in);
 
     ASSERT_TRUE(n == strlen(payload)) << "read back should match payload length";

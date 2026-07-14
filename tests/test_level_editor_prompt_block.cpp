@@ -23,18 +23,18 @@ struct PromptBlockInjectState
 struct KeyStateGuard
 {
     int numkeys = 0;
-    Uint8* keys = nullptr;
+    bool* keys = nullptr;
     KeyStateGuard()
     {
-        const Uint8* ro = SDL_GetKeyboardState(&numkeys);
-        keys = const_cast<Uint8*>(ro);
+        const bool* ro = SDL_GetKeyboardState(&numkeys);
+        keys = const_cast<bool*>(ro);
     }
     void set(SDL_Keycode key, bool pressed)
     {
         if (!keys) return;
-        SDL_Scancode sc = SDL_GetScancodeFromKey(key);
+        SDL_Scancode sc = SDL_GetScancodeFromKey(key, nullptr);
         if (sc >= 0 && sc < numkeys)
-            keys[sc] = pressed ? 1 : 0;
+            keys[sc] = pressed;
     }
 };
 

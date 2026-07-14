@@ -11,14 +11,14 @@ static void push_any_keypress()
     memset(&e, 0, sizeof(e));
 
     e.type = SDL_EVENT_KEY_DOWN;
-    e.key.state = SDL_PRESSED;
+    e.key.down = true;
     e.key.key = SDLK_SPACE;
     e.key.scancode = SDL_SCANCODE_SPACE;
     SDL_PushEvent(&e);
 
     memset(&e, 0, sizeof(e));
     e.type = SDL_EVENT_KEY_UP;
-    e.key.state = SDL_RELEASED;
+    e.key.down = false;
     e.key.key = SDLK_SPACE;
     e.key.scancode = SDL_SCANCODE_SPACE;
     SDL_PushEvent(&e);

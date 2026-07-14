@@ -50,13 +50,13 @@ static int hold_q_key_for_picker(void* data)
     og::runtime::ensure_thread_session();
     (void)data;
     int numkeys = 0;
-    Uint8* keys = const_cast<Uint8*>(SDL_GetKeyboardState(&numkeys));
-    SDL_Scancode sc = SDL_GetScancodeFromKey(SDLK_Q);
+    bool* keys = const_cast<bool*>(SDL_GetKeyboardState(&numkeys));
+    SDL_Scancode sc = SDL_GetScancodeFromKey(SDLK_Q, nullptr);
     if (sc >= 0 && sc < numkeys)
     {
-        keys[sc] = 1;
+        keys[sc] = true;
         SDL_Delay(120);
-        keys[sc] = 0;
+        keys[sc] = false;
     }
     return 0;
 }

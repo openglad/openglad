@@ -31,8 +31,9 @@ static SDL_Event make_keydown(SDL_Keycode k)
     SDL_Event e;
     memset(&e, 0, sizeof(e));
     e.type = SDL_EVENT_KEY_DOWN;
+    e.key.down = true;
     e.key.key = k;
-    e.key.scancode = SDL_GetScancodeFromKey(k);
+    e.key.scancode = SDL_GetScancodeFromKey(k, nullptr);
     e.key.repeat = false;
     return e;
 }

@@ -16,7 +16,7 @@ using SurfacePtr = std::unique_ptr<SDL_Surface, SurfaceDeleter>;
 
 static SurfacePtr make_surface(int w, int h)
 {
-    SDL_Surface* s = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h, 32, 0, 0, 0, 0);
+    SDL_Surface* s = SDL_CreateSurface(w, h, SDL_PIXELFORMAT_XRGB8888);
     return SurfacePtr(s);
 }
 
@@ -24,8 +24,8 @@ static SurfacePtr make_surface_masks(int w, int h, int depth,
                                      Uint32 rmask, Uint32 gmask,
                                      Uint32 bmask, Uint32 amask)
 {
-    SDL_Surface* s = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h, depth,
-                                          rmask, gmask, bmask, amask);
+    SDL_Surface* s = SDL_CreateSurface(
+        w, h, SDL_GetPixelFormatForMasks(depth, rmask, gmask, bmask, amask));
     return SurfacePtr(s);
 }
 } // namespace
@@ -99,8 +99,8 @@ TEST(VideoFade, video_fadebetween_success_path_smoke)
     if (!(dest && old_ok && new_ok))
         return;
 
-    SDL_FillSurfaceRect(old_ok.get(), nullptr, SDL_MapRGB(old_ok->format, 10, 20, 30));
-    SDL_FillSurfaceRect(new_ok.get(), nullptr, SDL_MapRGB(new_ok->format, 200, 180, 160));
+    SDL_FillSurfaceRect(old_ok.get(), nullptr, SDL_MapSurfaceRGB(old_ok.get(), 10, 20, 30));
+    SDL_FillSurfaceRect(new_ok.get(), nullptr, SDL_MapSurfaceRGB(new_ok.get(), 200, 180, 160));
 
     int r = og::runtime::current_session->myscreen_->fade_between(old_ok.get(), new_ok.get(), dest.get());
     ASSERT_TRUE(r != 0) << "FadeBetween should succeed for matching 32bpp surfaces";

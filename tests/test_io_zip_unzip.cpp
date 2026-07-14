@@ -84,7 +84,7 @@ TEST(IoZipUnzip, io_open_read_file_prefers_cwd_fallback)
     SDL_IOStream* rw = open_read_file(fname.c_str(), true);
     ASSERT_TRUE(rw != nullptr) << "open_read_file should open cwd file";
     char buf[8] = {0};
-    size_t got = SDL_RWread(rw, buf, 1, 3);
+    size_t got = SDL_ReadIO(rw, buf, 3);
     SDL_CloseIO(rw);
     ASSERT_EQ(3, (int)got) << "should read 3 bytes";
     ASSERT_STREQ("cwd", buf) << "contents should match";

@@ -30,13 +30,13 @@ static std::unique_ptr<walker> create_controlled_living(char family)
 
 struct KeystateOverride
 {
-    const Uint8* prev = nullptr;
-    std::array<Uint8, MAXKEYS> fake{};
+    const bool* prev = nullptr;
+    std::array<bool, MAXKEYS> fake{};
 
     KeystateOverride()
     {
         prev = og::runtime::current_session->keystates_;
-        fake.fill(0);
+        fake.fill(false);
         og::runtime::current_session->keystates_ = fake.data();
     }
 
@@ -48,9 +48,9 @@ struct KeystateOverride
 
 static void pulse_key(KeystateOverride& ks, int key, int hold_ms = 80, int release_ms = 30)
 {
-    ks.fake[static_cast<std::size_t>(key)] = 1;
+    ks.fake[static_cast<std::size_t>(key)] = true;
     std::this_thread::sleep_for(std::chrono::milliseconds(hold_ms));
-    ks.fake[static_cast<std::size_t>(key)] = 0;
+    ks.fake[static_cast<std::size_t>(key)] = false;
     std::this_thread::sleep_for(std::chrono::milliseconds(release_ms));
 }
 
@@ -59,7 +59,7 @@ static void pulse_escape_until(KeystateOverride& ks, std::atomic<bool>& done, in
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
     while (!done.load(std::memory_order_relaxed) && std::chrono::steady_clock::now() < deadline)
         pulse_key(ks, KEYSTATE_ESCAPE, 100, 40);
-    ks.fake[KEYSTATE_ESCAPE] = 0;
+    ks.fake[KEYSTATE_ESCAPE] = false;
 }
 
 TEST(ViewMenuDriven, viewscreen_options_menu_exercises_key_paths)

@@ -24,12 +24,12 @@ struct GlobalContextGuard
 
 struct KeyStateGuard
 {
-    const Uint8* saved = nullptr;
-    std::array<Uint8, MAXKEYS> fake{};
+    const bool* saved = nullptr;
+    std::array<bool, MAXKEYS> fake{};
     KeyStateGuard()
     {
         saved = og::runtime::current_session->keystates_;
-        fake.fill(0);
+        fake.fill(false);
         og::runtime::current_session->keystates_ = fake.data();
     }
     ~KeyStateGuard()
@@ -38,9 +38,9 @@ struct KeyStateGuard
     }
     void pulse(int scancode, int down_ms = 30)
     {
-        fake[static_cast<std::size_t>(scancode)] = 1;
+        fake[static_cast<std::size_t>(scancode)] = true;
         SDL_Delay(down_ms);
-        fake[static_cast<std::size_t>(scancode)] = 0;
+        fake[static_cast<std::size_t>(scancode)] = false;
         SDL_Delay(5);
     }
 };

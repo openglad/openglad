@@ -194,11 +194,11 @@ void sdl_video::set_fullscreen(bool enable_fullscreen)
     // FIXME: A bug in my copy of SDL is making FULLSCREEN -> WINDOWED -> FULLSCREEN take up a partial portion of the screen and ruin the game.
     /*if(fullscreen)
     {
-        SDL_SetWindowFullscreen(E_Screen->window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+        SDL_SetWindowFullscreen(E_Screen->window, true);
     }
     else
     {
-        SDL_SetWindowFullscreen(E_Screen->window, 0);
+        SDL_SetWindowFullscreen(E_Screen->window, false);
         SDL_SetWindowSize(E_Screen->window, 640, 400);
     }
     
@@ -453,7 +453,7 @@ Uint32 get_Uint32_color(unsigned char color)
     int r,g,b;
 	query_palette_reg(color,&r,&g,&b);
 		
-	return SDL_MapRGB(E_Screen->render->format,
+	return SDL_MapSurfaceRGB(E_Screen->render,
 	                  static_cast<Uint8>(r * 4),
 	                  static_cast<Uint8>(g * 4),
 	                  static_cast<Uint8>(b * 4));
@@ -482,7 +482,7 @@ void sdl_video::fastbox(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize
 	rect.h = ysize;
 
 	query_palette_reg(color,&r,&g,&b);
-	SDL_FillSurfaceRect(E_Screen->render, &rect, SDL_MapRGB(E_Screen->render->format,
+	SDL_FillSurfaceRect(E_Screen->render, &rect, SDL_MapSurfaceRGB(E_Screen->render,
 	                                                 static_cast<Uint8>(r * 4),
 	                                                 static_cast<Uint8>(g * 4),
 	                                                 static_cast<Uint8>(b * 4)));
@@ -506,7 +506,8 @@ void putpixel(SDL_Surface *surface, int x, int y, Uint32 pixel)
     if(x < 0 || y < 0 || x >= surface->w || y >= surface->h)
         return;
     
-    int bpp = surface->format->BytesPerPixel;
+    const SDL_PixelFormatDetails* d = SDL_GetPixelFormatDetails(surface->format);
+    int bpp = d->bytes_per_pixel;
     /* Here p is the address to the pixel we want to set */
     Uint8 *p = static_cast<Uint8*>(surface->pixels) + y * surface->pitch + x * bpp;
 
@@ -554,7 +555,7 @@ void sdl_video::pointb(Sint32 x, Sint32 y, unsigned char color)
 
 	query_palette_reg(color,&r,&g,&b);
 
-	c = SDL_MapRGB(E_Screen->render->format,
+	c = SDL_MapSurfaceRGB(E_Screen->render,
 	               static_cast<Uint8>(r * 4),
 	               static_cast<Uint8>(g * 4),
 	               static_cast<Uint8>(b * 4));
@@ -564,27 +565,29 @@ void sdl_video::pointb(Sint32 x, Sint32 y, unsigned char color)
 
 void blend_pixel(SDL_Surface* surface, int x, int y, Uint32 color, Uint8 alpha)
 {
-    Uint32 Rmask = surface->format->Rmask, Gmask = surface->format->Gmask, Bmask = surface->format->Bmask, Amask = surface->format->Amask;
+    const SDL_PixelFormatDetails* d = SDL_GetPixelFormatDetails(surface->format);
+    Uint32 Rmask = d->Rmask, Gmask = d->Gmask, Bmask = d->Bmask, Amask = d->Amask;
     Uint32 R,G,B,A=0;//SDL_ALPHA_OPAQUE;
     Uint32* pixel;
-    switch (surface->format->BytesPerPixel)
+    switch (d->bytes_per_pixel)
     {
         case 1: { /* Assuming 8-bpp */
-            
+
                 Uint8 *pixel8 = static_cast<Uint8*>(surface->pixels) + y*surface->pitch + x;
-                
-                Uint8 dR = surface->format->palette->colors[*pixel8].r;
-                Uint8 dG = surface->format->palette->colors[*pixel8].g;
-                Uint8 dB = surface->format->palette->colors[*pixel8].b;
-                Uint8 sR = surface->format->palette->colors[color].r;
-                Uint8 sG = surface->format->palette->colors[color].g;
-                Uint8 sB = surface->format->palette->colors[color].b;
+
+                SDL_Palette* pal = SDL_GetSurfacePalette(surface);
+                Uint8 dR = pal->colors[*pixel8].r;
+                Uint8 dG = pal->colors[*pixel8].g;
+                Uint8 dB = pal->colors[*pixel8].b;
+                Uint8 sR = pal->colors[color].r;
+                Uint8 sG = pal->colors[color].g;
+                Uint8 sB = pal->colors[color].b;
                 
                 dR = static_cast<Uint8>(dR + (((sR - dR) * alpha) >> 8));
                 dG = static_cast<Uint8>(dG + (((sG - dG) * alpha) >> 8));
                 dB = static_cast<Uint8>(dB + (((sB - dB) * alpha) >> 8));
             
-                *pixel8 = static_cast<Uint8>(SDL_MapRGB(surface->format, dR, dG, dB));
+                *pixel8 = static_cast<Uint8>(SDL_MapSurfaceRGB(surface, dR, dG, dB));
                 
         }
         break;
@@ -607,10 +610,10 @@ void blend_pixel(SDL_Surface* surface, int x, int y, Uint32 color, Uint8 alpha)
 
         case 3: { /* Slow 24-bpp mode, usually not used */
             Uint8 *pix = static_cast<Uint8*>(surface->pixels) + y * surface->pitch + x*3;
-            Uint8 rshift8=surface->format->Rshift/8;
-            Uint8 gshift8=surface->format->Gshift/8;
-            Uint8 bshift8=surface->format->Bshift/8;
-            Uint8 ashift8=surface->format->Ashift/8;
+            Uint8 rshift8=d->Rshift/8;
+            Uint8 gshift8=d->Gshift/8;
+            Uint8 bshift8=d->Bshift/8;
+            Uint8 ashift8=d->Ashift/8;
             
             
             
@@ -624,10 +627,10 @@ void blend_pixel(SDL_Surface* surface, int x, int y, Uint32 color, Uint8 alpha)
                 dB = *((pix)+bshift8);
                 dA = *((pix)+ashift8);
                 
-                sR = (color>>surface->format->Rshift)&0xff;
-                sG = (color>>surface->format->Gshift)&0xff;
-                sB = (color>>surface->format->Bshift)&0xff;
-                sA = (color>>surface->format->Ashift)&0xff;
+                sR = (color>>d->Rshift)&0xff;
+                sG = (color>>d->Gshift)&0xff;
+                sB = (color>>d->Bshift)&0xff;
+                sA = (color>>d->Ashift)&0xff;
                 
                 dR = static_cast<Uint8>(dR + (((sR - dR) * alpha) >> 8));
                 dG = static_cast<Uint8>(dG + (((sG - dG) * alpha) >> 8));
@@ -680,7 +683,7 @@ void sdl_video::pointb(Sint32 x, Sint32 y, unsigned char color, unsigned char al
 
 	query_palette_reg(color,&r,&g,&b);
 
-	c = SDL_MapRGB(E_Screen->render->format,
+	c = SDL_MapSurfaceRGB(E_Screen->render,
 	               static_cast<Uint8>(r * 4),
 	               static_cast<Uint8>(g * 4),
 	               static_cast<Uint8>(b * 4));
@@ -693,7 +696,7 @@ void sdl_video::pointb(Sint32 x, Sint32 y, int r, int g, int b)
 {
 	SDL_Rect  rect;
 	int c;
-	c = SDL_MapRGB(E_Screen->render->format,
+	c = SDL_MapSurfaceRGB(E_Screen->render,
 	               static_cast<Uint8>(r),
 	               static_cast<Uint8>(g),
 	               static_cast<Uint8>(b));
@@ -929,7 +932,7 @@ void sdl_video::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 y
 		        	continue;
 			//point(curx,cury,curcolor);//buffers: PORT: draw the poin
 			query_palette_reg(curcolor,&r,&g,&b);
-			color = SDL_MapRGB(E_Screen->render->format,
+			color = SDL_MapSurfaceRGB(E_Screen->render,
 			                   static_cast<Uint8>(r * 4),
 			                   static_cast<Uint8>(g * 4),
 			                   static_cast<Uint8>(b * 4));
@@ -989,7 +992,7 @@ void sdl_video::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 y
 		        curcolor = color;
 	        }
 			query_palette_reg(curcolor,&r,&g,&b);
-			scolor = SDL_MapRGB(E_Screen->render->format,
+			scolor = SDL_MapSurfaceRGB(E_Screen->render,
 			                    static_cast<Uint8>(r * 4),
 			                    static_cast<Uint8>(g * 4),
 			                    static_cast<Uint8>(b * 4));
@@ -1197,15 +1200,14 @@ void* sdl_video::create_accel_surface(std::span<const unsigned char> indexed_pix
     if (indexed_pixels.size() < expected_size)
         return nullptr;
 
-    SDL_Surface* surface = SDL_CreateRGBSurface(
-        SDL_SWSURFACE, width, height, 32, 0, 0, 0, 0);
+    SDL_Surface* surface = SDL_CreateSurface(width, height, SDL_PIXELFORMAT_XRGB8888);
     if (!surface) {
-        LogError("sdl_video::create_accel_surface: SDL_CreateRGBSurface failed: {}\n",
+        LogError("sdl_video::create_accel_surface: SDL_CreateSurface failed: {}\n",
                  SDL_GetError());
         return nullptr;
     }
 
-    if (SDL_MUSTLOCK(surface) && SDL_LockSurface(surface) != 0) {
+    if (SDL_MUSTLOCK(surface) && !SDL_LockSurface(surface)) {
         LogError("sdl_video::create_accel_surface: SDL_LockSurface failed: {}\n",
                  SDL_GetError());
         SDL_DestroySurface(surface);
@@ -1224,7 +1226,7 @@ void* sdl_video::create_accel_surface(std::span<const unsigned char> indexed_pix
             query_palette_reg(indexed_pixels[src_index], &r, &g, &b);
             pixels[static_cast<std::size_t>(y) * pitch_pixels +
                    static_cast<std::size_t>(x)] =
-                SDL_MapRGB(surface->format,
+                SDL_MapSurfaceRGB(surface,
                            static_cast<Uint8>(r * 4),
                            static_cast<Uint8>(g * 4),
                            static_cast<Uint8>(b * 4));
@@ -1270,8 +1272,7 @@ bool sdl_video::floor_layer_begin(Sint32 x, Sint32 y, Sint32 w, Sint32 h)
     }
     if (!floor_layer_)
     {
-        floor_layer_ = SDL_CreateRGBSurfaceWithFormat(
-            0, need_w, need_h, 32, SDL_PIXELFORMAT_ARGB8888);
+        floor_layer_ = SDL_CreateSurface(need_w, need_h, SDL_PIXELFORMAT_ARGB8888);
         if (floor_layer_)
             SDL_SetSurfaceBlendMode(floor_layer_, SDL_BLENDMODE_BLEND);
     }
@@ -1373,8 +1374,8 @@ void sdl_video::floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
 
     // Smooth path: bilinear-stretch the layer into a scratch surface, then
     // alpha-blend composite that scratch (at the floor's depth alpha) over the
-    // real render surface. SDL_SoftStretchLinear ignores blend/alpha, so the
-    // fade is applied on the second (blend) blit.
+    // real render surface. SDL_StretchSurface is a stretched pixel copy that
+    // ignores blend/alpha, so the fade is applied on the second (blend) blit.
     if (floor_layer_scaled_ && (floor_layer_scaled_->w < floor_layer_->w ||
                                 floor_layer_scaled_->h < floor_layer_->h))
     {
@@ -1384,15 +1385,16 @@ void sdl_video::floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
     }
     if (!floor_layer_scaled_)
     {
-        floor_layer_scaled_ = SDL_CreateRGBSurfaceWithFormat(
-            0, floor_layer_->w, floor_layer_->h, 32, SDL_PIXELFORMAT_ARGB8888);
+        floor_layer_scaled_ = SDL_CreateSurface(
+            floor_layer_->w, floor_layer_->h, SDL_PIXELFORMAT_ARGB8888);
     }
     bool smooth_ok = false;
     if (floor_layer_scaled_)
     {
         SDL_FillSurfaceRect(floor_layer_scaled_, &out, 0x00000000u);
-        smooth_ok = SDL_SoftStretchLinear(floor_layer_, &src,
-                                          floor_layer_scaled_, &out) == 0;
+        smooth_ok = SDL_StretchSurface(floor_layer_, &src,
+                                       floor_layer_scaled_, &out,
+                                       SDL_SCALEMODE_LINEAR);
     }
     SDL_Surface* const composited = smooth_ok ? floor_layer_scaled_ : floor_layer_;
     // Depth-effect treatment (cfg effects/depth_fx): mutate every drawn
@@ -1421,6 +1423,10 @@ void sdl_video::floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
         // Fog patch color: a lighter fog-white so the drifting banks read
         // over the haze wash beneath them.
         constexpr Uint8 kFogR = 204, kFogG = 211, kFogB = 222;
+        // Hoisted out of the hot loop: SDL3 replaced surface->format (struct)
+        // with a lookup by SDL_PixelFormat enum.
+        const SDL_PixelFormatDetails* det =
+            SDL_GetPixelFormatDetails(composited->format);
         SDL_LockSurface(composited);
         const SDL_Rect& region = smooth_ok ? out : src;
         for (int py = region.y; py < region.y + region.h; py++)
@@ -1432,7 +1438,7 @@ void sdl_video::floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
             {
                 const Uint32 c = row[px];
                 Uint8 pr, pg, pb, pa;
-                SDL_GetRGBA(c, composited->format, &pr, &pg, &pb, &pa);
+                SDL_GetRGBA(c, det, nullptr, &pr, &pg, &pb, &pa);
                 if (pa == 0)
                     continue;
                 switch (fx.mode)
@@ -1492,7 +1498,7 @@ void sdl_video::floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
                 case DepthFxMode::Off:
                     break; // unreachable: gated above
                 }
-                row[px] = SDL_MapRGBA(composited->format, pr, pg, pb, pa);
+                row[px] = SDL_MapRGBA(det, nullptr, pr, pg, pb, pa);
             }
         }
         SDL_UnlockSurface(composited);
@@ -1506,10 +1512,11 @@ void sdl_video::floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
     }
     else
     {
-        // Fallback (SoftStretchLinear unsupported): nearest-neighbour scaled
+        // Fallback (SDL_StretchSurface failed): nearest-neighbour scaled
         // alpha blit straight from the layer. Still seam-free (one bitmap).
         SDL_Rect dst = out;
-        SDL_BlitScaled(composited, &src, E_Screen->render, &dst);
+        SDL_BlitSurfaceScaled(composited, &src, E_Screen->render, &dst,
+                              SDL_SCALEMODE_NEAREST);
     }
     SDL_SetSurfaceAlphaMod(composited, 255);
 }
@@ -1922,7 +1929,7 @@ void sdl_video::walkputbuffertext(Sint32 walkerstartx, Sint32 walkerstarty,
 		                curcolor = static_cast<unsigned char>(teamcolor+(255-curcolor));
 		        }
 				query_palette_reg(curcolor,&r,&g,&b);
-                        color = SDL_MapRGB(E_Screen->render->format,
+                        color = SDL_MapSurfaceRGB(E_Screen->render,
                                            static_cast<Uint8>(r * 4),
                                            static_cast<Uint8>(g * 4),
                                            static_cast<Uint8>(b * 4));
@@ -2411,13 +2418,14 @@ void sdl_video::get_pixel(int x, int y, Uint8 *r, Uint8 *g, Uint8 *b)
 		return;
 	}
 
+	const SDL_PixelFormatDetails* det = SDL_GetPixelFormatDetails(E_Screen->render->format);
 	char *p = reinterpret_cast<char*>(E_Screen->render->pixels);
 	p += E_Screen->render->pitch*y;
-	p += E_Screen->render->format->BytesPerPixel*x;
+	p += det->bytes_per_pixel*x;
 
-	memcpy(&col,p,E_Screen->render->format->BytesPerPixel);
+	memcpy(&col,p,det->bytes_per_pixel);
 
-	SDL_GetRGB(col,E_Screen->render->format,&q,&w,&e);
+	SDL_GetRGB(col,det,SDL_GetSurfacePalette(E_Screen->render),&q,&w,&e);
 	*r=q;
 	*g=w;
 	*b=e;
@@ -2509,8 +2517,8 @@ bool sdl_video::save_screenshot()
     bool result = (SDL_SavePNG_RW(surf, rwops, 1) >= 0);
     SDL_DestroySurface(surf);
     #else
-    bool result = (SDL_SaveBMP_RW(surf, rwops, 1) >= 0);
-    
+    bool result = SDL_SaveBMP_IO(surf, rwops, true);
+
     #endif
     
     return result;
@@ -2571,16 +2579,16 @@ int sdl_video::FadeBetween(
 	if (!pOldSurface)
 	{
 		bOldNull = true;
-		pOldSurface = SDL_CreateRGBSurface(SDL_SWSURFACE,
-			active_canvas_w(), active_canvas_h(), 24, 0, 0, 0, 0);
+		pOldSurface = SDL_CreateSurface(
+			active_canvas_w(), active_canvas_h(), SDL_PIXELFORMAT_RGB24);
 		if (!pOldSurface) return 0;  // OOM: nothing safely lockable below
 		SDL_FillSurfaceRect(pOldSurface,nullptr,0);
 	}
 	if (!pNewSurface)
 	{
 		bNewNull = true;
-		pNewSurface = SDL_CreateRGBSurface(SDL_SWSURFACE,
-			active_canvas_w(), active_canvas_h(), 24, 0, 0, 0, 0);
+		pNewSurface = SDL_CreateSurface(
+			active_canvas_w(), active_canvas_h(), SDL_PIXELFORMAT_RGB24);
 		if (!pNewSurface) { if (bOldNull) SDL_DestroySurface(pOldSurface); return 0; }  // OOM: free the temp we just made
 		SDL_FillSurfaceRect(pNewSurface,nullptr,0);
 	}
@@ -2589,7 +2597,7 @@ int sdl_video::FadeBetween(
 	/* Lock the screen for direct access to the pixels */
     bool old_locked = false;
 	if ( SDL_MUSTLOCK(pOldSurface) ) {
-		if ( SDL_LockSurface(pOldSurface) < 0 ) {
+		if ( !SDL_LockSurface(pOldSurface) ) {
 			return 0;
 		}
         old_locked = true;
@@ -2624,31 +2632,13 @@ int sdl_video::FadeBetween(
 	if(!DestSurface || DestSurface->pitch != pOldSurface->pitch
 	   || DestSurface->w != pOldSurface->w || DestSurface->h != pOldSurface->h)
         return fail("dest size mismatch");
-	if(pOldSurface->format->Rmask != pNewSurface->format->Rmask)
-        return fail("Rmask mismatch");
-	if(pOldSurface->format->Rshift != pNewSurface->format->Rshift)
-        return fail("Rshift mismatch");
-	if(pOldSurface->format->Rloss != pNewSurface->format->Rloss)
-        return fail("Rloss mismatch");
-	if(pOldSurface->format->Gmask != pNewSurface->format->Gmask)
-        return fail("Gmask mismatch");
-	if(pOldSurface->format->Gshift != pNewSurface->format->Gshift)
-        return fail("Gshift mismatch");
-	if(pOldSurface->format->Gloss != pNewSurface->format->Gloss)
-        return fail("Gloss mismatch");
-	if(pOldSurface->format->Bmask != pNewSurface->format->Bmask)
-        return fail("Bmask mismatch");
-	if(pOldSurface->format->Bshift != pNewSurface->format->Bshift)
-        return fail("Bshift mismatch");
-	if(pOldSurface->format->Bloss != pNewSurface->format->Bloss)
-        return fail("Bloss mismatch");
-	if(pOldSurface->format->Rshift != pNewSurface->format->Rshift)
-        return fail("Rshift mismatch (duplicate check)");
-	if(pOldSurface->format->BytesPerPixel != pNewSurface->format->BytesPerPixel)
-        return fail("BytesPerPixel mismatch");
+	// SDL3: SDL_Surface::format is an SDL_PixelFormat enum — a single equality
+	// check subsumes every legacy mask/shift/loss/BytesPerPixel comparison.
+	if(pOldSurface->format != pNewSurface->format)
+        return fail("pixel format mismatch");
 
 	//Extract RGB pixel values from each image.
-	const int bpp = pNewSurface->format->BytesPerPixel;
+	const int bpp = SDL_GetPixelFormatDetails(pNewSurface->format)->bytes_per_pixel;
 	if(bpp != 4)	//24-bit color only supported
         return fail("unsupported BytesPerPixel (expected 4)");
 
@@ -2667,12 +2657,12 @@ int sdl_video::FadeBetween(
 		SDL_BlitSurface(pNewSurface, nullptr, DestSurface, nullptr);
 	TRACE("video", "FadeBetween: skipping animation (test mode)");
 #else
-	Uint32
+	Uint64
 		dwFirstPaint = SDL_GetTicks(),
 		dwNow = dwFirstPaint;
 	do {
 		FadeBetween24(DestSurface,colorsf.data(),colorst.data(),
-				dwNow - dwFirstPaint + 50);	//allow first frame to show some change
+				static_cast<int>(dwNow - dwFirstPaint) + 50);	//allow first frame to show some change
 		E_Screen->swap(0,0,active_canvas_w(),active_canvas_h());
 		dwNow = SDL_GetTicks();
 
@@ -2682,7 +2672,7 @@ int sdl_video::FadeBetween(
 			i = -1;
 			break;
 		}
-	} while (Sint32(dwNow) - Sint32(dwFirstPaint) + 50 < fadeDuration);	// constant-time effect
+	} while (dwNow - dwFirstPaint + 50 < static_cast<Uint64>(fadeDuration));	// constant-time effect
 #endif
 
 	if ( SDL_MUSTLOCK(pNewSurface) ) {
@@ -2721,10 +2711,10 @@ int sdl_video::fadeblack(bool fade_in)
 {
 	// Sized to the active canvas: FadeBetween requires exact dim matches
 	// with E_Screen->render.
-	SDL_Surface* black = SDL_CreateRGBSurface(SDL_SWSURFACE, active_canvas_w(), active_canvas_h(), 32, 0, 0, 0, 0);
+	SDL_Surface* black = SDL_CreateSurface(active_canvas_w(), active_canvas_h(), SDL_PIXELFORMAT_XRGB8888);
     if (!black)
         return -1;
-    SDL_FillSurfaceRect(black, nullptr, SDL_MapRGB(black->format, 0, 0, 0));
+    SDL_FillSurfaceRect(black, nullptr, SDL_MapSurfaceRGB(black, 0, 0, 0));
 	int i;
 
 	if(fade_in)

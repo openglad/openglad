@@ -63,9 +63,11 @@ struct ClassicCanvasRestore
 
 void query_texture_dims(SDL_Texture* tex, int* w, int* h)
 {
-    Uint32 fmt = 0;
-    int access = 0;
-    ASSERT_EQ(0, SDL_QueryTexture(tex, &fmt, &access, w, h));
+    // SDL3 removed SDL_QueryTexture; SDL_Texture is a public struct with
+    // read-only format/w/h fields.
+    ASSERT_NE(nullptr, tex);
+    *w = tex->w;
+    *h = tex->h;
 }
 
 } // namespace
@@ -238,8 +240,7 @@ TEST(CanvasScale, window_resize_event_retracks_the_canvas)
     ASSERT_EQ(320, E_Screen->world_w()); // 640/2 == the classic dims
 
     SDL_Event ev{};
-    ev.type = SDL_WINDOWEVENT;
-    ev.window.event = SDL_EVENT_WINDOW_RESIZED;
+    ev.type = SDL_EVENT_WINDOW_RESIZED;
     ev.window.data1 = 1280;
     ev.window.data2 = 800;
     handle_window_event(ev);

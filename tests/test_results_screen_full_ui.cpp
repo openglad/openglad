@@ -52,9 +52,11 @@ static int results_ui_injector(void* data)
     SDL_Event wheel{};
     wheel.type = SDL_EVENT_MOUSE_WHEEL;
     wheel.wheel.y = 1;
+    wheel.wheel.integer_y = 1;
     SDL_PushEvent(&wheel);
 
     wheel.wheel.y = -1;
+    wheel.wheel.integer_y = -1;
     SDL_PushEvent(&wheel);
 
     // Toggle tabs in the full results UI.
@@ -94,6 +96,7 @@ static int results_ui_scroll_injector(void* data)
         SDL_Event wheel{};
         wheel.type = SDL_EVENT_MOUSE_WHEEL;
         wheel.wheel.y = -1;
+        wheel.wheel.integer_y = -1;
         SDL_PushEvent(&wheel);
         SDL_Delay(15);
     }
@@ -103,6 +106,7 @@ static int results_ui_scroll_injector(void* data)
         SDL_Event wheel{};
         wheel.type = SDL_EVENT_MOUSE_WHEEL;
         wheel.wheel.y = 1;
+        wheel.wheel.integer_y = 1;
         SDL_PushEvent(&wheel);
         SDL_Delay(15);
     }

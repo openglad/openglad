@@ -832,34 +832,37 @@ TEST(IoPlatformCoverage, physfs_rwops_bridge_read_write_seek_paths)
 
     const unsigned char payload[] = {9, 8, 7, 6, 5};
     {
-        RwopsPtr out{open_write_file(vpath.c_str())};
+        IostreamPtr out{open_write_file(vpath.c_str())};
         ASSERT_TRUE(out != nullptr) << "open PhysFS-backed SDL_IOStream output";
         if (!out)
             return;
 
-        ASSERT_EQ(0, static_cast<int>(SDL_RWwrite(out.get(), payload, 0, 1)))
-            << "PhysFS RWops write size=0 should return 0";
-        ASSERT_EQ(1, static_cast<int>(SDL_RWwrite(out.get(), payload, sizeof(payload), 1)))
-            << "PhysFS RWops should write one payload object";
-        ASSERT_EQ(-1, static_cast<int>(SDL_SeekIO(out.get(), 0, 99)))
-            << "PhysFS RWops should reject invalid seek whence";
+        ASSERT_EQ(0, static_cast<int>(SDL_WriteIO(out.get(), payload, 0)))
+            << "PhysFS IOStream write size=0 should return 0";
+        ASSERT_EQ(static_cast<int>(sizeof(payload)),
+                  static_cast<int>(SDL_WriteIO(out.get(), payload, sizeof(payload))))
+            << "PhysFS IOStream should write all payload bytes";
+        int bad_whence = 99; // non-const: a constant 99 trips GCC -Wconversion (outside enum range)
+        ASSERT_EQ(-1, static_cast<int>(SDL_SeekIO(out.get(), 0, static_cast<SDL_IOWhence>(bad_whence))))
+            << "PhysFS IOStream should reject invalid seek whence";
         ASSERT_EQ(-1, static_cast<int>(SDL_SeekIO(out.get(), -1, SDL_IO_SEEK_SET)))
             << "PhysFS RWops should reject seeks before the start";
     }
 
     {
-        RwopsPtr in{open_read_file(vpath.c_str(), true)};
+        IostreamPtr in{open_read_file(vpath.c_str(), true)};
         ASSERT_TRUE(in != nullptr) << "open PhysFS-backed SDL_IOStream input";
         if (!in)
             return;
 
         ASSERT_EQ(static_cast<Sint64>(sizeof(payload)), SDL_GetIOSize(in.get()))
-            << "PhysFS RWops size should report the file length";
+            << "PhysFS IOStream size should report the file length";
         unsigned char got[sizeof(payload)] = {};
-        ASSERT_EQ(0, static_cast<int>(SDL_RWread(in.get(), got, 0, 1)))
-            << "PhysFS RWops read size=0 should return 0";
-        ASSERT_EQ(1, static_cast<int>(SDL_RWread(in.get(), got, sizeof(got), 1)))
-            << "PhysFS RWops should read one payload object";
+        ASSERT_EQ(0, static_cast<int>(SDL_ReadIO(in.get(), got, 0)))
+            << "PhysFS IOStream read size=0 should return 0";
+        ASSERT_EQ(static_cast<int>(sizeof(got)),
+                  static_cast<int>(SDL_ReadIO(in.get(), got, sizeof(got))))
+            << "PhysFS IOStream should read all payload bytes";
         ASSERT_TRUE(std::memcmp(got, payload, sizeof(payload)) == 0)
             << "PhysFS RWops should roundtrip payload bytes";
         ASSERT_EQ(3, static_cast<int>(SDL_SeekIO(in.get(), -2, SDL_IO_SEEK_END)))
@@ -872,8 +875,8 @@ TEST(IoPlatformCoverage, physfs_rwops_bridge_read_write_seek_paths)
             << "PhysFS RWops should reject negative current-relative seeks";
     }
 
-    RwopsPtr missing{open_read_file((vdir + "/missing.bin").c_str(), true)};
-    ASSERT_TRUE(missing == nullptr) << "missing PhysFS RWops input should return null";
+    IostreamPtr missing{open_read_file((vdir + "/missing.bin").c_str(), true)};
+    ASSERT_TRUE(missing == nullptr) << "missing PhysFS IOStream input should return null";
     (void)PHYSFS_delete(vpath.c_str());
 }
 
@@ -937,8 +940,8 @@ TEST(IoPlatformCoverage, zip_platform_round8_open_archive_and_mount_error_paths)
 TEST(IoPlatformCoverage, rwops_handlers_and_open_read_debug_fallbacks)
 {
     unsigned char buffer[8] = {};
-    RwopsPtr rwops{SDL_IOFromMem(buffer, sizeof(buffer))};
-    ASSERT_TRUE(rwops != nullptr) << "SDL_IOFromMem should create an RWops";
+    IostreamPtr rwops{SDL_IOFromMem(buffer, sizeof(buffer))};
+    ASSERT_TRUE(rwops != nullptr) << "SDL_IOFromMem should create an SDL_IOStream";
     if (!rwops)
         return;
 
@@ -956,7 +959,7 @@ TEST(IoPlatformCoverage, rwops_handlers_and_open_read_debug_fallbacks)
     ASSERT_TRUE(std::memcmp(got, payload, sizeof(got)) == 0)
         << "rwops handlers should roundtrip payload through SDL_IOStream";
 
-    RwopsPtr missing{open_read_file("definitely_missing_debug_fallback_110.bin", true)};
+    IostreamPtr missing{open_read_file("definitely_missing_debug_fallback_110.bin", true)};
     ASSERT_TRUE(missing == nullptr)
         << "debug read of missing file should exhaust cwd/user/asset fallbacks";
 }

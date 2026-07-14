@@ -21,22 +21,23 @@
 // Includes SDL-free declarations plus SDL_IOStream helpers.
 
 #include <openglad/resources/io_common.h>
-#include <SDL3/SDL.h>
+#include <SDL3/SDL_iostream.h>
 #include <memory>
 
-struct SDLRWopsCloser {
-    void operator()(SDL_IOStream* rwops) const
+struct SDLIostreamCloser {
+    void operator()(SDL_IOStream* io) const
     {
-        if (rwops != nullptr)
-            SDL_CloseIO(rwops);
+        if (io != nullptr)
+            SDL_CloseIO(io); // bool return intentionally ignored
     }
 };
-using RwopsPtr = std::unique_ptr<SDL_IOStream, SDLRWopsCloser>;
+using IostreamPtr = std::unique_ptr<SDL_IOStream, SDLIostreamCloser>;
 
 SDL_IOStream* open_read_file(const char* file, bool debug = false);
 SDL_IOStream* open_read_file(const char* path, const char* file);
 SDL_IOStream* open_write_file(const char* file);
 SDL_IOStream* open_write_file(const char* path, const char* file);
 
+// libyaml handlers — names kept (tests assert them by name); `data` is an SDL_IOStream*.
 int rwops_read_handler(void *data, unsigned char *buffer, size_t size, size_t *size_read);
 int rwops_write_handler(void *data, unsigned char *buffer, size_t size);

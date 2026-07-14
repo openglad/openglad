@@ -27,8 +27,8 @@
 #include <string>
 
 
-// SDL2 scancode values copied into interface constants so this header stays
-// platform-agnostic. Values are stable in SDL2.
+// SDL2/SDL3 scancode values copied into interface constants so this header
+// stays platform-agnostic. Values are identical in SDL2 and SDL3.
 inline constexpr int KEYSTATE_UNKNOWN = 0;
 inline constexpr int KEYSTATE_a = 4;
 inline constexpr int KEYSTATE_b = 5;
@@ -103,8 +103,8 @@ inline constexpr int KEYSTATE_LSHIFT = 225;
 inline constexpr int KEYSTATE_RCTRL = 228;
 inline constexpr int KEYSTATE_RSHIFT = 229;
 
-// SDL2 keycode values copied into interface constants so interface code does
-// not include SDL headers.
+// SDL2/SDL3 keycode values copied into interface constants so interface code
+// does not include SDL headers. Values are identical in SDL2 and SDL3.
 inline constexpr int KEYCODE_UNKNOWN = 0;
 inline constexpr int KEYCODE_RETURN = 13;
 inline constexpr int KEYCODE_ESCAPE = 27;
