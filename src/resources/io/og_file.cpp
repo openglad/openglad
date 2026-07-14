@@ -294,7 +294,9 @@ bool write_pixie_png(const char* filepath, const PixieData& data)
 // true/false/null. It cross-validates meta.size against frame_count*frame_h
 // before accepting; the caller falls back to single-frame on std::nullopt.
 // ---------------------------------------------------------------------------
-struct FrameInfo { int frames; int frame_w; int frame_h; };
+// foot_w/foot_h are the optional "footprint" (world-size) dimensions; 0 means
+// the sidecar declared none and the PNG frame dims are used directly.
+struct FrameInfo { int frames; int frame_w; int frame_h; int foot_w; int foot_h; };
 
 constexpr std::int64_t kMaxSpritePngBytes = 16ll * 1024ll * 1024ll;
 constexpr std::int64_t kMaxAsepriteSidecarBytes = 1ll * 1024ll * 1024ll;
@@ -323,8 +325,12 @@ struct AsepriteMeta {
     int frame_count = 0;
     int frame_w = 0;
     int frame_h = 0;
+    int foot_w = 0;
+    int foot_h = 0;
     bool seen_meta_size = false;
     bool seen_first_frame = false;
+    bool seen_footprint = false;
+    bool footprint_malformed = false;
 };
 
 class JsonReader {
@@ -348,6 +354,8 @@ public:
                 if (!parse_frames(m)) return false;
             } else if (key == "meta") {
                 if (!parse_meta(m)) return false;
+            } else if (key == "footprint") {
+                if (!parse_footprint(m)) return false;
             } else {
                 if (!skip_value()) return false;
             }
@@ -496,6 +504,41 @@ private:
         }
     }
 
+    // Our own extension of the Aseprite sidecar schema: an optional top-level
+    // "footprint": {"w": W, "h": H} declaring the sprite's world footprint.
+    // Unlike the rest of the sidecar (where malformed input falls back to a
+    // single-frame sprite), a malformed footprint marks the whole load fatal:
+    // silently ignoring it would ship the sprite at the wrong world size.
+    bool parse_footprint(AsepriteMeta& m)
+    {
+        m.seen_footprint = true;
+        if (!eat('{')) return fail_footprint(m, "\"footprint\" not an object");
+        skip_ws();
+        if (eat('}')) return fail_footprint(m, "empty footprint");
+        while (true) {
+            skip_ws();
+            std::string key;
+            if (!read_string(key))
+                return fail_footprint(m, "bad key in footprint");
+            skip_ws();
+            if (!eat(':')) return fail_footprint(m, "expected ':' in footprint");
+            skip_ws();
+            if (key == "w") {
+                if (!read_uint(m.foot_w))
+                    return fail_footprint(m, "footprint \"w\" not an integer");
+            } else if (key == "h") {
+                if (!read_uint(m.foot_h))
+                    return fail_footprint(m, "footprint \"h\" not an integer");
+            } else {
+                return fail_footprint(m, "unknown key in footprint");
+            }
+            skip_ws();
+            if (eat(',')) continue;
+            if (eat('}')) return true;
+            return fail_footprint(m, "expected ',' or '}' in footprint");
+        }
+    }
+
     bool skip_value()
     {
         if (pos_ >= text_.size()) return fail("unexpected end of input");
@@ -611,6 +654,12 @@ private:
 
     bool fail(const char* msg) { if (!why_) why_ = msg; return false; }
 
+    bool fail_footprint(AsepriteMeta& m, const char* msg)
+    {
+        m.footprint_malformed = true;
+        return fail(msg);
+    }
+
     std::string_view text_;
     std::size_t pos_ = 0;
     const char* why_ = nullptr;
@@ -618,9 +667,14 @@ private:
 
 } // namespace
 
-static std::optional<FrameInfo> load_aseprite_sidecar(const char* filename)
+// On return, *fatal is true only for footprint violations (malformed
+// "footprint" object or w/h outside [1,255]) — the caller must reject the
+// sprite instead of taking the usual malformed-sidecar single-frame fallback.
+static std::optional<FrameInfo> load_aseprite_sidecar(const char* filename,
+                                                      bool* fatal)
 {
     using namespace og::io;
+    *fatal = false;
     const std::string rel = sidecar_path_for(filename);
     auto infile = og_open_read("pix/", rel.c_str());
     if (!infile) infile = og_open_read(rel.c_str());
@@ -653,6 +707,14 @@ static std::optional<FrameInfo> load_aseprite_sidecar(const char* filename)
     AsepriteMeta meta;
     JsonReader reader(text);
     if (!reader.parse(meta)) {
+        if (meta.footprint_malformed) {
+            LogError("Invalid \"footprint\" in sprite sidecar pix/{}: {}\n",
+                     rel, reader.why());
+            TRACE("io", "invalid footprint in sidecar pix/%s: %s",
+                  rel.c_str(), reader.why());
+            *fatal = true;
+            return std::nullopt;
+        }
         warn(reader.why());
         return std::nullopt;
     }
@@ -680,7 +742,22 @@ static std::optional<FrameInfo> load_aseprite_sidecar(const char* filename)
         warn("size mismatch between meta.size and frames*frame");
         return std::nullopt;
     }
-    return FrameInfo{meta.frame_count, meta.frame_w, meta.frame_h};
+    FrameInfo info{meta.frame_count, meta.frame_w, meta.frame_h, 0, 0};
+    if (meta.seen_footprint) {
+        if (meta.foot_w < 1 || meta.foot_h < 1
+            || static_cast<unsigned>(meta.foot_w) > kMaxPixieDimension
+            || static_cast<unsigned>(meta.foot_h) > kMaxPixieDimension) {
+            LogError("Sprite footprint out of range [1,255] for pix/{}: "
+                     "{}x{}\n", rel, meta.foot_w, meta.foot_h);
+            TRACE("io", "footprint out of range in sidecar pix/%s: %dx%d",
+                  rel.c_str(), meta.foot_w, meta.foot_h);
+            *fatal = true;
+            return std::nullopt;
+        }
+        info.foot_w = meta.foot_w;
+        info.foot_h = meta.foot_h;
+    }
+    return info;
 }
 
 // ---------------------------------------------------------------------------
@@ -790,9 +867,18 @@ PixieData read_pixie_file(const char* filename)
     // sidecar means single-frame sprite.
     int frames = 1;
     int frame_h = static_cast<int>(png_h);
-    if (auto info = load_aseprite_sidecar(filename)) {
+    int foot_w = 0;
+    int foot_h = 0;
+    bool sidecar_fatal = false;
+    if (auto info = load_aseprite_sidecar(filename, &sidecar_fatal)) {
         frames = info->frames;
         frame_h = info->frame_h;
+        foot_w = info->foot_w;
+        foot_h = info->foot_h;
+    } else if (sidecar_fatal) {
+        LogError("Rejecting sprite pix/{}: invalid sidecar footprint\n",
+                 filename);
+        return result;
     }
 
     if (png_w > 255 || frame_h > 255 || frames > 255) {
@@ -807,13 +893,53 @@ PixieData read_pixie_file(const char* filename)
         return result;
     }
 
-    result.frames = static_cast<unsigned char>(frames);
-    result.w = static_cast<unsigned char>(png_w);
-    result.h = static_cast<unsigned char>(frame_h);
+    // Optional sidecar "footprint": the sprite's declared world size. When it
+    // differs from the PNG frame dims, resample each frame nearest-neighbor
+    // in INDEX space at load time so every downstream layer (sim sizex/sizey,
+    // walkputbuffer, parity, wire) sees footprint-sized data. Pure integer
+    // mapping, pinned by unit tests: sx = x*src_w/dst_w, sy = y*src_h/dst_h.
+    // Indices are copied, never blended — index-0 transparency and the >247
+    // team-recolor band survive untouched.
+    const int src_w = static_cast<int>(png_w);
+    const int src_h = frame_h;
+    const int dst_w = (foot_w > 0) ? foot_w : src_w;
+    const int dst_h = (foot_h > 0) ? foot_h : src_h;
 
-    std::size_t total_size = static_cast<std::size_t>(png_w) * static_cast<std::size_t>(frame_h)
-        * static_cast<std::size_t>(frames);
-    result.data = std::make_unique<unsigned char[]>(total_size);
-    std::memcpy(result.data.get(), pixels.data(), total_size);
+    result.frames = static_cast<unsigned char>(frames);
+    result.w = static_cast<unsigned char>(dst_w);
+    result.h = static_cast<unsigned char>(dst_h);
+
+    if (dst_w == src_w && dst_h == src_h) {
+        // No footprint (or an identity footprint): today's exact byte copy.
+        std::size_t total_size = static_cast<std::size_t>(src_w)
+            * static_cast<std::size_t>(src_h) * static_cast<std::size_t>(frames);
+        result.data = std::make_unique<unsigned char[]>(total_size);
+        std::memcpy(result.data.get(), pixels.data(), total_size);
+        return result;
+    }
+
+    const std::size_t frame_src_px =
+        static_cast<std::size_t>(src_w) * static_cast<std::size_t>(src_h);
+    const std::size_t frame_dst_px =
+        static_cast<std::size_t>(dst_w) * static_cast<std::size_t>(dst_h);
+    result.data = std::make_unique<unsigned char[]>(
+        frame_dst_px * static_cast<std::size_t>(frames));
+    for (int f = 0; f < frames; ++f) {
+        const unsigned char* src =
+            pixels.data() + static_cast<std::size_t>(f) * frame_src_px;
+        unsigned char* dst =
+            result.data.get() + static_cast<std::size_t>(f) * frame_dst_px;
+        for (int y = 0; y < dst_h; ++y) {
+            const int sy = (y * src_h) / dst_h;
+            for (int x = 0; x < dst_w; ++x) {
+                const int sx = (x * src_w) / dst_w;
+                dst[static_cast<std::size_t>(y) * static_cast<std::size_t>(dst_w)
+                    + static_cast<std::size_t>(x)] =
+                    src[static_cast<std::size_t>(sy)
+                            * static_cast<std::size_t>(src_w)
+                        + static_cast<std::size_t>(sx)];
+            }
+        }
+    }
     return result;
 }

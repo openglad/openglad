@@ -35,6 +35,14 @@ walker* select_control_for_view(
     GameWorld* world,
     std::optional<std::size_t> player_index = std::nullopt);
 
+// Networked "as if played alone" persist: merge only the characters owned by
+// own_player_index from world_screen's world back into this peer's on-disk
+// save0. The permadeath rule (keep_fallen_heroes) is read from the SESSION
+// save carried on world_screen — the lobby-negotiated setting — never from
+// the stale on-disk copy. Exposed here so tests can pin that contract.
+void persist_owned_characters_to_save0(const screen& world_screen,
+                                       std::uint8_t own_player_index);
+
 } // namespace detail
 
 void reset_network_host_transport_shadow(
@@ -78,6 +86,28 @@ bool local_transport_shadow_testing_open_exit_prompt(
 // (true means a peer was asked to confirm and the sim is frozen waiting on it).
 bool local_transport_shadow_testing_server_pending_exit_prompt(
     GameSession& session) noexcept;
+
+// Test-only: drive the shadow's internal win finalize (the FIRST finalizer in
+// every local/host flow: shared win fold + rematch gate + the persist tail
+// gated on the mode's persist_after_win()) and withdraw finalize (run-end
+// hook + roster reload + cursor write) directly against a screen, exactly as
+// the GameServer hooks do. Lets e2e tests pin the shadow's fold/run-end
+// behavior without standing up the full transport runtime.
+bool local_transport_shadow_testing_finalize_win(screen& gameplay_screen,
+                                                 int next_level,
+                                                 bool networked,
+                                                 std::uint8_t own_player_index);
+bool local_transport_shadow_testing_finalize_withdraw(screen& gameplay_screen,
+                                                      int destination_level,
+                                                      bool networked);
+
+// Test-only: drive the display's level-transition load (the InitialSetup
+// callback's prepare + one mode-heal retry) directly against a screen.
+// Returns what the callback would act on: false = the load failed even after
+// the heal, i.e. the session would end loudly instead of keeping the stale
+// world.
+bool local_transport_shadow_testing_display_transition(screen& gameplay_screen,
+                                                       int level_id);
 #endif
 
 } // namespace og::runtime

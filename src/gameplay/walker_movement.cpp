@@ -45,7 +45,10 @@ bool walker::setxy(short x, short y)
         : nullptr;
     if (map != nullptr)
     {
-        if (!ignore())
+        // Dormant (delayed-spawn) walkers hold the "never in the obmap"
+        // invariant: repositioning one must not re-register it. Waking
+        // (walker::set_dormant(false)) is the only re-entry point.
+        if (!ignore() && !dormant())
             map->move(this, x, y);
         else // just remove us, in case :)
             map->remove(this);
@@ -66,7 +69,8 @@ void walker::setworldxy(float x, float y)
         : nullptr;
     if (map != nullptr)
     {
-        if (!ignore())
+        // Same dormancy rule as setxy: never re-register a delayed spawn.
+        if (!ignore() && !dormant())
             map->move(this, static_cast<short>(x), static_cast<short>(y));
         else // just remove us, in case :)
             map->remove(this);
@@ -473,4 +477,24 @@ bool walker::turn(short targetdir)
     set_frame_from_current_walk_animation();
     worldmove(0,0);
     return true;
+}
+
+// Guard-standoff melee deadlock fix (2026-07-07, see
+// docs/GAMEPLAY_FIXES_FROM_CLASSIC.md): snap-face the direction of a
+// (foe) delta in one act. Unlike turn() this doesn't rotate one 45-degree
+// step per tick — the caller has already decided the walker must point at
+// its adjacent foe NOW. Sets all three facing channels a swing depends on:
+//   - curdir: the fire_check() facing gate compares against it,
+//   - enddir: otherwise living::act()'s pre-command turn would rotate us
+//     right back off the foe next tick,
+//   - lastx/lasty: set_weapon_heading() derives the weapon spawn cell and
+//     flight vector from these, not from curdir.
+// Consumes no RNG and never moves the walker.
+void walker::face_delta(short xdelta, short ydelta)
+{
+    const short dir = facing(xdelta, ydelta);
+    set_curdir(static_cast<signed char>(dir));
+    set_enddir(static_cast<char>(dir));
+    set_lastx(static_cast<float>(xdelta) * stepsize());
+    set_lasty(static_cast<float>(ydelta) * stepsize());
 }

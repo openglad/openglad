@@ -61,28 +61,20 @@ int FpsCounter::update(std::uint32_t now_ms)
     return static_cast<int>(size * 1000 / kWindowMs);
 }
 
-// new_score_panel draws the TEAM/FOES counter in the top-right corner of the
-// top viewport as a box spanning y in [yloc+pad+1, yloc+pad+16]. The top row's
-// viewport always has yloc == 0, so that counter's bottom edge is at pad+16.
-// Place the FPS readout one row below it so the developer overlay never sits on
-// top of the live foe count.
-#ifdef REDUCE_OVERSCAN
-inline constexpr int kOverscanPadding = 6;
-#else
-inline constexpr int kOverscanPadding = 0;
-#endif
-inline constexpr int kFoesCounterBottom = kOverscanPadding + 16;
-inline constexpr int kFpsOverlayY = kFoesCounterBottom + 2;
-
 } // namespace
 
-void draw_fps_overlay(screen& s)
+// new_score_panel draws the TEAM/FOES counter in the top-right corner of the
+// top viewport; counter_bottom_y is that box's bottom edge (it grows with the
+// NEXT WAVE and FLR rows, so the caller computes it). Render one row below it
+// so the developer overlay never sits on top of the live foe count.
+void draw_fps_overlay(screen& s, int counter_bottom_y)
 {
     static FpsCounter c;
     const std::uint32_t now_ms = SDL_GetTicks();
     const int fps = c.update(now_ms);
     const std::string msg = std::format("FPS: {}", fps);
     const int w = s.text_normal.query_width(msg);
-    s.text_normal.write_xy(320 - w - 2, kFpsOverlayY, msg, YELLOW,
-                           static_cast<short>(1));
+    // Right-anchored to the active canvas (world during gameplay frames).
+    s.text_normal.write_xy(s.canvas_w() - w - 2, counter_bottom_y + 2, msg,
+                           YELLOW, static_cast<short>(1));
 }

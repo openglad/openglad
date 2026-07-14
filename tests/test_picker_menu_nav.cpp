@@ -163,3 +163,44 @@ TEST(PickerMenuNav, picker_handle_menu_nav_fire_paths_and_highlight_draw_smoke)
     (void)handle_menu_nav(buttons, highlighted, retvalue, false);
 }
 
+// Pin the TESTING capture hook: injector threads drive one keyboard-nav step
+// through g_test_menu_nav_key (real key events get eaten by the blocking
+// hold-and-release loops above). scripts/fx_review depends on this.
+extern int g_test_menu_nav_key;
+
+TEST(PickerMenuNav, capture_nav_hook_drives_one_step_and_self_clears)
+{
+    disablePlayerJoystick(0);
+
+    button buttons[] = {
+        button("b0", "A", KEYSTATE_UNKNOWN, 10, 10, 30, 10, 0, 0, MenuNav{.up=-1, .down=1, .left=-1, .right=2}, false),
+        button("b1", "B", KEYSTATE_UNKNOWN, 10, 30, 30, 10, 0, 0, MenuNav{.up=0, .down=-1, .left=-1, .right=2}, false),
+        button("b2", "C", KEYSTATE_UNKNOWN, 10, 50, 30, 10, 0, 0, MenuNav{.up=-1, .down=-1, .left=1, .right=-1}, true),
+    };
+    int highlighted = 1;
+    Sint32 retvalue = 0;
+
+    g_test_menu_nav_key = KEY_UP;
+    bool activated = handle_menu_nav(buttons, highlighted, retvalue, false);
+    ASSERT_TRUE(!activated) << "injected nav step should not activate";
+    ASSERT_EQ(0, highlighted) << "injected KEY_UP should move highlight to nav.up";
+    ASSERT_EQ(-1, g_test_menu_nav_key) << "hook must consume the injected key";
+    ASSERT_TRUE(pks().menu_nav_enabled) << "injected step should enable menu nav";
+
+    g_test_menu_nav_key = KEY_DOWN;
+    activated = handle_menu_nav(buttons, highlighted, retvalue, false);
+    ASSERT_TRUE(!activated);
+    ASSERT_EQ(1, highlighted) << "injected KEY_DOWN should move highlight back";
+
+    // Injected step into a hidden target obeys the same skip rule as real keys.
+    g_test_menu_nav_key = KEY_RIGHT;
+    activated = handle_menu_nav(buttons, highlighted, retvalue, false);
+    ASSERT_TRUE(!activated);
+    ASSERT_EQ(1, highlighted) << "hidden nav target should be ignored";
+
+    // Invalid (-1) target leaves the highlight unchanged too.
+    g_test_menu_nav_key = KEY_LEFT;
+    activated = handle_menu_nav(buttons, highlighted, retvalue, false);
+    ASSERT_TRUE(!activated);
+    ASSERT_EQ(1, highlighted) << "invalid nav target should leave highlight unchanged";
+}

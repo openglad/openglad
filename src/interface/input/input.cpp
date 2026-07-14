@@ -24,6 +24,7 @@
 #include <openglad/interface/native_input.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/input_hardware_state.h>
+#include <openglad/interface/screen.h> // active canvas dims for pointer mapping
 #include <openglad/core/util.h>
 #include <openglad/core/test_trace.h>
 #include <algorithm> //buffers: for std::min when clamping joystick counts
@@ -87,6 +88,25 @@ short& input_text_input_event_ref()
 // Access via hw() helper for fields without macros; mouse_state and player_joy
 // are already macros defined in input.h.
 static inline auto& hw() { return input_hardware_state(); }
+
+// Window->canvas pointer mapping divides by the ACTIVE canvas dims: menus
+// translate to the fixed 320x200 UI canvas, gameplay and the level editor to
+// the world canvas (which a cfg graphics/scale mode can grow — identical to
+// the classic constants in every default run, and while the editor pin holds).
+// The overscan viewport rect is shared by both canvases, so only the divisor
+// changes per layer. Before the screen exists (intro/boot) events map to the
+// classic UI dims.
+static inline float active_canvas_w()
+{
+    const ::screen* s = og::runtime::current_session->myscreen_;
+    return s ? static_cast<float>(s->canvas_w()) : static_cast<float>(kUiCanvasW);
+}
+
+static inline float active_canvas_h()
+{
+    const ::screen* s = og::runtime::current_session->myscreen_;
+    return s ? static_cast<float>(s->canvas_h()) : static_cast<float>(kUiCanvasH);
+}
 
 void update_overscan_setting()
 {
@@ -201,8 +221,8 @@ void handle_mouse_event(const void* native_event)
 #ifndef USE_TOUCH_INPUT
         // Mouse event
     case og::input_native::EventType::MouseMotion:
-        mouse_state.x = (static_cast<float>(event.motion_x) - og::runtime::current_session->viewport_offset_x_) * (320.0f / og::runtime::current_session->viewport_w_);
-        mouse_state.y = (static_cast<float>(event.motion_y) - og::runtime::current_session->viewport_offset_y_) * (200.0f / og::runtime::current_session->viewport_h_);
+        mouse_state.x = (static_cast<float>(event.motion_x) - og::runtime::current_session->viewport_offset_x_) * (active_canvas_w() / og::runtime::current_session->viewport_w_);
+        mouse_state.y = (static_cast<float>(event.motion_y) - og::runtime::current_session->viewport_offset_y_) * (active_canvas_h() / og::runtime::current_session->viewport_h_);
         break;
     case og::input_native::EventType::MouseButtonUp:
         if (event.button == og::input_native::kMouseButtonLeft)
@@ -210,8 +230,8 @@ void handle_mouse_event(const void* native_event)
         if (event.button == og::input_native::kMouseButtonRight)
             mouse_state.right = 0;
 
-        mouse_state.x = (static_cast<float>(event.button_x) - og::runtime::current_session->viewport_offset_x_) * (320.0f / og::runtime::current_session->viewport_w_);
-        mouse_state.y = (static_cast<float>(event.button_y) - og::runtime::current_session->viewport_offset_y_) * (200.0f / og::runtime::current_session->viewport_h_);
+        mouse_state.x = (static_cast<float>(event.button_x) - og::runtime::current_session->viewport_offset_x_) * (active_canvas_w() / og::runtime::current_session->viewport_w_);
+        mouse_state.y = (static_cast<float>(event.button_y) - og::runtime::current_session->viewport_offset_y_) * (active_canvas_h() / og::runtime::current_session->viewport_h_);
         break;
     case og::input_native::EventType::MouseButtonDown:
         if (event.button == og::input_native::kMouseButtonLeft)
@@ -219,8 +239,8 @@ void handle_mouse_event(const void* native_event)
         else if (event.button == og::input_native::kMouseButtonRight)
             mouse_state.right = 1;
 
-        mouse_state.x = (static_cast<float>(event.button_x) - og::runtime::current_session->viewport_offset_x_) * (320.0f / og::runtime::current_session->viewport_w_);
-        mouse_state.y = (static_cast<float>(event.button_y) - og::runtime::current_session->viewport_offset_y_) * (200.0f / og::runtime::current_session->viewport_h_);
+        mouse_state.x = (static_cast<float>(event.button_x) - og::runtime::current_session->viewport_offset_x_) * (active_canvas_w() / og::runtime::current_session->viewport_w_);
+        mouse_state.y = (static_cast<float>(event.button_y) - og::runtime::current_session->viewport_offset_y_) * (active_canvas_h() / og::runtime::current_session->viewport_h_);
         break;
 #else
 #ifdef FAKE_TOUCH_EVENTS
@@ -260,8 +280,8 @@ void handle_mouse_event(const void* native_event)
         // Mouse event
     case og::input_native::EventType::FingerMotion:
         {
-        int x = (event.finger_x * og::runtime::current_session->window_w_ - og::runtime::current_session->viewport_offset_x_) * (320 / og::runtime::current_session->viewport_w_);
-        int y = (event.finger_y * og::runtime::current_session->window_h_ - og::runtime::current_session->viewport_offset_y_) * (200 / og::runtime::current_session->viewport_h_);
+        int x = (event.finger_x * og::runtime::current_session->window_w_ - og::runtime::current_session->viewport_offset_x_) * (active_canvas_w() / og::runtime::current_session->viewport_w_);
+        int y = (event.finger_y * og::runtime::current_session->window_h_ - og::runtime::current_session->viewport_offset_y_) * (active_canvas_h() / og::runtime::current_session->viewport_h_);
         
         og::runtime::current_session->scroll_amount_ = y - mouse_state.y;
         
@@ -309,8 +329,8 @@ void handle_mouse_event(const void* native_event)
         break;
     case og::input_native::EventType::FingerUp:
         {
-            int x = (event.finger_x * og::runtime::current_session->window_w_ - og::runtime::current_session->viewport_offset_x_) * (320 / og::runtime::current_session->viewport_w_);
-            int y = (event.finger_y * og::runtime::current_session->window_h_ - og::runtime::current_session->viewport_offset_y_) * (200 / og::runtime::current_session->viewport_h_);
+            int x = (event.finger_x * og::runtime::current_session->window_w_ - og::runtime::current_session->viewport_offset_x_) * (active_canvas_w() / og::runtime::current_session->viewport_w_);
+            int y = (event.finger_y * og::runtime::current_session->window_h_ - og::runtime::current_session->viewport_offset_y_) * (active_canvas_h() / og::runtime::current_session->viewport_h_);
             if(hw().tapping)
             {
                 hw().tapping = false;
@@ -347,9 +367,9 @@ void handle_mouse_event(const void* native_event)
     case og::input_native::EventType::FingerDown:
         {
             hw().tapping = true;
-            
-            int x = (event.finger_x * og::runtime::current_session->window_w_ - og::runtime::current_session->viewport_offset_x_) * (320 / og::runtime::current_session->viewport_w_);
-            int y = (event.finger_y * og::runtime::current_session->window_h_ - og::runtime::current_session->viewport_offset_y_) * (200 / og::runtime::current_session->viewport_h_);
+
+            int x = (event.finger_x * og::runtime::current_session->window_w_ - og::runtime::current_session->viewport_offset_x_) * (active_canvas_w() / og::runtime::current_session->viewport_w_);
+            int y = (event.finger_y * og::runtime::current_session->window_h_ - og::runtime::current_session->viewport_offset_y_) * (active_canvas_h() / og::runtime::current_session->viewport_h_);
             
             hw().start_tap_x = x;
             hw().start_tap_y = y;
@@ -409,8 +429,8 @@ void handle_mouse_event(const void* native_event)
             
             og::runtime::current_session->key_press_event_ = 1;
             mouse_state.left = 1;
-            mouse_state.x = event.finger_x * 320;
-            mouse_state.y = event.finger_y * 200;
+            mouse_state.x = event.finger_x * active_canvas_w();
+            mouse_state.y = event.finger_y * active_canvas_h();
         }
         break;
 #endif

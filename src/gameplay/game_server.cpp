@@ -2,6 +2,7 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/core/runtime_trace.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/core/util.h>
 #include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/families/family_descriptor.h>
@@ -1193,6 +1194,8 @@ InitialSetupMessage GameServer::build_initial_setup(PeerId peer_id) const
     message.my_team = client_it->second.team_num;
     message.allied_mode = world_.allied_mode;
     message.current_scenario = world_.current_scenario;
+    message.respawn_mode = world_.respawn_mode;
+    message.generator_rate = world_.generator_rate;
     message.guys = collect_initial_setup_guys(world_);
     message.completed_levels.assign(world_.completed_levels.begin(),
                                     world_.completed_levels.end());
@@ -1410,7 +1413,7 @@ bool GameServer::process_disconnected_players(std::uint32_t expected_tick)
         if (result.control_hp_changed)
             world_.control_hp = result.control_hp;
         if (result.endgame_requested &&
-            !og::sim::ctf_suppress_team_wipe_endgame(world_))
+            !og::sim::respawn_suppress_team_wipe_endgame(world_))
         {
             if (has_living_member_for_any_bound_team(
                     world_, clients_, disconnected_players_))
@@ -1689,45 +1692,62 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
         case TypedReceivedMessageKind::SnapshotHashCheck:
             if (message.snapshot_hash_check)
             {
+                bool mismatch = false;
+                std::uint32_t expected_hash = 0;
                 auto hash_it =
                     client.expected_snapshot_hashes.find(message.snapshot_hash_check->tick);
                 if (hash_it == client.expected_snapshot_hashes.end() ||
                     hash_it->second.empty())
                 {
-                    ++snapshot_hash_mismatch_count_;
-                    client.budget_pending_keyframe = true;
-                    client.force_keyframe = true;
-                    LogError(
-                        "snapshot_hash_mismatch peer={} tick={} server={} client={} entities={}\n",
-                        message.peer_id,
-                        message.snapshot_hash_check->tick,
-                        0u,
-                        message.snapshot_hash_check->snapshot_hash,
-                        world_.oblist.size() + world_.fxlist.size() +
-                            world_.weaplist.size());
+                    mismatch = true;
                 }
                 else
                 {
-                    const std::uint32_t expected_hash = hash_it->second.front();
+                    expected_hash = hash_it->second.front();
                     if (expected_hash != message.snapshot_hash_check->snapshot_hash)
                     {
-                        ++snapshot_hash_mismatch_count_;
-                        client.budget_pending_keyframe = true;
-                        client.force_keyframe = true;
-                        LogError(
-                            "snapshot_hash_mismatch peer={} tick={} server={} client={} entities={}\n",
-                            message.peer_id,
-                            message.snapshot_hash_check->tick,
-                            expected_hash,
-                            message.snapshot_hash_check->snapshot_hash,
-                            world_.oblist.size() + world_.fxlist.size() +
-                                world_.weaplist.size());
+                        mismatch = true;
                     }
                     else
                     {
                         hash_it->second.pop_front();
                         if (hash_it->second.empty())
                             client.expected_snapshot_hashes.erase(hash_it);
+                        client.consecutive_hash_mismatches = 0;
+                    }
+                }
+                if (mismatch)
+                {
+                    ++snapshot_hash_mismatch_count_;
+                    ++client.consecutive_hash_mismatches;
+                    client.budget_pending_keyframe = true;
+                    client.force_keyframe = true;
+                    LogError(
+                        "snapshot_hash_mismatch peer={} tick={} server={} client={} entities={}\n",
+                        message.peer_id,
+                        message.snapshot_hash_check->tick,
+                        expected_hash,
+                        message.snapshot_hash_check->snapshot_hash,
+                        world_.oblist.size() + world_.fxlist.size() +
+                            world_.weaplist.size());
+                    if (client.consecutive_hash_mismatches >=
+                        kMaxConsecutiveSnapshotHashMismatches)
+                    {
+                        // Bounded loud failure: no number of keyframes has
+                        // healed this client — cut the infinite force-
+                        // keyframe rubber-band instead of retrying forever.
+                        // (A true resync would need an InitialSetup
+                        // re-handshake; the reconnect path provides one.)
+                        LogError(
+                            "snapshot_hash_mismatch_limit peer={} strikes={} "
+                            "— disconnecting desynced client\n",
+                            message.peer_id,
+                            client.consecutive_hash_mismatches);
+                        TRACE("net", "server_desync_disconnect peer=%u",
+                              static_cast<unsigned>(message.peer_id));
+                        // Invalidates `client`; nothing may touch it after.
+                        handle_transport_disconnect(message.peer_id,
+                                                    /*close_transport=*/true);
                     }
                 }
             }
@@ -1844,6 +1864,12 @@ void GameServer::handle_exit_prompt_response(bool accepted)
     }
     else
     {
+        // An accepted exit completes the level like a win, but synchronously:
+        // this path never ticks the world between the accept and the roster
+        // persist inside on_exit_accepted, so the in-tick end-of-level
+        // revive-all cannot cover it. Revive every hero still awaiting a
+        // classic respawn first, or the finalize would drop it as dead.
+        og::sim::classic_respawn_flush_pending(world_);
         handled = on_exit_accepted
             ? on_exit_accepted(prompt.destination_level)
             : false;
@@ -2138,7 +2164,7 @@ bool GameServer::apply_polled_inputs(std::uint32_t expected_tick)
         if (result.control_hp_changed)
             world_.control_hp = result.control_hp;
         if (result.endgame_requested &&
-            !og::sim::ctf_suppress_team_wipe_endgame(world_))
+            !og::sim::respawn_suppress_team_wipe_endgame(world_))
         {
             if (has_living_member_for_any_bound_team(
                     world_, clients_, disconnected_players_))
@@ -2267,8 +2293,11 @@ void GameServer::remember_snapshot_hash(ConnectedClientState& client,
 
 walker* GameServer::find_ctf_reclaim_control(std::size_t player_index) const
 {
-    // Gate strictly on an active CTF match so non-CTF behavior is untouched.
-    if (!(world_.type & GameWorld::TYPE_CTF) || !world_.ctf.active)
+    // Gate on an active CTF match or an active classic respawn mode so plain
+    // non-respawning behavior is untouched.
+    const bool ctf_active =
+        (world_.type & GameWorld::TYPE_CTF) != 0 && world_.ctf.active;
+    if (!ctf_active && !og::sim::classic_respawn_active(world_))
         return nullptr;
 
     for (const auto& uptr : world_.oblist)

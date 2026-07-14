@@ -129,6 +129,28 @@ static constexpr auto make_pix_to_genre() {
 	table[PIX_COBBLE_3] = TYPE_COBBLE;
 	table[PIX_COBBLE_4] = TYPE_COBBLE;
 
+	// Z-axis / multi-floor tiles. Mapped for query_genre_x_y consumers but kept
+	// out of smooth()'s autotiler switch (inert default branch).
+	table[PIX_AIR] = TYPE_AIR;
+	table[PIX_GLASS] = TYPE_GLASS;
+	table[PIX_DROPBLOCK_UP] = TYPE_DROP_BLOCK;
+	table[PIX_DROPBLOCK_RIGHT] = TYPE_DROP_BLOCK;
+	table[PIX_DROPBLOCK_DOWN] = TYPE_DROP_BLOCK;
+	table[PIX_DROPBLOCK_LEFT] = TYPE_DROP_BLOCK;
+	table[PIX_ZSTAIR_UP] = TYPE_ZSTAIRS;
+	table[PIX_ZSTAIR_DOWN] = TYPE_ZSTAIRS;
+
+	// Westlands terrain. Genre-inert in the autotiler (no smooth() arms);
+	// the mapgen paints variants deterministically, pavement-style.
+	table[PIX_SNOW1] = TYPE_SNOW;
+	table[PIX_SNOW2] = TYPE_SNOW;
+	table[PIX_LAVA1] = TYPE_LAVA;
+	table[PIX_LAVA2] = TYPE_LAVA;
+	table[PIX_MARSH1] = TYPE_MARSH;
+	table[PIX_MARSH2] = TYPE_MARSH;
+	table[PIX_ASH1] = TYPE_ASH;
+	table[PIX_ASH2] = TYPE_ASH;
+
 	return table;
 }
 static constexpr auto PIX_to_genre = make_pix_to_genre();

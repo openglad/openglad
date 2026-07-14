@@ -91,6 +91,14 @@ class walker : public og::sim::SimEntity
 		bool reset(void);
 			short move(short x, short y);
 			void worldmove(float x, float y);
+			// Z-axis / multi-floor (no-ops / cheap on single-floor levels):
+			void change_floor(short new_floor); // relocate to a stacked floor + re-bucket in obmap
+			void apply_z_motion();              // per-tick fall-through-air / Z-stair transition
+#ifdef TESTING
+			// Test-only oracle for the fall-damage accumulator (fall_stories_
+			// below); compiled out of production builds.
+			int fall_stories_for_test() const { return fall_stories_; }
+#endif
 			virtual bool setxy(short x, short y);
 			// Overloads to avoid implicit narrowing at call sites. These forward to the virtual short-based API.
 			bool setxy(std::int32_t x, std::int32_t y) { return setxy(static_cast<short>(x), static_cast<short>(y)); }
@@ -125,7 +133,33 @@ class walker : public og::sim::SimEntity
 			return order();
 		}
 		walker  *create_weapon();
-		bool fire_check(short xdelta, short ydelta);
+		// Why a fire_check() attempt was denied. Callers that care (the
+		// COMMAND_ATTACK melee loop) distinguish the orientation denials —
+		// Facing, and NoRanged at bump range ("the foe is in weapon reach
+		// but we are pointed the wrong way / can only hit by facing") —
+		// from every other denial, because the classic response to ANY
+		// denial (walk toward the foe, sliding perpendicular when blocked)
+		// deadlocks two adjacent fighters forever. The reach gate runs
+		// before the NoRanged/NoMagic gates so those two denials imply the
+		// foe is within reach. See docs/GAMEPLAY_FIXES_FROM_CLASSIC.md
+		// (guard-standoff melee deadlock, 2026-07-07).
+		enum class FireCheckDenial : std::uint8_t
+		{
+			None,        // check passed
+			NoFoe,       // nothing to fire at
+			NoRanged,    // BIT_NO_RANGED family (melee-only)
+			NoMagic,     // weapon costs more magic than we have
+			OutOfRange,  // foe beyond weapon stepsize*lineofsight
+			Facing,      // in reach, but curdir is not toward the foe
+			WallBlocked, // the shot ray hits terrain first
+			RayMiss,     // the shot ray ran full range without a hit
+		};
+		bool fire_check(short xdelta, short ydelta,
+		                FireCheckDenial* denial = nullptr);
+		// Snap-face a (foe) direction: sets curdir AND enddir (so the
+		// act() pre-turn doesn't fight it) AND lastx/lasty (the thrown-
+		// weapon heading that set_weapon_heading() reads).
+		void face_delta(short xdelta, short ydelta);
 		bool query_next_to();
 		bool special();
 		bool teleport();
@@ -162,6 +196,9 @@ class walker : public og::sim::SimEntity
 		statistics* stats() const { return stats_.get(); }
 		OG_WALKER_DIRTY_FIELD(float, lastx, og::dirty::BIT_LASTX);
 		OG_WALKER_DIRTY_FIELD(float, lasty, og::dirty::BIT_LASTY);
+		// Vertical velocity for projectile arcs/gravity (pixels/tick). Only
+		// projectiles use it; 0 for everything else (legacy flat behavior).
+		OG_WALKER_DIRTY_FIELD(float, vz, og::dirty::BIT_VZ);
 		OG_WALKER_DIRTY_FIELD(float, stepsize, og::dirty::BIT_STEPSIZE);
 		OG_WALKER_DIRTY_FIELD(float, normal_stepsize, og::dirty::BIT_NORMAL_STEPSIZE);
 		OG_WALKER_DIRTY_FIELD(signed char, curdir, og::dirty::BIT_CURDIR);
@@ -208,12 +245,96 @@ class walker : public og::sim::SimEntity
 		OG_WALKER_DIRTY_FIELD(std::uint32_t, leader_id, og::dirty::BIT_LEADER_ID);
 		OG_WALKER_DIRTY_FIELD(std::uint32_t, owner_id, og::dirty::BIT_OWNER_ID);
 		OG_WALKER_DIRTY_FIELD(std::uint32_t, collide_ob_id, og::dirty::BIT_COLLIDE_OB_ID);
+		// Level-entry spawn point: where this walker was deployed at level
+		// start (marker, teleport scatter, or authored placement). Recorded
+		// once at the deploy sites; the classic respawn engine revives
+		// eligible walkers here. -1/-1 = never recorded (legacy default).
+		OG_WALKER_DIRTY_FIELD(std::int16_t, spawn_x, og::dirty::BIT_SPAWN_X);
+		OG_WALKER_DIRTY_FIELD(std::int16_t, spawn_y, og::dirty::BIT_SPAWN_Y);
+		OG_WALKER_DIRTY_FIELD(std::uint8_t, spawn_floor, og::dirty::BIT_SPAWN_FLOOR);
+		void set_spawn_point(short x, short y, std::uint8_t floor)
+		{
+			set_spawn_x(static_cast<std::int16_t>(x));
+			set_spawn_y(static_cast<std::int16_t>(y));
+			set_spawn_floor(floor);
+		}
 		std::int32_t regen_delay() const { return regen_delay_; }
 		void set_regen_delay(std::int32_t value)
 		{
 			regen_delay_ = value;
 			mark_dirty(og::dirty::BIT_REGEN_DELAY);
 		}
+		// Per-placed-NPC scenario extras (level file v10, reserved[3..5]).
+		// Authoritative-side sim state only: mirrors never simulate, so these
+		// are never replicated (no dirty bit, not in EntitySnapshot).
+		//
+		// specials_disabled: the walker never uses its family special — both
+		// the direct walker::special() execution path and the AI's
+		// living::check_special() decision are gated on it.
+		[[nodiscard]] bool specials_disabled() const noexcept
+		{
+			return specials_disabled_;
+		}
+		void set_specials_disabled(bool value) noexcept
+		{
+			specials_disabled_ = value;
+		}
+		// spawn_delay: sim ticks past level start before a placed walker
+		// enters the world. While the delay has not elapsed the walker is
+		// dormant (see dormant()).
+		[[nodiscard]] std::uint16_t spawn_delay() const noexcept
+		{
+			return spawn_delay_;
+		}
+		void set_spawn_delay(std::uint16_t value) noexcept
+		{
+			spawn_delay_ = value;
+		}
+		// save_all_protected: npc_flags bit 2 ("protected") from the level
+		// file. When ANY placed walker on the level carries it, the
+		// SCEN_TYPE_SAVE_ALL death check watches ONLY flagged walkers (the
+		// mission-critical cast); when none does, the legacy rule applies
+		// (any named team-0 living). Authoritative-side sim state only, like
+		// the other per-placed-NPC extras above.
+		[[nodiscard]] bool save_all_protected() const noexcept
+		{
+			return save_all_protected_;
+		}
+		void set_save_all_protected(bool value) noexcept
+		{
+			save_all_protected_ = value;
+		}
+		// guard_hold_post: npc_flags bit 1 ("hold post") from the level file.
+		// Selects the per-guard wake policy: an ACT_GUARD living normally
+		// converts to ACT_RANDOM pursuit the first time a foe is inside its
+		// sight range with a clear sight line (walker::act_guard); a
+		// hold-post guard never converts — it keeps the classic stationary
+		// sentry behavior. Meaningless for non-guards. Authoritative-side
+		// sim state only, like the other per-placed-NPC extras above.
+		[[nodiscard]] bool guard_hold_post() const noexcept
+		{
+			return guard_hold_post_;
+		}
+		void set_guard_hold_post(bool value) noexcept
+		{
+			guard_hold_post_ = value;
+		}
+		// summoned: a runtime-conjured living (archmage illusion/elemental,
+		// cleric raise — living::do_summon and friends). Ammunition, not a
+		// character: never a SCEN_TYPE_SAVE_ALL mission loss, no matter how
+		// it is named or teamed. Sticky for the walker's whole life — the
+		// owner() link is severed when the summoner dies, so the exemption
+		// cannot ride on it.
+		[[nodiscard]] bool summoned() const noexcept { return summoned_; }
+		void set_summoned(bool value) noexcept { summoned_ = value; }
+		// dormant: a delayed-spawn walker that has not activated yet. It does
+		// not act, is not drawn, sits outside the obmap (uncollidable and
+		// untargetable), and is excluded from snapshot capture — but its team
+		// still counts as alive for level-completion checks. set_dormant
+		// maintains obmap membership (see walker.cpp); GameWorld::tick wakes
+		// it once the level tick counter passes spawn_delay().
+		[[nodiscard]] bool dormant() const noexcept { return dormant_; }
+		void set_dormant(bool value);
 		// Server-only transient (like path_to_foe): the world tick on which
 		// this walker last began a SELF-teleport — walker::teleport /
 		// teleport_ranged, i.e. spell blinks and marker beacons; map
@@ -286,6 +407,7 @@ class walker : public og::sim::SimEntity
 	private:
 		float lastx_ = 0.0f;
 		float lasty_ = 0.0f;
+		float vz_ = 0.0f;
 		float stepsize_ = 0.0f;
 		float normal_stepsize_ = 0.0f;
 		signed char curdir_ = 0;
@@ -327,7 +449,50 @@ class walker : public og::sim::SimEntity
 		std::uint32_t leader_id_ = 0;
 		std::uint32_t owner_id_ = 0;
 		std::uint32_t collide_ob_id_ = 0;
+		std::int16_t spawn_x_ = -1;
+		std::int16_t spawn_y_ = -1;
+		std::uint8_t spawn_floor_ = 0;
 		std::uint32_t last_self_teleport_tick_ = 0;
+		// Server-only transient (not replicated, like path_to_foe): ticks until
+		// the next Z transition is allowed, throttling fall/denial re-probes.
+		// Always 0 on single-floor (apply_z_motion early-returns), so
+		// parity-neutral.
+		int z_cooldown_ = 0;
+		// Stair re-trigger LATCH (B1). Ships with the same non-replicated
+		// server-transient precedent as z_cooldown_/path_to_foe (and the
+		// ani_count rule): snapshots never carry it, so a mirror/late joiner
+		// re-arms cleared — worst case the walker can take the stair again one
+		// deliberate step early, never a wedge. Armed with the ARRIVAL centre
+		// cell on every stair transition; while the walker's centre stays in
+		// that cell, stair tiles do not trigger (the paired vertically-aligned
+		// stair you arrive on used to bounce you straight back once
+		// z_cooldown_ expired — even standing still). Cleared on the first
+		// Z-probe tick (cooldown expired) that finds the centre outside the
+		// cell — the same centre-cell criterion the trigger itself uses, with
+		// the cooldown adding a few ticks of hysteresis against cell-boundary
+		// jitter. Never armed on single-floor levels, so parity-neutral.
+		void latch_stair_arrival();
+		bool z_stair_latched_ = false;
+		std::int32_t z_latch_cx_ = -1;
+		std::int32_t z_latch_cy_ = -1;
+		// Fall-damage accumulator: stories fallen in one uninterrupted air
+		// cascade, resolved ONCE at settle by resolve_fall_landing(). Same
+		// non-replicated server-transient acceptance as z_cooldown_ /
+		// z_stair_latched_: snapshots never carry it, so a mirror or late
+		// joiner mid-cascade resolves a shorter fall; hp self-corrects on the
+		// next snapshot — no wire bump. Always 0 on single-floor levels
+		// (apply_z_motion early-returns), so parity-neutral.
+		int fall_stories_ = 0;
+		void resolve_fall_landing();
+		// Per-placed-NPC scenario extras (see the public accessors above).
+		// Defaults reproduce legacy behavior exactly; every consumer branch is
+		// gated on a non-default value, keeping parity goldens byte-identical.
+		bool specials_disabled_ = false;
+		std::uint16_t spawn_delay_ = 0;
+		bool save_all_protected_ = false;
+		bool guard_hold_post_ = false;
+		bool summoned_ = false;
+		bool dormant_ = false;
 		walker* foe_ = nullptr;
 		walker* leader_ = nullptr;
 		walker* owner_ = nullptr;

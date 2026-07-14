@@ -9,6 +9,7 @@
 #include <openglad/resources/level_file_io.h>
 
 #include <openglad/core/constants.h>
+#include <openglad/core/decordefs.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/core/util.h>
 #include <openglad/resources/pixie_data.h>
@@ -19,22 +20,47 @@
 
 bool write_pixie_png(const char* filepath, const PixieData& data);
 
+#include <openglad/resources/filesystem_sync.h>
+
 #include <algorithm>
 #include <array>
 #include <cstdio>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
+#include <format>
+#include <fstream>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace {
 
 using og::data::LevelFileIoError;
 using og::data::LevelFileMetadata;
 
-constexpr char kScenarioVersion = 9;
+// v10 adds multi-floor support: per-object floor/z packed into the existing
+// reserved/filler bytes, a trailing floor_count byte, and derived-name extra
+// floor grid PNGs ("{grid}_f{N}.png"). v10 also carries per-placed-NPC extras
+// in the same reserved block: npc_flags at [3] (bit 0 = specials disabled,
+// bit 1 = guard "hold post" policy, bit 2 = SAVE_ALL "protected") and a
+// uint16 delayed-spawn tick count at [4..5]; the rest of the block is
+// zero-filled. v2-9 read paths are untouched
+// and all-default levels still save as v9 (byte-identical). See
+// docs/z-axis-design.md.
+//
+// v11 adds per-floor DECOR planes (BASE + DECOR tile layering): a uint8
+// decor_present[floor_count] array immediately after the floor_count byte,
+// plus a derived-name indexed PNG "{grid}_d{N}.png" per flagged floor
+// (INCLUDING floor 0; byte = decor id from core/decordefs.h, 0 = none, same
+// dims as that floor's grid). The writer downgrades to v10/v9 whenever every
+// decor plane is empty, so decor-free levels re-save byte-identical (the
+// parity/round-trip pin), and old engines refuse v11 cleanly instead of
+// silently dropping blocking decor.
+constexpr char kScenarioVersion = 11;
 constexpr short kMaxScenarioObjects = 4096;
 
 bool rw_read_exact_or_log(og::io::OgFile& file, void* dst, size_t size,
@@ -234,8 +260,39 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
             return false;
         }
 
+        // v10 repurposes the first 3 reserved/filler bytes for the object's
+        // floor + sub-floor z. v2-9 leave these as legacy filler, so floor/z
+        // default to 0 (legacy flat behavior). The floor MUST be applied
+        // BEFORE setxy: the collision obmap is floor-keyed and setxy is what
+        // registers the walker in it, so the old set-floor-after-setxy order
+        // left every upper-story object bucketed on floor 0 — a never-moving
+        // treasure there (a tower top-story EXIT) was uneatable from its own
+        // floor, and a hold-post guard was a collision ghost. v<10 objects
+        // stay on floor 0 and take the identical code path.
+        if (version >= 10)
+        {
+            new_guy->set_floor(static_cast<short>(
+                static_cast<unsigned char>(reserved[0])));
+            short obj_z = 0;
+            std::memcpy(&obj_z, &reserved[1], sizeof(short));
+            new_guy->set_worldz(static_cast<float>(obj_z));
+        }
         new_guy->setxy(currentx, currenty);
         new_guy->set_team_num(sanitize_loaded_team_num(tempteam));
+
+        // Honor the authored per-object command byte — for Livings, and only
+        // the GUARD command (A11). The byte has been round-tripped by the
+        // writer since the original 2002 format but was read-and-dropped by
+        // every loader, so authored guards roamed for 24 years. Restoring is
+        // deliberately narrow: no stock campaign ships a non-zero Living
+        // command (scan: 0 across gladiator/tryxian/arenas/ctf/concept), so
+        // legacy levels and parity goldens are byte-identical; non-Living
+        // command bytes are serialization noise (e.g. treasures default act
+        // 2) and stay ignored; ACT_CONTROL is never applied from files (a
+        // hostile level could steal player control).
+        if (static_cast<Order>(temporder) == Order::Living &&
+            tempcommand == ACT_GUARD)
+            new_guy->set_act_type(ACT_GUARD);
 
         if (version >= 7)
             new_guy->stats()->set_level(shortlevel);
@@ -248,6 +305,41 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
             if (new_guy->stats()->name.size() > 1)
                 new_guy->stats()->set_bit_flags(BIT_NAMED, 1);
         }
+
+        if (version >= 10)
+        {
+            // (Floor + worldz were applied above, before setxy.)
+            // v10 also carries per-placed-NPC extras: npc_flags at reserved[3]
+            // (bit 0 = specials disabled, bit 1 = guard "hold post" policy,
+            // bit 2 = SAVE_ALL "protected") and a uint16 delayed-spawn tick
+            // count at reserved[4..5]. The v10 writer zero-fills the reserved
+            // tail, so files authored before these fields read back as
+            // defaults (a zero hold-post bit = the wake-on-sight policy).
+            const unsigned char npc_flags =
+                static_cast<unsigned char>(reserved[3]);
+            new_guy->set_specials_disabled((npc_flags & 0x01u) != 0u);
+            new_guy->set_guard_hold_post((npc_flags & 0x02u) != 0u);
+            new_guy->set_save_all_protected((npc_flags & 0x04u) != 0u);
+            std::uint16_t spawn_delay = 0;
+            std::memcpy(&spawn_delay, &reserved[4], sizeof(spawn_delay));
+            new_guy->set_spawn_delay(spawn_delay);
+            // A delayed walker starts the level dormant. Only oblist-resident
+            // orders ever go dormant: GameWorld::tick's oblist act phase is
+            // what wakes them, so a weapon (weaplist) or treasure (fxlist)
+            // carrying a delay would sleep forever. (The level editor still
+            // draws and edits dormant walkers; only gameplay hides them.)
+            const Order loaded_order = static_cast<Order>(temporder);
+            if (spawn_delay > 0 && loaded_order != Order::Weapon &&
+                loaded_order != Order::Treasure)
+                new_guy->set_dormant(true);
+        }
+
+        // Record the authored placement as the object's level-entry spawn
+        // point (the classic respawn feature revives level-authored livings
+        // here). Uses the final floor: v10+ files set it above, older files
+        // leave the default floor 0.
+        new_guy->set_spawn_point(currentx, currenty,
+                                 static_cast<std::uint8_t>(new_guy->floor()));
     }
 
     metadata.description.clear();
@@ -289,6 +381,14 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
         }
     }
 
+    short loaded_floor_count = 1;
+    if (version >= 10)
+    {
+        unsigned char fc = 1;
+        READ_OR_FAIL(&fc, 1, 1);
+        loaded_floor_count = (fc < 1) ? 1 : static_cast<short>(fc);
+    }
+
     const std::string gridpix = ensure_png_extension(newgrid.data());
     world.grid = read_pixie_file(gridpix.c_str());
     if (!world.grid.valid())
@@ -323,6 +423,79 @@ bool read_level_body(og::io::OgFile& infile, short version, GameWorld& world,
                     w->set_frame(1);
                 }
             }
+        }
+    }
+
+    if (version >= 10 && loaded_floor_count > 1)
+    {
+        world.set_floor_count(loaded_floor_count);
+        for (int f = 1; f < loaded_floor_count; ++f)
+        {
+            const std::string fname =
+                std::string(newgrid.data()) + "_f" + std::to_string(f);
+            const std::string fpix = ensure_png_extension(fname.c_str());
+            PixieData fg = read_pixie_file(fpix.c_str());
+            if (!fg.valid())
+            {
+                // A declared floor plane that fails to load is corruption
+                // (the writer always emits every plane the floor_count
+                // implies): shipping the level with a void story strands
+                // gameplay on an impassable floor. Hard-fail so the caller
+                // (or the tower heal path) can regenerate/report instead.
+                // The editor bridge (require_valid_grid == false) keeps its
+                // fix-it-up leniency, mirroring the base grid above.
+                LogError("Failed to load floor {} grid plane: {}\n", f, fpix);
+                if (require_valid_grid)
+                {
+                    err = LevelFileIoError::ParseFailed;
+                    return false;
+                }
+                continue;
+            }
+            world.grid_for_floor(f) = std::move(fg);
+            world.smoother_for_floor(f).set_target(world.grid_for_floor(f));
+        }
+    }
+
+    // v11: decor planes. The file carries uint8 decor_present[floor_count]
+    // immediately after the floor_count byte (nothing else is read from the
+    // .fss stream between there and here — grids come from separate PNGs —
+    // so consuming the flags after the grid block is stream-equivalent), then
+    // each flagged floor loads "{grid}_dN.png". Hostile-file hardening
+    // (mirrors the editor's out-of-range grid clamp / ani_count posture):
+    // planes whose dims mismatch the floor's grid are dropped with a log, and
+    // any byte >= DECOR_MAX clamps to DECOR_NONE. v2..v10 files never reach
+    // this arm, so their decor planes stay invalid — byte-identical behavior.
+    if (version >= 11)
+    {
+        std::vector<unsigned char> decor_present(
+            static_cast<std::size_t>(loaded_floor_count), 0);
+        READ_OR_FAIL(decor_present.data(), 1,
+                     static_cast<std::size_t>(loaded_floor_count));
+        for (int f = 0; f < loaded_floor_count; ++f)
+        {
+            if (decor_present[static_cast<std::size_t>(f)] == 0)
+                continue;
+            const std::string dname =
+                std::string(newgrid.data()) + "_d" + std::to_string(f);
+            const std::string dpix = ensure_png_extension(dname.c_str());
+            PixieData dp = read_pixie_file(dpix.c_str());
+            const PixieData& floor_grid = world.grid_for_floor(f);
+            if (!dp.valid() || !floor_grid.valid() ||
+                dp.w != floor_grid.w || dp.h != floor_grid.h)
+            {
+                Log("Dropping decor plane {}: missing or dims mismatch\n",
+                    dpix);
+                continue;
+            }
+            const std::size_t cells =
+                static_cast<std::size_t>(dp.w) * static_cast<std::size_t>(dp.h);
+            for (std::size_t c = 0; c < cells; ++c)
+            {
+                if (dp.data[c] >= DECOR_MAX)
+                    dp.data[c] = DECOR_NONE;
+            }
+            world.decor_for_floor(f) = std::move(dp);
         }
     }
 
@@ -438,6 +611,36 @@ bool load_level(const std::string& path,
 
 namespace {
 
+// True when `floor`'s decor plane is valid AND carries at least one nonzero
+// byte. Shared by the writer's version cascade / presence flags and by
+// save_level's "_dN" plane emission so the two always agree. An allocated
+// all-zero plane counts as empty: erasing decor in the editor downgrades the
+// format again (parity-friendly byte-identity for decor-free levels).
+bool floor_decor_nonempty(const GameWorld& world, int floor)
+{
+    const PixieData& dp = world.decor_for_floor(floor);
+    if (!dp.valid())
+        return false;
+    const std::size_t cells =
+        static_cast<std::size_t>(dp.w) * static_cast<std::size_t>(dp.h);
+    for (std::size_t c = 0; c < cells; ++c)
+    {
+        if (dp.data[c] != 0)
+            return true;
+    }
+    return false;
+}
+
+bool world_has_decor(const GameWorld& world)
+{
+    for (int f = 0; f < world.floor_count(); ++f)
+    {
+        if (floor_decor_nonempty(world, f))
+            return true;
+    }
+    return false;
+}
+
 bool write_scenario_payload(og::io::OgFile& outfile,
                             std::string_view path_for_log,
                             GameWorld& world,
@@ -456,7 +659,35 @@ bool write_scenario_payload(og::io::OgFile& outfile,
     };
 
     const std::array<char, 3> header = {'F', 'S', 'S'};
-    char temp_version = kScenarioVersion;
+    // Levels with all-default data save as v9 (byte-identical to pre-Z); only
+    // genuine multi-floor levels — or levels using the per-NPC extras stored in
+    // the v10 reserved-block layout (specials-disabled / guard hold-post /
+    // delayed spawn / protected) — emit v10. This is the key guard against
+    // re-encoding the ~180 parity scenarios.
+    auto list_has_npc_extras =
+        [](const std::list<std::unique_ptr<walker>>& list) {
+            for (const auto& uptr : list)
+            {
+                const walker* ob = uptr.get();
+                if (ob != nullptr &&
+                    (ob->specials_disabled() || ob->guard_hold_post() ||
+                     ob->save_all_protected() || ob->spawn_delay() > 0))
+                    return true;
+            }
+            return false;
+        };
+    const bool has_npc_extras = list_has_npc_extras(world.oblist) ||
+                                list_has_npc_extras(world.fxlist) ||
+                                list_has_npc_extras(world.weaplist);
+    // Version cascade: v11 only when some floor carries decor; otherwise the
+    // v10/v9 downgrade above keeps decor-free levels emitting today's exact
+    // bytes (protects the parity scenarios and every editor round-trip).
+    const bool has_decor = world_has_decor(world);
+    char temp_version = has_decor
+        ? static_cast<char>(11)
+        : ((world.is_multifloor() || has_npc_extras)
+               ? static_cast<char>(10)
+               : static_cast<char>(9));
     std::array<char, 20> temp_grid = {};
     std::array<char, 30> scentitle = {};
     std::array<char, 20> filler = {'M', 'S', 'T', 'R', 'M', 'S', 'T', 'R',
@@ -527,6 +758,32 @@ bool write_scenario_payload(og::io::OgFile& outfile,
             std::array<char, 12> tempname = {};
             snprintf(tempname.data(), tempname.size(), "%s", ob->stats()->name.c_str());
 
+            // v9: legacy "MSTR" filler (byte-identical). v10 owns the whole
+            // block: [0] floor, [1..2] sub-floor z, [3] npc_flags (bit 0 =
+            // specials disabled, bit 1 = guard "hold post" policy, bit 2 =
+            // SAVE_ALL "protected"), [4..5] uint16 delayed-spawn ticks,
+            // [6..9] zero padding reserved for future per-object fields.
+            std::array<char, 10> obj_reserved{};
+            if (temp_version >= 10)
+            {
+                obj_reserved[0] = static_cast<char>(ob->floor());
+                short zval = static_cast<short>(ob->worldz());
+                std::memcpy(&obj_reserved[1], &zval, sizeof(short));
+                const unsigned char npc_flags = static_cast<unsigned char>(
+                    (ob->specials_disabled() ? 0x01u : 0x00u) |
+                    (ob->guard_hold_post() ? 0x02u : 0x00u) |
+                    (ob->save_all_protected() ? 0x04u : 0x00u));
+                obj_reserved[3] = static_cast<char>(npc_flags);
+                const std::uint16_t spawn_delay = ob->spawn_delay();
+                std::memcpy(&obj_reserved[4], &spawn_delay,
+                            sizeof(spawn_delay));
+            }
+            else
+            {
+                std::memcpy(obj_reserved.data(), filler.data(),
+                            obj_reserved.size());
+            }
+
             if (!write_field(&temporder, 1, 1) ||
                 !write_field(&tempfamily, 1, 1) ||
                 !write_field(&currentx, 2, 1) ||
@@ -536,7 +793,7 @@ bool write_scenario_payload(og::io::OgFile& outfile,
                 !write_field(&tempcommand, 1, 1) ||
                 !write_field(&shortlevel, 2, 1) ||
                 !write_field(tempname.data(), 12, 1) ||
-                !write_field(filler.data(), 10, 1))
+                !write_field(obj_reserved.data(), 10, 1))
             {
                 return false;
             }
@@ -568,6 +825,28 @@ bool write_scenario_payload(og::io::OgFile& outfile,
             !write_field(line.data(), serialized_width, 1))
         {
             return false;
+        }
+    }
+
+    if (temp_version >= 10)
+    {
+        std::uint8_t floor_count_byte =
+            static_cast<std::uint8_t>(world.floor_count());
+        if (!write_field(&floor_count_byte, 1, 1))
+            return false;
+    }
+
+    // v11: uint8 decor_present[floor_count] immediately after the floor_count
+    // byte. save_level writes a "{grid}_dN.png" plane for exactly the flagged
+    // floors (same floor_decor_nonempty predicate).
+    if (temp_version >= 11)
+    {
+        for (int f = 0; f < world.floor_count(); ++f)
+        {
+            const std::uint8_t present =
+                floor_decor_nonempty(world, f) ? 1 : 0;
+            if (!write_field(&present, 1, 1))
+                return false;
         }
     }
 
@@ -643,9 +922,255 @@ bool save_level(GameWorld& world,
         return false;
     }
 
+    // Extra floor grids use derived names "{grid}_f{N}".
+    for (int f = 1; f < world.floor_count(); ++f)
+    {
+        const std::string fname = metadata.grid_file + "_f" + std::to_string(f);
+        if (!save_grid_file(fname.c_str(), world.grid_for_floor(f)))
+        {
+            set_error(out_error, LevelFileIoError::OpenWriteFailed);
+            return false;
+        }
+    }
+
+    // v11 decor planes use derived names "{grid}_d{N}" (including floor 0),
+    // written for exactly the floors the payload flagged as present. A level
+    // whose decor was erased downgrades below v11 and simply stops writing
+    // planes; any previously written "_dN" file is inert to v<=10 loaders.
+    for (int f = 0; f < world.floor_count(); ++f)
+    {
+        if (!floor_decor_nonempty(world, f))
+            continue;
+        const std::string dname = metadata.grid_file + "_d" + std::to_string(f);
+        if (!save_grid_file(dname.c_str(), world.decor_for_floor(f)))
+        {
+            set_error(out_error, LevelFileIoError::OpenWriteFailed);
+            return false;
+        }
+    }
+
     Log("Scenario saved.\n");
     set_error(out_error, LevelFileIoError::None);
     return true;
+}
+
+// --- Tower Climb user-dir level pipeline (docs/tower-triple-design.md D7). ---
+
+namespace {
+
+// The 8-char grid-field convention for generated tower floors ("scen0701").
+std::string tower_grid_name(int id)
+{
+    return std::format("scen{:04d}", id);
+}
+
+// Skim a .fss for its trailing floor_count byte without building a world.
+// Follows read_level_body's exact stream layout (grid name, versioned
+// header fields, object records, description lines, floor_count) but only
+// seeks; any short read = a torn/truncated file = nullopt. Kept next to the
+// writer/loader so the three stay in lockstep.
+std::optional<int> skim_fss_floor_count(const std::filesystem::path& fss_path)
+{
+    std::ifstream in(fss_path, std::ios::binary);
+    if (!in)
+        return std::nullopt;
+
+    const auto read_u8 = [&in]() -> std::optional<unsigned char> {
+        char byte = 0;
+        if (!in.read(&byte, 1))
+            return std::nullopt;
+        return static_cast<unsigned char>(byte);
+    };
+    const auto skip = [&in](std::streamoff count) -> bool {
+        return static_cast<bool>(in.seekg(count, std::ios::cur)) &&
+               in.peek() != std::char_traits<char>::eof();
+    };
+
+    std::array<char, 3> header = {};
+    if (!in.read(header.data(), 3) || std::string_view(header.data(), 3) != "FSS")
+        return std::nullopt;
+    const auto version_byte = read_u8();
+    if (!version_byte.has_value())
+        return std::nullopt;
+    const int version = static_cast<int>(*version_byte);
+    if (version < 2 || version > kScenarioVersion)
+        return std::nullopt;
+    if (version < 10)
+        return 1; // pre-Z formats have no floor_count byte: always one floor
+
+    // Header: grid name 8; title 30 (v6+); type 1 (v5+); par 2 (v8+);
+    // time bonus limit 2 (v9+). v10+ implies all of them.
+    if (!skip(8 + 30 + 1 + 2 + 2))
+        return std::nullopt;
+
+    // Object list: 2-byte count, then fixed-width records. For v7+ each
+    // record is order/family (2) + x/y (4) + team/facing/command (3) +
+    // level (2) + name (12) + reserved (10) = 33 bytes.
+    std::array<char, 2> listsize_bytes = {};
+    if (!in.read(listsize_bytes.data(), 2))
+        return std::nullopt;
+    std::int16_t listsize = 0;
+    std::memcpy(&listsize, listsize_bytes.data(), sizeof(listsize));
+    if (listsize < 0 || listsize > kMaxScenarioObjects)
+        return std::nullopt;
+    if (listsize > 0 &&
+        !skip(static_cast<std::streamoff>(listsize) * 33))
+        return std::nullopt;
+
+    // Description: 1-byte line count, then (1-byte width + width) per line.
+    const auto numlines = read_u8();
+    if (!numlines.has_value())
+        return std::nullopt;
+    for (int line = 0; line < static_cast<int>(*numlines); ++line)
+    {
+        const auto width = read_u8();
+        if (!width.has_value())
+            return std::nullopt;
+        if (*width > 0 && !skip(static_cast<std::streamoff>(*width)))
+            return std::nullopt;
+    }
+
+    const auto floor_count = read_u8();
+    if (!floor_count.has_value())
+        return std::nullopt;
+    return std::max(1, static_cast<int>(*floor_count));
+}
+
+// A required file counts only when it exists AND is non-empty (a zero-byte
+// file is the classic torn-persistence shape — e.g. an interrupted IDBFS
+// sync on the web build).
+bool file_present_nonempty(const std::filesystem::path& path)
+{
+    std::error_code ec;
+    return std::filesystem::is_regular_file(path, ec) &&
+           std::filesystem::file_size(path, ec) > 0;
+}
+
+} // namespace
+
+bool save_level_to_user_dir(GameWorld& world,
+                            int id,
+                            const LevelFileMetadata& metadata_in,
+                            LevelFileIoError* out_error)
+{
+    set_error(out_error, LevelFileIoError::None);
+
+    LevelFileMetadata metadata = metadata_in;
+    if (metadata.grid_file.empty())
+        metadata.grid_file = tower_grid_name(id);
+
+    const std::string user = get_user_path();
+    if (!create_dir(user + "scen") || !create_dir(user + "pix"))
+    {
+        Log("save_level_to_user_dir: cannot create user scen/pix dirs\n");
+        set_error(out_error, LevelFileIoError::OpenWriteFailed);
+        return false;
+    }
+
+    // Same .fss payload writer as save_level, minus the temp/ staging prefix:
+    // the file lands directly where the og_file fallback chain loads it from.
+    const std::string fss = user + std::format("scen/scen{}.fss", id);
+    if (!save_level_scenario_file(world, fss, metadata, out_error))
+        return false;
+
+    // Floor 0 grid, then extra floors by derived name "{grid}_f{N}", then
+    // decor planes "{grid}_d{N}" for exactly the floors the payload flagged
+    // as present — mirrors save_level's emission set byte-for-byte.
+    const std::string pix_base = user + "pix/" + metadata.grid_file;
+    if (!write_pixie_png((pix_base + ".png").c_str(), world.grid))
+    {
+        set_error(out_error, LevelFileIoError::OpenWriteFailed);
+        return false;
+    }
+    for (int f = 1; f < world.floor_count(); ++f)
+    {
+        const std::string p = std::format("{}_f{}.png", pix_base, f);
+        if (!write_pixie_png(p.c_str(), world.grid_for_floor(f)))
+        {
+            set_error(out_error, LevelFileIoError::OpenWriteFailed);
+            return false;
+        }
+    }
+    for (int f = 0; f < world.floor_count(); ++f)
+    {
+        if (!floor_decor_nonempty(world, f))
+            continue;
+        const std::string p = std::format("{}_d{}.png", pix_base, f);
+        if (!write_pixie_png(p.c_str(), world.decor_for_floor(f)))
+        {
+            set_error(out_error, LevelFileIoError::OpenWriteFailed);
+            return false;
+        }
+    }
+
+    // Persist through IDBFS on Emscripten (native no-op) — tower floors must
+    // survive a reload the same way save0 does.
+    sync_filesystem();
+
+    set_error(out_error, LevelFileIoError::None);
+    return true;
+}
+
+bool tower_floor_files_exist(int id)
+{
+    namespace fs = std::filesystem;
+    const std::string user = get_user_path();
+    const fs::path fss_path =
+        fs::path(user) / "scen" / std::format("scen{}.fss", id);
+    const fs::path pix_dir = fs::path(user) / "pix";
+    const std::string grid = tower_grid_name(id);
+    if (!file_present_nonempty(fss_path) ||
+        !file_present_nonempty(pix_dir / (grid + ".png")))
+        return false;
+
+    // Torn-set detection: the .fss's floor_count byte implies a "{grid}_fN"
+    // plane per extra floor; a missing (or empty, or truncated-fss) member
+    // must read as ABSENT so ensure_floor_files regenerates the whole floor
+    // from (seed, N) instead of the loader shipping an impassable void
+    // story. Decor ("_dN") planes are deliberately NOT required: the writer
+    // skips empty planes, so absence is ambiguous — the loader treats decor
+    // loss as cosmetic and drops it with a log.
+    const std::optional<int> floor_count = skim_fss_floor_count(fss_path);
+    if (!floor_count.has_value())
+        return false;
+    for (int f = 1; f < *floor_count; ++f)
+    {
+        if (!file_present_nonempty(
+                pix_dir / std::format("{}_f{}.png", grid, f)))
+            return false;
+    }
+    return true;
+}
+
+bool delete_tower_floor_files(int id)
+{
+    namespace fs = std::filesystem;
+    const std::string user = get_user_path();
+    std::error_code ec;
+    bool removed_any = false;
+
+    if (fs::remove(fs::path(user) / "scen" / std::format("scen{}.fss", id), ec))
+        removed_any = true;
+
+    // The base grid PNG plus every derived plane ("{grid}_fN" floor grids,
+    // "{grid}_dN" decor). A directory scan handles any floor count without
+    // baking a cap in here.
+    const std::string grid = tower_grid_name(id);
+    const fs::path pix_dir = fs::path(user) / "pix";
+    std::error_code iter_ec;
+    for (const auto& entry : fs::directory_iterator(pix_dir, iter_ec))
+    {
+        const std::string name = entry.path().filename().string();
+        const bool base_grid = (name == grid + ".png");
+        const bool derived_plane =
+            (name.rfind(grid + "_f", 0) == 0 || name.rfind(grid + "_d", 0) == 0) &&
+            name.size() > 4 && name.compare(name.size() - 4, 4, ".png") == 0;
+        if (!base_grid && !derived_plane)
+            continue;
+        if (fs::remove(entry.path(), ec))
+            removed_any = true;
+    }
+    return removed_any;
 }
 
 short load_version_2(og::io::OgFile& infile, GameWorld* world,
@@ -698,6 +1223,10 @@ short load_scenario_version(og::io::OgFile& infile, GameWorld* world,
     case 7:
     case 8:
     case 9:
+    case 10:
+    case 11:
+        // read_level_body branches on the version it is handed, so the v6
+        // bridge covers every later single-pass layout including v10/v11.
         return load_version_6(infile, world, metadata, version);
     default:
         Log("Scenario {} is version-level {}, and cannot be read.\n", world->id,

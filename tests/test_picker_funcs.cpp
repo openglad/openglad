@@ -632,6 +632,7 @@ TEST(PickerFuncs, how_many_with_team)
     ASSERT_EQ(123, get_scen_num_from_filename("scen123")) << "numeric suffix should parse";
     ASSERT_EQ(42, get_scen_num_from_filename("file42")) << "mixed prefix should parse trailing number";
 
+    vbutton* old1 = og::runtime::current_session->allbuttons_[1];
     vbutton* old2 = og::runtime::current_session->allbuttons_[2];
     vbutton* old6 = og::runtime::current_session->allbuttons_[6];
     vbutton* old7 = og::runtime::current_session->allbuttons_[7];
@@ -641,6 +642,7 @@ TEST(PickerFuncs, how_many_with_team)
     Sint32 old_diff = og::runtime::current_session->current_difficulty_;
     const short old_allied = og::runtime::current_session->myscreen_->save_data.allied_mode;
 
+    og::runtime::current_session->allbuttons_[1] = new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0, "b1", KEYSTATE_UNKNOWN);
     og::runtime::current_session->allbuttons_[2] = new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0, "b2", KEYSTATE_UNKNOWN);
     og::runtime::current_session->allbuttons_[6] = new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0, "b6", KEYSTATE_UNKNOWN);
     og::runtime::current_session->allbuttons_[7] = new vbutton(0, 0, 10, 10, button_action_id(ButtonAction::NullMenu), 0, "b7", KEYSTATE_UNKNOWN);
@@ -653,8 +655,10 @@ TEST(PickerFuncs, how_many_with_team)
     og::runtime::current_session->myscreen_->save_data.allied_mode = static_cast<short>(0);
 
     ASSERT_EQ(4, (int)set_difficulty()) << "set_difficulty should return OK";
-    ASSERT_TRUE(std::string(og::runtime::current_session->allbuttons_[2]->label).find("Difficulty: ") == 0 ||
-        std::string(og::runtime::current_session->allbuttons_[6]->label).find("Difficulty: ") == 0) << "difficulty label should be updated";
+    // set_difficulty writes the DIFFICULTY subscreen's cycling row (index 1),
+    // not the main-menu door (which keeps its static label).
+    ASSERT_TRUE(std::string(og::runtime::current_session->allbuttons_[1]->label).find("Difficulty: ") == 0)
+        << "difficulty label should be updated";
 
     ASSERT_EQ(4, (int)change_teamnum(1)) << "change_teamnum should return OK";
     ASSERT_EQ(2, (int)og::runtime::current_session->current_guy_->teamnum) << "team should increment";
@@ -713,6 +717,7 @@ TEST(PickerFuncs, how_many_with_team)
     og::runtime::current_session->current_difficulty_ = old_diff;
     og::runtime::current_session->myscreen_->save_data.allied_mode = old_allied;
 
+    delete og::runtime::current_session->allbuttons_[1];
     delete og::runtime::current_session->allbuttons_[2];
     delete og::runtime::current_session->allbuttons_[6];
     delete og::runtime::current_session->allbuttons_[7];
@@ -721,6 +726,7 @@ TEST(PickerFuncs, how_many_with_team)
         delete og::runtime::current_session->allbuttons_[0];
     }
     og::runtime::current_session->allbuttons_[0] = old0;
+    og::runtime::current_session->allbuttons_[1] = old1;
     og::runtime::current_session->allbuttons_[2] = old2;
     og::runtime::current_session->allbuttons_[6] = old6;
     og::runtime::current_session->allbuttons_[7] = old7;

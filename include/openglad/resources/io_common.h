@@ -95,3 +95,6 @@ enum class NewFileIoError {
 [[nodiscard]] NewFileIoError create_new_scen_file_with_error(const std::string& scenfile, const std::string& gridname);
 
 void load_map_data(PixieData* whereto);
+// Decor cut-out sprite art, indexed by decor id (core/decordefs.h),
+// DECOR_MAX slots. SDL impl in graphlib.cpp; headless stub loads nothing.
+void load_decor_data(PixieData* whereto);

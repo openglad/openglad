@@ -272,12 +272,20 @@ void replace_loaded_world_state(LevelRuntimeData* level, GameWorld& loaded_world
     dst.ctf_requested_respawn_ticks = loaded_world.ctf_requested_respawn_ticks;
     dst.ctf_requested_strip_scenario_troops =
         loaded_world.ctf_requested_strip_scenario_troops;
+    dst.respawn_mode = loaded_world.respawn_mode;
+    dst.generator_rate = loaded_world.generator_rate;
     dst.ctf = std::move(loaded_world.ctf);
     dst.current_scenario = loaded_world.current_scenario;
     dst.completed_levels = std::move(loaded_world.completed_levels);
+    // Fresh worlds carry WeatherKind::None: every level load resets the
+    // weather; only the authoritative side re-rolls it afterwards.
+    dst.set_weather(loaded_world.weather());
     dst.move_entities_from(loaded_world);
     dst.living_count = loaded_world.living_count;
     dst.grid = std::move(loaded_world.grid);
+    // Floor-0 decor plane rides along with its grid (extra-floor decor moves
+    // inside extra_floors_ below). dst.decor was released by delete_grid().
+    dst.decor = std::move(loaded_world.decor);
     dst.pixmaxx = loaded_world.pixmaxx;
     dst.pixmaxy = loaded_world.pixmaxy;
     dst.myobmap = std::move(loaded_world.myobmap);
@@ -287,6 +295,12 @@ void replace_loaded_world_state(LevelRuntimeData* level, GameWorld& loaded_world
         dst.mysmoother.set_target(dst.grid);
     else
         dst.mysmoother.reset();
+    // Z-axis: carry the loaded stacked floors across too, re-targeting each
+    // floor smoother at its moved-in grid (the span must follow the buffer).
+    dst.extra_floors_ = std::move(loaded_world.extra_floors_);
+    for (auto& fl : dst.extra_floors_)
+        if (fl.grid.valid())
+            fl.floor_smoother.set_target(fl.grid);
 }
 
 
@@ -525,8 +539,11 @@ LevelRuntimeData::LevelRuntimeData(int level_id, bool headless,
     if (!headless)
     {
         load_map_data(level_visuals().pixdata);
+        load_decor_data(level_visuals().decor_pixdata);
         if (hooks_ && hooks_->create_level_render)
             level_visuals().renderer_ = hooks_->create_level_render(level_visuals().pixdata);
+        if (level_visuals().renderer_)
+            level_visuals().renderer_->init_decor(level_visuals().decor_pixdata);
     }
 }
 
@@ -545,6 +562,8 @@ LevelRuntimeData::~LevelRuntimeData()
     level_visuals().renderer_.reset();
     for (int i = 0; i < PIX_MAX; i++)
         level_visuals().pixdata[i].free();
+    for (int i = 0; i < DECOR_MAX; i++)
+        level_visuals().decor_pixdata[i].free();
 }
 
 void LevelRuntimeData::clear()
@@ -601,6 +620,8 @@ void LevelRuntimeData::attach_world(GameWorld* world)
         next_world->ctf_requested_respawn_ticks = old_world->ctf_requested_respawn_ticks;
         next_world->ctf_requested_strip_scenario_troops =
             old_world->ctf_requested_strip_scenario_troops;
+        next_world->respawn_mode = old_world->respawn_mode;
+        next_world->generator_rate = old_world->generator_rate;
         next_world->ctf = std::move(old_world->ctf);
         next_world->current_scenario = old_world->current_scenario;
         next_world->completed_levels = old_world->completed_levels;
@@ -825,10 +846,15 @@ bool LevelRuntimeData::load()
         level_visuals().renderer_.reset();
         for (int i = 0; i < PIX_MAX; i++)
             level_visuals().pixdata[i].free();
+        for (int i = 0; i < DECOR_MAX; i++)
+            level_visuals().decor_pixdata[i].free();
 
         load_map_data(level_visuals().pixdata);
+        load_decor_data(level_visuals().decor_pixdata);
         if (hooks_ && hooks_->create_level_render)
             level_visuals().renderer_ = hooks_->create_level_render(level_visuals().pixdata);
+        if (level_visuals().renderer_)
+            level_visuals().renderer_->init_decor(level_visuals().decor_pixdata);
     }
 
 	TRACE("game", "LevelRuntimeData::load complete");

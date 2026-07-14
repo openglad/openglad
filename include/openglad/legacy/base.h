@@ -176,6 +176,9 @@ class PixieData;
 
 //most of these are graphlib and are being ported to video
 void load_map_data(PixieData* whereto);
+// Decor cut-out sprite art, indexed by decor id (core/decordefs.h),
+// DECOR_MAX slots. SDL impl in graphlib.cpp; headless stub loads nothing.
+void load_decor_data(PixieData* whereto);
 char* get_cfg_item(char *section, char *item);
 
 // Functions in game.cpp

@@ -25,6 +25,7 @@ static bool bomb_on_death(effect* self)
     newob->stats()->set_hitpoints(0);
     newob->stats()->set_level(self->owner()->stats()->level());
     newob->set_ani_type(ANI_EXPLODE);
+    newob->set_floor(self->floor());  // detonate on the bomb's floor (A8)
     newob->center_on(self);
     newob->set_damage(self->damage());
     return true;
@@ -49,6 +50,13 @@ static bool explosion_on_death(effect* self)
     for(auto* w : foelist)
     {
         if (w && !w->dead() &&
+                // An explosion never blasts through solid floors: only
+                // same-floor walkers take damage (A8). find_in_range is
+                // deliberately floor-blind (cross-floor foe acquisition is a
+                // design decision), so the damage loop filters instead. On
+                // single-floor levels every walker is on floor 0, so legacy
+                // behavior is byte-identical.
+                (w->floor() == self->floor()) &&
                 (w->query_order() != Order::Treasure) &&
                 (w->query_order() != Order::FX) &&
                 (!self->skip_exit() || w != self->owner())

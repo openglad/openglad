@@ -150,6 +150,7 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
                 newob->set_team_num(team_num());
                 newob->stats()->set_level(1);
                 newob->set_damage(0);
+                newob->set_floor(target->floor());  // hit flash at the impact floor (A8)
                 // Cosmetic FX animation type: master draws it from libc rand
                 // (`1 + rand()%3`), NOT world.rng_. Production draws from
                 // world.rng_ for snapshot/replay determinism; the parity
@@ -418,6 +419,7 @@ bool walker::attack(walker  *target)
                 blood->set_team_num(target->team_num());
                 blood->set_ani_type(ANI_GROW);
                 blood->set_ignore(1); // so that we can be walked over .. ?
+                blood->set_floor(target->floor());  // splat where the victim died (A8)
                 blood->setxy(target->xpos(),target->ypos());
             }
         }

@@ -30,6 +30,12 @@ inline constexpr int32_t PICKER_NETWORKING_ACTION_WIDTH = 74;
 inline constexpr int32_t PICKER_NETWORKING_LABEL_GAP = 8;
 inline constexpr int32_t PICKER_NETWORKING_INSTRUCTION_GAP = 8;
 
+// CONTROLS subscreen header text position. Must clear the BACK button's
+// animated keyboard highlight (which extends up to 3px beyond the bevel) and
+// stay above the first player row; pinned by test_menu_layout.
+inline constexpr int32_t PICKER_CONTROLS_HEADER_X = 10;
+inline constexpr int32_t PICKER_CONTROLS_HEADER_Y = 28;
+
 // Forward declare button for menu descriptor arrays.
 struct button;
 
@@ -49,6 +55,12 @@ button* picker_main_options_buttons();
 int picker_main_options_button_count();
 button* picker_control_options_buttons();
 int picker_control_options_button_count();
+button* picker_gameplay_fx_options_buttons();
+int picker_gameplay_fx_options_button_count();
+button* picker_ui_fx_options_buttons();
+int picker_ui_fx_options_button_count();
+button* picker_graphics_fx_options_buttons();
+int picker_graphics_fx_options_button_count();
 button* picker_trainmenu_buttons();
 int picker_trainmenu_button_count();
 button* picker_hiremenu_buttons();
@@ -61,6 +73,8 @@ button* picker_viewscenario_buttons();
 int picker_viewscenario_button_count();
 button* picker_scenariomenu_buttons();
 int picker_scenariomenu_button_count();
+button* picker_difficulty_menu_buttons();
+int picker_difficulty_menu_button_count();
 
 // --- Team-build layout contract -------------------------------------------
 // 3x3 grid: VIEW/TRAIN/HIRE (y=70), LOAD/SAVE/GO (y=100),
@@ -135,3 +149,43 @@ inline constexpr int kViewScenarioBackIndex = 0;
 inline constexpr int kViewScenarioPrevIndex = 1;
 inline constexpr int kViewScenarioNextIndex = 2;
 inline constexpr int kViewScenarioRowsPerPage = 23;
+
+// --- GRAPHICS FX subscreen layout contract ----------------------------------
+// Positional index of the depth-selector cycle row (id "depth_fx") in
+// k_graphics_fx_options_buttons / picker_graphics_fx_options_buttons()
+// (BACK = 0, the twelve grid entries are 1..12). change_depth_fx() writes
+// the row's label by this index on both surfaces.
+inline constexpr int kGraphicsFxDepthFxIndex = 8;
+
+// --- MAIN OPTIONS layout contract --------------------------------------------
+// Positional index of the world-scale cycle row (id "world_scale") in
+// k_main_options_buttons / picker_main_options_buttons(). main_options()
+// re-derives its label from cfg graphics/scale each frame (both surfaces);
+// change_world_scale() also writes it by this index on click.
+inline constexpr int kMainOptionsWorldScaleIndex = 12;
+
+// --- DIFFICULTY subscreen layout contract -----------------------------------
+// Positional indices into k_difficulty_menu_buttons /
+// picker_difficulty_menu_buttons(). Single 140px column (23-char label budget
+// at 6px/char); every row's label is re-derived per frame from session/save.
+inline constexpr int kDifficultyMenuBackIndex = 0;
+inline constexpr int kDifficultyMenuDifficultyIndex = 1;
+inline constexpr int kDifficultyMenuRespawnModeIndex = 2;
+inline constexpr int kDifficultyMenuRespawnDelayIndex = 3;
+inline constexpr int kDifficultyMenuPermadeathIndex = 4;
+inline constexpr int kDifficultyMenuGeneratorRateIndex = 5;
+inline constexpr int kDifficultyMenuButtonCount = 6;
+
+// Per-frame host gating for the DIFFICULTY subscreen: every settings row is
+// LobbySettings-backed (difficulty included), so a non-host joiner sees only
+// BACK; BACK's vertical cycle is rewired so nav never targets a hidden row.
+void sync_difficulty_menu_visibility(button* buttons, int num_buttons,
+                                     int& highlighted_button);
+
+// A remote (host) GO landing while this peer is parked on the main menu or
+// one of its subscreens: select the Main CONTINUE item and exit, so the
+// shared picker state machine re-enters team build, whose loop-top
+// remote-start check launches the game (team_build_remote_start_requested's
+// main-menu-scope sibling). Returns true and sets retvalue to MENU_EXIT when
+// the start should preempt the current loop.
+bool picker_main_scope_remote_start_requested(int32_t& retvalue);

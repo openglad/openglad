@@ -16,6 +16,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/resources/campaign_metadata.h>
+#include <openglad/resources/game_mode.h>
 #include <openglad/interface/native_input.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/render/walker_draw.h>
@@ -31,8 +32,15 @@
 // For deterministic helper-only test coverage.
 #ifdef TESTING
 #include <openglad/interface/ui/results_screen.h>
+#include <atomic>
 namespace {
 bool s_force_full_results_ui = false;
+// Injector-thread synchronization for the full results UI (no wall-clock
+// pacing in tests): `live` flips true while the modal button loop runs,
+// `frames` counts loop iterations so an injector can hold a synthetic mouse
+// press across a known number of polled frames.
+std::atomic<bool> s_results_ui_loop_live{false};
+std::atomic<int> s_results_ui_frames{0};
 }
 #endif
 
@@ -57,6 +65,30 @@ struct UiRect
     int w = 0;
     int h = 0;
 };
+
+// Tier-B mode popup dispatch (tower-triple §2.7): the mounted mode may
+// replace the generic ending popup (tower: FLOOR CLEARED / THE TOWER CLAIMS
+// YOU / THE CLIMB ABANDONED). Classic returns nullopt. The outcome mirrors
+// screen::endgame's construction — by the time this runs, on_run_ended has
+// already reset a tower cursor, so the popup derives the floor from
+// world.id, never from scen_num. Returns true when it showed a popup.
+bool show_mode_ending_popup(int ending, int nextlevel)
+{
+    og::mode::LevelOutcome outcome;
+    outcome.ending = static_cast<short>(ending);
+    outcome.next_level = static_cast<short>(nextlevel);
+    outcome.networked = og::runtime::current_session != nullptr &&
+                        og::runtime::current_session->networked_session_;
+    outcome.withdrawn = (ending == 1 && nextlevel != -1);
+    screen* const s = og::runtime::current_session->myscreen_;
+    const std::optional<og::mode::ModePopup> popup =
+        og::mode::current_progression().ending_popup(s->save_data, s->world(),
+                                                     outcome);
+    if (!popup)
+        return false;
+    popup_dialog(popup->title.c_str(), popup->body.c_str());
+    return true;
+}
 
 // CTF match end carries the classic WIN shape (ending == 0) even when the
 // local player LOST, so the popup must be derived from the match outcome,
@@ -122,6 +154,8 @@ void show_ending_popup(int ending, int nextlevel)
 {
 	if (ending == 1)  // 1 = lose, for some reason
 	{
+		if (show_mode_ending_popup(ending, nextlevel))
+			return; // mode-owned run-end popup shown (tower loss/abandon)
 		if (nextlevel == -1) // generic defeat
 		{
 		    popup_dialog("Defeat!", "YOUR MEN ARE CRUSHED!");
@@ -135,10 +169,14 @@ void show_ending_popup(int ending, int nextlevel)
 	}
 	else if (ending == SCEN_TYPE_SAVE_ALL) // failed to save a guy
 	{
+		if (show_mode_ending_popup(ending, nextlevel))
+			return; // mode-owned run-end popup shown
         popup_dialog("Defeat!", "YOU ARE DEFEATED!\nYOU FAILED TO KEEP YOUR ALLY ALIVE");
 	}
 	else if (ending == 0) // we won
 	{
+		if (show_mode_ending_popup(ending, nextlevel))
+			return; // mode-owned win popup (tower floor cleared) shown
 		if (show_ctf_ending_popup(nextlevel))
 			return; // decided CTF match: outcome-aware popup shown
 		if (og::runtime::current_session->myscreen_->save_data.is_level_completed(og::runtime::current_session->myscreen_->save_data.scen_num)) // this scenario is completed ..
@@ -586,6 +624,13 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
     
     
     bool retry = false;
+    // Tier-B retry suppression (tower-triple §2.7, D10): a run-based mode
+    // hides RETRY entirely (tower: a wipe ends the run; replaying the death
+    // floor for free would be infinite retries). The nav links below route
+    // around the hidden button — MenuNav links are raw indices and do not
+    // skip hidden buttons.
+    const bool suppress_retry =
+        og::mode::current_progression().suppress_retry();
     int mode = 0;
     float scroll = 0.0f;
     int frame = 0;
@@ -620,22 +665,31 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
 	int num_buttons = 4;
 	
 	button buttons[] = {
-        button("ok", "OK", KEYSTATE_UNKNOWN, ok_rect.x, ok_rect.y, ok_rect.w, ok_rect.h, 0, -1 , MenuNav{.up=overview_index, .right=retry_index}),
-        button("retry", "RETRY", KEYSTATE_UNKNOWN, retry_rect.x, retry_rect.y, retry_rect.w, retry_rect.h, 0, -1 , MenuNav{.up=troops_index, .left=ok_index}),
+        button("ok", "OK", KEYSTATE_UNKNOWN, ok_rect.x, ok_rect.y, ok_rect.w, ok_rect.h, 0, -1 , MenuNav{.up=overview_index, .right=(suppress_retry ? -1 : retry_index)}),
+        button("retry", "RETRY", KEYSTATE_UNKNOWN, retry_rect.x, retry_rect.y, retry_rect.w, retry_rect.h, 0, -1 , MenuNav{.up=troops_index, .left=ok_index}, suppress_retry),
         button("overview", "OVERVIEW", KEYSTATE_UNKNOWN, overview_rect.x, overview_rect.y, overview_rect.w, overview_rect.h, 0, -1 , MenuNav{.down=ok_index, .right=troops_index}),
-        button("troops", "TROOPS", KEYSTATE_UNKNOWN, troops_rect.x, troops_rect.y, troops_rect.w, troops_rect.h, 0, -1 , MenuNav{.down=retry_index, .left=overview_index}),
+        button("troops", "TROOPS", KEYSTATE_UNKNOWN, troops_rect.x, troops_rect.y, troops_rect.w, troops_rect.h, 0, -1 , MenuNav{.down=(suppress_retry ? ok_index : retry_index), .left=overview_index}),
 	};
 	
 	
     bool done = false;
     bool was_mouse_down = false;  // Track previous mouse state for edge detection
+#ifdef TESTING
+    s_results_ui_loop_live.store(true);
+#endif
     while (!done)
     {
+#ifdef TESTING
+        s_results_ui_frames.fetch_add(1);
+#endif
         // Reset the timer count to zero ...
         reset_timer();
 
         if(og::runtime::current_session->myscreen_->world().end)
+        {
+            TRACE("results", "exit world_end");
             break;
+        }
 
         // Get keys and stuff
         get_input_events(POLL);
@@ -660,7 +714,7 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
 
 		bool do_ok = ((do_click && ok_rect.x <= mx && mx <= ok_rect.x + ok_rect.w
                && ok_rect.y <= my && my <= ok_rect.y + ok_rect.h) || (retvalue == OG_OK && highlighted_button == ok_index));
-		bool do_retry = ((do_click && retry_rect.x <= mx && mx <= retry_rect.x + retry_rect.w
+		bool do_retry = !suppress_retry && ((do_click && retry_rect.x <= mx && mx <= retry_rect.x + retry_rect.w
                && retry_rect.y <= my && my <= retry_rect.y + retry_rect.h) || (retvalue == OG_OK && highlighted_button == retry_index));
 		bool do_overview = ((do_click && overview_rect.x <= mx && mx <= overview_rect.x + overview_rect.w
                && overview_rect.y <= my && my <= overview_rect.y + overview_rect.h) || (retvalue == OG_OK && highlighted_button == overview_index));
@@ -671,6 +725,7 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
        if(do_ok)
        {
            og::runtime::current_session->myscreen_->soundp->play_sound(SOUND_BOW);
+           TRACE("results", "exit ok_click");
            done = true;
        }
        // Retry
@@ -748,6 +803,26 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
                 }
                 END_IF_IN_SCROLL_AREA;
                 y += 8;
+            }
+
+            // Tier-B mode summary (tower-triple §2.7): the mounted mode may
+            // add overview lines (tower: "Floor N conquered - best B"),
+            // centered at the CTF banner's tight 8px pitch so the classic
+            // gold/time block stays on the first screen. Classic adds none.
+            {
+                const std::vector<std::string> mode_lines =
+                    og::mode::current_progression().results_summary_lines(
+                        save_data, ctf_world);
+                for (const std::string& line : mode_lines)
+                {
+                    BEGIN_IF_IN_SCROLL_AREA;
+                    mytext.write_xy_center_shadow(area.x + area.w/2, y,
+                                                  PURE_WHITE, "%s",
+                                                  line.c_str());
+                    TRACE("results", "mode_summary_drawn %s", line.c_str());
+                    END_IF_IN_SCROLL_AREA;
+                    y += 8;
+                }
             }
 
             if(ending == 0)
@@ -950,6 +1025,8 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
         
 	        for(int button_i = 0; button_i < num_buttons; button_i++)
 	        {
+	            if(buttons[button_i].hidden)
+	                continue; // retry suppressed by the mounted mode
 	            if((mode == 0 && button_i == overview_index) || (mode == 1 && button_i == troops_index))
 	                og::runtime::current_session->myscreen_->draw_button_inverted(buttons[button_i].x, buttons[button_i].y, buttons[button_i].sizex, buttons[button_i].sizey);
 	            else
@@ -965,7 +1042,10 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
         if(frame > 1000000)
             frame = 0;
     }
-    
+
+#ifdef TESTING
+    s_results_ui_loop_live.store(false);
+#endif
     return retry;
 }
 
@@ -973,6 +1053,18 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
 void results_screen_testing_set_force_full(bool enabled)
 {
     s_force_full_results_ui = enabled;
+    s_results_ui_loop_live.store(false);
+    s_results_ui_frames.store(0);
+}
+
+bool results_screen_testing_loop_live()
+{
+    return s_results_ui_loop_live.load();
+}
+
+int results_screen_testing_frame_count()
+{
+    return s_results_ui_frames.load();
 }
 
 // GCOVR_EXCL_START -- test-only coverage harness in src/, not shipped code.

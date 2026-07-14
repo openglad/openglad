@@ -12,7 +12,7 @@
 #include <cstdint>
 
 // Create a new entity via add_ob and initialize common ownership properties:
-// owner, team_num, center_on(summoner), and level copy from summoner.
+// owner, team_num, floor, center_on(summoner), and level copy from summoner.
 // Returns nullptr if add_ob fails.
 inline walker* summon_entity(walker* summoner, Order order, std::int32_t family)
 {
@@ -20,6 +20,10 @@ inline walker* summon_entity(walker* summoner, Order order, std::int32_t family)
     if (!ob) return nullptr;
     ob->set_owner(summoner);
     ob->set_team_num(summoner->team_num());
+    // Children spawn on the summoner's floor (bug A8). set_floor must come
+    // BEFORE center_on/setxy: the obmap re-buckets at the entity's current
+    // floor on every position change.
+    ob->set_floor(summoner->floor());
     ob->center_on(summoner);
     ob->stats()->set_level(summoner->stats()->level());
     return ob;

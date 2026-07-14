@@ -75,6 +75,12 @@ enum class FactKind : std::uint8_t
     EffectNetTravel,                 // FX-order analogue of WeaponNetTravel:
                                      //   arg0 = FX family, arg1 = behavior flag
                                      //   (kWeaponPath*), arg2 = threshold_centi.
+    // Z-axis / multi-floor. Counts ALIVE walkers of `arg0` (family, Living
+    // namespace) whose `floor` is in [arg1, arg2]; fails (teeth) if none match.
+    // dump.walkers[].floor defaults to 0 (single-floor), so WalkerOnFloor(f,0,0)
+    // is satisfied by any ordinary ground walker and only the multi-floor
+    // branch-internal scenarios exercise floor > 0.
+    WalkerOnFloor,                   // arg0 = family, arg1 = min_floor, arg2 = max_floor
 };
 
 // behavior_flag values for WeaponNetTravel (arg1). Centi-pixel units
@@ -275,6 +281,15 @@ inline constexpr FactPredicate EffectNetTravel(std::int32_t family, std::int32_t
                                                std::string_view label = {}) noexcept
 {
     return {FactKind::EffectNetTravel, family, behavior_flag, threshold_centi, 0, 0, label};
+}
+// At least one ALIVE walker of `family` is on a stacked floor in
+// [min_floor, max_floor]. Has teeth: fails if no such walker exists (e.g. a
+// soldier that failed to climb a Z-stair, or fell to a pit death).
+inline constexpr FactPredicate WalkerOnFloor(std::int32_t family, std::int32_t min_floor,
+                                             std::int32_t max_floor,
+                                             std::string_view label = {}) noexcept
+{
+    return {FactKind::WalkerOnFloor, family, min_floor, max_floor, 0, 0, label};
 }
 
 // FactSide-gating helpers. Wrap any pred::* call to mark the predicate as

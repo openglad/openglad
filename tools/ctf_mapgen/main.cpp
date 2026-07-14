@@ -25,6 +25,7 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/core/ctf_constants.h>
+#include <openglad/core/decordefs.h>
 #include <openglad/core/irandom.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/core/util.h>
@@ -354,6 +355,27 @@ bool copy_grid_bytes(const std::string& src_grid_file, int out_id)
 
 std::vector<AdaptedSpec> adapted_specs();
 
+// Write the floor-0 decor plane member "scen{id}_d0.png" when the world
+// carries one with any nonzero byte — the same predicate the .fss v11
+// writer uses for its presence flags, so the two always agree.
+void write_decor_plane(GameWorld& world, int out_id)
+{
+    const PixieData& dec = world.decor;
+    if (!dec.valid())
+        return;
+    const std::size_t cells =
+        static_cast<std::size_t>(dec.w) * static_cast<std::size_t>(dec.h);
+    bool nonzero = false;
+    for (std::size_t c = 0; c < cells && !nonzero; ++c)
+        nonzero = dec.data[c] != 0;
+    if (!nonzero)
+        return;
+    const std::string path =
+        get_user_path() + std::format("temp/pix/scen{:04d}_d0.png", out_id);
+    if (!write_pixie_png(path.c_str(), dec))
+        fail(std::format("failed to write {}", path));
+}
+
 void build_adapted(const AdaptedSpec& spec)
 {
     LevelRuntimeData level(spec.src_id, true, &headless_level_data_hooks());
@@ -442,6 +464,10 @@ void build_adapted(const AdaptedSpec& spec)
     if (!save_fss(world, metadata, spec.out_id))
         return;
     copy_grid_bytes(src_grid, spec.out_id);
+    // Migrated gladiator sources carry a decor plane (BASE + DECOR, .fss
+    // v11); it rides along under the byte-copied grid. save_fss above
+    // already flagged its presence (the writer keys off world.decor).
+    write_decor_plane(world, spec.out_id);
     std::printf("ctf_mapgen: built %d '%s' from scen%d\n", spec.out_id,
                 spec.title, spec.src_id);
 }
@@ -450,9 +476,16 @@ void build_original(const OriginalSpec& spec)
 {
     LevelRuntimeData level(spec.out_id, true, &headless_level_data_hooks());
     GameWorld& world = level.world();
-    world.grid = spec.paint();
+    PaintedLevel painted = spec.paint();
+    world.grid = std::move(painted.base);
     world.pixmaxx = world.grid.w * GRID_SIZE;
     world.pixmaxy = world.grid.h * GRID_SIZE;
+    // Install the decor plane BEFORE dressing: the passability probes must
+    // see decor-blocked cells (boulder cover) exactly as they used to see
+    // the legacy combined tiles, so flags/anchors/spice land on the same
+    // tiles the pre-decor generator chose.
+    if (painted.decor.valid())
+        world.decor = std::move(painted.decor);
 
     dress_world(world, spec.dress);
     apply_metadata(world, spec.title, spec.par_value);
@@ -465,6 +498,7 @@ void build_original(const OriginalSpec& spec)
         get_user_path() + std::format("temp/pix/scen{:04d}.png", spec.out_id);
     if (!write_pixie_png(grid_path.c_str(), world.grid))
         fail(std::format("failed to write {}", grid_path));
+    write_decor_plane(world, spec.out_id);
     std::printf("ctf_mapgen: built %d '%s' (original %dx%d)\n", spec.out_id,
                 spec.title, world.grid.w, world.grid.h);
 }
@@ -751,6 +785,44 @@ void self_check_level(const ExpectedLevel& expected)
     {
         fail(std::format("{}: no probe", where));
         return;
+    }
+
+    // Decor plane audit (BASE + DECOR layering, .fss v11): a plane that
+    // round-tripped must match its floor grid's dims, carry only known
+    // decor ids, and never sit over air / Z-stair / void bases. Flag,
+    // anchor, and control-point footing on decor-blocked cells is already
+    // covered by the tile_passable probes below (query_grid_passable
+    // consults the decor plane).
+    for (int fl = 0; fl < world.floor_count(); ++fl)
+    {
+        const PixieData& dec = world.decor_for_floor(fl);
+        if (!dec.valid())
+            continue;
+        const PixieData& g = world.grid_for_floor(fl);
+        if (!g.valid() || dec.w != g.w || dec.h != g.h)
+        {
+            fail(std::format("{}: floor {} decor plane dims mismatch", where,
+                             fl));
+            continue;
+        }
+        for (int ty = 0; ty < dec.h; ++ty)
+            for (int tx = 0; tx < dec.w; ++tx)
+            {
+                const unsigned char d = dec.data[tx + ty * dec.w];
+                if (d >= DECOR_MAX)
+                    fail(std::format("{}: floor {} cell ({}, {}) decor id "
+                                     "{} out of range", where, fl, tx, ty,
+                                     d));
+                const unsigned char base = g.data[tx + ty * g.w];
+                if (d != DECOR_NONE &&
+                    (base == PIX_AIR || base == PIX_ZSTAIR_UP ||
+                     base == PIX_ZSTAIR_DOWN || base == PIX_VOID1))
+                {
+                    fail(std::format("{}: floor {} cell ({}, {}) decor {} "
+                                     "over air/stair/void", where, fl, tx,
+                                     ty, d));
+                }
+            }
     }
 
     int flags_per_team[8] = {};

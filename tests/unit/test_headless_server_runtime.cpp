@@ -1,5 +1,6 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/irandom.h>
+#include <openglad/core/weather.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/lobby_server.h>
@@ -120,7 +121,8 @@ protected:
     }
 
     void initialize_from_lobby(const og::sim::LobbySaveDataEquivalent& config_save,
-                               int difficulty_setting = 1)
+                               int difficulty_setting = 1,
+                               bool authoritative = true)
     {
         og::server::apply_headless_lobby_game_start_config(active_save_, config_save);
         og::server::copy_headless_server_save_data(checkpoint_save_, active_save_);
@@ -130,7 +132,8 @@ protected:
                 *level_data_,
                 active_save_,
                 difficulty_setting,
-                events_);
+                events_,
+                authoritative);
         }));
     }
 
@@ -317,6 +320,86 @@ TEST_F(HeadlessServerRuntimeTest,
     walker* const lead = find_team_member(level_data_->world(), 100);
     ASSERT_NE(nullptr, lead);
     EXPECT_FALSE(lead->has_render());
+}
+
+// The authoritative level-load path rolls the per-level weather; under the
+// default-0 nonce the roll is a pure function of (level id, roll sequence):
+// each load consumes the next sequence value, so retries roll fresh weather,
+// and resetting the sequence reproduces a roll exactly. Level id 2 pins
+// Clouds at sequence 0 and None at sequence 1 (tests/unit/test_weather.cpp).
+TEST_F(HeadlessServerRuntimeTest,
+       authoritative_level_load_rolls_weather_deterministically)
+{
+    og::sim::LobbySaveDataEquivalent lobby_save;
+    lobby_save.current_campaign = "org.openglad.gladiator";
+    lobby_save.scen_num = 2;
+    lobby_save.numplayers = 1;
+    lobby_save.team_list = {
+        make_slot(0u, 100, "Host Guy", FAMILY_SOLDIER, 0),
+    };
+
+    og::set_weather_roll_sequence(0u);
+    initialize_from_lobby(lobby_save);
+    EXPECT_EQ(WeatherKind::Clouds, level_data_->world().weather())
+        << "level id 2 must roll Clouds under nonce 0, sequence 0";
+
+    // A reload RE-ROLLS with the next sequence value — retrying a level is
+    // a fresh roll, not a repeat (level id 2 at sequence 1 pins None).
+    level_data_->world().set_weather(WeatherKind::Rain);
+    ASSERT_TRUE(with_context([&] {
+        return og::server::load_headless_level_from_save(
+            *level_data_,
+            active_save_,
+            1,
+            events_,
+            /*authoritative=*/true);
+    }));
+    EXPECT_EQ(WeatherKind::None, level_data_->world().weather())
+        << "the reload must consume the next sequence (fresh roll)";
+
+    // Resetting the sequence reproduces the original roll exactly.
+    og::set_weather_roll_sequence(0u);
+    ASSERT_TRUE(with_context([&] {
+        return og::server::load_headless_level_from_save(
+            *level_data_,
+            active_save_,
+            1,
+            events_,
+            /*authoritative=*/true);
+    }));
+    EXPECT_EQ(WeatherKind::Clouds, level_data_->world().weather())
+        << "same (id, nonce, sequence) must reproduce the same kind";
+}
+
+// Client mirror worlds reuse the same loader but must NOT roll: the kind
+// arrives via the world snapshot instead. The load itself still resets any
+// stale kind back to None.
+TEST_F(HeadlessServerRuntimeTest, mirror_level_load_never_rolls_weather)
+{
+    og::sim::LobbySaveDataEquivalent lobby_save;
+    lobby_save.current_campaign = "org.openglad.gladiator";
+    lobby_save.scen_num = 2;
+    lobby_save.numplayers = 1;
+    lobby_save.team_list = {
+        make_slot(0u, 100, "Guest Guy", FAMILY_SOLDIER, 0),
+    };
+
+    initialize_from_lobby(lobby_save, 1, /*authoritative=*/false);
+    EXPECT_EQ(WeatherKind::None, level_data_->world().weather())
+        << "mirror loads must leave the weather at the load-reset None";
+
+    // Even a previously synced kind is wiped by the next mirror-side load.
+    level_data_->world().set_weather(WeatherKind::Rain);
+    ASSERT_TRUE(with_context([&] {
+        return og::server::load_headless_level_from_save(
+            *level_data_,
+            active_save_,
+            1,
+            events_,
+            /*authoritative=*/false);
+    }));
+    EXPECT_EQ(WeatherKind::None, level_data_->world().weather())
+        << "level load must reset the kind; only snapshots set it on mirrors";
 }
 
 } // namespace

@@ -4341,3 +4341,155 @@ TEST(WebSocketServerFdLifecycle,
     }
     ::close(placeholder_source);
 }
+
+// ---------------------------------------------------------------------------
+// Difficulty-submenu settings must replicate through the lobby wire: the
+// host cycles Respawns/Generators (plus delay and permadeath) exactly as the
+// subscreen callbacks do (pure cycler + sync_settings_from_save) and the
+// joiner's save must reflect every value; a second cycle round must land too.
+// ---------------------------------------------------------------------------
+#include <openglad/interface/ui/picker_common.h>
+
+TEST(PickerNetworkClient, host_and_join_difficulty_settings_sync_to_joiner_save)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& host_save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard host_save_guard(host_save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(host_save, 0, "Host");
+    g_start_game_requested = false;
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    host_client->initialize_from_save();
+    EXPECT_TRUE(host_client->is_networked_session());
+
+    og::runtime::GameSession::Config join_cfg;
+    join_cfg.create_display = false;
+    join_cfg.install_legacy_globals = false;
+    og::runtime::GameSession join_session(join_cfg);
+    prepare_single_member_network_save(
+        join_session.myscreen_->save_data, 1, "Joiner");
+
+    og::ui::PickerJoinGameOptions join_options;
+    join_options.mode = og::ui::PickerJoinMode::Direct;
+    join_options.direct_endpoint =
+        std::format("127.0.0.1:{}", host_options.port);
+    std::unique_ptr<og::ui::IPickerLobbyClient> join_client;
+    {
+        auto join_scope = join_session.activate();
+        join_client = og::ui::create_join_picker_lobby_client(join_options);
+        join_client->initialize_from_save();
+        EXPECT_TRUE(join_client->is_networked_session());
+    }
+
+    struct CleanupGuard
+    {
+        og::runtime::GameSession* join_session = nullptr;
+        og::ui::IPickerLobbyClient* host_client = nullptr;
+        og::ui::IPickerLobbyClient* join_client = nullptr;
+
+        ~CleanupGuard()
+        {
+            if (join_session != nullptr)
+            {
+                auto join_scope = join_session->activate();
+                if (join_client != nullptr)
+                    join_client->shutdown();
+            }
+            if (host_client != nullptr)
+                host_client->shutdown();
+        }
+    } cleanup;
+    cleanup.join_session = &join_session;
+    cleanup.host_client = host_client.get();
+    cleanup.join_client = join_client.get();
+
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        bool join_lobby_ready = false;
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+            join_lobby_ready = status_lines_contain_exact(
+                join_client->status_lines(), "Lobby: 2 players");
+        }
+        return status_lines_contain_exact(host_client->status_lines(),
+                                          "Lobby: 2 players") &&
+            join_lobby_ready;
+    })) << "host and join should converge on a two-player lobby";
+
+    // The joiner starts on the defaults (all zero = classic behavior).
+    {
+        auto join_scope = join_session.activate();
+        const SaveData& join_save = join_session.myscreen_->save_data;
+        EXPECT_EQ(0, static_cast<int>(join_save.respawn_mode));
+        EXPECT_EQ(0, static_cast<int>(join_save.generator_rate));
+        EXPECT_EQ(0, static_cast<int>(join_save.keep_fallen_heroes));
+        EXPECT_EQ(0, static_cast<int>(join_save.ctf_respawn_ticks));
+    }
+
+    // Host cycles: Respawns Off->Heroes, Generators Normal->Calm->Frenzy,
+    // Delay Normal->Fast, Permadeath On->Off — then one settings sync, the
+    // exact shape of the difficulty-subscreen button callbacks.
+    og::ui::cycle_respawn_mode(host_save);   // 0 -> 1 (Heroes)
+    og::ui::cycle_generator_rate(host_save); // 0 -> 50 (Calm)
+    og::ui::cycle_generator_rate(host_save); // 50 -> 200 (Frenzy)
+    og::ui::cycle_respawn_delay(host_save);  // 0 -> 60 ticks (Fast)
+    og::ui::toggle_permadeath(host_save);    // keep_fallen_heroes = 1
+    host_client->sync_settings_from_save();
+
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        bool join_synced = false;
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+            const SaveData& join_save = join_session.myscreen_->save_data;
+            join_synced = join_save.respawn_mode == 1 &&
+                join_save.generator_rate == 200 &&
+                join_save.ctf_respawn_ticks == 60 &&
+                join_save.keep_fallen_heroes == 1;
+        }
+        return join_synced;
+    })) << "the joiner's save must reflect the host's difficulty settings";
+
+    // A second cycle round (Respawns Heroes->Everyone, Generators
+    // Frenzy->Normal) must replicate as well, proving the sync is not a
+    // one-shot initial-state copy.
+    og::ui::cycle_respawn_mode(host_save);   // 1 -> 2 (Everyone)
+    og::ui::cycle_generator_rate(host_save); // 200 -> 0 (Normal)
+    host_client->sync_settings_from_save();
+
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        bool join_synced = false;
+        {
+            auto join_scope = join_session.activate();
+            join_client->poll_and_apply();
+            const SaveData& join_save = join_session.myscreen_->save_data;
+            join_synced = join_save.respawn_mode == 2 &&
+                join_save.generator_rate == 0 &&
+                join_save.ctf_respawn_ticks == 60 &&
+                join_save.keep_fallen_heroes == 1;
+        }
+        return join_synced;
+    })) << "a second settings cycle must replicate to the joiner too";
+
+    // The host's own save keeps the values it cycled to (the lobby echo
+    // must not clobber the host mid-edit).
+    EXPECT_EQ(2, static_cast<int>(host_save.respawn_mode));
+    EXPECT_EQ(0, static_cast<int>(host_save.generator_rate));
+    EXPECT_EQ(60, static_cast<int>(host_save.ctf_respawn_ticks));
+    EXPECT_EQ(1, static_cast<int>(host_save.keep_fallen_heroes));
+
+    {
+        auto join_scope = join_session.activate();
+        join_client->shutdown();
+    }
+    host_client->shutdown();
+    cleanup.host_client = nullptr;
+    cleanup.join_client = nullptr;
+}

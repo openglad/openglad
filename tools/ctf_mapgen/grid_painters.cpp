@@ -16,6 +16,7 @@
 #include "ctf_mapgen.h"
 
 #include <openglad/core/constants.h>
+#include <openglad/core/decordefs.h>
 #include <openglad/core/pixdefs.h>
 
 #include <cmath>
@@ -29,7 +30,9 @@ namespace {
 class Canvas
 {
 public:
-    Canvas(int w, int h) : w_(w), h_(h), tiles_(static_cast<size_t>(w) * h)
+    Canvas(int w, int h)
+        : w_(w), h_(h), tiles_(static_cast<size_t>(w) * h),
+          decor_(static_cast<size_t>(w) * h, DECOR_NONE)
     {
         for (int y = 0; y < h_; ++y)
             for (int x = 0; x < w_; ++x)
@@ -43,6 +46,14 @@ public:
     {
         if (x >= 0 && x < w_ && y >= 0 && y < h_)
             tiles_[static_cast<size_t>(y) * w_ + x] = tile;
+    }
+
+    // DECOR plane authoring (core/decordefs.h): the object sits ON the base
+    // tile, which keeps whatever ground the canvas already painted there.
+    void set_decor(int x, int y, unsigned char decor_id)
+    {
+        if (x >= 0 && x < w_ && y >= 0 && y < h_)
+            decor_[static_cast<size_t>(y) * w_ + x] = decor_id;
     }
 
     void rect(int x0, int y0, int x1, int y1, unsigned char tile)
@@ -95,14 +106,17 @@ public:
         }
     }
 
-    static unsigned char boulder(int x, int y)
+    // Boulder cover is DECOR over the canvas grass (same variant hash the
+    // legacy combined-tile picker used, so regenerated maps keep the exact
+    // rock pattern).
+    static unsigned char boulder_decor(int x, int y)
     {
         switch ((x * 5 + y) % 4)
         {
-            case 0: return PIX_BOULDER_1;
-            case 1: return PIX_BOULDER_2;
-            case 2: return PIX_BOULDER_3;
-            default: return PIX_BOULDER_4;
+            case 0: return DECOR_BOULDER_1;
+            case 1: return DECOR_BOULDER_2;
+            case 2: return DECOR_BOULDER_3;
+            default: return DECOR_BOULDER_4;
         }
     }
 
@@ -136,14 +150,28 @@ public:
         rect(cx - 1, cy - 1, cx + 1, cy + 1, PIX_CARPET_M);
     }
 
-    PixieData finish() const
+    PaintedLevel finish() const
     {
-        PixieData out;
-        out.frames = 1;
-        out.w = static_cast<unsigned char>(w_);
-        out.h = static_cast<unsigned char>(h_);
-        out.data = std::make_unique<unsigned char[]>(tiles_.size());
-        std::memcpy(out.data.get(), tiles_.data(), tiles_.size());
+        PaintedLevel out;
+        out.base.frames = 1;
+        out.base.w = static_cast<unsigned char>(w_);
+        out.base.h = static_cast<unsigned char>(h_);
+        out.base.data = std::make_unique<unsigned char[]>(tiles_.size());
+        std::memcpy(out.base.data.get(), tiles_.data(), tiles_.size());
+        // Emit the decor plane only when something was placed: an all-zero
+        // plane is "no decor" to the .fss v11 writer, and an invalid plane
+        // keeps decor-free maps byte-identical to their pre-decor form.
+        bool any_decor = false;
+        for (const unsigned char d : decor_)
+            any_decor = any_decor || d != DECOR_NONE;
+        if (any_decor)
+        {
+            out.decor.frames = 1;
+            out.decor.w = static_cast<unsigned char>(w_);
+            out.decor.h = static_cast<unsigned char>(h_);
+            out.decor.data = std::make_unique<unsigned char[]>(decor_.size());
+            std::memcpy(out.decor.data.get(), decor_.data(), decor_.size());
+        }
         return out;
     }
 
@@ -151,6 +179,7 @@ private:
     int w_;
     int h_;
     std::vector<unsigned char> tiles_;
+    std::vector<unsigned char> decor_;
 };
 
 } // namespace
@@ -160,7 +189,7 @@ private:
 // central wall with three gaps; the middle gap opens into a cobble plaza
 // holding the control point. Flag pads ringed by trees for cover.
 // ---------------------------------------------------------------------------
-PixieData paint_first_blood()
+PaintedLevel paint_first_blood()
 {
     Canvas c(40, 30);
 
@@ -187,10 +216,10 @@ PixieData paint_first_blood()
         c.set(mx(3), 17, Canvas::tree(mx(3), 17));
         c.set(mx(7), 17, Canvas::tree(mx(7), 17));
         // Mid-field boulder cover on each lane.
-        c.set(mx(12), 8, Canvas::boulder(mx(12), 8));
-        c.set(mx(13), 8, Canvas::boulder(mx(13), 8));
-        c.set(mx(12), 21, Canvas::boulder(mx(12), 21));
-        c.set(mx(13), 21, Canvas::boulder(mx(13), 21));
+        c.set_decor(mx(12), 8, Canvas::boulder_decor(mx(12), 8));
+        c.set_decor(mx(13), 8, Canvas::boulder_decor(mx(13), 8));
+        c.set_decor(mx(12), 21, Canvas::boulder_decor(mx(12), 21));
+        c.set_decor(mx(13), 21, Canvas::boulder_decor(mx(13), 21));
     }
 
     return c.finish();
@@ -201,7 +230,7 @@ PixieData paint_first_blood()
 // two plank bridges and a wide stone bridge over a cobble island (CP).
 // C-shaped boulder windbreaks shelter the flag pads; trees line the banks.
 // ---------------------------------------------------------------------------
-PixieData paint_river_run()
+PaintedLevel paint_river_run()
 {
     Canvas c(60, 40);
 
@@ -222,11 +251,11 @@ PixieData paint_river_run()
         // Flag pad inside a C-shaped windbreak that opens toward the river.
         c.carpet_pad(29, my(6));
         for (int x = 26; x <= 32; ++x)
-            c.set(x, my(3), Canvas::boulder(x, my(3)));
+            c.set_decor(x, my(3), Canvas::boulder_decor(x, my(3)));
         for (int y = 4; y <= 7; ++y)
         {
-            c.set(26, my(y), Canvas::boulder(26, my(y)));
-            c.set(32, my(y), Canvas::boulder(32, my(y)));
+            c.set_decor(26, my(y), Canvas::boulder_decor(26, my(y)));
+            c.set_decor(32, my(y), Canvas::boulder_decor(32, my(y)));
         }
         // Bank tree clusters for ambushes (kept off the bridges).
         for (int x = 2; x < 58; x += 5)
@@ -250,7 +279,7 @@ PixieData paint_river_run()
 // sally door on the rim), spoke lanes to a columned central plaza, and
 // forest belts with drumstick orchards on the direct base-to-base paths.
 // ---------------------------------------------------------------------------
-PixieData paint_triad()
+PaintedLevel paint_triad()
 {
     Canvas c(51, 51);
     const int cx = 25, cy = 25;
@@ -358,7 +387,7 @@ PixieData paint_triad()
 // clockwise boulevard, narrow counter-clockwise boulder alleys, and a big
 // columned center plaza around the control point.
 // ---------------------------------------------------------------------------
-PixieData paint_crossfire()
+PaintedLevel paint_crossfire()
 {
     Canvas c(60, 60);
 
@@ -394,15 +423,18 @@ PixieData paint_crossfire()
     put(31, 8, 0, true);
     put(44, 17, 0, true);
 
-    // Apply with 4 rotations: (x, y) -> (59 - y, x).
+    // Apply with 4 rotations: (x, y) -> (59 - y, x). Textured features are
+    // the boulders — now DECOR over the canvas grass, re-picked per rotated
+    // position exactly as the legacy base-tile texture was.
     for (const auto& feat : f)
     {
         int x = feat.x, y = feat.y;
         for (int r = 0; r < 4; ++r)
         {
-            const unsigned char tile =
-                feat.textured ? Canvas::boulder(x, y) : feat.tile;
-            c.set(x, y, tile);
+            if (feat.textured)
+                c.set_decor(x, y, Canvas::boulder_decor(x, y));
+            else
+                c.set(x, y, feat.tile);
             const int nx = 59 - y;
             const int ny = x;
             x = nx;

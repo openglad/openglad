@@ -50,6 +50,11 @@ class radar
 		screen * screenp;
 		viewscreen * viewscreenp;
 		std::vector<unsigned char> bmp;
+		// Which floor's terrain is baked into bmp. draw() re-bakes whenever
+		// the wanted floor (control walker's floor, or the editor's floor
+		// override) changes; single-floor levels never leave floor 0, so
+		// their radar stays pixel-identical to the pre-Z renderer.
+		short bmp_floor_ = 0;
 		bool force_lower_position;
 		short xview = 0;
 		short yview = 0;

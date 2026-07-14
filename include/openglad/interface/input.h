@@ -160,7 +160,9 @@ inline constexpr int KEYCODE_y = 121;
 inline constexpr int KEYCODE_z = 122;
 inline constexpr int KEYCODE_DELETE = 127;
 inline constexpr int KEYCODE_HOME = 1073741898;
+inline constexpr int KEYCODE_PAGEUP = 1073741899;   // SDLK_PAGEUP
 inline constexpr int KEYCODE_END = 1073741901;
+inline constexpr int KEYCODE_PAGEDOWN = 1073741902; // SDLK_PAGEDOWN
 inline constexpr int KEYCODE_UP = 1073741906;
 inline constexpr int KEYCODE_DOWN = 1073741905;
 inline constexpr int KEYCODE_LEFT = 1073741904;
@@ -240,7 +242,13 @@ inline constexpr int KEY_YELL                = 12;
 inline constexpr int KEY_SHIFTER             = 13;
 inline constexpr int KEY_PREFS               = 14;
 inline constexpr int KEY_CHEAT               = 15;
-inline constexpr int NUM_KEYS                = 16;
+// Look-up hold: while held, the renderer draws the upper-floor ghost overlay
+// for that player's viewport (the only way to see it). CLIENT-SIDE ONLY: read
+// via isPlayerHoldingKey at render time — it is deliberately NOT an
+// InputAction and never enters InputState / the network wire (which stay at
+// 16 actions; see gameplay/input_action.h).
+inline constexpr int KEY_LOOKUP              = 16;
+inline constexpr int NUM_KEYS                = 17;
 
 enum class ControlDirectionMode : int
 {

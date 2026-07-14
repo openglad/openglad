@@ -5,6 +5,7 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/view.h>
+#include <openglad/interface/render/pal32.h>
 #include <openglad/legacy/base.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/platform/game_loop.h>
@@ -25,6 +26,14 @@ void draw_percentage_bar(Sint32 left, Sint32 top, unsigned char somecolor, short
 short score_panel(screen* scr);
 short score_panel(screen* scr, short do_it);
 short new_score_panel(screen* scr, short do_it);
+// From score_panel.cpp (B5). pending = dormant delayed-spawn hostiles
+// (alive, so subtractable from remaining_foes); pending_respawn = hostile
+// classic-respawn queue entries (corpses, display-only).
+void pending_hostile_wave_counts(const GameWorld& world, walker* viewer,
+                                 short& pending, short& pending_respawn,
+                                 std::uint32_t& next_wake_ticks);
+// From score_panel.cpp: forced-flee (scared) countdown source.
+int hud_scared_flee_ticks(walker* viewer);
 
 static bool control_pointer_is_live(LevelRuntimeData& level_data, const walker* candidate)
 {
@@ -73,6 +82,24 @@ static std::unique_ptr<walker> make_living(unsigned char family, unsigned char t
     w->set_user(-1);
     w->setxy(120, 100);
     return w;
+}
+
+// get_pixel's index read-back returns the FIRST palette index matching the
+// pixel's RGB, so any index whose RGB duplicates an earlier entry (the grey
+// ramp does) reads back as that earlier alias. Canonicalize expectations the
+// same way before comparing against captured frames.
+static unsigned char canonical_palette_index(unsigned char color)
+{
+    int r = 0, g = 0, b = 0;
+    query_palette_reg(color, &r, &g, &b);
+    for (int i = 0; i < 256; ++i)
+    {
+        int tr = 0, tg = 0, tb = 0;
+        query_palette_reg(static_cast<unsigned char>(i), &tr, &tg, &tb);
+        if (r == tr && g == tg && b == tb)
+            return static_cast<unsigned char>(i);
+    }
+    return color;
 }
 
 static std::array<unsigned char, 64000> capture_rendered_frame(screen& scr)
@@ -567,4 +594,797 @@ TEST(GladHud, render_pending_redraw_presents_hud_overlay_in_single_frame)
         score_panel(&spy_screen, 1);
         EXPECT_EQ(capture_rendered_frame(spy_screen), spy_screen.presented_frame);
     }
+}
+
+
+// ---------------------------------------------------------------------------
+// B5: pending-wave HUD (dormant delayed-spawn hostiles)
+// ---------------------------------------------------------------------------
+
+namespace {
+// Isolate the oblist so prior game state doesn't affect counts.
+struct HudObListSwap {
+    std::list<std::unique_ptr<walker>> saved;
+    HudObListSwap()
+    {
+        og::runtime::current_session->myscreen_->world().oblist.splice_into(saved);
+    }
+    ~HudObListSwap()
+    {
+        og::runtime::current_session->myscreen_->world().oblist.clear();
+        og::runtime::current_session->myscreen_->world().oblist.splice(
+            og::runtime::current_session->myscreen_->world().oblist.end(), saved);
+    }
+};
+} // namespace
+
+TEST(GladHud, pending_hostile_wave_counts_splits_dormant_and_counts_down)
+{
+    HudObListSwap swap;
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    const std::uint32_t saved_ltc = world.level_tick_count();
+
+    auto control = make_player(0);
+    auto ally = make_living(FAMILY_ELF, 0);
+    auto awake_foe = make_living(FAMILY_ORC, 1);
+    auto wave1 = make_living(FAMILY_ORC, 1);
+    auto wave2 = make_living(FAMILY_SKELETON, 1);
+    ASSERT_TRUE(control && ally && awake_foe && wave1 && wave2);
+
+    // A dormant ALLY must not count as a pending hostile.
+    ally->set_spawn_delay(200);
+    ally->set_dormant(true);
+    wave1->set_spawn_delay(100);
+    wave1->set_dormant(true);
+    wave2->set_spawn_delay(60);
+    wave2->set_dormant(true);
+
+    walker* const controlp = control.get();
+    walker* const wave2p = wave2.get();
+    world.oblist.push_back(std::move(control));
+    world.oblist.push_back(std::move(ally));
+    world.oblist.push_back(std::move(awake_foe));
+    world.oblist.push_back(std::move(wave1));
+    world.oblist.push_back(std::move(wave2));
+
+    // Wake rule is level_tick_count > spawn_delay, i.e. wake tick is
+    // spawn_delay + 1. At tick 12 the nearest wave (delay 60) is 49 away.
+    world.set_level_tick_count(12);
+    short pending = 0;
+    short respawn = 0;
+    std::uint32_t ticks = 0;
+    pending_hostile_wave_counts(world, controlp, pending, respawn, ticks);
+    EXPECT_EQ(2, static_cast<int>(pending));
+    EXPECT_EQ(0, static_cast<int>(respawn));
+    EXPECT_EQ(49u, ticks);
+
+    // Dead dormant hostiles are not pending; the min moves to delay 100.
+    wave2p->set_dead(1);
+    pending_hostile_wave_counts(world, controlp, pending, respawn, ticks);
+    EXPECT_EQ(1, static_cast<int>(pending));
+    EXPECT_EQ(89u, ticks);
+
+    // Past the wake tick already: the countdown clamps to zero.
+    world.set_level_tick_count(500);
+    pending_hostile_wave_counts(world, controlp, pending, respawn, ticks);
+    EXPECT_EQ(1, static_cast<int>(pending));
+    EXPECT_EQ(0u, ticks);
+
+    // Null viewer guard.
+    pending_hostile_wave_counts(world, nullptr, pending, respawn, ticks);
+    EXPECT_EQ(0, static_cast<int>(pending));
+    EXPECT_EQ(0, static_cast<int>(respawn));
+    EXPECT_EQ(0u, ticks);
+
+    world.set_level_tick_count(saved_ltc);
+}
+
+// End-of-scenario honesty for the difficulty respawn modes: a hostile foe
+// merely awaiting its respawn timer blocks the extermination win
+// (classic_respawn_pending_hostile_foe), so it must show up in the (+x) and
+// the countdown instead of leaving "FOES: 0" over a map that refuses to end.
+TEST(GladHud, pending_hostile_wave_counts_includes_classic_respawn_queue)
+{
+    HudObListSwap swap;
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    const std::uint32_t saved_ltc = world.level_tick_count();
+    const short saved_mode = world.respawn_mode;
+    const short saved_allied = world.allied_mode;
+    const auto saved_queue = world.ctf.respawn_queue;
+
+    auto control = make_player(0);
+    auto dormant_foe = make_living(FAMILY_ORC, 1);
+    ASSERT_TRUE(control && dormant_foe);
+    dormant_foe->set_spawn_delay(100);
+    dormant_foe->set_dormant(true);
+    walker* const controlp = control.get();
+    world.oblist.push_back(std::move(control));
+    world.oblist.push_back(std::move(dormant_foe));
+
+    world.set_level_tick_count(12);
+    world.respawn_mode = 2;
+    world.allied_mode = 1;
+    world.ctf.respawn_queue.clear();
+
+    og::sim::CtfRespawnEntry ai_foe; // mode-2 AI replacement: hostile
+    ai_foe.kind = 1;
+    ai_foe.team = 1;
+    ai_foe.ticks_left = 30;
+    og::sim::CtfRespawnEntry same_team; // the viewer's own team: never hostile
+    same_team.kind = 1;
+    same_team.team = 0;
+    same_team.ticks_left = 5;
+    og::sim::CtfRespawnEntry hero; // hero corpse: friendly to a team-0
+    hero.kind = 0;                 // viewer while allied mode is on
+    hero.team = 2;
+    hero.ticks_left = 3;
+    world.ctf.respawn_queue.push_back(ai_foe);
+    world.ctf.respawn_queue.push_back(same_team);
+    world.ctf.respawn_queue.push_back(hero);
+
+    short pending = 0;
+    short respawn = 0;
+    std::uint32_t ticks = 0;
+    pending_hostile_wave_counts(world, controlp, pending, respawn, ticks);
+    EXPECT_EQ(1, static_cast<int>(pending)) << "the dormant foe";
+    EXPECT_EQ(1, static_cast<int>(respawn)) << "only the hostile AI entry";
+    EXPECT_EQ(30u, ticks) << "queue timer beats the dormant wake (89)";
+
+    // Competitive (allied off): the enemy hero corpse turns hostile and its
+    // shorter timer wins the countdown.
+    world.allied_mode = 0;
+    pending_hostile_wave_counts(world, controlp, pending, respawn, ticks);
+    EXPECT_EQ(2, static_cast<int>(respawn));
+    EXPECT_EQ(3u, ticks);
+
+    // Engine off: leftover queue entries are ignored entirely.
+    world.respawn_mode = 0;
+    pending_hostile_wave_counts(world, controlp, pending, respawn, ticks);
+    EXPECT_EQ(1, static_cast<int>(pending));
+    EXPECT_EQ(0, static_cast<int>(respawn));
+    EXPECT_EQ(89u, ticks);
+
+    world.ctf.respawn_queue = saved_queue;
+    world.respawn_mode = saved_mode;
+    world.allied_mode = saved_allied;
+    world.set_level_tick_count(saved_ltc);
+}
+
+TEST(GladHud, score_panel_shows_next_wave_countdown_for_dormant_hostiles)
+{
+    screen* s = og::runtime::current_session->myscreen_;
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_TRUE(v != nullptr);
+
+    HudObListSwap swap;
+    GameWorld& world = s->world();
+    const std::uint32_t saved_ltc = world.level_tick_count();
+
+    auto control = make_player(0);
+    auto awake_foe = make_living(FAMILY_ORC, 1);
+    auto wave = make_living(FAMILY_ORC, 1);
+    ASSERT_TRUE(control && awake_foe && wave);
+    wave->set_spawn_delay(60);
+    wave->set_dormant(true);
+
+    walker* const controlp = control.get();
+    walker* const wavep = wave.get();
+    controlp->stats()->set_hitpoints(50);
+    controlp->stats()->set_max_hitpoints(100);
+    controlp->stats()->set_magicpoints(30);
+    controlp->stats()->set_max_magicpoints(80);
+    world.oblist.push_back(std::move(control));
+    world.oblist.push_back(std::move(awake_foe));
+    world.oblist.push_back(std::move(wave));
+
+    walker* const old_control = v->control;
+    const char old_pref_life = v->prefs[PREF_LIFE];
+    const char old_pref_score = v->prefs[PREF_SCORE];
+    const char old_pref_foes = v->prefs[PREF_FOES];
+    v->control = controlp;
+    v->prefs[PREF_LIFE] = PREF_LIFE_TEXT;
+    v->prefs[PREF_SCORE] = PREF_SCORE_OFF; // score count-up uses rng(); keep off
+    v->prefs[PREF_FOES] = PREF_FOES_ON;
+
+    world.set_level_tick_count(12);
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    EXPECT_TRUE(trace_contains("hud", "next_wave awake=1 pending=1 secs=5"))
+        << "one awake foe, one pending wave, 49 ticks -> 5 s at 12 Hz";
+
+    // Once the wave wakes there is nothing pending: classic FOES readout,
+    // no NEXT WAVE line.
+    wavep->set_dormant(false);
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    EXPECT_FALSE(trace_contains("hud", "next_wave"));
+
+    v->control = old_control;
+    v->prefs[PREF_LIFE] = old_pref_life;
+    v->prefs[PREF_SCORE] = old_pref_score;
+    v->prefs[PREF_FOES] = old_pref_foes;
+    world.set_level_tick_count(saved_ltc);
+}
+
+// The endgame moment in respawn mode 2: the last live foe is dead, an AI
+// replacement sits in the queue. The panel must show it as a pending wave
+// (with the countdown) rather than a bare "FOES: 0" that never ends.
+TEST(GladHud, score_panel_counts_respawn_pending_foe_in_wave)
+{
+    screen* s = og::runtime::current_session->myscreen_;
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_TRUE(v != nullptr);
+
+    HudObListSwap swap;
+    GameWorld& world = s->world();
+    const short saved_mode = world.respawn_mode;
+    const auto saved_queue = world.ctf.respawn_queue;
+
+    auto control = make_player(0);
+    ASSERT_TRUE(control != nullptr);
+    walker* const controlp = control.get();
+    controlp->stats()->set_hitpoints(50);
+    controlp->stats()->set_max_hitpoints(100);
+    controlp->stats()->set_magicpoints(30);
+    controlp->stats()->set_max_magicpoints(80);
+    world.oblist.push_back(std::move(control));
+
+    world.respawn_mode = 2;
+    world.ctf.respawn_queue.clear();
+    og::sim::CtfRespawnEntry entry;
+    entry.kind = 1;
+    entry.team = 1;
+    entry.ticks_left = 55; // (55 + 11) / 12 -> 5 s at 12 Hz
+    world.ctf.respawn_queue.push_back(entry);
+
+    walker* const old_control = v->control;
+    const char old_pref_life = v->prefs[PREF_LIFE];
+    const char old_pref_score = v->prefs[PREF_SCORE];
+    const char old_pref_foes = v->prefs[PREF_FOES];
+    v->control = controlp;
+    v->prefs[PREF_LIFE] = PREF_LIFE_TEXT;
+    v->prefs[PREF_SCORE] = PREF_SCORE_OFF; // score count-up uses rng(); keep off
+    v->prefs[PREF_FOES] = PREF_FOES_ON;
+
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    EXPECT_TRUE(trace_contains("hud", "next_wave awake=0 pending=1 secs=5"))
+        << "a foe awaiting its respawn timer is a pending wave, not FOES: 0";
+
+    // The end-of-level flush clears the queue (every end shape does): the
+    // classic FOES readout returns with no NEXT WAVE line.
+    world.ctf.respawn_queue.clear();
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    EXPECT_FALSE(trace_contains("hud", "next_wave"));
+
+    v->control = old_control;
+    v->prefs[PREF_LIFE] = old_pref_life;
+    v->prefs[PREF_SCORE] = old_pref_score;
+    v->prefs[PREF_FOES] = old_pref_foes;
+    world.ctf.respawn_queue = saved_queue;
+    world.respawn_mode = saved_mode;
+}
+
+// ---------------------------------------------------------------------------
+// Disabled-special signifier: specials_disabled greys the SPC line
+// ---------------------------------------------------------------------------
+
+TEST(GladHud, score_panel_greys_special_line_when_specials_disabled)
+{
+    screen* s = og::runtime::current_session->myscreen_;
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_TRUE(v != nullptr);
+
+    auto control = make_player(0);
+    ASSERT_TRUE(control != nullptr);
+    walker* controlp = control.get();
+    controlp->set_user(0);
+    controlp->set_team_num(0);
+    controlp->set_dead(0);
+    controlp->stats()->set_hitpoints(50);
+    controlp->stats()->set_max_hitpoints(100);
+    // MP well above the special cost: without the disabled flag this line
+    // would draw in the normal text color, never RED, never GREY.
+    controlp->stats()->set_magicpoints(80);
+    controlp->stats()->set_max_magicpoints(80);
+    controlp->stats()->set_special_cost(
+        static_cast<int>(controlp->current_special()), 10);
+
+    walker* const old_control = v->control;
+    const char old_pref_life = v->prefs[PREF_LIFE];
+    const char old_pref_score = v->prefs[PREF_SCORE];
+    const char old_pref_foes = v->prefs[PREF_FOES];
+    const char old_pref_overlay = v->prefs[PREF_OVERLAY];
+    v->control = controlp;
+    v->prefs[PREF_OVERLAY] = PREF_OVERLAY_OFF; // no button box pixels
+    v->prefs[PREF_LIFE] = PREF_LIFE_OFF;
+    v->prefs[PREF_SCORE] = PREF_SCORE_ON;      // the SPC line lives here
+    v->prefs[PREF_FOES] = PREF_FOES_OFF;
+
+    // The SPC line draws at (lm+2, bm-24) = (2, 176) for the full pane.
+    const int spc_y = v->endy - 24;
+    auto count_color_in_spc_row = [&](const std::array<unsigned char, 64000>& frame,
+                                      unsigned char color) {
+        int n = 0;
+        for (int y = spc_y; y < spc_y + 8; ++y)
+            for (int x = 2; x < 100; ++x)
+                if (frame[static_cast<std::size_t>(y * 320 + x)] == color)
+                    ++n;
+        return n;
+    };
+
+    const unsigned char grey = canonical_palette_index(GREY);
+    const unsigned char yellow = canonical_palette_index(YELLOW);
+
+    // Baseline: specials enabled, plenty of MP -> normal color, no grey.
+    controlp->set_specials_disabled(false);
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    EXPECT_FALSE(trace_contains("hud", "spc_disabled"));
+    const auto enabled_frame = capture_rendered_frame(*s);
+    EXPECT_EQ(0, count_color_in_spc_row(enabled_frame, grey))
+        << "an enabled special must not draw grey";
+    EXPECT_GT(count_color_in_spc_row(enabled_frame, yellow), 0)
+        << "an enabled, affordable special draws in the normal text color";
+
+    // Disabled: the same line renders GREY regardless of the full MP pool.
+    controlp->set_specials_disabled(true);
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    EXPECT_TRUE(trace_contains("hud", "spc_disabled"))
+        << "the grey path must be taken for a specials-disabled walker";
+    const auto disabled_frame = capture_rendered_frame(*s);
+    EXPECT_GT(count_color_in_spc_row(disabled_frame, grey), 0)
+        << "the SPC line must render in GREY";
+    EXPECT_EQ(0, count_color_in_spc_row(disabled_frame, yellow))
+        << "no normal-color SPC pixels may remain when disabled";
+
+    controlp->set_specials_disabled(false);
+    v->control = old_control;
+    v->prefs[PREF_LIFE] = old_pref_life;
+    v->prefs[PREF_SCORE] = old_pref_score;
+    v->prefs[PREF_FOES] = old_pref_foes;
+    v->prefs[PREF_OVERLAY] = old_pref_overlay;
+}
+
+// ---------------------------------------------------------------------------
+// SCARED countdown: a forced flee (front COMMAND_WALK) shows its seconds left
+// ---------------------------------------------------------------------------
+
+TEST(GladHud, hud_scared_flee_ticks_reads_front_walk_command_only)
+{
+    auto control = make_player(0);
+    ASSERT_TRUE(control != nullptr);
+    walker* controlp = control.get();
+
+    // Calm walker: no commands, no countdown.
+    controlp->stats()->clear_command();
+    EXPECT_EQ(0, hud_scared_flee_ticks(controlp));
+
+    // A forced walk (the ghost-scare / yell-for-help shape) is the state.
+    controlp->stats()->force_command(COMMAND_WALK, 25, 1, 0);
+    EXPECT_EQ(25, hud_scared_flee_ticks(controlp));
+    controlp->stats()->clear_command();
+
+    // A non-walk front command is not fear.
+    controlp->stats()->force_command(COMMAND_FIRE, 10, 0, 0);
+    EXPECT_EQ(0, hud_scared_flee_ticks(controlp));
+    controlp->stats()->clear_command();
+
+    // Dead and null viewers are calm.
+    controlp->stats()->force_command(COMMAND_WALK, 25, 1, 0);
+    controlp->set_dead(1);
+    EXPECT_EQ(0, hud_scared_flee_ticks(controlp));
+    controlp->set_dead(0);
+    controlp->stats()->clear_command();
+    EXPECT_EQ(0, hud_scared_flee_ticks(nullptr));
+}
+
+TEST(GladHud, score_panel_shows_scared_countdown_while_fleeing)
+{
+    screen* s = og::runtime::current_session->myscreen_;
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_TRUE(v != nullptr);
+
+    auto control = make_player(0);
+    ASSERT_TRUE(control != nullptr);
+    walker* controlp = control.get();
+    controlp->set_user(0);
+    controlp->set_team_num(0);
+    controlp->set_dead(0);
+    controlp->stats()->set_hitpoints(50);
+    controlp->stats()->set_max_hitpoints(100);
+    controlp->stats()->set_magicpoints(30);
+    controlp->stats()->set_max_magicpoints(80);
+
+    walker* const old_control = v->control;
+    const char old_pref_life = v->prefs[PREF_LIFE];
+    const char old_pref_score = v->prefs[PREF_SCORE];
+    const char old_pref_foes = v->prefs[PREF_FOES];
+    const char old_pref_overlay = v->prefs[PREF_OVERLAY];
+    v->control = controlp;
+    v->prefs[PREF_OVERLAY] = PREF_OVERLAY_OFF;
+    v->prefs[PREF_LIFE] = PREF_LIFE_TEXT;
+    v->prefs[PREF_SCORE] = PREF_SCORE_OFF; // score count-up uses rng(); keep off
+    v->prefs[PREF_FOES] = PREF_FOES_OFF;
+
+    // The countdown draws at (lm+2, tm+28), just below the HP/MP rows.
+    const unsigned char red = canonical_palette_index(RED);
+    auto count_red_in_row = [&](const std::array<unsigned char, 64000>& frame) {
+        int n = 0;
+        for (int y = 28; y < 36; ++y)
+            for (int x = 2; x < 90; ++x)
+                if (frame[static_cast<std::size_t>(y * 320 + x)] == red)
+                    ++n;
+        return n;
+    };
+
+    // Scared: a ghost-scare-shaped forced walk with 25 sim ticks left reads
+    // as ceil(25 / 12) = 3 seconds at the 12 Hz sim rate.
+    controlp->stats()->force_command(COMMAND_WALK, 25, 1, 0);
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    EXPECT_TRUE(trace_contains("hud", "scared ticks=25 secs=3"))
+        << "25 forced-walk ticks -> 3 s at 12 Hz";
+    EXPECT_GT(count_red_in_row(capture_rendered_frame(*s)), 0)
+        << "the SCARED line must paint red pixels below the status rows";
+
+    // Calm again: the line disappears with the drained command queue.
+    controlp->stats()->clear_command();
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    EXPECT_FALSE(trace_contains("hud", "scared"))
+        << "no countdown once the flee command is gone";
+    EXPECT_EQ(0, count_red_in_row(capture_rendered_frame(*s)))
+        << "the SCARED row must be clean when calm";
+
+    v->control = old_control;
+    v->prefs[PREF_LIFE] = old_pref_life;
+    v->prefs[PREF_SCORE] = old_pref_score;
+    v->prefs[PREF_FOES] = old_pref_foes;
+    v->prefs[PREF_OVERLAY] = old_pref_overlay;
+}
+
+// ---------------------------------------------------------------------------
+// B4: one-shot "the way is clear" notice on level_done 0 -> 1
+// ---------------------------------------------------------------------------
+
+TEST(GladHud, way_clear_notice_fires_once_per_level_and_rearms_on_new_level)
+{
+    screen* s = og::runtime::current_session->myscreen_;
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_TRUE(v != nullptr);
+
+    GameWorld& world = s->world();
+    const int saved_id = world.id;
+    const std::uint32_t saved_tick = world.tick_count_;
+    const short saved_done = world.level_done;
+
+    for (short i = 0; i < s->numviews; i++)
+        s->viewob[i]->clear_text();
+    trace_clear();
+
+    static const char* const kWayClearText = "The way is clear -- you may exit";
+    const auto view_has_way_clear_text = [&]() {
+        for (int slot = 0; slot < MAX_MESSAGES; ++slot)
+            if (v->textlist[slot] == kWayClearText)
+                return true;
+        return false;
+    };
+
+    // Mid-level: hostiles alive (level_done == 0). No announcement.
+    world.id = 4242;
+    world.tick_count_ = 10;
+    world.level_done = 0;
+    ASSERT_TRUE(s->redraw());
+    EXPECT_FALSE(trace_contains("hud", "way_clear"));
+    EXPECT_FALSE(view_has_way_clear_text());
+
+    // Foes cleared with a live exit: the sim flips level_done to 1.
+    world.level_done = 1;
+    world.tick_count_ = 11;
+    ASSERT_TRUE(s->redraw());
+    EXPECT_TRUE(trace_contains("hud", "way_clear"));
+    EXPECT_TRUE(view_has_way_clear_text())
+        << "the one-shot notice must be queued on the view";
+
+    // One-shot: another 0 -> 1 swing on the SAME level must not re-fire.
+    trace_clear();
+    world.level_done = 0;
+    world.tick_count_ = 12;
+    ASSERT_TRUE(s->redraw());
+    world.level_done = 1;
+    world.tick_count_ = 13;
+    ASSERT_TRUE(s->redraw());
+    EXPECT_FALSE(trace_contains("hud", "way_clear"));
+
+    // A new level id re-arms the latch.
+    trace_clear();
+    world.id = 4243;
+    world.tick_count_ = 5;
+    world.level_done = 0;
+    ASSERT_TRUE(s->redraw());
+    world.level_done = 1;
+    world.tick_count_ = 6;
+    ASSERT_TRUE(s->redraw());
+    EXPECT_TRUE(trace_contains("hud", "way_clear"));
+
+    for (short i = 0; i < s->numviews; i++)
+        s->viewob[i]->clear_text();
+    world.id = saved_id;
+    world.tick_count_ = saved_tick;
+    world.level_done = saved_done;
+}
+
+// ---------------------------------------------------------------------------
+// floor_hud_label (feature B): the pure shared formatter (D5). Every HUD
+// surface (SDL FOES-box row, curses status line) draws exactly this string,
+// so the format pins live here once.
+
+TEST(FloorHudLabel, empty_on_single_floor)
+{
+    GameWorld w(0);
+    ASSERT_EQ(1, w.floor_count());
+    EXPECT_EQ("", floor_hud_label(w, 0));
+}
+
+TEST(FloorHudLabel, multifloor_is_one_indexed)
+{
+    GameWorld w(0);
+    w.set_floor_count(3);
+    EXPECT_EQ("FLR: 1/3", floor_hud_label(w, 0))
+        << "floor 0 reads as 1/3 (players count from one)";
+    EXPECT_EQ("FLR: 2/3", floor_hud_label(w, 1));
+    EXPECT_EQ("FLR: 3/3", floor_hud_label(w, 2));
+}
+
+TEST(FloorHudLabel, clamps_out_of_range_walker_floor)
+{
+    // Mirror int8 safety: walker_floor is attacker-controllable on a network
+    // mirror, so the label clamps instead of printing garbage.
+    GameWorld w(0);
+    w.set_floor_count(3);
+    EXPECT_EQ("FLR: 1/3", floor_hud_label(w, -5));
+    EXPECT_EQ("FLR: 3/3", floor_hud_label(w, 99));
+}
+
+TEST(FloorHudLabel, tower_single_story_shows_absolute_floor)
+{
+    GameWorld w(0);
+    w.type = SCEN_TYPE_TOWER;
+    w.id = 723; // Tower floor 23 (id = kTowerGateLevel + N)
+    ASSERT_EQ(1, w.floor_count());
+    EXPECT_EQ("FLR: 23", floor_hud_label(w, 0));
+}
+
+TEST(FloorHudLabel, tower_multi_story_combines_floor_and_story)
+{
+    GameWorld w(0);
+    w.type = SCEN_TYPE_TOWER;
+    w.id = 723;
+    w.set_floor_count(3);
+    EXPECT_EQ("F23: 2/3", floor_hud_label(w, 1))
+        << "8 chars for 2-digit floors -- fits the 53px box right-aligned";
+}
+
+TEST(FloorHudLabel, tower_gate_is_unlabeled)
+{
+    // The Gate (id == kTowerGateLevel) is floor 0 of the climb, not a
+    // numbered floor: it falls through to the non-tower branch.
+    GameWorld w(0);
+    w.type = SCEN_TYPE_TOWER;
+    w.id = og::kTowerGateLevel;
+    ASSERT_EQ(1, w.floor_count());
+    EXPECT_EQ("", floor_hud_label(w, 0));
+}
+
+// ---------------------------------------------------------------------------
+// The FLR row in the PREF_FOES box (feature B, SDL surface).
+
+TEST(GladHud, score_panel_shows_floor_indicator_on_multifloor)
+{
+    screen* s = og::runtime::current_session->myscreen_;
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_TRUE(v != nullptr);
+
+    HudObListSwap swap;
+    GameWorld& world = s->world();
+
+    auto control = make_player(0);
+    ASSERT_TRUE(control != nullptr);
+    walker* const controlp = control.get();
+    controlp->stats()->set_hitpoints(50);
+    controlp->stats()->set_max_hitpoints(100);
+    controlp->stats()->set_magicpoints(30);
+    controlp->stats()->set_max_magicpoints(80);
+    world.oblist.push_back(std::move(control));
+
+    world.set_floor_count(3);
+    controlp->set_floor(1);
+
+    walker* const old_control = v->control;
+    const char old_pref_life = v->prefs[PREF_LIFE];
+    const char old_pref_score = v->prefs[PREF_SCORE];
+    const char old_pref_foes = v->prefs[PREF_FOES];
+    const char old_pref_overlay = v->prefs[PREF_OVERLAY];
+    v->control = controlp;
+    v->prefs[PREF_LIFE] = PREF_LIFE_TEXT;
+    v->prefs[PREF_SCORE] = PREF_SCORE_OFF; // score count-up uses rng(); keep off
+    v->prefs[PREF_FOES] = PREF_FOES_ON;
+    v->prefs[PREF_OVERLAY] = PREF_OVERLAY_ON;
+
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    EXPECT_TRUE(trace_contains("hud", "FLR: 2/3"))
+        << "the shared label for floor 1 of 3 reaches the panel";
+
+    // The box grows one row (bottom edge 16 -> 24) and the FLR text renders
+    // in the new last row: pixels must appear in the extension band.
+    const auto frame = capture_rendered_frame(*s);
+    // Zero overscan in the default build: tm == yloc == 0, rm == 320.
+    const int tm = 0;
+    const int rm = 320;
+    bool extension_has_pixels = false;
+    for (int y = tm + 17; y <= tm + 24 && !extension_has_pixels; ++y)
+        for (int x = rm - 57; x <= rm - 2; ++x)
+            if (frame[static_cast<std::size_t>(y * 320 + x)] != 0)
+            {
+                extension_has_pixels = true;
+                break;
+            }
+    EXPECT_TRUE(extension_has_pixels)
+        << "FLR row (box extension y[" << tm + 17 << "," << tm + 24
+        << "]) should have drawn";
+
+    v->control = old_control;
+    v->prefs[PREF_LIFE] = old_pref_life;
+    v->prefs[PREF_SCORE] = old_pref_score;
+    v->prefs[PREF_FOES] = old_pref_foes;
+    v->prefs[PREF_OVERLAY] = old_pref_overlay;
+    controlp->set_floor(0);
+    world.set_floor_count(1);
+}
+
+TEST(GladHud, score_panel_floor_row_absent_single_floor)
+{
+    // Byte-identity witness: on a single-floor level the label is empty, the
+    // box keeps its classic 16px height, and the extension band stays clean.
+    screen* s = og::runtime::current_session->myscreen_;
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_TRUE(v != nullptr);
+
+    HudObListSwap swap;
+    GameWorld& world = s->world();
+    ASSERT_EQ(1, world.floor_count()) << "fixture must be single-floor";
+
+    auto control = make_player(0);
+    ASSERT_TRUE(control != nullptr);
+    walker* const controlp = control.get();
+    controlp->stats()->set_hitpoints(50);
+    controlp->stats()->set_max_hitpoints(100);
+    controlp->stats()->set_magicpoints(30);
+    controlp->stats()->set_max_magicpoints(80);
+    world.oblist.push_back(std::move(control));
+
+    walker* const old_control = v->control;
+    const char old_pref_life = v->prefs[PREF_LIFE];
+    const char old_pref_score = v->prefs[PREF_SCORE];
+    const char old_pref_foes = v->prefs[PREF_FOES];
+    const char old_pref_overlay = v->prefs[PREF_OVERLAY];
+    v->control = controlp;
+    v->prefs[PREF_LIFE] = PREF_LIFE_TEXT;
+    v->prefs[PREF_SCORE] = PREF_SCORE_OFF; // score count-up uses rng(); keep off
+    v->prefs[PREF_FOES] = PREF_FOES_ON;
+    v->prefs[PREF_OVERLAY] = PREF_OVERLAY_ON;
+
+    trace_clear();
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    EXPECT_FALSE(trace_contains("hud", "floor "))
+        << "no floor row trace on single-floor levels";
+
+    const auto frame = capture_rendered_frame(*s);
+    // Zero overscan in the default build: tm == yloc == 0, rm == 320.
+    const int tm = 0;
+    const int rm = 320;
+    for (int y = tm + 17; y <= tm + 24; ++y)
+        for (int x = rm - 57; x <= rm - 2; ++x)
+            ASSERT_EQ(0, static_cast<int>(
+                          frame[static_cast<std::size_t>(y * 320 + x)]))
+                << "pixel at (" << x << "," << y
+                << ") must stay clean: single-floor frames are byte-identical";
+
+    v->control = old_control;
+    v->prefs[PREF_LIFE] = old_pref_life;
+    v->prefs[PREF_SCORE] = old_pref_score;
+    v->prefs[PREF_FOES] = old_pref_foes;
+    v->prefs[PREF_OVERLAY] = old_pref_overlay;
+}
+
+TEST(GladHud, fps_overlay_clears_extended_foes_counter)
+{
+    // Clone of fps_overlay_clears_foes_counter on a 2-floor fixture: the FLR
+    // row grows the counter box to tm+24, and the dynamically-placed FPS
+    // overlay must move strictly below the taller box.
+    struct ShowFpsGuard {
+        ~ShowFpsGuard() { og::runtime::current_session->show_fps_ = false; }
+    } guard;
+
+    screen* s = og::runtime::current_session->myscreen_;
+    viewscreen* v = s->viewob[0].get();
+    ASSERT_TRUE(v != nullptr);
+
+    HudObListSwap swap;
+    GameWorld& world = s->world();
+
+    auto control = make_player(0);
+    ASSERT_TRUE(control != nullptr);
+    walker* const controlp = control.get();
+    controlp->stats()->set_hitpoints(50);
+    controlp->stats()->set_max_hitpoints(100);
+    controlp->stats()->set_magicpoints(30);
+    controlp->stats()->set_max_magicpoints(80);
+    world.oblist.push_back(std::move(control));
+
+    world.set_floor_count(2);
+    controlp->set_floor(0);
+
+    walker* const old_control = v->control;
+    const char old_pref_life = v->prefs[PREF_LIFE];
+    const char old_pref_score = v->prefs[PREF_SCORE];
+    const char old_pref_foes = v->prefs[PREF_FOES];
+    const char old_pref_overlay = v->prefs[PREF_OVERLAY];
+    v->control = controlp;
+    v->prefs[PREF_LIFE] = PREF_LIFE_TEXT;
+    v->prefs[PREF_SCORE] = PREF_SCORE_OFF; // score count-up uses rng(); keep off
+    v->prefs[PREF_FOES] = PREF_FOES_ON;
+    v->prefs[PREF_OVERLAY] = PREF_OVERLAY_ON;
+
+    // Extended box bottom: 16 (classic) + 8 (FLR row) with no wave pending.
+    const int kExtendedBoxBottom = 24; // zero overscan in the default build
+
+    og::runtime::current_session->show_fps_ = false;
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    const auto frame_without = capture_rendered_frame(*s);
+
+    og::runtime::current_session->show_fps_ = true;
+    s->clearbuffer();
+    ASSERT_EQ(1, (int)new_score_panel(s, 1));
+    const auto frame_with = capture_rendered_frame(*s);
+
+    bool overlay_drew = false;
+    for (int y = 0; y < 200; ++y)
+    {
+        for (int x = 0; x < 320; ++x)
+        {
+            const std::size_t i = static_cast<std::size_t>(y * 320 + x);
+            if (frame_with[i] == frame_without[i])
+                continue;
+            overlay_drew = true;
+            ASSERT_GT(y, kExtendedBoxBottom)
+                << "FPS overlay pixel at (" << x << "," << y
+                << ") overlaps the extended counter box (bottom "
+                << kExtendedBoxBottom << ")";
+        }
+    }
+    ASSERT_TRUE(overlay_drew) << "FPS overlay should have rendered some pixels";
+
+    og::runtime::current_session->show_fps_ = false;
+    v->control = old_control;
+    v->prefs[PREF_LIFE] = old_pref_life;
+    v->prefs[PREF_SCORE] = old_pref_score;
+    v->prefs[PREF_FOES] = old_pref_foes;
+    v->prefs[PREF_OVERLAY] = old_pref_overlay;
+    world.set_floor_count(1);
 }

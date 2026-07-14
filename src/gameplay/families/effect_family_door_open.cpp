@@ -18,6 +18,7 @@ static bool door_open_on_act(effect* self)
     if (!newob)
         return true; // handled (nothing to spawn)
     newob->set_ani_type(ANI_WALK);
+    newob->set_floor(self->floor());  // opened door stays on its floor (A8)
     newob->setworldxy(self->worldx(), self->worldy());
     newob->stats()->set_level(self->stats()->level());
     newob->set_team_num(self->team_num());

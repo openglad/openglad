@@ -12,7 +12,15 @@
 #include <openglad/core/constants.h>
 
 inline constexpr int MAP_WIDTH = 400;
-#define GET_STATE_X(state) (static_cast<std::int32_t>(reinterpret_cast<intptr_t>(state) % MAP_WIDTH) * GRID_SIZE)
-#define GET_STATE_Y(state) (static_cast<std::int32_t>(reinterpret_cast<intptr_t>(state) / MAP_WIDTH) * GRID_SIZE)
+// Multi-floor path-state encoding: state = floor*FLOOR_STRIDE + (y/16)*MAP_WIDTH
+// + (x/16). FLOOR_STRIDE exceeds the maximum single-floor linear index
+// (254*400+254 = 101854), so floor 0 produces the identical numeric value and
+// the %FLOOR_STRIDE mask is a no-op — A* node expansion stays byte-identical.
+// See docs/z-axis-design.md.
+inline constexpr int MAP_HEIGHT = 256;
+inline constexpr intptr_t FLOOR_STRIDE = static_cast<intptr_t>(MAP_WIDTH) * MAP_HEIGHT;
+#define GET_STATE_FLOOR(state) (static_cast<std::int32_t>(reinterpret_cast<intptr_t>(state) / FLOOR_STRIDE))
+#define GET_STATE_X(state) (static_cast<std::int32_t>((reinterpret_cast<intptr_t>(state) % FLOOR_STRIDE) % MAP_WIDTH) * GRID_SIZE)
+#define GET_STATE_Y(state) (static_cast<std::int32_t>((reinterpret_cast<intptr_t>(state) % FLOOR_STRIDE) / MAP_WIDTH) * GRID_SIZE)
 
 #endif // OPENGLAD_ENTITIES_PATHFINDING_GRID_H

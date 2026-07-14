@@ -44,6 +44,7 @@
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/resources/campaign_metadata.h>
+#include <openglad/resources/game_mode.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/core/test_trace.h>
 #include <algorithm>
@@ -307,6 +308,33 @@ void sync_view_team_host_control_visibility(button* buttons,
     buttons[kViewTeamGoButtonIndex].hidden =
         !picker_lobby_host_controls_visible();
     sync_button_hidden_state(buttons, kViewTeamGoButtonIndex);
+    ensure_highlighted_button_visible(buttons, num_buttons, highlighted_button);
+}
+
+void sync_difficulty_menu_visibility(button* buttons,
+                                     int num_buttons,
+                                     int& highlighted_button)
+{
+    if (buttons == nullptr || num_buttons < kDifficultyMenuButtonCount)
+        return;
+
+    // Every settings row on this screen is LobbySettings-backed (difficulty
+    // included): a joiner's click would be rejected by the server and the
+    // per-frame label re-derive would immediately restore the host's value.
+    // Hide the rows for non-hosts (the GO / SET LEVEL precedent) and rewire
+    // BACK's vertical cycle so nav never lands on a hidden button.
+    const bool host_controls_visible = picker_lobby_host_controls_visible();
+    for (int index = kDifficultyMenuDifficultyIndex;
+         index < kDifficultyMenuButtonCount; ++index)
+    {
+        buttons[index].hidden = !host_controls_visible;
+        sync_button_hidden_state(buttons, index);
+    }
+    buttons[kDifficultyMenuBackIndex].nav.up =
+        host_controls_visible ? kDifficultyMenuGeneratorRateIndex : -1;
+    buttons[kDifficultyMenuBackIndex].nav.down =
+        host_controls_visible ? kDifficultyMenuDifficultyIndex : -1;
+
     ensure_highlighted_button_visible(buttons, num_buttons, highlighted_button);
 }
 
@@ -1951,6 +1979,12 @@ Sint32 create_train_menu(Sint32 arg1)
 					else
 						og::runtime::current_session->allbuttons_[i]->set_graphic(FAMILY_PLUS);
 				}
+				// The DETAILS submenu can promote (family-change) the REAL
+				// team member in place. Re-snapshot the working copy first
+				// or the stale copy hides the promotion on screen and a
+				// later ACCEPT statscopy()s the old family back (bug A9).
+				if (pks().train_session)
+					pks().train_session->resync_if_promoted();
 				sync_current_guy_from_train();
             }
 
@@ -2549,6 +2583,28 @@ Sint32 go_menu(Sint32 arg1)
         return MENU_REDRAW;
     }
 
+    // Tier-B progression hook (tower-triple §5.9): the mounted mode
+    // provisions its content BEFORE the pre-launch save0 writes below, so a
+    // freshly drawn tower run seed rides that write (D8: floor prefetch at
+    // GO time, the safest generation window). Classic returns true
+    // untouched. A veto (the tower in a networked session — the backstop
+    // behind the shelf filter) aborts the GO with the shared reason string.
+    if (!og::mode::current_progression().prepare_launch(
+            og::runtime::current_session->myscreen_->save_data,
+            picker_lobby_is_networked()))
+    {
+        // Two veto shapes share the return: the networked-session gate and
+        // a local provisioning failure (the mode could not write its
+        // generated content — e.g. a tower floor). Local sessions can only
+        // hit the latter, so key the message on the session, not the mode.
+        if (picker_lobby_is_networked())
+            popup_dialog("TOWER CLIMB", "TOWER CLIMB is local-only");
+        else
+            popup_dialog("TOWER CLIMB",
+                         "Could not prepare\nthe tower's floors.\nGO aborted.");
+        return MENU_REDRAW;
+    }
+
 #ifdef __EMSCRIPTEN__
     picker_prepare_async_team_build_start_request();
     og::runtime::current_session->myscreen_->save_data.save("save0");
@@ -2802,6 +2858,34 @@ int picker_team_build_testing_exercise_internal_paths()
     sync_view_team_host_control_visibility(buttons, 1, highlighted);
     check(!buttons[kViewTeamGoButtonIndex].hidden);
 
+    // DIFFICULTY subscreen gating: every settings row hides for a non-host;
+    // BACK's vertical cycle is rewired and the highlight is pulled onto BACK.
+    for (int i = 0; i < 11; ++i)
+        buttons[i].hidden = false;
+    buttons[kDifficultyMenuBackIndex].nav.up = kDifficultyMenuGeneratorRateIndex;
+    buttons[kDifficultyMenuBackIndex].nav.down = kDifficultyMenuDifficultyIndex;
+    int diff_highlight = kDifficultyMenuGeneratorRateIndex;
+    client.host_visible = false;
+    sync_difficulty_menu_visibility(buttons, kDifficultyMenuButtonCount,
+                                    diff_highlight);
+    check(buttons[kDifficultyMenuDifficultyIndex].hidden &&
+        buttons[kDifficultyMenuRespawnModeIndex].hidden &&
+        buttons[kDifficultyMenuRespawnDelayIndex].hidden &&
+        buttons[kDifficultyMenuPermadeathIndex].hidden &&
+        buttons[kDifficultyMenuGeneratorRateIndex].hidden &&
+        buttons[kDifficultyMenuBackIndex].nav.up == -1 &&
+        buttons[kDifficultyMenuBackIndex].nav.down == -1 &&
+        diff_highlight == kDifficultyMenuBackIndex);
+    client.host_visible = true;
+    sync_difficulty_menu_visibility(buttons, kDifficultyMenuButtonCount,
+                                    diff_highlight);
+    check(!buttons[kDifficultyMenuDifficultyIndex].hidden &&
+        !buttons[kDifficultyMenuGeneratorRateIndex].hidden &&
+        buttons[kDifficultyMenuBackIndex].nav.up ==
+            kDifficultyMenuGeneratorRateIndex &&
+        buttons[kDifficultyMenuBackIndex].nav.down ==
+            kDifficultyMenuDifficultyIndex);
+
     g_start_game_requested = false;
     Sint32 retvalue = 0;
     check(!team_build_remote_start_requested(retvalue));
@@ -2813,6 +2897,23 @@ int picker_team_build_testing_exercise_internal_paths()
     check(team_build_start_selected());
     pks().selected_menu_item = nullptr;
     check(!team_build_start_selected());
+    g_start_game_requested = false;
+
+    // Main-menu-scope remote start (mainmenu + the DIFFICULTY subscreen):
+    // exits with the Main CONTINUE item selected so the state machine
+    // re-enters team build, which consumes the start.
+    retvalue = 0;
+    check(!picker_main_scope_remote_start_requested(retvalue));
+    g_start_game_requested = true;
+    client.has_start_config = false;
+    check(!picker_main_scope_remote_start_requested(retvalue));
+    client.has_start_config = true;
+    check(picker_main_scope_remote_start_requested(retvalue) &&
+        (retvalue & MENU_EXIT));
+    check(pks().selected_menu_item != nullptr &&
+        pks().selected_menu_item->command ==
+            og::ui::PickerMenuCommand::ContinueGame);
+    pks().selected_menu_item = nullptr;
     g_start_game_requested = false;
     picker_prepare_async_team_build_start_request();
     check(client.requested);

@@ -351,4 +351,65 @@ TEST(SimInputUnit, sim_input_r11_animate_movement_and_bit_animate_paths)
         input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
     ASSERT_EQ(control, result.new_control);
 }
+
+// A1 regression: the SwitchChar cycle must never hand control to a dormant
+// (delayed-spawn) or dead ally. Dormant walkers are invisible, out of the
+// obmap, and excluded from snapshots — landing on one strands the player on
+// a ghost and blanks the HUD (bug A10 fallout).
+TEST(SimInputUnit, sim_input_switch_char_skips_dormant_and_dead_allies)
+{
+    SimInputFixture fx;
+    SimInputDebounce debounce{};
+    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
+    InputState input;
+
+    walker* a = add_living(fx, 0, 0);       // current control
+    walker* b = add_living(fx, 0, -1);      // dormant delayed-entry ally
+    walker* c = add_living(fx, 0, -1);      // awake ally
+    a->set_act_type(ACT_CONTROL);
+    b->set_dormant(true);
+
+    // Forward cycle from A must skip dormant B and land on C.
+    walker* control = a;
+    input.clear();
+    input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
+    sim_process_player_input(
+        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+    ASSERT_EQ(control, c) << "switch cycle landed on a dormant/dead ally";
+
+    // Keep cycling: with B dormant the rotation is A <-> C, never B.
+    for (int i = 0; i < 4; ++i)
+    {
+        input.clear();
+        debounce.changedchar = 0;
+        input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
+        sim_process_player_input(
+            input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+        ASSERT_NE(control, b) << "switch cycle landed on dormant ally at step " << i;
+        ASSERT_FALSE(control->dormant());
+    }
+
+    // Dead allies are skipped explicitly too (not just via is_friendly).
+    c->set_dead(1);
+    control = a;
+    a->set_user(0);
+    input.clear();
+    debounce.changedchar = 0;
+    input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
+    sim_process_player_input(
+        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+    ASSERT_EQ(control, a) << "with only dormant/dead allies, control must fall back";
+
+    // Reverse (Shift) cycle honors the same filter.
+    c->set_dead(0);
+    a->set_user(0);
+    control = a;
+    input.clear();
+    debounce.changedchar = 0;
+    input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
+    input.players[0].held[static_cast<int>(InputAction::Shift)] = true;
+    sim_process_player_input(
+        input.players[0], control, fx.level.world(), 0, 0, debounce, special_names, &fx.events);
+    ASSERT_EQ(control, c);
+}
 } // namespace detail_sim_input_r11

@@ -38,10 +38,11 @@
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/smooth.h>
 #include <openglad/interface/render/walker_draw.h>
+#include <openglad/interface/render/effects.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/core/util.h>
 #include <openglad/interface/input.h>
-#include <openglad/interface/view_sizes.h>
+#include <openglad/interface/render/view_layout.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/interface/ui/results_screen.h>
 #include <openglad/gameplay/sim_event_log.h>
@@ -49,6 +50,7 @@
 #include <openglad/interface/render/pal32.h>
 #include <openglad/interface/platform_bridge.h>
 #include <openglad/resources/level_data_hooks.h>
+#include <openglad/resources/progression.h>
 #include <algorithm>
 #include <array>
 #include <string>
@@ -172,19 +174,20 @@ namespace
 
 void cleanup_dead_view_controls(screen& self)
 {
-    // During an active CTF match a dead player corpse with a pending revive
-    // entry stays bound: the camera holds on the corpse and the score panel
-    // renders the RESPAWN IN countdown. Strictly CTF-gated so non-CTF
-    // behavior is byte-identical.
+    // During an active CTF match — or an active classic respawn mode — a
+    // dead player corpse with a pending revive entry stays bound: the camera
+    // holds on the corpse until the revive. Strictly gated on those modes so
+    // plain non-respawning behavior is byte-identical.
     const GameWorld& world = self.world();
-    const bool ctf_active =
-        (world.type & GameWorld::TYPE_CTF) && world.ctf.active;
+    const bool respawn_keepalive =
+        ((world.type & GameWorld::TYPE_CTF) && world.ctf.active) ||
+        og::sim::classic_respawn_active(world);
     for (int i = 0; i < self.numviews; i++)
     {
         walker* const control = self.viewob[i]->control;
         if (control == nullptr || !control->dead())
             continue;
-        if (ctf_active && control->myguy != nullptr &&
+        if (respawn_keepalive && control->myguy != nullptr &&
             og::sim::ctf_pending_player_respawn(world.ctf,
                                                 control->entity_id()))
         {
@@ -388,13 +391,9 @@ bool dispatch_game_flow_screen_events(screen& self,
 } // namespace
 loader* sdl_entity_loader();
 
-// Screen window boundries
-inline constexpr int S_UP = 0;
-inline constexpr int S_LEFT = 0;
-inline constexpr int S_DOWN = 200;
-inline constexpr int S_RIGHT = 320;
-inline constexpr int S_WIDTH = (S_RIGHT - S_LEFT);
-inline constexpr int S_HEIGHT = (S_DOWN - S_UP);
+// Screen window boundaries now come from the world canvas dims via
+// og::view_layout::compute_view_layout (320x200 by default) instead of the
+// retired S_* / T_* absolute constants.
 inline constexpr int MAX_SPREAD = 10; // this controls find_near_foe
 
 // load_version_* functions now live in level_runtime_data.cpp and take
@@ -598,6 +597,21 @@ void screen::destroy_accel_surface(void* surface)
     video_impl_->destroy_accel_surface(surface);
 }
 
+bool screen::floor_layer_begin(Sint32 x, Sint32 y, Sint32 w, Sint32 h)
+{
+    return video_impl_->floor_layer_begin(x, y, w, h);
+}
+
+void screen::floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
+                             float scale, Sint32 cx, Sint32 cy,
+                             unsigned char alpha,
+                             DepthFxParams fx,
+                             Sint32 pad_x, Sint32 pad_y)
+{
+    video_impl_->floor_layer_end(x, y, w, h, scale, cx, cy, alpha, fx,
+                                 pad_x, pad_y);
+}
+
 void screen::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
                            Sint32 walkerwidth, Sint32 walkerheight,
                            Sint32 portstartx, Sint32 portstarty,
@@ -647,6 +661,69 @@ void screen::walkputbuffertext_alpha(Sint32 walkerstartx, Sint32 walkerstarty,
                                          teamcolor, alpha);
 }
 
+void screen::walkputbuffer_alpha(Sint32 walkerstartx, Sint32 walkerstarty,
+                                 Sint32 walkerwidth, Sint32 walkerheight,
+                                 Sint32 portstartx, Sint32 portstarty,
+                                 Sint32 portendx, Sint32 portendy,
+                                 std::span<const unsigned char> sourceptr,
+                                 unsigned char teamcolor, Uint8 alpha)
+{
+    video_impl_->walkputbuffer_alpha(walkerstartx, walkerstarty, walkerwidth,
+                                     walkerheight, portstartx, portstarty,
+                                     portendx, portendy, sourceptr,
+                                     teamcolor, alpha);
+}
+
+void screen::walkputbuffer_shadow(Sint32 walkerstartx, Sint32 walkerstarty,
+                                  Sint32 walkerwidth, Sint32 walkerheight,
+                                  Sint32 portstartx, Sint32 portstarty,
+                                  Sint32 portendx, Sint32 portendy,
+                                  std::span<const unsigned char> sourceptr,
+                                  Uint8 alpha, Sint32 height_divisor,
+                                  Sint32 inset)
+{
+    video_impl_->walkputbuffer_shadow(walkerstartx, walkerstarty, walkerwidth,
+                                      walkerheight, portstartx, portstarty,
+                                      portendx, portendy, sourceptr, alpha,
+                                      height_divisor, inset);
+}
+
+void screen::walkputbuffer_reflect(Sint32 walkerstartx, Sint32 walkerstarty,
+                                   Sint32 walkerwidth, Sint32 walkerheight,
+                                   Sint32 portstartx, Sint32 portstarty,
+                                   Sint32 portendx, Sint32 portendy,
+                                   std::span<const unsigned char> sourceptr,
+                                   unsigned char teamcolor, Uint8 alpha,
+                                   std::span<const unsigned char> grid,
+                                   Sint32 gridw, Sint32 gridh,
+                                   Sint32 world_offset_x, Sint32 world_offset_y,
+                                   std::span<const bool, 256> reflect_mask)
+{
+    video_impl_->walkputbuffer_reflect(walkerstartx, walkerstarty, walkerwidth,
+                                       walkerheight, portstartx, portstarty,
+                                       portendx, portendy, sourceptr,
+                                       teamcolor, alpha, grid, gridw, gridh,
+                                       world_offset_x, world_offset_y,
+                                       reflect_mask);
+}
+
+void screen::walkputbuffer_reflect(Sint32 walkerstartx, Sint32 walkerstarty,
+                                   Sint32 walkerwidth, Sint32 walkerheight,
+                                   Sint32 portstartx, Sint32 portstarty,
+                                   Sint32 portendx, Sint32 portendy,
+                                   std::span<const unsigned char> sourceptr,
+                                   unsigned char teamcolor, Uint8 alpha,
+                                   std::span<const unsigned char> grid,
+                                   Sint32 gridw, Sint32 gridh,
+                                   Sint32 world_offset_x, Sint32 world_offset_y)
+{
+    walkputbuffer_reflect(walkerstartx, walkerstarty, walkerwidth,
+                          walkerheight, portstartx, portstarty,
+                          portendx, portendy, sourceptr,
+                          teamcolor, alpha, grid, gridw, gridh,
+                          world_offset_x, world_offset_y, reflective_tiles());
+}
+
 void screen::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
                            Sint32 walkerwidth, Sint32 walkerheight,
                            Sint32 portstartx, Sint32 portstarty,
@@ -668,6 +745,36 @@ void screen::buffer_to_screen(Sint32 viewstartx, Sint32 viewstarty,
     TRACE("present", "buffer_to_screen %d %d %d %d",
           viewstartx, viewstarty, viewwidth, viewheight);
     video_impl_->buffer_to_screen(viewstartx, viewstarty, viewwidth, viewheight);
+#ifdef TESTING
+    // FX-capture hook (scripts/fx_review): with OG_DUMP_DIR set, every 3rd
+    // presented frame is written as a P6 PPM so blocking menu flows — which
+    // never return control to a test loop — can be filmed live.
+    if (const char* dump_dir = getenv("OG_DUMP_DIR"))
+    {
+        static int dump_counter = 0;
+        if (dump_counter++ % 3 == 0)
+        {
+            static int dump_frame = 0;
+            char path[512];
+            snprintf(path, sizeof(path), "%s/%03d.ppm", dump_dir, dump_frame++);
+            FILE* fp = fopen(path, "wb");
+            if (fp)
+            {
+                fprintf(fp, "P6\n320 200\n255\n");
+                for (int j = 0; j < 200; j++)
+                    for (int i = 0; i < 320; i++)
+                    {
+                        Uint8 r, g, b;
+                        get_pixel(i, j, &r, &g, &b);
+                        fputc(r, fp);
+                        fputc(g, fp);
+                        fputc(b, fp);
+                    }
+                fclose(fp);
+            }
+        }
+    }
+#endif
 }
 
 void screen::draw_box(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2,
@@ -832,10 +939,10 @@ void screen::init_common(short howmany, bool has_display)
 		load_text.write_y(56, "Loading Gladiator..Please Wait", RED, 1);
 		draw_text_bar(64, 64, 256, 106);
 		load_text.write_xy(load_left, 70, "Loading Graphics...", DARK_BLUE, 1);
-		buffer_to_screen(0, 0, 320, 200);
+		buffer_to_screen(0, 0, canvas_w(), canvas_h());
 		load_text.write_xy(load_left, 70, "Loading Graphics...Done", DARK_BLUE, 1);
 		load_text.write_xy(load_left, 78, "Loading Gameplay Info...", DARK_BLUE, 1);
-		buffer_to_screen(0, 0, 320, 200);
+		buffer_to_screen(0, 0, canvas_w(), canvas_h());
 	}
 
 	update_overscan_setting();
@@ -858,7 +965,7 @@ void screen::init_common(short howmany, bool has_display)
 		load_text.write_xy(load_left, 78, "Loading Gameplay Info...Done", DARK_BLUE, 1);
 		load_text.write_xy(load_left, 86, "Initializing Display...Done", DARK_BLUE, 1);
 		load_text.write_xy(load_left, 94, "Initializing Sound...", DARK_BLUE, 1);
-		buffer_to_screen(0, 0, 320, 200);
+		buffer_to_screen(0, 0, canvas_w(), canvas_h());
 	}
 
     soundp = create_soundob(false);
@@ -868,7 +975,7 @@ void screen::init_common(short howmany, bool has_display)
 
 	if (has_display) {
 		load_text.write_xy(load_left, 94, "Initializing Sound...Done", DARK_BLUE, 1);
-		buffer_to_screen(0, 0, 320, 200);
+		buffer_to_screen(0, 0, canvas_w(), canvas_h());
 	}
 
 	init_all_registries();
@@ -930,34 +1037,45 @@ void screen::initialize_views()
     // startup must clear it before creating a new view set.
     reset_viewscreen_input_debounce();
 
+    // The constructor rects are computed from the world canvas dims (FULL
+    // layout); they are then immediately overridden by the constructor's own
+    // resize(prefs[PREF_VIEW]) call, which re-derives the geometry from the
+    // same canvas dims plus the player's saved view mode.
     // Even though it looks okay here, these positions and sizes are overridden by viewscreen::resize() later.
-	if (numviews == 1)
+	if (numviews >= 1 && numviews <= MAX_VIEWS)
 	{
-		viewob[0] = std::make_unique<viewscreen>( S_LEFT, S_UP, S_WIDTH, S_HEIGHT, 0);
-	}
-	else if (numviews == 2)
-	{
-		viewob[0] = std::make_unique<viewscreen>( T_LEFT_ONE, T_UP_ONE, T_HALF_WIDTH, T_HEIGHT, 0);
-		viewob[1] = std::make_unique<viewscreen>( T_LEFT_TWO, T_UP_TWO, T_HALF_WIDTH, T_HEIGHT, 1);
-	}
-	else if (numviews == 3)
-	{
-		viewob[0] = std::make_unique<viewscreen>( T_LEFT_ONE, T_UP_ONE, T_HALF_WIDTH, T_HALF_HEIGHT, 0);
-		viewob[1] = std::make_unique<viewscreen>( T_LEFT_TWO, T_UP_TWO, T_HALF_WIDTH, T_HALF_HEIGHT, 1);
-		viewob[2] = std::make_unique<viewscreen>( T_LEFT_THREE, T_UP_THREE, T_HALF_WIDTH, T_HALF_HEIGHT, 2);
-	}
-	else if (numviews == 4)
-	{
-		viewob[0] = std::make_unique<viewscreen>( T_LEFT_ONE, T_UP_ONE, T_HALF_WIDTH, T_HALF_HEIGHT, 0);
-		viewob[1] = std::make_unique<viewscreen>( T_LEFT_TWO, T_UP_TWO, T_HALF_WIDTH, T_HALF_HEIGHT, 1);
-		viewob[2] = std::make_unique<viewscreen>( T_LEFT_THREE, T_UP_THREE, T_HALF_WIDTH, T_HALF_HEIGHT, 2);
-		viewob[3] = std::make_unique<viewscreen>( T_LEFT_FOUR, T_UP_FOUR, T_HALF_WIDTH, T_HALF_HEIGHT, 3);
+		for (Sint32 i = 0; i < numviews; i++)
+		{
+			const og::view_layout::ViewLayout r =
+			    og::view_layout::compute_view_layout(
+			        numviews, static_cast<int>(i), og::view_layout::kModeFull,
+			        world_canvas_w(), world_canvas_h());
+			viewob[i] = std::make_unique<viewscreen>(
+			    static_cast<short>(r.x), static_cast<short>(r.y),
+			    static_cast<short>(r.w), static_cast<short>(r.h),
+			    static_cast<short>(i));
+		}
 	}
 	else
     {
         LogError("screen_init_views_failed numviews={}\n", numviews);
         numviews = 0; // no views created for an unsupported count; keep per-frame loops in-bounds
     }
+}
+
+// Re-derives every live viewscreen's geometry from the current world canvas
+// dimensions. Called after the world canvas changes size (a window resize
+// under cfg graphics/scale, or the level editor pinning the classic canvas):
+// resize(whatmode) recomputes the pane layout via compute_view_layout and
+// restarts each started radar.
+void screen::relayout_views()
+{
+	for (Sint32 i = 0; i < numviews && i < MAX_VIEWS; i++)
+	{
+		if (viewob[i])
+			viewob[i]->resize(viewob[i]->prefs[PREF_VIEW]);
+	}
+	redrawme = 1;
 }
 
 void screen::cleanup(short howmany)
@@ -1008,27 +1126,25 @@ void screen::reset(short howmany)
 	// Clean stuff up
 	cleanup(howmany);
 
-	if (numviews == 1)
+    // PvP reset: same canvas-derived FULL rects as initialize_views (also
+    // immediately overridden by the constructor's resize(prefs[PREF_VIEW])),
+    // but preserving the historical construction ORDER — viewob[1] before
+    // viewob[0] — since per-player pref loading happens at construction.
+	if (numviews >= 1 && numviews <= MAX_VIEWS)
 	{
-		viewob[0] = std::make_unique<viewscreen>( S_LEFT, S_UP, S_WIDTH, S_HEIGHT, 0);
-	}
-	else if (numviews == 2)
-	{
-		viewob[1] = std::make_unique<viewscreen>( T_LEFT_ONE, T_UP_ONE, T_WIDTH, T_HEIGHT, 1);
-		viewob[0] = std::make_unique<viewscreen>( T_LEFT_TWO, T_UP_TWO, T_WIDTH, T_HEIGHT, 0);
-	}
-	else if (numviews == 3)
-	{
-		viewob[1] = std::make_unique<viewscreen>( T_LEFT_ONE, T_UP_ONE, T_WIDTH, T_HEIGHT, 1);
-		viewob[0] = std::make_unique<viewscreen>( T_LEFT_TWO, T_UP_TWO, T_WIDTH, T_HEIGHT, 0);
-		viewob[2] = std::make_unique<viewscreen>( 112, 16, 100, 168, 2);
-	}
-	else if (numviews == 4)
-	{
-		viewob[1] = std::make_unique<viewscreen>( T_LEFT_ONE, T_UP_ONE, T_WIDTH, T_HEIGHT, 1);
-		viewob[0] = std::make_unique<viewscreen>( T_LEFT_TWO, T_UP_TWO, T_WIDTH, T_HEIGHT, 0);
-		viewob[2] = std::make_unique<viewscreen>( 112, 16, 100, 168, 2);
-		viewob[3] = std::make_unique<viewscreen>( 112, 16, 100, 168, 3);
+		static constexpr std::array<short, 4> kPvpConstructionOrder = {1, 0, 2, 3};
+		for (Sint32 n = 0; n < numviews; n++)
+		{
+			const short i = (numviews == 1) ? static_cast<short>(0)
+			                                : kPvpConstructionOrder[static_cast<size_t>(n)];
+			const og::view_layout::ViewLayout r =
+			    og::view_layout::compute_view_layout(
+			        numviews, static_cast<int>(i), og::view_layout::kModeFull,
+			        world_canvas_w(), world_canvas_h());
+			viewob[i] = std::make_unique<viewscreen>(
+			    static_cast<short>(r.x), static_cast<short>(r.y),
+			    static_cast<short>(r.w), static_cast<short>(r.h), i);
+		}
 	}
 	else
 	{
@@ -1065,6 +1181,12 @@ void screen::sync_world_from_save_data()
     world_.ctf_requested_capture_limit = save_data.ctf_capture_limit;
     world_.ctf_requested_respawn_ticks = save_data.ctf_respawn_ticks;
     world_.ctf_requested_strip_scenario_troops = save_data.ctf_strip_scenario_troops;
+    // Modes may clamp world knobs (Classic: identity). Applied in BOTH
+    // sync_world_from_save_data twins (see headless_server_runtime.cpp).
+    world_.respawn_mode =
+        og::mode::current_progression().clamp_respawn_mode(save_data.respawn_mode);
+    world_.generator_rate = save_data.generator_rate;
+    world_.keep_fallen_heroes = save_data.keep_fallen_heroes;
     world_.current_scenario = save_data.scen_num;
     for (int i = 0; i < 4; ++i)
         world_.m_score[i] = save_data.m_score[i];
@@ -1131,10 +1253,43 @@ void screen::clear()
 bool screen::redraw()
 {
 	short i;
+	// Advance all render-only effect state (weather drift, ripple/trail/dust
+	// phases, per-entity position history): exactly once per frame.
+	effects_advance_frame();
+	announce_way_clear_if_needed();
 	for (i=0; i < numviews; i++)
 		viewob[i]->redraw();
 
 	return 1;
+}
+
+// B4: one-shot on-screen notice when the exit conditions become satisfied.
+// The sim recomputes world.level_done every tick: 0 while live hostile
+// livings (including dormant delayed spawns) remain, 1 once they are gone
+// AND a live exit is present (the ==1 assignment is only reachable from the
+// exit scan, so "with a live exit" is implied). Pure render-side read —
+// networked-safe because level_done is part of the world snapshot mirrors
+// receive; nothing is written back to the sim.
+void screen::announce_way_clear_if_needed()
+{
+	// New level (id change) or level (re)start (tick counter rewound by
+	// glad_init): re-arm the latch.
+	if (world_.id != way_clear_level_id_ || world_.tick_count_ == 0)
+	{
+		way_clear_level_id_ = world_.id;
+		way_clear_last_level_done_ = -1;
+		way_clear_announced_ = false;
+	}
+
+	const short done = world_.level_done;
+	if (!way_clear_announced_ && way_clear_last_level_done_ == 0 && done == 1)
+	{
+		way_clear_announced_ = true;
+		do_notify("The way is clear -- you may exit", nullptr);
+		TRACE("hud", "way_clear level=%d tick=%u",
+		      world_.id, static_cast<unsigned>(world_.tick_count_));
+	}
+	way_clear_last_level_done_ = done;
 }
 
 
@@ -1250,6 +1405,23 @@ short screen::endgame(short ending, short nextlevel)
 			after.insert(std::make_pair(ob->myguy->id, ob));
 	}
 	
+	const bool networked = og::runtime::current_session != nullptr &&
+		og::runtime::current_session->networked_session_;
+
+	// Non-win exits route the mode's run-end policy (Classic: no-op) BEFORE
+	// the results screen, so mode popups/summaries read post-reset save
+	// state (they derive the death floor from world.id, never the cursor).
+	if (ending != 0)
+	{
+		og::mode::LevelOutcome run_outcome;
+		run_outcome.ending = ending;
+		run_outcome.next_level = nextlevel;
+		run_outcome.networked = networked;
+		run_outcome.withdrawn = (ending == 1 && nextlevel != -1);
+		og::mode::current_progression().on_run_ended(
+			save_data, world_, run_outcome);
+	}
+
 	// Let's show the results!
     world_.retry = results_screen(ending, nextlevel, before, after);
     
@@ -1278,54 +1450,32 @@ short screen::endgame(short ending, short nextlevel)
 	}
 	else if (ending == 0) // we won
 	{
-		std::array<Uint32, 4> bonuscash = {0, 0, 0, 0};
-		Uint32 allbonuscash = 0;
+		// The shared win fold (og::progression::apply_win_fold) tallies the
+		// money, marks completion, and advances the cursor for all four
+		// finalize sites. The time bonus is caller-computed from the LIVE
+		// m_score BEFORE the fold zeroes it, and the CTF rematch shape is
+		// evaluated before the cursor moves.
+		og::progression::WinFoldContext fold_ctx;
+		for (int i=0; i < 4; i++)
+			fold_ctx.time_bonus[static_cast<std::size_t>(i)] = get_time_bonus(i);
+		fold_ctx.rematch_shape =
+			og::progression::ctf_rematch_shape(world_, save_data, nextlevel);
+		fold_ctx.finished_level = save_data.scen_num; // pre-advance cursor
+		fold_ctx.outcome.ending = 0;
+		fold_ctx.outcome.next_level = nextlevel;
+		fold_ctx.outcome.networked = networked;
+		og::progression::apply_win_fold(save_data, world_, fold_ctx);
 
-		// Update all the money!
-		for (int i=0; i < 4; i++)
-		{
-			save_data.m_totalscore[i] += save_data.m_score[i];
-			save_data.m_totalcash[i] += (save_data.m_score[i]*2);
-			save_data.m_score[i] = 0;
-		}
-		for (int i=0; i < 4; i++)
-		{
-            bonuscash[static_cast<std::size_t>(i)] = get_time_bonus(i);
-			save_data.m_totalcash[i] += bonuscash[static_cast<std::size_t>(i)];
-			allbonuscash += bonuscash[static_cast<std::size_t>(i)];
-		}
-		if (save_data.is_level_completed(save_data.scen_num)) // already won, no bonus
-		{
-			for (int i=0; i < 4; i++)
-				bonuscash[static_cast<std::size_t>(i)] = 0;
-			allbonuscash = 0;
-		}
-	    
-		// Beat that level — except the CTF loss/rematch shape (a decided
-		// match whose next level IS this level): the map was not beaten, so
-		// keep level select honest and preserve the first-real-win time
-		// bonus. Every other side effect (score/cash accrual, roster
-		// update, autosave, world.end) stays.
-		const bool ctf_rematch_shape =
-			(world_.type & GameWorld::TYPE_CTF) && world_.ctf.active &&
-			world_.ctf.winner_team >= 0 && nextlevel == save_data.scen_num;
-		if (!ctf_rematch_shape)
-			save_data.add_level_completed(save_data.current_campaign, save_data.scen_num); // this scenario is completed ..
-		if (nextlevel != -1)
-			save_data.scen_num = nextlevel;    // Fake jumping to next level ..
-        
 		// In a networked session this display screen holds the COMBINED roster
 		// (every player's characters). Autosaving it here would clobber this
 		// player's save0 with everyone's gladiators — the networked per-player
 		// save path persists only this player's own characters (owner-filtered),
-		// so the display must not touch save0. Local/single-player still autosaves.
-		const bool networked = og::runtime::current_session != nullptr &&
-			og::runtime::current_session->networked_session_;
-		if (!networked)
+		// so the display must not touch save0. Local/single-player still
+		// autosaves — unless the mode's persistence policy says otherwise.
+		// (The fold already ran update_guys; this is the save-only tail.)
+		if (!networked &&
+		    og::mode::current_progression().persist_after_win())
 		{
-			// Grab our team out of the level
-			save_data.update_guys(world_.oblist);
-
 			// Autosave because we won
 			save_data.save("save0");
 		}

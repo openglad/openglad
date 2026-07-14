@@ -83,6 +83,17 @@ inline auto& hw() { return input_hardware_state(); }
 constexpr int kModeFourIndex = 0;
 constexpr int kModeEightIndex = 1;
 
+// KEY_LOOKUP (the render-time look-up hold) defaults: all four players share
+// one physical keyboard, so each default must not collide with ANY player's
+// bindings in EITHER control mode (modes are per-player, so any combination
+// can be active). P1: 'v' (both modes; pre-existing overlap with P4's 8-dir
+// DOWN-LEFT 'v' is a known quirk). P2: Right Ctrl (adjacent to the arrow
+// cluster; free everywhere). P3: 'p' (top row next to the IJKL/U cluster;
+// free everywhere). P4: 'b' in 4-direction mode only (below its G/H keys;
+// free from every OTHER player, and P4's own 8-dir 'b' = DOWN is never
+// active while the 4-dir map is) — P4's 8-direction cluster consumes every
+// key around T/F/G/H (t y h n b v f r), so its 8-dir look-up starts unbound
+// and can be bound on the CONTROLS remap screen.
 constexpr int kDefaultFourDirKeys[4][NUM_KEYS] = {
     {
         KEYCODE_w, KEYCODE_UNKNOWN, KEYCODE_d, KEYCODE_UNKNOWN,  // movements
@@ -94,6 +105,7 @@ constexpr int kDefaultFourDirKeys[4][NUM_KEYS] = {
         KEYCODE_LSHIFT,                            // Shifter
         KEYCODE_1,                                 // Options menu
         KEYCODE_F5,                                // Cheat key
+        KEYCODE_v,                                 // Look up (hold)
     },
     {
         KEYCODE_UP, KEYCODE_UNKNOWN, KEYCODE_RIGHT, KEYCODE_UNKNOWN,  // movements
@@ -105,6 +117,7 @@ constexpr int kDefaultFourDirKeys[4][NUM_KEYS] = {
         KEYCODE_RSHIFT,                            // Shifter
         KEYCODE_2,                                 // Options menu
         KEYCODE_F6,                                // Cheat key
+        KEYCODE_RCTRL,                             // Look up (hold)
     },
     {
         KEYCODE_i, KEYCODE_UNKNOWN, KEYCODE_l, KEYCODE_UNKNOWN,  // movements
@@ -116,6 +129,7 @@ constexpr int kDefaultFourDirKeys[4][NUM_KEYS] = {
         KEYCODE_0,                                 // Shifter
         KEYCODE_3,                                 // Options menu
         KEYCODE_F7,                                // Cheat key
+        KEYCODE_p,                                 // Look up (hold)
     },
     {
         KEYCODE_t, KEYCODE_UNKNOWN, KEYCODE_h, KEYCODE_UNKNOWN,  // movements
@@ -127,6 +141,7 @@ constexpr int kDefaultFourDirKeys[4][NUM_KEYS] = {
         KEYCODE_8,                                 // Shifter
         KEYCODE_4,                                 // Options menu
         KEYCODE_F8,                                // Cheat key
+        KEYCODE_b,                                 // Look up (hold; 4-dir only)
     }
 };
 constexpr int kDefaultEightDirKeys[4][NUM_KEYS] = {
@@ -136,6 +151,7 @@ constexpr int kDefaultEightDirKeys[4][NUM_KEYS] = {
         KEYCODE_LCTRL, KEYCODE_LALT,
         KEYCODE_BACKQUOTE, KEYCODE_TAB,
         KEYCODE_s, KEYCODE_LSHIFT, KEYCODE_1, KEYCODE_F5,
+        KEYCODE_v,                                 // Look up (hold)
     },
     {   // P2: arrows, no diagonal keys
         KEYCODE_UP, KEYCODE_UNKNOWN, KEYCODE_RIGHT, KEYCODE_UNKNOWN,
@@ -143,6 +159,7 @@ constexpr int kDefaultEightDirKeys[4][NUM_KEYS] = {
         KEYCODE_PERIOD, KEYCODE_SLASH,
         KEYCODE_RETURN, KEYCODE_QUOTE,
         KEYCODE_BACKSLASH, KEYCODE_RSHIFT, KEYCODE_2, KEYCODE_F6,
+        KEYCODE_RCTRL,                             // Look up (hold)
     },
     {   // P3: clockwise I/O/L/./,/M/J/U, Yell=K
         KEYCODE_i, KEYCODE_o, KEYCODE_l, KEYCODE_PERIOD,
@@ -150,6 +167,7 @@ constexpr int kDefaultEightDirKeys[4][NUM_KEYS] = {
         KEYCODE_SPACE, KEYCODE_SEMICOLON,
         KEYCODE_MINUS, KEYCODE_9,
         KEYCODE_k, KEYCODE_0, KEYCODE_3, KEYCODE_F7,
+        KEYCODE_p,                                 // Look up (hold)
     },
     {   // P4: clockwise T/Y/H/N/B/V/F/R, Yell=G
         KEYCODE_t, KEYCODE_y, KEYCODE_h, KEYCODE_n,
@@ -157,6 +175,7 @@ constexpr int kDefaultEightDirKeys[4][NUM_KEYS] = {
         KEYCODE_5, KEYCODE_6,
         KEYCODE_EQUALS, KEYCODE_7,
         KEYCODE_g, KEYCODE_8, KEYCODE_4, KEYCODE_F8,
+        KEYCODE_UNKNOWN,                           // Look up (unbound: t/y/h/n/b/v/f/r consume the cluster)
     }
 };
 constexpr std::array<int, 4> kDefaultControlModes = {
@@ -325,3 +344,89 @@ void activate_mode_keymap_for_player(int player_index, int mode)
         og::runtime::current_session->player_keys_[player_index][k] = hw().player_mode_keys[player_index][mode_index][k];
 }
 } // namespace
+
+// ---------------------------------------------------------------------------
+// Diagonal release retention (see input_direction_grace.h for the contract).
+// ---------------------------------------------------------------------------
+
+namespace
+{
+// Effective movement components of a direction mask — same decode rules as
+// PlayerInput::move_x()/move_y() above.
+int mask_move_x(std::uint8_t mask)
+{
+    int dx = 0;
+    if (mask & static_cast<std::uint8_t>((1u << static_cast<int>(InputKey::Left)) |
+                                         (1u << static_cast<int>(InputKey::UpLeft)) |
+                                         (1u << static_cast<int>(InputKey::DownLeft))))
+        dx -= 1;
+    if (mask & static_cast<std::uint8_t>((1u << static_cast<int>(InputKey::Right)) |
+                                         (1u << static_cast<int>(InputKey::UpRight)) |
+                                         (1u << static_cast<int>(InputKey::DownRight))))
+        dx += 1;
+    return dx;
+}
+
+int mask_move_y(std::uint8_t mask)
+{
+    int dy = 0;
+    if (mask & static_cast<std::uint8_t>((1u << static_cast<int>(InputKey::Up)) |
+                                         (1u << static_cast<int>(InputKey::UpLeft)) |
+                                         (1u << static_cast<int>(InputKey::UpRight))))
+        dy -= 1;
+    if (mask & static_cast<std::uint8_t>((1u << static_cast<int>(InputKey::Down)) |
+                                         (1u << static_cast<int>(InputKey::DownLeft)) |
+                                         (1u << static_cast<int>(InputKey::DownRight))))
+        dy += 1;
+    return dy;
+}
+
+bool mask_is_diagonal(std::uint8_t mask)
+{
+    return mask_move_x(mask) != 0 && mask_move_y(mask) != 0;
+}
+} // namespace
+
+std::uint8_t coalesce_direction_release(std::uint8_t raw_mask,
+                                        DirectionGraceState& state)
+{
+    const std::uint8_t prev = state.prev_raw;
+    state.prev_raw = raw_mask;
+
+    if (state.hold_mask != 0)
+    {
+        // Retention active. Three ways out, all reporting the raw state:
+        // a key OUTSIDE the retained diagonal (a NEW press — intentional new
+        // direction, applies immediately), a full release (stop — the last
+        // reported step was the diagonal, so the facing keeps it), or the
+        // full diagonal being held again (raw already agrees).
+        if ((raw_mask & static_cast<std::uint8_t>(~state.hold_mask)) != 0 ||
+            raw_mask == 0 || raw_mask == state.hold_mask)
+        {
+            state.hold_mask = 0;
+            state.ticks_left = 0;
+            return raw_mask;
+        }
+        // The surviving subset persisted past the window: intentional turn.
+        if (state.ticks_left == 0)
+        {
+            state.hold_mask = 0;
+            return raw_mask;
+        }
+        state.ticks_left = static_cast<std::uint8_t>(state.ticks_left - 1);
+        return state.hold_mask;
+    }
+
+    // No retention active: trigger on a sloppy partial release — keys only
+    // left (no new presses), the previous sample's vector was a diagonal,
+    // and the survivors collapse it to a cardinal.
+    if (raw_mask != 0 && raw_mask != prev &&
+        (raw_mask & static_cast<std::uint8_t>(~prev)) == 0 &&
+        mask_is_diagonal(prev) && !mask_is_diagonal(raw_mask))
+    {
+        state.hold_mask = prev;
+        state.ticks_left = static_cast<std::uint8_t>(kDiagonalReleaseGraceTicks - 1);
+        return prev;
+    }
+    return raw_mask;
+}

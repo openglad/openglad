@@ -34,7 +34,7 @@ class obmap
 		short remove(walker  *ob);  // This goes in walker's destructor
 		short add(walker  *ob, short x, short y);  // This goes in walker's constructor
 		short move(walker  *ob, short x, short y);  // This goes in walker's setxy
-		std::list<walker*>& obmap_get_list(short x, short y); //Returns the list at x,y for fnf
+		std::list<walker*>& obmap_get_list(short x, short y, int floor = 0); //Returns the list at x,y for fnf
 		short obmapres;
 		size_t size() const;
 

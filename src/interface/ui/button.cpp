@@ -611,6 +611,22 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         return main_options();
     case ButtonAction::OpenControlSettings:
         return main_controls_options();
+    case ButtonAction::OpenGameplayFxSettings:
+        return gameplay_fx_options();
+    case ButtonAction::OpenUiFxSettings:
+        return ui_fx_options();
+    case ButtonAction::OpenGraphicsFxSettings:
+        return graphics_fx_options();
+    case ButtonAction::OpenDifficultyMenu:
+        return run_difficulty_menu();
+    case ButtonAction::CycleRespawnMode:
+        return change_respawn_mode();
+    case ButtonAction::CycleRespawnDelay:
+        return change_respawn_delay();
+    case ButtonAction::TogglePermadeath:
+        return change_permadeath();
+    case ButtonAction::CycleGeneratorRate:
+        return change_generator_rate();
     case ButtonAction::ToggleControlMode:
         return toggle_player_control_mode(arg);
     case ButtonAction::EditPlayerKeymap:
@@ -664,6 +680,37 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
     case ButtonAction::ToggleGore:
         toggle_effect("effects", "gore");
         return REDRAW;
+    case ButtonAction::ToggleShadows:
+        toggle_effect("effects", "shadows");
+        return REDRAW;
+    case ButtonAction::ToggleReflections:
+        toggle_effect("effects", "reflections");
+        return REDRAW;
+    case ButtonAction::ToggleWeather:
+        toggle_effect("effects", "weather");
+        return REDRAW;
+    case ButtonAction::ToggleDust:
+        toggle_effect("effects", "dust");
+        return REDRAW;
+    case ButtonAction::CycleDepthFx:
+        return change_depth_fx();
+    case ButtonAction::CycleWorldScale:
+        return change_world_scale();
+    case ButtonAction::ToggleTrails:
+        toggle_effect("effects", "trails");
+        return REDRAW;
+    case ButtonAction::ToggleFireGlow:
+        toggle_effect("effects", "fire_glow");
+        return REDRAW;
+    case ButtonAction::ToggleRipples:
+        toggle_effect("effects", "ripples");
+        return REDRAW;
+    case ButtonAction::ToggleScreenShake:
+        toggle_effect("effects", "screen_shake");
+        return REDRAW;
+    case ButtonAction::ToggleFloorGlide:
+        toggle_effect("effects", "floor_glide");
+        return REDRAW;
     case ButtonAction::PickSpriteSheet:
         return do_pick_spritesheet(arg);
     case ButtonAction::RestoreDefaultSettings:
@@ -673,6 +720,17 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         og::runtime::current_session->overscan_percentage_ = static_cast<float>(
             parse_int_strict(cfg.get_setting("graphics", "overscan_percentage")).value_or(0)) / 100.0f;
         update_overscan_setting();
+        // The restored cfg has no graphics/scale key: re-derive the world
+        // canvas so the live renderer matches (a pure routing no-op when the
+        // canvas is already the classic default, i.e. every default run).
+        {
+            screen* scr = og::runtime::current_session->myscreen_;
+            const int old_w = scr->world_canvas_w();
+            const int old_h = scr->world_canvas_h();
+            scr->reapply_world_scale();
+            if (scr->world_canvas_w() != old_w || scr->world_canvas_h() != old_h)
+                scr->relayout_views();
+        }
         return REDRAW;
     case ButtonAction::RestoreDefaultControls:
         reset_default_player_controls();

@@ -7,11 +7,15 @@
 
 #include <cstdint>
 
+#include <openglad/interface/input_direction_grace.h>
+
 struct InputHardwareState {
     MouseState mouse{};
     JoyData player_joy[4]{};
     int player_control_modes[4]{};
-    int player_mode_keys[4][2][16]{};  // [player][mode][key]
+    int player_mode_keys[4][2][17]{};  // [player][mode][key] — key dim == NUM_KEYS
+    // Diagonal release retention (input_state_from_sdl); per player.
+    DirectionGraceState direction_grace[4]{};
     std::int32_t mouse_buttons{0};
     bool picker_was_left_down{false};
     bool picker_was_right_down{false};
@@ -25,6 +29,6 @@ struct InputHardwareState {
     std::int64_t movingTouch{0};
     bool firing{false};
     std::int64_t firingTouch{0};
-    bool touch_keystate[4][16]{};
+    bool touch_keystate[4][17]{};  // key dim == NUM_KEYS
 #endif
 };

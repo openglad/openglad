@@ -150,7 +150,9 @@ LevelRender::LevelRender() {}
 LevelRender::~LevelRender() = default;
 void LevelRender::init_tiles(PixieData[]) {}
 void LevelRender::reset_tiles(PixieData[]) {}
-void LevelRender::draw_tile(int, int, int, viewscreen*) {}
+void LevelRender::draw_tile(int, int, int, viewscreen*, unsigned char) {}
+void LevelRender::init_decor(PixieData[]) {}
+void LevelRender::draw_decor(int, int, int, viewscreen*, unsigned char) {}
 
 std::unique_ptr<LevelRender> headless_create_level_render(PixieData[])
 {
@@ -296,6 +298,7 @@ bool load_settings() { return cfg.load_settings(); }
 namespace {
 std::once_flag warn_editor_create;
 std::once_flag warn_load_map;
+std::once_flag warn_load_decor;
 } // namespace
 
 NewFileIoError create_new_map_pix_with_error(const std::string& filename, int, int)
@@ -330,6 +333,13 @@ void load_map_data(PixieData*)
 {
     std::call_once(warn_load_map, [] {
         LogWarn("load_map_data: not supported in headless mode\n");
+    });
+}
+
+void load_decor_data(PixieData*)
+{
+    std::call_once(warn_load_decor, [] {
+        LogWarn("load_decor_data: not supported in headless mode\n");
     });
 }
 
@@ -437,6 +447,9 @@ void emit_headless_unsupported_warnings_probe()
 
     load_map_data(nullptr);
     load_map_data(nullptr);
+
+    load_decor_data(nullptr);
+    load_decor_data(nullptr);
 
     InputState input{};
     input_state_from_sdl(input);

@@ -20,6 +20,10 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/platform/game_context.h>
 
+#include <openglad/gameplay/pathfinding_grid.h>
+#include <openglad/gameplay/obmap.h>
+#include <openglad/gameplay/smooth.h>
+
 #include <cstdio>
 #include <format>
 #include <iostream>
@@ -36,13 +40,25 @@ namespace {
 static void json_entity(std::ostream& os, const walker* w, int index)
 {
     os << "{\"id\":" << index
+       << ",\"eid\":" << w->entity_id()
        << ",\"order\":" << static_cast<int>(w->query_order())
        << ",\"family\":" << static_cast<int>(w->family())
        << ",\"team\":" << static_cast<int>(w->team_num())
        << ",\"x\":" << w->xpos()
        << ",\"y\":" << w->ypos()
+       << ",\"floor\":" << w->floor()
        << ",\"hp\":" << (w->stats() ? w->stats()->hitpoints() : 0)
        << ",\"max_hp\":" << (w->stats() ? w->stats()->max_hitpoints() : 0)
+       << ",\"act\":" << static_cast<int>(w->act_type())
+       << ",\"ani\":" << static_cast<int>(w->ani_type())
+       << ",\"busy\":" << static_cast<int>(w->busy())
+       << ",\"frozen\":" << (w->stats() ? w->stats()->frozen_delay() : 0)
+       << ",\"curdir\":" << static_cast<int>(w->curdir())
+       << ",\"enddir\":" << static_cast<int>(w->enddir())
+       << ",\"ncmd\":" << (w->stats() ? (w->stats()->has_commands() ? 1 : 0) : -1)
+       << ",\"path_len\":" << w->path_to_foe.size()
+       << ",\"dormant\":" << (w->dormant() ? "true" : "false")
+       << ",\"foe\":" << (w->foe() != nullptr ? w->foe()->entity_id() : 0)
        << ",\"dead\":" << (w->dead() ? "true" : "false")
        << "}";
 }
@@ -188,6 +204,220 @@ static void cmd_state(const LevelRuntimeData& level)
     std::cout.flush();
 }
 
+static void json_census_named(std::ostream& os, const walker* w, bool& first)
+{
+    if (w == nullptr || w->query_order() != Order::Living)
+        return;
+    if (w->stats() == nullptr || w->stats()->name.empty())
+        return;
+    if (!first) os << ",";
+    first = false;
+    os << "{\"name\":";
+    json_string(os, w->stats()->name);
+    os << ",\"team\":" << static_cast<int>(w->team_num())
+       << ",\"hp\":" << w->stats()->hitpoints()
+       << ",\"dead\":" << (w->dead() ? "true" : "false")
+       << "}";
+}
+
+// Balance-playtest snapshot: per-team alive/dormant Living counts, every
+// named Living (placed heroes -- the legacy SAVE_ALL watch set; with
+// npc_flags bit2 "protected" present, SAVE_ALL narrows to flagged walkers
+// only, but the census still reports all named heroes -- including dead
+// ones swept to dead_list), and the spawned crew (myguy-bearing walkers,
+// whose corpses persist in oblist).
+static void cmd_census(GameWorld& world)
+{
+    int alive[8] = {};
+    int dormant[8] = {};
+    for (const auto& uptr : world.oblist) {
+        const walker* w = uptr.get();
+        if (w == nullptr || w->dead() || w->query_order() != Order::Living)
+            continue;
+        const int team = w->team_num() & 7;
+        if (w->dormant())
+            dormant[team]++;
+        else
+            alive[team]++;
+    }
+
+    std::ostringstream os;
+    os << "{\"cmd\":\"census\",\"tick\":" << world.tick_count_
+       << ",\"team_counts\":[";
+    for (int team = 0; team < 8; team++) {
+        if (team > 0) os << ",";
+        os << alive[team];
+    }
+    os << "],\"dormant_counts\":[";
+    for (int team = 0; team < 8; team++) {
+        if (team > 0) os << ",";
+        os << dormant[team];
+    }
+    os << "],\"named\":[";
+    bool first = true;
+    for (const auto& uptr : world.oblist)
+        json_census_named(os, uptr.get(), first);
+    for (const auto& uptr : world.dead_list)
+        json_census_named(os, uptr.get(), first);
+    os << "],\"crew\":[";
+    first = true;
+    for (const auto& uptr : world.oblist) {
+        const walker* w = uptr.get();
+        if (w == nullptr || w->myguy == nullptr)
+            continue;
+        if (!first) os << ",";
+        first = false;
+        os << "{\"name\":";
+        json_string(os, w->myguy->name);
+        os << ",\"family\":" << static_cast<int>(w->family())
+           << ",\"level\":" << static_cast<int>(w->myguy->level)
+           << ",\"hp\":" << (w->stats() ? w->stats()->hitpoints() : 0)
+           << ",\"max_hp\":" << (w->stats() ? w->stats()->max_hitpoints() : 0)
+           << ",\"dead\":" << (w->dead() ? "true" : "false")
+           << "}";
+    }
+    os << "]}";
+    std::cout << os.str() << "\n";
+    std::cout.flush();
+}
+
+// Diagnostic: run the stair-aware A* for a walker (by entity id) toward its
+// current foe WITHOUT mutating the walker (solves into a local vector), and
+// dump the resulting path cells. Debug-harness-only introspection.
+static void cmd_path(GameWorld& world, std::uint32_t eid)
+{
+    walker* w = nullptr;
+    for (auto& uptr : world.oblist)
+        if (uptr != nullptr && uptr->entity_id() == eid)
+        {
+            w = uptr.get();
+            break;
+        }
+    std::ostringstream os;
+    os << "{\"cmd\":\"path\",\"eid\":" << eid;
+    if (w == nullptr || current_game == nullptr)
+    {
+        os << ",\"error\":\"no such entity or no game\"}";
+        std::cout << os.str() << "\n";
+        std::cout.flush();
+        return;
+    }
+    os << ",\"x\":" << w->xpos() << ",\"y\":" << w->ypos()
+       << ",\"floor\":" << w->floor();
+    walker* foe = w->foe();
+    if (foe == nullptr)
+    {
+        os << ",\"foe\":null}";
+        std::cout << os.str() << "\n";
+        std::cout.flush();
+        return;
+    }
+    os << ",\"foe\":{\"eid\":" << foe->entity_id()
+       << ",\"x\":" << foe->xpos() << ",\"y\":" << foe->ypos()
+       << ",\"floor\":" << foe->floor() << "}";
+
+    GameplayPathfindingState* pathing = ensure_pathfinding_state(*current_game);
+    std::vector<void*> path;
+    float cost = 0.0f;
+    const auto make_state = [](int x, int y, int f) {
+        return reinterpret_cast<void*>(static_cast<intptr_t>(
+            static_cast<intptr_t>(f) * FLOOR_STRIDE +
+            (y / GRID_SIZE) * MAP_WIDTH + (x / GRID_SIZE)));
+    };
+    pathing->solve_for(w, make_state(w->xpos(), w->ypos(), w->floor()),
+                       make_state(foe->xpos(), foe->ypos(), foe->floor()),
+                       path, cost);
+    os << ",\"path_len\":" << path.size() << ",\"cost\":" << cost
+       << ",\"path\":[";
+    for (size_t i = 0; i < path.size(); i++)
+    {
+        if (i > 0) os << ",";
+        os << "[" << GET_STATE_X(path[i]) / GRID_SIZE << ","
+           << GET_STATE_Y(path[i]) / GRID_SIZE << ","
+           << GET_STATE_FLOOR(path[i]) << "]";
+    }
+    os << "]}";
+    std::cout << os.str() << "\n";
+    std::cout.flush();
+}
+
+// Diagnostic: dump grid tile ids, walker-blind grid passability, and obmap
+// occupancy counts for a rect of cells on one floor.
+static void cmd_grid(GameWorld& world, int floor, int x0, int y0, int x1,
+                     int y1)
+{
+    const PixieData& g = world.grid_for_floor(static_cast<short>(floor));
+    std::ostringstream os;
+    os << "{\"cmd\":\"grid\",\"floor\":" << floor << ",\"rows\":[";
+    bool first_row = true;
+    for (int y = y0; y <= y1 && y < g.h; y++)
+    {
+        if (y < 0) continue;
+        if (!first_row) os << ",";
+        first_row = false;
+        os << "{\"y\":" << y << ",\"cells\":[";
+        bool first_cell = true;
+        for (int x = x0; x <= x1 && x < g.w; x++)
+        {
+            if (x < 0) continue;
+            if (!first_cell) os << ",";
+            first_cell = false;
+            const int tile = g.data[x + y * g.w];
+            const bool pass = world.query_grid_passable(
+                static_cast<float>(x * GRID_SIZE),
+                static_cast<float>(y * GRID_SIZE), nullptr,
+                static_cast<short>(floor));
+            size_t occupancy = 0;
+            if (world.myobmap != nullptr)
+                occupancy = world.myobmap
+                    ->obmap_get_list(static_cast<short>(x * GRID_SIZE),
+                                     static_cast<short>(y * GRID_SIZE),
+                                     static_cast<short>(floor))
+                    .size();
+            os << "[" << x << "," << tile << "," << (pass ? 1 : 0) << ","
+               << occupancy << "]";
+        }
+        os << "]}";
+    }
+    os << "]}";
+    std::cout << os.str() << "\n";
+    std::cout.flush();
+}
+
+// Diagnostic: dump the identities registered in one obmap cell.
+static void cmd_obat(GameWorld& world, int floor, int cx, int cy)
+{
+    std::ostringstream os;
+    os << "{\"cmd\":\"obat\",\"floor\":" << floor << ",\"cx\":" << cx
+       << ",\"cy\":" << cy << ",\"entries\":[";
+    if (world.myobmap != nullptr)
+    {
+        const auto& list = world.myobmap->obmap_get_list(
+            static_cast<short>(cx * GRID_SIZE),
+            static_cast<short>(cy * GRID_SIZE), static_cast<short>(floor));
+        bool first = true;
+        for (walker* e : list)
+        {
+            if (!first) os << ",";
+            first = false;
+            if (e == nullptr)
+            {
+                os << "null";
+                continue;
+            }
+            os << "{\"eid\":" << e->entity_id()
+               << ",\"order\":" << static_cast<int>(e->query_order())
+               << ",\"family\":" << static_cast<int>(e->family())
+               << ",\"x\":" << e->xpos() << ",\"y\":" << e->ypos()
+               << ",\"floor\":" << e->floor()
+               << ",\"dead\":" << (e->dead() ? "true" : "false") << "}";
+        }
+    }
+    os << "]}";
+    std::cout << os.str() << "\n";
+    std::cout.flush();
+}
+
 static void cmd_events(og::sim::SimEventLog& events)
 {
     auto drained = events.drain();
@@ -256,14 +486,50 @@ int run_text_protocol_session(const TextProtocolArgs& args)
 
     level.set_sim_context(&save, &world.enemy_freeze, &events, &world.rng_, &cfg);
 
+    // Install the gameplay context BEFORE level.load(), not merely before the
+    // crew spawns. walker::setxy registers a walker in the collision obmap
+    // only while a gameplay context is active (walker_movement.cpp), so
+    // loading without one leaves every placed walker OUT of the obmap.
+    // Movers self-heal on their first step, but ACT_GUARD posts that never
+    // move stayed collision-ghosts for the whole run: weapons flew through
+    // them (fire_check ray and real projectiles alike) and other walkers
+    // walked into them, forming the interpenetrating "frozen pair" mode.
+    // This was the text-harness-only divergence from the production loaders
+    // (game.cpp, server_main.cpp GameplayContextGuard-before-load, the curses
+    // runtime's explicit "activate the server context for the level load")
+    // and from the og_unit_sim fixtures — the same seed/level/crew simulated
+    // macroscopically differently under openglad_text.
+    GameplayContext text_game_ctx;
+    text_game_ctx.world = &world;
+    text_game_ctx.save = &save;
+    text_game_ctx.sim_events = &events;
+    text_game_ctx.config = &cfg;
+    GameplayContext* prev_game = current_game;
+    current_game = &text_game_ctx;
+
     if (!level.load()) {
         std::fprintf(stderr, "Failed to load level %d\n", args.level);
+        current_game = prev_game;
         text_ctx.rng = prev_rng;
         set_gameplay_rng_override(nullptr);
         return 1;
     }
 
+    // Derive placed-walker stats from their authored levels, exactly like
+    // the production loaders (game.cpp load_saved_game and
+    // load_headless_level_from_save). Without this pass every placed Living
+    // keeps base-family hitpoints while generator SPAWNS get fully leveled
+    // stats via create_weapon — which silently skews balance playtests.
+    // Runs before the crew spawns so crew walkers (leveled through
+    // guy::update_derived_stats) are never touched.
+    for (auto& uptr : world.oblist) {
+        walker* w = uptr.get();
+        if (w != nullptr)
+            w->set_difficulty(static_cast<std::uint32_t>(w->stats()->level()));
+    }
+
     // Create team walkers and add to the level
+    std::vector<walker*> crew;
     for (size_t i = 0; i < args.team_families.size(); i++) {
         int family = args.team_families[i];
         walker* w = level.add_ob(Order::Living, family);
@@ -272,24 +538,69 @@ int run_text_protocol_session(const TextProtocolArgs& args)
             w->set_real_team_num(0);
             w->set_user(static_cast<signed char>(i < 4 ? i : -1));
 
-            auto g = std::make_unique<guy>();
+            // Playtest crews (--team-level > 0) use the family ctor so the
+            // guy carries the family baseline attributes a hired character
+            // gets; the legacy default-guy path is kept byte-identical.
+            auto g = args.team_level > 0
+                ? std::make_unique<guy>(family)
+                : std::make_unique<guy>();
             g->family = static_cast<char>(family);
             g->name = std::format("Player{}", i + 1);
             w->set_owned_myguy(std::move(g));
+            if (args.team_level > 0) {
+                // Level the guy up and recompute the walker's derived
+                // stats (same sequence as the headless server's
+                // create_team_walker).
+                w->myguy->upgrade_to_level(
+                    static_cast<short>(args.team_level));
+                if (w->stats() != nullptr)
+                    w->stats()->set_level(w->myguy->level);
+                w->myguy->update_derived_stats(w);
+            }
+            crew.push_back(w);
         }
     }
+
+    // Deploy the crew onto the authored team start markers, the way the
+    // production spawn path (spawn_team_from_save) does. Without this the
+    // crew stacks at the add_ob default position, which makes balance runs
+    // meaningless. Falls back to a random teleport when markers run out.
+    auto find_team_marker = [&world](int team) -> walker* {
+        for (const auto& entity : world.oblist) {
+            walker* const m = entity.get();
+            if (m == nullptr || m->dead())
+                continue;
+            if (m->query_order() != Order::Special ||
+                m->family() != FAMILY_RESERVED_TEAM)
+                continue;
+            if (team != -1 && m->team_num() != team)
+                continue;
+            return m;
+        }
+        return nullptr;
+    };
+    auto next_team_marker = [&find_team_marker]() -> walker* {
+        if (walker* m = find_team_marker(0))
+            return m;
+        return find_team_marker(-1);
+    };
+    for (walker* w : crew) {
+        if (walker* marker = next_team_marker()) {
+            // set_floor MUST precede setxy (setxy re-buckets the
+            // floor-keyed obmap).
+            w->set_floor(marker->floor());
+            w->setxy(marker->xpos(), marker->ypos());
+            marker->set_dead(1);
+        } else {
+            w->teleport();
+        }
+    }
+    while (walker* leftover = next_team_marker())
+        leftover->set_dead(1);
 
     // Wire up sim pointers on all entities
     world.enemy_freeze = 0;
     world.end = 0;
-
-    GameplayContext text_game_ctx;
-    text_game_ctx.world = &world;
-    text_game_ctx.save = &save;
-    text_game_ctx.sim_events = &events;
-    text_game_ctx.config = &cfg;
-    GameplayContext* prev_game = current_game;
-    current_game = &text_game_ctx;
 
     // Output ready message
     std::cout << "{\"status\":\"ready\""
@@ -319,6 +630,20 @@ int run_text_protocol_session(const TextProtocolArgs& args)
             cmd_tick(world, count);
         } else if (cmd == "state") {
             cmd_state(level);
+        } else if (cmd == "census") {
+            cmd_census(world);
+        } else if (cmd == "path") {
+            std::uint32_t eid = 0;
+            iss >> eid;
+            cmd_path(world, eid);
+        } else if (cmd == "grid") {
+            int floor = 0, x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+            iss >> floor >> x0 >> y0 >> x1 >> y1;
+            cmd_grid(world, floor, x0, y0, x1, y1);
+        } else if (cmd == "obat") {
+            int floor = 0, cx = 0, cy = 0;
+            iss >> floor >> cx >> cy;
+            cmd_obat(world, floor, cx, cy);
         } else if (cmd == "events") {
             cmd_events(events);
         } else if (cmd == "quit") {

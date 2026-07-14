@@ -1,4 +1,5 @@
 #include <openglad/core/constants.h>
+#include <openglad/core/tower_constants.h>
 #include <openglad/gameplay/lobby_server.h>
 
 #include <gtest/gtest.h>
@@ -375,6 +376,79 @@ TEST(LobbyServer, sanitize_clamps_ctf_settings_and_equivalent_carries_them)
     EXPECT_EQ(3, equivalent.ctf_team_count);
     EXPECT_EQ(0, equivalent.ctf_capture_limit);
     EXPECT_EQ(0, equivalent.ctf_respawn_ticks);
+}
+
+TEST(LobbyServer, local_session_sanitize_preserves_tower_campaign_pair)
+{
+    // Tower-triple §5.9 layer 3, locality amendment: the solo picker
+    // round-trips its OWN settings through an in-process LobbyServer built
+    // with local_session=true — the tower pick must survive that echo (the
+    // unconditional rejection silently reverted a just-picked tower to
+    // gladiator/scen1 without a remount: the ghost-session regression).
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport, /*local_session=*/true);
+    server.connect_client(11u);
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host", 0,
+                          {make_slot(0u, 100, "Soldier", FAMILY_SOLDIER)}));
+    server.poll_incoming_messages();
+
+    og::sim::LobbySettings tower;
+    tower.campaign_id = std::string(og::kTowerCampaignId);
+    tower.scenario_id = 700;
+    tower.difficulty = 1;
+    tower.allied_mode = 1;
+    og::sim::LobbyMessage tower_message;
+    tower_message.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 0u,
+        .settings = tower,
+    };
+    transport.queue_lobby_message(11u, tower_message);
+    server.poll_incoming_messages();
+
+    const og::sim::LobbyState state = server.state();
+    EXPECT_EQ(std::string(og::kTowerCampaignId), state.settings.campaign_id);
+    EXPECT_EQ(700, state.settings.scenario_id);
+
+    const og::sim::LobbySaveDataEquivalent equivalent =
+        server.build_save_data_equivalent();
+    EXPECT_EQ(std::string(og::kTowerCampaignId), equivalent.current_campaign);
+    EXPECT_EQ(700, equivalent.scen_num);
+}
+
+TEST(LobbyServer, default_networked_sanitize_still_rejects_tower_campaign)
+{
+    // The flag defaults to false: every networked construction site keeps
+    // the crafted-client backstop without opting into anything.
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host", 0,
+                          {make_slot(0u, 100, "Soldier", FAMILY_SOLDIER)}));
+    server.poll_incoming_messages();
+
+    const og::sim::LobbySettings before = server.state().settings;
+    ASSERT_NE(std::string(og::kTowerCampaignId), before.campaign_id);
+
+    og::sim::LobbySettings tower;
+    tower.campaign_id = std::string(og::kTowerCampaignId);
+    tower.scenario_id = 700;
+    tower.difficulty = 1;
+    tower.allied_mode = 1;
+    og::sim::LobbyMessage tower_message;
+    tower_message.payload = og::sim::LobbySettingsChangeMessage{
+        .player_index = 0u,
+        .settings = tower,
+    };
+    transport.queue_lobby_message(11u, tower_message);
+    server.poll_incoming_messages();
+
+    const og::sim::LobbyState state = server.state();
+    EXPECT_EQ(before.campaign_id, state.settings.campaign_id);
+    EXPECT_EQ(before.scenario_id, state.settings.scenario_id);
 }
 
 TEST(LobbyServer, build_save_data_equivalent_tags_owner_and_origin_slot)
@@ -991,6 +1065,88 @@ TEST(LobbyServer, sanitize_strip_flag_accepts_binary_and_rejects_junk)
     transport.queue_lobby_message(11u, make_settings_change_message(strip_off));
     server.poll_incoming_messages();
     EXPECT_EQ(0, server.state().settings.ctf_strip_scenario_troops);
+}
+
+TEST(LobbyServer, sanitize_difficulty_submenu_settings)
+{
+    MockLobbyTransport transport;
+    og::sim::LobbyServer server(transport);
+    server.connect_client(11u);
+    transport.queue_lobby_message(
+        11u,
+        make_join_message("Host", 0,
+                          {make_slot(0u, 100, "Soldier", FAMILY_SOLDIER)}));
+    server.poll_incoming_messages();
+
+    // Defaults are 0 (legacy behavior).
+    EXPECT_EQ(0, server.state().settings.respawn_mode);
+    EXPECT_EQ(0, server.state().settings.generator_rate);
+    EXPECT_EQ(0, server.state().settings.keep_fallen_heroes);
+
+    // In-range values pass through and reach the game-start equivalent.
+    og::sim::LobbySettings valid = make_ctf_lobby_settings();
+    valid.respawn_mode = 2;
+    valid.generator_rate = 200;
+    valid.keep_fallen_heroes = 1;
+    transport.queue_lobby_message(11u, make_settings_change_message(valid));
+    server.poll_incoming_messages();
+    EXPECT_EQ(2, server.state().settings.respawn_mode);
+    EXPECT_EQ(200, server.state().settings.generator_rate);
+    EXPECT_EQ(1, server.state().settings.keep_fallen_heroes);
+    EXPECT_EQ(2, server.build_save_data_equivalent().respawn_mode);
+    EXPECT_EQ(200, server.build_save_data_equivalent().generator_rate);
+    EXPECT_EQ(1, server.build_save_data_equivalent().keep_fallen_heroes);
+
+    // respawn_mode outside {0,1,2} falls back to the current value.
+    og::sim::LobbySettings junk_mode = make_ctf_lobby_settings();
+    junk_mode.respawn_mode = 3;
+    junk_mode.generator_rate = 200;
+    junk_mode.keep_fallen_heroes = 1;
+    transport.queue_lobby_message(11u, make_settings_change_message(junk_mode));
+    server.poll_incoming_messages();
+    EXPECT_EQ(2, server.state().settings.respawn_mode);
+
+    og::sim::LobbySettings negative_mode = make_ctf_lobby_settings();
+    negative_mode.respawn_mode = -1;
+    transport.queue_lobby_message(11u,
+                                  make_settings_change_message(negative_mode));
+    server.poll_incoming_messages();
+    EXPECT_EQ(2, server.state().settings.respawn_mode);
+
+    // generator_rate: 0 = default passes through; nonzero clamps to [25,400].
+    og::sim::LobbySettings low_rate = make_ctf_lobby_settings();
+    low_rate.generator_rate = 3;
+    transport.queue_lobby_message(11u, make_settings_change_message(low_rate));
+    server.poll_incoming_messages();
+    EXPECT_EQ(25, server.state().settings.generator_rate);
+
+    og::sim::LobbySettings high_rate = make_ctf_lobby_settings();
+    high_rate.generator_rate = 5000;
+    transport.queue_lobby_message(11u, make_settings_change_message(high_rate));
+    server.poll_incoming_messages();
+    EXPECT_EQ(400, server.state().settings.generator_rate);
+
+    og::sim::LobbySettings default_rate = make_ctf_lobby_settings();
+    default_rate.generator_rate = 0;
+    transport.queue_lobby_message(11u,
+                                  make_settings_change_message(default_rate));
+    server.poll_incoming_messages();
+    EXPECT_EQ(0, server.state().settings.generator_rate);
+
+    // keep_fallen_heroes is binary-or-fallback.
+    og::sim::LobbySettings keep_on = make_ctf_lobby_settings();
+    keep_on.keep_fallen_heroes = 1;
+    transport.queue_lobby_message(11u, make_settings_change_message(keep_on));
+    server.poll_incoming_messages();
+    EXPECT_EQ(1, server.state().settings.keep_fallen_heroes);
+
+    og::sim::LobbySettings junk_keep = make_ctf_lobby_settings();
+    junk_keep.keep_fallen_heroes = 7;
+    junk_keep.respawn_mode = 2;
+    transport.queue_lobby_message(11u, make_settings_change_message(junk_keep));
+    server.poll_incoming_messages();
+    EXPECT_EQ(1, server.state().settings.keep_fallen_heroes)
+        << "junk falls back to the previously accepted value";
 }
 
 TEST(LobbyServer, ctf_lobby_allows_shared_teams)

@@ -13,6 +13,7 @@
 #include <openglad/platform/curses/headless_terminal.h>
 
 #include <openglad/core/constants.h>
+#include <openglad/core/decordefs.h>
 #include <openglad/core/order.h>
 #include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/game_world.h>
@@ -64,6 +65,20 @@ public:
     {
         if (tx >= 0 && tx < w_ && ty >= 0 && ty < h_)
             world_->grid.data[static_cast<std::size_t>(tx + ty * w_)] = pix;
+    }
+
+    // Set a decor id at a tile, allocating the floor-0 decor plane lazily
+    // (same lazy-allocation shape as the editor brush).
+    void paint_decor(int tx, int ty, unsigned char decor_id)
+    {
+        PixieData& dp = world_->decor;
+        if (!dp.valid()) {
+            auto* cells = new unsigned char[static_cast<std::size_t>(w_ * h_)]();
+            dp = PixieData(1, static_cast<unsigned char>(w_),
+                           static_cast<unsigned char>(h_), cells);
+        }
+        if (tx >= 0 && tx < w_ && ty >= 0 && ty < h_)
+            dp.data[static_cast<std::size_t>(tx + ty * w_)] = decor_id;
     }
 
     // Add a living creature at a tile center, returning the walker.
@@ -282,6 +297,92 @@ TEST(CursesRenderer, painted_water_and_wall_tiles_show_their_glyphs)
 
     EXPECT_EQ(term.char_at(center_row, center_col + 1), U'~') << "water to the right";
     EXPECT_EQ(term.char_at(center_row - 1, center_col), U'#') << "wall above";
+}
+
+TEST(CursesRenderer, zstair_tiles_render_with_direction_glyphs)
+{
+    // B1: Z-stairs must read as '<' (up) / '>' (down) — the genre-only 'H'
+    // hid which way the stairs went.
+    HandWorld hw(20, 20);
+    hw.add_creature(10, 10, FAMILY_SOLDIER, /*team*/ 0);
+    walker* hero = hw.world().oblist.front().get();
+    const std::uint32_t id = hero->entity_id();
+
+    hw.paint(11, 10, PIX_ZSTAIR_UP);   // one tile right of the hero
+    hw.paint(9, 10, PIX_ZSTAIR_DOWN);  // one tile left of the hero
+
+    HeadlessTerminal term(21, 41);
+    term.set_unicode(false); // assert the ASCII glyphs
+    CursesRenderer renderer;
+    renderer.draw(term, hw.world(), id);
+
+    const int vp_top = 2;
+    const int vp_h = 21 - 2 - 6;
+    const int center_row = vp_top + vp_h / 2;
+    const int center_col = 41 / 2;
+
+    EXPECT_EQ(term.char_at(center_row, center_col + 1), U'<')
+        << "up-stair to the right renders '<'";
+    EXPECT_EQ(term.char_at(center_row, center_col - 1), U'>')
+        << "down-stair to the left renders '>'";
+}
+
+// Tile layering: cells with a decor byte render the decor glyph over the base
+// tile when the decor defines one (torch/boulder cells were genre-UNKNOWN
+// blanks as legacy combined tiles); ground litter like pebbles inherits the
+// base glyph so the ground still reads as ground.
+TEST(CursesRenderer, decor_overrides_base_tile_glyphs)
+{
+    HandWorld hw(20, 20);
+    hw.add_creature(10, 10, FAMILY_SOLDIER, /*team*/ 0);
+    walker* hero = hw.world().oblist.front().get();
+    const std::uint32_t id = hero->entity_id();
+
+    hw.paint(11, 10, PIX_WALLSIDE_C);        // torch base: brick wallside
+    hw.paint_decor(11, 10, DECOR_TORCH1);    // right of the hero: '!'
+    hw.paint_decor(9, 10, DECOR_BOULDER_2);  // left of the hero: 'o' on grass
+    hw.paint_decor(10, 9, DECOR_PEBBLES);    // above: inherits grass '.'
+
+    HeadlessTerminal term(21, 41);
+    term.set_unicode(false); // assert the ASCII glyphs
+    CursesRenderer renderer;
+    renderer.draw(term, hw.world(), id);
+
+    const int vp_top = 2;
+    const int vp_h = 21 - 2 - 6;
+    const int center_row = vp_top + vp_h / 2;
+    const int center_col = 41 / 2;
+
+    EXPECT_EQ(term.char_at(center_row, center_col + 1), U'!')
+        << "torch decor overrides the wallside base\n" << term.dump();
+    EXPECT_EQ(term.char_at(center_row, center_col - 1), U'o')
+        << "boulder decor overrides the grass base";
+    EXPECT_EQ(term.char_at(center_row - 1, center_col), U'.')
+        << "pebbles inherit the grass base glyph";
+}
+
+// A world with no decor plane renders exactly as before the tile-layering
+// feature (the decor consult is gated on plane validity).
+TEST(CursesRenderer, no_decor_plane_renders_identically)
+{
+    HandWorld with(20, 20), without(20, 20);
+    with.add_creature(10, 10, FAMILY_SOLDIER, 0);
+    without.add_creature(10, 10, FAMILY_SOLDIER, 0);
+    const std::uint32_t id_with = with.world().oblist.front()->entity_id();
+    const std::uint32_t id_without = without.world().oblist.front()->entity_id();
+
+    // Allocate a plane on one world but leave it all-zero: still identical
+    // (DECOR_NONE never overrides).
+    with.paint_decor(0, 0, DECOR_NONE);
+    ASSERT_TRUE(with.world().decor.valid());
+    ASSERT_FALSE(without.world().decor.valid());
+
+    HeadlessTerminal ta(21, 41), tb(21, 41);
+    CursesRenderer ra, rb;
+    ra.draw(ta, with.world(), id_with);
+    rb.draw(tb, without.world(), id_without);
+    EXPECT_EQ(ta.dump(), tb.dump())
+        << "an all-zero decor plane must not change a single cell";
 }
 
 TEST(CursesRenderer, ascii_fallback_downgrades_unicode_tiles)
@@ -802,4 +903,49 @@ TEST(CursesRenderer, renders_real_level_one_without_crashing)
         << "HUD names the hero: " << term.text_row(0);
 
     level.delete_objects();
+}
+
+// Feature B: the status line (row 1) appends the shared floor_hud_label after
+// the Lv field — empty on single-floor levels (no "FLR" anywhere), "FLR: f/n"
+// on multifloor. Tower relabeling flows through the same shared helper, so
+// this surface needs no tower-specific test.
+TEST(CursesRenderer, hud_line1_shows_floor_on_multifloor)
+{
+    HandWorld hw(20, 20);
+    walker* hero = hw.add_creature(10, 10, FAMILY_SOLDIER, 0);
+    ASSERT_NE(nullptr, hero);
+    hero->set_user(0);
+
+    // Single-floor: no floor field on the status line.
+    {
+        HeadlessTerminal term(24, 60);
+        CursesRenderer renderer;
+        renderer.draw(term, hw.world(), hero->entity_id());
+        EXPECT_EQ(term.text_row(1).find("FLR"), std::string::npos)
+            << "single-floor row1 must not carry a floor field; got: "
+            << term.text_row(1);
+    }
+
+    // Three stacked stories, hero on the middle one: "FLR: 2/3".
+    GameWorld& w = hw.world();
+    w.set_floor_count(3);
+    {
+        // Give the hero's floor a real grid + smoother target so the tile
+        // pass renders (the HUD is what we assert on).
+        const int gw = w.grid.w;
+        const int gh = w.grid.h;
+        auto* cells = new unsigned char[static_cast<std::size_t>(gw) * gh];
+        for (int i = 0; i < gw * gh; ++i)
+            cells[i] = PIX_GRASS1;
+        w.grid_for_floor(1) = PixieData(1, static_cast<unsigned char>(gw),
+                                        static_cast<unsigned char>(gh), cells);
+        w.smoother_for_floor(1).set_target(w.grid_for_floor(1));
+    }
+    hero->set_floor(1);
+
+    HeadlessTerminal term(24, 60);
+    CursesRenderer renderer;
+    renderer.draw(term, hw.world(), hero->entity_id());
+    EXPECT_NE(term.text_row(1).find("FLR: 2/3"), std::string::npos)
+        << "row 1 shows the shared floor label; got: " << term.text_row(1);
 }

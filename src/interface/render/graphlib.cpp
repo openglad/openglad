@@ -22,6 +22,8 @@
 */
 #include <openglad/interface/base.h> // PixieData + PIX_* indices + read_pixie_file decls
 #include <string>
+#include <memory>
+#include <openglad/core/decordefs.h>
 #include <openglad/core/util.h>
 
 // Use this for globally setting the graphics dir, etc..
@@ -41,6 +43,42 @@
 
 // read_pixie_file is now in src/io/og_file.cpp (SDL-free implementation)
 
+
+// Synthesize the PIX_GLASS tile in code (no PNG asset): a 16x16 "glass pane" —
+// a faint cyan-blue body, a bright cyan frame (the glazing bar / pane edge), and
+// a double diagonal near-white sheen (the specular glint). The renderer always
+// draws PIX_GLASS through the alpha path at kGlassAlpha (view.cpp), so the whole
+// tile is see-through: the body adds a cool tint over the floor below while the
+// frame + sheen read as a glazed pane instead of a dim stone floor. PIX_GLASS
+// only ever appears on multi-floor maps, so this never affects single-floor
+// (parity) rendering. Palette indices (6-bit*4 -> 8-bit RGB). ALL three MUST
+// stay OUTSIDE do_cycle's per-frame ranges WATER 208..223 + ORANGE 224..231
+// (base.h), or the tile re-tints every cycle tick and flashes like water:
+//   BODY  116 -> (96,180,180) muted cyan-blue  FRAME 112 -> (64,228,228) cyan
+//   SHEEN  15 -> (228,228,228) near-white
+static PixieData make_glass_tile()
+{
+	constexpr int W = 16, H = 16;
+	constexpr unsigned char BODY  = 116; // muted cyan-blue; NOT 208 (==WATER_START, do_cycle rotates -> flashing)
+	constexpr unsigned char FRAME = 112;
+	constexpr unsigned char SHEEN = 15;
+	PixieData glass;
+	glass.frames = 1;
+	glass.w = static_cast<unsigned char>(W);
+	glass.h = static_cast<unsigned char>(H);
+	glass.data = std::make_unique<unsigned char[]>(W * H);
+	for (int y = 0; y < H; ++y)
+		for (int x = 0; x < W; ++x)
+		{
+			unsigned char c = BODY;
+			if (x == 0 || y == 0 || x == W - 1 || y == H - 1)
+				c = FRAME;                                   // 1px pane frame
+			else if ((x + y) == 5 || (x + y) == 6 || (x + y) == 9)
+				c = SHEEN;                                   // double diagonal glint
+			glass.data[y * W + x] = c;
+		}
+	return glass;
+}
 
 
 void load_map_data(PixieData* whereto)
@@ -215,4 +253,53 @@ void load_map_data(PixieData* whereto)
 	whereto[PIX_JAGGED_GROUND_3] = read_pixie_file("16jwg3.png");
 	whereto[PIX_JAGGED_GROUND_4] = read_pixie_file("16jwg1.png");
 
+	// Z-axis Z-stairs are SOLID, stood-on floor tiles and need visible art; without
+	// an entry here pixdata[140/141] stay empty, draw_tile() blits nothing, and the
+	// cleared (black) cell shows through. Reuse the existing pavestep art.
+	whereto[PIX_ZSTAIR_UP]   = read_pixie_file("16pstep.png");
+	whereto[PIX_ZSTAIR_DOWN] = read_pixie_file("16ptest.png");
+	// PIX_GLASS is a SYNTHESIZED glass-pane tile (see make_glass_tile) drawn FAINT
+	// through the alpha path (kGlassAlpha in view.cpp) so the floor below still shows
+	// through while the tile reads as a glazed pane rather than a dim stone floor or
+	// an empty air hole. PIX_AIR stays UNLOADED on purpose (empty = fully see-through;
+	// the editor's add_floor() fills whole floors with PIX_AIR).
+	whereto[PIX_GLASS]       = make_glass_tile();
+
+	// Westlands terrain (procedurally authored, scripts/generate_tile_art.py).
+	// LAVA art deliberately uses the ORANGE cycled band 224-231 (do_cycle IS the
+	// flow animation); MARSH glints are static pale cyans (117/118). Headless
+	// builds never load these — all behavior keys off tile IDs.
+	whereto[PIX_SNOW1]  = read_pixie_file("16snow1.png");
+	whereto[PIX_SNOW2]  = read_pixie_file("16snow2.png");
+	whereto[PIX_LAVA1]  = read_pixie_file("16lava1.png");
+	whereto[PIX_LAVA2]  = read_pixie_file("16lava2.png");
+	whereto[PIX_MARSH1] = read_pixie_file("16marsh1.png");
+	whereto[PIX_MARSH2] = read_pixie_file("16marsh2.png");
+	whereto[PIX_ASH1]   = read_pixie_file("16ash1.png");
+	whereto[PIX_ASH2]   = read_pixie_file("16ash2.png");
+}
+
+// Decor cut-out sprites, indexed by decor id (core/decordefs.h). The 16d*
+// files are procedurally authored (scripts/generate_decor_art.py) cut-outs of
+// the legacy combined tiles: index 0 is TRANSPARENT (the renderer blits decor
+// through the sprite path, never the opaque tile path). Torch/brazier flame
+// pixels keep the cycled ORANGE band 224-231, so do_cycle keeps animating the
+// fire exactly like the legacy combined tiles. Columns reuse their existing
+// art unchanged (already transparent). Slot 0 (DECOR_NONE) stays empty.
+// Headless builds never load these — all behavior keys off ids, never art.
+void load_decor_data(PixieData* whereto)
+{
+	whereto[DECOR_TORCH1]        = read_pixie_file("16dtorch1.png");
+	whereto[DECOR_TORCH2]        = read_pixie_file("16dtorch2.png");
+	whereto[DECOR_TORCH3]        = read_pixie_file("16dtorch3.png");
+	whereto[DECOR_BRAZIER]       = read_pixie_file("16dbraz.png");
+	whereto[DECOR_BOULDER_1]     = read_pixie_file("16dstone1.png");
+	whereto[DECOR_BOULDER_2]     = read_pixie_file("16dstone2.png");
+	whereto[DECOR_BOULDER_3]     = read_pixie_file("16dstone3.png");
+	whereto[DECOR_BOULDER_4]     = read_pixie_file("16dstone4.png");
+	whereto[DECOR_PEBBLES]       = read_pixie_file("16dpebble.png");
+	whereto[DECOR_COLUMN_BOTTOM] = read_pixie_file("16colm0.png");
+	whereto[DECOR_COLUMN_TOP]    = read_pixie_file("16colm1.png");
+	whereto[DECOR_SHRUB]         = read_pixie_file("16dshrub.png");
+	whereto[DECOR_BONES]         = read_pixie_file("16dbones.png");
 }

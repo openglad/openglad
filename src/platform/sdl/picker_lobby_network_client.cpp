@@ -955,6 +955,9 @@ og::sim::LobbySaveDataEquivalent build_save_data_equivalent_from_state(
     equivalent.ctf_capture_limit = state.settings.ctf_capture_limit;
     equivalent.ctf_respawn_ticks = state.settings.ctf_respawn_ticks;
     equivalent.ctf_strip_scenario_troops = state.settings.ctf_strip_scenario_troops;
+    equivalent.respawn_mode = state.settings.respawn_mode;
+    equivalent.generator_rate = state.settings.generator_rate;
+    equivalent.keep_fallen_heroes = state.settings.keep_fallen_heroes;
 
     for (const AppliedLobbySlot& slot : collect_applied_lobby_slots(state))
     {
@@ -1007,6 +1010,9 @@ void apply_lobby_state_to_save(const og::sim::LobbyState& state,
     save.ctf_capture_limit = state.settings.ctf_capture_limit;
     save.ctf_respawn_ticks = state.settings.ctf_respawn_ticks;
     save.ctf_strip_scenario_troops = state.settings.ctf_strip_scenario_troops;
+    save.respawn_mode = state.settings.respawn_mode;
+    save.generator_rate = state.settings.generator_rate;
+    save.keep_fallen_heroes = state.settings.keep_fallen_heroes;
     save.numplayers = static_cast<unsigned char>(spectator_mode ? 0 : 1);
     save.my_team = local_team;
 
@@ -1092,6 +1098,9 @@ og::sim::LobbyMessage make_settings_message(const SaveData& save)
     settings.ctf_capture_limit = save.ctf_capture_limit;
     settings.ctf_respawn_ticks = save.ctf_respawn_ticks;
     settings.ctf_strip_scenario_troops = save.ctf_strip_scenario_troops;
+    settings.respawn_mode = save.respawn_mode;
+    settings.generator_rate = save.generator_rate;
+    settings.keep_fallen_heroes = save.keep_fallen_heroes;
 
     og::sim::LobbyMessage message;
     message.payload = og::sim::LobbySettingsChangeMessage{

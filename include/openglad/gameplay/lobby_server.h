@@ -19,6 +19,10 @@ struct LobbySaveDataEquivalent {
     std::int16_t ctf_capture_limit = 0;
     std::int16_t ctf_respawn_ticks = 0;
     std::int16_t ctf_strip_scenario_troops = 0;
+    // Difficulty submenu settings (0 = legacy default behavior for all three).
+    std::int16_t respawn_mode = 0;
+    std::int16_t generator_rate = 0;
+    std::int16_t keep_fallen_heroes = 0;
     std::vector<LobbyCharacterSlot> team_list;
 
     bool operator==(const LobbySaveDataEquivalent&) const = default;
@@ -35,7 +39,13 @@ struct LobbyPlayerBinding {
 class LobbyServer
 {
 public:
-    explicit LobbyServer(ITransport& transport);
+    // `local_session` marks a single-machine lobby (the solo picker's
+    // in-process settings echo): local-only mode campaigns (the Endless
+    // Tower) survive sanitize_settings there. The default (false) keeps the
+    // crafted-client rejection backstop for every networked construction
+    // site (tower-triple §5.9 layer 3) — a networked host must opt nothing
+    // in to stay protected.
+    explicit LobbyServer(ITransport& transport, bool local_session = false);
 
     void connect_client(PeerId peer_id);
     void disconnect_client(PeerId peer_id);
@@ -92,6 +102,7 @@ private:
     void process_lobby_message(PeerId peer_id, const LobbyMessage& message);
 
     ITransport& transport_;
+    bool local_session_ = false;
     LobbyState state_;
     std::vector<PeerId> connected_transport_peers_;
     std::vector<PeerId> pending_transport_disconnects_;

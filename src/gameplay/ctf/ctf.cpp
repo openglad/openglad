@@ -48,6 +48,7 @@ const char* team_color_name(int team)
 }
 
 void fire_ai_respawn(GameWorld& world, const CtfRespawnEntry& entry);
+void classic_fire_respawn(GameWorld& world, const CtfRespawnEntry& entry);
 
 [[nodiscard]] bool is_score_team(unsigned char team)
 {
@@ -201,9 +202,10 @@ bool place_at_anchor(GameWorld& world, walker* w, int team)
 }
 
 // Revives a player corpse in place: same walker, same entity id, full HP,
-// cleared targeting/commands, placed at the team's next anchor. If another
-// live walker already holds the same player binding (the player switched
-// bodies while dead), the revived walker rejoins the AI pool instead.
+// cleared targeting/commands. Placement is the caller's business (CTF paths
+// rotate to the team's next anchor; classic paths move home when clear). If
+// another live walker already holds the same player binding (the player
+// switched bodies while dead), the revived walker rejoins the AI pool instead.
 void revive_player_walker(GameWorld& world, walker* w, int team)
 {
     w->set_dead(0);
@@ -239,8 +241,6 @@ void revive_player_walker(GameWorld& world, walker* w, int team)
             }
         }
     }
-
-    place_at_anchor(world, w, team);
 }
 
 [[nodiscard]] bool already_scheduled(const CtfState& ctf, std::uint32_t entity_id)
@@ -327,7 +327,21 @@ void schedule_respawn(GameWorld& world, walker* corpse)
         // is already swept, so a plain erase would shrink the roster forever.
         const CtfRespawnEntry evicted = *victim;
         ctf.respawn_queue.erase(victim);
-        fire_ai_respawn(world, evicted);
+        if (classic_respawn_active(world))
+            classic_fire_respawn(world, evicted);
+        else
+            fire_ai_respawn(world, evicted);
+        // A blocked classic AI fire re-enqueues itself: if the queue is full
+        // again, drop that just-appended retry rather than the incoming
+        // corpse. Either way one AI entry is permanently lost (a non-myguy
+        // corpse is swept this same tick and never re-scanned), but the
+        // retry's spot is currently occupied while the incoming corpse's may
+        // be clear — and the cap must hold for the snapshot serializer.
+        if (ctf.respawn_queue.size() >=
+            static_cast<std::size_t>(kCtfMaxRespawnEntries))
+        {
+            ctf.respawn_queue.pop_back();
+        }
     }
 
     CtfRespawnEntry entry;
@@ -342,6 +356,21 @@ void schedule_respawn(GameWorld& world, walker* corpse)
     entry.level = static_cast<std::uint8_t>(std::clamp<std::int32_t>(level, 1, 255));
     entry.ticks_left = ctf.respawn_ticks;
     entry.walker_entity_id = corpse->entity_id();
+    // Classic respawn location: the corpse's recorded spawn point when set,
+    // else where it fell. CTF fire paths ignore these (anchor rotation stays
+    // authoritative for CTF).
+    if (corpse->spawn_x() >= 0 && corpse->spawn_y() >= 0)
+    {
+        entry.x = corpse->spawn_x();
+        entry.y = corpse->spawn_y();
+        entry.floor = corpse->spawn_floor();
+    }
+    else
+    {
+        entry.x = corpse->xpos();
+        entry.y = corpse->ypos();
+        entry.floor = static_cast<std::uint8_t>(corpse->floor());
+    }
     ctf.respawn_queue.push_back(entry);
 
     scrub_corpse_stain(world, corpse);
@@ -355,6 +384,7 @@ void fire_player_respawn(GameWorld& world, const CtfRespawnEntry& entry)
     if (live_duplicate_exists(world, w))
         return;
     revive_player_walker(world, w, entry.team);
+    place_at_anchor(world, w, entry.team);
 }
 
 void fire_ai_respawn(GameWorld& world, const CtfRespawnEntry& entry)
@@ -399,7 +429,9 @@ void run_respawn_timers(GameWorld& world)
         const CtfRespawnEntry fired = entry;
         ctf.respawn_queue.erase(ctf.respawn_queue.begin() +
                                 static_cast<std::ptrdiff_t>(i));
-        if (fired.kind == 0)
+        if (classic_respawn_active(world))
+            classic_fire_respawn(world, fired);
+        else if (fired.kind == 0)
             fire_player_respawn(world, fired);
         else
             fire_ai_respawn(world, fired);
@@ -689,6 +721,7 @@ void run_win_check(GameWorld& world)
                 : w->team_num();
             const int team = is_score_team(raw_team) ? raw_team : 0;
             revive_player_walker(world, w, team);
+            place_at_anchor(world, w, team);
         }
     }
     ctf.respawn_queue.clear();
@@ -1129,6 +1162,260 @@ bool ctf_suppress_team_wipe_endgame(const GameWorld& world)
 {
     return (world.type & GameWorld::TYPE_CTF) != 0 && world.ctf.active &&
            world.ctf.winner_team < 0;
+}
+
+// ===========================================================================
+// Classic (non-CTF) respawn engine. Reuses the CtfState respawn substate and
+// the file-static helpers above, but fires with classic placement rules
+// (recorded spawn points instead of anchor rotation) and NEVER draws
+// world.rng_, so respawn_mode == 0 stays byte-identical (og_test_parity).
+// ===========================================================================
+
+bool classic_respawn_active(const GameWorld& world)
+{
+    return (world.type & GameWorld::TYPE_CTF) == 0 && world.respawn_mode > 0;
+}
+
+bool respawn_suppress_team_wipe_endgame(const GameWorld& world)
+{
+    return ctf_suppress_team_wipe_endgame(world) ||
+           classic_respawn_active(world);
+}
+
+namespace {
+
+// Floor-explicit spawn probe: classic respawn targets can sit on any floor,
+// while spawn_spot_clear probes the walker's own grid floor and the floor-0
+// obmap buckets (fine for CTF anchors, which carry no floor channel).
+[[nodiscard]] bool classic_spot_clear(GameWorld& world, walker* w,
+                                      short x, short y, int floor)
+{
+    if (!world.query_grid_passable(x, y, w, floor))
+        return false;
+    if (world.myobmap == nullptr)
+        return true;
+    // Same bucket sweep as spawn_spot_clear, keyed to the target floor.
+    constexpr int kBucket = 32;
+    for (int bx = x; bx < x + w->sizex() + kBucket; bx += kBucket)
+    {
+        for (int by = y; by < y + w->sizey() + kBucket; by += kBucket)
+        {
+            const std::list<walker*>& pile = world.myobmap->obmap_get_list(
+                static_cast<short>(bx), static_cast<short>(by), floor);
+            for (walker* other : pile)
+            {
+                if (spawn_spot_blocked_by(other, w, x, y))
+                    return false;
+            }
+        }
+    }
+    return true;
+}
+
+// Classic player fire: revive the corpse in place (its position is already
+// legal), then move it home when its own recorded spawn point is clear. No
+// teleport() fallback — the classic engine never draws world.rng_.
+void classic_fire_player_respawn(GameWorld& world, const CtfRespawnEntry& entry)
+{
+    walker* w = world.find_by_id(entry.walker_entity_id);
+    if (w == nullptr || !w->dead() || w->query_order() != Order::Living)
+        return;
+    if (live_duplicate_exists(world, w))
+        return;
+    revive_player_walker(world, w, entry.team);
+    if (w->spawn_x() >= 0 && w->spawn_y() >= 0 &&
+        classic_spot_clear(world, w, w->spawn_x(), w->spawn_y(),
+                           static_cast<int>(w->spawn_floor())))
+    {
+        // set_floor BEFORE setxy: the obmap is floor-keyed.
+        w->set_floor(static_cast<short>(w->spawn_floor()));
+        w->setxy(w->spawn_x(), w->spawn_y());
+    }
+    ensure_obmap_registration(world, w);
+}
+
+// Classic AI fire (mode 2): a fresh walker per the fire_ai_respawn recipe,
+// placed at the entry's recorded coordinates. A blocked spot withdraws the
+// probe walker and re-enqueues the entry on a short deterministic retry
+// cadence instead of teleporting (no world.rng_ draw).
+void classic_fire_ai_respawn(GameWorld& world, const CtfRespawnEntry& entry)
+{
+    walker* w = world.add_ob(Order::Living, entry.family);
+    if (w == nullptr)
+        return;
+    w->set_team_num(entry.team);
+    w->set_real_team_num(255);
+    if (w->stats() != nullptr)
+        w->stats()->set_level(entry.level);
+    w->set_difficulty(entry.level);
+    if (entry.x >= 0 && entry.y >= 0 &&
+        classic_spot_clear(world, w, entry.x, entry.y,
+                           static_cast<int>(entry.floor)))
+    {
+        w->set_floor(static_cast<short>(entry.floor));
+        w->setxy(entry.x, entry.y);
+        ensure_obmap_registration(world, w);
+        // Keep the placement durable: the replacement inherits the spawn
+        // point, so its own later deaths respawn at the authored spot.
+        w->set_spawn_point(entry.x, entry.y, entry.floor);
+        return;
+    }
+    world.remove_ob(w);
+    if (entry.x >= 0 && entry.y >= 0 &&
+        world.ctf.respawn_queue.size() <
+            static_cast<std::size_t>(kCtfMaxRespawnEntries))
+    {
+        CtfRespawnEntry retry = entry;
+        retry.ticks_left = kClassicBlockedRetryTicks;
+        world.ctf.respawn_queue.push_back(retry);
+    }
+}
+
+void classic_fire_respawn(GameWorld& world, const CtfRespawnEntry& entry)
+{
+    if (entry.kind == 0)
+        classic_fire_player_respawn(world, entry);
+    else
+        classic_fire_ai_respawn(world, entry);
+}
+
+// Classic scheduling eligibility: every dead hero (myguy) for mode >= 1,
+// plus unowned AI livings WITH a recorded (level-authored) spawn point for
+// mode 2. No team_active / score-team filters: classic levels field
+// arbitrary teams. Generator spawns and summons stay the owner's business
+// even after the owner dies — clear_stale_cross_refs nulls owner() the tick
+// the owner dies, so the owner check alone would adopt orphans as permanent
+// respawners; the spawn_x() gate keeps "endless battle" scoped to walkers
+// with an authored placement (classic AI respawn copies inherit theirs).
+[[nodiscard]] bool classic_respawn_corpse_eligible(GameWorld& world, walker* w)
+{
+    if (w == nullptr || !w->dead() || w->query_order() != Order::Living)
+        return false;
+    const bool eligible =
+        w->myguy != nullptr ||
+        (world.respawn_mode >= 2 && w->owner() == nullptr &&
+         w->spawn_x() >= 0);
+    if (!eligible)
+        return false;
+    if (already_scheduled(world.ctf, w->entity_id()))
+        return false;
+    if (live_duplicate_exists(world, w))
+        return false;
+    return true;
+}
+
+// Classic death scan: the same pre-sweep corpse scan as run_death_scan, with
+// the classic eligibility above.
+void classic_run_death_scan(GameWorld& world)
+{
+    for (const auto& uptr : world.oblist)
+    {
+        walker* w = uptr.get();
+        if (!classic_respawn_corpse_eligible(world, w))
+            continue;
+        schedule_respawn(world, w);
+    }
+}
+
+// The classic-effective team of a corpse / queue entry (schedule_respawn's
+// charm-break rule), tested for hostility the way the completion check's
+// is_friendly_to_team does: AI friendliness is a strict team match; heroes
+// are additionally friendly to team 0 in allied mode.
+[[nodiscard]] bool classic_team_hostile(const GameWorld& world,
+                                        std::uint8_t team, bool is_hero)
+{
+    if (static_cast<short>(team) == world.my_team)
+        return false;
+    if (is_hero && world.allied_mode != 0)
+        return world.my_team != 0;
+    return true;
+}
+
+} // namespace
+
+void classic_respawn_run_tick(GameWorld& world)
+{
+    if (!classic_respawn_active(world))
+        return;
+
+    CtfState& ctf = world.ctf;
+    // Lazy config resolution. Idempotent, so re-running it every active tick
+    // is safe: nothing else writes respawn_ticks on a non-CTF level, and a
+    // snapshot restore rewrites this and the requested knob coherently. The
+    // rest of CtfState (anchors, flags, CPs, team_active, init_attempted,
+    // active) is deliberately untouched — every CTF-only consumer keys on
+    // ctf.active staying false here.
+    const short requested = world.ctf_requested_respawn_ticks;
+    ctf.respawn_ticks =
+        (requested >= kClassicMinRespawnTicks &&
+         requested <= kClassicMaxRespawnTicks)
+            ? static_cast<std::uint16_t>(requested)
+            : kCtfDefaultRespawnTicks;
+
+    // End of level (decided this same tick): revive every pending player
+    // corpse immediately so roster persistence never sees a mid-respawn hero
+    // — mirrors run_win_check's revive-all. Pending AI entries are dropped
+    // with the cleared queue (the level is over).
+    if (world.game_ended)
+    {
+        classic_respawn_flush_pending(world);
+        return;
+    }
+
+    // Timers first, then the death scan, matching ctf_run_tick's phase order:
+    // a fresh corpse always waits its full delay.
+    run_respawn_timers(world);
+    classic_run_death_scan(world);
+}
+
+void classic_respawn_flush_pending(GameWorld& world)
+{
+    if (!classic_respawn_active(world))
+        return;
+    CtfState& ctf = world.ctf;
+    // Scan first, matching ctf_run_tick's death-scan-before-win-check order:
+    // a hero dying on the very tick the level ends (a mutual kill with the
+    // last foe, or a death the synchronous exit-accept path hasn't scanned
+    // yet) gets its entry here and revives below. Timer values don't matter.
+    classic_run_death_scan(world);
+    // The player fire path never mutates the queue; iterate then clear.
+    for (std::size_t i = 0; i < ctf.respawn_queue.size(); ++i)
+    {
+        const CtfRespawnEntry entry = ctf.respawn_queue[i];
+        if (entry.kind == 0)
+            classic_fire_player_respawn(world, entry);
+    }
+    ctf.respawn_queue.clear();
+}
+
+bool classic_respawn_pending_hostile_foe(GameWorld& world)
+{
+    if (!classic_respawn_active(world))
+        return false;
+    // Entries scheduled on earlier ticks. Kind-1 (AI) entries only exist in
+    // mode 2; kind-0 covers hostile heroes (other players' teams) too.
+    for (const CtfRespawnEntry& entry : world.ctf.respawn_queue)
+    {
+        if (entry.kind == 1 && world.respawn_mode >= 2 &&
+            classic_team_hostile(world, entry.team, false))
+            return true;
+        if (entry.kind == 0 && classic_team_hostile(world, entry.team, true))
+            return true;
+    }
+    // Corpses that died this very tick: the death scan runs AFTER the
+    // completion decision, so the last foe's corpse has no entry yet.
+    for (const auto& uptr : world.oblist)
+    {
+        walker* w = uptr.get();
+        if (!classic_respawn_corpse_eligible(world, w))
+            continue;
+        const std::uint8_t team = (w->real_team_num() != 255)
+                                      ? w->real_team_num()
+                                      : w->team_num();
+        if (classic_team_hostile(world, team, w->myguy != nullptr))
+            return true;
+    }
+    return false;
 }
 
 } // namespace og::sim

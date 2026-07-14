@@ -13,10 +13,12 @@
 
 #include <openglad/core/constants.h>
 #include <openglad/core/ctf_constants.h>
+#include <openglad/core/decordefs.h>
 #include <openglad/core/order.h>
 #include <openglad/core/terrain_types.h>
 
 #include <array>
+#include <optional>
 
 namespace og::curses {
 
@@ -218,9 +220,57 @@ Glyph tile_glyph(int genre)
     case TYPE_WALL:        return Glyph{U'█', '#', Color::White, true, false};
     case TYPE_WATER:       return Glyph{U'≈', '~', Color::Blue, false, false};
     case TYPE_TREES:       return Glyph{U'♣', '&', Color::Green, false, false};
+    case TYPE_AIR:         return Glyph{U'▒', ':', Color::Blue, false, false};   // a hole you fall through
+    case TYPE_GLASS:       return Glyph{U'░', '"', Color::Cyan, false, false};   // see-through floor
+    case TYPE_DROP_BLOCK:  return Glyph{U'▔', '_', Color::White, false, false};  // edge guard
+    case TYPE_ZSTAIRS:     return Glyph{U'≡', 'H', Color::Yellow, true, false};  // Z-stairs (direction unknown; see zstair_glyph)
+    case TYPE_SNOW:        return Glyph{U'*', '*', Color::White, false, false};  // snowfield
+    case TYPE_LAVA:        return Glyph{U'≈', '~', Color::Red, true, false};     // molten (bold; water ≈ is blue)
+    case TYPE_MARSH:       return Glyph{U'"', '"', Color::Green, false, false};  // bog reeds
+    case TYPE_ASH:         return Glyph{U'░', '-', Color::White, false, false};  // ash field (glass ░ is cyan)
     case TYPE_UNKNOWN:
     default:               return Glyph{U' ', ' ', Color::Default, false, false};
     }
+}
+
+std::optional<Glyph> decor_glyph(unsigned char decor_id)
+{
+    switch (decor_id) {
+    // Wall torches: bold yellow flame. ('!' is also the potion ENTITY glyph,
+    // but that one is magenta and entities draw over tiles anyway.)
+    case DECOR_TORCH1:
+    case DECOR_TORCH2:
+    case DECOR_TORCH3:        return Glyph{U'!', '!', Color::Yellow, true, false};
+    // Fire bowl: bold red.
+    case DECOR_BRAZIER:       return Glyph{U'☼', 'o', Color::Red, true, false};
+    // Boulders: white rock lump.
+    case DECOR_BOULDER_1:
+    case DECOR_BOULDER_2:
+    case DECOR_BOULDER_3:
+    case DECOR_BOULDER_4:     return Glyph{U'o', 'o', Color::White, false, false};
+    // Columns: white pillar.
+    case DECOR_COLUMN_BOTTOM:
+    case DECOR_COLUMN_TOP:    return Glyph{U'|', '|', Color::White, false, false};
+    // Shrub (conceals like trees): bold green tuft — marsh reeds use the same
+    // '"' shape but green non-bold, so the two stay distinguishable.
+    case DECOR_SHRUB:         return Glyph{U'"', '"', Color::Green, true, false};
+    // Ground litter reads as its ground: pebbles/bones inherit the base tile,
+    // as do DECOR_NONE and any out-of-registry byte.
+    case DECOR_PEBBLES:
+    case DECOR_BONES:
+    default:                  return std::nullopt;
+    }
+}
+
+Glyph zstair_glyph(bool up)
+{
+    // Roguelike convention: '<' goes up, '>' goes down. Bold yellow like the
+    // direction-less TYPE_ZSTAIRS fallback, so stairs keep their color even
+    // when the direction is known. (The FAMILY_EXIT ENTITY also uses '>',
+    // but entities draw over tiles and carry their own color/blink.)
+    if (up)
+        return Glyph{U'▲', '<', Color::Yellow, true, false};
+    return Glyph{U'▼', '>', Color::Yellow, true, false};
 }
 
 } // namespace og::curses

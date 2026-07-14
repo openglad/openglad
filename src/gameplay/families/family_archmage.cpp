@@ -36,7 +36,7 @@ static bool archmage_handle_teleport(walker* self)
 static bool archmage_on_fire_weapon(walker* self, walker* weapon)
 {
     // ArchMage gets 1/20th of 'extra' magic for more damage
-    float extra = self->stats()->magicpoints() / 20;
+    float extra = std::min(self->stats()->magicpoints() / 20, static_cast<float>(og::combat::kShotDrainCap)); // §2.12: binds only above 1000 MP
     self->stats()->set_magicpoints(self->stats()->magicpoints() - extra);
     weapon->set_damage(weapon->damage() + extra);
     return true;
@@ -182,6 +182,7 @@ static bool archmage_do_special(walker* self)
                 if (!newob)
                     return false;
                 newob->set_owner(self);
+                newob->set_floor(self->floor());  // marker on the caster's floor (A8)
                 newob->center_on(self);
                 if (self->myguy)
                     newob->set_lifetime(self->myguy->intelligence / 33);
@@ -227,7 +228,7 @@ static bool archmage_do_special(walker* self)
                 if (!self->shifter_down()) // normal heartburst
                 {
                     generic = static_cast<std::int32_t>(self->stats()->magicpoints() - static_cast<float>(self->stats()->special_cost(2)));
-                    generic /= 2;
+                    generic = std::min(generic / 2, og::combat::kMpPoolDamageCap); // §2.12: heartburst pool binds only above ~1280 MP
                     generic /= howmany;
                     if (self->myguy)
                     {
@@ -242,6 +243,9 @@ static bool archmage_do_special(walker* self)
                             return false;
                         newob->stats()->set_bit_flags(BIT_MAGICAL, 1);
                         newob->set_damage(static_cast<float>(generic));
+                        // Burst materializes ON the acquired foe: take its
+                        // floor (A8); blast damage stays same-floor.
+                        newob->set_floor(ob->floor());
                         newob->center_on(ob);
                         og::sim::emit_sound(current_game->sim_events, SOUND_EXPLODE);
                         newob->set_ani_type(ANI_EXPLODE);
@@ -261,12 +265,17 @@ static bool archmage_do_special(walker* self)
                     newob = summon_entity(self, Order::FX, FAMILY_CHAIN);
                     if (!newob) return false;
                     generic = static_cast<std::int32_t>(self->stats()->magicpoints() - static_cast<float>(self->stats()->special_cost(2)));
-                    generic /= 2;
+                    generic = std::min(generic / 2, og::combat::kMpPoolDamageCap); // §2.12: initial bolt (and its MP charge) bind only above ~1280 MP
                     self->stats()->set_magicpoints(self->stats()->magicpoints() - static_cast<float>(generic));
                     newob->set_damage(static_cast<float>(generic));
                     generic = 30000;
                     for (auto* w : newlist)
                     {
+                        // Chain lightning cannot arc through solid floors:
+                        // only same-floor foes are valid first strikes (A8;
+                        // byte-identical on single-floor levels).
+                        if (w->floor() != self->floor())
+                            continue;
                         std::int32_t dist = self->distance_to_ob_center(w);
                         if (generic > dist)
                         {
@@ -294,6 +303,11 @@ static bool archmage_do_special(walker* self)
                 newob = current_game->world->add_ob(Order::Living, FAMILY_FIREELEMENTAL);
                 if (!newob)
                     return false;
+                // Summon appears beside the caster, on the caster's floor
+                // (A8); must precede the query_passable probes and setxy so
+                // both use the right floor.
+                newob->set_floor(self->floor());
+                newob->set_summoned(true);  // ammunition: never a SAVE_ALL loss
                 generic = 0;
                 for (i = -1; i <= 1; i++)
                     for (j = -1; j <= 1; j++)
@@ -310,7 +324,7 @@ static bool archmage_do_special(walker* self)
                             newob->set_difficulty(static_cast<std::uint32_t>(newob->stats()->level()));
                             newob->set_team_num(self->team_num());
                             newob->set_owner(self);
-                            newob->set_lifetime(200 + 60 * self->stats()->level());
+                            newob->set_lifetime(og::combat::elemental_lifetime(self->stats()->level()));
                         }
                     }
                 if (!generic)
@@ -380,6 +394,12 @@ static bool archmage_do_special(walker* self)
                 newob = current_game->world->add_ob(Order::Living, person);
                 if (!newob)
                     return false;
+                // Illusion appears beside the caster, on the caster's floor
+                // (A8); must precede the query_passable probes and setxy.
+                newob->set_floor(self->floor());
+                // Named "Phantom" below, but conjured ammunition must never
+                // fail a SAVE_ALL mission when it expires (Wave F2).
+                newob->set_summoned(true);
                 generic = 0;
                 for (i = -1; i <= 1; i++)
                     for (j = -1; j <= 1; j++)
@@ -396,7 +416,7 @@ static bool archmage_do_special(walker* self)
                             newob->set_difficulty(static_cast<std::uint32_t>(newob->stats()->level()));
                             newob->set_team_num(self->team_num());
                             newob->set_owner(self);
-                            newob->set_lifetime(100 + 20 * self->stats()->level());
+                            newob->set_lifetime(og::combat::image_lifetime(self->stats()->level()));
                             newob->stats()->set_max_hitpoints(1);
                             newob->stats()->set_hitpoints(0);
                             newob->stats()->set_armor(0);

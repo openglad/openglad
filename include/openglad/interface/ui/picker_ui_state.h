@@ -97,6 +97,9 @@ struct PickerState {
     std::vector<button> loadteam_buttons;
     std::vector<button> main_options_buttons;
     std::vector<button> control_options_buttons;
+    std::vector<button> gameplay_fx_options_buttons;
+    std::vector<button> ui_fx_options_buttons;
+    std::vector<button> graphics_fx_options_buttons;
     std::vector<button> details_buttons;
     std::vector<button> trainmenu_buttons;
     std::vector<button> hiremenu_buttons;
@@ -104,6 +107,7 @@ struct PickerState {
     std::vector<button> teamsmenu_buttons;
     std::vector<button> viewscenario_buttons;
     std::vector<button> scenariomenu_buttons;
+    std::vector<button> difficulty_menu_buttons;
 
     // TEAMS subscreen: roster slot selected by the local guy-cycling row.
     int teams_menu_guy_slot = 0;

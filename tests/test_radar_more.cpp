@@ -4,9 +4,13 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/statistics.h>
+#include <openglad/gameplay/game_world.h>
+#include <openglad/core/colors.h>
 #include <openglad/legacy/base.h>
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <cstddef>
 #include <vector>
 
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -26,6 +30,17 @@ static void set_tile(LevelRuntimeData& d, int x, int y, unsigned char t)
     if (x < 0 || y < 0 || x >= d.world().grid.w || y >= d.world().grid.h)
         return;
     d.world().grid.data[y * d.world().grid.w + x] = t;
+}
+
+// Give floor f an own grid filled with `tile`, matching the base extents.
+static void fill_floor_grid(GameWorld& world, int f, unsigned char tile)
+{
+    const int gw = world.grid.w;
+    const int gh = world.grid.h;
+    auto* buf = new unsigned char[static_cast<std::size_t>(gw) * gh];
+    std::fill(buf, buf + static_cast<std::size_t>(gw) * gh, tile);
+    world.grid_for_floor(f) = PixieData(1, static_cast<unsigned char>(gw),
+                                        static_cast<unsigned char>(gh), buf);
 }
 } // namespace
 
@@ -135,3 +150,319 @@ TEST(RadarMore, radar_start_default_uses_myscreen_level_data)
     (void)r.draw(&og::runtime::current_session->myscreen_->level_runtime_data());
 }
 
+// Westlands terrain radar colors: snow reads white, lava a STATIC ember
+// orange (233 — COLOR_FIRE 224 sits in the cycled ORANGE band 224-231 and
+// made whole lava fields strobe on the minimap), marsh dark green (distinct
+// from the trees ramp), ash a warm dark grey (distinct from pavement 17 and
+// walls 24).
+TEST(RadarMore, westlands_tiles_map_to_pinned_radar_colors)
+{
+    FixedRandom fixed_rng(1);
+    GameContext c;
+    c.rng = &fixed_rng;
+    GlobalContextGuard guard(&c);
+
+    LevelRuntimeData d(1);
+    d.create_new_grid();
+
+    const std::vector<unsigned char> tiles = {
+        PIX_SNOW1, PIX_SNOW2, PIX_LAVA1, PIX_LAVA2,
+        PIX_MARSH1, PIX_MARSH2, PIX_ASH1, PIX_ASH2,
+    };
+    for (int i = 0; i < static_cast<int>(tiles.size()); i++)
+        set_tile(d, i, 0, tiles[static_cast<size_t>(i)]);
+
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_TRUE(vs != nullptr) << "viewscreen exists";
+    radar r(vs, og::runtime::current_session->myscreen_, 0);
+    r.start(&d);
+    r.update(&d);
+    ASSERT_GE(static_cast<int>(r.bmp.size()), 8)
+        << "radar bmp must cover the painted row";
+
+    const std::vector<unsigned char> expected = {
+        COLOR_WHITE,    COLOR_WHITE,    // snow
+        233,            233,            // lava: static, NEVER the cycled band
+        COLOR_GREEN + 7, COLOR_GREEN + 7, // marsh
+        249,            249,            // ash
+    };
+    for (int i = 0; i < 8; i++)
+        EXPECT_EQ(static_cast<int>(expected[static_cast<size_t>(i)]),
+                  static_cast<int>(r.bmp[static_cast<size_t>(i)]))
+            << "radar color for tile id "
+            << static_cast<int>(tiles[static_cast<size_t>(i)]);
+
+    // B3 guard: the lava minimap color must sit OUTSIDE both cycled palette
+    // bands (water 208-223, orange 224-231) — a cycled index strobes every
+    // frame on big lava fields.
+    EXPECT_TRUE(r.bmp[2] < WATER_START || r.bmp[2] > ORANGE_END)
+        << "lava radar color must not blink with palette cycling";
+}
+
+// B2: on multifloor levels the minimap tracks the floor being played — the
+// terrain bmp re-bakes from the control walker's floor (and blips filter to
+// it); single-floor levels never leave floor 0, keeping the legacy radar
+// pixel-identical.
+TEST(RadarMore, radar_terrain_follows_the_control_floor)
+{
+    FixedRandom fixed_rng(1);
+    GameContext c;
+    c.rng = &fixed_rng;
+    GlobalContextGuard guard(&c);
+
+    LevelRuntimeData d(1);
+    d.create_new_grid();
+
+    // Floor 0 reads snow (white); floor 1 reads ash (249).
+    for (int y = 0; y < d.world().grid.h; y++)
+        for (int x = 0; x < d.world().grid.w; x++)
+            set_tile(d, x, y, PIX_SNOW1);
+    d.world().set_floor_count(2);
+    fill_floor_grid(d.world(), 1, PIX_ASH1);
+
+    walker* control = d.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, control);
+    control->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
+    control->set_team_num(1);
+
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    walker* saved_control = vs->control;
+    const short saved_radarstart = vs->radarstart;
+    const Sint32 saved_override = vs->editor_floor_override_;
+    vs->control = control;
+    vs->radarstart = 1;
+    vs->editor_floor_override_ = -1;
+
+    radar r(vs, og::runtime::current_session->myscreen_, 0);
+    r.force_lower_position = true;
+    r.start(&d);
+    ASSERT_EQ(0, static_cast<int>(r.bmp_floor_)) << "starts on floor 0";
+    ASSERT_EQ(COLOR_WHITE, static_cast<int>(r.bmp[0])) << "floor 0 snow baked";
+
+    // Control walks up the stairs: the next draw re-bakes floor 1 terrain.
+    control->set_floor(1);
+    ASSERT_EQ(1, r.draw(&d));
+    EXPECT_EQ(1, static_cast<int>(r.bmp_floor_)) << "radar follows to floor 1";
+    EXPECT_EQ(249, static_cast<int>(r.bmp[0])) << "floor 1 ash baked";
+
+    // And back down.
+    control->set_floor(0);
+    ASSERT_EQ(1, r.draw(&d));
+    EXPECT_EQ(0, static_cast<int>(r.bmp_floor_)) << "radar returns to floor 0";
+    EXPECT_EQ(COLOR_WHITE, static_cast<int>(r.bmp[0])) << "floor 0 snow again";
+
+    vs->control = saved_control;
+    vs->radarstart = saved_radarstart;
+    vs->editor_floor_override_ = saved_override;
+}
+
+// B2 (editor): with no control walker, the editor's floor override picks the
+// radar floor, so the minimap shows the floor being edited.
+TEST(RadarMore, radar_terrain_follows_the_editor_floor_override)
+{
+    FixedRandom fixed_rng(1);
+    GameContext c;
+    c.rng = &fixed_rng;
+    GlobalContextGuard guard(&c);
+
+    LevelRuntimeData d(1);
+    d.create_new_grid();
+    for (int y = 0; y < d.world().grid.h; y++)
+        for (int x = 0; x < d.world().grid.w; x++)
+            set_tile(d, x, y, PIX_SNOW1);
+    d.world().set_floor_count(2);
+    fill_floor_grid(d.world(), 1, PIX_ASH1);
+
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    walker* saved_control = vs->control;
+    const short saved_radarstart = vs->radarstart;
+    const Sint32 saved_override = vs->editor_floor_override_;
+    vs->control = nullptr;
+    vs->radarstart = 1;
+
+    radar r(vs, og::runtime::current_session->myscreen_, 0);
+    r.force_lower_position = true;
+    r.start(&d);
+
+    vs->editor_floor_override_ = 1;
+    ASSERT_EQ(1, r.draw(&d));
+    EXPECT_EQ(1, static_cast<int>(r.bmp_floor_)) << "override picks floor 1";
+    EXPECT_EQ(249, static_cast<int>(r.bmp[0])) << "edited floor's terrain";
+
+    vs->editor_floor_override_ = -1;
+    ASSERT_EQ(1, r.draw(&d));
+    EXPECT_EQ(0, static_cast<int>(r.bmp_floor_))
+        << "no override and no control: back to floor 0";
+    EXPECT_EQ(COLOR_WHITE, static_cast<int>(r.bmp[0]));
+
+    vs->control = saved_control;
+    vs->radarstart = saved_radarstart;
+    vs->editor_floor_override_ = saved_override;
+}
+
+// B2 (robustness): a floor whose grid was never authored falls back to the
+// base grid (no crash, no garbage), and an out-of-range walker floor clamps
+// to the top floor.
+TEST(RadarMore, radar_survives_missing_floor_grid_and_clamps_floor)
+{
+    FixedRandom fixed_rng(1);
+    GameContext c;
+    c.rng = &fixed_rng;
+    GlobalContextGuard guard(&c);
+
+    LevelRuntimeData d(1);
+    d.create_new_grid();
+    for (int y = 0; y < d.world().grid.h; y++)
+        for (int x = 0; x < d.world().grid.w; x++)
+            set_tile(d, x, y, PIX_SNOW1);
+    d.world().set_floor_count(2); // floor 1 exists but has NO grid
+
+    walker* control = d.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, control);
+    control->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
+    control->set_team_num(1);
+    control->set_floor(5); // beyond the top floor: must clamp, not overrun
+
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    walker* saved_control = vs->control;
+    const short saved_radarstart = vs->radarstart;
+    const Sint32 saved_override = vs->editor_floor_override_;
+    vs->control = control;
+    vs->radarstart = 1;
+    vs->editor_floor_override_ = -1;
+
+    radar r(vs, og::runtime::current_session->myscreen_, 0);
+    r.force_lower_position = true;
+    r.start(&d);
+
+    ASSERT_EQ(1, r.draw(&d));
+    EXPECT_EQ(1, static_cast<int>(r.bmp_floor_))
+        << "floor 5 with 2 floors clamps to the top floor";
+    EXPECT_EQ(COLOR_WHITE, static_cast<int>(r.bmp[0]))
+        << "an unauthored floor grid falls back to the base terrain";
+
+    vs->control = saved_control;
+    vs->radarstart = saved_radarstart;
+    vs->editor_floor_override_ = saved_override;
+}
+
+// B2 (blips): entities blip only on the floor the radar shows.
+TEST(RadarMore, radar_blips_filter_to_the_shown_floor)
+{
+    FixedRandom fixed_rng(1);
+    GameContext c;
+    c.rng = &fixed_rng;
+    GlobalContextGuard guard(&c);
+
+    LevelRuntimeData d(1);
+    d.create_new_grid();
+    for (int y = 0; y < d.world().grid.h; y++)
+        for (int x = 0; x < d.world().grid.w; x++)
+            set_tile(d, x, y, PIX_SNOW1);
+    d.world().set_floor_count(2);
+    fill_floor_grid(d.world(), 1, PIX_ASH1);
+
+    walker* control = d.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* buddy = d.add_ob(Order::Living, FAMILY_ELF);
+    ASSERT_NE(nullptr, control);
+    ASSERT_NE(nullptr, buddy);
+    control->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
+    control->set_team_num(1);
+    control->set_floor(1);
+    buddy->setxy(GRID_SIZE * 6, GRID_SIZE * 6);
+    buddy->set_team_num(1);
+    buddy->set_floor(1);
+
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    walker* saved_control = vs->control;
+    const short saved_radarstart = vs->radarstart;
+    const Sint32 saved_override = vs->editor_floor_override_;
+    vs->control = control;
+    vs->radarstart = 1;
+    vs->editor_floor_override_ = -1;
+
+    radar r(vs, og::runtime::current_session->myscreen_, 0);
+    r.force_lower_position = true;
+    r.start(&d);
+
+    // Draw with the buddy on the radar floor, sample its blip pixel.
+    ASSERT_EQ(1, r.draw(&d));
+    ASSERT_EQ(1, static_cast<int>(r.bmp_floor_));
+    const Sint32 blip_x = r.xloc + ((buddy->xpos() + 1) / GRID_SIZE - r.radarx);
+    const Sint32 blip_y = r.yloc + ((buddy->ypos() + 1) / GRID_SIZE - r.radary);
+    Uint8 on_r = 0, on_g = 0, on_b = 0;
+    og::runtime::current_session->myscreen_->get_pixel(blip_x, blip_y,
+                                                       &on_r, &on_g, &on_b);
+
+    // Same scene with the buddy one floor down: the blip disappears (the
+    // pixel re-blits to the baked terrain).
+    buddy->set_floor(0);
+    ASSERT_EQ(1, r.draw(&d));
+    Uint8 off_r = 0, off_g = 0, off_b = 0;
+    og::runtime::current_session->myscreen_->get_pixel(blip_x, blip_y,
+                                                       &off_r, &off_g, &off_b);
+    EXPECT_FALSE(on_r == off_r && on_g == off_g && on_b == off_b)
+        << "a blip on another floor must not draw over this floor's radar";
+
+    vs->control = saved_control;
+    vs->radarstart = saved_radarstart;
+    vs->editor_floor_override_ = saved_override;
+}
+
+
+// Feature B: Z-stair tiles bake two STATIC pinned radar colors — YELLOW (88,
+// the climb objective pops even on snow) for PIX_ZSTAIR_UP and LIGHT_BLUE
+// (120, the exit-idiom cyan) for PIX_ZSTAIR_DOWN. No pulse, never ctx().rng:
+// a cycled or random index would strobe the bake. Tile bytes 140/141 are
+// branch-new and absent from all legacy content, so single-floor radars stay
+// byte-identical by tile absence.
+TEST(RadarMore, zstair_tiles_bake_pinned_radar_colors)
+{
+    FixedRandom fixed_rng(1);
+    GameContext c;
+    c.rng = &fixed_rng;
+    GlobalContextGuard guard(&c);
+
+    LevelRuntimeData d(1);
+    d.create_new_grid();
+
+    set_tile(d, 0, 0, PIX_ZSTAIR_UP);
+    set_tile(d, 1, 0, PIX_ZSTAIR_DOWN);
+    d.world().set_floor_count(2);
+    fill_floor_grid(d.world(), 1, PIX_ZSTAIR_DOWN);
+
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+    walker* saved_control = vs->control;
+    const short saved_radarstart = vs->radarstart;
+    const Sint32 saved_override = vs->editor_floor_override_;
+    vs->control = nullptr;
+    vs->radarstart = 1;
+    vs->editor_floor_override_ = -1;
+
+    radar r(vs, og::runtime::current_session->myscreen_, 0);
+    r.force_lower_position = true;
+    r.start(&d);
+    ASSERT_GE(static_cast<int>(r.bmp.size()), 2)
+        << "radar bmp must cover the painted tiles";
+    EXPECT_EQ(88, static_cast<int>(r.bmp[0]))
+        << "PIX_ZSTAIR_UP bakes YELLOW (static, pinned)";
+    EXPECT_EQ(120, static_cast<int>(r.bmp[1]))
+        << "PIX_ZSTAIR_DOWN bakes LIGHT_BLUE (static, pinned)";
+
+    // Forced re-bake onto floor 1 (editor override): the stair colors bake
+    // identically on stacked floors.
+    vs->editor_floor_override_ = 1;
+    ASSERT_EQ(1, r.draw(&d));
+    EXPECT_EQ(1, static_cast<int>(r.bmp_floor_)) << "override picks floor 1";
+    EXPECT_EQ(120, static_cast<int>(r.bmp[0]))
+        << "floor 1's PIX_ZSTAIR_DOWN fill baked after the re-bake";
+
+    vs->control = saved_control;
+    vs->radarstart = saved_radarstart;
+    vs->editor_floor_override_ = saved_override;
+}

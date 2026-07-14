@@ -663,6 +663,9 @@ void serialize_ctf_state(std::vector<std::uint8_t>& buffer,
         append_u8(buffer, entry.level);
         append_u16(buffer, entry.ticks_left);
         append_u32(buffer, entry.walker_entity_id);
+        append_i16(buffer, entry.x);
+        append_i16(buffer, entry.y);
+        append_u8(buffer, entry.floor);
     }
 
     append_i16(buffer, snapshot.ctf_requested_team_count);
@@ -752,6 +755,9 @@ void deserialize_ctf_state(ByteReader& reader, og::sim::WorldSnapshot& snapshot)
         entry.level = reader.read_u8("ctf_respawn.level");
         entry.ticks_left = reader.read_u16("ctf_respawn.ticks_left");
         entry.walker_entity_id = reader.read_u32("ctf_respawn.walker_entity_id");
+        entry.x = reader.read_i16("ctf_respawn.x");
+        entry.y = reader.read_i16("ctf_respawn.y");
+        entry.floor = reader.read_u8("ctf_respawn.floor");
         snapshot.ctf_respawn_queue.push_back(entry);
     }
 
@@ -793,8 +799,13 @@ void serialize_world_state(std::vector<std::uint8_t>& buffer,
     append_bool(buffer, snapshot.pending_exit_prompt);
     append_bool(buffer, snapshot.paused);
     append_u8(buffer, snapshot.pause_player_index);
+    append_u8(buffer, snapshot.weather);
     append_u32(buffer, snapshot.snapshot_hash);
     serialize_ctf_state(buffer, snapshot);
+    // Appended AFTER the CTF block so the raw CTF payload-offset pins in
+    // test_ctf_snapshot.cpp stay valid.
+    append_i16(buffer, snapshot.respawn_mode);
+    append_i16(buffer, snapshot.generator_rate);
 }
 
 void deserialize_world_state(ByteReader& reader, og::sim::WorldSnapshot& snapshot)
@@ -824,8 +835,11 @@ void deserialize_world_state(ByteReader& reader, og::sim::WorldSnapshot& snapsho
     snapshot.pending_exit_prompt = reader.read_bool("world.pending_exit_prompt");
     snapshot.paused = reader.read_bool("world.paused");
     snapshot.pause_player_index = reader.read_u8("world.pause_player_index");
+    snapshot.weather = reader.read_u8("world.weather");
     snapshot.snapshot_hash = reader.read_u32("world.snapshot_hash");
     deserialize_ctf_state(reader, snapshot);
+    snapshot.respawn_mode = reader.read_i16("world.respawn_mode");
+    snapshot.generator_rate = reader.read_i16("world.generator_rate");
 }
 
 void serialize_grid_state(std::vector<std::uint8_t>& buffer,
@@ -1518,6 +1532,19 @@ void remove_missing_entities(GameWorld& world,
             continue;
         }
 
+        // Dormant (delayed-spawn) walkers are EXCLUDED from snapshot capture
+        // by design, so their absence from a snapshot is expected — never
+        // reconcile them away. This keeps them alive through the local
+        // transport shadow's seed apply (server world) and through replay
+        // playback's initial-snapshot apply; the moment the authoritative
+        // side wakes one, it appears in snapshots and rule two in
+        // apply_entity_snapshot_fields wakes the mirror's copy.
+        if (entity->dormant())
+        {
+            ++it;
+            continue;
+        }
+
         if (world.myobmap != nullptr)
             world.myobmap->remove(entity);
         it = entities.erase(it);
@@ -1567,8 +1594,33 @@ void apply_entity_snapshot_fields(GameWorld& world,
     entity.set_order_family(snapshot.order, static_cast<char>(safe_family));
     entity.set_snapshot_position(snapshot.xpos, snapshot.ypos,
                                  snapshot.worldx, snapshot.worldy);
+    entity.set_worldz(snapshot.worldz);
     entity.set_sizex(snapshot.sizex);
     entity.set_sizey(snapshot.sizey);
+    entity.set_sizez(snapshot.sizez);
+    // snapshot.floor is uint8 (>= 0); Phase 2 adds the upper clamp to
+    // [0, floor_count) once GameWorld tracks a floor count.
+    entity.set_floor(static_cast<short>(snapshot.floor));
+    // spawn_x/spawn_y use -1/-1 as the "never recorded" sentinel; collapse any
+    // wire value with a negative half to the full sentinel so a crafted
+    // snapshot cannot invent a partially-set spawn point. spawn_floor is uint8
+    // (>= 0) like floor; the respawn fire path re-validates the spot anyway.
+    std::int16_t safe_spawn_x = snapshot.spawn_x;
+    std::int16_t safe_spawn_y = snapshot.spawn_y;
+    if (safe_spawn_x < 0 || safe_spawn_y < 0)
+    {
+        safe_spawn_x = -1;
+        safe_spawn_y = -1;
+    }
+    entity.set_spawn_x(safe_spawn_x);
+    entity.set_spawn_y(safe_spawn_y);
+    entity.set_spawn_floor(snapshot.spawn_floor);
+    // A walker present in a snapshot is by construction awake (capture
+    // excludes dormant walkers): clear dormancy so a mirror whose own level
+    // load created the same delayed walker reveals it when the authoritative
+    // side wakes it.
+    if (entity.dormant())
+        entity.set_dormant(false);
     entity.set_team_num(snapshot.team_num);
     entity.set_real_team_num(snapshot.real_team_num);
     entity.set_user(snapshot.user);
@@ -1580,6 +1632,7 @@ void apply_entity_snapshot_fields(GameWorld& world,
     entity.set_bonus_rounds(snapshot.bonus_rounds);
     entity.set_lastx(snapshot.lastx);
     entity.set_lasty(snapshot.lasty);
+    entity.set_vz(snapshot.vz);
     entity.set_stepsize(snapshot.stepsize);
     entity.set_normal_stepsize(snapshot.normal_stepsize);
     entity.set_curdir(snapshot.curdir);
@@ -1825,7 +1878,14 @@ void rebuild_obmap(GameWorld& world)
         {
             if (entry == nullptr)
                 continue;
-            if (!entry->ignore() && !entry->dead())
+            // Dormant (delayed-spawn) walkers survive reconciliation (see
+            // remove_missing_entities) but must stay OUT of the collision
+            // map until they wake: re-adding them here made not-yet-spawned
+            // foes collidable in every apply_snapshot-seeded world (the
+            // local transport shadow's server seed, mirrors, replays) —
+            // walking into their spawn cell triggered melee against an
+            // invisible body. set_dormant(false) re-registers them on wake.
+            if (!entry->ignore() && !entry->dead() && !entry->dormant())
                 world.myobmap->add(entry.get(), entry->xpos(), entry->ypos());
             else
                 world.myobmap->remove(entry.get());
@@ -1837,20 +1897,26 @@ void rebuild_obmap(GameWorld& world)
     readd_list(world.weaplist);
 }
 
-void apply_grid_snapshot(GameWorld& world, const og::sim::WorldSnapshot& snapshot)
+// Returns false when a full-grid resend had to be REJECTED (size mismatch):
+// the target world is running a different map than the snapshot's sender —
+// the unrecoverable desync shape. Callers use the signal to bound retries
+// instead of rubber-banding forever.
+bool apply_grid_snapshot(GameWorld& world, const og::sim::WorldSnapshot& snapshot)
 {
     if (!world.grid.valid())
-        return;
+        return true;
 
     const std::size_t grid_size =
         static_cast<std::size_t>(world.grid.w) * world.grid.h;
 
+    bool grid_applied = true;
     if (snapshot.grid_full_resend)
     {
         if (snapshot.full_grid_data.size() != grid_size)
         {
             LogError("apply_snapshot: full grid size mismatch (got {}, expected {})\n",
                      snapshot.full_grid_data.size(), grid_size);
+            grid_applied = false;
         }
         else
         {
@@ -1872,6 +1938,7 @@ void apply_grid_snapshot(GameWorld& world, const og::sim::WorldSnapshot& snapsho
             static_cast<std::size_t>(tile.y) * world.grid.w + tile.x;
         world.grid.data[grid_index] = tile.value;
     }
+    return grid_applied;
 }
 
 void apply_delta_grid(og::sim::WorldSnapshot& baseline,
@@ -2064,6 +2131,11 @@ og::sim::EntitySnapshot capture_entity_snapshot(walker& entity,
     snapshot.ypos = entity.ypos();
     snapshot.sizex = entity.sizex();
     snapshot.sizey = entity.sizey();
+    snapshot.sizez = entity.sizez();
+    snapshot.floor = static_cast<std::uint8_t>(entity.floor());
+    snapshot.spawn_x = entity.spawn_x();
+    snapshot.spawn_y = entity.spawn_y();
+    snapshot.spawn_floor = entity.spawn_floor();
     snapshot.team_num = entity.team_num();
     snapshot.real_team_num = entity.real_team_num();
     snapshot.user = entity.user();
@@ -2078,9 +2150,11 @@ og::sim::EntitySnapshot capture_entity_snapshot(walker& entity,
     snapshot.frame = entity.frame();
     snapshot.worldx = entity.worldx();
     snapshot.worldy = entity.worldy();
+    snapshot.worldz = entity.worldz();
 
     snapshot.lastx = entity.lastx();
     snapshot.lasty = entity.lasty();
+    snapshot.vz = entity.vz();
     snapshot.stepsize = entity.stepsize();
     snapshot.normal_stepsize = entity.normal_stepsize();
     snapshot.curdir = entity.curdir();
@@ -2154,6 +2228,13 @@ void capture_entity_list(EntityList& entities,
     {
         walker* const entity = entry.get();
         if (entity == nullptr)
+            continue;
+
+        // Delayed spawns: a dormant walker has not entered the world yet, so
+        // it is invisible to snapshots (mirrors, replays and the wire format
+        // first see it when it activates). Its dirty state is left alone; the
+        // activation capture carries the full entity.
+        if (entity->dormant())
             continue;
 
         if (entity->myguy != nullptr &&
@@ -2314,7 +2395,10 @@ og::sim::WorldSnapshot capture_snapshot_impl(GameWorld& world,
     snapshot.pending_exit_prompt = world.pending_exit_prompt;
     snapshot.paused = world.paused;
     snapshot.pause_player_index = world.pause_player_index;
+    snapshot.weather = static_cast<std::uint8_t>(world.weather());
     capture_ctf_state(world, snapshot);
+    snapshot.respawn_mode = world.respawn_mode;
+    snapshot.generator_rate = world.generator_rate;
 
     std::unordered_set<int> seen_guy_ids;
     capture_entity_list(world.oblist, snapshot.oblist, snapshot.guy_snapshots,
@@ -2677,7 +2761,7 @@ void split_event_batches(const SimEventBatch& source,
     normalize_endgame_event_order(game_flow_batch);
 }
 
-void apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot)
+bool apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot)
 {
     ApplyingSnapshotGuard applying_guard(world);
 
@@ -2689,7 +2773,7 @@ void apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot)
     {
         LogError("apply_snapshot: missing gameplay context bindings for world {}\n",
                  world.id);
-        return;
+        return false;
     }
 
     GameplayContext* installed_context = &gameplay_context;
@@ -2752,7 +2836,15 @@ void apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot)
     world.pending_exit_prompt = snapshot.pending_exit_prompt;
     world.paused = snapshot.paused;
     world.pause_player_index = snapshot.pause_player_index;
+    // Weather is render-only world state; clamp unknown wire values to None
+    // rather than trusting the peer byte.
+    world.set_weather(
+        snapshot.weather <= static_cast<std::uint8_t>(WeatherKind::Snow)
+            ? static_cast<WeatherKind>(snapshot.weather)
+            : WeatherKind::None);
     apply_ctf_state(world, snapshot);
+    world.respawn_mode = snapshot.respawn_mode;
+    world.generator_rate = snapshot.generator_rate;
 
     GuyStorage guy_storage;
     GuyLookup guy_lookup;
@@ -2801,7 +2893,7 @@ void apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot)
     rebind_guys(world, ob_snapshots, fx_snapshots, weap_snapshots,
                 guy_storage, guy_lookup);
     rebuild_obmap(world);
-    apply_grid_snapshot(world, snapshot);
+    const bool grid_applied = apply_grid_snapshot(world, snapshot);
     reorder_entity_list(world.oblist, snapshot.oblist);
     reorder_entity_list(world.fxlist, snapshot.fxlist);
     reorder_entity_list(world.weaplist, snapshot.weaplist);
@@ -2813,6 +2905,7 @@ void apply_snapshot(GameWorld& world, const WorldSnapshot& snapshot)
     // walker construction rolls path_check_counter from the world RNG, so
     // restore the authoritative snapshot state after all apply-side effects.
     world.rng_.state_ = snapshot.rng_state;
+    return grid_applied;
 }
 
 void apply_delta(WorldSnapshot& baseline, const WorldSnapshot& delta)
@@ -2842,6 +2935,7 @@ void apply_delta(WorldSnapshot& baseline, const WorldSnapshot& delta)
     baseline.pending_exit_prompt = delta.pending_exit_prompt;
     baseline.paused = delta.paused;
     baseline.pause_player_index = delta.pause_player_index;
+    baseline.weather = delta.weather;
     baseline.snapshot_hash = delta.snapshot_hash;
 
     baseline.ctf_active = delta.ctf_active;
@@ -2880,6 +2974,8 @@ void apply_delta(WorldSnapshot& baseline, const WorldSnapshot& delta)
     baseline.ctf_requested_respawn_ticks = delta.ctf_requested_respawn_ticks;
     baseline.ctf_requested_strip_scenario_troops =
         delta.ctf_requested_strip_scenario_troops;
+    baseline.respawn_mode = delta.respawn_mode;
+    baseline.generator_rate = delta.generator_rate;
 
     apply_delta_grid(baseline, delta);
     baseline.guy_snapshots = delta.guy_snapshots;

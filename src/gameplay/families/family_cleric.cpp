@@ -28,7 +28,7 @@ short exp_from_action(ExpAction action, walker* w, walker* target, short value);
 static void cleric_customize_weapon(walker* self, walker* weapon)
 {
     weapon->set_ani_type(ANI_GLOWGROW);
-    weapon->set_lifetime(weapon->lifetime() + (self->stats()->level() * 110));
+    weapon->set_lifetime(weapon->lifetime() + og::combat::glow_bonus(self->stats()->level())); // §2.10: legacy 110*L, flat cap 2200 = f(20) (identity FORCED by the L20 glow golden)
 }
 
 static void cleric_on_shoved(walker* self)
@@ -149,7 +149,7 @@ static bool cleric_do_special(walker* self)
                 newob->set_ani_type(1);
                 generic = static_cast<std::int32_t>(self->stats()->magicpoints() - static_cast<float>(self->stats()->special_cost(static_cast<int>(self->current_special()))));
                 generic /= 2;
-                newob->set_lifetime(100 + generic);
+                newob->set_lifetime((100 + generic < og::combat::kMaceLifeCap) ? 100 + generic : og::combat::kMaceLifeCap); // §2.12: mace lifetime binds only above 738 MP
                 newob->stats()->set_hitpoints(newob->stats()->hitpoints() + static_cast<float>(generic / 2));
                 newob->set_damage(newob->damage() + static_cast<float>(generic) / 4.0f);
                 self->stats()->set_magicpoints(self->stats()->magicpoints() - static_cast<float>(generic));
@@ -191,12 +191,13 @@ static bool cleric_do_special(walker* self)
                     distance = static_cast<std::uint32_t>(self->distance_to_ob(newob));
                     if (current_game->world->query_passable(targetx, targety, newob) && distance < 60)
                     {
-                        alive = self->do_summon(FAMILY_SKELETON, 125 + (self->stats()->level() * 40));
+                        alive = self->do_summon(FAMILY_SKELETON, og::combat::skeleton_lifetime(self->stats()->level()));
                         if (!alive)
                             return false;
                         alive->set_team_num(self->team_num());
                         alive->stats()->set_level(current_game->world->rng_.next(self->stats()->level()) + 1);
                         alive->set_difficulty(static_cast<std::uint32_t>(alive->stats()->level()));
+                        alive->set_floor(newob->floor());  // rise at the bloodstain's floor (A8)
                         alive->setxy(newob->xpos(), newob->ypos());
                         alive->set_owner(self);
                         newob->set_dead(1);
@@ -245,12 +246,13 @@ static bool cleric_do_special(walker* self)
                     distance = static_cast<std::uint32_t>(self->distance_to_ob(newob));
                     if (current_game->world->query_passable(targetx, targety, newob) && distance < 30)
                     {
-                        alive = self->do_summon(FAMILY_GHOST, 150 + (self->stats()->level() * 40));
+                        alive = self->do_summon(FAMILY_GHOST, og::combat::ghost_raise_lifetime(self->stats()->level()));
                         if (!alive)
                             return false;
                         alive->stats()->set_level(current_game->world->rng_.next(self->stats()->level()) + 1);
                         alive->set_difficulty(static_cast<std::uint32_t>(alive->stats()->level()));
                         alive->set_team_num(self->team_num());
+                        alive->set_floor(newob->floor());  // rise at the bloodstain's floor (A8)
                         alive->setxy(newob->xpos(), newob->ypos());
                         alive->set_owner(self);
                         newob->set_dead(1);
@@ -302,6 +304,7 @@ static bool cleric_do_special(walker* self)
                         alive->set_difficulty(static_cast<std::uint32_t>(alive->stats()->level()));
                         alive->set_owner(self);
                     }
+                    alive->set_floor(newob->floor());  // return at the bloodstain's floor (A8)
                     alive->setxy(newob->xpos(), newob->ypos());
                     newob->set_dead(1);
                     if (self->myguy)

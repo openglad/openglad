@@ -22,9 +22,15 @@ std::string campaign_display_title(const std::string& campaign_id);
 // scenario or its title is missing. Memoized per (mounted campaign, N).
 std::string scenario_display_name(int scen_num);
 
-// Drop one campaign's memoized title. Mounting a package calls this so a
-// lookup that failed before the package existed (and memoized the raw-id
-// fallback) heals once the package is actually mountable.
+// Game-mode identity of the MOUNTED campaign: the raw `mode:` string from
+// its campaign.yaml ("" when absent — Classic). Memoized per campaign id;
+// invalidated with the display-title cache on mount changes. Consumed by
+// og::mode::current_progression().
+std::string mounted_campaign_mode();
+
+// Drop one campaign's memoized title (and mode). Mounting a package calls
+// this so a lookup that failed before the package existed (and memoized the
+// raw-id fallback) heals once the package is actually mountable.
 void forget_campaign_display_title(const std::string& campaign_id);
 
 // Drop all memoized titles. Call after anything that rewrites, installs, or

@@ -59,6 +59,10 @@ const WeaponFamilyDescriptor& describe_weapon_rock()
         .init_bit_flags = BIT_FORESTWALK,
         .init_lifetime = 0,
         .init_ani_type = 0,
+        // Elf rocks launch upward and arc back down under gravity; drop through pits.
+        .init_vz = 0.7f,
+        .gravity = 0.09f,
+        .can_drop_floors = true,
         .on_death = rock_on_death,
         .on_animate = nullptr,
         .on_hit_target = nullptr,

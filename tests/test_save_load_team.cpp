@@ -12,6 +12,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/guy_create.h>
+#include <openglad/platform/local_transport_shadow.h>
 #include <functional>
 #include <list>
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -142,6 +143,50 @@ TEST(SaveLoadTeam, save_team_then_load) {
 }
 
 
+
+// Issue #133 follow-through: a promoted (mage -> archmage) character must
+// round-trip through the on-disk save format with the upgraded family AND the
+// post-promotion stats intact.
+TEST(SaveLoadTeam, promoted_archmage_round_trips_through_save) {
+    auto& save_data = og::runtime::current_session->myscreen_->save_data;
+    save_data.reset();
+    save_data.numplayers = 1;
+    save_data.current_campaign = "org.openglad.gladiator";
+
+    auto mage = std::make_unique<guy>(FAMILY_MAGE);
+    mage->name = "PROMOTEME";
+    mage->upgrade_to_level(6);
+    // Promote exactly as create_detail_menu's promote button does it:
+    // upgrade_to_level(new_level) first, then flip the family.
+    mage->upgrade_to_level(1);
+    mage->family = FAMILY_ARCHMAGE;
+    const short expect_str = mage->strength;
+    const short expect_int = mage->intelligence;
+    const short expect_level = mage->level;
+
+    save_data.team_list[0] = std::move(mage);
+    save_data.team_size = 1;
+
+    ASSERT_TRUE(save_data.save("save6")) << "save should succeed";
+    save_data.reset();
+    ASSERT_EQ(0, static_cast<int>(save_data.team_size));
+
+    ASSERT_TRUE(save_data.load("save6")) << "load should succeed";
+    ASSERT_EQ(1, static_cast<int>(save_data.team_size));
+    ASSERT_TRUE(save_data.team_list[0] != nullptr);
+    EXPECT_STREQ("PROMOTEME", save_data.team_list[0]->name.c_str());
+    EXPECT_EQ(FAMILY_ARCHMAGE, static_cast<int>(save_data.team_list[0]->family))
+        << "the upgraded class must survive the save/load round trip";
+    EXPECT_EQ(static_cast<int>(expect_level),
+              static_cast<int>(save_data.team_list[0]->level));
+    EXPECT_EQ(static_cast<int>(expect_str),
+              static_cast<int>(save_data.team_list[0]->strength))
+        << "post-promotion stats must survive the round trip";
+    EXPECT_EQ(static_cast<int>(expect_int),
+              static_cast<int>(save_data.team_list[0]->intelligence));
+
+    save_data.reset();
+}
 
 // Test: the networked "as if played alone" per-player merge save.
 //
@@ -379,4 +424,176 @@ TEST(SaveLoadTeam, load_team_menu) {
 
     ASSERT_TRUE(state.finished) << "injector thread should have completed";
     ASSERT_TRUE(state.saw_load_menu) << "should have seen the load team menu";
+}
+
+// Permadeath toggle (keep_fallen_heroes): with the flag set, update_guys keeps
+// dead heroes on the roster (copied exactly like survivors, order preserved);
+// with the default 0, the classic drop still applies.
+TEST(SaveLoadTeam, update_guys_keep_fallen_keeps_dead_hero) {
+    std::list<std::unique_ptr<walker>> oblist;
+    auto add_walker = [&](unsigned char family, bool dead, std::uint32_t exp,
+                          const char* name) {
+        auto w = std::make_unique<walker>();
+        w->set_dead(dead ? 1 : 0);
+        auto g = std::make_unique<guy>(static_cast<int>(family));
+        g->name = name;
+        g->exp = exp;
+        w->set_owned_myguy(std::move(g));
+        oblist.push_back(std::move(w));
+    };
+    add_walker(FAMILY_SOLDIER, /*dead=*/false, /*exp=*/5000, "ALIVE_A");
+    add_walker(FAMILY_ARCHER,  /*dead=*/true,  /*exp=*/1234, "FALLEN_B");
+    add_walker(FAMILY_MAGE,    /*dead=*/false, /*exp=*/8000, "ALIVE_C");
+
+    SaveData keep;
+    keep.keep_fallen_heroes = 1;
+    keep.update_guys(oblist);
+
+    ASSERT_EQ(3, static_cast<int>(keep.team_size))
+        << "keep_fallen_heroes must keep the dead hero on the roster";
+    ASSERT_TRUE(keep.team_list[0] != nullptr);
+    ASSERT_TRUE(keep.team_list[1] != nullptr);
+    ASSERT_TRUE(keep.team_list[2] != nullptr);
+    EXPECT_STREQ("ALIVE_A", keep.team_list[0]->name.c_str())
+        << "roster order must be preserved";
+    EXPECT_STREQ("FALLEN_B", keep.team_list[1]->name.c_str())
+        << "the fallen hero must stay in its oblist position";
+    EXPECT_STREQ("ALIVE_C", keep.team_list[2]->name.c_str());
+    EXPECT_EQ(1234u, keep.team_list[1]->exp)
+        << "the fallen hero must be copied like a survivor (exp intact)";
+
+    // Default (permadeath on) still drops the dead hero from the same oblist.
+    SaveData drop;
+    drop.update_guys(oblist);
+    ASSERT_EQ(2, static_cast<int>(drop.team_size))
+        << "default keep_fallen_heroes=0 must still drop dead heroes";
+    ASSERT_TRUE(drop.team_list[0] != nullptr);
+    ASSERT_TRUE(drop.team_list[1] != nullptr);
+    EXPECT_STREQ("ALIVE_A", drop.team_list[0]->name.c_str());
+    EXPECT_STREQ("ALIVE_C", drop.team_list[1]->name.c_str());
+}
+
+// Permadeath toggle in the networked per-player merge: a brought-and-died slot
+// is PRESERVED from the pre-merge roster (pre-level stats — the corpse's
+// session growth is lost) when keep_fallen_heroes is set on the save being
+// persisted. The flag rides through the save0 roundtrip (v12).
+TEST(SaveLoadTeam, merge_owned_guys_keep_fallen_preserves_died_slot) {
+    screen* scr = og::runtime::current_session->myscreen_;
+
+    scr->save_data.reset();
+    scr->save_data.numplayers = 1;
+    scr->save_data.current_campaign = "org.openglad.gladiator";
+    scr->save_data.keep_fallen_heroes = 1;
+    {
+        auto a = std::make_unique<guy>(FAMILY_SOLDIER); a->name = "ALIVE_A";  a->id = 1; a->exp = 0;
+        auto b = std::make_unique<guy>(FAMILY_ARCHER);  b->name = "FALLEN_B"; b->id = 2; b->exp = 1234;
+        auto c = std::make_unique<guy>(FAMILY_MAGE);    c->name = "ALIVE_C";  c->id = 3; c->exp = 0;
+        scr->save_data.team_list[0] = std::move(a);
+        scr->save_data.team_list[1] = std::move(b);
+        scr->save_data.team_list[2] = std::move(c);
+        scr->save_data.team_size = 3;
+    }
+    ASSERT_TRUE(scr->save_data.save("save0"));
+
+    std::list<std::unique_ptr<walker>> oblist;
+    auto add_walker = [&](unsigned char family, int guy_id, std::uint8_t owner,
+                          std::uint8_t slot, std::uint32_t exp, bool dead,
+                          const char* name) {
+        guy g(static_cast<int>(family));
+        g.id = guy_id;
+        g.name = name;
+        std::unique_ptr<walker> w = guy_create_walker_owned(g, scr);
+        ASSERT_TRUE(w != nullptr);
+        w->set_dead(dead ? 1 : 0);
+        w->myguy->owner_player_index = owner;
+        w->myguy->owner_save_slot = slot;
+        w->myguy->exp = exp;
+        oblist.push_back(std::move(w));
+    };
+    add_walker(FAMILY_SOLDIER, 1, /*owner=*/0, /*slot=*/0, /*exp=*/5000, /*dead=*/false, "ALIVE_A");
+    // The corpse carries session growth (7777) that must NOT persist — the
+    // pre-merge roster entry (exp 1234) is what survives.
+    add_walker(FAMILY_ARCHER,  2, /*owner=*/0, /*slot=*/1, /*exp=*/7777, /*dead=*/true,  "FALLEN_B");
+    add_walker(FAMILY_MAGE,    3, /*owner=*/0, /*slot=*/2, /*exp=*/8000, /*dead=*/false, "ALIVE_C");
+
+    SaveData merged;
+    ASSERT_EQ(SaveDataIoError::None, merged.load_with_error("save0"));
+    ASSERT_EQ(1, static_cast<int>(merged.keep_fallen_heroes))
+        << "keep_fallen_heroes must roundtrip through save0";
+    merged.merge_owned_guys_from(oblist, /*owner_player_index=*/0);
+
+    ASSERT_EQ(3, static_cast<int>(merged.team_size))
+        << "the died slot must be preserved, not dropped";
+    ASSERT_TRUE(merged.team_list[0] != nullptr);
+    ASSERT_TRUE(merged.team_list[1] != nullptr);
+    ASSERT_TRUE(merged.team_list[2] != nullptr);
+    EXPECT_STREQ("ALIVE_A", merged.team_list[0]->name.c_str());
+    EXPECT_EQ(5000u, merged.team_list[0]->exp) << "survivors still gain session exp";
+    EXPECT_STREQ("FALLEN_B", merged.team_list[1]->name.c_str())
+        << "the fallen hero keeps its original slot";
+    EXPECT_EQ(1234u, merged.team_list[1]->exp)
+        << "the fallen hero keeps PRE-LEVEL stats, not the corpse's growth";
+    EXPECT_STREQ("ALIVE_C", merged.team_list[2]->name.c_str());
+    EXPECT_EQ(8000u, merged.team_list[2]->exp);
+
+    scr->save_data.reset();
+}
+
+// The real networked flow: the on-disk save0 predates the lobby settings
+// apply-back (nothing rewrites save0 between the lobby and the win), so
+// persist_owned_characters_to_save0 must take keep_fallen_heroes from the
+// SESSION save — reading the stale disk flag would re-drop the fallen hero
+// that Permadeath Off promised to keep.
+TEST(SaveLoadTeam, networked_persist_reads_session_keep_fallen_not_disk) {
+    screen* scr = og::runtime::current_session->myscreen_;
+
+    // Pre-session on-disk save0: permadeath ON (flag 0, today's default).
+    scr->save_data.reset();
+    scr->save_data.numplayers = 1;
+    scr->save_data.current_campaign = "org.openglad.gladiator";
+    scr->save_data.keep_fallen_heroes = 0;
+    {
+        auto a = std::make_unique<guy>(FAMILY_SOLDIER); a->name = "ALIVE_A";  a->id = 1; a->exp = 0;
+        auto b = std::make_unique<guy>(FAMILY_ARCHER);  b->name = "FALLEN_B"; b->id = 2; b->exp = 1234;
+        scr->save_data.team_list[0] = std::move(a);
+        scr->save_data.team_list[1] = std::move(b);
+        scr->save_data.team_size = 2;
+    }
+    ASSERT_TRUE(scr->save_data.save("save0"));
+
+    // The lobby apply-back set the negotiated flag on the IN-MEMORY session
+    // save only; the disk copy above still carries 0.
+    scr->save_data.keep_fallen_heroes = 1;
+
+    scr->world().delete_objects();
+    auto add_walker = [&](unsigned char family, int guy_id, std::uint8_t slot,
+                          bool dead, const char* name) {
+        guy g(static_cast<int>(family));
+        g.id = guy_id;
+        g.name = name;
+        std::unique_ptr<walker> w = guy_create_walker_owned(g, scr);
+        ASSERT_TRUE(w != nullptr);
+        w->set_dead(dead ? 1 : 0);
+        w->myguy->owner_player_index = 0;
+        w->myguy->owner_save_slot = slot;
+        scr->world().oblist.push_back(std::move(w));
+    };
+    add_walker(FAMILY_SOLDIER, 1, /*slot=*/0, /*dead=*/false, "ALIVE_A");
+    add_walker(FAMILY_ARCHER,  2, /*slot=*/1, /*dead=*/true,  "FALLEN_B");
+
+    og::runtime::detail::persist_owned_characters_to_save0(
+        *scr, /*own_player_index=*/0);
+
+    SaveData after;
+    ASSERT_EQ(SaveDataIoError::None, after.load_with_error("save0"));
+    ASSERT_EQ(2, static_cast<int>(after.team_size))
+        << "the session's Permadeath Off must keep the fallen hero, even "
+           "though the disk save0 still said permadeath";
+    ASSERT_TRUE(after.team_list[1] != nullptr);
+    EXPECT_STREQ("FALLEN_B", after.team_list[1]->name.c_str());
+    EXPECT_EQ(1, static_cast<int>(after.keep_fallen_heroes))
+        << "the negotiated match rule persists with the merged save";
+
+    scr->world().delete_objects();
+    scr->save_data.reset();
 }

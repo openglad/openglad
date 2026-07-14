@@ -12,6 +12,7 @@
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/io.h>
 #include <openglad/legacy/base.h>
+#include <openglad/platform/sai2x.h>
 #include "SDL.h"
 
 static inline screen* active_screen()
@@ -70,6 +71,24 @@ void handle_window_event(const void* native_event)
             og::runtime::current_session->window_w_ = static_cast<float>(event.window.data1);
             og::runtime::current_session->window_h_ = static_cast<float>(event.window.data2);
             update_overscan_setting();
+            // Under a cfg graphics/scale mode the world canvas tracks the
+            // window (canvas = window/factor): re-derive it and re-lay-out the
+            // viewscreens. Gated on non-Legacy so default runs (classic fixed
+            // 320x200 canvas) take exactly the pre-existing path.
+            if (E_Screen &&
+                E_Screen->world_scale().mode != og::WorldScaleMode::Legacy)
+            {
+                const int old_w = E_Screen->world_w();
+                const int old_h = E_Screen->world_h();
+                E_Screen->apply_world_scale_for_window(
+                    static_cast<int>(event.window.data1),
+                    static_cast<int>(event.window.data2));
+                if (E_Screen->world_w() != old_w || E_Screen->world_h() != old_h)
+                {
+                    if (screen* s = active_screen())
+                        s->relayout_views();
+                }
+            }
             break;
         break;
     }

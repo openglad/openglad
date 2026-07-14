@@ -64,15 +64,15 @@ struct CtfWorld : TestGameWorld
         world().type = GameWorld::TYPE_CTF;
     }
 
-    walker* spawn_flag(int team, int x, int y, int level = 0)
+    walker* spawn_flag(int team, int x, int y, int flag_level = 0)
     {
         walker* flag = world().add_fx_ob(Order::Treasure, og::FAMILY_FLAG);
         if (flag == nullptr)
             return nullptr;
         flag->setxy(x, y);
         flag->set_team_num(static_cast<unsigned char>(team));
-        if (level > 0 && flag->stats() != nullptr)
-            flag->stats()->set_level(level);
+        if (flag_level > 0 && flag->stats() != nullptr)
+            flag->stats()->set_level(flag_level);
         return flag;
     }
 
@@ -427,6 +427,7 @@ TEST(CtfCore, pickup_fires_through_obmap_collision)
 {
     CtfWorld fx;
     walker* flag1 = fx.spawn_flag(1, 544, 800);
+    ASSERT_NE(nullptr, flag1);
     fx.spawn_flag(0, 96, 96);
     walker* runner = fx.spawn_living(FAMILY_SOLDIER, 0, 200, 200);
     fx.spawn_living(FAMILY_SOLDIER, 1, 400, 700);

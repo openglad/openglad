@@ -130,6 +130,11 @@ void apply_campaign_pair(CampaignYaml& out, const std::string& key, const std::s
         out.first_level = parse_int_strict(value).value_or(0);
         out.saw_first_level = true;
     }
+    else if(key == "mode")
+    {
+        out.mode = value;
+        out.saw_mode = true;
+    }
 }
 
 std::string_view trim_ascii(std::string_view value)
@@ -332,6 +337,10 @@ CampaignYamlWriteResult write_campaign_yaml_with_result(const char* path, const 
     ok = ok && emit_pair(emitter, "authors", data.authors);
     ok = ok && emit_pair(emitter, "contributors", data.contributors);
     ok = ok && emit_pair(emitter, "description", data.description);
+    // Emit `mode` ONLY when set: keeps every existing campaign repack
+    // byte-stable (LOAD-BEARING — pinned by a writer unit test).
+    if(!data.mode.empty())
+        ok = ok && emit_pair(emitter, "mode", data.mode);
 
     if(ok && yaml_mapping_end_event_initialize(&event))
         ok = emit_event(emitter, &event);

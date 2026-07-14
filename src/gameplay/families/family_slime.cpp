@@ -32,6 +32,7 @@ static bool slime_on_death(walker* self)
     self->set_dead(1);
     walker* newob = current_game->world->add_ob(Order::Living, FAMILY_MEDIUM_SLIME);
     if (!newob) return true;
+    newob->set_floor(self->floor());  // split child stays on our floor (A8)
     newob->set_team_num(self->team_num());
     newob->stats()->set_level(self->stats()->level());
     newob->set_difficulty(self->stats()->level());
@@ -53,6 +54,7 @@ static bool medium_slime_on_death(walker* self)
     self->set_dead(1);
     walker* newob = current_game->world->add_ob(Order::Living, FAMILY_SMALL_SLIME);
     if (!newob) return true;
+    newob->set_floor(self->floor());  // split child stays on our floor (A8)
     newob->set_team_num(self->team_num());
     newob->stats()->set_level(self->stats()->level());
     newob->set_difficulty(self->stats()->level());
@@ -83,6 +85,7 @@ static bool slime_on_ani_complete(walker* self)
     // Create a new small slime
     walker* newob = current_game->world->add_ob(Order::Living, FAMILY_SMALL_SLIME);
     if (!newob) return true;
+    newob->set_floor(self->floor());  // split child stays on our floor (A8)
     newob->setxy(self->xpos()+12, self->ypos()-12);
     // Transfer stats/etc. across to new guy
     self->transfer_stats(newob);

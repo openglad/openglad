@@ -66,6 +66,10 @@
 void init_input();
 short load_saved_game(const char* filename, screen* scr);
 
+// Demo sessions are PINNED to the classic 320x200 canvas: the compositor
+// assumes every session surface is exactly one CELL_W x CELL_H cell, and demo
+// sessions never call Screen::set_world_canvas_size, so their world canvas
+// stays shared with the fixed-size UI canvas.
 inline constexpr int CELL_W = 320;
 inline constexpr int CELL_H = 200;
 
@@ -137,6 +141,10 @@ static void spawn_random_player_team(screen* s, std::mt19937& rng)
         if (w) {
             w->set_team_num(0);
             w->teleport();
+            // Record the level-entry spawn point (mirrors the game.cpp deploy
+            // loop; the demo's teleport scatter is the entry position).
+            w->set_spawn_point(w->xpos(), w->ypos(),
+                               static_cast<std::uint8_t>(w->floor()));
         }
     }
 }
@@ -334,6 +342,10 @@ int main(int argc, char* argv[])
         cfg.apply_setting("graphics", "width", std::format("{}", display_w));
         cfg.apply_setting("graphics", "height", std::format("{}", display_h));
         cfg.apply_setting("graphics", "render", "normal");
+        // Force the classic fixed 320x200 world canvas even if the user's cfg
+        // sets graphics/scale: the compositor grid assumes CELL_W x CELL_H
+        // session surfaces ("off" parses to WorldScaleMode::Legacy).
+        cfg.apply_setting("graphics", "scale", "off");
         cfg.apply_setting("graphics", "fullscreen", "on");
 
         srand(static_cast<unsigned int>(time(nullptr)));

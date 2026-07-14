@@ -24,7 +24,16 @@ public:
 
     void init_tiles(PixieData pixdata[]);
     void reset_tiles(PixieData pixdata[]);
-    void draw_tile(int tile_index, int x, int y, viewscreen* view);
+    void draw_tile(int tile_index, int x, int y, viewscreen* view,
+                   unsigned char alpha = 255);
+
+    // Decor cut-out sprites (core/decordefs.h ids). Unlike the opaque tile
+    // blit, decor MUST go through the transparent sprite path (index 0 =
+    // see-through): alpha >= 255 uses walkputbuffer (drawMix), faded/ghosted
+    // floors use walkputbuffer_alpha. Missing/empty ids draw nothing.
+    void init_decor(PixieData decor_pixdata[]);
+    void draw_decor(int decor_index, int x, int y, viewscreen* view,
+                    unsigned char alpha = 255);
 
 private:
     struct Impl;

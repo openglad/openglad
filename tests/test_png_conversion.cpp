@@ -181,7 +181,8 @@ std::vector<unsigned char> read_file_bytes(const std::string& path)
     std::fseek(f, 0, SEEK_SET);
     if (sz > 0) {
         out.resize(static_cast<std::size_t>(sz));
-        std::fread(out.data(), 1, out.size(), f);
+        const std::size_t got = std::fread(out.data(), 1, out.size(), f);
+        out.resize(got);  // short read => keep only the bytes actually read
     }
     std::fclose(f);
     return out;

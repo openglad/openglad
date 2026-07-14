@@ -32,6 +32,7 @@
 #include <openglad/gameplay/guy.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/obmap.h>
+#include <openglad/core/pixdefs.h>
 #include <openglad/gameplay/render_component_base.h>
 #include <openglad/gameplay/sim_emit.h>
 #include <openglad/core/test_trace.h>
@@ -88,6 +89,18 @@ std::uint32_t query_difficulty_percent()
         return 100u;
     const int difficulty = current_game->world->difficulty;
     return (difficulty > 0) ? static_cast<std::uint32_t>(difficulty) : 100u;
+}
+
+std::uint32_t query_generator_rate_percent()
+{
+    if (current_game == nullptr || current_game->world == nullptr)
+        return 100u;
+    const int rate = current_game->world->generator_rate;
+    if (rate <= 0)
+        return 100u;
+    // Sim-side robustness clamp mirroring the lobby sanitize range: the value
+    // also arrives unclamped from hand-edited v12 saves and crafted snapshots.
+    return static_cast<std::uint32_t>(std::clamp(rate, 25, 400));
 }
 
 IRandom& walker_rng()
@@ -1137,7 +1150,14 @@ walker  *walker::create_weapon()
 		if (!weapon) return nullptr;
 		weapon->set_team_num(team_num());
 		weapon->set_owner(this);
-		weapon->set_difficulty(static_cast<std::uint32_t>(stats_->level()));
+		weapon->set_floor(floor());  // summons spawn on the summoner's floor
+		// A12b: no set_difficulty here. fire()'s Order::Generator branch rolls
+		// the spawn's real level and applies set_difficulty once; the legacy
+		// 2002 code ALSO applied it here at the generator's own level, so
+		// every spawn compounded two additive hp/regen boosts and a squared
+		// difficulty multiplier (e.g. genL=5 rolled L3 base-10hp: 384 vs the
+		// intended 109). Deliberate semantic fix; affected parity goldens
+		// regenerated (see commit).
 		return weapon;
 	}
 	// Normally, only livings fire
@@ -1147,6 +1167,7 @@ walker  *walker::create_weapon()
 	if (!weapon) return nullptr;
 	weapon->set_team_num(team_num());
 	weapon->set_owner(this);
+	weapon->set_floor(floor());  // projectile travels on the shooter's floor
 	weapon->set_difficulty(static_cast<std::uint32_t>(stats_->level()));
 	weapon->set_damage((weapon->damage() * (static_cast<float>(stats_->level()) + 3.0f)) / 4.0f);
 	if (myguy)
@@ -1207,7 +1228,7 @@ bool walker::query_next_to()
 	}
 }
 
-bool walker::fire_check(short xdelta, short ydelta)
+bool walker::fire_check(short xdelta, short ydelta, FireCheckDenial* denial)
 {
 	walker  *weapon = nullptr;
 	//  short newx=0, newy=0;
@@ -1215,13 +1236,24 @@ bool walker::fire_check(short xdelta, short ydelta)
 	std::int32_t distance;
 	short targetdir;
 
+	// Reports the denial stage to callers that ask (default: nobody).
+	// Same checks, same order, same RNG draws as always.
+	const auto deny = [denial](FireCheckDenial why) {
+		if (denial != nullptr)
+			*denial = why;
+	};
+	deny(FireCheckDenial::None);
+
 	// Allow generators to 'always' succeed
 	if (order() == Order::Generator)
 		return 1;
 
 	weapon = create_weapon();
 	if (!weapon)
+	{
+		deny(FireCheckDenial::NoFoe);
 		return 0;
+	}
 	set_weapon_heading(weapon); // set lastx, lasty based on our facing...
 	weapon->set_collide_ob(nullptr);
 	// Based on facing, we alter the weapon's proposed
@@ -1232,25 +1264,35 @@ bool walker::fire_check(short xdelta, short ydelta)
 	{
 		//Log("fire check, no foe.\n");
 		//this does happen! but it appears harmless
+		deny(FireCheckDenial::NoFoe);
+		return 0;
+	}
+
+	// The reach gate runs before the NO_RANGED / magic gates so that a
+	// NoRanged or NoMagic denial always means "the foe IS within this
+	// weapon's reach" — the COMMAND_ATTACK melee loop keys off that to
+	// face a bump-range foe instead of sliding around it (guard-standoff
+	// fix, 2026-07-07). Every reordered gate returns the same 0 and no
+	// gate consumes RNG, so all other callers see identical behavior.
+	distance = distance_to_ob(foe());
+	if (distance > static_cast<std::int32_t>( static_cast<std::int32_t>(weapon->stepsize()) * static_cast<std::int32_t>(weapon->lineofsight())) )
+	{
+		weapon->set_dead(1);
+		deny(FireCheckDenial::OutOfRange);
 		return 0;
 	}
 
 	if (stats_->query_bit_flags(BIT_NO_RANGED))
 	{
 		weapon->set_dead(1);
+		deny(FireCheckDenial::NoRanged);
 		return 0;
 	}
 
 	if (stats_->weapon_cost() > stats_->magicpoints())
 	{
 		weapon->set_dead(1);
-		return 0;
-	}
-
-	distance = distance_to_ob(foe());
-	if (distance > static_cast<std::int32_t>( static_cast<std::int32_t>(weapon->stepsize()) * static_cast<std::int32_t>(weapon->lineofsight())) )
-	{
-		weapon->set_dead(1);
+		deny(FireCheckDenial::NoMagic);
 		return 0;
 	}
 
@@ -1259,6 +1301,7 @@ bool walker::fire_check(short xdelta, short ydelta)
 	{
 		//         turn(targetdir);
 		weapon->set_dead(1);
+		deny(FireCheckDenial::Facing);
 		return 0;
 	}
 
@@ -1271,6 +1314,7 @@ bool walker::fire_check(short xdelta, short ydelta)
 		{
 			// we hit a wall, so fail
 			weapon->set_dead(1);
+			deny(FireCheckDenial::WallBlocked);
 			return 0;
 		}
 		if ( !current_game->world->query_object_passable(weapon->xpos(), weapon->ypos(), weapon) )
@@ -1283,6 +1327,7 @@ bool walker::fire_check(short xdelta, short ydelta)
 	// By this point, we should have won or lost .. fail if we went our
 	// range and didn't hit anyone ..
 	weapon->set_dead(1);
+	deny(FireCheckDenial::RayMiss);
 	return 0;
 }
 
@@ -1295,8 +1340,19 @@ bool walker::fire_check(short xdelta, short ydelta)
 bool
 walker::act_generate()
 {
+	// Generator spawn-rate percent scales the cadence COMPARISON, not the
+	// draw bounds: `level_draw * rate > threshold_draw * 100`. At the default
+	// (100) both sides carry the same factor, so the outcome AND the whole
+	// RNG stream are byte-identical to the legacy `level_draw >
+	// threshold_draw` form. A non-default rate leaves every draw bound
+	// untouched too, so there is no SimRandom::next(0) trap at any rate and
+	// level-1 generators stay live on Calm (a scaled BOUND of level*3*50/100
+	// == 1 could only ever draw 0 and never fire). uint64 keeps the products
+	// exact even for crafted stats levels. Never changes the number or order
+	// of rng_ draws.
+	const std::uint64_t generator_rate_percent = query_generator_rate_percent();
 	if ( current_game->world->living_count < MAXOBS &&
-	        (current_game->world->rng_.next(static_cast<std::uint32_t>(stats_->level() * 3)) > current_game->world->rng_.next(static_cast<std::uint32_t>(300 + (current_game->world->living_count * 8))) )
+	        (current_game->world->rng_.next(static_cast<std::uint32_t>(stats_->level() * 3)) * generator_rate_percent > current_game->world->rng_.next(static_cast<std::uint32_t>(300 + (current_game->world->living_count * 8))) * std::uint64_t{100} )
 	   )
 	{
 		set_lastx(static_cast<float>(1 - static_cast<std::int32_t>(current_game->world->rng_.next(3))));
@@ -1316,6 +1372,47 @@ walker::act_generate()
 bool
 walker::act_fire()
 {
+	// Z-axis: arc the projectile's height (visual) and drop it through "air"
+	// holes to a lower floor (multi-floor). Strictly inert for flat weapons
+	// (vz==0, worldz==0) on single-floor levels — worldz never affects the 2D
+	// path and is not part of the parity dump.
+	GameWorld* const zw = (current_game != nullptr) ? current_game->world : nullptr;
+	if (vz() != 0.0f || worldz() != 0.0f)
+	{
+		set_worldz(worldz() + vz());
+		const WeaponFamilyDescriptor* wfd = get_weapon_family_descriptor(family());
+		set_vz(vz() - (wfd != nullptr ? wfd->gravity : 0.0f));
+		if (worldz() < 0.0f)
+		{
+			set_worldz(0.0f);
+			set_vz(0.0f);
+		}
+	}
+	if (zw != nullptr && zw->floor_count() > 1 && !dead())
+	{
+		const WeaponFamilyDescriptor* wfd = get_weapon_family_descriptor(family());
+		if (wfd != nullptr && wfd->can_drop_floors)
+		{
+			smoother& sm = zw->smoother_for_floor(floor());
+			const std::int32_t g = sm.query_genre_x_y(
+				(xpos() + sizex() / 2) / GRID_SIZE,
+				(ypos() + sizey() / 2) / GRID_SIZE);
+			if (g == TYPE_AIR)
+			{
+				if (floor() > 0)
+				{
+					change_floor(static_cast<short>(floor() - 1));
+				}
+				else
+				{
+					set_dead(1);
+					death();
+					return 1;
+				}
+			}
+		}
+	}
+
 	const auto remaining_range = lineofsight();
 	set_lineofsight(remaining_range - 1);
 	if (!remaining_range) // this is the range of the weapon
@@ -1352,7 +1449,31 @@ walker::act_guard()
 	set_foe(current_game->world->find_near_foe(this));
 	if (foe())
 	{
-		set_curdir(static_cast<signed char>(facing(foe()->xpos() - xpos(), foe()->ypos()-ypos())));
+		// 2026-07-10 guard facing gate (docs/GAMEPLAY_FIXES_FROM_CLASSIC.md).
+		// find_near_foe has no range or sight limit, so a guard posted
+		// beside a tree band pivoted to face the 2D-nearest foe THROUGH the
+		// wall — the "orc nose-to-trees" statue look (14% of all guard
+		// ticks on Westlands L2). Gate ONLY the facing turn: foe
+		// acquisition, the COMMAND_FIRE attempt, and every RNG draw are
+		// unchanged; the guard just keeps its prior facing unless the foe
+		// is within its family sight range AND the straight cell ray to it
+		// is clear (both deterministic and RNG-free). Any foe the guard
+		// could actually engage has a clear ray, so firing is unaffected.
+		if (distance_to_ob(foe()) <= lineofsight() * GRID_SIZE &&
+		    current_game->world->clear_sight_line(this, foe()))
+		{
+			set_curdir(static_cast<signed char>(facing(foe()->xpos() - xpos(), foe()->ypos()-ypos())));
+			// 2026-07-11 guard wake rule (docs/GAMEPLAY_FIXES_FROM_CLASSIC.md).
+			// Genuine sighting — the same deterministic range+ray test as
+			// the facing gate — WAKES the guard: it converts to ACT_RANDOM
+			// and fights like any other AI from the next tick on (this tick
+			// still runs the classic face+fire below, so the wake itself
+			// draws no extra RNG). A hold-post guard (npc_flags bit 1, the
+			// per-guard policy selector) never converts: it is the classic
+			// stationary sentry, used to pin posted NPCs in place.
+			if (!guard_hold_post())
+				set_act_type(ACT_RANDOM);
+		}
 		stats_->try_command(COMMAND_FIRE,current_game->world->rng_.next(30));
 		return 1;
 	}
@@ -1461,7 +1582,7 @@ void walker::transfer_stats(walker  *newob)
 	newob->stats()->set_max_magic_delay(stats_->max_magic_delay());
 
 	newob->stats()->set_level(stats_->level());
-	newob->stats()->set_frozen_delay(stats_->frozen_delay());
+	newob->stats()->set_frozen_delay(stats_->frozen_delay_raw()); // raw: thaw immunity transfers with the body (§3.3)
 	for (i=0; i < 5; i++)
 		newob->stats()->set_special_cost(i, stats_->special_cost(i));
 	newob->stats()->set_weapon_cost(stats_->weapon_cost());
@@ -1551,6 +1672,7 @@ bool walker::death()
 		return 0;
 
 	set_death_called(1);
+	fall_stories_ = 0; // a corpse's cascade ends here (classic respawn revives this same object)
 
 	// Ensure we are removed from collision bookkeeping as soon as we "die".
 	// This prevents stale pointers in the obmap when callers manage walker
@@ -1569,7 +1691,15 @@ bool walker::death()
 			newob->stats()->set_hitpoints(static_cast<float>(myguy->query_heart_value()));
 			newob->stats()->set_hitpoints(
 			    newob->stats()->hitpoints() * (0.75f / 2.0f));  // 75%, divided by 2, since score is doubled at end of level
+			// Permadeath off (keep_fallen_heroes mirror on the world): the
+			// fallen hero returns with their growth intact, so the gem is
+			// consolation, not salvage — half value. Default 0 (permadeath
+			// on) keeps the legacy full-value math byte-identical.
+			if (current_game->world->keep_fallen_heroes != 0)
+				newob->stats()->set_hitpoints(
+				    newob->stats()->hitpoints() * 0.5f);
 			newob->set_team_num(team_num());
+			newob->set_floor(floor());  // heart drops on the floor we died on (A8)
 			newob->center_on(this);
 			}
 		}
@@ -1577,9 +1707,22 @@ bool walker::death()
 	switch (order())
 	{
 		case Order::Living:
-			if (   (team_num() == 0 || myguy) // our team
-			        && (current_game->world->type & SCEN_TYPE_SAVE_ALL)
-			        && (stats_->name.size()) // we were named
+			// SCEN_TYPE_SAVE_ALL mission-loss check. Two scopes (Wave F2):
+			// summoned walkers (archmage "Phantom" illusions, elementals,
+			// cleric raises) and charmed foes (real_team_num != 255) are
+			// ammunition, never characters — their deaths never fail the
+			// mission. When any placed NPC carries npc_flags bit 2
+			// ("protected"), ONLY flagged walkers are watched; when none
+			// does, the legacy rule applies (any named team-0 living).
+			// (The charm exemption lives in the legacy branch only: a
+			// protected walker stays mission-critical even while charmed.)
+			if (   (current_game->world->type & SCEN_TYPE_SAVE_ALL)
+			        && !summoned()               // conjured ammunition
+			        && (current_game->world->has_save_all_protected()
+			                ? save_all_protected()
+			                : ((team_num() == 0 || myguy) // our team
+			                   && real_team_num() == 255  // not a charmed foe
+			                   && stats_->name.size()))   // we were named
 			   )
 			{
 				// Emit EndGame event instead of calling screen directly.
@@ -1613,6 +1756,7 @@ bool walker::death()
 				newob->set_team_num(team_num());
 				newob->stats()->set_level(stats_->level());
 				newob->set_ani_type(ANI_EXPLODE);
+				newob->set_floor(floor());  // burn on the generator's floor (A8)
 				newob->setxy(xpos()+current_game->world->rng_.next(sizex()-8)+4, ypos()+4+current_game->world->rng_.next(sizey()-8) );
 					newob->set_damage(static_cast<float>(stats_->level()) * 2.0f);
 					newob->set_frame(static_cast<short>(current_game->world->rng_.next(3)));
@@ -1651,6 +1795,7 @@ void walker::generate_bloodspot()
 
 	bloodstain->set_team_num(team_num());
 	bloodstain->set_dead(0);
+	bloodstain->set_floor(floor());  // stain marks the floor we died on (A8)
 	bloodstain->setxy(xpos(), ypos());
 	//data = myscreen->myloader->graphics[PIX(Order::Treasure, FAMILY_STAIN)];
 	// We can't select other 'bloodspot' frames, because set_frame
@@ -1684,7 +1829,318 @@ bool walker::check_special()
 	return 0;
 }
 
+// Delayed-spawn dormancy (see walker.h). Mirrors setxy's obmap bookkeeping:
+// entering dormancy pulls the walker out of the collision table (it cannot be
+// hit, collided with, or block movement), and waking re-registers it the same
+// way a freshly spawned unit enters — an obmap registration at its spot.
+void walker::set_dormant(bool value)
+{
+	if (dormant_ == value)
+		return;
+	dormant_ = value;
+
+	obmap* map = (current_game != nullptr && current_game->world != nullptr)
+	    ? current_game->world->myobmap.get()
+	    : nullptr;
+	if (map == nullptr)
+		return;
+	if (dormant_)
+		map->remove(this);
+	else if (!ignore())
+	{
+		// add(), not move(): move() short-circuits when the coordinates are
+		// unchanged, and a waking walker re-enters at the spot it already
+		// occupies (add de-duplicates any stale registration first).
+		map->add(this, xpos(), ypos());
+	}
+}
+
 // Center us on target walker
+// Relocate this entity to a different stacked floor, re-bucketing it in the
+// single floor-keyed obmap (remove from the old floor's buckets, then re-add at
+// the new floor). Lands on the new floor plane (worldz 0).
+void walker::change_floor(short new_floor)
+{
+	if (new_floor == floor())
+		return;
+	GameWorld* w = (current_game != nullptr) ? current_game->world : nullptr;
+	obmap* m = (w != nullptr) ? w->myobmap.get() : nullptr;
+	if (m != nullptr)
+		m->remove(this);
+	set_floor(new_floor);
+	set_worldz(0.0f);
+	if (m != nullptr && !ignore() && !dormant()) // dormant: stay unregistered
+		m->add(this, xpos(), ypos());
+}
+
+// A5/B2: deterministic arrival nudge for cross-floor landings. When the
+// aligned arrival spot on the target floor is blocked (wall top, or an
+// occupant), probe outward from the walker's centre cell in a FIXED
+// ring-by-ring order (row-major within each ring — no RNG, so replays and
+// parity captures stay deterministic) for the nearest clear cell on the
+// target floor, out to `radius` rings (A5 air falls use kFallNudgeRadius;
+// B2 blocked stair arrivals use the tighter kStairNudgeRadius). `avoid_air`
+// (stairs only) additionally skips PIX_AIR cells: air is grid-passable by
+// design, but a stair arrival nudged onto it would immediately fall back to
+// the source floor — an up-fall loop that defeats the ascent. Falls keep air
+// candidates (cascading further down is their normal behavior). Performs the
+// floor change + nudge (set_floor before setxy: the obmap is floor-keyed)
+// and returns true when a cell is found.
+inline constexpr std::int32_t kFallNudgeRadius = 4;
+inline constexpr std::int32_t kStairNudgeRadius = 2;
+static bool land_on_nearest_clear_cell(GameWorld& w, walker& faller,
+                                       short target_floor,
+                                       std::int32_t cx, std::int32_t cy,
+                                       std::int32_t radius, bool avoid_air)
+{
+	const PixieData& g = w.grid_for_floor(target_floor);
+	if (!g.valid())
+		return false;
+	for (std::int32_t r = 0; r <= radius; ++r)
+	{
+		for (std::int32_t dy = -r; dy <= r; ++dy)
+		{
+			for (std::int32_t dx = -r; dx <= r; ++dx)
+			{
+				if (std::max(std::abs(dx), std::abs(dy)) != r)
+					continue; // ring perimeter only
+				const std::int32_t nx = cx + dx;
+				const std::int32_t ny = cy + dy;
+				if (nx < 0 || ny < 0 || nx >= g.w || ny >= g.h)
+					continue;
+				if (avoid_air && g.data[nx + ny * g.w] == PIX_AIR)
+					continue;
+				const std::int32_t px = nx * GRID_SIZE;
+				const std::int32_t py = ny * GRID_SIZE;
+				if (!w.floor_landing_clear(&faller, static_cast<float>(px),
+				                           static_cast<float>(py),
+				                           target_floor))
+					continue;
+				faller.change_floor(target_floor);
+				faller.setxy(px, py);
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+// B1: arm the stair re-trigger latch at the walker's CURRENT centre cell —
+// called immediately after a stair transition moves the walker (aligned
+// arrival keeps the departure cell; a B2 nudge lands elsewhere, so the cell is
+// recomputed from the post-move position rather than assumed). See the
+// z_stair_latched_ field comment in walker.h for the persistence contract
+// (server-only transient, the z_cooldown_ precedent).
+void walker::latch_stair_arrival()
+{
+	z_stair_latched_ = true;
+	z_latch_cx_ = (xpos() + sizex() / 2) / GRID_SIZE;
+	z_latch_cy_ = (ypos() + sizey() / 2) / GRID_SIZE;
+}
+
+// Fall-damage settle: called ONCE when an air cascade ends on a non-air cell
+// of the arrival floor. The first story is free (campaign fall routes are
+// designed traversal — the Westlands E5 fall-line rule); deeper falls cost
+// min(15% x (stories-1), 50%) of max HP, clamped up to at least 1 hp, so a
+// full-health unit survives ANY fall (a fall has no attributable attacker —
+// no kill credit is possible — so an instant-kill would be a degenerate MP
+// tactic; knockback-off-ledge stays a finisher, not a one-shot). Damage uses
+// the flight-expiry idiom (living.cpp), NOT do_combat_damage: its FAMILY_HIT
+// FX consumes one rng_.next(3) per landing, which would perturb every
+// multifloor RNG stream for a cosmetic — this path draws ZERO RNG. Armor is
+// deliberately NOT applied (percent-of-max already scales with toughness;
+// stacking get_damage_reduction would double-scale). Invulnerability is
+// deliberately RESPECTED — a divergence from the environmental precedents
+// (pit death / flight expiry check nothing): the potion's promise is "no
+// damage", and fall damage is damage; pit death stays unprotected (a void,
+// not damage). See docs/z-axis-design.md.
+void walker::resolve_fall_landing()
+{
+	const int extra = fall_stories_ - 1; // first story is free
+	fall_stories_ = 0;                   // reset first, unconditionally
+	if (extra <= 0)
+	{
+		TRACE("zaxis", "fall settle: 1 story, free, hp %.2f",
+		      static_cast<double>(stats_->hitpoints()));
+		return;
+	}
+	if (stats_->query_bit_flags(BIT_INVINCIBLE) || invulnerable_left() != 0)
+	{
+		TRACE("zaxis", "fall settle: %d stories, invulnerable, no damage",
+		      extra + 1);
+		return;
+	}
+	float dmg = std::min(0.15f * static_cast<float>(extra), 0.50f) *
+	            stats_->max_hitpoints();
+	if (dmg < 1.0f)
+		dmg = 1.0f; // nonzero fall damage never rounds away to nothing
+	set_last_hitpoints(stats_->hitpoints());
+	stats_->set_hitpoints(stats_->hitpoints() - dmg);
+	damage_numbers.push_back(DamageNumber(
+	    static_cast<float>(xpos() + sizex() / 2), static_cast<float>(ypos()),
+	    dmg, RED, current_game->world->tick_count_));
+	set_regen_delay(50);
+	if (myguy != nullptr)
+	{
+		myguy->scen_damage_taken += dmg;
+		if (myguy->scen_min_hp > stats_->hitpoints())
+			myguy->scen_min_hp = stats_->hitpoints();
+	}
+	og::sim::emit_sound(current_game->sim_events, SOUND_CLANG);
+	TRACE("zaxis", "fall settle: %d stories, dmg %.2f, hp %.2f", extra + 1,
+	      static_cast<double>(dmg), static_cast<double>(stats_->hitpoints()));
+	if (stats_->hitpoints() <= 0)
+	{
+		TRACE("zaxis", "fall lethal");
+		set_dead(1);
+		death(); // no score, no kill credit; unwinds via living::act's dead() gate
+	}
+}
+
+// Per-tick vertical handling for stacked floors: fall through "air" tiles to the
+// floor below, and take Z-stairs up/down. Strictly a no-op on single-floor
+// levels (floor_count()<=1), so it never affects legacy levels or parity.
+// Every floor change validates its destination with floor_landing_clear —
+// unvalidated arrivals used to bounce climbers off occupied stairs (A2),
+// entangle walkers in unresolvable obmap overlaps (A3), and let running
+// walkers materialize inside walls/torches on the other floor (A4/A5).
+void walker::apply_z_motion()
+{
+	GameWorld* w = (current_game != nullptr) ? current_game->world : nullptr;
+	if (w == nullptr || w->floor_count() <= 1)
+		return;
+	if (dead() || ignore())
+		return;
+
+	if (z_cooldown_ > 0)
+	{
+		--z_cooldown_;
+		return;
+	}
+
+	const bool flying = (stats_ != nullptr) &&
+		(stats_->query_bit_flags(BIT_FLYING) || flight_left() != 0);
+
+	smoother& sm = w->smoother_for_floor(floor());
+	const std::int32_t cx = (xpos() + sizex() / 2) / GRID_SIZE;
+	const std::int32_t cy = (ypos() + sizey() / 2) / GRID_SIZE;
+
+	// B1: the stair re-trigger latch clears the tick the walker's centre
+	// FULLY leaves the arrival cell — the same centre-cell criterion the
+	// stair trigger below uses, so latch and trigger can never disagree.
+	if (z_stair_latched_ && (cx != z_latch_cx_ || cy != z_latch_cy_))
+		z_stair_latched_ = false;
+
+	const std::int32_t genre = sm.query_genre_x_y(cx, cy);
+
+	// Fall-damage bookkeeping: any non-air footing (stairs, ordinary ground,
+	// the hover-walk-off stale case) ends a cascade with no settle charge —
+	// forgiving by design. See resolve_fall_landing above.
+	if (genre != TYPE_AIR)
+		fall_stories_ = 0;
+
+	// Z-stairs: relocate one floor up/down (vertically aligned). Flyers never
+	// change floors (per design).
+	if (genre == TYPE_ZSTAIRS && !flying)
+	{
+		// B1: freshly arrived — a stair transition lands you standing on the
+		// vertically-aligned PAIRED stair tile, which used to bounce you
+		// straight back once z_cooldown_ expired (even standing still, and
+		// any tiny in-cell movement re-triggered it). Latched: no re-trigger
+		// until the centre cell leaves the stair cell; stepping back on is a
+		// deliberate act and triggers normally.
+		if (z_stair_latched_)
+			return;
+		const std::int32_t tile = sm.query_x_y(cx, cy);
+		short target = floor();
+		if (tile == PIX_ZSTAIR_UP && (floor() + 1) < w->floor_count())
+			target = static_cast<short>(floor() + 1);
+		else if (tile == PIX_ZSTAIR_DOWN && floor() > 0)
+			target = static_cast<short>(floor() - 1);
+		if (target != floor())
+		{
+			// A2/A3/A4 + B2: the aligned landing spot on the target floor
+			// must be grid-passable and free of blocking entities. When it
+			// is blocked (e.g. a guard posted ON the paired stair tile), the
+			// walker is nudged to the nearest clear cell of the target floor
+			// within kStairNudgeRadius rings (deterministic spiral, passable
+			// + obmap-clear, no-eat — the same probe as the A5 fall nudge),
+			// so a blocker can no longer permanently seal a staircase. Only
+			// when NO clear cell exists within the radius is the transition
+			// DENIED — the walker stays on its current floor (free to walk
+			// off the stair) and re-probes after the cooldown, taking the
+			// stair as soon as the far side clears.
+			if (w->floor_landing_clear(this, static_cast<float>(xpos()),
+			                           static_cast<float>(ypos()), target))
+			{
+				change_floor(target);
+				latch_stair_arrival();
+			}
+			else if (land_on_nearest_clear_cell(*w, *this, target, cx, cy,
+			                                    kStairNudgeRadius,
+			                                    /*avoid_air=*/true))
+			{
+				latch_stair_arrival();
+			}
+			z_cooldown_ = 6;
+		}
+		return;
+	}
+
+	// Air: non-flying livings fall to the floor below; falling past floor 0 is a
+	// pit death. Weapons get their own fall via act_fire (vz/gravity).
+	if (genre == TYPE_AIR && !flying && order() != Order::Weapon)
+	{
+		if (floor() > 0)
+		{
+			const short below = static_cast<short>(floor() - 1);
+			bool landed = false;
+			if (w->floor_landing_clear(this, static_cast<float>(xpos()),
+			                           static_cast<float>(ypos()), below))
+			{
+				// The spot straight down is clear: land in place.
+				change_floor(below);
+				z_cooldown_ = 2;
+				landed = true;
+			}
+			else if (land_on_nearest_clear_cell(*w, *this, below, cx, cy,
+			                                    kFallNudgeRadius,
+			                                    /*avoid_air=*/false))
+			{
+				// A5: straight down is a wall top / occupied — nudged to
+				// the nearest clear cell of the floor below instead of
+				// materializing inside the blockage.
+				z_cooldown_ = 2;
+				landed = true;
+			}
+			else
+			{
+				// No clear landing within the nudge radius: do not fall
+				// at all (hover on the air tile) and re-probe later.
+				z_cooldown_ = 6;
+			}
+			if (landed)
+			{
+				// One story fallen. Settle-probe the RECOMPUTED post-move
+				// centre cell (the A5 nudge moves up to 4 cells): non-air
+				// settles the cascade here; air keeps accumulating after
+				// z_cooldown_ (the cascade continues).
+				++fall_stories_;
+				const std::int32_t lcx = (xpos() + sizex() / 2) / GRID_SIZE;
+				const std::int32_t lcy = (ypos() + sizey() / 2) / GRID_SIZE;
+				if (w->smoother_for_floor(floor()).query_genre_x_y(lcx, lcy) !=
+				    TYPE_AIR)
+					resolve_fall_landing();
+			}
+		}
+		else if (!dead())
+		{
+			set_dead(1);
+			death();
+		}
+	}
+}
+
 void walker::center_on(walker  *target)
 {
 	// First get the center of our target ..

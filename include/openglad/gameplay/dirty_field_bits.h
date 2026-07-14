@@ -108,9 +108,24 @@ inline constexpr std::uint8_t BIT_CONTROLLER_ID = 84;
 // weap fields (85)
 inline constexpr std::uint8_t BIT_DO_BOUNCE = 85;
 
-inline constexpr std::uint8_t FIELD_COUNT = 86;
+// Z-axis / multi-floor fields (86-89). Appended so every existing bit index
+// stays stable; all four land in dirty word 1 (bits 64-127, 38 free), so the
+// 128-bit dirty_mask_ and the kDeltaEntityHasDirtyWord1Flag path already ship
+// them. See docs/z-axis-design.md.
+inline constexpr std::uint8_t BIT_WORLDZ = 86;
+inline constexpr std::uint8_t BIT_VZ = 87;
+inline constexpr std::uint8_t BIT_SIZEZ = 88;
+inline constexpr std::uint8_t BIT_FLOOR = 89;
 
-static_assert(BIT_DO_BOUNCE + 1 == FIELD_COUNT,
+// Level-entry spawn point (90-92). Recorded once at the deploy sites and
+// consumed by the classic respawn engine; -1/-1 x/y sentinel = never set.
+inline constexpr std::uint8_t BIT_SPAWN_X = 90;
+inline constexpr std::uint8_t BIT_SPAWN_Y = 91;
+inline constexpr std::uint8_t BIT_SPAWN_FLOOR = 92;
+
+inline constexpr std::uint8_t FIELD_COUNT = 93;
+
+static_assert(BIT_SPAWN_FLOOR + 1 == FIELD_COUNT,
               "Dirty field bit count drift -- update dirty_field_bits.h");
 
 static_assert(FIELD_COUNT <= 128,

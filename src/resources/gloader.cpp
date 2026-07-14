@@ -736,6 +736,11 @@ walker  *loader::set_walker(walker *ob,
 						ob->set_lifetime(wfd->init_lifetime);
 					if (wfd->init_ani_type != 0)
 						ob->set_ani_type(wfd->init_ani_type);
+					// Z-axis projectile physics (no-op for flat weapons).
+					if (wfd->init_vz != 0.0f)
+						ob->set_vz(wfd->init_vz);
+					if (wfd->init_sizez != 0)
+						ob->set_sizez(wfd->init_sizez);
 				}
 			}  // end of weapons
 			break;

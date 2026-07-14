@@ -16,6 +16,14 @@ class GameWorld;
 
 namespace og::sim {
 
+// Consecutive full-grid (keyframe-shaped) snapshots the client may reject
+// before it declares the session unrecoverably desynced: the server keeps
+// force-resending keyframes on every hash mismatch, so a persistent grid-size
+// rejection would otherwise rubber-band forever (the display walks one map
+// while the authority simulates another). Three strikes covers any transient
+// in-flight overlap; a genuine map mismatch rejects every one.
+inline constexpr std::uint32_t kMaxRejectedKeyframeStrikes = 3;
+
 struct RenderInterpolationPosition {
     float worldx = 0.0f;
     float worldy = 0.0f;
@@ -137,6 +145,15 @@ public:
         return snapshot_hash_check_count_;
     }
 
+    // True once kMaxRejectedKeyframeStrikes consecutive full-grid snapshots
+    // were rejected (grid-size mismatch: this world runs a different map than
+    // the server). The connection-lost callback has fired; the session is
+    // over — there is no in-protocol resync from this state.
+    [[nodiscard]] bool fatal_desync() const noexcept
+    {
+        return fatal_desync_;
+    }
+
     [[nodiscard]] int messages_drained_last_call() const noexcept
     {
         return messages_drained_last_call_;
@@ -196,6 +213,7 @@ private:
     void maybe_send_hello_if_needed();
     void maybe_send_heartbeat_if_needed();
     void maybe_notify_connection_lost();
+    void note_keyframe_apply_result(bool applied_cleanly);
     void note_outbound_activity();
     void maybe_send_client_ready();
     void maybe_send_snapshot_hash_check(bool force = false);
@@ -233,6 +251,8 @@ private:
     bool hello_sent_for_connection_ = false;
     bool hello_acknowledged_ = false;
     bool connection_lost_notified_ = false;
+    bool fatal_desync_ = false;
+    std::uint32_t rejected_keyframe_strikes_ = 0;
     bool waiting_for_keyframe_ = false;
     bool client_ready_sent_ = false;
     std::uint32_t client_ready_count_ = 0;

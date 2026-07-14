@@ -43,8 +43,12 @@ struct GameRunResult {
 
 // "Victory!" / "Defeat." / "Match over." for the post-level dialog, CTF-aware
 // per the GameRunResult contract above (neutral fallback when the local team
-// or winner is unknown).
-std::string mission_verdict_line(const GameRunResult& result);
+// or winner is unknown). When the finished save/world pair is supplied, the
+// game mode's results_summary_lines are appended space-joined (Classic adds
+// nothing, so legacy callers passing nothing are unchanged).
+std::string mission_verdict_line(const GameRunResult& result,
+                                 const SaveData* save = nullptr,
+                                 const GameWorld* world = nullptr);
 
 // True for the CTF loss/rematch end shape: a decided CTF match that ended
 // with the classic WIN shape but whose next level IS the finished level —

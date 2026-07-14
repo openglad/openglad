@@ -11,6 +11,7 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/obmap.h>
 #include <openglad/gameplay/sim_emit.h>
+#include <openglad/core/test_trace.h>
 #include <format>
 #include <string>
 
@@ -94,6 +95,17 @@ static bool exit_on_eat(treasure* self, walker* eater)
                             og::sim::EventKind::WithdrawToLevel,
                             static_cast<std::uint32_t>(destination_level), 0);
     } // end of checking for withdrawal to completed level
+    else
+    {
+        // Neither exitable nor withdrawable: foes still stand and the
+        // destination is unearned. This used to be SILENT — the player
+        // walked over the exit with no acknowledgment at all (the tower
+        // playtest's "exit seems blocked" report). Say why. The
+        // set_skip_exit(10) throttle above already bounds the cadence
+        // while the player stands on the pad.
+        current_game->sim_events->push_notification("Foes remain!", 30);
+        TRACE("exit", "foes_remain dest=%d", static_cast<int>(destination_level));
+    }
     return true;
 }
 
@@ -130,6 +142,7 @@ static bool teleporter_on_eat(treasure* self, walker* eater)
     if (flash)
     {
         flash->set_ani_type(ANI_EXPAND_8);
+        flash->set_floor(self->floor());  // flash at the departure pad (A8)
         flash->center_on(self);
     }
     return true;

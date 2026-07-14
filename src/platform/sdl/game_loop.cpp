@@ -236,11 +236,15 @@ void render_pending_redraw(screen& s, bool enable_render)
 
     if (enable_render)
     {
+        // Gameplay draws and presents on the WORLD canvas (menus present the
+        // fixed 320x200 UI canvas); while the world canvas is at the default
+        // dims the two share one surface, so this is a pure routing no-op.
+        s.set_active_canvas(CanvasTarget::World);
         s.draw_panels(s.numviews);
         score_panel(&s, 1);
         // Present once after the HUD overlay has been redrawn; otherwise
         // the overlay visibly flashes off for the intermediate frame.
-        s.buffer_to_screen(0, 0, 320, 200);
+        s.buffer_to_screen(0, 0, s.canvas_w(), s.canvas_h());
     }
 
     s.redrawme = 0;

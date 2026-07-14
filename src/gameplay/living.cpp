@@ -81,6 +81,12 @@ bool living::act()
 	// effects are not dependent on a renderer-side draw path.
 	set_drawcycle(static_cast<unsigned char>(drawcycle() + 1));
 
+	// Z-axis: fall through air / take Z-stairs (multi-floor only; a cheap no-op
+	// on single-floor levels). May cause a pit death.
+	apply_z_motion();
+	if (dead())
+		return 0;
+
 	// Make sure everyone we're pointing to is valid
 	if (foe() && (foe()->dead() || (current_game->world->rng_.next(foe()->invisibility_left()/20) > 0) ) )
 		set_foe(nullptr);
@@ -113,6 +119,14 @@ bool living::act()
 			return death();
 		}
 	}  // end of summoned monster stuff
+
+	// Thaw-immunity climb (runaway-specials §3.3): the negative frozen_delay
+	// phase — written only by the player-side drain in sim_input_handler —
+	// recovers +1/tick toward 0 here, so a walker switched away mid-immunity
+	// keeps climbing. Sits before the animate/frozen early-returns; the
+	// frozen drains below skip the negative phase via the masked getter.
+	if (stats_->frozen_delay_raw() < 0)
+		stats_->tick_freeze_immunity();
 
 
 	set_collide_ob(nullptr); // always start with no collison..
@@ -203,6 +217,15 @@ bool living::act()
 	            || current_game->world->mysmoother.query_genre_x_y((xpos() + sizex()) / GRID_SIZE, ypos() / GRID_SIZE) == TYPE_TREES
 	            || current_game->world->mysmoother.query_genre_x_y((xpos() + sizex()) / GRID_SIZE, (ypos() + sizey()) / GRID_SIZE) == TYPE_TREES
 	            || current_game->world->mysmoother.query_genre_x_y(xpos() / GRID_SIZE, (ypos() + sizey()) / GRID_SIZE) == TYPE_TREES
+	            // Concealing decor (SHRUB): same four corner probes, on the
+	            // walker's own floor (identical to floor 0 on single-floor
+	            // levels). Gated on plane validity — no-decor levels take the
+	            // legacy condition byte-identically, and no MIGRATED decor
+	            // conceals, so stock behavior is unchanged.
+	            || current_game->world->decor_conceals_at(floor(), xpos() / GRID_SIZE, ypos() / GRID_SIZE)
+	            || current_game->world->decor_conceals_at(floor(), (xpos() + sizex()) / GRID_SIZE, ypos() / GRID_SIZE)
+	            || current_game->world->decor_conceals_at(floor(), (xpos() + sizex()) / GRID_SIZE, (ypos() + sizey()) / GRID_SIZE)
+	            || current_game->world->decor_conceals_at(floor(), xpos() / GRID_SIZE, (ypos() + sizey()) / GRID_SIZE)
 	        )
 	   )
 	{
@@ -403,6 +426,25 @@ short living::shove(walker  *target, short x, short y)
 		// Make sure WE don't get shoved
 		if (current_game->world->rng_.next(3) && target->act_type() != ACT_CONTROL)
 		{
+			// 2026-07-10 shove command-theft livelock fix (see
+			// docs/GAMEPLAY_FIXES_FROM_CLASSIC.md). Classic cleared the
+			// target's queue and injected COMMAND_WALK(x, y) even when that
+			// walk was wall-blocked; a shover re-colliding every tick then
+			// refilled the injected command forever, so the target never
+			// re-ran its own COMMAND_SEARCH — three interlocked bodies on a
+			// one-cell strip froze for 350+ ticks (Westlands L2 bend-1).
+			// Probe the injected walk's baby step (walkstep's last resort,
+			// walk(x, y)) against the GRID only before stealing the queue:
+			// if even that step is terrain-blocked the inject provably
+			// cannot move the target, so leave its queue alone and let its
+			// own search re-path. Grid-only (no obmap) keeps ally-chain
+			// shoving intact and cannot eat treasures or fire collide()
+			// side effects. The rng_.next(3) draw above stays unconditional,
+			// so the RNG stream is unchanged on every path.
+			if (!current_game->world->query_grid_passable(
+			        target->xpos() + static_cast<float>(x),
+			        target->ypos() + static_cast<float>(y), target))
+				return 0;
 			// We have to prevent a build-up of shoves which is
 			//   caused by a blocked target.  We do so for now by clearing
 			//   all commands
@@ -520,7 +562,9 @@ walker* living::do_summon(char whatfamily, std::int32_t summon_lifetime)
 	newob = current_game->world->add_ob(Order::Living, whatfamily);
 	if (newob == nullptr) return nullptr;
 	newob->set_owner(this);
+	newob->set_summoned(true);  // ammunition: never a SAVE_ALL loss
 		newob->set_lifetime(summon_lifetime);
+	newob->set_floor(floor());  // summons appear on the summoner's floor (A8)
 	newob->transform_to(Order::Living, whatfamily);
 	//  Log("\n\nSummoned %d, life %d\n", whatfamily, lifetime);
 
@@ -531,6 +575,12 @@ walker* living::do_summon(char whatfamily, std::int32_t summon_lifetime)
 // the special or not ..
 bool living::check_special()
 {
+	// Per-placed-NPC scenario flag: the AI never decides to use a special on
+	// a specials-disabled walker (walker::special() is gated too, so direct
+	// callers that skip this check still cannot fire one).
+	if (specials_disabled())
+		return false;
+
 	set_shifter_down(static_cast<short>(current_game->world->rng_.next(2))); // on or off, randomly ..
 
 	// Make sure we have enough ..
@@ -567,8 +617,25 @@ void living::set_difficulty(std::uint32_t whatlevel)
 	}
 
 	// Adjust for difficulty settings now...
-	if (team_num() != 0)  // do all EXCEPT player characters
+	if (team_num() != 0)  // hostile/neutral teams: legacy path, untouched
 	{
+		const float dif = static_cast<float>(dif1);
+		stats_->set_max_hitpoints((stats_->max_hitpoints() * dif) / 100.0f);
+		stats_->set_max_magicpoints((stats_->max_magicpoints() * dif) / 100.0f);
+		set_damage((damage() * dif) / 100.0f);
+	}
+	else if (myguy == nullptr && dif1 != 100)
+	{
+		// A12a: placed team-0 NPCs (the SAVE_ALL Bearer, allied war-hosts,
+		// rearguards...) scale with the difficulty setting exactly like their
+		// foes — the legacy team!=0 gate was meant to exempt PLAYER
+		// characters, but player crews never pass through set_difficulty
+		// (they derive stats via guy::update_derived_stats), so it silently
+		// froze allied NPCs at 100% while enemies doubled on Hard. Only a
+		// walker actually carrying a player guy (myguy) is exempt.
+		// Gated on dif1 != 100: parity goldens and the harness run at 100%,
+		// and (x*100.0f)/100.0f is NOT bit-exact for every float, so the
+		// skip — not a multiply-by-1 — is what preserves byte-identity.
 		const float dif = static_cast<float>(dif1);
 		stats_->set_max_hitpoints((stats_->max_hitpoints() * dif) / 100.0f);
 		stats_->set_max_magicpoints((stats_->max_magicpoints() * dif) / 100.0f);

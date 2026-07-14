@@ -846,6 +846,130 @@ TEST(PickerCommon, train_session_accept_force)
     ASSERT_TRUE(save.m_totalcash[0] == 0); // gold unchanged
 }
 
+// Bug A9: the DETAILS submenu's promote button mutates the REAL team member
+// (family + level) while a TrainSession working copy is live. Without a
+// resync, the stale working copy hides the promotion on screen and a later
+// accept() statscopy()s the old family back over it.
+TEST(PickerCommon, train_session_resync_if_promoted_adopts_external_promotion)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_MAGE);
+    save.team_list[0]->level = 6;
+    save.team_size = 1;
+    save.m_totalcash[0] = 999999;
+
+    og::ui::TrainSession session(save);
+    ASSERT_EQ(FAMILY_MAGE, static_cast<int>(session.working_copy().family));
+
+    // External promotion, exactly as create_detail_menu does it.
+    save.team_list[0]->upgrade_to_level(1);
+    save.team_list[0]->family = FAMILY_ARCHMAGE;
+
+    ASSERT_TRUE(session.resync_if_promoted()) << "family mismatch must reload";
+    ASSERT_EQ(FAMILY_ARCHMAGE, static_cast<int>(session.working_copy().family));
+    ASSERT_EQ(1, static_cast<int>(session.working_copy().level));
+
+    // The regression: accept() after a promotion must NOT revert the family.
+    ASSERT_TRUE(session.accept());
+    ASSERT_EQ(FAMILY_ARCHMAGE, static_cast<int>(save.team_list[0]->family));
+    ASSERT_EQ(1, static_cast<int>(save.team_list[0]->level));
+}
+
+TEST(PickerCommon, train_session_resync_if_promoted_noop_preserves_pending_edits)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    save.team_size = 1;
+    save.m_totalcash[0] = 999999;
+
+    og::ui::TrainSession session(save);
+    const short orig_str = session.original().strength;
+    session.increase_stat(og::ui::TrainSession::Stat::Strength, 3);
+
+    // No family change -> no reload; pending unaccepted edits survive.
+    ASSERT_FALSE(session.resync_if_promoted());
+    ASSERT_EQ(orig_str + 3, static_cast<int>(session.working_copy().strength));
+}
+
+TEST(PickerCommon, train_session_resync_if_promoted_handles_empty_session)
+{
+    SaveData save;
+    save.team_size = 0;
+
+    og::ui::TrainSession session(save);
+    ASSERT_TRUE(session.empty());
+    ASSERT_FALSE(session.resync_if_promoted());
+}
+
+// Issue #133 (self-heal): a stat edit made AFTER an external promotion must
+// compose on the fresh post-promotion stats — no explicit resync call. Before
+// the self-heal, the edit clamped the stale mage working copy against the
+// promoted original and "put the old mage stats back" on accept.
+TEST(PickerCommon, train_session_stat_edit_after_external_promotion_self_heals)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_MAGE);
+    save.team_list[0]->upgrade_to_level(6);
+    save.team_size = 1;
+    save.m_totalcash[0] = 999999;
+
+    og::ui::TrainSession session(save);
+    ASSERT_EQ(FAMILY_MAGE, static_cast<int>(session.working_copy().family));
+
+    // External promotion, exactly as create_detail_menu does it.
+    save.team_list[0]->upgrade_to_level(1);
+    save.team_list[0]->family = FAMILY_ARCHMAGE;
+    const short promoted_str = save.team_list[0]->strength;
+    const short promoted_lvl = save.team_list[0]->level;
+
+    // No explicit resync_if_promoted() — the edit itself must self-heal.
+    session.increase_stat(og::ui::TrainSession::Stat::Strength, 1);
+
+    ASSERT_EQ(FAMILY_ARCHMAGE, static_cast<int>(session.working_copy().family));
+    ASSERT_EQ(promoted_str + 1, static_cast<int>(session.working_copy().strength));
+    ASSERT_EQ(static_cast<int>(promoted_lvl),
+              static_cast<int>(session.working_copy().level));
+
+    // And the composed edit commits on top of the promotion.
+    ASSERT_TRUE(session.accept());
+    ASSERT_EQ(FAMILY_ARCHMAGE, static_cast<int>(save.team_list[0]->family));
+    ASSERT_EQ(promoted_str + 1, static_cast<int>(save.team_list[0]->strength));
+    ASSERT_EQ(static_cast<int>(promoted_lvl),
+              static_cast<int>(save.team_list[0]->level));
+}
+
+// Issue #133 (self-heal): accept() reached with a stale (pre-promotion)
+// working copy must not statscopy the old family/stats back over the
+// promotion. The pending stale edit is discarded and the accept is free.
+TEST(PickerCommon, train_session_accept_after_external_promotion_self_heals)
+{
+    init_family_registry();
+    SaveData save;
+    save.team_list[0] = std::make_unique<guy>(FAMILY_MAGE);
+    save.team_list[0]->upgrade_to_level(6);
+    save.team_size = 1;
+    save.m_totalcash[0] = 999999;
+
+    og::ui::TrainSession session(save);
+    session.increase_stat(og::ui::TrainSession::Stat::Strength, 2); // pending edit
+
+    save.team_list[0]->upgrade_to_level(1);
+    save.team_list[0]->family = FAMILY_ARCHMAGE;
+    const short promoted_str = save.team_list[0]->strength;
+
+    const std::uint32_t gold_before = save.m_totalcash[0];
+    ASSERT_TRUE(session.accept());
+    ASSERT_EQ(FAMILY_ARCHMAGE, static_cast<int>(save.team_list[0]->family));
+    ASSERT_EQ(static_cast<int>(promoted_str),
+              static_cast<int>(save.team_list[0]->strength))
+        << "stale pending edit must be discarded, not composed";
+    ASSERT_EQ(1, static_cast<int>(save.team_list[0]->level));
+    ASSERT_EQ(gold_before, save.m_totalcash[0]) << "no-op accept must be free";
+}
+
 TEST(PickerCommon, train_session_set_team_clamps_and_lobby_revocation_invalidates_original)
 {
     init_family_registry();
@@ -1397,36 +1521,55 @@ TEST(PickerCommon, format_team_row_label_variants_fit_budget)
 
 // --- Campaign ordering ---
 
-TEST(PickerCommon, order_campaigns_for_select_glad_first_ctf_last)
+TEST(PickerCommon, order_campaigns_for_select_uses_the_shelf_order)
 {
-    // The alphabetical list_campaigns() order: gladiator leads, CTF trails,
-    // extra campaigns keep their alphabetical order in between.
+    // The full shipped set arrives in alphabetical list_campaigns() order
+    // and leaves in shelf order: classics, the two original story
+    // campaigns, the multiplayer packages, concept trailing.
     std::list<std::string> ids = {
         "org.openglad.arenas",
+        "org.openglad.concept",
         "org.openglad.ctf",
         "org.openglad.gladiator",
+        "org.openglad.longseason",
+        "org.openglad.tower",
         "org.openglad.tryxian",
+        "org.openglad.westlands",
+    };
+    const std::list<std::string> shelf = {
+        "org.openglad.gladiator",
+        "org.openglad.tryxian",
+        "org.openglad.westlands",
+        "org.openglad.longseason",
+        "org.openglad.ctf",
+        "org.openglad.arenas",
+        "org.openglad.tower",
+        "org.openglad.concept",
     };
     og::ui::order_campaigns_for_select(ids);
-    ASSERT_EQ((std::list<std::string>{
-                  "org.openglad.gladiator",
-                  "org.openglad.arenas",
-                  "org.openglad.tryxian",
-                  "org.openglad.ctf",
-              }),
-              ids);
+    ASSERT_EQ(shelf, ids);
 
     // Already ordered: stable no-op.
     og::ui::order_campaigns_for_select(ids);
+    ASSERT_EQ(shelf, ids);
+
+    // User-made packages keep their relative order after every shelved id.
+    std::list<std::string> with_extras = {
+        "a.campaign",
+        "org.openglad.ctf",
+        "b.campaign",
+        "org.openglad.gladiator",
+    };
+    og::ui::order_campaigns_for_select(with_extras);
     ASSERT_EQ((std::list<std::string>{
                   "org.openglad.gladiator",
-                  "org.openglad.arenas",
-                  "org.openglad.tryxian",
                   "org.openglad.ctf",
+                  "a.campaign",
+                  "b.campaign",
               }),
-              ids);
+              with_extras);
 
-    // Both anchors absent: untouched.
+    // No shelved ids at all: untouched.
     std::list<std::string> no_anchors = {"a.campaign", "b.campaign"};
     og::ui::order_campaigns_for_select(no_anchors);
     ASSERT_EQ((std::list<std::string>{"a.campaign", "b.campaign"}), no_anchors);
@@ -1439,6 +1582,43 @@ TEST(PickerCommon, order_campaigns_for_select_glad_first_ctf_last)
     // Empty list survives.
     std::list<std::string> empty;
     og::ui::order_campaigns_for_select(empty);
+    ASSERT_TRUE(empty.empty());
+}
+
+// The networked-lobby filter drops ONLY the tower (local-only mode) and only
+// when the session is actually networked; local shelves keep everything.
+TEST(PickerCommon, filter_campaigns_for_networked_lobby_drops_tower_only)
+{
+    const std::list<std::string> full = {
+        "org.openglad.gladiator",
+        "org.openglad.tower",
+        "org.openglad.ctf",
+        "a.campaign",
+    };
+
+    // Local session: untouched (tower is playable locally).
+    std::list<std::string> local = full;
+    og::ui::filter_campaigns_for_networked_lobby(local, false);
+    ASSERT_EQ(full, local);
+
+    // Networked session: tower removed, everything else keeps its order.
+    std::list<std::string> networked = full;
+    og::ui::filter_campaigns_for_networked_lobby(networked, true);
+    ASSERT_EQ((std::list<std::string>{
+                  "org.openglad.gladiator",
+                  "org.openglad.ctf",
+                  "a.campaign",
+              }),
+              networked);
+
+    // No tower present: a networked filter is a no-op.
+    og::ui::filter_campaigns_for_networked_lobby(networked, true);
+    ASSERT_EQ(3u, networked.size());
+
+    // Empty list survives both ways.
+    std::list<std::string> empty;
+    og::ui::filter_campaigns_for_networked_lobby(empty, true);
+    og::ui::filter_campaigns_for_networked_lobby(empty, false);
     ASSERT_TRUE(empty.empty());
 }
 
@@ -1886,4 +2066,301 @@ TEST(PickerCommon, paginate_team_detail_edge_cases)
     ASSERT_EQ(2u, tiny.size());
     EXPECT_EQ("a", tiny[0]);
     EXPECT_EQ("c", tiny[1]);
+}
+
+// --- Difficulty submenu match rules (cyclers + exact label pins) ---
+
+TEST(PickerCommon, cycle_respawn_mode_sequence)
+{
+    SaveData save;
+    ASSERT_EQ(0, (int)save.respawn_mode) << "default is Off (classic behavior)";
+
+    og::ui::cycle_respawn_mode(save);
+    ASSERT_EQ(1, (int)save.respawn_mode) << "Off -> Heroes";
+    og::ui::cycle_respawn_mode(save);
+    ASSERT_EQ(2, (int)save.respawn_mode) << "Heroes -> Everyone";
+    og::ui::cycle_respawn_mode(save);
+    ASSERT_EQ(0, (int)save.respawn_mode) << "Everyone wraps back to Off";
+    og::ui::cycle_respawn_mode(save);
+    ASSERT_EQ(1, (int)save.respawn_mode) << "the cycle repeats";
+
+    // Out-of-set stored values normalize back to the Off default.
+    save.respawn_mode = 7;
+    og::ui::cycle_respawn_mode(save);
+    ASSERT_EQ(0, (int)save.respawn_mode);
+    save.respawn_mode = -3;
+    og::ui::cycle_respawn_mode(save);
+    ASSERT_EQ(0, (int)save.respawn_mode);
+}
+
+TEST(PickerCommon, cycle_respawn_delay_sequence)
+{
+    SaveData save;
+    ASSERT_EQ(0, (int)save.ctf_respawn_ticks)
+        << "default is 0 (normal = map/default delay)";
+
+    og::ui::cycle_respawn_delay(save);
+    ASSERT_EQ(60, (int)save.ctf_respawn_ticks) << "Normal -> Fast";
+    og::ui::cycle_respawn_delay(save);
+    ASSERT_EQ(360, (int)save.ctf_respawn_ticks) << "Fast -> Slow";
+    og::ui::cycle_respawn_delay(save);
+    ASSERT_EQ(0, (int)save.ctf_respawn_ticks) << "Slow wraps back to Normal";
+    og::ui::cycle_respawn_delay(save);
+    ASSERT_EQ(60, (int)save.ctf_respawn_ticks) << "the cycle repeats";
+
+    // A stored non-cycle tick count (e.g. the 120 CTF engine default) steps
+    // back to the 0 sentinel rather than jumping to an arbitrary set member.
+    save.ctf_respawn_ticks = 120;
+    og::ui::cycle_respawn_delay(save);
+    ASSERT_EQ(0, (int)save.ctf_respawn_ticks);
+}
+
+TEST(PickerCommon, toggle_permadeath)
+{
+    SaveData save;
+    ASSERT_EQ(0, (int)save.keep_fallen_heroes)
+        << "default is permadeath ON (classic drop-dead-heroes behavior)";
+
+    og::ui::toggle_permadeath(save);
+    ASSERT_EQ(1, (int)save.keep_fallen_heroes) << "On -> Off keeps fallen heroes";
+    og::ui::toggle_permadeath(save);
+    ASSERT_EQ(0, (int)save.keep_fallen_heroes) << "Off -> On restores the default";
+
+    // Any nonzero stored value toggles back to permadeath ON.
+    save.keep_fallen_heroes = 5;
+    og::ui::toggle_permadeath(save);
+    ASSERT_EQ(0, (int)save.keep_fallen_heroes);
+}
+
+TEST(PickerCommon, cycle_generator_rate_sequence)
+{
+    SaveData save;
+    ASSERT_EQ(0, (int)save.generator_rate)
+        << "default is 0 (normal = 100 percent)";
+
+    og::ui::cycle_generator_rate(save);
+    ASSERT_EQ(50, (int)save.generator_rate) << "Normal -> Calm";
+    og::ui::cycle_generator_rate(save);
+    ASSERT_EQ(200, (int)save.generator_rate) << "Calm -> Frenzy";
+    og::ui::cycle_generator_rate(save);
+    ASSERT_EQ(0, (int)save.generator_rate) << "Frenzy wraps back to Normal";
+    og::ui::cycle_generator_rate(save);
+    ASSERT_EQ(50, (int)save.generator_rate) << "the cycle repeats";
+
+    // An explicit 100 (or any out-of-set value) normalizes to the 0 sentinel.
+    save.generator_rate = 100;
+    og::ui::cycle_generator_rate(save);
+    ASSERT_EQ(0, (int)save.generator_rate);
+}
+
+TEST(PickerCommon, format_respawn_mode_label)
+{
+    SaveData save;
+    save.respawn_mode = 0;
+    ASSERT_EQ("Respawns: Off", og::ui::format_respawn_mode_label(save));
+    save.respawn_mode = 1;
+    ASSERT_EQ("Respawns: Heroes", og::ui::format_respawn_mode_label(save));
+    save.respawn_mode = 2;
+    ASSERT_EQ("Respawns: Everyone", og::ui::format_respawn_mode_label(save));
+
+    // Out-of-set values render as the nearest sane end of the range.
+    save.respawn_mode = -1;
+    ASSERT_EQ("Respawns: Off", og::ui::format_respawn_mode_label(save));
+    save.respawn_mode = 9;
+    ASSERT_EQ("Respawns: Everyone", og::ui::format_respawn_mode_label(save));
+}
+
+TEST(PickerCommon, format_respawn_delay_label)
+{
+    SaveData save;
+    save.ctf_respawn_ticks = 0;
+    ASSERT_EQ("Spawn Delay: Normal", og::ui::format_respawn_delay_label(save));
+    save.ctf_respawn_ticks = 60;
+    ASSERT_EQ("Spawn Delay: Fast", og::ui::format_respawn_delay_label(save));
+    save.ctf_respawn_ticks = 360;
+    ASSERT_EQ("Spawn Delay: Slow", og::ui::format_respawn_delay_label(save));
+
+    // Non-cycle tick counts (a map-authored 120, say) read as Normal.
+    save.ctf_respawn_ticks = 120;
+    ASSERT_EQ("Spawn Delay: Normal", og::ui::format_respawn_delay_label(save));
+}
+
+TEST(PickerCommon, format_permadeath_label)
+{
+    SaveData save;
+    save.keep_fallen_heroes = 0;
+    ASSERT_EQ("Permadeath: On", og::ui::format_permadeath_label(save));
+    save.keep_fallen_heroes = 1;
+    ASSERT_EQ("Permadeath: Off", og::ui::format_permadeath_label(save));
+}
+
+TEST(PickerCommon, format_generator_rate_label)
+{
+    SaveData save;
+    save.generator_rate = 0;
+    ASSERT_EQ("Generators: Normal", og::ui::format_generator_rate_label(save));
+    save.generator_rate = 50;
+    ASSERT_EQ("Generators: Calm", og::ui::format_generator_rate_label(save));
+    save.generator_rate = 200;
+    ASSERT_EQ("Generators: Frenzy", og::ui::format_generator_rate_label(save));
+
+    // A raw 100 percent (or any out-of-set value) reads as Normal.
+    save.generator_rate = 100;
+    ASSERT_EQ("Generators: Normal", og::ui::format_generator_rate_label(save));
+}
+
+TEST(PickerCommon, difficulty_submenu_labels_fit_140px_rows)
+{
+    // The SDL DIFFICULTY subscreen draws 140px-wide single-column rows at
+    // 6px/char = 23-character budget; labels are centered with no clipping,
+    // so every variant of every row label must fit.
+    SaveData save;
+    std::vector<std::string> labels;
+    for (short mode : {short(0), short(1), short(2)})
+    {
+        save.respawn_mode = mode;
+        labels.push_back(og::ui::format_respawn_mode_label(save));
+    }
+    for (short ticks : {short(0), short(60), short(360)})
+    {
+        save.ctf_respawn_ticks = ticks;
+        labels.push_back(og::ui::format_respawn_delay_label(save));
+    }
+    for (short keep : {short(0), short(1)})
+    {
+        save.keep_fallen_heroes = keep;
+        labels.push_back(og::ui::format_permadeath_label(save));
+    }
+    for (short rate : {short(0), short(50), short(200)})
+    {
+        save.generator_rate = rate;
+        labels.push_back(og::ui::format_generator_rate_label(save));
+    }
+    for (int difficulty : {0, 1, 2})
+        labels.push_back(og::ui::format_difficulty_label(difficulty));
+
+    for (const std::string& label : labels)
+        EXPECT_LE(label.size(), 23u) << label;
+}
+
+// --- GRAPHICS FX depth selector (cfg effects/depth_fx) ---
+
+TEST(PickerCommon, cycle_depth_fx_sequence)
+{
+    // The five-way selector lap, starting from the default.
+    ASSERT_EQ("haze", og::ui::cycle_depth_fx("fog"));
+    ASSERT_EQ("mist", og::ui::cycle_depth_fx("haze"));
+    ASSERT_EQ("tint", og::ui::cycle_depth_fx("mist"));
+    ASSERT_EQ("off", og::ui::cycle_depth_fx("tint"));
+    ASSERT_EQ("fog", og::ui::cycle_depth_fx("off"));
+
+    // Five clicks restore any in-set starting value.
+    std::string value = "mist";
+    for (int i = 0; i < 5; ++i)
+        value = og::ui::cycle_depth_fx(value);
+    ASSERT_EQ("mist", value);
+
+    // Out-of-set values — including the empty string an absent cfg key
+    // reads as — normalize to the default (fog) before stepping, matching
+    // depth_fx_mode_from_setting in the renderer.
+    ASSERT_EQ("haze", og::ui::cycle_depth_fx(""));
+    ASSERT_EQ("haze", og::ui::cycle_depth_fx("on"));
+    ASSERT_EQ("haze", og::ui::cycle_depth_fx("bogus"));
+}
+
+TEST(PickerCommon, format_depth_fx_label_exact_strings)
+{
+    ASSERT_EQ("Depth: Fog", og::ui::format_depth_fx_label("fog"));
+    ASSERT_EQ("Depth: Haze", og::ui::format_depth_fx_label("haze"));
+    ASSERT_EQ("Depth: Mist", og::ui::format_depth_fx_label("mist"));
+    ASSERT_EQ("Depth: Tint", og::ui::format_depth_fx_label("tint"));
+    ASSERT_EQ("Depth: Off", og::ui::format_depth_fx_label("off"));
+
+    // Unknown/absent values read as the default treatment.
+    ASSERT_EQ("Depth: Fog", og::ui::format_depth_fx_label(""));
+    ASSERT_EQ("Depth: Fog", og::ui::format_depth_fx_label("on"));
+}
+
+TEST(PickerCommon, depth_fx_labels_fit_90px_button_face)
+{
+    // The GRAPHICS FX grid draws 90px faces at 6px/char = 15-character
+    // budget; labels are centered with no clipping.
+    std::string value = "fog";
+    for (int step = 0; step < 5; ++step)
+    {
+        const std::string label = og::ui::format_depth_fx_label(value);
+        EXPECT_LE(label.size(), 15u) << label;
+        value = og::ui::cycle_depth_fx(value);
+    }
+}
+
+TEST(PickerCommon, depth_fx_is_active_only_off_is_inactive)
+{
+    EXPECT_FALSE(og::ui::depth_fx_is_active("off"));
+    EXPECT_TRUE(og::ui::depth_fx_is_active("fog"));
+    EXPECT_TRUE(og::ui::depth_fx_is_active("haze"));
+    EXPECT_TRUE(og::ui::depth_fx_is_active("mist"));
+    EXPECT_TRUE(og::ui::depth_fx_is_active("tint"));
+    // Unknown/absent values normalize to fog, which is active.
+    EXPECT_TRUE(og::ui::depth_fx_is_active(""));
+    EXPECT_TRUE(og::ui::depth_fx_is_active("bogus"));
+}
+
+// --- OPTIONS world-scale selector (cfg graphics/scale) ---
+
+TEST(PickerCommon, cycle_world_scale_sequence)
+{
+    // The eight-way selector lap, starting from the Legacy default.
+    ASSERT_EQ("1", og::ui::cycle_world_scale("off"));
+    ASSERT_EQ("2", og::ui::cycle_world_scale("1"));
+    ASSERT_EQ("sai", og::ui::cycle_world_scale("2"));
+    ASSERT_EQ("eagle", og::ui::cycle_world_scale("sai"));
+    ASSERT_EQ("3", og::ui::cycle_world_scale("eagle"));
+    ASSERT_EQ("4", og::ui::cycle_world_scale("3"));
+    ASSERT_EQ("8", og::ui::cycle_world_scale("4"));
+    ASSERT_EQ("off", og::ui::cycle_world_scale("8"));
+
+    // Eight clicks restore any in-set starting value.
+    std::string value = "sai";
+    for (int i = 0; i < 8; ++i)
+        value = og::ui::cycle_world_scale(value);
+    ASSERT_EQ("sai", value);
+
+    // Out-of-set values — including the empty string an absent cfg key reads
+    // as — normalize to "off" (Legacy) before stepping, matching
+    // parse_world_scale_setting in the renderer.
+    ASSERT_EQ("1", og::ui::cycle_world_scale(""));
+    ASSERT_EQ("1", og::ui::cycle_world_scale("normal"));
+    ASSERT_EQ("1", og::ui::cycle_world_scale("bogus"));
+}
+
+TEST(PickerCommon, format_world_scale_label_exact_strings)
+{
+    ASSERT_EQ("Scale: Off", og::ui::format_world_scale_label("off"));
+    ASSERT_EQ("Scale: 1x", og::ui::format_world_scale_label("1"));
+    ASSERT_EQ("Scale: 2x", og::ui::format_world_scale_label("2"));
+    ASSERT_EQ("Scale: SAI", og::ui::format_world_scale_label("sai"));
+    ASSERT_EQ("Scale: Eagle", og::ui::format_world_scale_label("eagle"));
+    ASSERT_EQ("Scale: 3x", og::ui::format_world_scale_label("3"));
+    ASSERT_EQ("Scale: 4x", og::ui::format_world_scale_label("4"));
+    ASSERT_EQ("Scale: 8x", og::ui::format_world_scale_label("8"));
+
+    // Unknown/absent values read as the Legacy default.
+    ASSERT_EQ("Scale: Off", og::ui::format_world_scale_label(""));
+    ASSERT_EQ("Scale: Off", og::ui::format_world_scale_label("double"));
+}
+
+TEST(PickerCommon, world_scale_labels_fit_the_button_face)
+{
+    // The options row draws a 90px face at 6px/char = 15-character budget
+    // (labels are centered with no clipping); every label also fits the
+    // tighter 12-character budget of an 80px face.
+    std::string value = "off";
+    for (int step = 0; step < 8; ++step)
+    {
+        const std::string label = og::ui::format_world_scale_label(value);
+        EXPECT_LE(label.size(), 12u) << label;
+        value = og::ui::cycle_world_scale(value);
+    }
+    ASSERT_EQ("off", value) << "eight steps must complete the lap";
 }

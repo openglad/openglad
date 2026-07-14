@@ -55,6 +55,7 @@
 #include <format>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <set>
 #include <vector>
@@ -182,6 +183,11 @@ void picker_mainmenu_loop()
 {
     while(true) {
         TRACE("picker", "mainmenu_loop_iteration");
+        // Menus draw and present on the fixed 320x200 UI canvas. Re-assert it
+        // each pass: on Emscripten the Playing->Picker state transition does
+        // not unwind glad_main's world-canvas scope.
+        if (og::runtime::current_session && og::runtime::current_session->myscreen_)
+            og::runtime::current_session->myscreen_->set_active_canvas(CanvasTarget::UI);
         mainmenu(1);
 #ifdef TESTING
         g_picker_mainmenu_calls++;
@@ -949,6 +955,9 @@ void picker_cleanup_resources()
     pks().loadteam_buttons.clear();
     pks().main_options_buttons.clear();
     pks().control_options_buttons.clear();
+    pks().gameplay_fx_options_buttons.clear();
+    pks().ui_fx_options_buttons.clear();
+    pks().graphics_fx_options_buttons.clear();
     pks().details_buttons.clear();
     pks().trainmenu_buttons.clear();
     pks().hiremenu_buttons.clear();
@@ -956,6 +965,7 @@ void picker_cleanup_resources()
     pks().teamsmenu_buttons.clear();
     pks().viewscenario_buttons.clear();
     pks().scenariomenu_buttons.clear();
+    pks().difficulty_menu_buttons.clear();
 }
 
 void picker_quit()
@@ -984,7 +994,7 @@ static const button k_mainmenu_buttons[] =
         button("2_player", "2 PLAYER", KEYSTATE_2, 152,100,68,20, button_action_id(ButtonAction::SetPlayerMode),2 , MenuNav{.up=1, .down=2, .left=5}),
         button("1_player", "1 PLAYER", KEYSTATE_1, 80,100,68,20, button_action_id(ButtonAction::SetPlayerMode),1 , MenuNav{.up=1, .down=3, .right=4}),
 
-        button("difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 148, 140, 10, button_action_id(ButtonAction::SetDifficulty), -1, MenuNav{.up=3, .down=7}),
+        button("difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 148, 140, 10, button_action_id(ButtonAction::OpenDifficultyMenu), -1, MenuNav{.up=3, .down=7}),
 
         button("pvp_allied", "PVP: Allied", KEYSTATE_UNKNOWN, 80, 160, 68, 10, button_action_id(ButtonAction::AlliedMode), -1, MenuNav{.up=6, .down=9, .right=8}),
         button("level_edit", "Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10, button_action_id(ButtonAction::DoLevelEdit), -1, MenuNav{.up=6, .down=10, .left=7}),
@@ -1005,7 +1015,7 @@ static const button k_mainmenu_buttons[] =
         button("2_player", "2 PLAYER", KEYSTATE_2, 152,100,68,20, button_action_id(ButtonAction::SetPlayerMode),2 , MenuNav{.up=1, .down=2, .left=5}),
         button("1_player", "1 PLAYER", KEYSTATE_1, 80,100,68,20, button_action_id(ButtonAction::SetPlayerMode),1 , MenuNav{.up=1, .down=3, .right=4}),
 
-        button("difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 148, 140, 10, button_action_id(ButtonAction::SetDifficulty), -1, MenuNav{.up=3, .down=7}),
+        button("difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 148, 140, 10, button_action_id(ButtonAction::OpenDifficultyMenu), -1, MenuNav{.up=3, .down=7}),
 
         button("pvp_allied", "PVP: Allied", KEYSTATE_UNKNOWN, 80, 160, 68, 10, button_action_id(ButtonAction::AlliedMode), -1, MenuNav{.up=6, .down=9, .right=8}),
         button("level_edit", "Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10, button_action_id(ButtonAction::DoLevelEdit), -1, MenuNav{.up=6, .down=10, .left=7}),
@@ -1025,7 +1035,7 @@ static const button k_mainmenu_buttons[] =
         button("begin_new_game", "", KEYSTATE_UNKNOWN, 80, 50, 140, 20, button_action_id(ButtonAction::BeginMenu), 1 , MenuNav{.down=1}, false), // BEGIN NEW GAME
         button("continue_game", "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 75, 140, 20, button_action_id(ButtonAction::CreateTeamMenu), -1 , MenuNav{.up=0, .down=2}),
 
-        button("difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 100, 140, 15, button_action_id(ButtonAction::SetDifficulty), -1, MenuNav{.up=1, .down=3}),
+        button("difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 100, 140, 15, button_action_id(ButtonAction::OpenDifficultyMenu), -1, MenuNav{.up=1, .down=3}),
         button("level_edit", "Level Edit", KEYSTATE_UNKNOWN, 80, 118, 140, 15, button_action_id(ButtonAction::DoLevelEdit), -1, MenuNav{.up=2, .down=4}),
         button("help", "HELP", KEYSTATE_UNKNOWN, 120, 175, 60, 15, button_action_id(ButtonAction::ShowHelp), -1, MenuNav{.up=3, .left=5}),
         button("options", "", KEYSTATE_UNKNOWN, 90, 175, 20, 15, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=3, .right=4})
@@ -1038,7 +1048,7 @@ static const button k_mainmenu_buttons[] =
         button("begin_new_game", "", KEYSTATE_UNKNOWN, 80, 50, 140, 20, button_action_id(ButtonAction::BeginMenu), 1 , MenuNav{.down=1}, false), // BEGIN NEW GAME
         button("continue_game", "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 75, 140, 20, button_action_id(ButtonAction::CreateTeamMenu), -1 , MenuNav{.up=0, .down=2}),
 
-        button("difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 100, 140, 15, button_action_id(ButtonAction::SetDifficulty), -1, MenuNav{.up=1, .down=3}),
+        button("difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 100, 140, 15, button_action_id(ButtonAction::OpenDifficultyMenu), -1, MenuNav{.up=1, .down=3}),
         button("level_edit", "Level Edit", KEYSTATE_UNKNOWN, 80, 118, 140, 15, button_action_id(ButtonAction::DoLevelEdit), -1, MenuNav{.up=2, .down=4}),
         button("quit", "QUIT ", KEYSTATE_ESCAPE, 120, 175, 60, 15, button_action_id(ButtonAction::QuitMenu), 0, MenuNav{.up=3, .left=5}),
         button("options", "", KEYSTATE_UNKNOWN, 90, 175, 20, 15, button_action_id(ButtonAction::MainOptions), -1, MenuNav{.up=3, .right=4})
@@ -1052,27 +1062,86 @@ static const button k_mainmenu_buttons[] =
 inline constexpr Sint32 BUTTON_PADDING = 8;
 inline constexpr Sint32 BUTTON_PITCH = BUTTON_HEIGHT + BUTTON_PADDING;
 
+// Main options: sound/graphics settings plus doors into the CONTROLS screen
+// and the three FX subscreens (GAMEPLAY FX / UI FX / GRAPHICS FX), whose
+// toggles live in the k_*_fx_options_buttons tables below.
 static const button k_main_options_buttons[] =
 {
-    button("options_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=12, .down=1, .right=15}),
-    button("toggle_sound", "Sound", KEYSTATE_UNKNOWN, 135, 10 + BUTTON_PITCH, 50, 15, button_action_id(ButtonAction::ToggleSound), -1, MenuNav{.up=0, .down=2, .right=16}),
+    button("options_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=11, .down=1, .right=8}),
+    button("toggle_sound", "Sound", KEYSTATE_UNKNOWN, 135, 10 + BUTTON_PITCH, 50, 15, button_action_id(ButtonAction::ToggleSound), -1, MenuNav{.up=0, .down=2, .right=9}),
     button("toggle_rendering", "NORMAL", KEYSTATE_UNKNOWN, 130, 10 + 2*BUTTON_PITCH, 60, 15, button_action_id(ButtonAction::ToggleRenderingEngine), -1, MenuNav{.up=1, .down=4, .right=3}),
-    button("toggle_fullscreen", "Fullscreen", KEYSTATE_UNKNOWN, 210, 10 + 2*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleFullscreen), -1, MenuNav{.up=16, .down=5, .left=2}),
+    button("toggle_fullscreen", "Fullscreen", KEYSTATE_UNKNOWN, 210, 10 + 2*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleFullscreen), -1, MenuNav{.up=9, .down=12, .left=2}),
     button("overscan_minus", "- ", KEYSTATE_UNKNOWN, 130, 10 + 3*BUTTON_PITCH, 30, 15, button_action_id(ButtonAction::OverscanAdjust), -1, MenuNav{.up=2, .down=6, .right=5}),
-    button("overscan_plus", "+ ", KEYSTATE_UNKNOWN, 170, 10 + 3*BUTTON_PITCH, 30, 15, button_action_id(ButtonAction::OverscanAdjust), 1, MenuNav{.up=3, .down=7, .left=4}),
-    button("toggle_mini_hp_bar", "Mini HP bar", KEYSTATE_UNKNOWN, 80, 10 + 4*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleMiniHpBar), -1, MenuNav{.up=4, .down=8, .right=7}),
-    button("toggle_hit_flash", "Hit flash", KEYSTATE_UNKNOWN, 210, 10 + 4*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleHitFlash), -1, MenuNav{.up=5, .down=9, .left=6}),
-    button("toggle_hit_recoil", "Hit recoil", KEYSTATE_UNKNOWN, 80, 10 + 5*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleHitRecoil), -1, MenuNav{.up=6, .down=10, .right=9}),
-    button("toggle_attack_lunge", "Attack lunge", KEYSTATE_UNKNOWN, 210, 10 + 5*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleAttackLunge), -1, MenuNav{.up=7, .down=11, .left=8}),
-    button("toggle_hit_sparks", "Hit sparks", KEYSTATE_UNKNOWN, 80, 10 + 6*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleHitAnim), -1, MenuNav{.up=8, .down=12, .right=11}),
-    button("toggle_damage_numbers", "Damage numbers", KEYSTATE_UNKNOWN, 210, 10 + 6*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleDamageNumbers), -1, MenuNav{.up=9, .down=13, .left=10}),
-    button("toggle_heal_numbers", "Healing numbers", KEYSTATE_UNKNOWN, 80, 10 + 7*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleHealNumbers), -1, MenuNav{.up=10, .down=0, .right=13}),
-    button("toggle_gore", "Gore", KEYSTATE_UNKNOWN, 210, 10 + 7*BUTTON_PITCH, 90, 15, button_action_id(ButtonAction::ToggleGore), -1, MenuNav{.up=11, .down=14, .left=12}),
-    button("restore_defaults", "RESTORE DEFAULTS", KEYSTATE_UNKNOWN, 210, 10, 100, 15, button_action_id(ButtonAction::RestoreDefaultSettings), -1, MenuNav{.up=13, .down=16, .left=15}),
+    button("overscan_plus", "+ ", KEYSTATE_UNKNOWN, 170, 10 + 3*BUTTON_PITCH, 30, 15, button_action_id(ButtonAction::OverscanAdjust), 1, MenuNav{.up=3, .down=6, .left=4, .right=12}),
+    button("gameplay_fx", "GAMEPLAY FX", KEYSTATE_UNKNOWN, 130, 10 + 4*BUTTON_PITCH, 90, 15,
+        button_action_id(ButtonAction::OpenGameplayFxSettings), -1, MenuNav{.up=4, .down=10}),
+    button("restore_defaults", "RESTORE DEFAULTS", KEYSTATE_UNKNOWN, 210, 10, 100, 15, button_action_id(ButtonAction::RestoreDefaultSettings), -1, MenuNav{.up=12, .down=9, .left=8}),
     button("player_controls", "CONTROLS", KEYSTATE_UNKNOWN, 100, 10, 80, 15,
-        button_action_id(ButtonAction::OpenControlSettings), -1, MenuNav{.up=13, .down=1, .left=0, .right=14}),
+        button_action_id(ButtonAction::OpenControlSettings), -1, MenuNav{.up=11, .down=1, .left=0, .right=7}),
     button("pick_sprite_sheet", "Sprite Sheet", KEYSTATE_UNKNOWN, 210, 10 + BUTTON_PITCH, 90, 15,
-        button_action_id(ButtonAction::PickSpriteSheet), 0, MenuNav{.up=14, .down=3, .left=1}),
+        button_action_id(ButtonAction::PickSpriteSheet), 0, MenuNav{.up=7, .down=3, .left=1}),
+    button("ui_fx", "UI FX", KEYSTATE_UNKNOWN, 130, 10 + 5*BUTTON_PITCH, 90, 15,
+        button_action_id(ButtonAction::OpenUiFxSettings), -1, MenuNav{.up=6, .down=11}),
+    button("graphics_fx", "GRAPHICS FX", KEYSTATE_UNKNOWN, 130, 10 + 6*BUTTON_PITCH, 90, 15,
+        button_action_id(ButtonAction::OpenGraphicsFxSettings), -1, MenuNav{.up=10, .down=0}),
+    // World-scale cycle (cfg graphics/scale): gameplay canvas = window/N (or
+    // the window/2 SAI/EAGLE smoothers), applied live on click. Independent
+    // of the legacy rendering-engine cycle at [2], which keeps presenting the
+    // menus (and, with scale off, the world too). Label re-derived from cfg
+    // each frame like [2]; appended at the end per the index contract
+    // (kMainOptionsWorldScaleIndex). Right column wrap: 7 -> 9 -> 3 -> 12.
+    button("world_scale", "Scale: Off", KEYSTATE_UNKNOWN, 210, 10 + 3*BUTTON_PITCH, 90, 15,
+        button_action_id(ButtonAction::CycleWorldScale), -1, MenuNav{.up=3, .down=7, .left=5}),
+};
+
+// FX subscreen toggle grid: columns x=15/115/215, 90px faces (15-char label
+// budget at 6px/char), rows at 23px pitch from y=35 (bottoms inside the
+// 4..196 bevel). All toggle button ids and (category, setting) cfg pairs are
+// unchanged from the single pre-split EFFECTS screen. Each BACK id is unique
+// (gameplay_fx_back / ui_fx_back / graphics_fx_back) because injector flows
+// disambiguate screens by button id.
+inline constexpr Sint32 effects_row_y(int row) { return 35 + row * 23; }
+
+// GAMEPLAY FX: toggles that change how the game feels to play. Single
+// centered column; nav is a vertical cycle through BACK.
+static const button k_gameplay_fx_options_buttons[] =
+{
+    button("gameplay_fx_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=2, .down=1}),
+    button("toggle_hit_recoil", "Hit recoil", KEYSTATE_UNKNOWN, 115, effects_row_y(0), 90, 15, button_action_id(ButtonAction::ToggleHitRecoil), -1, MenuNav{.up=0, .down=2}),
+    button("toggle_attack_lunge", "Attack lunge", KEYSTATE_UNKNOWN, 115, effects_row_y(1), 90, 15, button_action_id(ButtonAction::ToggleAttackLunge), -1, MenuNav{.up=1, .down=0}),
+};
+
+// UI FX: informational overlays. Same single-column idiom as GAMEPLAY FX.
+static const button k_ui_fx_options_buttons[] =
+{
+    button("ui_fx_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=3, .down=1}),
+    button("toggle_mini_hp_bar", "Mini HP bar", KEYSTATE_UNKNOWN, 115, effects_row_y(0), 90, 15, button_action_id(ButtonAction::ToggleMiniHpBar), -1, MenuNav{.up=0, .down=2}),
+    button("toggle_damage_numbers", "Damage numbers", KEYSTATE_UNKNOWN, 115, effects_row_y(1), 90, 15, button_action_id(ButtonAction::ToggleDamageNumbers), -1, MenuNav{.up=1, .down=3}),
+    button("toggle_heal_numbers", "Healing numbers", KEYSTATE_UNKNOWN, 115, effects_row_y(2), 90, 15, button_action_id(ButtonAction::ToggleHealNumbers), -1, MenuNav{.up=2, .down=0}),
+};
+
+// GRAPHICS FX: purely visual effects. 13 toggles on the 3-column grid:
+// 4 full rows plus a single-button fifth row (floor glide, the
+// generator_rate lone-row idiom). Weather (cfg effects/weather) is the
+// client-side display opt-out for the per-level sim weather (the old
+// Clouds/Rain pair merged). Rows wrap left/right; the top row's up and the
+// bottom row's down land on BACK; BACK's up wraps to the bottom toggle.
+static const button k_graphics_fx_options_buttons[] =
+{
+    button("graphics_fx_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=13, .down=1}),
+    button("toggle_hit_flash", "Hit flash", KEYSTATE_UNKNOWN, 15, effects_row_y(0), 90, 15, button_action_id(ButtonAction::ToggleHitFlash), -1, MenuNav{.up=0, .down=4, .left=3, .right=2}),
+    button("toggle_hit_sparks", "Hit sparks", KEYSTATE_UNKNOWN, 115, effects_row_y(0), 90, 15, button_action_id(ButtonAction::ToggleHitAnim), -1, MenuNav{.up=0, .down=5, .left=1, .right=3}),
+    button("toggle_gore", "Gore", KEYSTATE_UNKNOWN, 215, effects_row_y(0), 90, 15, button_action_id(ButtonAction::ToggleGore), -1, MenuNav{.up=0, .down=6, .left=2, .right=1}),
+    button("toggle_shadows", "Shadows", KEYSTATE_UNKNOWN, 15, effects_row_y(1), 90, 15, button_action_id(ButtonAction::ToggleShadows), -1, MenuNav{.up=1, .down=7, .left=6, .right=5}),
+    button("toggle_reflections", "Reflections", KEYSTATE_UNKNOWN, 115, effects_row_y(1), 90, 15, button_action_id(ButtonAction::ToggleReflections), -1, MenuNav{.up=2, .down=8, .left=4, .right=6}),
+    button("toggle_weather", "Weather", KEYSTATE_UNKNOWN, 215, effects_row_y(1), 90, 15, button_action_id(ButtonAction::ToggleWeather), -1, MenuNav{.up=3, .down=9, .left=5, .right=4}),
+    button("toggle_dust", "Dust", KEYSTATE_UNKNOWN, 15, effects_row_y(2), 90, 15, button_action_id(ButtonAction::ToggleDust), -1, MenuNav{.up=4, .down=10, .left=9, .right=8}),
+    button("depth_fx", "Depth: Fog", KEYSTATE_UNKNOWN, 115, effects_row_y(2), 90, 15, button_action_id(ButtonAction::CycleDepthFx), -1, MenuNav{.up=5, .down=11, .left=7, .right=9}),
+    button("toggle_trails", "Trails", KEYSTATE_UNKNOWN, 215, effects_row_y(2), 90, 15, button_action_id(ButtonAction::ToggleTrails), -1, MenuNav{.up=6, .down=12, .left=8, .right=7}),
+    button("toggle_fire_glow", "Fire glow", KEYSTATE_UNKNOWN, 15, effects_row_y(3), 90, 15, button_action_id(ButtonAction::ToggleFireGlow), -1, MenuNav{.up=7, .down=13, .left=12, .right=11}),
+    button("toggle_ripples", "Ripples", KEYSTATE_UNKNOWN, 115, effects_row_y(3), 90, 15, button_action_id(ButtonAction::ToggleRipples), -1, MenuNav{.up=8, .down=13, .left=10, .right=12}),
+    button("toggle_screen_shake", "Screen shake", KEYSTATE_UNKNOWN, 215, effects_row_y(3), 90, 15, button_action_id(ButtonAction::ToggleScreenShake), -1, MenuNav{.up=9, .down=13, .left=11, .right=10}),
+    button("toggle_floor_glide", "Floor glide", KEYSTATE_UNKNOWN, 15, effects_row_y(4), 90, 15, button_action_id(ButtonAction::ToggleFloorGlide), -1, MenuNav{.up=10, .down=0}),
 };
 
 // Control options: 4 player sections at 28px pitch, each with mode + remap buttons.
@@ -1278,6 +1347,26 @@ static const button k_scenariomenu_buttons[] =
         button("progress", "PROGRESS", KEYSTATE_UNKNOWN, 210, 100, 80, 15, button_action_id(ButtonAction::CreateProgressMenu), -1, MenuNav{.up=2, .down=0, .left=4}),
     };
 
+// DIFFICULTY subscreen (run_difficulty_menu): the main-menu DIFFICULTY door
+// opens this blocking screen. One centered 140px column (23-char label budget
+// at 6px/char; the widest label, "Difficulty: Slaughter", is 21) on the FX
+// subscreen row pitch; nav is a vertical cycle through BACK. Static labels are
+// the default-state formatter outputs; run_difficulty_menu() re-derives every
+// row from session/save each frame (a lobby can rewrite the save under the
+// open menu). BACK id is unique ("difficulty_back") because injector flows
+// disambiguate screens by button id; the cycling rows keep their menu-model
+// ids ("difficulty" is shared with the main-menu door, which is never live at
+// the same time).
+static const button k_difficulty_menu_buttons[] =
+    {
+        button("difficulty_back", "BACK", KEYSTATE_ESCAPE, 10, 10, 50, 15, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=5, .down=1}),
+        button("difficulty", "Difficulty: Battle", KEYSTATE_UNKNOWN, 90, 35, 140, 15, button_action_id(ButtonAction::SetDifficulty), -1, MenuNav{.up=0, .down=2}),
+        button("respawn_mode", "Respawns: Off", KEYSTATE_UNKNOWN, 90, 58, 140, 15, button_action_id(ButtonAction::CycleRespawnMode), -1, MenuNav{.up=1, .down=3}),
+        button("respawn_delay", "Spawn Delay: Normal", KEYSTATE_UNKNOWN, 90, 81, 140, 15, button_action_id(ButtonAction::CycleRespawnDelay), -1, MenuNav{.up=2, .down=4}),
+        button("permadeath", "Permadeath: On", KEYSTATE_UNKNOWN, 90, 104, 140, 15, button_action_id(ButtonAction::TogglePermadeath), -1, MenuNav{.up=3, .down=5}),
+        button("generator_rate", "Generators: Normal", KEYSTATE_UNKNOWN, 90, 127, 140, 15, button_action_id(ButtonAction::CycleGeneratorRate), -1, MenuNav{.up=4, .down=0}),
+    };
+
 namespace
 {
 template <std::size_t N>
@@ -1364,6 +1453,39 @@ int picker_control_options_button_count()
     return static_cast<int>(pks().control_options_buttons.size());
 }
 
+button* picker_gameplay_fx_options_buttons()
+{
+    reset_mutable_button_layout(pks().gameplay_fx_options_buttons, k_gameplay_fx_options_buttons);
+    return pks().gameplay_fx_options_buttons.data();
+}
+
+int picker_gameplay_fx_options_button_count()
+{
+    return static_cast<int>(pks().gameplay_fx_options_buttons.size());
+}
+
+button* picker_ui_fx_options_buttons()
+{
+    reset_mutable_button_layout(pks().ui_fx_options_buttons, k_ui_fx_options_buttons);
+    return pks().ui_fx_options_buttons.data();
+}
+
+int picker_ui_fx_options_button_count()
+{
+    return static_cast<int>(pks().ui_fx_options_buttons.size());
+}
+
+button* picker_graphics_fx_options_buttons()
+{
+    reset_mutable_button_layout(pks().graphics_fx_options_buttons, k_graphics_fx_options_buttons);
+    return pks().graphics_fx_options_buttons.data();
+}
+
+int picker_graphics_fx_options_button_count()
+{
+    return static_cast<int>(pks().graphics_fx_options_buttons.size());
+}
+
 button* picker_details_buttons()
 {
     reset_mutable_button_layout(pks().details_buttons, k_details_buttons);
@@ -1439,6 +1561,17 @@ button* picker_scenariomenu_buttons()
 int picker_scenariomenu_button_count()
 {
     return static_cast<int>(pks().scenariomenu_buttons.size());
+}
+
+button* picker_difficulty_menu_buttons()
+{
+    reset_mutable_button_layout(pks().difficulty_menu_buttons, k_difficulty_menu_buttons);
+    return pks().difficulty_menu_buttons.data();
+}
+
+int picker_difficulty_menu_button_count()
+{
+    return static_cast<int>(pks().difficulty_menu_buttons.size());
 }
 
 
@@ -1538,18 +1671,32 @@ void quit(Sint32 arg1)
 #endif
 }
 
-void draw_toggle_effect_button(button& b, const std::string& category, const std::string& setting)
+// Shared face draw for the FX settings rows: green backing when the setting
+// is active, red when it is off, label centered on the face.
+static void draw_effect_button_state(button& b, bool active)
 {
     if(b.hidden || b.no_draw)
         return;
-    
-    if(cfg.is_on(category, setting))
+
+    if(active)
         og::runtime::current_session->myscreen_->draw_button_colored(b.x-1, b.y-1, b.x + b.sizex, b.y + b.sizey, 1, LIGHT_GREEN);
     else
         og::runtime::current_session->myscreen_->draw_button_colored(b.x-1, b.y-1, b.x + b.sizex, b.y + b.sizey, 1, RED);
-    
+
     text& mytext = og::runtime::current_session->myscreen_->text_normal;
     mytext.write_xy_center(b.x + b.sizex/2, b.y + b.sizey/2 - 3, DARK_BLUE, "%s", b.label.c_str());
+}
+
+void draw_toggle_effect_button(button& b, const std::string& category, const std::string& setting)
+{
+    draw_effect_button_state(b, cfg.is_on(category, setting));
+}
+
+// Cycle-aware variant for the depth selector: the setting is a value string
+// ("fog"/"haze"/"mist"/"tint"/"off"), green for everything but off.
+void draw_cycle_effect_button(button& b, const std::string& category, const std::string& setting)
+{
+    draw_effect_button_state(b, og::ui::depth_fx_is_active(cfg.get_setting(category, setting)));
 }
 
 void draw_sprite_sheet_button(button& b)
@@ -1605,8 +1752,13 @@ std::array<std::string, 2> build_player_control_summary_lines(int player_index, 
         get_key_display_name_short(og::runtime::current_session->player_keys_[player_index][KEY_SPECIAL_SWITCH]);
     const std::string switch_s = get_key_display_name_short(og::runtime::current_session->player_keys_[player_index][KEY_SWITCH]);
     const std::string shifter_s = get_key_display_name_short(og::runtime::current_session->player_keys_[player_index][KEY_SHIFTER]);
-    const std::string action_line = std::format("Y:{} F:{} S:{} SS:{} SW:{} Sh:{}",
-        yell_s, fire_s, special_s, special_switch_s, switch_s, shifter_s);
+    // Unbound look-up (the P4 8-direction default, or user-cleared) shows
+    // "--" instead of the empty string SDL names keycode 0 with.
+    const int lookup_key = og::runtime::current_session->player_keys_[player_index][KEY_LOOKUP];
+    const std::string lookup_s = lookup_key == KEYCODE_UNKNOWN
+        ? "--" : get_key_display_name_short(lookup_key);
+    const std::string action_line = std::format("Y:{} F:{} S:{} SS:{} SW:{} Sh:{} L:{}",
+        yell_s, fire_s, special_s, special_switch_s, switch_s, shifter_s, lookup_s);
 
     if (!eight_dir)
     {
@@ -1686,6 +1838,7 @@ static void remap_player_keys(int player_index)
         {KEY_YELL, "YELL"},
         {KEY_SWITCH, "SWITCH CHARACTER"},
         {KEY_SHIFTER, "SHIFTER"},
+        {KEY_LOOKUP, "LOOK UP (HOLD)"},
     };
     constexpr KeyPrompt prompts_eight[] = {
         {KEY_UP, "UP"},
@@ -1702,6 +1855,7 @@ static void remap_player_keys(int player_index)
         {KEY_YELL, "YELL"},
         {KEY_SWITCH, "SWITCH CHARACTER"},
         {KEY_SHIFTER, "SHIFTER"},
+        {KEY_LOOKUP, "LOOK UP (HOLD)"},
     };
 
     const KeyPrompt* prompts = eight_dir ? prompts_eight : prompts_four;
@@ -1776,7 +1930,11 @@ Sint32 main_controls_options()
         og::runtime::current_session->myscreen_->draw_button_inverted(4, 4, 312, 192);
         draw_buttons(buttons, num_buttons);
 
-        mytext.write_xy(10, 24, DARK_BLUE, "Player control modes and key remapping");
+        // The header sits below the BACK button's animated highlight box
+        // (which reaches 3px past the bevel) and above the P1 row at y=40;
+        // drawing it any higher lets the highlight overwrite the first chars.
+        mytext.write_xy(PICKER_CONTROLS_HEADER_X, PICKER_CONTROLS_HEADER_Y,
+                        DARK_BLUE, "Player control modes and key remapping");
 
         for (int i = 0; i < 4; ++i)
         {
@@ -1787,6 +1945,221 @@ Sint32 main_controls_options()
         }
 
         mytext.write_xy(10, 155, DARK_BLUE, "4-dir = cardinal only. 8-dir adds diagonals.");
+
+        draw_highlight(buttons[highlighted_button]);
+        og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
+        og::input_native::sleep_ms(10);
+    }
+
+    return MENU_REDRAW;
+}
+
+namespace {
+
+// One per-frame FX subscreen draw entry: which toggle button reflects which
+// cfg (category, setting) pair. A cycle entry's setting is a value string
+// (the depth selector) rather than an on/off flag.
+struct FxToggleDraw
+{
+    int index;
+    const char* category;
+    const char* setting;
+    bool cycle = false;
+};
+
+// Shared blocking loop for the three FX subscreens. Toggles only write cfg;
+// main_options() persists cfg when it exits, which is the only path back out
+// of these screens.
+Sint32 run_fx_options_screen(button* buttons, int num_buttons,
+                             std::span<const FxToggleDraw> toggles,
+                             const char* title)
+{
+    text& mytext = og::runtime::current_session->myscreen_->text_normal;
+    int highlighted_button = 0;
+    og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
+    clear_keyboard();
+
+    Sint32 retvalue = 0;
+	while(!(retvalue & MENU_EXIT))
+	{
+        picker_lobby_poll();
+        if(leftmouse(buttons))
+        {
+            const Sint32 click_result = og::runtime::current_session->localbuttons_->leftclick();
+            if(click_result == MENU_EXIT)
+                break;
+            if(click_result != 0)
+                retvalue = click_result;
+        }
+
+        handle_menu_nav(buttons, highlighted_button, retvalue);
+        if(retvalue == MENU_EXIT)
+            break;
+
+        reset_buttons(og::runtime::current_session->localbuttons_, buttons, num_buttons, retvalue);
+
+        og::runtime::current_session->myscreen_->clear_window();
+        og::runtime::current_session->myscreen_->draw_button(0, 0, 320, 200, 0);
+        og::runtime::current_session->myscreen_->draw_button_inverted(4, 4, 312, 192);
+        draw_buttons(buttons, num_buttons);
+
+        mytext.write_xy(80, 13, DARK_BLUE, "%s", title);
+
+        for (const FxToggleDraw& toggle : toggles)
+        {
+            if (toggle.cycle)
+                draw_cycle_effect_button(buttons[toggle.index], toggle.category, toggle.setting);
+            else
+                draw_toggle_effect_button(buttons[toggle.index], toggle.category, toggle.setting);
+        }
+
+        draw_highlight(buttons[highlighted_button]);
+        og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
+        og::input_native::sleep_ms(10);
+    }
+
+    return MENU_REDRAW;
+}
+
+} // namespace
+
+Sint32 gameplay_fx_options()
+{
+    static constexpr FxToggleDraw kToggles[] = {
+        {1, "effects", "hit_recoil"},
+        {2, "effects", "attack_lunge"},
+    };
+    // Sequence the accessors: the count reads the vector the buttons
+    // accessor populates.
+    button* buttons = picker_gameplay_fx_options_buttons();
+    const int num_buttons = picker_gameplay_fx_options_button_count();
+    return run_fx_options_screen(buttons, num_buttons, kToggles, "Gameplay effects");
+}
+
+Sint32 ui_fx_options()
+{
+    static constexpr FxToggleDraw kToggles[] = {
+        {1, "effects", "mini_hp_bar"},
+        {2, "effects", "damage_numbers"},
+        {3, "effects", "heal_numbers"},
+    };
+    button* buttons = picker_ui_fx_options_buttons();
+    const int num_buttons = picker_ui_fx_options_button_count();
+    return run_fx_options_screen(buttons, num_buttons, kToggles, "Interface effects");
+}
+
+Sint32 graphics_fx_options()
+{
+    static constexpr FxToggleDraw kToggles[] = {
+        {1, "effects", "hit_flash"},
+        {2, "effects", "hit_anim"},
+        {3, "effects", "gore"},
+        {4, "effects", "shadows"},
+        {5, "effects", "reflections"},
+        {6, "effects", "weather"},
+        {7, "effects", "dust"},
+        {8, "effects", "depth_fx", true},
+        {9, "effects", "trails"},
+        {10, "effects", "fire_glow"},
+        {11, "effects", "ripples"},
+        {12, "effects", "screen_shake"},
+        {13, "effects", "floor_glide"},
+    };
+    button* buttons = picker_graphics_fx_options_buttons();
+    const int num_buttons = picker_graphics_fx_options_button_count();
+    // The depth row's label is cfg-derived ("Depth: Fog" ... "Depth: Off"):
+    // write it into the mutable descriptor before run_fx_options_screen's
+    // init_buttons clones the rows, so both label surfaces start correct.
+    buttons[kGraphicsFxDepthFxIndex].label =
+        og::ui::format_depth_fx_label(cfg.get_setting("effects", "depth_fx"));
+    return run_fx_options_screen(buttons, num_buttons, kToggles, "Graphics effects");
+}
+
+// A remote (host) GO while this peer sits on the main menu or one of its
+// blocking subscreens: mainmenu()'s caller (present_menu) acts on the
+// selected item after the loop exits, so leaving with CONTINUE selected
+// routes the shared state machine into team build, whose loop-top
+// team_build_remote_start_requested check consumes the start config and
+// launches the game.
+bool picker_main_scope_remote_start_requested(int32_t& retvalue)
+{
+    if (!g_start_game_requested || !picker_lobby_has_game_start_config())
+        return false;
+
+    pks().selected_menu_item = og::ui::find_picker_menu_item(
+        og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::ContinueGame);
+    retvalue = MENU_EXIT;
+    return true;
+}
+
+// Blocking DIFFICULTY subscreen (the main-menu DIFFICULTY door): session
+// difficulty plus the SaveData match rules (respawns, respawn delay,
+// permadeath, generator rate). Same loop shape as run_fx_options_screen, but
+// every row's label is re-derived from session/save each frame instead of a
+// cfg toggle draw — an open lobby can rewrite the save under this menu.
+Sint32 run_difficulty_menu()
+{
+    text& mytext = og::runtime::current_session->myscreen_->text_normal;
+    // Sequence the accessors: the count reads the vector the buttons
+    // accessor populates.
+    button* buttons = picker_difficulty_menu_buttons();
+    const int num_buttons = picker_difficulty_menu_button_count();
+    int highlighted_button = 0;
+    og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
+    clear_keyboard();
+    sync_difficulty_menu_visibility(buttons, num_buttons, highlighted_button);
+
+    Sint32 retvalue = 0;
+    while(!(retvalue & MENU_EXIT))
+    {
+        picker_lobby_poll();
+        // A host GO must launch a joiner parked in this subscreen: propagate
+        // MENU_EXIT (with CONTINUE selected) instead of a local BACK's
+        // MENU_REDRAW so mainmenu() unwinds too.
+        Sint32 remote_start = 0;
+        if (picker_main_scope_remote_start_requested(remote_start))
+            return remote_start;
+        if(leftmouse(buttons))
+        {
+            const Sint32 click_result = og::runtime::current_session->localbuttons_->leftclick();
+            if(click_result == MENU_EXIT)
+                break;
+            if(click_result != 0)
+                retvalue = click_result;
+        }
+
+        handle_menu_nav(buttons, highlighted_button, retvalue);
+        if(retvalue == MENU_EXIT)
+            break;
+
+        reset_buttons(og::runtime::current_session->localbuttons_, buttons, num_buttons, retvalue);
+
+        // Host gating can flip mid-screen (connection loss, lobby changes):
+        // re-sync visibility and the BACK nav cycle every frame, like the
+        // teams menu does.
+        sync_difficulty_menu_visibility(buttons, num_buttons, highlighted_button);
+
+        // Per-frame label re-derive from session/save for every settings row
+        // (both surfaces: the mutable descriptor row and the live vbutton).
+        const SaveData& save = og::runtime::current_session->myscreen_->save_data;
+        buttons[kDifficultyMenuDifficultyIndex].label =
+            og::ui::format_difficulty_label(og::runtime::current_session->current_difficulty_);
+        buttons[kDifficultyMenuRespawnModeIndex].label = og::ui::format_respawn_mode_label(save);
+        buttons[kDifficultyMenuRespawnDelayIndex].label = og::ui::format_respawn_delay_label(save);
+        buttons[kDifficultyMenuPermadeathIndex].label = og::ui::format_permadeath_label(save);
+        buttons[kDifficultyMenuGeneratorRateIndex].label = og::ui::format_generator_rate_label(save);
+        for (int i = kDifficultyMenuDifficultyIndex; i < num_buttons; ++i)
+        {
+            if (og::runtime::current_session->allbuttons_[i] != nullptr)
+                og::runtime::current_session->allbuttons_[i]->label = buttons[i].label;
+        }
+
+        og::runtime::current_session->myscreen_->clear_window();
+        og::runtime::current_session->myscreen_->draw_button(0, 0, 320, 200, 0);
+        og::runtime::current_session->myscreen_->draw_button_inverted(4, 4, 312, 192);
+        draw_buttons(buttons, num_buttons);
+
+        mytext.write_xy(80, 13, DARK_BLUE, "%s", "DIFFICULTY");
 
         draw_highlight(buttons[highlighted_button]);
         og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
@@ -1809,6 +2182,10 @@ Sint32 main_options()
     buttons[3].hidden = buttons[3].no_draw = true;
     buttons[2].nav.right = -1;
     buttons[5].nav.up = 2;
+    // fullscreen[3] is hidden here; wrap the right column around it between
+    // sprite sheet and the world-scale row (defaults[7].up = 12 already).
+    buttons[9].nav.down = kMainOptionsWorldScaleIndex;
+    buttons[kMainOptionsWorldScaleIndex].nav.up = 9;
     #endif
 
 	int highlighted_button = 0;
@@ -1836,11 +2213,28 @@ Sint32 main_options()
         
         // Reset buttons
         reset_buttons(og::runtime::current_session->localbuttons_, buttons, num_buttons, retvalue);
-        buttons[2].label = cfg.get_setting("graphics", "render");
+        // cfg (graphics, render) is empty in any process that never ran
+        // load_settings() (and for any missing-key path); fall back to the
+        // default engine name so the button face never draws blank.
+        {
+            std::string render_engine = cfg.get_setting("graphics", "render");
+            if (render_engine.empty())
+                render_engine = "normal";
+            buttons[2].label = render_engine;
+        }
         og::runtime::current_session->allbuttons_[2]->label = buttons[2].label;
         {
-            buttons[16].label = "Sprite Sheet";
-            og::runtime::current_session->allbuttons_[16]->label = buttons[16].label;
+            buttons[9].label = "Sprite Sheet";
+            og::runtime::current_session->allbuttons_[9]->label = buttons[9].label;
+        }
+        // World-scale label re-derived from cfg each frame (both surfaces),
+        // same idiom as the rendering-engine face above; the empty string an
+        // absent key reads as formats to the "Scale: Off" default.
+        {
+            buttons[kMainOptionsWorldScaleIndex].label =
+                og::ui::format_world_scale_label(cfg.get_setting("graphics", "scale"));
+            og::runtime::current_session->allbuttons_[kMainOptionsWorldScaleIndex]->label =
+                buttons[kMainOptionsWorldScaleIndex].label;
         }
 		
 		// Draw
@@ -1860,17 +2254,9 @@ Sint32 main_options()
 		draw_toggle_effect_button(buttons[3], "graphics", "fullscreen");
 		mytext.write_xy(20, buttons[4].y + 3, DARK_BLUE, "Overscan adjust:");
 		og::runtime::current_session->myscreen_->hor_line(60, buttons[6].y - BUTTON_PADDING/2, 200, PURE_WHITE);
-		
+
 		mytext.write_xy(20, buttons[6].y + 3, DARK_BLUE, "Effects:");
-		draw_toggle_effect_button(buttons[6], "effects", "mini_hp_bar");
-		draw_toggle_effect_button(buttons[7], "effects", "hit_flash");
-		draw_toggle_effect_button(buttons[8], "effects", "hit_recoil");
-		draw_toggle_effect_button(buttons[9], "effects", "attack_lunge");
-		draw_toggle_effect_button(buttons[10], "effects", "hit_anim");
-		draw_toggle_effect_button(buttons[11], "effects", "damage_numbers");
-		draw_toggle_effect_button(buttons[12], "effects", "heal_numbers");
-		draw_toggle_effect_button(buttons[13], "effects", "gore");
-        draw_sprite_sheet_button(buttons[16]);
+        draw_sprite_sheet_button(buttons[9]);
 
         draw_highlight(buttons[highlighted_button]);
         og::runtime::current_session->myscreen_->buffer_to_screen(0,0,320,200);
@@ -2123,6 +2509,14 @@ Sint32 create_detail_menu(guy *arg1)
                short new_level = fd->promotion_new_level ? fd->promotion_new_level(thisguy->level) : 1;
                thisguy->upgrade_to_level(new_level);
                thisguy->family = static_cast<unsigned char>(fd->promotes_to);
+               // The promotion mutated the REAL team member in place, so push
+               // the roster to the lobby client now — the same commit path the
+               // train menu's ACCEPT uses. Every picker menu loop starts with
+               // picker_lobby_poll(), which rewrites save.team_list from the
+               // lobby's cached roster; without this push the very next poll
+               // reverts the promotion (issue #133: the Archmage upgrade only
+               // "stuck" if a stat edit re-synced the roster afterwards).
+               picker_lobby_sync_roster_from_save();
                og::runtime::current_session->myscreen_->soundp->play_sound(SOUND_EXPLODE);
                og::runtime::current_session->myscreen_->soundp->play_sound(SOUND_EXPLODE);
                og::runtime::current_session->myscreen_->soundp->play_sound(SOUND_EXPLODE);
@@ -2394,6 +2788,17 @@ int matherr(struct exception *problem)
 }
 */
 
+// Refresh a DIFFICULTY-subscreen settings button's label in both the live
+// vbutton array and the mutable descriptor row that backs later redraws.
+static void refresh_difficulty_menu_button_label(int button_index,
+                                                 const std::string& label)
+{
+   if (og::runtime::current_session->allbuttons_[button_index] != nullptr)
+       og::runtime::current_session->allbuttons_[button_index]->label = label;
+   if (static_cast<int>(pks().difficulty_menu_buttons.size()) > button_index)
+       pks().difficulty_menu_buttons[button_index].label = label;
+}
+
 Sint32 set_difficulty()
 {
    og::runtime::current_session->current_difficulty_ = og::ui::cycle_difficulty(og::runtime::current_session->current_difficulty_);
@@ -2403,17 +2808,12 @@ Sint32 set_difficulty()
        og::runtime::current_session->game_.world->difficulty = percent;
    if (og::runtime::current_session->myscreen_ != nullptr)
        og::runtime::current_session->myscreen_->world().difficulty = percent;
-   std::string msg = og::ui::format_difficulty_label(og::runtime::current_session->current_difficulty_);
-   #ifndef DISABLE_MULTIPLAYER
-   if (og::runtime::current_session->allbuttons_[6] != nullptr)
-       og::runtime::current_session->allbuttons_[6]->label = msg;
-   #else
-   if (og::runtime::current_session->allbuttons_[2] != nullptr)
-       og::runtime::current_session->allbuttons_[2]->label = msg;
-   #endif
 
-   //allbuttons[6]->vdisplay();
-   //myscreen->buffer_to_screen(0, 0, 320, 200);
+   // The cycling row lives in the DIFFICULTY subscreen now (the main-menu
+   // DIFFICULTY button is a static-label door into it).
+   refresh_difficulty_menu_button_label(
+       kDifficultyMenuDifficultyIndex,
+       og::ui::format_difficulty_label(og::runtime::current_session->current_difficulty_));
 
    picker_lobby_sync_settings_from_save();
 
@@ -2536,6 +2936,106 @@ Sint32 change_ctf_troops()
                                   og::ui::format_ctf_troops_label(save));
 
    picker_lobby_sync_settings_from_save();
+
+   return MENU_OK;
+}
+
+// DIFFICULTY-subscreen match-rule callbacks: pure helper, both label
+// surfaces, lobby broadcast — the change_ctf_* recipe.
+Sint32 change_respawn_mode()
+{
+   SaveData& save = og::runtime::current_session->myscreen_->save_data;
+   og::ui::cycle_respawn_mode(save);
+
+   refresh_difficulty_menu_button_label(kDifficultyMenuRespawnModeIndex,
+                                        og::ui::format_respawn_mode_label(save));
+
+   picker_lobby_sync_settings_from_save();
+
+   return MENU_OK;
+}
+
+Sint32 change_respawn_delay()
+{
+   SaveData& save = og::runtime::current_session->myscreen_->save_data;
+   og::ui::cycle_respawn_delay(save);
+
+   refresh_difficulty_menu_button_label(kDifficultyMenuRespawnDelayIndex,
+                                        og::ui::format_respawn_delay_label(save));
+
+   picker_lobby_sync_settings_from_save();
+
+   return MENU_OK;
+}
+
+Sint32 change_permadeath()
+{
+   SaveData& save = og::runtime::current_session->myscreen_->save_data;
+   og::ui::toggle_permadeath(save);
+
+   refresh_difficulty_menu_button_label(kDifficultyMenuPermadeathIndex,
+                                        og::ui::format_permadeath_label(save));
+
+   picker_lobby_sync_settings_from_save();
+
+   return MENU_OK;
+}
+
+Sint32 change_generator_rate()
+{
+   SaveData& save = og::runtime::current_session->myscreen_->save_data;
+   og::ui::cycle_generator_rate(save);
+
+   refresh_difficulty_menu_button_label(kDifficultyMenuGeneratorRateIndex,
+                                        og::ui::format_generator_rate_label(save));
+
+   picker_lobby_sync_settings_from_save();
+
+   return MENU_OK;
+}
+
+// GRAPHICS FX depth selector: step cfg effects/depth_fx one value and
+// rewrite the row's label on both surfaces (the live vbutton and the
+// mutable descriptor row backing later redraws). Pure cfg, no save/lobby
+// state — main_options() persists cfg on exit like every FX toggle.
+Sint32 change_depth_fx()
+{
+   const std::string next =
+       og::ui::cycle_depth_fx(cfg.get_setting("effects", "depth_fx"));
+   cfg.apply_setting("effects", "depth_fx", next);
+
+   const std::string label = og::ui::format_depth_fx_label(next);
+   if (og::runtime::current_session->allbuttons_[kGraphicsFxDepthFxIndex] != nullptr)
+       og::runtime::current_session->allbuttons_[kGraphicsFxDepthFxIndex]->label = label;
+   if (static_cast<int>(pks().graphics_fx_options_buttons.size()) > kGraphicsFxDepthFxIndex)
+       pks().graphics_fx_options_buttons[kGraphicsFxDepthFxIndex].label = label;
+
+   return MENU_OK;
+}
+
+// OPTIONS world-scale selector: step cfg graphics/scale one value, apply it
+// to the live world canvas (safe mid-menu: menus draw and present on the UI
+// canvas, which the scale key never touches; the resize only reallocates the
+// world surface/texture and re-lays-out the idle viewscreens), and rewrite
+// the row's label on both surfaces. main_options() persists cfg on exit.
+Sint32 change_world_scale()
+{
+   const std::string next =
+       og::ui::cycle_world_scale(cfg.get_setting("graphics", "scale"));
+   cfg.apply_setting("graphics", "scale", next);
+
+   screen* scr = og::runtime::current_session->myscreen_;
+   const int old_w = scr->world_canvas_w();
+   const int old_h = scr->world_canvas_h();
+   scr->reapply_world_scale();
+   if (scr->world_canvas_w() != old_w || scr->world_canvas_h() != old_h)
+       scr->relayout_views();
+
+   const std::string label = og::ui::format_world_scale_label(next);
+   if (og::runtime::current_session->allbuttons_[kMainOptionsWorldScaleIndex] != nullptr)
+       og::runtime::current_session->allbuttons_[kMainOptionsWorldScaleIndex]->label = label;
+   if (static_cast<int>(pks().main_options_buttons.size()) > kMainOptionsWorldScaleIndex)
+       pks().main_options_buttons[kMainOptionsWorldScaleIndex].label = label;
 
    return MENU_OK;
 }

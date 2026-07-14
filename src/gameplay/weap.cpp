@@ -70,7 +70,13 @@ bool weap::act()
 
 	//  Log("weap %d is ani %d\n", family, ani_type);
 
-		if (current_game->world->mysmoother.query_genre_x_y(xpos(), ypos()) == TYPE_TREES)
+		// Legacy TREES arm kept byte-for-byte (including its pixel-coords-as-
+		// grid-coords quirk); the decor arm (concealing SHRUB, walker's own
+		// floor) uses the actual cell and is gated on plane validity, so
+		// no-decor levels behave identically. Combined with || so a cell that
+		// is both trees and shrub still decays lineofsight once per tick.
+		if (current_game->world->mysmoother.query_genre_x_y(xpos(), ypos()) == TYPE_TREES
+		    || current_game->world->decor_conceals_at(floor(), xpos() / GRID_SIZE, ypos() / GRID_SIZE))
 			if (lineofsight())
 				set_lineofsight(lineofsight() - 1);
 

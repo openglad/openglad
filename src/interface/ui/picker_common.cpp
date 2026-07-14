@@ -10,6 +10,7 @@
 #include <openglad/resources/save_data.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/core/ctf_constants.h>
+#include <openglad/core/tower_constants.h>
 #include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
@@ -460,6 +461,135 @@ void toggle_ctf_scenario_troops(SaveData& save)
         static_cast<short>(save.ctf_strip_scenario_troops != 0 ? 0 : 1);
 }
 
+// --- Difficulty submenu match rules ---
+
+void cycle_respawn_mode(SaveData& save)
+{
+    switch (save.respawn_mode)
+    {
+        case 0: save.respawn_mode = 1; break;
+        case 1: save.respawn_mode = 2; break;
+        default: save.respawn_mode = 0; break;
+    }
+}
+
+void cycle_respawn_delay(SaveData& save)
+{
+    switch (save.ctf_respawn_ticks)
+    {
+        case 0: save.ctf_respawn_ticks = 60; break;
+        case 60: save.ctf_respawn_ticks = 360; break;
+        default: save.ctf_respawn_ticks = 0; break;
+    }
+}
+
+void toggle_permadeath(SaveData& save)
+{
+    save.keep_fallen_heroes =
+        static_cast<short>(save.keep_fallen_heroes != 0 ? 0 : 1);
+}
+
+void cycle_generator_rate(SaveData& save)
+{
+    switch (save.generator_rate)
+    {
+        case 0: save.generator_rate = 50; break;
+        case 50: save.generator_rate = 200; break;
+        default: save.generator_rate = 0; break;
+    }
+}
+
+// --- GRAPHICS FX depth selector (cfg effects/depth_fx) ---
+
+// Out-of-set values (including the empty string an absent key reads as)
+// count as the default, fog — the same rule depth_fx_mode_from_setting
+// applies in the renderer, so the label always names what is drawn.
+static std::string normalize_depth_fx_value(const std::string& value)
+{
+    if (value == "off" || value == "tint" || value == "haze" || value == "mist")
+        return value;
+    return "fog";
+}
+
+std::string cycle_depth_fx(const std::string& current)
+{
+    const std::string value = normalize_depth_fx_value(current);
+    if (value == "fog")
+        return "haze";
+    if (value == "haze")
+        return "mist";
+    if (value == "mist")
+        return "tint";
+    if (value == "tint")
+        return "off";
+    return "fog"; // off wraps back to the default
+}
+
+std::string format_depth_fx_label(const std::string& value)
+{
+    const std::string v = normalize_depth_fx_value(value);
+    if (v == "off")
+        return "Depth: Off";
+    if (v == "tint")
+        return "Depth: Tint";
+    if (v == "haze")
+        return "Depth: Haze";
+    if (v == "mist")
+        return "Depth: Mist";
+    return "Depth: Fog";
+}
+
+bool depth_fx_is_active(const std::string& value)
+{
+    return normalize_depth_fx_value(value) != "off";
+}
+
+// --- OPTIONS world-scale selector (cfg graphics/scale) ---
+
+// Out-of-set values (including the empty string an absent key reads as, and
+// the documented explicit "off") count as Legacy — the same rule
+// parse_world_scale_setting applies in the renderer, so the label always
+// names what is presented.
+static std::string normalize_world_scale_value(const std::string& value)
+{
+    if (value == "1" || value == "2" || value == "3" || value == "4" ||
+        value == "8" || value == "sai" || value == "eagle")
+        return value;
+    return "off";
+}
+
+std::string cycle_world_scale(const std::string& current)
+{
+    const std::string value = normalize_world_scale_value(current);
+    if (value == "off")
+        return "1";
+    if (value == "1")
+        return "2";
+    if (value == "2")
+        return "sai";
+    if (value == "sai")
+        return "eagle";
+    if (value == "eagle")
+        return "3";
+    if (value == "3")
+        return "4";
+    if (value == "4")
+        return "8";
+    return "off"; // 8 wraps back to the Legacy default
+}
+
+std::string format_world_scale_label(const std::string& value)
+{
+    const std::string v = normalize_world_scale_value(value);
+    if (v == "sai")
+        return "Scale: SAI";
+    if (v == "eagle")
+        return "Scale: Eagle";
+    if (v == "off")
+        return "Scale: Off";
+    return "Scale: " + v + "x";
+}
+
 // --- Team choice helpers (local seats) ---
 
 bool team_has_members(const SaveData& save, short team)
@@ -597,15 +727,48 @@ std::vector<std::string> paginate_team_detail_pages(
 
 void order_campaigns_for_select(std::list<std::string>& campaign_ids)
 {
-    const auto glad = std::find(campaign_ids.begin(), campaign_ids.end(),
-                                og::kDefaultCampaignId);
-    if (glad != campaign_ids.end() && glad != campaign_ids.begin())
-        campaign_ids.splice(campaign_ids.begin(), campaign_ids, glad);
+    // The shipped shelf order: the classics lead (gladiator, then tryxian),
+    // the two original story campaigns follow, then the multiplayer
+    // packages, then the tower (single-player mode package, owner-placed
+    // after the MP block), with the concept playground trailing. Campaigns
+    // not on the shelf (user-made packages) keep their incoming enumeration
+    // order and follow every shelved id.
+    static constexpr std::string_view kShelf[] = {
+        og::kDefaultCampaignId, // org.openglad.gladiator
+        "org.openglad.tryxian",
+        "org.openglad.westlands",
+        "org.openglad.longseason",
+        og::kCtfCampaignId,     // org.openglad.ctf (multiplayer)
+        "org.openglad.arenas",  // multiplayer arenas
+        og::kTowerCampaignId,   // org.openglad.tower (The Endless Tower)
+        "org.openglad.concept",
+    };
+    auto anchor = campaign_ids.begin();
+    for (const std::string_view id : kShelf)
+    {
+        const auto it = std::find(anchor, campaign_ids.end(), id);
+        if (it == campaign_ids.end())
+            continue;
+        if (it == anchor)
+        {
+            ++anchor;
+            continue;
+        }
+        campaign_ids.splice(anchor, campaign_ids, it);
+    }
+}
 
-    const auto ctf = std::find(campaign_ids.begin(), campaign_ids.end(),
-                               og::kCtfCampaignId);
-    if (ctf != campaign_ids.end() && std::next(ctf) != campaign_ids.end())
-        campaign_ids.splice(campaign_ids.end(), campaign_ids, ctf);
+void filter_campaigns_for_networked_lobby(std::list<std::string>& campaign_ids,
+                                          bool networked_session)
+{
+    if (!networked_session)
+        return; // local shelves keep every campaign (tower is local-only)
+    // v1 keys on the tower id directly (the kCtfCampaignId precedent); the
+    // documented upgrade is a yaml-driven campaign_mode(id) accessor once a
+    // second mode campaign exists. The prepare_launch veto and the
+    // LobbyServer sanitize backstop enforce the same rule below the UI.
+    campaign_ids.remove_if([](const std::string& id)
+                           { return id == og::kTowerCampaignId; });
 }
 
 std::vector<std::string> format_campaign_select_labels(
@@ -687,6 +850,40 @@ std::string format_ctf_caps_label(const SaveData& save)
 std::string format_ctf_troops_label(const SaveData& save)
 {
     return save.ctf_strip_scenario_troops != 0 ? "Troops: Own" : "Troops: Scen";
+}
+
+std::string format_respawn_mode_label(const SaveData& save)
+{
+    if (save.respawn_mode <= 0)
+        return "Respawns: Off";
+    if (save.respawn_mode == 1)
+        return "Respawns: Heroes";
+    return "Respawns: Everyone";
+}
+
+std::string format_respawn_delay_label(const SaveData& save)
+{
+    // Anything outside the cycle set (including the 0 map-default sentinel)
+    // reads as the default delay.
+    if (save.ctf_respawn_ticks == 60)
+        return "Spawn Delay: Fast";
+    if (save.ctf_respawn_ticks == 360)
+        return "Spawn Delay: Slow";
+    return "Spawn Delay: Normal";
+}
+
+std::string format_permadeath_label(const SaveData& save)
+{
+    return save.keep_fallen_heroes != 0 ? "Permadeath: Off" : "Permadeath: On";
+}
+
+std::string format_generator_rate_label(const SaveData& save)
+{
+    if (save.generator_rate == 50)
+        return "Generators: Calm";
+    if (save.generator_rate == 200)
+        return "Generators: Frenzy";
+    return "Generators: Normal";
 }
 
 // --- Team family extraction ---
@@ -941,6 +1138,12 @@ void TrainSession::increase_stat(Stat stat, int amount)
     if (!working_)
         return;
 
+    // Self-heal before editing: if the real member was promoted (family
+    // changed) since the working copy was snapshotted, edit the fresh
+    // post-promotion stats. Editing the stale copy would clamp against
+    // cross-family values and "put the old stats back" (issue #133).
+    resync_if_promoted();
+
     const short delta = static_cast<short>(amount);
 
     if (stat == Stat::Level) {
@@ -979,6 +1182,9 @@ void TrainSession::decrease_stat(Stat stat, int amount)
 {
     if (!working_)
         return;
+
+    // See increase_stat: never edit a working copy whose family went stale.
+    resync_if_promoted();
 
     const short delta = static_cast<short>(amount);
 
@@ -1030,6 +1236,12 @@ void TrainSession::set_team(int team_num)
 
 bool TrainSession::accept(bool force)
 {
+    // A family mismatch always means an external promotion (training never
+    // edits family). Never statscopy stale cross-family stats over the
+    // promoted member (bug A9 / issue #133) — resync first, which discards
+    // pending edits and turns this into a no-op accept of the promotion.
+    resync_if_promoted();
+
     guy* const original = original_member();
     if (!working_ || !original)
         return false;
@@ -1064,6 +1276,21 @@ bool TrainSession::accept(bool force)
 
     statscopy(original, working_.get());
 
+    return true;
+}
+
+bool TrainSession::resync_if_promoted()
+{
+    const guy* const original = original_member();
+    if (!working_ || !original)
+        return false;
+    if (working_->family == original->family)
+        return false;
+
+    // The real team member changed family underneath us (DETAILS promote
+    // button). Discard the stale working copy — pending unaccepted stat
+    // edits are meaningless across a class change anyway (bug A9).
+    select_current_slot();
     return true;
 }
 

@@ -132,6 +132,25 @@ bool is_ctf_campaign(const SaveData& save);
 // Toggle the CTF scenario-troops strip flag (0 = keep authored troops).
 void toggle_ctf_scenario_troops(SaveData& save);
 
+// --- Difficulty submenu match rules ---
+// Every default (0) is bit-identical classic behavior; the cyclers walk the
+// small closed value sets and normalize any out-of-set stored value back to
+// the default on the next step.
+
+// Cycle respawn mode: 0 (off) -> 1 (heroes) -> 2 (everyone) -> 0.
+void cycle_respawn_mode(SaveData& save);
+
+// Cycle the respawn delay ticks: 0 (normal/map default) -> 60 (fast)
+// -> 360 (slow) -> 0. Rides the existing ctf_respawn_ticks field.
+void cycle_respawn_delay(SaveData& save);
+
+// Toggle permadeath: keep_fallen_heroes 0 (permadeath ON, classic) <-> 1.
+void toggle_permadeath(SaveData& save);
+
+// Cycle the generator rate percent: 0 (normal/100) -> 50 (calm)
+// -> 200 (frenzy) -> 0.
+void cycle_generator_rate(SaveData& save);
+
 // --- Team choice helpers (local seats) ---
 
 // True when any roster slot is on the given team.
@@ -178,6 +197,15 @@ std::vector<std::string> paginate_team_detail_pages(
 // their existing (alphabetical) order. Applied at the user-facing campaign
 // pickers only; list_campaigns() itself stays honest.
 void order_campaigns_for_select(std::list<std::string>& campaign_ids);
+
+// Networked lobbies must not offer local-only mode campaigns (v1: the
+// Endless Tower — its run state lives in one player's save0 and its floors
+// in one player's user dir). Removes those ids from a campaign-select list
+// when networked_session is true; a no-op for local shelves. All three
+// picker clients call this in lockstep at their shelf call sites; the
+// prepare_launch veto and LobbyServer::sanitize_settings back it up.
+void filter_campaigns_for_networked_lobby(std::list<std::string>& campaign_ids,
+                                          bool networked_session);
 
 // Index-aligned display labels for a campaign-select list: the packages'
 // human titles, with the raw id appended ("Forest [org.x.forest]") when two
@@ -264,6 +292,50 @@ std::string format_ctf_caps_label(const SaveData& save);
 // troops, "Troops: Own" when stripping them).
 std::string format_ctf_troops_label(const SaveData& save);
 
+// "Respawns: Off" / "Respawns: Heroes" / "Respawns: Everyone".
+std::string format_respawn_mode_label(const SaveData& save);
+
+// "Spawn Delay: Normal" / "Spawn Delay: Fast" / "Spawn Delay: Slow".
+std::string format_respawn_delay_label(const SaveData& save);
+
+// "Permadeath: On" / "Permadeath: Off" (On == keep_fallen_heroes == 0).
+std::string format_permadeath_label(const SaveData& save);
+
+// "Generators: Normal" / "Generators: Calm" / "Generators: Frenzy".
+std::string format_generator_rate_label(const SaveData& save);
+
+// --- GRAPHICS FX depth selector (cfg effects/depth_fx) ---
+// Pure string helpers over the depth-effect selector values
+// {fog, haze, mist, tint, off}. Any value outside the set — including the
+// empty string an absent cfg key reads as — normalizes to the default,
+// "fog", matching depth_fx_mode_from_setting in the renderer.
+
+// Step to the next selector value: fog -> haze -> mist -> tint -> off -> fog.
+std::string cycle_depth_fx(const std::string& current);
+
+// "Depth: Fog" / "Depth: Haze" / "Depth: Mist" / "Depth: Tint" /
+// "Depth: Off" — every label fits the 90px FX button face (15 chars).
+std::string format_depth_fx_label(const std::string& value);
+
+// True for every value but "off" (the button's green/red backing state).
+bool depth_fx_is_active(const std::string& value);
+
+// --- OPTIONS world-scale selector (cfg graphics/scale) ---
+// Pure string helpers over the world-canvas scale values
+// {off, 1, 2, sai, eagle, 3, 4, 8}. Any value outside the set — including
+// the empty string an absent cfg key reads as — normalizes to "off"
+// (Legacy), matching parse_world_scale_setting in the renderer. Independent
+// of the legacy graphics/render engine setting, which keeps its own button.
+
+// Step to the next selector value:
+// off -> 1 -> 2 -> sai -> eagle -> 3 -> 4 -> 8 -> off.
+std::string cycle_world_scale(const std::string& current);
+
+// "Scale: Off" / "Scale: 1x" / "Scale: 2x" / "Scale: SAI" / "Scale: Eagle" /
+// "Scale: 3x" / "Scale: 4x" / "Scale: 8x" — every label fits the 90px
+// options button face (15 chars).
+std::string format_world_scale_label(const std::string& value);
+
 // --- Team family extraction ---
 
 // Collect family IDs from non-null team slots into a vector.
@@ -341,6 +413,9 @@ public:
     //  - Can't modify level if any stat increased above original
     //  - Stats clamped to not go below original
     //  - Level decrease clamped to original level
+    // Both editors (and accept()) first self-heal via resync_if_promoted()
+    // so an external promotion is never clamped/copied against stale
+    // cross-family stats (issue #133).
     enum class Stat { Strength, Dexterity, Constitution, Intelligence, Armor, Level };
     void increase_stat(Stat stat, int amount = 1);
     void decrease_stat(Stat stat, int amount = 1);
@@ -350,6 +425,17 @@ public:
     // If level changed, calls upgrade_to_level(). Returns false if can't afford.
     // force=true skips the cost check (for cheat mode).
     bool accept(bool force = false);
+
+    // Re-snapshot the working copy when the real team member was promoted
+    // (family changed) underneath this session — e.g. by the DETAILS
+    // submenu's promote button, which mutates the real guy in place.
+    // Training never edits family, so a family mismatch always means an
+    // external promotion; without the resync the stale working copy hides
+    // the promotion on screen and accept() statscopy()s the old family
+    // back over it. increase_stat/decrease_stat/accept() also call this
+    // internally as a self-heal. Returns true if the working copy was
+    // reloaded.
+    bool resync_if_promoted();
 
     // State queries (for rendering)
     const guy& working_copy() const;

@@ -99,6 +99,9 @@ void apply_lobby_game_start_config(
     save.ctf_respawn_ticks = static_cast<short>(config_save.ctf_respawn_ticks);
     save.ctf_strip_scenario_troops =
         static_cast<short>(config_save.ctf_strip_scenario_troops);
+    save.respawn_mode = static_cast<short>(config_save.respawn_mode);
+    save.generator_rate = static_cast<short>(config_save.generator_rate);
+    save.keep_fallen_heroes = static_cast<short>(config_save.keep_fallen_heroes);
     if (save.allied_mode != 0)
     {
         save.my_team = 0;
@@ -269,6 +272,23 @@ void glad_main(Sint32 playermode)
                 og::runtime::current_session->gameplay_active_ = false;
         }
     } gameplay_scope;
+
+    // Route draws to the WORLD canvas for the whole gameplay session and
+    // restore the UI canvas for the picker/menus on exit. At the default
+    // 320x200 world dims both targets share one surface (pure routing
+    // bookkeeping). On Emscripten glad_main returns right after init and the
+    // per-present World assert in render_pending_redraw covers the frames.
+    struct WorldCanvasScope final {
+        screen* scr_;
+        explicit WorldCanvasScope(screen* scr) : scr_(scr)
+        {
+            scr_->set_active_canvas(CanvasTarget::World);
+        }
+        ~WorldCanvasScope()
+        {
+            scr_->set_active_canvas(CanvasTarget::UI);
+        }
+    } world_canvas_scope(current_screen);
 
     glad_init(false);
 

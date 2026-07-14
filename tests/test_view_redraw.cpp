@@ -10,8 +10,11 @@
 #include <openglad/interface/screen.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/gloader.h>
+#include <openglad/gameplay/game_world.h>
+#include <openglad/core/pixdefs.h>
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <utility>
 #include <vector>
 
@@ -183,6 +186,76 @@ TEST(ViewRedraw, with_control)
 
 }
 
+// Z-axis: a 3-floor world with the control on floor 1 exercises the multi-floor
+// render path — floor 0 faded below, floor 1 the opaque camera floor, floor 2 a
+// ghost above — i.e. per-floor alpha tiles + alpha entity sprites + air holes.
+TEST(ViewRedraw, multifloor_renders_faded_below_and_ghost_above)
+{
+    viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
+    if (!vs) return;
+
+    GameWorld& world = og::runtime::current_session->myscreen_->world();
+    world.create_new_grid();
+    world.mysmoother.set_target(world.grid);
+
+    world.set_floor_count(3);
+    const int gw = world.grid.w;
+    const int gh = world.grid.h;
+    for (int f = 1; f < 3; ++f)
+    {
+        auto* buf = new unsigned char[static_cast<std::size_t>(gw) * gh];
+        std::fill(buf, buf + static_cast<std::size_t>(gw) * gh,
+                  static_cast<unsigned char>(PIX_GRASS1));
+        buf[5 + 5 * gw] = static_cast<unsigned char>(PIX_AIR); // hole reveals below
+        world.grid_for_floor(f) = PixieData(1, static_cast<unsigned char>(gw),
+                                            static_cast<unsigned char>(gh), buf);
+        world.smoother_for_floor(f).set_target(world.grid_for_floor(f));
+    }
+
+    walker* mid = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* below = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* above = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    if (mid) { mid->set_floor(1); mid->setxy(160, 120); }
+    if (below) { below->set_floor(0); below->setxy(80, 80); }
+    if (above) { above->set_floor(2); above->setxy(110, 110); }
+
+    if (mid)
+    {
+        vs->control = mid;
+
+        bool ok = vs->redraw(&og::runtime::current_session->myscreen_->level_runtime_data(), false);
+        EXPECT_TRUE(ok) << "multi-floor redraw should succeed";
+        EXPECT_EQ(1, vs->current_floor_) << "camera follows the control's floor";
+
+        // floor_render_alpha no longer reads the look-up hold at all: the
+        // floor below ALWAYS fades (regression pin — air holes must show a
+        // depth-faded lower floor in normal play), the camera floor stays
+        // opaque, and floors above report the ghost alpha they'd composite
+        // at (whether they draw is the redraw loop's floor_top gate on
+        // ghost_hold_override_). Drive the flag both ways to prove it.
+        vs->ghost_hold_override_ = true;
+        EXPECT_EQ(255, vs->floor_render_alpha(1)) << "camera floor opaque";
+        EXPECT_LT(vs->floor_render_alpha(0), 255) << "floor below faded";
+        EXPECT_LT(vs->floor_render_alpha(2), 255) << "floor above ghosted";
+
+        // Hold released: identical alphas — the released frame simply never
+        // iterates floors above the camera (and adds the upper-floor shadow
+        // pass instead). Exercise that path too.
+        vs->ghost_hold_override_ = false;
+        EXPECT_EQ(255 - viewscreen::kFloorBelowAlphaStep,
+                  vs->floor_render_alpha(0))
+            << "the below-floor fade must not need the look-up hold";
+        EXPECT_EQ(viewscreen::kFloorGhostAlpha, vs->floor_render_alpha(2));
+        EXPECT_TRUE(vs->redraw(&og::runtime::current_session->myscreen_->level_runtime_data(), false));
+
+        vs->control = nullptr;
+    }
+
+    // Restore single-floor shared state for the other tests in this binary.
+    world.delete_objects();
+    world.set_floor_count(1);
+}
+
 TEST(ViewRedraw, resolve_walker_render_position_uses_interpolated_snapshot_state)
 {
     prepare_view_world();
@@ -213,6 +286,49 @@ TEST(ViewRedraw, resolve_walker_render_position_uses_interpolated_snapshot_state
     EXPECT_FLOAT_EQ(72.0f, draw_pos.worldy);
     EXPECT_FLOAT_EQ(56.0f, draw_pos.xpos);
     EXPECT_FLOAT_EQ(72.0f, draw_pos.ypos);
+}
+
+// The per-level weather kind reaches a client world through the same
+// snapshot-apply path every other world field uses: capture the rolled
+// server state, wipe the local kind (an un-synced mirror), and let the
+// GameClient apply the received keyframe back into the render world.
+TEST(ViewRedraw, weather_kind_syncs_to_client_world_through_snapshot_apply)
+{
+    prepare_view_world();
+
+    screen* const active = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, active);
+    GameWorld& world = active->world();
+    world.tick_count_ = 1u;
+
+    // Authoritative roll (level id 7 pins Rain under the default-0 nonce —
+    // see tests/unit/test_weather.cpp).
+    const int saved_id = world.id;
+    world.id = 7;
+    og::set_weather_roll_sequence(0u);
+    world.roll_weather();
+    ASSERT_EQ(WeatherKind::Rain, world.weather());
+
+    const og::sim::WorldSnapshot keyframe =
+        og::sim::capture_keyframe_snapshot(world);
+    EXPECT_EQ(static_cast<std::uint8_t>(WeatherKind::Rain), keyframe.weather);
+
+    // Play the un-synced mirror: the kind arrives only via the snapshot.
+    world.set_weather(WeatherKind::None);
+
+    MockTransport transport;
+    constexpr og::sim::PeerId kPeerId = 7u;
+    // Bind the client to the render world (the display-client wiring): only
+    // a world-bound client applies received snapshots to it.
+    og::sim::GameClient client(transport, kPeerId, &world);
+    transport.queue_received(kPeerId, og::sim::serialize_snapshot(keyframe));
+    client.poll_messages();
+
+    EXPECT_EQ(WeatherKind::Rain, world.weather())
+        << "the snapshot-apply path must install the server's rolled kind";
+
+    world.set_weather(WeatherKind::None);
+    world.id = saved_id;
 }
 
 TEST(ViewRedraw,

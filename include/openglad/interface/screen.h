@@ -121,6 +121,12 @@ public:
     void* create_accel_surface(std::span<const unsigned char> indexed_pixels,
                                Sint32 width, Sint32 height) override;
     void destroy_accel_surface(void* surface) override;
+    bool floor_layer_begin(Sint32 x, Sint32 y, Sint32 w, Sint32 h) override;
+    void floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
+                         float scale, Sint32 cx, Sint32 cy,
+                         unsigned char alpha,
+                         DepthFxParams fx = {},
+                         Sint32 pad_x = 0, Sint32 pad_y = 0) override;
     void walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
                        Sint32 walkerwidth, Sint32 walkerheight,
                        Sint32 portstartx, Sint32 portstarty,
@@ -141,6 +147,40 @@ public:
                                  Sint32 portstartx, Sint32 portstarty,
                                  Sint32 portendx, Sint32 portendy,
                                  std::span<const unsigned char> sourceptr, unsigned char teamcolor, Uint8 alpha) override;
+    void walkputbuffer_alpha(Sint32 walkerstartx, Sint32 walkerstarty,
+                             Sint32 walkerwidth, Sint32 walkerheight,
+                             Sint32 portstartx, Sint32 portstarty,
+                             Sint32 portendx, Sint32 portendy,
+                             std::span<const unsigned char> sourceptr, unsigned char teamcolor, Uint8 alpha) override;
+    // Defaults preserve the classic unit ground shadow (half height, full
+    // width); the upper-floor blob shadows pass a larger divisor + inset.
+    void walkputbuffer_shadow(Sint32 walkerstartx, Sint32 walkerstarty,
+                              Sint32 walkerwidth, Sint32 walkerheight,
+                              Sint32 portstartx, Sint32 portstarty,
+                              Sint32 portendx, Sint32 portendy,
+                              std::span<const unsigned char> sourceptr, Uint8 alpha,
+                              Sint32 height_divisor = 2, Sint32 inset = 0) override;
+    void walkputbuffer_reflect(Sint32 walkerstartx, Sint32 walkerstarty,
+                               Sint32 walkerwidth, Sint32 walkerheight,
+                               Sint32 portstartx, Sint32 portstarty,
+                               Sint32 portendx, Sint32 portendy,
+                               std::span<const unsigned char> sourceptr,
+                               unsigned char teamcolor, Uint8 alpha,
+                               std::span<const unsigned char> grid,
+                               Sint32 gridw, Sint32 gridh,
+                               Sint32 world_offset_x, Sint32 world_offset_y,
+                               std::span<const bool, 256> reflect_mask) override;
+    // Default-mask convenience: reflects over the production reflective
+    // tiles (reflective_tiles(): PIX_GLASS + pure water + lava/marsh).
+    void walkputbuffer_reflect(Sint32 walkerstartx, Sint32 walkerstarty,
+                               Sint32 walkerwidth, Sint32 walkerheight,
+                               Sint32 portstartx, Sint32 portstarty,
+                               Sint32 portendx, Sint32 portendy,
+                               std::span<const unsigned char> sourceptr,
+                               unsigned char teamcolor, Uint8 alpha,
+                               std::span<const unsigned char> grid,
+                               Sint32 gridw, Sint32 gridh,
+                               Sint32 world_offset_x, Sint32 world_offset_y);
 
     void walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
                        Sint32 walkerwidth, Sint32 walkerheight,
@@ -167,6 +207,25 @@ public:
 
     void swap() override;
 
+    // Re-derives every live viewscreen's geometry from the current world
+    // canvas dims (after a canvas resize) and flags a redraw.
+    void relayout_views();
+
+    // Canvas routing (world/UI split) — forwarded to the platform video.
+    int canvas_w() const override { return video_impl_->canvas_w(); }
+    // Pins the world canvas to the classic 320x200 dims (true) or restores
+    // the cfg graphics/scale-derived dims (false) — used by the level editor,
+    // whose panel chrome still assumes classic coordinates.
+    void set_world_canvas_pinned_classic(bool pinned) override { video_impl_->set_world_canvas_pinned_classic(pinned); }
+    int canvas_h() const override { return video_impl_->canvas_h(); }
+    int world_canvas_w() const override { return video_impl_->world_canvas_w(); }
+    int world_canvas_h() const override { return video_impl_->world_canvas_h(); }
+    void set_active_canvas(CanvasTarget target) override { video_impl_->set_active_canvas(target); }
+    CanvasTarget active_canvas() const override { return video_impl_->active_canvas(); }
+    // Re-reads cfg graphics/scale into the live world canvas (the OPTIONS
+    // Scale button / RESTORE DEFAULTS live-apply path).
+    void reapply_world_scale() override { video_impl_->reapply_world_scale(); }
+
     void get_pixel(int x, int y, Uint8* r, Uint8* g, Uint8* b) override;
     int get_pixel(int x, int y, int* index) override;
     int get_pixel(int offset) override;
@@ -180,7 +239,7 @@ public:
     std::array<unsigned char, 768>& redpalette_ref() override { return redpalette; }
     std::array<unsigned char, 768>& bluepalette_ref() override { return bluepalette; }
     std::array<unsigned char, 768>& dospalette_ref() override { return dospalette; }
-    std::array<unsigned char, 64000>& videobuffer_ref() override { return videobuffer; }
+    std::vector<unsigned char>& videobuffer_ref() override { return videobuffer; }
     short& cyclemode_ref() override { return cyclemode; }
     text& text_normal_ref() override { return text_normal; }
     text& text_big_ref() override { return text_big; }
@@ -255,7 +314,7 @@ public:
     std::array<unsigned char, 768>& redpalette;
     std::array<unsigned char, 768>& bluepalette;
     std::array<unsigned char, 768>& dospalette;
-    std::array<unsigned char, 64000>& videobuffer;
+    std::vector<unsigned char>& videobuffer;
     short& cyclemode;
     text& text_normal;
     text& text_big;
@@ -285,6 +344,16 @@ public:
     const og::sim::GameClient* render_interpolation_client_ = nullptr;
     float render_interpolation_speed_factor_ = 1.0f;
     std::unique_ptr<DamageNumberRenderContext> damage_number_render_context_;
+
+    // One-shot "the way is clear" announcement latch (bug B4). Render-only
+    // state fed by redraw() from the world's level_done (which the sim
+    // recomputes every tick and snapshots sync to network mirrors): when it
+    // transitions 0 -> 1 (live hostiles cleared, a live exit present), each
+    // view gets a one-time on-screen notice. Never written back to the sim.
+    int way_clear_level_id_ = -1;
+    short way_clear_last_level_done_ = -1;
+    bool way_clear_announced_ = false;
+    void announce_way_clear_if_needed();
 
 private:
     void init_common(short howmany, bool has_display);

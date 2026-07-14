@@ -108,6 +108,10 @@ Data and persistence:
 - pixie/asset loading (indexed-color PNGs + Aseprite JSON sidecars; artist
   workflow and palette contract are documented in
   [docs/sprite-format.md](sprite-format.md))
+- the game-mode seam (`og::mode::IProgression` meta-progression interface,
+  the shared level-win fold, and the campaign.yaml `mode:` identity key; the
+  two-tier mode taxonomy and the add-a-mode checklist are documented in
+  [docs/game-modes.md](game-modes.md))
 
 ### `og_interface`
 

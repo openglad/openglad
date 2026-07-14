@@ -1,6 +1,7 @@
 #include <openglad/gameplay/lobby_server.h>
 
 #include <openglad/core/ctf_constants.h>
+#include <openglad/core/tower_constants.h>
 
 #include <algorithm>
 #include <format>
@@ -32,11 +33,31 @@ og::sim::LobbySettings make_default_lobby_settings()
 }
 
 og::sim::LobbySettings sanitize_settings(const og::sim::LobbySettings& requested,
-                                         const og::sim::LobbySettings& fallback)
+                                         const og::sim::LobbySettings& fallback,
+                                         bool local_session)
 {
     og::sim::LobbySettings sanitized = requested;
     if (sanitized.campaign_id.empty())
         sanitized.campaign_id = fallback.campaign_id;
+    if (!local_session && sanitized.campaign_id == og::kTowerCampaignId)
+    {
+        // The Endless Tower is local-only (tower-triple §5.9): its run state
+        // lives in one player's save0 and its generated floors in one
+        // player's user dir. Honest clients never offer it on a networked
+        // shelf and the picker vetoes it at GO; this is the crafted-client
+        // backstop. Rejecting to the fallback PAIR keeps the scenario id
+        // coherent with the restored campaign, and the existing
+        // settings-refresh flow reports the result to every peer.
+        //
+        // Local sessions are exempt: the solo picker round-trips its OWN
+        // settings through this same server (LocalPickerLobbyClient), and an
+        // unconditional rejection silently reverted a just-picked tower back
+        // to the fallback pair while the tower stayed mounted — a split-brain
+        // ghost session (display on the Gate, authority on the fallback
+        // level, every keyframe rejected).
+        sanitized.campaign_id = fallback.campaign_id;
+        sanitized.scenario_id = fallback.scenario_id;
+    }
     if (sanitized.scenario_id <= 0)
         sanitized.scenario_id = fallback.scenario_id;
     if (sanitized.allied_mode != 0 && sanitized.allied_mode != 1)
@@ -62,6 +83,15 @@ og::sim::LobbySettings sanitize_settings(const og::sim::LobbySettings& requested
     {
         sanitized.ctf_strip_scenario_troops = fallback.ctf_strip_scenario_troops;
     }
+    if (sanitized.respawn_mode < 0 || sanitized.respawn_mode > 2)
+        sanitized.respawn_mode = fallback.respawn_mode;
+    if (sanitized.generator_rate != 0)
+    {
+        sanitized.generator_rate =
+            std::clamp<std::int16_t>(sanitized.generator_rate, 25, 400);
+    }
+    if (sanitized.keep_fallen_heroes != 0 && sanitized.keep_fallen_heroes != 1)
+        sanitized.keep_fallen_heroes = fallback.keep_fallen_heroes;
     return sanitized;
 }
 
@@ -204,8 +234,9 @@ struct OrderedLobbySlot {
 
 namespace og::sim {
 
-LobbyServer::LobbyServer(ITransport& transport)
+LobbyServer::LobbyServer(ITransport& transport, bool local_session)
     : transport_(transport)
+    , local_session_(local_session)
 {
     state_.settings = make_default_lobby_settings();
 }
@@ -529,7 +560,8 @@ void LobbyServer::process_lobby_message(PeerId peer_id, const LobbyMessage& mess
             const auto& settings_change =
                 std::get<LobbySettingsChangeMessage>(message.payload);
             state_.settings =
-                sanitize_settings(settings_change.settings, state_.settings);
+                sanitize_settings(settings_change.settings, state_.settings,
+                                  local_session_);
 
             // A lowered CTF team count can strand joined players on a team
             // outside the new range; re-resolve them so nobody is left on a
@@ -678,6 +710,9 @@ LobbySaveDataEquivalent LobbyServer::build_save_data_equivalent() const
     equivalent.ctf_capture_limit = state_.settings.ctf_capture_limit;
     equivalent.ctf_respawn_ticks = state_.settings.ctf_respawn_ticks;
     equivalent.ctf_strip_scenario_troops = state_.settings.ctf_strip_scenario_troops;
+    equivalent.respawn_mode = state_.settings.respawn_mode;
+    equivalent.generator_rate = state_.settings.generator_rate;
+    equivalent.keep_fallen_heroes = state_.settings.keep_fallen_heroes;
     equivalent.current_campaign = state_.settings.campaign_id.empty()
         ? std::string(kDefaultCampaignId)
         : state_.settings.campaign_id;

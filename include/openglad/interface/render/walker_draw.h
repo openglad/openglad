@@ -14,6 +14,7 @@
 #include <vector>
 
 class GameWorld;
+class PixieData;
 class screen;
 class walker;
 class viewscreen;
@@ -66,7 +67,36 @@ private:
 float query_render_interpolation_alpha();
 WalkerRenderPosition resolve_walker_render_position(const walker& w,
                                                     float alpha);
-bool draw_walker(walker& w, viewscreen* view_buf);
+// alpha<255 marks a non-camera (faded/ghosted) floor: the sprite is drawn ONLY
+// (no flash/outline/mode/HP-bar/damage-number embellishments) and OPAQUELY onto
+// the off-screen floor layer — the per-floor fade + shrink/zoom is applied by the
+// layer composite (video::floor_layer_*), so this no longer per-sprite blends or
+// position-scales (which left sub-pixel seams). alpha==255 = camera floor (full).
+bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha = 255);
+// Multifloor FX pre-pass sprites (render-only, drawn before the normal entity
+// loops so entities overdraw them). Both apply to alive Living/Weapon walkers
+// that are neither phantom nor invisible, and return true when a blit was
+// issued (callers count for the per-pass TRACE).
+// - Shadow: squashed black silhouette on the GROUND plane (no worldz raise),
+//   so an arcing projectile's height reads from the sprite/shadow gap.
+// - Reflection: vertically flipped sprite mirrored below the feet, masked to
+//   the reflective tiles of camera_grid (the camera floor's tile grid) per
+//   reflective_tiles(): PIX_GLASS + pure water + lava/marsh.
+bool draw_walker_shadow(walker& w, viewscreen* view_buf);
+bool draw_walker_reflection(walker& w, viewscreen* view_buf,
+                            const PixieData& camera_grid);
+// Blob shadow cast onto the CAMERA floor by an entity `stories` floors above
+// it (default ghosts-off multifloor look; the upper floor itself is not
+// drawn). Same eligibility as draw_walker_shadow, but offset SE +2px per
+// story (matching the NW sun of the overhang/cloud shadows) and rendered
+// slightly smaller + fainter per story (size/alpha capped at 2 stories).
+bool draw_walker_blob_shadow(walker& w, viewscreen* view_buf,
+                             std::int32_t stories);
+// Ground-plane screen anchor shared by the FX pre-pass (shadows, reflections,
+// water ripples): draw_walker's screen position INCLUDING the lunge/recoil
+// offsets but EXCLUDING the worldz raise. (Sint32 aliases std::int32_t.)
+void ground_plane_anchor(walker& w, viewscreen* view_buf,
+                         std::int32_t& xscreen, std::int32_t& yscreen);
 bool draw_walker_tile(walker& w, viewscreen* view_buf);
 void draw_walker_path(walker& w, viewscreen* view_buf);
 void draw_small_health_bar(walker* w, viewscreen* view_buf);

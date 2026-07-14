@@ -153,6 +153,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/platform/sdl/screen_lifecycle.cpp
     ${SRC_DIR}/core/combat_math.cpp
     ${SRC_DIR}/core/runtime_trace.cpp
+    ${SRC_DIR}/core/weather.cpp
     ${SRC_DIR}/interface/ui/button.cpp
     ${SRC_DIR}/gameplay/effect.cpp
     ${SRC_DIR}/gameplay/family_registry.cpp
@@ -232,6 +233,8 @@ set(GAME_SOURCES
     ${SRC_DIR}/platform/sdl/video_sdl.cpp
     ${SRC_DIR}/interface/render/view.cpp
     ${SRC_DIR}/interface/render/walker_draw.cpp
+    ${SRC_DIR}/interface/render/effects.cpp
+    ${SRC_DIR}/interface/render/depth_fx.cpp
     ${SRC_DIR}/interface/render/obmap_debug_draw.cpp
     ${SRC_DIR}/gameplay/walker.cpp
     ${SRC_DIR}/gameplay/walker_combat.cpp
@@ -253,6 +256,12 @@ set(GAME_SOURCES
 		    ${SRC_DIR}/resources/gloader.cpp
     ${SRC_DIR}/resources/gloader_ctf.cpp
     ${SRC_DIR}/resources/campaign_metadata.cpp
+    ${SRC_DIR}/resources/game_mode.cpp
+    ${SRC_DIR}/resources/progression.cpp
+    ${SRC_DIR}/resources/tower_progression.cpp
+    ${SRC_DIR}/resources/mapgen/tower_floor_gen.cpp
+    ${SRC_DIR}/gameplay/mapgen/builders.cpp
+    ${SRC_DIR}/gameplay/mapgen/audits.cpp
     ${SRC_DIR}/resources/level_file_io.cpp
     ${SRC_DIR}/resources/our_palette.cpp
     ${SRC_DIR}/resources/pixie_data.cpp
@@ -278,6 +287,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/gameplay/astar.cpp
     ${SRC_DIR}/gameplay/gameplay_context.cpp
     ${SRC_DIR}/gameplay/game_world.cpp
+    ${SRC_DIR}/gameplay/game_world_weather.cpp
     ${SRC_DIR}/gameplay/ctf/ctf.cpp
     ${SRC_DIR}/gameplay/ctf/ctf_ai.cpp
     ${SRC_DIR}/gameplay/world_snapshot.cpp
@@ -309,6 +319,7 @@ set(OG_CORE_SOURCES
     ${SRC_DIR}/core/frame_rate_config.cpp
     ${SRC_DIR}/core/runtime_trace.cpp
     ${SRC_DIR}/core/util.cpp
+    ${SRC_DIR}/core/weather.cpp
 )
 
 set(OG_SIM_SOURCES
@@ -329,6 +340,10 @@ set(OG_DATA_SOURCES
     ${SRC_DIR}/resources/gloader.cpp
     ${SRC_DIR}/resources/gloader_ctf.cpp
     ${SRC_DIR}/resources/campaign_metadata.cpp
+    ${SRC_DIR}/resources/game_mode.cpp
+    ${SRC_DIR}/resources/progression.cpp
+    ${SRC_DIR}/resources/tower_progression.cpp
+    ${SRC_DIR}/resources/mapgen/tower_floor_gen.cpp
     ${SRC_DIR}/resources/level_file_io.cpp
     ${SRC_DIR}/resources/our_palette.cpp
     ${SRC_DIR}/resources/pixie_data.cpp
@@ -408,6 +423,7 @@ set(OG_RUNTIME_SOURCES
     ${SRC_DIR}/gameplay/astar.cpp
     ${SRC_DIR}/gameplay/gameplay_context.cpp
     ${SRC_DIR}/gameplay/game_world.cpp
+    ${SRC_DIR}/gameplay/game_world_weather.cpp
     ${SRC_DIR}/gameplay/sim_input_handler.cpp
     ${SRC_DIR}/platform/sdl/input_event_bridge.cpp
     ${SRC_DIR}/gameplay/smooth.cpp
@@ -426,6 +442,8 @@ set(OG_RENDER_SOURCES
     ${SRC_DIR}/interface/render/text.cpp
     ${SRC_DIR}/interface/render/view.cpp
     ${SRC_DIR}/interface/render/walker_draw.cpp
+    ${SRC_DIR}/interface/render/effects.cpp
+    ${SRC_DIR}/interface/render/depth_fx.cpp
     ${SRC_DIR}/interface/render/obmap_debug_draw.cpp
     ${SRC_DIR}/interface/render/sdl_level_render.cpp
 )
@@ -489,10 +507,13 @@ set(OG_GAMEPLAY_COMPONENT_SOURCES
     ${SRC_DIR}/gameplay/astar.cpp
     ${SRC_DIR}/gameplay/gameplay_context.cpp
     ${SRC_DIR}/gameplay/game_world.cpp
+    ${SRC_DIR}/gameplay/game_world_weather.cpp
     ${SRC_DIR}/gameplay/ctf/ctf.cpp
     ${SRC_DIR}/gameplay/ctf/ctf_ai.cpp
     ${SRC_DIR}/gameplay/sim_input_handler.cpp
     ${SRC_DIR}/gameplay/smooth.cpp
+    ${SRC_DIR}/gameplay/mapgen/builders.cpp
+    ${SRC_DIR}/gameplay/mapgen/audits.cpp
 )
 
 set(OG_RESOURCES_COMPONENT_SOURCES
@@ -1211,6 +1232,10 @@ if(NOT EMSCRIPTEN)
         ${OG_CORE_SOURCES}
         # sim
         ${OG_SIM_SOURCES}
+        # mapgen builder lib (tower_floor_gen in OG_DATA_SOURCES needs it;
+        # component-linking targets get it from og_gameplay instead)
+        ${SRC_DIR}/gameplay/mapgen/builders.cpp
+        ${SRC_DIR}/gameplay/mapgen/audits.cpp
         # data
         ${OG_DATA_SOURCES}
         # entities
@@ -1230,6 +1255,7 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/gameplay/astar.cpp
         ${SRC_DIR}/gameplay/gameplay_context.cpp
         ${SRC_DIR}/gameplay/game_world.cpp
+        ${SRC_DIR}/gameplay/game_world_weather.cpp
         ${SRC_DIR}/gameplay/ctf/ctf.cpp
         ${SRC_DIR}/gameplay/ctf/ctf_ai.cpp
         ${SRC_DIR}/gameplay/sim_input_handler.cpp
@@ -1319,6 +1345,141 @@ if(NOT EMSCRIPTEN)
         pthread
     )
     add_runtime_assets_dependency(ctf_mapgen)
+
+    # --- concept_mapgen (Z-axis "Concept Playground" campaign generator) ---
+    # SDL-free authoring tool that produces builtin/org.openglad.concept.glad.
+    # Not part of the default build; run via scripts/generate_concept_campaign.sh.
+    add_executable(concept_mapgen EXCLUDE_FROM_ALL
+        ${CMAKE_SOURCE_DIR}/tools/concept_mapgen/main.cpp
+        ${SRC_DIR}/platform/text/platform_headless.cpp
+        ${SRC_DIR}/platform/text/walker_headless.cpp
+        ${SRC_DIR}/interface/input/input_state.cpp
+        ${SRC_DIR}/platform/game_context.cpp
+        ${SRC_DIR}/interface/session_state.cpp
+        ${SRC_DIR}/interface/level_runtime_data.cpp
+        ${SRC_DIR}/interface/platform_bridge.cpp
+    )
+    configure_openglad_library(concept_mapgen)
+    target_link_libraries(concept_mapgen PRIVATE
+        og_core
+        og_gameplay
+        og_resources
+        m
+        pthread
+    )
+    add_runtime_assets_dependency(concept_mapgen)
+
+    # --- westlands_mapgen ("War of the Westlands" campaign generator) ---
+    # SDL-free authoring tool that produces builtin/org.openglad.westlands.glad,
+    # the 26-level story campaign built act by act (one source file per act).
+    # Not part of the default build; run via scripts/generate_westlands_campaign.sh.
+    add_executable(westlands_mapgen EXCLUDE_FROM_ALL
+        ${CMAKE_SOURCE_DIR}/tools/westlands_mapgen/main.cpp
+        ${CMAKE_SOURCE_DIR}/tools/westlands_mapgen/levels_act1.cpp
+        ${CMAKE_SOURCE_DIR}/tools/westlands_mapgen/levels_act2.cpp
+        ${CMAKE_SOURCE_DIR}/tools/westlands_mapgen/levels_act3a.cpp
+        ${CMAKE_SOURCE_DIR}/tools/westlands_mapgen/levels_act3b.cpp
+        ${CMAKE_SOURCE_DIR}/tools/westlands_mapgen/levels_finale.cpp
+        ${SRC_DIR}/platform/text/platform_headless.cpp
+        ${SRC_DIR}/platform/text/walker_headless.cpp
+        ${SRC_DIR}/interface/input/input_state.cpp
+        ${SRC_DIR}/platform/game_context.cpp
+        ${SRC_DIR}/interface/session_state.cpp
+        ${SRC_DIR}/interface/level_runtime_data.cpp
+        ${SRC_DIR}/interface/platform_bridge.cpp
+    )
+    configure_openglad_library(westlands_mapgen)
+    target_link_libraries(westlands_mapgen PRIVATE
+        og_core
+        og_gameplay
+        og_resources
+        m
+        pthread
+    )
+    add_runtime_assets_dependency(westlands_mapgen)
+
+    # --- longseason_mapgen ("The Long Season" campaign generator) ---
+    # SDL-free authoring tool that produces builtin/org.openglad.longseason.glad,
+    # the 19-level Brass Kettle Company story campaign built season by season
+    # (one source file per season). Not part of the default build; run via
+    # scripts/generate_longseason_campaign.sh.
+    add_executable(longseason_mapgen EXCLUDE_FROM_ALL
+        ${CMAKE_SOURCE_DIR}/tools/longseason_mapgen/main.cpp
+        ${CMAKE_SOURCE_DIR}/tools/longseason_mapgen/levels_spring.cpp
+        ${CMAKE_SOURCE_DIR}/tools/longseason_mapgen/levels_summer.cpp
+        ${CMAKE_SOURCE_DIR}/tools/longseason_mapgen/levels_autumn.cpp
+        ${CMAKE_SOURCE_DIR}/tools/longseason_mapgen/levels_winter.cpp
+        ${CMAKE_SOURCE_DIR}/tools/longseason_mapgen/levels_reckoning.cpp
+        ${SRC_DIR}/platform/text/platform_headless.cpp
+        ${SRC_DIR}/platform/text/walker_headless.cpp
+        ${SRC_DIR}/interface/input/input_state.cpp
+        ${SRC_DIR}/platform/game_context.cpp
+        ${SRC_DIR}/interface/session_state.cpp
+        ${SRC_DIR}/interface/level_runtime_data.cpp
+        ${SRC_DIR}/interface/platform_bridge.cpp
+    )
+    configure_openglad_library(longseason_mapgen)
+    target_link_libraries(longseason_mapgen PRIVATE
+        og_core
+        og_gameplay
+        og_resources
+        m
+        pthread
+    )
+    add_runtime_assets_dependency(longseason_mapgen)
+
+    # --- tower_mapgen ("The Endless Tower" Gate-only package generator) ---
+    # SDL-free authoring tool that produces builtin/org.openglad.tower.glad:
+    # campaign.yaml (`mode: tower`) + icon + the authored Gate (scen700)
+    # ONLY — generated floors are written to the user path at run time and
+    # must never ship in the package (tower-triple spec D7). Not part of the
+    # default build; run via scripts/generate_tower_campaign.sh.
+    add_executable(tower_mapgen EXCLUDE_FROM_ALL
+        ${CMAKE_SOURCE_DIR}/tools/tower_mapgen/main.cpp
+        ${SRC_DIR}/platform/text/platform_headless.cpp
+        ${SRC_DIR}/platform/text/walker_headless.cpp
+        ${SRC_DIR}/interface/input/input_state.cpp
+        ${SRC_DIR}/platform/game_context.cpp
+        ${SRC_DIR}/interface/session_state.cpp
+        ${SRC_DIR}/interface/level_runtime_data.cpp
+        ${SRC_DIR}/interface/platform_bridge.cpp
+    )
+    configure_openglad_library(tower_mapgen)
+    target_link_libraries(tower_mapgen PRIVATE
+        og_core
+        og_gameplay
+        og_resources
+        m
+        pthread
+    )
+    add_runtime_assets_dependency(tower_mapgen)
+
+    # --- grid_migrate (BASE + DECOR migration for hand-authored packages) ---
+    # SDL-free tool that rewrites a stock .glad so legacy combined tiles
+    # (torches/brazier/boulders/rubble) become base ground + a decor plane
+    # (.fss v11), with an in-memory old-vs-new equivalence proof (passability
+    # matrix, concealment, damage, door genre, entity streams, footing) that
+    # exits nonzero on any mismatch. Not part of the default build; run via
+    # scripts/migrate_stock_campaigns.sh.
+    add_executable(grid_migrate EXCLUDE_FROM_ALL
+        ${CMAKE_SOURCE_DIR}/tools/grid_migrate/main.cpp
+        ${SRC_DIR}/platform/text/platform_headless.cpp
+        ${SRC_DIR}/platform/text/walker_headless.cpp
+        ${SRC_DIR}/interface/input/input_state.cpp
+        ${SRC_DIR}/platform/game_context.cpp
+        ${SRC_DIR}/interface/session_state.cpp
+        ${SRC_DIR}/interface/level_runtime_data.cpp
+        ${SRC_DIR}/interface/platform_bridge.cpp
+    )
+    configure_openglad_library(grid_migrate)
+    target_link_libraries(grid_migrate PRIVATE
+        og_core
+        og_gameplay
+        og_resources
+        m
+        pthread
+    )
+    add_runtime_assets_dependency(grid_migrate)
 
     # --- openglad_curses (zero-SDL ncurses text client) ---
     # A different renderer/input backend for the same game. Built from the same
@@ -1701,11 +1862,16 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/test_io_filesystem.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_smoother.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_video_primitives.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_video_effects_prims.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_render_effects.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_decor_render.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stair_overlay.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_text_rendering.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_campaign_and_level_picker.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_intro_smoke.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_dirty_tracking_safety.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_sai2x_scaler.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_canvas_scale.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_view_menu_driven.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_view_options_menu_driven.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_more.cpp
@@ -1783,6 +1949,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/test_level_editor_helpers.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_help_smoke.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_input_keybinds.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_input_direction_grace.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_pathing.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_external_yaml_more.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_external_physfs_ops.cpp
@@ -1838,6 +2005,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_scenarios.cpp
             ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_coverage_gate.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_ctf_ui.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_tower_run.cpp
         )
 
         function(og_add_test_group NAME)
@@ -2010,6 +2178,10 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             test_dirty_tracking_safety.cpp
         )
 
+        og_add_test_group(og_test_tower_run FILES
+            test_tower_run.cpp
+        )
+
         og_add_test_group(og_test_screen FILES
             test_screen_extended.cpp
             test_screen_funcs.cpp
@@ -2037,12 +2209,17 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
         )
 
         og_add_test_group(og_test_rendering FILES
+            test_canvas_scale.cpp
             test_video_buffers.cpp
             test_video_draw.cpp
             test_video_extended.cpp
             test_video_extra.cpp
             test_video_fade.cpp
             test_video_modes_more.cpp
+            test_video_effects_prims.cpp
+            test_render_effects.cpp
+            test_decor_render.cpp
+            test_stair_overlay.cpp
             test_video_pixel_ops.cpp
             test_video_primitives.cpp
             test_text_render.cpp
@@ -2095,6 +2272,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
 
         og_add_test_group(og_test_input FILES
             test_input.cpp
+            test_input_direction_grace.cpp
             test_input_event_dispatch.cpp
             test_input_joystick.cpp
             test_input_keybinds.cpp
@@ -2255,9 +2433,12 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
 
         og_add_unit_group(og_unit_core FILES
             ${CMAKE_SOURCE_DIR}/tests/unit/test_frame_rate_config.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_view_layout.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_scale_mode.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_frame_deadline_pacer.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_cadence.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_astar.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_combat_softcap.cpp
         )
 
         og_add_unit_group(og_unit_sim FILES
@@ -2275,7 +2456,21 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_event_log.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_world_headless.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_entity.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_zaxis.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_zaxis_fx_floor.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_new_tiles.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_new_tiles_legacy_ids.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_decor.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_decor_art.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_npc_scenario_flags.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_guard_act_type.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_forest_pathing.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_melee_standoff.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_westlands_calibration.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_longseason_calibration.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_difficulty_scaling.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_game_world_entity_ids.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_weather.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_world_snapshot.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_sim_world.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_sim_input_unit.cpp
@@ -2310,6 +2505,8 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/test_walker_specials_unit.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_living_unit.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_stats_unit.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_stats_fright.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_silliness_battery.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_smooth_unit.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_coverage_misc.cpp
         )
@@ -2320,9 +2517,16 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/test_gparser_unit.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_zip_api.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_campaign_metadata.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_game_mode.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_progression.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_physfs_wrappers.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_input_actions.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_spectator_mode.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_concept_levels.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_westlands_levels.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_longseason_levels.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_decor_format.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_migrated_campaigns.cpp
         )
 
         og_add_unit_group(og_unit_ctf FILES
@@ -2331,6 +2535,23 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_ctf_ai.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_ctf_snapshot.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_ctf_levels.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_classic_respawn.cpp
+        )
+
+        og_add_unit_group(og_unit_mapgen FILES
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_mapgen_builders.cpp
+        )
+
+        og_add_unit_group(og_unit_tower_gen FILES
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_tower_floor_gen.cpp
+        )
+
+        og_add_unit_group(og_unit_tower_progression FILES
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_tower_progression.cpp
+        )
+
+        og_add_unit_group(og_unit_tower_calibration FILES
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_tower_calibration.cpp
         )
 
         add_executable(og_unit_server
@@ -2491,12 +2712,53 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             og_unit_sim
             PROPERTIES RESOURCE_LOCK native_network_stack
         )
+        # og_unit_sim now bundles the live IXWebSocket/relay transport tests. Run
+        # alone it finishes in ~1s (loopback handshakes are instant), but the
+        # RESOURCE_LOCK above only keeps it off the OTHER network suites — CTest
+        # still overlaps it with the heavy non-network integration binaries
+        # (og_test_view, og_test_game_core, og_test_level). Under that CPU
+        # contention the loopback websocket handshake starves and waits out the
+        # transport's network_timeout, blowing past the 180s CTest budget (observed
+        # at both -j6 and -j4). RUN_SERIAL takes it off the contended schedule so
+        # the transports connect promptly in every lane.
+        # ...and give it the same 600s budget the coverage lane uses. The bundled
+        # at_12hz loopback-websocket sync test is wall-clock-bound with a 90s
+        # internal network_timeout that assumes a generous ctest cap; the default
+        # 180s is too tight when a sync stalls and waits that timeout out (the test
+        # then blocks — main thread in the 12hz pacing sleep — rather than
+        # deadlocking, so it completes given headroom). 600s keeps it green without
+        # masking a genuine hang.
+        set_tests_properties(og_unit_sim PROPERTIES RUN_SERIAL TRUE TIMEOUT 600)
+        # og_unit_data runs ~6s in ci-test but its campaign/battle/round-trip
+        # suites multiply under instrumentation: the sanitizer/validation lane
+        # needed 420s (block below), and the COVERAGE lane crossed the 180s
+        # default on 2026-07-11 when the sprite-footprint and guard-policy
+        # round-trip suites landed (og_unit_data (Timeout) on the Coverage CI
+        # job). Give it the 420s budget in every lane instead of chasing the
+        # threshold lane by lane — the standard lane finishes 70x under it,
+        # and a genuine hang still trips well before the job cap.
+        set_tests_properties(og_unit_data PROPERTIES TIMEOUT 420)
         # The dedicated picker-network suite is tiny when it runs alone, but
         # its live host/join transport handoff can stall on 4-core CI runners
         # when CTest overlaps it with the other long-running integration
         # binaries. Give it a dedicated budget and run it by itself in every
         # lane instead of relying on incidental scheduler order.
         set_tests_properties(og_test_picker_network PROPERTIES
+            RUN_SERIAL TRUE
+            TIMEOUT 420
+        )
+
+        # og_test_menu_ui is the slowest integration binary: its injector flows
+        # gate on fadeblack animations (~0.75-1s wall clock each), so it runs
+        # ~148s standalone against the 180s group default — only ~18% headroom.
+        # The difficulty/FX-menu work added ~31 more such waits. In a full
+        # parallel ctest run it overlaps the other heavy integration binaries
+        # (og_test_view/og_test_game_core/og_test_level) with no serialization,
+        # blowing the 180s budget under load and making the standard pre-commit
+        # gate (ctest --preset ci-test) intermittently red. The coverage and
+        # sanitizer lanes already protect it below; give it the same dedicated
+        # budget in EVERY lane, mirroring og_test_picker_network above.
+        set_tests_properties(og_test_menu_ui PROPERTIES
             RUN_SERIAL TRUE
             TIMEOUT 420
         )
@@ -2545,7 +2807,26 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             # round-trips every message there too, which can push CI's
             # generic 180s budget over the edge when CTest schedules it
             # beside the heavyweight integration binaries.
+            #
+            # Match the 600s budget the non-sanitizer (line ~2622) and coverage
+            # (line ~2666) lanes already give this binary: the bundled at_12hz
+            # loopback-websocket sync test is wall-clock-bound with a 90s
+            # internal network_timeout, and under TSan's thread serialization a
+            # stalled handshake waits that timeout out — 420s left no headroom
+            # for even one stall on top of the sanitizer compute cost, so the
+            # TSan lane timed out here while ci-test/coverage stayed green.
             set_tests_properties(og_unit_sim PROPERTIES
+                PROCESSORS 2
+                TIMEOUT 600
+            )
+            # og_unit_data bundles the campaign level suites, whose battle
+            # smokes and calibration cases run many-tick headless sims. Under
+            # ASan/UBSan plus serialization round-tripping (which re-serializes
+            # every snapshot each tick) the group's cost multiplies ~30x, so it
+            # ran ~6s in ci-test but overran the generic 180s CTest budget in
+            # the sanitizer/validation lane. Give it headroom there (the
+            # standard lane stays at the 180s default, where it is comfortable).
+            set_tests_properties(og_unit_data PROPERTIES
                 PROCESSORS 2
                 TIMEOUT 420
             )
@@ -2748,6 +3029,17 @@ endif()
     target_link_libraries(play PRIVATE og_game_web)
     configure_openglad_runtime_target(play)
     target_compile_definitions(play PRIVATE __ASYNCIFY__)
+
+    # Emscripten 6.0.2 flipped GROWABLE_ARRAYBUFFERS to default-on; with
+    # ALLOW_MEMORY_GROWTH the heap becomes a resizable ArrayBuffer and Chrome's
+    # TextDecoder.decode throws "ArrayBuffer must not be resizable" inside
+    # UTF8ArrayToString (getUnsharedTextDecoderView only guards SHARED_MEMORY),
+    # aborting boot. Force it off to restore pre-6.0.2 behavior; drop this once
+    # upstream fixes the decode path. Guarded: the setting first appears in
+    # emscripten 6.0.x and older SDKs (e.g. CI's 3.1.51) error on unknown -s flags.
+    if(EMSCRIPTEN_VERSION VERSION_GREATER_EQUAL "6.0.1")
+        target_link_options(play PRIVATE -sGROWABLE_ARRAYBUFFERS=0)
+    endif()
 
     target_link_options(play PRIVATE
         "SHELL:--bind"

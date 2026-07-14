@@ -10,6 +10,7 @@
 #include <openglad/gameplay/effect.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/guy.h>
+#include <openglad/core/combat_math.h>
 
 static bool ghost_scare_on_act(effect* self)
 {
@@ -23,8 +24,10 @@ static bool ghost_scare_on_death(effect* self)
     if (!self->owner() || self->owner()->dead())
         return false;
     std::int32_t howmany = 0;
+    // Runaway-specials §2.3: radius capped at 250 px (legacy 50 + 10*L goes
+    // off-screen at L27); binds only at L21+, draw-free.
     auto foelist = current_game->world->find_foes_in_range(current_game->world->oblist,
-        50+(10*self->owner()->stats()->level()), &howmany, self->owner());
+        og::combat::scare_radius(self->owner()->stats()->level()), &howmany, self->owner());
     if (howmany < 1)
         return false;
 
@@ -38,12 +41,15 @@ static bool ghost_scare_on_death(effect* self)
             std::int32_t tempy = w->ypos() - self->ypos();
             if (tempy)
                 tempy = tempy / (abs(tempy));
-            std::int32_t generic = (self->owner()->stats()->level()*25);
+            // Runaway-specials §2.2: duration soft-capped (legacy 25*L,
+            // knee 325 = L13, ceiling 375) BEFORE the legacy myguy-only
+            // constitution resist draw — draw order/count identical, and
+            // both scare goldens (L1 = 25, L5 = 125) sit below the knee.
+            std::int32_t generic = og::combat::scare_duration(self->owner()->stats()->level());
             if (w->myguy)
                 generic -= current_game->world->rng_.next(w->myguy->constitution);
             if (generic > 0)
-                w->stats()->force_command(COMMAND_WALK,
-                    static_cast<short>(generic), static_cast<short>(tempx), static_cast<short>(tempy));
+                w->stats()->force_fright(generic, tempx, tempy);
         }
     }
     return true;

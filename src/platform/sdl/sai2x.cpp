@@ -736,21 +736,165 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_PRESENTVSYNC);
     #endif
     
-    render = SDL_CreateRGBSurface(SDL_SWSURFACE, 320, 200, 32, 0, 0, 0, 0);
-	render_tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 320, 200);
+    // The UI canvas is pinned at kUiCanvasW x kUiCanvasH; the world canvas
+    // starts shared with it (aliased) at the same default dims, keeping the
+    // renderer byte-identical to the historical single-canvas setup.
+    ui_surf_ = SDL_CreateRGBSurface(SDL_SWSURFACE, kUiCanvasW, kUiCanvasH, 32, 0, 0, 0, 0);
+	ui_tex_ = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, kUiCanvasW, kUiCanvasH);
+    world_surf_ = ui_surf_;
+    world_tex_ = ui_tex_;
+    render = ui_surf_;      // boot in UI mode (intro/menus draw first)
+    render_tex = ui_tex_;
     render2 = nullptr;  // To be initialized when we actually need it
     render2_tex = nullptr;
+    // Until set_world_scale installs a cfg graphics/scale mode, the world
+    // canvas presents through the legacy engine — byte-identical routing.
+    world_engine_ = engine;
 }
 
 Screen::~Screen()
 {
-	SDL_DestroyTexture(render_tex);
 	SDL_DestroyTexture(render2_tex);
-	SDL_FreeSurface(render);
 	SDL_FreeSurface(render2);
-	
+	if (world_tex_ != ui_tex_)
+		SDL_DestroyTexture(world_tex_);
+	if (world_surf_ != ui_surf_)
+		SDL_FreeSurface(world_surf_);
+	SDL_DestroyTexture(ui_tex_);
+	SDL_FreeSurface(ui_surf_);
+
 	SDL_DestroyRenderer(renderer);
 	SDL_DestroyWindow(window);
+}
+
+void Screen::set_active_canvas(CanvasTarget target)
+{
+	active_ = target;
+	if (active_ == CanvasTarget::World)
+	{
+		render = world_surf_;
+		render_tex = world_tex_;
+	}
+	else
+	{
+		render = ui_surf_;
+		render_tex = ui_tex_;
+	}
+}
+
+void Screen::set_world_canvas_size(int w, int h)
+{
+	if (w <= 0 || h <= 0)
+		return;
+	if (w == world_w_ && h == world_h_)
+		return;
+
+	// Drop a previously split world canvas (never the shared UI pair).
+	if (world_tex_ != ui_tex_)
+		SDL_DestroyTexture(world_tex_);
+	if (world_surf_ != ui_surf_)
+		SDL_FreeSurface(world_surf_);
+	world_surf_ = nullptr;
+	world_tex_ = nullptr;
+
+	if (w == kUiCanvasW && h == kUiCanvasH)
+	{
+		// Default dims: re-share the UI surface (the byte-identity mode).
+		world_surf_ = ui_surf_;
+		world_tex_ = ui_tex_;
+	}
+	else
+	{
+		world_surf_ = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h, 32, 0, 0, 0, 0);
+		world_tex_ = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, w, h);
+		if (world_surf_ == nullptr || world_tex_ == nullptr)
+		{
+			LogError("set_world_canvas_size({}x{}) allocation failed: {}\n", w, h, SDL_GetError());
+			if (world_tex_) { SDL_DestroyTexture(world_tex_); }
+			if (world_surf_) { SDL_FreeSurface(world_surf_); }
+			world_surf_ = ui_surf_;
+			world_tex_ = ui_tex_;
+			w = kUiCanvasW;
+			h = kUiCanvasH;
+		}
+		else
+		{
+			// Integer-factor presents must stay unsmoothed even if a global
+			// render-scale-quality hint asks for linear filtering. Only the
+			// split world texture is touched: the shared/default texture (and
+			// therefore every default run) keeps SDL's stock behavior.
+			SDL_SetTextureScaleMode(world_tex_, SDL_ScaleModeNearest);
+		}
+	}
+	world_w_ = w;
+	world_h_ = h;
+	// Refresh the active-target aliases.
+	set_active_canvas(active_);
+}
+
+void Screen::set_world_scale(og::WorldScaleSetting setting, int win_w, int win_h)
+{
+	world_scale_ = setting;
+	switch (setting.mode)
+	{
+		case og::WorldScaleMode::Integer:
+			world_engine_ = RenderEngine::NoZoom; // GPU nearest stretch
+			break;
+		case og::WorldScaleMode::Sai:
+			world_engine_ = RenderEngine::SAI;
+			break;
+		case og::WorldScaleMode::Eagle:
+			world_engine_ = RenderEngine::Eagle;
+			break;
+		case og::WorldScaleMode::Legacy:
+		default:
+			world_engine_ = Engine; // classic single-engine behavior
+			break;
+	}
+	apply_world_scale_for_window(win_w, win_h);
+}
+
+void Screen::apply_world_scale_for_window(int win_w, int win_h)
+{
+	if (world_pinned_classic_)
+		return; // the editor pin wins until released
+	const og::WorldCanvasDims dims =
+	    og::compute_world_canvas_dims(win_w, win_h, world_scale_);
+	set_world_canvas_size(dims.w, dims.h);
+}
+
+void Screen::set_world_canvas_pinned_classic(bool pinned)
+{
+	world_pinned_classic_ = pinned;
+	if (pinned)
+	{
+		set_world_canvas_size(kUiCanvasW, kUiCanvasH);
+	}
+	else
+	{
+		int win_w = 0;
+		int win_h = 0;
+		SDL_GetWindowSize(window, &win_w, &win_h);
+		apply_world_scale_for_window(win_w, win_h);
+	}
+}
+
+bool Screen::ensure_render2(int need_w, int need_h)
+{
+	if (render2 != nullptr && (render2->w != need_w || render2->h != need_h))
+	{
+		// The active canvas changed size since the scaler scratch was made.
+		SDL_DestroyTexture(render2_tex);
+		SDL_FreeSurface(render2);
+		render2 = nullptr;
+		render2_tex = nullptr;
+	}
+	if (render2 == nullptr)
+	{
+		render2 = SDL_CreateRGBSurface(SDL_SWSURFACE, need_w, need_h, 32, 0, 0, 0, 0);
+		render2_tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, need_w, need_h);
+	}
+	return render2 != nullptr && render2_tex != nullptr;
 }
 
 
@@ -781,13 +925,23 @@ void Screen::swap(int x, int y, int w, int h)
     SDL_Surface* source_surface = render;
     SDL_Texture* dest_texture = render_tex;
 
-	switch(Engine) {
+    // Present engine per canvas: under a cfg graphics/scale mode the WORLD
+    // canvas presents through the scale-derived engine; the UI canvas — and
+    // BOTH canvases under Legacy (every pre-existing cfg, including runtime
+    // Engine changes) — present through the legacy graphics/render engine,
+    // byte-identically to the single-engine renderer.
+    const RenderEngine present_engine =
+        (active_ == CanvasTarget::World &&
+         world_scale_.mode != og::WorldScaleMode::Legacy)
+            ? world_engine_
+            : Engine;
+
+	switch(present_engine) {
 		case RenderEngine::SAI:
-                if(render2 == nullptr)
-                {
-                    render2 = SDL_CreateRGBSurface(SDL_SWSURFACE, 640, 400, 32, 0, 0, 0, 0);
-                    render2_tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 640, 400);
-                }
+                // Doubling scratch sized 2x the ACTIVE canvas (classic
+                // 640x400 at the default 320x200 canvas).
+                if(!ensure_render2(render->w * 2, render->h * 2))
+                    break; // allocation failed: present the unscaled canvas
                 SDL_LockSurface( render2 );
                 Super2xSaI_ex2(
                         reinterpret_cast<unsigned char*>(render->pixels), x, y, w, h, render->pitch, render->h,
@@ -798,11 +952,8 @@ void Screen::swap(int x, int y, int w, int h)
                 dest_texture = render2_tex;
             break;
 		case RenderEngine::Eagle:
-                if(render2 == nullptr)
-                {
-                    render2 = SDL_CreateRGBSurface(SDL_SWSURFACE, 640, 400, 32, 0, 0, 0, 0);
-                    render2_tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 640, 400);
-                }
+                if(!ensure_render2(render->w * 2, render->h * 2))
+                    break; // allocation failed: present the unscaled canvas
                 SDL_LockSurface( render2 );
                 Scale_SuperEagle(reinterpret_cast<unsigned char*>(render->pixels), x, y, w, h, render->pitch, render->h,
                                  reinterpret_cast<unsigned char*>(render2->pixels), 2*x, 2*y, render2->pitch);
@@ -814,6 +965,10 @@ void Screen::swap(int x, int y, int w, int h)
         default:
             break;
 	}
+
+    // Present the active canvas: the world and UI canvases each stretch to
+    // the window viewport independently at swap time (identical rects while
+    // both are 320x200, i.e. today's defaults).
 
     SDL_UpdateTexture(dest_texture, nullptr, source_surface->pixels, source_surface->pitch);
 

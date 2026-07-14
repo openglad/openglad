@@ -237,7 +237,7 @@ TEST(NetTransport, header_helpers_roundtrip_envelope)
     std::vector<std::uint8_t> bytes;
     og::sim::append_transport_header(bytes, og::sim::kHelloMessageType, 0x2211u);
 
-    const std::vector<std::uint8_t> expected = {0x03, 0x01, 0x11, 0x22};
+    const std::vector<std::uint8_t> expected = {0x06, 0x01, 0x11, 0x22};
     EXPECT_EQ(expected, bytes);
 
     og::sim::TransportEnvelope envelope;
@@ -826,8 +826,8 @@ TEST(NetTransport, serialize_hello_emits_expected_wire_format)
 
     constexpr std::array<std::uint8_t, og::sim::kSerializedHelloMessageSize>
         expected = {
-            0x03, 0x01, 0x17, 0x00,
-            0x03, 0x03, 0x03,
+            0x06, 0x01, 0x17, 0x00,
+            0x06, 0x06, 0x03,
             0x00, 0x01, 0x02, 0x03,
             0x04, 0x05, 0x06, 0x07,
             0x08, 0x09, 0x0a, 0x0b,
@@ -870,7 +870,7 @@ TEST(NetTransport, decode_rejects_truncated_and_wrong_version_headers)
     const std::array<std::uint8_t, 3> truncated = {0x03, 0x01, 0x00};
     EXPECT_FALSE(og::sim::decode_transport_envelope(truncated, envelope));
 
-    const std::array<std::uint8_t, 4> wrong_version = {0x04, 0x01, 0x00, 0x00};
+    const std::array<std::uint8_t, 4> wrong_version = {0x07, 0x01, 0x00, 0x00};
     EXPECT_FALSE(og::sim::decode_transport_envelope(wrong_version, envelope));
 }
 
@@ -880,13 +880,13 @@ TEST(NetTransport, deserialize_initial_setup_rejects_oversized_counts)
         og::sim::InitialSetupMessage{});
 
     auto oversized_guy_count = std::vector<std::uint8_t>(bytes.begin(), bytes.end());
-    write_u32_le(oversized_guy_count, 33, 0xffffffffu);
+    write_u32_le(oversized_guy_count, 37, 0xffffffffu);
     EXPECT_FALSE(
         og::sim::deserialize_initial_setup_message(oversized_guy_count)
             .has_value());
 
     auto oversized_level_count = std::vector<std::uint8_t>(bytes.begin(), bytes.end());
-    write_u32_le(oversized_level_count, 37, 0xffffffffu);
+    write_u32_le(oversized_level_count, 41, 0xffffffffu);
     EXPECT_FALSE(
         og::sim::deserialize_initial_setup_message(oversized_level_count)
             .has_value());
@@ -1424,6 +1424,119 @@ TEST(NetTransport, game_server_snapshot_hash_check_preserves_same_peer_same_tick
     EXPECT_EQ(0u, server.snapshot_hash_mismatch_count());
 }
 
+TEST(NetTransport, game_server_bounds_sustained_hash_mismatches_with_disconnect)
+{
+    // WI-3(b) server side: every hash mismatch forces a full keyframe; a
+    // client that NEVER heals (map-level divergence, or a crafted client)
+    // must be cut off after a bounded number of consecutive strikes instead
+    // of rubber-banding (and amplifying bandwidth) forever.
+    TestGameWorld fixture;
+    MockTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+
+    server.connect_client(7u);
+    server.send_initial_snapshot(7u, og::sim::SnapshotCaptureMode::Peek);
+    ASSERT_GE(transport.sent_messages().size(), 2u);
+    const og::sim::WorldSnapshot snapshot =
+        og::sim::deserialize_snapshot(transport.sent_messages()[1].data);
+
+    const auto queue_mismatch = [&transport, &snapshot] {
+        transport.queue_received(
+            7u,
+            og::sim::serialize_snapshot_hash_check_message({
+                .tick = snapshot.tick_count,
+                .snapshot_hash = snapshot.snapshot_hash + 1u,
+            }));
+    };
+
+    // One short of the bound: still connected...
+    for (std::uint32_t i = 0;
+         i + 1 < og::sim::kMaxConsecutiveSnapshotHashMismatches; ++i)
+    {
+        queue_mismatch();
+    }
+    server.step();
+    EXPECT_TRUE(transport.disconnected_peers().empty());
+
+    // ...and a single MATCHING check resets the strike counter.
+    transport.queue_received(
+        7u,
+        og::sim::serialize_snapshot_hash_check_message({
+            .tick = snapshot.tick_count,
+            .snapshot_hash = snapshot.snapshot_hash,
+        }));
+    server.step();
+    EXPECT_TRUE(transport.disconnected_peers().empty());
+
+    // The full bound, uninterrupted: the desynced client is disconnected.
+    for (std::uint32_t i = 0;
+         i < og::sim::kMaxConsecutiveSnapshotHashMismatches; ++i)
+    {
+        queue_mismatch();
+    }
+    server.step();
+    ASSERT_FALSE(transport.disconnected_peers().empty());
+    EXPECT_EQ(7u, transport.disconnected_peers().front());
+}
+
+TEST(NetTransport, game_client_bounds_rejected_keyframes_into_fatal_desync)
+{
+    // WI-3(b) client side: a keyframe whose full-grid payload does not match
+    // this world's grid means the client renders a DIFFERENT map than the
+    // authority simulates (the tower ghost-session shape). Bounded strikes,
+    // then the connection-lost surface fires once and the session ends.
+    TestGameWorld fixture;
+    MockTransport transport;
+    og::sim::GameClient client(transport, 1u, &fixture.world());
+    int lost_count = 0;
+    client.set_connection_lost_callback([&lost_count] { ++lost_count; });
+
+    og::sim::WorldSnapshot good =
+        og::sim::peek_keyframe_snapshot(fixture.world());
+    ASSERT_TRUE(good.grid_full_resend);
+    ASSERT_TRUE(good.grid_dirty);
+
+    // Internally consistent snapshot of a DIFFERENT-SIZED map (the wire
+    // format enforces payload == width*height, so the mismatch must come
+    // from foreign dimensions — exactly what a diverged authority sends).
+    og::sim::WorldSnapshot bad = good;
+    bad.grid_width = static_cast<std::uint8_t>(good.grid_width + 1);
+    bad.full_grid_data.assign(
+        static_cast<std::size_t>(bad.grid_width) * bad.grid_height, 0u);
+
+    for (std::uint32_t strike = 1;
+         strike < og::sim::kMaxRejectedKeyframeStrikes; ++strike)
+    {
+        transport.queue_received(1u, og::sim::serialize_snapshot(bad));
+        client.poll_messages();
+        EXPECT_FALSE(client.fatal_desync());
+        EXPECT_EQ(0, lost_count);
+    }
+
+    // A cleanly applied keyframe resets the strikes.
+    transport.queue_received(1u, og::sim::serialize_snapshot(good));
+    client.poll_messages();
+    EXPECT_FALSE(client.fatal_desync());
+
+    // Only the full CONSECUTIVE bound trips the fatal state.
+    for (std::uint32_t strike = 0;
+         strike < og::sim::kMaxRejectedKeyframeStrikes; ++strike)
+    {
+        EXPECT_FALSE(client.fatal_desync());
+        transport.queue_received(1u, og::sim::serialize_snapshot(bad));
+        client.poll_messages();
+    }
+    EXPECT_TRUE(client.fatal_desync());
+    EXPECT_EQ(1, lost_count)
+        << "the connection-lost surface fires exactly once";
+
+    // Latched: further rejected keyframes do not re-fire the callback.
+    transport.queue_received(1u, og::sim::serialize_snapshot(bad));
+    client.poll_messages();
+    EXPECT_TRUE(client.fatal_desync());
+    EXPECT_EQ(1, lost_count);
+}
+
 TEST(NetTransport,
      game_server_snapshot_hash_check_ignores_superseded_same_tick_delta_on_pause)
 {
@@ -1903,15 +2016,16 @@ TEST(NetTransport,
      deserialize_lobby_messages_rejects_unknown_kinds_and_oversized_counts)
 {
     // Wire layout of an empty LobbyState: 4-byte transport header, then the
-    // settings block (4-byte empty campaign string + 7 i16 fields: scenario,
-    // difficulty, allied mode, and the three CTF settings = 18 bytes), then
-    // the 1-byte host player id — so the player-count u32 sits at offset 21.
+    // settings block (4-byte empty campaign string + 10 i16 fields: scenario,
+    // difficulty, allied mode, the four CTF settings, and the three difficulty
+    // submenu settings = 24 bytes), then the 1-byte host player id — so the
+    // player-count u32 sits at offset 29.
     const auto empty_state_bytes =
         og::sim::serialize_lobby_state_message(og::sim::LobbyState{});
     auto oversized_player_count =
         std::vector<std::uint8_t>(empty_state_bytes.begin(),
                                   empty_state_bytes.end());
-    write_u32_le(oversized_player_count, 21, 0xffffffffu);
+    write_u32_le(oversized_player_count, 29, 0xffffffffu);
     EXPECT_FALSE(
         og::sim::deserialize_lobby_state_message(oversized_player_count)
             .has_value());
@@ -1926,8 +2040,8 @@ TEST(NetTransport,
         std::vector<std::uint8_t>(player_state_bytes.begin(),
                                   player_state_bytes.end());
     // First player record: index u8 + empty-name u32 + team i16 + ready/host
-    // bools = 9 bytes after the count, putting its slot-count u32 at 34.
-    write_u32_le(oversized_slot_count, 34, 0xffffffffu);
+    // bools = 9 bytes after the count, putting its slot-count u32 at 42.
+    write_u32_le(oversized_slot_count, 42, 0xffffffffu);
     EXPECT_FALSE(
         og::sim::deserialize_lobby_state_message(oversized_slot_count)
             .has_value());
@@ -2683,7 +2797,7 @@ TEST(NetTransport, game_client_disconnects_when_server_message_is_malformed)
     og::sim::GameClient client(transport, 7u);
 
     transport.set_connected_peers({7u});
-    transport.queue_received(7u, {0x03, 0x02, 0x01, 0x00, 0xff});
+    transport.queue_received(7u, {0x04, 0x02, 0x01, 0x00, 0xff});
 
     client.poll_messages();
 

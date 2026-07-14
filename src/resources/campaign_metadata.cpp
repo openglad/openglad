@@ -38,6 +38,12 @@ std::map<std::pair<std::string, int>, std::string>& scenario_name_cache()
     return cache;
 }
 
+std::map<std::string, std::string>& campaign_mode_cache()
+{
+    static std::map<std::string, std::string> cache;
+    return cache;
+}
+
 // Harvest the "title" scalar from a campaign.yaml visible at yaml_path.
 bool read_campaign_title(const char* yaml_path, std::string& out_title)
 {
@@ -122,15 +128,46 @@ std::string scenario_display_name(int scen_num)
     return name;
 }
 
+std::string mounted_campaign_mode()
+{
+    // Fast path only: the mode drives the ACTIVE session's progression, so
+    // the mounted campaign's root-visible campaign.yaml is the sole source
+    // (mirrors the campaign_display_title fast path). No mounted campaign
+    // (headless tests, pre-init) -> "" -> Classic, with no IO touched.
+    const std::string campaign_id = get_mounted_campaign();
+    if (campaign_id.empty())
+        return {};
+
+    auto& cache = campaign_mode_cache();
+    auto found = cache.find(campaign_id);
+    if (found != cache.end())
+        return found->second;
+
+    // Mirror read_campaign_title's tolerance: only a missing file yields
+    // nothing; a parse error after the pair was pre-harvested still counts.
+    CampaignYaml metadata;
+    std::string mode;
+    if (read_campaign_yaml("campaign.yaml", metadata) !=
+            CampaignYamlReadResult::OpenFailed &&
+        metadata.saw_mode)
+    {
+        mode = metadata.mode;
+    }
+    cache.emplace(campaign_id, mode);
+    return mode;
+}
+
 void forget_campaign_display_title(const std::string& campaign_id)
 {
     campaign_title_cache().erase(campaign_id);
+    campaign_mode_cache().erase(campaign_id);
 }
 
 void clear_campaign_metadata_cache()
 {
     campaign_title_cache().clear();
     scenario_name_cache().clear();
+    campaign_mode_cache().clear();
 }
 
 } // namespace og::data

@@ -193,9 +193,13 @@ TEST(ViewGetKeypressAndEdgeCases, viewscreen_options_menu_covers_view_size_label
         ks.fake[KEYSTATE_ESCAPE] = 0;
     }
 
-    // Restore original pref — options_menu() saves prefs to keyprefs.dat on
-    // every call, so the bogus value 99 was persisted.  Write back a clean
-    // value so subsequent tests don't inherit corrupt state.
+    // Restore original pref — options_menu() persists prefs into the session
+    // prefs store (prefsob->save) on every call, so the bogus value 99 was
+    // persisted.  Write back a clean value AND re-sync the store: later
+    // viewscreen constructions reload prefs from the store, so a stale view
+    // size would otherwise resurface (and this test's own resize(saved_view)
+    // restore would apply it to the shared viewport geometry).
     v->prefs[PREF_VIEW] = saved_view;
     v->resize(saved_view);
+    og::runtime::current_session->theprefs_->save(v);
 }

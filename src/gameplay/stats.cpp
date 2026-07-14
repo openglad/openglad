@@ -20,6 +20,11 @@
 
 #include <openglad/gameplay/statistics.h>      // for bit flags, etc.
 #include <openglad/core/util.h>
+#include <openglad/core/pixdefs.h>
+#include <openglad/core/combat_math.h>         // kFreezeThawImmunityTicks
+#include <openglad/core/test_trace.h>
+#include <openglad/gameplay/pixie_data.h>
+#include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/dirty_field_bits.h>
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/family_descriptor.h>
@@ -142,6 +147,59 @@ void statistics::clear_command()
 	controller_->set_leader(nullptr);
 }
 
+// Character-switch / control-claim variant of clear_command (runaway-specials
+// §4). The legacy blanket clear on switch was the laundering exploit: two
+// SwitchChar presses wiped any scare/knockback and silently un-charmed.
+//  1. The LEADING run of forced COMMAND_WALK entries (fright/knockback/flee)
+//     is preserved — a front walk command IS the fleeing state (see
+//     score_panel.cpp), so the HUD flee countdown keeps working and now
+//     survives switches. Everything queued behind the run is erased.
+//  2. The weapon reset and leader clear are KEPT (legacy switch hygiene).
+//  3. real_team_num is NOT restored — charm survives control switches; charm
+//     expiry belongs solely to charm_left decay (living.cpp), and the
+//     switch-cycle filter already refuses to switch INTO a charmed walker.
+// Extensionally identical to clear_command whenever the queue has no leading
+// forced entries AND real_team_num == 255 (true at every golden's switch and
+// at every scenario-start claim).
+void statistics::clear_command_for_control_switch()
+{
+	int preserved = 0;
+	auto keep_end = commands.begin();
+	while (keep_end != commands.end() && keep_end->forced
+	       && keep_end->commandtype == COMMAND_WALK)
+	{
+		++keep_end;
+		++preserved;
+	}
+	if (preserved > 0)
+		TRACE("stats", "selective clear preserved %d forced entries", preserved);
+	commands.erase(keep_end, commands.end());
+	// Make sure our weapon type is restored to normal ..
+	controller_->set_current_weapon(controller_->default_weapon());
+	controller_->set_leader(nullptr);
+}
+
+// Player-side frozen_delay drain step (sim_input_handler.cpp). Identical
+// 1/tick decrement to the AI drains, EXCEPT the 1 -> 0 transition writes
+// -kFreezeThawImmunityTicks (runaway-specials §3.3): the negative raw phase
+// is a thaw-immunity window — the masked getter reads 0 (the hero can act),
+// freeze re-application is refused at the apply sites, and living::act
+// climbs the raw value +1/tick back to 0. Only this player-side drain writes
+// the negative phase; the AI drains (living.cpp/walker.cpp) thaw to 0 as
+// always and their masked-getter guards skip negatives with zero edits.
+void statistics::player_thaw_tick()
+{
+	const short cur = frozen_delay(); // masked; call site guards cur > 0
+	if (cur > 1)
+		set_frozen_delay(static_cast<short>(cur - 1));
+	else if (cur == 1)
+	{
+		TRACE("stats", "thaw immunity: wrote -%d on the 1->0 transition",
+		      og::combat::kFreezeThawImmunityTicks);
+		set_frozen_delay(static_cast<short>(-og::combat::kFreezeThawImmunityTicks));
+	}
+}
+
 void statistics::add_command(Sint32 whatcommand, Sint32 iterations,
                              Sint32 info1, Sint32 info2)
 {
@@ -201,6 +259,56 @@ void statistics::force_command(Sint32 whatcommand, Sint32 iterations,
 	commands.front().com2 = info2;
 	commands.front().commandtype = whatcommand;
 	commands.front().commandcount = iterations;
+	// Externally-forced entry (fright/knockback/flee/shove). ONLY this
+	// injector sets the flag; add_command leaves it false. The flag is never
+	// serialized (WP-2 audit: snapshots clear queues on apply, saves/replays
+	// never persist commands).
+	commands.front().forced = true;
+}
+
+// Ghost-scare fright injection (runaway-specials §3.2). If the queue front is
+// already an externally-forced walk (a prior scare, a bomb knockback, a
+// yell-flee), a fresh scare MERGES into it: the remaining count refreshes to
+// max(existing, new) and the flee direction re-points to the new (dx,dy) —
+// overlapping scares never sum end-to-end, so the TOTAL queued fright can
+// never exceed one cast's value. Otherwise this falls through to the exact
+// legacy force_command prepend (including degenerate iteration values after
+// the myguy rng(con) subtraction), so single casts on fresh victims stay
+// byte-identical to master.
+//
+// Documented cross-effect collateral: a scare landing while a bomb-knockback
+// entry sits at front merges into it — the count becomes the scare value and
+// the direction becomes away-from-ghost. Accepted on purpose: replace
+// semantics would let an 8-tick knock truncate a 364-tick scare, and a new
+// command type has too much blast radius. ONLY ghost scare calls this; every
+// other forced-walk user keeps exact legacy prepend behavior.
+void statistics::force_fright(Sint32 iterations, Sint32 info1, Sint32 info2)
+{
+	if (!commands.empty() && commands.front().forced
+	    && commands.front().commandtype == COMMAND_WALK)
+	{
+		// Clamp the deltas exactly like force_command's COMMAND_WALK branch.
+		if (info1 > 1)
+			info1 = 1;
+		if (info1 < -1)
+			info1 = -1;
+		if (info2 > 1)
+			info2 = 1;
+		if (info2 < -1)
+			info2 = -1;
+		if (!info1 && !info2)
+			info1 = info2 = 1;
+		command& front = commands.front();
+		if (iterations > front.commandcount)
+			front.commandcount = iterations;
+		front.com1 = info1;
+		front.com2 = info2;
+		TRACE("stats", "force_fright merged: count=%d dir=(%d,%d)",
+		      static_cast<int>(front.commandcount), static_cast<int>(front.com1),
+		      static_cast<int>(front.com2));
+		return;
+	}
+	force_command(COMMAND_WALK, iterations, info1, info2);
 }
 
 bool statistics::has_commands() const
@@ -244,6 +352,10 @@ void statistics::set_command(Sint32 whatcommand, Sint32 iterations,
 	force_command(whatcommand, iterations, info1, info2);
 
 }
+
+// Defined below (the right-hand-walk section); COMMAND_ATTACK's coincident-
+// foe clinch breaker reuses the same facing->unit-step table.
+static void facing_step_delta(char dir, short& xdelta, short& ydelta);
 
 // Do the current command
 short statistics::do_command()
@@ -429,12 +541,62 @@ short statistics::do_command()
 					deltax = (deltax > 0) ? 1 : -1;
 				if (deltay)
 					deltay = (deltay > 0) ? 1 : -1;
-				if (!controller_->fire_check(deltax,deltay))
-					controller_->walkstep(deltax, deltay);
+			{
+				walker::FireCheckDenial denial = walker::FireCheckDenial::None;
+				if (!controller_->fire_check(deltax, deltay, &denial))
+				{
+					// Guard-standoff melee deadlock fix (2026-07-07, see
+					// docs/GAMEPLAY_FIXES_FROM_CLASSIC.md): when the shot at
+					// an IN-REACH foe is denied only by our orientation, turn
+					// to face the foe and swing next tick. Two denials mean
+					// exactly that:
+					//  - Facing: a thrown-weapon family pointed off the foe;
+					//  - NoRanged: a melee-only family (orc, ghost, slime) at
+					//    bump range — its hit lands through fire()'s blocked
+					//    weapon-spawn cell, which also requires facing.
+					// The classic fallback walked instead; with the foe's own
+					// body blocking that step, walkstep's blocked-NPC branch
+					// set curdir PERPENDICULAR (the wall-slide), the orbit
+					// re-collapsed the approach delta every tick, and two
+					// adjacent fighters could face-dance forever without one
+					// landed swing (Westlands L25's eternal last foe / L2's
+					// parked companies). OutOfRange/WallBlocked keep the
+					// classic walk-toward-the-foe response (they need
+					// repositioning), as does NoMagic (regen while closing).
+					if (deltax == 0 && deltay == 0)
+					{
+						// Exactly coincident with the foe (a transient
+						// pass-through left us inside its body). The classic
+						// walkstep(0,0) is a no-op, freezing the clinch
+						// forever; and no swing can land — a weapon always
+						// spawns just OUTSIDE the merged box. Step along our
+						// facing instead: any direction separates (see the
+						// interpenetration escape rule in obmap.cpp), and
+						// curdir keeps the choice deterministic. No RNG.
+						short stepx = 0, stepy = 0;
+						facing_step_delta(static_cast<char>(controller_->curdir()),
+						                  stepx, stepy);
+						controller_->walkstep(stepx, stepy);
+					}
+					else if (denial == walker::FireCheckDenial::Facing ||
+					         denial == walker::FireCheckDenial::NoRanged)
+						// Note for NoRanged (melee-only) families: this only
+						// FACES the bump-range foe; their actual swings keep
+						// coming from the classic walk_to_foe() init_fire()
+						// cadence between ATTACK windows. Wiring init_fire()
+						// here as well was tried and rejected: it roughly
+						// doubles melee swing rate over classic and swung
+						// campaign balance hard (Westlands L2's fight-through
+						// crew started losing members).
+						controller_->face_delta(deltax, deltay);
+					else
+						controller_->walkstep(deltax, deltay);
+				}
 				else // (controller_->fire_check(deltax, deltay))
 				{
 					force_command(COMMAND_FIRE,static_cast<short>(rng(5)),deltax,deltay);
 					controller_->init_fire(deltax,deltay);
+				}
 			}
 			break;
 		case COMMAND_UNCHARM:
@@ -982,6 +1144,57 @@ bool statistics::direct_walk()
 
 }
 
+// When a cross-floor foe has no A*-reachable cell (e.g. it is standing on a
+// sparse upper-floor platform that is not ground-connected to the Z-stair
+// landing), chasing foe->xpos()/ypos() on OUR floor just mirrors the foe on the
+// wrong level. Instead, route to the nearest Z-stair that leads toward the foe's
+// floor: scan our floor for the appropriate stair tile (UP if the foe is above,
+// DOWN if below) and run the stair-aware A* (find_path_to_point) to it. Walking
+// onto the stair triggers apply_z_motion's floor change, after which cross_floor
+// flips false and the normal chase resumes on the correct floor. Returns true
+// (and leaves a path in path_to_foe) when a stair route exists.
+bool statistics::path_toward_stair(int foe_floor)
+{
+	if (!current_game || !current_game->world)
+		return false;
+	GameWorld* world = current_game->world;
+	const int myfloor = controller_->floor();
+	if (foe_floor == myfloor)
+		return false;
+
+	const unsigned char want = (foe_floor > myfloor)
+	    ? static_cast<unsigned char>(PIX_ZSTAIR_UP)
+	    : static_cast<unsigned char>(PIX_ZSTAIR_DOWN);
+
+	const PixieData& g = world->grid_for_floor(myfloor);
+	if (!g.valid())
+		return false;
+
+	const int mygx = controller_->xpos() / GRID_SIZE;
+	const int mygy = controller_->ypos() / GRID_SIZE;
+	int best_x = -1, best_y = -1;
+	long best_d = -1;
+	for (int y = 0; y < g.h; ++y)
+		for (int x = 0; x < g.w; ++x)
+		{
+			if (g.data[x + y * g.w] != want)
+				continue;
+			const long d = std::abs(x - mygx) + std::abs(y - mygy);
+			if (best_x < 0 || d < best_d)
+			{
+				best_d = d;
+				best_x = x;
+				best_y = y;
+			}
+		}
+	if (best_x < 0)
+		return false; // no stair toward the foe's floor on our level
+
+	controller_->find_path_to_point(static_cast<short>(best_x * GRID_SIZE),
+	                                static_cast<short>(best_y * GRID_SIZE));
+	return !controller_->path_to_foe.empty();
+}
+
 inline constexpr int PATHING_MIN_DISTANCE = 100;
 
 // Note that obmap::size() counts dead things too, which don't do pathfinding
@@ -1002,10 +1215,46 @@ bool statistics::walk_to_foe()
 		return 0;
 	}
 
+	// Cross-floor foe: distance_to_ob is a floor-blind 2D (Manhattan) measure,
+	// so a foe directly above/below reads as "close" even though the only route
+	// to it is a Z-stair. For such a foe we must always run the full,
+	// stair-edge-aware A* (find_path_to_foe) and never short-circuit into the
+	// floor-blind melee/direct chase that just runs under the target — nor
+	// abandon the chase when the 2D distance gets tiny (we still have to climb).
+	// Gated on floor_count()>1, so single-floor behavior is byte-identical.
+	//
+	// EXCEPT flyers. A flyer never changes floors (apply_z_motion skips it and
+	// the pathing graph gives it no Z-stair edges), so a cross-floor foe is
+	// unreachable for it BY DESIGN. Routing a flyer through the cross-floor
+	// machinery (a) forced a stair-aware A* that had to exhaust every reachable
+	// cell before failing — re-run EVERY tick once the empty path forced the
+	// per-tick checks below — and (b) path_toward_stair then parked it ON a
+	// stair tile the Z-lift will never take it through, where it hovered
+	// pinned for the rest of the level (the Westlands L24 caldera-ghost
+	// wedge). A flyer keeps the classic floor-blind 2D chase instead: it
+	// shadows the foe from its own floor and engages whatever it meets there.
+	// Same flying predicate as apply_z_motion (permanent BIT_FLYING or
+	// transient flight ticks). Multifloor-gated, so single-floor levels are
+	// byte-identical.
+	const bool multifloor = current_game->world->floor_count() > 1;
+	const bool flyer = multifloor &&
+	    (query_bit_flags(BIT_FLYING) || controller_->flight_left() != 0);
+	const bool cross_floor = multifloor && !flyer &&
+	    foe->floor() != controller_->floor();
+
 	controller_->set_path_check_counter(controller_->path_check_counter() - 1);
-	// This makes us only check every few rounds, to save
-	// processing time
-	if(controller_->path_check_counter() <= 0)
+	// This makes us only check every few rounds, to save processing time.
+	// EXCEPTION: a cross-floor foe with no current path. The path check is
+	// throttled to every 5-14 ticks; until the first stair-aware A* runs we have
+	// no path and fall through to direct_walk(), which charges the foe's x/y on
+	// OUR floor — i.e. the baddie tracks the player on the wrong level for up to a
+	// full cadence before "eventually" pathing through the stairs. Force the check
+	// the moment we acquire (or exhaust the path to) a cross-floor foe so it heads
+	// for the stairs immediately. Once a path exists this is false again, so the
+	// normal throttle resumes (no A*-every-tick except for a truly unreachable foe).
+	const bool need_cross_floor_path =
+	    cross_floor && controller_->path_to_foe.empty();
+	if(controller_->path_check_counter() <= 0 || need_cross_floor_path)
 	{
 	    // Cosmetic AI-recheck cadence: master draws it from libc rand
 	    // (`5 + rand()%10`), NOT the gameplay rng() helper it uses for every
@@ -1026,7 +1275,8 @@ bool statistics::walk_to_foe()
         
 		tempdistance = static_cast<Uint32>(controller_->distance_to_ob(foe));
 		// Do simpler pathing if the distance is short or if there are too many walkers (pathfinding is expensive)
-		if (tempdistance < PATHING_MIN_DISTANCE || current_game->world->myobmap->size() > PATHING_SHORT_CIRCUIT_OBJECT_LIMIT)
+		if (!cross_floor &&
+		    (tempdistance < PATHING_MIN_DISTANCE || current_game->world->myobmap->size() > PATHING_SHORT_CIRCUIT_OBJECT_LIMIT))
 		{
 			std::list<walker*> foelist = current_game->world->find_foes_in_range(current_game->world->oblist,
 			          PATHING_MIN_DISTANCE, &howmany, controller_);
@@ -1051,10 +1301,22 @@ bool statistics::walk_to_foe()
 					commands.front().commandcount = 0;
 			}
 		}
-		else
+		else if (!flyer || foe->floor() == controller_->floor())
         {
             controller_->find_path_to_foe();
+            // Cross-floor foe whose exact cell A* cannot reach (sparse upper
+            // floor / disconnected platform). Don't let the empty-path fallback
+            // below chase the foe's x/y on OUR floor — head for the nearest
+            // Z-stair toward the foe's floor and climb. Gated on cross_floor, so
+            // single-floor pathing is untouched (byte-identical for parity).
+            if (cross_floor && controller_->path_to_foe.empty())
+                path_toward_stair(foe->floor());
         }
+        // else: flyer with a cross-floor foe. No stair-aware A* (it can only
+        // exhaust the map and fail: flyers get no stair edges) and no
+        // path_toward_stair (a stair can never lift a flyer). The path stays
+        // empty, so the direct_walk/right_walk fallbacks below shadow the
+        // foe's 2D position from our own floor — the classic chase.
 	} //end if do_check
 
     if(controller_->path_to_foe.size() > 0)
@@ -1074,8 +1336,10 @@ bool statistics::walk_to_foe()
 	else
 		right_walk();
 
-	// Are we really really close? Stop searching, then :)
-	if (tempdistance < 30 && !commands.empty())
+	// Are we really really close? Stop searching, then :)  But never abandon a
+	// cross-floor chase on 2D proximity — the foe is on another floor and we
+	// still need to reach the Z-stair and climb.
+	if (!cross_floor && tempdistance < 30 && !commands.empty())
 	{
 		commands.front().commandcount = 0;
 	}

@@ -142,14 +142,14 @@ TEST(CursesPickerClient, present_menu_cancel_maps_to_quit_or_back)
 TEST(CursesPickerClient, present_menu_digit_and_arrow_navigation)
 {
     PickerFixture f;
-    // Jump to the 7th selectable item (Difficulty) and select it.
-    const int diff_idx = main_menu_item_index(PickerMenuCommand::SetDifficulty);
+    // Jump to the 7th selectable item (the Difficulty door) and select it.
+    const int diff_idx = main_menu_item_index(PickerMenuCommand::OpenDifficultyMenu);
     ASSERT_GE(diff_idx, 0);
     f.t().push_char(static_cast<char32_t>(U'1' + diff_idx));
     f.t().push_special(KeyCode::Enter);
     const auto* item = f.client.present_menu(PickerMenuId::Main);
     ASSERT_NE(item, nullptr);
-    EXPECT_EQ(item->command, PickerMenuCommand::SetDifficulty);
+    EXPECT_EQ(item->command, PickerMenuCommand::OpenDifficultyMenu);
 
     // From the top item, Down once then Enter selects the 2nd item.
     f.t().push_special(KeyCode::Down);
@@ -228,17 +228,18 @@ TEST(CursesPickerClient, prepare_new_game_resets_campaign_to_default)
 
 // --- difficulty ----------------------------------------------------------
 
-// Handling the Difficulty item cycles options_.difficulty and shows a notice.
+// Handling the Difficulty item (now in the Difficulty submenu) cycles
+// options_.difficulty and shows a notice.
 TEST(CursesPickerClient, difficulty_cycles_on_select)
 {
     PickerFixture f;
     const int before = f.client.difficulty();
-    const auto* item =
-        og::ui::find_picker_menu_item(PickerMenuId::Main, PickerMenuCommand::SetDifficulty);
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::Difficulty, PickerMenuCommand::SetDifficulty);
     ASSERT_NE(item, nullptr);
 
     dismiss(f.t()); // the post-cycle "press a key" notice
-    f.client.handle_menu_item(PickerMenuId::Main, *item);
+    f.client.handle_menu_item(PickerMenuId::Difficulty, *item);
 
     EXPECT_EQ(f.client.difficulty(), og::ui::cycle_difficulty(before));
     // The notice should name the new difficulty somewhere on screen.
@@ -824,19 +825,23 @@ TEST(CursesPickerClient, run_picker_quit_unwinds)
     EXPECT_EQ(f.client.screen_after_game(), og::ui::PickerScreen::TeamBuild);
 }
 
-// A richer run_picker: cycle difficulty from the Main menu, then quit. Asserts
-// the side effect persisted and the loop still unwound.
+// A richer run_picker: cycle difficulty through the Main menu's Difficulty
+// door, then quit. Asserts the side effect persisted and the loop unwound.
 TEST(CursesPickerClient, run_picker_main_action_then_quit)
 {
     PickerFixture f;
     const int before = f.client.difficulty();
 
-    const int diff_idx = main_menu_item_index(PickerMenuCommand::SetDifficulty);
+    const int diff_idx = main_menu_item_index(PickerMenuCommand::OpenDifficultyMenu);
     ASSERT_GE(diff_idx, 0);
-    // First Main menu pass: select Difficulty (digit+Enter), dismiss its notice.
+    // First Main menu pass: open the Difficulty submenu (digit+Enter).
     f.t().push_char(static_cast<char32_t>(U'1' + diff_idx));
     f.t().push_special(KeyCode::Enter);
+    // Submenu: the Difficulty row starts highlighted; select it, dismiss its
+    // notice, then Esc backs out of the submenu (-> Back).
+    f.t().push_special(KeyCode::Enter);
     dismiss(f.t());
+    f.t().push_special(KeyCode::Escape);
     // Second Main menu pass (show_main_menu loops on non-terminal commands):
     // Esc to Quit and end the program.
     f.t().push_special(KeyCode::Escape);
@@ -1075,4 +1080,160 @@ TEST(CursesPickerClient, campaign_select_lists_default_campaign_first)
         EXPECT_LT(default_pos, ctf_pos)
             << "the default campaign must list before the CTF campaign";
     }
+}
+
+// --- Difficulty submenu ------------------------------------------------------
+//
+// The Main menu's Difficulty entry is a door into the Difficulty submenu
+// (kDifficultyMenuItems): the in-place difficulty cycle plus the match rules
+// that ride SaveData (respawns, respawn delay, permadeath, generator rate).
+// Each per-command test mirrors the CTF-setting handler tests above: resolve
+// the item from the menu model, handle it, assert the save field and the
+// shared label the notice renders.
+
+// Respawns: Off -> Heroes -> Everyone -> Off on save.respawn_mode.
+TEST(CursesPickerClient, respawn_mode_cycles_through_sequence)
+{
+    PickerFixture f;
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::Difficulty, PickerMenuCommand::CycleRespawnMode);
+    ASSERT_NE(item, nullptr);
+    ASSERT_EQ(0, (int)f.save().respawn_mode) << "default is Off (classic)";
+
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Difficulty, *item);
+    EXPECT_EQ(1, (int)f.save().respawn_mode);
+    EXPECT_NE(f.t().dump().find("Respawns: Heroes"), std::string::npos);
+
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Difficulty, *item);
+    EXPECT_EQ(2, (int)f.save().respawn_mode);
+    EXPECT_NE(f.t().dump().find("Respawns: Everyone"), std::string::npos);
+
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Difficulty, *item);
+    EXPECT_EQ(0, (int)f.save().respawn_mode);
+    EXPECT_NE(f.t().dump().find("Respawns: Off"), std::string::npos);
+}
+
+// Respawn delay rides the existing ctf_respawn_ticks: 0 -> 60 -> 360 -> 0.
+TEST(CursesPickerClient, respawn_delay_cycles_through_sequence)
+{
+    PickerFixture f;
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::Difficulty, PickerMenuCommand::CycleRespawnDelay);
+    ASSERT_NE(item, nullptr);
+    ASSERT_EQ(0, (int)f.save().ctf_respawn_ticks) << "default is the map delay";
+
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Difficulty, *item);
+    EXPECT_EQ(60, (int)f.save().ctf_respawn_ticks);
+    EXPECT_NE(f.t().dump().find("Spawn Delay: Fast"), std::string::npos);
+
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Difficulty, *item);
+    EXPECT_EQ(360, (int)f.save().ctf_respawn_ticks);
+    EXPECT_NE(f.t().dump().find("Spawn Delay: Slow"), std::string::npos);
+
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Difficulty, *item);
+    EXPECT_EQ(0, (int)f.save().ctf_respawn_ticks);
+    EXPECT_NE(f.t().dump().find("Spawn Delay: Normal"), std::string::npos);
+}
+
+// Permadeath: On (keep_fallen_heroes == 0, classic) <-> Off.
+TEST(CursesPickerClient, permadeath_toggles)
+{
+    PickerFixture f;
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::Difficulty, PickerMenuCommand::TogglePermadeath);
+    ASSERT_NE(item, nullptr);
+    ASSERT_EQ(0, (int)f.save().keep_fallen_heroes) << "default is permadeath On";
+
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Difficulty, *item);
+    EXPECT_EQ(1, (int)f.save().keep_fallen_heroes);
+    EXPECT_NE(f.t().dump().find("Permadeath: Off"), std::string::npos);
+
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Difficulty, *item);
+    EXPECT_EQ(0, (int)f.save().keep_fallen_heroes);
+    EXPECT_NE(f.t().dump().find("Permadeath: On"), std::string::npos);
+}
+
+// Generators: Normal (0) -> Calm (50) -> Frenzy (200) -> Normal.
+TEST(CursesPickerClient, generator_rate_cycles_through_sequence)
+{
+    PickerFixture f;
+    const auto* item = og::ui::find_picker_menu_item(
+        PickerMenuId::Difficulty, PickerMenuCommand::CycleGeneratorRate);
+    ASSERT_NE(item, nullptr);
+    ASSERT_EQ(0, (int)f.save().generator_rate) << "default is the classic rate";
+
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Difficulty, *item);
+    EXPECT_EQ(50, (int)f.save().generator_rate);
+    EXPECT_NE(f.t().dump().find("Generators: Calm"), std::string::npos);
+
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Difficulty, *item);
+    EXPECT_EQ(200, (int)f.save().generator_rate);
+    EXPECT_NE(f.t().dump().find("Generators: Frenzy"), std::string::npos);
+
+    dismiss(f.t());
+    f.client.handle_menu_item(PickerMenuId::Difficulty, *item);
+    EXPECT_EQ(0, (int)f.save().generator_rate);
+    EXPECT_NE(f.t().dump().find("Generators: Normal"), std::string::npos);
+}
+
+// The submenu rows render the live settings from options_/SaveData, and Esc
+// cancels to Back (like every non-Main menu).
+TEST(CursesPickerClient, difficulty_submenu_labels_format_from_save)
+{
+    PickerFixture f;
+    f.save().respawn_mode = 1;
+    f.save().ctf_respawn_ticks = 60;
+    f.save().keep_fallen_heroes = 1;
+    f.save().generator_rate = 200;
+
+    f.t().push_special(KeyCode::Escape);
+    const auto* item = f.client.present_menu(PickerMenuId::Difficulty);
+    ASSERT_NE(item, nullptr);
+    EXPECT_EQ(item->command, PickerMenuCommand::Back);
+
+    const std::string dump = f.t().dump();
+    EXPECT_NE(dump.find("Difficulty: Battle"), std::string::npos)
+        << "options_.difficulty defaults to 1 (Battle); got:\n" << dump;
+    EXPECT_NE(dump.find("Respawns: Heroes"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("Spawn Delay: Fast"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("Permadeath: Off"), std::string::npos) << dump;
+    EXPECT_NE(dump.find("Generators: Frenzy"), std::string::npos) << dump;
+}
+
+// run_picker reaches the nested Difficulty submenu from the Main menu door and
+// unwinds cleanly: Difficulty -> cycle Respawns -> Back -> Quit (the curses
+// analogue of run_picker_through_scenario_submenu_then_quit above).
+TEST(CursesPickerClient, run_picker_through_difficulty_submenu_then_quit)
+{
+    PickerFixture f;
+
+    const int door_idx = main_menu_item_index(PickerMenuCommand::OpenDifficultyMenu);
+    ASSERT_GE(door_idx, 0);
+    ASSERT_LE(door_idx, 8) << "digit-jump addresses the first 9 items";
+    // Main pass 1: the Difficulty door opens the submenu.
+    f.t().push_char(static_cast<char32_t>(U'1' + door_idx));
+    f.t().push_special(KeyCode::Enter);
+    // Difficulty submenu: cycle Respawns (2nd selectable row), dismiss the
+    // notice, then leave with Esc (-> Back), then Main menu Esc (-> Quit).
+    pick(f.t(), 1);
+    dismiss(f.t());
+    f.t().push_special(KeyCode::Escape);
+    f.t().push_special(KeyCode::Escape);
+
+    og::ui::run_picker(f.client);
+
+    EXPECT_EQ(1, (int)f.save().respawn_mode)
+        << "the submenu action must land on the save";
+    EXPECT_TRUE(f.t().input_exhausted())
+        << "the difficulty submenu round trip should consume the whole script";
 }

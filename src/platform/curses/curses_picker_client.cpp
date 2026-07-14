@@ -320,6 +320,14 @@ std::string menu_item_label(const PickerMenuItem& item, const TextPickerConfig& 
         return og::ui::format_ctf_caps_label(save);
     if (item.command == PickerMenuCommand::ToggleCtfScenarioTroops)
         return og::ui::format_ctf_troops_label(save);
+    if (item.command == PickerMenuCommand::CycleRespawnMode)
+        return og::ui::format_respawn_mode_label(save);
+    if (item.command == PickerMenuCommand::CycleRespawnDelay)
+        return og::ui::format_respawn_delay_label(save);
+    if (item.command == PickerMenuCommand::TogglePermadeath)
+        return og::ui::format_permadeath_label(save);
+    if (item.command == PickerMenuCommand::CycleGeneratorRate)
+        return og::ui::format_generator_rate_label(save);
     return std::string(item.label);
 }
 
@@ -661,16 +669,18 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
     Menu menu(term_, clock_);
     if (menu_id == PickerMenuId::Main) {
         switch (item.command) {
-        case PickerMenuCommand::SetDifficulty:
-        {
-            options_.difficulty = og::ui::cycle_difficulty(options_.difficulty);
-            const int difficulty_index =
-                ((options_.difficulty % DIFFICULTY_SETTINGS) + DIFFICULTY_SETTINGS) % DIFFICULTY_SETTINGS;
-            menu.show_text("Difficulty",
-                {std::format("Difficulty set to {}.",
-                    og::ui::kDifficultyNames[difficulty_index])});
+        case PickerMenuCommand::OpenDifficultyMenu:
+            // The DIFFICULTY submenu: a nested presentation loop until Back,
+            // mirroring the shared show_scenario_menu precedent
+            // (picker_state.cpp) the Scenario submenu rides.
+            for (;;) {
+                const PickerMenuItem* sub =
+                    present_menu(PickerMenuId::Difficulty);
+                if (sub == nullptr || sub->command == PickerMenuCommand::Back)
+                    break;
+                handle_menu_item(PickerMenuId::Difficulty, *sub);
+            }
             break;
-        }
         case PickerMenuCommand::SetPlayerMode:
             og::ui::set_player_count(save_data_, item.arg);
             menu.show_text("Players",
@@ -686,6 +696,47 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
             menu.show_text("Level Edit",
                 {"The level editor is not available in the curses client.",
                  "Use the standalone 'openscen' tool instead."});
+            break;
+        default:
+            break;
+        }
+        return;
+    }
+
+    // The Difficulty submenu: session difficulty stays an option int; the
+    // match rules (respawns, delay, permadeath, generators) live on the save
+    // via the shared pure helpers, so a hosted lobby broadcasts them.
+    if (menu_id == PickerMenuId::Difficulty) {
+        switch (item.command) {
+        case PickerMenuCommand::SetDifficulty:
+        {
+            options_.difficulty = og::ui::cycle_difficulty(options_.difficulty);
+            const int difficulty_index =
+                ((options_.difficulty % DIFFICULTY_SETTINGS) + DIFFICULTY_SETTINGS) % DIFFICULTY_SETTINGS;
+            menu.show_text("Difficulty",
+                {std::format("Difficulty set to {}.",
+                    og::ui::kDifficultyNames[difficulty_index])});
+            break;
+        }
+        case PickerMenuCommand::CycleRespawnMode:
+            og::ui::cycle_respawn_mode(save_data_);
+            menu.show_text("Respawns",
+                {og::ui::format_respawn_mode_label(save_data_)});
+            break;
+        case PickerMenuCommand::CycleRespawnDelay:
+            og::ui::cycle_respawn_delay(save_data_);
+            menu.show_text("Respawn Delay",
+                {og::ui::format_respawn_delay_label(save_data_)});
+            break;
+        case PickerMenuCommand::TogglePermadeath:
+            og::ui::toggle_permadeath(save_data_);
+            menu.show_text("Permadeath",
+                {og::ui::format_permadeath_label(save_data_)});
+            break;
+        case PickerMenuCommand::CycleGeneratorRate:
+            og::ui::cycle_generator_rate(save_data_);
+            menu.show_text("Generators",
+                {og::ui::format_generator_rate_label(save_data_)});
             break;
         default:
             break;
@@ -799,6 +850,14 @@ std::string CursesPickerClient::show_campaign_select()
     Menu menu(term_, clock_);
     std::list<std::string> campaigns = list_campaigns();
     og::ui::order_campaigns_for_select(campaigns);
+    // Kept in lockstep with the SDL/curses shelves: networked lobbies must
+    // not offer the (local-only) tower. The curses network lobby fixes its
+    // campaign from the save at host/join time (this picker screen is only
+    // reachable locally), so the flag is always false here today; the
+    // LobbyServer sanitize backstop covers a tower save carried into a
+    // hosted lobby.
+    og::ui::filter_campaigns_for_networked_lobby(campaigns,
+                                                 /*networked_session=*/false);
     std::vector<std::string> ids(campaigns.begin(), campaigns.end());
 
     if (ids.empty()) {

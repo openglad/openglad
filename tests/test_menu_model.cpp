@@ -313,3 +313,65 @@ TEST(MenuModel, host_status_lines_show_lan_only_for_real_direct_transport)
     EXPECT_EQ("Relay: GLAD-XKCD", fallback_lines[1]);
     EXPECT_EQ("Lobby: 2 players", fallback_lines[2]);
 }
+
+TEST(MenuModel, difficulty_menu_definition_and_lookup)
+{
+    using namespace og::ui;
+
+    // The main-menu DIFFICULTY entry became a door into the DIFFICULTY
+    // submenu: same id, same list shape, new command.
+    const PickerMenuDefinition& main_def = picker_menu_definition(PickerMenuId::Main);
+    ASSERT_EQ(11u, main_def.items.size())
+        << "main menu shape must not change (1-based text-drive numbers)";
+
+    const PickerMenuItem* door = find_picker_menu_item(PickerMenuId::Main, "difficulty");
+    ASSERT_TRUE(door != nullptr) << "difficulty id should still resolve in main";
+    ASSERT_EQ(static_cast<int>(PickerMenuCommand::OpenDifficultyMenu),
+              static_cast<int>(door->command))
+        << "main difficulty entry should open the submenu now";
+    ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main,
+                                      PickerMenuCommand::SetDifficulty) == nullptr)
+        << "the in-place difficulty cycle moved into the submenu";
+
+    const PickerMenuDefinition& def = picker_menu_definition(PickerMenuId::Difficulty);
+    ASSERT_EQ(static_cast<int>(PickerMenuId::Difficulty), static_cast<int>(def.id))
+        << "difficulty definition should report difficulty id";
+    ASSERT_TRUE(def.title == "Difficulty");
+    ASSERT_EQ(6u, def.items.size())
+        << "difficulty menu: cycle + the four match rules + back";
+
+    const struct
+    {
+        const char* id;
+        PickerMenuCommand command;
+    } kExpected[] = {
+        {"difficulty", PickerMenuCommand::SetDifficulty},
+        {"respawn_mode", PickerMenuCommand::CycleRespawnMode},
+        {"respawn_delay", PickerMenuCommand::CycleRespawnDelay},
+        {"permadeath", PickerMenuCommand::TogglePermadeath},
+        {"generator_rate", PickerMenuCommand::CycleGeneratorRate},
+        {"back", PickerMenuCommand::Back},
+    };
+    for (const auto& want : kExpected)
+    {
+        const PickerMenuItem* item =
+            find_picker_menu_item(PickerMenuId::Difficulty, want.id);
+        ASSERT_TRUE(item != nullptr) << want.id << " should resolve in difficulty";
+        ASSERT_EQ(static_cast<int>(want.command), static_cast<int>(item->command))
+            << want.id;
+        const PickerMenuItem* by_command =
+            find_picker_menu_item(PickerMenuId::Difficulty, want.command);
+        ASSERT_TRUE(by_command == item)
+            << want.id << " should also resolve by command";
+    }
+
+    // The match-rule entries live only in the submenu.
+    for (const char* submenu_id :
+         {"respawn_mode", "respawn_delay", "permadeath", "generator_rate"})
+    {
+        ASSERT_TRUE(find_picker_menu_item(PickerMenuId::Main, submenu_id) == nullptr)
+            << submenu_id << " should not appear in the main menu";
+        ASSERT_TRUE(find_picker_menu_item(PickerMenuId::TeamBuild, submenu_id) == nullptr)
+            << submenu_id << " should not appear in team build";
+    }
+}

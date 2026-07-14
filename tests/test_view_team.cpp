@@ -817,6 +817,7 @@ TEST(ViewTeam, create_team_menu_hides_host_only_controls_for_non_host_client)
         .go_visible = false,
         .set_level_visible = false,
         .set_campaign_visible = false,
+        .scenario_visible = false,
         .min_y = 100,
         .menu_done = &menu_done,
     };
@@ -957,6 +958,7 @@ TEST(ViewTeam, create_view_menu_hides_go_for_non_host_client)
         .go_visible = false,
         .set_level_visible = false,
         .set_campaign_visible = false,
+        .scenario_visible = false,
         .min_y = 160,
         .menu_done = &menu_done,
     };

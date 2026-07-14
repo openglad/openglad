@@ -1,0 +1,605 @@
+# Z-Axis / Multi-Floor Design
+
+Status: **in progress** (branch `feature/z-axis-multifloor`, started 2026-06-28).
+This document is the source of truth for the Z-axis feature. The phase checklist
+at the bottom tracks progress.
+
+## Goal
+
+Add a Z (height) axis and stacked floors to OpenGlad:
+
+- Scenarios can have multiple stacked **floors**.
+- New tiles: **air** (see + fall through to the floor below), **glass** (walkable
+  but transparent), **directional drop-block** edges (walkable, block falling
+  toward one edge), and **Z-stairs/ladders** that move an entity between floors
+  (distinct from the existing flat "stair" decoration tiles).
+- Upper floors render with increasing transparency.
+- Projectiles/specials get a vertical velocity + gravity (knives/fireballs drift
+  up/down, elf rocks arc down) and can drop through air to a lower floor.
+- Characters have real height (a Z-elongated cylinder over their 2D hitbox).
+- Pathfinding keeps working: non-flyers route around air holes; flyers may fly
+  over air on their own floor but **cannot** change floors.
+
+## User decisions (2026-06-28)
+
+1. **Air = fall-through.** A ground unit that moves onto an air tile falls to the
+   floor below. AI **pathing** still treats air as blocked (enemies route around
+   pits and change floors only via stairs); players and knockback can drop through.
+2. **Projectiles drop floors** — per-weapon `can_drop_floors` flag (true for
+   thrown/rock families, false for orbit FX like boomerang/shield). Deterministic
+   `vz`/gravity, **no new RNG draw**.
+3. **Rendering:** the camera floor is fully opaque; floors BELOW always
+   render depth-faded (and take the optional cold depth tint) so air holes
+   read as height in normal play; floors above are NOT drawn in the standing
+   presentation (v2): solid upper tiles cast soft SE-offset overhang shadows
+   and upper entities cast blob shadows onto the camera floor. HOLDING the
+   per-player look-up key (`KEY_LOOKUP`, default `v` for P1) ADDS the floors
+   above to that viewport's frame as faint alpha ghosts for as long as the
+   key is held. The hold is the ONLY way to see floors above — there is no
+   cfg setting or menu toggle for it — and it gates nothing else.
+4. **Cross-floor AI = yes.** Ground enemies may chase foes onto other floors via
+   Z-stairs. Consequence: there is **no same-floor foe filter** — foe acquisition
+   stays floor-agnostic (byte-identical to today on single-floor levels); the
+   cross-floor A\* stair-edges plus per-floor line-of-sight do the work.
+
+## Core invariant (the thing that keeps the build green)
+
+The world is **always internally multi-floor with a default of exactly one floor**.
+Every Z behavior is gated behind a single cheap check:
+
+```cpp
+if (world->floor_count() > 1) { /* Z behavior */ }
+```
+
+plus per-entity fast paths (`floor()==0`, `worldz()==0`, `vz()==0`,
+`sizez()==0` "full height" sentinel). When a level has one floor, every code path
+must execute byte-for-byte the same statements as today. This protects:
+
+- the ~180 byte-exact **parity goldens** (`og_test_parity`),
+- the byte-identical **A\*** solver (`astar.cpp` is never touched),
+- the **wire protocol** / replay / snapshot determinism.
+
+**Determinism rules (do not violate):**
+- Never add an `rng_.next()` on the move / fire / foe-acquisition path for the
+  single-floor case. Z RNG draws (if ever needed) gate on `floor_count>1` or use
+  deterministic constants / the cosmetic RNG slot.
+- Never reorder the 8-neighbor loop in `PathingMap::adjacent_cost` (the count and
+  order of `query_grid_passable` calls is part of the determinism contract via the
+  arrow-wall RNG). Append vertical edges strictly **after** the 8 horizontals.
+- Never re-encode existing v2–9 scenario files to v10. Save v9 when
+  `floor_count==1`; v10 only when a level genuinely has >1 floor.
+
+Verify with `og_test_parity` (run-twice byte identity) after **every** phase.
+
+## Data model
+
+### `og::sim::SimEntity` (include/openglad/gameplay/sim_entity.h)
+Add next to `worldx_value_`/`worldy_value_`:
+- `float worldz_value_ = 0.0f;`  — authoritative sub-floor height
+- `short floor_ = 0;`            — which floor the entity is on
+- `short sizez_ = 0;`            — cylinder height; **0 = full/unbounded** sentinel
+
+Getters/setters `worldz()/set_worldz`, `floor()/set_floor`, `sizez()/set_sizez`
+each `mark_dirty(...)`.
+
+### `walker` (include/openglad/gameplay/walker.h)
+Add `float vz_` via `OG_WALKER_DIRTY_FIELD` (marks `BIT_VZ`). Only projectiles use
+it.
+
+### Dirty bits (include/openglad/gameplay/dirty_field_bits.h)
+Append (word 1, 38 bits free):
+```
+BIT_WORLDZ = 86, BIT_VZ = 87, BIT_SIZEZ = 88, BIT_FLOOR = 89
+FIELD_COUNT 86 -> 90   (static_assert -> BIT_FLOOR + 1 == FIELD_COUNT)
+```
+
+### `GameWorld` (include/openglad/gameplay/game_world.h)
+Replace `PixieData grid; smoother mysmoother; std::unique_ptr<obmap> myobmap;`
+with:
+```cpp
+struct Floor { PixieData grid; smoother smoother_; std::unique_ptr<obmap> obmap; };
+std::vector<Floor> floors_;   // size 1 by default
+```
+Plus accessors `grid_for_floor(int)`, `smoother_for_floor(int)`,
+`obmap_for_floor(int)`, `floor_count()`. `floors_[0]` is constructed identically
+to today's single instances (byte-identical spatial-hash traversal + RNG).
+`pixmaxx`/`pixmaxy` stay shared (all floors share footprint). `grid_dirty_tiles_`
+gains a floor component.
+
+Passability/`damage_tile` get an explicit-floor overload; the 3-arg forms forward
+`ob->floor()`:
+```cpp
+bool query_grid_passable(float x, float y, walker* ob);                 // uses ob->floor()
+bool query_grid_passable(float x, float y, walker* ob, int floor);      // explicit
+```
+
+### Tiles & genres
+- pixdefs.h: append `PIX_AIR, PIX_GLASS, PIX_DROPBLOCK_UP/RIGHT/DOWN/LEFT,
+  PIX_ZSTAIR_UP, PIX_ZSTAIR_DOWN` starting at the current `PIX_MAX` (134); raise
+  `PIX_MAX`.
+- terrain_types.h: append `TYPE_AIR=11, TYPE_GLASS=12, TYPE_DROP_BLOCK=13,
+  TYPE_ZSTAIRS=14`.
+- smooth.cpp `PIX_to_genre[]`: map the new tiles, but **omit them from
+  `smoother::smooth()`'s genre switch** so they route to the unchanged default
+  (inert, no autotiling — precedent: `PIX_CLIFF_*`).
+
+### Pathfinding state (include/openglad/gameplay/pathfinding_grid.h)
+```
+MAP_HEIGHT = 256
+FLOOR_STRIDE = MAP_WIDTH * MAP_HEIGHT   (= 102400)
+state = floor*FLOOR_STRIDE + (y/16)*MAP_WIDTH + (x/16)
+GET_STATE_FLOOR(s) = s / FLOOR_STRIDE
+GET_STATE_X/Y mask the floor via (s % FLOOR_STRIDE)
+```
+Max single-floor index 254*400+254 = 101854 < FLOOR_STRIDE, so floor 0 yields the
+identical numeric value and the mask is a no-op → A\* node expansion byte-identical.
+`astar.cpp` is **not** modified.
+
+## Passability / movement / falls
+
+- **Grid layer** (`query_grid_passable`): select `floors_[floor].grid`; add new
+  switch arms **after** all existing arms (no new RNG):
+  - `PIX_AIR` → `flyer ? true : (Order::Weapon ? true : true_for_movement)`.
+    Air is walkable for movement (then you fall); pathing blocks it separately.
+  - `PIX_GLASS` → walkable (like floor).
+  - `PIX_DROPBLOCK_*` → horizontally walkable (the directional block affects
+    falling, not horizontal passability).
+  - `PIX_ZSTAIR_*` → walkable (floor change triggered after the move).
+- **Object layer** (`query_object_passable` → obmap `ob_pass_check`): early
+  `different floor → continue`; then a cylinder z-overlap guard
+  `[worldz, worldz+sizez]` before the 2D `collide()` — with `sizez==0` = full
+  height so two floor-0 legacy entities always overlap exactly as today.
+- **Vertical update** `apply_vertical()` (called from weap/effect/living act,
+  strictly skipped when `vz==0` on a solid tile): `worldz += vz; vz += gravity;`
+  when an entity is over an air tile with no support it decrements `floor` and
+  lands on the first solid tile below; falling past floor 0 = pit death.
+- **Z-stairs**: after a successful `walk()`, if the destination tile is a Z-stair
+  and `floor_count>1`, move the entity to the linked floor/cell.
+- **Stair feel fixes** (`walker::apply_z_motion`, bugfix B1/B2, 2026-07 — the
+  "stairs finicky" playtest report):
+  - **B1 re-trigger latch.** A stair transition lands you standing on the
+    vertically-aligned PAIRED stair tile; the old `z_cooldown_`-only guard
+    expired after 6 ticks and bounced you straight back (even standing still —
+    "I end up going back down"). Now every stair transition arms a per-walker
+    latch with the ARRIVAL centre cell (`z_stair_latched_`/`z_latch_cx_`/
+    `z_latch_cy_`, walker.h): while the centre stays in that cell, stair tiles
+    do not trigger. The latch clears on the first post-cooldown Z-probe that
+    finds the centre outside the cell — the same centre-cell criterion the
+    trigger uses, with the cooldown adding a few ticks of hysteresis against
+    cell-boundary jitter. Stepping back on afterwards is a deliberate act and
+    triggers normally. Persistence: SAME non-replicated server-transient
+    precedent as `z_cooldown_`/`path_to_foe` (the ani_count rule) — snapshots
+    never carry it; a late joiner re-arms cleared, worst case one deliberate
+    re-step, never a wedge. Never armed single-floor, so parity-neutral.
+    Pinned by `ZAxis.arrival_on_paired_stair_does_not_bounce_back` /
+    `leaving_the_stair_cell_rearms_the_transition`.
+  - **B2 blocked-arrival nudge.** The A2/A3 wedge fix denied a blocked stair
+    arrival outright, which let a guard posted ON the stair top permanently
+    seal a staircase ("in the final mountain the stairs are blocked from above
+    so I can't ascend"). Now a blocked aligned arrival is nudged to the nearest
+    clear cell of the target floor (the A5 deterministic ring probe —
+    row-major within fixed rings, passable + obmap-clear, no-eat — shared via
+    `land_on_nearest_clear_cell`, radius `kStairNudgeRadius=2` vs the fall's
+    4 — and, stairs only, `avoid_air`: a PIX_AIR candidate is skipped because
+    landing on it would fall straight back, an up-fall loop that defeats the
+    ascent; falls keep air candidates and cascade normally), so ascent/descent
+    succeeds BESIDE the blocker; denial remains only when no clear cell exists
+    within the radius (then the old deny-and-re-probe behavior holds). A
+    nudged arrival latches its own landing cell, leaving the paired stair
+    armed. Pinned by
+    `ZAxis.stair_up_into_occupied_cell_lands_beside_the_blocker` /
+    `stepping_off_stair_onto_walker_lands_beside_no_entanglement` /
+    `stair_with_no_clear_arrival_within_radius_denied_until_clear` /
+    `stair_nudge_never_lands_on_air`.
+  - **Authoring rule (lockstep tooling).** `tools/westlands_mapgen` self-checks
+    — and `tests/unit/test_westlands_levels.cpp` mirrors — that no ACT_GUARD
+    post, generator, or ground-blocking decor sits ON a stair-pair cell or its
+    4-neighborhood arrival cells on either floor of the pair, so shipped levels
+    never rely on the engine nudge to keep a staircase usable.
+- **Teleport** (`walker::teleport`, bugfix A6/A7, 2026-07): destination probing
+  is ground-rules (the transient `flight_left` bypass is masked, so a blink can
+  never park the caster inside trees/boulders/water) and eat-free (a local
+  no-side-effect obmap scan replaces `query_object_passable`/`ob_pass_check`,
+  which consumed treasures at merely-probed spots). On `floor_count>1` levels the
+  no-marker random blink draws a uniform target floor per attempt (extra RNG draw
+  gated on `floor_count()>1`, same pattern as `apply_z_motion`, so single-floor
+  levels stay byte-identical), and the marker path lands on the MARKER's floor
+  (`change_floor` before `setxy`). `teleport_ranged` (skeleton escape hop) stays
+  on the caster's floor by design. Verified byte-identical across all 158 parity
+  scenarios (A/B `parity_runner_smoke` dump diff, incl. `rng_state`).
+
+## Fall damage (2026-07, always-on — owner sign-off D4)
+
+- **The rule.** `damage = min(0.15 × (N − 1), 0.50) × max_hitpoints`, where N
+  is the total stories fallen in one uninterrupted cascade; clamped to ≥ 1.0 hp
+  when nonzero; applied ONCE at settle (the first landing whose recomputed
+  post-move centre cell is non-air — the A5 nudge can move the landing up to 4
+  cells, and a nudge onto air keeps the cascade alive). Float math end-to-end.
+  1 story is **free**: campaign fall routes are designed traversal (the
+  Westlands E5 fall-line rule) and pursuing AI pays nothing for a designed
+  drop. 2/3/4 stories cost 15%/30%/45% of max HP; 5+ caps at **50%**, so a
+  full-health unit survives ANY fall — a fall has no attributable attacker
+  (no kill credit possible), so an instant-kill would be a degenerate MP
+  tactic; knockback-off-ledge stays a *finisher* against wounded units.
+  Always-on, no knob (percent-of-max needs no per-family table and is
+  symmetric across difficulty/level/family).
+- **Mechanism.** `walker::fall_stories_` accumulates at each air-branch
+  landing in `apply_z_motion` and `walker::resolve_fall_landing()` charges the
+  damage at settle with the flight-expiry idiom (plain hp deduction + RED
+  `DamageNumber` + `regen_delay(50)` + inline `set_dead(1)+death()` when
+  lethal), NOT `do_combat_damage` — its FAMILY_HIT FX consumes one
+  `rng_.next(3)` per landing, and this path deliberately draws **zero RNG**.
+  One `SOUND_CLANG` sim event per damaging settle. The accumulator resets on
+  any non-air footing (stairs, ordinary ground, the hover-walk-off stale case
+  — forgiving by design), on both teleport `change_floor` sites, and in
+  `walker::death()`.
+- **Invulnerability is RESPECTED** (`BIT_INVINCIBLE` / `invulnerable_left`):
+  a deliberate divergence from the environmental precedents (pit death and
+  flight expiry check nothing) — the potion's promise is "no damage", and
+  fall damage is damage.
+- **Armor is NOT applied**: percent-of-max already scales with toughness;
+  stacking `get_damage_reduction` would double-scale and muddy the rule.
+- **Pit death is unchanged**, byte-for-byte: falling past floor 0 remains an
+  unconditional kill with no invulnerability check and no damage number — a
+  void, not damage.
+- **Exempt by construction** (no code): flyers (`BIT_FLYING`/`flight_left`)
+  never enter the air branch; weapons fall via `act_fire` separately; only
+  livings call `apply_z_motion`. Enemies take fall damage symmetrically.
+- **Replication.** `fall_stories_` ships with the same non-replicated
+  server-transient acceptance as `z_cooldown_`/`z_stair_latched_`: a mirror or
+  late joiner mid-cascade resolves a shorter fall and hp self-corrects on the
+  next snapshot; remote clients also miss the DamageNumber (matches flight
+  expiry today). No wire bump.
+- **Parity.** Single-floor levels can never see any of this
+  (`apply_z_motion`'s `floor_count()<=1` early-return). Pinned by the
+  Invariant row `z_fall_two_story_scen9301` (3-floor shaft, 85%-max-HP band)
+  plus the full-HP pin on the existing 1-story fall row, both teethed in
+  `Parity.z_multifloor_walker_floor_transitions`; the unit battery lives in
+  `tests/unit/test_zaxis.cpp` (`ZAxis.fall_*`, `cascade_no_partial_damage`,
+  `hover_walkoff_silent_reset`, the stair/teleport resets,
+  `invulnerable_skip`, `lethal_when_wounded`, `knockback_off_ledge_kill`,
+  `flyer_exempt_hp`, `pit_death_unchanged`).
+- **Tooling.** Both mapgen fall audits (`tools/westlands_mapgen`,
+  `tools/longseason_mapgen`) measure each designed fall line's depth in
+  stories, report the per-level max and ≥2-story (damaging) count, and
+  self-check-fail any line deeper than 4 stories (the cap knee); the ≤4-story
+  bound is mirrored in `tests/unit/test_westlands_levels.cpp`. The audits are
+  report-only — generation and committed .glads are untouched.
+
+## Pathfinding (cross-floor)
+
+All additive, double-gated (`floor_count>1` and tile data):
+- `adjacent_cost`: decode floor from `state`; generate the 8 horizontals on that
+  floor via the floor-aware `query_grid_passable`, keeping loop order/cost math
+  EXACTLY. For non-flyers, air neighbors are skipped (route around pits). Only when
+  `floor_count>1` and the current cell is a Z-stair, append **one** vertical
+  neighbor on the linked floor, strictly after the 8. Flyers get no vertical
+  neighbor (cannot change floors).
+- `least_cost_estimate`: pure 2D distance when start/end share a floor (always true
+  single-floor); add an admissible floor-transition term only when floors differ.
+- `follow_path_to_foe`: when the next node's floor differs, invoke the
+  floor-transition mover; else the existing walkstep logic runs verbatim.
+
+Pathing-wedge fixes (2026-07, all `floor_count>1` gated — single-floor stays
+byte-identical; see docs/GAMEPLAY_FIXES_FROM_CLASSIC.md for the full audit):
+- **No corner cutting** (`adjacent_cost`): diagonal expansion requires BOTH
+  flanking orthogonal cells open (grid-passable + the non-flyer air skip). A
+  full-cell body's swept box always overlaps the flanks, so a diagonal past a
+  blocked flank is pixel-impassable at every offset — the graph used to emit
+  such hops and followers seized on them (L24 lava/scree X-pinches).
+- **Alignment assist** (`follow_path_to_foe`): when the next hop is cardinal,
+  the body is misaligned on the perpendicular axis (node-reached is
+  cell-quantized, so up to 15px of spill), and the direct step is
+  pixel-blocked, slide toward exact alignment one collision-checked pixel at a
+  time instead of letting walkstep's fixed fallback bounce the walker back out
+  of alignment forever (the L24 tower-terrace wedge).
+- **Flyer cross-floor bypass** (`walk_to_foe`): a flyer can never change
+  floors, so a cross-floor foe is unreachable by design — no stair-seek, no
+  full-map A* exhaustion; it keeps the classic floor-blind 2D chase and
+  shadows the foe from its own floor (previously it parked on a stair it
+  could never take).
+- **Floor-keyed `find_near_foe`**: the spiral probe passes the searcher's
+  floor to `obmap_get_list` (the parameter defaults to 0, which left
+  upper-floor walkers blind to adjacent foes and latching ground-floor foes
+  under their 2D position). Cross-floor acquisition intentionally remains via
+  `find_far_foe`.
+
+## Projectiles
+
+- `WeaponFamilyDescriptor` + gloader `EntityDef` table gain
+  `init_vz / gravity / init_sizez / can_drop_floors` (defaults 0/0/0/false applied
+  like `stepsize`), so initial weapon state + goldens do not move.
+- `walker::act_fire` integrates `worldz/vz` after `walk()`, strictly gated on
+  `vz!=0 || floor>0 || destination genre is air/glass`. Drop-through-air decrements
+  floor; `can_drop_floors` controls whether a projectile may leave its floor.
+- Tuning: thrown knives small up/down drift; fireballs slight; elf rock negative
+  `init_vz` (arc up then fall). Rock bounce on death becomes floor/z aware.
+- Boomerang/magic-shield are orbit-table driven: set `worldz` from `drawcycle`,
+  inherit owner floor via `center_on`; `can_drop_floors=false`.
+
+## AI / targeting / LOS
+
+- **No same-floor foe filter** (decision 4). Foe acquisition
+  (`find_near_foe`/`find_far_foe`/`find_*_in_range`/`find_nearest_player`) stays
+  floor-agnostic → byte-identical to today on single-floor.
+- `fire_check` raymarch + LOS query the shooter's floor grid (cannot shoot through
+  solid floors; air/glass let sight/fire pass downward where appropriate).
+- `distance_to_ob`/`distance_to_ob_center` stay **pure 2D** (a z term would
+  reorder `find_far_foe` selection and break parity).
+- Cross-floor chase emerges from the A\* stair-edges: an enemy acquires a foe on
+  another floor, can't shoot it (different floor), paths to a stair, climbs, engages.
+  **Subtlety (fixed):** `statistics::walk_to_foe` gates the expensive A* behind a
+  *2D* proximity short-circuit (`distance_to_ob`, which has no floor term). A foe
+  directly above/below reads as "close", so the AI skipped A* and fell back to
+  `direct_walk` — running *under* the target on its own floor. Fix: a `cross_floor`
+  flag (`floor_count()>1 && foe->floor()!=floor()`) forces `find_path_to_foe` and
+  never abandons the chase on 2D proximity. And `follow_path_to_foe` nudges the
+  walker's *center* (not corner) onto the Z-stair cell, since `apply_z_motion`
+  probes the center — else a sized walker deadlocks at the stair edge. Both gated
+  `floor_count()>1`; single-floor is byte-identical (`og_test_parity`). Regression:
+  `ZAxis.cross_floor_ai_chases_foe_through_stair`.
+
+## Rendering (outside the parity gate; read-only Z)
+
+- Collapse the two near-duplicate `viewscreen::redraw` bodies into one first.
+- `viewscreen` gets a read-only `current_floor` from the control walker.
+- Background: loop floors bottom-up to camera floor; camera floor opaque; floors
+  above near-invisible — each tile drawn with a per-floor alpha.
+- `draw_obs`: floor-parameterized passes interleaved with tile passes; filter
+  entities by `floor()`.
+- `walker_draw.cpp`: subtract `z` from `yscreen` at the four draw sites
+  (`- static_cast<Sint32>(z)`), gated so `z==0` reproduces current output.
+- New video primitive: a full-color, team-recolored `walkputbuffer_alpha` (clone
+  `walkputbuffer` clip/recolor loop but blend with alpha). Tiles reuse
+  `putbuffer_alpha`; accel path uses `SDL_SetSurfaceAlphaMod` on the cached surface.
+- Curses renderer + radar made floor-aware in the same changeset (new air/glass
+  glyphs; restrict to active floor). Follow-ups from playtest: the radar
+  TERRAIN now also re-bakes per floor (blips were filtered but the map showed
+  floor 0 — `radar::bmp_floor_`, editor override honored, single-floor
+  pixel-identical), Z-stair tiles get an always-on alpha-pulsed up/down
+  chevron overlay in play (`draw_stair_overlays`, camera floor only, not an
+  effects toggle, suppressed in the editor), and the curses client renders
+  direction-aware stair glyphs ('<' up / '>' down via `zstair_glyph`).
+- All gated `floor_count>1`. Defer the optional per-floor y-sort.
+
+## Level format v10 (gated)
+
+- Bump `kScenarioVersion` 9 → 10 (src/resources/level_file_io.cpp).
+- `LevelFileMetadata.grid_file` `std::string` → `std::vector<std::string>`
+  (one PNG per floor, convention `pix/scenNNNN_fK.png`).
+- v10 reads: a `floor_count` byte, then per-floor grid name, then per-object
+  `floor`/`z` (appended fields, default 0), then a trailing **Z-stair link table**
+  (`(srcFloor,x,y) -> (dstFloor,x,y)`).
+- v2–9 read path **untouched** → floors_ resized to 1, `floors_[0].grid` identical
+  bytes. `save_level` writes v9 when `floor_count==1`, v10 only when >1.
+
+## Snapshot / replay / wire
+
+- `EntitySnapshot` += `float worldz; float vz; std::int16_t sizez;
+  std::uint8_t floor;`; add 4 rows to the `kEntitySnapshotFields[]` table.
+- `GridTileSnapshot` += `std::uint8_t floor`; `WorldSnapshot` += `floor_count`,
+  full grid data spans `floor_count*w*h` (special-case `floor_count==1` =
+  legacy single-grid shape).
+- Bump `kSnapshotFormatVersion` 5→6, `kNetworkProtocolVersion` 3→4,
+  `kReplayFormatVersion` 6→7 in ONE atomic commit. Re-pin the ~5 literal
+  wire-byte tests. Clamp incoming `floor` to `[0, floor_count)` in `apply_entity`.
+
+## Parity strategy
+
+- Parity dump (`state_dump.cpp`) is independent of `EntitySnapshot`. Add
+  `floor/z/sizez` to the four dump structs with defaults and emit them in
+  `canonical_serialize` **only when non-default** → single-floor dumps stay
+  byte-identical, no golden regenerates. `validate_schema.py` treats them as
+  optional; `fact_predicate.cpp` handlers tolerate them.
+- Z parity scenarios (added later, optional) must be `CompareMode::Invariant` +
+  `is_branch_internal=true` (no master companion can model Z); each needs a real
+  discriminating mutation + teethed FactPredicate.
+
+## Concept Playground campaign (lands last)
+
+- `builtin/org.openglad.concept.glad`, campaign id `org.openglad.concept`, level
+  ids **600–604** (the 600 range is free).
+- New tool `tools/concept_mapgen/{main.cpp,grid_painters.cpp}` mirroring
+  `tools/ctf_mapgen` (SDL-free, EXCLUDE_FROM_ALL; links og_core/og_gameplay/
+  og_resources). Writes the campaign yaml + icon + per-level v10 .fss + per-floor
+  PNGs, zips to `campaigns/`, mounts, **self-checks** each level (reload; assert
+  floor_count; assert an air tile is impassable to a ground probe's *path* but a
+  flyer can fly over; assert a stair link round-trips), copies to `builtin/`.
+- `scripts/generate_concept_campaign.sh` (copy of the CTF one).
+- Five levels, one concept each: **600 Stairs** (two floors joined by a Z-stair),
+  **601 Mind the Gap** (air-hole grid: non-flyer paths around, flyer flies over),
+  **602 Glasshouse** (glass floor, see + fight a floor below), **603 Drop Zone**
+  (directional drop-block edges + an air pit you fall through), **604 Arc Range**
+  (open arena showing knife/fireball drift + elf-rock arc over a pit).
+- Linked with `FAMILY_EXIT` treasures so `picker_accessible_levels` unlocks them in
+  order. Campaign picker needs no change (metadata-driven discovery, as CTF=500
+  proves). **Not** added to `tests/parity/scenario_table.h`.
+- DONE since: six epic multifloor war stories were authored here as levels
+  605-610, then MOVED to the "War of the Westlands" story campaign
+  (`builtin/org.openglad.westlands.glad`, generated by the multi-file
+  `tools/westlands_mapgen` + `scripts/generate_westlands_campaign.sh`),
+  renumbered into its level graph: 605 The Deeping Wall → 15, 606 The Wizard's
+  Vale → 14, 607 The Bridge of Shadow → 8, 608 Under the Mountain → 6, 609 The
+  Black Gate → 17, 610 The Frozen Wall → 7 (exits repointed, story briefings
+  and cast per the campaign design). The concept package keeps the five demos,
+  with 604's exit looping home to 600. Both tools' self-checks audit per-team
+  army counts, aligned stair pairs on every floor boundary, and entity footing;
+  westlands_mapgen additionally validates every exit destination against the
+  registered id set (warn-only for planned-but-unbuilt levels until the
+  campaign is complete). `tests/unit/test_concept_levels.cpp` (og_unit_data)
+  pins the demo package; a westlands test file follows with the full campaign.
+
+## Phase checklist
+
+- [x] **P0** Baseline: clean tree is fully GREEN via ctest (the "2 scen99 parity
+  failures" were a cwd artifact of running the binary from repo root; cfg-clobber
+  under parallel load is the other gotcha — always run via ctest + `git checkout
+  cfg/`). NOTE: editing a public header requires `cmake --preset ci-test`
+  (reconfigure) to refresh the `build/ci-test/component_includes/` copy, else
+  builds compile against a STALE header and falsely succeed.
+- [x] **P1** Entity Z data model + dirty bits + snapshot/replay/wire bump (+re-pin).
+  worldz/floor/sizez on SimEntity, vz on walker; BIT_* 86-89; EntitySnapshot +4
+  fields/table rows; kSnapshotFormatVersion 6, kNetworkProtocolVersion 4,
+  kReplayFormatVersion 7; wire-byte tests re-pinned. Verified green.
+- [x] **P2** Per-floor `GameWorld` containers (default 1, no new tiles). ExtraFloor
+  vector + floor_count()/grid_for_floor()/smoother_for_floor()/obmap_for_floor()
+  (out-of-range → floor 0, doubles as clamp) + set_floor_count(); query_* split
+  into 4-arg(floor)+3-arg forwarders. Floor 0 == legacy members (byte-identical).
+- [x] **P3** Level format v10 (gated; v2–9 untouched). kScenarioVersion 10; per-object
+  floor/z packed into reserved/filler bytes; trailing floor_count byte; extra floor
+  grids by derived name "{grid}_f{N}.png". save writes v9 when single-floor
+  (byte-identical). **No stair-link table** — Z-stairs are positional (vertically
+  aligned cells, UP→+1/DOWN→-1). Verified green.
+- [x] **P4** New tiles/genres/passability. PIX_AIR..PIX_ZSTAIR_DOWN (134-141, PIX_MAX
+  142, both core+legacy pixdefs); TYPE_AIR..TYPE_ZSTAIRS (inert in autotiler);
+  all new tiles `break` (walkable) in query_grid_passable. Verified green.
+- [x] **P5** Cylinder collision + falls + Z-stairs. SINGLE floor-keyed obmap (bucket
+  numx += floor*256, floor 0 identical; all ~15 myobmap sites unchanged); cylinder
+  z-overlap in ob_pass_check (sizez==0 = full-height sentinel); walker::change_floor
+  + apply_z_motion (fall-through-air → floor below / pit death; Z-stairs up/down;
+  flyers never z-move; z_cooldown_ server-only transient) wired into living::act,
+  gated floor_count>1.
+- [x] **P6** Pathfinding floor encoding + cross-floor stair edges. FLOOR_STRIDE in
+  pathfinding_grid.h (floor 0 numerically identical → A* byte-identical); MAKE_STATE
+  gains floor (both copies: walker_pathing.cpp + gameplay_context.cpp); adjacent_cost
+  decodes floor, avoids air for non-flyers, appends positional Z-stair edge (UP/DOWN);
+  least_cost_estimate floor term; follow_path_to_foe waits on the stair cell for
+  apply_z_motion. All gated floor_count>1.
+
+> **Verification protocol note:** `NetTransportWebSocketServer...at_12hz` (in og_unit_sim)
+> is a documented wall-clock flake under machine contention (90s budget; passes in
+> ~120ms isolated). When the full `-j` suite reports ONLY og_unit_sim failing, re-run
+> that websocket test isolated; 3/3 isolated passes == environmental flake, not a regression.
+- [x] **P7** Projectile vz/gravity + specials. WeaponFamilyDescriptor +
+  init_vz/gravity/init_sizez/can_drop_floors (defaults 0/false); gloader applies them;
+  act_fire integrates worldz/vz/gravity + drops through air (gated vz!=0||worldz!=0||
+  multifloor); knife (0.35/0.05) + rock (0.7/0.09) arc + can_drop_floors. create_weapon:
+  projectiles/summons inherit the shooter's floor. **worldz is invisible to the parity
+  dump** (confirmed: knife/rock arcs keep parity green).
+- [x] **P8** AI floor-aware fire — achieved with NO extra code: foe acquisition stays
+  floor-agnostic (decision 4); fire_check raymarches the floor-inheriting weapon through
+  the floor-keyed obmap → naturally can't hit cross-floor foes → AI paths via stairs (P6)
+  then engages on arrival. distance_to_ob stays pure-2D (parity).
+- [x] **P9** Rendering. viewscreen::current_floor_ from the control walker; both
+  redraw bodies draw floors 0..current_floor bottom-up (upper-floor air = empty
+  graphics → reveals the floor below, no alpha needed); upper floors skip the
+  out-of-bounds wall border; draw_obs layers entities the same way (filtered by
+  floor); walker_draw subtracts worldz from yscreen (projectile arcs visible).
+  Single-floor (current_floor 0) renders byte-identical (og_test_view green).
+  Curses/radar floor-awareness deferred (SDL view is the showcase).
+- [x] **P9 (alpha)** Upper-floor ghosting + lower-floor fade. New `walkputbuffer_alpha`
+  primitive (video/screen/sdl_video) + alpha-capable `draw_tile`/`pixie::draw`; both
+  redraw bodies draw floors 0..N-1 with per-floor opacity (camera opaque, below faded,
+  above ghost ~48α) and interleaved entities; `draw_walker` alpha path. Gated
+  floor_count>1 (single-floor byte-identical). Default-on; cfg toggle is a follow-up.
+- [x] **P9 (curses/radar)** Curses renders the followed walker's floor (terrain +
+  filtered entities) with air/glass/stair glyphs; radar blips filtered to the control
+  floor. Single-floor unchanged.
+- [x] **P10** Level editor multi-floor authoring. `current_floor` in LevelEditorState;
+  terrain paint/get/clear/smooth routed through `grid_for_floor(current_floor)`;
+  PageUp/PageDown switch floors, Ctrl+PageUp adds one (`add_floor`); new Z tiles in the
+  brush palette; objects placed/selected on the current floor (`some_hit` floor filter);
+  floor indicator in the panel; viewscreen `editor_floor_override_` so the editor (no
+  control walker) renders the edited floor. Keyboard-only (no new buttons → editor
+  interaction hit-regions unchanged). Coverage exercised via the in-source TESTING helper.
+  Z-stairs need no link UI (positional). 
+- [x] **P11** Concept Playground campaign — tools/concept_mapgen +
+  scripts/generate_concept_campaign.sh build builtin/org.openglad.concept.glad
+  (levels 600-604: Stairs, Mind the Gap, Glasshouse, Drop Zone, Arc Range), each
+  multi-floor; metadata-driven discovery needs no picker change. **Self-check
+  passes**: every level reloads with floor_count 2 and all floor grids valid.
+  Surfaced + fixed a core load bug: `replace_loaded_world_state` (the
+  load-into-temp-then-move path) now carries `extra_floors_` across and re-targets
+  per-floor smoothers, so multi-floor levels load correctly in the real game too.
+
+## Deferred / follow-up
+All originally-deferred caveats are now implemented (see the checklist above):
+multi-floor editor authoring (P10), upper-floor alpha ghosting + lower-floor
+fade, curses/radar floor-awareness, and Invariant Z parity scenarios.
+
+DONE since: per-object explicit Z within a floor. The v10 level format already
+round-trips each object's `worldz` (sub-floor z, save/load in `level_file_io`);
+`apply_z_motion` never resets it, so an authored height persists. The editor adds
+a brush Z height (keys **.** raise / **,** lower, shown in the panel) applied on
+placement, so objects can be elevated on a floor (renders higher; the cylinder
+lets low shots pass under).
+
+DONE since (and since superseded): floor ghosting stopped being a persistent
+option. It started as a per-player prefs toggle (`PREF_FLOOR_GHOST`), became
+the `graphics/floor_ghost` cfg toggle, and both are gone: the ghosts-ABOVE
+view now exists only while the look-up key is held (see "Floor presentation
+v2" below). The below-floor depth fade is NOT part of that hold — it renders
+unconditionally (`viewscreen::floor_render_alpha` no longer reads the hold at
+all; the hold only extends the floor loop's `floor_top` past the camera).
+Briefly the fade WAS latched behind the hold too, which rendered lower floors
+opaque/full-brightness through air holes in normal play — fixed, pinned by
+`RenderEffects.lower_floor_fades_and_tints_without_look_up`.
+
+DONE since: glass now reads as glass, not air — `graphlib.cpp::load_map_data`
+loads a floor graphic for `PIX_GLASS` and the floor draw loop renders it at a
+faint `kGlassAlpha` (capped at the floor's own alpha) so the floor below still
+shows through (`view.cpp`). A bespoke glass texture (glints/edges) instead of the
+reused floor tile would be a nicer future asset, but the cue exists.
+
+### Vertical parallax (fake-3D floor depth)
+
+Render the stacked floors with a sense of camera height, so the 2D game reads a
+bit more 3D. Visual-only (gated `floor_count()>1`; single-floor byte-identical;
+**no sim/parity impact** — parity is render-blind).
+
+- **DONE — parallax shift.** Each non-camera floor scrolls at
+  `(1 + (f-current_floor_)*kParallaxScroll)` of the camera floor's rate (the
+  per-floor `topx/topy` is scaled in the bottom-up floor loop in
+  `viewscreen::redraw` and restored after that floor's tiles + entities draw).
+  Floors below lag, floors above lead, so they slide relative to the camera floor
+  as the player moves (e.g. around a pit) — the depth/angle cue the player sees.
+  `kParallaxScroll = 0.05` (subtle); camera floor stays 1:1. Combines with the
+  existing alpha ghosting (`floor_render_alpha`) — shift + fade convey depth.
+  Seam-free because the whole floor shifts uniformly.
+- **DONE — per-floor scale by Z distance (smooth, off-screen layer).** Each
+  non-camera floor renders at `(1 + (f-current_floor_)*kParallaxScale)`
+  (=0.10/floor) about the viewport centre — floors below shrink, floors above
+  enlarge, as if seen from a high camera. Implemented as off-screen-layer
+  compositing (NOT a per-tile position scale, which left sub-pixel "weird lines
+  on grass" seams): when `floor_count>1 && falpha<255`, `video::floor_layer_begin`
+  lazily allocates an alpha-capable ARGB layer, clears the viewport region to
+  transparent, and redirects the tile/sprite blits to it (they draw OPAQUE, so
+  un-drawn cells stay transparent and air holes still reveal floors below);
+  `floor_layer_end` bilinear-stretches the layer about the centre with
+  `SDL_SoftStretchLinear` (seam-free smooth scaling) and alpha-blends it over the
+  real surface at the floor's depth alpha. Layer surfaces are cached members
+  (freed in `~sdl_video`). The camera floor and ghosting-off floors draw straight
+  to the screen (no layer), so single-floor is byte-identical (og_test_parity).
+  kParallaxScale=0.10, kParallaxScroll=0.05.
+  Combined with the shift + alpha ghosting, the stack now reads clearly 2.5D.
+
+### Floor presentation v2: overhang shadows + look-up hold (DONE)
+
+The always-on translucent upper floors read poorly in play, so the default
+presentation no longer draws floors above the camera at all. Their presence is
+diegetic instead (all render-only, `floor_count()>1`-gated, editor excluded):
+
+- **Overhang shadows** (`draw_upper_floor_shadows`, effects.cpp): every solid
+  (non-`PIX_AIR`) tile of each floor above the camera darkens its footprint on
+  the camera floor, displaced SE `+2px` per story (the NW sun shared with the
+  cloud/unit shadows), as ONE flat `pointb(PURE_BLACK, 70)` coverage pass per
+  upper floor (adjacent tiles merge; no double-darkening within a floor) with a
+  1px checkerboard-dithered rim for a soft edge.
+- **Blob shadows** (`draw_walker_blob_shadow`, walker_draw.cpp): alive
+  Living/Weapon entities up there (same eligibility as the unit ground shadows:
+  not dormant/phantom/invisible) cast a squashed-silhouette blob via the
+  parameterized `walkputbuffer_shadow` (height divisor 3-4, 2-4px side inset,
+  alpha 60/44) at their ground anchor + the same SE offset; shrink/fade caps at
+  2 stories, the offset does not.
+- **Look-up hold**: the per-player `KEY_LOOKUP` (client-side keymap slot 16 —
+  NOT an `InputAction`; the wire stays at 16) ADDS the floors above the
+  camera to that viewport's frame as faint ghosts while held
+  (`viewscreen::ghost_hold_override_`, read only by the floor loop's
+  `floor_top` gate). The held frame is the pre-v2 always-ghost stack byte for
+  byte (the below-floor fade is in every frame; the hold contributes exactly
+  the ghosts above), and the ONLY way to see floors above. The
+  `graphics/floor_ghost` cfg toggle and its GRAPHICS FX button were removed
+  (stale cfg keys are ignored). Default bindings: P1 `v` (both modes),
+  P2 Right Ctrl (both modes), P3 `p` (both modes), P4 `b` in 4-direction
+  mode only (its 8-direction cluster consumes every key around T/F/G/H, so
+  8-dir starts unbound); all remappable on CONTROLS.

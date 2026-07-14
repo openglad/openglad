@@ -63,6 +63,7 @@ int run_text_picker_protocol_session(const TextPickerConfig& config)
     protocol_args.level = config.level;
     protocol_args.team_families = config.team_families;
     protocol_args.seed = config.seed;
+    protocol_args.team_level = config.team_level;
     return run_text_protocol_session(protocol_args);
 }
 
@@ -112,6 +113,10 @@ public:
             handle_main_menu_item(item);
             return;
         }
+        if (menu_id == PickerMenuId::Difficulty) {
+            handle_difficulty_menu_item(item);
+            return;
+        }
         handle_team_build_item(item);
     }
 
@@ -141,6 +146,12 @@ public:
     {
         std::list<std::string> campaigns = list_campaigns();
         order_campaigns_for_select(campaigns);
+        // Kept in lockstep with the SDL/curses shelves: networked lobbies
+        // must not offer the (local-only) tower. The text client cannot
+        // currently enter a networked session — configure_networking is a
+        // stub — so the flag is always false here today.
+        filter_campaigns_for_networked_lobby(campaigns,
+                                             /*networked_session=*/false);
         std::vector<std::string> entries(campaigns.begin(), campaigns.end());
 
         if (entries.empty()) {
@@ -338,20 +349,22 @@ private:
             return format_ctf_caps_label(save_data_);
         if (item.command == PickerMenuCommand::ToggleCtfScenarioTroops)
             return format_ctf_troops_label(save_data_);
+        if (item.command == PickerMenuCommand::CycleRespawnMode)
+            return format_respawn_mode_label(save_data_);
+        if (item.command == PickerMenuCommand::CycleRespawnDelay)
+            return format_respawn_delay_label(save_data_);
+        if (item.command == PickerMenuCommand::TogglePermadeath)
+            return format_permadeath_label(save_data_);
+        if (item.command == PickerMenuCommand::CycleGeneratorRate)
+            return format_generator_rate_label(save_data_);
         return std::string(item.label);
     }
 
     void handle_main_menu_item(const PickerMenuItem& item)
     {
         switch (item.command) {
-        case PickerMenuCommand::SetDifficulty:
-            og::runtime::current_session->current_difficulty_ = cycle_difficulty(og::runtime::current_session->current_difficulty_);
-            if (og::runtime::current_session->game_.world != nullptr) {
-                og::runtime::current_session->game_.world->difficulty =
-                    static_cast<short>(difficulty_percent(og::runtime::current_session->current_difficulty_));
-            }
-            std::printf("Difficulty set to %s.\n",
-                kDifficultyNames[og::runtime::current_session->current_difficulty_]);
+        case PickerMenuCommand::OpenDifficultyMenu:
+            show_difficulty_menu();
             break;
         case PickerMenuCommand::SetPlayerMode:
             set_player_count(save_data_, item.arg);
@@ -431,6 +444,51 @@ private:
             break;
         case PickerMenuCommand::Teams:
             teams_screen();
+            break;
+        default:
+            break;
+        }
+    }
+
+    // The DIFFICULTY submenu: a nested presentation loop until Back,
+    // mirroring the shared show_scenario_menu precedent.
+    void show_difficulty_menu()
+    {
+        for (;;) {
+            const PickerMenuItem* item = present_menu(PickerMenuId::Difficulty);
+            if (!item || item->command == PickerMenuCommand::Back)
+                return;
+            handle_difficulty_menu_item(*item);
+        }
+    }
+
+    void handle_difficulty_menu_item(const PickerMenuItem& item)
+    {
+        switch (item.command) {
+        case PickerMenuCommand::SetDifficulty:
+            og::runtime::current_session->current_difficulty_ = cycle_difficulty(og::runtime::current_session->current_difficulty_);
+            if (og::runtime::current_session->game_.world != nullptr) {
+                og::runtime::current_session->game_.world->difficulty =
+                    static_cast<short>(difficulty_percent(og::runtime::current_session->current_difficulty_));
+            }
+            std::printf("Difficulty set to %s.\n",
+                kDifficultyNames[og::runtime::current_session->current_difficulty_]);
+            break;
+        case PickerMenuCommand::CycleRespawnMode:
+            cycle_respawn_mode(save_data_);
+            std::printf("%s\n", format_respawn_mode_label(save_data_).c_str());
+            break;
+        case PickerMenuCommand::CycleRespawnDelay:
+            cycle_respawn_delay(save_data_);
+            std::printf("%s\n", format_respawn_delay_label(save_data_).c_str());
+            break;
+        case PickerMenuCommand::TogglePermadeath:
+            toggle_permadeath(save_data_);
+            std::printf("%s\n", format_permadeath_label(save_data_).c_str());
+            break;
+        case PickerMenuCommand::CycleGeneratorRate:
+            cycle_generator_rate(save_data_);
+            std::printf("%s\n", format_generator_rate_label(save_data_).c_str());
             break;
         default:
             break;
@@ -835,12 +893,49 @@ int text_picker_testing_exercise_internal_paths()
           save.team_list[0]->family == FAMILY_SOLDIER);
     check(client.screen_after_game() == PickerScreen::TeamBuild);
 
+    // The difficulty cycle lives in the DIFFICULTY submenu now.
     if (const PickerMenuItem* item =
-            find_picker_menu_item(PickerMenuId::Main, PickerMenuCommand::SetDifficulty)) {
+            find_picker_menu_item(PickerMenuId::Difficulty, PickerMenuCommand::SetDifficulty)) {
         const int previous = og::runtime::current_session->current_difficulty_;
-        client.handle_menu_item(PickerMenuId::Main, *item);
+        client.handle_menu_item(PickerMenuId::Difficulty, *item);
         check(og::runtime::current_session->current_difficulty_ ==
               cycle_difficulty(previous));
+    } else {
+        check(false);
+    }
+    // The match-rule cyclers restore their SaveData field after a full
+    // cycle (three steps, or two for the permadeath toggle).
+    const auto check_difficulty_rule = [&](PickerMenuCommand command, int period,
+                                           const auto& current) {
+        const PickerMenuItem* item =
+            find_picker_menu_item(PickerMenuId::Difficulty, command);
+        if (item == nullptr) {
+            check(false);
+            return;
+        }
+        const short previous = current();
+        client.handle_menu_item(PickerMenuId::Difficulty, *item);
+        const bool changed = current() != previous;
+        for (int step = 1; step < period; ++step)
+            client.handle_menu_item(PickerMenuId::Difficulty, *item);
+        check(changed && current() == previous);
+    };
+    check_difficulty_rule(PickerMenuCommand::CycleRespawnMode, 3,
+        [&] { return save.respawn_mode; });
+    check_difficulty_rule(PickerMenuCommand::CycleRespawnDelay, 3,
+        [&] { return save.ctf_respawn_ticks; });
+    check_difficulty_rule(PickerMenuCommand::TogglePermadeath, 2,
+        [&] { return save.keep_fallen_heroes; });
+    check_difficulty_rule(PickerMenuCommand::CycleGeneratorRate, 3,
+        [&] { return save.generator_rate; });
+    // The main-menu DIFFICULTY door runs the nested submenu loop: toggle
+    // permadeath twice, then back — a round trip that leaves save untouched.
+    if (const PickerMenuItem* door =
+            find_picker_menu_item(PickerMenuId::Main, PickerMenuCommand::OpenDifficultyMenu)) {
+        const short previous_permadeath = save.keep_fallen_heroes;
+        ScopedCinRedirect input("4\n4\n6\n");
+        client.handle_menu_item(PickerMenuId::Main, *door);
+        check(save.keep_fallen_heroes == previous_permadeath);
     } else {
         check(false);
     }

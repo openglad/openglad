@@ -16,6 +16,7 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/core/pixdefs.h>
+#include <openglad/core/test_trace.h>
 
 #include <algorithm>
 #include <format>
@@ -639,8 +640,15 @@ short GameWorld::remove_ob(walker* ob)
 
 bool GameWorld::query_grid_passable(float x, float y, walker* ob)
 {
+    return query_grid_passable(x, y, ob, ob != nullptr ? ob->floor() : 0);
+}
+
+bool GameWorld::query_grid_passable(float x, float y, walker* ob, int floor)
+{
     if (ob == nullptr)
         return false;
+
+    const PixieData& fg = grid_for_floor(floor);
 
     std::int32_t xtrax = 1;
     std::int32_t xtray = 1;
@@ -655,8 +663,16 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob)
     if (ob->stats()->query_bit_flags(BIT_ETHEREAL))
         return true;
 
-    if (!grid.valid())
+    if (!fg.valid())
         return false;
+
+    // Decor plane consult (core/decordefs.h) is gated on validity + matching
+    // dims (the loader drops mismatched planes; the dim check also makes the
+    // per-cell index provably in-bounds). No-decor levels pay one valid()
+    // check and take identical control flow — parity-byte-identical.
+    const PixieData& dec = decor_for_floor(floor);
+    const bool has_decor =
+        dec.valid() && dec.w == fg.w && dec.h == fg.h;
 
     if ((xover % GRID_SIZE) == 0)
         xtrax = 0;
@@ -670,7 +686,7 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob)
     {
         for (std::int32_t j = y_i / GRID_SIZE; j < ytarg; ++j)
         {
-            switch (static_cast<unsigned char>(grid.data[i + grid.w * j]))
+            switch (static_cast<unsigned char>(fg.data[i + fg.w * j]))
             {
                 case PIX_GRASS1:
                 case PIX_GRASS2:
@@ -843,8 +859,71 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob)
                     if (ob->stats()->query_bit_flags(BIT_FLYING) || ob->flight_left())
                         break;
                     return false;
+                case PIX_AIR:
+                case PIX_GLASS:
+                case PIX_DROPBLOCK_UP:
+                case PIX_DROPBLOCK_RIGHT:
+                case PIX_DROPBLOCK_DOWN:
+                case PIX_DROPBLOCK_LEFT:
+                case PIX_ZSTAIR_UP:
+                case PIX_ZSTAIR_DOWN:
+                    // Walkable at the grid layer. Air's fall, drop-block
+                    // direction, and stair floor-change are handled in movement
+                    // (apply_vertical); pathing avoids air for non-flyers
+                    // separately. Single-floor grids never contain these bytes,
+                    // so legacy levels take identical control flow.
+                    break;
+                case PIX_SNOW1:
+                case PIX_SNOW2:
+                case PIX_MARSH1:
+                case PIX_MARSH2:
+                case PIX_ASH1:
+                case PIX_ASH2:
+                    break; // plain walkable ground
+                case PIX_LAVA1:
+                case PIX_LAVA2:
+                    // Molten: solid to ground walkers; projectiles fly over
+                    // and flyers cross (same conditional arm as water above).
+                    if (ob->query_order() == Order::Weapon)
+                        break;
+                    if (ob->stats()->query_bit_flags(BIT_FLYING) || ob->flight_left())
+                        break;
+                    return false;
                 default:
                     return false;
+            }
+
+            // Decor consultation, immediately AFTER the base switch so it
+            // only runs for cells whose base tile did not already return
+            // false. Decor only RESTRICTS (never grants passage) and consumes
+            // no RNG; the arrow-wall gamble above is unreachable for decor
+            // cells (the mapping never touches arrow walls). The id is
+            // bounds-gated before subscripting the registry (plane bytes are
+            // file data; the loader clamps, this guards hostile planes).
+            if (has_decor)
+            {
+                const unsigned char d =
+                    dec.data[static_cast<std::size_t>(i + dec.w * j)];
+                if (d != DECOR_NONE && d < DECOR_MAX)
+                {
+                    switch (kDecorRegistry[d].pass)
+                    {
+                        case DecorPassability::None:
+                            break;
+                        case DecorPassability::BlocksAll:
+                            return false;
+                        case DecorPassability::BlocksGround:
+                            // Exactly the legacy water/torch arm: weapons
+                            // pass, flyers (permanent or temporary) pass,
+                            // ground walkers are blocked.
+                            if (ob->query_order() == Order::Weapon)
+                                break;
+                            if (ob->stats()->query_bit_flags(BIT_FLYING) ||
+                                ob->flight_left())
+                                break;
+                            return false;
+                    }
+                }
             }
         }
     }
@@ -854,21 +933,149 @@ bool GameWorld::query_grid_passable(float x, float y, walker* ob)
 
 bool GameWorld::query_object_passable(float x, float y, walker* ob)
 {
+    return query_object_passable(x, y, ob, ob != nullptr ? ob->floor() : 0);
+}
+
+bool GameWorld::query_object_passable(float x, float y, walker* ob, int floor)
+{
     if (ob == nullptr)
         return false;
 
     if (ob->dead())
         return true;
 
-    if (!myobmap)
+    obmap* om = obmap_for_floor(floor);
+    if (!om)
         return false;
 
-    return myobmap->query_list(ob, static_cast<short>(x), static_cast<short>(y));
+    // NOTE: obmap::query_list keys its floor band off ob->floor(), NOT the
+    // `floor` argument, so this overload only correctly probes ob->floor()'s
+    // occupancy. Every current caller passes floor == ob->floor() (the 3-arg
+    // delegate above and query_passable), so the two agree. A genuine
+    // cross-floor probe must NOT use this path — the cross-floor helpers
+    // (floor_landing_clear / teleport_landing_clear / classic_spot_clear) do
+    // their own manual obmap sweep at an explicit floor instead.
+    return om->query_list(ob, static_cast<short>(x), static_cast<short>(y));
 }
 
 bool GameWorld::query_passable(float x, float y, walker* ob)
 {
-    return query_grid_passable(x, y, ob) && query_object_passable(x, y, ob);
+    return query_passable(x, y, ob, ob != nullptr ? ob->floor() : 0);
+}
+
+bool GameWorld::query_passable(float x, float y, walker* ob, int floor)
+{
+    return query_grid_passable(x, y, ob, floor) &&
+           query_object_passable(x, y, ob, floor);
+}
+
+namespace {
+
+// 2026-07-10 guard facing gate (docs/GAMEPLAY_FIXES_FROM_CLASSIC.md).
+// Sight-opaque grid bytes: exactly the tiles an UNOWNED Order::Weapon probe
+// can never pass in query_grid_passable — tree crowns/trunks (the base
+// PIX_TREE_B1 lets weapons through) and the wall faces (the unconditional
+// walls plus the arrow-wall family, which is solid for owner-less probes;
+// classifying it opaque here avoids the shooter-distance RNG gamble
+// entirely). Everything weapons fly over — water, lava, boulders, columns,
+// torches, wallside cells — is sight-transparent. Unknown bytes default to
+// TRANSPARENT: the gate is facing-only, so an exotic tile keeps the classic
+// always-face behavior instead of freezing a guard.
+bool sight_opaque_tile(unsigned char tile)
+{
+    switch (tile)
+    {
+        case PIX_TREE_M1:
+        case PIX_TREE_ML:
+        case PIX_TREE_MR:
+        case PIX_TREE_MT:
+        case PIX_TREE_T1:
+        case PIX_H_WALL1:
+        case PIX_WALL2:
+        case PIX_WALL3:
+        case PIX_WALL_LL:
+        case PIX_WALLTOP_H:
+        case PIX_WALL4:
+        case PIX_WALL5:
+        case PIX_WALL_ARROW_GRASS:
+        case PIX_WALL_ARROW_FLOOR:
+        case PIX_WALL_ARROW_GRASS_DARK:
+            return true;
+        default:
+            return false;
+    }
+}
+
+} // namespace
+
+bool GameWorld::clear_sight_line(const walker* from, const walker* to)
+{
+    if (from == nullptr || to == nullptr)
+        return false;
+    if (from->floor() != to->floor())
+        return false;
+
+    const PixieData& fg = grid_for_floor(from->floor());
+    if (!fg.valid())
+        return true; // no grid to occlude (synthetic test worlds)
+
+    const int w = fg.w;
+    const int h = fg.h;
+    int x0 = (static_cast<int>(from->xpos()) + from->sizex() / 2) / GRID_SIZE;
+    int y0 = (static_cast<int>(from->ypos()) + from->sizey() / 2) / GRID_SIZE;
+    const int x1 = (static_cast<int>(to->xpos()) + to->sizex() / 2) / GRID_SIZE;
+    const int y1 = (static_cast<int>(to->ypos()) + to->sizey() / 2) / GRID_SIZE;
+
+    // Bresenham over cells, testing the intermediate cells only (both
+    // endpoints are the walkers' own — necessarily walkable — cells).
+    const int adx = x1 > x0 ? x1 - x0 : x0 - x1;
+    const int ady = y1 > y0 ? y0 - y1 : y1 - y0; // -abs(dy)
+    const int sx = x0 < x1 ? 1 : -1;
+    const int sy = y0 < y1 ? 1 : -1;
+    int err = adx + ady;
+
+    while (x0 != x1 || y0 != y1)
+    {
+        const int e2 = 2 * err;
+        if (e2 >= ady)
+        {
+            err += ady;
+            x0 += sx;
+        }
+        if (e2 <= adx)
+        {
+            err += adx;
+            y0 += sy;
+        }
+        if (x0 == x1 && y0 == y1)
+            break;
+        if (x0 < 0 || y0 < 0 || x0 >= w || y0 >= h)
+            return false;
+        if (sight_opaque_tile(static_cast<unsigned char>(
+                fg.data[static_cast<std::size_t>(x0) +
+                        static_cast<std::size_t>(w) *
+                            static_cast<std::size_t>(y0)])))
+            return false;
+    }
+    return true;
+}
+
+void GameWorld::set_floor_count(int count)
+{
+    if (count < 1)
+        count = 1;
+    const std::size_t extra = static_cast<std::size_t>(count - 1);
+    if (extra < extra_floors_.size())
+    {
+        extra_floors_.resize(extra);
+        return;
+    }
+    while (extra_floors_.size() < extra)
+    {
+        ExtraFloor new_floor;
+        new_floor.floor_smoother.set_rng(&rng_);
+        extra_floors_.push_back(std::move(new_floor));
+    }
 }
 
 walker* GameWorld::find_near_foe(walker* ob)
@@ -905,7 +1112,16 @@ walker* GameWorld::find_near_foe(walker* ob)
                     return find_far_foe(ob);
             }
 
-            std::list<walker*>& ls = myobmap->obmap_get_list(targx, targy);
+            // Probe the SEARCHER's floor. obmap_get_list's floor parameter
+            // defaults to 0, so this spiral used to scan the ground floor's
+            // piles no matter where `ob` stood: upper-floor walkers were
+            // blind to foes standing beside them and latched whatever was on
+            // the ground floor beneath their 2D position instead. Cross-floor
+            // acquisition stays available via find_far_foe (the floor-blind
+            // full-list scan). ob->floor()==0 on single-floor levels, so
+            // legacy behavior is byte-identical.
+            std::list<walker*>& ls =
+                myobmap->obmap_get_list(targx, targy, ob->floor());
 	            for (auto it = ls.begin(); it != ls.end(); )
             {
                 walker* w = *it;
@@ -956,7 +1172,7 @@ walker* GameWorld::find_far_foe(walker* ob)
     for (auto& uptr : oblist)
     {
         walker* foe = uptr.get();
-        if (foe == nullptr || foe->dead())
+        if (foe == nullptr || foe->dead() || foe->dormant())
             continue;
 
         sanitize_owner_chain_link(*this, foe);
@@ -1016,7 +1232,7 @@ walker* GameWorld::find_nearest_player(walker* ob)
     for (auto& uptr : oblist)
     {
         walker* w = uptr.get();
-        if (w && w->user() != -1)
+        if (w && !w->dormant() && w->user() != -1)
         {
             const std::uint32_t tempdistance = ob->distance_to_ob(w);
             if (tempdistance < distance)
@@ -1044,7 +1260,7 @@ std::list<walker*> GameWorld::find_in_range(const std::list<std::unique_ptr<walk
     for (auto& uptr : somelist)
     {
         walker* w = uptr.get();
-        if (w && !w->dead() && ob->distance_to_ob(w) <= range)
+        if (w && !w->dead() && !w->dormant() && ob->distance_to_ob(w) <= range)
         {
             result.push_back(w);
             (*howmany)++;
@@ -1068,7 +1284,7 @@ std::list<walker*> GameWorld::find_foes_in_range(const std::list<std::unique_ptr
     for (auto& uptr : somelist)
     {
         walker* w = uptr.get();
-        if (w && !w->dead() &&
+        if (w && !w->dead() && !w->dormant() &&
             (w->query_order() == Order::Living ||
              w->query_order() == Order::Generator) &&
             (ob->is_friendly(w) == 0) &&
@@ -1096,7 +1312,7 @@ std::list<walker*> GameWorld::find_foe_weapons_in_range(const std::list<std::uni
     for (auto& uptr : somelist)
     {
         walker* w = uptr.get();
-        if (w && !w->dead() &&
+        if (w && !w->dead() && !w->dormant() &&
             w->query_order() == Order::Weapon &&
             ob->is_friendly(w) &&
             ob->distance_to_ob(w) <= range)
@@ -1123,7 +1339,7 @@ std::list<walker*> GameWorld::find_friends_in_range(const std::list<std::unique_
     for (auto& uptr : somelist)
     {
         walker* w = uptr.get();
-        if (w && !w->dead() &&
+        if (w && !w->dead() && !w->dormant() &&
             w->query_order() == Order::Living &&
             ob->is_friendly(w) &&
             ob->distance_to_ob(w) <= range)
@@ -1140,6 +1356,7 @@ void GameWorld::delete_grid()
 {
     clear_grid_dirty_tiles();
     grid.free();
+    decor.free();
     pixmaxx = 0;
     pixmaxy = 0;
     mysmoother.reset();
@@ -1149,6 +1366,7 @@ void GameWorld::create_new_grid()
 {
     clear_grid_dirty_tiles();
     grid.free();
+    decor.free();
 
     grid.frames = 1;
     grid.w = 40;
@@ -1325,6 +1543,17 @@ char GameWorld::damage_tile(short xloc, short yloc)
         return 0;
 
     const int gridloc = yover * grid.w + xover;
+
+    // Decor shields the ground: a decorated cell is exempt from the
+    // grass->charred transform. Legacy combined tiles (PIX_BOULDER_* etc.)
+    // never transformed under bombs; after base+decor migration their base
+    // byte is grass and WOULD — this gated skip restores exact legacy
+    // behavior and defines the semantic for new levels. Returning 0 also
+    // skips the caller's no-op dirty-tile fold (game_server truthiness gate).
+    if (decor.valid() && decor.w == grid.w && decor.h == grid.h &&
+        decor.data[static_cast<std::size_t>(gridloc)] != DECOR_NONE)
+        return 0;
+
     unsigned char next_value = grid.data[gridloc];
     switch (static_cast<unsigned char>(grid.data[gridloc]))
     {
@@ -1409,6 +1638,10 @@ void GameWorld::tick()
         ending = 1;
         next_level = -1;
         events.push_notification("Mission timed out. Retreating.", 40);
+        // A loss persists nothing, but flush pending classic respawns anyway
+        // so the results screen shows revived heroes instead of mid-respawn
+        // corpses. No-op (and RNG-free) when respawn_mode == 0.
+        og::sim::classic_respawn_flush_pending(*this);
         return;
     }
 
@@ -1420,6 +1653,24 @@ void GameWorld::tick()
         events.push(og::sim::EventKind::SetPalette, 0, 0);
     }
 
+    // Wake a delayed-spawn walker: re-enter the obmap the way a spawned unit
+    // does, then emit the teleporter-pad flash flourish at its spot. Only ever
+    // reached when spawn_delay > 0 (non-default), so parity is untouched.
+    auto wake_delayed_spawn = [this](walker* ob) {
+        ob->set_dormant(false);
+        walker* flash = add_ob(Order::FX, FAMILY_FLASH);
+        if (flash != nullptr)
+        {
+            flash->set_ani_type(ANI_EXPAND_8);
+            flash->set_floor(ob->floor());  // flash on the waker's floor (A8)
+            flash->center_on(ob);
+        }
+        TRACE("game", "delayed spawn: family=%d team=%d delay=%u tick=%u",
+              static_cast<int>(ob->family()), static_cast<int>(ob->team_num()),
+              static_cast<unsigned>(ob->spawn_delay()),
+              static_cast<unsigned>(level_tick_count_));
+    };
+
     // --- Entity act phase ---
     bool printed_time = false;
     for (auto& uptr : oblist)
@@ -1428,6 +1679,23 @@ void GameWorld::tick()
             break;
 
         walker* ob = uptr.get();
+
+        // Delayed spawns: dormant walkers do not act (and are absent from the
+        // obmap, draw, and snapshots), but their team still counts as alive so
+        // a defenders-arrive-later scenario doesn't end before they appear.
+        if (ob != nullptr && !ob->dead() && ob->dormant())
+        {
+            if (level_tick_count_ > ob->spawn_delay())
+                wake_delayed_spawn(ob);
+            if (ob->dormant())
+            {
+                if (!ob->is_friendly_to_team(static_cast<unsigned char>(my_team)) &&
+                    ob->query_order() == Order::Living)
+                    level_done = 0;
+                continue;
+            }
+        }
+
         if (!enemy_freeze) // normal functionality
         {
             if (ob && !ob->dead())
@@ -1523,12 +1791,34 @@ void GameWorld::tick()
         if (game_ended)
             return;
     }
-    else if (level_done == 2)
+    else
     {
-        game_ended = true;
-        ending = 0;
-        next_level = static_cast<short>(id + 1);
-        return;
+        // A foe merely awaiting a classic respawn (queued, or a corpse the
+        // death scan below will queue) still counts as alive: "endless
+        // battle" (respawn_mode 2) cannot be won by killing every live foe
+        // inside one respawn window. Always false when the engine is off.
+        if (level_done == 2 &&
+            !og::sim::classic_respawn_pending_hostile_foe(*this))
+        {
+            game_ended = true;
+            ending = 0;
+            next_level = static_cast<short>(id + 1);
+        }
+        // A session-layer end (world.end) latches game_ended below; fold it
+        // in here so the classic end-of-level revive-all covers end-driven
+        // completions too (observable state is unchanged: the fold only
+        // reorders the same latch+return ahead of a no-op hook by default).
+        if (end)
+            game_ended = true;
+        // Classic respawn engine: AFTER the completion decision (its
+        // end-of-level revive-all must observe game_ended this same tick,
+        // before the session layer stops ticking and persists the roster)
+        // and BEFORE the dead sweep (the death scan needs this tick's
+        // corpses). No-op when respawn_mode == 0, so the default path stays
+        // byte-identical.
+        og::sim::classic_respawn_run_tick(*this);
+        if (game_ended)
+            return;
     }
 
     if (end)
@@ -1601,4 +1891,120 @@ void GameWorld::tick()
         remove_from_id_index(ob);
         return true;
     });
+}
+
+// --- Floor-transition landing probe (Z-axis / multi-floor) ------------------
+//
+// Side-effect-free "can ob stand at (x, y) on target_floor?" used by
+// walker::apply_z_motion before every change_floor (and available to any
+// other cross-floor arrival). Mirrors the CTF spawn probe (ctf.cpp
+// spawn_spot_clear / classic_spot_clear): query_passable would route through
+// ob_pass_check, which EATS treasures on overlap and fires collide() side
+// effects — a probe must never do either. Grid probe plus a manual
+// blocking-entity sweep over the TARGET floor's obmap buckets instead.
+// Only ever called on multi-floor code paths, so single-floor levels stay
+// byte-identical.
+
+namespace
+{
+
+[[nodiscard]] bool landing_blocked_by(const walker* other, const walker* ob,
+                                      std::int32_t x, std::int32_t y)
+{
+    if (other == nullptr || other == ob || other->dead())
+        return false;
+    const Order order = other->query_order();
+    const bool blocking =
+        order == Order::Living || order == Order::Generator ||
+        (order == Order::Weapon &&
+         (other->family() == FAMILY_DOOR || other->family() == FAMILY_TREE ||
+          other->family() == FAMILY_BOULDER));
+    if (!blocking)
+        return false;
+    return x + ob->sizex() > other->xpos() &&
+           x < other->xpos() + other->sizex() &&
+           y + ob->sizey() > other->ypos() &&
+           y < other->ypos() + other->sizey();
+}
+
+} // namespace
+
+bool GameWorld::floor_landing_clear(walker* ob, float x, float y,
+                                    int target_floor)
+{
+    if (ob == nullptr)
+        return false;
+    if (!query_grid_passable(x, y, ob, target_floor))
+        return false;
+    if (myobmap == nullptr)
+        return true;
+
+    const std::int32_t xi = static_cast<std::int32_t>(x);
+    const std::int32_t yi = static_cast<std::int32_t>(y);
+    // Walkers register in every 32px obmap bucket their bbox spans; scan all
+    // buckets the landing bbox touches on the target floor (a boolean check
+    // needs no dedup). Dormant walkers are out of the obmap by design and
+    // correctly never block a landing.
+    constexpr std::int32_t kBucket = 32;
+    for (std::int32_t bx = xi; bx < xi + ob->sizex() + kBucket; bx += kBucket)
+    {
+        for (std::int32_t by = yi; by < yi + ob->sizey() + kBucket;
+             by += kBucket)
+        {
+            const std::list<walker*>& pile = myobmap->obmap_get_list(
+                static_cast<short>(bx), static_cast<short>(by), target_floor);
+            for (const walker* other : pile)
+            {
+                if (landing_blocked_by(other, ob, xi, yi))
+                    return false;
+            }
+        }
+    }
+    return true;
+}
+
+// SCEN_TYPE_SAVE_ALL scoping probe (see game_world.h). Only ever consulted
+// when a Living dies on a SAVE_ALL level, so the linear scan is cheap; the
+// flag is only ever set by the level loader (npc_flags bit 2), never at
+// runtime, so summons/generator output can never widen the watched set.
+bool GameWorld::has_save_all_protected() const
+{
+    for (const auto& uptr : oblist)
+    {
+        if (uptr != nullptr && uptr->save_all_protected())
+            return true;
+    }
+    for (const auto& uptr : dead_list)
+    {
+        if (uptr != nullptr && uptr->save_all_protected())
+            return true;
+    }
+    return false;
+}
+
+// Floor-awareness HUD label (contract in game_world.h). D5: game modes
+// re-label by branching HERE and only here — both inputs (world.type,
+// world.id) are GameWorld-visible, so no campaign lookup is ever needed.
+// Formats: "" (single-floor non-tower, and the Gate); "FLR: f/n" (normal
+// multifloor, 1-indexed); "FLR: N" (tower single-story floor N); "F N: f/n"
+// as "F{N}: {f}/{n}" (tower multi-story). Appended at EOF: the parity canary
+// pins in this file (1620/1622/1710) sit far above and must never shift.
+std::string floor_hud_label(const GameWorld& world, int walker_floor)
+{
+    const int floors = world.floor_count();
+    // The Gate (id == kTowerGateLevel) deliberately falls through to the
+    // non-tower branch: it is floor 0 of the climb, not a numbered floor.
+    const bool tower = (world.type & GameWorld::TYPE_TOWER) != 0
+        && world.id > og::kTowerGateLevel;
+    const int f = std::clamp(walker_floor, 0, floors - 1);
+    if (!tower)
+    {
+        if (floors <= 1)
+            return "";
+        return std::format("FLR: {}/{}", f + 1, floors);
+    }
+    if (floors <= 1)
+        return std::format("FLR: {}", world.id - og::kTowerGateLevel);
+    return std::format("F{}: {}/{}", world.id - og::kTowerGateLevel,
+                       f + 1, floors);
 }

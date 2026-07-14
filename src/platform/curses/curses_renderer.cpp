@@ -10,6 +10,9 @@
 #include <openglad/platform/curses/glyph_map.h>
 
 #include <openglad/core/constants.h>
+#include <openglad/core/decordefs.h>
+#include <openglad/core/pixdefs.h>
+#include <openglad/core/terrain_types.h>
 #include <openglad/gameplay/family_descriptor.h>
 #include <openglad/gameplay/family_registry.h>
 #include <openglad/gameplay/game_world.h>
@@ -149,6 +152,9 @@ void CursesRenderer::draw_viewport(ITerminal& term, const GameWorld& world,
         world_to_tile(world.pixmaxx / 2, world.pixmaxy / 2, center_tx, center_ty);
     }
 
+    // Multi-floor: render the followed walker's floor (terrain + entities).
+    const int cam_floor = followed ? static_cast<int>(followed->floor()) : 0;
+
     // Top-left tile of the viewport, so the camera tile lands in the middle.
     const int cam_x = center_tx - width / 2;
     const int cam_y = center_ty - height / 2;
@@ -157,18 +163,48 @@ void CursesRenderer::draw_viewport(ITerminal& term, const GameWorld& world,
     // query_genre_x_y() is total: out-of-range tiles report grass, which would
     // hide the arena edge. So when the grid size is known, tiles outside
     // [0,grid.w) x [0,grid.h) are drawn as a distinct border instead.
-    smoother& sm = const_cast<smoother&>(world.mysmoother);
-    const int grid_w = world.grid.w;
-    const int grid_h = world.grid.h;
+    smoother& sm = const_cast<GameWorld&>(world).smoother_for_floor(cam_floor);
+    const PixieData& cam_grid = world.grid_for_floor(cam_floor);
+    const int grid_w = cam_grid.w;
+    const int grid_h = cam_grid.h;
     const bool have_bounds = grid_w > 0 && grid_h > 0;
+    // Decor plane (tile layering): decor wins over the base tile when it
+    // defines a glyph. Gated on validity + matching dims, so no-decor levels
+    // render exactly as before.
+    const PixieData& cam_decor = world.decor_for_floor(cam_floor);
+    const bool have_decor = cam_decor.valid() && cam_decor.w == grid_w &&
+                            cam_decor.h == grid_h;
     for (int row = 0; row < height; ++row) {
         const int ty = cam_y + row;
         for (int col = 0; col < width; ++col) {
             const int tx = cam_x + col;
             const bool outside =
                 have_bounds && (tx < 0 || ty < 0 || tx >= grid_w || ty >= grid_h);
-            const Glyph g = outside ? border_glyph()
-                                    : tile_glyph(sm.query_genre_x_y(tx, ty));
+            Glyph g;
+            if (outside) {
+                g = border_glyph();
+            } else {
+                const int genre = sm.query_genre_x_y(tx, ty);
+                // Z-stairs: the genre is direction-less, but the raw tile id
+                // knows which way they go — show '<' (up) vs '>' (down).
+                if (genre == TYPE_ZSTAIRS && cam_grid.valid() &&
+                    tx >= 0 && ty >= 0 && tx < grid_w && ty < grid_h) {
+                    const unsigned char pix =
+                        cam_grid.data[tx + grid_w * ty];
+                    g = zstair_glyph(pix == PIX_ZSTAIR_UP);
+                } else {
+                    g = tile_glyph(genre);
+                }
+                // Decor override (in-bounds here: `outside` is false and
+                // have_decor implies have_bounds via the dims match).
+                if (have_decor) {
+                    const unsigned char d = cam_decor.data[tx + grid_w * ty];
+                    if (d != DECOR_NONE) {
+                        if (const auto dg = decor_glyph(d))
+                            g = *dg;
+                    }
+                }
+            }
             if (g.skip)
                 continue;
             term.put(top + row, left + col, g.pick(allow_unicode),
@@ -185,7 +221,10 @@ void CursesRenderer::draw_viewport(ITerminal& term, const GameWorld& world,
     const auto draw_entities = [&](const GameWorld::EntityList& list) {
         for (const auto& up : list) {
             const walker* w = up.get();
-            if (!w || w->dead())
+            // dormant(): a delayed spawn not in the world yet (mirror worlds
+            // never contain one — snapshots exclude them — but a locally
+            // rendered authoritative world must hide them too).
+            if (!w || w->dead() || w->dormant())
                 continue;
 
             const bool is_followed = (followed_id != 0 && w->entity_id() == followed_id);
@@ -193,6 +232,11 @@ void CursesRenderer::draw_viewport(ITerminal& term, const GameWorld& world,
             // Invisible dudes vanish from the map, except the player's own
             // followed avatar (you always see yourself).
             if (w->invisibility_left() > 0 && !is_followed)
+                continue;
+
+            // Multi-floor: only entities on the followed walker's floor show.
+            if (world.floor_count() > 1 && !is_followed &&
+                static_cast<int>(w->floor()) != cam_floor)
                 continue;
 
             int tx = 0;
@@ -271,6 +315,15 @@ void CursesRenderer::draw_hud(ITerminal& term, const GameWorld& world,
                          std::to_string(static_cast<int>(st->max_magicpoints()));
             }
             line1 += "  Lv " + std::to_string(static_cast<int>(st->level()));
+            // Floor field (feature B): the shared HUD label — empty on
+            // single-floor levels, "FLR: f/n" on multifloor, tower relabeling
+            // flows automatically (D5). Placed before the CTF group so an
+            // 80-column clip() eats Score/Sp first: floor is
+            // navigation-critical.
+            const std::string flr = floor_hud_label(
+                world, static_cast<int>(followed->floor()));
+            if (!flr.empty())
+                line1 += "  " + flr;
         }
         if (world.ctf.active) {
             // Per-team capture counts (replicated CtfState; the mirror world

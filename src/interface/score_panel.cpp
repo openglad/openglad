@@ -19,13 +19,18 @@
 #include <openglad/interface/session_state.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/statistics.h>
+#include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/core/constants.h>
 #include <openglad/gameplay/guy.h>
 
 #include <openglad/interface/game_context.h>
 
+#include <openglad/core/test_trace.h>
+
+#include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <format>
 #include <string>
 
@@ -44,10 +49,98 @@ bool float_eq(float a, float b);
 short remaining_foes(screen* s, walker* myguy);
 short remaining_team(screen* s, char myteam);
 
+// B5: dormant (delayed-spawn) hostiles pending for this viewer, plus the sim
+// ticks until the earliest of them wakes (wake rule in the act phase:
+// level_tick_count > spawn_delay). Snapshot mirrors keep their own level-load
+// copies of dormant walkers (reconcile never erases them), so this is
+// readable render-side in every mode. Non-static for the HUD tests.
+//
+// pending_respawn adds the classic-respawn engine's hostile queue entries
+// (difficulty respawns): a foe merely awaiting its respawn timer blocks the
+// extermination win exactly like a dormant delayed spawn does
+// (classic_respawn_pending_hostile_foe), so without it the end of the level
+// reads "FOES: 0" over an empty map that refuses to finish. Unlike dormant
+// walkers these are corpses — remaining_foes does not count them — so they
+// belong in the (+x) display and the countdown but NOT in the
+// awake = total - pending subtraction. The queue is snapshot-synced, so
+// mirrors read it the same way.
+void pending_hostile_wave_counts(const GameWorld& world, walker* viewer,
+                                 short& pending, short& pending_respawn,
+                                 std::uint32_t& next_wake_ticks)
+{
+    pending = 0;
+    pending_respawn = 0;
+    next_wake_ticks = 0;
+    if (viewer == nullptr)
+        return;
+
+    const std::uint32_t now = world.level_tick_count();
+    bool have_min = false;
+    std::uint32_t min_ticks = 0;
+    const auto fold_min = [&](std::uint32_t remaining) {
+        if (!have_min || remaining < min_ticks)
+        {
+            have_min = true;
+            min_ticks = remaining;
+        }
+    };
+    for (const auto& uptr : world.oblist)
+    {
+        walker* const w = uptr.get();
+        if (w == nullptr || w->dead() || !w->dormant() ||
+            w->query_order() != Order::Living || viewer->is_friendly(w))
+            continue;
+
+        pending = static_cast<short>(pending + 1);
+        const std::uint32_t wake_tick =
+            static_cast<std::uint32_t>(w->spawn_delay()) + 1u;
+        fold_min(wake_tick > now ? wake_tick - now : 0u);
+    }
+
+    if (og::sim::classic_respawn_active(world))
+    {
+        const unsigned char viewer_team = viewer->team_num();
+        for (const og::sim::CtfRespawnEntry& entry : world.ctf.respawn_queue)
+        {
+            // Viewer-relative mirror of the engine's classic_team_hostile
+            // rule: entry.team is the corpse's true (charm-broken) team
+            // recorded at schedule time; a hero corpse (kind 0) is
+            // additionally friendly to a team-0 viewer in allied mode.
+            if (entry.team == viewer_team)
+                continue;
+            if (entry.kind == 0 && world.allied_mode != 0 && viewer_team == 0)
+                continue;
+            pending_respawn = static_cast<short>(pending_respawn + 1);
+            fold_min(entry.ticks_left);
+        }
+    }
+    next_wake_ticks = min_ticks;
+}
+
 short score_panel(screen* s, short do_it);
 
 void draw_percentage_bar(Sint32 left, Sint32 top, unsigned char somecolor,
                          short somelength, screen* s);
+
+// Scared/fleeing countdown source: an external fright — the ghost's SCARE
+// special or a shove — force-queues a COMMAND_WALK the walker must run off
+// before the player regains control (living::act consumes queued commands
+// before the ACT_CONTROL branch). Player-controlled walkers never queue
+// their own commands, so a front walk command IS the fleeing state, and its
+// commandcount is the sim ticks left until the player is back in charge.
+// Read-only render-side probe. Non-static for the HUD tests.
+int hud_scared_flee_ticks(walker* viewer)
+{
+    if (viewer == nullptr || viewer->dead())
+        return 0;
+    statistics* const st = viewer->stats();
+    if (st == nullptr || st->commands.empty())
+        return 0;
+    const command& front = st->commands.front();
+    if (front.commandtype != COMMAND_WALK)
+        return 0;
+    return front.commandcount > 0 ? static_cast<int>(front.commandcount) : 0;
+}
 
 void new_draw_value_bar(Sint32 left, Sint32 top,
                         walker* control, short mode, screen* s)
@@ -289,6 +382,12 @@ short new_score_panel(screen* s, short /*do_it*/)
         s->world_.m_score[3],
     };
 
+    // Bottom edge of the top viewport's TEAM/FOES counter box, for the FPS
+    // overlay's dynamic placement (the box grows with the NEXT WAVE and FLR
+    // rows). Default = the classic FOES-off geometry, so FOES-off frames are
+    // byte-identical.
+    Sint32 fps_below_y = OVERSCAN_PADDING + 16;
+
     for (players = 0; players < s->numviews; players++)
     {
         control = s->viewob[players]->control;
@@ -372,6 +471,23 @@ short new_score_panel(screen* s, short /*do_it*/)
                     break;
             }
 
+            // Scared/fleeing countdown: while a fright (the ghost's scare, a
+            // shove) has force-queued a walk this walker must run off, the
+            // player has no control — say so instead of feeling broken, with
+            // the seconds left at the 12 Hz sim rate. Drawn just below the
+            // HP/MP rows (tm+10/tm+18); disappears the tick the queue drains.
+            const int scared_ticks = hud_scared_flee_ticks(control);
+            if (scared_ticks > 0)
+            {
+                const int scared_seconds = (scared_ticks + 11) / 12;
+                message = std::format("SCARED: {}s", scared_seconds);
+                mytext.write_xy(lm+2, tm+28, message.c_str(),
+                                static_cast<unsigned char>(RED),
+                                static_cast<short>(1));
+                TRACE("hud", "scared ticks=%d secs=%d",
+                      scared_ticks, scared_seconds);
+            }
+
             if (s->viewob[players]->prefs[PREF_SCORE] == PREF_SCORE_ON)
             {
                 int special_offset = -24;
@@ -426,7 +542,16 @@ short new_score_panel(screen* s, short /*do_it*/)
                 else
                     message = std::format("SPC: {}", s->special_name[fam][spc]);
 
-                if (control->stats()->magicpoints() >= control->stats()->special_cost(spc))
+                // Disabled-special signifier: a walker whose specials are
+                // switched off (the level's NPC flag) can NEVER fire the
+                // listed special, no matter its MP — grey the line out so it
+                // reads as unavailable rather than merely unaffordable (RED).
+                if (control->specials_disabled())
+                {
+                    mytext.write_xy(lm+2, special_y, message.c_str(), static_cast<unsigned char>(GREY), static_cast<short>(1));
+                    TRACE("hud", "spc_disabled fam=%d spc=%d", fam, spc);
+                }
+                else if (control->stats()->magicpoints() >= control->stats()->special_cost(spc))
                     mytext.write_xy(lm+2, special_y, message.c_str(), text_color, static_cast<short>(1));
                 else
                     mytext.write_xy(lm+2, special_y, message.c_str(), static_cast<unsigned char>(RED), static_cast<short>(1));
@@ -435,7 +560,9 @@ short new_score_panel(screen* s, short /*do_it*/)
                 if (s->alternate_name[fam][spc] != "NONE")
                 {
                     message = std::format("ALT: {}", s->alternate_name[fam][spc]);
-                    if (control->stats()->magicpoints() >= control->stats()->special_cost(spc))
+                    if (control->specials_disabled())
+                        mytext.write_xy(lm+2, bm + special_offset + 8, message.c_str(), static_cast<unsigned char>(GREY), static_cast<short>(1));
+                    else if (control->stats()->magicpoints() >= control->stats()->special_cost(spc))
                         mytext.write_xy(lm+2, bm + special_offset + 8, message.c_str(), text_color, static_cast<short>(1));
                     else
                         mytext.write_xy(lm+2, bm + special_offset + 8, message.c_str(), static_cast<unsigned char>(RED), static_cast<short>(1));
@@ -445,8 +572,41 @@ short new_score_panel(screen* s, short /*do_it*/)
 
             if (s->viewob[players]->prefs[PREF_FOES] == PREF_FOES_ON)
             {
+                // B5: split pending (dormant delayed-spawn) hostiles out of
+                // the foe count and show a countdown to the next wave, so
+                // "FOES: 3" over an empty map reads as "3 foes are coming",
+                // not as a bug. remaining_foes counts dormant hostiles too
+                // (they are alive), so awake = total - pending; foes merely
+                // awaiting a classic respawn are corpses (not in the total),
+                // so they only join the displayed wave count.
+                short pending_foes = 0;
+                short pending_respawn_foes = 0;
+                std::uint32_t next_wake_ticks = 0;
+                pending_hostile_wave_counts(
+                    s->world_, control, pending_foes, pending_respawn_foes,
+                    next_wake_ticks);
+                const int awake_foes = std::max(
+                    0, static_cast<int>(tempfoes) - static_cast<int>(pending_foes));
+                const int wave_foes = static_cast<int>(pending_foes) +
+                    static_cast<int>(pending_respawn_foes);
+                const bool show_wave = wave_foes > 0;
+
+                // Floor row (feature B): drawn only when the shared label is
+                // non-empty, so single-floor frames stay byte-identical. Call
+                // sites key on non-empty, never on floor_count (game modes
+                // re-label inside floor_hud_label).
+                const std::string floor_label = floor_hud_label(
+                    s->world_, static_cast<int>(control->floor()));
+                const bool show_floor = !floor_label.empty();
+
+                Sint32 box_bottom = show_wave ? 24 : 16;
+                if (show_floor)
+                    box_bottom += 8;
+                if (players == 0)
+                    fps_below_y = tm + box_bottom;
+
                 if (draw_button)
-                    s->draw_button(rm-57, tm+1, rm-2, tm+16, 1, 1);
+                    s->draw_button(rm-57, tm+1, rm-2, tm + box_bottom, 1, 1);
 
                 message = std::format("TEAM: {}", tempallies);
 #ifndef USE_TOUCH_INPUT
@@ -455,12 +615,52 @@ short new_score_panel(screen* s, short /*do_it*/)
                 mytext.write_xy(rm - 55, tm+2 + 44 + 8, message.c_str(), text_color, static_cast<short>(1));
 #endif
 
-                message = std::format("FOES: {}", tempfoes);
+                if (show_wave)
+                    message = std::format("FOES: {} (+{})",
+                                          awake_foes, wave_foes);
+                else
+                    message = std::format("FOES: {}", tempfoes);
+                // Right-align when the (+m) suffix is shown so it stays
+                // inside the viewport; the classic position is byte-identical
+                // otherwise.
+                const Sint32 foes_x = show_wave
+                    ? std::max<Sint32>(lm, rm - 2 - 6 * static_cast<Sint32>(message.size()))
+                    : rm - 55;
 #ifndef USE_TOUCH_INPUT
-                mytext.write_xy(rm-55, tm+10, message.c_str(), text_color, static_cast<short>(1));
+                mytext.write_xy(foes_x, tm+10, message.c_str(), text_color, static_cast<short>(1));
 #else
-                mytext.write_xy(rm-55, tm+10 + 44 + 8, message.c_str(), text_color, static_cast<short>(1));
+                mytext.write_xy(foes_x, tm+10 + 44 + 8, message.c_str(), text_color, static_cast<short>(1));
 #endif
+
+                if (show_wave)
+                {
+                    const std::uint32_t wave_seconds = (next_wake_ticks + 11u) / 12u;
+                    message = std::format("NEXT WAVE: {}s", wave_seconds);
+                    const Sint32 wave_x = std::max<Sint32>(
+                        lm, rm - 2 - 6 * static_cast<Sint32>(message.size()));
+#ifndef USE_TOUCH_INPUT
+                    mytext.write_xy(wave_x, tm+18, message.c_str(), text_color, static_cast<short>(1));
+#else
+                    mytext.write_xy(wave_x, tm+18 + 44 + 8, message.c_str(), text_color, static_cast<short>(1));
+#endif
+                    TRACE("hud", "next_wave awake=%d pending=%d secs=%u",
+                          awake_foes,
+                          wave_foes,
+                          static_cast<unsigned>(wave_seconds));
+                }
+
+                if (show_floor)
+                {
+                    const Sint32 floor_y = tm + (show_wave ? 26 : 18);
+                    const Sint32 floor_x = std::max<Sint32>(
+                        lm, rm - 2 - 6 * static_cast<Sint32>(floor_label.size()));
+#ifndef USE_TOUCH_INPUT
+                    mytext.write_xy(floor_x, floor_y, floor_label.c_str(), text_color, static_cast<short>(1));
+#else
+                    mytext.write_xy(floor_x, floor_y + 44 + 8, floor_label.c_str(), text_color, static_cast<short>(1));
+#endif
+                    TRACE("hud", "floor %s", floor_label.c_str());
+                }
             }
         }
     }
@@ -468,7 +668,7 @@ short new_score_panel(screen* s, short /*do_it*/)
     if (og::runtime::current_session != nullptr &&
         og::runtime::current_session->show_fps_)
     {
-        draw_fps_overlay(*s);
+        draw_fps_overlay(*s, static_cast<int>(fps_below_y));
     }
 
     return 1;

@@ -12,7 +12,7 @@
 #include <openglad/gameplay/statistics.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/core/sound_ids.h>
-
+#include <openglad/core/test_trace.h>
 // Advances `self`'s animation by one frame with full bounds checking. curdir,
 // ani_type and cycle may originate from an untrusted snapshot, so the facing,
 // the animation type (against this family's actual table length) and the cycle
@@ -113,7 +113,24 @@ static bool sprinkle_on_hit_target([[maybe_unused]] walker* weapon, walker* targ
     if (target->query_order() == Order::Living)
     {
         std::int32_t con = target->myguy ? target->myguy->constitution : 0;
-        target->stats()->set_frozen_delay(static_cast<short>(compute_freeze_duration(owner->stats()->level(), con, current_game->world->rng_)));
+        // Runaway-specials §2.6: the roll is ALWAYS drawn (RNG stream
+        // identical to master at every level); only the SET below is gated.
+        const auto roll = static_cast<short>(compute_freeze_duration(owner->stats()->level(), con, current_game->world->rng_));
+        // §2.6b refresh gate: a high-level faerie may not re-SET a freeze
+        // that is still running (mirrors the archmage charm_left<=10 gate).
+        // Level-gated >= 21 because the L20 weapon_sprinkle_emission
+        // golden's soldier thaw schedule must stay byte-identical.
+        const bool refresh_gated =
+            owner->stats()->level() >= og::combat::kSprinkleRefreshOwnerLevel
+            && target->stats()->frozen_delay() > og::combat::kSprinkleRefreshFloor;
+        // §3.3 thaw immunity: never re-freeze inside the negative immunity
+        // phase (only the player-side drain writes it — golden-safe, since
+        // the sprinkle golden's victim is an AI soldier).
+        const bool thaw_immune = target->stats()->frozen_delay_raw() < 0;
+        if (refresh_gated) { TRACE("combat", "sprinkle SET skipped: refresh gate (owner L%d, victim frozen %d)", owner->stats()->level(), target->stats()->frozen_delay()); }
+        if (thaw_immune) { TRACE("combat", "sprinkle SET skipped: thaw immunity (raw %d)", target->stats()->frozen_delay_raw()); }
+        if (!refresh_gated && !thaw_immune)
+            target->stats()->set_frozen_delay(roll);
     }
     return true;
 }

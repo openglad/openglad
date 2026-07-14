@@ -1,6 +1,7 @@
 #include <openglad/gameplay/game_client.h>
 
 #include <openglad/core/runtime_trace.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/core/util.h>
 #include <openglad/gameplay/game_world.h>
 #include <openglad/gameplay/input_state_net.h>
@@ -51,6 +52,8 @@ void apply_initial_setup_to_world(GameWorld& world,
     world.my_team = message.my_team;
     world.allied_mode = message.allied_mode;
     world.current_scenario = message.current_scenario;
+    world.respawn_mode = message.respawn_mode;
+    world.generator_rate = message.generator_rate;
     world.completed_levels.clear();
     for (const std::int32_t level_id : message.completed_levels)
         world.completed_levels.insert(level_id);
@@ -649,6 +652,42 @@ void GameClient::maybe_notify_connection_lost()
         connection_lost_callback_();
 }
 
+void GameClient::note_keyframe_apply_result(bool applied_cleanly)
+{
+    if (applied_cleanly)
+    {
+        rejected_keyframe_strikes_ = 0;
+        return;
+    }
+
+    ++rejected_keyframe_strikes_;
+    LogError("game_client_rejected_keyframe strikes={} limit={}\n",
+             rejected_keyframe_strikes_, kMaxRejectedKeyframeStrikes);
+    if (fatal_desync_ ||
+        rejected_keyframe_strikes_ < kMaxRejectedKeyframeStrikes)
+    {
+        return;
+    }
+
+    // Bounded loud failure (no in-protocol resync exists for a map-level
+    // divergence — that would need an InitialSetup re-handshake): mark the
+    // session dead and surface it through the connection-lost seam every
+    // embedder already ends the session on.
+    fatal_desync_ = true;
+    LogError(
+        "game_client_fatal_desync: {} consecutive full-grid snapshots "
+        "rejected — ending the session (state divergence is unrecoverable)\n",
+        rejected_keyframe_strikes_);
+    TRACE("net", "client_fatal_desync strikes=%u",
+          static_cast<unsigned>(rejected_keyframe_strikes_));
+    if (!connection_lost_notified_)
+    {
+        connection_lost_notified_ = true;
+        if (connection_lost_callback_)
+            connection_lost_callback_();
+    }
+}
+
 void GameClient::note_outbound_activity()
 {
     last_outbound_activity_time_ = InterpolationClock::now();
@@ -845,6 +884,10 @@ void GameClient::apply_initial_setup(const InitialSetupMessage& message)
     last_seen_server_tick_ = 0;
     waiting_for_keyframe_ = false;
     client_ready_sent_ = false;
+    // A (re-)setup legitimately swaps the world/grid: stale strikes from the
+    // previous level must not count against the new one. fatal_desync_ stays
+    // latched — the session already surfaced its error.
+    rejected_keyframe_strikes_ = 0;
     has_sim_event_sequence_ = false;
     has_game_flow_event_sequence_ = false;
     last_exit_prompt_.reset();
@@ -862,8 +905,11 @@ void GameClient::apply_full_snapshot(const WorldSnapshot& snapshot,
         *baseline_, reset_history, reset_history ? 1.0f : prior_alpha);
     if (world_ != nullptr)
     {
-        apply_snapshot(*world_, *baseline_);
+        const bool carried_full_grid = baseline_->grid_full_resend;
+        const bool applied_cleanly = apply_snapshot(*world_, *baseline_);
         clear_transport_only_world_state(*world_);
+        if (carried_full_grid)
+            note_keyframe_apply_result(applied_cleanly);
     }
     clear_transport_only_snapshot_state(*baseline_);
     last_seen_server_tick_ = baseline_->tick_count;
@@ -910,8 +956,13 @@ void GameClient::apply_delta_snapshot(const WorldSnapshot& snapshot,
     update_render_interpolation(*baseline_, false, prior_alpha);
     if (world_ != nullptr)
     {
-        apply_snapshot(*world_, *baseline_);
+        // A delta can carry a full-grid resend too (dirty-tile overflow);
+        // its rejection is the same unrecoverable shape as a keyframe's.
+        const bool carried_full_grid = baseline_->grid_full_resend;
+        const bool applied_cleanly = apply_snapshot(*world_, *baseline_);
         clear_transport_only_world_state(*world_);
+        if (carried_full_grid)
+            note_keyframe_apply_result(applied_cleanly);
     }
     clear_transport_only_snapshot_state(*baseline_);
     last_seen_server_tick_ = baseline_->tick_count;

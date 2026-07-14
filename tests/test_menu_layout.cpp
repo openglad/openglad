@@ -1,11 +1,15 @@
 #include <openglad/interface/button.h>
 #include <openglad/core/test_trace.h>
 #include <openglad/interface/screen.h>
+#include <openglad/interface/ui/picker_common.h>
+#include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/interface/ui/picker_lobby_network_client.h>
+#include <openglad/resources/save_data.h>
 #include "../src/interface/ui/picker_sdl_defs.h"
 #include <gtest/gtest.h>
 #include <SDL.h>
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -639,6 +643,29 @@ TEST(MenuLayout, control_options_buttons_no_overlap)
     check_bounds(buttons, count, "control_options");
 }
 
+// The header text ("Player control modes and key remapping") once started at
+// y=24, inside the BACK button's animated highlight box, which overwrote its
+// first characters. Pin that it clears the highlight (3px beyond the bevel)
+// and still sits above the first player row.
+TEST(MenuLayout, control_options_header_clears_back_button_and_player_rows)
+{
+    button* buttons = picker_control_options_buttons();
+    const int count = picker_control_options_button_count();
+    ASSERT_GE(count, 2);
+    const button& back = buttons[0];
+    ASSERT_EQ("controls_back", back.id);
+    const button& player1_mode = buttons[1];
+    ASSERT_EQ("player1_mode", player1_mode.id);
+
+    constexpr int kHighlightExtent = 3;  // draw_highlight animates 0..3px out
+    constexpr int kTextHeight = 8;       // small-font glyph rows + breathing room
+    EXPECT_GT(PICKER_CONTROLS_HEADER_Y, back.y + back.sizey + kHighlightExtent)
+        << "header must start below the BACK button's highlight box";
+    EXPECT_LE(PICKER_CONTROLS_HEADER_Y + kTextHeight, player1_mode.y)
+        << "header must finish above the P1 row";
+    EXPECT_GE(PICKER_CONTROLS_HEADER_X, 10) << "header stays inside the bevel";
+}
+
 
 TEST(MenuLayout, main_options_nav_indices_in_range)
 {
@@ -653,6 +680,289 @@ TEST(MenuLayout, control_options_nav_indices_in_range)
     button* buttons = picker_control_options_buttons();
     const int count = picker_control_options_button_count();
     check_nav_in_range(buttons, count, "control_options");
+}
+
+// The per-effect toggles live in the three FX subscreens; main options keeps
+// the sound/graphics settings plus the CONTROLS door and the three stacked
+// FX doors. Pin the index contract (main_options() writes labels by index)
+// and the nav graph.
+TEST(MenuLayout, main_options_index_contract_and_nav)
+{
+    button* buttons = picker_main_options_buttons();
+    const int count = picker_main_options_button_count();
+    ASSERT_EQ(13, count)
+        << "main options is BACK + 8 settings + CONTROLS door + 3 FX doors";
+
+    static const char* kExpectedIds[] = {
+        "options_back",       // 0
+        "toggle_sound",       // 1
+        "toggle_rendering",   // 2: label synced from graphics/render each frame
+        "toggle_fullscreen",  // 3
+        "overscan_minus",     // 4
+        "overscan_plus",      // 5
+        "gameplay_fx",        // 6: opens the GAMEPLAY FX subscreen
+        "restore_defaults",   // 7
+        "player_controls",    // 8
+        "pick_sprite_sheet",  // 9: label synced by index each frame
+        "ui_fx",              // 10: opens the UI FX subscreen
+        "graphics_fx",        // 11: opens the GRAPHICS FX subscreen
+        "world_scale",        // 12: label synced from graphics/scale each frame
+    };
+    for (int i = 0; i < count; ++i)
+    {
+        EXPECT_EQ(kExpectedIds[i], buttons[i].id) << "index " << i;
+        EXPECT_FALSE(buttons[i].hidden) << buttons[i].id;
+        // Centered labels draw with no clipping at 6px/char.
+        EXPECT_LE(static_cast<int>(buttons[i].label.size()) * 6,
+                  buttons[i].sizex)
+            << buttons[i].id << " label '" << buttons[i].label
+            << "' escapes its face";
+    }
+    EXPECT_EQ("GAMEPLAY FX", buttons[6].label);
+    EXPECT_EQ("UI FX", buttons[10].label);
+    EXPECT_EQ("GRAPHICS FX", buttons[11].label);
+    // The three FX doors stack in one column at 23px pitch.
+    EXPECT_EQ(buttons[6].x, buttons[10].x);
+    EXPECT_EQ(buttons[6].x, buttons[11].x);
+    EXPECT_EQ(buttons[6].y + 23, buttons[10].y);
+    EXPECT_EQ(buttons[10].y + 23, buttons[11].y);
+    // The world-scale cycle extends the right column below fullscreen at the
+    // same 23px pitch, on the overscan row; the two settings are independent
+    // (rendering engine cycles graphics/render, this cycles graphics/scale),
+    // so both faces must be present and separately clickable.
+    ASSERT_EQ(kMainOptionsWorldScaleIndex, 12);
+    EXPECT_EQ(buttons[3].x, buttons[12].x);
+    EXPECT_EQ(buttons[3].y + 23, buttons[12].y);
+    EXPECT_EQ(buttons[4].y, buttons[12].y);
+    EXPECT_EQ("Scale: Off", buttons[12].label);
+    EXPECT_EQ(button_action_id(ButtonAction::CycleWorldScale), buttons[12].myfun);
+    EXPECT_EQ(button_action_id(ButtonAction::ToggleRenderingEngine), buttons[2].myfun);
+
+    check_nav_closed_and_reachable(buttons, count, 0, "main_options");
+}
+
+namespace
+{
+struct ExpectedFxButton
+{
+    const char* id;
+    const char* label;
+    int x;
+    int y;
+};
+
+// Shared pin for the three FX subscreens: exact count/id/label/geometry,
+// label budgets (90px toggle faces fit 15 chars at 6px/char, drawn centered
+// with no clipping), faces inside the 4..196 inverted bevel, and — since no
+// FX button is visibility-gated — a closed, fully reachable static nav graph.
+void check_fx_options_screen(button* buttons, int count,
+                             const ExpectedFxButton* expected,
+                             int expected_count, const char* screen)
+{
+    ASSERT_EQ(expected_count, count) << screen;
+    for (int i = 0; i < count; ++i)
+    {
+        const ExpectedFxButton& want = expected[i];
+        const button& got = buttons[i];
+        EXPECT_EQ(want.id, got.id) << screen << " index " << i;
+        EXPECT_EQ(want.label, got.label) << screen << " " << got.id;
+        EXPECT_EQ(want.x, got.x) << screen << " " << got.id;
+        EXPECT_EQ(want.y, got.y) << screen << " " << got.id;
+        EXPECT_FALSE(got.hidden) << screen << " " << got.id;
+        EXPECT_LE(static_cast<int>(got.label.size()) * 6, got.sizex)
+            << screen << " " << got.id << " label '" << got.label
+            << "' escapes its face";
+        EXPECT_LE(got.y + got.sizey, 196)
+            << screen << " " << got.id << " face exits the bevel";
+    }
+
+    check_no_overlaps(buttons, count, screen);
+    check_bounds(buttons, count, screen);
+    check_nav_closed_and_reachable(buttons, count, 0, screen);
+}
+} // namespace
+
+// GAMEPLAY FX subscreen: unique BACK id + the two gameplay-feel toggles
+// (stable ids — injector flows click these by id) in a centered column.
+TEST(MenuLayout, gameplay_fx_options_layout_and_nav)
+{
+    static const ExpectedFxButton kExpected[] = {
+        {"gameplay_fx_back", "BACK", 10, 10},
+        {"toggle_hit_recoil", "Hit recoil", 115, 35},
+        {"toggle_attack_lunge", "Attack lunge", 115, 58},
+    };
+    button* buttons = picker_gameplay_fx_options_buttons();
+    const int count = picker_gameplay_fx_options_button_count();
+    check_fx_options_screen(buttons, count, kExpected, 3, "gameplay_fx_options");
+}
+
+// UI FX subscreen: unique BACK id + the three overlay toggles in a centered
+// column.
+TEST(MenuLayout, ui_fx_options_layout_and_nav)
+{
+    static const ExpectedFxButton kExpected[] = {
+        {"ui_fx_back", "BACK", 10, 10},
+        {"toggle_mini_hp_bar", "Mini HP bar", 115, 35},
+        {"toggle_damage_numbers", "Damage numbers", 115, 58},
+        {"toggle_heal_numbers", "Healing numbers", 115, 81},
+    };
+    button* buttons = picker_ui_fx_options_buttons();
+    const int count = picker_ui_fx_options_button_count();
+    check_fx_options_screen(buttons, count, kExpected, 4, "ui_fx_options");
+}
+
+// GRAPHICS FX subscreen: unique BACK id + 13 effects/* visual toggles on the
+// three-column x=15/115/215 grid (4 full rows at 23px pitch from y=35, plus
+// the lone floor-glide toggle on a fifth row). Weather is the single display
+// opt-out for the per-level sim weather (the old Clouds/Rain pair merged).
+TEST(MenuLayout, graphics_fx_options_grid_geometry_and_nav)
+{
+    static const ExpectedFxButton kExpected[] = {
+        {"graphics_fx_back", "BACK", 10, 10},
+        {"toggle_hit_flash", "Hit flash", 15, 35},
+        {"toggle_hit_sparks", "Hit sparks", 115, 35},
+        {"toggle_gore", "Gore", 215, 35},
+        {"toggle_shadows", "Shadows", 15, 58},
+        {"toggle_reflections", "Reflections", 115, 58},
+        {"toggle_weather", "Weather", 215, 58},
+        {"toggle_dust", "Dust", 15, 81},
+        {"depth_fx", "Depth: Fog", 115, 81},
+        {"toggle_trails", "Trails", 215, 81},
+        {"toggle_fire_glow", "Fire glow", 15, 104},
+        {"toggle_ripples", "Ripples", 115, 104},
+        {"toggle_screen_shake", "Screen shake", 215, 104},
+        {"toggle_floor_glide", "Floor glide", 15, 127},
+    };
+    button* buttons = picker_graphics_fx_options_buttons();
+    const int count = picker_graphics_fx_options_button_count();
+    check_fx_options_screen(buttons, count, kExpected, 14, "graphics_fx_options");
+
+    // The depth row is a five-way CYCLE (id "depth_fx"), addressed by index
+    // from change_depth_fx(); pin the index contract and that every label
+    // the cycle can produce fits the 90px face (15 chars at 6px/char).
+    EXPECT_EQ("depth_fx", buttons[kGraphicsFxDepthFxIndex].id);
+    const int face_width = buttons[kGraphicsFxDepthFxIndex].sizex;
+    ASSERT_EQ(90, face_width);
+    std::string value = "fog";
+    for (int step = 0; step < 5; ++step)
+    {
+        EXPECT_LE(static_cast<int>(og::ui::format_depth_fx_label(value).size()) * 6,
+                  face_width)
+            << og::ui::format_depth_fx_label(value);
+        value = og::ui::cycle_depth_fx(value);
+    }
+    EXPECT_EQ("fog", value) << "five clicks must restore the selector";
+}
+
+// DIFFICULTY subscreen (the main-menu DIFFICULTY door): unique BACK id + the
+// five match-rule rows in one centered 140px column on the FX row pitch.
+// Static labels are the default-state formatter outputs; the screen re-derives
+// every row from session/save each frame, so also pin that every label the
+// formatters can produce fits the 140px face (23 chars at 6px/char).
+TEST(MenuLayout, difficulty_menu_layout_and_nav)
+{
+    static const ExpectedFxButton kExpected[] = {
+        {"difficulty_back", "BACK", 10, 10},
+        {"difficulty", "Difficulty: Battle", 90, 35},
+        {"respawn_mode", "Respawns: Off", 90, 58},
+        {"respawn_delay", "Spawn Delay: Normal", 90, 81},
+        {"permadeath", "Permadeath: On", 90, 104},
+        {"generator_rate", "Generators: Normal", 90, 127},
+    };
+    button* buttons = picker_difficulty_menu_buttons();
+    const int count = picker_difficulty_menu_button_count();
+    ASSERT_EQ(kDifficultyMenuButtonCount, count);
+    check_fx_options_screen(buttons, count, kExpected,
+                            kDifficultyMenuButtonCount, "difficulty_menu");
+
+    // The index contract the label-writing callbacks depend on.
+    EXPECT_EQ("difficulty_back", buttons[kDifficultyMenuBackIndex].id);
+    EXPECT_EQ("difficulty", buttons[kDifficultyMenuDifficultyIndex].id);
+    EXPECT_EQ("respawn_mode", buttons[kDifficultyMenuRespawnModeIndex].id);
+    EXPECT_EQ("respawn_delay", buttons[kDifficultyMenuRespawnDelayIndex].id);
+    EXPECT_EQ("permadeath", buttons[kDifficultyMenuPermadeathIndex].id);
+    EXPECT_EQ("generator_rate", buttons[kDifficultyMenuGeneratorRateIndex].id);
+
+    // Every dynamic label across the full value cycles stays within the
+    // 140px face budget.
+    const int face_width = buttons[kDifficultyMenuDifficultyIndex].sizex;
+    ASSERT_EQ(140, face_width);
+    SaveData save;
+    for (int step = 0; step < 3; ++step)
+    {
+        EXPECT_LE(static_cast<int>(og::ui::format_difficulty_label(step).size()) * 6,
+                  face_width)
+            << og::ui::format_difficulty_label(step);
+        EXPECT_LE(static_cast<int>(og::ui::format_respawn_mode_label(save).size()) * 6,
+                  face_width)
+            << og::ui::format_respawn_mode_label(save);
+        EXPECT_LE(static_cast<int>(og::ui::format_respawn_delay_label(save).size()) * 6,
+                  face_width)
+            << og::ui::format_respawn_delay_label(save);
+        EXPECT_LE(static_cast<int>(og::ui::format_permadeath_label(save).size()) * 6,
+                  face_width)
+            << og::ui::format_permadeath_label(save);
+        EXPECT_LE(static_cast<int>(og::ui::format_generator_rate_label(save).size()) * 6,
+                  face_width)
+            << og::ui::format_generator_rate_label(save);
+        og::ui::cycle_respawn_mode(save);
+        og::ui::cycle_respawn_delay(save);
+        og::ui::toggle_permadeath(save);
+        og::ui::cycle_generator_rate(save);
+    }
+
+    // Non-host (networked joiner) variant: every settings row is
+    // LobbySettings-backed and hides; BACK's vertical cycle is rewired, the
+    // highlight is pulled onto BACK, and the nav graph stays closed and
+    // reachable in BOTH variants.
+    struct FakeLobbyClient final : og::ui::IPickerLobbyClient
+    {
+        bool host = false;
+        void initialize_from_save() override {}
+        void shutdown() override {}
+        void sync_from_save() override {}
+        void sync_roster_from_save() override {}
+        void sync_settings_from_save() override {}
+        void poll_and_apply() override {}
+        void set_player_mode(int) override {}
+        bool request_start_game() override { return false; }
+        std::optional<og::ui::PickerLobbyGameStartConfig>
+        build_game_start_config() const override { return std::nullopt; }
+        std::optional<og::ui::PickerLobbyGameStartConfig>
+        consume_game_start_config() override { return std::nullopt; }
+        [[nodiscard]] bool start_request_pending() const noexcept override
+        {
+            return false;
+        }
+        [[nodiscard]] bool host_controls_visible() const noexcept override
+        {
+            return host;
+        }
+    };
+    FakeLobbyClient lobby;
+    og::ui::IPickerLobbyClient* saved_client =
+        og::ui::active_picker_lobby_client();
+    og::ui::install_active_picker_lobby_client(&lobby);
+
+    lobby.host = false;
+    int highlighted = kDifficultyMenuGeneratorRateIndex;
+    sync_difficulty_menu_visibility(buttons, count, highlighted);
+    for (int i = kDifficultyMenuDifficultyIndex; i < count; ++i)
+        EXPECT_TRUE(buttons[i].hidden) << buttons[i].id;
+    EXPECT_FALSE(buttons[kDifficultyMenuBackIndex].hidden);
+    EXPECT_EQ(kDifficultyMenuBackIndex, highlighted)
+        << "the highlight must be pulled off the hidden rows";
+    check_nav_closed_and_reachable(buttons, count, kDifficultyMenuBackIndex,
+                                   "difficulty_menu_joiner");
+
+    // Host / local variant restores the full column.
+    lobby.host = true;
+    sync_difficulty_menu_visibility(buttons, count, highlighted);
+    og::ui::install_active_picker_lobby_client(saved_client);
+    for (int i = 0; i < count; ++i)
+        EXPECT_FALSE(buttons[i].hidden) << buttons[i].id;
+    check_nav_closed_and_reachable(buttons, count, kDifficultyMenuBackIndex,
+                                   "difficulty_menu_host");
 }
 
 TEST(MenuLayout, networking_buttons_no_overlap)
@@ -901,4 +1211,35 @@ TEST(MenuLayout, controls_summary_remap_mode_uses_two_lines)
     ASSERT_TRUE(remap_summary[0].find("Dir:W/A/S/D") != std::string::npos) << "remap summary first line should contain directional keys";
     ASSERT_TRUE(remap_summary[1].find("Y:E") != std::string::npos) << "remap summary second line should contain action keys";
     ASSERT_TRUE(remap_summary[1].find("SW:`") != std::string::npos) << "remap summary second line should display backtick character";
+}
+
+
+TEST(MenuLayout, controls_summary_shows_look_up_binding)
+{
+    PlayerControlSnapshotGuard guard(0);
+
+    set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
+    set_player_key_binding(0, KEY_LOOKUP, SDLK_v);
+    const std::string summary = build_player_control_summary(0);
+    ASSERT_TRUE(summary.find("L:V") != std::string::npos)
+        << "controls summary should show the look-up binding: " << summary;
+
+    // Unbound (the P4 8-direction default) reads as "--", not an empty label.
+    set_player_key_binding(0, KEY_LOOKUP, SDLK_UNKNOWN);
+    const std::string unbound = build_player_control_summary(0);
+    ASSERT_TRUE(unbound.find("L:--") != std::string::npos)
+        << "unbound look-up should display as --: " << unbound;
+
+    // The action line stays inside the 48-char row the controls screen draws
+    // it into (x=30, 6px/char, 320px wide) with typical worst-case names.
+    set_player_key_binding(0, KEY_YELL, SDLK_BACKSPACE);       // "Bk"
+    set_player_key_binding(0, KEY_FIRE, SDLK_LCTRL);           // "LC"
+    set_player_key_binding(0, KEY_SPECIAL, SDLK_LALT);         // "LA"
+    set_player_key_binding(0, KEY_SPECIAL_SWITCH, SDLK_TAB);   // "Tab"
+    set_player_key_binding(0, KEY_SWITCH, SDLK_RETURN);        // "Return"
+    set_player_key_binding(0, KEY_SHIFTER, SDLK_RSHIFT);       // "RS"
+    set_player_key_binding(0, KEY_LOOKUP, SDLK_CAPSLOCK);      // "Cap"
+    const auto lines = build_player_control_summary_lines(0, false);
+    EXPECT_LE(lines[1].size(), 48u)
+        << "action summary line must fit the controls row: " << lines[1];
 }

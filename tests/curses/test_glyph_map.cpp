@@ -4,6 +4,7 @@
 #include <openglad/platform/curses/glyph_map.h>
 
 #include <openglad/core/constants.h>
+#include <openglad/core/decordefs.h>
 #include <openglad/core/order.h>
 #include <openglad/core/terrain_types.h>
 
@@ -120,6 +121,121 @@ TEST(GlyphMap, tile_genres_map_to_expected_glyphs)
     // Unknown / unmapped genres render as blank space.
     EXPECT_EQ(tile_glyph(TYPE_UNKNOWN).ascii, ' ');
     EXPECT_EQ(tile_glyph(12345).ascii, ' ');
+}
+
+TEST(GlyphMap, zstair_glyphs_show_direction)
+{
+    // B1: the direction-aware stair glyphs (roguelike convention '<' up,
+    // '>' down) — bold yellow like the direction-less TYPE_ZSTAIRS fallback.
+    const Glyph up = zstair_glyph(true);
+    const Glyph down = zstair_glyph(false);
+    EXPECT_EQ(up.ascii, '<');
+    EXPECT_EQ(down.ascii, '>');
+    EXPECT_EQ(up.unicode, U'▲');
+    EXPECT_EQ(down.unicode, U'▼');
+    EXPECT_NE(up.unicode, down.unicode);
+    EXPECT_EQ(up.fg, Color::Yellow);
+    EXPECT_EQ(down.fg, Color::Yellow);
+    EXPECT_TRUE(up.bold);
+    EXPECT_TRUE(down.bold);
+    EXPECT_FALSE(up.skip);
+    EXPECT_FALSE(down.skip);
+    // The genre-only fallback stays available for direction-less callers.
+    EXPECT_EQ(tile_glyph(TYPE_ZSTAIRS).ascii, 'H');
+}
+
+TEST(GlyphMap, westlands_tile_genres_map_to_expected_glyphs)
+{
+    // Snowfield: white asterisks.
+    const Glyph snow = tile_glyph(TYPE_SNOW);
+    EXPECT_EQ(snow.unicode, U'*');
+    EXPECT_EQ(snow.ascii, '*');
+    EXPECT_EQ(snow.fg, Color::White);
+    EXPECT_FALSE(snow.bold);
+
+    // Molten lava: bold red waves (water's identical wave shape is blue and
+    // not bold, so the two stay distinguishable).
+    const Glyph lava = tile_glyph(TYPE_LAVA);
+    EXPECT_EQ(lava.unicode, U'≈');
+    EXPECT_EQ(lava.ascii, '~');
+    EXPECT_EQ(lava.fg, Color::Red);
+    EXPECT_TRUE(lava.bold);
+    EXPECT_EQ(tile_glyph(TYPE_WATER).unicode, lava.unicode);
+    EXPECT_NE(tile_glyph(TYPE_WATER).fg, lava.fg);
+
+    // Bog reeds: green quotes.
+    const Glyph marsh = tile_glyph(TYPE_MARSH);
+    EXPECT_EQ(marsh.unicode, U'"');
+    EXPECT_EQ(marsh.ascii, '"');
+    EXPECT_EQ(marsh.fg, Color::Green);
+    EXPECT_FALSE(marsh.bold);
+
+    // Ash field: white light-shade (glass uses the same shade in Cyan —
+    // color disambiguates them).
+    const Glyph ash = tile_glyph(TYPE_ASH);
+    EXPECT_EQ(ash.unicode, U'░');
+    EXPECT_EQ(ash.ascii, '-');
+    EXPECT_EQ(ash.fg, Color::White);
+    EXPECT_FALSE(ash.bold);
+    EXPECT_EQ(tile_glyph(TYPE_GLASS).unicode, ash.unicode);
+    EXPECT_NE(tile_glyph(TYPE_GLASS).fg, ash.fg);
+}
+
+// Decor overrides (tile layering): decor wins over the base tile when it
+// defines a glyph; ground litter (pebbles/bones) inherits the base instead.
+TEST(GlyphMap, decor_glyph_overrides_are_pinned)
+{
+    // Torches: bold yellow '!'.
+    for (unsigned char t : {DECOR_TORCH1, DECOR_TORCH2, DECOR_TORCH3}) {
+        const auto g = decor_glyph(t);
+        ASSERT_TRUE(g.has_value()) << "torch id " << int(t) << " must override";
+        EXPECT_EQ(g->ascii, '!');
+        EXPECT_EQ(g->fg, Color::Yellow);
+        EXPECT_TRUE(g->bold);
+        EXPECT_FALSE(g->skip);
+    }
+    // Brazier: bold red fire bowl.
+    const auto braz = decor_glyph(DECOR_BRAZIER);
+    ASSERT_TRUE(braz.has_value());
+    EXPECT_EQ(braz->ascii, 'o');
+    EXPECT_EQ(braz->unicode, U'☼');
+    EXPECT_EQ(braz->fg, Color::Red);
+    EXPECT_TRUE(braz->bold);
+    // Boulders: white 'o'.
+    for (unsigned char b : {DECOR_BOULDER_1, DECOR_BOULDER_2, DECOR_BOULDER_3,
+                            DECOR_BOULDER_4}) {
+        const auto g = decor_glyph(b);
+        ASSERT_TRUE(g.has_value()) << "boulder id " << int(b) << " must override";
+        EXPECT_EQ(g->ascii, 'o');
+        EXPECT_EQ(g->fg, Color::White);
+    }
+    // Columns: white '|'.
+    for (unsigned char c : {DECOR_COLUMN_BOTTOM, DECOR_COLUMN_TOP}) {
+        const auto g = decor_glyph(c);
+        ASSERT_TRUE(g.has_value());
+        EXPECT_EQ(g->ascii, '|');
+        EXPECT_EQ(g->fg, Color::White);
+    }
+    // Shrub: bold green '"' — same shape as marsh reeds, disambiguated by
+    // bold (marsh is non-bold).
+    const auto shrub = decor_glyph(DECOR_SHRUB);
+    ASSERT_TRUE(shrub.has_value());
+    EXPECT_EQ(shrub->ascii, '"');
+    EXPECT_EQ(shrub->fg, Color::Green);
+    EXPECT_TRUE(shrub->bold);
+    EXPECT_FALSE(tile_glyph(TYPE_MARSH).bold);
+}
+
+TEST(GlyphMap, decor_ground_litter_and_unknown_ids_inherit_base)
+{
+    EXPECT_FALSE(decor_glyph(DECOR_NONE).has_value());
+    EXPECT_FALSE(decor_glyph(DECOR_PEBBLES).has_value())
+        << "pebbles read as their ground tile";
+    EXPECT_FALSE(decor_glyph(DECOR_BONES).has_value())
+        << "bones read as their ground tile";
+    EXPECT_FALSE(decor_glyph(DECOR_MAX).has_value())
+        << "out-of-registry bytes inherit (hostile-plane hardening)";
+    EXPECT_FALSE(decor_glyph(255).has_value());
 }
 
 TEST(GlyphMap, ascii_fallback_differs_from_unicode_for_some_tiles)

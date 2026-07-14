@@ -67,6 +67,7 @@ const char* fact_kind_name(og::parity::FactKind k)
         case FactKind::WeaponSpeed:                     return "WeaponSpeed";
         case FactKind::WeaponNetTravel:                 return "WeaponNetTravel";
         case FactKind::EffectNetTravel:                 return "EffectNetTravel";
+        case FactKind::WalkerOnFloor:                   return "WalkerOnFloor";
     }
     return "Unknown";
 }

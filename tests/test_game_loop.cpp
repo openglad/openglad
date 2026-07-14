@@ -2534,3 +2534,1342 @@ TEST(GameLoop, exit_returns_to_continue_menu_local_two_player_second_player)
     og::runtime::clear_local_transport_shadow(*og::runtime::current_game_session);
     game_screen->world().delete_objects();
 }
+
+
+// ---------------------------------------------------------------------------
+// FX-capture: live-simulation recordings for the visual review site
+// (scripts/fx_review). All three tests skip unless OG_FX_CAPTURE_DIR is set,
+// so they cost nothing in normal ctest runs. Frames land in
+// $OG_FX_CAPTURE_DIR/<scene>/NNN.ppm as P6 PPMs.
+//
+// Everything here runs the REAL game: glad_init + game_frame_with_result
+// (AI acts, walk animations advance, palette cycling runs, the transport
+// shadow syncs client and server worlds every tick).
+// ---------------------------------------------------------------------------
+#include <cstring>
+#include <openglad/core/weather.h>
+#include <openglad/interface/render/effects.h>
+#include <openglad/interface/button.h>
+
+namespace gameplay_rec {
+
+void dump_dir_for(const char* scene, char* dir, size_t n)
+{
+    const char* base = getenv("OG_FX_CAPTURE_DIR");
+    snprintf(dir, n, "%s/%s", base, scene);
+    std::filesystem::create_directories(dir);
+}
+
+// Primary viewport only (single-player gameplay scenes).
+void dump_viewport(screen* s, const char* scene, int frame)
+{
+    viewscreen* vs = s->viewob[0].get();
+    const int x0 = vs->xloc, y0 = vs->yloc, w = vs->xview, h = vs->yview;
+    char dir[512];
+    dump_dir_for(scene, dir, sizeof(dir));
+    char path[544];
+    snprintf(path, sizeof(path), "%s/%03d.ppm", dir, frame);
+    FILE* fp = fopen(path, "wb");
+    ASSERT_NE(nullptr, fp);
+    fprintf(fp, "P6\n%d %d\n255\n", w, h);
+    for (int j = 0; j < h; j++)
+        for (int i = 0; i < w; i++)
+        {
+            Uint8 r, g, b;
+            s->get_pixel(x0 + i, y0 + j, &r, &g, &b);
+            fputc(r, fp);
+            fputc(g, fp);
+            fputc(b, fp);
+        }
+    fclose(fp);
+}
+
+// Full 320x200 screen (split-screen and cinematic scenes).
+void dump_screen(screen* s, const char* scene, int frame)
+{
+    char dir[512];
+    dump_dir_for(scene, dir, sizeof(dir));
+    char path[544];
+    snprintf(path, sizeof(path), "%s/%03d.ppm", dir, frame);
+    FILE* fp = fopen(path, "wb");
+    ASSERT_NE(nullptr, fp);
+    fprintf(fp, "P6\n320 200\n255\n");
+    for (int j = 0; j < 200; j++)
+        for (int i = 0; i < 320; i++)
+        {
+            Uint8 r, g, b;
+            s->get_pixel(i, j, &r, &g, &b);
+            fputc(r, fp);
+            fputc(g, fp);
+            fputc(b, fp);
+        }
+    fclose(fp);
+}
+
+void build_save(screen* s, const char* campaign, int scen, int numplayers,
+                const std::vector<int>& roster, int level)
+{
+    s->save_data.reset();
+    s->save_data.current_campaign = campaign;
+    s->save_data.current_levels[s->save_data.current_campaign] =
+        static_cast<short>(scen);
+    s->save_data.scen_num = static_cast<short>(scen);
+    s->save_data.numplayers = static_cast<unsigned char>(numplayers);
+    for (size_t i = 0; i < roster.size(); i++)
+    {
+        auto g = std::make_unique<guy>(roster[i]);
+        g->upgrade_to_level(static_cast<short>(level));
+        g->teamnum = 0;
+        s->save_data.team_list[i] = std::move(g);
+    }
+    s->save_data.team_size = static_cast<unsigned char>(roster.size());
+    ASSERT_TRUE(s->save_data.save("save0"));
+}
+
+void all_capture_effects_on()
+{
+    for (const char* key : {"shadows", "reflections", "weather", "ripples",
+                            "trails", "dust", "fire_glow", "screen_shake",
+                            "floor_glide"})
+        cfg.apply_setting("effects", key, "on");
+    cfg.apply_setting("effects", "depth_fx", "fog"); // the selector's default
+    // The DEFAULT floor presentation (overhang/blob shadows) films itself:
+    // the ghost view exists only while a player holds the look-up key.
+}
+
+// The per-level weather roll is world state; force the requested kind on
+// BOTH worlds (authoritative server + display mirror) so the scene shows it.
+void force_weather(WeatherKind kind)
+{
+    screen* const s = og::runtime::current_session->myscreen_;
+    screen* const server =
+        og::runtime::local_transport_shadow_testing_server_screen(
+            *og::runtime::current_game_session);
+    ASSERT_NE(nullptr, server);
+    server->world().set_weather(kind);
+    s->world().set_weather(kind);
+}
+
+void record(const char* name, int scen, WeatherKind kind, int frames,
+            int warmup_ticks)
+{
+    screen* const s = og::runtime::current_session->myscreen_;
+    build_save(s, "org.openglad.gladiator", scen, 1,
+               {FAMILY_SOLDIER, FAMILY_ELF, FAMILY_MAGE}, 4);
+    glad_init();
+    all_capture_effects_on();
+    force_weather(kind);
+    // Wind the deterministic weather clock (rain's lightning flash is
+    // scheduled; 560 ticks puts it early in the recorded loop).
+    for (int t = 0; t < warmup_ticks; t++)
+        effects_advance_frame();
+
+    GameLoopFrameState st;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.enable_frame_timing = false;
+    for (int f = 0; f < frames; f++)
+    {
+        if (game_frame_with_result(*s, st, deps) != GameFrameResult::Continue)
+            break;
+        s->redraw();
+        s->swap();
+        dump_viewport(s, name, f);
+        if (::testing::Test::HasFatalFailure())
+            break;
+    }
+    s->world().end = 0;
+    s->world().delete_objects();
+}
+
+} // namespace gameplay_rec
+
+TEST(GameLoop, zz_capture_real_gameplay)
+{
+    if (!getenv("OG_FX_CAPTURE_DIR"))
+        GTEST_SKIP() << "set OG_FX_CAPTURE_DIR to record";
+    gameplay_rec::record("gameplay_clouds", 1, WeatherKind::Clouds, 200, 0);
+    gameplay_rec::record("gameplay_rain", 1, WeatherKind::Rain, 200, 560);
+    gameplay_rec::record("gameplay_combat", 3, WeatherKind::None, 200, 0);
+    // Level 6 is the wateriest early level (terrain-scanned): shoreline
+    // ripples and reflections show up in real combat there.
+    gameplay_rec::record("gameplay_water", 6, WeatherKind::Clouds, 200, 0);
+}
+
+TEST(GameLoop, zz_capture_splitscreen_gameplay)
+{
+    if (!getenv("OG_FX_CAPTURE_DIR"))
+        GTEST_SKIP() << "set OG_FX_CAPTURE_DIR to record";
+
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, game_screen);
+
+    SaveData& save = game_screen->save_data;
+    save.reset();
+    save.current_campaign = "org.openglad.gladiator";
+    save.current_levels.clear();
+    save.current_levels[save.current_campaign] = 2;
+    save.scen_num = 2;
+    save.numplayers = 2;
+    save.allied_mode = 1;
+    save.my_team = 0;
+    for (auto& member : save.team_list)
+        member.reset();
+    struct RosterEntry { int family; const char* name; };
+    const RosterEntry roster[4] = {
+        {FAMILY_SOLDIER, "Blade"},
+        {FAMILY_BARBARIAN, "Crusher"},
+        {FAMILY_ELF, "Sharpeye"},
+        {FAMILY_MAGE, "Zapp"},
+    };
+    for (int i = 0; i < 4; ++i)
+    {
+        auto member = std::make_unique<guy>(roster[i].family);
+        member->name = roster[i].name;
+        member->teamnum = 0;
+        member->upgrade_to_level(6);
+        save.team_list[static_cast<std::size_t>(i)] = std::move(member);
+    }
+    save.team_size = 4;
+    ASSERT_TRUE(save.save("save0"));
+
+    glad_init();
+    ASSERT_TRUE(og::runtime::current_game_session != nullptr);
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(
+        og::runtime::local_transport_active(*og::runtime::current_session));
+    ASSERT_EQ(2u, og::runtime::local_transport_client_count(session));
+    ASSERT_EQ(2, game_screen->numviews);
+    ASSERT_TRUE(game_screen->viewob[0] != nullptr);
+    ASSERT_TRUE(game_screen->viewob[1] != nullptr);
+
+    gameplay_rec::all_capture_effects_on();
+    gameplay_rec::force_weather(WeatherKind::Clouds);
+
+    // Rebind the two local players' direction keys to keycodes no default
+    // layout uses, then drive them via faked SDL keystates so the two claimed
+    // heroes walk apart (proving the viewports track independent cameras).
+    SessionKeyStateGuard keystates;
+    const SDL_Keycode p0_up = SDLK_F13, p0_down = SDLK_F14,
+                      p0_left = SDLK_F15, p0_right = SDLK_F16;
+    const SDL_Keycode p1_up = SDLK_F17, p1_down = SDLK_F18,
+                      p1_left = SDLK_F19, p1_right = SDLK_F20;
+    og::runtime::current_session->player_keys_[0][KEY_UP] = p0_up;
+    og::runtime::current_session->player_keys_[0][KEY_DOWN] = p0_down;
+    og::runtime::current_session->player_keys_[0][KEY_LEFT] = p0_left;
+    og::runtime::current_session->player_keys_[0][KEY_RIGHT] = p0_right;
+    og::runtime::current_session->player_keys_[1][KEY_UP] = p1_up;
+    og::runtime::current_session->player_keys_[1][KEY_DOWN] = p1_down;
+    og::runtime::current_session->player_keys_[1][KEY_LEFT] = p1_left;
+    og::runtime::current_session->player_keys_[1][KEY_RIGHT] = p1_right;
+
+    GameLoopFrameState st;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.enable_frame_timing = false;
+
+    const int total_frames = 280;
+    for (int frame = 0; frame < total_frames; ++frame)
+    {
+        // Steering script: split apart, then drift back while battle rages.
+        keystates.set(p0_left, frame >= 10 && frame < 55);
+        keystates.set(p0_up, frame >= 55 && frame < 90);
+        keystates.set(p1_right, frame >= 10 && frame < 55);
+        keystates.set(p1_down, frame >= 55 && frame < 90);
+        keystates.set(p0_right, frame >= 150 && frame < 190);
+        keystates.set(p1_left, frame >= 150 && frame < 190);
+
+        if (game_frame_with_result(*game_screen, st, deps) !=
+            GameFrameResult::Continue)
+            break;
+
+        game_screen->redraw();
+        score_panel(game_screen);
+        game_screen->refresh();
+        game_screen->swap();
+        gameplay_rec::dump_screen(game_screen, "splitscreen_gameplay", frame);
+        if (::testing::Test::HasFatalFailure())
+            break;
+    }
+
+    // Both viewports must be tracking different heroes.
+    ASSERT_TRUE(game_screen->viewob[0]->control != nullptr);
+    ASSERT_TRUE(game_screen->viewob[1]->control != nullptr);
+    EXPECT_NE(game_screen->viewob[0]->control,
+              game_screen->viewob[1]->control);
+
+    game_screen->world().end = 0;
+    og::runtime::clear_local_transport_shadow(session);
+    game_screen->world().delete_objects();
+}
+
+// ---------------------------------------------------------------------------
+// Epic spectator battles: the War of the Westlands war levels (6/7/8/14/15/17,
+// moved from the Concept Playground's 605-610) with a hero crew deployed at
+// the level start markers and a mode-seeking cinematic camera. The centroid of two distant fights is the empty field between
+// them — so the camera seeks the densest hostile NEIGHBORHOOD instead, with
+// scripted keyframes for floor cuts and establishing shots.
+// ---------------------------------------------------------------------------
+namespace epic_rec {
+
+struct Key { int frame; int cx; int cy; int floor; bool forced; };
+
+bool action_center(GameWorld& w, int floor, float& out_x, float& out_y)
+{
+    std::vector<walker*> alive;
+    for (auto& up : w.oblist)
+        if (walker* a = up.get();
+            a != nullptr && !a->dead() && !a->dormant() &&
+            a->query_order() == Order::Living &&
+            static_cast<int>(a->floor()) == floor)
+            alive.push_back(a);
+    if (alive.empty())
+        return false;
+    walker* best = nullptr;
+    int best_score = -1;
+    for (walker* a : alive)
+    {
+        int score = 0;
+        for (walker* b : alive)
+        {
+            if (a == b)
+                continue;
+            const long dx = static_cast<long>(a->xpos()) - b->xpos();
+            const long dy = static_cast<long>(a->ypos()) - b->ypos();
+            if (dx * dx + dy * dy < 160L * 160L)
+                score += a->is_friendly(b) ? 1 : 3;
+        }
+        if (score > best_score)
+        {
+            best_score = score;
+            best = a;
+        }
+    }
+    long sx = 0, sy = 0;
+    int n = 0;
+    for (walker* b : alive)
+    {
+        const long dx = static_cast<long>(best->xpos()) - b->xpos();
+        const long dy = static_cast<long>(best->ypos()) - b->ypos();
+        if (dx * dx + dy * dy < 160L * 160L)
+        {
+            sx += static_cast<long>(b->xpos());
+            sy += static_cast<long>(b->ypos());
+            n++;
+        }
+    }
+    out_x = static_cast<float>(sx) / static_cast<float>(n > 0 ? n : 1);
+    out_y = static_cast<float>(sy) / static_cast<float>(n > 0 ? n : 1);
+    return true;
+}
+
+void record(const char* scene, int scen, WeatherKind kind,
+            const std::vector<int>& roster,
+            const std::vector<Key>& keys,
+            const char* campaign = "org.openglad.westlands")
+{
+    screen* const s = og::runtime::current_session->myscreen_;
+    // The crew deploys at the level's team-0 start position markers.
+    gameplay_rec::build_save(s, campaign, scen, 1, roster, 7);
+    glad_init();
+    gameplay_rec::all_capture_effects_on();
+    gameplay_rec::force_weather(kind);
+    screen* const server =
+        og::runtime::local_transport_shadow_testing_server_screen(
+            *og::runtime::current_game_session);
+    // Free the player-controlled hero to fight with the rest of the crew.
+    for (auto& uptr : server->world().oblist)
+        if (walker* wk = uptr.get(); wk != nullptr && wk->user() != -1)
+        {
+            wk->set_act_type(ACT_RANDOM);
+            // Film-armor the player's lead: a full team-0 wipe is an
+            // EndGame loss (the Bridge of Shadow's undead tide ate the
+            // whole crew at tick ~327 and cut the film). One immortal
+            // extra keeps the bound team alive; everyone else stays
+            // mortal — the deaths ARE the battle.
+            wk->stats()->set_max_hitpoints(30000.0f);
+            wk->stats()->set_hitpoints(30000.0f);
+        }
+    // A named hero's death ends a SAVE_ALL level (EndGame loss) — right in
+    // gameplay, wrong for a fixed-length spectator film (the Mountain of
+    // Fire cut at tick ~366 when the Ranger-King fell): strip the bit so
+    // the war plays to the last scheduled frame. Server first — the mirror
+    // re-syncs type from the authoritative snapshots.
+    server->world().type = static_cast<char>(
+        server->world().type & ~SCEN_TYPE_SAVE_ALL);
+    s->world().type = static_cast<char>(
+        s->world().type & ~SCEN_TYPE_SAVE_ALL);
+    viewscreen* vs = s->viewob[0].get();
+    ASSERT_NE(nullptr, vs);
+
+    const int world_w = static_cast<int>(s->world().grid.w) * GRID_SIZE;
+    const int world_h = static_cast<int>(s->world().grid.h) * GRID_SIZE;
+    const int total = keys.back().frame;
+
+    GameLoopFrameState st;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.enable_frame_timing = false;
+    size_t seg = 0;
+    float cam_x = static_cast<float>(keys[0].cx);
+    float cam_y = static_cast<float>(keys[0].cy);
+    int last_floor = keys[0].floor;
+    for (int f = 0; f < total; f++)
+    {
+        while (seg + 1 < keys.size() && keys[seg + 1].frame <= f)
+            seg++;
+        const Key& a = keys[seg];
+        float tx = static_cast<float>(a.cx), ty = static_cast<float>(a.cy);
+        if (!a.forced)
+            action_center(s->world(), a.floor, tx, ty);
+        if (a.floor != last_floor || a.forced)
+        {
+            cam_x = tx; // snap on a floor cut or scripted anchor
+            cam_y = ty;
+            last_floor = a.floor;
+        }
+        cam_x += (tx - cam_x) * 0.05f; // eased drift toward the action
+        cam_y += (ty - cam_y) * 0.05f;
+        const int cx = static_cast<int>(cam_x);
+        const int cy = static_cast<int>(cam_y);
+        int topx = cx - 160, topy = cy - 100;
+        if (topx < 0) topx = 0;
+        if (topy < 0) topy = 0;
+        if (topx > world_w - 320) topx = world_w - 320;
+        if (topy > world_h - 200) topy = world_h - 200;
+        // The transport shadow re-assigns viewport control every tick; the
+        // manual camera only holds while control is null, so clear it both
+        // before the sim tick and before the redraw.
+        vs->editor_floor_override_ = static_cast<Sint32>(a.floor);
+        vs->control = nullptr;
+        s->set_level_draw_pos(topx, topy);
+        if (game_frame_with_result(*s, st, deps) != GameFrameResult::Continue)
+            break;
+        vs->control = nullptr;
+        s->set_level_draw_pos(topx, topy);
+        s->redraw();
+        s->swap();
+        gameplay_rec::dump_screen(s, scene, f);
+        if (::testing::Test::HasFatalFailure())
+            break;
+    }
+    vs->editor_floor_override_ = -1;
+    s->world().end = 0;
+    s->world().delete_objects();
+}
+
+} // namespace epic_rec
+
+TEST(GameLoop, zz_capture_epic_battles)
+{
+    if (!getenv("OG_FX_CAPTURE_DIR"))
+        GTEST_SKIP() << "set OG_FX_CAPTURE_DIR to record";
+    using epic_rec::Key;
+    // OG_FX_CAPTURE_ONLY=<level id> records a single level (fast iteration).
+    const char* only = getenv("OG_FX_CAPTURE_ONLY");
+    const auto want = [&](const char* n) {
+        return only == nullptr || strcmp(only, n) == 0;
+    };
+    // The six war stories live in War of the Westlands now (moved from the
+    // concept package: 605->15, 606->14, 607->8, 608->6, 609->17, 610->7);
+    // the keyframe scripts are unchanged — the battlefields moved intact.
+    // The Deeping Wall — and at frame ~500, look to the east: the White
+    // Rider arrives behind the flank in a teleport flash (delayed spawn).
+    if (want("15"))
+        epic_rec::record("epic_15", 15, WeatherKind::Rain,
+            {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_ELF,
+             FAMILY_ELF, FAMILY_CLERIC, FAMILY_BARBARIAN, FAMILY_MAGE},
+            {{0, 610, 660, 0, false}, {80, 610, 420, 0, false},
+             {84, 260, 310, 1, false}, {170, 1020, 310, 1, false},
+             {174, 632, 330, 0, false}, {495, 632, 360, 0, false},
+             {500, 1216, 540, 0, true}, {575, 1216, 540, 0, true},
+             {580, 900, 420, 0, false}, {800, 700, 380, 0, false}});
+    if (want("14"))
+        epic_rec::record("epic_14", 14, WeatherKind::Clouds,
+            {FAMILY_DRUID, FAMILY_DRUID, FAMILY_ELF, FAMILY_ELF, FAMILY_ELF,
+             FAMILY_BARBARIAN, FAMILY_BARBARIAN, FAMILY_ARCHMAGE},
+            {{0, 120, 480, 0, false}, {110, 480, 470, 0, false},
+             {114, 480, 480, 1, false}, {190, 480, 480, 1, false},
+             {194, 480, 480, 2, false}, {270, 480, 480, 2, false},
+             {274, 480, 480, 3, false}, {370, 480, 480, 3, false},
+             {374, 480, 300, 0, false}, {480, 480, 640, 0, false}});
+    if (want("8"))
+        epic_rec::record("epic_8", 8, WeatherKind::None,
+            {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER,
+             FAMILY_BARBARIAN, FAMILY_BARBARIAN, FAMILY_CLERIC, FAMILY_ELF,
+             FAMILY_ELF},
+            {{0, 120, 320, 1, false}, {250, 560, 320, 1, false},
+             {350, 560, 320, 1, false},
+             {354, 560, 320, 0, false}, {440, 760, 320, 0, false}});
+    if (want("6"))
+        epic_rec::record("epic_6", 6, WeatherKind::None,
+            {FAMILY_THIEF, FAMILY_THIEF, FAMILY_ELF, FAMILY_ELF,
+             FAMILY_BARBARIAN, FAMILY_BARBARIAN, FAMILY_CLERIC,
+             FAMILY_SOLDIER},
+            {{0, 180, 180, 2, false}, {130, 760, 240, 2, false},
+             {134, 760, 240, 1, false}, {270, 200, 660, 1, false},
+             {274, 280, 660, 0, false}, {460, 480, 620, 0, false}});
+    if (want("17"))
+        epic_rec::record("epic_17", 17, WeatherKind::Clouds,
+            {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_ELF,
+             FAMILY_ELF, FAMILY_MAGE, FAMILY_MAGE, FAMILY_CLERIC},
+            {{0, 160, 300, 0, false}, {110, 400, 450, 0, false},
+             {240, 730, 400, 0, false}, {400, 730, 400, 0, false},
+             {404, 730, 300, 1, false}, {500, 730, 300, 1, false}});
+    if (want("7"))
+        epic_rec::record("epic_7", 7, WeatherKind::Rain,
+            {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER,
+             FAMILY_ELF, FAMILY_ELF, FAMILY_BARBARIAN, FAMILY_BARBARIAN},
+            {{0, 160, 330, 2, false}, {250, 1120, 330, 2, false},
+             {254, 640, 180, 0, false}, {350, 640, 180, 0, false},
+             {354, 640, 330, 2, false}, {480, 640, 330, 2, false}});
+    // --- The new Westlands showpiece levels (built for this campaign). ---
+    // The White City: open on the torn gate where the war-beast columns push
+    // the breach, follow the street fighting, cut up to the wall-top
+    // ramparts, hold the beacon on the tower's glass crown, then return to
+    // the battle until the Horse-lord's dawn relief flashes in on the
+    // north-west plain at tick 700.
+    if (want("16"))
+        epic_rec::record("epic_16", 16, WeatherKind::Clouds,
+            {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_ELF,
+             FAMILY_ELF, FAMILY_CLERIC, FAMILY_MAGE, FAMILY_BARBARIAN},
+            {{0, 672, 392, 0, true}, {70, 672, 392, 0, false},
+             {150, 672, 100, 1, false}, {240, 1320, 408, 2, true},
+             {330, 672, 392, 0, false}, {690, 168, 80, 0, true},
+             {760, 168, 80, 0, true}});
+    // The Mountain of Fire: establish the war host's wedge (the Bearer's
+    // warded cleft sits at the west map edge), follow the plain battle,
+    // hold the Undergate throat, then climb the cone — terrace ring, the
+    // north lava fall, the summit rim over the caldera and the twin summit
+    // cracks — and come back down to the war. The wild-men relief wakes at
+    // tick 400 on the south-west plain.
+    if (want("24"))
+        epic_rec::record("epic_24", 24, WeatherKind::None,
+            {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_BARBARIAN,
+             FAMILY_BARBARIAN, FAMILY_ELF, FAMILY_ELF, FAMILY_CLERIC,
+             FAMILY_MAGE},
+            {{0, 130, 380, 0, true}, {80, 400, 390, 0, false},
+             {250, 880, 392, 0, true}, {320, 1064, 240, 1, false},
+             {400, 150, 530, 0, true}, {460, 400, 390, 0, false},
+             {560, 1064, 200, 1, true}, {610, 1064, 392, 2, false},
+             {700, 1008, 392, 2, true}, {760, 500, 390, 0, false},
+             {800, 500, 390, 0, false}});
+    // The High Pass tiles showcase: the new SNOW ground under the new Snow
+    // weather kind (on this level snowfall is the terrain override —
+    // blizzard country is always snowing; the force below just makes the
+    // scene independent of that heuristic). Establish the muster on the
+    // south apron by the frozen tarn, follow the tarn-pack fight, cut to
+    // the chief's band at the mine gate, then drift back to the action.
+    if (want("5"))
+        epic_rec::record("epic_5", 5, WeatherKind::Snow,
+            {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_BARBARIAN,
+             FAMILY_BARBARIAN, FAMILY_ELF, FAMILY_ELF, FAMILY_CLERIC,
+             FAMILY_THIEF},
+            {{0, 808, 888, 0, true}, {60, 808, 888, 0, false},
+             {180, 392, 168, 0, true}, {240, 808, 880, 0, false},
+             {300, 808, 880, 0, false}});
+}
+
+// ---------------------------------------------------------------------------
+// War of the Westlands story gameplay: the two Bearer's-road levels captured
+// as REAL gameplay (single viewport, the camera bound to the company's
+// thief). The crew deploys at the level start markers; the claimed hero is
+// freed to AI because no live input arrives in a capture and a statue lead
+// makes a dull chase.
+// ---------------------------------------------------------------------------
+namespace gameplay_rec {
+
+void record_story(const char* name, int scen, WeatherKind kind,
+                  const std::vector<int>& roster, int level, int frames,
+                  const char* campaign = "org.openglad.westlands")
+{
+    screen* const s = og::runtime::current_session->myscreen_;
+    build_save(s, campaign, scen, 1, roster, level);
+    glad_init();
+    all_capture_effects_on();
+    force_weather(kind);
+    screen* const server =
+        og::runtime::local_transport_shadow_testing_server_screen(
+            *og::runtime::current_game_session);
+    ASSERT_NE(nullptr, server);
+    for (auto& uptr : server->world().oblist)
+        if (walker* wk = uptr.get(); wk != nullptr && wk->user() != -1)
+        {
+            wk->set_act_type(ACT_RANDOM);
+            // Camera armor: when the lead falls, the display rebinds
+            // control and the viewport has been seen drifting onto the
+            // map-border bricks. The camera walker survives the scene;
+            // the escort remains mortal (their deaths are the story).
+            wk->stats()->set_max_hitpoints(30000.0f);
+            wk->stats()->set_hitpoints(30000.0f);
+        }
+    // Roster guys carry default names ("SOLDIER", family names), and on a
+    // SAVE_ALL level ANY named team-0 death is an EndGame loss — the Forest
+    // Road film cut at tick ~150 when an escort fell. Strip the bit so the
+    // scene runs its scheduled length (server first; the mirror re-syncs
+    // type from the authoritative snapshots).
+    server->world().type = static_cast<char>(
+        server->world().type & ~SCEN_TYPE_SAVE_ALL);
+    s->world().type = static_cast<char>(
+        s->world().type & ~SCEN_TYPE_SAVE_ALL);
+    // The Bearer is story cargo, parked far from the escort: the road
+    // pickets can wear the level-3 thief down while the camera is with the
+    // fighting, and "THE BEARER DIED" in the kill feed rather spoils the
+    // campaign's premise. Film-armor him.
+    for (auto& uptr : server->world().oblist)
+        if (walker* wk = uptr.get();
+            wk != nullptr && wk->stats() != nullptr &&
+            wk->stats()->name == "The Bearer")
+        {
+            wk->stats()->set_max_hitpoints(30000.0f);
+            wk->stats()->set_hitpoints(30000.0f);
+        }
+
+    GameLoopFrameState st;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.enable_frame_timing = false;
+    for (int f = 0; f < frames; f++)
+    {
+        if (game_frame_with_result(*s, st, deps) != GameFrameResult::Continue)
+            break;
+        s->redraw();
+        s->swap();
+        dump_viewport(s, name, f);
+        if (::testing::Test::HasFatalFailure())
+            break;
+    }
+    s->world().end = 0;
+    s->world().delete_objects();
+}
+
+} // namespace gameplay_rec
+
+TEST(GameLoop, zz_capture_westlands)
+{
+    if (!getenv("OG_FX_CAPTURE_DIR"))
+        GTEST_SKIP() << "set OG_FX_CAPTURE_DIR to record";
+    const char* only = getenv("OG_FX_CAPTURE_ONLY");
+    const auto want = [&](const char* n) {
+        return only == nullptr || strcmp(only, n) == 0;
+    };
+    // 2 The Forest Road — THE FLIGHT: rain over the corridor maze, the
+    // Pale Riders waking behind the crew in waves (250/550/900). The
+    // camera rides with the thief; the Bearer runs in the column with him
+    // (Wave E1). 700 frames so the film reaches past the tick-500 wave —
+    // a 420-frame cut ended before any pursuit orc woke, so the card
+    // structurally could not show the chase (forest-pathing RCA note).
+    if (want("2"))
+        gameplay_rec::record_story(
+            "westlands_flight", 2, WeatherKind::Rain,
+            {FAMILY_THIEF, FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_ELF,
+             FAMILY_ELF, FAMILY_BARBARIAN, FAMILY_CLERIC, FAMILY_MAGE},
+            6, 700);
+    // 19 The Dead Marshes: the new MARSH tiles (shimmer + ripples) with
+    // ghost-lights drifting off every mere at the firm-shelf line.
+    if (want("19"))
+        gameplay_rec::record_story(
+            "westlands_marshes", 19, WeatherKind::Clouds,
+            {FAMILY_THIEF, FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_ELF,
+             FAMILY_ELF, FAMILY_BARBARIAN, FAMILY_CLERIC, FAMILY_MAGE},
+            6, 360);
+}
+
+// Wave E7 decor-ambience spot checks: short forced-camera establishing
+// shots of the four representative dressings — marsh bones on the drowned
+// battlefield, cinder grit + the march's dead on the ash, war-road pebbles
+// and trampled-swathe bones on the plains, and forest-shrub undergrowth in
+// the Golden Wood. Each scene is a 20-frame hold so sprites settle; the
+// point is to LOOK at the frames.
+TEST(GameLoop, zz_capture_westlands_decor)
+{
+    if (!getenv("OG_FX_CAPTURE_DIR"))
+        GTEST_SKIP() << "set OG_FX_CAPTURE_DIR to record";
+    using epic_rec::Key;
+    const char* only = getenv("OG_FX_CAPTURE_ONLY");
+    const auto want = [&](const char* n) {
+        return only == nullptr || strcmp(only, n) == 0;
+    };
+    const std::vector<int> crew = {FAMILY_SOLDIER, FAMILY_SOLDIER,
+                                   FAMILY_BARBARIAN, FAMILY_ELF, FAMILY_ELF,
+                                   FAMILY_CLERIC, FAMILY_MAGE, FAMILY_THIEF};
+    if (want("d19")) // bog island I1, the sunken dead among the meres
+        epic_rec::record("decor_19_marshes", 19, WeatherKind::Clouds, crew,
+                         {{0, 288, 272, 0, true}, {20, 288, 272, 0, true}});
+    if (want("d23")) // the central lane: banner torches, grit, old bones
+        epic_rec::record("decor_23_ash", 23, WeatherKind::None, crew,
+                         {{0, 720, 320, 0, true}, {20, 720, 320, 0, true}});
+    if (want("d13")) // the war-road through the column's trampled swathes
+        epic_rec::record("decor_13_plains", 13, WeatherKind::Clouds, crew,
+                         {{0, 672, 384, 0, true}, {20, 672, 384, 0, true}});
+    if (want("d10")) // the west road under the eaves, undergrowth off it
+        epic_rec::record("decor_10_wood", 10, WeatherKind::Clouds, crew,
+                         {{0, 320, 320, 0, true}, {20, 320, 320, 0, true}});
+}
+
+// ---------------------------------------------------------------------------
+// The Long Season (org.openglad.longseason): four scenes from the Brass
+// Kettle Company's year. Ferry Right is real gameplay (the camera rides the
+// lead soldier plugging the causeway mouth); the other three are keyframed
+// spectator films per the epic_rec pattern. Keyframe pixel anchors come
+// straight from the tools/longseason_mapgen builders (tile * 16).
+// ---------------------------------------------------------------------------
+TEST(GameLoop, zz_capture_longseason)
+{
+    if (!getenv("OG_FX_CAPTURE_DIR"))
+        GTEST_SKIP() << "set OG_FX_CAPTURE_DIR to record";
+    using epic_rec::Key;
+    const char* only = getenv("OG_FX_CAPTURE_ONLY");
+    const auto want = [&](const char* n) {
+        return only == nullptr || strcmp(only, n) == 0;
+    };
+    const char* const ls = "org.openglad.longseason";
+    // 2 The Ferry Right — spring flood, rain over the drowned river. Real
+    // gameplay: the company holds the causeway's east mouth so the toll
+    // runs. Knifemen open on the span; the boat wave beaches on the north
+    // shallows at tick 400 and hits the landing's rear rank on camera.
+    if (want("ls_2"))
+        gameplay_rec::record_story(
+            "ls_2", 2, WeatherKind::Rain,
+            {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ELF,
+             FAMILY_BARBARIAN, FAMILY_THIEF, FAMILY_CLERIC, FAMILY_MAGE},
+            4, 460, ls);
+    // 14 The Long Toll — the Grey Tolls fort in winter, forced blizzard.
+    // Establish the courtyard (braziers, the strongroom, the watch), follow
+    // the wolf probe, cut to the west mouth for wave 1's wake flash (300),
+    // ride that fight up the road, cut east for the 700 wave, then back to
+    // the fort for the hold.
+    if (want("ls_14"))
+        epic_rec::record("ls_14", 14, WeatherKind::Snow,
+            {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_BARBARIAN,
+             FAMILY_BARBARIAN, FAMILY_ELF, FAMILY_ELF, FAMILY_CLERIC,
+             FAMILY_MAGE},
+            {{0, 480, 480, 0, true}, {60, 480, 480, 0, false},
+             {270, 64, 464, 0, true}, {340, 300, 470, 0, false},
+             {660, 912, 464, 0, true}, {730, 700, 460, 0, false},
+             {860, 480, 480, 0, false}, {960, 480, 480, 0, false}},
+            ls);
+    // 17 Ashfall Gate — the creditors' camps on the ash plain. Open on the
+    // company's wedge under the banner, tour the three camps (palisades,
+    // cook-fires, the tent and tower trickles), hold the gate throat's
+    // golem wards and slag runnels, then settle on the wagon-corridor spine
+    // fight; at 660 cut back west onto the north cut-purse trio (tiles
+    // 10-14, y 6-13) for their tick-700 wake flash behind the crew's line.
+    if (want("ls_17"))
+        epic_rec::record("ls_17", 17, WeatherKind::None,
+            {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_ELF,
+             FAMILY_ELF, FAMILY_MAGE, FAMILY_CLERIC, FAMILY_BARBARIAN},
+            {{0, 96, 336, 0, true}, {60, 352, 128, 0, true},
+             {130, 352, 544, 0, true}, {200, 976, 336, 0, true},
+             {270, 640, 336, 0, false}, {430, 640, 336, 0, false},
+             {660, 192, 160, 0, true}, {760, 400, 340, 0, false},
+             {860, 640, 336, 0, false}, {940, 640, 336, 0, false}},
+            ls);
+    // 18 The Warm Mint — the keyframed three-floor foundry climb. Floor 0:
+    // the gatehall door war (Kettle holds the west wall at tile 3,21), the
+    // casting floor's lava channels, the golem-warded stair chamber. Cut UP
+    // at the aligned stair (57,21): the vault floor's collapse holes, melt
+    // pools and warded heaps, then the counting rooms. Cut UP again (9,21):
+    // the crucible lake, the rim elementals and ghosts, and The Founder on
+    // the dais beside the master ledger — brazier-lit end to end.
+    if (want("ls_18"))
+        epic_rec::record("ls_18", 18, WeatherKind::None,
+            {FAMILY_SOLDIER, FAMILY_SOLDIER, FAMILY_BARBARIAN, FAMILY_ELF,
+             FAMILY_ELF, FAMILY_CLERIC, FAMILY_MAGE, FAMILY_ARCHMAGE},
+            {{0, 96, 336, 0, true}, {70, 96, 336, 0, false},
+             {200, 560, 336, 0, true}, {270, 560, 336, 0, false},
+             {430, 912, 336, 0, true}, {500, 912, 336, 1, true},
+             {570, 560, 320, 1, true}, {640, 560, 320, 1, false},
+             {710, 144, 336, 1, true}, {780, 144, 336, 2, true},
+             {850, 504, 344, 2, true}, {920, 832, 336, 2, true},
+             {990, 832, 336, 2, false}, {1050, 832, 336, 2, false}},
+            ls);
+}
+
+// ---------------------------------------------------------------------------
+// Classic respawn e2e (difficulty submenu "Respawns: Heroes"): on a real
+// level driven through the full local-transport game loop (authoritative
+// server sim + display mirror), a hero killed through the sim damage path
+// must schedule a classic respawn, hold the camera on the pending corpse,
+// revive at its recorded level-entry point, and get its player control
+// reclaimed by the server and rebound on the display.
+// ---------------------------------------------------------------------------
+
+#include <openglad/gameplay/gameplay_context.h>
+#include <openglad/gameplay/sim_event_log.h>
+#include <openglad/gameplay/ctf/ctf_state.h>
+#include <openglad/gameplay/statistics.h>
+
+namespace {
+
+// Install a gameplay context bound to the authoritative server world so
+// direct sim calls (attack, setxy) run against the right world/obmap and
+// have an event log to write to (the shadow's own server context is
+// installed only inside finish_tick).
+struct ScopedServerWorldContext
+{
+    GameplayContext context;
+    GameplayContext* previous;
+    og::sim::SimEventLog events;
+
+    explicit ScopedServerWorldContext(screen& server_screen)
+        : previous(current_game)
+    {
+        context.world = &server_screen.world();
+        context.save = &server_screen.save_data;
+        context.sim_events = &events;
+        current_game = &context;
+    }
+    ~ScopedServerWorldContext() { current_game = previous; }
+
+    ScopedServerWorldContext(const ScopedServerWorldContext&) = delete;
+    ScopedServerWorldContext& operator=(const ScopedServerWorldContext&) = delete;
+};
+
+walker* find_server_hero(GameWorld& world)
+{
+    for (const auto& uptr : world.oblist)
+    {
+        walker* w = uptr.get();
+        if (w != nullptr && !w->dead() && w->query_order() == Order::Living &&
+            w->myguy != nullptr)
+        {
+            return w;
+        }
+    }
+    return nullptr;
+}
+
+walker* find_server_enemy(GameWorld& world, unsigned char hero_team)
+{
+    for (const auto& uptr : world.oblist)
+    {
+        walker* w = uptr.get();
+        if (w != nullptr && !w->dead() && w->query_order() == Order::Living &&
+            w->team_num() != hero_team && w->myguy == nullptr)
+        {
+            return w;
+        }
+    }
+    return nullptr;
+}
+
+} // namespace
+
+TEST(GameLoop, classic_respawn_e2e_revives_hero_at_entry_point_and_reclaims_control)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, game_screen);
+
+    SaveData& save = game_screen->save_data;
+    save.reset();
+    save.current_campaign = "org.openglad.gladiator";
+    save.current_levels[save.current_campaign] = 1;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.allied_mode = 1;
+    save.my_team = 0;
+    save.respawn_mode = 1;       // Respawns: Heroes
+    save.ctf_respawn_ticks = 12; // fastest legal delay: quick revive
+    auto leader = std::make_unique<guy>(FAMILY_SOLDIER);
+    leader->name = "Leader";
+    leader->teamnum = 0;
+    save.team_list[0] = std::move(leader);
+    save.team_size = 1;
+    ASSERT_TRUE(save.save("save0"));
+
+    glad_init();
+    ASSERT_NE(nullptr, og::runtime::current_game_session);
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(
+        og::runtime::local_transport_active(*og::runtime::current_session));
+    ASSERT_NE(nullptr, game_screen->viewob[0]);
+
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(session);
+    ASSERT_NE(nullptr, server_screen);
+    GameWorld& server_world = server_screen->world();
+    ASSERT_EQ(1, static_cast<int>(server_world.respawn_mode))
+        << "SaveData.respawn_mode must reach the authoritative world";
+
+    walker* const hero = find_server_hero(server_world);
+    ASSERT_NE(nullptr, hero);
+    const std::uint32_t hero_id = hero->entity_id();
+    const short entry_x = hero->spawn_x();
+    const short entry_y = hero->spawn_y();
+    const std::uint8_t entry_floor = hero->spawn_floor();
+    ASSERT_GE(entry_x, 0) << "the level deploy must record the entry point";
+    ASSERT_EQ(entry_x, hero->xpos())
+        << "the recorded entry point is where the hero was deployed";
+    ASSERT_EQ(entry_y, hero->ypos());
+
+    walker* const enemy = find_server_enemy(server_world, hero->team_num());
+    ASSERT_NE(nullptr, enemy) << "the level must field an enemy living";
+
+    // Kill the hero through the real combat damage path, after moving it off
+    // its entry point so the revive-at-entry move is observable.
+    {
+        ScopedServerWorldContext server_ctx(*server_screen);
+        // Make the hero the SOLE living of its team (the solo shape): with a
+        // fallback body the player would simply switch bodies on death and
+        // the null-control -> revive -> reclaim path would never engage.
+        for (const auto& uptr : server_world.oblist)
+        {
+            walker* const w = uptr.get();
+            if (w != nullptr && w != hero && !w->dead() &&
+                w->query_order() == Order::Living &&
+                w->team_num() == hero->team_num())
+            {
+                w->set_team_num(enemy->team_num());
+            }
+        }
+        hero->setxy(static_cast<short>(entry_x + 64),
+                    static_cast<short>(entry_y + 48));
+        enemy->set_damage(500.0f);
+        hero->stats()->set_hitpoints(1.0f);
+        ASSERT_TRUE(enemy->attack(hero)) << "the attack must land";
+        ASSERT_TRUE(hero->dead()) << "sim damage must kill the 1-hp hero";
+    }
+
+    GameLoopFrameState st;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.enable_frame_timing = false;
+
+    // The level must keep running through the death (team-wipe endgame is
+    // suppressed while a classic respawn mode is active) until the revive.
+    bool saw_pending_corpse_keepalive = false;
+    bool revived = false;
+    for (int frame = 0; frame < 400 && !revived; ++frame)
+    {
+        ASSERT_EQ(GameFrameResult::Continue,
+                  game_frame_with_result(*game_screen, st, deps))
+            << "a pending classic respawn must not end the level (frame "
+            << frame << ")";
+        walker* const server_hero = server_world.find_by_id(hero_id);
+        ASSERT_NE(nullptr, server_hero)
+            << "the myguy corpse must survive the dead sweep";
+        revived = !server_hero->dead();
+        walker* const view_control = game_screen->viewob[0]->control;
+        if (!revived && view_control != nullptr && view_control->dead() &&
+            view_control->entity_id() == hero_id)
+        {
+            saw_pending_corpse_keepalive = true;
+        }
+    }
+    ASSERT_TRUE(revived) << "the classic respawn must revive the hero";
+    EXPECT_TRUE(saw_pending_corpse_keepalive)
+        << "the view must hold on the corpse while the respawn is pending";
+
+    walker* const server_hero = server_world.find_by_id(hero_id);
+    ASSERT_NE(nullptr, server_hero);
+    ASSERT_EQ(hero, server_hero) << "player revive keeps the same walker";
+    EXPECT_EQ(entry_x, server_hero->xpos())
+        << "the revive must pull the hero back to its level-entry point";
+    EXPECT_EQ(entry_y, server_hero->ypos());
+    EXPECT_EQ(static_cast<int>(entry_floor),
+              static_cast<int>(server_hero->floor()));
+    EXPECT_EQ(server_hero->stats()->max_hitpoints(),
+              server_hero->stats()->hitpoints())
+        << "the revive restores full hitpoints";
+
+    // Control reclaim: the server rebinds the revived walker by user tag and
+    // the ControlChange rebinds the display view to the live hero.
+    bool reclaimed = false;
+    for (int frame = 0; frame < 60 && !reclaimed; ++frame)
+    {
+        ASSERT_EQ(GameFrameResult::Continue,
+                  game_frame_with_result(*game_screen, st, deps));
+        walker* const view_control = game_screen->viewob[0]->control;
+        reclaimed = view_control != nullptr && !view_control->dead() &&
+            view_control->entity_id() == hero_id;
+    }
+    ASSERT_TRUE(reclaimed)
+        << "player control must be reclaimed after the classic revive";
+    EXPECT_EQ(0, static_cast<int>(server_hero->user()))
+        << "the revive preserves the player's user tag";
+
+    og::runtime::clear_local_transport_shadow(session);
+    game_screen->world().end = 0;
+    game_screen->world().delete_objects();
+    // SaveData::reset() deliberately leaves the match-rule fields alone (the
+    // CTF-trio precedent), so scrub them here — and rewrite save0 — to keep
+    // later tests (and other binaries loading save0) on classic behavior.
+    save.respawn_mode = 0;
+    save.ctf_respawn_ticks = 0;
+    game_screen->world().respawn_mode = 0;
+    EXPECT_TRUE(save.save("save0"));
+}
+
+// A10 pin: dormant (delayed-spawn) allies are absent from snapshots, so if
+// the server-side SwitchChar cycle ever hands control to one (bug A1), the
+// display mirror cannot resolve the ControlChange id, viewob[0]->control goes
+// null, and the whole HUD (name, HP/MP, SPC line, FOES) vanishes. Drive
+// switches through the REAL local-transport-shadow stack with a dormant ally
+// on the roster and pin that the view control stays live and HUD-eligible on
+// every tick.
+TEST(GameLoop, switch_char_over_dormant_ally_never_blanks_view_control)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_NE(nullptr, game_screen);
+
+    SaveData& save = game_screen->save_data;
+    prepare_dense_allied_alpha_bravo_charlie_save(save);
+    ASSERT_TRUE(save.save("save0"));
+
+    glad_init();
+    ASSERT_NE(nullptr, og::runtime::current_game_session);
+    og::runtime::GameSession& session = *og::runtime::current_game_session;
+    ASSERT_TRUE(og::runtime::local_transport_active(session));
+    ASSERT_NE(nullptr, game_screen->viewob[0]);
+
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(session);
+    ASSERT_NE(nullptr, server_screen);
+    GameWorld& server_world = server_screen->world();
+
+    walker* const alpha = find_named_team_member(server_world, "Alpha");
+    walker* const bravo = find_named_team_member(server_world, "Bravo");
+    walker* const charlie = find_named_team_member(server_world, "Charlie");
+    ASSERT_NE(nullptr, alpha);
+    ASSERT_NE(nullptr, bravo);
+    ASSERT_NE(nullptr, charlie);
+    ASSERT_EQ(0, static_cast<int>(alpha->user())) << "player 0 claims Alpha";
+    const std::uint32_t alpha_id = alpha->entity_id();
+    const std::uint32_t bravo_id = bravo->entity_id();
+    const std::uint32_t charlie_id = charlie->entity_id();
+
+    // Turn Bravo into a delayed-entry (dormant) ally, like the westlands
+    // levels author with spawn_delay. Server-world mutation needs the server
+    // gameplay context (obmap re-bucketing on set_dormant).
+    {
+        ScopedServerWorldContext server_ctx(*server_screen);
+        bravo->set_spawn_delay(60000);
+        bravo->set_dormant(true);
+    }
+
+    std::set<std::uint32_t> seen_control_ids;
+    const auto drive_tick = [&](bool press_switch) {
+        const InputState input =
+            press_switch ? make_switch_char_input(0u) : InputState{};
+        og::runtime::local_transport_shadow_send_input(
+            session, input, game_screen->world().tick_count_ + 1u);
+        og::runtime::local_transport_shadow_finish_tick(session);
+
+        walker* const control = game_screen->viewob[0]->control;
+        ASSERT_NE(nullptr, control)
+            << "the view control (and with it the HUD) must never blank";
+        ASSERT_FALSE(control->dormant())
+            << "the view must never follow a dormant walker";
+        ASSERT_NE(bravo_id, control->entity_id())
+            << "the switch cycle must skip the dormant ally";
+        ASSERT_NE(-1, static_cast<int>(control->user()))
+            << "score-panel HUD gate: control must stay human-claimed on the "
+               "switch tick itself (the ControlChange mapping is authoritative; "
+               "the user tag must not lag it)";
+        ASSERT_FALSE(control->dead());
+        seen_control_ids.insert(control->entity_id());
+    };
+
+    // A couple of neutral warm-up ticks, then several full switch cycles
+    // (press + release per switch).
+    for (int i = 0; i < 2; ++i)
+        drive_tick(false);
+    for (int i = 0; i < 8 && !::testing::Test::HasFatalFailure(); ++i)
+    {
+        drive_tick(true);
+        if (::testing::Test::HasFatalFailure())
+            break;
+        drive_tick(false);
+    }
+    ASSERT_FALSE(::testing::Test::HasFatalFailure());
+
+    EXPECT_TRUE(seen_control_ids.contains(alpha_id))
+        << "the cycle should pass through Alpha";
+    EXPECT_TRUE(seen_control_ids.contains(charlie_id))
+        << "the cycle should reach the awake ally Charlie";
+    EXPECT_FALSE(seen_control_ids.contains(bravo_id));
+    EXPECT_TRUE(bravo->dormant())
+        << "the delayed ally must still be pending at test end";
+
+    og::runtime::clear_local_transport_shadow(session);
+    game_screen->world().end = 0;
+    game_screen->world().delete_objects();
+}
+
+// ---------------------------------------------------------------------------
+// cfg graphics/scale in REAL gameplay: the grown world canvas must carry real
+// rendered world (not clipped 320x200 content plus black filler), the panes
+// must be laid out from the canvas dims in split-screen, and a mid-game
+// window resize must retrack everything. All of it is non-default behavior:
+// the guard restores the Legacy classic canvas so the rest of the binary
+// keeps the byte-identical default setup.
+// ---------------------------------------------------------------------------
+#include <openglad/platform/video_sdl.h> // apply_world_scale_from_cfg
+#include <openglad/interface/render/view_layout.h>
+#include <openglad/interface/render/radar.h>
+
+namespace canvas_scale_gameplay {
+
+// RAII: tear the game down and restore the Legacy classic canvas + UI routing.
+struct WorldScaleGameGuard
+{
+    screen* s;
+    explicit WorldScaleGameGuard(screen* scr) : s(scr) {}
+    ~WorldScaleGameGuard()
+    {
+        if (og::runtime::current_game_session)
+            og::runtime::clear_local_transport_shadow(
+                *og::runtime::current_game_session);
+        s->world().end = 0;
+        s->world().delete_objects();
+        cfg.apply_setting("graphics", "scale", "off");
+        apply_world_scale_from_cfg();
+        s->set_active_canvas(CanvasTarget::UI);
+        s->relayout_views();
+    }
+};
+
+// Sparse-sampled count of non-black pixels in [x0,x1) x [y0,y1).
+int nonblack_samples(screen* s, int x0, int y0, int x1, int y1)
+{
+    int n = 0;
+    for (int y = y0; y < y1; y += 8)
+        for (int x = x0; x < x1; x += 8)
+        {
+            Uint8 r = 0, g = 0, b = 0;
+            s->get_pixel(x, y, &r, &g, &b);
+            if ((r | g | b) != 0)
+                n++;
+        }
+    return n;
+}
+
+void run_frames(screen* s, int frames)
+{
+    GameLoopFrameState st;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+    deps.enable_frame_timing = false;
+    for (int f = 0; f < frames; f++)
+        ASSERT_EQ(GameFrameResult::Continue, game_frame_with_result(*s, st, deps));
+}
+
+// Pane geometry pinned against compute_view_layout at the CURRENT world
+// canvas dims, plus containment inside the canvas.
+void expect_pane_matches_layout(screen* s, int i, int canvas_w, int canvas_h)
+{
+    viewscreen* vs = s->viewob[static_cast<size_t>(i)].get();
+    ASSERT_TRUE(vs) << "view " << i;
+    const og::view_layout::ViewLayout want = og::view_layout::compute_view_layout(
+        s->numviews, vs->mynum, vs->prefs[PREF_VIEW], canvas_w, canvas_h);
+    ASSERT_TRUE(want.applies) << "view " << i;
+    EXPECT_EQ(want.x, vs->xloc) << "view " << i;
+    EXPECT_EQ(want.y, vs->yloc) << "view " << i;
+    EXPECT_EQ(want.w, vs->xview) << "view " << i;
+    EXPECT_EQ(want.h, vs->yview) << "view " << i;
+    EXPECT_GE(vs->xloc, 0) << "view " << i;
+    EXPECT_GE(vs->yloc, 0) << "view " << i;
+    EXPECT_LE(vs->endx, canvas_w) << "view " << i;
+    EXPECT_LE(vs->endy, canvas_h) << "view " << i;
+}
+
+// The fixed 60x44 radar block must land inside its pane at any pane size.
+void expect_radar_inside_pane(viewscreen* vs)
+{
+    vs->myradar->start();
+    EXPECT_GE(vs->myradar->xloc, vs->xloc);
+    EXPECT_GE(vs->myradar->yloc, vs->yloc);
+    EXPECT_LE(vs->myradar->xloc + vs->myradar->xview, vs->endx);
+    EXPECT_LE(vs->myradar->yloc + vs->myradar->yview, vs->endy);
+}
+
+// Full world-canvas frame dump for the visual review flow (P6 PPM), gated on
+// OG_FX_CAPTURE_DIR like the other capture scenes.
+void dump_canvas(screen* s, const char* scene, int frame)
+{
+    char dir[512];
+    gameplay_rec::dump_dir_for(scene, dir, sizeof(dir));
+    char path[544];
+    snprintf(path, sizeof(path), "%s/%03d.ppm", dir, frame);
+    FILE* fp = fopen(path, "wb");
+    ASSERT_NE(nullptr, fp);
+    const int w = s->canvas_w();
+    const int h = s->canvas_h();
+    fprintf(fp, "P6\n%d %d\n255\n", w, h);
+    for (int j = 0; j < h; j++)
+        for (int i = 0; i < w; i++)
+        {
+            Uint8 r, g, b;
+            s->get_pixel(i, j, &r, &g, &b);
+            fputc(r, fp);
+            fputc(g, fp);
+            fputc(b, fp);
+        }
+    fclose(fp);
+}
+
+} // namespace canvas_scale_gameplay
+
+TEST(GameLoop, world_scale_gameplay_draws_real_world_on_the_grown_canvas)
+{
+    screen* const s = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(s != nullptr);
+
+    // scale=1 on the default 640x400 test window: the world canvas IS the
+    // window — four times the classic pixel count.
+    cfg.apply_setting("graphics", "scale", "1");
+    apply_world_scale_from_cfg();
+    if (s->world_canvas_w() != 640 || s->world_canvas_h() != 400)
+        GTEST_SKIP() << "test window is not the expected default 640x400";
+    canvas_scale_gameplay::WorldScaleGameGuard guard(s);
+
+    gameplay_rec::build_save(s, "org.openglad.gladiator", 1, 1,
+                             {FAMILY_SOLDIER, FAMILY_ELF, FAMILY_MAGE}, 4);
+    glad_init();
+    s->set_active_canvas(CanvasTarget::World);
+    ASSERT_EQ(1, static_cast<int>(s->numviews));
+    viewscreen* vs = s->viewob[0].get();
+    ASSERT_TRUE(vs != nullptr);
+    canvas_scale_gameplay::expect_pane_matches_layout(s, 0, 640, 400);
+
+    // More world visible than the classic canvas would show in the same
+    // mode: the pane's world window grew with the canvas (tiles smaller
+    // relative to the frame).
+    const og::view_layout::ViewLayout classic =
+        og::view_layout::compute_view_layout(1, 0, vs->prefs[PREF_VIEW], 320, 200);
+    EXPECT_GT(vs->xview, classic.w);
+    EXPECT_GT(vs->yview, classic.h);
+
+    canvas_scale_gameplay::run_frames(s, 8);
+    ASSERT_FALSE(::testing::Test::HasFatalFailure());
+    s->redraw();
+    score_panel(s);
+    s->refresh();
+    s->swap();
+
+    // Real rendered world beyond the classic 320x200 area on both axes —
+    // right of x=320 and below y=200 (a clipped legacy draw would leave
+    // black filler there).
+    EXPECT_GT(canvas_scale_gameplay::nonblack_samples(s, 330, 20, 636, 190), 60)
+        << "the canvas right of the classic 320px must carry rendered world";
+    EXPECT_GT(canvas_scale_gameplay::nonblack_samples(s, 20, 210, 310, 396), 60)
+        << "the canvas below the classic 200px must carry rendered world";
+    canvas_scale_gameplay::expect_radar_inside_pane(vs);
+
+    // Optional frame dump for the visual review flow.
+    if (getenv("OG_FX_CAPTURE_DIR"))
+        canvas_scale_gameplay::dump_canvas(s, "worldscale_640", 0);
+}
+
+TEST(GameLoop, world_scale_splitscreen_panes_fit_the_grown_canvas)
+{
+    screen* const s = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(s != nullptr);
+
+    cfg.apply_setting("graphics", "scale", "1");
+    apply_world_scale_from_cfg();
+    if (s->world_canvas_w() != 640 || s->world_canvas_h() != 400)
+        GTEST_SKIP() << "test window is not the expected default 640x400";
+    canvas_scale_gameplay::WorldScaleGameGuard guard(s);
+
+    // ---- 2 players on the grown canvas ------------------------------------
+    gameplay_rec::build_save(s, "org.openglad.gladiator", 2, 2,
+                             {FAMILY_SOLDIER, FAMILY_BARBARIAN,
+                              FAMILY_ELF, FAMILY_MAGE}, 6);
+    glad_init();
+    s->set_active_canvas(CanvasTarget::World);
+    ASSERT_EQ(2, static_cast<int>(s->numviews));
+    for (int i = 0; i < 2; i++)
+        canvas_scale_gameplay::expect_pane_matches_layout(s, i, 640, 400);
+    // The two panes may not overlap (the classic 2px seam scales its position,
+    // not its width).
+    EXPECT_LE(s->viewob[0]->endx, s->viewob[1]->xloc)
+        << "left pane must end before the right pane starts";
+
+    canvas_scale_gameplay::run_frames(s, 8);
+    ASSERT_FALSE(::testing::Test::HasFatalFailure());
+    s->redraw();
+    score_panel(s);
+    s->refresh();
+    s->swap();
+    // Both panes carry rendered world; the right pane lives ENTIRELY beyond
+    // the classic 320px boundary.
+    EXPECT_GT(canvas_scale_gameplay::nonblack_samples(
+                  s, s->viewob[0]->xloc + 8, s->viewob[0]->yloc + 8,
+                  s->viewob[0]->endx - 8, s->viewob[0]->endy - 8), 60);
+    EXPECT_GT(canvas_scale_gameplay::nonblack_samples(
+                  s, s->viewob[1]->xloc + 8, s->viewob[1]->yloc + 8,
+                  s->viewob[1]->endx - 8, s->viewob[1]->endy - 8), 60);
+    canvas_scale_gameplay::expect_radar_inside_pane(s->viewob[0].get());
+    canvas_scale_gameplay::expect_radar_inside_pane(s->viewob[1].get());
+    if (getenv("OG_FX_CAPTURE_DIR"))
+        canvas_scale_gameplay::dump_canvas(s, "worldscale_640_2p", 0);
+
+    // ---- Mid-game window resize during split-screen ------------------------
+    SDL_Event ev{};
+    ev.type = SDL_WINDOWEVENT;
+    ev.window.event = SDL_WINDOWEVENT_RESIZED;
+    ev.window.data1 = 1280;
+    ev.window.data2 = 800;
+    handle_window_event(ev);
+    EXPECT_EQ(1280, s->world_canvas_w());
+    EXPECT_EQ(800, s->world_canvas_h());
+    for (int i = 0; i < 2; i++)
+        canvas_scale_gameplay::expect_pane_matches_layout(s, i, 1280, 800);
+    canvas_scale_gameplay::run_frames(s, 2);
+    ASSERT_FALSE(::testing::Test::HasFatalFailure());
+    s->redraw();
+    s->swap();
+    canvas_scale_gameplay::expect_radar_inside_pane(s->viewob[1].get());
+    // ...and back down.
+    ev.window.data1 = 640;
+    ev.window.data2 = 400;
+    handle_window_event(ev);
+    EXPECT_EQ(640, s->world_canvas_w());
+    for (int i = 0; i < 2; i++)
+        canvas_scale_gameplay::expect_pane_matches_layout(s, i, 640, 400);
+
+    // ---- 4 players: quadrants on the grown canvas --------------------------
+    s->world().end = 0;
+    s->world().delete_objects();
+    gameplay_rec::build_save(s, "org.openglad.gladiator", 2, 4,
+                             {FAMILY_SOLDIER, FAMILY_BARBARIAN,
+                              FAMILY_ELF, FAMILY_MAGE}, 6);
+    glad_init();
+    s->set_active_canvas(CanvasTarget::World);
+    ASSERT_EQ(4, static_cast<int>(s->numviews));
+    for (int i = 0; i < 4; i++)
+        canvas_scale_gameplay::expect_pane_matches_layout(s, i, 640, 400);
+    // Quadrants are pairwise disjoint.
+    for (int a = 0; a < 4; a++)
+        for (int b = a + 1; b < 4; b++)
+        {
+            viewscreen* va = s->viewob[static_cast<size_t>(a)].get();
+            viewscreen* vb = s->viewob[static_cast<size_t>(b)].get();
+            const bool disjoint = va->endx <= vb->xloc || vb->endx <= va->xloc ||
+                                  va->endy <= vb->yloc || vb->endy <= va->yloc;
+            EXPECT_TRUE(disjoint) << "panes " << a << " and " << b << " overlap";
+        }
+
+    canvas_scale_gameplay::run_frames(s, 4);
+    ASSERT_FALSE(::testing::Test::HasFatalFailure());
+    s->redraw();
+    s->swap();
+    // The fourth quadrant lives entirely beyond the classic 320x200 corner
+    // and still carries rendered world.
+    EXPECT_GT(canvas_scale_gameplay::nonblack_samples(
+                  s, s->viewob[3]->xloc + 8, s->viewob[3]->yloc + 8,
+                  s->viewob[3]->endx - 8, s->viewob[3]->endy - 8), 40);
+    for (int i = 0; i < 4; i++)
+        canvas_scale_gameplay::expect_radar_inside_pane(
+            s->viewob[static_cast<size_t>(i)].get());
+    if (getenv("OG_FX_CAPTURE_DIR"))
+        canvas_scale_gameplay::dump_canvas(s, "worldscale_640_4p", 0);
+}

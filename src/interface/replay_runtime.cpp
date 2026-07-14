@@ -185,6 +185,7 @@ bool og::runtime::initialize_replay_screen(screen& game_screen,
     assign_replay_views(game_screen, initial_snapshot);
     game_screen.world().timer_wait = header.timer_wait;
     player.reset();
+    og::runtime::current_session->replay_playback_active_ = true;
     return true;
 }
 
@@ -195,6 +196,7 @@ void og::runtime::begin_replay_recording(screen& game_screen)
 
     og::runtime::current_session->replay_recorder_.reset();
     og::runtime::current_session->replay_output_path_.clear();
+    og::runtime::current_session->replay_playback_active_ = false;
 
     const std::string& campaign_id = game_screen.save_data.current_campaign;
     if (!is_safe_campaign_id(campaign_id))

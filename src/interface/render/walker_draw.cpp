@@ -15,12 +15,14 @@
 #include <openglad/gameplay/game_client.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/pathfinding_grid.h>
+#include <openglad/interface/render/effects.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
 #include <openglad/gameplay/statistics.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/gameplay/smooth.h>
+#include <algorithm>
 #include <span>
 #include <cmath>
 
@@ -414,7 +416,7 @@ static bool mark_player_controls_outline()
         og::runtime::current_session->networked_session_;
 }
 
-bool draw_walker(walker& w, viewscreen* view_buf)
+bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha)
 {
     const bool show_attack_lunge = cfg.is_on("effects", "attack_lunge");
     const bool show_hit_recoil = cfg.is_on("effects", "hit_recoil");
@@ -435,6 +437,12 @@ bool draw_walker(walker& w, viewscreen* view_buf)
 		Log("drawing a dead guy!\n");
 		return 0;
 	}
+
+	// Delayed spawns: a dormant walker has not entered the world yet, so
+	// gameplay never draws it. The level editor still renders it for authoring
+	// (the editor always draws with editor_floor_override_ set).
+	if (w.dormant() && view_buf->editor_floor_override_ < 0)
+		return false;
 	// drawcycle is advanced by the authoritative sim (effect::act / living::act),
 	// NOT here — render must not write sim-read entity state (it freezes in the
 	// headless server). Enforced by scripts/check_render_no_sim_writes.sh.
@@ -451,6 +459,9 @@ bool draw_walker(walker& w, viewscreen* view_buf)
 	yscreen = static_cast<Sint32>(
         draw_pos.worldy - static_cast<float>(view_buf->topy) +
         static_cast<float>(view_buf->yloc));
+	// Z-axis: draw the entity raised by its height above the floor plane (a
+	// thrown rock arcing, a fireball drifting). worldz==0 leaves output unchanged.
+	yscreen -= static_cast<Sint32>(w.worldz());
 
 		if(show_attack_lunge && w.attack_lunge() > 0.0f)
 	    {
@@ -467,6 +478,24 @@ bool draw_walker(walker& w, viewscreen* view_buf)
 	        xscreen += static_cast<Sint32>(dx);
 	        yscreen += static_cast<Sint32>(dy);
 	    }
+
+	// Faded (lower) / ghosted (upper) non-camera floor: draw just the sprite,
+	// skipping flash/outline/mode and the HP bar / damage numbers. The caller has
+	// redirected blits to the off-screen floor layer (video::floor_layer_begin),
+	// which composites the whole floor back smoothly scaled + faded at the floor's
+	// depth alpha — so draw the sprite OPAQUE here (full coverage on the layer).
+	// The camera floor (alpha 255) takes the full path below.
+	if (alpha < 255)
+	{
+		const unsigned char* bmp = w.bmp_data();
+		if (bmp)
+			og::runtime::current_session->myscreen_->walkputbuffer(
+			    xscreen, yscreen, w.sizex(), w.sizey(),
+			    view_buf->xloc, view_buf->yloc, view_buf->endx, view_buf->endy,
+			    {bmp, static_cast<size_t>(w.sizex() * w.sizey())},
+			    w.query_team_color());
+		return true;
+	}
 
 	w.compute_outline(view_buf->control, mark_player_controls_outline());
 
@@ -493,7 +522,12 @@ bool draw_walker(walker& w, viewscreen* view_buf)
         }
 	}
 	else if (w.stats()->query_bit_flags(BIT_FORESTWALK) &&
-	         og::runtime::current_session->myscreen_->world().mysmoother.query_genre_x_y(draw_x / GRID_SIZE, draw_y / GRID_SIZE) == TYPE_TREES
+	         (og::runtime::current_session->myscreen_->world().mysmoother.query_genre_x_y(draw_x / GRID_SIZE, draw_y / GRID_SIZE) == TYPE_TREES
+	          // Concealing decor (SHRUB): same cell probe, on the walker's own
+	          // floor. Gated on plane validity, so no-decor levels take the
+	          // legacy TREES check byte-identically; keeps the draw suppression
+	          // in lockstep with the sim's forestwalk hide (living.cpp).
+	          || og::runtime::current_session->myscreen_->world().decor_conceals_at(w.floor(), draw_x / GRID_SIZE, draw_y / GRID_SIZE))
 	         && !w.stats()->query_bit_flags(BIT_FLYING)
 	         && (w.flight_left() < 1) )
     {
@@ -625,6 +659,165 @@ bool draw_walker(walker& w, viewscreen* view_buf)
 	return 1;
 }
 
+// ---- Multifloor FX: ground shadows + glass reflections (render-only) ----
+
+// Consistent light from the upper-left: shadows nudge +2px right. Soft blends
+// so the terrain reads through both effects.
+inline constexpr Sint32 SHADOW_NUDGE_X = 2;
+inline constexpr Uint8 SHADOW_ALPHA = 90;
+inline constexpr Uint8 REFLECTION_ALPHA = 80;
+
+// Alive Living/Weapon walkers cast shadows and reflections; phantoms and
+// invisible units cast neither (their FX must not give them away).
+static bool casts_ground_effects(const walker& w)
+{
+    const Order order = w.query_order();
+    if (order != Order::Living && order != Order::Weapon)
+        return false;
+    if (w.dead())
+        return false;
+    if (w.dormant()) // delayed spawn: not in the world yet
+        return false;
+    if (w.stats()->query_bit_flags(BIT_PHANTOM))
+        return false;
+    if (w.invisibility_left() > 0)
+        return false;
+    return w.bmp_data() != nullptr && w.sizex() > 0 && w.sizey() > 0;
+}
+
+// draw_walker's screen anchor INCLUDING the lunge/recoil offsets but
+// EXCLUDING the worldz raise: the ground-plane effects (shadows, reflections,
+// water ripples) anchor to the entity's spot on the floor plane while the
+// sprite itself may arc above it.
+void ground_plane_anchor(walker& w, viewscreen* view_buf,
+                         Sint32& xscreen, Sint32& yscreen)
+{
+    const WalkerRenderPosition draw_pos =
+        resolve_walker_render_position(w, view_buf->interpolation_alpha);
+    xscreen = static_cast<Sint32>(
+        draw_pos.worldx - static_cast<float>(view_buf->topx) +
+        static_cast<float>(view_buf->xloc));
+    yscreen = static_cast<Sint32>(
+        draw_pos.worldy - static_cast<float>(view_buf->topy) +
+        static_cast<float>(view_buf->yloc));
+
+    if(cfg.is_on("effects", "attack_lunge") && w.attack_lunge() > 0.0f)
+    {
+        const float dx = w.attack_lunge() * ATTACK_LUNGE_SIZE * cosf(w.attack_lunge_angle());
+        const float dy = w.attack_lunge() * ATTACK_LUNGE_SIZE * sinf(w.attack_lunge_angle());
+        xscreen += static_cast<Sint32>(dx);
+        yscreen += static_cast<Sint32>(dy);
+    }
+
+    if(cfg.is_on("effects", "hit_recoil") && w.hit_recoil() > 0.0f)
+    {
+        const float dx = w.hit_recoil() * HIT_RECOIL_SIZE * cosf(w.hit_recoil_angle());
+        const float dy = w.hit_recoil() * HIT_RECOIL_SIZE * sinf(w.hit_recoil_angle());
+        xscreen += static_cast<Sint32>(dx);
+        yscreen += static_cast<Sint32>(dy);
+    }
+}
+
+bool draw_walker_shadow(walker& w, viewscreen* view_buf)
+{
+    if (!casts_ground_effects(w))
+        return false;
+
+    Sint32 xscreen, yscreen;
+    ground_plane_anchor(w, view_buf, xscreen, yscreen);
+
+    og::runtime::current_session->myscreen_->walkputbuffer_shadow(
+        xscreen + SHADOW_NUDGE_X, yscreen, w.sizex(), w.sizey(),
+        view_buf->xloc, view_buf->yloc, view_buf->endx, view_buf->endy,
+        {w.bmp_data(), static_cast<size_t>(w.sizex() * w.sizey())},
+        SHADOW_ALPHA);
+    return true;
+}
+
+// Upper-floor blob shadow parameters: the SE displacement per story of
+// height (matches the overhang tile shadows' NW sun), and the per-story
+// squash/trim/fade — one story squashes the silhouette to a third of the
+// sprite height, two (the cap) to a quarter, each trimming 2px more off the
+// sides and fading further below the ground shadow's SHADOW_ALPHA (90).
+inline constexpr Sint32 BLOB_SHADOW_OFFSET_PER_STORY = 2;
+inline constexpr Sint32 BLOB_SHADOW_STORY_CAP = 2;
+inline constexpr Uint8 BLOB_SHADOW_ALPHA[BLOB_SHADOW_STORY_CAP] = {84, 63};
+
+bool draw_walker_blob_shadow(walker& w, viewscreen* view_buf, Sint32 stories)
+{
+    if (stories < 1 || !casts_ground_effects(w))
+        return false;
+
+    Sint32 xscreen, yscreen;
+    ground_plane_anchor(w, view_buf, xscreen, yscreen);
+
+    // The SE offset tracks the TRUE height difference; the shrink/fade cap
+    // keeps a very distant blob readable instead of vanishing.
+    const Sint32 offset = stories * BLOB_SHADOW_OFFSET_PER_STORY;
+    const Sint32 capped = stories > BLOB_SHADOW_STORY_CAP
+        ? BLOB_SHADOW_STORY_CAP : stories;
+    og::runtime::current_session->myscreen_->walkputbuffer_shadow(
+        xscreen + offset, yscreen + offset, w.sizex(), w.sizey(),
+        view_buf->xloc, view_buf->yloc, view_buf->endx, view_buf->endy,
+        {w.bmp_data(), static_cast<size_t>(w.sizex() * w.sizey())},
+        BLOB_SHADOW_ALPHA[capped - 1], 2 + capped, 2 * capped);
+    return true;
+}
+
+bool draw_walker_reflection(walker& w, viewscreen* view_buf,
+                            const PixieData& camera_grid)
+{
+    if (!casts_ground_effects(w) || !camera_grid.valid())
+        return false;
+
+    Sint32 xscreen, yscreen;
+    ground_plane_anchor(w, view_buf, xscreen, yscreen);
+
+    // Mirror across the ground plane: the flipped sprite's top-left lands one
+    // row below the feet, pushed further down by the height above the floor.
+    const Sint32 spritew = w.sizex();
+    const Sint32 spriteh = w.sizey();
+    const Sint32 refly = yscreen + spriteh + static_cast<Sint32>(w.worldz());
+
+    // Cheap pre-check: skip the per-pixel blit unless the (port-clipped)
+    // reflection rect covers at least one reflective camera-floor tile
+    // (glass or pure water, per reflective_tiles()).
+    const std::array<bool, 256>& mask = reflective_tiles();
+    const Sint32 gridw = camera_grid.w;
+    const Sint32 gridh = camera_grid.h;
+    const Sint32 wox = view_buf->topx - view_buf->xloc;
+    const Sint32 woy = view_buf->topy - view_buf->yloc;
+    const Sint32 x0 = std::max(xscreen, view_buf->xloc);
+    const Sint32 x1 = std::min(xscreen + spritew, view_buf->endx);
+    const Sint32 y0 = std::max(refly, view_buf->yloc);
+    const Sint32 y1 = std::min(refly + spriteh, view_buf->endy);
+    if (x0 >= x1 || y0 >= y1)
+        return false;
+    const Sint32 gx0 = std::max((x0 + wox) / GRID_SIZE, 0);
+    const Sint32 gx1 = std::min((x1 - 1 + wox) / GRID_SIZE, gridw - 1);
+    const Sint32 gy0 = std::max((y0 + woy) / GRID_SIZE, 0);
+    const Sint32 gy1 = std::min((y1 - 1 + woy) / GRID_SIZE, gridh - 1);
+    bool has_reflective = false;
+    for (Sint32 gy = gy0; gy <= gy1 && !has_reflective; gy++)
+        for (Sint32 gx = gx0; gx <= gx1; gx++)
+            if (mask[camera_grid.data[gx + gridw * gy]])
+            {
+                has_reflective = true;
+                break;
+            }
+    if (!has_reflective)
+        return false;
+
+    og::runtime::current_session->myscreen_->walkputbuffer_reflect(
+        xscreen, refly, spritew, spriteh,
+        view_buf->xloc, view_buf->yloc, view_buf->endx, view_buf->endy,
+        {w.bmp_data(), static_cast<size_t>(spritew * spriteh)},
+        w.query_team_color(), REFLECTION_ALPHA,
+        {camera_grid.data.get(), static_cast<size_t>(gridw * gridh)},
+        gridw, gridh, wox, woy, mask);
+    return true;
+}
+
 bool draw_walker_tile(walker& w, viewscreen* view_buf)
 {
     if (!cfg.is_on("effects", "hit_anim") &&
@@ -678,7 +871,12 @@ bool draw_walker_tile(walker& w, viewscreen* view_buf)
 			                        0 ); //type of phantom
 	}
 	else if (w.stats()->query_bit_flags(BIT_FORESTWALK) &&
-	         og::runtime::current_session->myscreen_->world().mysmoother.query_genre_x_y(draw_x / GRID_SIZE, draw_y / GRID_SIZE) == TYPE_TREES
+	         (og::runtime::current_session->myscreen_->world().mysmoother.query_genre_x_y(draw_x / GRID_SIZE, draw_y / GRID_SIZE) == TYPE_TREES
+	          // Concealing decor (SHRUB): same cell probe, on the walker's own
+	          // floor. Gated on plane validity, so no-decor levels take the
+	          // legacy TREES check byte-identically; keeps the draw suppression
+	          // in lockstep with the sim's forestwalk hide (living.cpp).
+	          || og::runtime::current_session->myscreen_->world().decor_conceals_at(w.floor(), draw_x / GRID_SIZE, draw_y / GRID_SIZE))
 	         && !w.stats()->query_bit_flags(BIT_FLYING)
 	         && (w.flight_left() < 1) )
 		og::runtime::current_session->myscreen_->walkputbuffer( xscreen, yscreen, w.sizex(), w.sizey(),

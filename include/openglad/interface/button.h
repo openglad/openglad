@@ -184,6 +184,16 @@ Sint32 teams_toggle_ready();
 Sint32 level_editor();
 Sint32 main_options();
 Sint32 main_controls_options();
+Sint32 gameplay_fx_options();
+Sint32 ui_fx_options();
+Sint32 graphics_fx_options();
+Sint32 run_difficulty_menu(); // Blocking DIFFICULTY subscreen (match rules)
+Sint32 change_respawn_mode();
+Sint32 change_respawn_delay();
+Sint32 change_permadeath();
+Sint32 change_generator_rate();
+Sint32 change_depth_fx(); // GRAPHICS FX depth selector (cfg effects/depth_fx)
+Sint32 change_world_scale(); // OPTIONS world-scale selector (cfg graphics/scale)
 Sint32 toggle_player_control_mode(Sint32 arg);
 Sint32 edit_player_keymap(Sint32 arg);
 std::string build_player_control_summary(int player_index);
@@ -266,6 +276,46 @@ enum class ButtonAction : Sint32
     CreateScenarioMenu = 70,
     TeamsPageFlip = 71,
     PickSpriteSheet = 72,
+    // 73 was ToggleFloorGhosting: the graphics/floor_ghost cfg toggle was
+    // removed — the ghost view is now hold-look-up only (KEY_LOOKUP).
+    // Value retired, do not reuse.
+    // Runtime-only ids (never serialized): 74 was OpenEffectsSettings before
+    // the EFFECTS screen split into the three FX subscreens.
+    OpenGraphicsFxSettings = 74,
+    ToggleShadows = 75,
+    ToggleReflections = 76,
+    ToggleWeather = 77,
+    // 78 was ToggleRain: the Clouds/Rain pair merged into the single
+    // Weather toggle (cfg effects/weather). Value retired, do not reuse.
+    ToggleDust = 79,
+    // 80 was ToggleDepthTint: the boolean effects/depth_tint toggle became
+    // the five-way CycleDepthFx selector (cfg effects/depth_fx, value 92).
+    // Value retired, do not reuse.
+    ToggleTrails = 81,
+    ToggleFireGlow = 82,
+    ToggleRipples = 83,
+    ToggleScreenShake = 84,
+    OpenGameplayFxSettings = 85,
+    OpenUiFxSettings = 86,
+    // DIFFICULTY subscreen: the main-menu DIFFICULTY door plus the four
+    // match-rule cyclers that live inside it (the difficulty cycler itself
+    // reuses SetDifficulty = 24).
+    OpenDifficultyMenu = 87,
+    CycleRespawnMode = 88,
+    CycleRespawnDelay = 89,
+    TogglePermadeath = 90,
+    CycleGeneratorRate = 91,
+    // GRAPHICS FX depth selector: cycles cfg effects/depth_fx through
+    // fog -> haze -> mist -> tint -> off (replaces ToggleDepthTint = 80).
+    CycleDepthFx = 92,
+    // OPTIONS world-scale selector: cycles cfg graphics/scale through
+    // off -> 1 -> 2 -> sai -> eagle -> 3 -> 4 -> 8 -> off and live-applies
+    // it to the world canvas. Independent of ToggleRenderingEngine (the
+    // legacy graphics/render present engine).
+    CycleWorldScale = 93,
+    // GRAPHICS FX floor-glide toggle: cfg effects/floor_glide, the animated
+    // floor-transition camera dolly (docs/floor-glide-design.md).
+    ToggleFloorGlide = 94,
 };
 
 inline constexpr Sint32 button_action_id(ButtonAction action)

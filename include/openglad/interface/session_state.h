@@ -48,7 +48,9 @@ struct SessionState {
     short scroll_amount_ = 0;
     bool input_continue_ = false;
     const std::uint8_t* keystates_ = nullptr;
-    static constexpr int kNumKeys = 16;  // == NUM_KEYS from input.h
+    // == NUM_KEYS from input.h (16 wire-visible actions + the client-side
+    // KEY_LOOKUP hold; enforced by input_player_keys()'s reference return).
+    static constexpr int kNumKeys = 17;
     int player_keys_[4][kNumKeys] = {};
 
     // Viewport state (Batch 4) — moved from input.cpp globals.
@@ -99,7 +101,10 @@ struct SessionState {
     std::array<short, 6> changedteam_ = {};
 
     // Keybinding storage (Phase 5) — moved from view.cpp allkeys global.
-    int allkeys_[4][kNumKeys] = {};
+    // Legacy 16-slot block: keyprefs.dat's on-disk format is fixed at 16 ints
+    // per player, so this deliberately does NOT grow with kNumKeys.
+    static constexpr int kNumLegacyKeys = 16;
+    int allkeys_[4][kNumLegacyKeys] = {};
 
     // Timer anchor (Phase 6) — moved from util.cpp thread_local g_reset_time.
     std::chrono::steady_clock::time_point reset_time_ = std::chrono::steady_clock::now();
@@ -132,6 +137,11 @@ struct SessionState {
     // Runtime replay recording state.
     std::optional<og::sim::ReplayRecorder> replay_recorder_ = std::nullopt;
     std::filesystem::path replay_output_path_;
+    // True while a loaded replay is being played back: the transport-shadow
+    // installs must NOT re-roll weather then — the recorded initial snapshot
+    // carries the kind the recording actually played under. Set by
+    // initialize_replay_screen, cleared when a live session starts.
+    bool replay_playback_active_ = false;
 
     GameContext ctx_;
     GameplayContext game_;

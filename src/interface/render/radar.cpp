@@ -21,6 +21,7 @@
 */
 #include <openglad/core/colors.h>
 #include <openglad/core/ctf_constants.h>
+#include <openglad/core/decordefs.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/interface/render/radar.h>
 #include <openglad/interface/render/view.h>
@@ -63,6 +64,28 @@ walker* sanitize_radar_control(viewscreen* view, LevelRuntimeData& level)
     if (candidate != nullptr && !control_pointer_is_live(level, candidate))
         view->control = nullptr;
     return view->control;
+}
+
+// Which floor's terrain (and blips) the radar should show: the level
+// editor's floor override when active, else the control walker's floor.
+// Single-floor levels always report 0, so the legacy radar path is
+// untouched (pixel-identical).
+short radar_terrain_floor(viewscreen* view, walker* control,
+                          LevelRuntimeData& level)
+{
+    const int floors = level.world().floor_count();
+    if (floors <= 1)
+        return 0;
+    int f = 0;
+    if (view != nullptr && view->editor_floor_override_ >= 0)
+        f = static_cast<int>(view->editor_floor_override_);
+    else if (control != nullptr)
+        f = static_cast<int>(control->floor());
+    if (f < 0)
+        f = 0;
+    if (f >= floors)
+        f = floors - 1;
+    return static_cast<short>(f);
 }
 } // namespace
 
@@ -212,6 +235,16 @@ short radar::draw(LevelRuntimeData* data)
 		radarx = 0;
 	if (radary < 0)
 		radary = 0;
+
+	// Multi-floor: the minimap tracks the floor being played (or edited).
+	// Re-bake the terrain bmp only when that floor changes — update() is
+	// slow — and never on single-floor levels (radar_terrain_floor pins 0).
+	const short terrain_floor = radar_terrain_floor(viewscreenp, control, *data);
+	if (terrain_floor != bmp_floor_)
+	{
+		bmp_floor_ = terrain_floor;
+		update(data);
+	}
     
     unsigned char alpha = 255;
     if(og::runtime::current_session->myscreen_->numviews > 2 && !(og::runtime::current_session->myscreen_->numviews == 3 && mynum == 0))
@@ -247,7 +280,14 @@ short radar::draw(LevelRuntimeData* data)
         for(auto e = ls->begin(); e != ls->end(); e++)
 		{
 		    walker* ob = e->get();
-		    
+		    // Delayed spawns: dormant walkers are not in the world yet.
+		    if (ob && ob->dormant())
+		        continue;
+		    // Multi-floor: only blip entities on the floor the radar shows
+		    // (the terrain floor baked just above).
+		    if (ob && data->world().floor_count() > 1 &&
+		        static_cast<int>(ob->floor()) != static_cast<int>(bmp_floor_))
+		        continue;
             oborder = ob->query_order();
 			do_show = 0; // don't show, by default
 			if ((oborder == Order::Living || oborder == Order::Weapon
@@ -269,8 +309,10 @@ short radar::draw(LevelRuntimeData* data)
 				{} //also do nothing
 				else
 				{
-					tempz = (tempx+(tempy*320)); //this may need fixing
-					if (tempz > 64000 || tempz < 0)
+					// Offset sanity check against the active canvas area
+					// (the legacy 320/64000 constants at default dims).
+					tempz = (tempx+(tempy*og::runtime::current_session->myscreen_->canvas_w())); //this may need fixing
+					if (tempz > og::runtime::current_session->myscreen_->canvas_w() * og::runtime::current_session->myscreen_->canvas_h() || tempz < 0)
 					{
 						Log("bad radar, bad\n");
 						return 1;
@@ -326,8 +368,11 @@ short radar::draw(LevelRuntimeData* data)
     for (auto& uptr : data->world().fxlist)
 	{
 	    walker* ob = uptr.get();
-		if (ob && !ob->dead())
+		if (ob && !ob->dead() && !ob->dormant())
 		{
+			if (data->world().floor_count() > 1 &&
+			    static_cast<int>(ob->floor()) != static_cast<int>(bmp_floor_))
+				continue;
 			oborder  = ob->query_order();
 			obfamily = ob->family();
 
@@ -379,8 +424,10 @@ short radar::draw(LevelRuntimeData* data)
 				{} //also do nothing
 				else
 				{
-					tempz = (tempx+(tempy*320)); //this may need fixing
-					if (tempz > 64000 || tempz < 0)
+					// Offset sanity check against the active canvas area
+					// (the legacy 320/64000 constants at default dims).
+					tempz = (tempx+(tempy*og::runtime::current_session->myscreen_->canvas_w())); //this may need fixing
+					if (tempz > og::runtime::current_session->myscreen_->canvas_w() * og::runtime::current_session->myscreen_->canvas_h() || tempz < 0)
 					{
 						Log("bad radar, bad\n");
 						return 1;
@@ -425,6 +472,37 @@ void radar::update()
     update(&og::runtime::current_session->myscreen_->level_runtime_data());
 }
 
+// Radar color for a decor id, or `base` (the cell's base-tile color) for ids
+// that inherit (DECOR_NONE, BONES, out-of-range bytes). The overrides
+// reproduce the legacy combined tiles' radar colors exactly: TORCH*/BRAZIER
+// -> COLOR_FIRE, BOULDER_* (and COLUMN_*) -> 24 (wall grey), PEBBLES -> the
+// legacy randomized-green rubble arm (the GRASS_DARK_1 base alone would give
+// the fixed GREEN+3), SHRUB -> the trees green.
+static short decor_radar_color(unsigned char d, short base)
+{
+	switch (d)
+	{
+		case DECOR_TORCH1:
+		case DECOR_TORCH2:
+		case DECOR_TORCH3:
+		case DECOR_BRAZIER:
+			return COLOR_FIRE;
+		case DECOR_BOULDER_1:
+		case DECOR_BOULDER_2:
+		case DECOR_BOULDER_3:
+		case DECOR_BOULDER_4:
+		case DECOR_COLUMN_BOTTOM:
+		case DECOR_COLUMN_TOP:
+			return 24;
+		case DECOR_PEBBLES:
+			return static_cast<short>(COLOR_GREEN + rng(3) + 3);
+		case DECOR_SHRUB:
+			return COLOR_TREES;
+		default:
+			return base;
+	}
+}
+
 // This function re-initializes the radar map data.  Do not
 // call it often, as it is very slow ..
 void radar::update(LevelRuntimeData* data)
@@ -442,11 +520,31 @@ void radar::update(LevelRuntimeData* data)
 		sync_to_grid(data);
 	}
 
+	// Multi-floor: bake the terrain of the floor the radar shows. Fall back
+	// to the base grid when that floor's grid is missing or of a different
+	// size (extents above were derived from the base grid). bmp_floor_ never
+	// leaves 0 on single-floor levels, so this reads the legacy grid there.
+	const PixieData& floor_grid = data->world().grid_for_floor(bmp_floor_);
+	const bool use_floor_grid = floor_grid.valid()
+	    && static_cast<short>(floor_grid.w) == sizex
+	    && static_cast<short>(floor_grid.h) == sizey;
+	const PixieData& baked_grid =
+	    use_floor_grid ? floor_grid : data->world().grid;
+
+	// Decor plane of the same floor (BASE+DECOR layering): where a cell
+	// carries decor with a defined radar color, the decor wins over the base
+	// tile color (see decor_radar_color). Gated on validity + matching dims,
+	// so no-decor levels bake through exactly the legacy switch below.
+	const PixieData& decor_plane = data->world().decor_for_floor(bmp_floor_);
+	const bool has_decor = decor_plane.valid()
+	    && static_cast<short>(decor_plane.w) == sizex
+	    && static_cast<short>(decor_plane.h) == sizey;
+
 	for (i = 0; i < sizex; i++)
 		for (j = 0; j < sizey; j++)
 		{
 			// Check if item in background grid
-			switch (static_cast<unsigned char>(data->world().grid.data[i+sizex*j]))
+			switch (static_cast<unsigned char>(baked_grid.data[i+sizex*j]))
 			{
 				case PIX_GRASS1:  // grass is green
 				case PIX_GRASS_DARK_1:
@@ -611,9 +709,40 @@ void radar::update(LevelRuntimeData* data)
 					temp = COLOR_FIRE;
 					break;
 
+				case PIX_SNOW1:       // snow is white
+				case PIX_SNOW2:
+					temp = COLOR_WHITE;
+					break;
+				case PIX_LAVA1:       // lava: static ember orange. COLOR_FIRE
+				case PIX_LAVA2:       // (224) sits in the cycled ORANGE band
+					temp = 233;       // 224-231 and strobes every frame on
+					break;            // large lava fields; 233 never cycles.
+				case PIX_MARSH1:      // bog is dark green (distinct from the trees ramp)
+				case PIX_MARSH2:
+					temp = COLOR_GREEN+7;
+					break;
+				case PIX_ASH1:        // ash is warm dark grey (vs pavement 17 / walls 24)
+				case PIX_ASH2:
+					temp = 249;
+					break;
+				// Z-stairs: two STATIC pinned colors (no pulse, never
+				// ctx().rng — a cycled/random index would strobe the bake).
+				// Tile bytes 140/141 are branch-new and absent from all
+				// legacy content, so single-floor radars stay byte-identical.
+				case PIX_ZSTAIR_UP:   // climb objective pops (reads on snow)
+					temp = YELLOW;      // 88
+					break;
+				case PIX_ZSTAIR_DOWN: // exit-idiom cyan
+					temp = LIGHT_BLUE;  // 120
+					break;
+
 				default:
 					temp =  0;
 			}
+			if (has_decor)
+				temp = decor_radar_color(
+				    static_cast<unsigned char>(decor_plane.data[i + sizex * j]),
+				    temp);
 			bmp[i+sizex*j] = static_cast<unsigned char>(temp);
 		}
 

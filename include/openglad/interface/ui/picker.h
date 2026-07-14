@@ -46,6 +46,9 @@ struct TextPickerConfig
     int level = 1;
     std::vector<int> team_families;
     std::uint32_t seed = 42;
+    // Protocol-mode only: upgrade each spawned team guy to this level
+    // (0 = leave loader-default stats). See TextProtocolArgs::team_level.
+    int team_level = 0;
     std::string save_name = "text_quicksave";
 };
 

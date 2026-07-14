@@ -21,7 +21,7 @@
 #include <format>
 #include <string>
 #include <list>
-
+#include <openglad/core/combat_math.h>
 inline constexpr int BASE_GUY_HP = 30;
 
 static bool thief_check_special_ai(living* self)
@@ -74,7 +74,8 @@ static bool thief_do_special(walker* self)
                 self->myguy->total_shots++;
                 self->myguy->scen_shots++;
             }
-            newob->set_damage(static_cast<float>(self->stats()->level() + 1) * 15.0f);
+            newob->set_damage(static_cast<float>(og::combat::bomb_damage(self->stats()->level()))); // §2.7: legacy 15*(L+1) below knee 210 (= L13); ceiling 300
+            newob->set_floor(self->floor());  // bomb armed on the thief's floor (A8)
             newob->setxy(self->xpos() + self->sizex()/2 - newob->sizex()/2,
                          self->ypos() + self->sizey()/2 - newob->sizey()/2);
             newob->set_owner(self);
@@ -91,7 +92,7 @@ static bool thief_do_special(walker* self)
             }
             break;
         case 2: // cloak
-            self->set_invisibility_left(static_cast<short>(self->invisibility_left() + 20 + static_cast<std::int32_t>(current_game->world->rng_.next(20)) * self->stats()->level()));
+            self->set_invisibility_left(static_cast<short>(og::combat::cloak_total(self->invisibility_left(), 20 + static_cast<std::int32_t>(current_game->world->rng_.next(20)) * self->stats()->level())));
             break;
         case 3: // taunt / charm
             if (!self->shifter_down()) // normal taunt
@@ -146,7 +147,7 @@ static bool thief_do_special(walker* self)
                                     ob->set_foe(nullptr);
                                 else
                                     ob->set_foe(self->foe());
-                                ob->set_charm_left((static_cast<short>(75 + generic * 25)));
+                                ob->set_charm_left(static_cast<short>(og::combat::soften(75 + generic * 25, og::combat::kThiefCharmKnee, og::combat::kThiefCharmCeiling))); // §2.9: identity through diff 12
                                 generic2 = 0;
                             }
                             didheal++;

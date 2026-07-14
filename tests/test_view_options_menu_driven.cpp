@@ -100,8 +100,15 @@ TEST(ViewOptionsMenuDriven, viewscreen_options_menu_driven_exercises_hotkeys)
         }
     }
 
-    // Save prefs that options_menu() may mutate and persist to keyprefs.dat.
-    const signed char saved_view = vs->prefs[PREF_VIEW];
+    // Save ALL per-view prefs: the driven hotkeys mutate several of them
+    // (view size via [/], the r/h/f/s/c/b toggles), and options_menu()
+    // persists the final values into the session prefs store
+    // (prefsob->save) on exit. A poisoned store leaks into every
+    // later-constructed viewscreen (the ctor loads from it), so the store
+    // must be re-synced after the restore below.
+    signed char saved_prefs[10];
+    for (int i = 0; i < 10; i++)
+        saved_prefs[i] = vs->prefs[i];
 
     KeyStateGuard ks;
 
@@ -114,8 +121,13 @@ TEST(ViewOptionsMenuDriven, viewscreen_options_menu_driven_exercises_hotkeys)
     if (th)
         SDL_WaitThread(th, &code);
 
-    // Restore view pref that was mutated by the [ and ] hotkeys.
-    vs->prefs[PREF_VIEW] = saved_view;
-    vs->resize(saved_view);
+    // Restore every pref the menu mutated, re-derive the geometry, and
+    // re-sync the session prefs store options_menu persisted on exit —
+    // otherwise a later viewscreen recreation reloads the stale prefs (the
+    // og_test_view --gtest_shuffle seed-27 failure chain).
+    for (int i = 0; i < 10; i++)
+        vs->prefs[i] = saved_prefs[i];
+    vs->resize(vs->prefs[PREF_VIEW]);
+    og::runtime::current_session->theprefs_->save(vs);
 }
 

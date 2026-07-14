@@ -4,6 +4,7 @@
 #include <openglad/gameplay/input_state.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/core/constants.h>
+#include <openglad/core/decordefs.h>
 #include <openglad/core/pixdefs.h>
 
 #include <gtest/gtest.h>
@@ -145,12 +146,19 @@ og::sim::LobbyState make_lobby_state()
 std::pair<short, short> find_damageable_grid_tile(const GameWorld& world)
 {
     EXPECT_TRUE(world.grid.valid());
+    const PixieData& decor = world.decor_for_floor(0);
     for (short y = 0; y < world.grid.h; ++y)
     {
         for (short x = 0; x < world.grid.w; ++x)
         {
-            const unsigned char value =
-                world.grid.data[static_cast<std::size_t>(y) * world.grid.w + x];
+            const std::size_t cell =
+                static_cast<std::size_t>(y) * world.grid.w + x;
+            // Decorated cells are shielded from damage_tile by design (the
+            // BASE+DECOR layering keeps legacy boulder cells untransformable),
+            // so a "damageable" tile must be bare grass.
+            if (decor.valid() && decor.data[cell] != DECOR_NONE)
+                continue;
+            const unsigned char value = world.grid.data[cell];
             switch (value)
             {
             case PIX_GRASS1:
@@ -757,7 +765,8 @@ TEST(NetTransportInProcess, raw_empty_send_and_disconnect_paths)
     EXPECT_EQ(peer_id, raw_messages[0].peer_id);
     EXPECT_TRUE(raw_messages[0].data.empty());
 
-    EXPECT_THROW(client->create_client_transport(), std::runtime_error);
+    EXPECT_THROW(static_cast<void>(client->create_client_transport()),
+                 std::runtime_error);
     server->disconnect(peer_id + 99u);
     EXPECT_EQ((std::vector<og::sim::PeerId>{peer_id}),
               server->connected_peers());

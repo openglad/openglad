@@ -195,6 +195,8 @@ bool compare_entity_snapshot(const EntitySnapshot& expected,
     OG_REPLAY_COMPARE(ypos);
     OG_REPLAY_COMPARE(sizex);
     OG_REPLAY_COMPARE(sizey);
+    OG_REPLAY_COMPARE(sizez);
+    OG_REPLAY_COMPARE(floor);
     OG_REPLAY_COMPARE(team_num);
     OG_REPLAY_COMPARE(real_team_num);
     OG_REPLAY_COMPARE(user);
@@ -209,8 +211,10 @@ bool compare_entity_snapshot(const EntitySnapshot& expected,
     OG_REPLAY_COMPARE(frame);
     OG_REPLAY_COMPARE(worldx);
     OG_REPLAY_COMPARE(worldy);
+    OG_REPLAY_COMPARE(worldz);
     OG_REPLAY_COMPARE(lastx);
     OG_REPLAY_COMPARE(lasty);
+    OG_REPLAY_COMPARE(vz);
     OG_REPLAY_COMPARE(stepsize);
     OG_REPLAY_COMPARE(normal_stepsize);
     OG_REPLAY_COMPARE(curdir);
@@ -285,6 +289,9 @@ bool compare_entity_snapshot(const EntitySnapshot& expected,
     OG_REPLAY_COMPARE(current_distance);
     OG_REPLAY_COMPARE(controller_id);
     OG_REPLAY_COMPARE(do_bounce);
+    OG_REPLAY_COMPARE(spawn_x);
+    OG_REPLAY_COMPARE(spawn_y);
+    OG_REPLAY_COMPARE(spawn_floor);
 
 #undef OG_REPLAY_COMPARE
     return true;
@@ -405,6 +412,9 @@ bool compare_ctf_snapshot_state(const WorldSnapshot& expected,
         OG_REPLAY_COMPARE(level);
         OG_REPLAY_COMPARE(ticks_left);
         OG_REPLAY_COMPARE(walker_entity_id);
+        OG_REPLAY_COMPARE(x);
+        OG_REPLAY_COMPARE(y);
+        OG_REPLAY_COMPARE(floor);
 
 #undef OG_REPLAY_COMPARE
     }
@@ -446,6 +456,7 @@ bool compare_world_snapshot(const WorldSnapshot& expected,
     OG_REPLAY_COMPARE(pending_exit_prompt);
     OG_REPLAY_COMPARE(paused);
     OG_REPLAY_COMPARE(pause_player_index);
+    OG_REPLAY_COMPARE(weather);
     OG_REPLAY_COMPARE(ctf_active);
     OG_REPLAY_COMPARE(ctf_init_attempted);
     OG_REPLAY_COMPARE(ctf_team_count);
@@ -461,6 +472,8 @@ bool compare_world_snapshot(const WorldSnapshot& expected,
     OG_REPLAY_COMPARE(ctf_requested_capture_limit);
     OG_REPLAY_COMPARE(ctf_requested_respawn_ticks);
     OG_REPLAY_COMPARE(ctf_requested_strip_scenario_troops);
+    OG_REPLAY_COMPARE(respawn_mode);
+    OG_REPLAY_COMPARE(generator_rate);
     OG_REPLAY_COMPARE(grid_width);
     OG_REPLAY_COMPARE(grid_height);
     OG_REPLAY_COMPARE(grid_dirty);

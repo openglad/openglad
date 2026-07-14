@@ -22,6 +22,7 @@ static bool knife_on_death(weap* self)
     walker* newob = current_game->world->add_ob(Order::FX, FAMILY_KNIFE_BACK);
     if (!newob) return true;
     newob->set_owner(self->owner());
+    newob->set_floor(self->floor());  // return flight starts on the knife's floor (A8)
     newob->center_on(self);
     newob->set_lastx(self->lastx());
     newob->set_lasty(self->lasty());
@@ -42,6 +43,10 @@ const WeaponFamilyDescriptor& describe_weapon_knife()
         .init_bit_flags = 0,
         .init_lifetime = 0,
         .init_ani_type = 0,
+        // Thrown knives drift up then settle (slight arc) and can drop through pits.
+        .init_vz = 0.35f,
+        .gravity = 0.05f,
+        .can_drop_floors = true,
         .on_death = knife_on_death,
         .on_animate = nullptr,
         .on_hit_target = nullptr,

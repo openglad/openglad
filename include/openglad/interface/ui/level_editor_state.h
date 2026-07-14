@@ -21,6 +21,11 @@ struct LevelEditorState {
     std::int32_t start_time_s{0};
     std::int32_t rowsdown{0};
     std::int32_t maxrows{0};
+    // Z-axis: which stacked floor the editor is currently painting/placing on.
+    std::int32_t current_floor{0};
+    // Tile layering: when true, the terrain brush paints the current floor's
+    // DECOR plane (core/decordefs.h ids) instead of the base grid.
+    bool decor_mode{false};
 
     // Mouse state
     int mouse_up_button{0};

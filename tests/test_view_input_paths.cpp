@@ -101,6 +101,12 @@ TEST(ViewInputPaths, view_input_switch_control_forward_and_reverse)
     og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w3));
     v->control = w1p;
 
+    // Clear any SwitchChar debounce left behind by an earlier test in this
+    // binary (a frame with no press resets it).
+    InputState empty_start = {};
+    v->process_input(empty_start);
+    v->control = w1p;
+
     // Use process_input() with InputState for switch control.
     InputState input = {};
     input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
@@ -119,6 +125,78 @@ TEST(ViewInputPaths, view_input_switch_control_forward_and_reverse)
     shift_switch.players[0].held[static_cast<int>(InputAction::Shift)] = true;
     v->process_input(shift_switch);
     ASSERT_TRUE(v->control == w1p) << "shift+switch should move to previous team member";
+}
+
+
+// A1 regression (spectator variant): the spectator camera cycle must skip
+// dormant (delayed-spawn) walkers — they are invisible and absent from
+// snapshots, so a camera pinned to one shows nothing.
+TEST(ViewInputPaths, view_input_spectator_switch_skips_dormant)
+{
+    TeamListSwap swap;
+    disablePlayerJoystick(0);
+
+    KeyBindingGuard bind_switch(0, KEY_SWITCH, SDLK_TAB);
+    KeyStateGuard ks;
+
+    viewscreen* v = og::runtime::current_session->myscreen_->viewob[0].get();
+    ASSERT_TRUE(v != nullptr) << "view should exist";
+    v->mynum = 0;
+    v->my_team = 0;
+
+    // Spectator mode = numplayers == 0 (og::ui::is_spectator_mode).
+    // RAII restore so an ASSERT failure cannot leak spectator mode into
+    // later tests in this binary.
+    struct SpectatorModeGuard
+    {
+        SaveData& save;
+        unsigned char saved;
+        explicit SpectatorModeGuard(SaveData& s) : save(s), saved(s.numplayers)
+        {
+            save.numplayers = 0;
+        }
+        ~SpectatorModeGuard() { save.numplayers = saved; }
+    } spectator_guard(og::runtime::current_session->myscreen_->save_data);
+
+    auto w1 = make_living(FAMILY_SOLDIER, 0, 20, 20);
+    auto w2 = make_living(FAMILY_ELF, 0, 40, 20);
+    auto w3 = make_living(FAMILY_ARCHER, 0, 60, 20);
+    ASSERT_TRUE(w1 && w2 && w3) << "walkers should be created";
+
+    walker* w1p = w1.get();
+    walker* w2p = w2.get();
+    walker* w3p = w3.get();
+
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w1));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w2));
+    og::runtime::current_session->myscreen_->world().oblist.push_back(std::move(w3));
+    v->control = w1p;
+    w2p->set_dormant(true);
+
+    // Clear any SwitchChar debounce left behind by an earlier test in this
+    // binary (a frame with no press resets it).
+    InputState empty = {};
+    v->process_input(empty);
+    v->control = w1p;
+
+    InputState input = {};
+    input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
+    input.players[0].held[static_cast<int>(InputAction::SwitchChar)] = true;
+    v->process_input(input);
+    ASSERT_TRUE(v->control == w3p)
+        << "spectator camera cycle must skip the dormant walker";
+
+    // Cycle again over the wrap: dormant walker stays excluded.
+    v->process_input(empty);
+    v->process_input(input);
+    ASSERT_TRUE(v->control == w1p)
+        << "spectator camera wrap must land on the awake walker, not the dormant one";
+
+    // Release the SwitchChar debounce (the last frame above was a press):
+    // otherwise the next test's first switch press is silently swallowed
+    // under --gtest_shuffle.
+    v->process_input(empty);
+    w2p->set_dormant(false);
 }
 
 

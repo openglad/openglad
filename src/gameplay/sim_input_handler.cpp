@@ -29,7 +29,7 @@ walker* sim_find_next_control(GameWorld& level, short my_team)
     for (auto& uptr : level.oblist)
     {
         walker* w = uptr.get();
-        if (w && !w->dead() &&
+        if (w && !w->dead() && !w->dormant() &&
             w->query_order() == Order::Living &&
             w->user() == -1 &&
             w->myguy &&
@@ -44,7 +44,7 @@ walker* sim_find_next_control(GameWorld& level, short my_team)
     for (auto& uptr : level.oblist)
     {
         walker* w = uptr.get();
-        if (w && !w->dead() &&
+        if (w && !w->dead() && !w->dormant() &&
             w->query_order() == Order::Living &&
             w->user() == -1 &&
             w->team_num() == my_team)
@@ -139,7 +139,7 @@ SimInputResult sim_process_player_input(
     {
         control->set_act_type(ACT_CONTROL);
         control->set_user(static_cast<signed char>(player_num));
-        control->stats()->clear_command();
+        control->stats()->clear_command_for_control_switch(); // forced fright + charm survive (runaway-specials §4)
     }
     if (!control || control->dead())
     {
@@ -181,7 +181,12 @@ SimInputResult sim_process_player_input(
         control = nullptr;
 
         auto filter = [oldcontrol, my_team](const walker* w) {
-            return w->query_order() == Order::Living &&
+            // Never hand control to a dead or dormant (delayed-spawn) ally:
+            // dormant walkers are invisible, out of the obmap, skipped by the
+            // act phase, and excluded from snapshots, so selecting one strands
+            // the player on a ghost and blanks the HUD (bugs A1/A10).
+            return !w->dead() && !w->dormant() &&
+                   w->query_order() == Order::Living &&
                    w->is_friendly(oldcontrol) && w->team_num() == my_team &&
                    w->real_team_num() == 255 && w->user() == -1;
         };
@@ -299,12 +304,12 @@ SimInputResult sim_process_player_input(
         control->animate();
 
     if (control != oldcontrol)
-        control->stats()->clear_command();
+        control->stats()->clear_command_for_control_switch(); // forced fright + charm survive (runaway-specials §4)
 
     if (control->dead() || control->stats()->frozen_delay())
     {
         if (control->stats()->frozen_delay())
-            control->stats()->set_frozen_delay(control->stats()->frozen_delay() - 1);
+            control->stats()->player_thaw_tick(); // 1 -> 0 writes -kFreezeThawImmunityTicks (runaway-specials §3.3)
         result.new_control = control;
         return result;
     }

@@ -463,8 +463,13 @@ TEST(FairyDeath, fairy_death) {
                 ? state.failure_message
                 : "injector thread should have completed");
 
-    ASSERT_TRUE(state.observed_natural_death)
-        << "the lone fairy run should observe the hired fairy die in-world";
+    // The injector polls the world every kFairyPollMs; at max game speed the
+    // fairy's death and the resulting defeat can resolve between two polls.
+    // The team is the lone fairy, so the generic defeat popup is equally
+    // conclusive proof of the in-world death (see the flow comment above).
+    ASSERT_TRUE(state.observed_natural_death || state.saw_generic_defeat)
+        << "the lone fairy run should observe the hired fairy die in-world, "
+           "either directly or via the team-wipe defeat popup";
     // We lost — level 4 should NOT be marked completed
     ASSERT_TRUE(!og::runtime::current_session->myscreen_->save_data.is_level_completed(4)) << "level 4 should NOT be completed (fairy should have died)";
 

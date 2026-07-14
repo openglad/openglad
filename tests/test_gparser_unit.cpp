@@ -1,4 +1,6 @@
 #include <openglad/resources/gparser.h>
+#include <openglad/resources/filesystem.h>
+#include <openglad/resources/io_common.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -73,6 +75,21 @@ std::filesystem::path unit_config_dir()
 std::filesystem::path unit_config_file()
 {
     return unit_config_dir() / "cfg" / "openglad.yaml";
+}
+
+// Another suite in this binary (test_physfs_wrappers) deliberately leaves
+// PhysFS sabotaged (mounts destroyed, write dir redirected) to simulate a
+// fatal-assert bail. cfg load/save resolves "cfg/openglad.yaml" through
+// PhysFS first and falls back to the cwd (the REPO checkout under ctest) —
+// so a sabotaged predecessor makes these tests read/clobber the repo's
+// cfg/openglad.yaml under --gtest_shuffle. Re-establish the unit_main
+// contract before any test that loads or saves settings.
+void heal_unit_filesystem()
+{
+    const std::string user_path = get_user_path();
+    ASSERT_TRUE(og::resources::set_write_dir(user_path));
+    // Fails harmlessly when the user dir is still mounted.
+    (void)og::resources::mount(user_path.c_str(), nullptr, 1);
 }
 
 void write_unit_config(const char* text)
@@ -212,6 +229,7 @@ TEST(GparserUnit, gparser_load_settings_reports_missing_config_and_keeps_default
 
 TEST(GparserUnit, gparser_load_settings_parses_mapping_sequence_and_alias)
 {
+    heal_unit_filesystem();
     const char* valid_yaml =
         "sound:\n"
         "  sound: off\n"
@@ -233,8 +251,105 @@ TEST(GparserUnit, gparser_load_settings_parses_mapping_sequence_and_alias)
     ASSERT_EQ("off", local_cfg.get_setting("graphics", "fullscreen"));
 }
 
+TEST(GparserUnit, gparser_load_settings_tolerates_stale_floor_ghost_key)
+{
+    heal_unit_filesystem();
+    // graphics/floor_ghost was a real setting once (the ghost view is now
+    // hold-look-up only, with no cfg toggle). A user cfg saved by an older
+    // build still carries the key; loading must succeed and simply hold the
+    // stale key as inert data nothing in the engine reads anymore.
+    const char* stale_yaml =
+        "graphics:\n"
+        "  render: normal\n"
+        "  floor_ghost: on\n"
+        "sound:\n"
+        "  sound: off\n";
+    write_unit_config(stale_yaml);
+
+    cfg_store local_cfg;
+    ASSERT_TRUE(local_cfg.load_settings())
+        << "a cfg with the retired graphics/floor_ghost key must still load";
+    ASSERT_EQ("normal", local_cfg.get_setting("graphics", "render"));
+    ASSERT_EQ("off", local_cfg.get_setting("sound", "sound"));
+    ASSERT_EQ("on", local_cfg.get_setting("graphics", "floor_ghost"))
+        << "stale keys are carried as inert data, not rejected";
+}
+
+// effects/depth_fx migration shim (load_settings -> migrate_depth_fx): a
+// config that predates the selector derives it from the retired boolean
+// effects/depth_tint — on carries the intent to the new default treatment
+// (fog), off stays off.
+TEST(GparserUnit, gparser_depth_fx_migrates_legacy_depth_tint_on_to_fog)
+{
+    heal_unit_filesystem();
+    write_unit_config(
+        "effects:\n"
+        "  depth_tint: on\n");
+
+    cfg_store local_cfg;
+    ASSERT_TRUE(local_cfg.load_settings());
+    ASSERT_EQ("fog", local_cfg.get_setting("effects", "depth_fx"))
+        << "legacy depth_tint on must migrate to the new default, fog";
+    ASSERT_EQ("on", local_cfg.get_setting("effects", "depth_tint"))
+        << "the legacy key stays as inert data (stale-key tolerance)";
+}
+
+TEST(GparserUnit, gparser_depth_fx_migrates_legacy_depth_tint_off_to_off)
+{
+    heal_unit_filesystem();
+    write_unit_config(
+        "effects:\n"
+        "  depth_tint: off\n");
+
+    cfg_store local_cfg;
+    ASSERT_TRUE(local_cfg.load_settings());
+    ASSERT_EQ("off", local_cfg.get_setting("effects", "depth_fx"))
+        << "a user who turned the old tint off must stay depth-effect-free";
+}
+
+TEST(GparserUnit, gparser_depth_fx_defaults_to_fog_when_neither_key_present)
+{
+    heal_unit_filesystem();
+    write_unit_config(
+        "effects:\n"
+        "  gore: on\n");
+
+    cfg_store local_cfg;
+    ASSERT_TRUE(local_cfg.load_settings());
+    ASSERT_EQ("fog", local_cfg.get_setting("effects", "depth_fx"))
+        << "a config that knew neither key gets the plain default";
+
+    // The same default applies on the missing-config path: load_settings
+    // runs the migration on every exit.
+    cfg_store defaults_cfg;
+    defaults_cfg.migrate_depth_fx();
+    ASSERT_EQ("fog", defaults_cfg.get_setting("effects", "depth_fx"));
+}
+
+TEST(GparserUnit, gparser_depth_fx_present_key_wins_and_legacy_key_is_inert)
+{
+    heal_unit_filesystem();
+    // A config written by the new build can still carry the stale legacy
+    // key: depth_fx always wins, and a REPEAT migration never rewrites it.
+    write_unit_config(
+        "effects:\n"
+        "  depth_fx: mist\n"
+        "  depth_tint: on\n");
+
+    cfg_store local_cfg;
+    ASSERT_TRUE(local_cfg.load_settings());
+    ASSERT_EQ("mist", local_cfg.get_setting("effects", "depth_fx"))
+        << "an explicit depth_fx must never be clobbered by the legacy key";
+    local_cfg.migrate_depth_fx();
+    ASSERT_EQ("mist", local_cfg.get_setting("effects", "depth_fx"))
+        << "migration must be idempotent once the key exists";
+    ASSERT_EQ("on", local_cfg.get_setting("effects", "depth_tint"))
+        << "the stale legacy key is carried as inert data, not rejected";
+}
+
 TEST(GparserUnit, gparser_save_settings_writes_only_persisted_data_and_reports_open_failure)
 {
+    heal_unit_filesystem();
     namespace fs = std::filesystem;
     ASSERT_FALSE(unit_config_dir().empty()) << "unit runner should set OPENGLAD_CONFIG_DIR";
 

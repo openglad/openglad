@@ -16,7 +16,7 @@
 #include <openglad/core/sound_ids.h>
 #include <openglad/gameplay/sim_emit.h>
 #include <openglad/gameplay/foe_query.h>
-
+#include <openglad/core/combat_math.h>
 #include <format>
 #include <string>
 #include <list>
@@ -131,6 +131,7 @@ static bool mage_do_special(walker* self)
                     if (!newob)
                         return false;
                     newob->set_owner(self);
+                    newob->set_floor(self->floor());  // marker on the caster's floor (A8)
                     newob->center_on(self);
                     if (self->myguy)
                         newob->set_lifetime(self->myguy->intelligence / 33);
@@ -164,7 +165,7 @@ static bool mage_do_special(walker* self)
             generic = static_cast<std::int32_t>(self->stats()->magicpoints() - static_cast<float>(self->stats()->special_cost(static_cast<int>(self->current_special()))));
             if (generic > 0)
             {
-                generic = generic / 15;
+                generic = (generic / 15 < og::combat::kStarburstAddCap) ? generic / 15 : og::combat::kStarburstAddCap; // §2.12: per-fireball add binds only above 660 MP; lineofsight add/3 inherits the bound
                 self->stats()->set_magicpoints(self->stats()->magicpoints() - static_cast<float>(generic));
             }
             else
@@ -223,6 +224,7 @@ static bool mage_do_special(walker* self)
                 return false;
             alive = current_game->world->add_ob(Order::Weapon, FAMILY_WAVE);
             if (!alive) return false;
+            alive->set_floor(newob->floor());  // wave rides the caster's floor (A8)
             alive->center_on(newob);
             alive->set_owner(self);
             alive->stats()->set_level(self->stats()->level());
@@ -238,7 +240,7 @@ static bool mage_do_special(walker* self)
             if (!howmany)
                 return false;
             generic = static_cast<std::int32_t>(self->stats()->magicpoints() - static_cast<float>(self->stats()->special_cost(5)));
-            generic /= 2;
+            generic = (generic / 2 < og::combat::kMpPoolDamageCap) ? generic / 2 : og::combat::kMpPoolDamageCap; // §2.12: heartburst pool binds only above ~1300 MP
             generic /= howmany;
             if (self->myguy)
             {
@@ -252,6 +254,10 @@ static bool mage_do_special(walker* self)
                 if (!newob)
                     return false;
                 newob->set_damage(static_cast<float>(generic));
+                // Heartburst bursts materialize ON each acquired foe, so they
+                // take that target's floor (A8); the blast itself only damages
+                // same-floor walkers (explosion_on_death floor filter).
+                newob->set_floor(ob->floor());
                 newob->center_on(ob);
                 og::sim::emit_sound(current_game->sim_events, SOUND_EXPLODE);
                 newob->set_ani_type(ANI_EXPLODE);
