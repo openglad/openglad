@@ -134,6 +134,16 @@ TEST(VideoModesMore, display_mode_sizes_are_reported_in_physical_pixels)
 	          og::platform::display_mode_pixel_size(mode));
 }
 
+TEST(VideoModesMore, exclusive_mode_switch_rejects_only_multi_display_x11)
+{
+	EXPECT_TRUE(og::platform::exclusive_mode_switch_is_safe("x11", 1));
+	EXPECT_FALSE(og::platform::exclusive_mode_switch_is_safe("x11", 2));
+	EXPECT_FALSE(og::platform::exclusive_mode_switch_is_safe("x11", 3));
+	EXPECT_TRUE(og::platform::exclusive_mode_switch_is_safe("wayland", 2));
+	EXPECT_TRUE(og::platform::exclusive_mode_switch_is_safe("windows", 2));
+	EXPECT_TRUE(og::platform::exclusive_mode_switch_is_safe("offscreen", 2));
+}
+
 TEST(VideoModesMore, native_window_requests_a_physical_hidpi_backbuffer)
 {
 	ASSERT_NE(nullptr, E_Screen);

@@ -24,6 +24,7 @@
 
 #include <array>
 #include <span>
+#include <string_view>
 #include <vector>
 
 namespace og::platform
@@ -31,6 +32,15 @@ namespace og::platform
 // SDL3 display-mode dimensions are logical coordinates. Convert them to the
 // physical pixel pair users expect in a monitor-resolution selector.
 std::pair<int, int> display_mode_pixel_size(const SDL_DisplayMode& mode);
+
+// XRandR exclusive mode changes are unsafe when one X11 screen spans several
+// displays: SDL can leave the target CRTC disabled if the resized root no
+// longer contains the other outputs. Other backends do not use that path.
+inline bool exclusive_mode_switch_is_safe(std::string_view video_driver,
+                                          int display_count)
+{
+    return video_driver != "x11" || display_count <= 1;
+}
 }
 
 class sdl_video final : public video

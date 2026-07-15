@@ -72,7 +72,7 @@ static inline Uint32 rng(Uint32 max_exclusive) {
 static void reset_format_detail_cache();
 // Defined with the display-settings apply below; shared with the boot path.
 static SDL_DisplayID display_for_window();
-static bool apply_exclusive_mode(int w, int h);
+static bool apply_exclusive_mode(SDL_DisplayID display, int w, int h);
 
 static constexpr int kMaxConfiguredDisplayDimension = 16384;
 
@@ -2749,6 +2749,25 @@ static SDL_DisplayID display_for_window()
 	return display != 0 ? display : SDL_GetPrimaryDisplay();
 }
 
+// SDL's X11/XRandR backend temporarily disables a CRTC while changing a real
+// video mode. With several displays on the same X screen, shrinking the root
+// can make another output fall outside its bounds; the target CRTC may then
+// never be re-enabled. Preflight the topology because SDL reports success too
+// early for an application rollback to be reliable (SDL issue #9560).
+static bool current_topology_allows_exclusive_mode_switch()
+{
+	const char* driver = SDL_GetCurrentVideoDriver();
+	if (driver == nullptr || std::string_view(driver) != "x11")
+		return true;
+
+	int count = 0;
+	SDL_DisplayID* displays = SDL_GetDisplays(&count);
+	if (displays == nullptr)
+		return false;
+	SDL_free(displays);
+	return og::platform::exclusive_mode_switch_is_safe(driver, count);
+}
+
 // Attach the closest real video mode by PHYSICAL pixel size. SDL3's mode w/h
 // fields are logical coordinates, so SDL_GetClosestFullscreenDisplayMode()
 // cannot directly consume the values shown by this menu on Retina/HiDPI
@@ -2756,9 +2775,8 @@ static SDL_DisplayID display_for_window()
 // then release the list after SDL has accepted it. Equal physical sizes favor
 // the desktop's exact density/layout for the desktop request, otherwise a
 // density nearest 1.0 and a refresh nearest the desktop.
-static bool apply_exclusive_mode(int w, int h)
+static bool apply_exclusive_mode(SDL_DisplayID display, int w, int h)
 {
-	const SDL_DisplayID display = display_for_window();
 	const SDL_DisplayMode* desktop = SDL_GetDesktopDisplayMode(display);
 	const std::pair<int, int> desktop_pixels = desktop != nullptr
 		? og::platform::display_mode_pixel_size(*desktop)
@@ -3061,8 +3079,21 @@ void sdl_video::apply_display_settings_from_cfg()
 	// mode + resolution out of cfg, drive the real window, update the overscan
 	// viewport, then reapply the independent world zoom/smoothing settings.
 	// The SDL_EVENT_WINDOW_RESIZED this raises only refreshes the viewport.
-	const og::ui::DisplayMode mode =
+	og::ui::DisplayMode mode =
 	    og::ui::parse_display_mode(cfg.get_setting("graphics", "fullscreen"));
+	const bool exclusive_downgraded =
+		mode == og::ui::DisplayMode::Exclusive &&
+		!current_topology_allows_exclusive_mode_switch();
+	if (exclusive_downgraded)
+	{
+		// Borderless retains fullscreen presentation without asking XRandR to
+		// change hardware modes. Normalize cfg before beginning the tracked
+		// request so boot and live apply both describe the safe real state.
+		LogWarn("Exclusive fullscreen is disabled on multi-display X11; "
+		        "using Borderless to protect the display topology\n");
+		mode = og::ui::DisplayMode::Borderless;
+		cfg.apply_setting("graphics", "fullscreen", "borderless");
+	}
 	const std::pair<int, int> res = og::ui::parse_resolution(
 	    cfg.get_setting("graphics", "width"), cfg.get_setting("graphics", "height"));
 	const int w = std::clamp(res.first, 320, kMaxConfiguredDisplayDimension);
@@ -3150,8 +3181,9 @@ void sdl_video::apply_display_settings_from_cfg()
 		break;
 	}
 	case og::ui::DisplayMode::Borderless:
-		if (!was_exclusive ||
-		    std::pair<int, int>{w, h} != previous_exclusive_pixels)
+		if (!exclusive_downgraded &&
+		    (!was_exclusive ||
+		     std::pair<int, int>{w, h} != previous_exclusive_pixels))
 		{
 			// Usually this equals the real Windowed size captured above. A
 			// different value is an explicit cfg operation such as RESTORE
@@ -3167,7 +3199,7 @@ void sdl_video::apply_display_settings_from_cfg()
 			SDL_SetWindowFullscreen(E_Screen->window, true);
 		break;
 	case og::ui::DisplayMode::Exclusive:
-		request_accepted = apply_exclusive_mode(w, h);
+		request_accepted = apply_exclusive_mode(target_display, w, h);
 		request_accepted = request_accepted &&
 			SDL_SetWindowFullscreen(E_Screen->window, true);
 		break;
@@ -3235,6 +3267,10 @@ std::vector<std::pair<int, int>> sdl_video::display_resolutions()
 {
 	std::vector<std::pair<int, int>> out;
 #ifndef __EMSCRIPTEN__
+	// Returning no modes makes the DISPLAY selector skip Exclusive entirely.
+	// The apply path repeats this guard so a hand-edited/saved cfg is safe too.
+	if (!current_topology_allows_exclusive_mode_switch())
+		return out;
 	// Exclusive choices are strictly modes SDL says this display accepts.
 	// Borderless reports desktop_resolution() separately; injecting that size
 	// here can make a non-enumerated desktop request hide valid lower modes.

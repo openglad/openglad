@@ -57,6 +57,13 @@ when it is an enumerated fullscreen mode; otherwise it chooses the largest
 enumerated mode. If SDL chooses another mode or rejects fullscreen, the mode
 and resolution labels update to the state that was applied.
 
+Exclusive mode is deliberately unavailable on multi-display X11 desktops.
+SDL's XRandR mode-switch path can disable a monitor and fail to re-enable it
+when the resized root screen no longer contains the other outputs. OpenGlad
+uses Borderless there, including when an older saved configuration requests
+Exclusive. Single-display X11, Wayland, Windows, and other backends retain the
+normal Exclusive choices.
+
 ## Zoom and canvas size
 
 The world canvas is derived from the classic canvas, not from the window:
