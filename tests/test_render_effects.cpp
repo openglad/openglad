@@ -4,6 +4,7 @@
 // and draw_obs). Effects OFF must render byte-identically, so every test
 // compares an off-run against an on-run of the same scene.
 #include <openglad/interface/render/walker_draw.h>
+#include <openglad/platform/sai2x.h>
 #include <openglad/interface/render/effects.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/gameplay/game_world.h>
@@ -3472,6 +3473,96 @@ TEST(RenderEffects, lower_floor_fades_and_tints_without_look_up)
     restore_world(vs);
 }
 
+TEST(RenderEffects, floor_layer_failure_fades_tiles_and_walkers_in_direct_fallback)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+    EffectsCfgGuard guard;
+    all_effects_off();
+    cfg.apply_setting("effects", "depth_fx", "off");
+
+    GameWorld& world = scr()->world();
+    fill_camera_grid(static_cast<unsigned char>(PIX_GRASS1));
+    walker* camera = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, camera);
+    camera->setxy(160, 120);
+    vs->control = camera;
+    ASSERT_TRUE(do_redraw(vs)); // settle camera/viewport
+    ASSERT_TRUE(do_redraw(vs));
+    const std::vector<RGB> opaque_terrain = grab_viewport(vs);
+    const int frame_w = static_cast<int>(vs->xview);
+
+    // Expose floor 0 through an all-air camera floor, then force the source
+    // allocation seam to fail. The lower terrain must remain visible but use
+    // its depth alpha; the failed layer must never be treated as active.
+    world.set_floor_count(2);
+    fill_floor_grid(world, 1, static_cast<unsigned char>(PIX_AIR));
+    camera->set_floor(1);
+    const int first_fallbacks =
+        scr()->floor_layer_fallback_count_for_testing();
+    scr()->fail_next_floor_layer_allocation_for_testing();
+    trace_clear();
+    ASSERT_TRUE(do_redraw(vs));
+    EXPECT_EQ(first_fallbacks + 1,
+              scr()->floor_layer_fallback_count_for_testing());
+    EXPECT_TRUE(trace_contains(
+        "render", "floor_layer_fallback reason=allocation"));
+    EXPECT_FALSE(scr()->floor_layer_redirect_active_for_testing());
+    const std::vector<RGB> faded_terrain = grab_viewport(vs);
+
+    bool found_dim_terrain = false;
+    for (int y = 32; y < 64 && !found_dim_terrain; ++y)
+        for (int x = 32; x < 64 && !found_dim_terrain; ++x)
+        {
+            const std::size_t index = static_cast<std::size_t>(y) * frame_w + x;
+            found_dim_terrain = darkened(faded_terrain[index],
+                                         opaque_terrain[index]);
+        }
+    ASSERT_TRUE(found_dim_terrain)
+        << "direct fallback terrain must stay visible and depth-faded";
+
+    // Add an actor to that lower floor and force the same fallback again.
+    // Capture a final single-floor frame as its opaque reference, then find
+    // one sprite pixel proving the fallback actor is visible but not opaque.
+    walker* below = world.add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, below);
+    below->set_floor(0);
+    below->setxy(80, 80);
+    scr()->fail_next_floor_layer_allocation_for_testing();
+    ASSERT_TRUE(do_redraw(vs));
+    const std::vector<RGB> faded_with_walker = grab_viewport(vs);
+    EXPECT_FALSE(scr()->floor_layer_redirect_active_for_testing());
+
+    world.set_floor_count(1);
+    camera->set_floor(0);
+    ASSERT_TRUE(do_redraw(vs));
+    const std::vector<RGB> opaque_with_walker = grab_viewport(vs);
+
+    Sint32 sx = 0, sy = 0;
+    ground_anchor(*below, vs, sx, sy);
+    bool found_faded_walker = false;
+    for (int y = 0; y < below->sizey() && !found_faded_walker; ++y)
+        for (int x = 0; x < below->sizex() && !found_faded_walker; ++x)
+        {
+            const int px_x = static_cast<int>(sx) + x - static_cast<int>(vs->xloc);
+            const int px_y = static_cast<int>(sy) + y - static_cast<int>(vs->yloc);
+            if (px_x < 0 || px_y < 0 || px_x >= frame_w ||
+                px_y >= static_cast<int>(vs->yview))
+                continue;
+            const std::size_t index =
+                static_cast<std::size_t>(px_y) * frame_w + px_x;
+            found_faded_walker =
+                !same(opaque_with_walker[index], opaque_terrain[index]) &&
+                !same(faded_with_walker[index], faded_terrain[index]) &&
+                !same(faded_with_walker[index], opaque_with_walker[index]);
+        }
+    ASSERT_TRUE(found_faded_walker)
+        << "fallback walker must draw with floor alpha: visible, never opaque";
+
+    restore_world(vs);
+}
+
 TEST(RenderEffects, depth_fx_leaves_ghost_floors_above_untinted)
 {
     viewscreen* vs = view0();
@@ -5312,5 +5403,107 @@ TEST(RenderEffects, overhang_shadows_render_under_spectator_floor_override)
     world.delete_objects();
     world.set_floor_count(1);
     effects_reset_for_testing();
+    restore_world(vs);
+}
+
+// Render-cost benchmark for large world canvases (the "fullscreen at small
+// sprite scale is 1fps" report). Env-gated: set OG_BENCH=1; prints ms/frame
+// per effect configuration to stderr so a profiler run can be focused.
+TEST(RenderEffects, zz_bench_large_canvas_redraw)
+{
+    if (getenv("OG_BENCH") == nullptr)
+        GTEST_SKIP() << "set OG_BENCH=1 to run the large-canvas benchmark";
+
+    EffectsCfgGuard cfg_guard;
+    // A REAL level (objects, terrain variety) rather than the empty fixture
+    // grid: weather/depth effects gate on outdoor terrain, and tile/sprite
+    // draw costs only show against real content.
+    scr()->save_data.scen_num = 1;
+    ASSERT_TRUE(scr()->load_level());
+    scr()->world().mysmoother.set_target(scr()->world().grid);
+    viewscreen* vs = view0();
+
+    E_Screen->set_world_canvas_size(1920, 1200);
+    scr()->set_active_canvas(CanvasTarget::World);
+    scr()->relayout_views();
+    ASSERT_TRUE(do_redraw(vs)); // settle camera on the new canvas
+
+    struct Config { const char* name; WeatherKind weather; const char* depth; };
+    const Config configs[] = {
+        {"bare",          WeatherKind::None,   "off"},
+        {"depth_fog",     WeatherKind::None,   "fog"},
+        {"clouds",        WeatherKind::Clouds, "off"},
+        {"rain",          WeatherKind::Rain,   "off"},
+        {"snow",          WeatherKind::Snow,   "off"},
+        {"clouds_fog",    WeatherKind::Clouds, "fog"},
+    };
+    for (const Config& c : configs)
+    {
+        scr()->world().set_weather(c.weather);
+        cfg.apply_setting("effects", "depth_fx", c.depth);
+        ASSERT_TRUE(do_redraw(vs)); // warm
+        const Uint64 t0 = SDL_GetTicks();
+        constexpr int kFrames = 40;
+        for (int i = 0; i < kFrames; ++i)
+        {
+            ASSERT_TRUE(do_redraw(vs));
+            scr()->buffer_to_screen(0, 0, scr()->canvas_w(), scr()->canvas_h());
+        }
+        const Uint64 elapsed = SDL_GetTicks() - t0;
+        fprintf(stderr, "[bench 1920x1200] %-12s %6.2f ms/frame\n", c.name,
+                static_cast<double>(elapsed) / kFrames);
+    }
+
+    // Deepest zoom exercises the actual 3200x2000 raw upload that replaced
+    // the old fullscreen-relative small-sprite path.
+    scr()->world().set_weather(WeatherKind::None);
+    cfg.apply_setting("effects", "depth_fx", "off");
+	E_Screen->set_world_zoom(1, og::WorldScaleMode::Integer);
+	scr()->relayout_views();
+	ASSERT_TRUE(do_redraw(vs));
+	{
+		const Uint64 t0 = SDL_GetTicks();
+		constexpr int kFrames = 10;
+		for (int i = 0; i < kFrames; ++i)
+		{
+			ASSERT_TRUE(do_redraw(vs));
+			scr()->buffer_to_screen(0, 0, scr()->canvas_w(), scr()->canvas_h());
+		}
+		const Uint64 elapsed = SDL_GetTicks() - t0;
+		fprintf(stderr, "[bench 3200x2000] zoom_0.1_raw %6.2f ms/frame\n",
+		        static_cast<double>(elapsed) / kFrames);
+	}
+
+	// Measure the live world-only smart-filter path at zoom 0.5, whose
+	// 1280x800 doubled scratch is within the production pixel budget.
+	struct SmartConfig { const char* name; og::WorldScaleMode mode; };
+	for (const SmartConfig& smart : {
+	         SmartConfig{"world_sai", og::WorldScaleMode::Sai},
+	         SmartConfig{"world_eagle", og::WorldScaleMode::Eagle}})
+    {
+		E_Screen->set_world_zoom(5, smart.mode);
+		scr()->relayout_views();
+		E_Screen->begin_gameplay_frame();
+		ASSERT_TRUE(E_Screen->gameplay_ui_overlay_active());
+        ASSERT_TRUE(do_redraw(vs));
+        scr()->buffer_to_screen(0, 0, scr()->canvas_w(), scr()->canvas_h()); // warm render2
+		ASSERT_TRUE(E_Screen->last_world_present_used_smart_surface());
+        const Uint64 t0 = SDL_GetTicks();
+        constexpr int kFrames = 10;
+        for (int i = 0; i < kFrames; ++i)
+        {
+			E_Screen->begin_gameplay_frame();
+			ASSERT_TRUE(E_Screen->gameplay_ui_overlay_active());
+            ASSERT_TRUE(do_redraw(vs));
+            scr()->buffer_to_screen(0, 0, scr()->canvas_w(), scr()->canvas_h());
+        }
+        const Uint64 elapsed = SDL_GetTicks() - t0;
+		fprintf(stderr, "[bench 640x400] %-12s %6.2f ms/frame\n", smart.name,
+                static_cast<double>(elapsed) / kFrames);
+    }
+
+	E_Screen->set_world_zoom(og::kZoomStepsMax, og::WorldScaleMode::Integer);
+    scr()->set_active_canvas(CanvasTarget::UI);
+    scr()->relayout_views();
     restore_world(vs);
 }

@@ -168,8 +168,8 @@ inline constexpr int kDisplayMenuModeIndex = 1;
 inline constexpr int kDisplayMenuResolutionIndex = 2;
 inline constexpr int kDisplayMenuOverscanMinusIndex = 3;
 inline constexpr int kDisplayMenuOverscanPlusIndex = 4;
-inline constexpr int kDisplayMenuScaleIndex = 5;
-inline constexpr int kDisplayMenuFilterIndex = 6;
+inline constexpr int kDisplayMenuZoomIndex = 5;
+inline constexpr int kDisplayMenuSmoothingIndex = 6;
 
 // --- DIFFICULTY subscreen layout contract -----------------------------------
 // Positional indices into k_difficulty_menu_buttons /

@@ -510,8 +510,17 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
         return false;
     }
 #endif
+    video& output = *og::runtime::current_session->myscreen_;
+    ScopedUiCanvas canvas_target(output);
+
     // Popup the ending dialog
     show_ending_popup(ending, nextlevel);
+
+    // The popup and results panel share the fixed UI surface. Restore the
+    // nearest-scaled gameplay backdrop so the closed popup does not remain
+    // visible around the results panel.
+    if (canvas_target.entered_from_world())
+        output.prepare_ui_canvas_from_world();
 
     // Clear any stale input events after popup closes
     // This helps prevent ASYNCIFY state issues in Emscripten

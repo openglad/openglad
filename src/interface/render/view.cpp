@@ -805,7 +805,6 @@ bool viewscreen::redraw()
 			// viewport centre + faded (seam-free). The camera floor and opaque
 			// (ghosting-off) floors draw straight to the screen, byte-identical.
 			const bool use_layer = (vworld.floor_count() > 1 && falpha < 255);
-			const unsigned char tile_alpha = use_layer ? 255 : falpha;
 			// A below-camera floor (fscale<1) shrunk about the centre from a
 			// viewport-sized layer would leave a black ring around the
 			// composite: instead draw a 1/fscale-larger world window (pad on
@@ -818,9 +817,11 @@ bool viewscreen::redraw()
 				pad_x = static_cast<Sint32>(std::ceil(static_cast<float>(xview) * grow));
 				pad_y = static_cast<Sint32>(std::ceil(static_cast<float>(yview) * grow));
 			}
-			if (use_layer && !active_screen()->floor_layer_begin(
-			        xloc, yloc, xview + 2 * pad_x, yview + 2 * pad_y))
-				pad_x = pad_y = 0; // no layer redirect: keep the plain viewport clip
+			const bool layer_active = use_layer && active_screen()->floor_layer_begin(
+			    xloc, yloc, xview + 2 * pad_x, yview + 2 * pad_y);
+			if (!layer_active)
+				pad_x = pad_y = 0; // direct-alpha fallback keeps the plain viewport clip
+			const unsigned char tile_alpha = layer_active ? 255 : falpha;
 			if (pad_x > 0 || pad_y > 0)
 			{
 				// Widen this pass's world window + clip so the tile loop, the
@@ -869,7 +870,7 @@ bool viewscreen::redraw()
 						// On a layer the composite fades the whole floor, so tiles draw
 						// opaque (full coverage); glass stays faint only on the directly
 						// drawn camera floor (so the floor below shows through it).
-						const unsigned char talpha = use_layer ? 255
+						const unsigned char talpha = layer_active ? 255
 						    : ((tile == PIX_GLASS && falpha > kGlassAlpha) ? kGlassAlpha : falpha);
 						renderer->draw_tile(tile, i*GRID_SIZE, j*GRID_SIZE, this, talpha);
 						// Decor rides right on top of its base tile, through the
@@ -882,14 +883,15 @@ bool viewscreen::redraw()
 							const int d = static_cast<int>(decorp.data[i + maxx * j]);
 							if (d != DECOR_NONE)
 								renderer->draw_decor(d, i*GRID_SIZE, j*GRID_SIZE, this,
-								                     use_layer ? 255 : falpha);
+									                     layer_active ? 255 : falpha);
 						}
 					}
 					}
 			}
 			if (fp.entities)
-				draw_floor_entities(&level, static_cast<int>(f), falpha); //radar drawn after
-			if (use_layer)
+				draw_floor_entities(&level, static_cast<int>(f), falpha,
+				                    layer_active); //radar drawn after
+			if (layer_active)
 			{
 				// A floor d levels below the camera composites through the
 				// depth treatment; defaults (off / ghosts above) composite
@@ -933,10 +935,15 @@ bool viewscreen::redraw()
 	// "effects" weather — off touches zero pixels).
 	draw_cloud_overlay(this, vworld);
 	topx = unshaken_topx; topy = unshaken_topy; // undo the shake
-	//moved here to put the radar on top of obs
-	if (controlob && !controlob->dead() && controlob->user() == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
-		myradar->draw();
-	display_text();
+	// Gameplay chrome is composited nearest after the smart-smoothed scenery.
+	// On classic/nearest and scaler-fallback frames this scope aliases World.
+	{
+		ScopedGameplayUiCanvas gameplay_ui(*active_screen());
+		//moved here to put the radar on top of obs
+		if (controlob && !controlob->dead() && controlob->user() == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
+			myradar->draw();
+		display_text();
+	}
     publish_primary_render_sample(*this,
                                   controlob,
                                   interpolation_alpha,
@@ -1070,7 +1077,6 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 			// viewport centre + faded (seam-free). The camera floor and opaque
 			// (ghosting-off) floors draw straight to the screen, byte-identical.
 			const bool use_layer = (vworld.floor_count() > 1 && falpha < 255);
-			const unsigned char tile_alpha = use_layer ? 255 : falpha;
 			// A below-camera floor (fscale<1) shrunk about the centre from a
 			// viewport-sized layer would leave a black ring around the
 			// composite: instead draw a 1/fscale-larger world window (pad on
@@ -1083,9 +1089,11 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 				pad_x = static_cast<Sint32>(std::ceil(static_cast<float>(xview) * grow));
 				pad_y = static_cast<Sint32>(std::ceil(static_cast<float>(yview) * grow));
 			}
-			if (use_layer && !active_screen()->floor_layer_begin(
-			        xloc, yloc, xview + 2 * pad_x, yview + 2 * pad_y))
-				pad_x = pad_y = 0; // no layer redirect: keep the plain viewport clip
+			const bool layer_active = use_layer && active_screen()->floor_layer_begin(
+			    xloc, yloc, xview + 2 * pad_x, yview + 2 * pad_y);
+			if (!layer_active)
+				pad_x = pad_y = 0; // direct-alpha fallback keeps the plain viewport clip
+			const unsigned char tile_alpha = layer_active ? 255 : falpha;
 			if (pad_x > 0 || pad_y > 0)
 			{
 				// Widen this pass's world window + clip so the tile loop, the
@@ -1134,7 +1142,7 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 						// On a layer the composite fades the whole floor, so tiles draw
 						// opaque (full coverage); glass stays faint only on the directly
 						// drawn camera floor (so the floor below shows through it).
-						const unsigned char talpha = use_layer ? 255
+						const unsigned char talpha = layer_active ? 255
 						    : ((tile == PIX_GLASS && falpha > kGlassAlpha) ? kGlassAlpha : falpha);
 						renderer->draw_tile(tile, i*GRID_SIZE, j*GRID_SIZE, this, talpha);
 						// Decor rides right on top of its base tile, through the
@@ -1147,14 +1155,15 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 							const int d = static_cast<int>(decorp.data[i + maxx * j]);
 							if (d != DECOR_NONE)
 								renderer->draw_decor(d, i*GRID_SIZE, j*GRID_SIZE, this,
-								                     use_layer ? 255 : falpha);
+									                     layer_active ? 255 : falpha);
 						}
 					}
 					}
 			}
 			if (fp.entities)
-				draw_floor_entities(data, static_cast<int>(f), falpha);
-			if (use_layer)
+				draw_floor_entities(data, static_cast<int>(f), falpha,
+				                    layer_active);
+			if (layer_active)
 			{
 				// A floor d levels below the camera composites through the
 				// depth treatment; defaults (off / ghosts above) composite
@@ -1190,10 +1199,13 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 	// See the no-arg redraw(): open-sky weather overlay, before radar/text.
 	draw_cloud_overlay(this, vworld);
 	topx = unshaken_topx; topy = unshaken_topy; // undo the shake
-	//moved here to put the radar on top of obs
-	if (draw_radar && controlob && !controlob->dead() && controlob->user() == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
-		myradar->draw(data);
-	display_text();
+	{
+		ScopedGameplayUiCanvas gameplay_ui(*active_screen());
+		//moved here to put the radar on top of obs
+		if (draw_radar && controlob && !controlob->dead() && controlob->user() == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
+			myradar->draw(data);
+		display_text();
+	}
     publish_primary_render_sample(*this,
                                   controlob,
                                   interpolation_alpha,
@@ -1660,29 +1672,36 @@ void viewscreen::draw_floor_effects_post(LevelRuntimeData* data, int floor)
 		TRACE("effects", "fire_glow floor=%d n=%d", floor, n);
 }
 
-void viewscreen::draw_floor_entities(LevelRuntimeData* data, int floor, unsigned char alpha)
+void viewscreen::draw_floor_entities(LevelRuntimeData* data, int floor,
+                                     unsigned char alpha, bool layer_active)
 {
 	const bool multifloor = data->world().floor_count() > 1;
-	draw_floor_effects(data, floor);
+	// Direct fallback has no whole-floor fade/scale stage. Optional pre/post
+	// effects do not all have alpha-aware primitives, so omit them for this
+	// degraded non-camera pass instead of drawing full-brightness artifacts.
+	const bool direct_faded_fallback = alpha < 255 && !layer_active;
+	if (!direct_faded_fallback)
+		draw_floor_effects(data, floor);
 	for (auto& uptr : data->world().fxlist)
 	{
 		walker* w = uptr.get();
 		if (w && !w->dead() && (!multifloor || static_cast<int>(w->floor()) == floor))
-			draw_walker(*w, this, alpha);
+			draw_walker(*w, this, alpha, layer_active);
 	}
 	for (auto& uptr : data->world().oblist)
 	{
 		walker* w = uptr.get();
 		if (w && !w->dead() && (!multifloor || static_cast<int>(w->floor()) == floor))
-			draw_walker(*w, this, alpha);
+			draw_walker(*w, this, alpha, layer_active);
 	}
 	for (auto& uptr : data->world().weaplist)
 	{
 		walker* w = uptr.get();
 		if (w && !w->dead() && (!multifloor || static_cast<int>(w->floor()) == floor))
-			draw_walker(*w, this, alpha);
+			draw_walker(*w, this, alpha, layer_active);
 	}
-	draw_floor_effects_post(data, floor);
+	if (!direct_faded_fallback)
+		draw_floor_effects_post(data, floor);
 }
 
 bool viewscreen::draw_obs()
@@ -1797,6 +1816,7 @@ void viewscreen::view_team()
 
 void viewscreen::view_team(short left, short top, short right, short bottom)
 {
+	ScopedUiCanvas canvas_target(*active_screen());
 	short teamnum = my_team;
 	short text_down = static_cast<short>(top + 3);
 	std::string message;
@@ -1912,6 +1932,8 @@ void viewscreen::options_menu()
 	    LogError("view_options_menu_failed reason=missing_control view={}\n", mynum);
 		return;  // safety check; shouldn't happen
 	}
+
+	ScopedUiCanvas canvas_target(*active_screen());
 
 	clear_keyboard();
 
@@ -2240,7 +2262,23 @@ void viewscreen::options_menu()
 		if (og::runtime::current_session->keystates_[KEYSTATE_t])      // View the teamlist
 		{
 			view_team();
-			active_screen()->redraw();
+			while (og::runtime::current_session->keystates_[KEYSTATE_t])
+			{
+				YIELD_SLEEP(1);
+				get_input_events(POLL);
+			}
+			// options_menu() keeps the fixed UI canvas active for its whole
+			// scope. Rebuild the gameplay backdrop on the real World target,
+			// complete its smart-filter/HUD present, then seed the UI canvas
+			// before recursively reopening the menu. Drawing the world while
+			// the outer UI scope is active clips zoomed canvases to 320x200 and
+			// leaves the actual world surface stale.
+			{
+				ScopedCanvasTarget world_target(*active_screen(), CanvasTarget::World);
+				active_screen()->redraw();
+				active_screen()->swap();
+			}
+			active_screen()->prepare_ui_canvas_from_world();
 			options_menu();
 			return;
 		}
@@ -2531,6 +2569,7 @@ Sint32 load_key_prefs()
 // It returns success or failure.
 Sint32 viewscreen::set_key_prefs()
 {
+	ScopedUiCanvas canvas_target(*active_screen());
 	text& keytext = active_screen()->text_normal;
 
 	clear_keyboard();
@@ -2654,6 +2693,7 @@ static const char* get_key_display_name(int keycode)
 // view_key_bindings displays the current key bindings for this player
 void viewscreen::view_key_bindings()
 {
+	ScopedUiCanvas canvas_target(*active_screen());
 	text& keytext = active_screen()->text_normal;
 
 	clear_keyboard();

@@ -495,6 +495,9 @@ void toggle_effect(const std::string& category, const std::string& setting)
         config.apply_setting(category, setting, "on");
 }
 
+// Retained for the reserved ToggleRenderingEngine action id. No current menu
+// exposes graphics/render; display creation migrates only a legacy sai/eagle
+// preference when graphics/smoothing is absent.
 void toggle_rendering_engine()
 {
     cfg_store& config = cfg;
@@ -704,8 +707,10 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         return REDRAW;
     case ButtonAction::CycleDepthFx:
         return change_depth_fx();
-    case ButtonAction::CycleWorldScale:
-        return change_world_scale();
+    case ButtonAction::CycleZoom:
+        return change_zoom();
+    case ButtonAction::CycleSmoothing:
+        return change_smoothing();
     case ButtonAction::CycleResolution:
         return change_resolution();
     case ButtonAction::CycleDisplayMode:
@@ -736,15 +741,14 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         og::runtime::current_session->overscan_percentage_ = static_cast<float>(
             parse_int_strict(cfg.get_setting("graphics", "overscan_percentage")).value_or(0)) / 100.0f;
         update_overscan_setting();
-        // The restored cfg has no graphics/scale key: re-derive the world
-        // canvas so the live renderer matches (a pure routing no-op when the
-        // canvas is already the classic default, i.e. every default run).
+        // Reapply the restored graphics/zoom + graphics/smoothing settings so
+        // the live world canvas and filter match the shipped defaults.
         {
             screen* scr = og::runtime::current_session->myscreen_;
             const int old_w = scr->world_canvas_w();
             const int old_h = scr->world_canvas_h();
-            // Re-derives the window (mode + resolution), the overscan
-            // viewport and the world canvas from the restored cfg.
+            // Reapplies the window mode/resolution, overscan viewport, and
+            // window-independent world zoom/smoothing in one call.
             scr->apply_display_settings_from_cfg();
             if (scr->world_canvas_w() != old_w || scr->world_canvas_h() != old_h)
                 scr->relayout_views();

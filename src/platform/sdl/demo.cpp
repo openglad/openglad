@@ -342,11 +342,11 @@ int main(int argc, char* argv[])
 
         cfg.apply_setting("graphics", "width", std::format("{}", display_w));
         cfg.apply_setting("graphics", "height", std::format("{}", display_h));
-        cfg.apply_setting("graphics", "render", "normal");
         // Force the classic fixed 320x200 world canvas even if the user's cfg
-        // sets graphics/scale: the compositor grid assumes CELL_W x CELL_H
-        // session surfaces ("off" parses to WorldScaleMode::Legacy).
-        cfg.apply_setting("graphics", "scale", "off");
+        // selects a deeper zoom or smoothing filter: the compositor grid
+        // assumes unsmoothed CELL_W x CELL_H session surfaces.
+        cfg.apply_setting("graphics", "zoom", "1.0");
+        cfg.apply_setting("graphics", "smoothing", "off");
         cfg.apply_setting("graphics", "fullscreen", "on");
 
         srand(static_cast<unsigned int>(time(nullptr)));

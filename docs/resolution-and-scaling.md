@@ -1,113 +1,176 @@
-# Resolution and scaling
+# Resolution, zoom, and smoothing
 
-OpenGlad historically rendered everything into one fixed 320x200 canvas and
-stretched it to the window. The renderer now owns **two logical canvases**:
+OpenGlad draws through three layers:
 
-* **World canvas** — gameplay: viewscreens, HUD panels, radar, the level
-  editor's map view. Variable dimensions, controlled by `graphics/scale`.
-* **UI canvas** — menus, picker, intro, help, dialogs. **Pinned at 320x200
-  forever**, so classic menu layouts, mouse translation (logical 320x200
-  coordinates) and pixel captures stay valid at any world resolution.
+* The **world canvas** contains gameplay scenery: maps, tiles, sprites,
+  effects, and the level editor's map view. `graphics/zoom` controls its
+  dimensions.
+* The **UI canvas** contains menus, the picker, the intro, help screens,
+  dialogs, and results. It stays at 320x200 and is always presented with
+  nearest-neighbor scaling.
+* During a usable SAI/Eagle frame, a transparent **gameplay UI layer** holds
+  pane chrome, the HUD and FPS/CTF blocks, radar, messages, touch controls,
+  mini health bars, and damage/healing numbers. It follows the world canvas
+  dimensions but is composited with nearest-neighbor scaling after the
+  scenery filter.
 
-While the world canvas is at the default 320x200 the two canvases share one
-surface/texture pair, byte-identical to the historical single-canvas
-renderer.
+At the default zoom with smoothing off, the world and fixed UI targets share
+the same 320x200 surface and texture, and the gameplay layer is inactive. This
+is the byte-identical path used by the historical single-canvas renderer.
 
-## cfg keys (`graphics` section)
+## Graphics settings
 
-| Key | Values | Meaning |
-|-----|--------|---------|
-| `width`, `height` | pixels | Window size (default 640x400). |
-| `render` | `normal`, `sai`, `eagle` (`double` parses but behaves as `normal`, as it always has) | The **legacy** present engine for the classic 320x200 canvas. |
-| `scale` | *(omitted)*, `off`, `1`, `2`, `3`, `4`, `8`, `sai`, `eagle` | **Optional** world-canvas scale factor — see below. |
+| Key | Values | Default | Effect |
+| --- | --- | --- | --- |
+| `fullscreen` | `off`, `borderless`, `exclusive` | `borderless` (`on`) | Native display mode. The browser page owns this on Emscripten. |
+| `width`, `height` | Logical window units or physical fullscreen pixels | 640x400 | Windowed size, or the exclusive video mode. Borderless remembers the Windowed size. |
+| `windowed_width`, `windowed_height` | Logical window units | 640x400 | Last applied Windowed size, retained while `width`/`height` hold an Exclusive physical mode. |
+| `zoom` | `0.1` through `1.0` | `1.0` | Logical world zoom in 0.1 steps. Lower values show more of the level. |
+| `smoothing` | `off`, `sai`, `eagle` | `off` | Presentation filter for the world canvas only. |
 
-### `graphics/scale`
+The shipped configuration writes `zoom: 1.0` and `smoothing: off`
+explicitly. Missing or invalid zoom values also select 1.0. Numeric values
+are rounded to the nearest 0.1 and clamped to the supported range. Unknown
+smoothing values select `off`.
 
-* **Omitted / `off` / unrecognized** — classic behavior: one 320x200 world
-  canvas presented through the `render` engine. Every pre-existing cfg (which
-  cannot contain the key) behaves exactly as before; this is the byte-identical
-  default.
-* **`1`, `2`, `3`, `4`, `8`** — the world canvas is sized `window / N`
-  (width rounded down to a multiple of 4, both axes clamped to a **320x200
-  minimum**) and presented with an unfiltered (nearest) GPU stretch, so each
-  world pixel covers about N×N window pixels. `1` = native-resolution
-  gameplay; `2` on the default 640x400 window reproduces the classic look.
-* **`sai`, `eagle`** — the world canvas is sized `window / 2` (same clamp),
-  software-smoothed 2x by the Super2xSaI / SuperEagle scaler, then
-  GPU-stretched. This generalizes the old `render: sai` look to any window
-  size.
+## Window and fullscreen resolution
 
-### Interaction between `render` and `scale`
+The DISPLAY screen reads video modes from the display that currently owns the
+window, not from a fixed preset list. Fullscreen resolutions are physical
+pixel sizes. SDL's logical mode dimensions are multiplied by the mode's pixel
+density, so a 1920x1080 Retina mode at 2x appears as 3840x2160. Exclusive
+choices contain only modes that SDL actually enumerates.
 
-`scale` overrides the **world** present path only. The UI canvas — and, when
-`scale` is absent, the world canvas too — always presents through the
-`render` engine. So old cfgs are untouched, and e.g. `render: sai` +
-`scale: 1` gives smoothed menus with native-resolution gameplay.
+Windowed sizes use SDL's logical window coordinates. Their fallback list is
+derived from the display's usable desktop bounds, excluding taskbars and
+docks. This keeps HiDPI window sizes sensible instead of treating a physical
+4K mode as a 3840x2160-point window.
 
-### In-game control (OPTIONS)
+The renderer maps that logical window viewport onto SDL's physical output at
+present time. A high-density fullscreen mode therefore fills its full pixel
+backbuffer, while mouse and touch input remain in logical window coordinates.
 
-The OPTIONS screen has a **Scale** button (id `world_scale`, action
-`CycleWorldScale`) that steps `graphics/scale` through
-`off -> 1 -> 2 -> sai -> eagle -> 3 -> 4 -> 8 -> off` and applies each value
-to the live renderer immediately (`video::reapply_world_scale`, then
-`screen::relayout_views` when the canvas dims moved). Applying mid-menu is
-safe because menus draw and present on the UI canvas, which the key never
-touches. The **rendering engine** button (`graphics/render`, still marked
-"needs restart" for its own present path) remains a separate, independent
-setting on the same screen. RESTORE DEFAULTS re-derives the world canvas too,
-so the live renderer always matches the restored cfg. Both settings persist
-when OPTIONS exits (`cfg.save_settings()`).
+Borderless mode always uses the desktop. Its resolution row reports the
+monitor's physical size and does not cycle, while retaining the logical
+Windowed size for a later switch. Entering Exclusive chooses the desktop size
+when it is an enumerated fullscreen mode; otherwise it chooses the largest
+enumerated mode. If SDL chooses another mode or rejects fullscreen, the mode
+and resolution labels update to the state that was applied.
 
-## Pointer mapping
+## Zoom and canvas size
 
-`handle_mouse_event` converts window pointer coordinates by the **active
-canvas** dims: `canvas = (window - viewport_offset) * (canvas_dim /
-viewport_dim)`. Menus (UI canvas active) keep the classic logical 320x200
-mouse space; gameplay and the level editor (world canvas active) map to the
-world canvas — identical to the classic constants in every default run, and
-under the editor's classic pin. The overscan viewport rect is shared by both
-canvases; only the divisor is per-layer. Touch/controller conversions follow
-the same rule.
+The world canvas is derived from the classic canvas, not from the window:
 
-### Why the 320x200 minimum?
+```text
+world width  = 320 / zoom
+world height = 200 / zoom
+```
 
-The classic panes are the smallest geometry the game was written against:
+The width is rounded up to a multiple of four for the software scalers. The
+height uses integer division. These are the exact selector sizes:
 
-* the sprite clipper and viewscreen math assume at least classic pane sizes,
-* the radar is a fixed 60x44 block anchored to the pane's bottom-right,
-* the score-panel HUD draws fixed-size text/bar blocks in the `PREF_VIEW`
-  chrome insets (up to 106/60 px per side in single-player),
+| Zoom | World canvas |
+| ---: | ---: |
+| 1.0 | 320x200 |
+| 0.9 | 356x222 |
+| 0.8 | 400x250 |
+| 0.7 | 460x285 |
+| 0.6 | 536x333 |
+| 0.5 | 640x400 |
+| 0.4 | 800x500 |
+| 0.3 | 1068x666 |
+| 0.2 | 1600x1000 |
+| 0.1 | 3200x2000 |
 
-so `window/scale` is clamped up to 320x200 — a too-small window simply gets a
-coarser-than-requested stretch.
+A lower value zooms out by increasing the logical canvas. For example, 0.5
+shows twice as much world on each axis as 1.0. Its 640x400 canvas happens to
+match the default window size, but the two settings are independent.
 
-## Viewscreen layout
+Resizing the window or changing fullscreen mode only changes the destination
+viewport. It does not resize the world canvas or recalculate viewscreen
+geometry. Rendering cost therefore follows the selected zoom instead of the
+physical window size.
+
+## Smoothing
+
+`smoothing: off` presents the world canvas with nearest-neighbor filtering.
+`sai` and `eagle` run the corresponding software 2x scaler over the world
+canvas, then present that result to the viewport. Smoothing does not change
+the logical canvas dimensions or pane layout.
+
+The filter is chosen per layer. Both the fixed UI canvas and gameplay UI
+overlay are always nearest, including when the scenery uses SAI or Eagle. The
+software pass is capped at 4,096,000 output pixels (about 16.4 MB each for its
+surface and texture), which supports zoom 1.0 through 0.3. At zoom 0.2 and 0.1
+the selected smoothing preference is retained, but presentation falls back to
+nearest. This avoids a 6400x4000 scratch target and a roughly 102 MB upload on
+every 0.1-zoom frame.
+
+## Compatibility with older configurations
+
+`graphics/scale` is retired and ignored. It used to derive a world canvas
+from the current window, which made both the view and rendering cost change
+when the window changed.
+
+`graphics/render` is also retired as a whole-frame presentation setting. The
+renderer no longer smooths menus or gameplay chrome. A configuration without
+`graphics/smoothing` inherits `render: sai` or `render: eagle` as its new
+world-only smoothing mode. `render: normal` and `render: double` become
+`smoothing: off`. An explicit `graphics/smoothing` value always wins.
+
+The old action and engine enum values remain reserved for compatibility, but
+the DISPLAY menu no longer exposes the whole-frame rendering control.
+
+## In-game controls
+
+The DISPLAY screen has two live controls:
+
+* **Zoom** cycles from 1.0 down through each 0.1 step to 0.1, then wraps to
+  1.0. A changed canvas size immediately re-lays out active viewscreens.
+* **Smooth** cycles `off -> sai -> eagle -> off`. This changes only the world
+  presentation path, so no layout pass is needed.
+
+Menus remain on the fixed UI canvas while these settings are applied. Both
+values are saved when OPTIONS exits, and RESTORE DEFAULTS returns them to 1.0
+and `off`.
+
+## Layout and pointer mapping
 
 Pane geometry is a pure function of the world canvas dimensions
-(`og::view_layout::compute_view_layout`, `include/openglad/interface/render/view_layout.h`):
-1p full-canvas; 2p side-by-side halves with a 2px seam; 3p full-height left
-pane plus a split right half; 4p quadrants. The `PREF_VIEW` inset modes keep
-their fixed-pixel chrome margins (the HUD blocks anchored there do not grow).
-At 320x200 the formulas reproduce the legacy hardcoded tables verbatim
-(pinned by `tests/unit/test_view_layout.cpp`).
+(`og::view_layout::compute_view_layout`): one player uses the full canvas,
+two players use side-by-side halves, three players use a full-height left pane
+and a split right half, and four players use quadrants. Split panes retain a
+two-pixel seam. The `PREF_VIEW` chrome insets and HUD blocks keep their fixed
+pixel sizes. At 320x200 the formulas reproduce the legacy tables exactly.
 
-On a window resize under a non-legacy `scale`, the world canvas is re-derived
-from the new window size and every viewscreen is re-laid out
-(`screen::relayout_views`).
+Pointer input maps through whichever canvas is active:
 
-## Deliberate pins and follow-ups
+```text
+canvas position = (window position - viewport offset)
+                  * canvas size / viewport size
+```
 
-* **Level editor** — its panel chrome and mouse mapping still use absolute
-  320x200-era coordinates, so it pins the classic world canvas for its whole
-  session and restores the scale-derived canvas on exit. Follow-up:
-  right-anchor the chrome from `canvas_w` and drop the pin.
-* **Demo compositor** (`openglad_demo`) — assumes 320x200 session cells;
-  forces `scale: off`.
-* **Emscripten** — keeps the classic single-canvas path (`scale` is ignored;
-  the wasm window is forced to 320x200). Follow-up once the wasm present path
-  is exercised.
-* **In-game dialogs** (quit prompt, per-player options menu) draw at
-  320x200-era coordinates onto the world canvas; on large canvases they
-  appear top-left rather than centered. Cosmetic, non-default-only.
-* The deterministic sim never reads canvas or window dimensions
-  (`scripts/check_render_no_sim_writes.sh`).
+Menus therefore retain their 320x200 pointer space. Gameplay maps into the
+selected world canvas. Overscan changes the viewport rectangle but not either
+logical canvas.
+
+The level editor still uses absolute 320x200 coordinates for its panel
+chrome, so it temporarily pins the world canvas to 320x200 and restores the
+zoom-derived dimensions on exit. Its map follows the selected world smoothing,
+while its minimap, authoring guides, picker previews, menus, and controller
+cursor use the nearest gameplay-UI layer. Fixed-coordinate in-game screens
+temporarily switch to the UI canvas instead. When the world canvas is split,
+they start from a nearest-scaled copy of the current world frame and restore
+world routing when they close.
+
+## Emscripten
+
+Zoom and world smoothing use the same code path in native and Emscripten
+builds. The browser backing window remains 320x200 and CSS controls its
+displayed size, but the world canvas may be larger according to `zoom` before
+it is presented into that backing window. Native resolution and display-mode
+controls remain unavailable in the browser.
+
+Canvas and window dimensions are render-side state. The deterministic
+simulation does not read them; `scripts/check_render_no_sim_writes.sh`
+enforces that boundary.

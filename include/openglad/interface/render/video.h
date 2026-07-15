@@ -21,6 +21,7 @@
 
 #include <utility>
 #include <array>
+#include <cstdint>
 #include <span>
 #include <vector>
 
@@ -28,13 +29,17 @@ class text;
 
 // ---- Logical canvas targets -------------------------------------------------
 //
-// The renderer owns TWO logical canvases:
-//  * the WORLD canvas — gameplay (viewscreens, HUD panels, level editor map
-//    view). Its dimensions are variable in principle (default kUiCanvasW x
-//    kUiCanvasH); nothing in the deterministic sim may ever read them.
+// The renderer owns three logical targets:
+//  * the WORLD canvas — gameplay scenery (map, tiles, sprites, effects, level
+//    editor map view). graphics/zoom derives its dimensions from the classic
+//    canvas
+//    (default kUiCanvasW x kUiCanvasH); the deterministic sim never reads them.
 //  * the UI canvas — menus, picker, help, intro, dialogs. PINNED at
 //    kUiCanvasW x kUiCanvasH (320x200) forever, so every classic menu layout,
 //    pixel pin and capture stays valid regardless of the world canvas size.
+//  * the GAMEPLAY UI canvas — a transparent world-sized overlay used only
+//    while SAI/Eagle is active. Radar, messages and HUD paint here, then the
+//    backend composites it nearest-neighbour AFTER filtering the scenery.
 //
 // Draw primitives route to the ACTIVE canvas; each canvas is presented with
 // its own stretch to the window viewport at swap time. While the world canvas
@@ -44,7 +49,20 @@ class text;
 enum class CanvasTarget
 {
     World,
-    UI
+    UI,
+    GameplayUI
+};
+
+// Why a native display-state snapshot is safe to confirm. SDL3's ordinary
+// fullscreen getters include pending requests, so only a successful explicit
+// synchronization or the corresponding completion event may advance cfg.
+enum class DisplayStateConfirmation
+{
+    Synchronized,
+    EnterFullscreen,
+    LeaveFullscreen,
+    Resized,
+    PixelSizeChanged
 };
 
 // The fixed UI canvas dimensions — also the default world canvas dimensions.
@@ -145,6 +163,23 @@ public:
                                  unsigned char /*alpha*/,
                                  DepthFxParams /*fx*/ = {},
                                  Sint32 /*pad_x*/ = 0, Sint32 /*pad_y*/ = 0) {}
+    virtual void fail_next_floor_layer_allocation_for_testing() {}
+    [[nodiscard]] virtual int floor_layer_fallback_count_for_testing() const
+    {
+        return 0;
+    }
+    [[nodiscard]] virtual std::int64_t floor_layer_source_pixels_for_testing() const
+    {
+        return 0;
+    }
+    [[nodiscard]] virtual std::int64_t floor_layer_scaled_pixels_for_testing() const
+    {
+        return 0;
+    }
+    [[nodiscard]] virtual bool floor_layer_redirect_active_for_testing() const
+    {
+        return false;
+    }
     virtual void walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
                                Sint32 walkerwidth, Sint32 walkerheight,
                                Sint32 portstartx, Sint32 portstarty,
@@ -247,25 +282,52 @@ public:
     virtual int world_canvas_h() const = 0;
     virtual void set_active_canvas(CanvasTarget target) = 0;
     virtual CanvasTarget active_canvas() const = 0;
+	// Canvas that produced the most recent physical present. Scoped UI draws
+	// may restore another active target afterwards; transition fades use this
+	// value so they fade what the player can actually see.
+	virtual CanvasTarget last_presented_canvas() const { return active_canvas(); }
+    // Start a gameplay render frame. Smart-smoothing backends may allocate
+    // and clear a transparent gameplay-UI overlay here; other backends and
+    // nearest rendering retain the historical single-surface path.
+    virtual void begin_gameplay_frame() {}
+    // Seed the fixed UI canvas from the current world frame using nearest
+    // scaling. Modal UI then overlays a crisp 320x200 background even when
+    // graphics/zoom has split the world onto a larger surface.
+    virtual void prepare_ui_canvas_from_world() {}
     // Pin (true) the world canvas to the classic 320x200 dims, or restore
-    // (false) the cfg graphics/scale-derived dims. The level editor pins for
+    // (false) the cfg graphics/zoom-derived dims. The level editor pins for
     // its whole session: its panel chrome and mouse mapping still assume the
     // classic coordinate space. No-op for backends without a resizable world
     // canvas (and while pinned dims == current dims, i.e. every default run).
     virtual void set_world_canvas_pinned_classic(bool /*pinned*/) {}
-    // Re-reads cfg graphics/scale and re-derives the world canvas from the
-    // current window (the OPTIONS Scale button's live-apply seam; the caller
-    // relayouts viewscreens when the dims moved). No-op for backends without
-    // a scalable world canvas — and a routing no-op whenever the re-derived
-    // dims match the current ones, i.e. every default run.
+    // Re-reads cfg graphics/zoom and graphics/smoothing. The canvas derives
+    // from classic/zoom, independent of the window; the caller relayouts
+    // viewscreens only when those logical dimensions change. No-op for
+    // backends without a scalable world canvas.
     virtual void reapply_world_scale() {}
     // DISPLAY settings live-apply: cfg graphics/fullscreen (windowed /
-    // borderless / exclusive) + graphics/width/height, then re-derive the
-    // overscan viewport and world canvas. No-op off the SDL display target.
+    // borderless / exclusive) + graphics/width/height, then update the
+    // overscan viewport. The zoom-derived canvas stays window-independent.
+    // No-op off the SDL display target.
     virtual void apply_display_settings_from_cfg() {}
-    // Distinct WxH video modes of the primary display, largest first; empty
-    // when the platform can't enumerate (headless drivers, web).
+    // Re-read the native window's completed fullscreen state into cfg and
+    // viewport bookkeeping. SDL can finish fullscreen transitions after the
+    // initiating call returns, so its enter/leave events use this hook to
+    // reconcile the eventual state. No-op for non-windowed backends.
+    virtual void reflect_display_settings_from_window(
+        DisplayStateConfirmation /*confirmation*/ = DisplayStateConfirmation::Synchronized,
+        std::uint64_t /*event_timestamp_ns*/ = 0) {}
+    // Distinct physical-pixel WxH fullscreen modes of the window's display,
+    // largest first; empty when the platform can't enumerate (headless
+    // drivers, web).
     virtual std::vector<std::pair<int, int>> display_resolutions() { return {}; }
+    // The window display's current physical-pixel desktop resolution; {0,0}
+    // when unknown. On HiDPI displays this can differ from SDL window units.
+    virtual std::pair<int, int> desktop_resolution() { return {0, 0}; }
+    // Maximum useful Windowed size in SDL logical window coordinates. This
+    // deliberately excludes taskbars/docks and is not multiplied by display
+    // density. {0,0} when unknown.
+    virtual std::pair<int, int> windowed_desktop_resolution() { return {0, 0}; }
 
     virtual void get_pixel(int x, int y, Uint8* r, Uint8* g, Uint8* b) = 0;
     virtual int get_pixel(int x, int y, int* index) = 0;
@@ -290,4 +352,88 @@ public:
 
 protected:
     video() = default;
+};
+
+// Temporarily route drawing and input coordinates to one logical canvas.
+// Modal UI can return through several branches, so restoring the caller's
+// target in a scope guard keeps gameplay on the world canvas after it closes.
+class ScopedCanvasTarget final
+{
+public:
+    ScopedCanvasTarget(video& output, CanvasTarget target)
+        : output_(output), previous_(output.active_canvas())
+    {
+        output_.set_active_canvas(target);
+    }
+
+    ~ScopedCanvasTarget()
+    {
+        output_.set_active_canvas(previous_);
+    }
+
+    ScopedCanvasTarget(const ScopedCanvasTarget&) = delete;
+    ScopedCanvasTarget& operator=(const ScopedCanvasTarget&) = delete;
+    ScopedCanvasTarget(ScopedCanvasTarget&&) = delete;
+    ScopedCanvasTarget& operator=(ScopedCanvasTarget&&) = delete;
+
+    CanvasTarget previous() const { return previous_; }
+
+private:
+    video& output_;
+    CanvasTarget previous_;
+};
+
+// Fixed-coordinate UI entry point. When entered from gameplay, seed the UI
+// backing from the complete current frame before drawing menus or dialogs.
+// This is also required at classic dimensions when smart smoothing keeps the
+// HUD in a separate overlay; nested UI scopes do not copy again.
+class ScopedUiCanvas final
+{
+public:
+    explicit ScopedUiCanvas(video& output)
+        : output_(output), target_(output, CanvasTarget::UI),
+          entered_from_world_(target_.previous() == CanvasTarget::World),
+          entered_from_split_world_(
+              entered_from_world_ &&
+              (output.world_canvas_w() != kUiCanvasW ||
+               output.world_canvas_h() != kUiCanvasH))
+    {
+        if (entered_from_world_)
+            output_.prepare_ui_canvas_from_world();
+    }
+
+    ScopedUiCanvas(const ScopedUiCanvas&) = delete;
+    ScopedUiCanvas& operator=(const ScopedUiCanvas&) = delete;
+    ScopedUiCanvas(ScopedUiCanvas&&) = delete;
+    ScopedUiCanvas& operator=(ScopedUiCanvas&&) = delete;
+
+    bool entered_from_world() const { return entered_from_world_; }
+    bool entered_from_split_world() const { return entered_from_split_world_; }
+
+private:
+    video& output_;
+    ScopedCanvasTarget target_;
+    bool entered_from_world_;
+    bool entered_from_split_world_;
+};
+
+// Gameplay HUD entry point. With an available SAI/Eagle present path this
+// selects the transparent overlay that is composited nearest after the
+// filtered scenery. Otherwise the backend aliases GameplayUI to World, so
+// classic rendering and resource-fallback frames remain byte-identical.
+class ScopedGameplayUiCanvas final
+{
+public:
+    explicit ScopedGameplayUiCanvas(video& output)
+        : target_(output, CanvasTarget::GameplayUI)
+    {
+    }
+
+    ScopedGameplayUiCanvas(const ScopedGameplayUiCanvas&) = delete;
+    ScopedGameplayUiCanvas& operator=(const ScopedGameplayUiCanvas&) = delete;
+    ScopedGameplayUiCanvas(ScopedGameplayUiCanvas&&) = delete;
+    ScopedGameplayUiCanvas& operator=(ScopedGameplayUiCanvas&&) = delete;
+
+private:
+    ScopedCanvasTarget target_;
 };

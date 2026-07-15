@@ -8,6 +8,7 @@
 #include <openglad/interface/render/effects.h>
 #include <openglad/interface/render/depth_fx.h>
 #include <openglad/platform/sai2x.h>
+#include <openglad/platform/video_sdl.h>
 #include <gtest/gtest.h>
 
 #include <array>
@@ -782,6 +783,55 @@ TEST(VideoEffectsPrims, floor_layer_padded_window_grows_the_layer_beyond_the_ren
     // the squeeze maps onto the viewport's bottom-right corner.
     ASSERT_TRUE(same(px(vw - 4, vh - 4), dark))
         << "per-pixel blits must reach the grown layer's pad ring";
+}
+
+TEST(VideoEffectsPrims, floor_layer_budget_and_allocation_failure_leave_render_routing_safe)
+{
+    screen* s = scr();
+    ASSERT_NE(nullptr, s);
+    SDL_Surface* const real_render = E_Screen->render;
+    ASSERT_NE(nullptr, real_render);
+
+    // A deepest-zoom full-canvas source is 6.4M pixels. Reject it before
+    // touching cached surfaces or the public draw alias.
+    const int budget_fallbacks = s->floor_layer_fallback_count_for_testing();
+    const std::int64_t cached_pixels =
+        s->floor_layer_source_pixels_for_testing();
+    ASSERT_GT(static_cast<std::int64_t>(3200) * 2000,
+              sdl_video::kFloorLayerSourcePixelBudget);
+    EXPECT_FALSE(s->floor_layer_begin(0, 0, 3200, 2000));
+    EXPECT_EQ(budget_fallbacks + 1,
+              s->floor_layer_fallback_count_for_testing());
+    EXPECT_EQ(cached_pixels, s->floor_layer_source_pixels_for_testing())
+        << "budget rejection must not allocate or discard cached scratch";
+    EXPECT_EQ(real_render, E_Screen->render);
+    EXPECT_FALSE(s->floor_layer_redirect_active_for_testing());
+
+    // Force the same safe exit at the real SDL allocation seam. The hook
+    // clears old scratch first, so a successful retry also gives exact size
+    // diagnostics for source-vs-output memory.
+    s->fail_next_floor_layer_allocation_for_testing();
+    const int allocation_fallbacks =
+        s->floor_layer_fallback_count_for_testing();
+    EXPECT_FALSE(s->floor_layer_begin(0, 0, 640, 400));
+    EXPECT_EQ(allocation_fallbacks + 1,
+              s->floor_layer_fallback_count_for_testing());
+    EXPECT_EQ(real_render, E_Screen->render);
+    EXPECT_FALSE(s->floor_layer_redirect_active_for_testing());
+    EXPECT_EQ(0, s->floor_layer_source_pixels_for_testing());
+
+    // Under budget retains the complete padded composite, but the bilinear
+    // scratch is only the 320x200 output — not another 640x400 source clone.
+    ASSERT_TRUE(s->floor_layer_begin(0, 0, 640, 400));
+    EXPECT_TRUE(s->floor_layer_redirect_active_for_testing());
+    s->fastbox(0, 0, 640, 400, kBrightBG, 1);
+    s->floor_layer_end(0, 0, 320, 200, 0.5f, 160, 100, 200, {}, 160, 100);
+    EXPECT_EQ(real_render, E_Screen->render);
+    EXPECT_FALSE(s->floor_layer_redirect_active_for_testing());
+    EXPECT_EQ(static_cast<std::int64_t>(640) * 400,
+              s->floor_layer_source_pixels_for_testing());
+    EXPECT_EQ(static_cast<std::int64_t>(320) * 200,
+              s->floor_layer_scaled_pixels_for_testing());
 }
 
 // ---- Canvas plumbing (stages 1+2 of the resolution decoupling) ------------

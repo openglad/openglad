@@ -736,7 +736,7 @@ TEST(MenuLayout, main_options_index_contract_and_nav)
     check_nav_closed_and_reachable(buttons, count, 0, "main_options");
 }
 
-// DISPLAY subscreen: the mode / resolution / overscan / scale / filter
+// DISPLAY subscreen: the mode / resolution / overscan / zoom / smoothing
 // stack. Every face is cfg-derived at 6px/char inside 102px (17 chars);
 // "Mode: Borderless" and "Res: 2560x1440" are the widest realistic faces.
 TEST(MenuLayout, display_settings_index_contract_and_nav)
@@ -745,7 +745,7 @@ TEST(MenuLayout, display_settings_index_contract_and_nav)
     const int count = picker_display_settings_button_count();
     ASSERT_EQ(7, count)
         << "display settings is BACK + mode + resolution + overscan pair + "
-           "scale + filter";
+           "zoom + smoothing";
 
     static const char* kExpectedIds[] = {
         "display_back",        // 0
@@ -753,8 +753,8 @@ TEST(MenuLayout, display_settings_index_contract_and_nav)
         "display_resolution",  // 2: label synced from graphics/width+height
         "overscan_minus",      // 3
         "overscan_plus",       // 4
-        "world_scale",         // 5: label synced from graphics/scale
-        "toggle_rendering",    // 6: label synced from graphics/render
+        "display_zoom",        // 5: label synced from graphics/zoom
+        "display_smoothing",   // 6: label synced from graphics/smoothing
     };
     for (int i = 0; i < count; ++i)
     {
@@ -767,8 +767,8 @@ TEST(MenuLayout, display_settings_index_contract_and_nav)
     }
     ASSERT_EQ(kDisplayMenuModeIndex, 1);
     ASSERT_EQ(kDisplayMenuResolutionIndex, 2);
-    ASSERT_EQ(kDisplayMenuScaleIndex, 5);
-    ASSERT_EQ(kDisplayMenuFilterIndex, 6);
+    ASSERT_EQ(kDisplayMenuZoomIndex, 5);
+    ASSERT_EQ(kDisplayMenuSmoothingIndex, 6);
     // The widest cfg-derivable faces must fit the 102px budget.
     EXPECT_LE(static_cast<int>(std::string("Mode: Borderless").size()) * 6,
               buttons[kDisplayMenuModeIndex].sizex);
@@ -776,8 +776,8 @@ TEST(MenuLayout, display_settings_index_contract_and_nav)
               buttons[kDisplayMenuResolutionIndex].sizex);
     EXPECT_EQ(button_action_id(ButtonAction::CycleDisplayMode), buttons[1].myfun);
     EXPECT_EQ(button_action_id(ButtonAction::CycleResolution), buttons[2].myfun);
-    EXPECT_EQ(button_action_id(ButtonAction::CycleWorldScale), buttons[5].myfun);
-    EXPECT_EQ(button_action_id(ButtonAction::ToggleRenderingEngine), buttons[6].myfun);
+    EXPECT_EQ(button_action_id(ButtonAction::CycleZoom), buttons[5].myfun);
+    EXPECT_EQ(button_action_id(ButtonAction::CycleSmoothing), buttons[6].myfun);
     // The settings stack at one x at the effects-grid 23px pitch (the
     // overscan pair shares its row).
     EXPECT_EQ(buttons[1].x, buttons[2].x);

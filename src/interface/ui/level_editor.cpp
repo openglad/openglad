@@ -1356,6 +1356,11 @@ bool LevelEditorData::saveLevel()
 
 void LevelEditorData::draw(screen* s)
 {
+    // The editor shares the gameplay renderer: its map belongs to World, but
+    // its fixed-coordinate chrome, picker panes, minimap and authoring guides
+    // must remain crisp when SAI/Eagle is selected. Prepare the same one-shot
+    // gameplay-UI overlay used by normal play before drawing either layer.
+    s->begin_gameplay_frame();
     s->clearbuffer();
     // The editor has no control walker, so force the viewscreen to render the
     // floor we're editing (reset to -1 after so menus/gameplay are unaffected).
@@ -1366,30 +1371,35 @@ void LevelEditorData::draw(screen* s)
     }
     level->draw(s);
 
-    if(rect_selecting)
     {
-        Rectf r(selection_rect.x - static_cast<float>(level->level_visuals().topx) + static_cast<float>(s->viewob[0]->xloc),
-                selection_rect.y - static_cast<float>(level->level_visuals().topy) + static_cast<float>(s->viewob[0]->yloc),
-                selection_rect.w, selection_rect.h);
-        if(r.w < 0.0f)
+        ScopedGameplayUiCanvas editor_ui(*s);
+        if(rect_selecting)
         {
-            r.x += r.w;
-            r.w = -r.w;
+            Rectf r(selection_rect.x - static_cast<float>(level->level_visuals().topx) + static_cast<float>(s->viewob[0]->xloc),
+                    selection_rect.y - static_cast<float>(level->level_visuals().topy) + static_cast<float>(s->viewob[0]->yloc),
+                    selection_rect.w, selection_rect.h);
+            if(r.w < 0.0f)
+            {
+                r.x += r.w;
+                r.w = -r.w;
+            }
+            if(r.h < 0.0f)
+            {
+                r.y += r.h;
+                r.h = -r.h;
+            }
+            const Sint32 x1 = static_cast<Sint32>(r.x);
+            const Sint32 y1 = static_cast<Sint32>(r.y);
+            const Sint32 x2 = static_cast<Sint32>(r.x + r.w);
+            const Sint32 y2 = static_cast<Sint32>(r.y + r.h);
+            s->draw_box(x1, y1, x2, y2, ORANGE_START, 0, 1);
+            eds().redraw = 1;
         }
-        if(r.h < 0.0f)
-        {
-            r.y += r.h;
-            r.h = -r.h;
-        }
-        const Sint32 x1 = static_cast<Sint32>(r.x);
-        const Sint32 y1 = static_cast<Sint32>(r.y);
-        const Sint32 x2 = static_cast<Sint32>(r.x + r.w);
-        const Sint32 y2 = static_cast<Sint32>(r.y + r.h);
-        s->draw_box(x1, y1, x2, y2, ORANGE_START, 0, 1);
-        eds().redraw = 1;
+
+        // Everything in display_panel is authoring UI, including the minimap,
+        // selection/brush guides and tile/object picker previews.
+        display_panel(s);
     }
-    
-    display_panel(s);
     if (s->viewob[0])
     {
         s->viewob[0]->editor_floor_override_ = -1;
@@ -1784,10 +1794,6 @@ Sint32 LevelEditorData::display_panel(screen* s)
         for(auto* sub_btn : btnSet)
             sub_btn->draw(s);
     }
-    
-    
-	s->buffer_to_screen(0, 0, 320, 200);
-
 	return 1;
 }
 
@@ -2908,8 +2914,12 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         }  // end of failure to put guy
                         else if(!object_brush.snap_to_grid)
                         {
-                            draw_walker(*newob, og::runtime::current_session->myscreen_->viewob[0].get());
-                            og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
+                            // Preserve the editor's one-shot scenery/UI
+                            // transaction. A bare World present here would
+                            // make all crisp chrome disappear during the
+                            // mouse-release wait below.
+                            draw(og::runtime::current_session->myscreen_);
+                            og::runtime::current_session->myscreen_->refresh();
                             eds().start_time_s = query_timer();
                             MouseState& mymouse = query_mouse_no_poll();
                             while ( mymouse.left && (query_timer()-eds().start_time_s) < 36 )
@@ -4175,9 +4185,9 @@ Sint32 level_editor()
     // standard viewscreen machinery, so it lives on the WORLD canvas (shared
     // with the UI canvas at the default 320x200 dims). Its panel chrome and
     // mouse mapping still use absolute 320x200-era coordinates (local
-    // S_RIGHT=245 etc.), so when a cfg graphics/scale mode has grown the
+    // S_RIGHT=245 etc.), so when graphics/zoom has grown the logical
     // world canvas we PIN it back to the classic dims for the editor session
-    // and restore the scale-derived dims on exit (follow-up: right-anchor the
+    // and restore the zoom-derived dims on exit (follow-up: right-anchor the
     // chrome from canvas_w and drop the pin). Restore the UI canvas for the
     // picker on exit. At default dims the pin branch never runs — exactly the
     // pre-existing behavior.
@@ -4785,11 +4795,18 @@ Sint32 level_editor()
             eds().redraw = 0;
 			data.draw(og::runtime::current_session->myscreen_);
 			
-            #ifdef USE_CONTROLLER_INPUT
-            og::runtime::current_session->myscreen_->fastbox(mymouse.x-1, mymouse.y-1, 4, 4, PURE_WHITE);
-            og::runtime::current_session->myscreen_->fastbox(mymouse.x, mymouse.y, 2, 2, PURE_BLACK);
-            #endif
-            og::runtime::current_session->myscreen_->refresh();
+			#ifdef USE_CONTROLLER_INPUT
+			{
+				ScopedGameplayUiCanvas editor_ui(
+					*og::runtime::current_session->myscreen_);
+				og::runtime::current_session->myscreen_->fastbox(mymouse.x-1, mymouse.y-1, 4, 4, PURE_WHITE);
+				og::runtime::current_session->myscreen_->fastbox(mymouse.x, mymouse.y, 2, 2, PURE_BLACK);
+			}
+			#endif
+			// LevelEditorData::draw prepares one smart-smoothed scenery + crisp
+			// UI transaction. Present only after every layer (including the
+			// controller cursor) is complete: the gameplay overlay is single-use.
+			og::runtime::current_session->myscreen_->refresh();
 		}
         
         og::input_native::sleep_ms(10);

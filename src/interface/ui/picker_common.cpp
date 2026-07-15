@@ -11,6 +11,7 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/core/ctf_constants.h>
 #include <openglad/core/util.h>
+#include <openglad/core/scale_mode.h>
 #include <optional>
 #include <openglad/core/tower_constants.h>
 #include <openglad/gameplay/ctf/ctf_state.h>
@@ -25,6 +26,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <format>
+#include <functional>
 #include <map>
 
 // Defined in entities/guy.cpp
@@ -546,50 +548,59 @@ bool depth_fx_is_active(const std::string& value)
     return normalize_depth_fx_value(value) != "off";
 }
 
-// --- OPTIONS world-scale selector (cfg graphics/scale) ---
+// --- DISPLAY zoom and smoothing selectors ---
 
-// Out-of-set values (including the empty string an absent key reads as, and
-// the documented explicit "off") count as Legacy — the same rule
-// parse_world_scale_setting applies in the renderer, so the label always
-// names what is presented.
-static std::string normalize_world_scale_value(const std::string& value)
+// Zoom selector (cfg graphics/zoom): 1.0 (classic view) down to 0.1 in 0.1
+// steps; each click zooms OUT one step and wraps back to 1.0. Parsing/
+// quantization matches og::parse_zoom_steps in the renderer, so the label
+// always names what is presented.
+std::string cycle_zoom(const std::string& current)
 {
-    if (value == "1" || value == "2" || value == "3" || value == "4" ||
-        value == "8" || value == "sai" || value == "eagle")
-        return value;
-    return "off";
+    const int steps = og::parse_zoom_steps(current);
+    const int next = steps <= 1 ? og::kZoomStepsMax : steps - 1;
+    return next == og::kZoomStepsMax ? std::string("1.0")
+                                     : "0." + std::to_string(next);
 }
 
-std::string cycle_world_scale(const std::string& current)
+std::string format_zoom_label(const std::string& value)
 {
-    const std::string value = normalize_world_scale_value(current);
-    if (value == "off")
-        return "1";
-    if (value == "1")
-        return "2";
-    if (value == "2")
-        return "sai";
-    if (value == "sai")
+    const int steps = og::parse_zoom_steps(value);
+    if (steps == og::kZoomStepsMax)
+        return "Zoom: 1.0x";
+    return "Zoom: 0." + std::to_string(steps) + "x";
+}
+
+// Smoothing selector (cfg graphics/smoothing): the world-canvas-only present
+// filter. off -> sai -> eagle -> off.
+std::string effective_smoothing_setting(const std::string& value,
+                                        const std::string& legacy_render)
+{
+    if (value.empty() && (legacy_render == "sai" || legacy_render == "eagle"))
+        return legacy_render;
+    return value;
+}
+
+std::string cycle_smoothing(const std::string& current)
+{
+    const og::WorldScaleMode mode = og::parse_smoothing_setting(current);
+    if (mode == og::WorldScaleMode::Sai)
         return "eagle";
-    if (value == "eagle")
-        return "3";
-    if (value == "3")
-        return "4";
-    if (value == "4")
-        return "8";
-    return "off"; // 8 wraps back to the Legacy default
+    if (mode == og::WorldScaleMode::Eagle)
+        return "off";
+    return "sai";
 }
 
-std::string format_world_scale_label(const std::string& value)
+std::string format_smoothing_label(const std::string& value)
 {
-    const std::string v = normalize_world_scale_value(value);
-    if (v == "sai")
-        return "Scale: SAI";
-    if (v == "eagle")
-        return "Scale: Eagle";
-    if (v == "off")
-        return "Scale: Off";
-    return "Scale: " + v + "x";
+    switch (og::parse_smoothing_setting(value))
+    {
+    case og::WorldScaleMode::Sai:
+        return "Smooth: SAI";
+    case og::WorldScaleMode::Eagle:
+        return "Smooth: Eagle";
+    default:
+        return "Smooth: Off";
+    }
 }
 
 DisplayMode parse_display_mode(const std::string& value)
@@ -645,10 +656,73 @@ std::string format_display_mode_label(const std::string& value)
     }
 }
 
-std::vector<std::pair<int, int>> fallback_resolutions()
+std::vector<std::pair<int, int>> fallback_resolutions(std::pair<int, int> desktop)
 {
-    // 16:10 multiples of the classic 320x200 canvas.
-    return {{640, 400}, {960, 600}, {1280, 800}, {1600, 1000}, {1920, 1200}};
+    if (desktop.first < 640 || desktop.second < 400)
+    {
+        // No usable desktop information: the 16:10 multiples of the classic
+        // 320x200 canvas.
+        return {{640, 400}, {960, 600}, {1280, 800}, {1600, 1000}, {1920, 1200}};
+    }
+    // The desktop itself plus aspect-preserving fractions of it, so every
+    // offered window size matches the user's own display shape.
+    std::vector<std::pair<int, int>> out;
+    for (const int num : {4, 3, 2})
+    {
+        // 4/4 (native), 3/4, 2/4 of the desktop, rounded to even.
+        const int w = (desktop.first * num / 4) & ~1;
+        const int h = (desktop.second * num / 4) & ~1;
+        if (w >= 640 && h >= 400)
+            out.emplace_back(w, h);
+    }
+    if (out.empty())
+        out.emplace_back(desktop);
+    return out;
+}
+
+std::vector<std::pair<int, int>> build_resolution_choices(
+    const std::vector<std::pair<int, int>>& display_modes,
+    std::pair<int, int> desktop,
+    std::pair<int, int> current,
+    DisplayMode mode)
+{
+    std::vector<std::pair<int, int>> out = display_modes;
+    if (mode != DisplayMode::Exclusive)
+    {
+        const bool desktop_is_usable =
+            desktop.first >= 640 && desktop.second >= 400;
+        if (desktop_is_usable &&
+            std::find(out.begin(), out.end(), desktop) == out.end())
+        {
+            out.push_back(desktop);
+        }
+
+        if (out.size() < 2)
+            out = fallback_resolutions(desktop);
+
+        // A hand-edited/windowed size is useful on the window-size lap.
+        if (std::find(out.begin(), out.end(), current) == out.end())
+            out.push_back(current);
+    }
+
+    std::sort(out.begin(), out.end(), std::greater<>());
+    out.erase(std::unique(out.begin(), out.end()), out.end());
+    return out;
+}
+
+std::pair<int, int> preferred_exclusive_resolution(
+    const std::vector<std::pair<int, int>>& display_modes,
+    std::pair<int, int> desktop)
+{
+    const auto choices = build_resolution_choices(
+        display_modes, desktop, {0, 0}, DisplayMode::Exclusive);
+    const auto desktop_mode = std::find(choices.begin(), choices.end(), desktop);
+    if (desktop.first >= 640 && desktop.second >= 400 &&
+        desktop_mode != choices.end())
+    {
+        return *desktop_mode;
+    }
+    return choices.empty() ? std::pair<int, int>{0, 0} : choices.front();
 }
 
 std::pair<int, int> parse_resolution(const std::string& width, const std::string& height)

@@ -72,6 +72,7 @@ static short scroll_text_view(screen* scr, int num_lines, int box_width,
     const char* title, Sint32 buf_x, Sint32 buf_y, Sint32 buf_w, Sint32 buf_h,
     GetLine get_line)
 {
+	ScopedUiCanvas canvas_target(*scr);
 	Sint32 screenlines = num_lines * 8;
 	Sint32 linesdown = 0;
 	Sint32 changed = 1;

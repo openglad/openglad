@@ -374,10 +374,10 @@ void cfg_store::commandline(int &argc, char **&argv)
 "Usage: openglad [-d -f ...]\n"
 "  -s		Turn sound on\n"
 "  -S		Turn sound off\n"
-"  -n		Run at 320x200 resolution\n"
-"  -d		Double pixel size\n"
-"  -e		Use eagle engine for pixel doubling\n"
-"  -i		Use sai2x engine for pixel doubling\n"
+"  -n		Disable world smoothing\n"
+"  -d		Disable world smoothing (legacy alias)\n"
+"  -e		Use Eagle world smoothing\n"
+"  -x		Use SAI2x world smoothing\n"
 "  -f		Use full screen\n"
 "  -h		Print a summary of the options\n"
 "  -v		Print the version number\n"
@@ -427,19 +427,23 @@ void cfg_store::commandline(int &argc, char **&argv)
 					break;
 				case 'n':
 					data["graphics"]["render"] = "normal";
-					Log("Screen Resolution set to 320x200.");
+					data["graphics"]["smoothing"] = "off";
+					Log("World smoothing is off.");
 					break;
 				case 'd':
 					data["graphics"]["render"] = "double";
-					Log("Screen Resolution set to 640x400 (basic mode).");
+					data["graphics"]["smoothing"] = "off";
+					Log("World smoothing is off.");
 					break;
 				case 'e':
 					data["graphics"]["render"] = "eagle";
-					Log("Screen Resolution set to 640x400 (eagle mode).");
+					data["graphics"]["smoothing"] = "eagle";
+					Log("Eagle world smoothing enabled.");
 					break;
 				case 'x':
 					data["graphics"]["render"] = "sai";
-					Log("Screen Resolution set to 640x400 (sai2x mode).");
+					data["graphics"]["smoothing"] = "sai";
+					Log("SAI2x world smoothing enabled.");
 					break;
 				case 'f':
 					data["graphics"]["fullscreen"] = "on";

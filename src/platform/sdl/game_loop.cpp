@@ -432,7 +432,10 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
             obmap_debug_draw(*s.world().myobmap, &s);  // debug drawing for object collision map
 
 #ifdef USE_TOUCH_INPUT
-        draw_touch_controls(&s);
+        {
+            ScopedGameplayUiCanvas gameplay_ui(s);
+            draw_touch_controls(&s);
+        }
 #endif
         score_panel(&s);
         s.refresh();

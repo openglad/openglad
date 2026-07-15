@@ -352,6 +352,7 @@ static void draw_ctf_panel(screen* s, walker* control, Sint32 lm, Sint32 tm,
 short new_score_panel(screen* s, short /*do_it*/)
 {
 #define L_D(x) x*8
+	ScopedGameplayUiCanvas gameplay_ui(*s);
     std::string message;
     std::string tempname;
     short tempfoes = 0;

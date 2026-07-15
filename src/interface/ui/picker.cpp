@@ -1104,10 +1104,10 @@ static const button k_display_settings_buttons[] =
         button_action_id(ButtonAction::CycleResolution), -1, MenuNav{.up=1, .down=3}),
     button("overscan_minus", "- ", KEYSTATE_UNKNOWN, 115, effects_row_y(2), 30, 15, button_action_id(ButtonAction::OverscanAdjust), -1, MenuNav{.up=2, .down=5, .right=4}),
     button("overscan_plus", "+ ", KEYSTATE_UNKNOWN, 159, effects_row_y(2), 30, 15, button_action_id(ButtonAction::OverscanAdjust), 1, MenuNav{.up=2, .down=5, .left=3}),
-    button("world_scale", "Scale: Off", KEYSTATE_UNKNOWN, 115, effects_row_y(3), 102, 15,
-        button_action_id(ButtonAction::CycleWorldScale), -1, MenuNav{.up=3, .down=6}),
-    button("toggle_rendering", "Filter: normal", KEYSTATE_UNKNOWN, 115, effects_row_y(4), 102, 15,
-        button_action_id(ButtonAction::ToggleRenderingEngine), -1, MenuNav{.up=5, .down=0}),
+    button("display_zoom", "Zoom: 1.0x", KEYSTATE_UNKNOWN, 115, effects_row_y(3), 102, 15,
+        button_action_id(ButtonAction::CycleZoom), -1, MenuNav{.up=3, .down=6}),
+    button("display_smoothing", "Smooth: Off", KEYSTATE_UNKNOWN, 115, effects_row_y(4), 102, 15,
+        button_action_id(ButtonAction::CycleSmoothing), -1, MenuNav{.up=5, .down=0}),
 };
 
 // FX subscreen toggle grid: columns x=15/115/215, 90px faces (15-char label
@@ -3006,16 +3006,14 @@ Sint32 change_depth_fx()
    return MENU_OK;
 }
 
-// OPTIONS world-scale selector: step cfg graphics/scale one value, apply it
-// to the live world canvas (safe mid-menu: menus draw and present on the UI
-// canvas, which the scale key never touches; the resize only reallocates the
-// world surface/texture and re-lays-out the idle viewscreens), and rewrite
-// the row's label on both surfaces. main_options() persists cfg on exit.
-Sint32 change_world_scale()
+// DISPLAY zoom selector: step graphics/zoom, apply its window-independent
+// world canvas size (safe mid-menu because menus use the fixed UI canvas),
+// relayout views when the logical dimensions change, and sync both label
+// copies. main_options() persists cfg on exit.
+Sint32 change_zoom()
 {
-   const std::string next =
-       og::ui::cycle_world_scale(cfg.get_setting("graphics", "scale"));
-   cfg.apply_setting("graphics", "scale", next);
+   const std::string next = og::ui::cycle_zoom(cfg.get_setting("graphics", "zoom"));
+   cfg.apply_setting("graphics", "zoom", next);
 
    screen* scr = og::runtime::current_session->myscreen_;
    const int old_w = scr->world_canvas_w();
@@ -3024,30 +3022,81 @@ Sint32 change_world_scale()
    if (scr->world_canvas_w() != old_w || scr->world_canvas_h() != old_h)
        scr->relayout_views();
 
-   const std::string label = og::ui::format_world_scale_label(next);
-   if (og::runtime::current_session->allbuttons_[kDisplayMenuScaleIndex] != nullptr)
-       og::runtime::current_session->allbuttons_[kDisplayMenuScaleIndex]->label = label;
-   if (static_cast<int>(pks().display_settings_buttons.size()) > kDisplayMenuScaleIndex)
-       pks().display_settings_buttons[kDisplayMenuScaleIndex].label = label;
+	// The platform reflects an allocation-rejected request back to the live
+	// zoom. Read cfg after applying so the face never advertises a canvas that
+	// was not installed.
+	const std::string label = og::ui::format_zoom_label(
+	    cfg.get_setting("graphics", "zoom"));
+   if (og::runtime::current_session->allbuttons_[kDisplayMenuZoomIndex] != nullptr)
+       og::runtime::current_session->allbuttons_[kDisplayMenuZoomIndex]->label = label;
+   if (static_cast<int>(pks().display_settings_buttons.size()) > kDisplayMenuZoomIndex)
+       pks().display_settings_buttons[kDisplayMenuZoomIndex].label = label;
+
+   return MENU_OK;
+}
+
+Sint32 change_smoothing()
+{
+   const std::string current = og::ui::effective_smoothing_setting(
+       cfg.get_setting("graphics", "smoothing"),
+       cfg.get_setting("graphics", "render"));
+   const std::string next = og::ui::cycle_smoothing(current);
+   cfg.apply_setting("graphics", "smoothing", next);
+
+   screen* scr = og::runtime::current_session->myscreen_;
+   scr->reapply_world_scale(); // engine-only change: canvas dims are stable
+
+   const std::string label = og::ui::format_smoothing_label(next);
+   if (og::runtime::current_session->allbuttons_[kDisplayMenuSmoothingIndex] != nullptr)
+       og::runtime::current_session->allbuttons_[kDisplayMenuSmoothingIndex]->label = label;
+   if (static_cast<int>(pks().display_settings_buttons.size()) > kDisplayMenuSmoothingIndex)
+       pks().display_settings_buttons[kDisplayMenuSmoothingIndex].label = label;
 
    return MENU_OK;
 }
 
 Sint32 change_display_mode()
 {
-   const std::string next = og::ui::display_mode_cfg_value(
-       og::ui::next_display_mode(og::ui::parse_display_mode(
-           cfg.get_setting("graphics", "fullscreen"))));
-   cfg.apply_setting("graphics", "fullscreen", next);
+   const og::ui::DisplayMode previous = og::ui::parse_display_mode(
+       cfg.get_setting("graphics", "fullscreen"));
+	og::ui::DisplayMode requested = og::ui::next_display_mode(previous);
+	screen* scr = og::runtime::current_session->myscreen_;
+	// Borderless stores the remembered logical Windowed size, but Exclusive
+	// accepts only a real enumerated physical mode. Prefer the desktop when it
+	// is in that list; otherwise use the largest real mode instead of treating
+	// (say) a remembered 640x400 window as a fullscreen request.
+	if (previous == og::ui::DisplayMode::Borderless &&
+	    requested == og::ui::DisplayMode::Exclusive)
+	{
+		const auto resolution = og::ui::preferred_exclusive_resolution(
+			scr->display_resolutions(), scr->desktop_resolution());
+		if (resolution.first >= 640 && resolution.second >= 400)
+		{
+			cfg.apply_setting("graphics", "width", std::to_string(resolution.first));
+			cfg.apply_setting("graphics", "height", std::to_string(resolution.second));
+		}
+		else
+		{
+			// A backend with no real fullscreen modes cannot enter Exclusive.
+			// Skip it before issuing a window request; this is unambiguous and
+			// avoids guessing whether a timed-out real request was rejected.
+			requested = og::ui::DisplayMode::Windowed;
+		}
+	}
+	cfg.apply_setting("graphics", "fullscreen",
+	                  og::ui::display_mode_cfg_value(requested));
 
-   screen* scr = og::runtime::current_session->myscreen_;
-   const int old_w = scr->world_canvas_w();
+	const int old_w = scr->world_canvas_w();
    const int old_h = scr->world_canvas_h();
    scr->apply_display_settings_from_cfg();
    if (scr->world_canvas_w() != old_w || scr->world_canvas_h() != old_h)
        scr->relayout_views();
 
-   const std::string label = og::ui::format_display_mode_label(next);
+   // SDL may reject exclusive fullscreen and leave the window in borderless
+   // (or windowed) mode. The platform apply normalizes cfg to that real state,
+   // so the button must read back cfg instead of displaying the request.
+   const std::string label = og::ui::format_display_mode_label(
+       cfg.get_setting("graphics", "fullscreen"));
    if (og::runtime::current_session->allbuttons_[kDisplayMenuModeIndex] != nullptr)
        og::runtime::current_session->allbuttons_[kDisplayMenuModeIndex]->label = label;
    if (static_cast<int>(pks().display_settings_buttons.size()) > kDisplayMenuModeIndex)
@@ -3055,30 +3104,64 @@ Sint32 change_display_mode()
    return MENU_OK;
 }
 
-// The resolution lap: the primary display's real mode list when it offers a
-// choice, the classic 16:10 presets when it doesn't (headless drivers list
-// one mode; web lists none).
+// The resolution lap uses desktop-derived window sizes only outside exclusive
+// fullscreen. Exclusive must never advertise a synthetic fraction, cfg size,
+// or desktop size that SDL did not enumerate as a real video mode.
 static std::vector<std::pair<int, int>> resolution_choices()
 {
-    std::vector<std::pair<int, int>> list =
-        og::runtime::current_session->myscreen_->display_resolutions();
-    if (list.size() < 2)
-        list = og::ui::fallback_resolutions();
-    // Keep the CURRENT resolution on the lap (the 640x400 boot default is
-    // rarely in a real display's mode list): the first click then steps to
-    // a neighbor instead of jumping to the largest mode.
+    screen* scr = og::runtime::current_session->myscreen_;
+	const og::ui::DisplayMode mode = og::ui::parse_display_mode(
+		cfg.get_setting("graphics", "fullscreen"));
     const std::pair<int, int> current = og::ui::parse_resolution(
         cfg.get_setting("graphics", "width"), cfg.get_setting("graphics", "height"));
-    if (std::find(list.begin(), list.end(), current) == list.end())
+	const std::vector<std::pair<int, int>> display_modes =
+		mode == og::ui::DisplayMode::Exclusive
+			? scr->display_resolutions()
+			: std::vector<std::pair<int, int>>{};
+	const std::pair<int, int> desktop =
+		mode == og::ui::DisplayMode::Exclusive
+			? scr->desktop_resolution()
+			: scr->windowed_desktop_resolution();
+    return og::ui::build_resolution_choices(
+		display_modes, desktop, current, mode);
+}
+
+static std::string active_resolution_label()
+{
+    screen* scr = og::runtime::current_session->myscreen_;
+    if (og::ui::parse_display_mode(cfg.get_setting("graphics", "fullscreen")) ==
+        og::ui::DisplayMode::Borderless)
     {
-        list.push_back(current);
-        std::sort(list.begin(), list.end(), std::greater<>());
+        // Borderless always uses the desktop mode; showing the remembered
+        // window size here made a 640x400 label describe a 1920x1080 screen.
+        const std::pair<int, int> desktop = scr->desktop_resolution();
+        if (desktop.first >= 320 && desktop.second >= 200)
+            return og::ui::format_resolution_label(
+                std::to_string(desktop.first), std::to_string(desktop.second));
+        return "Res: Desktop";
     }
-    return list;
+    return og::ui::format_resolution_label(
+        cfg.get_setting("graphics", "width"),
+        cfg.get_setting("graphics", "height"));
 }
 
 Sint32 change_resolution()
 {
+   if (og::ui::parse_display_mode(cfg.get_setting("graphics", "fullscreen")) ==
+       og::ui::DisplayMode::Borderless)
+   {
+       // There is no alternate resolution to apply in borderless desktop
+       // mode. Leave the remembered window size alone and keep the face
+       // truthful; users can select a mode after choosing Windowed or
+       // Fullscreen.
+       const std::string label = active_resolution_label();
+       if (og::runtime::current_session->allbuttons_[kDisplayMenuResolutionIndex] != nullptr)
+           og::runtime::current_session->allbuttons_[kDisplayMenuResolutionIndex]->label = label;
+       if (static_cast<int>(pks().display_settings_buttons.size()) > kDisplayMenuResolutionIndex)
+           pks().display_settings_buttons[kDisplayMenuResolutionIndex].label = label;
+       return MENU_OK;
+   }
+
    const std::pair<int, int> next = og::ui::next_resolution(
        resolution_choices(),
        cfg.get_setting("graphics", "width"),
@@ -3110,7 +3193,8 @@ Sint32 display_settings_options()
     button* buttons = picker_display_settings_buttons();
     const int num_buttons = picker_display_settings_button_count();
 
-    #if defined(OUYA) || defined(ANDROID) || defined(__EMSCRIPTEN__)
+    #if defined(OUYA) || defined(ANDROID) || defined(__IPHONEOS__) || \
+        defined(SDL_PLATFORM_IOS) || defined(__EMSCRIPTEN__)
     // No window to size or mode to pick: TV/mobile targets are always
     // fullscreen, and on web the page/CSS owns the window (the fullscreen
     // cfg is also deliberately ignored at boot there). Hide both rows and
@@ -3155,17 +3239,14 @@ Sint32 display_settings_options()
         };
         sync_label(kDisplayMenuModeIndex,
                    og::ui::format_display_mode_label(cfg.get_setting("graphics", "fullscreen")));
-        sync_label(kDisplayMenuResolutionIndex,
-                   og::ui::format_resolution_label(cfg.get_setting("graphics", "width"),
-                                                   cfg.get_setting("graphics", "height")));
-        sync_label(kDisplayMenuScaleIndex,
-                   og::ui::format_world_scale_label(cfg.get_setting("graphics", "scale")));
-        {
-            std::string engine = cfg.get_setting("graphics", "render");
-            if (engine.empty())
-                engine = "normal";
-            sync_label(kDisplayMenuFilterIndex, "Filter: " + engine);
-        }
+        sync_label(kDisplayMenuResolutionIndex, active_resolution_label());
+        sync_label(kDisplayMenuZoomIndex,
+                   og::ui::format_zoom_label(cfg.get_setting("graphics", "zoom")));
+        sync_label(kDisplayMenuSmoothingIndex,
+                   og::ui::format_smoothing_label(
+                       og::ui::effective_smoothing_setting(
+                           cfg.get_setting("graphics", "smoothing"),
+                           cfg.get_setting("graphics", "render"))));
 
         og::runtime::current_session->myscreen_->clear_window();
         og::runtime::current_session->myscreen_->draw_button(0, 0, 320, 200, 0);
@@ -3366,8 +3447,11 @@ void picker_reinit_after_game()
     Log("picker_reinit_after_game: Reinitializing picker\n");
 
     // Fade out from game
-    og::runtime::current_session->myscreen_->fadeblack(0);
-    og::runtime::current_session->myscreen_->clearbuffer();
+    screen* const current_screen = og::runtime::current_session->myscreen_;
+    current_screen->set_active_canvas(current_screen->last_presented_canvas());
+    current_screen->fadeblack(0);
+    current_screen->clearbuffer();
+    current_screen->set_active_canvas(CanvasTarget::UI);
 
     grab_mouse();
 

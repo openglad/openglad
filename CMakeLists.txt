@@ -2467,6 +2467,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_frame_rate_config.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_view_layout.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_scale_mode.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_display_state.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_frame_deadline_pacer.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_cadence.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_astar.cpp

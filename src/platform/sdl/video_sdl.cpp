@@ -37,8 +37,32 @@
 #include <cstring>
 #include <openglad/platform/game_context.h>
 #include <memory>
+#include <limits>
 #include <span>
+#include <tuple>
 #include <vector>
+
+namespace og::platform
+{
+std::pair<int, int> display_mode_pixel_size(const SDL_DisplayMode& mode)
+{
+	const double density = std::isfinite(mode.pixel_density) && mode.pixel_density > 0.0f
+		? static_cast<double>(mode.pixel_density)
+		: 1.0;
+	const auto to_pixels = [density](int logical) {
+		if (logical <= 0)
+			return 0;
+		const double scaled = std::ceil(static_cast<double>(logical) * density);
+		if (!std::isfinite(scaled) ||
+		    scaled >= static_cast<double>(std::numeric_limits<int>::max()))
+		{
+			return std::numeric_limits<int>::max();
+		}
+		return static_cast<int>(scaled);
+	};
+	return {to_pixels(mode.w), to_pixels(mode.h)};
+}
+} // namespace og::platform
 
 static inline Uint32 rng(Uint32 max_exclusive) {
     return ctx().rng->next(max_exclusive);
@@ -48,7 +72,9 @@ static inline Uint32 rng(Uint32 max_exclusive) {
 static void reset_format_detail_cache();
 // Defined with the display-settings apply below; shared with the boot path.
 static SDL_DisplayID display_for_window();
-static void apply_exclusive_mode(int w, int h);
+static bool apply_exclusive_mode(int w, int h);
+
+static constexpr int kMaxConfiguredDisplayDimension = 16384;
 
 // Dimensions of the ACTIVE canvas (world or UI; see CanvasTarget in
 // video.h). Every offset conversion (offset = x + y*width), full-frame
@@ -78,102 +104,115 @@ static void video_init_palettes(sdl_video& v)
 	load_palette("our.pal", v.bluepalette);
 }
 
-static void video_create_display()
+static void video_create_display(int windowed_base_w, int windowed_base_h)
 {
 	RenderEngine render = RenderEngine::NoZoom;
-	int fullscreen_flag = 0;
 
 	// graphics/fullscreen: "off" | "borderless" | "exclusive" (legacy "on"
-	// reads as borderless). Both fullscreen modes create the window with the
-	// FULLSCREEN flag; the exclusive video mode is applied right after
-	// creation (below), once the window exists to attach it to.
+	// reads as borderless). Always create a desktop window first, then issue
+	// the configured fullscreen request through the tracked live-apply path.
+	// SDL3 exposes create-time pending flags through its getters; a Windowed
+	// baseline gives timeout handling a real confirmed state to preserve.
 	const og::ui::DisplayMode boot_display_mode =
 	    og::ui::parse_display_mode(cfg.get_setting("graphics", "fullscreen"));
-	if (boot_display_mode != og::ui::DisplayMode::Windowed)
-		fullscreen_flag = 1;
+
+	// graphics/render (the legacy whole-canvas present engine) is retired:
+	// SAI/Eagle smoothed the menus and ran a software 2x pass over the entire
+	// active canvas. Smoothing now lives in
+	// graphics/smoothing and applies to the world canvas only.
+	render = RenderEngine::NoZoom;
+
+	int requested_w = 640;
+	int requested_h = 400;
 
 #ifdef __EMSCRIPTEN__
-	// Never honor the fullscreen cfg in the browser: the shipped default
-	// (graphics/fullscreen: on) made SDL request browser fullscreen at
-	// boot via SDL_WINDOW_FULLSCREEN_DESKTOP — obnoxious, and the
-	// Fullscreen API is meant to be a user gesture. The page/CSS owns
-	// how big the canvas appears; users can fullscreen the tab themselves.
-	fullscreen_flag = 0;
-#endif
-
-	std::string qresult = cfg.get_setting("graphics", "render");
-	if(qresult == "normal")
-		render = RenderEngine::NoZoom;
-	else if(qresult == "sai")
-		render = RenderEngine::SAI;
-	else if(qresult == "eagle")
-		render = RenderEngine::Eagle;
-	else if(qresult == "double")
-		render = RenderEngine::Double;
-
-	int w = 640;
-	int h = 400;
-
-#ifdef __EMSCRIPTEN__
-	w = 320;
-	h = 200;
+	requested_w = 320;
+	requested_h = 200;
 #else
-	qresult = cfg.get_setting("graphics", "width");
-	if(qresult.size() > 0)
-	    w = stoi(qresult);
-
-	qresult = cfg.get_setting("graphics", "height");
-	if(qresult.size() > 0)
-	    h = stoi(qresult);
+	const std::pair<int, int> boot_res = og::ui::parse_resolution(
+	    cfg.get_setting("graphics", "width"), cfg.get_setting("graphics", "height"));
+	requested_w = std::clamp(boot_res.first, 320, kMaxConfiguredDisplayDimension);
+	requested_h = std::clamp(boot_res.second, 200, kMaxConfiguredDisplayDimension);
 #endif
+	// Exclusive cfg dimensions are physical display pixels, not SDL logical
+	// window coordinates. Create the remembered logical Windowed base and
+	// attach the exact enumerated mode below; passing a Retina 4K value here
+	// would otherwise request a 3840x2160-point window before mode selection.
+#ifdef __EMSCRIPTEN__
+	// The browser page owns fullscreen, and the shipped desktop default still
+	// says "on". Do not let that ignored setting replace the fixed 320x200 web
+	// backing with the persisted desktop Windowed size.
+	const bool fullscreen_boot = false;
+#else
+	const bool fullscreen_boot =
+		boot_display_mode != og::ui::DisplayMode::Windowed;
+#endif
+	const int w = fullscreen_boot ? windowed_base_w : requested_w;
+	const int h = fullscreen_boot ? windowed_base_h : requested_h;
 	Log("Creating screen {}x{}\n", w, h);
-	E_Screen = std::make_unique<Screen>(render, w, h, fullscreen_flag);
+	E_Screen = std::make_unique<Screen>(render, w, h, 0);
 	TRACE("init", "video initialized: %dx%d", w, h);
-#ifndef __EMSCRIPTEN__
-	// The ctor honors windowed/borderless via the FULLSCREEN flag; an
-	// exclusive cfg still needs its video mode attached to the new window.
-	if (boot_display_mode == og::ui::DisplayMode::Exclusive)
-	{
-		apply_exclusive_mode(w, h);
-		SDL_SyncWindow(E_Screen->window);
-		int aw = w, ah = h;
-		SDL_GetWindowSize(E_Screen->window, &aw, &ah);
-		og::runtime::current_session->window_w_ = static_cast<float>(aw);
-		og::runtime::current_session->window_h_ = static_cast<float>(ah);
-		update_overscan_setting();
-	}
-#endif
-	apply_world_scale_from_cfg();
 }
 
 void apply_world_scale_from_cfg()
 {
-#ifndef __EMSCRIPTEN__
 	if (!E_Screen)
 		return;
-	const std::string value = cfg.get_setting("graphics", "scale");
-	const og::WorldScaleSetting setting = og::parse_world_scale_setting(value);
-	// A present-but-unrecognized value falls back to Legacy (the classic
-	// byte-identical canvas) — say so, since the user asked for SOMETHING.
-	// The empty string (absent key) and the documented "off" stay silent.
-	if (setting.mode == og::WorldScaleMode::Legacy && !value.empty() &&
-	    value != "off")
+	// The zoom model (graphics/zoom 0.1..1.0 + graphics/smoothing
+	// off/sai/eagle): world canvas = classic/zoom, window-independent, so it
+	// applies on every target including the browser. The retired
+	// graphics/scale key is intentionally ignored (window-relative canvases
+	// made presentation cost scale with the window; see docs).
+	const std::string zoom_value = cfg.get_setting("graphics", "zoom");
+	// Pre-zoom configs stored the full-frame filter in graphics/render.
+	// Preserve SAI/Eagle through the new world-only path, while letting an
+	// explicit graphics/smoothing value win.
+	const std::string smoothing_value = og::ui::effective_smoothing_setting(
+	    cfg.get_setting("graphics", "smoothing"),
+	    cfg.get_setting("graphics", "render"));
+	const int zoom_steps = og::parse_zoom_steps(zoom_value);
+	const og::WorldScaleMode smoothing = og::parse_smoothing_setting(smoothing_value);
+	E_Screen->set_world_zoom(zoom_steps, smoothing);
+	const int applied_zoom_steps = E_Screen->world_zoom_steps();
+	if (applied_zoom_steps != zoom_steps)
 	{
-		LogWarn("Unrecognized graphics/scale value \"{}\"; using classic "
-		        "scaling (off). Accepted: off, 1, 2, 3, 4, 8, sai, eagle.\n",
-		        value);
-		TRACE("canvas", "world_scale unrecognized value=%s", value.c_str());
+		// Canvas replacement is transactional: an SDL allocation failure
+		// retains the previous live canvas. Reflect that effective zoom into
+		// cfg, then apply the requested smoothing to the retained canvas so
+		// every DISPLAY label and persisted value describes what is rendering.
+		cfg.apply_setting("graphics", "zoom",
+		                  applied_zoom_steps == og::kZoomStepsMax
+		                      ? "1.0"
+		                      : "0." + std::to_string(applied_zoom_steps));
+		E_Screen->set_world_zoom(applied_zoom_steps, smoothing);
 	}
-	int win_w = 0;
-	int win_h = 0;
-	SDL_GetWindowSize(E_Screen->window, &win_w, &win_h);
-	E_Screen->set_world_scale(setting, win_w, win_h);
-	if (setting.mode != og::WorldScaleMode::Legacy)
-		Log("World canvas {}x{} (graphics/scale={})\n",
-		    E_Screen->world_w(), E_Screen->world_h(), value);
-	TRACE("canvas", "world_scale mode=%d canvas=%dx%d",
-	      static_cast<int>(setting.mode), E_Screen->world_w(), E_Screen->world_h());
-#endif
+	TRACE("canvas", "zoom steps=%d smoothing=%d canvas=%dx%d", applied_zoom_steps,
+	      static_cast<int>(smoothing), E_Screen->world_w(), E_Screen->world_h());
+}
+
+static std::pair<int, int> configured_windowed_resolution(
+	const og::ui::DisplayMode boot_mode)
+{
+	const std::string persisted_w =
+		cfg.get_setting("graphics", "windowed_width");
+	const std::string persisted_h =
+		cfg.get_setting("graphics", "windowed_height");
+	std::pair<int, int> resolution{640, 400};
+	if (!persisted_w.empty() && !persisted_h.empty())
+	{
+		resolution = og::ui::parse_resolution(persisted_w, persisted_h);
+	}
+	else if (boot_mode != og::ui::DisplayMode::Exclusive)
+	{
+		// Migration for existing Windowed/Borderless configs, where the main
+		// width/height pair already describes the logical Windowed size.
+		resolution = og::ui::parse_resolution(
+			cfg.get_setting("graphics", "width"),
+			cfg.get_setting("graphics", "height"));
+	}
+	return {
+		std::clamp(resolution.first, 320, kMaxConfiguredDisplayDimension),
+		std::clamp(resolution.second, 200, kMaxConfiguredDisplayDimension)};
 }
 
 sdl_video::sdl_video()
@@ -184,7 +223,30 @@ sdl_video::sdl_video()
 	owns_display_ = true;
 
 	video_init_palettes(*this);
-	video_create_display();
+	const std::string boot_fullscreen = cfg.get_setting("graphics", "fullscreen");
+	const std::string boot_width = cfg.get_setting("graphics", "width");
+	const std::string boot_height = cfg.get_setting("graphics", "height");
+	const og::ui::DisplayMode boot_mode =
+		og::ui::parse_display_mode(boot_fullscreen);
+	const auto windowed_res = configured_windowed_resolution(boot_mode);
+	remembered_window_w_ = windowed_res.first;
+	remembered_window_h_ = windowed_res.second;
+	video_create_display(remembered_window_w_, remembered_window_h_);
+	reflect_display_settings_from_window(DisplayStateConfirmation::Synchronized);
+#ifndef __EMSCRIPTEN__
+	if (boot_mode != og::ui::DisplayMode::Windowed)
+	{
+		// Baseline confirmation truthfully records the just-created Windowed
+		// state. Restore the saved request before routing it through the same
+		// tracked live-apply transaction used by the DISPLAY menu.
+		cfg.apply_setting("graphics", "fullscreen", boot_fullscreen);
+		cfg.apply_setting("graphics", "width", boot_width);
+		cfg.apply_setting("graphics", "height", boot_height);
+		apply_display_settings_from_cfg();
+	}
+	else
+#endif
+		apply_world_scale_from_cfg();
 }
 
 sdl_video::sdl_video(bool create_display)
@@ -196,7 +258,27 @@ sdl_video::sdl_video(bool create_display)
 
 	video_init_palettes(*this);
 	if (create_display) {
-		video_create_display();
+		const std::string boot_fullscreen = cfg.get_setting("graphics", "fullscreen");
+		const std::string boot_width = cfg.get_setting("graphics", "width");
+		const std::string boot_height = cfg.get_setting("graphics", "height");
+		const og::ui::DisplayMode boot_mode =
+			og::ui::parse_display_mode(boot_fullscreen);
+		const auto windowed_res = configured_windowed_resolution(boot_mode);
+		remembered_window_w_ = windowed_res.first;
+		remembered_window_h_ = windowed_res.second;
+		video_create_display(remembered_window_w_, remembered_window_h_);
+		reflect_display_settings_from_window(DisplayStateConfirmation::Synchronized);
+#ifndef __EMSCRIPTEN__
+		if (boot_mode != og::ui::DisplayMode::Windowed)
+		{
+			cfg.apply_setting("graphics", "fullscreen", boot_fullscreen);
+			cfg.apply_setting("graphics", "width", boot_width);
+			cfg.apply_setting("graphics", "height", boot_height);
+			apply_display_settings_from_cfg();
+		}
+		else
+#endif
+			apply_world_scale_from_cfg();
 	}
 }
 
@@ -742,6 +824,40 @@ void blend_pixel(SDL_Surface* surface, int x, int y, Uint32 color, Uint8 alpha)
         case 4: /* Probably 32-bpp */
             pixel = static_cast<Uint32*>(surface->pixels) + y*surface->pitch/4 + x;
             Uint32 dc = *pixel;
+
+			// The smart-smoothing gameplay overlay starts fully transparent and
+			// is composited over the filtered world later. Preserve the caller's
+			// coverage as real straight alpha here; the legacy canvases and floor
+			// layers keep their historical RGB-only blend below.
+			if (Amask && E_Screen != nullptr &&
+			    E_Screen->active_canvas() == CanvasTarget::GameplayUI &&
+			    E_Screen->gameplay_ui_overlay_active())
+			{
+				const auto channel = [](Uint32 value, Uint32 mask, Uint8 shift) {
+					return static_cast<Uint32>((value & mask) >> shift);
+				};
+				const Uint32 src_a = alpha;
+				const Uint32 dst_a = channel(dc, Amask, d->Ashift);
+				const Uint32 inv_a = 255u - src_a;
+				const Uint32 out_a = src_a + (dst_a * inv_a + 127u) / 255u;
+				const auto composite_channel = [&](Uint32 mask, Uint8 shift) {
+					if (out_a == 0)
+						return Uint32{0};
+					const Uint32 src = channel(color, mask, shift);
+					const Uint32 dst = channel(dc, mask, shift);
+					const Uint32 premul = src * src_a +
+						(dst * dst_a * inv_a + 127u) / 255u;
+					return (premul + out_a / 2u) / out_a;
+				};
+				*pixel = SDL_MapRGBA(
+					d, SDL_GetSurfacePalette(surface),
+					static_cast<Uint8>(composite_channel(Rmask, d->Rshift)),
+					static_cast<Uint8>(composite_channel(Gmask, d->Gshift)),
+					static_cast<Uint8>(composite_channel(Bmask, d->Bshift)),
+					static_cast<Uint8>(out_a));
+				break;
+			}
+
             R = color & Rmask;
             G = color & Gmask;
             B = color & Bmask;
@@ -1365,33 +1481,83 @@ bool sdl_video::floor_layer_begin(Sint32 x, Sint32 y, Sint32 w, Sint32 h)
 {
     if (!E_Screen || !E_Screen->render)
         return false;
+    const Sint64 extent_w = static_cast<Sint64>(x) + w;
+    const Sint64 extent_h = static_cast<Sint64>(y) + h;
+    if (w <= 0 || h <= 0 || x < 0 || y < 0 ||
+        extent_w <= 0 || extent_h <= 0 ||
+        extent_w > std::numeric_limits<int>::max() ||
+        extent_h > std::numeric_limits<int>::max())
+    {
+        TRACE("render", "floor_layer_fallback reason=invalid source=%d,%d %dx%d",
+              static_cast<int>(x), static_cast<int>(y),
+              static_cast<int>(w), static_cast<int>(h));
+#ifdef TESTING
+        ++floor_layer_fallback_count_;
+#endif
+        return false;
+    }
     // A below-camera floor draws a pad-widened window, so (x+w, y+h) can
     // exceed the render size: grow the layer on demand (never shrink — other
     // viewports may still need the full render extent this frame). The pad is
     // bounded by the caller's scale clamp (kMinBelowFloorScale), so the layer
     // tops out at ~2x the render dimensions.
-    const int need_w = std::max(E_Screen->render->w, static_cast<int>(x + w));
-    const int need_h = std::max(E_Screen->render->h, static_cast<int>(y + h));
-    if (floor_layer_ && (floor_layer_->w < need_w || floor_layer_->h < need_h))
+    const int need_w = std::max(E_Screen->render->w,
+                                static_cast<int>(extent_w));
+    const int need_h = std::max(E_Screen->render->h,
+                                static_cast<int>(extent_h));
+    const Sint64 need_pixels = static_cast<Sint64>(need_w) * need_h;
+    const auto report_fallback = [&](bool budget) {
+        const char* const reason = budget ? "budget" : "allocation";
+        TRACE("render",
+              "floor_layer_fallback reason=%s source=%dx%d pixels=%lld budget=%lld",
+              reason, need_w, need_h, static_cast<long long>(need_pixels),
+              static_cast<long long>(kFloorLayerSourcePixelBudget));
+#ifdef TESTING
+        ++floor_layer_fallback_count_;
+#endif
+        if (floor_layer_reported_fallback_w_ != need_w ||
+            floor_layer_reported_fallback_h_ != need_h ||
+            floor_layer_reported_budget_fallback_ != budget)
+        {
+            LogWarn("Multifloor compositor {} fallback for {}x{} source "
+                    "({} pixels; budget {}); drawing the faded floor "
+                    "directly without parallax scaling/depth FX.\n",
+                    reason, need_w, need_h, need_pixels,
+                    kFloorLayerSourcePixelBudget);
+            floor_layer_reported_fallback_w_ = need_w;
+            floor_layer_reported_fallback_h_ = need_h;
+            floor_layer_reported_budget_fallback_ = budget;
+        }
+        return false;
+    };
+    if (need_pixels > kFloorLayerSourcePixelBudget)
+        return report_fallback(true);
+
+    if (!floor_layer_ || floor_layer_->w < need_w || floor_layer_->h < need_h)
     {
+        // Allocate transactionally. A transient failed growth must not throw
+        // away a smaller cached layer that another viewport can still use.
+        SDL_Surface* next = nullptr;
+#ifdef TESTING
+        if (fail_next_floor_layer_allocation_)
+            fail_next_floor_layer_allocation_ = false;
+        else
+#endif
+            next = SDL_CreateSurface(need_w, need_h, SDL_PIXELFORMAT_ARGB8888);
+        if (!next)
+            return report_fallback(false);
+        SDL_SetSurfaceBlendMode(next, SDL_BLENDMODE_BLEND);
         SDL_DestroySurface(floor_layer_);
-        floor_layer_ = nullptr;
+        floor_layer_ = next;
     }
-    if (!floor_layer_)
-    {
-        floor_layer_ = SDL_CreateSurface(need_w, need_h, SDL_PIXELFORMAT_ARGB8888);
-        if (floor_layer_)
-            SDL_SetSurfaceBlendMode(floor_layer_, SDL_BLENDMODE_BLEND);
-    }
-    if (!floor_layer_)
-        return false; // allocation failed: leave E_Screen->render untouched (no redirect)
 
     // Clear just this viewport's region to fully transparent (ARGB = 0). Opaque
     // tile/sprite blits below go through SDL_MapRGB on this alpha-capable format,
     // which yields A=0xFF, so drawn pixels become opaque coverage while un-drawn
     // cells remain transparent.
     SDL_Rect r{ x, y, w, h };
-    SDL_FillSurfaceRect(floor_layer_, &r, 0x00000000u);
+    if (!SDL_FillSurfaceRect(floor_layer_, &r, 0x00000000u))
+        return report_fallback(false);
 
     // Redirect every tile/sprite blit (they hardcode E_Screen->render) to the
     // layer; floor_layer_end restores the saved surface.
@@ -1479,28 +1645,31 @@ void sdl_video::floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
     if (src.w <= 0 || src.h <= 0)
         return;
 
-    // Smooth path: bilinear-stretch the layer into a scratch surface, then
-    // alpha-blend composite that scratch (at the floor's depth alpha) over the
-    // real render surface. SDL_StretchSurface is a stretched pixel copy that
-    // ignores blend/alpha, so the fade is applied on the second (blend) blit.
-    if (floor_layer_scaled_ && (floor_layer_scaled_->w < floor_layer_->w ||
-                                floor_layer_scaled_->h < floor_layer_->h))
+    // Smooth path: bilinear-stretch the selected source rect into a LOCAL
+    // output-sized scratch, then alpha-blend that scratch over the real render
+    // surface. The padded source can be almost 2x the viewport in each axis;
+    // mirroring those dimensions in this second surface used to double the
+    // compositor's peak/retained memory for pixels that can never be output.
+    SDL_Rect scaled_out{0, 0, out.w, out.h};
+    if (floor_layer_scaled_ && (floor_layer_scaled_->w < scaled_out.w ||
+                                floor_layer_scaled_->h < scaled_out.h))
     {
-        // The layer grew (padded below-floor window): match the scratch.
+        // Grow to the largest actual output encountered; never to the padded
+        // source extent. Reuse avoids per-floor allocation churn in split view.
         SDL_DestroySurface(floor_layer_scaled_);
         floor_layer_scaled_ = nullptr;
     }
     if (!floor_layer_scaled_)
     {
         floor_layer_scaled_ = SDL_CreateSurface(
-            floor_layer_->w, floor_layer_->h, SDL_PIXELFORMAT_ARGB8888);
+            scaled_out.w, scaled_out.h, SDL_PIXELFORMAT_ARGB8888);
     }
     bool smooth_ok = false;
     if (floor_layer_scaled_)
     {
-        SDL_FillSurfaceRect(floor_layer_scaled_, &out, 0x00000000u);
+        SDL_FillSurfaceRect(floor_layer_scaled_, &scaled_out, 0x00000000u);
         smooth_ok = SDL_StretchSurface(floor_layer_, &src,
-                                       floor_layer_scaled_, &out,
+                                       floor_layer_scaled_, &scaled_out,
                                        SDL_SCALEMODE_LINEAR);
     }
     SDL_Surface* const composited = smooth_ok ? floor_layer_scaled_ : floor_layer_;
@@ -1535,7 +1704,7 @@ void sdl_video::floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
         const SDL_PixelFormatDetails* det =
             SDL_GetPixelFormatDetails(composited->format);
         SDL_LockSurface(composited);
-        const SDL_Rect& region = smooth_ok ? out : src;
+        const SDL_Rect& region = smooth_ok ? scaled_out : src;
         for (int py = region.y; py < region.y + region.h; py++)
         {
             Uint32* row = reinterpret_cast<Uint32*>(
@@ -1543,6 +1712,10 @@ void sdl_video::floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
                 py * composited->pitch);
             for (int px = region.x; px < region.x + region.w; px++)
             {
+                // The scratch is output-local; depth patterns remain pinned
+                // to screen space exactly as before the memory optimization.
+                const int effect_x = smooth_ok ? out.x + px : px;
+                const int effect_y = smooth_ok ? out.y + py : py;
                 const Uint32 c = row[px];
                 Uint8 pr, pg, pb, pa;
                 SDL_GetRGBA(c, det, nullptr, &pr, &pg, &pb, &pa);
@@ -1570,8 +1743,8 @@ void sdl_video::floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
                     // even random-looking grain, fully deterministic, static
                     // across frames (mist ignores the tick; Fog is the
                     // animated mode). Density: 1 story ~25%, 2+ ~50%.
-                    Uint32 m = (static_cast<Uint32>(px) * 0x9E3779B1u) ^
-                               (static_cast<Uint32>(py) * 0x85EBCA77u);
+                    Uint32 m = (static_cast<Uint32>(effect_x) * 0x9E3779B1u) ^
+                               (static_cast<Uint32>(effect_y) * 0x85EBCA77u);
                     m ^= m >> 15;
                     m *= 0x2C1B3C6Du;
                     m ^= m >> 12;
@@ -1593,7 +1766,8 @@ void sdl_video::floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
                     pg = static_cast<Uint8>(pg + ((kHazeG - pg) * haze_t) / 255);
                     pb = static_cast<Uint8>(pb + ((kHazeB - pb) * haze_t) / 255);
                     const int a =
-                        depth_fog_alpha_at(px, py, fx.frame, fx.stories);
+                        depth_fog_alpha_at(effect_x, effect_y,
+                                           fx.frame, fx.stories);
                     if (a > 0)
                     {
                         pr = static_cast<Uint8>(pr + ((kFogR - pr) * a) / 255);
@@ -1615,7 +1789,7 @@ void sdl_video::floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
     if (smooth_ok)
     {
         SDL_Rect dstpos = out;
-        SDL_BlitSurface(composited, &out, E_Screen->render, &dstpos);
+        SDL_BlitSurface(composited, &scaled_out, E_Screen->render, &dstpos);
     }
     else
     {
@@ -1626,6 +1800,49 @@ void sdl_video::floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
                               SDL_SCALEMODE_NEAREST);
     }
     SDL_SetSurfaceAlphaMod(composited, 255);
+}
+
+void sdl_video::fail_next_floor_layer_allocation_for_testing()
+{
+    // Tests call this between passes. Restore defensively so an assertion or
+    // early return can never leave public drawing aliases on freed storage.
+    if (floor_layer_saved_render_ && E_Screen)
+        E_Screen->render = floor_layer_saved_render_;
+    floor_layer_saved_render_ = nullptr;
+    SDL_DestroySurface(floor_layer_scaled_);
+    SDL_DestroySurface(floor_layer_);
+    floor_layer_scaled_ = nullptr;
+    floor_layer_ = nullptr;
+#ifdef TESTING
+    fail_next_floor_layer_allocation_ = true;
+#endif
+}
+
+int sdl_video::floor_layer_fallback_count_for_testing() const
+{
+#ifdef TESTING
+    return floor_layer_fallback_count_;
+#else
+    return 0;
+#endif
+}
+
+std::int64_t sdl_video::floor_layer_source_pixels_for_testing() const
+{
+    return floor_layer_ ? static_cast<Sint64>(floor_layer_->w) * floor_layer_->h
+                        : 0;
+}
+
+std::int64_t sdl_video::floor_layer_scaled_pixels_for_testing() const
+{
+    return floor_layer_scaled_
+        ? static_cast<Sint64>(floor_layer_scaled_->w) * floor_layer_scaled_->h
+        : 0;
+}
+
+bool sdl_video::floor_layer_redirect_active_for_testing() const
+{
+    return floor_layer_saved_render_ != nullptr;
 }
 
 
@@ -2492,6 +2709,23 @@ CanvasTarget sdl_video::active_canvas() const
 	return E_Screen ? E_Screen->active_canvas() : CanvasTarget::UI;
 }
 
+CanvasTarget sdl_video::last_presented_canvas() const
+{
+	return E_Screen ? E_Screen->last_presented_canvas() : CanvasTarget::UI;
+}
+
+void sdl_video::begin_gameplay_frame()
+{
+	if (E_Screen)
+		E_Screen->begin_gameplay_frame();
+}
+
+void sdl_video::prepare_ui_canvas_from_world()
+{
+	if (E_Screen)
+		E_Screen->prepare_ui_canvas_from_world();
+}
+
 void sdl_video::set_world_canvas_pinned_classic(bool pinned)
 {
 	if (E_Screen)
@@ -2500,9 +2734,9 @@ void sdl_video::set_world_canvas_pinned_classic(bool pinned)
 
 void sdl_video::reapply_world_scale()
 {
-	// The OPTIONS Scale button / RESTORE DEFAULTS live-apply path: re-parse
-	// cfg graphics/scale and re-derive the world canvas from the current
-	// window (a routing no-op when nothing changed — every default run).
+	// DISPLAY zoom/smoothing and RESTORE DEFAULTS live-apply seam. The legacy
+	// method name remains part of the video interface, but the canvas now
+	// derives from classic/zoom rather than from the current window.
 	apply_world_scale_from_cfg();
 }
 
@@ -2515,85 +2749,495 @@ static SDL_DisplayID display_for_window()
 	return display != 0 ? display : SDL_GetPrimaryDisplay();
 }
 
-// Attach the closest real low-density video mode for w x h to the window
-// (exclusive fullscreen); shared by the boot path and the live apply so a
-// headless test run covers both. Falls back to borderless (NULL mode) when
-// the display offers nothing suitable.
-static void apply_exclusive_mode(int w, int h)
+// Attach the closest real video mode by PHYSICAL pixel size. SDL3's mode w/h
+// fields are logical coordinates, so SDL_GetClosestFullscreenDisplayMode()
+// cannot directly consume the values shown by this menu on Retina/HiDPI
+// displays. Select one of SDL's owned mode pointers while the list is alive,
+// then release the list after SDL has accepted it. Equal physical sizes favor
+// the desktop's exact density/layout for the desktop request, otherwise a
+// density nearest 1.0 and a refresh nearest the desktop.
+static bool apply_exclusive_mode(int w, int h)
 {
-	SDL_DisplayMode closest;
-	if (SDL_GetClosestFullscreenDisplayMode(display_for_window(), w, h,
-	                                        0.0f, false, &closest))
-		SDL_SetWindowFullscreenMode(E_Screen->window, &closest);
-	else
-		SDL_SetWindowFullscreenMode(E_Screen->window, nullptr);
+	const SDL_DisplayID display = display_for_window();
+	const SDL_DisplayMode* desktop = SDL_GetDesktopDisplayMode(display);
+	const std::pair<int, int> desktop_pixels = desktop != nullptr
+		? og::platform::display_mode_pixel_size(*desktop)
+		: std::pair<int, int>{0, 0};
+	const bool requesting_desktop =
+		std::pair<int, int>{w, h} == desktop_pixels;
+
+	int count = 0;
+	SDL_DisplayMode** modes = SDL_GetFullscreenDisplayModes(display, &count);
+	const SDL_DisplayMode* best = nullptr;
+	using Rank = std::tuple<unsigned long long, int, double, double, int>;
+	Rank best_rank{std::numeric_limits<unsigned long long>::max(), 1,
+	               std::numeric_limits<double>::infinity(),
+	               std::numeric_limits<double>::infinity(),
+	               std::numeric_limits<int>::max()};
+	for (int i = 0; modes != nullptr && i < count; ++i)
+	{
+		const SDL_DisplayMode& candidate = *modes[i];
+		const auto pixels = og::platform::display_mode_pixel_size(candidate);
+		if (pixels.first < w || pixels.second < h)
+			continue;
+		const auto dw = static_cast<unsigned long long>(pixels.first - w);
+		const auto dh = static_cast<unsigned long long>(pixels.second - h);
+		const unsigned long long error = dw * dw + dh * dh;
+		const double candidate_density =
+			std::isfinite(candidate.pixel_density) && candidate.pixel_density > 0.0f
+				? static_cast<double>(candidate.pixel_density)
+				: 1.0;
+		const double desktop_density = desktop != nullptr &&
+			std::isfinite(desktop->pixel_density) && desktop->pixel_density > 0.0f
+				? static_cast<double>(desktop->pixel_density)
+				: 1.0;
+		const bool desktop_layout = requesting_desktop && desktop != nullptr &&
+			candidate.w == desktop->w && candidate.h == desktop->h &&
+			std::abs(candidate_density - desktop_density) < 0.0001;
+		const double density_distance = std::abs(candidate_density - 1.0);
+		const double refresh_distance = desktop != nullptr &&
+			candidate.refresh_rate > 0.0f && desktop->refresh_rate > 0.0f
+				? std::abs(static_cast<double>(candidate.refresh_rate -
+			                                          desktop->refresh_rate))
+				: 0.0;
+		const Rank rank{error, desktop_layout ? 0 : 1, density_distance,
+		                refresh_distance, i};
+		if (rank < best_rank)
+		{
+			best = &candidate;
+			best_rank = rank;
+		}
+	}
+
+	const bool applied = best != nullptr &&
+		SDL_SetWindowFullscreenMode(E_Screen->window, best);
+	SDL_free(modes);
+	return applied;
+}
+
+// Persist only the separately confirmed snapshot. SDL_GetWindowFlags() folds
+// in pending flags and SDL_GetWindowFullscreenMode() eagerly copies a mode
+// request, so neither getter is evidence of truth after SDL_SyncWindow times
+// out. Exclusive dimensions are physical pixels; Windowed/Borderless values
+// are logical coordinates.
+void sdl_video::persist_confirmed_display_state()
+{
+	const og::platform::DisplayStateSnapshot& state = display_state_.confirmed();
+	switch (state.mode)
+	{
+	case og::platform::DisplayStateMode::Windowed:
+		cfg.apply_setting("graphics", "fullscreen", "off");
+		cfg.apply_setting("graphics", "width", std::to_string(state.width));
+		cfg.apply_setting("graphics", "height", std::to_string(state.height));
+		cfg.apply_setting("graphics", "windowed_width",
+		                  std::to_string(state.windowed_width));
+		cfg.apply_setting("graphics", "windowed_height",
+		                  std::to_string(state.windowed_height));
+		break;
+	case og::platform::DisplayStateMode::Borderless:
+		cfg.apply_setting("graphics", "fullscreen", "borderless");
+		cfg.apply_setting("graphics", "width", std::to_string(state.width));
+		cfg.apply_setting("graphics", "height", std::to_string(state.height));
+		cfg.apply_setting("graphics", "windowed_width",
+		                  std::to_string(state.windowed_width));
+		cfg.apply_setting("graphics", "windowed_height",
+		                  std::to_string(state.windowed_height));
+		break;
+	case og::platform::DisplayStateMode::Exclusive:
+		cfg.apply_setting("graphics", "fullscreen", "exclusive");
+		cfg.apply_setting("graphics", "width", std::to_string(state.width));
+		cfg.apply_setting("graphics", "height", std::to_string(state.height));
+		cfg.apply_setting("graphics", "windowed_width",
+		                  std::to_string(state.windowed_width));
+		cfg.apply_setting("graphics", "windowed_height",
+		                  std::to_string(state.windowed_height));
+		break;
+	}
+}
+
+og::platform::DisplayStateSnapshot sdl_video::confirmed_snapshot_from_window(
+	DisplayStateConfirmation confirmation) const
+{
+	using og::platform::DisplayStateMode;
+	using og::platform::DisplayStateSnapshot;
+	const DisplayStateSnapshot previous = display_state_.confirmed();
+
+	if (confirmation == DisplayStateConfirmation::LeaveFullscreen)
+	{
+		int w = previous.width;
+		int h = previous.height;
+		SDL_GetWindowSize(E_Screen->window, &w, &h);
+		return {DisplayStateMode::Windowed, w, h, w, h};
+	}
+
+	if (confirmation == DisplayStateConfirmation::Resized &&
+	    previous.mode == DisplayStateMode::Windowed)
+	{
+		int w = previous.width;
+		int h = previous.height;
+		SDL_GetWindowSize(E_Screen->window, &w, &h);
+		return {DisplayStateMode::Windowed, w, h, w, h};
+	}
+
+	if (confirmation == DisplayStateConfirmation::PixelSizeChanged &&
+	    previous.mode == DisplayStateMode::Windowed)
+	{
+		// Pixel-size events carry physical backing dimensions, not logical
+		// window coordinates. Query the completed logical size instead; this
+		// also settles a Windowed resize on backends that emit PIXEL only.
+		int w = previous.width;
+		int h = previous.height;
+		SDL_GetWindowSize(E_Screen->window, &w, &h);
+		return {DisplayStateMode::Windowed, w, h, w, h};
+	}
+
+	bool fullscreen_now = true;
+	if (confirmation == DisplayStateConfirmation::Synchronized)
+	{
+		fullscreen_now =
+			(SDL_GetWindowFlags(E_Screen->window) & SDL_WINDOW_FULLSCREEN) != 0;
+	}
+	else if (confirmation == DisplayStateConfirmation::EnterFullscreen)
+	{
+		fullscreen_now = true;
+	}
+
+	if (!fullscreen_now)
+	{
+		int w = previous.width;
+		int h = previous.height;
+		SDL_GetWindowSize(E_Screen->window, &w, &h);
+		return {DisplayStateMode::Windowed, w, h, w, h};
+	}
+
+	const SDL_DisplayMode* mode = SDL_GetWindowFullscreenMode(E_Screen->window);
+	if (mode != nullptr)
+	{
+		const auto [w, h] = og::platform::display_mode_pixel_size(*mode);
+		return {DisplayStateMode::Exclusive, w, h,
+		        remembered_window_w_, remembered_window_h_};
+	}
+	return {DisplayStateMode::Borderless,
+	        remembered_window_w_, remembered_window_h_,
+	        remembered_window_w_, remembered_window_h_};
+}
+
+static std::pair<int, int> update_runtime_window_metrics()
+{
+	int actual_w = 0;
+	int actual_h = 0;
+	if (E_Screen && E_Screen->window)
+		SDL_GetWindowSize(E_Screen->window, &actual_w, &actual_h);
+	if (og::runtime::current_session != nullptr)
+	{
+		og::runtime::current_session->window_w_ = static_cast<float>(actual_w);
+		og::runtime::current_session->window_h_ = static_cast<float>(actual_h);
+		update_overscan_setting();
+	}
+	return {actual_w, actual_h};
+}
+
+void sdl_video::reflect_display_settings_from_window(
+	DisplayStateConfirmation confirmation, std::uint64_t event_timestamp_ns)
+{
+#ifndef __EMSCRIPTEN__
+	if (!E_Screen || !E_Screen->window)
+		return;
+
+	const bool event_confirmation =
+		confirmation != DisplayStateConfirmation::Synchronized;
+	if (event_confirmation &&
+	    !display_state_.event_is_current(event_timestamp_ns))
+	{
+		// A completion event queued before a serialized newer request cannot
+		// validate SDL's getter for that newer request.
+		persist_confirmed_display_state();
+		update_runtime_window_metrics();
+		return;
+	}
+
+	const og::platform::DisplayStateSnapshot previous =
+		display_state_.confirmed();
+	const bool had_pending_request = display_state_.request_pending();
+	const og::platform::DisplayStateMode request_target = display_state_.target();
+	og::platform::DisplayStateSnapshot observed =
+		confirmed_snapshot_from_window(confirmation);
+	bool completes_request = true;
+	if (had_pending_request)
+	{
+		if (request_target == og::platform::DisplayStateMode::Windowed)
+		{
+			// RESIZED/PIXEL can confirm the intermediate Exclusive ->
+			// Borderless mode clear, but only LEAVE or a successful Sync proves
+			// the final Windowed state.
+			completes_request =
+				confirmation == DisplayStateConfirmation::Synchronized ||
+				confirmation == DisplayStateConfirmation::LeaveFullscreen;
+		}
+		else if (previous.mode == og::platform::DisplayStateMode::Windowed)
+		{
+			// A resize can precede ENTER on some backends. It is a truthful
+			// Windowed observation, but does not complete a fullscreen entry.
+			completes_request =
+				confirmation == DisplayStateConfirmation::Synchronized ||
+				confirmation == DisplayStateConfirmation::EnterFullscreen;
+		}
+	}
+	display_state_.confirm(observed, completes_request);
+
+	if (observed.mode == og::platform::DisplayStateMode::Windowed)
+	{
+		remembered_window_w_ = observed.width;
+		remembered_window_h_ = observed.height;
+	}
+
+	if (pending_windowed_w_ > 0 && pending_windowed_h_ > 0 &&
+	    observed.mode == og::platform::DisplayStateMode::Windowed)
+	{
+		// LEAVE first confirms the restored logical size. Only then request
+		// the user's Windowed target; a timeout preserves this just-confirmed
+		// snapshot and keeps the target internal for a late RESIZED event.
+		display_state_.confirm(observed, false);
+
+		const std::pair<int, int> current{observed.width, observed.height};
+		if (current != std::pair<int, int>{pending_windowed_w_, pending_windowed_h_})
+		{
+			const bool size_accepted = SDL_SetWindowSize(
+				E_Screen->window, pending_windowed_w_, pending_windowed_h_);
+			const SDL_DisplayID display = pending_windowed_display_ != 0
+				? pending_windowed_display_
+				: display_for_window();
+			const int centered = SDL_WINDOWPOS_CENTERED_DISPLAY(display);
+			SDL_SetWindowPosition(E_Screen->window, centered, centered);
+			if (size_accepted && !SDL_SyncWindow(E_Screen->window))
+			{
+				LogWarn("Timed out waiting for the requested Windowed size\n");
+				persist_confirmed_display_state();
+				update_runtime_window_metrics();
+				return;
+			}
+			if (!size_accepted)
+			{
+				display_state_.cancel_request();
+				pending_windowed_w_ = 0;
+				pending_windowed_h_ = 0;
+				pending_windowed_display_ = 0;
+				persist_confirmed_display_state();
+				update_runtime_window_metrics();
+				return;
+			}
+		}
+		pending_windowed_w_ = 0;
+		pending_windowed_h_ = 0;
+		pending_windowed_display_ = 0;
+		observed = confirmed_snapshot_from_window(
+			DisplayStateConfirmation::Synchronized);
+		display_state_.confirm(observed);
+		if (observed.mode == og::platform::DisplayStateMode::Windowed)
+		{
+			remembered_window_w_ = observed.width;
+			remembered_window_h_ = observed.height;
+		}
+	}
+	else if (had_pending_request && completes_request &&
+	         request_target == og::platform::DisplayStateMode::Windowed)
+	{
+		// A successful synchronization settled on a non-Windowed state, so
+		// the leave was denied. Discard its delayed logical resize.
+		pending_windowed_w_ = 0;
+		pending_windowed_h_ = 0;
+		pending_windowed_display_ = 0;
+	}
+
+	persist_confirmed_display_state();
+	update_runtime_window_metrics();
+#endif
 }
 
 void sdl_video::apply_display_settings_from_cfg()
 {
 #ifndef __EMSCRIPTEN__
 	// The DISPLAY screen's live-apply path (and RESTORE DEFAULTS): read the
-	// mode + resolution out of cfg, drive the real window, then re-derive
-	// everything the window size feeds (overscan viewport, then the world
-	// canvas, which may be window-sized). The SDL_EVENT_WINDOW_RESIZED this
-	// raises re-runs the same derivations idempotently.
+	// mode + resolution out of cfg, drive the real window, update the overscan
+	// viewport, then reapply the independent world zoom/smoothing settings.
+	// The SDL_EVENT_WINDOW_RESIZED this raises only refreshes the viewport.
 	const og::ui::DisplayMode mode =
 	    og::ui::parse_display_mode(cfg.get_setting("graphics", "fullscreen"));
 	const std::pair<int, int> res = og::ui::parse_resolution(
 	    cfg.get_setting("graphics", "width"), cfg.get_setting("graphics", "height"));
-	const int w = std::clamp(res.first, 320, 7680);
-	const int h = std::clamp(res.second, 200, 4800);
+	const int w = std::clamp(res.first, 320, kMaxConfiguredDisplayDimension);
+	const int h = std::clamp(res.second, 200, kMaxConfiguredDisplayDimension);
+	using og::platform::DisplayStateMode;
+	const DisplayStateMode requested_mode = mode == og::ui::DisplayMode::Windowed
+		? DisplayStateMode::Windowed
+		: mode == og::ui::DisplayMode::Borderless
+			? DisplayStateMode::Borderless
+			: DisplayStateMode::Exclusive;
 
+	// Never supersede an asynchronous request whose completion events may
+	// still be queued: SDL's eager getters cannot associate those events with
+	// the newer request. Try one finite barrier; on another timeout, retain the
+	// confirmed snapshot and let the eventual event complete the old request.
+	if (display_state_.request_pending())
+	{
+		if (!SDL_SyncWindow(E_Screen->window))
+		{
+			LogWarn("Display request still pending; preserving confirmed state\n");
+			persist_confirmed_display_state();
+			update_runtime_window_metrics();
+			apply_world_scale_from_cfg();
+			return;
+		}
+		reflect_display_settings_from_window(
+			DisplayStateConfirmation::Synchronized);
+		if (display_state_.request_pending())
+		{
+			// The fullscreen transition settled, but its delayed Windowed size
+			// hit a second finite timeout inside the reflection hook.
+			apply_world_scale_from_cfg();
+			return;
+		}
+	}
+
+	// Keep Windowed restores and resize recentering on the monitor the user
+	// selected by placing the window there. Plain SDL_WINDOWPOS_CENTERED means
+	// the primary display and would make subsequent mode enumeration jump too.
+	const SDL_DisplayID target_display = display_for_window();
+	const og::platform::DisplayStateSnapshot previous =
+		display_state_.confirmed();
+	const bool was_fullscreen = previous.mode != DisplayStateMode::Windowed;
+	const bool was_exclusive = previous.mode == DisplayStateMode::Exclusive;
+	const std::pair<int, int> previous_exclusive_pixels = was_exclusive
+		? std::pair<int, int>{previous.width, previous.height}
+		: std::pair<int, int>{0, 0};
+	remembered_window_w_ = previous.windowed_width;
+	remembered_window_h_ = previous.windowed_height;
+	if (mode != og::ui::DisplayMode::Windowed)
+	{
+		// A newer fullscreen request supersedes any delayed Windowed restore.
+		pending_windowed_w_ = 0;
+		pending_windowed_h_ = 0;
+		pending_windowed_display_ = 0;
+	}
+
+	display_state_.begin_request(requested_mode, SDL_GetTicksNS());
+	bool request_accepted = true;
 	switch (mode)
 	{
 	case og::ui::DisplayMode::Windowed:
 	{
-		const bool was_fullscreen =
-		    (SDL_GetWindowFlags(E_Screen->window) & SDL_WINDOW_FULLSCREEN) != 0;
-		SDL_SetWindowFullscreen(E_Screen->window, false);
-		int cur_w = 0, cur_h = 0;
-		SDL_GetWindowSize(E_Screen->window, &cur_w, &cur_h);
-		if (was_fullscreen || cur_w != w || cur_h != h)
+		int target_w = w;
+		int target_h = h;
+		// A normal Exclusive -> Windowed selector step still carries the
+		// exclusive physical mode in cfg. Restore the logical size captured
+		// before entering fullscreen; an explicitly different cfg size (for
+		// example RESTORE DEFAULTS) remains authoritative.
+		if (was_fullscreen && was_exclusive &&
+		    std::pair<int, int>{w, h} == previous_exclusive_pixels)
 		{
-			// Only disturb the user's window placement when the size (or
-			// mode) actually changes.
-			SDL_SetWindowSize(E_Screen->window, w, h);
-			SDL_SetWindowPosition(E_Screen->window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+			target_w = remembered_window_w_;
+			target_h = remembered_window_h_;
 		}
+		// SDL_SetWindowSize has no effect while the leave request is still
+		// pending. reflect_display_settings_from_window() applies this target
+		// only after SDL reports that the window is no longer fullscreen.
+		pending_windowed_w_ = target_w;
+		pending_windowed_h_ = target_h;
+		pending_windowed_display_ = target_display;
+		request_accepted = SDL_SetWindowFullscreenMode(E_Screen->window, nullptr);
+		request_accepted = SDL_SetWindowFullscreen(E_Screen->window, false) &&
+			request_accepted;
 		break;
 	}
 	case og::ui::DisplayMode::Borderless:
+		if (!was_exclusive ||
+		    std::pair<int, int>{w, h} != previous_exclusive_pixels)
+		{
+			// Usually this equals the real Windowed size captured above. A
+			// different value is an explicit cfg operation such as RESTORE
+			// DEFAULTS, and must become the size restored after fullscreen.
+			remembered_window_w_ = w;
+			remembered_window_h_ = h;
+		}
 		// NULL fullscreen mode = borderless desktop (the SDL2
 		// FULLSCREEN_DESKTOP behavior). The chosen resolution still sizes
 		// the window whenever the user drops back to Windowed.
-		SDL_SetWindowFullscreenMode(E_Screen->window, nullptr);
-		SDL_SetWindowFullscreen(E_Screen->window, true);
+		request_accepted = SDL_SetWindowFullscreenMode(E_Screen->window, nullptr);
+		request_accepted = request_accepted &&
+			SDL_SetWindowFullscreen(E_Screen->window, true);
 		break;
 	case og::ui::DisplayMode::Exclusive:
-		apply_exclusive_mode(w, h);
-		SDL_SetWindowFullscreen(E_Screen->window, true);
+		request_accepted = apply_exclusive_mode(w, h);
+		request_accepted = request_accepted &&
+			SDL_SetWindowFullscreen(E_Screen->window, true);
 		break;
 	}
-	// Fullscreen transitions are asynchronous on some backends; settle
-	// before reading the real size back (a no-op under headless drivers).
-	SDL_SyncWindow(E_Screen->window);
 
-	int actual_w = w, actual_h = h;
-	SDL_GetWindowSize(E_Screen->window, &actual_w, &actual_h);
-	og::runtime::current_session->window_w_ = static_cast<float>(actual_w);
-	og::runtime::current_session->window_h_ = static_cast<float>(actual_h);
-	update_overscan_setting();
-	apply_world_scale_from_cfg();
+	if (!request_accepted)
+	{
+		display_state_.cancel_request();
+		remembered_window_w_ = previous.windowed_width;
+		remembered_window_h_ = previous.windowed_height;
+		pending_windowed_w_ = 0;
+		pending_windowed_h_ = 0;
+		pending_windowed_display_ = 0;
+		persist_confirmed_display_state();
+		update_runtime_window_metrics();
+	}
+	else if (!SDL_SyncWindow(E_Screen->window))
+	{
+		// No SDL state getter is trustworthy here: flags include pending flags
+		// and the fullscreen-mode getter eagerly exposes the request. Preserve
+		// the last completed snapshot until a documented event confirms it.
+		LogWarn("Timed out waiting for the requested display state\n");
+		persist_confirmed_display_state();
+		update_runtime_window_metrics();
+	}
+	else
+	{
+		reflect_display_settings_from_window(
+			DisplayStateConfirmation::Synchronized);
+	}
 #else
 	// The browser page/CSS owns the canvas box, and the backing is pinned to
-	// the logical size (see Screen()); nothing to apply on web.
+	// the logical size (see Screen()); there is no window mode to apply on web.
 #endif
+	// Zoom and smoothing are world-canvas settings on every target, including
+	// Emscripten. Keep this outside the native window-management branch so
+	// RESTORE DEFAULTS live-applies them in the browser too.
+	apply_world_scale_from_cfg();
+}
+
+std::pair<int, int> sdl_video::desktop_resolution()
+{
+#ifndef __EMSCRIPTEN__
+	const SDL_DisplayMode* desktop = SDL_GetDesktopDisplayMode(display_for_window());
+	if (desktop != nullptr)
+		return og::platform::display_mode_pixel_size(*desktop);
+#endif
+	return {0, 0};
+}
+
+std::pair<int, int> sdl_video::windowed_desktop_resolution()
+{
+#ifndef __EMSCRIPTEN__
+	SDL_Rect usable{};
+	if (SDL_GetDisplayUsableBounds(display_for_window(), &usable) &&
+	    usable.w > 0 && usable.h > 0)
+	{
+		return {usable.w, usable.h};
+	}
+#endif
+	return {0, 0};
 }
 
 std::vector<std::pair<int, int>> sdl_video::display_resolutions()
 {
 	std::vector<std::pair<int, int>> out;
 #ifndef __EMSCRIPTEN__
+	// Exclusive choices are strictly modes SDL says this display accepts.
+	// Borderless reports desktop_resolution() separately; injecting that size
+	// here can make a non-enumerated desktop request hide valid lower modes.
 	int count = 0;
 	SDL_DisplayMode** modes =
 	    SDL_GetFullscreenDisplayModes(display_for_window(), &count);
@@ -2601,13 +3245,11 @@ std::vector<std::pair<int, int>> sdl_video::display_resolutions()
 	{
 		for (int i = 0; i < count; ++i)
 		{
-			// Skip high-pixel-density variants: the exclusive apply asks
-			// SDL_GetClosestFullscreenDisplayMode for low-density modes
-			// only, so offering a density-only size here would silently
-			// match a different mode on click.
-			if (modes[i]->pixel_density > 1.0f)
-				continue;
-			const std::pair<int, int> wh{modes[i]->w, modes[i]->h};
+			// The menu names physical monitor pixels. Logical dimensions that
+			// differ only by density can therefore expose distinct choices
+			// (1920x1080@2 becomes 3840x2160, not another 1920x1080).
+			const std::pair<int, int> wh =
+				og::platform::display_mode_pixel_size(*modes[i]);
 			if (wh.first < 640 || wh.second < 400)
 				continue; // smaller than the classic 2x window: not useful
 			if (std::find(out.begin(), out.end(), wh) == out.end())
@@ -2616,8 +3258,6 @@ std::vector<std::pair<int, int>> sdl_video::display_resolutions()
 		SDL_free(modes);
 	}
 	std::sort(out.begin(), out.end(), std::greater<>());
-	if (out.size() > 10)
-		out.resize(10); // keep the cycler lap walkable
 #endif
 	return out;
 }
@@ -2698,17 +3338,49 @@ int sdl_video::get_pixel(int offset)
 
 bool sdl_video::save_screenshot()
 {
-    SDL_Surface* surf;
-    
-	switch(E_Screen->Engine)
+	SDL_Surface* surf = E_Screen->render;
+	SDL_Surface* composed_frame = nullptr;
+	// Match Screen::swap(): smoothing is selected per active canvas. Display
+	// creation keeps the legacy Engine slot on nearest while the WORLD canvas
+	// carries its live SAI/Eagle choice in world_engine(). The scaler scratch
+	// contains the last presented filtered frame; if it has not been produced
+	// for the current canvas size yet, safely fall back to the logical canvas.
+	const RenderEngine screenshot_engine =
+	    (E_Screen->active_canvas() == CanvasTarget::World &&
+	     E_Screen->world_scale().mode != og::WorldScaleMode::Legacy)
+	        ? E_Screen->world_engine()
+	        : E_Screen->Engine;
+	switch(screenshot_engine)
 	{
 		case RenderEngine::SAI:
 		case RenderEngine::Eagle:
-            surf = E_Screen->render2;
+			if (E_Screen->last_world_present_used_smart_surface() &&
+			    E_Screen->render2 != nullptr &&
+			    E_Screen->render2->w == E_Screen->render->w * 2 &&
+			    E_Screen->render2->h == E_Screen->render->h * 2)
+				surf = E_Screen->render2;
 		    break;
-        default:
-            surf = E_Screen->render;
-            break;
+		default:
+			break;
+	}
+
+	// A smart-smoothed gameplay frame is presented as two textures: filtered
+	// scenery followed by the nearest gameplay-UI overlay. Reproduce that
+	// composition in the saved image instead of silently omitting HUD/radar/
+	// messages. Scaling the overlay to render2's dimensions is explicitly
+	// nearest, matching Screen::swap's texture scale mode.
+	if (E_Screen->active_canvas() == CanvasTarget::World)
+	{
+		SDL_Surface* const overlay = E_Screen->gameplay_ui_overlay_surface();
+		if (overlay != nullptr)
+		{
+			composed_frame = E_Screen->compose_gameplay_ui_for_capture(surf);
+			if (composed_frame == nullptr)
+			{
+				return false;
+			}
+			surf = composed_frame;
+		}
 	}
 	
 	static int i = 1;
@@ -2723,6 +3395,7 @@ bool sdl_video::save_screenshot()
 	if(rwops == nullptr)
     {
         LogError("Failed to open file for screenshot: {}\n", buf);
+		SDL_DestroySurface(composed_frame);
         return false;
     }
     
@@ -2730,13 +3403,21 @@ bool sdl_video::save_screenshot()
     
     #ifndef USE_BMP_SCREENSHOT
     // Make it safe to save (convert alpha channel)
-    surf = SDL_PNGFormatAlpha(surf);
+    SDL_Surface* const png_surface = SDL_PNGFormatAlpha(surf);
+	SDL_DestroySurface(composed_frame);
+	if (png_surface == nullptr)
+	{
+		LogError("Failed to convert screenshot pixels: {}\n", SDL_GetError());
+		SDL_CloseIO(rwops);
+		return false;
+	}
     
     // Save it
-    bool result = (SDL_SavePNG_RW(surf, rwops, 1) >= 0);
-    SDL_DestroySurface(surf);
+    bool result = (SDL_SavePNG_RW(png_surface, rwops, 1) >= 0);
+    SDL_DestroySurface(png_surface);
     #else
     bool result = SDL_SaveBMP_IO(surf, rwops, true);
+	SDL_DestroySurface(composed_frame);
 
     #endif
     
@@ -2790,6 +3471,11 @@ int sdl_video::FadeBetween(
 	SDL_Surface* pNewSurface,	//(in)	Image that destination surface will change to.
 	SDL_Surface* DestSurface)	//	surface which is the destination
 {
+	// A fade owns every World swap until it completes. Drop any prepared or
+	// just-presented gameplay overlay so stale full-bright HUD pixels cannot
+	// be replayed over the interpolated scenery or the terminal black frame.
+	if (E_Screen)
+		E_Screen->discard_gameplay_ui_frame();
 	bool bOldNull = false, bNewNull = false;
 	int i = 1;
 

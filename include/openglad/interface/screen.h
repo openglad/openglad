@@ -127,6 +127,11 @@ public:
                          unsigned char alpha,
                          DepthFxParams fx = {},
                          Sint32 pad_x = 0, Sint32 pad_y = 0) override;
+    void fail_next_floor_layer_allocation_for_testing() override;
+    [[nodiscard]] int floor_layer_fallback_count_for_testing() const override;
+    [[nodiscard]] std::int64_t floor_layer_source_pixels_for_testing() const override;
+    [[nodiscard]] std::int64_t floor_layer_scaled_pixels_for_testing() const override;
+    [[nodiscard]] bool floor_layer_redirect_active_for_testing() const override;
     void walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
                        Sint32 walkerwidth, Sint32 walkerheight,
                        Sint32 portstartx, Sint32 portstarty,
@@ -214,7 +219,7 @@ public:
     // Canvas routing (world/UI split) — forwarded to the platform video.
     int canvas_w() const override { return video_impl_->canvas_w(); }
     // Pins the world canvas to the classic 320x200 dims (true) or restores
-    // the cfg graphics/scale-derived dims (false) — used by the level editor,
+    // the cfg graphics/zoom-derived dims (false) — used by the level editor,
     // whose panel chrome still assumes classic coordinates.
     void set_world_canvas_pinned_classic(bool pinned) override { video_impl_->set_world_canvas_pinned_classic(pinned); }
     int canvas_h() const override { return video_impl_->canvas_h(); }
@@ -222,11 +227,23 @@ public:
     int world_canvas_h() const override { return video_impl_->world_canvas_h(); }
     void set_active_canvas(CanvasTarget target) override { video_impl_->set_active_canvas(target); }
     CanvasTarget active_canvas() const override { return video_impl_->active_canvas(); }
-    // Re-reads cfg graphics/scale into the live world canvas (the OPTIONS
-    // Scale button / RESTORE DEFAULTS live-apply path).
+	CanvasTarget last_presented_canvas() const override { return video_impl_->last_presented_canvas(); }
+    void begin_gameplay_frame() override { video_impl_->begin_gameplay_frame(); }
+    void prepare_ui_canvas_from_world() override { video_impl_->prepare_ui_canvas_from_world(); }
+    // Re-reads cfg graphics/zoom + graphics/smoothing into the live world
+    // canvas (the DISPLAY selectors / RESTORE DEFAULTS live-apply path).
     void reapply_world_scale() override { video_impl_->reapply_world_scale(); }
     void apply_display_settings_from_cfg() override { video_impl_->apply_display_settings_from_cfg(); }
+    void reflect_display_settings_from_window(
+        DisplayStateConfirmation confirmation = DisplayStateConfirmation::Synchronized,
+        std::uint64_t event_timestamp_ns = 0) override
+    {
+        video_impl_->reflect_display_settings_from_window(
+            confirmation, event_timestamp_ns);
+    }
     std::vector<std::pair<int, int>> display_resolutions() override { return video_impl_->display_resolutions(); }
+    std::pair<int, int> desktop_resolution() override { return video_impl_->desktop_resolution(); }
+    std::pair<int, int> windowed_desktop_resolution() override { return video_impl_->windowed_desktop_resolution(); }
 
     void get_pixel(int x, int y, Uint8* r, Uint8* g, Uint8* b) override;
     int get_pixel(int x, int y, int* index) override;
@@ -265,6 +282,7 @@ public:
     short endgame(short ending);
     short endgame(short ending, short nextlevel); // what level next?
     void draw_panels(short howmany);
+    void draw_panel_chrome(short howmany);
     char damage_tile(short xloc, short yloc); // damage the specified tile
     void do_notify(std::string_view message, walker* who); // printing text
     void report_mem();

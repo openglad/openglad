@@ -93,6 +93,21 @@ async function waitForGameplayProgress(page, timeoutMs = 2_000) {
   );
 }
 
+async function waitForGameplayRenderSamples(page, sampleDelta, timeoutMs) {
+  const initialSeq = await page.evaluate(
+    () => window.__opengladLatestRenderSample?.render_sample_seq ?? 0,
+  );
+  const startMs = Date.now();
+  await page.waitForFunction(
+    ({ start, delta }) =>
+      (window.__opengladLatestRenderSample?.render_sample_seq ?? 0) >=
+      start + delta,
+    { start: initialSeq, delta: sampleDelta },
+    { timeout: timeoutMs },
+  );
+  return Date.now() - startMs;
+}
+
 async function clickCanvasGameCoord(page, gameX, gameY, holdMs = 150) {
   const canvas = page.locator('#canvas');
   const box = await canvas.boundingBox();
@@ -175,5 +190,7 @@ module.exports = {
   focusCanvas,
   startSeededSinglePlayerFromPicker,
   waitForGameLoad,
+  waitForGameplayProgress,
+  waitForGameplayRenderSamples,
   waitForRenderedFrames,
 };

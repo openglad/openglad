@@ -187,12 +187,24 @@ TEST(RuntimeCoveragePaths, input_bridge_window_and_key_paths)
     handle_key_event(key);
 
     cfg.apply_setting("graphics", "overscan_percentage", "25");
+    cfg.apply_setting("graphics", "width", "1110");
+    cfg.apply_setting("graphics", "height", "700");
+    cfg.apply_setting("graphics", "zoom", "0.5");
+    cfg.apply_setting("graphics", "smoothing", "sai");
+    s->apply_display_settings_from_cfg();
+    ASSERT_EQ(640, s->world_canvas_w());
     og::runtime::current_session->overscan_percentage_ = 0.0f;
     key.type = SDL_EVENT_KEY_DOWN;
     key.key.key = SDLK_F12;
     key.key.mod = SDL_KMOD_CTRL;
     handle_key_event(key);
     ASSERT_TRUE(og::runtime::current_session->overscan_percentage_ >= 0.0f && og::runtime::current_session->overscan_percentage_ <= 0.25f) << "F12+Ctrl should reload and clamp overscan";
+    ASSERT_EQ("1.0", cfg.get_setting("graphics", "zoom"));
+    ASSERT_EQ("off", cfg.get_setting("graphics", "smoothing"));
+    ASSERT_EQ("640", cfg.get_setting("graphics", "width"));
+    ASSERT_EQ("400", cfg.get_setting("graphics", "height"));
+    ASSERT_EQ(320, s->world_canvas_w())
+        << "F12+Ctrl should live-apply the restored zoom";
 
     og::runtime::current_session->input_continue_ = false;
     og::runtime::current_session->key_press_event_ = 0;

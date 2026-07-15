@@ -2667,10 +2667,13 @@ Sint32 go_menu(Sint32 arg1)
         // Fade out from ACTION loop
         //*******************************
         // Zardus: PORT: new fade code
+        og::runtime::current_session->myscreen_->set_active_canvas(
+            og::runtime::current_session->myscreen_->last_presented_canvas());
         og::runtime::current_session->myscreen_->fadeblack(0);
 
         // Zardus: PORT: doesn't seem to be neccessary
         og::runtime::current_session->myscreen_->clearbuffer();
+        og::runtime::current_session->myscreen_->set_active_canvas(CanvasTarget::UI);
 
         // Zardus: PORT: they had this in just so that the pallettes got reset to
         // normal. It actually faded in a black screen, since fading in the menu

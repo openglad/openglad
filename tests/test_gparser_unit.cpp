@@ -145,6 +145,7 @@ TEST(GparserUnit, gparser_commandline_switches_and_unknown_arg)
 
     ASSERT_TRUE(local_cfg.get_setting("sound", "sound") == "off");
     ASSERT_TRUE(local_cfg.get_setting("graphics", "render") == "sai");
+    ASSERT_EQ("sai", local_cfg.get_setting("graphics", "smoothing"));
     ASSERT_TRUE(local_cfg.get_setting("graphics", "fullscreen") == "on");
 }
 

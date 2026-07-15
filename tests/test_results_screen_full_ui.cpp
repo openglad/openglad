@@ -7,6 +7,7 @@
 #include <openglad/interface/input.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/results_screen.h>
+#include <openglad/platform/sai2x.h>
 
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
@@ -28,6 +29,19 @@ struct ResultsThreadState
 {
     bool started = false;
     bool finished = false;
+};
+
+struct CanvasRoutingGuard
+{
+    int zoom_steps = E_Screen->world_zoom_steps();
+    og::WorldScaleMode smoothing = E_Screen->world_scale().mode;
+    CanvasTarget target = E_Screen->active_canvas();
+
+    ~CanvasRoutingGuard()
+    {
+        E_Screen->set_world_zoom(zoom_steps, smoothing);
+        E_Screen->set_active_canvas(target);
+    }
 };
 
 static void inject_results_click(int game_x, int game_y, int delay_ms = 10)
@@ -183,8 +197,14 @@ static int results_ui_troops_then_ok_injector(void* data)
 
 TEST(ResultsScreenFullUi, overview_and_troops_paths)
 {
+    CanvasRoutingGuard canvas_guard;
     const char saved_end = og::runtime::current_session->myscreen_->world().end;
     og::runtime::current_session->myscreen_->world().end = 0;
+
+    E_Screen->set_world_zoom(5, og::WorldScaleMode::Sai);
+    E_Screen->set_active_canvas(CanvasTarget::World);
+    constexpr Uint32 kWorldPixel = 0x00123456u;
+    SDL_FillSurfaceRect(E_Screen->render, nullptr, kWorldPixel);
 
     // Ensure deterministic campaign/level context used by results_screen internals.
     og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
@@ -278,6 +298,12 @@ TEST(ResultsScreenFullUi, overview_and_troops_paths)
 
     ASSERT_TRUE(st.started && st.finished) << "results UI injector should run";
     ASSERT_TRUE(!retry) << "OK path should not request retry";
+    EXPECT_EQ(CanvasTarget::World, E_Screen->active_canvas());
+    EXPECT_EQ(640, E_Screen->render->w);
+    EXPECT_EQ(400, E_Screen->render->h);
+    const auto* world_pixels = reinterpret_cast<const Uint32*>(E_Screen->render->pixels);
+    EXPECT_EQ(kWorldPixel, world_pixels[60 + 25 * (E_Screen->render->pitch / 4)])
+        << "results chrome must render on the fixed UI canvas, not the world";
 }
 
 

@@ -69,30 +69,50 @@ void handle_window_event(const void* native_event)
             if(screen* s = active_screen())
                 s->refresh();
             break;
-        case SDL_EVENT_WINDOW_RESIZED:
-            og::runtime::current_session->window_w_ = static_cast<float>(event.window.data1);
-            og::runtime::current_session->window_h_ = static_cast<float>(event.window.data2);
-            update_overscan_setting();
-            // Under a cfg graphics/scale mode the world canvas tracks the
-            // window (canvas = window/factor): re-derive it and re-lay-out the
-            // viewscreens. Gated on non-Legacy so default runs (classic fixed
-            // 320x200 canvas) take exactly the pre-existing path.
-            if (E_Screen &&
-                E_Screen->world_scale().mode != og::WorldScaleMode::Legacy)
-            {
-                const int old_w = E_Screen->world_w();
-                const int old_h = E_Screen->world_h();
-                E_Screen->apply_world_scale_for_window(
-                    static_cast<int>(event.window.data1),
-                    static_cast<int>(event.window.data2));
-                if (E_Screen->world_w() != old_w || E_Screen->world_h() != old_h)
-                {
-                    if (screen* s = active_screen())
-                        s->relayout_views();
-                }
-            }
+        case SDL_EVENT_WINDOW_ENTER_FULLSCREEN:
+            // Fullscreen changes can complete asynchronously. Reconcile cfg
+            // and viewport state from the window once SDL reports the final
+            // transition rather than trusting the initiating request alone.
+            if (screen* s = active_screen())
+                s->reflect_display_settings_from_window(
+                    DisplayStateConfirmation::EnterFullscreen,
+                    event.common.timestamp);
             break;
-        break;
+        case SDL_EVENT_WINDOW_LEAVE_FULLSCREEN:
+            if (screen* s = active_screen())
+                s->reflect_display_settings_from_window(
+                    DisplayStateConfirmation::LeaveFullscreen,
+                    event.common.timestamp);
+            break;
+        case SDL_EVENT_WINDOW_RESIZED:
+            // Persist a user/WM resize in Windowed mode. In fullscreen the SDL
+            // backend keeps the remembered Windowed dimensions intact while it
+            // reconciles the actual Borderless/Exclusive state.
+            if (screen* s = active_screen())
+                s->reflect_display_settings_from_window(
+                    DisplayStateConfirmation::Resized,
+                    event.common.timestamp);
+			// The event payload is SDL's authoritative completed logical size.
+			// Keep session/input mapping on it even in synthetic/headless tests,
+			// where querying the backing window can still return its old size.
+			og::runtime::current_session->window_w_ =
+				static_cast<float>(event.window.data1);
+			og::runtime::current_session->window_h_ =
+				static_cast<float>(event.window.data2);
+			update_overscan_setting();
+            // The zoom-model world canvas is window-independent
+            // (canvas = classic/zoom): a window resize only re-derives the
+            // overscan viewport above; the canvas and view layout stay put.
+            break;
+        case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+            // A fullscreen mode switch can complete with only this event on
+            // HiDPI backends. Its payload is physical pixels, so confirm the
+            // display mode without overwriting logical input/window metrics.
+            if (screen* s = active_screen())
+                s->reflect_display_settings_from_window(
+                    DisplayStateConfirmation::PixelSizeChanged,
+                    event.common.timestamp);
+            break;
     }
 }
 
@@ -131,6 +151,17 @@ void handle_key_event(const void* native_event)
             og::runtime::current_session->overscan_percentage_ = static_cast<float>(
                 parse_int_strict(cfg.get_setting("graphics", "overscan_percentage")).value_or(0)) / 100.0f;
             update_overscan_setting();
+            if (screen* s = active_screen())
+            {
+                const int old_w = s->world_canvas_w();
+                const int old_h = s->world_canvas_h();
+                // Match the in-menu RESTORE DEFAULTS path: mode, window
+                // size, zoom and smoothing all take effect immediately.
+                s->apply_display_settings_from_cfg();
+                if (s->world_canvas_w() != old_w || s->world_canvas_h() != old_h)
+                    s->relayout_views();
+                s->redrawme = 1;
+            }
         }
         break;
     case SDL_EVENT_KEY_UP:
@@ -158,28 +189,41 @@ void draw_touch_controls(screen* vob)
     if(control == nullptr || control->dead())
         return;
 
+    const TouchControlLayout layout = touch_control_layout(
+        vob->canvas_w(), vob->canvas_h());
+    const auto draw_control = [&](const TouchControlRect& rect,
+                                  unsigned char color) {
+        vob->fastbox(rect.x, rect.y, rect.w, rect.h, color);
+    };
+
     auto& hw = *og::runtime::current_session->input_hw_;
     if(hw.moving)
     {
         // Touch movement feedback
-        vob->fastbox(hw.moving_touch_x - MOVE_AREA_DIM/2, hw.moving_touch_y - MOVE_AREA_DIM/2, MOVE_AREA_DIM, MOVE_AREA_DIM, 17);
-        vob->fastbox(hw.moving_touch_x - 4, hw.moving_touch_y - 4, 8, 8, 16);
-        vob->fastbox(hw.moving_touch_target_x - 2, hw.moving_touch_target_y - 2, 4, 4, 15);
+        vob->fastbox(hw.moving_touch_x - layout.movement_area_offset_x,
+                     hw.moving_touch_y - layout.movement_area_offset_y,
+                     layout.movement_area_w, layout.movement_area_h, 17);
+        vob->fastbox(hw.moving_touch_x - layout.movement_center_offset_x,
+                     hw.moving_touch_y - layout.movement_center_offset_y,
+                     layout.movement_center_w, layout.movement_center_h, 16);
+        vob->fastbox(hw.moving_touch_target_x - layout.movement_target_offset_x,
+                     hw.moving_touch_target_y - layout.movement_target_offset_y,
+                     layout.movement_target_w, layout.movement_target_h, 15);
     }
 
     // Touch buttons
-    vob->fastbox(FIRE_BUTTON_X, FIRE_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 25);
+    draw_control(layout.fire, 25);
 
-    if(vob->special_name[static_cast<int>(control->family)][static_cast<int>(control->current_special())] != "NONE")
-        vob->fastbox(SPECIAL_BUTTON_X, SPECIAL_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 26);
+    if(vob->special_name[static_cast<int>(control->family())][static_cast<int>(control->current_special())] != "NONE")
+        draw_control(layout.special, 26);
 
     if(control->current_special() != 1
                 || (control->current_special() + 1 <= NUM_SPECIALS && control->current_special()*3+1 <= control->stats()->level()
-                     && vob->special_name[static_cast<int>(control->family)][static_cast<int>(control->current_special()) + 1] != "NONE"))
-        vob->fastbox(NEXT_SPECIAL_BUTTON_X, NEXT_SPECIAL_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 27);
+                     && vob->special_name[static_cast<int>(control->family())][static_cast<int>(control->current_special()) + 1] != "NONE"))
+        draw_control(layout.next_special, 27);
 
-    if(vob->alternate_name[static_cast<int>(control->family)][static_cast<int>(control->current_special())] != "NONE")
-        vob->fastbox(ALTERNATE_SPECIAL_BUTTON_X, ALTERNATE_SPECIAL_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 28);
+    if(vob->alternate_name[static_cast<int>(control->family())][static_cast<int>(control->current_special())] != "NONE")
+        draw_control(layout.alternate_special, 28);
 }
 
 bool input_touch_has_alternate()
@@ -188,7 +232,7 @@ bool input_touch_has_alternate()
     if(s != nullptr
         && s->viewob[0] != nullptr
         && s->viewob[0]->control != nullptr
-        && s->alternate_name[static_cast<int>(s->viewob[0]->control->family)][static_cast<int>(s->viewob[0]->control->current_special())] != "NONE")
+        && s->alternate_name[static_cast<int>(s->viewob[0]->control->family())][static_cast<int>(s->viewob[0]->control->current_special())] != "NONE")
         return true;
     return false;
 }

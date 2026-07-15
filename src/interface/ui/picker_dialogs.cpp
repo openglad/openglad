@@ -81,6 +81,9 @@ void timed_dialog(const char* message, float delay_seconds)
 {
     Log("{}\n", message);
 
+    video& output = *og::runtime::current_session->myscreen_;
+    ScopedUiCanvas canvas_target(output);
+
     og::runtime::current_session->myscreen_->darken_screen();
 
     text& gladtext = og::runtime::current_session->myscreen_->text_normal;
@@ -160,6 +163,9 @@ static bool yes_no_prompt_impl(const char* title, const char* message, bool defa
         return default_value;
     }
 #endif
+
+    video& output = *og::runtime::current_session->myscreen_;
+    ScopedUiCanvas canvas_target(output);
 
     og::runtime::current_session->myscreen_->darken_screen();
 
@@ -248,6 +254,9 @@ void popup_dialog(const char* title, const char* message)
         return;
     }
 #endif
+
+    video& output = *og::runtime::current_session->myscreen_;
+    ScopedUiCanvas canvas_target(output);
 
     og::runtime::current_session->myscreen_->darken_screen();
 

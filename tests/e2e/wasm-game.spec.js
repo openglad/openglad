@@ -6,6 +6,8 @@ const {
   focusCanvas,
   startSeededSinglePlayerFromPicker,
   waitForGameLoad,
+  waitForGameplayProgress,
+  waitForGameplayRenderSamples,
   waitForRenderedFrames,
 } = require('./wasm_helpers');
 
@@ -48,6 +50,105 @@ async function getCanvasScreenshot(page) {
   return await canvas.screenshot();
 }
 
+async function movePointerOffCanvas(page, box) {
+  const viewport = page.viewportSize();
+  if (!viewport) {
+    throw new Error('Viewport size is unavailable');
+  }
+
+  const candidates = [
+    { x: 1, y: 1 },
+    { x: viewport.width - 2, y: 1 },
+    { x: 1, y: viewport.height - 2 },
+    { x: viewport.width - 2, y: viewport.height - 2 },
+  ];
+  const point = candidates.find(
+    ({ x, y }) =>
+      x < box.x || x >= box.x + box.width || y < box.y || y >= box.y + box.height,
+  );
+  if (!point) {
+    throw new Error('No viewport point is available outside the canvas');
+  }
+
+  await page.mouse.move(point.x, point.y);
+  // Give the SDL picker a poll cycle to clear any hovered button state.
+  await page.waitForTimeout(100);
+}
+
+// Capture a sub-rectangle addressed on the classic 320x200 reference grid,
+// regardless of the canvas's CSS size. In menus this selects exact logical
+// pixels; in zoomed gameplay it selects the same fractional world region.
+async function getCanvasGameRegionScreenshot(page, gameX, gameY, gameW, gameH) {
+  const box = await page.locator('#canvas').boundingBox();
+  if (!box) {
+    throw new Error('Canvas bounding box is unavailable');
+  }
+  await movePointerOffCanvas(page, box);
+  return await page.screenshot({
+    clip: {
+      x: box.x + (gameX * box.width) / 320,
+      y: box.y + (gameY * box.height) / 200,
+      width: (gameW * box.width) / 320,
+      height: (gameH * box.height) / 200,
+    },
+  });
+}
+
+async function pressPickerKey(page, key, settlingMs = 150) {
+  // A non-zero hold lets the SDL poll loop observe the key before the browser
+  // queues its release; an instantaneous CDP press is easy for the blocking
+  // picker loop to miss.
+  await page.keyboard.press(key, { delay: 75 });
+  await page.waitForTimeout(settlingMs);
+}
+
+async function openWebDisplayOptions(page) {
+  // Emscripten starts forwarding keyboard input after a real canvas click.
+  // Use an inert corner rather than focusCanvas(), whose center lands on a
+  // player-count button in the multiplayer web menu.
+  await clickCanvasGameCoord(page, 10, 10);
+
+  // Picker nav uses player 1's bindings: S/A/W and left Control, not browser
+  // arrow keys and Enter. From CONTINUE, five downs and one left reach the
+  // OPTIONS wrench in the multiplayer web layout.
+  for (let i = 0; i < 5; ++i) {
+    await pressPickerKey(page, 's');
+  }
+  await pressPickerKey(page, 'a');
+  await pressPickerKey(page, 'Control', 300);
+
+  // Main OPTIONS starts on BACK; DISPLAY is two rows below it. On web the
+  // mode/resolution rows are hidden, so DISPLAY jumps BACK -> overscan -> Zoom.
+  await pressPickerKey(page, 's');
+  await pressPickerKey(page, 's');
+  await pressPickerKey(page, 'Control', 300);
+  await pressPickerKey(page, 's');
+  await pressPickerKey(page, 's');
+}
+
+async function leaveWebDisplayOptions(page) {
+  await pressPickerKey(page, 'Escape', 300);
+  await pressPickerKey(page, 'Escape', 500);
+}
+
+async function restoreDisplayDefaultsDuringGameplay(page, runtimeLogs) {
+  // Ctrl+F12 is the shipped restore-defaults shortcut. It live-reapplies the
+  // default canvas and filter while gameplay is active.
+  await page.keyboard.press('Control+F12', { delay: 75 });
+  await expect
+    .poll(
+      () => runtimeLogs.some((line) => line.includes('Restored default settings')),
+      { timeout: 10_000 },
+    )
+    .toBe(true);
+  await waitForGameplayProgress(page, 15_000);
+
+  // game_loop also sees Ctrl+F12 as the debug-obmap toggle. Balance that
+  // incidental toggle so the runtime returns to its starting debug state.
+  await page.keyboard.press('F12', { delay: 75 });
+  await waitForGameplayProgress(page, 15_000);
+}
+
 // Helper: check if a screenshot buffer has non-trivial content
 // (i.e., not a solid black or single-color rectangle)
 function hasVisualContent(buffer) {
@@ -88,6 +189,16 @@ test.describe('Game Loading', () => {
     // Wait for game to finish loading (Module.setStatus('') hides the overlay)
     await waitForGameLoad(page);
     assertNoRuntimeErrors(errors, 'load completion');
+
+    // Desktop defaults request fullscreen and a 640x400 remembered window,
+    // but the browser deliberately ignores both. Keep the actual WebGL
+    // backing on the classic logical size so CSS scaling does not multiply
+    // the software-rendering cost.
+    const backingSize = await canvas.evaluate((element) => ({
+      width: element.width,
+      height: element.height,
+    }));
+    expect(backingSize).toEqual({ width: 320, height: 200 });
 
     // Loading overlay should be hidden after initialization
     const loading = page.locator('#loading');
@@ -183,6 +294,179 @@ test.describe('Game Interaction', () => {
     await expect(page.locator('#canvas')).toBeVisible();
     await expect(page.locator('#loading')).toBeHidden();
     await expect.poll(async () => page.evaluate(() => window.__opengladNumViews)).toBe(3);
+  });
+
+  test('web DISPLAY deepest zoom keeps gameplay live', async ({ page }) => {
+    test.setTimeout(90_000);
+
+    const errors = [];
+    const runtimeLogs = [];
+    attachRuntimeErrorCollectors(page, errors);
+    page.on('console', (msg) => runtimeLogs.push(msg.text()));
+
+    await page.addInitScript(() => {
+      window.__opengladSeedSinglePlayerTeam = true;
+      window.__opengladSkipIntroForTests = true;
+    });
+    await page.goto('/play.html');
+    await waitForGameLoad(page);
+    await openWebDisplayOptions(page);
+
+    const defaultZoomLabel = await getCanvasGameRegionScreenshot(
+      page,
+      125,
+      107,
+      82,
+      9,
+    );
+
+    // Walk 1.0 -> 0.1. Besides updating the fixed DISPLAY menu, the deepest
+    // setting allocates the browser's largest 3200x2000 world canvas.
+    for (let i = 0; i < 9; ++i) {
+      await pressPickerKey(page, 'Control');
+    }
+    const deepestZoomLabel = await getCanvasGameRegionScreenshot(
+      page,
+      125,
+      107,
+      82,
+      9,
+    );
+    expect(deepestZoomLabel.equals(defaultZoomLabel)).toBe(false);
+
+    // Persist 0.1, launch through the normal picker, and prove a real world
+    // frame (not merely the fixed menu canvas) is still published and drawn.
+    await leaveWebDisplayOptions(page);
+    await startSeededSinglePlayerFromPicker(page, { preStartSettlingMs: 1_000 });
+    await waitForGameplayProgress(page, 15_000);
+	// The reported regression was roughly one rendered frame per second.
+	// Require sustained fresh engine samples, not just a single eventual tick.
+	await waitForGameplayRenderSamples(page, 20, 5_000);
+	await expect.poll(async () => page.evaluate(
+	  () => window.__opengladCanvasDiagnostics,
+	)).toMatchObject({
+	  zoom_steps: 1,
+	  world_width: 3200,
+	  world_height: 2000,
+	  smoothing: 'off',
+	  smart_used: false,
+	});
+    const deepestGameplay = await getCanvasGameRegionScreenshot(
+      page,
+      24,
+      20,
+      272,
+      160,
+    );
+    expect(hasVisualContent(deepestGameplay)).toBe(true);
+    assertNoRuntimeErrors(errors, '0.1 zoom gameplay');
+
+    await restoreDisplayDefaultsDuringGameplay(page, runtimeLogs);
+	await expect.poll(async () => page.evaluate(
+	  () => window.__opengladCanvasDiagnostics,
+	)).toMatchObject({
+	  zoom_steps: 10,
+	  world_width: 320,
+	  world_height: 200,
+	  smoothing: 'off',
+	});
+    const restoredGameplay = await getCanvasGameRegionScreenshot(
+      page,
+      24,
+      20,
+      272,
+      160,
+    );
+    expect(hasVisualContent(restoredGameplay)).toBe(true);
+    assertNoRuntimeErrors(errors, 'deepest-zoom default restore');
+  });
+
+  test('web DISPLAY SAI smoothing keeps gameplay live', async ({ page }) => {
+    test.setTimeout(90_000);
+
+    const errors = [];
+    const runtimeLogs = [];
+    attachRuntimeErrorCollectors(page, errors);
+    page.on('console', (msg) => runtimeLogs.push(msg.text()));
+
+    await page.addInitScript(() => {
+      window.__opengladSeedSinglePlayerTeam = true;
+      window.__opengladSkipIntroForTests = true;
+    });
+    await page.goto('/play.html');
+    await waitForGameLoad(page);
+    await openWebDisplayOptions(page);
+
+    const defaultZoomLabel = await getCanvasGameRegionScreenshot(
+      page,
+      125,
+      107,
+      82,
+      9,
+    );
+    await pressPickerKey(page, 's');
+    const defaultSmoothingLabel = await getCanvasGameRegionScreenshot(
+      page,
+      125,
+      130,
+      82,
+      9,
+    );
+    await pressPickerKey(page, 'Control');
+    const saiLabel = await getCanvasGameRegionScreenshot(page, 125, 130, 82, 9);
+    expect(saiLabel.equals(defaultSmoothingLabel)).toBe(false);
+
+    // Return to Zoom and select 0.5. SAI's software scaler is within its work
+    // budget here, so the gameplay assertion covers a real smart-filter pass.
+    await pressPickerKey(page, 'w');
+    for (let i = 0; i < 5; ++i) {
+      await pressPickerKey(page, 'Control');
+    }
+    const halfZoomLabel = await getCanvasGameRegionScreenshot(
+      page,
+      125,
+      107,
+      82,
+      9,
+    );
+    expect(halfZoomLabel.equals(defaultZoomLabel)).toBe(false);
+
+    await leaveWebDisplayOptions(page);
+    await startSeededSinglePlayerFromPicker(page, { preStartSettlingMs: 1_000 });
+    await waitForGameplayProgress(page, 15_000);
+	await waitForGameplayRenderSamples(page, 20, 5_000);
+	await expect.poll(async () => page.evaluate(
+	  () => window.__opengladCanvasDiagnostics,
+	)).toMatchObject({
+	  zoom_steps: 5,
+	  world_width: 640,
+	  world_height: 400,
+	  smoothing: 'sai',
+	  smart_used: true,
+	  smart_suppressed: false,
+	});
+    const saiGameplay = await getCanvasGameRegionScreenshot(page, 24, 20, 272, 160);
+    expect(hasVisualContent(saiGameplay)).toBe(true);
+    assertNoRuntimeErrors(errors, '0.5 zoom with SAI gameplay');
+
+    await restoreDisplayDefaultsDuringGameplay(page, runtimeLogs);
+	await expect.poll(async () => page.evaluate(
+	  () => window.__opengladCanvasDiagnostics,
+	)).toMatchObject({
+	  zoom_steps: 10,
+	  world_width: 320,
+	  world_height: 200,
+	  smoothing: 'off',
+	});
+    const restoredGameplay = await getCanvasGameRegionScreenshot(
+      page,
+      24,
+      20,
+      272,
+      160,
+    );
+    expect(hasVisualContent(restoredGameplay)).toBe(true);
+    assertNoRuntimeErrors(errors, 'SAI default restore');
   });
 
   test('keyboard input does not crash the game', async ({ page }) => {

@@ -58,6 +58,7 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
     }
 #endif
     screen* screen_ctx = active_screen();
+    ScopedUiCanvas ui_canvas(*screen_ctx);
     screen_ctx->darken_screen();
     
     int max_chars = 40;
@@ -389,7 +390,6 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
 
 bool prompt_for_string(const std::string& message, std::string& result)
 {
-    screen* screen_ctx = active_screen();
 #ifdef TESTING
     // Tests can optionally queue deterministic inputs for prompt_for_string().
     // If the queue is empty, accept the existing value without blocking.
@@ -401,6 +401,8 @@ bool prompt_for_string(const std::string& message, std::string& result)
     }
     return true;
 #endif
+	    screen* screen_ctx = active_screen();
+	    ScopedUiCanvas ui_canvas(*screen_ctx);
 	    screen_ctx->darken_screen();
 	    
 	    const short max_chars = 29;

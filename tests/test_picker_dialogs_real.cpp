@@ -1,4 +1,5 @@
 #include <openglad/interface/screen.h>
+#include <openglad/platform/sai2x.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 #include "test_input_helpers.h"
@@ -54,6 +55,19 @@ struct RealDialogsGuard
 {
     RealDialogsGuard() { picker_testing_set_force_real_dialogs(true); }
     ~RealDialogsGuard() { picker_testing_set_force_real_dialogs(false); }
+};
+
+struct CanvasRoutingGuard
+{
+    int zoom_steps = E_Screen->world_zoom_steps();
+    og::WorldScaleMode smoothing = E_Screen->world_scale().mode;
+    CanvasTarget target = E_Screen->active_canvas();
+
+    ~CanvasRoutingGuard()
+    {
+        E_Screen->set_world_zoom(zoom_steps, smoothing);
+        E_Screen->set_active_canvas(target);
+    }
 };
 
 struct DialogThreadState
@@ -123,6 +137,38 @@ TEST(PickerDialogsReal, picker_dialogs_yes_or_no_real_dialog_click_yes)
 
     ASSERT_TRUE(st.started && st.finished) << "yes dialog injector should run";
     ASSERT_TRUE(accepted) << "YES click should accept the dialog";
+}
+
+TEST(PickerDialogsReal, in_game_dialog_uses_fixed_ui_and_preserves_zoomed_world)
+{
+    ViewportGuard viewport_guard;
+    RealDialogsGuard real_dialogs_guard;
+    CanvasRoutingGuard canvas_guard;
+
+    E_Screen->set_world_zoom(5, og::WorldScaleMode::Sai);
+    E_Screen->set_active_canvas(CanvasTarget::World);
+    ASSERT_EQ(640, E_Screen->render->w);
+    ASSERT_EQ(400, E_Screen->render->h);
+    constexpr Uint32 kWorldPixel = 0x00123456u;
+    SDL_FillSurfaceRect(E_Screen->render, nullptr, kWorldPixel);
+
+    DialogThreadState st{false, false, 95, 140};
+    SDL_Thread* thread = SDL_CreateThread(dialog_click_injector, "picker_zoom_dialog", &st);
+    ASSERT_TRUE(thread != nullptr) << "failed to create zoom dialog injector";
+
+    const bool accepted = yes_or_no_prompt("Delete", "Keep the world canvas intact?", false);
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+
+    ASSERT_TRUE(st.started && st.finished) << "zoom dialog injector should run";
+    EXPECT_TRUE(accepted);
+    EXPECT_EQ(CanvasTarget::World, E_Screen->active_canvas());
+    EXPECT_EQ(640, E_Screen->render->w);
+    EXPECT_EQ(400, E_Screen->render->h);
+    const auto* world_pixels = reinterpret_cast<const Uint32*>(E_Screen->render->pixels);
+    EXPECT_EQ(kWorldPixel, world_pixels[60 + 90 * (E_Screen->render->pitch / 4)])
+        << "modal darkening and chrome must not modify the split world surface";
 }
 
 

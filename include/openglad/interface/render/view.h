@@ -116,7 +116,8 @@ class viewscreen
 		// above are faint ghosts), interleaving each floor's tiles + entities so
 		// the camera floor occludes lower floors except through air holes.
 		// Single-floor levels collapse to one opaque pass (byte-identical).
-		void draw_floor_entities(LevelRuntimeData* data, int floor, unsigned char alpha);
+		void draw_floor_entities(LevelRuntimeData* data, int floor,
+		                         unsigned char alpha, bool layer_active);
 		// Floor-glide trigger + suppression ladder: the ONE place (both redraw
 		// overloads call it) that assigns current_floor_ from the control
 		// walker / editor override, starting or advancing the render-only
