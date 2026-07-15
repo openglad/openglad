@@ -2847,6 +2847,137 @@ TEST_F(RenderEffects, overhang_shadow_darkens_camera_floor_under_solid_upper_til
     restore_world(vs);
 }
 
+TEST_F(RenderEffects, overhang_coverage_mask_is_pixel_identical_to_legacy_queries)
+{
+    viewscreen* vs = view0();
+    ASSERT_NE(nullptr, vs);
+    prepare_world();
+
+    GameWorld& world = scr()->world();
+    world.set_floor_count(3);
+    fill_floor_grid(world, 1, static_cast<unsigned char>(PIX_AIR));
+    fill_floor_grid(world, 2, static_cast<unsigned char>(PIX_AIR));
+    world.delete_objects(); // isolate tile footprints from upstairs blobs
+    vs->control = nullptr;
+    vs->current_floor_ = 0;
+    scr()->set_active_canvas(CanvasTarget::World);
+
+    // Irregular, different silhouettes on both upper floors exercise joined
+    // interiors, holes, checkerboard rims and the twice-darkened 4px band.
+    for (Sint32 f = 1; f <= 2; ++f)
+    {
+        PixieData& grid = world.grid_for_floor(static_cast<int>(f));
+        for (Sint32 gj = 0; gj < static_cast<Sint32>(grid.h); ++gj)
+            for (Sint32 gi = 0; gi < static_cast<Sint32>(grid.w); ++gi)
+                if (((gi * 7 + gj * 11 + f * 3) % 7) < 4)
+                    grid.data[gi + static_cast<Sint32>(grid.w) * gj] =
+                        static_cast<unsigned char>(PIX_GRASS1);
+    }
+
+    const Sint32 saved_topx = vs->topx;
+    const Sint32 saved_topy = vs->topy;
+    const Sint32 view_width = vs->endx - vs->xloc;
+    const Sint32 view_height = vs->endy - vs->yloc;
+    const Sint32 world_width =
+        static_cast<Sint32>(world.grid_for_floor(1).w) * GRID_SIZE;
+    const Sint32 world_height =
+        static_cast<Sint32>(world.grid_for_floor(1).h) * GRID_SIZE;
+    const std::array<std::pair<Sint32, Sint32>, 4> camera_origins = {{
+        {-7, -5},
+        {3, 11},
+        {GRID_SIZE - 4, GRID_SIZE + 1},
+        {world_width - view_width + 3, world_height - view_height + 2},
+    }};
+
+    auto seed_canvas = [&]()
+    {
+        for (Sint32 vy = 0; vy < view_height; ++vy)
+            for (Sint32 vx = 0; vx < view_width; ++vx)
+                scr()->pointb(vs->xloc + vx, vs->yloc + vy,
+                              static_cast<unsigned char>(
+                                  16 + ((vx * 13 + vy * 29) % 200)));
+    };
+
+    for (const auto& [topx, topy] : camera_origins)
+    {
+        SCOPED_TRACE(testing::Message() << "camera=" << topx << "," << topy);
+        vs->topx = topx;
+        vs->topy = topy;
+
+        seed_canvas();
+        EXPECT_TRUE(draw_upper_floor_shadows(vs, world));
+        const std::vector<RGB> masked = grab_viewport(vs);
+        const UpperFloorShadowMaskStats stats =
+            upper_floor_shadow_mask_stats_for_testing();
+
+        // Repaint the exact same target, then run the removed implementation's
+        // coverage lambda and draw order verbatim as a reference renderer.
+        seed_canvas();
+        for (Sint32 f = 1; f <= 2; ++f)
+        {
+            const Sint32 offset = f * 2;
+            const PixieData& grid = world.grid_for_floor(static_cast<int>(f));
+            const Sint32 gw = static_cast<Sint32>(grid.w);
+            const Sint32 gh = static_cast<Sint32>(grid.h);
+            auto legacy_covered = [&](Sint32 wx, Sint32 wy)
+            {
+                const Sint32 sx = wx - offset;
+                const Sint32 sy = wy - offset;
+                if (sx < 0 || sy < 0)
+                    return false;
+                const Sint32 gi = sx / GRID_SIZE;
+                const Sint32 gj = sy / GRID_SIZE;
+                if (gi >= gw || gj >= gh)
+                    return false;
+                return grid.data[gi + gw * gj] !=
+                    static_cast<unsigned char>(PIX_AIR);
+            };
+
+            for (Sint32 y = vs->yloc; y < vs->endy; ++y)
+            {
+                const Sint32 wy = y - vs->yloc + vs->topy;
+                for (Sint32 x = vs->xloc; x < vs->endx; ++x)
+                {
+                    const Sint32 wx = x - vs->xloc + vs->topx;
+                    if (!legacy_covered(wx, wy))
+                        continue;
+                    const bool rim = !legacy_covered(wx - 1, wy) ||
+                        !legacy_covered(wx + 1, wy) ||
+                        !legacy_covered(wx, wy - 1) ||
+                        !legacy_covered(wx, wy + 1);
+                    if (rim && (((x + y) & 1) != 0))
+                        continue;
+                    scr()->pointb(x, y, PURE_BLACK, 70);
+                    const bool band = !legacy_covered(wx - 4, wy) ||
+                        !legacy_covered(wx + 4, wy) ||
+                        !legacy_covered(wx, wy - 4) ||
+                        !legacy_covered(wx, wy + 4);
+                    if (band)
+                        scr()->pointb(x, y, PURE_BLACK, 50);
+                }
+            }
+        }
+        const std::vector<RGB> legacy = grab_viewport(vs);
+        EXPECT_TRUE(rects_equal(masked, legacy))
+            << "expanded mask must preserve every legacy blend and dither";
+
+        EXPECT_EQ(static_cast<std::size_t>(2) *
+                      static_cast<std::size_t>(view_width + 8) *
+                      static_cast<std::size_t>(view_height + 8),
+                  stats.expanded_mask_pixels);
+        EXPECT_GT(stats.shadowed_pixels, 0u);
+        EXPECT_GT(stats.source_tile_probes, 0u);
+        EXPECT_GT(stats.replaced_coverage_queries,
+                  stats.source_tile_probes * 100u)
+            << "the mask must replace hundreds of repeated per-pixel grid "
+               "coverage evaluations per source-tile probe";
+    }
+
+    vs->topx = saved_topx;
+    vs->topy = saved_topy;
+    restore_world(vs);
+}
+
 TEST_F(RenderEffects, blob_shadow_marks_upper_floor_walker_on_camera_floor)
 {
     viewscreen* vs = view0();

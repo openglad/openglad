@@ -1983,6 +1983,40 @@ void sdl_video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 	walkoff   = (ymin * walkerwidth) + xmin;
 	buffoff   = (walkerstarty*active_canvas_w()) + walkerstartx;
 
+	SDL_Surface* const target = E_Screen->render;
+	if (cached_format_details(target->format)->bytes_per_pixel == 4 &&
+	    walkerstartx >= 0 && walkerstarty >= 0 &&
+	    walkerstartx + rowsize <= target->w &&
+	    walkerstarty + totrows <= target->h)
+	{
+		// Normal gameplay canvases are 32bpp. Resolve the palette once for the
+		// whole sprite and write its non-transparent pixels straight into each
+		// destination row. The old pointb path repeated palette lookup, format
+		// mapping, bounds checks and a bytes-per-pixel switch for every pixel;
+		// zoomed-out views make enough additional actors/decor visible for that
+		// dispatch overhead to become measurable. Keep the generic path below
+		// for unusual formats and malformed/out-of-surface clipping ports.
+		const Uint32* const lut = palette_color_lut(target);
+		for (cury = 0; cury < totrows; ++cury)
+		{
+			Uint32* const row = reinterpret_cast<Uint32*>(
+				static_cast<Uint8*>(target->pixels) +
+				static_cast<std::size_t>(walkerstarty + cury) *
+					static_cast<std::size_t>(target->pitch)) + walkerstartx;
+			for (curx = 0; curx < rowsize; ++curx)
+			{
+				curcolor = sourceptr[walkoff++];
+				if (!curcolor)
+					continue;
+				if (curcolor > static_cast<unsigned char>(247))
+					curcolor = static_cast<unsigned char>(
+						teamcolor + (255 - curcolor));
+				row[curx] = lut[curcolor];
+			}
+			walkoff += walkshift;
+		}
+		return;
+	}
 
 	for(cury = 0; cury < totrows;cury++)
 	{
@@ -2044,6 +2078,33 @@ void sdl_video::walkputbuffer_alpha(Sint32 walkerstartx, Sint32 walkerstarty,
 
 	walkshift = walkerwidth - rowsize;
 	walkoff   = (ymin * walkerwidth) + xmin;
+
+	SDL_Surface* const target = E_Screen->render;
+	if (walkerstartx >= 0 && walkerstarty >= 0 &&
+	    walkerstartx + rowsize <= target->w &&
+	    walkerstarty + totrows <= target->h)
+	{
+		// Preserve blend_pixel's format-specific and transparent-HUD handling,
+		// but avoid converting the same palette entries again for every sprite
+		// pixel. Clipping above guarantees blend_pixel receives in-bounds points.
+		const Uint32* const lut = palette_color_lut(target);
+		for (cury = 0; cury < totrows; ++cury)
+		{
+			for (curx = 0; curx < rowsize; ++curx)
+			{
+				curcolor = sourceptr[walkoff++];
+				if (!curcolor)
+					continue;
+				if (curcolor > static_cast<unsigned char>(247))
+					curcolor = static_cast<unsigned char>(
+						teamcolor + (255 - curcolor));
+				blend_pixel(target, walkerstartx + curx,
+				            walkerstarty + cury, lut[curcolor], alpha);
+			}
+			walkoff += walkshift;
+		}
+		return;
+	}
 
 	for(cury = 0; cury < totrows;cury++)
 	{

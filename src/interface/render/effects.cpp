@@ -515,6 +515,116 @@ std::array<unsigned char,
            static_cast<std::size_t>(kGlowSize) * kGlowSize> glow_kernel;
 bool glow_kernel_ready = false;
 
+#ifdef TESTING
+UpperFloorShadowMaskStats upper_floor_shadow_mask_stats;
+#endif
+
+// The upper-floor shadow classifier reads center, 1px rim and 4px edge-band
+// neighbors.  Rasterize the displaced upper-floor tile coverage into one
+// viewport-sized byte mask with that 4px halo first: the hot pixel loop can
+// then answer every predicate with a byte load instead of repeating world to
+// tile division, bounds checks and a grid fetch up to nine times per pixel.
+struct UpperFloorCoverageMask
+{
+	Sint32 view_width = 0;
+	Sint32 view_height = 0;
+	std::size_t pitch = 0;
+	std::vector<unsigned char> pixels;
+
+	void build(const PixieData& grid, Sint32 topx, Sint32 topy,
+	           Sint32 width, Sint32 height, Sint32 offset)
+	{
+		view_width = width;
+		view_height = height;
+		pitch = static_cast<std::size_t>(width + 2 * kOverhangShadowEdgeBand);
+		const std::size_t mask_height =
+		    static_cast<std::size_t>(height + 2 * kOverhangShadowEdgeBand);
+		pixels.assign(pitch * mask_height, 0);
+
+#ifdef TESTING
+		upper_floor_shadow_mask_stats.expanded_mask_pixels += pixels.size();
+#endif
+
+		const std::int64_t mask_world_left =
+		    static_cast<std::int64_t>(topx) - kOverhangShadowEdgeBand;
+		const std::int64_t mask_world_top =
+		    static_cast<std::int64_t>(topy) - kOverhangShadowEdgeBand;
+		const std::int64_t mask_world_right = mask_world_left +
+		    static_cast<std::int64_t>(pitch);
+		const std::int64_t mask_world_bottom = mask_world_top +
+		    static_cast<std::int64_t>(mask_height);
+
+		// Tile ranges whose displaced half-open footprints intersect the mask.
+		// Negative source coordinates clamp to tile zero; doing the range math
+		// in 64 bits also keeps unusual spectator-camera coordinates harmless.
+		auto tile_begin = [](std::int64_t source_coord, Sint32 limit)
+		{
+			if (source_coord <= 0)
+				return Sint32{0};
+			return static_cast<Sint32>(std::min<std::int64_t>(
+			    source_coord / GRID_SIZE, limit));
+		};
+		auto tile_end = [](std::int64_t source_coord, Sint32 limit)
+		{
+			if (source_coord <= 0)
+				return Sint32{0};
+			return static_cast<Sint32>(std::min<std::int64_t>(
+			    (source_coord + GRID_SIZE - 1) / GRID_SIZE, limit));
+		};
+
+		const Sint32 gw = static_cast<Sint32>(grid.w);
+		const Sint32 gh = static_cast<Sint32>(grid.h);
+		const Sint32 gx0 = tile_begin(mask_world_left - offset, gw);
+		const Sint32 gy0 = tile_begin(mask_world_top - offset, gh);
+		const Sint32 gx1 = tile_end(mask_world_right - offset, gw);
+		const Sint32 gy1 = tile_end(mask_world_bottom - offset, gh);
+
+		for (Sint32 gj = gy0; gj < gy1; ++gj)
+		{
+			const std::int64_t tile_world_top =
+			    static_cast<std::int64_t>(gj) * GRID_SIZE + offset;
+			const std::size_t my0 = static_cast<std::size_t>(
+			    std::max<std::int64_t>(0, tile_world_top - mask_world_top));
+			const std::size_t my1 = static_cast<std::size_t>(
+			    std::min<std::int64_t>(mask_height,
+			                           tile_world_top + GRID_SIZE - mask_world_top));
+			for (Sint32 gi = gx0; gi < gx1; ++gi)
+			{
+#ifdef TESTING
+				++upper_floor_shadow_mask_stats.source_tile_probes;
+#endif
+				if (grid.data[gi + gw * gj] ==
+				    static_cast<unsigned char>(PIX_AIR))
+					continue;
+
+				const std::int64_t tile_world_left =
+				    static_cast<std::int64_t>(gi) * GRID_SIZE + offset;
+				const std::size_t mx0 = static_cast<std::size_t>(
+				    std::max<std::int64_t>(0, tile_world_left - mask_world_left));
+				const std::size_t mx1 = static_cast<std::size_t>(
+				    std::min<std::int64_t>(pitch,
+				                           tile_world_left + GRID_SIZE - mask_world_left));
+				for (std::size_t my = my0; my < my1; ++my)
+					std::fill(pixels.begin() + static_cast<std::ptrdiff_t>(my * pitch + mx0),
+					          pixels.begin() + static_cast<std::ptrdiff_t>(my * pitch + mx1),
+					          static_cast<unsigned char>(1));
+			}
+		}
+	}
+
+	[[nodiscard]] bool covered(Sint32 view_x, Sint32 view_y) const
+	{
+#ifdef TESTING
+		++upper_floor_shadow_mask_stats.replaced_coverage_queries;
+#endif
+		const std::size_t mx =
+		    static_cast<std::size_t>(view_x + kOverhangShadowEdgeBand);
+		const std::size_t my =
+		    static_cast<std::size_t>(view_y + kOverhangShadowEdgeBand);
+		return pixels[my * pitch + mx] != 0;
+	}
+};
+
 void generate_glow_kernel()
 {
 	// r2 one past the squared radius so the rim row lands exactly on zero.
@@ -712,6 +822,9 @@ bool draw_stair_overlays(viewscreen* vs, const PixieData& camera_grid)
 
 bool draw_upper_floor_shadows(viewscreen* vs, GameWorld& world)
 {
+#ifdef TESTING
+	upper_floor_shadow_mask_stats = {};
+#endif
 	if (!vs || world.floor_count() <= 1)
 		return false; // single-floor: byte-identical short-circuit
 	const Sint32 top_floor = static_cast<Sint32>(world.floor_count()) - 1;
@@ -720,59 +833,55 @@ bool draw_upper_floor_shadows(viewscreen* vs, GameWorld& world)
 
 	screen* dest = og::runtime::current_session->myscreen_;
 	bool drew = false;
+	const Sint32 view_width = vs->endx - vs->xloc;
+	const Sint32 view_height = vs->endy - vs->yloc;
+	UpperFloorCoverageMask coverage;
 	for (Sint32 f = vs->current_floor_ + 1; f <= top_floor; ++f)
 	{
 		const Sint32 stories = f - vs->current_floor_;
 		const Sint32 offset = stories * kOverhangShadowOffsetPerStory;
 		const PixieData& grid = world.grid_for_floor(static_cast<int>(f));
-		if (grid.valid())
+		if (grid.valid() && view_width > 0 && view_height > 0)
 		{
-			const Sint32 gw = static_cast<Sint32>(grid.w);
-			const Sint32 gh = static_cast<Sint32>(grid.h);
 			// Is this camera-floor world pixel inside the SE-displaced
-			// footprint of a solid tile of floor f? Testing coverage (not
-			// blending per tile) merges adjacent tiles into ONE flat region,
-			// so overlaps within a floor never double-darken.
-			auto covered = [&](Sint32 wx, Sint32 wy)
-			{
-				const Sint32 sx = wx - offset;
-				const Sint32 sy = wy - offset;
-				if (sx < 0 || sy < 0)
-					return false;
-				const Sint32 gi = sx / GRID_SIZE;
-				const Sint32 gj = sy / GRID_SIZE;
-				if (gi >= gw || gj >= gh)
-					return false;
-				return grid.data[gi + gw * gj] !=
-				    static_cast<unsigned char>(PIX_AIR);
-			};
+			// footprint of a solid tile of floor f? Rasterizing that coverage
+			// once merges adjacent tiles into ONE flat region (so overlaps
+			// within a floor never double-darken) and turns the hot center/rim/
+			// band predicates into byte-mask lookups.
+			coverage.build(grid, vs->topx, vs->topy, view_width, view_height,
+			               offset);
 			bool floor_drew = false;
-			for (Sint32 y = vs->yloc; y < vs->endy; y++)
+			for (Sint32 vy = 0; vy < view_height; ++vy)
 			{
-				const Sint32 wy = y - vs->yloc + vs->topy;
-				for (Sint32 x = vs->xloc; x < vs->endx; x++)
+				const Sint32 y = vs->yloc + vy;
+				for (Sint32 vx = 0; vx < view_width; ++vx)
 				{
-					const Sint32 wx = x - vs->xloc + vs->topx;
-					if (!covered(wx, wy))
+					const Sint32 x = vs->xloc + vx;
+					if (!coverage.covered(vx, vy))
 						continue;
 					// Soft edge: the 1px rim keeps only its checkerboard
 					// half (a dither, not an extra alpha level — no requant).
-					const bool rim = !covered(wx - 1, wy) ||
-					    !covered(wx + 1, wy) || !covered(wx, wy - 1) ||
-					    !covered(wx, wy + 1);
+					const bool rim = !coverage.covered(vx - 1, vy) ||
+					    !coverage.covered(vx + 1, vy) ||
+					    !coverage.covered(vx, vy - 1) ||
+					    !coverage.covered(vx, vy + 1);
 					if (rim && (((x + y) & 1) != 0))
 						continue;
 					dest->pointb(x, y, PURE_BLACK, kOverhangShadowAlpha);
 					// Inner emphasis band: pixels within kOverhangShadowEdgeBand
 					// of the boundary darken again, so the slab edge pops even
 					// under near-total coverage (interiors, ramparts).
-					const bool band = !covered(wx - kOverhangShadowEdgeBand, wy) ||
-					    !covered(wx + kOverhangShadowEdgeBand, wy) ||
-					    !covered(wx, wy - kOverhangShadowEdgeBand) ||
-					    !covered(wx, wy + kOverhangShadowEdgeBand);
+					const bool band =
+					    !coverage.covered(vx - kOverhangShadowEdgeBand, vy) ||
+					    !coverage.covered(vx + kOverhangShadowEdgeBand, vy) ||
+					    !coverage.covered(vx, vy - kOverhangShadowEdgeBand) ||
+					    !coverage.covered(vx, vy + kOverhangShadowEdgeBand);
 					if (band)
 						dest->pointb(x, y, PURE_BLACK, kOverhangShadowEdgeAlpha);
 					floor_drew = true;
+#ifdef TESTING
+					++upper_floor_shadow_mask_stats.shadowed_pixels;
+#endif
 				}
 			}
 			if (floor_drew)
@@ -1417,6 +1526,11 @@ void draw_cloud_overlay(viewscreen* vs, GameWorld& world)
 }
 
 #ifdef TESTING
+UpperFloorShadowMaskStats upper_floor_shadow_mask_stats_for_testing()
+{
+	return upper_floor_shadow_mask_stats;
+}
+
 void effects_reset_for_testing()
 {
 	frame_tick = 0;
