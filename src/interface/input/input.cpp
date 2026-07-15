@@ -509,6 +509,7 @@ void handle_mouse_event(const void* native_event)
                 if(input_touch_has_alternate())
                     sendFakeKeyDownEvent(og::runtime::current_session->player_keys_[0][KEY_SHIFTER]);
             }
+            // Only move with the lower left corner of the screen (and offset for other buttons)
             else if(!hw().moving && x < layout.movement_region_right &&
                     y > layout.movement_region_top)
             {

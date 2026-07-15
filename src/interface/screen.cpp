@@ -1589,7 +1589,8 @@ void screen::draw_panels(short howmany)
 	(void)howmany;
 	// Force a memory clear ..
 	clearbuffer();
-	redraw(); // repaint scenery and frame-only gameplay chrome
+	// This redraw covers scenery and frame-only gameplay chrome.
+	redraw(); // repaint the screen area ..
 }
 
 void screen::draw_panel_chrome(short howmany)
