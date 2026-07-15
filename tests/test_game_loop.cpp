@@ -2201,11 +2201,12 @@ TEST(GameLoop, game_frame_escape_toggles_network_pause_when_local_transport_is_a
         bool done = false;
         int redrawme = 0;
     };
-    const auto run_escape_frame = [&]() -> EscapeFrameOutcome {
+    const auto run_escape_frame = [&](bool repeat = false) -> EscapeFrameOutcome {
         EventScript script;
         SDL_Event e{};
         e.type = SDL_EVENT_KEY_DOWN;
         e.key.key = SDLK_ESCAPE;
+        e.key.repeat = repeat;
         script.events.push_back(e);
         g_script = &script;
         game_screen->redrawme = 0;
@@ -2236,6 +2237,13 @@ TEST(GameLoop, game_frame_escape_toggles_network_pause_when_local_transport_is_a
     ASSERT_FALSE(primary_view->textlist[0].empty());
     EXPECT_EQ(0, primary_view->textlist[0].compare(0, 6, "PAUSED"));
     EXPECT_EQ(std::string("ESC again: Quit?"), primary_view->textlist[1]);
+
+    const EscapeFrameOutcome repeat_frame = run_escape_frame(true);
+    EXPECT_EQ(GameFrameResult::Continue, repeat_frame.result);
+    EXPECT_FALSE(repeat_frame.done);
+    EXPECT_EQ(1, repeat_frame.redrawme);
+    EXPECT_TRUE(game_screen->world().paused);
+    EXPECT_EQ(0u, game_screen->world().pause_player_index);
 
     picker_testing_yes_or_no_queue_clear();
     picker_testing_yes_or_no_queue_push(false);

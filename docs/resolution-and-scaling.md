@@ -238,7 +238,12 @@ the canvas backing at a stale viewport size after browser-reserved Escape.
 Canvas focus is restored after leaving fullscreen. Native resolution and
 display-mode controls remain unavailable in the browser. The on-page
 fullscreen button enters canvas fullscreen from an explicit user gesture;
-browser-reserved Escape exits it.
+supporting Chromium-based browsers lock only Escape while the canvas is
+fullscreen, so a short press continues to control the game and holding Escape
+uses the browser's fullscreen exit hatch. The lock is released on exit. If the
+Keyboard Lock API is unavailable or permission is denied, browser-reserved
+Escape exits fullscreen and the existing focus/backing recovery remains the
+fallback; press Escape again for the in-game action.
 
 Canvas and window dimensions are render-side state. The deterministic
 simulation does not read them; `scripts/check_render_no_sim_writes.sh`

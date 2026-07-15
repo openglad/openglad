@@ -3091,6 +3091,7 @@ endif()
     )
 
     set_target_properties(play PROPERTIES
+        LINK_DEPENDS "${CMAKE_SOURCE_DIR}/web/shell.html"
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/dist"
         SUFFIX ".html"
     )

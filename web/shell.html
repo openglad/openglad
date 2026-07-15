@@ -157,6 +157,7 @@
         var fullscreenButton = document.getElementById('fullscreen-button');
         var fullscreenStatus = document.getElementById('fullscreen-status');
         var fullscreenControlReady = false;
+        var fullscreenKeyboardLockGeneration = 0;
 
         function fullscreenAvailable() {
             return document.fullscreenEnabled &&
@@ -167,6 +168,73 @@
             var showButton = fullscreenControlReady && fullscreenAvailable() &&
                 document.fullscreenElement === null;
             fullscreenButton.classList.toggle('hidden', !showButton);
+        }
+
+        function keyboardLockAvailable() {
+            return 'keyboard' in navigator && navigator.keyboard !== null &&
+                typeof navigator.keyboard.lock === 'function' &&
+                typeof navigator.keyboard.unlock === 'function';
+        }
+
+        function releaseFullscreenKeyboardLock() {
+            ++fullscreenKeyboardLockGeneration;
+            if (!keyboardLockAvailable()) {
+                return;
+            }
+            try {
+                navigator.keyboard.unlock();
+            } catch (error) {
+                console.warn('Unable to release fullscreen keyboard lock:', error);
+            }
+        }
+
+        function lockFullscreenEscape() {
+            var generation = ++fullscreenKeyboardLockGeneration;
+            if (!keyboardLockAvailable()) {
+                fullscreenStatus.textContent =
+                    'Fullscreen active. Escape leaves fullscreen; press it again to control the game.';
+                return;
+            }
+
+            var request;
+            try {
+                // Lock only Escape, never the whole keyboard. Supporting
+                // browsers still reserve a long Escape hold as their exit
+                // hatch while a short press reaches SDL and the game.
+                request = navigator.keyboard.lock(['Escape']);
+            } catch (error) {
+                request = Promise.reject(error);
+            }
+
+            Promise.resolve(request).then(function() {
+                if (generation !== fullscreenKeyboardLockGeneration ||
+                    document.fullscreenElement !== canvas) {
+                    // The actual fullscreenchange exit path already unlocks.
+                    // Do not let a late promise from an earlier fullscreen
+                    // session unlock a newer session's Escape request.
+                    return;
+                }
+                fullscreenStatus.textContent =
+                    'Fullscreen active. Escape controls the game; press and hold Escape to leave fullscreen.';
+            }).catch(function(error) {
+                if (generation !== fullscreenKeyboardLockGeneration ||
+                    document.fullscreenElement !== canvas) {
+                    return;
+                }
+                console.warn('Unable to lock Escape in fullscreen:', error);
+                fullscreenStatus.textContent =
+                    'Fullscreen active. Escape leaves fullscreen; press it again to control the game.';
+            });
+        }
+
+        function handleFullscreenControlChange() {
+            updateFullscreenButton();
+            if (document.fullscreenElement === canvas) {
+                lockFullscreenEscape();
+            } else {
+                releaseFullscreenKeyboardLock();
+                fullscreenStatus.textContent = '';
+            }
         }
 
         fullscreenButton.addEventListener('click', function() {
@@ -199,7 +267,7 @@
         fullscreenButton.addEventListener('keyup', function(event) {
             event.stopPropagation();
         });
-        document.addEventListener('fullscreenchange', updateFullscreenButton);
+        document.addEventListener('fullscreenchange', handleFullscreenControlChange);
 
         // Handle WebGL context loss
         canvas.addEventListener('webglcontextlost', function(e) {
