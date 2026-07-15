@@ -36,9 +36,9 @@ class text;
 //  * the UI canvas — menus, picker, help, intro, dialogs. PINNED at
 //    kUiCanvasW x kUiCanvasH (320x200) forever, so every classic menu layout,
 //    pixel pin and capture stays valid regardless of the world canvas size.
-//  * the GAMEPLAY UI canvas — a transparent world-sized overlay used only
-//    while SAI/Eagle is active. Radar, messages and HUD paint here, then the
-//    backend composites it nearest-neighbour AFTER filtering the scenery.
+//  * the GAMEPLAY UI canvas — a transparent overlay pinned to the zoom-1.0
+//    gameplay geometry. Radar, messages and HUD paint here at a stable size,
+//    then the backend composites it nearest-neighbour over the zoomed scenery.
 //
 // Draw primitives route to the ACTIVE canvas; each canvas is aspect-fitted in
 // the window viewport at swap time. While the world canvas is 320x200 the two
@@ -274,21 +274,33 @@ public:
     // plot arithmetic (offset = x + y*canvas_w) and full-frame present rects
     // derive from them. world_canvas_w/world_canvas_h are the WORLD canvas
     // dimensions regardless of the active target (viewscreen layout sizing).
+    // gameplay_ui_canvas_w/h expose the stable zoom-1.0 gameplay geometry;
+    // fixed/headless backends may keep it equal to their world dimensions.
     // Display backends use a window-relative world canvas; fixed/headless
     // backends may retain the minimum 320x200 dimensions.
     virtual int canvas_w() const = 0;
     virtual int canvas_h() const = 0;
     virtual int world_canvas_w() const = 0;
     virtual int world_canvas_h() const = 0;
+    virtual int gameplay_ui_canvas_w() const { return world_canvas_w(); }
+    virtual int gameplay_ui_canvas_h() const { return world_canvas_h(); }
+    // True when GameplayUI drawing can use the fixed gameplay-UI dimensions.
+    // On an allocation fallback it aliases World instead; touch hit-testing
+    // must use the same effective geometry as the controls that were drawn.
+    virtual bool gameplay_ui_canvas_available() const
+    {
+        return gameplay_ui_canvas_w() == world_canvas_w() &&
+               gameplay_ui_canvas_h() == world_canvas_h();
+    }
     virtual void set_active_canvas(CanvasTarget target) = 0;
     virtual CanvasTarget active_canvas() const = 0;
 	// Canvas that produced the most recent physical present. Scoped UI draws
 	// may restore another active target afterwards; transition fades use this
 	// value so they fade what the player can actually see.
 	virtual CanvasTarget last_presented_canvas() const { return active_canvas(); }
-    // Start a gameplay render frame. Smart-smoothing backends may allocate
-    // and clear a transparent gameplay-UI overlay here; other backends and
-    // nearest rendering retain the historical single-surface path.
+    // Start a gameplay render frame. Scalable backends may allocate and clear
+    // a transparent fixed-size gameplay-UI overlay here. At zoom 1.0 with
+    // nearest rendering the historical single-surface path can still be used.
     virtual void begin_gameplay_frame() {}
     // Seed the fixed UI canvas from the current world frame using nearest
     // scaling. Modal UI then overlays a crisp 320x200 background even when
@@ -423,10 +435,9 @@ private:
     bool entered_from_split_world_;
 };
 
-// Gameplay HUD entry point. With an available SAI/Eagle present path this
-// selects the transparent overlay that is composited nearest after the
-// filtered scenery. Otherwise the backend aliases GameplayUI to World, so
-// classic rendering and resource-fallback frames remain byte-identical.
+// Gameplay HUD entry point. When the backend prepared its fixed-size overlay,
+// this selects it for compositing after the zoomed/filtered scenery. Otherwise
+// GameplayUI aliases World, preserving classic and allocation-fallback paths.
 class ScopedGameplayUiCanvas final
 {
 public:

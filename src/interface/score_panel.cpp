@@ -391,6 +391,8 @@ short new_score_panel(screen* s, short /*do_it*/)
 
     for (players = 0; players < s->numviews; players++)
     {
+		ScopedGameplayUiViewLayout gameplay_ui_layout(
+			*s->viewob[players], *s);
         control = s->viewob[players]->control;
         lm = s->viewob[players]->xloc + OVERSCAN_PADDING;
         tm = s->viewob[players]->yloc + OVERSCAN_PADDING;

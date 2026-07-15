@@ -225,6 +225,12 @@ public:
     int canvas_h() const override { return video_impl_->canvas_h(); }
     int world_canvas_w() const override { return video_impl_->world_canvas_w(); }
     int world_canvas_h() const override { return video_impl_->world_canvas_h(); }
+    int gameplay_ui_canvas_w() const override { return video_impl_->gameplay_ui_canvas_w(); }
+    int gameplay_ui_canvas_h() const override { return video_impl_->gameplay_ui_canvas_h(); }
+    bool gameplay_ui_canvas_available() const override
+    {
+        return video_impl_->gameplay_ui_canvas_available();
+    }
     void set_active_canvas(CanvasTarget target) override { video_impl_->set_active_canvas(target); }
     CanvasTarget active_canvas() const override { return video_impl_->active_canvas(); }
 	CanvasTarget last_presented_canvas() const override { return video_impl_->last_presented_canvas(); }

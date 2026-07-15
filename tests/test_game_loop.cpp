@@ -3693,14 +3693,20 @@ void run_frames(screen* s, int frames)
         ASSERT_EQ(GameFrameResult::Continue, game_frame_with_result(*s, st, deps));
 }
 
-// Pane geometry pinned against compute_view_layout at the CURRENT world
-// canvas dims, plus containment inside the canvas.
+// Pane geometry is defined in the fixed gameplay-UI canvas, then projected
+// into the CURRENT world canvas, plus containment inside the canvas.
 void expect_pane_matches_layout(screen* s, int i, int canvas_w, int canvas_h)
 {
     viewscreen* vs = s->viewob[static_cast<size_t>(i)].get();
     ASSERT_TRUE(vs) << "view " << i;
-    const og::view_layout::ViewLayout want = og::view_layout::compute_view_layout(
-        s->numviews, vs->mynum, vs->prefs[PREF_VIEW], canvas_w, canvas_h);
+    const int ui_w = s->gameplay_ui_canvas_w();
+    const int ui_h = s->gameplay_ui_canvas_h();
+    const og::view_layout::ViewLayout baseline =
+        og::view_layout::compute_view_layout(
+            s->numviews, vs->mynum, vs->prefs[PREF_VIEW], ui_w, ui_h);
+    const og::view_layout::ViewLayout want =
+        og::view_layout::project_view_layout(
+            baseline, ui_w, ui_h, canvas_w, canvas_h);
     ASSERT_TRUE(want.applies) << "view " << i;
     EXPECT_EQ(want.x, vs->xloc) << "view " << i;
     EXPECT_EQ(want.y, vs->yloc) << "view " << i;

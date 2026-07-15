@@ -197,6 +197,9 @@ public:
     int canvas_h() const override;
     int world_canvas_w() const override;
     int world_canvas_h() const override;
+    int gameplay_ui_canvas_w() const override;
+    int gameplay_ui_canvas_h() const override;
+    bool gameplay_ui_canvas_available() const override;
     void set_active_canvas(CanvasTarget target) override;
     CanvasTarget active_canvas() const override;
 	CanvasTarget last_presented_canvas() const override;
@@ -297,3 +300,8 @@ private:
 // its world-only present engine. Called at display creation and exposed so
 // settings/tests can live-apply changes. This path also runs on Emscripten.
 void apply_world_scale_from_cfg();
+
+// SDL3's Emscripten resize callback can replace the browser-selected logical
+// backing while a fullscreen exit is still in flight. Reassert the fitted CSS
+// logical size (and its HiDPI physical backing) after browser events.
+void restore_web_canvas_backing_size(int logical_w, int logical_h);

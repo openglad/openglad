@@ -3,10 +3,10 @@
 //  * Screen::set_world_zoom sizing the world surface+texture from the logical
 //    window (zoom 1.0 = master's scale=1 canvas; lower zoom = window / zoom),
 //  * the per-canvas present engine in Screen::swap (off = GPU nearest of
-//    the variable canvas; sai/eagle = software 2x into a canvas*2 render2,
-//    world canvas ONLY — menus/UI always present unsmoothed),
-//  * viewscreen relayout from the live canvas dims (screen::relayout_views
-//    and viewscreen::resize(whatmode)),
+//    the variable World canvas; sai/eagle = software 2x into a canvas*2
+//    render2; fixed gameplay UI is always composited nearest afterwards),
+//  * the gameplay UI canvas staying at the zoom-1.0 aspect and classic pixel
+//    density while World and its projected viewscreen layouts change zoom,
 //  * window resizes re-deriving the selected zoom canvas and view layout,
 //  * aspect-fitted fixed UI presentation/input on non-16:10 windows,
 //  * the level editor's classic-canvas pin.
@@ -149,6 +149,102 @@ TEST(CanvasScale, zoom_half_doubles_the_window_sized_world_canvas_and_presents)
     s->buffer_to_screen(0, 0, s->canvas_w(), s->canvas_h());
 }
 
+TEST(CanvasScale, zoom_steps_keep_nearest_gameplay_ui_at_classic_pixel_density)
+{
+    ASSERT_TRUE(E_Screen);
+    ClassicCanvasRestore restore;
+    screen* s = test_screen();
+    ASSERT_TRUE(s);
+
+    // Gameplay chrome follows the window-derived zoom-1.0 aspect, but keeps
+    // the classic bitmap font/pixel density. World alone uses all 640x400
+    // logical pixels at zoom 1.0 and grows further as zoom is reduced.
+    E_Screen->set_world_zoom(og::kZoomStepsMax,
+                             og::WorldScaleMode::Integer, 640, 400);
+    const int hud_w = s->gameplay_ui_canvas_w();
+    const int hud_h = s->gameplay_ui_canvas_h();
+    ASSERT_EQ(320, hud_w);
+    ASSERT_EQ(200, hud_h);
+
+    for (const int zoom_steps : {og::kZoomStepsMax, 9, 8, 5})
+    {
+        E_Screen->set_world_zoom(zoom_steps,
+                                 og::WorldScaleMode::Integer, 640, 400);
+        const og::WorldCanvasDims expected_world =
+            og::compute_zoom_canvas_dims(640, 400, zoom_steps);
+        EXPECT_EQ(expected_world.w, E_Screen->world_w());
+        EXPECT_EQ(expected_world.h, E_Screen->world_h());
+        EXPECT_GT(E_Screen->world_w(), hud_w);
+        EXPECT_GT(E_Screen->world_h(), hud_h);
+        EXPECT_EQ(hud_w, s->gameplay_ui_canvas_w());
+        EXPECT_EQ(hud_h, s->gameplay_ui_canvas_h());
+
+        E_Screen->set_active_canvas(CanvasTarget::World);
+        SDL_Surface* const world = E_Screen->render;
+        E_Screen->begin_gameplay_frame();
+        ASSERT_TRUE(E_Screen->gameplay_ui_overlay_active());
+        SDL_Surface* const overlay =
+            E_Screen->gameplay_ui_overlay_surface();
+        SDL_Texture* const overlay_texture =
+            E_Screen->gameplay_ui_overlay_texture();
+        ASSERT_NE(nullptr, overlay);
+        ASSERT_NE(nullptr, overlay_texture);
+        EXPECT_NE(world, overlay);
+        EXPECT_EQ(hud_w, overlay->w);
+        EXPECT_EQ(hud_h, overlay->h);
+        EXPECT_EQ(hud_w, overlay_texture->w);
+        EXPECT_EQ(hud_h, overlay_texture->h);
+
+        SDL_ScaleMode overlay_scale = SDL_SCALEMODE_INVALID;
+        ASSERT_TRUE(SDL_GetTextureScaleMode(overlay_texture, &overlay_scale));
+        EXPECT_EQ(SDL_SCALEMODE_NEAREST, overlay_scale)
+            << "fixed gameplay text must never be linearly filtered";
+
+        {
+            ScopedGameplayUiCanvas gameplay_ui(*s);
+            EXPECT_EQ(CanvasTarget::GameplayUI, s->active_canvas());
+            EXPECT_EQ(hud_w, s->canvas_w());
+            EXPECT_EQ(hud_h, s->canvas_h());
+            EXPECT_EQ(overlay, E_Screen->render);
+        }
+        EXPECT_EQ(CanvasTarget::World, s->active_canvas());
+        EXPECT_EQ(expected_world.w, s->canvas_w());
+        EXPECT_EQ(expected_world.h, s->canvas_h());
+    }
+}
+
+TEST(CanvasScale, buffered_hud_text_draws_in_widescreen_ui_extension)
+{
+    ASSERT_TRUE(E_Screen);
+    ClassicCanvasRestore restore;
+    screen* const s = test_screen();
+    ASSERT_TRUE(s);
+
+    E_Screen->set_world_zoom(og::kZoomStepsMax,
+                             og::WorldScaleMode::Integer, 640, 360);
+    E_Screen->set_active_canvas(CanvasTarget::World);
+    E_Screen->begin_gameplay_frame();
+    ASSERT_TRUE(E_Screen->gameplay_ui_overlay_active());
+    E_Screen->set_active_canvas(CanvasTarget::GameplayUI);
+    ASSERT_EQ(356, s->canvas_w());
+    ASSERT_EQ(200, s->canvas_h());
+    ASSERT_TRUE(SDL_FillSurfaceRect(E_Screen->render, nullptr, 0u));
+
+    ASSERT_EQ(1, s->text_normal.write_char_xy(
+                     340, 10, 'A', WHITE, static_cast<short>(1)));
+    bool found_glyph_pixel = false;
+    for (int y = 10; y < 10 + s->text_normal.letters->h; ++y)
+    {
+        const auto* row = reinterpret_cast<const Uint32*>(
+            static_cast<const Uint8*>(E_Screen->render->pixels) +
+            static_cast<std::size_t>(y) * E_Screen->render->pitch);
+        for (int x = 340; x < 356; ++x)
+            found_glyph_pixel = found_glyph_pixel || row[x] != 0u;
+    }
+    EXPECT_TRUE(found_glyph_pixel)
+        << "right-anchored HUD text must not clip at the old x=319 edge";
+}
+
 TEST(CanvasScale, modal_backdrop_center_crops_widescreen_world_without_squeeze)
 {
     ASSERT_TRUE(E_Screen);
@@ -222,8 +318,8 @@ TEST(CanvasScale, scoped_ui_canvas_seeds_from_world_and_restores_routing)
             << "split modal UI should start with a nearest-scaled world frame";
 		const auto* hud_row = reinterpret_cast<const Uint32*>(
 			static_cast<const Uint8*>(E_Screen->render->pixels) +
-			static_cast<std::size_t>(10) * E_Screen->render->pitch);
-		EXPECT_EQ(overlay_pixel & 0x00ffffffu, hud_row[10] & 0x00ffffffu)
+			static_cast<std::size_t>(20) * E_Screen->render->pitch);
+		EXPECT_EQ(overlay_pixel & 0x00ffffffu, hud_row[20] & 0x00ffffffu)
 			<< "modal backdrop should preserve the last presented gameplay UI";
     }
 
@@ -499,12 +595,15 @@ TEST(CanvasScale, smart_smoothing_composites_gameplay_ui_nearest_after_world_fil
         << "capture composition must nearest-scale one HUD pixel to 2x2";
     SDL_DestroySurface(captured);
 
-    // Disabling smoothing releases the layer and makes GameplayUI alias the
-    // complete World surface, which is also the allocation-fallback behavior.
+    // Disabling smoothing at zoom 1.0 makes GameplayUI alias the complete
+    // World surface. The now-inactive overlay resource may remain cached, but
+    // it must not affect routing or be composited into a later frame.
     E_Screen->set_world_zoom(og::kZoomStepsMax,
                              og::WorldScaleMode::Integer, 320, 200);
     EXPECT_FALSE(E_Screen->gameplay_ui_overlay_active());
-    EXPECT_EQ(nullptr, E_Screen->gameplay_ui_overlay_surface());
+    EXPECT_EQ(nullptr,
+              E_Screen->compose_gameplay_ui_for_capture(E_Screen->render))
+        << "an engine-only change must invalidate the preceding smart HUD";
     E_Screen->set_active_canvas(CanvasTarget::World);
     SDL_Surface* const unsmoothed_world = E_Screen->render;
     E_Screen->set_active_canvas(CanvasTarget::GameplayUI);
@@ -554,7 +653,7 @@ TEST(CanvasScale, gameplay_refresh_filters_and_presents_the_complete_world_once)
     view->yview = old_yview;
 }
 
-TEST(CanvasScale, relayout_views_follows_the_canvas)
+TEST(CanvasScale, paired_world_and_gameplay_ui_layouts_stay_aligned)
 {
     ASSERT_TRUE(E_Screen);
     screen* s = test_screen();
@@ -566,8 +665,11 @@ TEST(CanvasScale, relayout_views_follows_the_canvas)
 
     E_Screen->set_world_zoom(5, og::WorldScaleMode::Integer, 320, 200);
     ASSERT_EQ(640, s->world_canvas_w());
+    ASSERT_EQ(320, s->gameplay_ui_canvas_w());
+    ASSERT_EQ(200, s->gameplay_ui_canvas_h());
 
-    // 1p FULL covers the whole doubled canvas.
+    // The World rectangle is the exact edge projection of the stable HUD
+    // rectangle. A full one-player view therefore covers both canvases.
     s->numviews = 1;
     vs->mynum = 0;
     vs->resize(PREF_VIEW_FULL);
@@ -578,13 +680,51 @@ TEST(CanvasScale, relayout_views_follows_the_canvas)
     EXPECT_EQ(640, vs->endx);
     EXPECT_EQ(400, vs->endy);
 
-    // 2p right pane on the doubled canvas.
+    // The 2p right pane begins at x=161 in the 320x200 HUD space. Projecting
+    // that shared edge to the doubled World gives x=322 (not a freshly
+    // computed one-pixel World seam at x=321).
     s->numviews = 2;
     vs->mynum = 1;
     vs->resize(PREF_VIEW_FULL);
-    EXPECT_EQ(321, vs->xloc);
-    EXPECT_EQ(319, vs->xview);
-    EXPECT_EQ(400, vs->yview);
+    const og::view_layout::ViewLayout hud =
+        og::view_layout::compute_view_layout(
+            2, 1, PREF_VIEW_FULL,
+            s->gameplay_ui_canvas_w(), s->gameplay_ui_canvas_h());
+    const og::view_layout::ViewLayout world =
+        og::view_layout::project_view_layout(
+            hud, s->gameplay_ui_canvas_w(), s->gameplay_ui_canvas_h(),
+            s->world_canvas_w(), s->world_canvas_h());
+    ASSERT_TRUE(hud.applies);
+    ASSERT_TRUE(world.applies);
+    EXPECT_EQ(161, hud.x);
+    EXPECT_EQ(159, hud.w);
+    EXPECT_EQ(322, world.x);
+    EXPECT_EQ(318, world.w);
+    EXPECT_EQ(world.x, vs->xloc);
+    EXPECT_EQ(world.y, vs->yloc);
+    EXPECT_EQ(world.w, vs->xview);
+    EXPECT_EQ(world.h, vs->yview);
+
+    // During a gameplay-UI draw, the same viewscreen temporarily exposes the
+    // baseline rectangle. Leaving the scopes restores its projected World
+    // rectangle, so scenery clipping and chrome share the same boundaries.
+    E_Screen->set_active_canvas(CanvasTarget::World);
+    E_Screen->begin_gameplay_frame();
+    ASSERT_TRUE(E_Screen->gameplay_ui_overlay_active());
+    {
+        ScopedGameplayUiCanvas gameplay_ui(*s);
+        ScopedGameplayUiViewLayout gameplay_ui_layout(*vs, *s);
+        EXPECT_EQ(hud.x, vs->xloc);
+        EXPECT_EQ(hud.y, vs->yloc);
+        EXPECT_EQ(hud.w, vs->xview);
+        EXPECT_EQ(hud.h, vs->yview);
+        EXPECT_EQ(hud.x + hud.w, vs->endx);
+        EXPECT_EQ(hud.y + hud.h, vs->endy);
+    }
+    EXPECT_EQ(world.x, vs->xloc);
+    EXPECT_EQ(world.y, vs->yloc);
+    EXPECT_EQ(world.w, vs->xview);
+    EXPECT_EQ(world.h, vs->yview);
 
     // relayout_views re-derives from the player's own saved PREF_VIEW mode.
     s->numviews = old_numviews;
@@ -592,9 +732,12 @@ TEST(CanvasScale, relayout_views_follows_the_canvas)
     s->redrawme = 0;
     s->relayout_views();
     EXPECT_EQ(1, s->redrawme);
-    const og::view_layout::ViewLayout expect =
+    const og::view_layout::ViewLayout expect_hud =
         og::view_layout::compute_view_layout(
-            s->numviews, vs->mynum, vs->prefs[PREF_VIEW], 640, 400);
+            s->numviews, vs->mynum, vs->prefs[PREF_VIEW], 320, 200);
+    const og::view_layout::ViewLayout expect =
+        og::view_layout::project_view_layout(
+            expect_hud, 320, 200, 640, 400);
     ASSERT_TRUE(expect.applies);
     EXPECT_EQ(expect.x, vs->xloc);
     EXPECT_EQ(expect.w, vs->xview);
@@ -633,13 +776,18 @@ TEST(CanvasScale, window_resize_recomputes_the_zoom_canvas_and_layout)
 
     EXPECT_EQ(2560, E_Screen->world_w());
     EXPECT_EQ(1600, E_Screen->world_h());
+    EXPECT_EQ(320, s->gameplay_ui_canvas_w());
+    EXPECT_EQ(200, s->gameplay_ui_canvas_h());
     EXPECT_EQ(1280.0f, og::runtime::current_session->window_w_);
     EXPECT_EQ(800.0f, og::runtime::current_session->window_h_);
     const viewscreen* const resized_view = s->viewob[0].get();
-    const og::view_layout::ViewLayout expect =
+    const og::view_layout::ViewLayout expect_hud =
         og::view_layout::compute_view_layout(
             s->numviews, resized_view->mynum,
-            resized_view->prefs[PREF_VIEW], 2560, 1600);
+            resized_view->prefs[PREF_VIEW], 320, 200);
+    const og::view_layout::ViewLayout expect =
+        og::view_layout::project_view_layout(
+            expect_hud, 320, 200, 2560, 1600);
     ASSERT_TRUE(expect.applies);
     EXPECT_EQ(expect.w, resized_view->xview);
     EXPECT_EQ(expect.h, resized_view->yview);
@@ -815,6 +963,46 @@ TEST(CanvasScale, cached_mouse_remaps_between_world_and_ui_without_motion)
     E_Screen->set_active_canvas(CanvasTarget::World);
     EXPECT_NEAR(176.0f, mymouse.x, 1.0f);
     EXPECT_NEAR(90.0f, mymouse.y, 1.0f);
+
+    og::runtime::current_session->overscan_percentage_ = old_overscan;
+}
+
+TEST(CanvasScale, gameplay_ui_render_scopes_do_not_quantize_cached_mouse)
+{
+    ASSERT_TRUE(E_Screen);
+    ClassicCanvasRestore restore;
+    screen* const s = test_screen();
+    ASSERT_TRUE(s);
+    const float old_overscan =
+        og::runtime::current_session->overscan_percentage_;
+
+    og::runtime::current_session->window_w_ = 640;
+    og::runtime::current_session->window_h_ = 360;
+    og::runtime::current_session->overscan_percentage_ = 0.0f;
+    update_overscan_setting();
+    E_Screen->set_world_zoom(5, og::WorldScaleMode::Integer, 640, 360);
+    E_Screen->set_active_canvas(CanvasTarget::World);
+    E_Screen->begin_gameplay_frame();
+    ASSERT_TRUE(E_Screen->gameplay_ui_overlay_active());
+
+    SDL_Event motion{};
+    motion.type = SDL_EVENT_MOUSE_MOTION;
+    motion.motion.type = SDL_EVENT_MOUSE_MOTION;
+    motion.motion.x = 177.0f;
+    motion.motion.y = 91.0f;
+    handle_mouse_event(motion);
+    MouseState& mymouse = query_mouse_no_poll();
+    const float world_x = mymouse.x;
+    const float world_y = mymouse.y;
+
+    for (int i = 0; i < 8; ++i)
+    {
+        ScopedGameplayUiCanvas gameplay_ui(*s);
+        EXPECT_EQ(world_x, mymouse.x);
+        EXPECT_EQ(world_y, mymouse.y);
+    }
+    EXPECT_EQ(world_x, mymouse.x);
+    EXPECT_EQ(world_y, mymouse.y);
 
     og::runtime::current_session->overscan_percentage_ = old_overscan;
 }
@@ -1105,11 +1293,72 @@ TEST(CanvasScale, smart_smoothed_fade_discards_prepared_gameplay_ui)
 
     EXPECT_EQ(1, s->fadeblack(false));
     EXPECT_FALSE(E_Screen->gameplay_ui_overlay_active());
-    EXPECT_EQ(nullptr, E_Screen->gameplay_ui_overlay_surface())
+    EXPECT_EQ(nullptr,
+              E_Screen->compose_gameplay_ui_for_capture(E_Screen->render))
         << "fade swaps must neither replay nor capture stale full-bright HUD";
+    E_Screen->set_active_canvas(CanvasTarget::GameplayUI);
+    EXPECT_EQ(E_Screen->world_w(), E_Screen->canvas_w())
+        << "an inactive cached overlay must route GameplayUI back to World";
+    E_Screen->set_active_canvas(CanvasTarget::World);
     Uint8 r = 255, g = 255, b = 255;
     s->get_pixel(10, 10, &r, &g, &b);
     EXPECT_EQ(0, r | g | b);
+}
+
+TEST(CanvasScale, nearest_zoom_overlay_allocation_failure_safely_aliases_world)
+{
+    ASSERT_TRUE(E_Screen);
+    ClassicCanvasRestore restore;
+    screen* s = test_screen();
+    ASSERT_TRUE(s);
+
+    E_Screen->set_world_zoom(5, og::WorldScaleMode::Integer, 320, 200);
+    ASSERT_EQ(640, E_Screen->world_w());
+    ASSERT_EQ(400, E_Screen->world_h());
+    ASSERT_EQ(320, s->gameplay_ui_canvas_w());
+    ASSERT_EQ(200, s->gameplay_ui_canvas_h());
+    E_Screen->set_active_canvas(CanvasTarget::World);
+    E_Screen->fail_next_gameplay_ui_allocation_for_testing();
+    E_Screen->begin_gameplay_frame();
+
+    EXPECT_FALSE(E_Screen->gameplay_ui_overlay_active());
+    EXPECT_FALSE(s->gameplay_ui_canvas_available())
+        << "touch hit-testing must follow the World-sized fallback controls";
+    EXPECT_FALSE(E_Screen->smart_present_suppressed())
+        << "nearest rendering needs no smart-scaler fallback state";
+    EXPECT_EQ(nullptr, E_Screen->gameplay_ui_overlay_surface());
+    SDL_Surface* const world = E_Screen->render;
+    E_Screen->set_active_canvas(CanvasTarget::GameplayUI);
+    EXPECT_EQ(world, E_Screen->render);
+    EXPECT_EQ(640, s->canvas_w());
+    EXPECT_EQ(400, s->canvas_h());
+    const SDL_Rect fallback_hud{639, 399, 1, 1};
+    const Uint32 fallback_pixel =
+        SDL_MapSurfaceRGBA(world, 230, 40, 20, 255);
+    ASSERT_TRUE(SDL_FillSurfaceRect(E_Screen->render, &fallback_hud,
+                                   fallback_pixel));
+    E_Screen->set_active_canvas(CanvasTarget::World);
+    E_Screen->swap(0, 0, E_Screen->world_w(), E_Screen->world_h());
+    EXPECT_EQ(nullptr,
+              E_Screen->compose_gameplay_ui_for_capture(E_Screen->render));
+    const auto* last_row = reinterpret_cast<const Uint32*>(
+        static_cast<const Uint8*>(world->pixels) +
+        static_cast<std::size_t>(399) * world->pitch);
+    EXPECT_EQ(fallback_pixel, last_row[639])
+        << "fallback HUD pixels remain part of the complete nearest frame";
+
+    // The failed-size latch prevents an allocation storm. A World canvas
+    // change clears it and the next frame can restore the fixed overlay.
+    E_Screen->begin_gameplay_frame();
+    EXPECT_FALSE(E_Screen->gameplay_ui_overlay_active());
+    E_Screen->set_world_zoom(8, og::WorldScaleMode::Integer, 320, 200);
+    E_Screen->set_active_canvas(CanvasTarget::World);
+    E_Screen->begin_gameplay_frame();
+    ASSERT_TRUE(E_Screen->gameplay_ui_overlay_active());
+    EXPECT_TRUE(s->gameplay_ui_canvas_available());
+    ASSERT_NE(nullptr, E_Screen->gameplay_ui_overlay_surface());
+    EXPECT_EQ(320, E_Screen->gameplay_ui_overlay_surface()->w);
+    EXPECT_EQ(200, E_Screen->gameplay_ui_overlay_surface()->h);
 }
 
 TEST(CanvasScale, gameplay_overlay_allocation_failure_presents_complete_frame_nearest)
@@ -1122,9 +1371,9 @@ TEST(CanvasScale, gameplay_overlay_allocation_failure_presents_complete_frame_ne
     // Start from no cached smart resources, then fail only the overlay after
     // the SAI scratch succeeds. HUD must alias World and the whole frame must
     // bypass SAI; otherwise the "world-only" filter would consume the HUD.
-    E_Screen->set_world_zoom(og::kZoomStepsMax,
+    E_Screen->set_world_zoom(5,
                              og::WorldScaleMode::Integer, 320, 200);
-    E_Screen->set_world_zoom(og::kZoomStepsMax, og::WorldScaleMode::Sai,
+    E_Screen->set_world_zoom(5, og::WorldScaleMode::Sai,
                              320, 200);
     E_Screen->set_active_canvas(CanvasTarget::World);
     E_Screen->fail_next_gameplay_ui_allocation_for_testing();
@@ -1152,15 +1401,17 @@ TEST(CanvasScale, gameplay_overlay_allocation_failure_presents_complete_frame_ne
         << "overlay failure must skip SAI rather than filter HUD with World";
 
     // The failed-size latch makes the next begin a stable raw fallback too;
-    // changing the smart mode clears the latch and permits a clean retry.
+    // any explicit scale-mode change clears the latch and permits a clean
+    // fixed-HUD retry, including turning smoothing off.
     E_Screen->begin_gameplay_frame();
     EXPECT_TRUE(E_Screen->smart_present_suppressed());
     EXPECT_FALSE(E_Screen->gameplay_ui_overlay_active());
-    E_Screen->set_world_zoom(og::kZoomStepsMax, og::WorldScaleMode::Eagle,
+    E_Screen->set_world_zoom(5, og::WorldScaleMode::Integer,
                              320, 200);
     E_Screen->begin_gameplay_frame();
     EXPECT_FALSE(E_Screen->smart_present_suppressed());
     EXPECT_TRUE(E_Screen->gameplay_ui_overlay_active());
+    EXPECT_EQ(nullptr, E_Screen->render2);
 }
 
 TEST(CanvasScale, allocation_failure_preserves_the_live_world_canvas_pair)
@@ -1283,11 +1534,15 @@ TEST(CanvasScale, smart_scaler_scratch_is_released_on_disable_and_canvas_resize)
     EXPECT_EQ(800, E_Screen->render2->h);
     EXPECT_NE(nullptr, E_Screen->gameplay_ui_overlay_surface());
 
-    // An engine-only change to nearest must not retain the CPU/GPU pair.
+    // An engine-only change to nearest releases the expensive smart-scaler
+    // CPU/GPU pair. The small fixed HUD pair may remain cached, but is inert
+    // until begin_gameplay_frame prepares it for the reduced zoom.
     E_Screen->set_world_zoom(5, og::WorldScaleMode::Integer, 320, 200);
     EXPECT_EQ(nullptr, E_Screen->render2);
     EXPECT_EQ(nullptr, E_Screen->render2_tex);
-    EXPECT_EQ(nullptr, E_Screen->gameplay_ui_overlay_surface());
+    EXPECT_EQ(nullptr, E_Screen->gameplay_ui_overlay_surface())
+        << "the cached overlay must be hidden after its capture is invalidated";
+    EXPECT_FALSE(E_Screen->gameplay_ui_overlay_active());
 
     // Recreate it, then prove a logical canvas resize drops the stale size
     // immediately rather than waiting for the next filtered present.
@@ -1330,7 +1585,15 @@ TEST(CanvasScale, deepest_zoom_preserves_smoothing_choice_but_skips_huge_scratch
 
     E_Screen->begin_gameplay_frame();
     EXPECT_TRUE(E_Screen->smart_present_suppressed());
-    EXPECT_FALSE(E_Screen->gameplay_ui_overlay_active());
+    EXPECT_TRUE(E_Screen->gameplay_ui_overlay_active())
+        << "smart-scaler fallback must not make fixed HUD geometry zoom out";
+    ASSERT_NE(nullptr, E_Screen->gameplay_ui_overlay_surface());
+    EXPECT_EQ(320, E_Screen->gameplay_ui_overlay_surface()->w);
+    EXPECT_EQ(200, E_Screen->gameplay_ui_overlay_surface()->h);
+    SDL_ScaleMode overlay_scale = SDL_SCALEMODE_INVALID;
+    ASSERT_TRUE(SDL_GetTextureScaleMode(
+        E_Screen->gameplay_ui_overlay_texture(), &overlay_scale));
+    EXPECT_EQ(SDL_SCALEMODE_NEAREST, overlay_scale);
     E_Screen->swap(0, 0, 1, 1);
 
     EXPECT_EQ(nullptr, E_Screen->render2);

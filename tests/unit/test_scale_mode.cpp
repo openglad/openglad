@@ -11,6 +11,7 @@
 #include <cstdlib>
 
 using og::WorldScaleMode;
+using og::compute_gameplay_ui_canvas_dims;
 using og::compute_zoom_canvas_dims;
 using og::kZoomStepsMax;
 using og::parse_smoothing_setting;
@@ -88,6 +89,25 @@ TEST(ScaleMode, zoom_dims_divide_the_window_canvas)
 	const auto eight = compute_zoom_canvas_dims(640, 400, 8);
 	EXPECT_EQ(800, eight.w);
 	EXPECT_EQ(500, eight.h);
+}
+
+TEST(ScaleMode, gameplay_ui_keeps_classic_density_and_matches_world_aspect)
+{
+	const auto classic = compute_gameplay_ui_canvas_dims(640, 400);
+	EXPECT_EQ(320, classic.w);
+	EXPECT_EQ(200, classic.h);
+
+	const auto widescreen = compute_gameplay_ui_canvas_dims(1920, 1080);
+	EXPECT_EQ(356, widescreen.w);
+	EXPECT_EQ(200, widescreen.h);
+
+	const auto four_three = compute_gameplay_ui_canvas_dims(1024, 768);
+	EXPECT_EQ(320, four_three.w);
+	EXPECT_EQ(240, four_three.h);
+
+	const auto invalid = compute_gameplay_ui_canvas_dims(0, -1);
+	EXPECT_EQ(320, invalid.w);
+	EXPECT_EQ(200, invalid.h);
 }
 
 TEST(ScaleMode, zoom_dims_width_rounds_down_to_multiple_of_four)

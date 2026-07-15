@@ -316,10 +316,12 @@ static void draw_damage_number(walker::DamageNumber& dn, viewscreen* view_buf)
 {
 	ScopedGameplayUiCanvas gameplay_ui(
 		*og::runtime::current_session->myscreen_);
-	const float xscreen_f = dn.x - static_cast<float>(view_buf->topx) + static_cast<float>(view_buf->xloc);
-	const float yscreen_f = dn.y - static_cast<float>(view_buf->topy) + static_cast<float>(view_buf->yloc);
-	const Sint32 xscreen = static_cast<Sint32>(xscreen_f);
-	const Sint32 yscreen = static_cast<Sint32>(yscreen_f);
+	const float world_x = dn.x - static_cast<float>(view_buf->topx) +
+		static_cast<float>(view_buf->xloc);
+	const float world_y = dn.y - static_cast<float>(view_buf->topy) +
+		static_cast<float>(view_buf->yloc);
+	const auto [xscreen, yscreen] =
+		view_buf->project_world_point_to_gameplay_ui(world_x, world_y);
 
 	Uint8 alpha = 0;
 	if (dn.t >= 1.0f)
@@ -349,18 +351,25 @@ void draw_small_health_bar(walker* w, viewscreen* view_buf)
     const WalkerRenderPosition draw_pos =
         resolve_walker_render_position(*w, view_buf->interpolation_alpha);
 
-	Sint32 xscreen = static_cast<Sint32>(draw_pos.xpos - static_cast<float>(view_buf->topx) + static_cast<float>(view_buf->xloc));
-	Sint32 yscreen = static_cast<Sint32>(draw_pos.ypos - static_cast<float>(view_buf->topy) + static_cast<float>(view_buf->yloc));
-
-    const Sint32 walkerstartx = xscreen;
-    const Sint32 walkerstarty = yscreen;
-    const Sint32 portstartx = view_buf->xloc;
-    const Sint32 portstarty = view_buf->yloc;
-    const Sint32 portendx = view_buf->endx;
-    const Sint32 portendy = view_buf->endy;
+	const float world_x = draw_pos.xpos - static_cast<float>(view_buf->topx) +
+		static_cast<float>(view_buf->xloc);
+	const float world_y = draw_pos.ypos - static_cast<float>(view_buf->topy) +
+		static_cast<float>(view_buf->yloc);
+	const auto [walkerstartx, walkerstarty] =
+		view_buf->project_world_point_to_gameplay_ui(world_x, world_y);
+	const auto [unused_x, walkerbottom] =
+		view_buf->project_world_point_to_gameplay_ui(
+			world_x, world_y + static_cast<float>(w->sizey()));
+	(void)unused_x;
+	ScopedGameplayUiViewLayout gameplay_ui_layout(
+		*view_buf, *og::runtime::current_session->myscreen_);
+	const Sint32 portstartx = view_buf->xloc;
+	const Sint32 portstarty = view_buf->yloc;
+	const Sint32 portendx = view_buf->endx;
+	const Sint32 portendy = view_buf->endy;
 
     const Sint32 bar_x = walkerstartx;
-    const Sint32 bar_y = walkerstarty + w->sizey() + 1;
+	const Sint32 bar_y = walkerbottom + 1;
     const Sint32 bar_w = w->sizex();
     const Sint32 bar_h = 1;
     if(bar_x < portstartx || bar_x > portendx || bar_y < portstarty || bar_y > portendy)

@@ -306,7 +306,7 @@ void CampaignEntry::draw(const UiRect& area, int team_power)
 
 CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
 {
-    // This browser is fixed 320x200 UI. In particular, the level editor calls
+    // This campaign browser is fixed 320x200 UI. In particular, the editor calls
     // it while World is active; keep the campaign icon, text and controls on
     // the nearest UI present path instead of filtering the whole browser with
     // the editor map's SAI/Eagle setting.

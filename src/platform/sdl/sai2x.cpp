@@ -22,7 +22,8 @@
 #ifdef __EMSCRIPTEN__
 EM_JS(void, publish_canvas_diagnostics,
       (int zoom_steps, int width, int height, int scale_mode,
-       int smart_used, int smart_suppressed), {
+       int smart_used, int smart_suppressed,
+       int gameplay_ui_width, int gameplay_ui_height), {
   const smoothing = scale_mode === 2 ? 'sai' :
                     scale_mode === 3 ? 'eagle' : 'off';
   window.__opengladCanvasDiagnostics = {
@@ -33,10 +34,13 @@ EM_JS(void, publish_canvas_diagnostics,
     smoothing,
     smart_used: Boolean(smart_used),
     smart_suppressed: Boolean(smart_suppressed),
+    gameplay_ui_width,
+    gameplay_ui_height,
   };
 });
 #else
-static void publish_canvas_diagnostics(int, int, int, int, int, int) {}
+static void publish_canvas_diagnostics(int, int, int, int, int, int,
+                                       int, int) {}
 #endif
 
 // Private var for SAI2x
@@ -765,20 +769,23 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
     if(fullscreen)
         window_flags |= SDL_WINDOW_FULLSCREEN;
 
-    #ifndef __EMSCRIPTEN__
     // This immutable create flag gives Retina/HiDPI fullscreen modes a real
     // physical-pixel backbuffer. renderer_output_rect() then expands the
     // logical viewport across that output; without it the compositor could
     // upscale a lower-resolution backing store after OpenGlad presents.
     window_flags |= SDL_WINDOW_HIGH_PIXEL_DENSITY;
-    #endif
+
+	#ifdef __EMSCRIPTEN__
+	// The page owns the CSS box. Let browser resize/fullscreen changes update
+	// SDL's logical size while HIGH_PIXEL_DENSITY keeps the WebGL drawing buffer
+	// at device-pixel resolution.
+	window_flags |= SDL_WINDOW_RESIZABLE;
+	#endif
 
     #ifdef __IPHONEOS__
     window_flags |= SDL_WINDOW_BORDERLESS;
     #endif
 
-    [[maybe_unused]] const int logical_w = w;
-    [[maybe_unused]] const int logical_h = h;
     window = SDL_CreateWindow("Gladiator", w, h, window_flags);
     if(window == nullptr)
         throw std::runtime_error(std::string("Fatal: SDL_CreateWindow failed: ") + SDL_GetError());
@@ -795,22 +802,6 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
     #else
     renderer = SDL_CreateRenderer(window, nullptr);
     SDL_SetRenderVSync(renderer, 1);
-    #endif
-
-    #ifdef __EMSCRIPTEN__
-    // SDL3's Emscripten backend adopts the canvas CSS box as the window and
-    // canvas-backing size (SDL2 kept the requested logical size and let CSS
-    // stretch the presented canvas). A CSS-sized backing store multiplies
-    // the per-frame raster cost under software GL — measured 320x200 ->
-    // 1152x720, which turns CI's SwiftShader runners into periodic frame
-    // drops (the wasm-jitter gate). Pin the backing back to the logical
-    // size; CSS still scales the displayed canvas exactly as under SDL2.
-    // The pin must come AFTER SDL_CreateRenderer: attaching a GL renderer
-    // recreates the window (adds the OPENGL flag), and the recreation
-    // re-runs the CSS-size adoption, clobbering any earlier pin. Use the
-    // LOGICAL size captured before creation — the adoption overwrites the
-    // window size, so re-reading it here would just write the CSS box back.
-    SDL_SetWindowSize(window, logical_w, logical_h);
     #endif
 
 	SDL_GetWindowSize(window, &w, &h);
@@ -848,6 +839,7 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
 Screen::~Screen()
 {
 	destroy_render2();
+	destroy_gameplay_ui_overlay();
 	if (world_tex_ != ui_tex_)
 		SDL_DestroyTexture(world_tex_);
 	if (world_surf_ != ui_surf_)
@@ -859,11 +851,46 @@ Screen::~Screen()
 	SDL_DestroyWindow(window);
 }
 
+int Screen::canvas_w() const
+{
+	if (active_ == CanvasTarget::UI)
+		return kUiCanvasW;
+	if (active_ == CanvasTarget::GameplayUI && gameplay_ui_frame_active_ &&
+	    gameplay_ui_surf_ != nullptr && gameplay_ui_tex_ != nullptr)
+	{
+		return gameplay_ui_w();
+	}
+	return world_w_;
+}
+
+int Screen::canvas_h() const
+{
+	if (active_ == CanvasTarget::UI)
+		return kUiCanvasH;
+	if (active_ == CanvasTarget::GameplayUI && gameplay_ui_frame_active_ &&
+	    gameplay_ui_surf_ != nullptr && gameplay_ui_tex_ != nullptr)
+	{
+		return gameplay_ui_h();
+	}
+	return world_h_;
+}
+
 void Screen::set_active_canvas(CanvasTarget target)
 {
-	const int target_w = target == CanvasTarget::UI ? kUiCanvasW : world_w_;
-	const int target_h = target == CanvasTarget::UI ? kUiCanvasH : world_h_;
-	const bool remap_pointer = og::runtime::current_session != nullptr &&
+	const bool use_gameplay_ui =
+		target == CanvasTarget::GameplayUI && gameplay_ui_frame_active_ &&
+		gameplay_ui_surf_ != nullptr && gameplay_ui_tex_ != nullptr;
+	const int target_w = target == CanvasTarget::UI
+		? kUiCanvasW : (use_gameplay_ui ? gameplay_ui_w() : world_w_);
+	const int target_h = target == CanvasTarget::UI
+		? kUiCanvasH : (use_gameplay_ui ? gameplay_ui_h() : world_h_);
+	// GameplayUI is a render-only target. HUD/effect scopes may switch into and
+	// out of it several times per frame, so leave the cached gameplay pointer in
+	// World coordinates instead of repeatedly quantizing it through the much
+	// smaller fixed overlay. Real interactive UI transitions still remap.
+	const bool remap_pointer = target != CanvasTarget::GameplayUI &&
+		active_ != CanvasTarget::GameplayUI &&
+		og::runtime::current_session != nullptr &&
 		og::runtime::current_session->myscreen_ != nullptr &&
 		(canvas_w() != target_w || canvas_h() != target_h);
 	std::pair<float, float> pointer_window{};
@@ -907,22 +934,23 @@ void Screen::begin_gameplay_frame()
 	const bool smart_smoothing =
 		world_scale_.mode == og::WorldScaleMode::Sai ||
 		world_scale_.mode == og::WorldScaleMode::Eagle;
-	// Allocate the scaler before routing HUD draws away from the world. If
-	// the filter is over budget or either resource allocation fails, the HUD
-	// stays on World and the complete raw frame is presented nearest.
-	const bool smart_resources_ready =
-		smart_smoothing && ensure_render2_for_source(world_w_, world_h_) &&
-		ensure_gameplay_ui_overlay();
-	if (smart_resources_ready)
+	const bool independent_gameplay_ui =
+		world_w_ != gameplay_ui_w() || world_h_ != gameplay_ui_h();
+	const bool overlay_needed = independent_gameplay_ui || smart_smoothing;
+	const bool smart_resource_ready =
+		!smart_smoothing || ensure_render2_for_source(world_w_, world_h_);
+	const bool overlay_ready =
+		!overlay_needed || ensure_gameplay_ui_overlay();
+	if (overlay_needed && overlay_ready)
 	{
 		SDL_FillSurfaceRect(gameplay_ui_surf_, nullptr, 0x00000000u);
 		gameplay_ui_frame_active_ = true;
 	}
-	// If either smart resource path failed, HUD scopes alias World. Force the
-	// complete frame through nearest rather than feeding that HUD back through
-	// SAI/Eagle. The failed-size latches make this stable and allocation-storm
-	// free until a setting/canvas change permits a retry.
-	smart_present_suppressed_ = smart_smoothing && !smart_resources_ready;
+	// Smart smoothing must never process HUD pixels. If either its scratch or
+	// the independent overlay is unavailable, keep the complete fallback frame
+	// nearest. Failed-size latches avoid an allocation storm.
+	smart_present_suppressed_ =
+		smart_smoothing && (!smart_resource_ready || !overlay_ready);
 	// Refresh aliases if a caller happened to begin while GameplayUI was the
 	// remembered target. Normal gameplay begins and ends on World.
 	set_active_canvas(active_);
@@ -937,7 +965,7 @@ void Screen::discard_gameplay_ui_frame()
 
 void Screen::prepare_ui_canvas_from_world()
 {
-	// The visible smart-smoothed frame consists of scenery plus the nearest
+	// The visible zoomed/filtered frame consists of scenery plus the nearest
 	// gameplay-UI overlay. Seed modals from that complete frame so HUD, radar,
 	// messages and pane chrome do not disappear behind the dialog.
 	// When the last World present completed through SAI/Eagle, render2 is the
@@ -1043,6 +1071,7 @@ bool Screen::set_world_canvas_size(int w, int h)
 	SDL_Surface* previous_surface = world_surf_;
 	SDL_Texture* previous_texture = world_tex_;
 	destroy_render2();
+	destroy_gameplay_ui_overlay();
 	world_surf_ = next_surface;
 	world_tex_ = next_texture;
 	world_w_ = w;
@@ -1125,6 +1154,10 @@ void Screen::set_world_zoom(int zoom_steps, og::WorldScaleMode smoothing,
 		std::clamp(zoom_steps, 1, og::kZoomStepsMax), minimum_steps);
 	const og::WorldCanvasDims dims =
 		effective_zoom_canvas_dims(requested_zoom_steps);
+	const og::WorldCanvasDims gameplay_ui_dims =
+		og::compute_gameplay_ui_canvas_dims(
+			effective_zoom_canvas_dims(og::kZoomStepsMax).w,
+			effective_zoom_canvas_dims(og::kZoomStepsMax).h);
 	// Preserve the shared legacy pair only when the window-derived result is
 	// actually classic-sized. Native 1.0 otherwise owns a split canvas,
 	// matching master's graphics/scale=1 behavior and the window's aspect.
@@ -1163,6 +1196,15 @@ void Screen::set_world_zoom(int zoom_steps, og::WorldScaleMode smoothing,
 		}
 	}
 
+	if (gameplay_ui_w_ != gameplay_ui_dims.w ||
+	    gameplay_ui_h_ != gameplay_ui_dims.h)
+	{
+		destroy_gameplay_ui_overlay();
+		gameplay_ui_w_ = gameplay_ui_dims.w;
+		gameplay_ui_h_ = gameplay_ui_dims.h;
+		set_active_canvas(active_);
+	}
+
 	// The resource and public setting state advance only after the canvas
 	// replacement succeeds. That keeps world_w/world_h, zoom, engine and live
 	// render aliases describing the same effective configuration on failure.
@@ -1178,11 +1220,13 @@ void Screen::set_world_zoom(int zoom_steps, og::WorldScaleMode smoothing,
 		// zoom the old pair could otherwise retain hundreds of MB indefinitely.
 		destroy_render2();
 	}
-	else if (previous_zoom_steps != zoom_steps_ ||
-	         previous_mode != requested_setting.mode)
+	if (previous_zoom_steps != zoom_steps_ ||
+	    previous_mode != requested_setting.mode)
 	{
 		// Allow an explicit setting change to retry a prior SDL allocation and
-		// report a budget/texture-limit fallback for the new state once.
+		// report a budget/texture-limit fallback for the new state once. This
+		// includes smart -> nearest: the fixed HUD allocation is still required
+		// whenever zoom separates it from World.
 		render2_failed_w_ = 0;
 		render2_failed_h_ = 0;
 		gameplay_ui_failed_w_ = 0;
@@ -1199,7 +1243,7 @@ void Screen::set_world_zoom(int zoom_steps, og::WorldScaleMode smoothing,
 	}
 	publish_canvas_diagnostics(
 		zoom_steps_, world_w_, world_h_, static_cast<int>(world_scale_.mode),
-		false, smart_present_suppressed_);
+		false, smart_present_suppressed_, gameplay_ui_w(), gameplay_ui_h());
 }
 
 
@@ -1235,7 +1279,6 @@ void Screen::set_world_canvas_pinned_classic(bool pinned)
 
 void Screen::destroy_render2()
 {
-	destroy_gameplay_ui_overlay();
 	SDL_DestroyTexture(render2_tex);
 	SDL_DestroySurface(render2);
 	render2 = nullptr;
@@ -1243,6 +1286,12 @@ void Screen::destroy_render2()
 	render2_failed_w_ = 0;
 	render2_failed_h_ = 0;
 	smart_scale_fallback_reported_ = false;
+	// A completed smart frame may have left both its filtered scenery and HUD
+	// capture marked as the last visible pair. An engine-only setting change can
+	// destroy the scenery scratch without resizing either canvas; invalidate the
+	// paired HUD too so screenshots/modals cannot replay it over a newer frame.
+	last_world_present_used_render2_ = false;
+	gameplay_ui_capture_valid_ = false;
 }
 
 void Screen::destroy_gameplay_ui_overlay()
@@ -1268,14 +1317,18 @@ void Screen::destroy_gameplay_ui_overlay()
 
 bool Screen::ensure_gameplay_ui_overlay()
 {
+	const int target_w = gameplay_ui_w();
+	const int target_h = gameplay_ui_h();
 	if (gameplay_ui_surf_ != nullptr && gameplay_ui_tex_ != nullptr &&
-	    gameplay_ui_surf_->w == world_w_ && gameplay_ui_surf_->h == world_h_ &&
-	    gameplay_ui_tex_->w == world_w_ && gameplay_ui_tex_->h == world_h_)
+	    gameplay_ui_surf_->w == target_w &&
+	    gameplay_ui_surf_->h == target_h &&
+	    gameplay_ui_tex_->w == target_w &&
+	    gameplay_ui_tex_->h == target_h)
 	{
 		return true;
 	}
-	if (gameplay_ui_failed_w_ == world_w_ &&
-	    gameplay_ui_failed_h_ == world_h_)
+	if (gameplay_ui_failed_w_ == target_w &&
+	    gameplay_ui_failed_h_ == target_h)
 	{
 		return false;
 	}
@@ -1283,26 +1336,27 @@ bool Screen::ensure_gameplay_ui_overlay()
 	if (fail_next_gameplay_ui_allocation_)
 	{
 		fail_next_gameplay_ui_allocation_ = false;
-		gameplay_ui_failed_w_ = world_w_;
-		gameplay_ui_failed_h_ = world_h_;
+		gameplay_ui_failed_w_ = target_w;
+		gameplay_ui_failed_h_ = target_h;
 		return false;
 	}
 #endif
 
 	SDL_Surface* next_surface =
-		SDL_CreateSurface(world_w_, world_h_, SDL_PIXELFORMAT_ARGB8888);
+		SDL_CreateSurface(target_w, target_h, SDL_PIXELFORMAT_ARGB8888);
 	SDL_Texture* next_texture = next_surface != nullptr
 		? SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
-		                    SDL_TEXTUREACCESS_STREAMING, world_w_, world_h_)
+		                    SDL_TEXTUREACCESS_STREAMING,
+		                    target_w, target_h)
 		: nullptr;
 	if (next_surface == nullptr || next_texture == nullptr)
 	{
 		LogError("Gameplay UI overlay allocation failed for {}x{}: {}\n",
-		         world_w_, world_h_, SDL_GetError());
+		         target_w, target_h, SDL_GetError());
 		SDL_DestroyTexture(next_texture);
 		SDL_DestroySurface(next_surface);
-		gameplay_ui_failed_w_ = world_w_;
-		gameplay_ui_failed_h_ = world_h_;
+		gameplay_ui_failed_w_ = target_w;
+		gameplay_ui_failed_h_ = target_h;
 		return false;
 	}
 
@@ -1573,7 +1627,8 @@ void Screen::swap(int x, int y, int w, int h)
 	{
 		publish_canvas_diagnostics(
 			zoom_steps_, world_w_, world_h_, static_cast<int>(world_scale_.mode),
-			last_world_present_used_render2_, smart_present_suppressed_);
+			last_world_present_used_render2_, smart_present_suppressed_,
+			gameplay_ui_w(), gameplay_ui_h());
 		gameplay_ui_capture_valid_ = composite_gameplay_ui;
 		gameplay_ui_frame_active_ = false;
 		set_active_canvas(active_);

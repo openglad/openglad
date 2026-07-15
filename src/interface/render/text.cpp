@@ -287,7 +287,10 @@ Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter, unsigned char color,
 	auto char_span = safe_glyph_span(letters, static_cast<unsigned char>(letter));
 	if (char_span.empty())
 		return 0;
-	og::runtime::current_session->myscreen_->walkputbuffertext(x, y, sizex, sizey, 0, 0, 319,199, char_span, color);
+	screen* const output = og::runtime::current_session->myscreen_;
+	output->walkputbuffertext(
+		x, y, sizex, sizey, 0, 0,
+		output->canvas_w(), output->canvas_h(), char_span, color);
 	//myscreen->buffer_to_screen(x, y, sizex + 4 - (sizex%4), sizey + 4 - (sizey%4) );
 	return 1;
 }
@@ -300,7 +303,11 @@ Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter, short to_buffer)
 	auto char_span = safe_glyph_span(letters, static_cast<unsigned char>(letter));
 	if (char_span.empty())
 		return 0;
-	og::runtime::current_session->myscreen_->walkputbuffertext(x, y, sizex, sizey, 0, 0, 319,199, char_span, static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
+	screen* const output = og::runtime::current_session->myscreen_;
+	output->walkputbuffertext(
+		x, y, sizex, sizey, 0, 0,
+		output->canvas_w(), output->canvas_h(), char_span,
+		static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
 	//myscreen->buffer_to_screen(x, y, sizex + 4 - (sizex%4), sizey + 4 - (sizey%4) );
 	return 1;
 }
@@ -319,7 +326,11 @@ Sint32 text::write_char_xy_alpha(Sint32 x, Sint32 y, char letter, unsigned char 
 	auto char_span = safe_glyph_span(letters, static_cast<unsigned char>(letter));
 	if (char_span.empty())
 		return 0;
-	og::runtime::current_session->myscreen_->walkputbuffertext_alpha(x, y, sizex, sizey, 0, 0, 319,199, char_span, color, alpha);
+	screen* const output = og::runtime::current_session->myscreen_;
+	output->walkputbuffertext_alpha(
+		x, y, sizex, sizey, 0, 0,
+		output->canvas_w(), output->canvas_h(),
+		char_span, color, alpha);
 	return 1;
 }
 

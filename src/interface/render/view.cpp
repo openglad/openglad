@@ -935,10 +935,11 @@ bool viewscreen::redraw()
 	// "effects" weather — off touches zero pixels).
 	draw_cloud_overlay(this, vworld);
 	topx = unshaken_topx; topy = unshaken_topy; // undo the shake
-	// Gameplay chrome is composited nearest after the smart-smoothed scenery.
-	// On classic/nearest and scaler-fallback frames this scope aliases World.
+	// Gameplay chrome is composited nearest after the zoomed/filtered scenery.
+	// On the exact classic path or an allocation fallback this aliases World.
 	{
 		ScopedGameplayUiCanvas gameplay_ui(*active_screen());
+		ScopedGameplayUiViewLayout gameplay_ui_layout(*this, *active_screen());
 		//moved here to put the radar on top of obs
 		if (controlob && !controlob->dead() && controlob->user() == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
 			myradar->draw();
@@ -1201,6 +1202,7 @@ bool viewscreen::redraw(LevelRuntimeData* data, bool draw_radar)
 	topx = unshaken_topx; topy = unshaken_topy; // undo the shake
 	{
 		ScopedGameplayUiCanvas gameplay_ui(*active_screen());
+		ScopedGameplayUiViewLayout gameplay_ui_layout(*this, *active_screen());
 		//moved here to put the radar on top of obs
 		if (draw_radar && controlob && !controlob->dead() && controlob->user() == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
 			myradar->draw(data);
@@ -1767,18 +1769,99 @@ void viewscreen::resize(short x, short y, short length, short height)
 
 void viewscreen::resize(char whatmode)
 {
-	// The pane geometry is a pure function of the WORLD canvas dimensions
-	// (compute_view_layout reproduces the historical hardcoded 320x200 table
-	// verbatim at the default canvas — see view_layout.h for the formulas
-	// and the chrome-inset rationale).
-	const og::view_layout::ViewLayout r = og::view_layout::compute_view_layout(
-	    active_screen()->numviews, mynum, whatmode,
+	// Define chrome once in the stable zoom-1.0 gameplay-UI space, then project
+	// its rectangle into the zoomed World canvas. Shared edges stay shared even
+	// at non-integer ratios (project_view_layout scales rectangle edges).
+	const int ui_w = active_screen()->gameplay_ui_canvas_w();
+	const int ui_h = active_screen()->gameplay_ui_canvas_h();
+	const og::view_layout::ViewLayout baseline =
+	    og::view_layout::compute_view_layout(
+	        active_screen()->numviews, mynum, whatmode, ui_w, ui_h);
+	const og::view_layout::ViewLayout r = og::view_layout::project_view_layout(
+	    baseline, ui_w, ui_h,
 	    active_screen()->world_canvas_w(), active_screen()->world_canvas_h());
 	if (!r.applies)
 		return; // no table entry for this numviews/mynum: keep the old geometry
 	resize(static_cast<short>(r.x), static_cast<short>(r.y),
 	       static_cast<short>(r.w), static_cast<short>(r.h));
 } // end of resize(whatmode)
+
+std::pair<Sint32, Sint32>
+viewscreen::project_world_point_to_gameplay_ui(float x, float y) const
+{
+	const screen* const output = active_screen();
+	if (output == nullptr || xview <= 0 || yview <= 0)
+		return {static_cast<Sint32>(x), static_cast<Sint32>(y)};
+	// If the fixed overlay allocation failed, GameplayUI deliberately aliases
+	// the full World surface. Keep world-screen coordinates in that fallback;
+	// projecting into the unavailable smaller canvas would bunch HUD effects
+	// into its upper-left portion.
+	if (output->canvas_w() != output->gameplay_ui_canvas_w() ||
+	    output->canvas_h() != output->gameplay_ui_canvas_h())
+	{
+		return {static_cast<Sint32>(x), static_cast<Sint32>(y)};
+	}
+	const og::view_layout::ViewLayout ui =
+		og::view_layout::compute_view_layout(
+			output->numviews, mynum, prefs[PREF_VIEW],
+			output->gameplay_ui_canvas_w(), output->gameplay_ui_canvas_h());
+	if (!ui.applies)
+		return {static_cast<Sint32>(x), static_cast<Sint32>(y)};
+
+	const float projected_x = static_cast<float>(ui.x) +
+		(x - static_cast<float>(xloc)) * static_cast<float>(ui.w) /
+		static_cast<float>(xview);
+	const float projected_y = static_cast<float>(ui.y) +
+		(y - static_cast<float>(yloc)) * static_cast<float>(ui.h) /
+		static_cast<float>(yview);
+	return {static_cast<Sint32>(projected_x),
+	        static_cast<Sint32>(projected_y)};
+}
+
+ScopedGameplayUiViewLayout::ScopedGameplayUiViewLayout(
+	viewscreen& view, const video& output)
+	: view_(view)
+{
+	// An allocation fallback aliases GameplayUI to the differently-sized World
+	// surface; applying UI coordinates there would make the fallback less safe.
+	if (output.canvas_w() != output.gameplay_ui_canvas_w() ||
+	    output.canvas_h() != output.gameplay_ui_canvas_h())
+	{
+		return;
+	}
+	const og::view_layout::ViewLayout ui =
+		og::view_layout::compute_view_layout(
+			active_screen()->numviews, view_.mynum, view_.prefs[PREF_VIEW],
+			output.gameplay_ui_canvas_w(), output.gameplay_ui_canvas_h());
+	if (!ui.applies)
+		return;
+
+	xloc_ = view_.xloc;
+	yloc_ = view_.yloc;
+	xview_ = view_.xview;
+	yview_ = view_.yview;
+	endx_ = view_.endx;
+	endy_ = view_.endy;
+	view_.xloc = ui.x;
+	view_.yloc = ui.y;
+	view_.xview = ui.w;
+	view_.yview = ui.h;
+	view_.endx = ui.x + ui.w;
+	view_.endy = ui.y + ui.h;
+	applied_ = true;
+}
+
+ScopedGameplayUiViewLayout::~ScopedGameplayUiViewLayout()
+{
+	if (!applied_)
+		return;
+	view_.xloc = xloc_;
+	view_.yloc = yloc_;
+	view_.xview = xview_;
+	view_.yview = yview_;
+	view_.endx = endx_;
+	view_.endy = endy_;
+}
 
 unsigned char compute_hp_color(float hp, float maxhp)
 {

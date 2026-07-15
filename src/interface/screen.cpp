@@ -1278,9 +1278,9 @@ void screen::clear()
 bool screen::redraw()
 {
 	short i;
-	// SAI/Eagle frames reserve a transparent gameplay-chrome layer before
-	// any view draws. Radar/messages/HUD scopes alias straight back to World
-	// on the classic/nearest and resource-fallback paths.
+	// Reserve the stable classic-density gameplay-chrome layer before any view
+	// draws. At exact classic dimensions with nearest rendering, and on an
+	// allocation fallback, the HUD scopes safely alias World.
 	begin_gameplay_frame();
 	draw_panel_chrome(numviews);
 	// Advance all render-only effect state (weather drift, ripple/trail/dust
@@ -1599,6 +1599,8 @@ void screen::draw_panel_chrome(short howmany)
 	short i;
 	ScopedGameplayUiCanvas gameplay_ui(*this);
 	for (i=0; i < numviews; i++)
+	{
+		ScopedGameplayUiViewLayout gameplay_ui_layout(*viewob[i], *this);
 		if ( (viewob[i]->prefs[PREF_VIEW] == PREF_VIEW_FULL) ||
 		        numviews == 4 )
 			; // do nothing
@@ -1609,6 +1611,7 @@ void screen::draw_panel_chrome(short howmany)
 			draw_box(viewob[i]->xloc-1, viewob[i]->yloc-1,
 			             viewob[i]->endx, viewob[i]->endy, 0, 0,1);
 		}
+	}
 }
 
 // Uses pixel coordinates

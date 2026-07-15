@@ -16,6 +16,8 @@ const {
 // to avoid false negatives from highly compressible scenes.
 const MIN_NON_TRIVIAL_PNG_BYTES = 2_000;
 const IGNORED_RUNTIME_ERROR_PATTERNS = [/get_asset_path: readlink\(\/proc\/self\/exe\) failed/];
+const WORLD_CANVAS_PIXEL_BUDGET = 8_388_608;
+const SMART_SCALE_SCRATCH_PIXEL_BUDGET = 4_096_000;
 
 function attachRuntimeErrorCollectors(page, errors) {
   page.on('pageerror', (err) => {
@@ -48,6 +50,169 @@ function assertNoRuntimeErrors(errors, context) {
 async function getCanvasScreenshot(page) {
   const canvas = page.locator('#canvas');
   return await canvas.screenshot();
+}
+
+async function getCanvasSizing(canvas) {
+  return await canvas.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return {
+      backingWidth: element.width,
+      backingHeight: element.height,
+      renderedCssWidth: rect.width,
+      renderedCssHeight: rect.height,
+      devicePixelRatio: window.devicePixelRatio,
+    };
+  });
+}
+
+function assertCanvasBackingMatchesRenderedCss(size) {
+  expect(size.renderedCssWidth).toBeGreaterThan(0);
+  expect(size.renderedCssHeight).toBeGreaterThan(0);
+  expect(
+    Math.abs(size.backingWidth - size.renderedCssWidth * size.devicePixelRatio),
+  ).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(size.backingHeight - size.renderedCssHeight * size.devicePixelRatio),
+  ).toBeLessThanOrEqual(1);
+  expect(size.backingWidth / size.backingHeight).toBeCloseTo(
+    size.renderedCssWidth / size.renderedCssHeight,
+    2,
+  );
+}
+
+async function waitForCanvasBackingToMatchRenderedCss(canvas) {
+  await expect
+    .poll(async () => {
+      const size = await getCanvasSizing(canvas);
+      return (
+        Math.abs(
+          size.backingWidth - size.renderedCssWidth * size.devicePixelRatio,
+        ) <= 1 &&
+        Math.abs(
+          size.backingHeight - size.renderedCssHeight * size.devicePixelRatio,
+        ) <= 1
+      );
+    })
+    .toBe(true);
+  const size = await getCanvasSizing(canvas);
+  assertCanvasBackingMatchesRenderedCss(size);
+  return size;
+}
+
+async function assertZoomOneWorldMatchesRenderedCss(page, size) {
+  await expect
+    .poll(async () => {
+      const diagnostics = await page.evaluate(
+        () => window.__opengladCanvasDiagnostics,
+      );
+      return Boolean(
+        diagnostics &&
+          diagnostics.zoom_steps === 10 &&
+          Math.abs(diagnostics.world_width - size.renderedCssWidth) <= 4 &&
+          Math.abs(diagnostics.world_height - size.renderedCssHeight) <= 1,
+      );
+    })
+    .toBe(true);
+  const latestDiagnostics = await page.evaluate(
+    () => window.__opengladCanvasDiagnostics,
+  );
+
+  // Zoom 1.0 follows CSS-logical pixels. Width rounds down to a multiple of
+  // four in compute_zoom_canvas_dims(); height keeps its integer CSS size.
+  expect(
+    Math.abs(latestDiagnostics.world_width - size.renderedCssWidth),
+  ).toBeLessThanOrEqual(4);
+  expect(
+    Math.abs(latestDiagnostics.world_height - size.renderedCssHeight),
+  ).toBeLessThanOrEqual(1);
+  expect(
+    latestDiagnostics.world_width / latestDiagnostics.world_height,
+  ).toBeCloseTo(size.renderedCssWidth / size.renderedCssHeight, 2);
+}
+
+function computeZoomCanvasDims(logicalWidth, logicalHeight, zoomSteps) {
+  const steps = Math.max(1, Math.min(10, zoomSteps));
+  const scaledWidth = Math.floor(Math.max(320, logicalWidth) * 10 / steps);
+  return {
+    width: scaledWidth - scaledWidth % 4,
+    height: Math.floor(Math.max(200, logicalHeight) * 10 / steps),
+  };
+}
+
+function deepestSafeZoomSteps(logicalWidth, logicalHeight, maxTextureSize) {
+  for (let steps = 1; steps <= 10; ++steps) {
+    const dims = computeZoomCanvasDims(logicalWidth, logicalHeight, steps);
+    const fitsTexture =
+      !maxTextureSize ||
+      (dims.width <= maxTextureSize && dims.height <= maxTextureSize);
+    if (fitsTexture && dims.width * dims.height <= WORLD_CANVAS_PIXEL_BUDGET) {
+      return steps;
+    }
+  }
+  return 10;
+}
+
+function deepestSmartZoomSteps(
+  logicalWidth,
+  logicalHeight,
+  minimumZoomSteps,
+  maxTextureSize,
+) {
+  for (let steps = minimumZoomSteps; steps <= 10; ++steps) {
+    const dims = computeZoomCanvasDims(logicalWidth, logicalHeight, steps);
+    const smartWidth = dims.width * 2;
+    const smartHeight = dims.height * 2;
+    const fitsTexture =
+      !maxTextureSize ||
+      (smartWidth <= maxTextureSize && smartHeight <= maxTextureSize);
+    if (
+      fitsTexture &&
+      smartWidth * smartHeight <= SMART_SCALE_SCRATCH_PIXEL_BUDGET
+    ) {
+      return steps;
+    }
+  }
+  return 10;
+}
+
+async function getWebWorldScaleContract(page) {
+  const canvas = page.locator('#canvas');
+  const size = await waitForCanvasBackingToMatchRenderedCss(canvas);
+  const logicalWidth = Math.round(size.renderedCssWidth);
+  const logicalHeight = Math.round(size.renderedCssHeight);
+  const baselineDims = computeZoomCanvasDims(logicalWidth, logicalHeight, 10);
+  await expect
+    .poll(() => page.evaluate(() => window.__opengladCanvasDiagnostics))
+    .toMatchObject({
+      zoom_steps: 10,
+      world_width: baselineDims.width,
+      world_height: baselineDims.height,
+    });
+
+  const maxTextureSize = await page.evaluate(() => {
+    const gl = window.Module && (window.Module.GLctx || window.Module.ctx);
+    return gl ? gl.getParameter(gl.MAX_TEXTURE_SIZE) : 0;
+  });
+  const minimumZoomSteps = deepestSafeZoomSteps(
+    logicalWidth,
+    logicalHeight,
+    maxTextureSize,
+  );
+  const minimumSmartZoomSteps = deepestSmartZoomSteps(
+    logicalWidth,
+    logicalHeight,
+    minimumZoomSteps,
+    maxTextureSize,
+  );
+
+  return {
+    logicalWidth,
+    logicalHeight,
+    baselineDims,
+    maxTextureSize,
+    minimumZoomSteps,
+    minimumSmartZoomSteps,
+  };
 }
 
 async function movePointerOffCanvas(page, box) {
@@ -190,15 +355,14 @@ test.describe('Game Loading', () => {
     await waitForGameLoad(page);
     assertNoRuntimeErrors(errors, 'load completion');
 
-    // Desktop defaults request fullscreen and a 640x400 remembered window,
-    // but the browser deliberately ignores both. Keep the actual WebGL
-    // backing on the classic logical size so CSS scaling does not multiply
-    // the software-rendering cost.
-    const backingSize = await canvas.evaluate((element) => ({
-      width: element.width,
-      height: element.height,
-    }));
-    expect(backingSize).toEqual({ width: 320, height: 200 });
+    // Keep the backing aligned with the shell's fitted 16:10 CSS size. A
+    // smaller fixed backing makes the browser upscale and blur every frame.
+    const initialSize = await waitForCanvasBackingToMatchRenderedCss(canvas);
+    expect(initialSize.renderedCssWidth / initialSize.renderedCssHeight).toBeCloseTo(
+      1.6,
+      5,
+    );
+    await assertZoomOneWorldMatchesRenderedCss(page, initialSize);
 
     // Loading overlay should be hidden after initialization
     const loading = page.locator('#loading');
@@ -214,6 +378,50 @@ test.describe('Game Loading', () => {
 
     // No runtime errors should have occurred
     assertNoRuntimeErrors(errors, 'post-load assertions');
+  });
+
+  test('HiDPI recovery keeps physical backing and CSS-logical world sizing', async ({
+    browser,
+    baseURL,
+  }) => {
+    const context = await browser.newContext({
+      baseURL,
+      viewport: { width: 800, height: 600 },
+      deviceScaleFactor: 2,
+    });
+    const page = await context.newPage();
+    const errors = [];
+    attachRuntimeErrorCollectors(page, errors);
+
+    try {
+      await page.goto('/play.html');
+      await waitForGameLoad(page);
+
+      const canvas = page.locator('#canvas');
+      const initialSize = await waitForCanvasBackingToMatchRenderedCss(canvas);
+      expect(initialSize.devicePixelRatio).toBe(2);
+      expect(
+        initialSize.renderedCssWidth / initialSize.renderedCssHeight,
+      ).toBeCloseTo(1.6, 5);
+      await assertZoomOneWorldMatchesRenderedCss(page, initialSize);
+
+      await canvas.evaluate((element) => {
+        element.width = 1272;
+        element.height = 573;
+        window.dispatchEvent(new Event('resize'));
+      });
+      const recoveredSize = await waitForCanvasBackingToMatchRenderedCss(canvas);
+      expect(recoveredSize.backingWidth).toBe(
+        Math.round(recoveredSize.renderedCssWidth * 2),
+      );
+      expect(recoveredSize.backingHeight).toBe(
+        Math.round(recoveredSize.renderedCssHeight * 2),
+      );
+      await assertZoomOneWorldMatchesRenderedCss(page, recoveredSize);
+      assertNoRuntimeErrors(errors, 'HiDPI canvas recovery');
+    } finally {
+      await context.close();
+    }
   });
 
   test('canvas renders game content', async ({ page }) => {
@@ -250,6 +458,106 @@ test.describe('Game Loading', () => {
     });
 
     expect(hasWebGL).toBe(true);
+  });
+
+  test('post-boot resize recovery restores the CSS-fitted canvas backing', async ({ page }) => {
+    const errors = [];
+    attachRuntimeErrorCollectors(page, errors);
+
+    await page.goto('/play.html');
+    await waitForGameLoad(page);
+
+    const restoreExportAvailable = await page.evaluate(() => {
+      const canvas = document.getElementById('canvas');
+      if (!canvas) {
+        throw new Error('Canvas is unavailable');
+      }
+
+      const available =
+        typeof Module._openglad_web_restore_canvas_backing === 'function';
+
+      // Model SDL3's fullscreen-exit race deterministically. The post-boot
+      // listener must run after the other resize listeners and restore both
+      // the fitted backing and the CSS presentation size in this same event.
+      canvas.width = 1272;
+      canvas.height = 573;
+      window.dispatchEvent(new Event('resize'));
+      return available;
+    });
+
+    expect(restoreExportAvailable).toBe(true);
+    const recoveredSize = await waitForCanvasBackingToMatchRenderedCss(
+      page.locator('#canvas'),
+    );
+    expect(
+      recoveredSize.renderedCssWidth / recoveredSize.renderedCssHeight,
+    ).toBeCloseTo(1.6, 5);
+    await assertZoomOneWorldMatchesRenderedCss(page, recoveredSize);
+
+    await waitForRenderedFrames(page, 4);
+    expect(hasVisualContent(await getCanvasScreenshot(page))).toBe(true);
+    assertNoRuntimeErrors(errors, 'post-boot canvas resize recovery');
+  });
+
+  test('DOM fullscreen exit restores canvas backing and focus', async ({
+    page,
+  }) => {
+    const errors = [];
+    attachRuntimeErrorCollectors(page, errors);
+
+    await page.goto('/play.html');
+    await waitForGameLoad(page);
+
+    const canvas = page.locator('#canvas');
+    const preFullscreenSize = await waitForCanvasBackingToMatchRenderedCss(canvas);
+    expect(
+      preFullscreenSize.renderedCssWidth / preFullscreenSize.renderedCssHeight,
+    ).toBeCloseTo(1.6, 5);
+    await assertZoomOneWorldMatchesRenderedCss(page, preFullscreenSize);
+
+    await canvas.click({ position: { x: 2, y: 2 } });
+    await expect
+      .poll(() => page.evaluate(() => document.activeElement?.id))
+      .toBe('canvas');
+
+    await page.evaluate(() =>
+      document.getElementById('canvas').requestFullscreen(),
+    );
+    await page.waitForFunction(
+      () => document.fullscreenElement?.id === 'canvas',
+    );
+
+    const fullscreenSize = await waitForCanvasBackingToMatchRenderedCss(canvas);
+    await assertZoomOneWorldMatchesRenderedCss(page, fullscreenSize);
+
+    // Headless Chromium does not route CDP-generated Escape through browser
+    // chrome, so use the Fullscreen API to exercise the same exit events that
+    // the browser-reserved physical Escape emits in a real window.
+    await page.evaluate(() => document.exitFullscreen());
+    await page.waitForFunction(() => document.fullscreenElement === null);
+
+    await expect
+      .poll(() =>
+        canvas.evaluate((element) => ({
+          backingWidth: element.width,
+          backingHeight: element.height,
+          focused: document.activeElement === element,
+        })),
+      )
+      .toMatchObject({
+        backingWidth: preFullscreenSize.backingWidth,
+        backingHeight: preFullscreenSize.backingHeight,
+        focused: true,
+      });
+
+    const exitSize = await getCanvasSizing(canvas);
+    assertCanvasBackingMatchesRenderedCss(exitSize);
+    expect(exitSize.renderedCssWidth / exitSize.renderedCssHeight).toBeCloseTo(1.6, 5);
+    await assertZoomOneWorldMatchesRenderedCss(page, exitSize);
+
+    await waitForRenderedFrames(page, 4);
+    expect(hasVisualContent(await getCanvasScreenshot(page))).toBe(true);
+    assertNoRuntimeErrors(errors, 'DOM fullscreen exit recovery');
   });
 });
 
@@ -310,6 +618,7 @@ test.describe('Game Interaction', () => {
     });
     await page.goto('/play.html');
     await waitForGameLoad(page);
+    const scaleContract = await getWebWorldScaleContract(page);
     await openWebDisplayOptions(page);
 
     const defaultZoomLabel = await getCanvasGameRegionScreenshot(
@@ -320,9 +629,9 @@ test.describe('Game Interaction', () => {
       9,
     );
 
-    // Walk 1.0 -> 0.1. Besides updating the fixed DISPLAY menu, the deepest
-    // setting allocates the browser's largest 3200x2000 world canvas.
-    for (let i = 0; i < 9; ++i) {
+    // Walk 1.0 to the deepest step that fits this browser's CSS-logical
+    // window, world-surface budget, and renderer texture limit.
+    for (let i = 0; i < 10 - scaleContract.minimumZoomSteps; ++i) {
       await pressPickerKey(page, 'Control');
     }
     const deepestZoomLabel = await getCanvasGameRegionScreenshot(
@@ -334,23 +643,29 @@ test.describe('Game Interaction', () => {
     );
     expect(deepestZoomLabel.equals(defaultZoomLabel)).toBe(false);
 
-    // Persist 0.1, launch through the normal picker, and prove a real world
-    // frame (not merely the fixed menu canvas) is still published and drawn.
+    const deepestDims = computeZoomCanvasDims(
+      scaleContract.logicalWidth,
+      scaleContract.logicalHeight,
+      scaleContract.minimumZoomSteps,
+    );
+
+    // Persist the resource-safe deepest step, launch through the normal
+    // picker, and prove a real world frame is still published and drawn.
     await leaveWebDisplayOptions(page);
     await startSeededSinglePlayerFromPicker(page, { preStartSettlingMs: 1_000 });
     await waitForGameplayProgress(page, 15_000);
-	// The reported regression was roughly one rendered frame per second.
-	// Require sustained fresh engine samples, not just a single eventual tick.
-	await waitForGameplayRenderSamples(page, 20, 5_000);
-	await expect.poll(async () => page.evaluate(
-	  () => window.__opengladCanvasDiagnostics,
-	)).toMatchObject({
-	  zoom_steps: 1,
-	  world_width: 3200,
-	  world_height: 2000,
-	  smoothing: 'off',
-	  smart_used: false,
-	});
+    // The reported regression was roughly one rendered frame per second.
+    // Require sustained fresh engine samples, not just a single eventual tick.
+    await waitForGameplayRenderSamples(page, 20, 5_000);
+    await expect.poll(async () => page.evaluate(
+      () => window.__opengladCanvasDiagnostics,
+    )).toMatchObject({
+      zoom_steps: scaleContract.minimumZoomSteps,
+      world_width: deepestDims.width,
+      world_height: deepestDims.height,
+      smoothing: 'off',
+      smart_used: false,
+    });
     const deepestGameplay = await getCanvasGameRegionScreenshot(
       page,
       24,
@@ -359,17 +674,17 @@ test.describe('Game Interaction', () => {
       160,
     );
     expect(hasVisualContent(deepestGameplay)).toBe(true);
-    assertNoRuntimeErrors(errors, '0.1 zoom gameplay');
+    assertNoRuntimeErrors(errors, 'resource-safe deepest zoom gameplay');
 
     await restoreDisplayDefaultsDuringGameplay(page, runtimeLogs);
-	await expect.poll(async () => page.evaluate(
-	  () => window.__opengladCanvasDiagnostics,
-	)).toMatchObject({
-	  zoom_steps: 10,
-	  world_width: 320,
-	  world_height: 200,
-	  smoothing: 'off',
-	});
+    await expect.poll(async () => page.evaluate(
+      () => window.__opengladCanvasDiagnostics,
+    )).toMatchObject({
+      zoom_steps: 10,
+      world_width: scaleContract.baselineDims.width,
+      world_height: scaleContract.baselineDims.height,
+      smoothing: 'off',
+    });
     const restoredGameplay = await getCanvasGameRegionScreenshot(
       page,
       24,
@@ -378,7 +693,7 @@ test.describe('Game Interaction', () => {
       160,
     );
     expect(hasVisualContent(restoredGameplay)).toBe(true);
-    assertNoRuntimeErrors(errors, 'deepest-zoom default restore');
+    assertNoRuntimeErrors(errors, 'resource-safe deepest-zoom default restore');
   });
 
   test('web DISPLAY SAI smoothing keeps gameplay live', async ({ page }) => {
@@ -395,6 +710,7 @@ test.describe('Game Interaction', () => {
     });
     await page.goto('/play.html');
     await waitForGameLoad(page);
+    const scaleContract = await getWebWorldScaleContract(page);
     await openWebDisplayOptions(page);
 
     const defaultZoomLabel = await getCanvasGameRegionScreenshot(
@@ -416,48 +732,54 @@ test.describe('Game Interaction', () => {
     const saiLabel = await getCanvasGameRegionScreenshot(page, 125, 130, 82, 9);
     expect(saiLabel.equals(defaultSmoothingLabel)).toBe(false);
 
-    // Return to Zoom and select 0.5. SAI's software scaler is within its work
-    // budget here, so the gameplay assertion covers a real smart-filter pass.
+    // Return to Zoom and select the deepest step whose doubled SAI scratch
+    // fits both the CPU work budget and the renderer texture limit.
     await pressPickerKey(page, 'w');
-    for (let i = 0; i < 5; ++i) {
+    for (let i = 0; i < 10 - scaleContract.minimumSmartZoomSteps; ++i) {
       await pressPickerKey(page, 'Control');
     }
-    const halfZoomLabel = await getCanvasGameRegionScreenshot(
+    const smartZoomLabel = await getCanvasGameRegionScreenshot(
       page,
       125,
       107,
       82,
       9,
     );
-    expect(halfZoomLabel.equals(defaultZoomLabel)).toBe(false);
+    expect(smartZoomLabel.equals(defaultZoomLabel)).toBe(false);
+
+    const smartDims = computeZoomCanvasDims(
+      scaleContract.logicalWidth,
+      scaleContract.logicalHeight,
+      scaleContract.minimumSmartZoomSteps,
+    );
 
     await leaveWebDisplayOptions(page);
     await startSeededSinglePlayerFromPicker(page, { preStartSettlingMs: 1_000 });
     await waitForGameplayProgress(page, 15_000);
-	await waitForGameplayRenderSamples(page, 20, 5_000);
-	await expect.poll(async () => page.evaluate(
-	  () => window.__opengladCanvasDiagnostics,
-	)).toMatchObject({
-	  zoom_steps: 5,
-	  world_width: 640,
-	  world_height: 400,
-	  smoothing: 'sai',
-	  smart_used: true,
-	  smart_suppressed: false,
-	});
+    await waitForGameplayRenderSamples(page, 20, 5_000);
+    await expect.poll(async () => page.evaluate(
+      () => window.__opengladCanvasDiagnostics,
+    )).toMatchObject({
+      zoom_steps: scaleContract.minimumSmartZoomSteps,
+      world_width: smartDims.width,
+      world_height: smartDims.height,
+      smoothing: 'sai',
+      smart_used: true,
+      smart_suppressed: false,
+    });
     const saiGameplay = await getCanvasGameRegionScreenshot(page, 24, 20, 272, 160);
     expect(hasVisualContent(saiGameplay)).toBe(true);
-    assertNoRuntimeErrors(errors, '0.5 zoom with SAI gameplay');
+    assertNoRuntimeErrors(errors, 'resource-safe zoom with SAI gameplay');
 
     await restoreDisplayDefaultsDuringGameplay(page, runtimeLogs);
-	await expect.poll(async () => page.evaluate(
-	  () => window.__opengladCanvasDiagnostics,
-	)).toMatchObject({
-	  zoom_steps: 10,
-	  world_width: 320,
-	  world_height: 200,
-	  smoothing: 'off',
-	});
+    await expect.poll(async () => page.evaluate(
+      () => window.__opengladCanvasDiagnostics,
+    )).toMatchObject({
+      zoom_steps: 10,
+      world_width: scaleContract.baselineDims.width,
+      world_height: scaleContract.baselineDims.height,
+      smoothing: 'off',
+    });
     const restoredGameplay = await getCanvasGameRegionScreenshot(
       page,
       24,

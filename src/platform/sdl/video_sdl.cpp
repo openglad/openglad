@@ -23,6 +23,7 @@
 #include <openglad/resources/gparser.h>
 #include <openglad/core/util.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/screen.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/legacy/base.h>
@@ -41,6 +42,9 @@
 #include <span>
 #include <tuple>
 #include <vector>
+#ifdef __EMSCRIPTEN__
+#include <emscripten/html5.h>
+#endif
 
 namespace og::platform
 {
@@ -126,8 +130,20 @@ static void video_create_display(int windowed_base_w, int windowed_base_h)
 	int requested_h = 400;
 
 #ifdef __EMSCRIPTEN__
-	requested_w = 320;
-	requested_h = 200;
+	double css_w = 0.0;
+	double css_h = 0.0;
+	if (emscripten_get_element_css_size(
+	        "#canvas", &css_w, &css_h) == EMSCRIPTEN_RESULT_SUCCESS &&
+	    std::isfinite(css_w) && std::isfinite(css_h) &&
+	    css_w > 0.0 && css_h > 0.0)
+	{
+		requested_w = std::clamp(
+			static_cast<int>(std::lround(css_w)), 1,
+			kMaxConfiguredDisplayDimension);
+		requested_h = std::clamp(
+			static_cast<int>(std::lround(css_h)), 1,
+			kMaxConfiguredDisplayDimension);
+	}
 #else
 	const std::pair<int, int> boot_res = og::ui::parse_resolution(
 	    cfg.get_setting("graphics", "width"), cfg.get_setting("graphics", "height"));
@@ -140,8 +156,8 @@ static void video_create_display(int windowed_base_w, int windowed_base_h)
 	// would otherwise request a 3840x2160-point window before mode selection.
 #ifdef __EMSCRIPTEN__
 	// The browser page owns fullscreen, and the shipped desktop default still
-	// says "on". Do not let that ignored setting replace the fixed 320x200 web
-	// backing with the persisted desktop Windowed size.
+	// says "on". Do not let that ignored setting replace the browser-owned
+	// logical canvas size with the persisted desktop Windowed size.
 	const bool fullscreen_boot = false;
 #else
 	const bool fullscreen_boot =
@@ -193,6 +209,67 @@ void apply_world_scale_from_cfg()
 	}
 	TRACE("canvas", "zoom steps=%d smoothing=%d canvas=%dx%d", applied_zoom_steps,
 	      static_cast<int>(smoothing), E_Screen->world_w(), E_Screen->world_h());
+}
+
+void restore_web_canvas_backing_size(int logical_w, int logical_h)
+{
+#ifdef __EMSCRIPTEN__
+	if (!E_Screen || !E_Screen->window)
+		return;
+	logical_w = std::clamp(logical_w, 1, kMaxConfiguredDisplayDimension);
+	logical_h = std::clamp(logical_h, 1, kMaxConfiguredDisplayDimension);
+
+	int window_w = 0;
+	int window_h = 0;
+	SDL_GetWindowSize(E_Screen->window, &window_w, &window_h);
+	const bool logical_size_changed =
+		window_w != logical_w || window_h != logical_h;
+	if (logical_size_changed)
+	{
+		SDL_SetWindowSize(E_Screen->window, logical_w, logical_h);
+	}
+
+	int expected_pixel_w = logical_w;
+	int expected_pixel_h = logical_h;
+	SDL_GetWindowSizeInPixels(
+		E_Screen->window, &expected_pixel_w, &expected_pixel_h);
+	int backing_w = 0;
+	int backing_h = 0;
+	if (emscripten_get_canvas_element_size(
+	        "#canvas", &backing_w, &backing_h) == EMSCRIPTEN_RESULT_SUCCESS &&
+	    (backing_w != expected_pixel_w || backing_h != expected_pixel_h))
+	{
+		// Cover a DOM-only mutation too: SDL_SetWindowSize may short-circuit
+		// when its internal logical size was already repaired.
+		emscripten_set_canvas_element_size(
+			"#canvas", expected_pixel_w, expected_pixel_h);
+	}
+
+	const bool session_size_changed =
+		og::runtime::current_session != nullptr &&
+		(og::runtime::current_session->window_w_ != logical_w ||
+		 og::runtime::current_session->window_h_ != logical_h);
+	if (session_size_changed)
+	{
+		og::runtime::current_session->window_w_ =
+			static_cast<float>(logical_w);
+		og::runtime::current_session->window_h_ =
+			static_cast<float>(logical_h);
+		update_overscan_setting();
+	}
+	if (logical_size_changed || session_size_changed)
+	{
+		apply_world_scale_from_cfg();
+		if (og::runtime::current_session != nullptr &&
+		    og::runtime::current_session->myscreen_ != nullptr)
+		{
+			og::runtime::current_session->myscreen_->relayout_views();
+		}
+	}
+#else
+	(void)logical_w;
+	(void)logical_h;
+#endif
 }
 
 static std::pair<int, int> configured_windowed_resolution(
@@ -2703,10 +2780,34 @@ int sdl_video::world_canvas_h() const
 	return E_Screen ? E_Screen->world_h() : kUiCanvasH;
 }
 
+int sdl_video::gameplay_ui_canvas_w() const
+{
+	return E_Screen ? E_Screen->gameplay_ui_w() : kUiCanvasW;
+}
+
+int sdl_video::gameplay_ui_canvas_h() const
+{
+	return E_Screen ? E_Screen->gameplay_ui_h() : kUiCanvasH;
+}
+
+bool sdl_video::gameplay_ui_canvas_available() const
+{
+	return E_Screen ? E_Screen->gameplay_ui_canvas_available() : true;
+}
+
 void sdl_video::set_active_canvas(CanvasTarget target)
 {
 	if (E_Screen)
+	{
+		const bool floor_redirect_active = floor_layer_saved_render_ != nullptr;
 		E_Screen->set_active_canvas(target);
+		// Fixed damage numbers/mini-bars may briefly select GameplayUI while a
+		// faded floor is being assembled. Restoring World must resume drawing
+		// into that off-screen floor layer, not bypass it for the rest of the
+		// entity list. floor_layer_end will restore floor_layer_saved_render_.
+		if (floor_redirect_active && target == CanvasTarget::World && floor_layer_)
+			E_Screen->render = floor_layer_;
+	}
 }
 
 CanvasTarget sdl_video::active_canvas() const
@@ -3415,7 +3516,7 @@ bool sdl_video::save_screenshot()
 			break;
 	}
 
-	// A smart-smoothed gameplay frame is presented as two textures: filtered
+	// A scaled gameplay frame can be presented as two textures: zoomed/filtered
 	// scenery followed by the nearest gameplay-UI overlay. Reproduce that
 	// composition in the saved image instead of silently omitting HUD/radar/
 	// messages. Scaling the overlay to render2's dimensions is explicitly

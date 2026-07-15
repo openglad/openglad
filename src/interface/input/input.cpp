@@ -105,19 +105,65 @@ static inline float active_canvas_h()
     return s ? static_cast<float>(s->canvas_h()) : static_cast<float>(kUiCanvasH);
 }
 
-og::CanvasViewport active_canvas_viewport()
+#ifdef USE_TOUCH_INPUT
+static inline float gameplay_ui_canvas_w()
+{
+    const ::screen* s = og::runtime::current_session->myscreen_;
+    return s ? static_cast<float>(
+                   s->active_canvas() == CanvasTarget::UI
+                       ? s->canvas_w()
+                       : (s->gameplay_ui_canvas_available()
+                              ? s->gameplay_ui_canvas_w()
+                              : s->world_canvas_w()))
+             : static_cast<float>(kUiCanvasW);
+}
+
+static inline float gameplay_ui_canvas_h()
+{
+    const ::screen* s = og::runtime::current_session->myscreen_;
+    return s ? static_cast<float>(
+                   s->active_canvas() == CanvasTarget::UI
+                       ? s->canvas_h()
+                       : (s->gameplay_ui_canvas_available()
+                              ? s->gameplay_ui_canvas_h()
+                              : s->world_canvas_h()))
+             : static_cast<float>(kUiCanvasH);
+}
+#endif
+
+static og::CanvasViewport canvas_viewport(float canvas_w, float canvas_h)
 {
     const auto* session = og::runtime::current_session;
     if (session == nullptr)
         return {0, 0, kUiCanvasW, kUiCanvasH};
     return og::fit_canvas_in_viewport(
-        static_cast<int>(active_canvas_w()),
-        static_cast<int>(active_canvas_h()),
+        static_cast<int>(canvas_w), static_cast<int>(canvas_h),
         static_cast<int>(session->viewport_offset_x_),
         static_cast<int>(session->viewport_offset_y_),
         static_cast<int>(session->viewport_w_),
         static_cast<int>(session->viewport_h_));
 }
+
+og::CanvasViewport active_canvas_viewport()
+{
+    return canvas_viewport(active_canvas_w(), active_canvas_h());
+}
+
+#ifdef USE_TOUCH_INPUT
+static og::CanvasViewport gameplay_ui_canvas_viewport()
+{
+    const ::screen* s = og::runtime::current_session->myscreen_;
+    if (s == nullptr || s->active_canvas() == CanvasTarget::UI)
+        return active_canvas_viewport();
+
+    // GameplayUI is composited into the World's exact destination rectangle.
+    // Map touches through that same rect, then scale into the fixed overlay;
+    // deriving another fitted rect from the rounded UI aspect can differ by a
+    // pixel on widescreen/tall viewports.
+    return canvas_viewport(static_cast<float>(s->world_canvas_w()),
+                           static_cast<float>(s->world_canvas_h()));
+}
+#endif
 
 bool window_point_in_active_canvas(float x, float y)
 {
@@ -136,6 +182,26 @@ std::pair<float, float> window_to_active_canvas(float x, float y)
     return {(x - static_cast<float>(viewport.x)) * active_canvas_w() / w,
             (y - static_cast<float>(viewport.y)) * active_canvas_h() / h};
 }
+
+#ifdef USE_TOUCH_INPUT
+static bool window_point_in_gameplay_ui_canvas(float x, float y)
+{
+    const og::CanvasViewport viewport = gameplay_ui_canvas_viewport();
+    return x >= static_cast<float>(viewport.x) &&
+           y >= static_cast<float>(viewport.y) &&
+           x < static_cast<float>(viewport.x + viewport.w) &&
+           y < static_cast<float>(viewport.y + viewport.h);
+}
+
+static std::pair<float, float> window_to_gameplay_ui_canvas(float x, float y)
+{
+    const og::CanvasViewport viewport = gameplay_ui_canvas_viewport();
+    const float w = static_cast<float>(std::max(1, viewport.w));
+    const float h = static_cast<float>(std::max(1, viewport.h));
+    return {(x - static_cast<float>(viewport.x)) * gameplay_ui_canvas_w() / w,
+            (y - static_cast<float>(viewport.y)) * gameplay_ui_canvas_h() / h};
+}
+#endif
 
 std::pair<float, float> active_canvas_to_window(float x, float y)
 {
@@ -422,14 +488,14 @@ void handle_mouse_event(const void* native_event)
         // Mouse event
     case og::input_native::EventType::FingerMotion:
         {
-            const auto [mapped_x, mapped_y] = window_to_active_canvas(
+            const auto [mapped_x, mapped_y] = window_to_gameplay_ui_canvas(
                 event.finger_x * og::runtime::current_session->window_w_,
                 event.finger_y * og::runtime::current_session->window_h_);
             int x = static_cast<int>(mapped_x);
             int y = static_cast<int>(mapped_y);
             const TouchControlLayout layout = touch_control_layout(
-                static_cast<int>(active_canvas_w()),
-                static_cast<int>(active_canvas_h()));
+                static_cast<int>(gameplay_ui_canvas_w()),
+                static_cast<int>(gameplay_ui_canvas_h()));
         
         og::runtime::current_session->scroll_amount_ = y - mouse_state.y;
         
@@ -489,14 +555,14 @@ void handle_mouse_event(const void* native_event)
         break;
     case og::input_native::EventType::FingerUp:
         {
-            const auto [mapped_x, mapped_y] = window_to_active_canvas(
+            const auto [mapped_x, mapped_y] = window_to_gameplay_ui_canvas(
                 event.finger_x * og::runtime::current_session->window_w_,
                 event.finger_y * og::runtime::current_session->window_h_);
             int x = static_cast<int>(mapped_x);
             int y = static_cast<int>(mapped_y);
             const TouchControlLayout layout = touch_control_layout(
-                static_cast<int>(active_canvas_w()),
-                static_cast<int>(active_canvas_h()));
+                static_cast<int>(gameplay_ui_canvas_w()),
+                static_cast<int>(gameplay_ui_canvas_h()));
             if(hw().tapping)
             {
                 hw().tapping = false;
@@ -537,17 +603,17 @@ void handle_mouse_event(const void* native_event)
                 event.finger_x * og::runtime::current_session->window_w_;
             const float window_y =
                 event.finger_y * og::runtime::current_session->window_h_;
-            if (!window_point_in_active_canvas(window_x, window_y))
+            if (!window_point_in_gameplay_ui_canvas(window_x, window_y))
                 break;
             hw().tapping = true;
 
-            const auto [mapped_x, mapped_y] = window_to_active_canvas(
+            const auto [mapped_x, mapped_y] = window_to_gameplay_ui_canvas(
                 window_x, window_y);
             int x = static_cast<int>(mapped_x);
             int y = static_cast<int>(mapped_y);
             const TouchControlLayout layout = touch_control_layout(
-                static_cast<int>(active_canvas_w()),
-                static_cast<int>(active_canvas_h()));
+                static_cast<int>(gameplay_ui_canvas_w()),
+                static_cast<int>(gameplay_ui_canvas_h()));
             
             hw().start_tap_x = x;
             hw().start_tap_y = y;

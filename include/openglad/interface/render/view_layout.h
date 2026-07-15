@@ -16,6 +16,8 @@
  */
 #pragma once
 
+#include <cstdint>
+
 // Pure viewscreen layout math, parameterized on the WORLD canvas dimensions.
 //
 // This generalizes the historical hardcoded 320x200 viewscreen tables
@@ -149,6 +151,51 @@ inline ViewLayout compute_view_layout(int numviews, int mynum, int mode,
                     half_h};
         }
     }
+}
+
+// Project a gameplay-UI layout from its baseline canvas into a differently
+// sized world canvas. Each rectangle edge is projected independently instead
+// of scaling x/y/w/h, so adjacent rectangles that share an edge continue to
+// share it after integer rounding. Flooring is intentional and deterministic;
+// the source canvas's far edge still maps exactly to the destination edge.
+//
+// A non-applying or malformed source layout cannot describe a rectangle to
+// project, so it remains non-applying. Intermediate arithmetic is widened to
+// keep ordinary int canvas dimensions from overflowing during multiplication.
+inline ViewLayout project_view_layout(const ViewLayout& baseline,
+                                      int baseline_canvas_w,
+                                      int baseline_canvas_h,
+                                      int world_canvas_w, int world_canvas_h)
+{
+    if (!baseline.applies || baseline_canvas_w <= 0 || baseline_canvas_h <= 0 ||
+        world_canvas_w <= 0 || world_canvas_h <= 0 || baseline.x < 0 ||
+        baseline.y < 0 || baseline.w < 0 || baseline.h < 0)
+    {
+        return {};
+    }
+
+    const std::int64_t right =
+        static_cast<std::int64_t>(baseline.x) + baseline.w;
+    const std::int64_t bottom =
+        static_cast<std::int64_t>(baseline.y) + baseline.h;
+    if (right > baseline_canvas_w || bottom > baseline_canvas_h)
+        return {};
+
+    const auto project_edge = [](std::int64_t edge, int baseline_extent,
+                                 int world_extent) {
+        return static_cast<int>(edge * static_cast<std::int64_t>(world_extent) /
+                                baseline_extent);
+    };
+
+    const int left =
+        project_edge(baseline.x, baseline_canvas_w, world_canvas_w);
+    const int top =
+        project_edge(baseline.y, baseline_canvas_h, world_canvas_h);
+    const int projected_right =
+        project_edge(right, baseline_canvas_w, world_canvas_w);
+    const int projected_bottom =
+        project_edge(bottom, baseline_canvas_h, world_canvas_h);
+    return {true, left, top, projected_right - left, projected_bottom - top};
 }
 
 } // namespace og::view_layout

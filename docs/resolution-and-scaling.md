@@ -7,14 +7,14 @@ OpenGlad renders three logical layers:
 * The **UI canvas** contains menus, the picker, the intro, help screens,
   dialogs, and results. It remains 320x200 and always uses nearest-neighbor
   presentation.
-* When SAI or Eagle can run, a transparent **gameplay UI layer** holds pane
-  chrome, the HUD, radar, messages, touch controls, mini health bars, and
-  damage or healing numbers. It is composited with nearest-neighbor sampling
-  after the scenery filter.
+* A transparent **gameplay UI layer** holds pane chrome, the HUD, radar,
+  messages, touch controls, mini health bars, and damage or healing numbers.
+  It retains classic pixel density, matches the zoom-1 world aspect, and is
+  composited with nearest-neighbor sampling after the zoomed scenery.
 
 At a 320x200 logical window, `zoom: 1.0` with smoothing off can share the
-historical world/UI surface and texture. Larger windows use a separate,
-window-sized world canvas while the fixed UI remains 320x200.
+historical surface and texture. Larger windows use a window-sized world
+canvas, a classic-density gameplay UI, and the separate fixed menu UI.
 
 ## Graphics settings
 
@@ -124,12 +124,18 @@ Resizing the window or completing a fullscreen transition recomputes the
 world canvas and viewscreen layout. Rendering cost therefore follows both the
 window size and the selected zoom.
 
+Gameplay chrome does not inherit the world resolution or zoom. Its baseline
+starts at 320x200 and expands the short axis to match the zoom-1 world aspect:
+16:10 uses 320x200, 16:9 uses approximately 356x200, and 4:3 uses 320x240.
+That keeps bitmap text and HUD controls at their historical readable density
+while the world uses the display's available logical resolution.
+
 ## Aspect ratio and pointer mapping
 
 Every active canvas is aspect-fitted inside the overscan viewport. A
-window-derived world canvas normally fills the viewport; the fixed 320x200 UI
-is centered with black pillarbox or letterbox bars when the display has a
-different aspect ratio. Neither layer is stretched out of shape.
+window-derived world canvas normally fills the viewport; the fixed menu UI is
+centered with black pillarbox or letterbox bars. The aspect-expanded gameplay
+UI follows the world destination without visibly distorting its pixels.
 
 Mouse and touch coordinates use the same fitted rectangle as presentation:
 
@@ -138,9 +144,10 @@ canvas position = (window position - fitted viewport offset)
                   * canvas size / fitted viewport size
 ```
 
-Menus retain their 320x200 pointer space, while gameplay maps into the
-selected world canvas. Overscan changes the available viewport rectangle but
-not either logical coordinate system.
+Menus retain their 320x200 pointer space. Ordinary gameplay mouse coordinates
+map into World; touch controls map into the stable gameplay-UI space so their
+hit targets do not move or shrink with zoom. Overscan changes the available
+viewport rectangle but not these logical coordinate systems.
 
 ## Smoothing and bounded fallbacks
 
@@ -198,13 +205,14 @@ are saved when OPTIONS exits, and RESTORE DEFAULTS returns them to 1.0 and
 
 ## Layout and fixed-coordinate screens
 
-Pane geometry is a pure function of the world-canvas dimensions
-(`og::view_layout::compute_view_layout`). One player uses the full canvas,
+Pane geometry begins in the stable gameplay-UI canvas
+(`og::view_layout::compute_view_layout`) and its rectangle edges are projected
+into World (`og::view_layout::project_view_layout`). One player uses the full canvas,
 two players use side-by-side halves, three players use a full-height left pane
 and a split right half in FULL mode, and four players use quadrants. Split
-panes retain a two-pixel seam. The `PREF_VIEW` chrome insets and HUD blocks
-keep their fixed pixel sizes. At 320x200 the formulas reproduce the historical
-tables exactly.
+panes retain a two-pixel UI seam. This paired layout keeps world clipping
+aligned with fixed-size chrome at fractional zoom. At 320x200 the formulas
+reproduce the historical tables exactly.
 
 The level editor still uses absolute 320x200 coordinates for its panel
 chrome, so it temporarily pins the world canvas to 320x200 and restores the
@@ -218,11 +226,17 @@ world frame and restore world routing when they close.
 ## Emscripten
 
 Zoom and world smoothing use the same code path in native and Emscripten
-builds. The browser backing window remains 320x200 and CSS controls its
-displayed size. Zoom 1.0 therefore uses a 320x200 world canvas in the browser;
-lower values enlarge that canvas before it is presented into the backing
-window. Native resolution and display-mode controls remain unavailable in the
-browser.
+builds. The page chooses an integral CSS-logical canvas size that fits the
+browser viewport. Zoom 1.0 uses that logical size for World, while SDL's
+high-density output keeps the physical WebGL backing at device-pixel
+resolution. Lower zoom values enlarge only World; gameplay UI remains at its
+classic-density aspect-matched size.
+
+Browser resize and Fullscreen API events reapply the CSS-logical size. This
+also repairs an SDL3 Emscripten fullscreen-exit race that can otherwise leave
+the canvas backing at a stale viewport size after browser-reserved Escape.
+Canvas focus is restored after leaving fullscreen. Native resolution and
+display-mode controls remain unavailable in the browser.
 
 Canvas and window dimensions are render-side state. The deterministic
 simulation does not read them; `scripts/check_render_no_sim_writes.sh`

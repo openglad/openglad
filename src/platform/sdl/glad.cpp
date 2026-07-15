@@ -31,6 +31,7 @@
 #include <openglad/platform/game_session.h>
 #include <openglad/platform/local_transport_shadow.h>
 #include <openglad/platform/screen_lifecycle.h>
+#include <openglad/platform/video_sdl.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
@@ -439,6 +440,12 @@ extern "C" EMSCRIPTEN_KEEPALIVE void openglad_web_boot()
         publish_web_game_state();
         LogError("Unrecoverable error: {}\n", e.what());
     }
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void openglad_web_restore_canvas_backing(
+    int logical_w, int logical_h)
+{
+    restore_web_canvas_backing_size(logical_w, logical_h);
 }
 #endif
 

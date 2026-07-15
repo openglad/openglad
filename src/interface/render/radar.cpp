@@ -146,8 +146,14 @@ void radar::sync_to_grid(LevelRuntimeData* data)
 	if (yview > sizey)
 		yview = sizey;
 
-    if(viewscreenp)
-    {
+	sync_position_to_view();
+    bmp.resize(size);
+}
+
+void radar::sync_position_to_view()
+{
+	if(viewscreenp)
+	{
         #ifdef USE_TOUCH_INPUT
         if(force_lower_position)  // used by level editor to place minimap
         {
@@ -181,8 +187,7 @@ void radar::sync_to_grid(LevelRuntimeData* data)
             yloc = static_cast<short>( ((viewscreenp->endy - yview) - 4) );
             #endif
         #endif
-    }
-    bmp.resize(size);
+	}
 }
 
 
@@ -205,6 +210,7 @@ short radar::draw(LevelRuntimeData* data)
 
 	radarx = 0;
 	radary = 0;
+	sync_position_to_view();
 
 	if (viewscreenp && !viewscreenp->radarstart)
 	{

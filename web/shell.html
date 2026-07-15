@@ -27,9 +27,13 @@
         }
 
         #canvas {
-            image-rendering: pixelated;
             image-rendering: crisp-edges;
+            image-rendering: pixelated;
             background-color: #000;
+        }
+
+        #canvas:fullscreen {
+            object-fit: contain;
         }
 
         #loading {
@@ -119,12 +123,20 @@
             var windowHeight = window.innerHeight;
 
             // Calculate scale to fit window (maximize canvas size)
-            var scaleX = windowWidth / gameWidth;
-            var scaleY = windowHeight / gameHeight;
-            var scale = Math.min(scaleX, scaleY);
+            var fittedWidth;
+            var fittedHeight;
+            if (windowWidth / gameWidth <= windowHeight / gameHeight) {
+                fittedWidth = Math.max(1, Math.floor(windowWidth));
+                fittedHeight = Math.max(1, Math.floor(
+                    fittedWidth * gameHeight / gameWidth));
+            } else {
+                fittedHeight = Math.max(1, Math.floor(windowHeight));
+                fittedWidth = Math.max(1, Math.floor(
+                    fittedHeight * gameWidth / gameHeight));
+            }
 
-            canvas.style.width = (gameWidth * scale) + 'px';
-            canvas.style.height = (gameHeight * scale) + 'px';
+            canvas.style.width = fittedWidth + 'px';
+            canvas.style.height = fittedHeight + 'px';
         }
 
         window.addEventListener('resize', resizeCanvas);
@@ -135,6 +147,34 @@
             bootCalls: 0
         };
         window.__opengladGameState = null;
+
+        function installPostBootCanvasRecovery() {
+            var canvasWasFullscreen = document.fullscreenElement === canvas;
+            function recoverCanvasBacking() {
+                resizeCanvas();
+                if (typeof Module._openglad_web_restore_canvas_backing === 'function') {
+                    var rect = canvas.getBoundingClientRect();
+                    Module._openglad_web_restore_canvas_backing(
+                        Math.max(1, Math.round(rect.width)),
+                        Math.max(1, Math.round(rect.height)));
+                }
+            }
+
+            // Registered after SDL has booted so this runs after SDL3's own
+            // resize/fullscreen listeners and repairs its fullscreen-exit race.
+            window.addEventListener('resize', recoverCanvasBacking);
+            document.addEventListener('fullscreenchange', function() {
+                var canvasIsFullscreen = document.fullscreenElement === canvas;
+                var exitedCanvasFullscreen = canvasWasFullscreen && !canvasIsFullscreen;
+                canvasWasFullscreen = canvasIsFullscreen;
+                recoverCanvasBacking();
+                if (exitedCanvasFullscreen) {
+                    requestAnimationFrame(function() {
+                        canvas.focus({preventScroll: true});
+                    });
+                }
+            });
+        }
 
         var Module = {
             canvas: canvas,
@@ -177,6 +217,7 @@
                 if (typeof Module._openglad_web_boot === 'function') {
                     window.__opengladWebBootstrap.bootCalls += 1;
                     Module._openglad_web_boot();
+                    installPostBootCanvasRecovery();
                 } else {
                     console.error('OpenGlad web bootstrap export is unavailable');
                 }

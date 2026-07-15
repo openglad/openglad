@@ -83,7 +83,6 @@ struct WorldCanvasDims
     int h = kMinWorldCanvasH;
 };
 
-
 // --- Zoom model (cfg graphics/zoom + graphics/smoothing) ---------------------
 // Zoom 1.0 restores master's graphics/scale=1 baseline: one world-canvas pixel
 // per logical window unit. Smaller zoom values show proportionally more world
@@ -144,6 +143,33 @@ inline int saturating_canvas_dimension(std::int64_t value)
 {
     return static_cast<int>(std::min<std::int64_t>(
         value, static_cast<std::int64_t>(std::numeric_limits<int>::max() - 3)));
+}
+
+// Readable gameplay chrome uses classic pixel density while matching the
+// zoom-1 World aspect. Start from 320x200 and expand only the short axis:
+// 16:10 stays 320x200, 16:9 becomes about 356x200, and 4:3 becomes 320x240.
+// The scenery can therefore use every logical/HiDPI output pixel without
+// shrinking the bitmap font and HUD to one physical pixel per source pixel.
+inline WorldCanvasDims compute_gameplay_ui_canvas_dims(int world_w, int world_h)
+{
+    if (world_w <= 0 || world_h <= 0)
+        return {};
+    if (static_cast<std::int64_t>(world_w) * kMinWorldCanvasH >=
+        static_cast<std::int64_t>(world_h) * kMinWorldCanvasW)
+    {
+        const std::int64_t rounded_w =
+            static_cast<std::int64_t>(world_w) * kMinWorldCanvasH +
+            world_h / 2;
+        return {std::max(kMinWorldCanvasW,
+                         saturating_canvas_dimension(rounded_w / world_h)),
+                kMinWorldCanvasH};
+    }
+
+    const std::int64_t rounded_h =
+        static_cast<std::int64_t>(world_h) * kMinWorldCanvasW + world_w / 2;
+    return {kMinWorldCanvasW,
+            std::max(kMinWorldCanvasH,
+                     saturating_canvas_dimension(rounded_h / world_w))};
 }
 
 // Canvas for a window and zoom step count. Like master's graphics/scale path,

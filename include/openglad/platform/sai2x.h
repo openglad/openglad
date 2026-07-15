@@ -18,8 +18,8 @@ enum class RenderEngine
 //    derived from the logical window and zoom,
 //  * the UI canvas — menus/picker/help/intro chrome, PINNED at
 //    kUiCanvasW x kUiCanvasH.
-//  * a transparent GAMEPLAY UI overlay — world-sized, allocated only for a
-//    usable SAI/Eagle frame and composited nearest after the filtered scenery.
+//  * a transparent GAMEPLAY UI overlay — pinned to zoom-1.0 dimensions and
+//    composited nearest after the zoomed or filtered scenery.
 //
 // Design choice (byte-identity): while the world canvas is 320x200 the two
 // targets SHARE one surface/texture pair, so swap() presents
@@ -82,10 +82,24 @@ class Screen
 		// Active canvas dims: every offset = x + y*canvas_w() plot
 		// conversion and full-frame present rect derives from these. The UI
 		// and classic-pinned world remain byte-identical 320x200 spaces.
-		int canvas_w() const { return active_ == CanvasTarget::UI ? kUiCanvasW : world_w_; }
-		int canvas_h() const { return active_ == CanvasTarget::UI ? kUiCanvasH : world_h_; }
+		int canvas_w() const;
+		int canvas_h() const;
 		int world_w() const { return world_w_; }
 		int world_h() const { return world_h_; }
+		int gameplay_ui_w() const
+		{
+			return world_pinned_classic_ ? world_w_ : gameplay_ui_w_;
+		}
+		int gameplay_ui_h() const
+		{
+			return world_pinned_classic_ ? world_h_ : gameplay_ui_h_;
+		}
+		bool gameplay_ui_canvas_available() const
+		{
+			return (world_w_ == gameplay_ui_w() &&
+			        world_h_ == gameplay_ui_h()) ||
+			       (gameplay_ui_surf_ != nullptr && gameplay_ui_tex_ != nullptr);
+		}
 		int ui_w() const { return kUiCanvasW; }
 		int ui_h() const { return kUiCanvasH; }
 		CanvasTarget active_canvas() const { return active_; }
@@ -94,8 +108,8 @@ class Screen
 		// never call during a floor-layer redirect (floor_layer_begin/end
 		// bracket their redirect within one viewport draw).
 		void set_active_canvas(CanvasTarget target);
-		// Prepare the optional transparent HUD/radar/message overlay for one
-		// smart-smoothed gameplay frame. If either smart-scaler or overlay
+		// Prepare the transparent fixed-size HUD/radar/message overlay whenever
+		// zoom or smart smoothing separates it from the World canvas. If its
 		// allocation is unavailable, GameplayUI aliases World for this frame.
 		void begin_gameplay_frame();
 		bool gameplay_ui_overlay_active() const { return gameplay_ui_frame_active_; }
@@ -205,15 +219,16 @@ class Screen
 		bool smart_scale_fallback_reported_ = false;
 		int world_w_ = kUiCanvasW;
 		int world_h_ = kUiCanvasH;
+		int gameplay_ui_w_ = kUiCanvasW;
+		int gameplay_ui_h_ = kUiCanvasH;
 		// Owned canvas storage. world_surf_/world_tex_ ALIAS the UI pair
 		// while the world canvas has the shared 320x200 dimensions.
 		SDL_Surface* ui_surf_ = nullptr;
 		SDL_Texture* ui_tex_ = nullptr;
 		SDL_Surface* world_surf_ = nullptr;
 		SDL_Texture* world_tex_ = nullptr;
-		// Transparent, world-sized gameplay chrome. It exists only for a
-		// frame whose SAI/Eagle scratch is usable, and is rendered nearest
-		// over the filtered world immediately before SDL_RenderPresent.
+		// Transparent, zoom-1.0-sized gameplay chrome, rendered nearest over
+		// the zoomed/filtered world immediately before SDL_RenderPresent.
 		SDL_Surface* gameplay_ui_surf_ = nullptr;
 		SDL_Texture* gameplay_ui_tex_ = nullptr;
 		bool gameplay_ui_frame_active_ = false;

@@ -238,9 +238,8 @@ void render_pending_redraw(screen& s, bool enable_render)
 
     if (enable_render)
     {
-        // Gameplay draws and presents on the WORLD canvas (menus present the
-        // fixed 320x200 UI canvas); while the world canvas is also 320x200
-        // the two share one surface, so this is a pure routing no-op.
+        // Gameplay scenery draws on World and fixed chrome draws through its
+        // classic-density overlay (menus use the separate 320x200 UI canvas).
         s.set_active_canvas(CanvasTarget::World);
         s.draw_panels(s.numviews);
         score_panel(&s, 1);

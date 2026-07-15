@@ -62,6 +62,7 @@ class radar
 		// Re-derive sizex/sizey/size, the view clamps, the on-screen
 		// placement, and the bmp allocation from the live grid.
 		void sync_to_grid(LevelRuntimeData* data);
+		void sync_position_to_view();
 		short mynum; // what is my viewscreen-related number?
 		//         char  *buffer;
 		unsigned short size = 0;

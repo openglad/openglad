@@ -9,9 +9,13 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdint>
+#include <limits>
+
 #include <openglad/interface/render/view_layout.h>
 
 using og::view_layout::compute_view_layout;
+using og::view_layout::project_view_layout;
 using og::view_layout::ViewLayout;
 
 namespace
@@ -201,4 +205,140 @@ TEST(ViewLayout, doubled_canvas_scales_panes_not_chrome)
     EXPECT_EQ(201, q3.y);
     EXPECT_EQ(319, q3.w);
     EXPECT_EQ(199, q3.h);
+}
+
+TEST(ViewLayoutProjection, projects_non_integer_ratios_by_rectangle_edges)
+{
+    const ViewLayout projected =
+        project_view_layout({true, 44, 12, 232, 176}, 320, 200, 853, 533);
+
+    ASSERT_TRUE(projected.applies);
+    EXPECT_EQ(117, projected.x); // floor(44 * 853 / 320)
+    EXPECT_EQ(31, projected.y);  // floor(12 * 533 / 200)
+    EXPECT_EQ(618, projected.w); // floor(276 * 853 / 320) - projected.x
+    EXPECT_EQ(470, projected.h); // floor(188 * 533 / 200) - projected.y
+}
+
+TEST(ViewLayoutProjection, covers_every_player_count_and_view_mode)
+{
+    constexpr int baseline_w = 320;
+    constexpr int baseline_h = 200;
+    constexpr int world_w = 853;
+    constexpr int world_h = 533;
+    const auto projected_edge = [](int edge, int baseline_extent,
+                                   int world_extent) {
+        return static_cast<int>(static_cast<std::int64_t>(edge) * world_extent /
+                                baseline_extent);
+    };
+
+    for (int numviews = 1; numviews <= 4; ++numviews)
+    {
+        for (int mode = 0; mode <= 4; ++mode)
+        {
+            for (int mynum = 0; mynum < numviews; ++mynum)
+            {
+                const ViewLayout baseline = compute_view_layout(
+                    numviews, mynum, mode, baseline_w, baseline_h);
+                ASSERT_TRUE(baseline.applies)
+                    << "numviews=" << numviews << " mynum=" << mynum
+                    << " mode=" << mode;
+
+                const ViewLayout projected = project_view_layout(
+                    baseline, baseline_w, baseline_h, world_w, world_h);
+                ASSERT_TRUE(projected.applies)
+                    << "numviews=" << numviews << " mynum=" << mynum
+                    << " mode=" << mode;
+
+                const int expected_left =
+                    projected_edge(baseline.x, baseline_w, world_w);
+                const int expected_top =
+                    projected_edge(baseline.y, baseline_h, world_h);
+                const int expected_right = projected_edge(
+                    baseline.x + baseline.w, baseline_w, world_w);
+                const int expected_bottom = projected_edge(
+                    baseline.y + baseline.h, baseline_h, world_h);
+                EXPECT_EQ(expected_left, projected.x);
+                EXPECT_EQ(expected_top, projected.y);
+                EXPECT_EQ(expected_right - expected_left, projected.w);
+                EXPECT_EQ(expected_bottom - expected_top, projected.h);
+                EXPECT_GE(projected.x, 0);
+                EXPECT_GE(projected.y, 0);
+                EXPECT_LE(projected.x + projected.w, world_w);
+                EXPECT_LE(projected.y + projected.h, world_h);
+            }
+        }
+    }
+}
+
+TEST(ViewLayoutProjection, shared_edges_remain_exactly_aligned)
+{
+    // Both pairs meet at source edge (101, 77). The target dimensions make
+    // each scale ratio non-integral, exercising the integer-rounding seam.
+    const ViewLayout top_left =
+        project_view_layout({true, 0, 0, 101, 77}, 320, 200, 853, 533);
+    const ViewLayout top_right =
+        project_view_layout({true, 101, 0, 219, 77}, 320, 200, 853, 533);
+    const ViewLayout bottom_left =
+        project_view_layout({true, 0, 77, 101, 123}, 320, 200, 853, 533);
+
+    ASSERT_TRUE(top_left.applies);
+    ASSERT_TRUE(top_right.applies);
+    ASSERT_TRUE(bottom_left.applies);
+    EXPECT_EQ(top_left.x + top_left.w, top_right.x);
+    EXPECT_EQ(top_left.y + top_left.h, bottom_left.y);
+    EXPECT_EQ(853, top_right.x + top_right.w);
+    EXPECT_EQ(533, bottom_left.y + bottom_left.h);
+}
+
+TEST(ViewLayoutProjection, equal_canvas_dimensions_are_an_identity)
+{
+    for (int numviews = 1; numviews <= 4; ++numviews)
+    {
+        for (int mode = 0; mode <= 4; ++mode)
+        {
+            for (int mynum = 0; mynum < numviews; ++mynum)
+            {
+                const ViewLayout baseline =
+                    compute_view_layout(numviews, mynum, mode, 320, 200);
+                const ViewLayout projected =
+                    project_view_layout(baseline, 320, 200, 320, 200);
+                ASSERT_TRUE(projected.applies);
+                EXPECT_EQ(baseline.x, projected.x);
+                EXPECT_EQ(baseline.y, projected.y);
+                EXPECT_EQ(baseline.w, projected.w);
+                EXPECT_EQ(baseline.h, projected.h);
+            }
+        }
+    }
+}
+
+TEST(ViewLayoutProjection, rejects_non_projectable_inputs)
+{
+    EXPECT_FALSE(project_view_layout({}, 320, 200, 640, 400).applies);
+    EXPECT_FALSE(
+        project_view_layout({true, 0, 0, 320, 200}, 0, 200, 640, 400)
+            .applies);
+    EXPECT_FALSE(
+        project_view_layout({true, 0, 0, 320, 200}, 320, 200, -1, 400)
+            .applies);
+    EXPECT_FALSE(
+        project_view_layout({true, -1, 0, 1, 1}, 320, 200, 640, 400)
+            .applies);
+    EXPECT_FALSE(
+        project_view_layout({true, 319, 0, 2, 1}, 320, 200, 640, 400)
+            .applies);
+}
+
+TEST(ViewLayoutProjection, widened_edge_arithmetic_avoids_int_overflow)
+{
+    constexpr int max = std::numeric_limits<int>::max();
+    const ViewLayout projected =
+        project_view_layout({true, max - 1, max - 1, 1, 1}, max, max,
+                            max - 1, max - 1);
+
+    ASSERT_TRUE(projected.applies);
+    EXPECT_EQ(max - 2, projected.x);
+    EXPECT_EQ(max - 2, projected.y);
+    EXPECT_EQ(1, projected.w);
+    EXPECT_EQ(1, projected.h);
 }
