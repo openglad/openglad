@@ -753,12 +753,20 @@ TEST(OptionsMenu, options_menu) {
     // (apply_world_scale_from_cfg traces the parsed values).
     EXPECT_TRUE(trace_contains("canvas", "zoom steps=9"))
         << "the first zoom-out step must re-derive the world canvas";
-    EXPECT_TRUE(trace_contains("canvas", "zoom steps=5 smoothing=1 canvas=1280x800"))
-        << "the 0.5 step must land on the doubled canvas";
-    EXPECT_TRUE(trace_contains("canvas", "zoom steps=2 smoothing=1 canvas=3200x2000"))
-        << "the deepest safe 0.2 step must land on the 5x canvas";
-    EXPECT_TRUE(trace_contains("canvas", "zoom steps=10 smoothing=1 canvas=640x400"))
-        << "the closing wrap to 1.0 must restore the window-sized canvas";
+    EXPECT_TRUE(trace_contains("canvas", "zoom steps=5 smoothing=1 canvas=640x400"))
+        << "the 0.5 step must double the classic-density canvas";
+    const int minimum_zoom_steps =
+        og::runtime::current_session->myscreen_->minimum_world_zoom_steps();
+    const og::WorldCanvasDims deepest = og::compute_zoom_canvas_dims(
+        640, 400, minimum_zoom_steps);
+    const std::string deepest_trace =
+        "zoom steps=" + std::to_string(minimum_zoom_steps) +
+        " smoothing=1 canvas=" + std::to_string(deepest.w) + "x" +
+        std::to_string(deepest.h);
+    EXPECT_TRUE(trace_contains("canvas", deepest_trace.c_str()))
+        << "the deepest resource-safe step must reach its derived canvas";
+    EXPECT_TRUE(trace_contains("canvas", "zoom steps=10 smoothing=1 canvas=320x200"))
+        << "the closing wrap to 1.0 must restore classic density";
     EXPECT_TRUE(trace_contains("canvas", "smoothing=2"))
         << "the sai smoothing step must reach the renderer";
     EXPECT_TRUE(trace_contains("canvas", "smoothing=3"))

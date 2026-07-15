@@ -194,8 +194,8 @@ private:
 };
 
 // These pixel probes were authored against the historical 320x200 layout.
-// Production zoom 1.0 follows the logical window, so pin the classic canvas
-// for each test and restore the live window-relative canvas afterwards.
+// Pin the classic canvas for each test so non-16:10 display aspects cannot
+// move their coordinates, then restore the live aspect-relative canvas.
 class StairOverlay : public testing::Test
 {
 protected:

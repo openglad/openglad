@@ -591,6 +591,12 @@ unsigned char convert_to_ascii(int scancode);
 
 void update_overscan_setting();
 og::CanvasViewport active_canvas_viewport();
+// The fixed gameplay HUD is aspect-fitted independently from the zoomed
+// World canvas. Fractional zoom rounding can give World a slightly different
+// aspect, so presentation and touch input must share this dedicated viewport.
+og::CanvasViewport gameplay_ui_canvas_viewport();
 bool window_point_in_active_canvas(float x, float y);
+bool window_point_in_gameplay_ui_canvas(float x, float y);
 std::pair<float, float> window_to_active_canvas(float x, float y);
+std::pair<float, float> window_to_gameplay_ui_canvas(float x, float y);
 std::pair<float, float> active_canvas_to_window(float x, float y);

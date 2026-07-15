@@ -105,7 +105,6 @@ static inline float active_canvas_h()
     return s ? static_cast<float>(s->canvas_h()) : static_cast<float>(kUiCanvasH);
 }
 
-#ifdef USE_TOUCH_INPUT
 static inline float gameplay_ui_canvas_w()
 {
     const ::screen* s = og::runtime::current_session->myscreen_;
@@ -129,7 +128,6 @@ static inline float gameplay_ui_canvas_h()
                               : s->world_canvas_h()))
              : static_cast<float>(kUiCanvasH);
 }
-#endif
 
 static og::CanvasViewport canvas_viewport(float canvas_w, float canvas_h)
 {
@@ -149,21 +147,19 @@ og::CanvasViewport active_canvas_viewport()
     return canvas_viewport(active_canvas_w(), active_canvas_h());
 }
 
-#ifdef USE_TOUCH_INPUT
-static og::CanvasViewport gameplay_ui_canvas_viewport()
+og::CanvasViewport gameplay_ui_canvas_viewport()
 {
-    const ::screen* s = og::runtime::current_session->myscreen_;
+    const auto* session = og::runtime::current_session;
+    const ::screen* s = session != nullptr ? session->myscreen_ : nullptr;
     if (s == nullptr || s->active_canvas() == CanvasTarget::UI)
         return active_canvas_viewport();
 
-    // GameplayUI is composited into the World's exact destination rectangle.
-    // Map touches through that same rect, then scale into the fixed overlay;
-    // deriving another fitted rect from the rounded UI aspect can differ by a
-    // pixel on widescreen/tall viewports.
-    return canvas_viewport(static_cast<float>(s->world_canvas_w()),
-                           static_cast<float>(s->world_canvas_h()));
+    // Match Screen::swap's independently aspect-fitted HUD destination.
+    // Fractional World dimensions round to scaler-safe integers and can have
+    // a slightly different aspect; inheriting their fitted rectangle would
+    // distort the fixed overlay and offset its touch hit targets.
+    return canvas_viewport(gameplay_ui_canvas_w(), gameplay_ui_canvas_h());
 }
-#endif
 
 bool window_point_in_active_canvas(float x, float y)
 {
@@ -183,8 +179,7 @@ std::pair<float, float> window_to_active_canvas(float x, float y)
             (y - static_cast<float>(viewport.y)) * active_canvas_h() / h};
 }
 
-#ifdef USE_TOUCH_INPUT
-static bool window_point_in_gameplay_ui_canvas(float x, float y)
+bool window_point_in_gameplay_ui_canvas(float x, float y)
 {
     const og::CanvasViewport viewport = gameplay_ui_canvas_viewport();
     return x >= static_cast<float>(viewport.x) &&
@@ -193,7 +188,7 @@ static bool window_point_in_gameplay_ui_canvas(float x, float y)
            y < static_cast<float>(viewport.y + viewport.h);
 }
 
-static std::pair<float, float> window_to_gameplay_ui_canvas(float x, float y)
+std::pair<float, float> window_to_gameplay_ui_canvas(float x, float y)
 {
     const og::CanvasViewport viewport = gameplay_ui_canvas_viewport();
     const float w = static_cast<float>(std::max(1, viewport.w));
@@ -201,7 +196,6 @@ static std::pair<float, float> window_to_gameplay_ui_canvas(float x, float y)
     return {(x - static_cast<float>(viewport.x)) * gameplay_ui_canvas_w() / w,
             (y - static_cast<float>(viewport.y)) * gameplay_ui_canvas_h() / h};
 }
-#endif
 
 std::pair<float, float> active_canvas_to_window(float x, float y)
 {

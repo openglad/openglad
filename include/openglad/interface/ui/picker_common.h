@@ -322,7 +322,7 @@ std::string format_depth_fx_label(const std::string& value);
 bool depth_fx_is_active(const std::string& value);
 
 // --- DISPLAY zoom and smoothing selectors ---
-// Zoom selector (cfg graphics/zoom, 1.0 window-sized toward 0.1) and the
+// Zoom selector (cfg graphics/zoom, 1.0 classic-density toward 0.1) and the
 // world-canvas-only smoothing selector (cfg graphics/smoothing,
 // off/sai/eagle). Cyclers step one value per click; formatters name the
 // quantized value the renderer will actually apply.

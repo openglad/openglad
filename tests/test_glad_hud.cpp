@@ -119,8 +119,8 @@ static std::array<unsigned char, 64000> capture_rendered_frame(screen& scr)
 }
 
 // The HUD probes below intentionally assert historical pixel positions and
-// capture fixed 320x200 frames.  Pin that canvas only for this suite; zoom 1.0
-// remains window-sized in production and in tests that exercise live layout.
+// capture fixed 320x200 frames. Pin that canvas only for this suite; live
+// layouts may expand one axis to match a non-16:10 display.
 class GladHud : public testing::Test
 {
 protected:

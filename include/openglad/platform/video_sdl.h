@@ -296,9 +296,10 @@ private:
 };
 
 // Installs cfg graphics/zoom + graphics/smoothing on the live display. The
-// world canvas derives from the logical window and zoom, and smoothing selects
-// its world-only present engine. Called at display creation and exposed so
-// settings/tests can live-apply changes. This path also runs on Emscripten.
+// world canvas derives from a classic-density, aspect-matched baseline and
+// zoom; smoothing selects its world-only present engine. Called at display
+// creation and exposed so settings/tests can live-apply changes. This path
+// also runs on Emscripten.
 void apply_world_scale_from_cfg();
 
 // SDL3's Emscripten resize callback can replace the browser-selected logical

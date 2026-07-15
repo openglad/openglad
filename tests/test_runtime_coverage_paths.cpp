@@ -198,8 +198,11 @@ TEST(RuntimeCoveragePaths, input_bridge_window_and_key_paths)
     cfg.apply_setting("graphics", "zoom", "0.5");
     cfg.apply_setting("graphics", "smoothing", "sai");
     s->apply_display_settings_from_cfg();
-    ASSERT_EQ(2220, s->world_canvas_w());
-    ASSERT_EQ(1400, s->world_canvas_h());
+    const og::WorldCanvasDims zoomed_canvas = og::compute_zoom_canvas_dims(
+        static_cast<int>(og::runtime::current_session->window_w_),
+        static_cast<int>(og::runtime::current_session->window_h_), 5);
+    ASSERT_EQ(zoomed_canvas.w, s->world_canvas_w());
+    ASSERT_EQ(zoomed_canvas.h, s->world_canvas_h());
     og::runtime::current_session->overscan_percentage_ = 0.0f;
     key.type = SDL_EVENT_KEY_DOWN;
     key.key.key = SDLK_F12;

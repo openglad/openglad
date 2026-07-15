@@ -3007,7 +3007,7 @@ Sint32 change_depth_fx()
 }
 
 // DISPLAY zoom selector: step graphics/zoom through the resource-safe range,
-// apply its window-relative world canvas (menus use the fixed UI canvas),
+// apply its aspect-relative world canvas (menus use the fixed UI canvas),
 // relayout views when the logical dimensions change, and sync both label
 // copies. main_options() persists cfg on exit.
 Sint32 change_zoom()

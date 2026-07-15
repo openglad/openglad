@@ -836,7 +836,7 @@ TEST(VideoEffectsPrims, floor_layer_budget_and_allocation_failure_leave_render_r
 
 // ---- Canvas plumbing (stages 1+2 of the resolution decoupling) ------------
 //
-// Screen owns a window-derived WORLD canvas and a fixed 320x200 UI canvas.
+// Screen owns an aspect-derived WORLD canvas and a fixed 320x200 UI canvas.
 // Only an explicitly classic-sized world shares the UI surface;
 // set_world_canvas_size with other dimensions splits them, and all offset
 // plot arithmetic follows the active canvas width.
@@ -877,8 +877,8 @@ TEST(VideoEffectsPrims, canvas_dims_follow_window_and_keep_ui_fixed)
         static_cast<int>(og::runtime::current_session->window_h_),
         og::kZoomStepsMax);
 
-    // Zoom 1.0 follows the logical window, while active menu/UI drawing stays
-    // on the fixed classic canvas.
+    // Zoom 1.0 follows the window aspect at classic density, while active
+    // menu/UI drawing stays on the fixed classic canvas.
     ASSERT_EQ(320, E_Screen->canvas_w());
     ASSERT_EQ(200, E_Screen->canvas_h());
     ASSERT_EQ(expected.w, E_Screen->world_w());

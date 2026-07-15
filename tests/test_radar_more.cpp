@@ -44,8 +44,8 @@ static void fill_floor_grid(GameWorld& world, int f, unsigned char tile)
 }
 
 // These radar pixel tests were authored against the historical 320x200
-// viewport.  Production zoom 1.0 now follows the window, so keep the legacy
-// geometry local to this suite and restore the live canvas after each test.
+// viewport. Keep that exact geometry local to this suite so non-16:10 display
+// aspects cannot move the probes, then restore the live canvas after each test.
 class RadarMore : public testing::Test
 {
 protected:

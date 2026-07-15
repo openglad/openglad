@@ -152,9 +152,9 @@ class Screen
 		bool set_world_canvas_size(int w, int h);
 
 		// --- World canvas zoom and smoothing -----------------------------
-		// Zoom derives the world canvas from the logical window. Smoothing
-		// selects its present engine. The UI canvas remains 320x200 and
-		// presents nearest through `Engine`.
+		// Zoom derives the world canvas from a classic-density aspect
+		// baseline. Smoothing selects its present engine. The UI canvas
+		// remains 320x200 and presents nearest through `Engine`.
 		og::WorldScaleSetting world_scale() const { return world_scale_; }
 		int world_zoom_steps() const { return zoom_steps_; }
 		int minimum_world_zoom_steps() const;
@@ -162,9 +162,10 @@ class Screen
 		// The world-only present engine. Legacy mode is the shared 320x200,
 		// smoothing-off case and follows the nearest `Engine` path.
 		RenderEngine world_engine() const { return world_engine_; }
-		// Zoom 1.0 restores master's window-sized scale=1 canvas; lower
-		// values divide that baseline and are clamped to a safe resource
-		// budget. Completed logical dimensions refresh the resize base.
+		// Zoom 1.0 restores master's shipped/default world density without
+		// aspect distortion; lower values divide that baseline and are
+		// clamped to a safe resource budget. Completed logical dimensions
+		// refresh the aspect base.
 		void set_world_zoom(int zoom_steps, og::WorldScaleMode smoothing,
 		                    int window_w = 0, int window_h = 0);
 		// Level-editor pin: forces the classic 320x200 world canvas while
@@ -206,7 +207,7 @@ class Screen
 		// 320x200 canvas with smoothing off.
 		og::WorldScaleSetting world_scale_{};
 		RenderEngine world_engine_ = RenderEngine::NoZoom;
-		int zoom_steps_ = og::kZoomStepsMax; // 10 = window-sized 1.0 zoom
+		int zoom_steps_ = og::kZoomStepsMax; // 10 = master-density 1.0 zoom
 		int zoom_window_w_ = kUiCanvasW;
 		int zoom_window_h_ = kUiCanvasH;
 		bool world_pinned_classic_ = false;

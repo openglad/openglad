@@ -248,12 +248,13 @@ screen
 ```
 
 The display backend keeps gameplay and fixed-coordinate UI in separate
-logical spaces. At zoom 1.0, the world canvas follows the logical window,
-matching `graphics/scale: 1` on `master`; lower zoom values enlarge it to show
-more of the level. Menus remain 320x200. Each active canvas is aspect-fitted
-into the output viewport, so widescreen displays add centered bars around the
-fixed UI instead of stretching it. Window resize and completed fullscreen
-transitions rebuild the world canvas and viewscreen layout. See
+logical spaces. At zoom 1.0, the world uses master's shipped 320x200 density
+and expands only the needed axis to match the display aspect; lower zoom values
+enlarge that canvas to show more of the level. Menus remain 320x200. Each
+active canvas is aspect-fitted into the output viewport, so widescreen
+displays add centered bars around the fixed UI instead of stretching it.
+Window resize and completed fullscreen transitions rebuild the world canvas
+and viewscreen layout. See
 [Resolution, zoom, and smoothing](resolution-and-scaling.md) for the sizing,
 resource limits, and legacy-config behavior.
 

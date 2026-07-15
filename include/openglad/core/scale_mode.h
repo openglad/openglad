@@ -21,10 +21,10 @@
 //
 //   graphics/zoom value   | world canvas
 //   ----------------------+---------------------------------------------------
-//   missing / garbage /   | logical window size (the `graphics/scale: 1`
-//   "1.0"                 | behavior from master)
-//   "0.1" .. "0.9"        | window / zoom (width rounded down to a multiple of
-//                         | 4); unsafe depths are clamped by a pixel budget
+//   missing / garbage /   | master's shipped classic-density baseline,
+//   "1.0"                 | aspect-expanded without stretching
+//   "0.1" .. "0.9"        | baseline / zoom (width rounded down to a multiple
+//                         | of 4); unsafe depths clamp to a pixel budget
 //
 //   graphics/smoothing    | world present path
 //   ----------------------+---------------------------------------------------
@@ -50,7 +50,7 @@ namespace og
 enum class WorldScaleMode
 {
     // The special shared 320x200 world/UI target. This is used only when the
-    // window-sized zoom result is itself classic-sized and smoothing is off.
+    // aspect-matched zoom result is itself classic-sized and smoothing is off.
     Legacy,
     // smoothing "off" at a non-classic zoom: split world canvas, presented
     // with an unsmoothed GPU stretch.
@@ -84,14 +84,14 @@ struct WorldCanvasDims
 };
 
 // --- Zoom model (cfg graphics/zoom + graphics/smoothing) ---------------------
-// Zoom 1.0 restores master's graphics/scale=1 baseline: one world-canvas pixel
-// per logical window unit. Smaller zoom values show proportionally more world
-// (canvas = window / zoom). Smoothing selects the WORLD-canvas-only present
-// filter; the UI canvas (menus, text) always presents unsmoothed.
+// Zoom 1.0 restores master's shipped classic-density baseline, expanding the
+// needed axis to avoid aspect distortion. Smaller zoom values show
+// proportionally more world (canvas = baseline / zoom). Smoothing selects the
+// WORLD-canvas-only present filter; UI always presents unsmoothed.
 
 inline constexpr int kZoomStepsMax = 10; // zoom = steps/10, steps in 1..10
 
-// Absent/garbage cfg reads as the window-sized 1.0 default. Values clamp into
+// Absent/garbage cfg reads as the classic-density 1.0 default. Values clamp into
 // [0.1, 1.0] and quantize to the 0.1 grid, so the cycler and renderer agree.
 inline int parse_zoom_steps(std::string_view value)
 {
@@ -132,11 +132,11 @@ inline int parse_zoom_steps(std::string_view value)
 
 // Bound a split world surface plus its streaming texture to roughly 64 MiB at
 // ARGB8888. Deeper zoom steps must fit it; zoom 1.0 uses the separate absolute
-// cap below so normal high-resolution desktops keep master's exact baseline.
+// cap below so ordinary display aspects keep master's exact pixel density.
 inline constexpr std::int64_t kWorldCanvasPixelBudget = 8'388'608;
-// Absolute allocation ceiling for the baseline as well. This still admits a
-// 5120x2880 logical desktop, but rejects hostile 8K/16K configurations before
-// they can request hundreds of MiB (or GiB) from both surface and texture.
+// Absolute allocation ceiling for the baseline as well. Physical resolution
+// does not increase this canvas; the cap protects hostile extreme aspects and
+// bad dimensions before they can request huge surfaces and textures.
 inline constexpr std::int64_t kWorldCanvasAbsolutePixelBudget = 16'777'216;
 
 inline int saturating_canvas_dimension(std::int64_t value)
@@ -146,7 +146,7 @@ inline int saturating_canvas_dimension(std::int64_t value)
 }
 
 // Readable gameplay chrome uses classic pixel density while matching the
-// zoom-1 World aspect. Start from 320x200 and expand only the short axis:
+// zoom-1 World aspect. Start from 320x200 and expand only the needed axis:
 // 16:10 stays 320x200, 16:9 becomes about 356x200, and 4:3 becomes 320x240.
 // The scenery can therefore use every logical/HiDPI output pixel without
 // shrinking the bitmap font and HUD to one physical pixel per source pixel.
@@ -172,15 +172,21 @@ inline WorldCanvasDims compute_gameplay_ui_canvas_dims(int world_w, int world_h)
                      saturating_canvas_dimension(rounded_h / world_w))};
 }
 
-// Canvas for a window and zoom step count. Like master's graphics/scale path,
-// integer division rounds down and width rounds down to a multiple of four
-// (required by the software scalers and partial-present paths). This makes
-// zoom 1.0 exactly the old scale=1 result, including odd window dimensions.
+// Canvas for a window and zoom step count. Zoom 1.0 keeps master's default
+// classic-density world (320x200 at 16:10) instead of master's optional
+// graphics/scale=1 window-sized canvas. One axis expands only enough to
+// match the window aspect, so widescreen/tall displays reveal more world
+// without stretching sprites. Lower zoom values grow that baseline by 1/z.
+// Integer division rounds down and width rounds down to a multiple of four
+// (required by the software scalers and partial-present paths).
 inline WorldCanvasDims compute_zoom_canvas_dims(int window_w, int window_h,
                                                 int zoom_steps)
 {
-    const std::int64_t base_w = std::max(kMinWorldCanvasW, window_w);
-    const std::int64_t base_h = std::max(kMinWorldCanvasH, window_h);
+    const WorldCanvasDims base = compute_gameplay_ui_canvas_dims(
+        std::max(kMinWorldCanvasW, window_w),
+        std::max(kMinWorldCanvasH, window_h));
+    const std::int64_t base_w = base.w;
+    const std::int64_t base_h = base.h;
     const int steps = std::clamp(zoom_steps, 1, kZoomStepsMax);
     const std::int64_t scaled_w = base_w * kZoomStepsMax / steps;
     const std::int64_t scaled_h = base_h * kZoomStepsMax / steps;
@@ -190,8 +196,8 @@ inline WorldCanvasDims compute_zoom_canvas_dims(int window_w, int window_h,
 }
 
 // Uniformly bound an otherwise-valid canvas while retaining its aspect. This
-// is the last-resort zoom-1 baseline for desktops above the absolute budget or
-// renderer texture limit; ordinary windows (including 4K) pass through exact.
+// is the last resort for hostile extreme aspects/dimensions or a renderer
+// texture limit; ordinary display aspects pass through unchanged.
 inline WorldCanvasDims constrain_world_canvas_dims(
     WorldCanvasDims requested, int max_texture_dimension,
     std::int64_t pixel_budget = kWorldCanvasAbsolutePixelBudget)
@@ -296,9 +302,9 @@ inline CanvasViewport crop_canvas_to_aspect(int source_w, int source_h,
             crop_w, crop_h};
 }
 
-// Aspect-fit a logical canvas inside the overscan viewport. This keeps the
-// fixed 320x200 UI from stretching on widescreen displays while a world canvas
-// derived from the window normally fills the viewport exactly.
+// Aspect-fit a logical canvas inside the overscan viewport. This keeps fixed
+// UI/HUD geometry and independently rounded World canvases from stretching on
+// displays whose aspect does not exactly match their integer dimensions.
 inline CanvasViewport fit_canvas_in_viewport(int canvas_w, int canvas_h,
                                              int viewport_x, int viewport_y,
                                              int viewport_w, int viewport_h)

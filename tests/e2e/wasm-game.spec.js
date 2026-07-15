@@ -99,7 +99,26 @@ async function waitForCanvasBackingToMatchRenderedCss(canvas) {
   return size;
 }
 
-async function assertZoomOneWorldMatchesRenderedCss(page, size) {
+function computeGameplayUiCanvasDims(logicalWidth, logicalHeight) {
+  const width = Math.max(320, logicalWidth);
+  const height = Math.max(200, logicalHeight);
+  if (width * 200 >= height * 320) {
+    return {
+      width: Math.max(320, Math.floor((width * 200 + Math.floor(height / 2)) / height)),
+      height: 200,
+    };
+  }
+  return {
+    width: 320,
+    height: Math.max(200, Math.floor((height * 320 + Math.floor(width / 2)) / width)),
+  };
+}
+
+async function assertZoomOneWorldMatchesMasterDensity(page, size) {
+  const logicalWidth = Math.round(size.renderedCssWidth);
+  const logicalHeight = Math.round(size.renderedCssHeight);
+  const expectedUi = computeGameplayUiCanvasDims(logicalWidth, logicalHeight);
+  const expected = computeZoomCanvasDims(logicalWidth, logicalHeight, 10);
   await expect
     .poll(async () => {
       const diagnostics = await page.evaluate(
@@ -108,8 +127,8 @@ async function assertZoomOneWorldMatchesRenderedCss(page, size) {
       return Boolean(
         diagnostics &&
           diagnostics.zoom_steps === 10 &&
-          Math.abs(diagnostics.world_width - size.renderedCssWidth) <= 4 &&
-          Math.abs(diagnostics.world_height - size.renderedCssHeight) <= 1,
+          diagnostics.world_width === expected.width &&
+          diagnostics.world_height === expected.height,
       );
     })
     .toBe(true);
@@ -117,25 +136,25 @@ async function assertZoomOneWorldMatchesRenderedCss(page, size) {
     () => window.__opengladCanvasDiagnostics,
   );
 
-  // Zoom 1.0 follows CSS-logical pixels. Width rounds down to a multiple of
-  // four in compute_zoom_canvas_dims(); height keeps its integer CSS size.
-  expect(
-    Math.abs(latestDiagnostics.world_width - size.renderedCssWidth),
-  ).toBeLessThanOrEqual(4);
-  expect(
-    Math.abs(latestDiagnostics.world_height - size.renderedCssHeight),
-  ).toBeLessThanOrEqual(1);
+  // Zoom 1.0 uses master's classic-density baseline, expanding only the axis
+  // needed to match the CSS presentation aspect. Modern backing pixels
+  // therefore sharpen presentation without making tiles physically tiny.
+  expect(latestDiagnostics.world_width).toBe(expected.width);
+  expect(latestDiagnostics.world_height).toBe(expected.height);
   expect(
     latestDiagnostics.world_width / latestDiagnostics.world_height,
   ).toBeCloseTo(size.renderedCssWidth / size.renderedCssHeight, 2);
+  expect(latestDiagnostics.gameplay_ui_width).toBe(expectedUi.width);
+  expect(latestDiagnostics.gameplay_ui_height).toBe(expectedUi.height);
 }
 
 function computeZoomCanvasDims(logicalWidth, logicalHeight, zoomSteps) {
   const steps = Math.max(1, Math.min(10, zoomSteps));
-  const scaledWidth = Math.floor(Math.max(320, logicalWidth) * 10 / steps);
+  const baseline = computeGameplayUiCanvasDims(logicalWidth, logicalHeight);
+  const scaledWidth = Math.floor(baseline.width * 10 / steps);
   return {
     width: scaledWidth - scaledWidth % 4,
-    height: Math.floor(Math.max(200, logicalHeight) * 10 / steps),
+    height: Math.floor(baseline.height * 10 / steps),
   };
 }
 
@@ -362,7 +381,7 @@ test.describe('Game Loading', () => {
       1.6,
       5,
     );
-    await assertZoomOneWorldMatchesRenderedCss(page, initialSize);
+    await assertZoomOneWorldMatchesMasterDensity(page, initialSize);
 
     // Loading overlay should be hidden after initialization
     const loading = page.locator('#loading');
@@ -380,7 +399,7 @@ test.describe('Game Loading', () => {
     assertNoRuntimeErrors(errors, 'post-load assertions');
   });
 
-  test('HiDPI recovery keeps physical backing and CSS-logical world sizing', async ({
+  test('HiDPI recovery keeps physical backing and master-density world sizing', async ({
     browser,
     baseURL,
   }) => {
@@ -403,7 +422,7 @@ test.describe('Game Loading', () => {
       expect(
         initialSize.renderedCssWidth / initialSize.renderedCssHeight,
       ).toBeCloseTo(1.6, 5);
-      await assertZoomOneWorldMatchesRenderedCss(page, initialSize);
+      await assertZoomOneWorldMatchesMasterDensity(page, initialSize);
 
       await canvas.evaluate((element) => {
         element.width = 1272;
@@ -417,7 +436,7 @@ test.describe('Game Loading', () => {
       expect(recoveredSize.backingHeight).toBe(
         Math.round(recoveredSize.renderedCssHeight * 2),
       );
-      await assertZoomOneWorldMatchesRenderedCss(page, recoveredSize);
+      await assertZoomOneWorldMatchesMasterDensity(page, recoveredSize);
       assertNoRuntimeErrors(errors, 'HiDPI canvas recovery');
     } finally {
       await context.close();
@@ -492,14 +511,14 @@ test.describe('Game Loading', () => {
     expect(
       recoveredSize.renderedCssWidth / recoveredSize.renderedCssHeight,
     ).toBeCloseTo(1.6, 5);
-    await assertZoomOneWorldMatchesRenderedCss(page, recoveredSize);
+    await assertZoomOneWorldMatchesMasterDensity(page, recoveredSize);
 
     await waitForRenderedFrames(page, 4);
     expect(hasVisualContent(await getCanvasScreenshot(page))).toBe(true);
     assertNoRuntimeErrors(errors, 'post-boot canvas resize recovery');
   });
 
-  test('DOM fullscreen exit restores canvas backing and focus', async ({
+  test('fullscreen control enters and exit restores backing and focus', async ({
     page,
   }) => {
     const errors = [];
@@ -509,32 +528,43 @@ test.describe('Game Loading', () => {
     await waitForGameLoad(page);
 
     const canvas = page.locator('#canvas');
+    const fullscreenButton = page.getByRole('button', {
+      name: 'Enter fullscreen',
+    });
+    const fullscreenStatus = page.getByRole('status');
+    await expect(fullscreenButton).toBeVisible();
+    await expect(fullscreenButton).toHaveAttribute('title', 'Enter fullscreen');
+    await expect(fullscreenButton).toHaveAttribute('aria-controls', 'canvas');
+    await expect(fullscreenButton).toHaveCSS('width', '44px');
+    await expect(fullscreenButton).toHaveCSS('height', '44px');
+    await expect(fullscreenStatus).toBeEmpty();
+
     const preFullscreenSize = await waitForCanvasBackingToMatchRenderedCss(canvas);
     expect(
       preFullscreenSize.renderedCssWidth / preFullscreenSize.renderedCssHeight,
     ).toBeCloseTo(1.6, 5);
-    await assertZoomOneWorldMatchesRenderedCss(page, preFullscreenSize);
+    await assertZoomOneWorldMatchesMasterDensity(page, preFullscreenSize);
 
-    await canvas.click({ position: { x: 2, y: 2 } });
+    // Playwright's real click follows the same trusted user-gesture path as
+    // the shipped control; production code must not enter fullscreen at boot.
+    await fullscreenButton.click();
+    await page.waitForFunction(
+      () => document.fullscreenElement?.id === 'canvas',
+    );
+    await expect(fullscreenButton).toBeHidden();
     await expect
       .poll(() => page.evaluate(() => document.activeElement?.id))
       .toBe('canvas');
 
-    await page.evaluate(() =>
-      document.getElementById('canvas').requestFullscreen(),
-    );
-    await page.waitForFunction(
-      () => document.fullscreenElement?.id === 'canvas',
-    );
-
     const fullscreenSize = await waitForCanvasBackingToMatchRenderedCss(canvas);
-    await assertZoomOneWorldMatchesRenderedCss(page, fullscreenSize);
+    await assertZoomOneWorldMatchesMasterDensity(page, fullscreenSize);
 
     // Headless Chromium does not route CDP-generated Escape through browser
     // chrome, so use the Fullscreen API to exercise the same exit events that
     // the browser-reserved physical Escape emits in a real window.
     await page.evaluate(() => document.exitFullscreen());
     await page.waitForFunction(() => document.fullscreenElement === null);
+    await expect(fullscreenButton).toBeVisible();
 
     await expect
       .poll(() =>
@@ -553,10 +583,25 @@ test.describe('Game Loading', () => {
     const exitSize = await getCanvasSizing(canvas);
     assertCanvasBackingMatchesRenderedCss(exitSize);
     expect(exitSize.renderedCssWidth / exitSize.renderedCssHeight).toBeCloseTo(1.6, 5);
-    await assertZoomOneWorldMatchesRenderedCss(page, exitSize);
+    await assertZoomOneWorldMatchesMasterDensity(page, exitSize);
 
     await waitForRenderedFrames(page, 4);
     expect(hasVisualContent(await getCanvasScreenshot(page))).toBe(true);
+
+    // A browser or embedding policy can deny a valid user request. Keep that
+    // failure perceivable to keyboard and screen-reader users instead of
+    // leaving a silently dead-looking icon.
+    await canvas.evaluate((element) => {
+      Object.defineProperty(element, 'requestFullscreen', {
+        configurable: true,
+        value: () => Promise.reject(new Error('blocked for test')),
+      });
+    });
+    await fullscreenButton.click();
+    await expect(fullscreenStatus).toContainText(
+      'Fullscreen could not be opened',
+    );
+    await expect(fullscreenButton).toBeFocused();
     assertNoRuntimeErrors(errors, 'DOM fullscreen exit recovery');
   });
 });

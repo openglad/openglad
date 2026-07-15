@@ -295,7 +295,7 @@ TEST(VideoModesMore, video_save_screenshot_matches_active_canvas_smoothing)
     // The legacy Engine slot remains NoZoom, while live world smoothing is
     // held separately in world_engine(). Produce the 2x SAI scratch, then
     // verify the screenshot captures that presented surface rather than the
-    // raw window-relative world canvas.
+    // raw aspect-relative world canvas.
     E_Screen->set_world_zoom(og::kZoomStepsMax, og::WorldScaleMode::Sai);
     ASSERT_EQ(RenderEngine::NoZoom, E_Screen->Engine);
     ASSERT_EQ(RenderEngine::SAI, E_Screen->world_engine());

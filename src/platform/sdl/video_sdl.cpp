@@ -175,8 +175,9 @@ void apply_world_scale_from_cfg()
 	if (!E_Screen)
 		return;
 	// The zoom model (graphics/zoom 0.1..1.0 + graphics/smoothing
-	// off/sai/eagle): zoom 1.0 restores master's window-sized scale=1 canvas;
-	// lower values show more world within a bounded resource budget.
+	// off/sai/eagle): zoom 1.0 restores master's classic-density default,
+	// aspect-expanded instead of stretched; lower values show more world
+	// within a bounded resource budget.
 	const std::string zoom_value = cfg.get_setting("graphics", "zoom");
 	// Pre-zoom configs stored the full-frame filter in graphics/render.
 	// Preserve SAI/Eagle through the new world-only path, while letting an
@@ -3193,7 +3194,7 @@ void sdl_video::apply_display_settings_from_cfg()
 #ifndef __EMSCRIPTEN__
 	// The DISPLAY screen's live-apply path (and RESTORE DEFAULTS): read the
 	// mode + resolution out of cfg, drive the real window, update the overscan
-	// viewport, then reapply the window-relative world zoom/smoothing settings.
+	// viewport, then reapply the aspect-relative world zoom/smoothing settings.
 	// The completed resize event refreshes that zoom baseline as well.
 	og::ui::DisplayMode mode =
 	    og::ui::parse_display_mode(cfg.get_setting("graphics", "fullscreen"));

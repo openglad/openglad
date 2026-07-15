@@ -3603,11 +3603,11 @@ TEST(GameLoop, switch_char_over_dormant_ally_never_blanks_view_control)
 }
 
 // ---------------------------------------------------------------------------
-// cfg graphics/zoom in REAL gameplay: zoom=0.5 doubles the logical window's
-// world canvas. It must carry real rendered world (not clipped 320x200 content
-// plus black filler), split-screen panes must use its logical dimensions, and
-// a mid-game window resize must recompute the canvas and layout. The guard
-// restores the prior window, zoom and smoothing settings.
+// cfg graphics/zoom in REAL gameplay: zoom=0.5 doubles the classic-density
+// world baseline. It must carry real rendered world (not clipped 320x200
+// content plus black filler), split-screen panes must use its logical
+// dimensions, and a mid-game aspect change must recompute the canvas and
+// layout. The guard restores the prior window, zoom and smoothing settings.
 // ---------------------------------------------------------------------------
 #include <openglad/platform/video_sdl.h> // apply_world_scale_from_cfg (zoom/smoothing)
 #include <openglad/platform/sai2x.h> // E_Screen native window for resize completion
@@ -3761,8 +3761,12 @@ TEST(GameLoop, zoom_half_gameplay_draws_real_world_on_the_grown_canvas)
     ASSERT_TRUE(s != nullptr);
 
     canvas_zoom_gameplay::WorldZoomGameGuard guard(s);
-    ASSERT_EQ(1280, s->world_canvas_w());
-    ASSERT_EQ(800, s->world_canvas_h());
+    const og::WorldCanvasDims initial_world =
+        og::compute_zoom_canvas_dims(640, 400, 5);
+    ASSERT_EQ(640, initial_world.w);
+    ASSERT_EQ(400, initial_world.h);
+    ASSERT_EQ(initial_world.w, s->world_canvas_w());
+    ASSERT_EQ(initial_world.h, s->world_canvas_h());
 
     gameplay_rec::build_save(s, "org.openglad.gladiator", 1, 1,
                              {FAMILY_SOLDIER, FAMILY_ELF, FAMILY_MAGE}, 4);
@@ -3773,7 +3777,8 @@ TEST(GameLoop, zoom_half_gameplay_draws_real_world_on_the_grown_canvas)
     ASSERT_EQ(1, static_cast<int>(s->numviews));
     viewscreen* vs = s->viewob[0].get();
     ASSERT_TRUE(vs != nullptr);
-    canvas_zoom_gameplay::expect_pane_matches_layout(s, 0, 1280, 800);
+    canvas_zoom_gameplay::expect_pane_matches_layout(
+        s, 0, initial_world.w, initial_world.h);
 
     // More world visible than the classic canvas would show in the same
     // mode: the pane's world window grew with the canvas (tiles smaller
@@ -3801,7 +3806,7 @@ TEST(GameLoop, zoom_half_gameplay_draws_real_world_on_the_grown_canvas)
 
     // Optional frame dump for the visual review flow.
     if (getenv("OG_FX_CAPTURE_DIR"))
-        canvas_zoom_gameplay::dump_canvas(s, "zoom_half_1280", 0);
+        canvas_zoom_gameplay::dump_canvas(s, "zoom_half_640", 0);
 }
 
 TEST(GameLoop, zoom_half_splitscreen_layout_tracks_window_resizes)
@@ -3810,8 +3815,12 @@ TEST(GameLoop, zoom_half_splitscreen_layout_tracks_window_resizes)
     ASSERT_TRUE(s != nullptr);
 
     canvas_zoom_gameplay::WorldZoomGameGuard guard(s);
-    ASSERT_EQ(1280, s->world_canvas_w());
-    ASSERT_EQ(800, s->world_canvas_h());
+    const og::WorldCanvasDims initial_world =
+        og::compute_zoom_canvas_dims(640, 400, 5);
+    ASSERT_EQ(640, initial_world.w);
+    ASSERT_EQ(400, initial_world.h);
+    ASSERT_EQ(initial_world.w, s->world_canvas_w());
+    ASSERT_EQ(initial_world.h, s->world_canvas_h());
 
     // ---- 2 players on the grown canvas ------------------------------------
     gameplay_rec::build_save(s, "org.openglad.gladiator", 2, 2,
@@ -3821,8 +3830,9 @@ TEST(GameLoop, zoom_half_splitscreen_layout_tracks_window_resizes)
     s->set_active_canvas(CanvasTarget::World);
     ASSERT_EQ(2, static_cast<int>(s->numviews));
     for (int i = 0; i < 2; i++)
-        canvas_zoom_gameplay::expect_pane_matches_layout(s, i, 1280, 800);
-    // The two panes may not overlap; the seam remains two logical pixels wide.
+        canvas_zoom_gameplay::expect_pane_matches_layout(
+            s, i, initial_world.w, initial_world.h);
+    // The fixed two-pixel HUD seam projects into World without overlap.
     EXPECT_LE(s->viewob[0]->endx, s->viewob[1]->xloc)
         << "left pane must end before the right pane starts";
 
@@ -3843,35 +3853,41 @@ TEST(GameLoop, zoom_half_splitscreen_layout_tracks_window_resizes)
     canvas_zoom_gameplay::expect_radar_inside_pane(s->viewob[0].get());
     canvas_zoom_gameplay::expect_radar_inside_pane(s->viewob[1].get());
     if (getenv("OG_FX_CAPTURE_DIR"))
-        canvas_zoom_gameplay::dump_canvas(s, "zoom_half_1280_2p", 0);
+        canvas_zoom_gameplay::dump_canvas(s, "zoom_half_640_2p", 0);
 
-    // ---- Mid-game window resize: logical canvas/layout follow it ------------
+    // ---- Mid-game aspect change: logical canvas/layout follow it -------------
     SDL_Event ev{};
     ev.type = SDL_EVENT_WINDOW_RESIZED;
-    ASSERT_TRUE(SDL_SetWindowSize(E_Screen->window, 960, 600));
+    ASSERT_TRUE(SDL_SetWindowSize(E_Screen->window, 960, 540));
     ASSERT_TRUE(SDL_SyncWindow(E_Screen->window));
     ev.window.data1 = 960;
-    ev.window.data2 = 600;
+    ev.window.data2 = 540;
     handle_window_event(ev);
-    EXPECT_EQ(1920, s->world_canvas_w());
-    EXPECT_EQ(1200, s->world_canvas_h());
+    const og::WorldCanvasDims wide_world =
+        og::compute_zoom_canvas_dims(960, 540, 5);
+    ASSERT_EQ(712, wide_world.w);
+    ASSERT_EQ(400, wide_world.h);
+    EXPECT_EQ(wide_world.w, s->world_canvas_w());
+    EXPECT_EQ(wide_world.h, s->world_canvas_h());
     for (int i = 0; i < 2; i++)
-        canvas_zoom_gameplay::expect_pane_matches_layout(s, i, 1920, 1200);
+        canvas_zoom_gameplay::expect_pane_matches_layout(
+            s, i, wide_world.w, wide_world.h);
     canvas_zoom_gameplay::run_frames(s, 2);
     ASSERT_FALSE(::testing::Test::HasFatalFailure());
     s->redraw();
     s->swap();
     canvas_zoom_gameplay::expect_radar_inside_pane(s->viewob[1].get());
-    // Returning the window restores the original zoom-derived canvas.
+    // Returning to 16:10 restores the original zoom-derived canvas.
     ASSERT_TRUE(SDL_SetWindowSize(E_Screen->window, 640, 400));
     ASSERT_TRUE(SDL_SyncWindow(E_Screen->window));
     ev.window.data1 = 640;
     ev.window.data2 = 400;
     handle_window_event(ev);
-    EXPECT_EQ(1280, s->world_canvas_w());
-    EXPECT_EQ(800, s->world_canvas_h());
+    EXPECT_EQ(initial_world.w, s->world_canvas_w());
+    EXPECT_EQ(initial_world.h, s->world_canvas_h());
     for (int i = 0; i < 2; i++)
-        canvas_zoom_gameplay::expect_pane_matches_layout(s, i, 1280, 800);
+        canvas_zoom_gameplay::expect_pane_matches_layout(
+            s, i, initial_world.w, initial_world.h);
 
     // ---- 4 players: quadrants on the grown canvas --------------------------
     s->world().end = 0;
@@ -3883,7 +3899,8 @@ TEST(GameLoop, zoom_half_splitscreen_layout_tracks_window_resizes)
     s->set_active_canvas(CanvasTarget::World);
     ASSERT_EQ(4, static_cast<int>(s->numviews));
     for (int i = 0; i < 4; i++)
-        canvas_zoom_gameplay::expect_pane_matches_layout(s, i, 1280, 800);
+        canvas_zoom_gameplay::expect_pane_matches_layout(
+            s, i, initial_world.w, initial_world.h);
     // Quadrants are pairwise disjoint.
     for (int a = 0; a < 4; a++)
         for (int b = a + 1; b < 4; b++)
@@ -3908,5 +3925,5 @@ TEST(GameLoop, zoom_half_splitscreen_layout_tracks_window_resizes)
         canvas_zoom_gameplay::expect_radar_inside_pane(
             s->viewob[static_cast<size_t>(i)].get());
     if (getenv("OG_FX_CAPTURE_DIR"))
-        canvas_zoom_gameplay::dump_canvas(s, "zoom_half_1280_4p", 0);
+        canvas_zoom_gameplay::dump_canvas(s, "zoom_half_640_4p", 0);
 }

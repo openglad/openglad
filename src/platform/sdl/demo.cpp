@@ -343,7 +343,7 @@ int main(int argc, char* argv[])
         cfg.apply_setting("graphics", "width", std::format("{}", display_w));
         cfg.apply_setting("graphics", "height", std::format("{}", display_h));
         // Start from the normal zoom preference; the display-owning Screen is
-        // explicitly pinned below because zoom 1.0 is window-sized.
+        // explicitly pinned below because each demo cell is fixed-size.
         cfg.apply_setting("graphics", "zoom", "1.0");
         cfg.apply_setting("graphics", "smoothing", "off");
         cfg.apply_setting("graphics", "fullscreen", "on");

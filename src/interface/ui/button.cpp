@@ -748,7 +748,7 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
             const int old_w = scr->world_canvas_w();
             const int old_h = scr->world_canvas_h();
             // Reapplies the window mode/resolution, overscan viewport, and
-            // window-relative world zoom/smoothing in one call.
+            // aspect-relative world zoom/smoothing in one call.
             scr->apply_display_settings_from_cfg();
             if (scr->world_canvas_w() != old_w || scr->world_canvas_h() != old_h)
                 scr->relayout_views();

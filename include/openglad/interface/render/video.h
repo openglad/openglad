@@ -276,8 +276,8 @@ public:
     // dimensions regardless of the active target (viewscreen layout sizing).
     // gameplay_ui_canvas_w/h expose the stable zoom-1.0 gameplay geometry;
     // fixed/headless backends may keep it equal to their world dimensions.
-    // Display backends use a window-relative world canvas; fixed/headless
-    // backends may retain the minimum 320x200 dimensions.
+    // Display backends use an aspect-relative, zoomable world canvas;
+    // fixed/headless backends may retain the minimum 320x200 dimensions.
     virtual int canvas_w() const = 0;
     virtual int canvas_h() const = 0;
     virtual int world_canvas_w() const = 0;
@@ -313,7 +313,7 @@ public:
     // canvas, or when the current world canvas is already 320x200.
     virtual void set_world_canvas_pinned_classic(bool /*pinned*/) {}
     // Re-reads cfg graphics/zoom and graphics/smoothing. The canvas derives
-    // from the logical window and zoom; the caller relayouts viewscreens only
+    // from the display aspect and zoom; the caller relayouts viewscreens only
     // when those logical dimensions change. No-op for backends without a
     // scalable world canvas.
     virtual void reapply_world_scale() {}
@@ -325,7 +325,7 @@ public:
     virtual bool world_smoothing_supported() const { return true; }
     // DISPLAY settings live-apply: cfg graphics/fullscreen (windowed /
     // borderless / exclusive) + graphics/width/height, then update the
-    // overscan viewport, then recompute the window-relative zoom canvas.
+    // overscan viewport, then recompute the aspect-relative zoom canvas.
     // No-op off the SDL display target.
     virtual void apply_display_settings_from_cfg() {}
     // Re-read the native window's completed fullscreen state into cfg and

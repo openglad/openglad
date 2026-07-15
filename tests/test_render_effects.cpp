@@ -243,8 +243,8 @@ struct KeyBindingGuard
 };
 
 // These pixel-level effect tests pin the historical 320x200 layout they were
-// authored against. Production zoom 1.0 is window-sized; the fixture restores
-// that live canvas after every test so no classic geometry leaks onward.
+// authored against. The fixture restores the live aspect-derived canvas after
+// every test so no classic geometry leaks onward on non-16:10 displays.
 class RenderEffects : public testing::Test
 {
 protected:

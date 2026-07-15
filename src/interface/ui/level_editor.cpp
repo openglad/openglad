@@ -4215,7 +4215,7 @@ Sint32 level_editor()
             // Hold the pin even when entry already happens to be 320x200.
             // A resize/fullscreen event may arrive while the editor is open;
             // the held pin keeps its absolute-coordinate chrome safe while
-            // remembering the new window-relative canvas for exit.
+            // remembering the new aspect-relative canvas for exit.
             scr_->set_world_canvas_pinned_classic(true);
             pinned_ = true;
             if (scr_->world_canvas_w() != old_w ||

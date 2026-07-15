@@ -1158,9 +1158,9 @@ void Screen::set_world_zoom(int zoom_steps, og::WorldScaleMode smoothing,
 		og::compute_gameplay_ui_canvas_dims(
 			effective_zoom_canvas_dims(og::kZoomStepsMax).w,
 			effective_zoom_canvas_dims(og::kZoomStepsMax).h);
-	// Preserve the shared legacy pair only when the window-derived result is
-	// actually classic-sized. Native 1.0 otherwise owns a split canvas,
-	// matching master's graphics/scale=1 behavior and the window's aspect.
+	// Preserve the shared legacy pair when the aspect-expanded result is
+	// exactly classic-sized. Other aspects own a split canvas so the world can
+	// reveal extra space instead of stretching master's default geometry.
 	og::WorldScaleSetting requested_setting;
 	if (dims.w == kUiCanvasW && dims.h == kUiCanvasH &&
 	    smoothing == og::WorldScaleMode::Integer)
@@ -1256,7 +1256,7 @@ void Screen::set_world_canvas_pinned_classic(bool pinned)
 	}
 	else
 	{
-		// Restore the window-relative zoom canvas the pin displaced.
+		// Restore the aspect-relative zoom canvas the pin displaced.
 		const og::WorldCanvasDims dims =
 			effective_zoom_canvas_dims(zoom_steps_);
 		resized = set_world_canvas_size(dims.w, dims.h);
@@ -1583,7 +1583,7 @@ void Screen::swap(int x, int y, int w, int h)
 	}
 
 	// Present through the same aspect-fitted logical rectangle used by pointer
-	// mapping. A window-derived world canvas fills it; the fixed 320x200 UI is
+	// mapping. An aspect-matched world canvas fills it; the fixed 320x200 UI is
 	// pillar/letterboxed instead of being distorted on widescreen displays.
 
 	SDL_UpdateTexture(dest_texture, nullptr, source_surface->pixels, source_surface->pitch);
@@ -1605,16 +1605,28 @@ void Screen::swap(int x, int y, int w, int h)
 	// Gameplay chrome is deliberately absent from source_surface/render2:
 	// SAI/Eagle process only map/tiles/sprites/effects. Composite the
 	// transparent HUD/radar/message layer afterwards with nearest sampling.
-	// This remains one frame transaction and one SDL_RenderPresent call.
+	// Aspect-fit it independently from World: fractional zoom dimensions round
+	// to scaler-safe integers and can otherwise squeeze the fixed HUD through a
+	// slightly different destination. This remains one frame transaction and
+	// one SDL_RenderPresent call.
 	if (composite_gameplay_ui)
 	{
+		const og::CanvasViewport logical_gameplay_ui_dest =
+			gameplay_ui_canvas_viewport();
+		const SDL_FRect gameplay_ui_dest = renderer_output_rect(
+			renderer,
+			static_cast<float>(logical_gameplay_ui_dest.x),
+			static_cast<float>(logical_gameplay_ui_dest.y),
+			static_cast<float>(logical_gameplay_ui_dest.w),
+			static_cast<float>(logical_gameplay_ui_dest.h));
 		if (!SDL_UpdateTexture(gameplay_ui_tex_, nullptr,
 		                       gameplay_ui_surf_->pixels,
 		                       gameplay_ui_surf_->pitch))
 		{
 			LogError("Unable to upload gameplay UI overlay: {}\n", SDL_GetError());
 		}
-		else if (!SDL_RenderTexture(renderer, gameplay_ui_tex_, nullptr, &dest))
+		else if (!SDL_RenderTexture(renderer, gameplay_ui_tex_, nullptr,
+		                            &gameplay_ui_dest))
 		{
 			LogError("Unable to composite gameplay UI overlay: {}\n", SDL_GetError());
 		}

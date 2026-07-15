@@ -64,31 +64,32 @@ TEST(ScaleMode, zoom_parse_garbage_reads_classic)
         EXPECT_EQ(kZoomStepsMax, parse_zoom_steps(v)) << "'" << v << "'";
 }
 
-TEST(ScaleMode, zoom_one_matches_masters_window_sized_scale_one)
+TEST(ScaleMode, zoom_one_matches_masters_classic_density_without_stretch)
 {
 	const auto hd = compute_zoom_canvas_dims(1920, 1080, kZoomStepsMax);
-	EXPECT_EQ(1920, hd.w);
-	EXPECT_EQ(1080, hd.h);
+	EXPECT_EQ(356, hd.w);
+	EXPECT_EQ(200, hd.h);
 	const auto minimum = compute_zoom_canvas_dims(200, 100, kZoomStepsMax);
 	EXPECT_EQ(320, minimum.w);
 	EXPECT_EQ(200, minimum.h);
 	const auto odd = compute_zoom_canvas_dims(1365, 767, kZoomStepsMax);
-	EXPECT_EQ(1364, odd.w);
-	EXPECT_EQ(767, odd.h);
+	EXPECT_EQ(356, odd.w);
+	EXPECT_EQ(200, odd.h);
 }
 
-TEST(ScaleMode, zoom_dims_divide_the_window_canvas)
+TEST(ScaleMode, zoom_dims_divide_the_classic_density_baseline)
 {
-	// canvas = window / zoom: 0.5 doubles the visible world per axis.
+	// canvas = aspect-expanded classic baseline / zoom: 0.5 doubles the
+	// visible world per axis without making modern displays intrinsically tiny.
 	const auto half = compute_zoom_canvas_dims(640, 400, 5);
-	EXPECT_EQ(1280, half.w);
-	EXPECT_EQ(800, half.h);
+	EXPECT_EQ(640, half.w);
+	EXPECT_EQ(400, half.h);
 	const auto deep = compute_zoom_canvas_dims(640, 400, 1);
-	EXPECT_EQ(6400, deep.w);
-	EXPECT_EQ(4000, deep.h);
+	EXPECT_EQ(3200, deep.w);
+	EXPECT_EQ(2000, deep.h);
 	const auto eight = compute_zoom_canvas_dims(640, 400, 8);
-	EXPECT_EQ(800, eight.w);
-	EXPECT_EQ(500, eight.h);
+	EXPECT_EQ(400, eight.w);
+	EXPECT_EQ(250, eight.h);
 }
 
 TEST(ScaleMode, gameplay_ui_keeps_classic_density_and_matches_world_aspect)
@@ -112,7 +113,7 @@ TEST(ScaleMode, gameplay_ui_keeps_classic_density_and_matches_world_aspect)
 
 TEST(ScaleMode, zoom_dims_width_rounds_down_to_multiple_of_four)
 {
-	// 640*10/3 rounds down to 2133, then 2132 (the software scalers and
+	// 320*10/3 rounds down to 1066, then 1064 (the software scalers and
 	// partial-present path require multiple-of-4 widths).
 	for (int steps = 1; steps <= kZoomStepsMax; ++steps)
 	{
@@ -121,38 +122,46 @@ TEST(ScaleMode, zoom_dims_width_rounds_down_to_multiple_of_four)
         EXPECT_GE(d.w, 320) << "steps=" << steps;
         EXPECT_GE(d.h, 200) << "steps=" << steps;
     }
-	EXPECT_EQ(2132, compute_zoom_canvas_dims(640, 400, 3).w);
-	EXPECT_EQ(1333, compute_zoom_canvas_dims(640, 400, 3).h);
+	EXPECT_EQ(1064, compute_zoom_canvas_dims(640, 400, 3).w);
+	EXPECT_EQ(666, compute_zoom_canvas_dims(640, 400, 3).h);
 }
 
 TEST(ScaleMode, zoom_dims_clamp_hostile_steps)
 {
 	const auto low = compute_zoom_canvas_dims(640, 400, 0);
-	EXPECT_EQ(6400, low.w);
+	EXPECT_EQ(3200, low.w);
 	const auto neg = compute_zoom_canvas_dims(640, 400, -3);
-	EXPECT_EQ(6400, neg.w);
+	EXPECT_EQ(3200, neg.w);
 	const auto high = compute_zoom_canvas_dims(640, 400, 99);
-	EXPECT_EQ(640, high.w);
-	EXPECT_EQ(400, high.h);
+	EXPECT_EQ(320, high.w);
+	EXPECT_EQ(200, high.h);
 }
 
 TEST(ScaleMode, minimum_zoom_step_respects_the_canvas_budget)
 {
-	EXPECT_EQ(2, og::minimum_zoom_steps_for_window(640, 400));
-	EXPECT_EQ(5, og::minimum_zoom_steps_for_window(1920, 1080));
-	EXPECT_EQ(10, og::minimum_zoom_steps_for_window(3840, 2160));
+	// Classic-density baselines keep the full 0.1..1.0 range available on
+	// ordinary displays; only extreme aspect/texture constraints trim it.
+	EXPECT_EQ(1, og::minimum_zoom_steps_for_window(640, 400));
+	EXPECT_EQ(1, og::minimum_zoom_steps_for_window(1920, 1080));
+	EXPECT_EQ(1, og::minimum_zoom_steps_for_window(3840, 2160));
 	EXPECT_TRUE(og::zoom_canvas_fits_budget(3840, 2160, 10));
-	EXPECT_FALSE(og::zoom_canvas_fits_budget(3840, 2160, 9));
+	EXPECT_TRUE(og::zoom_canvas_fits_budget(3840, 2160, 1));
 	EXPECT_TRUE(og::zoom_canvas_fits_budget(7680, 4320, 10, 4096));
-	EXPECT_EQ(10, og::minimum_zoom_steps_for_window(7680, 4320, 4096));
-	const auto capped = og::constrain_world_canvas_dims(
-		compute_zoom_canvas_dims(7680, 4320, 10), 16384);
+	EXPECT_EQ(1, og::minimum_zoom_steps_for_window(7680, 4320, 4096));
+	// Exercise the absolute-cap branch directly. Physical 8K no longer makes
+	// a huge canvas because only display aspect, not pixel count, is relevant.
+	const og::WorldCanvasDims hostile{20000, 10000};
+	const auto capped = og::constrain_world_canvas_dims(hostile, 16384);
+	EXPECT_LT(capped.w, hostile.w);
+	EXPECT_LT(capped.h, hostile.h);
 	EXPECT_LE(static_cast<std::int64_t>(capped.w) * capped.h,
 	          og::kWorldCanvasAbsolutePixelBudget);
 	EXPECT_EQ(0, capped.w % 4);
-	EXPECT_LT(std::abs(capped.w * 4320LL - capped.h * 7680LL), 7680);
-	EXPECT_EQ(8, og::minimum_zoom_steps_for_window(1920, 1080, 2560));
-	EXPECT_FALSE(og::zoom_canvas_fits_budget(1920, 1080, 7, 2560));
+	EXPECT_LT(std::abs(capped.w * static_cast<std::int64_t>(hostile.h) -
+	                   capped.h * static_cast<std::int64_t>(hostile.w)),
+	          hostile.w);
+	EXPECT_EQ(2, og::minimum_zoom_steps_for_window(1920, 1080, 2560));
+	EXPECT_FALSE(og::zoom_canvas_fits_budget(1920, 1080, 1, 2560));
 }
 
 TEST(ScaleMode, modal_backdrop_center_crop_preserves_target_aspect)
