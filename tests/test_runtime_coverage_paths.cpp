@@ -6,6 +6,7 @@
 #include <openglad/legacy/base.h>
 #include <openglad/platform/game_context.h>
 #include <openglad/platform/game_session.h>
+#include <openglad/platform/sai2x.h>
 #include <openglad/interface/screen.h>
 #include <openglad/platform/screen_lifecycle.h>
 #include <openglad/interface/render/view.h>
@@ -99,6 +100,9 @@ TEST(RuntimeCoveragePaths, input_bridge_window_and_key_paths)
     const short saved_key_press_event = og::runtime::current_session->key_press_event_;
     const int saved_raw_key = og::runtime::current_session->raw_key_;
     const bool saved_gameplay_active = og::runtime::current_session->gameplay_active_;
+    int saved_physical_w = 0;
+    int saved_physical_h = 0;
+    SDL_GetWindowSize(E_Screen->window, &saved_physical_w, &saved_physical_h);
 
     screen* s = og::runtime::current_session->myscreen_;
     ASSERT_TRUE(s != nullptr) << "active screen should be available";
@@ -172,6 +176,8 @@ TEST(RuntimeCoveragePaths, input_bridge_window_and_key_paths)
     handle_window_event(e);
 
     og::runtime::current_session->overscan_percentage_ = -1.0f;
+    ASSERT_TRUE(SDL_SetWindowSize(E_Screen->window, 1280, 720));
+    ASSERT_TRUE(SDL_SyncWindow(E_Screen->window));
     e.type = SDL_EVENT_WINDOW_RESIZED;
     e.window.data1 = 1280;
     e.window.data2 = 720;
@@ -192,7 +198,8 @@ TEST(RuntimeCoveragePaths, input_bridge_window_and_key_paths)
     cfg.apply_setting("graphics", "zoom", "0.5");
     cfg.apply_setting("graphics", "smoothing", "sai");
     s->apply_display_settings_from_cfg();
-    ASSERT_EQ(640, s->world_canvas_w());
+    ASSERT_EQ(2220, s->world_canvas_w());
+    ASSERT_EQ(1400, s->world_canvas_h());
     og::runtime::current_session->overscan_percentage_ = 0.0f;
     key.type = SDL_EVENT_KEY_DOWN;
     key.key.key = SDLK_F12;
@@ -203,8 +210,13 @@ TEST(RuntimeCoveragePaths, input_bridge_window_and_key_paths)
     ASSERT_EQ("off", cfg.get_setting("graphics", "smoothing"));
     ASSERT_EQ("640", cfg.get_setting("graphics", "width"));
     ASSERT_EQ("400", cfg.get_setting("graphics", "height"));
-    ASSERT_EQ(320, s->world_canvas_w())
-        << "F12+Ctrl should live-apply the restored zoom";
+    const og::WorldCanvasDims restored_canvas = og::compute_zoom_canvas_dims(
+        static_cast<int>(og::runtime::current_session->window_w_),
+        static_cast<int>(og::runtime::current_session->window_h_),
+        og::kZoomStepsMax);
+    ASSERT_EQ(restored_canvas.w, s->world_canvas_w())
+        << "F12+Ctrl should live-apply zoom 1.0 to the real window";
+    ASSERT_EQ(restored_canvas.h, s->world_canvas_h());
 
     og::runtime::current_session->input_continue_ = false;
     og::runtime::current_session->key_press_event_ = 0;
@@ -220,6 +232,9 @@ TEST(RuntimeCoveragePaths, input_bridge_window_and_key_paths)
     key.key.key = SDLK_ESCAPE;
     handle_key_event(key);
 
+    (void)SDL_SetWindowSize(E_Screen->window,
+                            saved_physical_w, saved_physical_h);
+    (void)SDL_SyncWindow(E_Screen->window);
     og::runtime::current_session->window_w_ = saved_window_w;
     og::runtime::current_session->window_h_ = saved_window_h;
     og::runtime::current_session->overscan_percentage_ = saved_overscan;

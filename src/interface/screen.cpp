@@ -392,8 +392,8 @@ bool dispatch_game_flow_screen_events(screen& self,
 loader* sdl_entity_loader();
 
 // Screen window boundaries now come from the world canvas dims via
-// og::view_layout::compute_view_layout (320x200 by default) instead of the
-// retired S_* / T_* absolute constants.
+// og::view_layout::compute_view_layout instead of the retired S_* / T_*
+// absolute constants. Classic-pinned screens still resolve to 320x200.
 inline constexpr int MAX_SPREAD = 10; // this controls find_near_foe
 
 // load_version_* functions now live in level_runtime_data.cpp and take

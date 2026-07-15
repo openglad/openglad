@@ -193,9 +193,29 @@ private:
     std::vector<std::pair<std::string, std::string>> saved_;
 };
 
+// These pixel probes were authored against the historical 320x200 layout.
+// Production zoom 1.0 follows the logical window, so pin the classic canvas
+// for each test and restore the live window-relative canvas afterwards.
+class StairOverlay : public testing::Test
+{
+protected:
+    void SetUp() override
+    {
+        scr()->set_world_canvas_pinned_classic(true);
+        scr()->relayout_views();
+    }
+
+    void TearDown() override
+    {
+        scr()->set_active_canvas(CanvasTarget::UI);
+        scr()->set_world_canvas_pinned_classic(false);
+        scr()->relayout_views();
+    }
+};
+
 } // namespace
 
-TEST(StairOverlay, chevrons_draw_over_stair_tiles_and_pulse)
+TEST_F(StairOverlay, chevrons_draw_over_stair_tiles_and_pulse)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -266,7 +286,7 @@ TEST(StairOverlay, chevrons_draw_over_stair_tiles_and_pulse)
     restore_world(vs);
 }
 
-TEST(StairOverlay, scenes_without_stairs_render_byte_identically)
+TEST_F(StairOverlay, scenes_without_stairs_render_byte_identically)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -305,7 +325,7 @@ TEST(StairOverlay, scenes_without_stairs_render_byte_identically)
 // field with a lava lake, an up-stair and a down-stair beside the control
 // walker, plus the minimap — three render ticks so the chevron pulse and the
 // (static) lava radar color can be eyeballed.
-TEST(StairOverlay, zz_capture_stair_and_lava_scene)
+TEST_F(StairOverlay, zz_capture_stair_and_lava_scene)
 {
     if (!getenv("OG_FX_CAPTURE_DIR"))
         GTEST_SKIP() << "set OG_FX_CAPTURE_DIR to record";
@@ -356,7 +376,7 @@ TEST(StairOverlay, zz_capture_stair_and_lava_scene)
     restore_world(vs);
 }
 
-TEST(StairOverlay, overlay_follows_the_camera_floor)
+TEST_F(StairOverlay, overlay_follows_the_camera_floor)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);

@@ -2332,6 +2332,20 @@ TEST(PickerCommon, cycle_zoom_sequence)
     ASSERT_EQ("0.4", og::ui::cycle_zoom("0.45")); // quantize then step
 }
 
+TEST(PickerCommon, cycle_zoom_wraps_at_the_runtime_safe_minimum)
+{
+    ASSERT_EQ("0.2", og::ui::cycle_zoom("0.3", 2));
+    ASSERT_EQ("1.0", og::ui::cycle_zoom("0.2", 2));
+    ASSERT_EQ("1.0", og::ui::cycle_zoom("0.1", 2));
+
+    ASSERT_EQ("0.5", og::ui::cycle_zoom("0.6", 5));
+    ASSERT_EQ("1.0", og::ui::cycle_zoom("0.5", 5));
+    ASSERT_EQ("1.0", og::ui::cycle_zoom("0.2", 5));
+
+    ASSERT_EQ("1.0", og::ui::cycle_zoom("1.0", 10));
+    ASSERT_EQ("1.0", og::ui::cycle_zoom("0.5", 10));
+}
+
 TEST(PickerCommon, display_mode_parse_cycle_and_labels)
 {
     using og::ui::DisplayMode;
@@ -2468,6 +2482,10 @@ TEST(PickerCommon, cycle_smoothing_sequence_and_labels)
     ASSERT_EQ("Smooth: Eagle", og::ui::format_smoothing_label("eagle"));
     ASSERT_EQ("Smooth: Off", og::ui::format_smoothing_label(""));
     ASSERT_EQ("Smooth: Off", og::ui::format_smoothing_label("bogus"));
+	ASSERT_EQ("Smooth: SAI N/A",
+	          og::ui::format_smoothing_label("sai", false));
+	ASSERT_EQ("Smooth: Eagle N/A",
+	          og::ui::format_smoothing_label("eagle", false));
 }
 
 TEST(PickerCommon, legacy_render_only_supplies_an_absent_smoothing_key)

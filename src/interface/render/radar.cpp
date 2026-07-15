@@ -310,7 +310,7 @@ short radar::draw(LevelRuntimeData* data)
 				else
 				{
 					// Offset sanity check against the active canvas area
-					// (the legacy 320/64000 constants at default dims).
+					// (the legacy 320/64000 constants on a 320x200 canvas).
 					tempz = (tempx+(tempy*og::runtime::current_session->myscreen_->canvas_w())); //this may need fixing
 					if (tempz > og::runtime::current_session->myscreen_->canvas_w() * og::runtime::current_session->myscreen_->canvas_h() || tempz < 0)
 					{
@@ -425,7 +425,7 @@ short radar::draw(LevelRuntimeData* data)
 				else
 				{
 					// Offset sanity check against the active canvas area
-					// (the legacy 320/64000 constants at default dims).
+					// (the legacy 320/64000 constants on a 320x200 canvas).
 					tempz = (tempx+(tempy*og::runtime::current_session->myscreen_->canvas_w())); //this may need fixing
 					if (tempz > og::runtime::current_session->myscreen_->canvas_w() * og::runtime::current_session->myscreen_->canvas_h() || tempz < 0)
 					{

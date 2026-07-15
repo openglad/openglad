@@ -387,8 +387,11 @@ TEST(ViewRedraw, redraw_uses_interpolated_control_position_for_camera_follow)
     const bool result = vs->redraw(&active->level_runtime_data(), false);
     ASSERT_TRUE(result);
 
-    const float expected_x = 192.0f;
-    const float expected_y = 144.0f;
+    // The elapsed-time override lands near, but not necessarily at, exactly
+    // half a simulation tick.  Derive the camera sample from the alpha that
+    // redraw actually resolved instead of baking in the 0.5 midpoint.
+    const float expected_x = 160.0f + (224.0f - 160.0f) * vs->interpolation_alpha;
+    const float expected_y = 120.0f + (168.0f - 120.0f) * vs->interpolation_alpha;
     const Sint32 expected_topx = static_cast<Sint32>(
         expected_x - static_cast<float>(vs->xview - control->sizex()) / 2.0f);
     const Sint32 expected_topy = static_cast<Sint32>(

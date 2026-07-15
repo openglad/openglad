@@ -294,8 +294,8 @@ TEST(VideoModesMore, video_save_screenshot_matches_active_canvas_smoothing)
 
     // The legacy Engine slot remains NoZoom, while live world smoothing is
     // held separately in world_engine(). Produce the 2x SAI scratch, then
-    // verify the screenshot captures that presented 640x400 surface rather
-    // than the raw 320x200 world canvas.
+    // verify the screenshot captures that presented surface rather than the
+    // raw window-relative world canvas.
     E_Screen->set_world_zoom(og::kZoomStepsMax, og::WorldScaleMode::Sai);
     ASSERT_EQ(RenderEngine::NoZoom, E_Screen->Engine);
     ASSERT_EQ(RenderEngine::SAI, E_Screen->world_engine());
@@ -313,11 +313,13 @@ TEST(VideoModesMore, video_save_screenshot_matches_active_canvas_smoothing)
 	}
     E_Screen->swap(0, 0, E_Screen->world_w(), E_Screen->world_h());
     ASSERT_NE(nullptr, E_Screen->render2);
+    const std::pair<int, int> expected_world_capture{
+        E_Screen->world_w() * 2, E_Screen->world_h() * 2};
     ASSERT_TRUE(og::runtime::current_session->myscreen_->save_screenshot());
 
     std::vector<std::filesystem::path> files = screenshot_files();
     ASSERT_EQ(1u, files.size());
-    EXPECT_EQ(std::make_pair(640, 400), saved_image_dimensions(files.front()));
+    EXPECT_EQ(expected_world_capture, saved_image_dimensions(files.front()));
 
     // The fixed UI canvas must still be captured raw even while a valid
     // world-filter scratch exists.

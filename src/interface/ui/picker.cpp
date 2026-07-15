@@ -3006,27 +3006,29 @@ Sint32 change_depth_fx()
    return MENU_OK;
 }
 
-// DISPLAY zoom selector: step graphics/zoom, apply its window-independent
-// world canvas size (safe mid-menu because menus use the fixed UI canvas),
+// DISPLAY zoom selector: step graphics/zoom through the resource-safe range,
+// apply its window-relative world canvas (menus use the fixed UI canvas),
 // relayout views when the logical dimensions change, and sync both label
 // copies. main_options() persists cfg on exit.
 Sint32 change_zoom()
 {
-   const std::string next = og::ui::cycle_zoom(cfg.get_setting("graphics", "zoom"));
+   screen* scr = og::runtime::current_session->myscreen_;
+   const int minimum_steps = scr->minimum_world_zoom_steps();
+   const std::string next = og::ui::cycle_zoom(
+       cfg.get_setting("graphics", "zoom"), minimum_steps);
    cfg.apply_setting("graphics", "zoom", next);
 
-   screen* scr = og::runtime::current_session->myscreen_;
    const int old_w = scr->world_canvas_w();
    const int old_h = scr->world_canvas_h();
    scr->reapply_world_scale();
    if (scr->world_canvas_w() != old_w || scr->world_canvas_h() != old_h)
        scr->relayout_views();
 
-	// The platform reflects an allocation-rejected request back to the live
-	// zoom. Read cfg after applying so the face never advertises a canvas that
-	// was not installed.
-	const std::string label = og::ui::format_zoom_label(
-	    cfg.get_setting("graphics", "zoom"));
+   // The platform reflects an allocation-rejected request back to the live
+   // zoom. Read cfg after applying so the face never advertises a canvas that
+   // was not installed.
+   const std::string label = og::ui::format_zoom_label(
+       cfg.get_setting("graphics", "zoom"));
    if (og::runtime::current_session->allbuttons_[kDisplayMenuZoomIndex] != nullptr)
        og::runtime::current_session->allbuttons_[kDisplayMenuZoomIndex]->label = label;
    if (static_cast<int>(pks().display_settings_buttons.size()) > kDisplayMenuZoomIndex)
@@ -3046,7 +3048,8 @@ Sint32 change_smoothing()
    screen* scr = og::runtime::current_session->myscreen_;
    scr->reapply_world_scale(); // engine-only change: canvas dims are stable
 
-   const std::string label = og::ui::format_smoothing_label(next);
+   const std::string label = og::ui::format_smoothing_label(
+       next, scr->world_smoothing_supported());
    if (og::runtime::current_session->allbuttons_[kDisplayMenuSmoothingIndex] != nullptr)
        og::runtime::current_session->allbuttons_[kDisplayMenuSmoothingIndex]->label = label;
    if (static_cast<int>(pks().display_settings_buttons.size()) > kDisplayMenuSmoothingIndex)
@@ -3246,7 +3249,9 @@ Sint32 display_settings_options()
                    og::ui::format_smoothing_label(
                        og::ui::effective_smoothing_setting(
                            cfg.get_setting("graphics", "smoothing"),
-                           cfg.get_setting("graphics", "render"))));
+                           cfg.get_setting("graphics", "render")),
+                       og::runtime::current_session->myscreen_
+                           ->world_smoothing_supported()));
 
         og::runtime::current_session->myscreen_->clear_window();
         og::runtime::current_session->myscreen_->draw_button(0, 0, 320, 200, 0);

@@ -80,7 +80,7 @@ static constexpr int kMaxConfiguredDisplayDimension = 16384;
 // video.h). Every offset conversion (offset = x + y*width), full-frame
 // present rect and fade-surface size derives from these — byte-identical to
 // the retired VIDEO_WIDTH/VIDEO_SIZE/CX_SCREEN/CY_SCREEN 320x200 constants
-// while the canvases are at their default dims. The kUiCanvas fallbacks only
+// while the active canvas is 320x200. The kUiCanvas fallbacks only
 // matter for display-less (headless test) sessions, which never plot.
 static inline int active_canvas_w() { return E_Screen ? E_Screen->canvas_w() : kUiCanvasW; }
 static inline int active_canvas_h() { return E_Screen ? E_Screen->canvas_h() : kUiCanvasH; }
@@ -159,10 +159,8 @@ void apply_world_scale_from_cfg()
 	if (!E_Screen)
 		return;
 	// The zoom model (graphics/zoom 0.1..1.0 + graphics/smoothing
-	// off/sai/eagle): world canvas = classic/zoom, window-independent, so it
-	// applies on every target including the browser. The retired
-	// graphics/scale key is intentionally ignored (window-relative canvases
-	// made presentation cost scale with the window; see docs).
+	// off/sai/eagle): zoom 1.0 restores master's window-sized scale=1 canvas;
+	// lower values show more world within a bounded resource budget.
 	const std::string zoom_value = cfg.get_setting("graphics", "zoom");
 	// Pre-zoom configs stored the full-frame filter in graphics/render.
 	// Preserve SAI/Eagle through the new world-only path, while letting an
@@ -172,7 +170,13 @@ void apply_world_scale_from_cfg()
 	    cfg.get_setting("graphics", "render"));
 	const int zoom_steps = og::parse_zoom_steps(zoom_value);
 	const og::WorldScaleMode smoothing = og::parse_smoothing_setting(smoothing_value);
-	E_Screen->set_world_zoom(zoom_steps, smoothing);
+	int window_w = og::runtime::current_session != nullptr
+		? static_cast<int>(og::runtime::current_session->window_w_) : 0;
+	int window_h = og::runtime::current_session != nullptr
+		? static_cast<int>(og::runtime::current_session->window_h_) : 0;
+	if ((window_w <= 0 || window_h <= 0) && E_Screen->window != nullptr)
+		SDL_GetWindowSize(E_Screen->window, &window_w, &window_h);
+	E_Screen->set_world_zoom(zoom_steps, smoothing, window_w, window_h);
 	const int applied_zoom_steps = E_Screen->world_zoom_steps();
 	if (applied_zoom_steps != zoom_steps)
 	{
@@ -184,7 +188,8 @@ void apply_world_scale_from_cfg()
 		                  applied_zoom_steps == og::kZoomStepsMax
 		                      ? "1.0"
 		                      : "0." + std::to_string(applied_zoom_steps));
-		E_Screen->set_world_zoom(applied_zoom_steps, smoothing);
+		E_Screen->set_world_zoom(applied_zoom_steps, smoothing,
+		                        window_w, window_h);
 	}
 	TRACE("canvas", "zoom steps=%d smoothing=%d canvas=%dx%d", applied_zoom_steps,
 	      static_cast<int>(smoothing), E_Screen->world_w(), E_Screen->world_h());
@@ -2734,10 +2739,20 @@ void sdl_video::set_world_canvas_pinned_classic(bool pinned)
 
 void sdl_video::reapply_world_scale()
 {
-	// DISPLAY zoom/smoothing and RESTORE DEFAULTS live-apply seam. The legacy
-	// method name remains part of the video interface, but the canvas now
-	// derives from classic/zoom rather than from the current window.
+	// DISPLAY zoom/smoothing, window resize, and RESTORE DEFAULTS live-apply
+	// seam. The legacy method name remains part of the video interface.
 	apply_world_scale_from_cfg();
+}
+
+int sdl_video::minimum_world_zoom_steps() const
+{
+	return E_Screen ? E_Screen->minimum_world_zoom_steps()
+	                : og::kZoomStepsMax;
+}
+
+bool sdl_video::world_smoothing_supported() const
+{
+	return E_Screen && E_Screen->world_smoothing_supported();
 }
 
 // The display every display-settings decision should target: the one the
@@ -3077,8 +3092,8 @@ void sdl_video::apply_display_settings_from_cfg()
 #ifndef __EMSCRIPTEN__
 	// The DISPLAY screen's live-apply path (and RESTORE DEFAULTS): read the
 	// mode + resolution out of cfg, drive the real window, update the overscan
-	// viewport, then reapply the independent world zoom/smoothing settings.
-	// The SDL_EVENT_WINDOW_RESIZED this raises only refreshes the viewport.
+	// viewport, then reapply the window-relative world zoom/smoothing settings.
+	// The completed resize event refreshes that zoom baseline as well.
 	og::ui::DisplayMode mode =
 	    og::ui::parse_display_mode(cfg.get_setting("graphics", "fullscreen"));
 	const bool exclusive_downgraded =

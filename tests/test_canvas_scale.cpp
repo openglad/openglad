@@ -1,18 +1,18 @@
 // Integration coverage for the cfg graphics/zoom + graphics/smoothing
 // world-canvas machinery:
-//  * Screen::set_world_zoom sizing the world surface+texture from the zoom
-//    steps (canvas = classic 320x200 / zoom, window-independent),
+//  * Screen::set_world_zoom sizing the world surface+texture from the logical
+//    window (zoom 1.0 = master's scale=1 canvas; lower zoom = window / zoom),
 //  * the per-canvas present engine in Screen::swap (off = GPU nearest of
 //    the variable canvas; sai/eagle = software 2x into a canvas*2 render2,
 //    world canvas ONLY — menus/UI always present unsmoothed),
 //  * viewscreen relayout from the live canvas dims (screen::relayout_views
 //    and viewscreen::resize(whatmode)),
-//  * window-resize independence (the SDL_EVENT_WINDOW_RESIZED bridge only
-//    retracks overscan, never the canvas),
+//  * window resizes re-deriving the selected zoom canvas and view layout,
+//  * aspect-fitted fixed UI presentation/input on non-16:10 windows,
 //  * the level editor's classic-canvas pin.
 //
-// Every test restores the Legacy default (shared 320x200 canvas, UI target)
-// so the rest of the binary keeps running on the classic setup.
+// Every test restores the 1.0 window-derived renderer state and UI target so
+// the rest of the binary keeps running on the fixture's normal setup.
 
 #include <openglad/platform/sai2x.h>
 #include <openglad/platform/video_sdl.h>
@@ -42,7 +42,7 @@ screen* test_screen()
     return og::runtime::current_session->myscreen_;
 }
 
-// RAII restore of the classic default renderer state around a test body.
+// RAII restore of the window-derived default renderer state around a test body.
 struct ClassicCanvasRestore
 {
     int win_w = 0;
@@ -58,7 +58,10 @@ struct ClassicCanvasRestore
     ~ClassicCanvasRestore()
     {
         E_Screen->set_world_canvas_pinned_classic(false);
-        E_Screen->set_world_zoom(og::kZoomStepsMax, og::WorldScaleMode::Integer);
+        (void)SDL_SetWindowSize(E_Screen->window, win_w, win_h);
+        (void)SDL_SyncWindow(E_Screen->window);
+        E_Screen->set_world_zoom(og::kZoomStepsMax,
+                                 og::WorldScaleMode::Integer, win_w, win_h);
         E_Screen->set_active_canvas(CanvasTarget::UI);
         og::runtime::current_session->window_w_ = old_window_w;
         og::runtime::current_session->window_h_ = old_window_h;
@@ -89,32 +92,35 @@ int stop_editor_after_render(void*)
 
 } // namespace
 
-TEST(CanvasScale, legacy_default_shares_one_320x200_surface)
+TEST(CanvasScale, zoom_one_matches_the_window_sized_master_scale_one_canvas)
 {
     ASSERT_TRUE(E_Screen);
-    ASSERT_EQ(og::WorldScaleMode::Legacy, E_Screen->world_scale().mode);
+    ClassicCanvasRestore restore;
+    E_Screen->set_world_zoom(og::kZoomStepsMax,
+                             og::WorldScaleMode::Integer, 640, 400);
+    ASSERT_EQ(og::WorldScaleMode::Integer, E_Screen->world_scale().mode);
     E_Screen->set_active_canvas(CanvasTarget::UI);
     SDL_Surface* ui = E_Screen->render;
     E_Screen->set_active_canvas(CanvasTarget::World);
-    EXPECT_EQ(ui, E_Screen->render) << "default world canvas must alias the UI surface";
-    EXPECT_EQ(320, E_Screen->render->w);
-    EXPECT_EQ(200, E_Screen->render->h);
-    EXPECT_EQ(320, test_screen()->world_canvas_w());
-    EXPECT_EQ(200, test_screen()->world_canvas_h());
+    EXPECT_NE(ui, E_Screen->render)
+        << "a window larger than 320x200 needs its own master-style world canvas";
+    EXPECT_EQ(640, E_Screen->render->w);
+    EXPECT_EQ(400, E_Screen->render->h);
+    EXPECT_EQ(640, test_screen()->world_canvas_w());
+    EXPECT_EQ(400, test_screen()->world_canvas_h());
     E_Screen->set_active_canvas(CanvasTarget::UI);
 }
 
-TEST(CanvasScale, zoom_half_splits_a_640x400_world_canvas_and_presents)
+TEST(CanvasScale, zoom_half_doubles_the_window_sized_world_canvas_and_presents)
 {
     ASSERT_TRUE(E_Screen);
     ClassicCanvasRestore restore;
 
-    // zoom=0.5: world canvas = classic/0.5 = 640x400, regardless of the
-    // window (the zoom model is window-independent).
-    const og::WorldCanvasDims want = og::compute_zoom_canvas_dims(5);
-    ASSERT_EQ(640, want.w);
-    ASSERT_EQ(400, want.h);
-    E_Screen->set_world_zoom(5, og::WorldScaleMode::Integer);
+    // zoom=0.5: world canvas = the 640x400 logical window / 0.5.
+    const og::WorldCanvasDims want = og::compute_zoom_canvas_dims(640, 400, 5);
+    ASSERT_EQ(1280, want.w);
+    ASSERT_EQ(800, want.h);
+    E_Screen->set_world_zoom(5, og::WorldScaleMode::Integer, 640, 400);
     ASSERT_EQ(want.w, E_Screen->world_w());
     ASSERT_EQ(want.h, E_Screen->world_h());
 
@@ -143,6 +149,43 @@ TEST(CanvasScale, zoom_half_splits_a_640x400_world_canvas_and_presents)
     s->buffer_to_screen(0, 0, s->canvas_w(), s->canvas_h());
 }
 
+TEST(CanvasScale, modal_backdrop_center_crops_widescreen_world_without_squeeze)
+{
+    ASSERT_TRUE(E_Screen);
+    ClassicCanvasRestore restore;
+    screen* s = test_screen();
+    ASSERT_TRUE(s);
+
+    // A 1280x720 (16:9) world must crop 64 pixels from each side to form a
+    // 1152x720 (16:10) source before it is reduced to the fixed 320x200 UI.
+    // If the full world were squeezed instead, the red edge bands would be
+    // visible on the modal backdrop's first and last columns.
+    E_Screen->set_world_zoom(og::kZoomStepsMax,
+                             og::WorldScaleMode::Integer, 1280, 720);
+    E_Screen->set_active_canvas(CanvasTarget::World);
+    SDL_Surface* const world = E_Screen->render;
+    const Uint32 center = SDL_MapSurfaceRGBA(world, 20, 180, 60, 255);
+    const Uint32 edge = SDL_MapSurfaceRGBA(world, 220, 30, 40, 255);
+    ASSERT_TRUE(SDL_FillSurfaceRect(world, nullptr, center));
+    const SDL_Rect left_edge{0, 0, 64, 720};
+    const SDL_Rect right_edge{1216, 0, 64, 720};
+    ASSERT_TRUE(SDL_FillSurfaceRect(world, &left_edge, edge));
+    ASSERT_TRUE(SDL_FillSurfaceRect(world, &right_edge, edge));
+
+    {
+        ScopedUiCanvas ui(*s);
+        ASSERT_EQ(320, E_Screen->render->w);
+        ASSERT_EQ(200, E_Screen->render->h);
+        const auto* first_row =
+            reinterpret_cast<const Uint32*>(E_Screen->render->pixels);
+        EXPECT_EQ(center & 0x00ffffffu, first_row[0] & 0x00ffffffu);
+        EXPECT_EQ(center & 0x00ffffffu, first_row[160] & 0x00ffffffu);
+        EXPECT_EQ(center & 0x00ffffffu, first_row[319] & 0x00ffffffu);
+        EXPECT_NE(edge & 0x00ffffffu, first_row[0] & 0x00ffffffu);
+        EXPECT_NE(edge & 0x00ffffffu, first_row[319] & 0x00ffffffu);
+    }
+}
+
 TEST(CanvasScale, scoped_ui_canvas_seeds_from_world_and_restores_routing)
 {
     ASSERT_TRUE(E_Screen);
@@ -150,7 +193,7 @@ TEST(CanvasScale, scoped_ui_canvas_seeds_from_world_and_restores_routing)
     screen* s = test_screen();
     ASSERT_TRUE(s);
 
-    E_Screen->set_world_zoom(5, og::WorldScaleMode::Sai);
+    E_Screen->set_world_zoom(5, og::WorldScaleMode::Sai, 320, 200);
     E_Screen->set_active_canvas(CanvasTarget::World);
     constexpr Uint32 kWorldPixel = 0x00123456u;
     SDL_FillSurfaceRect(E_Screen->render, nullptr, kWorldPixel);
@@ -197,7 +240,8 @@ TEST(CanvasScale, scoped_ui_canvas_preserves_classic_smart_gameplay_overlay)
     screen* s = test_screen();
     ASSERT_TRUE(s);
 
-    E_Screen->set_world_zoom(og::kZoomStepsMax, og::WorldScaleMode::Sai);
+    E_Screen->set_world_zoom(og::kZoomStepsMax, og::WorldScaleMode::Sai,
+                             320, 200);
     E_Screen->set_active_canvas(CanvasTarget::World);
     SDL_FillSurfaceRect(E_Screen->render, nullptr, 0x00123456u);
     E_Screen->begin_gameplay_frame();
@@ -236,7 +280,8 @@ TEST(CanvasScale, scoped_ui_canvas_uses_the_last_filtered_world_scenery)
     // Keep World/UI aliased at classic dimensions, but make the scenery
     // non-uniform so raw World pixels and the last successful SAI result are
     // observably different after each is reduced to the fixed UI canvas.
-    E_Screen->set_world_zoom(og::kZoomStepsMax, og::WorldScaleMode::Sai);
+    E_Screen->set_world_zoom(og::kZoomStepsMax, og::WorldScaleMode::Sai,
+                             320, 200);
     E_Screen->set_active_canvas(CanvasTarget::World);
     E_Screen->begin_gameplay_frame();
     ASSERT_TRUE(E_Screen->gameplay_ui_overlay_active());
@@ -321,7 +366,7 @@ TEST(CanvasScale, zoom_steps_clamp_to_the_grid_and_reshare_at_classic)
 
     // Steps above the classic 1.0 clamp back to it and re-share the UI
     // surface (the byte-identity dims).
-    E_Screen->set_world_zoom(99, og::WorldScaleMode::Integer);
+    E_Screen->set_world_zoom(99, og::WorldScaleMode::Integer, 320, 200);
     EXPECT_EQ(320, E_Screen->world_w());
     EXPECT_EQ(200, E_Screen->world_h());
     E_Screen->set_active_canvas(CanvasTarget::UI);
@@ -332,7 +377,7 @@ TEST(CanvasScale, zoom_steps_clamp_to_the_grid_and_reshare_at_classic)
 
     // zoom 0.8: canvas = classic/0.8 = 400x250 (width already a multiple of
     // 4), a real split pair.
-    E_Screen->set_world_zoom(8, og::WorldScaleMode::Integer);
+    E_Screen->set_world_zoom(8, og::WorldScaleMode::Integer, 320, 200);
     EXPECT_EQ(400, E_Screen->world_w());
     EXPECT_EQ(250, E_Screen->world_h());
     test_screen()->buffer_to_screen(0, 0, 400, 250); // present smoke
@@ -345,7 +390,7 @@ TEST(CanvasScale, sai_smoothing_doubles_into_render2_at_canvas_dims)
 
     // graphics/smoothing=sai at zoom 0.5: canvas 640x400, the world
     // presents through the software 2x scaler into a 1280x800 render2.
-    E_Screen->set_world_zoom(5, og::WorldScaleMode::Sai);
+    E_Screen->set_world_zoom(5, og::WorldScaleMode::Sai, 320, 200);
     ASSERT_EQ(640, E_Screen->world_w());
     ASSERT_EQ(400, E_Screen->world_h());
     EXPECT_EQ(RenderEngine::SAI, E_Screen->world_engine());
@@ -375,7 +420,7 @@ TEST(CanvasScale, sai_smoothing_doubles_into_render2_at_canvas_dims)
     EXPECT_EQ(CanvasTarget::UI, test_screen()->last_presented_canvas());
 
     // The eagle scaler picks the Eagle engine over the same canvas.
-    E_Screen->set_world_zoom(5, og::WorldScaleMode::Eagle);
+    E_Screen->set_world_zoom(5, og::WorldScaleMode::Eagle, 320, 200);
     EXPECT_EQ(RenderEngine::Eagle, E_Screen->world_engine());
     EXPECT_EQ(640, E_Screen->world_w());
     E_Screen->set_active_canvas(CanvasTarget::World);
@@ -391,7 +436,8 @@ TEST(CanvasScale, smart_smoothing_composites_gameplay_ui_nearest_after_world_fil
     screen* s = test_screen();
     ASSERT_TRUE(s);
 
-    E_Screen->set_world_zoom(og::kZoomStepsMax, og::WorldScaleMode::Sai);
+    E_Screen->set_world_zoom(og::kZoomStepsMax, og::WorldScaleMode::Sai,
+                             320, 200);
     E_Screen->set_active_canvas(CanvasTarget::World);
     E_Screen->begin_gameplay_frame();
     ASSERT_TRUE(E_Screen->gameplay_ui_overlay_active());
@@ -455,7 +501,8 @@ TEST(CanvasScale, smart_smoothing_composites_gameplay_ui_nearest_after_world_fil
 
     // Disabling smoothing releases the layer and makes GameplayUI alias the
     // complete World surface, which is also the allocation-fallback behavior.
-    E_Screen->set_world_zoom(og::kZoomStepsMax, og::WorldScaleMode::Integer);
+    E_Screen->set_world_zoom(og::kZoomStepsMax,
+                             og::WorldScaleMode::Integer, 320, 200);
     EXPECT_FALSE(E_Screen->gameplay_ui_overlay_active());
     EXPECT_EQ(nullptr, E_Screen->gameplay_ui_overlay_surface());
     E_Screen->set_active_canvas(CanvasTarget::World);
@@ -472,7 +519,7 @@ TEST(CanvasScale, gameplay_refresh_filters_and_presents_the_complete_world_once)
     ASSERT_TRUE(s);
     ASSERT_TRUE(s->viewob[0]);
 
-    E_Screen->set_world_zoom(5, og::WorldScaleMode::Sai);
+    E_Screen->set_world_zoom(5, og::WorldScaleMode::Sai, 320, 200);
     E_Screen->set_active_canvas(CanvasTarget::World);
 
     // Allocate the scratch, then poison it. A legacy per-view refresh below
@@ -517,7 +564,7 @@ TEST(CanvasScale, relayout_views_follows_the_canvas)
     const short old_numviews = s->numviews;
     const short old_mynum = vs->mynum;
 
-    E_Screen->set_world_zoom(5, og::WorldScaleMode::Integer);
+    E_Screen->set_world_zoom(5, og::WorldScaleMode::Integer, 320, 200);
     ASSERT_EQ(640, s->world_canvas_w());
 
     // 1p FULL covers the whole doubled canvas.
@@ -554,35 +601,60 @@ TEST(CanvasScale, relayout_views_follows_the_canvas)
     EXPECT_EQ(expect.h, vs->yview);
 }
 
-TEST(CanvasScale, window_resize_leaves_the_zoom_canvas_alone)
+TEST(CanvasScale, window_resize_recomputes_the_zoom_canvas_and_layout)
 {
     ASSERT_TRUE(E_Screen);
     screen* s = test_screen();
     ASSERT_TRUE(s->viewob[0]);
     ClassicCanvasRestore restore;
+    const std::string old_zoom = cfg.get_setting("graphics", "zoom");
+    const std::string old_smoothing = cfg.get_setting("graphics", "smoothing");
 
-    // The zoom-model canvas is window-independent: a window resize only
-    // re-derives the overscan viewport; canvas and view layout stay put.
-    E_Screen->set_world_zoom(5, og::WorldScaleMode::Integer);
+    // Start with a half-zoom canvas derived from a 320x200 window. The resize
+    // event must preserve the selected 0.5 zoom while deriving a new canvas
+    // from the completed 1280x800 logical size.
+    cfg.apply_setting("graphics", "zoom", "0.5");
+    cfg.apply_setting("graphics", "smoothing", "off");
+    ASSERT_TRUE(SDL_SetWindowSize(E_Screen->window, 320, 200));
+    ASSERT_TRUE(SDL_SyncWindow(E_Screen->window));
+    og::runtime::current_session->window_w_ = 320;
+    og::runtime::current_session->window_h_ = 200;
+    update_overscan_setting();
+    E_Screen->set_world_zoom(5, og::WorldScaleMode::Integer, 320, 200);
     ASSERT_EQ(640, E_Screen->world_w());
 
     SDL_Event ev{};
     ev.type = SDL_EVENT_WINDOW_RESIZED;
+    ASSERT_TRUE(SDL_SetWindowSize(E_Screen->window, 1280, 800));
+    ASSERT_TRUE(SDL_SyncWindow(E_Screen->window));
     ev.window.data1 = 1280;
     ev.window.data2 = 800;
     handle_window_event(ev);
 
-    EXPECT_EQ(640, E_Screen->world_w());
-    EXPECT_EQ(400, E_Screen->world_h());
+    EXPECT_EQ(2560, E_Screen->world_w());
+    EXPECT_EQ(1600, E_Screen->world_h());
     EXPECT_EQ(1280.0f, og::runtime::current_session->window_w_);
     EXPECT_EQ(800.0f, og::runtime::current_session->window_h_);
+    const viewscreen* const resized_view = s->viewob[0].get();
+    const og::view_layout::ViewLayout expect =
+        og::view_layout::compute_view_layout(
+            s->numviews, resized_view->mynum,
+            resized_view->prefs[PREF_VIEW], 2560, 1600);
+    ASSERT_TRUE(expect.applies);
+    EXPECT_EQ(expect.w, resized_view->xview);
+    EXPECT_EQ(expect.h, resized_view->yview);
 
-    // Classic zoom: same event, same stability.
-    E_Screen->set_world_zoom(og::kZoomStepsMax, og::WorldScaleMode::Integer);
+    // At zoom 1.0 the same logical window matches master's scale=1 canvas.
+    cfg.apply_setting("graphics", "zoom", "1.0");
+    E_Screen->set_world_zoom(og::kZoomStepsMax,
+                             og::WorldScaleMode::Integer, 320, 200);
     ASSERT_EQ(320, E_Screen->world_w());
     handle_window_event(ev);
-    EXPECT_EQ(320, E_Screen->world_w());
-    EXPECT_EQ(200, E_Screen->world_h());
+    EXPECT_EQ(1280, E_Screen->world_w());
+    EXPECT_EQ(800, E_Screen->world_h());
+
+    cfg.apply_setting("graphics", "zoom", old_zoom);
+    cfg.apply_setting("graphics", "smoothing", old_smoothing);
 }
 
 TEST(CanvasScale, apply_world_scale_from_cfg_reads_the_zoom_keys)
@@ -592,33 +664,35 @@ TEST(CanvasScale, apply_world_scale_from_cfg_reads_the_zoom_keys)
     const std::string old_zoom = cfg.get_setting("graphics", "zoom");
     const std::string old_smoothing = cfg.get_setting("graphics", "smoothing");
     const std::string old_render = cfg.get_setting("graphics", "render");
+    og::runtime::current_session->window_w_ = 640;
+    og::runtime::current_session->window_h_ = 400;
+    update_overscan_setting();
 
     cfg.apply_setting("graphics", "zoom", "0.5");
     cfg.apply_setting("graphics", "smoothing", "off");
     apply_world_scale_from_cfg();
     EXPECT_EQ(og::WorldScaleMode::Integer, E_Screen->world_scale().mode);
-    EXPECT_EQ(640, E_Screen->world_w());
-    EXPECT_EQ(400, E_Screen->world_h());
+    EXPECT_EQ(1280, E_Screen->world_w());
+    EXPECT_EQ(800, E_Screen->world_h());
 
-    // Smoothing selects the world-only engine; at classic zoom the canvas
-    // stays the byte-identity 320x200 (shared surface, smoothed world
-    // present).
+    // Smoothing selects the world-only engine without changing the
+    // master-style 640x400 zoom-1 canvas.
     cfg.apply_setting("graphics", "zoom", "1.0");
     cfg.apply_setting("graphics", "smoothing", "sai");
     apply_world_scale_from_cfg();
     EXPECT_EQ(og::WorldScaleMode::Sai, E_Screen->world_scale().mode);
     EXPECT_EQ(RenderEngine::SAI, E_Screen->world_engine());
-    EXPECT_EQ(320, E_Screen->world_w());
-    EXPECT_EQ(200, E_Screen->world_h());
+    EXPECT_EQ(640, E_Screen->world_w());
+    EXPECT_EQ(400, E_Screen->world_h());
 
-    // Absent keys restore the Legacy classic canvas.
+    // Absent keys restore zoom 1.0 at the logical window size.
     cfg.apply_setting("graphics", "zoom", "");
     cfg.apply_setting("graphics", "smoothing", "");
     cfg.apply_setting("graphics", "render", "normal");
     apply_world_scale_from_cfg();
-    EXPECT_EQ(og::WorldScaleMode::Legacy, E_Screen->world_scale().mode);
-    EXPECT_EQ(320, E_Screen->world_w());
-    EXPECT_EQ(200, E_Screen->world_h());
+    EXPECT_EQ(og::WorldScaleMode::Integer, E_Screen->world_scale().mode);
+    EXPECT_EQ(640, E_Screen->world_w());
+    EXPECT_EQ(400, E_Screen->world_h());
 
     // Existing configs stored SAI/Eagle in graphics/render. With no new
     // smoothing key, preserve that preference through the world-only path;
@@ -629,7 +703,7 @@ TEST(CanvasScale, apply_world_scale_from_cfg_reads_the_zoom_keys)
     EXPECT_EQ(RenderEngine::SAI, E_Screen->world_engine());
     cfg.apply_setting("graphics", "smoothing", "off");
     apply_world_scale_from_cfg();
-    EXPECT_EQ(og::WorldScaleMode::Legacy, E_Screen->world_scale().mode);
+    EXPECT_EQ(og::WorldScaleMode::Integer, E_Screen->world_scale().mode);
 
     cfg.apply_setting("graphics", "zoom", old_zoom);
     cfg.apply_setting("graphics", "smoothing", old_smoothing);
@@ -644,7 +718,8 @@ TEST(CanvasScale, rejected_zoom_allocation_keeps_cfg_and_renderer_in_sync)
 	const std::string old_zoom = cfg.get_setting("graphics", "zoom");
 	const std::string old_smoothing = cfg.get_setting("graphics", "smoothing");
 
-	E_Screen->set_world_zoom(og::kZoomStepsMax, og::WorldScaleMode::Integer);
+	E_Screen->set_world_zoom(og::kZoomStepsMax,
+	                         og::WorldScaleMode::Integer, 640, 400);
 	cfg.apply_setting("graphics", "zoom", "0.5");
 	cfg.apply_setting("graphics", "smoothing", "sai");
 	E_Screen->fail_next_world_canvas_allocation_for_testing();
@@ -652,8 +727,8 @@ TEST(CanvasScale, rejected_zoom_allocation_keeps_cfg_and_renderer_in_sync)
 
 	EXPECT_EQ("1.0", cfg.get_setting("graphics", "zoom"));
 	EXPECT_EQ(og::kZoomStepsMax, E_Screen->world_zoom_steps());
-	EXPECT_EQ(320, E_Screen->world_w());
-	EXPECT_EQ(200, E_Screen->world_h());
+	EXPECT_EQ(640, E_Screen->world_w());
+	EXPECT_EQ(400, E_Screen->world_h());
 	// The independent smoothing request still applies to the retained canvas.
 	EXPECT_EQ(og::WorldScaleMode::Sai, E_Screen->world_scale().mode);
 	EXPECT_EQ(RenderEngine::SAI, E_Screen->world_engine());
@@ -663,48 +738,122 @@ TEST(CanvasScale, rejected_zoom_allocation_keeps_cfg_and_renderer_in_sync)
 	apply_world_scale_from_cfg();
 }
 
-TEST(CanvasScale, mouse_mapping_divides_by_the_active_canvas_dims)
+TEST(CanvasScale, mouse_mapping_uses_the_aspect_fitted_active_canvas)
 {
     ASSERT_TRUE(E_Screen);
     ClassicCanvasRestore restore;
     const float old_overscan = og::runtime::current_session->overscan_percentage_;
 
-    // A 640x400 window with no overscan; scale=1 grows the world canvas to
-    // the full window while the UI canvas stays 320x200.
+    // A 16:9 window with no overscan. Zoom 1.0 makes World exactly 640x360,
+    // while the fixed 320x200 UI aspect-fits to x=32..608 (576x360).
     og::runtime::current_session->window_w_ = 640;
-    og::runtime::current_session->window_h_ = 400;
+    og::runtime::current_session->window_h_ = 360;
     og::runtime::current_session->overscan_percentage_ = 0.0f;
     update_overscan_setting();
-    E_Screen->set_world_zoom(5, og::WorldScaleMode::Integer);
+    E_Screen->set_world_zoom(og::kZoomStepsMax,
+                             og::WorldScaleMode::Integer, 640, 360);
     ASSERT_EQ(640, E_Screen->world_w());
-    ASSERT_EQ(400, E_Screen->world_h());
+    ASSERT_EQ(360, E_Screen->world_h());
 
     SDL_Event ev{};
     ev.type = SDL_EVENT_MOUSE_MOTION;
     ev.motion.type = SDL_EVENT_MOUSE_MOTION;
-    ev.motion.x = 320; // window center
-    ev.motion.y = 200;
+    ev.motion.x = 176;
+    ev.motion.y = 90;
 
-    // Gameplay routing (world canvas active): the window->canvas mapping
-    // divides by the world dims, so the center lands at 320,200 of the
-    // zoom-0.5 640x400 canvas.
+    // Gameplay routing fills the window and therefore maps 1:1.
     E_Screen->set_active_canvas(CanvasTarget::World);
     clear_events();
     SDL_PushEvent(&ev);
     get_input_events(POLL);
     MouseState& mymouse = query_mouse_no_poll();
-    EXPECT_NEAR(320.0f, mymouse.x, 1.0f);
-    EXPECT_NEAR(200.0f, mymouse.y, 1.0f);
+    EXPECT_NEAR(176.0f, mymouse.x, 1.0f);
+    EXPECT_NEAR(90.0f, mymouse.y, 1.0f);
 
-    // Menu routing (UI canvas active): the SAME window point maps to the
-    // classic 160,100 — every menu layout and pixel pin keeps its logical
-    // 320x200 mouse space regardless of the world scale.
+    // UI routing subtracts the 32px pillarbox and scales through the fitted
+    // 576px width: (176-32)*320/576 = 80, while y=90 maps to 50.
     E_Screen->set_active_canvas(CanvasTarget::UI);
     clear_events();
     SDL_PushEvent(&ev);
     get_input_events(POLL);
-    EXPECT_NEAR(160.0f, mymouse.x, 1.0f);
-    EXPECT_NEAR(100.0f, mymouse.y, 1.0f);
+    EXPECT_NEAR(80.0f, mymouse.x, 1.0f);
+    EXPECT_NEAR(50.0f, mymouse.y, 1.0f);
+
+    og::runtime::current_session->overscan_percentage_ = old_overscan;
+}
+
+TEST(CanvasScale, cached_mouse_remaps_between_world_and_ui_without_motion)
+{
+    ASSERT_TRUE(E_Screen);
+    ClassicCanvasRestore restore;
+    const float old_overscan =
+        og::runtime::current_session->overscan_percentage_;
+
+    og::runtime::current_session->window_w_ = 640;
+    og::runtime::current_session->window_h_ = 360;
+    og::runtime::current_session->overscan_percentage_ = 0.0f;
+    update_overscan_setting();
+    E_Screen->set_world_zoom(og::kZoomStepsMax,
+                             og::WorldScaleMode::Integer, 640, 360);
+    E_Screen->set_active_canvas(CanvasTarget::World);
+
+    SDL_Event motion{};
+    motion.type = SDL_EVENT_MOUSE_MOTION;
+    motion.motion.type = SDL_EVENT_MOUSE_MOTION;
+    motion.motion.x = 176;
+    motion.motion.y = 90;
+    handle_mouse_event(motion);
+    MouseState& mymouse = query_mouse_no_poll();
+    ASSERT_NEAR(176.0f, mymouse.x, 1.0f);
+    ASSERT_NEAR(90.0f, mymouse.y, 1.0f);
+
+    // No new native event: switching targets keeps the same physical point
+    // while changing its cached logical coordinates through the fitted UI.
+    E_Screen->set_active_canvas(CanvasTarget::UI);
+    EXPECT_NEAR(80.0f, mymouse.x, 1.0f);
+    EXPECT_NEAR(50.0f, mymouse.y, 1.0f);
+    E_Screen->set_active_canvas(CanvasTarget::World);
+    EXPECT_NEAR(176.0f, mymouse.x, 1.0f);
+    EXPECT_NEAR(90.0f, mymouse.y, 1.0f);
+
+    og::runtime::current_session->overscan_percentage_ = old_overscan;
+}
+
+TEST(CanvasScale, fixed_ui_ignores_mouse_down_in_pillarbox_bars)
+{
+    ASSERT_TRUE(E_Screen);
+    ClassicCanvasRestore restore;
+    const float old_overscan =
+        og::runtime::current_session->overscan_percentage_;
+
+    og::runtime::current_session->window_w_ = 640;
+    og::runtime::current_session->window_h_ = 360;
+    og::runtime::current_session->overscan_percentage_ = 0.0f;
+    update_overscan_setting();
+    E_Screen->set_world_zoom(og::kZoomStepsMax,
+                             og::WorldScaleMode::Integer, 640, 360);
+    E_Screen->set_active_canvas(CanvasTarget::UI);
+
+    MouseState& mymouse = query_mouse_no_poll();
+    mymouse.left = 0;
+    SDL_Event down{};
+    down.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
+    down.button.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
+    down.button.button = SDL_BUTTON_LEFT;
+    down.button.x = 16; // left pillarbox; fitted UI begins at x=32
+    down.button.y = 180;
+    handle_mouse_event(down);
+    EXPECT_EQ(0, mymouse.left);
+
+    down.button.x = 176; // inside the fitted UI
+    down.button.y = 90;
+    handle_mouse_event(down);
+    EXPECT_EQ(1, mymouse.left);
+    SDL_Event up = down;
+    up.type = SDL_EVENT_MOUSE_BUTTON_UP;
+    up.button.type = SDL_EVENT_MOUSE_BUTTON_UP;
+    handle_mouse_event(up);
+    EXPECT_EQ(0, mymouse.left);
 
     og::runtime::current_session->overscan_percentage_ = old_overscan;
 }
@@ -718,7 +867,7 @@ TEST(CanvasScale, level_editor_pins_the_classic_canvas)
 
     // Grow the world canvas, then run the editor (world().end pre-set so its
     // loop exits immediately, as in LevelEditorSmoke).
-    E_Screen->set_world_zoom(5, og::WorldScaleMode::Integer);
+    E_Screen->set_world_zoom(5, og::WorldScaleMode::Integer, 320, 200);
     ASSERT_EQ(640, s->world_canvas_w());
 
     trace_clear();
@@ -739,9 +888,36 @@ TEST(CanvasScale, level_editor_pins_the_classic_canvas)
     // and applied on release).
     E_Screen->set_world_canvas_pinned_classic(true);
     EXPECT_EQ(320, E_Screen->world_w());
-    E_Screen->set_world_zoom(5, og::WorldScaleMode::Integer);
+    E_Screen->set_world_zoom(5, og::WorldScaleMode::Integer, 320, 200);
     EXPECT_EQ(320, E_Screen->world_w()) << "pin must win over a zoom change";
     E_Screen->set_world_canvas_pinned_classic(false);
+}
+
+TEST(CanvasScale, failed_pin_release_is_retryable_and_does_not_stay_pinned)
+{
+    ASSERT_TRUE(E_Screen);
+    ClassicCanvasRestore restore;
+
+    E_Screen->set_world_zoom(5, og::WorldScaleMode::Integer, 320, 200);
+    ASSERT_EQ(640, E_Screen->world_w());
+    ASSERT_EQ(400, E_Screen->world_h());
+    E_Screen->set_world_canvas_pinned_classic(true);
+    ASSERT_TRUE(E_Screen->world_canvas_pinned_classic());
+    ASSERT_EQ(320, E_Screen->world_w());
+
+    E_Screen->fail_next_world_canvas_allocation_for_testing();
+    E_Screen->set_world_canvas_pinned_classic(false);
+    EXPECT_FALSE(E_Screen->world_canvas_pinned_classic())
+        << "a failed restore must not strand later config/resize retries";
+    EXPECT_EQ(320, E_Screen->world_w())
+        << "the working classic pair remains live after allocation failure";
+    EXPECT_EQ(200, E_Screen->world_h());
+
+    // Reapplying the same selected zoom must retry now that the pin is clear.
+    E_Screen->set_world_zoom(5, og::WorldScaleMode::Integer, 320, 200);
+    EXPECT_EQ(640, E_Screen->world_w());
+    EXPECT_EQ(400, E_Screen->world_h());
+    EXPECT_EQ(5, E_Screen->world_zoom_steps());
 }
 
 TEST(CanvasScale, level_editor_filters_map_but_keeps_controls_on_crisp_overlay)
@@ -755,7 +931,8 @@ TEST(CanvasScale, level_editor_filters_map_but_keeps_controls_on_crisp_overlay)
     // The editor is pinned to classic coordinates, but SAI remains the World
     // present engine. Its draw transaction must therefore produce both a 2x
     // scenery scratch and a nearest-composited authoring-UI overlay.
-    E_Screen->set_world_zoom(og::kZoomStepsMax, og::WorldScaleMode::Sai);
+    E_Screen->set_world_zoom(og::kZoomStepsMax, og::WorldScaleMode::Sai,
+                             320, 200);
     E_Screen->set_active_canvas(CanvasTarget::World);
     s->world().end = 0;
 
@@ -805,66 +982,70 @@ TEST(CanvasScale, hostile_zoom_steps_clamp_and_round)
     ClassicCanvasRestore restore;
     screen* s = test_screen();
 
-    // zoom 0.3: 320*10/3 = 1066 rounds UP to a multiple of 4 (1068); height
+    // zoom 0.3: 320*10/3 = 1066 rounds DOWN to a multiple of 4 (1064); height
     // floors (200*10/3 = 666). A REAL surface + texture pair at non-round
     // dims, plotted and present-smoked in the far corner (the offset math
-    // must use the 1068px stride).
-    E_Screen->set_world_zoom(3, og::WorldScaleMode::Integer);
-    EXPECT_EQ(1068, E_Screen->world_w());
+    // must use the 1064px stride).
+    E_Screen->set_world_zoom(3, og::WorldScaleMode::Integer, 320, 200);
+    EXPECT_EQ(1064, E_Screen->world_w());
     EXPECT_EQ(666, E_Screen->world_h());
     EXPECT_EQ(0, E_Screen->world_w() % 4);
     E_Screen->set_active_canvas(CanvasTarget::World);
-    s->pointb(1067, 665, 47);
+    s->pointb(1063, 665, 47);
     int idx = 0;
-    s->get_pixel(1067, 665, &idx);
+    s->get_pixel(1063, 665, &idx);
     EXPECT_EQ(47, idx);
-    s->buffer_to_screen(0, 0, 1068, 666);
+    s->buffer_to_screen(0, 0, 1064, 666);
 
     // Out-of-range steps clamp to the grid: 0 and negative pin to the
     // deepest zoom (0.1 -> 3200x2000 is a real allocation, so clamp is
     // asserted via the computed dims), oversized steps pin to classic.
-    const og::WorldCanvasDims deepest = og::compute_zoom_canvas_dims(1);
+    const og::WorldCanvasDims deepest = og::compute_zoom_canvas_dims(320, 200, 1);
     EXPECT_EQ(3200, deepest.w);
     EXPECT_EQ(2000, deepest.h);
-    E_Screen->set_world_zoom(0, og::WorldScaleMode::Integer);
+    E_Screen->set_world_zoom(0, og::WorldScaleMode::Integer, 320, 200);
     EXPECT_EQ(3200, E_Screen->world_w());
     EXPECT_EQ(2000, E_Screen->world_h());
-    E_Screen->set_world_zoom(-7, og::WorldScaleMode::Integer);
+    E_Screen->set_world_zoom(-7, og::WorldScaleMode::Integer, 320, 200);
     EXPECT_EQ(3200, E_Screen->world_w());
-    E_Screen->set_world_zoom(99, og::WorldScaleMode::Integer);
+    E_Screen->set_world_zoom(99, og::WorldScaleMode::Integer, 320, 200);
     EXPECT_EQ(320, E_Screen->world_w());
     EXPECT_EQ(200, E_Screen->world_h());
 
     // The sai scaler over the non-round canvas: render2 doubles the CANVAS
-    // (2136x1332) — no hardcoded scratch — recreating any differently-sized
+    // (2128x1332) — no hardcoded scratch — recreating any differently-sized
     // scratch a previous mode left behind.
-    E_Screen->set_world_zoom(3, og::WorldScaleMode::Sai);
-    ASSERT_EQ(1068, E_Screen->world_w());
+    E_Screen->set_world_zoom(3, og::WorldScaleMode::Sai, 320, 200);
+    ASSERT_EQ(1064, E_Screen->world_w());
     ASSERT_EQ(og::WorldScaleMode::Sai, E_Screen->world_scale().mode);
     E_Screen->set_active_canvas(CanvasTarget::World);
-    E_Screen->swap(0, 0, 1068, 666);
+    E_Screen->swap(0, 0, 1064, 666);
     ASSERT_TRUE(E_Screen->render2);
-    EXPECT_EQ(2136, E_Screen->render2->w);
+    EXPECT_EQ(2128, E_Screen->render2->w);
     EXPECT_EQ(1332, E_Screen->render2->h);
 }
 
-TEST(CanvasScale, garbage_zoom_value_falls_back_to_the_classic_canvas)
+TEST(CanvasScale, garbage_zoom_value_falls_back_to_window_sized_zoom_one)
 {
     ASSERT_TRUE(E_Screen);
     ClassicCanvasRestore restore;
     const std::string old_zoom = cfg.get_setting("graphics", "zoom");
     const std::string old_smoothing = cfg.get_setting("graphics", "smoothing");
 
-    // Present-but-garbage values must fall back to the byte-identical
-    // classic canvas, never crash or produce a degenerate canvas.
+    og::runtime::current_session->window_w_ = 640;
+    og::runtime::current_session->window_h_ = 400;
+    update_overscan_setting();
+
+    // Present-but-garbage values must fall back to the window-sized 1.0
+    // canvas, never crash or produce a degenerate canvas.
     cfg.apply_setting("graphics", "smoothing", "off");
     for (const char* bogus : {"2x-bogus", "-0.5", "11", "1e9", "sai"}) {
         cfg.apply_setting("graphics", "zoom", bogus);
         apply_world_scale_from_cfg();
-        EXPECT_EQ(og::WorldScaleMode::Legacy, E_Screen->world_scale().mode)
+        EXPECT_EQ(og::WorldScaleMode::Integer, E_Screen->world_scale().mode)
             << "graphics/zoom=" << bogus;
-        EXPECT_EQ(320, E_Screen->world_w()) << "graphics/zoom=" << bogus;
-        EXPECT_EQ(200, E_Screen->world_h()) << "graphics/zoom=" << bogus;
+        EXPECT_EQ(640, E_Screen->world_w()) << "graphics/zoom=" << bogus;
+        EXPECT_EQ(400, E_Screen->world_h()) << "graphics/zoom=" << bogus;
     }
 
     // Garbage smoothing likewise reads as "off".
@@ -885,7 +1066,7 @@ TEST(CanvasScale, fadeblack_matches_the_grown_world_canvas)
     ClassicCanvasRestore restore;
     screen* s = test_screen();
 
-    E_Screen->set_world_zoom(5, og::WorldScaleMode::Integer);
+    E_Screen->set_world_zoom(5, og::WorldScaleMode::Integer, 320, 200);
     ASSERT_EQ(640, E_Screen->world_w());
     E_Screen->set_active_canvas(CanvasTarget::World);
 
@@ -908,7 +1089,8 @@ TEST(CanvasScale, smart_smoothed_fade_discards_prepared_gameplay_ui)
     screen* s = test_screen();
     ASSERT_TRUE(s);
 
-    E_Screen->set_world_zoom(og::kZoomStepsMax, og::WorldScaleMode::Sai);
+    E_Screen->set_world_zoom(og::kZoomStepsMax, og::WorldScaleMode::Sai,
+                             320, 200);
     E_Screen->set_active_canvas(CanvasTarget::World);
     E_Screen->begin_gameplay_frame();
     ASSERT_TRUE(E_Screen->gameplay_ui_overlay_active());
@@ -940,8 +1122,10 @@ TEST(CanvasScale, gameplay_overlay_allocation_failure_presents_complete_frame_ne
     // Start from no cached smart resources, then fail only the overlay after
     // the SAI scratch succeeds. HUD must alias World and the whole frame must
     // bypass SAI; otherwise the "world-only" filter would consume the HUD.
-    E_Screen->set_world_zoom(og::kZoomStepsMax, og::WorldScaleMode::Integer);
-    E_Screen->set_world_zoom(og::kZoomStepsMax, og::WorldScaleMode::Sai);
+    E_Screen->set_world_zoom(og::kZoomStepsMax,
+                             og::WorldScaleMode::Integer, 320, 200);
+    E_Screen->set_world_zoom(og::kZoomStepsMax, og::WorldScaleMode::Sai,
+                             320, 200);
     E_Screen->set_active_canvas(CanvasTarget::World);
     E_Screen->fail_next_gameplay_ui_allocation_for_testing();
     E_Screen->begin_gameplay_frame();
@@ -972,7 +1156,8 @@ TEST(CanvasScale, gameplay_overlay_allocation_failure_presents_complete_frame_ne
     E_Screen->begin_gameplay_frame();
     EXPECT_TRUE(E_Screen->smart_present_suppressed());
     EXPECT_FALSE(E_Screen->gameplay_ui_overlay_active());
-    E_Screen->set_world_zoom(og::kZoomStepsMax, og::WorldScaleMode::Eagle);
+    E_Screen->set_world_zoom(og::kZoomStepsMax, og::WorldScaleMode::Eagle,
+                             320, 200);
     E_Screen->begin_gameplay_frame();
     EXPECT_FALSE(E_Screen->smart_present_suppressed());
     EXPECT_TRUE(E_Screen->gameplay_ui_overlay_active());
@@ -983,7 +1168,7 @@ TEST(CanvasScale, allocation_failure_preserves_the_live_world_canvas_pair)
     ASSERT_TRUE(E_Screen);
     ClassicCanvasRestore restore;
 
-    E_Screen->set_world_zoom(5, og::WorldScaleMode::Integer);
+    E_Screen->set_world_zoom(5, og::WorldScaleMode::Integer, 320, 200);
     ASSERT_EQ(640, E_Screen->world_w());
     ASSERT_EQ(400, E_Screen->world_h());
     E_Screen->set_active_canvas(CanvasTarget::World);
@@ -1035,32 +1220,33 @@ TEST(CanvasScale, mouse_clicks_land_on_the_active_canvas_at_two_zooms)
 
     MouseState& mymouse = query_mouse_no_poll();
 
-    // zoom 0.5: world canvas 640x400; a click at the 1280x800 window's
-    // center lands at world (320,200) — half the window coordinate.
-    E_Screen->set_world_zoom(5, og::WorldScaleMode::Integer);
-    ASSERT_EQ(640, E_Screen->world_w());
+    // zoom 0.5: world canvas 2560x1600; the window center lands at the
+    // corresponding world-canvas center (1280,800).
+    E_Screen->set_world_zoom(5, og::WorldScaleMode::Integer, 1280, 800);
+    ASSERT_EQ(2560, E_Screen->world_w());
     E_Screen->set_active_canvas(CanvasTarget::World);
     clear_events();
     SDL_PushEvent(&down);
     get_input_events(POLL);
     EXPECT_EQ(1, mymouse.left);
-    EXPECT_NEAR(320.0f, mymouse.x, 1.0f);
-    EXPECT_NEAR(200.0f, mymouse.y, 1.0f);
+    EXPECT_NEAR(1280.0f, mymouse.x, 1.0f);
+    EXPECT_NEAR(800.0f, mymouse.y, 1.0f);
     clear_events();
     SDL_PushEvent(&up);
     get_input_events(POLL);
     EXPECT_EQ(0, mymouse.left);
 
-    // zoom 0.2: world canvas 1600x1000; the same click lands at world
-    // (800,500).
-    E_Screen->set_world_zoom(2, og::WorldScaleMode::Integer);
-    ASSERT_EQ(1600, E_Screen->world_w());
+    // zoom 1.0: master-style world canvas matches the 1280x800 window; the
+    // same click therefore lands at (640,400).
+    E_Screen->set_world_zoom(og::kZoomStepsMax,
+                             og::WorldScaleMode::Integer, 1280, 800);
+    ASSERT_EQ(1280, E_Screen->world_w());
     clear_events();
     SDL_PushEvent(&down);
     get_input_events(POLL);
     EXPECT_EQ(1, mymouse.left);
-    EXPECT_NEAR(800.0f, mymouse.x, 1.0f);
-    EXPECT_NEAR(500.0f, mymouse.y, 1.0f);
+    EXPECT_NEAR(640.0f, mymouse.x, 1.0f);
+    EXPECT_NEAR(400.0f, mymouse.y, 1.0f);
     clear_events();
     SDL_PushEvent(&up);
     get_input_events(POLL);
@@ -1086,7 +1272,7 @@ TEST(CanvasScale, smart_scaler_scratch_is_released_on_disable_and_canvas_resize)
     ASSERT_TRUE(E_Screen);
     ClassicCanvasRestore restore;
 
-    E_Screen->set_world_zoom(5, og::WorldScaleMode::Sai);
+    E_Screen->set_world_zoom(5, og::WorldScaleMode::Sai, 320, 200);
     E_Screen->set_active_canvas(CanvasTarget::World);
     E_Screen->begin_gameplay_frame();
     ASSERT_TRUE(E_Screen->gameplay_ui_overlay_active());
@@ -1098,19 +1284,19 @@ TEST(CanvasScale, smart_scaler_scratch_is_released_on_disable_and_canvas_resize)
     EXPECT_NE(nullptr, E_Screen->gameplay_ui_overlay_surface());
 
     // An engine-only change to nearest must not retain the CPU/GPU pair.
-    E_Screen->set_world_zoom(5, og::WorldScaleMode::Integer);
+    E_Screen->set_world_zoom(5, og::WorldScaleMode::Integer, 320, 200);
     EXPECT_EQ(nullptr, E_Screen->render2);
     EXPECT_EQ(nullptr, E_Screen->render2_tex);
     EXPECT_EQ(nullptr, E_Screen->gameplay_ui_overlay_surface());
 
     // Recreate it, then prove a logical canvas resize drops the stale size
     // immediately rather than waiting for the next filtered present.
-    E_Screen->set_world_zoom(5, og::WorldScaleMode::Eagle);
+    E_Screen->set_world_zoom(5, og::WorldScaleMode::Eagle, 320, 200);
     E_Screen->begin_gameplay_frame();
     E_Screen->swap(0, 0, 1, 1);
     ASSERT_NE(nullptr, E_Screen->render2);
     ASSERT_NE(nullptr, E_Screen->gameplay_ui_overlay_surface());
-    E_Screen->set_world_zoom(3, og::WorldScaleMode::Eagle);
+    E_Screen->set_world_zoom(3, og::WorldScaleMode::Eagle, 320, 200);
     EXPECT_EQ(nullptr, E_Screen->render2);
     EXPECT_EQ(nullptr, E_Screen->render2_tex);
     EXPECT_EQ(nullptr, E_Screen->gameplay_ui_overlay_surface());
@@ -1118,7 +1304,7 @@ TEST(CanvasScale, smart_scaler_scratch_is_released_on_disable_and_canvas_resize)
     E_Screen->begin_gameplay_frame();
     E_Screen->swap(0, 0, 1, 1);
     ASSERT_NE(nullptr, E_Screen->render2);
-    EXPECT_EQ(2136, E_Screen->render2->w);
+    EXPECT_EQ(2128, E_Screen->render2->w);
     EXPECT_EQ(1332, E_Screen->render2->h);
 }
 
@@ -1135,7 +1321,7 @@ TEST(CanvasScale, deepest_zoom_preserves_smoothing_choice_but_skips_huge_scratch
         static_cast<Sint64>(6400) * static_cast<Sint64>(4000);
     static_assert(kDeepScratchPixels > Screen::kSmartScaleScratchPixelBudget);
 
-    E_Screen->set_world_zoom(1, og::WorldScaleMode::Sai);
+    E_Screen->set_world_zoom(1, og::WorldScaleMode::Sai, 320, 200);
     ASSERT_EQ(3200, E_Screen->world_w());
     ASSERT_EQ(2000, E_Screen->world_h());
     ASSERT_EQ(og::WorldScaleMode::Sai, E_Screen->world_scale().mode);

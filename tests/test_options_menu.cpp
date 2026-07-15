@@ -211,20 +211,20 @@ static bool cycle_effect_and_check_lap(const char* button_id, const char* catego
     return true;
 }
 
-// The zoom selector is a ten-way cycle over cfg graphics/zoom
-// (1.0 -> 0.9 -> ... -> 0.1 -> 1.0), each click live-applied to the
-// renderer's world canvas. Same lap discipline as the depth selector above:
-// the absent-key start ("") normalizes to 1.0, so compare against ten pure
-// cycle_zoom steps, and finish the lap deadline-bounded if a re-click
-// double-steps. The lap ends back on the classic 1.0, so the rest of the
-// flow (and binary) keeps the classic canvas.
+// The zoom selector cycles over the resource-safe range for the current
+// window, each click live-applied to the renderer's world canvas. The absent
+// key normalizes to 1.0; compute the same dynamic minimum as the live button
+// and finish the lap deadline-bounded if a re-click double-steps.
 static bool cycle_zoom_and_check_lap(const char* button_id)
 {
+    const int minimum_steps =
+        og::runtime::current_session->myscreen_->minimum_world_zoom_steps();
+    const int lap_steps = og::kZoomStepsMax - minimum_steps + 1;
     std::string expected = cfg.get_setting("graphics", "zoom");
-    for (int i = 0; i < 10; ++i)
-        expected = og::ui::cycle_zoom(expected);
+    for (int i = 0; i < lap_steps; ++i)
+        expected = og::ui::cycle_zoom(expected, minimum_steps);
 
-    for (int i = 0; i < 10; ++i)
+    for (int i = 0; i < lap_steps; ++i)
         if (!click_cycle_step(button_id, "graphics", "zoom"))
             return false;
 
@@ -744,7 +744,7 @@ TEST(OptionsMenu, options_menu) {
         << "each resolution click must live-apply to the real window "
            "(session window_w_/h_ re-read from SDL after the apply)";
     ASSERT_TRUE(state.cycled_zoom)
-        << "display_zoom must step cfg graphics/zoom around the full ten-value lap";
+        << "display_zoom must step cfg graphics/zoom around its safe lap";
     ASSERT_TRUE(state.cycled_smoothing)
         << "display_smoothing must step cfg graphics/smoothing around off/sai/eagle";
     ASSERT_TRUE(state.exited_display) << "should have returned via display_back";
@@ -753,12 +753,12 @@ TEST(OptionsMenu, options_menu) {
     // (apply_world_scale_from_cfg traces the parsed values).
     EXPECT_TRUE(trace_contains("canvas", "zoom steps=9"))
         << "the first zoom-out step must re-derive the world canvas";
-    EXPECT_TRUE(trace_contains("canvas", "zoom steps=5 smoothing=1 canvas=640x400"))
+    EXPECT_TRUE(trace_contains("canvas", "zoom steps=5 smoothing=1 canvas=1280x800"))
         << "the 0.5 step must land on the doubled canvas";
-    EXPECT_TRUE(trace_contains("canvas", "zoom steps=1 smoothing=1 canvas=3200x2000"))
-        << "the deepest 0.1 step must land on the 10x canvas";
-    EXPECT_TRUE(trace_contains("canvas", "zoom steps=10 smoothing=1 canvas=320x200"))
-        << "the closing wrap to 1.0 must restore the classic canvas";
+    EXPECT_TRUE(trace_contains("canvas", "zoom steps=2 smoothing=1 canvas=3200x2000"))
+        << "the deepest safe 0.2 step must land on the 5x canvas";
+    EXPECT_TRUE(trace_contains("canvas", "zoom steps=10 smoothing=1 canvas=640x400"))
+        << "the closing wrap to 1.0 must restore the window-sized canvas";
     EXPECT_TRUE(trace_contains("canvas", "smoothing=2"))
         << "the sai smoothing step must reach the renderer";
     EXPECT_TRUE(trace_contains("canvas", "smoothing=3"))

@@ -813,14 +813,16 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
     SDL_SetWindowSize(window, logical_w, logical_h);
     #endif
 
-	    SDL_GetWindowSize(window, &w, &h);
-	    og::runtime::current_session->window_w_ = static_cast<float>(w);
-	    og::runtime::current_session->window_h_ = static_cast<float>(h);
+	SDL_GetWindowSize(window, &w, &h);
+	og::runtime::current_session->window_w_ = static_cast<float>(w);
+	og::runtime::current_session->window_h_ = static_cast<float>(h);
 
-	    update_overscan_setting();
+	update_overscan_setting();
+	zoom_window_w_ = w;
+	zoom_window_h_ = h;
 
     // The UI canvas is pinned at kUiCanvasW x kUiCanvasH; the world canvas
-    // starts shared with it (aliased) at the same default dims, keeping the
+    // starts shared with it (aliased) at the same 320x200 dims, keeping the
     // renderer byte-identical to the historical single-canvas setup.
     ui_surf_ = SDL_CreateSurface(kUiCanvasW, kUiCanvasH, SDL_PIXELFORMAT_XRGB8888);
 	ui_tex_ = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, kUiCanvasW, kUiCanvasH);
@@ -859,6 +861,18 @@ Screen::~Screen()
 
 void Screen::set_active_canvas(CanvasTarget target)
 {
+	const int target_w = target == CanvasTarget::UI ? kUiCanvasW : world_w_;
+	const int target_h = target == CanvasTarget::UI ? kUiCanvasH : world_h_;
+	const bool remap_pointer = og::runtime::current_session != nullptr &&
+		og::runtime::current_session->myscreen_ != nullptr &&
+		(canvas_w() != target_w || canvas_h() != target_h);
+	std::pair<float, float> pointer_window{};
+	if (remap_pointer)
+	{
+		pointer_window = active_canvas_to_window(
+			static_cast<float>(mouse_state.x),
+			static_cast<float>(mouse_state.y));
+	}
 	active_ = target;
 	if (active_ == CanvasTarget::UI)
 	{
@@ -876,6 +890,13 @@ void Screen::set_active_canvas(CanvasTarget target)
 	{
 		render = world_surf_;
 		render_tex = world_tex_;
+	}
+	if (remap_pointer)
+	{
+		const auto [x, y] = window_to_active_canvas(
+			pointer_window.first, pointer_window.second);
+		mouse_state.x = static_cast<int>(x);
+		mouse_state.y = static_cast<int>(y);
 	}
 }
 
@@ -933,7 +954,10 @@ void Screen::prepare_ui_canvas_from_world()
 	if (source == ui_surf_)
 		return;
 
-	if (!SDL_BlitSurfaceScaled(source, nullptr, ui_surf_, nullptr,
+	const og::CanvasViewport crop = og::crop_canvas_to_aspect(
+		source->w, source->h, ui_surf_->w, ui_surf_->h);
+	const SDL_Rect source_rect{crop.x, crop.y, crop.w, crop.h};
+	if (!SDL_BlitSurfaceScaled(source, &source_rect, ui_surf_, nullptr,
 	                           SDL_SCALEMODE_NEAREST))
 	{
 		LogError("prepare_ui_canvas_from_world failed: {}\n", SDL_GetError());
@@ -949,12 +973,23 @@ bool Screen::set_world_canvas_size(int w, int h)
 	if (w == world_w_ && h == world_h_)
 		return true;
 
+	const bool remap_pointer = og::runtime::current_session != nullptr &&
+		og::runtime::current_session->myscreen_ != nullptr &&
+		active_ != CanvasTarget::UI;
+	std::pair<float, float> pointer_window{};
+	if (remap_pointer)
+	{
+		pointer_window = active_canvas_to_window(
+			static_cast<float>(mouse_state.x),
+			static_cast<float>(mouse_state.y));
+	}
+
 	SDL_Surface* next_surface = ui_surf_;
 	SDL_Texture* next_texture = ui_tex_;
 
 	if (w == kUiCanvasW && h == kUiCanvasH)
 	{
-		// Default dims: re-share the UI surface (the byte-identity mode).
+		// Shared 320x200 dims: re-use the UI pair (the byte-identity mode).
 	}
 	else
 	{
@@ -962,8 +997,18 @@ bool Screen::set_world_canvas_size(int w, int h)
 		// allocating; SDL3's guard is size_t-wide, so a hostile canvas size
 		// would reach the real allocator (hundreds of GB, an abort under
 		// ASan) before failing. Keep the SDL2-era 2 GiB bound here.
-		const bool size_ok =
-			static_cast<Sint64>(w) * h <= static_cast<Sint64>(SDL_MAX_SINT32) / 4;
+		const int max_texture_dimension = renderer_max_texture_dimension();
+		const bool texture_size_ok = max_texture_dimension <= 0 ||
+			(w <= max_texture_dimension && h <= max_texture_dimension);
+		if (!texture_size_ok)
+		{
+			LogError("set_world_canvas_size({}x{}) exceeds renderer texture "
+			         "limit {}\n", w, h, max_texture_dimension);
+			return false;
+		}
+		const bool size_ok = static_cast<Sint64>(w) * h <=
+			std::min<Sint64>(og::kWorldCanvasAbsolutePixelBudget,
+			                  static_cast<Sint64>(SDL_MAX_SINT32) / 4);
 		#ifdef TESTING
 		const bool injected_failure = fail_next_world_canvas_allocation_;
 		fail_next_world_canvas_allocation_ = false;
@@ -988,8 +1033,7 @@ bool Screen::set_world_canvas_size(int w, int h)
 		SDL_SetTextureBlendMode(next_texture, SDL_BLENDMODE_NONE);
 		// Integer-factor presents must stay unsmoothed even if a global
 		// render-scale-quality hint asks for linear filtering. Only the split
-		// world texture is touched: the shared/default texture (and therefore
-		// every default run) keeps SDL's stock behavior.
+		// world texture is touched; the shared UI texture keeps its own setup.
 		SDL_SetTextureScaleMode(next_texture, SDL_SCALEMODE_NEAREST);
 	}
 
@@ -1005,6 +1049,13 @@ bool Screen::set_world_canvas_size(int w, int h)
 	world_h_ = h;
 	// Refresh the active-target aliases.
 	set_active_canvas(active_);
+	if (remap_pointer)
+	{
+		const auto [x, y] = window_to_active_canvas(
+			pointer_window.first, pointer_window.second);
+		mouse_state.x = static_cast<int>(x);
+		mouse_state.y = static_cast<int>(y);
+	}
 	if (previous_texture != ui_tex_)
 		SDL_DestroyTexture(previous_texture);
 	if (previous_surface != ui_surf_)
@@ -1012,15 +1063,73 @@ bool Screen::set_world_canvas_size(int w, int h)
 	return true;
 }
 
-void Screen::set_world_zoom(int zoom_steps, og::WorldScaleMode smoothing)
+int Screen::renderer_max_texture_dimension() const
 {
-	const int requested_zoom_steps =
-		std::clamp(zoom_steps, 1, og::kZoomStepsMax);
-	// The window-independent zoom model: canvas = classic / zoom. The
-	// classic step (zoom 1.0, smoothing off) keeps Legacy mode so the
-	// default run stays byte-identical (shared canvas, single engine).
+	const SDL_PropertiesID properties =
+		renderer != nullptr ? SDL_GetRendererProperties(renderer) : 0;
+	const Sint64 maximum = properties != 0
+		? SDL_GetNumberProperty(properties,
+		                        SDL_PROP_RENDERER_MAX_TEXTURE_SIZE_NUMBER, 0)
+		: 0;
+	return maximum > 0 && maximum <= std::numeric_limits<int>::max()
+		? static_cast<int>(maximum) : 0;
+}
+
+int Screen::minimum_world_zoom_steps() const
+{
+	return og::minimum_zoom_steps_for_window(
+		zoom_window_w_, zoom_window_h_, renderer_max_texture_dimension());
+}
+
+og::WorldCanvasDims Screen::effective_zoom_canvas_dims(int zoom_steps) const
+{
+	og::WorldCanvasDims dims = og::compute_zoom_canvas_dims(
+		zoom_window_w_, zoom_window_h_, zoom_steps);
+	if (std::clamp(zoom_steps, 1, og::kZoomStepsMax) ==
+	    og::kZoomStepsMax)
+	{
+		dims = og::constrain_world_canvas_dims(
+			dims, renderer_max_texture_dimension());
+	}
+	return dims;
+}
+
+bool Screen::world_smoothing_supported() const
+{
+	if (world_w_ <= 0 || world_h_ <= 0 ||
+	    world_w_ > std::numeric_limits<int>::max() / 2 ||
+	    world_h_ > std::numeric_limits<int>::max() / 2)
+	{
+		return false;
+	}
+	const int target_w = world_w_ * 2;
+	const int target_h = world_h_ * 2;
+	const int max_texture_dimension = renderer_max_texture_dimension();
+	return static_cast<Sint64>(target_w) * target_h <=
+			kSmartScaleScratchPixelBudget &&
+		(max_texture_dimension <= 0 ||
+		 (target_w <= max_texture_dimension &&
+		  target_h <= max_texture_dimension));
+}
+
+void Screen::set_world_zoom(int zoom_steps, og::WorldScaleMode smoothing,
+                            int window_w, int window_h)
+{
+	if (window_w > 0 && window_h > 0)
+	{
+		zoom_window_w_ = window_w;
+		zoom_window_h_ = window_h;
+	}
+	const int minimum_steps = minimum_world_zoom_steps();
+	const int requested_zoom_steps = std::max(
+		std::clamp(zoom_steps, 1, og::kZoomStepsMax), minimum_steps);
+	const og::WorldCanvasDims dims =
+		effective_zoom_canvas_dims(requested_zoom_steps);
+	// Preserve the shared legacy pair only when the window-derived result is
+	// actually classic-sized. Native 1.0 otherwise owns a split canvas,
+	// matching master's graphics/scale=1 behavior and the window's aspect.
 	og::WorldScaleSetting requested_setting;
-	if (requested_zoom_steps == og::kZoomStepsMax &&
+	if (dims.w == kUiCanvasW && dims.h == kUiCanvasH &&
 	    smoothing == og::WorldScaleMode::Integer)
 		requested_setting.mode = og::WorldScaleMode::Legacy;
 	else
@@ -1045,8 +1154,6 @@ void Screen::set_world_zoom(int zoom_steps, og::WorldScaleMode smoothing)
 
 	if (!world_pinned_classic_)
 	{
-		const og::WorldCanvasDims dims =
-			og::compute_zoom_canvas_dims(requested_zoom_steps);
 		if (!set_world_canvas_size(dims.w, dims.h))
 		{
 			LogWarn("Unable to apply world zoom {}; keeping {}x{} canvas and "
@@ -1105,15 +1212,25 @@ void Screen::set_world_canvas_pinned_classic(bool pinned)
 	}
 	else
 	{
-		// Restore the zoom-model canvas the pin displaced.
-		const og::WorldCanvasDims dims = og::compute_zoom_canvas_dims(zoom_steps_);
+		// Restore the window-relative zoom canvas the pin displaced.
+		const og::WorldCanvasDims dims =
+			effective_zoom_canvas_dims(zoom_steps_);
 		resized = set_world_canvas_size(dims.w, dims.h);
 	}
 	if (resized)
 		world_pinned_classic_ = pinned;
 	else
+	{
+		if (!pinned)
+		{
+			// A failed restore must not strand the renderer in a permanent pin:
+			// leave the working classic canvas in place, but allow the next config
+			// application or resize to retry the requested world allocation.
+			world_pinned_classic_ = false;
+		}
 		LogWarn("Unable to {} the classic world-canvas pin; keeping the "
-		        "current pin and canvas state.\n", pinned ? "apply" : "release");
+		        "current canvas state.\n", pinned ? "apply" : "release");
+	}
 }
 
 void Screen::destroy_render2()
@@ -1361,7 +1478,7 @@ void Screen::swap(int x, int y, int w, int h)
     SDL_Texture* dest_texture = render_tex;
 
     // Present engine per canvas: a non-Legacy WORLD canvas uses the filter
-    // selected by graphics/smoothing. The UI canvas and the default classic
+    // selected by graphics/smoothing. The UI canvas and shared 320x200
     // world path use `Engine`, which display creation pins to nearest. The
     // retained slot still supports legacy direct callers and tests.
     const RenderEngine present_engine =
@@ -1373,8 +1490,8 @@ void Screen::swap(int x, int y, int w, int h)
 
 	switch(present_engine) {
 		case RenderEngine::SAI:
-                // Doubling scratch sized 2x the ACTIVE canvas (classic
-                // 640x400 at the default 320x200 canvas).
+                // Doubling scratch sized 2x the ACTIVE canvas (640x400 for a
+                // 320x200 source canvas).
 				if(!ensure_render2_for_source(render->w, render->h))
                     break; // allocation failed: present the unscaled canvas
 				if (!SDL_LockSurface(render2))
@@ -1411,22 +1528,25 @@ void Screen::swap(int x, int y, int w, int h)
             break;
 	}
 
-    // Present the active canvas: the world and UI canvases each stretch to
-    // the window viewport independently at swap time (identical rects while
-    // both are 320x200, i.e. today's defaults).
+	// Present through the same aspect-fitted logical rectangle used by pointer
+	// mapping. A window-derived world canvas fills it; the fixed 320x200 UI is
+	// pillar/letterboxed instead of being distorted on widescreen displays.
 
-    SDL_UpdateTexture(dest_texture, nullptr, source_surface->pixels, source_surface->pitch);
+	SDL_UpdateTexture(dest_texture, nullptr, source_surface->pixels, source_surface->pitch);
 
-    // SDL3 SDL_RenderTexture takes float rects; keep the SDL2 int-rect
-    // truncation so the presented viewport stays pixel-identical.
+	// SDL3 SDL_RenderTexture takes float rects; keep the SDL2 int-rect
+	// truncation so the presented viewport stays pixel-identical.
+	const og::CanvasViewport logical_dest = active_canvas_viewport();
 	const SDL_FRect dest = renderer_output_rect(
 		renderer,
-		float(int(og::runtime::current_session->viewport_offset_x_)),
-		float(int(og::runtime::current_session->viewport_offset_y_)),
-		float(int(og::runtime::current_session->viewport_w_)),
-		float(int(og::runtime::current_session->viewport_h_)));
+		static_cast<float>(logical_dest.x),
+		static_cast<float>(logical_dest.y),
+		static_cast<float>(logical_dest.w),
+		static_cast<float>(logical_dest.h));
 
-    SDL_RenderTexture(renderer, dest_texture, nullptr, &dest);
+	SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+	SDL_RenderClear(renderer);
+	SDL_RenderTexture(renderer, dest_texture, nullptr, &dest);
 
 	// Gameplay chrome is deliberately absent from source_surface/render2:
 	// SAI/Eagle process only map/tiles/sprites/effects. Composite the

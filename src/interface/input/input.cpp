@@ -89,13 +89,10 @@ short& input_text_input_event_ref()
 // are already macros defined in input.h.
 static inline auto& hw() { return input_hardware_state(); }
 
-// Window->canvas pointer mapping divides by the ACTIVE canvas dims: menus
-// translate to the fixed 320x200 UI canvas, gameplay and the level editor to
-// the graphics/zoom-derived world canvas (classic in every default run and
-// while the editor pin holds). Window resizes do not alter either canvas.
-// The overscan viewport rect is shared by both canvases, so only the divisor
-// changes per layer. Before the screen exists (intro/boot) events map to the
-// classic UI dims.
+// Menus translate to the fixed 320x200 UI canvas; gameplay and the editor map
+// to the graphics/zoom-derived world canvas. Presentation aspect-fits either
+// canvas inside the overscan viewport, and pointer conversion must use that
+// same fitted rectangle. Before the screen exists events use classic UI dims.
 static inline float active_canvas_w()
 {
     const ::screen* s = og::runtime::current_session->myscreen_;
@@ -106,6 +103,47 @@ static inline float active_canvas_h()
 {
     const ::screen* s = og::runtime::current_session->myscreen_;
     return s ? static_cast<float>(s->canvas_h()) : static_cast<float>(kUiCanvasH);
+}
+
+og::CanvasViewport active_canvas_viewport()
+{
+    const auto* session = og::runtime::current_session;
+    if (session == nullptr)
+        return {0, 0, kUiCanvasW, kUiCanvasH};
+    return og::fit_canvas_in_viewport(
+        static_cast<int>(active_canvas_w()),
+        static_cast<int>(active_canvas_h()),
+        static_cast<int>(session->viewport_offset_x_),
+        static_cast<int>(session->viewport_offset_y_),
+        static_cast<int>(session->viewport_w_),
+        static_cast<int>(session->viewport_h_));
+}
+
+bool window_point_in_active_canvas(float x, float y)
+{
+    const og::CanvasViewport viewport = active_canvas_viewport();
+    return x >= static_cast<float>(viewport.x) &&
+           y >= static_cast<float>(viewport.y) &&
+           x < static_cast<float>(viewport.x + viewport.w) &&
+           y < static_cast<float>(viewport.y + viewport.h);
+}
+
+std::pair<float, float> window_to_active_canvas(float x, float y)
+{
+    const og::CanvasViewport viewport = active_canvas_viewport();
+    const float w = static_cast<float>(std::max(1, viewport.w));
+    const float h = static_cast<float>(std::max(1, viewport.h));
+    return {(x - static_cast<float>(viewport.x)) * active_canvas_w() / w,
+            (y - static_cast<float>(viewport.y)) * active_canvas_h() / h};
+}
+
+std::pair<float, float> active_canvas_to_window(float x, float y)
+{
+    const og::CanvasViewport viewport = active_canvas_viewport();
+    return {static_cast<float>(viewport.x) +
+                x * static_cast<float>(viewport.w) / active_canvas_w(),
+            static_cast<float>(viewport.y) +
+                y * static_cast<float>(viewport.h) / active_canvas_h()};
 }
 
 namespace
@@ -304,8 +342,13 @@ void handle_mouse_event(const void* native_event)
 #ifndef USE_TOUCH_INPUT
         // Mouse event
     case og::input_native::EventType::MouseMotion:
-        mouse_state.x = (static_cast<float>(event.motion_x) - og::runtime::current_session->viewport_offset_x_) * (active_canvas_w() / og::runtime::current_session->viewport_w_);
-        mouse_state.y = (static_cast<float>(event.motion_y) - og::runtime::current_session->viewport_offset_y_) * (active_canvas_h() / og::runtime::current_session->viewport_h_);
+        {
+            const auto [x, y] = window_to_active_canvas(
+                static_cast<float>(event.motion_x),
+                static_cast<float>(event.motion_y));
+            mouse_state.x = static_cast<int>(x);
+            mouse_state.y = static_cast<int>(y);
+        }
         break;
     case og::input_native::EventType::MouseButtonUp:
         if (event.button == og::input_native::kMouseButtonLeft)
@@ -313,17 +356,33 @@ void handle_mouse_event(const void* native_event)
         if (event.button == og::input_native::kMouseButtonRight)
             mouse_state.right = 0;
 
-        mouse_state.x = (static_cast<float>(event.button_x) - og::runtime::current_session->viewport_offset_x_) * (active_canvas_w() / og::runtime::current_session->viewport_w_);
-        mouse_state.y = (static_cast<float>(event.button_y) - og::runtime::current_session->viewport_offset_y_) * (active_canvas_h() / og::runtime::current_session->viewport_h_);
+        {
+            const auto [x, y] = window_to_active_canvas(
+                static_cast<float>(event.button_x),
+                static_cast<float>(event.button_y));
+            mouse_state.x = static_cast<int>(x);
+            mouse_state.y = static_cast<int>(y);
+        }
         break;
     case og::input_native::EventType::MouseButtonDown:
+        if (!window_point_in_active_canvas(
+                static_cast<float>(event.button_x),
+                static_cast<float>(event.button_y)))
+        {
+            break;
+        }
         if (event.button == og::input_native::kMouseButtonLeft)
             mouse_state.left = 1;
         else if (event.button == og::input_native::kMouseButtonRight)
             mouse_state.right = 1;
 
-        mouse_state.x = (static_cast<float>(event.button_x) - og::runtime::current_session->viewport_offset_x_) * (active_canvas_w() / og::runtime::current_session->viewport_w_);
-        mouse_state.y = (static_cast<float>(event.button_y) - og::runtime::current_session->viewport_offset_y_) * (active_canvas_h() / og::runtime::current_session->viewport_h_);
+        {
+            const auto [x, y] = window_to_active_canvas(
+                static_cast<float>(event.button_x),
+                static_cast<float>(event.button_y));
+            mouse_state.x = static_cast<int>(x);
+            mouse_state.y = static_cast<int>(y);
+        }
         break;
 #else
 #ifdef FAKE_TOUCH_EVENTS
@@ -363,11 +422,14 @@ void handle_mouse_event(const void* native_event)
         // Mouse event
     case og::input_native::EventType::FingerMotion:
         {
-        int x = (event.finger_x * og::runtime::current_session->window_w_ - og::runtime::current_session->viewport_offset_x_) * (active_canvas_w() / og::runtime::current_session->viewport_w_);
-        int y = (event.finger_y * og::runtime::current_session->window_h_ - og::runtime::current_session->viewport_offset_y_) * (active_canvas_h() / og::runtime::current_session->viewport_h_);
-        const TouchControlLayout layout = touch_control_layout(
-            static_cast<int>(active_canvas_w()),
-            static_cast<int>(active_canvas_h()));
+            const auto [mapped_x, mapped_y] = window_to_active_canvas(
+                event.finger_x * og::runtime::current_session->window_w_,
+                event.finger_y * og::runtime::current_session->window_h_);
+            int x = static_cast<int>(mapped_x);
+            int y = static_cast<int>(mapped_y);
+            const TouchControlLayout layout = touch_control_layout(
+                static_cast<int>(active_canvas_w()),
+                static_cast<int>(active_canvas_h()));
         
         og::runtime::current_session->scroll_amount_ = y - mouse_state.y;
         
@@ -427,8 +489,11 @@ void handle_mouse_event(const void* native_event)
         break;
     case og::input_native::EventType::FingerUp:
         {
-            int x = (event.finger_x * og::runtime::current_session->window_w_ - og::runtime::current_session->viewport_offset_x_) * (active_canvas_w() / og::runtime::current_session->viewport_w_);
-            int y = (event.finger_y * og::runtime::current_session->window_h_ - og::runtime::current_session->viewport_offset_y_) * (active_canvas_h() / og::runtime::current_session->viewport_h_);
+            const auto [mapped_x, mapped_y] = window_to_active_canvas(
+                event.finger_x * og::runtime::current_session->window_w_,
+                event.finger_y * og::runtime::current_session->window_h_);
+            int x = static_cast<int>(mapped_x);
+            int y = static_cast<int>(mapped_y);
             const TouchControlLayout layout = touch_control_layout(
                 static_cast<int>(active_canvas_w()),
                 static_cast<int>(active_canvas_h()));
@@ -468,10 +533,18 @@ void handle_mouse_event(const void* native_event)
         break;
     case og::input_native::EventType::FingerDown:
         {
+            const float window_x =
+                event.finger_x * og::runtime::current_session->window_w_;
+            const float window_y =
+                event.finger_y * og::runtime::current_session->window_h_;
+            if (!window_point_in_active_canvas(window_x, window_y))
+                break;
             hw().tapping = true;
 
-            int x = (event.finger_x * og::runtime::current_session->window_w_ - og::runtime::current_session->viewport_offset_x_) * (active_canvas_w() / og::runtime::current_session->viewport_w_);
-            int y = (event.finger_y * og::runtime::current_session->window_h_ - og::runtime::current_session->viewport_offset_y_) * (active_canvas_h() / og::runtime::current_session->viewport_h_);
+            const auto [mapped_x, mapped_y] = window_to_active_canvas(
+                window_x, window_y);
+            int x = static_cast<int>(mapped_x);
+            int y = static_cast<int>(mapped_y);
             const TouchControlLayout layout = touch_control_layout(
                 static_cast<int>(active_canvas_w()),
                 static_cast<int>(active_canvas_h()));

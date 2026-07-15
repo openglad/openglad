@@ -550,14 +550,13 @@ bool depth_fx_is_active(const std::string& value)
 
 // --- DISPLAY zoom and smoothing selectors ---
 
-// Zoom selector (cfg graphics/zoom): 1.0 (classic view) down to 0.1 in 0.1
-// steps; each click zooms OUT one step and wraps back to 1.0. Parsing/
-// quantization matches og::parse_zoom_steps in the renderer, so the label
-// always names what is presented.
-std::string cycle_zoom(const std::string& current)
+// Zoom selector (cfg graphics/zoom): each click zooms out one step and wraps
+// at the deepest step that fits the current window's resource budget.
+std::string cycle_zoom(const std::string& current, int minimum_steps)
 {
     const int steps = og::parse_zoom_steps(current);
-    const int next = steps <= 1 ? og::kZoomStepsMax : steps - 1;
+    const int minimum = std::clamp(minimum_steps, 1, og::kZoomStepsMax);
+    const int next = steps <= minimum ? og::kZoomStepsMax : steps - 1;
     return next == og::kZoomStepsMax ? std::string("1.0")
                                      : "0." + std::to_string(next);
 }
@@ -590,14 +589,14 @@ std::string cycle_smoothing(const std::string& current)
     return "sai";
 }
 
-std::string format_smoothing_label(const std::string& value)
+std::string format_smoothing_label(const std::string& value, bool supported)
 {
     switch (og::parse_smoothing_setting(value))
     {
     case og::WorldScaleMode::Sai:
-        return "Smooth: SAI";
+        return supported ? "Smooth: SAI" : "Smooth: SAI N/A";
     case og::WorldScaleMode::Eagle:
-        return "Smooth: Eagle";
+        return supported ? "Smooth: Eagle" : "Smooth: Eagle N/A";
     default:
         return "Smooth: Off";
     }

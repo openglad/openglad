@@ -233,6 +233,14 @@ public:
     // Re-reads cfg graphics/zoom + graphics/smoothing into the live world
     // canvas (the DISPLAY selectors / RESTORE DEFAULTS live-apply path).
     void reapply_world_scale() override { video_impl_->reapply_world_scale(); }
+    int minimum_world_zoom_steps() const override
+    {
+        return video_impl_->minimum_world_zoom_steps();
+    }
+    bool world_smoothing_supported() const override
+    {
+        return video_impl_->world_smoothing_supported();
+    }
     void apply_display_settings_from_cfg() override { video_impl_->apply_display_settings_from_cfg(); }
     void reflect_display_settings_from_window(
         DisplayStateConfirmation confirmation = DisplayStateConfirmation::Synchronized,

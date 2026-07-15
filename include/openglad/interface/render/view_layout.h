@@ -22,9 +22,9 @@
 // (T_WIDTH/T_HALF_WIDTH/... constants plus viewscreen::resize(whatmode)'s
 // absolute-coordinate switch). At canvas_w=320, canvas_h=200 every rect below
 // reproduces the legacy table VERBATIM (pinned by tests/unit/test_view_layout
-// and the pre-existing ViewResize integration pins), so default builds stay
-// byte-identical. Deeper graphics/zoom settings enlarge the logical canvas
-// and its panes while the fixed-pixel chrome insets stay put:
+// and the pre-existing ViewResize integration pins), so classic-pinned
+// layouts stay byte-identical. The window-relative graphics/zoom setting
+// sizes the logical canvas and its panes while fixed-pixel chrome stays put:
 //
 //  * The PREF_VIEW inset modes (PANELS/1/2/3) carve out fixed-size margins
 //    for the score panel HUD, which draws fixed-size text/bar blocks anchored

@@ -242,9 +242,20 @@ screen
 │   ├── team_list[MAX_TEAM_SIZE] — array<unique_ptr<guy>, 24>
 │   ├── current_campaign
 │   └── completed_levels set
+├── video_impl_    — platform renderer and logical canvas routing
 ├── viewscreen[4]  — split-screen viewports (1–4 players)
 └── timer_wait     — frame rate control
 ```
+
+The display backend keeps gameplay and fixed-coordinate UI in separate
+logical spaces. At zoom 1.0, the world canvas follows the logical window,
+matching `graphics/scale: 1` on `master`; lower zoom values enlarge it to show
+more of the level. Menus remain 320x200. Each active canvas is aspect-fitted
+into the output viewport, so widescreen displays add centered bars around the
+fixed UI instead of stretching it. Window resize and completed fullscreen
+transitions rebuild the world canvas and viewscreen layout. See
+[Resolution, zoom, and smoothing](resolution-and-scaling.md) for the sizing,
+resource limits, and legacy-config behavior.
 
 ### Session and Context
 

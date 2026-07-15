@@ -322,18 +322,19 @@ std::string format_depth_fx_label(const std::string& value);
 bool depth_fx_is_active(const std::string& value);
 
 // --- DISPLAY zoom and smoothing selectors ---
-// Zoom selector (cfg graphics/zoom, 1.0 classic .. 0.1) and the
+// Zoom selector (cfg graphics/zoom, 1.0 window-sized toward 0.1) and the
 // world-canvas-only smoothing selector (cfg graphics/smoothing,
 // off/sai/eagle). Cyclers step one value per click; formatters name the
 // quantized value the renderer will actually apply.
-std::string cycle_zoom(const std::string& current);
+std::string cycle_zoom(const std::string& current, int minimum_steps = 1);
 std::string format_zoom_label(const std::string& value);
 // Resolve the pre-zoom graphics/render SAI/Eagle value only when the new
 // graphics/smoothing key is absent. Explicit smoothing always wins.
 std::string effective_smoothing_setting(const std::string& value,
                                         const std::string& legacy_render);
 std::string cycle_smoothing(const std::string& current);
-std::string format_smoothing_label(const std::string& value);
+std::string format_smoothing_label(const std::string& value,
+                                   bool supported = true);
 
 // DISPLAY settings (cfg graphics/fullscreen + graphics/width/height).
 //

@@ -31,9 +31,8 @@ class text;
 //
 // The renderer owns three logical targets:
 //  * the WORLD canvas — gameplay scenery (map, tiles, sprites, effects, level
-//    editor map view). graphics/zoom derives its dimensions from the classic
-//    canvas
-//    (default kUiCanvasW x kUiCanvasH); the deterministic sim never reads them.
+//    editor map view). At zoom 1.0 its dimensions follow the logical window;
+//    lower zoom values enlarge it. The deterministic sim never reads them.
 //  * the UI canvas — menus, picker, help, intro, dialogs. PINNED at
 //    kUiCanvasW x kUiCanvasH (320x200) forever, so every classic menu layout,
 //    pixel pin and capture stays valid regardless of the world canvas size.
@@ -41,9 +40,9 @@ class text;
 //    while SAI/Eagle is active. Radar, messages and HUD paint here, then the
 //    backend composites it nearest-neighbour AFTER filtering the scenery.
 //
-// Draw primitives route to the ACTIVE canvas; each canvas is presented with
-// its own stretch to the window viewport at swap time. While the world canvas
-// is at the default 320x200 the two canvases share ONE surface, which keeps
+// Draw primitives route to the ACTIVE canvas; each canvas is aspect-fitted in
+// the window viewport at swap time. While the world canvas is 320x200 the two
+// canvases share ONE surface, which keeps
 // swap (and every cross-mode flow: fades, in-game dialogs drawn over gameplay
 // pixels, the demo compositor) byte-identical to the single-canvas renderer.
 enum class CanvasTarget
@@ -65,7 +64,7 @@ enum class DisplayStateConfirmation
     PixelSizeChanged
 };
 
-// The fixed UI canvas dimensions — also the default world canvas dimensions.
+// The fixed UI canvas dimensions and minimum world-canvas dimensions.
 inline constexpr int kUiCanvasW = 320;
 inline constexpr int kUiCanvasH = 200;
 
@@ -275,7 +274,8 @@ public:
     // plot arithmetic (offset = x + y*canvas_w) and full-frame present rects
     // derive from them. world_canvas_w/world_canvas_h are the WORLD canvas
     // dimensions regardless of the active target (viewscreen layout sizing).
-    // Defaults are the classic 320x200 in every implementation today.
+    // Display backends use a window-relative world canvas; fixed/headless
+    // backends may retain the minimum 320x200 dimensions.
     virtual int canvas_w() const = 0;
     virtual int canvas_h() const = 0;
     virtual int world_canvas_w() const = 0;
@@ -298,16 +298,22 @@ public:
     // (false) the cfg graphics/zoom-derived dims. The level editor pins for
     // its whole session: its panel chrome and mouse mapping still assume the
     // classic coordinate space. No-op for backends without a resizable world
-    // canvas (and while pinned dims == current dims, i.e. every default run).
+    // canvas, or when the current world canvas is already 320x200.
     virtual void set_world_canvas_pinned_classic(bool /*pinned*/) {}
     // Re-reads cfg graphics/zoom and graphics/smoothing. The canvas derives
-    // from classic/zoom, independent of the window; the caller relayouts
-    // viewscreens only when those logical dimensions change. No-op for
-    // backends without a scalable world canvas.
+    // from the logical window and zoom; the caller relayouts viewscreens only
+    // when those logical dimensions change. No-op for backends without a
+    // scalable world canvas.
     virtual void reapply_world_scale() {}
+    // Deepest selectable zoom step supported by the current logical window
+    // and renderer. The default exposes the complete 0.1..1.0 range.
+    virtual int minimum_world_zoom_steps() const { return 1; }
+    // Whether the current world canvas can use the bounded 2x smart-scaler
+    // scratch. False lets UI describe a retained SAI/Eagle preference as N/A.
+    virtual bool world_smoothing_supported() const { return true; }
     // DISPLAY settings live-apply: cfg graphics/fullscreen (windowed /
     // borderless / exclusive) + graphics/width/height, then update the
-    // overscan viewport. The zoom-derived canvas stays window-independent.
+    // overscan viewport, then recompute the window-relative zoom canvas.
     // No-op off the SDL display target.
     virtual void apply_display_settings_from_cfg() {}
     // Re-read the native window's completed fullscreen state into cfg and

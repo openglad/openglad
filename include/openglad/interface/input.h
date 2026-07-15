@@ -22,9 +22,11 @@
 
 #pragma once
 
+#include <openglad/core/scale_mode.h>
 #include <openglad/interface/base.h>
 #include <cctype>
 #include <string>
+#include <utility>
 
 
 // SDL2/SDL3 scancode values copied into interface constants so this header
@@ -588,3 +590,7 @@ unsigned char convert_to_ascii(int scancode);
 // keystates and viewport globals live in GameSession — access via current_session->member_.
 
 void update_overscan_setting();
+og::CanvasViewport active_canvas_viewport();
+bool window_point_in_active_canvas(float x, float y);
+std::pair<float, float> window_to_active_canvas(float x, float y);
+std::pair<float, float> active_canvas_to_window(float x, float y);

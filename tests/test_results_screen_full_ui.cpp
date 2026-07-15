@@ -36,10 +36,12 @@ struct CanvasRoutingGuard
     int zoom_steps = E_Screen->world_zoom_steps();
     og::WorldScaleMode smoothing = E_Screen->world_scale().mode;
     CanvasTarget target = E_Screen->active_canvas();
+    int window_w = static_cast<int>(og::runtime::current_session->window_w_);
+    int window_h = static_cast<int>(og::runtime::current_session->window_h_);
 
     ~CanvasRoutingGuard()
     {
-        E_Screen->set_world_zoom(zoom_steps, smoothing);
+        E_Screen->set_world_zoom(zoom_steps, smoothing, window_w, window_h);
         E_Screen->set_active_canvas(target);
     }
 };
@@ -201,7 +203,9 @@ TEST(ResultsScreenFullUi, overview_and_troops_paths)
     const char saved_end = og::runtime::current_session->myscreen_->world().end;
     og::runtime::current_session->myscreen_->world().end = 0;
 
-    E_Screen->set_world_zoom(5, og::WorldScaleMode::Sai);
+    // This test needs a deterministic split 640x400 World buffer regardless
+    // of the physical mode left by earlier menu tests.
+    E_Screen->set_world_zoom(5, og::WorldScaleMode::Sai, 320, 200);
     E_Screen->set_active_canvas(CanvasTarget::World);
     constexpr Uint32 kWorldPixel = 0x00123456u;
     SDL_FillSurfaceRect(E_Screen->render, nullptr, kWorldPixel);

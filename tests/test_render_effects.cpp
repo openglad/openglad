@@ -242,9 +242,29 @@ struct KeyBindingGuard
     }
 };
 
+// These pixel-level effect tests pin the historical 320x200 layout they were
+// authored against. Production zoom 1.0 is window-sized; the fixture restores
+// that live canvas after every test so no classic geometry leaks onward.
+class RenderEffects : public testing::Test
+{
+protected:
+    void SetUp() override
+    {
+        scr()->set_world_canvas_pinned_classic(true);
+        scr()->relayout_views();
+    }
+
+    void TearDown() override
+    {
+        scr()->set_active_canvas(CanvasTarget::UI);
+        scr()->set_world_canvas_pinned_classic(false);
+        scr()->relayout_views();
+    }
+};
+
 } // namespace
 
-TEST(RenderEffects, shadow_draws_darker_pixel_below_feet)
+TEST_F(RenderEffects, shadow_draws_darker_pixel_below_feet)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -293,7 +313,7 @@ TEST(RenderEffects, shadow_draws_darker_pixel_below_feet)
     restore_world(vs);
 }
 
-TEST(RenderEffects, weapon_shadow_stays_at_ground_when_raised_by_worldz)
+TEST_F(RenderEffects, weapon_shadow_stays_at_ground_when_raised_by_worldz)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -341,7 +361,7 @@ TEST(RenderEffects, weapon_shadow_stays_at_ground_when_raised_by_worldz)
     restore_world(vs);
 }
 
-TEST(RenderEffects, draw_obs_legacy_path_draws_shadow_prepass)
+TEST_F(RenderEffects, draw_obs_legacy_path_draws_shadow_prepass)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -366,7 +386,7 @@ TEST(RenderEffects, draw_obs_legacy_path_draws_shadow_prepass)
     restore_world(vs);
 }
 
-TEST(RenderEffects, reflection_draws_on_camera_floor_glass)
+TEST_F(RenderEffects, reflection_draws_on_camera_floor_glass)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -418,7 +438,7 @@ TEST(RenderEffects, reflection_draws_on_camera_floor_glass)
     restore_world(vs);
 }
 
-TEST(RenderEffects, reflection_absent_without_glass)
+TEST_F(RenderEffects, reflection_absent_without_glass)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -460,7 +480,7 @@ TEST(RenderEffects, reflection_absent_without_glass)
     restore_world(vs);
 }
 
-TEST(RenderEffects, invisible_and_phantom_walkers_cast_neither)
+TEST_F(RenderEffects, invisible_and_phantom_walkers_cast_neither)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -500,7 +520,7 @@ TEST(RenderEffects, invisible_and_phantom_walkers_cast_neither)
     restore_world(vs);
 }
 
-TEST(RenderEffects, shadow_anchor_follows_lunge_and_recoil_offsets)
+TEST_F(RenderEffects, shadow_anchor_follows_lunge_and_recoil_offsets)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -569,7 +589,7 @@ std::vector<RGB> grab_viewport(const viewscreen* vs)
 
 } // namespace
 
-TEST(RenderEffects, clouds_draw_on_top_floor_and_gate_off_byte_identically)
+TEST_F(RenderEffects, clouds_draw_on_top_floor_and_gate_off_byte_identically)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -610,7 +630,7 @@ TEST(RenderEffects, clouds_draw_on_top_floor_and_gate_off_byte_identically)
 
 // A WeatherKind::None level draws NOTHING even with the display key on: the
 // world's synced kind is the authoritative gate, cfg only opts a client out.
-TEST(RenderEffects, weather_none_with_cfg_on_renders_byte_identically)
+TEST_F(RenderEffects, weather_none_with_cfg_on_renders_byte_identically)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -641,7 +661,7 @@ TEST(RenderEffects, weather_none_with_cfg_on_renders_byte_identically)
     teardown_cloud_scene(vs);
 }
 
-TEST(RenderEffects, clouds_absent_below_the_top_floor)
+TEST_F(RenderEffects, clouds_absent_below_the_top_floor)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -668,7 +688,7 @@ TEST(RenderEffects, clouds_absent_below_the_top_floor)
     teardown_cloud_scene(vs);
 }
 
-TEST(RenderEffects, clouds_absent_on_single_floor_indoor_levels)
+TEST_F(RenderEffects, clouds_absent_on_single_floor_indoor_levels)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -701,7 +721,7 @@ TEST(RenderEffects, clouds_absent_on_single_floor_indoor_levels)
     teardown_cloud_scene(vs);
 }
 
-TEST(RenderEffects, clouds_appear_on_single_floor_outdoor_levels)
+TEST_F(RenderEffects, clouds_appear_on_single_floor_outdoor_levels)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -732,7 +752,7 @@ TEST(RenderEffects, clouds_appear_on_single_floor_outdoor_levels)
     teardown_cloud_scene(vs);
 }
 
-TEST(RenderEffects, outdoor_heuristic_threshold_and_per_tick_memo)
+TEST_F(RenderEffects, outdoor_heuristic_threshold_and_per_tick_memo)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -790,7 +810,7 @@ TEST(RenderEffects, outdoor_heuristic_threshold_and_per_tick_memo)
 // twinkles as do_cycle rotates it — pale-blue "rain-like" pixels inside
 // the banks, worst over water tiles whose blues neighbor the band. Both
 // kinds are checked (the kinds are exclusive, so one at a time).
-TEST(RenderEffects, weather_blends_survive_palette_cycling)
+TEST_F(RenderEffects, weather_blends_survive_palette_cycling)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -853,7 +873,7 @@ TEST(RenderEffects, weather_blends_survive_palette_cycling)
     teardown_cloud_scene(vs);
 }
 
-TEST(RenderEffects, clouds_drift_when_the_tick_advances)
+TEST_F(RenderEffects, clouds_drift_when_the_tick_advances)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -900,7 +920,7 @@ void fill_camera_grid(unsigned char tile)
 
 } // namespace
 
-TEST(RenderEffects, water_reflection_draws_on_camera_floor_water)
+TEST_F(RenderEffects, water_reflection_draws_on_camera_floor_water)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -948,7 +968,7 @@ TEST(RenderEffects, water_reflection_draws_on_camera_floor_water)
     restore_world(vs);
 }
 
-TEST(RenderEffects, water_reflection_absent_on_watergrass_edge_tiles)
+TEST_F(RenderEffects, water_reflection_absent_on_watergrass_edge_tiles)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -984,7 +1004,7 @@ TEST(RenderEffects, water_reflection_absent_on_watergrass_edge_tiles)
 
 // Westlands reflective tiles: molten lava and marsh pools mirror entities
 // through the same LUT/blit path as water and glass.
-TEST(RenderEffects, reflection_draws_on_lava_and_marsh)
+TEST_F(RenderEffects, reflection_draws_on_lava_and_marsh)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -1027,7 +1047,7 @@ TEST(RenderEffects, reflection_draws_on_lava_and_marsh)
 }
 
 // Snow and ash are dry ground: no reflection may draw there.
-TEST(RenderEffects, reflection_absent_on_snow_and_ash)
+TEST_F(RenderEffects, reflection_absent_on_snow_and_ash)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -1064,7 +1084,7 @@ TEST(RenderEffects, reflection_absent_on_snow_and_ash)
 // Marsh is thick bog: only a MOVING wader makes ripple rings (playtest bug
 // #14 — a standing unit ringed forever); lava makes none (nothing stands on
 // it — a flyer hovering over it fails the feet-tile check).
-TEST(RenderEffects, ripples_draw_on_marsh_only_while_wading_never_on_lava)
+TEST_F(RenderEffects, ripples_draw_on_marsh_only_while_wading_never_on_lava)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -1127,7 +1147,7 @@ TEST(RenderEffects, ripples_draw_on_marsh_only_while_wading_never_on_lava)
     restore_world(vs);
 }
 
-TEST(RenderEffects, ripples_draw_rings_under_walker_on_water)
+TEST_F(RenderEffects, ripples_draw_rings_under_walker_on_water)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -1187,7 +1207,7 @@ TEST(RenderEffects, ripples_draw_rings_under_walker_on_water)
     restore_world(vs);
 }
 
-TEST(RenderEffects, ripples_absent_on_grass_and_for_ineligible_walkers)
+TEST_F(RenderEffects, ripples_absent_on_grass_and_for_ineligible_walkers)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -1245,7 +1265,7 @@ TEST(RenderEffects, ripples_absent_on_grass_and_for_ineligible_walkers)
     restore_world(vs);
 }
 
-TEST(RenderEffects, ripples_absent_on_noncamera_floors)
+TEST_F(RenderEffects, ripples_absent_on_noncamera_floors)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -1289,7 +1309,7 @@ TEST(RenderEffects, ripples_absent_on_noncamera_floors)
     restore_world(vs);
 }
 
-TEST(RenderEffects, ripples_deterministic_and_drift_with_tick)
+TEST_F(RenderEffects, ripples_deterministic_and_drift_with_tick)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -1373,7 +1393,7 @@ size_t count_lightened(const std::vector<RGB>& off, const std::vector<RGB>& on)
 
 } // namespace
 
-TEST(RenderEffects, cloud_ground_shadows_darken_pixels_displaced_from_banks)
+TEST_F(RenderEffects, cloud_ground_shadows_darken_pixels_displaced_from_banks)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -1419,7 +1439,7 @@ TEST(RenderEffects, cloud_ground_shadows_darken_pixels_displaced_from_banks)
     teardown_cloud_scene(vs);
 }
 
-TEST(RenderEffects, rain_streaks_fall_sparsely_full_screen)
+TEST_F(RenderEffects, rain_streaks_fall_sparsely_full_screen)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -1483,7 +1503,7 @@ TEST(RenderEffects, rain_streaks_fall_sparsely_full_screen)
 // 4px down, and the fall translates along that slant. Shifting tick-T's
 // rain mask by the slant vector must reproduce tick-T+4's mask far better
 // than a straight-down shift does.
-TEST(RenderEffects, rain_falls_at_a_slant)
+TEST_F(RenderEffects, rain_falls_at_a_slant)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -1550,7 +1570,7 @@ TEST(RenderEffects, rain_falls_at_a_slant)
     teardown_cloud_scene(vs);
 }
 
-TEST(RenderEffects, rain_streaks_overlap_frame_to_frame)
+TEST_F(RenderEffects, rain_streaks_overlap_frame_to_frame)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -1604,7 +1624,7 @@ TEST(RenderEffects, rain_streaks_overlap_frame_to_frame)
     teardown_cloud_scene(vs);
 }
 
-TEST(RenderEffects, rain_absent_below_top_floor_and_on_single_floor)
+TEST_F(RenderEffects, rain_absent_below_top_floor_and_on_single_floor)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -1653,7 +1673,7 @@ TEST(RenderEffects, rain_absent_below_top_floor_and_on_single_floor)
     teardown_cloud_scene(vs);
 }
 
-TEST(RenderEffects, lightning_flashes_on_schedule_while_raining)
+TEST_F(RenderEffects, lightning_flashes_on_schedule_while_raining)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -1704,7 +1724,7 @@ TEST(RenderEffects, lightning_flashes_on_schedule_while_raining)
     teardown_cloud_scene(vs);
 }
 
-TEST(RenderEffects, weather_deterministic_and_rain_falls_with_tick)
+TEST_F(RenderEffects, weather_deterministic_and_rain_falls_with_tick)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -1762,7 +1782,7 @@ TEST(RenderEffects, weather_deterministic_and_rain_falls_with_tick)
 // flashes (even on the lightning schedule's tick 0), and a Rain sky draws
 // no banks or ground shadows. The kind traces are authoritative: Clouds
 // traces whenever its branch runs, rain/lightning trace whenever they draw.
-TEST(RenderEffects, weather_kinds_are_mutually_exclusive)
+TEST_F(RenderEffects, weather_kinds_are_mutually_exclusive)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -1812,7 +1832,7 @@ TEST(RenderEffects, weather_kinds_are_mutually_exclusive)
 // Full-screen rain: the retired build masked streaks to "wet" cloud-field
 // regions; a Rain level now rains over the whole open sky. Every viewport
 // quadrant must see streak pixels at one tick — a wet mask left dry zones.
-TEST(RenderEffects, rain_falls_across_the_full_viewport_not_a_wet_mask)
+TEST_F(RenderEffects, rain_falls_across_the_full_viewport_not_a_wet_mask)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -1870,7 +1890,7 @@ std::uint32_t test_hash_u32(std::uint32_t v)
     return v;
 }
 
-TEST(RenderEffects, snow_streaks_fall_sparsely)
+TEST_F(RenderEffects, snow_streaks_fall_sparsely)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -1918,7 +1938,7 @@ TEST(RenderEffects, snow_streaks_fall_sparsely)
     teardown_cloud_scene(vs);
 }
 
-TEST(RenderEffects, snow_absent_below_top_floor)
+TEST_F(RenderEffects, snow_absent_below_top_floor)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -1945,7 +1965,7 @@ TEST(RenderEffects, snow_absent_below_top_floor)
 
 // Snow must read as FALLING: a 4px streak at 1px/tick relights 3 of its 4
 // pixels on the next tick (75% theoretical overlap; rain pins 70%).
-TEST(RenderEffects, snow_streaks_overlap_frame_to_frame)
+TEST_F(RenderEffects, snow_streaks_overlap_frame_to_frame)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -2000,7 +2020,7 @@ TEST(RenderEffects, snow_streaks_overlap_frame_to_frame)
 // world-column band alternates lean direction by hash: shifting tick-T's
 // mask by each band's own (s, 8) vector must reproduce tick-T+8's mask,
 // while a global straight-down shift must not.
-TEST(RenderEffects, snow_falls_at_a_gentle_slant)
+TEST_F(RenderEffects, snow_falls_at_a_gentle_slant)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -2075,7 +2095,7 @@ TEST(RenderEffects, snow_falls_at_a_gentle_slant)
 
 // No lightning under snow: ticks 0/1 are the Rain flash window; a Snow sky
 // crossing the same schedule boundary must neither trace nor flash.
-TEST(RenderEffects, snow_has_no_lightning)
+TEST_F(RenderEffects, snow_has_no_lightning)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -2114,7 +2134,7 @@ TEST(RenderEffects, snow_has_no_lightning)
 // All four Westlands terrains are open country: a single-floor map of each
 // must vote outdoor so weather reaches it (otherwise the blizzard override
 // would never show its own snowfall).
-TEST(RenderEffects, westlands_terrains_vote_outdoor)
+TEST_F(RenderEffects, westlands_terrains_vote_outdoor)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -2144,7 +2164,7 @@ TEST(RenderEffects, westlands_terrains_vote_outdoor)
 // The authoritative roll helper: traces kind + seed and reproduces the same
 // kind for the same level id under the default-0 test nonce (level-id kinds
 // pinned in tests/unit/test_weather.cpp).
-TEST(RenderEffects, weather_roll_traces_and_is_deterministic_per_level)
+TEST_F(RenderEffects, weather_roll_traces_and_is_deterministic_per_level)
 {
     GameWorld& world = scr()->world();
     const int saved_id = world.id;
@@ -2207,7 +2227,7 @@ bool warm_shifted(const RGB& on, const RGB& off)
 
 } // namespace
 
-TEST(RenderEffects, render_store_pushes_once_per_tick_prunes_and_resets)
+TEST_F(RenderEffects, render_store_pushes_once_per_tick_prunes_and_resets)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -2268,7 +2288,7 @@ TEST(RenderEffects, render_store_pushes_once_per_tick_prunes_and_resets)
     restore_world(vs);
 }
 
-TEST(RenderEffects, trails_draw_fading_dots_behind_moving_weapons)
+TEST_F(RenderEffects, trails_draw_fading_dots_behind_moving_weapons)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -2336,7 +2356,7 @@ TEST(RenderEffects, trails_draw_fading_dots_behind_moving_weapons)
     restore_world(vs);
 }
 
-TEST(RenderEffects, trails_absent_without_motion_and_off_camera_floor)
+TEST_F(RenderEffects, trails_absent_without_motion_and_off_camera_floor)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -2394,7 +2414,7 @@ TEST(RenderEffects, trails_absent_without_motion_and_off_camera_floor)
     restore_world(vs);
 }
 
-TEST(RenderEffects, dust_specks_fall_under_movers_on_the_floor_above)
+TEST_F(RenderEffects, dust_specks_fall_under_movers_on_the_floor_above)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -2470,7 +2490,7 @@ TEST(RenderEffects, dust_specks_fall_under_movers_on_the_floor_above)
     restore_world(vs);
 }
 
-TEST(RenderEffects, dust_absent_when_still_on_top_floor_or_single_floor)
+TEST_F(RenderEffects, dust_absent_when_still_on_top_floor_or_single_floor)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -2544,7 +2564,7 @@ TEST(RenderEffects, dust_absent_when_still_on_top_floor_or_single_floor)
 
 // ---- Falling cue: render-only air-fall transition (shares the dust key) ----
 
-TEST(RenderEffects, fall_cue_plays_smear_then_puff_after_an_air_fall)
+TEST_F(RenderEffects, fall_cue_plays_smear_then_puff_after_an_air_fall)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -2662,7 +2682,7 @@ TEST(RenderEffects, fall_cue_plays_smear_then_puff_after_an_air_fall)
     restore_world(vs);
 }
 
-TEST(RenderEffects, fall_cue_absent_for_stair_descents_teleports_and_dust_off)
+TEST_F(RenderEffects, fall_cue_absent_for_stair_descents_teleports_and_dust_off)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -2754,7 +2774,7 @@ TEST(RenderEffects, fall_cue_absent_for_stair_descents_teleports_and_dust_off)
 // render depth-faded, held or not; single-floor stays byte-identical.
 // ---------------------------------------------------------------------------
 
-TEST(RenderEffects, overhang_shadow_darkens_camera_floor_under_solid_upper_tiles)
+TEST_F(RenderEffects, overhang_shadow_darkens_camera_floor_under_solid_upper_tiles)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -2827,7 +2847,7 @@ TEST(RenderEffects, overhang_shadow_darkens_camera_floor_under_solid_upper_tiles
     restore_world(vs);
 }
 
-TEST(RenderEffects, blob_shadow_marks_upper_floor_walker_on_camera_floor)
+TEST_F(RenderEffects, blob_shadow_marks_upper_floor_walker_on_camera_floor)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -2895,7 +2915,7 @@ TEST(RenderEffects, blob_shadow_marks_upper_floor_walker_on_camera_floor)
     restore_world(vs);
 }
 
-TEST(RenderEffects, look_up_hold_swaps_shadow_frame_for_ghost_frame)
+TEST_F(RenderEffects, look_up_hold_swaps_shadow_frame_for_ghost_frame)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -2978,7 +2998,7 @@ TEST(RenderEffects, look_up_hold_swaps_shadow_frame_for_ghost_frame)
     restore_world(vs);
 }
 
-TEST(RenderEffects, single_floor_renders_byte_identical_in_all_floor_view_modes)
+TEST_F(RenderEffects, single_floor_renders_byte_identical_in_all_floor_view_modes)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -3010,7 +3030,7 @@ TEST(RenderEffects, single_floor_renders_byte_identical_in_all_floor_view_modes)
     restore_world(vs);
 }
 
-TEST(RenderEffects, fire_glow_warms_pixels_around_fire_entities)
+TEST_F(RenderEffects, fire_glow_warms_pixels_around_fire_entities)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -3088,7 +3108,7 @@ TEST(RenderEffects, fire_glow_warms_pixels_around_fire_entities)
 // Pins the REFINED flicker: the glow breathes (slow triangle + per-cycle
 // jitter) instead of re-rolling at frame rate. Old behavior jumped up to
 // 30% of the kernel between frames and fails the per-frame bound here.
-TEST(RenderEffects, fire_glow_breathes_smoothly_instead_of_strobing)
+TEST_F(RenderEffects, fire_glow_breathes_smoothly_instead_of_strobing)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -3154,7 +3174,7 @@ TEST(RenderEffects, fire_glow_breathes_smoothly_instead_of_strobing)
 // (palette 234), not COLOR_FIRE=224: 224 is ORANGE_START, the first index of
 // the band do_cycle rotates every cycle tick in-game, and a glow painted
 // with it strobes at the cycle rate regardless of how smooth the alpha is.
-TEST(RenderEffects, fire_glow_color_survives_palette_cycling)
+TEST_F(RenderEffects, fire_glow_color_survives_palette_cycling)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -3208,7 +3228,7 @@ TEST(RenderEffects, fire_glow_color_survives_palette_cycling)
     restore_world(vs);
 }
 
-TEST(RenderEffects, fire_glow_deterministic_flicker_and_camera_floor_gate)
+TEST_F(RenderEffects, fire_glow_deterministic_flicker_and_camera_floor_gate)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -3283,7 +3303,7 @@ TEST(RenderEffects, fire_glow_deterministic_flicker_and_camera_floor_gate)
     restore_world(vs);
 }
 
-TEST(RenderEffects, depth_fx_tint_cools_below_floor_pixels)
+TEST_F(RenderEffects, depth_fx_tint_cools_below_floor_pixels)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -3395,7 +3415,7 @@ TEST(RenderEffects, depth_fx_tint_cools_below_floor_pixels)
 // depth-faded (and depth-tintable) in NORMAL play — no look-up hold anywhere
 // in this test. Latching the fade-below layer behind the hold once made
 // lower floors render opaque and full-brightness through air holes.
-TEST(RenderEffects, lower_floor_fades_and_tints_without_look_up)
+TEST_F(RenderEffects, lower_floor_fades_and_tints_without_look_up)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -3473,7 +3493,7 @@ TEST(RenderEffects, lower_floor_fades_and_tints_without_look_up)
     restore_world(vs);
 }
 
-TEST(RenderEffects, floor_layer_failure_fades_tiles_and_walkers_in_direct_fallback)
+TEST_F(RenderEffects, floor_layer_failure_fades_tiles_and_walkers_in_direct_fallback)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -3563,7 +3583,7 @@ TEST(RenderEffects, floor_layer_failure_fades_tiles_and_walkers_in_direct_fallba
     restore_world(vs);
 }
 
-TEST(RenderEffects, depth_fx_leaves_ghost_floors_above_untinted)
+TEST_F(RenderEffects, depth_fx_leaves_ghost_floors_above_untinted)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -3663,7 +3683,7 @@ std::vector<RGB> depth_fx_frame(viewscreen* vs, const char* mode,
 // The headline animation pin: fog is the only depth mode whose pixels move
 // with the effects frame tick — tint/haze/mist render the same bytes at
 // tick 0 and tick 8, fog does not.
-TEST(RenderEffects, depth_fx_fog_animates_while_the_other_modes_hold_still)
+TEST_F(RenderEffects, depth_fx_fog_animates_while_the_other_modes_hold_still)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -3699,7 +3719,7 @@ TEST(RenderEffects, depth_fx_fog_animates_while_the_other_modes_hold_still)
 
 // An ABSENT effects/depth_fx key must render exactly the default, fog —
 // the runtime mirror of the cfg loader's default/migration.
-TEST(RenderEffects, depth_fx_absent_key_renders_as_fog)
+TEST_F(RenderEffects, depth_fx_absent_key_renders_as_fog)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -3726,7 +3746,7 @@ TEST(RenderEffects, depth_fx_absent_key_renders_as_fog)
 // is either the untouched off-frame pixel or ONE exact mist color — no
 // alpha-blended in-betweens anywhere, and the checkerboard density lands
 // near its nominal share.
-TEST(RenderEffects, depth_fx_mist_scene_has_no_blended_in_between_colors)
+TEST_F(RenderEffects, depth_fx_mist_scene_has_no_blended_in_between_colors)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -3767,7 +3787,7 @@ TEST(RenderEffects, depth_fx_mist_scene_has_no_blended_in_between_colors)
 // Single-floor levels must render byte-identically in EVERY depth mode: the
 // below-floor layer path never runs, so the selector cannot touch a classic
 // level no matter its value.
-TEST(RenderEffects, depth_fx_single_floor_byte_identity_in_every_mode)
+TEST_F(RenderEffects, depth_fx_single_floor_byte_identity_in_every_mode)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -3804,7 +3824,7 @@ TEST(RenderEffects, depth_fx_single_floor_byte_identity_in_every_mode)
     restore_world(vs);
 }
 
-TEST(RenderEffects, screen_shake_jolts_the_frame_and_restores_the_camera)
+TEST_F(RenderEffects, screen_shake_jolts_the_frame_and_restores_the_camera)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -3912,7 +3932,7 @@ TEST(RenderEffects, screen_shake_jolts_the_frame_and_restores_the_camera)
     restore_world(vs);
 }
 
-TEST(RenderEffects, screen_shake_gates_editor_other_floors_and_off_screen)
+TEST_F(RenderEffects, screen_shake_gates_editor_other_floors_and_off_screen)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -4088,7 +4108,7 @@ struct GameplayActiveGuard
 // 10.2-1: the headline OFF byte-identity pair. (a) two identical cfg-off
 // stair crossings render byte-identically frame for frame; (b) the cfg-on
 // run diverges on at least one mid-glide frame while OFF never activates.
-TEST(RenderEffects, floor_glide_off_is_byte_identical_and_on_diverges)
+TEST_F(RenderEffects, floor_glide_off_is_byte_identical_and_on_diverges)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -4149,7 +4169,7 @@ TEST(RenderEffects, floor_glide_off_is_byte_identical_and_on_diverges)
 
 // 10.2-2: single-floor structural gate (S2). cfg ON renders byte-identically
 // to cfg OFF on a 1-floor level, and even a forced floor hop snaps.
-TEST(RenderEffects, floor_glide_single_floor_structural_gate)
+TEST_F(RenderEffects, floor_glide_single_floor_structural_gate)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -4211,7 +4231,7 @@ TEST(RenderEffects, floor_glide_single_floor_structural_gate)
 // byte-identical to the snap-constructed steady state (the final frame takes
 // the untouched integer path, structurally). The penultimate frame is
 // deliberately NOT pinned byte-wise (<= 1-quantum residual by design).
-TEST(RenderEffects, floor_glide_endpoint_frame_matches_snapped_steady_state)
+TEST_F(RenderEffects, floor_glide_endpoint_frame_matches_snapped_steady_state)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -4268,7 +4288,7 @@ TEST(RenderEffects, floor_glide_endpoint_frame_matches_snapped_steady_state)
 // directions; falls scale 9/12/14 with the story count (clamped at 3);
 // teleports (rise without stair, multi-floor stair jump, drop beyond the
 // landing nudge) never animate.
-TEST(RenderEffects, floor_glide_cause_and_duration_matrix)
+TEST_F(RenderEffects, floor_glide_cause_and_duration_matrix)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -4327,7 +4347,7 @@ TEST(RenderEffects, floor_glide_cause_and_duration_matrix)
 // 10.2-5: table-driven suppression ladder. Every rung snaps (frames_left 0,
 // cause None, current_floor_ assigned exactly as the pre-glide code did);
 // the unsuppressed control row proves the shared attempt is glide-worthy.
-TEST(RenderEffects, floor_glide_suppression_ladder_snaps)
+TEST_F(RenderEffects, floor_glide_suppression_ladder_snaps)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -4459,7 +4479,7 @@ TEST(RenderEffects, floor_glide_suppression_ladder_snaps)
 // 10.2-6: newest-event-wins retarget. A fall triggered mid-stair-glide
 // switches the cause and duration and continues from the live fractional
 // camera height — never a snap-back to an integer.
-TEST(RenderEffects, floor_glide_retarget_switches_cause_and_stays_continuous)
+TEST_F(RenderEffects, floor_glide_retarget_switches_cause_and_stays_continuous)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -4516,7 +4536,7 @@ TEST(RenderEffects, floor_glide_retarget_switches_cause_and_stays_continuous)
 // 10.2-7: ghost-hold invariant. While the look-up hold is active, every
 // drawn above-camera floor keeps alpha >= kFloorGhostAlpha through the whole
 // glide, and the final frame equals the settled steady hold frame.
-TEST(RenderEffects, floor_glide_ghost_hold_keeps_above_floor_alpha)
+TEST_F(RenderEffects, floor_glide_ghost_hold_keeps_above_floor_alpha)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -4573,7 +4593,7 @@ TEST(RenderEffects, floor_glide_ghost_hold_keeps_above_floor_alpha)
 // 10.2-8a: the departing floor renders terrain-only during a no-hold
 // down-glide — a monster on it contributes ZERO pixels from the trigger
 // frame on (the frame-1 entity vanish, deliberate and fx-review-gated).
-TEST(RenderEffects, floor_glide_departing_pass_is_terrain_only)
+TEST_F(RenderEffects, floor_glide_departing_pass_is_terrain_only)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -4686,7 +4706,7 @@ TEST(RenderEffects, floor_glide_departing_pass_is_terrain_only)
 // there. That mode switch is the shipped below-floor grammar, not a new
 // entity pass; recorded as an accepted exposure in
 // docs/floor-glide-design.md §2.4 / R2.)
-TEST(RenderEffects, floor_glide_adds_zero_render_rng_draws)
+TEST_F(RenderEffects, floor_glide_adds_zero_render_rng_draws)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -4788,7 +4808,7 @@ TEST(RenderEffects, floor_glide_adds_zero_render_rng_draws)
 // 10.2-9: multi-story fall = one continuous sweep. Delta 2 runs 12 frames,
 // the camera height crosses the intermediate floor mid-sweep and overshoots
 // past the destination (the landing squash) before settling.
-TEST(RenderEffects, floor_glide_multistory_fall_sweeps_through_and_overshoots)
+TEST_F(RenderEffects, floor_glide_multistory_fall_sweeps_through_and_overshoots)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -4838,7 +4858,7 @@ TEST(RenderEffects, floor_glide_multistory_fall_sweeps_through_and_overshoots)
 // topx/topy to the unshifted camera (the per-floor parallax shift never
 // leaks out of the floor loop) and publishes exactly one primary render
 // sample per redraw.
-TEST(RenderEffects, floor_glide_restores_camera_and_publishes_one_sample)
+TEST_F(RenderEffects, floor_glide_restores_camera_and_publishes_one_sample)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -4928,7 +4948,7 @@ void dump_frame(viewscreen* vs, const char* scene, int frame)
 
 } // namespace fx_capture
 
-TEST(RenderEffects, zz_capture_effect_scenes)
+TEST_F(RenderEffects, zz_capture_effect_scenes)
 {
     if (!getenv("OG_FX_CAPTURE_DIR"))
         GTEST_SKIP() << "set OG_FX_CAPTURE_DIR to record";
@@ -5329,7 +5349,7 @@ TEST(RenderEffects, zz_capture_effect_scenes)
 // tours depend on this (blocking menu loops never return to a test loop).
 #include <fstream>
 
-TEST(RenderEffects, capture_dump_hook_writes_ppm_frames)
+TEST_F(RenderEffects, capture_dump_hook_writes_ppm_frames)
 {
     const std::string dir =
         std::string(::testing::TempDir()) + "og_dump_hook_pin";
@@ -5363,7 +5383,7 @@ TEST(RenderEffects, capture_dump_hook_writes_ppm_frames)
 // Floor-presentation v2 gate regressions: capture/spectator cameras (which
 // drive the floor via editor_floor_override_) MUST render the overhang
 // shadows — only the level editor's authoring view suppresses them.
-TEST(RenderEffects, overhang_shadows_render_under_spectator_floor_override)
+TEST_F(RenderEffects, overhang_shadows_render_under_spectator_floor_override)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -5409,11 +5429,12 @@ TEST(RenderEffects, overhang_shadows_render_under_spectator_floor_override)
 // Render-cost benchmark for large world canvases (the "fullscreen at small
 // sprite scale is 1fps" report). Env-gated: set OG_BENCH=1; prints ms/frame
 // per effect configuration to stderr so a profiler run can be focused.
-TEST(RenderEffects, zz_bench_large_canvas_redraw)
+TEST_F(RenderEffects, zz_bench_large_canvas_redraw)
 {
     if (getenv("OG_BENCH") == nullptr)
         GTEST_SKIP() << "set OG_BENCH=1 to run the large-canvas benchmark";
 
+    scr()->set_world_canvas_pinned_classic(false);
     EffectsCfgGuard cfg_guard;
     // A REAL level (objects, terrain variety) rather than the empty fixture
     // grid: weather/depth effects gate on outdoor terrain, and tile/sprite

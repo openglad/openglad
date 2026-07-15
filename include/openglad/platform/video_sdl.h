@@ -46,10 +46,9 @@ inline bool exclusive_mode_switch_is_safe(std::string_view video_driver,
 class sdl_video final : public video
 {
 public:
-    // Bounds each multifloor source surface to 16.4 MiB at ARGB8888. This
-    // admits every padded full-screen floor pass through zoom 0.3 and the
-    // normal near-depth passes at zoom 0.2, while keeping zoom 0.1 from
-    // retaining two hundred-plus MiB of compositor scratch.
+    // Bounds each multifloor source surface to 16.4 MiB at ARGB8888. Larger
+    // window/zoom combinations draw the faded floor directly instead of
+    // retaining an unbounded compositor scratch surface.
     static constexpr std::int64_t kFloorLayerSourcePixelBudget = 4'096'000;
 
     sdl_video();
@@ -205,6 +204,8 @@ public:
     void prepare_ui_canvas_from_world() override;
     void set_world_canvas_pinned_classic(bool pinned) override;
     void reapply_world_scale() override;
+    int minimum_world_zoom_steps() const override;
+    bool world_smoothing_supported() const override;
     void apply_display_settings_from_cfg() override;
     void reflect_display_settings_from_window(
         DisplayStateConfirmation confirmation = DisplayStateConfirmation::Synchronized,
@@ -292,7 +293,7 @@ private:
 };
 
 // Installs cfg graphics/zoom + graphics/smoothing on the live display. The
-// world canvas is classic/zoom (window-independent), and smoothing selects
+// world canvas derives from the logical window and zoom, and smoothing selects
 // its world-only present engine. Called at display creation and exposed so
 // settings/tests can live-apply changes. This path also runs on Emscripten.
 void apply_world_scale_from_cfg();

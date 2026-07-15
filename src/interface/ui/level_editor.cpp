@@ -4093,15 +4093,22 @@ EventType handle_basic_editor_event(const void* native_event)
         handle_mouse_event(native_event);
         return EventType::Scroll;
     case og::input_native::EventType::FingerMotion:
+    {
         handle_mouse_event(native_event);
-        // Deltas scale by the ACTIVE canvas dims like handle_mouse_event's
-        // positions (the editor pins the classic canvas, so these stay the
-        // 320x200 constants today; dimension-derived for when the pin drops).
+        // Finger deltas are normalized to the complete window. Convert the
+        // physical delta through the same aspect-fitted rectangle as the
+        // absolute pointer position so bars do not slow one axis.
+        const og::CanvasViewport viewport = active_canvas_viewport();
         eds().mouse_motion_x = static_cast<int>(
-            event.finger_dx * static_cast<float>(og::runtime::current_session->myscreen_->canvas_w()));
+            event.finger_dx * og::runtime::current_session->window_w_ *
+            static_cast<float>(og::runtime::current_session->myscreen_->canvas_w()) /
+            static_cast<float>(std::max(1, viewport.w)));
         eds().mouse_motion_y = static_cast<int>(
-            event.finger_dy * static_cast<float>(og::runtime::current_session->myscreen_->canvas_h()));
+            event.finger_dy * og::runtime::current_session->window_h_ *
+            static_cast<float>(og::runtime::current_session->myscreen_->canvas_h()) /
+            static_cast<float>(std::max(1, viewport.h)));
         return EventType::MouseMotion;
+    }
     case og::input_native::EventType::FingerUp:
         {
             MouseState& mymouse = query_mouse_no_poll();
@@ -4126,12 +4133,20 @@ EventType handle_basic_editor_event(const void* native_event)
         handle_key_event(native_event);
         return EventType::Handled;
     case og::input_native::EventType::MouseMotion:
+    {
         handle_mouse_event(native_event);
-        // Same active-canvas divisor as handle_mouse_event's position mapping
-        // (classic 320x200 while the editor pin holds — every run today).
-        eds().mouse_motion_x = static_cast<int>(static_cast<float>(event.motion_dx) * (static_cast<float>(og::runtime::current_session->myscreen_->canvas_w()) / og::runtime::current_session->viewport_w_));
-        eds().mouse_motion_y = static_cast<int>(static_cast<float>(event.motion_dy) * (static_cast<float>(og::runtime::current_session->myscreen_->canvas_h()) / og::runtime::current_session->viewport_h_));
+        // Use the same aspect-fitted viewport as position mapping.
+        const og::CanvasViewport viewport = active_canvas_viewport();
+        eds().mouse_motion_x = static_cast<int>(
+            static_cast<float>(event.motion_dx) *
+            static_cast<float>(og::runtime::current_session->myscreen_->canvas_w()) /
+            static_cast<float>(std::max(1, viewport.w)));
+        eds().mouse_motion_y = static_cast<int>(
+            static_cast<float>(event.motion_dy) *
+            static_cast<float>(og::runtime::current_session->myscreen_->canvas_h()) /
+            static_cast<float>(std::max(1, viewport.h)));
         return EventType::MouseMotion;
+    }
     case og::input_native::EventType::MouseButtonUp:
         {
             MouseState& mymouse = query_mouse_no_poll();
@@ -4183,28 +4198,31 @@ Sint32 level_editor()
 
     // The editor is gameplay-view + chrome: it renders the map through the
     // standard viewscreen machinery, so it lives on the WORLD canvas (shared
-    // with the UI canvas at the default 320x200 dims). Its panel chrome and
+    // with the UI canvas whenever both are 320x200). Its panel chrome and
     // mouse mapping still use absolute 320x200-era coordinates (local
-    // S_RIGHT=245 etc.), so when graphics/zoom has grown the logical
-    // world canvas we PIN it back to the classic dims for the editor session
-    // and restore the zoom-derived dims on exit (follow-up: right-anchor the
-    // chrome from canvas_w and drop the pin). Restore the UI canvas for the
-    // picker on exit. At default dims the pin branch never runs — exactly the
-    // pre-existing behavior.
+    // S_RIGHT=245 etc.), so we PIN it to the classic dims for the editor
+    // session and restore the zoom-derived dims on exit (follow-up:
+    // right-anchor the chrome from canvas_w and drop the pin). The held pin
+    // also blocks resize events from growing the canvas mid-editor. Restore
+    // the UI canvas for the picker on exit.
     struct EditorCanvasScope final {
         screen* scr_;
         bool pinned_ = false;
         explicit EditorCanvasScope(screen* scr) : scr_(scr)
         {
-            pinned_ = (scr_->world_canvas_w() != kUiCanvasW ||
-                       scr_->world_canvas_h() != kUiCanvasH);
-            if (pinned_)
-            {
-                scr_->set_world_canvas_pinned_classic(true);
+            const int old_w = scr_->world_canvas_w();
+            const int old_h = scr_->world_canvas_h();
+            // Hold the pin even when entry already happens to be 320x200.
+            // A resize/fullscreen event may arrive while the editor is open;
+            // the held pin keeps its absolute-coordinate chrome safe while
+            // remembering the new window-relative canvas for exit.
+            scr_->set_world_canvas_pinned_classic(true);
+            pinned_ = true;
+            if (scr_->world_canvas_w() != old_w ||
+                scr_->world_canvas_h() != old_h)
                 scr_->relayout_views();
-                TRACE("canvas", "editor_pin_classic %dx%d",
-                      scr_->world_canvas_w(), scr_->world_canvas_h());
-            }
+            TRACE("canvas", "editor_pin_classic %dx%d",
+                  scr_->world_canvas_w(), scr_->world_canvas_h());
             scr_->set_active_canvas(CanvasTarget::World);
         }
         ~EditorCanvasScope()
@@ -4212,8 +4230,12 @@ Sint32 level_editor()
             scr_->set_active_canvas(CanvasTarget::UI);
             if (pinned_)
             {
+                const int old_w = scr_->world_canvas_w();
+                const int old_h = scr_->world_canvas_h();
                 scr_->set_world_canvas_pinned_classic(false);
-                scr_->relayout_views();
+                if (scr_->world_canvas_w() != old_w ||
+                    scr_->world_canvas_h() != old_h)
+                    scr_->relayout_views();
                 TRACE("canvas", "editor_unpin %dx%d",
                       scr_->world_canvas_w(), scr_->world_canvas_h());
             }
@@ -4344,24 +4366,22 @@ Sint32 level_editor()
                 continue;
 
             #ifdef USE_CONTROLLER_INPUT
-            // Inverse of handle_mouse_event's window->canvas mapping: divide
-            // by the ACTIVE canvas dims (classic 320x200 under the editor
-            // pin, i.e. every run today).
-            if(didPlayerPressKey(0, KEY_FIRE, native_event))
-            {
-                const int event_x = static_cast<int>(static_cast<float>(mymouse.x) * (og::runtime::current_session->viewport_w_ / static_cast<float>(og::runtime::current_session->myscreen_->canvas_w()))
-                                                     + og::runtime::current_session->viewport_offset_x_);
-                const int event_y = static_cast<int>(static_cast<float>(mymouse.y) * (og::runtime::current_session->viewport_h_ / static_cast<float>(og::runtime::current_session->myscreen_->canvas_h()))
-                                                     + og::runtime::current_session->viewport_offset_y_);
+			// Inverse of handle_mouse_event's aspect-fitted mapping.
+			if(didPlayerPressKey(0, KEY_FIRE, native_event))
+			{
+				const auto [window_x, window_y] = active_canvas_to_window(
+					static_cast<float>(mymouse.x), static_cast<float>(mymouse.y));
+				const int event_x = static_cast<int>(window_x);
+				const int event_y = static_cast<int>(window_y);
                 og::input_native::push_mouse_button_event(true, og::input_native::kMouseButtonLeft, event_x, event_y);
                 continue;
             }
-            if(didPlayerReleaseKey(0, KEY_FIRE, native_event))
-            {
-                const int event_x = static_cast<int>(static_cast<float>(mymouse.x) * (og::runtime::current_session->viewport_w_ / static_cast<float>(og::runtime::current_session->myscreen_->canvas_w()))
-                                                     + og::runtime::current_session->viewport_offset_x_);
-                const int event_y = static_cast<int>(static_cast<float>(mymouse.y) * (og::runtime::current_session->viewport_h_ / static_cast<float>(og::runtime::current_session->myscreen_->canvas_h()))
-                                                     + og::runtime::current_session->viewport_offset_y_);
+			if(didPlayerReleaseKey(0, KEY_FIRE, native_event))
+			{
+				const auto [window_x, window_y] = active_canvas_to_window(
+					static_cast<float>(mymouse.x), static_cast<float>(mymouse.y));
+				const int event_x = static_cast<int>(window_x);
+				const int event_y = static_cast<int>(window_y);
                 og::input_native::push_mouse_button_event(false, og::input_native::kMouseButtonLeft, event_x, event_y);
                 continue;
             }

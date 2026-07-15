@@ -147,8 +147,12 @@ TEST(PickerDialogsReal, in_game_dialog_uses_fixed_ui_and_preserves_zoomed_world)
 
     E_Screen->set_world_zoom(5, og::WorldScaleMode::Sai);
     E_Screen->set_active_canvas(CanvasTarget::World);
-    ASSERT_EQ(640, E_Screen->render->w);
-    ASSERT_EQ(400, E_Screen->render->h);
+    const int zoomed_world_w = E_Screen->world_w();
+    const int zoomed_world_h = E_Screen->world_h();
+    ASSERT_EQ(zoomed_world_w, E_Screen->render->w);
+    ASSERT_EQ(zoomed_world_h, E_Screen->render->h);
+    ASSERT_GT(zoomed_world_w, kUiCanvasW)
+        << "the test requires a split world canvas";
     constexpr Uint32 kWorldPixel = 0x00123456u;
     SDL_FillSurfaceRect(E_Screen->render, nullptr, kWorldPixel);
 
@@ -164,8 +168,8 @@ TEST(PickerDialogsReal, in_game_dialog_uses_fixed_ui_and_preserves_zoomed_world)
     ASSERT_TRUE(st.started && st.finished) << "zoom dialog injector should run";
     EXPECT_TRUE(accepted);
     EXPECT_EQ(CanvasTarget::World, E_Screen->active_canvas());
-    EXPECT_EQ(640, E_Screen->render->w);
-    EXPECT_EQ(400, E_Screen->render->h);
+    EXPECT_EQ(zoomed_world_w, E_Screen->render->w);
+    EXPECT_EQ(zoomed_world_h, E_Screen->render->h);
     const auto* world_pixels = reinterpret_cast<const Uint32*>(E_Screen->render->pixels);
     EXPECT_EQ(kWorldPixel, world_pixels[60 + 90 * (E_Screen->render->pitch / 4)])
         << "modal darkening and chrome must not modify the split world surface";

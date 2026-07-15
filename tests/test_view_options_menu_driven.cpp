@@ -195,8 +195,10 @@ TEST(ViewOptionsMenuDriven, team_info_return_redraws_the_split_world_canvas)
     vs->prefs[PREF_VIEW] = PREF_VIEW_FULL;
     game->relayout_views();
     E_Screen->set_active_canvas(CanvasTarget::World);
-    ASSERT_EQ(640, E_Screen->render->w);
-    ASSERT_EQ(400, E_Screen->render->h);
+    ASSERT_EQ(game->world_canvas_w(), E_Screen->render->w);
+    ASSERT_EQ(game->world_canvas_h(), E_Screen->render->h);
+    ASSERT_GT(E_Screen->render->w, kUiCanvasW)
+        << "the test requires a split world canvas";
 
     constexpr Uint8 sentinel_r = 231;
     constexpr Uint8 sentinel_g = 17;

@@ -342,9 +342,8 @@ int main(int argc, char* argv[])
 
         cfg.apply_setting("graphics", "width", std::format("{}", display_w));
         cfg.apply_setting("graphics", "height", std::format("{}", display_h));
-        // Force the classic fixed 320x200 world canvas even if the user's cfg
-        // selects a deeper zoom or smoothing filter: the compositor grid
-        // assumes unsmoothed CELL_W x CELL_H session surfaces.
+        // Start from the normal zoom preference; the display-owning Screen is
+        // explicitly pinned below because zoom 1.0 is window-sized.
         cfg.apply_setting("graphics", "zoom", "1.0");
         cfg.apply_setting("graphics", "smoothing", "off");
         cfg.apply_setting("graphics", "fullscreen", "on");
@@ -359,6 +358,13 @@ int main(int argc, char* argv[])
         host_cfg.allocate_prefs = true;
         host_cfg.install_legacy_globals = true;
         og::runtime::GameSession host_session(host_cfg);
+        // SessionScope swaps only the surface pointer, while canvas strides and
+        // view geometry still come from the display-owning Screen. Hold its real
+        // classic pin before constructing any 320x200 sub-session surfaces so a
+        // desktop-sized zoom canvas cannot index past those surfaces. The pin
+        // also survives resize/fullscreen events for the demo's lifetime.
+        E_Screen->set_world_canvas_pinned_classic(true);
+        host_session.myscreen_->relayout_views();
 
         init_input();
         load_player_control_settings_from_cfg(cfg);

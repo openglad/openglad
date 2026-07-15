@@ -235,13 +235,30 @@ private:
     std::vector<std::pair<std::string, std::string>> saved_;
 };
 
+class DecorRender : public testing::Test
+{
+protected:
+    void SetUp() override
+    {
+        scr()->set_world_canvas_pinned_classic(true);
+        scr()->relayout_views();
+    }
+
+    void TearDown() override
+    {
+        scr()->set_active_canvas(CanvasTarget::UI);
+        scr()->set_world_canvas_pinned_classic(false);
+        scr()->relayout_views();
+    }
+};
+
 } // namespace
 
 // The decor cell (base GRASS3 + DECOR_BOULDER_2) must render byte-identical
 // to the legacy combined tile (base PIX_BOULDER_2): that cut-out measured
 // ZERO residual pixels, so the transparent sprite pass over the base tile is
 // pixel-for-pixel the legacy look. Checked in BOTH redraw bodies.
-TEST(DecorRender, boulder_decor_matches_legacy_combined_tile_in_both_redraws)
+TEST_F(DecorRender, boulder_decor_matches_legacy_combined_tile_in_both_redraws)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -301,7 +318,7 @@ TEST(DecorRender, boulder_decor_matches_legacy_combined_tile_in_both_redraws)
 // Ghosted multifloor: under the look-up hold, decor on the floor above the
 // camera composites through the floor layer (visible ghost); with the hold
 // released that floor is not drawn at all.
-TEST(DecorRender, upper_floor_decor_ghosts_under_look_up_hold)
+TEST_F(DecorRender, upper_floor_decor_ghosts_under_look_up_hold)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -353,7 +370,7 @@ TEST(DecorRender, upper_floor_decor_ghosts_under_look_up_hold)
 // LevelRender::draw_decor guards + the direct alpha path: DECOR_NONE and
 // out-of-range ids draw nothing; alpha<255 blends (differs from both the
 // untouched frame and the opaque draw).
-TEST(DecorRender, draw_decor_guards_and_alpha_path)
+TEST_F(DecorRender, draw_decor_guards_and_alpha_path)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -408,7 +425,7 @@ TEST(DecorRender, draw_decor_guards_and_alpha_path)
 // Radar terrain bake: decor override colors reproduce the legacy combined
 // tiles (torch/brazier fire, boulder wall-grey, pebble randomized green),
 // SHRUB gets the trees green, and BONES inherits its base color.
-TEST(DecorRender, radar_bakes_decor_override_colors)
+TEST_F(DecorRender, radar_bakes_decor_override_colors)
 {
     FixedRandom fixed_rng(1);
     GameContext c;
@@ -460,7 +477,7 @@ TEST(DecorRender, radar_bakes_decor_override_colors)
 // (INVISIBLE_MODE), while the same walker without the shrub draws normally.
 // The camera stays anchored on a separate control walker throughout, so
 // every probe reads the same screen rect.
-TEST(DecorRender, shrub_conceals_forestwalk_walker_sprite)
+TEST_F(DecorRender, shrub_conceals_forestwalk_walker_sprite)
 {
     viewscreen* vs = view0();
     ASSERT_NE(nullptr, vs);
@@ -565,7 +582,7 @@ TEST(DecorRender, shrub_conceals_forestwalk_walker_sprite)
 // Dumps P6 PPM frames to $OG_FX_CAPTURE_DIR/decor_sampler/NNN.ppm; run with
 // OG_FX_CAPTURE_DIR=<dir> and --gtest_filter='DecorRender.zz_capture_decor_sampler'.
 // ---------------------------------------------------------------------------
-TEST(DecorRender, zz_capture_decor_sampler)
+TEST_F(DecorRender, zz_capture_decor_sampler)
 {
     if (!getenv("OG_FX_CAPTURE_DIR"))
         GTEST_SKIP() << "set OG_FX_CAPTURE_DIR to record";

@@ -3,6 +3,7 @@
 
 #include <openglad/interface/input.h>
 #include <openglad/platform/game_session.h>
+#include <openglad/platform/sai2x.h>
 #include <gtest/gtest.h>
 #include <SDL3/SDL.h>
 
@@ -79,9 +80,12 @@ TEST(Input, overscan_clamps_and_updates_viewport)
     const float saved_vp_oy = og::runtime::current_session->viewport_offset_y_;
     const float saved_vp_w = og::runtime::current_session->viewport_w_;
     const float saved_vp_h = og::runtime::current_session->viewport_h_;
+    int saved_physical_w = 0;
+    int saved_physical_h = 0;
+    SDL_GetWindowSize(E_Screen->window, &saved_physical_w, &saved_physical_h);
 
-    og::runtime::current_session->window_w_ = 1000.0f;
-    og::runtime::current_session->window_h_ = 800.0f;
+    ASSERT_TRUE(SDL_SetWindowSize(E_Screen->window, 1000, 800));
+    ASSERT_TRUE(SDL_SyncWindow(E_Screen->window));
 
     og::runtime::current_session->overscan_percentage_ = -1.0f;
     // Trigger update via resize event (calls update_overscan_setting internally).
@@ -106,6 +110,9 @@ TEST(Input, overscan_clamps_and_updates_viewport)
     ASSERT_TRUE(og::runtime::current_session->viewport_h_ < og::runtime::current_session->window_h_) << "viewport_h should shrink with overscan";
 
     // Restore viewport state.
+    (void)SDL_SetWindowSize(E_Screen->window,
+                            saved_physical_w, saved_physical_h);
+    (void)SDL_SyncWindow(E_Screen->window);
     og::runtime::current_session->window_w_ = saved_window_w;
     og::runtime::current_session->window_h_ = saved_window_h;
     og::runtime::current_session->overscan_percentage_ = saved_overscan;

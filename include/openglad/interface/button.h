@@ -329,8 +329,8 @@ enum class ButtonAction : Sint32
     CycleResolution = 95,
     OpenDisplaySettings = 96,
     CycleDisplayMode = 97,
-    // DISPLAY zoom + smoothing cyclers: graphics/zoom is the classic-view
-    // fraction and graphics/smoothing is the world-canvas-only filter.
+    // DISPLAY zoom + smoothing cyclers: graphics/zoom is relative to the
+    // logical window and graphics/smoothing is the world-canvas-only filter.
     CycleZoom = 98,
     CycleSmoothing = 99,
 };

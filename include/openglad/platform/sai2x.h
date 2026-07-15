@@ -14,19 +14,19 @@ enum class RenderEngine
 };
 
 // Screen owns the logical render targets described by CanvasTarget:
-//  * the WORLD canvas — gameplay/editor scenery rendering, variable dims
-//    (default kUiCanvasW x kUiCanvasH),
+//  * the WORLD canvas — gameplay/editor scenery rendering, with dimensions
+//    derived from the logical window and zoom,
 //  * the UI canvas — menus/picker/help/intro chrome, PINNED at
 //    kUiCanvasW x kUiCanvasH.
 //  * a transparent GAMEPLAY UI overlay — world-sized, allocated only for a
 //    usable SAI/Eagle frame and composited nearest after the filtered scenery.
 //
-// Design choice (byte-identity): while the world canvas is at the default
-// 320x200 the two targets SHARE one surface/texture pair, so swap() presents
+// Design choice (byte-identity): while the world canvas is 320x200 the two
+// targets SHARE one surface/texture pair, so swap() presents
 // exactly the same texture as the historical single-canvas renderer and every
 // cross-mode pixel flow (fadeblack reading the current frame, in-game dialogs
 // drawn over gameplay pixels, the 320x200-cell demo compositor) is untouched.
-// Only set_world_canvas_size() with non-default dims splits them into
+// Only set_world_canvas_size() with other dimensions splits them into
 // separate surfaces; each is then presented with its own stretch at swap
 // time (the GPU viewport stretch already handles arbitrary source dims).
 //
@@ -80,8 +80,8 @@ class Screen
 
 		// --- Canvas dimensions & routing -------------------------------
 		// Active canvas dims: every offset = x + y*canvas_w() plot
-		// conversion and full-frame present rect derives from these
-		// (320x200 by default — byte-identical to the legacy constants).
+		// conversion and full-frame present rect derives from these. The UI
+		// and classic-pinned world remain byte-identical 320x200 spaces.
 		int canvas_w() const { return active_ == CanvasTarget::UI ? kUiCanvasW : world_w_; }
 		int canvas_h() const { return active_ == CanvasTarget::UI ? kUiCanvasH : world_h_; }
 		int world_w() const { return world_w_; }
@@ -131,26 +131,28 @@ class Screen
 		// Downsample the current split world frame into the fixed UI canvas
 		// with nearest filtering before drawing an in-game modal overlay.
 		void prepare_ui_canvas_from_world();
-		// Non-default dims allocate a separate world surface/texture;
-		// default dims re-share the UI surface. The replacement is atomic:
+		// Dimensions other than 320x200 allocate a separate world surface and
+		// texture; 320x200 re-shares the UI pair. The replacement is atomic:
 		// invalid dimensions or an allocation failure leave the live pair and
 		// dimensions unchanged and return false.
 		bool set_world_canvas_size(int w, int h);
 
 		// --- World canvas zoom and smoothing -----------------------------
-		// Zoom derives the world canvas from classic/zoom, independent of the
-		// window. Smoothing selects its present engine. The UI canvas remains
-		// 320x200 and presents nearest through `Engine`.
+		// Zoom derives the world canvas from the logical window. Smoothing
+		// selects its present engine. The UI canvas remains 320x200 and
+		// presents nearest through `Engine`.
 		og::WorldScaleSetting world_scale() const { return world_scale_; }
 		int world_zoom_steps() const { return zoom_steps_; }
-		// The world-only present engine. Legacy mode means zoom 1.0 plus
-		// smoothing off and follows the nearest `Engine` path.
+		int minimum_world_zoom_steps() const;
+		bool world_smoothing_supported() const;
+		// The world-only present engine. Legacy mode is the shared 320x200,
+		// smoothing-off case and follows the nearest `Engine` path.
 		RenderEngine world_engine() const { return world_engine_; }
-		// Applies graphics/zoom + graphics/smoothing: canvas =
-		// classic/zoom, window-independent; smoothing = world-only present
-		// filter. zoom 1.0 + smoothing off keeps the Legacy byte-identical
-		// shared canvas.
-		void set_world_zoom(int zoom_steps, og::WorldScaleMode smoothing);
+		// Zoom 1.0 restores master's window-sized scale=1 canvas; lower
+		// values divide that baseline and are clamped to a safe resource
+		// budget. Completed logical dimensions refresh the resize base.
+		void set_world_zoom(int zoom_steps, og::WorldScaleMode smoothing,
+		                    int window_w = 0, int window_h = 0);
 		// Level-editor pin: forces the classic 320x200 world canvas while
 		// held (the editor chrome assumes classic coordinates); releasing
 		// restores the zoom-derived dimensions.
@@ -178,17 +180,21 @@ class Screen
 		// Rejects overflow, the renderer's maximum texture dimension and the
 		// bounded CPU/pixel budget before allocating either resource.
 		bool ensure_render2_for_source(int source_w, int source_h);
+		int renderer_max_texture_dimension() const;
+		og::WorldCanvasDims effective_zoom_canvas_dims(int zoom_steps) const;
 		void destroy_render2();
 		bool ensure_gameplay_ui_overlay();
 		void destroy_gameplay_ui_overlay();
 
 		CanvasTarget active_ = CanvasTarget::UI;
 		CanvasTarget last_presented_ = CanvasTarget::UI;
-		// Parsed zoom/smoothing state. Legacy is the byte-identical combination
-		// of zoom 1.0 and smoothing off.
+		// Parsed zoom/smoothing state. Legacy is the byte-identical shared
+		// 320x200 canvas with smoothing off.
 		og::WorldScaleSetting world_scale_{};
 		RenderEngine world_engine_ = RenderEngine::NoZoom;
-		int zoom_steps_ = og::kZoomStepsMax; // 10 = classic 1.0 zoom
+		int zoom_steps_ = og::kZoomStepsMax; // 10 = window-sized 1.0 zoom
+		int zoom_window_w_ = kUiCanvasW;
+		int zoom_window_h_ = kUiCanvasH;
 		bool world_pinned_classic_ = false;
 		// A failed SDL allocation is not retried every frame for the same
 		// target dimensions. A canvas/config change clears the latch.
@@ -200,7 +206,7 @@ class Screen
 		int world_w_ = kUiCanvasW;
 		int world_h_ = kUiCanvasH;
 		// Owned canvas storage. world_surf_/world_tex_ ALIAS the UI pair
-		// while the world canvas is at the default (shared) dims.
+		// while the world canvas has the shared 320x200 dimensions.
 		SDL_Surface* ui_surf_ = nullptr;
 		SDL_Texture* ui_tex_ = nullptr;
 		SDL_Surface* world_surf_ = nullptr;

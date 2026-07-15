@@ -9,7 +9,35 @@
 // Tests the big switch statement for 1/2/3/4 player resize configurations
 // ---------------------------------------------------------------------------
 
-TEST(ViewResize, 1p_panels)
+class ViewResize : public testing::Test
+{
+protected:
+    screen* game_ = nullptr;
+    viewscreen* view_ = nullptr;
+    short saved_numviews_ = 0;
+    short saved_mynum_ = 0;
+
+    void SetUp() override
+    {
+        game_ = og::runtime::current_session->myscreen_;
+        view_ = game_->viewob[0].get();
+        ASSERT_NE(nullptr, view_);
+        saved_numviews_ = game_->numviews;
+        saved_mynum_ = view_->mynum;
+        game_->set_world_canvas_pinned_classic(true);
+        game_->relayout_views();
+    }
+
+    void TearDown() override
+    {
+        game_->numviews = saved_numviews_;
+        view_->mynum = saved_mynum_;
+        game_->set_world_canvas_pinned_classic(false);
+        game_->relayout_views();
+    }
+};
+
+TEST_F(ViewResize, 1p_panels)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
@@ -26,7 +54,7 @@ TEST(ViewResize, 1p_panels)
 }
 
 
-TEST(ViewResize, 1p_view1)
+TEST_F(ViewResize, 1p_view1)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
@@ -42,7 +70,7 @@ TEST(ViewResize, 1p_view1)
 }
 
 
-TEST(ViewResize, 1p_view2)
+TEST_F(ViewResize, 1p_view2)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
@@ -58,7 +86,7 @@ TEST(ViewResize, 1p_view2)
 }
 
 
-TEST(ViewResize, 1p_view3)
+TEST_F(ViewResize, 1p_view3)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
@@ -76,7 +104,7 @@ TEST(ViewResize, 1p_view3)
 
 // --- 2-player mode ---
 
-TEST(ViewResize, 2p_player0_all)
+TEST_F(ViewResize, 2p_player0_all)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
@@ -105,7 +133,7 @@ TEST(ViewResize, 2p_player0_all)
 }
 
 
-TEST(ViewResize, 2p_player1_all)
+TEST_F(ViewResize, 2p_player1_all)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
@@ -131,7 +159,7 @@ TEST(ViewResize, 2p_player1_all)
 
 // --- 3-player mode ---
 
-TEST(ViewResize, 3p_player0_all)
+TEST_F(ViewResize, 3p_player0_all)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
@@ -155,7 +183,7 @@ TEST(ViewResize, 3p_player0_all)
 }
 
 
-TEST(ViewResize, 3p_player1_all)
+TEST_F(ViewResize, 3p_player1_all)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
@@ -178,7 +206,7 @@ TEST(ViewResize, 3p_player1_all)
 }
 
 
-TEST(ViewResize, 3p_player2_all)
+TEST_F(ViewResize, 3p_player2_all)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
@@ -203,7 +231,7 @@ TEST(ViewResize, 3p_player2_all)
 
 // --- 4-player mode ---
 
-TEST(ViewResize, 4p_all_players)
+TEST_F(ViewResize, 4p_all_players)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     if (!vs) return;
@@ -220,4 +248,3 @@ TEST(ViewResize, 4p_all_players)
     vs->mynum = old_mynum;
     vs->resize(PREF_VIEW_FULL);
 }
-

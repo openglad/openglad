@@ -28,13 +28,14 @@ graphics:
   windowed_width: 640
   windowed_height: 400
   overscan_percentage: 0
-  # World zoom: 1.0 is the classic 320x200 view; lower values zoom out in
-  # 0.1 steps down to 0.1. The world canvas is 320x200 / zoom and does not
-  # change with the window size. This setting also works in browser builds.
+  # World zoom: 1.0 matches the logical window (master's graphics/scale: 1);
+  # lower values show more world. The renderer omits steps that exceed its
+  # canvas budget or texture limit. This setting also works in browser builds.
   zoom: 1.0
   # World smoothing: off (nearest), sai, or eagle. SAI/Eagle filter only the
   # scenery canvas; fixed menus and gameplay HUD/radar UI stay nearest.
-  # At zoom 0.2/0.1 the renderer falls back to nearest to bound frame cost.
+  # Large canvases fall back to nearest when the bounded 2x scratch will not
+  # fit, while preserving the selected smoothing preference.
   smoothing: off
   target_fps: 72
 sound:

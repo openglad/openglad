@@ -41,6 +41,15 @@ void autosave_active_screen(screen& s, const char* event_name)
                  event_name, static_cast<int>(err));
     }
 }
+
+void reapply_world_zoom_after_window_change(screen& s)
+{
+    const int old_w = s.world_canvas_w();
+    const int old_h = s.world_canvas_h();
+    s.reapply_world_scale();
+    if (s.world_canvas_w() != old_w || s.world_canvas_h() != old_h)
+        s.relayout_views();
+}
 } // namespace
 
 void handle_window_event(const void* native_event)
@@ -74,44 +83,48 @@ void handle_window_event(const void* native_event)
             // and viewport state from the window once SDL reports the final
             // transition rather than trusting the initiating request alone.
             if (screen* s = active_screen())
+            {
                 s->reflect_display_settings_from_window(
                     DisplayStateConfirmation::EnterFullscreen,
                     event.common.timestamp);
+                reapply_world_zoom_after_window_change(*s);
+            }
             break;
         case SDL_EVENT_WINDOW_LEAVE_FULLSCREEN:
             if (screen* s = active_screen())
+            {
                 s->reflect_display_settings_from_window(
                     DisplayStateConfirmation::LeaveFullscreen,
                     event.common.timestamp);
+                reapply_world_zoom_after_window_change(*s);
+            }
             break;
         case SDL_EVENT_WINDOW_RESIZED:
             // Persist a user/WM resize in Windowed mode. In fullscreen the SDL
             // backend keeps the remembered Windowed dimensions intact while it
             // reconciles the actual Borderless/Exclusive state.
             if (screen* s = active_screen())
+            {
                 s->reflect_display_settings_from_window(
                     DisplayStateConfirmation::Resized,
                     event.common.timestamp);
-			// The event payload is SDL's authoritative completed logical size.
-			// Keep session/input mapping on it even in synthetic/headless tests,
-			// where querying the backing window can still return its old size.
-			og::runtime::current_session->window_w_ =
-				static_cast<float>(event.window.data1);
-			og::runtime::current_session->window_h_ =
-				static_cast<float>(event.window.data2);
-			update_overscan_setting();
-            // The zoom-model world canvas is window-independent
-            // (canvas = classic/zoom): a window resize only re-derives the
-            // overscan viewport above; the canvas and view layout stay put.
+                // Reflection queries SDL's completed logical size and rejects
+                // stale completion events by timestamp. Never overwrite that
+                // protected result with an unconditionally trusted payload.
+                reapply_world_zoom_after_window_change(*s);
+            }
             break;
         case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
             // A fullscreen mode switch can complete with only this event on
             // HiDPI backends. Its payload is physical pixels, so confirm the
             // display mode without overwriting logical input/window metrics.
             if (screen* s = active_screen())
+            {
                 s->reflect_display_settings_from_window(
                     DisplayStateConfirmation::PixelSizeChanged,
                     event.common.timestamp);
+                reapply_world_zoom_after_window_change(*s);
+            }
             break;
     }
 }
