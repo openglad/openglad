@@ -1,15 +1,26 @@
 #include <openglad/interface/platform_bridge.h>
 #include <openglad/interface/ui/picker_lobby_network_client.h>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 #include <algorithm>
 #include <array>
 #include <cctype>
 #include <cstdlib>
 #include <format>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
+
+#ifdef __EMSCRIPTEN__
+// stringToNewUTF8 is a JS library symbol; declare the dependency explicitly
+// instead of relying on --bind / -lwebsocket.js happening to include it.
+EM_JS_DEPS(og_picker_relay_test_hook, "$stringToNewUTF8");
+#endif
 
 namespace {
 
@@ -34,11 +45,41 @@ std::string trim_copy(std::string value)
     return std::string(first, last);
 }
 
+#ifdef __EMSCRIPTEN__
+// Browser test hook following the __openglad* window-var pattern
+// (web_runtime_diagnostics.cpp): the Playwright networking specs point the
+// relay flows at a local relay stub by setting
+// window.__opengladRelayBaseUrlForTests before HOST/JOIN is submitted.
+// Unset or empty keeps the shipped default behavior.
+EM_JS(char*, openglad_relay_base_url_for_tests_js, (), {
+    const value = (typeof window !== 'undefined' &&
+                   typeof window.__opengladRelayBaseUrlForTests === 'string')
+        ? window.__opengladRelayBaseUrlForTests
+        : "";
+    return stringToNewUTF8(value);
+});
+
+std::string relay_base_url_for_tests()
+{
+    const std::unique_ptr<char, decltype(&std::free)> value(
+        openglad_relay_base_url_for_tests_js(),
+        &std::free);
+    if (!value)
+        return {};
+    return trim_copy(std::string(value.get()));
+}
+#endif
+
 std::string relay_base_url_or_default(std::string configured_url)
 {
     configured_url = trim_copy(std::move(configured_url));
     if (!configured_url.empty())
         return configured_url;
+
+#ifdef __EMSCRIPTEN__
+    if (std::string test_url = relay_base_url_for_tests(); !test_url.empty())
+        return test_url;
+#endif
 
     if (const char* env_value = std::getenv("OPENGLAD_RELAY_BASE_URL");
         env_value != nullptr && env_value[0] != '\0')

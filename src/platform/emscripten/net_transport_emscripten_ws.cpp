@@ -316,6 +316,8 @@ struct EmscriptenWebSocketTransport::Impl
 
         clear_queue();
         connected = false;
+        ever_connected = false;
+        link_closed = false;
 
         detail::WebSocketCreateAttributes create_attributes{};
         api.init_create_attributes(&create_attributes);
@@ -431,6 +433,8 @@ struct EmscriptenWebSocketTransport::Impl
             {
             case QueueEntryKind::Connect:
                 connected = true;
+                ever_connected = true;
+                link_closed = false;
                 break;
 
             case QueueEntryKind::Message:
@@ -444,6 +448,7 @@ struct EmscriptenWebSocketTransport::Impl
             case QueueEntryKind::Disconnect:
                 connected = false;
                 started = false;
+                link_closed = true;
                 should_dispose_socket = true;
                 break;
             }
@@ -462,6 +467,7 @@ struct EmscriptenWebSocketTransport::Impl
 
         connected = false;
         started = false;
+        link_closed = true;
         clear_queue();
         dispose_socket();
         clear_queue();
@@ -472,6 +478,20 @@ struct EmscriptenWebSocketTransport::Impl
         if (!connected)
             return {};
         return {options.remote_peer_id};
+    }
+
+    // Reads the connection flags maintained by poll() on the main thread; the
+    // browser callbacks only enqueue transitions, so this is main-thread state.
+    TransportLinkState link_state() const noexcept
+    {
+        if (connected)
+            return TransportLinkState::Connected;
+        if (link_closed)
+        {
+            return ever_connected ? TransportLinkState::Lost
+                                  : TransportLinkState::Failed;
+        }
+        return TransportLinkState::Connecting;
     }
 
 private:
@@ -656,6 +676,8 @@ private:
     WebSocketHandle socket = 0;
     bool started = false;
     bool connected = false;
+    bool ever_connected = false;
+    bool link_closed = false;
 
     std::mutex queue_mutex;
     std::deque<QueueEntry> queue;
@@ -701,6 +723,11 @@ void EmscriptenWebSocketTransport::disconnect(PeerId peer_id)
 std::vector<PeerId> EmscriptenWebSocketTransport::connected_peers() const
 {
     return impl_->connected_peers();
+}
+
+TransportLinkState EmscriptenWebSocketTransport::link_state() const noexcept
+{
+    return impl_->link_state();
 }
 
 } // namespace og::sim

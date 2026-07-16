@@ -123,6 +123,82 @@ async function clickCanvasGameCoord(page, gameX, gameY, holdMs = 150) {
   await page.mouse.up();
 }
 
+async function movePointerOffCanvasBox(page, box) {
+  const viewport = page.viewportSize();
+  if (!viewport) {
+    throw new Error('Viewport size is unavailable');
+  }
+
+  const candidates = [
+    { x: 1, y: 1 },
+    { x: viewport.width - 2, y: 1 },
+    { x: 1, y: viewport.height - 2 },
+    { x: viewport.width - 2, y: viewport.height - 2 },
+  ];
+  const point = candidates.find(
+    ({ x, y }) =>
+      x < box.x || x >= box.x + box.width || y < box.y || y >= box.y + box.height,
+  );
+  if (!point) {
+    throw new Error('No viewport point is available outside the canvas');
+  }
+
+  await page.mouse.move(point.x, point.y);
+  // Give the SDL picker a poll cycle to clear any hovered button state.
+  await page.waitForTimeout(100);
+}
+
+// Capture a sub-rectangle addressed on the classic 320x200 reference grid,
+// regardless of the canvas's CSS size. In menus this selects exact logical
+// pixels; in zoomed gameplay it selects the same fractional world region.
+async function getCanvasGameRegionScreenshot(page, gameX, gameY, gameW, gameH) {
+  const box = await page.locator('#canvas').boundingBox();
+  if (!box) {
+    throw new Error('Canvas bounding box is unavailable');
+  }
+  await movePointerOffCanvasBox(page, box);
+  return await page.screenshot({
+    clip: {
+      x: box.x + (gameX * box.width) / 320,
+      y: box.y + (gameY * box.height) / 200,
+      width: (gameW * box.width) / 320,
+      height: (gameH * box.height) / 200,
+    },
+  });
+}
+
+// The picker runs inside picker_init() under Asyncify, so __opengladGameState
+// stays null while it is up; the document title flipping to 'Gladiator' is the
+// reliable readiness signal. fadeblack() then eats events for a while, hence
+// the generous settling delay.
+async function waitForPickerReady(page, settlingMs = 5_000) {
+  await page.waitForFunction(
+    () => window.__opengladGameState === 1 || document.title === 'Gladiator',
+    null,
+    { timeout: 30_000 },
+  );
+  await waitForRenderedFrames(page, 4);
+  await page.waitForTimeout(settlingMs);
+}
+
+// From the picker main menu: CONTINUE opens the team-build menu.
+async function continueToTeamBuildMenu(page) {
+  await waitForPickerReady(page);
+  await clickCanvasGameCoord(page, 150, 85);
+  await page.waitForTimeout(1_500);
+}
+
+// From the team-build menu: open the NETWORKING menu.
+async function openNetworkingFromTeamBuild(page) {
+  await clickCanvasGameCoord(page, 250, 150);
+  await page.waitForTimeout(1_500);
+}
+
+async function navigateToNetworkingMenu(page) {
+  await continueToTeamBuildMenu(page);
+  await openNetworkingFromTeamBuild(page);
+}
+
 async function startSeededSinglePlayerFromPicker(page, options = {}) {
   const {
     preStartSettlingMs = 5_000,
@@ -186,11 +262,16 @@ async function startSeededSinglePlayerFromPicker(page, options = {}) {
 
 module.exports = {
   clickCanvasGameCoord,
+  continueToTeamBuildMenu,
   ensureRenderTicker,
   focusCanvas,
+  getCanvasGameRegionScreenshot,
+  navigateToNetworkingMenu,
+  openNetworkingFromTeamBuild,
   startSeededSinglePlayerFromPicker,
   waitForGameLoad,
   waitForGameplayProgress,
   waitForGameplayRenderSamples,
+  waitForPickerReady,
   waitForRenderedFrames,
 };

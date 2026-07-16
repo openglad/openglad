@@ -771,4 +771,60 @@ TEST(NetTransportRelayWs, host_disconnect_reassigns_host_and_updates_peer_sets)
     EXPECT_EQ((std::vector<og::sim::PeerId>{client_one_peer_id}), client_two.connected_peers());
 }
 
+TEST(NetTransportRelayWs, link_state_reports_failed_when_relay_is_unreachable)
+{
+    IxNetSystemScope net_system;
+    const int port = ix::getFreePort();
+
+    og::sim::RelayWebSocketTransport::Options options;
+    options.automatic_reconnection = false;
+    og::sim::RelayWebSocketTransport refused(
+        std::format("ws://127.0.0.1:{}/api/room/GLAD-DEAD", port),
+        options);
+
+    EXPECT_EQ(og::sim::TransportLinkState::Connecting, refused.link_state());
+    refused.accept_connections();
+
+    ASSERT_TRUE(wait_until(
+        [&] {
+            (void)refused.poll();
+            return refused.link_state() ==
+                og::sim::TransportLinkState::Failed;
+        },
+        5s)) << "connection refused should surface as Failed, never Lost";
+    EXPECT_TRUE(refused.connected_peers().empty());
+}
+
+TEST(NetTransportRelayWs, link_state_reports_lost_after_relay_drops_connection)
+{
+    IxNetSystemScope net_system;
+    const int port = ix::getFreePort();
+    auto server = std::make_unique<FakeRelayServer>(port);
+
+    og::sim::RelayWebSocketTransport::Options options;
+    options.automatic_reconnection = false;
+    og::sim::RelayWebSocketTransport client(
+        std::format("ws://127.0.0.1:{}/api/room/GLAD-TEST", port),
+        options);
+    client.accept_connections();
+
+    ASSERT_TRUE(wait_until(
+        [&] {
+            (void)client.poll();
+            return client.link_state() ==
+                og::sim::TransportLinkState::Connected;
+        },
+        5s));
+
+    server.reset();
+
+    ASSERT_TRUE(wait_until(
+        [&] {
+            (void)client.poll();
+            return client.link_state() == og::sim::TransportLinkState::Lost;
+        },
+        5s)) << "a drop after connecting should surface as Lost, not Failed";
+    EXPECT_TRUE(client.connected_peers().empty());
+}
+
 } // namespace

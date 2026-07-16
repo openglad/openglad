@@ -128,6 +128,8 @@ struct WebSocketClientTransport::Impl
 
         clear_queue();
         connected = false;
+        ever_connected = false;
+        link_closed = false;
         active_generation = next_generation++;
         websocket = make_websocket(active_generation);
         websocket->start();
@@ -184,6 +186,8 @@ struct WebSocketClientTransport::Impl
             {
             case QueueEntryKind::Connect:
                 connected = true;
+                ever_connected = true;
+                link_closed = false;
                 break;
 
             case QueueEntryKind::Message:
@@ -196,6 +200,7 @@ struct WebSocketClientTransport::Impl
 
             case QueueEntryKind::Disconnect:
                 connected = false;
+                link_closed = true;
                 break;
             }
         }
@@ -210,6 +215,7 @@ struct WebSocketClientTransport::Impl
 
         active_generation = 0;
         connected = false;
+        link_closed = true;
         clear_queue();
         if (!started)
             return;
@@ -226,6 +232,20 @@ struct WebSocketClientTransport::Impl
         if (!connected || has_pending_connection_transition())
             return {};
         return {options.remote_peer_id};
+    }
+
+    // Reads the connection flags maintained by poll() on the game thread; the
+    // ix callbacks only enqueue transitions, so this is game-thread state.
+    TransportLinkState link_state() const noexcept
+    {
+        if (connected)
+            return TransportLinkState::Connected;
+        if (link_closed)
+        {
+            return ever_connected ? TransportLinkState::Lost
+                                  : TransportLinkState::Failed;
+        }
+        return TransportLinkState::Connecting;
     }
 
     ~Impl()
@@ -322,6 +342,8 @@ private:
     std::uint64_t active_generation = 0;
     bool started = false;
     bool connected = false;
+    bool ever_connected = false;
+    bool link_closed = false;
 
     mutable std::mutex queue_mutex;
     mutable std::deque<QueueEntry> queue;
@@ -367,6 +389,11 @@ void WebSocketClientTransport::disconnect(PeerId peer_id)
 std::vector<PeerId> WebSocketClientTransport::connected_peers() const
 {
     return impl_->connected_peers();
+}
+
+TransportLinkState WebSocketClientTransport::link_state() const noexcept
+{
+    return impl_->link_state();
 }
 
 } // namespace og::sim

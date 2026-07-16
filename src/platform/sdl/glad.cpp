@@ -281,6 +281,7 @@ static void emscripten_frame_wrapper() {
 			break;
 
 		case GameState::Playing:
+			try {
 			if (!g_state_initialized) {
 				// Initialize game state
 				Log("GameState::Playing: Initializing game\n");
@@ -369,6 +370,25 @@ static void emscripten_frame_wrapper() {
 				g_game_state = GameState::Picker;
 				g_state_initialized = false;
 			}
+			} catch (const std::exception& e) {
+				// The rAF-driven gameplay path has no other handler: an
+				// exception escaping this callback would surface as an
+				// undiagnosable uncaught JS exception every frame while the
+				// runtime keeps ticking. Fold it into the same cleanup as a
+				// finished game and return to the picker.
+				LogError("Unrecoverable gameplay error, returning to picker: {}\n",
+				    e.what());
+				og::runtime::current_session->gameplay_active_ = false;
+				if (og::runtime::current_game_session != nullptr)
+					og::runtime::clear_local_transport_shadow(
+					    *og::runtime::current_game_session);
+				clear_keyboard();
+				if (current_screen != nullptr)
+					current_screen->world().delete_objects();
+				g_web_game_start_config.reset();
+				g_game_state = GameState::Picker;
+				g_state_initialized = false;
+			}
 			break;
 
 		case GameState::Quit:
@@ -433,8 +453,11 @@ extern "C" EMSCRIPTEN_KEEPALIVE void openglad_web_boot()
         // boot call return after scheduling the frame loop.
         emscripten_set_main_loop(emscripten_frame_wrapper, 0, 0);
     }
-    catch (const std::runtime_error& e)
+    catch (const std::exception& e)
     {
+        // Catch every std::exception, not just runtime_error: the whole
+        // picker runs inside picker_init() here, and anything escaping this
+        // exported function would abort the wasm runtime.
         g_web_boot_started = false;
         g_web_session.reset();
         publish_web_game_state();

@@ -550,4 +550,67 @@ TEST(NetTransportWebSocketClient,
         5s));
 }
 
+TEST(NetTransportWebSocketClient,
+     link_state_reports_failed_when_server_is_unreachable)
+{
+    const int port = ix::getFreePort();
+
+    og::sim::WebSocketClientTransport::Options client_options;
+    client_options.remote_peer_id = 1u;
+    client_options.automatic_reconnection = false;
+    og::sim::WebSocketClientTransport client(
+        std::format("ws://127.0.0.1:{}", port),
+        client_options);
+
+    EXPECT_EQ(og::sim::TransportLinkState::Connecting, client.link_state());
+    client.accept_connections();
+
+    ASSERT_TRUE(wait_until(
+        [&] {
+            (void)client.poll();
+            return client.link_state() ==
+                og::sim::TransportLinkState::Failed;
+        },
+        5s)) << "connection refused should surface as Failed, never Lost";
+    EXPECT_TRUE(client.connected_peers().empty());
+}
+
+TEST(NetTransportWebSocketClient,
+     link_state_reports_lost_after_server_drops_connection)
+{
+    const int port = ix::getFreePort();
+
+    og::sim::WebSocketServerTransport::Options server_options;
+    server_options.host = "127.0.0.1";
+    auto server = std::make_unique<og::sim::WebSocketServerTransport>(
+        port, server_options);
+    server->accept_connections();
+
+    og::sim::WebSocketClientTransport::Options client_options;
+    client_options.remote_peer_id = 1u;
+    client_options.automatic_reconnection = false;
+    og::sim::WebSocketClientTransport client(
+        std::format("ws://127.0.0.1:{}", port),
+        client_options);
+    client.accept_connections();
+
+    ASSERT_TRUE(wait_until(
+        [&] {
+            (void)client.poll();
+            return client.link_state() ==
+                og::sim::TransportLinkState::Connected;
+        },
+        5s));
+
+    server.reset();
+
+    ASSERT_TRUE(wait_until(
+        [&] {
+            (void)client.poll();
+            return client.link_state() == og::sim::TransportLinkState::Lost;
+        },
+        5s)) << "a drop after connecting should surface as Lost, not Failed";
+    EXPECT_TRUE(client.connected_peers().empty());
+}
+
 } // namespace

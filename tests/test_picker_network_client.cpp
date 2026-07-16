@@ -3999,6 +3999,127 @@ TEST(PickerNetworkClient,
     join_client->shutdown();
 }
 
+TEST(PickerNetworkClient,
+     join_relay_flow_reports_connection_failed_when_relay_unreachable)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 0, "Relay Joiner");
+
+    // Nothing listens on this port: the relay websocket connect is refused
+    // before the link ever comes up.
+    const int dead_port = ix::getFreePort();
+
+    og::ui::PickerJoinGameOptions options;
+    options.mode = og::ui::PickerJoinMode::Relay;
+    options.room_code = "glad-xkcd";
+    options.relay_base_url = std::format("http://127.0.0.1:{}", dead_port);
+    auto join_client = og::ui::create_join_picker_lobby_client(options);
+    join_client->initialize_from_save();
+
+    ASSERT_TRUE(wait_until([&] {
+        join_client->poll_and_apply();
+        return status_lines_contain_exact(
+            join_client->status_lines(),
+            "Status: connection failed");
+    },
+    10s)) << "an unreachable relay must surface as a failed connection "
+             "instead of an eternal 'Status: connecting'";
+    EXPECT_TRUE(status_lines_contain_exact(
+        join_client->status_lines(),
+        "Relay: GLAD-XKCD"));
+
+    join_client->shutdown();
+}
+
+TEST(PickerNetworkClient,
+     join_relay_flow_reports_connection_lost_after_relay_drops)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 0, "Relay Joiner");
+
+    const int port = ix::getFreePort();
+    auto relay_server = std::make_unique<FakeRelayServer>(port);
+
+    og::ui::PickerJoinGameOptions options;
+    options.mode = og::ui::PickerJoinMode::Relay;
+    options.room_code = "glad-xkcd";
+    options.relay_base_url = std::format("http://127.0.0.1:{}", port);
+    auto join_client = og::ui::create_join_picker_lobby_client(options);
+    join_client->initialize_from_save();
+
+    ASSERT_TRUE(wait_until([&] {
+        join_client->poll_and_apply();
+        return status_lines_contain_exact(
+            join_client->status_lines(),
+            "Status: connected");
+    },
+    10s)) << "relay join client should report a connected link";
+
+    relay_server.reset();
+
+    ASSERT_TRUE(wait_until([&] {
+        join_client->poll_and_apply();
+        return status_lines_contain_exact(
+            join_client->status_lines(),
+            "Status: connection lost");
+    },
+    10s)) << "a relay drop after connecting must surface as a lost "
+             "connection instead of reverting to 'Status: connecting'";
+
+    join_client->shutdown();
+}
+
+TEST(PickerNetworkClient,
+     host_relay_flow_reports_connection_lost_after_relay_drops)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard save_guard(save);
+    PickerRuntimeGuard runtime_guard;
+    prepare_single_member_network_save(save, 0, "Host");
+
+    const int relay_port = ix::getFreePort();
+    auto relay_server = std::make_unique<FakeRelayServer>(
+        relay_port,
+        200,
+        R"({"code":"glad-xkcd","owner_token":"owner-secret-token"})");
+
+    og::ui::PickerHostGameOptions options;
+    options.port = ix::getFreePort();
+    options.enable_relay = true;
+    options.relay_base_url = std::format("ws://127.0.0.1:{}", relay_port);
+    auto host_client = og::ui::create_host_picker_lobby_client(options);
+    host_client->initialize_from_save();
+
+    EXPECT_TRUE(status_lines_contain_exact(
+        host_client->status_lines(),
+        "Relay: GLAD-XKCD"));
+
+    relay_server.reset();
+
+    ASSERT_TRUE(wait_until([&] {
+        host_client->poll_and_apply();
+        return status_lines_contain_exact(
+            host_client->status_lines(),
+            "Relay: connection lost");
+    },
+    10s)) << "a dead relay room must stop advertising 'Relay: GLAD-XKCD'";
+    EXPECT_FALSE(status_lines_contain_exact(
+        host_client->status_lines(),
+        "Relay: GLAD-XKCD"));
+
+    host_client->shutdown();
+}
+
 TEST(PickerNetworkClient, host_initialization_reports_direct_and_relay_failures)
 {
     IxNetSystemScope net_system;

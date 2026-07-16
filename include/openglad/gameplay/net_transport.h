@@ -336,6 +336,17 @@ std::optional<SnapshotHashCheckMessage> deserialize_snapshot_hash_check_message(
     std::span<const std::uint8_t> bytes);
 TypedReceivedMessage decode_received_message(const ReceivedMessage& message);
 
+// Coarse health of a transport's upstream link, for client-side status UI.
+// Implementations derive it on the poll() thread from their existing
+// connect/disconnect bookkeeping; transports without a single upstream socket
+// (in-process pairs, server listeners) simply report Connected.
+enum class TransportLinkState : std::uint8_t {
+    Connecting, // link started (or not yet started), never connected so far
+    Connected,  // link is up
+    Failed,     // link closed or errored before ever connecting
+    Lost,       // link closed after having been connected
+};
+
 class ITransport {
 public:
     virtual ~ITransport() = default;
@@ -410,6 +421,12 @@ public:
     virtual void accept_connections() = 0;
     virtual void disconnect(PeerId peer_id) = 0;
     [[nodiscard]] virtual std::vector<PeerId> connected_peers() const = 0;
+
+    // Must be queried from the poll() thread; see TransportLinkState.
+    [[nodiscard]] virtual TransportLinkState link_state() const noexcept
+    {
+        return TransportLinkState::Connected;
+    }
 };
 
 struct TransportEnvelope {

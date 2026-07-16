@@ -1,0 +1,936 @@
+// @ts-check
+const { test, expect } = require('@playwright/test');
+const {
+  clickCanvasGameCoord,
+  continueToTeamBuildMenu,
+  getCanvasGameRegionScreenshot,
+  navigateToNetworkingMenu,
+  openNetworkingFromTeamBuild,
+  waitForGameLoad,
+} = require('./wasm_helpers');
+const { RelayStub } = require('./relay_stub');
+
+// Regression coverage for the browser HOST/JOIN freeze: the web build used to
+// run without C++ exception support, so the relay failure inside
+// HostPickerLobbyClient::initialize_from_save() threw straight into abort()
+// ("RuntimeError: Aborted(undefined)") and killed the wasm runtime. With
+// -fexceptions the same failure must surface as a HOST GAME popup dialog and
+// leave the picker fully interactive.
+
+// Game-coordinate (320x200) button centers, verified against the live picker.
+const NETWORKING_MENU_BUTTONS = {
+  back: { x: 78, y: 163 },
+  host: { x: 160, y: 163 },
+  join: { x: 242, y: 163 },
+};
+// popup_dialog's single OK button: x 135..185, y 130..150. Its event loop
+// exits on that click (or on a Return/Space/Escape key press).
+const POPUP_OK_BUTTON = { x: 160, y: 140 };
+
+// Screenshot regions on the 320x200 reference grid.
+// "NETWORKING" headline (write_xy_center at y=26): present exactly while the
+// networking menu is the active screen, so region equality against a baseline
+// capture doubles as an "is this menu up and undarkened?" probe.
+const NETWORKING_TITLE_REGION = { x: 60, y: 18, w: 200, h: 18 };
+// popup_dialog darkens the screen and draws the dialog centered around y=80
+// with the OK button below; any of that changes this region.
+const POPUP_REGION = { x: 96, y: 50, w: 128, h: 104 };
+// Team-build lobby status lines (picker_team_build.cpp): up to two lines at
+// (12, 8) and (12, 18), e.g. "Direct: ..." / "Relay: GLAD-E2E1".
+const TEAM_BUILD_STATUS_REGION = { x: 6, y: 2, w: 250, h: 28 };
+
+const IGNORED_RUNTIME_ERROR_PATTERNS = [
+  /get_asset_path: readlink\(\/proc\/self\/exe\) failed/,
+  // The error-path scenarios aim at the unreachable placeholder relay host on
+  // purpose; Chromium reports the failed fetch (via the console message's
+  // resource location) and the failed WebSocket connect as console errors.
+  /relay\.openglad\.example/,
+];
+
+function shouldIgnoreRuntimeError(message, extraIgnorePatterns = []) {
+  // Never ignore a wasm abort, no matter what else the message mentions.
+  if (/\bAborted\b/i.test(message)) {
+    return false;
+  }
+  return (
+    IGNORED_RUNTIME_ERROR_PATTERNS.some((pattern) => pattern.test(message)) ||
+    extraIgnorePatterns.some((pattern) => pattern.test(message))
+  );
+}
+
+// `extraIgnorePatterns` lets stub-backed tests ignore the browser's expected
+// WebSocket/fetch failure chatter aimed at the local relay stub (its
+// 127.0.0.1:<port> URL is only known at runtime).
+function attachRuntimeErrorCollectors(page, errors, extraIgnorePatterns = []) {
+  page.on('pageerror', (err) => {
+    const message = `pageerror: ${err.message}`;
+    if (!shouldIgnoreRuntimeError(message, extraIgnorePatterns)) {
+      errors.push(message);
+    }
+  });
+  page.on('console', (msg) => {
+    if (msg.type() !== 'error') {
+      return;
+    }
+    // Include the source location: network failures ("Failed to load
+    // resource") carry the offending URL there, not in the text.
+    const location = msg.location();
+    const message = `console.error: ${msg.text()} (${location ? location.url : ''})`;
+    if (!shouldIgnoreRuntimeError(message, extraIgnorePatterns)) {
+      errors.push(message);
+    }
+  });
+}
+
+function assertNoRuntimeErrors(errors, context) {
+  expect(errors, `Unexpected runtime errors during: ${context}`).toEqual([]);
+}
+
+// A dead wasm runtime does NOT stop requestAnimationFrame, so frame counters
+// cannot detect the freeze. The reliable signals are the "Aborted" pageerror /
+// console text and the non-modularized runtime's global ABORT flag.
+async function expectNoWasmAbort(page, errors, context) {
+  const abortFlag = await page.evaluate(() => Boolean(window.ABORT));
+  expect(abortFlag, `wasm ABORT flag raised during: ${context}`).toBe(false);
+  const abortMessages = errors.filter((line) => /\bAborted\b/i.test(line));
+  expect(abortMessages, `wasm abort reported during: ${context}`).toEqual([]);
+}
+
+async function captureRegion(page, region) {
+  return await getCanvasGameRegionScreenshot(
+    page,
+    region.x,
+    region.y,
+    region.w,
+    region.h,
+  );
+}
+
+async function waitForRegionToLeave(page, region, baseline, message, timeoutMs = 20_000) {
+  await expect
+    .poll(async () => (await captureRegion(page, region)).equals(baseline), {
+      message,
+      timeout: timeoutMs,
+    })
+    .toBe(false);
+}
+
+async function waitForRegionToShow(page, region, baseline, message, timeoutMs = 20_000) {
+  await expect
+    .poll(async () => (await captureRegion(page, region)).equals(baseline), {
+      message,
+      timeout: timeoutMs,
+    })
+    .toBe(true);
+}
+
+// Capture a region only once it has stopped changing: two consecutive
+// captures a few frames apart must be byte-identical. The picker redraws
+// every frame from deterministic state, so a settled region is a reliable
+// reference for later "the text really changed" comparisons.
+async function captureSettledRegion(page, region, description, timeoutMs = 20_000) {
+  let settled = null;
+  await expect
+    .poll(
+      async () => {
+        const first = await captureRegion(page, region);
+        await page.waitForTimeout(250);
+        const second = await captureRegion(page, region);
+        if (first.equals(second)) {
+          settled = first;
+          return true;
+        }
+        return false;
+      },
+      { message: `region should settle: ${description}`, timeout: timeoutMs },
+    )
+    .toBe(true);
+  if (!settled) {
+    throw new Error(`region never settled: ${description}`);
+  }
+  return settled;
+}
+
+// Wait for a region to STABILIZE on content that differs from every given
+// baseline. Plain left-the-baseline polling can pass on a transient
+// mid-transition frame; status-text contract assertions need the region to
+// actually stay on the new text.
+async function waitForRegionToSettleAway(
+  page,
+  region,
+  baselines,
+  message,
+  timeoutMs = 30_000,
+) {
+  await expect
+    .poll(
+      async () => {
+        const first = await captureRegion(page, region);
+        if (baselines.some((baseline) => first.equals(baseline))) {
+          return false;
+        }
+        await page.waitForTimeout(250);
+        const second = await captureRegion(page, region);
+        return (
+          second.equals(first) &&
+          !baselines.some((baseline) => second.equals(baseline))
+        );
+      },
+      { message, timeout: timeoutMs },
+    )
+    .toBe(true);
+}
+
+// popup_dialog blocks in its own event loop until the OK button is clicked
+// (or Return/Space/Escape is pressed). Click OK and wait for the networking
+// menu to be redrawn; retry the click once in case the blocking loop missed
+// the first press. Keyboard fallbacks are deliberately avoided: once the
+// popup is gone, Return/Escape would activate menu items instead.
+async function dismissPopupAndAwaitNetworkingMenu(page, networkingTitle) {
+  for (let attempt = 0; attempt < 2; ++attempt) {
+    await page.waitForTimeout(300);
+    await clickCanvasGameCoord(page, POPUP_OK_BUTTON.x, POPUP_OK_BUTTON.y);
+    try {
+      await waitForRegionToShow(
+        page,
+        NETWORKING_TITLE_REGION,
+        networkingTitle,
+        'the networking menu should be redrawn after dismissing the popup',
+        10_000,
+      );
+      return;
+    } catch (error) {
+      if (attempt === 1) {
+        throw error;
+      }
+    }
+  }
+}
+
+// Menu transitions re-init buttons and clear input state, so a single click
+// dispatched mid-transition can be dropped on the floor. Re-opening the
+// networking menu therefore retries: click NETWORKING, give the menu a
+// bounded window to appear, and try again if the click was eaten.
+async function reopenNetworkingMenu(page, networkingTitle) {
+  let lastError;
+  for (let attempt = 0; attempt < 3; ++attempt) {
+    await page.waitForTimeout(750);
+    await openNetworkingFromTeamBuild(page);
+    try {
+      await waitForRegionToShow(
+        page,
+        NETWORKING_TITLE_REGION,
+        networkingTitle,
+        'the networking menu should re-open',
+        7_000,
+      );
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
+
+async function loadPickerWithSkippedIntro(page, relayBaseUrlForTests) {
+  await page.addInitScript(
+    ({ relayBaseUrl }) => {
+      window.__opengladSkipIntroForTests = true;
+      if (relayBaseUrl) {
+        window.__opengladRelayBaseUrlForTests = relayBaseUrl;
+      }
+    },
+    { relayBaseUrl: relayBaseUrlForTests || '' },
+  );
+  await page.goto('/play.html');
+  await waitForGameLoad(page);
+}
+
+test.describe('Browser networking error paths (unreachable relay)', () => {
+  test('HOST failure shows a popup, keeps the menu alive, and never aborts', async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    const errors = [];
+    attachRuntimeErrorCollectors(page, errors);
+
+    // No relay override: the shipped placeholder relay.openglad.example does
+    // not resolve, which is exactly the shipped-config failure being tested.
+    await loadPickerWithSkippedIntro(page);
+    await navigateToNetworkingMenu(page);
+
+    const networkingTitle = await captureRegion(page, NETWORKING_TITLE_REGION);
+    const networkingPopupArea = await captureRegion(page, POPUP_REGION);
+
+    // THE BUG: pre-fix, this click aborted the wasm runtime and froze the
+    // page. Post-fix the relay failure must surface as a HOST GAME popup.
+    await clickCanvasGameCoord(
+      page,
+      NETWORKING_MENU_BUTTONS.host.x,
+      NETWORKING_MENU_BUTTONS.host.y,
+    );
+    await waitForRegionToLeave(
+      page,
+      POPUP_REGION,
+      networkingPopupArea,
+      'HOST against the unreachable relay should draw an error popup',
+    );
+    await expectNoWasmAbort(page, errors, 'HOST against unreachable relay');
+
+    // Dismiss the popup via its OK button; the menu must redraw untouched.
+    await dismissPopupAndAwaitNetworkingMenu(page, networkingTitle);
+
+    // Idempotence: the replace path shutdown()s the previous lobby client, so
+    // a second HOST attempt must fail just as gracefully.
+    await clickCanvasGameCoord(
+      page,
+      NETWORKING_MENU_BUTTONS.host.x,
+      NETWORKING_MENU_BUTTONS.host.y,
+    );
+    await waitForRegionToLeave(
+      page,
+      POPUP_REGION,
+      networkingPopupArea,
+      'a second HOST attempt should surface the error popup again',
+    );
+    await expectNoWasmAbort(page, errors, 'second HOST attempt');
+    await dismissPopupAndAwaitNetworkingMenu(page, networkingTitle);
+
+    // The picker must stay fully interactive: BACK to the team-build menu,
+    // then re-open NETWORKING.
+    await clickCanvasGameCoord(
+      page,
+      NETWORKING_MENU_BUTTONS.back.x,
+      NETWORKING_MENU_BUTTONS.back.y,
+    );
+    await waitForRegionToLeave(
+      page,
+      NETWORKING_TITLE_REGION,
+      networkingTitle,
+      'BACK should leave the networking menu',
+    );
+    await reopenNetworkingMenu(page, networkingTitle);
+
+    await expectNoWasmAbort(page, errors, 'post-recovery navigation');
+    assertNoRuntimeErrors(errors, 'HOST unreachable-relay regression');
+  });
+
+  test('JOIN with the placeholder room code never aborts and keeps the picker alive', async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    const errors = [];
+    attachRuntimeErrorCollectors(page, errors);
+
+    await loadPickerWithSkippedIntro(page);
+    await continueToTeamBuildMenu(page);
+    const statusBaseline = await captureRegion(page, TEAM_BUILD_STATUS_REGION);
+    await openNetworkingFromTeamBuild(page);
+    const networkingTitle = await captureRegion(page, NETWORKING_TITLE_REGION);
+
+    // Browser default: ROOM CODE is ON with the "GLAD-XXXX" placeholder
+    // prefilled. JOIN installs a relay join client whose wss:// connect to the
+    // placeholder host fails asynchronously — that must not abort either.
+    await clickCanvasGameCoord(
+      page,
+      NETWORKING_MENU_BUTTONS.join.x,
+      NETWORKING_MENU_BUTTONS.join.y,
+    );
+    await waitForRegionToLeave(
+      page,
+      NETWORKING_TITLE_REGION,
+      networkingTitle,
+      'JOIN should leave the networking menu for the team-build screen',
+    );
+    await expectNoWasmAbort(page, errors, 'JOIN against unreachable relay');
+
+    // The join client's live status lines ("Relay: GLAD-XXXX" /
+    // "Status: connecting") render top-left on the team-build screen.
+    await waitForRegionToLeave(
+      page,
+      TEAM_BUILD_STATUS_REGION,
+      statusBaseline,
+      'the join client status lines should be drawn on the team-build screen',
+    );
+
+    // The picker remains interactive: NETWORKING re-opens over the pending
+    // join client.
+    await reopenNetworkingMenu(page, networkingTitle);
+
+    await expectNoWasmAbort(page, errors, 'post-JOIN navigation');
+    assertNoRuntimeErrors(errors, 'JOIN unreachable-relay regression');
+  });
+});
+
+test.describe('Browser networking happy path (local relay stub)', () => {
+  /** @type {RelayStub} */
+  let relayStub;
+
+  test.beforeAll(async () => {
+    relayStub = new RelayStub({
+      roomCode: 'GLAD-E2E1',
+      ownerToken: 'tok-e2e-owner',
+    });
+    await relayStub.start();
+  });
+
+  test.afterAll(async () => {
+    if (relayStub) {
+      await relayStub.stop();
+    }
+  });
+
+  test('HOST against a live relay creates a room and shows lobby status', async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    const errors = [];
+    attachRuntimeErrorCollectors(page, errors);
+
+    // Point the game at the stub through the __opengladRelayBaseUrlForTests
+    // hook (read by relay_base_url_or_default on the emscripten path).
+    await loadPickerWithSkippedIntro(page, relayStub.baseUrl);
+    await continueToTeamBuildMenu(page);
+    const statusBaseline = await captureRegion(page, TEAM_BUILD_STATUS_REGION);
+    await openNetworkingFromTeamBuild(page);
+    const networkingTitle = await captureRegion(page, NETWORKING_TITLE_REGION);
+
+    await clickCanvasGameCoord(
+      page,
+      NETWORKING_MENU_BUTTONS.host.x,
+      NETWORKING_MENU_BUTTONS.host.y,
+    );
+
+    // Protocol-level proof: one room-create POST, then the owner WebSocket
+    // connect carrying the room code and owner token we handed back.
+    await expect
+      .poll(() => relayStub.createRequests.length, {
+        message: 'the HOST flow should POST /api/create to the relay stub',
+        timeout: 20_000,
+      })
+      .toBe(1);
+    await expect
+      .poll(() => relayStub.roomConnections.length, {
+        message: 'the HOST flow should open the owner room WebSocket',
+        timeout: 20_000,
+      })
+      .toBe(1);
+    const connection = relayStub.roomConnections[0];
+    expect(connection.roomCode).toBe('GLAD-E2E1');
+    expect(connection.ownerToken).toBe('tok-e2e-owner');
+
+    // A successful HOST leaves the networking menu (a failure would keep it
+    // up behind an error popup instead)...
+    await waitForRegionToLeave(
+      page,
+      NETWORKING_TITLE_REGION,
+      networkingTitle,
+      'a successful HOST should return to the team-build screen',
+    );
+    // ...and draws the host lobby status lines top-left, whose second line is
+    // "Relay: GLAD-E2E1" (the room code from the stub's create response).
+    await waitForRegionToLeave(
+      page,
+      TEAM_BUILD_STATUS_REGION,
+      statusBaseline,
+      'the host lobby status lines should be drawn on the team-build screen',
+    );
+
+    // No error popup: the picker is live, so NETWORKING re-opens on top of
+    // the active host lobby. (A modal popup would swallow this click.)
+    await reopenNetworkingMenu(page, networkingTitle);
+
+    // The owner relay socket must still be connected.
+    expect(connection.closed).toBe(false);
+
+    await expectNoWasmAbort(page, errors, 'HOST against the local relay stub');
+    assertNoRuntimeErrors(errors, 'relay stub HOST happy path');
+  });
+});
+
+test.describe('Browser networking stalled relay create (held route)', () => {
+  test('HOST against a relay that never answers times out into a popup', async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    const errors = [];
+    attachRuntimeErrorCollectors(page, errors);
+
+    // Hold every request to the shipped placeholder relay host: the route is
+    // deliberately never fulfilled, which models a relay that accepts the
+    // request but never responds. The page-side EM_ASYNC_JS fetch helper
+    // guards this with a feature-detected AbortSignal.timeout(10000), so
+    // HOST must fail into its popup within ~10s instead of leaving the
+    // picker Asyncify-suspended indefinitely.
+    const heldRoutes = [];
+    const isPlaceholderRelay = (url) =>
+      url.hostname === 'relay.openglad.example';
+    await page.route(isPlaceholderRelay, (route) => {
+      heldRoutes.push(route);
+    });
+
+    try {
+      // No relay override: HOST aims at the shipped placeholder relay URL,
+      // whose requests the held route above swallows.
+      await loadPickerWithSkippedIntro(page);
+      await navigateToNetworkingMenu(page);
+
+      const networkingTitle = await captureRegion(page, NETWORKING_TITLE_REGION);
+      const networkingPopupArea = await captureRegion(page, POPUP_REGION);
+
+      await clickCanvasGameCoord(
+        page,
+        NETWORKING_MENU_BUTTONS.host.x,
+        NETWORKING_MENU_BUTTONS.host.y,
+      );
+
+      // The room-create POST must actually reach the held route (rather
+      // than failing fast at the network layer as in the unreachable-relay
+      // scenarios above).
+      await expect
+        .poll(() => heldRoutes.length, {
+          message: 'the HOST flow should issue the room-create request',
+          timeout: 20_000,
+        })
+        .toBeGreaterThan(0);
+
+      // AbortSignal.timeout(10000) fires ~10s in; allow 30s for the popup.
+      await waitForRegionToLeave(
+        page,
+        POPUP_REGION,
+        networkingPopupArea,
+        'HOST against the stalled relay should abort the fetch into an error popup',
+        30_000,
+      );
+      await expectNoWasmAbort(page, errors, 'HOST against a stalled relay');
+
+      await dismissPopupAndAwaitNetworkingMenu(page, networkingTitle);
+
+      // The menu stays interactive: BACK out and re-open NETWORKING.
+      await clickCanvasGameCoord(
+        page,
+        NETWORKING_MENU_BUTTONS.back.x,
+        NETWORKING_MENU_BUTTONS.back.y,
+      );
+      await waitForRegionToLeave(
+        page,
+        NETWORKING_TITLE_REGION,
+        networkingTitle,
+        'BACK should leave the networking menu',
+      );
+      await reopenNetworkingMenu(page, networkingTitle);
+
+      await expectNoWasmAbort(page, errors, 'post-stall navigation');
+      assertNoRuntimeErrors(errors, 'stalled relay-create HOST flow');
+    } finally {
+      for (const route of heldRoutes) {
+        await route.abort('timedout').catch(() => {});
+      }
+      await page.unroute(isPlaceholderRelay).catch(() => {});
+    }
+  });
+});
+
+test.describe('Browser networking JOIN failure status (rejected room)', () => {
+  /** @type {RelayStub} */
+  let relayStub;
+
+  test.beforeEach(async () => {
+    relayStub = new RelayStub({
+      roomCode: 'GLAD-E2E1',
+      ownerToken: 'tok-e2e-owner',
+    });
+    await relayStub.start();
+  });
+
+  test.afterEach(async () => {
+    if (relayStub) {
+      await relayStub.stop();
+    }
+  });
+
+  test('JOIN with an unknown room code settles on the connection-failed status', async ({
+    page,
+  }) => {
+    test.setTimeout(240_000);
+    const errors = [];
+    // The failed WebSocket connects to the local stub are expected chatter.
+    attachRuntimeErrorCollectors(page, errors, [
+      new RegExp(`127\\.0\\.0\\.1:${relayStub.port}`),
+    ]);
+
+    await loadPickerWithSkippedIntro(page, relayStub.baseUrl);
+    await continueToTeamBuildMenu(page);
+    const statusBaseline = await captureRegion(page, TEAM_BUILD_STATUS_REGION);
+    await openNetworkingFromTeamBuild(page);
+    const networkingTitle = await captureRegion(page, NETWORKING_TITLE_REGION);
+
+    // PHASE 1 — reference capture: against a relay that never answers the
+    // room upgrade, the join client sits in "Status: connecting". This pins
+    // the exact pixels of the connecting state so phase 2 can prove the
+    // status text really CHANGED to the failure state; a plain
+    // left-the-empty-baseline check could not tell the two apart. (The JOIN
+    // room value is the prefilled "GLAD-XXXX" placeholder, which the stub
+    // does not know — no text entry needed.)
+    relayStub.unknownRoomBehavior = 'hold';
+    await clickCanvasGameCoord(
+      page,
+      NETWORKING_MENU_BUTTONS.join.x,
+      NETWORKING_MENU_BUTTONS.join.y,
+    );
+    await waitForRegionToLeave(
+      page,
+      NETWORKING_TITLE_REGION,
+      networkingTitle,
+      'JOIN should leave the networking menu for the team-build screen',
+    );
+    await expect
+      .poll(() => relayStub.heldUpgrades.length, {
+        message: 'the joiner should reach the stub with the placeholder room code',
+        timeout: 20_000,
+      })
+      .toBe(1);
+    expect(relayStub.heldUpgrades[0].roomCode).toBe('GLAD-XXXX');
+    await waitForRegionToLeave(
+      page,
+      TEAM_BUILD_STATUS_REGION,
+      statusBaseline,
+      'the join status lines should be drawn while the socket is connecting',
+    );
+    const connectingStatus = await captureSettledRegion(
+      page,
+      TEAM_BUILD_STATUS_REGION,
+      'the "Status: connecting" join status lines',
+    );
+    expect(connectingStatus.equals(statusBaseline)).toBe(false);
+
+    // PHASE 2 — the real relay shape: unknown rooms are rejected outright
+    // (HTTP 404 on the upgrade), so the socket dies before EVER connecting.
+    // Status-line contract: the second line must become
+    // "Status: connection failed" — pixels that differ from both the empty
+    // baseline and the pinned connecting state, and that stay there.
+    relayStub.unknownRoomBehavior = 'reject';
+    await reopenNetworkingMenu(page, networkingTitle);
+    await clickCanvasGameCoord(
+      page,
+      NETWORKING_MENU_BUTTONS.join.x,
+      NETWORKING_MENU_BUTTONS.join.y,
+    );
+    await waitForRegionToLeave(
+      page,
+      NETWORKING_TITLE_REGION,
+      networkingTitle,
+      'the second JOIN should leave the networking menu again',
+    );
+    await expect
+      .poll(() => relayStub.rejectedUpgrades.length, {
+        message: 'the stub should reject the unknown room upgrade',
+        timeout: 20_000,
+      })
+      .toBe(1);
+    expect(relayStub.rejectedUpgrades[0].roomCode).toBe('GLAD-XXXX');
+
+    await waitForRegionToSettleAway(
+      page,
+      TEAM_BUILD_STATUS_REGION,
+      [statusBaseline, connectingStatus],
+      'the join status should settle on "Status: connection failed" after the rejected upgrade',
+      30_000,
+    );
+    await expectNoWasmAbort(page, errors, 'JOIN against the rejecting relay stub');
+
+    // The picker stays interactive over the failed join client.
+    await reopenNetworkingMenu(page, networkingTitle);
+    await expectNoWasmAbort(page, errors, 'post-failure navigation');
+    assertNoRuntimeErrors(errors, 'JOIN rejected-room failure status');
+  });
+});
+
+test.describe('Browser networking two-player lobby (relay stub)', () => {
+  /** @type {RelayStub} */
+  let relayStub;
+
+  test.beforeEach(async () => {
+    // Pragmatic room-code choice: the stub's one known room reuses the JOIN
+    // menu's prefilled "GLAD-XXXX" placeholder, so the joining page needs no
+    // prompt_for_string text entry (SDL text input under Asyncify would be
+    // the flakiest possible dependency for this headline test).
+    relayStub = new RelayStub({
+      roomCode: 'GLAD-XXXX',
+      ownerToken: 'tok-e2e-owner-duo',
+    });
+    await relayStub.start();
+  });
+
+  test.afterEach(async () => {
+    if (relayStub) {
+      await relayStub.stop();
+    }
+  });
+
+  test('HOST and JOIN from two browser contexts meet in one relay lobby', async ({
+    browser,
+  }) => {
+    test.setTimeout(300_000);
+    const stubUrlPattern = new RegExp(`127\\.0\\.0\\.1:${relayStub.port}`);
+    const hostContext = await browser.newContext();
+    const joinContext = await browser.newContext();
+    try {
+      // Page A hosts the room through the stub.
+      const hostPage = await hostContext.newPage();
+      const hostErrors = [];
+      attachRuntimeErrorCollectors(hostPage, hostErrors, [stubUrlPattern]);
+      await loadPickerWithSkippedIntro(hostPage, relayStub.baseUrl);
+      await continueToTeamBuildMenu(hostPage);
+      const hostStatusBaseline = await captureRegion(
+        hostPage,
+        TEAM_BUILD_STATUS_REGION,
+      );
+      await openNetworkingFromTeamBuild(hostPage);
+      const hostNetworkingTitle = await captureRegion(
+        hostPage,
+        NETWORKING_TITLE_REGION,
+      );
+
+      await clickCanvasGameCoord(
+        hostPage,
+        NETWORKING_MENU_BUTTONS.host.x,
+        NETWORKING_MENU_BUTTONS.host.y,
+      );
+
+      await expect
+        .poll(() => relayStub.createRequests.length, {
+          message: 'the HOST flow should POST /api/create to the relay stub',
+          timeout: 20_000,
+        })
+        .toBe(1);
+      await expect
+        .poll(() => relayStub.roomConnections.length, {
+          message: 'the HOST flow should open the owner room WebSocket',
+          timeout: 20_000,
+        })
+        .toBe(1);
+      const ownerConnection = relayStub.roomConnections[0];
+      expect(ownerConnection.roomCode).toBe('GLAD-XXXX');
+      expect(ownerConnection.ownerToken).toBe('tok-e2e-owner-duo');
+      expect(ownerConnection.peerId).toBe(1);
+
+      await waitForRegionToLeave(
+        hostPage,
+        NETWORKING_TITLE_REGION,
+        hostNetworkingTitle,
+        'a successful HOST should return to the team-build screen',
+      );
+      await waitForRegionToLeave(
+        hostPage,
+        TEAM_BUILD_STATUS_REGION,
+        hostStatusBaseline,
+        'the host lobby status lines should be drawn on the team-build screen',
+      );
+      await expectNoWasmAbort(hostPage, hostErrors, 'hosting the two-player lobby');
+
+      // Page B, in an isolated browser context, joins the same room with the
+      // prefilled GLAD-XXXX room code.
+      const joinPage = await joinContext.newPage();
+      const joinErrors = [];
+      attachRuntimeErrorCollectors(joinPage, joinErrors, [stubUrlPattern]);
+      await loadPickerWithSkippedIntro(joinPage, relayStub.baseUrl);
+      await continueToTeamBuildMenu(joinPage);
+      const joinStatusBaseline = await captureRegion(
+        joinPage,
+        TEAM_BUILD_STATUS_REGION,
+      );
+      await openNetworkingFromTeamBuild(joinPage);
+      const joinNetworkingTitle = await captureRegion(
+        joinPage,
+        NETWORKING_TITLE_REGION,
+      );
+
+      await clickCanvasGameCoord(
+        joinPage,
+        NETWORKING_MENU_BUTTONS.join.x,
+        NETWORKING_MENU_BUTTONS.join.y,
+      );
+      await waitForRegionToLeave(
+        joinPage,
+        NETWORKING_TITLE_REGION,
+        joinNetworkingTitle,
+        'JOIN should leave the networking menu for the team-build screen',
+      );
+
+      await expect
+        .poll(() => relayStub.roomConnections.length, {
+          message: 'the joiner should open the second room WebSocket',
+          timeout: 20_000,
+        })
+        .toBe(2);
+      const joinerConnection = relayStub.roomConnections[1];
+      expect(joinerConnection.roomCode).toBe('GLAD-XXXX');
+      expect(joinerConnection.ownerToken).toBe(null);
+      expect(joinerConnection.peerId).toBe(2);
+
+      // The relay notified the owner about the joiner (the stub writes the
+      // peer_joined control frame synchronously during the joiner's upgrade).
+      expect(
+        ownerConnection.sentControls.filter(
+          (message) => message.type === 'peer_joined' && message.peer_id === 2,
+        ),
+      ).toHaveLength(1);
+
+      // Protocol-level proof that the joiner reached the host's LobbyServer
+      // through the relay: data frames forwarded joiner -> host (the lobby
+      // join message)...
+      await expect
+        .poll(() => relayStub.forwardedFrameCount(2, 1), {
+          message: 'the joiner lobby traffic should be forwarded to the host',
+          timeout: 30_000,
+        })
+        .toBeGreaterThan(0);
+      // ...and host -> joiner (the authoritative lobby state answer).
+      await expect
+        .poll(() => relayStub.forwardedFrameCount(1, 2), {
+          message: 'the host lobby state should be forwarded back to the joiner',
+          timeout: 30_000,
+        })
+        .toBeGreaterThan(0);
+
+      // The joiner draws its live status lines ("Relay: GLAD-XXXX" /
+      // "Status: connected") and they stabilize away from the empty baseline.
+      await waitForRegionToLeave(
+        joinPage,
+        TEAM_BUILD_STATUS_REGION,
+        joinStatusBaseline,
+        'the joiner status lines should be drawn on the team-build screen',
+      );
+      const joinerStatus = await captureSettledRegion(
+        joinPage,
+        TEAM_BUILD_STATUS_REGION,
+        'the joiner lobby status lines',
+      );
+      expect(joinerStatus.equals(joinStatusBaseline)).toBe(false);
+
+      // The host's visible lines stay "Direct: ..." / "Relay: GLAD-XXXX":
+      // its "Lobby: 2 players" line is the THIRD status line and the
+      // team-build screen renders only the first two, so the stub-side
+      // forwarded-frame counts above are the authoritative two-player
+      // signal rather than host pixels.
+      expect(ownerConnection.closed).toBe(false);
+      expect(joinerConnection.closed).toBe(false);
+
+      await expectNoWasmAbort(
+        hostPage,
+        hostErrors,
+        'host page after the joiner arrived',
+      );
+      await expectNoWasmAbort(
+        joinPage,
+        joinErrors,
+        'join page after entering the lobby',
+      );
+      assertNoRuntimeErrors(hostErrors, 'two-player lobby (host page)');
+      assertNoRuntimeErrors(joinErrors, 'two-player lobby (join page)');
+    } finally {
+      await joinContext.close();
+      await hostContext.close();
+    }
+  });
+});
+
+test.describe('Browser networking host relay drop (local relay stub)', () => {
+  /** @type {RelayStub} */
+  let relayStub;
+
+  test.beforeEach(async () => {
+    relayStub = new RelayStub({
+      roomCode: 'GLAD-E2E2',
+      ownerToken: 'tok-e2e-owner-drop',
+    });
+    await relayStub.start();
+  });
+
+  test.afterEach(async () => {
+    if (relayStub) {
+      await relayStub.stop();
+    }
+  });
+
+  test('host relay socket drop settles on the connection-lost relay line', async ({
+    page,
+  }) => {
+    test.setTimeout(240_000);
+    const errors = [];
+    attachRuntimeErrorCollectors(page, errors, [
+      new RegExp(`127\\.0\\.0\\.1:${relayStub.port}`),
+    ]);
+
+    await loadPickerWithSkippedIntro(page, relayStub.baseUrl);
+    await continueToTeamBuildMenu(page);
+    const statusBaseline = await captureRegion(page, TEAM_BUILD_STATUS_REGION);
+    await openNetworkingFromTeamBuild(page);
+    const networkingTitle = await captureRegion(page, NETWORKING_TITLE_REGION);
+
+    await clickCanvasGameCoord(
+      page,
+      NETWORKING_MENU_BUTTONS.host.x,
+      NETWORKING_MENU_BUTTONS.host.y,
+    );
+    await expect
+      .poll(() => relayStub.roomConnections.length, {
+        message: 'the HOST flow should open the owner room WebSocket',
+        timeout: 20_000,
+      })
+      .toBe(1);
+    const ownerConnection = relayStub.roomConnections[0];
+    expect(ownerConnection.roomCode).toBe('GLAD-E2E2');
+    expect(ownerConnection.ownerToken).toBe('tok-e2e-owner-drop');
+
+    await waitForRegionToLeave(
+      page,
+      NETWORKING_TITLE_REGION,
+      networkingTitle,
+      'a successful HOST should return to the team-build screen',
+    );
+    await waitForRegionToLeave(
+      page,
+      TEAM_BUILD_STATUS_REGION,
+      statusBaseline,
+      'the host lobby status lines should be drawn on the team-build screen',
+    );
+    // Pin the healthy hosted pixels ("Direct: ..." / "Relay: GLAD-E2E2") so
+    // the drop below has a stable reference to change away from.
+    const hostedStatus = await captureSettledRegion(
+      page,
+      TEAM_BUILD_STATUS_REGION,
+      'the healthy host lobby status lines',
+    );
+    expect(hostedStatus.equals(statusBaseline)).toBe(false);
+    await expectNoWasmAbort(page, errors, 'hosting before the relay drop');
+
+    // Server-side drop: the relay closes the owner socket after the room was
+    // created successfully.
+    ownerConnection.close();
+    await expect
+      .poll(() => ownerConnection.closed, {
+        message: 'the stub should observe the owner socket closing',
+        timeout: 10_000,
+      })
+      .toBe(true);
+
+    // Status-line contract: the "Relay: GLAD-E2E2" line becomes
+    // "Relay: connection lost" — pixels that differ from both the empty
+    // baseline and the healthy hosted state, and that stay there.
+    await waitForRegionToSettleAway(
+      page,
+      TEAM_BUILD_STATUS_REGION,
+      [statusBaseline, hostedStatus],
+      'the host status should settle on the connection-lost relay line',
+      30_000,
+    );
+    await expectNoWasmAbort(page, errors, 'host after the relay drop');
+
+    // The picker stays interactive over the degraded host lobby.
+    await reopenNetworkingMenu(page, networkingTitle);
+    await expectNoWasmAbort(page, errors, 'post-drop navigation');
+    assertNoRuntimeErrors(errors, 'host relay drop status');
+  });
+});

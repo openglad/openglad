@@ -124,6 +124,18 @@ if(ENABLE_SANITIZERS)
     endif()
 endif()
 
+# Emscripten disables C++ exception catching by default (-fignore-exceptions):
+# any `throw` calls abort(), killing the wasm runtime and freezing the page.
+# The game uses exceptions for recoverable errors (networking lobby/relay
+# failures surface as popup dialogs), so enable JS-based exception handling
+# for every target in the web build. Wasm-native EH (-fwasm-exceptions) is
+# not an option here: it is incompatible with -sASYNCIFY, which the web build
+# requires for its blocking menu loops and async relay fetches.
+if(EMSCRIPTEN)
+    add_compile_options(-fexceptions)
+    add_link_options(-fexceptions)
+endif()
+
 # --------------------------------------------------------------------------
 # Source file lists
 # --------------------------------------------------------------------------
@@ -3078,6 +3090,10 @@ endif()
         -sINITIAL_MEMORY=67108864
         -sASYNCIFY
         -sASYNCIFY_STACK_SIZE=65536
+        # With -fexceptions an exception that escapes every C++ handler shows
+        # up as an uncaught JS exception whose message is a raw exception
+        # pointer; this keeps type and what() visible in the browser console.
+        -sEXCEPTION_STACK_TRACES=1
         -sEXIT_RUNTIME=0
         "SHELL:-sMINIFY_HTML=0"
         -lwebsocket.js
