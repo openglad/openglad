@@ -4,14 +4,18 @@
 #include <gtest/gtest.h>
 
 #include <ixwebsocket/IXGetFreePort.h>
+#include <ixwebsocket/IXHttpClient.h>
 #include <ixwebsocket/IXNetSystem.h>
 #include <ixwebsocket/IXWebSocket.h>
 #include <ixwebsocket/IXWebSocketServer.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <format>
+#include <string_view>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -825,6 +829,103 @@ TEST(NetTransportRelayWs, link_state_reports_lost_after_relay_drops_connection)
         },
         5s)) << "a drop after connecting should surface as Lost, not Failed";
     EXPECT_TRUE(client.connected_peers().empty());
+}
+
+// Live end-to-end check against the DEPLOYED Cloudflare relay: native TLS
+// (https:// room create + wss:// room sockets through ixwebsocket/OpenSSL)
+// plus the full owner/guest handshake and frame forwarding. Opt-in because it
+// needs internet access and a healthy production relay:
+//   OPENGLAD_TEST_LIVE_RELAY=1 ./og_unit_sim --gtest_filter='*live_cloudflare*'
+TEST(NetTransportRelayWs, live_cloudflare_relay_end_to_end)
+{
+    const char* const enabled = std::getenv("OPENGLAD_TEST_LIVE_RELAY");
+    if (enabled == nullptr || std::string_view(enabled) != "1")
+        GTEST_SKIP() << "set OPENGLAD_TEST_LIVE_RELAY=1 to run against the "
+                        "deployed relay";
+
+    IxNetSystemScope net_system;
+    const std::string base_url = [] {
+        const char* const override_url = std::getenv("OPENGLAD_RELAY_BASE_URL");
+        return std::string(
+            override_url != nullptr && override_url[0] != '\0'
+                ? override_url
+                : "https://openglad-relay.yans.workers.dev");
+    }();
+
+    // Create a room over HTTPS exactly like the native picker client does.
+    ix::HttpClient http_client;
+    const std::string create_url = base_url +
+        "/api/create?campaign=live-test&campaign_name=Live%20Test&host=gtest";
+    ix::HttpRequestArgsPtr args =
+        http_client.createRequest(create_url, ix::HttpClient::kPost);
+    args->connectTimeout = 10;
+    args->transferTimeout = 15;
+    const ix::HttpResponsePtr response =
+        http_client.post(create_url, std::string(), args);
+    ASSERT_TRUE(response) << "no HTTPS response from the live relay";
+    ASSERT_GE(response->statusCode, 200);
+    ASSERT_LT(response->statusCode, 300)
+        << "room create failed: " << response->body;
+
+    const auto extract_field = [&](std::string_view field) {
+        const std::string needle = std::format("\"{}\":\"", field);
+        const std::size_t start = response->body.find(needle);
+        if (start == std::string::npos)
+            return std::string();
+        const std::size_t value_start = start + needle.size();
+        const std::size_t end = response->body.find('"', value_start);
+        if (end == std::string::npos)
+            return std::string();
+        return response->body.substr(value_start, end - value_start);
+    };
+    const std::string room_code = extract_field("code");
+    const std::string owner_token = extract_field("owner_token");
+    ASSERT_FALSE(room_code.empty()) << response->body;
+    ASSERT_FALSE(owner_token.empty()) << response->body;
+
+    const std::string ws_base = "wss://" + base_url.substr(std::string("https://").size());
+
+    og::sim::RelayWebSocketTransport::Options options;
+    options.automatic_reconnection = false;
+    og::sim::RelayWebSocketTransport owner(
+        std::format("{}/api/room/{}?owner_token={}", ws_base, room_code, owner_token),
+        options);
+    owner.accept_connections();
+    ASSERT_TRUE(wait_until(
+        [&] {
+            (void)owner.poll();
+            return owner.link_state() == og::sim::TransportLinkState::Connected &&
+                owner.local_peer_id() == 1;
+        },
+        15s)) << "owner wss:// connect + joined handshake against the live relay";
+    EXPECT_EQ(std::optional<og::sim::PeerId>(1), owner.host_peer_id());
+
+    og::sim::RelayWebSocketTransport guest(
+        std::format("{}/api/room/{}", ws_base, room_code),
+        options);
+    guest.accept_connections();
+    ASSERT_TRUE(wait_until(
+        [&] {
+            (void)guest.poll();
+            (void)owner.poll();
+            return guest.link_state() == og::sim::TransportLinkState::Connected &&
+                !guest.connected_peers().empty() &&
+                !owner.connected_peers().empty();
+        },
+        15s)) << "guest join + peer_joined propagation on the live relay";
+
+    // A broadcast frame from the guest must arrive at the owner intact.
+    const std::array<std::uint8_t, 5> payload{{0xde, 0xad, 0xbe, 0xef, 0x42}};
+    guest.broadcast(payload.data(), payload.size());
+    std::vector<std::uint8_t> received;
+    ASSERT_TRUE(wait_until(
+        [&] {
+            for (const og::sim::ReceivedMessage& message : owner.poll())
+                received = message.data;
+            return received.size() == payload.size();
+        },
+        15s)) << "guest->owner broadcast through the live relay";
+    EXPECT_TRUE(std::equal(payload.begin(), payload.end(), received.begin()));
 }
 
 } // namespace

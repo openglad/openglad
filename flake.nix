@@ -36,9 +36,16 @@
             pkg-config
           ];
 
+          buildInputs = with pkgs; [
+            openssl
+          ];
+
+          # TLS is required: the default multiplayer relay lives on Cloudflare
+          # (https:// room create + wss:// room sockets).
           cmakeFlags = [
             "-DBUILD_DEMO=OFF"
-            "-DUSE_TLS=OFF"
+            "-DUSE_TLS=ON"
+            "-DUSE_OPEN_SSL=ON"
             "-DUSE_ZLIB=OFF"
             "-DIXWEBSOCKET_INSTALL=ON"
           ];

@@ -252,7 +252,9 @@ async function startSeededSinglePlayerFromPicker(page, options = {}) {
   try {
     await waitForGameplayProgress(page, 2_000);
   } catch (error) {
-    await page.keyboard.press('Escape');
+    // Backspace is the web back key (physical Escape is swallowed by the
+    // engine on web builds), so it is the key that can unstick a menu here.
+    await page.keyboard.press('Backspace');
     await waitForGameplayProgress(page, 15_000);
     await waitForRenderedFrames(page, 4);
   }

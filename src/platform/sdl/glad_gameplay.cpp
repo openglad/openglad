@@ -138,8 +138,16 @@ void apply_lobby_game_start_config(
             static_cast<std::int32_t>(lobby_config.difficulty);
         og::runtime::current_session->networked_session_ =
             lobby_config.is_networked;
-        og::runtime::current_session->own_player_index_ =
-            lobby_config.local_player_index;
+        og::runtime::current_session->own_player_indices_ =
+            lobby_config.local_player_indices;
+        if (og::runtime::current_session->own_player_indices_.empty() &&
+            lobby_config.local_player_index != 0xffu)
+        {
+            // Single-seat compatibility: older config producers fill only the
+            // seat-0 index.
+            og::runtime::current_session->own_player_indices_ = {
+                lobby_config.local_player_index};
+        }
     }
 
     // For a networked session, keep the live combined roster (which holds every

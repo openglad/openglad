@@ -20,7 +20,15 @@ struct PickerLobbyGameStartConfig
     // real save0, and each player persists only its own characters.
     bool is_networked = false;
     // This peer's own player slot in the session (0xff if unknown / local game).
+    // Seat 0 of local_player_indices below; kept for single-seat compatibility.
     std::uint8_t local_player_index = 0xff;
+    // All of this machine's seats, in local seat order (seat 0 first), captured
+    // from the FINAL authoritative lobby state when the start was accepted:
+    // the global player_index each seat was assigned, and the GAMEPLAY team its
+    // view renders for (allied mode folds every seat to team 0). Empty for
+    // local (non-networked) games.
+    std::vector<std::uint8_t> local_player_indices = {};
+    std::vector<short> local_seat_teams = {};
 };
 
 class IPickerLobbyClient
@@ -43,6 +51,8 @@ public:
     virtual void sync_roster_from_save() = 0;
     virtual void sync_settings_from_save() = 0;
     virtual void poll_and_apply() = 0;
+    // 0 = spectate, 1..MAX_PLAYERS = local seats. Networked clients honor the
+    // requested count too, declaring one lobby seat per local player.
     virtual void set_player_mode(int player_count) = 0;
     virtual bool request_start_game() = 0;
     [[nodiscard]] virtual std::optional<PickerLobbyGameStartConfig>

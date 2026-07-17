@@ -1,5 +1,5 @@
 // @ts-check
-const { defineConfig } = require('@playwright/test');
+const { defineConfig, devices } = require('@playwright/test');
 
 module.exports = defineConfig({
   testDir: './tests/e2e',
@@ -22,6 +22,7 @@ module.exports = defineConfig({
   projects: [
     {
       name: 'chromium',
+      testIgnore: /wasm-touch\.spec\.js/,
       use: {
         browserName: 'chromium',
         // WebGL support in headless Chromium
@@ -30,6 +31,40 @@ module.exports = defineConfig({
         },
       },
     },
+    {
+      // iPhone emulation on the chromium engine: keeps hasTouch/isMobile/
+      // DPR 3/iOS UA from the device descriptor while exercising the same
+      // Pointer Events path SDL3's emscripten driver consumes on iOS Safari.
+      // True WebKit runs are gated behind OG_WEBKIT below (this dev box
+      // cannot satisfy the webkit build's library deps; CI's ubuntu-24.04
+      // image can via `npx playwright install --with-deps webkit`).
+      name: 'iphone-touch',
+      testMatch: /wasm-touch\.spec\.js/,
+      use: {
+        ...devices['iPhone 15 landscape'],
+        browserName: 'chromium',
+        launchOptions: {
+          args: [
+            '--use-gl=angle',
+            '--use-angle=swiftshader',
+            // Keeps the audio-unlock assertion meaningful: the context must
+            // boot suspended until a real gesture resumes it.
+            '--autoplay-policy=user-gesture-required',
+          ],
+        },
+      },
+    },
+    ...(process.env.OG_WEBKIT
+      ? [
+          {
+            name: 'webkit-iphone',
+            testMatch: /wasm-touch\.spec\.js/,
+            use: {
+              ...devices['iPhone 15 landscape'],
+            },
+          },
+        ]
+      : []),
   ],
   webServer: {
     // Serve the prebuilt WASM artifacts in dist/ during Playwright runs.

@@ -68,9 +68,13 @@ Sint32 leftmouse(button* buttons)
         return 1;  // simulate left-click
     }
 
-    // Detect click transitions (button went from up to down)
-    bool left_clicked = mymouse.left && !input_hw.picker_was_left_down;
-    bool right_clicked = mymouse.right && !input_hw.picker_was_right_down;
+    // Detect click transitions (button went from up to down). Collapsed
+    // touch taps never show up as a sampled transition, so consume the
+    // pending-click queue as well.
+    bool left_clicked = (mymouse.left && !input_hw.picker_was_left_down) ||
+        take_pending_left_click();
+    bool right_clicked = (mymouse.right && !input_hw.picker_was_right_down) ||
+        take_pending_right_click();
 
     // Update state for next frame
     input_hw.picker_was_left_down = mymouse.left;

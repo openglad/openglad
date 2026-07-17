@@ -499,6 +499,155 @@ TEST(CtfNetwork, bind_player_prefers_owner_matched_heroes_on_shared_team)
     EXPECT_EQ(1, fixture.server_control(1)->user());
 }
 
+TEST(CtfNetwork, multi_seat_peer_binds_each_seat_to_its_owner_tagged_hero)
+{
+    // ONE physical peer carrying TWO local seats (local_slot 0/1) in a CTF
+    // lobby: each seat must claim the walker whose myguy carries ITS OWN
+    // owner tag (the per-seat CTF owner preference), not the first unclaimed
+    // walker in oblist order.
+    NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = 1,
+    });
+    fixture.load_level();
+    const og::sim::PeerId peer_id = fixture.client_transport(0).local_peer_id();
+
+    walker* first = nullptr;
+    walker* second = nullptr;
+    fixture.with_server_context([&] {
+        fixture.server_world().type |= GameWorld::TYPE_CTF;
+        for (const auto& uptr : fixture.server_world().oblist)
+        {
+            walker* w = uptr.get();
+            if (w == nullptr || w->dead() ||
+                w->query_order() != Order::Living || w->team_num() != 0)
+            {
+                continue;
+            }
+            if (first == nullptr)
+            {
+                first = w;
+                continue;
+            }
+            second = w;
+            break;
+        }
+        if (second == nullptr)
+        {
+            second = fixture.server_world().add_ob(Order::Living, FAMILY_SOLDIER);
+            ASSERT_NE(nullptr, second);
+            second->setxy(static_cast<short>(first->xpos() + 32),
+                          static_cast<short>(first->ypos()));
+            second->set_team_num(0);
+        }
+
+        // Tag in REVERSE order: the earlier walker belongs to seat 1 (global
+        // player 1), the later one to seat 0. A first-unclaimed scan would
+        // hand seat 0 the earlier walker; the owner preference must not.
+        first->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+        first->myguy->id = 61;
+        first->myguy->owner_player_index = 1;
+        first->myguy->owner_save_slot = 0;
+        second->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+        second->myguy->id = 62;
+        second->myguy->owner_player_index = 0;
+        second->myguy->owner_save_slot = 1;
+    });
+    ASSERT_NE(nullptr, first);
+    ASSERT_NE(nullptr, second);
+
+    // Re-run seat 0's claim with the tags staged, then add the SAME peer's
+    // second seat: player_index 1 rides local_slot 1 of the one connection.
+    fixture.rebind_players();
+    fixture.with_server_context([&] {
+        fixture.server().bind_player(peer_id, 1u, 0, nullptr, 1u);
+    });
+
+    EXPECT_EQ(second, fixture.server_control(0))
+        << "seat 0 must claim its owner-tagged hero";
+    EXPECT_EQ(first, fixture.server_control(1))
+        << "seat 1 must claim its owner-tagged hero";
+    EXPECT_EQ(0, fixture.server_control(0)->user());
+    EXPECT_EQ(1, fixture.server_control(1)->user());
+}
+
+TEST(CtfNetwork, multi_seat_peer_reclaims_every_seat_after_respawn)
+{
+    // Both seats of ONE peer die with no fallback bodies; the CTF revive must
+    // rebind EACH seat to its own character (per-seat reclaim inside the
+    // peer's bound_players loop), and the ControlChanges must land in the
+    // shared client mirror's per-player mapping.
+    NetworkTestFixture fixture({
+        .player_count = 1,
+        .level_id = 1,
+        .validate_serialization = true,
+    });
+    fixture.load_level();
+    inject_ctf_scenario(fixture, 1, /*requested_respawn_ticks=*/8);
+    const og::sim::PeerId peer_id = fixture.client_transport(0).local_peer_id();
+
+    walker* seat0 = fixture.server_control(0);
+    ASSERT_NE(nullptr, seat0);
+    walker* seat1 = nullptr;
+    fixture.with_server_context([&] {
+        seat1 = fixture.server_world().add_ob(Order::Living, FAMILY_ELF);
+        ASSERT_NE(nullptr, seat1);
+        seat1->setxy(static_cast<short>(seat0->xpos() + 32), seat0->ypos());
+        seat1->set_team_num(seat0->team_num());
+
+        seat0->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+        seat0->myguy->id = 51;
+        seat1->set_owned_myguy(std::make_unique<guy>(FAMILY_ELF));
+        seat1->myguy->id = 52;
+
+        // Second seat of the SAME peer (local_slot 1 -> global player 1).
+        fixture.server().bind_player(
+            peer_id, 1u, static_cast<short>(seat0->team_num()), seat1, 1u);
+    });
+    ASSERT_EQ(seat1, fixture.server_control(1));
+    const std::uint32_t id0 = seat0->entity_id();
+    const std::uint32_t id1 = seat1->entity_id();
+
+    const unsigned char bound_team = seat0->team_num();
+    const unsigned char enemy_team = bound_team == 0 ? 1 : 0;
+    isolate_bound_players_on_team(fixture, bound_team, enemy_team, 2);
+
+    fixture.initial_sync();
+    fixture.step_ticks(2);
+    ASSERT_TRUE(fixture.server_world().ctf.active);
+    ASSERT_EQ(id0, fixture.client(0).controlled_entity_ids()[0]);
+    ASSERT_EQ(id1, fixture.client(0).controlled_entity_ids()[1]);
+
+    fixture.with_server_context([&] {
+        seat0->set_dead(1);
+        seat1->set_dead(1);
+    });
+    fixture.step_ticks(2);
+    ASSERT_EQ(nullptr, fixture.server_control(0))
+        << "no fallback body: seat 0's control must be null while dead";
+    ASSERT_EQ(nullptr, fixture.server_control(1))
+        << "no fallback body: seat 1's control must be null while dead";
+
+    fixture.step_ticks(40);
+    walker* revived0 = fixture.server_world().find_by_id(id0);
+    walker* revived1 = fixture.server_world().find_by_id(id1);
+    ASSERT_NE(nullptr, revived0);
+    ASSERT_NE(nullptr, revived1);
+    ASSERT_FALSE(revived0->dead());
+    ASSERT_FALSE(revived1->dead());
+    EXPECT_EQ(revived0, fixture.server_control(0))
+        << "seat 0 must reclaim its own character (exact user tag)";
+    EXPECT_EQ(revived1, fixture.server_control(1))
+        << "seat 1 must reclaim its own character (exact user tag)";
+    EXPECT_EQ(0, revived0->user());
+    EXPECT_EQ(1, revived1->user());
+    EXPECT_EQ(id0, fixture.client(0).controlled_entity_ids()[0])
+        << "seat 0's reclaim ControlChange must rebind the shared mirror";
+    EXPECT_EQ(id1, fixture.client(0).controlled_entity_ids()[1])
+        << "seat 1's reclaim ControlChange must rebind the shared mirror";
+    fixture.expect_clients_match_server();
+}
+
 TEST(CtfNetwork, bind_player_generic_claim_when_no_owner_tags)
 {
     // Classic shape: no myguy owner tags anywhere. The binding must fall back

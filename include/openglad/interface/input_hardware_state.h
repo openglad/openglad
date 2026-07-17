@@ -20,6 +20,11 @@ struct InputHardwareState {
     bool picker_was_left_down{false};
     bool picker_was_right_down{false};
 
+    // Runtime touch-control seam (web DOM overlay): held-key state OR-ed into
+    // isPlayerHoldingKey on every build. Native builds never write it, so it
+    // stays all-false and behavior is unchanged. key dim == NUM_KEYS.
+    bool touch_keystate[4][17]{};
+
 #ifdef USE_TOUCH_INPUT
     bool tapping{false};
     int start_tap_x{0}, start_tap_y{0};
@@ -29,6 +34,5 @@ struct InputHardwareState {
     std::int64_t movingTouch{0};
     bool firing{false};
     std::int64_t firingTouch{0};
-    bool touch_keystate[4][17]{};  // key dim == NUM_KEYS
 #endif
 };

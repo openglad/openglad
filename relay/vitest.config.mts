@@ -8,6 +8,15 @@ export default defineConfig({
       wrangler: {
         configPath: "./wrangler.toml",
       },
+      miniflare: {
+        bindings: {
+          // Small per-connection message budget so the flood test trips the
+          // limit within one budget window even on a heavily loaded machine.
+          // Must stay above what any non-flood test sends per second (~20)
+          // and match TEST_MESSAGE_BUDGET in test/relay.test.ts.
+          MESSAGE_BUDGET_MAX_MESSAGES: "50",
+        },
+      },
     }),
   ],
   test: {

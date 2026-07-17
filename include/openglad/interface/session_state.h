@@ -8,6 +8,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include <openglad/gameplay/gameplay_context.h>
 #include <openglad/gameplay/replay.h>
@@ -87,10 +88,12 @@ struct SessionState {
     // True for a genuine networked multiplayer session (host with clients, or a
     // join client). Gates save isolation: the live combined roster is written to
     // a transient slot instead of the player's real save0, and each player
-    // persists only its own characters (owner_player_index == own_player_index_).
+    // persists only the characters owned by one of its own seats
+    // (owner_player_index in own_player_indices_).
     bool networked_session_ = false;
-    // This peer's own player slot for the active networked session (0xff if none).
-    std::uint8_t own_player_index_ = 0xff;
+    // This machine's own GLOBAL player slots for the active networked session,
+    // one entry per local seat in seat order (seat 0 first). Empty if none.
+    std::vector<std::uint8_t> own_player_indices_ = {};
     bool debug_draw_paths_ = false;
     bool debug_draw_obmap_ = false;
     // Developer overlay: when true, score_panel draws measured render FPS in the top-right corner.

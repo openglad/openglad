@@ -323,6 +323,9 @@ bool as_event_data(const void* native_event, og::input_native::EventData& out)
 void init_input()
 {
     reset_default_player_controls();
+    // On web this installs the Backspace-as-Escape remap at the SDL event
+    // source before the first event is queued; a no-op on native builds.
+    og::input_native::install_back_key_remap();
     og::runtime::current_session->keystates_ = og::input_native::keyboard_state();
 
     // Set up joysticks
@@ -387,6 +390,19 @@ void handle_text_event(const void* native_event)
     og::runtime::current_session->text_input_event_ = 1;
 }
 
+// Instantaneous press/release pairs (touch taps forwarded as mouse clicks
+// can land down+up inside ONE event pump) are invisible to per-frame
+// up->down edge detection: the sampled state never shows the press. Worse,
+// query_mouse() can run more than once per menu frame (grab_mouse +
+// leftmouse), so a "keep the press visible for one poll" latch still loses
+// the press before the click detector samples it. Instead, a collapsed
+// press/release pair is recorded as an explicit pending click that the
+// click detectors consume via take_pending_left/right_click().
+static bool g_mouse_left_unqueried_press = false;
+static bool g_mouse_right_unqueried_press = false;
+static int g_pending_left_clicks = 0;
+static int g_pending_right_clicks = 0;
+
 void handle_mouse_event(const void* native_event)
 {
     og::input_native::EventData event;
@@ -412,9 +428,21 @@ void handle_mouse_event(const void* native_event)
         break;
     case og::input_native::EventType::MouseButtonUp:
         if (event.button == og::input_native::kMouseButtonLeft)
+        {
+            // A release before any query observed the press = a collapsed
+            // tap; record it as a pending click for the edge detectors.
+            if (g_mouse_left_unqueried_press)
+                ++g_pending_left_clicks;
+            g_mouse_left_unqueried_press = false;
             mouse_state.left = 0;
+        }
         if (event.button == og::input_native::kMouseButtonRight)
+        {
+            if (g_mouse_right_unqueried_press)
+                ++g_pending_right_clicks;
+            g_mouse_right_unqueried_press = false;
             mouse_state.right = 0;
+        }
 
         {
             const auto [x, y] = window_to_active_canvas(
@@ -432,9 +460,19 @@ void handle_mouse_event(const void* native_event)
             break;
         }
         if (event.button == og::input_native::kMouseButtonLeft)
+        {
             mouse_state.left = 1;
+            g_mouse_left_unqueried_press = true;
+            // "Press ESC to continue" waits (scenario info, intro pages)
+            // also accept a click/tap; clear_keyboard() at dialog entry
+            // resets the flag, so only clicks during the wait dismiss it.
+            og::runtime::current_session->input_continue_ = true;
+        }
         else if (event.button == og::input_native::kMouseButtonRight)
+        {
             mouse_state.right = 1;
+            g_mouse_right_unqueried_press = true;
+        }
 
         {
             const auto [x, y] = window_to_active_canvas(
@@ -1322,17 +1360,17 @@ bool isPlayerHoldingKey(int player_index, int key_enum)
     }
     #endif
     
-    // FIXME: Enable gamepads for Android/iOS, but be careful not to use accelerometer...
-    #ifdef USE_TOUCH_INPUT
-        if (player_index < 0 || player_index >= 4 || key_enum < 0 || key_enum >= NUM_KEYS)
-            return false;
-        return hw().touch_keystate[player_index][key_enum];
-    #else
+    if (player_index < 0 || player_index >= 4 || key_enum < 0 || key_enum >= NUM_KEYS)
+        return false;
+    // Runtime touch overlay (web DOM controls) writes held state here via
+    // openglad_web_touch_set_key; it is additive with joystick and keyboard so
+    // one web build serves desktop and mobile browsers. Always false natively.
+    if (hw().touch_keystate[player_index][key_enum])
+        return true;
     if(player_joy[player_index].hasButtonSet(key_enum))
         return player_joy[player_index].getState(key_enum);
     else
         return og::runtime::current_session->keystates_[og::input_native::scancode_from_key(og::runtime::current_session->player_keys_[player_index][key_enum])];
-    #endif
 }
 
 bool didPlayerPressKey(int player_index, int key_enum, const void* native_event)
@@ -1486,7 +1524,32 @@ MouseState& query_mouse()
     // The mouse_state thing is set using get_input_events, though
     // it should probably get its own function
     get_input_events(POLL);
+
+    // Any press standing now is observable by normal edge detection; only
+    // releases arriving before this point count as collapsed taps.
+    g_mouse_left_unqueried_press = false;
+    g_mouse_right_unqueried_press = false;
     return mouse_state;
+}
+
+bool take_pending_left_click()
+{
+    if (g_pending_left_clicks > 0)
+    {
+        --g_pending_left_clicks;
+        return true;
+    }
+    return false;
+}
+
+bool take_pending_right_click()
+{
+    if (g_pending_right_clicks > 0)
+    {
+        --g_pending_right_clicks;
+        return true;
+    }
+    return false;
 }
 
 // Convert from scancode to ascii, ie, KEYCODE_a to 'A'

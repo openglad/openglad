@@ -16,7 +16,9 @@ public:
     struct Options {
         std::string host = "127.0.0.1";
         int backlog = 5;
-        std::size_t max_connections = static_cast<std::size_t>(MAX_PLAYERS);
+        // Worst case one machine per global player (multi-seat machines need
+        // fewer connections than global players).
+        std::size_t max_connections = kMaxGlobalPlayers;
     };
 
     // IXWebSocket invokes callbacks on background I/O threads. Those callbacks

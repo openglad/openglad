@@ -237,13 +237,13 @@ also repairs an SDL3 Emscripten fullscreen-exit race that can otherwise leave
 the canvas backing at a stale viewport size after browser-reserved Escape.
 Canvas focus is restored after leaving fullscreen. Native resolution and
 display-mode controls remain unavailable in the browser. The on-page
-fullscreen button enters canvas fullscreen from an explicit user gesture;
-supporting Chromium-based browsers lock only Escape while the canvas is
-fullscreen, so a short press continues to control the game and holding Escape
-uses the browser's fullscreen exit hatch. The lock is released on exit. If the
-Keyboard Lock API is unavailable or permission is denied, browser-reserved
-Escape exits fullscreen and the existing focus/backing recovery remains the
-fallback; press Escape again for the in-game action.
+fullscreen button enters canvas fullscreen from an explicit user gesture, and
+browser-reserved Escape exits it. Web builds never bind game actions to
+Escape: Backspace is the universal back/cancel/menu key (remapped at the SDL
+event source, and disabled while a text field is active so Backspace still
+deletes characters — see `include/openglad/interface/web_back_key.h`), so
+leaving fullscreen with Escape has no in-game side effect and no Keyboard
+Lock is required.
 
 Canvas and window dimensions are render-side state. The deterministic
 simulation does not read them; `scripts/check_render_no_sim_writes.sh`

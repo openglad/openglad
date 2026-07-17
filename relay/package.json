@@ -6,6 +6,7 @@
   "scripts": {
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
+    "smoke": "node smoke.mjs",
     "test": "vitest run --max-workers=1 --no-isolate",
     "typecheck": "tsc --noEmit"
   },

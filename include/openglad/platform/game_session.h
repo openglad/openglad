@@ -23,6 +23,7 @@ using PeerId = std::uint32_t;
 namespace og::runtime {
 
 struct LocalTransportRuntime;
+struct LocalSeatBinding;
 
 // GameSession: RAII root object for runtime state.
 //
@@ -82,6 +83,12 @@ private:
         std::shared_ptr<og::sim::ITransport> server_transport,
         std::shared_ptr<og::sim::InProcessTransport> local_client_transport,
         const std::vector<og::sim::LobbyPlayerBinding>& player_bindings);
+    friend void reset_network_client_transport_shadow(
+        GameSession& session,
+        screen& gameplay_screen,
+        std::shared_ptr<og::sim::ITransport> client_transport,
+        og::sim::PeerId server_peer_id,
+        std::vector<LocalSeatBinding> local_seats);
     friend void reset_network_client_transport_shadow(
         GameSession& session,
         screen& gameplay_screen,

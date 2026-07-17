@@ -644,6 +644,30 @@ void SaveData::merge_owned_guys_from(
     if (owner_player_index == guy::kNoOwner)
         return;
 
+    const std::array<std::uint8_t, 1> owners = {owner_player_index};
+    merge_owned_guys_from(oblist, std::span<const std::uint8_t>(owners));
+}
+
+void SaveData::merge_owned_guys_from(
+    const std::list<std::unique_ptr<walker>>& oblist,
+    std::span<const std::uint8_t> owner_player_indices)
+{
+    // A machine with N local seats owns N players' characters; merge them all
+    // in one pass so the load/rebuild/save cycle happens exactly once.
+    const auto owned_by_this_machine = [owner_player_indices](std::uint8_t owner) {
+        if (owner == guy::kNoOwner)
+            return false;
+        return std::find(owner_player_indices.begin(),
+                         owner_player_indices.end(),
+                         owner) != owner_player_indices.end();
+    };
+    const bool any_real_owner = std::any_of(
+        owner_player_indices.begin(),
+        owner_player_indices.end(),
+        [](std::uint8_t owner) { return owner != guy::kNoOwner; });
+    if (!any_real_owner)
+        return;
+
     // This SaveData holds the owner's untouched pre-session roster (their real
     // save0), dense in [0, team_size). Rebuild it from the session outcome,
     // keyed by each brought character's original save slot (owner_save_slot):
@@ -662,7 +686,7 @@ void SaveData::merge_owned_guys_from(
         walker* ob = uptr.get();
         if (ob == nullptr || ob->myguy == nullptr)
             continue;
-        if (ob->myguy->owner_player_index != owner_player_index)
+        if (!owned_by_this_machine(ob->myguy->owner_player_index))
             continue;
 
         const unsigned int slot = ob->myguy->owner_save_slot;

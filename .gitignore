@@ -68,3 +68,6 @@ core.*
 .DS_Store
 
 .dsb.yml
+
+# Local secrets (Cloudflare deploy token etc.)
+/env

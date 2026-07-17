@@ -14,6 +14,8 @@ constexpr std::size_t kInputMetadataOffset =
     kInputTickOffset + sizeof(std::uint32_t);
 constexpr std::size_t kPlayerBitsOffset = kInputMetadataOffset + 1;
 
+// The input wire carries the sender's LOCAL seat slots (per-machine cap);
+// global player indexing (kMaxGlobalPlayers) never widens this format.
 static_assert(MAX_PLAYERS == 4);
 static_assert(NUM_INPUT_KEYS == 16);
 static_assert(kInputActionCount == NUM_INPUT_KEYS);

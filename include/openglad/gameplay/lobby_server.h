@@ -30,6 +30,9 @@ struct LobbySaveDataEquivalent {
 
 struct LobbyPlayerBinding {
     PeerId peer_id = 0;
+    // Seat index within the owning peer (0..MAX_PLAYERS-1): selects which of
+    // the peer's InputState slots drives this player.
+    std::uint8_t local_slot = 0;
     std::uint8_t player_index = 0xff;
     std::int16_t team = 0;
 
@@ -83,16 +86,28 @@ private:
     void apply_transport_disconnects();
     struct ConnectedPeerState {
         std::uint64_t connection_order = 0;
-        std::optional<LobbyPlayer> player = std::nullopt;
+        // The peer's local seats in seat order (empty = not joined). Seat k is
+        // driven by the peer's InputState slot k.
+        std::vector<LobbyPlayer> seats = {};
     };
 
     [[nodiscard]] std::int16_t effective_team_limit() const noexcept;
+    // Cross-peer availability only; same-peer seats are skipped (within-peer
+    // distinctness is enforced via the sibling_teams argument below).
     [[nodiscard]] bool is_team_available(std::int16_t team,
                                          PeerId peer_id) const noexcept;
     [[nodiscard]] std::int16_t resolve_team(
         PeerId peer_id,
         std::int16_t requested_team,
         std::optional<std::int16_t> current_team) const noexcept;
+    // Seat-aware resolve: like resolve_team, but also refuses teams already
+    // held by the same peer's OTHER seats (sibling_teams), which stay
+    // distinct even when cross-peer sharing is allowed.
+    [[nodiscard]] std::int16_t resolve_seat_team(
+        PeerId peer_id,
+        std::int16_t requested_team,
+        std::optional<std::int16_t> current_team,
+        const std::vector<std::int16_t>& sibling_teams) const noexcept;
     [[nodiscard]] std::size_t remaining_team_capacity(PeerId peer_id) const noexcept;
     void rebuild_state();
     void send_state(PeerId peer_id) const;
