@@ -1182,6 +1182,7 @@ if(NOT EMSCRIPTEN)
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/cfg ${CMAKE_BINARY_DIR}/cfg
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/pix ${CMAKE_BINARY_DIR}/pix
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/sound ${CMAKE_BINARY_DIR}/sound
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/gamecontrollerdb.txt ${CMAKE_BINARY_DIR}/gamecontrollerdb.txt
         COMMENT "Staging runtime asset directories"
         VERBATIM
     )
@@ -1690,6 +1691,10 @@ if(NOT EMSCRIPTEN)
                 ${CMAKE_SOURCE_DIR}/pix
                 ${CMAKE_SOURCE_DIR}/sound
                 ${CMAKE_SOURCE_DIR}/builtin
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/openglad
+        )
+        install(
+            FILES ${CMAKE_SOURCE_DIR}/gamecontrollerdb.txt
             DESTINATION ${CMAKE_INSTALL_DATADIR}/openglad
         )
     endif()
@@ -3057,6 +3062,7 @@ endif()
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/pix@/pix"
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/sound@/sound"
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/builtin@/builtin"
+        "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/gamecontrollerdb.txt@/gamecontrollerdb.txt"
     )
 
     set_target_properties(play PROPERTIES
