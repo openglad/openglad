@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <span>
 #include <vector>
 
 struct InputState;
@@ -22,6 +23,14 @@ namespace og::runtime {
 class GameSession;
 struct SessionState;
 
+// One local seat of a networked machine: the GLOBAL player_index this seat's
+// view follows and the GAMEPLAY team the view renders for (allied mode folds
+// every seat to team 0). Seat order == view order == InputState slot order.
+struct LocalSeatBinding {
+    std::size_t player_index = 0;
+    short team = 0;
+};
+
 bool local_transport_active(const SessionState& session) noexcept;
 std::size_t local_transport_client_count(const GameSession& session) noexcept;
 bool local_transport_shadow_is_paused(const GameSession& session) noexcept;
@@ -31,17 +40,22 @@ namespace detail {
 
 walker* select_control_for_view(
     viewscreen* view,
-    const std::array<std::uint32_t, MAX_PLAYERS>& controlled_entity_ids,
+    std::span<const std::uint32_t> controlled_entity_ids,
     GameWorld* world,
     std::optional<std::size_t> player_index = std::nullopt);
 
 // Networked "as if played alone" persist: merge only the characters owned by
-// own_player_index from world_screen's world back into this peer's on-disk
-// save0. The permadeath rule (keep_fallen_heroes) is read from the SESSION
-// save carried on world_screen — the lobby-negotiated setting — never from
-// the stale on-disk copy. Exposed here so tests can pin that contract.
+// this machine's own seat(s) from world_screen's world back into this peer's
+// on-disk save0. The permadeath rule (keep_fallen_heroes) is read from the
+// SESSION save carried on world_screen — the lobby-negotiated setting — never
+// from the stale on-disk copy. Exposed here so tests can pin that contract.
 void persist_owned_characters_to_save0(const screen& world_screen,
                                        std::uint8_t own_player_index);
+// Multi-seat variant: ONE load/merge/save cycle covering every local seat's
+// characters. kNoOwner entries are ignored; effectively empty = no-op.
+void persist_owned_characters_to_save0(
+    const screen& world_screen,
+    std::span<const std::uint8_t> own_player_indices);
 
 } // namespace detail
 
@@ -51,6 +65,14 @@ void reset_network_host_transport_shadow(
     std::shared_ptr<og::sim::ITransport> server_transport,
     std::shared_ptr<og::sim::InProcessTransport> local_client_transport,
     const std::vector<og::sim::LobbyPlayerBinding>& player_bindings);
+void reset_network_client_transport_shadow(
+    GameSession& session,
+    screen& gameplay_screen,
+    std::shared_ptr<og::sim::ITransport> client_transport,
+    og::sim::PeerId server_peer_id,
+    std::vector<LocalSeatBinding> local_seats);
+// Single-seat compatibility shim: one seat following local_player_index on
+// the save's my_team.
 void reset_network_client_transport_shadow(
     GameSession& session,
     screen& gameplay_screen,
@@ -97,6 +119,11 @@ bool local_transport_shadow_testing_finalize_win(screen& gameplay_screen,
                                                  int next_level,
                                                  bool networked,
                                                  std::uint8_t own_player_index);
+bool local_transport_shadow_testing_finalize_win(
+    screen& gameplay_screen,
+    int next_level,
+    bool networked,
+    std::span<const std::uint8_t> own_player_indices);
 bool local_transport_shadow_testing_finalize_withdraw(screen& gameplay_screen,
                                                       int destination_level,
                                                       bool networked);

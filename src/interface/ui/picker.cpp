@@ -29,6 +29,7 @@
 //buffers:  using input.h instead #include "int32.h"
 #include <openglad/interface/input.h>
 #include <openglad/interface/native_input.h>
+#include <openglad/interface/web_back_key.h>
 #include <openglad/core/util.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/og_file.h>
@@ -1838,7 +1839,10 @@ static void draw_remap_prompt(const std::string& prompt, int player_index)
     og::runtime::current_session->myscreen_->draw_button_inverted(20, 30, 300, 170);
     mytext.write_xy_center(160, 45, RED, "REMAP CONTROLS");
     mytext.write_xy_center(160, 80, DARK_BLUE, "%s", prompt.c_str());
-    mytext.write_xy_center(160, 105, DARK_BLUE, "Press ESC to keep current key");
+    mytext.write_xy_center(160, 105, DARK_BLUE,
+                           og::input::kWebBackKeyMode
+                               ? "Press BACKSPACE to keep current key"
+                               : "Press ESC to keep current key");
     const auto summary_lines = build_player_control_summary_lines(player_index, true);
     mytext.write_xy_center(160, 150, DARK_BLUE, "%s", summary_lines[0].c_str());
     mytext.write_xy_center(160, 160, DARK_BLUE, "%s", summary_lines[1].c_str());

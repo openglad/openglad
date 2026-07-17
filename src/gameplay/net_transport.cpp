@@ -3,6 +3,7 @@
 #include <openglad/gameplay/input_state_net.h>
 #include <openglad/gameplay/world_snapshot.h>
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <functional>
@@ -421,6 +422,9 @@ std::vector<std::uint8_t> serialize_initial_setup_message(
     append_u32(payload, static_cast<std::uint32_t>(message.completed_levels.size()));
     for (const std::int32_t level_id : message.completed_levels)
         append_i32(payload, level_id);
+    // v7: u8 count prefix (sender always writes the full kMaxGlobalPlayers).
+    append_u8(payload,
+              static_cast<std::uint8_t>(message.controlled_entity_ids.size()));
     for (const std::uint32_t entity_id : message.controlled_entity_ids)
         append_u32(payload, entity_id);
     return wrap_transport_message(kInitialSetupMessageType, payload);
@@ -468,8 +472,19 @@ std::optional<InitialSetupMessage> deserialize_initial_setup_message(
             message.completed_levels.reserve(level_count);
             for (std::uint32_t i = 0; i < level_count && reader.ok(); ++i)
                 message.completed_levels.push_back(reader.read_i32());
-            for (std::uint32_t& entity_id : message.controlled_entity_ids)
-                entity_id = reader.read_u32();
+            // v7: count-prefixed controlled ids. Reject oversized counts and
+            // zero-fill any tail a shorter (still valid) sender leaves.
+            const std::uint8_t controlled_count = reader.read_u8();
+            if (!reader.ok() ||
+                static_cast<std::size_t>(controlled_count) >
+                    message.controlled_entity_ids.size())
+            {
+                reader.fail();
+                return;
+            }
+            message.controlled_entity_ids.fill(0u);
+            for (std::uint8_t i = 0; i < controlled_count && reader.ok(); ++i)
+                message.controlled_entity_ids[i] = reader.read_u32();
         });
 }
 
@@ -483,6 +498,12 @@ std::vector<std::uint8_t> serialize_lobby_message(const LobbyMessage& message)
             if constexpr (std::is_same_v<Message, LobbyJoinMessage>)
             {
                 append_lobby_player(payload, lobby_message.player);
+                // v7: extra seats (1..N-1) after seat 0.
+                append_u8(payload,
+                          static_cast<std::uint8_t>(std::min<std::size_t>(
+                              lobby_message.extra_players.size(), 0xffu)));
+                for (const auto& extra : lobby_message.extra_players)
+                    append_lobby_player(payload, extra);
             }
             else if constexpr (std::is_same_v<Message, LobbyLeaveMessage>)
             {
@@ -527,6 +548,19 @@ std::optional<LobbyMessage> deserialize_lobby_message(
             {
                 LobbyJoinMessage join;
                 join.player = read_lobby_player(reader);
+                // v7: u8 extra-seat count, bounds-checked against the minimum
+                // serialized seat size so a crafted count cannot over-reserve.
+                const std::uint8_t extra_count = reader.read_u8();
+                if (!reader.ok() ||
+                    static_cast<std::size_t>(extra_count) >
+                        reader.remaining_bytes() / kMinSerializedLobbyPlayerSize)
+                {
+                    reader.fail();
+                    return;
+                }
+                join.extra_players.reserve(extra_count);
+                for (std::uint8_t i = 0; i < extra_count && reader.ok(); ++i)
+                    join.extra_players.push_back(read_lobby_player(reader));
                 message.payload = std::move(join);
                 break;
             }

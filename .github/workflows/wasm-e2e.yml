@@ -56,10 +56,19 @@ jobs:
         run: npm ci
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium webkit
 
       - name: Run Playwright tests
         run: npx playwright test --workers=1
+
+      # True-WebKit iPhone emulation for the touch suite. The ubuntu CI image
+      # satisfies WebKit's library deps (dev boxes often cannot); advisory
+      # (continue-on-error) until headless WebKit+WebGL proves stable here.
+      - name: Run WebKit iPhone touch tests (advisory)
+        env:
+          OG_WEBKIT: '1'
+        continue-on-error: true
+        run: npx playwright test --workers=1 --project=webkit-iphone
 
       - name: Upload test results
         if: ${{ !cancelled() }}

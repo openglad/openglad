@@ -24,6 +24,7 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/interface/input.h>
 #include <openglad/interface/native_input.h>
+#include <openglad/interface/web_back_key.h>
 #include <openglad/interface/base.h>
 #include <openglad/resources/og_file.h>
 #include <openglad/interface/screen.h>
@@ -289,10 +290,12 @@ static const char* controls_help_lines[] = {
 	"",
 	"GENERAL CONTROLS",
 	"========================",
-	"ESC: Quit / Back",
+	og::input::kWebBackKeyMode ? "BACKSPACE: Quit / Back"
+	                           : "ESC: Quit / Back",
 	"Shift+/: Show scenario help",
 	"",
-	"Press ESC to return to menu",
+	og::input::kWebBackKeyMode ? "Press BACKSPACE to return to menu"
+	                           : "Press ESC to return to menu",
 };
 
 static const int NUM_CONTROLS_LINES = sizeof(controls_help_lines) / sizeof(controls_help_lines[0]);
@@ -651,7 +654,10 @@ Sint32 show_general_help()
 			og::runtime::current_session->myscreen_->draw_text_bar(HELPTEXT_LEFT, content_bottom,
 			                        HELPTEXT_LEFT+240-4, content_bottom + 6);
 			mytext.write_xy(HELPTEXT_LEFT+30, content_bottom + 1,
-			                "1/2/3:Tab  ESC:Exit", static_cast<unsigned char>(RED), 1);
+			                og::input::kWebBackKeyMode
+			                    ? "1/2/3:Tab  BKSP:Exit"
+			                    : "1/2/3:Tab  ESC:Exit",
+			                static_cast<unsigned char>(RED), 1);
 
 			og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
 			changed = 0;

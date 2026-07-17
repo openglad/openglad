@@ -237,7 +237,7 @@ TEST(NetTransport, header_helpers_roundtrip_envelope)
     std::vector<std::uint8_t> bytes;
     og::sim::append_transport_header(bytes, og::sim::kHelloMessageType, 0x2211u);
 
-    const std::vector<std::uint8_t> expected = {0x06, 0x01, 0x11, 0x22};
+    const std::vector<std::uint8_t> expected = {0x07, 0x01, 0x11, 0x22};
     EXPECT_EQ(expected, bytes);
 
     og::sim::TransportEnvelope envelope;
@@ -826,8 +826,8 @@ TEST(NetTransport, serialize_hello_emits_expected_wire_format)
 
     constexpr std::array<std::uint8_t, og::sim::kSerializedHelloMessageSize>
         expected = {
-            0x06, 0x01, 0x17, 0x00,
-            0x06, 0x06, 0x03,
+            0x07, 0x01, 0x17, 0x00,
+            0x07, 0x07, 0x03,
             0x00, 0x01, 0x02, 0x03,
             0x04, 0x05, 0x06, 0x07,
             0x08, 0x09, 0x0a, 0x0b,
@@ -870,7 +870,8 @@ TEST(NetTransport, decode_rejects_truncated_and_wrong_version_headers)
     const std::array<std::uint8_t, 3> truncated = {0x03, 0x01, 0x00};
     EXPECT_FALSE(og::sim::decode_transport_envelope(truncated, envelope));
 
-    const std::array<std::uint8_t, 4> wrong_version = {0x07, 0x01, 0x00, 0x00};
+    const std::array<std::uint8_t, 4> wrong_version = {
+        og::sim::kNetworkProtocolVersion + 1, 0x01, 0x00, 0x00};
     EXPECT_FALSE(og::sim::decode_transport_envelope(wrong_version, envelope));
 }
 
@@ -890,6 +891,151 @@ TEST(NetTransport, deserialize_initial_setup_rejects_oversized_counts)
     EXPECT_FALSE(
         og::sim::deserialize_initial_setup_message(oversized_level_count)
             .has_value());
+}
+
+// v7: the trailing controlled-entity-id block is u8-count-prefixed. The count
+// byte sits kMaxGlobalPlayers u32s + 1 from the end of the message.
+namespace {
+std::size_t controlled_id_count_offset(const std::vector<std::uint8_t>& bytes)
+{
+    return bytes.size() -
+        (1u + og::sim::kMaxGlobalPlayers * sizeof(std::uint32_t));
+}
+} // namespace
+
+TEST(NetTransport, initial_setup_controlled_ids_count_prefix_roundtrip)
+{
+    og::sim::InitialSetupMessage expected;
+    expected.controlled_entity_ids[0] = 11u;
+    expected.controlled_entity_ids[3] = 44u;
+    expected.controlled_entity_ids[og::sim::kMaxGlobalPlayers - 1] = 160u;
+
+    const std::vector<std::uint8_t> bytes =
+        og::sim::serialize_initial_setup_message(expected);
+    // Sender always writes the full kMaxGlobalPlayers block.
+    EXPECT_EQ(static_cast<std::uint8_t>(og::sim::kMaxGlobalPlayers),
+              bytes[controlled_id_count_offset(bytes)]);
+
+    const auto decoded = og::sim::deserialize_initial_setup_message(bytes);
+    ASSERT_TRUE(decoded.has_value());
+    EXPECT_EQ(expected, *decoded);
+
+    // A shorter (still valid) count decodes with the tail zero-filled.
+    const std::size_t count_offset = controlled_id_count_offset(bytes);
+    std::vector<std::uint8_t> short_count(bytes.begin(),
+                                          bytes.begin() +
+                                              static_cast<std::ptrdiff_t>(count_offset));
+    short_count.push_back(4u);
+    short_count.insert(
+        short_count.end(),
+        bytes.begin() + static_cast<std::ptrdiff_t>(count_offset + 1),
+        bytes.begin() + static_cast<std::ptrdiff_t>(
+            count_offset + 1 + 4 * sizeof(std::uint32_t)));
+    const std::uint16_t payload_length = static_cast<std::uint16_t>(
+        short_count.size() - og::sim::kTransportHeaderSize);
+    short_count[2] = static_cast<std::uint8_t>(payload_length & 0xffu);
+    short_count[3] = static_cast<std::uint8_t>((payload_length >> 8) & 0xffu);
+
+    const auto short_decoded =
+        og::sim::deserialize_initial_setup_message(short_count);
+    ASSERT_TRUE(short_decoded.has_value());
+    EXPECT_EQ(11u, short_decoded->controlled_entity_ids[0]);
+    EXPECT_EQ(44u, short_decoded->controlled_entity_ids[3]);
+    EXPECT_EQ(0u,
+              short_decoded->controlled_entity_ids[og::sim::kMaxGlobalPlayers - 1]);
+}
+
+TEST(NetTransport, initial_setup_rejects_oversized_controlled_id_count)
+{
+    const std::vector<std::uint8_t> bytes =
+        og::sim::serialize_initial_setup_message(og::sim::InitialSetupMessage{});
+
+    auto oversized = bytes;
+    oversized[controlled_id_count_offset(bytes)] = static_cast<std::uint8_t>(
+        og::sim::kMaxGlobalPlayers + 1);
+    EXPECT_FALSE(
+        og::sim::deserialize_initial_setup_message(oversized).has_value());
+
+    // A count that under-claims the bytes actually present must also fail
+    // (the strict finished() check refuses trailing garbage).
+    auto undersized = bytes;
+    undersized[controlled_id_count_offset(bytes)] = 2u;
+    EXPECT_FALSE(
+        og::sim::deserialize_initial_setup_message(undersized).has_value());
+}
+
+TEST(NetTransport, lobby_join_extra_players_roundtrip)
+{
+    // Zero extra seats: byte-level shape is seat 0 plus a 0 count.
+    og::sim::LobbyMessage single;
+    single.payload =
+        og::sim::LobbyJoinMessage{.player = make_lobby_player_for_test()};
+    const auto single_bytes = og::sim::serialize_lobby_message(single);
+    const auto single_decoded = og::sim::deserialize_lobby_message(single_bytes);
+    ASSERT_TRUE(single_decoded.has_value());
+    EXPECT_EQ(single, *single_decoded);
+    EXPECT_TRUE(std::get<og::sim::LobbyJoinMessage>(single_decoded->payload)
+                    .extra_players.empty());
+
+    // Three extra seats (a 4-seat machine) roundtrip in order.
+    og::sim::LobbyJoinMessage join;
+    join.player = make_lobby_player_for_test();
+    for (int seat = 1; seat <= 3; ++seat)
+    {
+        og::sim::LobbyPlayer extra = make_lobby_player_for_test();
+        extra.name = std::string("seat#") + std::to_string(seat);
+        extra.team = static_cast<std::int16_t>(seat);
+        join.extra_players.push_back(std::move(extra));
+    }
+    og::sim::LobbyMessage message;
+    message.payload = join;
+
+    const auto bytes = og::sim::serialize_lobby_message(message);
+    const auto decoded = og::sim::deserialize_lobby_message(bytes);
+    ASSERT_TRUE(decoded.has_value());
+    EXPECT_EQ(message, *decoded);
+    const auto& decoded_join =
+        std::get<og::sim::LobbyJoinMessage>(decoded->payload);
+    ASSERT_EQ(3u, decoded_join.extra_players.size());
+    EXPECT_EQ("seat#1", decoded_join.extra_players[0].name);
+    EXPECT_EQ(3, decoded_join.extra_players[2].team);
+
+    // decode_received_message routes the multi-seat join too.
+    const og::sim::TypedReceivedMessage typed =
+        og::sim::decode_received_message({.peer_id = 6u, .data = bytes});
+    EXPECT_EQ(og::sim::TypedReceivedMessageKind::LobbyMessage, typed.kind);
+    ASSERT_NE(nullptr, typed.lobby_message);
+    EXPECT_EQ(message, *typed.lobby_message);
+}
+
+TEST(NetTransport, lobby_join_rejects_malformed_extra_seat_count)
+{
+    og::sim::LobbyMessage message;
+    message.payload =
+        og::sim::LobbyJoinMessage{.player = make_lobby_player_for_test()};
+
+    // With zero extras the extra-seat count is the final payload byte; a
+    // crafted count with no seat bytes behind it must be rejected.
+    auto bytes = og::sim::serialize_lobby_message(message);
+    ASSERT_EQ(0u, bytes.back());
+    bytes.back() = 0xffu;
+    EXPECT_FALSE(og::sim::deserialize_lobby_message(bytes).has_value());
+
+    // A count that claims more seats than the payload carries is rejected
+    // even when some seat bytes follow.
+    og::sim::LobbyJoinMessage join;
+    join.player = make_lobby_player_for_test();
+    join.extra_players.push_back(make_lobby_player_for_test());
+    og::sim::LobbyMessage with_extra;
+    with_extra.payload = join;
+    auto extra_bytes = og::sim::serialize_lobby_message(with_extra);
+    // The count byte precedes the serialized extra seat; recompute its offset
+    // from the single-seat encoding (same prefix).
+    const auto single_bytes = og::sim::serialize_lobby_message(message);
+    const std::size_t count_offset = single_bytes.size() - 1;
+    ASSERT_EQ(1u, extra_bytes[count_offset]);
+    extra_bytes[count_offset] = 0xffu;
+    EXPECT_FALSE(og::sim::deserialize_lobby_message(extra_bytes).has_value());
 }
 
 TEST(NetTransport, deserialize_hello_rejects_wrong_size_version_type_and_range)
@@ -2148,7 +2294,7 @@ TEST(NetTransport, game_client_dispatches_callbacks_for_runtime_state)
             initial_setup_transition_flags.push_back(is_level_transition);
         });
     client.set_control_mapping_callback(
-        [&](const std::array<std::uint32_t, MAX_PLAYERS>& controlled_entity_ids,
+        [&](const og::sim::ControlledEntityIds& controlled_entity_ids,
             GameWorld* world) {
             mapped_entity_ids.push_back(controlled_entity_ids[0]);
             walker* const mapped =
@@ -2823,3 +2969,239 @@ TEST(NetTransport, game_client_disconnects_when_server_message_type_is_unknown)
 }
 
 } // namespace
+
+TEST(NetTransport,
+     game_server_multi_seat_peer_routes_inputs_strictly_by_local_slot)
+{
+    TestGameWorld fixture;
+    MockTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+
+    transport.set_connected_peers({7u});
+    server.poll_incoming_messages();
+
+    // Two seats on one peer, deliberately bound to global player indices
+    // (2, 3) that DIFFER from their local slots (0, 1): the legacy
+    // single-active-slot heuristic would look at input slots 2/3 (idle here),
+    // so only strict slot mapping routes these inputs.
+    walker* const seat0_control =
+        fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* const seat1_control =
+        fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, seat0_control);
+    ASSERT_NE(nullptr, seat1_control);
+    seat0_control->setxy(32, 48);
+    seat1_control->setxy(96, 48);
+    seat0_control->set_user(2);
+    seat1_control->set_user(3);
+    seat0_control->set_act_type(ACT_CONTROL);
+    seat1_control->set_act_type(ACT_CONTROL);
+    server.bind_player(7u, 2u, fixture.world().my_team, seat0_control, 0u);
+    server.bind_player(7u, 3u, fixture.world().my_team, seat1_control, 1u);
+    EXPECT_EQ(seat0_control, server.player_control(2u));
+    EXPECT_EQ(seat1_control, server.player_control(3u));
+
+    InputState seats_input;
+    seats_input.players[0].held[static_cast<int>(InputAction::MoveRight)] = true;
+    seats_input.players[1].held[static_cast<int>(InputAction::MoveLeft)] = true;
+    const auto input_bytes = og::sim::serialize_input(1u, seats_input);
+    transport.queue_received(
+        7u,
+        std::vector<std::uint8_t>(input_bytes.begin(), input_bytes.end()));
+    transport.set_connected_peers({});
+
+    server.step();
+
+    // The peer dropped with the input still pending: one DisconnectedPlayer
+    // PER SEAT, sharing the peer's session token, each repeating the held
+    // input of ITS OWN slot.
+    ASSERT_EQ(2u, server.disconnected_players().size());
+    const auto find_seat = [&server](std::size_t player_index)
+        -> const og::sim::DisconnectedPlayer* {
+        for (const auto& entry : server.disconnected_players())
+        {
+            if (entry.player_index == player_index)
+                return &entry;
+        }
+        return nullptr;
+    };
+    const og::sim::DisconnectedPlayer* const seat0 = find_seat(2u);
+    const og::sim::DisconnectedPlayer* const seat1 = find_seat(3u);
+    ASSERT_NE(nullptr, seat0);
+    ASSERT_NE(nullptr, seat1);
+    EXPECT_EQ(0u, seat0->local_slot);
+    EXPECT_EQ(1u, seat1->local_slot);
+    EXPECT_EQ(seat0->session_token, seat1->session_token);
+    EXPECT_TRUE(
+        seat0->repeated_input.held[static_cast<int>(InputAction::MoveRight)]);
+    EXPECT_FALSE(
+        seat0->repeated_input.held[static_cast<int>(InputAction::MoveLeft)]);
+    EXPECT_TRUE(
+        seat1->repeated_input.held[static_cast<int>(InputAction::MoveLeft)]);
+    EXPECT_FALSE(
+        seat1->repeated_input.held[static_cast<int>(InputAction::MoveRight)]);
+
+    // A single hello carrying the shared session token reconnects the peer
+    // and rebinds EVERY seat.
+    const og::sim::SessionToken token = seat0->session_token;
+    transport.set_connected_peers({9u});
+    server.poll_incoming_messages();
+    og::sim::HelloMessage hello;
+    hello.session_token = token;
+    const auto hello_bytes = og::sim::serialize_hello(hello);
+    transport.queue_received(
+        9u,
+        std::vector<std::uint8_t>(hello_bytes.begin(), hello_bytes.end()));
+
+    server.step();
+
+    EXPECT_TRUE(server.disconnected_players().empty());
+    EXPECT_EQ(seat0_control, server.player_control(2u));
+    EXPECT_EQ(seat1_control, server.player_control(3u));
+    EXPECT_EQ(2, static_cast<int>(seat0_control->user()));
+    EXPECT_EQ(3, static_cast<int>(seat1_control->user()));
+}
+
+TEST(NetTransport,
+     game_server_multi_seat_disconnect_drops_all_seats_to_ai_and_reconnects)
+{
+    // A 2-seat machine drops mid-level: after the grace window EVERY seat's
+    // walker must fall to AI (user tag released, act restored), and a single
+    // token reconnect must restore EVERY seat's control.
+    TestGameWorld fixture;
+    MockTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    std::uint64_t now_ms = 1000;
+    server.set_wall_clock_ms_source([&] { return now_ms; });
+
+    transport.set_connected_peers({7u});
+    server.poll_incoming_messages();
+
+    walker* const seat0_control =
+        fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* const seat1_control =
+        fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, seat0_control);
+    ASSERT_NE(nullptr, seat1_control);
+    seat0_control->setxy(32, 48);
+    seat1_control->setxy(96, 48);
+    seat0_control->set_user(2);
+    seat1_control->set_user(3);
+    seat0_control->set_act_type(ACT_CONTROL);
+    seat1_control->set_act_type(ACT_CONTROL);
+    server.bind_player(7u, 2u, fixture.world().my_team, seat0_control, 0u);
+    server.bind_player(7u, 3u, fixture.world().my_team, seat1_control, 1u);
+
+    transport.set_connected_peers({});
+    server.step();
+    ASSERT_EQ(2u, server.disconnected_players().size());
+    // Inside the grace window the seats keep their user claims (the server
+    // repeats each seat's last input).
+    EXPECT_EQ(2, static_cast<int>(seat0_control->user()));
+    EXPECT_EQ(3, static_cast<int>(seat1_control->user()));
+    const og::sim::SessionToken token =
+        server.disconnected_players().front().session_token;
+
+    // Grace expires: EVERY seat's walker drops to AI.
+    now_ms += og::sim::DISCONNECT_TIMEOUT_MS + 1u;
+    server.step();
+    for (const og::sim::DisconnectedPlayer& seat :
+         server.disconnected_players())
+    {
+        EXPECT_TRUE(seat.ai_control_enabled)
+            << "seat player " << seat.player_index;
+    }
+    EXPECT_EQ(-1, static_cast<int>(seat0_control->user()))
+        << "seat 0's walker must be released to AI";
+    EXPECT_EQ(-1, static_cast<int>(seat1_control->user()))
+        << "seat 1's walker must be released to AI";
+
+    // One hello with the shared token restores BOTH seats' controls.
+    transport.set_connected_peers({9u});
+    server.poll_incoming_messages();
+    og::sim::HelloMessage hello;
+    hello.session_token = token;
+    const auto hello_bytes = og::sim::serialize_hello(hello);
+    transport.queue_received(
+        9u,
+        std::vector<std::uint8_t>(hello_bytes.begin(), hello_bytes.end()));
+    server.step();
+
+    EXPECT_TRUE(server.disconnected_players().empty());
+    EXPECT_EQ(seat0_control, server.player_control(2u));
+    EXPECT_EQ(seat1_control, server.player_control(3u));
+    EXPECT_EQ(2, static_cast<int>(seat0_control->user()));
+    EXPECT_EQ(3, static_cast<int>(seat1_control->user()));
+}
+
+TEST(NetTransport,
+     game_server_single_seat_peer_keeps_active_slot_input_heuristic)
+{
+    // The openglad_text / curses shape: a single-binding peer bound to a
+    // NONZERO global player index keeps sending its input in slot 0. The
+    // legacy single-active-slot heuristic must keep routing it — strict
+    // local_slot mapping applies only to multi-binding peers.
+    TestGameWorld fixture;
+    MockTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+
+    transport.set_connected_peers({7u});
+    server.poll_incoming_messages();
+
+    walker* const control =
+        fixture.world().add_ob(Order::Living, FAMILY_SOLDIER);
+    ASSERT_NE(nullptr, control);
+    control->setxy(32, 48);
+    control->set_user(2);
+    control->set_act_type(ACT_CONTROL);
+    server.bind_player(7u, 2u, fixture.world().my_team, control);
+
+    InputState slot0_input;
+    slot0_input.players[0].held[static_cast<int>(InputAction::MoveRight)] = true;
+    const auto input_bytes = og::sim::serialize_input(1u, slot0_input);
+    transport.queue_received(
+        7u,
+        std::vector<std::uint8_t>(input_bytes.begin(), input_bytes.end()));
+    transport.set_connected_peers({});
+
+    server.step();
+
+    // The disconnect snapshot captures the seat's last effective input: the
+    // heuristic must have routed the slot-0 hold onto player_index 2.
+    ASSERT_EQ(1u, server.disconnected_players().size());
+    const og::sim::DisconnectedPlayer& seat =
+        server.disconnected_players().front();
+    EXPECT_EQ(2u, seat.player_index);
+    EXPECT_EQ(0u, seat.local_slot);
+    EXPECT_TRUE(
+        seat.repeated_input.held[static_cast<int>(InputAction::MoveRight)]);
+}
+
+TEST(NetTransport, game_client_control_change_reaches_high_player_indices)
+{
+    MockTransport transport;
+    og::sim::GameClient client(transport, 1u);
+
+    // Global player indices above the per-machine MAX_PLAYERS are valid wire
+    // targets now: index 12 lands in the widened controlled-entity table.
+    transport.queue_received(
+        1u,
+        og::sim::serialize_control_change_message({
+            .player_index = 12u,
+            .entity_id = 777u,
+        }));
+    client.poll_messages();
+
+    EXPECT_EQ(777u, client.controlled_entity_ids()[12]);
+    // ...and an out-of-range index is ignored, not written out of bounds.
+    transport.queue_received(
+        1u,
+        og::sim::serialize_control_change_message({
+            .player_index = static_cast<std::uint8_t>(
+                og::sim::kMaxGlobalPlayers),
+            .entity_id = 888u,
+        }));
+    client.poll_messages();
+    for (const std::uint32_t entity_id : client.controlled_entity_ids())
+        EXPECT_NE(888u, entity_id);
+}

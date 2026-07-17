@@ -90,7 +90,8 @@ og::sim::LobbyMessage make_join_message(
     const SaveData& save,
     std::string_view player_name,
     short local_team,
-    const std::array<bool, MAX_TEAM_SIZE>* excluded_slots);
+    const std::array<bool, MAX_TEAM_SIZE>* excluded_slots,
+    std::size_t seat_count = 1);
 
 int picker_lobby_network_testing_exercise_internal_helpers();
 
@@ -339,6 +340,124 @@ void prepare_allied_join_network_save(SaveData& save)
     save.team_list[2] = std::move(charlie);
 
     save.team_size = static_cast<unsigned char>(1);
+}
+
+void reset_network_save_shell(SaveData& save,
+                              unsigned char numplayers,
+                              short my_team,
+                              short allied_mode)
+{
+    save.reset();
+    save.current_campaign = "org.openglad.gladiator";
+    save.current_levels.clear();
+    save.current_levels[save.current_campaign] = 1;
+    save.scen_num = 1;
+    save.numplayers = numplayers;
+    save.allied_mode = allied_mode;
+    save.my_team = my_team;
+    for (auto& member : save.team_list)
+        member.reset();
+    save.team_size = 0;
+}
+
+void put_named_member(SaveData& save,
+                      std::size_t slot,
+                      const char* name,
+                      short team)
+{
+    auto member = std::make_unique<guy>(FAMILY_SOLDIER);
+    member->name = name;
+    member->teamnum = team;
+    save.team_list[slot] = std::move(member);
+    ++save.team_size;
+}
+
+// The seven-player fixture: each machine's members sit at DISTINCT original
+// save slots (host 0-1, joiner A 2-5, joiner B 6), one member per local seat
+// team, so per-seat owner_save_slot tags never collide across the machines
+// sharing this test process's one save0 file.
+void prepare_seven_player_host_save(SaveData& save)
+{
+    reset_network_save_shell(save, /*numplayers=*/2, /*my_team=*/0,
+                             /*allied_mode=*/1);
+    put_named_member(save, 0, "HostAce", 0);
+    put_named_member(save, 1, "HostBee", 1);
+}
+
+void prepare_seven_player_join_a_save(SaveData& save)
+{
+    reset_network_save_shell(save, /*numplayers=*/4, /*my_team=*/0,
+                             /*allied_mode=*/1);
+    put_named_member(save, 2, "JoinAOne", 0);
+    put_named_member(save, 3, "JoinATwo", 1);
+    put_named_member(save, 4, "JoinAThree", 2);
+    put_named_member(save, 5, "JoinAFour", 3);
+}
+
+void prepare_seven_player_join_b_save(SaveData& save)
+{
+    reset_network_save_shell(save, /*numplayers=*/1, /*my_team=*/0,
+                             /*allied_mode=*/1);
+    put_named_member(save, 6, "JoinBSolo", 0);
+}
+
+// Pre-session save0 for the seven-player run: stale-named members at every
+// slot a machine will merge into. After the win, EVERY stale name must have
+// been overlaid by the session copy — proof each machine persisted ALL of its
+// seats' characters (a machine that merged only seat 0 leaves stale names).
+void write_stale_seven_member_save0()
+{
+    SaveData stale;
+    reset_network_save_shell(stale, /*numplayers=*/2, /*my_team=*/0,
+                             /*allied_mode=*/1);
+    put_named_member(stale, 0, "Stale0", 0);
+    put_named_member(stale, 1, "Stale1", 0);
+    put_named_member(stale, 2, "Stale2", 0);
+    put_named_member(stale, 3, "Stale3", 0);
+    put_named_member(stale, 4, "Stale4", 0);
+    put_named_member(stale, 5, "Stale5", 0);
+    put_named_member(stale, 6, "Stale6", 0);
+    ASSERT_TRUE(stale.save("save0"));
+}
+
+std::uint32_t server_entity_id_for_user(screen& server_screen, int user)
+{
+    for (auto& uptr : server_screen.world().oblist)
+    {
+        walker* const entity = uptr.get();
+        if (entity != nullptr && !entity->dead() &&
+            entity->query_order() == Order::Living &&
+            static_cast<int>(entity->user()) == user)
+        {
+            return entity->entity_id();
+        }
+    }
+    return 0u;
+}
+
+int count_free_team_livings(screen& server_screen, short team)
+{
+    int count = 0;
+    for (auto& uptr : server_screen.world().oblist)
+    {
+        walker* const entity = uptr.get();
+        if (entity != nullptr && !entity->dead() && !entity->dormant() &&
+            entity->query_order() == Order::Living &&
+            entity->team_num() == team && entity->user() == -1)
+        {
+            ++count;
+        }
+    }
+    return count;
+}
+
+InputState make_seat_switch_char_input(std::size_t slot)
+{
+    InputState input{};
+    input.players[slot].held[static_cast<int>(InputAction::SwitchChar)] = true;
+    input.players[slot].pressed[static_cast<int>(InputAction::SwitchChar)] =
+        true;
+    return input;
 }
 
 og::sim::LobbyCharacterData make_lobby_character_data(const guy& source)
@@ -3217,6 +3336,718 @@ TEST(PickerNetworkClient, host_and_join_join_disconnect_between_levels_reconcile
     // The host can still start the next level solo over the surviving connection.
     EXPECT_TRUE(host_client->request_start_game())
         << "the host should still be able to start a level after a peer leaves";
+}
+
+// MULTI-LOCAL-PLAYER HEADLINE: one host machine with TWO local seats plus a
+// joiner with FOUR seats and a joiner with ONE seat — an allied 7-player lobby
+// across 3 physical peers. End-to-end over real websockets: per-seat global
+// player_index allocation, all 7 walkers controlled, strict per-seat input
+// routing (slot k drives ONLY its seat's player), per-machine view counts,
+// per-seat save0 persistence on a win, and seat re-declaration when the lobby
+// resumes over the live connection.
+TEST(PickerNetworkClient,
+     host_two_seats_plus_multi_seat_joiners_run_seven_player_level)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& host_save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard host_save_guard(host_save);
+    PickerRuntimeGuard runtime_guard;
+    GameplayRunGuard gameplay_run_guard;
+    prepare_seven_player_host_save(host_save);
+    g_start_game_requested = false;
+#ifdef TESTING
+    g_test_remove_exits = true; // clearing foes leaves level_done==2 (a win)
+#endif
+    set_game_speed(0.0f);
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    host_client->initialize_from_save();
+
+    og::runtime::GameSession::Config join_cfg;
+    join_cfg.create_display = false;
+    join_cfg.install_legacy_globals = false;
+
+    // Joiner A: FOUR local seats on one connection.
+    og::runtime::GameSession join_a_session(join_cfg);
+    prepare_seven_player_join_a_save(join_a_session.myscreen_->save_data);
+    og::ui::PickerJoinGameOptions join_options;
+    join_options.mode = og::ui::PickerJoinMode::Direct;
+    join_options.direct_endpoint =
+        std::format("127.0.0.1:{}", host_options.port);
+    std::unique_ptr<og::ui::IPickerLobbyClient> join_a_client;
+    {
+        auto join_scope = join_a_session.activate();
+        join_a_client = og::ui::create_join_picker_lobby_client(join_options);
+        join_a_client->initialize_from_save();
+    }
+
+    // Deterministic player_index allocation: wait until joiner A's four seats
+    // landed (6 players) BEFORE joiner B connects.
+    ASSERT_TRUE(wait_until(
+        [&] {
+            host_client->poll_and_apply();
+            {
+                auto join_scope = join_a_session.activate();
+                join_a_client->poll_and_apply();
+            }
+            return status_lines_contain_exact(host_client->status_lines(),
+                                              "Lobby: 6 players");
+        },
+        8s))
+        << "host + 4-seat joiner should converge on a six-player lobby";
+
+    // Joiner B: ONE seat.
+    og::runtime::GameSession join_b_session(join_cfg);
+    prepare_seven_player_join_b_save(join_b_session.myscreen_->save_data);
+    std::unique_ptr<og::ui::IPickerLobbyClient> join_b_client;
+    {
+        auto join_scope = join_b_session.activate();
+        join_b_client = og::ui::create_join_picker_lobby_client(join_options);
+        join_b_client->initialize_from_save();
+    }
+
+    struct CleanupGuard
+    {
+        og::runtime::GameSession* host_session = nullptr;
+        og::runtime::GameSession* join_a_session = nullptr;
+        og::runtime::GameSession* join_b_session = nullptr;
+        og::ui::IPickerLobbyClient* host_client = nullptr;
+        og::ui::IPickerLobbyClient* join_a_client = nullptr;
+        og::ui::IPickerLobbyClient* join_b_client = nullptr;
+
+        static void teardown_join(og::runtime::GameSession* session,
+                                  og::ui::IPickerLobbyClient* client)
+        {
+            if (session == nullptr)
+                return;
+            auto scope = session->activate();
+            og::runtime::clear_local_transport_shadow(*session);
+            if (client != nullptr)
+                client->shutdown();
+            if (session->myscreen_ != nullptr)
+            {
+                for (auto& view : session->myscreen_->viewob)
+                    if (view != nullptr)
+                        view->control = nullptr;
+                session->myscreen_->world().delete_objects();
+            }
+        }
+
+        ~CleanupGuard()
+        {
+            teardown_join(join_b_session, join_b_client);
+            teardown_join(join_a_session, join_a_client);
+            if (host_session != nullptr)
+            {
+                og::runtime::clear_local_transport_shadow(*host_session);
+                if (host_client != nullptr)
+                    host_client->shutdown();
+                if (host_session->myscreen_ != nullptr)
+                {
+                    for (auto& view : host_session->myscreen_->viewob)
+                        if (view != nullptr)
+                            view->control = nullptr;
+                    host_session->myscreen_->world().delete_objects();
+                }
+            }
+        }
+    } cleanup;
+
+    cleanup.host_session = active_game_session();
+    cleanup.join_a_session = &join_a_session;
+    cleanup.join_b_session = &join_b_session;
+    cleanup.host_client = host_client.get();
+    cleanup.join_a_client = join_a_client.get();
+    cleanup.join_b_client = join_b_client.get();
+    ASSERT_NE(nullptr, cleanup.host_session);
+
+    const auto converge_lobby = [&](const char* phase) {
+        ASSERT_TRUE(wait_until(
+            [&] {
+                host_client->poll_and_apply();
+                bool a_ready = false;
+                bool b_ready = false;
+                {
+                    auto join_scope = join_a_session.activate();
+                    join_a_client->poll_and_apply();
+                    a_ready = status_lines_contain_exact(
+                        join_a_client->status_lines(), "Lobby: 7 players");
+                }
+                {
+                    auto join_scope = join_b_session.activate();
+                    join_b_client->poll_and_apply();
+                    b_ready = status_lines_contain_exact(
+                        join_b_client->status_lines(), "Lobby: 7 players");
+                }
+                return status_lines_contain_exact(host_client->status_lines(),
+                                                  "Lobby: 7 players") &&
+                    a_ready && b_ready;
+            },
+            8s))
+            << phase
+            << ": all three machines should converge on a seven-player lobby";
+    };
+    converge_lobby("level 1");
+
+    // Per-seat player_index allocation is (connection order, seat order):
+    // host seats 0-1, joiner A seats 2-5, joiner B seat 6.
+    {
+        const std::vector<og::sim::LobbyPlayer> players =
+            host_client->lobby_players();
+        ASSERT_EQ(7u, players.size());
+        std::set<std::uint8_t> indices;
+        std::size_t derived_seat_names = 0;
+        for (const og::sim::LobbyPlayer& player : players)
+        {
+            indices.insert(player.player_index);
+            if (player.name.find('#') != std::string::npos)
+                ++derived_seat_names;
+        }
+        EXPECT_EQ((std::set<std::uint8_t>{0, 1, 2, 3, 4, 5, 6}), indices);
+        // Seats 1..N-1 of each machine carry derived "base#k" names:
+        // host contributes 1, joiner A 3, joiner B 0.
+        EXPECT_EQ(4u, derived_seat_names);
+    }
+
+    // Pre-session save0: stale names at every slot the machines will merge.
+    write_stale_seven_member_save0();
+
+    // ---- Start level 1. ----
+    ASSERT_TRUE(host_client->request_start_game());
+    ASSERT_TRUE(wait_until(
+        [&] {
+            host_client->poll_and_apply();
+            bool a_handoff = false;
+            bool b_handoff = false;
+            {
+                auto join_scope = join_a_session.activate();
+                join_a_client->poll_and_apply();
+                a_handoff = join_a_client->has_game_start_config();
+            }
+            {
+                auto join_scope = join_b_session.activate();
+                join_b_client->poll_and_apply();
+                b_handoff = join_b_client->has_game_start_config();
+            }
+            return host_client->has_game_start_config() && a_handoff &&
+                b_handoff;
+        },
+        8s))
+        << "all three peers should receive the gameplay handoff";
+
+    // Each machine's config carries its OWN seats from the FINAL state.
+    const auto host_config = host_client->consume_game_start_config();
+    ASSERT_TRUE(host_config.has_value());
+    EXPECT_EQ((std::vector<std::uint8_t>{0, 1}),
+              host_config->local_player_indices);
+    EXPECT_EQ((std::vector<short>{0, 0}), host_config->local_seat_teams)
+        << "allied mode folds every seat to gameplay team 0";
+    EXPECT_EQ(2, static_cast<int>(host_config->save_data.numplayers));
+    {
+        auto host_scope = cleanup.host_session->activate();
+        ActivePickerLobbyClientGuard active_client(host_client.get());
+        ready_screen_for_game_start(
+            *cleanup.host_session->myscreen_, &*host_config);
+        glad_init(false, &*host_config);
+    }
+    {
+        auto join_scope = join_a_session.activate();
+        const auto join_a_config = join_a_client->consume_game_start_config();
+        ASSERT_TRUE(join_a_config.has_value());
+        EXPECT_EQ((std::vector<std::uint8_t>{2, 3, 4, 5}),
+                  join_a_config->local_player_indices);
+        EXPECT_EQ((std::vector<short>{0, 0, 0, 0}),
+                  join_a_config->local_seat_teams);
+        EXPECT_EQ(4, static_cast<int>(join_a_config->save_data.numplayers));
+        ActivePickerLobbyClientGuard active_client(join_a_client.get());
+        ready_screen_for_game_start(*join_a_session.myscreen_, &*join_a_config);
+        glad_init(false, &*join_a_config);
+    }
+    {
+        auto join_scope = join_b_session.activate();
+        const auto join_b_config = join_b_client->consume_game_start_config();
+        ASSERT_TRUE(join_b_config.has_value());
+        EXPECT_EQ((std::vector<std::uint8_t>{6}),
+                  join_b_config->local_player_indices);
+        EXPECT_EQ((std::vector<short>{0}), join_b_config->local_seat_teams);
+        EXPECT_EQ(1, static_cast<int>(join_b_config->save_data.numplayers));
+        ActivePickerLobbyClientGuard active_client(join_b_client.get());
+        ready_screen_for_game_start(*join_b_session.myscreen_, &*join_b_config);
+        glad_init(false, &*join_b_config);
+    }
+
+    // Per-machine view counts follow the machine's LOCAL seat count.
+    EXPECT_EQ(2, static_cast<int>(cleanup.host_session->myscreen_->numviews));
+    EXPECT_EQ(4, static_cast<int>(join_a_session.myscreen_->numviews));
+    EXPECT_EQ(1, static_cast<int>(join_b_session.myscreen_->numviews));
+
+    ASSERT_TRUE(wait_until(
+        [&] {
+            bool host_ready = false;
+            bool a_ready = false;
+            bool b_ready = false;
+            {
+                auto host_scope = cleanup.host_session->activate();
+                og::runtime::local_transport_shadow_finish_tick(
+                    *cleanup.host_session);
+                const og::sim::GameClient* const dc =
+                    cleanup.host_session->myscreen_
+                        ->render_interpolation_client();
+                host_ready = dc != nullptr && dc->baseline().has_value();
+            }
+            {
+                auto join_scope = join_a_session.activate();
+                og::runtime::local_transport_shadow_finish_tick(join_a_session);
+                const og::sim::GameClient* const dc =
+                    join_a_session.myscreen_->render_interpolation_client();
+                a_ready = dc != nullptr && dc->baseline().has_value();
+            }
+            {
+                auto join_scope = join_b_session.activate();
+                og::runtime::local_transport_shadow_finish_tick(join_b_session);
+                const og::sim::GameClient* const dc =
+                    join_b_session.myscreen_->render_interpolation_client();
+                b_ready = dc != nullptr && dc->baseline().has_value();
+            }
+            return host_ready && a_ready && b_ready;
+        },
+        10s))
+        << "all three runtimes should receive their initial snapshots";
+
+    screen* const server_screen =
+        og::runtime::local_transport_shadow_testing_server_screen(
+            *cleanup.host_session);
+    ASSERT_NE(nullptr, server_screen);
+
+    // All 7 global players hold a distinct living walker on the server, and
+    // the host display's controlled-ids table mirrors the same mapping.
+    const auto host_display_controlled_id =
+        [&](std::size_t player) -> std::uint32_t {
+        auto host_scope = cleanup.host_session->activate();
+        const og::sim::GameClient* const dc =
+            cleanup.host_session->myscreen_->render_interpolation_client();
+        return dc != nullptr ? dc->controlled_entity_ids()[player] : 0u;
+    };
+    std::array<std::uint32_t, 7> controlled_before{};
+    {
+        auto host_scope = cleanup.host_session->activate();
+        std::set<std::uint32_t> distinct;
+        for (int player = 0; player < 7; ++player)
+        {
+            controlled_before[static_cast<std::size_t>(player)] =
+                server_entity_id_for_user(*server_screen, player);
+            ASSERT_NE(0u, controlled_before[static_cast<std::size_t>(player)])
+                << "global player " << player
+                << " must control a living server walker";
+            distinct.insert(controlled_before[static_cast<std::size_t>(player)]);
+        }
+        EXPECT_EQ(7u, distinct.size());
+    }
+    for (int player = 0; player < 7; ++player)
+    {
+        EXPECT_EQ(controlled_before[static_cast<std::size_t>(player)],
+                  host_display_controlled_id(static_cast<std::size_t>(player)))
+            << "host display mapping for global player " << player;
+    }
+
+    // Every machine's display maps view i to ITS seat's global player index.
+    const auto check_display_mapping =
+        [&](og::runtime::GameSession& session,
+            const std::vector<std::uint8_t>& seat_indices,
+            const char* who) {
+            auto scope = session.activate();
+            const og::sim::GameClient* const dc =
+                session.myscreen_->render_interpolation_client();
+            ASSERT_NE(nullptr, dc) << who;
+            for (std::size_t seat = 0; seat < seat_indices.size(); ++seat)
+            {
+                const std::size_t player =
+                    static_cast<std::size_t>(seat_indices[seat]);
+                EXPECT_EQ(controlled_before[player],
+                          dc->controlled_entity_ids()[player])
+                    << who << " seat " << seat;
+                ASSERT_NE(nullptr, session.myscreen_->viewob[seat]) << who;
+                EXPECT_EQ(0, static_cast<int>(
+                                 session.myscreen_->viewob[seat]->my_team))
+                    << who << " seat " << seat
+                    << ": allied fold stamps every view team 0";
+            }
+        };
+    check_display_mapping(*cleanup.host_session, {0, 1}, "host");
+    check_display_mapping(join_a_session, {2, 3, 4, 5}, "joiner A");
+    check_display_mapping(join_b_session, {6}, "joiner B");
+
+    // ---- Per-seat input routing. ----
+    const InputState neutral{};
+    std::uint32_t pump_tick = 1;
+    const auto drive_three_tick = [&](const InputState& host_input,
+                                      const InputState& a_input,
+                                      const InputState& b_input) -> bool {
+        const std::uint32_t tick = pump_tick++;
+        {
+            auto host_scope = cleanup.host_session->activate();
+            og::runtime::local_transport_shadow_send_input(
+                *cleanup.host_session, host_input, tick);
+        }
+        {
+            auto join_scope = join_a_session.activate();
+            og::runtime::local_transport_shadow_send_input(
+                join_a_session, a_input, tick);
+        }
+        {
+            auto join_scope = join_b_session.activate();
+            og::runtime::local_transport_shadow_send_input(
+                join_b_session, b_input, tick);
+        }
+        return wait_until(
+            [&] {
+                bool host_ready = false;
+                bool a_ready = false;
+                bool b_ready = false;
+                {
+                    auto host_scope = cleanup.host_session->activate();
+                    og::runtime::local_transport_shadow_finish_tick(
+                        *cleanup.host_session);
+                    const og::sim::GameClient* const dc =
+                        cleanup.host_session->myscreen_
+                            ->render_interpolation_client();
+                    host_ready = dc != nullptr &&
+                        dc->last_seen_server_tick() >= tick;
+                }
+                {
+                    auto join_scope = join_a_session.activate();
+                    og::runtime::local_transport_shadow_finish_tick(
+                        join_a_session);
+                    const og::sim::GameClient* const dc =
+                        join_a_session.myscreen_->render_interpolation_client();
+                    a_ready = dc != nullptr &&
+                        dc->last_seen_server_tick() >= tick;
+                }
+                {
+                    auto join_scope = join_b_session.activate();
+                    og::runtime::local_transport_shadow_finish_tick(
+                        join_b_session);
+                    const og::sim::GameClient* const dc =
+                        join_b_session.myscreen_->render_interpolation_client();
+                    b_ready = dc != nullptr &&
+                        dc->last_seen_server_tick() >= tick;
+                }
+                return host_ready && a_ready && b_ready;
+            },
+            8s);
+    };
+
+    // Level 1 fields at least one unclaimed team-0 living even with all 7
+    // seats bound, so a SwitchChar has somewhere to go.
+    {
+        auto host_scope = cleanup.host_session->activate();
+        ASSERT_GE(count_free_team_livings(*server_screen, 0), 1)
+            << "level 1 must keep a free team-0 walker after 7 claims";
+    }
+
+    // Joiner A's LOCAL slot 2 presses SwitchChar: ONLY global player 4 (its
+    // seat 2) may change controls. Under the legacy single-active-slot
+    // heuristic this input would drive the wrong seat; strict per-slot
+    // routing is the contract here.
+    ASSERT_TRUE(drive_three_tick(
+        neutral, make_seat_switch_char_input(2), neutral));
+    ASSERT_TRUE(drive_three_tick(neutral, neutral, neutral));
+    std::uint32_t player4_after = controlled_before[4];
+    for (int round = 0; round < 20; ++round)
+    {
+        player4_after = host_display_controlled_id(4);
+        if (player4_after != 0u && player4_after != controlled_before[4])
+            break;
+        ASSERT_TRUE(drive_three_tick(neutral, neutral, neutral));
+    }
+    EXPECT_NE(controlled_before[4], player4_after)
+        << "joiner A's slot-2 switch must drive its seat 2 (global player 4)";
+    EXPECT_NE(0u, player4_after);
+    for (const int player : {0, 1, 2, 3, 5, 6})
+    {
+        EXPECT_EQ(controlled_before[static_cast<std::size_t>(player)],
+                  host_display_controlled_id(static_cast<std::size_t>(player)))
+            << "global player " << player
+            << " must be untouched by joiner A's slot-2 input";
+    }
+
+    // The host's LOCAL slot 1 presses SwitchChar: ONLY global player 1 (its
+    // second seat) may change controls.
+    std::array<std::uint32_t, 7> controlled_mid{};
+    for (int player = 0; player < 7; ++player)
+    {
+        controlled_mid[static_cast<std::size_t>(player)] =
+            host_display_controlled_id(static_cast<std::size_t>(player));
+    }
+    ASSERT_TRUE(drive_three_tick(
+        make_seat_switch_char_input(1), neutral, neutral));
+    ASSERT_TRUE(drive_three_tick(neutral, neutral, neutral));
+    std::uint32_t player1_after = controlled_mid[1];
+    for (int round = 0; round < 20; ++round)
+    {
+        player1_after = host_display_controlled_id(1);
+        if (player1_after != 0u && player1_after != controlled_mid[1])
+            break;
+        ASSERT_TRUE(drive_three_tick(neutral, neutral, neutral));
+    }
+    EXPECT_NE(controlled_mid[1], player1_after)
+        << "the host's slot-1 switch must drive its seat 1 (global player 1)";
+    EXPECT_NE(0u, player1_after);
+    for (const int player : {0, 2, 3, 4, 5, 6})
+    {
+        EXPECT_EQ(controlled_mid[static_cast<std::size_t>(player)],
+                  host_display_controlled_id(static_cast<std::size_t>(player)))
+            << "global player " << player
+            << " must be untouched by the host's slot-1 input";
+    }
+
+    // ---- Force a deterministic WIN and let every display session end. ----
+    {
+        auto host_scope = cleanup.host_session->activate();
+        const unsigned char my_team =
+            static_cast<unsigned char>(server_screen->world().my_team);
+        std::size_t killed = 0;
+        for (auto& uptr : server_screen->world().oblist)
+        {
+            walker* const entity = uptr.get();
+            if (entity != nullptr && !entity->dead() &&
+                entity->is_friendly_to_team(my_team) == 0)
+            {
+                entity->set_dead(1);
+                ++killed;
+            }
+        }
+        EXPECT_GT(killed, 0u) << "level 1 should contain foes to clear";
+    }
+
+    const auto peer_finished = [&](og::runtime::GameSession& session) -> bool {
+        auto scope = session.activate();
+        return session.myscreen_->world().end != 0;
+    };
+    const auto pump = [&](int iterations) {
+        for (int i = 0; i < iterations; ++i, ++pump_tick)
+        {
+            {
+                auto host_scope = cleanup.host_session->activate();
+                og::runtime::local_transport_shadow_send_input(
+                    *cleanup.host_session, neutral, pump_tick);
+                og::runtime::local_transport_shadow_finish_tick(
+                    *cleanup.host_session);
+            }
+            {
+                auto join_scope = join_a_session.activate();
+                og::runtime::local_transport_shadow_send_input(
+                    join_a_session, neutral, pump_tick);
+                og::runtime::local_transport_shadow_finish_tick(join_a_session);
+            }
+            {
+                auto join_scope = join_b_session.activate();
+                og::runtime::local_transport_shadow_send_input(
+                    join_b_session, neutral, pump_tick);
+                og::runtime::local_transport_shadow_finish_tick(join_b_session);
+            }
+        }
+    };
+    bool all_ended = false;
+    for (int round = 0; round < 120 && !all_ended; ++round)
+    {
+        pump(5);
+        all_ended = peer_finished(*cleanup.host_session) &&
+            peer_finished(join_a_session) && peer_finished(join_b_session);
+    }
+    ASSERT_TRUE(all_ended)
+        << "a networked win must end ALL three machines' display sessions";
+
+    // The networked roster advanced to level 2.
+    {
+        SaveData netsession;
+        ASSERT_EQ(SaveDataIoError::None,
+                  netsession.load_with_error("netsession"));
+        EXPECT_EQ(2, static_cast<int>(netsession.scen_num));
+        EXPECT_TRUE(netsession.is_level_completed(1));
+    }
+
+    // Per-seat save0 persistence: every machine merged ALL of its seats'
+    // characters into its save0 (this process's shared save0 file receives
+    // all three machines' merges at distinct slots), overwriting every stale
+    // pre-session name.
+    {
+        SaveData merged;
+        ASSERT_EQ(SaveDataIoError::None, merged.load_with_error("save0"));
+        EXPECT_EQ(7, static_cast<int>(merged.team_size));
+        EXPECT_EQ(2, static_cast<int>(merged.scen_num))
+            << "each machine's save0 cursor advances as if played alone";
+        for (const char* const name :
+             {"HostAce", "HostBee", "JoinAOne", "JoinATwo", "JoinAThree",
+              "JoinAFour", "JoinBSolo"})
+        {
+            EXPECT_TRUE(save_contains_named_member(merged, name))
+                << name << " must have been merged into save0 by its machine";
+        }
+        for (const auto& member : merged.team_list)
+        {
+            if (member != nullptr)
+            {
+                EXPECT_TRUE(member->name.rfind("Stale", 0) != 0)
+                    << "stale pre-session member '" << member->name
+                    << "' should have been overlaid by a per-seat merge";
+            }
+        }
+    }
+
+    // ---- Return to the lobby over the LIVE connections: every machine
+    // re-declares its full seat list. ----
+    {
+        auto host_scope = cleanup.host_session->activate();
+        og::runtime::clear_local_transport_shadow(*cleanup.host_session);
+        ActivePickerLobbyClientGuard active_client(host_client.get());
+        host_client->resume_after_level();
+    }
+    {
+        auto join_scope = join_a_session.activate();
+        og::runtime::clear_local_transport_shadow(join_a_session);
+        ActivePickerLobbyClientGuard active_client(join_a_client.get());
+        join_a_client->resume_after_level();
+    }
+    {
+        auto join_scope = join_b_session.activate();
+        og::runtime::clear_local_transport_shadow(join_b_session);
+        ActivePickerLobbyClientGuard active_client(join_b_client.get());
+        join_b_client->resume_after_level();
+    }
+
+    converge_lobby("post-level resume");
+    {
+        const std::vector<og::sim::LobbyPlayer> players =
+            host_client->lobby_players();
+        ASSERT_EQ(7u, players.size())
+            << "every machine must re-declare its full seat list on resume";
+        std::set<std::uint8_t> indices;
+        for (const og::sim::LobbyPlayer& player : players)
+            indices.insert(player.player_index);
+        EXPECT_EQ((std::set<std::uint8_t>{0, 1, 2, 3, 4, 5, 6}), indices);
+    }
+    EXPECT_EQ(2, static_cast<int>(host_save.scen_num))
+        << "the host's advanced campaign cursor survives the resume";
+}
+
+// PVP rules cap: in a NON-allied classic lobby teams stay exclusive, so a
+// joiner requesting more seats than there are free teams is truncated to the
+// available count — and the client adopts the authoritative seat count
+// without desyncing.
+TEST(PickerNetworkClient,
+     pvp_lobby_truncates_joiner_seats_beyond_free_teams)
+{
+    IxNetSystemScope net_system;
+
+    SaveData& host_save = og::runtime::current_session->myscreen_->save_data;
+    PickerSaveStateGuard host_save_guard(host_save);
+    PickerRuntimeGuard runtime_guard;
+    // Host: ONE seat on team 0, allied_mode 0 (exclusive teams).
+    reset_network_save_shell(host_save, /*numplayers=*/1, /*my_team=*/0,
+                             /*allied_mode=*/0);
+    put_named_member(host_save, 0, "PvpHost", 0);
+    g_start_game_requested = false;
+
+    og::ui::PickerHostGameOptions host_options;
+    host_options.port = ix::getFreePort();
+    auto host_client = og::ui::create_host_picker_lobby_client(host_options);
+    host_client->initialize_from_save();
+
+    og::runtime::GameSession::Config join_cfg;
+    join_cfg.create_display = false;
+    join_cfg.install_legacy_globals = false;
+    og::runtime::GameSession join_session(join_cfg);
+    {
+        SaveData& join_save = join_session.myscreen_->save_data;
+        // Joiner asks for FOUR seats, but only teams 1..3 are free: the seat
+        // requesting team 0 (held exclusively by the host) must be dropped.
+        reset_network_save_shell(join_save, /*numplayers=*/4, /*my_team=*/1,
+                                 /*allied_mode=*/0);
+        put_named_member(join_save, 0, "PvpJoinOne", 1);
+        put_named_member(join_save, 1, "PvpJoinTwo", 2);
+        put_named_member(join_save, 2, "PvpJoinThree", 3);
+        put_named_member(join_save, 3, "PvpJoinFour", 0);
+    }
+
+    og::ui::PickerJoinGameOptions join_options;
+    join_options.mode = og::ui::PickerJoinMode::Direct;
+    join_options.direct_endpoint =
+        std::format("127.0.0.1:{}", host_options.port);
+    std::unique_ptr<og::ui::IPickerLobbyClient> join_client;
+    {
+        auto join_scope = join_session.activate();
+        join_client = og::ui::create_join_picker_lobby_client(join_options);
+        join_client->initialize_from_save();
+    }
+
+    struct CleanupGuard
+    {
+        og::runtime::GameSession* join_session = nullptr;
+        og::ui::IPickerLobbyClient* host_client = nullptr;
+        og::ui::IPickerLobbyClient* join_client = nullptr;
+
+        ~CleanupGuard()
+        {
+            if (join_session != nullptr)
+            {
+                auto join_scope = join_session->activate();
+                if (join_client != nullptr)
+                    join_client->shutdown();
+            }
+            if (host_client != nullptr)
+                host_client->shutdown();
+        }
+    } cleanup;
+    cleanup.join_session = &join_session;
+    cleanup.host_client = host_client.get();
+    cleanup.join_client = join_client.get();
+
+    // The lobby settles on FOUR players total (1 host + 3 truncated seats).
+    ASSERT_TRUE(wait_until(
+        [&] {
+            host_client->poll_and_apply();
+            bool join_ready = false;
+            {
+                auto join_scope = join_session.activate();
+                join_client->poll_and_apply();
+                join_ready = status_lines_contain_exact(
+                    join_client->status_lines(), "Lobby: 4 players");
+            }
+            return status_lines_contain_exact(host_client->status_lines(),
+                                              "Lobby: 4 players") &&
+                join_ready;
+        },
+        8s))
+        << "the PVP lobby must settle on 4 players (joiner truncated to 3)";
+
+    // The joiner adopted the authoritative count: 3 seats, not 4.
+    EXPECT_EQ(3, static_cast<int>(
+                     join_session.myscreen_->save_data.numplayers))
+        << "the joiner must adopt the truncated seat count";
+
+    // Teams are exclusive and fully occupied: indices 0..3 across 4 distinct
+    // teams, with exactly two derived seat names (joiner seats #1 and #2).
+    const std::vector<og::sim::LobbyPlayer> players =
+        host_client->lobby_players();
+    ASSERT_EQ(4u, players.size());
+    std::set<std::uint8_t> indices;
+    std::set<std::int16_t> teams;
+    std::size_t derived_seat_names = 0;
+    for (const og::sim::LobbyPlayer& player : players)
+    {
+        indices.insert(player.player_index);
+        teams.insert(player.team);
+        if (player.name.find('#') != std::string::npos)
+            ++derived_seat_names;
+    }
+    EXPECT_EQ((std::set<std::uint8_t>{0, 1, 2, 3}), indices);
+    EXPECT_EQ(4u, teams.size()) << "PVP seats must land on distinct teams";
+    EXPECT_EQ(2u, derived_seat_names)
+        << "the joiner's kept seats are its first three (gap-free names)";
 }
 
 // A CLIENT choosing "Quit this mission" must withdraw ALL players (everyone

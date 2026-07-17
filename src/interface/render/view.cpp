@@ -22,6 +22,7 @@
 
 #include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/web_back_key.h>
 #include <openglad/interface/cheat_handler.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/core/colors.h>
@@ -2837,7 +2838,10 @@ void viewscreen::view_key_bindings()
 	keytext.write_xy(165, 117, "Options: 1", static_cast<unsigned char>(BLACK), 1);
 	keytext.write_xy(165, 129, "Help: Shift+/", static_cast<unsigned char>(BLACK), 1);
 
-	keytext.write_xy(95, 160, "Press ESC to return", static_cast<unsigned char>(RED), 1);
+	keytext.write_xy(95, 160,
+	                 og::input::kWebBackKeyMode ? "Press BACKSPACE to return"
+	                                            : "Press ESC to return",
+	                 static_cast<unsigned char>(RED), 1);
 
 	active_screen()->buffer_to_screen(0, 0, 320, 200);
 

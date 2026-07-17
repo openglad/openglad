@@ -347,7 +347,8 @@ int main(int argc, char* argv[])
             game_server.bind_player(binding.peer_id,
                                     binding.player_index,
                                     static_cast<short>(binding.team),
-                                    nullptr);
+                                    nullptr,
+                                    binding.local_slot);
         }
 
         game_server.on_save_sync = [&active_save, &level_data] {

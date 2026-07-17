@@ -1,266 +1,156 @@
 import { GameRoom } from "./game-room";
+import { RoomRegistry } from "./registry";
 import {
-  CREATE_RATE_LIMIT_MAX_ROOMS,
-  CREATE_RATE_LIMIT_WINDOW_SECONDS,
-  ROOM_INDEX_PREFIX,
-  ROOM_INDEX_TTL_SECONDS,
+  REGISTRY_INSTANCE_NAME,
   clientIpFromRequest,
-  createRateLimitKey,
   emptyResponse,
   generateOwnerToken,
   generateRoomCode,
   isValidRoomCode,
   jsonResponse,
-  makeRoomInfo,
   normalizeRoomCode,
-  parseRoomInfo,
-  roomIndexKey,
-  roomOwnerKey,
   textResponse,
 } from "./shared";
-import type { Env, RoomInfo } from "./types";
+import type { Env } from "./types";
 
-interface CreateRateLimitState {
-  count: number;
-  window_started_at: number;
-}
+const ROOM_CODE_ALLOCATION_ATTEMPTS = 8;
 
-interface InitializeRoomPayload {
-  code: string;
-  campaign_hash: string;
-  campaign_name: string;
-  host_name: string;
-  created_at: number;
-  owner_token: string;
-}
-
-function roomKvExpiration(createdAtMs: number): number {
-  return Math.ceil(createdAtMs / 1_000) + ROOM_INDEX_TTL_SECONDS;
-}
-
-function parseCreateRateLimitState(raw: string | null): CreateRateLimitState | null {
-  if (!raw) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(raw) as Partial<CreateRateLimitState>;
-    if (
-      typeof parsed.count !== "number" ||
-      !Number.isFinite(parsed.count) ||
-      typeof parsed.window_started_at !== "number" ||
-      !Number.isFinite(parsed.window_started_at)
-    ) {
-      return null;
-    }
-
-    return {
-      count: parsed.count,
-      window_started_at: parsed.window_started_at,
-    };
-  } catch {
-    return null;
-  }
-}
-
-async function enforceCreateRoomRateLimit(
-  env: Env,
-  request: Request,
-): Promise<Response | null> {
-  const clientIp = clientIpFromRequest(request);
-  const key = createRateLimitKey(clientIp);
-  const now = Date.now();
-  const existing = parseCreateRateLimitState(await env.ROOM_INDEX.get(key));
-
-  let count = existing?.count ?? 0;
-  let windowStartedAt = existing?.window_started_at ?? now;
-  if (now - windowStartedAt >= CREATE_RATE_LIMIT_WINDOW_SECONDS * 1_000) {
-    count = 0;
-    windowStartedAt = now;
-  }
-
-  if (count >= CREATE_RATE_LIMIT_MAX_ROOMS) {
-    return textResponse("Rate limit exceeded", { status: 429 });
-  }
-
-  await env.ROOM_INDEX.put(
-    key,
-    JSON.stringify({
-      count: count + 1,
-      window_started_at: windowStartedAt,
-    } satisfies CreateRateLimitState),
-    {
-      expirationTtl: CREATE_RATE_LIMIT_WINDOW_SECONDS,
-    },
+function registryStub(env: Env): DurableObjectStub {
+  return env.ROOM_REGISTRY.get(
+    env.ROOM_REGISTRY.idFromName(REGISTRY_INSTANCE_NAME),
   );
-
-  // KV offers no atomic increment, so the read-check-write above is a TOCTOU:
-  // concurrent requests from one IP can all observe a stale count before any
-  // commits. Re-read the committed counter as a best-effort reconciliation and
-  // reject the losers of such a race once the persisted count for this window
-  // exceeds the cap. This is a strict no-op for legitimate sequential traffic
-  // (the committed count then never exceeds the limit) and only adds rejections
-  // when a concurrency burst has pushed the stored count past the bound.
-  const committed = parseCreateRateLimitState(await env.ROOM_INDEX.get(key));
-  if (
-    committed &&
-    committed.window_started_at === windowStartedAt &&
-    committed.count > CREATE_RATE_LIMIT_MAX_ROOMS
-  ) {
-    return textResponse("Rate limit exceeded", { status: 429 });
-  }
-
-  return null;
 }
 
+/**
+ * POST /api/create?campaign=<hash>&campaign_name=<name>&host=<host name>
+ *   -> 200 {"room_code": "GLAD-XXXX", "code": "GLAD-XXXX", "owner_token": "..."}
+ *
+ * The C++ parser (parse_relay_room_create_response_impl) accepts either
+ * "code" or "room_code"; both are provided. The reference stub uses
+ * "room_code".
+ */
 async function createRoom(env: Env, request: Request): Promise<Response> {
   const url = new URL(request.url);
   const campaignHash = url.searchParams.get("campaign") ?? "";
   const campaignName = url.searchParams.get("campaign_name") ?? campaignHash;
   const hostName = url.searchParams.get("host") ?? "";
 
-  const rateLimitResponse = await enforceCreateRoomRateLimit(env, request);
-  if (rateLimitResponse) {
-    return rateLimitResponse;
-  }
-
-  for (let attempt = 0; attempt < 10; ++attempt) {
-    const code = generateRoomCode();
-    const key = roomIndexKey(code);
-    if (await env.ROOM_INDEX.get(key)) {
-      continue;
-    }
-    const ownerToken = generateOwnerToken();
-
-    const roomInfo = makeRoomInfo({
-      code,
-      campaign_hash: campaignHash,
-      campaign_name: campaignName,
-      host_name: hostName,
-      player_count: 0,
-    });
-
-    const initialized = await initializeRoomDurableObject(
-      env,
-      {
-        code: roomInfo.code,
-        campaign_hash: roomInfo.campaign_hash,
-        campaign_name: roomInfo.campaign_name,
-        host_name: roomInfo.host_name,
-        created_at: roomInfo.created_at,
-        owner_token: ownerToken,
-      },
-    );
-    if (!initialized) {
-      continue;
-    }
-
-    await env.ROOM_INDEX.put(key, JSON.stringify(roomInfo), {
-      expiration: roomKvExpiration(roomInfo.created_at),
-    });
-    await env.ROOM_INDEX.put(roomOwnerKey(code), ownerToken, {
-      expiration: roomKvExpiration(roomInfo.created_at),
-    });
-
-    return jsonResponse({
-      code,
-      owner_token: ownerToken,
-      room: roomInfo,
-    });
-  }
-
-  return textResponse("Unable to allocate a room code", {
-    status: 503,
-  });
-}
-
-async function initializeRoomDurableObject(
-  env: Env,
-  payload: InitializeRoomPayload,
-): Promise<boolean> {
-  const id = env.GAME_ROOM.idFromName(payload.code);
-  const room = env.GAME_ROOM.get(id);
-  const response = await room.fetch(
-    new Request("https://relay.internal/internal/initialize", {
+  const limitResponse = await registryStub(env).fetch(
+    new Request("https://relay.internal/internal/create-limit", {
       method: "POST",
-      headers: {
-        "content-type": "application/json; charset=utf-8",
-      },
-      body: JSON.stringify(payload),
+      headers: { "content-type": "application/json; charset=utf-8" },
+      body: JSON.stringify({ ip: clientIpFromRequest(request) }),
     }),
   );
-
-  if (response.ok) {
-    return true;
+  if (limitResponse.status === 429) {
+    return textResponse("Rate limit exceeded", { status: 429 });
   }
-  if (response.status === 409) {
-    return false;
+  if (!limitResponse.ok && limitResponse.status !== 204) {
+    return textResponse("Room creation is unavailable", { status: 503 });
   }
 
-  throw new Error(
-    `Failed to initialize room ${payload.code} (${response.status})`,
-  );
+  for (let attempt = 0; attempt < ROOM_CODE_ALLOCATION_ATTEMPTS; ++attempt) {
+    const code = generateRoomCode();
+    const ownerToken = generateOwnerToken();
+
+    const room = env.GAME_ROOM.get(env.GAME_ROOM.idFromName(code));
+    const initResponse = await room.fetch(
+      new Request("https://relay.internal/internal/initialize", {
+        method: "POST",
+        headers: { "content-type": "application/json; charset=utf-8" },
+        body: JSON.stringify({
+          code,
+          campaign_hash: campaignHash,
+          campaign_name: campaignName,
+          host_name: hostName,
+          owner_token: ownerToken,
+        }),
+      }),
+    );
+    if (initResponse.status === 409) {
+      continue; // Code collision with a live room; try another code.
+    }
+    if (!initResponse.ok) {
+      return textResponse("Room creation failed", { status: 502 });
+    }
+
+    // Seed the listing entry (player_count 0 keeps it hidden until the owner
+    // connects; the room durable object takes over updates from here).
+    await registryStub(env).fetch(
+      new Request("https://relay.internal/internal/upsert", {
+        method: "POST",
+        headers: { "content-type": "application/json; charset=utf-8" },
+        body: JSON.stringify({
+          code,
+          campaign_hash: campaignHash.trim().slice(0, 128),
+          campaign_name: campaignName.trim().slice(0, 128),
+          host_name: hostName.trim().slice(0, 64),
+          player_count: 0,
+          created_at: Date.now(),
+        }),
+      }),
+    );
+
+    return jsonResponse({
+      room_code: code,
+      code,
+      owner_token: ownerToken,
+    });
+  }
+
+  return textResponse("Unable to allocate a room code", { status: 503 });
 }
 
+/** GET /api/rooms[?campaign=<hash>] -> 200 JSON array of joinable rooms. */
 async function listRooms(env: Env, request: Request): Promise<Response> {
   const url = new URL(request.url);
   const campaignFilter = url.searchParams.get("campaign");
+  const listUrl = new URL("https://relay.internal/internal/list");
+  if (campaignFilter) {
+    listUrl.searchParams.set("campaign", campaignFilter);
+  }
 
-  // Bound the per-request KV fan-out so a public, unauthenticated listing can
-  // never amplify a single GET into an unbounded number of KV get() subrequests
-  // regardless of how many room: keys exist. We never loop the list cursor and
-  // hard-cap the number of keys we resolve.
-  const LIST_ROOMS_MAX_KEYS = 100;
-  const listResult = await env.ROOM_INDEX.list({
-    prefix: ROOM_INDEX_PREFIX,
-    limit: LIST_ROOMS_MAX_KEYS,
-  });
-  const boundedKeys = listResult.keys.slice(0, LIST_ROOMS_MAX_KEYS);
-  const rooms = (
-    await Promise.all(
-      boundedKeys.map(async ({ name }) => {
-        const parsed = parseRoomInfo(await env.ROOM_INDEX.get(name));
-        if (!parsed) {
-          return null;
-        }
-        if (parsed.player_count <= 0) {
-          return null;
-        }
-        if (campaignFilter && parsed.campaign_hash !== campaignFilter) {
-          return null;
-        }
-        return parsed;
-      }),
-    )
-  )
-    .filter((room): room is RoomInfo => room !== null)
-    .sort((left, right) => right.created_at - left.created_at);
-
-  return jsonResponse(rooms);
+  const listResponse = await registryStub(env).fetch(new Request(listUrl));
+  if (!listResponse.ok) {
+    return textResponse("Room listing is unavailable", { status: 503 });
+  }
+  return jsonResponse(await listResponse.json());
 }
 
-async function connectRoom(env: Env, request: Request, code: string): Promise<Response> {
+/** WebSocket upgrade on /api/room/<CODE>[?owner_token=...]. Unknown rooms are
+ *  refused with HTTP 404 (the browser then never fires the WS open event —
+ *  same shape as relay_stub.js 'reject'). */
+async function connectRoom(
+  env: Env,
+  request: Request,
+  rawCode: string,
+): Promise<Response> {
   if (request.method !== "GET") {
     return textResponse("Method not allowed", { status: 405 });
   }
-  const url = new URL(request.url);
-  const normalizedCode = normalizeRoomCode(code);
-  if (!isValidRoomCode(normalizedCode)) {
+
+  let decodedCode = rawCode;
+  try {
+    decodedCode = decodeURIComponent(rawCode);
+  } catch {
+    return textResponse("Invalid room code", { status: 400 });
+  }
+  const code = normalizeRoomCode(decodedCode);
+  if (!isValidRoomCode(code)) {
     return textResponse("Invalid room code", { status: 400 });
   }
 
-  const requestOwnerToken = url.searchParams.get("owner_token") ?? "";
+  const url = new URL(request.url);
+  const ownerToken = url.searchParams.get("owner_token") ?? "";
 
-  const id = env.GAME_ROOM.idFromName(normalizedCode);
-  const room = env.GAME_ROOM.get(id);
+  const room = env.GAME_ROOM.get(env.GAME_ROOM.idFromName(code));
   const headers = new Headers(request.headers);
-  headers.set("x-openglad-room-code", normalizedCode);
-  headers.set("x-openglad-connecting-owner-token", requestOwnerToken);
-
+  headers.set("x-openglad-room-code", code);
+  headers.set("x-openglad-connecting-owner-token", ownerToken);
   return room.fetch(new Request(request, { headers }));
 }
 
-export { GameRoom };
+export { GameRoom, RoomRegistry };
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -288,6 +178,10 @@ export default {
       return connectRoom(env, request, url.pathname.slice("/api/room/".length));
     }
 
-    return textResponse("OpenGlad Relay");
+    if (url.pathname === "/") {
+      return textResponse("OpenGlad Relay");
+    }
+
+    return textResponse("Not found", { status: 404 });
   },
 } satisfies ExportedHandler<Env>;

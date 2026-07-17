@@ -391,8 +391,7 @@ GameClient::GameClient(ITransport& transport,
 }
 
 void GameClient::set_control_mapping_callback(
-    std::function<void(const std::array<std::uint32_t, MAX_PLAYERS>&,
-                       GameWorld*)> callback)
+    std::function<void(const ControlledEntityIds&, GameWorld*)> callback)
 {
     control_mapping_callback_ = std::move(callback);
 }

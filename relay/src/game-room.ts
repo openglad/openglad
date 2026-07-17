@@ -1,44 +1,72 @@
 import { DurableObject } from "cloudflare:workers";
 
 import {
-  EMPTY_ROOM_GRACE_MS,
-  MAX_RELAY_PAYLOAD_BYTES,
-  MAX_RELAY_JSON_MESSAGE_BYTES,
+  DEFAULT_EMPTY_ROOM_TTL_MS,
+  MAX_BROADCAST_FRAME_BYTES,
+  MAX_INBOUND_BINARY_FRAME_BYTES,
+  MAX_INBOUND_TEXT_MESSAGE_BYTES,
   MAX_ROOM_PEERS,
+  MESSAGE_RATE_LIMIT_MAX_BYTES,
   MESSAGE_RATE_LIMIT_MAX_MESSAGES,
   MESSAGE_RATE_LIMIT_WINDOW_MS,
-  ROOM_INDEX_TTL_SECONDS,
+  OWNER_CONNECT_GRACE_MS,
+  REGISTRY_HEARTBEAT_MS,
+  REGISTRY_INSTANCE_NAME,
   RELAY_BROADCAST_TAG,
+  RELAY_PEER_HEADER_SIZE,
   RELAY_TARGET_TAG,
-  clientIpFromRequest,
+  ROOM_MAX_AGE_MS,
   isValidRoomCode,
   makeRelayFrame,
   makeRoomInfo,
   readPeerId,
-  roomIndexKey,
-  roomOwnerKey,
-  roomInfoFromStoredState,
 } from "./shared";
 import type { Env, StoredRoomState, WebSocketAttachment } from "./types";
 
 const ROOM_STATE_KEY = "room_state";
-const ROOM_EXPIRATION_MS = ROOM_INDEX_TTL_SECONDS * 1_000;
+/** Peer id reserved for the room owner (the C++ clients do not rely on this —
+ *  they read the "host" control field — but "owner is 1" keeps ids familiar). */
+const OWNER_PEER_ID = 1;
 
 interface InitializeRoomPayload {
   code?: string;
   campaign_hash?: string;
   campaign_name?: string;
   host_name?: string;
-  created_at?: number;
   owner_token?: string;
 }
 
+interface MessageBudget {
+  count: number;
+  bytes: number;
+  windowStartedAt: number;
+}
+
+/**
+ * One durable object per room. Uses the WebSocket Hibernation API
+ * (acceptWebSocket + serializeAttachment + webSocketMessage/webSocketClose),
+ * so an idle lobby holds no running isolate; on wake the constructor rebuilds
+ * the peer map from the hibernated sockets' attachments.
+ *
+ * Lifecycle:
+ *  - initialized via /internal/initialize from the worker's POST /api/create.
+ *  - joinable from creation (the owner's create -> connect gap is covered by
+ *    the empty-room grace window).
+ *  - the owner (correct owner_token) always gets peer id 1 and is the host.
+ *    An owner reconnect supersedes the previous owner socket (closed 1012).
+ *  - owner disconnect with guests present: remaining peers receive
+ *    {"type":"peer_left","peer_id":1} and are then closed (1001) — the C++
+ *    transport resets host_peer_id on the host's peer_left and surfaces the
+ *    closed link as TransportLinkState::Lost ("connection lost"). The game
+ *    server lives inside the host's client, so the room cannot outlive it.
+ *  - owner disconnect while alone: the room stays reconnectable for the
+ *    empty-room grace window, then the alarm deletes it.
+ *  - alarms also enforce: owner-never-connected grace, absolute max room age,
+ *    and the periodic registry heartbeat while occupied.
+ */
 export class GameRoom extends DurableObject {
   private readonly peers = new Map<number, WebSocket>();
-  private readonly messageRateLimits = new Map<
-    number,
-    { count: number; windowStartedAt: number }
-  >();
+  private readonly messageBudgets = new Map<number, MessageBudget>();
   private readonly appEnv: Env;
   private stateData: StoredRoomState | null = null;
 
@@ -47,32 +75,16 @@ export class GameRoom extends DurableObject {
     this.appEnv = env;
 
     this.ctx.blockConcurrencyWhile(async () => {
-      const stored =
-        (await this.ctx.storage.get<Partial<StoredRoomState>>(ROOM_STATE_KEY)) ?? null;
-      this.stateData = stored
-        ? {
-            code: stored.code ?? "",
-            campaign_hash: stored.campaign_hash ?? "",
-            campaign_name: stored.campaign_name ?? "",
-            host_name: stored.host_name ?? "",
-            created_at: stored.created_at ?? Date.now(),
-            next_peer_id: stored.next_peer_id ?? 1,
-            host_peer_id:
-              typeof stored.host_peer_id === "number" ? stored.host_peer_id : null,
-            owner_peer_id:
-              typeof stored.owner_peer_id === "number"
-                ? stored.owner_peer_id
-                : typeof stored.host_owner_token === "string" &&
-                    stored.host_owner_token.length > 0
-                  ? 1
-                  : typeof stored.host_peer_id === "number"
-                    ? stored.host_peer_id
-                    : null,
-            host_owner_token:
-              typeof stored.host_owner_token === "string" ? stored.host_owner_token : "",
-          }
-        : null;
-      this.restoreHibernatedSockets();
+      this.stateData =
+        (await this.ctx.storage.get<StoredRoomState>(ROOM_STATE_KEY)) ?? null;
+      for (const socket of this.ctx.getWebSockets()) {
+        const attachment = socket.deserializeAttachment() as
+          | WebSocketAttachment
+          | undefined;
+        if (attachment && typeof attachment.peerId === "number") {
+          this.peers.set(attachment.peerId, socket);
+        }
+      }
     });
   }
 
@@ -83,68 +95,67 @@ export class GameRoom extends DurableObject {
       return this.initializeRoom(request);
     }
 
-    if (url.pathname === "/internal/metadata") {
-      if (!this.stateData) {
-        return new Response("Room not initialized", { status: 404 });
-      }
-      return Response.json(
-        roomInfoFromStoredState(this.stateData, this.peers.size),
-      );
-    }
-
-    if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
-      return new Response("WebSocket upgrade required", { status: 426 });
-    }
-
-    const roomCode = request.headers.get("x-openglad-room-code") ?? "";
-    if (!isValidRoomCode(roomCode)) {
-      return new Response("Unknown room", { status: 404 });
-    }
-
     if (!this.stateData) {
       return new Response("Room not found", { status: 404 });
     }
-
-    const isHostOwner = this.isHostOwnerRequest(request);
-    const replacedOwnerConnection = this.replaceExistingOwnerConnectionIfNeeded(isHostOwner);
-
-    if (this.isRoomExpired()) {
+    if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
+      return new Response("WebSocket upgrade required", { status: 426 });
+    }
+    if (Date.now() >= this.stateData.created_at + ROOM_MAX_AGE_MS) {
+      await this.closeRoom();
       return new Response("Room not found", { status: 404 });
     }
 
-    if (this.peers.size >= MAX_ROOM_PEERS) {
+    const requestOwnerToken =
+      request.headers.get("x-openglad-connecting-owner-token") ?? "";
+    const isOwner =
+      this.stateData.owner_token.length > 0 &&
+      requestOwnerToken === this.stateData.owner_token;
+
+    let supersededOwnerSocket = false;
+    if (isOwner) {
+      const existing = this.peers.get(OWNER_PEER_ID);
+      if (existing) {
+        this.peers.delete(OWNER_PEER_ID);
+        this.messageBudgets.delete(OWNER_PEER_ID);
+        this.tryClose(existing, 1012, "Superseded by owner reconnect");
+        supersededOwnerSocket = true;
+      }
+    } else if (this.guestCount() >= MAX_ROOM_PEERS - 1) {
+      // Guests may fill every slot except the one reserved for the owner.
       return new Response("Room is full", { status: 409 });
     }
 
     const pair = new WebSocketPair();
     const client = pair[0];
     const server = pair[1];
-    const peerId = this.assignPeerId(isHostOwner);
-    const clientIp = clientIpFromRequest(request);
 
+    const peerId = isOwner ? OWNER_PEER_ID : this.stateData.next_peer_id++;
     this.ctx.acceptWebSocket(server);
-    server.serializeAttachment({
-      peerId,
-      clientIp,
-      isHostOwner,
-    } satisfies WebSocketAttachment);
+    server.serializeAttachment({ peerId, isOwner } satisfies WebSocketAttachment);
     this.peers.set(peerId, server);
 
+    if (isOwner) {
+      this.stateData.host_peer_id = OWNER_PEER_ID;
+      this.stateData.host_ever_connected = true;
+    }
+    this.stateData.empty_since = null;
     await this.persistState();
-    await this.persistRoomIndex();
-    await this.scheduleNextAlarm();
+    await this.updateRegistryEntry();
+    await this.scheduleAlarm();
 
+    const hostPeerId = this.stateData.host_peer_id ?? 0;
     this.sendJson(server, {
       type: "joined",
       peer_id: peerId,
-      host: this.stateData.host_peer_id,
+      host: hostPeerId,
     });
     this.sendJson(server, {
       type: "peer_list",
       peers: [...this.peers.keys()].sort((left, right) => left - right),
-      host: this.stateData.host_peer_id,
+      host: hostPeerId,
     });
-    if (!replacedOwnerConnection) {
+    if (!supersededOwnerSocket) {
       await this.broadcastJson(
         {
           type: "peer_joined",
@@ -155,87 +166,80 @@ export class GameRoom extends DurableObject {
       );
     }
 
-    return new Response(null, {
-      status: 101,
-      webSocket: client,
-    });
+    return new Response(null, { status: 101, webSocket: client });
   }
 
   override async webSocketMessage(
     ws: WebSocket,
     message: string | ArrayBuffer,
   ): Promise<void> {
-    const attachment = ws.deserializeAttachment() as
-      | WebSocketAttachment
-      | undefined;
-    const peerId = attachment?.peerId;
-    if (!peerId) {
-      ws.close(1011, "Missing peer metadata");
-      return;
-    }
-    if (this.peers.get(peerId) !== ws) {
+    const peerId = this.peerIdForSocket(ws);
+    if (peerId === null) {
       this.tryClose(ws, 1000, "Superseded connection");
       return;
     }
 
-    if (!this.consumeMessageRateBudget(peerId)) {
-      ws.close(1008, "Rate limit exceeded");
+    const messageBytes =
+      typeof message === "string" ? message.length : message.byteLength;
+    if (!this.consumeMessageBudget(peerId, messageBytes)) {
+      ws.close(1008, "Message rate limit exceeded");
       return;
     }
 
     if (typeof message === "string") {
-      if (message.length > MAX_RELAY_JSON_MESSAGE_BYTES) {
-        ws.close(1009, "Relay control message too large");
+      if (message.length > MAX_INBOUND_TEXT_MESSAGE_BYTES) {
+        ws.close(1009, "Control message too large");
         return;
       }
-      await this.handleJsonMessage(peerId, ws, message);
+      await this.handleTextMessage(peerId, ws, message);
+      return;
+    }
+
+    if (message.byteLength === 0) {
+      return;
+    }
+    if (message.byteLength > MAX_INBOUND_BINARY_FRAME_BYTES) {
+      ws.close(1009, "Relay frame too large");
       return;
     }
 
     const bytes = new Uint8Array(message);
-    if (bytes.byteLength === 0) {
-      return;
-    }
     switch (bytes[0]) {
+      case RELAY_TARGET_TAG: {
+        if (bytes.byteLength < RELAY_PEER_HEADER_SIZE) {
+          ws.close(1003, "Malformed relay frame");
+          return;
+        }
+        const targetPeerId = readPeerId(bytes, 1);
+        await this.forwardPayload(
+          peerId,
+          bytes.subarray(RELAY_PEER_HEADER_SIZE),
+          targetPeerId,
+        );
+        return;
+      }
+
       case RELAY_BROADCAST_TAG:
-        if (bytes.byteLength - 1 > MAX_RELAY_PAYLOAD_BYTES) {
-          ws.close(1009, "Relay payload too large");
+        if (bytes.byteLength > MAX_BROADCAST_FRAME_BYTES) {
+          // Re-framing would push the forwarded frame past the receivers'
+          // 128 KiB inbound limit.
+          ws.close(1009, "Relay frame too large");
           return;
         }
         await this.forwardPayload(peerId, bytes.subarray(1));
         return;
 
-      case RELAY_TARGET_TAG:
-        if (bytes.byteLength < 5) {
-          ws.close(1003, "Malformed relay frame");
-          return;
-        }
-        if (bytes.byteLength - 5 > MAX_RELAY_PAYLOAD_BYTES) {
-          ws.close(1009, "Relay payload too large");
-          return;
-        }
-
-        await this.forwardPayload(peerId, bytes.subarray(5), readPeerId(bytes, 1));
-        return;
-
       default:
-        ws.close(1003, "Unsupported relay frame");
+        // Unknown tags are dropped, mirroring the tolerant reference stub.
+        return;
     }
   }
 
   override async webSocketClose(ws: WebSocket): Promise<void> {
-    const attachment = ws.deserializeAttachment() as
-      | WebSocketAttachment
-      | undefined;
-    const peerId = attachment?.peerId;
-    if (!peerId) {
-      return;
+    const peerId = this.peerIdForSocket(ws);
+    if (peerId !== null) {
+      await this.removePeer(peerId);
     }
-    if (this.peers.get(peerId) !== ws) {
-      return;
-    }
-
-    await this.removePeer(peerId);
   }
 
   override async webSocketError(ws: WebSocket): Promise<void> {
@@ -247,20 +251,35 @@ export class GameRoom extends DurableObject {
       return;
     }
 
-    if (this.isRoomExpired()) {
-      if (this.peers.size === 0) {
-        await this.deleteRoomState();
-      }
+    const now = Date.now();
+    if (now >= this.stateData.created_at + ROOM_MAX_AGE_MS) {
+      await this.closeRoom();
+      return;
+    }
+    if (
+      this.peers.size === 0 &&
+      this.stateData.empty_since !== null &&
+      now >= this.stateData.empty_since + this.emptyRoomTtlMs()
+    ) {
+      await this.closeRoom();
+      return;
+    }
+    if (
+      !this.stateData.host_ever_connected &&
+      now >= this.stateData.created_at + OWNER_CONNECT_GRACE_MS
+    ) {
+      await this.closeRoom();
       return;
     }
 
-    if (this.peers.size === 0) {
-      await this.deleteRoomState();
-      return;
+    // Registry heartbeat: keep the listing entry fresh while occupied.
+    if (this.peers.size > 0) {
+      await this.updateRegistryEntry();
     }
-
-    await this.scheduleNextAlarm();
+    await this.scheduleAlarm(now);
   }
+
+  // -------------------------------------------------------------------------
 
   private async initializeRoom(request: Request): Promise<Response> {
     if (request.method !== "POST") {
@@ -270,67 +289,78 @@ export class GameRoom extends DurableObject {
       return new Response("Room already initialized", { status: 409 });
     }
 
-    let payload: InitializeRoomPayload | null = null;
+    let payload: InitializeRoomPayload;
     try {
       payload = (await request.json()) as InitializeRoomPayload;
     } catch {
       return new Response("Malformed room initialization payload", { status: 400 });
     }
 
-    const roomCode = typeof payload?.code === "string" ? payload.code : "";
+    const roomCode = typeof payload.code === "string" ? payload.code : "";
     if (!isValidRoomCode(roomCode)) {
       return new Response("Invalid room code", { status: 400 });
     }
+    const ownerToken =
+      typeof payload.owner_token === "string" ? payload.owner_token : "";
+    if (!ownerToken) {
+      return new Response("Missing owner token", { status: 400 });
+    }
 
-    const seededRoom = makeRoomInfo({
+    const now = Date.now();
+    const seeded = makeRoomInfo({
       code: roomCode,
       campaign_hash:
-        typeof payload?.campaign_hash === "string" ? payload.campaign_hash : "",
+        typeof payload.campaign_hash === "string" ? payload.campaign_hash : "",
       campaign_name:
-        typeof payload?.campaign_name === "string" ? payload.campaign_name : "",
-      host_name:
-        typeof payload?.host_name === "string" ? payload.host_name : "",
-      created_at:
-        typeof payload?.created_at === "number" ? payload.created_at : Date.now(),
-      player_count: 0,
+        typeof payload.campaign_name === "string" ? payload.campaign_name : "",
+      host_name: typeof payload.host_name === "string" ? payload.host_name : "",
+      created_at: now,
     });
-    const ownerToken =
-      typeof payload?.owner_token === "string" ? payload.owner_token : "";
 
     this.stateData = {
-      code: seededRoom.code,
-      campaign_hash: seededRoom.campaign_hash,
-      campaign_name: seededRoom.campaign_name,
-      host_name: seededRoom.host_name,
-      created_at: seededRoom.created_at,
-      next_peer_id: ownerToken ? 2 : 1,
+      code: seeded.code,
+      campaign_hash: seeded.campaign_hash,
+      campaign_name: seeded.campaign_name,
+      host_name: seeded.host_name,
+      created_at: now,
+      next_peer_id: OWNER_PEER_ID + 1,
       host_peer_id: null,
-      owner_peer_id: ownerToken ? 1 : null,
-      host_owner_token: ownerToken,
+      owner_token: ownerToken,
+      host_ever_connected: false,
+      empty_since: now,
     };
     await this.persistState();
-    await this.scheduleNextAlarm();
-    return Response.json(roomInfoFromStoredState(this.stateData, 0));
+    await this.scheduleAlarm(now);
+    return Response.json({ code: seeded.code });
   }
 
-  private restoreHibernatedSockets(): void {
-    for (const socket of this.ctx.getWebSockets()) {
-      const attachment = socket.deserializeAttachment() as
-        | WebSocketAttachment
-        | undefined;
-      if (!attachment?.peerId) {
-        continue;
-      }
-      this.peers.set(attachment.peerId, socket);
+  private peerIdForSocket(ws: WebSocket): number | null {
+    const attachment = ws.deserializeAttachment() as WebSocketAttachment | undefined;
+    const peerId = attachment?.peerId;
+    if (typeof peerId !== "number" || this.peers.get(peerId) !== ws) {
+      return null;
     }
+    return peerId;
   }
 
-  private async handleJsonMessage(
+  private guestCount(): number {
+    let count = 0;
+    for (const peerId of this.peers.keys()) {
+      if (peerId !== OWNER_PEER_ID) {
+        ++count;
+      }
+    }
+    return count;
+  }
+
+  private async handleTextMessage(
     peerId: number,
     ws: WebSocket,
     rawMessage: string,
   ): Promise<void> {
-    let parsed: { type?: string } | null = null;
+    // The C++ clients never send TEXT frames; this handling exists for
+    // debugging tools and forward compatibility.
+    let parsed: { type?: string };
     try {
       parsed = JSON.parse(rawMessage) as { type?: string };
     } catch {
@@ -342,18 +372,18 @@ export class GameRoom extends DurableObject {
       case "leave_room":
         ws.close(1000, "Leaving room");
         await this.removePeer(peerId);
-        break;
+        return;
 
       case "list_peers":
         this.sendJson(ws, {
           type: "peer_list",
           peers: [...this.peers.keys()].sort((left, right) => left - right),
-          host: this.stateData?.host_peer_id ?? null,
+          host: this.stateData?.host_peer_id ?? 0,
         });
-        break;
+        return;
 
       default:
-        break;
+        return;
     }
   }
 
@@ -366,61 +396,89 @@ export class GameRoom extends DurableObject {
     const failedPeerIds: number[] = [];
 
     if (targetPeerId !== undefined) {
+      if (targetPeerId === fromPeerId) {
+        return;
+      }
       const socket = this.peers.get(targetPeerId);
       if (socket && !this.trySend(socket, frame)) {
         failedPeerIds.push(targetPeerId);
       }
-      await this.removeFailedPeers(failedPeerIds);
-      return;
-    }
-
-    for (const [peerId, socket] of this.peers) {
-      if (peerId === fromPeerId) {
-        continue;
-      }
-      if (!this.trySend(socket, frame)) {
-        failedPeerIds.push(peerId);
+    } else {
+      for (const [peerId, socket] of this.peers) {
+        if (peerId === fromPeerId) {
+          continue;
+        }
+        if (!this.trySend(socket, frame)) {
+          failedPeerIds.push(peerId);
+        }
       }
     }
 
-    await this.removeFailedPeers(failedPeerIds);
+    for (const failedPeerId of failedPeerIds) {
+      await this.removePeer(failedPeerId);
+    }
   }
 
   private async removePeer(peerId: number): Promise<void> {
     if (!this.peers.delete(peerId) || !this.stateData) {
       return;
     }
-    this.messageRateLimits.delete(peerId);
+    this.messageBudgets.delete(peerId);
 
-    await this.broadcastJson({
-      type: "peer_left",
-      peer_id: peerId,
-    });
-
-    if (this.stateData.host_peer_id === peerId) {
-      const nextHostPeerId =
-        [...this.peers.keys()].sort((left, right) => left - right)[0] ?? null;
-      this.stateData.host_peer_id = nextHostPeerId;
-      if (nextHostPeerId !== null) {
-        await this.broadcastJson({
-          type: "host_changed",
-          new_host: nextHostPeerId,
-        });
+    if (peerId === this.stateData.host_peer_id) {
+      this.stateData.host_peer_id = null;
+      if (this.peers.size > 0) {
+        // The game server lives in the owner's client; without it the lobby
+        // is dead. Tell the remaining peers, then close the room.
+        await this.closeRoom(peerId);
+        return;
       }
+      // Owner left an empty room: leave it reconnectable for the grace
+      // window (covers navigation hiccups between create and lobby fill).
+      this.stateData.empty_since = Date.now();
+      await this.persistState();
+      await this.updateRegistryEntry();
+      await this.scheduleAlarm();
+      return;
     }
 
+    await this.broadcastJson({ type: "peer_left", peer_id: peerId });
+    if (this.peers.size === 0) {
+      this.stateData.empty_since = Date.now();
+    }
     await this.persistState();
-    await this.persistRoomIndex();
-    await this.scheduleNextAlarm();
+    await this.updateRegistryEntry();
+    await this.scheduleAlarm();
   }
 
-  private async broadcastJson(
-    payload: unknown,
-    excludedPeerId?: number,
-  ): Promise<void> {
+  /** Notify remaining peers (peer_left for `leavingPeerId`, when given), close
+   *  every socket, and delete all room state — the room code 404s afterwards. */
+  private async closeRoom(leavingPeerId?: number): Promise<void> {
+    const remaining = [...this.peers.values()];
+    this.peers.clear();
+    this.messageBudgets.clear();
+
+    for (const socket of remaining) {
+      if (leavingPeerId !== undefined) {
+        this.trySend(
+          socket,
+          JSON.stringify({ type: "peer_left", peer_id: leavingPeerId }),
+        );
+      }
+      this.tryClose(socket, 1001, "Room closed");
+    }
+
+    if (this.stateData) {
+      await this.registryFetch("/internal/remove", { code: this.stateData.code });
+    }
+    this.stateData = null;
+    await this.ctx.storage.deleteAll();
+    await this.ctx.storage.deleteAlarm();
+  }
+
+  private async broadcastJson(payload: unknown, excludedPeerId?: number): Promise<void> {
     const encoded = JSON.stringify(payload);
     const failedPeerIds: number[] = [];
-
     for (const [peerId, socket] of this.peers) {
       if (peerId === excludedPeerId) {
         continue;
@@ -429,8 +487,9 @@ export class GameRoom extends DurableObject {
         failedPeerIds.push(peerId);
       }
     }
-
-    await this.removeFailedPeers(failedPeerIds);
+    for (const failedPeerId of failedPeerIds) {
+      await this.removePeer(failedPeerId);
+    }
   }
 
   private sendJson(socket: WebSocket, payload: unknown): void {
@@ -446,11 +505,7 @@ export class GameRoom extends DurableObject {
     }
   }
 
-  private tryClose(
-    socket: WebSocket,
-    code: number,
-    reason: string,
-  ): void {
+  private tryClose(socket: WebSocket, code: number, reason: string): void {
     try {
       socket.close(code, reason);
     } catch {
@@ -458,188 +513,93 @@ export class GameRoom extends DurableObject {
     }
   }
 
-  private async removeFailedPeers(peerIds: Iterable<number>): Promise<void> {
-    const uniquePeerIds = [...new Set(peerIds)];
-    for (const peerId of uniquePeerIds) {
-      await this.removePeer(peerId);
-    }
-  }
-
-  private async persistState(): Promise<void> {
-    if (!this.stateData) {
-      return;
-    }
-    await this.ctx.storage.put(ROOM_STATE_KEY, this.stateData);
-  }
-
-  private async persistRoomIndex(): Promise<void> {
-    if (!this.stateData) {
-      return;
-    }
-
-    if (this.isRoomExpired()) {
-      await this.appEnv.ROOM_INDEX.delete(roomIndexKey(this.stateData.code));
-      await this.appEnv.ROOM_INDEX.delete(roomOwnerKey(this.stateData.code));
-      return;
-    }
-
-    const roomInfo = roomInfoFromStoredState(this.stateData, this.peers.size);
-    await this.appEnv.ROOM_INDEX.put(
-      roomIndexKey(roomInfo.code),
-      JSON.stringify(roomInfo),
-      {
-        expiration: this.roomKvExpiration(),
-      },
-    );
-  }
-
-  private async deleteRoomState(): Promise<void> {
-    if (!this.stateData) {
-      return;
-    }
-    await this.appEnv.ROOM_INDEX.delete(roomIndexKey(this.stateData.code));
-    await this.appEnv.ROOM_INDEX.delete(roomOwnerKey(this.stateData.code));
-    await this.ctx.storage.delete(ROOM_STATE_KEY);
-    await this.ctx.storage.deleteAlarm();
-    this.stateData = null;
-  }
-
-  private roomExpiresAt(): number | null {
-    if (!this.stateData) {
-      return null;
-    }
-    return this.stateData.created_at + ROOM_EXPIRATION_MS;
-  }
-
-  private roomKvExpiration(): number {
-    if (!this.stateData) {
-      throw new Error("Room state must exist before computing KV expiration");
-    }
-    return Math.ceil(this.stateData.created_at / 1_000) + ROOM_INDEX_TTL_SECONDS;
-  }
-
-  private isRoomExpired(now = Date.now()): boolean {
-    const expiresAt = this.roomExpiresAt();
-    return expiresAt !== null && now >= expiresAt;
-  }
-
-  private async scheduleNextAlarm(now = Date.now()): Promise<void> {
-    if (!this.stateData) {
-      return;
-    }
-
-    let nextAlarmAt: number | null = null;
-    const expiresAt = this.roomExpiresAt();
-    if (expiresAt !== null && expiresAt > now) {
-      nextAlarmAt = expiresAt;
-    } else if (this.peers.size === 0) {
-      nextAlarmAt = now;
-    }
-
-    if (this.peers.size === 0) {
-      const emptyRoomDeadline = now + EMPTY_ROOM_GRACE_MS;
-      nextAlarmAt =
-        nextAlarmAt === null ? emptyRoomDeadline : Math.min(nextAlarmAt, emptyRoomDeadline);
-    }
-
-    if (nextAlarmAt === null) {
-      await this.ctx.storage.deleteAlarm();
-      return;
-    }
-
-    await this.ctx.storage.setAlarm(nextAlarmAt);
-  }
-
-  private consumeMessageRateBudget(peerId: number): boolean {
+  private consumeMessageBudget(peerId: number, messageBytes: number): boolean {
     const now = Date.now();
-    const budget = this.messageRateLimits.get(peerId);
+    const budget = this.messageBudgets.get(peerId);
     if (!budget || now - budget.windowStartedAt >= MESSAGE_RATE_LIMIT_WINDOW_MS) {
-      this.messageRateLimits.set(peerId, {
+      this.messageBudgets.set(peerId, {
         count: 1,
+        bytes: messageBytes,
         windowStartedAt: now,
       });
       return true;
     }
-
-    if (budget.count >= MESSAGE_RATE_LIMIT_MAX_MESSAGES) {
-      return false;
-    }
-
-    budget.count += 1;
-    return true;
-  }
-
-  private replaceExistingOwnerConnectionIfNeeded(isHostOwner: boolean): boolean {
-    if (!isHostOwner || !this.stateData || this.stateData.owner_peer_id === null) {
-      return false;
-    }
-
-    const existingSocket = this.peers.get(this.stateData.owner_peer_id);
-    if (!existingSocket) {
-      return false;
-    }
-
-    this.peers.delete(this.stateData.owner_peer_id);
-    this.messageRateLimits.delete(this.stateData.owner_peer_id);
-    this.tryClose(existingSocket, 1012, "Superseded by reconnect");
-    return true;
-  }
-
-  private assignPeerId(isHostOwner: boolean): number {
-    if (!this.stateData) {
-      throw new Error("Room state must exist before assigning a peer id");
-    }
-
     if (
-      isHostOwner &&
-      this.stateData.owner_peer_id !== null &&
-      !this.peers.has(this.stateData.owner_peer_id)
+      budget.count >= this.messageBudgetMaxMessages() ||
+      budget.bytes + messageBytes > MESSAGE_RATE_LIMIT_MAX_BYTES
     ) {
-      const peerId = this.stateData.owner_peer_id;
-      if (peerId >= this.stateData.next_peer_id) {
-        this.stateData.next_peer_id = peerId + 1;
-      }
-      if (this.stateData.host_peer_id === null) {
-        this.stateData.host_peer_id = peerId;
-      }
-      return peerId;
-    }
-
-    while (
-      this.peers.has(this.stateData.next_peer_id) ||
-      this.stateData.next_peer_id === this.stateData.owner_peer_id
-    ) {
-      this.stateData.next_peer_id += 1;
-    }
-
-    const peerId = this.stateData.next_peer_id;
-    this.stateData.next_peer_id += 1;
-
-    if (this.stateData.owner_peer_id === null && isHostOwner) {
-      this.stateData.owner_peer_id = peerId;
-    }
-
-    if (this.stateData.host_peer_id === null) {
-      this.stateData.host_peer_id = peerId;
-    }
-
-    return peerId;
-  }
-
-  private isHostOwnerRequest(request: Request): boolean {
-    if (!this.stateData) {
       return false;
     }
+    budget.count += 1;
+    budget.bytes += messageBytes;
+    return true;
+  }
 
-    if (!this.stateData.host_owner_token) {
-      return this.stateData.owner_peer_id === null;
+  private emptyRoomTtlMs(): number {
+    const configured = Number(this.appEnv.EMPTY_ROOM_TTL_MS);
+    if (Number.isFinite(configured) && configured > 0) {
+      return configured;
+    }
+    return DEFAULT_EMPTY_ROOM_TTL_MS;
+  }
+
+  private messageBudgetMaxMessages(): number {
+    const configured = Number(this.appEnv.MESSAGE_BUDGET_MAX_MESSAGES);
+    if (Number.isFinite(configured) && configured > 0) {
+      return configured;
+    }
+    return MESSAGE_RATE_LIMIT_MAX_MESSAGES;
+  }
+
+  private async persistState(): Promise<void> {
+    if (this.stateData) {
+      await this.ctx.storage.put(ROOM_STATE_KEY, this.stateData);
+    }
+  }
+
+  private async updateRegistryEntry(): Promise<void> {
+    if (!this.stateData) {
+      return;
+    }
+    await this.registryFetch("/internal/upsert", {
+      code: this.stateData.code,
+      campaign_hash: this.stateData.campaign_hash,
+      campaign_name: this.stateData.campaign_name,
+      host_name: this.stateData.host_name,
+      player_count: this.peers.size,
+      created_at: this.stateData.created_at,
+    });
+  }
+
+  private async registryFetch(path: string, payload: unknown): Promise<void> {
+    const registry = this.appEnv.ROOM_REGISTRY.get(
+      this.appEnv.ROOM_REGISTRY.idFromName(REGISTRY_INSTANCE_NAME),
+    );
+    await registry.fetch(
+      new Request(`https://relay.internal${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/json; charset=utf-8" },
+        body: JSON.stringify(payload),
+      }),
+    );
+  }
+
+  private async scheduleAlarm(now = Date.now()): Promise<void> {
+    if (!this.stateData) {
+      return;
     }
 
-    const connectingOwnerToken =
-      request.headers.get("x-openglad-connecting-owner-token") ?? "";
-    return (
-      connectingOwnerToken.length > 0 &&
-      connectingOwnerToken === this.stateData.host_owner_token
-    );
+    const deadlines = [this.stateData.created_at + ROOM_MAX_AGE_MS];
+    if (this.peers.size === 0 && this.stateData.empty_since !== null) {
+      deadlines.push(this.stateData.empty_since + this.emptyRoomTtlMs());
+    }
+    if (!this.stateData.host_ever_connected) {
+      deadlines.push(this.stateData.created_at + OWNER_CONNECT_GRACE_MS);
+    }
+    if (this.peers.size > 0) {
+      deadlines.push(now + REGISTRY_HEARTBEAT_MS);
+    }
+
+    await this.ctx.storage.setAlarm(Math.max(now, Math.min(...deadlines)));
   }
 }

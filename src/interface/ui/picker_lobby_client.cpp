@@ -314,6 +314,20 @@ public:
         config.my_team = gameplay_start_team(
             config.save_data.allied_mode,
             !peers_.empty() ? peers_.front().team : 0);
+        // Symmetry with the networked clients: one seat per local in-process
+        // peer, in seat/view order. The local (is_networked == false) start
+        // path ignores these — reset_local_transport_shadow binds seats 1:1
+        // by view index on its own.
+        if (!spectator_mode_)
+        {
+            for (std::size_t index = 0; index < peers_.size(); ++index)
+            {
+                config.local_player_indices.push_back(
+                    static_cast<std::uint8_t>(index));
+                config.local_seat_teams.push_back(gameplay_start_team(
+                    config.save_data.allied_mode, peers_[index].team));
+            }
+        }
         return config;
     }
 

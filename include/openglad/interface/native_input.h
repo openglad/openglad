@@ -92,12 +92,30 @@ constexpr int kHatDown = 0x04;
 constexpr int kHatLeft = 0x08;
 
 bool decode_event(const void* native_event, EventData& out);
+// Web builds install the Backspace-as-Escape event remap here (see
+// openglad/interface/web_back_key.h); a no-op on native builds.
+void install_back_key_remap();
+// Web touch overlay BACK button: holds a virtual physical Backspace in the
+// web keyboard-state mirror (menu hotkeys and spin-waits are keystate-driven,
+// which pushed events cannot reach). No-op on native builds.
+void set_virtual_back_key(bool down);
 const void* poll_event();
 const void* wait_event();
 const void* make_test_keydown_event(int keycode, int scancode);
 void push_key_event(bool down, int keycode);
+// Pushes an SDL text-input event whose text points into a static ring of
+// buffers; consumers must copy at poll time (decode_event already does).
+void push_text_event(const char* utf8);
 void push_touch_event(EventType type, float x, float y, float dx, float dy, std::int64_t finger_id);
 void push_mouse_button_event(bool down, int button, int x, int y);
+// Like push_mouse_button_event, but the coordinates are CSS pixels relative
+// to the displayed canvas of the given CSS size. They are rescaled into SDL
+// window-logical space first: the web canvas shows the SDL window at an
+// arbitrary CSS scale (e.g. the picker runs a larger logical window on a
+// small phone canvas), and pushed events bypass SDL's own DOM-to-logical
+// scaling.
+void push_mouse_button_event_css(
+    bool down, int button, int css_x, int css_y, int css_w, int css_h);
 std::uint32_t ticks_ms();
 
 const bool* keyboard_state();

@@ -1,13 +1,89 @@
 #include <openglad/interface/native_input.h>
+#include <openglad/interface/web_back_key.h>
 
 #include <SDL3/SDL.h>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
+#include <algorithm>
+#include <array>
+#include <cstddef>
 #include <cstring>
 
 namespace og::input_native
 {
 namespace
 {
+// The SDL-free translation header duplicates these SDL constants; keep them
+// pinned to the real values.
+static_assert(og::input::kBackKeycodeEscape == SDLK_ESCAPE);
+static_assert(og::input::kBackKeycodeBackspace == SDLK_BACKSPACE);
+static_assert(og::input::kBackScancodeEscape == SDL_SCANCODE_ESCAPE);
+static_assert(og::input::kBackScancodeBackspace == SDL_SCANCODE_BACKSPACE);
+
+// Bracketed by start_text_input()/stop_text_input(); on web this gates the
+// Backspace-as-Escape remap so text fields keep Backspace = delete-character.
+bool s_text_input_active = false;
+
+#ifdef __EMSCRIPTEN__
+// keystates_ consumers (button hotkeys, menu loops, gameplay bindings) read a
+// scancode-indexed array. SDL's own array reflects physical keys, so web
+// builds read this mirror instead: the Escape slot follows physical
+// Backspace (outside text input) and never follows physical Escape.
+std::array<bool, SDL_SCANCODE_COUNT> s_web_keyboard_state{};
+
+// Touch overlay BACK button (web_touch_bridge.cpp). Pushed key events cannot
+// update SDL's keyboard-state array, but menu hotkeys and spin-waits are
+// keystate-driven, so the overlay's held BACK is OR-ed into the mirror as a
+// virtual physical Backspace (translated to Escape outside text input, exactly
+// like the real key).
+bool s_virtual_back_key_down = false;
+
+void refresh_web_keyboard_state()
+{
+    int numkeys = 0;
+    const bool* state = SDL_GetKeyboardState(&numkeys);
+    if (state == nullptr)
+        return;
+    const int n = std::min(numkeys, static_cast<int>(SDL_SCANCODE_COUNT));
+    std::copy(state, state + n, s_web_keyboard_state.begin());
+    const og::input::BackKeyStates back = og::input::translate_back_key_states(
+        state[SDL_SCANCODE_ESCAPE],
+        state[SDL_SCANCODE_BACKSPACE] || s_virtual_back_key_down,
+        /*web_mode=*/true, s_text_input_active);
+    s_web_keyboard_state[SDL_SCANCODE_ESCAPE] = back.escape_down;
+    s_web_keyboard_state[SDL_SCANCODE_BACKSPACE] = back.backspace_down;
+}
+
+// Web-only: Backspace is the universal back/cancel key and physical Escape is
+// swallowed (browsers reserve Escape for fullscreen exit; it must not ALSO
+// back out of a menu). Applied at the SDL event source so every consumer —
+// the decode_event seam, game_loop's direct SDL poll, and raw_key_ — sees one
+// consistent remap. Runs at event-post time, which also covers pushed events.
+bool SDLCALL web_back_key_event_filter(void* /*userdata*/, SDL_Event* event)
+{
+    if (event->type != SDL_EVENT_KEY_DOWN && event->type != SDL_EVENT_KEY_UP)
+        return true;
+    // SDL updates its keyboard-state array before posting the event, and
+    // every state change is accompanied by a key event (including the
+    // synthetic releases from a focus-loss keyboard reset). Refreshing here
+    // keeps the mirror correct even on paths that pump SDL directly without
+    // going through this seam's poll_event/wait_event (e.g. the game loop).
+    refresh_web_keyboard_state();
+    const og::input::BackKeyEventTranslation t = og::input::translate_back_key(
+        static_cast<int>(event->key.key),
+        static_cast<int>(event->key.scancode),
+        /*web_mode=*/true, s_text_input_active);
+    if (t.swallow)
+        return false;
+    event->key.key = static_cast<SDL_Keycode>(t.keycode);
+    event->key.scancode = static_cast<SDL_Scancode>(t.scancode);
+    return true;
+}
+#endif
+
 EventType map_event_type(Uint32 type)
 {
     // SDL3 flattened window events into first-class event types occupying a
@@ -166,7 +242,13 @@ bool decode_event(const void* native_event, EventData& out)
 const void* poll_event()
 {
     static thread_local SDL_Event event;
-    if (SDL_PollEvent(&event))
+    const bool got = SDL_PollEvent(&event);
+#ifdef __EMSCRIPTEN__
+    // SDL_PollEvent pumps; keep the remapped keyboard mirror in sync even
+    // when the queue is empty so held/released keys are observed.
+    refresh_web_keyboard_state();
+#endif
+    if (got)
         return &event;
     return nullptr;
 }
@@ -174,9 +256,33 @@ const void* poll_event()
 const void* wait_event()
 {
     static thread_local SDL_Event event;
-    if (SDL_WaitEvent(&event))
+    const bool got = SDL_WaitEvent(&event);
+#ifdef __EMSCRIPTEN__
+    refresh_web_keyboard_state();
+#endif
+    if (got)
         return &event;
     return nullptr;
+}
+
+void install_back_key_remap()
+{
+#ifdef __EMSCRIPTEN__
+    SDL_SetEventFilter(web_back_key_event_filter, nullptr);
+    refresh_web_keyboard_state();
+#endif
+}
+
+void set_virtual_back_key(bool down)
+{
+#ifdef __EMSCRIPTEN__
+    s_virtual_back_key_down = down;
+    // The flag changes the mirror without any real key event; re-derive now so
+    // keystate consumers observe it before the next pump.
+    refresh_web_keyboard_state();
+#else
+    (void)down;
+#endif
 }
 
 const void* make_test_keydown_event(int keycode, int scancode)
@@ -202,6 +308,24 @@ void push_key_event(bool down, int keycode)
     event.key.key = static_cast<SDL_Keycode>(keycode);
     event.key.mod = 0;
     event.key.scancode = SDL_GetScancodeFromKey(static_cast<SDL_Keycode>(keycode), nullptr);
+    SDL_PushEvent(&event);
+}
+
+void push_text_event(const char* utf8)
+{
+    // SDL3 text events borrow their string. Route the payload through a
+    // static ring so the pointer stays valid until the same-poll copy in
+    // decode_event; 8 slots comfortably outlive one queue drain.
+    static std::array<std::array<char, 64>, 8> ring{};
+    static std::size_t ring_index = 0;
+    std::array<char, 64>& slot = ring[ring_index];
+    ring_index = (ring_index + 1) % ring.size();
+    SDL_strlcpy(slot.data(), utf8 != nullptr ? utf8 : "", slot.size());
+
+    SDL_Event event;
+    std::memset(&event, 0, sizeof(event));
+    event.type = SDL_EVENT_TEXT_INPUT;
+    event.text.text = slot.data();
     SDL_PushEvent(&event);
 }
 
@@ -239,6 +363,45 @@ void push_mouse_button_event(bool down, int button, int x, int y)
     SDL_PushEvent(&event);
 }
 
+void push_mouse_button_event_css(
+    bool down, int button, int css_x, int css_y, int css_w, int css_h)
+{
+    // See the header: rescale CSS-relative canvas coordinates into SDL
+    // window-logical space (the picker can run a larger logical window than
+    // the CSS canvas box; pushed events bypass SDL's DOM scaling).
+    float x = static_cast<float>(css_x);
+    float y = static_cast<float>(css_y);
+    int window_count = 0;
+    if (SDL_Window** const windows = SDL_GetWindows(&window_count);
+        windows != nullptr)
+    {
+        if (window_count > 0 && windows[0] != nullptr &&
+            css_w > 0 && css_h > 0)
+        {
+            int window_w = 0;
+            int window_h = 0;
+            if (SDL_GetWindowSize(windows[0], &window_w, &window_h) &&
+                window_w > 0 && window_h > 0)
+            {
+                x = x * static_cast<float>(window_w) /
+                    static_cast<float>(css_w);
+                y = y * static_cast<float>(window_h) /
+                    static_cast<float>(css_h);
+            }
+        }
+        SDL_free(windows);
+    }
+
+    SDL_Event event;
+    std::memset(&event, 0, sizeof(event));
+    event.type = down ? SDL_EVENT_MOUSE_BUTTON_DOWN : SDL_EVENT_MOUSE_BUTTON_UP;
+    event.button.button = static_cast<Uint8>(button);
+    event.button.x = x;
+    event.button.y = y;
+    event.button.down = down;
+    SDL_PushEvent(&event);
+}
+
 std::uint32_t ticks_ms()
 {
     // The seam stays 32-bit: producers truncate SDL3's Uint64 ticks and
@@ -248,7 +411,15 @@ std::uint32_t ticks_ms()
 
 const bool* keyboard_state()
 {
+#ifdef __EMSCRIPTEN__
+    // Web builds read the remapped mirror (stable address; refreshed on every
+    // event pump) so Backspace drives KEYSTATE_ESCAPE consumers and physical
+    // Escape never does.
+    refresh_web_keyboard_state();
+    return s_web_keyboard_state.data();
+#else
     return SDL_GetKeyboardState(nullptr);
+#endif
 }
 
 int scancode_from_key(int keycode)
@@ -369,12 +540,33 @@ SDL_Window* text_input_window()
 
 void start_text_input()
 {
+    // Gate the web Backspace-as-Escape remap off for the whole text-entry
+    // window, even when no SDL window exists (dummy driver in tests).
+    s_text_input_active = true;
+#ifdef __EMSCRIPTEN__
+    // The flag changes the mapping without any key event; re-derive now.
+    refresh_web_keyboard_state();
+    // SDL3's emscripten backend has no screen-keyboard support, so the shell
+    // provides a DOM text-entry overlay on touch devices. Signal it here.
+    EM_ASM({
+        window.dispatchEvent(new CustomEvent('openglad-text-input',
+                                             { detail: { active: true } }));
+    });
+#endif
     if (SDL_Window* w = text_input_window())
         SDL_StartTextInput(w);
 }
 
 void stop_text_input()
 {
+    s_text_input_active = false;
+#ifdef __EMSCRIPTEN__
+    refresh_web_keyboard_state();
+    EM_ASM({
+        window.dispatchEvent(new CustomEvent('openglad-text-input',
+                                             { detail: { active: false } }));
+    });
+#endif
     if (SDL_Window* w = text_input_window())
         SDL_StopTextInput(w);
 }

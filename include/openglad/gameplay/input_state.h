@@ -9,6 +9,11 @@
 
 #include <openglad/gameplay/input_action.h>
 
+// PER-MACHINE local-seat cap: input slots (and the InputMessage wire format),
+// viewscreens, replay slots, and the lobby TEAM range (teams stay 0..3). The
+// GLOBAL networked player-index cap is og::sim::kMaxGlobalPlayers
+// (net_transport.h) — one machine never hosts more than MAX_PLAYERS seats,
+// but a lobby may hold up to kMaxGlobalPlayers seats across machines.
 inline constexpr int MAX_PLAYERS = 4;
 inline constexpr int NUM_INPUT_KEYS = 16;
 inline constexpr std::int8_t kNoTimerWaitRequest = -1;

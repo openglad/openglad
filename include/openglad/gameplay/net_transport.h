@@ -61,7 +61,23 @@ constexpr std::uint8_t net_message_type_value(NetMessageType message_type) noexc
 // the CTF block), entities carry the spawn-point fields (spawn_x/spawn_y/
 // spawn_floor), and CTF respawn entries carry x/y/floor; snapshot format
 // moved to v8 and replay to v9 alongside them.
-inline constexpr std::uint8_t kNetworkProtocolVersion = 6;
+// v7: multiple local players per peer ("seats"). LobbyMessage/Join appends a
+// u8 extra-seat count plus that many serialized LobbyPlayers (seats 1..N-1;
+// seat 0 stays in the existing player field), InitialSetup's trailing
+// controlled-entity-id block becomes u8-count-prefixed (sender writes
+// kMaxGlobalPlayers u32 ids), and LobbyPlayerBinding carries the per-peer
+// local_slot. Global player indices may now exceed MAX_PLAYERS (per-machine
+// cap) up to kMaxGlobalPlayers. Snapshot format stays v8, replay stays v9,
+// and the InputMessage keeps exactly MAX_PLAYERS slots (per-machine cap).
+inline constexpr std::uint8_t kNetworkProtocolVersion = 7;
+
+// Global networked player-index cap (seats across ALL peers). Distinct from
+// MAX_PLAYERS, which stays 4 and caps the seats of ONE machine (input slots,
+// viewscreens, replay slots, lobby team range). 16 keeps every player index
+// u8-safe (0xff stays the "none" sentinel) and within the walker user tag's
+// signed-char range.
+inline constexpr std::size_t kMaxGlobalPlayers = 16;
+using ControlledEntityIds = std::array<std::uint32_t, kMaxGlobalPlayers>;
 inline constexpr std::size_t kTransportHeaderSize = 4;
 inline constexpr std::size_t kSessionTokenSize = 16;
 using SessionToken = std::array<std::uint8_t, kSessionTokenSize>;
@@ -171,7 +187,8 @@ struct InitialSetupMessage {
     std::int16_t generator_rate = 0;
     std::vector<InitialSetupGuyData> guys;
     std::vector<std::int32_t> completed_levels;
-    std::array<std::uint32_t, MAX_PLAYERS> controlled_entity_ids = {};
+    // Keyed by GLOBAL player index (u8-count-prefixed on the wire).
+    ControlledEntityIds controlled_entity_ids = {};
 
     bool operator==(const InitialSetupMessage&) const = default;
 };

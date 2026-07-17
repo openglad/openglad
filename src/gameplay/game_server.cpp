@@ -274,6 +274,24 @@ const PlayerInput& select_player_input(const InputState& input,
                                         : input.players[bounded_index];
 }
 
+// Per-seat input pick. Multi-binding peers use STRICT slot mapping (seat k
+// reads InputState slot k); single-binding peers keep the historic
+// single-active-slot heuristic above, which lets legacy clients (text/curses,
+// old tests) send in slot 0 while being bound to any global player index.
+const PlayerInput& select_seat_input(const InputState& input,
+                                     const og::sim::BoundPlayer& seat,
+                                     bool strict_slot_mapping)
+{
+    if (strict_slot_mapping)
+    {
+        const std::size_t slot = std::min(
+            static_cast<std::size_t>(seat.local_slot),
+            static_cast<std::size_t>(MAX_PLAYERS - 1));
+        return input.players[slot];
+    }
+    return select_player_input(input, seat.player_index);
+}
+
 bool contains_event_kind(const og::sim::SimEventBatch& batch,
                          og::sim::EventKind kind) noexcept
 {
@@ -697,8 +715,8 @@ bool has_living_member_for_any_bound_team(
     for (const auto& [peer_id, client] : clients)
     {
         (void)peer_id;
-        if (client.has_player_binding)
-            track_team(client.team_num);
+        for (const og::sim::BoundPlayer& seat : client.bound_players)
+            track_team(seat.team_num);
     }
 
     for (const og::sim::DisconnectedPlayer& disconnected : disconnected_players)
@@ -948,69 +966,96 @@ void GameServer::handle_transport_disconnect(
     const ConnectedClientState client = it->second;
 
     // Tell the remaining players that someone dropped — a transient on-field
-    // banner like the other in-game event notifications. Only while the level is
-    // live: during teardown every client disconnects and there is no display
-    // left to read it (and a level-end is not a "disconnect").
-    if (client.has_player_binding && world_.end == 0 && !world_.game_ended)
+    // banner like the other in-game event notifications, once per seat. Only
+    // while the level is live: during teardown every client disconnects and
+    // there is no display left to read it (and a level-end is not a
+    // "disconnect").
+    if (client.has_player_binding() && world_.end == 0 && !world_.game_ended)
     {
-        events_.push_notification(
-            std::format("Player {} disconnected", client.player_index + 1), 40);
+        for (const BoundPlayer& seat : client.bound_players)
+        {
+            events_.push_notification(
+                std::format("Player {} disconnected", seat.player_index + 1),
+                40);
+        }
     }
 
+    const auto matches_any_seat = [&client](std::size_t player_index) {
+        return std::any_of(client.bound_players.begin(),
+                           client.bound_players.end(),
+                           [player_index](const BoundPlayer& seat) {
+                               return seat.player_index == player_index;
+                           });
+    };
     if (pending_pause_state_.has_value() &&
-        pending_pause_state_->player_index == client.player_index)
+        matches_any_seat(pending_pause_state_->player_index))
     {
         clear_pause_state();
     }
     if (pending_exit_prompt_state_.has_value() &&
-        pending_exit_prompt_state_->triggering_player_index == client.player_index)
+        matches_any_seat(pending_exit_prompt_state_->triggering_player_index))
     {
         clear_pending_exit_prompt();
     }
 
-    if (client.has_player_binding && !is_zero_session_token(client.session_token))
+    if (client.has_player_binding() &&
+        !is_zero_session_token(client.session_token))
     {
-        const auto existing = std::find_if(
-            disconnected_players_.begin(),
-            disconnected_players_.end(),
-            [&client](const DisconnectedPlayer& disconnected) {
-                return disconnected.player_index == client.player_index ||
-                    session_tokens_equal(disconnected.session_token,
-                                         client.session_token);
-            });
-
-        DisconnectedPlayer replacement;
-        replacement.session_token = client.session_token;
-        replacement.player_index = client.player_index;
-        replacement.team_num = client.team_num;
-        replacement.control = client.control;
-        replacement.repeated_input = client.last_known_input;
-        std::optional<std::uint32_t> newest_pending_tick = std::nullopt;
-        for (const auto& [tick, pending_input] : client.pending_inputs)
+        // One DisconnectedPlayer PER SEAT, all sharing the peer's session
+        // token so a single reconnect hello rebinds every seat.
+        for (const BoundPlayer& seat : client.bound_players)
         {
-            if (!newest_pending_tick.has_value() || tick > *newest_pending_tick)
+            const auto existing = std::find_if(
+                disconnected_players_.begin(),
+                disconnected_players_.end(),
+                [&client, &seat](const DisconnectedPlayer& disconnected) {
+                    return disconnected.player_index == seat.player_index ||
+                        (session_tokens_equal(disconnected.session_token,
+                                              client.session_token) &&
+                         disconnected.local_slot == seat.local_slot);
+                });
+
+            DisconnectedPlayer replacement;
+            replacement.session_token = client.session_token;
+            replacement.local_slot = seat.local_slot;
+            replacement.player_index = seat.player_index;
+            replacement.team_num = seat.team_num;
+            replacement.control = seat.control;
+            replacement.repeated_input = seat.last_known_input;
+            std::optional<std::uint32_t> newest_pending_tick = std::nullopt;
+            for (const auto& [tick, pending_input] : seat.pending_inputs)
             {
-                newest_pending_tick = tick;
-                replacement.repeated_input = pending_input;
+                if (!newest_pending_tick.has_value() ||
+                    tick > *newest_pending_tick)
+                {
+                    newest_pending_tick = tick;
+                    replacement.repeated_input = pending_input;
+                }
+            }
+            clear_pressed(replacement.repeated_input);
+            replacement.grace_started_at_ms =
+                grace_started_at_ms.value_or(now_ms());
+            replacement.disconnected_at_ms = now_ms();
+            replacement.ai_control_enabled = false;
+            replacement.was_host = was_host && seat.local_slot == 0;
+
+            if (existing != disconnected_players_.end())
+                *existing = replacement;
+            else
+                disconnected_players_.push_back(replacement);
+        }
+    }
+    else if (client.has_player_binding())
+    {
+        for (const BoundPlayer& seat : client.bound_players)
+        {
+            if (seat.control != nullptr &&
+                seat.control->user() == static_cast<int>(seat.player_index))
+            {
+                seat.control->set_user(-1);
+                seat.control->restore_act_type();
             }
         }
-        clear_pressed(replacement.repeated_input);
-        replacement.grace_started_at_ms =
-            grace_started_at_ms.value_or(now_ms());
-        replacement.disconnected_at_ms = now_ms();
-        replacement.ai_control_enabled = false;
-        replacement.was_host = was_host;
-
-        if (existing != disconnected_players_.end())
-            *existing = replacement;
-        else
-            disconnected_players_.push_back(replacement);
-    }
-    else if (client.has_player_binding && client.control != nullptr &&
-             client.control->user() == static_cast<int>(client.player_index))
-    {
-        client.control->set_user(-1);
-        client.control->restore_act_type();
     }
 
     clients_.erase(it);
@@ -1038,44 +1083,50 @@ void GameServer::disconnect_client(PeerId peer_id)
         erase_peer_id_sorted(connected_transport_peers_, disconnected_peer_id);
         erase_peer_id_sorted(pending_transport_disconnects_, disconnected_peer_id);
 
-        std::optional<std::size_t> disconnected_player_index = std::nullopt;
+        std::vector<std::size_t> disconnected_player_indices;
         const auto it = clients_.find(disconnected_peer_id);
         if (it != clients_.end())
         {
             const ConnectedClientState& client = it->second;
-            if (client.has_player_binding)
-                disconnected_player_index = client.player_index;
-            if (client.has_player_binding && client.control != nullptr &&
-                client.control->user() == static_cast<int>(client.player_index))
+            for (const BoundPlayer& seat : client.bound_players)
             {
-                client.control->set_user(-1);
-                client.control->restore_act_type();
-            }
+                disconnected_player_indices.push_back(seat.player_index);
+                if (seat.control != nullptr &&
+                    seat.control->user() ==
+                        static_cast<int>(seat.player_index))
+                {
+                    seat.control->set_user(-1);
+                    seat.control->restore_act_type();
+                }
 
-            if (pending_pause_state_.has_value() &&
-                pending_pause_state_->player_index == client.player_index)
-            {
-                clear_pause_state();
-            }
-            if (pending_exit_prompt_state_.has_value() &&
-                pending_exit_prompt_state_->triggering_player_index ==
-                    client.player_index)
-            {
-                clear_pending_exit_prompt();
+                if (pending_pause_state_.has_value() &&
+                    pending_pause_state_->player_index == seat.player_index)
+                {
+                    clear_pause_state();
+                }
+                if (pending_exit_prompt_state_.has_value() &&
+                    pending_exit_prompt_state_->triggering_player_index ==
+                        seat.player_index)
+                {
+                    clear_pending_exit_prompt();
+                }
             }
 
             clients_.erase(it);
         }
 
-        if (disconnected_player_index.has_value())
+        if (!disconnected_player_indices.empty())
         {
             disconnected_players_.erase(
                 std::remove_if(
                     disconnected_players_.begin(),
                     disconnected_players_.end(),
-                    [player_index = *disconnected_player_index](
+                    [&disconnected_player_indices](
                         const DisconnectedPlayer& disconnected) {
-                        return disconnected.player_index == player_index;
+                        return std::find(disconnected_player_indices.begin(),
+                                         disconnected_player_indices.end(),
+                                         disconnected.player_index) !=
+                            disconnected_player_indices.end();
                     }),
                 disconnected_players_.end());
         }
@@ -1095,16 +1146,21 @@ void GameServer::disconnect_client(PeerId peer_id)
 void GameServer::bind_player(PeerId peer_id,
                              std::size_t player_index,
                              short team_num,
-                             walker* control)
+                             walker* control,
+                             std::uint8_t local_slot)
 {
-    if (player_index >= static_cast<std::size_t>(MAX_PLAYERS))
+    if (player_index >= kMaxGlobalPlayers)
     {
-        throw std::out_of_range("GameServer player index exceeds MAX_PLAYERS");
+        throw std::out_of_range(
+            "GameServer player index exceeds kMaxGlobalPlayers");
+    }
+    if (static_cast<std::size_t>(local_slot) >=
+        static_cast<std::size_t>(MAX_PLAYERS))
+    {
+        throw std::out_of_range("GameServer local slot exceeds MAX_PLAYERS");
     }
 
     ConnectedClientState& client = clients_[peer_id];
-    client.player_index = player_index;
-    client.team_num = team_num;
     if (control == nullptr)
     {
         // CTF: prefer the binding player's OWN hero. Several humans may share
@@ -1144,8 +1200,22 @@ void GameServer::bind_player(PeerId peer_id,
                 control->stats()->clear_command();
         }
     }
-    client.control = control;
-    client.has_player_binding = true;
+
+    // Upsert the seat keyed by local_slot, keeping seats sorted by slot.
+    auto seat_it = std::find_if(
+        client.bound_players.begin(), client.bound_players.end(),
+        [local_slot](const BoundPlayer& seat) {
+            return seat.local_slot >= local_slot;
+        });
+    if (seat_it == client.bound_players.end() ||
+        seat_it->local_slot != local_slot)
+    {
+        seat_it = client.bound_players.insert(
+            seat_it, BoundPlayer{.local_slot = local_slot});
+    }
+    seat_it->player_index = player_index;
+    seat_it->team_num = team_num;
+    seat_it->control = control;
     if (is_zero_session_token(client.session_token))
         client.session_token = allocate_session_token();
     player_controls_[player_index] = control;
@@ -1156,22 +1226,25 @@ void GameServer::bind_player(PeerId peer_id,
 void GameServer::set_player_control(std::size_t player_index,
                                     walker* control) noexcept
 {
-    if (player_index >= static_cast<std::size_t>(MAX_PLAYERS))
+    if (player_index >= kMaxGlobalPlayers)
         return;
 
     player_controls_[player_index] = control;
     for (auto& [peer_id, client] : clients_)
     {
         (void)peer_id;
-        if (client.has_player_binding && client.player_index == player_index)
-            client.control = control;
+        for (BoundPlayer& seat : client.bound_players)
+        {
+            if (seat.player_index == player_index)
+                seat.control = control;
+        }
     }
     maybe_send_control_change(player_index, control);
 }
 
 walker* GameServer::player_control(std::size_t player_index) const noexcept
 {
-    return player_index < static_cast<std::size_t>(MAX_PLAYERS)
+    return player_index < kMaxGlobalPlayers
         ? player_controls_[player_index]
         : nullptr;
 }
@@ -1191,7 +1264,10 @@ InitialSetupMessage GameServer::build_initial_setup(PeerId peer_id) const
     message.difficulty = world_.difficulty;
     message.pixmaxx = world_.pixmaxx;
     message.pixmaxy = world_.pixmaxy;
-    message.my_team = client_it->second.team_num;
+    // A multi-seat peer's display team follows its first seat (lowest slot).
+    message.my_team = client_it->second.bound_players.empty()
+        ? 0
+        : client_it->second.bound_players.front().team_num;
     message.allied_mode = world_.allied_mode;
     message.current_scenario = world_.current_scenario;
     message.respawn_mode = world_.respawn_mode;
@@ -1232,7 +1308,7 @@ void GameServer::handle_hello(PeerId peer_id, const HelloMessage& message)
     response.protocol_version = kNetworkProtocolVersion;
     response.min_protocol_version = kNetworkProtocolVersion;
 
-    if (client.has_player_binding)
+    if (client.has_player_binding())
     {
         if (!is_zero_session_token(client.session_token) &&
             !is_zero_session_token(message.session_token) &&
@@ -1255,70 +1331,111 @@ void GameServer::handle_hello(PeerId peer_id, const HelloMessage& message)
         return;
     }
 
-    const auto disconnected_it = std::find_if(
-        disconnected_players_.begin(),
-        disconnected_players_.end(),
-        [&message](const DisconnectedPlayer& disconnected) {
-            return session_tokens_equal(disconnected.session_token,
-                                        message.session_token);
-        });
-    if (disconnected_it == disconnected_players_.end())
+    // Collect EVERY disconnected seat carrying this token (a multi-seat peer
+    // leaves one entry per seat, all sharing its session token), in slot
+    // order, and rebind them all under this one reconnected connection.
+    std::vector<DisconnectedPlayer> matching_seats;
+    for (const DisconnectedPlayer& disconnected : disconnected_players_)
+    {
+        if (session_tokens_equal(disconnected.session_token,
+                                 message.session_token))
+        {
+            matching_seats.push_back(disconnected);
+        }
+    }
+    if (matching_seats.empty())
     {
         handle_transport_disconnect(peer_id, true);
         return;
     }
+    std::sort(matching_seats.begin(), matching_seats.end(),
+              [](const DisconnectedPlayer& lhs, const DisconnectedPlayer& rhs) {
+                  return lhs.local_slot < rhs.local_slot;
+              });
 
-    client.session_token = disconnected_it->session_token;
-    bind_player(peer_id,
-                disconnected_it->player_index,
-                disconnected_it->team_num,
-                disconnected_it->control);
+    client.session_token = matching_seats.front().session_token;
+    for (const DisconnectedPlayer& seat_entry : matching_seats)
+    {
+        bind_player(peer_id,
+                    seat_entry.player_index,
+                    seat_entry.team_num,
+                    seat_entry.control,
+                    seat_entry.local_slot);
+    }
 
     ConnectedClientState& reconnected = clients_[peer_id];
-    if (disconnected_it->was_host)
+    if (std::any_of(matching_seats.begin(), matching_seats.end(),
+                    [](const DisconnectedPlayer& seat_entry) {
+                        return seat_entry.was_host;
+                    }))
+    {
         host_peer_id_ = peer_id;
-    reconnected.session_token = disconnected_it->session_token;
+    }
+    reconnected.session_token = matching_seats.front().session_token;
     reconnected.initial_setup_sent = false;
     reconnected.has_initial_snapshot = false;
     reconnected.client_ready = false;
     reconnected.allow_initial_keyframe_without_ready = true;
     reconnected.budget_pending_keyframe = true;
     reconnected.force_keyframe = true;
-    reconnected.resume_in_dead_state =
-        reconnected.control != nullptr && reconnected.control->dead();
-    reconnected.pending_inputs.clear();
     reconnected.expected_snapshot_hashes.clear();
-    reconnected.last_known_input = disconnected_it->repeated_input;
-    clear_pressed(reconnected.last_known_input);
     reconnected.last_received_input_ms = now_ms();
     reset_client_snapshot_state(reconnected.snapshot_state);
 
-    if (reconnected.resume_in_dead_state)
+    for (std::size_t entry_index = 0; entry_index < matching_seats.size();
+         ++entry_index)
     {
-        if (reconnected.control->user() ==
-            static_cast<int>(reconnected.player_index))
+        const DisconnectedPlayer& seat_entry = matching_seats[entry_index];
+        const auto seat_it = std::find_if(
+            reconnected.bound_players.begin(),
+            reconnected.bound_players.end(),
+            [&seat_entry](const BoundPlayer& seat) {
+                return seat.local_slot == seat_entry.local_slot;
+            });
+        if (seat_it == reconnected.bound_players.end())
+            continue;
+        BoundPlayer& seat = *seat_it;
+        seat.resume_in_dead_state =
+            seat.control != nullptr && seat.control->dead();
+        seat.pending_inputs.clear();
+        seat.last_known_input = seat_entry.repeated_input;
+        clear_pressed(seat.last_known_input);
+
+        if (seat.resume_in_dead_state)
         {
-            reconnected.control->set_user(-1);
-            reconnected.control->restore_act_type();
+            if (seat.control->user() == static_cast<int>(seat.player_index))
+            {
+                seat.control->set_user(-1);
+                seat.control->restore_act_type();
+            }
         }
-    }
-    else if (reconnected.control != nullptr &&
-             reconnected.control->user() == -1)
-    {
-        reconnected.control->set_user(
-            static_cast<signed char>(reconnected.player_index));
-        reconnected.control->set_act_type(ACT_CONTROL);
-        if (reconnected.control->stats() != nullptr)
-            reconnected.control->stats()->clear_command();
+        else if (seat.control != nullptr && seat.control->user() == -1)
+        {
+            seat.control->set_user(
+                static_cast<signed char>(seat.player_index));
+            seat.control->set_act_type(ACT_CONTROL);
+            if (seat.control->stats() != nullptr)
+                seat.control->stats()->clear_command();
+        }
+
+        player_controls_[seat.player_index] = seat.control;
     }
 
-    player_controls_[reconnected.player_index] = reconnected.control;
     send_initial_setup(peer_id);
-    maybe_send_control_change(reconnected.player_index, reconnected.control);
+    for (const BoundPlayer& seat : reconnected.bound_players)
+        maybe_send_control_change(seat.player_index, seat.control);
 
     response.session_token = reconnected.session_token;
     transport_.send_hello(peer_id, std::make_shared<HelloMessage>(response));
-    disconnected_players_.erase(disconnected_it);
+    disconnected_players_.erase(
+        std::remove_if(disconnected_players_.begin(),
+                       disconnected_players_.end(),
+                       [&message](const DisconnectedPlayer& disconnected) {
+                           return session_tokens_equal(
+                               disconnected.session_token,
+                               message.session_token);
+                       }),
+        disconnected_players_.end());
 }
 
 void GameServer::handle_heartbeat(PeerId peer_id)
@@ -1376,7 +1493,7 @@ bool GameServer::process_disconnected_players(std::uint32_t expected_tick)
         // rebound during the grace window so it is not a statue.
         if (!disconnected.ai_control_enabled &&
             disconnected.control == nullptr &&
-            disconnected.player_index < static_cast<std::size_t>(MAX_PLAYERS))
+            disconnected.player_index < kMaxGlobalPlayers)
         {
             if (walker* reclaimed =
                     find_ctf_reclaim_control(disconnected.player_index))
@@ -1391,7 +1508,7 @@ bool GameServer::process_disconnected_players(std::uint32_t expected_tick)
 
         if (disconnected.ai_control_enabled || disconnected.control == nullptr ||
             disconnected.control->dead() ||
-            disconnected.player_index >= static_cast<std::size_t>(MAX_PLAYERS))
+            disconnected.player_index >= kMaxGlobalPlayers)
         {
             continue;
         }
@@ -1521,12 +1638,12 @@ void GameServer::poll_incoming_messages(int max_messages)
     synchronize_transport_peers();
 }
 
-PlayerInput GameServer::select_effective_input(ConnectedClientState& client,
+PlayerInput GameServer::select_effective_input(BoundPlayer& seat,
                                                std::uint32_t expected_tick)
 {
     std::vector<std::uint32_t> pending_ticks;
-    pending_ticks.reserve(client.pending_inputs.size());
-    for (const auto& [tick, input] : client.pending_inputs)
+    pending_ticks.reserve(seat.pending_inputs.size());
+    for (const auto& [tick, input] : seat.pending_inputs)
     {
         (void)input;
         if (tick <= expected_tick)
@@ -1534,20 +1651,20 @@ PlayerInput GameServer::select_effective_input(ConnectedClientState& client,
     }
     std::sort(pending_ticks.begin(), pending_ticks.end());
 
-    PlayerInput effective = client.last_known_input;
+    PlayerInput effective = seat.last_known_input;
     clear_pressed(effective);
     std::array<bool, NUM_INPUT_KEYS> late_pressed = {};
     bool has_exact_input = false;
 
     for (const std::uint32_t tick : pending_ticks)
     {
-        const auto input_it = client.pending_inputs.find(tick);
-        if (input_it == client.pending_inputs.end())
+        const auto input_it = seat.pending_inputs.find(tick);
+        if (input_it == seat.pending_inputs.end())
             continue;
 
         const PlayerInput& received = input_it->second;
         for (int key = 0; key < NUM_INPUT_KEYS; ++key)
-            client.last_known_input.held[key] = received.held[key];
+            seat.last_known_input.held[key] = received.held[key];
 
         if (tick == expected_tick)
         {
@@ -1560,13 +1677,13 @@ PlayerInput GameServer::select_effective_input(ConnectedClientState& client,
                 late_pressed[key] = late_pressed[key] || received.pressed[key];
         }
 
-        client.pending_inputs.erase(input_it);
+        seat.pending_inputs.erase(input_it);
     }
 
     if (!has_exact_input)
     {
         for (int key = 0; key < NUM_INPUT_KEYS; ++key)
-            effective.held[key] = client.last_known_input.held[key];
+            effective.held[key] = seat.last_known_input.held[key];
     }
 
     for (int key = 0; key < NUM_INPUT_KEYS; ++key)
@@ -1587,7 +1704,7 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
         switch (message.kind)
         {
         case TypedReceivedMessageKind::Input:
-            if (!message.input || !client.has_player_binding)
+            if (!message.input || !client.has_player_binding())
                 break;
             if (host_peer_id_.has_value() &&
                 message.peer_id == *host_peer_id_ &&
@@ -1613,20 +1730,24 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
                     static_cast<std::int64_t>(expected_tick);
                 if (tick_delta > kMaxFutureInputTicks)
                     break;
-                // Defense in depth: cap pending entries per client and ignore
+                // Defense in depth: cap pending entries per seat and ignore
                 // new keys once full, so the invariant holds even if the window
                 // logic above ever changes.
-                constexpr std::size_t kMaxPendingInputsPerClient = 256;
-                if (client.pending_inputs.size() >= kMaxPendingInputsPerClient &&
-                    client.pending_inputs.find(message.tick) ==
-                        client.pending_inputs.end())
+                constexpr std::size_t kMaxPendingInputsPerSeat = 256;
+                const bool strict_slot_mapping = client.bound_players.size() > 1;
+                for (BoundPlayer& seat : client.bound_players)
                 {
-                    break;
+                    if (seat.pending_inputs.size() >= kMaxPendingInputsPerSeat &&
+                        seat.pending_inputs.find(message.tick) ==
+                            seat.pending_inputs.end())
+                    {
+                        continue;
+                    }
+                    seat.pending_inputs[message.tick] = select_seat_input(
+                        *message.input, seat, strict_slot_mapping);
+                    seat.last_received_input_tick = message.tick;
                 }
             }
-            client.pending_inputs[message.tick] =
-                select_player_input(*message.input, client.player_index);
-            client.last_received_input_tick = message.tick;
             client.last_received_input_ms = now_ms();
             break;
 
@@ -1669,9 +1790,15 @@ void GameServer::process_non_input_messages(std::uint32_t expected_tick)
                     // answer in that fallback case.
                     const auto trig =
                         pending_exit_prompt_state_->triggering_player_index;
-                    if (client.has_player_binding &&
+                    const bool trig_is_local_seat = std::any_of(
+                        client.bound_players.begin(),
+                        client.bound_players.end(),
+                        [trig](const BoundPlayer& seat) {
+                            return seat.player_index == trig;
+                        });
+                    if (client.has_player_binding() &&
                         (trig == static_cast<std::size_t>(-1) ||
-                         client.player_index == trig))
+                         trig_is_local_seat))
                     {
                         handle_exit_prompt_response(
                             message.exit_prompt_response->accepted);
@@ -1780,7 +1907,7 @@ void GameServer::update_timeouts()
         pending_exit_prompt_state_.has_value() || pending_pause_state_.has_value();
     if (pending_exit_prompt_state_.has_value() &&
         pending_exit_prompt_state_->triggering_player_index <
-            static_cast<std::size_t>(MAX_PLAYERS))
+            kMaxGlobalPlayers)
     {
         walker* const triggering_control =
             player_control(pending_exit_prompt_state_->triggering_player_index);
@@ -1993,11 +2120,14 @@ void GameServer::prepare_clients_for_loaded_level()
         client.allow_initial_keyframe_without_ready = false;
         client.budget_pending_keyframe = false;
         client.force_keyframe = true;
-        client.resume_in_dead_state = false;
-        client.pending_inputs.clear();
+        for (BoundPlayer& seat : client.bound_players)
+        {
+            seat.resume_in_dead_state = false;
+            seat.pending_inputs.clear();
+            seat.last_known_input = {};
+            seat.last_received_input_tick = 0;
+        }
         client.expected_snapshot_hashes.clear();
-        client.last_known_input = {};
-        client.last_received_input_tick = 0;
         client.last_received_input_ms = now;
         reset_client_snapshot_state(client.snapshot_state);
     }
@@ -2020,20 +2150,22 @@ void GameServer::rebind_players_for_loaded_level()
         PeerId peer_id = 0;
         std::size_t player_index = 0;
         short team_num = 0;
+        std::uint8_t local_slot = 0;
     };
 
     std::vector<PlayerBinding> bindings;
     bindings.reserve(clients_.size());
     for (const auto& [peer_id, client] : clients_)
     {
-        if (!client.has_player_binding)
-            continue;
-
-        bindings.push_back(PlayerBinding{
-            .peer_id = peer_id,
-            .player_index = client.player_index,
-            .team_num = client.team_num,
-        });
+        for (const BoundPlayer& seat : client.bound_players)
+        {
+            bindings.push_back(PlayerBinding{
+                .peer_id = peer_id,
+                .player_index = seat.player_index,
+                .team_num = seat.team_num,
+                .local_slot = seat.local_slot,
+            });
+        }
     }
 
     std::sort(bindings.begin(), bindings.end(),
@@ -2044,7 +2176,10 @@ void GameServer::rebind_players_for_loaded_level()
               });
 
     for (const PlayerBinding& binding : bindings)
-        bind_player(binding.peer_id, binding.player_index, binding.team_num, nullptr);
+    {
+        bind_player(binding.peer_id, binding.player_index, binding.team_num,
+                    nullptr, binding.local_slot);
+    }
 }
 
 std::size_t GameServer::infer_exit_triggering_player_index() const noexcept
@@ -2055,17 +2190,17 @@ std::size_t GameServer::infer_exit_triggering_player_index() const noexcept
     for (const auto& [peer_id, client] : clients_)
     {
         (void)peer_id;
-        if (!client.has_player_binding || client.control == nullptr ||
-            client.control->dead())
+        for (const BoundPlayer& seat : client.bound_players)
         {
-            continue;
+            if (seat.control == nullptr || seat.control->dead())
+                continue;
+
+            if (seat.control->skip_exit() == 10)
+                return seat.player_index;
+
+            if (fallback == kNoPlayer && seat.control->skip_exit() > 1)
+                fallback = seat.player_index;
         }
-
-        if (client.control->skip_exit() == 10)
-            return client.player_index;
-
-        if (fallback == kNoPlayer && client.control->skip_exit() > 1)
-            fallback = client.player_index;
     }
 
     return fallback;
@@ -2077,7 +2212,7 @@ void GameServer::handle_pause_request(PeerId peer_id)
         return;
 
     const auto client_it = clients_.find(peer_id);
-    if (client_it == clients_.end() || !client_it->second.has_player_binding)
+    if (client_it == clients_.end() || !client_it->second.has_player_binding())
         return;
 
     ConnectedClientState& client = client_it->second;
@@ -2089,18 +2224,21 @@ void GameServer::handle_pause_request(PeerId peer_id)
         return;
     }
 
+    // The pause wire message carries no seat slot; attribute the pause to the
+    // peer's first seat.
+    const BoundPlayer& seat = client.bound_players.front();
     client.last_pause_request_ms = now;
     world_.paused = true;
-    world_.pause_player_index = static_cast<std::uint8_t>(client.player_index);
+    world_.pause_player_index = static_cast<std::uint8_t>(seat.player_index);
 
     PendingPauseState state;
-    state.player_index = client.player_index;
-    state.player_name = player_name_from_control(client.control, client.player_index);
+    state.player_index = seat.player_index;
+    state.player_name = player_name_from_control(seat.control, seat.player_index);
     state.opened_at_ms = now;
     pending_pause_state_ = state;
 
     PauseBroadcastMessage message;
-    message.player_index = static_cast<std::uint8_t>(client.player_index);
+    message.player_index = static_cast<std::uint8_t>(seat.player_index);
     message.player_name = state.player_name;
     for (const auto& [other_peer_id, other_client] : clients_)
     {
@@ -2119,48 +2257,63 @@ void GameServer::handle_pause_response()
 bool GameServer::apply_polled_inputs(std::uint32_t expected_tick)
 {
     bool should_tick_world = true;
+
+    // Deterministic application order: every bound seat across every peer,
+    // sorted by GLOBAL player index (the unordered_map iteration order was
+    // never deterministic; multi-seat peers make imposing one cheap and
+    // worthwhile now).
+    std::vector<BoundPlayer*> ordered_seats;
+    ordered_seats.reserve(clients_.size());
     for (auto& [peer_id, client] : clients_)
     {
         (void)peer_id;
-        if (!client.has_player_binding)
-            continue;
+        for (BoundPlayer& seat : client.bound_players)
+            ordered_seats.push_back(&seat);
+    }
+    std::sort(ordered_seats.begin(), ordered_seats.end(),
+              [](const BoundPlayer* lhs, const BoundPlayer* rhs) {
+                  return lhs->player_index < rhs->player_index;
+              });
 
-        const std::size_t player_index = client.player_index;
-        walker* const previous_control = client.control;
-        if (client.resume_in_dead_state && client.control != nullptr &&
-            client.control->dead())
+    for (BoundPlayer* const seat_ptr : ordered_seats)
+    {
+        BoundPlayer& seat = *seat_ptr;
+        const std::size_t player_index = seat.player_index;
+        walker* const previous_control = seat.control;
+        if (seat.resume_in_dead_state && seat.control != nullptr &&
+            seat.control->dead())
         {
-            player_controls_[player_index] = client.control;
+            player_controls_[player_index] = seat.control;
             continue;
         }
 
-        client.resume_in_dead_state = false;
-        if (client.control == nullptr)
+        seat.resume_in_dead_state = false;
+        if (seat.control == nullptr)
         {
             // A CTF revive restored this player's walker in place with its
             // user tag intact; rebind it (the previous_control diff below
             // broadcasts the ControlChange to every mirror).
             if (walker* reclaimed = find_ctf_reclaim_control(player_index))
             {
-                client.control = reclaimed;
+                seat.control = reclaimed;
                 if (reclaimed->stats() != nullptr)
                     world_.control_hp = reclaimed->stats()->hitpoints();
             }
         }
-        const PlayerInput input = select_effective_input(client, expected_tick);
+        const PlayerInput input = select_effective_input(seat, expected_tick);
         const SimInputResult result = sim_process_player_input(
             input,
-            client.control,
+            seat.control,
             world_,
             static_cast<short>(player_index),
-            client.team_num,
+            seat.team_num,
             player_input_debounce_[player_index],
             special_names_,
             &events_);
 
-        player_controls_[player_index] = client.control;
-        if (client.control != previous_control)
-            maybe_send_control_change(player_index, client.control);
+        player_controls_[player_index] = seat.control;
+        if (seat.control != previous_control)
+            maybe_send_control_change(player_index, seat.control);
         if (result.control_hp_changed)
             world_.control_hp = result.control_hp;
         if (result.endgame_requested &&
@@ -2315,7 +2468,7 @@ walker* GameServer::find_ctf_reclaim_control(std::size_t player_index) const
 
 void GameServer::maybe_send_control_change(std::size_t player_index, walker* control)
 {
-    if (player_index >= static_cast<std::size_t>(MAX_PLAYERS))
+    if (player_index >= kMaxGlobalPlayers)
         return;
 
     ControlChangeMessage message;
@@ -2408,8 +2561,14 @@ void GameServer::maybe_resolve_world_events(SimEventBatch& batch,
     {
         for (const auto& [peer_id, client] : clients_)
         {
-            if (client.has_player_binding &&
-                client.player_index == prompt.triggering_player_index)
+            const bool owns_trigger_seat = std::any_of(
+                client.bound_players.begin(),
+                client.bound_players.end(),
+                [&prompt](const BoundPlayer& seat) {
+                    return seat.player_index ==
+                        prompt.triggering_player_index;
+                });
+            if (owns_trigger_seat)
             {
                 send_prompt_to(peer_id);
                 prompted_trigger = true;
@@ -2548,7 +2707,7 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
         ConnectedClientState& client = clients_.at(peer_id);
         if (!client.initial_setup_sent)
         {
-            if (!client.has_player_binding)
+            if (!client.has_player_binding())
                 continue;
             send_initial_snapshot(peer_id, SnapshotCaptureMode::Peek);
             continue;

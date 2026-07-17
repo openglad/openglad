@@ -54,8 +54,7 @@ public:
     void poll_messages(float current_render_alpha);
     void poll_messages(float current_render_alpha, int max_messages);
     void set_control_mapping_callback(
-        std::function<void(const std::array<std::uint32_t, MAX_PLAYERS>&,
-                           GameWorld*)> callback);
+        std::function<void(const ControlledEntityIds&, GameWorld*)> callback);
     void set_initial_setup_callback(
         std::function<void(const InitialSetupMessage&, bool is_level_transition)>
             callback);
@@ -102,7 +101,7 @@ public:
         return initial_setup_;
     }
 
-    [[nodiscard]] const std::array<std::uint32_t, MAX_PLAYERS>&
+    [[nodiscard]] const ControlledEntityIds&
     controlled_entity_ids() const noexcept
     {
         return controlled_entity_ids_;
@@ -227,7 +226,7 @@ private:
     int messages_drained_last_call_ = 0;
     std::vector<SimEventBatch> sim_event_batches_;
     std::vector<SimEventBatch> game_flow_event_batches_;
-    std::array<std::uint32_t, MAX_PLAYERS> controlled_entity_ids_ = {};
+    ControlledEntityIds controlled_entity_ids_ = {};
     std::unordered_map<std::int32_t, InitialSetupGuyData> initial_setup_guys_;
     std::optional<ExitPromptBroadcastMessage> last_exit_prompt_ = std::nullopt;
     std::optional<PauseBroadcastMessage> last_pause_broadcast_ = std::nullopt;
@@ -258,8 +257,8 @@ private:
     std::uint32_t client_ready_count_ = 0;
     std::uint32_t keyframe_request_count_ = 0;
     std::uint32_t snapshot_hash_check_count_ = 0;
-    std::function<void(const std::array<std::uint32_t, MAX_PLAYERS>&,
-                       GameWorld*)> control_mapping_callback_;
+    std::function<void(const ControlledEntityIds&, GameWorld*)>
+        control_mapping_callback_;
     std::function<void(const InitialSetupMessage&, bool)> initial_setup_callback_;
     std::function<void(const SimEventBatch&)> sim_event_batch_callback_;
     std::function<void(const SimEventBatch&)> game_flow_event_batch_callback_;
