@@ -1282,7 +1282,7 @@ function main() {
           minimum_jitter_frame_count: MINIMUM_JITTER_FRAME_COUNT,
           dominant_period_tolerance_ratio: DOMINANT_PERIOD_TOLERANCE_RATIO,
           minimum_correlated_event_overlap_ratio: MINIMUM_CORRELATED_EVENT_OVERLAP_RATIO,
-      minimum_dominant_period_score: MINIMUM_DOMINANT_PERIOD_SCORE,
+          minimum_dominant_period_score: MINIMUM_DOMINANT_PERIOD_SCORE,
         };
   const dominantPeriodToleranceRatio =
     reproducedGate.dominant_period_tolerance_ratio;
