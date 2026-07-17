@@ -849,7 +849,7 @@ TEST(NetTransportRelayWs, live_cloudflare_relay_end_to_end)
         return std::string(
             override_url != nullptr && override_url[0] != '\0'
                 ? override_url
-                : "https://openglad-relay.yans.workers.dev");
+                : "https://openglad.pages.dev/relay");
     }();
 
     // Create a room over HTTPS exactly like the native picker client does.

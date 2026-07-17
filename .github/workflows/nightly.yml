@@ -230,7 +230,7 @@ jobs:
 
       - name: Prepare deploy directory
         run: |
-          cp web/index.html web/help.html dist/
+          cp web/index.html web/help.html web/_worker.js dist/
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3

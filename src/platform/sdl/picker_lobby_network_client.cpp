@@ -151,7 +151,7 @@ std::string trim_copy(std::string value)
 }
 
 constexpr std::string_view kDefaultRelayBaseUrl =
-    "https://openglad-relay.yans.workers.dev";
+    "https://openglad.pages.dev/relay";
 
 #ifdef __EMSCRIPTEN__
 EM_ASYNC_JS(char*, relay_http_post_text_js, (const char* url_cstr), {

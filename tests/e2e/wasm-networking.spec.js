@@ -44,8 +44,12 @@ const TEAM_BUILD_STATUS_REGION = { x: 6, y: 2, w: 250, h: 28 };
 // Cloudflare Worker, so "the default is unreachable" is no longer a given.
 // Error-path tests explicitly override the relay with an RFC 6761 .invalid
 // host, which is guaranteed to never resolve.
-const DEFAULT_RELAY_HOSTNAME = 'openglad-relay.yans.workers.dev';
-const LIVE_RELAY_BASE_URL = `https://${DEFAULT_RELAY_HOSTNAME}`;
+// The shipped default is the SAME-ORIGIN relay mount on the Pages site
+// (routed to the relay Worker via a service binding).
+const DEFAULT_RELAY_HOSTNAME = 'openglad.pages.dev';
+const DEFAULT_RELAY_PATH_PREFIX = '/relay';
+const LIVE_RELAY_BASE_URL =
+  `https://${DEFAULT_RELAY_HOSTNAME}${DEFAULT_RELAY_PATH_PREFIX}`;
 const UNREACHABLE_RELAY_BASE_URL = 'https://unreachable.invalid';
 
 const IGNORED_RUNTIME_ERROR_PATTERNS = [
@@ -481,7 +485,9 @@ test.describe('Browser networking stalled relay create (held route)', () => {
     // its popup within ~10s instead of leaving the picker
     // Asyncify-suspended indefinitely.
     const heldRoutes = [];
-    const isDefaultRelay = (url) => url.hostname === DEFAULT_RELAY_HOSTNAME;
+    const isDefaultRelay = (url) =>
+      url.hostname === DEFAULT_RELAY_HOSTNAME &&
+      url.pathname.startsWith(DEFAULT_RELAY_PATH_PREFIX);
     await page.route(isDefaultRelay, (route) => {
       heldRoutes.push(route);
     });
@@ -1191,7 +1197,7 @@ test.describe('Browser networking live deployed relay (opt-in)', () => {
       }
       if (
         url.hostname === DEFAULT_RELAY_HOSTNAME &&
-        url.pathname === '/api/create' &&
+        url.pathname === `${DEFAULT_RELAY_PATH_PREFIX}/api/create` &&
         response.request().method() === 'POST'
       ) {
         createExchanges.push({

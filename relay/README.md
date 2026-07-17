@@ -98,8 +98,12 @@ CLOUDFLARE_API_TOKEN=... npx wrangler deploy   # add CLOUDFLARE_ACCOUNT_ID=... i
 ```
 
 No custom domain; the worker serves on
-`https://openglad-relay.<account-subdomain>.workers.dev`. Point the game at
-it via `OPENGLAD_RELAY_BASE_URL` (native/headless) or the
+`https://openglad-relay.<account-subdomain>.workers.dev`. Production also
+mounts it SAME-ORIGIN at `https://openglad.pages.dev/relay` via the Pages
+project's `web/_worker.js` router + a `RELAY` service binding to this Worker
+(set on the Pages project; Durable Objects must live here, not in Pages).
+The game's shipped default is the same-origin mount. Point the game elsewhere
+via `OPENGLAD_RELAY_BASE_URL` (native/headless) or the
 `kDefaultRelayBaseUrl` constants in the two `picker_lobby_network_client.cpp`
 copies, or `window.__opengladRelayBaseUrlForTests` in browser tests.
 
@@ -112,7 +116,7 @@ npm run smoke       # node smoke.mjs: spawns `wrangler dev --local` and drives
                     # the full protocol over real HTTP/WebSockets, including
                     # the empty-room expiry alarm (TTL overridden to 4 s via
                     # --var EMPTY_ROOM_TTL_MS:4000)
-node smoke.mjs --url https://openglad-relay.<subdomain>.workers.dev --skip-expiry
+node smoke.mjs --url https://openglad.pages.dev/relay --skip-expiry   # or the workers.dev URL
                     # against a deployed relay (expiry check skipped: the
                     # deployed TTL is 120 s; verify it by creating a room,
                     # waiting >2 min, and confirming the WS upgrade 404s)

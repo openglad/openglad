@@ -25,7 +25,7 @@ EM_JS_DEPS(og_picker_relay_test_hook, "$stringToNewUTF8");
 namespace {
 
 constexpr std::string_view kDefaultRelayBaseUrl =
-    "https://openglad-relay.yans.workers.dev";
+    "https://openglad.pages.dev/relay";
 constexpr std::array<std::string_view, 2> kNetworkingMenuInstructionLines{{
     "HOST or JOIN from the current team setup.",
     "Pick BEGIN NEW GAME or CONTINUE GAME first.",

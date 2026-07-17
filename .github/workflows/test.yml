@@ -134,7 +134,9 @@ jobs:
   asan:
     name: ASan+UBSan
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The sanitizer suite outgrew 30 minutes once IXWebSocket gained a TLS
+    # build and the multi-seat networking tests landed.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:

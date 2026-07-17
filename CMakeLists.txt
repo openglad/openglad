@@ -3137,6 +3137,7 @@ endif()
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${CMAKE_SOURCE_DIR}/web/index.html
             ${CMAKE_SOURCE_DIR}/web/help.html
+            ${CMAKE_SOURCE_DIR}/web/_worker.js
             $<TARGET_FILE_DIR:play>
         COMMENT "Copying web landing page assets to dist/"
         VERBATIM
