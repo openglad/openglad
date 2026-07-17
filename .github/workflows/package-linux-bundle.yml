@@ -1,0 +1,75 @@
+name: Build Linux bundle
+
+on:
+  pull_request:
+  # Reusable: can be invoked by a release workflow on merges to master.
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  build-linux-bundle:
+    name: Build Linux bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          # Full history so `git describe` can name the bundle.
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake \
+            ninja-build \
+            pkg-config \
+            patchelf \
+            libsdl2-dev \
+            libsdl2-mixer-dev \
+            libpng-dev \
+            libphysfs-dev \
+            libzip-dev \
+            libyaml-dev \
+            zlib1g-dev
+
+      - uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: package-linux-bundle
+
+      - name: Configure (dev-release preset)
+        run: >
+          cmake --preset dev-release
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Build game binaries
+        run: cmake --build --preset dev-release --target openglad openscen -j"$(nproc)"
+
+      - name: Package Linux bundle
+        run: ./scripts/package_linux_bundle.sh build/dev-release
+
+      # actions/upload-artifact does not preserve the Unix executable bit, so
+      # we zip the bundle ourselves first (zip stores file permissions) and
+      # upload the single archive. The +x bit on the binaries then survives
+      # the artifact round-trip.
+      - name: Archive bundle (preserves executable bit)
+        id: bundle
+        run: |
+          set -euo pipefail
+          cd distrib
+          dir="$(basename openglad-*-linux-bundle)"
+          zip -r -y -q "${dir}.zip" "$dir"
+          echo "name=${dir}.zip" >> "$GITHUB_OUTPUT"
+
+      - name: Upload openglad-linux-bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.bundle.outputs.name }}
+          path: distrib/openglad-*-linux-bundle.zip
+          if-no-files-found: error

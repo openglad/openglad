@@ -9,6 +9,7 @@ obj/
 /build-test/
 /build-coverage/
 /coverage/
+/distrib/
 /openglad
 /openscen
 /openglad_curses
