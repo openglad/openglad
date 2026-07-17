@@ -133,6 +133,9 @@ inline constexpr int GAMEPAD_STICK_DEAD_ZONE = 12000; // out of 32767
 // Analog triggers rest at 0 and rise toward 32767; count as pressed past this.
 inline constexpr int GAMEPAD_TRIGGER_THRESHOLD = 8000;
 og::input_native::GameControllerHandle player_controllers[4] = {nullptr, nullptr, nullptr, nullptr};
+// Instance id of each player's open pad, or -1. Needed for hotplug: SDL reports
+// only an instance id when a device is removed.
+int player_controller_ids[4] = {-1, -1, -1, -1};
 
 namespace
 {
@@ -222,7 +225,10 @@ bool controllerHoldingKey(int player_index, int key_enum)
 void setup_game_controllers()
 {
     for (int i = 0; i < 4; i++)
+    {
         player_controllers[i] = nullptr;
+        player_controller_ids[i] = -1;
+    }
 
     if (!og::input_native::gamecontroller_subsystem_initialized())
         og::input_native::gamecontroller_init_subsystem();
@@ -275,6 +281,8 @@ void init_input()
             player_controllers[i] = og::input_native::game_controller_open(i);
             if(player_controllers[i] != nullptr)
             {
+                player_controller_ids[i] =
+                    og::input_native::game_controller_instance_id(player_controllers[i]);
                 Log("Gamepad: player {} -> {}\n", i + 1,
                     og::input_native::game_controller_name(player_controllers[i]));
                 continue;
@@ -623,8 +631,21 @@ void handle_controller_event(const void* native_event)
     {
     case og::input_native::EventType::ControllerButtonDown:
         og::runtime::current_session->key_press_event_ = 1;
-        if (event.controller_button == static_cast<int>(og::input_native::ControllerButton::Start))
+        if (og::input_native::text_input_active())
+        {
+            // A text prompt (e.g. the new-character name dialog) is open. The
+            // pad cannot type, but it can still dismiss the prompt: follow the
+            // Xbox convention where A confirms and B cancels, injecting the
+            // Enter / Escape key the prompt already handles.
+            if (event.controller_button == static_cast<int>(og::input_native::ControllerButton::A))
+                sendFakeKeyDownEvent(KEYCODE_RETURN);
+            else if (event.controller_button == static_cast<int>(og::input_native::ControllerButton::B))
+                sendFakeKeyDownEvent(KEYCODE_ESCAPE);
+        }
+        else if (event.controller_button == static_cast<int>(og::input_native::ControllerButton::Start))
+        {
             sendFakeKeyDownEvent(KEYCODE_ESCAPE);
+        }
         break;
     case og::input_native::EventType::ControllerButtonUp:
         if (event.controller_button == static_cast<int>(og::input_native::ControllerButton::Start))
@@ -636,6 +657,66 @@ void handle_controller_event(const void* native_event)
         break;
     default:
         break;
+    }
+}
+
+// Controller hotplug. Pads may be connected or disconnected at any time, so
+// slots are (re)assigned as devices come and go rather than only at init_input.
+// A player whose pad vanishes simply falls back to the keyboard, because
+// controllerHoldingKey returns false for a null handle.
+void handle_controller_device_event(const void* native_event)
+{
+    og::input_native::EventData event;
+    if (!as_event_data(native_event, event))
+        return;
+
+    if (event.type == og::input_native::EventType::ControllerDeviceAdded)
+    {
+        // controller_which is a device index here, and only usable right now.
+        const int device_index = event.controller_which;
+        if (!og::input_native::is_game_controller(device_index))
+            return; // some other joystick (e.g. an accelerometer)
+
+        // SDL also emits ADDED for pads that were already present when the
+        // subsystem started, i.e. the ones init_input has open. Ignore those so
+        // a device is never opened onto two player slots.
+        const int instance_id = og::input_native::joystick_device_instance_id(device_index);
+        for (int i = 0; i < 4; i++)
+        {
+            if (player_controllers[i] != nullptr && player_controller_ids[i] == instance_id)
+                return;
+        }
+
+        for (int i = 0; i < 4; i++)
+        {
+            if (player_controllers[i] != nullptr)
+                continue; // slot taken
+            player_controllers[i] = og::input_native::game_controller_open(device_index);
+            if (player_controllers[i] == nullptr)
+                return;
+            player_controller_ids[i] =
+                og::input_native::game_controller_instance_id(player_controllers[i]);
+            Log("Gamepad: player {} connected -> {}\n", i + 1,
+                og::input_native::game_controller_name(player_controllers[i]));
+            return;
+        }
+        return; // all four players already have a pad
+    }
+
+    if (event.type == og::input_native::EventType::ControllerDeviceRemoved)
+    {
+        // controller_which is an instance id here, not a device index.
+        const int instance_id = event.controller_which;
+        for (int i = 0; i < 4; i++)
+        {
+            if (player_controller_ids[i] != instance_id)
+                continue;
+            og::input_native::game_controller_close(player_controllers[i]);
+            player_controllers[i] = nullptr;
+            player_controller_ids[i] = -1;
+            Log("Gamepad: player {} disconnected\n", i + 1);
+            return;
+        }
     }
 }
 
@@ -696,6 +777,12 @@ void handle_events(const void* native_event)
         break;
     case og::input_native::EventType::ControllerButtonUp:
         handle_controller_event(native_event);
+        break;
+    case og::input_native::EventType::ControllerDeviceAdded:
+        handle_controller_device_event(native_event);
+        break;
+    case og::input_native::EventType::ControllerDeviceRemoved:
+        handle_controller_device_event(native_event);
         break;
     case og::input_native::EventType::Quit:
         quit(0);

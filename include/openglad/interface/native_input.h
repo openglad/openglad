@@ -27,6 +27,8 @@ enum class EventType : std::uint8_t
     ControllerAxisMotion,
     ControllerButtonDown,
     ControllerButtonUp,
+    ControllerDeviceAdded,
+    ControllerDeviceRemoved,
     Quit
 };
 
@@ -82,6 +84,11 @@ struct EventData
     // SDL_GameController events. controller_button holds a ControllerButton
     // value; controller_axis a ControllerAxis value (with controller_axis_value
     // the -32768..32767 reading).
+    //
+    // controller_which is a joystick *device index* on ControllerDeviceAdded but
+    // an *instance id* on ControllerDeviceRemoved (and on the button/axis
+    // events) -- that is SDL's convention, not a mistake. Match opened pads by
+    // instance id; only the device index can be passed to game_controller_open.
     int controller_which = 0;
     int controller_button = 0;
     int controller_axis = 0;
@@ -180,9 +187,15 @@ void game_controller_close(GameControllerHandle controller);
 int game_controller_get_axis(GameControllerHandle controller, int axis);
 int game_controller_get_button(GameControllerHandle controller, int button);
 const char* game_controller_name(GameControllerHandle controller);
+// Stable id of an opened controller, used to match ControllerDeviceRemoved.
+int game_controller_instance_id(GameControllerHandle controller);
+// Instance id a joystick device index *would* get, without opening it. Lets a
+// ControllerDeviceAdded be checked against already-open pads.
+int joystick_device_instance_id(int joystick_index);
 
 void sleep_ms(int ms);
 void show_cursor(bool show);
 void start_text_input();
 void stop_text_input();
+bool text_input_active();
 } // namespace og::input_native

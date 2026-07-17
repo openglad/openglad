@@ -31,6 +31,8 @@ EventType map_event_type(Uint32 type)
     case SDL_CONTROLLERAXISMOTION: return EventType::ControllerAxisMotion;
     case SDL_CONTROLLERBUTTONDOWN: return EventType::ControllerButtonDown;
     case SDL_CONTROLLERBUTTONUP: return EventType::ControllerButtonUp;
+    case SDL_CONTROLLERDEVICEADDED: return EventType::ControllerDeviceAdded;
+    case SDL_CONTROLLERDEVICEREMOVED: return EventType::ControllerDeviceRemoved;
     case SDL_QUIT: return EventType::Quit;
     default: return EventType::Unknown;
     }
@@ -121,6 +123,11 @@ bool decode_event(const void* native_event, EventData& out)
     case SDL_CONTROLLERBUTTONUP:
         out.controller_which = static_cast<int>(e.cbutton.which);
         out.controller_button = e.cbutton.button;
+        break;
+    case SDL_CONTROLLERDEVICEADDED:
+    case SDL_CONTROLLERDEVICEREMOVED:
+        // device index on ADDED, instance id on REMOVED (SDL's convention).
+        out.controller_which = static_cast<int>(e.cdevice.which);
         break;
     case SDL_WINDOWEVENT:
         out.window_event = map_window_event(e.window.event);
@@ -347,6 +354,22 @@ const char* game_controller_name(GameControllerHandle controller)
     return name != nullptr ? name : "Gamepad";
 }
 
+int game_controller_instance_id(GameControllerHandle controller)
+{
+    if (controller == nullptr)
+        return -1;
+    SDL_Joystick* joystick =
+        SDL_GameControllerGetJoystick(static_cast<SDL_GameController*>(controller));
+    if (joystick == nullptr)
+        return -1;
+    return static_cast<int>(SDL_JoystickInstanceID(joystick));
+}
+
+int joystick_device_instance_id(int joystick_index)
+{
+    return static_cast<int>(SDL_JoystickGetDeviceInstanceID(joystick_index));
+}
+
 void sleep_ms(int ms)
 {
     SDL_Delay(static_cast<Uint32>(ms));
@@ -357,13 +380,25 @@ void show_cursor(bool show)
     SDL_ShowCursor(show ? SDL_ENABLE : SDL_DISABLE);
 }
 
+// Tracks whether the game has explicitly opened a text prompt. SDL cannot answer
+// this for us: SDL_IsTextInputActive() is already true right after init on
+// desktop, so it would report "a prompt is open" for the entire session.
+bool g_text_prompt_open = false;
+
 void start_text_input()
 {
     SDL_StartTextInput();
+    g_text_prompt_open = true;
 }
 
 void stop_text_input()
 {
     SDL_StopTextInput();
+    g_text_prompt_open = false;
+}
+
+bool text_input_active()
+{
+    return g_text_prompt_open;
 }
 } // namespace og::input_native
