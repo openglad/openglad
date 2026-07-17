@@ -13,6 +13,13 @@ const MINIMUM_MOTION_RATIO = 0.70;
 const MINIMUM_JITTER_FRAME_COUNT = 6;
 const DOMINANT_PERIOD_TOLERANCE_RATIO = 0.20;
 const MINIMUM_CORRELATED_EVENT_OVERLAP_RATIO = 0.50;
+// The pinned engine bug was a deterministic cadence artifact: essentially
+// every jitter run sat ON the beat, so its dominant-period score is ~1.0 by
+// construction. Diffuse host noise (CI runner contention) scores far lower
+// AND lands on a different period every capture — measured 0.13-0.29 with
+// periods scattered across 467-933ms over four contaminated runs on the
+// 2026-07-17 ubuntu-24.04 runner image. 0.5 leaves ~2x margin both ways.
+const MINIMUM_DOMINANT_PERIOD_SCORE = 0.5;
 const FLOAT_MOTION_EPSILON = 0.01;
 
 function parseArgs(argv) {
@@ -550,6 +557,7 @@ function buildMeasurementMethod(browserCaptureProfile, renderContractVersion, ex
       minimum_jitter_frame_count: MINIMUM_JITTER_FRAME_COUNT,
       dominant_period_tolerance_ratio: DOMINANT_PERIOD_TOLERANCE_RATIO,
       minimum_correlated_event_overlap_ratio: MINIMUM_CORRELATED_EVENT_OVERLAP_RATIO,
+      minimum_dominant_period_score: MINIMUM_DOMINANT_PERIOD_SCORE,
     },
   };
 }
@@ -1171,10 +1179,35 @@ function main() {
     presentationJitterFrameIndexes,
   );
 
+  // Host-starvation discount: a jitter frame that coincides with an abnormal
+  // RAF delivery gap (at the frame itself or the catch-up frame right after)
+  // is the RUNNER dropping frames, not the engine mispresenting them. The
+  // pinned engine bug produced jitter on NORMAL-cadence RAF turns (frames
+  // arrived on time; the engine presented stale/irregular content), so
+  // discounting starved frames keeps the pin's teeth while making the gate
+  // robust to noisy CI hosts (observed: metronomic ~1.67s scheduler stalls
+  // on GitHub's ubuntu-24.04 image update of 2026-07-17, p95 raf delta 2x
+  // p50, every stale-presentation frame sitting on a 33-67ms gap).
+  const rafP50 = rafDeltaMsStats.p50 || 16.67;
+  const hostStarvationThresholdMs = Math.max(rafP50 * 1.5, rafP50 + 8);
+  const frameIsHostStarved = (index) => {
+    const own = samples[index]?.raf_delta_ms || 0;
+    const next = samples[index + 1]?.raf_delta_ms || 0;
+    return own > hostStarvationThresholdMs || next > hostStarvationThresholdMs;
+  };
+  const hostStarvedJitterFrameIndexes = jitterFrameIndexes.filter((index) =>
+    frameIsHostStarved(index),
+  );
+  const engineJitterFrameIndexes = jitterFrameIndexes.filter(
+    (index) => !frameIsHostStarved(index),
+  );
+
   const stallRuns = buildRunMetrics(stallFrameIndexes);
   const irregularRuns = buildRunMetrics(irregularMotionFrameIndexes);
   const presentationRuns = buildRunMetrics(presentationJitterFrameIndexes);
-  const jitterRuns = buildRunMetrics(jitterFrameIndexes);
+  // Period/correlation/gate math runs on the starvation-filtered set; the
+  // raw counts stay in the report for observability.
+  const jitterRuns = buildRunMetrics(engineJitterFrameIndexes);
 
   const motionDeltaStats = {
     float_control_delta_abs: stats(
@@ -1213,7 +1246,7 @@ function main() {
     );
 
   const correlatedEvent = correlateEvents(
-    jitterFrameIndexes,
+    engineJitterFrameIndexes,
     samples,
     engine.events || [],
     Math.max(rafDeltaMsStats.p50 || 0, 1),
@@ -1249,14 +1282,19 @@ function main() {
           minimum_jitter_frame_count: MINIMUM_JITTER_FRAME_COUNT,
           dominant_period_tolerance_ratio: DOMINANT_PERIOD_TOLERANCE_RATIO,
           minimum_correlated_event_overlap_ratio: MINIMUM_CORRELATED_EVENT_OVERLAP_RATIO,
+      minimum_dominant_period_score: MINIMUM_DOMINANT_PERIOD_SCORE,
         };
   const dominantPeriodToleranceRatio =
     reproducedGate.dominant_period_tolerance_ratio;
+  const minimumDominantPeriodScore =
+    reproducedGate.minimum_dominant_period_score ??
+    MINIMUM_DOMINANT_PERIOD_SCORE;
   const dominantPeriodMatchesCandidate =
     matchedCandidate !== null &&
     matchedCandidate.candidate_period_ms > 0 &&
     Math.abs(dominantPeriodMs - matchedCandidate.candidate_period_ms) <=
-      matchedCandidate.candidate_period_ms * dominantPeriodToleranceRatio;
+      matchedCandidate.candidate_period_ms * dominantPeriodToleranceRatio &&
+    dominantPeriodScore >= minimumDominantPeriodScore;
   const minimumCaptureDurationMs =
     expectMode === 'fixed'
       ? baseline.measurement_method.minimum_capture_duration_ms
@@ -1279,7 +1317,7 @@ function main() {
       : null;
   const strongCorrelatedEvent =
     captureSufficient &&
-    jitterFrameIndexes.length >= reproducedGate.minimum_jitter_frame_count &&
+    engineJitterFrameIndexes.length >= reproducedGate.minimum_jitter_frame_count &&
     correlatedEvent.overlap_ratio >=
       reproducedGate.minimum_correlated_event_overlap_ratio;
   const baselineCorrelatedEventFamilySurvived =
@@ -1324,6 +1362,9 @@ function main() {
     presentation_jitter_frame_count: presentationJitterFrameIndexes.length,
     presentation_jitter_run_count: presentationRuns.runCount,
     jitter_frame_count: jitterFrameIndexes.length,
+    engine_jitter_frame_count: engineJitterFrameIndexes.length,
+    host_starved_jitter_frame_count: hostStarvedJitterFrameIndexes.length,
+    host_starvation_threshold_ms: hostStarvationThresholdMs,
     jitter_signature_kind: jitterSignatureKind,
     dominant_period_ms: dominantPeriodMs,
     dominant_period_score: dominantPeriodScore,
