@@ -199,14 +199,18 @@ bool controllerHoldingKey(int player_index, int key_enum)
     case KEY_DOWN_RIGHT:      return down && right;
     case KEY_DOWN_LEFT:       return down && left;
     case KEY_UP_LEFT:         return up && left;
-    // Attacks are available on both the face buttons and the right
-    // trigger/bumper, so the player can use whichever they prefer.
-    case KEY_FIRE:            return btn(ControllerButton::A) || trig(ControllerAxis::TriggerRight);   // A or RT
-    case KEY_SPECIAL:         return btn(ControllerButton::B) || btn(ControllerButton::RightShoulder); // B or RB
+    // Attacks are available on both the face buttons and the triggers, so the
+    // player can use whichever they prefer: primary on A/RT, secondary on B/LT.
+    case KEY_FIRE:            return btn(ControllerButton::A) || trig(ControllerAxis::TriggerRight); // A or RT
+    case KEY_SPECIAL:         return btn(ControllerButton::B) || trig(ControllerAxis::TriggerLeft);  // B or LT
     case KEY_SPECIAL_SWITCH:  return btn(ControllerButton::X);
     case KEY_YELL:            return btn(ControllerButton::Y);
-    case KEY_SWITCH:          return btn(ControllerButton::LeftShoulder);              // LB
-    case KEY_SHIFTER:         return trig(ControllerAxis::TriggerLeft);                // LT (held modifier)
+    // Character switching on the bumpers: RB cycles to the next character, LB to
+    // the previous one. Both press SwitchChar; LB additionally holds Shift, which
+    // the sim reads to reverse the cycle direction (see the switch-character
+    // handling in sim_input_handler.cpp).
+    case KEY_SWITCH:          return btn(ControllerButton::LeftShoulder) || btn(ControllerButton::RightShoulder); // LB or RB
+    case KEY_SHIFTER:         return btn(ControllerButton::LeftShoulder); // LB → reverse (previous character)
     case KEY_LOOKUP:          return btn(ControllerButton::Back);
     default:                  return false;
     }
