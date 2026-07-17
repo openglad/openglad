@@ -24,6 +24,9 @@ enum class EventType : std::uint8_t
     JoyHatMotion,
     JoyButtonDown,
     JoyButtonUp,
+    ControllerAxisMotion,
+    ControllerButtonDown,
+    ControllerButtonUp,
     Quit
 };
 
@@ -76,6 +79,14 @@ struct EventData
     int joy_hat_hat = 0;
     int joy_hat_value = 0;
 
+    // SDL_GameController events. controller_button holds a ControllerButton
+    // value; controller_axis a ControllerAxis value (with controller_axis_value
+    // the -32768..32767 reading).
+    int controller_which = 0;
+    int controller_button = 0;
+    int controller_axis = 0;
+    int controller_axis_value = 0;
+
     WindowEventType window_event = WindowEventType::Unknown;
     int window_data1 = 0;
     int window_data2 = 0;
@@ -117,6 +128,58 @@ void joystick_set_event_state(bool enabled);
 bool joystick_subsystem_initialized();
 void joystick_quit_subsystem();
 void joystick_init_subsystem();
+
+// --- SDL_GameController (gamepad) support ---------------------------------
+// The GameController API sits on top of the raw joystick API and provides a
+// normalized button/axis layout (via the community gamecontrollerdb mappings),
+// so any recognized pad reports the same logical buttons. Handles are opaque
+// SDL_GameController* pointers.
+using GameControllerHandle = void*;
+
+// Logical axis indices; values match SDL_GameControllerAxis so they can be
+// passed straight through the wrappers below. Axis range is -32768..32767.
+enum class ControllerAxis : int
+{
+    LeftX = 0,
+    LeftY,
+    RightX,
+    RightY,
+    TriggerLeft,
+    TriggerRight
+};
+
+// Logical button indices; values match SDL_GameControllerButton. get_button
+// returns 1 while pressed, 0 otherwise.
+enum class ControllerButton : int
+{
+    A = 0,
+    B,
+    X,
+    Y,
+    Back,
+    Guide,
+    Start,
+    LeftStick,
+    RightStick,
+    LeftShoulder,
+    RightShoulder,
+    DpadUp,
+    DpadDown,
+    DpadLeft,
+    DpadRight
+};
+
+void gamecontroller_init_subsystem();
+bool gamecontroller_subsystem_initialized();
+// Load additional controller mappings from an asset file (resolved through the
+// resource search path). Returns the number of mappings added, or -1 on error.
+int gamecontroller_add_mappings_from_file(const char* file);
+bool is_game_controller(int joystick_index);
+GameControllerHandle game_controller_open(int joystick_index);
+void game_controller_close(GameControllerHandle controller);
+int game_controller_get_axis(GameControllerHandle controller, int axis);
+int game_controller_get_button(GameControllerHandle controller, int button);
+const char* game_controller_name(GameControllerHandle controller);
 
 void sleep_ms(int ms);
 void show_cursor(bool show);

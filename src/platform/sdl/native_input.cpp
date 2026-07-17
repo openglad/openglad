@@ -1,4 +1,5 @@
 #include <openglad/interface/native_input.h>
+#include <openglad/resources/io.h> // open_read_file for controller mapping db
 
 #include "SDL.h"
 
@@ -27,6 +28,9 @@ EventType map_event_type(Uint32 type)
     case SDL_JOYHATMOTION: return EventType::JoyHatMotion;
     case SDL_JOYBUTTONDOWN: return EventType::JoyButtonDown;
     case SDL_JOYBUTTONUP: return EventType::JoyButtonUp;
+    case SDL_CONTROLLERAXISMOTION: return EventType::ControllerAxisMotion;
+    case SDL_CONTROLLERBUTTONDOWN: return EventType::ControllerButtonDown;
+    case SDL_CONTROLLERBUTTONUP: return EventType::ControllerButtonUp;
     case SDL_QUIT: return EventType::Quit;
     default: return EventType::Unknown;
     }
@@ -107,6 +111,16 @@ bool decode_event(const void* native_event, EventData& out)
         out.joy_hat_which = e.jhat.which;
         out.joy_hat_hat = e.jhat.hat;
         out.joy_hat_value = e.jhat.value;
+        break;
+    case SDL_CONTROLLERAXISMOTION:
+        out.controller_which = static_cast<int>(e.caxis.which);
+        out.controller_axis = e.caxis.axis;
+        out.controller_axis_value = e.caxis.value;
+        break;
+    case SDL_CONTROLLERBUTTONDOWN:
+    case SDL_CONTROLLERBUTTONUP:
+        out.controller_which = static_cast<int>(e.cbutton.which);
+        out.controller_button = e.cbutton.button;
         break;
     case SDL_WINDOWEVENT:
         out.window_event = map_window_event(e.window.event);
@@ -277,6 +291,60 @@ void joystick_quit_subsystem()
 void joystick_init_subsystem()
 {
     SDL_InitSubSystem(SDL_INIT_JOYSTICK);
+}
+
+void gamecontroller_init_subsystem()
+{
+    // SDL_INIT_GAMECONTROLLER implies SDL_INIT_JOYSTICK.
+    SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER);
+}
+
+bool gamecontroller_subsystem_initialized()
+{
+    return (SDL_WasInit(SDL_INIT_GAMECONTROLLER) & SDL_INIT_GAMECONTROLLER) != 0;
+}
+
+int gamecontroller_add_mappings_from_file(const char* file)
+{
+    SDL_RWops* rw = open_read_file(file);
+    if (rw == nullptr)
+        return -1;
+    // freerw = 1: SDL closes the RWops for us.
+    return SDL_GameControllerAddMappingsFromRW(rw, 1);
+}
+
+bool is_game_controller(int joystick_index)
+{
+    return SDL_IsGameController(joystick_index) == SDL_TRUE;
+}
+
+GameControllerHandle game_controller_open(int joystick_index)
+{
+    return SDL_GameControllerOpen(joystick_index);
+}
+
+void game_controller_close(GameControllerHandle controller)
+{
+    if (controller != nullptr)
+        SDL_GameControllerClose(static_cast<SDL_GameController*>(controller));
+}
+
+int game_controller_get_axis(GameControllerHandle controller, int axis)
+{
+    return SDL_GameControllerGetAxis(static_cast<SDL_GameController*>(controller),
+                                     static_cast<SDL_GameControllerAxis>(axis));
+}
+
+int game_controller_get_button(GameControllerHandle controller, int button)
+{
+    return SDL_GameControllerGetButton(static_cast<SDL_GameController*>(controller),
+                                       static_cast<SDL_GameControllerButton>(button));
+}
+
+const char* game_controller_name(GameControllerHandle controller)
+{
+    const char* name = SDL_GameControllerName(static_cast<SDL_GameController*>(controller));
+    return name != nullptr ? name : "Gamepad";
 }
 
 void sleep_ms(int ms)

@@ -125,6 +125,111 @@ inline constexpr int JOY_DEAD_ZONE = 8000;
 inline constexpr int MAX_NUM_JOYSTICKS = 10;  // Just in case there are joysticks attached that are not useable (e.g. accelerometer)
 og::input_native::JoystickHandle joysticks[MAX_NUM_JOYSTICKS];
 
+// SDL_GameController support: up to one gamepad per player (4-player game).
+// player_controllers[p] is an opaque SDL_GameController* for player p, or
+// nullptr when that player has no gamepad. The analog-stick dead zone is a bit
+// larger than the raw joystick one so a resting stick does not creep.
+inline constexpr int GAMEPAD_STICK_DEAD_ZONE = 12000; // out of 32767
+// Analog triggers rest at 0 and rise toward 32767; count as pressed past this.
+inline constexpr int GAMEPAD_TRIGGER_THRESHOLD = 8000;
+og::input_native::GameControllerHandle player_controllers[4] = {nullptr, nullptr, nullptr, nullptr};
+
+namespace
+{
+// Resolve the four cardinal intentions from a player's gamepad: left analog
+// stick (past the dead zone) OR the d-pad. Diagonals are derived by the caller
+// from combinations of these, mirroring the keyboard/OUYA handling.
+void gamepad_directions(og::input_native::GameControllerHandle c,
+                        bool& up, bool& down, bool& left, bool& right)
+{
+    using og::input_native::ControllerAxis;
+    using og::input_native::ControllerButton;
+    const int lx = og::input_native::game_controller_get_axis(c, static_cast<int>(ControllerAxis::LeftX));
+    const int ly = og::input_native::game_controller_get_axis(c, static_cast<int>(ControllerAxis::LeftY));
+    auto btn = [c](ControllerButton b) {
+        return og::input_native::game_controller_get_button(c, static_cast<int>(b)) != 0;
+    };
+    up    = (ly < -GAMEPAD_STICK_DEAD_ZONE) || btn(ControllerButton::DpadUp);
+    down  = (ly >  GAMEPAD_STICK_DEAD_ZONE) || btn(ControllerButton::DpadDown);
+    left  = (lx < -GAMEPAD_STICK_DEAD_ZONE) || btn(ControllerButton::DpadLeft);
+    right = (lx >  GAMEPAD_STICK_DEAD_ZONE) || btn(ControllerButton::DpadRight);
+}
+} // namespace
+
+// Returns true when the gamepad assigned to player_index is currently driving
+// the given logical action (KEY_UP..KEY_LOOKUP). Directions disambiguate pure
+// cardinals from diagonals the same way the keyboard path does, so both
+// 4-direction and 8-direction control modes behave correctly.
+bool controllerHoldingKey(int player_index, int key_enum)
+{
+    if (player_index < 0 || player_index >= 4)
+        return false;
+    og::input_native::GameControllerHandle c = player_controllers[player_index];
+    if (c == nullptr)
+        return false;
+
+    using og::input_native::ControllerAxis;
+    using og::input_native::ControllerButton;
+    auto btn = [c](ControllerButton b) {
+        return og::input_native::game_controller_get_button(c, static_cast<int>(b)) != 0;
+    };
+    // Triggers are analog axes that rest at 0 and rise toward 32767; treat a
+    // press past the dead zone as "held".
+    auto trig = [c](ControllerAxis a) {
+        return og::input_native::game_controller_get_axis(c, static_cast<int>(a)) > GAMEPAD_TRIGGER_THRESHOLD;
+    };
+
+    bool up, down, left, right;
+    gamepad_directions(c, up, down, left, right);
+
+    // In 4-direction mode the engine forms diagonals by combining two held
+    // cardinals (and zeroes the explicit diagonal actions), so cardinals must be
+    // reported non-exclusively — a stick pushed up-left holds both UP and LEFT.
+    // In 8-direction mode each octant is its own action, so a pure cardinal
+    // excludes its perpendicular and diagonals are reported on their own bits.
+    const bool eight_dir = player_allows_diagonal_movement(player_index);
+
+    switch (key_enum)
+    {
+    case KEY_UP:              return eight_dir ? (up && !left && !right) : up;
+    case KEY_DOWN:            return eight_dir ? (down && !left && !right) : down;
+    case KEY_LEFT:            return eight_dir ? (left && !up && !down) : left;
+    case KEY_RIGHT:           return eight_dir ? (right && !up && !down) : right;
+    case KEY_UP_RIGHT:        return up && right;
+    case KEY_DOWN_RIGHT:      return down && right;
+    case KEY_DOWN_LEFT:       return down && left;
+    case KEY_UP_LEFT:         return up && left;
+    // Attacks are available on both the face buttons and the right
+    // trigger/bumper, so the player can use whichever they prefer.
+    case KEY_FIRE:            return btn(ControllerButton::A) || trig(ControllerAxis::TriggerRight);   // A or RT
+    case KEY_SPECIAL:         return btn(ControllerButton::B) || btn(ControllerButton::RightShoulder); // B or RB
+    case KEY_SPECIAL_SWITCH:  return btn(ControllerButton::X);
+    case KEY_YELL:            return btn(ControllerButton::Y);
+    case KEY_SWITCH:          return btn(ControllerButton::LeftShoulder);              // LB
+    case KEY_SHIFTER:         return trig(ControllerAxis::TriggerLeft);                // LT (held modifier)
+    case KEY_LOOKUP:          return btn(ControllerButton::Back);
+    default:                  return false;
+    }
+}
+
+// Open connected gamepads and assign the first four (one per player). Any
+// device SDL recognizes as a game controller is opened through the normalized
+// GameController API; other joysticks fall back to the legacy JoyData path.
+void setup_game_controllers()
+{
+    for (int i = 0; i < 4; i++)
+        player_controllers[i] = nullptr;
+
+    if (!og::input_native::gamecontroller_subsystem_initialized())
+        og::input_native::gamecontroller_init_subsystem();
+
+    const int added = og::input_native::gamecontroller_add_mappings_from_file("gamecontrollerdb.txt");
+    if (added < 0)
+        Log("Gamepad: gamecontrollerdb.txt not found; using SDL built-in mappings only\n");
+    else
+        Log("Gamepad: loaded {} controller mappings from gamecontrollerdb.txt\n", added);
+}
+
 namespace
 {
 bool as_event_data(const void* native_event, og::input_native::EventData& out)
@@ -144,7 +249,11 @@ void init_input()
     reset_default_player_controls();
     og::runtime::current_session->keystates_ = og::input_native::keyboard_state();
 
-    // Set up joysticks
+    // Init the gamecontroller subsystem and load the mapping database before we
+    // enumerate devices, so SDL_IsGameController() sees the freshest mappings.
+    setup_game_controllers();
+
+    // Set up joysticks / gamepads
     for(int i = 0; i < MAX_NUM_JOYSTICKS; i++)
     {
         joysticks[i] = nullptr;
@@ -154,6 +263,20 @@ void init_input()
 
     for(int i = 0; i < numjoy; i++)
     {
+        // Prefer the normalized SDL_GameController path for the first four
+        // recognized pads (one per player). Such a device is NOT also opened as
+        // a raw joystick, so it cannot double-drive a player's input.
+        if(i < 4 && og::input_native::is_game_controller(i))
+        {
+            player_controllers[i] = og::input_native::game_controller_open(i);
+            if(player_controllers[i] != nullptr)
+            {
+                Log("Gamepad: player {} -> {}\n", i + 1,
+                    og::input_native::game_controller_name(player_controllers[i]));
+                continue;
+            }
+        }
+
         joysticks[i] = og::input_native::joystick_open(i);
         if(joysticks[i] == nullptr)
             continue;
@@ -481,6 +604,37 @@ void handle_joy_event(const void* native_event)
     }
 }
 
+// SDL_GameController button/axis events. Held actions (movement + firing) are
+// sampled directly in isPlayerHoldingKey; this handler covers the discrete,
+// event-driven bits: waking menus/title screens on any input, and mapping the
+// Start button to the Escape key (used to advance the opening screens and back
+// out of menus, which the held-action path never sees).
+void handle_controller_event(const void* native_event)
+{
+    og::input_native::EventData event;
+    if (!as_event_data(native_event, event))
+        return;
+
+    switch (event.type)
+    {
+    case og::input_native::EventType::ControllerButtonDown:
+        og::runtime::current_session->key_press_event_ = 1;
+        if (event.controller_button == static_cast<int>(og::input_native::ControllerButton::Start))
+            sendFakeKeyDownEvent(KEYCODE_ESCAPE);
+        break;
+    case og::input_native::EventType::ControllerButtonUp:
+        if (event.controller_button == static_cast<int>(og::input_native::ControllerButton::Start))
+            sendFakeKeyUpEvent(KEYCODE_ESCAPE);
+        break;
+    case og::input_native::EventType::ControllerAxisMotion:
+        if (event.controller_axis_value > JOY_DEAD_ZONE || event.controller_axis_value < -JOY_DEAD_ZONE)
+            og::runtime::current_session->key_press_event_ = 1;
+        break;
+    default:
+        break;
+    }
+}
+
 void handle_events(const void* native_event)
 {
     og::input_native::EventData event;
@@ -529,6 +683,15 @@ void handle_events(const void* native_event)
         break;
     case og::input_native::EventType::JoyButtonUp:
         handle_joy_event(native_event);
+        break;
+    case og::input_native::EventType::ControllerAxisMotion:
+        handle_controller_event(native_event);
+        break;
+    case og::input_native::EventType::ControllerButtonDown:
+        handle_controller_event(native_event);
+        break;
+    case og::input_native::EventType::ControllerButtonUp:
+        handle_controller_event(native_event);
         break;
     case og::input_native::EventType::Quit:
         quit(0);
@@ -1094,6 +1257,10 @@ bool isPlayerHoldingKey(int player_index, int key_enum)
             return false;
         return hw().touch_keystate[player_index][key_enum];
     #else
+    // A player's gamepad (if any) can drive any action; keyboard still works in
+    // parallel, so either source being active counts as "holding".
+    if(controllerHoldingKey(player_index, key_enum))
+        return true;
     if(player_joy[player_index].hasButtonSet(key_enum))
         return player_joy[player_index].getState(key_enum);
     else
