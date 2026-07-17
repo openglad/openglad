@@ -190,23 +190,27 @@ sdl_video::~sdl_video()
 
 void sdl_video::set_fullscreen(bool enable_fullscreen)
 {
-    (void)enable_fullscreen;
-    // FIXME: A bug in my copy of SDL is making FULLSCREEN -> WINDOWED -> FULLSCREEN take up a partial portion of the screen and ruin the game.
-    /*if(fullscreen)
-    {
-        SDL_SetWindowFullscreen(E_Screen->window, SDL_WINDOW_FULLSCREEN_DESKTOP);
-    }
-    else
-    {
-        SDL_SetWindowFullscreen(E_Screen->window, 0);
-        SDL_SetWindowSize(E_Screen->window, 640, 400);
-    }
-    
-    int w, h;
+    if (E_Screen == nullptr || E_Screen->window == nullptr)
+        return;
+
+    // Toggle the real SDL window. FULLSCREEN_DESKTOP keeps the desktop
+    // resolution and just scales our render output to fill it. Going back to
+    // windowed, SDL restores the pre-fullscreen window size on its own, so we
+    // must NOT force a fixed size here: the old hard-coded SDL_SetWindowSize(640,
+    // 400) is what made fullscreen -> windowed -> fullscreen present into a
+    // partial region.
+    SDL_SetWindowFullscreen(E_Screen->window,
+                            enable_fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+
+    // The frame's present rectangle is built from the cached window size (see the
+    // SDL_RenderCopy destination in Screen::flip/putbuffer). Re-read the actual
+    // window size and recompute the overscan viewport so the image scales to the
+    // new dimensions instead of staying at the previous size.
+    int w = 0, h = 0;
     SDL_GetWindowSize(E_Screen->window, &w, &h);
-    og::runtime::current_session->window_w_ = w;
-    og::runtime::current_session->window_h_ = h;
-    update_overscan_setting();*/
+    og::runtime::current_session->window_w_ = static_cast<float>(w);
+    og::runtime::current_session->window_h_ = static_cast<float>(h);
+    update_overscan_setting();
 }
 
 std::span<unsigned char> sdl_video::getbuffer()

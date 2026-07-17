@@ -130,6 +130,16 @@ void handle_key_event(const void* native_event)
                 parse_int_strict(cfg.get_setting("graphics", "overscan_percentage")).value_or(0)) / 100.0f;
             update_overscan_setting();
         }
+        else if((event.key.keysym.sym == SDLK_RETURN || event.key.keysym.sym == SDLK_KP_ENTER)
+                && (event.key.keysym.mod & KMOD_ALT))
+        {
+            // Alt+Enter toggles fullscreen. Flip the persisted graphics/fullscreen
+            // flag (so the options menu toggle stays in sync) and apply it.
+            const bool now_fullscreen = !cfg.is_on("graphics", "fullscreen");
+            cfg.apply_setting("graphics", "fullscreen", now_fullscreen ? "on" : "off");
+            if(screen* s = active_screen())
+                s->set_fullscreen(now_fullscreen);
+        }
         break;
     case SDL_KEYUP:
         #ifdef USE_TOUCH_INPUT
