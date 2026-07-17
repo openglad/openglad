@@ -6,9 +6,11 @@
 #include <openglad/interface/input.h>
 #include <openglad/interface/render/pixien.h>
 #include <openglad/interface/screen.h>
+#include <openglad/platform/sai2x.h>
+#include <openglad/platform/video_sdl.h>
 #include <openglad/resources/gparser.h>
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include "test_input_helpers.h"
 #include "test_interact.h"
 #include <openglad/resources/save_data.h>
@@ -42,7 +44,7 @@ static void cleanup_picker_state()
 
 static bool click_until_interactable(const std::string& click_id, const std::string& next_id, int timeout_ms)
 {
-    const Uint32 deadline = SDL_GetTicks() + static_cast<Uint32>(timeout_ms);
+    const Uint64 deadline = SDL_GetTicks() + static_cast<Uint64>(timeout_ms);
     while (SDL_GetTicks() < deadline) {
         if (has_interactable(next_id))
             return true;
@@ -128,11 +130,18 @@ struct OptionsState {
     bool entered_fx[kFxScreenCount];
     bool exited_fx[kFxScreenCount];
     bool toggled_fx[kFxScreenCount][kFxMaxToggles];
-    bool cycled_world_scale;
+    bool cycled_zoom;
+    bool cycled_smoothing;
+    bool entered_display;
+    bool cycled_display_mode;
+    bool cycled_resolution;
+    bool resolution_applied_to_window;
+    bool exited_display;
     bool used_options_back;
-    // Label the RENDERING ENGINE button shows while cfg (graphics, render) is
-    // the empty string (as in any process that never ran load_settings()).
-    std::string render_label_when_unset;
+    // Labels the ZOOM / SMOOTH rows show while their cfg keys are the empty
+    // string (as in any process that never ran load_settings()).
+    std::string zoom_label_when_unset;
+    std::string smoothing_label_when_unset;
 };
 
 // Click an FX-subscreen toggle and report whether its cfg key flipped.
@@ -144,7 +153,7 @@ static bool toggle_effect_and_check_flip(const char* button_id, const char* cate
                                          const char* cfg_key)
 {
     const bool before = cfg.is_on(category, cfg_key);
-    const Uint32 deadline = SDL_GetTicks() + 5000;
+    const Uint64 deadline = SDL_GetTicks() + 5000;
     interact(button_id);
     for (;;) {
         // 300ms per the menu-test discipline: a shorter gap can land the next
@@ -164,7 +173,7 @@ static bool click_cycle_step(const char* button_id, const char* category,
                              const char* cfg_key)
 {
     const std::string before = cfg.get_setting(category, cfg_key);
-    const Uint32 deadline = SDL_GetTicks() + 5000;
+    const Uint64 deadline = SDL_GetTicks() + 5000;
     interact(button_id);
     for (;;) {
         SDL_Delay(300);
@@ -192,7 +201,7 @@ static bool cycle_effect_and_check_lap(const char* button_id, const char* catego
         if (!click_cycle_step(button_id, category, cfg_key))
             return false;
 
-    const Uint32 deadline = SDL_GetTicks() + 5000;
+    const Uint64 deadline = SDL_GetTicks() + 5000;
     while (cfg.get_setting(category, cfg_key) != expected) {
         if (SDL_GetTicks() >= deadline)
             return false;
@@ -202,26 +211,140 @@ static bool cycle_effect_and_check_lap(const char* button_id, const char* catego
     return true;
 }
 
-// The world-scale selector is an eight-way cycle over cfg graphics/scale
-// (off -> 1 -> 2 -> sai -> eagle -> 3 -> 4 -> 8 -> off), each click
-// live-applied to the renderer's world canvas. Same lap discipline as the
-// depth selector above: the absent-key start ("") normalizes to off, so
-// compare against eight pure cycle_world_scale steps, and finish the lap
-// deadline-bounded if a re-click double-steps. The lap ends back on the
-// Legacy default, so the rest of the flow (and binary) keeps the classic
-// canvas.
-static bool cycle_world_scale_and_check_lap(const char* button_id)
+// The zoom selector cycles over the resource-safe range for the current
+// window, each click live-applied to the renderer's world canvas. The absent
+// key normalizes to 1.0; compute the same dynamic minimum as the live button
+// and finish the lap deadline-bounded if a re-click double-steps.
+static bool cycle_zoom_and_check_lap(const char* button_id)
 {
-    std::string expected = cfg.get_setting("graphics", "scale");
-    for (int i = 0; i < 8; ++i)
-        expected = og::ui::cycle_world_scale(expected);
+    const int minimum_steps =
+        og::runtime::current_session->myscreen_->minimum_world_zoom_steps();
+    const int lap_steps = og::kZoomStepsMax - minimum_steps + 1;
+    std::string expected = cfg.get_setting("graphics", "zoom");
+    for (int i = 0; i < lap_steps; ++i)
+        expected = og::ui::cycle_zoom(expected, minimum_steps);
 
-    for (int i = 0; i < 8; ++i)
-        if (!click_cycle_step(button_id, "graphics", "scale"))
+    for (int i = 0; i < lap_steps; ++i)
+        if (!click_cycle_step(button_id, "graphics", "zoom"))
             return false;
 
-    const Uint32 deadline = SDL_GetTicks() + 5000;
-    while (cfg.get_setting("graphics", "scale") != expected) {
+    const Uint64 deadline = SDL_GetTicks() + 5000;
+    while (cfg.get_setting("graphics", "zoom") != expected) {
+        if (SDL_GetTicks() >= deadline)
+            return false;
+        interact(button_id);
+        SDL_Delay(300);
+    }
+    return true;
+}
+
+// The smoothing selector's three-way lap (off -> sai -> eagle -> off) over
+// cfg graphics/smoothing, each click live-applied to the world present
+// engine (the canvas dims are zoom-owned and stay put).
+static bool cycle_smoothing_and_check_lap(const char* button_id)
+{
+    std::string expected = og::ui::effective_smoothing_setting(
+        cfg.get_setting("graphics", "smoothing"),
+        cfg.get_setting("graphics", "render"));
+    for (int i = 0; i < 3; ++i)
+        expected = og::ui::cycle_smoothing(expected);
+
+    for (int i = 0; i < 3; ++i)
+        if (!click_cycle_step(button_id, "graphics", "smoothing"))
+            return false;
+
+    const Uint64 deadline = SDL_GetTicks() + 5000;
+    while (cfg.get_setting("graphics", "smoothing") != expected) {
+        if (SDL_GetTicks() >= deadline)
+            return false;
+        interact(button_id);
+        SDL_Delay(300);
+    }
+    return true;
+}
+
+// Click the display-mode selector around one observable lap. Drivers without
+// exclusive fullscreen deliberately skip that unavailable state, so the lap
+// has two steps there and three where all modes are supported.
+static bool cycle_display_mode_and_check_lap(const char* button_id)
+{
+    const og::ui::DisplayMode start =
+        og::ui::parse_display_mode(cfg.get_setting("graphics", "fullscreen"));
+    for (int i = 0; i < 3; ++i) {
+        if (!click_cycle_step(button_id, "graphics", "fullscreen"))
+            return false;
+        if (og::ui::parse_display_mode(cfg.get_setting("graphics", "fullscreen")) == start)
+            return true;
+    }
+    return false;
+}
+
+static bool select_windowed_mode(const char* button_id)
+{
+    for (int i = 0; i < 3; ++i) {
+        if (og::ui::parse_display_mode(cfg.get_setting("graphics", "fullscreen")) ==
+            og::ui::DisplayMode::Windowed)
+            return true;
+        if (!click_cycle_step(button_id, "graphics", "fullscreen"))
+            return false;
+    }
+    return false;
+}
+
+// Click the resolution selector around one full lap and verify cfg
+// graphics/width follows the pure next_resolution orbit. Mirrors the
+// picker's resolution_choices(): only real platform modes in Exclusive;
+// otherwise the logical desktop-derived fallback plus the current cfg size.
+static std::vector<std::pair<int, int>> expected_resolution_choices()
+{
+    screen* scr = og::runtime::current_session->myscreen_;
+	const og::ui::DisplayMode mode = og::ui::parse_display_mode(
+		cfg.get_setting("graphics", "fullscreen"));
+    const std::pair<int, int> current = og::ui::parse_resolution(
+        cfg.get_setting("graphics", "width"), cfg.get_setting("graphics", "height"));
+	const std::vector<std::pair<int, int>> display_modes =
+		mode == og::ui::DisplayMode::Exclusive
+			? scr->display_resolutions()
+			: std::vector<std::pair<int, int>>{};
+	const std::pair<int, int> desktop =
+		mode == og::ui::DisplayMode::Exclusive
+			? scr->desktop_resolution()
+			: scr->windowed_desktop_resolution();
+    return og::ui::build_resolution_choices(
+		display_modes, desktop, current, mode);
+}
+
+static bool cycle_resolution_and_check_lap(const char* button_id)
+{
+    // First click: leaves the (off-list) boot default for its neighbor on
+    // the current-inclusive lap.
+    const std::vector<std::pair<int, int>> start_list = expected_resolution_choices();
+    const std::pair<int, int> first = og::ui::next_resolution(
+        start_list, cfg.get_setting("graphics", "width"),
+        cfg.get_setting("graphics", "height"));
+    if (start_list.size() <= 1)
+        return first == og::ui::parse_resolution(
+            cfg.get_setting("graphics", "width"), cfg.get_setting("graphics", "height"));
+    if (!click_cycle_step(button_id, "graphics", "width"))
+        return false;
+    {
+        const Uint64 deadline = SDL_GetTicks() + 5000;
+        while (cfg.get_setting("graphics", "width") != std::to_string(first.first)) {
+            if (SDL_GetTicks() >= deadline)
+                return false;
+            SDL_Delay(100);
+        }
+    }
+
+    // From an in-list entry the lap is stationary: one full orbit of the
+    // base list must return exactly here.
+    const std::vector<std::pair<int, int>> list = expected_resolution_choices();
+    const std::string lap_start = cfg.get_setting("graphics", "width");
+    for (std::size_t i = 0; i < list.size(); ++i)
+        if (!click_cycle_step(button_id, "graphics", "width"))
+            return false;
+    const Uint64 deadline = SDL_GetTicks() + 5000;
+    while (cfg.get_setting("graphics", "width") != lap_start) {
         if (SDL_GetTicks() >= deadline)
             return false;
         interact(button_id);
@@ -252,24 +375,6 @@ static int options_injector(void* data)
         state->saw_options = true;
         SDL_Delay(150);
 
-        // With cfg (graphics, render) empty, the per-frame label sync must
-        // fall back to "normal" instead of drawing a blank button face.
-        fprintf(stderr, "  [test] checking rendering-engine label fallback\n");
-        {
-            const std::string prev_render = cfg.get_setting("graphics", "render");
-            cfg.apply_setting("graphics", "render", "");
-            SDL_Delay(300);  // let main_options() run a few label-sync frames
-            for (const Interactable& item : get_interactables()) {
-                if (item.id == "toggle_rendering") {
-                    state->render_label_when_unset = item.label;
-                    break;
-                }
-            }
-            cfg.apply_setting("graphics", "render",
-                              prev_render.empty() ? "normal" : prev_render);
-            SDL_Delay(150);
-        }
-
         fprintf(stderr, "  [test] entering player controls\n");
         bool in_controls = click_until_interactable("player_controls", "player1_mode", 5000);
         SDL_Delay(150);
@@ -284,25 +389,90 @@ static int options_injector(void* data)
             SDL_Delay(150);
         }
 
-        fprintf(stderr, "  [test] toggling sound/render/fullscreen\n");
+        fprintf(stderr, "  [test] toggling sound\n");
         interact("toggle_sound");
         SDL_Delay(80);
-        interact("toggle_rendering");
-        SDL_Delay(80);
-        interact("toggle_fullscreen");
-        SDL_Delay(80);
 
-        fprintf(stderr, "  [test] adjusting overscan\n");
-        interact("overscan_plus");
-        SDL_Delay(80);
-        interact("overscan_minus");
-        SDL_Delay(80);
+        // Everything window/presentation related lives in the DISPLAY
+        // subscreen: enter it, exercise every row, and leave via its BACK.
+        fprintf(stderr, "  [test] entering display settings\n");
+        if (click_until_interactable("display_settings", "display_mode", 5000)) {
+            state->entered_display = true;
+            SDL_Delay(300);
 
-        // A full verified lap of the world-scale cycle: every click steps
-        // cfg graphics/scale AND live-applies it to the world canvas (the
-        // menu keeps presenting the untouched 320x200 UI canvas throughout).
-        fprintf(stderr, "  [test] cycling world scale through a full lap\n");
-        state->cycled_world_scale = cycle_world_scale_and_check_lap("world_scale");
+            // With cfg (graphics, zoom) and (graphics, smoothing) empty,
+            // the per-frame label sync must fall back to the classic
+            // defaults, never a blank face.
+            {
+                const std::string prev_zoom = cfg.get_setting("graphics", "zoom");
+                const std::string prev_smoothing =
+                    cfg.get_setting("graphics", "smoothing");
+                const std::string prev_render =
+                    cfg.get_setting("graphics", "render");
+                cfg.apply_setting("graphics", "zoom", "");
+                cfg.apply_setting("graphics", "smoothing", "");
+                cfg.apply_setting("graphics", "render", "normal");
+                SDL_Delay(300);  // let the display loop run label-sync frames
+                for (const Interactable& item : get_interactables()) {
+                    if (item.id == "display_zoom")
+                        state->zoom_label_when_unset = item.label;
+                    if (item.id == "display_smoothing")
+                        state->smoothing_label_when_unset = item.label;
+                }
+                cfg.apply_setting("graphics", "zoom", prev_zoom);
+                cfg.apply_setting("graphics", "smoothing", prev_smoothing);
+                cfg.apply_setting("graphics", "render", prev_render);
+                SDL_Delay(150);
+            }
+			// Menu.button_misc_paths intentionally leaves the retired legacy
+			// graphics/render value at "sai". Pin this test's new selector to
+			// explicit Off so its zoom traces are order-independent and exercise
+			// the nearest path before the separate smoothing lap below.
+			cfg.apply_setting("graphics", "smoothing", "off");
+
+            fprintf(stderr, "  [test] cycling display mode\n");
+            state->cycled_display_mode = cycle_display_mode_and_check_lap("display_mode");
+            SDL_Delay(300);
+            fprintf(stderr, "  [test] cycling resolution\n");
+            state->cycled_resolution = select_windowed_mode("display_mode") &&
+                cycle_resolution_and_check_lap("display_resolution");
+            SDL_Delay(300);
+            // Each click live-applies: the REAL window (session bookkeeping
+            // fed from SDL_GetWindowSize after the apply) must match
+            // whatever the lap ended on.
+            state->resolution_applied_to_window =
+                std::to_string(static_cast<int>(og::runtime::current_session->window_w_)) ==
+                    cfg.get_setting("graphics", "width") &&
+                std::to_string(static_cast<int>(og::runtime::current_session->window_h_)) ==
+                    cfg.get_setting("graphics", "height");
+            // Leave the classic boot size behind for the rest of the flow.
+            cfg.apply_setting("graphics", "width", "640");
+            cfg.apply_setting("graphics", "height", "400");
+            og::runtime::current_session->myscreen_->apply_display_settings_from_cfg();
+            SDL_Delay(150);
+
+            fprintf(stderr, "  [test] adjusting overscan\n");
+            interact("overscan_plus");
+            SDL_Delay(80);
+            interact("overscan_minus");
+            SDL_Delay(80);
+
+            // A full verified lap of the zoom cycle: every click steps cfg
+            // graphics/zoom AND live-applies it to the world canvas (the
+            // menu keeps presenting the 320x200 UI canvas).
+            fprintf(stderr, "  [test] cycling zoom through a full lap\n");
+            state->cycled_zoom = cycle_zoom_and_check_lap("display_zoom");
+            SDL_Delay(300);
+            fprintf(stderr, "  [test] cycling smoothing through a full lap\n");
+            state->cycled_smoothing =
+                cycle_smoothing_and_check_lap("display_smoothing");
+            SDL_Delay(300);
+
+            fprintf(stderr, "  [test] leaving display settings\n");
+            state->exited_display =
+                click_until_interactable("display_back", "display_settings", 5000);
+            SDL_Delay(300);
+        }
 
         // Enter each FX subscreen in turn, flip every toggle it hosts
         // (asserting the cfg key actually changed), and leave via the
@@ -355,7 +525,7 @@ static int options_injector(void* data)
     // Ensure mainmenu() returns so picker_main() can complete. Coverage builds
     // can redraw the main menu slowly after leaving options, so use Escape to
     // unwind whichever menu is currently active.
-    const Uint32 quit_deadline = SDL_GetTicks() + 3000;
+    const Uint64 quit_deadline = SDL_GetTicks() + 3000;
     while (SDL_GetTicks() < quit_deadline) {
         if (has_interactable("quit")) {
             SDL_Delay(80);
@@ -370,6 +540,152 @@ static int options_injector(void* data)
 
     state->finished = true;
     return 0;
+}
+
+// Direct coverage of the display-settings apply: all three mode branches and
+// the mode enumeration run headlessly (fullscreen requests fail gracefully
+// under the offscreen/dummy drivers; the cfg -> window -> session bookkeeping
+// still executes).
+TEST(OptionsMenu, apply_display_settings_covers_all_modes) {
+    const std::string prev_mode = cfg.get_setting("graphics", "fullscreen");
+    const std::string prev_w = cfg.get_setting("graphics", "width");
+    const std::string prev_h = cfg.get_setting("graphics", "height");
+    const std::string prev_windowed_w =
+        cfg.get_setting("graphics", "windowed_width");
+    const std::string prev_windowed_h =
+        cfg.get_setting("graphics", "windowed_height");
+
+    screen* scr = og::runtime::current_session->myscreen_;
+
+    cfg.apply_setting("graphics", "width", "960");
+    cfg.apply_setting("graphics", "height", "600");
+    for (const char* mode : {"off", "borderless", "exclusive"}) {
+        cfg.apply_setting("graphics", "fullscreen", mode);
+        scr->apply_display_settings_from_cfg();
+        // The session must always track the REAL window afterwards.
+        EXPECT_GT(og::runtime::current_session->window_w_, 0.0f) << mode;
+        EXPECT_GT(og::runtime::current_session->window_h_, 0.0f) << mode;
+    }
+
+    // An unsupported exclusive request must not survive in cfg as though it
+    // had been applied. SDL either chooses a real closest mode (whose exact
+    // dimensions we store) or settles on borderless/windowed (whose real
+    // window dimensions and mode we store).
+    cfg.apply_setting("graphics", "width", "731");
+    cfg.apply_setting("graphics", "height", "457");
+    cfg.apply_setting("graphics", "fullscreen", "exclusive");
+    scr->apply_display_settings_from_cfg();
+    const bool actual_fullscreen =
+        (SDL_GetWindowFlags(E_Screen->window) & SDL_WINDOW_FULLSCREEN) != 0;
+    const SDL_DisplayMode* actual_mode = actual_fullscreen
+        ? SDL_GetWindowFullscreenMode(E_Screen->window)
+        : nullptr;
+    if (actual_mode != nullptr) {
+		const auto actual_pixels =
+			og::platform::display_mode_pixel_size(*actual_mode);
+        EXPECT_EQ("exclusive", cfg.get_setting("graphics", "fullscreen"));
+		EXPECT_EQ(std::to_string(actual_pixels.first),
+		          cfg.get_setting("graphics", "width"));
+		EXPECT_EQ(std::to_string(actual_pixels.second),
+		          cfg.get_setting("graphics", "height"));
+    } else {
+        EXPECT_EQ(actual_fullscreen ? "borderless" : "off",
+                  cfg.get_setting("graphics", "fullscreen"));
+		if (actual_fullscreen) {
+			// Borderless keeps the remembered logical Windowed size; its
+			// physical monitor size is supplied separately for the label.
+			EXPECT_EQ("960", cfg.get_setting("graphics", "width"));
+			EXPECT_EQ("600", cfg.get_setting("graphics", "height"));
+		} else {
+			EXPECT_EQ(std::to_string(static_cast<int>(og::runtime::current_session->window_w_)),
+			          cfg.get_setting("graphics", "width"));
+			EXPECT_EQ(std::to_string(static_cast<int>(og::runtime::current_session->window_h_)),
+			          cfg.get_setting("graphics", "height"));
+		}
+
+        // Starting from Borderless, the mode selector requests Exclusive.
+        // If SDL cannot provide it, the callback must skip to Windowed
+        // instead of becoming permanently trapped on Borderless.
+        cfg.apply_setting("graphics", "width", "731");
+        cfg.apply_setting("graphics", "height", "457");
+        cfg.apply_setting("graphics", "fullscreen", "borderless");
+        scr->apply_display_settings_from_cfg();
+        change_display_mode();
+        EXPECT_NE(og::ui::DisplayMode::Borderless,
+                  og::ui::parse_display_mode(
+                      cfg.get_setting("graphics", "fullscreen")));
+        EXPECT_EQ("731", cfg.get_setting("graphics", "width"));
+        EXPECT_EQ("457", cfg.get_setting("graphics", "height"));
+    }
+    // Windowed sizing does reach the real window headlessly.
+    cfg.apply_setting("graphics", "width", "960");
+    cfg.apply_setting("graphics", "height", "600");
+    cfg.apply_setting("graphics", "fullscreen", "off");
+    scr->apply_display_settings_from_cfg();
+    EXPECT_EQ(960, static_cast<int>(og::runtime::current_session->window_w_));
+    EXPECT_EQ(600, static_cast<int>(og::runtime::current_session->window_h_));
+    EXPECT_EQ("960", cfg.get_setting("graphics", "windowed_width"));
+    EXPECT_EQ("600", cfg.get_setting("graphics", "windowed_height"));
+
+    // SDL may report completion after the initiating apply has returned. Feed
+    // only causes consistent with the real state: ENTER/LEAVE themselves are
+    // authoritative, while RESIZED and HiDPI PIXEL_SIZE_CHANGED confirm a
+    // same-fullscreen mode change without supplying logical dimensions.
+    const bool event_actual_fullscreen =
+        (SDL_GetWindowFlags(E_Screen->window) & SDL_WINDOW_FULLSCREEN) != 0;
+    const std::string event_actual_mode = !event_actual_fullscreen
+        ? "off"
+        : (SDL_GetWindowFullscreenMode(E_Screen->window) != nullptr
+               ? "exclusive"
+               : "borderless");
+    const std::array<Uint32, 3> completion_events = event_actual_fullscreen
+        ? std::array<Uint32, 3>{SDL_EVENT_WINDOW_ENTER_FULLSCREEN,
+                                SDL_EVENT_WINDOW_RESIZED,
+                                SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED}
+        : std::array<Uint32, 3>{SDL_EVENT_WINDOW_LEAVE_FULLSCREEN,
+                                SDL_EVENT_WINDOW_RESIZED,
+                                SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED};
+    for (const Uint32 event_type : completion_events) {
+        cfg.apply_setting("graphics", "fullscreen",
+                          event_actual_mode == "off" ? "borderless" : "off");
+        SDL_Event event{};
+        event.type = event_type;
+        if (event_type == SDL_EVENT_WINDOW_RESIZED) {
+            SDL_GetWindowSize(E_Screen->window,
+                              &event.window.data1, &event.window.data2);
+        }
+        handle_window_event(event);
+        EXPECT_EQ(event_actual_mode, cfg.get_setting("graphics", "fullscreen"))
+            << "event type " << event_type;
+    }
+
+    // Headless drivers may enumerate no fullscreen modes. The Exclusive
+    // selector stays put instead of inventing a desktop-sized video mode.
+    const std::vector<std::pair<int, int>> modes = scr->display_resolutions();
+    for (const auto& m : modes) {
+        EXPECT_GE(m.first, 640);
+        EXPECT_GE(m.second, 400);
+    }
+
+    // Restore boot state (640x400 windowed) through the same live path.
+    cfg.apply_setting("graphics", "fullscreen", prev_mode);
+    cfg.apply_setting("graphics", "width", prev_w.empty() ? "640" : prev_w);
+    cfg.apply_setting("graphics", "height", prev_h.empty() ? "400" : prev_h);
+    cfg.apply_setting("graphics", "windowed_width",
+                      prev_windowed_w.empty() ? "640" : prev_windowed_w);
+    cfg.apply_setting("graphics", "windowed_height",
+                      prev_windowed_h.empty() ? "400" : prev_windowed_h);
+    scr->apply_display_settings_from_cfg();
+    if (prev_w.empty()) {
+        cfg.apply_setting("graphics", "width", "");
+        cfg.apply_setting("graphics", "height", "");
+    }
+    if (prev_mode.empty())
+        cfg.apply_setting("graphics", "fullscreen", "");
+    if (prev_windowed_w.empty())
+        cfg.apply_setting("graphics", "windowed_width", "");
+    if (prev_windowed_h.empty())
+        cfg.apply_setting("graphics", "windowed_height", "");
 }
 
 TEST(OptionsMenu, options_menu) {
@@ -415,21 +731,46 @@ TEST(OptionsMenu, options_menu) {
             << "should have returned to main options via " << screen.back_id;
     }
     ASSERT_TRUE(state.used_options_back) << "should have exited options via options_back";
-    EXPECT_EQ("normal", state.render_label_when_unset)
-        << "empty cfg (graphics, render) must fall back to 'normal' on the button face";
-    ASSERT_TRUE(state.cycled_world_scale)
-        << "world_scale must step cfg graphics/scale around the full eight-value lap";
-    // Each click live-applies the value: the integer / SAI / Eagle modes and
-    // the closing Legacy wrap must all have reached the renderer
-    // (apply_world_scale_from_cfg traces the parsed mode).
-    EXPECT_TRUE(trace_contains("canvas", "world_scale mode=1"))
-        << "an integer scale step must re-derive the world canvas";
-    EXPECT_TRUE(trace_contains("canvas", "world_scale mode=2"))
-        << "the sai step must re-derive the world canvas";
-    EXPECT_TRUE(trace_contains("canvas", "world_scale mode=3"))
-        << "the eagle step must re-derive the world canvas";
-    EXPECT_TRUE(trace_contains("canvas", "world_scale mode=0"))
-        << "the closing wrap to off must restore the Legacy canvas";
+    EXPECT_EQ("Zoom: 1.0x", state.zoom_label_when_unset)
+        << "empty cfg (graphics, zoom) must fall back to 'Zoom: 1.0x' on the button face";
+    EXPECT_EQ("Smooth: Off", state.smoothing_label_when_unset)
+        << "empty cfg (graphics, smoothing) must fall back to 'Smooth: Off' on the button face";
+    ASSERT_TRUE(state.entered_display) << "should have entered the DISPLAY subscreen";
+    ASSERT_TRUE(state.cycled_display_mode)
+        << "display_mode must step cfg graphics/fullscreen around windowed/borderless/exclusive";
+    ASSERT_TRUE(state.cycled_resolution)
+        << "display_resolution must step cfg graphics/width around the preset lap";
+    EXPECT_TRUE(state.resolution_applied_to_window)
+        << "each resolution click must live-apply to the real window "
+           "(session window_w_/h_ re-read from SDL after the apply)";
+    ASSERT_TRUE(state.cycled_zoom)
+        << "display_zoom must step cfg graphics/zoom around its safe lap";
+    ASSERT_TRUE(state.cycled_smoothing)
+        << "display_smoothing must step cfg graphics/smoothing around off/sai/eagle";
+    ASSERT_TRUE(state.exited_display) << "should have returned via display_back";
+    // Each click live-applies the value: the zoom steps and both smart
+    // scalers must all have reached the renderer
+    // (apply_world_scale_from_cfg traces the parsed values).
+    EXPECT_TRUE(trace_contains("canvas", "zoom steps=9"))
+        << "the first zoom-out step must re-derive the world canvas";
+    EXPECT_TRUE(trace_contains("canvas", "zoom steps=5 smoothing=1 canvas=640x400"))
+        << "the 0.5 step must double the classic-density canvas";
+    const int minimum_zoom_steps =
+        og::runtime::current_session->myscreen_->minimum_world_zoom_steps();
+    const og::WorldCanvasDims deepest = og::compute_zoom_canvas_dims(
+        640, 400, minimum_zoom_steps);
+    const std::string deepest_trace =
+        "zoom steps=" + std::to_string(minimum_zoom_steps) +
+        " smoothing=1 canvas=" + std::to_string(deepest.w) + "x" +
+        std::to_string(deepest.h);
+    EXPECT_TRUE(trace_contains("canvas", deepest_trace.c_str()))
+        << "the deepest resource-safe step must reach its derived canvas";
+    EXPECT_TRUE(trace_contains("canvas", "zoom steps=10 smoothing=1 canvas=320x200"))
+        << "the closing wrap to 1.0 must restore classic density";
+    EXPECT_TRUE(trace_contains("canvas", "smoothing=2"))
+        << "the sai smoothing step must reach the renderer";
+    EXPECT_TRUE(trace_contains("canvas", "smoothing=3"))
+        << "the eagle smoothing step must reach the renderer";
 }
 
 
@@ -491,7 +832,7 @@ void capture_toggle(const char* button_id)
 
 void capture_quit_main_menu(CaptureState* state)
 {
-    const Uint32 quit_deadline = SDL_GetTicks() + 5000;
+    const Uint64 quit_deadline = SDL_GetTicks() + 5000;
     while (SDL_GetTicks() < quit_deadline) {
         if (has_interactable("quit")) {
             SDL_Delay(600); // dwell on the main menu before leaving

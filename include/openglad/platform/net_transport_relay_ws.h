@@ -40,6 +40,7 @@ public:
     void accept_connections() override;
     void disconnect(PeerId peer_id) override;
     [[nodiscard]] std::vector<PeerId> connected_peers() const override;
+    [[nodiscard]] TransportLinkState link_state() const noexcept override;
 
     [[nodiscard]] std::optional<PeerId> local_peer_id() const noexcept;
     [[nodiscard]] std::optional<PeerId> host_peer_id() const noexcept;

@@ -2306,61 +2306,216 @@ TEST(PickerCommon, depth_fx_is_active_only_off_is_inactive)
     EXPECT_TRUE(og::ui::depth_fx_is_active("bogus"));
 }
 
-// --- OPTIONS world-scale selector (cfg graphics/scale) ---
+// --- DISPLAY zoom selector (cfg graphics/zoom) ---
 
-TEST(PickerCommon, cycle_world_scale_sequence)
+TEST(PickerCommon, cycle_zoom_sequence)
 {
-    // The eight-way selector lap, starting from the Legacy default.
-    ASSERT_EQ("1", og::ui::cycle_world_scale("off"));
-    ASSERT_EQ("2", og::ui::cycle_world_scale("1"));
-    ASSERT_EQ("sai", og::ui::cycle_world_scale("2"));
-    ASSERT_EQ("eagle", og::ui::cycle_world_scale("sai"));
-    ASSERT_EQ("3", og::ui::cycle_world_scale("eagle"));
-    ASSERT_EQ("4", og::ui::cycle_world_scale("3"));
-    ASSERT_EQ("8", og::ui::cycle_world_scale("4"));
-    ASSERT_EQ("off", og::ui::cycle_world_scale("8"));
+    // Each click zooms OUT one 0.1 step, wrapping from the deepest 0.1 back
+    // to the classic 1.0.
+    ASSERT_EQ("0.9", og::ui::cycle_zoom("1.0"));
+    ASSERT_EQ("0.8", og::ui::cycle_zoom("0.9"));
+    ASSERT_EQ("0.5", og::ui::cycle_zoom("0.6"));
+    ASSERT_EQ("0.1", og::ui::cycle_zoom("0.2"));
+    ASSERT_EQ("1.0", og::ui::cycle_zoom("0.1"));
 
-    // Eight clicks restore any in-set starting value.
-    std::string value = "sai";
-    for (int i = 0; i < 8; ++i)
-        value = og::ui::cycle_world_scale(value);
-    ASSERT_EQ("sai", value);
+    // Ten clicks restore any in-set starting value.
+    std::string value = "0.7";
+    for (int i = 0; i < 10; ++i)
+        value = og::ui::cycle_zoom(value);
+    ASSERT_EQ("0.7", value);
 
     // Out-of-set values — including the empty string an absent cfg key reads
-    // as — normalize to "off" (Legacy) before stepping, matching
-    // parse_world_scale_setting in the renderer.
-    ASSERT_EQ("1", og::ui::cycle_world_scale(""));
-    ASSERT_EQ("1", og::ui::cycle_world_scale("normal"));
-    ASSERT_EQ("1", og::ui::cycle_world_scale("bogus"));
+    // as — normalize to the classic 1.0 before stepping, matching
+    // parse_zoom_steps in the renderer.
+    ASSERT_EQ("0.9", og::ui::cycle_zoom(""));
+    ASSERT_EQ("0.9", og::ui::cycle_zoom("bogus"));
+    ASSERT_EQ("0.4", og::ui::cycle_zoom("0.45")); // quantize then step
 }
 
-TEST(PickerCommon, format_world_scale_label_exact_strings)
+TEST(PickerCommon, cycle_zoom_wraps_at_the_runtime_safe_minimum)
 {
-    ASSERT_EQ("Scale: Off", og::ui::format_world_scale_label("off"));
-    ASSERT_EQ("Scale: 1x", og::ui::format_world_scale_label("1"));
-    ASSERT_EQ("Scale: 2x", og::ui::format_world_scale_label("2"));
-    ASSERT_EQ("Scale: SAI", og::ui::format_world_scale_label("sai"));
-    ASSERT_EQ("Scale: Eagle", og::ui::format_world_scale_label("eagle"));
-    ASSERT_EQ("Scale: 3x", og::ui::format_world_scale_label("3"));
-    ASSERT_EQ("Scale: 4x", og::ui::format_world_scale_label("4"));
-    ASSERT_EQ("Scale: 8x", og::ui::format_world_scale_label("8"));
+    ASSERT_EQ("0.2", og::ui::cycle_zoom("0.3", 2));
+    ASSERT_EQ("1.0", og::ui::cycle_zoom("0.2", 2));
+    ASSERT_EQ("1.0", og::ui::cycle_zoom("0.1", 2));
 
-    // Unknown/absent values read as the Legacy default.
-    ASSERT_EQ("Scale: Off", og::ui::format_world_scale_label(""));
-    ASSERT_EQ("Scale: Off", og::ui::format_world_scale_label("double"));
+    ASSERT_EQ("0.5", og::ui::cycle_zoom("0.6", 5));
+    ASSERT_EQ("1.0", og::ui::cycle_zoom("0.5", 5));
+    ASSERT_EQ("1.0", og::ui::cycle_zoom("0.2", 5));
+
+    ASSERT_EQ("1.0", og::ui::cycle_zoom("1.0", 10));
+    ASSERT_EQ("1.0", og::ui::cycle_zoom("0.5", 10));
 }
 
-TEST(PickerCommon, world_scale_labels_fit_the_button_face)
+TEST(PickerCommon, display_mode_parse_cycle_and_labels)
 {
-    // The options row draws a 90px face at 6px/char = 15-character budget
-    // (labels are centered with no clipping); every label also fits the
-    // tighter 12-character budget of an 80px face.
-    std::string value = "off";
-    for (int step = 0; step < 8; ++step)
+    using og::ui::DisplayMode;
+    // Legacy boolean cfg: "on" was the borderless desktop fullscreen.
+    ASSERT_EQ(DisplayMode::Borderless, og::ui::parse_display_mode("on"));
+    ASSERT_EQ(DisplayMode::Borderless, og::ui::parse_display_mode("borderless"));
+    ASSERT_EQ(DisplayMode::Exclusive, og::ui::parse_display_mode("exclusive"));
+    ASSERT_EQ(DisplayMode::Exclusive, og::ui::parse_display_mode("fullscreen"));
+    ASSERT_EQ(DisplayMode::Windowed, og::ui::parse_display_mode("off"));
+    ASSERT_EQ(DisplayMode::Windowed, og::ui::parse_display_mode(""));
+    ASSERT_EQ(DisplayMode::Windowed, og::ui::parse_display_mode("bogus"));
+
+    ASSERT_EQ(DisplayMode::Borderless, og::ui::next_display_mode(DisplayMode::Windowed));
+    ASSERT_EQ(DisplayMode::Exclusive, og::ui::next_display_mode(DisplayMode::Borderless));
+    ASSERT_EQ(DisplayMode::Windowed, og::ui::next_display_mode(DisplayMode::Exclusive));
+
+    ASSERT_EQ("off", og::ui::display_mode_cfg_value(DisplayMode::Windowed));
+    ASSERT_EQ("borderless", og::ui::display_mode_cfg_value(DisplayMode::Borderless));
+    ASSERT_EQ("exclusive", og::ui::display_mode_cfg_value(DisplayMode::Exclusive));
+
+    ASSERT_EQ("Mode: Windowed", og::ui::format_display_mode_label(""));
+    ASSERT_EQ("Mode: Borderless", og::ui::format_display_mode_label("on"));
+    ASSERT_EQ("Mode: Borderless", og::ui::format_display_mode_label("borderless"));
+    ASSERT_EQ("Mode: Fullscreen", og::ui::format_display_mode_label("exclusive"));
+    // 102px button face at 6px/char: every label must fit 17 characters.
+    for (const char* v : {"", "on", "borderless", "exclusive", "bogus"})
+        ASSERT_LE(og::ui::format_display_mode_label(v).size(), 17u) << v;
+}
+
+TEST(PickerCommon, resolution_parse_next_and_labels)
+{
+    // Absent/garbage cfg reads as the 640x400 boot default.
+    ASSERT_EQ(std::make_pair(640, 400), og::ui::parse_resolution("", ""));
+    ASSERT_EQ(std::make_pair(640, 400), og::ui::parse_resolution("abc", "400"));
+    ASSERT_EQ(std::make_pair(640, 400), og::ui::parse_resolution("100", "80"));
+    ASSERT_EQ(std::make_pair(1920, 1200), og::ui::parse_resolution("1920", "1200"));
+
+    const std::vector<std::pair<int, int>> list = og::ui::fallback_resolutions({0, 0});
+    ASSERT_GE(list.size(), 2u);
+
+    // Desktop-derived fallback: native + aspect-preserving fractions.
+    const auto derived = og::ui::fallback_resolutions({1920, 1080});
+    ASSERT_EQ(3u, derived.size());
+    ASSERT_EQ(std::make_pair(1920, 1080), derived[0]);
+    ASSERT_EQ(std::make_pair(1440, 810), derived[1]);
+    ASSERT_EQ(std::make_pair(960, 540) , derived[2]);
+
+    // The lap walks the list in order and wraps.
+    ASSERT_EQ(std::make_pair(960, 600), og::ui::next_resolution(list, "640", "400"));
+    ASSERT_EQ(std::make_pair(640, 400), og::ui::next_resolution(list, "1920", "1200"));
+    // A hand-edited size re-enters at the first entry; an empty list echoes
+    // the current resolution back.
+    ASSERT_EQ(list.front(), og::ui::next_resolution(list, "800", "600"));
+    ASSERT_EQ(std::make_pair(800, 600), og::ui::next_resolution({}, "800", "600"));
+
+    // One full lap of clicks restores any in-list starting point.
+    std::pair<int, int> r{1280, 800};
+    for (std::size_t i = 0; i < list.size(); ++i)
+        r = og::ui::next_resolution(list, std::to_string(r.first), std::to_string(r.second));
+    ASSERT_EQ(std::make_pair(1280, 800), r);
+
+    ASSERT_EQ("Res: 640x400", og::ui::format_resolution_label("", ""));
+    ASSERT_EQ("Res: 2560x1440", og::ui::format_resolution_label("2560", "1440"));
+    // 102px face at 6px/char: 17 characters, even for 8K-wide values.
+    ASSERT_LE(og::ui::format_resolution_label("7680", "4800").size(), 17u);
+}
+
+TEST(PickerCommon, resolution_choices_use_only_enumerated_exclusive_modes)
+{
+    using og::ui::DisplayMode;
+    const std::pair<int, int> desktop{1920, 1080};
+    const std::pair<int, int> hand_edited{1366, 768};
+
+    // A compositor exposing only its current desktop still gets useful
+    // aspect-preserving window sizes outside exclusive fullscreen.
+    const auto windowed = og::ui::build_resolution_choices(
+        {desktop}, desktop, hand_edited, DisplayMode::Windowed);
+    EXPECT_NE(windowed.end(), std::find(windowed.begin(), windowed.end(), desktop));
+    EXPECT_NE(windowed.end(), std::find(windowed.begin(), windowed.end(),
+                                        std::make_pair(1440, 810)));
+    EXPECT_NE(windowed.end(), std::find(windowed.begin(), windowed.end(), hand_edited));
+
+    // Those derived fractions and the hand-edited cfg size are not real SDL
+    // video modes, so the exclusive lap must contain only the desktop here.
+    const auto exclusive = og::ui::build_resolution_choices(
+        {desktop}, desktop, hand_edited, DisplayMode::Exclusive);
+    ASSERT_EQ(1u, exclusive.size());
+    EXPECT_EQ(desktop, exclusive.front());
+
+    // An actual desktop size is still synthetic when the fullscreen mode
+    // list omitted it, so Exclusive must not add it independently.
+    const auto incomplete = og::ui::build_resolution_choices(
+        {{2560, 1440}, {1280, 720}}, desktop, hand_edited,
+        DisplayMode::Exclusive);
+    const std::vector<std::pair<int, int>> expected_real_modes{
+        {2560, 1440}, {1280, 720}};
+    EXPECT_EQ(expected_real_modes, incomplete);
+
+    // Entering Exclusive prefers desktop only when it is real/enumerated.
+    // If not, it selects the largest real mode; no modes produces no request.
+    EXPECT_EQ(desktop, og::ui::preferred_exclusive_resolution(
+        {{2560, 1440}, desktop, {1280, 720}}, desktop));
+    EXPECT_EQ(std::make_pair(2560, 1440),
+              og::ui::preferred_exclusive_resolution(
+                  {{1280, 720}, {2560, 1440}}, desktop));
+    EXPECT_EQ(std::make_pair(0, 0),
+              og::ui::preferred_exclusive_resolution({}, desktop));
+}
+
+TEST(PickerCommon, format_zoom_label_exact_strings)
+{
+    ASSERT_EQ("Zoom: 1.0x", og::ui::format_zoom_label("1.0"));
+    ASSERT_EQ("Zoom: 0.9x", og::ui::format_zoom_label("0.9"));
+    ASSERT_EQ("Zoom: 0.5x", og::ui::format_zoom_label("0.5"));
+    ASSERT_EQ("Zoom: 0.1x", og::ui::format_zoom_label("0.1"));
+
+    // Unknown/absent values read as the classic default.
+    ASSERT_EQ("Zoom: 1.0x", og::ui::format_zoom_label(""));
+    ASSERT_EQ("Zoom: 1.0x", og::ui::format_zoom_label("double"));
+}
+
+TEST(PickerCommon, cycle_smoothing_sequence_and_labels)
+{
+    // Three-way lap: off -> sai -> eagle -> off.
+    ASSERT_EQ("sai", og::ui::cycle_smoothing("off"));
+    ASSERT_EQ("eagle", og::ui::cycle_smoothing("sai"));
+    ASSERT_EQ("off", og::ui::cycle_smoothing("eagle"));
+    // Absent/garbage reads as off, so the first click lands on sai.
+    ASSERT_EQ("sai", og::ui::cycle_smoothing(""));
+    ASSERT_EQ("sai", og::ui::cycle_smoothing("bogus"));
+
+    ASSERT_EQ("Smooth: Off", og::ui::format_smoothing_label("off"));
+    ASSERT_EQ("Smooth: SAI", og::ui::format_smoothing_label("sai"));
+    ASSERT_EQ("Smooth: Eagle", og::ui::format_smoothing_label("eagle"));
+    ASSERT_EQ("Smooth: Off", og::ui::format_smoothing_label(""));
+    ASSERT_EQ("Smooth: Off", og::ui::format_smoothing_label("bogus"));
+	ASSERT_EQ("Smooth: SAI N/A",
+	          og::ui::format_smoothing_label("sai", false));
+	ASSERT_EQ("Smooth: Eagle N/A",
+	          og::ui::format_smoothing_label("eagle", false));
+}
+
+TEST(PickerCommon, legacy_render_only_supplies_an_absent_smoothing_key)
+{
+    ASSERT_EQ("sai", og::ui::effective_smoothing_setting("", "sai"));
+    ASSERT_EQ("eagle", og::ui::effective_smoothing_setting("", "eagle"));
+    ASSERT_EQ("", og::ui::effective_smoothing_setting("", "normal"));
+    ASSERT_EQ("", og::ui::effective_smoothing_setting("", "double"));
+    ASSERT_EQ("off", og::ui::effective_smoothing_setting("off", "sai"));
+    ASSERT_EQ("eagle", og::ui::effective_smoothing_setting("eagle", "sai"));
+}
+
+TEST(PickerCommon, zoom_and_smoothing_labels_fit_the_button_face)
+{
+    // The DISPLAY rows draw a 102px face at 6px/char = 17-character budget
+    // (labels are centered with no clipping).
+    std::string zoom = "1.0";
+    for (int step = 0; step < 10; ++step)
     {
-        const std::string label = og::ui::format_world_scale_label(value);
-        EXPECT_LE(label.size(), 12u) << label;
-        value = og::ui::cycle_world_scale(value);
+        EXPECT_LE(og::ui::format_zoom_label(zoom).size(), 17u) << zoom;
+        zoom = og::ui::cycle_zoom(zoom);
     }
-    ASSERT_EQ("off", value) << "eight steps must complete the lap";
+    ASSERT_EQ("1.0", zoom) << "ten steps must complete the lap";
+
+    std::string smoothing = "off";
+    for (int step = 0; step < 3; ++step)
+    {
+        EXPECT_LE(og::ui::format_smoothing_label(smoothing).size(), 17u)
+            << smoothing;
+        smoothing = og::ui::cycle_smoothing(smoothing);
+    }
+    ASSERT_EQ("off", smoothing) << "three steps must complete the lap";
 }

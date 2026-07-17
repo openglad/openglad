@@ -8,6 +8,7 @@
 #include <openglad/interface/render/effects.h>
 #include <openglad/interface/render/depth_fx.h>
 #include <openglad/platform/sai2x.h>
+#include <openglad/platform/video_sdl.h>
 #include <gtest/gtest.h>
 
 #include <array>
@@ -784,39 +785,104 @@ TEST(VideoEffectsPrims, floor_layer_padded_window_grows_the_layer_beyond_the_ren
         << "per-pixel blits must reach the grown layer's pad ring";
 }
 
+TEST(VideoEffectsPrims, floor_layer_budget_and_allocation_failure_leave_render_routing_safe)
+{
+    screen* s = scr();
+    ASSERT_NE(nullptr, s);
+    SDL_Surface* const real_render = E_Screen->render;
+    ASSERT_NE(nullptr, real_render);
+
+    // A deepest-zoom full-canvas source is 6.4M pixels. Reject it before
+    // touching cached surfaces or the public draw alias.
+    const int budget_fallbacks = s->floor_layer_fallback_count_for_testing();
+    const std::int64_t cached_pixels =
+        s->floor_layer_source_pixels_for_testing();
+    ASSERT_GT(static_cast<std::int64_t>(3200) * 2000,
+              sdl_video::kFloorLayerSourcePixelBudget);
+    EXPECT_FALSE(s->floor_layer_begin(0, 0, 3200, 2000));
+    EXPECT_EQ(budget_fallbacks + 1,
+              s->floor_layer_fallback_count_for_testing());
+    EXPECT_EQ(cached_pixels, s->floor_layer_source_pixels_for_testing())
+        << "budget rejection must not allocate or discard cached scratch";
+    EXPECT_EQ(real_render, E_Screen->render);
+    EXPECT_FALSE(s->floor_layer_redirect_active_for_testing());
+
+    // Force the same safe exit at the real SDL allocation seam. The hook
+    // clears old scratch first, so a successful retry also gives exact size
+    // diagnostics for source-vs-output memory.
+    s->fail_next_floor_layer_allocation_for_testing();
+    const int allocation_fallbacks =
+        s->floor_layer_fallback_count_for_testing();
+    EXPECT_FALSE(s->floor_layer_begin(0, 0, 640, 400));
+    EXPECT_EQ(allocation_fallbacks + 1,
+              s->floor_layer_fallback_count_for_testing());
+    EXPECT_EQ(real_render, E_Screen->render);
+    EXPECT_FALSE(s->floor_layer_redirect_active_for_testing());
+    EXPECT_EQ(0, s->floor_layer_source_pixels_for_testing());
+
+    // Under budget retains the complete padded composite, but the bilinear
+    // scratch is only the 320x200 output — not another 640x400 source clone.
+    ASSERT_TRUE(s->floor_layer_begin(0, 0, 640, 400));
+    EXPECT_TRUE(s->floor_layer_redirect_active_for_testing());
+    s->fastbox(0, 0, 640, 400, kBrightBG, 1);
+    s->floor_layer_end(0, 0, 320, 200, 0.5f, 160, 100, 200, {}, 160, 100);
+    EXPECT_EQ(real_render, E_Screen->render);
+    EXPECT_FALSE(s->floor_layer_redirect_active_for_testing());
+    EXPECT_EQ(static_cast<std::int64_t>(640) * 400,
+              s->floor_layer_source_pixels_for_testing());
+    EXPECT_EQ(static_cast<std::int64_t>(320) * 200,
+              s->floor_layer_scaled_pixels_for_testing());
+}
+
 // ---- Canvas plumbing (stages 1+2 of the resolution decoupling) ------------
 //
-// Screen owns a WORLD canvas (gameplay, variable dims in principle) and a UI
-// canvas (menus, pinned 320x200). At the default 320x200 world dims the two
-// share ONE surface, keeping the renderer byte-identical to the historical
-// single-canvas setup; set_world_canvas_size with non-default dims splits
-// them, and all offset plot arithmetic follows the active canvas width.
+// Screen owns an aspect-derived WORLD canvas and a fixed 320x200 UI canvas.
+// Only an explicitly classic-sized world shares the UI surface;
+// set_world_canvas_size with other dimensions splits them, and all offset
+// plot arithmetic follows the active canvas width.
 
 namespace
 {
-// RAII: every canvas test restores the default shared 320x200 world canvas,
-// UI routing, the render engine and a cleared buffer for subsequent tests.
+// RAII: every canvas test restores the entering zoom-derived world canvas,
+// routing, render engine and a cleared buffer for subsequent tests.
 struct CanvasStateGuard
 {
     RenderEngine saved_engine = E_Screen->Engine;
+    int saved_zoom = E_Screen->world_zoom_steps();
+    og::WorldScaleMode saved_smoothing = E_Screen->world_scale().mode;
+    CanvasTarget saved_target = E_Screen->active_canvas();
+    int saved_window_w =
+        static_cast<int>(og::runtime::current_session->window_w_);
+    int saved_window_h =
+        static_cast<int>(og::runtime::current_session->window_h_);
+
     ~CanvasStateGuard()
     {
         E_Screen->Engine = saved_engine;
-        E_Screen->set_active_canvas(CanvasTarget::UI);
-        E_Screen->set_world_canvas_size(kUiCanvasW, kUiCanvasH);
+        E_Screen->set_world_canvas_pinned_classic(false);
+        if (saved_smoothing == og::WorldScaleMode::Legacy)
+            saved_smoothing = og::WorldScaleMode::Integer;
+        E_Screen->set_world_zoom(saved_zoom, saved_smoothing,
+                                 saved_window_w, saved_window_h);
+        E_Screen->set_active_canvas(saved_target);
         scr()->clearbuffer();
     }
 };
 } // namespace
 
-TEST(VideoEffectsPrims, canvas_dims_default_pins)
+TEST(VideoEffectsPrims, canvas_dims_follow_window_and_keep_ui_fixed)
 {
-    // Default canvas dims: the classic 320x200 everywhere, and the world
-    // canvas shares the UI surface (byte-identity mode).
+    const og::WorldCanvasDims expected = og::compute_zoom_canvas_dims(
+        static_cast<int>(og::runtime::current_session->window_w_),
+        static_cast<int>(og::runtime::current_session->window_h_),
+        og::kZoomStepsMax);
+
+    // Zoom 1.0 follows the window aspect at classic density, while active
+    // menu/UI drawing stays on the fixed classic canvas.
     ASSERT_EQ(320, E_Screen->canvas_w());
     ASSERT_EQ(200, E_Screen->canvas_h());
-    ASSERT_EQ(320, E_Screen->world_w());
-    ASSERT_EQ(200, E_Screen->world_h());
+    ASSERT_EQ(expected.w, E_Screen->world_w());
+    ASSERT_EQ(expected.h, E_Screen->world_h());
     ASSERT_EQ(320, E_Screen->ui_w());
     ASSERT_EQ(200, E_Screen->ui_h());
     ASSERT_EQ(320, E_Screen->render->w) << "active draw target is the canvas";
@@ -825,8 +891,8 @@ TEST(VideoEffectsPrims, canvas_dims_default_pins)
     // The interface-level accessors forward through screen -> sdl_video.
     ASSERT_EQ(320, scr()->canvas_w());
     ASSERT_EQ(200, scr()->canvas_h());
-    ASSERT_EQ(320, scr()->world_canvas_w());
-    ASSERT_EQ(200, scr()->world_canvas_h());
+    ASSERT_EQ(expected.w, scr()->world_canvas_w());
+    ASSERT_EQ(expected.h, scr()->world_canvas_h());
 
     // The legacy scratch buffer is sized to the canvas area (the old 64000).
     ASSERT_EQ(static_cast<std::size_t>(320) * 200, scr()->videobuffer.size());
@@ -930,11 +996,12 @@ TEST(VideoEffectsPrims, swap_scaler_scratch_resizes_with_the_active_canvas)
     ASSERT_EQ(640, E_Screen->render2->w);
     ASSERT_EQ(400, E_Screen->render2->h);
 
-    // ...and recreated at 2x the split world canvas when that presents.
-    E_Screen->set_world_canvas_size(384, 240);
+    // ...and recreated at 2x a smoothed split world canvas when that presents.
+    E_Screen->set_world_zoom(8, og::WorldScaleMode::Sai, 320, 200);
     s->set_active_canvas(CanvasTarget::World);
     s->clearbuffer();
     s->buffer_to_screen(0, 0, s->canvas_w(), s->canvas_h());
-    ASSERT_EQ(768, E_Screen->render2->w);
-    ASSERT_EQ(480, E_Screen->render2->h);
+    ASSERT_NE(nullptr, E_Screen->render2);
+    ASSERT_EQ(800, E_Screen->render2->w);
+    ASSERT_EQ(500, E_Screen->render2->h);
 }

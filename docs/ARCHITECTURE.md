@@ -242,9 +242,21 @@ screen
 │   ├── team_list[MAX_TEAM_SIZE] — array<unique_ptr<guy>, 24>
 │   ├── current_campaign
 │   └── completed_levels set
+├── video_impl_    — platform renderer and logical canvas routing
 ├── viewscreen[4]  — split-screen viewports (1–4 players)
 └── timer_wait     — frame rate control
 ```
+
+The display backend keeps gameplay and fixed-coordinate UI in separate
+logical spaces. At zoom 1.0, the world uses master's shipped 320x200 density
+and expands only the needed axis to match the display aspect; lower zoom values
+enlarge that canvas to show more of the level. Menus remain 320x200. Each
+active canvas is aspect-fitted into the output viewport, so widescreen
+displays add centered bars around the fixed UI instead of stretching it.
+Window resize and completed fullscreen transitions rebuild the world canvas
+and viewscreen layout. See
+[Resolution, zoom, and smoothing](resolution-and-scaling.md) for the sizing,
+resource limits, and legacy-config behavior.
 
 ### Session and Context
 
@@ -742,7 +754,7 @@ ctest --preset ci-test         # Run tests
 
 The project builds three executables from shared source with platform-specific implementations:
 
-- **`openglad`** (SDL client) — Full graphical game with rendering, audio, and input via SDL2. SDL platform code lives in `src/platform/sdl/` and `src/interface/`.
+- **`openglad`** (SDL client) — Full graphical game with rendering, audio, and input via SDL3. SDL platform code lives in `src/platform/sdl/` and `src/interface/`.
 - **`openglad_text`** (headless client) — SDL-free text-mode client for simulation, testing, and scripting. Headless platform code lives in `src/platform/text/`.
 - **`openglad_server`** (headless host) — SDL-free dedicated server that hosts a networked game (runs the authoritative `GameServer` + `LobbyServer` with no display); `src/server/headless_server_runtime.cpp`.
 - **`openglad_curses`** (ncurses client) — SDL-free *playable* terminal client. It links the same SDL-free components the dedicated server does, plus the shared menu model (`menu_model`/`picker_common`/`picker_state`) and a new ncurses front end (`src/platform/curses/`). It runs every game through the engine's own client-server architecture (`InProcessTransport` for local play, WebSocket for networked), rendering the mirror `GameWorld` as a roguelike (one character per tile, one character per "dude" on its nearest tile) and translating key presses into the engine's `InputState`. All of its logic sits behind an `ITerminal`/`IClock` seam so the whole client is tested headlessly with no TTY (`og_test_curses`).
@@ -774,7 +786,7 @@ Shell scripts in `scripts/` provide convenience wrappers:
 
 ### Web Build
 
-The Emscripten build compiles to WebAssembly with SDL2 ports:
+The Emscripten build compiles to WebAssembly with the SDL3 port:
 
 ```bash
 source /path/to/emsdk/emsdk_env.sh
@@ -783,7 +795,7 @@ source /path/to/emsdk/emsdk_env.sh
 cd dist && python3 -m http.server 8080
 ```
 
-Key flags: `-sUSE_SDL=2`, `-sUSE_SDL_MIXER=2`, `-sASYNCIFY`, `-sALLOW_MEMORY_GROWTH=1`, `-sINITIAL_MEMORY=67108864` (64MB).
+Key flags: `--use-port=sdl3`, `-sASYNCIFY`, `-sALLOW_MEMORY_GROWTH=1`, `-sINITIAL_MEMORY=67108864` (64MB).
 
 ---
 
@@ -878,7 +890,7 @@ The GitHub Actions workflow (`.github/workflows/test.yml`) runs:
 | `src/interface/ui/picker_lobby_network_client.cpp` | Host / Join lobby clients (WebSocket + relay) |
 | `src/interface/ui/picker.cpp` | Team selection UI — main menu loop |
 | `src/interface/ui/level_editor.cpp` | Scenario editor (openscen binary) |
-| `src/interface/render/graphlib.cpp` | SDL2 graphics layer — pixel buffer / draw primitives |
+| `src/interface/render/graphlib.cpp` | SDL3 graphics layer — pixel buffer / draw primitives |
 | `src/interface/render/view.cpp` | Viewport/camera system, split-screen rendering |
 | `src/interface/render/walker_draw.cpp` | Entity draw methods (extracted from `walker.cpp`) |
 | `src/resources/level_file_io.cpp` | Level file loading and saving |

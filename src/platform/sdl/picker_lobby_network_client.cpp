@@ -157,7 +157,18 @@ constexpr std::string_view kDefaultRelayBaseUrl =
 EM_ASYNC_JS(char*, relay_http_post_text_js, (const char* url_cstr), {
     try {
         const url = UTF8ToString(url_cstr);
-        const response = await fetch(url, { method: 'POST' });
+        // Match the native transport's connect/transfer timeouts: without a
+        // signal, a relay that accepts TCP but never responds would keep the
+        // wasm Asyncify-suspended (picker frozen, no input) until the
+        // browser's own stall timeout, which can be minutes. Feature-detect:
+        // AbortSignal.timeout is Safari 16+; older engines just keep the
+        // no-timeout behavior instead of failing every fetch.
+        const options = { method: 'POST' };
+        if (typeof AbortSignal !== 'undefined' &&
+            typeof AbortSignal.timeout === 'function') {
+            options.signal = AbortSignal.timeout(10000);
+        }
+        const response = await fetch(url, options);
         const text = await response.text();
         return stringToNewUTF8(
             (response.ok ? 'OK\n' : 'ERR\n') +
@@ -174,7 +185,13 @@ EM_ASYNC_JS(char*, relay_http_post_text_js, (const char* url_cstr), {
 EM_ASYNC_JS(char*, relay_http_get_text_js, (const char* url_cstr), {
     try {
         const url = UTF8ToString(url_cstr);
-        const response = await fetch(url, { method: 'GET' });
+        // Same stalled-relay guard as relay_http_post_text_js above.
+        const options = { method: 'GET' };
+        if (typeof AbortSignal !== 'undefined' &&
+            typeof AbortSignal.timeout === 'function') {
+            options.signal = AbortSignal.timeout(10000);
+        }
+        const response = await fetch(url, options);
         const text = await response.text();
         return stringToNewUTF8(
             (response.ok ? 'OK\n' : 'ERR\n') +
@@ -2270,13 +2287,28 @@ private:
 
     void rebuild_status_lines()
     {
+        std::string relay_room_code = relay_room_code_;
+        std::string relay_status_message = relay_status_message_;
+        if (relay_transport_ && !relay_room_code_.empty())
+        {
+            const og::sim::TransportLinkState relay_link =
+                relay_transport_->link_state();
+            if (relay_link == og::sim::TransportLinkState::Failed ||
+                relay_link == og::sim::TransportLinkState::Lost)
+            {
+                // The room was created but the relay socket is gone: stop
+                // advertising a dead room code and surface the drop instead.
+                relay_room_code.clear();
+                relay_status_message = "connection lost";
+            }
+        }
         status_lines_ = og::ui::build_host_picker_status_lines(
             direct_address_,
             static_cast<bool>(websocket_server_transport_),
             options_.port,
             direct_status_message_,
-            relay_room_code_,
-            relay_status_message_,
+            relay_room_code,
+            relay_status_message,
             state_.has_value()
                 ? std::optional<std::size_t>(state_->players.size())
                 : std::nullopt);
@@ -2333,6 +2365,7 @@ public:
             &remote_owned_save_slots_);
 
         server_peer_id_ = 1;
+        server_peer_id_adopted_ = false;
         relay_room_code_.clear();
         direct_url_.clear();
 
@@ -2380,6 +2413,8 @@ public:
         remote_owned_save_slots_.fill(false);
         join_message_sent_ = false;
         settings_dirty_ = false;
+        server_peer_id_ = 1;
+        server_peer_id_adopted_ = false;
         pending_local_player_.reset();
     }
 
@@ -2555,7 +2590,15 @@ public:
                 return true;
             if (lobby_states_received_ != states_before)
                 return false;
+#ifdef __EMSCRIPTEN__
+            // std::this_thread::sleep_for busy-waits on emscripten without
+            // returning to the browser event loop, so the WebSocket echo this
+            // loop waits for could never arrive in-window. emscripten_sleep
+            // yields via Asyncify and lets onmessage fire.
+            emscripten_sleep(10);
+#else
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
+#endif
         }
         return false;
     }
@@ -2577,7 +2620,12 @@ public:
                 return true;
             if (lobby_states_received_ != states_before)
                 return local_ready() == ready;
+#ifdef __EMSCRIPTEN__
+            // See request_team_change: sleep_for busy-waits on emscripten.
+            emscripten_sleep(10);
+#else
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
+#endif
         }
         return false;
     }
@@ -2766,11 +2814,26 @@ private:
             dynamic_cast<og::sim::RelayWebSocketTransport*>(transport_.get());
         if (relay_transport == nullptr)
             return;
-        (void)relay_transport;
 
-        // Relay room host migration is a room-management concept. The
-        // authoritative lobby/game server still lives on the original host
-        // peer id, which remains pinned for relay clients.
+        // Adopt the relay's announced room host for the INITIAL binding: if
+        // the relay assigns the owner a peer id other than 1, messages pinned
+        // to 1 would be silently dropped by the transport's remote-peers
+        // filter and the lobby would look connected but dead.
+        //
+        // Adopt exactly once, and only before the first lobby state: relay
+        // room host migration is a room-management concept, and the
+        // authoritative lobby/game server stays on the originally announced
+        // host peer id even if the room host changes later.
+        if (lobby_states_received_ == 0 && !server_peer_id_adopted_)
+        {
+            if (const std::optional<og::sim::PeerId> host =
+                    relay_transport->host_peer_id();
+                host.has_value())
+            {
+                server_peer_id_ = *host;
+                server_peer_id_adopted_ = true;
+            }
+        }
     }
 
     void apply_state_to_current_save()
@@ -2816,10 +2879,25 @@ private:
             status_lines_.push_back(std::format("Direct: {}", direct_url_));
         if (!relay_room_code_.empty())
             status_lines_.push_back(std::format("Relay: {}", relay_room_code_));
-        status_lines_.push_back(
-            transport_ && !transport_->connected_peers().empty()
-                ? "Status: connected"
-                : "Status: connecting");
+        const char* status_text = "Status: connecting";
+        if (transport_)
+        {
+            switch (transport_->link_state())
+            {
+            case og::sim::TransportLinkState::Connecting:
+                break;
+            case og::sim::TransportLinkState::Connected:
+                status_text = "Status: connected";
+                break;
+            case og::sim::TransportLinkState::Failed:
+                status_text = "Status: connection failed";
+                break;
+            case og::sim::TransportLinkState::Lost:
+                status_text = "Status: connection lost";
+                break;
+            }
+        }
+        status_lines_.push_back(status_text);
         if (state_.has_value())
         {
             status_lines_.push_back(
@@ -2835,6 +2913,10 @@ private:
     std::string relay_room_code_;
     std::shared_ptr<og::sim::ITransport> transport_;
     og::sim::PeerId server_peer_id_ = 1;
+    // True once the relay's announced room host has been adopted as the
+    // authoritative server binding; later room-host migrations must not move
+    // it (see update_server_peer_id).
+    bool server_peer_id_adopted_ = false;
     std::optional<og::sim::LobbyState> state_;
     std::vector<std::string> status_lines_;
     std::array<bool, MAX_TEAM_SIZE> remote_owned_save_slots_{};

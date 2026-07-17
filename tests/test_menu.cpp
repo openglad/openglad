@@ -1,4 +1,4 @@
-#include "SDL.h"
+#include <SDL3/SDL.h>
 #include <openglad/resources/gparser.h>
 #include <openglad/core/test_trace.h>
 #include <gtest/gtest.h>
@@ -17,9 +17,9 @@ static int release_scancode_after_delay(void* data)
     SDL_Scancode scancode = *static_cast<SDL_Scancode*>(data);
     SDL_Delay(20);
     int numkeys = 0;
-    Uint8* keys = const_cast<Uint8*>(SDL_GetKeyboardState(&numkeys));
+    bool* keys = const_cast<bool*>(SDL_GetKeyboardState(&numkeys));
     if (scancode >= 0 && scancode < numkeys)
-        keys[scancode] = 0;
+        keys[scancode] = false;
     return 0;
 }
 
@@ -31,19 +31,19 @@ static Sint32 passthrough_cb(Sint32 arg)
 static void push_mouse_motion_game_coords(int game_x, int game_y)
 {
     SDL_Event event{};
-    event.type = SDL_MOUSEMOTION;
-    event.motion.type = SDL_MOUSEMOTION;
-    event.motion.x = static_cast<int>(og::runtime::current_session->viewport_offset_x_ + (static_cast<float>(game_x) * og::runtime::current_session->viewport_w_ / 320.0f));
-    event.motion.y = static_cast<int>(og::runtime::current_session->viewport_offset_y_ + (static_cast<float>(game_y) * og::runtime::current_session->viewport_h_ / 200.0f));
+    event.type = SDL_EVENT_MOUSE_MOTION;
+    event.motion.type = SDL_EVENT_MOUSE_MOTION;
+    event.motion.x = og::runtime::current_session->viewport_offset_x_ + (static_cast<float>(game_x) * og::runtime::current_session->viewport_w_ / 320.0f);
+    event.motion.y = og::runtime::current_session->viewport_offset_y_ + (static_cast<float>(game_y) * og::runtime::current_session->viewport_h_ / 200.0f);
     SDL_PushEvent(&event);
 }
 
 TEST(Menu, mainmenu_buttons) {
     // Create a simple button array using the button struct constructor
     button test_buttons[3] = {
-        button("begin", "BEGIN",   SDLK_b, 80, 60,  80, 20, 0, 0, MenuNav{}),
-        button("options", "OPTIONS", SDLK_o, 80, 90,  80, 20, 0, 0, MenuNav{}),
-        button("quit", "QUIT",    SDLK_q, 80, 120, 80, 20, 0, 0, MenuNav{}),
+        button("begin", "BEGIN",   SDLK_B, 80, 60,  80, 20, 0, 0, MenuNav{}),
+        button("options", "OPTIONS", SDLK_O, 80, 90,  80, 20, 0, 0, MenuNav{}),
+        button("quit", "QUIT",    SDLK_Q, 80, 120, 80, 20, 0, 0, MenuNav{}),
     };
 
     trace_clear();
@@ -106,10 +106,10 @@ TEST(Menu, button_misc_paths)
     og::runtime::current_session->allbuttons_[0] = nullptr;
 
     int numkeys = 0;
-    Uint8* keys = const_cast<Uint8*>(SDL_GetKeyboardState(&numkeys));
-    SDL_Scancode q = SDL_GetScancodeFromKey(SDLK_q);
+    bool* keys = const_cast<bool*>(SDL_GetKeyboardState(&numkeys));
+    SDL_Scancode q = SDL_GetScancodeFromKey(SDLK_Q, nullptr);
     ASSERT_TRUE(q >= 0 && q < numkeys) << "q scancode should be valid";
-    keys[q] = 1;
+    keys[q] = true;
     SDL_Thread* releaser = SDL_CreateThread(release_scancode_after_delay, "release_q_for_button", &q);
     ASSERT_TRUE(releaser != nullptr) << "key release helper thread should start";
     ASSERT_EQ(0, (int)b.leftclick(1)) << "leftclick hotkey path should return with myfunc=0";
@@ -129,7 +129,7 @@ TEST(Menu, button_misc_paths)
 TEST(Menu, hover_highlight_draws_without_click_and_persists)
 {
     button test_buttons[1] = {
-        button("hover", "HOVER", SDLK_h, 10, 10, 30, 10, 0, 0, MenuNav{}),
+        button("hover", "HOVER", SDLK_H, 10, 10, 30, 10, 0, 0, MenuNav{}),
     };
 
     vbutton* local_btns = init_buttons(test_buttons, 1);

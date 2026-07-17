@@ -7,7 +7,7 @@
 #include <openglad/resources/save_data.h>
 #include "../src/interface/ui/picker_sdl_defs.h"
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include <optional>
 #include <string>
@@ -164,6 +164,14 @@ TEST(MenuLayout, main_options_buttons_no_overlap)
     const int count = picker_main_options_button_count();
     check_no_overlaps(buttons, count, "main_options");
     check_bounds(buttons, count, "main_options");
+}
+
+TEST(MenuLayout, display_settings_buttons_no_overlap)
+{
+    button* buttons = picker_display_settings_buttons();
+    const int count = picker_display_settings_button_count();
+    check_no_overlaps(buttons, count, "display_settings");
+    check_bounds(buttons, count, "display_settings");
 }
 
 TEST(MenuLayout, mainmenu_buttons_no_overlap)
@@ -690,23 +698,20 @@ TEST(MenuLayout, main_options_index_contract_and_nav)
 {
     button* buttons = picker_main_options_buttons();
     const int count = picker_main_options_button_count();
-    ASSERT_EQ(13, count)
-        << "main options is BACK + 8 settings + CONTROLS door + 3 FX doors";
+    ASSERT_EQ(9, count)
+        << "main options is BACK + Sound + DISPLAY door + CONTROLS door + "
+           "sprite sheet + 3 FX doors + RESTORE DEFAULTS";
 
     static const char* kExpectedIds[] = {
         "options_back",       // 0
         "toggle_sound",       // 1
-        "toggle_rendering",   // 2: label synced from graphics/render each frame
-        "toggle_fullscreen",  // 3
-        "overscan_minus",     // 4
-        "overscan_plus",      // 5
-        "gameplay_fx",        // 6: opens the GAMEPLAY FX subscreen
-        "restore_defaults",   // 7
-        "player_controls",    // 8
-        "pick_sprite_sheet",  // 9: label synced by index each frame
-        "ui_fx",              // 10: opens the UI FX subscreen
-        "graphics_fx",        // 11: opens the GRAPHICS FX subscreen
-        "world_scale",        // 12: label synced from graphics/scale each frame
+        "display_settings",   // 2: opens the DISPLAY subscreen
+        "gameplay_fx",        // 3: opens the GAMEPLAY FX subscreen
+        "restore_defaults",   // 4
+        "player_controls",    // 5
+        "pick_sprite_sheet",  // 6: label synced by index each frame
+        "ui_fx",              // 7: opens the UI FX subscreen
+        "graphics_fx",        // 8: opens the GRAPHICS FX subscreen
     };
     for (int i = 0; i < count; ++i)
     {
@@ -718,27 +723,71 @@ TEST(MenuLayout, main_options_index_contract_and_nav)
             << buttons[i].id << " label '" << buttons[i].label
             << "' escapes its face";
     }
-    EXPECT_EQ("GAMEPLAY FX", buttons[6].label);
-    EXPECT_EQ("UI FX", buttons[10].label);
-    EXPECT_EQ("GRAPHICS FX", buttons[11].label);
-    // The three FX doors stack in one column at 23px pitch.
-    EXPECT_EQ(buttons[6].x, buttons[10].x);
-    EXPECT_EQ(buttons[6].x, buttons[11].x);
-    EXPECT_EQ(buttons[6].y + 23, buttons[10].y);
-    EXPECT_EQ(buttons[10].y + 23, buttons[11].y);
-    // The world-scale cycle extends the right column below fullscreen at the
-    // same 23px pitch, on the overscan row; the two settings are independent
-    // (rendering engine cycles graphics/render, this cycles graphics/scale),
-    // so both faces must be present and separately clickable.
-    ASSERT_EQ(kMainOptionsWorldScaleIndex, 12);
-    EXPECT_EQ(buttons[3].x, buttons[12].x);
-    EXPECT_EQ(buttons[3].y + 23, buttons[12].y);
-    EXPECT_EQ(buttons[4].y, buttons[12].y);
-    EXPECT_EQ("Scale: Off", buttons[12].label);
-    EXPECT_EQ(button_action_id(ButtonAction::CycleWorldScale), buttons[12].myfun);
-    EXPECT_EQ(button_action_id(ButtonAction::ToggleRenderingEngine), buttons[2].myfun);
+    // The settings/door column stacks at one x at 23px pitch.
+    EXPECT_EQ("DISPLAY", buttons[2].label);
+    EXPECT_EQ(buttons[2].x, buttons[3].x);
+    EXPECT_EQ(buttons[3].x, buttons[7].x);
+    EXPECT_EQ(buttons[3].x, buttons[8].x);
+    EXPECT_EQ(buttons[2].y + 23, buttons[3].y);
+    EXPECT_EQ(buttons[3].y + 23, buttons[7].y);
+    EXPECT_EQ(buttons[7].y + 23, buttons[8].y);
+    EXPECT_EQ(button_action_id(ButtonAction::OpenDisplaySettings), buttons[2].myfun);
 
     check_nav_closed_and_reachable(buttons, count, 0, "main_options");
+}
+
+// DISPLAY subscreen: the mode / resolution / overscan / zoom / smoothing
+// stack. Every face is cfg-derived at 6px/char inside 102px (17 chars);
+// "Mode: Borderless" and "Res: 2560x1440" are the widest realistic faces.
+TEST(MenuLayout, display_settings_index_contract_and_nav)
+{
+    button* buttons = picker_display_settings_buttons();
+    const int count = picker_display_settings_button_count();
+    ASSERT_EQ(7, count)
+        << "display settings is BACK + mode + resolution + overscan pair + "
+           "zoom + smoothing";
+
+    static const char* kExpectedIds[] = {
+        "display_back",        // 0
+        "display_mode",        // 1: label synced from graphics/fullscreen
+        "display_resolution",  // 2: label synced from graphics/width+height
+        "overscan_minus",      // 3
+        "overscan_plus",       // 4
+        "display_zoom",        // 5: label synced from graphics/zoom
+        "display_smoothing",   // 6: label synced from graphics/smoothing
+    };
+    for (int i = 0; i < count; ++i)
+    {
+        EXPECT_EQ(kExpectedIds[i], buttons[i].id) << "index " << i;
+        EXPECT_FALSE(buttons[i].hidden) << buttons[i].id;
+        EXPECT_LE(static_cast<int>(buttons[i].label.size()) * 6,
+                  buttons[i].sizex)
+            << buttons[i].id << " label '" << buttons[i].label
+            << "' escapes its face";
+    }
+    ASSERT_EQ(kDisplayMenuModeIndex, 1);
+    ASSERT_EQ(kDisplayMenuResolutionIndex, 2);
+    ASSERT_EQ(kDisplayMenuZoomIndex, 5);
+    ASSERT_EQ(kDisplayMenuSmoothingIndex, 6);
+    // The widest cfg-derivable faces must fit the 102px budget.
+    EXPECT_LE(static_cast<int>(std::string("Mode: Borderless").size()) * 6,
+              buttons[kDisplayMenuModeIndex].sizex);
+    EXPECT_LE(static_cast<int>(std::string("Res: 2560x1440").size()) * 6,
+              buttons[kDisplayMenuResolutionIndex].sizex);
+    EXPECT_EQ(button_action_id(ButtonAction::CycleDisplayMode), buttons[1].myfun);
+    EXPECT_EQ(button_action_id(ButtonAction::CycleResolution), buttons[2].myfun);
+    EXPECT_EQ(button_action_id(ButtonAction::CycleZoom), buttons[5].myfun);
+    EXPECT_EQ(button_action_id(ButtonAction::CycleSmoothing), buttons[6].myfun);
+    // The settings stack at one x at the effects-grid 23px pitch (the
+    // overscan pair shares its row).
+    EXPECT_EQ(buttons[1].x, buttons[2].x);
+    EXPECT_EQ(buttons[1].y + 23, buttons[2].y);
+    EXPECT_EQ(buttons[3].y, buttons[4].y);
+    EXPECT_EQ(buttons[2].y + 23, buttons[3].y);
+    EXPECT_EQ(buttons[3].y + 23, buttons[5].y);
+    EXPECT_EQ(buttons[5].y + 23, buttons[6].y);
+
+    check_nav_closed_and_reachable(buttons, count, 0, "display_settings");
 }
 
 namespace
@@ -1127,15 +1176,15 @@ TEST(MenuLayout, controls_summary_switches_between_four_and_eight_direction_form
     PlayerControlSnapshotGuard guard(0);
 
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
-    set_player_key_binding(0, KEY_UP, SDLK_w);
-    set_player_key_binding(0, KEY_LEFT, SDLK_a);
-    set_player_key_binding(0, KEY_DOWN, SDLK_s);
-    set_player_key_binding(0, KEY_RIGHT, SDLK_d);
-    set_player_key_binding(0, KEY_YELL, SDLK_q);
+    set_player_key_binding(0, KEY_UP, SDLK_W);
+    set_player_key_binding(0, KEY_LEFT, SDLK_A);
+    set_player_key_binding(0, KEY_DOWN, SDLK_S);
+    set_player_key_binding(0, KEY_RIGHT, SDLK_D);
+    set_player_key_binding(0, KEY_YELL, SDLK_Q);
     set_player_key_binding(0, KEY_FIRE, SDLK_1);
     set_player_key_binding(0, KEY_SPECIAL, SDLK_2);
     set_player_key_binding(0, KEY_SPECIAL_SWITCH, SDLK_EQUALS);
-    set_player_key_binding(0, KEY_SWITCH, SDLK_BACKQUOTE);
+    set_player_key_binding(0, KEY_SWITCH, SDLK_GRAVE);
     set_player_key_binding(0, KEY_SHIFTER, SDLK_F8);
 
     const std::string summary_four = build_player_control_summary(0);
@@ -1149,10 +1198,10 @@ TEST(MenuLayout, controls_summary_switches_between_four_and_eight_direction_form
     ASSERT_TRUE(summary_four.find("Dir:") == std::string::npos) << "4-direction summary should not include diagonal keys";
 
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::EightDirection));
-    set_player_key_binding(0, KEY_UP_RIGHT, SDLK_e);
-    set_player_key_binding(0, KEY_DOWN_RIGHT, SDLK_c);
-    set_player_key_binding(0, KEY_DOWN_LEFT, SDLK_z);
-    set_player_key_binding(0, KEY_UP_LEFT, SDLK_q);
+    set_player_key_binding(0, KEY_UP_RIGHT, SDLK_E);
+    set_player_key_binding(0, KEY_DOWN_RIGHT, SDLK_C);
+    set_player_key_binding(0, KEY_DOWN_LEFT, SDLK_Z);
+    set_player_key_binding(0, KEY_UP_LEFT, SDLK_Q);
 
     const std::string summary_eight = build_player_control_summary(0);
     ASSERT_TRUE(summary_eight.find("D:WEDCXZAQ") != std::string::npos) << "8-direction summary should include compact clockwise direction order";
@@ -1165,15 +1214,15 @@ TEST(MenuLayout, eight_direction_summary_clockwise_order)
     PlayerControlSnapshotGuard guard(0);
 
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::EightDirection));
-    set_player_key_binding(0, KEY_UP, SDLK_w);
-    set_player_key_binding(0, KEY_UP_RIGHT, SDLK_e);
-    set_player_key_binding(0, KEY_RIGHT, SDLK_d);
-    set_player_key_binding(0, KEY_DOWN_RIGHT, SDLK_c);
-    set_player_key_binding(0, KEY_DOWN, SDLK_x);
-    set_player_key_binding(0, KEY_DOWN_LEFT, SDLK_z);
-    set_player_key_binding(0, KEY_LEFT, SDLK_a);
-    set_player_key_binding(0, KEY_UP_LEFT, SDLK_q);
-    set_player_key_binding(0, KEY_YELL, SDLK_s);
+    set_player_key_binding(0, KEY_UP, SDLK_W);
+    set_player_key_binding(0, KEY_UP_RIGHT, SDLK_E);
+    set_player_key_binding(0, KEY_RIGHT, SDLK_D);
+    set_player_key_binding(0, KEY_DOWN_RIGHT, SDLK_C);
+    set_player_key_binding(0, KEY_DOWN, SDLK_X);
+    set_player_key_binding(0, KEY_DOWN_LEFT, SDLK_Z);
+    set_player_key_binding(0, KEY_LEFT, SDLK_A);
+    set_player_key_binding(0, KEY_UP_LEFT, SDLK_Q);
+    set_player_key_binding(0, KEY_YELL, SDLK_S);
     set_player_key_binding(0, KEY_FIRE, SDLK_1);
     set_player_key_binding(0, KEY_SPECIAL, SDLK_2);
     set_player_key_binding(0, KEY_SPECIAL_SWITCH, SDLK_EQUALS);
@@ -1196,15 +1245,15 @@ TEST(MenuLayout, controls_summary_remap_mode_uses_two_lines)
     PlayerControlSnapshotGuard guard(0);
 
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
-    set_player_key_binding(0, KEY_UP, SDLK_w);
-    set_player_key_binding(0, KEY_LEFT, SDLK_a);
-    set_player_key_binding(0, KEY_DOWN, SDLK_s);
-    set_player_key_binding(0, KEY_RIGHT, SDLK_d);
-    set_player_key_binding(0, KEY_YELL, SDLK_e);
+    set_player_key_binding(0, KEY_UP, SDLK_W);
+    set_player_key_binding(0, KEY_LEFT, SDLK_A);
+    set_player_key_binding(0, KEY_DOWN, SDLK_S);
+    set_player_key_binding(0, KEY_RIGHT, SDLK_D);
+    set_player_key_binding(0, KEY_YELL, SDLK_E);
     set_player_key_binding(0, KEY_FIRE, SDLK_LCTRL);
     set_player_key_binding(0, KEY_SPECIAL, SDLK_LALT);
     set_player_key_binding(0, KEY_SPECIAL_SWITCH, SDLK_TAB);
-    set_player_key_binding(0, KEY_SWITCH, SDLK_BACKQUOTE);
+    set_player_key_binding(0, KEY_SWITCH, SDLK_GRAVE);
     set_player_key_binding(0, KEY_SHIFTER, SDLK_LSHIFT);
 
     const std::array<std::string, 2> remap_summary = build_player_control_summary_lines(0, true);
@@ -1219,7 +1268,7 @@ TEST(MenuLayout, controls_summary_shows_look_up_binding)
     PlayerControlSnapshotGuard guard(0);
 
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
-    set_player_key_binding(0, KEY_LOOKUP, SDLK_v);
+    set_player_key_binding(0, KEY_LOOKUP, SDLK_V);
     const std::string summary = build_player_control_summary(0);
     ASSERT_TRUE(summary.find("L:V") != std::string::npos)
         << "controls summary should show the look-up binding: " << summary;

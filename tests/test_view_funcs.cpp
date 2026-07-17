@@ -2,7 +2,7 @@
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/screen.h>
 #include <openglad/legacy/colors.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include <gtest/gtest.h>
 
 #include "test_input_helpers.h"
@@ -14,6 +14,28 @@ namespace {
 struct SpeedWarningDialogState {
     bool started = false;
     bool finished = false;
+};
+
+struct ClassicViewLayoutGuard
+{
+    screen* game = og::runtime::current_session->myscreen_;
+    viewscreen* view = game->viewob[0].get();
+    short saved_numviews = game->numviews;
+    short saved_mynum = view->mynum;
+
+    ClassicViewLayoutGuard()
+    {
+        game->set_world_canvas_pinned_classic(true);
+        game->relayout_views();
+    }
+
+    ~ClassicViewLayoutGuard()
+    {
+        game->numviews = saved_numviews;
+        view->mynum = saved_mynum;
+        game->set_world_canvas_pinned_classic(false);
+        game->relayout_views();
+    }
 };
 
 int speed_warning_dialog_injector(void* data)
@@ -280,6 +302,7 @@ TEST(ViewFuncs, viewscreen_resize_full)
 
 TEST(ViewFuncs, viewscreen_resize_panels)
 {
+    ClassicViewLayoutGuard canvas_guard;
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     short old_numviews = og::runtime::current_session->myscreen_->numviews;
     og::runtime::current_session->myscreen_->numviews = 1;
@@ -296,6 +319,7 @@ TEST(ViewFuncs, viewscreen_resize_panels)
 
 TEST(ViewFuncs, viewscreen_resize_small_modes)
 {
+    ClassicViewLayoutGuard canvas_guard;
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     short old_numviews = og::runtime::current_session->myscreen_->numviews;
     og::runtime::current_session->myscreen_->numviews = 1;

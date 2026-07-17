@@ -13,7 +13,7 @@
 #include <openglad/resources/gparser.h>
 #include <openglad/resources/filesystem.h>
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include <array>
 #include <atomic>
 #include <cstdlib>
@@ -181,23 +181,23 @@ void inject_mouse_click(int x, int y, int delay_ms = 50)
 
     SDL_Event event;
     std::memset(&event, 0, sizeof(event));
-    event.type = SDL_MOUSEBUTTONDOWN;
+    event.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
     event.button.button = SDL_BUTTON_LEFT;
-    event.button.state = SDL_PRESSED;
+    event.button.down = true;
     event.button.clicks = 1;
-    event.button.x = sx;
-    event.button.y = sy;
+    event.button.x = static_cast<float>(sx);
+    event.button.y = static_cast<float>(sy);
     SDL_PushEvent(&event);
 
     SDL_Delay(delay_ms);
 
     std::memset(&event, 0, sizeof(event));
-    event.type = SDL_MOUSEBUTTONUP;
+    event.type = SDL_EVENT_MOUSE_BUTTON_UP;
     event.button.button = SDL_BUTTON_LEFT;
-    event.button.state = SDL_RELEASED;
+    event.button.down = false;
     event.button.clicks = 1;
-    event.button.x = sx;
-    event.button.y = sy;
+    event.button.x = static_cast<float>(sx);
+    event.button.y = static_cast<float>(sy);
     SDL_PushEvent(&event);
 }
 

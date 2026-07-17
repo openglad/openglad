@@ -31,7 +31,7 @@
 #include "test_input_helpers.h"
 #include "test_interact.h"
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include <array>
 #include <memory>
@@ -59,6 +59,36 @@ screen* test_screen()
 {
     return og::runtime::current_session->myscreen_;
 }
+
+// The CTF HUD probes below capture a fixed 320x200 frame and assert classic
+// pixel coordinates.  Keep that historical geometry scoped to those tests;
+// production zoom 1.0 and unrelated CTF tests continue using the live canvas.
+class ClassicCtfHudCanvasGuard
+{
+public:
+    ClassicCtfHudCanvasGuard()
+        : game_(test_screen()), saved_target_(game_->active_canvas())
+    {
+        game_->set_world_canvas_pinned_classic(true);
+        game_->relayout_views();
+        game_->set_active_canvas(CanvasTarget::World);
+    }
+
+    ~ClassicCtfHudCanvasGuard()
+    {
+        game_->set_active_canvas(CanvasTarget::UI);
+        game_->set_world_canvas_pinned_classic(false);
+        game_->relayout_views();
+        game_->set_active_canvas(saved_target_);
+    }
+
+    ClassicCtfHudCanvasGuard(const ClassicCtfHudCanvasGuard&) = delete;
+    ClassicCtfHudCanvasGuard& operator=(const ClassicCtfHudCanvasGuard&) = delete;
+
+private:
+    screen* game_;
+    CanvasTarget saved_target_;
+};
 
 // Reload level 1 and stamp a minimal CTF map onto it: one flag per team
 // (0/1), two respawn anchors per team, and the TYPE_CTF bit. One world tick
@@ -221,6 +251,7 @@ TEST(CtfUi, in_test_ctf_world_activates_via_lazy_init)
 
 TEST(CtfUi, score_panel_renders_ctf_captures_block)
 {
+    ClassicCtfHudCanvasGuard classic_canvas;
     CtfScreenWorld ctf;
     screen* s = ctf.s;
     ASSERT_TRUE(s->world().ctf.active);
@@ -262,6 +293,7 @@ TEST(CtfUi, score_panel_renders_ctf_captures_block)
 
 TEST(CtfUi, score_panel_shows_flag_carrier_indicator)
 {
+    ClassicCtfHudCanvasGuard classic_canvas;
     CtfScreenWorld ctf;
     screen* s = ctf.s;
     ASSERT_TRUE(s->world().ctf.active);
@@ -299,6 +331,7 @@ TEST(CtfUi, score_panel_shows_flag_carrier_indicator)
 
 TEST(CtfUi, score_panel_shows_respawn_countdown_for_dead_control)
 {
+    ClassicCtfHudCanvasGuard classic_canvas;
     CtfScreenWorld ctf;
     screen* s = ctf.s;
     ASSERT_TRUE(s->world().ctf.active);
@@ -345,6 +378,7 @@ TEST(CtfUi, score_panel_shows_respawn_countdown_for_dead_control)
 // cleanup nulls dead controls exactly as before.
 TEST(CtfUi, dead_pending_respawn_control_survives_cleanup_and_shows_countdown)
 {
+    ClassicCtfHudCanvasGuard classic_canvas;
     CtfScreenWorld ctf;
     screen* s = ctf.s;
     ASSERT_TRUE(s->world().ctf.active);
@@ -404,6 +438,7 @@ TEST(CtfUi, dead_pending_respawn_control_survives_cleanup_and_shows_countdown)
 // contender the row stays blank.
 TEST(CtfUi, score_panel_shows_waypoint_capture_meter)
 {
+    ClassicCtfHudCanvasGuard classic_canvas;
     CtfScreenWorld ctf;
     screen* s = ctf.s;
     ASSERT_TRUE(s->world().ctf.active);
@@ -449,6 +484,7 @@ TEST(CtfUi, score_panel_shows_waypoint_capture_meter)
 // to survive untouched.
 TEST(CtfUi, hud_caps_clear_name_and_foes_column_in_single_view)
 {
+    ClassicCtfHudCanvasGuard classic_canvas;
     CtfScreenWorld ctf;
     screen* s = ctf.s;
     ASSERT_TRUE(s->world().ctf.active);
@@ -511,6 +547,7 @@ TEST(CtfUi, hud_caps_clear_name_and_foes_column_in_single_view)
 // the TEAM/FOES column, or the carrier's FLAG! indicator at lm+2.
 TEST(CtfUi, hud_caps_compact_group_clears_name_and_flag_in_two_view)
 {
+    ClassicCtfHudCanvasGuard classic_canvas;
     CtfScreenWorld ctf;
     screen* s = ctf.s;
     ASSERT_TRUE(s->world().ctf.active);
@@ -1095,11 +1132,11 @@ struct PagerFlowState
 void hold_nav_key(SDL_Keycode key, bool down)
 {
     int numkeys = 0;
-    const Uint8* ro = SDL_GetKeyboardState(&numkeys);
-    Uint8* keys = const_cast<Uint8*>(ro);
-    const SDL_Scancode sc = SDL_GetScancodeFromKey(key);
+    const bool* ro = SDL_GetKeyboardState(&numkeys);
+    bool* keys = const_cast<bool*>(ro);
+    const SDL_Scancode sc = SDL_GetScancodeFromKey(key, nullptr);
     if (keys != nullptr && sc >= 0 && sc < numkeys)
-        keys[sc] = down ? 1 : 0;
+        keys[sc] = down;
 }
 
 void press_nav_key(SDL_Keycode key, int hold_ms)

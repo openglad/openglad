@@ -1,4 +1,4 @@
-#include "SDL.h"
+#include <SDL3/SDL.h>
 #include <openglad/legacy/base.h>
 #include <openglad/interface/render/text.h>
 #include "test_input_helpers.h"
@@ -19,8 +19,8 @@ static int injector_thread_return(void* data)
 
     SDL_Delay(20);
     SDL_Event ev{};
-    ev.type = SDL_KEYDOWN;
-    ev.key.keysym.sym = SDLK_RETURN;
+    ev.type = SDL_EVENT_KEY_DOWN;
+    ev.key.key = SDLK_RETURN;
     SDL_PushEvent(&ev);
     return 0;
 }
@@ -32,8 +32,8 @@ static int injector_thread_escape(void* data)
     SDL_Delay(50);
 
     SDL_Event ev{};
-    ev.type = SDL_KEYDOWN;
-    ev.key.keysym.sym = SDLK_ESCAPE;
+    ev.type = SDL_EVENT_KEY_DOWN;
+    ev.key.key = SDLK_ESCAPE;
     SDL_PushEvent(&ev);
     return 0;
 }

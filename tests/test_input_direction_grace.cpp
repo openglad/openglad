@@ -17,7 +17,7 @@
 #include <openglad/interface/session_state.h>
 #include <openglad/platform/game_session.h>
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include <cstdint>
 
@@ -52,15 +52,15 @@ constexpr DiagonalCase kAllDiagonals[] = {
 struct KeyStateGuard
 {
     SDL_Scancode sc;
-    Uint8 old_value;
+    bool old_value;
     int numkeys;
-    Uint8* keys;
+    bool* keys;
 
     explicit KeyStateGuard(SDL_Scancode sc_)
-        : sc(sc_), old_value(0), numkeys(0), keys(nullptr)
+        : sc(sc_), old_value(false), numkeys(0), keys(nullptr)
     {
-        const Uint8* read_only = SDL_GetKeyboardState(&numkeys);
-        keys = const_cast<Uint8*>(read_only);
+        const bool* read_only = SDL_GetKeyboardState(&numkeys);
+        keys = const_cast<bool*>(read_only);
         if (keys && sc >= 0 && sc < numkeys)
             old_value = keys[sc];
     }
@@ -68,7 +68,7 @@ struct KeyStateGuard
     void set(bool pressed)
     {
         if (keys && sc >= 0 && sc < numkeys)
-            keys[sc] = pressed ? 1 : 0;
+            keys[sc] = pressed;
     }
 
     ~KeyStateGuard()
@@ -271,11 +271,11 @@ TEST(InputDirectionGrace, input_state_from_sdl_retains_diagonal_on_sloppy_releas
     GraceStateGuard grace;
     ControlModeGuard mode_guard(0);
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
-    KeyBindingGuard bind_up(0, KEY_UP, SDLK_w);
-    KeyBindingGuard bind_right(0, KEY_RIGHT, SDLK_d);
+    KeyBindingGuard bind_up(0, KEY_UP, SDLK_W);
+    KeyBindingGuard bind_right(0, KEY_RIGHT, SDLK_D);
 
-    KeyStateGuard ks_w(SDL_GetScancodeFromKey(SDLK_w));
-    KeyStateGuard ks_d(SDL_GetScancodeFromKey(SDLK_d));
+    KeyStateGuard ks_w(SDL_GetScancodeFromKey(SDLK_W, nullptr));
+    KeyStateGuard ks_d(SDL_GetScancodeFromKey(SDLK_D, nullptr));
     ks_w.set(false);
     ks_d.set(false);
 
@@ -326,11 +326,11 @@ TEST(InputDirectionGrace, input_state_from_sdl_turn_persists_past_grace_window)
     GraceStateGuard grace;
     ControlModeGuard mode_guard(0);
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
-    KeyBindingGuard bind_down(0, KEY_DOWN, SDLK_s);
-    KeyBindingGuard bind_left(0, KEY_LEFT, SDLK_a);
+    KeyBindingGuard bind_down(0, KEY_DOWN, SDLK_S);
+    KeyBindingGuard bind_left(0, KEY_LEFT, SDLK_A);
 
-    KeyStateGuard ks_s(SDL_GetScancodeFromKey(SDLK_s));
-    KeyStateGuard ks_a(SDL_GetScancodeFromKey(SDLK_a));
+    KeyStateGuard ks_s(SDL_GetScancodeFromKey(SDLK_S, nullptr));
+    KeyStateGuard ks_a(SDL_GetScancodeFromKey(SDLK_A, nullptr));
     ks_s.set(false);
     ks_a.set(false);
 
@@ -368,13 +368,13 @@ TEST(InputDirectionGrace, input_state_from_sdl_new_press_cancels_retention)
     GraceStateGuard grace;
     ControlModeGuard mode_guard(0);
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
-    KeyBindingGuard bind_up(0, KEY_UP, SDLK_w);
-    KeyBindingGuard bind_right(0, KEY_RIGHT, SDLK_d);
-    KeyBindingGuard bind_down(0, KEY_DOWN, SDLK_s);
+    KeyBindingGuard bind_up(0, KEY_UP, SDLK_W);
+    KeyBindingGuard bind_right(0, KEY_RIGHT, SDLK_D);
+    KeyBindingGuard bind_down(0, KEY_DOWN, SDLK_S);
 
-    KeyStateGuard ks_w(SDL_GetScancodeFromKey(SDLK_w));
-    KeyStateGuard ks_d(SDL_GetScancodeFromKey(SDLK_d));
-    KeyStateGuard ks_s(SDL_GetScancodeFromKey(SDLK_s));
+    KeyStateGuard ks_w(SDL_GetScancodeFromKey(SDLK_W, nullptr));
+    KeyStateGuard ks_d(SDL_GetScancodeFromKey(SDLK_D, nullptr));
+    KeyStateGuard ks_s(SDL_GetScancodeFromKey(SDLK_S, nullptr));
     ks_w.set(false);
     ks_d.set(false);
     ks_s.set(false);

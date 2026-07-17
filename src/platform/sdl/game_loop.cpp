@@ -46,7 +46,9 @@ static void default_handle(const SDL_Event& e)
 
 static std::uint32_t default_now_ms()
 {
-    return SDL_GetTicks();
+    // SDL3 SDL_GetTicks returns Uint64; the frame pacer works in uint32
+    // modulo-2^32 elapsed arithmetic, so truncate at the seam.
+    return static_cast<std::uint32_t>(SDL_GetTicks());
 }
 
 namespace
@@ -236,9 +238,8 @@ void render_pending_redraw(screen& s, bool enable_render)
 
     if (enable_render)
     {
-        // Gameplay draws and presents on the WORLD canvas (menus present the
-        // fixed 320x200 UI canvas); while the world canvas is at the default
-        // dims the two share one surface, so this is a pure routing no-op.
+        // Gameplay scenery draws on World and fixed chrome draws through its
+        // classic-density overlay (menus use the separate 320x200 UI canvas).
         s.set_active_canvas(CanvasTarget::World);
         s.draw_panels(s.numviews);
         score_panel(&s, 1);
@@ -327,13 +328,17 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
         while (poll_event(&event))
         {
             handle_event(event);
-            if (event.type == SDL_KEYDOWN)
+            if (event.type == SDL_EVENT_KEY_DOWN)
             {
-                if (event.key.keysym.sym == SDLK_F11)
+                if (event.key.key == SDLK_F11)
                     og::runtime::current_session->debug_draw_paths_ = !og::runtime::current_session->debug_draw_paths_;
-                else if (event.key.keysym.sym == SDLK_F12)
+                else if (event.key.key == SDLK_F12)
                     og::runtime::current_session->debug_draw_obmap_ = !og::runtime::current_session->debug_draw_obmap_;
-                else if (event.key.keysym.sym == SDLK_ESCAPE)
+                // Escape is an edge action. In particular, Chromium's
+                // fullscreen Keyboard Lock exit hatch is a long Escape hold;
+                // its repeat events must not advance from pause into the
+                // abort prompt while the player is trying to leave fullscreen.
+                else if (event.key.key == SDLK_ESCAPE && !event.key.repeat)
                 {
                     if (!og::runtime::local_transport_shadow_is_paused(
                             *gameplay_session) &&
@@ -430,7 +435,10 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
             obmap_debug_draw(*s.world().myobmap, &s);  // debug drawing for object collision map
 
 #ifdef USE_TOUCH_INPUT
-        draw_touch_controls(&s);
+        {
+            ScopedGameplayUiCanvas gameplay_ui(s);
+            draw_touch_controls(&s);
+        }
 #endif
         score_panel(&s);
         s.refresh();

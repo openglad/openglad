@@ -314,10 +314,14 @@ WalkerRenderPosition resolve_walker_render_position(const walker& w,
 
 static void draw_damage_number(walker::DamageNumber& dn, viewscreen* view_buf)
 {
-	const float xscreen_f = dn.x - static_cast<float>(view_buf->topx) + static_cast<float>(view_buf->xloc);
-	const float yscreen_f = dn.y - static_cast<float>(view_buf->topy) + static_cast<float>(view_buf->yloc);
-	const Sint32 xscreen = static_cast<Sint32>(xscreen_f);
-	const Sint32 yscreen = static_cast<Sint32>(yscreen_f);
+	ScopedGameplayUiCanvas gameplay_ui(
+		*og::runtime::current_session->myscreen_);
+	const float world_x = dn.x - static_cast<float>(view_buf->topx) +
+		static_cast<float>(view_buf->xloc);
+	const float world_y = dn.y - static_cast<float>(view_buf->topy) +
+		static_cast<float>(view_buf->yloc);
+	const auto [xscreen, yscreen] =
+		view_buf->project_world_point_to_gameplay_ui(world_x, world_y);
 
 	Uint8 alpha = 0;
 	if (dn.t >= 1.0f)
@@ -341,21 +345,31 @@ void draw_small_health_bar(walker* w, viewscreen* view_buf)
         return;
     }
 
+	ScopedGameplayUiCanvas gameplay_ui(
+		*og::runtime::current_session->myscreen_);
+
     const WalkerRenderPosition draw_pos =
         resolve_walker_render_position(*w, view_buf->interpolation_alpha);
 
-	Sint32 xscreen = static_cast<Sint32>(draw_pos.xpos - static_cast<float>(view_buf->topx) + static_cast<float>(view_buf->xloc));
-	Sint32 yscreen = static_cast<Sint32>(draw_pos.ypos - static_cast<float>(view_buf->topy) + static_cast<float>(view_buf->yloc));
-
-    const Sint32 walkerstartx = xscreen;
-    const Sint32 walkerstarty = yscreen;
-    const Sint32 portstartx = view_buf->xloc;
-    const Sint32 portstarty = view_buf->yloc;
-    const Sint32 portendx = view_buf->endx;
-    const Sint32 portendy = view_buf->endy;
+	const float world_x = draw_pos.xpos - static_cast<float>(view_buf->topx) +
+		static_cast<float>(view_buf->xloc);
+	const float world_y = draw_pos.ypos - static_cast<float>(view_buf->topy) +
+		static_cast<float>(view_buf->yloc);
+	const auto [walkerstartx, walkerstarty] =
+		view_buf->project_world_point_to_gameplay_ui(world_x, world_y);
+	const auto [unused_x, walkerbottom] =
+		view_buf->project_world_point_to_gameplay_ui(
+			world_x, world_y + static_cast<float>(w->sizey()));
+	(void)unused_x;
+	ScopedGameplayUiViewLayout gameplay_ui_layout(
+		*view_buf, *og::runtime::current_session->myscreen_);
+	const Sint32 portstartx = view_buf->xloc;
+	const Sint32 portstarty = view_buf->yloc;
+	const Sint32 portendx = view_buf->endx;
+	const Sint32 portendy = view_buf->endy;
 
     const Sint32 bar_x = walkerstartx;
-    const Sint32 bar_y = walkerstarty + w->sizey() + 1;
+	const Sint32 bar_y = walkerbottom + 1;
     const Sint32 bar_w = w->sizex();
     const Sint32 bar_h = 1;
     if(bar_x < portstartx || bar_x > portendx || bar_y < portstarty || bar_y > portendy)
@@ -416,7 +430,8 @@ static bool mark_player_controls_outline()
         og::runtime::current_session->networked_session_;
 }
 
-bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha)
+bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha,
+                 bool layer_active)
 {
     const bool show_attack_lunge = cfg.is_on("effects", "attack_lunge");
     const bool show_hit_recoil = cfg.is_on("effects", "hit_recoil");
@@ -481,19 +496,29 @@ bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha)
 
 	// Faded (lower) / ghosted (upper) non-camera floor: draw just the sprite,
 	// skipping flash/outline/mode and the HP bar / damage numbers. The caller has
-	// redirected blits to the off-screen floor layer (video::floor_layer_begin),
-	// which composites the whole floor back smoothly scaled + faded at the floor's
-	// depth alpha — so draw the sprite OPAQUE here (full coverage on the layer).
-	// The camera floor (alpha 255) takes the full path below.
+	// normally redirects blits to the off-screen floor layer, which composites
+	// the whole floor smoothly scaled + faded — draw opaque in that case. If the
+	// layer was rejected by its memory budget or allocation failed, blend the
+	// sprite directly instead; drawing it opaque would turn lower-floor actors
+	// full-brightness through air holes. The camera floor takes the full path.
 	if (alpha < 255)
 	{
 		const unsigned char* bmp = w.bmp_data();
 		if (bmp)
-			og::runtime::current_session->myscreen_->walkputbuffer(
-			    xscreen, yscreen, w.sizex(), w.sizey(),
-			    view_buf->xloc, view_buf->yloc, view_buf->endx, view_buf->endy,
-			    {bmp, static_cast<size_t>(w.sizex() * w.sizey())},
-			    w.query_team_color());
+		{
+			const std::span<const unsigned char> pixels{
+			    bmp, static_cast<size_t>(w.sizex() * w.sizey())};
+			if (layer_active)
+				og::runtime::current_session->myscreen_->walkputbuffer(
+				    xscreen, yscreen, w.sizex(), w.sizey(),
+				    view_buf->xloc, view_buf->yloc, view_buf->endx, view_buf->endy,
+				    pixels, w.query_team_color());
+			else
+				og::runtime::current_session->myscreen_->walkputbuffer_alpha(
+				    xscreen, yscreen, w.sizex(), w.sizey(),
+				    view_buf->xloc, view_buf->yloc, view_buf->endx, view_buf->endy,
+				    pixels, w.query_team_color(), alpha);
+		}
 		return true;
 	}
 

@@ -1,6 +1,6 @@
 #include <openglad/interface/screen.h>
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include "test_input_helpers.h"
 
 // myscreen is now a macro defined in base.h (via game_session.h)

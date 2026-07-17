@@ -24,6 +24,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <utility>
 
 // Viewscreen-related defines
 inline constexpr signed char PREF_LIFE = 0;
@@ -116,7 +117,8 @@ class viewscreen
 		// above are faint ghosts), interleaving each floor's tiles + entities so
 		// the camera floor occludes lower floors except through air holes.
 		// Single-floor levels collapse to one opaque pass (byte-identical).
-		void draw_floor_entities(LevelRuntimeData* data, int floor, unsigned char alpha);
+		void draw_floor_entities(LevelRuntimeData* data, int floor,
+		                         unsigned char alpha, bool layer_active);
 		// Floor-glide trigger + suppression ladder: the ONE place (both redraw
 		// overloads call it) that assigns current_floor_ from the control
 		// walker / editor override, starting or advancing the render-only
@@ -154,6 +156,10 @@ class viewscreen
 		static constexpr unsigned char kFloorGhostAlpha = 48;
 		void resize(short x, short y, short length, short height);
 		void resize(char whatmode); // set according to preferences ..
+		// Stable zoom-1.0 pane geometry used by HUD, radar and text. The World
+		// pane is a projection of this rectangle at reduced zoom.
+		[[nodiscard]] std::pair<Sint32, Sint32>
+		project_world_point_to_gameplay_ui(float x, float y) const;
 		void view_team();
 		void view_team(short left, short top, short right, short bottom);
 		void options_menu();   // display the options menu
@@ -236,4 +242,31 @@ class viewscreen
 		options *prefsob;
 
 		short size = 0;
+};
+
+class video;
+
+// Temporarily expose a viewscreen's zoom-1.0 rectangle while drawing fixed
+// gameplay chrome. If the backend had to fall back to drawing HUD on World,
+// this leaves the live World geometry untouched.
+class ScopedGameplayUiViewLayout final
+{
+	public:
+		ScopedGameplayUiViewLayout(viewscreen& view, const video& output);
+		~ScopedGameplayUiViewLayout();
+
+		ScopedGameplayUiViewLayout(const ScopedGameplayUiViewLayout&) = delete;
+		ScopedGameplayUiViewLayout& operator=(const ScopedGameplayUiViewLayout&) = delete;
+		ScopedGameplayUiViewLayout(ScopedGameplayUiViewLayout&&) = delete;
+		ScopedGameplayUiViewLayout& operator=(ScopedGameplayUiViewLayout&&) = delete;
+
+	private:
+		viewscreen& view_;
+		Sint32 xloc_ = 0;
+		Sint32 yloc_ = 0;
+		Sint32 xview_ = 0;
+		Sint32 yview_ = 0;
+		Sint32 endx_ = 0;
+		Sint32 endy_ = 0;
+		bool applied_ = false;
 };

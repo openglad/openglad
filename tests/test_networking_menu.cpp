@@ -5,7 +5,7 @@
 #include <openglad/interface/ui/picker_ui_state.h>
 
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #if !defined(__EMSCRIPTEN__)
 #include <ixwebsocket/IXGetFreePort.h>
@@ -192,7 +192,7 @@ bool interact_until_label_contains(const std::string& id,
                                    const std::string& expected_substring,
                                    int timeout_ms = 10000)
 {
-    const Uint32 deadline = SDL_GetTicks() + static_cast<Uint32>(timeout_ms);
+    const Uint64 deadline = SDL_GetTicks() + static_cast<Uint64>(timeout_ms);
     while (SDL_GetTicks() < deadline)
     {
         if (interactable_label_contains(id, expected_substring))
@@ -229,7 +229,7 @@ bool interact_until_trace_contains(const std::string& id,
                                    const char* substring,
                                    int timeout_ms = 10000)
 {
-    const Uint32 deadline = SDL_GetTicks() + static_cast<Uint32>(timeout_ms);
+    const Uint64 deadline = SDL_GetTicks() + static_cast<Uint64>(timeout_ms);
     while (SDL_GetTicks() < deadline)
     {
         if (trace_contains(category, substring))
@@ -255,7 +255,7 @@ bool interact_until_any_interactable(const std::string& id,
                                      std::initializer_list<const char*> ids,
                                      int timeout_ms = 10000)
 {
-    const Uint32 deadline = SDL_GetTicks() + static_cast<Uint32>(timeout_ms);
+    const Uint64 deadline = SDL_GetTicks() + static_cast<Uint64>(timeout_ms);
     while (SDL_GetTicks() < deadline)
     {
         if (wait_for_any_interactable(ids, 0))
@@ -344,7 +344,7 @@ int networking_join_injector(void* data)
         interact("network_back");
     }
 
-    const Uint32 deadline = SDL_GetTicks() + 10000;
+    const Uint64 deadline = SDL_GetTicks() + 10000;
     while (SDL_GetTicks() < deadline)
     {
         if (wait_for_interactable("quit", 250))
@@ -483,7 +483,7 @@ int networking_validation_injector(void* data)
         interact("network_back");
     }
 
-    const Uint32 deadline = SDL_GetTicks() + 10000;
+    const Uint64 deadline = SDL_GetTicks() + 10000;
     while (SDL_GetTicks() < deadline)
     {
         if (wait_for_interactable("quit", 250))
@@ -565,7 +565,7 @@ int networking_host_factory_error_injector(void* data)
         interact("network_back");
     }
 
-    const Uint32 deadline = SDL_GetTicks() + 10000;
+    const Uint64 deadline = SDL_GetTicks() + 10000;
     while (SDL_GetTicks() < deadline)
     {
         if (wait_for_interactable("quit", 250))
@@ -653,7 +653,7 @@ int networking_host_injector(void* data)
         interact("back");
     }
 
-    const Uint32 deadline = SDL_GetTicks() + 10000;
+    const Uint64 deadline = SDL_GetTicks() + 10000;
     while (SDL_GetTicks() < deadline)
     {
         if (wait_for_interactable("quit", 250))

@@ -1356,6 +1356,11 @@ bool LevelEditorData::saveLevel()
 
 void LevelEditorData::draw(screen* s)
 {
+    // The editor shares the gameplay renderer: its map belongs to World, but
+    // its fixed-coordinate chrome, picker panes, minimap and authoring guides
+    // must remain crisp when SAI/Eagle is selected. Prepare the same one-shot
+    // gameplay-UI overlay used by normal play before drawing either layer.
+    s->begin_gameplay_frame();
     s->clearbuffer();
     // The editor has no control walker, so force the viewscreen to render the
     // floor we're editing (reset to -1 after so menus/gameplay are unaffected).
@@ -1366,30 +1371,35 @@ void LevelEditorData::draw(screen* s)
     }
     level->draw(s);
 
-    if(rect_selecting)
     {
-        Rectf r(selection_rect.x - static_cast<float>(level->level_visuals().topx) + static_cast<float>(s->viewob[0]->xloc),
-                selection_rect.y - static_cast<float>(level->level_visuals().topy) + static_cast<float>(s->viewob[0]->yloc),
-                selection_rect.w, selection_rect.h);
-        if(r.w < 0.0f)
+        ScopedGameplayUiCanvas editor_ui(*s);
+        if(rect_selecting)
         {
-            r.x += r.w;
-            r.w = -r.w;
+            Rectf r(selection_rect.x - static_cast<float>(level->level_visuals().topx) + static_cast<float>(s->viewob[0]->xloc),
+                    selection_rect.y - static_cast<float>(level->level_visuals().topy) + static_cast<float>(s->viewob[0]->yloc),
+                    selection_rect.w, selection_rect.h);
+            if(r.w < 0.0f)
+            {
+                r.x += r.w;
+                r.w = -r.w;
+            }
+            if(r.h < 0.0f)
+            {
+                r.y += r.h;
+                r.h = -r.h;
+            }
+            const Sint32 x1 = static_cast<Sint32>(r.x);
+            const Sint32 y1 = static_cast<Sint32>(r.y);
+            const Sint32 x2 = static_cast<Sint32>(r.x + r.w);
+            const Sint32 y2 = static_cast<Sint32>(r.y + r.h);
+            s->draw_box(x1, y1, x2, y2, ORANGE_START, 0, 1);
+            eds().redraw = 1;
         }
-        if(r.h < 0.0f)
-        {
-            r.y += r.h;
-            r.h = -r.h;
-        }
-        const Sint32 x1 = static_cast<Sint32>(r.x);
-        const Sint32 y1 = static_cast<Sint32>(r.y);
-        const Sint32 x2 = static_cast<Sint32>(r.x + r.w);
-        const Sint32 y2 = static_cast<Sint32>(r.y + r.h);
-        s->draw_box(x1, y1, x2, y2, ORANGE_START, 0, 1);
-        eds().redraw = 1;
+
+        // Everything in display_panel is authoring UI, including the minimap,
+        // selection/brush guides and tile/object picker previews.
+        display_panel(s);
     }
-    
-    display_panel(s);
     if (s->viewob[0])
     {
         s->viewob[0]->editor_floor_override_ = -1;
@@ -1784,10 +1794,6 @@ Sint32 LevelEditorData::display_panel(screen* s)
         for(auto* sub_btn : btnSet)
             sub_btn->draw(s);
     }
-    
-    
-	s->buffer_to_screen(0, 0, 320, 200);
-
 	return 1;
 }
 
@@ -2908,8 +2914,12 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         }  // end of failure to put guy
                         else if(!object_brush.snap_to_grid)
                         {
-                            draw_walker(*newob, og::runtime::current_session->myscreen_->viewob[0].get());
-                            og::runtime::current_session->myscreen_->buffer_to_screen(0, 0, 320, 200);
+                            // Preserve the editor's one-shot scenery/UI
+                            // transaction. A bare World present here would
+                            // make all crisp chrome disappear during the
+                            // mouse-release wait below.
+                            draw(og::runtime::current_session->myscreen_);
+                            og::runtime::current_session->myscreen_->refresh();
                             eds().start_time_s = query_timer();
                             MouseState& mymouse = query_mouse_no_poll();
                             while ( mymouse.left && (query_timer()-eds().start_time_s) < 36 )
@@ -4083,15 +4093,22 @@ EventType handle_basic_editor_event(const void* native_event)
         handle_mouse_event(native_event);
         return EventType::Scroll;
     case og::input_native::EventType::FingerMotion:
+    {
         handle_mouse_event(native_event);
-        // Deltas scale by the ACTIVE canvas dims like handle_mouse_event's
-        // positions (the editor pins the classic canvas, so these stay the
-        // 320x200 constants today; dimension-derived for when the pin drops).
+        // Finger deltas are normalized to the complete window. Convert the
+        // physical delta through the same aspect-fitted rectangle as the
+        // absolute pointer position so bars do not slow one axis.
+        const og::CanvasViewport viewport = active_canvas_viewport();
         eds().mouse_motion_x = static_cast<int>(
-            event.finger_dx * static_cast<float>(og::runtime::current_session->myscreen_->canvas_w()));
+            event.finger_dx * og::runtime::current_session->window_w_ *
+            static_cast<float>(og::runtime::current_session->myscreen_->canvas_w()) /
+            static_cast<float>(std::max(1, viewport.w)));
         eds().mouse_motion_y = static_cast<int>(
-            event.finger_dy * static_cast<float>(og::runtime::current_session->myscreen_->canvas_h()));
+            event.finger_dy * og::runtime::current_session->window_h_ *
+            static_cast<float>(og::runtime::current_session->myscreen_->canvas_h()) /
+            static_cast<float>(std::max(1, viewport.h)));
         return EventType::MouseMotion;
+    }
     case og::input_native::EventType::FingerUp:
         {
             MouseState& mymouse = query_mouse_no_poll();
@@ -4116,12 +4133,20 @@ EventType handle_basic_editor_event(const void* native_event)
         handle_key_event(native_event);
         return EventType::Handled;
     case og::input_native::EventType::MouseMotion:
+    {
         handle_mouse_event(native_event);
-        // Same active-canvas divisor as handle_mouse_event's position mapping
-        // (classic 320x200 while the editor pin holds — every run today).
-        eds().mouse_motion_x = static_cast<int>(static_cast<float>(event.motion_dx) * (static_cast<float>(og::runtime::current_session->myscreen_->canvas_w()) / og::runtime::current_session->viewport_w_));
-        eds().mouse_motion_y = static_cast<int>(static_cast<float>(event.motion_dy) * (static_cast<float>(og::runtime::current_session->myscreen_->canvas_h()) / og::runtime::current_session->viewport_h_));
+        // Use the same aspect-fitted viewport as position mapping.
+        const og::CanvasViewport viewport = active_canvas_viewport();
+        eds().mouse_motion_x = static_cast<int>(
+            static_cast<float>(event.motion_dx) *
+            static_cast<float>(og::runtime::current_session->myscreen_->canvas_w()) /
+            static_cast<float>(std::max(1, viewport.w)));
+        eds().mouse_motion_y = static_cast<int>(
+            static_cast<float>(event.motion_dy) *
+            static_cast<float>(og::runtime::current_session->myscreen_->canvas_h()) /
+            static_cast<float>(std::max(1, viewport.h)));
         return EventType::MouseMotion;
+    }
     case og::input_native::EventType::MouseButtonUp:
         {
             MouseState& mymouse = query_mouse_no_poll();
@@ -4173,28 +4198,31 @@ Sint32 level_editor()
 
     // The editor is gameplay-view + chrome: it renders the map through the
     // standard viewscreen machinery, so it lives on the WORLD canvas (shared
-    // with the UI canvas at the default 320x200 dims). Its panel chrome and
+    // with the UI canvas whenever both are 320x200). Its panel chrome and
     // mouse mapping still use absolute 320x200-era coordinates (local
-    // S_RIGHT=245 etc.), so when a cfg graphics/scale mode has grown the
-    // world canvas we PIN it back to the classic dims for the editor session
-    // and restore the scale-derived dims on exit (follow-up: right-anchor the
-    // chrome from canvas_w and drop the pin). Restore the UI canvas for the
-    // picker on exit. At default dims the pin branch never runs — exactly the
-    // pre-existing behavior.
+    // S_RIGHT=245 etc.), so we PIN it to the classic dims for the editor
+    // session and restore the zoom-derived dims on exit (follow-up:
+    // right-anchor the chrome from canvas_w and drop the pin). The held pin
+    // also blocks resize events from growing the canvas mid-editor. Restore
+    // the UI canvas for the picker on exit.
     struct EditorCanvasScope final {
         screen* scr_;
         bool pinned_ = false;
         explicit EditorCanvasScope(screen* scr) : scr_(scr)
         {
-            pinned_ = (scr_->world_canvas_w() != kUiCanvasW ||
-                       scr_->world_canvas_h() != kUiCanvasH);
-            if (pinned_)
-            {
-                scr_->set_world_canvas_pinned_classic(true);
+            const int old_w = scr_->world_canvas_w();
+            const int old_h = scr_->world_canvas_h();
+            // Hold the pin even when entry already happens to be 320x200.
+            // A resize/fullscreen event may arrive while the editor is open;
+            // the held pin keeps its absolute-coordinate chrome safe while
+            // remembering the new aspect-relative canvas for exit.
+            scr_->set_world_canvas_pinned_classic(true);
+            pinned_ = true;
+            if (scr_->world_canvas_w() != old_w ||
+                scr_->world_canvas_h() != old_h)
                 scr_->relayout_views();
-                TRACE("canvas", "editor_pin_classic %dx%d",
-                      scr_->world_canvas_w(), scr_->world_canvas_h());
-            }
+            TRACE("canvas", "editor_pin_classic %dx%d",
+                  scr_->world_canvas_w(), scr_->world_canvas_h());
             scr_->set_active_canvas(CanvasTarget::World);
         }
         ~EditorCanvasScope()
@@ -4202,8 +4230,12 @@ Sint32 level_editor()
             scr_->set_active_canvas(CanvasTarget::UI);
             if (pinned_)
             {
+                const int old_w = scr_->world_canvas_w();
+                const int old_h = scr_->world_canvas_h();
                 scr_->set_world_canvas_pinned_classic(false);
-                scr_->relayout_views();
+                if (scr_->world_canvas_w() != old_w ||
+                    scr_->world_canvas_h() != old_h)
+                    scr_->relayout_views();
                 TRACE("canvas", "editor_unpin %dx%d",
                       scr_->world_canvas_w(), scr_->world_canvas_h());
             }
@@ -4334,24 +4366,22 @@ Sint32 level_editor()
                 continue;
 
             #ifdef USE_CONTROLLER_INPUT
-            // Inverse of handle_mouse_event's window->canvas mapping: divide
-            // by the ACTIVE canvas dims (classic 320x200 under the editor
-            // pin, i.e. every run today).
-            if(didPlayerPressKey(0, KEY_FIRE, native_event))
-            {
-                const int event_x = static_cast<int>(static_cast<float>(mymouse.x) * (og::runtime::current_session->viewport_w_ / static_cast<float>(og::runtime::current_session->myscreen_->canvas_w()))
-                                                     + og::runtime::current_session->viewport_offset_x_);
-                const int event_y = static_cast<int>(static_cast<float>(mymouse.y) * (og::runtime::current_session->viewport_h_ / static_cast<float>(og::runtime::current_session->myscreen_->canvas_h()))
-                                                     + og::runtime::current_session->viewport_offset_y_);
+			// Inverse of handle_mouse_event's aspect-fitted mapping.
+			if(didPlayerPressKey(0, KEY_FIRE, native_event))
+			{
+				const auto [window_x, window_y] = active_canvas_to_window(
+					static_cast<float>(mymouse.x), static_cast<float>(mymouse.y));
+				const int event_x = static_cast<int>(window_x);
+				const int event_y = static_cast<int>(window_y);
                 og::input_native::push_mouse_button_event(true, og::input_native::kMouseButtonLeft, event_x, event_y);
                 continue;
             }
-            if(didPlayerReleaseKey(0, KEY_FIRE, native_event))
-            {
-                const int event_x = static_cast<int>(static_cast<float>(mymouse.x) * (og::runtime::current_session->viewport_w_ / static_cast<float>(og::runtime::current_session->myscreen_->canvas_w()))
-                                                     + og::runtime::current_session->viewport_offset_x_);
-                const int event_y = static_cast<int>(static_cast<float>(mymouse.y) * (og::runtime::current_session->viewport_h_ / static_cast<float>(og::runtime::current_session->myscreen_->canvas_h()))
-                                                     + og::runtime::current_session->viewport_offset_y_);
+			if(didPlayerReleaseKey(0, KEY_FIRE, native_event))
+			{
+				const auto [window_x, window_y] = active_canvas_to_window(
+					static_cast<float>(mymouse.x), static_cast<float>(mymouse.y));
+				const int event_x = static_cast<int>(window_x);
+				const int event_y = static_cast<int>(window_y);
                 og::input_native::push_mouse_button_event(false, og::input_native::kMouseButtonLeft, event_x, event_y);
                 continue;
             }
@@ -4785,11 +4815,18 @@ Sint32 level_editor()
             eds().redraw = 0;
 			data.draw(og::runtime::current_session->myscreen_);
 			
-            #ifdef USE_CONTROLLER_INPUT
-            og::runtime::current_session->myscreen_->fastbox(mymouse.x-1, mymouse.y-1, 4, 4, PURE_WHITE);
-            og::runtime::current_session->myscreen_->fastbox(mymouse.x, mymouse.y, 2, 2, PURE_BLACK);
-            #endif
-            og::runtime::current_session->myscreen_->refresh();
+			#ifdef USE_CONTROLLER_INPUT
+			{
+				ScopedGameplayUiCanvas editor_ui(
+					*og::runtime::current_session->myscreen_);
+				og::runtime::current_session->myscreen_->fastbox(mymouse.x-1, mymouse.y-1, 4, 4, PURE_WHITE);
+				og::runtime::current_session->myscreen_->fastbox(mymouse.x, mymouse.y, 2, 2, PURE_BLACK);
+			}
+			#endif
+			// LevelEditorData::draw prepares one smart-smoothed scenery + crisp
+			// UI transaction. Present only after every layer (including the
+			// controller cursor) is complete: the gameplay overlay is single-use.
+			og::runtime::current_session->myscreen_->refresh();
 		}
         
         og::input_native::sleep_ms(10);

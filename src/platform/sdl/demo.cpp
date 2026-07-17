@@ -18,11 +18,11 @@
  *
  * SDL thread safety:
  *   - SDL_PollEvent: main thread only
- *   - SDL_RenderPresent/Copy/Clear: main thread only
+ *   - SDL_RenderPresent/SDL_RenderTexture/SDL_RenderClear: main thread only
  *   - SDL_UpdateTexture: main thread only
  *   - E_Screen->render swap: main thread only (via SessionScope)
  *   - Per-session SDL_Surface pixel writes: each worker writes only to its own surface
- *   - SDL_mixer (Mix_PlayChannel): thread-safe in SDL_mixer 2.x
+ *   - Audio (SDL_PutAudioStreamData etc.): SDL3 audio streams lock internally
  */
 
 #include <openglad/core/constants.h>
@@ -43,7 +43,7 @@
 #include <openglad/platform/local_transport_shadow.h>
 #include <openglad/interface/guy_create.h>
 #include <openglad/interface/screen.h>
-#include "SDL.h"
+#include <SDL3/SDL.h>
 
 #include <algorithm>
 #include <array>
@@ -303,13 +303,14 @@ int main(int argc, char* argv[])
             display_w = CELL_W;
             display_h = CELL_H;
         } else {
-            SDL_DisplayMode dm;
-            if (SDL_GetDesktopDisplayMode(0, &dm) != 0) {
+            const SDL_DisplayMode* dm =
+                SDL_GetDesktopDisplayMode(SDL_GetPrimaryDisplay());
+            if (!dm) {
                 LogError("SDL_GetDesktopDisplayMode failed: {}\n", SDL_GetError());
                 return 1;
             } else {
-                display_w = dm.w;
-                display_h = dm.h;
+                display_w = dm->w;
+                display_h = dm->h;
             }
         }
         int grid_cols = display_w / CELL_W;
@@ -341,11 +342,10 @@ int main(int argc, char* argv[])
 
         cfg.apply_setting("graphics", "width", std::format("{}", display_w));
         cfg.apply_setting("graphics", "height", std::format("{}", display_h));
-        cfg.apply_setting("graphics", "render", "normal");
-        // Force the classic fixed 320x200 world canvas even if the user's cfg
-        // sets graphics/scale: the compositor grid assumes CELL_W x CELL_H
-        // session surfaces ("off" parses to WorldScaleMode::Legacy).
-        cfg.apply_setting("graphics", "scale", "off");
+        // Start from the normal zoom preference; the display-owning Screen is
+        // explicitly pinned below because each demo cell is fixed-size.
+        cfg.apply_setting("graphics", "zoom", "1.0");
+        cfg.apply_setting("graphics", "smoothing", "off");
         cfg.apply_setting("graphics", "fullscreen", "on");
 
         srand(static_cast<unsigned int>(time(nullptr)));
@@ -358,14 +358,21 @@ int main(int argc, char* argv[])
         host_cfg.allocate_prefs = true;
         host_cfg.install_legacy_globals = true;
         og::runtime::GameSession host_session(host_cfg);
+        // SessionScope swaps only the surface pointer, while canvas strides and
+        // view geometry still come from the display-owning Screen. Hold its real
+        // classic pin before constructing any 320x200 sub-session surfaces so a
+        // desktop-sized zoom canvas cannot index past those surfaces. The pin
+        // also survives resize/fullscreen events for the demo's lifetime.
+        E_Screen->set_world_canvas_pinned_classic(true);
+        host_session.myscreen_->relayout_views();
 
         init_input();
         load_player_control_settings_from_cfg(cfg);
 
         // Create composite surface and texture at the full display resolution.
-        std::unique_ptr<SDL_Surface, decltype(&SDL_FreeSurface)> composite_surface(
-            SDL_CreateRGBSurface(SDL_SWSURFACE, display_w, display_h, 32, 0, 0, 0, 0),
-            SDL_FreeSurface);
+        std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)> composite_surface(
+            SDL_CreateSurface(display_w, display_h, SDL_PIXELFORMAT_XRGB8888),
+            SDL_DestroySurface);
         std::unique_ptr<SDL_Texture, decltype(&SDL_DestroyTexture)> composite_tex(
             SDL_CreateTexture(E_Screen->renderer, SDL_PIXELFORMAT_ARGB8888,
                               SDL_TEXTUREACCESS_STREAMING, display_w, display_h),
@@ -374,6 +381,9 @@ int main(int argc, char* argv[])
             LogError("Failed to create composite surface/texture\n");
             return 1;
         }
+        // SDL3 defaults alpha-format textures to BLEND; the composite pixels
+        // are XRGB (alpha=0), so blending would present nothing.
+        SDL_SetTextureBlendMode(composite_tex.get(), SDL_BLENDMODE_NONE);
 
         // --- Create sub-sessions (main thread) ---
         std::vector<DemoSession> demos(static_cast<size_t>(num_sessions));
@@ -445,12 +455,12 @@ int main(int argc, char* argv[])
             // to handle_events() which would call exit(0) via quit().
             SDL_Event event;
             while (SDL_PollEvent(&event)) {
-                if (event.type == SDL_QUIT) {
+                if (event.type == SDL_EVENT_QUIT) {
                     running = false;
                     continue;
                 }
-                if (event.type == SDL_KEYDOWN &&
-                    event.key.keysym.sym == SDLK_ESCAPE) {
+                if (event.type == SDL_EVENT_KEY_DOWN &&
+                    event.key.key == SDLK_ESCAPE) {
                     running = false;
                     continue;
                 }
@@ -493,7 +503,7 @@ int main(int argc, char* argv[])
             E_Screen->suppress_present = false;
 
             // --- Phase 5: Composite and present (main thread only) ---
-            SDL_FillRect(composite_surface.get(), nullptr, 0x000000);
+            SDL_FillSurfaceRect(composite_surface.get(), nullptr, 0x000000);
             for (int i = 0; i < num_sessions; i++) {
                 SDL_Surface* src = demos[static_cast<size_t>(i)].session->session_surface_;
                 int col = i % grid_cols;
@@ -505,7 +515,7 @@ int main(int argc, char* argv[])
                               composite_surface->pixels,
                               composite_surface->pitch);
             SDL_RenderClear(E_Screen->renderer);
-            SDL_RenderCopy(E_Screen->renderer, composite_tex.get(),
+            SDL_RenderTexture(E_Screen->renderer, composite_tex.get(),
                            nullptr, nullptr);
             SDL_RenderPresent(E_Screen->renderer);
 

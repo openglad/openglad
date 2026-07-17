@@ -26,7 +26,7 @@
 #include <openglad/interface/platform_bridge.h>
 #include <openglad/interface/ui/picker_lobby_network_client.h>
 #include <openglad/platform/picker_lobby_network_runtime.h>
-#include "SDL.h"
+#include <SDL3/SDL.h>
 
 // Defined in view.cpp — loads allkeys from defaults + keyprefs.dat.
 void init_allkeys(int allkeys[][16]);
@@ -210,10 +210,9 @@ GameSession::GameSession(const Config& session_cfg)
 
     // Create per-session render surface for sub-sessions sharing a display.
     if (cfg_.allocate_screen && !cfg_.create_display) {
-        session_surface_ = SDL_CreateRGBSurface(
-            SDL_SWSURFACE, 320, 200, 32, 0, 0, 0, 0);
+        session_surface_ = SDL_CreateSurface(320, 200, SDL_PIXELFORMAT_XRGB8888);
         if (!session_surface_) {
-            LogError("GameSession: SDL_CreateRGBSurface failed: {}\n",
+            LogError("GameSession: SDL_CreateSurface failed: {}\n",
                      SDL_GetError());
         }
     }
@@ -258,7 +257,7 @@ GameSession::~GameSession()
     seeded_rng_.reset();
 
     if (session_surface_) {
-        SDL_FreeSurface(session_surface_);
+        SDL_DestroySurface(session_surface_);
         session_surface_ = nullptr;
     }
 }

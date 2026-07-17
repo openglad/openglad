@@ -16,7 +16,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/build_common.sh"
 
 require_command lcov "Install with: sudo apt-get update && sudo apt-get install lcov"
-require_sdl2
+require_sdl3
 
 BUILD_DIR="$PROJECT_ROOT/build/ci-coverage"
 COV_DIR="$PROJECT_ROOT/coverage"

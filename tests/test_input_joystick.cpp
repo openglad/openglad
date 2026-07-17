@@ -1,7 +1,7 @@
 #include <openglad/interface/input.h>
 #include <openglad/interface/native_input.h>
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 extern void wait_for_key(int somekey);
 extern void resetJoystick(int player_num);
 extern og::input_native::JoystickHandle joysticks[10];
@@ -55,14 +55,14 @@ TEST(InputJoystick, input_joydata_setKeyFromEvent_and_takeover)
     SDL_Event e{};
 
     // Diagonal key assignment is intentionally ignored.
-    e.type = SDL_JOYBUTTONDOWN;
+    e.type = SDL_EVENT_JOYSTICK_BUTTON_DOWN;
     e.jbutton.which = 1;
     e.jbutton.button = 3;
     player_joy[2].setKeyFromEvent(KEY_UP_RIGHT, e);
     ASSERT_EQ(JoyData::NONE, player_joy[2].key_type[KEY_UP_RIGHT]) << "diagonal key should be ignored";
 
     // Axis assignment should track direction and axis index.
-    e.type = SDL_JOYAXISMOTION;
+    e.type = SDL_EVENT_JOYSTICK_AXIS_MOTION;
     e.jaxis.which = 4;
     e.jaxis.axis = 2;
     e.jaxis.value = 12000;
@@ -80,7 +80,7 @@ TEST(InputJoystick, input_joydata_setKeyFromEvent_and_takeover)
     ASSERT_EQ(5, player_joy[2].index) << "joystick index should update";
 
     // Button assignment.
-    e.type = SDL_JOYBUTTONDOWN;
+    e.type = SDL_EVENT_JOYSTICK_BUTTON_DOWN;
     e.jbutton.which = 6;
     e.jbutton.button = 9;
     player_joy[2].setKeyFromEvent(KEY_SWITCH, e);
@@ -89,7 +89,7 @@ TEST(InputJoystick, input_joydata_setKeyFromEvent_and_takeover)
     ASSERT_EQ(6, player_joy[2].index) << "joystick index should update";
 
     // Hat assignment (valid + invalid).
-    e.type = SDL_JOYHATMOTION;
+    e.type = SDL_EVENT_JOYSTICK_HAT_MOTION;
     e.jhat.which = 7;
     e.jhat.hat = 1;
     e.jhat.value = SDL_HAT_UP;
@@ -123,7 +123,7 @@ TEST(InputJoystick, input_joydata_setKeyFromEvent_and_takeover)
     // Taking over a joystick should unbind other players using that same index.
     player_joy[0].index = 3;
     player_joy[1].index = 7;
-    e.type = SDL_JOYBUTTONDOWN;
+    e.type = SDL_EVENT_JOYSTICK_BUTTON_DOWN;
     e.jbutton.which = 7;
     e.jbutton.button = 1;
     player_joy[2].setKeyFromEvent(KEY_YELL, e);
@@ -146,14 +146,14 @@ TEST(InputJoystick, input_joydata_press_release_helpers_and_player_queries)
 
     j.key_type[KEY_FIRE] = JoyData::BUTTON;
     j.key_index[KEY_FIRE] = 4;
-    e.type = SDL_JOYBUTTONDOWN;
+    e.type = SDL_EVENT_JOYSTICK_BUTTON_DOWN;
     e.jbutton.which = 2;
     e.jbutton.button = 4;
     ASSERT_TRUE(j.getPress(KEY_FIRE, e)) << "matching button down should press";
     e.jbutton.button = 3;
     ASSERT_TRUE(!j.getPress(KEY_FIRE, e)) << "non-matching button down should not press";
 
-    e.type = SDL_JOYBUTTONUP;
+    e.type = SDL_EVENT_JOYSTICK_BUTTON_UP;
     e.jbutton.which = 2;
     e.jbutton.button = 4;
     ASSERT_TRUE(j.getRelease(KEY_FIRE, e)) << "matching button up should release";
@@ -162,7 +162,7 @@ TEST(InputJoystick, input_joydata_press_release_helpers_and_player_queries)
 
     j.key_type[KEY_UP] = JoyData::POS_AXIS;
     j.key_index[KEY_UP] = 0;
-    e.type = SDL_JOYAXISMOTION;
+    e.type = SDL_EVENT_JOYSTICK_AXIS_MOTION;
     e.jaxis.which = 2;
     e.jaxis.axis = 0;
     e.jaxis.value = 12000;
@@ -180,7 +180,7 @@ TEST(InputJoystick, input_joydata_press_release_helpers_and_player_queries)
 
     j.key_type[KEY_LEFT] = JoyData::HAT_LEFT;
     j.key_index[KEY_LEFT] = 0;
-    e.type = SDL_JOYHATMOTION;
+    e.type = SDL_EVENT_JOYSTICK_HAT_MOTION;
     e.jhat.which = 2;
     e.jhat.hat = 0;
     e.jhat.value = SDL_HAT_LEFT;
@@ -222,12 +222,12 @@ TEST(InputJoystick, input_joydata_press_release_helpers_and_player_queries)
 
     // Input helper predicates and TESTING wait path.
     SDL_Event key_event{};
-    key_event.type = SDL_KEYDOWN;
+    key_event.type = SDL_EVENT_KEY_DOWN;
     ASSERT_TRUE(isKeyboardEvent(key_event)) << "keydown should be keyboard event";
     ASSERT_TRUE(!isJoystickEvent(key_event)) << "keydown should not be joystick event";
 
     SDL_Event joy_event{};
-    joy_event.type = SDL_JOYHATMOTION;
+    joy_event.type = SDL_EVENT_JOYSTICK_HAT_MOTION;
     ASSERT_TRUE(!isKeyboardEvent(joy_event)) << "joy hat should not be keyboard event";
     ASSERT_TRUE(isJoystickEvent(joy_event)) << "joy hat should be joystick event";
 
@@ -292,12 +292,12 @@ TEST(InputJoystick, input_didPlayerPressReleaseKey_uses_joystick_mapping_when_bo
     player_joy[0].key_index[KEY_SPECIAL] = 6;
 
     SDL_Event e{};
-    e.type = SDL_JOYBUTTONDOWN;
+    e.type = SDL_EVENT_JOYSTICK_BUTTON_DOWN;
     e.jbutton.which = 3;
     e.jbutton.button = 6;
     ASSERT_TRUE(didPlayerPressKey(0, KEY_SPECIAL, e)) << "didPlayerPressKey should use joystick mapping";
 
-    e.type = SDL_JOYBUTTONUP;
+    e.type = SDL_EVENT_JOYSTICK_BUTTON_UP;
     ASSERT_TRUE(didPlayerReleaseKey(0, KEY_SPECIAL, e)) << "didPlayerReleaseKey should use joystick mapping";
 
     e.jbutton.button = 7;
@@ -316,12 +316,12 @@ TEST(InputJoystick, input_joydata_null_and_wrong_event_paths)
     ASSERT_TRUE(!j.getRelease(KEY_FIRE, nullptr)) << "null event should not release";
 
     SDL_Event key{};
-    key.type = SDL_KEYDOWN;
+    key.type = SDL_EVENT_KEY_DOWN;
     ASSERT_TRUE(!j.getPress(KEY_FIRE, key)) << "keyboard event should not press button mapping";
     ASSERT_TRUE(!j.getRelease(KEY_FIRE, key)) << "keyboard event should not release button mapping";
 
     SDL_Event axis{};
-    axis.type = SDL_JOYAXISMOTION;
+    axis.type = SDL_EVENT_JOYSTICK_AXIS_MOTION;
     axis.jaxis.which = 2;
     axis.jaxis.axis = 0;
     axis.jaxis.value = 0;
@@ -338,7 +338,7 @@ TEST(InputJoystick, input_joydata_null_and_wrong_event_paths)
     ASSERT_TRUE(!j.getRelease(KEY_UP, axis)) << "wrong joystick should not release";
 
     SDL_Event hat{};
-    hat.type = SDL_JOYHATMOTION;
+    hat.type = SDL_EVENT_JOYSTICK_HAT_MOTION;
     hat.jhat.which = 2;
     hat.jhat.hat = 0;
     hat.jhat.value = SDL_HAT_RIGHT;
@@ -356,6 +356,6 @@ TEST(InputJoystick, input_joydata_null_and_wrong_event_paths)
     handle_joy_event(nullptr);
 
     SDL_Event unknown{};
-    unknown.type = SDL_USEREVENT;
+    unknown.type = SDL_EVENT_USER;
     handle_joy_event(unknown);
 }

@@ -27,9 +27,57 @@
         }
 
         #canvas {
-            image-rendering: pixelated;
             image-rendering: crisp-edges;
+            image-rendering: pixelated;
             background-color: #000;
+        }
+
+        #canvas:fullscreen {
+            object-fit: contain;
+        }
+
+        #fullscreen-button {
+            position: fixed;
+            top: max(8px, env(safe-area-inset-top));
+            right: max(8px, env(safe-area-inset-right));
+            width: 44px;
+            height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2;
+            border: 1px solid rgba(255, 255, 255, 0.65);
+            border-radius: 4px;
+            color: #fff;
+            background: rgba(0, 0, 0, 0.7);
+            cursor: pointer;
+        }
+
+        #fullscreen-button:hover {
+            background: rgba(40, 40, 40, 0.9);
+        }
+
+        #fullscreen-button:focus-visible {
+            outline: 2px solid #fff;
+            outline-offset: 2px;
+        }
+
+        #fullscreen-button svg {
+            width: 22px;
+            height: 22px;
+            pointer-events: none;
+        }
+
+        .visually-hidden {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
         }
 
         #loading {
@@ -86,6 +134,13 @@
         <canvas id="canvas" width="320" height="200" oncontextmenu="event.preventDefault()" tabindex="-1" aria-label="Openglad game canvas"></canvas>
     </div>
 
+    <button id="fullscreen-button" class="hidden" type="button" aria-label="Enter fullscreen" aria-controls="canvas" title="Enter fullscreen">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/>
+        </svg>
+    </button>
+    <p id="fullscreen-status" class="visually-hidden" role="status" aria-live="polite"></p>
+
     <div id="loading">
         <div id="loading-spinner"></div>
         <div id="loading-text">Loading...</div>
@@ -99,6 +154,120 @@
         var loadingElement = document.getElementById('loading');
         var loadingText = document.getElementById('loading-text');
         var loadingBar = document.getElementById('loading-bar');
+        var fullscreenButton = document.getElementById('fullscreen-button');
+        var fullscreenStatus = document.getElementById('fullscreen-status');
+        var fullscreenControlReady = false;
+        var fullscreenKeyboardLockGeneration = 0;
+
+        function fullscreenAvailable() {
+            return document.fullscreenEnabled &&
+                typeof canvas.requestFullscreen === 'function';
+        }
+
+        function updateFullscreenButton() {
+            var showButton = fullscreenControlReady && fullscreenAvailable() &&
+                document.fullscreenElement === null;
+            fullscreenButton.classList.toggle('hidden', !showButton);
+        }
+
+        function keyboardLockAvailable() {
+            return 'keyboard' in navigator && navigator.keyboard !== null &&
+                typeof navigator.keyboard.lock === 'function' &&
+                typeof navigator.keyboard.unlock === 'function';
+        }
+
+        function releaseFullscreenKeyboardLock() {
+            ++fullscreenKeyboardLockGeneration;
+            if (!keyboardLockAvailable()) {
+                return;
+            }
+            try {
+                navigator.keyboard.unlock();
+            } catch (error) {
+                console.warn('Unable to release fullscreen keyboard lock:', error);
+            }
+        }
+
+        function lockFullscreenEscape() {
+            var generation = ++fullscreenKeyboardLockGeneration;
+            if (!keyboardLockAvailable()) {
+                fullscreenStatus.textContent =
+                    'Fullscreen active. Escape leaves fullscreen; press it again to control the game.';
+                return;
+            }
+
+            var request;
+            try {
+                // Lock only Escape, never the whole keyboard. Supporting
+                // browsers still reserve a long Escape hold as their exit
+                // hatch while a short press reaches SDL and the game.
+                request = navigator.keyboard.lock(['Escape']);
+            } catch (error) {
+                request = Promise.reject(error);
+            }
+
+            Promise.resolve(request).then(function() {
+                if (generation !== fullscreenKeyboardLockGeneration ||
+                    document.fullscreenElement !== canvas) {
+                    // The actual fullscreenchange exit path already unlocks.
+                    // Do not let a late promise from an earlier fullscreen
+                    // session unlock a newer session's Escape request.
+                    return;
+                }
+                fullscreenStatus.textContent =
+                    'Fullscreen active. Escape controls the game; press and hold Escape to leave fullscreen.';
+            }).catch(function(error) {
+                if (generation !== fullscreenKeyboardLockGeneration ||
+                    document.fullscreenElement !== canvas) {
+                    return;
+                }
+                console.warn('Unable to lock Escape in fullscreen:', error);
+                fullscreenStatus.textContent =
+                    'Fullscreen active. Escape leaves fullscreen; press it again to control the game.';
+            });
+        }
+
+        function handleFullscreenControlChange() {
+            updateFullscreenButton();
+            if (document.fullscreenElement === canvas) {
+                lockFullscreenEscape();
+            } else {
+                releaseFullscreenKeyboardLock();
+                fullscreenStatus.textContent = '';
+            }
+        }
+
+        fullscreenButton.addEventListener('click', function() {
+            fullscreenStatus.textContent = '';
+            if (!fullscreenAvailable() || document.fullscreenElement !== null) {
+                canvas.focus({preventScroll: true});
+                return;
+            }
+
+            // Keep this call directly in the trusted click handler: browsers
+            // reject Fullscreen API requests after user activation expires.
+            var request = canvas.requestFullscreen();
+            if (request && typeof request.then === 'function') {
+                request.then(function() {
+                    fullscreenStatus.textContent = '';
+                    canvas.focus({preventScroll: true});
+                }).catch(function(error) {
+                    console.warn('Unable to enter fullscreen:', error);
+                    fullscreenStatus.textContent =
+                        'Fullscreen could not be opened. Please try again or use your browser fullscreen control.';
+                    fullscreenButton.focus({preventScroll: true});
+                });
+            }
+        });
+        // Keep keyboard activation of the DOM control out of SDL's game-key
+        // listeners. Do not prevent the native Enter/Space click action.
+        fullscreenButton.addEventListener('keydown', function(event) {
+            event.stopPropagation();
+        });
+        fullscreenButton.addEventListener('keyup', function(event) {
+            event.stopPropagation();
+        });
+        document.addEventListener('fullscreenchange', handleFullscreenControlChange);
 
         // Handle WebGL context loss
         canvas.addEventListener('webglcontextlost', function(e) {
@@ -119,12 +288,20 @@
             var windowHeight = window.innerHeight;
 
             // Calculate scale to fit window (maximize canvas size)
-            var scaleX = windowWidth / gameWidth;
-            var scaleY = windowHeight / gameHeight;
-            var scale = Math.min(scaleX, scaleY);
+            var fittedWidth;
+            var fittedHeight;
+            if (windowWidth / gameWidth <= windowHeight / gameHeight) {
+                fittedWidth = Math.max(1, Math.floor(windowWidth));
+                fittedHeight = Math.max(1, Math.floor(
+                    fittedWidth * gameHeight / gameWidth));
+            } else {
+                fittedHeight = Math.max(1, Math.floor(windowHeight));
+                fittedWidth = Math.max(1, Math.floor(
+                    fittedHeight * gameWidth / gameHeight));
+            }
 
-            canvas.style.width = (gameWidth * scale) + 'px';
-            canvas.style.height = (gameHeight * scale) + 'px';
+            canvas.style.width = fittedWidth + 'px';
+            canvas.style.height = fittedHeight + 'px';
         }
 
         window.addEventListener('resize', resizeCanvas);
@@ -135,6 +312,34 @@
             bootCalls: 0
         };
         window.__opengladGameState = null;
+
+        function installPostBootCanvasRecovery() {
+            var canvasWasFullscreen = document.fullscreenElement === canvas;
+            function recoverCanvasBacking() {
+                resizeCanvas();
+                if (typeof Module._openglad_web_restore_canvas_backing === 'function') {
+                    var rect = canvas.getBoundingClientRect();
+                    Module._openglad_web_restore_canvas_backing(
+                        Math.max(1, Math.round(rect.width)),
+                        Math.max(1, Math.round(rect.height)));
+                }
+            }
+
+            // Registered after SDL has booted so this runs after SDL3's own
+            // resize/fullscreen listeners and repairs its fullscreen-exit race.
+            window.addEventListener('resize', recoverCanvasBacking);
+            document.addEventListener('fullscreenchange', function() {
+                var canvasIsFullscreen = document.fullscreenElement === canvas;
+                var exitedCanvasFullscreen = canvasWasFullscreen && !canvasIsFullscreen;
+                canvasWasFullscreen = canvasIsFullscreen;
+                recoverCanvasBacking();
+                if (exitedCanvasFullscreen) {
+                    requestAnimationFrame(function() {
+                        canvas.focus({preventScroll: true});
+                    });
+                }
+            });
+        }
 
         var Module = {
             canvas: canvas,
@@ -177,6 +382,9 @@
                 if (typeof Module._openglad_web_boot === 'function') {
                     window.__opengladWebBootstrap.bootCalls += 1;
                     Module._openglad_web_boot();
+                    installPostBootCanvasRecovery();
+                    fullscreenControlReady = true;
+                    updateFullscreenButton();
                 } else {
                     console.error('OpenGlad web bootstrap export is unavailable');
                 }

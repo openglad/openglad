@@ -118,7 +118,38 @@ static std::array<unsigned char, 64000> capture_rendered_frame(screen& scr)
     return frame;
 }
 
-TEST(GladHud, glad_remaining_counts)
+// The HUD probes below intentionally assert historical pixel positions and
+// capture fixed 320x200 frames. Pin that canvas only for this suite; live
+// layouts may expand one axis to match a non-16:10 display.
+class GladHud : public testing::Test
+{
+protected:
+    void SetUp() override
+    {
+        game_ = og::runtime::current_session->myscreen_;
+        ASSERT_NE(nullptr, game_);
+        saved_target_ = game_->active_canvas();
+        game_->set_world_canvas_pinned_classic(true);
+        game_->relayout_views();
+        game_->set_active_canvas(CanvasTarget::World);
+    }
+
+    void TearDown() override
+    {
+        if (game_ == nullptr)
+            return;
+        game_->set_active_canvas(CanvasTarget::UI);
+        game_->set_world_canvas_pinned_classic(false);
+        game_->relayout_views();
+        game_->set_active_canvas(saved_target_);
+    }
+
+private:
+    screen* game_ = nullptr;
+    CanvasTarget saved_target_ = CanvasTarget::UI;
+};
+
+TEST_F(GladHud, glad_remaining_counts)
 {
     // Isolate the oblist so prior game state doesn't affect counts.
     struct ObListSwap {
@@ -156,7 +187,7 @@ TEST(GladHud, glad_remaining_counts)
 }
 
 
-TEST(GladHud, glad_draw_gems_and_value_bars_smoke)
+TEST_F(GladHud, glad_draw_gems_and_value_bars_smoke)
 {
     auto control = make_player(0);
     ASSERT_TRUE(control != nullptr) << "control should be created";
@@ -214,7 +245,7 @@ TEST(GladHud, glad_draw_gems_and_value_bars_smoke)
 }
 
 
-TEST(GladHud, glad_score_panel_and_new_score_panel_modes)
+TEST_F(GladHud, glad_score_panel_and_new_score_panel_modes)
 {
     auto control = make_player(0);
     ASSERT_TRUE(control != nullptr) << "control should be created";
@@ -268,7 +299,7 @@ TEST(GladHud, glad_score_panel_and_new_score_panel_modes)
 // set_user(view_idx)). For any non-host client (slot 1/2/3) that check was
 // false, so the HUD silently vanished. The HUD must draw whenever the view's
 // control is a live, human-claimed walker, regardless of its global slot.
-TEST(GladHud, score_panel_draws_for_network_client_with_nonlocal_user_slot)
+TEST_F(GladHud, score_panel_draws_for_network_client_with_nonlocal_user_slot)
 {
     screen* s = og::runtime::current_session->myscreen_;
     viewscreen* v = s->viewob[0].get();
@@ -327,7 +358,7 @@ TEST(GladHud, score_panel_draws_for_network_client_with_nonlocal_user_slot)
         ? old_control : nullptr;
 }
 
-TEST(GladHud, fps_overlay_draws_when_enabled)
+TEST_F(GladHud, fps_overlay_draws_when_enabled)
 {
     struct ShowFpsGuard {
         ~ShowFpsGuard() { og::runtime::current_session->show_fps_ = false; }
@@ -389,7 +420,7 @@ TEST(GladHud, fps_overlay_draws_when_enabled)
         ? old_control : nullptr;
 }
 
-TEST(GladHud, fps_overlay_clears_foes_counter)
+TEST_F(GladHud, fps_overlay_clears_foes_counter)
 {
     // Regression: the FPS overlay used to render at y=2, flush right, directly
     // on top of the TEAM/FOES counter that new_score_panel draws in the
@@ -457,7 +488,7 @@ TEST(GladHud, fps_overlay_clears_foes_counter)
         ? old_control : nullptr;
 }
 
-TEST(GladHud, RedrawmeFlickerNoUnpaintedPresent)
+TEST_F(GladHud, RedrawmeFlickerNoUnpaintedPresent)
 {
     auto control = make_player(0);
     ASSERT_TRUE(control != nullptr);
@@ -502,7 +533,7 @@ TEST(GladHud, RedrawmeFlickerNoUnpaintedPresent)
     s->redrawme = 0;
 }
 
-TEST(GladHud, render_pending_redraw_presents_hud_overlay_in_single_frame)
+TEST_F(GladHud, render_pending_redraw_presents_hud_overlay_in_single_frame)
 {
     class SpyScreen final : public screen
     {
@@ -551,6 +582,9 @@ TEST(GladHud, render_pending_redraw_presents_hud_overlay_in_single_frame)
     GameWorld world;
     {
         SpyScreen spy_screen(world, std::make_unique<sdl_video>(false));
+        spy_screen.set_world_canvas_pinned_classic(true);
+        spy_screen.relayout_views();
+        spy_screen.set_active_canvas(CanvasTarget::World);
         viewscreen* const view = spy_screen.viewob[0].get();
         ASSERT_TRUE(view != nullptr);
 
@@ -618,7 +652,7 @@ struct HudObListSwap {
 };
 } // namespace
 
-TEST(GladHud, pending_hostile_wave_counts_splits_dormant_and_counts_down)
+TEST_F(GladHud, pending_hostile_wave_counts_splits_dormant_and_counts_down)
 {
     HudObListSwap swap;
     GameWorld& world = og::runtime::current_session->myscreen_->world();
@@ -683,7 +717,7 @@ TEST(GladHud, pending_hostile_wave_counts_splits_dormant_and_counts_down)
 // merely awaiting its respawn timer blocks the extermination win
 // (classic_respawn_pending_hostile_foe), so it must show up in the (+x) and
 // the countdown instead of leaving "FOES: 0" over a map that refuses to end.
-TEST(GladHud, pending_hostile_wave_counts_includes_classic_respawn_queue)
+TEST_F(GladHud, pending_hostile_wave_counts_includes_classic_respawn_queue)
 {
     HudObListSwap swap;
     GameWorld& world = og::runtime::current_session->myscreen_->world();
@@ -750,7 +784,7 @@ TEST(GladHud, pending_hostile_wave_counts_includes_classic_respawn_queue)
     world.set_level_tick_count(saved_ltc);
 }
 
-TEST(GladHud, score_panel_shows_next_wave_countdown_for_dormant_hostiles)
+TEST_F(GladHud, score_panel_shows_next_wave_countdown_for_dormant_hostiles)
 {
     screen* s = og::runtime::current_session->myscreen_;
     viewscreen* v = s->viewob[0].get();
@@ -811,7 +845,7 @@ TEST(GladHud, score_panel_shows_next_wave_countdown_for_dormant_hostiles)
 // The endgame moment in respawn mode 2: the last live foe is dead, an AI
 // replacement sits in the queue. The panel must show it as a pending wave
 // (with the countdown) rather than a bare "FOES: 0" that never ends.
-TEST(GladHud, score_panel_counts_respawn_pending_foe_in_wave)
+TEST_F(GladHud, score_panel_counts_respawn_pending_foe_in_wave)
 {
     screen* s = og::runtime::current_session->myscreen_;
     viewscreen* v = s->viewob[0].get();
@@ -874,7 +908,7 @@ TEST(GladHud, score_panel_counts_respawn_pending_foe_in_wave)
 // Disabled-special signifier: specials_disabled greys the SPC line
 // ---------------------------------------------------------------------------
 
-TEST(GladHud, score_panel_greys_special_line_when_specials_disabled)
+TEST_F(GladHud, score_panel_greys_special_line_when_specials_disabled)
 {
     screen* s = og::runtime::current_session->myscreen_;
     viewscreen* v = s->viewob[0].get();
@@ -958,7 +992,7 @@ TEST(GladHud, score_panel_greys_special_line_when_specials_disabled)
 // SCARED countdown: a forced flee (front COMMAND_WALK) shows its seconds left
 // ---------------------------------------------------------------------------
 
-TEST(GladHud, hud_scared_flee_ticks_reads_front_walk_command_only)
+TEST_F(GladHud, hud_scared_flee_ticks_reads_front_walk_command_only)
 {
     auto control = make_player(0);
     ASSERT_TRUE(control != nullptr);
@@ -987,7 +1021,7 @@ TEST(GladHud, hud_scared_flee_ticks_reads_front_walk_command_only)
     EXPECT_EQ(0, hud_scared_flee_ticks(nullptr));
 }
 
-TEST(GladHud, score_panel_shows_scared_countdown_while_fleeing)
+TEST_F(GladHud, score_panel_shows_scared_countdown_while_fleeing)
 {
     screen* s = og::runtime::current_session->myscreen_;
     viewscreen* v = s->viewob[0].get();
@@ -1058,7 +1092,7 @@ TEST(GladHud, score_panel_shows_scared_countdown_while_fleeing)
 // B4: one-shot "the way is clear" notice on level_done 0 -> 1
 // ---------------------------------------------------------------------------
 
-TEST(GladHud, way_clear_notice_fires_once_per_level_and_rearms_on_new_level)
+TEST_F(GladHud, way_clear_notice_fires_once_per_level_and_rearms_on_new_level)
 {
     screen* s = og::runtime::current_session->myscreen_;
     viewscreen* v = s->viewob[0].get();
@@ -1190,7 +1224,7 @@ TEST(FloorHudLabel, tower_gate_is_unlabeled)
 // ---------------------------------------------------------------------------
 // The FLR row in the PREF_FOES box (feature B, SDL surface).
 
-TEST(GladHud, score_panel_shows_floor_indicator_on_multifloor)
+TEST_F(GladHud, score_panel_shows_floor_indicator_on_multifloor)
 {
     screen* s = og::runtime::current_session->myscreen_;
     viewscreen* v = s->viewob[0].get();
@@ -1255,7 +1289,7 @@ TEST(GladHud, score_panel_shows_floor_indicator_on_multifloor)
     world.set_floor_count(1);
 }
 
-TEST(GladHud, score_panel_floor_row_absent_single_floor)
+TEST_F(GladHud, score_panel_floor_row_absent_single_floor)
 {
     // Byte-identity witness: on a single-floor level the label is empty, the
     // box keeps its classic 16px height, and the extension band stays clean.
@@ -1311,7 +1345,7 @@ TEST(GladHud, score_panel_floor_row_absent_single_floor)
     v->prefs[PREF_OVERLAY] = old_pref_overlay;
 }
 
-TEST(GladHud, fps_overlay_clears_extended_foes_counter)
+TEST_F(GladHud, fps_overlay_clears_extended_foes_counter)
 {
     // Clone of fps_overlay_clears_foes_counter on a 2-floor fixture: the FLR
     // row grows the counter box to tm+24, and the dynamically-placed FPS

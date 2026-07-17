@@ -12,7 +12,7 @@
 #include <openglad/interface/ui/picker_lobby_client.h>
 #include <openglad/platform/game_session.h>
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include <emscripten.h>
 #ifndef TESTING
 #include <emscripten/val.h>
@@ -116,10 +116,10 @@ double js_number_from_u64(std::uint64_t value)
 
 std::string playwright_key_for_sdl_keycode(SDL_Keycode keycode)
 {
-    if (keycode >= SDLK_a && keycode <= SDLK_z)
+    if (keycode >= SDLK_A && keycode <= SDLK_Z)
     {
         const char value = static_cast<char>(
-            'a' + static_cast<int>(keycode - SDLK_a));
+            'a' + static_cast<int>(keycode - SDLK_A));
         return std::string(1, value);
     }
     if (keycode >= SDLK_0 && keycode <= SDLK_9)
@@ -603,7 +603,8 @@ void finalize_jitter_capture_profile_after_load(screen& current_screen)
     }
 
     state.input_hold.playwright_key = playwright_key_for_sdl_keycode(
-        og::runtime::current_session->player_keys_[0][KEY_RIGHT]);
+        static_cast<SDL_Keycode>(
+            og::runtime::current_session->player_keys_[0][KEY_RIGHT]));
     state.post_load_applied_at_ms = kSinglePlayerRightRunPostLoadAppliedAtMs;
     publish_applied_jitter_capture_profile();
 }

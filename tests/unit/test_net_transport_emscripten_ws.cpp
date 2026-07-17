@@ -728,4 +728,65 @@ TEST_F(EmscriptenWebSocketTransportTest,
     EXPECT_EQ(1, backend_.destroy_calls(socket));
 }
 
+TEST_F(EmscriptenWebSocketTransportTest,
+       link_state_tracks_connect_and_close_transitions_on_poll)
+{
+    EmscriptenWebSocketTransport transport("ws://example.test/socket",
+                                           make_options());
+    EXPECT_EQ(og::sim::TransportLinkState::Connecting, transport.link_state());
+
+    const WebSocketHandle socket = accept_transport(transport);
+    ASSERT_TRUE(backend_.emit_open(socket));
+    // Browser callbacks only enqueue; the state flips on the poll() thread.
+    EXPECT_EQ(og::sim::TransportLinkState::Connecting, transport.link_state());
+    EXPECT_TRUE(transport.poll().empty());
+    EXPECT_EQ(og::sim::TransportLinkState::Connected, transport.link_state());
+
+    ASSERT_TRUE(backend_.emit_close(socket));
+    EXPECT_TRUE(transport.poll().empty());
+    EXPECT_EQ(og::sim::TransportLinkState::Lost, transport.link_state());
+}
+
+TEST_F(EmscriptenWebSocketTransportTest,
+       link_state_reports_failed_when_error_arrives_before_open)
+{
+    EmscriptenWebSocketTransport transport("ws://example.test/socket",
+                                           make_options());
+    const WebSocketHandle socket = accept_transport(transport);
+
+    ASSERT_TRUE(backend_.emit_error(socket));
+    EXPECT_TRUE(transport.poll().empty());
+    EXPECT_EQ(og::sim::TransportLinkState::Failed, transport.link_state());
+}
+
+TEST_F(EmscriptenWebSocketTransportTest,
+       relay_link_state_reports_failed_before_open_and_lost_after_connect)
+{
+    // Failed: relay closes the socket before it ever opens (wrong or expired
+    // room code, TLS/mixed-content rejection).
+    {
+        RelayWebSocketTransport transport(
+            "ws://relay.example/api/room/GLAD-DEAD",
+            make_relay_options());
+        EXPECT_EQ(og::sim::TransportLinkState::Connecting,
+                  transport.link_state());
+
+        const WebSocketHandle socket = accept_transport(transport);
+        ASSERT_TRUE(backend_.emit_close(socket));
+        EXPECT_TRUE(transport.poll().empty());
+        EXPECT_EQ(og::sim::TransportLinkState::Failed, transport.link_state());
+    }
+
+    // Lost: the relay socket drops after the room connection was up.
+    RelayWebSocketTransport transport(
+        "ws://relay.example/api/room/GLAD-TEST",
+        make_relay_options());
+    const WebSocketHandle socket = connect_transport(transport);
+    EXPECT_EQ(og::sim::TransportLinkState::Connected, transport.link_state());
+
+    ASSERT_TRUE(backend_.emit_error(socket));
+    EXPECT_TRUE(transport.poll().empty());
+    EXPECT_EQ(og::sim::TransportLinkState::Lost, transport.link_state());
+}
+
 } // namespace

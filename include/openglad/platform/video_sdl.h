@@ -18,16 +18,39 @@
 
 #include <openglad/interface/render/video.h>
 #include <openglad/interface/render/text.h>
+#include <openglad/platform/display_state.h>
 
-#include "SDL.h"
+#include <SDL3/SDL.h>
 
 #include <array>
 #include <span>
+#include <string_view>
 #include <vector>
+
+namespace og::platform
+{
+// SDL3 display-mode dimensions are logical coordinates. Convert them to the
+// physical pixel pair users expect in a monitor-resolution selector.
+std::pair<int, int> display_mode_pixel_size(const SDL_DisplayMode& mode);
+
+// XRandR exclusive mode changes are unsafe when one X11 screen spans several
+// displays: SDL can leave the target CRTC disabled if the resized root no
+// longer contains the other outputs. Other backends do not use that path.
+inline bool exclusive_mode_switch_is_safe(std::string_view video_driver,
+                                          int display_count)
+{
+    return video_driver != "x11" || display_count <= 1;
+}
+}
 
 class sdl_video final : public video
 {
 public:
+    // Bounds each multifloor source surface to 16.4 MiB at ARGB8888. Larger
+    // window/zoom combinations draw the faded floor directly instead of
+    // retaining an unbounded compositor scratch surface.
+    static constexpr std::int64_t kFloorLayerSourcePixelBudget = 4'096'000;
+
     sdl_video();
     explicit sdl_video(bool create_display);
     ~sdl_video() override;
@@ -90,6 +113,11 @@ public:
                          unsigned char alpha,
                          DepthFxParams fx = {},
                          Sint32 pad_x = 0, Sint32 pad_y = 0) override;
+    void fail_next_floor_layer_allocation_for_testing() override;
+    [[nodiscard]] int floor_layer_fallback_count_for_testing() const override;
+    [[nodiscard]] std::int64_t floor_layer_source_pixels_for_testing() const override;
+    [[nodiscard]] std::int64_t floor_layer_scaled_pixels_for_testing() const override;
+    [[nodiscard]] bool floor_layer_redirect_active_for_testing() const override;
     void putbuffer(Sint32 tilestartx, Sint32 tilestarty,
                    Sint32 tilewidth, Sint32 tileheight,
                    Sint32 portstartx, Sint32 portstarty,
@@ -169,10 +197,25 @@ public:
     int canvas_h() const override;
     int world_canvas_w() const override;
     int world_canvas_h() const override;
+    int gameplay_ui_canvas_w() const override;
+    int gameplay_ui_canvas_h() const override;
+    bool gameplay_ui_canvas_available() const override;
     void set_active_canvas(CanvasTarget target) override;
     CanvasTarget active_canvas() const override;
+	CanvasTarget last_presented_canvas() const override;
+    void begin_gameplay_frame() override;
+    void prepare_ui_canvas_from_world() override;
     void set_world_canvas_pinned_classic(bool pinned) override;
     void reapply_world_scale() override;
+    int minimum_world_zoom_steps() const override;
+    bool world_smoothing_supported() const override;
+    void apply_display_settings_from_cfg() override;
+    void reflect_display_settings_from_window(
+        DisplayStateConfirmation confirmation = DisplayStateConfirmation::Synchronized,
+        std::uint64_t event_timestamp_ns = 0) override;
+    std::vector<std::pair<int, int>> display_resolutions() override;
+    std::pair<int, int> desktop_resolution() override;
+    std::pair<int, int> windowed_desktop_resolution() override;
 
     void get_pixel(int x, int y, Uint8* r, Uint8* g, Uint8* b) override;
     int get_pixel(int x, int y, int* index) override;
@@ -218,7 +261,24 @@ public:
     text text_big;
 
 private:
+    void persist_confirmed_display_state();
+    og::platform::DisplayStateSnapshot confirmed_snapshot_from_window(
+        DisplayStateConfirmation confirmation) const;
+
     bool owns_display_ = true;
+    // Fullscreen mode dimensions are physical pixels, while SDL window sizes
+    // are logical coordinates. Preserve the last real Windowed size across
+    // Borderless/Exclusive transitions instead of reusing fullscreen cfg
+    // pixels as an enormous logical window on HiDPI displays.
+    int remembered_window_w_ = 640;
+    int remembered_window_h_ = 400;
+	og::platform::DisplayStateTracker display_state_;
+	// Leaving fullscreen is asynchronous on some window systems, and SDL
+	// ignores SDL_SetWindowSize while the window is still fullscreen. Retain
+	// the requested logical restore until the completed LEAVE/RESIZED event.
+	int pending_windowed_w_ = 0;
+	int pending_windowed_h_ = 0;
+	SDL_DisplayID pending_windowed_display_ = 0;
 
     // Off-screen compositing scratch for the multi-floor vertical parallax
     // (floor_layer_begin/floor_layer_end). Lazily created at the render size,
@@ -228,12 +288,21 @@ private:
     SDL_Surface* floor_layer_ = nullptr;         // transparent 1:1 draw target
     SDL_Surface* floor_layer_scaled_ = nullptr;  // bilinear-stretched scratch
     SDL_Surface* floor_layer_saved_render_ = nullptr; // E_Screen->render while redirected
+    int floor_layer_reported_fallback_w_ = 0;
+    int floor_layer_reported_fallback_h_ = 0;
+    bool floor_layer_reported_budget_fallback_ = false;
+    bool fail_next_floor_layer_allocation_ = false;
+    int floor_layer_fallback_count_ = 0;
 };
 
-// Installs the cfg graphics/scale world-canvas mode on the live display
-// (E_Screen): parses the key, picks the world present engine, and sizes the
-// world canvas from the current window. Called once by display creation;
-// split out so tests can re-apply a changed setting. On Emscripten this is a
-// no-op — the wasm build keeps the classic single-canvas path (its window is
-// forced to 320x200; a variable world canvas there is a follow-up).
+// Installs cfg graphics/zoom + graphics/smoothing on the live display. The
+// world canvas derives from a classic-density, aspect-matched baseline and
+// zoom; smoothing selects its world-only present engine. Called at display
+// creation and exposed so settings/tests can live-apply changes. This path
+// also runs on Emscripten.
 void apply_world_scale_from_cfg();
+
+// SDL3's Emscripten resize callback can replace the browser-selected logical
+// backing while a fullscreen exit is still in flight. Reassert the fitted CSS
+// logical size (and its HiDPI physical backing) after browser events.
+void restore_web_canvas_backing_size(int logical_w, int logical_h);

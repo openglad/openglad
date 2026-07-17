@@ -12,6 +12,7 @@
 #include <list>
 #include <memory>
 #include <string>
+#include <utility>
 #include <string_view>
 #include <vector>
 
@@ -320,21 +321,60 @@ std::string format_depth_fx_label(const std::string& value);
 // True for every value but "off" (the button's green/red backing state).
 bool depth_fx_is_active(const std::string& value);
 
-// --- OPTIONS world-scale selector (cfg graphics/scale) ---
-// Pure string helpers over the world-canvas scale values
-// {off, 1, 2, sai, eagle, 3, 4, 8}. Any value outside the set — including
-// the empty string an absent cfg key reads as — normalizes to "off"
-// (Legacy), matching parse_world_scale_setting in the renderer. Independent
-// of the legacy graphics/render engine setting, which keeps its own button.
+// --- DISPLAY zoom and smoothing selectors ---
+// Zoom selector (cfg graphics/zoom, 1.0 classic-density toward 0.1) and the
+// world-canvas-only smoothing selector (cfg graphics/smoothing,
+// off/sai/eagle). Cyclers step one value per click; formatters name the
+// quantized value the renderer will actually apply.
+std::string cycle_zoom(const std::string& current, int minimum_steps = 1);
+std::string format_zoom_label(const std::string& value);
+// Resolve the pre-zoom graphics/render SAI/Eagle value only when the new
+// graphics/smoothing key is absent. Explicit smoothing always wins.
+std::string effective_smoothing_setting(const std::string& value,
+                                        const std::string& legacy_render);
+std::string cycle_smoothing(const std::string& current);
+std::string format_smoothing_label(const std::string& value,
+                                   bool supported = true);
 
-// Step to the next selector value:
-// off -> 1 -> 2 -> sai -> eagle -> 3 -> 4 -> 8 -> off.
-std::string cycle_world_scale(const std::string& current);
+// DISPLAY settings (cfg graphics/fullscreen + graphics/width/height).
+//
+// Display mode: "off" (windowed), "borderless" (desktop fullscreen) and
+// "exclusive" (a real fullscreen video mode). The legacy boolean "on" reads
+// as borderless so old configs keep their meaning.
+enum class DisplayMode { Windowed, Borderless, Exclusive };
+DisplayMode parse_display_mode(const std::string& value);
+std::string display_mode_cfg_value(DisplayMode mode);
+DisplayMode next_display_mode(DisplayMode mode);
+std::string format_display_mode_label(const std::string& value);
 
-// "Scale: Off" / "Scale: 1x" / "Scale: 2x" / "Scale: SAI" / "Scale: Eagle" /
-// "Scale: 3x" / "Scale: 4x" / "Scale: 8x" — every label fits the 90px
-// options button face (15 chars).
-std::string format_world_scale_label(const std::string& value);
+// Resolution: cfg width/height is a physical-pixel mode in Exclusive and an
+// SDL logical size in Windowed. The platform supplies coordinates in the
+// matching unit. When it cannot enumerate useful Windowed bounds,
+// fallback_resolutions() derives sizes from the usable logical desktop: the
+// desktop itself plus aspect-preserving fractions. Pass {0,0} when even the
+// desktop is unknown to get the classic 16:10 presets.
+// next_resolution steps the list; a cfg pair not on the list (hand edited)
+// re-enters at the first entry. Absent keys mean the 640x400 boot default.
+std::vector<std::pair<int, int>> fallback_resolutions(std::pair<int, int> desktop);
+// Build the resolution selector lap for the active display mode. Windowed
+// and Borderless may use logical desktop-derived window sizes. Exclusive
+// contains only enumerated physical modes: neither the desktop nor the cfg
+// size is added unless the platform enumerated it in display_modes.
+std::vector<std::pair<int, int>> build_resolution_choices(
+    const std::vector<std::pair<int, int>>& display_modes,
+    std::pair<int, int> desktop,
+    std::pair<int, int> current,
+    DisplayMode mode);
+// Choose the real mode requested by a Borderless -> Exclusive transition.
+// Prefer the physical desktop when it was enumerated; otherwise use the
+// largest enumerated mode. Returns {0,0} when no real modes are available.
+std::pair<int, int> preferred_exclusive_resolution(
+    const std::vector<std::pair<int, int>>& display_modes,
+    std::pair<int, int> desktop);
+std::pair<int, int> parse_resolution(const std::string& width, const std::string& height);
+std::pair<int, int> next_resolution(const std::vector<std::pair<int, int>>& list,
+                                    const std::string& width, const std::string& height);
+std::string format_resolution_label(const std::string& width, const std::string& height);
 
 // --- Team family extraction ---
 

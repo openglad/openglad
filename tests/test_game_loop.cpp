@@ -1,4 +1,4 @@
-#include "SDL.h"
+#include <SDL3/SDL.h>
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -70,13 +70,13 @@ struct KeyBindingGuard
 
 struct SessionKeyStateGuard
 {
-    const Uint8* old_keystates = nullptr;
-    std::array<Uint8, SDL_NUM_SCANCODES> fake_keystates{};
+    const bool* old_keystates = nullptr;
+    std::array<bool, SDL_SCANCODE_COUNT> fake_keystates{};
 
     SessionKeyStateGuard()
         : old_keystates(og::runtime::current_session->keystates_)
     {
-        fake_keystates.fill(0);
+        fake_keystates.fill(false);
         og::runtime::current_session->keystates_ = fake_keystates.data();
     }
 
@@ -87,9 +87,9 @@ struct SessionKeyStateGuard
 
     void set(SDL_Keycode key, bool pressed)
     {
-        const SDL_Scancode scancode = SDL_GetScancodeFromKey(key);
-        if (scancode >= 0 && scancode < SDL_NUM_SCANCODES)
-            fake_keystates[static_cast<std::size_t>(scancode)] = pressed ? 1 : 0;
+        const SDL_Scancode scancode = SDL_GetScancodeFromKey(key, nullptr);
+        if (scancode >= 0 && scancode < SDL_SCANCODE_COUNT)
+            fake_keystates[static_cast<std::size_t>(scancode)] = pressed;
     }
 };
 
@@ -590,10 +590,10 @@ TEST(GameLoop, game_frame_toggles_debug_hotkeys)
 
     EventScript script;
     SDL_Event e{};
-    e.type = SDL_KEYDOWN;
-    e.key.keysym.sym = SDLK_F11;
+    e.type = SDL_EVENT_KEY_DOWN;
+    e.key.key = SDLK_F11;
     script.events.push_back(e);
-    e.key.keysym.sym = SDLK_F12;
+    e.key.key = SDLK_F12;
     script.events.push_back(e);
 
     g_script = &script;
@@ -1848,8 +1848,8 @@ TEST(GameLoop, game_frame_with_result_processes_input_before_same_call_tick)
     ASSERT_TRUE(view->control != nullptr);
 
     SessionKeyStateGuard keystates;
-    KeyBindingGuard bind_yell(0, KEY_YELL, SDLK_y);
-    keystates.set(SDLK_y, true);
+    KeyBindingGuard bind_yell(0, KEY_YELL, SDLK_Y);
+    keystates.set(SDLK_Y, true);
     ctx().input = {};
     view->control->set_yo_delay(0);
 
@@ -2124,26 +2124,26 @@ TEST(GameLoop, game_frame_options_menu_via_key_prefs_completes)
     }
 
     // Override keystates so we can inject ESC from a background thread.
-    const Uint8* saved_keystates = og::runtime::current_session->keystates_;
-    std::array<Uint8, SDL_NUM_SCANCODES> fake_keystates{};
-    fake_keystates.fill(0);
+    const bool* saved_keystates = og::runtime::current_session->keystates_;
+    std::array<bool, SDL_SCANCODE_COUNT> fake_keystates{};
+    fake_keystates.fill(false);
     og::runtime::current_session->keystates_ = fake_keystates.data();
 
     // Background thread: press ESC after a short delay to exit options_menu().
     std::thread esc_thread([&fake_keystates]() {
         SDL_Delay(50);
-        fake_keystates[SDL_SCANCODE_ESCAPE] = 1;
+        fake_keystates[SDL_SCANCODE_ESCAPE] = true;
         SDL_Delay(30);
-        fake_keystates[SDL_SCANCODE_ESCAPE] = 0;
+        fake_keystates[SDL_SCANCODE_ESCAPE] = false;
     });
 
     // Build a scripted KEY_PREFS event (SDLK_1 for player 0).
     EventScript script;
     SDL_Event e{};
-    e.type = SDL_KEYDOWN;
-    e.key.keysym.sym = og::runtime::current_session->player_keys_[0][KEY_PREFS];
-    e.key.keysym.scancode = SDL_GetScancodeFromKey(e.key.keysym.sym);
-    e.key.repeat = 0;
+    e.type = SDL_EVENT_KEY_DOWN;
+    e.key.key = og::runtime::current_session->player_keys_[0][KEY_PREFS];
+    e.key.scancode = SDL_GetScancodeFromKey(e.key.key, nullptr);
+    e.key.repeat = false;
     script.events.push_back(e);
 
     g_script = &script;
@@ -2201,11 +2201,12 @@ TEST(GameLoop, game_frame_escape_toggles_network_pause_when_local_transport_is_a
         bool done = false;
         int redrawme = 0;
     };
-    const auto run_escape_frame = [&]() -> EscapeFrameOutcome {
+    const auto run_escape_frame = [&](bool repeat = false) -> EscapeFrameOutcome {
         EventScript script;
         SDL_Event e{};
-        e.type = SDL_KEYDOWN;
-        e.key.keysym.sym = SDLK_ESCAPE;
+        e.type = SDL_EVENT_KEY_DOWN;
+        e.key.key = SDLK_ESCAPE;
+        e.key.repeat = repeat;
         script.events.push_back(e);
         g_script = &script;
         game_screen->redrawme = 0;
@@ -2236,6 +2237,13 @@ TEST(GameLoop, game_frame_escape_toggles_network_pause_when_local_transport_is_a
     ASSERT_FALSE(primary_view->textlist[0].empty());
     EXPECT_EQ(0, primary_view->textlist[0].compare(0, 6, "PAUSED"));
     EXPECT_EQ(std::string("ESC again: Quit?"), primary_view->textlist[1]);
+
+    const EscapeFrameOutcome repeat_frame = run_escape_frame(true);
+    EXPECT_EQ(GameFrameResult::Continue, repeat_frame.result);
+    EXPECT_FALSE(repeat_frame.done);
+    EXPECT_EQ(1, repeat_frame.redrawme);
+    EXPECT_TRUE(game_screen->world().paused);
+    EXPECT_EQ(0u, game_screen->world().pause_player_index);
 
     picker_testing_yes_or_no_queue_clear();
     picker_testing_yes_or_no_queue_push(false);
@@ -2276,8 +2284,8 @@ TEST(GameLoop, game_frame_escape_abort_returns_aborted_mission_when_network_paus
     const auto run_escape_frame = [&]() -> EscapeFrameOutcome {
         EventScript script;
         SDL_Event e{};
-        e.type = SDL_KEYDOWN;
-        e.key.keysym.sym = SDLK_ESCAPE;
+        e.type = SDL_EVENT_KEY_DOWN;
+        e.key.key = SDLK_ESCAPE;
         script.events.push_back(e);
         g_script = &script;
         game_screen->redrawme = 0;
@@ -3603,32 +3611,64 @@ TEST(GameLoop, switch_char_over_dormant_ally_never_blanks_view_control)
 }
 
 // ---------------------------------------------------------------------------
-// cfg graphics/scale in REAL gameplay: the grown world canvas must carry real
-// rendered world (not clipped 320x200 content plus black filler), the panes
-// must be laid out from the canvas dims in split-screen, and a mid-game
-// window resize must retrack everything. All of it is non-default behavior:
-// the guard restores the Legacy classic canvas so the rest of the binary
-// keeps the byte-identical default setup.
+// cfg graphics/zoom in REAL gameplay: zoom=0.5 doubles the classic-density
+// world baseline. It must carry real rendered world (not clipped 320x200
+// content plus black filler), split-screen panes must use its logical
+// dimensions, and a mid-game aspect change must recompute the canvas and
+// layout. The guard restores the prior window, zoom and smoothing settings.
 // ---------------------------------------------------------------------------
-#include <openglad/platform/video_sdl.h> // apply_world_scale_from_cfg
+#include <openglad/platform/video_sdl.h> // apply_world_scale_from_cfg (zoom/smoothing)
+#include <openglad/platform/sai2x.h> // E_Screen native window for resize completion
 #include <openglad/interface/render/view_layout.h>
 #include <openglad/interface/render/radar.h>
 
-namespace canvas_scale_gameplay {
+namespace canvas_zoom_gameplay {
 
-// RAII: tear the game down and restore the Legacy classic canvas + UI routing.
-struct WorldScaleGameGuard
+// RAII: install the test zoom, then tear the game down and restore cfg + UI
+// routing even when an assertion aborts the test body.
+struct WorldZoomGameGuard
 {
     screen* s;
-    explicit WorldScaleGameGuard(screen* scr) : s(scr) {}
-    ~WorldScaleGameGuard()
+    std::string old_zoom;
+    std::string old_smoothing;
+    float old_window_w;
+    float old_window_h;
+    int old_physical_w = 0;
+    int old_physical_h = 0;
+
+    explicit WorldZoomGameGuard(screen* scr)
+        : s(scr),
+          old_zoom(cfg.get_setting("graphics", "zoom")),
+          old_smoothing(cfg.get_setting("graphics", "smoothing")),
+          old_window_w(og::runtime::current_session->window_w_),
+          old_window_h(og::runtime::current_session->window_h_)
+    {
+        SDL_GetWindowSize(E_Screen->window, &old_physical_w, &old_physical_h);
+        (void)SDL_SetWindowSize(E_Screen->window, 640, 400);
+        (void)SDL_SyncWindow(E_Screen->window);
+        og::runtime::current_session->window_w_ = 640;
+        og::runtime::current_session->window_h_ = 400;
+        update_overscan_setting();
+        cfg.apply_setting("graphics", "zoom", "0.5");
+        cfg.apply_setting("graphics", "smoothing", "off");
+        apply_world_scale_from_cfg();
+    }
+
+    ~WorldZoomGameGuard()
     {
         if (og::runtime::current_game_session)
             og::runtime::clear_local_transport_shadow(
                 *og::runtime::current_game_session);
         s->world().end = 0;
         s->world().delete_objects();
-        cfg.apply_setting("graphics", "scale", "off");
+        (void)SDL_SetWindowSize(E_Screen->window,
+                                old_physical_w, old_physical_h);
+        (void)SDL_SyncWindow(E_Screen->window);
+        og::runtime::current_session->window_w_ = old_window_w;
+        og::runtime::current_session->window_h_ = old_window_h;
+        update_overscan_setting();
+        cfg.apply_setting("graphics", "zoom", old_zoom);
+        cfg.apply_setting("graphics", "smoothing", old_smoothing);
         apply_world_scale_from_cfg();
         s->set_active_canvas(CanvasTarget::UI);
         s->relayout_views();
@@ -3661,14 +3701,20 @@ void run_frames(screen* s, int frames)
         ASSERT_EQ(GameFrameResult::Continue, game_frame_with_result(*s, st, deps));
 }
 
-// Pane geometry pinned against compute_view_layout at the CURRENT world
-// canvas dims, plus containment inside the canvas.
+// Pane geometry is defined in the fixed gameplay-UI canvas, then projected
+// into the CURRENT world canvas, plus containment inside the canvas.
 void expect_pane_matches_layout(screen* s, int i, int canvas_w, int canvas_h)
 {
     viewscreen* vs = s->viewob[static_cast<size_t>(i)].get();
     ASSERT_TRUE(vs) << "view " << i;
-    const og::view_layout::ViewLayout want = og::view_layout::compute_view_layout(
-        s->numviews, vs->mynum, vs->prefs[PREF_VIEW], canvas_w, canvas_h);
+    const int ui_w = s->gameplay_ui_canvas_w();
+    const int ui_h = s->gameplay_ui_canvas_h();
+    const og::view_layout::ViewLayout baseline =
+        og::view_layout::compute_view_layout(
+            s->numviews, vs->mynum, vs->prefs[PREF_VIEW], ui_w, ui_h);
+    const og::view_layout::ViewLayout want =
+        og::view_layout::project_view_layout(
+            baseline, ui_w, ui_h, canvas_w, canvas_h);
     ASSERT_TRUE(want.applies) << "view " << i;
     EXPECT_EQ(want.x, vs->xloc) << "view " << i;
     EXPECT_EQ(want.y, vs->yloc) << "view " << i;
@@ -3715,29 +3761,32 @@ void dump_canvas(screen* s, const char* scene, int frame)
     fclose(fp);
 }
 
-} // namespace canvas_scale_gameplay
+} // namespace canvas_zoom_gameplay
 
-TEST(GameLoop, world_scale_gameplay_draws_real_world_on_the_grown_canvas)
+TEST(GameLoop, zoom_half_gameplay_draws_real_world_on_the_grown_canvas)
 {
     screen* const s = og::runtime::current_session->myscreen_;
     ASSERT_TRUE(s != nullptr);
 
-    // scale=1 on the default 640x400 test window: the world canvas IS the
-    // window — four times the classic pixel count.
-    cfg.apply_setting("graphics", "scale", "1");
-    apply_world_scale_from_cfg();
-    if (s->world_canvas_w() != 640 || s->world_canvas_h() != 400)
-        GTEST_SKIP() << "test window is not the expected default 640x400";
-    canvas_scale_gameplay::WorldScaleGameGuard guard(s);
+    canvas_zoom_gameplay::WorldZoomGameGuard guard(s);
+    const og::WorldCanvasDims initial_world =
+        og::compute_zoom_canvas_dims(640, 400, 5);
+    ASSERT_EQ(640, initial_world.w);
+    ASSERT_EQ(400, initial_world.h);
+    ASSERT_EQ(initial_world.w, s->world_canvas_w());
+    ASSERT_EQ(initial_world.h, s->world_canvas_h());
 
     gameplay_rec::build_save(s, "org.openglad.gladiator", 1, 1,
                              {FAMILY_SOLDIER, FAMILY_ELF, FAMILY_MAGE}, 4);
+	s->set_active_canvas(CanvasTarget::UI);
     glad_init();
-    s->set_active_canvas(CanvasTarget::World);
+	ASSERT_EQ(CanvasTarget::World, s->active_canvas())
+		<< "gameplay init must leave the picker UI canvas before its first redraw";
     ASSERT_EQ(1, static_cast<int>(s->numviews));
     viewscreen* vs = s->viewob[0].get();
     ASSERT_TRUE(vs != nullptr);
-    canvas_scale_gameplay::expect_pane_matches_layout(s, 0, 640, 400);
+    canvas_zoom_gameplay::expect_pane_matches_layout(
+        s, 0, initial_world.w, initial_world.h);
 
     // More world visible than the classic canvas would show in the same
     // mode: the pane's world window grew with the canvas (tiles smaller
@@ -3747,7 +3796,7 @@ TEST(GameLoop, world_scale_gameplay_draws_real_world_on_the_grown_canvas)
     EXPECT_GT(vs->xview, classic.w);
     EXPECT_GT(vs->yview, classic.h);
 
-    canvas_scale_gameplay::run_frames(s, 8);
+    canvas_zoom_gameplay::run_frames(s, 8);
     ASSERT_FALSE(::testing::Test::HasFatalFailure());
     s->redraw();
     score_panel(s);
@@ -3757,27 +3806,29 @@ TEST(GameLoop, world_scale_gameplay_draws_real_world_on_the_grown_canvas)
     // Real rendered world beyond the classic 320x200 area on both axes —
     // right of x=320 and below y=200 (a clipped legacy draw would leave
     // black filler there).
-    EXPECT_GT(canvas_scale_gameplay::nonblack_samples(s, 330, 20, 636, 190), 60)
+    EXPECT_GT(canvas_zoom_gameplay::nonblack_samples(s, 330, 20, 636, 190), 60)
         << "the canvas right of the classic 320px must carry rendered world";
-    EXPECT_GT(canvas_scale_gameplay::nonblack_samples(s, 20, 210, 310, 396), 60)
+    EXPECT_GT(canvas_zoom_gameplay::nonblack_samples(s, 20, 210, 310, 396), 60)
         << "the canvas below the classic 200px must carry rendered world";
-    canvas_scale_gameplay::expect_radar_inside_pane(vs);
+    canvas_zoom_gameplay::expect_radar_inside_pane(vs);
 
     // Optional frame dump for the visual review flow.
     if (getenv("OG_FX_CAPTURE_DIR"))
-        canvas_scale_gameplay::dump_canvas(s, "worldscale_640", 0);
+        canvas_zoom_gameplay::dump_canvas(s, "zoom_half_640", 0);
 }
 
-TEST(GameLoop, world_scale_splitscreen_panes_fit_the_grown_canvas)
+TEST(GameLoop, zoom_half_splitscreen_layout_tracks_window_resizes)
 {
     screen* const s = og::runtime::current_session->myscreen_;
     ASSERT_TRUE(s != nullptr);
 
-    cfg.apply_setting("graphics", "scale", "1");
-    apply_world_scale_from_cfg();
-    if (s->world_canvas_w() != 640 || s->world_canvas_h() != 400)
-        GTEST_SKIP() << "test window is not the expected default 640x400";
-    canvas_scale_gameplay::WorldScaleGameGuard guard(s);
+    canvas_zoom_gameplay::WorldZoomGameGuard guard(s);
+    const og::WorldCanvasDims initial_world =
+        og::compute_zoom_canvas_dims(640, 400, 5);
+    ASSERT_EQ(640, initial_world.w);
+    ASSERT_EQ(400, initial_world.h);
+    ASSERT_EQ(initial_world.w, s->world_canvas_w());
+    ASSERT_EQ(initial_world.h, s->world_canvas_h());
 
     // ---- 2 players on the grown canvas ------------------------------------
     gameplay_rec::build_save(s, "org.openglad.gladiator", 2, 2,
@@ -3787,13 +3838,13 @@ TEST(GameLoop, world_scale_splitscreen_panes_fit_the_grown_canvas)
     s->set_active_canvas(CanvasTarget::World);
     ASSERT_EQ(2, static_cast<int>(s->numviews));
     for (int i = 0; i < 2; i++)
-        canvas_scale_gameplay::expect_pane_matches_layout(s, i, 640, 400);
-    // The two panes may not overlap (the classic 2px seam scales its position,
-    // not its width).
+        canvas_zoom_gameplay::expect_pane_matches_layout(
+            s, i, initial_world.w, initial_world.h);
+    // The fixed two-pixel HUD seam projects into World without overlap.
     EXPECT_LE(s->viewob[0]->endx, s->viewob[1]->xloc)
         << "left pane must end before the right pane starts";
 
-    canvas_scale_gameplay::run_frames(s, 8);
+    canvas_zoom_gameplay::run_frames(s, 8);
     ASSERT_FALSE(::testing::Test::HasFatalFailure());
     s->redraw();
     score_panel(s);
@@ -3801,40 +3852,50 @@ TEST(GameLoop, world_scale_splitscreen_panes_fit_the_grown_canvas)
     s->swap();
     // Both panes carry rendered world; the right pane lives ENTIRELY beyond
     // the classic 320px boundary.
-    EXPECT_GT(canvas_scale_gameplay::nonblack_samples(
+    EXPECT_GT(canvas_zoom_gameplay::nonblack_samples(
                   s, s->viewob[0]->xloc + 8, s->viewob[0]->yloc + 8,
                   s->viewob[0]->endx - 8, s->viewob[0]->endy - 8), 60);
-    EXPECT_GT(canvas_scale_gameplay::nonblack_samples(
+    EXPECT_GT(canvas_zoom_gameplay::nonblack_samples(
                   s, s->viewob[1]->xloc + 8, s->viewob[1]->yloc + 8,
                   s->viewob[1]->endx - 8, s->viewob[1]->endy - 8), 60);
-    canvas_scale_gameplay::expect_radar_inside_pane(s->viewob[0].get());
-    canvas_scale_gameplay::expect_radar_inside_pane(s->viewob[1].get());
+    canvas_zoom_gameplay::expect_radar_inside_pane(s->viewob[0].get());
+    canvas_zoom_gameplay::expect_radar_inside_pane(s->viewob[1].get());
     if (getenv("OG_FX_CAPTURE_DIR"))
-        canvas_scale_gameplay::dump_canvas(s, "worldscale_640_2p", 0);
+        canvas_zoom_gameplay::dump_canvas(s, "zoom_half_640_2p", 0);
 
-    // ---- Mid-game window resize during split-screen ------------------------
+    // ---- Mid-game aspect change: logical canvas/layout follow it -------------
     SDL_Event ev{};
-    ev.type = SDL_WINDOWEVENT;
-    ev.window.event = SDL_WINDOWEVENT_RESIZED;
-    ev.window.data1 = 1280;
-    ev.window.data2 = 800;
+    ev.type = SDL_EVENT_WINDOW_RESIZED;
+    ASSERT_TRUE(SDL_SetWindowSize(E_Screen->window, 960, 540));
+    ASSERT_TRUE(SDL_SyncWindow(E_Screen->window));
+    ev.window.data1 = 960;
+    ev.window.data2 = 540;
     handle_window_event(ev);
-    EXPECT_EQ(1280, s->world_canvas_w());
-    EXPECT_EQ(800, s->world_canvas_h());
+    const og::WorldCanvasDims wide_world =
+        og::compute_zoom_canvas_dims(960, 540, 5);
+    ASSERT_EQ(712, wide_world.w);
+    ASSERT_EQ(400, wide_world.h);
+    EXPECT_EQ(wide_world.w, s->world_canvas_w());
+    EXPECT_EQ(wide_world.h, s->world_canvas_h());
     for (int i = 0; i < 2; i++)
-        canvas_scale_gameplay::expect_pane_matches_layout(s, i, 1280, 800);
-    canvas_scale_gameplay::run_frames(s, 2);
+        canvas_zoom_gameplay::expect_pane_matches_layout(
+            s, i, wide_world.w, wide_world.h);
+    canvas_zoom_gameplay::run_frames(s, 2);
     ASSERT_FALSE(::testing::Test::HasFatalFailure());
     s->redraw();
     s->swap();
-    canvas_scale_gameplay::expect_radar_inside_pane(s->viewob[1].get());
-    // ...and back down.
+    canvas_zoom_gameplay::expect_radar_inside_pane(s->viewob[1].get());
+    // Returning to 16:10 restores the original zoom-derived canvas.
+    ASSERT_TRUE(SDL_SetWindowSize(E_Screen->window, 640, 400));
+    ASSERT_TRUE(SDL_SyncWindow(E_Screen->window));
     ev.window.data1 = 640;
     ev.window.data2 = 400;
     handle_window_event(ev);
-    EXPECT_EQ(640, s->world_canvas_w());
+    EXPECT_EQ(initial_world.w, s->world_canvas_w());
+    EXPECT_EQ(initial_world.h, s->world_canvas_h());
     for (int i = 0; i < 2; i++)
-        canvas_scale_gameplay::expect_pane_matches_layout(s, i, 640, 400);
+        canvas_zoom_gameplay::expect_pane_matches_layout(
+            s, i, initial_world.w, initial_world.h);
 
     // ---- 4 players: quadrants on the grown canvas --------------------------
     s->world().end = 0;
@@ -3846,7 +3907,8 @@ TEST(GameLoop, world_scale_splitscreen_panes_fit_the_grown_canvas)
     s->set_active_canvas(CanvasTarget::World);
     ASSERT_EQ(4, static_cast<int>(s->numviews));
     for (int i = 0; i < 4; i++)
-        canvas_scale_gameplay::expect_pane_matches_layout(s, i, 640, 400);
+        canvas_zoom_gameplay::expect_pane_matches_layout(
+            s, i, initial_world.w, initial_world.h);
     // Quadrants are pairwise disjoint.
     for (int a = 0; a < 4; a++)
         for (int b = a + 1; b < 4; b++)
@@ -3858,18 +3920,18 @@ TEST(GameLoop, world_scale_splitscreen_panes_fit_the_grown_canvas)
             EXPECT_TRUE(disjoint) << "panes " << a << " and " << b << " overlap";
         }
 
-    canvas_scale_gameplay::run_frames(s, 4);
+    canvas_zoom_gameplay::run_frames(s, 4);
     ASSERT_FALSE(::testing::Test::HasFatalFailure());
     s->redraw();
     s->swap();
     // The fourth quadrant lives entirely beyond the classic 320x200 corner
     // and still carries rendered world.
-    EXPECT_GT(canvas_scale_gameplay::nonblack_samples(
+    EXPECT_GT(canvas_zoom_gameplay::nonblack_samples(
                   s, s->viewob[3]->xloc + 8, s->viewob[3]->yloc + 8,
                   s->viewob[3]->endx - 8, s->viewob[3]->endy - 8), 40);
     for (int i = 0; i < 4; i++)
-        canvas_scale_gameplay::expect_radar_inside_pane(
+        canvas_zoom_gameplay::expect_radar_inside_pane(
             s->viewob[static_cast<size_t>(i)].get());
     if (getenv("OG_FX_CAPTURE_DIR"))
-        canvas_scale_gameplay::dump_canvas(s, "worldscale_640_4p", 0);
+        canvas_zoom_gameplay::dump_canvas(s, "zoom_half_640_4p", 0);
 }

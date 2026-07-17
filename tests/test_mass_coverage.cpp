@@ -17,7 +17,7 @@
 #include <openglad/resources/gparser.h>
 
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include <array>
 #include <cstddef>
@@ -491,10 +491,10 @@ TEST(MassCoverage, video_putbuffer_alpha) {
 }
 
 TEST(MassCoverage, video_putbuffer_surface) {
-    SDL_Surface* surf = SDL_CreateRGBSurface(SDL_SWSURFACE, 8, 8, 32, 0, 0, 0, 0);
+    SDL_Surface* surf = SDL_CreateSurface(8, 8, SDL_PIXELFORMAT_XRGB8888);
     ASSERT_TRUE(surf != nullptr) << "surface alloc";
     og::runtime::current_session->myscreen_->putbuffer_surface(5, 5, 8, 8, 0, 0, 320, 200, surf);
-    SDL_FreeSurface(surf);
+    SDL_DestroySurface(surf);
 }
 
 TEST(MassCoverage, video_walkputbuffer) {
@@ -538,23 +538,23 @@ TEST(MassCoverage, video_get_pixel_offset) { (void)og::runtime::current_session-
 TEST(MassCoverage, video_save_screenshot) { (void)og::runtime::current_session->myscreen_->save_screenshot(); }
 
 TEST(MassCoverage, video_fade_between24) {
-    SDL_Surface* s = SDL_CreateRGBSurface(SDL_SWSURFACE, 4, 4, 32, 0, 0, 0, 0);
+    SDL_Surface* s = SDL_CreateSurface(4, 4, SDL_PIXELFORMAT_XRGB8888);
     ASSERT_TRUE(s != nullptr) << "surface alloc";
     std::array<Uint8, 4 * 4 * 4> from{};
     std::array<Uint8, 4 * 4 * 4> to{};
     og::runtime::current_session->myscreen_->fade_between24(s, from.data(), to.data(), 10);
-    SDL_FreeSurface(s);
+    SDL_DestroySurface(s);
 }
 
 TEST(MassCoverage, video_fade_between) {
-    SDL_Surface* a = SDL_CreateRGBSurface(SDL_SWSURFACE, 4, 4, 32, 0, 0, 0, 0);
-    SDL_Surface* b = SDL_CreateRGBSurface(SDL_SWSURFACE, 4, 4, 32, 0, 0, 0, 0);
-    SDL_Surface* d = SDL_CreateRGBSurface(SDL_SWSURFACE, 4, 4, 32, 0, 0, 0, 0);
+    SDL_Surface* a = SDL_CreateSurface(4, 4, SDL_PIXELFORMAT_XRGB8888);
+    SDL_Surface* b = SDL_CreateSurface(4, 4, SDL_PIXELFORMAT_XRGB8888);
+    SDL_Surface* d = SDL_CreateSurface(4, 4, SDL_PIXELFORMAT_XRGB8888);
     ASSERT_TRUE(a && b && d) << "surfaces alloc";
     (void)og::runtime::current_session->myscreen_->fade_between(a, b, d);
-    SDL_FreeSurface(a);
-    SDL_FreeSurface(b);
-    SDL_FreeSurface(d);
+    SDL_DestroySurface(a);
+    SDL_DestroySurface(b);
+    SDL_DestroySurface(d);
 }
 
 TEST(MassCoverage, video_fadeblack) { (void)og::runtime::current_session->myscreen_->fadeblack(true); }

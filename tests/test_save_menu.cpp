@@ -5,7 +5,7 @@
 #include <openglad/interface/render/pixien.h>
 #include <openglad/core/test_trace.h>
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include "test_input_helpers.h"
 #include "test_interact.h"
 #include <openglad/resources/save_data.h>
@@ -67,12 +67,10 @@ static int save_menu_injector(void* data)
             if (click_cooldown_ms <= 0 && item.id == "back" && item.y >= 170) {
                 const int game_x = item.x + item.width / 2;
                 const int game_y = item.y + item.height / 2;
-                const int win_x = static_cast<int>(static_cast<float>(game_x)
-                    * (og::runtime::current_session->viewport_w_ / 320.0f)
-                    + og::runtime::current_session->viewport_offset_x_);
-                const int win_y = static_cast<int>(static_cast<float>(game_y)
-                    * (og::runtime::current_session->viewport_h_ / 200.0f)
-                    + og::runtime::current_session->viewport_offset_y_);
+                const auto [mapped_x, mapped_y] = active_canvas_to_window(
+                    static_cast<float>(game_x), static_cast<float>(game_y));
+                const int win_x = static_cast<int>(mapped_x);
+                const int win_y = static_cast<int>(mapped_y);
                 fprintf(stderr, "  [test] clicking back from save menu\n");
                 inject_click(win_x, win_y);
                 state->clicked_back = true;

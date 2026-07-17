@@ -4,18 +4,18 @@
 # Sourced by each build_*.sh after it sets SCRIPT_DIR.
 # Provides:
 #   PROJECT_ROOT   — absolute path to the repository root
-#   require_sdl2   — exit if SDL2/SDL2_mixer are not installed
+#   require_sdl3   — advise if no system SDL3 is installed (build can fetch it)
 #   require_command — exit if a required command is missing
 
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"
 
-# Exit with an error if SDL2 and SDL2_mixer development packages are missing.
-require_sdl2() {
-    if ! pkg-config --exists sdl2 SDL2_mixer; then
-        echo "ERROR: Missing dependencies. Install with:"
-        echo "  sudo apt-get install libsdl2-dev libsdl2-mixer-dev"
-        exit 1
+# Advise (do not fail) when no system SDL3 development package is present:
+# the CMake build falls back to fetching SDL3 release-3.4.8 via FetchContent.
+require_sdl3() {
+    if ! pkg-config --exists sdl3; then
+        echo "NOTE: system sdl3 not found; the build will fetch SDL3 release-3.4.8"
+        echo "      (or install libsdl3-dev / nix sdl3 to use a system copy)."
     fi
 }
 

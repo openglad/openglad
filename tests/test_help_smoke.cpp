@@ -1,7 +1,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/interface/input.h>
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include "test_input_helpers.h"
 
 #include <string>
@@ -55,8 +55,9 @@ static int help_injector_thread(void* data)
 
     // Scroll a little.
     SDL_Event wheel{};
-    wheel.type = SDL_MOUSEWHEEL;
+    wheel.type = SDL_EVENT_MOUSE_WHEEL;
     wheel.wheel.y = -1;
+    wheel.wheel.integer_y = -1;
     SDL_PushEvent(&wheel);
 
     SDL_Delay(50);
@@ -70,19 +71,19 @@ static int help_injector_thread(void* data)
     // Exit: show_general_help() polls SDL_GetKeyboardState(), which does not
     // update from SDL_PushEvent(). Flip the scancode bit directly.
     int numkeys = 0;
-    const Uint8* keys = SDL_GetKeyboardState(&numkeys);
-    Uint8* writable = const_cast<Uint8*>(keys);
-    const SDL_Scancode esc = SDL_GetScancodeFromKey(SDLK_ESCAPE);
+    const bool* keys = SDL_GetKeyboardState(&numkeys);
+    bool* writable = const_cast<bool*>(keys);
+    const SDL_Scancode esc = SDL_GetScancodeFromKey(SDLK_ESCAPE, nullptr);
     if (esc >= 0 && esc < numkeys)
     {
         // SDL_PollEvent() may overwrite the keyboard state each pump, so keep
         // this asserted for a short window.
         for (int i = 0; i < 200; i++)
         {
-            writable[esc] = 1;
+            writable[esc] = true;
             SDL_Delay(1);
         }
-        writable[esc] = 0;
+        writable[esc] = false;
     }
     return 0;
 }
@@ -123,11 +124,11 @@ static int intro_injector_thread(void* data)
 static void hold_keyboard_bit(int keycode, bool held)
 {
     int numkeys = 0;
-    const Uint8* keys = SDL_GetKeyboardState(&numkeys);
-    Uint8* writable = const_cast<Uint8*>(keys);
-    const SDL_Scancode scancode = SDL_GetScancodeFromKey(keycode);
+    const bool* keys = SDL_GetKeyboardState(&numkeys);
+    bool* writable = const_cast<bool*>(keys);
+    const SDL_Scancode scancode = SDL_GetScancodeFromKey(static_cast<SDL_Keycode>(keycode), nullptr);
     if (scancode >= 0 && scancode < numkeys)
-        writable[scancode] = held ? 1 : 0;
+        writable[scancode] = held;
 }
 
 static int scenario_injector_thread(void* data)
@@ -137,8 +138,9 @@ static int scenario_injector_thread(void* data)
     SDL_Delay(80);
 
     SDL_Event wheel{};
-    wheel.type = SDL_MOUSEWHEEL;
+    wheel.type = SDL_EVENT_MOUSE_WHEEL;
     wheel.wheel.y = -3;
+    wheel.wheel.integer_y = -3;
     SDL_PushEvent(&wheel);
 
     SDL_Delay(30);
@@ -148,6 +150,7 @@ static int scenario_injector_thread(void* data)
 
     SDL_Delay(30);
     wheel.wheel.y = 3;
+    wheel.wheel.integer_y = 3;
     SDL_PushEvent(&wheel);
 
     SDL_Delay(30);

@@ -176,9 +176,13 @@ void glad_init(bool preserve_frame_timing,
         LogError("glad_init_failed reason=missing_screen\n");
         return;
     }
-
     clear_keyboard();
+	current_screen->set_active_canvas(current_screen->last_presented_canvas());
     current_screen->fadeblack(0);
+	// Fade the currently visible picker/UI frame out first. Then route every
+	// gameplay clear, load, redraw and fade-in to World; on Emscripten this
+	// must happen here because there is no native gameplay canvas scope.
+	current_screen->set_active_canvas(CanvasTarget::World);
     current_screen->clearbuffer();
 
     if (lobby_config != nullptr)
@@ -273,24 +277,10 @@ void glad_main(Sint32 playermode)
         }
     } gameplay_scope;
 
-    // Route draws to the WORLD canvas for the whole gameplay session and
-    // restore the UI canvas for the picker/menus on exit. At the default
-    // 320x200 world dims both targets share one surface (pure routing
-    // bookkeeping). On Emscripten glad_main returns right after init and the
-    // per-present World assert in render_pending_redraw covers the frames.
-    struct WorldCanvasScope final {
-        screen* scr_;
-        explicit WorldCanvasScope(screen* scr) : scr_(scr)
-        {
-            scr_->set_active_canvas(CanvasTarget::World);
-        }
-        ~WorldCanvasScope()
-        {
-            scr_->set_active_canvas(CanvasTarget::UI);
-        }
-    } world_canvas_scope(current_screen);
-
     glad_init(false);
+	// glad_init routes to World after fading the picker. Keep the last gameplay
+	// or results frame active when returning so the caller can fade exactly
+	// what was most recently presented before it selects UI for the picker.
 
 #ifdef __EMSCRIPTEN__
     // For Emscripten, the unified main loop in main() handles game_frame() calls

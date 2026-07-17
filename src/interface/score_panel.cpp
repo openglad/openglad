@@ -352,6 +352,7 @@ static void draw_ctf_panel(screen* s, walker* control, Sint32 lm, Sint32 tm,
 short new_score_panel(screen* s, short /*do_it*/)
 {
 #define L_D(x) x*8
+	ScopedGameplayUiCanvas gameplay_ui(*s);
     std::string message;
     std::string tempname;
     short tempfoes = 0;
@@ -390,6 +391,8 @@ short new_score_panel(screen* s, short /*do_it*/)
 
     for (players = 0; players < s->numviews; players++)
     {
+		ScopedGameplayUiViewLayout gameplay_ui_layout(
+			*s->viewob[players], *s);
         control = s->viewob[players]->control;
         lm = s->viewob[players]->xloc + OVERSCAN_PADDING;
         tm = s->viewob[players]->yloc + OVERSCAN_PADDING;

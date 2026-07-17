@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Asserts that the ncurses client binary is genuinely SDL-free: it must contain
-# no SDL symbols (defined or undefined) and must not link libSDL2. This enforces
+# no SDL symbols (defined or undefined) and must not link libSDL3. This enforces
 # the zero-SDL invariant of openglad_curses in CI, mirroring the headless
 # server's link check.
 #
@@ -20,9 +20,9 @@ if nm -C "$bin" 2>/dev/null | grep -qE '\bSDL_'; then
     exit 1
 fi
 
-if command -v ldd >/dev/null 2>&1 && ldd "$bin" 2>/dev/null | grep -qiE 'libSDL2'; then
-    printf 'FAIL: %s links libSDL2:\n' "$bin" >&2
-    ldd "$bin" 2>/dev/null | grep -iE 'libSDL2' >&2
+if command -v ldd >/dev/null 2>&1 && ldd "$bin" 2>/dev/null | grep -qiE 'libSDL[0-9]'; then
+    printf 'FAIL: %s links libSDL:\n' "$bin" >&2
+    ldd "$bin" 2>/dev/null | grep -iE 'libSDL[0-9]' >&2
     exit 1
 fi
 

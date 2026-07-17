@@ -1,6 +1,6 @@
 #include <openglad/platform/sai2x.h>
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include <cstdio>
 #include <cstring>
@@ -124,8 +124,8 @@ static void run_sai2x_surface_wrapper_guards_and_scaling()
     // Guard path: null surfaces should return without crashing.
     Super2xSaI(nullptr, nullptr, 0, 0, 0, 0, 8, 8);
 
-    SDL_Surface* src = SDL_CreateRGBSurfaceWithFormat(0, 8, 8, 32, SDL_PIXELFORMAT_ARGB8888);
-    SDL_Surface* dst = SDL_CreateRGBSurfaceWithFormat(0, 16, 16, 32, SDL_PIXELFORMAT_ARGB8888);
+    SDL_Surface* src = SDL_CreateSurface(8, 8, SDL_PIXELFORMAT_ARGB8888);
+    SDL_Surface* dst = SDL_CreateSurface(16, 16, SDL_PIXELFORMAT_ARGB8888);
     ASSERT_TRUE(src != nullptr && dst != nullptr) << "surfaces should allocate";
     if (!src || !dst)
         return;
@@ -133,7 +133,7 @@ static void run_sai2x_surface_wrapper_guards_and_scaling()
     std::vector<unsigned char> pattern(8 * 8 * 4);
     fill_pattern(pattern, 8, 8);
     std::memcpy(src->pixels, pattern.data(), pattern.size());
-    SDL_FillRect(dst, nullptr, 0x00000000u);
+    SDL_FillSurfaceRect(dst, nullptr, 0x00000000u);
 
     // Guard path: tiny source should not run scaler.
     Super2xSaI(src, dst, 0, 0, 0, 0, 3, 3);
@@ -151,8 +151,8 @@ static void run_sai2x_surface_wrapper_guards_and_scaling()
     }
     ASSERT_TRUE(any) << "Super2xSaI surface wrapper should write output on valid input";
 
-    SDL_FreeSurface(src);
-    SDL_FreeSurface(dst);
+    SDL_DestroySurface(src);
+    SDL_DestroySurface(dst);
 }
 
 static void run_sai2x_screen_class_paths()

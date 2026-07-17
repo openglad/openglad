@@ -5,7 +5,7 @@
 #include <openglad/platform/game_context.h>
 #include <openglad/interface/render/view.h>
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include <cstring>
 #include <memory>
 
@@ -30,9 +30,10 @@ static SDL_Event make_keydown(SDL_Keycode k)
 {
     SDL_Event e;
     memset(&e, 0, sizeof(e));
-    e.type = SDL_KEYDOWN;
-    e.key.keysym.sym = k;
-    e.key.keysym.scancode = SDL_GetScancodeFromKey(k);
+    e.type = SDL_EVENT_KEY_DOWN;
+    e.key.down = true;
+    e.key.key = k;
+    e.key.scancode = SDL_GetScancodeFromKey(k, nullptr);
     e.key.repeat = false;
     return e;
 }

@@ -1,113 +1,229 @@
-// Pins for the cfg graphics/scale parsing and world-canvas dimension math
-// (og::parse_world_scale_setting / og::compute_world_canvas_dims in
-// openglad/platform/scale_mode.h).
+// Pins for the cfg graphics/zoom + graphics/smoothing parsing and the
+// world-canvas dimension math (og::parse_zoom_steps /
+// og::compute_zoom_canvas_dims / og::parse_smoothing_setting in
+// openglad/core/scale_mode.h).
 
 #include <gtest/gtest.h>
 
-#include <openglad/platform/scale_mode.h>
+#include <openglad/core/scale_mode.h>
+
+#include <array>
+#include <cstdlib>
 
 using og::WorldScaleMode;
-using og::WorldScaleSetting;
-using og::compute_world_canvas_dims;
-using og::parse_world_scale_setting;
+using og::compute_gameplay_ui_canvas_dims;
+using og::compute_zoom_canvas_dims;
+using og::kZoomStepsMax;
+using og::parse_smoothing_setting;
+using og::parse_zoom_steps;
 
-TEST(ScaleMode, parse_accepted_values)
+TEST(ScaleMode, zoom_parse_accepted_values)
 {
     struct
     {
         const char* value;
-        WorldScaleMode mode;
-        int factor;
+        int steps;
     } cases[] = {
-        {"1", WorldScaleMode::Integer, 1}, {"2", WorldScaleMode::Integer, 2},
-        {"3", WorldScaleMode::Integer, 3}, {"4", WorldScaleMode::Integer, 4},
-        {"8", WorldScaleMode::Integer, 8}, {"sai", WorldScaleMode::Sai, 2},
-        {"eagle", WorldScaleMode::Eagle, 2},
+        {"1.0", 10}, {"1", 10},  {"1.", 10},  {"0.9", 9}, {"0.5", 5},
+        {"0.1", 1},  {".5", 5},  {"0.50", 5}, {"0.3", 3},
     };
     for (const auto& c : cases)
-    {
-        const WorldScaleSetting s = parse_world_scale_setting(c.value);
-        EXPECT_EQ(c.mode, s.mode) << c.value;
-        EXPECT_EQ(c.factor, s.factor) << c.value;
+        EXPECT_EQ(c.steps, parse_zoom_steps(c.value)) << c.value;
+}
+
+TEST(ScaleMode, zoom_parse_quantizes_to_the_grid)
+{
+    // Off-grid values round to the nearest 0.1 step, so a hand-edited cfg
+    // and the menu cycler always agree on the canvas.
+    EXPECT_EQ(5, parse_zoom_steps("0.49"));
+    EXPECT_EQ(5, parse_zoom_steps("0.451"));
+    EXPECT_EQ(4, parse_zoom_steps("0.44"));
+    EXPECT_EQ(3, parse_zoom_steps("0.25"));
+    EXPECT_EQ(1, parse_zoom_steps("0.14"));
+}
+
+TEST(ScaleMode, zoom_parse_clamps_out_of_range)
+{
+    // Below the deepest zoom clamps to 0.1; above classic clamps to 1.0.
+    EXPECT_EQ(1, parse_zoom_steps("0.04"));
+    EXPECT_EQ(1, parse_zoom_steps("0"));
+    EXPECT_EQ(kZoomStepsMax, parse_zoom_steps("2"));
+    EXPECT_EQ(kZoomStepsMax, parse_zoom_steps("11"));
+    EXPECT_EQ(kZoomStepsMax, parse_zoom_steps("100.0"));
+    EXPECT_EQ(kZoomStepsMax,
+              parse_zoom_steps("999999999999999999999999999999999999999"));
+}
+
+TEST(ScaleMode, zoom_parse_garbage_reads_classic)
+{
+    // Missing key (empty string) and anything non-numeric must read as the
+    // classic 1.0: pre-existing cfgs behave exactly as today.
+    const char* classic_values[] = {"",    "off", "normal", "sai", "2x",
+                                    "-0.5", "1e9", "0..5",   "0.5x"};
+    for (const char* v : classic_values)
+        EXPECT_EQ(kZoomStepsMax, parse_zoom_steps(v)) << "'" << v << "'";
+}
+
+TEST(ScaleMode, zoom_one_matches_masters_classic_density_without_stretch)
+{
+	const auto hd = compute_zoom_canvas_dims(1920, 1080, kZoomStepsMax);
+	EXPECT_EQ(356, hd.w);
+	EXPECT_EQ(200, hd.h);
+	const auto minimum = compute_zoom_canvas_dims(200, 100, kZoomStepsMax);
+	EXPECT_EQ(320, minimum.w);
+	EXPECT_EQ(200, minimum.h);
+	const auto odd = compute_zoom_canvas_dims(1365, 767, kZoomStepsMax);
+	EXPECT_EQ(356, odd.w);
+	EXPECT_EQ(200, odd.h);
+}
+
+TEST(ScaleMode, zoom_dims_divide_the_classic_density_baseline)
+{
+	// canvas = aspect-expanded classic baseline / zoom: 0.5 doubles the
+	// visible world per axis without making modern displays intrinsically tiny.
+	const auto half = compute_zoom_canvas_dims(640, 400, 5);
+	EXPECT_EQ(640, half.w);
+	EXPECT_EQ(400, half.h);
+	const auto deep = compute_zoom_canvas_dims(640, 400, 1);
+	EXPECT_EQ(3200, deep.w);
+	EXPECT_EQ(2000, deep.h);
+	const auto eight = compute_zoom_canvas_dims(640, 400, 8);
+	EXPECT_EQ(400, eight.w);
+	EXPECT_EQ(250, eight.h);
+}
+
+TEST(ScaleMode, gameplay_ui_keeps_classic_density_and_matches_world_aspect)
+{
+	const auto classic = compute_gameplay_ui_canvas_dims(640, 400);
+	EXPECT_EQ(320, classic.w);
+	EXPECT_EQ(200, classic.h);
+
+	const auto widescreen = compute_gameplay_ui_canvas_dims(1920, 1080);
+	EXPECT_EQ(356, widescreen.w);
+	EXPECT_EQ(200, widescreen.h);
+
+	const auto four_three = compute_gameplay_ui_canvas_dims(1024, 768);
+	EXPECT_EQ(320, four_three.w);
+	EXPECT_EQ(240, four_three.h);
+
+	const auto invalid = compute_gameplay_ui_canvas_dims(0, -1);
+	EXPECT_EQ(320, invalid.w);
+	EXPECT_EQ(200, invalid.h);
+}
+
+TEST(ScaleMode, zoom_dims_width_rounds_down_to_multiple_of_four)
+{
+	// 320*10/3 rounds down to 1066, then 1064 (the software scalers and
+	// partial-present path require multiple-of-4 widths).
+	for (int steps = 1; steps <= kZoomStepsMax; ++steps)
+	{
+		const auto d = compute_zoom_canvas_dims(640, 400, steps);
+        EXPECT_EQ(0, d.w % 4) << "steps=" << steps;
+        EXPECT_GE(d.w, 320) << "steps=" << steps;
+        EXPECT_GE(d.h, 200) << "steps=" << steps;
     }
+	EXPECT_EQ(1064, compute_zoom_canvas_dims(640, 400, 3).w);
+	EXPECT_EQ(666, compute_zoom_canvas_dims(640, 400, 3).h);
 }
 
-TEST(ScaleMode, parse_everything_else_is_legacy)
+TEST(ScaleMode, zoom_dims_clamp_hostile_steps)
 {
-    // Missing key (empty string), the documented explicit "off", and any
-    // unrecognized value — including integers outside {1,2,3,4,8} — must be
-    // Legacy: pre-existing cfgs behave exactly as today.
-    const char* legacy_values[] = {"", "off", "normal", "double", "0",
-                                   "5",  "16", "2x",     "SAI",    "-1"};
-    for (const char* v : legacy_values)
-        EXPECT_EQ(WorldScaleMode::Legacy, parse_world_scale_setting(v).mode)
-            << "'" << v << "'";
+	const auto low = compute_zoom_canvas_dims(640, 400, 0);
+	EXPECT_EQ(3200, low.w);
+	const auto neg = compute_zoom_canvas_dims(640, 400, -3);
+	EXPECT_EQ(3200, neg.w);
+	const auto high = compute_zoom_canvas_dims(640, 400, 99);
+	EXPECT_EQ(320, high.w);
+	EXPECT_EQ(200, high.h);
 }
 
-TEST(ScaleMode, legacy_dims_are_always_classic)
+TEST(ScaleMode, minimum_zoom_step_respects_the_canvas_budget)
 {
-    const WorldScaleSetting legacy{}; // default = Legacy
-    const auto d = compute_world_canvas_dims(1920, 1080, legacy);
-    EXPECT_EQ(320, d.w);
-    EXPECT_EQ(200, d.h);
-    const auto d2 = compute_world_canvas_dims(0, 0, legacy);
-    EXPECT_EQ(320, d2.w);
-    EXPECT_EQ(200, d2.h);
+	// Classic-density baselines keep the full 0.1..1.0 range available on
+	// ordinary displays; only extreme aspect/texture constraints trim it.
+	EXPECT_EQ(1, og::minimum_zoom_steps_for_window(640, 400));
+	EXPECT_EQ(1, og::minimum_zoom_steps_for_window(1920, 1080));
+	EXPECT_EQ(1, og::minimum_zoom_steps_for_window(3840, 2160));
+	EXPECT_TRUE(og::zoom_canvas_fits_budget(3840, 2160, 10));
+	EXPECT_TRUE(og::zoom_canvas_fits_budget(3840, 2160, 1));
+	EXPECT_TRUE(og::zoom_canvas_fits_budget(7680, 4320, 10, 4096));
+	EXPECT_EQ(1, og::minimum_zoom_steps_for_window(7680, 4320, 4096));
+	// Exercise the absolute-cap branch directly. Physical 8K no longer makes
+	// a huge canvas because only display aspect, not pixel count, is relevant.
+	const og::WorldCanvasDims hostile{20000, 10000};
+	const auto capped = og::constrain_world_canvas_dims(hostile, 16384);
+	EXPECT_LT(capped.w, hostile.w);
+	EXPECT_LT(capped.h, hostile.h);
+	EXPECT_LE(static_cast<std::int64_t>(capped.w) * capped.h,
+	          og::kWorldCanvasAbsolutePixelBudget);
+	EXPECT_EQ(0, capped.w % 4);
+	EXPECT_LT(std::abs(capped.w * static_cast<std::int64_t>(hostile.h) -
+	                   capped.h * static_cast<std::int64_t>(hostile.w)),
+	          hostile.w);
+	EXPECT_EQ(2, og::minimum_zoom_steps_for_window(1920, 1080, 2560));
+	EXPECT_FALSE(og::zoom_canvas_fits_budget(1920, 1080, 1, 2560));
 }
 
-TEST(ScaleMode, integer_dims_divide_the_window)
+TEST(ScaleMode, modal_backdrop_center_crop_preserves_target_aspect)
 {
-    // The classic default window at scale 2 lands exactly on the classic
-    // canvas (the shared-surface byte-identity dims).
-    const auto d = compute_world_canvas_dims(640, 400, {WorldScaleMode::Integer, 2});
-    EXPECT_EQ(320, d.w);
-    EXPECT_EQ(200, d.h);
+	const auto wide = og::crop_canvas_to_aspect(1280, 720, 320, 200);
+	EXPECT_EQ(64, wide.x);
+	EXPECT_EQ(0, wide.y);
+	EXPECT_EQ(1152, wide.w);
+	EXPECT_EQ(720, wide.h);
 
-    const auto d1 = compute_world_canvas_dims(640, 400, {WorldScaleMode::Integer, 1});
-    EXPECT_EQ(640, d1.w);
-    EXPECT_EQ(400, d1.h);
-
-    const auto d3 = compute_world_canvas_dims(1920, 1080, {WorldScaleMode::Integer, 3});
-    EXPECT_EQ(640, d3.w);
-    EXPECT_EQ(360, d3.h);
+	const auto tall = og::crop_canvas_to_aspect(800, 600, 320, 200);
+	EXPECT_EQ(0, tall.x);
+	EXPECT_EQ(50, tall.y);
+	EXPECT_EQ(800, tall.w);
+	EXPECT_EQ(500, tall.h);
 }
 
-TEST(ScaleMode, dims_clamp_to_classic_minimum)
+TEST(ScaleMode, presentation_aspect_fits_without_stretching)
 {
-    // window/8 of a 640x400 window would be 80x50 — clamped up to 320x200
-    // (the smallest geometry the sprite clipper / radar / HUD support).
-    const auto d = compute_world_canvas_dims(640, 400, {WorldScaleMode::Integer, 8});
-    EXPECT_EQ(320, d.w);
-    EXPECT_EQ(200, d.h);
-    // Per-axis clamp: a wide-but-short window clamps only the height.
-    const auto d2 = compute_world_canvas_dims(1600, 300, {WorldScaleMode::Integer, 2});
-    EXPECT_EQ(800, d2.w);
-    EXPECT_EQ(200, d2.h);
+	const auto widescreen = og::fit_canvas_in_viewport(
+		320, 200, 0, 0, 1920, 1080);
+	EXPECT_EQ(96, widescreen.x);
+	EXPECT_EQ(0, widescreen.y);
+	EXPECT_EQ(1728, widescreen.w);
+	EXPECT_EQ(1080, widescreen.h);
+
+	const auto four_three = og::fit_canvas_in_viewport(
+		320, 200, 0, 0, 800, 600);
+	EXPECT_EQ(0, four_three.x);
+	EXPECT_EQ(50, four_three.y);
+	EXPECT_EQ(800, four_three.w);
+	EXPECT_EQ(500, four_three.h);
+
+	const auto matching = og::fit_canvas_in_viewport(
+		1920, 1080, 10, 20, 1920, 1080);
+	EXPECT_EQ(10, matching.x);
+	EXPECT_EQ(20, matching.y);
+	EXPECT_EQ(1920, matching.w);
+	EXPECT_EQ(1080, matching.h);
+
+	for (const auto [canvas_w, canvas_h, viewport_w, viewport_h] :
+	     {std::array{321, 201, 1365, 767},
+	      std::array{1920, 1080, 1001, 777},
+	      std::array{320, 200, 853, 480}})
+	{
+		const auto fitted = og::fit_canvas_in_viewport(
+			canvas_w, canvas_h, 7, 11, viewport_w, viewport_h);
+		EXPECT_LT(std::abs(fitted.w * canvas_h - fitted.h * canvas_w),
+		          std::max(canvas_w, canvas_h));
+		EXPECT_LE(std::abs(2 * (fitted.x - 7) + fitted.w - viewport_w), 1);
+		EXPECT_LE(std::abs(2 * (fitted.y - 11) + fitted.h - viewport_h), 1);
+	}
 }
 
-TEST(ScaleMode, width_rounds_down_to_multiple_of_four)
+TEST(ScaleMode, smoothing_parse)
 {
-    // 1000/3 = 333 -> 332 (the software 2x scalers and the legacy
-    // partial-present path require multiple-of-4 widths).
-    const auto d = compute_world_canvas_dims(1000, 750, {WorldScaleMode::Integer, 3});
-    EXPECT_EQ(332, d.w);
-    EXPECT_EQ(250, d.h);
-    EXPECT_EQ(0, d.w % 4);
-}
-
-TEST(ScaleMode, sai_and_eagle_halve_the_window)
-{
-    const auto d = compute_world_canvas_dims(1280, 800, {WorldScaleMode::Sai, 2});
-    EXPECT_EQ(640, d.w);
-    EXPECT_EQ(400, d.h);
-    const auto e = compute_world_canvas_dims(640, 400, {WorldScaleMode::Eagle, 2});
-    EXPECT_EQ(320, e.w);
-    EXPECT_EQ(200, e.h);
-}
-
-TEST(ScaleMode, nonpositive_factor_is_defensively_clamped)
-{
-    const auto d = compute_world_canvas_dims(640, 400, {WorldScaleMode::Integer, 0});
-    EXPECT_EQ(640, d.w);
-    EXPECT_EQ(400, d.h);
+    EXPECT_EQ(WorldScaleMode::Sai, parse_smoothing_setting("sai"));
+    EXPECT_EQ(WorldScaleMode::Eagle, parse_smoothing_setting("eagle"));
+    // "off", the empty string an absent key reads back as, and anything
+    // unrecognized all mean the plain nearest stretch.
+    EXPECT_EQ(WorldScaleMode::Integer, parse_smoothing_setting("off"));
+    EXPECT_EQ(WorldScaleMode::Integer, parse_smoothing_setting(""));
+    EXPECT_EQ(WorldScaleMode::Integer, parse_smoothing_setting("SAI"));
+    EXPECT_EQ(WorldScaleMode::Integer, parse_smoothing_setting("trilinear"));
 }

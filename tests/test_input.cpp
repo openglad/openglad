@@ -1,9 +1,11 @@
 #include <cstring>
+#include <utility>
 
 #include <openglad/interface/input.h>
 #include <openglad/platform/game_session.h>
+#include <openglad/platform/sai2x.h>
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 
 extern unsigned char convert_to_ascii(int scancode);
@@ -13,9 +15,9 @@ TEST(Input, handle_key_event_sets_continue_on_escape)
     clear_keyboard();
 
     SDL_Event e{};
-    e.type = SDL_KEYDOWN;
-    e.key.keysym.sym = SDLK_ESCAPE;
-    e.key.keysym.mod = 0;
+    e.type = SDL_EVENT_KEY_DOWN;
+    e.key.key = SDLK_ESCAPE;
+    e.key.mod = 0;
 
     handle_key_event(e);
 
@@ -33,9 +35,8 @@ TEST(Input, handle_text_event_sets_raw_text)
     clear_keyboard();
 
     SDL_Event e{};
-    e.type = SDL_TEXTINPUT;
-    std::strncpy(e.text.text, "abc", sizeof(e.text.text));
-    e.text.text[sizeof(e.text.text) - 1] = '\0';
+    e.type = SDL_EVENT_TEXT_INPUT;
+    e.text.text = "abc";
 
     handle_text_event(e);
 
@@ -58,7 +59,7 @@ TEST(Input, handle_mouse_motion_scales_to_game_coords)
     og::runtime::current_session->viewport_h_ = 400.0f;
 
     SDL_Event e{};
-    e.type = SDL_MOUSEMOTION;
+    e.type = SDL_EVENT_MOUSE_MOTION;
     e.motion.x = 320;
     e.motion.y = 200;
 
@@ -79,15 +80,17 @@ TEST(Input, overscan_clamps_and_updates_viewport)
     const float saved_vp_oy = og::runtime::current_session->viewport_offset_y_;
     const float saved_vp_w = og::runtime::current_session->viewport_w_;
     const float saved_vp_h = og::runtime::current_session->viewport_h_;
+    int saved_physical_w = 0;
+    int saved_physical_h = 0;
+    SDL_GetWindowSize(E_Screen->window, &saved_physical_w, &saved_physical_h);
 
-    og::runtime::current_session->window_w_ = 1000.0f;
-    og::runtime::current_session->window_h_ = 800.0f;
+    ASSERT_TRUE(SDL_SetWindowSize(E_Screen->window, 1000, 800));
+    ASSERT_TRUE(SDL_SyncWindow(E_Screen->window));
 
     og::runtime::current_session->overscan_percentage_ = -1.0f;
     // Trigger update via resize event (calls update_overscan_setting internally).
     SDL_Event e{};
-    e.type = SDL_WINDOWEVENT;
-    e.window.event = SDL_WINDOWEVENT_RESIZED;
+    e.type = SDL_EVENT_WINDOW_RESIZED;
     e.window.data1 = (int)og::runtime::current_session->window_w_;
     e.window.data2 = (int)og::runtime::current_session->window_h_;
     handle_window_event(e);
@@ -107,6 +110,9 @@ TEST(Input, overscan_clamps_and_updates_viewport)
     ASSERT_TRUE(og::runtime::current_session->viewport_h_ < og::runtime::current_session->window_h_) << "viewport_h should shrink with overscan";
 
     // Restore viewport state.
+    (void)SDL_SetWindowSize(E_Screen->window,
+                            saved_physical_w, saved_physical_h);
+    (void)SDL_SyncWindow(E_Screen->window);
     og::runtime::current_session->window_w_ = saved_window_w;
     og::runtime::current_session->window_h_ = saved_window_h;
     og::runtime::current_session->overscan_percentage_ = saved_overscan;
@@ -120,23 +126,23 @@ TEST(Input, overscan_clamps_and_updates_viewport)
 TEST(Input, key_queries_and_ascii_conversion)
 {
     SDL_Event e{};
-    e.type = SDL_KEYDOWN;
-    e.key.keysym.sym = SDLK_a;
-    ASSERT_TRUE(query_key_event(SDLK_a, e)) << "query_key_event should match keydown sym";
-    ASSERT_TRUE(!query_key_event(SDLK_b, e)) << "query_key_event should not match other keys";
+    e.type = SDL_EVENT_KEY_DOWN;
+    e.key.key = SDLK_A;
+    ASSERT_TRUE(query_key_event(SDLK_A, e)) << "query_key_event should match keydown sym";
+    ASSERT_TRUE(!query_key_event(SDLK_B, e)) << "query_key_event should not match other keys";
 
-    ASSERT_TRUE(isAnyPlayerKey(SDLK_w)) << "isAnyPlayerKey should find player 0 default move key";
-    ASSERT_TRUE(isPlayerKey(0, SDLK_w)) << "isPlayerKey should be true for player 0 move key";
-    ASSERT_TRUE(!isPlayerKey(1, SDLK_w)) << "isPlayerKey should be false for other players' keys";
+    ASSERT_TRUE(isAnyPlayerKey(SDLK_W)) << "isAnyPlayerKey should find player 0 default move key";
+    ASSERT_TRUE(isPlayerKey(0, SDLK_W)) << "isPlayerKey should be true for player 0 move key";
+    ASSERT_TRUE(!isPlayerKey(1, SDLK_W)) << "isPlayerKey should be false for other players' keys";
 
-    ASSERT_EQ('A', (int)convert_to_ascii(SDLK_a)) << "convert_to_ascii(SDLK_a) should return 'A'";
-    ASSERT_EQ('Z', (int)convert_to_ascii(SDLK_z)) << "convert_to_ascii(SDLK_z) should return 'Z'";
+    ASSERT_EQ('A', (int)convert_to_ascii(SDLK_A)) << "convert_to_ascii(SDLK_A) should return 'A'";
+    ASSERT_EQ('Z', (int)convert_to_ascii(SDLK_Z)) << "convert_to_ascii(SDLK_Z) should return 'Z'";
     ASSERT_EQ('0', (int)convert_to_ascii(SDLK_0)) << "convert_to_ascii(SDLK_0) should return '0'";
     ASSERT_EQ(255, (int)convert_to_ascii(SDLK_UNKNOWN)) << "convert_to_ascii(unknown) should return 255 sentinel";
 
     for (int i = 0; i < 26; ++i)
     {
-        const int key = SDLK_a + i;
+        const int key = SDLK_A + i;
         const int expected = 'A' + i;
         ASSERT_EQ(expected, (int)convert_to_ascii(key)) << "alphabet key should map to uppercase ASCII";
     }
@@ -157,7 +163,115 @@ TEST(Input, key_queries_and_ascii_conversion)
     ASSERT_EQ(27, (int)convert_to_ascii(SDLK_ESCAPE)) << "escape";
     ASSERT_EQ('.', (int)convert_to_ascii(SDLK_PERIOD)) << "period";
     ASSERT_EQ(',', (int)convert_to_ascii(SDLK_COMMA)) << "comma";
-    ASSERT_EQ('\'', (int)convert_to_ascii(SDLK_QUOTE)) << "quote";
-    ASSERT_EQ('`', (int)convert_to_ascii(SDLK_BACKQUOTE)) << "backquote";
+    ASSERT_EQ('\'', (int)convert_to_ascii(SDLK_APOSTROPHE)) << "quote";
+    ASSERT_EQ('`', (int)convert_to_ascii(SDLK_GRAVE)) << "backquote";
 }
 
+
+TEST(Input, touch_control_layout_preserves_classic_geometry)
+{
+    const TouchControlLayout layout = touch_control_layout(320, 200);
+
+    EXPECT_EQ(320, layout.canvas_w);
+    EXPECT_EQ(200, layout.canvas_h);
+    EXPECT_EQ(245, layout.fire.x);
+    EXPECT_EQ(165, layout.fire.y);
+    EXPECT_EQ(30, layout.fire.w);
+    EXPECT_EQ(30, layout.fire.h);
+    EXPECT_EQ(285, layout.special.x);
+    EXPECT_EQ(165, layout.special.y);
+    EXPECT_EQ(245, layout.next_special.x);
+    EXPECT_EQ(125, layout.next_special.y);
+    EXPECT_EQ(285, layout.alternate_special.x);
+    EXPECT_EQ(125, layout.alternate_special.y);
+    EXPECT_EQ(145, layout.yell.x);
+    EXPECT_EQ(85, layout.yell.y);
+    EXPECT_EQ(0, layout.switch_character.x);
+    EXPECT_EQ(0, layout.switch_character.y);
+    EXPECT_EQ(60, layout.switch_character.w);
+    EXPECT_EQ(60, layout.switch_character.h);
+    EXPECT_EQ(145, layout.movement_region_right);
+    EXPECT_EQ(60, layout.movement_region_top);
+    EXPECT_EQ(31, layout.movement_center_min_x);
+    EXPECT_EQ(31, layout.movement_center_min_y);
+    EXPECT_EQ(169, layout.movement_center_max_y);
+    EXPECT_EQ(60, layout.movement_area_w);
+    EXPECT_EQ(60, layout.movement_area_h);
+
+    EXPECT_TRUE(layout.fire.contains(245, 165));
+    EXPECT_TRUE(layout.fire.contains(275, 195));
+    EXPECT_FALSE(layout.fire.contains(244, 165));
+    EXPECT_FALSE(layout.fire.contains(276, 195));
+}
+
+
+TEST(Input, touch_control_layout_scales_to_deep_zoom_canvas_edges)
+{
+    const TouchControlLayout layout = touch_control_layout(3200, 2000);
+
+    EXPECT_EQ(2450, layout.fire.x);
+    EXPECT_EQ(1650, layout.fire.y);
+    EXPECT_EQ(300, layout.fire.w);
+    EXPECT_EQ(300, layout.fire.h);
+    EXPECT_EQ(2850, layout.special.x);
+    EXPECT_EQ(1650, layout.special.y);
+    EXPECT_EQ(2450, layout.next_special.x);
+    EXPECT_EQ(1250, layout.next_special.y);
+    EXPECT_EQ(2850, layout.alternate_special.x);
+    EXPECT_EQ(1250, layout.alternate_special.y);
+    EXPECT_EQ(1450, layout.yell.x);
+    EXPECT_EQ(850, layout.yell.y);
+    EXPECT_EQ(600, layout.switch_character.w);
+    EXPECT_EQ(600, layout.switch_character.h);
+    EXPECT_EQ(1450, layout.movement_region_right);
+    EXPECT_EQ(600, layout.movement_region_top);
+    EXPECT_EQ(310, layout.movement_center_min_x);
+    EXPECT_EQ(310, layout.movement_center_min_y);
+    EXPECT_EQ(1690, layout.movement_center_max_y);
+    EXPECT_EQ(100, layout.movement_dead_zone_x);
+    EXPECT_EQ(100, layout.movement_dead_zone_y);
+    EXPECT_EQ(600, layout.movement_area_w);
+    EXPECT_EQ(600, layout.movement_area_h);
+
+    // Edge margins and hit target sizes scale with the canvas, keeping the
+    // controls at the same visible locations after presentation.
+    EXPECT_EQ(50, layout.canvas_w -
+                      (layout.special.x + layout.special.w));
+    EXPECT_EQ(50, layout.canvas_h -
+                      (layout.special.y + layout.special.h));
+    EXPECT_TRUE(layout.special.contains(3150, 1950));
+    EXPECT_FALSE(layout.special.contains(3151, 1950));
+}
+
+
+TEST(Input, touch_control_layout_stays_bounded_at_fractional_zoom_sizes)
+{
+    const std::pair<int, int> canvases[] = {
+        {356, 222}, {400, 250}, {460, 285}, {536, 333},
+        {640, 400}, {800, 500}, {1068, 666}, {1600, 1000},
+    };
+    for (const auto& [canvas_w, canvas_h] : canvases)
+    {
+        const TouchControlLayout layout = touch_control_layout(canvas_w, canvas_h);
+        const TouchControlRect controls[] = {
+            layout.fire, layout.special, layout.yell,
+            layout.switch_character, layout.next_special,
+            layout.alternate_special,
+        };
+        for (const TouchControlRect& control : controls)
+        {
+            EXPECT_GE(control.x, 0) << canvas_w << 'x' << canvas_h;
+            EXPECT_GE(control.y, 0) << canvas_w << 'x' << canvas_h;
+            EXPECT_LE(control.x + control.w, canvas_w)
+                << canvas_w << 'x' << canvas_h;
+            EXPECT_LE(control.y + control.h, canvas_h)
+                << canvas_w << 'x' << canvas_h;
+        }
+        EXPECT_GT(layout.movement_center_min_x, 0);
+        EXPECT_GT(layout.movement_center_min_y, 0);
+        EXPECT_LT(layout.movement_center_max_y, canvas_h);
+        // Movement uses x < right while the yell target includes its left
+        // edge, so equality is the intended non-overlapping boundary.
+        EXPECT_LE(layout.movement_region_right, layout.yell.x);
+    }
+}

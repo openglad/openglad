@@ -311,6 +311,8 @@ struct RelayWebSocketTransport::Impl
 
         clear_queue();
         connected = false;
+        ever_connected = false;
+        link_closed = false;
         reset_peer_state();
 
         detail::WebSocketCreateAttributes create_attributes{};
@@ -475,6 +477,8 @@ struct RelayWebSocketTransport::Impl
             {
             case QueueEntryKind::Connect:
                 connected = true;
+                ever_connected = true;
+                link_closed = false;
                 reset_peer_state();
                 break;
 
@@ -497,6 +501,7 @@ struct RelayWebSocketTransport::Impl
             case QueueEntryKind::Disconnect:
                 connected = false;
                 started = false;
+                link_closed = true;
                 reset_peer_state();
                 should_dispose_socket = true;
                 break;
@@ -535,6 +540,20 @@ struct RelayWebSocketTransport::Impl
     std::optional<PeerId> host_peer_id() const noexcept
     {
         return host_peer_id_;
+    }
+
+    // Reads the connection flags maintained by poll() on the main thread; the
+    // browser callbacks only enqueue transitions, so this is main-thread state.
+    TransportLinkState link_state() const noexcept
+    {
+        if (connected)
+            return TransportLinkState::Connected;
+        if (link_closed)
+        {
+            return ever_connected ? TransportLinkState::Lost
+                                  : TransportLinkState::Failed;
+        }
+        return TransportLinkState::Connecting;
     }
 
 private:
@@ -832,6 +851,8 @@ private:
     WebSocketHandle socket = 0;
     bool started = false;
     bool connected = false;
+    bool ever_connected = false;
+    bool link_closed = false;
 
     std::mutex queue_mutex;
     std::deque<QueueEntry> queue;
@@ -888,6 +909,11 @@ void RelayWebSocketTransport::disconnect(PeerId peer_id)
 std::vector<PeerId> RelayWebSocketTransport::connected_peers() const
 {
     return impl_->connected_peers();
+}
+
+TransportLinkState RelayWebSocketTransport::link_state() const noexcept
+{
+    return impl_->link_state();
 }
 
 std::optional<PeerId> RelayWebSocketTransport::local_peer_id() const noexcept

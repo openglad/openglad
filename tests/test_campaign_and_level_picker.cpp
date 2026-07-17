@@ -9,7 +9,7 @@
 #include <openglad/interface/screen.h>
 #include <openglad/resources/io.h>
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include "test_input_helpers.h"
 
 #include <map>
@@ -50,13 +50,13 @@ static int hold_q_key_for_picker(void* data)
     og::runtime::ensure_thread_session();
     (void)data;
     int numkeys = 0;
-    Uint8* keys = const_cast<Uint8*>(SDL_GetKeyboardState(&numkeys));
-    SDL_Scancode sc = SDL_GetScancodeFromKey(SDLK_q);
+    bool* keys = const_cast<bool*>(SDL_GetKeyboardState(&numkeys));
+    SDL_Scancode sc = SDL_GetScancodeFromKey(SDLK_Q, nullptr);
     if (sc >= 0 && sc < numkeys)
     {
-        keys[sc] = 1;
+        keys[sc] = true;
         SDL_Delay(120);
-        keys[sc] = 0;
+        keys[sc] = false;
     }
     return 0;
 }
@@ -427,7 +427,7 @@ TEST(CampaignAndLevelPicker, sync_campaign_mount_follows_save_and_restores_on_fa
 
 namespace
 {
-SDL_atomic_t s_new_game_setup_done;
+SDL_AtomicInt s_new_game_setup_done;
 
 int new_game_intro_dismisser(void* data)
 {
@@ -437,7 +437,7 @@ int new_game_intro_dismisser(void* data)
     // until input_continue (Escape keydown). scroll_text_view() clears the
     // keyboard on entry, so a single early press can be eaten — keep tapping
     // until the flow under test reports completion.
-    for (int i = 0; i < 100 && !SDL_AtomicGet(&s_new_game_setup_done); ++i) {
+    for (int i = 0; i < 100 && !SDL_GetAtomicInt(&s_new_game_setup_done); ++i) {
         SDL_Delay(200);
         inject_key_press(SDLK_ESCAPE);
     }
@@ -461,12 +461,12 @@ TEST(CampaignAndLevelPicker, new_game_resets_campaign_and_mount_to_default)
         save.team_list[i].reset();
     save.team_size = 0;
 
-    SDL_AtomicSet(&s_new_game_setup_done, 0);
+    SDL_SetAtomicInt(&s_new_game_setup_done, 0);
     SDL_Thread* thread =
         SDL_CreateThread(new_game_intro_dismisser, "intro_dismiss", nullptr);
     ASSERT_TRUE(thread != nullptr) << "failed to create intro dismisser thread";
     const bool ok = picker_prepare_new_game_setup();
-    SDL_AtomicSet(&s_new_game_setup_done, 1);
+    SDL_SetAtomicInt(&s_new_game_setup_done, 1);
     SDL_WaitThread(thread, nullptr);
 
     ASSERT_TRUE(ok) << "new game setup should not abort";

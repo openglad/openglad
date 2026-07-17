@@ -89,13 +89,10 @@ short& input_text_input_event_ref()
 // are already macros defined in input.h.
 static inline auto& hw() { return input_hardware_state(); }
 
-// Window->canvas pointer mapping divides by the ACTIVE canvas dims: menus
-// translate to the fixed 320x200 UI canvas, gameplay and the level editor to
-// the world canvas (which a cfg graphics/scale mode can grow — identical to
-// the classic constants in every default run, and while the editor pin holds).
-// The overscan viewport rect is shared by both canvases, so only the divisor
-// changes per layer. Before the screen exists (intro/boot) events map to the
-// classic UI dims.
+// Menus translate to the fixed 320x200 UI canvas; gameplay and the editor map
+// to the graphics/zoom-derived world canvas. Presentation aspect-fits either
+// canvas inside the overscan viewport, and pointer conversion must use that
+// same fitted rectangle. Before the screen exists events use classic UI dims.
 static inline float active_canvas_w()
 {
     const ::screen* s = og::runtime::current_session->myscreen_;
@@ -106,6 +103,190 @@ static inline float active_canvas_h()
 {
     const ::screen* s = og::runtime::current_session->myscreen_;
     return s ? static_cast<float>(s->canvas_h()) : static_cast<float>(kUiCanvasH);
+}
+
+static inline float gameplay_ui_canvas_w()
+{
+    const ::screen* s = og::runtime::current_session->myscreen_;
+    return s ? static_cast<float>(
+                   s->active_canvas() == CanvasTarget::UI
+                       ? s->canvas_w()
+                       : (s->gameplay_ui_canvas_available()
+                              ? s->gameplay_ui_canvas_w()
+                              : s->world_canvas_w()))
+             : static_cast<float>(kUiCanvasW);
+}
+
+static inline float gameplay_ui_canvas_h()
+{
+    const ::screen* s = og::runtime::current_session->myscreen_;
+    return s ? static_cast<float>(
+                   s->active_canvas() == CanvasTarget::UI
+                       ? s->canvas_h()
+                       : (s->gameplay_ui_canvas_available()
+                              ? s->gameplay_ui_canvas_h()
+                              : s->world_canvas_h()))
+             : static_cast<float>(kUiCanvasH);
+}
+
+static og::CanvasViewport canvas_viewport(float canvas_w, float canvas_h)
+{
+    const auto* session = og::runtime::current_session;
+    if (session == nullptr)
+        return {0, 0, kUiCanvasW, kUiCanvasH};
+    return og::fit_canvas_in_viewport(
+        static_cast<int>(canvas_w), static_cast<int>(canvas_h),
+        static_cast<int>(session->viewport_offset_x_),
+        static_cast<int>(session->viewport_offset_y_),
+        static_cast<int>(session->viewport_w_),
+        static_cast<int>(session->viewport_h_));
+}
+
+og::CanvasViewport active_canvas_viewport()
+{
+    return canvas_viewport(active_canvas_w(), active_canvas_h());
+}
+
+og::CanvasViewport gameplay_ui_canvas_viewport()
+{
+    const auto* session = og::runtime::current_session;
+    const ::screen* s = session != nullptr ? session->myscreen_ : nullptr;
+    if (s == nullptr || s->active_canvas() == CanvasTarget::UI)
+        return active_canvas_viewport();
+
+    // Match Screen::swap's independently aspect-fitted HUD destination.
+    // Fractional World dimensions round to scaler-safe integers and can have
+    // a slightly different aspect; inheriting their fitted rectangle would
+    // distort the fixed overlay and offset its touch hit targets.
+    return canvas_viewport(gameplay_ui_canvas_w(), gameplay_ui_canvas_h());
+}
+
+bool window_point_in_active_canvas(float x, float y)
+{
+    const og::CanvasViewport viewport = active_canvas_viewport();
+    return x >= static_cast<float>(viewport.x) &&
+           y >= static_cast<float>(viewport.y) &&
+           x < static_cast<float>(viewport.x + viewport.w) &&
+           y < static_cast<float>(viewport.y + viewport.h);
+}
+
+std::pair<float, float> window_to_active_canvas(float x, float y)
+{
+    const og::CanvasViewport viewport = active_canvas_viewport();
+    const float w = static_cast<float>(std::max(1, viewport.w));
+    const float h = static_cast<float>(std::max(1, viewport.h));
+    return {(x - static_cast<float>(viewport.x)) * active_canvas_w() / w,
+            (y - static_cast<float>(viewport.y)) * active_canvas_h() / h};
+}
+
+bool window_point_in_gameplay_ui_canvas(float x, float y)
+{
+    const og::CanvasViewport viewport = gameplay_ui_canvas_viewport();
+    return x >= static_cast<float>(viewport.x) &&
+           y >= static_cast<float>(viewport.y) &&
+           x < static_cast<float>(viewport.x + viewport.w) &&
+           y < static_cast<float>(viewport.y + viewport.h);
+}
+
+std::pair<float, float> window_to_gameplay_ui_canvas(float x, float y)
+{
+    const og::CanvasViewport viewport = gameplay_ui_canvas_viewport();
+    const float w = static_cast<float>(std::max(1, viewport.w));
+    const float h = static_cast<float>(std::max(1, viewport.h));
+    return {(x - static_cast<float>(viewport.x)) * gameplay_ui_canvas_w() / w,
+            (y - static_cast<float>(viewport.y)) * gameplay_ui_canvas_h() / h};
+}
+
+std::pair<float, float> active_canvas_to_window(float x, float y)
+{
+    const og::CanvasViewport viewport = active_canvas_viewport();
+    return {static_cast<float>(viewport.x) +
+                x * static_cast<float>(viewport.w) / active_canvas_w(),
+            static_cast<float>(viewport.y) +
+                y * static_cast<float>(viewport.h) / active_canvas_h()};
+}
+
+namespace
+{
+int scale_touch_coordinate(int value, int canvas_extent, int reference_extent)
+{
+    return static_cast<int>(static_cast<long long>(value) * canvas_extent /
+                            reference_extent);
+}
+
+TouchControlRect scale_touch_rect(int x, int y, int w, int h,
+                                  int canvas_w, int canvas_h)
+{
+    const int left = scale_touch_coordinate(
+        x, canvas_w, TOUCH_REFERENCE_CANVAS_W);
+    const int top = scale_touch_coordinate(
+        y, canvas_h, TOUCH_REFERENCE_CANVAS_H);
+    const int right = scale_touch_coordinate(
+        x + w, canvas_w, TOUCH_REFERENCE_CANVAS_W);
+    const int bottom = scale_touch_coordinate(
+        y + h, canvas_h, TOUCH_REFERENCE_CANVAS_H);
+    return {left, top, std::max(1, right - left), std::max(1, bottom - top)};
+}
+} // namespace
+
+TouchControlLayout touch_control_layout(int canvas_w, int canvas_h)
+{
+    TouchControlLayout layout;
+    layout.canvas_w = std::max(TOUCH_REFERENCE_CANVAS_W, canvas_w);
+    layout.canvas_h = std::max(TOUCH_REFERENCE_CANVAS_H, canvas_h);
+
+    const auto rect = [&](int x, int y, int w, int h) {
+        return scale_touch_rect(x, y, w, h, layout.canvas_w, layout.canvas_h);
+    };
+    const auto sx = [&](int value) {
+        return scale_touch_coordinate(
+            value, layout.canvas_w, TOUCH_REFERENCE_CANVAS_W);
+    };
+    const auto sy = [&](int value) {
+        return scale_touch_coordinate(
+            value, layout.canvas_h, TOUCH_REFERENCE_CANVAS_H);
+    };
+
+    layout.fire = rect(FIRE_BUTTON_X, FIRE_BUTTON_Y, BUTTON_DIM, BUTTON_DIM);
+    layout.special = rect(
+        SPECIAL_BUTTON_X, SPECIAL_BUTTON_Y, BUTTON_DIM, BUTTON_DIM);
+    layout.yell = rect(YO_BUTTON_X - BUTTON_DIM / 2,
+                       YO_BUTTON_Y - BUTTON_DIM / 2,
+                       BUTTON_DIM, BUTTON_DIM);
+    layout.switch_character = rect(
+        SWITCH_CHARACTER_BUTTON_X, SWITCH_CHARACTER_BUTTON_Y,
+        BUTTON_DIM * 2, BUTTON_DIM * 2);
+    layout.next_special = rect(
+        NEXT_SPECIAL_BUTTON_X, NEXT_SPECIAL_BUTTON_Y, BUTTON_DIM, BUTTON_DIM);
+    layout.alternate_special = rect(
+        ALTERNATE_SPECIAL_BUTTON_X, ALTERNATE_SPECIAL_BUTTON_Y,
+        BUTTON_DIM, BUTTON_DIM);
+
+    layout.movement_region_right = sx(
+        TOUCH_REFERENCE_CANVAS_W / 2 - BUTTON_DIM / 2);
+    layout.movement_region_top = sy(BUTTON_DIM * 2);
+    layout.movement_center_min_x = sx(MOVE_AREA_DIM / 2 + 1);
+    layout.movement_center_min_y = sy(MOVE_AREA_DIM / 2 + 1);
+    layout.movement_center_max_y = sy(
+        TOUCH_REFERENCE_CANVAS_H - (MOVE_AREA_DIM / 2 + 1));
+    layout.movement_dead_zone_x = std::max(1, sx(MOVE_DEAD_ZONE));
+    layout.movement_dead_zone_y = std::max(1, sy(MOVE_DEAD_ZONE));
+    layout.tap_slop_x = std::max(1, sx(2));
+    layout.tap_slop_y = std::max(1, sy(2));
+
+    layout.movement_area_offset_x = sx(MOVE_AREA_DIM / 2);
+    layout.movement_area_offset_y = sy(MOVE_AREA_DIM / 2);
+    layout.movement_area_w = std::max(1, sx(MOVE_AREA_DIM));
+    layout.movement_area_h = std::max(1, sy(MOVE_AREA_DIM));
+    layout.movement_center_offset_x = sx(4);
+    layout.movement_center_offset_y = sy(4);
+    layout.movement_center_w = std::max(1, sx(8));
+    layout.movement_center_h = std::max(1, sy(8));
+    layout.movement_target_offset_x = sx(2);
+    layout.movement_target_offset_y = sy(2);
+    layout.movement_target_w = std::max(1, sx(4));
+    layout.movement_target_h = std::max(1, sy(4));
+    return layout;
 }
 
 void update_overscan_setting()
@@ -221,8 +402,13 @@ void handle_mouse_event(const void* native_event)
 #ifndef USE_TOUCH_INPUT
         // Mouse event
     case og::input_native::EventType::MouseMotion:
-        mouse_state.x = (static_cast<float>(event.motion_x) - og::runtime::current_session->viewport_offset_x_) * (active_canvas_w() / og::runtime::current_session->viewport_w_);
-        mouse_state.y = (static_cast<float>(event.motion_y) - og::runtime::current_session->viewport_offset_y_) * (active_canvas_h() / og::runtime::current_session->viewport_h_);
+        {
+            const auto [x, y] = window_to_active_canvas(
+                static_cast<float>(event.motion_x),
+                static_cast<float>(event.motion_y));
+            mouse_state.x = static_cast<int>(x);
+            mouse_state.y = static_cast<int>(y);
+        }
         break;
     case og::input_native::EventType::MouseButtonUp:
         if (event.button == og::input_native::kMouseButtonLeft)
@@ -230,17 +416,33 @@ void handle_mouse_event(const void* native_event)
         if (event.button == og::input_native::kMouseButtonRight)
             mouse_state.right = 0;
 
-        mouse_state.x = (static_cast<float>(event.button_x) - og::runtime::current_session->viewport_offset_x_) * (active_canvas_w() / og::runtime::current_session->viewport_w_);
-        mouse_state.y = (static_cast<float>(event.button_y) - og::runtime::current_session->viewport_offset_y_) * (active_canvas_h() / og::runtime::current_session->viewport_h_);
+        {
+            const auto [x, y] = window_to_active_canvas(
+                static_cast<float>(event.button_x),
+                static_cast<float>(event.button_y));
+            mouse_state.x = static_cast<int>(x);
+            mouse_state.y = static_cast<int>(y);
+        }
         break;
     case og::input_native::EventType::MouseButtonDown:
+        if (!window_point_in_active_canvas(
+                static_cast<float>(event.button_x),
+                static_cast<float>(event.button_y)))
+        {
+            break;
+        }
         if (event.button == og::input_native::kMouseButtonLeft)
             mouse_state.left = 1;
         else if (event.button == og::input_native::kMouseButtonRight)
             mouse_state.right = 1;
 
-        mouse_state.x = (static_cast<float>(event.button_x) - og::runtime::current_session->viewport_offset_x_) * (active_canvas_w() / og::runtime::current_session->viewport_w_);
-        mouse_state.y = (static_cast<float>(event.button_y) - og::runtime::current_session->viewport_offset_y_) * (active_canvas_h() / og::runtime::current_session->viewport_h_);
+        {
+            const auto [x, y] = window_to_active_canvas(
+                static_cast<float>(event.button_x),
+                static_cast<float>(event.button_y));
+            mouse_state.x = static_cast<int>(x);
+            mouse_state.y = static_cast<int>(y);
+        }
         break;
 #else
 #ifdef FAKE_TOUCH_EVENTS
@@ -280,8 +482,14 @@ void handle_mouse_event(const void* native_event)
         // Mouse event
     case og::input_native::EventType::FingerMotion:
         {
-        int x = (event.finger_x * og::runtime::current_session->window_w_ - og::runtime::current_session->viewport_offset_x_) * (active_canvas_w() / og::runtime::current_session->viewport_w_);
-        int y = (event.finger_y * og::runtime::current_session->window_h_ - og::runtime::current_session->viewport_offset_y_) * (active_canvas_h() / og::runtime::current_session->viewport_h_);
+            const auto [mapped_x, mapped_y] = window_to_gameplay_ui_canvas(
+                event.finger_x * og::runtime::current_session->window_w_,
+                event.finger_y * og::runtime::current_session->window_h_);
+            int x = static_cast<int>(mapped_x);
+            int y = static_cast<int>(mapped_y);
+            const TouchControlLayout layout = touch_control_layout(
+                static_cast<int>(gameplay_ui_canvas_w()),
+                static_cast<int>(gameplay_ui_canvas_h()));
         
         og::runtime::current_session->scroll_amount_ = y - mouse_state.y;
         
@@ -302,11 +510,23 @@ void handle_mouse_event(const void* native_event)
             hw().touch_keystate[0][KEY_LEFT] = false;
             hw().touch_keystate[0][KEY_UP_LEFT] = false;
             
-            if(abs(x - hw().moving_touch_x) > MOVE_DEAD_ZONE || abs(y - hw().moving_touch_y) > MOVE_DEAD_ZONE)
+            const int movement_dx = x - hw().moving_touch_x;
+            const int movement_dy = y - hw().moving_touch_y;
+            if(abs(movement_dx) > layout.movement_dead_zone_x ||
+               abs(movement_dy) > layout.movement_dead_zone_y)
             {
                 float offset = -M_PI + M_PI/8;
                 float interval = M_PI/4;
-                float angle = atan2(y - hw().moving_touch_y, x - hw().moving_touch_x);
+                // Canvas dimensions round slightly at some zoom steps. Convert
+                // the delta back into reference-layout units before selecting
+                // a direction so that rounding cannot skew the radial sectors.
+                const float reference_dx = static_cast<float>(movement_dx) *
+                    static_cast<float>(TOUCH_REFERENCE_CANVAS_W) /
+                    static_cast<float>(layout.canvas_w);
+                const float reference_dy = static_cast<float>(movement_dy) *
+                    static_cast<float>(TOUCH_REFERENCE_CANVAS_H) /
+                    static_cast<float>(layout.canvas_h);
+                float angle = atan2(reference_dy, reference_dx);
                 if(angle < -M_PI + M_PI/8 || angle >= M_PI - M_PI/8)
                     hw().touch_keystate[0][KEY_LEFT] = true;
                 else if(angle >= offset && angle < offset + interval)
@@ -329,12 +549,19 @@ void handle_mouse_event(const void* native_event)
         break;
     case og::input_native::EventType::FingerUp:
         {
-            int x = (event.finger_x * og::runtime::current_session->window_w_ - og::runtime::current_session->viewport_offset_x_) * (active_canvas_w() / og::runtime::current_session->viewport_w_);
-            int y = (event.finger_y * og::runtime::current_session->window_h_ - og::runtime::current_session->viewport_offset_y_) * (active_canvas_h() / og::runtime::current_session->viewport_h_);
+            const auto [mapped_x, mapped_y] = window_to_gameplay_ui_canvas(
+                event.finger_x * og::runtime::current_session->window_w_,
+                event.finger_y * og::runtime::current_session->window_h_);
+            int x = static_cast<int>(mapped_x);
+            int y = static_cast<int>(mapped_y);
+            const TouchControlLayout layout = touch_control_layout(
+                static_cast<int>(gameplay_ui_canvas_w()),
+                static_cast<int>(gameplay_ui_canvas_h()));
             if(hw().tapping)
             {
                 hw().tapping = false;
-                if(abs(x - hw().start_tap_x) < 2 && abs(y - hw().start_tap_y) < 2)
+                if(abs(x - hw().start_tap_x) < layout.tap_slop_x &&
+                   abs(y - hw().start_tap_y) < layout.tap_slop_y)
                     og::runtime::current_session->input_continue_ = true;
                 else
                     og::runtime::current_session->input_continue_ = false;
@@ -366,62 +593,69 @@ void handle_mouse_event(const void* native_event)
         break;
     case og::input_native::EventType::FingerDown:
         {
+            const float window_x =
+                event.finger_x * og::runtime::current_session->window_w_;
+            const float window_y =
+                event.finger_y * og::runtime::current_session->window_h_;
+            if (!window_point_in_gameplay_ui_canvas(window_x, window_y))
+                break;
             hw().tapping = true;
 
-            int x = (event.finger_x * og::runtime::current_session->window_w_ - og::runtime::current_session->viewport_offset_x_) * (active_canvas_w() / og::runtime::current_session->viewport_w_);
-            int y = (event.finger_y * og::runtime::current_session->window_h_ - og::runtime::current_session->viewport_offset_y_) * (active_canvas_h() / og::runtime::current_session->viewport_h_);
+            const auto [mapped_x, mapped_y] = window_to_gameplay_ui_canvas(
+                window_x, window_y);
+            int x = static_cast<int>(mapped_x);
+            int y = static_cast<int>(mapped_y);
+            const TouchControlLayout layout = touch_control_layout(
+                static_cast<int>(gameplay_ui_canvas_w()),
+                static_cast<int>(gameplay_ui_canvas_h()));
             
             hw().start_tap_x = x;
             hw().start_tap_y = y;
             og::runtime::current_session->input_continue_ = false;
             
-            if(!hw().firing && FIRE_BUTTON_X <= x && x <= FIRE_BUTTON_X + BUTTON_DIM
-                && FIRE_BUTTON_Y <= y && y <= FIRE_BUTTON_Y + BUTTON_DIM)
+            if(!hw().firing && layout.fire.contains(x, y))
             {
                 hw().firing = true;
                 sendFakeKeyDownEvent(og::runtime::current_session->player_keys_[0][KEY_FIRE]);
                 hw().touch_keystate[0][KEY_FIRE] = true;
                 hw().firingTouch = event.finger_id;
             }
-            else if(SPECIAL_BUTTON_X <= x && x <= SPECIAL_BUTTON_X + BUTTON_DIM
-                && SPECIAL_BUTTON_Y <= y && y <= SPECIAL_BUTTON_Y + BUTTON_DIM)
+            else if(layout.special.contains(x, y))
             {
                 sendFakeKeyDownEvent(og::runtime::current_session->player_keys_[0][KEY_SPECIAL]);
             }
-            else if(YO_BUTTON_X - BUTTON_DIM/2 <= x && x <= YO_BUTTON_X + BUTTON_DIM/2
-                && YO_BUTTON_Y - BUTTON_DIM/2 <= y && y <= YO_BUTTON_Y + BUTTON_DIM/2)
+            else if(layout.yell.contains(x, y))
             {
                 sendFakeKeyDownEvent(og::runtime::current_session->player_keys_[0][KEY_YELL]);
             }
-            else if(SWITCH_CHARACTER_BUTTON_X <= x && x <= SWITCH_CHARACTER_BUTTON_X + BUTTON_DIM*2
-                && SWITCH_CHARACTER_BUTTON_Y <= y && y <= SWITCH_CHARACTER_BUTTON_Y + BUTTON_DIM*2)
+            else if(layout.switch_character.contains(x, y))
             {
                 sendFakeKeyDownEvent(og::runtime::current_session->player_keys_[0][KEY_SWITCH]);
             }
-            else if(NEXT_SPECIAL_BUTTON_X <= x && x <= NEXT_SPECIAL_BUTTON_X + BUTTON_DIM
-                && NEXT_SPECIAL_BUTTON_Y <= y && y <= NEXT_SPECIAL_BUTTON_Y + BUTTON_DIM)
+            else if(layout.next_special.contains(x, y))
             {
                 sendFakeKeyDownEvent(og::runtime::current_session->player_keys_[0][KEY_SPECIAL_SWITCH]);
             }
-            else if(ALTERNATE_SPECIAL_BUTTON_X <= x && x <= ALTERNATE_SPECIAL_BUTTON_X + BUTTON_DIM
-                && ALTERNATE_SPECIAL_BUTTON_Y <= y && y <= ALTERNATE_SPECIAL_BUTTON_Y + BUTTON_DIM)
+            else if(layout.alternate_special.contains(x, y))
             {
                 // Treat KEY_SHIFTER as an action instead of a modifier
                 if(input_touch_has_alternate())
                     sendFakeKeyDownEvent(og::runtime::current_session->player_keys_[0][KEY_SHIFTER]);
             }
-            else if(!hw().moving && x < 320/2 - BUTTON_DIM/2 && y > BUTTON_DIM*2)  // Only move with the lower left corner of the screen (and offset for other buttons)
+            // Only move with the lower left corner of the screen (and offset for other buttons)
+            else if(!hw().moving && x < layout.movement_region_right &&
+                    y > layout.movement_region_top)
             {
                 hw().moving_touch_x = x;
                 hw().moving_touch_y = y;
                 hw().moving_touch_target_x = x;
                 hw().moving_touch_target_y = y;
-                if(hw().moving_touch_x < MOVE_AREA_DIM/2 + 1)
-                    hw().moving_touch_x = MOVE_AREA_DIM/2 + 1;
-                if(hw().moving_touch_y < MOVE_AREA_DIM/2 + 1)
-                    hw().moving_touch_y = MOVE_AREA_DIM/2 + 1;
-                else if(hw().moving_touch_y > 200 - (MOVE_AREA_DIM/2 + 1))
-                    hw().moving_touch_y = 200 - (MOVE_AREA_DIM/2 + 1);
+                if(hw().moving_touch_x < layout.movement_center_min_x)
+                    hw().moving_touch_x = layout.movement_center_min_x;
+                if(hw().moving_touch_y < layout.movement_center_min_y)
+                    hw().moving_touch_y = layout.movement_center_min_y;
+                else if(hw().moving_touch_y > layout.movement_center_max_y)
+                    hw().moving_touch_y = layout.movement_center_max_y;
                 hw().moving = true;
                 hw().movingTouch = event.finger_id;
             }
@@ -429,8 +663,8 @@ void handle_mouse_event(const void* native_event)
             
             og::runtime::current_session->key_press_event_ = 1;
             mouse_state.left = 1;
-            mouse_state.x = event.finger_x * active_canvas_w();
-            mouse_state.y = event.finger_y * active_canvas_h();
+            mouse_state.x = x;
+            mouse_state.y = y;
         }
         break;
 #endif
@@ -981,7 +1215,7 @@ bool JoyData::hasButtonSet(int key_enum) const
 
 void resetJoystick(int player_num)
 {
-    // FIXME: SDL2 supports hotplugging, so I don't need to restart the joystick subsystem
+    // FIXME: SDL supports hotplugging, so I don't need to restart the joystick subsystem
     // Reset joystick subsystem
     if(og::input_native::joystick_subsystem_initialized())
         og::input_native::joystick_quit_subsystem();

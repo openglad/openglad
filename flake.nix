@@ -112,8 +112,7 @@
           ];
 
           buildInputs = with pkgs; [
-            SDL2
-            SDL2_mixer
+            sdl3
             ixwebsocketHead
             libyaml
             libzip
@@ -189,8 +188,7 @@
         in
         pkgs.mkShell {
           packages = with pkgs; [
-            SDL2
-            SDL2_mixer
+            sdl3
             bash
             binutils
             clang

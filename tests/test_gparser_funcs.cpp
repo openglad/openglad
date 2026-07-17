@@ -150,6 +150,7 @@ TEST(GparserFuncs, gparser_commandline_switches)
 {
     cfg.apply_setting("sound", "sound", "on");
     cfg.apply_setting("graphics", "render", "normal");
+    cfg.apply_setting("graphics", "smoothing", "off");
     cfg.apply_setting("graphics", "fullscreen", "off");
 
     char arg0[] = "openglad";
@@ -165,6 +166,7 @@ TEST(GparserFuncs, gparser_commandline_switches)
 
     ASSERT_TRUE(cfg.get_setting("sound", "sound") == "off") << "-S should disable sound";
     ASSERT_TRUE(cfg.get_setting("graphics", "render") == "sai") << "-x should select sai render";
+    ASSERT_EQ("sai", cfg.get_setting("graphics", "smoothing"));
     ASSERT_TRUE(cfg.get_setting("graphics", "fullscreen") == "on") << "-f should enable fullscreen";
 }
 
@@ -223,6 +225,7 @@ TEST(GparserFuncs, gparser_commandline_additional_switches_and_unknown)
 {
     cfg.apply_setting("sound", "sound", "off");
     cfg.apply_setting("graphics", "render", "double");
+    cfg.apply_setting("graphics", "smoothing", "off");
     cfg.apply_setting("graphics", "fullscreen", "off");
 
     char arg0[] = "openglad";
@@ -238,6 +241,7 @@ TEST(GparserFuncs, gparser_commandline_additional_switches_and_unknown)
 
     ASSERT_TRUE(cfg.get_setting("sound", "sound") == "on") << "-s should enable sound";
     ASSERT_TRUE(cfg.get_setting("graphics", "render") == "eagle") << "-e should set eagle render";
+    ASSERT_EQ("eagle", cfg.get_setting("graphics", "smoothing"));
     ASSERT_TRUE(cfg.get_setting("graphics", "fullscreen") == "off") << "unknown switch should not alter fullscreen";
 }
 
@@ -321,6 +325,7 @@ TEST(GparserFuncs, gparser_round6_commandline_all_short_switches)
 {
     cfg.apply_setting("sound", "sound", "off");
     cfg.apply_setting("graphics", "render", "normal");
+    cfg.apply_setting("graphics", "smoothing", "off");
     cfg.apply_setting("graphics", "fullscreen", "off");
 
     char arg0[] = "openglad";
@@ -341,6 +346,7 @@ TEST(GparserFuncs, gparser_round6_commandline_all_short_switches)
     // Last toggle wins for repeated options.
     ASSERT_TRUE(cfg.get_setting("sound", "sound") == "off") << "-S should leave sound disabled";
     ASSERT_TRUE(cfg.get_setting("graphics", "render") == "sai") << "-x should leave render in sai mode";
+    ASSERT_EQ("sai", cfg.get_setting("graphics", "smoothing"));
     ASSERT_TRUE(cfg.get_setting("graphics", "fullscreen") == "on") << "-f should enable fullscreen";
 }
 

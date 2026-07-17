@@ -217,6 +217,12 @@ TEST(NetTransportInProcess, linked_pair_preserves_raw_send_receive)
               pair.server->connected_peers());
     EXPECT_EQ((std::vector<og::sim::PeerId>{pair.peer_id}),
               pair.client->connected_peers());
+    // In-process links have no upstream socket to lose: they keep the
+    // ITransport default link state of Connected.
+    EXPECT_EQ(og::sim::TransportLinkState::Connected,
+              pair.server->link_state());
+    EXPECT_EQ(og::sim::TransportLinkState::Connected,
+              pair.client->link_state());
 
     const std::array<std::uint8_t, 3> outbound = {0xaa, 0xbb, 0xcc};
     pair.server->send(pair.peer_id, outbound.data(), outbound.size());

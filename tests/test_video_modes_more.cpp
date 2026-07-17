@@ -1,11 +1,18 @@
-#include "SDL.h"
+#include <SDL3/SDL.h>
 #include <gtest/gtest.h>
 #include <openglad/platform/game_context.h>
+#include <openglad/platform/sai2x.h>
+#include <openglad/platform/video_sdl.h>
 #include <openglad/interface/screen.h>
+#include <openglad/resources/io_common.h>
+#include <algorithm>
 #include <array>
+#include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <span>
+#include <vector>
 
 
 // myscreen is now a macro defined in base.h (via game_session.h)
@@ -17,23 +24,24 @@ struct SurfaceDeleter
     void operator()(SDL_Surface* s) const
     {
         if (s)
-            SDL_FreeSurface(s);
+            SDL_DestroySurface(s);
     }
 };
 using SurfacePtr = std::unique_ptr<SDL_Surface, SurfaceDeleter>;
 
 static SurfacePtr make_surface(int w, int h)
 {
-    SDL_Surface* s = SDL_CreateRGBSurfaceWithFormat(0, w, h, 32, SDL_PIXELFORMAT_ARGB8888);
+    SDL_Surface* s = SDL_CreateSurface(w, h, SDL_PIXELFORMAT_ARGB8888);
     return SurfacePtr(s);
 }
 
 static void cleanup_screenshots()
 {
-    // save_screenshot() uses a static counter and writes to CWD.
+    // save_screenshot() uses a static counter and writes through PhysFS into
+    // the configured user directory.
     // Keep tests idempotent and avoid accumulating files across runs.
     std::error_code ec;
-    for (const auto& p : std::filesystem::directory_iterator(std::filesystem::current_path(), ec))
+    for (const auto& p : std::filesystem::directory_iterator(get_user_path(), ec))
     {
         if (ec)
             break;
@@ -42,7 +50,116 @@ static void cleanup_screenshots()
             std::filesystem::remove(p.path(), ec);
     }
 }
+
+static std::vector<std::filesystem::path> screenshot_files()
+{
+    std::vector<std::filesystem::path> out;
+    std::error_code ec;
+    for (const auto& p : std::filesystem::directory_iterator(get_user_path(), ec))
+    {
+        if (ec)
+            break;
+        const auto name = p.path().filename().string();
+        if (name.rfind("screenshot", 0) == 0 &&
+            (p.path().extension() == ".png" || p.path().extension() == ".bmp"))
+            out.push_back(p.path());
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+static std::pair<int, int> saved_image_dimensions(const std::filesystem::path& path)
+{
+    std::array<unsigned char, 26> bytes{};
+    std::ifstream input(path, std::ios::binary);
+    input.read(reinterpret_cast<char*>(bytes.data()), bytes.size());
+    if (input.gcount() != static_cast<std::streamsize>(bytes.size()))
+        return {0, 0};
+
+    const auto be32 = [&bytes](std::size_t offset) {
+        return (static_cast<std::uint32_t>(bytes[offset]) << 24) |
+               (static_cast<std::uint32_t>(bytes[offset + 1]) << 16) |
+               (static_cast<std::uint32_t>(bytes[offset + 2]) << 8) |
+               static_cast<std::uint32_t>(bytes[offset + 3]);
+    };
+    const auto le32 = [&bytes](std::size_t offset) {
+        return static_cast<std::uint32_t>(bytes[offset]) |
+               (static_cast<std::uint32_t>(bytes[offset + 1]) << 8) |
+               (static_cast<std::uint32_t>(bytes[offset + 2]) << 16) |
+               (static_cast<std::uint32_t>(bytes[offset + 3]) << 24);
+    };
+
+    // PNG IHDR stores width/height big-endian at byte offsets 16/20.
+    if (bytes[0] == 0x89 && bytes[1] == 'P' && bytes[2] == 'N' && bytes[3] == 'G')
+        return {static_cast<int>(be32(16)), static_cast<int>(be32(20))};
+    // SDL's BMP writer emits a BITMAPINFOHEADER with little-endian dimensions.
+    if (bytes[0] == 'B' && bytes[1] == 'M')
+        return {static_cast<int>(le32(18)), static_cast<int>(le32(22))};
+    return {0, 0};
+}
+
+struct ScreenshotStateRestore
+{
+    ~ScreenshotStateRestore()
+    {
+        if (E_Screen)
+        {
+            E_Screen->set_world_zoom(og::kZoomStepsMax, og::WorldScaleMode::Integer);
+            E_Screen->set_active_canvas(CanvasTarget::UI);
+        }
+        cleanup_screenshots();
+    }
+};
 } // namespace
+
+TEST(VideoModesMore, display_mode_sizes_are_reported_in_physical_pixels)
+{
+	SDL_DisplayMode mode{};
+	mode.w = 1920;
+	mode.h = 1080;
+	mode.pixel_density = 2.0f;
+	EXPECT_EQ(std::make_pair(3840, 2160),
+	          og::platform::display_mode_pixel_size(mode));
+
+	// SDL rounds drawable pixel sizes upward for fractional densities.
+	mode.w = 1365;
+	mode.h = 767;
+	mode.pixel_density = 1.25f;
+	EXPECT_EQ(std::make_pair(1707, 959),
+	          og::platform::display_mode_pixel_size(mode));
+
+	// Invalid/unspecified density safely retains the logical dimensions.
+	mode.pixel_density = 0.0f;
+	EXPECT_EQ(std::make_pair(1365, 767),
+	          og::platform::display_mode_pixel_size(mode));
+}
+
+TEST(VideoModesMore, exclusive_mode_switch_rejects_only_multi_display_x11)
+{
+	EXPECT_TRUE(og::platform::exclusive_mode_switch_is_safe("x11", 1));
+	EXPECT_FALSE(og::platform::exclusive_mode_switch_is_safe("x11", 2));
+	EXPECT_FALSE(og::platform::exclusive_mode_switch_is_safe("x11", 3));
+	EXPECT_TRUE(og::platform::exclusive_mode_switch_is_safe("wayland", 2));
+	EXPECT_TRUE(og::platform::exclusive_mode_switch_is_safe("windows", 2));
+	EXPECT_TRUE(og::platform::exclusive_mode_switch_is_safe("offscreen", 2));
+}
+
+TEST(VideoModesMore, native_window_requests_a_physical_hidpi_backbuffer)
+{
+	ASSERT_NE(nullptr, E_Screen);
+	ASSERT_NE(nullptr, E_Screen->window);
+	EXPECT_NE(0u, SDL_GetWindowFlags(E_Screen->window) &
+	                  SDL_WINDOW_HIGH_PIXEL_DENSITY);
+
+	int logical_w = 0;
+	int logical_h = 0;
+	int output_w = 0;
+	int output_h = 0;
+	ASSERT_TRUE(SDL_GetWindowSize(E_Screen->window, &logical_w, &logical_h));
+	ASSERT_TRUE(SDL_GetRenderOutputSize(E_Screen->renderer, &output_w, &output_h));
+	EXPECT_GE(output_w, logical_w);
+	EXPECT_GE(output_h, logical_h);
+}
 
 TEST(VideoModesMore, video_putbuffer_surface_clipping_and_blit)
 {
@@ -52,7 +169,7 @@ TEST(VideoModesMore, video_putbuffer_surface_clipping_and_blit)
         return;
 
     // Fill with a non-zero pattern so the blit does something.
-    SDL_FillRect(surf.get(), nullptr, SDL_MapRGB(surf->format, 10, 20, 30));
+    SDL_FillSurfaceRect(surf.get(), nullptr, SDL_MapSurfaceRGB(surf.get(), 10, 20, 30));
 
     // Early-out: tile outside clipping region.
     og::runtime::current_session->myscreen_->putbuffer_surface(500, 500, 16, 16, 0, 0, 319, 199, surf.get());
@@ -169,12 +286,47 @@ TEST(VideoModesMore, video_walkputbuffer_modes_invisible_outline_phantom)
 }
 
 
-TEST(VideoModesMore, video_save_screenshot_smoke_and_cleanup)
+TEST(VideoModesMore, video_save_screenshot_matches_active_canvas_smoothing)
 {
+    ASSERT_NE(nullptr, E_Screen);
+    ScreenshotStateRestore restore;
     cleanup_screenshots();
 
-    // Default engine path (NoZoom) should save using E_Screen->render.
-    (void)og::runtime::current_session->myscreen_->save_screenshot();
+    // The legacy Engine slot remains NoZoom, while live world smoothing is
+    // held separately in world_engine(). Produce the 2x SAI scratch, then
+    // verify the screenshot captures that presented surface rather than the
+    // raw aspect-relative world canvas.
+    E_Screen->set_world_zoom(og::kZoomStepsMax, og::WorldScaleMode::Sai);
+    ASSERT_EQ(RenderEngine::NoZoom, E_Screen->Engine);
+    ASSERT_EQ(RenderEngine::SAI, E_Screen->world_engine());
+    E_Screen->set_active_canvas(CanvasTarget::World);
+    E_Screen->begin_gameplay_frame();
+    ASSERT_TRUE(E_Screen->gameplay_ui_overlay_active());
+    SDL_FillSurfaceRect(E_Screen->render, nullptr, 0x00112233u);
+	{
+		ScopedGameplayUiCanvas gameplay_ui(
+			*og::runtime::current_session->myscreen_);
+		const SDL_Rect hud_pixel{10, 10, 1, 1};
+		ASSERT_TRUE(SDL_FillSurfaceRect(
+			E_Screen->render, &hud_pixel,
+			SDL_MapSurfaceRGBA(E_Screen->render, 220, 20, 30, 255)));
+	}
+    E_Screen->swap(0, 0, E_Screen->world_w(), E_Screen->world_h());
+    ASSERT_NE(nullptr, E_Screen->render2);
+    const std::pair<int, int> expected_world_capture{
+        E_Screen->world_w() * 2, E_Screen->world_h() * 2};
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->save_screenshot());
 
+    std::vector<std::filesystem::path> files = screenshot_files();
+    ASSERT_EQ(1u, files.size());
+    EXPECT_EQ(expected_world_capture, saved_image_dimensions(files.front()));
+
+    // The fixed UI canvas must still be captured raw even while a valid
+    // world-filter scratch exists.
     cleanup_screenshots();
+    E_Screen->set_active_canvas(CanvasTarget::UI);
+    ASSERT_TRUE(og::runtime::current_session->myscreen_->save_screenshot());
+    files = screenshot_files();
+    ASSERT_EQ(1u, files.size());
+    EXPECT_EQ(std::make_pair(320, 200), saved_image_dimensions(files.front()));
 }

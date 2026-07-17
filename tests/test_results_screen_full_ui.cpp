@@ -7,9 +7,10 @@
 #include <openglad/interface/input.h>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/ui/results_screen.h>
+#include <openglad/platform/sai2x.h>
 
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include "test_input_helpers.h"
 
 #include <map>
@@ -28,6 +29,21 @@ struct ResultsThreadState
 {
     bool started = false;
     bool finished = false;
+};
+
+struct CanvasRoutingGuard
+{
+    int zoom_steps = E_Screen->world_zoom_steps();
+    og::WorldScaleMode smoothing = E_Screen->world_scale().mode;
+    CanvasTarget target = E_Screen->active_canvas();
+    int window_w = static_cast<int>(og::runtime::current_session->window_w_);
+    int window_h = static_cast<int>(og::runtime::current_session->window_h_);
+
+    ~CanvasRoutingGuard()
+    {
+        E_Screen->set_world_zoom(zoom_steps, smoothing, window_w, window_h);
+        E_Screen->set_active_canvas(target);
+    }
 };
 
 static void inject_results_click(int game_x, int game_y, int delay_ms = 10)
@@ -50,11 +66,13 @@ static int results_ui_injector(void* data)
     SDL_Delay(140);
 
     SDL_Event wheel{};
-    wheel.type = SDL_MOUSEWHEEL;
+    wheel.type = SDL_EVENT_MOUSE_WHEEL;
     wheel.wheel.y = 1;
+    wheel.wheel.integer_y = 1;
     SDL_PushEvent(&wheel);
 
     wheel.wheel.y = -1;
+    wheel.wheel.integer_y = -1;
     SDL_PushEvent(&wheel);
 
     // Toggle tabs in the full results UI.
@@ -92,8 +110,9 @@ static int results_ui_scroll_injector(void* data)
     for (int i = 0; i < 12; ++i)
     {
         SDL_Event wheel{};
-        wheel.type = SDL_MOUSEWHEEL;
+        wheel.type = SDL_EVENT_MOUSE_WHEEL;
         wheel.wheel.y = -1;
+        wheel.wheel.integer_y = -1;
         SDL_PushEvent(&wheel);
         SDL_Delay(15);
     }
@@ -101,8 +120,9 @@ static int results_ui_scroll_injector(void* data)
     for (int i = 0; i < 4; ++i)
     {
         SDL_Event wheel{};
-        wheel.type = SDL_MOUSEWHEEL;
+        wheel.type = SDL_EVENT_MOUSE_WHEEL;
         wheel.wheel.y = 1;
+        wheel.wheel.integer_y = 1;
         SDL_PushEvent(&wheel);
         SDL_Delay(15);
     }
@@ -179,8 +199,16 @@ static int results_ui_troops_then_ok_injector(void* data)
 
 TEST(ResultsScreenFullUi, overview_and_troops_paths)
 {
+    CanvasRoutingGuard canvas_guard;
     const char saved_end = og::runtime::current_session->myscreen_->world().end;
     og::runtime::current_session->myscreen_->world().end = 0;
+
+    // This test needs a deterministic split 640x400 World buffer regardless
+    // of the physical mode left by earlier menu tests.
+    E_Screen->set_world_zoom(5, og::WorldScaleMode::Sai, 320, 200);
+    E_Screen->set_active_canvas(CanvasTarget::World);
+    constexpr Uint32 kWorldPixel = 0x00123456u;
+    SDL_FillSurfaceRect(E_Screen->render, nullptr, kWorldPixel);
 
     // Ensure deterministic campaign/level context used by results_screen internals.
     og::runtime::current_session->myscreen_->save_data.current_campaign = "org.openglad.gladiator";
@@ -274,6 +302,12 @@ TEST(ResultsScreenFullUi, overview_and_troops_paths)
 
     ASSERT_TRUE(st.started && st.finished) << "results UI injector should run";
     ASSERT_TRUE(!retry) << "OK path should not request retry";
+    EXPECT_EQ(CanvasTarget::World, E_Screen->active_canvas());
+    EXPECT_EQ(640, E_Screen->render->w);
+    EXPECT_EQ(400, E_Screen->render->h);
+    const auto* world_pixels = reinterpret_cast<const Uint32*>(E_Screen->render->pixels);
+    EXPECT_EQ(kWorldPixel, world_pixels[60 + 25 * (E_Screen->render->pitch / 4)])
+        << "results chrome must render on the fixed UI canvas, not the world";
 }
 
 

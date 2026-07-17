@@ -38,21 +38,21 @@
 // This harness exercises the binary read/parse logic from
 // SaveData::load() without touching the filesystem or game state.
 
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 
 static constexpr int MAX_TEAM_SIZE = 24;
 
-static bool rw_read_exact(SDL_RWops *rw, void *dst, size_t sz, size_t count)
+static bool rw_read_exact(SDL_IOStream *rw, void *dst, size_t sz, size_t count)
 {
-    return rw && SDL_RWread(rw, dst, sz, count) == count;
+    return rw && SDL_ReadIO(rw, dst, sz * count) == sz * count;
 }
 
 static void fuzz_parse_savefile(const uint8_t *data, size_t size)
 {
-    SDL_RWops *rw = SDL_RWFromConstMem(data, static_cast<int>(size));
+    SDL_IOStream *rw = SDL_IOFromConstMem(data, size);
     if (!rw)
         return;
 
@@ -60,19 +60,19 @@ static void fuzz_parse_savefile(const uint8_t *data, size_t size)
     std::array<char, 4> header = {};
     if (!rw_read_exact(rw, header.data(), 3, 1))
     {
-        SDL_RWclose(rw);
+        SDL_CloseIO(rw);
         return;
     }
     if (header[0] != 'G' || header[1] != 'T' || header[2] != 'L')
     {
-        SDL_RWclose(rw);
+        SDL_CloseIO(rw);
         return;
     }
 
     uint8_t version = 0;
     if (!rw_read_exact(rw, &version, 1, 1))
     {
-        SDL_RWclose(rw);
+        SDL_CloseIO(rw);
         return;
     }
 
@@ -82,7 +82,7 @@ static void fuzz_parse_savefile(const uint8_t *data, size_t size)
         int16_t registered = 0;
         if (!rw_read_exact(rw, &registered, 2, 1))
         {
-            SDL_RWclose(rw);
+            SDL_CloseIO(rw);
             return;
         }
     }
@@ -93,14 +93,14 @@ static void fuzz_parse_savefile(const uint8_t *data, size_t size)
         std::array<char, 40> savedgame = {};
         if (!rw_read_exact(rw, savedgame.data(), 40, 1))
         {
-            SDL_RWclose(rw);
+            SDL_CloseIO(rw);
             return;
         }
     }
     else if (version < 2)
     {
         // Unsupported version
-        SDL_RWclose(rw);
+        SDL_CloseIO(rw);
         return;
     }
 
@@ -110,7 +110,7 @@ static void fuzz_parse_savefile(const uint8_t *data, size_t size)
         std::array<char, 41> campaign = {};
         if (!rw_read_exact(rw, campaign.data(), 1, 40))
         {
-            SDL_RWclose(rw);
+            SDL_CloseIO(rw);
             return;
         }
     }
@@ -119,7 +119,7 @@ static void fuzz_parse_savefile(const uint8_t *data, size_t size)
     int16_t scen_num = 0;
     if (!rw_read_exact(rw, &scen_num, 2, 1))
     {
-        SDL_RWclose(rw);
+        SDL_CloseIO(rw);
         return;
     }
 
@@ -128,7 +128,7 @@ static void fuzz_parse_savefile(const uint8_t *data, size_t size)
     if (!rw_read_exact(rw, &cash, 4, 1) ||
         !rw_read_exact(rw, &score, 4, 1))
     {
-        SDL_RWclose(rw);
+        SDL_CloseIO(rw);
         return;
     }
 
@@ -141,7 +141,7 @@ static void fuzz_parse_savefile(const uint8_t *data, size_t size)
             if (!rw_read_exact(rw, &tcash, 4, 1) ||
                 !rw_read_exact(rw, &tscore, 4, 1))
             {
-                SDL_RWclose(rw);
+                SDL_CloseIO(rw);
                 return;
             }
         }
@@ -153,7 +153,7 @@ static void fuzz_parse_savefile(const uint8_t *data, size_t size)
         int16_t allied = 0;
         if (!rw_read_exact(rw, &allied, 2, 1))
         {
-            SDL_RWclose(rw);
+            SDL_CloseIO(rw);
             return;
         }
     }
@@ -162,12 +162,12 @@ static void fuzz_parse_savefile(const uint8_t *data, size_t size)
     int16_t listsize = 0;
     if (!rw_read_exact(rw, &listsize, 2, 1))
     {
-        SDL_RWclose(rw);
+        SDL_CloseIO(rw);
         return;
     }
     if (listsize < 0 || listsize > MAX_TEAM_SIZE)
     {
-        SDL_RWclose(rw);
+        SDL_CloseIO(rw);
         return;
     }
 
@@ -175,7 +175,7 @@ static void fuzz_parse_savefile(const uint8_t *data, size_t size)
     uint8_t numplayers = 0;
     if (!rw_read_exact(rw, &numplayers, 1, 1))
     {
-        SDL_RWclose(rw);
+        SDL_CloseIO(rw);
         return;
     }
 
@@ -183,7 +183,7 @@ static void fuzz_parse_savefile(const uint8_t *data, size_t size)
     std::array<char, 31> filler = {};
     if (!rw_read_exact(rw, filler.data(), 31, 1))
     {
-        SDL_RWclose(rw);
+        SDL_CloseIO(rw);
         return;
     }
 
@@ -219,7 +219,7 @@ static void fuzz_parse_savefile(const uint8_t *data, size_t size)
             !rw_read_exact(rw, &teamnum, 2, 1) ||
             !rw_read_exact(rw, reserved.data(), 8, 1))
         {
-            SDL_RWclose(rw);
+            SDL_CloseIO(rw);
             return;
         }
     }
@@ -230,13 +230,13 @@ static void fuzz_parse_savefile(const uint8_t *data, size_t size)
         int16_t num_campaigns = 0;
         if (!rw_read_exact(rw, &num_campaigns, 2, 1))
         {
-            SDL_RWclose(rw);
+            SDL_CloseIO(rw);
             return;
         }
         // Clamp to avoid excessive iteration
         if (num_campaigns < 0 || num_campaigns > 1000)
         {
-            SDL_RWclose(rw);
+            SDL_CloseIO(rw);
             return;
         }
 
@@ -250,13 +250,13 @@ static void fuzz_parse_savefile(const uint8_t *data, size_t size)
                 !rw_read_exact(rw, &current_level, 2, 1) ||
                 !rw_read_exact(rw, &num_levels, 2, 1))
             {
-                SDL_RWclose(rw);
+                SDL_CloseIO(rw);
                 return;
             }
 
             if (num_levels < 0 || num_levels > 10000)
             {
-                SDL_RWclose(rw);
+                SDL_CloseIO(rw);
                 return;
             }
 
@@ -265,7 +265,7 @@ static void fuzz_parse_savefile(const uint8_t *data, size_t size)
                 int16_t level_index = 0;
                 if (!rw_read_exact(rw, &level_index, 2, 1))
                 {
-                    SDL_RWclose(rw);
+                    SDL_CloseIO(rw);
                     return;
                 }
             }
@@ -277,7 +277,7 @@ static void fuzz_parse_savefile(const uint8_t *data, size_t size)
         std::array<char, 500> levelstatus = {};
         if (!rw_read_exact(rw, levelstatus.data(), 500, 1))
         {
-            SDL_RWclose(rw);
+            SDL_CloseIO(rw);
             return;
         }
     }
@@ -288,7 +288,7 @@ static void fuzz_parse_savefile(const uint8_t *data, size_t size)
         rw_read_exact(rw, levelstatus.data(), 200, 1);
     }
 
-    SDL_RWclose(rw);
+    SDL_CloseIO(rw);
 }
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)

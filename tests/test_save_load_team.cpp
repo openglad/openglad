@@ -5,7 +5,7 @@
 #include <openglad/interface/render/pixien.h>
 #include <openglad/core/test_trace.h>
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include "test_input_helpers.h"
 #include "test_interact.h"
 #include <openglad/resources/save_data.h>
@@ -368,7 +368,7 @@ static int load_menu_injector(void* data)
         interact_match("back", [](const Interactable& item) { return item.y >= 170; });
     }
 
-    const Uint32 deadline = SDL_GetTicks() + 10000;
+    const Uint64 deadline = SDL_GetTicks() + 10000;
     while (SDL_GetTicks() < deadline)
     {
         if (wait_for_interactable("continue_game", 150))

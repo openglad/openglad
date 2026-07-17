@@ -1,4 +1,4 @@
-#include "SDL.h"
+#include <SDL3/SDL.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/gameplay/walker.h>
 #include <openglad/resources/og_file.h>
@@ -20,7 +20,7 @@ short load_version_5(og::io::OgFile& infile, LevelRuntimeData* data);
 short load_version_6(og::io::OgFile& infile, LevelRuntimeData* data, short version);
 short load_scenario_version(og::io::OgFile& infile, LevelRuntimeData* data, short version);
 
-// Memory-backed OgFile for testing (replaces SDL_RWFromConstMem)
+// Memory-backed OgFile for testing (replaces SDL_IOFromConstMem)
 class MemoryOgFile final : public og::io::OgFile {
 public:
     MemoryOgFile(const void* data, std::size_t size)

@@ -349,8 +349,11 @@ inline constexpr int NUM_BROWSE_RADARS = 3;
 // Load a scenario...
 int pick_level(screen *screenp, int default_level, bool enable_delete)
 {
-	(void)screenp;
-	    int result = default_level;
+    // The radar previews and browser controls are fixed-coordinate UI. The
+    // editor enters this picker from its World target, so explicitly use the
+    // nearest UI canvas and restore World on return.
+    ScopedUiCanvas canvas_target(*screenp);
+    int result = default_level;
     
 	text& loadtext = og::runtime::current_session->myscreen_->text_normal;
     

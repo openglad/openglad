@@ -82,12 +82,26 @@ jobs:
         if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y pkg-config libsdl2-dev libsdl2-mixer-dev libphysfs-dev libzip-dev libyaml-dev zlib1g-dev cmake ninja-build
+          sudo apt-get install -y pkg-config libphysfs-dev libzip-dev libyaml-dev zlib1g-dev cmake ninja-build
+          # SDL3 is fetched and built statically (no libsdl3-dev on ubuntu-latest).
+          # Install backend dev headers so the bundled static SDL3 compiles in
+          # real audio/video drivers; these are build-time-only dependencies
+          # (SDL dlopens the runtime libraries), keeping the binary self-contained.
+          sudo apt-get install -y \
+            libasound2-dev libpulse-dev libpipewire-0.3-dev libjack-dev libsndio-dev \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxfixes-dev libxi-dev libxss-dev libxtst-dev \
+            libxkbcommon-dev libwayland-dev libdecor-0-dev libdrm-dev libgbm-dev \
+            libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev libdbus-1-dev libibus-1.0-dev libudev-dev liburing-dev
+
+      - uses: hendrikmuhs/ccache-action@v1
+        if: matrix.platform == 'linux'
+        with:
+          key: nightly-linux
 
       - name: Install dependencies (macOS)
         if: matrix.platform == 'macos'
         run: |
-          brew install sdl2 sdl2_mixer ninja pkg-config physfs libzip libyaml zlib
+          brew install sdl3 ninja pkg-config physfs libzip libyaml zlib
 
       - name: Setup MSYS2 (Windows)
         if: matrix.platform == 'windows'
@@ -99,8 +113,7 @@ jobs:
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-ninja
-            mingw-w64-x86_64-SDL2
-            mingw-w64-x86_64-SDL2_mixer
+            mingw-w64-x86_64-sdl3
             mingw-w64-x86_64-physfs
             mingw-w64-x86_64-libzip
             mingw-w64-x86_64-libyaml
@@ -115,6 +128,8 @@ jobs:
         run: |
           cmake -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DBUILD_TESTING=OFF \
             -DBUILD_EDITOR=ON \
 
@@ -167,7 +182,7 @@ jobs:
           cp build/openglad.exe build/openscen.exe staging/openglad/
           # Bundle MinGW runtime DLLs
           MINGW_BIN="/mingw64/bin"
-          for dll in SDL2.dll SDL2_mixer.dll libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
+          for dll in SDL3.dll libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
             [ -f "$MINGW_BIN/$dll" ] && cp "$MINGW_BIN/$dll" staging/openglad/
           done
           cp -r pix cfg sound builtin staging/openglad/
@@ -194,7 +209,7 @@ jobs:
       - name: Setup Emscripten
         uses: mymindstorm/setup-emsdk@v14
         with:
-          version: 3.1.51
+          version: 6.0.3
 
       - name: Build web target
         run: |
@@ -206,7 +221,7 @@ jobs:
             fi
             if [ "${attempt}" -lt 3 ]; then
               echo "Build failed. Clearing Emscripten ports cache and retrying..."
-              rm -rf "${HOME}/.emscripten_ports"
+              emcc --clear-ports
               sleep 10
             fi
           done

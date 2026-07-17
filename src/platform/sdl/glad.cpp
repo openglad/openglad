@@ -31,6 +31,7 @@
 #include <openglad/platform/game_session.h>
 #include <openglad/platform/local_transport_shadow.h>
 #include <openglad/platform/screen_lifecycle.h>
+#include <openglad/platform/video_sdl.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
@@ -280,6 +281,7 @@ static void emscripten_frame_wrapper() {
 			break;
 
 		case GameState::Playing:
+			try {
 			if (!g_state_initialized) {
 				// Initialize game state
 				Log("GameState::Playing: Initializing game\n");
@@ -320,7 +322,7 @@ static void emscripten_frame_wrapper() {
 			if (current_screen == nullptr || g_frame_state().done)
 				break;
 			{
-				const Uint32 current_time = SDL_GetTicks();
+				const Uint32 current_time = static_cast<Uint32>(SDL_GetTicks());
 				std::uint32_t sim_interval = 0u;
 				if (current_screen != nullptr &&
 				    og::runtime::current_session->g_game_speed_factor_ > 0.0f)
@@ -364,6 +366,25 @@ static void emscripten_frame_wrapper() {
 					    *og::runtime::current_game_session);
 				clear_keyboard();
 				current_screen->world().delete_objects();
+				g_web_game_start_config.reset();
+				g_game_state = GameState::Picker;
+				g_state_initialized = false;
+			}
+			} catch (const std::exception& e) {
+				// The rAF-driven gameplay path has no other handler: an
+				// exception escaping this callback would surface as an
+				// undiagnosable uncaught JS exception every frame while the
+				// runtime keeps ticking. Fold it into the same cleanup as a
+				// finished game and return to the picker.
+				LogError("Unrecoverable gameplay error, returning to picker: {}\n",
+				    e.what());
+				og::runtime::current_session->gameplay_active_ = false;
+				if (og::runtime::current_game_session != nullptr)
+					og::runtime::clear_local_transport_shadow(
+					    *og::runtime::current_game_session);
+				clear_keyboard();
+				if (current_screen != nullptr)
+					current_screen->world().delete_objects();
 				g_web_game_start_config.reset();
 				g_game_state = GameState::Picker;
 				g_state_initialized = false;
@@ -424,7 +445,7 @@ extern "C" EMSCRIPTEN_KEEPALIVE void openglad_web_boot()
         }
 
         // Initialize timing
-        g_frame_state().last_frame_time = SDL_GetTicks();
+        g_frame_state().last_frame_time = static_cast<std::uint32_t>(SDL_GetTicks());
         g_frame_state().accumulated_time = 0;
         publish_web_game_state();
 
@@ -432,13 +453,22 @@ extern "C" EMSCRIPTEN_KEEPALIVE void openglad_web_boot()
         // boot call return after scheduling the frame loop.
         emscripten_set_main_loop(emscripten_frame_wrapper, 0, 0);
     }
-    catch (const std::runtime_error& e)
+    catch (const std::exception& e)
     {
+        // Catch every std::exception, not just runtime_error: the whole
+        // picker runs inside picker_init() here, and anything escaping this
+        // exported function would abort the wasm runtime.
         g_web_boot_started = false;
         g_web_session.reset();
         publish_web_game_state();
         LogError("Unrecoverable error: {}\n", e.what());
     }
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void openglad_web_restore_canvas_backing(
+    int logical_w, int logical_h)
+{
+    restore_web_canvas_backing_size(logical_w, logical_h);
 }
 #endif
 

@@ -42,9 +42,40 @@ static void fill_floor_grid(GameWorld& world, int f, unsigned char tile)
     world.grid_for_floor(f) = PixieData(1, static_cast<unsigned char>(gw),
                                         static_cast<unsigned char>(gh), buf);
 }
+
+// These radar pixel tests were authored against the historical 320x200
+// viewport. Keep that exact geometry local to this suite so non-16:10 display
+// aspects cannot move the probes, then restore the live canvas after each test.
+class RadarMore : public testing::Test
+{
+protected:
+    void SetUp() override
+    {
+        game_ = og::runtime::current_session->myscreen_;
+        ASSERT_NE(nullptr, game_);
+        saved_target_ = game_->active_canvas();
+        game_->set_world_canvas_pinned_classic(true);
+        game_->relayout_views();
+        game_->set_active_canvas(CanvasTarget::World);
+    }
+
+    void TearDown() override
+    {
+        if (game_ == nullptr)
+            return;
+        game_->set_active_canvas(CanvasTarget::UI);
+        game_->set_world_canvas_pinned_classic(false);
+        game_->relayout_views();
+        game_->set_active_canvas(saved_target_);
+    }
+
+private:
+    screen* game_ = nullptr;
+    CanvasTarget saved_target_ = CanvasTarget::UI;
+};
 } // namespace
 
-TEST(RadarMore, radar_update_and_draw_covers_key_paths)
+TEST_F(RadarMore, radar_update_and_draw_covers_key_paths)
 {
     FixedRandom fixed_rng(1);
     GameContext c;
@@ -138,7 +169,7 @@ TEST(RadarMore, radar_update_and_draw_covers_key_paths)
 }
 
 
-TEST(RadarMore, radar_start_default_uses_myscreen_level_data)
+TEST_F(RadarMore, radar_start_default_uses_myscreen_level_data)
 {
     viewscreen* vs = og::runtime::current_session->myscreen_->viewob[0].get();
     ASSERT_TRUE(vs != nullptr) << "viewscreen exists";
@@ -155,7 +186,7 @@ TEST(RadarMore, radar_start_default_uses_myscreen_level_data)
 // made whole lava fields strobe on the minimap), marsh dark green (distinct
 // from the trees ramp), ash a warm dark grey (distinct from pavement 17 and
 // walls 24).
-TEST(RadarMore, westlands_tiles_map_to_pinned_radar_colors)
+TEST_F(RadarMore, westlands_tiles_map_to_pinned_radar_colors)
 {
     FixedRandom fixed_rng(1);
     GameContext c;
@@ -203,7 +234,7 @@ TEST(RadarMore, westlands_tiles_map_to_pinned_radar_colors)
 // terrain bmp re-bakes from the control walker's floor (and blips filter to
 // it); single-floor levels never leave floor 0, keeping the legacy radar
 // pixel-identical.
-TEST(RadarMore, radar_terrain_follows_the_control_floor)
+TEST_F(RadarMore, radar_terrain_follows_the_control_floor)
 {
     FixedRandom fixed_rng(1);
     GameContext c;
@@ -259,7 +290,7 @@ TEST(RadarMore, radar_terrain_follows_the_control_floor)
 
 // B2 (editor): with no control walker, the editor's floor override picks the
 // radar floor, so the minimap shows the floor being edited.
-TEST(RadarMore, radar_terrain_follows_the_editor_floor_override)
+TEST_F(RadarMore, radar_terrain_follows_the_editor_floor_override)
 {
     FixedRandom fixed_rng(1);
     GameContext c;
@@ -305,7 +336,7 @@ TEST(RadarMore, radar_terrain_follows_the_editor_floor_override)
 // B2 (robustness): a floor whose grid was never authored falls back to the
 // base grid (no crash, no garbage), and an out-of-range walker floor clamps
 // to the top floor.
-TEST(RadarMore, radar_survives_missing_floor_grid_and_clamps_floor)
+TEST_F(RadarMore, radar_survives_missing_floor_grid_and_clamps_floor)
 {
     FixedRandom fixed_rng(1);
     GameContext c;
@@ -350,7 +381,7 @@ TEST(RadarMore, radar_survives_missing_floor_grid_and_clamps_floor)
 }
 
 // B2 (blips): entities blip only on the floor the radar shows.
-TEST(RadarMore, radar_blips_filter_to_the_shown_floor)
+TEST_F(RadarMore, radar_blips_filter_to_the_shown_floor)
 {
     FixedRandom fixed_rng(1);
     GameContext c;
@@ -420,7 +451,7 @@ TEST(RadarMore, radar_blips_filter_to_the_shown_floor)
 // a cycled or random index would strobe the bake. Tile bytes 140/141 are
 // branch-new and absent from all legacy content, so single-floor radars stay
 // byte-identical by tile absence.
-TEST(RadarMore, zstair_tiles_bake_pinned_radar_colors)
+TEST_F(RadarMore, zstair_tiles_bake_pinned_radar_colors)
 {
     FixedRandom fixed_rng(1);
     GameContext c;

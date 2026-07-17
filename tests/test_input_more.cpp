@@ -1,7 +1,7 @@
 #include <openglad/interface/input.h>
 #include <openglad/platform/game_session.h>
 #include <gtest/gtest.h>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include "test_input_helpers.h"
 
 #include <array>
@@ -13,8 +13,9 @@ TEST(InputMore, input_mouse_wheel_sets_scroll_amount_and_keypress_flag)
     clear_keyboard();
 
     SDL_Event e{};
-    e.type = SDL_MOUSEWHEEL;
+    e.type = SDL_EVENT_MOUSE_WHEEL;
     e.wheel.y = 1;
+    e.wheel.integer_y = 1;
     handle_mouse_event(e);
 
     ASSERT_EQ(5, (int)get_and_reset_scroll_amount()) << "mouse wheel y=1 should set scroll_amount to 5";
@@ -26,9 +27,9 @@ TEST(InputMore, input_mouse_wheel_sets_scroll_amount_and_keypress_flag)
 TEST(InputMore, input_clear_events_drains_queue)
 {
     SDL_Event e{};
-    e.type = SDL_KEYDOWN;
-    e.key.keysym.sym = SDLK_a;
-    e.key.keysym.scancode = SDL_GetScancodeFromKey(SDLK_a);
+    e.type = SDL_EVENT_KEY_DOWN;
+    e.key.key = SDLK_A;
+    e.key.scancode = SDL_GetScancodeFromKey(SDLK_A, nullptr);
     SDL_PushEvent(&e);
 
     clear_events();
@@ -54,15 +55,15 @@ TEST(InputMore, input_send_fake_key_events_flow_through_get_input_events)
 {
     clear_keyboard();
 
-    sendFakeKeyDownEvent(SDLK_c);
+    sendFakeKeyDownEvent(SDLK_C);
     get_input_events(POLL);
 
-    ASSERT_EQ((int)SDLK_c, (int)query_key()) << "fake keydown should be handled and set raw_key";
+    ASSERT_EQ((int)SDLK_C, (int)query_key()) << "fake keydown should be handled and set raw_key";
     ASSERT_EQ(1, (int)query_key_press_event()) << "fake keydown should set key_press_event";
 
-    sendFakeKeyUpEvent(SDLK_c);
+    sendFakeKeyUpEvent(SDLK_C);
     get_input_events(POLL);
-    ASSERT_EQ(0, og::runtime::current_session->keystates_[SDL_GetScancodeFromKey(SDLK_c)])
+    ASSERT_EQ(0, og::runtime::current_session->keystates_[SDL_GetScancodeFromKey(SDLK_C, nullptr)])
         << "fake keyup should clear the key state";
 
     clear_keyboard();
@@ -79,13 +80,13 @@ TEST(InputMore, input_null_and_wrong_event_paths_are_ignored)
     handle_mouse_event(nullptr);
     ASSERT_EQ(0, (int)get_and_reset_scroll_amount()) << "null mouse event should not scroll";
 
-    ASSERT_TRUE(!query_key_event(SDLK_a, nullptr)) << "null event should not match key";
+    ASSERT_TRUE(!query_key_event(SDLK_A, nullptr)) << "null event should not match key";
     quit_if_quit_event(nullptr);
 
     SDL_Event text{};
-    text.type = SDL_TEXTINPUT;
-    std::strncpy(text.text.text, "abc", sizeof(text.text.text) - 1);
-    ASSERT_TRUE(!query_key_event(SDLK_a, text)) << "text event should not match keydown";
+    text.type = SDL_EVENT_TEXT_INPUT;
+    text.text.text = "abc";
+    ASSERT_TRUE(!query_key_event(SDLK_A, text)) << "text event should not match keydown";
 
     ASSERT_TRUE(!isKeyboardEvent(nullptr)) << "null event is not keyboard";
     ASSERT_TRUE(!isJoystickEvent(nullptr)) << "null event is not joystick";
@@ -93,7 +94,7 @@ TEST(InputMore, input_null_and_wrong_event_paths_are_ignored)
     ASSERT_TRUE(!isJoystickEvent(text)) << "text event is not joystick";
 
     SDL_Event up{};
-    up.type = SDL_KEYUP;
-    up.key.keysym.sym = SDLK_a;
+    up.type = SDL_EVENT_KEY_UP;
+    up.key.key = SDLK_A;
     ASSERT_TRUE(!isKeyboardEvent(up)) << "keyup is not keyboard input for this predicate";
 }

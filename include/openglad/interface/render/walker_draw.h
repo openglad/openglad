@@ -68,11 +68,13 @@ float query_render_interpolation_alpha();
 WalkerRenderPosition resolve_walker_render_position(const walker& w,
                                                     float alpha);
 // alpha<255 marks a non-camera (faded/ghosted) floor: the sprite is drawn ONLY
-// (no flash/outline/mode/HP-bar/damage-number embellishments) and OPAQUELY onto
-// the off-screen floor layer — the per-floor fade + shrink/zoom is applied by the
-// layer composite (video::floor_layer_*), so this no longer per-sprite blends or
-// position-scales (which left sub-pixel seams). alpha==255 = camera floor (full).
-bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha = 255);
+// (no flash/outline/mode/HP-bar/damage-number embellishments). With an active
+// compositor layer it draws opaque and the layer applies the fade/scale; when a
+// budget/allocation fallback prevents that redirect, it draws directly with
+// `alpha` so a lower floor can never become full-brightness. alpha==255 is the
+// camera-floor full path.
+bool draw_walker(walker& w, viewscreen* view_buf, unsigned char alpha = 255,
+                 bool layer_active = true);
 // Multifloor FX pre-pass sprites (render-only, drawn before the normal entity
 // loops so entities overdraw them). Both apply to alive Living/Weapon walkers
 // that are neither phantom nor invisible, and return true when a blit was

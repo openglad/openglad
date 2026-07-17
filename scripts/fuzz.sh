@@ -9,11 +9,12 @@
 #   ./scripts/fuzz.sh scenario 60       # Fuzz scenario parser for 60 seconds
 #   ./scripts/fuzz.sh all 300           # Fuzz all targets for 300s each
 #
-# Requires: clang/clang++, cmake, ninja, libsdl2-dev, libsdl2-mixer-dev
+# Requires: clang/clang++, cmake, ninja (SDL3 comes from the system package
+# or is fetched automatically by the CMake build)
 
 set -euo pipefail
 
-# Disable leak detection: SDL2 has known benign leaks that would
+# Disable leak detection: SDL has known benign leaks that would
 # cause false positives in fuzz runs.
 export ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}"
 

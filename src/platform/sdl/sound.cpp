@@ -14,7 +14,13 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
-// Sound object
+// Sound object — SDL3 audio streams (SDL2_mixer removed).
+//
+// Architecture: one playback device opened at S16/stereo/22050 (the old
+// SDL2 mixer format), with NUM_SOUND_CHANNELS persistent audio streams
+// bound to it. SDL mixes bound streams and converts each stream's input
+// format to the device format. Playing a clip picks an idle stream (or
+// steals the round-robin victim) and queues the whole PCM buffer.
 
 /* ChangeLog
 	buffers: 8/7/02: *moved SDL_OpenAudio to after the silence check in
@@ -26,7 +32,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <openglad/platform/soundob_sdl.h>
-#include "SDL_mixer.h"
+#include <SDL3/SDL.h>
 #include <string>
 #include <openglad/core/util.h>
 #include <openglad/resources/io.h>
@@ -40,8 +46,7 @@ sdl_soundob::sdl_soundob()
 {
 	// Do stuff
 	silence = 0;        // default is sound ON
-	for (int i=0; i < NUMSOUNDS; i++)
-		sound[i] = nullptr;
+	// sound[] chunks default-initialize to empty (buf == nullptr).
 	init();
 }
 
@@ -51,8 +56,6 @@ sdl_soundob::sdl_soundob()
 sdl_soundob::sdl_soundob(bool silent)
 {
 	silence = silent;
-	for (int i=0; i < NUMSOUNDS; i++)
-		sound[i] = nullptr;
 	init();             // init will do nothing if silent is set
 }
 
@@ -67,27 +70,42 @@ int sdl_soundob::init()
 
     // Free any existing sounds
 	for (i=0; i < NUMSOUNDS; i++)
-    {
-		Mix_FreeChunk(sound[i]);
-		sound[i] = nullptr;
-    }
+		free_sound(&sound[i]);
 
 	// Do we have sounds on?
 	if (silence)
 		return 0;
-    
-    int sample_rate = 22050;
-	    int sample_format = AUDIO_S16;
-    int sample_buffer_size = 1024;
-    bool stereo = true;
-    
-		if(Mix_OpenAudio(sample_rate, static_cast<Uint16>(sample_format), stereo? 2 : 1 , sample_buffer_size) == -1)
+
+	// First enable: open the device and bind the mixing streams once;
+	// they persist across set_sound() toggles until shutdown().
+	if (device_ == 0)
+	{
+		if (!SDL_InitSubSystem(SDL_INIT_AUDIO))
 		{
-			LogError("Mix_OpenAudio failed: {}\n", Mix_GetError());
+			LogError("SDL_InitSubSystem(SDL_INIT_AUDIO) failed: {}\n", SDL_GetError());
 			exit(0);
 		}
 
-	Mix_AllocateChannels(8);
+		// Mirrors the old mixer's open-audio(22050, S16, stereo, 1024);
+		// SDL3 has no chunksize knob. Devices start unpaused.
+		const SDL_AudioSpec want{SDL_AUDIO_S16, 2, 22050};
+		device_ = SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &want);
+		if (device_ == 0)
+		{
+			LogError("SDL_OpenAudioDevice failed: {}\n", SDL_GetError());
+			exit(0);
+		}
+
+		for (int c = 0; c < NUM_SOUND_CHANNELS; c++)
+		{
+			channels_[c] = SDL_CreateAudioStream(nullptr, nullptr);
+			if (channels_[c] == nullptr || !SDL_BindAudioStream(device_, channels_[c]))
+			{
+				LogError("SDL audio stream setup failed: {}\n", SDL_GetError());
+				exit(0);
+			}
+		}
+	}
 
 	// Init the sounds ..
 	soundlist[SOUND_BOW]      = "twang.wav";
@@ -117,7 +135,7 @@ int sdl_soundob::init()
 	}
 
 	// Set volume (default is loudest)
-	volume = MIX_MAX_VOLUME;
+	volume = 128;
 
 #ifdef SOUND_DB
 
@@ -127,24 +145,25 @@ int sdl_soundob::init()
 	return 1;
 }
 
-void sdl_soundob::load_sound(Mix_Chunk **audio, const char * file)
+void sdl_soundob::load_sound(sound_chunk *audio, const char * file)
 {
-    SDL_RWops* rw = open_read_file("sound/", file);
-	
-	*audio = Mix_LoadWAV_RW(rw, 0);
-	if(!*audio)
+    SDL_IOStream* rw = open_read_file("sound/", file);
+
+	// closeio=true: SDL_LoadWAV_IO closes rw itself, success or failure.
+	if (rw == nullptr || !SDL_LoadWAV_IO(rw, true, &audio->spec, &audio->buf, &audio->len))
 	{
-		LogError("Mix_LoadWAV failed: {}\n", Mix_GetError());
+		LogError("SDL_LoadWAV_IO failed: {}\n", SDL_GetError());
 		exit(0);
 	}
-	SDL_RWclose(rw);
 
-	Mix_VolumeChunk(*audio,MIX_MAX_VOLUME/2);
+	// Half volume, matching the old mixer's per-chunk volume of max/2.
+	audio->gain = 0.5f;
 }
 
-void sdl_soundob::free_sound(Mix_Chunk **soundp)
+void sdl_soundob::free_sound(sound_chunk *soundp)
 {
-	Mix_FreeChunk(*soundp);
+	SDL_free(soundp->buf);
+	*soundp = sound_chunk{};
 }
 
 
@@ -152,14 +171,24 @@ void sdl_soundob::shutdown()
 {
 	int i;
 
-	if (silence)
-		return;
-
 	for (i=0; i < NUMSOUNDS; i++)
-		if (sound[i] != nullptr)
-			free_sound(&sound[i]);
+		free_sound(&sound[i]);
 
-	Mix_CloseAudio();
+	for (int c = 0; c < NUM_SOUND_CHANNELS; c++)
+	{
+		if (channels_[c] != nullptr)
+		{
+			SDL_DestroyAudioStream(channels_[c]); // unbinds from the device
+			channels_[c] = nullptr;
+		}
+	}
+
+	if (device_ != 0)
+	{
+		SDL_CloseAudioDevice(device_);
+		device_ = 0;
+		SDL_QuitSubSystem(SDL_INIT_AUDIO);
+	}
 }
 
 void sdl_soundob::play_sound(short whichnum)
@@ -167,10 +196,39 @@ void sdl_soundob::play_sound(short whichnum)
 	if (silence)         // If silent mode set, do nothing here
 		return;
 
-	if (whichnum < 0 || whichnum >= NUMSOUNDS || sound[whichnum] == nullptr)
+	if (whichnum < 0 || whichnum >= NUMSOUNDS || sound[whichnum].buf == nullptr)
 		return;
 
-	Mix_PlayChannel(-1,sound[whichnum],0);
+	const sound_chunk& chunk = sound[whichnum];
+
+	// Find an idle channel (nothing queued on the input side, nothing
+	// converted and waiting on the output side).
+	SDL_AudioStream* channel = nullptr;
+	for (int c = 0; c < NUM_SOUND_CHANNELS; c++)
+	{
+		SDL_AudioStream* s = channels_[c];
+		if (s != nullptr && SDL_GetAudioStreamQueued(s) == 0 &&
+		    SDL_GetAudioStreamAvailable(s) == 0)
+		{
+			channel = s;
+			break;
+		}
+	}
+
+	// All busy: steal one round-robin (the old mixer's play-on-any-channel
+	// dropped the new sound instead; stealing keeps combat cues audible).
+	if (channel == nullptr)
+	{
+		channel = channels_[next_steal_];
+		next_steal_ = (next_steal_ + 1) % NUM_SOUND_CHANNELS;
+		if (channel == nullptr)
+			return;
+		SDL_ClearAudioStream(channel);
+	}
+
+	SDL_SetAudioStreamFormat(channel, &chunk.spec, nullptr);
+	SDL_SetAudioStreamGain(channel, chunk.gain);
+	SDL_PutAudioStreamData(channel, chunk.buf, static_cast<int>(chunk.len));
 }
 
 // Used to turn sound on or off

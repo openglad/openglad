@@ -173,6 +173,22 @@ void effects_screen_shake_offset(int strength, int& dx, int& dy);
 // Reset the frame tick, force noise/kernel regeneration and clear the
 // per-entity store so tests replay every effect deterministically.
 void effects_reset_for_testing();
+
+// Last draw_upper_floor_shadows coverage-mask work counters.  One
+// `replaced_coverage_queries` entry is a call the former per-pixel `covered`
+// lambda would have made (including its coordinate division and bounds
+// checks); the optimized path replaces it with a byte-mask lookup.  The mask
+// itself samples `source_tile_probes` grid cells once while rasterizing the
+// expanded viewport.  Reset at the start of every shadow-pass call.
+struct UpperFloorShadowMaskStats
+{
+	std::size_t expanded_mask_pixels = 0;
+	std::size_t source_tile_probes = 0;
+	std::size_t replaced_coverage_queries = 0;
+	std::size_t shadowed_pixels = 0;
+};
+UpperFloorShadowMaskStats upper_floor_shadow_mask_stats_for_testing();
+
 // Per-entity render store introspection: tracked entity count and the
 // number of stored positions for one entity id.
 std::size_t effects_store_size();

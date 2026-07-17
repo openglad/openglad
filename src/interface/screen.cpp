@@ -392,8 +392,8 @@ bool dispatch_game_flow_screen_events(screen& self,
 loader* sdl_entity_loader();
 
 // Screen window boundaries now come from the world canvas dims via
-// og::view_layout::compute_view_layout (320x200 by default) instead of the
-// retired S_* / T_* absolute constants.
+// og::view_layout::compute_view_layout instead of the retired S_* / T_*
+// absolute constants. Classic-pinned screens still resolve to 320x200.
 inline constexpr int MAX_SPREAD = 10; // this controls find_near_foe
 
 // load_version_* functions now live in level_runtime_data.cpp and take
@@ -610,6 +610,31 @@ void screen::floor_layer_end(Sint32 x, Sint32 y, Sint32 w, Sint32 h,
 {
     video_impl_->floor_layer_end(x, y, w, h, scale, cx, cy, alpha, fx,
                                  pad_x, pad_y);
+}
+
+void screen::fail_next_floor_layer_allocation_for_testing()
+{
+    video_impl_->fail_next_floor_layer_allocation_for_testing();
+}
+
+int screen::floor_layer_fallback_count_for_testing() const
+{
+    return video_impl_->floor_layer_fallback_count_for_testing();
+}
+
+std::int64_t screen::floor_layer_source_pixels_for_testing() const
+{
+    return video_impl_->floor_layer_source_pixels_for_testing();
+}
+
+std::int64_t screen::floor_layer_scaled_pixels_for_testing() const
+{
+    return video_impl_->floor_layer_scaled_pixels_for_testing();
+}
+
+bool screen::floor_layer_redirect_active_for_testing() const
+{
+    return video_impl_->floor_layer_redirect_active_for_testing();
 }
 
 void screen::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
@@ -1064,8 +1089,8 @@ void screen::initialize_views()
 }
 
 // Re-derives every live viewscreen's geometry from the current world canvas
-// dimensions. Called after the world canvas changes size (a window resize
-// under cfg graphics/scale, or the level editor pinning the classic canvas):
+// dimensions. Called after graphics/zoom changes the logical size or the
+// level editor pins/restores the classic canvas:
 // resize(whatmode) recomputes the pane layout via compute_view_layout and
 // restarts each started radar.
 void screen::relayout_views()
@@ -1253,6 +1278,11 @@ void screen::clear()
 bool screen::redraw()
 {
 	short i;
+	// Reserve the stable classic-density gameplay-chrome layer before any view
+	// draws. At exact classic dimensions with nearest rendering, and on an
+	// allocation fallback, the HUD scopes safely alias World.
+	begin_gameplay_frame();
+	draw_panel_chrome(numviews);
 	// Advance all render-only effect state (weather drift, ripple/trail/dust
 	// phases, per-entity position history): exactly once per frame.
 	effects_advance_frame();
@@ -1296,11 +1326,15 @@ void screen::announce_way_clear_if_needed()
 // REFRESH -- refreshes the viewscreens
 void screen::refresh()
 {
-	short i;
-	for (i=0; i < numviews; i++)
-	{
-		viewob[i]->refresh();
-	}
+	if (numviews <= 0)
+		return;
+
+	// Every view and the shared HUD have already drawn into the world canvas.
+	// Present it once as a complete frame. Besides avoiding one full texture
+	// upload/present per split-screen view, this gives SAI/Eagle a complete
+	// source rectangle so pixels outside the individual viewports are never
+	// left stale in the doubled scratch surface.
+	buffer_to_screen(0, 0, canvas_w(), canvas_h());
 }
 
 
@@ -1552,14 +1586,21 @@ walker  * screen::first_of(Order whatorder, unsigned char whatfamily,
 
 void screen::draw_panels(short howmany)
 {
-	short i;
-
+	(void)howmany;
 	// Force a memory clear ..
 	clearbuffer();
+	// This redraw covers scenery and frame-only gameplay chrome.
+	redraw(); // repaint the screen area ..
+}
 
-	if (howmany)
-		howmany = howmany;
+void screen::draw_panel_chrome(short howmany)
+{
+	(void)howmany;
+	short i;
+	ScopedGameplayUiCanvas gameplay_ui(*this);
 	for (i=0; i < numviews; i++)
+	{
+		ScopedGameplayUiViewLayout gameplay_ui_layout(*viewob[i], *this);
 		if ( (viewob[i]->prefs[PREF_VIEW] == PREF_VIEW_FULL) ||
 		        numviews == 4 )
 			; // do nothing
@@ -1568,11 +1609,9 @@ void screen::draw_panels(short howmany)
 			draw_button(viewob[i]->xloc-4, viewob[i]->yloc-3,
 			            viewob[i]->endx+3, viewob[i]->endy+3, 3, 1);
 			draw_box(viewob[i]->xloc-1, viewob[i]->yloc-1,
-			         viewob[i]->endx, viewob[i]->endy, 0, 0,1);
+			             viewob[i]->endx, viewob[i]->endy, 0, 0,1);
 		}
-
-
-	redraw(); // repaint the screen area ..
+	}
 }
 
 // Uses pixel coordinates
