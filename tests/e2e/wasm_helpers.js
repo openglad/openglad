@@ -232,6 +232,7 @@ async function startSeededSinglePlayerFromPicker(page, options = {}) {
     expectedCaptureProfileId = null,
     continueButton = { x: 150, y: 85 },
     goButton = { x: 250, y: 107 },
+    onTeamBuildReady = null,
   } = options;
 
   await page.waitForFunction(
@@ -246,6 +247,9 @@ async function startSeededSinglePlayerFromPicker(page, options = {}) {
   await page.waitForTimeout(preStartSettlingMs);
   await clickCanvasGameCoord(page, continueButton.x, continueButton.y);
   await page.waitForTimeout(1_000);
+  if (onTeamBuildReady) {
+    await onTeamBuildReady();
+  }
   await clickCanvasGameCoord(page, goButton.x, goButton.y);
   await page.waitForTimeout(1_000);
 

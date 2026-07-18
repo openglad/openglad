@@ -30,6 +30,7 @@ const OK_BUTTON = { x: 160, y: 140 };
 const CONTINUE_BUTTON = { x: 150, y: 85 };
 const NETWORKING_BUTTON = { x: 250, y: 150 };
 const NETWORKING_TITLE_REGION = { x: 60, y: 18, w: 200, h: 18 };
+const TEAM_BUILD_NETWORKING_REGION = { x: 210, y: 140, w: 80, h: 20 };
 
 // Web relay-first networking-menu ROOM CODE field (button id
 // "network_room_value" in src/interface/ui/picker.cpp).
@@ -134,11 +135,11 @@ async function waitForTouchBridgeEnabled(page) {
   );
 }
 
-async function startSeededGameplayWithOverlay(page) {
+async function startSeededGameplayWithOverlay(page, pickerOptions = {}) {
   await page.goto('/play.html');
   await waitForGameLoad(page);
   await expect(page.locator('#touch-controls')).toHaveClass(/tc-active/);
-  await startSeededSinglePlayerFromPicker(page);
+  await startSeededSinglePlayerFromPicker(page, pickerOptions);
   await waitForTouchBridgeEnabled(page);
   await expect(page.locator('#tc-game')).toHaveClass(/tc-show/);
   // Settle at least one full redraw before sampling world coordinates.
@@ -854,7 +855,16 @@ test.describe('Touch gameplay controls', () => {
     test.setTimeout(180_000);
 
     await seedGameplayInitScript(page);
-    await startSeededGameplayWithOverlay(page);
+    let teamBuildNetworkingFace = null;
+    await startSeededGameplayWithOverlay(page, {
+      onTeamBuildReady: async () => {
+        teamBuildNetworkingFace = await captureRegion(
+          page,
+          TEAM_BUILD_NETWORKING_REGION,
+        );
+      },
+    });
+    expect(teamBuildNetworkingFace).not.toBeNull();
 
     const back = await elementCenter(page, '#tc-back');
 
@@ -895,22 +905,23 @@ test.describe('Touch gameplay controls', () => {
     // Leaving gameplay hides the touch gameplay cluster again.
     await expect(page.locator('#tc-game')).not.toHaveClass(/tc-show/);
 
-    // Browser gameplay unwinds through the outer rAF state machine. It must
-    // resume on team build (the Continue screen), not recreate the top-level
-    // main menu. NETWORKING exists only on team build, so opening it is an
-    // end-to-end assertion of the post-level destination.
-    const teamBuildTitle = await captureRegion(page, NETWORKING_TITLE_REGION);
-    await tapCanvasGameCoord(
+    // Browser gameplay unwinds through the outer rAF state machine. Require
+    // the exact NETWORKING button face captured from team build before the
+    // game. A result-dialog tap at (160,140) overlaps SCENARIO on team build,
+    // so this assertion also catches input leaking across the handoff.
+    await waitForRegionToMatch(
       page,
-      NETWORKING_BUTTON.x,
-      NETWORKING_BUTTON.y,
+      TEAM_BUILD_NETWORKING_REGION,
+      teamBuildNetworkingFace,
+      'post-game picker should remain on the exact team-build screen',
     );
-    await waitForRegionToLeave(
-      page,
-      NETWORKING_TITLE_REGION,
-      teamBuildTitle,
-      'post-game picker should resume at team build, where NETWORKING opens',
-    );
+    await page.waitForTimeout(1_000);
+    expect(
+      (await captureRegion(page, TEAM_BUILD_NETWORKING_REGION)).equals(
+        teamBuildNetworkingFace,
+      ),
+      'post-game picker should not click through into Scenario after settling',
+    ).toBe(true);
   });
 
   test('audio context unlocks from the first touch gesture', async ({ page }) => {

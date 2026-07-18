@@ -4088,6 +4088,11 @@ void picker_reinit_after_game()
     // team-build/Continue screen. The browser unwinds gameplay through its
     // outer rAF state machine, so explicitly resume at the same destination
     // instead of constructing a fresh picker at MainMenu.
+    // The result dialog's dismissing touch may still be held (or its release
+    // may be queued), and its coordinates overlap the SCENARIO button here.
+    // Establish a fresh pointer baseline so that touch cannot click through
+    // into the newly-created menu.
+    reset_mouse_click_tracking();
     run_picker_state_machine_until_game_requested(
         og::ui::PickerScreen::TeamBuild);
     Log("picker_reinit_after_game: picker returned, g_start_game_requested={}\n", g_start_game_requested);

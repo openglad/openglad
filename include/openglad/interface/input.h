@@ -589,6 +589,12 @@ void release_mouse();
 MouseState& query_mouse();
 inline MouseState& query_mouse_no_poll() { return mouse_state; }
 
+// Start a new UI surface from the current pointer state. Events already in
+// the queue are sampled, completed clicks are discarded, and buttons that
+// are still held become the edge-detection baseline until they are released.
+// A press that begins after this call remains a normal fresh click.
+void reset_mouse_click_tracking();
+
 // Collapsed touch-tap clicks (press+release inside one event pump, invisible
 // to sampled up->down edge detection). Click detectors OR these into their
 // edge results; each call consumes one pending click.

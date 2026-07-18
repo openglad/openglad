@@ -1532,6 +1532,23 @@ MouseState& query_mouse()
     return mouse_state;
 }
 
+void reset_mouse_click_tracking()
+{
+    // Consume events that belong to the outgoing surface before establishing
+    // the new baseline. This covers both a complete press/release pair that
+    // was queued between frames and a pointer that is still held while the
+    // next surface is constructed.
+    get_input_events(POLL);
+
+    g_mouse_left_unqueried_press = false;
+    g_mouse_right_unqueried_press = false;
+    g_pending_left_clicks = 0;
+    g_pending_right_clicks = 0;
+
+    hw().picker_was_left_down = mouse_state.left;
+    hw().picker_was_right_down = mouse_state.right;
+}
+
 bool take_pending_left_click()
 {
     if (g_pending_left_clicks > 0)
