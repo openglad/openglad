@@ -7,7 +7,10 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Openglad">
-    <link rel="apple-touch-icon" href="hero.png">
+    <meta name="theme-color" content="#000000">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" href="icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
     <title>Openglad</title>
     <style>
         * {
@@ -52,13 +55,10 @@
         }
 
         #canvas {
+            display: block;
             image-rendering: crisp-edges;
             image-rendering: pixelated;
             background-color: #000;
-        }
-
-        #canvas:fullscreen {
-            object-fit: contain;
         }
 
         #fullscreen-button {
@@ -310,6 +310,52 @@
             -webkit-touch-callout: none;
         }
 
+        /* Portrait gameplay gets the same full-viewport world canvas as
+           landscape. Keep the virtual stick and action clusters in the
+           lower corners so they do not cover the tall-layout HUD at the top. */
+        @media (orientation: portrait) {
+            #tc-stick-zone {
+                width: 58%;
+                height: 48%;
+            }
+
+            #tc-stick-base {
+                width: 108px;
+                height: 108px;
+            }
+
+            #tc-stick-thumb {
+                left: 29px;
+                top: 29px;
+                width: 50px;
+                height: 50px;
+            }
+
+            #tc-fire {
+                width: 72px;
+                height: 72px;
+            }
+
+            #tc-special {
+                right: calc(max(12px, env(safe-area-inset-right, 0px)) + 82px);
+                bottom: calc(max(12px, env(safe-area-inset-bottom, 0px)) + 30px);
+            }
+
+            #tc-row {
+                top: auto;
+                right: max(12px, env(safe-area-inset-right, 0px));
+                bottom: calc(max(12px, env(safe-area-inset-bottom, 0px)) + 120px);
+                display: grid;
+                grid-template-columns: repeat(2, 42px);
+                gap: 6px;
+            }
+
+            #tc-row .tc-control {
+                width: 42px;
+                height: 42px;
+            }
+        }
+
         /* Touch text-entry overlay: SDL3's emscripten backend has no screen
            keyboard, so prompts get a real DOM input on touch devices. */
         #og-text-entry-wrap {
@@ -328,51 +374,45 @@
             height: 40px;
             padding: 0 10px;
             font-size: 16px; /* >=16px stops iOS auto-zoom on focus */
-            font-family: Arial, sans-serif;
+            /* Room codes: monospace + spacing keep 0/O and 1/I readable. */
+            font-family: 'SFMono-Regular', Menlo, Consolas, monospace;
+            letter-spacing: 1px;
             color: #fff;
             background: rgba(0, 0, 0, 0.85);
             border: 1px solid rgba(255, 255, 255, 0.8);
             border-radius: 6px;
         }
 
-        #og-text-entry-clear {
-            width: 40px;
+        /* iOS only summons its keyboard from a gesture; until the input is
+           focused, pulse it so "tap here to type" is unmissable. */
+        #og-text-entry:not(:focus) {
+            animation: og-entry-pulse 1.2s ease-in-out infinite;
+        }
+
+        @keyframes og-entry-pulse {
+            0%, 100% {
+                border-color: rgba(255, 255, 255, 0.8);
+                box-shadow: none;
+            }
+            50% {
+                border-color: #ffd24d;
+                box-shadow: 0 0 10px rgba(255, 210, 77, 0.9);
+            }
+        }
+
+        #og-text-entry-cancel {
             height: 40px;
+            padding: 0 10px;
             color: #fff;
             background: rgba(0, 0, 0, 0.85);
             border: 1px solid rgba(255, 255, 255, 0.65);
             border-radius: 6px;
-            font-size: 16px;
-            cursor: pointer;
-        }
-
-        #og-rotate-hint {
-            position: fixed;
-            left: 50%;
-            bottom: max(24px, env(safe-area-inset-bottom, 0px));
-            transform: translateX(-50%);
-            z-index: 6;
-            display: flex;
-            gap: 10px;
-            align-items: center;
-            padding: 10px 14px;
-            color: #fff;
-            background: rgba(0, 0, 0, 0.8);
-            border: 1px solid rgba(255, 255, 255, 0.65);
-            border-radius: 8px;
-            font-family: Arial, sans-serif;
             font-size: 14px;
+            font-family: Arial, sans-serif;
+            cursor: pointer;
+            touch-action: manipulation;
         }
 
-        #og-rotate-hint button {
-            padding: 6px 12px;
-            color: #000;
-            background: #fff;
-            border: none;
-            border-radius: 4px;
-            font-size: 13px;
-            cursor: pointer;
-        }
     </style>
 </head>
 <body>
@@ -380,7 +420,7 @@
         <canvas id="canvas" width="320" height="200" oncontextmenu="event.preventDefault()" tabindex="-1" aria-label="Openglad game canvas"></canvas>
     </div>
 
-    <button id="fullscreen-button" class="hidden" type="button" aria-label="Enter fullscreen" aria-controls="canvas" title="Enter fullscreen">
+    <button id="fullscreen-button" class="hidden" type="button" aria-label="Enter fullscreen" aria-controls="game-container" title="Enter fullscreen">
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
             <path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/>
         </svg>
@@ -409,15 +449,11 @@
     <button id="tc-toggle" class="hidden" type="button" aria-label="Toggle touch controls" title="Toggle touch controls">&#127918;</button>
 
     <div id="og-text-entry-wrap" class="hidden">
-        <input id="og-text-entry" type="text" placeholder="TAP TO TYPE"
-               autocapitalize="characters" autocomplete="off" autocorrect="off"
-               spellcheck="false" enterkeyhint="done" aria-label="Text entry">
-        <button id="og-text-entry-clear" type="button" aria-label="Clear text and close">&#10005;</button>
-    </div>
-
-    <div id="og-rotate-hint" class="hidden">
-        <span>Rotate your phone for the best view</span>
-        <button id="og-rotate-dismiss" type="button">OK</button>
+        <input id="og-text-entry" type="text" placeholder="TAP HERE TO TYPE"
+               autocomplete="off" autocorrect="off" spellcheck="false"
+               enterkeyhint="done"
+               aria-label="Text entry">
+        <button id="og-text-entry-cancel" type="button" aria-label="Cancel text entry">CANCEL</button>
     </div>
 
     <div id="loading">
@@ -435,16 +471,35 @@
         var loadingBar = document.getElementById('loading-bar');
         var fullscreenButton = document.getElementById('fullscreen-button');
         var fullscreenStatus = document.getElementById('fullscreen-status');
+        var fullscreenTarget = document.documentElement;
         var fullscreenControlReady = false;
 
+        function currentFullscreenElement() {
+            return document.fullscreenElement ||
+                document.webkitFullscreenElement || null;
+        }
+
         function fullscreenAvailable() {
-            return document.fullscreenEnabled &&
-                typeof canvas.requestFullscreen === 'function';
+            var standard = document.fullscreenEnabled !== false &&
+                typeof fullscreenTarget.requestFullscreen === 'function';
+            var webkit = document.webkitFullscreenEnabled !== false &&
+                typeof fullscreenTarget.webkitRequestFullscreen === 'function';
+            return standard || webkit;
+        }
+
+        function requestAppFullscreen() {
+            if (typeof fullscreenTarget.requestFullscreen === 'function') {
+                return fullscreenTarget.requestFullscreen();
+            }
+            if (typeof fullscreenTarget.webkitRequestFullscreen === 'function') {
+                return fullscreenTarget.webkitRequestFullscreen();
+            }
+            return null;
         }
 
         function updateFullscreenButton() {
             var showButton = fullscreenControlReady && fullscreenAvailable() &&
-                document.fullscreenElement === null;
+                currentFullscreenElement() === null;
             fullscreenButton.classList.toggle('hidden', !showButton);
         }
 
@@ -454,34 +509,51 @@
         // Keyboard Lock is needed.
         function handleFullscreenControlChange() {
             updateFullscreenButton();
-            if (document.fullscreenElement === canvas) {
+            if (currentFullscreenElement() === fullscreenTarget) {
                 fullscreenStatus.textContent =
                     'Fullscreen active. Backspace is the in-game back key; Escape leaves fullscreen.';
+                canvas.focus({preventScroll: true});
             } else {
                 fullscreenStatus.textContent = '';
             }
         }
 
+        function reportFullscreenFailure(error) {
+            console.warn('Unable to enter fullscreen:', error);
+            fullscreenStatus.textContent =
+                'Fullscreen could not be opened. Please try again or use your browser fullscreen control.';
+            fullscreenButton.focus({preventScroll: true});
+        }
+
         fullscreenButton.addEventListener('click', function() {
             fullscreenStatus.textContent = '';
-            if (!fullscreenAvailable() || document.fullscreenElement !== null) {
+            if (!fullscreenAvailable() || currentFullscreenElement() !== null) {
                 canvas.focus({preventScroll: true});
                 return;
             }
 
             // Keep this call directly in the trusted click handler: browsers
             // reject Fullscreen API requests after user activation expires.
-            var request = canvas.requestFullscreen();
+            // Fullscreen the whole app, not just the canvas: touch controls,
+            // text entry, and status UI are sibling elements and must remain
+            // visible inside the fullscreen subtree.
+            var request;
+            try {
+                request = requestAppFullscreen();
+            } catch (error) {
+                reportFullscreenFailure(error);
+                return;
+            }
             if (request && typeof request.then === 'function') {
                 request.then(function() {
                     // Status text is owned by the fullscreenchange handler.
                     canvas.focus({preventScroll: true});
-                }).catch(function(error) {
-                    console.warn('Unable to enter fullscreen:', error);
-                    fullscreenStatus.textContent =
-                        'Fullscreen could not be opened. Please try again or use your browser fullscreen control.';
-                    fullscreenButton.focus({preventScroll: true});
-                });
+                }).catch(reportFullscreenFailure);
+            } else {
+                // Legacy webkitRequestFullscreen() returns undefined. Its
+                // fullscreenchange event will confirm success; restore game
+                // focus now so the DOM button cannot keep keyboard input.
+                canvas.focus({preventScroll: true});
             }
         });
         // Keep keyboard activation of the DOM control out of SDL's game-key
@@ -493,6 +565,8 @@
             event.stopPropagation();
         });
         document.addEventListener('fullscreenchange', handleFullscreenControlChange);
+        document.addEventListener('webkitfullscreenchange',
+            handleFullscreenControlChange);
 
         // Handle WebGL context loss
         canvas.addEventListener('webglcontextlost', function(e) {
@@ -521,29 +595,16 @@
             return { width: window.innerWidth, height: window.innerHeight };
         }
 
-        // Scale canvas to fit window while maintaining aspect ratio
+        // Give SDL the full usable browser viewport. The engine presents its
+        // fixed 320x200 intro/menus through a centered aspect-fit rectangle,
+        // while gameplay expands its World and HUD canvases to this live
+        // aspect (including tall portrait windows) without distortion.
         function resizeCanvas() {
-            var gameWidth = 320;
-            var gameHeight = 200;
             var viewport = viewportSize();
             var windowWidth = viewport.width;
             var windowHeight = viewport.height;
-
-            // Calculate scale to fit window (maximize canvas size)
-            var fittedWidth;
-            var fittedHeight;
-            if (windowWidth / gameWidth <= windowHeight / gameHeight) {
-                fittedWidth = Math.max(1, Math.floor(windowWidth));
-                fittedHeight = Math.max(1, Math.floor(
-                    fittedWidth * gameHeight / gameWidth));
-            } else {
-                fittedHeight = Math.max(1, Math.floor(windowHeight));
-                fittedWidth = Math.max(1, Math.floor(
-                    fittedHeight * gameWidth / gameHeight));
-            }
-
-            canvas.style.width = fittedWidth + 'px';
-            canvas.style.height = fittedHeight + 'px';
+            canvas.style.width = Math.max(1, Math.floor(windowWidth)) + 'px';
+            canvas.style.height = Math.max(1, Math.floor(windowHeight)) + 'px';
         }
 
         window.addEventListener('resize', resizeCanvas);
@@ -559,7 +620,8 @@
         window.__opengladGameState = null;
 
         function installPostBootCanvasRecovery() {
-            var canvasWasFullscreen = document.fullscreenElement === canvas;
+            var canvasWasFullscreen =
+                currentFullscreenElement() === fullscreenTarget;
             function recoverCanvasBacking() {
                 resizeCanvas();
                 if (typeof Module._openglad_web_restore_canvas_backing === 'function') {
@@ -577,7 +639,20 @@
                 window.visualViewport.addEventListener('resize', recoverCanvasBacking);
             }
             document.addEventListener('fullscreenchange', function() {
-                var canvasIsFullscreen = document.fullscreenElement === canvas;
+                var canvasIsFullscreen =
+                    currentFullscreenElement() === fullscreenTarget;
+                var exitedCanvasFullscreen = canvasWasFullscreen && !canvasIsFullscreen;
+                canvasWasFullscreen = canvasIsFullscreen;
+                recoverCanvasBacking();
+                if (exitedCanvasFullscreen) {
+                    requestAnimationFrame(function() {
+                        canvas.focus({preventScroll: true});
+                    });
+                }
+            });
+            document.addEventListener('webkitfullscreenchange', function() {
+                var canvasIsFullscreen =
+                    currentFullscreenElement() === fullscreenTarget;
                 var exitedCanvasFullscreen = canvasWasFullscreen && !canvasIsFullscreen;
                 canvasWasFullscreen = canvasIsFullscreen;
                 recoverCanvasBacking();
@@ -765,6 +840,13 @@
                 return (typeof fn === 'function') ? fn : null;
             }
 
+            // While a text prompt is active, canvas taps must focus the DOM
+            // text-entry input INSIDE the gesture (iOS only summons the
+            // software keyboard for gesture-initiated focus). initTextEntry
+            // installs the redirect; ownCanvasTouch consults it first.
+            var textEntryFocusRedirect = null;
+            var textEntryRefresh = null;
+
             // Touch taps on the game canvas are owned HERE, not by SDL: the
             // port's touch->mouse synthesis proved unreliable under real
             // engines (a quick tap surfaces as hover motion but never as a
@@ -775,6 +857,8 @@
             // reach these canvas listeners.
             (function ownCanvasTouch() {
                 var activeTouchId = null;
+                var activeTouchWasIntro = false;
+                var activeTouchIntroGeneration = null;
 
                 function canvasPoint(e) {
                     var rect = canvas.getBoundingClientRect();
@@ -815,7 +899,26 @@
                     if (!p.inside) {
                         return;
                     }
+                    if (textEntryFocusRedirect && textEntryFocusRedirect()) {
+                        // Gesture consumed: it focused the text-entry input
+                        // (which opens the iOS keyboard). No mouse injection —
+                        // the blocked prompt ignores clicks anyway.
+                        return;
+                    }
                     activeTouchId = e.pointerId;
+                    activeTouchWasIntro = Boolean(window.__opengladIntroActive);
+                    if (activeTouchWasIntro) {
+                        // The legacy intro is running on an Asyncify stack.
+                        // Latch the trusted tap in JS and let intro.cpp consume
+                        // it after yielding; calling back into Wasm here would
+                        // re-enter the suspended stack.
+                        activeTouchIntroGeneration =
+                            window.__opengladIntroTapReady
+                                ? window.__opengladIntroTapGeneration
+                                : null;
+                        return;
+                    }
+                    activeTouchIntroGeneration = null;
                     pushMouse(true, p);
                 }, { capture: true });
 
@@ -834,6 +937,19 @@
                         return;
                     }
                     activeTouchId = null;
+                    if (activeTouchWasIntro) {
+                        activeTouchWasIntro = false;
+                        if (e.type === 'pointerup' &&
+                            window.__opengladIntroActive &&
+                            window.__opengladIntroTapReady &&
+                            activeTouchIntroGeneration !== null &&
+                            activeTouchIntroGeneration ===
+                                window.__opengladIntroTapGeneration) {
+                            window.__opengladIntroTapPending = true;
+                        }
+                        activeTouchIntroGeneration = null;
+                        return;
+                    }
                     pushMouse(false, canvasPoint(e));
                 }
                 canvas.addEventListener('pointerup', endTouch, { capture: true });
@@ -886,7 +1002,6 @@
 
             // --- Floating 8-way joystick -------------------------------------
             (function initStick() {
-                var STICK_RADIUS = 60;    // base circle radius (px)
                 var DEAD_ZONE = 14;       // no direction inside this radius
                 var FOLLOW_RADIUS = 90;   // base re-anchors past this drift
                 var THUMB_TRAVEL = 46;
@@ -913,8 +1028,12 @@
                 }
 
                 function positionBase() {
-                    stickBase.style.left = (baseX - STICK_RADIUS) + 'px';
-                    stickBase.style.top = (baseY - STICK_RADIUS) + 'px';
+                    // CSS uses a smaller base in portrait. Read the live
+                    // rendered diameter so the visual stays centered on the
+                    // pointer in either orientation.
+                    var radius = stickBase.getBoundingClientRect().width / 2;
+                    stickBase.style.left = (baseX - radius) + 'px';
+                    stickBase.style.top = (baseY - radius) + 'px';
                 }
 
                 function positionThumb(dx, dy) {
@@ -968,9 +1087,9 @@
                     downClientX = e.clientX;
                     downClientY = e.clientY;
                     movedOutOfDeadZone = false;
+                    stickBase.classList.remove('hidden');
                     positionBase();
                     positionThumb(0, 0);
-                    stickBase.classList.remove('hidden');
                     try {
                         stickZone.setPointerCapture(e.pointerId);
                     } catch (err) {
@@ -1170,7 +1289,9 @@
                     tcClear();
                 }
                 wasInGame = inGame;
-                updateRotateHint();
+                if (textEntryRefresh) {
+                    textEntryRefresh();
+                }
             }
 
             toggleButton.addEventListener('click', function() {
@@ -1202,46 +1323,55 @@
                 }
             });
 
-            // --- Portrait rotate hint ----------------------------------------
-            var rotateHint = document.getElementById('og-rotate-hint');
-            var rotateDismissed = false;
-            try {
-                rotateDismissed =
-                    sessionStorage.getItem('openglad.rotateHintDismissed') === '1';
-            } catch (e) {
-                rotateDismissed = false;
-            }
-
-            function updateRotateHint() {
-                var portrait = typeof window.matchMedia === 'function' &&
-                    window.matchMedia('(orientation: portrait)').matches;
-                rotateHint.classList.toggle('hidden',
-                    !(active && portrait && !rotateDismissed));
-            }
-
-            document.getElementById('og-rotate-dismiss')
-                .addEventListener('click', function() {
-                    rotateDismissed = true;
-                    try {
-                        sessionStorage.setItem('openglad.rotateHintDismissed', '1');
-                    } catch (e) {
-                        // Session-only dismissal still applies.
-                    }
-                    updateRotateHint();
-                });
-
             // --- Text-entry overlay ------------------------------------------
             // start_text_input()/stop_text_input() dispatch
             // 'openglad-text-input' (native_input.cpp). Only touch sessions
             // show the DOM input; desktop browsers keep typing into the
-            // canvas. iOS only summons its keyboard from a trusted tap on the
-            // input itself (Asyncify breaks the gesture chain), hence the
-            // TAP TO TYPE placeholder rather than programmatic focus.
+            // canvas. The prompt-opening C++ code runs outside the trusted
+            // gesture, so real iOS needs one of two explicit affordances:
+            // the pulsing TAP HERE TO TYPE input itself, and any canvas tap
+            // while the prompt is up (textEntryFocusRedirect above).
             (function initTextEntry() {
                 var wrap = document.getElementById('og-text-entry-wrap');
                 var input = document.getElementById('og-text-entry');
-                var clearButton = document.getElementById('og-text-entry-clear');
+                var cancelButton =
+                    document.getElementById('og-text-entry-cancel');
                 var lastValue = '';
+                var firstMutation = true;
+                var composing = false;
+                var promptActive = false;
+                var promptDetail = {};
+                var roomCodeMode = false;
+
+                function utf8Length(value) {
+                    return new TextEncoder().encode(value).length;
+                }
+
+                function truncateUtf8(value, maxBytes) {
+                    if (maxBytes <= 0 || utf8Length(value) <= maxBytes) {
+                        return value;
+                    }
+                    var result = '';
+                    var points = Array.from(value);
+                    for (var i = 0; i < points.length; ++i) {
+                        if (utf8Length(result + points[i]) > maxBytes) {
+                            break;
+                        }
+                        result += points[i];
+                    }
+                    return result;
+                }
+
+                function normalizeInput(value) {
+                    var normalized = value;
+                    if (roomCodeMode) {
+                        normalized = normalized.toUpperCase()
+                            .replace(/[^A-Z0-9-]/g, '');
+                    }
+                    return truncateUtf8(
+                        normalized,
+                        Math.max(0, Number(promptDetail.maxBytes) || 0));
+                }
 
                 function pushBackspaces(count) {
                     for (var i = 0; i < count; ++i) {
@@ -1274,23 +1404,97 @@
                     tcPushKey(SDLK_RETURN, 0);
                 }
 
-                window.addEventListener('openglad-text-input', function(e) {
-                    var on = Boolean(e.detail && e.detail.active);
-                    if (on && active) {
-                        input.value = '';
-                        lastValue = '';
-                        wrap.classList.remove('hidden');
-                    } else {
-                        wrap.classList.add('hidden');
+                function focusInput() {
+                    try {
+                        // iOS quirk: re-focusing an already-focused input from
+                        // a gesture does not (re)open the keyboard; a blur
+                        // first makes the focus a fresh keyboard summon.
+                        if (document.activeElement === input) {
+                            input.blur();
+                        }
+                        input.focus({ preventScroll: true });
+                    } catch (e) {
+                        // Focus is best-effort; the input stays tappable.
+                    }
+                }
+
+                // Canvas taps while the prompt is up focus the input from the
+                // user's gesture (see ownCanvasTouch).
+                textEntryFocusRedirect = function() {
+                    if (wrap.classList.contains('hidden')) {
+                        return false;
+                    }
+                    focusInput();
+                    return true;
+                };
+
+                function shouldShowPrompt() {
+                    return promptActive && !Boolean(promptDetail.multiline) &&
+                        (isTouchDevice() || sawTouchPointer);
+                }
+
+                textEntryRefresh = function() {
+                    var show = shouldShowPrompt();
+                    wrap.classList.toggle('hidden', !show);
+                    if (!show) {
                         input.blur();
                     }
+                };
+
+                window.addEventListener('openglad-text-input', function(e) {
+                    var on = Boolean(e.detail && e.detail.active);
+                    promptActive = on;
+                    promptDetail = on ? (e.detail || {}) : {};
+                    // Lightweight diagnostics/test seam: unlike DOM
+                    // visibility this also describes desktop prompts, where
+                    // keyboard input stays canvas-native.
+                    window.__opengladTextInputActive = on;
+                    window.__opengladTextInputDetail = promptDetail;
+                    if (on) {
+                        roomCodeMode = /ROOM CODE/i.test(
+                            String(promptDetail.prompt || ''));
+                        input.setAttribute('autocapitalize',
+                            roomCodeMode ? 'characters' : 'sentences');
+                        input.placeholder = roomCodeMode
+                            ? 'TAP TO ENTER ROOM CODE'
+                            : 'TAP HERE TO TYPE';
+                        input.maxLength = Math.max(
+                            1, Number(promptDetail.maxBytes) || 99);
+                        input.value = normalizeInput(
+                            String(promptDetail.initialValue || ''));
+                        lastValue = input.value;
+                        firstMutation = true;
+                        composing = false;
+                        cancelButton.disabled = false;
+                    } else {
+                        roomCodeMode = false;
+                    }
+                    textEntryRefresh();
                 });
 
-                input.addEventListener('input', function() {
+                function reconcileInput() {
+                    if (composing) {
+                        return;
+                    }
+                    var normalized = normalizeInput(input.value);
+                    if (normalized !== input.value) {
+                        input.value = normalized;
+                    }
                     // Forward the diff: common prefix, then deletions as
-                    // Backspaces and insertions as text events.
+                    // Backspaces and insertions as text events. C++ selects
+                    // a prefilled value until the first edit, so the first
+                    // DOM mutation deliberately replaces the whole field.
                     var prev = Array.from(lastValue);
-                    var cur = Array.from(input.value);
+                    var cur = Array.from(normalized);
+                    if (firstMutation) {
+                        if (prev.length > 0) {
+                            pushBackspaces(1);
+                        }
+                        pushText(cur.join(''));
+                        firstMutation = false;
+                        lastValue = normalized;
+                        return;
+                    }
                     var common = 0;
                     while (common < prev.length && common < cur.length &&
                            prev[common] === cur[common]) {
@@ -1298,7 +1502,24 @@
                     }
                     pushBackspaces(prev.length - common);
                     pushText(cur.slice(common).join(''));
-                    lastValue = input.value;
+                    lastValue = normalized;
+                }
+
+                input.addEventListener('input', reconcileInput);
+                input.addEventListener('compositionstart', function() {
+                    composing = true;
+                });
+                input.addEventListener('compositionend', function() {
+                    composing = false;
+                    reconcileInput();
+                });
+                input.addEventListener('pointerdown', function(e) {
+                    if (e.pointerType === 'touch' && promptActive &&
+                        document.activeElement !== input) {
+                        // Keep the focus call in the trusted gesture, but let
+                        // the browser's default handler place the caret.
+                        focusInput();
+                    }
                 });
 
                 ['keydown', 'keyup', 'keypress'].forEach(function(type) {
@@ -1314,22 +1535,42 @@
                     });
                 });
 
-                clearButton.addEventListener('click', function() {
-                    // Escape is swallowed on web, so "cancel" commits an
-                    // emptied field instead (same reality as a desktop web
-                    // keyboard user today).
-                    pushBackspaces(Array.from(lastValue).length);
-                    lastValue = '';
+                cancelButton.addEventListener('click', function() {
+                    // Real cancel semantics: openglad_web_text_cancel delivers
+                    // the Escape that input_string's cancel path expects
+                    // (restore the original value, return null). Backspace
+                    // cannot serve here — during text input it stays
+                    // delete-character.
+                    if (cancelButton.disabled) {
+                        return;
+                    }
+                    cancelButton.disabled = true;
+                    var typedLength = firstMutation && lastValue
+                        ? 1 : Array.from(lastValue).length;
                     input.value = '';
+                    lastValue = '';
+                    var fn = bridge('openglad_web_text_cancel');
+                    if (fn) {
+                        fn();
+                        return;
+                    }
+                    // Stale-build fallback: commit an emptied field.
+                    pushBackspaces(typedLength);
                     pushReturn();
                 });
+                // Keep keyboard activation out of SDL. Enter/Space must first
+                // synthesize this button's click, whose dedicated cancel seam
+                // restores the original value instead of accepting edits.
+                cancelButton.addEventListener('keydown', function(e) {
+                    e.stopPropagation();
+                });
+                cancelButton.addEventListener('keyup', function(e) {
+                    e.stopPropagation();
+                });
+                cancelButton.addEventListener('keypress', function(e) {
+                    e.stopPropagation();
+                });
             })();
-
-            var orientationQuery = typeof window.matchMedia === 'function'
-                ? window.matchMedia('(orientation: portrait)') : null;
-            if (orientationQuery && typeof orientationQuery.addEventListener === 'function') {
-                orientationQuery.addEventListener('change', updateRotateHint);
-            }
 
             setInterval(overlayTick, 250);
             overlayTick();

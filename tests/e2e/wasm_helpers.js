@@ -115,8 +115,9 @@ async function clickCanvasGameCoord(page, gameX, gameY, holdMs = 150) {
     throw new Error('Canvas bounding box is unavailable');
   }
 
-  const cssX = box.x + (gameX * box.width) / 320;
-  const cssY = box.y + (gameY * box.height) / 200;
+  const ui = fitUiReferenceGrid(box);
+  const cssX = ui.x + (gameX * ui.width) / 320;
+  const cssY = ui.y + (gameY * ui.height) / 200;
   await page.mouse.move(cssX, cssY);
   await page.mouse.down();
   await page.waitForTimeout(holdMs);
@@ -139,30 +140,56 @@ async function movePointerOffCanvasBox(page, box) {
     ({ x, y }) =>
       x < box.x || x >= box.x + box.width || y < box.y || y >= box.y + box.height,
   );
-  if (!point) {
-    throw new Error('No viewport point is available outside the canvas');
-  }
+  // The portrait/full-viewport shell intentionally leaves no point outside
+  // the canvas. Its top-left pixel is inert in every fixed UI, so use it as
+  // the hover-clearing fallback.
+  const target = point || { x: box.x + 1, y: box.y + 1 };
 
-  await page.mouse.move(point.x, point.y);
+  await page.mouse.move(target.x, target.y);
   // Give the SDL picker a poll cycle to clear any hovered button state.
   await page.waitForTimeout(100);
 }
 
-// Capture a sub-rectangle addressed on the classic 320x200 reference grid,
-// regardless of the canvas's CSS size. In menus this selects exact logical
-// pixels; in zoomed gameplay it selects the same fractional world region.
+function fitUiReferenceGrid(box) {
+  let width = box.width;
+  let height = box.height;
+  if (box.width * 200 > box.height * 320) {
+    width = Math.floor((box.height * 320) / 200);
+  } else {
+    height = Math.floor((box.width * 200) / 320);
+  }
+  return {
+    x: box.x + Math.floor((box.width - width) / 2),
+    y: box.y + Math.floor((box.height - height) / 2),
+    width,
+    height,
+  };
+}
+
+async function getCanvasUiBox(page) {
+  const box = await page.locator('#canvas').boundingBox();
+  if (!box) {
+    throw new Error('Canvas bounding box is unavailable');
+  }
+  return fitUiReferenceGrid(box);
+}
+
+// Capture a sub-rectangle addressed on the classic 320x200 UI grid. The
+// outer canvas now fills arbitrary viewport aspects; the engine letterboxes
+// fixed menus/dialogs into this same centered rectangle.
 async function getCanvasGameRegionScreenshot(page, gameX, gameY, gameW, gameH) {
   const box = await page.locator('#canvas').boundingBox();
   if (!box) {
     throw new Error('Canvas bounding box is unavailable');
   }
   await movePointerOffCanvasBox(page, box);
+  const ui = fitUiReferenceGrid(box);
   return await page.screenshot({
     clip: {
-      x: box.x + (gameX * box.width) / 320,
-      y: box.y + (gameY * box.height) / 200,
-      width: (gameW * box.width) / 320,
-      height: (gameH * box.height) / 200,
+      x: ui.x + (gameX * ui.width) / 320,
+      y: ui.y + (gameY * ui.height) / 200,
+      width: (gameW * ui.width) / 320,
+      height: (gameH * ui.height) / 200,
     },
   });
 }
@@ -268,6 +295,7 @@ module.exports = {
   ensureRenderTicker,
   focusCanvas,
   getCanvasGameRegionScreenshot,
+  getCanvasUiBox,
   navigateToNetworkingMenu,
   openNetworkingFromTeamBuild,
   startSeededSinglePlayerFromPicker,

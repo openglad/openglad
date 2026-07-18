@@ -645,6 +645,11 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
     case ButtonAction::SubmitNetworkHost:
     case ButtonAction::SubmitNetworkJoin:
         return whatfunc;
+    case ButtonAction::JoinRelayRoomListEntry:
+        // Stash which ACTIVE GAMES row was clicked; configure_networking's
+        // menu loop consumes it (retvalue only carries the action id).
+        pks().networking_clicked_room_slot = arg;
+        return whatfunc;
     case ButtonAction::ShowHelp:
         show_general_help();
         return REDRAW;

@@ -4,6 +4,7 @@ const {
   clickCanvasGameCoord,
   ensureRenderTicker,
   focusCanvas,
+  getCanvasGameRegionScreenshot,
   startSeededSinglePlayerFromPicker,
   waitForGameLoad,
   waitForGameplayProgress,
@@ -63,6 +64,22 @@ async function getCanvasSizing(canvas) {
       devicePixelRatio: window.devicePixelRatio,
     };
   });
+}
+
+async function assertCanvasFillsVisualViewport(page, size) {
+  const viewport = await page.evaluate(() => {
+    const visual = window.visualViewport;
+    return {
+      width: visual && visual.width > 0 ? visual.width : window.innerWidth,
+      height: visual && visual.height > 0 ? visual.height : window.innerHeight,
+    };
+  });
+  expect(Math.abs(size.renderedCssWidth - viewport.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(size.renderedCssHeight - viewport.height)).toBeLessThanOrEqual(1);
+  expect(size.renderedCssWidth / size.renderedCssHeight).toBeCloseTo(
+    viewport.width / viewport.height,
+    2,
+  );
 }
 
 function assertCanvasBackingMatchesRenderedCss(size) {
@@ -234,50 +251,6 @@ async function getWebWorldScaleContract(page) {
   };
 }
 
-async function movePointerOffCanvas(page, box) {
-  const viewport = page.viewportSize();
-  if (!viewport) {
-    throw new Error('Viewport size is unavailable');
-  }
-
-  const candidates = [
-    { x: 1, y: 1 },
-    { x: viewport.width - 2, y: 1 },
-    { x: 1, y: viewport.height - 2 },
-    { x: viewport.width - 2, y: viewport.height - 2 },
-  ];
-  const point = candidates.find(
-    ({ x, y }) =>
-      x < box.x || x >= box.x + box.width || y < box.y || y >= box.y + box.height,
-  );
-  if (!point) {
-    throw new Error('No viewport point is available outside the canvas');
-  }
-
-  await page.mouse.move(point.x, point.y);
-  // Give the SDL picker a poll cycle to clear any hovered button state.
-  await page.waitForTimeout(100);
-}
-
-// Capture a sub-rectangle addressed on the classic 320x200 reference grid,
-// regardless of the canvas's CSS size. In menus this selects exact logical
-// pixels; in zoomed gameplay it selects the same fractional world region.
-async function getCanvasGameRegionScreenshot(page, gameX, gameY, gameW, gameH) {
-  const box = await page.locator('#canvas').boundingBox();
-  if (!box) {
-    throw new Error('Canvas bounding box is unavailable');
-  }
-  await movePointerOffCanvas(page, box);
-  return await page.screenshot({
-    clip: {
-      x: box.x + (gameX * box.width) / 320,
-      y: box.y + (gameY * box.height) / 200,
-      width: (gameW * box.width) / 320,
-      height: (gameH * box.height) / 200,
-    },
-  });
-}
-
 async function pressPickerKey(page, key, settlingMs = 150) {
   // A non-zero hold lets the SDL poll loop observe the key before the browser
   // queues its release; an instantaneous CDP press is easy for the blocking
@@ -358,6 +331,35 @@ test.describe('Landing Page', () => {
     await expect(playButton).toBeVisible();
     await expect(playButton).toHaveText('Play');
     await expect(playButton).toHaveAttribute('href', 'play.html');
+
+    // Install metadata and its icon must ship beside both landing and game
+    // pages; missing deploy assets silently break Add to Home Screen.
+    await expect(page.locator('link[rel="manifest"]')).toHaveAttribute(
+      'href',
+      'manifest.webmanifest',
+    );
+    const manifestResponse = await page.request.get('/manifest.webmanifest');
+    expect(manifestResponse.ok()).toBe(true);
+    const manifest = await manifestResponse.json();
+    expect(manifest.start_url).toBe('./play.html');
+    expect(manifest.display_override).toContain('fullscreen');
+    expect(manifest.orientation).toBe('any');
+    expect(manifest.icons).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ src: 'icon-192.png', sizes: '192x192' }),
+        expect.objectContaining({ src: 'icon-512.png', sizes: '512x512' }),
+        expect.objectContaining({ src: 'icon.svg', sizes: 'any' }),
+      ]),
+    );
+    for (const iconPath of [
+      '/icon.svg',
+      '/icon-192.png',
+      '/icon-512.png',
+      '/apple-touch-icon.png',
+    ]) {
+      const iconResponse = await page.request.get(iconPath);
+      expect(iconResponse.ok(), `${iconPath} should be deployed`).toBe(true);
+    }
   });
 });
 
@@ -376,13 +378,10 @@ test.describe('Game Loading', () => {
     await waitForGameLoad(page);
     assertNoRuntimeErrors(errors, 'load completion');
 
-    // Keep the backing aligned with the shell's fitted 16:10 CSS size. A
-    // smaller fixed backing makes the browser upscale and blur every frame.
+    // Keep the backing aligned with the shell's full live viewport. A smaller
+    // fixed backing makes the browser upscale and blur every frame.
     const initialSize = await waitForCanvasBackingToMatchRenderedCss(canvas);
-    expect(initialSize.renderedCssWidth / initialSize.renderedCssHeight).toBeCloseTo(
-      1.6,
-      5,
-    );
+    await assertCanvasFillsVisualViewport(page, initialSize);
     await assertZoomOneWorldMatchesMasterDensity(page, initialSize);
 
     // Loading overlay should be hidden after initialization
@@ -421,9 +420,7 @@ test.describe('Game Loading', () => {
       const canvas = page.locator('#canvas');
       const initialSize = await waitForCanvasBackingToMatchRenderedCss(canvas);
       expect(initialSize.devicePixelRatio).toBe(2);
-      expect(
-        initialSize.renderedCssWidth / initialSize.renderedCssHeight,
-      ).toBeCloseTo(1.6, 5);
+      await assertCanvasFillsVisualViewport(page, initialSize);
       await assertZoomOneWorldMatchesMasterDensity(page, initialSize);
 
       await canvas.evaluate((element) => {
@@ -481,7 +478,7 @@ test.describe('Game Loading', () => {
     expect(hasWebGL).toBe(true);
   });
 
-  test('post-boot resize recovery restores the CSS-fitted canvas backing', async ({ page }) => {
+  test('post-boot resize recovery restores the full-viewport canvas backing', async ({ page }) => {
     const errors = [];
     attachRuntimeErrorCollectors(page, errors);
 
@@ -499,7 +496,7 @@ test.describe('Game Loading', () => {
 
       // Model SDL3's fullscreen-exit race deterministically. The post-boot
       // listener must run after the other resize listeners and restore both
-      // the fitted backing and the CSS presentation size in this same event.
+      // the viewport-sized backing and CSS presentation in this same event.
       canvas.width = 1272;
       canvas.height = 573;
       window.dispatchEvent(new Event('resize'));
@@ -510,9 +507,7 @@ test.describe('Game Loading', () => {
     const recoveredSize = await waitForCanvasBackingToMatchRenderedCss(
       page.locator('#canvas'),
     );
-    expect(
-      recoveredSize.renderedCssWidth / recoveredSize.renderedCssHeight,
-    ).toBeCloseTo(1.6, 5);
+    await assertCanvasFillsVisualViewport(page, recoveredSize);
     await assertZoomOneWorldMatchesMasterDensity(page, recoveredSize);
 
     await waitForRenderedFrames(page, 4);
@@ -558,22 +553,20 @@ test.describe('Game Loading', () => {
     const fullscreenStatus = page.getByRole('status');
     await expect(fullscreenButton).toBeVisible();
     await expect(fullscreenButton).toHaveAttribute('title', 'Enter fullscreen');
-    await expect(fullscreenButton).toHaveAttribute('aria-controls', 'canvas');
+    await expect(fullscreenButton).toHaveAttribute('aria-controls', 'game-container');
     await expect(fullscreenButton).toHaveCSS('width', '44px');
     await expect(fullscreenButton).toHaveCSS('height', '44px');
     await expect(fullscreenStatus).toBeEmpty();
 
     const preFullscreenSize = await waitForCanvasBackingToMatchRenderedCss(canvas);
-    expect(
-      preFullscreenSize.renderedCssWidth / preFullscreenSize.renderedCssHeight,
-    ).toBeCloseTo(1.6, 5);
+    await assertCanvasFillsVisualViewport(page, preFullscreenSize);
     await assertZoomOneWorldMatchesMasterDensity(page, preFullscreenSize);
 
     // Playwright's real click follows the same trusted user-gesture path as
     // the shipped control; production code must not enter fullscreen at boot.
     await fullscreenButton.click();
     await page.waitForFunction(
-      () => document.fullscreenElement?.id === 'canvas',
+      () => document.fullscreenElement === document.documentElement,
     );
     await expect(fullscreenButton).toBeHidden();
     await expect
@@ -584,6 +577,7 @@ test.describe('Game Loading', () => {
     );
 
     const fullscreenSize = await waitForCanvasBackingToMatchRenderedCss(canvas);
+    await assertCanvasFillsVisualViewport(page, fullscreenSize);
     await assertZoomOneWorldMatchesMasterDensity(page, fullscreenSize);
 
     // Headless Chromium does not route CDP-generated Escape through browser
@@ -610,7 +604,7 @@ test.describe('Game Loading', () => {
 
     const exitSize = await getCanvasSizing(canvas);
     assertCanvasBackingMatchesRenderedCss(exitSize);
-    expect(exitSize.renderedCssWidth / exitSize.renderedCssHeight).toBeCloseTo(1.6, 5);
+    await assertCanvasFillsVisualViewport(page, exitSize);
     await assertZoomOneWorldMatchesMasterDensity(page, exitSize);
 
     await waitForRenderedFrames(page, 4);
@@ -624,8 +618,8 @@ test.describe('Game Loading', () => {
     // A browser or embedding policy can deny a valid user request. Keep that
     // failure perceivable to keyboard and screen-reader users instead of
     // leaving a silently dead-looking icon.
-    await canvas.evaluate((element) => {
-      Object.defineProperty(element, 'requestFullscreen', {
+    await page.evaluate(() => {
+      Object.defineProperty(document.documentElement, 'requestFullscreen', {
         configurable: true,
         value: () => Promise.reject(new Error('blocked for test')),
       });

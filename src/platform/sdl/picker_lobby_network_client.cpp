@@ -18,6 +18,8 @@
 #include <emscripten.h>
 #include <openglad/platform/net_transport_emscripten_ws.h>
 #else
+#include "net_transport_websocket_common.h"
+
 #include <ixwebsocket/IXHttpClient.h>
 #include <openglad/platform/net_transport_websocket_client.h>
 #include <openglad/platform/net_transport_websocket_server.h>
@@ -25,6 +27,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cctype>
 #include <charconv>
 #include <chrono>
@@ -33,7 +36,10 @@
 #include <cstdlib>
 #include <filesystem>
 #include <format>
+#include <iterator>
+#include <list>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -154,21 +160,33 @@ constexpr std::string_view kDefaultRelayBaseUrl =
     "https://openglad.pages.dev/relay";
 
 #ifdef __EMSCRIPTEN__
+EM_JS_DEPS(og_async_relay_room_list, "$stringToNewUTF8");
+
 EM_ASYNC_JS(char*, relay_http_post_text_js, (const char* url_cstr), {
+    let timeoutHandle = 0;
     try {
         const url = UTF8ToString(url_cstr);
         // Match the native transport's connect/transfer timeouts: without a
         // signal, a relay that accepts TCP but never responds would keep the
         // wasm Asyncify-suspended (picker frozen, no input) until the
-        // browser's own stall timeout, which can be minutes. Feature-detect:
-        // AbortSignal.timeout is Safari 16+; older engines just keep the
-        // no-timeout behavior instead of failing every fetch.
+        // browser's own stall timeout, which can be minutes. Promise.race
+        // supplies the deadline even on Safari versions without
+        // AbortSignal.timeout; AbortController stops the underlying request
+        // where supported.
         const options = { method: 'POST' };
-        if (typeof AbortSignal !== 'undefined' &&
-            typeof AbortSignal.timeout === 'function') {
-            options.signal = AbortSignal.timeout(10000);
-        }
-        const response = await fetch(url, options);
+        const controller = (typeof AbortController === 'function')
+            ? new AbortController()
+            : null;
+        if (controller)
+            options.signal = controller.signal;
+        const timeout = new Promise((unusedResolve, reject) => {
+            timeoutHandle = setTimeout(() => {
+                if (controller)
+                    controller.abort();
+                reject(new Error('timed out after 10 seconds'));
+            }, 10000);
+        });
+        const response = await Promise.race([fetch(url, options), timeout]);
         const text = await response.text();
         return stringToNewUTF8(
             (response.ok ? 'OK\n' : 'ERR\n') +
@@ -179,19 +197,31 @@ EM_ASYNC_JS(char*, relay_http_post_text_js, (const char* url_cstr), {
         const message =
             (error && error.message) ? error.message : String(error);
         return stringToNewUTF8('ERR\n0\n' + message);
+    } finally {
+        if (timeoutHandle)
+            clearTimeout(timeoutHandle);
     }
 });
 
 EM_ASYNC_JS(char*, relay_http_get_text_js, (const char* url_cstr), {
+    let timeoutHandle = 0;
     try {
         const url = UTF8ToString(url_cstr);
         // Same stalled-relay guard as relay_http_post_text_js above.
         const options = { method: 'GET' };
-        if (typeof AbortSignal !== 'undefined' &&
-            typeof AbortSignal.timeout === 'function') {
-            options.signal = AbortSignal.timeout(10000);
-        }
-        const response = await fetch(url, options);
+        const controller = (typeof AbortController === 'function')
+            ? new AbortController()
+            : null;
+        if (controller)
+            options.signal = controller.signal;
+        const timeout = new Promise((unusedResolve, reject) => {
+            timeoutHandle = setTimeout(() => {
+                if (controller)
+                    controller.abort();
+                reject(new Error('timed out after 10 seconds'));
+            }, 10000);
+        });
+        const response = await Promise.race([fetch(url, options), timeout]);
         const text = await response.text();
         return stringToNewUTF8(
             (response.ok ? 'OK\n' : 'ERR\n') +
@@ -202,6 +232,9 @@ EM_ASYNC_JS(char*, relay_http_get_text_js, (const char* url_cstr), {
         const message =
             (error && error.message) ? error.message : String(error);
         return stringToNewUTF8('ERR\n0\n' + message);
+    } finally {
+        if (timeoutHandle)
+            clearTimeout(timeoutHandle);
     }
 });
 
@@ -213,6 +246,109 @@ EM_JS(char*, current_browser_hostname_js, (), {
             ? window.location.hostname
             : '127.0.0.1';
     return stringToNewUTF8(host);
+});
+
+EM_JS(int, begin_relay_room_list_request_js, (const char* url_cstr), {
+    const root = globalThis;
+    let registry = root.__opengladRelayRoomListRequests;
+    if (!registry || !(registry.requests instanceof Map)) {
+        registry = {
+            nextId: 1,
+            requests: new Map(),
+        };
+        root.__opengladRelayRoomListRequests = registry;
+    }
+
+    const id = registry.nextId++;
+    const state = {
+        cancelled: false,
+        done: false,
+        result: null,
+        timedOut: false,
+        timeoutHandle: 0,
+        controller: (typeof AbortController === 'function')
+            ? new AbortController()
+            : null,
+    };
+    registry.requests.set(id, state);
+
+    const options = { method: 'GET' };
+    if (state.controller)
+        options.signal = state.controller.signal;
+
+    // Promise.race supplies the timeout even on older Safari versions that
+    // do not implement AbortSignal.timeout. AbortController is only used to
+    // stop the underlying fetch where the browser provides it.
+    const timeoutPromise = new Promise((unusedResolve, reject) => {
+        state.timeoutHandle = setTimeout(() => {
+            state.timedOut = true;
+            if (state.controller)
+                state.controller.abort();
+            reject(new Error('timed out after 10 seconds'));
+        }, 10000);
+    });
+    const fetchPromise = fetch(UTF8ToString(url_cstr), options).then(
+        async response => {
+            const body = await response.text();
+            if (!response.ok) {
+                throw new Error(
+                    'HTTP ' + String(response.status) + ': ' + body.trim());
+            }
+            return body;
+        });
+
+    Promise.race([fetchPromise, timeoutPromise]).then(
+        body => {
+            if (state.cancelled)
+                return;
+            state.result = 'OK\n' + body;
+            state.done = true;
+        },
+        error => {
+            if (state.cancelled)
+                return;
+            const message = state.timedOut
+                ? 'Relay room listing timed out after 10 seconds.'
+                : 'Relay room listing failed: ' +
+                    ((error && error.message) ? error.message : String(error));
+            state.result = 'ERR\n' + message;
+            state.done = true;
+        }).finally(() => {
+            if (state.timeoutHandle)
+                clearTimeout(state.timeoutHandle);
+            state.timeoutHandle = 0;
+        });
+
+    return id;
+});
+
+EM_JS(char*, poll_relay_room_list_request_js, (int id), {
+    const registry = globalThis.__opengladRelayRoomListRequests;
+    if (!registry || !(registry.requests instanceof Map))
+        return stringToNewUTF8('ERR\nRelay room listing request was lost.');
+
+    const state = registry.requests.get(id);
+    if (!state)
+        return stringToNewUTF8('ERR\nRelay room listing request was lost.');
+    if (!state.done)
+        return 0;
+
+    registry.requests.delete(id);
+    return stringToNewUTF8(state.result);
+});
+
+EM_JS(void, cancel_relay_room_list_request_js, (int id), {
+    const registry = globalThis.__opengladRelayRoomListRequests;
+    if (!registry || !(registry.requests instanceof Map))
+        return;
+
+    const state = registry.requests.get(id);
+    if (!state)
+        return;
+    state.cancelled = true;
+    if (state.controller)
+        state.controller.abort();
+    registry.requests.delete(id);
 });
 #endif
 
@@ -575,6 +711,11 @@ og::ui::detail::RelayRoomCreateInfo create_relay_room(
     }
     return parse_relay_room_create_response_impl(body);
 #else
+    // IXWebSocket's HTTP client uses the same process-wide socket runtime as
+    // its WebSocket transports. Holding the shared guard prevents discovery
+    // from running before WSAStartup on Windows, and prevents a concurrently
+    // destroyed transport from calling WSACleanup while this request is live.
+    og::sim::detail::IxNetSystemGuard net_system_guard;
     ix::HttpClient client;
     ix::HttpRequestArgsPtr args = client.createRequest(create_url, ix::HttpClient::kPost);
     args->connectTimeout = 5;
@@ -772,13 +913,8 @@ std::vector<og::ui::PickerRelayRoomInfo> parse_relay_room_list(
     return rooms;
 }
 
-std::string fetch_relay_room_list_body(std::string_view base_url,
-                                       std::string_view campaign_hash)
+std::string fetch_relay_room_list_body_from_url(const std::string& list_url)
 {
-    const std::string list_url = build_relay_room_list_url(
-        std::string(base_url),
-        campaign_hash);
-
 #ifdef __EMSCRIPTEN__
     std::unique_ptr<char, decltype(&std::free)> response_text(
         relay_http_get_text_js(list_url.c_str()),
@@ -810,6 +946,11 @@ std::string fetch_relay_room_list_body(std::string_view base_url,
     }
     return body;
 #else
+    // This guard spans the whole HTTP operation, including when this function
+    // runs on the owner-managed room-discovery worker. It shares ownership with
+    // native WebSocket transports and therefore closes the Windows socket
+    // lifetime race between discovery and transport teardown.
+    og::sim::detail::IxNetSystemGuard net_system_guard;
     ix::HttpClient client;
     ix::HttpRequestArgsPtr args = client.createRequest(list_url, ix::HttpClient::kGet);
     args->connectTimeout = 5;
@@ -828,6 +969,231 @@ std::string fetch_relay_room_list_body(std::string_view base_url,
     return response->body;
 #endif
 }
+
+std::string fetch_relay_room_list_body(std::string_view base_url,
+                                       std::string_view campaign_hash)
+{
+    return fetch_relay_room_list_body_from_url(
+        build_relay_room_list_url(std::string(base_url), campaign_hash));
+}
+
+og::ui::PickerRelayRoomListResult parse_relay_room_list_result(
+    std::string_view body)
+{
+    og::ui::PickerRelayRoomListResult result;
+    try
+    {
+        result.rooms = parse_relay_room_list(body);
+    }
+    catch (const std::exception& error)
+    {
+        result.error = error.what();
+    }
+    catch (...)
+    {
+        result.error = "Relay room listing returned invalid data.";
+    }
+    return result;
+}
+
+#ifdef __EMSCRIPTEN__
+class EmscriptenRelayRoomListRequest final
+    : public og::ui::IPickerRelayRoomListRequest
+{
+public:
+    explicit EmscriptenRelayRoomListRequest(const std::string& list_url)
+        : request_id_(begin_relay_room_list_request_js(list_url.c_str()))
+    {
+    }
+
+    ~EmscriptenRelayRoomListRequest() override
+    {
+        if (request_id_ != 0)
+            cancel_relay_room_list_request_js(request_id_);
+    }
+
+    std::optional<og::ui::PickerRelayRoomListResult> poll() override
+    {
+        if (request_id_ == 0)
+            return std::nullopt;
+
+        std::unique_ptr<char, decltype(&std::free)> response(
+            poll_relay_room_list_request_js(request_id_),
+            &std::free);
+        if (!response)
+            return std::nullopt;
+
+        request_id_ = 0;
+        const std::string encoded_result(response.get());
+        constexpr std::string_view ok_prefix = "OK\n";
+        constexpr std::string_view error_prefix = "ERR\n";
+        if (encoded_result.starts_with(ok_prefix))
+        {
+            return parse_relay_room_list_result(
+                std::string_view(encoded_result).substr(ok_prefix.size()));
+        }
+
+        og::ui::PickerRelayRoomListResult result;
+        result.error = encoded_result.starts_with(error_prefix)
+            ? encoded_result.substr(error_prefix.size())
+            : "Relay room listing returned an invalid response.";
+        return result;
+    }
+
+private:
+    int request_id_ = 0;
+};
+#else
+struct NativeRelayRoomListRequestState
+{
+    std::mutex mutex;
+    std::optional<og::ui::PickerRelayRoomListResult> result;
+    std::atomic<bool> worker_finished{false};
+};
+
+// Owns every native discovery thread until it has actually stopped. Requests
+// can still be destroyed immediately (menu BACK/view replacement stays
+// nonblocking), while completed threads are reaped on subsequent starts/polls
+// and any bounded remainder is joined before process static teardown. The
+// long-lived network guard keeps IXWebSocket's socket runtime and its shared
+// guard state alive throughout that shutdown join.
+class NativeRelayRoomListWorkerOwner
+{
+public:
+    void start(std::shared_ptr<NativeRelayRoomListRequestState> state,
+               std::string list_url)
+    {
+        std::scoped_lock lock(mutex_);
+        reap_completed_locked();
+
+        workers_.emplace_back(std::move(state));
+        auto worker = std::prev(workers_.end());
+        try
+        {
+            const std::shared_ptr<NativeRelayRoomListRequestState>
+                worker_state = worker->state;
+            worker->thread = std::thread(
+                [worker_state, list_url = std::move(list_url)] {
+                    og::ui::PickerRelayRoomListResult result;
+                    try
+                    {
+                        result = parse_relay_room_list_result(
+                            fetch_relay_room_list_body_from_url(list_url));
+                    }
+                    catch (const std::exception& error)
+                    {
+                        result.error = error.what();
+                    }
+                    catch (...)
+                    {
+                        result.error = "Relay room listing failed.";
+                    }
+
+                    {
+                        std::scoped_lock state_lock(worker_state->mutex);
+                        worker_state->result.emplace(std::move(result));
+                    }
+                    worker_state->worker_finished.store(
+                        true,
+                        std::memory_order_release);
+                });
+        }
+        catch (...)
+        {
+            workers_.erase(worker);
+            throw;
+        }
+    }
+
+    void reap_completed()
+    {
+        std::scoped_lock lock(mutex_);
+        reap_completed_locked();
+    }
+
+    ~NativeRelayRoomListWorkerOwner()
+    {
+        // Native HTTP has bounded connect/transfer timeouts. Joining here is
+        // allowed to wait at process shutdown, never during picker navigation.
+        for (Worker& worker : workers_)
+        {
+            if (worker.thread.joinable())
+                worker.thread.join();
+        }
+    }
+
+private:
+    struct Worker
+    {
+        explicit Worker(
+            std::shared_ptr<NativeRelayRoomListRequestState> state_value)
+            : state(std::move(state_value))
+        {
+        }
+
+        std::shared_ptr<NativeRelayRoomListRequestState> state;
+        std::thread thread;
+    };
+
+    void reap_completed_locked()
+    {
+        for (auto worker = workers_.begin(); worker != workers_.end();)
+        {
+            if (!worker->state->worker_finished.load(
+                    std::memory_order_acquire))
+            {
+                ++worker;
+                continue;
+            }
+
+            if (worker->thread.joinable())
+                worker->thread.join();
+            worker = workers_.erase(worker);
+        }
+    }
+
+    // Constructed before any worker and destroyed after the destructor body,
+    // so the socket runtime cannot be torn down before all joins complete.
+    og::sim::detail::IxNetSystemGuard net_system_guard_;
+    std::mutex mutex_;
+    std::list<Worker> workers_;
+};
+
+NativeRelayRoomListWorkerOwner& native_relay_room_list_worker_owner()
+{
+    static NativeRelayRoomListWorkerOwner owner;
+    return owner;
+}
+
+class NativeRelayRoomListRequest final
+    : public og::ui::IPickerRelayRoomListRequest
+{
+public:
+    explicit NativeRelayRoomListRequest(
+        std::shared_ptr<NativeRelayRoomListRequestState> state)
+        : state_(std::move(state))
+    {
+    }
+
+    std::optional<og::ui::PickerRelayRoomListResult> poll() override
+    {
+        std::optional<og::ui::PickerRelayRoomListResult> result;
+        {
+            std::scoped_lock lock(state_->mutex);
+            if (!state_->result.has_value())
+                return std::nullopt;
+
+            result = std::move(state_->result);
+            state_->result.reset();
+        }
+        native_relay_room_list_worker_owner().reap_completed();
+        return result;
+    }
+
+private:
+    std::shared_ptr<NativeRelayRoomListRequestState> state_;
+};
+#endif
 
 } // namespace
 
@@ -1995,7 +2361,7 @@ std::vector<std::string> build_host_picker_status_lines(
         lines.push_back(std::format("Direct: {}", direct_status_message));
     }
     if (!relay_room_code.empty())
-        lines.push_back(std::format("Relay: {}", relay_room_code));
+        lines.push_back(std::format("Room: {}", relay_room_code));
     else if (!relay_status_message.empty())
         lines.push_back(std::format("Relay: {}", relay_status_message));
     if (player_count.has_value())
@@ -3202,7 +3568,7 @@ private:
         if (!direct_url_.empty())
             status_lines_.push_back(std::format("Direct: {}", direct_url_));
         if (!relay_room_code_.empty())
-            status_lines_.push_back(std::format("Relay: {}", relay_room_code_));
+            status_lines_.push_back(std::format("Room: {}", relay_room_code_));
         const char* status_text = "Status: connecting";
         if (transport_)
         {
@@ -3272,6 +3638,27 @@ std::vector<og::ui::PickerRelayRoomInfo> list_platform_relay_rooms(
         fetch_relay_room_list_body(
             base_url,
             campaign_content_hash(campaign_tag)));
+}
+
+std::unique_ptr<og::ui::IPickerRelayRoomListRequest>
+begin_platform_list_relay_rooms(
+    const std::string& base_url,
+    const std::string& campaign_tag)
+{
+    // Campaign/resource access and URL construction belong to the main
+    // thread. The native worker receives only this immutable URL and its own
+    // state, so it cannot observe a later PlatformBridge/GameSession swap.
+    const std::string list_url = build_relay_room_list_url(
+        base_url,
+        campaign_content_hash(campaign_tag));
+
+#ifdef __EMSCRIPTEN__
+    return std::make_unique<EmscriptenRelayRoomListRequest>(list_url);
+#else
+    auto state = std::make_shared<NativeRelayRoomListRequestState>();
+    native_relay_room_list_worker_owner().start(state, list_url);
+    return std::make_unique<NativeRelayRoomListRequest>(std::move(state));
+#endif
 }
 
 std::unique_ptr<og::ui::IPickerLobbyClient>

@@ -94,7 +94,9 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
 	clear_text_input_event();
 	MouseState& mymouse = query_mouse_no_poll();
 	
-    og::input_native::start_text_input();
+    const std::string initial_text = result.empty() ? std::string() : result.front();
+    og::input_native::start_text_input(
+        initial_text.c_str(), max_chars * max_lines, message.c_str(), true);
     
     if(result.size() == 0)
         result.push_back("");

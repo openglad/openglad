@@ -3126,7 +3126,8 @@ endif()
     )
 
     set_target_properties(play PROPERTIES
-        LINK_DEPENDS "${CMAKE_SOURCE_DIR}/web/shell.html"
+        LINK_DEPENDS
+            "${CMAKE_SOURCE_DIR}/web/shell.html;${CMAKE_SOURCE_DIR}/web/manifest.webmanifest;${CMAKE_SOURCE_DIR}/web/icon.svg;${CMAKE_SOURCE_DIR}/web/icon-192.png;${CMAKE_SOURCE_DIR}/web/icon-512.png;${CMAKE_SOURCE_DIR}/web/apple-touch-icon.png"
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/dist"
         SUFFIX ".html"
     )
@@ -3138,6 +3139,11 @@ endif()
             ${CMAKE_SOURCE_DIR}/web/index.html
             ${CMAKE_SOURCE_DIR}/web/help.html
             ${CMAKE_SOURCE_DIR}/web/_worker.js
+            ${CMAKE_SOURCE_DIR}/web/manifest.webmanifest
+            ${CMAKE_SOURCE_DIR}/web/icon.svg
+            ${CMAKE_SOURCE_DIR}/web/icon-192.png
+            ${CMAKE_SOURCE_DIR}/web/icon-512.png
+            ${CMAKE_SOURCE_DIR}/web/apple-touch-icon.png
             $<TARGET_FILE_DIR:play>
         COMMENT "Copying web landing page assets to dist/"
         VERBATIM

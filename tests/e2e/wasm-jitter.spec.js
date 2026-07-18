@@ -46,7 +46,7 @@ test('captures browser timing and verifies jitter does not reproduce', async ({ 
 
   await focusCanvas(page);
 
-  // Capture with the canvas FULLSCREENED, matching the conditions this
+  // Capture with the whole app FULLSCREENED, matching the conditions this
   // gate's baseline was recorded under. History: the game used to request
   // browser fullscreen itself (SDL_WINDOW_FULLSCREEN_DESKTOP, deferred to
   // the first input), and every baseline/verdict for this gate was captured
@@ -64,9 +64,9 @@ test('captures browser timing and verifies jitter does not reproduce', async ({ 
   // measurement environment without re-introducing auto-fullscreen for
   // users. Real-GPU browsers deliver 60Hz either way (verified locally,
   // including under 4x CPU throttle).
-  await page.evaluate(() => document.querySelector('#canvas').requestFullscreen());
+  await page.getByRole('button', { name: 'Enter fullscreen' }).click();
   await page.waitForFunction(
-    () => document.fullscreenElement && document.fullscreenElement.id === 'canvas',
+    () => document.fullscreenElement === document.documentElement,
   );
 
   const startRenderSampleSeq = await page.evaluate(() => {

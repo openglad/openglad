@@ -68,7 +68,13 @@ jobs:
         env:
           OG_WEBKIT: '1'
         continue-on-error: true
-        run: npx playwright test --workers=1 --project=webkit-iphone
+        # Bound engine-start/test hangs inside the advisory step so they cannot
+        # consume the enclosing required job's full 30-minute timeout.
+        timeout-minutes: 10
+        run: >-
+          npx playwright test --workers=1
+          --project=webkit-iphone
+          --project=webkit-iphone-portrait
 
       - name: Upload test results
         if: ${{ !cancelled() }}

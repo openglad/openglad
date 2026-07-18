@@ -240,8 +240,22 @@ void bootstrap_runtime(int argc, char* argv[])
 #if defined(__EMSCRIPTEN__) && !defined(TESTING)
     if (og::platform::web::should_skip_intro_for_tests())
         return;
+    EM_ASM({
+        window.__opengladIntroActive = true;
+        window.__opengladIntroTapPending = false;
+        window.__opengladIntroTapReady = false;
+        window.__opengladIntroTapGeneration = 0;
+        window.__opengladIntroTapAdvanceCount = 0;
+    });
 #endif
     intro_main(argc, argv);
+#if defined(__EMSCRIPTEN__) && !defined(TESTING)
+    EM_ASM({
+        window.__opengladIntroActive = false;
+        window.__opengladIntroTapPending = false;
+        window.__opengladIntroTapReady = false;
+    });
+#endif
 }
 } // namespace
 #endif

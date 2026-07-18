@@ -138,6 +138,20 @@ void joystick_init_subsystem();
 
 void sleep_ms(int ms);
 void show_cursor(bool show);
-void start_text_input();
+// Start a native text-input session and, on web touch devices, describe the
+// active prompt to the DOM keyboard affordance. `max_bytes` is the usable
+// payload limit (excluding the C string terminator); multiline prompts keep
+// their canvas-native editor instead of showing the single-line DOM field.
+void start_text_input(const char* initial_value = nullptr,
+                      int max_bytes = 0,
+                      const char* prompt = nullptr,
+                      bool multiline = false);
 void stop_text_input();
+// Deliver Escape-cancel semantics to the active text prompt (input_string's
+// restore-original-and-return-null path). Needed by the web DOM text-entry
+// overlay's CANCEL button: during text input Backspace means delete-character
+// and the web back-key filter swallows pushed Escape, so cancel requires this
+// dedicated seam (it grants the pushed Escape pair a one-shot pass through
+// the filter). No-op unless text input is active.
+void push_text_cancel_key();
 } // namespace og::input_native

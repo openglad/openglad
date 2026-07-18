@@ -26,10 +26,16 @@ namespace {
 
 constexpr std::string_view kDefaultRelayBaseUrl =
     "https://openglad.pages.dev/relay";
-constexpr std::array<std::string_view, 2> kNetworkingMenuInstructionLines{{
-    "HOST or JOIN from the current team setup.",
-    "Pick BEGIN NEW GAME or CONTINUE GAME first.",
+#ifdef __EMSCRIPTEN__
+// Web: the relay room list is the whole story — one line of guidance under
+// the ACTIVE GAMES list. Native draws no instruction copy (the DIRECT (LAN)
+// section header carries the remaining context).
+constexpr std::array<std::string_view, 1> kNetworkingMenuInstructionLines{{
+    "Enter a room code or tap an active game.",
 }};
+#else
+constexpr std::array<std::string_view, 0> kNetworkingMenuInstructionLines{};
+#endif
 
 std::string trim_copy(std::string value)
 {
@@ -103,6 +109,30 @@ std::string join_lines(const std::vector<std::string>& lines)
     }
     return text;
 }
+
+class ImmediateRelayRoomListRequest final
+    : public og::ui::IPickerRelayRoomListRequest
+{
+public:
+    explicit ImmediateRelayRoomListRequest(
+        og::ui::PickerRelayRoomListResult result)
+        : result_(std::move(result))
+    {
+    }
+
+    std::optional<og::ui::PickerRelayRoomListResult> poll() override
+    {
+        if (!result_.has_value())
+            return std::nullopt;
+
+        auto result = std::move(result_);
+        result_.reset();
+        return result;
+    }
+
+private:
+    std::optional<og::ui::PickerRelayRoomListResult> result_;
+};
 
 } // namespace
 
@@ -218,6 +248,46 @@ std::vector<PickerRelayRoomInfo> list_relay_rooms(
         campaign_tag);
 }
 
+std::unique_ptr<IPickerRelayRoomListRequest> begin_list_relay_rooms(
+    const std::string& base_url,
+    const std::string& campaign_tag)
+{
+    // Copy callbacks before invoking either one: GameSession replacement can
+    // replace the process-wide bridge, and a request must never retain a
+    // reference into that mutable storage.
+    const PlatformBridge& bridge = platform_bridge();
+    const auto begin_request = bridge.begin_list_relay_rooms;
+    const auto list_rooms = bridge.list_relay_rooms;
+    const std::string normalized_base_url =
+        normalize_relay_base_url(base_url);
+
+    if (begin_request)
+    {
+        if (auto request = begin_request(normalized_base_url, campaign_tag))
+            return request;
+    }
+
+    PickerRelayRoomListResult result;
+    if (!list_rooms)
+        return std::make_unique<ImmediateRelayRoomListRequest>(
+            std::move(result));
+
+    try
+    {
+        result.rooms = list_rooms(normalized_base_url, campaign_tag);
+    }
+    catch (const std::exception& error)
+    {
+        result.error = error.what();
+    }
+    catch (...)
+    {
+        result.error = "Relay room listing failed.";
+    }
+    return std::make_unique<ImmediateRelayRoomListRequest>(
+        std::move(result));
+}
+
 std::string build_relay_room_prompt_message(
     const std::vector<PickerRelayRoomInfo>& rooms,
     const std::string& campaign_tag,
@@ -247,11 +317,7 @@ std::string build_relay_room_prompt_message(
     for (std::size_t index = 0; index < display_count; ++index)
     {
         const PickerRelayRoomInfo& room = rooms[index];
-        std::string line = std::format(
-            "{}  {} player{}",
-            room.code,
-            room.player_count,
-            room.player_count == 1 ? "" : "s");
+        std::string line = room.code;
         if (!room.host_name.empty())
             line.append(std::format("  {}", room.host_name));
         else if (!room.campaign_name.empty() && campaign_tag.empty())
@@ -266,6 +332,17 @@ std::string build_relay_room_prompt_message(
             rooms.size() - display_count == 1 ? "" : "s"));
     }
     return join_lines(lines);
+}
+
+std::string format_relay_room_button_label(const PickerRelayRoomInfo& room,
+                                           std::size_t max_chars)
+{
+    std::string label = room.code;
+    if (!room.host_name.empty())
+        label.append(std::format("  {}", room.host_name));
+    if (label.size() > max_chars)
+        label.resize(max_chars);
+    return label;
 }
 
 } // namespace og::ui

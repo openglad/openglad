@@ -145,6 +145,12 @@ This outputs to `dist/`:
 - `play.js` — JavaScript runtime
 - `play.wasm` — WebAssembly binary
 - `play.data` — Packaged game assets
+- `manifest.webmanifest`, `icon.svg`, `icon-192.png`, `icon-512.png`,
+  `apple-touch-icon.png` — install metadata and platform icons for
+  standalone/fullscreen play
+
+On supporting mobile browsers, the manifest also makes **Add to Home Screen**
+available. The installed app permits both portrait and landscape play.
 
 ### Run Locally
 

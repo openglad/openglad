@@ -1014,19 +1014,98 @@ TEST(MenuLayout, difficulty_menu_layout_and_nav)
                                    "difficulty_menu_host");
 }
 
+namespace
+{
+
+// The side labels drawn next to the networking fields, per build (web drops
+// the direct JOIN IP / PORT rows entirely).
+struct NetworkingFieldLabel
+{
+    int index;
+    std::string_view label;
+};
+
+#ifdef __EMSCRIPTEN__
+constexpr std::array<NetworkingFieldLabel, 1> kNetworkingFieldLabels{{
+    {kNetworkingMenuRoomValueIndex, "ROOM CODE"},
+}};
+#else
+constexpr std::array<NetworkingFieldLabel, 3> kNetworkingFieldLabels{{
+    {kNetworkingMenuRoomValueIndex, "ROOM CODE"},
+    {kNetworkingMenuIpIndex, "JOIN IP / HOST"},
+    {kNetworkingMenuPortIndex, "PORT"},
+}};
+#endif
+
+// The section headers configure_networking centers at x=160.
+#ifdef __EMSCRIPTEN__
+constexpr std::array<std::pair<std::string_view, int>, 1> kNetworkingHeaders{{
+    {"ACTIVE GAMES", PICKER_NETWORKING_ROOMS_HEADER_Y},
+}};
+#else
+constexpr std::array<std::pair<std::string_view, int>, 2> kNetworkingHeaders{{
+    {"ACTIVE GAMES", PICKER_NETWORKING_ROOMS_HEADER_Y},
+    {"DIRECT (LAN)", PICKER_NETWORKING_DIRECT_HEADER_Y},
+}};
+#endif
+
+// Empty-list status copy drawn centered in the room-list area (only while
+// no room rows are visible).
+constexpr std::array<std::string_view, 4> kNetworkingRoomsStatusLines{{
+    "Turn ROOM CODE ON to list relay games.",
+    "Room list unavailable.",
+    "No active games found.",
+    "Looking for active games...",
+}};
+
+} // namespace
+
 TEST(MenuLayout, networking_buttons_no_overlap)
 {
     button* buttons = picker_networking_buttons();
     const int count = picker_networking_button_count();
+    ASSERT_EQ(kNetworkingMenuButtonCount, count);
     check_no_overlaps(buttons, count, "networking");
     check_bounds(buttons, count, "networking");
     check_nav_in_range(buttons, count, "networking");
+
+    // Worst case: every ACTIVE GAMES row visible must still not collide
+    // with any other control.
+    std::vector<button> visible_rooms(buttons, buttons + count);
+    for (int slot = 0; slot < kNetworkingMenuRoomSlots; ++slot)
+        visible_rooms[static_cast<std::size_t>(
+            kNetworkingMenuRoomFirstIndex + slot)].hidden = false;
+    check_no_overlaps(visible_rooms.data(), count, "networking_rooms");
+    check_bounds(visible_rooms.data(), count, "networking_rooms");
+}
+
+// Keyboard nav contract over every room-list variant: nav never links to a
+// hidden room row and every visible button stays reachable from BACK.
+TEST(MenuLayout, networking_nav_reachable_for_all_room_variants)
+{
+    button* buttons = picker_networking_buttons();
+    const int count = picker_networking_button_count();
+    ASSERT_EQ(kNetworkingMenuButtonCount, count);
+
+    for (int rooms = 0; rooms <= kNetworkingMenuRoomSlots; ++rooms)
+    {
+        std::vector<button> variant(buttons, buttons + count);
+        for (int slot = 0; slot < kNetworkingMenuRoomSlots; ++slot)
+            variant[static_cast<std::size_t>(
+                kNetworkingMenuRoomFirstIndex + slot)].hidden = slot >= rooms;
+        picker_wire_networking_menu_nav(variant.data(), count, rooms);
+        const std::string name =
+            std::string("networking_rooms_") + std::to_string(rooms);
+        check_nav_closed_and_reachable(variant.data(), count,
+                                       kNetworkingMenuBackIndex, name.c_str());
+    }
 }
 
 // Every networking control AND every piece of copy (title, field labels,
-// centered instruction lines) must fit inside the enclosing panel frame, so
-// nothing writes over the frame edge (regression for the long instruction line
-// overrunning the frame's right border).
+// section headers, room-status copy, centered instruction lines) must fit
+// inside the enclosing panel frame, so nothing writes over the frame edge
+// (regression for the long instruction line overrunning the frame's right
+// border).
 TEST(MenuLayout, networking_content_fits_within_panel_frame)
 {
     button* buttons = picker_networking_buttons();
@@ -1047,10 +1126,10 @@ TEST(MenuLayout, networking_content_fits_within_panel_frame)
         EXPECT_LE(y + h, fy2) << what << " clips the frame's bottom edge";
     };
 
+    // Room rows are hidden by default but occupy fixed slots — check every
+    // button's rect regardless of visibility.
     for (int i = 0; i < count; ++i)
     {
-        if (buttons[i].hidden)
-            continue;
         fits(buttons[i].x, buttons[i].y, buttons[i].sizex, buttons[i].sizey,
              buttons[i].id.c_str());
     }
@@ -1059,16 +1138,26 @@ TEST(MenuLayout, networking_content_fits_within_panel_frame)
     fits(160 - title_w / 2, PICKER_NETWORKING_TITLE_Y, title_w, mytext.sizey,
          "title");
 
-    static constexpr std::array<std::string_view, 4> kFrameFieldLabels{{
-        "JOIN IP / HOST", "PORT", "ROOM CODE", "ROOM VALUE",
-    }};
-    for (std::size_t i = 0; i < kFrameFieldLabels.size(); ++i)
+    for (const NetworkingFieldLabel& field_label : kNetworkingFieldLabels)
     {
-        const button& field = buttons[i + 1];
-        const int w = mytext.query_width(kFrameFieldLabels[i]);
+        const button& field = buttons[field_label.index];
+        const int w = mytext.query_width(field_label.label);
         fits(field.x - w - PICKER_NETWORKING_LABEL_GAP,
              field.y + (field.sizey - mytext.sizey) / 2, w, mytext.sizey,
              "field label");
+    }
+
+    for (const auto& [header, header_y] : kNetworkingHeaders)
+    {
+        const int w = mytext.query_width(header);
+        fits(160 - w / 2, header_y, w, mytext.sizey, "section header");
+    }
+
+    for (const std::string_view status : kNetworkingRoomsStatusLines)
+    {
+        const int w = mytext.query_width(status);
+        fits(160 - w / 2, PICKER_NETWORKING_ROOM_Y + 2, w, mytext.sizey,
+             "rooms status line");
     }
 
     const auto lines = og::ui::networking_menu_instruction_lines();
@@ -1076,7 +1165,8 @@ TEST(MenuLayout, networking_content_fits_within_panel_frame)
     const int height = lines.empty()
         ? 0
         : mytext.sizey + static_cast<int>(lines.size() - 1) * pitch;
-    const int iy = buttons[5].y - PICKER_NETWORKING_INSTRUCTION_GAP - height;
+    const int iy = buttons[kNetworkingMenuJoinIndex].y -
+        PICKER_NETWORKING_INSTRUCTION_GAP - height;
     for (std::size_t i = 0; i < lines.size(); ++i)
     {
         const int w = mytext.query_width(lines[i]);
@@ -1091,42 +1181,55 @@ TEST(MenuLayout, networking_text_does_not_overlap_buttons)
     const int count = picker_networking_button_count();
     text& mytext = og::runtime::current_session->myscreen_->text_normal;
 
-    static constexpr std::array<std::string_view, 4> kFieldLabels{{
-        "JOIN IP / HOST",
-        "PORT",
-        "ROOM CODE",
-        "ROOM VALUE",
-    }};
+    // Worst case for the copy: every ACTIVE GAMES row visible. (The rooms
+    // status line is exercised separately below because it only draws while
+    // the list is empty.)
+    std::vector<button> visible(buttons, buttons + count);
+    for (int slot = 0; slot < kNetworkingMenuRoomSlots; ++slot)
+        visible[static_cast<std::size_t>(
+            kNetworkingMenuRoomFirstIndex + slot)].hidden = false;
 
-    for (std::size_t field_index = 0; field_index < kFieldLabels.size(); ++field_index)
-    {
-        const button& field = buttons[field_index + 1];
-        const std::string_view label = kFieldLabels[field_index];
-        const int label_w = mytext.query_width(label);
-        const int label_h = mytext.sizey;
-        const int label_x = field.x - label_w - PICKER_NETWORKING_LABEL_GAP;
-        const int label_y = field.y + (field.sizey - mytext.sizey) / 2;
-
-        ASSERT_GE(label_x, 0) << "field label should remain on-screen";
-        ASSERT_LE(label_x + label_w, SCREEN_W) << "field label should remain on-screen";
-
+    const auto check_text_rect = [&](int x, int y, int w, int h,
+                                     std::string_view what,
+                                     bool against_room_rows) {
+        ASSERT_GE(x, 0) << what << " should remain on-screen";
+        ASSERT_LE(x + w, SCREEN_W) << what << " should remain on-screen";
         for (int button_index = 0; button_index < count; ++button_index)
         {
-            const button& other = buttons[button_index];
-            if (other.hidden)
+            const button& other = visible[static_cast<std::size_t>(button_index)];
+            if (!against_room_rows &&
+                button_index >= kNetworkingMenuRoomFirstIndex)
                 continue;
-            ASSERT_FALSE(rects_overlap(
-                label_x,
-                label_y,
-                label_w,
-                label_h,
-                other.x,
-                other.y,
-                other.sizex,
-                other.sizey))
-                << "networking field label '" << label
-                << "' overlaps button '" << other.id << "'";
+            ASSERT_FALSE(rects_overlap(x, y, w, h, other.x, other.y,
+                                       other.sizex, other.sizey))
+                << "networking copy '" << what << "' overlaps button '"
+                << other.id << "'";
         }
+    };
+
+    for (const NetworkingFieldLabel& field_label : kNetworkingFieldLabels)
+    {
+        const button& field = buttons[field_label.index];
+        const int label_w = mytext.query_width(field_label.label);
+        const int label_x = field.x - label_w - PICKER_NETWORKING_LABEL_GAP;
+        const int label_y = field.y + (field.sizey - mytext.sizey) / 2;
+        check_text_rect(label_x, label_y, label_w, mytext.sizey,
+                        field_label.label, true);
+    }
+
+    for (const auto& [header, header_y] : kNetworkingHeaders)
+    {
+        const int w = mytext.query_width(header);
+        check_text_rect(160 - w / 2, header_y, w, mytext.sizey, header, true);
+    }
+
+    // The rooms status line shares the list area with the (then-hidden)
+    // room rows, so it is only checked against the other controls.
+    for (const std::string_view status : kNetworkingRoomsStatusLines)
+    {
+        const int w = mytext.query_width(status);
+        check_text_rect(160 - w / 2, PICKER_NETWORKING_ROOM_Y + 2, w,
+                        mytext.sizey, status, false);
     }
 
     const auto instruction_lines = og::ui::networking_menu_instruction_lines();
@@ -1135,8 +1238,8 @@ TEST(MenuLayout, networking_text_does_not_overlap_buttons)
         ? 0
         : mytext.sizey +
             static_cast<int>(instruction_lines.size() - 1) * instruction_pitch;
-    const int instruction_y =
-        buttons[5].y - PICKER_NETWORKING_INSTRUCTION_GAP - instruction_height;
+    const int instruction_y = buttons[kNetworkingMenuJoinIndex].y -
+        PICKER_NETWORKING_INSTRUCTION_GAP - instruction_height;
 
     ASSERT_GE(instruction_y, 0) << "instruction copy should remain on-screen";
 
@@ -1144,29 +1247,10 @@ TEST(MenuLayout, networking_text_does_not_overlap_buttons)
     {
         const std::string_view line = instruction_lines[line_index];
         const int line_w = mytext.query_width(line);
-        const int line_h = mytext.sizey;
-        const int line_x = 160 - line_w / 2;
-        const int line_y = instruction_y + static_cast<int>(line_index) * instruction_pitch;
-
-        ASSERT_LE(line_x + line_w, SCREEN_W) << "instruction copy should remain on-screen";
-
-        for (int button_index = 0; button_index < count; ++button_index)
-        {
-            const button& other = buttons[button_index];
-            if (other.hidden)
-                continue;
-            ASSERT_FALSE(rects_overlap(
-                line_x,
-                line_y,
-                line_w,
-                line_h,
-                other.x,
-                other.y,
-                other.sizex,
-                other.sizey))
-                << "networking instruction line '" << line
-                << "' overlaps button '" << other.id << "'";
-        }
+        const int line_y =
+            instruction_y + static_cast<int>(line_index) * instruction_pitch;
+        check_text_rect(160 - line_w / 2, line_y, line_w, mytext.sizey, line,
+                        true);
     }
 }
 

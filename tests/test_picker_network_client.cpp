@@ -1421,7 +1421,7 @@ TEST(PickerNetworkClient, host_relay_flow_uses_campaign_content_hash)
 
     const auto status = host_client->status_lines();
     EXPECT_TRUE(status_lines_contain_prefix(status, "LAN: "));
-    EXPECT_TRUE(status_lines_contain_exact(status, "Relay: GLAD-XKCD"));
+    EXPECT_TRUE(status_lines_contain_exact(status, "Room: GLAD-XKCD"));
     EXPECT_TRUE(status_lines_contain_exact(status, "Lobby: 1 player"));
 
     const std::string create_uri = relay_server.last_create_uri();
@@ -4712,7 +4712,7 @@ TEST(PickerNetworkClient, join_relay_flow_connects_and_starts_game)
         return lobby_server.state().players.size() == 1u &&
             status_lines_contain_exact(
                 join_client->status_lines(),
-                "Relay: GLAD-XKCD") &&
+                "Room: GLAD-XKCD") &&
             status_lines_contain_exact(
                 join_client->status_lines(),
                 "Status: connected");
@@ -4861,7 +4861,7 @@ TEST(PickerNetworkClient,
              "instead of an eternal 'Status: connecting'";
     EXPECT_TRUE(status_lines_contain_exact(
         join_client->status_lines(),
-        "Relay: GLAD-XKCD"));
+        "Room: GLAD-XKCD"));
 
     join_client->shutdown();
 }
@@ -4933,7 +4933,7 @@ TEST(PickerNetworkClient,
 
     EXPECT_TRUE(status_lines_contain_exact(
         host_client->status_lines(),
-        "Relay: GLAD-XKCD"));
+        "Room: GLAD-XKCD"));
 
     relay_server.reset();
 
@@ -4943,10 +4943,10 @@ TEST(PickerNetworkClient,
             host_client->status_lines(),
             "Relay: connection lost");
     },
-    10s)) << "a dead relay room must stop advertising 'Relay: GLAD-XKCD'";
+    10s)) << "a dead relay room must stop advertising 'Room: GLAD-XKCD'";
     EXPECT_FALSE(status_lines_contain_exact(
         host_client->status_lines(),
-        "Relay: GLAD-XKCD"));
+        "Room: GLAD-XKCD"));
 
     host_client->shutdown();
 }

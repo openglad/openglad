@@ -253,19 +253,51 @@ TEST(MenuModel, relay_room_code_and_join_mode_helpers_support_relay_flow)
         rooms,
         "org.openglad.gladiator");
     EXPECT_NE(std::string::npos, prompt.find("GLAD-XKCD"));
-    EXPECT_NE(std::string::npos, prompt.find("2 players"));
+    EXPECT_EQ(std::string::npos, prompt.find("2 players"));
     EXPECT_NE(std::string::npos, prompt.find("Host One"));
     EXPECT_NE(std::string::npos, prompt.find("GLAD-ABCD"));
 }
 
-TEST(MenuModel, networking_menu_instructions_explain_fresh_host_flow)
+TEST(MenuModel, networking_menu_instructions_match_build_shape)
 {
     const auto lines = og::ui::networking_menu_instruction_lines();
-    ASSERT_EQ(2u, lines.size());
-    EXPECT_NE(std::string_view::npos, lines[0].find("HOST or JOIN"));
-    EXPECT_NE(std::string_view::npos, lines[0].find("team setup"));
-    EXPECT_NE(std::string_view::npos, lines[1].find("BEGIN NEW GAME"));
-    EXPECT_NE(std::string_view::npos, lines[1].find("CONTINUE GAME"));
+#ifdef __EMSCRIPTEN__
+    // Web: one line of relay-first guidance under the ACTIVE GAMES list.
+    ASSERT_EQ(1u, lines.size());
+    EXPECT_NE(std::string_view::npos, lines[0].find("room code"));
+    EXPECT_NE(std::string_view::npos, lines[0].find("active game"));
+#else
+    // Native: the DIRECT (LAN) section header carries the context; no
+    // instruction copy is drawn (there is no vertical room for it).
+    EXPECT_EQ(0u, lines.size());
+#endif
+}
+
+TEST(MenuModel, relay_room_button_labels_show_code_and_host)
+{
+    og::ui::PickerRelayRoomInfo room{
+        .code = "GLAD-XKCD",
+        .campaign_hash = "org.openglad.gladiator",
+        .campaign_name = "Gladiator",
+        .host_name = "Host One",
+        .player_count = 2u,
+        .created_at_ms = 1000,
+    };
+    EXPECT_EQ("GLAD-XKCD  Host One",
+              og::ui::format_relay_room_button_label(room, 39u));
+
+    room.host_name.clear();
+    room.player_count = 1u;
+    EXPECT_EQ("GLAD-XKCD",
+              og::ui::format_relay_room_button_label(room, 39u));
+
+    // Over-budget labels are truncated to the button face's character
+    // budget (labels draw centered with no clipping).
+    room.host_name = "An Extremely Long Host Name That Overflows";
+    const std::string truncated =
+        og::ui::format_relay_room_button_label(room, 20u);
+    EXPECT_EQ(20u, truncated.size());
+    EXPECT_EQ("GLAD-XKCD  An Extrem", truncated);
 }
 
 TEST(MenuModel, host_picker_lobby_client_accepts_direct_only_and_relay_options)
@@ -310,7 +342,7 @@ TEST(MenuModel, host_status_lines_show_lan_only_for_real_direct_transport)
     ASSERT_EQ(3u, fallback_lines.size());
     EXPECT_EQ("Direct: Direct hosting is unavailable in browser builds.",
               fallback_lines[0]);
-    EXPECT_EQ("Relay: GLAD-XKCD", fallback_lines[1]);
+    EXPECT_EQ("Room: GLAD-XKCD", fallback_lines[1]);
     EXPECT_EQ("Lobby: 2 players", fallback_lines[2]);
 }
 

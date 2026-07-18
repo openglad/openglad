@@ -26,6 +26,11 @@ std::vector<og::ui::PickerRelayRoomInfo> list_platform_relay_rooms(
     const std::string& base_url,
     const std::string& campaign_tag);
 
+std::unique_ptr<og::ui::IPickerRelayRoomListRequest>
+begin_platform_list_relay_rooms(
+    const std::string& base_url,
+    const std::string& campaign_tag);
+
 bool install_picker_lobby_gameplay_runtime(
     og::ui::IPickerLobbyClient* client,
     og::runtime::GameSession& session,

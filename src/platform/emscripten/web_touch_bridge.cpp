@@ -138,6 +138,18 @@ EMSCRIPTEN_KEEPALIVE void openglad_web_push_key(int keycode, int down)
     og::input_native::push_key_event(down != 0, keycode);
 }
 
+// CANCEL affordance of the shell's DOM text-entry overlay. Distinct from
+// BACK: during text input Backspace means delete-character, and pushed Escape
+// is normally swallowed by the web back-key filter, so cancel needs this
+// dedicated seam (input_string's Escape path restores the original value and
+// returns null). No-op unless a text prompt is active.
+EMSCRIPTEN_KEEPALIVE void openglad_web_text_cancel()
+{
+    if (!session_ready())
+        return;
+    og::input_native::push_text_cancel_key();
+}
+
 EMSCRIPTEN_KEEPALIVE void openglad_web_push_text(const char* utf8)
 {
     if (!session_ready() || utf8 == nullptr || utf8[0] == '\0')

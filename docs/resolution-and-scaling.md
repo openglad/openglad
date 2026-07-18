@@ -226,18 +226,22 @@ world frame and restore world routing when they close.
 ## Emscripten
 
 Zoom and world smoothing use the same code path in native and Emscripten
-builds. The page chooses an integral CSS-logical canvas size that fits the
-browser viewport. SDL's high-density output keeps the physical WebGL backing
-at device-pixel resolution, while zoom 1.0 keeps the 320x200 classic-density
-world (aspect-expanded when needed). Lower zoom values enlarge only World;
-gameplay UI remains at its classic-density aspect-matched size.
+builds. The outer canvas fills the live visual viewport, including tall phone
+portrait viewports. SDL's high-density output keeps the physical WebGL backing
+at device-pixel resolution. Intro and menu screens remain a centered,
+aspect-fitted 320x200 surface inside that canvas; gameplay instead expands the
+classic-density World and gameplay-UI canvases along the needed axis. Thus a
+portrait phone reveals more world vertically without stretching sprites or
+shrinking the bitmap HUD into a landscape strip. Lower zoom values enlarge
+only World; gameplay UI remains at its classic-density aspect-matched size.
 
 Browser resize and Fullscreen API events reapply the CSS-logical size. This
 also repairs an SDL3 Emscripten fullscreen-exit race that can otherwise leave
 the canvas backing at a stale viewport size after browser-reserved Escape.
 Canvas focus is restored after leaving fullscreen. Native resolution and
 display-mode controls remain unavailable in the browser. The on-page
-fullscreen button enters canvas fullscreen from an explicit user gesture, and
+fullscreen button enters whole-app fullscreen from an explicit user gesture,
+so the canvas, touch controls, and text-entry field all remain available;
 browser-reserved Escape exits it. Web builds never bind game actions to
 Escape: Backspace is the universal back/cancel/menu key (remapped at the SDL
 event source, and disabled while a text field is active so Backspace still

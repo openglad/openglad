@@ -26,6 +26,7 @@ static_assert(og::input::kBackScancodeBackspace == SDL_SCANCODE_BACKSPACE);
 // Bracketed by start_text_input()/stop_text_input(); on web this gates the
 // Backspace-as-Escape remap so text fields keep Backspace = delete-character.
 bool s_text_input_active = false;
+bool s_text_cancel_requested = false;
 
 #ifdef __EMSCRIPTEN__
 // keystates_ consumers (button hotkeys, menu loops, gameplay bindings) read a
@@ -40,6 +41,13 @@ std::array<bool, SDL_SCANCODE_COUNT> s_web_keyboard_state{};
 // virtual physical Backspace (translated to Escape outside text input, exactly
 // like the real key).
 bool s_virtual_back_key_down = false;
+
+// Budget of pushed Escape key events allowed through the always-swallow rule.
+// push_text_cancel_key() grants exactly one down+up pair so the DOM
+// text-entry overlay's CANCEL button can reach input_string's Escape path.
+// SDL runs the event filter synchronously inside SDL_PushEvent, so the budget
+// is consumed before push_text_cancel_key() returns.
+int s_allowed_escape_events = 0;
 
 void refresh_web_keyboard_state()
 {
@@ -72,6 +80,15 @@ bool SDLCALL web_back_key_event_filter(void* /*userdata*/, SDL_Event* event)
     // keeps the mirror correct even on paths that pump SDL directly without
     // going through this seam's poll_event/wait_event (e.g. the game loop).
     refresh_web_keyboard_state();
+    if ((event->key.key == SDLK_ESCAPE ||
+         event->key.scancode == SDL_SCANCODE_ESCAPE) &&
+        s_allowed_escape_events > 0)
+    {
+        // A text-cancel Escape granted by push_text_cancel_key(): deliver it
+        // untranslated instead of applying the always-swallow rule.
+        --s_allowed_escape_events;
+        return true;
+    }
     const og::input::BackKeyEventTranslation t = og::input::translate_back_key(
         static_cast<int>(event->key.key),
         static_cast<int>(event->key.scancode),
@@ -538,20 +555,36 @@ SDL_Window* text_input_window()
 }
 } // namespace
 
-void start_text_input()
+void start_text_input(const char* initial_value, int max_bytes,
+                      const char* prompt, bool multiline)
 {
+#ifndef __EMSCRIPTEN__
+    (void)initial_value;
+    (void)max_bytes;
+    (void)prompt;
+    (void)multiline;
+#endif
     // Gate the web Backspace-as-Escape remap off for the whole text-entry
     // window, even when no SDL window exists (dummy driver in tests).
     s_text_input_active = true;
+    s_text_cancel_requested = false;
 #ifdef __EMSCRIPTEN__
+    s_allowed_escape_events = 0;
     // The flag changes the mapping without any key event; re-derive now.
     refresh_web_keyboard_state();
     // SDL3's emscripten backend has no screen-keyboard support, so the shell
     // provides a DOM text-entry overlay on touch devices. Signal it here.
     EM_ASM({
         window.dispatchEvent(new CustomEvent('openglad-text-input',
-                                             { detail: { active: true } }));
-    });
+            { detail: {
+                active: true,
+                initialValue: $0 ? UTF8ToString($0) : '',
+                maxBytes: $1,
+                prompt: $2 ? UTF8ToString($2) : '',
+                multiline: Boolean($3)
+            } }));
+    }, initial_value, std::max(0, max_bytes), prompt,
+       multiline ? 1 : 0);
 #endif
     if (SDL_Window* w = text_input_window())
         SDL_StartTextInput(w);
@@ -560,7 +593,9 @@ void start_text_input()
 void stop_text_input()
 {
     s_text_input_active = false;
+    s_text_cancel_requested = false;
 #ifdef __EMSCRIPTEN__
+    s_allowed_escape_events = 0;
     refresh_web_keyboard_state();
     EM_ASM({
         window.dispatchEvent(new CustomEvent('openglad-text-input',
@@ -569,5 +604,20 @@ void stop_text_input()
 #endif
     if (SDL_Window* w = text_input_window())
         SDL_StopTextInput(w);
+}
+
+void push_text_cancel_key()
+{
+    // Only meaningful while a text prompt is polling for keys; outside that
+    // window a pushed Escape would back out of whatever menu is active.
+    if (!s_text_input_active || s_text_cancel_requested)
+        return;
+    s_text_cancel_requested = true;
+#ifdef __EMSCRIPTEN__
+    // Let exactly this down+up pair through the web filter's Escape swallow.
+    s_allowed_escape_events = 2;
+#endif
+    push_key_event(true, SDLK_ESCAPE);
+    push_key_event(false, SDLK_ESCAPE);
 }
 } // namespace og::input_native

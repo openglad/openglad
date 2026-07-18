@@ -291,6 +291,50 @@ TEST(InputKeybinds, native_input_push_text_event_round_trips_through_the_queue)
 }
 
 
+TEST(InputKeybinds, native_input_push_text_cancel_key_requires_active_text_input)
+{
+    while (og::input_native::poll_event() != nullptr) {}
+
+    // Outside a text prompt the cancel seam must push nothing: a stray
+    // Escape here would back out of whatever menu is active.
+    og::input_native::stop_text_input();
+    og::input_native::push_text_cancel_key();
+    ASSERT_EQ(nullptr, og::input_native::poll_event())
+        << "cancel outside text input should push no events";
+
+    // During a text prompt it pushes the Escape down+up pair that
+    // input_string's cancel path (restore original, return null) consumes.
+    og::input_native::start_text_input();
+    og::input_native::push_text_cancel_key();
+    // A double tap/click must not queue another Escape that leaks into the
+    // menu after the prompt has already closed.
+    og::input_native::push_text_cancel_key();
+    og::input_native::stop_text_input();
+
+    og::input_native::EventData out{};
+    const void* down_event = og::input_native::wait_event();
+    ASSERT_TRUE(down_event != nullptr) << "cancel should push a keydown";
+    ASSERT_TRUE(og::input_native::decode_event(down_event, out))
+        << "pushed cancel keydown should decode";
+    ASSERT_EQ((int)og::input_native::EventType::KeyDown, (int)out.type)
+        << "first pushed cancel event should be keydown";
+    ASSERT_EQ((int)SDLK_ESCAPE, out.key_sym)
+        << "cancel keydown should carry Escape";
+
+    const void* up_event = og::input_native::wait_event();
+    ASSERT_TRUE(up_event != nullptr) << "cancel should push a keyup";
+    ASSERT_TRUE(og::input_native::decode_event(up_event, out))
+        << "pushed cancel keyup should decode";
+    ASSERT_EQ((int)og::input_native::EventType::KeyUp, (int)out.type)
+        << "second pushed cancel event should be keyup";
+    ASSERT_EQ((int)SDLK_ESCAPE, out.key_sym)
+        << "cancel keyup should carry Escape";
+    ASSERT_EQ(nullptr, og::input_native::poll_event())
+        << "duplicate cancel requests should be debounced";
+
+    while (og::input_native::poll_event() != nullptr) {}
+}
+
 TEST(InputKeybinds, input_didPlayerPressKey_matches_keydown_and_ignores_repeats)
 {
     disablePlayerJoystick(0);

@@ -54,6 +54,24 @@ module.exports = defineConfig({
         },
       },
     },
+    {
+      // Keep portrait coverage always-on as a separate Chromium project. The
+      // touch suite exercises the same fixed 320x200 menus inside a tall,
+      // full-viewport canvas and the portrait-specific control layout.
+      name: 'iphone-touch-portrait',
+      testMatch: /wasm-touch\.spec\.js/,
+      use: {
+        ...devices['iPhone 15'],
+        browserName: 'chromium',
+        launchOptions: {
+          args: [
+            '--use-gl=angle',
+            '--use-angle=swiftshader',
+            '--autoplay-policy=user-gesture-required',
+          ],
+        },
+      },
+    },
     ...(process.env.OG_WEBKIT
       ? [
           {
@@ -61,6 +79,13 @@ module.exports = defineConfig({
             testMatch: /wasm-touch\.spec\.js/,
             use: {
               ...devices['iPhone 15 landscape'],
+            },
+          },
+          {
+            name: 'webkit-iphone-portrait',
+            testMatch: /wasm-touch\.spec\.js/,
+            use: {
+              ...devices['iPhone 15'],
             },
           },
         ]

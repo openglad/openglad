@@ -1,8 +1,8 @@
 // @ts-check
-// Touch-controls e2e suite. Runs under the 'iphone-touch' Playwright project
-// (chromium engine + iPhone 15 landscape device descriptor: hasTouch,
-// isMobile, DPR 3, iOS UA) and, when OG_WEBKIT is set, under 'webkit-iphone'
-// (true WebKit). Desktop chromium ignores this file (see playwright.config.js).
+// Touch-controls e2e suite. Runs under always-on Chromium projects for iPhone
+// 15 landscape and portrait (hasTouch, isMobile, DPR 3, iOS UA) and, when
+// OG_WEBKIT is set, under true WebKit in both phone orientations. Desktop
+// chromium ignores this file (see playwright.config.js).
 //
 // The overlay lives in web/shell.html; held keys reach the engine through
 // web_touch_bridge.cpp (Module._openglad_web_touch_set_key -> the
@@ -10,6 +10,8 @@
 // every accepted write to window.__opengladTouchKeys for these assertions.
 const { test, expect } = require('@playwright/test');
 const {
+  getCanvasGameRegionScreenshot,
+  getCanvasUiBox,
   waitForGameLoad,
   waitForGameplayProgress,
   waitForGameplayRenderSamples,
@@ -23,6 +25,48 @@ const {
 const YES_BUTTON = { x: 95, y: 140 };
 const OK_BUTTON = { x: 160, y: 140 };
 
+// Main-menu CONTINUE and the team-build NETWORKING button (both on the
+// 320x200 grid; same coords the wasm-networking spec navigates with).
+const CONTINUE_BUTTON = { x: 150, y: 85 };
+const NETWORKING_BUTTON = { x: 250, y: 150 };
+
+// Web relay-first networking-menu ROOM CODE field (button id
+// "network_room_value" in src/interface/ui/picker.cpp).
+const ROOM_VALUE_REGION = { x: 110, y: 40, w: 160, h: 15 };
+const ROOM_VALUE_CENTER = { x: 190, y: 47 };
+
+// prompt_for_string draws its input line at (58, 60), 29 chars * 6px wide
+// (src/interface/ui/level_editor_ui.cpp + text::input_string_ex).
+const PROMPT_INPUT_REGION = { x: 56, y: 56, w: 184, h: 18 };
+
+async function captureRegion(page, region) {
+  return await getCanvasGameRegionScreenshot(
+    page,
+    region.x,
+    region.y,
+    region.w,
+    region.h,
+  );
+}
+
+async function waitForRegionToLeave(page, region, baseline, message) {
+  await expect
+    .poll(async () => (await captureRegion(page, region)).equals(baseline), {
+      message,
+      timeout: 15_000,
+    })
+    .toBe(false);
+}
+
+async function waitForRegionToMatch(page, region, baseline, message) {
+  await expect
+    .poll(async () => (await captureRegion(page, region)).equals(baseline), {
+      message,
+      timeout: 15_000,
+    })
+    .toBe(true);
+}
+
 async function seedGameplayInitScript(page) {
   await page.addInitScript(() => {
     window.__opengladSeedSinglePlayerTeam = true;
@@ -34,13 +78,10 @@ async function seedGameplayInitScript(page) {
 }
 
 async function canvasGameCoordToCss(page, gameX, gameY) {
-  const box = await page.locator('#canvas').boundingBox();
-  if (!box) {
-    throw new Error('Canvas bounding box is unavailable');
-  }
+  const ui = await getCanvasUiBox(page);
   return {
-    x: box.x + (gameX * box.width) / 320,
-    y: box.y + (gameY * box.height) / 200,
+    x: ui.x + (gameX * ui.width) / 320,
+    y: ui.y + (gameY * ui.height) / 200,
   };
 }
 
@@ -112,6 +153,244 @@ async function sampleControlWorld(page) {
 }
 
 test.describe('Touch overlay activation', () => {
+  test('one phone tap advances exactly one intro page until the picker', async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    await page.goto('/play.html');
+    await page.waitForFunction(
+      () => window.__opengladIntroActive === true &&
+        window.__opengladIntroTapReady === true,
+      null,
+      { timeout: 60_000 },
+    );
+
+    // Hold a touch across the first page's natural timeout. Its pointer-up
+    // belongs to the old generation and must not skip the page that follows.
+    const introBox = await page.locator('#canvas').boundingBox();
+    if (!introBox) {
+      throw new Error('Canvas bounding box is unavailable during intro');
+    }
+    const heldPoint = {
+      x: introBox.x + introBox.width / 2,
+      y: introBox.y + introBox.height / 2,
+    };
+    const heldGeneration = await page.evaluate(
+      () => window.__opengladIntroTapGeneration,
+    );
+    await page.evaluate(({ x, y }) => {
+      document.getElementById('canvas').dispatchEvent(
+        new PointerEvent('pointerdown', {
+          bubbles: true,
+          cancelable: true,
+          clientX: x,
+          clientY: y,
+          isPrimary: true,
+          pointerId: 4242,
+          pointerType: 'touch',
+          button: 0,
+          buttons: 1,
+        }),
+      );
+    }, heldPoint);
+    await page.waitForFunction(
+      (generation) =>
+        window.__opengladIntroTapGeneration > generation &&
+        window.__opengladIntroTapReady === true,
+      heldGeneration,
+      { timeout: 30_000 },
+    );
+    await page.evaluate(({ x, y }) => {
+      document.getElementById('canvas').dispatchEvent(
+        new PointerEvent('pointerup', {
+          bubbles: true,
+          cancelable: true,
+          clientX: x,
+          clientY: y,
+          isPrimary: true,
+          pointerId: 4242,
+          pointerType: 'touch',
+          button: 0,
+          buttons: 0,
+        }),
+      );
+    }, heldPoint);
+    await page.waitForTimeout(300);
+    expect(
+      await page.evaluate(() => window.__opengladIntroTapAdvanceCount || 0),
+    ).toBe(0);
+    expect(await page.evaluate(() => window.__opengladIntroActive)).toBe(true);
+
+    const tapIntro = async (previousCount) => {
+      const box = await page.locator('#canvas').boundingBox();
+      if (!box) {
+        throw new Error('Canvas bounding box is unavailable during intro');
+      }
+      await page.touchscreen.tap(
+        box.x + box.width / 2,
+        box.y + box.height / 2,
+      );
+      await page.waitForFunction(
+        (count) =>
+          (window.__opengladIntroTapAdvanceCount || 0) === count + 1,
+        previousCount,
+        { timeout: 10_000 },
+      );
+    };
+
+    let advances = 0;
+    await tapIntro(advances);
+    advances += 1;
+    // The completed tap's up event must not leak across the page boundary.
+    await page.waitForTimeout(300);
+    expect(
+      await page.evaluate(() => window.__opengladIntroTapAdvanceCount || 0),
+    ).toBe(advances);
+    expect(await page.evaluate(() => window.__opengladIntroActive)).toBe(true);
+
+    for (let pageIndex = 0; pageIndex < 10; ++pageIndex) {
+      await page.waitForFunction(
+        () => window.__opengladIntroActive === false ||
+          window.__opengladIntroTapReady === true,
+        null,
+        { timeout: 20_000 },
+      );
+      if (!(await page.evaluate(() => window.__opengladIntroActive))) {
+        break;
+      }
+      await tapIntro(advances);
+      advances += 1;
+    }
+    await page.waitForFunction(
+      () => window.__opengladIntroActive === false,
+      null,
+      { timeout: 20_000 },
+    );
+    expect(advances).toBeGreaterThan(1);
+    await waitForGameLoad(page);
+    await waitForPickerReady(page);
+  });
+
+  test('canvas fills the touch viewport and centers the fixed UI grid', async ({
+    page,
+  }, testInfo) => {
+    await page.addInitScript(() => {
+      window.__opengladSkipIntroForTests = true;
+    });
+    await page.goto('/play.html');
+    await waitForGameLoad(page);
+
+    const geometry = await page.evaluate(() => {
+      const canvas = document.getElementById('canvas');
+      const rect = canvas.getBoundingClientRect();
+      const viewport = window.visualViewport;
+      return {
+        canvas: {
+          x: rect.x,
+          y: rect.y,
+          width: rect.width,
+          height: rect.height,
+        },
+        viewport: {
+          width: viewport && viewport.width > 0
+            ? viewport.width
+            : window.innerWidth,
+          height: viewport && viewport.height > 0
+            ? viewport.height
+            : window.innerHeight,
+        },
+      };
+    });
+    expect(Math.abs(geometry.canvas.width - geometry.viewport.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.canvas.height - geometry.viewport.height)).toBeLessThanOrEqual(1);
+
+    const ui = await getCanvasUiBox(page);
+    expect(ui.width / ui.height).toBeCloseTo(1.6, 2);
+    expect(Math.abs(ui.x - (geometry.canvas.x + (geometry.canvas.width - ui.width) / 2)))
+      .toBeLessThanOrEqual(1);
+    expect(Math.abs(ui.y - (geometry.canvas.y + (geometry.canvas.height - ui.height) / 2)))
+      .toBeLessThanOrEqual(1);
+
+    if (testInfo.project.name.includes('portrait')) {
+      expect(geometry.viewport.height).toBeGreaterThan(geometry.viewport.width);
+    } else {
+      expect(geometry.viewport.width).toBeGreaterThan(geometry.viewport.height);
+    }
+  });
+
+  test('legacy WebKit fullscreen fallback handles its non-Promise vendor API', async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      window.__opengladSkipIntroForTests = true;
+    });
+    await page.goto('/play.html');
+    await waitForGameLoad(page);
+
+    // Exercise the vendor branch deterministically on both the always-on
+    // Chromium phone projects and the advisory true-WebKit projects. Legacy
+    // Safari returns undefined from webkitRequestFullscreen, rather than a
+    // Promise, and reports state through webkitfullscreenchange.
+    await page.evaluate(() => {
+      const target = document.documentElement;
+      window.__opengladWebkitFullscreenCalls = 0;
+      window.__opengladFakeWebkitFullscreenElement = null;
+
+      Object.defineProperty(document, 'fullscreenEnabled', {
+        configurable: true,
+        value: false,
+      });
+      Object.defineProperty(document, 'webkitFullscreenEnabled', {
+        configurable: true,
+        value: true,
+      });
+      Object.defineProperty(document, 'webkitFullscreenElement', {
+        configurable: true,
+        get: () => window.__opengladFakeWebkitFullscreenElement,
+      });
+      Object.defineProperty(target, 'requestFullscreen', {
+        configurable: true,
+        value: undefined,
+      });
+      Object.defineProperty(target, 'webkitRequestFullscreen', {
+        configurable: true,
+        value: function webkitRequestFullscreenProbe() {
+          window.__opengladWebkitFullscreenCalls += 1;
+          window.__opengladFakeWebkitFullscreenElement = this;
+          document.dispatchEvent(new Event('webkitfullscreenchange'));
+          // Deliberately no return value: this is the legacy WebKit contract.
+        },
+      });
+      document.dispatchEvent(new Event('webkitfullscreenchange'));
+    });
+
+    const fullscreenButton = page.getByRole('button', {
+      name: 'Enter fullscreen',
+    });
+    await expect(fullscreenButton).toBeVisible();
+    await fullscreenButton.click();
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.__opengladWebkitFullscreenCalls),
+      )
+      .toBe(1);
+    await expect(page.getByRole('status')).toContainText('Fullscreen active');
+    await expect(fullscreenButton).toBeHidden();
+    await expect
+      .poll(() => page.evaluate(() => document.activeElement?.id))
+      .toBe('canvas');
+
+    await page.evaluate(() => {
+      window.__opengladFakeWebkitFullscreenElement = null;
+      document.dispatchEvent(new Event('webkitfullscreenchange'));
+    });
+    await expect(fullscreenButton).toBeVisible();
+    await expect(page.getByRole('status')).toHaveText('');
+    await expect
+      .poll(() => page.evaluate(() => document.activeElement?.id))
+      .toBe('canvas');
+  });
+
   test('overlay activates on a touch device and stays absent on desktop', async ({
     page,
     browser,
@@ -166,21 +445,156 @@ test.describe('Touch overlay activation', () => {
     await expect(page.locator('#touch-controls')).toHaveClass(/tc-active/);
 
     const wrap = page.locator('#og-text-entry-wrap');
+    const input = page.locator('#og-text-entry');
     await expect(wrap).toBeHidden();
+    // Static noise suppression applies to every prompt. Room-code-specific
+    // capitalization, length, and initial-value metadata arrive with the
+    // native start_text_input event below.
+    await expect(input).toHaveAttribute('autocorrect', 'off');
+    await expect(input).toHaveAttribute('spellcheck', 'false');
     // start_text_input()/stop_text_input() dispatch this CustomEvent from
     // native_input.cpp; drive the same seam directly to pin the shell wiring.
     await page.evaluate(() => {
       window.dispatchEvent(
-        new CustomEvent('openglad-text-input', { detail: { active: true } }),
+        new CustomEvent('openglad-text-input', {
+          detail: {
+            active: true,
+            initialValue: 'glad-e2e',
+            maxBytes: 28,
+            prompt: 'JOIN ROOM CODE',
+            multiline: false,
+          },
+        }),
       );
     });
     await expect(wrap).toBeVisible();
+    await expect(input).toHaveAttribute('autocapitalize', 'characters');
+    await expect(input).toHaveAttribute('maxlength', '28');
+    await expect(input).toHaveValue('GLAD-E2E');
+    await expect(page.locator('#og-text-entry-cancel')).toBeVisible();
+
+    // Multiline editor prompts keep their canvas-native controls; the
+    // single-line DOM field must not cover or capture those buttons.
+    await page.evaluate(() => {
+      window.dispatchEvent(
+        new CustomEvent('openglad-text-input', {
+          detail: { active: true, multiline: true },
+        }),
+      );
+    });
+    await expect(wrap).toBeHidden();
+
     await page.evaluate(() => {
       window.dispatchEvent(
         new CustomEvent('openglad-text-input', { detail: { active: false } }),
       );
     });
     await expect(wrap).toBeHidden();
+  });
+
+  test('room-code prompt: DOM typing mirrors into the canvas, Enter accepts, CANCEL restores', async ({
+    page,
+  }) => {
+    test.setTimeout(240_000);
+
+    await page.addInitScript(() => {
+      window.__opengladSkipIntroForTests = true;
+      window.__opengladForceTouchControls = true;
+      window.__opengladRelayBaseUrlForTests = 'https://relay.test';
+    });
+    // Keep discovery deterministic and entirely local to Playwright. A DNS
+    // failure can take as long as the prompt assertion timeout on some hosts.
+    await page.route('https://relay.test/api/rooms**', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ rooms: [] }),
+      }),
+    );
+    await page.goto('/play.html');
+    await waitForGameLoad(page);
+    await waitForPickerReady(page);
+
+    // All-taps navigation: CONTINUE -> team build -> NETWORKING.
+    await tapCanvasGameCoord(page, CONTINUE_BUTTON.x, CONTINUE_BUTTON.y);
+    await page.waitForTimeout(1_500);
+    await tapCanvasGameCoord(page, NETWORKING_BUTTON.x, NETWORKING_BUTTON.y);
+    await page.waitForTimeout(1_500);
+
+    const wrap = page.locator('#og-text-entry-wrap');
+    const input = page.locator('#og-text-entry');
+    const fieldBaseline = await captureRegion(page, ROOM_VALUE_REGION);
+
+    // Tapping the ROOM VALUE field opens the real C++ prompt; its
+    // start_text_input() must surface the DOM overlay end to end.
+    await tapCanvasGameCoord(page, ROOM_VALUE_CENTER.x, ROOM_VALUE_CENTER.y);
+    await expect(wrap).toBeVisible({ timeout: 10_000 });
+    await expect(input).toHaveValue('');
+
+    // iOS keyboard summoning path: while the prompt is up, a canvas tap must
+    // focus the input from within that gesture (ownCanvasTouch redirect).
+    await page.evaluate(() =>
+      document.getElementById('og-text-entry').blur(),
+    );
+    await tapCanvasGameCoord(page, 160, 100);
+    await expect
+      .poll(async () =>
+        page.evaluate(
+          () => document.activeElement && document.activeElement.id,
+        ),
+      )
+      .toBe('og-text-entry');
+
+    // Type through the DOM input; every keystroke is mirrored into SDL, so
+    // the in-canvas prompt must redraw with the typed code.
+    const promptBaseline = await captureRegion(page, PROMPT_INPUT_REGION);
+    await page.keyboard.type('GLAD-TEST', { delay: 60 });
+    await expect(input).toHaveValue('GLAD-TEST');
+    await waitForRegionToLeave(
+      page,
+      PROMPT_INPUT_REGION,
+      promptBaseline,
+      'typed characters should appear in the in-canvas prompt',
+    );
+
+    // Enter accepts: the prompt closes and the accepted code lands in the
+    // networking menu's ROOM VALUE field.
+    await page.keyboard.press('Enter');
+    await expect(wrap).toBeHidden({ timeout: 10_000 });
+    await waitForRegionToLeave(
+      page,
+      ROOM_VALUE_REGION,
+      fieldBaseline,
+      'the accepted room code should replace the ROOM VALUE field text',
+    );
+    const acceptedField = await captureRegion(page, ROOM_VALUE_REGION);
+
+    // Reopen the prompt, type junk, then CANCEL: openglad_web_text_cancel
+    // must deliver input_string's Escape path, restoring the original value.
+    await tapCanvasGameCoord(page, ROOM_VALUE_CENTER.x, ROOM_VALUE_CENTER.y);
+    await expect(wrap).toBeVisible({ timeout: 10_000 });
+    await expect(input).toHaveValue('GLAD-TEST');
+    await tapCanvasGameCoord(page, 160, 100); // gesture-focus the input
+    await expect
+      .poll(async () =>
+        page.evaluate(
+          () => document.activeElement && document.activeElement.id,
+        ),
+      )
+      .toBe('og-text-entry');
+    await input.selectText();
+    await page.keyboard.type('ZZZ', { delay: 60 });
+    await expect(input).toHaveValue('ZZZ');
+    const cancelButton = page.locator('#og-text-entry-cancel');
+    await cancelButton.focus();
+    await page.keyboard.press('Enter');
+    await expect(wrap).toBeHidden({ timeout: 10_000 });
+    await waitForRegionToMatch(
+      page,
+      ROOM_VALUE_REGION,
+      acceptedField,
+      'CANCEL should restore the previously accepted room code',
+    );
   });
 });
 
