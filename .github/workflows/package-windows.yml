@@ -1,0 +1,77 @@
+name: Build Windows bundle
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  # Reusable: can be invoked by a release workflow on merges to master.
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    name: Build Windows .exe bundle (MSYS2 MinGW64)
+    runs-on: windows-2022
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          # Full history so `git describe` can name the bundle.
+          fetch-depth: 0
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          # SDL2/SDL2_mixer are the only external libraries OpenGlad expects from
+          # the system; PhysFS, libzip, libyaml, zlib, LodePNG and IXWebSocket are
+          # fetched and built by CMake (FetchContent). ntldd collects the runtime
+          # DLLs for the bundle; zip archives it.
+          install: >-
+            base-devel
+            git
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-pkgconf
+            mingw-w64-x86_64-SDL2
+            mingw-w64-x86_64-SDL2_mixer
+            mingw-w64-x86_64-ntldd-git
+            zip
+
+      - name: Configure (dev-release preset)
+        run: cmake --preset dev-release
+
+      - name: Build game binaries
+        run: cmake --build --preset dev-release --target openglad openscen -j"$(nproc)"
+
+      - name: Package Windows bundle
+        run: ./scripts/package_windows_bundle.sh build/dev-release
+
+      # actions/upload-artifact does not preserve file layout metadata across a
+      # loose directory well; zip the bundle ourselves and upload the single
+      # archive so it is one ready-to-publish file.
+      - name: Archive bundle
+        id: bundle
+        run: |
+          set -euo pipefail
+          cd distrib
+          dir="$(basename openglad-*-windows)"
+          zip -r -q "${dir}.zip" "$dir"
+          echo "name=${dir}.zip" >> "$GITHUB_OUTPUT"
+
+      - name: Upload openglad-windows
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.bundle.outputs.name }}
+          path: distrib/openglad-*-windows.zip
+          if-no-files-found: error

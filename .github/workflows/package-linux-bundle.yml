@@ -1,6 +1,8 @@
 name: Build Linux bundle
 
 on:
+  push:
+    branches: [master]
   pull_request:
   # Reusable: can be invoked by a release workflow on merges to master.
   workflow_call:
