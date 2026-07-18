@@ -113,35 +113,6 @@ og::sim::LobbyCharacterData make_lobby_character_data(const guy& source)
     return character;
 }
 
-std::unique_ptr<guy> make_guy_from_lobby_character(
-    const og::sim::LobbyCharacterData& character)
-{
-    auto result = std::make_unique<guy>(character.family);
-    result->id = character.guy_id;
-    result->name = character.name;
-    result->family = static_cast<char>(character.family);
-    result->strength = character.strength;
-    result->dexterity = character.dexterity;
-    result->constitution = character.constitution;
-    result->intelligence = character.intelligence;
-    result->armor = character.armor;
-    result->exp = character.exp;
-    result->kills = character.kills;
-    result->level_kills = character.level_kills;
-    result->total_damage = character.total_damage;
-    result->total_hits = character.total_hits;
-    result->total_shots = character.total_shots;
-    result->teamnum = character.teamnum;
-    result->scen_damage = character.scen_damage;
-    result->scen_kills = character.scen_kills;
-    result->scen_damage_taken = character.scen_damage_taken;
-    result->scen_min_hp = character.scen_min_hp;
-    result->scen_shots = character.scen_shots;
-    result->scen_hits = character.scen_hits;
-    result->level = character.level;
-    return result;
-}
-
 std::string trim_copy(std::string value)
 {
     const auto not_space = [](unsigned char ch) {
@@ -1457,41 +1428,22 @@ og::sim::LobbySaveDataEquivalent build_save_data_equivalent_from_state(
             compacted.character.teamnum);
         compacted.owner_player_index =
             slot.player != nullptr ? slot.player->player_index : 0xffu;
-        compacted.owner_save_slot = slot.save_slot_index;
+        // slot_index is the owner's ORIGINAL private-save slot. The applied
+        // save_slot_index may be a compacted position in the combined roster
+        // and must never be used for owner-filtered persistence.
+        compacted.owner_save_slot = slot.slot->slot_index;
         equivalent.team_list.push_back(std::move(compacted));
     }
 
     return equivalent;
 }
 
-std::array<bool, MAX_TEAM_SIZE> build_remote_owned_slot_mask(
-    const og::sim::LobbyState& state,
-    std::string_view local_player_name)
-{
-    std::array<bool, MAX_TEAM_SIZE> remote_slots{};
-    remote_slots.fill(false);
-
-    for (const AppliedLobbySlot& slot : collect_applied_lobby_slots(state))
-    {
-        if (slot.save_slot_index >= remote_slots.size())
-            continue;
-        // ALL of this machine's seats are local ("base" and "base#k"): a
-        // multi-seat machine must keep editing every one of its own seats'
-        // characters.
-        if (slot.player == nullptr ||
-            is_local_seat_name(slot.player->name, local_player_name))
-            continue;
-        remote_slots[slot.save_slot_index] = true;
-    }
-
-    return remote_slots;
-}
-
 void apply_lobby_state_to_save(const og::sim::LobbyState& state,
                                SaveData& save,
                                bool spectator_mode,
                                short local_team,
-                               std::size_t local_player_count = 1)
+                               std::size_t local_player_count = 1,
+                               std::string_view local_player_name = {})
 {
     save.current_campaign = state.settings.campaign_id.empty()
         ? std::string(kDefaultCampaignId)
@@ -1515,18 +1467,31 @@ void apply_lobby_state_to_save(const og::sim::LobbyState& state,
                   static_cast<std::size_t>(MAX_PLAYERS)));
     save.my_team = local_team;
 
-    for (auto& member : save.team_list)
-        member.reset();
-    save.team_size = 0;
-
-    for (const AppliedLobbySlot& slot : collect_applied_lobby_slots(state))
+    // Keep screen::save_data private to this machine. The authoritative
+    // combined roster lives in LobbyState and the game-start config; copying
+    // remote players here used to make every GO/save operation overwrite the
+    // peer's real save0. Only stamp echoed local members after an authoritative
+    // team change, using their raw PRIVATE slot indices. Truncated/unsent local
+    // members deliberately remain in the private roster but do not enter the
+    // match.
+    if (!local_player_name.empty())
     {
-        if (slot.save_slot_index >= save.team_list.size())
-            continue;
-
-        save.team_list[slot.save_slot_index] =
-            make_guy_from_lobby_character(slot.slot->character);
-        ++save.team_size;
+        for (const og::sim::LobbyPlayer* const seat :
+             find_local_seats(state, local_player_name))
+        {
+            for (const og::sim::LobbyCharacterSlot& slot :
+                 seat->character_slots)
+            {
+                const std::size_t private_slot = slot.slot_index;
+                if (private_slot >= save.team_list.size() ||
+                    save.team_list[private_slot] == nullptr)
+                {
+                    continue;
+                }
+                save.team_list[private_slot]->teamnum =
+                    static_cast<short>(seat->team);
+            }
+        }
     }
 
     if (og::runtime::current_session != nullptr)
@@ -2154,18 +2119,38 @@ int picker_lobby_network_testing_exercise_internal_helpers()
           equivalent.scen_num == 1 &&
           equivalent.numplayers == 1 &&
           equivalent.team_list.size() == 2 &&
-          equivalent.team_list[0].character.teamnum == 0);
+          equivalent.team_list[0].character.teamnum == 0 &&
+          equivalent.team_list[0].slot_index == 0 &&
+          equivalent.team_list[1].slot_index == 1 &&
+          equivalent.team_list[0].owner_save_slot == 0 &&
+          equivalent.team_list[1].owner_save_slot == 5 &&
+          equivalent.team_list[0].owner_player_index == 1 &&
+          equivalent.team_list[1].owner_player_index == 2);
+    og::sim::LobbyState colliding_private_slots = state;
+    colliding_private_slots.players[0].character_slots[0].slot_index = 0;
+    const auto collision_equivalent =
+        build_save_data_equivalent_from_state(colliding_private_slots, false);
+    check(collision_equivalent.team_list.size() == 2 &&
+          collision_equivalent.team_list[0].slot_index == 0 &&
+          collision_equivalent.team_list[1].slot_index == 1 &&
+          collision_equivalent.team_list[0].owner_save_slot == 0 &&
+          collision_equivalent.team_list[1].owner_save_slot == 0 &&
+          collision_equivalent.team_list[0].owner_player_index == 2 &&
+          collision_equivalent.team_list[1].owner_player_index == 1);
     check(build_save_data_equivalent_from_state(state, true).numplayers == 0);
-    const auto remote_slots =
-        build_remote_owned_slot_mask(state, "local-player");
-    check(remote_slots[1]);
     SaveData applied_save;
-    apply_lobby_state_to_save(state, applied_save, true, 4);
+    applied_save.team_list[0] = make_member(0, "Private", 0, 9);
+    applied_save.team_size = 1;
+    apply_lobby_state_to_save(
+        state, applied_save, true, 4, 1u, "local-player");
     check(applied_save.current_campaign == std::string(kDefaultCampaignId) &&
           applied_save.scen_num == 1 &&
           applied_save.numplayers == 0 &&
           applied_save.my_team == 4 &&
-          applied_save.team_size == 2);
+          applied_save.team_size == 1 &&
+          applied_save.team_list[0] != nullptr &&
+          applied_save.team_list[0]->name == "Private" &&
+          applied_save.team_list[0]->teamnum == local_player.team);
 
     og::sim::LobbyState oversized_state = state;
     oversized_state.players.clear();
@@ -2177,8 +2162,11 @@ int picker_lobby_network_testing_exercise_internal_helpers()
         lobby_slot.slot_index = slot;
         oversized_state.players[0].character_slots.push_back(lobby_slot);
     }
-    apply_lobby_state_to_save(oversized_state, applied_save, false, 1);
-    check(applied_save.team_size == MAX_TEAM_SIZE);
+    apply_lobby_state_to_save(
+        oversized_state, applied_save, false, 1, 1u, "local-player");
+    check(applied_save.team_size == 1 &&
+          applied_save.team_list[0] != nullptr &&
+          applied_save.team_list[0]->name == "Private");
 
     class RawTransport final : public og::sim::ITransport {
     public:
@@ -2491,7 +2479,7 @@ public:
                 *save,
                 player_name_,
                 local_team_,
-                &remote_owned_save_slots_,
+                nullptr,
                 join_seat_count()));
 
         poll_messages();
@@ -2520,7 +2508,6 @@ public:
         local_player_count_ = 1;
         local_team_ = 0;
         start_request_pending_ = false;
-        remote_owned_save_slots_.fill(false);
         direct_address_.clear();
         relay_room_code_.clear();
         relay_status_message_.clear();
@@ -2675,8 +2662,7 @@ public:
     [[nodiscard]] bool is_save_slot_editable(
         std::size_t slot_index) const noexcept override
     {
-        return slot_index < remote_owned_save_slots_.size() &&
-            !remote_owned_save_slots_[slot_index];
+        return slot_index < MAX_TEAM_SIZE;
     }
 
     bool request_team_change(short team) override
@@ -2835,7 +2821,7 @@ private:
                 *save,
                 player_name_,
                 local_team_,
-                &remote_owned_save_slots_,
+                nullptr,
                 join_seat_count()));
     }
 
@@ -2907,9 +2893,8 @@ private:
             *save,
             spectator_mode_,
             local_team_,
-            static_cast<std::size_t>(std::max(local_player_count_, 0)));
-        remote_owned_save_slots_ =
-            og::ui::detail::build_remote_owned_slot_mask(*state_, player_name_);
+            static_cast<std::size_t>(std::max(local_player_count_, 0)),
+            player_name_);
     }
 
     void rebuild_status_lines()
@@ -2953,7 +2938,6 @@ private:
     std::optional<og::sim::LobbyState> state_;
     std::vector<og::sim::LobbyPlayerBinding> player_bindings_;
     std::vector<std::string> status_lines_;
-    std::array<bool, MAX_TEAM_SIZE> remote_owned_save_slots_{};
     bool spectator_mode_ = false;
     // Local seats this machine declares (0 = spectator, 1..MAX_PLAYERS).
     int local_player_count_ = 1;
@@ -2997,7 +2981,7 @@ public:
             player_name_,
             local_team_,
             join_seat_count(),
-            &remote_owned_save_slots_);
+            nullptr);
 
         server_peer_id_ = 1;
         server_peer_id_adopted_ = false;
@@ -3046,7 +3030,6 @@ public:
         local_player_count_ = 1;
         local_team_ = 0;
         start_request_pending_ = false;
-        remote_owned_save_slots_.fill(false);
         join_message_sent_ = false;
         settings_dirty_ = false;
         server_peer_id_ = 1;
@@ -3218,8 +3201,7 @@ public:
     [[nodiscard]] bool is_save_slot_editable(
         std::size_t slot_index) const noexcept override
     {
-        return slot_index < remote_owned_save_slots_.size() &&
-            !remote_owned_save_slots_[slot_index];
+        return slot_index < MAX_TEAM_SIZE;
     }
 
     bool request_team_change(short team) override
@@ -3430,7 +3412,7 @@ private:
             player_name_,
             local_team_,
             join_seat_count(),
-            &remote_owned_save_slots_);
+            nullptr);
 
         og::sim::LobbyMessage message;
         og::sim::LobbyJoinMessage join;
@@ -3555,11 +3537,8 @@ private:
             *save,
             spectator_mode_,
             local_team_,
-            static_cast<std::size_t>(std::max(local_player_count_, 0)));
-        remote_owned_save_slots_ =
-            og::ui::detail::build_remote_owned_slot_mask(
-                *applied_state,
-                player_name_);
+            static_cast<std::size_t>(std::max(local_player_count_, 0)),
+            player_name_);
     }
 
     void rebuild_status_lines()
@@ -3609,7 +3588,6 @@ private:
     bool server_peer_id_adopted_ = false;
     std::optional<og::sim::LobbyState> state_;
     std::vector<std::string> status_lines_;
-    std::array<bool, MAX_TEAM_SIZE> remote_owned_save_slots_{};
     bool spectator_mode_ = false;
     // Local seats this machine declares (0 = spectator, 1..MAX_PLAYERS).
     int local_player_count_ = 1;

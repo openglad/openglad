@@ -15,6 +15,8 @@
 #include <map>
 #include <memory>
 
+Uint32 get_time_bonus(int playernum);
+
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 namespace {
@@ -90,6 +92,32 @@ TEST(ResultsScreenBranches, results_screen_overload_calls_smoke)
     std::map<int, guy*> before;
     std::map<int, walker*> after;
     ASSERT_FALSE(results_screen(0, 2, before, after));
+}
+
+TEST(ResultsScreenBranches, time_bonus_uses_authoritative_level_tick)
+{
+    screen& current_screen = *og::runtime::current_session->myscreen_;
+    const int old_framecount = current_screen.framecount;
+    const std::uint32_t old_level_ticks =
+        current_screen.world().level_tick_count();
+    const short old_limit = current_screen.world().time_bonus_limit;
+    const short old_par = current_screen.world().par_value;
+    const std::uint32_t old_score = current_screen.save_data.m_score[0];
+
+    current_screen.framecount = 99; // deliberately divergent display cadence
+    current_screen.world().set_level_tick_count(25);
+    current_screen.world().time_bonus_limit = 100;
+    current_screen.world().par_value = 0;
+    current_screen.save_data.m_score[0] = 100;
+
+    EXPECT_EQ(75u, get_time_bonus(0))
+        << "network peers must derive the payout from snapshotted sim time";
+
+    current_screen.framecount = old_framecount;
+    current_screen.world().set_level_tick_count(old_level_ticks);
+    current_screen.world().time_bonus_limit = old_limit;
+    current_screen.world().par_value = old_par;
+    current_screen.save_data.m_score[0] = old_score;
 }
 
 // Gap 4 ("hit play for next level") + Bug B regression: in a networked game the

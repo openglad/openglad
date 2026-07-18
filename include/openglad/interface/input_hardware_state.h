@@ -20,9 +20,8 @@ struct InputHardwareState {
     bool picker_was_left_down{false};
     bool picker_was_right_down{false};
 
-    // Runtime touch-control seam (web DOM overlay): held-key state OR-ed into
-    // isPlayerHoldingKey on every build. Native builds never write it, so it
-    // stays all-false and behavior is unchanged. key dim == NUM_KEYS.
+    // Runtime touch-control seam: held-key state from the web DOM overlay or
+    // native SDL touch path, OR-ed into isPlayerHoldingKey. key dim == NUM_KEYS.
     bool touch_keystate[4][17]{};
 
 #ifdef USE_TOUCH_INPUT

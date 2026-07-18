@@ -464,6 +464,27 @@ bool picker_replace_lobby_client(
     if (!next_client)
         return false;
 
+    const bool entering_networked_session =
+        next_client->is_networked_session() &&
+        (current_client == nullptr ||
+         !current_client->is_networked_session());
+    if (entering_networked_session)
+    {
+        // Establish a durable private baseline before network initialization
+        // applies shared campaign/team settings. The lobby keeps the roster
+        // private in memory; its combined roster lives only in LobbyState and
+        // the gameplay handoff.
+        if (og::runtime::current_session == nullptr ||
+            og::runtime::current_session->myscreen_ == nullptr ||
+            og::runtime::current_session->myscreen_->save_data
+                    .save_with_error("save0") != SaveDataIoError::None)
+        {
+            popup_dialog(popup_title,
+                         "Could not preserve your local team save.");
+            return false;
+        }
+    }
+
     std::unique_ptr<og::ui::IPickerLobbyClient> previous_client =
         std::move(current_client);
     const bool previous_was_active =

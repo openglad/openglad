@@ -1570,6 +1570,152 @@ TEST(NetTransport, game_server_snapshot_hash_check_preserves_same_peer_same_tick
     EXPECT_EQ(0u, server.snapshot_hash_mismatch_count());
 }
 
+TEST(NetTransport,
+     game_server_accepts_in_flight_old_level_hashes_after_synchronous_transition)
+{
+    TestGameWorld fixture;
+    MockTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+
+    constexpr std::array<og::sim::PeerId, 2> peers{7u, 11u};
+    transport.set_connected_peers(
+        std::vector<og::sim::PeerId>(peers.begin(), peers.end()));
+    server.poll_incoming_messages();
+    for (std::size_t index = 0; index < peers.size(); ++index)
+    {
+        server.bind_player(peers[index], index, fixture.world().my_team);
+        server.send_initial_snapshot(
+            peers[index], og::sim::SnapshotCaptureMode::Peek);
+        transport.queue_received(
+            peers[index],
+            og::sim::serialize_client_ready_message({
+                .last_applied_tick = fixture.world().tick_count_,
+            }));
+    }
+    server.step();
+    transport.clear_sent_messages();
+    transport.clear_broadcast_messages();
+
+    // Leave an ordinary cadence keyframe unacknowledged, then synchronously
+    // send a different terminal keyframe at the same old-level tick and load
+    // the next world before either hash check can return.
+    fixture.world().tick_count_ = og::sim::KEYFRAME_INTERVAL_TICKS;
+    server.broadcast_current_state(og::sim::SnapshotCaptureMode::Peek,
+                                   og::sim::EventDeliveryMode::Skip);
+    og::sim::WorldSnapshot cadence_snapshot;
+    bool saw_cadence_snapshot = false;
+    for (const auto& sent : transport.sent_messages())
+    {
+        og::sim::TransportEnvelope envelope;
+        if (!og::sim::decode_transport_envelope(sent.data, envelope) ||
+            envelope.message_type != og::sim::kSnapshotMessageType)
+        {
+            continue;
+        }
+        if (sent.peer_id != peers[0])
+            continue;
+        cadence_snapshot = og::sim::deserialize_snapshot(sent.data);
+        saw_cadence_snapshot = true;
+        break;
+    }
+    ASSERT_TRUE(saw_cadence_snapshot);
+
+    // Peer 0's cadence acknowledgement is already on the wire when the
+    // transition begins. prepare_clients_for_loaded_level polls during that
+    // synchronous load; it must requeue, not discard, this message. Peer 1
+    // exercises the ordinary shape where both old-level checks arrive later.
+    transport.queue_received(
+        peers[0],
+        og::sim::serialize_snapshot_hash_check_message({
+            .tick = cadence_snapshot.tick_count,
+            .snapshot_hash = cadence_snapshot.snapshot_hash,
+        }));
+    transport.queue_received(
+        peers[0],
+        og::sim::serialize_client_ready_message({
+            .last_applied_tick = cadence_snapshot.tick_count,
+        }));
+
+    transport.clear_sent_messages();
+    transport.clear_broadcast_messages();
+    fixture.world().current_palette_id = 1u;
+    fixture.world().game_ended = true;
+    fixture.world().ending = 0;
+    fixture.world().next_level = 2;
+    server.on_level_transition = [&](int next_level) {
+        fixture.world().id = static_cast<short>(next_level);
+        fixture.world().current_scenario = static_cast<short>(next_level);
+        fixture.world().tick_count_ = 0;
+        fixture.world().game_ended = false;
+        fixture.world().next_level = -1;
+        fixture.world().ending = 0;
+        fixture.world().end = 0;
+        return true;
+    };
+    server.broadcast_current_state(og::sim::SnapshotCaptureMode::Peek,
+                                   og::sim::EventDeliveryMode::Drain);
+
+    og::sim::WorldSnapshot terminal_snapshot;
+    bool saw_terminal_snapshot = false;
+    for (const auto& sent : transport.sent_messages())
+    {
+        og::sim::TransportEnvelope envelope;
+        if (!og::sim::decode_transport_envelope(sent.data, envelope) ||
+            envelope.message_type != og::sim::kSnapshotMessageType)
+        {
+            continue;
+        }
+        if (sent.peer_id != peers[0])
+            continue;
+        terminal_snapshot = og::sim::deserialize_snapshot(sent.data);
+        saw_terminal_snapshot = true;
+        break;
+    }
+    ASSERT_TRUE(saw_terminal_snapshot);
+    ASSERT_EQ(cadence_snapshot.tick_count, terminal_snapshot.tick_count);
+    ASSERT_NE(cadence_snapshot.snapshot_hash, terminal_snapshot.snapshot_hash);
+    ASSERT_EQ(2, fixture.world().id);
+
+    transport.clear_sent_messages();
+    transport.clear_broadcast_messages();
+    transport.queue_received(
+        peers[0],
+        og::sim::serialize_snapshot_hash_check_message({
+            .tick = terminal_snapshot.tick_count,
+            .snapshot_hash = terminal_snapshot.snapshot_hash,
+        }));
+    for (const og::sim::WorldSnapshot* const snapshot :
+         {&cadence_snapshot, &terminal_snapshot})
+    {
+        transport.queue_received(
+            peers[1],
+            og::sim::serialize_snapshot_hash_check_message({
+                .tick = snapshot->tick_count,
+                .snapshot_hash = snapshot->snapshot_hash,
+            }));
+    }
+    server.step();
+
+    EXPECT_EQ(0u, server.snapshot_hash_mismatch_count())
+        << "late old-level acknowledgements must survive the level reset";
+    const bool sent_new_level_snapshot = std::any_of(
+        transport.sent_messages().begin(),
+        transport.sent_messages().end(),
+        [&](const og::sim::ReceivedMessage& sent) {
+            if (sent.peer_id != peers[0])
+                return false;
+            og::sim::TransportEnvelope envelope;
+            if (!og::sim::decode_transport_envelope(sent.data, envelope) ||
+                envelope.message_type != og::sim::kSnapshotMessageType)
+            {
+                return false;
+            }
+            return !og::sim::deserialize_snapshot(sent.data).game_ended;
+        });
+    EXPECT_TRUE(sent_new_level_snapshot)
+        << "a ClientReady racing InitialSetup must not be discarded";
+}
+
 TEST(NetTransport, game_server_bounds_sustained_hash_mismatches_with_disconnect)
 {
     // WI-3(b) server side: every hash mismatch forces a full keyframe; a
@@ -1979,6 +2125,104 @@ TEST(NetTransportJitter, keyframe_broadcast_cadence_follows_interval_ticks)
         transport.sent_messages().front().data,
         envelope));
     EXPECT_EQ(og::sim::kSnapshotMessageType, envelope.message_type);
+}
+
+TEST(NetTransport,
+     endgame_event_reaches_every_ready_peer_after_full_state_despite_keyframe_budget)
+{
+    TestGameWorld fixture;
+    MockTransport transport;
+    og::sim::GameServer server(fixture.world(), fixture.events, transport);
+    constexpr std::array<og::sim::PeerId, 3> peers{7u, 11u, 13u};
+
+    transport.set_connected_peers(
+        std::vector<og::sim::PeerId>(peers.begin(), peers.end()));
+    server.poll_incoming_messages();
+    for (std::size_t index = 0; index < peers.size(); ++index)
+    {
+        server.bind_player(peers[index], index, fixture.world().my_team);
+        server.send_initial_snapshot(
+            peers[index], og::sim::SnapshotCaptureMode::Peek);
+        transport.queue_received(
+            peers[index],
+            og::sim::serialize_client_ready_message({
+                .last_applied_tick = fixture.world().tick_count_,
+            }));
+    }
+    server.step();
+    transport.clear_sent_messages();
+    transport.clear_broadcast_messages();
+
+    // Three simultaneous resyncs exceed the ordinary two-keyframe per-tick
+    // budget. A terminal frame must bypass that budget: otherwise peer 3 sees
+    // EndGame first and folds stale score/time into its wallet.
+    for (const og::sim::PeerId peer : peers)
+    {
+        transport.queue_received(
+            peer,
+            og::sim::serialize_keyframe_request_message({
+                .last_seen_tick = fixture.world().tick_count_,
+            }));
+    }
+    fixture.world().m_score[2] = 321u;
+    fixture.world().set_level_tick_count(77u);
+    // Exercise the event-only path used by synchronous flow sites: the world
+    // flag is deliberately false, but EndGame still requires a full snapshot.
+    fixture.world().game_ended = false;
+    fixture.world().ending = 0;
+    fixture.world().next_level = -1;
+    fixture.events.push(
+        og::sim::EventKind::EndGame,
+        0u,
+        static_cast<std::uint32_t>(static_cast<std::int32_t>(-1)));
+
+    server.step();
+
+    std::array<bool, peers.size()> saw_terminal_snapshot{};
+    std::array<bool, peers.size()> saw_endgame{};
+    for (const auto& sent : transport.sent_messages())
+    {
+        const auto peer_it = std::find(peers.begin(), peers.end(), sent.peer_id);
+        ASSERT_NE(peers.end(), peer_it);
+        const std::size_t peer_index =
+            static_cast<std::size_t>(peer_it - peers.begin());
+
+        og::sim::TransportEnvelope envelope;
+        ASSERT_TRUE(
+            og::sim::decode_transport_envelope(sent.data, envelope));
+        if (envelope.message_type == og::sim::kSnapshotMessageType)
+        {
+            const og::sim::WorldSnapshot snapshot =
+                og::sim::deserialize_snapshot(sent.data);
+            EXPECT_FALSE(snapshot.game_ended);
+            EXPECT_EQ(fixture.world().tick_count_, snapshot.tick_count);
+            EXPECT_EQ(fixture.world().level_tick_count(),
+                      snapshot.level_tick_count);
+            EXPECT_EQ(321u, snapshot.m_score[2]);
+            saw_terminal_snapshot[peer_index] = true;
+        }
+        else if (envelope.message_type ==
+                 og::sim::kGameFlowEventBatchMessageType)
+        {
+            const og::sim::SimEventBatch batch =
+                og::sim::deserialize_game_flow_event_batch(sent.data);
+            const bool contains_endgame = std::any_of(
+                batch.events.begin(), batch.events.end(),
+                [](const og::sim::Event& event) {
+                    return event.kind == og::sim::EventKind::EndGame;
+                });
+            if (contains_endgame)
+            {
+                EXPECT_TRUE(saw_terminal_snapshot[peer_index])
+                    << "EndGame outran the authoritative terminal snapshot";
+                saw_endgame[peer_index] = true;
+            }
+        }
+    }
+
+    EXPECT_EQ((std::array<bool, peers.size()>{true, true, true}),
+              saw_terminal_snapshot);
+    EXPECT_EQ((std::array<bool, peers.size()>{true, true, true}), saw_endgame);
 }
 
 TEST(NetTransport,

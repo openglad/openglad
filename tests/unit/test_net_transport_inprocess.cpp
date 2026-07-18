@@ -1200,11 +1200,14 @@ TEST(NetTransportInProcess,
     int withdraws = 0;
     fixture.server().on_withdraw_accepted = [&](int /*destination*/) {
         ++withdraws;
+        // Simulate checkpoint reload replacing the old-level result state.
+        fixture.server_world().m_score[0] = 0u;
         return true;
     };
 
     bool saw_endgame = false;
     int endgame_ending = 99;
+    std::uint32_t score_seen_at_endgame = 0u;
     int saw_level_transition = 0;
     fixture.client(0).set_game_flow_event_batch_callback(
         [&](const og::sim::SimEventBatch& batch) {
@@ -1214,6 +1217,8 @@ TEST(NetTransportInProcess,
                 {
                     saw_endgame = true;
                     endgame_ending = static_cast<std::int32_t>(e.a);
+                    score_seen_at_endgame =
+                        fixture.client_world(0).m_score[0];
                 }
             }
         });
@@ -1233,6 +1238,7 @@ TEST(NetTransportInProcess,
     fixture.poll_client_messages(0);
     ASSERT_TRUE(fixture.server().pending_exit_prompt());
 
+    fixture.server_world().m_score[0] = 771u;
     fixture.client(0).send_exit_prompt_response(true);
     fixture.with_server_context([&] { fixture.server().step(); });
     fixture.poll_client_messages(0);
@@ -1243,6 +1249,9 @@ TEST(NetTransportInProcess,
         << "return-to-lobby withdraw must forward a terminal EndGame";
     EXPECT_EQ(1, endgame_ending)
         << "a withdraw's forwarded EndGame should carry ending=1 (retreat)";
+    EXPECT_EQ(771u, score_seen_at_endgame)
+        << "the full old-level snapshot must precede a withdraw hook that "
+           "reloads state";
     EXPECT_EQ(0, saw_level_transition)
         << "return-to-lobby withdraw must NOT re-set-up the client in-session";
 }
@@ -1269,11 +1278,13 @@ TEST(NetTransportInProcess, network_fixture_client_abort_request_withdraws_all_p
     int withdraws = 0;
     fixture.server().on_withdraw_accepted = [&](int /*destination*/) {
         ++withdraws;
+        fixture.server_world().m_score[0] = 0u;
         return true;
     };
 
     bool saw_endgame = false;
     int endgame_ending = 99;
+    std::uint32_t score_seen_at_endgame = 0u;
     int saw_level_transition = 0;
     fixture.client(0).set_game_flow_event_batch_callback(
         [&](const og::sim::SimEventBatch& batch) {
@@ -1283,6 +1294,8 @@ TEST(NetTransportInProcess, network_fixture_client_abort_request_withdraws_all_p
                 {
                     saw_endgame = true;
                     endgame_ending = static_cast<std::int32_t>(e.a);
+                    score_seen_at_endgame =
+                        fixture.client_world(0).m_score[0];
                 }
             }
         });
@@ -1293,6 +1306,7 @@ TEST(NetTransportInProcess, network_fixture_client_abort_request_withdraws_all_p
         });
 
     // The client unilaterally requests to quit the mission (no pending prompt).
+    fixture.server_world().m_score[0] = 772u;
     fixture.client(0).request_level_abort();
     fixture.with_server_context([&] { fixture.server().step(); });
     fixture.poll_client_messages(0);
@@ -1303,6 +1317,8 @@ TEST(NetTransportInProcess, network_fixture_client_abort_request_withdraws_all_p
         << "a client abort must withdraw ALL peers via a terminal EndGame";
     EXPECT_EQ(1, endgame_ending)
         << "the abort withdraw should retreat (ending=1), not register a win/loss";
+    EXPECT_EQ(772u, score_seen_at_endgame)
+        << "abort EndGame must follow the final old-level snapshot";
     EXPECT_EQ(0, saw_level_transition)
         << "a client abort must NOT load a new level in-session";
 }

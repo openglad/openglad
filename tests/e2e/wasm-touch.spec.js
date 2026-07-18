@@ -599,13 +599,37 @@ test.describe('Touch overlay activation', () => {
 });
 
 test.describe('Touch gameplay controls', () => {
-  test('menu taps click picker buttons via SDL touch synthesis', async ({ page }) => {
+  test('canvas touch bridge releases capture and clicks picker buttons', async ({ page }) => {
     test.setTimeout(180_000);
 
     await seedGameplayInitScript(page);
     await page.goto('/play.html');
     await waitForGameLoad(page);
     await waitForPickerReady(page);
+
+    // A browser gesture can revoke canvas pointer capture on iOS. The owned
+    // mouse bridge must emit its matching up edge so menus do not stay stuck
+    // in a held-click state.
+    const blank = await canvasGameCoordToCss(page, 10, 190);
+    await dispatchPointer(page, '#canvas', 'pointerdown', blank.x, blank.y, 39);
+    await expect
+      .poll(async () =>
+        page.evaluate(() => Boolean(window.__opengladTouchMouseDown)),
+      )
+      .toBe(true);
+    await dispatchPointer(
+      page,
+      '#canvas',
+      'lostpointercapture',
+      blank.x,
+      blank.y,
+      39,
+    );
+    await expect
+      .poll(async () =>
+        page.evaluate(() => Boolean(window.__opengladTouchMouseDown)),
+      )
+      .toBe(false);
 
     // CONTINUE on the main menu, then GO on the team-build menu — all taps.
     await tapCanvasGameCoord(page, 150, 85);
@@ -628,7 +652,7 @@ test.describe('Touch gameplay controls', () => {
     await waitForGameplayProgress(page, 15_000);
   });
 
-  test('virtual joystick drag moves the avatar and release stops it', async ({ page }) => {
+  test('virtual joystick holds diagonals through jitter and recovers capture loss', async ({ page }) => {
     test.setTimeout(180_000);
 
     await seedGameplayInitScript(page);
@@ -645,35 +669,112 @@ test.describe('Touch gameplay controls', () => {
     const before = await sampleControlWorld(page);
     expect(before.x).not.toBeNull();
 
-    // Press, then drag 80px to the right (octant 0 -> KEY_RIGHT) and hold.
+    // Establish UP_RIGHT just past the -22.5deg sector boundary.
     await dispatchPointer(page, '#tc-stick-zone', 'pointerdown', startX, startY);
-    for (let step = 1; step <= 8; ++step) {
+    await dispatchPointer(
+      page,
+      '#tc-stick-zone',
+      'pointermove',
+      startX + 70,
+      startY - 30,
+    );
+    await expect
+      .poll(async () =>
+        page.evaluate(() => Boolean(window.__opengladTouchKeys?.up_right)),
+      )
+      .toBe(true);
+
+    // Real thumbs jitter by a pixel or two. Alternate across the raw octant
+    // boundary for several sim samples; hysteresis must retain UP_RIGHT.
+    // Target the canvas after the initial move to exercise the document-level
+    // Safari fallback. Synthetic events do not establish real pointer capture.
+    for (let step = 0; step < 16; ++step) {
       await dispatchPointer(
         page,
-        '#tc-stick-zone',
+        '#canvas',
         'pointermove',
-        startX + step * 10,
-        startY,
+        startX + 70,
+        startY + (step % 2 === 0 ? -30 : -28),
       );
-      await page.waitForTimeout(30);
+      await page.waitForTimeout(20);
     }
+    await expect
+      .poll(async () => page.evaluate(() => ({
+        upRight: Boolean(window.__opengladTouchKeys?.up_right),
+        right: Boolean(window.__opengladTouchKeys?.right),
+      })))
+      .toEqual({ upRight: true, right: false });
+
+    await page.waitForTimeout(1_200);
+    const diagonal = await sampleControlWorld(page);
+    expect(diagonal.x - before.x).toBeGreaterThan(10);
+    expect(before.y - diagonal.y).toBeGreaterThan(10);
+
+    // A deliberate turn well past the hysteresis margin changes exactly to
+    // RIGHT; a lost capture then releases every held direction immediately.
+    await dispatchPointer(
+      page,
+      '#canvas',
+      'pointermove',
+      startX + 80,
+      startY,
+    );
+    await expect
+      .poll(async () => page.evaluate(() => ({
+        upRight: Boolean(window.__opengladTouchKeys?.up_right),
+        right: Boolean(window.__opengladTouchKeys?.right),
+      })))
+      .toEqual({ upRight: false, right: true });
+    await dispatchPointer(
+      page,
+      '#tc-stick-zone',
+      'lostpointercapture',
+      startX + 80,
+      startY,
+    );
+    await expect
+      .poll(async () =>
+        page.evaluate(() => {
+          const keys = window.__opengladTouchKeys || {};
+          return Boolean(
+            keys.right || keys.left || keys.up || keys.down ||
+              keys.up_right || keys.down_right || keys.up_left || keys.down_left,
+          );
+        }),
+      )
+      .toBe(false);
+
+    // Capture loss must not strand the joystick's pointer id: a fresh drag
+    // starts normally, follows outside the zone, and releases on the document.
+    await dispatchPointer(
+      page,
+      '#tc-stick-zone',
+      'pointerdown',
+      startX,
+      startY,
+      42,
+    );
+    await dispatchPointer(
+      page,
+      '#canvas',
+      'pointermove',
+      startX + 80,
+      startY,
+      42,
+    );
     await expect
       .poll(async () =>
         page.evaluate(() => Boolean(window.__opengladTouchKeys?.right)),
       )
       .toBe(true);
-    await page.waitForTimeout(1_500);
-
-    const during = await sampleControlWorld(page);
     await dispatchPointer(
       page,
-      '#tc-stick-zone',
+      '#canvas',
       'pointerup',
       startX + 80,
       startY,
+      42,
     );
-
-    expect(during.x - before.x).toBeGreaterThan(20);
 
     // Release clears the direction keys...
     await expect
@@ -697,7 +798,7 @@ test.describe('Touch gameplay controls', () => {
     expect(Math.abs(settledB.y - settledA.y)).toBeLessThanOrEqual(1);
   });
 
-  test('FIRE button holds and releases through the bridge', async ({ page }) => {
+  test('FIRE button releases after capture loss or an off-button up', async ({ page }) => {
     test.setTimeout(180_000);
 
     await seedGameplayInitScript(page);
@@ -717,13 +818,35 @@ test.describe('Touch gameplay controls', () => {
     await page.waitForTimeout(600);
     await waitForGameplayProgress(page, 5_000);
 
-    await dispatchPointer(page, '#tc-fire', 'pointerup', fire.x, fire.y, 55);
+    await dispatchPointer(
+      page,
+      '#tc-fire',
+      'lostpointercapture',
+      fire.x,
+      fire.y,
+      55,
+    );
     await expect
       .poll(async () =>
         page.evaluate(() => Boolean(window.__opengladTouchKeys?.fire)),
       )
       .toBe(false);
     await expect(page.locator('#tc-fire')).not.toHaveClass(/tc-pressed/);
+
+    // A fresh press whose up lands on the canvas must also be released by the
+    // document listener (the common Safari edge-gesture/capture-loss shape).
+    await dispatchPointer(page, '#tc-fire', 'pointerdown', fire.x, fire.y, 56);
+    await expect
+      .poll(async () =>
+        page.evaluate(() => Boolean(window.__opengladTouchKeys?.fire)),
+      )
+      .toBe(true);
+    await dispatchPointer(page, '#canvas', 'pointerup', fire.x, fire.y, 56);
+    await expect
+      .poll(async () =>
+        page.evaluate(() => Boolean(window.__opengladTouchKeys?.fire)),
+      )
+      .toBe(false);
   });
 
   test('BACK button pauses, aborts, and returns to the picker', async ({ page }) => {

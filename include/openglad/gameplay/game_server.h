@@ -243,12 +243,16 @@ private:
     void handle_exit_prompt_response(bool accepted);
     // Withdraw ALL players to the current level (any peer's "quit this mission").
     void abort_level_for_all();
-    void handle_level_transition(std::int16_t next_level);
+    [[nodiscard]] bool handle_level_transition(std::int16_t next_level);
     // Forward a terminal EndGame (plus palette/redraw) to every display so each
     // peer shows the results screen and returns to the menu. Used by the
     // exit-portal / withdraw paths in return-to-lobby mode (the win path's
     // EndGame is already synthesized by broadcast_current_state).
     void forward_level_end_to_clients(int ending, int next_level);
+    // Exit acceptance can finalize and load the next world synchronously,
+    // outside the normal tick broadcast. Flush one full old-level snapshot
+    // first so every EndGame consumer folds the authoritative score/tick.
+    void send_forced_keyframe_to_ready_clients();
     void handle_pause_request(PeerId peer_id);
     void handle_pause_response();
     void handle_hello(PeerId peer_id, const HelloMessage& message);

@@ -40,10 +40,19 @@ void input_state_from_sdl(InputState& out)
 
         if (!player_allows_diagonal_movement(p))
         {
-            out.players[p].held[KEY_UP_RIGHT] = false;
-            out.players[p].held[KEY_DOWN_RIGHT] = false;
-            out.players[p].held[KEY_DOWN_LEFT] = false;
-            out.players[p].held[KEY_UP_LEFT] = false;
+            // Four-direction mode suppresses keyboard/joystick diagonal
+            // bindings, but the DOM stick is intrinsically eight-way. Keep
+            // its dedicated held bits source-aware so a later controls reset
+            // cannot make diagonal touch sectors silently produce no motion.
+            const InputHardwareState& input_hw = input_hardware_state();
+            out.players[p].held[KEY_UP_RIGHT] =
+                input_hw.touch_keystate[p][KEY_UP_RIGHT];
+            out.players[p].held[KEY_DOWN_RIGHT] =
+                input_hw.touch_keystate[p][KEY_DOWN_RIGHT];
+            out.players[p].held[KEY_DOWN_LEFT] =
+                input_hw.touch_keystate[p][KEY_DOWN_LEFT];
+            out.players[p].held[KEY_UP_LEFT] =
+                input_hw.touch_keystate[p][KEY_UP_LEFT];
         }
 
         // Diagonal release retention: a sloppy two-key diagonal release

@@ -485,7 +485,11 @@ Uint32 get_time_bonus(int playernum)
 {
     if(playernum > 0)
         return 0;
-    Uint32 frames = og::runtime::current_session->myscreen_->framecount;
+    // Simulation ticks are authoritative and part of every world snapshot.
+    // Display framecount can run ahead/behind on a delayed network client,
+    // which used to let peers independently calculate different payouts.
+    Uint32 frames =
+        og::runtime::current_session->myscreen_->world().level_tick_count();
     Uint32 time_limit = (og::runtime::current_session->myscreen_->world().time_bonus_limit > 0? og::runtime::current_session->myscreen_->world().time_bonus_limit : 0);
     Log("Frames used: {}\n", frames);
     if(frames >= time_limit)
@@ -638,7 +642,12 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
     // floor for free would be infinite retries). The nav links below route
     // around the hidden button — MenuNav links are raw indices and do not
     // skip hidden buttons.
+    // The authoritative network server has already committed the completed
+    // outcome before peers enter this display-only screen. A local Retry here
+    // cannot roll that state back consistently across peers.
     const bool suppress_retry =
+        (og::runtime::current_session != nullptr &&
+         og::runtime::current_session->networked_session_) ||
         og::mode::current_progression().suppress_retry();
     int mode = 0;
     float scroll = 0.0f;

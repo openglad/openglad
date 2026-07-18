@@ -4,8 +4,8 @@
 // edge-style actions (BACK, text entry) are pushed as SDL events.
 //
 // This file is only compiled into the Emscripten web target (see the
-// EMSCRIPTEN block appending to GAME_SOURCES_NO_MAIN in CMakeLists.txt);
-// native builds never see it and their touch_keystate stays all-false.
+// EMSCRIPTEN block appending to GAME_SOURCES_NO_MAIN in CMakeLists.txt).
+// Native touch input writes the same held-state seam from its SDL path.
 #ifdef __EMSCRIPTEN__
 
 #include <openglad/interface/input.h>
@@ -84,15 +84,9 @@ EMSCRIPTEN_KEEPALIVE int openglad_web_touch_enable(int on)
     og_touch_mirror_enable_js(on != 0 ? 1 : 0);
     if (!session_ready())
         return 0;
-    if (on != 0)
-    {
-        // The virtual joystick is 8-way; player 0 boots in FourDirection mode
-        // and input_state_from_sdl zeroes diagonal held bits for 4-dir
-        // players. Switch once on enable; deliberately not reverted on
-        // disable (a keyboard user who toggled touch keeps 8-dir bindings).
-        set_player_control_mode(0, static_cast<int>(ControlDirectionMode::EightDirection));
-    }
-    else
+    // Touch diagonals are source-aware in input_state_from_sdl and therefore
+    // do not mutate (or depend on) the player's keyboard control mode.
+    if (on == 0)
     {
         openglad_web_touch_clear();
     }

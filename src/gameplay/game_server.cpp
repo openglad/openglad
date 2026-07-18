@@ -1985,6 +1985,10 @@ void GameServer::handle_exit_prompt_response(bool accepted)
     bool handled = false;
     if (prompt.withdraw_prompt)
     {
+        // The withdraw hook may reload or replace the old-level roster. Send
+        // its last authoritative state first so EndGame cannot tally a stale
+        // client mirror (especially while that client is awaiting a resync).
+        send_forced_keyframe_to_ready_clients();
         handled = on_withdraw_accepted
             ? on_withdraw_accepted(prompt.destination_level)
             : false;
@@ -1997,6 +2001,7 @@ void GameServer::handle_exit_prompt_response(bool accepted)
         // revive-all cannot cover it. Revive every hero still awaiting a
         // classic respawn first, or the finalize would drop it as dead.
         og::sim::classic_respawn_flush_pending(world_);
+        send_forced_keyframe_to_ready_clients();
         handled = on_exit_accepted
             ? on_exit_accepted(prompt.destination_level)
             : false;
@@ -2005,15 +2010,14 @@ void GameServer::handle_exit_prompt_response(bool accepted)
     if (!handled)
         return;
 
-    // Return-to-lobby: the accepted exit/withdraw only finalized the cursor (no
-    // next-level load). Tell every display to end + show results so each peer
-    // returns to the team-build menu, then stop — no in-session reload.
+    // Deliver the old level's outcome before either returning to the lobby or
+    // sending the next level's InitialSetup. In particular, dedicated-server
+    // exit wins used to transition without EndGame, so clients persisted their
+    // pre-win wallet/cursor.
+    forward_level_end_to_clients(prompt.withdraw_prompt ? 1 : 0,
+                                 prompt.destination_level);
     if (return_to_lobby_mode_)
-    {
-        forward_level_end_to_clients(prompt.withdraw_prompt ? 1 : 0,
-                                     prompt.destination_level);
         return;
-    }
 
     prepare_clients_for_loaded_level();
 }
@@ -2029,39 +2033,41 @@ void GameServer::abort_level_for_all()
     clear_pause_state();
 
     const int destination = static_cast<int>(world_.current_scenario);
+    // As with a prompted withdraw, the hook can restore the checkpoint before
+    // EndGame is forwarded. Preserve ordering: old-level state, then outcome.
+    send_forced_keyframe_to_ready_clients();
     const bool handled =
         on_withdraw_accepted ? on_withdraw_accepted(destination) : false;
     if (!handled)
         return;
 
+    forward_level_end_to_clients(1, destination);
     if (return_to_lobby_mode_)
-    {
-        forward_level_end_to_clients(1, destination);
         return;
-    }
 
     prepare_clients_for_loaded_level();
 }
 
-void GameServer::handle_level_transition(std::int16_t next_level)
+bool GameServer::handle_level_transition(std::int16_t next_level)
 {
     if (next_level < 0 || !on_level_transition)
-        return;
+        return false;
 
     if (on_save_sync)
         on_save_sync();
 
     if (!on_level_transition(next_level))
-        return;
+        return false;
 
     // Return-to-lobby: the hook finalized the cursor only (no next-level load).
     // The win's terminal EndGame was already forwarded for this game-ended tick,
     // so every display ends and returns to the menu — skip the in-session
     // client reload.
     if (return_to_lobby_mode_)
-        return;
+        return true;
 
     prepare_clients_for_loaded_level();
+    return true;
 }
 
 void GameServer::forward_level_end_to_clients(int ending, int next_level)
@@ -2078,6 +2084,17 @@ void GameServer::forward_level_end_to_clients(int ending, int next_level)
     request_redraw_event.kind = EventKind::RequestRedraw;
     batch.events.push_back(std::move(request_redraw_event));
 
+    // A positive EndGame destination normally means an in-session transition.
+    // Return-to-lobby uses that same destination to advance each private save,
+    // so mark the batch explicitly as terminal. The display runtime treats a
+    // SetEnd that accompanies EndGame as a marker and still runs the win fold.
+    if (return_to_lobby_mode_)
+    {
+        Event set_end_event;
+        set_end_event.kind = EventKind::SetEnd;
+        batch.events.push_back(std::move(set_end_event));
+    }
+
     Event endgame_event;
     endgame_event.kind = EventKind::EndGame;
     endgame_event.a =
@@ -2088,6 +2105,26 @@ void GameServer::forward_level_end_to_clients(int ending, int next_level)
     og::sim::normalize_endgame_event_order(batch);
 
     forward_event_batch(batch);
+}
+
+void GameServer::send_forced_keyframe_to_ready_clients()
+{
+    const WorldSnapshot full =
+        capture_server_keyframe(world_, SnapshotCaptureMode::Peek);
+    for (auto& [peer_id, client] : clients_)
+    {
+        if (!should_send_to_client(client))
+            continue;
+
+        WorldSnapshot per_client = full;
+        seed_client_snapshot_baseline(client.snapshot_state, per_client);
+        client.budget_pending_keyframe = false;
+        client.force_keyframe = false;
+        remember_snapshot_hash(client, per_client);
+        transport_.send_snapshot(
+            peer_id,
+            std::make_shared<WorldSnapshot>(std::move(per_client)));
+    }
 }
 
 void GameServer::prepare_clients_for_loaded_level()
@@ -2127,7 +2164,10 @@ void GameServer::prepare_clients_for_loaded_level()
             seat.last_known_input = {};
             seat.last_received_input_tick = 0;
         }
-        client.expected_snapshot_hashes.clear();
+        // Do not discard old-level hash expectations here. Full-snapshot
+        // acknowledgements travel asynchronously and can arrive after this
+        // synchronous level load; transport ordering keeps old and new
+        // same-tick hashes strict in each per-tick deque.
         client.last_received_input_ms = now;
         reset_client_snapshot_state(client.snapshot_state);
     }
@@ -2141,6 +2181,20 @@ void GameServer::prepare_clients_for_loaded_level()
     }
 
     poll_incoming_messages();
+    // Discard stale old-level inputs as before, but requeue messages that can
+    // legitimately race the synchronous load: old snapshot acknowledgements,
+    // plus the one-shot ClientReady a fast peer can send in response to the
+    // InitialSetup above. Reverse iteration preserves their original wire
+    // order when pushing onto the front of the pending queue.
+    for (auto it = last_polled_messages_.rbegin();
+         it != last_polled_messages_.rend(); ++it)
+    {
+        if (it->kind == TypedReceivedMessageKind::SnapshotHashCheck ||
+            it->kind == TypedReceivedMessageKind::ClientReady)
+        {
+            pending_inbound_messages_.push_front(std::move(*it));
+        }
+    }
     last_polled_messages_.clear();
 }
 
@@ -2644,7 +2698,7 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
             // auto-advances to a next level the display must NOT end — it
             // follows the server into the next level via the transition
             // InitialSetup; sending SetEnd here would freeze the next level.
-            if (snapshot.next_level < 0 &&
+            if ((snapshot.next_level < 0 || return_to_lobby_mode_) &&
                 !contains_event_kind(*drained_batch, EventKind::SetEnd))
             {
                 Event set_end_event;
@@ -2662,6 +2716,31 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
                 drained_batch->events.push_back(std::move(endgame_event));
                 og::sim::normalize_endgame_event_order(*drained_batch);
             }
+        }
+    }
+
+    const bool delivering_endgame =
+        snapshot.game_ended ||
+        (drained_batch.has_value() && contains_endgame_event(*drained_batch));
+
+    // SDL network sessions return to their live lobby between levels. Commit
+    // that terminal result before any peer can consume the synthesized
+    // EndGame; otherwise a failed save would be discovered only after every
+    // display had already returned to the menu. A failed terminal persist is
+    // unrecoverable for this outcome (the fold is not safely replayable), so
+    // report it loudly and still deliver one coherent terminal result.
+    bool transition_attempted_before_delivery = false;
+    if (snapshot.game_ended && snapshot.next_level != -1 &&
+        return_to_lobby_mode_)
+    {
+        transition_attempted_before_delivery = true;
+        if (!handle_level_transition(snapshot.next_level))
+        {
+            LogError(
+                "terminal_level_persistence_failed level={} next={} "
+                "continuing_with_unrecoverable_terminal_outcome\n",
+                world_.current_scenario,
+                snapshot.next_level);
         }
     }
 
@@ -2691,7 +2770,8 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
         if (!client.initial_setup_sent ||
             !client.has_initial_snapshot ||
             !should_send_to_client(client) ||
-            !should_send_keyframe(client, snapshot) ||
+            (!delivering_endgame &&
+             !should_send_keyframe(client, snapshot)) ||
             client.allow_initial_keyframe_without_ready ||
             client.budget_pending_keyframe)
         {
@@ -2745,10 +2825,15 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
         if (!should_send_to_client(client))
             continue;
 
-        const bool keyframe_required = should_send_keyframe(client, snapshot);
+        // A terminal event must never outrun the state it tallies. Force a
+        // full snapshot even when the ordinary cadence would send a delta;
+        // this also heals any client-side gap before EndGame is dispatched.
+        const bool keyframe_required =
+            delivering_endgame || should_send_keyframe(client, snapshot);
         const bool budgeted_keyframe =
-            client.allow_initial_keyframe_without_ready ||
-            (client.force_keyframe && client.budget_pending_keyframe);
+            !delivering_endgame &&
+            (client.allow_initial_keyframe_without_ready ||
+             (client.force_keyframe && client.budget_pending_keyframe));
         if (keyframe_required)
         {
             if (can_broadcast_keyframe)
@@ -2830,8 +2915,11 @@ void GameServer::broadcast_current_state(SnapshotCaptureMode capture_mode,
     if (drained_batch.has_value())
         forward_event_batch(*drained_batch);
 
-    if (snapshot.game_ended && snapshot.next_level != -1)
-        handle_level_transition(snapshot.next_level);
+    if (snapshot.game_ended && snapshot.next_level != -1 &&
+        !transition_attempted_before_delivery)
+    {
+        (void)handle_level_transition(snapshot.next_level);
+    }
 
     og::runtime::emit_runtime_trace(
         og::runtime::make_runtime_trace_record(

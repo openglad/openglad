@@ -358,8 +358,11 @@ void apply_headless_lobby_game_start_config(
         if (slot.slot_index >= save.team_list.size())
             continue;
 
-        save.team_list[slot.slot_index] =
+        std::unique_ptr<guy> member =
             make_guy_from_lobby_character(slot.character);
+        member->owner_player_index = slot.owner_player_index;
+        member->owner_save_slot = slot.owner_save_slot;
+        save.team_list[slot.slot_index] = std::move(member);
         ++save.team_size;
     }
 

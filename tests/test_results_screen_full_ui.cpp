@@ -324,6 +324,7 @@ TEST(ResultsScreenFullUi, troop_scroll_paths_cover_bonus_losses_and_specials)
     og::runtime::current_session->myscreen_->world().time_bonus_limit = 500;
     og::runtime::current_session->myscreen_->world().par_value = 3;
     og::runtime::current_session->myscreen_->framecount = 10;
+    og::runtime::current_session->myscreen_->world().set_level_tick_count(10);
     og::runtime::current_session->myscreen_->special_name[FAMILY_MAGE][2] = "Arcane Burst";
 
     std::map<int, guy*> before;
@@ -456,6 +457,51 @@ TEST(ResultsScreenFullUi, retry_button_accepts_prompt_and_returns_retry)
     ASSERT_TRUE(retry) << "accepted retry prompt should request retry";
 }
 
+TEST(ResultsScreenFullUi, networked_results_suppress_local_retry)
+{
+    auto* const session = og::runtime::current_session;
+    ASSERT_NE(nullptr, session);
+    const char saved_end = session->myscreen_->world().end;
+    const bool saved_networked = session->networked_session_;
+    session->myscreen_->world().end = 0;
+    session->networked_session_ = true;
+
+    session->myscreen_->save_data.current_campaign =
+        "org.openglad.gladiator";
+    session->myscreen_->save_data.scen_num = 1;
+    session->myscreen_->save_data.current_levels.clear();
+
+    std::map<int, guy*> before;
+    std::map<int, walker*> after;
+
+    // If the hidden button were still actionable, this affirmative response
+    // would make the first injected RETRY click return true.
+    picker_testing_yes_or_no_queue_clear();
+    picker_testing_yes_or_no_queue_push(true);
+    results_screen_testing_set_force_full(true);
+
+    ResultsThreadState st{};
+    SDL_Thread* thread = SDL_CreateThread(
+        results_ui_retry_injector, "networked_retry_injector", &st);
+    ASSERT_TRUE(thread != nullptr)
+        << "failed to create networked retry injector thread";
+
+    const bool retry = results_screen(0, 2, before, after);
+
+    int rc = 0;
+    SDL_WaitThread(thread, &rc);
+
+    results_screen_testing_set_force_full(false);
+    picker_testing_yes_or_no_queue_clear();
+    session->networked_session_ = saved_networked;
+    session->myscreen_->world().end = saved_end;
+
+    ASSERT_TRUE(st.started && st.finished)
+        << "networked retry injector should run";
+    EXPECT_FALSE(retry)
+        << "a display-only network peer cannot roll back the committed result";
+}
+
 TEST(ResultsScreenFullUi, completed_victory_zeroes_bonus_cash)
 {
     const char saved_end = og::runtime::current_session->myscreen_->world().end;
@@ -473,6 +519,8 @@ TEST(ResultsScreenFullUi, completed_victory_zeroes_bonus_cash)
     screen_ref.world().time_bonus_limit = 500;
     screen_ref.world().par_value = 4;
     screen_ref.framecount = screen_ref.world().time_bonus_limit;
+    screen_ref.world().set_level_tick_count(
+        static_cast<std::uint32_t>(screen_ref.world().time_bonus_limit));
 
     std::map<int, guy*> before;
     std::map<int, walker*> after;
@@ -576,6 +624,7 @@ TEST(ResultsScreenFullUi, troop_detail_paths_show_specials_and_negative_xp)
     screen_ref.world().time_bonus_limit = 200;
     screen_ref.world().par_value = 2;
     screen_ref.framecount = 30;
+    screen_ref.world().set_level_tick_count(30);
 
     const std::string saved_special = screen_ref.special_name[FAMILY_MAGE][2];
     screen_ref.special_name[FAMILY_MAGE][2] = "Arcane Burst";

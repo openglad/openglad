@@ -78,9 +78,17 @@ struct LocalTransportRuntime {
     // off each player's real save0 and each player persists only its own
     // characters' progress. False for plain local single-player / splitscreen.
     bool networked = false;
-    // This machine's own GLOBAL player slots (one per local seat, seat order),
-    // for owner-filtered saves. Empty if none.
-    std::vector<std::uint8_t> own_player_indices;
+    // This machine's local seats. Player indices filter owned characters;
+    // gameplay teams select the corresponding cash/score totals.
+    std::vector<LocalSeatBinding> own_seats;
+    // A completed client level can surface through more than one terminal
+    // message callback. Suppress later callbacks after the first successful
+    // private persist; a failed first attempt remains eligible for one retry.
+    bool owned_progress_persisted = false;
+    // EndGame with a nonterminal destination can precede the next level's
+    // InitialSetup by multiple websocket frames. Keep polling while the old
+    // display world has end=1 so split delivery cannot strand the client.
+    bool awaiting_level_transition = false;
 
     [[nodiscard]] screen* server_screen() const
     {
@@ -188,59 +196,196 @@ void persist_owned_characters_to_save0(const screen& world_screen,
     if (own_player_index == guy::kNoOwner)
         return;
 
-    const std::array<std::uint8_t, 1> owners = {own_player_index};
+    const std::array<LocalSeatBinding, 1> seats = {LocalSeatBinding{
+        .player_index = own_player_index,
+        .team = world_screen.save_data.my_team,
+    }};
     persist_owned_characters_to_save0(world_screen,
-                                      std::span<const std::uint8_t>(owners));
+                                      std::span<const LocalSeatBinding>(seats));
 }
 
 void persist_owned_characters_to_save0(
     const screen& world_screen,
     std::span<const std::uint8_t> own_player_indices)
 {
-    std::vector<std::uint8_t> owners;
-    owners.reserve(own_player_indices.size());
+    std::vector<LocalSeatBinding> seats;
+    seats.reserve(own_player_indices.size());
     for (const std::uint8_t owner : own_player_indices)
     {
-        if (owner != guy::kNoOwner)
-            owners.push_back(owner);
+        if (owner == guy::kNoOwner)
+            continue;
+
+        // Compatibility/test overload: recover the owner's gameplay team from
+        // its tagged roster member. Production paths pass explicit bindings so
+        // an empty roster can still persist its wallet.
+        short team = world_screen.save_data.my_team;
+        for (const auto& uptr : world_screen.world().oblist)
+        {
+            const walker* const entity = uptr.get();
+            if (entity != nullptr && entity->myguy != nullptr &&
+                entity->myguy->owner_player_index == owner)
+            {
+                team = static_cast<short>(entity->team_num());
+                break;
+            }
+        }
+        seats.push_back(LocalSeatBinding{
+            .player_index = owner,
+            .team = team,
+        });
     }
-    if (owners.empty())
+    persist_owned_characters_to_save0(
+        world_screen, std::span<const LocalSeatBinding>(seats));
+}
+
+void persist_owned_characters_to_save0(
+    const screen& world_screen,
+    std::span<const LocalSeatBinding> own_seats)
+{
+    const bool has_valid_owner = std::any_of(
+        own_seats.begin(), own_seats.end(), [](const LocalSeatBinding& seat) {
+            return seat.player_index < og::sim::kMaxGlobalPlayers &&
+                seat.player_index != guy::kNoOwner;
+        });
+    if (!has_valid_owner)
         return;
 
+    (void)persist_network_win_to_save0(
+        world_screen, own_seats, world_screen.world().id);
+}
+
+bool persist_network_win_to_save0(
+    const screen& world_screen,
+    std::span<const LocalSeatBinding> own_seats,
+    int completed_level)
+{
+    std::vector<std::uint8_t> owners;
+    owners.reserve(own_seats.size());
+    std::array<bool, MAX_PLAYERS> owned_teams{};
+    std::optional<std::size_t> primary_team;
+    for (const LocalSeatBinding& seat : own_seats)
+    {
+        if (seat.player_index >= og::sim::kMaxGlobalPlayers ||
+            seat.player_index == guy::kNoOwner)
+        {
+            continue;
+        }
+
+        owners.push_back(static_cast<std::uint8_t>(seat.player_index));
+        if (seat.team < 0 || seat.team >= MAX_PLAYERS)
+            continue;
+        const std::size_t team = static_cast<std::size_t>(seat.team);
+        owned_teams[team] = true;
+        if (!primary_team.has_value())
+            primary_team = team;
+    }
     SaveData merged;
     if (merged.load_with_error("save0") != SaveDataIoError::None)
     {
-        // No untouched pre-session roster to merge into; skip rather than
+        // No untouched pre-level roster to merge into; skip rather than
         // clobber save0 with a partial team.
-        LogError("net_persist_skipped reason=no_presession_save0 player={}\n",
-                 owners.front());
-        return;
+        LogError("net_persist_skipped reason=no_prelevel_save0 player={}\n",
+                 owners.empty() ? -1 : static_cast<int>(owners.front()));
+        return false;
     }
 
-    // The permadeath rule is a lobby-negotiated MATCH setting: read it from
-    // the session save (which carries the negotiated flag), never from
-    // whatever the on-disk save0 last stored — the lobby apply-back only
-    // updates in-memory saves, so the disk copy is stale for this session.
-    // Deliberately persisted below with the rest of the merged save (like
-    // the campaign cursor), so save0 reflects the last session's rules.
-    merged.keep_fallen_heroes = world_screen.save_data.keep_fallen_heroes;
+    if (!owners.empty())
+    {
+        // The permadeath rule is a lobby-negotiated MATCH setting: read it from
+        // the session save (which carries the negotiated flag), never from
+        // whatever the on-disk save0 last stored — the lobby apply-back only
+        // updates in-memory saves, so the disk copy is stale for this session.
+        merged.keep_fallen_heroes = world_screen.save_data.keep_fallen_heroes;
 
-    merged.merge_owned_guys_from(world_screen.world().oblist,
-                                 std::span<const std::uint8_t>(owners));
+        merged.merge_owned_guys_from(world_screen.world().oblist,
+                                     std::span<const std::uint8_t>(owners));
 
-    // Advance this player's OWN campaign cursor to match the just-finished
-    // transition (scen_num + completed levels), so save0 reflects solo progress
-    // "as if they played alone". The team-build menu reloads save0 between
-    // levels and the lobby re-broadcasts this scen_num, so the next level is
-    // chosen from each peer's own advanced save — not the combined netsession
-    // roster. (world_screen.save_data already holds the advanced cursor: the
-    // server's finalize set it, and the client display's endgame() advanced it.)
+        // The win fold already produced final totals. Overlay only this
+        // machine's gameplay team(s); copying all four would leak opponents'
+        // progression, while indexing by owner_player_index would be out of
+        // bounds for sessions with more than four global players. These are
+        // absolute post-fold values, never additive reward deltas.
+        for (std::size_t team = 0; team < owned_teams.size(); ++team)
+        {
+            if (!owned_teams[team])
+                continue;
+            merged.m_totalcash[team] = world_screen.save_data.m_totalcash[team];
+            merged.m_totalscore[team] =
+                world_screen.save_data.m_totalscore[team];
+        }
+        if (primary_team.has_value())
+        {
+            merged.totalcash =
+                world_screen.save_data.m_totalcash[*primary_team];
+            merged.totalscore =
+                world_screen.save_data.m_totalscore[*primary_team];
+        }
+
+        // Keep this peer's private history and add only the level this machine
+        // just completed. InitialSetup carries the host's full history in the
+        // session save, so assigning that map wholesale would replace/leak a
+        // client's divergent disk history.
+        const auto session_history = world_screen.save_data.completed_levels.find(
+            world_screen.save_data.current_campaign);
+        if (completed_level >= 0 &&
+            session_history != world_screen.save_data.completed_levels.end() &&
+            session_history->second.contains(completed_level))
+        {
+            merged.add_level_completed(
+                world_screen.save_data.current_campaign, completed_level);
+        }
+    }
+
+    // Advance this machine's OWN campaign cursor whether it owns characters or
+    // is spectating. The team-build menu reloads save0 between rounds, so a
+    // zero-seat host/client must still rejoin at the server's next destination.
     merged.current_campaign = world_screen.save_data.current_campaign;
     merged.scen_num = world_screen.save_data.scen_num;
-    merged.completed_levels = world_screen.save_data.completed_levels;
 
     if (merged.save_with_error("save0") != SaveDataIoError::None)
-        LogError("net_persist_save_failed player={}\n", owners.front());
+    {
+        LogError("net_persist_save_failed player={}\n",
+                 owners.empty() ? -1 : static_cast<int>(owners.front()));
+        return false;
+    }
+    return true;
+}
+
+bool persist_private_campaign_cursor_to_save0(
+    const screen& session_screen,
+    int destination_level)
+{
+    if (destination_level < 0)
+    {
+        LogError("net_cursor_persist_invalid_destination level={}\n",
+                 destination_level);
+        return false;
+    }
+
+    SaveData private_save;
+    const SaveDataIoError load_error = private_save.load_with_error("save0");
+    if (load_error != SaveDataIoError::None)
+    {
+        LogError("net_cursor_persist_load_failed level={} error={}\n",
+                 destination_level,
+                 static_cast<int>(load_error));
+        return false;
+    }
+
+    // Cursor-only by construction: every other field came from private save0
+    // and is left unchanged. SaveData::save updates current_levels for the new
+    // current_campaign/scen_num pair.
+    private_save.current_campaign = session_screen.save_data.current_campaign;
+    private_save.scen_num = static_cast<short>(destination_level);
+    const SaveDataIoError save_error = private_save.save_with_error("save0");
+    if (save_error != SaveDataIoError::None)
+    {
+        LogError("net_cursor_persist_save_failed level={} error={}\n",
+                 destination_level,
+                 static_cast<int>(save_error));
+        return false;
+    }
+    return true;
 }
 
 } // namespace og::runtime::detail
@@ -372,7 +517,7 @@ bool finalize_level_and_advance_cursor(
     screen& gameplay_screen,
     int next_level,
     bool networked,
-    std::span<const std::uint8_t> own_player_indices)
+    std::span<const og::runtime::LocalSeatBinding> own_seats)
 {
     gameplay_screen.sync_save_data_from_world();
 
@@ -413,9 +558,8 @@ bool finalize_level_and_advance_cursor(
         if (!save_shadow_save_data(gameplay_screen, "complete_level",
                                    "netsession"))
             return false;
-        og::runtime::detail::persist_owned_characters_to_save0(
-            gameplay_screen, own_player_indices);
-        return true;
+        return og::runtime::detail::persist_network_win_to_save0(
+            gameplay_screen, own_seats, fold_ctx.finished_level);
     }
 
     return save_shadow_save_data(gameplay_screen, "complete_level");
@@ -457,7 +601,19 @@ bool finalize_withdraw_and_advance_cursor(screen& gameplay_screen,
     }
 
     gameplay_screen.save_data.scen_num = static_cast<short>(destination_level);
-    return save_shadow_save_data(gameplay_screen, "withdraw", slot);
+    if (!save_shadow_save_data(gameplay_screen, "withdraw", slot))
+        return false;
+
+    if (!networked)
+        return true;
+
+    // The transient netsession write above restores the combined pre-level
+    // roster. Independently advance this machine's private save0 cursor so the
+    // post-game menu does not re-advertise its stale pre-round level. This is
+    // deliberately ownership-agnostic (spectator hosts have zero seats) and
+    // cursor-only (withdraw awards no roster, cash, score, or completion gain).
+    return og::runtime::detail::persist_private_campaign_cursor_to_save0(
+        gameplay_screen, destination_level);
 }
 
 void apply_initial_setup_to_client_save(
@@ -574,15 +730,40 @@ bool batch_ends_display_session(const og::sim::SimEventBatch& batch)
         [](const og::sim::Event& event) {
             if (event.kind == og::sim::EventKind::SetEnd)
                 return true;
-            // An EndGame event carries the next level in b. A win that
-            // auto-advances to a next level (b >= 0) does NOT end the display
-            // session — the display follows the server into the next level via
-            // the transition InitialSetup. Only a terminal EndGame (no next
-            // level, b < 0) ends the session and returns to the menu.
+            // An EndGame event carries the next level in b. A nonnegative
+            // destination normally means an in-session transition; a
+            // return-to-lobby batch carries SetEnd as its explicit terminal
+            // marker because it also needs that destination for persistence.
+            // A negative destination is terminal on its own.
             if (event.kind == og::sim::EventKind::EndGame)
                 return static_cast<std::int32_t>(event.b) < 0;
             return false;
         });
+}
+
+bool batch_contains_endgame(const og::sim::SimEventBatch& batch)
+{
+    return std::any_of(
+        batch.events.begin(), batch.events.end(),
+        [](const og::sim::Event& event) {
+            return event.kind == og::sim::EventKind::EndGame;
+        });
+}
+
+og::sim::SimEventBatch without_redundant_set_end(
+    const og::sim::SimEventBatch& batch)
+{
+    if (!batch_contains_endgame(batch))
+        return batch;
+
+    // SetEnd alongside EndGame is a transport-level terminal marker. Let
+    // screen::endgame run first so it can fold rewards/cursor; setting end
+    // before EndGame would make screen::endgame return without doing so.
+    og::sim::SimEventBatch result = batch;
+    std::erase_if(result.events, [](const og::sim::Event& event) {
+        return event.kind == og::sim::EventKind::SetEnd;
+    });
+    return result;
 }
 
 // True only when this batch carries a WON level end (EndGame with ending==0 —
@@ -597,6 +778,25 @@ bool batch_is_level_won(const og::sim::SimEventBatch& batch)
             return static_cast<std::int32_t>(event.a) == 0;
     }
     return false;
+}
+
+std::optional<int> batch_withdraw_destination(
+    const og::sim::SimEventBatch& batch)
+{
+    for (const auto& event : batch.events)
+    {
+        if (event.kind != og::sim::EventKind::EndGame ||
+            static_cast<std::int32_t>(event.a) != 1)
+        {
+            continue;
+        }
+
+        const std::int32_t destination =
+            static_cast<std::int32_t>(event.b);
+        if (destination >= 0)
+            return static_cast<int>(destination);
+    }
+    return std::nullopt;
 }
 
 void respond_to_exit_prompt(screen& gameplay_screen,
@@ -736,48 +936,43 @@ void stamp_display_seat_teams(
     }
 }
 
+void persist_client_win_progress_once(
+    og::runtime::LocalTransportRuntime& runtime,
+    screen& gameplay_screen,
+    std::span<const og::runtime::LocalSeatBinding> display_seats)
+{
+    if (runtime.owned_progress_persisted)
+        return;
+
+    const std::span<const og::runtime::LocalSeatBinding> owned_seats =
+        og::ui::is_spectator_mode(gameplay_screen.save_data)
+        ? std::span<const og::runtime::LocalSeatBinding>()
+        : display_seats;
+    // Latch only a successful persist. A win can surface through both the sim
+    // and game-flow callbacks; if the first disk attempt fails, the alternate
+    // callback gets one safe retry instead of being suppressed by the guard.
+    runtime.owned_progress_persisted =
+        og::runtime::detail::persist_network_win_to_save0(
+            gameplay_screen, owned_seats, gameplay_screen.world().id);
+}
+
 void configure_display_game_client(
     og::runtime::LocalTransportRuntime& runtime,
     screen& gameplay_screen,
     og::sim::GameClient& display_client,
     std::vector<og::runtime::LocalSeatBinding> display_seats)
 {
-    std::vector<std::uint8_t> seat_player_indices;
-    seat_player_indices.reserve(display_seats.size());
-    for (const og::runtime::LocalSeatBinding& seat : display_seats)
-    {
-        if (seat.player_index < og::sim::kMaxGlobalPlayers)
-        {
-            seat_player_indices.push_back(
-                static_cast<std::uint8_t>(seat.player_index));
-        }
-    }
     gameplay_screen.set_render_interpolation_client(&display_client);
     display_client.set_initial_setup_callback(
         [&gameplay_screen, runtime_ptr = &runtime, display_seats,
-         seat_player_indices,
          display_client_ptr = &display_client](
             const og::sim::InitialSetupMessage& message,
             bool is_level_transition) {
-            // On a real client, persist every LOCAL seat's characters'
-            // progress from the just-completed level (the mirror world still
-            // holds its final state) before the transition wipes it. The host
-            // persists its own seats server-side via
-            // finalize_level_and_advance_cursor, so skip here for the host's
-            // loopback display client.
-            if (is_level_transition && runtime_ptr != nullptr &&
-                runtime_ptr->mode ==
-                    og::runtime::LocalTransportRuntime::Mode::ClientOnly &&
-                !seat_player_indices.empty())
-            {
-                // The mirror's last snapshot can predate the server's
-                // synchronous exit-accept revive-all; flush the queue here
-                // so the merge below never sees a mid-respawn hero as dead.
-                og::sim::classic_respawn_flush_pending(gameplay_screen.world());
-                og::runtime::detail::persist_owned_characters_to_save0(
-                    gameplay_screen,
-                    std::span<const std::uint8_t>(seat_player_indices));
-            }
+            // Terminal EndGame handling owns old-level persistence before an
+            // in-session InitialSetup arrives. Persisting unconditionally here
+            // used to save abandoned withdraw/abort gains, and an accepted
+            // exit could arrive before the client's win fold. The server now
+            // sends a forced final keyframe + EndGame before every transition.
 
             apply_initial_setup_to_client_save(gameplay_screen, message);
 
@@ -798,12 +993,25 @@ void configure_display_game_client(
                              "Could not load the next level.");
                 gameplay_screen.redrawme = 1;
                 if (runtime_ptr != nullptr)
+                {
+                    runtime_ptr->awaiting_level_transition = false;
                     runtime_ptr->display_session_finished = true;
+                }
                 return;
             }
 
             // The transition rebuilt the views; re-stamp multi-seat teams.
             stamp_display_seat_teams(gameplay_screen, display_seats);
+            if (runtime_ptr != nullptr)
+            {
+                // This GameClient/runtime survives dedicated-server in-session
+                // transitions. The old level is fully persisted and wiped at
+                // this point, so arm the once-guard for the new level and
+                // clear the transient EndGame latch set before InitialSetup.
+                runtime_ptr->owned_progress_persisted = false;
+                runtime_ptr->awaiting_level_transition = false;
+                runtime_ptr->display_session_finished = false;
+            }
             display_client_ptr->send_client_ready();
         });
     display_client.set_control_mapping_callback(
@@ -817,7 +1025,7 @@ void configure_display_game_client(
                 display_seats);
         });
     display_client.set_sim_event_batch_callback(
-        [&gameplay_screen, runtime_ptr = &runtime, seat_player_indices](
+        [&gameplay_screen, runtime_ptr = &runtime, display_seats](
             const og::sim::SimEventBatch& batch) {
             const bool was_live = gameplay_screen.world().end == 0;
             dispatch_display_event_batch(gameplay_screen, batch);
@@ -825,34 +1033,33 @@ void configure_display_game_client(
             // the win broadcast sends snapshot (game_ended=true) + sim batch
             // (palette/redraw) + the EndGame game-flow batch, in that order.
             // Dispatching the SIM batch already trips the mirror's
-            // "game_ended && !end" -> endgame() path, and once world.end != 0
-            // the client's message-processing break DROPS the still-queued
-            // EndGame batch — so the game-flow callback (and its per-seat
-            // save0 persist) never runs for this shape. Persist the WON
-            // outcome here instead: ending==0 is a completed level; a
-            // withdraw/abort/defeat sets ending!=0 and must not persist.
-            // The merge is keyed by owner tags and idempotent, so shapes
-            // that DO deliver the EndGame batch cannot double-count.
+            // "game_ended && !end" -> endgame() path. Persist the WON outcome
+            // here so a terminal processing break cannot skip it; ending==0 is
+            // a completed level, while withdraw/abort/defeat is not. The
+            // once-guard makes alternate callback shapes mutually exclusive.
             if (was_live && gameplay_screen.world().end != 0 &&
                 runtime_ptr != nullptr)
             {
                 if (runtime_ptr->mode ==
                         og::runtime::LocalTransportRuntime::Mode::ClientOnly &&
-                    !seat_player_indices.empty() &&
                     gameplay_screen.world().game_ended &&
-                    gameplay_screen.world().ending == 0)
+                    gameplay_screen.world().ending == 0 &&
+                    !gameplay_screen.world().retry)
                 {
                     og::sim::classic_respawn_flush_pending(
                         gameplay_screen.world());
-                    og::runtime::detail::persist_owned_characters_to_save0(
-                        gameplay_screen,
-                        std::span<const std::uint8_t>(seat_player_indices));
+                    persist_client_win_progress_once(
+                        *runtime_ptr, gameplay_screen, display_seats);
                 }
-                runtime_ptr->display_session_finished = true;
+                const bool expects_transition =
+                    gameplay_screen.world().next_level >= 0 &&
+                    !gameplay_screen.world().retry;
+                runtime_ptr->awaiting_level_transition = expects_transition;
+                runtime_ptr->display_session_finished = !expects_transition;
             }
         });
     display_client.set_game_flow_event_batch_callback(
-        [&gameplay_screen, runtime_ptr = &runtime, seat_player_indices](
+        [&gameplay_screen, runtime_ptr = &runtime, display_seats](
             const og::sim::SimEventBatch& batch) {
             // A won level can end while heroes sit in the classic respawn
             // queue (the synchronous exit-accept path fires the EndGame
@@ -861,12 +1068,32 @@ void configure_display_game_client(
             // screen::endgame's solo save0 autosave inside the dispatch, and
             // the client save0 merge below. Idempotent: on in-tick end
             // shapes the flushed queue already arrived empty.
-            if (batch_is_level_won(batch))
+            const bool won_level = batch_is_level_won(batch);
+            const std::optional<int> withdraw_destination =
+                batch_withdraw_destination(batch);
+            const bool ends_session = batch_ends_display_session(batch);
+            const bool expects_transition =
+                batch_contains_endgame(batch) && !ends_session;
+            if (won_level)
                 og::sim::classic_respawn_flush_pending(gameplay_screen.world());
-            dispatch_display_event_batch(gameplay_screen, batch);
+            if (runtime_ptr != nullptr && withdraw_destination.has_value() &&
+                runtime_ptr->mode ==
+                    og::runtime::LocalTransportRuntime::Mode::ClientOnly)
+            {
+                // The authoritative EndGame confirms the withdraw and carries
+                // its destination. Every client, including a spectator, moves
+                // only its private campaign cursor; abandoned level state and
+                // the host's roster/wallet/history never enter save0.
+                (void)og::runtime::detail::
+                    persist_private_campaign_cursor_to_save0(
+                        gameplay_screen, *withdraw_destination);
+            }
+            const og::sim::SimEventBatch display_batch =
+                without_redundant_set_end(batch);
+            dispatch_display_event_batch(gameplay_screen, display_batch);
             if (runtime_ptr != nullptr &&
                 (gameplay_screen.world().end != 0 ||
-                 batch_ends_display_session(batch)))
+                 ends_session))
             {
                 // Persist this client's own seats' characters back to save0
                 // only on a WON level (the host persists server-side). A
@@ -875,19 +1102,20 @@ void configure_display_game_client(
                 // that died during a level we later abandon is not lost.
                 if (runtime_ptr->mode ==
                         og::runtime::LocalTransportRuntime::Mode::ClientOnly &&
-                    !seat_player_indices.empty() &&
-                    batch_is_level_won(batch))
+                    won_level && !gameplay_screen.world().retry)
                 {
-                    og::runtime::detail::persist_owned_characters_to_save0(
-                        gameplay_screen,
-                        std::span<const std::uint8_t>(seat_player_indices));
+                    persist_client_win_progress_once(
+                        *runtime_ptr, gameplay_screen, display_seats);
                 }
-                runtime_ptr->display_session_finished = true;
+                runtime_ptr->awaiting_level_transition = expects_transition;
+                runtime_ptr->display_session_finished = !expects_transition;
             }
         });
     display_client.set_message_processing_break_callback(
-        [&gameplay_screen]() {
-            return gameplay_screen.world().end != 0;
+        [&gameplay_screen, runtime_ptr = &runtime]() {
+            return gameplay_screen.world().end != 0 &&
+                (runtime_ptr == nullptr ||
+                 !runtime_ptr->awaiting_level_transition);
         });
     display_client.set_exit_prompt_callback(
         [&gameplay_screen, display_client_ptr = &display_client](
@@ -919,7 +1147,10 @@ void configure_display_game_client(
                          "Lost connection to the server.");
             gameplay_screen.redrawme = 1;
             if (runtime_ptr != nullptr)
+            {
+                runtime_ptr->awaiting_level_transition = false;
                 runtime_ptr->display_session_finished = true;
+            }
         });
 }
 
@@ -985,14 +1216,17 @@ bool local_transport_shadow_testing_finalize_win(screen& gameplay_screen,
                                                  bool networked,
                                                  std::uint8_t own_player_index)
 {
-    const std::array<std::uint8_t, 1> owners = {own_player_index};
+    const std::array<LocalSeatBinding, 1> seats = {LocalSeatBinding{
+        .player_index = own_player_index,
+        .team = gameplay_screen.save_data.my_team,
+    }};
     return finalize_level_and_advance_cursor(
         gameplay_screen,
         next_level,
         networked,
         own_player_index == guy::kNoOwner
-            ? std::span<const std::uint8_t>()
-            : std::span<const std::uint8_t>(owners));
+            ? std::span<const LocalSeatBinding>()
+            : std::span<const LocalSeatBinding>(seats));
 }
 
 bool local_transport_shadow_testing_finalize_win(
@@ -1001,8 +1235,22 @@ bool local_transport_shadow_testing_finalize_win(
     bool networked,
     std::span<const std::uint8_t> own_player_indices)
 {
+    std::vector<LocalSeatBinding> seats;
+    seats.reserve(own_player_indices.size());
+    for (const std::uint8_t owner : own_player_indices)
+    {
+        if (owner == guy::kNoOwner)
+            continue;
+        seats.push_back(LocalSeatBinding{
+            .player_index = owner,
+            .team = gameplay_screen.save_data.my_team,
+        });
+    }
     return finalize_level_and_advance_cursor(
-        gameplay_screen, next_level, networked, own_player_indices);
+        gameplay_screen,
+        next_level,
+        networked,
+        std::span<const LocalSeatBinding>(seats));
 }
 
 bool local_transport_shadow_testing_finalize_withdraw(screen& gameplay_screen,
@@ -1130,7 +1378,6 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
 
     auto runtime = std::make_shared<LocalTransportRuntime>();
     runtime->networked = session.networked_session_;
-    runtime->own_player_indices = session.own_player_indices_;
     const std::size_t player_count = compute_local_player_count(gameplay_screen);
     std::array<std::uint32_t, MAX_PLAYERS> control_entity_ids = {};
     std::array<short, MAX_PLAYERS> player_teams = {};
@@ -1143,6 +1390,20 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
             view != nullptr && view->control != nullptr
                 ? view->control->entity_id()
                 : 0u;
+    }
+    const std::size_t owned_seat_count = std::min<std::size_t>(
+        session.own_player_indices_.size(), player_count);
+    for (std::size_t seat_order = 0;
+         seat_order < owned_seat_count;
+         ++seat_order)
+    {
+        // own_player_indices_ contains GLOBAL ids (a one-seat joiner may own
+        // player 6), while player_teams is indexed by this machine's LOCAL
+        // view/seat order.
+        runtime->own_seats.push_back(LocalSeatBinding{
+            .player_index = session.own_player_indices_[seat_order],
+            .team = player_teams[seat_order],
+        });
     }
 
     GameSession::Config server_cfg;
@@ -1218,7 +1479,7 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
         [server_screen,
          display_screen = &gameplay_screen,
          networked = runtime->networked,
-         own_player_indices = runtime->own_player_indices,
+         own_seats = runtime->own_seats,
          server_session = runtime->server_session.get()](
             int level_id) {
             auto server_scope = server_session->activate();
@@ -1231,13 +1492,13 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
             // shows the menu (the next level is started fresh from there). The
             // game NEVER auto-advances the next level in-session, in any mode.
             return finalize_level_and_advance_cursor(
-                *server_screen, level_id, networked, own_player_indices);
+                *server_screen, level_id, networked, own_seats);
         };
     runtime->server->on_exit_accepted =
         [server_screen,
          display_screen = &gameplay_screen,
          networked = runtime->networked,
-         own_player_indices = runtime->own_player_indices,
+         own_seats = runtime->own_seats,
          server_session = runtime->server_session.get()](
             int destination) {
             auto server_scope = server_session->activate();
@@ -1248,7 +1509,7 @@ void reset_local_transport_shadow(GameSession& session, screen& gameplay_screen)
             // display returns to the team-build menu. NEVER auto-advance the next
             // level in-session — in any mode (see on_level_transition).
             return finalize_level_and_advance_cursor(
-                *server_screen, destination, networked, own_player_indices);
+                *server_screen, destination, networked, own_seats);
         };
     runtime->server->on_withdraw_accepted =
         [server_screen,
@@ -1334,7 +1595,6 @@ void reset_network_host_transport_shadow(
     auto runtime = std::make_shared<LocalTransportRuntime>();
     runtime->mode = LocalTransportRuntime::Mode::Authoritative;
     runtime->networked = session.networked_session_;
-    runtime->own_player_indices = session.own_player_indices_;
     runtime->server_transport = std::move(server_transport);
     runtime->server_transport->accept_connections();
 
@@ -1375,15 +1635,7 @@ void reset_network_host_transport_shadow(
     }
     if (!host_seats.empty())
     {
-        runtime->own_player_indices.clear();
-        for (const LocalSeatBinding& seat : host_seats)
-        {
-            if (seat.player_index < og::sim::kMaxGlobalPlayers)
-            {
-                runtime->own_player_indices.push_back(
-                    static_cast<std::uint8_t>(seat.player_index));
-            }
-        }
+        runtime->own_seats = host_seats;
     }
 
     // Multi-seat hosts stamp each view's team from its seat before the server
@@ -1461,7 +1713,7 @@ void reset_network_host_transport_shadow(
         [server_screen,
          display_screen = &gameplay_screen,
          networked = runtime->networked,
-         own_player_indices = runtime->own_player_indices,
+         own_seats = runtime->own_seats,
          server_session = runtime->server_session.get()](
             int level_id) {
             auto server_scope = server_session->activate();
@@ -1474,13 +1726,13 @@ void reset_network_host_transport_shadow(
             // shows the menu (the next level is started fresh from there). The
             // game NEVER auto-advances the next level in-session, in any mode.
             return finalize_level_and_advance_cursor(
-                *server_screen, level_id, networked, own_player_indices);
+                *server_screen, level_id, networked, own_seats);
         };
     runtime->server->on_exit_accepted =
         [server_screen,
          display_screen = &gameplay_screen,
          networked = runtime->networked,
-         own_player_indices = runtime->own_player_indices,
+         own_seats = runtime->own_seats,
          server_session = runtime->server_session.get()](
             int destination) {
             auto server_scope = server_session->activate();
@@ -1491,7 +1743,7 @@ void reset_network_host_transport_shadow(
             // display returns to the team-build menu. NEVER auto-advance the next
             // level in-session — in any mode (see on_level_transition).
             return finalize_level_and_advance_cursor(
-                *server_screen, destination, networked, own_player_indices);
+                *server_screen, destination, networked, own_seats);
         };
     runtime->server->on_withdraw_accepted =
         [server_screen,
@@ -1578,19 +1830,8 @@ void reset_network_client_transport_shadow(
     auto runtime = std::make_shared<LocalTransportRuntime>();
     runtime->mode = LocalTransportRuntime::Mode::ClientOnly;
     runtime->networked = session.networked_session_;
-    runtime->own_player_indices = session.own_player_indices_;
     if (!local_seats.empty())
-    {
-        runtime->own_player_indices.clear();
-        for (const LocalSeatBinding& seat : local_seats)
-        {
-            if (seat.player_index < og::sim::kMaxGlobalPlayers)
-            {
-                runtime->own_player_indices.push_back(
-                    static_cast<std::uint8_t>(seat.player_index));
-            }
-        }
-    }
+        runtime->own_seats = local_seats;
 
     // Multi-seat joiners stamp view teams from their seats (the roster-order
     // guess from load_saved_game is wrong for them).
@@ -1703,7 +1944,9 @@ void local_transport_shadow_finish_tick(GameSession& session)
     if (session.myscreen_ == nullptr)
         return;
 
-    if (runtime->display_session_finished || session.myscreen_->world().end != 0)
+    if (!runtime->awaiting_level_transition &&
+        (runtime->display_session_finished ||
+         session.myscreen_->world().end != 0))
     {
         og::runtime::emit_runtime_trace(
             og::runtime::make_runtime_trace_record(
@@ -1713,7 +1956,8 @@ void local_transport_shadow_finish_tick(GameSession& session)
         return;
     }
 
-    if (runtime->authoritative_mode())
+    if (runtime->authoritative_mode() &&
+        !runtime->awaiting_level_transition)
     {
         og::runtime::emit_runtime_trace(
             og::runtime::make_runtime_trace_record(
@@ -1750,8 +1994,9 @@ void local_transport_shadow_finish_tick(GameSession& session)
                         "local_transport_shadow",
                         "shadow_inbound_overflow"));
             }
-            if (runtime->display_session_finished ||
-                session.myscreen_->world().end != 0)
+            if (!runtime->awaiting_level_transition &&
+                (runtime->display_session_finished ||
+                 session.myscreen_->world().end != 0))
             {
                 og::runtime::emit_runtime_trace(
                     og::runtime::make_runtime_trace_record(

@@ -1362,9 +1362,9 @@ bool isPlayerHoldingKey(int player_index, int key_enum)
     
     if (player_index < 0 || player_index >= 4 || key_enum < 0 || key_enum >= NUM_KEYS)
         return false;
-    // Runtime touch overlay (web DOM controls) writes held state here via
-    // openglad_web_touch_set_key; it is additive with joystick and keyboard so
-    // one web build serves desktop and mobile browsers. Always false natively.
+    // Touch held-state seam, written by the web DOM overlay or native SDL
+    // touch path. It is additive with joystick and keyboard and deliberately
+    // independent of keyboard control mode.
     if (hw().touch_keystate[player_index][key_enum])
         return true;
     if(player_joy[player_index].hasButtonSet(key_enum))

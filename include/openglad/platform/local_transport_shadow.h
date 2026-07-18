@@ -45,10 +45,11 @@ walker* select_control_for_view(
     std::optional<std::size_t> player_index = std::nullopt);
 
 // Networked "as if played alone" persist: merge only the characters owned by
-// this machine's own seat(s) from world_screen's world back into this peer's
-// on-disk save0. The permadeath rule (keep_fallen_heroes) is read from the
-// SESSION save carried on world_screen — the lobby-negotiated setting — never
-// from the stale on-disk copy. Exposed here so tests can pin that contract.
+// this machine's own seat(s), plus those seats' post-win team cash/score totals,
+// from world_screen back into this peer's on-disk save0. The permadeath rule
+// (keep_fallen_heroes) is read from the SESSION save carried on world_screen —
+// the lobby-negotiated setting — never from the stale on-disk copy. Exposed
+// here so tests can pin that contract.
 void persist_owned_characters_to_save0(const screen& world_screen,
                                        std::uint8_t own_player_index);
 // Multi-seat variant: ONE load/merge/save cycle covering every local seat's
@@ -56,6 +57,31 @@ void persist_owned_characters_to_save0(const screen& world_screen,
 void persist_owned_characters_to_save0(
     const screen& world_screen,
     std::span<const std::uint8_t> own_player_indices);
+// Production network variant. Cash/score arrays are keyed by GAMEPLAY TEAM,
+// not global player index, so the full bindings are required (player indices
+// may exceed the four team-total slots). This compatibility/test entry point
+// infers the completed level from world.id; production callers pass it
+// explicitly to persist_network_win_to_save0 below.
+void persist_owned_characters_to_save0(
+    const screen& world_screen,
+    std::span<const LocalSeatBinding> own_seats);
+
+// Production network win persist. The private campaign cursor is advanced for
+// every machine, including a zero-seat spectator. Roster/team totals and the
+// just-finished completion mark are merged only when own_seats contains a valid
+// owned player. completed_level is the local level that actually finished; the
+// server/session's unrelated completed-level history is never copied to save0.
+[[nodiscard]] bool persist_network_win_to_save0(
+    const screen& world_screen,
+    std::span<const LocalSeatBinding> own_seats,
+    int completed_level);
+
+// Network withdraw persist. Load the private save0 and update only its campaign
+// cursor (current_campaign/scen_num; SaveData::save updates current_levels).
+// Roster, wallets, match gains, and completed-level history remain untouched.
+[[nodiscard]] bool persist_private_campaign_cursor_to_save0(
+    const screen& session_screen,
+    int destination_level);
 
 } // namespace detail
 

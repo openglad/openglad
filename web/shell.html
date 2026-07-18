@@ -215,8 +215,8 @@
 
         #tc-stick-zone {
             position: absolute;
-            left: 0;
-            bottom: 0;
+            left: max(8px, env(safe-area-inset-left, 0px));
+            bottom: max(8px, env(safe-area-inset-bottom, 0px));
             width: 45%;
             height: 70%;
             pointer-events: auto;
@@ -763,8 +763,8 @@
         //  - edges: Module._openglad_web_back_key (Backspace as the universal
         //    web back key; never Escape) and Module._openglad_web_push_key /
         //    _openglad_web_push_char for the text-entry overlay.
-        // Menus need no injection: SDL's touch->mouse synthesis already
-        // makes taps click buttons.
+        // Canvas taps are owned below and re-injected through the mouse bridge;
+        // relying on browser/SDL touch-to-mouse synthesis lost quick iOS taps.
         // ------------------------------------------------------------------
         (function() {
             var TC_MIN_HOLD_MS = 90; // input sampler must observe the press
@@ -859,6 +859,7 @@
                 var activeTouchId = null;
                 var activeTouchWasIntro = false;
                 var activeTouchIntroGeneration = null;
+                var lastTouchPoint = null;
 
                 function canvasPoint(e) {
                     var rect = canvas.getBoundingClientRect();
@@ -872,6 +873,9 @@
                 }
 
                 function pushMouse(down, p) {
+                    // Diagnostic mirror used by the browser regression tests;
+                    // it reflects the exact down/up state sent to the bridge.
+                    window.__opengladTouchMouseDown = Boolean(down);
                     var fn = bridge('openglad_web_push_mouse');
                     if (fn) {
                         var rect = canvas.getBoundingClientRect();
@@ -906,7 +910,13 @@
                         return;
                     }
                     activeTouchId = e.pointerId;
+                    lastTouchPoint = p;
                     activeTouchWasIntro = Boolean(window.__opengladIntroActive);
+                    try {
+                        canvas.setPointerCapture(e.pointerId);
+                    } catch (err) {
+                        // Synthetic pointers (tests) cannot be captured.
+                    }
                     if (activeTouchWasIntro) {
                         // The legacy intro is running on an Asyncify stack.
                         // Latch the trusted tap in JS and let intro.cpp consume
@@ -924,6 +934,9 @@
 
                 canvas.addEventListener('pointermove', function(e) {
                     if (e.pointerType === 'touch') {
+                        if (e.pointerId === activeTouchId) {
+                            lastTouchPoint = canvasPoint(e);
+                        }
                         swallow(e);
                     }
                 }, { capture: true });
@@ -932,11 +945,19 @@
                     if (e.pointerType !== 'touch') {
                         return;
                     }
-                    swallow(e);
                     if (e.pointerId !== activeTouchId) {
+                        // At document scope, leave overlay controls and other
+                        // fingers alone. Canvas-local listeners still swallow
+                        // unowned touch pointers so SDL cannot synthesize them.
+                        if (e.currentTarget === canvas) {
+                            swallow(e);
+                        }
                         return;
                     }
+                    swallow(e);
+                    var releasePoint = lastTouchPoint || canvasPoint(e);
                     activeTouchId = null;
+                    lastTouchPoint = null;
                     if (activeTouchWasIntro) {
                         activeTouchWasIntro = false;
                         if (e.type === 'pointerup' &&
@@ -950,10 +971,27 @@
                         activeTouchIntroGeneration = null;
                         return;
                     }
-                    pushMouse(false, canvasPoint(e));
+                    pushMouse(false, releasePoint);
                 }
                 canvas.addEventListener('pointerup', endTouch, { capture: true });
                 canvas.addEventListener('pointercancel', endTouch, { capture: true });
+                document.addEventListener('pointerup', endTouch,
+                    { capture: true });
+                document.addEventListener('pointercancel', endTouch,
+                    { capture: true });
+                canvas.addEventListener('lostpointercapture', endTouch,
+                    { capture: true });
+
+                resetVisualFns.push(function() {
+                    if (activeTouchId !== null && !activeTouchWasIntro &&
+                        lastTouchPoint !== null) {
+                        pushMouse(false, lastTouchPoint);
+                    }
+                    activeTouchId = null;
+                    activeTouchWasIntro = false;
+                    activeTouchIntroGeneration = null;
+                    lastTouchPoint = null;
+                });
 
                 // Kill SDL's raw-touch fallback path and the browser's
                 // compatibility mouse events for canvas touches; the pointer
@@ -1002,7 +1040,13 @@
 
             // --- Floating 8-way joystick -------------------------------------
             (function initStick() {
-                var DEAD_ZONE = 14;       // no direction inside this radius
+                // Separate engage/release radii and a sector margin prevent
+                // ordinary 1px thumb jitter from repeatedly clearing/turning
+                // the held direction around a dead-zone or 22.5deg boundary.
+                var DEAD_ZONE_ENGAGE = 16;
+                var DEAD_ZONE_RELEASE = 10;
+                var OCTANT_STEP = Math.PI / 4;
+                var OCTANT_HYSTERESIS = 8 * Math.PI / 180;
                 var FOLLOW_RADIUS = 90;   // base re-anchors past this drift
                 var THUMB_TRAVEL = 46;
                 var TAP_MAX_MS = 250;     // dead-zone quick tap => mouse click
@@ -1015,6 +1059,7 @@
                 var baseX = 0;
                 var baseY = 0;
                 var currentKey = -1;
+                var currentOctant = -1;
                 var movedOutOfDeadZone = false;
                 var downAtMs = 0;
                 var downClientX = 0;
@@ -1025,6 +1070,23 @@
                         tcSetKey(k, 0);
                     }
                     currentKey = -1;
+                    currentOctant = -1;
+                }
+
+                function normalizedAngleDelta(angle) {
+                    return Math.atan2(Math.sin(angle), Math.cos(angle));
+                }
+
+                function setOctant(octant) {
+                    var key = OCTANT_TO_KEY[octant];
+                    if (key === currentKey) {
+                        currentOctant = octant;
+                        return;
+                    }
+                    clearDirectionKeys();
+                    tcSetKey(key, 1);
+                    currentKey = key;
+                    currentOctant = octant;
                 }
 
                 function positionBase() {
@@ -1057,22 +1119,29 @@
                         positionBase();
                     }
                     positionThumb(dx, dy);
-                    if (dist < DEAD_ZONE) {
-                        if (currentKey !== -1) {
-                            clearDirectionKeys();
-                        }
+                    if (currentKey !== -1 && dist < DEAD_ZONE_RELEASE) {
+                        clearDirectionKeys();
+                        return;
+                    }
+                    if (currentKey === -1 && dist < DEAD_ZONE_ENGAGE) {
                         return;
                     }
                     movedOutOfDeadZone = true;
                     // 8 sectors of 45 degrees centered on the cardinals;
                     // octant 0 = screen-right, winding clockwise (+y down).
-                    var octant = Math.round(Math.atan2(dy, dx) / (Math.PI / 4));
+                    var angle = Math.atan2(dy, dx);
+                    var octant = Math.round(angle / OCTANT_STEP);
                     octant = ((octant % 8) + 8) % 8;
-                    var key = OCTANT_TO_KEY[octant];
-                    if (key !== currentKey) {
-                        clearDirectionKeys();
-                        tcSetKey(key, 1);
-                        currentKey = key;
+                    if (currentOctant === -1) {
+                        setOctant(octant);
+                        return;
+                    }
+
+                    var currentCenter = currentOctant * OCTANT_STEP;
+                    var fromCenter = Math.abs(normalizedAngleDelta(
+                        angle - currentCenter));
+                    if (fromCenter > OCTANT_STEP / 2 + OCTANT_HYSTERESIS) {
+                        setOctant(octant);
                     }
                 }
 
@@ -1099,11 +1168,14 @@
                     e.preventDefault();
                 });
 
-                stickZone.addEventListener('pointermove', function(e) {
+                function move(e) {
                     if (e.pointerId === pointerId) {
                         update(e.clientX, e.clientY);
+                        if (e.cancelable) {
+                            e.preventDefault();
+                        }
                     }
-                });
+                }
 
                 function forwardDeadZoneTap() {
                     // A quick tap that never produced a direction is
@@ -1141,12 +1213,22 @@
                     }
                 }
 
-                stickZone.addEventListener('pointerup', release);
-                stickZone.addEventListener('pointercancel', release);
+                // Safari can lose element capture during an edge gesture,
+                // rotation, or browser-chrome transition. Capture-phase
+                // document listeners keep following/releasing that exact
+                // pointer even when its target leaves the stick zone.
+                document.addEventListener('pointermove', move,
+                    { capture: true, passive: false });
+                document.addEventListener('pointerup', release,
+                    { capture: true });
+                document.addEventListener('pointercancel', release,
+                    { capture: true });
+                stickZone.addEventListener('lostpointercapture', release);
 
                 resetVisualFns.push(function() {
                     pointerId = null;
                     currentKey = -1;
+                    currentOctant = -1;
                     stickBase.classList.add('hidden');
                 });
             })();
@@ -1199,8 +1281,14 @@
                     }
                 }
 
-                el.addEventListener('pointerup', release);
-                el.addEventListener('pointercancel', release);
+                // iOS can drop element capture during browser-chrome gestures
+                // or rotation. Release the exact pointer at document scope and
+                // also handle the explicit capture-loss notification.
+                document.addEventListener('pointerup', release,
+                    { capture: true });
+                document.addEventListener('pointercancel', release,
+                    { capture: true });
+                el.addEventListener('lostpointercapture', release);
 
                 resetVisualFns.push(function() {
                     pointerId = null;

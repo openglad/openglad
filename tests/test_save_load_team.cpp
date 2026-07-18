@@ -15,6 +15,7 @@
 #include <openglad/platform/local_transport_shadow.h>
 #include <functional>
 #include <list>
+#include <set>
 // myscreen is now a macro defined in base.h (via game_session.h)
 
 // Forward declarations from picker.cpp
@@ -539,8 +540,8 @@ TEST(SaveLoadTeam, merge_owned_guys_keep_fallen_preserves_died_slot) {
     scr->save_data.reset();
 }
 
-// The real networked flow: the on-disk save0 predates the lobby settings
-// apply-back (nothing rewrites save0 between the lobby and the win), so
+// The real networked flow keeps each peer's private roster in save0 before the
+// mission, while lobby-negotiated settings live in the gameplay session. Thus
 // persist_owned_characters_to_save0 must take keep_fallen_heroes from the
 // SESSION save — reading the stale disk flag would re-drop the fallen hero
 // that Permadeath Off promised to keep.
@@ -595,5 +596,264 @@ TEST(SaveLoadTeam, networked_persist_reads_session_keep_fallen_not_disk) {
         << "the negotiated match rule persists with the merged save";
 
     scr->world().delete_objects();
+    scr->save_data.reset();
+}
+
+TEST(SaveLoadTeam, networked_persist_copies_only_owned_team_totals)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+
+    SaveData disk;
+    disk.reset();
+    disk.current_campaign = "org.openglad.gladiator";
+    disk.scen_num = 1;
+    disk.completed_levels[disk.current_campaign] = {4};
+    disk.completed_levels["org.openglad.private-history"] = {8};
+    disk.current_levels["org.openglad.private-history"] = 9;
+    for (std::size_t team = 0; team < std::size(disk.m_totalcash); ++team)
+    {
+        disk.m_totalcash[team] = 5100u + static_cast<std::uint32_t>(team);
+        disk.m_totalscore[team] = 6100u + static_cast<std::uint32_t>(team);
+    }
+    ASSERT_TRUE(disk.save("save0"));
+
+    scr->save_data.reset();
+    scr->save_data.current_campaign = disk.current_campaign;
+    scr->save_data.scen_num = 2;
+    scr->save_data.completed_levels[disk.current_campaign].insert(1);
+    scr->save_data.completed_levels[disk.current_campaign].insert(7);
+    scr->save_data.completed_levels["org.openglad.host-history"] = {11};
+    scr->world().id = 1;
+    for (std::size_t team = 0;
+         team < std::size(scr->save_data.m_totalcash);
+         ++team)
+    {
+        scr->save_data.m_totalcash[team] =
+            9100u + static_cast<std::uint32_t>(team);
+        scr->save_data.m_totalscore[team] =
+            10100u + static_cast<std::uint32_t>(team);
+    }
+
+    // Global player ids 6 and 7 share gameplay team 2. They must select the
+    // team-2 wallet (never index the four-element totals arrays by player id),
+    // and duplicate seats on that team must not add the payout twice.
+    const std::array<og::runtime::LocalSeatBinding, 2> seats = {{
+        {.player_index = 6, .team = 2},
+        {.player_index = 7, .team = 2},
+    }};
+    og::runtime::detail::persist_owned_characters_to_save0(
+        *scr,
+        std::span<const og::runtime::LocalSeatBinding>(seats));
+
+    SaveData after;
+    ASSERT_EQ(SaveDataIoError::None, after.load_with_error("save0"));
+    for (std::size_t team = 0; team < std::size(after.m_totalcash); ++team)
+    {
+        if (team == 2)
+        {
+            EXPECT_EQ(scr->save_data.m_totalcash[team],
+                      after.m_totalcash[team]);
+            EXPECT_EQ(scr->save_data.m_totalscore[team],
+                      after.m_totalscore[team]);
+        }
+        else
+        {
+            EXPECT_EQ(disk.m_totalcash[team], after.m_totalcash[team])
+                << "an unowned team's cash must remain private";
+            EXPECT_EQ(disk.m_totalscore[team], after.m_totalscore[team])
+                << "an unowned team's score must remain private";
+        }
+    }
+    EXPECT_EQ(scr->save_data.m_totalcash[2], after.totalcash)
+        << "the legacy primary-wallet field follows the first local seat";
+    EXPECT_EQ(2, static_cast<int>(after.scen_num));
+    EXPECT_TRUE(after.is_level_completed(1));
+    EXPECT_TRUE(after.is_level_completed(4))
+        << "the client's divergent private completion history must survive";
+    EXPECT_FALSE(after.is_level_completed(7))
+        << "the host/session's unrelated completion history must not leak";
+    EXPECT_EQ((std::set<int>{8}),
+              after.completed_levels["org.openglad.private-history"]);
+    EXPECT_EQ(after.completed_levels.end(),
+              after.completed_levels.find("org.openglad.host-history"));
+
+    scr->world().id = 0;
+    scr->save_data.reset();
+}
+
+TEST(SaveLoadTeam, network_client_withdraw_persists_private_cursor_only)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+
+    SaveData disk;
+    disk.reset();
+    disk.current_campaign = "org.openglad.gladiator";
+    disk.scen_num = 2;
+    disk.completed_levels[disk.current_campaign] = {1, 4};
+    disk.current_levels[disk.current_campaign] = 2;
+    disk.keep_fallen_heroes = 1;
+    disk.m_totalcash[0] = 4321u;
+    disk.m_totalscore[0] = 1234u;
+    disk.totalcash = 4321u;
+    disk.totalscore = 1234u;
+    auto private_member = std::make_unique<guy>(FAMILY_ARCHER);
+    private_member->name = "PRIVATE";
+    private_member->exp = 777u;
+    disk.team_list[0] = std::move(private_member);
+    disk.team_size = 1;
+    ASSERT_TRUE(disk.save("save0"));
+
+    // Client session state came from the host and deliberately disagrees with
+    // this machine's private cursor, history, wallet, and roster.
+    scr->save_data.reset();
+    scr->save_data.current_campaign = disk.current_campaign;
+    scr->save_data.scen_num = 9;
+    scr->save_data.completed_levels[disk.current_campaign] = {7, 8};
+    scr->save_data.m_totalcash[0] = 99999u;
+    scr->save_data.m_totalscore[0] = 88888u;
+
+    ASSERT_TRUE(
+        og::runtime::detail::persist_private_campaign_cursor_to_save0(*scr, 6));
+
+    SaveData after;
+    ASSERT_EQ(SaveDataIoError::None, after.load_with_error("save0"));
+    EXPECT_EQ(6, static_cast<int>(after.scen_num));
+    EXPECT_EQ(6, after.current_levels.at(disk.current_campaign));
+    EXPECT_EQ((std::set<int>{1, 4}),
+              after.completed_levels[disk.current_campaign]);
+    EXPECT_EQ(4321u, after.m_totalcash[0]);
+    EXPECT_EQ(1234u, after.m_totalscore[0]);
+    EXPECT_EQ(4321u, after.totalcash);
+    EXPECT_EQ(1234u, after.totalscore);
+    EXPECT_EQ(1, static_cast<int>(after.keep_fallen_heroes));
+    ASSERT_EQ(1, static_cast<int>(after.team_size));
+    ASSERT_NE(nullptr, after.team_list[0]);
+    EXPECT_EQ("PRIVATE", after.team_list[0]->name);
+    EXPECT_EQ(777u, after.team_list[0]->exp);
+
+    scr->save_data.reset();
+}
+
+TEST(SaveLoadTeam,
+     network_spectator_win_advances_cursor_without_roster_or_rewards)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+
+    SaveData disk;
+    disk.reset();
+    disk.current_campaign = "org.openglad.gladiator";
+    disk.scen_num = 1;
+    disk.numplayers = 0;
+    disk.completed_levels[disk.current_campaign] = {4};
+    disk.m_totalcash[0] = 3000u;
+    disk.m_totalscore[0] = 2000u;
+    auto private_member = std::make_unique<guy>(FAMILY_ARCHER);
+    private_member->name = "WATCH_PRIV";
+    private_member->exp = 456u;
+    disk.team_list[0] = std::move(private_member);
+    disk.team_size = 1;
+    ASSERT_TRUE(disk.save("save0"));
+
+    scr->save_data.reset();
+    scr->save_data.current_campaign = disk.current_campaign;
+    scr->save_data.scen_num = 2;
+    scr->save_data.completed_levels[disk.current_campaign] = {1, 7};
+    scr->save_data.m_totalcash[0] = 93000u;
+    scr->save_data.m_totalscore[0] = 92000u;
+
+    ASSERT_TRUE(og::runtime::detail::persist_network_win_to_save0(
+        *scr,
+        std::span<const og::runtime::LocalSeatBinding>(),
+        /*completed_level=*/1));
+
+    SaveData after;
+    ASSERT_EQ(SaveDataIoError::None, after.load_with_error("save0"));
+    EXPECT_EQ(2, static_cast<int>(after.scen_num))
+        << "a zero-owner spectator still follows the next lobby round";
+    EXPECT_EQ(0, static_cast<int>(after.numplayers));
+    EXPECT_EQ((std::set<int>{4}),
+              after.completed_levels[disk.current_campaign])
+        << "watching a win must not award completed-level credit";
+    EXPECT_EQ(3000u, after.m_totalcash[0]);
+    EXPECT_EQ(2000u, after.m_totalscore[0]);
+    ASSERT_EQ(1, static_cast<int>(after.team_size));
+    ASSERT_NE(nullptr, after.team_list[0]);
+    EXPECT_EQ("WATCH_PRIV", after.team_list[0]->name);
+    EXPECT_EQ(456u, after.team_list[0]->exp);
+
+    scr->save_data.reset();
+}
+
+TEST(SaveLoadTeam,
+     network_spectator_host_withdraw_advances_private_cursor_without_rewards)
+{
+    screen* const scr = og::runtime::current_session->myscreen_;
+
+    SaveData private_save;
+    private_save.reset();
+    private_save.current_campaign = "org.openglad.gladiator";
+    private_save.scen_num = 3;
+    private_save.numplayers = 0;
+    private_save.completed_levels[private_save.current_campaign] = {1, 2};
+    private_save.m_totalcash[0] = 2468u;
+    private_save.m_totalscore[0] = 1357u;
+    auto private_member = std::make_unique<guy>(FAMILY_SOLDIER);
+    private_member->name = "SPEC_PRIV";
+    private_member->exp = 321u;
+    private_save.team_list[0] = std::move(private_member);
+    private_save.team_size = 1;
+    ASSERT_TRUE(private_save.save("save0"));
+
+    SaveData network_session;
+    network_session.reset();
+    network_session.current_campaign = private_save.current_campaign;
+    network_session.scen_num = 8;
+    network_session.completed_levels[network_session.current_campaign] = {7};
+    network_session.m_totalcash[0] = 90000u;
+    network_session.m_totalscore[0] = 80000u;
+    auto network_member = std::make_unique<guy>(FAMILY_MAGE);
+    network_member->name = "NET_ROSTER";
+    network_member->exp = 999u;
+    network_session.team_list[0] = std::move(network_member);
+    network_session.team_size = 1;
+    ASSERT_TRUE(network_session.save("netsession"));
+
+    ASSERT_EQ(SaveDataIoError::None,
+              scr->save_data.load_with_error("netsession"));
+    scr->save_data.m_score[0] = 555u; // abandoned in-level gain
+
+    // This host has no owned-seat argument at all: cursor persistence must be
+    // independent of character ownership. Destination 5 differs from both the
+    // private cursor (3) and the transient session cursor (8).
+    ASSERT_TRUE(og::runtime::local_transport_shadow_testing_finalize_withdraw(
+        *scr, 5, true));
+
+    SaveData after_session;
+    ASSERT_EQ(SaveDataIoError::None,
+              after_session.load_with_error("netsession"));
+    EXPECT_EQ(5, static_cast<int>(after_session.scen_num));
+    EXPECT_EQ((std::set<int>{7}),
+              after_session.completed_levels[network_session.current_campaign]);
+    EXPECT_EQ(90000u, after_session.m_totalcash[0]);
+    ASSERT_EQ(1, static_cast<int>(after_session.team_size));
+    ASSERT_NE(nullptr, after_session.team_list[0]);
+    EXPECT_EQ("NET_ROSTER", after_session.team_list[0]->name);
+
+    SaveData after_private;
+    ASSERT_EQ(SaveDataIoError::None,
+              after_private.load_with_error("save0"));
+    EXPECT_EQ(5, static_cast<int>(after_private.scen_num));
+    EXPECT_EQ(5,
+              after_private.current_levels.at(private_save.current_campaign));
+    EXPECT_EQ(0, static_cast<int>(after_private.numplayers));
+    EXPECT_EQ((std::set<int>{1, 2}),
+              after_private.completed_levels[private_save.current_campaign]);
+    EXPECT_EQ(2468u, after_private.m_totalcash[0]);
+    EXPECT_EQ(1357u, after_private.m_totalscore[0]);
+    ASSERT_EQ(1, static_cast<int>(after_private.team_size));
+    ASSERT_NE(nullptr, after_private.team_list[0]);
+    EXPECT_EQ("SPEC_PRIV", after_private.team_list[0]->name);
+    EXPECT_EQ(321u, after_private.team_list[0]->exp);
+
     scr->save_data.reset();
 }

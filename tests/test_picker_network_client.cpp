@@ -82,10 +82,6 @@ std::vector<std::string> build_host_picker_status_lines(
 
 namespace og::ui::detail {
 
-std::array<bool, MAX_TEAM_SIZE> build_remote_owned_slot_mask(
-    const og::sim::LobbyState& state,
-    std::string_view local_player_name);
-
 og::sim::LobbyMessage make_join_message(
     const SaveData& save,
     std::string_view player_name,
@@ -382,6 +378,7 @@ void prepare_seven_player_host_save(SaveData& save)
                              /*allied_mode=*/1);
     put_named_member(save, 0, "HostAce", 0);
     put_named_member(save, 1, "HostBee", 1);
+    save.m_totalcash[0] = 5000u;
 }
 
 void prepare_seven_player_join_a_save(SaveData& save)
@@ -392,6 +389,7 @@ void prepare_seven_player_join_a_save(SaveData& save)
     put_named_member(save, 3, "JoinATwo", 1);
     put_named_member(save, 4, "JoinAThree", 2);
     put_named_member(save, 5, "JoinAFour", 3);
+    save.m_totalcash[0] = 6000u;
 }
 
 void prepare_seven_player_join_b_save(SaveData& save)
@@ -399,6 +397,7 @@ void prepare_seven_player_join_b_save(SaveData& save)
     reset_network_save_shell(save, /*numplayers=*/1, /*my_team=*/0,
                              /*allied_mode=*/1);
     put_named_member(save, 6, "JoinBSolo", 0);
+    save.m_totalcash[0] = 7000u;
 }
 
 // Pre-session save0 for the seven-player run: stale-named members at every
@@ -1336,7 +1335,7 @@ TEST(PickerNetworkClient, host_direct_flow_syncs_save_and_builds_start_config)
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     PickerSaveStateGuard save_guard(save);
     PickerRuntimeGuard runtime_guard;
-    prepare_single_member_network_save(save, 2, "Host", 4);
+    prepare_single_member_network_save(save, 2, "Host");
     save.my_team = MAX_PLAYERS;
     g_start_game_requested = false;
     og::runtime::current_session->current_difficulty_ = 4;
@@ -1350,6 +1349,7 @@ TEST(PickerNetworkClient, host_direct_flow_syncs_save_and_builds_start_config)
     host_client->initialize_from_save();
 
     EXPECT_EQ(2, save.my_team);
+    EXPECT_EQ(1u, save.team_size);
     ASSERT_TRUE(save.team_list[0] != nullptr);
     EXPECT_EQ("Host", save.team_list[0]->name);
     EXPECT_TRUE(status_lines_contain_prefix(host_client->status_lines(), "LAN: "));
@@ -1382,6 +1382,8 @@ TEST(PickerNetworkClient, host_direct_flow_syncs_save_and_builds_start_config)
     ASSERT_EQ(1u, start_config->save_data.team_list.size());
     EXPECT_EQ("Host Prime", start_config->save_data.team_list[0].character.name);
     EXPECT_EQ(0, start_config->save_data.team_list[0].character.teamnum);
+    EXPECT_EQ(0, start_config->save_data.team_list[0].owner_player_index);
+    EXPECT_EQ(0, start_config->save_data.team_list[0].owner_save_slot);
     EXPECT_FALSE(host_client->consume_game_start_config().has_value());
 
     ASSERT_TRUE(save.save("save0"));
@@ -1605,58 +1607,6 @@ TEST(PickerNetworkClient, host_status_builder_reports_direct_and_relay_errors)
     EXPECT_TRUE(status_lines_contain_exact(lines, "Lobby: 2 players"));
 }
 
-TEST(PickerNetworkClient, host_sync_roster_ignores_remote_owned_slots)
-{
-    SaveData save;
-    prepare_single_member_network_save(save, 0, "Host");
-    auto remote_member = std::make_unique<guy>(FAMILY_SOLDIER);
-    remote_member->name = "Remote Joiner";
-    remote_member->teamnum = 1;
-    save.team_list[1] = std::move(remote_member);
-    save.team_size = 2;
-
-    og::sim::LobbyState state;
-    state.players.push_back(og::sim::LobbyPlayer{
-        .player_index = 0u,
-        .name = "host-player",
-        .team = 0,
-        .character_slots = {make_lobby_slot(0u, "Host", 0)},
-        .ready = false,
-        .is_host = true,
-    });
-    state.players.push_back(og::sim::LobbyPlayer{
-        .player_index = 1u,
-        .name = "remote-player",
-        .team = 1,
-        .character_slots = {make_lobby_slot(0u, "Remote Joiner", 1)},
-        .ready = false,
-        .is_host = false,
-    });
-
-    const auto excluded_slots =
-        og::ui::detail::build_remote_owned_slot_mask(state, "host-player");
-    EXPECT_FALSE(excluded_slots[0]);
-    EXPECT_TRUE(excluded_slots[1]);
-
-    save.team_list[0]->name = "Host Prime";
-    save.team_list[1]->teamnum = 0;
-    save.team_list[1]->name = "Stolen";
-
-    const og::sim::LobbyMessage message = og::ui::detail::make_join_message(
-        save,
-        "host-player",
-        0,
-        &excluded_slots);
-
-    ASSERT_EQ(og::sim::LobbyMessageKind::Join, message.kind());
-    const auto& join = std::get<og::sim::LobbyJoinMessage>(message.payload);
-    EXPECT_EQ("host-player", join.player.name);
-    EXPECT_EQ(0, join.player.team);
-    ASSERT_EQ(1u, join.player.character_slots.size());
-    EXPECT_EQ(0u, join.player.character_slots[0].slot_index);
-    EXPECT_EQ("Host Prime", join.player.character_slots[0].character.name);
-}
-
 TEST(PickerNetworkClient, join_direct_flow_receives_remote_host_start_and_syncs_roster)
 {
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
@@ -1827,7 +1777,7 @@ TEST(PickerNetworkClient, join_direct_flow_receives_remote_host_start_and_syncs_
 }
 
 TEST(PickerNetworkClient,
-     join_direct_flow_preserves_loaded_team_until_server_echoes_local_player)
+     join_direct_flow_keeps_private_roster_while_waiting_for_server_echo)
 {
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     PickerSaveStateGuard save_guard(save);
@@ -1885,26 +1835,23 @@ TEST(PickerNetworkClient,
     })) << "join client should apply the host-only lobby snapshot";
 
     EXPECT_EQ(1, save.my_team);
-    EXPECT_EQ(2u, save.team_size);
-    EXPECT_TRUE(save_contains_named_member(save, "Remote Host"));
+    EXPECT_EQ(1u, save.team_size);
+    EXPECT_FALSE(save_contains_named_member(save, "Remote Host"));
     EXPECT_TRUE(save_contains_named_member(save, "Joiner"));
 
-    std::size_t host_slot_index = save.team_list.size();
     std::size_t joiner_slot_index = save.team_list.size();
     for (std::size_t slot_index = 0; slot_index < save.team_list.size(); ++slot_index)
     {
         const auto& member = save.team_list[slot_index];
         if (member == nullptr)
             continue;
-        if (member->name == "Remote Host")
-            host_slot_index = slot_index;
         if (member->name == "Joiner")
             joiner_slot_index = slot_index;
     }
 
-    ASSERT_LT(host_slot_index, save.team_list.size());
     ASSERT_LT(joiner_slot_index, save.team_list.size());
-    EXPECT_FALSE(join_client->is_save_slot_editable(host_slot_index));
+    EXPECT_EQ(4u, joiner_slot_index)
+        << "the lobby must preserve the owner's private save-slot identity";
     EXPECT_TRUE(join_client->is_save_slot_editable(joiner_slot_index));
 
     join_client->shutdown();
@@ -2060,7 +2007,7 @@ TEST(PickerNetworkClient,
 }
 
 TEST(PickerNetworkClient,
-     join_runtime_install_applies_local_team_to_view_after_handoff)
+     join_runtime_applies_team_and_survives_split_endgame_transition)
 {
     SaveData& save = og::runtime::current_session->myscreen_->save_data;
     PickerSaveStateGuard save_guard(save);
@@ -2157,6 +2104,18 @@ TEST(PickerNetworkClient,
     server_transport->send_initial_setup(
         join_peer_id,
         std::make_shared<og::sim::InitialSetupMessage>(initial_setup));
+    og::sim::WorldSnapshot initial_snapshot =
+        og::sim::capture_keyframe_snapshot(gameplay_screen->world());
+    // The display world is reused across picker tests. Make this synthetic
+    // authoritative snapshot agree with InitialSetup instead of inheriting a
+    // previous test's local team.
+    initial_snapshot.my_team = initial_setup.my_team;
+    initial_snapshot.allied_mode = initial_setup.allied_mode;
+    initial_snapshot.snapshot_hash =
+        og::sim::compute_snapshot_hash(initial_snapshot);
+    server_transport->send_snapshot(
+        join_peer_id,
+        std::make_shared<og::sim::WorldSnapshot>(std::move(initial_snapshot)));
 
     ASSERT_TRUE(wait_until([&] {
         og::runtime::local_transport_shadow_finish_tick(*active_game_session());
@@ -2167,6 +2126,54 @@ TEST(PickerNetworkClient,
     EXPECT_EQ(1, gameplay_screen->viewob[0]->my_team)
         << "client-only runtime should mirror the authoritative team onto the "
            "display view after initial setup";
+
+    // Dedicated transports may split EndGame and the next InitialSetup across
+    // websocket frames (or the per-tick inbound message budget). The old world
+    // legitimately has end=1 after this first batch, but the runtime must keep
+    // polling instead of permanently latching the session as finished.
+    og::sim::SimEventBatch endgame_batch;
+    endgame_batch.sequence = 1u;
+    endgame_batch.events.push_back({
+        .tick = gameplay_screen->world().tick_count_,
+        .kind = og::sim::EventKind::EndGame,
+        .a = 0u,
+        .b = 2u,
+        .text = {},
+    });
+    server_transport->send_game_flow_event_batch(
+        join_peer_id,
+        std::make_shared<og::sim::SimEventBatch>(endgame_batch));
+
+    ASSERT_TRUE(wait_until([&] {
+        og::runtime::local_transport_shadow_finish_tick(*active_game_session());
+        return gameplay_screen->world().end != 0;
+    })) << "the first frame should dispatch EndGame on the old display world";
+    EXPECT_TRUE(og::runtime::local_transport_active(*active_game_session()));
+
+    // Prove that an empty frame between the two messages does not turn the
+    // transient old-world end flag into a sticky terminal latch.
+    og::runtime::local_transport_shadow_finish_tick(*active_game_session());
+    EXPECT_NE(0, gameplay_screen->world().end);
+
+    og::sim::InitialSetupMessage next_setup;
+    next_setup.level_id = 2;
+    next_setup.current_scenario = 2;
+    next_setup.my_team = 1;
+    next_setup.allied_mode = 0;
+    server_transport->send_initial_setup(
+        join_peer_id,
+        std::make_shared<og::sim::InitialSetupMessage>(next_setup));
+
+    ASSERT_TRUE(wait_until([&] {
+        og::runtime::local_transport_shadow_finish_tick(*active_game_session());
+        return gameplay_screen->world().current_scenario == 2 &&
+            gameplay_screen->world().end == 0;
+    })) << "a later InitialSetup should revive the same client runtime";
+    EXPECT_EQ(1, gameplay_screen->viewob[0]->my_team);
+
+    og::runtime::local_transport_shadow_finish_tick(*active_game_session());
+    EXPECT_EQ(0, gameplay_screen->world().end)
+        << "the transition latch must clear after the new level is installed";
 
     og::runtime::clear_local_transport_shadow(*active_game_session());
     join_client->shutdown();
@@ -2634,8 +2641,8 @@ TEST(PickerNetworkClient, host_and_join_real_win_returns_both_peers_to_menu)
         << "a networked win must end BOTH peers' display sessions (world.end=1) "
            "so each glad_main returns to the team-build menu";
 
-    // --- Gap 3: the host persisted the level advance to the networked roster.
-    // The team-build menu (re)loads from "netsession" and starts level 2 there.
+    // The host also persists the authoritative combined roster for server-side
+    // resume. Each peer's team-build menu reloads its own private save0.
     {
         SaveData netsession;
         ASSERT_EQ(SaveDataIoError::None,
@@ -3047,6 +3054,7 @@ TEST(PickerNetworkClient, host_and_join_win_level1_then_ready_up_and_load_level2
     };
 
     converge_lobby("level 1");
+
     ASSERT_TRUE(host_save.save("save0"));
     start_level("level 1");
 
@@ -3492,6 +3500,31 @@ TEST(PickerNetworkClient,
     };
     converge_lobby("level 1");
 
+    // Lobby replication must never materialize another machine's roster into
+    // this peer's editable SaveData. The authoritative combined roster lives
+    // in LobbyState/start config; each in-memory picker save stays private so
+    // GO, hire, train, and named saves cannot leak remote gladiators.
+    EXPECT_EQ(2, static_cast<int>(host_save.team_size));
+    EXPECT_TRUE(save_contains_named_member(host_save, "HostAce"));
+    EXPECT_TRUE(save_contains_named_member(host_save, "HostBee"));
+    EXPECT_FALSE(save_contains_named_member(host_save, "JoinAOne"));
+    {
+        auto join_scope = join_a_session.activate();
+        const SaveData& join_save = join_a_session.myscreen_->save_data;
+        EXPECT_EQ(4, static_cast<int>(join_save.team_size));
+        EXPECT_TRUE(save_contains_named_member(join_save, "JoinAOne"));
+        EXPECT_TRUE(save_contains_named_member(join_save, "JoinAFour"));
+        EXPECT_FALSE(save_contains_named_member(join_save, "HostAce"));
+        EXPECT_FALSE(save_contains_named_member(join_save, "JoinBSolo"));
+    }
+    {
+        auto join_scope = join_b_session.activate();
+        const SaveData& join_save = join_b_session.myscreen_->save_data;
+        EXPECT_EQ(1, static_cast<int>(join_save.team_size));
+        EXPECT_TRUE(save_contains_named_member(join_save, "JoinBSolo"));
+        EXPECT_FALSE(save_contains_named_member(join_save, "HostAce"));
+    }
+
     // Per-seat player_index allocation is (connection order, seat order):
     // host seats 0-1, joiner A seats 2-5, joiner B seat 6.
     {
@@ -3807,6 +3840,10 @@ TEST(PickerNetworkClient,
     // ---- Force a deterministic WIN and let every display session end. ----
     {
         auto host_scope = cleanup.host_session->activate();
+        // Pin a nonzero authoritative payout. The time-bonus component remains
+        // enabled so the test also proves every peer uses the server-snapshotted
+        // level tick rather than its own display cadence.
+        server_screen->world().m_score[0] = 123;
         const unsigned char my_team =
             static_cast<unsigned char>(server_screen->world().my_team);
         std::size_t killed = 0;
@@ -3861,6 +3898,8 @@ TEST(PickerNetworkClient,
     ASSERT_TRUE(all_ended)
         << "a networked win must end ALL three machines' display sessions";
 
+    std::uint32_t authoritative_cash = 0;
+
     // The networked roster advanced to level 2.
     {
         SaveData netsession;
@@ -3868,6 +3907,30 @@ TEST(PickerNetworkClient,
                   netsession.load_with_error("netsession"));
         EXPECT_EQ(2, static_cast<int>(netsession.scen_num));
         EXPECT_TRUE(netsession.is_level_completed(1));
+        EXPECT_GT(netsession.m_totalcash[0], 5246u)
+            << "the authoritative network save must retain the win payout";
+        EXPECT_EQ(123u, netsession.m_totalscore[0]);
+        authoritative_cash = netsession.m_totalcash[0];
+    }
+
+    const std::uint32_t reward_delta = authoritative_cash - 5000u;
+    EXPECT_GT(reward_delta, 246u);
+    {
+        auto join_scope = join_a_session.activate();
+        EXPECT_EQ(6000u + reward_delta,
+                  join_a_session.myscreen_->save_data.m_totalcash[0])
+            << "client A must apply the same authoritative score/tick reward "
+               "to its own private wallet base";
+        EXPECT_EQ(123u,
+                  join_a_session.myscreen_->save_data.m_totalscore[0]);
+    }
+    {
+        auto join_scope = join_b_session.activate();
+        EXPECT_EQ(7000u + reward_delta,
+                  join_b_session.myscreen_->save_data.m_totalcash[0])
+            << "client B must not reset to the default 5000 wallet";
+        EXPECT_EQ(123u,
+                  join_b_session.myscreen_->save_data.m_totalscore[0]);
     }
 
     // Per-seat save0 persistence: every machine merged ALL of its seats'
@@ -3880,6 +3943,7 @@ TEST(PickerNetworkClient,
         EXPECT_EQ(7, static_cast<int>(merged.team_size));
         EXPECT_EQ(2, static_cast<int>(merged.scen_num))
             << "each machine's save0 cursor advances as if played alone";
+        EXPECT_EQ(123u, merged.m_totalscore[0]);
         for (const char* const name :
              {"HostAce", "HostBee", "JoinAOne", "JoinATwo", "JoinAThree",
               "JoinAFour", "JoinBSolo"})
@@ -4623,59 +4687,6 @@ TEST(PickerNetworkClient,
                       join_display_client->controlled_entity_ids()[1]));
         EXPECT_FALSE(join_after_switch.mapped_ids.contains(alpha_id));
     }
-}
-
-TEST(PickerNetworkClient, join_sync_roster_ignores_remote_owned_slots)
-{
-    SaveData save;
-    prepare_single_member_network_save(save, 1, "Joiner", 1);
-    auto remote_member = std::make_unique<guy>(FAMILY_SOLDIER);
-    remote_member->name = "Remote Host";
-    remote_member->teamnum = 0;
-    save.team_list[0] = std::move(remote_member);
-    save.team_size = 2;
-    save.my_team = 1;
-
-    og::sim::LobbyState state;
-    state.players.push_back(og::sim::LobbyPlayer{
-        .player_index = 0u,
-        .name = "host-player",
-        .team = 0,
-        .character_slots = {make_lobby_slot(0u, "Remote Host", 0)},
-        .ready = false,
-        .is_host = true,
-    });
-    state.players.push_back(og::sim::LobbyPlayer{
-        .player_index = 1u,
-        .name = "join-player",
-        .team = 1,
-        .character_slots = {make_lobby_slot(0u, "Joiner", 1)},
-        .ready = false,
-        .is_host = false,
-    });
-
-    const auto excluded_slots =
-        og::ui::detail::build_remote_owned_slot_mask(state, "join-player");
-    EXPECT_TRUE(excluded_slots[0]);
-    EXPECT_FALSE(excluded_slots[1]);
-
-    save.team_list[0]->teamnum = 1;
-    save.team_list[0]->name = "Stolen";
-    save.team_list[1]->name = "Joiner Prime";
-
-    const og::sim::LobbyMessage message = og::ui::detail::make_join_message(
-        save,
-        "join-player",
-        1,
-        &excluded_slots);
-
-    ASSERT_EQ(og::sim::LobbyMessageKind::Join, message.kind());
-    const auto& join = std::get<og::sim::LobbyJoinMessage>(message.payload);
-    EXPECT_EQ("join-player", join.player.name);
-    EXPECT_EQ(1, join.player.team);
-    ASSERT_EQ(1u, join.player.character_slots.size());
-    EXPECT_EQ(1u, join.player.character_slots[0].slot_index);
-    EXPECT_EQ("Joiner Prime", join.player.character_slots[0].character.name);
 }
 
 TEST(PickerNetworkClient, join_relay_flow_connects_and_starts_game)

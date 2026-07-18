@@ -6,6 +6,7 @@
 #include <openglad/gameplay/lobby_server.h>
 #include <openglad/gameplay/sim_event_log.h>
 #include <openglad/gameplay/walker.h>
+#include <openglad/gameplay/world_snapshot.h>
 #include <openglad/interface/level_runtime_data.h>
 #include <openglad/interface/session_state.h>
 #include <openglad/platform/game_context.h>
@@ -51,6 +52,22 @@ og::sim::LobbyCharacterSlot make_slot(std::uint8_t slot_index,
         .slot_index = slot_index,
         .character = character,
     };
+}
+
+og::sim::LobbyCharacterSlot make_owned_slot(
+    std::uint8_t combined_slot_index,
+    std::int32_t guy_id,
+    const char* name,
+    std::int8_t family,
+    std::int16_t team,
+    std::uint8_t owner_player_index,
+    std::uint8_t owner_save_slot)
+{
+    og::sim::LobbyCharacterSlot slot = make_slot(
+        combined_slot_index, guy_id, name, family, team);
+    slot.owner_player_index = owner_player_index;
+    slot.owner_save_slot = owner_save_slot;
+    return slot;
 }
 
 walker* find_team_member(GameWorld& world, std::int32_t guy_id)
@@ -179,6 +196,73 @@ TEST_F(HeadlessServerRuntimeTest,
     EXPECT_EQ(1, guest->team_num());
     EXPECT_FALSE(host->has_render());
     EXPECT_FALSE(guest->has_render());
+}
+
+TEST_F(HeadlessServerRuntimeTest,
+       lobby_start_preserves_distinct_owners_with_same_private_save_slot)
+{
+    constexpr std::uint8_t host_owner = 2u;
+    constexpr std::uint8_t guest_owner = 9u;
+    constexpr std::uint8_t private_slot = 0u;
+
+    og::sim::LobbySaveDataEquivalent lobby_save;
+    lobby_save.current_campaign = "org.openglad.gladiator";
+    lobby_save.scen_num = 1;
+    lobby_save.numplayers = 2;
+    lobby_save.allied_mode = 0;
+    lobby_save.team_list = {
+        make_owned_slot(0u, 101, "Host Private Zero", FAMILY_SOLDIER, 0,
+                        host_owner, private_slot),
+        make_owned_slot(1u, 202, "Guest Private Zero", FAMILY_ARCHER, 1,
+                        guest_owner, private_slot),
+    };
+
+    initialize_from_lobby(lobby_save);
+
+    ASSERT_NE(nullptr, active_save_.team_list[0]);
+    ASSERT_NE(nullptr, active_save_.team_list[1]);
+    EXPECT_EQ(host_owner,
+              active_save_.team_list[0]->owner_player_index);
+    EXPECT_EQ(private_slot,
+              active_save_.team_list[0]->owner_save_slot);
+    EXPECT_EQ(guest_owner,
+              active_save_.team_list[1]->owner_player_index);
+    EXPECT_EQ(private_slot,
+              active_save_.team_list[1]->owner_save_slot);
+
+    walker* const host = find_team_member(level_data_->world(), 101);
+    walker* const guest = find_team_member(level_data_->world(), 202);
+    ASSERT_NE(nullptr, host);
+    ASSERT_NE(nullptr, guest);
+    ASSERT_NE(nullptr, host->myguy);
+    ASSERT_NE(nullptr, guest->myguy);
+    EXPECT_EQ(host_owner, host->myguy->owner_player_index);
+    EXPECT_EQ(private_slot, host->myguy->owner_save_slot);
+    EXPECT_EQ(guest_owner, guest->myguy->owner_player_index);
+    EXPECT_EQ(private_slot, guest->myguy->owner_save_slot);
+
+    const og::sim::WorldSnapshot snapshot = with_context([&] {
+        return og::sim::capture_keyframe_snapshot(level_data_->world());
+    });
+    const auto find_snapshot_guy =
+        [&snapshot](std::int32_t guy_id) -> const og::sim::GuySnapshot* {
+            for (const og::sim::GuySnapshot& candidate :
+                 snapshot.guy_snapshots)
+            {
+                if (candidate.guy_id == guy_id)
+                    return &candidate;
+            }
+            return nullptr;
+        };
+
+    const og::sim::GuySnapshot* const host_snapshot = find_snapshot_guy(101);
+    const og::sim::GuySnapshot* const guest_snapshot = find_snapshot_guy(202);
+    ASSERT_NE(nullptr, host_snapshot);
+    ASSERT_NE(nullptr, guest_snapshot);
+    EXPECT_EQ(host_owner, host_snapshot->owner_player_index);
+    EXPECT_EQ(private_slot, host_snapshot->owner_save_slot);
+    EXPECT_EQ(guest_owner, guest_snapshot->owner_player_index);
+    EXPECT_EQ(private_slot, guest_snapshot->owner_save_slot);
 }
 
 TEST_F(HeadlessServerRuntimeTest,

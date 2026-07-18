@@ -903,11 +903,24 @@ void draw_teams_menu_content(const TeamsMenuFrameState& state, text& mytext)
             10, row_y, 10, 10, static_cast<unsigned char>(t * 16 + 40), 255);
 
         int hero_count = 0;
-        for (std::size_t slot = 0; slot < save.team_list.size(); ++slot)
+        if (state.wiring.networked)
         {
-            const auto& member = save.team_list[slot];
-            if (member && member->teamnum == t)
-                ++hero_count;
+            for (const og::sim::LobbyPlayer& player : players)
+            {
+                if (player.team == t)
+                {
+                    hero_count += static_cast<int>(
+                        player.character_slots.size());
+                }
+            }
+        }
+        else
+        {
+            for (const auto& member : save.team_list)
+            {
+                if (member && member->teamnum == t)
+                    ++hero_count;
+            }
         }
 
         std::string seat_tag;
@@ -2575,8 +2588,22 @@ Sint32 go_menu(Sint32 arg1)
 	if (arg1)
 		arg1 = 1;
 
-    // Make sure we have a valid team
-    if (og::runtime::current_session->myscreen_->save_data.team_size < 1)
+    // Make sure the launched match has a valid team. Networked picker saves
+    // remain private, so a spectator/empty-local peer must consult the
+    // authoritative lobby roster rather than only its own save_data.
+    bool has_gameplay_roster =
+        og::runtime::current_session->myscreen_->save_data.team_size > 0;
+    if (picker_lobby_is_networked())
+    {
+        const std::vector<og::sim::LobbyPlayer> players =
+            picker_lobby_players();
+        has_gameplay_roster = std::any_of(
+            players.begin(), players.end(),
+            [](const og::sim::LobbyPlayer& player) {
+                return !player.character_slots.empty();
+            });
+    }
+    if (!has_gameplay_roster)
     {
         popup_dialog("NEED A TEAM!", "Please hire a\nteam before\nstarting the level");
 

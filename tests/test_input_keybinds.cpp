@@ -233,13 +233,13 @@ TEST(InputKeybinds, input_touch_keystate_feeds_input_state_held_and_pressed_edge
 }
 
 
-TEST(InputKeybinds, input_touch_diagonals_require_eight_direction_mode)
+TEST(InputKeybinds, input_touch_diagonals_survive_four_direction_mode_resets)
 {
-    // The touch overlay's 8-way joystick sets diagonal keys; in FourDirection
-    // mode input_state_from_sdl zeroes diagonal held bits, which is why
-    // openglad_web_touch_enable switches player 0 to EightDirection.
+    // Keyboard/joystick diagonal bindings remain a player control-mode choice,
+    // but the touch overlay's 8-way stick must keep working after settings or
+    // Restore Defaults puts player 0 back in FourDirection mode.
     disablePlayerJoystick(0);
-    ControlModeGuard mode_guard(0);
+    FullControlSnapshotGuard controls_guard;
     TouchKeystateGuard touch_guard;
     InputHardwareState& hw = input_hardware_state();
 
@@ -249,8 +249,15 @@ TEST(InputKeybinds, input_touch_diagonals_require_eight_direction_mode)
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
     hw.touch_keystate[0][KEY_UP_RIGHT] = true;
     input_state_from_sdl(input);
-    ASSERT_TRUE(!input.players[0].held[KEY_UP_RIGHT])
-        << "4-direction mode should suppress a touch-held diagonal";
+    ASSERT_TRUE(input.players[0].held[KEY_UP_RIGHT])
+        << "4-direction mode must not suppress the intrinsically 8-way touch stick";
+
+    reset_default_player_controls();
+    ASSERT_EQ(static_cast<int>(ControlDirectionMode::FourDirection),
+              get_player_control_mode(0));
+    input_state_from_sdl(input);
+    ASSERT_TRUE(input.players[0].held[KEY_UP_RIGHT])
+        << "a controls lifecycle reset must not disable touch diagonals";
 
     set_player_control_mode(0, static_cast<int>(ControlDirectionMode::EightDirection));
     input_state_from_sdl(input);
