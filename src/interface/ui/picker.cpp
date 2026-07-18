@@ -4006,9 +4006,10 @@ static SdlPickerClient& emscripten_picker_client()
     return *client;
 }
 
-static void run_picker_state_machine_until_game_requested()
+static void run_picker_state_machine_until_game_requested(
+    og::ui::PickerScreen initial_screen = og::ui::PickerScreen::MainMenu)
 {
-    og::ui::run_picker(emscripten_picker_client());
+    og::ui::run_picker(emscripten_picker_client(), initial_screen);
 }
 
 // Check if game start was requested (called from main after picker_init)
@@ -4083,7 +4084,12 @@ void picker_reinit_after_game()
 
     picker_reinitialize_lobby_after_game();
 
-    run_picker_state_machine_until_game_requested();
+    // The native go_menu loop returns here after glad_main and redraws the
+    // team-build/Continue screen. The browser unwinds gameplay through its
+    // outer rAF state machine, so explicitly resume at the same destination
+    // instead of constructing a fresh picker at MainMenu.
+    run_picker_state_machine_until_game_requested(
+        og::ui::PickerScreen::TeamBuild);
     Log("picker_reinit_after_game: picker returned, g_start_game_requested={}\n", g_start_game_requested);
 }
 #endif

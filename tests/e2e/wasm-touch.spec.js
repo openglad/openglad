@@ -29,6 +29,7 @@ const OK_BUTTON = { x: 160, y: 140 };
 // 320x200 grid; same coords the wasm-networking spec navigates with).
 const CONTINUE_BUTTON = { x: 150, y: 85 };
 const NETWORKING_BUTTON = { x: 250, y: 150 };
+const NETWORKING_TITLE_REGION = { x: 60, y: 18, w: 200, h: 18 };
 
 // Web relay-first networking-menu ROOM CODE field (button id
 // "network_room_value" in src/interface/ui/picker.cpp).
@@ -890,8 +891,26 @@ test.describe('Touch gameplay controls', () => {
     await page.waitForFunction(() => window.__opengladGameState === 1, null, {
       timeout: 15_000,
     });
+    await waitForPickerReady(page, 1_000);
     // Leaving gameplay hides the touch gameplay cluster again.
     await expect(page.locator('#tc-game')).not.toHaveClass(/tc-show/);
+
+    // Browser gameplay unwinds through the outer rAF state machine. It must
+    // resume on team build (the Continue screen), not recreate the top-level
+    // main menu. NETWORKING exists only on team build, so opening it is an
+    // end-to-end assertion of the post-level destination.
+    const teamBuildTitle = await captureRegion(page, NETWORKING_TITLE_REGION);
+    await tapCanvasGameCoord(
+      page,
+      NETWORKING_BUTTON.x,
+      NETWORKING_BUTTON.y,
+    );
+    await waitForRegionToLeave(
+      page,
+      NETWORKING_TITLE_REGION,
+      teamBuildTitle,
+      'post-game picker should resume at team build, where NETWORKING opens',
+    );
   });
 
   test('audio context unlocks from the first touch gesture', async ({ page }) => {

@@ -130,6 +130,22 @@ TEST(PickerStateMachine, picker_state_campaign_cancel_returns_to_main_menu)
     ASSERT_EQ(0, client.show_team_build_calls) << "campaign cancel should not enter team build";
 }
 
+TEST(PickerStateMachine,
+     picker_state_can_resume_at_team_build_without_showing_main_menu_first)
+{
+    ScriptedPickerClient client;
+    client.main_menu_actions = {og::ui::MainMenuAction::Quit};
+    client.team_build_result = og::ui::TeamBuildAction::BackToMainMenu;
+
+    og::ui::run_picker(client, og::ui::PickerScreen::TeamBuild);
+
+    EXPECT_EQ(1, client.show_team_build_calls)
+        << "post-level browser re-entry should land on the Continue screen";
+    EXPECT_EQ(1, client.show_main_menu_calls)
+        << "the main menu should appear only after the user chooses Back";
+    EXPECT_EQ(0, client.run_game_calls);
+}
+
 
 TEST(PickerStateMachine, picker_state_load_fail_routes_to_team_build)
 {
