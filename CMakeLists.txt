@@ -2059,6 +2059,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/parity/test_parity_coverage_gate.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_ctf_ui.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_tower_run.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_menu_pins.cpp
         )
 
         function(og_add_test_group NAME)
@@ -2321,6 +2322,14 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             test_intro_smoke.cpp
             test_campaign_and_level_picker.cpp
             test_level_progress.cpp
+        )
+
+        # WP1 menu-engine group (design §1.9 G10): fast, engine-focused menu
+        # tests live here, NEVER in og_test_menu_ui (~130s vs the 180s
+        # timeout). Holds the G2 pin-then-migrate exact-table oracles and,
+        # as the engine lands, tests/test_menu_engine.cpp.
+        og_add_test_group(og_test_menu_engine FILES
+            test_menu_pins.cpp
         )
 
         og_add_test_group(og_test_input FILES

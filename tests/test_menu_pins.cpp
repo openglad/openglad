@@ -1,0 +1,530 @@
+// WP1 step 0 — G2 "pin-then-migrate" exact-table pins
+// (docs/company-basecamp-design.md §1.2 G2, §1.8 step 0).
+//
+// Before the menu engine re-hosts ANY screen whose test_menu_layout coverage
+// is only overlap/bounds today, the CURRENT static k_* table is transcribed
+// here as a hand-owned kExpected pin: every field of every row (id, label,
+// hotkey, rect, action, arg, nav, hidden). These tables are the differential
+// oracle every later migration step is judged against — when the engine
+// materializes the same screen from a spec, a transcription typo fails one of
+// these pins, not a new self-referential spec test (G11).
+//
+// Pinned screens (the "thinly-pinned" set named by G2): main menu (the
+// compiled build variant — all four k_mainmenu_buttons variants are
+// transcribed under the same preprocessor selection picker.cpp uses, so
+// whichever variant a build compiles is the one pinned), hire, train, the
+// save/load slot menus, view-team, and the progress screen (whose table is
+// function-local in create_progress_menu; it is pinned through the live
+// vbutton surface instead of an accessor).
+//
+// DO NOT relax or re-pin these tables during WP1 (Layer E). They change only
+// in the Layer-F commits that intentionally reshape a screen, atomically with
+// that screen's re-pin (§7).
+
+#include <openglad/interface/button.h>
+#include <openglad/interface/input.h>
+#include <openglad/interface/screen.h>
+#include <openglad/resources/save_data.h>
+#include "../src/interface/ui/picker_sdl_defs.h"
+#include "test_interact.h"
+#include <gtest/gtest.h>
+#include <SDL3/SDL.h>
+
+#include <atomic>
+#include <string>
+#include <vector>
+
+namespace
+{
+
+struct ExpectedButton
+{
+    const char* id;
+    const char* label;
+    int hotkey;
+    int x, y, w, h;
+    Sint32 myfun;
+    Sint32 arg;
+    MenuNav nav;
+    bool hidden = false;
+};
+
+// Field-for-field comparison of a picker button table against its
+// transcription. Every mismatch names the screen, index, and field.
+void check_exact_table(button* buttons, int count,
+                       const ExpectedButton* expected, int expected_count,
+                       const char* screen_name)
+{
+    ASSERT_EQ(expected_count, count) << screen_name << " row count";
+    for (int i = 0; i < count; ++i)
+    {
+        const ExpectedButton& want = expected[i];
+        const button& got = buttons[i];
+        EXPECT_EQ(want.id, got.id) << screen_name << " index " << i;
+        EXPECT_EQ(want.label, got.label) << screen_name << " " << got.id;
+        EXPECT_EQ(want.hotkey, got.hotkey) << screen_name << " " << got.id;
+        EXPECT_EQ(want.x, got.x) << screen_name << " " << got.id;
+        EXPECT_EQ(want.y, got.y) << screen_name << " " << got.id;
+        EXPECT_EQ(want.w, got.sizex) << screen_name << " " << got.id;
+        EXPECT_EQ(want.h, got.sizey) << screen_name << " " << got.id;
+        EXPECT_EQ(want.myfun, got.myfun) << screen_name << " " << got.id;
+        EXPECT_EQ(want.arg, got.arg1) << screen_name << " " << got.id;
+        EXPECT_EQ(want.nav.up, got.nav.up) << screen_name << " " << got.id;
+        EXPECT_EQ(want.nav.down, got.nav.down) << screen_name << " " << got.id;
+        EXPECT_EQ(want.nav.left, got.nav.left) << screen_name << " " << got.id;
+        EXPECT_EQ(want.nav.right, got.nav.right)
+            << screen_name << " " << got.id;
+        EXPECT_EQ(want.hidden, got.hidden) << screen_name << " " << got.id;
+        EXPECT_FALSE(got.no_draw) << screen_name << " " << got.id;
+    }
+}
+
+} // namespace
+
+// ---------------------------------------------------------------------------
+// Main menu: the four k_mainmenu_buttons build variants (picker.cpp). The
+// SAME preprocessor selection picker.cpp uses (including its
+// USE_TOUCH_INPUT => DISABLE_MULTIPLAYER mapping) picks the table below, so
+// the pin always matches the variant the build actually compiled. Native CI
+// pins the native+MP table; a touch or web build of this test pins its own.
+// ---------------------------------------------------------------------------
+
+#ifdef USE_TOUCH_INPUT
+#ifndef DISABLE_MULTIPLAYER
+#define DISABLE_MULTIPLAYER
+#endif
+#endif
+
+#ifndef DISABLE_MULTIPLAYER
+
+#ifdef __EMSCRIPTEN__
+// Web + multiplayer: QUIT is replaced by HELP (same rect, no hotkey).
+static const ExpectedButton kExpectedMainMenu[] = {
+    {"begin_new_game", "", KEYSTATE_UNKNOWN, 80, 50, 140, 20,
+     button_action_id(ButtonAction::BeginMenu), 1, MenuNav{.down = 1}, false},
+    {"continue_game", "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 75, 140, 20,
+     button_action_id(ButtonAction::CreateTeamMenu), -1,
+     MenuNav{.up = 0, .down = 5}},
+    {"4_player", "4 PLAYER", KEYSTATE_4, 152, 125, 68, 20,
+     button_action_id(ButtonAction::SetPlayerMode), 4,
+     MenuNav{.up = 4, .down = 6, .left = 3}},
+    {"3_player", "3 PLAYER", KEYSTATE_3, 80, 125, 68, 20,
+     button_action_id(ButtonAction::SetPlayerMode), 3,
+     MenuNav{.up = 5, .down = 6, .right = 2}},
+    {"2_player", "2 PLAYER", KEYSTATE_2, 152, 100, 68, 20,
+     button_action_id(ButtonAction::SetPlayerMode), 2,
+     MenuNav{.up = 1, .down = 2, .left = 5}},
+    {"1_player", "1 PLAYER", KEYSTATE_1, 80, 100, 68, 20,
+     button_action_id(ButtonAction::SetPlayerMode), 1,
+     MenuNav{.up = 1, .down = 3, .right = 4}},
+    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 148, 140, 10,
+     button_action_id(ButtonAction::OpenDifficultyMenu), -1,
+     MenuNav{.up = 3, .down = 7}},
+    {"pvp_allied", "PVP: Allied", KEYSTATE_UNKNOWN, 80, 160, 68, 10,
+     button_action_id(ButtonAction::AlliedMode), -1,
+     MenuNav{.up = 6, .down = 9, .right = 8}},
+    {"level_edit", "Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10,
+     button_action_id(ButtonAction::DoLevelEdit), -1,
+     MenuNav{.up = 6, .down = 10, .left = 7}},
+    {"help", "HELP", KEYSTATE_UNKNOWN, 120, 182, 60, 15,
+     button_action_id(ButtonAction::ShowHelp), -1,
+     MenuNav{.up = 7, .left = 10}},
+    {"options", "", KEYSTATE_UNKNOWN, 90, 182, 20, 15,
+     button_action_id(ButtonAction::MainOptions), -1,
+     MenuNav{.up = 8, .right = 9}},
+};
+#else
+// Native + multiplayer: the variant CI compiles and pins.
+static const ExpectedButton kExpectedMainMenu[] = {
+    {"begin_new_game", "", KEYSTATE_UNKNOWN, 80, 50, 140, 20,
+     button_action_id(ButtonAction::BeginMenu), 1, MenuNav{.down = 1}, false},
+    {"continue_game", "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 75, 140, 20,
+     button_action_id(ButtonAction::CreateTeamMenu), -1,
+     MenuNav{.up = 0, .down = 5}},
+    {"4_player", "4 PLAYER", KEYSTATE_4, 152, 125, 68, 20,
+     button_action_id(ButtonAction::SetPlayerMode), 4,
+     MenuNav{.up = 4, .down = 6, .left = 3}},
+    {"3_player", "3 PLAYER", KEYSTATE_3, 80, 125, 68, 20,
+     button_action_id(ButtonAction::SetPlayerMode), 3,
+     MenuNav{.up = 5, .down = 6, .right = 2}},
+    {"2_player", "2 PLAYER", KEYSTATE_2, 152, 100, 68, 20,
+     button_action_id(ButtonAction::SetPlayerMode), 2,
+     MenuNav{.up = 1, .down = 2, .left = 5}},
+    {"1_player", "1 PLAYER", KEYSTATE_1, 80, 100, 68, 20,
+     button_action_id(ButtonAction::SetPlayerMode), 1,
+     MenuNav{.up = 1, .down = 3, .right = 4}},
+    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 148, 140, 10,
+     button_action_id(ButtonAction::OpenDifficultyMenu), -1,
+     MenuNav{.up = 3, .down = 7}},
+    {"pvp_allied", "PVP: Allied", KEYSTATE_UNKNOWN, 80, 160, 68, 10,
+     button_action_id(ButtonAction::AlliedMode), -1,
+     MenuNav{.up = 6, .down = 9, .right = 8}},
+    {"level_edit", "Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10,
+     button_action_id(ButtonAction::DoLevelEdit), -1,
+     MenuNav{.up = 6, .down = 10, .left = 7}},
+    // The trailing space in "QUIT " is part of the shipped label.
+    {"quit", "QUIT ", KEYSTATE_ESCAPE, 120, 182, 60, 15,
+     button_action_id(ButtonAction::QuitMenu), 0, MenuNav{.up = 7, .left = 10}},
+    {"options", "", KEYSTATE_UNKNOWN, 90, 182, 20, 15,
+     button_action_id(ButtonAction::MainOptions), -1,
+     MenuNav{.up = 8, .right = 9}},
+};
+#endif // __EMSCRIPTEN__
+
+#else // DISABLE_MULTIPLAYER
+
+#ifdef __EMSCRIPTEN__
+// Web without multiplayer: single-column stack, HELP instead of QUIT.
+static const ExpectedButton kExpectedMainMenu[] = {
+    {"begin_new_game", "", KEYSTATE_UNKNOWN, 80, 50, 140, 20,
+     button_action_id(ButtonAction::BeginMenu), 1, MenuNav{.down = 1}, false},
+    {"continue_game", "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 75, 140, 20,
+     button_action_id(ButtonAction::CreateTeamMenu), -1,
+     MenuNav{.up = 0, .down = 2}},
+    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 100, 140, 15,
+     button_action_id(ButtonAction::OpenDifficultyMenu), -1,
+     MenuNav{.up = 1, .down = 3}},
+    {"level_edit", "Level Edit", KEYSTATE_UNKNOWN, 80, 118, 140, 15,
+     button_action_id(ButtonAction::DoLevelEdit), -1,
+     MenuNav{.up = 2, .down = 4}},
+    {"help", "HELP", KEYSTATE_UNKNOWN, 120, 175, 60, 15,
+     button_action_id(ButtonAction::ShowHelp), -1, MenuNav{.up = 3, .left = 5}},
+    {"options", "", KEYSTATE_UNKNOWN, 90, 175, 20, 15,
+     button_action_id(ButtonAction::MainOptions), -1,
+     MenuNav{.up = 3, .right = 4}},
+};
+#else
+// Native without multiplayer (also the USE_TOUCH_INPUT shape).
+static const ExpectedButton kExpectedMainMenu[] = {
+    {"begin_new_game", "", KEYSTATE_UNKNOWN, 80, 50, 140, 20,
+     button_action_id(ButtonAction::BeginMenu), 1, MenuNav{.down = 1}, false},
+    {"continue_game", "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 75, 140, 20,
+     button_action_id(ButtonAction::CreateTeamMenu), -1,
+     MenuNav{.up = 0, .down = 2}},
+    {"difficulty", "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 100, 140, 15,
+     button_action_id(ButtonAction::OpenDifficultyMenu), -1,
+     MenuNav{.up = 1, .down = 3}},
+    {"level_edit", "Level Edit", KEYSTATE_UNKNOWN, 80, 118, 140, 15,
+     button_action_id(ButtonAction::DoLevelEdit), -1,
+     MenuNav{.up = 2, .down = 4}},
+    {"quit", "QUIT ", KEYSTATE_ESCAPE, 120, 175, 60, 15,
+     button_action_id(ButtonAction::QuitMenu), 0, MenuNav{.up = 3, .left = 5}},
+    {"options", "", KEYSTATE_UNKNOWN, 90, 175, 20, 15,
+     button_action_id(ButtonAction::MainOptions), -1,
+     MenuNav{.up = 3, .right = 4}},
+};
+#endif // __EMSCRIPTEN__
+
+#endif // DISABLE_MULTIPLAYER
+
+TEST(MenuEnginePins, mainmenu_exact_table)
+{
+    button* buttons = picker_mainmenu_buttons();
+    const int count = picker_mainmenu_button_count();
+    check_exact_table(buttons, count, kExpectedMainMenu,
+                      static_cast<int>(std::size(kExpectedMainMenu)),
+                      "mainmenu");
+    // The options gear is the last row in every variant — the index the
+    // OPTIONS_BUTTON_INDEX #define encodes in picker.cpp.
+    ASSERT_EQ("options", buttons[count - 1].id);
+}
+
+// ---------------------------------------------------------------------------
+// View-team (k_viewteam_buttons): GO | BACK under the roster listing. BACK
+// returns MENU_REDRAW here (the parent create_team_menu keeps running).
+// ---------------------------------------------------------------------------
+
+TEST(MenuEnginePins, viewteam_exact_table)
+{
+    static const ExpectedButton kExpected[] = {
+        {"go", "GO", KEYSTATE_UNKNOWN, 270, 170, 40, 20,
+         button_action_id(ButtonAction::GoMenu), -1, MenuNav{.left = 1}},
+        {"back", "BACK", KEYSTATE_ESCAPE, 10, 170, 44, 20,
+         button_action_id(ButtonAction::ReturnMenu), MENU_REDRAW,
+         MenuNav{.right = 0}},
+    };
+    button* buttons = picker_viewteam_buttons();
+    const int count = picker_viewteam_button_count();
+    check_exact_table(buttons, count, kExpected,
+                      static_cast<int>(std::size(kExpected)), "viewteam");
+}
+
+// ---------------------------------------------------------------------------
+// Train (k_trainmenu_buttons): the six +/- stat pairs beside the portrait,
+// PREV/NEXT cyclers, RENAME/DETAILS.. header row, team cycler, ACCEPT /
+// VIEW TEAM / BACK bottom row.
+// ---------------------------------------------------------------------------
+
+TEST(MenuEnginePins, trainmenu_exact_table)
+{
+    static const ExpectedButton kExpected[] = {
+        {"prev", "PREV", KEYSTATE_UNKNOWN, 10, 40, 40, 20,
+         button_action_id(ButtonAction::CycleTeamGuy), -1,
+         MenuNav{.down = 2, .right = 1}},
+        {"next", "NEXT", KEYSTATE_UNKNOWN, 110, 40, 40, 20,
+         button_action_id(ButtonAction::CycleTeamGuy), 1,
+         MenuNav{.down = 3, .left = 0, .right = 16}},
+        {"dec_str", "", KEYSTATE_UNKNOWN, 16, 70, 16, 10,
+         button_action_id(ButtonAction::DecreaseStat), BUT_STR,
+         MenuNav{.up = 0, .down = 4, .right = 3}},
+        {"inc_str", "", KEYSTATE_UNKNOWN, 126, 70, 16, 12,
+         button_action_id(ButtonAction::IncreaseStat), BUT_STR,
+         MenuNav{.up = 1, .down = 5, .left = 2}},
+        {"dec_dex", "", KEYSTATE_UNKNOWN, 16, 85, 16, 10,
+         button_action_id(ButtonAction::DecreaseStat), BUT_DEX,
+         MenuNav{.up = 2, .down = 6, .right = 5}},
+        {"inc_dex", "", KEYSTATE_UNKNOWN, 126, 85, 16, 12,
+         button_action_id(ButtonAction::IncreaseStat), BUT_DEX,
+         MenuNav{.up = 3, .down = 7, .left = 4}},
+        {"dec_con", "", KEYSTATE_UNKNOWN, 16, 100, 16, 10,
+         button_action_id(ButtonAction::DecreaseStat), BUT_CON,
+         MenuNav{.up = 4, .down = 8, .right = 7}},
+        {"inc_con", "", KEYSTATE_UNKNOWN, 126, 100, 16, 12,
+         button_action_id(ButtonAction::IncreaseStat), BUT_CON,
+         MenuNav{.up = 5, .down = 9, .left = 6}},
+        {"dec_int", "", KEYSTATE_UNKNOWN, 16, 115, 16, 10,
+         button_action_id(ButtonAction::DecreaseStat), BUT_INT,
+         MenuNav{.up = 6, .down = 10, .right = 9}},
+        {"inc_int", "", KEYSTATE_UNKNOWN, 126, 115, 16, 12,
+         button_action_id(ButtonAction::IncreaseStat), BUT_INT,
+         MenuNav{.up = 7, .down = 11, .left = 8}},
+        {"dec_armor", "", KEYSTATE_UNKNOWN, 16, 130, 16, 10,
+         button_action_id(ButtonAction::DecreaseStat), BUT_ARMOR,
+         MenuNav{.up = 8, .down = 12, .right = 11}},
+        {"inc_armor", "", KEYSTATE_UNKNOWN, 126, 130, 16, 12,
+         button_action_id(ButtonAction::IncreaseStat), BUT_ARMOR,
+         MenuNav{.up = 9, .down = 13, .left = 10}},
+        {"dec_level", "", KEYSTATE_UNKNOWN, 16, 145, 16, 10,
+         button_action_id(ButtonAction::DecreaseStat), BUT_LEVEL,
+         MenuNav{.up = 10, .down = 19, .right = 13}},
+        {"inc_level", "", KEYSTATE_UNKNOWN, 126, 145, 16, 12,
+         button_action_id(ButtonAction::IncreaseStat), BUT_LEVEL,
+         MenuNav{.up = 11, .down = 15, .left = 12, .right = 18}},
+        {"view_team", "VIEW TEAM", KEYSTATE_UNKNOWN, 190, 170, 90, 20,
+         button_action_id(ButtonAction::CreateViewMenu), -1,
+         MenuNav{.up = 18, .left = 15}},
+        {"accept", "ACCEPT", KEYSTATE_UNKNOWN, 80, 170, 80, 20,
+         button_action_id(ButtonAction::EditGuy), -1,
+         MenuNav{.up = 13, .left = 19, .right = 14}},
+        {"rename", "RENAME", KEYSTATE_UNKNOWN, 174, 8, 64, 22,
+         button_action_id(ButtonAction::NameGuy), 1,
+         MenuNav{.down = 18, .left = 1, .right = 17}},
+        {"details", "DETAILS..", KEYSTATE_UNKNOWN, 240, 8, 64, 22,
+         button_action_id(ButtonAction::CreateDetailMenu), 0,
+         MenuNav{.down = 18, .left = 16}},
+        {"change_team", "Playing on Team X", KEYSTATE_UNKNOWN, 174, 138, 133,
+         22, button_action_id(ButtonAction::ChangeTeam), 1,
+         MenuNav{.up = 17, .down = 14, .left = 13}},
+        {"back", "BACK", KEYSTATE_ESCAPE, 10, 170, 40, 20,
+         button_action_id(ButtonAction::ReturnMenu), MENU_EXIT,
+         MenuNav{.up = 12, .right = 15}},
+    };
+    button* buttons = picker_trainmenu_buttons();
+    const int count = picker_trainmenu_button_count();
+    check_exact_table(buttons, count, kExpected,
+                      static_cast<int>(std::size(kExpected)), "trainmenu");
+}
+
+// ---------------------------------------------------------------------------
+// Hire (k_hiremenu_buttons): PREV/NEXT candidate cyclers, the hire-team
+// cycler (label rewritten by change_hire_teamnum via index 2 — the G8 raw
+// allbuttons_[2] write), HIRE ME, BACK.
+// ---------------------------------------------------------------------------
+
+TEST(MenuEnginePins, hiremenu_exact_table)
+{
+    static const ExpectedButton kExpected[] = {
+        {"prev", "PREV", KEYSTATE_UNKNOWN, 10, 40, 40, 20,
+         button_action_id(ButtonAction::CycleGuy), -1,
+         MenuNav{.down = 4, .right = 1}},
+        {"next", "NEXT", KEYSTATE_UNKNOWN, 110, 40, 40, 20,
+         button_action_id(ButtonAction::CycleGuy), 1,
+         MenuNav{.down = 3, .left = 0, .right = 3}},
+        {"change_hire_team", "hiring for team X", KEYSTATE_UNKNOWN, 190, 170,
+         110, 20, button_action_id(ButtonAction::ChangeHireTeam), 1,
+         MenuNav{.up = 1, .left = 3}},
+        {"hire_me", "HIRE ME", KEYSTATE_UNKNOWN, 82, 166, 88, 28,
+         button_action_id(ButtonAction::AddGuy), -1,
+         MenuNav{.up = 1, .left = 4, .right = 2}},
+        {"back", "BACK", KEYSTATE_ESCAPE, 10, 170, 40, 20,
+         button_action_id(ButtonAction::ReturnMenu), MENU_EXIT,
+         MenuNav{.up = 0, .right = 3}},
+    };
+    button* buttons = picker_hiremenu_buttons();
+    const int count = picker_hiremenu_button_count();
+    check_exact_table(buttons, count, kExpected,
+                      static_cast<int>(std::size(kExpected)), "hiremenu");
+}
+
+// ---------------------------------------------------------------------------
+// Save/load slot menus (k_saveteam_buttons / k_loadteam_buttons): ten
+// 220x10 slot rows at 15px pitch from y=25 plus BACK, one vertical nav
+// cycle. The two tables differ only in ids, action, and static labels
+// (which do_save_or_load overwrites from the slot headers at draw time —
+// including the shipped mixed-case "SLOT Six".."SLOT Ten" defaults pinned
+// here).
+// ---------------------------------------------------------------------------
+
+namespace
+{
+// Shared shape for both slot menus; `slot_labels` are the static table
+// defaults, row i covers slot i+1.
+void check_slot_menu(button* buttons, int count, const char* id_prefix,
+                     ButtonAction action, const char* screen_name)
+{
+    static const char* kSlotLabels[10] = {
+        "SLOT ONE", "SLOT TWO", "SLOT THREE", "SLOT FOUR", "SLOT FIVE",
+        "SLOT Six", "SLOT Seven", "SLOT Eight", "SLOT Nine", "SLOT Ten",
+    };
+    ASSERT_EQ(11, count) << screen_name;
+    std::vector<ExpectedButton> expected;
+    std::vector<std::string> ids;
+    ids.reserve(10);
+    for (int i = 0; i < 10; ++i)
+        ids.push_back(std::string(id_prefix) + std::to_string(i + 1));
+    for (int i = 0; i < 10; ++i)
+    {
+        expected.push_back(ExpectedButton{
+            ids[static_cast<std::size_t>(i)].c_str(), kSlotLabels[i],
+            KEYSTATE_UNKNOWN, 25, 25 + 15 * i, 220, 10,
+            button_action_id(action), i + 1,
+            MenuNav{.up = (i == 0) ? 10 : i - 1, .down = i + 1}});
+    }
+    expected.push_back(ExpectedButton{
+        "back", "BACK", KEYSTATE_ESCAPE, 25, 175, 40, 20,
+        button_action_id(ButtonAction::ReturnMenu), MENU_EXIT,
+        MenuNav{.up = 9, .down = 0}});
+    check_exact_table(buttons, count, expected.data(),
+                      static_cast<int>(expected.size()), screen_name);
+}
+} // namespace
+
+TEST(MenuEnginePins, saveteam_exact_table)
+{
+    // The accessor materializes the table the count reads — call it first.
+    button* buttons = picker_saveteam_buttons();
+    const int count = picker_saveteam_button_count();
+    check_slot_menu(buttons, count, "save_slot_", ButtonAction::DoSave,
+                    "saveteam");
+}
+
+TEST(MenuEnginePins, loadteam_exact_table)
+{
+    button* buttons = picker_loadteam_buttons();
+    const int count = picker_loadteam_button_count();
+    check_slot_menu(buttons, count, "load_slot_", ButtonAction::DoLoad,
+                    "loadteam");
+}
+
+// ---------------------------------------------------------------------------
+// Progress (create_progress_menu, picker_team_build.cpp): the button table
+// is FUNCTION-LOCAL, so there is no accessor to transcribe from. Pin the
+// live vbutton surface instead: enter the screen for real, snapshot
+// allbuttons via the interaction API, and compare against the transcription.
+//
+// Fields not observable through the live surface, transcribed here for the
+// migration-time differential (picker_team_build.cpp, create_progress_menu):
+//   prev: myfun=0 (keyboard-dead by design at Layer E), arg=-1,
+//         nav{.right=1}, hotkey=KEYSTATE_UNKNOWN
+//   next: myfun=0, arg=1, nav{.left=0, .right=2}, hotkey=KEYSTATE_UNKNOWN
+//   back: myfun=ReturnMenu, arg=MENU_EXIT, nav{.left=1},
+//         hotkey=KEYSTATE_ESCAPE
+// PREV/NEXT are dispatched by the loop's own retvalue==MENU_OK checks, not
+// do_call; the screen returns MENU_REDRAW to its parent.
+// ---------------------------------------------------------------------------
+
+namespace
+{
+struct ProgressPinState
+{
+    std::atomic<bool> finished{false};
+    bool saw_menu = false;
+    std::vector<Interactable> snapshot;
+};
+
+int progress_pin_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* state = static_cast<ProgressPinState*>(data);
+
+    // "prev" is unique to the progress menu on this path (the ambiguous
+    // per-screen "back" is not a safe wait target).
+    if (!wait_for_interactable("prev", 10000))
+    {
+        state->finished.store(true, std::memory_order_relaxed);
+        return 0;
+    }
+    state->saw_menu = true;
+    // Let the blocking loop settle before snapshotting/clicking.
+    SDL_Delay(500);
+    state->snapshot = get_interactables();
+    SDL_Delay(300);
+    interact("back");
+    state->finished.store(true, std::memory_order_relaxed);
+    return 0;
+}
+} // namespace
+
+TEST(MenuEnginePins, progress_menu_exact_layout)
+{
+    struct ExpectedInteractable
+    {
+        const char* id;
+        const char* label;
+        int x, y, w, h;
+    };
+    static const ExpectedInteractable kExpected[] = {
+        {"prev", "PREV", 30, 170, 40, 20},
+        {"next", "NEXT", 80, 170, 40, 20},
+        {"back", "BACK", 260, 170, 50, 20},
+    };
+
+    auto& save = og::runtime::current_session->myscreen_->save_data;
+    const short old_scen = save.scen_num;
+    const unsigned char old_players = save.numplayers;
+    const std::string old_campaign = save.current_campaign;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.current_campaign = "org.openglad.gladiator";
+
+    clear_events();
+    auto& input_hw = input_hardware_state();
+    input_hw.mouse.left = 0;
+    input_hw.mouse.right = 0;
+    input_hw.picker_was_left_down = false;
+    input_hw.picker_was_right_down = false;
+
+    ProgressPinState state;
+    SDL_Thread* thread =
+        SDL_CreateThread(progress_pin_injector, "progress_pin", &state);
+    ASSERT_TRUE(thread != nullptr) << "injector thread started";
+
+    const Sint32 r = create_progress_menu(0);
+
+    SDL_WaitThread(thread, nullptr);
+    clear_events();
+
+    save.scen_num = old_scen;
+    save.numplayers = old_players;
+    save.current_campaign = old_campaign;
+
+    ASSERT_TRUE(state.finished.load(std::memory_order_relaxed));
+    ASSERT_TRUE(state.saw_menu) << "progress menu should have opened";
+    ASSERT_EQ(MENU_REDRAW, r)
+        << "progress BACK returns REDRAW to the SCENARIO subscreen";
+
+    ASSERT_EQ(std::size(kExpected), state.snapshot.size())
+        << "progress screen is exactly PREV | NEXT | BACK";
+    for (std::size_t i = 0; i < std::size(kExpected); ++i)
+    {
+        const ExpectedInteractable& want = kExpected[i];
+        const Interactable& got = state.snapshot[i];
+        EXPECT_EQ(want.id, got.id) << "progress index " << i;
+        EXPECT_EQ(want.label, got.label) << "progress " << got.id;
+        EXPECT_EQ(want.x, got.x) << "progress " << got.id;
+        EXPECT_EQ(want.y, got.y) << "progress " << got.id;
+        EXPECT_EQ(want.w, got.width) << "progress " << got.id;
+        EXPECT_EQ(want.h, got.height) << "progress " << got.id;
+        EXPECT_FALSE(got.hidden) << "progress " << got.id;
+    }
+}
