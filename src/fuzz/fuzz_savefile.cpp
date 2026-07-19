@@ -13,7 +13,9 @@
 //   2 bytes  - allied mode (v7+)
 //   2 bytes  - team list size (short)
 //   1 byte   - number of players
-//   31 bytes - reserved
+//   31 bytes - reserved; v14+ reinterprets as:
+//     8 bytes  - last-played unix seconds (int64, offset 133)
+//     23 bytes - reserved (zero-filled)
 //   Per team member (58 bytes each):
 //     1 byte  - order
 //     1 byte  - family
@@ -26,7 +28,9 @@
 //     4 bytes - total_hits
 //     4 bytes - total_shots
 //     2 bytes - team number
-//     8 bytes - reserved
+//     8 bytes - reserved; v14+ reinterprets as:
+//       1 byte  - deployed flag (guy offset +50)
+//       7 bytes - reserved (zero-filled)
 //   Campaign progress data (v8+):
 //     2 bytes  - num_campaigns
 //     Per campaign:
@@ -179,9 +183,19 @@ static void fuzz_parse_savefile(const uint8_t *data, size_t size)
         return;
     }
 
-    // Reserved (31 bytes)
+    // Reserved (31 bytes); v14+ reads an 8-byte timestamp + 23 reserved
     std::array<char, 31> filler = {};
-    if (!rw_read_exact(rw, filler.data(), 31, 1))
+    if (version >= 14)
+    {
+        int64_t last_played = 0;
+        if (!rw_read_exact(rw, &last_played, 8, 1) ||
+            !rw_read_exact(rw, filler.data(), 23, 1))
+        {
+            SDL_CloseIO(rw);
+            return;
+        }
+    }
+    else if (!rw_read_exact(rw, filler.data(), 31, 1))
     {
         SDL_CloseIO(rw);
         return;
@@ -216,8 +230,24 @@ static void fuzz_parse_savefile(const uint8_t *data, size_t size)
             !rw_read_exact(rw, &td, 4, 1) ||
             !rw_read_exact(rw, &th, 4, 1) ||
             !rw_read_exact(rw, &ts, 4, 1) ||
-            !rw_read_exact(rw, &teamnum, 2, 1) ||
-            !rw_read_exact(rw, reserved.data(), 8, 1))
+            !rw_read_exact(rw, &teamnum, 2, 1))
+        {
+            SDL_CloseIO(rw);
+            return;
+        }
+
+        // Reserved (8 bytes); v14+ reads a 1-byte deploy flag + 7 reserved
+        if (version >= 14)
+        {
+            uint8_t deployed = 0;
+            if (!rw_read_exact(rw, &deployed, 1, 1) ||
+                !rw_read_exact(rw, reserved.data(), 7, 1))
+            {
+                SDL_CloseIO(rw);
+                return;
+            }
+        }
+        else if (!rw_read_exact(rw, reserved.data(), 8, 1))
         {
             SDL_CloseIO(rw);
             return;
