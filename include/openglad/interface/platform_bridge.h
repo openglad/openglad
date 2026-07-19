@@ -33,6 +33,9 @@ struct PlatformBridge {
     std::function<std::vector<og::ui::PickerRelayRoomInfo>(
         const std::string& base_url,
         const std::string& campaign_tag)> list_relay_rooms;
+    std::function<std::unique_ptr<og::ui::IPickerRelayRoomListRequest>(
+        const std::string& base_url,
+        const std::string& campaign_tag)> begin_list_relay_rooms;
 };
 
 void set_platform_bridge(PlatformBridge bridge);

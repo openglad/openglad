@@ -76,9 +76,9 @@ void IPickerClient::show_scenario_menu()
     }
 }
 
-void run_picker(IPickerClient& client)
+void run_picker(IPickerClient& client, PickerScreen initial_screen)
 {
-    PickerScreen screen = PickerScreen::MainMenu;
+    PickerScreen screen = initial_screen;
 
     while (screen != PickerScreen::Quit) {
         client.poll_updates();

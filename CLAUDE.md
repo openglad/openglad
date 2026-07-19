@@ -42,8 +42,12 @@ cmake --build --preset dev-debug
 ### Dependencies (Debian/Ubuntu)
 
 ```bash
-sudo apt-get install cmake ninja-build libgtest-dev
+sudo apt-get install cmake ninja-build libgtest-dev libssl-dev
 ```
+
+OpenSSL (`libssl-dev`) is required by the native WebSocket transport: the
+default multiplayer relay lives on Cloudflare (`https://` room create,
+`wss://` room sockets).
 
 SDL3 is auto-fetched (pinned `release-3.4.8`) when no system sdl3 is found;
 install `libsdl3-dev` (where available) or nix `sdl3` to use a system copy.

@@ -19,12 +19,14 @@ const { RelayStub } = require('./relay_stub');
 
 // Game-coordinate (320x200) button centers, verified against the live picker.
 const NETWORKING_MENU_BUTTONS = {
-  back: { x: 78, y: 163 },
-  host: { x: 160, y: 163 },
-  join: { x: 242, y: 163 },
+  back: { x: 78, y: 175 },
+  host: { x: 160, y: 175 },
+  join: { x: 242, y: 175 },
 };
+const ACTIVE_ROOM_FIRST = { x: 160, y: 77 };
 // popup_dialog's single OK button: x 135..185, y 130..150. Its event loop
-// exits on that click (or on a Return/Space/Escape key press).
+// exits on that click (or on a Return/Space/Backspace-as-back key press;
+// physical Escape is swallowed on web).
 const POPUP_OK_BUTTON = { x: 160, y: 140 };
 
 // Screenshot regions on the 320x200 reference grid.
@@ -39,12 +41,29 @@ const POPUP_REGION = { x: 96, y: 50, w: 128, h: 104 };
 // (12, 8) and (12, 18), e.g. "Direct: ..." / "Relay: GLAD-E2E1".
 const TEAM_BUILD_STATUS_REGION = { x: 6, y: 2, w: 250, h: 28 };
 
+// The shipped default relay (kDefaultRelayBaseUrl) is the LIVE deployed
+// Cloudflare Worker, so "the default is unreachable" is no longer a given.
+// Error-path tests explicitly override the relay with an RFC 6761 .invalid
+// host, which is guaranteed to never resolve.
+// The shipped default is the SAME-ORIGIN relay mount on the Pages site
+// (routed to the relay Worker via a service binding).
+const DEFAULT_RELAY_HOSTNAME = 'openglad.pages.dev';
+const DEFAULT_RELAY_PATH_PREFIX = '/relay';
+const LIVE_RELAY_BASE_URL =
+  `https://${DEFAULT_RELAY_HOSTNAME}${DEFAULT_RELAY_PATH_PREFIX}`;
+const UNREACHABLE_RELAY_BASE_URL = 'https://unreachable.invalid';
+
 const IGNORED_RUNTIME_ERROR_PATTERNS = [
   /get_asset_path: readlink\(\/proc\/self\/exe\) failed/,
-  // The error-path scenarios aim at the unreachable placeholder relay host on
-  // purpose; Chromium reports the failed fetch (via the console message's
-  // resource location) and the failed WebSocket connect as console errors.
-  /relay\.openglad\.example/,
+  // The error-path scenarios aim at the guaranteed-unreachable .invalid relay
+  // override on purpose; Chromium reports the failed fetch (via the console
+  // message's resource location) and the failed WebSocket connect as console
+  // errors.
+  /unreachable\.invalid/,
+  // Incidental probes against the live default relay (e.g. the held-route
+  // scenario's swallowed requests, or teardown-time socket closes in the
+  // opt-in live test) also surface as console errors.
+  /openglad-relay\.yans\.workers\.dev/,
 ];
 
 function shouldIgnoreRuntimeError(message, extraIgnorePatterns = []) {
@@ -182,10 +201,10 @@ async function waitForRegionToSettleAway(
 }
 
 // popup_dialog blocks in its own event loop until the OK button is clicked
-// (or Return/Space/Escape is pressed). Click OK and wait for the networking
-// menu to be redrawn; retry the click once in case the blocking loop missed
-// the first press. Keyboard fallbacks are deliberately avoided: once the
-// popup is gone, Return/Escape would activate menu items instead.
+// (or Return/Space/Backspace is pressed). Click OK and wait for the
+// networking menu to be redrawn; retry the click once in case the blocking
+// loop missed the first press. Keyboard fallbacks are deliberately avoided:
+// once the popup is gone, Return/Backspace would activate menu items instead.
 async function dismissPopupAndAwaitNetworkingMenu(page, networkingTitle) {
   for (let attempt = 0; attempt < 2; ++attempt) {
     await page.waitForTimeout(300);
@@ -232,6 +251,36 @@ async function reopenNetworkingMenu(page, networkingTitle) {
   throw lastError;
 }
 
+async function pressWebKey(page, key, settlingMs = 400) {
+  await page.keyboard.press(key, { delay: 75 });
+  await page.waitForTimeout(settlingMs);
+}
+
+// JOIN with a blank room field opens the canvas-native prompt on desktop and
+// the mirrored DOM field on touch. This runtime seam waits for either path
+// without relying on transient darkened pixels.
+async function submitBlankRoomCodeJoin(page, roomCode) {
+  await clickCanvasGameCoord(
+    page,
+    NETWORKING_MENU_BUTTONS.join.x,
+    NETWORKING_MENU_BUTTONS.join.y,
+  );
+  await page.waitForFunction(
+    () => window.__opengladTextInputActive === true,
+    null,
+    { timeout: 20_000 },
+  );
+  if (roomCode !== null) {
+    await page.keyboard.type(roomCode, { delay: 75 });
+  }
+  await pressWebKey(page, 'Enter');
+  await page.waitForFunction(
+    () => window.__opengladTextInputActive === false,
+    null,
+    { timeout: 20_000 },
+  );
+}
+
 async function loadPickerWithSkippedIntro(page, relayBaseUrlForTests) {
   await page.addInitScript(
     ({ relayBaseUrl }) => {
@@ -254,9 +303,10 @@ test.describe('Browser networking error paths (unreachable relay)', () => {
     const errors = [];
     attachRuntimeErrorCollectors(page, errors);
 
-    // No relay override: the shipped placeholder relay.openglad.example does
-    // not resolve, which is exactly the shipped-config failure being tested.
-    await loadPickerWithSkippedIntro(page);
+    // The shipped default relay is the live deployed worker, so the
+    // unreachable-relay failure shape needs an explicit override: the RFC
+    // 6761 .invalid TLD is guaranteed to never resolve.
+    await loadPickerWithSkippedIntro(page, UNREACHABLE_RELAY_BASE_URL);
     await navigateToNetworkingMenu(page);
 
     const networkingTitle = await captureRegion(page, NETWORKING_TITLE_REGION);
@@ -315,27 +365,23 @@ test.describe('Browser networking error paths (unreachable relay)', () => {
     assertNoRuntimeErrors(errors, 'HOST unreachable-relay regression');
   });
 
-  test('JOIN with the placeholder room code never aborts and keeps the picker alive', async ({
+  test('JOIN with an entered room code never aborts and keeps the picker alive', async ({
     page,
   }) => {
     test.setTimeout(180_000);
     const errors = [];
     attachRuntimeErrorCollectors(page, errors);
 
-    await loadPickerWithSkippedIntro(page);
+    await loadPickerWithSkippedIntro(page, UNREACHABLE_RELAY_BASE_URL);
     await continueToTeamBuildMenu(page);
     const statusBaseline = await captureRegion(page, TEAM_BUILD_STATUS_REGION);
     await openNetworkingFromTeamBuild(page);
     const networkingTitle = await captureRegion(page, NETWORKING_TITLE_REGION);
 
-    // Browser default: ROOM CODE is ON with the "GLAD-XXXX" placeholder
-    // prefilled. JOIN installs a relay join client whose wss:// connect to the
-    // placeholder host fails asynchronously — that must not abort either.
-    await clickCanvasGameCoord(
-      page,
-      NETWORKING_MENU_BUTTONS.join.x,
-      NETWORKING_MENU_BUTTONS.join.y,
-    );
+    // The room field starts genuinely blank. JOIN opens a concise room-code
+    // prompt; entering a code installs a relay join client whose wss://
+    // connection fails asynchronously without aborting the runtime.
+    await submitBlankRoomCodeJoin(page, 'GLAD-OFFLINE');
     await waitForRegionToLeave(
       page,
       NETWORKING_TITLE_REGION,
@@ -344,7 +390,7 @@ test.describe('Browser networking error paths (unreachable relay)', () => {
     );
     await expectNoWasmAbort(page, errors, 'JOIN against unreachable relay');
 
-    // The join client's live status lines ("Relay: GLAD-XXXX" /
+    // The join client's live status lines ("Relay: GLAD-OFFLINE" /
     // "Status: connecting") render top-left on the team-build screen.
     await waitForRegionToLeave(
       page,
@@ -456,21 +502,36 @@ test.describe('Browser networking stalled relay create (held route)', () => {
     const errors = [];
     attachRuntimeErrorCollectors(page, errors);
 
-    // Hold every request to the shipped placeholder relay host: the route is
-    // deliberately never fulfilled, which models a relay that accepts the
-    // request but never responds. The page-side EM_ASYNC_JS fetch helper
-    // guards this with a feature-detected AbortSignal.timeout(10000), so
-    // HOST must fail into its popup within ~10s instead of leaving the
-    // picker Asyncify-suspended indefinitely.
+    // Answer discovery locally, then hold the room-create POST to the shipped
+    // default relay host.  This models a relay that accepts the operation but
+    // never responds while keeping every request away from the real worker.
+    // The page-side EM_ASYNC_JS fetch helper guards this with a
+    // feature-detected AbortSignal.timeout(10000), so HOST must fail into
+    // its popup within ~10s instead of leaving the picker
+    // Asyncify-suspended indefinitely.
     const heldRoutes = [];
-    const isPlaceholderRelay = (url) =>
-      url.hostname === 'relay.openglad.example';
-    await page.route(isPlaceholderRelay, (route) => {
+    const isDefaultRelay = (url) =>
+      url.hostname === DEFAULT_RELAY_HOSTNAME &&
+      url.pathname.startsWith(DEFAULT_RELAY_PATH_PREFIX);
+    await page.route(isDefaultRelay, async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (
+        request.method() === 'GET' &&
+        url.pathname === `${DEFAULT_RELAY_PATH_PREFIX}/api/rooms`
+      ) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ rooms: [] }),
+        });
+        return;
+      }
       heldRoutes.push(route);
     });
 
     try {
-      // No relay override: HOST aims at the shipped placeholder relay URL,
+      // No relay override: HOST aims at the shipped default relay URL,
       // whose requests the held route above swallows.
       await loadPickerWithSkippedIntro(page);
       await navigateToNetworkingMenu(page);
@@ -488,10 +549,21 @@ test.describe('Browser networking stalled relay create (held route)', () => {
       // than failing fast at the network layer as in the unreachable-relay
       // scenarios above).
       await expect
-        .poll(() => heldRoutes.length, {
-          message: 'the HOST flow should issue the room-create request',
-          timeout: 20_000,
-        })
+        .poll(
+          () =>
+            heldRoutes.filter((route) => {
+              const request = route.request();
+              return (
+                request.method() === 'POST' &&
+                new URL(request.url()).pathname ===
+                  `${DEFAULT_RELAY_PATH_PREFIX}/api/create`
+              );
+            }).length,
+          {
+            message: 'the HOST flow should issue the room-create request',
+            timeout: 20_000,
+          },
+        )
         .toBeGreaterThan(0);
 
       // AbortSignal.timeout(10000) fires ~10s in; allow 30s for the popup.
@@ -526,7 +598,60 @@ test.describe('Browser networking stalled relay create (held route)', () => {
       for (const route of heldRoutes) {
         await route.abort('timedout').catch(() => {});
       }
-      await page.unroute(isPlaceholderRelay).catch(() => {});
+      await page.unroute(isDefaultRelay).catch(() => {});
+    }
+  });
+});
+
+test.describe('Browser room discovery remains nonblocking', () => {
+  test('BACK responds while the active-room request is still pending', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    const errors = [];
+    attachRuntimeErrorCollectors(page, errors, [/openglad\.pages\.dev/]);
+
+    const heldRoutes = [];
+    const isDefaultRoomList = (url) =>
+      url.hostname === DEFAULT_RELAY_HOSTNAME &&
+      url.pathname === `${DEFAULT_RELAY_PATH_PREFIX}/api/rooms`;
+    await page.route(isDefaultRoomList, (route) => {
+      heldRoutes.push(route);
+    });
+
+    try {
+      await loadPickerWithSkippedIntro(page);
+      await navigateToNetworkingMenu(page);
+      const networkingTitle = await captureRegion(page, NETWORKING_TITLE_REGION);
+
+      await expect
+        .poll(() => heldRoutes.length, {
+          message: 'the networking menu should start active-room discovery',
+          timeout: 20_000,
+        })
+        .toBeGreaterThan(0);
+
+      // The fetch remains unresolved. BACK must still be sampled, dispatched,
+      // and painted promptly; the old Asyncify implementation could not do
+      // any of those until its ten-second HTTP timeout elapsed.
+      await clickCanvasGameCoord(
+        page,
+        NETWORKING_MENU_BUTTONS.back.x,
+        NETWORKING_MENU_BUTTONS.back.y,
+      );
+      await waitForRegionToLeave(
+        page,
+        NETWORKING_TITLE_REGION,
+        networkingTitle,
+        'BACK should leave the menu while discovery is pending',
+        5_000,
+      );
+      await expectNoWasmAbort(page, errors, 'pending room discovery BACK path');
+    } finally {
+      for (const route of heldRoutes) {
+        await route.abort('timedout').catch(() => {});
+      }
+      await page.unroute(isDefaultRoomList).catch(() => {});
     }
   });
 });
@@ -569,15 +694,9 @@ test.describe('Browser networking JOIN failure status (rejected room)', () => {
     // room upgrade, the join client sits in "Status: connecting". This pins
     // the exact pixels of the connecting state so phase 2 can prove the
     // status text really CHANGED to the failure state; a plain
-    // left-the-empty-baseline check could not tell the two apart. (The JOIN
-    // room value is the prefilled "GLAD-XXXX" placeholder, which the stub
-    // does not know — no text entry needed.)
+    // left-the-empty-baseline check could not tell the two apart.
     relayStub.unknownRoomBehavior = 'hold';
-    await clickCanvasGameCoord(
-      page,
-      NETWORKING_MENU_BUTTONS.join.x,
-      NETWORKING_MENU_BUTTONS.join.y,
-    );
+    await submitBlankRoomCodeJoin(page, 'GLAD-UNKNOWN');
     await waitForRegionToLeave(
       page,
       NETWORKING_TITLE_REGION,
@@ -586,11 +705,11 @@ test.describe('Browser networking JOIN failure status (rejected room)', () => {
     );
     await expect
       .poll(() => relayStub.heldUpgrades.length, {
-        message: 'the joiner should reach the stub with the placeholder room code',
+        message: 'the joiner should reach the stub with the entered room code',
         timeout: 20_000,
       })
       .toBe(1);
-    expect(relayStub.heldUpgrades[0].roomCode).toBe('GLAD-XXXX');
+    expect(relayStub.heldUpgrades[0].roomCode).toBe('GLAD-UNKNOWN');
     await waitForRegionToLeave(
       page,
       TEAM_BUILD_STATUS_REGION,
@@ -628,7 +747,7 @@ test.describe('Browser networking JOIN failure status (rejected room)', () => {
         timeout: 20_000,
       })
       .toBe(1);
-    expect(relayStub.rejectedUpgrades[0].roomCode).toBe('GLAD-XXXX');
+    expect(relayStub.rejectedUpgrades[0].roomCode).toBe('GLAD-UNKNOWN');
 
     await waitForRegionToSettleAway(
       page,
@@ -651,12 +770,8 @@ test.describe('Browser networking two-player lobby (relay stub)', () => {
   let relayStub;
 
   test.beforeEach(async () => {
-    // Pragmatic room-code choice: the stub's one known room reuses the JOIN
-    // menu's prefilled "GLAD-XXXX" placeholder, so the joining page needs no
-    // prompt_for_string text entry (SDL text input under Asyncify would be
-    // the flakiest possible dependency for this headline test).
     relayStub = new RelayStub({
-      roomCode: 'GLAD-XXXX',
+      roomCode: 'GLAD-DUO1',
       ownerToken: 'tok-e2e-owner-duo',
     });
     await relayStub.start();
@@ -711,7 +826,7 @@ test.describe('Browser networking two-player lobby (relay stub)', () => {
         })
         .toBe(1);
       const ownerConnection = relayStub.roomConnections[0];
-      expect(ownerConnection.roomCode).toBe('GLAD-XXXX');
+      expect(ownerConnection.roomCode).toBe('GLAD-DUO1');
       expect(ownerConnection.ownerToken).toBe('tok-e2e-owner-duo');
       expect(ownerConnection.peerId).toBe(1);
 
@@ -729,11 +844,13 @@ test.describe('Browser networking two-player lobby (relay stub)', () => {
       );
       await expectNoWasmAbort(hostPage, hostErrors, 'hosting the two-player lobby');
 
-      // Page B, in an isolated browser context, joins the same room with the
-      // prefilled GLAD-XXXX room code.
+      // Page B, in an isolated browser context, taps the room surfaced by
+      // ACTIVE GAMES. This proves discovery and row dispatch end to end; no
+      // room-code typing is involved.
       const joinPage = await joinContext.newPage();
       const joinErrors = [];
       attachRuntimeErrorCollectors(joinPage, joinErrors, [stubUrlPattern]);
+      const listRequestsBeforeJoin = relayStub.listRequests.length;
       await loadPickerWithSkippedIntro(joinPage, relayStub.baseUrl);
       await continueToTeamBuildMenu(joinPage);
       const joinStatusBaseline = await captureRegion(
@@ -746,10 +863,25 @@ test.describe('Browser networking two-player lobby (relay stub)', () => {
         NETWORKING_TITLE_REGION,
       );
 
+      await expect
+        .poll(() => relayStub.listRequests.length, {
+          message: 'the join page should discover the active relay room',
+          timeout: 20_000,
+        })
+        .toBeGreaterThan(listRequestsBeforeJoin);
+      // Request receipt precedes Promise resolution, C++ polling, the
+      // one-frame safety deferral, and drawing. Wait for the committed row
+      // diagnostic instead of racing those stages with a fixed sleep.
+      await joinPage.waitForFunction(
+        (roomCode) =>
+          window.__opengladRelayRoomSnapshot?.firstRoomCode === roomCode,
+        'GLAD-DUO1',
+        { timeout: 20_000 },
+      );
       await clickCanvasGameCoord(
         joinPage,
-        NETWORKING_MENU_BUTTONS.join.x,
-        NETWORKING_MENU_BUTTONS.join.y,
+        ACTIVE_ROOM_FIRST.x,
+        ACTIVE_ROOM_FIRST.y,
       );
       await waitForRegionToLeave(
         joinPage,
@@ -765,7 +897,7 @@ test.describe('Browser networking two-player lobby (relay stub)', () => {
         })
         .toBe(2);
       const joinerConnection = relayStub.roomConnections[1];
-      expect(joinerConnection.roomCode).toBe('GLAD-XXXX');
+      expect(joinerConnection.roomCode).toBe('GLAD-DUO1');
       expect(joinerConnection.ownerToken).toBe(null);
       expect(joinerConnection.peerId).toBe(2);
 
@@ -794,7 +926,7 @@ test.describe('Browser networking two-player lobby (relay stub)', () => {
         })
         .toBeGreaterThan(0);
 
-      // The joiner draws its live status lines ("Relay: GLAD-XXXX" /
+      // The joiner draws its live status lines ("Relay: GLAD-DUO1" /
       // "Status: connected") and they stabilize away from the empty baseline.
       await waitForRegionToLeave(
         joinPage,
@@ -809,7 +941,7 @@ test.describe('Browser networking two-player lobby (relay stub)', () => {
       );
       expect(joinerStatus.equals(joinStatusBaseline)).toBe(false);
 
-      // The host's visible lines stay "Direct: ..." / "Relay: GLAD-XXXX":
+      // The host's visible lines stay "Direct: ..." / "Relay: GLAD-DUO1":
       // its "Lobby: 2 players" line is the THIRD status line and the
       // team-build screen renders only the first two, so the stub-side
       // forwarded-frame counts above are the authoritative two-player
@@ -932,5 +1064,325 @@ test.describe('Browser networking host relay drop (local relay stub)', () => {
     await reopenNetworkingMenu(page, networkingTitle);
     await expectNoWasmAbort(page, errors, 'post-drop navigation');
     assertNoRuntimeErrors(errors, 'host relay drop status');
+  });
+});
+
+// On web, the Keyboard Lock machinery was removed: the engine swallows
+// physical Escape entirely (browser-reserved for fullscreen exit) and
+// Backspace is the universal back/cancel key — EXCEPT while a text prompt is
+// active, where Backspace keeps deleting characters. The networking menu is
+// the ideal probe: its BACK button carries the back-key hotkey, and its ROOM
+// VALUE field opens a prompt_for_string text prompt.
+test.describe('Browser web back key (Backspace replaces Escape)', () => {
+  // The relay-only web ROOM CODE field (x 110..270, y 40..55).
+  const ROOM_VALUE_FIELD = { x: 190, y: 47 };
+  const ROOM_VALUE_FIELD_REGION = { x: 108, y: 36, w: 164, h: 23 };
+  // prompt_for_string draws its frame from (53,40) to (242,80) over a
+  // darkened backdrop: the message line at y=50 and the input row at (58,60).
+  const ROOM_PROMPT_REGION = { x: 48, y: 36, w: 200, h: 48 };
+
+  // Open the networking menu and PROVE it opened: the title region must
+  // change away from its team-build content and settle on the "NETWORKING"
+  // headline. A silently-eaten click would otherwise let the back-key
+  // assertions pass vacuously against the wrong screen.
+  async function openNetworkingMenuWithProof(page) {
+    await continueToTeamBuildMenu(page);
+    const preOpenTitle = await captureRegion(page, NETWORKING_TITLE_REGION);
+    await openNetworkingFromTeamBuild(page);
+    await waitForRegionToLeave(
+      page,
+      NETWORKING_TITLE_REGION,
+      preOpenTitle,
+      'the networking menu should open (title region should change)',
+    );
+    return await captureSettledRegion(
+      page,
+      NETWORKING_TITLE_REGION,
+      'the networking menu headline',
+    );
+  }
+
+  test('Backspace backs out of the networking menu; Escape is inert', async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    const errors = [];
+    attachRuntimeErrorCollectors(page, errors);
+
+    // No relay traffic happens in this flow; the unreachable override keeps
+    // any incidental probe away from the live deployed relay.
+    await loadPickerWithSkippedIntro(page, UNREACHABLE_RELAY_BASE_URL);
+    const networkingTitle = await openNetworkingMenuWithProof(page);
+
+    // Emscripten starts forwarding keyboard input after a real canvas click.
+    // (10,10) sits outside the networking panel frame (18,14)-(302,184), so
+    // the click is inert.
+    await clickCanvasGameCoord(page, 10, 10);
+
+    // HEADLINE: physical Escape is swallowed by the web back-key remap. The
+    // menu must still be up, byte-identical, a second later.
+    await pressWebKey(page, 'Escape', 1_000);
+    expect(
+      (await captureRegion(page, NETWORKING_TITLE_REGION)).equals(
+        networkingTitle,
+      ),
+      'Escape must not leave the networking menu',
+    ).toBe(true);
+
+    // Backspace is the back key: it fires the BACK hotkey and returns to the
+    // team-build screen.
+    await pressWebKey(page, 'Backspace');
+    await waitForRegionToLeave(
+      page,
+      NETWORKING_TITLE_REGION,
+      networkingTitle,
+      'Backspace should leave the networking menu for the team-build screen',
+    );
+
+    // The picker stays interactive: the same networking menu re-opens, which
+    // also validates that the pinned headline pixels really were the
+    // networking menu.
+    await reopenNetworkingMenu(page, networkingTitle);
+
+    await expectNoWasmAbort(page, errors, 'Backspace menu navigation');
+    assertNoRuntimeErrors(errors, 'Backspace/Escape menu navigation');
+  });
+
+  test('text prompt: Backspace deletes, Escape does not cancel, Enter accepts', async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    const errors = [];
+    attachRuntimeErrorCollectors(page, errors);
+
+    await loadPickerWithSkippedIntro(page, UNREACHABLE_RELAY_BASE_URL);
+    const networkingTitle = await openNetworkingMenuWithProof(page);
+
+    // Pin the genuinely blank room-code field so the accepted edit below has
+    // a reference to change away from.
+    const roomFieldBefore = await captureSettledRegion(
+      page,
+      ROOM_VALUE_FIELD_REGION,
+      'the ROOM VALUE field before editing',
+    );
+    const promptBaseline = await captureRegion(page, ROOM_PROMPT_REGION);
+
+    // Click the ROOM VALUE field: prompt_for_string darkens the screen and
+    // opens the JOIN ROOM CODE text prompt.
+    await clickCanvasGameCoord(page, ROOM_VALUE_FIELD.x, ROOM_VALUE_FIELD.y);
+    await waitForRegionToLeave(
+      page,
+      ROOM_PROMPT_REGION,
+      promptBaseline,
+      'clicking the ROOM VALUE field should open the text prompt',
+    );
+    const promptOpened = await captureSettledRegion(
+      page,
+      ROOM_PROMPT_REGION,
+      'the freshly opened room-code prompt',
+    );
+
+    // Type a value into the blank prompt; it redraws after every key event.
+    await page.keyboard.type('glad', { delay: 120 });
+    await waitForRegionToLeave(
+      page,
+      ROOM_PROMPT_REGION,
+      promptOpened,
+      'typing should redraw the prompt with the typed text',
+    );
+    const promptTyped = await captureSettledRegion(
+      page,
+      ROOM_PROMPT_REGION,
+      'the prompt after typing',
+    );
+
+    // HEADLINE: during text input Backspace must keep DELETING (one char),
+    // not act as the back key.
+    await pressWebKey(page, 'Backspace');
+    await waitForRegionToLeave(
+      page,
+      ROOM_PROMPT_REGION,
+      promptTyped,
+      'Backspace should delete one character inside the prompt',
+    );
+    const promptAfterBackspace = await captureSettledRegion(
+      page,
+      ROOM_PROMPT_REGION,
+      'the prompt after one Backspace',
+    );
+    expect(promptAfterBackspace.equals(promptOpened)).toBe(false);
+    // Still inside the prompt: the networking headline is darkened away.
+    expect(
+      (await captureRegion(page, NETWORKING_TITLE_REGION)).equals(
+        networkingTitle,
+      ),
+    ).toBe(false);
+
+    // Escape must NOT cancel the prompt (it is swallowed outright): the
+    // prompt stays open and byte-identical.
+    await pressWebKey(page, 'Escape', 1_000);
+    expect(
+      (await captureRegion(page, ROOM_PROMPT_REGION)).equals(
+        promptAfterBackspace,
+      ),
+      'Escape must neither cancel nor change the text prompt',
+    ).toBe(true);
+
+    // Enter accepts: back to the networking menu with the edited value
+    // ("gla") in the ROOM VALUE field.
+    await pressWebKey(page, 'Enter');
+    await waitForRegionToShow(
+      page,
+      NETWORKING_TITLE_REGION,
+      networkingTitle,
+      'Enter should accept the prompt back into the networking menu',
+    );
+    const roomFieldAfter = await captureSettledRegion(
+      page,
+      ROOM_VALUE_FIELD_REGION,
+      'the ROOM VALUE field after the accepted edit',
+    );
+    expect(roomFieldAfter.equals(roomFieldBefore)).toBe(false);
+
+    await expectNoWasmAbort(page, errors, 'text prompt back-key handling');
+    assertNoRuntimeErrors(errors, 'text prompt Backspace/Escape/Enter flow');
+  });
+});
+
+// Opt-in end-to-end proof against the LIVE deployed relay
+// (https://openglad-relay.yans.workers.dev). Off by default: CI must stay
+// hermetic and must not create real rooms on the production worker.
+// Run with: OPENGLAD_E2E_LIVE_RELAY=1 npx playwright test wasm-networking
+test.describe('Browser networking live deployed relay (opt-in)', () => {
+  test.skip(
+    process.env.OPENGLAD_E2E_LIVE_RELAY !== '1',
+    'live-relay test is opt-in: set OPENGLAD_E2E_LIVE_RELAY=1',
+  );
+
+  async function fetchLiveRooms() {
+    // Node's global fetch, from the test process — deliberately NOT the
+    // browser page, so the listing is independent evidence.
+    const response = await fetch(`${LIVE_RELAY_BASE_URL}/api/rooms`);
+    if (!response.ok) {
+      throw new Error(`live relay /api/rooms failed: HTTP ${response.status}`);
+    }
+    const rooms = await response.json();
+    if (!Array.isArray(rooms)) {
+      throw new Error('live relay /api/rooms did not return an array');
+    }
+    return rooms;
+  }
+
+  test('HOST with no override creates a real room on the deployed worker', async ({
+    page,
+  }) => {
+    test.setTimeout(300_000);
+    const errors = [];
+    attachRuntimeErrorCollectors(page, errors);
+
+    // Other rooms may legitimately exist on the live worker; identify OUR
+    // room by the code minted for this test run.
+    const baselineCodes = new Set(
+      (await fetchLiveRooms()).map((room) => room.code),
+    );
+
+    // Observe the page's real create POST (passively — no routing, so the
+    // request truly reaches the deployed worker).
+    const createExchanges = [];
+    page.on('response', (response) => {
+      let url;
+      try {
+        url = new URL(response.url());
+      } catch (error) {
+        return;
+      }
+      if (
+        url.hostname === DEFAULT_RELAY_HOSTNAME &&
+        url.pathname === `${DEFAULT_RELAY_PATH_PREFIX}/api/create` &&
+        response.request().method() === 'POST'
+      ) {
+        createExchanges.push({
+          response,
+          hostName: url.searchParams.get('host') || '',
+        });
+      }
+    });
+
+    // NO relay override: this exercises the shipped default URL end to end.
+    await loadPickerWithSkippedIntro(page);
+    await navigateToNetworkingMenu(page);
+    const networkingTitle = await captureRegion(page, NETWORKING_TITLE_REGION);
+
+    await clickCanvasGameCoord(
+      page,
+      NETWORKING_MENU_BUTTONS.host.x,
+      NETWORKING_MENU_BUTTONS.host.y,
+    );
+
+    await expect
+      .poll(() => createExchanges.length, {
+        message: 'the HOST flow should POST /api/create to the live relay',
+        timeout: 60_000,
+      })
+      .toBeGreaterThan(0);
+    const createExchange = createExchanges[0];
+    expect(createExchange.response.ok()).toBe(true);
+    const created = await createExchange.response.json();
+    expect(typeof created.room_code).toBe('string');
+    expect(created.room_code.length).toBeGreaterThan(0);
+    expect(baselineCodes.has(created.room_code)).toBe(false);
+
+    // A successful HOST leaves the networking menu for the team-build screen
+    // (a failure would keep it up behind an error popup instead).
+    await waitForRegionToLeave(
+      page,
+      NETWORKING_TITLE_REGION,
+      networkingTitle,
+      'a successful HOST should return to the team-build screen',
+      60_000,
+    );
+    await expectNoWasmAbort(page, errors, 'HOST against the live relay');
+
+    // The worker lists the room publicly once the owner socket is connected.
+    // Find our room by code and check the host name it was created with
+    // (the worker trims and caps it at 64 chars).
+    let listedRoom = null;
+    await expect
+      .poll(
+        async () => {
+          const rooms = await fetchLiveRooms();
+          listedRoom =
+            rooms.find((room) => room.code === created.room_code) || null;
+          return Boolean(listedRoom);
+        },
+        {
+          message: 'the live room list should include the freshly hosted room',
+          timeout: 120_000,
+        },
+      )
+      .toBe(true);
+    expect(listedRoom.host_name).toBe(
+      createExchange.hostName.trim().slice(0, 64),
+    );
+    expect(listedRoom.player_count).toBeGreaterThan(0);
+
+    assertNoRuntimeErrors(errors, 'live relay HOST');
+
+    // Cleanup: closing the page closes the owner relay socket; the worker
+    // immediately unlists the now-empty room (player_count 0 entries are
+    // hidden, and the empty-room alarm deletes it later).
+    await page.close();
+    await expect
+      .poll(
+        async () => {
+          const rooms = await fetchLiveRooms();
+          return rooms.some((room) => room.code === created.room_code);
+        },
+        {
+          message: 'the hosted room should leave the live listing after close',
+          timeout: 120_000,
+        },
+      )
+      .toBe(false);
   });
 });

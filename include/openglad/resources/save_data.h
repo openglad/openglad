@@ -19,6 +19,7 @@
 
 #include <cstdint>
 #include <array>
+#include <span>
 #include <string>
 #include <map>
 #include <set>
@@ -93,6 +94,12 @@ public:
     // score fields are intentionally left as-is (only character growth persists).
     void merge_owned_guys_from(const std::list<std::unique_ptr<walker>>& oblist,
                                std::uint8_t owner_player_index);
+    // Multi-seat variant: overlay the characters owned by ANY of the given
+    // player indices in ONE load/merge/save cycle (a machine with N local
+    // seats owns N players' characters). Entries equal to guy::kNoOwner are
+    // ignored; an effectively empty list is a no-op.
+    void merge_owned_guys_from(const std::list<std::unique_ptr<walker>>& oblist,
+                               std::span<const std::uint8_t> owner_player_indices);
     bool load(const std::string& filename);
     bool save(const std::string& filename);
     [[nodiscard]] SaveDataIoError load_with_error(const std::string& filename);

@@ -12,7 +12,13 @@
 #endif
 
 #include <cstdlib>
+#include <atomic>
+#include <format>
+#include <functional>
 #include <initializer_list>
+#include <memory>
+#include <optional>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -108,6 +114,35 @@ public:
 
 private:
     PlatformBridge saved_;
+};
+
+class ScriptedRoomListRequest final
+    : public og::ui::IPickerRelayRoomListRequest
+{
+public:
+    using Poll = std::function<
+        std::optional<og::ui::PickerRelayRoomListResult>()>;
+    using OnDestroy = std::function<void()>;
+
+    explicit ScriptedRoomListRequest(Poll poll, OnDestroy on_destroy = {})
+        : poll_(std::move(poll)), on_destroy_(std::move(on_destroy))
+    {
+    }
+
+    ~ScriptedRoomListRequest() override
+    {
+        if (on_destroy_)
+            on_destroy_();
+    }
+
+    std::optional<og::ui::PickerRelayRoomListResult> poll() override
+    {
+        return poll_();
+    }
+
+private:
+    Poll poll_;
+    OnDestroy on_destroy_;
 };
 
 bool interactable_label_contains(const std::string& id,
@@ -322,13 +357,17 @@ int networking_join_injector(void* data)
     state->updated_port = interact_until_label_contains(
         "network_port", "24567");
 
+    // Prove that editing the prominent relay field selects relay mode even
+    // after the player explicitly chose DIRECT (LAN).
     SDL_Delay(100);
-    state->enabled_room_code = interact_until_label_contains(
-        "network_room_toggle", "ON");
+    if (interactable_label_contains("network_room_toggle", "ON"))
+        (void)interact_until_label_contains("network_room_toggle", "OFF");
 
     SDL_Delay(100);
     state->updated_room_code = interact_until_label_contains(
         "network_room_value", "glad-xkcd");
+    state->enabled_room_code = wait_for_interactable_label_contains(
+        "network_room_toggle", "ON");
 
     SDL_Delay(150);
     state->saw_join_relay_error_popup = interact_until_trace_contains(
@@ -420,6 +459,11 @@ int networking_validation_injector(void* data)
 
     state->saw_networking_menu = true;
     SDL_Delay(150);
+
+    // Relay is the default; choose the explicit DIRECT (LAN) path before
+    // exercising IP/port validation.
+    if (interactable_label_contains("network_room_toggle", "ON"))
+        (void)interact_until_label_contains("network_room_toggle", "OFF");
 
     state->set_invalid_port = interact_until_label_contains(
         "network_port", "70000");
@@ -598,6 +642,370 @@ int networking_host_factory_error_injector(void* data)
     return 0;
 }
 
+struct NetworkingRoomListState
+{
+    bool started = false;
+    bool finished = false;
+    bool saw_networking_menu = false;
+    bool enabled_room_code = false;
+    bool saw_room_button = false;
+    bool room_label_ok = false;
+    bool joined_selected_room = false;
+    bool stayed_after_room_join_error = false;
+    bool cleared_room_code = false;
+    bool saw_prefilled_join = false;
+    bool returned_to_main_menu = false;
+};
+
+// Drives the ACTIVE GAMES list end to end: relay mode ON -> auto-refresh
+// surfaces the stubbed rooms as tappable rows -> tapping a row joins that
+// room (join factory stub echoes the code) -> a JOIN with a blank room code
+// opens the room prompt preselecting the first live room.
+int networking_room_list_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<NetworkingRoomListState*>(data);
+    state->started = true;
+
+    if (!enter_team_build_from_continue_game())
+    {
+        state->finished = true;
+        return 0;
+    }
+
+    SDL_Delay(300);
+    interact("networking");
+
+    if (!wait_for_interactable("network_room_value", 10000))
+    {
+        state->finished = true;
+        return 0;
+    }
+
+    state->saw_networking_menu = true;
+    SDL_Delay(150);
+
+    state->enabled_room_code = interact_until_label_contains(
+        "network_room_toggle", "ON");
+
+    // The throttled in-menu refresh (bridge stub) surfaces the rooms.
+    state->saw_room_button = wait_for_interactable("network_room_0", 10000);
+    state->room_label_ok = wait_for_interactable_label_contains(
+        "network_room_0", "GLAD-AAAA");
+
+    SDL_Delay(300);
+    state->joined_selected_room = interact_until_trace_contains(
+        "network_room_0",
+        "popup",
+        "JOIN GAME: simulated join to GLAD-AAAA");
+    state->stayed_after_room_join_error =
+        has_interactable("network_join") && has_interactable("network_back");
+
+    // Clear the room code (the row click stored GLAD-AAAA in the field),
+    // then JOIN: the blank-code path must open the room prompt preselecting
+    // the first live room (queued prompt answer overrides it).
+    SDL_Delay(150);
+    state->cleared_room_code = interact_until_label_contains(
+        "network_room_value", "(enter room code)");
+
+    SDL_Delay(150);
+    state->saw_prefilled_join = interact_until_trace_contains(
+        "network_join",
+        "popup",
+        "JOIN GAME: simulated join to glad-bbbb");
+
+    if (has_interactable("network_back"))
+    {
+        SDL_Delay(150);
+        interact("network_back");
+    }
+
+    const Uint64 deadline = SDL_GetTicks() + 10000;
+    while (SDL_GetTicks() < deadline)
+    {
+        if (wait_for_interactable("quit", 250))
+        {
+            state->returned_to_main_menu = true;
+            SDL_Delay(100);
+            interact("quit");
+            break;
+        }
+
+        if (wait_for_interactable("network_back", 150))
+        {
+            interact("network_back");
+            SDL_Delay(150);
+            continue;
+        }
+
+        if (wait_for_interactable("back", 150))
+        {
+            interact("back");
+            SDL_Delay(150);
+            continue;
+        }
+
+        inject_key_press(SDLK_ESCAPE, 10);
+        SDL_Delay(50);
+    }
+
+    state->finished = true;
+    return 0;
+}
+
+struct NetworkingEmptyRoomListState
+{
+    bool started = false;
+    bool finished = false;
+    bool saw_networking_menu = false;
+    bool enabled_room_code = false;
+    bool no_room_rows_appeared = false;
+    bool returned_to_main_menu = false;
+};
+
+struct NetworkingRoomRefreshRaceState
+{
+    std::atomic<bool> second_refresh_started{false};
+    std::atomic<bool> release_second_refresh{false};
+    bool started = false;
+    bool finished = false;
+    bool saw_initial_room = false;
+    bool queued_click_during_refresh = false;
+    bool joined_visible_room = false;
+    bool avoided_reordered_room = false;
+    bool saw_new_snapshot_after_click = false;
+    bool returned_to_main_menu = false;
+};
+
+struct NetworkingRoomReentryState
+{
+    std::atomic<bool> stale_request_polled{false};
+    std::atomic<bool> stale_request_destroyed{false};
+    std::atomic<bool> replacement_request_polled{false};
+    std::atomic<bool> release_replacement{false};
+    bool started = false;
+    bool finished = false;
+    bool saw_initial_room = false;
+    bool reentered_networking = false;
+    bool hid_stale_room = false;
+    bool saw_replacement_room = false;
+    bool returned_to_main_menu = false;
+};
+
+int networking_room_refresh_race_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<NetworkingRoomRefreshRaceState*>(data);
+    state->started = true;
+
+    if (!enter_team_build_from_continue_game())
+    {
+        state->finished = true;
+        return 0;
+    }
+    SDL_Delay(300);
+    interact("networking");
+    state->saw_initial_room = wait_for_interactable_label_contains(
+        "network_room_0", "GLAD-AAAA", 10000);
+
+    const Uint64 refresh_deadline = SDL_GetTicks() + 10000;
+    while (!state->second_refresh_started.load() &&
+           SDL_GetTicks() < refresh_deadline)
+    {
+        SDL_Delay(10);
+    }
+
+    if (state->second_refresh_started.load())
+    {
+        // The second room-list request stays pending, but the menu must remain
+        // responsive and join the still-drawn A row before B is released.
+        interact("network_room_0");
+        state->queued_click_during_refresh = true;
+        state->joined_visible_room = wait_for_trace_contains(
+            "popup", "simulated join to GLAD-AAAA", 5000);
+    }
+
+    state->avoided_reordered_room =
+        !trace_contains("popup", "simulated join to GLAD-BBBB");
+    state->release_second_refresh.store(true);
+    state->saw_new_snapshot_after_click = wait_for_interactable_label_contains(
+        "network_room_0", "GLAD-BBBB", 10000);
+
+    if (has_interactable("network_back"))
+        interact("network_back");
+    const Uint64 exit_deadline = SDL_GetTicks() + 10000;
+    while (SDL_GetTicks() < exit_deadline)
+    {
+        if (wait_for_interactable("quit", 250))
+        {
+            state->returned_to_main_menu = true;
+            interact("quit");
+            break;
+        }
+        if (wait_for_interactable("network_back", 100))
+            interact("network_back");
+        else if (wait_for_interactable("back", 100))
+            interact("back");
+        else
+            inject_key_press(SDLK_ESCAPE, 10);
+        SDL_Delay(50);
+    }
+
+    state->release_second_refresh.store(true);
+    state->finished = true;
+    return 0;
+}
+
+int networking_room_reentry_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<NetworkingRoomReentryState*>(data);
+    state->started = true;
+
+    if (!enter_team_build_from_continue_game())
+    {
+        state->finished = true;
+        return 0;
+    }
+    SDL_Delay(300);
+    interact("networking");
+    state->saw_initial_room = wait_for_interactable_label_contains(
+        "network_room_0", "GLAD-AAAA", 10000);
+
+    // Let the next refresh begin and remain pending. BACK must destroy this
+    // obsolete generation immediately so re-entry can start request 3 rather
+    // than waiting for request 2 to settle.
+    const Uint64 stale_request_deadline = SDL_GetTicks() + 10000;
+    while (!state->stale_request_polled.load() &&
+           SDL_GetTicks() < stale_request_deadline)
+    {
+        SDL_Delay(10);
+    }
+
+    if (has_interactable("network_back"))
+        interact("network_back");
+    if (wait_for_interactable("networking", 5000))
+    {
+        SDL_Delay(300);
+        interact("networking");
+        state->reentered_networking =
+            wait_for_interactable("network_room_value", 5000);
+    }
+
+    const Uint64 replacement_deadline = SDL_GetTicks() + 10000;
+    while (!state->replacement_request_polled.load() &&
+           SDL_GetTicks() < replacement_deadline)
+    {
+        SDL_Delay(10);
+    }
+
+    // Re-entry starts a new view generation. The old A row must disappear
+    // immediately and remain hidden while the replacement request is pending.
+    SDL_Delay(300);
+    state->hid_stale_room =
+        !interactable_label_contains("network_room_0", "GLAD-AAAA");
+    state->release_replacement.store(true);
+    state->saw_replacement_room = wait_for_interactable_label_contains(
+        "network_room_0", "GLAD-BBBB", 10000);
+
+    if (has_interactable("network_back"))
+        interact("network_back");
+    const Uint64 exit_deadline = SDL_GetTicks() + 10000;
+    while (SDL_GetTicks() < exit_deadline)
+    {
+        if (wait_for_interactable("quit", 250))
+        {
+            state->returned_to_main_menu = true;
+            interact("quit");
+            break;
+        }
+        if (wait_for_interactable("network_back", 100))
+            interact("network_back");
+        else if (wait_for_interactable("back", 100))
+            interact("back");
+        else
+            inject_key_press(SDLK_ESCAPE, 10);
+        SDL_Delay(50);
+    }
+
+    state->release_replacement.store(true);
+    state->finished = true;
+    return 0;
+}
+
+// Relay mode ON with a healthy relay that has no live rooms: the refresh
+// succeeds, no ACTIVE GAMES rows appear, and the menu stays usable.
+int networking_empty_room_list_injector(void* data)
+{
+    og::runtime::ensure_thread_session();
+    auto* const state = static_cast<NetworkingEmptyRoomListState*>(data);
+    state->started = true;
+
+    if (!enter_team_build_from_continue_game())
+    {
+        state->finished = true;
+        return 0;
+    }
+
+    SDL_Delay(300);
+    interact("networking");
+
+    if (!wait_for_interactable("network_room_value", 10000))
+    {
+        state->finished = true;
+        return 0;
+    }
+
+    state->saw_networking_menu = true;
+    SDL_Delay(150);
+
+    state->enabled_room_code = interact_until_label_contains(
+        "network_room_toggle", "ON");
+
+    // Give the throttled refresh time to run and draw a few frames with the
+    // empty result ("No active games found.").
+    SDL_Delay(1200);
+    state->no_room_rows_appeared = !has_interactable("network_room_0");
+
+    if (has_interactable("network_back"))
+    {
+        SDL_Delay(150);
+        interact("network_back");
+    }
+
+    const Uint64 deadline = SDL_GetTicks() + 10000;
+    while (SDL_GetTicks() < deadline)
+    {
+        if (wait_for_interactable("quit", 250))
+        {
+            state->returned_to_main_menu = true;
+            SDL_Delay(100);
+            interact("quit");
+            break;
+        }
+
+        if (wait_for_interactable("network_back", 150))
+        {
+            interact("network_back");
+            SDL_Delay(150);
+            continue;
+        }
+
+        if (wait_for_interactable("back", 150))
+        {
+            interact("back");
+            SDL_Delay(150);
+            continue;
+        }
+
+        inject_key_press(SDLK_ESCAPE, 10);
+        SDL_Delay(50);
+    }
+
+    state->finished = true;
+    return 0;
+}
+
 #if !defined(__EMSCRIPTEN__)
 struct NetworkingHostState
 {
@@ -634,14 +1042,11 @@ int networking_host_injector(void* data)
     state->saw_networking_menu = true;
     SDL_Delay(150);
 
+    if (interactable_label_contains("network_room_toggle", "ON"))
+        (void)interact_until_label_contains("network_room_toggle", "OFF");
+
     state->updated_port = interact_until_label_contains(
         "network_port", std::to_string(state->port));
-
-    if (interactable_label_contains("network_room_toggle", "ON"))
-    {
-        SDL_Delay(100);
-        (void)interact_until_label_contains("network_room_toggle", "OFF");
-    }
 
     SDL_Delay(150);
     state->entered_team_menu = interact_until_any_interactable(
@@ -782,11 +1187,293 @@ TEST(NetworkingMenu, submenu_validation_errors_stay_in_place)
     ASSERT_TRUE(state.returned_to_main_menu);
 }
 
+TEST(NetworkingMenu, room_list_rows_join_and_prefill_first_room)
+{
+    trace_clear();
+    PlatformBridgeGuard bridge_guard;
+    PlatformBridge bridge = platform_bridge();
+    bridge.begin_list_relay_rooms = {};
+    bridge.list_relay_rooms =
+        [](const std::string&, const std::string&)
+            -> std::vector<og::ui::PickerRelayRoomInfo> {
+        std::vector<og::ui::PickerRelayRoomInfo> rooms;
+        og::ui::PickerRelayRoomInfo room;
+        room.code = "GLAD-AAAA";
+        room.host_name = "Alice";
+        room.player_count = 2u;
+        rooms.push_back(room);
+        room.code = "GLAD-BBBB";
+        room.host_name = "Bob";
+        room.player_count = 1u;
+        rooms.push_back(room);
+        return rooms;
+    };
+    bridge.create_join_picker_lobby_client =
+        [](const og::ui::PickerJoinGameOptions& options)
+            -> std::unique_ptr<og::ui::IPickerLobbyClient> {
+        throw std::runtime_error(
+            std::format("simulated join to {}", options.room_code));
+    };
+    set_platform_bridge(std::move(bridge));
+
+    level_editor_testing_prompt_queue_clear();
+    // First prompt: clear the room-code field. Second: the blank-code JOIN
+    // room prompt (overriding the GLAD-AAAA preselection).
+    level_editor_testing_prompt_queue_push("");
+    level_editor_testing_prompt_queue_push("glad-bbbb");
+
+    auto& save = og::runtime::current_session->myscreen_->save_data;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.current_campaign = "org.openglad.gladiator";
+    ASSERT_TRUE(save.save("save0"));
+
+    NetworkingRoomListState state;
+    SDL_Thread* thread = SDL_CreateThread(
+        networking_room_list_injector, "networking_room_list_test", &state);
+    ASSERT_TRUE(thread != nullptr)
+        << "failed to create networking room list injector";
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 2;
+    picker_main(0, nullptr);
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+    level_editor_testing_prompt_queue_clear();
+
+    ASSERT_TRUE(state.started);
+    ASSERT_TRUE(state.finished);
+    ASSERT_TRUE(state.saw_networking_menu);
+    ASSERT_TRUE(state.enabled_room_code);
+    ASSERT_TRUE(state.saw_room_button);
+    ASSERT_TRUE(state.room_label_ok);
+    ASSERT_TRUE(state.joined_selected_room);
+    ASSERT_TRUE(state.stayed_after_room_join_error);
+    ASSERT_TRUE(state.cleared_room_code);
+    ASSERT_TRUE(state.saw_prefilled_join);
+    ASSERT_TRUE(state.returned_to_main_menu);
+    ASSERT_TRUE(trace_contains("networking", "join prompt prefill GLAD-AAAA"))
+        << "blank-code JOIN should preselect the first live room";
+}
+
+TEST(NetworkingMenu, room_click_during_refresh_joins_the_visible_snapshot)
+{
+    trace_clear();
+    PlatformBridgeGuard bridge_guard;
+    NetworkingRoomRefreshRaceState state;
+    std::atomic<int> list_calls{0};
+
+    PlatformBridge bridge = platform_bridge();
+    bridge.begin_list_relay_rooms =
+        [&state, &list_calls](const std::string&, const std::string&)
+            -> std::unique_ptr<og::ui::IPickerRelayRoomListRequest> {
+        const int call = list_calls.fetch_add(1) + 1;
+        og::ui::PickerRelayRoomInfo room;
+        room.code = call == 1 ? "GLAD-AAAA" : "GLAD-BBBB";
+        room.host_name = call == 1 ? "Visible Host" : "New Host";
+        room.player_count = 1u;
+        return std::make_unique<ScriptedRoomListRequest>(
+            [&state, call, room = std::move(room), delivered = false]() mutable
+                -> std::optional<og::ui::PickerRelayRoomListResult> {
+                if (delivered)
+                    return std::nullopt;
+                if (call >= 2)
+                {
+                    state.second_refresh_started.store(true);
+                    if (!state.release_second_refresh.load())
+                        return std::nullopt;
+                }
+                delivered = true;
+                og::ui::PickerRelayRoomListResult result;
+                result.rooms.push_back(std::move(room));
+                return result;
+            });
+    };
+    bridge.create_join_picker_lobby_client =
+        [](const og::ui::PickerJoinGameOptions& options)
+            -> std::unique_ptr<og::ui::IPickerLobbyClient> {
+        throw std::runtime_error(
+            std::format("simulated join to {}", options.room_code));
+    };
+    set_platform_bridge(std::move(bridge));
+
+    level_editor_testing_prompt_queue_clear();
+    auto& save = og::runtime::current_session->myscreen_->save_data;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.current_campaign = "org.openglad.gladiator";
+    ASSERT_TRUE(save.save("save0"));
+
+    SDL_Thread* thread = SDL_CreateThread(
+        networking_room_refresh_race_injector,
+        "networking_room_refresh_race_test",
+        &state);
+    ASSERT_TRUE(thread != nullptr);
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 2;
+    picker_main(0, nullptr);
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+    level_editor_testing_prompt_queue_clear();
+
+    ASSERT_TRUE(state.started);
+    ASSERT_TRUE(state.finished);
+    ASSERT_TRUE(state.saw_initial_room);
+    ASSERT_TRUE(state.second_refresh_started.load());
+    ASSERT_TRUE(state.queued_click_during_refresh);
+    ASSERT_TRUE(state.joined_visible_room)
+        << "the queued click must join the A row that was visible";
+    ASSERT_TRUE(state.avoided_reordered_room)
+        << "the just-fetched B row must not steal the queued click";
+    ASSERT_TRUE(state.saw_new_snapshot_after_click);
+    ASSERT_TRUE(state.returned_to_main_menu);
+}
+
+TEST(NetworkingMenu, reentry_hides_stale_rooms_until_current_request_completes)
+{
+    trace_clear();
+    PlatformBridgeGuard bridge_guard;
+    NetworkingRoomReentryState state;
+    std::atomic<int> list_calls{0};
+
+    PlatformBridge bridge = platform_bridge();
+    bridge.begin_list_relay_rooms =
+        [&state, &list_calls](const std::string&, const std::string&)
+            -> std::unique_ptr<og::ui::IPickerRelayRoomListRequest> {
+        const int call = list_calls.fetch_add(1) + 1;
+        og::ui::PickerRelayRoomInfo room;
+        room.code = call == 1 ? "GLAD-AAAA" : "GLAD-BBBB";
+        room.host_name = call == 1 ? "Old Host" : "Current Host";
+        return std::make_unique<ScriptedRoomListRequest>(
+            [&state, call, room = std::move(room), delivered = false]() mutable
+                -> std::optional<og::ui::PickerRelayRoomListResult> {
+                if (delivered)
+                    return std::nullopt;
+                if (call == 2)
+                {
+                    state.stale_request_polled.store(true);
+                    return std::nullopt;
+                }
+                if (call >= 3)
+                {
+                    state.replacement_request_polled.store(true);
+                    if (!state.release_replacement.load())
+                        return std::nullopt;
+                }
+                delivered = true;
+                og::ui::PickerRelayRoomListResult result;
+                result.rooms.push_back(std::move(room));
+                return result;
+            },
+            [&state, call] {
+                if (call == 2)
+                    state.stale_request_destroyed.store(true);
+            });
+    };
+    set_platform_bridge(std::move(bridge));
+
+    auto& save = og::runtime::current_session->myscreen_->save_data;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.current_campaign = "org.openglad.gladiator";
+    ASSERT_TRUE(save.save("save0"));
+
+    SDL_Thread* thread = SDL_CreateThread(
+        networking_room_reentry_injector,
+        "networking_room_reentry_test",
+        &state);
+    ASSERT_TRUE(thread != nullptr);
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 2;
+    picker_main(0, nullptr);
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    ASSERT_TRUE(state.started);
+    ASSERT_TRUE(state.finished);
+    ASSERT_TRUE(state.saw_initial_room);
+    ASSERT_TRUE(state.stale_request_polled.load());
+    ASSERT_TRUE(state.stale_request_destroyed.load())
+        << "BACK must cancel the obsolete pending discovery request";
+    ASSERT_TRUE(state.reentered_networking);
+    ASSERT_TRUE(state.replacement_request_polled.load());
+    ASSERT_TRUE(state.hid_stale_room)
+        << "a previous menu generation must never remain tappable on re-entry";
+    ASSERT_TRUE(state.saw_replacement_room);
+    ASSERT_TRUE(state.returned_to_main_menu);
+}
+
+TEST(NetworkingMenu, empty_room_list_shows_no_rows_and_stays_usable)
+{
+    trace_clear();
+    PlatformBridgeGuard bridge_guard;
+    PlatformBridge bridge = platform_bridge();
+    bridge.begin_list_relay_rooms = {};
+    bridge.list_relay_rooms =
+        [](const std::string&, const std::string&)
+            -> std::vector<og::ui::PickerRelayRoomInfo> {
+        return {};
+    };
+    set_platform_bridge(std::move(bridge));
+
+    level_editor_testing_prompt_queue_clear();
+
+    auto& save = og::runtime::current_session->myscreen_->save_data;
+    save.scen_num = 1;
+    save.numplayers = 1;
+    save.current_campaign = "org.openglad.gladiator";
+    ASSERT_TRUE(save.save("save0"));
+
+    NetworkingEmptyRoomListState state;
+    SDL_Thread* thread = SDL_CreateThread(
+        networking_empty_room_list_injector,
+        "networking_empty_room_list_test",
+        &state);
+    ASSERT_TRUE(thread != nullptr)
+        << "failed to create networking empty room list injector";
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 2;
+    picker_main(0, nullptr);
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+    level_editor_testing_prompt_queue_clear();
+
+    ASSERT_TRUE(state.started);
+    ASSERT_TRUE(state.finished);
+    ASSERT_TRUE(state.saw_networking_menu);
+    ASSERT_TRUE(state.enabled_room_code);
+    ASSERT_TRUE(state.no_room_rows_appeared);
+    ASSERT_TRUE(state.returned_to_main_menu);
+}
+
 TEST(NetworkingMenu, host_factory_error_stays_in_submenu)
 {
     trace_clear();
     PlatformBridgeGuard bridge_guard;
     PlatformBridge bridge = platform_bridge();
+    bridge.begin_list_relay_rooms = {};
+    bridge.list_relay_rooms =
+        [](const std::string&, const std::string&)
+            -> std::vector<og::ui::PickerRelayRoomInfo> {
+        return {};
+    };
     bridge.create_host_picker_lobby_client =
         [](const og::ui::PickerHostGameOptions&)
             -> std::unique_ptr<og::ui::IPickerLobbyClient> {

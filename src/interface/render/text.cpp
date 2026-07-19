@@ -15,6 +15,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 #include <openglad/interface/render/text.h>
+#include <algorithm>
 #include <openglad/interface/screen.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/interface/input.h>
@@ -29,6 +30,20 @@
 
 static PixieData letters1;
 static PixieData letters_big;
+
+static void erase_last_utf8_codepoint(char* value, std::size_t length)
+{
+    if (value == nullptr || length == 0)
+        return;
+
+    std::size_t erase_at = length - 1;
+    while (erase_at > 0 &&
+           (static_cast<unsigned char>(value[erase_at]) & 0xc0u) == 0x80u)
+    {
+        --erase_at;
+    }
+    value[erase_at] = '\0';
+}
 
 static std::span<const unsigned char> safe_glyph_span(const PixieData* font, unsigned char letter)
 {
@@ -423,7 +438,8 @@ char * text::input_string(Sint32 x, Sint32 y, short maxlength, const char *begin
 	clear_key_press_event();
 	clear_text_input_event();
 	
-    og::input_native::start_text_input();
+    og::input_native::start_text_input(
+        editstring, std::max(0, static_cast<int>(maxlength) - 1));
     
 	while ( !string_done )
 	{
@@ -460,7 +476,14 @@ char * text::input_string(Sint32 x, Sint32 y, short maxlength, const char *begin
                                       y+sizey+1, 1);
                 }
                 else
-                    editstring[current_length-1] = 0;
+                {
+                    // SDL_TEXTINPUT appends UTF-8. Remove one complete code
+                    // point instead of one byte so Backspace never leaves a
+                    // malformed suffix for native or desktop-web prompts.
+                    erase_last_utf8_codepoint(
+                        editstring,
+                        static_cast<std::size_t>(current_length));
+                }
                 
                 has_typed = 1;
             }
@@ -591,7 +614,8 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
 	clear_key_press_event();
 	clear_text_input_event();
 	
-    og::input_native::start_text_input();
+    og::input_native::start_text_input(
+        editstring, std::max(0, static_cast<int>(maxlength) - 1), message);
     
 	while ( !string_done )
 	{
@@ -628,7 +652,14 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
                                       y+sizey+1, 1);
                 }
                 else
-                    editstring[current_length-1] = 0;
+                {
+                    // Keep the extended/message prompt path consistent with
+                    // input_string: SDL text events append UTF-8, so one
+                    // Backspace removes one complete code point.
+                    erase_last_utf8_codepoint(
+                        editstring,
+                        static_cast<std::size_t>(current_length));
+                }
                 
                 has_typed = 1;
             }

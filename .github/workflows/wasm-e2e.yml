@@ -45,7 +45,7 @@ jobs:
           exit 1
 
       - name: Copy web assets to dist
-        run: cp web/index.html web/help.html dist/
+        run: cp web/index.html web/help.html web/_worker.js dist/
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -56,10 +56,25 @@ jobs:
         run: npm ci
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium webkit
 
       - name: Run Playwright tests
         run: npx playwright test --workers=1
+
+      # True-WebKit iPhone emulation for the touch suite. The ubuntu CI image
+      # satisfies WebKit's library deps (dev boxes often cannot); advisory
+      # (continue-on-error) until headless WebKit+WebGL proves stable here.
+      - name: Run WebKit iPhone touch tests (advisory)
+        env:
+          OG_WEBKIT: '1'
+        continue-on-error: true
+        # Bound engine-start/test hangs inside the advisory step so they cannot
+        # consume the enclosing required job's full 30-minute timeout.
+        timeout-minutes: 10
+        run: >-
+          npx playwright test --workers=1
+          --project=webkit-iphone
+          --project=webkit-iphone-portrait
 
       - name: Upload test results
         if: ${{ !cancelled() }}

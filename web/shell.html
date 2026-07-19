@@ -2,7 +2,15 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Openglad">
+    <meta name="theme-color" content="#000000">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" href="icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
     <title>Openglad</title>
     <style>
         * {
@@ -11,10 +19,24 @@
             box-sizing: border-box;
         }
 
-        html, body {
+        html {
             width: 100%;
             height: 100%;
             overflow: hidden;
+            overscroll-behavior: none;
+            background-color: #000;
+        }
+
+        body {
+            /* iOS Safari hardening: pin the page so letterbox-area touches
+               cannot rubber-band scroll or shift the layout viewport. */
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            overscroll-behavior: none;
+            touch-action: none;
             background-color: #000;
         }
 
@@ -26,20 +48,23 @@
             align-items: center;
         }
 
+        @supports (height: 100dvh) {
+            #game-container {
+                height: 100dvh;
+            }
+        }
+
         #canvas {
+            display: block;
             image-rendering: crisp-edges;
             image-rendering: pixelated;
             background-color: #000;
         }
 
-        #canvas:fullscreen {
-            object-fit: contain;
-        }
-
         #fullscreen-button {
             position: fixed;
-            top: max(8px, env(safe-area-inset-top));
-            right: max(8px, env(safe-area-inset-right));
+            top: max(8px, env(safe-area-inset-top, 0px));
+            right: max(8px, env(safe-area-inset-right, 0px));
             width: 44px;
             height: 44px;
             display: flex;
@@ -127,6 +152,267 @@
         .hidden {
             display: none !important;
         }
+
+        /* ------------------------------------------------------------------
+           Touch controls overlay (runtime-gated: touch devices only).
+           Container swallows nothing (pointer-events: none); each control
+           re-enables pointer events, so overlay touches never reach SDL's
+           canvas handlers. Safe-area insets keep controls off the notch.
+           ------------------------------------------------------------------ */
+        #touch-controls {
+            position: fixed;
+            inset: 0;
+            z-index: 3;
+            display: none;
+            pointer-events: none;
+            font-family: Arial, sans-serif;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        #touch-controls.tc-active {
+            display: block;
+        }
+
+        #tc-game {
+            display: none;
+        }
+
+        #tc-game.tc-show {
+            display: block;
+        }
+
+        .tc-control {
+            position: absolute;
+            pointer-events: auto;
+            touch-action: none;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid rgba(255, 255, 255, 0.65);
+            border-radius: 50%;
+            color: #fff;
+            background: rgba(0, 0, 0, 0.4);
+            opacity: 0.35;
+            font-size: 11px;
+            letter-spacing: 0.05em;
+        }
+
+        .tc-control.tc-pressed,
+        .tc-control.tc-latched {
+            opacity: 0.65;
+            background: rgba(110, 110, 110, 0.6);
+        }
+
+        .tc-control.tc-latched {
+            border-color: #ff0;
+            color: #ff0;
+        }
+
+        #tc-stick-zone {
+            position: absolute;
+            left: max(8px, env(safe-area-inset-left, 0px));
+            bottom: max(8px, env(safe-area-inset-bottom, 0px));
+            width: 45%;
+            height: 70%;
+            pointer-events: auto;
+            touch-action: none;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        #tc-stick-base {
+            position: fixed;
+            width: 120px;
+            height: 120px;
+            border: 1px solid rgba(255, 255, 255, 0.65);
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.25);
+            opacity: 0.5;
+            pointer-events: none;
+        }
+
+        #tc-stick-thumb {
+            position: absolute;
+            left: 32px;
+            top: 32px;
+            width: 56px;
+            height: 56px;
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            border-radius: 50%;
+            background: rgba(160, 160, 160, 0.55);
+        }
+
+        #tc-fire {
+            width: 72px;
+            height: 72px;
+            right: max(12px, env(safe-area-inset-right, 0px));
+            bottom: max(12px, env(safe-area-inset-bottom, 0px));
+        }
+
+        #tc-special {
+            width: 60px;
+            height: 60px;
+            right: calc(max(12px, env(safe-area-inset-right, 0px)) + 84px);
+            bottom: calc(max(12px, env(safe-area-inset-bottom, 0px)) + 44px);
+        }
+
+        #tc-row {
+            position: absolute;
+            top: max(12px, env(safe-area-inset-top, 0px));
+            right: calc(max(12px, env(safe-area-inset-right, 0px)) + 56px);
+            display: flex;
+            gap: 8px;
+            pointer-events: none;
+        }
+
+        #tc-row .tc-control {
+            position: static;
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            font-size: 10px;
+        }
+
+        #tc-back {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            top: max(12px, env(safe-area-inset-top, 0px));
+            left: max(12px, env(safe-area-inset-left, 0px));
+        }
+
+        #tc-toggle {
+            position: fixed;
+            top: calc(max(8px, env(safe-area-inset-top, 0px)) + 52px);
+            right: max(8px, env(safe-area-inset-right, 0px));
+            width: 44px;
+            height: 44px;
+            z-index: 4;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid rgba(255, 255, 255, 0.65);
+            border-radius: 10px;
+            color: #fff;
+            background: rgba(0, 0, 0, 0.55);
+            font-size: 20px;
+            opacity: 0.5;
+            cursor: pointer;
+            touch-action: none;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        /* Portrait gameplay gets the same full-viewport world canvas as
+           landscape. Keep the virtual stick and action clusters in the
+           lower corners so they do not cover the tall-layout HUD at the top. */
+        @media (orientation: portrait) {
+            #tc-stick-zone {
+                width: 58%;
+                height: 48%;
+            }
+
+            #tc-stick-base {
+                width: 108px;
+                height: 108px;
+            }
+
+            #tc-stick-thumb {
+                left: 29px;
+                top: 29px;
+                width: 50px;
+                height: 50px;
+            }
+
+            #tc-fire {
+                width: 72px;
+                height: 72px;
+            }
+
+            #tc-special {
+                right: calc(max(12px, env(safe-area-inset-right, 0px)) + 82px);
+                bottom: calc(max(12px, env(safe-area-inset-bottom, 0px)) + 30px);
+            }
+
+            #tc-row {
+                top: auto;
+                right: max(12px, env(safe-area-inset-right, 0px));
+                bottom: calc(max(12px, env(safe-area-inset-bottom, 0px)) + 120px);
+                display: grid;
+                grid-template-columns: repeat(2, 42px);
+                gap: 6px;
+            }
+
+            #tc-row .tc-control {
+                width: 42px;
+                height: 42px;
+            }
+        }
+
+        /* Touch text-entry overlay: SDL3's emscripten backend has no screen
+           keyboard, so prompts get a real DOM input on touch devices. */
+        #og-text-entry-wrap {
+            position: fixed;
+            top: max(12px, env(safe-area-inset-top, 0px));
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 5;
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+
+        #og-text-entry {
+            width: min(280px, 60vw);
+            height: 40px;
+            padding: 0 10px;
+            font-size: 16px; /* >=16px stops iOS auto-zoom on focus */
+            /* Room codes: monospace + spacing keep 0/O and 1/I readable. */
+            font-family: 'SFMono-Regular', Menlo, Consolas, monospace;
+            letter-spacing: 1px;
+            color: #fff;
+            background: rgba(0, 0, 0, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            border-radius: 6px;
+        }
+
+        /* iOS only summons its keyboard from a gesture; until the input is
+           focused, pulse it so "tap here to type" is unmissable. */
+        #og-text-entry:not(:focus) {
+            animation: og-entry-pulse 1.2s ease-in-out infinite;
+        }
+
+        @keyframes og-entry-pulse {
+            0%, 100% {
+                border-color: rgba(255, 255, 255, 0.8);
+                box-shadow: none;
+            }
+            50% {
+                border-color: #ffd24d;
+                box-shadow: 0 0 10px rgba(255, 210, 77, 0.9);
+            }
+        }
+
+        #og-text-entry-cancel {
+            height: 40px;
+            padding: 0 10px;
+            color: #fff;
+            background: rgba(0, 0, 0, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.65);
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: Arial, sans-serif;
+            cursor: pointer;
+            touch-action: manipulation;
+        }
+
     </style>
 </head>
 <body>
@@ -134,12 +420,41 @@
         <canvas id="canvas" width="320" height="200" oncontextmenu="event.preventDefault()" tabindex="-1" aria-label="Openglad game canvas"></canvas>
     </div>
 
-    <button id="fullscreen-button" class="hidden" type="button" aria-label="Enter fullscreen" aria-controls="canvas" title="Enter fullscreen">
+    <button id="fullscreen-button" class="hidden" type="button" aria-label="Enter fullscreen" aria-controls="game-container" title="Enter fullscreen">
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
             <path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square"/>
         </svg>
     </button>
     <p id="fullscreen-status" class="visually-hidden" role="status" aria-live="polite"></p>
+
+    <div id="touch-controls">
+        <div id="tc-game">
+            <div id="tc-stick-zone">
+                <div id="tc-stick-base" class="hidden">
+                    <div id="tc-stick-thumb"></div>
+                </div>
+            </div>
+            <div id="tc-special" class="tc-control">SPC</div>
+            <div id="tc-fire" class="tc-control">FIRE</div>
+            <div id="tc-row">
+                <div id="tc-look" class="tc-control">LOOK</div>
+                <div id="tc-switch" class="tc-control">CHAR</div>
+                <div id="tc-yell" class="tc-control">YELL</div>
+                <div id="tc-alt" class="tc-control">ALT</div>
+                <div id="tc-cycle" class="tc-control">SP+</div>
+            </div>
+        </div>
+        <div id="tc-back" class="tc-control hidden">BACK</div>
+    </div>
+    <button id="tc-toggle" class="hidden" type="button" aria-label="Toggle touch controls" title="Toggle touch controls">&#127918;</button>
+
+    <div id="og-text-entry-wrap" class="hidden">
+        <input id="og-text-entry" type="text" placeholder="TAP HERE TO TYPE"
+               autocomplete="off" autocorrect="off" spellcheck="false"
+               enterkeyhint="done"
+               aria-label="Text entry">
+        <button id="og-text-entry-cancel" type="button" aria-label="Cancel text entry">CANCEL</button>
+    </div>
 
     <div id="loading">
         <div id="loading-spinner"></div>
@@ -156,107 +471,89 @@
         var loadingBar = document.getElementById('loading-bar');
         var fullscreenButton = document.getElementById('fullscreen-button');
         var fullscreenStatus = document.getElementById('fullscreen-status');
+        var fullscreenTarget = document.documentElement;
         var fullscreenControlReady = false;
-        var fullscreenKeyboardLockGeneration = 0;
+
+        function currentFullscreenElement() {
+            return document.fullscreenElement ||
+                document.webkitFullscreenElement || null;
+        }
 
         function fullscreenAvailable() {
-            return document.fullscreenEnabled &&
-                typeof canvas.requestFullscreen === 'function';
+            var standard = document.fullscreenEnabled !== false &&
+                typeof fullscreenTarget.requestFullscreen === 'function';
+            var webkit = document.webkitFullscreenEnabled !== false &&
+                typeof fullscreenTarget.webkitRequestFullscreen === 'function';
+            return standard || webkit;
+        }
+
+        function requestAppFullscreen() {
+            if (typeof fullscreenTarget.requestFullscreen === 'function') {
+                return fullscreenTarget.requestFullscreen();
+            }
+            if (typeof fullscreenTarget.webkitRequestFullscreen === 'function') {
+                return fullscreenTarget.webkitRequestFullscreen();
+            }
+            return null;
         }
 
         function updateFullscreenButton() {
             var showButton = fullscreenControlReady && fullscreenAvailable() &&
-                document.fullscreenElement === null;
+                currentFullscreenElement() === null;
             fullscreenButton.classList.toggle('hidden', !showButton);
         }
 
-        function keyboardLockAvailable() {
-            return 'keyboard' in navigator && navigator.keyboard !== null &&
-                typeof navigator.keyboard.lock === 'function' &&
-                typeof navigator.keyboard.unlock === 'function';
-        }
-
-        function releaseFullscreenKeyboardLock() {
-            ++fullscreenKeyboardLockGeneration;
-            if (!keyboardLockAvailable()) {
-                return;
-            }
-            try {
-                navigator.keyboard.unlock();
-            } catch (error) {
-                console.warn('Unable to release fullscreen keyboard lock:', error);
-            }
-        }
-
-        function lockFullscreenEscape() {
-            var generation = ++fullscreenKeyboardLockGeneration;
-            if (!keyboardLockAvailable()) {
-                fullscreenStatus.textContent =
-                    'Fullscreen active. Escape leaves fullscreen; press it again to control the game.';
-                return;
-            }
-
-            var request;
-            try {
-                // Lock only Escape, never the whole keyboard. Supporting
-                // browsers still reserve a long Escape hold as their exit
-                // hatch while a short press reaches SDL and the game.
-                request = navigator.keyboard.lock(['Escape']);
-            } catch (error) {
-                request = Promise.reject(error);
-            }
-
-            Promise.resolve(request).then(function() {
-                if (generation !== fullscreenKeyboardLockGeneration ||
-                    document.fullscreenElement !== canvas) {
-                    // The actual fullscreenchange exit path already unlocks.
-                    // Do not let a late promise from an earlier fullscreen
-                    // session unlock a newer session's Escape request.
-                    return;
-                }
-                fullscreenStatus.textContent =
-                    'Fullscreen active. Escape controls the game; press and hold Escape to leave fullscreen.';
-            }).catch(function(error) {
-                if (generation !== fullscreenKeyboardLockGeneration ||
-                    document.fullscreenElement !== canvas) {
-                    return;
-                }
-                console.warn('Unable to lock Escape in fullscreen:', error);
-                fullscreenStatus.textContent =
-                    'Fullscreen active. Escape leaves fullscreen; press it again to control the game.';
-            });
-        }
-
+        // The game never uses Escape on web: Backspace is the universal
+        // back/cancel key (remapped in the engine), so browser-reserved
+        // Escape exits fullscreen without any in-game side effect. No
+        // Keyboard Lock is needed.
         function handleFullscreenControlChange() {
             updateFullscreenButton();
-            if (document.fullscreenElement === canvas) {
-                lockFullscreenEscape();
+            if (currentFullscreenElement() === fullscreenTarget) {
+                fullscreenStatus.textContent =
+                    'Fullscreen active. Backspace is the in-game back key; Escape leaves fullscreen.';
+                canvas.focus({preventScroll: true});
             } else {
-                releaseFullscreenKeyboardLock();
                 fullscreenStatus.textContent = '';
             }
         }
 
+        function reportFullscreenFailure(error) {
+            console.warn('Unable to enter fullscreen:', error);
+            fullscreenStatus.textContent =
+                'Fullscreen could not be opened. Please try again or use your browser fullscreen control.';
+            fullscreenButton.focus({preventScroll: true});
+        }
+
         fullscreenButton.addEventListener('click', function() {
             fullscreenStatus.textContent = '';
-            if (!fullscreenAvailable() || document.fullscreenElement !== null) {
+            if (!fullscreenAvailable() || currentFullscreenElement() !== null) {
                 canvas.focus({preventScroll: true});
                 return;
             }
 
             // Keep this call directly in the trusted click handler: browsers
             // reject Fullscreen API requests after user activation expires.
-            var request = canvas.requestFullscreen();
+            // Fullscreen the whole app, not just the canvas: touch controls,
+            // text entry, and status UI are sibling elements and must remain
+            // visible inside the fullscreen subtree.
+            var request;
+            try {
+                request = requestAppFullscreen();
+            } catch (error) {
+                reportFullscreenFailure(error);
+                return;
+            }
             if (request && typeof request.then === 'function') {
                 request.then(function() {
-                    fullscreenStatus.textContent = '';
+                    // Status text is owned by the fullscreenchange handler.
                     canvas.focus({preventScroll: true});
-                }).catch(function(error) {
-                    console.warn('Unable to enter fullscreen:', error);
-                    fullscreenStatus.textContent =
-                        'Fullscreen could not be opened. Please try again or use your browser fullscreen control.';
-                    fullscreenButton.focus({preventScroll: true});
-                });
+                }).catch(reportFullscreenFailure);
+            } else {
+                // Legacy webkitRequestFullscreen() returns undefined. Its
+                // fullscreenchange event will confirm success; restore game
+                // focus now so the DOM button cannot keep keyboard input.
+                canvas.focus({preventScroll: true});
             }
         });
         // Keep keyboard activation of the DOM control out of SDL's game-key
@@ -268,6 +565,8 @@
             event.stopPropagation();
         });
         document.addEventListener('fullscreenchange', handleFullscreenControlChange);
+        document.addEventListener('webkitfullscreenchange',
+            handleFullscreenControlChange);
 
         // Handle WebGL context loss
         canvas.addEventListener('webglcontextlost', function(e) {
@@ -280,31 +579,38 @@
             canvas.focus();
         });
 
-        // Scale canvas to fit window while maintaining aspect ratio
-        function resizeCanvas() {
-            var gameWidth = 320;
-            var gameHeight = 200;
-            var windowWidth = window.innerWidth;
-            var windowHeight = window.innerHeight;
+        // WebKit-only pinch gesture events zoom the page even with
+        // touch-action: none on the canvas; suppress them globally.
+        document.addEventListener('gesturestart', function(e) {
+            e.preventDefault();
+        });
 
-            // Calculate scale to fit window (maximize canvas size)
-            var fittedWidth;
-            var fittedHeight;
-            if (windowWidth / gameWidth <= windowHeight / gameHeight) {
-                fittedWidth = Math.max(1, Math.floor(windowWidth));
-                fittedHeight = Math.max(1, Math.floor(
-                    fittedWidth * gameHeight / gameWidth));
-            } else {
-                fittedHeight = Math.max(1, Math.floor(windowHeight));
-                fittedWidth = Math.max(1, Math.floor(
-                    fittedHeight * gameWidth / gameHeight));
+        // iOS Safari reports toolbar collapse/expand and keyboard geometry
+        // through visualViewport, not window 'resize'; prefer it when present.
+        function viewportSize() {
+            var vv = window.visualViewport;
+            if (vv && vv.width > 0 && vv.height > 0) {
+                return { width: vv.width, height: vv.height };
             }
+            return { width: window.innerWidth, height: window.innerHeight };
+        }
 
-            canvas.style.width = fittedWidth + 'px';
-            canvas.style.height = fittedHeight + 'px';
+        // Give SDL the full usable browser viewport. The engine presents its
+        // fixed 320x200 intro/menus through a centered aspect-fit rectangle,
+        // while gameplay expands its World and HUD canvases to this live
+        // aspect (including tall portrait windows) without distortion.
+        function resizeCanvas() {
+            var viewport = viewportSize();
+            var windowWidth = viewport.width;
+            var windowHeight = viewport.height;
+            canvas.style.width = Math.max(1, Math.floor(windowWidth)) + 'px';
+            canvas.style.height = Math.max(1, Math.floor(windowHeight)) + 'px';
         }
 
         window.addEventListener('resize', resizeCanvas);
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', resizeCanvas);
+        }
         resizeCanvas(); // Initial sizing
         window.__opengladWebBootstrap = {
             runtimeInitialized: false,
@@ -314,7 +620,8 @@
         window.__opengladGameState = null;
 
         function installPostBootCanvasRecovery() {
-            var canvasWasFullscreen = document.fullscreenElement === canvas;
+            var canvasWasFullscreen =
+                currentFullscreenElement() === fullscreenTarget;
             function recoverCanvasBacking() {
                 resizeCanvas();
                 if (typeof Module._openglad_web_restore_canvas_backing === 'function') {
@@ -328,8 +635,24 @@
             // Registered after SDL has booted so this runs after SDL3's own
             // resize/fullscreen listeners and repairs its fullscreen-exit race.
             window.addEventListener('resize', recoverCanvasBacking);
+            if (window.visualViewport) {
+                window.visualViewport.addEventListener('resize', recoverCanvasBacking);
+            }
             document.addEventListener('fullscreenchange', function() {
-                var canvasIsFullscreen = document.fullscreenElement === canvas;
+                var canvasIsFullscreen =
+                    currentFullscreenElement() === fullscreenTarget;
+                var exitedCanvasFullscreen = canvasWasFullscreen && !canvasIsFullscreen;
+                canvasWasFullscreen = canvasIsFullscreen;
+                recoverCanvasBacking();
+                if (exitedCanvasFullscreen) {
+                    requestAnimationFrame(function() {
+                        canvas.focus({preventScroll: true});
+                    });
+                }
+            });
+            document.addEventListener('webkitfullscreenchange', function() {
+                var canvasIsFullscreen =
+                    currentFullscreenElement() === fullscreenTarget;
                 var exitedCanvasFullscreen = canvasWasFullscreen && !canvasIsFullscreen;
                 canvasWasFullscreen = canvasIsFullscreen;
                 recoverCanvasBacking();
@@ -392,6 +715,954 @@
         };
 
         Module.setStatus('Loading...');
+
+        // iOS in-gesture audio unlock: SDL3's emscripten backend resumes a
+        // suspended AudioContext from a silence-timer poll, i.e. OUTSIDE any
+        // user-gesture handler, which iOS Safari rejects. Resume it here from
+        // real gestures instead; idempotent and cheap, so the listeners stay
+        // installed for the page's lifetime (audio can re-suspend on
+        // backgrounding).
+        function unlockAudioContext() {
+            try {
+                var sdl = Module.SDL3 || Module.SDL2;
+                var ctx = sdl && sdl.audioContext;
+                if (ctx && ctx.state === 'suspended') {
+                    var p = ctx.resume();
+                    if (p && typeof p.catch === 'function') {
+                        p.catch(function () {});
+                    }
+                }
+            } catch (e) {
+                // Best-effort: never let audio unlock break input handling.
+            }
+        }
+        document.addEventListener('pointerdown', unlockAudioContext,
+            { capture: true, passive: true });
+        document.addEventListener('touchend', unlockAudioContext,
+            { capture: true, passive: true });
+
+        // SDL's own silence-timer resume() attempts reject in environments
+        // with no usable audio device (headless WebKit); they retry
+        // internally, so the rejections are pure console noise — filter
+        // exactly those, keep everything else loud.
+        window.addEventListener('unhandledrejection', function (event) {
+            var reason = event && event.reason;
+            var text = reason && (reason.message || String(reason));
+            if (text && text.indexOf('audio device') !== -1) {
+                event.preventDefault();
+            }
+        });
+
+        // ------------------------------------------------------------------
+        // Touch controls overlay.
+        //
+        // Two injection tiers into the engine (web_touch_bridge.cpp):
+        //  - held state: Module._openglad_web_touch_set_key writes the
+        //    touch_keystate seam OR-ed into isPlayerHoldingKey (movement,
+        //    FIRE/SPECIAL holds, ALT latch, LOOK);
+        //  - edges: Module._openglad_web_back_key (Backspace as the universal
+        //    web back key; never Escape) and Module._openglad_web_push_key /
+        //    _openglad_web_push_char for the text-entry overlay.
+        // Canvas taps are owned below and re-injected through the mouse bridge;
+        // relying on browser/SDL touch-to-mouse synthesis lost quick iOS taps.
+        // ------------------------------------------------------------------
+        (function() {
+            var TC_MIN_HOLD_MS = 90; // input sampler must observe the press
+            var KEY = {
+                UP: 0, UP_RIGHT: 1, RIGHT: 2, DOWN_RIGHT: 3, DOWN: 4,
+                DOWN_LEFT: 5, LEFT: 6, UP_LEFT: 7, FIRE: 8, SPECIAL: 9,
+                SWITCH: 10, SPECIAL_SWITCH: 11, YELL: 12, SHIFTER: 13,
+                LOOKUP: 16
+            };
+            var SDLK_RETURN = 13;
+            var SDLK_BACKSPACE = 8;
+            var PREF_KEY = 'openglad.touchControls';
+
+            var overlay = document.getElementById('touch-controls');
+            var gameCluster = document.getElementById('tc-game');
+            var backButton = document.getElementById('tc-back');
+            var toggleButton = document.getElementById('tc-toggle');
+            var stickZone = document.getElementById('tc-stick-zone');
+            var stickBase = document.getElementById('tc-stick-base');
+            var stickThumb = document.getElementById('tc-stick-thumb');
+
+            var active = false;
+            var enableAcked = false;
+            var wasInGame = false;
+            var sawTouchPointer = false;
+            var resetVisualFns = [];
+
+            function readPref() {
+                try {
+                    return localStorage.getItem(PREF_KEY) || 'auto';
+                } catch (e) {
+                    return 'auto';
+                }
+            }
+
+            function writePref(value) {
+                try {
+                    localStorage.setItem(PREF_KEY, value);
+                } catch (e) {
+                    // Private mode: the toggle still works for this page load.
+                }
+            }
+
+            function isTouchDevice() {
+                if (window.__opengladForceTouchControls === true) {
+                    return true;
+                }
+                // maxTouchPoints OR ontouchstart: WebKit's emulated iPhone
+                // contexts report maxTouchPoints 0 while still delivering
+                // touch events; real iOS Safari reports both. The coarse
+                // check keeps mouse-primary desktops (even with a
+                // touchscreen) on the plain UI until a touch is seen.
+                var touchCapable = navigator.maxTouchPoints > 0 ||
+                    'ontouchstart' in window;
+                return touchCapable &&
+                    typeof window.matchMedia === 'function' &&
+                    window.matchMedia('(pointer: coarse)').matches;
+            }
+
+            function shouldEnable() {
+                var pref = readPref();
+                if (pref === 'on') {
+                    return true;
+                }
+                if (pref === 'off') {
+                    return false;
+                }
+                return isTouchDevice() || sawTouchPointer;
+            }
+
+            function bridge(name) {
+                var fn = (typeof Module !== 'undefined') && Module['_' + name];
+                return (typeof fn === 'function') ? fn : null;
+            }
+
+            // While a text prompt is active, canvas taps must focus the DOM
+            // text-entry input INSIDE the gesture (iOS only summons the
+            // software keyboard for gesture-initiated focus). initTextEntry
+            // installs the redirect; ownCanvasTouch consults it first.
+            var textEntryFocusRedirect = null;
+            var textEntryRefresh = null;
+
+            // Touch taps on the game canvas are owned HERE, not by SDL: the
+            // port's touch->mouse synthesis proved unreliable under real
+            // engines (a quick tap surfaces as hover motion but never as a
+            // click), so touch pointers are swallowed before SDL's listeners
+            // run and re-injected as left-mouse events through the bridge.
+            // Mouse/pen pointers pass through to SDL untouched. Overlay
+            // controls (stick, buttons) capture their own pointers and never
+            // reach these canvas listeners.
+            (function ownCanvasTouch() {
+                var activeTouchId = null;
+                var activeTouchWasIntro = false;
+                var activeTouchIntroGeneration = null;
+                var lastTouchPoint = null;
+
+                function canvasPoint(e) {
+                    var rect = canvas.getBoundingClientRect();
+                    return {
+                        x: Math.round(e.clientX - rect.left),
+                        y: Math.round(e.clientY - rect.top),
+                        inside:
+                            e.clientX >= rect.left && e.clientX < rect.right &&
+                            e.clientY >= rect.top && e.clientY < rect.bottom,
+                    };
+                }
+
+                function pushMouse(down, p) {
+                    // Diagnostic mirror used by the browser regression tests;
+                    // it reflects the exact down/up state sent to the bridge.
+                    window.__opengladTouchMouseDown = Boolean(down);
+                    var fn = bridge('openglad_web_push_mouse');
+                    if (fn) {
+                        var rect = canvas.getBoundingClientRect();
+                        fn(down ? 1 : 0, p.x, p.y,
+                           Math.round(rect.width), Math.round(rect.height));
+                    }
+                }
+
+                function swallow(e) {
+                    e.stopImmediatePropagation();
+                    if (e.cancelable) {
+                        e.preventDefault();
+                    }
+                }
+
+                canvas.addEventListener('pointerdown', function(e) {
+                    if (e.pointerType !== 'touch') {
+                        return;
+                    }
+                    swallow(e);
+                    if (activeTouchId !== null || !e.isPrimary) {
+                        return;
+                    }
+                    var p = canvasPoint(e);
+                    if (!p.inside) {
+                        return;
+                    }
+                    if (textEntryFocusRedirect && textEntryFocusRedirect()) {
+                        // Gesture consumed: it focused the text-entry input
+                        // (which opens the iOS keyboard). No mouse injection —
+                        // the blocked prompt ignores clicks anyway.
+                        return;
+                    }
+                    activeTouchId = e.pointerId;
+                    lastTouchPoint = p;
+                    activeTouchWasIntro = Boolean(window.__opengladIntroActive);
+                    try {
+                        canvas.setPointerCapture(e.pointerId);
+                    } catch (err) {
+                        // Synthetic pointers (tests) cannot be captured.
+                    }
+                    if (activeTouchWasIntro) {
+                        // The legacy intro is running on an Asyncify stack.
+                        // Latch the trusted tap in JS and let intro.cpp consume
+                        // it after yielding; calling back into Wasm here would
+                        // re-enter the suspended stack.
+                        activeTouchIntroGeneration =
+                            window.__opengladIntroTapReady
+                                ? window.__opengladIntroTapGeneration
+                                : null;
+                        return;
+                    }
+                    activeTouchIntroGeneration = null;
+                    pushMouse(true, p);
+                }, { capture: true });
+
+                canvas.addEventListener('pointermove', function(e) {
+                    if (e.pointerType === 'touch') {
+                        if (e.pointerId === activeTouchId) {
+                            lastTouchPoint = canvasPoint(e);
+                        }
+                        swallow(e);
+                    }
+                }, { capture: true });
+
+                function endTouch(e) {
+                    if (e.pointerType !== 'touch') {
+                        return;
+                    }
+                    if (e.pointerId !== activeTouchId) {
+                        // At document scope, leave overlay controls and other
+                        // fingers alone. Canvas-local listeners still swallow
+                        // unowned touch pointers so SDL cannot synthesize them.
+                        if (e.currentTarget === canvas) {
+                            swallow(e);
+                        }
+                        return;
+                    }
+                    swallow(e);
+                    var releasePoint = lastTouchPoint || canvasPoint(e);
+                    activeTouchId = null;
+                    lastTouchPoint = null;
+                    if (activeTouchWasIntro) {
+                        activeTouchWasIntro = false;
+                        if (e.type === 'pointerup' &&
+                            window.__opengladIntroActive &&
+                            window.__opengladIntroTapReady &&
+                            activeTouchIntroGeneration !== null &&
+                            activeTouchIntroGeneration ===
+                                window.__opengladIntroTapGeneration) {
+                            window.__opengladIntroTapPending = true;
+                        }
+                        activeTouchIntroGeneration = null;
+                        return;
+                    }
+                    pushMouse(false, releasePoint);
+                }
+                canvas.addEventListener('pointerup', endTouch, { capture: true });
+                canvas.addEventListener('pointercancel', endTouch, { capture: true });
+                document.addEventListener('pointerup', endTouch,
+                    { capture: true });
+                document.addEventListener('pointercancel', endTouch,
+                    { capture: true });
+                canvas.addEventListener('lostpointercapture', endTouch,
+                    { capture: true });
+
+                resetVisualFns.push(function() {
+                    if (activeTouchId !== null && !activeTouchWasIntro &&
+                        lastTouchPoint !== null) {
+                        pushMouse(false, lastTouchPoint);
+                    }
+                    activeTouchId = null;
+                    activeTouchWasIntro = false;
+                    activeTouchIntroGeneration = null;
+                    lastTouchPoint = null;
+                });
+
+                // Kill SDL's raw-touch fallback path and the browser's
+                // compatibility mouse events for canvas touches; the pointer
+                // handlers above are the single source of truth.
+                ['touchstart', 'touchmove', 'touchend', 'touchcancel'].forEach(
+                    function(type) {
+                        canvas.addEventListener(type, function(e) {
+                            e.stopImmediatePropagation();
+                            if (e.cancelable) {
+                                e.preventDefault();
+                            }
+                        }, { capture: true });
+                    });
+            })();
+
+            function tcSetKey(key, down) {
+                var fn = bridge('openglad_web_touch_set_key');
+                if (fn) {
+                    fn(0, key, down ? 1 : 0);
+                }
+            }
+
+            function tcBack(down) {
+                var fn = bridge('openglad_web_back_key');
+                if (fn) {
+                    fn(down ? 1 : 0);
+                }
+            }
+
+            function tcPushKey(keycode, down) {
+                var fn = bridge('openglad_web_push_key');
+                if (fn) {
+                    fn(keycode, down ? 1 : 0);
+                }
+            }
+
+            function tcClear() {
+                var fn = bridge('openglad_web_touch_clear');
+                if (fn) {
+                    fn();
+                }
+                for (var i = 0; i < resetVisualFns.length; ++i) {
+                    resetVisualFns[i]();
+                }
+            }
+
+            // --- Floating 8-way joystick -------------------------------------
+            (function initStick() {
+                // Separate engage/release radii and a sector margin prevent
+                // ordinary 1px thumb jitter from repeatedly clearing/turning
+                // the held direction around a dead-zone or 22.5deg boundary.
+                var DEAD_ZONE_ENGAGE = 16;
+                var DEAD_ZONE_RELEASE = 10;
+                var OCTANT_STEP = Math.PI / 4;
+                var OCTANT_HYSTERESIS = 8 * Math.PI / 180;
+                var FOLLOW_RADIUS = 90;   // base re-anchors past this drift
+                var THUMB_TRAVEL = 46;
+                var TAP_MAX_MS = 250;     // dead-zone quick tap => mouse click
+                var OCTANT_TO_KEY = [
+                    KEY.RIGHT, KEY.DOWN_RIGHT, KEY.DOWN, KEY.DOWN_LEFT,
+                    KEY.LEFT, KEY.UP_LEFT, KEY.UP, KEY.UP_RIGHT
+                ];
+
+                var pointerId = null;
+                var baseX = 0;
+                var baseY = 0;
+                var currentKey = -1;
+                var currentOctant = -1;
+                var movedOutOfDeadZone = false;
+                var downAtMs = 0;
+                var downClientX = 0;
+                var downClientY = 0;
+
+                function clearDirectionKeys() {
+                    for (var k = 0; k <= 7; ++k) {
+                        tcSetKey(k, 0);
+                    }
+                    currentKey = -1;
+                    currentOctant = -1;
+                }
+
+                function normalizedAngleDelta(angle) {
+                    return Math.atan2(Math.sin(angle), Math.cos(angle));
+                }
+
+                function setOctant(octant) {
+                    var key = OCTANT_TO_KEY[octant];
+                    if (key === currentKey) {
+                        currentOctant = octant;
+                        return;
+                    }
+                    clearDirectionKeys();
+                    tcSetKey(key, 1);
+                    currentKey = key;
+                    currentOctant = octant;
+                }
+
+                function positionBase() {
+                    // CSS uses a smaller base in portrait. Read the live
+                    // rendered diameter so the visual stays centered on the
+                    // pointer in either orientation.
+                    var radius = stickBase.getBoundingClientRect().width / 2;
+                    stickBase.style.left = (baseX - radius) + 'px';
+                    stickBase.style.top = (baseY - radius) + 'px';
+                }
+
+                function positionThumb(dx, dy) {
+                    var dist = Math.hypot(dx, dy);
+                    var scale = dist > 0 ? Math.min(dist, THUMB_TRAVEL) / dist : 0;
+                    stickThumb.style.transform =
+                        'translate(' + (dx * scale) + 'px,' + (dy * scale) + 'px)';
+                }
+
+                function update(x, y) {
+                    var dx = x - baseX;
+                    var dy = y - baseY;
+                    var dist = Math.hypot(dx, dy);
+                    if (dist > FOLLOW_RADIUS) {
+                        var pull = (dist - FOLLOW_RADIUS) / dist;
+                        baseX += dx * pull;
+                        baseY += dy * pull;
+                        dx = x - baseX;
+                        dy = y - baseY;
+                        dist = FOLLOW_RADIUS;
+                        positionBase();
+                    }
+                    positionThumb(dx, dy);
+                    if (currentKey !== -1 && dist < DEAD_ZONE_RELEASE) {
+                        clearDirectionKeys();
+                        return;
+                    }
+                    if (currentKey === -1 && dist < DEAD_ZONE_ENGAGE) {
+                        return;
+                    }
+                    movedOutOfDeadZone = true;
+                    // 8 sectors of 45 degrees centered on the cardinals;
+                    // octant 0 = screen-right, winding clockwise (+y down).
+                    var angle = Math.atan2(dy, dx);
+                    var octant = Math.round(angle / OCTANT_STEP);
+                    octant = ((octant % 8) + 8) % 8;
+                    if (currentOctant === -1) {
+                        setOctant(octant);
+                        return;
+                    }
+
+                    var currentCenter = currentOctant * OCTANT_STEP;
+                    var fromCenter = Math.abs(normalizedAngleDelta(
+                        angle - currentCenter));
+                    if (fromCenter > OCTANT_STEP / 2 + OCTANT_HYSTERESIS) {
+                        setOctant(octant);
+                    }
+                }
+
+                stickZone.addEventListener('pointerdown', function(e) {
+                    if (pointerId !== null) {
+                        return;
+                    }
+                    pointerId = e.pointerId;
+                    baseX = e.clientX;
+                    baseY = e.clientY;
+                    downAtMs = performance.now();
+                    downClientX = e.clientX;
+                    downClientY = e.clientY;
+                    movedOutOfDeadZone = false;
+                    stickBase.classList.remove('hidden');
+                    positionBase();
+                    positionThumb(0, 0);
+                    try {
+                        stickZone.setPointerCapture(e.pointerId);
+                    } catch (err) {
+                        // Synthetic pointers (tests) cannot be captured.
+                    }
+                    update(e.clientX, e.clientY);
+                    e.preventDefault();
+                });
+
+                function move(e) {
+                    if (e.pointerId === pointerId) {
+                        update(e.clientX, e.clientY);
+                        if (e.cancelable) {
+                            e.preventDefault();
+                        }
+                    }
+                }
+
+                function forwardDeadZoneTap() {
+                    // A quick tap that never produced a direction is
+                    // forwarded to SDL as a left click at canvas-logical
+                    // coordinates, keeping in-gameplay dialogs (Abort
+                    // Mission YES/NO) tappable under the stick zone.
+                    var fn = bridge('openglad_web_push_mouse');
+                    if (!fn) {
+                        return;
+                    }
+                    var rect = canvas.getBoundingClientRect();
+                    var x = Math.round(downClientX - rect.left);
+                    var y = Math.round(downClientY - rect.top);
+                    if (x < 0 || y < 0 || x >= rect.width || y >= rect.height) {
+                        return;
+                    }
+                    var cssW = Math.round(rect.width);
+                    var cssH = Math.round(rect.height);
+                    fn(1, x, y, cssW, cssH);
+                    setTimeout(function() {
+                        fn(0, x, y, cssW, cssH);
+                    }, 60);
+                }
+
+                function release(e) {
+                    if (e.pointerId !== pointerId) {
+                        return;
+                    }
+                    pointerId = null;
+                    clearDirectionKeys();
+                    stickBase.classList.add('hidden');
+                    if (e.type === 'pointerup' && !movedOutOfDeadZone &&
+                        (performance.now() - downAtMs) <= TAP_MAX_MS) {
+                        forwardDeadZoneTap();
+                    }
+                }
+
+                // Safari can lose element capture during an edge gesture,
+                // rotation, or browser-chrome transition. Capture-phase
+                // document listeners keep following/releasing that exact
+                // pointer even when its target leaves the stick zone.
+                document.addEventListener('pointermove', move,
+                    { capture: true, passive: false });
+                document.addEventListener('pointerup', release,
+                    { capture: true });
+                document.addEventListener('pointercancel', release,
+                    { capture: true });
+                stickZone.addEventListener('lostpointercapture', release);
+
+                resetVisualFns.push(function() {
+                    pointerId = null;
+                    currentKey = -1;
+                    currentOctant = -1;
+                    stickBase.classList.add('hidden');
+                });
+            })();
+
+            // --- Buttons ------------------------------------------------------
+            // Held keys keep a minimum 90ms down-time so the ~12Hz input
+            // sampler always observes the press edge, even on fast taps.
+            function bindHeldButton(el, setter) {
+                var pointerId = null;
+                var downAtMs = 0;
+                var releaseTimer = null;
+
+                function applyRelease() {
+                    releaseTimer = null;
+                    el.classList.remove('tc-pressed');
+                    setter(0);
+                }
+
+                el.addEventListener('pointerdown', function(e) {
+                    if (pointerId !== null) {
+                        return;
+                    }
+                    pointerId = e.pointerId;
+                    if (releaseTimer !== null) {
+                        clearTimeout(releaseTimer);
+                        releaseTimer = null;
+                    }
+                    downAtMs = performance.now();
+                    el.classList.add('tc-pressed');
+                    setter(1);
+                    try {
+                        el.setPointerCapture(e.pointerId);
+                    } catch (err) {
+                        // Synthetic pointers (tests) cannot be captured.
+                    }
+                    e.preventDefault();
+                });
+
+                function release(e) {
+                    if (e.pointerId !== pointerId) {
+                        return;
+                    }
+                    pointerId = null;
+                    var heldMs = performance.now() - downAtMs;
+                    if (heldMs >= TC_MIN_HOLD_MS) {
+                        applyRelease();
+                    } else {
+                        releaseTimer = setTimeout(applyRelease,
+                            TC_MIN_HOLD_MS - heldMs);
+                    }
+                }
+
+                // iOS can drop element capture during browser-chrome gestures
+                // or rotation. Release the exact pointer at document scope and
+                // also handle the explicit capture-loss notification.
+                document.addEventListener('pointerup', release,
+                    { capture: true });
+                document.addEventListener('pointercancel', release,
+                    { capture: true });
+                el.addEventListener('lostpointercapture', release);
+
+                resetVisualFns.push(function() {
+                    pointerId = null;
+                    if (releaseTimer !== null) {
+                        clearTimeout(releaseTimer);
+                        releaseTimer = null;
+                    }
+                    el.classList.remove('tc-pressed');
+                });
+            }
+
+            function bindLatchButton(el, key) {
+                var latched = false;
+                el.addEventListener('pointerdown', function(e) {
+                    latched = !latched;
+                    el.classList.toggle('tc-latched', latched);
+                    tcSetKey(key, latched ? 1 : 0);
+                    e.preventDefault();
+                });
+                resetVisualFns.push(function() {
+                    latched = false;
+                    el.classList.remove('tc-latched');
+                });
+            }
+
+            function keySetter(key) {
+                return function(down) {
+                    tcSetKey(key, down);
+                };
+            }
+
+            bindHeldButton(document.getElementById('tc-fire'), keySetter(KEY.FIRE));
+            bindHeldButton(document.getElementById('tc-special'), keySetter(KEY.SPECIAL));
+            bindHeldButton(document.getElementById('tc-cycle'), keySetter(KEY.SPECIAL_SWITCH));
+            bindHeldButton(document.getElementById('tc-yell'), keySetter(KEY.YELL));
+            bindHeldButton(document.getElementById('tc-switch'), keySetter(KEY.SWITCH));
+            bindHeldButton(document.getElementById('tc-look'), keySetter(KEY.LOOKUP));
+            bindLatchButton(document.getElementById('tc-alt'), KEY.SHIFTER);
+            bindHeldButton(backButton, function(down) {
+                tcBack(down);
+            });
+
+            // --- Enable/disable + game-state gating --------------------------
+            function setActive(on) {
+                if (active === on) {
+                    return;
+                }
+                active = on;
+                overlay.classList.toggle('tc-active', on);
+                if (!on) {
+                    tcClear();
+                    var fn = bridge('openglad_web_touch_enable');
+                    if (fn) {
+                        fn(0);
+                    }
+                    enableAcked = false;
+                }
+            }
+
+            function overlayTick() {
+                var state = window.__opengladGameState;
+                setActive(shouldEnable());
+
+                if (active && !enableAcked) {
+                    var fn = bridge('openglad_web_touch_enable');
+                    // Retries until the game session exists (returns 1).
+                    if (fn && fn(1) === 1) {
+                        enableAcked = true;
+                    }
+                }
+
+                var runtimeReady = window.__opengladWebBootstrap &&
+                    window.__opengladWebBootstrap.runtimeInitialized;
+                var inGame = state === 2;
+                gameCluster.classList.toggle('tc-show', active && inGame);
+                // During the Asyncify-blocked picker the published state can
+                // stay null; BACK is useful (and harmless) in every pre-quit
+                // state, so gate it only on boot + not-quit.
+                var showBack = active && runtimeReady && state !== 3;
+                backButton.classList.toggle('hidden', !showBack);
+                toggleButton.classList.toggle('hidden',
+                    !(isTouchDevice() || sawTouchPointer || readPref() !== 'auto'));
+
+                if (wasInGame && !inGame) {
+                    // Leaving gameplay: drop held keys and the ALT latch.
+                    tcClear();
+                }
+                wasInGame = inGame;
+                if (textEntryRefresh) {
+                    textEntryRefresh();
+                }
+            }
+
+            toggleButton.addEventListener('click', function() {
+                writePref(shouldEnable() ? 'off' : 'on');
+                overlayTick();
+            });
+            toggleButton.addEventListener('keydown', function(e) {
+                e.stopPropagation();
+            });
+            toggleButton.addEventListener('keyup', function(e) {
+                e.stopPropagation();
+            });
+
+            // Convertibles: a real touch on a device that failed the boot-time
+            // media queries still activates the overlay.
+            document.addEventListener('pointerdown', function(e) {
+                if (e.pointerType === 'touch' && !sawTouchPointer) {
+                    sawTouchPointer = true;
+                    overlayTick();
+                }
+            }, { capture: true, passive: true });
+
+            // Never leave keys held when the page loses the user.
+            window.addEventListener('pagehide', tcClear);
+            window.addEventListener('blur', tcClear);
+            document.addEventListener('visibilitychange', function() {
+                if (document.visibilityState === 'hidden') {
+                    tcClear();
+                }
+            });
+
+            // --- Text-entry overlay ------------------------------------------
+            // start_text_input()/stop_text_input() dispatch
+            // 'openglad-text-input' (native_input.cpp). Only touch sessions
+            // show the DOM input; desktop browsers keep typing into the
+            // canvas. The prompt-opening C++ code runs outside the trusted
+            // gesture, so real iOS needs one of two explicit affordances:
+            // the pulsing TAP HERE TO TYPE input itself, and any canvas tap
+            // while the prompt is up (textEntryFocusRedirect above).
+            (function initTextEntry() {
+                var wrap = document.getElementById('og-text-entry-wrap');
+                var input = document.getElementById('og-text-entry');
+                var cancelButton =
+                    document.getElementById('og-text-entry-cancel');
+                var lastValue = '';
+                var firstMutation = true;
+                var composing = false;
+                var promptActive = false;
+                var promptDetail = {};
+                var roomCodeMode = false;
+
+                function utf8Length(value) {
+                    return new TextEncoder().encode(value).length;
+                }
+
+                function truncateUtf8(value, maxBytes) {
+                    if (maxBytes <= 0 || utf8Length(value) <= maxBytes) {
+                        return value;
+                    }
+                    var result = '';
+                    var points = Array.from(value);
+                    for (var i = 0; i < points.length; ++i) {
+                        if (utf8Length(result + points[i]) > maxBytes) {
+                            break;
+                        }
+                        result += points[i];
+                    }
+                    return result;
+                }
+
+                function normalizeInput(value) {
+                    var normalized = value;
+                    if (roomCodeMode) {
+                        normalized = normalized.toUpperCase()
+                            .replace(/[^A-Z0-9-]/g, '');
+                    }
+                    return truncateUtf8(
+                        normalized,
+                        Math.max(0, Number(promptDetail.maxBytes) || 0));
+                }
+
+                function pushBackspaces(count) {
+                    for (var i = 0; i < count; ++i) {
+                        tcPushKey(SDLK_BACKSPACE, 1);
+                        tcPushKey(SDLK_BACKSPACE, 0);
+                    }
+                }
+
+                function pushText(str) {
+                    if (!str) {
+                        return;
+                    }
+                    if (typeof Module.ccall === 'function') {
+                        Module.ccall('openglad_web_push_text', null,
+                            ['string'], [str]);
+                        return;
+                    }
+                    var fn = bridge('openglad_web_push_char');
+                    if (!fn) {
+                        return;
+                    }
+                    var points = Array.from(str);
+                    for (var i = 0; i < points.length; ++i) {
+                        fn(points[i].codePointAt(0));
+                    }
+                }
+
+                function pushReturn() {
+                    tcPushKey(SDLK_RETURN, 1);
+                    tcPushKey(SDLK_RETURN, 0);
+                }
+
+                function focusInput() {
+                    try {
+                        // iOS quirk: re-focusing an already-focused input from
+                        // a gesture does not (re)open the keyboard; a blur
+                        // first makes the focus a fresh keyboard summon.
+                        if (document.activeElement === input) {
+                            input.blur();
+                        }
+                        input.focus({ preventScroll: true });
+                    } catch (e) {
+                        // Focus is best-effort; the input stays tappable.
+                    }
+                }
+
+                // Canvas taps while the prompt is up focus the input from the
+                // user's gesture (see ownCanvasTouch).
+                textEntryFocusRedirect = function() {
+                    if (wrap.classList.contains('hidden')) {
+                        return false;
+                    }
+                    focusInput();
+                    return true;
+                };
+
+                function shouldShowPrompt() {
+                    return promptActive && !Boolean(promptDetail.multiline) &&
+                        (isTouchDevice() || sawTouchPointer);
+                }
+
+                textEntryRefresh = function() {
+                    var show = shouldShowPrompt();
+                    wrap.classList.toggle('hidden', !show);
+                    if (!show) {
+                        input.blur();
+                    }
+                };
+
+                window.addEventListener('openglad-text-input', function(e) {
+                    var on = Boolean(e.detail && e.detail.active);
+                    promptActive = on;
+                    promptDetail = on ? (e.detail || {}) : {};
+                    // Lightweight diagnostics/test seam: unlike DOM
+                    // visibility this also describes desktop prompts, where
+                    // keyboard input stays canvas-native.
+                    window.__opengladTextInputActive = on;
+                    window.__opengladTextInputDetail = promptDetail;
+                    if (on) {
+                        roomCodeMode = /ROOM CODE/i.test(
+                            String(promptDetail.prompt || ''));
+                        input.setAttribute('autocapitalize',
+                            roomCodeMode ? 'characters' : 'sentences');
+                        input.placeholder = roomCodeMode
+                            ? 'TAP TO ENTER ROOM CODE'
+                            : 'TAP HERE TO TYPE';
+                        input.maxLength = Math.max(
+                            1, Number(promptDetail.maxBytes) || 99);
+                        input.value = normalizeInput(
+                            String(promptDetail.initialValue || ''));
+                        lastValue = input.value;
+                        firstMutation = true;
+                        composing = false;
+                        cancelButton.disabled = false;
+                    } else {
+                        roomCodeMode = false;
+                    }
+                    textEntryRefresh();
+                });
+
+                function reconcileInput() {
+                    if (composing) {
+                        return;
+                    }
+                    var normalized = normalizeInput(input.value);
+                    if (normalized !== input.value) {
+                        input.value = normalized;
+                    }
+                    // Forward the diff: common prefix, then deletions as
+                    // Backspaces and insertions as text events. C++ selects
+                    // a prefilled value until the first edit, so the first
+                    // DOM mutation deliberately replaces the whole field.
+                    var prev = Array.from(lastValue);
+                    var cur = Array.from(normalized);
+                    if (firstMutation) {
+                        if (prev.length > 0) {
+                            pushBackspaces(1);
+                        }
+                        pushText(cur.join(''));
+                        firstMutation = false;
+                        lastValue = normalized;
+                        return;
+                    }
+                    var common = 0;
+                    while (common < prev.length && common < cur.length &&
+                           prev[common] === cur[common]) {
+                        ++common;
+                    }
+                    pushBackspaces(prev.length - common);
+                    pushText(cur.slice(common).join(''));
+                    lastValue = normalized;
+                }
+
+                input.addEventListener('input', reconcileInput);
+                input.addEventListener('compositionstart', function() {
+                    composing = true;
+                });
+                input.addEventListener('compositionend', function() {
+                    composing = false;
+                    reconcileInput();
+                });
+                input.addEventListener('pointerdown', function(e) {
+                    if (e.pointerType === 'touch' && promptActive &&
+                        document.activeElement !== input) {
+                        // Keep the focus call in the trusted gesture, but let
+                        // the browser's default handler place the caret.
+                        focusInput();
+                    }
+                });
+
+                ['keydown', 'keyup', 'keypress'].forEach(function(type) {
+                    input.addEventListener(type, function(e) {
+                        // SDL must never double-see keys meant for the field.
+                        e.stopPropagation();
+                        if (type === 'keydown' &&
+                            (e.key === 'Enter' || e.keyCode === 13)) {
+                            e.preventDefault();
+                            pushReturn();
+                            input.blur();
+                        }
+                    });
+                });
+
+                cancelButton.addEventListener('click', function() {
+                    // Real cancel semantics: openglad_web_text_cancel delivers
+                    // the Escape that input_string's cancel path expects
+                    // (restore the original value, return null). Backspace
+                    // cannot serve here — during text input it stays
+                    // delete-character.
+                    if (cancelButton.disabled) {
+                        return;
+                    }
+                    cancelButton.disabled = true;
+                    var typedLength = firstMutation && lastValue
+                        ? 1 : Array.from(lastValue).length;
+                    input.value = '';
+                    lastValue = '';
+                    var fn = bridge('openglad_web_text_cancel');
+                    if (fn) {
+                        fn();
+                        return;
+                    }
+                    // Stale-build fallback: commit an emptied field.
+                    pushBackspaces(typedLength);
+                    pushReturn();
+                });
+                // Keep keyboard activation out of SDL. Enter/Space must first
+                // synthesize this button's click, whose dedicated cancel seam
+                // restores the original value instead of accepting edits.
+                cancelButton.addEventListener('keydown', function(e) {
+                    e.stopPropagation();
+                });
+                cancelButton.addEventListener('keyup', function(e) {
+                    e.stopPropagation();
+                });
+                cancelButton.addEventListener('keypress', function(e) {
+                    e.stopPropagation();
+                });
+            })();
+
+            setInterval(overlayTick, 250);
+            overlayTick();
+        })();
 
         window.onerror = function(message) {
             loadingText.textContent = 'Error: ' + message;

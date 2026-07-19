@@ -23,7 +23,8 @@ struct InputStateMessage {
     InputState input = {};
 };
 
-// Wire format:
+// Wire format (per-machine: exactly MAX_PLAYERS player slots — a peer's
+// LOCAL seats, indexed by local slot, never by global player index):
 // - bytes 0-3: shared transport envelope
 // - bytes 4-7: little-endian tick
 // - byte 8: input metadata

@@ -106,6 +106,12 @@ TEST(ScaleMode, gameplay_ui_keeps_classic_density_and_matches_world_aspect)
 	EXPECT_EQ(320, four_three.w);
 	EXPECT_EQ(240, four_three.h);
 
+	// A portrait phone expands vertically instead of letterboxing gameplay
+	// into a landscape strip. Bitmap HUD elements keep classic density.
+	const auto portrait = compute_gameplay_ui_canvas_dims(393, 852);
+	EXPECT_EQ(320, portrait.w);
+	EXPECT_EQ(694, portrait.h);
+
 	const auto invalid = compute_gameplay_ui_canvas_dims(0, -1);
 	EXPECT_EQ(320, invalid.w);
 	EXPECT_EQ(200, invalid.h);

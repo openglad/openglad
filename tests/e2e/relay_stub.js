@@ -38,7 +38,8 @@
 //        relay->client [0x02][sender peer u32 LE][body]  (receive-from-peer)
 //      Every forwarded frame is recorded in `forwardedFrames` so the tests
 //      can assert that lobby traffic really flowed host<->joiner.
-//   4. GET /api/rooms -> 200 [] (defensive; the JOIN room-list flow).
+//   4. GET /api/rooms -> 200 with the fixed room, exercising discovery and
+//      tappable ACTIVE GAMES rows.
 //
 // Known limitations (fine for these tests): a single fixed room, no
 // WebSocket fragmentation/continuation support, and no permessage-deflate.
@@ -157,6 +158,8 @@ class RelayStub {
 
     /** HTTP room-create requests, as {pathname, params}. */
     this.createRequests = [];
+    /** HTTP active-room discovery requests, as {pathname, params}. */
+    this.listRequests = [];
     /** Accepted room WebSocket connections, as
      *  {roomCode, ownerToken, peerId, closed, receivedFrames, sentControls,
      *  close()}. `sentControls` records every control TEXT message the stub
@@ -241,8 +244,23 @@ class RelayStub {
       return;
     }
     if (req.method === 'GET' && url.pathname === '/api/rooms') {
+      this.listRequests.push({
+        pathname: url.pathname,
+        params: Object.fromEntries(url.searchParams),
+      });
       res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
-      res.end('[]');
+      res.end(
+        JSON.stringify([
+          {
+            code: this.roomCode,
+            campaign_hash: '',
+            campaign_name: 'E2E',
+            host_name: 'E2E Host',
+            player_count: Math.max(1, this._peers.size),
+            created_at: 1,
+          },
+        ]),
+      );
       return;
     }
     res.writeHead(404, CORS_HEADERS);

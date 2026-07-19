@@ -830,7 +830,7 @@ TEST(PickerFuncs, picker_replace_lobby_client_swaps_active_client_after_success)
         std::make_unique<TraceablePickerLobbyClient>(
         next_trace);
     static_cast<TraceablePickerLobbyClient*>(next_client.get())->status_lines_ =
-        {"Relay: GLAD-XKCD"};
+        {"Room: GLAD-XKCD"};
     auto* const next_raw =
         static_cast<TraceablePickerLobbyClient*>(next_client.get());
 
@@ -841,7 +841,7 @@ TEST(PickerFuncs, picker_replace_lobby_client_swaps_active_client_after_success)
     EXPECT_EQ(next_raw, og::ui::active_picker_lobby_client());
     EXPECT_EQ(1, current_trace->shutdown_calls);
     EXPECT_EQ(1, next_trace->initialize_calls);
-    EXPECT_TRUE(trace_contains("popup", "Relay: GLAD-XKCD"));
+    EXPECT_TRUE(trace_contains("popup", "Room: GLAD-XKCD"));
 }
 
 TEST(PickerFuncs, picker_replace_lobby_client_can_skip_success_popup)

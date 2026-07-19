@@ -130,7 +130,7 @@ TEST(InputStateNet, serialize_emits_expected_wire_format)
     input.quit_requested = true;
 
     constexpr std::array<std::uint8_t, og::sim::kSerializedInputStateSize> expected = {
-        0x06, 0x02, 0x15, 0x00,
+        0x07, 0x02, 0x15, 0x00,
         0x00, 0x00, 0x00, 0x00,
         0x01,
         0x01, 0x80, 0x01, 0x80,
@@ -146,7 +146,7 @@ TEST(InputStateNet, serialize_emits_expected_wire_format)
 TEST(InputStateNet, deserialize_reads_expected_wire_format)
 {
     constexpr std::array<std::uint8_t, og::sim::kSerializedInputStateSize> bytes = {
-        0x06, 0x02, 0x15, 0x00,
+        0x07, 0x02, 0x15, 0x00,
         0x00, 0x00, 0x00, 0x00,
         0x00,
         0x24, 0x00, 0x40, 0x02,

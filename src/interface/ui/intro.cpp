@@ -24,9 +24,85 @@
 #include <openglad/interface/render/pixie.h>
 #include <openglad/interface/render/view.h>
 #include <openglad/core/util.h>
+#include <openglad/core/test_trace.h>
 #include <openglad/interface/input.h>
 #include <array>
 #include <cstring>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
+namespace
+{
+
+#ifdef __EMSCRIPTEN__
+EM_JS(void, clear_pending_web_intro_tap_js, (), {
+    window.__opengladIntroTapPending = false;
+});
+
+EM_JS(void, begin_web_intro_page_js, (), {
+    window.__opengladIntroTapGeneration =
+        (window.__opengladIntroTapGeneration || 0) + 1;
+    window.__opengladIntroTapReady = false;
+    window.__opengladIntroTapPending = false;
+});
+
+EM_JS(void, set_web_intro_tap_ready_js, (int ready), {
+    window.__opengladIntroTapReady = Boolean(ready);
+});
+
+EM_JS(int, take_pending_web_intro_tap_js, (), {
+    if (!window.__opengladIntroTapPending)
+        return 0;
+    window.__opengladIntroTapPending = false;
+    window.__opengladIntroTapAdvanceCount =
+        (window.__opengladIntroTapAdvanceCount || 0) + 1;
+    return 1;
+});
+#endif
+
+void clear_pending_web_intro_tap()
+{
+#ifdef __EMSCRIPTEN__
+    clear_pending_web_intro_tap_js();
+#endif
+}
+
+void begin_web_intro_page()
+{
+#ifdef __EMSCRIPTEN__
+    begin_web_intro_page_js();
+#endif
+}
+
+void set_web_intro_tap_ready(bool ready)
+{
+#ifdef __EMSCRIPTEN__
+    set_web_intro_tap_ready_js(ready ? 1 : 0);
+#else
+    (void)ready;
+#endif
+}
+
+bool take_pending_web_intro_tap()
+{
+#ifdef __EMSCRIPTEN__
+    return take_pending_web_intro_tap_js() != 0;
+#else
+    return false;
+#endif
+}
+
+void yield_to_web_intro_input()
+{
+#if defined(__EMSCRIPTEN__) && defined(__ASYNCIFY__)
+    // intro_main() is a synchronous legacy loop. Yielding lets the browser's
+    // trusted pointer handler latch a tap without re-entering Wasm.
+    emscripten_sleep(10);
+#endif
+}
+
+} // namespace
 
 inline constexpr int SHOW_TIME = 130;
 inline constexpr int FADE_FROM = 1;
@@ -46,6 +122,12 @@ void intro_main(Sint32 argc, char** argv)
 	// Zardus: PORT: doesn't seem to be used, and causes a memory leak
 	//char **args = (char **)new int;
 	text& mytext = og::runtime::current_session->myscreen_->text_normal;
+
+	// Drop any click state accumulated before the intro (startup taps),
+	// so a stale tap cannot fast-forward the first page.
+	input_continue_ref() = false;
+	while (take_pending_left_click()) {}
+	clear_pending_web_intro_tap();
 	PixieData uldata, urdata, lldata, lrdata;
 	PixieData gladdata, bigdata;
 	const char* message;
@@ -240,16 +322,50 @@ int show() // default uses SHOW_TIME
 
 int show(int howlong)
 {
+	// Reset the tap latch before the fade so a tap during the previous
+	// page's fade-out never carries into this page: one tap advances
+	// exactly one page.
+	input_continue_ref() = false;
+	begin_web_intro_page();
+	while (take_pending_left_click()) {}
+	clear_pending_web_intro_tap();
+
 	if (og::runtime::current_session->myscreen_->fadeblack(FADE_FROM) == -1) return -1;
 
+	// fadeblack() is synchronous, so browser pointer events generated during
+	// the transition cannot run until the Asyncify stack yields. Flush them
+	// once while this page is explicitly not ready; shell.html also requires
+	// the pointer-down generation to match this page on pointer-up.
+	yield_to_web_intro_input();
+	clear_pending_web_intro_tap();
 	reset_timer();
+	TRACE("intro_state", "page ready");
+	set_web_intro_tap_ready(true);
 	while (query_timer() < howlong)
 	{
+		yield_to_web_intro_input();
 		get_input_events(POLL);
+		// A tap / left click advances this page only (the touch skip
+		// path — checked before the key so a click never aborts the
+		// whole intro). The pending-click queue holds exactly one entry
+		// per completed tap (queued on button-up), so consuming one
+		// entry here means one tap = one page advance, and the click
+		// cannot leak into the picker menu that follows the intro.
+		if (take_pending_left_click() || take_pending_web_intro_tap())
+		{
+			input_continue_ref() = false;
+			TRACE("intro", "page advanced by click");
+			break;
+		}
 		if (query_key_press_event())
+		{
+			set_web_intro_tap_ready(false);
+			TRACE("intro", "intro aborted by key");
 			return -1;
+		}
 	}
 
+	set_web_intro_tap_ready(false);
 	if (og::runtime::current_session->myscreen_->fadeblack(FADE_TO) == -1) return -1;
 	return 1;
 }

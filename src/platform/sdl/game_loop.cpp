@@ -334,10 +334,11 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
                     og::runtime::current_session->debug_draw_paths_ = !og::runtime::current_session->debug_draw_paths_;
                 else if (event.key.key == SDLK_F12)
                     og::runtime::current_session->debug_draw_obmap_ = !og::runtime::current_session->debug_draw_obmap_;
-                // Escape is an edge action. In particular, Chromium's
-                // fullscreen Keyboard Lock exit hatch is a long Escape hold;
-                // its repeat events must not advance from pause into the
-                // abort prompt while the player is trying to leave fullscreen.
+                // Escape is an edge action: key-repeat events must not
+                // advance from pause into the abort prompt. On web this
+                // event arrives from a held Backspace (remapped to Escape at
+                // the SDL event source; see web_back_key.h), which
+                // autorepeats aggressively in browsers.
                 else if (event.key.key == SDLK_ESCAPE && !event.key.repeat)
                 {
                     if (!og::runtime::local_transport_shadow_is_paused(

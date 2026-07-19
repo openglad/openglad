@@ -321,6 +321,7 @@ list(REMOVE_ITEM GAME_SOURCES_NO_MAIN ${SRC_DIR}/platform/sdl/glad.cpp)
 if(EMSCRIPTEN)
     list(APPEND GAME_SOURCES_NO_MAIN
         ${SRC_DIR}/platform/emscripten/web_runtime_diagnostics.cpp
+        ${SRC_DIR}/platform/emscripten/web_touch_bridge.cpp
         ${SRC_DIR}/platform/emscripten/net_transport_emscripten_ws.cpp
         ${SRC_DIR}/platform/emscripten/net_transport_relay_ws.cpp
     )
@@ -1073,7 +1074,15 @@ if(NOT EMSCRIPTEN)
 
     if(NOT OG_IXWEBSOCKET_TARGET AND OPENGLAD_FETCH_IXWEBSOCKET)
         set(BUILD_DEMO OFF CACHE BOOL "Build IXWebSocket demo" FORCE)
-        set(USE_TLS OFF CACHE BOOL "Build IXWebSocket with TLS" FORCE)
+        # TLS is required in native builds: the default relay lives on
+        # Cloudflare (https:// room create + wss:// room socket). On Apple,
+        # IXWebSocket's default (Secure Transport) needs no extra packages; on
+        # Linux/Windows use OpenSSL (Debian/Ubuntu: libssl-dev; GitHub
+        # windows-latest runners ship OpenSSL).
+        set(USE_TLS ON CACHE BOOL "Build IXWebSocket with TLS" FORCE)
+        if(NOT APPLE)
+            set(USE_OPEN_SSL ON CACHE BOOL "Use OpenSSL for IXWebSocket TLS" FORCE)
+        endif()
         set(USE_ZLIB OFF CACHE BOOL "Build IXWebSocket with zlib" FORCE)
         set(IXWEBSOCKET_INSTALL OFF CACHE BOOL "Install IXWebSocket" FORCE)
         FetchContent_Declare(ixwebsocket
@@ -2484,6 +2493,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_cadence.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_astar.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_combat_softcap.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_web_back_key.cpp
         )
 
         og_add_unit_group(og_unit_sim FILES
@@ -3066,7 +3076,16 @@ endif()
 	    # Binaryen transform, but does not define the preprocessor macro.
 	    target_compile_definitions(og_game_web PRIVATE __ASYNCIFY__)
 
-    add_executable(play ${SRC_DIR}/platform/sdl/glad.cpp)
+    # web_touch_bridge.cpp compiles into the executable directly, NOT (only)
+    # the og_game_web archive: nothing in C++ references its
+    # EMSCRIPTEN_KEEPALIVE exports, and the linker never pulls an archive
+    # member with no referenced symbols — KEEPALIVE cannot save an object
+    # that is not linked at all. As a direct source its exports always land
+    # in Module for the shell's touch overlay bridge.
+    add_executable(play
+        ${SRC_DIR}/platform/sdl/glad.cpp
+        ${SRC_DIR}/platform/emscripten/web_touch_bridge.cpp
+    )
     configure_openglad_library(play)
     target_link_libraries(play PRIVATE og_game_web)
     configure_openglad_runtime_target(play)
@@ -3107,7 +3126,8 @@ endif()
     )
 
     set_target_properties(play PROPERTIES
-        LINK_DEPENDS "${CMAKE_SOURCE_DIR}/web/shell.html"
+        LINK_DEPENDS
+            "${CMAKE_SOURCE_DIR}/web/shell.html;${CMAKE_SOURCE_DIR}/web/manifest.webmanifest;${CMAKE_SOURCE_DIR}/web/icon.svg;${CMAKE_SOURCE_DIR}/web/icon-192.png;${CMAKE_SOURCE_DIR}/web/icon-512.png;${CMAKE_SOURCE_DIR}/web/apple-touch-icon.png"
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/dist"
         SUFFIX ".html"
     )
@@ -3118,6 +3138,12 @@ endif()
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${CMAKE_SOURCE_DIR}/web/index.html
             ${CMAKE_SOURCE_DIR}/web/help.html
+            ${CMAKE_SOURCE_DIR}/web/_worker.js
+            ${CMAKE_SOURCE_DIR}/web/manifest.webmanifest
+            ${CMAKE_SOURCE_DIR}/web/icon.svg
+            ${CMAKE_SOURCE_DIR}/web/icon-192.png
+            ${CMAKE_SOURCE_DIR}/web/icon-512.png
+            ${CMAKE_SOURCE_DIR}/web/apple-touch-icon.png
             $<TARGET_FILE_DIR:play>
         COMMENT "Copying web landing page assets to dist/"
         VERBATIM

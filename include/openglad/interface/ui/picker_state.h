@@ -137,6 +137,10 @@ protected:
 
 // Run the picker state machine with the given client implementation.
 // This is the platform-agnostic main loop.
-void run_picker(IPickerClient& client);
+// Startup begins at MainMenu; browser gameplay re-entry can resume directly at
+// TeamBuild, matching the native blocking game loop's post-level destination.
+void run_picker(
+    IPickerClient& client,
+    PickerScreen initial_screen = PickerScreen::MainMenu);
 
 } // namespace og::ui

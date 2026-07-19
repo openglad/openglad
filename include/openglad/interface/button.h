@@ -333,6 +333,9 @@ enum class ButtonAction : Sint32
     // logical window and graphics/smoothing is the world-canvas-only filter.
     CycleZoom = 98,
     CycleSmoothing = 99,
+    // NETWORKING subscreen ACTIVE GAMES list: one row per live relay room
+    // (arg = list slot 0..4); clicking a row joins that room immediately.
+    JoinRelayRoomListEntry = 100,
 };
 
 inline constexpr Sint32 button_action_id(ButtonAction action)

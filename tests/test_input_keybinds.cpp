@@ -1,6 +1,7 @@
 #include <openglad/gameplay/input_action.h>
 #include <openglad/gameplay/input_state.h>
 #include <openglad/interface/input.h>
+#include <openglad/interface/input_hardware_state.h>
 #include <openglad/interface/button.h>
 #include <openglad/interface/native_input.h>
 #include <openglad/platform/game_context.h>
@@ -155,6 +156,191 @@ TEST(InputKeybinds, input_isPlayerHoldingKey_uses_keyboard_state_when_no_joystic
     ASSERT_TRUE(isPlayerHoldingKey(0, KEY_FIRE)) << "pressed key should be held";
 }
 
+
+namespace
+{
+// Zeroes the web-touch-overlay held-key seam on scope exit so a failing
+// assertion cannot leak held keys into later tests.
+struct TouchKeystateGuard
+{
+    ~TouchKeystateGuard()
+    {
+        InputHardwareState& hw = input_hardware_state();
+        for (int p = 0; p < 4; ++p)
+            for (int k = 0; k < NUM_KEYS; ++k)
+                hw.touch_keystate[p][k] = false;
+    }
+};
+} // namespace
+
+TEST(InputKeybinds, input_touch_keystate_registers_as_held_and_clears_without_leaking)
+{
+    // The web DOM touch overlay writes InputHardwareState::touch_keystate
+    // (via openglad_web_touch_set_key); isPlayerHoldingKey must OR it in
+    // without any SDL keyboard state, and native behavior must be unchanged
+    // when the seam is all-false.
+    disablePlayerJoystick(0);
+    KeyBindingGuard bind(0, KEY_FIRE, SDLK_V);
+    KeyStateGuard ks(SDL_GetScancodeFromKey(SDLK_V, nullptr));
+    ks.set(false);
+    TouchKeystateGuard touch_guard;
+    InputHardwareState& hw = input_hardware_state();
+
+    ASSERT_TRUE(!isPlayerHoldingKey(0, KEY_FIRE)) << "no keyboard, no touch: not held";
+
+    hw.touch_keystate[0][KEY_FIRE] = true;
+    ASSERT_TRUE(isPlayerHoldingKey(0, KEY_FIRE))
+        << "touch-held key should register as held without SDL keyboard state";
+    ASSERT_TRUE(!isPlayerHoldingKey(1, KEY_FIRE))
+        << "touch hold for player 0 must not bleed into other players";
+
+    // Touch is additive, not exclusive: the keyboard path still works while
+    // the seam holds a different state.
+    ks.set(true);
+    hw.touch_keystate[0][KEY_FIRE] = false;
+    ASSERT_TRUE(isPlayerHoldingKey(0, KEY_FIRE)) << "keyboard hold should still register";
+    ks.set(false);
+
+    ASSERT_TRUE(!isPlayerHoldingKey(0, KEY_FIRE))
+        << "cleared touch key must not leak a held state";
+}
+
+
+TEST(InputKeybinds, input_touch_keystate_feeds_input_state_held_and_pressed_edges)
+{
+    disablePlayerJoystick(0);
+    KeyBindingGuard bind(0, KEY_FIRE, SDLK_UNKNOWN);
+    TouchKeystateGuard touch_guard;
+    InputHardwareState& hw = input_hardware_state();
+
+    InputState input{};
+    input.clear();
+
+    hw.touch_keystate[0][KEY_FIRE] = true;
+    input_state_from_sdl(input);
+    ASSERT_TRUE(input.players[0].held[KEY_FIRE]) << "touch hold should reach InputState held";
+    ASSERT_TRUE(input.players[0].pressed[KEY_FIRE]) << "first sample should carry a press edge";
+    ASSERT_TRUE(!input.players[1].held[KEY_FIRE]) << "other players must stay untouched";
+
+    input_state_from_sdl(input);
+    ASSERT_TRUE(input.players[0].held[KEY_FIRE]) << "still held on the second sample";
+    ASSERT_TRUE(!input.players[0].pressed[KEY_FIRE]) << "no repeated press edge while held";
+
+    hw.touch_keystate[0][KEY_FIRE] = false;
+    input_state_from_sdl(input);
+    ASSERT_TRUE(!input.players[0].held[KEY_FIRE]) << "release must clear held state";
+    ASSERT_TRUE(!input.players[0].pressed[KEY_FIRE]) << "release must not press";
+}
+
+
+TEST(InputKeybinds, input_touch_diagonals_survive_four_direction_mode_resets)
+{
+    // Keyboard/joystick diagonal bindings remain a player control-mode choice,
+    // but the touch overlay's 8-way stick must keep working after settings or
+    // Restore Defaults puts player 0 back in FourDirection mode.
+    disablePlayerJoystick(0);
+    FullControlSnapshotGuard controls_guard;
+    TouchKeystateGuard touch_guard;
+    InputHardwareState& hw = input_hardware_state();
+
+    InputState input{};
+    input.clear();
+
+    set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
+    hw.touch_keystate[0][KEY_UP_RIGHT] = true;
+    input_state_from_sdl(input);
+    ASSERT_TRUE(input.players[0].held[KEY_UP_RIGHT])
+        << "4-direction mode must not suppress the intrinsically 8-way touch stick";
+
+    reset_default_player_controls();
+    ASSERT_EQ(static_cast<int>(ControlDirectionMode::FourDirection),
+              get_player_control_mode(0));
+    input_state_from_sdl(input);
+    ASSERT_TRUE(input.players[0].held[KEY_UP_RIGHT])
+        << "a controls lifecycle reset must not disable touch diagonals";
+
+    set_player_control_mode(0, static_cast<int>(ControlDirectionMode::EightDirection));
+    input_state_from_sdl(input);
+    ASSERT_TRUE(input.players[0].held[KEY_UP_RIGHT])
+        << "8-direction mode should deliver the touch-held diagonal";
+
+    hw.touch_keystate[0][KEY_UP_RIGHT] = false;
+    input_state_from_sdl(input);
+    ASSERT_TRUE(!input.players[0].held[KEY_UP_RIGHT]) << "cleared diagonal must not leak";
+}
+
+
+TEST(InputKeybinds, native_input_push_text_event_round_trips_through_the_queue)
+{
+    // The web text-entry overlay delivers typed characters through
+    // push_text_event; SDL3 text events borrow their string, so the payload
+    // must survive until decode_event copies it at poll time.
+    while (og::input_native::poll_event() != nullptr) {}
+
+    og::input_native::push_text_event("ab");
+    og::input_native::push_text_event("cd");
+    og::input_native::push_text_event("ef");
+
+    const char* expected[] = {"ab", "cd", "ef"};
+    for (const char* want : expected)
+    {
+        const void* ev = og::input_native::wait_event();
+        ASSERT_TRUE(ev != nullptr) << "queued text event should be delivered";
+        og::input_native::EventData out{};
+        ASSERT_TRUE(og::input_native::decode_event(ev, out)) << "text event should decode";
+        ASSERT_EQ((int)og::input_native::EventType::TextInput, (int)out.type)
+            << "queued text event should remain text input";
+        ASSERT_STREQ(want, out.text.data())
+            << "text payload should survive the static ring until poll";
+    }
+
+    while (og::input_native::poll_event() != nullptr) {}
+}
+
+
+TEST(InputKeybinds, native_input_push_text_cancel_key_requires_active_text_input)
+{
+    while (og::input_native::poll_event() != nullptr) {}
+
+    // Outside a text prompt the cancel seam must push nothing: a stray
+    // Escape here would back out of whatever menu is active.
+    og::input_native::stop_text_input();
+    og::input_native::push_text_cancel_key();
+    ASSERT_EQ(nullptr, og::input_native::poll_event())
+        << "cancel outside text input should push no events";
+
+    // During a text prompt it pushes the Escape down+up pair that
+    // input_string's cancel path (restore original, return null) consumes.
+    og::input_native::start_text_input();
+    og::input_native::push_text_cancel_key();
+    // A double tap/click must not queue another Escape that leaks into the
+    // menu after the prompt has already closed.
+    og::input_native::push_text_cancel_key();
+    og::input_native::stop_text_input();
+
+    og::input_native::EventData out{};
+    const void* down_event = og::input_native::wait_event();
+    ASSERT_TRUE(down_event != nullptr) << "cancel should push a keydown";
+    ASSERT_TRUE(og::input_native::decode_event(down_event, out))
+        << "pushed cancel keydown should decode";
+    ASSERT_EQ((int)og::input_native::EventType::KeyDown, (int)out.type)
+        << "first pushed cancel event should be keydown";
+    ASSERT_EQ((int)SDLK_ESCAPE, out.key_sym)
+        << "cancel keydown should carry Escape";
+
+    const void* up_event = og::input_native::wait_event();
+    ASSERT_TRUE(up_event != nullptr) << "cancel should push a keyup";
+    ASSERT_TRUE(og::input_native::decode_event(up_event, out))
+        << "pushed cancel keyup should decode";
+    ASSERT_EQ((int)og::input_native::EventType::KeyUp, (int)out.type)
+        << "second pushed cancel event should be keyup";
+    ASSERT_EQ((int)SDLK_ESCAPE, out.key_sym)
+        << "cancel keyup should carry Escape";
+    ASSERT_EQ(nullptr, og::input_native::poll_event())
+        << "duplicate cancel requests should be debounced";
+
+    while (og::input_native::poll_event() != nullptr) {}
+}
 
 TEST(InputKeybinds, input_didPlayerPressKey_matches_keydown_and_ignores_repeats)
 {

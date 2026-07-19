@@ -4,6 +4,7 @@ const {
   clickCanvasGameCoord,
   ensureRenderTicker,
   focusCanvas,
+  getCanvasGameRegionScreenshot,
   startSeededSinglePlayerFromPicker,
   waitForGameLoad,
   waitForGameplayProgress,
@@ -63,6 +64,22 @@ async function getCanvasSizing(canvas) {
       devicePixelRatio: window.devicePixelRatio,
     };
   });
+}
+
+async function assertCanvasFillsVisualViewport(page, size) {
+  const viewport = await page.evaluate(() => {
+    const visual = window.visualViewport;
+    return {
+      width: visual && visual.width > 0 ? visual.width : window.innerWidth,
+      height: visual && visual.height > 0 ? visual.height : window.innerHeight,
+    };
+  });
+  expect(Math.abs(size.renderedCssWidth - viewport.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(size.renderedCssHeight - viewport.height)).toBeLessThanOrEqual(1);
+  expect(size.renderedCssWidth / size.renderedCssHeight).toBeCloseTo(
+    viewport.width / viewport.height,
+    2,
+  );
 }
 
 function assertCanvasBackingMatchesRenderedCss(size) {
@@ -234,50 +251,6 @@ async function getWebWorldScaleContract(page) {
   };
 }
 
-async function movePointerOffCanvas(page, box) {
-  const viewport = page.viewportSize();
-  if (!viewport) {
-    throw new Error('Viewport size is unavailable');
-  }
-
-  const candidates = [
-    { x: 1, y: 1 },
-    { x: viewport.width - 2, y: 1 },
-    { x: 1, y: viewport.height - 2 },
-    { x: viewport.width - 2, y: viewport.height - 2 },
-  ];
-  const point = candidates.find(
-    ({ x, y }) =>
-      x < box.x || x >= box.x + box.width || y < box.y || y >= box.y + box.height,
-  );
-  if (!point) {
-    throw new Error('No viewport point is available outside the canvas');
-  }
-
-  await page.mouse.move(point.x, point.y);
-  // Give the SDL picker a poll cycle to clear any hovered button state.
-  await page.waitForTimeout(100);
-}
-
-// Capture a sub-rectangle addressed on the classic 320x200 reference grid,
-// regardless of the canvas's CSS size. In menus this selects exact logical
-// pixels; in zoomed gameplay it selects the same fractional world region.
-async function getCanvasGameRegionScreenshot(page, gameX, gameY, gameW, gameH) {
-  const box = await page.locator('#canvas').boundingBox();
-  if (!box) {
-    throw new Error('Canvas bounding box is unavailable');
-  }
-  await movePointerOffCanvas(page, box);
-  return await page.screenshot({
-    clip: {
-      x: box.x + (gameX * box.width) / 320,
-      y: box.y + (gameY * box.height) / 200,
-      width: (gameW * box.width) / 320,
-      height: (gameH * box.height) / 200,
-    },
-  });
-}
-
 async function pressPickerKey(page, key, settlingMs = 150) {
   // A non-zero hold lets the SDL poll loop observe the key before the browser
   // queues its release; an instantaneous CDP press is easy for the blocking
@@ -311,8 +284,10 @@ async function openWebDisplayOptions(page) {
 }
 
 async function leaveWebDisplayOptions(page) {
-  await pressPickerKey(page, 'Escape', 300);
-  await pressPickerKey(page, 'Escape', 500);
+  // Backspace is the web back key: physical Escape is swallowed by the engine
+  // on web builds (browser-reserved for fullscreen exit).
+  await pressPickerKey(page, 'Backspace', 300);
+  await pressPickerKey(page, 'Backspace', 500);
 }
 
 async function restoreDisplayDefaultsDuringGameplay(page, runtimeLogs) {
@@ -356,6 +331,35 @@ test.describe('Landing Page', () => {
     await expect(playButton).toBeVisible();
     await expect(playButton).toHaveText('Play');
     await expect(playButton).toHaveAttribute('href', 'play.html');
+
+    // Install metadata and its icon must ship beside both landing and game
+    // pages; missing deploy assets silently break Add to Home Screen.
+    await expect(page.locator('link[rel="manifest"]')).toHaveAttribute(
+      'href',
+      'manifest.webmanifest',
+    );
+    const manifestResponse = await page.request.get('/manifest.webmanifest');
+    expect(manifestResponse.ok()).toBe(true);
+    const manifest = await manifestResponse.json();
+    expect(manifest.start_url).toBe('./play.html');
+    expect(manifest.display_override).toContain('fullscreen');
+    expect(manifest.orientation).toBe('any');
+    expect(manifest.icons).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ src: 'icon-192.png', sizes: '192x192' }),
+        expect.objectContaining({ src: 'icon-512.png', sizes: '512x512' }),
+        expect.objectContaining({ src: 'icon.svg', sizes: 'any' }),
+      ]),
+    );
+    for (const iconPath of [
+      '/icon.svg',
+      '/icon-192.png',
+      '/icon-512.png',
+      '/apple-touch-icon.png',
+    ]) {
+      const iconResponse = await page.request.get(iconPath);
+      expect(iconResponse.ok(), `${iconPath} should be deployed`).toBe(true);
+    }
   });
 });
 
@@ -374,13 +378,10 @@ test.describe('Game Loading', () => {
     await waitForGameLoad(page);
     assertNoRuntimeErrors(errors, 'load completion');
 
-    // Keep the backing aligned with the shell's fitted 16:10 CSS size. A
-    // smaller fixed backing makes the browser upscale and blur every frame.
+    // Keep the backing aligned with the shell's full live viewport. A smaller
+    // fixed backing makes the browser upscale and blur every frame.
     const initialSize = await waitForCanvasBackingToMatchRenderedCss(canvas);
-    expect(initialSize.renderedCssWidth / initialSize.renderedCssHeight).toBeCloseTo(
-      1.6,
-      5,
-    );
+    await assertCanvasFillsVisualViewport(page, initialSize);
     await assertZoomOneWorldMatchesMasterDensity(page, initialSize);
 
     // Loading overlay should be hidden after initialization
@@ -419,9 +420,7 @@ test.describe('Game Loading', () => {
       const canvas = page.locator('#canvas');
       const initialSize = await waitForCanvasBackingToMatchRenderedCss(canvas);
       expect(initialSize.devicePixelRatio).toBe(2);
-      expect(
-        initialSize.renderedCssWidth / initialSize.renderedCssHeight,
-      ).toBeCloseTo(1.6, 5);
+      await assertCanvasFillsVisualViewport(page, initialSize);
       await assertZoomOneWorldMatchesMasterDensity(page, initialSize);
 
       await canvas.evaluate((element) => {
@@ -479,7 +478,7 @@ test.describe('Game Loading', () => {
     expect(hasWebGL).toBe(true);
   });
 
-  test('post-boot resize recovery restores the CSS-fitted canvas backing', async ({ page }) => {
+  test('post-boot resize recovery restores the full-viewport canvas backing', async ({ page }) => {
     const errors = [];
     attachRuntimeErrorCollectors(page, errors);
 
@@ -497,7 +496,7 @@ test.describe('Game Loading', () => {
 
       // Model SDL3's fullscreen-exit race deterministically. The post-boot
       // listener must run after the other resize listeners and restore both
-      // the fitted backing and the CSS presentation size in this same event.
+      // the viewport-sized backing and CSS presentation in this same event.
       canvas.width = 1272;
       canvas.height = 573;
       window.dispatchEvent(new Event('resize'));
@@ -508,9 +507,7 @@ test.describe('Game Loading', () => {
     const recoveredSize = await waitForCanvasBackingToMatchRenderedCss(
       page.locator('#canvas'),
     );
-    expect(
-      recoveredSize.renderedCssWidth / recoveredSize.renderedCssHeight,
-    ).toBeCloseTo(1.6, 5);
+    await assertCanvasFillsVisualViewport(page, recoveredSize);
     await assertZoomOneWorldMatchesMasterDensity(page, recoveredSize);
 
     await waitForRenderedFrames(page, 4);
@@ -524,6 +521,10 @@ test.describe('Game Loading', () => {
     const errors = [];
     attachRuntimeErrorCollectors(page, errors);
 
+    // The Keyboard Lock machinery is gone: on web the engine swallows Escape
+    // entirely (Backspace is the in-game back key), so browser-reserved
+    // Escape exits fullscreen with zero in-game side effect and the shell
+    // must never touch navigator.keyboard. Instrument the API to prove it.
     await page.addInitScript(() => {
       window.__opengladKeyboardLockTest = {
         lockCalls: [],
@@ -533,7 +534,7 @@ test.describe('Game Loading', () => {
         configurable: true,
         value: {
           lock: async (keys) => {
-            window.__opengladKeyboardLockTest.lockCalls.push([...keys]);
+            window.__opengladKeyboardLockTest.lockCalls.push([...(keys || [])]);
           },
           unlock: () => {
             window.__opengladKeyboardLockTest.unlockCalls += 1;
@@ -552,37 +553,31 @@ test.describe('Game Loading', () => {
     const fullscreenStatus = page.getByRole('status');
     await expect(fullscreenButton).toBeVisible();
     await expect(fullscreenButton).toHaveAttribute('title', 'Enter fullscreen');
-    await expect(fullscreenButton).toHaveAttribute('aria-controls', 'canvas');
+    await expect(fullscreenButton).toHaveAttribute('aria-controls', 'game-container');
     await expect(fullscreenButton).toHaveCSS('width', '44px');
     await expect(fullscreenButton).toHaveCSS('height', '44px');
     await expect(fullscreenStatus).toBeEmpty();
 
     const preFullscreenSize = await waitForCanvasBackingToMatchRenderedCss(canvas);
-    expect(
-      preFullscreenSize.renderedCssWidth / preFullscreenSize.renderedCssHeight,
-    ).toBeCloseTo(1.6, 5);
+    await assertCanvasFillsVisualViewport(page, preFullscreenSize);
     await assertZoomOneWorldMatchesMasterDensity(page, preFullscreenSize);
 
     // Playwright's real click follows the same trusted user-gesture path as
     // the shipped control; production code must not enter fullscreen at boot.
     await fullscreenButton.click();
     await page.waitForFunction(
-      () => document.fullscreenElement?.id === 'canvas',
+      () => document.fullscreenElement === document.documentElement,
     );
     await expect(fullscreenButton).toBeHidden();
     await expect
       .poll(() => page.evaluate(() => document.activeElement?.id))
       .toBe('canvas');
-    await expect
-      .poll(() =>
-        page.evaluate(() => window.__opengladKeyboardLockTest.lockCalls),
-      )
-      .toEqual([['Escape']]);
     await expect(fullscreenStatus).toContainText(
-      'Escape controls the game; press and hold Escape to leave fullscreen',
+      'Fullscreen active. Backspace is the in-game back key; Escape leaves fullscreen.',
     );
 
     const fullscreenSize = await waitForCanvasBackingToMatchRenderedCss(canvas);
+    await assertCanvasFillsVisualViewport(page, fullscreenSize);
     await assertZoomOneWorldMatchesMasterDensity(page, fullscreenSize);
 
     // Headless Chromium does not route CDP-generated Escape through browser
@@ -592,11 +587,6 @@ test.describe('Game Loading', () => {
     await page.waitForFunction(() => document.fullscreenElement === null);
     await expect(fullscreenButton).toBeVisible();
     await expect(fullscreenStatus).toBeEmpty();
-    await expect
-      .poll(() =>
-        page.evaluate(() => window.__opengladKeyboardLockTest.unlockCalls),
-      )
-      .toBe(1);
 
     await expect
       .poll(() =>
@@ -614,41 +604,22 @@ test.describe('Game Loading', () => {
 
     const exitSize = await getCanvasSizing(canvas);
     assertCanvasBackingMatchesRenderedCss(exitSize);
-    expect(exitSize.renderedCssWidth / exitSize.renderedCssHeight).toBeCloseTo(1.6, 5);
+    await assertCanvasFillsVisualViewport(page, exitSize);
     await assertZoomOneWorldMatchesMasterDensity(page, exitSize);
 
     await waitForRenderedFrames(page, 4);
     expect(hasVisualContent(await getCanvasScreenshot(page))).toBe(true);
 
-    // A denied Keyboard Lock request must not undo a successful fullscreen
-    // transition. The browser-reserved Escape behavior remains the fallback.
-    await page.evaluate(() => {
-      navigator.keyboard.lock = async () => {
-        throw new DOMException('blocked for test', 'NotAllowedError');
-      };
-    });
-    await fullscreenButton.click();
-    await page.waitForFunction(
-      () => document.fullscreenElement?.id === 'canvas',
-    );
-    await expect(fullscreenStatus).toContainText(
-      'Escape leaves fullscreen; press it again to control the game',
-    );
-    await expect(canvas).toBeFocused();
-    await page.evaluate(() => document.exitFullscreen());
-    await page.waitForFunction(() => document.fullscreenElement === null);
-    await expect(fullscreenStatus).toBeEmpty();
-    await expect
-      .poll(() =>
-        page.evaluate(() => window.__opengladKeyboardLockTest.unlockCalls),
-      )
-      .toBe(2);
+    // The full enter/exit cycle must never have called the Keyboard Lock API.
+    expect(
+      await page.evaluate(() => window.__opengladKeyboardLockTest),
+    ).toEqual({ lockCalls: [], unlockCalls: 0 });
 
     // A browser or embedding policy can deny a valid user request. Keep that
     // failure perceivable to keyboard and screen-reader users instead of
     // leaving a silently dead-looking icon.
-    await canvas.evaluate((element) => {
-      Object.defineProperty(element, 'requestFullscreen', {
+    await page.evaluate(() => {
+      Object.defineProperty(document.documentElement, 'requestFullscreen', {
         configurable: true,
         value: () => Promise.reject(new Error('blocked for test')),
       });
@@ -658,105 +629,11 @@ test.describe('Game Loading', () => {
       'Fullscreen could not be opened',
     );
     await expect(fullscreenButton).toBeFocused();
+
+    expect(
+      await page.evaluate(() => window.__opengladKeyboardLockTest),
+    ).toEqual({ lockCalls: [], unlockCalls: 0 });
     assertNoRuntimeErrors(errors, 'DOM fullscreen exit recovery');
-  });
-
-  test('late Keyboard Lock completion cannot unlock a newer fullscreen session', async ({
-    page,
-  }) => {
-    const errors = [];
-    attachRuntimeErrorCollectors(page, errors);
-
-    await page.addInitScript(() => {
-      window.__opengladKeyboardLockTest = {
-        pending: [],
-        unlockCalls: 0,
-      };
-      Object.defineProperty(navigator, 'keyboard', {
-        configurable: true,
-        value: {
-          lock: (keys) =>
-            new Promise((resolve) => {
-              window.__opengladKeyboardLockTest.pending.push({
-                keys: [...keys],
-                resolve,
-              });
-            }),
-          unlock: () => {
-            window.__opengladKeyboardLockTest.unlockCalls += 1;
-          },
-        },
-      });
-    });
-
-    await page.goto('/play.html');
-    await waitForGameLoad(page);
-
-    const canvas = page.locator('#canvas');
-    const fullscreenButton = page.getByRole('button', {
-      name: 'Enter fullscreen',
-    });
-    const fullscreenStatus = page.getByRole('status');
-
-    await fullscreenButton.click();
-    await page.waitForFunction(
-      () => document.fullscreenElement?.id === 'canvas',
-    );
-    await expect
-      .poll(() =>
-        page.evaluate(() => window.__opengladKeyboardLockTest.pending.length),
-      )
-      .toBe(1);
-
-    await page.evaluate(() => document.exitFullscreen());
-    await page.waitForFunction(() => document.fullscreenElement === null);
-    await expect
-      .poll(() =>
-        page.evaluate(() => window.__opengladKeyboardLockTest.unlockCalls),
-      )
-      .toBe(1);
-
-    await fullscreenButton.click();
-    await page.waitForFunction(
-      () => document.fullscreenElement?.id === 'canvas',
-    );
-    await expect
-      .poll(() =>
-        page.evaluate(() => window.__opengladKeyboardLockTest.pending.length),
-      )
-      .toBe(2);
-
-    // Complete the first session's request only after the second fullscreen
-    // session owns the current request. It must not globally unlock or
-    // invalidate that newer request.
-    await page.evaluate(async () => {
-      window.__opengladKeyboardLockTest.pending[0].resolve();
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-    expect(
-      await page.evaluate(() => window.__opengladKeyboardLockTest.unlockCalls),
-    ).toBe(1);
-
-    await page.evaluate(async () => {
-      window.__opengladKeyboardLockTest.pending[1].resolve();
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-    await expect(fullscreenStatus).toContainText(
-      'Escape controls the game; press and hold Escape to leave fullscreen',
-    );
-    expect(
-      await page.evaluate(() => window.__opengladKeyboardLockTest.unlockCalls),
-    ).toBe(1);
-    await expect(canvas).toBeFocused();
-
-    await page.evaluate(() => document.exitFullscreen());
-    await page.waitForFunction(() => document.fullscreenElement === null);
-    await expect
-      .poll(() =>
-        page.evaluate(() => window.__opengladKeyboardLockTest.unlockCalls),
-      )
-      .toBe(2);
-    assertNoRuntimeErrors(errors, 'stale Keyboard Lock completion');
   });
 });
 

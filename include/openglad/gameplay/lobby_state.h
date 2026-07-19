@@ -90,6 +90,17 @@ inline bool lobby_settings_allow_shared_teams(const LobbySettings& settings) noe
     return settings.campaign_id == og::kCtfCampaignId;
 }
 
+// Cross-peer team sharing: CTF campaigns (as before) plus allied lobbies,
+// where everyone plays one gameplay team anyway. Non-allied classic lobbies
+// keep one seat per team, which caps them at MAX_PLAYERS seats TOTAL (a
+// rules-driven cap, not an array cap). Within one peer, seats always keep
+// DISTINCT lobby teams regardless of this rule.
+inline bool lobby_teams_shareable(const LobbySettings& settings) noexcept
+{
+    return lobby_settings_allow_shared_teams(settings) ||
+        settings.allied_mode != 0;
+}
+
 struct LobbyState {
     LobbySettings settings;
     std::uint8_t host_player_id = 0xff;
@@ -113,7 +124,12 @@ constexpr std::uint8_t lobby_message_kind_value(LobbyMessageKind kind) noexcept
 }
 
 struct LobbyJoinMessage {
+    // Seat 0 of the joining peer. A join REPLACES the peer's whole seat list.
     LobbyPlayer player;
+    // Seats 1..N-1 of the joining peer (empty for single-seat clients, so the
+    // curses/text clients and pre-seat callers behave unchanged). Per-machine
+    // seat count is capped at MAX_PLAYERS.
+    std::vector<LobbyPlayer> extra_players = {};
 
     bool operator==(const LobbyJoinMessage&) const = default;
 };

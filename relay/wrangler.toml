@@ -1,16 +1,30 @@
 name = "openglad-relay"
 main = "src/index.ts"
-compatibility_date = "2024-09-23"
+compatibility_date = "2026-06-01"
+
+# No custom domain: the worker serves on its workers.dev subdomain.
+workers_dev = true
+
+[vars]
+# How long an empty room (no connected sockets) survives before the durable
+# object alarm deletes it, in milliseconds. smoke.mjs overrides this with
+# --var to exercise the expiry alarm quickly.
+EMPTY_ROOM_TTL_MS = "120000"
 
 [[durable_objects.bindings]]
 name = "GAME_ROOM"
 class_name = "GameRoom"
 
+[[durable_objects.bindings]]
+name = "ROOM_REGISTRY"
+class_name = "RoomRegistry"
+
+# SQLite-backed durable objects: available on the free plan and cheaper than
+# the legacy KV-backed storage class.
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["GameRoom"]
 
-[[kv_namespaces]]
-binding = "ROOM_INDEX"
-id = "00000000000000000000000000000000"
-preview_id = "00000000000000000000000000000000"
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["RoomRegistry"]

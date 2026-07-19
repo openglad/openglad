@@ -1,5 +1,6 @@
 #pragma once
 #include <array>
+#include <cstddef>
 #include <cstdint>
 
 // Menu loop return value flags (bitmask).
@@ -17,27 +18,97 @@ inline constexpr int32_t BUTTON_HEIGHT = 15;
 inline constexpr int32_t PICKER_NETWORKING_FRAME_X1 = 18;
 inline constexpr int32_t PICKER_NETWORKING_FRAME_Y1 = 14;
 inline constexpr int32_t PICKER_NETWORKING_FRAME_X2 = 302;
-inline constexpr int32_t PICKER_NETWORKING_FRAME_Y2 = 184;
 inline constexpr int32_t PICKER_NETWORKING_FRAME_BORDER = 6;
 inline constexpr int32_t PICKER_NETWORKING_TITLE_Y = 26;
 
 inline constexpr int32_t PICKER_NETWORKING_FIELD_X = 128;
 inline constexpr int32_t PICKER_NETWORKING_FIELD_WIDTH = 132;
-inline constexpr int32_t PICKER_NETWORKING_FIELD_Y = 44;
-inline constexpr int32_t PICKER_NETWORKING_FIELD_PITCH = 22;
-inline constexpr int32_t PICKER_NETWORKING_ACTION_Y = 156;
 inline constexpr int32_t PICKER_NETWORKING_ACTION_WIDTH = 74;
 inline constexpr int32_t PICKER_NETWORKING_LABEL_GAP = 8;
 inline constexpr int32_t PICKER_NETWORKING_INSTRUCTION_GAP = 8;
+
+// --- NETWORKING subscreen layout contract -----------------------------------
+// Relay-first shape: the ROOM CODE field and the ACTIVE GAMES relay-room list
+// lead on both builds. The web build drops the direct JOIN IP / PORT rows and
+// the ROOM CODE toggle entirely (an https:// page cannot open ws:// LAN
+// sockets, so the relay is the only web join path); native keeps them below
+// the list under a "DIRECT (LAN)" header. Positional indices differ per build
+// but every surviving id is stable: network_back / network_room_value /
+// network_host / network_join (+ native network_ip / network_port /
+// network_room_toggle), and the list rows are network_room_0..4.
+inline constexpr int kNetworkingMenuRoomSlots = 5;
+#ifdef __EMSCRIPTEN__
+inline constexpr int32_t PICKER_NETWORKING_FRAME_Y2 = 190;
+inline constexpr int32_t PICKER_NETWORKING_ACTION_Y = 168;
+inline constexpr int kNetworkingMenuBackIndex = 0;
+inline constexpr int kNetworkingMenuRoomValueIndex = 1;
+inline constexpr int kNetworkingMenuHostIndex = 2;
+inline constexpr int kNetworkingMenuJoinIndex = 3;
+inline constexpr int kNetworkingMenuRoomFirstIndex = 4;
+
+// Wider room-code field so the tap prompt placeholder fits (6px/char).
+inline constexpr int32_t PICKER_NETWORKING_ROOM_CODE_X = 110;
+inline constexpr int32_t PICKER_NETWORKING_ROOM_CODE_WIDTH = 160;
+inline constexpr int32_t PICKER_NETWORKING_ROOM_CODE_Y = 40;
+inline constexpr int32_t PICKER_NETWORKING_ROOMS_HEADER_Y = 61;
+inline constexpr int32_t PICKER_NETWORKING_ROOM_X = 40;
+inline constexpr int32_t PICKER_NETWORKING_ROOM_WIDTH = 240;
+// A full-size bevel is easier to tap on a narrow portrait phone. Five rows
+// still leave a clean gap for the guidance and action row below.
+inline constexpr int32_t PICKER_NETWORKING_ROOM_H = 15;
+inline constexpr int32_t PICKER_NETWORKING_ROOM_Y = 70;
+inline constexpr int32_t PICKER_NETWORKING_ROOM_PITCH = 16;
+#else
+inline constexpr int32_t PICKER_NETWORKING_FRAME_Y2 = 184;
+inline constexpr int32_t PICKER_NETWORKING_ACTION_Y = 156;
+inline constexpr int kNetworkingMenuBackIndex = 0;
+inline constexpr int kNetworkingMenuIpIndex = 1;
+inline constexpr int kNetworkingMenuPortIndex = 2;
+inline constexpr int kNetworkingMenuToggleIndex = 3;
+inline constexpr int kNetworkingMenuRoomValueIndex = 4;
+inline constexpr int kNetworkingMenuHostIndex = 5;
+inline constexpr int kNetworkingMenuJoinIndex = 6;
+inline constexpr int kNetworkingMenuRoomFirstIndex = 7;
+
+inline constexpr int32_t PICKER_NETWORKING_ROOM_CODE_X =
+    PICKER_NETWORKING_FIELD_X;
+inline constexpr int32_t PICKER_NETWORKING_ROOM_CODE_WIDTH =
+    PICKER_NETWORKING_FIELD_WIDTH;
+inline constexpr int32_t PICKER_NETWORKING_ROOM_CODE_Y = 36;
+inline constexpr int32_t PICKER_NETWORKING_ROOMS_HEADER_Y = 54;
+inline constexpr int32_t PICKER_NETWORKING_ROOM_X = 30;
+inline constexpr int32_t PICKER_NETWORKING_ROOM_WIDTH = 252;
+inline constexpr int32_t PICKER_NETWORKING_ROOM_H = 10;
+inline constexpr int32_t PICKER_NETWORKING_ROOM_Y = 64;
+inline constexpr int32_t PICKER_NETWORKING_ROOM_PITCH = 11;
+inline constexpr int32_t PICKER_NETWORKING_DIRECT_HEADER_Y = 121;
+inline constexpr int32_t PICKER_NETWORKING_DIRECT_IP_Y = 131;
+inline constexpr int32_t PICKER_NETWORKING_DIRECT_ROW2_Y = 143;
+inline constexpr int32_t PICKER_NETWORKING_DIRECT_FIELD_H = 10;
+inline constexpr int32_t PICKER_NETWORKING_PORT_WIDTH = 60;
+inline constexpr int32_t PICKER_NETWORKING_TOGGLE_X = 196;
+inline constexpr int32_t PICKER_NETWORKING_TOGGLE_WIDTH = 86;
+#endif
+inline constexpr int kNetworkingMenuButtonCount =
+    kNetworkingMenuRoomFirstIndex + kNetworkingMenuRoomSlots;
+// Room-row label budget (6px/char, centered with no clipping).
+inline constexpr std::size_t kNetworkingMenuRoomLabelChars = 39;
+
+// Forward declare button for menu descriptor arrays.
+struct button;
+
+// Deterministically rewires the NETWORKING subscreen nav graph for the
+// current number of visible ACTIVE GAMES rows (0..kNetworkingMenuRoomSlots):
+// every visible button stays keyboard-reachable and no link ever points at a
+// hidden room row.
+void picker_wire_networking_menu_nav(button* buttons, int count,
+                                     int visible_rooms);
 
 // CONTROLS subscreen header text position. Must clear the BACK button's
 // animated keyboard highlight (which extends up to 3px beyond the bevel) and
 // stay above the first player row; pinned by test_menu_layout.
 inline constexpr int32_t PICKER_CONTROLS_HEADER_X = 10;
 inline constexpr int32_t PICKER_CONTROLS_HEADER_Y = 28;
-
-// Forward declare button for menu descriptor arrays.
-struct button;
 
 // Per-session mutable button descriptors (Phase 12).
 button* picker_mainmenu_buttons();

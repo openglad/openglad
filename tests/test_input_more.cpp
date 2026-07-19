@@ -98,3 +98,52 @@ TEST(InputMore, input_null_and_wrong_event_paths_are_ignored)
     up.key.key = SDLK_A;
     ASSERT_TRUE(!isKeyboardEvent(up)) << "keyup is not keyboard input for this predicate";
 }
+
+TEST(InputMore, reset_mouse_click_tracking_discards_old_clicks_and_keeps_fresh_taps)
+{
+    clear_events();
+    mouse_state.left = false;
+    mouse_state.right = false;
+    input_hardware_state().picker_was_left_down = false;
+    input_hardware_state().picker_was_right_down = false;
+    reset_mouse_click_tracking();
+
+    auto mouse_event = [](Uint32 type) {
+        SDL_Event event{};
+        event.type = type;
+        event.button.button = SDL_BUTTON_LEFT;
+        event.button.down = type == SDL_EVENT_MOUSE_BUTTON_DOWN;
+        event.button.clicks = 1;
+        event.button.x = og::runtime::current_session->viewport_offset_x_ +
+            og::runtime::current_session->viewport_w_ / 2.0f;
+        event.button.y = og::runtime::current_session->viewport_offset_y_ +
+            og::runtime::current_session->viewport_h_ / 2.0f;
+        return event;
+    };
+
+    SDL_Event down = mouse_event(SDL_EVENT_MOUSE_BUTTON_DOWN);
+    SDL_Event up = mouse_event(SDL_EVENT_MOUSE_BUTTON_UP);
+
+    // A complete click owned by the outgoing surface must not be delivered
+    // after the handoff.
+    handle_mouse_event(down);
+    handle_mouse_event(up);
+    reset_mouse_click_tracking();
+    EXPECT_FALSE(take_pending_left_click());
+
+    // A press that is still held at the handoff becomes the baseline; its
+    // later release must not manufacture a click on the new surface.
+    handle_mouse_event(down);
+    reset_mouse_click_tracking();
+    EXPECT_TRUE(input_hardware_state().picker_was_left_down);
+    handle_mouse_event(up);
+    EXPECT_FALSE(take_pending_left_click());
+
+    // A genuinely new tap after the old pointer was released still works.
+    handle_mouse_event(down);
+    handle_mouse_event(up);
+    EXPECT_TRUE(take_pending_left_click());
+    EXPECT_FALSE(take_pending_left_click());
+
+    reset_mouse_click_tracking();
+}

@@ -38,6 +38,28 @@ static int injector_thread_escape(void* data)
     return 0;
 }
 
+static int injector_thread_utf8_backspace(void* data)
+{
+    og::runtime::ensure_thread_session();
+    (void)data;
+    SDL_Delay(50);
+
+    inject_text_input("A\xc3\xa9");
+
+    SDL_Delay(20);
+    SDL_Event ev{};
+    ev.type = SDL_EVENT_KEY_DOWN;
+    ev.key.key = SDLK_BACKSPACE;
+    SDL_PushEvent(&ev);
+
+    SDL_Delay(20);
+    ev = SDL_Event{};
+    ev.type = SDL_EVENT_KEY_DOWN;
+    ev.key.key = SDLK_RETURN;
+    SDL_PushEvent(&ev);
+    return 0;
+}
+
 TEST(TextInputAndWidth, text_query_width_big_font_varies_by_case)
 {
     text big(TEXT_BIG);
@@ -94,4 +116,41 @@ TEST(TextInputAndWidth, text_input_string_value_escape_returns_nullopt)
         SDL_WaitThread(th, &code);
 
     ASSERT_TRUE(!v.has_value()) << "escape should cancel and return nullopt";
+}
+
+TEST(TextInputAndWidth, backspace_removes_one_complete_utf8_codepoint)
+{
+    text t(TEXT_1);
+
+    SDL_Thread* th = SDL_CreateThread(
+        injector_thread_utf8_backspace, "text_inject_utf8_backspace", nullptr);
+    ASSERT_TRUE(th != nullptr) << "injector thread should start";
+
+    std::optional<std::string> v = t.input_string_value(10, 10, 16, "");
+    int code = 0;
+    if (th)
+        SDL_WaitThread(th, &code);
+
+    ASSERT_TRUE(v.has_value());
+    EXPECT_EQ(*v, "A");
+}
+
+TEST(TextInputAndWidth, extended_prompt_backspace_removes_complete_utf8_codepoint)
+{
+    text t(TEXT_1);
+
+    SDL_Thread* th = SDL_CreateThread(
+        injector_thread_utf8_backspace,
+        "text_inject_ex_utf8_backspace",
+        nullptr);
+    ASSERT_TRUE(th != nullptr) << "injector thread should start";
+
+    std::optional<std::string> v =
+        t.input_string_ex_value(10, 20, 16, "ROOM CODE", "");
+    int code = 0;
+    if (th)
+        SDL_WaitThread(th, &code);
+
+    ASSERT_TRUE(v.has_value());
+    EXPECT_EQ(*v, "A");
 }

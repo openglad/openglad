@@ -120,4 +120,9 @@ struct PickerState {
     // VIEW LEVEL: page step requested by the PREV/NEXT ButtonAction handler
     // (-1/+1), consumed by create_view_scenario_menu's frame loop.
     int view_scenario_page_step = 0;
+
+    // NETWORKING subscreen: ACTIVE GAMES row clicked by the last
+    // JoinRelayRoomListEntry dispatch (-1 = none). Set in vbutton::do_call,
+    // consumed by configure_networking's menu loop.
+    int networking_clicked_room_slot = -1;
 };

@@ -517,6 +517,10 @@ bool input_touch_has_alternate();
 #else
 #ifdef OUYA
 #define CONTINUE_ACTION_STRING "PRESS 'O'"
+#elif defined(__EMSCRIPTEN__)
+// Web: Escape is reserved for browser fullscreen exit; taps and clicks
+// dismiss too (see the input_continue_ click hook).
+#define CONTINUE_ACTION_STRING "TAP OR BACKSPACE"
 #else
 #define CONTINUE_ACTION_STRING "PRESS 'ESC'"
 #endif
@@ -584,6 +588,18 @@ void release_mouse();
 
 MouseState& query_mouse();
 inline MouseState& query_mouse_no_poll() { return mouse_state; }
+
+// Start a new UI surface from the current pointer state. Events already in
+// the queue are sampled, completed clicks are discarded, and buttons that
+// are still held become the edge-detection baseline until they are released.
+// A press that begins after this call remains a normal fresh click.
+void reset_mouse_click_tracking();
+
+// Collapsed touch-tap clicks (press+release inside one event pump, invisible
+// to sampled up->down edge detection). Click detectors OR these into their
+// edge results; each call consumes one pending click.
+bool take_pending_left_click();
+bool take_pending_right_click();
 
 unsigned char convert_to_ascii(int scancode);
 

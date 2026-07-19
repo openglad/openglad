@@ -82,7 +82,7 @@ jobs:
         if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y pkg-config libphysfs-dev libzip-dev libyaml-dev zlib1g-dev cmake ninja-build
+          sudo apt-get install -y pkg-config libssl-dev libphysfs-dev libzip-dev libyaml-dev zlib1g-dev cmake ninja-build
           # SDL3 is fetched and built statically (no libsdl3-dev on ubuntu-latest).
           # Install backend dev headers so the bundled static SDL3 compiles in
           # real audio/video drivers; these are build-time-only dependencies
@@ -230,7 +230,7 @@ jobs:
 
       - name: Prepare deploy directory
         run: |
-          cp web/index.html web/help.html dist/
+          cp web/index.html web/help.html web/_worker.js dist/
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3

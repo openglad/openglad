@@ -1342,6 +1342,66 @@ TEST(GameLoop,
     world.delete_objects();
 }
 
+// Multi-local-player seat mapping: a networked machine's view can follow a
+// GLOBAL player index above the per-machine MAX_PLAYERS (e.g. joiner B's one
+// seat is player 6 of a 7-player lobby). The widened kMaxGlobalPlayers
+// controlled-ids table must resolve those high indices, and an out-of-table
+// index must fall back instead of reading out of bounds.
+TEST(GameLoop, select_control_for_view_resolves_high_global_player_indices)
+{
+    screen* const game_screen = og::runtime::current_session->myscreen_;
+    ASSERT_TRUE(game_screen != nullptr);
+    ASSERT_TRUE(game_screen->viewob[0] != nullptr);
+
+    GameWorld& world = game_screen->world();
+    world.delete_objects();
+
+    auto make_player = [&world](int family, short team) {
+        walker* const actor = world.add_ob(Order::Living, family);
+        actor->set_owned_myguy(std::make_unique<guy>(family));
+        actor->myguy->teamnum = team;
+        actor->set_team_num(static_cast<unsigned char>(team));
+        actor->set_real_team_num(255);
+        return actor;
+    };
+
+    walker* const seat_control = make_player(FAMILY_SOLDIER, 0);
+    walker* const other_control = make_player(FAMILY_ARCHER, 0);
+    ASSERT_NE(nullptr, seat_control);
+    ASSERT_NE(nullptr, other_control);
+
+    viewscreen* const view = game_screen->viewob[0].get();
+    view->my_team = 0;
+
+    og::sim::ControlledEntityIds controlled_entity_ids = {};
+    controlled_entity_ids[0] = other_control->entity_id();
+    controlled_entity_ids[6] = seat_control->entity_id();
+    controlled_entity_ids[og::sim::kMaxGlobalPlayers - 1] =
+        other_control->entity_id();
+
+    // A seat following global player 6 resolves through the widened table.
+    EXPECT_EQ(seat_control,
+              og::runtime::detail::select_control_for_view(
+                  view, controlled_entity_ids, &world, 6u));
+    // The last valid global index still resolves.
+    EXPECT_EQ(other_control,
+              og::runtime::detail::select_control_for_view(
+                  view,
+                  controlled_entity_ids,
+                  &world,
+                  static_cast<std::size_t>(og::sim::kMaxGlobalPlayers - 1)));
+    // An index past the table never reads out of bounds; it falls back to
+    // the same-team controlled-ids scan (first mapped team walker: slot 0).
+    EXPECT_EQ(other_control,
+              og::runtime::detail::select_control_for_view(
+                  view,
+                  controlled_entity_ids,
+                  &world,
+                  static_cast<std::size_t>(og::sim::kMaxGlobalPlayers)));
+
+    world.delete_objects();
+}
+
 // Playtest bug A (display side): while a CTF respawn is pending the mapped id
 // is 0, but the view must keep following the dead corpse so the camera holds
 // and the RESPAWN IN countdown renders. A nonzero mapped id always wins, an

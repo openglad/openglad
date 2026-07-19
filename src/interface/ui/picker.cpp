@@ -29,6 +29,7 @@
 //buffers:  using input.h instead #include "int32.h"
 #include <openglad/interface/input.h>
 #include <openglad/interface/native_input.h>
+#include <openglad/interface/web_back_key.h>
 #include <openglad/core/util.h>
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/og_file.h>
@@ -60,6 +61,10 @@
 #include <set>
 #include <vector>
 #include <algorithm>
+#include <cstdint>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 #ifdef TESTING
 #include <atomic>
 #endif
@@ -308,11 +313,9 @@ std::string join_status_lines(const std::vector<std::string>& lines)
 
 constexpr bool picker_default_network_room_code_enabled()
 {
-#ifdef __EMSCRIPTEN__
+    // Relay discovery is the primary path on every platform. Native players
+    // can still choose DIRECT (LAN) below the room list by turning it off.
     return true;
-#else
-    return false;
-#endif
 }
 
 struct PickerNetworkingSettings
@@ -320,8 +323,76 @@ struct PickerNetworkingSettings
     std::string ip_address = "127.0.0.1";
     std::string port_text = "12345";
     bool use_room_code = picker_default_network_room_code_enabled();
-    std::string room_code = "GLAD-XXXX";
+    // Empty by default: the field shows a real placeholder instead of a
+    // fake GLAD-XXXX value, and JOIN on an empty code opens the active-room
+    // prompt (preselecting the first live room).
+    std::string room_code;
 };
+
+// Live ACTIVE GAMES list state for the NETWORKING subscreen. Network work is
+// started asynchronously and polled by configure_networking's menu loop, so a
+// slow relay never suspends input or rendering.
+struct PickerRelayRoomListState
+{
+    // `rooms` is exactly the snapshot represented by the currently drawn
+    // buttons. A refresh stages its result separately so a tap in the frame a
+    // request completes still selects the code the player actually saw, not a
+    // new room that happened to reuse its slot.
+    std::vector<og::ui::PickerRelayRoomInfo> rooms;
+    std::string error;
+    bool fetched = false;
+    std::uint64_t snapshot_generation = 0;
+    std::string snapshot_campaign_tag;
+    std::string snapshot_base_url;
+
+    std::vector<og::ui::PickerRelayRoomInfo> pending_rooms;
+    std::string pending_error;
+    bool update_pending = false;
+    std::uint64_t pending_generation = 0;
+    std::string pending_campaign_tag;
+    std::string pending_base_url;
+
+    std::unique_ptr<og::ui::IPickerRelayRoomListRequest> request;
+    std::uint64_t request_generation = 0;
+    std::string request_campaign_tag;
+    std::string request_base_url;
+
+    // A new generation starts on every menu entry, campaign/base change, or
+    // relay-mode toggle. Results from older generations are polled and
+    // discarded, never published into the current view.
+    std::uint64_t view_generation = 0;
+    std::string view_campaign_tag;
+    std::string view_base_url;
+    std::string view_base_url_error;
+    std::uint32_t next_refresh_ms = 0;
+};
+
+inline constexpr std::uint32_t kNetworkingRoomRefreshMs = 3000;
+inline constexpr std::uint32_t kNetworkingRoomRefreshErrorBackoffMs = 15000;
+// Let the first menu frame paint before starting discovery.
+inline constexpr std::uint32_t kNetworkingRoomFirstRefreshDelayMs = 400;
+
+#ifdef __EMSCRIPTEN__
+EM_JS(void, publish_relay_room_snapshot_js,
+      (int generation, int room_count, const char* first_code), {
+    window.__opengladRelayRoomSnapshot = {
+        generation,
+        roomCount: room_count,
+        firstRoomCode: UTF8ToString(first_code),
+    };
+});
+#endif
+
+std::string picker_networking_campaign_tag()
+{
+    if (og::runtime::current_session != nullptr &&
+        og::runtime::current_session->myscreen_ != nullptr)
+    {
+        return og::runtime::current_session->myscreen_->save_data
+            .current_campaign;
+    }
+    return {};
+}
 
 bool is_blank_text(std::string_view value)
 {
@@ -393,6 +464,27 @@ bool picker_replace_lobby_client(
     if (!next_client)
         return false;
 
+    const bool entering_networked_session =
+        next_client->is_networked_session() &&
+        (current_client == nullptr ||
+         !current_client->is_networked_session());
+    if (entering_networked_session)
+    {
+        // Establish a durable private baseline before network initialization
+        // applies shared campaign/team settings. The lobby keeps the roster
+        // private in memory; its combined roster lives only in LobbyState and
+        // the gameplay handoff.
+        if (og::runtime::current_session == nullptr ||
+            og::runtime::current_session->myscreen_ == nullptr ||
+            og::runtime::current_session->myscreen_->save_data
+                    .save_with_error("save0") != SaveDataIoError::None)
+        {
+            popup_dialog(popup_title,
+                         "Could not preserve your local team save.");
+            return false;
+        }
+    }
+
     std::unique_ptr<og::ui::IPickerLobbyClient> previous_client =
         std::move(current_client);
     const bool previous_was_active =
@@ -459,24 +551,24 @@ bool picker_join_game(
             }
 
             std::vector<og::ui::PickerRelayRoomInfo> active_rooms;
-            std::string room_list_error;
             try
             {
                 active_rooms =
                     og::ui::list_relay_rooms(relay_base_url, campaign_tag);
             }
-            catch (const std::exception& error)
+            catch (const std::exception&)
             {
-                room_list_error = error.what();
+                // Manual entry remains available when discovery is offline.
             }
 
-            std::string room_code = "GLAD-XXXX";
-            if (!prompt_for_string(
-                    og::ui::build_relay_room_prompt_message(
-                        active_rooms,
-                        campaign_tag,
-                        room_list_error),
-                    room_code))
+            // Preselect the first live room so accepting the prompt joins
+            // it directly; typing replaces the code as before.
+            std::string room_code =
+                active_rooms.empty() ? std::string() : active_rooms[0].code;
+            // The bitmap prompt renderer is deliberately single-line. The
+            // old room-list message contained newlines and overflowed the
+            // 320px UI; the full list now lives in tappable NETWORKING rows.
+            if (!prompt_for_string("JOIN ROOM CODE", room_code))
                 return false;
             options.mode = og::ui::PickerJoinMode::Relay;
             options.room_code = room_code;
@@ -567,34 +659,82 @@ public:
 
     bool configure_networking() override
     {
+#ifdef __EMSCRIPTEN__
+        constexpr std::string_view kRoomCodePlaceholder =
+            "(tap to enter room code)";
+#else
+        constexpr std::string_view kRoomCodePlaceholder = "(enter room code)";
+#endif
         text& mytext = og::runtime::current_session->myscreen_->text_normal;
         button* buttons = picker_networking_buttons();
         const auto instruction_lines =
             og::ui::networking_menu_instruction_lines();
         const int num_buttons = picker_networking_button_count();
-        int highlighted_button = 1;
+        int highlighted_button = kNetworkingMenuRoomValueIndex;
         og::runtime::current_session->localbuttons_ = init_buttons(buttons, num_buttons);
         clear_keyboard();
+        pks().networking_clicked_room_slot = -1;
+        begin_relay_room_list_view();
+
+        auto visible_room_count = [&]() -> int {
+            if (!networking_settings_.use_room_code ||
+                !relay_room_snapshot_is_current())
+            {
+                return 0;
+            }
+            return static_cast<int>(std::min(
+                relay_rooms_.rooms.size(),
+                static_cast<std::size_t>(kNetworkingMenuRoomSlots)));
+        };
 
         auto sync_button_labels = [&]() {
-            buttons[1].label = networking_settings_.ip_address.empty()
-                ? "(enter address)"
-                : networking_settings_.ip_address;
-            buttons[2].label = networking_settings_.port_text.empty()
-                ? "(enter port)"
-                : networking_settings_.port_text;
-            buttons[3].label = networking_settings_.use_room_code
-                ? "ROOM CODE: ON"
-                : "ROOM CODE: OFF";
-            buttons[4].label = networking_settings_.room_code.empty()
-                ? "(enter room code)"
-                : networking_settings_.room_code;
+#ifndef __EMSCRIPTEN__
+            buttons[kNetworkingMenuIpIndex].label =
+                networking_settings_.ip_address.empty()
+                    ? "(enter address)"
+                    : networking_settings_.ip_address;
+            buttons[kNetworkingMenuPortIndex].label =
+                networking_settings_.port_text.empty()
+                    ? "(enter port)"
+                    : networking_settings_.port_text;
+            buttons[kNetworkingMenuToggleIndex].label =
+                networking_settings_.use_room_code
+                    ? "ROOM CODE: ON"
+                    : "ROOM CODE: OFF";
+#endif
+            buttons[kNetworkingMenuRoomValueIndex].label =
+                networking_settings_.room_code.empty()
+                    ? std::string(kRoomCodePlaceholder)
+                    : networking_settings_.room_code;
 
-            for (int i = 1; i <= 4; ++i)
+            const int room_count = visible_room_count();
+            for (int slot = 0; slot < kNetworkingMenuRoomSlots; ++slot)
+            {
+                button& row = buttons[kNetworkingMenuRoomFirstIndex + slot];
+                row.hidden = slot >= room_count;
+                row.label = slot < room_count
+                    ? og::ui::format_relay_room_button_label(
+                          relay_rooms_.rooms[static_cast<std::size_t>(slot)],
+                          kNetworkingMenuRoomLabelChars)
+                    : std::string();
+            }
+            picker_wire_networking_menu_nav(buttons, num_buttons, room_count);
+            if (buttons[highlighted_button].hidden)
+                highlighted_button = kNetworkingMenuRoomValueIndex;
+
+            // Both label surfaces: the static rows above and the live
+            // vbuttons (labels AND the room rows' hidden flags).
+            for (std::size_t i = 0;
+                 i < static_cast<std::size_t>(num_buttons);
+                 ++i)
             {
                 if (og::runtime::current_session->allbuttons_[i] != nullptr)
+                {
                     og::runtime::current_session->allbuttons_[i]->label =
                         buttons[i].label;
+                    og::runtime::current_session->allbuttons_[i]->hidden =
+                        buttons[i].hidden;
+                }
             }
         };
 
@@ -609,8 +749,17 @@ public:
         Sint32 retvalue = 0;
         while (!(retvalue & MENU_EXIT))
         {
+            ensure_relay_room_list_view_is_current();
+            // Only a snapshot that was already staged before this frame may
+            // be committed after its input dispatch. A completion observed in
+            // this frame remains staged until the following frame, preserving
+            // the exact labels against which pointer input was sampled.
+            const bool room_update_was_pending = relay_rooms_.update_pending;
+            poll_relay_room_list_request();
             picker_lobby_poll();
-            if (leftmouse(buttons))
+            // Sample and dispatch input before starting any room-list request.
+            const bool sampled_pointer_action = leftmouse(buttons) != 0;
+            if (sampled_pointer_action)
                 retvalue =
                     og::runtime::current_session->localbuttons_->leftclick(
                         buttons);
@@ -618,6 +767,7 @@ public:
             handle_menu_nav(buttons, highlighted_button, retvalue);
             if (retvalue == MENU_EXIT)
                 break;
+            const bool had_menu_action = retvalue != 0;
 
             switch (static_cast<ButtonAction>(retvalue))
             {
@@ -636,28 +786,72 @@ public:
             case ButtonAction::ToggleNetworkRoomCode:
                 networking_settings_.use_room_code =
                     !networking_settings_.use_room_code;
+                begin_relay_room_list_view();
                 reinitialize_buttons();
                 break;
             case ButtonAction::EditNetworkRoomCode:
-                (void)prompt_for_string(
-                    "JOIN ROOM CODE",
-                    networking_settings_.room_code);
+            {
+                const bool relay_was_enabled =
+                    networking_settings_.use_room_code;
+                if (prompt_for_string("JOIN ROOM CODE",
+                                      networking_settings_.room_code))
+                {
+                    networking_settings_.use_room_code = true;
+                }
+                if (networking_settings_.use_room_code != relay_was_enabled)
+                    begin_relay_room_list_view();
                 reinitialize_buttons();
                 break;
+            }
             case ButtonAction::SubmitNetworkHost:
                 if (submit_network_host())
+                {
+                    cancel_relay_room_list_request();
                     return true;
+                }
                 reinitialize_buttons();
                 break;
             case ButtonAction::SubmitNetworkJoin:
-                if (submit_network_join())
+                if (prompt_for_relay_room_code_if_blank() &&
+                    submit_network_join())
+                {
+                    cancel_relay_room_list_request();
                     return true;
+                }
                 reinitialize_buttons();
                 break;
+            case ButtonAction::JoinRelayRoomListEntry:
+            {
+                const int slot = pks().networking_clicked_room_slot;
+                pks().networking_clicked_room_slot = -1;
+                if (slot >= 0 && slot < visible_room_count())
+                {
+                    networking_settings_.use_room_code = true;
+                    networking_settings_.room_code =
+                        relay_rooms_.rooms[static_cast<std::size_t>(slot)]
+                            .code;
+                    if (submit_network_join())
+                    {
+                        cancel_relay_room_list_request();
+                        return true;
+                    }
+                }
+                reinitialize_buttons();
+                break;
+            }
             default:
                 break;
             }
+            if (!had_menu_action && !sampled_pointer_action)
+            {
+                // Refresh only on an input-idle frame. Results remain staged
+                // until after dispatch, preserving the labels represented by
+                // the current button snapshot for the whole click frame.
+                refresh_relay_room_list(false);
+            }
             retvalue = 0;
+            if (room_update_was_pending)
+                commit_pending_relay_room_list();
             sync_button_labels();
 
             draw_backdrop();
@@ -681,24 +875,43 @@ public:
             draw_buttons(buttons, num_buttons);
 
             mytext.write_xy_center(160, PICKER_NETWORKING_TITLE_Y, RED, "NETWORKING");
-            static constexpr std::array<std::string_view, 4> k_field_labels{{
-                "JOIN IP / HOST",
-                "PORT",
-                "ROOM CODE",
-                "ROOM VALUE",
-            }};
-            for (std::size_t field_index = 0;
-                 field_index < k_field_labels.size();
-                 ++field_index)
-            {
-                const button& field = buttons[field_index + 1];
-                const std::string_view label = k_field_labels[field_index];
+
+            const auto draw_field_label = [&](int field_index,
+                                              std::string_view label) {
+                const button& field = buttons[field_index];
                 const Sint32 label_x =
                     field.x - mytext.query_width(label) -
                     PICKER_NETWORKING_LABEL_GAP;
                 const Sint32 label_y =
                     field.y + (field.sizey - mytext.sizey) / 2;
                 mytext.write_xy(label_x, label_y, label, DARK_BLUE);
+            };
+            draw_field_label(kNetworkingMenuRoomValueIndex, "ROOM CODE");
+#ifndef __EMSCRIPTEN__
+            draw_field_label(kNetworkingMenuIpIndex, "JOIN IP / HOST");
+            draw_field_label(kNetworkingMenuPortIndex, "PORT");
+            mytext.write_xy_center(160, PICKER_NETWORKING_DIRECT_HEADER_Y,
+                                   DARK_BLUE, "DIRECT (LAN)");
+#endif
+            mytext.write_xy_center(160, PICKER_NETWORKING_ROOMS_HEADER_Y,
+                                   DARK_BLUE, "ACTIVE GAMES");
+
+            if (visible_room_count() == 0)
+            {
+                std::string_view rooms_status;
+                if (!networking_settings_.use_room_code)
+                    rooms_status = "Turn ROOM CODE ON to list relay games.";
+                else if (!relay_rooms_.error.empty())
+                    rooms_status = "Room list unavailable.";
+                else if (relay_rooms_.fetched)
+                    rooms_status = "No active games found.";
+                else
+                    rooms_status = "Looking for active games...";
+                mytext.write_xy(
+                    160 - mytext.query_width(rooms_status) / 2,
+                    PICKER_NETWORKING_ROOM_Y + 2,
+                    rooms_status,
+                    DARK_BLUE);
             }
 
             const Sint32 instruction_pitch = mytext.sizey + 1;
@@ -709,8 +922,8 @@ public:
                         static_cast<Sint32>(instruction_lines.size() - 1) *
                             instruction_pitch;
             const Sint32 instruction_y =
-                buttons[5].y - PICKER_NETWORKING_INSTRUCTION_GAP -
-                instruction_height;
+                buttons[kNetworkingMenuJoinIndex].y -
+                PICKER_NETWORKING_INSTRUCTION_GAP - instruction_height;
             for (std::size_t line_index = 0;
                  line_index < instruction_lines.size();
                  ++line_index)
@@ -730,6 +943,7 @@ public:
             og::input_native::sleep_ms(10);
         }
 
+        cancel_relay_room_list_request();
         return false;
     }
 
@@ -899,6 +1113,298 @@ private:
         }
     }
 
+    void clear_pending_relay_room_list()
+    {
+        relay_rooms_.pending_rooms.clear();
+        relay_rooms_.pending_error.clear();
+        relay_rooms_.update_pending = false;
+        relay_rooms_.pending_generation = 0;
+        relay_rooms_.pending_campaign_tag.clear();
+        relay_rooms_.pending_base_url.clear();
+    }
+
+    void cancel_relay_room_list_request()
+    {
+        // Destruction is the platform cancellation contract: Wasm aborts and
+        // removes its JS registry entry; native drops the UI state while the
+        // bounded worker owner safely finishes/reaps the HTTP operation.
+        relay_rooms_.request.reset();
+        relay_rooms_.request_generation = 0;
+        relay_rooms_.request_campaign_tag.clear();
+        relay_rooms_.request_base_url.clear();
+    }
+
+    void begin_relay_room_list_view()
+    {
+        // A view replacement must not be serialized behind an obsolete
+        // request (menu re-entry, campaign/base change, or relay toggle).
+        cancel_relay_room_list_request();
+        ++relay_rooms_.view_generation;
+        relay_rooms_.view_campaign_tag = picker_networking_campaign_tag();
+        try
+        {
+            relay_rooms_.view_base_url = og::ui::default_relay_base_url();
+            relay_rooms_.view_base_url_error.clear();
+        }
+        catch (const std::exception& error)
+        {
+            relay_rooms_.view_base_url.clear();
+            relay_rooms_.view_base_url_error = error.what();
+        }
+        catch (...)
+        {
+            relay_rooms_.view_base_url.clear();
+            relay_rooms_.view_base_url_error =
+                "Relay base URL is invalid.";
+        }
+
+        relay_rooms_.rooms.clear();
+        relay_rooms_.error.clear();
+        relay_rooms_.fetched = false;
+        relay_rooms_.snapshot_generation = 0;
+        relay_rooms_.snapshot_campaign_tag.clear();
+        relay_rooms_.snapshot_base_url.clear();
+        clear_pending_relay_room_list();
+#ifdef __EMSCRIPTEN__
+        publish_relay_room_snapshot_js(
+            static_cast<int>(relay_rooms_.view_generation), 0, "");
+#endif
+        relay_rooms_.next_refresh_ms = og::input_native::ticks_ms() +
+            kNetworkingRoomFirstRefreshDelayMs;
+        if (!relay_rooms_.view_base_url_error.empty())
+        {
+            stage_relay_room_list_error(
+                relay_rooms_.view_base_url_error);
+        }
+    }
+
+    void ensure_relay_room_list_view_is_current()
+    {
+        const std::string campaign_tag = picker_networking_campaign_tag();
+        std::string base_url;
+        std::string base_url_error;
+        try
+        {
+            base_url = og::ui::default_relay_base_url();
+        }
+        catch (const std::exception& error)
+        {
+            base_url_error = error.what();
+        }
+        catch (...)
+        {
+            base_url_error = "Relay base URL is invalid.";
+        }
+        if (campaign_tag != relay_rooms_.view_campaign_tag ||
+            base_url != relay_rooms_.view_base_url ||
+            base_url_error != relay_rooms_.view_base_url_error)
+        {
+            begin_relay_room_list_view();
+        }
+    }
+
+    bool relay_room_snapshot_is_current() const
+    {
+        return relay_rooms_.snapshot_generation ==
+                   relay_rooms_.view_generation &&
+            relay_rooms_.snapshot_campaign_tag ==
+                relay_rooms_.view_campaign_tag &&
+            relay_rooms_.snapshot_base_url == relay_rooms_.view_base_url;
+    }
+
+    void stage_relay_room_list_error(std::string message)
+    {
+        relay_rooms_.pending_rooms.clear();
+        relay_rooms_.pending_error = std::move(message);
+        relay_rooms_.pending_generation = relay_rooms_.view_generation;
+        relay_rooms_.pending_campaign_tag = relay_rooms_.view_campaign_tag;
+        relay_rooms_.pending_base_url = relay_rooms_.view_base_url;
+        relay_rooms_.update_pending = true;
+        relay_rooms_.next_refresh_ms = og::input_native::ticks_ms() +
+            kNetworkingRoomRefreshErrorBackoffMs;
+    }
+
+    void poll_relay_room_list_request()
+    {
+        if (!relay_rooms_.request)
+            return;
+
+        std::optional<og::ui::PickerRelayRoomListResult> result;
+        try
+        {
+            result = relay_rooms_.request->poll();
+        }
+        catch (const std::exception& error)
+        {
+            const bool request_is_current =
+                relay_rooms_.request_generation ==
+                    relay_rooms_.view_generation &&
+                relay_rooms_.request_campaign_tag ==
+                    relay_rooms_.view_campaign_tag &&
+                relay_rooms_.request_base_url == relay_rooms_.view_base_url;
+            cancel_relay_room_list_request();
+            if (request_is_current)
+                stage_relay_room_list_error(error.what());
+            return;
+        }
+        catch (...)
+        {
+            const bool request_is_current =
+                relay_rooms_.request_generation ==
+                    relay_rooms_.view_generation &&
+                relay_rooms_.request_campaign_tag ==
+                    relay_rooms_.view_campaign_tag &&
+                relay_rooms_.request_base_url == relay_rooms_.view_base_url;
+            cancel_relay_room_list_request();
+            if (request_is_current)
+            {
+                stage_relay_room_list_error(
+                    "Relay room listing failed while polling.");
+            }
+            return;
+        }
+        if (!result.has_value())
+            return;
+
+        const std::uint64_t generation = relay_rooms_.request_generation;
+        std::string campaign_tag =
+            std::move(relay_rooms_.request_campaign_tag);
+        std::string base_url = std::move(relay_rooms_.request_base_url);
+        cancel_relay_room_list_request();
+
+        // The request may have completed after leaving/re-entering this menu,
+        // changing campaigns, or toggling relay mode. Never publish it into a
+        // different view; the current view can start its own request below.
+        if (!networking_settings_.use_room_code ||
+            generation != relay_rooms_.view_generation ||
+            campaign_tag != relay_rooms_.view_campaign_tag ||
+            base_url != relay_rooms_.view_base_url)
+        {
+            relay_rooms_.next_refresh_ms = og::input_native::ticks_ms();
+            return;
+        }
+
+        relay_rooms_.pending_rooms = std::move(result->rooms);
+        relay_rooms_.pending_error = std::move(result->error);
+        relay_rooms_.pending_generation = generation;
+        relay_rooms_.pending_campaign_tag = std::move(campaign_tag);
+        relay_rooms_.pending_base_url = std::move(base_url);
+        relay_rooms_.update_pending = true;
+        relay_rooms_.next_refresh_ms = og::input_native::ticks_ms() +
+            (relay_rooms_.pending_error.empty()
+                 ? kNetworkingRoomRefreshMs
+                 : kNetworkingRoomRefreshErrorBackoffMs);
+    }
+
+    // Throttled ACTIVE GAMES refresh. Starting and polling are nonblocking;
+    // errors back off harder so an unreachable relay is not hammered.
+    void refresh_relay_room_list(bool force)
+    {
+        if (!networking_settings_.use_room_code || relay_rooms_.request)
+            return;
+        const std::uint32_t now = og::input_native::ticks_ms();
+        if (!force &&
+            static_cast<std::int32_t>(now - relay_rooms_.next_refresh_ms) < 0)
+        {
+            return;
+        }
+        if (!relay_rooms_.view_base_url_error.empty())
+        {
+            stage_relay_room_list_error(
+                relay_rooms_.view_base_url_error);
+            return;
+        }
+        try
+        {
+            relay_rooms_.request = og::ui::begin_list_relay_rooms(
+                relay_rooms_.view_base_url,
+                relay_rooms_.view_campaign_tag);
+            if (!relay_rooms_.request)
+            {
+                stage_relay_room_list_error(
+                    "Relay room listing could not be started.");
+                return;
+            }
+            relay_rooms_.request_generation = relay_rooms_.view_generation;
+            relay_rooms_.request_campaign_tag =
+                relay_rooms_.view_campaign_tag;
+            relay_rooms_.request_base_url = relay_rooms_.view_base_url;
+        }
+        catch (const std::exception& error)
+        {
+            stage_relay_room_list_error(error.what());
+        }
+        catch (...)
+        {
+            stage_relay_room_list_error("Relay room listing failed.");
+        }
+    }
+
+    void commit_pending_relay_room_list()
+    {
+        if (!relay_rooms_.update_pending)
+            return;
+        if (!networking_settings_.use_room_code ||
+            relay_rooms_.pending_generation !=
+                relay_rooms_.view_generation ||
+            relay_rooms_.pending_campaign_tag !=
+                relay_rooms_.view_campaign_tag ||
+            relay_rooms_.pending_base_url != relay_rooms_.view_base_url)
+        {
+            clear_pending_relay_room_list();
+            return;
+        }
+        relay_rooms_.rooms = std::move(relay_rooms_.pending_rooms);
+        relay_rooms_.error = std::move(relay_rooms_.pending_error);
+        relay_rooms_.snapshot_generation =
+            relay_rooms_.pending_generation;
+        relay_rooms_.snapshot_campaign_tag =
+            relay_rooms_.pending_campaign_tag;
+        relay_rooms_.snapshot_base_url = relay_rooms_.pending_base_url;
+        clear_pending_relay_room_list();
+        relay_rooms_.fetched = true;
+#ifdef __EMSCRIPTEN__
+        publish_relay_room_snapshot_js(
+            static_cast<int>(relay_rooms_.snapshot_generation),
+            static_cast<int>(relay_rooms_.rooms.size()),
+            relay_rooms_.rooms.empty()
+                ? ""
+                : relay_rooms_.rooms.front().code.c_str());
+#endif
+    }
+
+    // JOIN with an empty room code in relay mode: open the active-room
+    // prompt (same copy as the legacy JOIN flow), preselecting the first
+    // live room so a bare "accept" joins it. Returns false to stay in the
+    // menu (cancelled or still blank).
+    bool prompt_for_relay_room_code_if_blank()
+    {
+        if (!networking_settings_.use_room_code)
+            return true;
+        if (!is_blank_text(networking_settings_.room_code))
+            return true;
+
+        // Discovery is never allowed to block this prompt. Start a request if
+        // needed; a current committed snapshot may prefill the field, while a
+        // pending request simply leaves it blank for manual entry.
+        if (!relay_rooms_.fetched && !relay_rooms_.update_pending)
+            refresh_relay_room_list(true);
+
+        std::string room_code =
+            !relay_room_snapshot_is_current() || relay_rooms_.rooms.empty()
+            ? std::string()
+            : relay_rooms_.rooms[0].code;
+        TRACE("networking", "join prompt prefill %s", room_code.c_str());
+        if (!prompt_for_string("JOIN ROOM CODE", room_code))
+        {
+            return false;
+        }
+        if (is_blank_text(room_code))
+            return false;
+        networking_settings_.room_code = room_code;
+        return true;
+    }
+
     bool replace_lobby_client(std::unique_ptr<og::ui::IPickerLobbyClient> client,
                               const char* popup_title)
     {
@@ -909,6 +1415,7 @@ private:
     }
 
     PickerNetworkingSettings networking_settings_;
+    PickerRelayRoomListState relay_rooms_;
     std::unique_ptr<og::ui::IPickerLobbyClient> lobby_client_;
 };
 
@@ -1257,19 +1764,48 @@ static const button k_hiremenu_buttons[] =
 
     };
 
+// NETWORKING subscreen (relay-first — see the layout contract in
+// picker_sdl_defs.h). Static nav encodes the zero-visible-rooms variant;
+// configure_networking rewires the graph every frame via
+// picker_wire_networking_menu_nav as ACTIVE GAMES rows appear/disappear.
+// Action row (BACK | HOST | JOIN), centered inside the panel so every
+// control lives within the frame. (BACK previously floated at 10,10,
+// outside the panel.)
+#ifdef __EMSCRIPTEN__
+// Web: relay is the only join path — no direct JOIN IP / PORT rows and no
+// ROOM CODE toggle (forced ON).
 static const button k_networking_menu_buttons[] =
     {
-        // Action row (BACK | HOST | JOIN), centered inside the panel so every
-        // control lives within the frame. (BACK previously floated at 10,10,
-        // outside the panel.)
-        button("network_back", "BACK", KEYSTATE_ESCAPE, 41, PICKER_NETWORKING_ACTION_Y, PICKER_NETWORKING_ACTION_WIDTH, BUTTON_HEIGHT, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=4, .right=5}),
-        button("network_ip", "", KEYSTATE_UNKNOWN, PICKER_NETWORKING_FIELD_X, PICKER_NETWORKING_FIELD_Y, PICKER_NETWORKING_FIELD_WIDTH, BUTTON_HEIGHT, button_action_id(ButtonAction::EditNetworkAddress), -1, MenuNav{.up=0, .down=2}),
-        button("network_port", "", KEYSTATE_UNKNOWN, PICKER_NETWORKING_FIELD_X, PICKER_NETWORKING_FIELD_Y + PICKER_NETWORKING_FIELD_PITCH, PICKER_NETWORKING_FIELD_WIDTH, BUTTON_HEIGHT, button_action_id(ButtonAction::EditNetworkPort), -1, MenuNav{.up=1, .down=3}),
-        button("network_room_toggle", "", KEYSTATE_UNKNOWN, PICKER_NETWORKING_FIELD_X, PICKER_NETWORKING_FIELD_Y + 2 * PICKER_NETWORKING_FIELD_PITCH, PICKER_NETWORKING_FIELD_WIDTH, BUTTON_HEIGHT, button_action_id(ButtonAction::ToggleNetworkRoomCode), -1, MenuNav{.up=2, .down=4}),
-        button("network_room_value", "", KEYSTATE_UNKNOWN, PICKER_NETWORKING_FIELD_X, PICKER_NETWORKING_FIELD_Y + 3 * PICKER_NETWORKING_FIELD_PITCH, PICKER_NETWORKING_FIELD_WIDTH, BUTTON_HEIGHT, button_action_id(ButtonAction::EditNetworkRoomCode), -1, MenuNav{.up=3, .down=5}),
-        button("network_host", "HOST", KEYSTATE_UNKNOWN, 123, PICKER_NETWORKING_ACTION_Y, PICKER_NETWORKING_ACTION_WIDTH, BUTTON_HEIGHT, button_action_id(ButtonAction::SubmitNetworkHost), -1, MenuNav{.up=4, .left=0, .right=6}),
-        button("network_join", "JOIN", KEYSTATE_UNKNOWN, 205, PICKER_NETWORKING_ACTION_Y, PICKER_NETWORKING_ACTION_WIDTH, BUTTON_HEIGHT, button_action_id(ButtonAction::SubmitNetworkJoin), -1, MenuNav{.up=4, .left=5}),
+        button("network_back", "BACK", KEYSTATE_ESCAPE, 41, PICKER_NETWORKING_ACTION_Y, PICKER_NETWORKING_ACTION_WIDTH, BUTTON_HEIGHT, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=1, .down=1, .right=2}),
+        button("network_room_value", "", KEYSTATE_UNKNOWN, PICKER_NETWORKING_ROOM_CODE_X, PICKER_NETWORKING_ROOM_CODE_Y, PICKER_NETWORKING_ROOM_CODE_WIDTH, BUTTON_HEIGHT, button_action_id(ButtonAction::EditNetworkRoomCode), -1, MenuNav{.up=0, .down=2}),
+        button("network_host", "HOST", KEYSTATE_UNKNOWN, 123, PICKER_NETWORKING_ACTION_Y, PICKER_NETWORKING_ACTION_WIDTH, BUTTON_HEIGHT, button_action_id(ButtonAction::SubmitNetworkHost), -1, MenuNav{.up=1, .left=0, .right=3}),
+        button("network_join", "JOIN", KEYSTATE_UNKNOWN, 205, PICKER_NETWORKING_ACTION_Y, PICKER_NETWORKING_ACTION_WIDTH, BUTTON_HEIGHT, button_action_id(ButtonAction::SubmitNetworkJoin), -1, MenuNav{.up=1, .down=1, .left=2}),
+        button("network_room_0", "", KEYSTATE_UNKNOWN, PICKER_NETWORKING_ROOM_X, PICKER_NETWORKING_ROOM_Y + 0 * PICKER_NETWORKING_ROOM_PITCH, PICKER_NETWORKING_ROOM_WIDTH, PICKER_NETWORKING_ROOM_H, button_action_id(ButtonAction::JoinRelayRoomListEntry), 0, MenuNav{}, true),
+        button("network_room_1", "", KEYSTATE_UNKNOWN, PICKER_NETWORKING_ROOM_X, PICKER_NETWORKING_ROOM_Y + 1 * PICKER_NETWORKING_ROOM_PITCH, PICKER_NETWORKING_ROOM_WIDTH, PICKER_NETWORKING_ROOM_H, button_action_id(ButtonAction::JoinRelayRoomListEntry), 1, MenuNav{}, true),
+        button("network_room_2", "", KEYSTATE_UNKNOWN, PICKER_NETWORKING_ROOM_X, PICKER_NETWORKING_ROOM_Y + 2 * PICKER_NETWORKING_ROOM_PITCH, PICKER_NETWORKING_ROOM_WIDTH, PICKER_NETWORKING_ROOM_H, button_action_id(ButtonAction::JoinRelayRoomListEntry), 2, MenuNav{}, true),
+        button("network_room_3", "", KEYSTATE_UNKNOWN, PICKER_NETWORKING_ROOM_X, PICKER_NETWORKING_ROOM_Y + 3 * PICKER_NETWORKING_ROOM_PITCH, PICKER_NETWORKING_ROOM_WIDTH, PICKER_NETWORKING_ROOM_H, button_action_id(ButtonAction::JoinRelayRoomListEntry), 3, MenuNav{}, true),
+        button("network_room_4", "", KEYSTATE_UNKNOWN, PICKER_NETWORKING_ROOM_X, PICKER_NETWORKING_ROOM_Y + 4 * PICKER_NETWORKING_ROOM_PITCH, PICKER_NETWORKING_ROOM_WIDTH, PICKER_NETWORKING_ROOM_H, button_action_id(ButtonAction::JoinRelayRoomListEntry), 4, MenuNav{}, true),
     };
+#else
+// Native: ROOM CODE + ACTIVE GAMES lead; the direct JOIN IP / PORT rows keep
+// their historical positional indices (1/2/3) but sit below the list under
+// the DIRECT (LAN) header.
+static const button k_networking_menu_buttons[] =
+    {
+        button("network_back", "BACK", KEYSTATE_ESCAPE, 41, PICKER_NETWORKING_ACTION_Y, PICKER_NETWORKING_ACTION_WIDTH, BUTTON_HEIGHT, button_action_id(ButtonAction::ReturnMenu), MENU_EXIT, MenuNav{.up=2, .down=4, .right=5}),
+        button("network_ip", "", KEYSTATE_UNKNOWN, PICKER_NETWORKING_FIELD_X, PICKER_NETWORKING_DIRECT_IP_Y, PICKER_NETWORKING_FIELD_WIDTH, PICKER_NETWORKING_DIRECT_FIELD_H, button_action_id(ButtonAction::EditNetworkAddress), -1, MenuNav{.up=4, .down=2}),
+        button("network_port", "", KEYSTATE_UNKNOWN, PICKER_NETWORKING_FIELD_X, PICKER_NETWORKING_DIRECT_ROW2_Y, PICKER_NETWORKING_PORT_WIDTH, PICKER_NETWORKING_DIRECT_FIELD_H, button_action_id(ButtonAction::EditNetworkPort), -1, MenuNav{.up=1, .down=0, .right=3}),
+        button("network_room_toggle", "", KEYSTATE_UNKNOWN, PICKER_NETWORKING_TOGGLE_X, PICKER_NETWORKING_DIRECT_ROW2_Y, PICKER_NETWORKING_TOGGLE_WIDTH, PICKER_NETWORKING_DIRECT_FIELD_H, button_action_id(ButtonAction::ToggleNetworkRoomCode), -1, MenuNav{.up=1, .down=6, .left=2}),
+        button("network_room_value", "", KEYSTATE_UNKNOWN, PICKER_NETWORKING_ROOM_CODE_X, PICKER_NETWORKING_ROOM_CODE_Y, PICKER_NETWORKING_ROOM_CODE_WIDTH, BUTTON_HEIGHT, button_action_id(ButtonAction::EditNetworkRoomCode), -1, MenuNav{.up=0, .down=1}),
+        button("network_host", "HOST", KEYSTATE_UNKNOWN, 123, PICKER_NETWORKING_ACTION_Y, PICKER_NETWORKING_ACTION_WIDTH, BUTTON_HEIGHT, button_action_id(ButtonAction::SubmitNetworkHost), -1, MenuNav{.up=2, .left=0, .right=6}),
+        button("network_join", "JOIN", KEYSTATE_UNKNOWN, 205, PICKER_NETWORKING_ACTION_Y, PICKER_NETWORKING_ACTION_WIDTH, BUTTON_HEIGHT, button_action_id(ButtonAction::SubmitNetworkJoin), -1, MenuNav{.up=3, .left=5}),
+        button("network_room_0", "", KEYSTATE_UNKNOWN, PICKER_NETWORKING_ROOM_X, PICKER_NETWORKING_ROOM_Y + 0 * PICKER_NETWORKING_ROOM_PITCH, PICKER_NETWORKING_ROOM_WIDTH, PICKER_NETWORKING_ROOM_H, button_action_id(ButtonAction::JoinRelayRoomListEntry), 0, MenuNav{}, true),
+        button("network_room_1", "", KEYSTATE_UNKNOWN, PICKER_NETWORKING_ROOM_X, PICKER_NETWORKING_ROOM_Y + 1 * PICKER_NETWORKING_ROOM_PITCH, PICKER_NETWORKING_ROOM_WIDTH, PICKER_NETWORKING_ROOM_H, button_action_id(ButtonAction::JoinRelayRoomListEntry), 1, MenuNav{}, true),
+        button("network_room_2", "", KEYSTATE_UNKNOWN, PICKER_NETWORKING_ROOM_X, PICKER_NETWORKING_ROOM_Y + 2 * PICKER_NETWORKING_ROOM_PITCH, PICKER_NETWORKING_ROOM_WIDTH, PICKER_NETWORKING_ROOM_H, button_action_id(ButtonAction::JoinRelayRoomListEntry), 2, MenuNav{}, true),
+        button("network_room_3", "", KEYSTATE_UNKNOWN, PICKER_NETWORKING_ROOM_X, PICKER_NETWORKING_ROOM_Y + 3 * PICKER_NETWORKING_ROOM_PITCH, PICKER_NETWORKING_ROOM_WIDTH, PICKER_NETWORKING_ROOM_H, button_action_id(ButtonAction::JoinRelayRoomListEntry), 3, MenuNav{}, true),
+        button("network_room_4", "", KEYSTATE_UNKNOWN, PICKER_NETWORKING_ROOM_X, PICKER_NETWORKING_ROOM_Y + 4 * PICKER_NETWORKING_ROOM_PITCH, PICKER_NETWORKING_ROOM_WIDTH, PICKER_NETWORKING_ROOM_H, button_action_id(ButtonAction::JoinRelayRoomListEntry), 4, MenuNav{}, true),
+    };
+#endif
 
 
 static const button k_saveteam_buttons[] =
@@ -1549,6 +2085,85 @@ button* picker_networking_buttons()
 {
     reset_mutable_button_layout(pks().networking_buttons, k_networking_menu_buttons);
     return pks().networking_buttons.data();
+}
+
+// NETWORKING subscreen nav graph for `visible_rooms` visible ACTIVE GAMES
+// rows. Deterministic rewire (teams-menu pattern): nav never links to a
+// hidden room row, and every visible button stays reachable from BACK.
+void picker_wire_networking_menu_nav(button* buttons, int count,
+                                     int visible_rooms)
+{
+    if (buttons == nullptr || count < kNetworkingMenuButtonCount)
+        return;
+    visible_rooms = std::clamp(visible_rooms, 0, kNetworkingMenuRoomSlots);
+
+    for (int index = 0; index < kNetworkingMenuButtonCount; ++index)
+        buttons[index].nav = MenuNav{};
+
+    const int first_room =
+        visible_rooms > 0 ? kNetworkingMenuRoomFirstIndex : -1;
+    const int last_room = visible_rooms > 0
+        ? kNetworkingMenuRoomFirstIndex + visible_rooms - 1
+        : -1;
+    for (int slot = 0; slot < visible_rooms; ++slot)
+    {
+        const int index = kNetworkingMenuRoomFirstIndex + slot;
+        buttons[index].nav.up = slot == 0
+            ? kNetworkingMenuRoomValueIndex
+            : index - 1;
+        buttons[index].nav.down = slot + 1 < visible_rooms
+            ? index + 1
+            : -1; // patched to the section below the list per build
+    }
+
+#ifdef __EMSCRIPTEN__
+    // room_value -> rooms -> action row (BACK | HOST | JOIN) -> wrap.
+    buttons[kNetworkingMenuRoomValueIndex].nav.up = kNetworkingMenuBackIndex;
+    buttons[kNetworkingMenuRoomValueIndex].nav.down =
+        first_room >= 0 ? first_room : kNetworkingMenuHostIndex;
+    if (last_room >= 0)
+        buttons[last_room].nav.down = kNetworkingMenuHostIndex;
+
+    const int above_actions =
+        last_room >= 0 ? last_room : kNetworkingMenuRoomValueIndex;
+    buttons[kNetworkingMenuBackIndex].nav.up = above_actions;
+    buttons[kNetworkingMenuBackIndex].nav.down = kNetworkingMenuRoomValueIndex;
+    buttons[kNetworkingMenuBackIndex].nav.right = kNetworkingMenuHostIndex;
+    buttons[kNetworkingMenuHostIndex].nav.up = above_actions;
+    buttons[kNetworkingMenuHostIndex].nav.left = kNetworkingMenuBackIndex;
+    buttons[kNetworkingMenuHostIndex].nav.right = kNetworkingMenuJoinIndex;
+    buttons[kNetworkingMenuJoinIndex].nav.up = above_actions;
+    buttons[kNetworkingMenuJoinIndex].nav.left = kNetworkingMenuHostIndex;
+    buttons[kNetworkingMenuJoinIndex].nav.down = kNetworkingMenuRoomValueIndex;
+#else
+    // room_value -> rooms -> DIRECT (LAN) fields (ip, then port | toggle)
+    // -> action row (BACK | HOST | JOIN) -> wrap.
+    buttons[kNetworkingMenuRoomValueIndex].nav.up = kNetworkingMenuBackIndex;
+    buttons[kNetworkingMenuRoomValueIndex].nav.down =
+        first_room >= 0 ? first_room : kNetworkingMenuIpIndex;
+    if (last_room >= 0)
+        buttons[last_room].nav.down = kNetworkingMenuIpIndex;
+
+    buttons[kNetworkingMenuIpIndex].nav.up =
+        last_room >= 0 ? last_room : kNetworkingMenuRoomValueIndex;
+    buttons[kNetworkingMenuIpIndex].nav.down = kNetworkingMenuPortIndex;
+    buttons[kNetworkingMenuPortIndex].nav.up = kNetworkingMenuIpIndex;
+    buttons[kNetworkingMenuPortIndex].nav.down = kNetworkingMenuBackIndex;
+    buttons[kNetworkingMenuPortIndex].nav.right = kNetworkingMenuToggleIndex;
+    buttons[kNetworkingMenuToggleIndex].nav.up = kNetworkingMenuIpIndex;
+    buttons[kNetworkingMenuToggleIndex].nav.down = kNetworkingMenuJoinIndex;
+    buttons[kNetworkingMenuToggleIndex].nav.left = kNetworkingMenuPortIndex;
+
+    buttons[kNetworkingMenuBackIndex].nav.up = kNetworkingMenuPortIndex;
+    buttons[kNetworkingMenuBackIndex].nav.down = kNetworkingMenuRoomValueIndex;
+    buttons[kNetworkingMenuBackIndex].nav.right = kNetworkingMenuHostIndex;
+    buttons[kNetworkingMenuHostIndex].nav.up = kNetworkingMenuPortIndex;
+    buttons[kNetworkingMenuHostIndex].nav.left = kNetworkingMenuBackIndex;
+    buttons[kNetworkingMenuHostIndex].nav.right = kNetworkingMenuJoinIndex;
+    buttons[kNetworkingMenuJoinIndex].nav.up = kNetworkingMenuToggleIndex;
+    buttons[kNetworkingMenuJoinIndex].nav.left = kNetworkingMenuHostIndex;
+    buttons[kNetworkingMenuJoinIndex].nav.down = kNetworkingMenuRoomValueIndex;
+#endif
 }
 
 int picker_networking_button_count()
@@ -1838,7 +2453,10 @@ static void draw_remap_prompt(const std::string& prompt, int player_index)
     og::runtime::current_session->myscreen_->draw_button_inverted(20, 30, 300, 170);
     mytext.write_xy_center(160, 45, RED, "REMAP CONTROLS");
     mytext.write_xy_center(160, 80, DARK_BLUE, "%s", prompt.c_str());
-    mytext.write_xy_center(160, 105, DARK_BLUE, "Press ESC to keep current key");
+    mytext.write_xy_center(160, 105, DARK_BLUE,
+                           og::input::kWebBackKeyMode
+                               ? "Press BACKSPACE to keep current key"
+                               : "Press ESC to keep current key");
     const auto summary_lines = build_player_control_summary_lines(player_index, true);
     mytext.write_xy_center(160, 150, DARK_BLUE, "%s", summary_lines[0].c_str());
     mytext.write_xy_center(160, 160, DARK_BLUE, "%s", summary_lines[1].c_str());
@@ -3391,9 +4009,10 @@ static SdlPickerClient& emscripten_picker_client()
     return *client;
 }
 
-static void run_picker_state_machine_until_game_requested()
+static void run_picker_state_machine_until_game_requested(
+    og::ui::PickerScreen initial_screen = og::ui::PickerScreen::MainMenu)
 {
-    og::ui::run_picker(emscripten_picker_client());
+    og::ui::run_picker(emscripten_picker_client(), initial_screen);
 }
 
 // Check if game start was requested (called from main after picker_init)
@@ -3468,7 +4087,17 @@ void picker_reinit_after_game()
 
     picker_reinitialize_lobby_after_game();
 
-    run_picker_state_machine_until_game_requested();
+    // The native go_menu loop returns here after glad_main and redraws the
+    // team-build/Continue screen. The browser unwinds gameplay through its
+    // outer rAF state machine, so explicitly resume at the same destination
+    // instead of constructing a fresh picker at MainMenu.
+    // The result dialog's dismissing touch may still be held (or its release
+    // may be queued), and its coordinates overlap the SCENARIO button here.
+    // Establish a fresh pointer baseline so that touch cannot click through
+    // into the newly-created menu.
+    reset_mouse_click_tracking();
+    run_picker_state_machine_until_game_requested(
+        og::ui::PickerScreen::TeamBuild);
     Log("picker_reinit_after_game: picker returned, g_start_game_requested={}\n", g_start_game_requested);
 }
 #endif
