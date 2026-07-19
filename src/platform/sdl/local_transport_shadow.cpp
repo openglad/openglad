@@ -295,6 +295,8 @@ bool persist_network_win_to_save0(
         // the session save (which carries the negotiated flag), never from
         // whatever the on-disk save0 last stored — the lobby apply-back only
         // updates in-memory saves, so the disk copy is stale for this session.
+        // Deliberately persisted below with the rest of the merged save (like
+        // the campaign cursor), so save0 reflects the last session's rules.
         merged.keep_fallen_heroes = world_screen.save_data.keep_fallen_heroes;
 
         merged.merge_owned_guys_from(world_screen.world().oblist,

@@ -94,6 +94,7 @@ inline constexpr int kNetworkingMenuButtonCount =
 // Room-row label budget (6px/char, centered with no clipping).
 inline constexpr std::size_t kNetworkingMenuRoomLabelChars = 39;
 
+// Forward declare button for menu descriptor arrays.
 struct button;
 
 // Deterministically rewires the NETWORKING subscreen nav graph for the

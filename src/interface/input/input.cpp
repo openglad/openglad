@@ -1367,6 +1367,7 @@ bool isPlayerHoldingKey(int player_index, int key_enum)
     // independent of keyboard control mode.
     if (hw().touch_keystate[player_index][key_enum])
         return true;
+    // FIXME: On Android/iOS, do not mistake an accelerometer for a gamepad.
     if(player_joy[player_index].hasButtonSet(key_enum))
         return player_joy[player_index].getState(key_enum);
     else

@@ -135,8 +135,9 @@ protected:
     IPickerClient() = default;
 };
 
-// Run the picker state machine with the given client implementation. Startup
-// begins at MainMenu; browser gameplay re-entry can resume directly at
+// Run the picker state machine with the given client implementation.
+// This is the platform-agnostic main loop.
+// Startup begins at MainMenu; browser gameplay re-entry can resume directly at
 // TeamBuild, matching the native blocking game loop's post-level destination.
 void run_picker(
     IPickerClient& client,

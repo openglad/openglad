@@ -1768,6 +1768,9 @@ static const button k_hiremenu_buttons[] =
 // picker_sdl_defs.h). Static nav encodes the zero-visible-rooms variant;
 // configure_networking rewires the graph every frame via
 // picker_wire_networking_menu_nav as ACTIVE GAMES rows appear/disappear.
+// Action row (BACK | HOST | JOIN), centered inside the panel so every
+// control lives within the frame. (BACK previously floated at 10,10,
+// outside the panel.)
 #ifdef __EMSCRIPTEN__
 // Web: relay is the only join path — no direct JOIN IP / PORT rows and no
 // ROOM CODE toggle (forced ON).
