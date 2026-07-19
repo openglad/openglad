@@ -27,8 +27,10 @@
 #include <openglad/gameplay/ctf/ctf_state.h>
 #include <openglad/gameplay/guy.h>
 #include <openglad/interface/level_runtime_data.h>
+#include <openglad/interface/ui/menu_binding.h>
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/picker_common.h>
+#include <openglad/interface/ui/terminal_menu_model.h>
 #include <openglad/platform/curses/curses_game_runtime.h>
 #include <openglad/platform/curses/curses_input.h>
 #include <openglad/platform/curses/curses_network.h>
@@ -50,7 +52,6 @@ namespace og::curses {
 namespace {
 
 using og::ui::PickerMenuCommand;
-using og::ui::PickerMenuDefinition;
 using og::ui::PickerMenuId;
 using og::ui::PickerMenuItem;
 using og::ui::TextPickerConfig;
@@ -289,69 +290,29 @@ private:
     IClock& clock_;
 };
 
-// --- dynamic menu labels (shared with TextPickerClient semantics) --------
+// --- dynamic menu labels (shared binding layer) --------------------------
 
-// "N. Title" for the configured level. Scenario titles are read off the
-// MOUNTED package, so the titled form is only trustworthy while the mount
-// matches the configured campaign (team build keeps them in sync); otherwise
-// show the bare number rather than a wrong campaign's title.
+// Borrow bundle for the shared label/gate layer (menu_binding.h): labels,
+// context lines, and guard messages all come from the same strings the text
+// client prints.
+og::ui::MenuLabelContext label_context(const TextPickerConfig& config,
+                                       const CursesPickerOptions& options,
+                                       const SaveData& save)
+{
+    og::ui::MenuLabelContext context;
+    context.save = &save;
+    context.session_difficulty = options.difficulty;
+    context.spectator = og::ui::is_spectator_mode(save);
+    context.campaign = config.campaign;
+    context.level = config.level;
+    return context;
+}
+
+// Mount-guarded level display over the session campaign (the shared
+// level_display_guarded helper carries the guard rule).
 std::string level_display(const TextPickerConfig& config)
 {
-    if (get_mounted_campaign() == config.campaign)
-        return og::data::scenario_display_name(config.level);
-    return std::to_string(config.level);
-}
-
-std::string menu_item_label(const PickerMenuItem& item, const TextPickerConfig& config,
-                            const CursesPickerOptions& options, const SaveData& save)
-{
-    if (item.command == PickerMenuCommand::SetDifficulty)
-        return og::ui::format_difficulty_label(options.difficulty);
-    if (item.command == PickerMenuCommand::SetLevel)
-        return std::format("{} ({})", item.label, level_display(config));
-    if (item.command == PickerMenuCommand::SetCampaign)
-        return std::format("{} ({})", item.label,
-            og::data::campaign_display_title(config.campaign));
-    if (item.command == PickerMenuCommand::ToggleAlliedMode)
-        return og::ui::format_allied_mode_label(save);
-    if (item.command == PickerMenuCommand::CycleCtfTeamCount)
-        return og::ui::format_ctf_teams_label(save);
-    if (item.command == PickerMenuCommand::CycleCtfCaptureLimit)
-        return og::ui::format_ctf_caps_label(save);
-    if (item.command == PickerMenuCommand::ToggleCtfScenarioTroops)
-        return og::ui::format_ctf_troops_label(save);
-    if (item.command == PickerMenuCommand::CycleRespawnMode)
-        return og::ui::format_respawn_mode_label(save);
-    if (item.command == PickerMenuCommand::CycleRespawnDelay)
-        return og::ui::format_respawn_delay_label(save);
-    if (item.command == PickerMenuCommand::TogglePermadeath)
-        return og::ui::format_permadeath_label(save);
-    if (item.command == PickerMenuCommand::CycleGeneratorRate)
-        return og::ui::format_generator_rate_label(save);
-    return std::string(item.label);
-}
-
-// Team + gold header lines shown above the Team Build menu (the curses analogue
-// of TextPickerClient::print_menu_context).
-std::vector<std::string> team_context_lines(const SaveData& save)
-{
-    std::vector<std::string> lines;
-    if (save.team_size == 0) {
-        lines.push_back("Team: (empty)");
-    } else {
-        std::string team = "Team: ";
-        bool first = true;
-        og::ui::for_each_team_member(save, [&](int, const guy& member) {
-            if (!first)
-                team += ", ";
-            team += std::format("{} ({})", member.name,
-                                og::ui::family_display_name(member.family));
-            first = false;
-        });
-        lines.push_back(team);
-    }
-    lines.push_back(std::format("Gold: {}", static_cast<unsigned>(save.m_totalcash[0])));
-    return lines;
+    return og::ui::level_display_guarded(config.campaign, config.level);
 }
 
 // --- team views: roster / hire / train -----------------------------------
@@ -632,35 +593,31 @@ CursesPickerClient::CursesPickerClient(ITerminal& term, IClock& clock,
 const PickerMenuItem* CursesPickerClient::present_menu(PickerMenuId menu_id)
 {
     Menu menu(term_, clock_);
-    const PickerMenuDefinition& def = og::ui::picker_menu_definition(menu_id);
 
     if (config_.team_families.empty())
         config_.team_families.push_back(FAMILY_SOLDIER);
     og::ui::initialize_starting_team(save_data_, config_.team_families);
 
+    const og::ui::TerminalMenuModel model = og::ui::build_terminal_menu_model(
+        menu_id, label_context(config_, options_, save_data_));
+
     // Build the entry list: team-build context as non-selectable headers, then
     // the menu items with their dynamic labels.
     std::vector<ListEntry> entries;
-    if (menu_id == PickerMenuId::TeamBuild) {
-        for (const std::string& line : team_context_lines(save_data_))
-            entries.push_back(ListEntry{line, false});
-    }
+    for (const std::string& line : model.context_lines)
+        entries.push_back(ListEntry{line, false});
     const int first_item = static_cast<int>(entries.size());
-    for (const PickerMenuItem& item : def.items)
-        entries.push_back(ListEntry{
-            menu_item_label(item, config_, options_, save_data_), true});
+    for (const og::ui::TerminalMenuEntry& entry : model.entries)
+        entries.push_back(ListEntry{entry.label, true});
 
-    const int choice = menu.choose(std::string(def.title), entries,
+    const int choice = menu.choose(model.title, entries,
         "Up/Down or j/k move | Enter select | digits jump | Esc/q back",
         first_item);
 
-    if (choice < 0) {
-        // Cancel: Quit from Main, Back elsewhere (mirrors TextPickerClient).
-        if (menu_id == PickerMenuId::Main)
-            return og::ui::find_picker_menu_item(menu_id, PickerMenuCommand::Quit);
-        return og::ui::find_picker_menu_item(menu_id, PickerMenuCommand::Back);
-    }
-    return &def.items[static_cast<size_t>(choice - first_item)];
+    // Cancel: Quit from Main, Back elsewhere (mirrors TextPickerClient).
+    if (choice < 0)
+        return model.cancel_item;
+    return model.entries[static_cast<size_t>(choice - first_item)].item;
 }
 
 void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
@@ -670,16 +627,9 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
     if (menu_id == PickerMenuId::Main) {
         switch (item.command) {
         case PickerMenuCommand::OpenDifficultyMenu:
-            // The DIFFICULTY submenu: a nested presentation loop until Back,
-            // mirroring the shared show_scenario_menu precedent
-            // (picker_state.cpp) the Scenario submenu rides.
-            for (;;) {
-                const PickerMenuItem* sub =
-                    present_menu(PickerMenuId::Difficulty);
-                if (sub == nullptr || sub->command == PickerMenuCommand::Back)
-                    break;
-                handle_menu_item(PickerMenuId::Difficulty, *sub);
-            }
+            // The DIFFICULTY submenu: the shared nested presentation loop
+            // (show_submenu in picker_state) until Back.
+            show_submenu(PickerMenuId::Difficulty);
             break;
         case PickerMenuCommand::SetPlayerMode:
             og::ui::set_player_count(save_data_, item.arg);
@@ -744,7 +694,15 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
         return;
     }
 
-    // Team Build menu.
+    // Team Build menu. Gated items (the CTF match settings outside the CTF
+    // campaign) show their shared guard message instead of acting.
+    const std::string_view guard = og::ui::terminal_gate_message(
+        item, label_context(config_, options_, save_data_));
+    if (!guard.empty()) {
+        menu.show_text(std::string(item.label), {std::string(guard)});
+        return;
+    }
+
     switch (item.command) {
     case PickerMenuCommand::ViewTeam:
         view_team_roster(menu, save_data_);
@@ -790,29 +748,15 @@ void CursesPickerClient::handle_menu_item(PickerMenuId menu_id,
         (void)show_campaign_select();
         break;
     case PickerMenuCommand::CycleCtfTeamCount:
-        if (!og::ui::is_ctf_campaign(save_data_)) {
-            menu.show_text("CTF Teams", {"CTF settings apply to CTF maps only."});
-            break;
-        }
         og::ui::cycle_ctf_team_count(save_data_);
         menu.show_text("CTF Teams", {og::ui::format_ctf_teams_label(save_data_)});
         break;
     case PickerMenuCommand::CycleCtfCaptureLimit:
-        if (!og::ui::is_ctf_campaign(save_data_)) {
-            menu.show_text("Capture Limit",
-                {"CTF settings apply to CTF maps only."});
-            break;
-        }
         og::ui::cycle_ctf_capture_limit(save_data_);
         menu.show_text("Capture Limit",
             {og::ui::format_ctf_caps_label(save_data_)});
         break;
     case PickerMenuCommand::ToggleCtfScenarioTroops:
-        if (!og::ui::is_ctf_campaign(save_data_)) {
-            menu.show_text("Scenario Troops",
-                {"CTF settings apply to CTF maps only."});
-            break;
-        }
         og::ui::toggle_ctf_scenario_troops(save_data_);
         menu.show_text("Scenario Troops",
             {og::ui::format_ctf_troops_label(save_data_)});

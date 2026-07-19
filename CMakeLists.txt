@@ -229,7 +229,9 @@ set(GAME_SOURCES
     ${SRC_DIR}/interface/ui/picker_main_menu.cpp
     ${SRC_DIR}/interface/ui/picker_accessible_levels.cpp
     ${SRC_DIR}/interface/ui/picker_team_build.cpp
+    ${SRC_DIR}/interface/ui/menu_binding.cpp
     ${SRC_DIR}/interface/ui/menu_model.cpp
+    ${SRC_DIR}/interface/ui/terminal_menu_model.cpp
     ${SRC_DIR}/interface/ui/picker_lobby_client.cpp
     ${SRC_DIR}/interface/ui/picker_lobby_network_client.cpp
     ${SRC_DIR}/interface/ui/picker_common.cpp
@@ -485,7 +487,9 @@ set(OG_UI_SOURCES
     ${SRC_DIR}/interface/ui/picker_input.cpp
     ${SRC_DIR}/interface/ui/picker_main_menu.cpp
     ${SRC_DIR}/interface/ui/picker_team_build.cpp
+    ${SRC_DIR}/interface/ui/menu_binding.cpp
     ${SRC_DIR}/interface/ui/menu_model.cpp
+    ${SRC_DIR}/interface/ui/terminal_menu_model.cpp
     ${SRC_DIR}/interface/ui/picker_lobby_client.cpp
     ${SRC_DIR}/interface/ui/picker_lobby_network_client.cpp
     ${SRC_DIR}/interface/ui/picker_common.cpp
@@ -1263,7 +1267,9 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/platform/text/walker_headless.cpp
         ${SRC_DIR}/platform/text/text_picker.cpp
         ${SRC_DIR}/platform/text/text_protocol.cpp
+        ${SRC_DIR}/interface/ui/menu_binding.cpp
         ${SRC_DIR}/interface/ui/menu_model.cpp
+        ${SRC_DIR}/interface/ui/terminal_menu_model.cpp
         ${SRC_DIR}/interface/ui/picker_common.cpp
         ${SRC_DIR}/interface/ui/picker_state.cpp
         # core
@@ -1542,7 +1548,9 @@ if(NOT EMSCRIPTEN)
     )
     # Shared SDL-free menu model + business logic (also compiled into openglad_text).
     set(OG_CURSES_MENU_SOURCES
+        ${SRC_DIR}/interface/ui/menu_binding.cpp
         ${SRC_DIR}/interface/ui/menu_model.cpp
+        ${SRC_DIR}/interface/ui/terminal_menu_model.cpp
         ${SRC_DIR}/interface/ui/picker_common.cpp
         ${SRC_DIR}/interface/ui/picker_state.cpp
     )
@@ -2561,6 +2569,7 @@ _openglad_require_imported_target(\"${OG_IXWEBSOCKET_TARGET}\" \"IXWebSocket\")
             ${CMAKE_SOURCE_DIR}/tests/test_family_orc.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_family_thief.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_picker_common.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_menu_spec.cpp
         )
 
         og_add_unit_group(og_unit_entity FILES

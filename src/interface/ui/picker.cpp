@@ -635,7 +635,7 @@ public:
             // show_team_build never selects the Scenario item here. The
             // TeamBuild fall-through below would re-enter create_team_menu
             // and nest a second team-build screen — answer the inherited
-            // show_scenario_menu() loop with a safe no-op Back instead.
+            // show_submenu(Scenario) loop with a safe no-op Back instead.
             return og::ui::find_picker_menu_item(
                 og::ui::PickerMenuId::Scenario,
                 og::ui::PickerMenuCommand::Back);

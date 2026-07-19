@@ -14,10 +14,12 @@
 #include <openglad/resources/io_common.h>
 #include <openglad/resources/level_data_hooks.h>
 #include <openglad/interface/level_runtime_data.h>
+#include <openglad/interface/ui/menu_binding.h>
 #include <openglad/interface/ui/menu_model.h>
 #include <openglad/interface/ui/picker.h>
 #include <openglad/interface/ui/picker_common.h>
 #include <openglad/interface/ui/picker_state.h>
+#include <openglad/interface/ui/terminal_menu_model.h>
 #include <openglad/interface/ui/text_protocol.h>
 
 #include <algorithm>
@@ -78,32 +80,30 @@ public:
 
     const PickerMenuItem* present_menu(PickerMenuId menu_id) override
     {
-        const PickerMenuDefinition& menu = picker_menu_definition(menu_id);
         for (;;) {
             ensure_team_initialized();
-            print_menu_context(menu_id);
+            const TerminalMenuModel menu =
+                build_terminal_menu_model(menu_id, label_context());
+            print_menu_context(menu);
 
-            std::printf("\n=== %s ===\n", std::string(menu.title).c_str());
-            for (size_t i = 0; i < menu.items.size(); ++i) {
-                std::printf("  %2zu. %s\n", i + 1, menu_item_label(menu.items[i]).c_str());
+            std::printf("\n=== %s ===\n", menu.title.c_str());
+            for (size_t i = 0; i < menu.entries.size(); ++i) {
+                std::printf("  %2zu. %s\n", i + 1, menu.entries[i].label.c_str());
             }
             std::printf("Choice: ");
             std::fflush(stdout);
 
             std::string line;
-            if (!read_line(line)) {
-                if (menu_id == PickerMenuId::Main)
-                    return find_picker_menu_item(menu_id, PickerMenuCommand::Quit);
-                return find_picker_menu_item(menu_id, PickerMenuCommand::Back);
-            }
+            if (!read_line(line))
+                return menu.cancel_item;
 
             const auto choice = parse_int_strict(line);
-            if (!choice || *choice < 1 || static_cast<size_t>(*choice) > menu.items.size()) {
+            if (!choice || *choice < 1 || static_cast<size_t>(*choice) > menu.entries.size()) {
                 std::printf("Invalid choice.\n");
                 continue;
             }
 
-            return &menu.items[static_cast<size_t>(*choice - 1)];
+            return menu.entries[static_cast<size_t>(*choice - 1)].item;
         }
     }
 
@@ -304,67 +304,40 @@ public:
     }
 
 private:
-    void print_menu_context(PickerMenuId menu_id)
+    // Borrow bundle for the shared label/gate layer (menu_binding.h).
+    MenuLabelContext label_context() const
     {
-        if (menu_id != PickerMenuId::TeamBuild)
+        MenuLabelContext context;
+        context.save = &save_data_;
+        context.session_difficulty =
+            og::runtime::current_session->current_difficulty_;
+        context.spectator = is_spectator_mode(save_data_);
+        context.campaign = config_.campaign;
+        context.level = config_.level;
+        return context;
+    }
+
+    void print_menu_context(const TerminalMenuModel& menu)
+    {
+        if (menu.context_lines.empty())
             return;
 
-        std::printf("\nTeam: ");
-        if (save_data_.team_size == 0) {
-            std::printf("(empty)\n");
-        } else {
-            bool first = true;
-            for_each_team_member(save_data_, [&](int /*slot*/, const guy& member) {
-                if (!first)
-                    std::printf(", ");
-                std::printf("%s (%s)", member.name.c_str(),
-                    family_display_name(member.family));
-                first = false;
-            });
-            std::printf("\n");
-        }
-
-        std::printf("Gold: %u\n", static_cast<unsigned>(save_data_.m_totalcash[0]));
+        std::printf("\n");
+        for (const std::string& line : menu.context_lines)
+            std::printf("%s\n", line.c_str());
         if (show_new_game_team_build_notice_) {
             std::printf("[New game: build your team before GO!]\n");
             show_new_game_team_build_notice_ = false;
         }
     }
 
-    std::string menu_item_label(const PickerMenuItem& item) const
-    {
-        if (item.command == PickerMenuCommand::SetDifficulty)
-            return format_difficulty_label(og::runtime::current_session->current_difficulty_);
-        if (item.command == PickerMenuCommand::SetLevel)
-            return std::format("{} ({})", item.label,
-                level_display(config_.level));
-        if (item.command == PickerMenuCommand::SetCampaign)
-            return std::format("{} ({})", item.label,
-                og::data::campaign_display_title(config_.campaign));
-        if (item.command == PickerMenuCommand::ToggleAlliedMode)
-            return format_allied_mode_label(save_data_);
-        if (item.command == PickerMenuCommand::CycleCtfTeamCount)
-            return format_ctf_teams_label(save_data_);
-        if (item.command == PickerMenuCommand::CycleCtfCaptureLimit)
-            return format_ctf_caps_label(save_data_);
-        if (item.command == PickerMenuCommand::ToggleCtfScenarioTroops)
-            return format_ctf_troops_label(save_data_);
-        if (item.command == PickerMenuCommand::CycleRespawnMode)
-            return format_respawn_mode_label(save_data_);
-        if (item.command == PickerMenuCommand::CycleRespawnDelay)
-            return format_respawn_delay_label(save_data_);
-        if (item.command == PickerMenuCommand::TogglePermadeath)
-            return format_permadeath_label(save_data_);
-        if (item.command == PickerMenuCommand::CycleGeneratorRate)
-            return format_generator_rate_label(save_data_);
-        return std::string(item.label);
-    }
-
     void handle_main_menu_item(const PickerMenuItem& item)
     {
         switch (item.command) {
         case PickerMenuCommand::OpenDifficultyMenu:
-            show_difficulty_menu();
+            // The DIFFICULTY submenu: the shared nested presentation loop
+            // (show_submenu in picker_state) until Back.
+            show_submenu(PickerMenuId::Difficulty);
             break;
         case PickerMenuCommand::SetPlayerMode:
             set_player_count(save_data_, item.arg);
@@ -385,6 +358,15 @@ private:
 
     void handle_team_build_item(const PickerMenuItem& item)
     {
+        // Gated items (the CTF match settings outside the CTF campaign)
+        // print their shared guard message instead of acting.
+        const std::string_view guard =
+            terminal_gate_message(item, label_context());
+        if (!guard.empty()) {
+            std::printf("%s\n", std::string(guard).c_str());
+            return;
+        }
+
         switch (item.command) {
         case PickerMenuCommand::ViewTeam:
             view_team_roster();
@@ -416,26 +398,14 @@ private:
             (void)show_campaign_select();
             break;
         case PickerMenuCommand::CycleCtfTeamCount:
-            if (!is_ctf_campaign(save_data_)) {
-                std::printf("CTF settings apply to CTF maps only.\n");
-                break;
-            }
             cycle_ctf_team_count(save_data_);
             std::printf("%s\n", format_ctf_teams_label(save_data_).c_str());
             break;
         case PickerMenuCommand::CycleCtfCaptureLimit:
-            if (!is_ctf_campaign(save_data_)) {
-                std::printf("CTF settings apply to CTF maps only.\n");
-                break;
-            }
             cycle_ctf_capture_limit(save_data_);
             std::printf("%s\n", format_ctf_caps_label(save_data_).c_str());
             break;
         case PickerMenuCommand::ToggleCtfScenarioTroops:
-            if (!is_ctf_campaign(save_data_)) {
-                std::printf("CTF settings apply to CTF maps only.\n");
-                break;
-            }
             toggle_ctf_scenario_troops(save_data_);
             std::printf("%s\n", format_ctf_troops_label(save_data_).c_str());
             break;
@@ -447,18 +417,6 @@ private:
             break;
         default:
             break;
-        }
-    }
-
-    // The DIFFICULTY submenu: a nested presentation loop until Back,
-    // mirroring the shared show_scenario_menu precedent.
-    void show_difficulty_menu()
-    {
-        for (;;) {
-            const PickerMenuItem* item = present_menu(PickerMenuId::Difficulty);
-            if (!item || item->command == PickerMenuCommand::Back)
-                return;
-            handle_difficulty_menu_item(*item);
         }
     }
 
@@ -620,14 +578,11 @@ private:
         config_.team_families = collect_team_families(save_data_);
     }
 
-    // Scenario titles are read from the MOUNTED package; when the session
-    // campaign isn't the mounted one (e.g. a loaded save points elsewhere)
-    // the title would describe the wrong campaign, so show the bare number.
+    // Mount-guarded level display over the session campaign (the shared
+    // level_display_guarded helper carries the guard rule).
     std::string level_display(int level) const
     {
-        if (get_mounted_campaign() == config_.campaign)
-            return og::data::scenario_display_name(level);
-        return std::to_string(level);
+        return level_display_guarded(config_.campaign, level);
     }
 
     void view_team_roster()

@@ -57,7 +57,7 @@ TeamBuildAction IPickerClient::show_team_build()
             (void)configure_networking();
             break;
         case PickerMenuCommand::Scenario:
-            show_scenario_menu();
+            show_submenu(PickerMenuId::Scenario);
             break;
         default:
             handle_menu_item(PickerMenuId::TeamBuild, *item);
@@ -66,13 +66,13 @@ TeamBuildAction IPickerClient::show_team_build()
     }
 }
 
-void IPickerClient::show_scenario_menu()
+void IPickerClient::show_submenu(PickerMenuId menu_id)
 {
     for (;;) {
-        const PickerMenuItem* item = present_menu(PickerMenuId::Scenario);
+        const PickerMenuItem* item = present_menu(menu_id);
         if (!item || item->command == PickerMenuCommand::Back)
             return;
-        handle_menu_item(PickerMenuId::Scenario, *item);
+        handle_menu_item(menu_id, *item);
     }
 }
 
